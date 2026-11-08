@@ -183,7 +183,7 @@ run = "uv run python python/scripts/parity_bench.py"
 
 [tasks.parity-probe]
 depends = ["ensure"]
-description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the rows the parity log needs)"
+description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the scores a journal entry quotes)"
 run = "uv run python python/scripts/parity_probe.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 

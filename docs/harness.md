@@ -187,9 +187,7 @@ under DeepSeek Harness (2026-10-25) and Claude Code (2026-10-31).
   also write CRLF. Write UTF-8 without a BOM and with LF through
   `[IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))`, with
   `` "`n" `` as the only line break in `$text`, and read one file back before running such a
-  write over many. `work/2026-10/parity-log/log.md` is LF and append-only: add a row with
-  `[IO.File]::AppendAllText($path, $row, (New-Object System.Text.UTF8Encoding($false)))`, never
-  `WriteAllText`, which replaces the file.
+  write over many.
 * **Commit messages from a file.** A here-string piped to `git commit -F -` does not reach git.
   Write the message with `WriteAllText` above and run `git commit -F <file>`.
 * **Search with the Grep tool, not a shell.** A pattern with quotes in it does not survive 5.1's

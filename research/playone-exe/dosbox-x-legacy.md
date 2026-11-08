@@ -83,4 +83,4 @@ Every item below is `[Bounded Observation]`.
 
 None. Both questions are moot unless DOSBox-X returns: capture runs on dosbox-automation ([#28](https://github.com/neilsh/stunt-reel/pull/28)).
 
-_Moved here 2026-10-30; the findings are in the [parity log](../../work/2026-10/parity-log/log.md)._
+_Source: the [parity log](../../work/2026-10/parity-log/log.md); moved here 2026-10-30._

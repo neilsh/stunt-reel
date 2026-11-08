@@ -13,7 +13,7 @@
 | [`makeone-exe/`](makeone-exe/) | Behaviour of `MAKEONE.EXE`, the film linker, as driven under an emulator (DOSBox-X at the time, see [`playone-exe/dosbox-x-legacy.md`](playone-exe/dosbox-x-legacy.md)) to produce a film's `.ALL`, and what that archive holds | [`driving.md`](makeone-exe/driving.md), [`linking.md`](makeone-exe/linking.md) |
 | [`sd-exe/`](sd-exe/) | `SITools/SD.EXE`, the developers' scenery designer: image layout, segments, routine offsets. What its files mean stays in their format notes | [`image.md`](sd-exe/image.md) |
 | [`stunt-exe/`](stunt-exe/) | Behaviour of `STUNT.EXE`, the authoring executable: sets, events, and the editor's file handling | [`sets.md`](stunt-exe/sets.md) |
-| [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`log.md`](../work/2026-10/parity-log/log.md) |
+| [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`attribution.md`](parity/attribution.md) |
 | [`parity/error-examples/`](parity/error-examples/) | The only images kept in `research/`: error-category example sheets, indexed by [`parity/error-categories.toml`](parity/error-categories.toml). Every other comparison image a note cites lives in a work folder's `images/` | [`work/README.md`](../work/README.md#images) |
 
 A source card records a *document* rather than a subject; these live beside this file, e.g. [`handbook.md`](handbook.md) for the retail handbook.
@@ -22,24 +22,30 @@ To find a note rather than place a finding, read [`MAP.md`](MAP.md): every note 
 
 ## Routing rule
 
-1. **A fact about the original goes to the note for its subject.** "The player Gouraud-shades a `GVPOLY` polygon's index" belongs in `playone-exe/terrain-shade.md`; "a `.ALL` chunk is a copy of a `RES` item" belongs in `formats/all.md`. It does not stay in the log of the experiment that found it.
+1. **A fact about the original goes to the note for its subject.** "The player Gouraud-shades a `GVPOLY` polygon's index" belongs in `playone-exe/terrain-shade.md`; "a `.ALL` chunk is a copy of a `RES` item" belongs in `formats/all.md`. It does not stay in the journal of the experiment that found it.
 2. **A fact about our render's residual goes to `parity/`,** in the note for that residual (where the loss sits, framing and actors, mismatched film segments).
-3. **Every experiment leaves one row in [`work/2026-10/parity-log/log.md`](../work/2026-10/parity-log/log.md):** date, commit, score, adopted or not, and a link to where its finding now lives. The finding carries a provenance line pointing back at the row.
-4. **Tooling lives with what it studies.** A tool or tool evaluation for `PLAYONE.EXE` goes in `playone-exe/static-tooling.md`.
-5. **A handoff is not a file.** Open questions and next steps go under "Open questions" in the note that owns the work.
-6. **Superseded content is replaced, not kept beside the new result.** Its history is the log row and git.
+3. **Every experiment leaves a journal entry in its work folder** ([`work/README.md`](../work/README.md#journal-entries)), and the finding's provenance line links that entry's heading.
+4. **Facts stay here; procedures go to `docs/howto/`.** A note holds reference and explanation: how the original works, where our render differs from it, and the quality of the evidence (DAC lag, torn pages, recapture noise), since that decides which captures count. A tool evaluation is such a fact and stays with what the tool studies, as `playone-exe/static-tooling.md` does for `PLAYONE.EXE`. Steps for running our tools are how-to: they go to `docs/howto/<task>.md`, one task per file, and a skill links them rather than repeating them.
+5. **A handoff lives in the work folder's README,** or on the issue when there is no folder. Open questions about a subject go under its note's `Open questions` heading.
+6. **Superseded content is replaced, not kept beside the new result.** Its history is the journal entry and git.
 
 New offsets also update the tables in [`memory-map.md`](playone-exe/memory-map.md) (`# [MEM-*]` anchors); new format facts follow [`formats/INDEX.md`](formats/INDEX.md). Evidentiary tiers are defined in [`docs/SPEC.md` § 2.4](../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
 
 ## Note shape
 
-Follow [`playone-exe/startup.md`](playone-exe/startup.md) for structure (addresses, register states, flowcharts, tables), and end each subject note with:
+Begin each note with a frontmatter block holding `summary:`, one sentence of at most 200 characters saying what the note establishes; [`MAP.md`](MAP.md) is built from it. Follow [`playone-exe/startup.md`](playone-exe/startup.md) for structure (addresses, register states, flowcharts, tables). End each finding with a provenance line that links the journal entry it came from, written inline:
 
-- **Ruled out:** hypotheses tested and rejected, one or two lines each: what was tried, the score or observation, the verdict.
-- **Open questions:** open work in priority order.
+```markdown
+_Source: [2026-11-07: lens zoom](../../work/2026-11/123_lens-zoom/journal.md#2026-11-07-lens-zoom)._
+```
+
+End each subject note with two headings, since the link check finds a Ruled out section by its heading:
+
+- **`Ruled out`:** hypotheses tested and rejected, one or two lines each: what was tried, the score or observation, the verdict, and its journal link.
+- **`Open questions`:** open work in priority order.
 
 Headings carry no evidentiary tier tag, so links survive a tier promotion; state the tier in the section's first line. Anchor tokens (`# [FMT-*]`, `# [MEM-*]`) stay in headings.
 
 ## Size
 
-Keep each note under about 20 KB so one read covers it. When a note grows past that, split it by subject (for example `sod.md` / `sod-opcodes.md`), not by date. Generated tables (`formats/sod-opcode-coverage.md`) and the append-only [`work/2026-10/parity-log/log.md`](../work/2026-10/parity-log/log.md) are exempt.
+Keep each note under about 20 KB so one read covers it; `mise run doc-health` lists the notes over it. When a note grows past that, split it by subject (for example `sod.md` / `sod-opcodes.md`), not by date. Generated tables (`formats/sod-opcode-coverage.md`) are exempt.

@@ -3,7 +3,7 @@ summary: "Defines the parity loop that judges a render change against PLAYONE.EX
 ---
 # Parity Method: the Fidelity Loop
 
-How a rendering change is judged against `PLAYONE.EXE`. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md) (parity, captured frame, film clock); capture mechanics are in [`../playone-exe/capture.md`](../playone-exe/capture.md); results are in [`log.md`](../../work/2026-10/parity-log/log.md).
+How a rendering change is judged against `PLAYONE.EXE`. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md) (parity, captured frame, film clock); capture mechanics are in [`../playone-exe/capture.md`](../playone-exe/capture.md); each film's expected scores are its expected tables in [`references.toml`](references.toml), and dated results are journal entries (step 7) or, before them, rows of the parity log (section 5).
 
 ## 1. The loop
 
@@ -16,7 +16,7 @@ How a rendering change is judged against `PLAYONE.EXE`. Terms are those of [`GLO
 5. **Compare:** add `--compare <previous report.json> --compare-test <previous render dir>`. It prints means over the frames present in both reports, the 5 most improved/regressed frames, and the count moved by more than 0.005, and writes `compare.json`. The basis is `scored` when both reports carry `scored` (SSIM over frames scored in both runs) and `all` otherwise (SSIM over all common frames), recorded on the first `[compare]` line and as `"basis"` in `compare.json`. With `--compare-test` it also prints a verdict on the windows the change touched: `[verdict] changed 27/121 frames: 15 closer, 12 further, 0 within noise; mean Δ +0.101 on changed windows`. A frame is changed where its `.idx` or luma differs; Δ is the capture SSIM of *after* minus *before* over the 11x11 windows holding a changed pixel, so unchanged flat ground drops out. `--noise-sigma <σ>` (the film's `noise_sigma` in `references.toml`) buckets |Δ| < σ as within noise. That σ is the recapture noise of the *whole-frame* SSIM (`004` against `005`, § 2.2), not a measurement of the noise of Δ: Δ averages a few touched windows rather than the whole frame, so it should vary at least as much between captures, and σ is a lower bound for it (not measured). "Within noise" is therefore conservative: it labels only changes smaller than that lower bound, and a frame called closer or further may still be noise. Without `--noise-sigma` the sign of Δ decides, and only a Δ of exactly 0 counts as within noise. The verdict judges every matched frame, including the ones the fade floor leaves unscored (§ 2.1), so it can move on faded frames the headline mean ignores. `--build-floor <N>` labels frames with at most N changed pixels as build noise (0 suffices: two builds of one revision render identically, § 2.2). `compare.json` gains `"verdict"`, and the worst-mover sheets follow Δ.
 6. **Look at the worst movers before trusting the mean.** Open `compare_regressed_*.png` and `compare_improved_*.png` (`reference | before | after | |ref-before| | |ref-after|`). A mean can hide a regression or an improvement: the axis fix (`82ea965`) made the biplane upright like `PLAYONE` yet lowered mean SSIM 0.571 -> 0.567, because size and position error remain (`[Bounded Observation]`: worst frames about ticks 426-492, -0.02).
 6a. **Diagnose one discrepancy** with the probes in [`probes.md`](probes.md) (crop, silhouette offset, actor-window IoU, candidate sweeps).
-7. **Record a row in [`log.md`](../../work/2026-10/parity-log/log.md):** commit hash, matched frames, means, and the reason for any movement. `mise run parity-probe -- summary --report build/parity/report/ctry_current/report.json` prints those columns in order, the worst frames and the row ready to paste, so the numbers are never retyped by hand.
+7. **Write a journal entry** in the work item's `journal.md` ([`work/README.md`](../../work/README.md#journal-entries)): commit hash, matched frames, means, the reason for any movement, and the verdict. `mise run parity-probe -- summary --report build/parity/report/ctry_current/report.json` prints the scores the entry quotes and the worst frames, so the numbers are never retyped by hand. An adopted change also updates the film's expected table in `references.toml` ([`loop-rules.md`](../../.agents/skills/improving-render-parity/loop-rules.md)).
 
 ### 1.1 Extracting frames and video
 
@@ -345,9 +345,9 @@ A prototype of `stuntreel parity` (commit `d80e29e`, kept on branch `feat/video-
 
 What would have to change before trying again: a significance margin on `slip` (best minus film-offset SSIM above the noise, about 0.03), a film offset fixed by a run over unaltered seconds or from the log rather than refitted per render, and a metric that registers geometric error at this parity level.
 
-## 5. Reading the results log
+## 5. Reading the legacy parity log
 
-How to read the rows of [`log.md`](../../work/2026-10/parity-log/log.md), which holds only dated figures.
+How to read the rows of the [parity log](../../work/2026-10/parity-log/log.md), frozen history that holds only dated figures; journal entries (step 7) replace it.
 
 * **Superseded captures.** Reports made from `ctry_pre_filmclock` captures were keyed by capture ordinal, not film clock, and are superseded: they are not comparable to any row in [`log.md`](../../work/2026-10/parity-log/log.md), and the comparator now rejects a `meta.json` without `film_tick`. Recapture instead of converting.
 * **Reading the `5799a53` row.** The overall mean fell only because 18 end-hold captures entered the average; over the 122 animated ticks the score equals the earlier rows. Compare rows over the same frame set (`--compare` reports the delta over the frames present in both).

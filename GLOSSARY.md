@@ -274,7 +274,7 @@ A measurement of one frame or region through `parity_probe.py` — crop, shift, 
 _Avoid_: probe (for a hypothesis still to be settled)
 
 **Round**:
-One hypothesis class closed by one batched sweep, its adoption decision and its log row. A round may begin by reading one `PLAYONE.EXE` rule when no renderer-only lever fits.
+One hypothesis class closed by one batched sweep, its adoption decision and its journal entry. A round may begin by reading one `PLAYONE.EXE` rule when no renderer-only lever fits.
 _Avoid_: iteration, pass
 
 **Sweep**:
@@ -284,3 +284,21 @@ _Avoid_: batch run, grid search
 **Adoption**:
 Keeping a round's best candidate. An evidence-backed change (a rule read from `PLAYONE.EXE`, cited at an image offset) adopts when neither film regresses by more than 0.002 SSIM and one improves; a heuristic change needs both films above +0.002, or one above +0.004 with the other within 0.002.
 _Avoid_: acceptance, merge (for the parity decision)
+
+## Records
+
+**Evergreen note**:
+A research note or `docs/` page that states what is true now and is rewritten in place when that changes. It keeps its history in the journal entries it cites and in git, not in dated sections.
+_Avoid_: living document, findings log
+
+**Work item**:
+A GitHub issue; its state is the work's status: open is active, closed as completed is landed, closed as not planned is abandoned. It gets a work folder only when it has a file to keep.
+_Avoid_: task, job
+
+**Work folder**:
+A folder under `work/<YYYY-MM>/` holding dated records, such as a spec, plan, journal and images, for one work item or for work with no issue. It is frozen once its work lands and is not a source of truth.
+_Avoid_: plan folder, process docs
+
+**Journal entry**:
+One dated `##` section of a work folder's `journal.md`: the question, the method, the result with its scores, the verdict, and the evergreen note or ADR that now holds the fact. An evergreen note's provenance line links its heading.
+_Avoid_: log row, round (for the record)

@@ -13,9 +13,9 @@ through the same adapter:
 * ``retime`` - relabel an existing render by N ticks (negative allowed),
   rewriting its store and ``render.json``, so a timing hypothesis costs no
   rebuild.
-* ``summary`` - the scored headline, the loss by class, the worst scored
-  frames and the ``work/2026-10/parity-log/log.md`` row for one report, so the numbers
-  are never retyped by hand.
+* ``summary`` - the scored headline, the loss by class and the worst scored
+  frames of one report: the scores a journal entry quotes, so the numbers are
+  never retyped by hand.
 
 Object pixels are capture pixels that are not sky, ground ramp, button bar or
 cursor; the index ranges default to ``CTRY.FLM`` and are per film.
