@@ -147,7 +147,7 @@ def _row(root: Path, *fields: str) -> None:
     pointers.write_text(body + "\n", encoding="utf-8")
 
 
-def test_the_committed_rows_name_valid_builds() -> None:
+def test_committed_rows_name_valid_builds() -> None:
     for film in references.reference_films(REPO_ROOT):
         reference = references.read_reference(REPO_ROOT, film)
         assert {reference.builds.makeone, reference.builds.playone} <= set(references.BUILD_NAMES)
@@ -245,7 +245,7 @@ def test_a_shipped_archive_of_the_demo_or_retail_game_is_unpatched(tmp_path: Pat
     assert build(tmp_path, "vault-tod", community) == "unknown"
 
 
-def test_every_committed_row_names_the_makeone_build_of_its_manifest() -> None:
+def test_committed_rows_name_the_makeone_build_of_their_manifests() -> None:
     for film in references.reference_films(REPO_ROOT):
         row = references.read_reference(REPO_ROOT, film)
         manifest = REPO_ROOT / parity_layout.manifest_path(row.slug)

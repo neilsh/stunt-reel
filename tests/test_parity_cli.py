@@ -22,13 +22,20 @@ from cli import ParityOptions, UsageError, add_parity_options, parity_options  #
 
 from archive_helpers import build_all  # noqa: E402
 from render_helpers import reference_tree  # noqa: E402
-from stunt_reel import dataroot, parity_layout, parity_pipeline, references  # noqa: E402
+from stunt_reel import dataroot, parity_layout, parity_pipeline  # noqa: E402
 from stunt_reel.all_archive import ArchiveMeta, publish_archive  # noqa: E402
 from stunt_reel.parity_artifacts import Report, write_report  # noqa: E402
-from stunt_reel.parity_pipeline import REPO_ROOT  # noqa: E402
 
-#: The films of the committed references.toml, which is what the parity loop covers.
-FILMS = references.reference_films(REPO_ROOT)
+#: The films of the stand-in references.toml, which is what the parity loop covers.
+FILMS = ("ctry", "intro")
+
+
+@pytest.fixture(autouse=True)
+def _two_films(rows: Path) -> None:
+    rows.write_text(
+        "".join(f'[{film}]\nfilm = "vault-{film}"\nsha256 = "0"\n' for film in FILMS),
+        encoding="utf-8",
+    )
 
 
 def _options(module: Any, argv: list[str]) -> ParityOptions:
