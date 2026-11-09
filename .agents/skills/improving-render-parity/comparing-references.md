@@ -11,7 +11,7 @@ A new capture becomes a film's reference only through a reviewed commit of `rese
 - [ ] 4. Copy build/scratch/references.toml back over research/parity/references.toml
 - [ ] 5. mise run parity -- --films <film> --no-build   (renders and scores the current reference)
 - [ ] 6. Compare the two scored lines; promote only in a commit of its own, with the journal entry
-- [ ] 7. The new sha256 makes the film's expected entries read "reference pin changed": re-measure on the promoting commit and update [<film>.expected.<class>]
+- [ ] 7. The new sha256 makes the film's expected entries read "reference pin changed": re-measure on the promoting commit and update [<film>.expected.<class>] (scores, its sha256 and all_sha256, and crates from git rev-parse HEAD:crates, with crates/ clean and HEAD the commit you rendered)
 ```
 
 Restore from the copy rather than with `git checkout`, which would also discard any edit to the file that was there before step 2. Leave out `--no-render` on the second run. A render covers only the ticks its own capture tagged, so the `_current` tree from step 3 has no frames at the other reference's ticks. `--no-build` is what keeps the binary the same, so the two scores differ only by the reference.

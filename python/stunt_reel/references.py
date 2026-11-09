@@ -16,8 +16,8 @@ A row also names the game builds its reference was made with, ``makeone`` and ``
 names; ``play`` and the capture scripts call it before they launch the emulator.
 
 A row may also record the film's recapture noise, ``noise_sigma``, and in
-``[<film>.expected.<class>]`` the scores the film is expected to reach on each renderer class;
-:func:`read_reference` checks both.
+``[<film>.expected.<class>]`` the scores the film is expected to reach on each renderer class,
+with the ``crates/`` tree and pins they were measured on; :func:`read_reference` checks both.
 """
 
 from __future__ import annotations
@@ -81,8 +81,19 @@ RENDERER_CLASSES: tuple[str, ...] = ("gpu", "lavapipe")
 #: A measured commit as an expected score names it: 7 to 40 lowercase hex digits.
 _COMMIT = re.compile(r"[0-9a-f]{7,40}")
 
+#: A measured ``crates/`` tree: a whole git object name, SHA-1 or SHA-256, in lowercase hex.
+_TREE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
+
 #: The fields of one ``[<film>.expected.<class>]`` table.
-_EXPECTED_FIELDS = ("ssim", "iou", "commit", "adapter")
+_EXPECTED_FIELDS = ("ssim", "iou", "crates", "sha256", "all_sha256", "commit", "adapter")
+
+#: The hash fields of an expected table: the form each takes and how an error words it.
+_HASH_FIELDS: Mapping[str, tuple[re.Pattern[str], str]] = {
+    "crates": (_TREE, "a git tree hash (git rev-parse <commit>:crates)"),
+    "sha256": (_SHA256, "a SHA-256 (64 lowercase hex digits)"),
+    "all_sha256": (_SHA256, "a SHA-256 (64 lowercase hex digits)"),
+    "commit": (_COMMIT, "a commit (7 to 40 lowercase hex digits)"),
+}
 
 
 class ReferenceCaptureError(RuntimeError):
@@ -102,14 +113,20 @@ class Builds:
 class Expected:
     """The scores a film is expected to reach on one renderer class, and where they were measured.
 
-    ``ssim`` and ``iou`` are a report's ``mean_ssim_scored`` and ``mean_iou_scored``; ``commit``
-    is the commit measured and ``adapter`` the name of the adapter it rendered on.
+    ``ssim`` and ``iou`` are a report's ``mean_ssim_scored`` and ``mean_iou_scored``; ``crates``
+    is the git tree hash of the ``crates/`` measured, ``sha256`` and ``all_sha256`` the row's pins
+    then, and ``adapter`` the name of the adapter it rendered on. ``commit``, when recorded, says
+    where the measurement was made and is never compared: it may be a branch commit that a
+    squash merge kept off ``main``.
     """
 
     ssim: float
     iou: float
-    commit: str
+    crates: str
+    sha256: str
     adapter: str
+    all_sha256: str | None = None
+    commit: str | None = None
 
 
 @dataclass(frozen=True)
@@ -300,15 +317,32 @@ def _expected_entry(path: Path, name: str, key: str, table: dict[str, object]) -
         if number is None or not low <= number <= 1:
             raise _invalid(path, name, f"{key}.{score}", value, f"a number from {low:g} to 1")
         scores[score] = number
-    commit = table.get("commit")
-    if not isinstance(commit, str) or _COMMIT.fullmatch(commit) is None:
-        raise _invalid(
-            path, name, f"{key}.commit", commit, "a commit (7 to 40 lowercase hex digits)"
-        )
     adapter = table.get("adapter")
     if not isinstance(adapter, str) or not adapter.strip():
         raise _invalid(path, name, f"{key}.adapter", adapter, "an adapter name")
-    return Expected(scores["ssim"], scores["iou"], commit, adapter)
+
+    def hashed(field: str) -> str | None:
+        value = table.get(field)
+        pattern, wanted = _HASH_FIELDS[field]
+        if value is None:
+            return None
+        if not isinstance(value, str) or pattern.fullmatch(value) is None:
+            raise _invalid(path, name, f"{key}.{field}", value, wanted)
+        return value
+
+    crates, sha256 = hashed("crates"), hashed("sha256")
+    if crates is None or sha256 is None:
+        field = "crates" if crates is None else "sha256"
+        raise _invalid(path, name, f"{key}.{field}", None, _HASH_FIELDS[field][1])
+    return Expected(
+        scores["ssim"],
+        scores["iou"],
+        crates,
+        sha256,
+        adapter,
+        all_sha256=hashed("all_sha256"),
+        commit=hashed("commit"),
+    )
 
 
 def read_pin(root: Path, slug: str) -> str | None:

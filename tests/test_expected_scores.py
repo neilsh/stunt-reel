@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 from types import MappingProxyType
 from typing import TYPE_CHECKING, get_args
@@ -9,7 +10,7 @@ from typing import TYPE_CHECKING, get_args
 import pytest
 
 from stunt_reel import parity_layout
-from stunt_reel.expected_scores import CLASS_KEYS, changed_since, comparison_line
+from stunt_reel.expected_scores import CLASS_KEYS, changed_since, comparison_line, crates_tree
 from stunt_reel.parity_artifacts import AdapterClass, RenderAdapter, Report
 from stunt_reel.references import (
     RENDERER_CLASSES,
@@ -25,9 +26,9 @@ if TYPE_CHECKING:
 
 GPU = RenderAdapter("NVIDIA GeForce RTX 4070", "hardware")
 LAVAPIPE = RenderAdapter("llvmpipe (LLVM 19.1.7, 256 bits)", "cpu")
-COMMIT = "740c6080aaaabbbbccccddddeeeeffff00001111"
+TREE = "641cffd3bfc895719f6078b33d7a0232e5f1750c"
 #: The expected CTRY score on the GPU: every comparison line below reads against it.
-ON_GPU = Expected(ssim=0.8986, iou=0.9897, commit=COMMIT, adapter=GPU.name)
+ON_GPU = Expected(ssim=0.8986, iou=0.9897, crates=TREE, sha256="0" * 64, adapter=GPU.name)
 HEAD = "      gpu expected ssim 0.8986000  iou 0.9897000"
 #: The tail of a drift verdict against :data:`ON_GPU` with CTRY's noise.
 SIGMA_ON_GPU = "noise_sigma 0.0003030 on NVIDIA GeForce RTX 4070"
@@ -65,12 +66,12 @@ def _report(ssim: float | None, adapter: RenderAdapter | None = GPU) -> Report:
     )
 
 
-def _unchanged(commit: str, reference: Reference) -> str | None:
-    assert (commit, reference.film) == (COMMIT, "ctry")
+def _unchanged(expected: Expected, reference: Reference) -> str | None:
+    assert (expected.crates, reference.film) == (TREE, "ctry")
     return None
 
 
-def _never(_commit: str, _reference: Reference) -> str | None:
+def _never(_expected: Expected, _reference: Reference) -> str | None:
     raise AssertionError("an earlier reason already makes the scores not comparable")
 
 
@@ -94,7 +95,7 @@ def test_a_class_without_an_expected_score_asks_for_one() -> None:
 
 
 def test_a_cpu_report_reads_the_lavapipe_entry() -> None:
-    on_cpu = Expected(ssim=0.75, iou=0.5, commit=COMMIT, adapter=LAVAPIPE.name)
+    on_cpu = dataclasses.replace(ON_GPU, ssim=0.75, iou=0.5, adapter=LAVAPIPE.name)
     line = comparison_line(
         _reference({"gpu": ON_GPU, "lavapipe": on_cpu}),
         _report(0.75, adapter=LAVAPIPE),
@@ -129,19 +130,20 @@ def test_a_rescored_tree_is_not_compared(flag: str) -> None:
     )
 
 
-def test_a_change_since_the_measured_commit_is_not_compared() -> None:
-    asked: list[tuple[str, Reference]] = []
+def test_a_change_since_the_measurement_is_not_compared() -> None:
+    asked: list[tuple[Expected, Reference]] = []
 
-    def changed(commit: str, reference: Reference) -> str | None:
-        asked.append((commit, reference))
-        return "crates/ changed since 740c608"
+    def changed(expected: Expected, reference: Reference) -> str | None:
+        asked.append((expected, reference))
+        return "crates/ changed: tree f55202b, measured on 641cffd"
 
     reference = _reference()
     assert (
         comparison_line(reference, _report(0.8987), changed=changed)
-        == f"{HEAD}  delta +0.0001000  not comparable: crates/ changed since 740c608"
+        == f"{HEAD}  delta +0.0001000  not comparable: crates/ changed: tree f55202b, "
+        "measured on 641cffd"
     )
-    assert asked == [(COMMIT, reference)]
+    assert asked == [(ON_GPU, reference)]
 
 
 @pytest.mark.parametrize(
@@ -185,18 +187,20 @@ def test_drift_is_a_delta_beyond_noise_sigma(ssim: float, line: str) -> None:
 
 
 def test_a_delta_of_exactly_noise_sigma_is_no_drift() -> None:
-    expected = Expected(ssim=0.5, iou=0.5, commit=COMMIT, adapter=GPU.name)
+    expected = dataclasses.replace(ON_GPU, ssim=0.5, iou=0.5)
     line = comparison_line(
         _reference({"gpu": expected}, noise_sigma=0.25), _report(0.75), changed=_unchanged
     )
     assert line == "      gpu expected ssim 0.5000000  iou 0.5000000  delta +0.2500000  no drift"
 
 
-# changed_since, against a throwaway repository.
+# changed_since and crates_tree, against a throwaway repository.
 
 SHA_CTRY = "a" * 64
 SHA_INTRO = "b" * 64
 ALL_CTRY = "c" * 64
+#: A commit no scratch repository holds, as a squash-merged branch commit is to a fresh clone.
+ABSENT_COMMIT = "740c6080aaaabbbbccccddddeeeeffff00001111"
 
 
 def _rows(ctry: str = SHA_CTRY, intro: str = SHA_INTRO, all_ctry: str = ALL_CTRY) -> str:
@@ -223,7 +227,9 @@ class Repo:
         self.write("crates/a.rs", "fn a() {}\n")
         self.write(".gitignore", "*.log\n")
         self.write(parity_layout.REFERENCES_FILE.as_posix(), _rows())
-        self.first = self.commit()
+        self.commit()
+        #: The ``crates/`` tree of the first commit: the tree every expected table measured.
+        self.tree = self.git("rev-parse", "HEAD:crates")
 
     def git(self, *args: str) -> str:
         done = subprocess.run(  # noqa: S603 - fixed git arguments
@@ -244,8 +250,24 @@ class Repo:
         self.git("commit", "-qm", "change")
         return self.git("rev-parse", "HEAD")
 
-    def changed(self, commit: str | None = None, film: str = "ctry") -> str | None:
-        return changed_since(commit or self.first, read_reference(self.root, film), repo=self.root)
+    def changed(
+        self, film: str = "ctry", *, commit: str | None = ABSENT_COMMIT, archive_pin: bool = True
+    ) -> str | None:
+        """Why *film* compares, against a table measured on :attr:`tree` and its first pins.
+
+        *archive_pin* false leaves the row's ``all_sha256`` out of the table.
+        """
+        sha256, all_sha256 = {"ctry": (SHA_CTRY, ALL_CTRY), "intro": (SHA_INTRO, None)}[film]
+        expected = Expected(
+            0.9,
+            0.9,
+            self.tree,
+            sha256,
+            GPU.name,
+            all_sha256=all_sha256 if archive_pin else None,
+            commit=commit,
+        )
+        return changed_since(expected, read_reference(self.root, film), repo=self.root)
 
 
 @pytest.fixture
@@ -253,7 +275,26 @@ def repo(tmp_path: Path) -> Repo:
     return Repo(tmp_path / "repo")
 
 
-def test_nothing_changed_since_the_commit(repo: Repo) -> None:
+def test_the_tree_of_a_clean_checkout_is_heads(repo: Repo) -> None:
+    assert crates_tree(repo.root) == repo.tree
+
+
+def test_a_matching_tree_compares_without_the_measured_commit(repo: Repo) -> None:
+    with pytest.raises(subprocess.CalledProcessError):
+        repo.git("cat-file", "-e", f"{ABSENT_COMMIT}^{{commit}}")
+    assert repo.changed() is None
+    assert repo.changed(commit=None) is None
+
+
+def test_the_same_crates_on_another_history_compares(repo: Repo) -> None:
+    """A squash merge: other commits on another branch, the same ``crates/`` in the end."""
+    repo.git("checkout", "-q", "--orphan", "squashed")
+    repo.write("python/outside.py", "x = 1\n")
+    repo.commit()
+    assert repo.changed() is None
+
+
+def test_nothing_changed_outside_crates_or_in_ignored_files(repo: Repo) -> None:
     repo.write("python/outside.py", "x = 1\n")  # a change outside crates/ does not count
     repo.write("crates/build.log", "ignored\n")  # nor an ignored file under it
     assert repo.changed() is None
@@ -272,9 +313,25 @@ def test_nothing_changed_since_the_commit(repo: Repo) -> None:
         ),
     ],
 )
-def test_a_change_under_crates_is_named(repo: Repo, edit: Callable[[Repo], object]) -> None:
+def test_a_differing_tree_is_named(repo: Repo, edit: Callable[[Repo], object]) -> None:
     edit(repo)
-    assert repo.changed() == f"crates/ changed since {repo.first[:7]}"
+    found = crates_tree(repo.root)
+    assert found is not None
+    assert found != repo.tree
+    assert repo.changed() == f"crates/ changed: tree {found[:7]}, measured on {repo.tree[:7]}"
+
+
+def test_a_crates_with_no_file_left_is_the_empty_tree(repo: Repo) -> None:
+    (repo.root / "crates" / "a.rs").unlink()
+    assert crates_tree(repo.root) == "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
+def test_hashing_leaves_the_index_alone(repo: Repo) -> None:
+    repo.write("crates/a.rs", "fn a() { 1 }\n")
+    repo.write("crates/b.rs", "fn b() {}\n")
+    before = repo.git("status", "--porcelain")
+    assert crates_tree(repo.root) != repo.tree
+    assert repo.git("status", "--porcelain") == before
 
 
 @pytest.mark.parametrize(
@@ -282,66 +339,43 @@ def test_a_change_under_crates_is_named(repo: Repo, edit: Callable[[Repo], objec
     [_rows(ctry="d" * 64), _rows(all_ctry="d" * 64)],
     ids=["sha256", "all_sha256"],
 )
-def test_a_committed_change_to_the_films_pin_is_named(repo: Repo, rows: str) -> None:
+def test_a_change_to_the_films_pin_is_named(repo: Repo, rows: str) -> None:
     repo.write(parity_layout.REFERENCES_FILE.as_posix(), rows)
-    repo.commit()
-    assert repo.changed() == f"reference pin changed since {repo.first[:7]}"
+    assert repo.changed() == "reference pin changed since the measurement"
+
+
+def test_a_table_that_omits_the_rows_archive_pin_is_a_pin_change(repo: Repo) -> None:
+    assert repo.changed(archive_pin=False) == "reference pin changed since the measurement"
 
 
 def test_another_films_pin_does_not_count(repo: Repo) -> None:
     repo.write(parity_layout.REFERENCES_FILE.as_posix(), _rows(intro="d" * 64))
-    repo.commit()
     assert repo.changed() is None
-    assert repo.changed(film="intro") == f"reference pin changed since {repo.first[:7]}"
+    assert repo.changed(film="intro") == "reference pin changed since the measurement"
 
 
-def test_a_row_the_commit_lacks_is_a_pin_change(repo: Repo) -> None:
-    rows = _rows() + '[later]\nfilm = "vault-later"\nsha256 = "' + "e" * 64 + '"\n'
-    repo.write(parity_layout.REFERENCES_FILE.as_posix(), rows)
-    repo.commit()
-    assert repo.changed(film="later") == f"reference pin changed since {repo.first[:7]}"
+#: The reason when git cannot hash ``crates/``.
+UNHASHED = "git cannot hash crates/ in this checkout"
 
 
-def test_a_references_file_the_commit_lacks_is_a_pin_change(repo: Repo) -> None:
-    (repo.root / parity_layout.REFERENCES_FILE).unlink()
-    before = repo.commit()
-    repo.write(parity_layout.REFERENCES_FILE.as_posix(), _rows())
-    repo.commit()
-    assert repo.changed(before) == f"reference pin changed since {before[:7]}"
-
-
-#: The reason for :data:`COMMIT` when git cannot resolve it.
-ABSENT = f"commit 740c608 is not in this clone: git fetch origin {COMMIT}"
-
-
-def test_a_commit_this_clone_lacks_is_named_with_the_fetch_that_restores_it(repo: Repo) -> None:
-    assert (
-        repo.changed("deadbee") == "commit deadbee is not in this clone: git fetch origin deadbee"
-    )
-    full = "0123456789" * 4
-    assert repo.changed(full) == f"commit 0123456 is not in this clone: git fetch origin {full}"
-
-
-def test_a_failing_git_reads_as_a_commit_this_clone_lacks(tmp_path: Path) -> None:
+def test_a_failing_git_cannot_hash_crates(tmp_path: Path) -> None:
     # A directory that does not exist: an existing one under tmp_path may sit inside a checkout.
-    assert changed_since(COMMIT, _reference(), repo=tmp_path / "missing") == ABSENT
+    assert changed_since(ON_GPU, _reference(), repo=tmp_path / "missing") == UNHASHED
 
 
-def test_a_missing_git_reads_as_a_commit_this_clone_lacks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_missing_git_cannot_hash_crates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def no_git(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
         raise FileNotFoundError("git")
 
     monkeypatch.setattr("stunt_reel.expected_scores.subprocess.run", no_git)
-    assert changed_since(COMMIT, _reference(), repo=tmp_path) == ABSENT
+    assert changed_since(ON_GPU, _reference(), repo=tmp_path) == UNHASHED
 
 
 @pytest.mark.parametrize("variable", _GIT_LOCATION_ENV)
 def test_git_variables_naming_another_repository_are_ignored(
     repo: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variable: str
 ) -> None:
-    other = tmp_path / "other"  # a repository without the measured commit, its files or index
+    other = tmp_path / "other"  # a repository without the measured tree, its files or index
     subprocess.run(  # noqa: S603 - fixed git arguments
         ["git", "init", "-q", str(other)],  # noqa: S607 - git from PATH
         capture_output=True,
