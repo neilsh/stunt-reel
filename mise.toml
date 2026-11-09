@@ -286,9 +286,18 @@ hide = true
 # deletes (ADR 0042). It always exits 0 and prints one line: a hook's stdout
 # reaches Claude only on success, and Claude must know when the archives are missing. Each run
 # appends under a dated header, so a rerun keeps the startup run's lines.
+# The harness's /etc/profile.d/ccr-agent-proxy-ca.sh sets the deprecated UV_NATIVE_TLS, which
+# makes every uv call warn; swap it for UV_SYSTEM_CERTS here, for this run and, through
+# CLAUDE_ENV_FILE, for the session's later commands (docs/cloud-sessions.md, "uv and the proxy
+# CA"). Only this cloud-only path does it, never [env].
 env = { MISE_LOCKED = "1" }
 run = '''
 [ "${CLAUDE_CODE_REMOTE:-}" = true ] || exit 0
+unset UV_NATIVE_TLS
+export UV_SYSTEM_CERTS=true
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  printf '%s\n' 'unset UV_NATIVE_TLS' 'export UV_SYSTEM_CERTS=true' >>"$CLAUDE_ENV_FILE"
+fi
 log=/tmp/cloud-session-start.log
 echo "== $(date -u +%FT%TZ) $(git rev-parse --short HEAD 2>/dev/null) ==" >>"$log"
 if { bash .claude/cloud-setup.sh --cloud &&
