@@ -63,7 +63,7 @@ _Source: [2026-10-31: the metric bench](../../work/2026-11/distill-method/journa
 
 ### 2.2.1 Recapture noise of the reference films
 
-`[Bounded Observation]`, 2026-11-08, renders and scores at `ff576ba`, one recapture per film on the Patch 3 `PLAYONE` from the Patch 3 `MAKEONE` archive its `references.toml` row pins. σ is the bench's whole-frame `ssim` σ of section 2.2 over the scored ticks the reference and the recapture both hold; identical pages are paired ticks whose index pages match pixel for pixel. `mise run parity-bench -- run --films <films>` prints these rows, reading each recapture from `<data root>/bench/<slug>/recapture/`; `bench.json` also records p90.
+`[Bounded Observation]`, 2026-11-08, renders and scores at `ff576ba`, one recapture per film on the Patch 3 `PLAYONE` from the Patch 3 `MAKEONE` archive its `references.toml` row pins. σ is the bench's whole-frame `ssim` σ of section 2.2 over the scored ticks the reference and the recapture both hold; identical pages are paired ticks whose index pages match pixel for pixel. `mise run parity-bench -- run --films <films>` prints a table of this shape (to four significant figures) for the films named, reading each recapture from `<data root>/bench/<slug>/recapture/`; `bench.json` also records p90.
 
 | Film | Paired | Identical pages | σ (`ssim`) | Median \|Δ\| | p95 | Largest \|Δ\| |
 |---|---|---|---|---|---|---|
