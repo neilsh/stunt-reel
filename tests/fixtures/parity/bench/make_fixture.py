@@ -125,7 +125,7 @@ def write_render_dir(directory: Path, *, flip_tick_20: bool) -> None:
             palette=scaled.tobytes(),
         )
         frames.append((entry, stored))
-    write_render_store(directory, FILM, GEOMETRY, frames)
+    write_render_store(directory, FILM, GEOMETRY, frames, adapter=None)
 
 
 def main() -> None:

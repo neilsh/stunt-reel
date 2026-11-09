@@ -91,7 +91,7 @@ def rewrite_store(
     record = store.record
     out.mkdir(parents=True, exist_ok=True)
     frames = ((entry, change(entry.tick, store.frame(entry.tick))) for entry in record.ticks)
-    return write_render_store(out, record.film, record.geometry, frames)
+    return write_render_store(out, record.film, record.geometry, frames, adapter=record.adapter)
 
 
 def flip_byte(data: bytes, at: int = 0) -> bytes:
