@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from archive_helpers import archive_of
 from stunt_reel import dataroot
 from stunt_reel.tac import luagen, playone
 from stunt_reel.tac.automation import MockAutomation
@@ -198,6 +199,10 @@ class StagedRepo:
     out: Path
 
 
+#: The synthetic film's archive: one shape and one sound sample, so staging has one to stub.
+FAKE_ALL = archive_of([(0x0001, b"ALL"), (0xC302, b"sample" * 4)])
+
+
 @pytest.fixture
 def staged_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[StagedRepo]:
     """Point the package at a temporary repository root with a synthetic film tree."""
@@ -210,7 +215,7 @@ def staged_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Sta
         (corpus / name).write_bytes(b"engine")
     film = vault / "CTRY.FLM"
     film.write_bytes(b"FLM" + bytes(16))
-    (vault / "CTRY.ALL").write_bytes(b"ALL")
+    (vault / "CTRY.ALL").write_bytes(FAKE_ALL)
     out = tmp_path / "out"
 
     monkeypatch.setattr(dataroot, "REPO_ROOT", root)

@@ -82,6 +82,7 @@ def parse_args() -> argparse.Namespace:
         default=FILM_STRIDE_TICKS,
         help=f"film ticks between kept frames (default {FILM_STRIDE_TICKS})",
     )
+    capture_run.add_sound_samples_option(parser)
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
@@ -131,6 +132,7 @@ def run(args: argparse.Namespace, launch: capture_run.Launch = automation.launch
         name=args.name,
         out=args.out,
         game_root=args.game_root,
+        sound_samples=args.sound_samples,
     )
     return capture_run.execute(job, plan_frames(args), launch=launch)
 

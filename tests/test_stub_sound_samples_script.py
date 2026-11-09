@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
-import struct
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from archive_helpers import archive_of
 from stunt_reel.all_archive import stub_sound_samples
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
@@ -29,19 +29,10 @@ def _load() -> Any:
 script = _load()
 
 
-def _archive(chunks: list[tuple[int, bytes]]) -> bytes:
-    count = len(chunks)
-    offsets = [6 * count + 6]
-    for _, payload in chunks:
-        offsets.append(offsets[-1] + len(payload))
-    head = struct.pack(f"<H{count}H{count + 1}I", count, *(i for i, _ in chunks), *offsets)
-    return head + b"".join(payload for _, payload in chunks)
-
-
 @pytest.fixture
 def source(tmp_path: Path) -> Path:
     path = tmp_path / "IN.ALL"
-    path.write_bytes(_archive([(0x0001, b"shape"), (0xC302, b"sample" * 9)]))
+    path.write_bytes(archive_of([(0x0001, b"shape"), (0xC302, b"sample" * 9)]))
     return path
 
 
@@ -65,7 +56,7 @@ def test_a_run_writes_the_stub_and_prints_both_hashes(
 
 def test_sound_ids_from_is_passed_through(source: Path, tmp_path: Path) -> None:
     own = tmp_path / "OWN.ALL"
-    own.write_bytes(_archive([(0xC302, b"a"), (0xC319, b"b")]))
+    own.write_bytes(archive_of([(0xC302, b"a"), (0xC319, b"b")]))
     out = tmp_path / "OUT.ALL"
 
     assert script.main([str(source), "-o", str(out), "--sound-ids-from", str(own)]) == 0

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from archive_helpers import build_all
+from archive_helpers import archive_of, build_all
 from stunt_reel import all_archive, dataroot, link, parity_layout
 from stunt_reel.all_archive import (
     META_FILE,
@@ -644,16 +644,6 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 SOUND_FIXTURE = [(0x0001, b"shape"), (0xC302, b"\x10" * 40), (0xC307, b""), (0x0F00, b"pal")]
 
 
-def _archive(chunks: list[tuple[int, bytes]]) -> bytes:
-    """An archive holding *chunks* as ``(id, payload)`` in the order given."""
-    count = len(chunks)
-    offsets = [6 * count + 6]
-    for _, payload in chunks:
-        offsets.append(offsets[-1] + len(payload))
-    head = struct.pack(f"<H{count}H{count + 1}I", count, *(i for i, _ in chunks), *offsets)
-    return head + b"".join(payload for _, payload in chunks)
-
-
 def _parse(data: bytes) -> list[tuple[int, bytes]]:
     count = check_archive(data)
     ids = struct.unpack_from(f"<{count}H", data, 2)
@@ -662,7 +652,7 @@ def _parse(data: bytes) -> list[tuple[int, bytes]]:
 
 
 def test_stub_replaces_each_sound_payload_with_one_byte() -> None:
-    stubbed = stub_sound_samples(_archive(SOUND_FIXTURE))
+    stubbed = stub_sound_samples(archive_of(SOUND_FIXTURE))
 
     assert _parse(stubbed) == [
         (0x0001, b"shape"),
@@ -677,14 +667,14 @@ def test_an_archive_without_sound_comes_back_byte_identical() -> None:
 
 
 def test_stubbing_twice_is_stubbing_once() -> None:
-    once = stub_sound_samples(_archive(SOUND_FIXTURE))
+    once = stub_sound_samples(archive_of(SOUND_FIXTURE))
     assert stub_sound_samples(once) == once
 
 
 def test_sound_ids_from_adds_the_missing_ids_as_stubs_ascending() -> None:
-    own = _archive([(0xC302, b"x" * 9), (0xC319, b"y" * 9)])
+    own = archive_of([(0xC302, b"x" * 9), (0xC319, b"y" * 9)])
 
-    stubbed = stub_sound_samples(_archive(SOUND_FIXTURE), sound_ids_from=own)
+    stubbed = stub_sound_samples(archive_of(SOUND_FIXTURE), sound_ids_from=own)
 
     assert _parse(stubbed) == [
         (0x0001, b"shape"),
@@ -696,9 +686,9 @@ def test_sound_ids_from_adds_the_missing_ids_as_stubs_ascending() -> None:
 
 
 def test_sound_ids_from_on_an_archive_without_sound_adds_them_all() -> None:
-    own = _archive([(0xC302, b"x"), (0xC31E, b"y")])
+    own = archive_of([(0xC302, b"x"), (0xC31E, b"y")])
 
-    stubbed = stub_sound_samples(_archive([(0x0001, b"a"), (0x0002, b"b")]), sound_ids_from=own)
+    stubbed = stub_sound_samples(archive_of([(0x0001, b"a"), (0x0002, b"b")]), sound_ids_from=own)
 
     assert _parse(stubbed) == [
         (0x0001, b"a"),
@@ -709,8 +699,8 @@ def test_sound_ids_from_on_an_archive_without_sound_adds_them_all() -> None:
 
 
 def test_sound_ids_from_already_covered_gives_the_same_bytes() -> None:
-    ascending = _archive([(0x0001, b"a"), (0xC302, b"long sample")])
-    own = _archive([(0x0005, b"not sound"), (0xC302, b"z")])
+    ascending = archive_of([(0x0001, b"a"), (0xC302, b"long sample")])
+    own = archive_of([(0x0005, b"not sound"), (0xC302, b"z")])
 
     assert stub_sound_samples(ascending, sound_ids_from=own) == stub_sound_samples(ascending)
 
@@ -718,8 +708,8 @@ def test_sound_ids_from_already_covered_gives_the_same_bytes() -> None:
 def test_sound_ids_from_sorts_an_unsorted_input() -> None:
     unsorted = [(0x0F00, b"pal"), (0xC302, b"s"), (0x0001, b"shape")]
 
-    kept = stub_sound_samples(_archive(unsorted))
-    sorted_ = stub_sound_samples(_archive(unsorted), sound_ids_from=_archive([(0xC302, b"s")]))
+    kept = stub_sound_samples(archive_of(unsorted))
+    sorted_ = stub_sound_samples(archive_of(unsorted), sound_ids_from=archive_of([(0xC302, b"s")]))
 
     assert [i for i, _ in _parse(kept)] == [0x0F00, 0xC302, 0x0001]
     assert [i for i, _ in _parse(sorted_)] == [0x0001, 0x0F00, 0xC302]

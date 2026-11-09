@@ -15,6 +15,7 @@ import shutil
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from stunt_reel import dataroot, parity_layout
+from stunt_reel.all_archive import stub_sound_samples
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -26,6 +27,10 @@ if TYPE_CHECKING:
 #: against the normal core's 0.39 at the same rate (capture-dosbox-automation.md § 4.4).
 #: ``archive`` is the fast core for MAKEONE, which nothing samples (ADR 0023: 13 s against 179 s).
 CpuProfile = Literal["capture", "archive"]
+
+#: How a staged film's ``.ALL`` holds its sound samples: ``stubbed`` replaces each with the one
+#: byte the demo ships, so replays repeat (ADR 0043); ``kept`` copies the archive as is.
+SoundSamples = Literal["stubbed", "kept"]
 _CPU_LINES: dict[str, tuple[str, str]] = {
     "capture": ("core = dynamic", "cpu_cycles = 45000"),
     "archive": ("core = dynamic", "cpu_cycles = max"),
@@ -191,15 +196,23 @@ def render_conf(
     return "\n".join(lines) + "\n"
 
 
-def stage_play(film: Path, archive: Path, engine_root: Path | None = None) -> StagedMount:
+def stage_play(
+    film: Path,
+    archive: Path,
+    engine_root: Path | None = None,
+    *,
+    sound_samples: SoundSamples = "stubbed",
+) -> StagedMount:
     """Stage *film* and its *archive* alone in a mount for PLAYONE.EXE.
 
     The engine files come from *engine_root* when given (a game tree, to run another PLAYONE.EXE
     build), else from the film's own tree or the demo. The film is copied into the mount's VAULT
-    under its own name and the archive as ``<film stem>.ALL``. Every call gets its own mount,
+    under its own name and the archive as ``<film stem>.ALL``, its sound samples stubbed unless
+    *sound_samples* is ``kept``. Every call gets its own mount,
     so concurrent captures of one film do not share files.
 
-    Raises FileNotFoundError if the film or archive is missing. Returns the stage; its conf is
+    Raises FileNotFoundError if the film or archive is missing, and ArchiveError if a stubbed
+    archive is malformed. Returns the stage; its conf is
     written at launch (``StagedMount.write_conf``).
     """
     for needed in (film, archive):
@@ -212,7 +225,11 @@ def stage_play(film: Path, archive: Path, engine_root: Path | None = None) -> St
         for name in ENGINE_FILES:
             shutil.copy2(source_root / name, mount_dir / name)
         shutil.copy2(film, mount_dir / "VAULT" / film.name)
-        shutil.copy2(archive, mount_dir / "VAULT" / f"{film.stem}.ALL")
+        staged_all = mount_dir / "VAULT" / f"{film.stem}.ALL"
+        if sound_samples == "kept":
+            shutil.copy2(archive, staged_all)
+        else:
+            staged_all.write_bytes(stub_sound_samples(archive.read_bytes()))
 
     return _stage(film, populate)
 
