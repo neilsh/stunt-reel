@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import functools
+import importlib.util
 import os
 import shutil
 import signal
@@ -65,8 +65,25 @@ from typing import TYPE_CHECKING, Literal, TextIO
 
 import gate_record
 
+
+def _load_git_env() -> ModuleType:
+    """``stunt_reel.git_env`` by path: this script runs on a bare interpreter, which cannot import
+    the package (its ``__init__`` needs the project's environment) but can run this stdlib-only file.
+    """
+    path = Path(__file__).resolve().parents[1] / "stunt_reel" / "git_env.py"
+    spec = importlib.util.spec_from_file_location("stunt_reel_git_env", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+git_env = _load_git_env()
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+    from types import ModuleType
 
 LOG_PATH = Path("target") / "check.log"
 
@@ -201,9 +218,6 @@ def ci_requested(env: Mapping[str, str]) -> bool:
     return env.get("CI", "").strip().lower() not in {"", "false", "0"}
 
 
-_GIT_LOCATION = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"})
-
-
 class ChangedPathsError(Exception):
     """git could not say which paths the branch changed; the message is git's."""
 
@@ -213,9 +227,9 @@ def _git_paths(repo: Path, *args: str) -> list[str]:
     git = shutil.which("git")
     if git is None:
         raise ChangedPathsError("git is not on PATH")
-    # *repo* decides the repository: GIT_DIR, GIT_WORK_TREE or GIT_COMMON_DIR left set by a hook
-    # or a shell could name another checkout and scope this run by that checkout's changes.
-    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION}
+    # *repo* decides the repository: a git variable left set by a hook or a shell could name
+    # another checkout and scope this run by that checkout's changes.
+    env = git_env.clean_environ()
     proc = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
         [git, *args], cwd=repo, env=env, capture_output=True, check=False
     )
@@ -467,26 +481,11 @@ def run_bounded(
             _ACTIVE.discard(proc)
 
 
-@functools.cache
-def _git_local_env_vars() -> frozenset[str]:
-    """The variables that point git at a repository, as ``git rev-parse --local-env-vars`` lists.
-
-    Empty when git is missing or fails.
-    """
-    git = shutil.which("git")
-    if git is None:
-        return frozenset()
-    proc = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
-        [git, "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=False
-    )
-    return frozenset(proc.stdout.split()) if proc.returncode == 0 else frozenset()
-
-
 def _step(mise: str, task: str, timeout: float) -> tuple[int, str, float]:
     """Run one mise task, returning its exit code, combined output and duration."""
     # A gate run under `git rebase --exec` or a hook inherits GIT_DIR and its kin; a step's git
     # (a test's `git config`, say) would act on the caller's repository instead of its own.
-    inherited = {k: v for k, v in os.environ.items() if k not in _git_local_env_vars()}
+    inherited = git_env.clean_environ()
     # MISE_QUIET silences the child mise's own tool-resolution chatter, which would
     # otherwise repeat once per step in the log.
     env = {**inherited, "MISE_QUIET": "1", **STEP_ENV.get(task, {})}
