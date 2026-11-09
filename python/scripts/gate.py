@@ -203,7 +203,13 @@ def ci_requested(env: Mapping[str, str]) -> bool:
 
 #: Left set for `_git_paths`: the caller's index and command-scope git settings.
 _KEPT = frozenset(
-    {"GIT_INDEX_FILE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_NO_REPLACE_OBJECTS"}
+    {
+        "GIT_INDEX_FILE",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_REPLACE_REF_BASE",
+    }
 )
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+lazy from pathlib import Path
 
 import pytest
 
@@ -20,6 +21,7 @@ def caller_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "'safe.directory'='/caller'")
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     monkeypatch.setenv("GIT_NO_REPLACE_OBJECTS", "1")
+    monkeypatch.setenv("GIT_REPLACE_REF_BASE", "refs/caller-replace/")
 
 
 @pytest.mark.usefixtures("caller_env")
@@ -30,6 +32,7 @@ def test_the_caller_repository_and_index_are_dropped() -> None:
     assert env["GIT_CONFIG_PARAMETERS"] == "'safe.directory'='/caller'"
     assert env["GIT_CONFIG_COUNT"] == "1"
     assert env["GIT_NO_REPLACE_OBJECTS"] == "1"
+    assert env["GIT_REPLACE_REF_BASE"] == "refs/caller-replace/"
 
 
 @pytest.mark.usefixtures("caller_env")
@@ -49,6 +52,19 @@ def test_the_list_is_the_one_git_reports() -> None:
 def test_without_git_the_core_four_are_still_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
     git_location_vars.cache_clear()
     monkeypatch.setattr(shutil, "which", lambda _name: None)
+    try:
+        assert {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"} <= (
+            git_location_vars()
+        )
+    finally:
+        git_location_vars.cache_clear()
+
+
+def test_a_git_that_cannot_start_still_drops_the_core_four(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    git_location_vars.cache_clear()
+    monkeypatch.setattr(shutil, "which", lambda _name: str(tmp_path / "missing-git"))
     try:
         assert {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"} <= (
             git_location_vars()

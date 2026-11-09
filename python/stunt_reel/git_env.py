@@ -15,24 +15,34 @@ __all__ = ["COMMAND_SCOPE", "git_location_vars", "isolated_env"]
 
 #: Listed by every git ``--local-env-vars`` reports; kept so a failing git still strips them.
 _CORE = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
-#: Settings a hook inherits from ``git -c`` and ``git --no-replace-objects``: they scope the
-#: command, not the repository, so they stay.
-COMMAND_SCOPE = frozenset({"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_NO_REPLACE_OBJECTS"})
+#: The entries of git's list that set how a command reads the repository (``git -c``, replace
+#: refs) rather than which repository it reads. A hook's git honours them, so they stay.
+COMMAND_SCOPE = frozenset(
+    {
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_REPLACE_REF_BASE",
+    }
+)
 
 
 @functools.cache
 def git_location_vars() -> frozenset[str]:
     """The variables that point git at a repository, from ``git rev-parse --local-env-vars``.
 
-    :data:`COMMAND_SCOPE` is left out. Always holds ``GIT_DIR``, ``GIT_WORK_TREE``, ``GIT_INDEX_FILE`` and ``GIT_COMMON_DIR``, also
-    when git is missing or fails.
+    :data:`COMMAND_SCOPE` is left out. Always holds ``GIT_DIR``, ``GIT_WORK_TREE``,
+    ``GIT_INDEX_FILE`` and ``GIT_COMMON_DIR``, also when git is missing, cannot start or fails.
     """
     git = shutil.which("git")
     if git is None:
         return _CORE
-    listed = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
-        [git, "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=False
-    )
+    try:
+        listed = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
+            [git, "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return _CORE
     if listed.returncode != 0:
         return _CORE
     return (_CORE | frozenset(listed.stdout.split())) - COMMAND_SCOPE
