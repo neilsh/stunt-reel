@@ -63,21 +63,24 @@ _Source: [2026-10-31: the metric bench](../../work/2026-11/distill-method/journa
 
 ### 2.2.1 Recapture noise of the reference films
 
-`[Bounded Observation]`, 2026-11-07, renders and scores at `740c608`, one recapture per film on the build its `references.toml` row names (unpatched). σ is the bench's whole-frame `ssim` σ of section 2.2 over the scored ticks the reference and the recapture both hold; identical pages are paired ticks whose index pages match pixel for pixel.
+`[Bounded Observation]`, 2026-11-08, renders and scores at `ff576ba`, one recapture per film on the Patch 3 `PLAYONE` from the Patch 3 `MAKEONE` archive its `references.toml` row pins. σ is the bench's whole-frame `ssim` σ of section 2.2 over the scored ticks the reference and the recapture both hold; identical pages are paired ticks whose index pages match pixel for pixel.
 
 | Film | Paired | Identical pages | σ (`ssim`) | Median \|Δ\| | p95 | Largest \|Δ\| |
 |---|---|---|---|---|---|---|
-| `vault-land` | 89 | 56 | 0.0154 | 0 | 0.0275 | 0.089 |
-| `vault-balloon` | 100 | 76 | 0.0168 | 0 | 0.0251 | 0.137 |
-| `vault-traintnl` | 99 | 65 | 0.0094 | 0 | 0.0144 | 0.080 |
-| `vault-bomb` | 273 | 168 | 0.0126 | 0 | 0.0185 | 0.111 |
-| `vault-location` | 732 | 731 | 0.00038 | 0 | 0 | 0.010 |
+| `vault-ctry` | 104 | 77 | 0.0052 | 0 | 0.0143 | 0.026 |
+| `vault-intro` | 172 | 94 | 0.0194 | 0 | 0.0529 | 0.113 |
+| `vault-land` | 88 | 61 | 0.0051 | 0 | 0.0132 | 0.024 |
+| `vault-balloon` | 95 | 56 | 0.0109 | 0 | 0.0264 | 0.063 |
+| `vault-traintnl` | 102 | 71 | 0.0062 | 0 | 0.0053 | 0.040 |
+| `vault-bomb` | 265 | 153 | 0.0124 | 0 | 0.0230 | 0.087 |
+| `vault-location` | 732 | 729 | 0.00012 | 0 | 0 | 0.003 |
 
-* **CTRY and INTRO cannot be measured against their pinned captures.** Those (2026-10-31) start 3 ticks after the window goals of the stride plan ([`plan.py`](../../python/stunt_reel/tac/plan.py) `choose_windows`) and drift off them later (90 of 121 CTRY and 86 of 346 INTRO frames sit at +3), so their recaptures share only 7 and 11 scored ticks with them, below the bench's 20. CTRY keeps the 2026-10 σ of section 2.2 (0.00030); INTRO's row has no `noise_sigma`. Both will be measured on their Patch 3 recaptures ([#300](https://github.com/neilsh/stunt-reel/issues/300)).
-* **The noise is heavy-tailed.** On all five measured films the median |Δ| is 0: σ comes from the minority of pages that differ, some by thousands of pixels, so it overstates the noise of a typical frame and understates the worst. As `noise_sigma` it would make `--noise-sigma` call a Δ below about 0.01 to 0.017 within noise on the four short `VAULT` films, which the identical pages argue is mostly not noise (`[Supported Inference]`), so their rows carry none; `vault-location`'s row carries its 0.00038. How the verdict should treat this noise is [#305](https://github.com/neilsh/stunt-reel/issues/305).
-* **Two pages with one label may show different moments** (`[Hypothesis]`, one page checked: `vault-balloon` tick 265), against [`capture-dosbox-automation.md`](../playone-exe/capture-dosbox-automation.md) § 4.4; open question 15 there. Why `vault-location` alone replays nearly bit for bit is its open question 16. None of the five has an error-readout calibration (section 2.3).
+* **The noise is heavy-tailed.** On every film the median |Δ| is 0: σ comes from the minority of pages that differ, so it overstates the noise of a typical frame and understates the worst. As `noise_sigma` it would make `--noise-sigma` call a Δ below 0.005 to 0.019 within noise on six films, which their identical pages argue is mostly not noise (`[Supported Inference]`), so only `vault-location`'s row carries one (0.00012). How the verdict should treat this noise is [#305](https://github.com/neilsh/stunt-reel/issues/305).
+* **`CTRY.FLM`'s `ssim` σ rose from 0.00030 to 0.0052.** The 0.00030 is section 2.2's pair (`004` against `005`, the demo's unpatched `PLAYONE` and shipped `.ALL`); on Patch 3, 27 of 104 CTRY paired pages differ. INTRO's 2026-10 figure (σ 1.7e-5) is for `ssim_structured` and is not directly comparable. Build, archive and harness all changed between the two, and which of them causes this has not been tested.
+* **Unpatched figures, for comparison** (2026-11-07 at `740c608`, unpatched builds, the five `VAULT` films only): σ 0.0154 / 0.0168 / 0.0094 / 0.0126 / 0.00038 for LAND / BALLOON / TRAINTNL / BOMB / LOCATION, with 56 / 76 / 65 / 168 / 731 identical pages of 89 / 100 / 99 / 273 / 732 paired. CTRY and INTRO were not measured on the unpatched build: their 2026-10-31 captures sat 3 ticks off the stride plan's goals and shared too few scored ticks with a recapture.
+* **Two pages with one label may show different moments** (`[Hypothesis]`, one page checked: unpatched `vault-balloon` tick 265), against [`capture-dosbox-automation.md`](../playone-exe/capture-dosbox-automation.md) § 4.4; open question 15 there. Why `vault-location` alone replays nearly bit for bit is its open question 16. None of the seven has an error-readout calibration (section 2.3).
 
-_Source: [2026-11-07: recapture noise, the build floor and lavapipe](../../work/2026-11/distill-method/journal.md#2026-11-07-recapture-noise-the-build-floor-and-lavapipe), from [the issue 242 journal](../../work/2026-11/242_vault-parity-films/journal.md#2026-11-07-recapture-noise-and-build-floor)._
+_Source: [2026-11-08: recapture noise on Patch 3](../../work/2026-11/300_patch3-references/journal.md#2026-11-08-recapture-noise-on-patch-3); unpatched figures from [the issue 242 journal](../../work/2026-11/242_vault-parity-films/journal.md#2026-11-07-recapture-noise-and-build-floor)._
 
 ### 2.3 Error categories graded by a vision model
 

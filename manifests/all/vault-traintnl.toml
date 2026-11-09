@@ -1,10 +1,10 @@
 # Rebuilds TRAINTNL.ALL from the game's RES tree with `stuntreel link build` (ADR 0032).
 film = "TRAINTNL.FLM"
 flm_sha256 = "43ea1c5fcb7e03356b096f741018dbae58e43aea3c2c8eee3171979dfe12eae7"
-game_root = "corpus/stuntisl"
-makeone_sha256 = "2963e0889851287f4d4bfe3fbfb96542e61058ff4511b9783f4d289913e0fc9f"
-all_bytes = 107816
-all_sha256 = "076750bacd04dad5eece4923fc6de436b674f59300c669b39c1cb347ca5b64fb"
+game_root = "builds/patch3"
+makeone_sha256 = "426111d9a42f12acf21cca693b283e1df2306035ad6215bb94ac163aebe67bb6"
+all_bytes = 109062
+all_sha256 = "a649413eafced2c711b63e761c40c62d0e2502c5020944a62c32b97b6d27b8c9"
 
 [[source]]
 file = "RES/SCENERY1.RES"
@@ -28,7 +28,7 @@ items = [1, 2, 3, 4, 5, 6, 7, 8]
 file = "RES/SCENERY4.RES"
 index = 5
 sha256 = "8402fa11c47f672efa458d0022b87d3b35e1c542cb439f8955641a6f262a6dc4"
-items = [93, 106, 107, 111, 112, 113, 121, 216, 218, 219, 220, 221, 222, 224, 225, 226, 230, 232, 234, 236, 238, 241, 242, 244]
+items = [93, 106, 107, 111, 112, 113, 121, 210, 216, 218, 219, 220, 221, 222, 224, 225, 226, 229, 230, 232, 234, 236, 238, 240, 241, 242, 244]
 
 [[source]]
 file = "RES/SCENERY5.RES"
@@ -57,17 +57,17 @@ items = [4]
 [[source]]
 file = "RES/SPRITES.RES"
 index = 128
-sha256 = "95d3e3c4b32eb77b197640caad0b983864d27830aa38add1b10d9f3c21e9a96a"
+sha256 = "64274cae596215fed1da9074203d3a222d036e825f6d9897f18437d5635577a2"
 items = [30, 66]
 
 [[source]]
 file = "RES/COMMNSND.SMP"
 index = 195
-sha256 = "a3192e465badc13fd8421fbbbd118036e4d64528d1d296566f91e6f71699a01f"
+sha256 = "3e8248fa6fdbd2a85954e3e3fb0f8f9051a597f1ce9aab243ac9731e31efb645"
 items = [2, 7]
 
 [[source]]
 file = "RES/SNDFX2.SMP"
 index = 197
-sha256 = "3c8e9d32cc6f0932ec1a31718b3e482a27a488948116df574ca4273b69b84429"
+sha256 = "fa4dffe364f15181ddc36ef6b89a46509372de8a426ce644d9354f255769414e"
 items = [55]

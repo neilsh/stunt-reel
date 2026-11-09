@@ -275,7 +275,7 @@ description = "Pack, upload, fetch or verify the game archives cloud sessions us
 run = "uv run python python/scripts/cloud_assets.py"
 
 [tasks.cloud-session-start]
-description = "The SessionStart hook: in a cloud session only, rerun the cloud setup, fetch the game archives and build SUPERSET.ALL (ADR 0039)"
+description = "The SessionStart hook: in a cloud session only, rerun the cloud setup, fetch the game archives, build the game trees and SUPERSET.ALL (ADR 0039)"
 hide = true
 # The hook runs on every session start; outside a cloud session it does nothing, so a local
 # machine never reaches the cloud setup's apt or mise install. It reruns .claude/cloud-setup.sh
@@ -301,10 +301,11 @@ fi
 log=/tmp/cloud-session-start.log
 echo "== $(date -u +%FT%TZ) $(git rev-parse --short HEAD 2>/dev/null) ==" >>"$log"
 if { bash .claude/cloud-setup.sh --cloud &&
-     mise run cloud-assets -- fetch --replace-unmarked && mise run superset-all; } >>"$log" 2>&1; then
-  echo "cloud-session-start: tools, game archives and SUPERSET.ALL ready (log: $log)"
+     mise run cloud-assets -- fetch --replace-unmarked && mise run game-builds &&
+     mise run superset-all; } >>"$log" 2>&1; then
+  echo "cloud-session-start: tools, game archives, game builds and SUPERSET.ALL ready (log: $log)"
 else
-  echo "cloud-session-start FAILED: tools, game archives or SUPERSET.ALL may be missing; see $log and mise run cloud-assets -- status"
+  echo "cloud-session-start FAILED: tools, game archives, game builds or SUPERSET.ALL may be missing; see $log and mise run cloud-assets -- status"
 fi
 '''
 run_windows = "exit 0"

@@ -1,10 +1,10 @@
 # Rebuilds BALLOON.ALL from the game's RES tree with `stuntreel link build` (ADR 0032).
 film = "BALLOON.FLM"
 flm_sha256 = "e09ef7b1e8c4c5d522b2ed15d285898730f77de33aae2142c29840ca41bf7b65"
-game_root = "corpus/stuntisl"
-makeone_sha256 = "2963e0889851287f4d4bfe3fbfb96542e61058ff4511b9783f4d289913e0fc9f"
-all_bytes = 46702
-all_sha256 = "86628c55cb0126f3c9bc0f5f2ec5fe28351ba5e30caca9fe465dca6b99c1874d"
+game_root = "builds/patch3"
+makeone_sha256 = "426111d9a42f12acf21cca693b283e1df2306035ad6215bb94ac163aebe67bb6"
+all_bytes = 47027
+all_sha256 = "e8d852fa8f77ff9b708b8066ddb26457a0498cb94060f1976741355ff510a415"
 
 [[source]]
 file = "RES/SCENERY1.RES"
@@ -51,17 +51,17 @@ items = [8]
 [[source]]
 file = "RES/SPRITES.RES"
 index = 128
-sha256 = "95d3e3c4b32eb77b197640caad0b983864d27830aa38add1b10d9f3c21e9a96a"
+sha256 = "64274cae596215fed1da9074203d3a222d036e825f6d9897f18437d5635577a2"
 items = [30, 66]
 
 [[source]]
 file = "RES/COMMNSND.SMP"
 index = 195
-sha256 = "a3192e465badc13fd8421fbbbd118036e4d64528d1d296566f91e6f71699a01f"
+sha256 = "3e8248fa6fdbd2a85954e3e3fb0f8f9051a597f1ce9aab243ac9731e31efb645"
 items = [7]
 
 [[source]]
 file = "RES/SNDFX2.SMP"
 index = 197
-sha256 = "3c8e9d32cc6f0932ec1a31718b3e482a27a488948116df574ca4273b69b84429"
+sha256 = "fa4dffe364f15181ddc36ef6b89a46509372de8a426ce644d9354f255769414e"
 items = [101]

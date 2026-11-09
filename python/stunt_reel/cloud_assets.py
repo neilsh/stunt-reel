@@ -353,12 +353,21 @@ def _folder_key(folder: str) -> str:
     return PurePosixPath(folder.replace("\\", "/")).as_posix().lower()
 
 
+#: Game trees the SessionStart hook's ``mise run game-builds`` makes in a cloud session, by the
+#: archives it builds each from: the tree's files come from the first one.
+BUILT_TREES: dict[str, tuple[str, ...]] = {
+    "builds/unpatched": ("corpus-stuntisl",),
+    "builds/patch3": ("corpus-stuntisl", "corpus-patches"),
+}
+
+
 def check_manifest_sources(manifest: Manifest, repo: Path = REPO_ROOT) -> list[str]:
     """One message per file a reference film's ``.ALL`` manifest reads that no archive holds.
 
     A cloud session rebuilds a film's archive from its committed manifest (ADR 0032), so each
     ``[[source]]`` file must be one the archive whose ``into`` is the manifest's ``game_root``
-    selects.
+    selects; for a :data:`BUILT_TREES` root, the first archive it is built from, with every
+    archive it needs in *manifest*.
     """
     by_folder = {_folder_key(a.into): a for a in manifest.archives.values()}
     messages = []
@@ -369,10 +378,21 @@ def check_manifest_sources(manifest: Manifest, repo: Path = REPO_ROOT) -> list[s
             continue
         record = tomllib.loads(path.read_text(encoding="utf-8"))
         game = str(record["game_root"])
-        archive = by_folder.get(_folder_key(game))
-        if archive is None:
-            messages.append(f"{film}: no archive holds {game}, the game tree {relative} reads")
-            continue
+        built = BUILT_TREES.get(_folder_key(game))
+        if built is None:
+            archive = by_folder.get(_folder_key(game))
+            if archive is None:
+                messages.append(f"{film}: no archive holds {game}, the game tree {relative} reads")
+                continue
+        else:
+            missing = [name for name in built if name not in manifest.archives]
+            if missing:
+                messages.append(
+                    f"{film}: {game}, the game tree {relative.as_posix()} reads, is built from"
+                    f" {', '.join(missing)}, which the manifest lacks"
+                )
+                continue
+            archive = manifest.archives[built[0]]
         for source in record.get("source", []):
             name = source["file"]
             if not any(_matches(name, archive.include)) or any(_matches(name, archive.exclude)):

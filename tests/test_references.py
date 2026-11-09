@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tomllib
 from typing import TYPE_CHECKING
 
 import pytest
@@ -244,15 +245,12 @@ def test_a_shipped_archive_of_the_demo_or_retail_game_is_unpatched(tmp_path: Pat
     assert build(tmp_path, "vault-tod", community) == "unknown"
 
 
-def test_the_committed_ctry_and_intro_rows_accept_their_shipped_demo_archives() -> None:
-    for film in ("ctry", "intro"):
-        shipped = dataroot.corpus_root() / "stisldem" / "VAULT" / f"{film.upper()}.ALL"
-        references.require_builds(
-            REPO_ROOT,
-            f"vault-{film}",
-            playone="unpatched",
-            makeone=references.archive_makeone_build(REPO_ROOT, f"vault-{film}", shipped),
-        )
+def test_every_committed_row_names_the_makeone_build_of_its_manifest() -> None:
+    for film in references.reference_films(REPO_ROOT):
+        row = references.read_reference(REPO_ROOT, film)
+        manifest = REPO_ROOT / parity_layout.manifest_path(row.slug)
+        record = tomllib.loads(manifest.read_text(encoding="utf-8"))
+        assert references.MAKEONE_BUILDS[record["makeone_sha256"]] == row.builds.makeone, film
 
 
 def test_an_archive_of_unknown_build_is_refused_when_the_row_names_one(tmp_path: Path) -> None:
