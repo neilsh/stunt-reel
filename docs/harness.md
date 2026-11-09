@@ -168,6 +168,21 @@ discards anything uncommitted, and the `&&` keeps it from running when `<old-tip
 matches and `update-ref` refuses. Writing into another worktree may need approval. Then rebase the layers above onto the new tip. `gh stack add`
 works only from the top branch of the stack, so run it in the worktree that holds the top.
 
+### Desktop app: Auto-fix and isolated subagents
+
+Observed 2026-11-08.
+
+* **The user turns on Auto-fix for a PR `gh stack submit` opened.** `mcp__ccd_pr__set_monitor`
+  attaches only to a PR the app is sure this session opened, and refused it for each of #309,
+  #310, #312 and #313; ask the user rather than retry.
+* **An isolated subagent starts from `origin/HEAD`, not the session's `HEAD`.** Worktree
+  isolation cuts its `worktree-agent-*` branch from the remote default branch as last fetched; all
+  five subagents on 2026-11-08 started there. A brief whose work needs the Lead's unmerged commits,
+  a worktree-per-writer task among them, names the Lead's commit and has the subagent run
+  `git switch -c <branch> <commit>`, and the subagent reports `<branch>` as the one holding its
+  work. That worktree and branch outlive it and go as
+  [`managing-worktrees`](../.agents/skills/managing-worktrees/SKILL.md) step 5 says.
+
 ### A low-integrity virtualenv
 
 Seen once (2026-11-01): every `mise run` Python task failed with a bare `PermissionError`
