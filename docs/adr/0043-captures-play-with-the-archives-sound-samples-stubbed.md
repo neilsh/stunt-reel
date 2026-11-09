@@ -12,11 +12,12 @@ On six of the seven reference films, a recapture from the film's `MAKEONE` archi
 the reference on about a quarter to a half of the pages they both hold. As a result, the parity
 verdict could not tell a render change from recapture noise (#305).
 
-On `BALLOON.FLM` and `CTRY.FLM` the difference comes from the archive's chunks in the sound range
-`0xC000`–`0xCFFF`.
+On `BALLOON.FLM` the difference comes from the archive's chunks in the sound range
+`0xC000`–`0xCFFF`, and `CTRY.FLM` fits.
 - Two `BALLOON` captures with those chunks differed on 26 of 102 pages. With each payload cut to
   one byte, two captures agreed on 108 of 108.
-- `CTRY` went from 27 of 111 pages differing to 121 of 121 agreeing, the same way.
+- A stubbed `CTRY` pair, started 0.1 s apart, agreed on 121 of 121 pages. An earlier pair with
+  sound, captured one after the other, differed on 27 of the 111 pages both held.
 - The demo's `CTRY.ALL`, whose samples are shortened, also replays identically
   ([capture note](../../research/playone-exe/capture-dosbox-automation.md) § 4.4).
 
