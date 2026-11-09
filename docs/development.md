@@ -188,6 +188,7 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
 | `capture-digest` | a capture's `sha256` as `references.toml` pins it, and the entry that would promote it (`mise run capture-digest -- vault-ctry`) |
+| `capture-compare` | two frame captures of one film compared page by page, paired by exact `film_tick`: identical pages, median and p90 differing pixels, equal palettes (`mise run capture-compare -- A B`) |
 | `capture-ref` | the film's frame capture, `<data root>/captures/<film>/frames`, replaced by swap once a capture succeeds; `--out` writes elsewhere and replaces nothing (`--max-frames` defaults to 2,000) |
 | `stub-sound-samples` | write a copy of a `.ALL` with every sound sample stubbed, as captures play it, and print both hashes (`mise run stub-sound-samples -- IN.ALL -o OUT.ALL [--sound-ids-from OWN.ALL]`) |
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
