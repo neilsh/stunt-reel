@@ -2,7 +2,7 @@
 """Gate every commit of ``<base>..HEAD`` and give each the gate line its run printed.
 
 Rewrites the branch only when every run passes, keeping the old tip as
-``refs/backup/regate/<branch>``; never pushes. How and why: docs/development.md.
+``refs/backup/regate/<branch>``; never pushes. How and why: docs/howto/re-gate-after-a-rebase.md.
 
 Usage: ``mise run regate -- <base> [-- <gate args>]``. Exit status: ``0`` when the branch was
 regated, ``1`` when it was not.

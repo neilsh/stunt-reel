@@ -54,7 +54,7 @@ Dated records (`work/<YYYY-MM>/`) are **not** a source of truth: state a fact in
 6. A finding that needs a code fix is recorded on the fix's branch, cut from `main`, after checking the open PRs that touch the same note; a verification branch keeps only its journal entry, stacked on the fix branch when it links a note the fix adds.
 7. Before a push that changes `research/` or `NOTICE.md`, a fresh reviewer (a subagent in an agent session, another person otherwise) reads the diff and the notes it cites and reports any claim broader than its evidence (`only`, `all`, `noise`, `within`, `equivalent`).
 8. Work that ships as two or more dependent PRs is a `gh stack` from its first branch: `gh stack init <bottom> <next>…`, then `gh stack submit --auto`.
-9. A commit from another session's branch keeps its author, which the pre-push hook rejects: [re-commit it](docs/development.md#a-commit-from-another-sessions-branch).
+9. A commit from another session's branch keeps its author, which the pre-push hook rejects: [re-commit it](docs/howto/take-a-commit-from-another-session.md).
 
 ### Working economically
 
