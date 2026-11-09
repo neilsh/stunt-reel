@@ -6,7 +6,9 @@ bot review (CodeRabbit) wraps each finding in HTML comments, ``<details>`` block
 scripts and agent prompts: one PR's comments ran past 60 KB. This reads the review threads
 through GitHub's GraphQL API, keeps the unresolved ones, and prints for each its location, its
 severity when the bot names one, its title, and the database id of its first comment, which is
-the id ``--reply`` and ``--resolve`` take.
+the id ``--reply`` and ``--resolve`` take. GitHub's REST API neither lists threads nor
+resolves one, so this does not work in a cloud session, whose proxy refuses GraphQL
+(``docs/cloud-sessions.md``).
 
 A finding CodeRabbit cannot anchor to a changed line ("Outside diff range") lives only in its
 review's body and has no thread to resolve, so it is answered with a PR comment. Those print

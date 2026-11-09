@@ -123,18 +123,29 @@ def _new(slug: str, issue: int | None, root: Path, run: Runner, today: date) -> 
 
 def _issue_title(issue: int, slug: str, run: Runner) -> str:
     """Issue *issue*'s title as gh gives it; else *slug*, with one line on stderr saying why."""
+    # REST, not `gh issue view`: a cloud session's proxy refuses the GraphQL that `gh issue` uses.
+    # The issues route also answers for a pull request, which this refuses as `gh issue view` did.
+    view = [
+        "gh",
+        "api",
+        f"repos/{{owner}}/{{repo}}/issues/{issue}",
+        "--jq",
+        "{title, pull_request}",
+    ]
+    reason = "`gh api` answered without an issue's title"
     try:
-        answer = _output(run, ["gh", "issue", "view", str(issue), "--json", "title"])
-        title = json.loads(answer)["title"]
+        answer = json.loads(_output(run, view))
+        title = answer["title"]
     except _RefusedError as error:
         reason = str(error)
     # ValueError is malformed JSON; KeyError and TypeError are JSON of another shape.
     except ValueError, KeyError, TypeError:
-        reason = "`gh issue view` answered without a title"
+        pass
     else:
-        if isinstance(title, str):
+        if answer.get("pull_request") is not None:
+            reason = f"`gh api` found pull request {issue}, not an issue"
+        elif isinstance(title, str):
             return title
-        reason = "`gh issue view` answered without a title"
     reason = " ".join(reason.split())
     print(
         f"work: {reason}; titled the README with the slug, {slug!r}: retitle it. Issue {issue} "
@@ -147,8 +158,8 @@ def _issue_title(issue: int, slug: str, run: Runner) -> str:
 
 def _file_issue(slug: str, run: Runner) -> int:
     """File an issue titled *slug* where gh targets, once that is origin's repository."""
-    view = ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]
-    target = _output(run, view).strip()
+    # REST throughout, as in _issue_title: `gh repo view` and `gh issue create` use GraphQL.
+    target = _output(run, ["gh", "api", "repos/{owner}/{repo}", "--jq", ".full_name"]).strip()
     remote = _output(run, ["git", "remote", "get-url", "origin"]).strip()
     origin = match[1] if (match := _REMOTE_REPO.search(remote)) else remote
     if target.lower() != origin.lower():
@@ -160,12 +171,11 @@ def _file_issue(slug: str, run: Runner) -> int:
         f"Filed by `mise run work -- new {slug}`, which titled it with the slug: retitle it to "
         "state the problem or question, and describe it here."
     )
-    create = ["gh", "issue", "create", "--repo", target, "--title", slug, "--body", body]
-    url = _output(run, [*create, "--label", "needs-triage"]).strip()
+    create = ["gh", "api", f"repos/{target}/issues", "-X", "POST", "-f", f"title={slug}"]
+    fields = ["-f", f"body={body}", "-f", "labels[]=needs-triage", "--jq", ".html_url"]
+    url = _output(run, [*create, *fields]).strip()
     if not (match := _ISSUE_URL.search(url)):
-        raise _RefusedError(
-            f"gh issue create printed {url!r}, not an issue URL; was the issue filed?"
-        )
+        raise _RefusedError(f"`gh api` printed {url!r}, not an issue URL; was the issue filed?")
     print(f"filed {url}")
     return int(match[1])
 
