@@ -29,9 +29,11 @@ __all__ = [
     "ArchiveMeta",
     "ArchiveMissing",
     "LinkBuild",
+    "archive_chunks",
     "check_archive",
     "link_build_in",
     "no_link",
+    "pack_archive",
     "publish_archive",
     "resolve_all",
     "stub_sound_samples",
@@ -115,8 +117,8 @@ def check_archive(data: bytes) -> int:
     return count
 
 
-def _chunks(data: bytes) -> list[tuple[int, bytes]]:
-    """The ``(id, payload)`` chunks of *data* in file order, after :func:`check_archive`."""
+def archive_chunks(data: bytes) -> list[tuple[int, bytes]]:
+    """The ``(id, payload)`` chunks of *data* in file order; ArchiveError as :func:`check_archive`."""
     count = check_archive(data)
     ids = struct.unpack_from(f"<{count}H", data, 2)
     offsets = struct.unpack_from(f"<{count + 1}I", data, 2 + 2 * count)
@@ -131,8 +133,8 @@ def stub_sound_samples(archive: bytes, *, sound_ids_from: bytes | None = None) -
     archive with nothing to change comes back as is. Raises ArchiveError when either archive
     fails :func:`check_archive`.
     """
-    chunks = _chunks(archive)
-    wanted = [] if sound_ids_from is None else _chunks(sound_ids_from)
+    chunks = archive_chunks(archive)
+    wanted = [] if sound_ids_from is None else archive_chunks(sound_ids_from)
     present = {chunk_id for chunk_id, _ in chunks}
     stubbed = [
         (chunk_id, SOUND_STUB if chunk_id in SOUND_IDS else payload) for chunk_id, payload in chunks
@@ -146,13 +148,18 @@ def stub_sound_samples(archive: bytes, *, sound_ids_from: bytes | None = None) -
         stubbed.sort(key=lambda chunk: chunk[0])
     if stubbed == chunks:
         return archive
-    count = len(stubbed)
+    return pack_archive(stubbed)
+
+
+def pack_archive(chunks: list[tuple[int, bytes]]) -> bytes:
+    """An archive of *chunks* in the order given, payloads back to back after the header."""
+    count = len(chunks)
     offsets = [6 * count + 6]
-    for _, payload in stubbed:
+    for _, payload in chunks:
         offsets.append(offsets[-1] + len(payload))
-    ids = (chunk_id for chunk_id, _ in stubbed)
+    ids = (chunk_id for chunk_id, _ in chunks)
     header = struct.pack(f"<H{count}H{count + 1}I", count, *ids, *offsets)
-    return header + b"".join(payload for _, payload in stubbed)
+    return header + b"".join(payload for _, payload in chunks)
 
 
 def write_archive(directory: Path, data: bytes, meta: ArchiveMeta, *, film: str) -> None:
