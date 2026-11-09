@@ -332,7 +332,9 @@ def test_a_step_runs_without_the_callers_git_repository_variables(
         return 0, ""
 
     monkeypatch.setattr(gate, "run_bounded", run)
-    monkeypatch.setattr(gate, "_git_local_env_vars", lambda: frozenset({"GIT_DIR", "GIT_CONFIG"}))
+    monkeypatch.setattr(
+        gate.git_env, "local_env_vars", lambda: frozenset({"GIT_DIR", "GIT_CONFIG"})
+    )
     monkeypatch.setenv("GIT_DIR", "/caller/.git")
     monkeypatch.setenv("GIT_CONFIG", "/caller/config")
     monkeypatch.setenv("GIT_ASKPASS", "askpass")
@@ -340,17 +342,6 @@ def test_a_step_runs_without_the_callers_git_repository_variables(
     assert "GIT_DIR" not in seen[0]
     assert "GIT_CONFIG" not in seen[0]
     assert seen[0]["GIT_ASKPASS"] == "askpass"
-
-
-def test_the_git_repository_variables_are_the_ones_git_lists() -> None:
-    if shutil.which("git") is None:
-        pytest.skip("git is not on PATH")
-    assert {
-        "GIT_DIR",
-        "GIT_WORK_TREE",
-        "GIT_COMMON_DIR",
-        "GIT_CONFIG",
-    } <= gate._git_local_env_vars()
 
 
 def test_docs_step_requires_the_kaitai_compiler() -> None:
