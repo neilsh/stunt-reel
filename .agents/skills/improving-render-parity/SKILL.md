@@ -5,7 +5,7 @@ description: Runs stunt-reel's render-vs-PLAYONE parity loop (capture, render, s
 
 # Improving render parity
 
-The procedures this skill routes to live in `method.md` section 1 and `probes.md` until they move to `docs/howto/`. This skill says which to read and how to run the loop cheaply. Read only the section you need:
+The loop's commands are [`docs/howto/score-a-render-change.md`](../../../docs/howto/score-a-render-change.md); the probes still live in `probes.md` until they move to `docs/howto/`. This skill says which to read and how to run the loop cheaply. Read only the section you need:
 
 - **Where the loss is** (capture, render, score, compare): [`research/parity/method.md`](../../../research/parity/method.md) section 1.
 - **What is wrong** (crop, shift, actor IoU, candidate sweeps, timing retime, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
