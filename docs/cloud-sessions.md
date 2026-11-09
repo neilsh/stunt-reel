@@ -90,6 +90,23 @@ The hook does not run where Claude Code loads no repo settings: a cloud session 
 repositories, or a cloud thread of a project. Nothing is fetched there and no line is printed;
 run `CLAUDE_CODE_REMOTE=true mise run cloud-session-start` from the checkout instead.
 
+## uv and the proxy CA
+
+The harness's `/etc/profile.d/ccr-agent-proxy-ca.sh` exports `UV_NATIVE_TLS=true` when it is
+unset or empty, so uv trusts the proxy CA (`/root/.ccr/ca-bundle.crt`). uv 0.11 deprecates that
+variable and warns on every call: use `UV_SYSTEM_CERTS`. The hook's `cloud-session-start` task
+(cloud only; never `mise.toml` `[env]`, which applies on every machine) therefore unsets
+`UV_NATIVE_TLS`, exports `UV_SYSTEM_CERTS=true` for its own run, and appends the same two lines
+to `$CLAUDE_ENV_FILE`, which Claude Code sources before each later command.
+
+Checked 2026-11-09 on uv 0.11.32: `UV_SYSTEM_CERTS=true` is read (`--system-certs`) and `uv`
+installs a package from PyPI with an empty cache through the proxy; only an unset
+`UV_NATIVE_TLS` silences the warning (`false` still warns, an empty value is a parse error).
+Because the profile script sets it again whenever it is empty, a login shell started after the
+hook has it back; the env file's `unset` runs after that, so it holds for the commands Claude
+runs, not for a shell you start by hand (`unset UV_NATIVE_TLS` there). The real fix is
+upstream: the harness exporting `UV_SYSTEM_CERTS` instead (issue #320); drop this once it does.
+
 ## Without the key pair: a Bearer network secret (unverified)
 
 To keep the token out of the session, leave `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` unset
