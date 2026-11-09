@@ -106,7 +106,7 @@ def _alive(pid: int) -> bool:
             return True  # no procfs (macOS): the signal check is the whole answer
         try:
             stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-        except FileNotFoundError:
+        except FileNotFoundError, ProcessLookupError:
             return False  # it exited after the signal check
         alive = ") Z " not in stat
     return alive
