@@ -369,6 +369,7 @@ def test_docs_step_requires_the_kaitai_compiler() -> None:
         "test_schema_contract.py",
         "test_set_schema.py",
         "test_dbx_plan.py",
+        "test_work_frozen.py",
     ],
 )
 def test_docs_marker_is_on_the_documentation_modules(module: str) -> None:

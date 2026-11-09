@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (below). Supersedes
+accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (below). Amended
+2026-11-08: `check-work-frozen` holds a frozen work folder to its outcome (below). Supersedes
 the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
 [`gate.py`](../../python/scripts/gate.py); keeps that change's committed `.githooks/` and its
@@ -55,10 +56,12 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | `fmt-check-py` | `mise run fmt-check-py` | `types = ["python"]` |
   | `lint-py` | `mise run lint-py` | `types = ["python"]` |
   | `test-docs` | `mise run test-docs` | every commit (`always_run`) |
+  | `check-work-frozen` | `mise run check-work-frozen` ([`check_work_frozen.py`](../../python/scripts/check_work_frozen.py)) | every commit (`always_run`) |
 
   prek passes no deleted file to a hook, so a commit that only deletes a linked page would skip a
   hook filtered to Markdown; `test-docs`, `diff-check` and `crlf-check` therefore run on every
-  commit.
+  commit. `check-work-frozen` reads the whole index against `HEAD`, so it too runs on every
+  commit; the gate repeats it for the branch (`tests/test_work_frozen.py`, a docs test).
   `fmt-check-rust` is new: #32's plan checked no Rust. The rest are prek built-ins that back a rule
   this repository already states:
 
