@@ -54,3 +54,43 @@
   - The stubbed CTRY pair agreed on 121 of 121 pages, palettes 121 of 121 (the with-sound 2026-11-08 pair: 27 of 111 differing).
 - **Verdict**: `[Bounded Observation]` for the stubbed pair; that the range is CTRY's cause is `[Supported Inference]`, since the with-sound pair was captured one after the other, not 0.1 s apart. 27 of 111 counts the pages both captures held; `method.md` § 2.2.1's 27 of 104 counts the pages the bench paired. The earlier entry's "one to sixteen" chunks in `0xC300`-`0xC3FF` per archive is one to seventeen: INTRO holds 17. The previous entry's "one sample" and the notes' "`LOCATION.ALL` has no sample" were wrong: BALLOON's stub covered two samples, and LOCATION holds a sample-like chunk yet replays nearly identically (capture note open question 16).
 - **Lives in**: [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and open questions 16 and 18; [`all.md`](../../../research/formats/all.md) § 3.3; [`method.md`](../../../research/parity/method.md) § 2.2.1.
+
+## 2026-11-09: the seven reference films recaptured stubbed
+
+- **Question**: With the sound range stubbed (ADR 0043), does each reference film replay page for page?
+- **Method**: At `a48b50c` (PR 1's code), for each film two `mise run capture-ref -- --film corpus/stuntisl/VAULT/<FILM>.FLM --out <data root>/bench/<slug>/stubbed-{a,b}` runs with the default `--sound-samples stubbed`, the second started 0.1 s after the first, one film at a time; `mise run capture-compare` on each pair. `BOMB`'s second run stopped with "dosbox-automation did not answer within 30 s" and was rerun alone. The outgoing references were first copied to `<data root>/backup/pre-305/<slug>/frames`, file counts matching.
+- **Result**:
+
+  | Film | Stubbed pair: identical / shared ticks | Palettes equal | With sound (`method.md` § 2.2.1): identical / paired |
+  |---|---|---|---|
+  | `vault-ctry` | 121 / 121 | 121 | 77 / 104 |
+  | `vault-intro` | 347 / 347 | 347 | 94 / 172 |
+  | `vault-land` | 103 / 103 | 103 | 61 / 88 |
+  | `vault-balloon` | 108 / 108 | 108 | 56 / 95 |
+  | `vault-traintnl` | 112 / 112 | 112 | 71 / 102 |
+  | `vault-bomb` | 339 / 339 | 339 | 153 / 265 |
+  | `vault-location` | 745 / 745 | 745 | 729 / 732 |
+
+  - Median and 90th-percentile differing pixels are 0 on every pair.
+  - The with-sound column pairs a reference with a later recapture, captured one after the other, and counts the pages the bench paired; the stubbed column pairs two captures started 0.1 s apart and counts every shared tick.
+- **Verdict**: `[Bounded Observation]`, one pair per film on Patch 3: with the sound range stubbed every reference film replayed page for page, `vault-location`'s last 2 to 3 differing pages included. The with-sound and stubbed pairs differ in timing as well as in the stub, so the stub is the cause by the controlled `BALLOON` pair and consistent with the rest.
+- **Lives in**: [`method.md`](../../../research/parity/method.md) § 2.2.1; [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and open questions 16 and 18.
+
+## 2026-11-09: references swapped and repinned
+
+- **Question**: How much does each film's headline score move when its with-sound reference is replaced by the stubbed one (Q7: recorded, not gated)?
+- **Method**: At `865f943`, each `bench/<slug>/stubbed-a` swapped into `captures/<slug>/frames` with `capture_store.stage` and `publish`; `mise run capture-digest -- <slug>` for the row's new `sha256` (`all_sha256` unchanged on all seven). One `mise run parity` render (crates tree `1c3b167`) scored by `stuntreel parity` against the backed-up references (`backup/pre-305/<slug>/frames`) and by `mise run parity` against the new ones. The scores against the old references equal the previous `expected.gpu` tables to 7 decimals on six films, so on those six this render matches the one the tables measured; CTRY's differ by 1.3e-5 in SSIM and 9.5e-5 in IoU, so its before column is this render's, not the table's. A second `mise run parity -- --no-build` re-render read "no drift" on all seven, the drift check now judging rows without a `noise_sigma`.
+- **Result**:
+
+  | Film | `mean_ssim_scored`, old reference | New reference | Δ | `mean_iou_scored`, old | New |
+  |---|---|---|---|---|---|
+  | `vault-ctry` | 0.8971557 | 0.8972589 | +0.0001 | 0.9897719 | 0.9897193 |
+  | `vault-intro` | 0.8305799 | 0.8339457 | +0.0034 | 0.9852485 | 0.9856115 |
+  | `vault-land` | 0.8688008 | 0.8655940 | -0.0032 | 0.9853098 | 0.9848498 |
+  | `vault-balloon` | 0.7977040 | 0.8007812 | +0.0031 | 0.6350716 | 0.6351864 |
+  | `vault-traintnl` | 0.8521240 | 0.8510575 | -0.0011 | 0.9653354 | 0.9653850 |
+  | `vault-bomb` | 0.7985965 | 0.7995994 | +0.0010 | 0.9055414 | 0.9059951 |
+  | `vault-location` | 0.7918108 | 0.7909090 | -0.0009 | 0.9782805 | 0.9787082 |
+
+- **Verdict**: `[Bounded Observation]`. The swap moves headlines by -0.0032 to +0.0034, within about the 0.002 adoption floor on four films and beyond it on INTRO, LAND and BALLOON, in both directions; a stubbed reference is a different recording of the film. Adopted per Q7.
+- **Lives in**: [`references.toml`](../../../research/parity/references.toml) (pins, `expected.gpu`); [`method.md`](../../../research/parity/method.md) § 2.2.1.

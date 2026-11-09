@@ -71,7 +71,7 @@ _Source: [fourth round](../../work/2026-11/distill-capture-dosbox-automation/jou
 * **Captures play the film with its sound samples stubbed** ([ADR 0043](../../docs/adr/0043-captures-play-with-the-archives-sound-samples-stubbed.md)).
   - Staging replaces each payload in `0xC000`–`0xCFFF` with the one byte `0x04`, the stub the demo's `CTRY.ALL` holds in `0xC302`. `--sound-samples kept` plays the archive as is, and `meta.json` records which was used.
   - The range holds two kinds of chunk: sample-like chunks, whose first byte is `0x00` or `0x02` (the source of those under `0xC4` and `0xC5` is unchecked), and music, chunks that begin `03 'FORM'` under `0xC0` and `0xC1` ([`linking.md`](../makeone-exe/linking.md) § 5). The demo's `CTRY.ALL` shortens its samples and keeps its music chunk (`0xC010`) whole; the stub replaces both kinds. `[Bounded Observation]`
-  - What is known: two captures with the stub replayed identically on `BALLOON.FLM` and `CTRY.FLM`, from `MAKEONE`'s archives.
+  - What is known: with the stub, two captures of each of the seven reference films from `MAKEONE`'s archives replayed page for page, one pair per film ([`../parity/method.md`](../parity/method.md) § 2.2.1).
   - What is not known: what it does with the byte, whether it skips the sample or plays a click. A zero-length payload and a minimal well-formed sample were not tried. `[Bounded Observation]`
 * **The mouse cursor is parked** below the 3D view by `dosbox.mouse_move(-2000, 2000)`, lighting no button; captures before 2026-10-31 show it at screen centre. `[Bounded Observation]`
 
@@ -158,4 +158,4 @@ _Source: [clock and window passes](../../work/2026-11/distill-capture-dosbox-aut
 15. Do two pages labelled with one `film_tick` show the same moment? On `vault-balloon` tick 265 a reference page and a recapture page agree best with renders 3 ticks apart (264 and 267), which § 4.4's "never mislabels" would not allow, if confirmed; one page checked ([`../parity/method.md`](../parity/method.md) § 2.2.1). Matching pages to render ticks cannot settle it at today's render fidelity (Ruled out).
 16. Why does `vault-location` replay nearly bit for bit when its archive holds a sample-like chunk (`0xC447`) and six music chunks (§ 4.4)? The film may never play `0xC447`; its `0x9C` cues are not checked.
 17. How does sound playback move the picture (§ 4.4): the render loop's pacing, the tick a page's render starts from, or something else? And does a page captured without samples show its labelled tick more often than one with them?
-18. What leaves 2 to 3 differing pages per `vault-location` pair (§ 4.4)? A stubbed pair would show whether its sound-range chunks do.
+18. Likely answered (`[Supported Inference]`): `vault-location`'s 2 to 3 differing pages per pair with sound came from its sound-range chunks; a stubbed pair agreed on 745 of 745 (§ 4.4). One pair each way, and the with-sound pairs were captured one after the other, not 0.1 s apart.
