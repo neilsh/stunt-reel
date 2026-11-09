@@ -15,9 +15,9 @@ A report, never a gate. It finds:
 * ``folder``: a work folder that breaks the layout (``stunt_reel.work_items``).
 
 A size finding weighs its byte count, every other finding 1; findings print heaviest first.
-The two issue checks read status through one ``gh`` call; when ``gh`` is missing, fails or
-answers with no usable issue list they are skipped and one note on stderr says so, as it does
-when ``git log`` fails.
+The two issue checks read status through ``gh``, one call per page of issues; when ``gh`` is
+missing, fails or answers with no usable issue list they are skipped and one note on stderr says
+so, as it does when ``git log`` fails.
 
 Usage: ``mise run doc-health`` for a table, or ``mise run doc-health -- --json`` for a JSON
 list of ``{path, kind, detail, weight}``; either takes ``--root DIR`` for a checkout other than

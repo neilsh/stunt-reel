@@ -27,6 +27,7 @@ from stunt_reel.frontmatter import FrontmatterError, read_frontmatter
 from stunt_reel.git_env import isolated_env
 
 __all__ = [
+    "ISSUE_PAGE",
     "MONTH_PATTERN",
     "WORK_ROOT",
     "FrozenViolation",
@@ -39,6 +40,7 @@ __all__ = [
     "folder_paths",
     "frozen_violations",
     "is_dated",
+    "issue_list",
     "issue_statuses",
     "parse_folder",
     "readme_text",
@@ -65,14 +67,8 @@ _REQUIRED = ("title", "started", "outcome")
 _KEYS = frozenset((*_REQUIRED, "issue", "status"))
 # REST, not `gh issue list`: a cloud session's proxy refuses the GraphQL that `gh issue` uses.
 # gh fills {owner}/{repo} from the repository it targets; --jq prints one object a line.
-_ISSUE_LIST = (
-    "gh",
-    "api",
-    "--paginate",
-    "repos/{owner}/{repo}/issues?state=all&per_page=100",
-    "--jq",
-    ".[] | {number, state, state_reason, pull_request}",
-)
+#: Issues per page of the issue list; a shorter page is the last.
+ISSUE_PAGE = 100
 _GIVEN_UP = frozenset(("not_planned", "duplicate"))
 _ADDED = "adds a file to a frozen work folder"
 _OUTCOME_CHANGED = "changes the outcome of a frozen work folder"
@@ -236,7 +232,7 @@ def frozen_violations(
 
 
 def issue_statuses(numbers: Iterable[int], run: Runner) -> dict[int, IssueStatus] | None:
-    """The status of each of *numbers*' issues, read with one `gh api` call through *run*.
+    """The status of each of *numbers*' issues, read through *run* one `issue_list` page at a time.
 
     An open issue is `active`; a closed one is `abandoned` when closed as not planned or as a
     duplicate, else `landed`. A number gh does not list, or that is a pull request, is left
@@ -247,7 +243,14 @@ def issue_statuses(numbers: Iterable[int], run: Runner) -> dict[int, IssueStatus
     if not wanted:
         return {}
     try:
-        issues = [json.loads(line) for line in run(list(_ISSUE_LIST)).splitlines() if line]
+        issues = []
+        page = 1
+        while True:
+            lines = [line for line in run(issue_list(page)).splitlines() if line]
+            issues += [json.loads(line) for line in lines]
+            if len(lines) < ISSUE_PAGE:
+                break
+            page += 1
         return {
             issue["number"]: _issue_status(issue)
             for issue in issues
@@ -256,6 +259,22 @@ def issue_statuses(numbers: Iterable[int], run: Runner) -> dict[int, IssueStatus
     # ValueError is malformed JSON; KeyError and TypeError are JSON of another shape.
     except OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError:
         return None
+
+
+def issue_list(page: int) -> list[str]:
+    """The `gh api` command for *page* (from 1) of the issue list: one JSON object per line.
+
+    Pages go by number because `gh api --paginate` follows GitHub's next links, which name the
+    repository by id (`repositories/<id>/...`), and a cloud session's proxy refuses those
+    (`docs/cloud-sessions.md`).
+    """
+    return [
+        "gh",
+        "api",
+        f"repos/{{owner}}/{{repo}}/issues?state=all&per_page={ISSUE_PAGE}&page={page}",
+        "--jq",
+        ".[] | {number, state, state_reason, pull_request}",
+    ]
 
 
 def run_command(args: list[str]) -> str:

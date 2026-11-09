@@ -111,7 +111,7 @@ description = "Remove worktrees whose branch is already in main or was squash-me
 run = "uv run python python/scripts/worktree_init.py reap"
 
 [tasks.pr-threads]
-description = "A pull request's unresolved review threads, one line each with the comment id to reply to, then its outside-diff findings; or reply in and resolve a thread. Needs GraphQL, so not in a cloud session (mise run pr-threads -- <number> [--all] | [--reply <id> --body <text>|--body-file <path>] [--resolve <id>])"
+description = "A pull request's unresolved review threads, one line each with the comment id to reply to, then its outside-diff findings; or reply in and resolve a thread. Uses GraphQL, or in a cloud session the proxy's REST thread routes (mise run pr-threads -- <number> [--all] | [--reply <id> --body <text>|--body-file <path>] [--resolve <id>])"
 run = "uv run python python/scripts/pr_threads.py"
 
 [tasks.work]

@@ -252,7 +252,7 @@ def test_list_maps_issue_states(tmp_path: Path, capsys: pytest.CaptureFixture[st
     _issue_folder(tmp_path, "2026-11", 301, "dropped")
     _issue_folder(tmp_path, "2026-11", 302, "unlisted")
     _issue_less_folder(tmp_path, "2026-10", "parity-log")
-    run = FakeRunner({"gh api --paginate": ISSUES})
+    run = FakeRunner({"gh api repos/{owner}/{repo}/issues?state=all&per_page=100&page=1": ISSUES})
     assert _main(tmp_path, "list", run=run) == 0
     out, err = capsys.readouterr()
     assert _columns(out) == [
@@ -307,7 +307,15 @@ def test_list_filters_by_status(
     _issue_less_folder(tmp_path, "2026-10", "parity-log")
     _issue_less_folder(tmp_path, "2026-11", "old-idea", abandoned=True)
     assert (
-        _main(tmp_path, "list", "--status", status, run=FakeRunner({"gh api --paginate": ISSUES}))
+        _main(
+            tmp_path,
+            "list",
+            "--status",
+            status,
+            run=FakeRunner(
+                {"gh api repos/{owner}/{repo}/issues?state=all&per_page=100&page=1": ISSUES}
+            ),
+        )
         == 0
     )
     assert [columns[1] for columns in _columns(capsys.readouterr().out)] == names

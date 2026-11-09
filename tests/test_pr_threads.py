@@ -223,8 +223,8 @@ class _FakeGh:
     def __call__(self, *args: str) -> dict[str, Any]:
         """Record *args* and give the answer gh would for that call."""
         self.calls.append(args)
-        if args[:2] == ("repo", "view"):
-            return {"nameWithOwner": "o/r"}
+        if args[:2] == ("api", "repos/{owner}/{repo}"):
+            return {"full_name": "o/r"}
         if args[:3] == ("api", "-X", "POST"):
             return {"id": 999, "html_url": "https://example.test/r/pull/7#discussion_r999"}
         query = next(a for a in args if a.startswith("query="))
@@ -356,3 +356,162 @@ def test_reply_and_its_body_go_together(argv: list[str], monkeypatch: pytest.Mon
     with pytest.raises(SystemExit):
         pr_threads.main(argv)
     assert gh.calls == []
+
+
+_REFUSED = "HTTP 403: GitHub GraphQL is not available from Claude Code sessions; use the REST API"
+
+
+class _RestGh:
+    """Stands in for ``pr_threads._gh`` behind the cloud proxy: GraphQL refused, REST answered.
+
+    Pull 7 has one open thread of comments 111 and 112 and one resolved thread of comment 222.
+    """
+
+    def __init__(self, *, resolves: bool = True) -> None:
+        """A resolve POST marks the open thread resolved when *resolves*."""
+        self.resolves = resolves
+        self.resolved = False
+        self.calls: list[tuple[str, ...]] = []
+
+    def __call__(self, *args: str, empty_ok: bool = False) -> Any:
+        """Record *args* and give the answer gh would behind the proxy."""
+        self.calls.append(args)
+        path = args[-1] if args[:3] != ("api", "-X", "POST") else args[3]
+        if args[1] == "graphql":
+            raise pr_threads.GhError(_REFUSED)
+        if path == "repos/{owner}/{repo}":
+            return {"full_name": "o/r"}
+        if path.startswith("repos/o/r/pulls/8"):
+            raise pr_threads.GhError("Not Found (HTTP 404)")
+        if path == "repos/o/r/pulls/7":
+            return {"head": {"sha": "abc"}}
+        if path == "repos/o/r/commits/abc":
+            return {"commit": {"committer": {"date": "2026-11-09T00:00:00Z"}}}
+        if path.startswith("repos/o/r/pulls/7/comments?"):
+            return [
+                {
+                    "id": 111,
+                    "user": {"login": "coderabbitai[bot]"},
+                    "body": _BOT_BODY,
+                    "original_line": 20,
+                },
+                {"id": 112, "user": {"login": "claude"}, "body": "Fixed."},
+                {"id": 222, "user": {"login": "coderabbitai[bot]"}, "body": "Done."},
+            ]
+        if path.startswith("repos/o/r/pulls/7/reviews?"):
+            return [{"id": 5, "submitted_at": "2026-11-09T01:00:00Z", "body": ""}]
+        if path == "repos/o/r/pulls/7/ccr/review_threads":
+            return [
+                {
+                    "resolved": self.resolved,
+                    "outdated": True,
+                    "path": "a.md",
+                    "line": None,
+                    "comment_ids": [111, 112],
+                },
+                {
+                    "resolved": True,
+                    "outdated": False,
+                    "path": "b.md",
+                    "line": 3,
+                    "comment_ids": [222],
+                },
+            ]
+        if path == "repos/o/r/pulls/7/ccr/comments/111/resolve":
+            assert empty_ok, "the resolve route answers with an empty body"
+            self.resolved = self.resolves
+            return None
+        raise AssertionError(f"unexpected gh call {args}")
+
+
+def test_a_refused_graphql_lists_threads_through_rest(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Behind the cloud proxy the listing comes from the ccr route and the comments list."""
+    monkeypatch.setattr(pr_threads, "_gh", _RestGh())
+    assert pr_threads.main(["7"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        "1 open review threads on o/r#7",
+        (
+            "a.md:20 [Major] Compare `all_sha256` before parity scoring. (outdated) | id 111, "
+            "1 replies, last by claude"
+        ),
+    ]
+
+
+def test_a_refused_graphql_resolves_through_the_ccr_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--resolve`` posts to the proxy's resolve route and checks the thread then reads resolved."""
+    gh = _RestGh()
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert pr_threads.main(["7", "--resolve", "111"]) == 0
+    assert ("api", "-X", "POST", "repos/o/r/pulls/7/ccr/comments/111/resolve") in gh.calls
+    assert pr_threads.main(["7", "--resolve", "222"]) == 0
+    assert gh.calls.count(("api", "-X", "POST", "repos/o/r/pulls/7/ccr/comments/222/resolve")) == 0
+
+
+def test_a_rest_resolve_that_leaves_the_thread_open_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A resolve POST after which the thread still reads unresolved exits 2."""
+    monkeypatch.setattr(pr_threads, "_gh", _RestGh(resolves=False))
+    assert pr_threads.main(["7", "--resolve", "111"]) == 2
+
+
+def test_a_missing_pull_through_rest_is_reported(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 404 on the pull request reads as no such pull request, not a gh failure."""
+    monkeypatch.setattr(pr_threads, "_gh", _RestGh())
+    assert pr_threads.main(["8"]) == 2
+    assert "has no pull request 8" in capsys.readouterr().err
+
+
+def test_rest_reviews_carry_the_head_commit_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reviews through REST keep the GraphQL shape the outside-diff filter reads."""
+    monkeypatch.setattr(pr_threads, "_gh", _RestGh())
+    assert pr_threads.read_reviews("o", "r", 7) == (
+        "2026-11-09T00:00:00Z",
+        [{"databaseId": 5, "submittedAt": "2026-11-09T01:00:00Z", "body": ""}],
+    )
+
+
+def test_a_rest_list_reads_pages_by_number_until_a_short_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A full page asks for the next by number, never through ``--paginate``."""
+    calls: list[tuple[str, ...]] = []
+
+    def gh(*args: str) -> list[dict[str, int]]:
+        calls.append(args)
+        page = int(args[-1].rsplit("=", 1)[1])
+        return [{"id": i} for i in range(pr_threads.REST_PAGE if page == 1 else 1)]
+
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert len(pr_threads._rest_list("repos/o/r/pulls/7/comments")) == pr_threads.REST_PAGE + 1
+    assert [c[-1].rsplit("&", 1)[1] for c in calls] == ["page=1", "page=2"]
+    assert all("--paginate" not in c for c in calls)
+
+
+def test_another_gh_error_is_not_taken_for_a_refused_graphql(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the proxy's refusal switches to REST; any other GraphQL failure is reported."""
+
+    def gh(*_args: str) -> Any:
+        raise pr_threads.GhError("HTTP 502: Bad Gateway")
+
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    with pytest.raises(pr_threads.GhError, match="502"):
+        pr_threads.read_threads("o", "r", 7)
+
+
+def test_empty_stdout_is_a_gh_error_unless_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a caller that expects no body gets ``None``; any other empty answer is a GhError."""
+
+    def run(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "gh")
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(pr_threads.GhError, match="no JSON"):
+        pr_threads._gh("api", "graphql")
+    assert pr_threads._gh("api", "-X", "POST", "x", empty_ok=True) is None
