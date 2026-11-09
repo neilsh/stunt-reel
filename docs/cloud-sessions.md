@@ -114,6 +114,15 @@ remote. From
 `fetch`, exit 2 means `R2_ACCOUNT_ID`, or one half of the key pair, is unset, and a 403 means
 the key pair or the network secret cannot read the bucket.
 
+## Verifying a cloud environment
+
+Fetch skips a folder that already holds its pin, so a resumed container proves nothing about
+R2. `mise run cloud-assets -- verify [ARCHIVE...]` downloads each pinned archive (all when none
+is named) into a fresh temporary directory, signed as `fetch` signs it, checks its sha256 and
+that it unpacks, prints one line per archive (`verified`, or the failing step and its error)
+and deletes the directory. It never reads or writes the data root, and exits 1 if any archive
+fails, 2 if the R2 variables are unset. Use it to check a new or resumed cloud environment.
+
 ## Publishing new archives (owner, primary machine)
 
 1. `npx wrangler login` once; uploads use that login, so no write key exists.
