@@ -4,6 +4,12 @@
   "env": {
     "PYTHONUTF8": "1"
   },
+  "permissions": {
+    "allow": [
+      "Bash(gh issue close:*)",
+      "PowerShell(gh issue close:*)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
