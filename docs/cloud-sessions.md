@@ -169,8 +169,6 @@ the key pair or the network secret cannot read the bucket.
 - **Install a newer `gh`.** The image's `gh` is 2.89.0; Ubuntu's apt package is 2.45.0, older,
   and the proxy refuses `cli.github.com` and GitHub's release downloads (2026-11-08). A newer
   `gh` would still meet the GraphQL refusal above.
-- **Silence uv's `UV_NATIVE_TLS` warning.** The harness's `/etc/profile.d` script sets the
-  deprecated variable, so every `uv` call warns ([#320](https://github.com/neilsh/stunt-reel/issues/320)).
 
 ## Rotating the token
 
