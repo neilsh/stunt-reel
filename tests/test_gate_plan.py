@@ -321,6 +321,38 @@ def test_no_changes_names_the_base() -> None:
     )
 
 
+def test_a_step_runs_without_the_callers_git_repository_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Under `git rebase --exec "mise run check"` a step's git must not act on the caller's repo."""
+    seen: list[dict[str, str]] = []
+
+    def run(_argv: object, env: dict[str, str], _timeout: float) -> tuple[int, str]:
+        seen.append(env)
+        return 0, ""
+
+    monkeypatch.setattr(gate, "run_bounded", run)
+    monkeypatch.setattr(gate, "_git_local_env_vars", lambda: frozenset({"GIT_DIR", "GIT_CONFIG"}))
+    monkeypatch.setenv("GIT_DIR", "/caller/.git")
+    monkeypatch.setenv("GIT_CONFIG", "/caller/config")
+    monkeypatch.setenv("GIT_ASKPASS", "askpass")
+    gate._step("mise", "test-py", 1.0)
+    assert "GIT_DIR" not in seen[0]
+    assert "GIT_CONFIG" not in seen[0]
+    assert seen[0]["GIT_ASKPASS"] == "askpass"
+
+
+def test_the_git_repository_variables_are_the_ones_git_lists() -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not on PATH")
+    assert {
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_CONFIG",
+    } <= gate._git_local_env_vars()
+
+
 def test_docs_step_requires_the_kaitai_compiler() -> None:
     assert gate.STEP_ENV["test-py-docs"]["STUNT_REQUIRE_KSC"] == "1"
     assert (
@@ -348,13 +380,6 @@ def _no_real_record(monkeypatch: pytest.MonkeyPatch) -> None:
     """A faked passing run must never write ``target/gate``, or it would prove a real commit."""
     monkeypatch.setattr(gate_record, "working_tree", lambda: "fake-tree")
     monkeypatch.setattr(gate_record, "record", lambda *_pair: None)
-
-
-@pytest.fixture(autouse=True)
-def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep git in these tests on their own repositories when pytest runs under a git hook."""
-    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
-        monkeypatch.delenv(name, raising=False)
 
 
 _GIT_ENV = {

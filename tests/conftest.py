@@ -10,6 +10,9 @@ pytest never resets it.  On Windows the mkdir mode shim keeps pytest's own
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,6 +30,29 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 pytest_plugins = ["tac_mock"]
+
+
+@cache
+def _git_local_env_vars() -> tuple[str, ...]:
+    """The variables that point git at a repository, as ``git rev-parse --local-env-vars`` lists."""
+    git = shutil.which("git")
+    if git is None:
+        return ()
+    listed = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
+        [git, "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=True
+    )
+    return tuple(listed.stdout.split())
+
+
+@pytest.fixture(autouse=True)
+def _no_caller_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset git's repository variables, so git in a test acts only on the test's own repository.
+
+    A suite run under a git hook or ``git rebase --exec`` inherits them, and a test's
+    ``git config`` would otherwise write the caller's ``.git/config``.
+    """
+    for name in _git_local_env_vars():
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)

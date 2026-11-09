@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import os
 import shutil
 import signal
@@ -453,11 +454,29 @@ def run_bounded(
             _ACTIVE.discard(proc)
 
 
+@functools.cache
+def _git_local_env_vars() -> frozenset[str]:
+    """The variables that point git at a repository, as ``git rev-parse --local-env-vars`` lists.
+
+    Empty when git is missing or fails.
+    """
+    git = shutil.which("git")
+    if git is None:
+        return frozenset()
+    proc = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
+        [git, "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=False
+    )
+    return frozenset(proc.stdout.split()) if proc.returncode == 0 else frozenset()
+
+
 def _step(mise: str, task: str, timeout: float) -> tuple[int, str, float]:
     """Run one mise task, returning its exit code, combined output and duration."""
+    # A gate run under `git rebase --exec` or a hook inherits GIT_DIR and its kin; a step's git
+    # (a test's `git config`, say) would act on the caller's repository instead of its own.
+    inherited = {k: v for k, v in os.environ.items() if k not in _git_local_env_vars()}
     # MISE_QUIET silences the child mise's own tool-resolution chatter, which would
     # otherwise repeat once per step in the log.
-    env = {**os.environ, "MISE_QUIET": "1", **STEP_ENV.get(task, {})}
+    env = {**inherited, "MISE_QUIET": "1", **STEP_ENV.get(task, {})}
     started = time.monotonic()
     code, output = run_bounded([mise, "run", task], env, timeout)
     return code, output, time.monotonic() - started

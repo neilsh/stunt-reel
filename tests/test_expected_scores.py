@@ -32,15 +32,8 @@ HEAD = "      gpu expected ssim 0.8986000  iou 0.9897000"
 #: The tail of a drift verdict against :data:`ON_GPU` with CTRY's noise.
 SIGMA_ON_GPU = "noise_sigma 0.0003030 on NVIDIA GeForce RTX 4070"
 
-#: Variables that point git at another repository. Git sets them while it runs a hook, so a
-#: suite started from one would otherwise commit in the outer repository.
+#: Variables that point git at another repository, which ``changed_since`` must ignore.
 _GIT_LOCATION_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
-
-
-@pytest.fixture(autouse=True)
-def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in _GIT_LOCATION_ENV:
-        monkeypatch.delenv(name, raising=False)
 
 
 def _reference(

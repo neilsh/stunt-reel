@@ -24,17 +24,6 @@ GIT = shutil.which("git")
 
 pytestmark = [pytest.mark.windows, pytest.mark.skipif(GIT is None, reason="git is not on PATH")]
 
-#: Variables that point git at another repository. Git sets them while it runs a hook, so a
-#: suite started from one would otherwise stage files in the outer repository.
-_GIT_LOCATION_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
-
-
-@pytest.fixture(autouse=True)
-def _isolate_git(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Unset git's location variables, so each test sees only its scratch repository."""
-    for name in _GIT_LOCATION_ENV:
-        monkeypatch.delenv(name, raising=False)
-
 
 def _git(repo: Path, *args: str) -> None:
     """Run git in *repo* and fail the test if it fails."""
