@@ -65,6 +65,10 @@ _Avoid_: bundle, resource file
 The committed record of which item of which game resource file makes each chunk of a film's archive, from which the archive is rebuilt byte for byte. A film whose archive holds content the game's resources lack has none.
 _Avoid_: manifest (alone; the render record and capture set are not manifests)
 
+**Superset archive**:
+One archive holding every stock shape of one game build, standing in for a film's own archive when a film is rendered or played without it. It serves only films whose shapes all come from the stock game.
+_Avoid_: universal archive, full archive, SUPERSET (the file, for the concept)
+
 **Shape**:
 A 3D `.SOD` model chunk in an archive, identified by `shape_id`. One shape may be bound to several slots.
 _Avoid_: sprite, object
