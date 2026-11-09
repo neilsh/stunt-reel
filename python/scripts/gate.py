@@ -128,7 +128,7 @@ _RUST_FILES = frozenset({"Cargo.toml", "Cargo.lock", "deny.toml"})
 _PYTHON_FILES = frozenset({"pyproject.toml", "uv.lock"})
 # Documents a Rust test reads from outside crates/ (report_doc.rs checks the parity report's
 # field tables). tests/test_gate_plan.py finds every such read, so this set cannot fall behind.
-_RUST_READS = frozenset({"research/parity/method.md"})
+_RUST_READS = frozenset({"research/parity/report-fields.md"})
 
 
 def classify(path: str) -> Category:

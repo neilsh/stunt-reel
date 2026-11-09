@@ -45,9 +45,10 @@
 - [`parity/film-segments.md`](parity/film-segments.md): Covers COL3-2.FLM and INTRO.FLM segments where PLAYONE shows a scene we do not: the unresolved COL3-2 studio, INTRO sand shots as SCENERY tiles, the montage clock, and black title cards.
 - [`parity/framing-and-actors.md`](parity/framing-and-actors.md): Records camera, projection and hero-aircraft corrections tried against the capture: square 256 px projection, actor ground offset, `OP_VECTORS` orientation, flattened shadow, open `0x7F37` residual.
 - [`parity/lavapipe.md`](parity/lavapipe.md): On lavapipe, large near-eye ground polygons can draw palette index 0, inferred to come from a 0/0 clipper weight on `noperspective` varyings; a non-finite shade guard brings scores near the GPU's.
-- [`parity/method.md`](parity/method.md): Defines the parity loop that judges a render change against PLAYONE.EXE: capture, render, SSIM and IoU scoring with the fade floor, compare verdicts, `report.json` fields and the metric bench.
+- [`parity/method.md`](parity/method.md): Defines the parity loop that judges a render change against PLAYONE.EXE: capture, render, SSIM and IoU scoring with the fade floor, compare verdicts and the metric bench.
 - [`parity/probes.md`](parity/probes.md): Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou and retime, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls.
 - [`parity/render-model.md`](parity/render-model.md): Compares PLAYONE's back-to-front software painter with our depth-buffer renderer stage by stage, naming each known divergence and the `[I5]` and ground-decal rules that imitate its tie order.
+- [`parity/report-fields.md`](parity/report-fields.md): The keys and JSON types of the parity reports `report.json` and `compare.json`, checked against `stuntreel parity` output on synthetic fixtures by the `report_doc.rs` test.
 
 ## playone-exe
 

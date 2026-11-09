@@ -1,6 +1,6 @@
 # Score a render change against PLAYONE
 
-The commands of the parity loop. What each step measures, and how to read its output, is [`research/parity/method.md`](../../research/parity/method.md) § 1; the field tables of `report.json` and `compare.json` are its § 1.3.
+The commands of the parity loop. What each step measures, and how to read its output, is [`research/parity/method.md`](../../research/parity/method.md) § 1; the field tables of `report.json` and `compare.json` are [`report-fields.md`](../../research/parity/report-fields.md).
 
 ## 1. Baseline
 
