@@ -30,13 +30,13 @@ whose rule matches:
 | order | paths | category |
 | --- | --- | --- |
 | 1 | `tests/fixtures/**` | other |
-| 2 | `crates/**`, `Cargo.toml`, `Cargo.lock`, `deny.toml`, `research/parity/method.md` | rust |
+| 2 | `crates/**`, `Cargo.toml`, `Cargo.lock`, `deny.toml`, `research/parity/report-fields.md` | rust |
 | 3 | `*.py`, `pyproject.toml`, `uv.lock` | python |
 | 4 | `*.md`, `*.ksy` | docs |
 | 5 | anything else | other |
 
-Fixtures come first because both languages' tests read them; `method.md` is rust because
-`stunt-cli`'s `report_doc.rs` test checks the parity report against it. A rust path runs the Rust half; a
+Fixtures come first because both languages' tests read them; `report-fields.md` is rust because
+`stunt-cli`'s `report_doc.rs` test checks the parity report against it (the field tables moved there from `method.md`, amended 2026-11-09). A rust path runs the Rust half; a
 python path the Python half; and every scoped run without the Python half runs the docs half,
 `test-py-docs` (`pytest -m docs`: the documentation invariants, the formats catalog, the schema
 contract, and the tests that read one schema or plan), since a Rust or Markdown change can break a cited path. A test joins the docs half by

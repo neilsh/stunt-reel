@@ -1,4 +1,4 @@
-//! Doc test: the field tables of `research/parity/method.md` (section 1.3) describe the
+//! Doc test: the field tables of `research/parity/report-fields.md` describe the
 //! `report.json` and `compare.json` that `stuntreel parity` writes from synthetic fixtures.
 //!
 //! The note is the single source. A table sits between `<!-- fields: NAME -->` and
@@ -28,9 +28,9 @@ struct Field {
 
 type Table = BTreeMap<String, Field>;
 
-/// Every `<!-- fields: NAME -->` table of the method note, by name.
+/// Every `<!-- fields: NAME -->` table of the report-fields note, by name.
 fn documented() -> BTreeMap<String, Table> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../research/parity/method.md");
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../research/parity/report-fields.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let mut tables = BTreeMap::new();
     let mut open: Option<(String, Table)> = None;
@@ -84,7 +84,7 @@ fn type_matches(kind: &str, value: &Value) -> bool {
         "bool" => value.is_boolean(),
         "list" => value.is_array(),
         "object" => value.is_object(),
-        other => panic!("unknown type word `{other}` in method.md"),
+        other => panic!("unknown type word `{other}` in report-fields.md"),
     }
 }
 
@@ -97,21 +97,21 @@ fn assert_documented(tables: &BTreeMap<String, Table>, name: &str, value: &Value
     }
     let table = tables
         .get(name)
-        .unwrap_or_else(|| panic!("method.md has no `<!-- fields: {name} -->` table"));
+        .unwrap_or_else(|| panic!("report-fields.md has no `<!-- fields: {name} -->` table"));
     let object = value
         .as_object()
         .unwrap_or_else(|| panic!("{at}: expected an object, found {value}"));
     for key in object.keys() {
         assert!(
             table.contains_key(key),
-            "{at}: `{key}` is written but not documented in the `{name}` table of method.md"
+            "{at}: `{key}` is written but not documented in the `{name}` table of report-fields.md"
         );
     }
     for (key, field) in table {
         let Some(found) = object.get(key) else {
             assert!(
                 field.optional,
-                "{at}: `{key}` is documented in the `{name}` table of method.md but not written"
+                "{at}: `{key}` is documented in the `{name}` table of report-fields.md but not written"
             );
             continue;
         };
@@ -173,7 +173,7 @@ fn generate(tmp: &TempDir) -> (Value, Value, Value) {
 }
 
 #[test]
-fn method_md_documents_every_key_of_report_json_and_compare_json() {
+fn report_fields_md_documents_every_key_of_report_json_and_compare_json() {
     let tmp = TempDir::new("report_doc");
     let tables = documented();
     let (report, plain, judged) = generate(&tmp);
@@ -251,6 +251,6 @@ fn every_documented_table_is_exercised() {
     let names: Vec<&str> = tables.keys().map(String::as_str).collect();
     assert_eq!(
         names, expected,
-        "method.md fields tables vs those this test checks"
+        "report-fields.md fields tables vs those this test checks"
     );
 }

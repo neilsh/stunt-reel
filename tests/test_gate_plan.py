@@ -219,7 +219,8 @@ def test_a_tree_that_cannot_be_taken_records_nothing_and_still_runs(
         ("tests/fixtures/README.md", "other"),
         ("crates/stunt-core/src/lib.rs", "rust"),
         ("crates/stunt-core/README.md", "rust"),
-        ("research/parity/method.md", "rust"),
+        ("research/parity/report-fields.md", "rust"),
+        ("research/parity/method.md", "docs"),
         ("Cargo.lock", "rust"),
         ("deny.toml", "rust"),
         ("python/scripts/gate.py", "python"),
@@ -245,7 +246,7 @@ def test_every_file_rust_reads_outside_crates_runs_the_rust_half() -> None:
         for match in re.findall(r'"\.\./\.\./([^"]+)"', source.read_text(encoding="utf-8"))
         if not match.startswith("tests/fixtures/")
     }
-    assert "research/parity/method.md" in reads
+    assert "research/parity/report-fields.md" in reads
     for path in reads:
         assert gate.classify(path) in {"rust", "other"}, path
 
