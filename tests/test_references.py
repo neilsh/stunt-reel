@@ -309,11 +309,18 @@ def test_read_pin_finds_the_row_by_slug(tmp_path: Path) -> None:
     assert references.read_pin(tmp_path, "vault-land") is None
 
 
+#: A measured ``crates/`` tree and capture pin, as an expected table records them.
+TREE = "641cffd3bfc895719f6078b33d7a0232e5f1750c"
+CAPTURE = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49"
+
+
 def _expected(renderer: str = "gpu", **changes: str | None) -> list[str]:
     """A ``[ctry.expected.<renderer>]`` table with *changes* to its fields; ``None`` drops one."""
     fields = {
         "ssim": "0.8725",
         "iou": "0.9897",
+        "crates": f'"{TREE}"',
+        "sha256": f'"{CAPTURE}"',
         "commit": '"740c608"',
         "adapter": '"NVIDIA GeForce RTX 4070"',
     } | changes
@@ -325,10 +332,24 @@ def test_a_row_reads_its_expected_scores_and_noise_sigma(tmp_path: Path) -> None
     _row(tmp_path, PATCH3, "noise_sigma = 0.000303", *_expected())
     reference = references.read_reference(tmp_path, "ctry")
     assert dict(reference.expected) == {
-        "gpu": references.Expected(0.8725, 0.9897, "740c608", "NVIDIA GeForce RTX 4070")
+        "gpu": references.Expected(
+            0.8725, 0.9897, TREE, CAPTURE, "NVIDIA GeForce RTX 4070", commit="740c608"
+        )
     }
     assert "lavapipe" not in reference.expected
     assert reference.noise_sigma == 0.000303
+
+
+def test_an_expected_table_without_a_commit_reads_its_tree_and_pins(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, *_expected(commit=None, all_sha256=f'"{PIN}"'))
+    expected = references.read_reference(tmp_path, "ctry").expected["gpu"]
+    assert (expected.crates, expected.sha256, expected.all_sha256) == (TREE, CAPTURE, PIN)
+    assert expected.commit is None
+
+
+def test_an_expected_table_may_name_a_sha256_tree(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, *_expected(crates=f'"{CAPTURE}"'))
+    assert references.read_reference(tmp_path, "ctry").expected["gpu"].crates == CAPTURE
 
 
 def test_a_row_without_expected_scores_reads_empty(tmp_path: Path) -> None:
@@ -365,6 +386,12 @@ def test_an_integer_score_reads_as_a_float(tmp_path: Path) -> None:
         (_expected(iou="-0.1"), "expected.gpu.iou"),
         (_expected(commit='"xyz"'), "expected.gpu.commit"),
         (_expected(commit='"740C608"'), "expected.gpu.commit"),
+        (_expected(crates=None), "expected.gpu.crates"),
+        (_expected(crates='"641cffd"'), "expected.gpu.crates"),
+        (_expected(crates=f'"{TREE.upper()}"'), "expected.gpu.crates"),
+        (_expected(sha256=None), "expected.gpu.sha256"),
+        (_expected(sha256='"0"'), "expected.gpu.sha256"),
+        (_expected(all_sha256="1"), "expected.gpu.all_sha256"),
         (_expected(adapter='""'), "expected.gpu.adapter"),
         (_expected(noise_sigma="0.1"), "expected.gpu.noise_sigma"),
         (["[ctry.expected]", 'gpu = "x"'], "expected.gpu"),

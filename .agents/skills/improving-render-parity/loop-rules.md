@@ -19,6 +19,6 @@ Two tracks, because what backs a change decides what the score is allowed to say
 
 Anything else is recorded as a negative and the change is reverted.
 
-An adopted change updates the expected table in [`references.toml`](../../../research/parity/references.toml) for the renderer class it measured (`ssim`, `iou`, `commit`, `adapter` from that run); the other class keeps its older entry, if any, until someone measures it.
+An adopted change updates the expected table in [`references.toml`](../../../research/parity/references.toml) for the renderer class it measured (`ssim`, `iou`, `adapter` from that run; `crates` from `git rev-parse <commit>:crates` on the commit it rendered, with `crates/` clean (no uncommitted or untracked files under it), not the commit itself, which a squash merge keeps off `main`; `sha256` and `all_sha256` copied from the film's row); the other class keeps its older entry, if any, until someone measures it.
 
 0.002 is a policy bound ([`method.md`](../../../research/parity/method.md) section 3). A margin under 0.002 is unattributable; the sweep marks it on the winner line.
