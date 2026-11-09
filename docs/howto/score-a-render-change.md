@@ -15,7 +15,7 @@ The latest render and report are `build/parity/ours/<film>_current` and `build/p
 
 ## 2. Capture a reference
 
-Once per `PLAYONE` build: `mise run capture-ref`; another film: `mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM` ([`capture.md`](../../research/playone-exe/capture.md) § 4). By default a successful capture replaces the film's stored capture, `<data root>/captures/<slug>/frames`, by swap, and until `research/parity/references.toml` is updated a replaced reference fails its pinned hash; `--out <dir>` writes a separate capture and replaces nothing. Promoting a capture is a reviewed commit to `references.toml`, which names it by film slug and content hash. The film-clock tags are read at the player's `DS`, which differs per build, so `DS` (`0x1575` for the demo) is a capture parameter.
+Once per `PLAYONE` build: `mise run capture-ref`; another film: `mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM` ([`capture.md`](../../research/playone-exe/capture.md) § 4). By default a successful capture replaces the film's stored capture, `<data root>/captures/<slug>/frames`, by swap, and until `research/parity/references.toml` is updated a replaced reference fails its pinned hash; `--out <dir>` writes a separate capture and replaces nothing. A capture meant to become a reference is taken with the default parameters, so it lands in the store ([ADR 0028](../adr/0028-a-film-has-one-capture-of-each-kind.md)); promoting it is a reviewed commit to `references.toml`, which names it by film slug and content hash, and `mise run capture-digest -- <slug>` prints the entry that pins it. The film-clock tags are read at the player's `DS`, which differs per build: the capture takes it from the layout matching `PLAYONE.EXE`'s SHA-256 ([`tac/playone.py`](../../python/stunt_reel/tac/playone.py); `0x0F46` for the unpatched demo under dosbox-automation).
 
 ## 3. Keep a baseline
 
@@ -58,7 +58,7 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
 
 Open `compare_regressed_*.png` and `compare_improved_*.png` (`reference | before | after | |ref-before| | |ref-after|`) before trusting the mean; a mean can hide a regression or an improvement. Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, candidate sweeps).
 
-For a side-by-side of one tick, decode a reference `.idx` page (64000 bytes, 320x200) with its `palettes_NNNN.json` and paste it beside ours, `RenderStore(...).frame(tick)` in `stunt_reel.parity_artifacts`. A second's `preview/` PNG shows only that second's first tick, so use it only when that is the tick you want.
+For a side-by-side of one tick, find the frame whose `film_tick` is that tick in the capture's `meta.json` (`tick_NNNN.idx` is numbered by capture order, not by tick), decode its `frame_file` (64000 bytes, 320x200) with its `palette_file`, and paste it beside ours, `RenderStore(...).frame(tick)` in `stunt_reel.parity_artifacts`. A second's `preview/` PNG shows only that second's first tick, so use it only when that is the tick you want.
 
 ## 7. Record the result
 
