@@ -164,11 +164,21 @@ def test_the_first_reason_that_applies_is_the_one_printed(
     assert line.endswith(f"  not comparable: {reason}")
 
 
-def test_a_film_without_noise_sigma_prints_its_delta_unjudged() -> None:
+@pytest.mark.parametrize(
+    ("ssim", "verdict"),
+    [
+        (0.8987, "delta +0.0001000  DRIFT: |delta| 0.0001000 > 0.0000001"),
+        (0.89860004, "delta +0.0000000  no drift"),
+        (0.8986, "delta +0.0000000  no drift"),
+    ],
+)
+def test_a_film_without_noise_sigma_judges_drift_at_the_tables_precision(
+    ssim: float, verdict: str
+) -> None:
     line = comparison_line(
-        _reference(film="intro", noise_sigma=None), _report(0.8987), changed=lambda *_a: None
+        _reference(film="intro", noise_sigma=None), _report(ssim), changed=lambda *_a: None
     )
-    assert line == f"{HEAD}  delta +0.0001000  drift not judged: intro has no noise_sigma"
+    assert line == f"{HEAD}  {verdict}"
 
 
 @pytest.mark.parametrize(
