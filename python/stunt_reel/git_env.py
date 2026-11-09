@@ -11,7 +11,7 @@ import os
 import shutil
 import subprocess
 
-__all__ = ["COMMAND_SCOPE", "git_location_vars", "isolated_env"]
+__all__ = ["COMMAND_SCOPE", "INDEX_SCOPE", "git_location_vars", "isolated_env"]
 
 #: Listed by every git ``--local-env-vars`` reports; kept so a failing git still strips them.
 _CORE = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
@@ -24,6 +24,11 @@ COMMAND_SCOPE = frozenset(
         "GIT_NO_REPLACE_OBJECTS",
         "GIT_REPLACE_REF_BASE",
     }
+)
+
+#: The caller's index and the object stores its staged blobs may live in.
+INDEX_SCOPE = frozenset(
+    {"GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"}
 )
 
 
@@ -51,8 +56,9 @@ def git_location_vars() -> frozenset[str]:
 def isolated_env(*, keep_index: bool) -> dict[str, str]:
     """``os.environ`` without :func:`git_location_vars`.
 
-    With *keep_index*, ``GIT_INDEX_FILE`` stays: a pre-commit check that reads the index must
-    see the one ``git commit -- <paths>`` builds, not the repository's own.
+    With *keep_index*, :data:`INDEX_SCOPE` stays: a pre-commit check that reads the index must
+    see the one ``git commit -- <paths>`` builds, not the repository's own, and the objects it
+    names.
     """
-    drop = git_location_vars() - {"GIT_INDEX_FILE"} if keep_index else git_location_vars()
+    drop = git_location_vars() - INDEX_SCOPE if keep_index else git_location_vars()
     return {key: value for key, value in os.environ.items() if key not in drop}

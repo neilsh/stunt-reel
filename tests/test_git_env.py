@@ -18,6 +18,7 @@ def caller_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIT_COMMON_DIR", "/caller/.git")
     monkeypatch.setenv("GIT_INDEX_FILE", "/caller/.git/next-index.lock")
     monkeypatch.setenv("GIT_ASKPASS", "askpass")
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", "/caller/.git/objects")
     monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "'safe.directory'='/caller'")
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     monkeypatch.setenv("GIT_NO_REPLACE_OBJECTS", "1")
@@ -28,6 +29,7 @@ def caller_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_the_caller_repository_and_index_are_dropped() -> None:
     env = isolated_env(keep_index=False)
     assert not {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"} & env.keys()
+    assert "GIT_OBJECT_DIRECTORY" not in env
     assert env["GIT_ASKPASS"] == "askpass"
     assert env["GIT_CONFIG_PARAMETERS"] == "'safe.directory'='/caller'"
     assert env["GIT_CONFIG_COUNT"] == "1"
@@ -36,10 +38,11 @@ def test_the_caller_repository_and_index_are_dropped() -> None:
 
 
 @pytest.mark.usefixtures("caller_env")
-def test_keep_index_keeps_only_the_index() -> None:
+def test_keep_index_keeps_the_index_and_its_objects() -> None:
     env = isolated_env(keep_index=True)
     assert not {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"} & env.keys()
     assert env["GIT_INDEX_FILE"] == "/caller/.git/next-index.lock"
+    assert env["GIT_OBJECT_DIRECTORY"] == "/caller/.git/objects"
 
 
 def test_the_list_is_the_one_git_reports() -> None:
