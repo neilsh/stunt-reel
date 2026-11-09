@@ -20,7 +20,7 @@ GIT = shutil.which("git") or "git"
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not on PATH")
 
 STUB = """\
-import os, pathlib, sys
+import os, pathlib, subprocess, sys
 log = pathlib.Path(sys.argv[1])
 seen = sorted(name for name in os.environ if name.startswith("GIT_") and name != "GIT_TRACE")
 with log.open("a", encoding="utf-8") as out:
@@ -28,6 +28,10 @@ with log.open("a", encoding="utf-8") as out:
 if pathlib.Path("FAIL").exists():
     print("[gate] FAIL: a step failed")
     sys.exit(1)
+if pathlib.Path("SCRIBBLE").exists():
+    pathlib.Path("SCRIBBLE").write_text("scribbled", encoding="utf-8")
+if pathlib.Path("GRAB").exists():
+    subprocess.run(["git", "worktree", "add", "-q", "../other", "topic"], check=True)
 line = pathlib.Path("LINE").read_text().strip() if pathlib.Path("LINE").exists() else ""
 print("[gate] PASS")
 print("[gate] gate line: " + (line or "mise run check passes."))
@@ -190,6 +194,36 @@ def test_one_failing_commit_leaves_the_branch_untouched(
     assert _git(repo, "for-each-ref", "refs/backup") == ""
     assert failing in capsys.readouterr().err
     assert len(log.read_text(encoding="utf-8").splitlines()) == 4  # nothing after the failure
+
+
+def test_a_gate_that_changes_tracked_files_still_gets_the_branch_back(
+    repo: Path, stub: tuple[list[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    command, _ = stub
+    _commit(repo, {"SCRIBBLE": "four"}, "fix: four\n", 1_700_000_400)
+    _commit(repo, {"SCRIBBLE": "five"}, "fix: five\n", 1_700_000_500)
+    old_tip = _git(repo, "rev-parse", "topic")
+
+    assert regate.regate("main", command, repo) == 1
+
+    assert _git(repo, "symbolic-ref", "--short", "HEAD") == "topic"
+    assert _git(repo, "rev-parse", "topic") == old_tip
+    assert _git(repo, "status", "--porcelain") == ""
+    assert "SCRIBBLE" in capsys.readouterr().err
+
+
+def test_a_branch_that_cannot_be_checked_out_again_is_not_moved(
+    repo: Path, stub: tuple[list[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    command, _ = stub
+    _commit(repo, {"GRAB": "x"}, "fix: four\n", 1_700_000_400)
+    old_tip = _git(repo, "rev-parse", "topic")
+
+    assert regate.regate("main", command, repo) == 1
+
+    assert _git(repo, "rev-parse", "topic") == old_tip
+    assert _git(repo, "for-each-ref", "refs/backup") == ""
+    assert "cannot check topic out again" in capsys.readouterr().err
 
 
 def test_a_dirty_tree_is_refused_before_any_gate_runs(

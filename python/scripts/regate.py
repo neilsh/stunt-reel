@@ -137,29 +137,48 @@ def _run_gate(command: Sequence[str], repo: Repo) -> str | None:
     return found if process.returncode == 0 and found else None
 
 
+def _gate_one(command: Sequence[str], repo: Repo, sha: str, progress: str) -> str:
+    """The gate line *sha* earns, checked out detached; raise ``RegateError`` when it earns none."""
+    subject = repo.git("log", "-1", "--format=%h %s", sha)
+    print(f"[regate] {progress} {subject}", flush=True)
+    repo.git("checkout", "-q", "--detach", sha)
+    line = _run_gate(command, repo)
+    if line is None:
+        raise RegateError(f"the gate failed at {subject}")
+    if changed := repo.git("status", "--porcelain"):
+        raise RegateError(f"the gate left the working tree changed at {subject}:\n{changed}")
+    return line
+
+
 def _gate_each(command: Sequence[str], repo: Repo, commits: list[str], branch: str) -> list[str]:
     """Each commit's gate line, gating them in order in a detached checkout.
 
-    The checkout of *branch* is restored whatever happens.
+    *branch* is checked out again afterwards, discarding what a gate wrote to tracked files (the
+    tree was clean before the first run); raise ``RegateError`` when it cannot be.
     """
-    lines: list[str] = []
     try:
-        for number, sha in enumerate(commits, start=1):
-            subject = repo.git("log", "-1", "--format=%h %s", sha)
-            print(f"[regate] {number}/{len(commits)} {subject}", flush=True)
-            repo.git("checkout", "-q", "--detach", sha)
-            line = _run_gate(command, repo)
-            if line is None:
-                raise RegateError(f"the gate failed at {subject}")
-            if repo.git("status", "--porcelain"):
-                raise RegateError(f"the gate left the working tree changed at {subject}")
-            lines.append(line)
-    finally:
+        lines = [
+            _gate_one(command, repo, sha, f"{number}/{len(commits)}")
+            for number, sha in enumerate(commits, start=1)
+        ]
+    except BaseException:
         try:
-            repo.git("checkout", "-q", branch)
+            _check_out_again(repo, branch)
         except RegateError as error:
-            print(f"[regate] cannot check {branch} out again: {error}", file=sys.stderr)
+            print(f"[regate] {error}", file=sys.stderr)
+        raise
+    _check_out_again(repo, branch)
     return lines
+
+
+def _check_out_again(repo: Repo, branch: str) -> None:
+    """Check *branch* out, overwriting the working tree's changes; raise when git refuses."""
+    try:
+        repo.git("checkout", "-q", "--force", branch)
+    except RegateError as error:
+        raise RegateError(
+            f"cannot check {branch} out again, so HEAD is detached: {error}"
+        ) from error
 
 
 def _rebuild(repo: Repo, commits: list[str], lines: list[str]) -> str:
