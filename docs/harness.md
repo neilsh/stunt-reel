@@ -31,8 +31,9 @@ Nothing here is a fact about Stunt Island.
     so the user sees the revised version.
   * A [startable](agents/issue-tracker.md#conventions) issue labelled `ready-for-agent` goes
     straight to a plan, or to implementation when it needs none; brainstorming is for the rest.
-  * On a PR outside a stack, turn on auto-merge once `mise run pr-threads -- <number>` reports
-    0 open review threads and every outside-diff finding `--all` lists has an answer.
+  * On a PR outside a stack, turn on auto-merge once CodeRabbit has finished reviewing the head
+    commit, `mise run pr-threads -- <number>` reports 0 open review threads, and every
+    outside-diff finding `--all` lists has an answer.
 * **Glob and search from a named folder.** Claude Code's Glob ignores `.gitignore` and `.ignore`,
   so from the root it walks every worktree under `.claude/worktrees/` (about 200,000 files each
   through their data-root links) and can time out. Pass `path`, or `ls` the root.
