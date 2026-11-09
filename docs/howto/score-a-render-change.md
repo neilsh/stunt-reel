@@ -8,14 +8,14 @@ The commands of the parity loop. What each step measures, and how to read its ou
 
 * `--no-build` reuses the release binary (a parallel session may hold it); the drift check then assumes the binary came from the checkout.
 * `--no-render` re-scores the existing `_current` trees.
-* `--retime N` re-scores them relabelled by N ticks ([`probes.md`](../../research/parity/probes.md) section 6) and writes a `_retime<N>` report instead of overwriting the baseline.
-* `--reuse build/parity/previous` scores the previous render without re-rendering.
+* `--retime N` scores the render relabelled by N ticks ([`probes.md`](../../research/parity/probes.md) section 6) and writes a `_retime<N>` report instead of overwriting the baseline report. On its own it renders first, which moves `_current` into `previous`; to retime the existing render, add `--no-render --no-build`.
+* `--reuse build/parity/previous` scores the previous render without re-rendering. Without `--retime` its report replaces `build/parity/report/<film>_current`, so copy that report first or score the previous render by hand into another directory (section 5).
 
-The latest render and report are `build/parity/ours/<film>_current` and `build/parity/report/<film>_current`. A capture missing from `<data root>/captures/<film>/<id>` is named with the command that makes it.
+The latest render and report are `build/parity/ours/<film>_current` and `build/parity/report/<film>_current`. A capture missing from `<data root>/captures/<slug>/frames` is named with the command that makes it.
 
 ## 2. Capture a reference
 
-Once per `PLAYONE` build: `mise run capture-ref`; another film: `mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM` ([`capture.md`](../../research/playone-exe/capture.md) § 4). It writes a new capture and never changes an existing one. Promoting a capture is a reviewed commit to `research/parity/references.toml`, which names it by id and content hash. The film-clock tags are read at the player's `DS`, which differs per build, so `DS` (`0x1575` for the demo) is a capture parameter.
+Once per `PLAYONE` build: `mise run capture-ref`; another film: `mise run capture-ref -- --film corpus/stisldem/VAULT/INTRO.FLM` ([`capture.md`](../../research/playone-exe/capture.md) § 4). By default a successful capture replaces the film's stored capture, `<data root>/captures/<slug>/frames`, by swap, and until `research/parity/references.toml` is updated a replaced reference fails its pinned hash; `--out <dir>` writes a separate capture and replaces nothing. Promoting a capture is a reviewed commit to `references.toml`, which names it by film slug and content hash. The film-clock tags are read at the player's `DS`, which differs per build, so `DS` (`0x1575` for the demo) is a capture parameter.
 
 ## 3. Keep a baseline
 
@@ -43,7 +43,7 @@ stuntreel --headless <film>.FLM --all <film>.ALL --tick-range 0..=1342 --sidata 
 ## 5. Score and compare by hand
 
 ```bash
-stuntreel parity --reference <data root>/captures/<film>/<id> --test build/parity/ours/<film> \
+stuntreel parity --reference <data root>/captures/<slug>/frames --test build/parity/ours/<film> \
     --output build/parity/report/<film> \
     --compare <previous report.json> --compare-test <previous render dir> \
     --noise-sigma <σ> --build-floor 0
@@ -52,13 +52,13 @@ stuntreel parity --reference <data root>/captures/<film>/<id> --test build/parit
 * Every run writes `report.json` and `contact_NNNN.png` sheets (`reference | rendered | |difference|`), which show only the first frame; `--compare` adds `compare.json`.
 * `--compare` prints the means over the common frames, the 5 most improved and regressed frames and the count moved by more than 0.005, and writes `compare.json`.
 * `--compare-test` adds the verdict on the windows the change touched, for example `[verdict] changed 27/121 frames: 15 closer, 12 further, 0 within noise; mean Δ +0.101 on changed windows`.
-* `--noise-sigma` is the film's `noise_sigma` in `references.toml`. `--build-floor` labels frames with at most N changed pixels as build noise.
+* `--noise-sigma` is the film's `noise_sigma` in `references.toml`; omit it for a film whose row has none, and the verdict then goes by the sign of Δ (only a Δ of exactly 0 is within noise). `--build-floor` labels frames with at most N changed pixels as build noise.
 
 ## 6. Look at the worst movers
 
 Open `compare_regressed_*.png` and `compare_improved_*.png` (`reference | before | after | |ref-before| | |ref-after|`) before trusting the mean; a mean can hide a regression or an improvement. Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, candidate sweeps).
 
-For a side-by-side of one tick, decode a reference `.idx` page (64000 bytes, 320x200) with its `palettes_NNNN.json` and paste it beside ours (`RenderStore(...).frame(tick)` in `stunt_reel.parity_artifacts`, or the second's `preview/` PNG).
+For a side-by-side of one tick, decode a reference `.idx` page (64000 bytes, 320x200) with its `palettes_NNNN.json` and paste it beside ours, `RenderStore(...).frame(tick)` in `stunt_reel.parity_artifacts`. A second's `preview/` PNG shows only that second's first tick, so use it only when that is the tick you want.
 
 ## 7. Record the result
 
