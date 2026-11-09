@@ -302,6 +302,7 @@ def plant_tree(render: Path, out: Path, plants: list[tuple[Fault, range]]) -> No
         record.film,
         record.geometry,
         ((entry, planted.get(entry.tick) or source.stored(entry.tick)) for entry in record.ticks),
+        adapter=record.adapter,
     )
 
 

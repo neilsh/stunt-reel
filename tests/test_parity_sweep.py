@@ -112,7 +112,9 @@ def test_actor_iou_on_synthetic_planes(tmp_path: Path) -> None:
     frame = StoredFrame(
         indices=bytes(width * geometry.height), layers=bytes(layer), palette=bytes(768)
     )
-    parity_artifacts.write_render_store(tmp_path, FilmId(), geometry, [(tick_entry(7), frame)])
+    parity_artifacts.write_render_store(
+        tmp_path, FilmId(), geometry, [(tick_entry(7), frame)], adapter=None
+    )
     (tmp_path / "tick_0001.idx").write_bytes(bytes(capture))
     (tmp_path / "meta.json").write_text(
         json.dumps({"film": "CTRY.FLM", "frames": [{"film_tick": 7}, {"film_tick": 9}]}),

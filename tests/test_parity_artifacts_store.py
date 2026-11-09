@@ -141,7 +141,7 @@ def test_read_page_reads_a_tick_through_the_store(tmp_path: Path) -> None:
 def test_rewriting_a_store_withdraws_its_record_first(tmp_path: Path) -> None:
     write_store(tmp_path, _STORE_TICKS)
     with pytest.raises(ArtifactError, match="at least one tick"):
-        write_render_store(tmp_path, FilmId(), TINY, [])
+        write_render_store(tmp_path, FilmId(), TINY, [], adapter=None)
     assert not (tmp_path / RENDER_DOCUMENT).exists()
     with pytest.raises(ArtifactError, match="re-render"):
         RenderStore(tmp_path)

@@ -203,7 +203,7 @@ def test_read_page_keeps_the_high_byte_of_a_layer_id(tmp_path: Path) -> None:
     layer_bytes = bytearray(24)
     layer_bytes[2 * 5 : 2 * 5 + 2] = (0x0100).to_bytes(2, "little")
     frame = StoredFrame(indices=bytes(12), layers=bytes(layer_bytes), palette=bytes(768))
-    write_render_store(tmp_path, FilmId(), geometry, [(tick_entry(7), frame)])
+    write_render_store(tmp_path, FilmId(), geometry, [(tick_entry(7), frame)], adapter=None)
 
     page = read_page(RenderStore(tmp_path), 7)
 
@@ -219,5 +219,6 @@ def test_a_viewport_taller_than_the_raster_is_refused(tmp_path: Path) -> None:
             FilmId(),
             Geometry(width=4, height=3, viewport_rows=4),
             [(tick_entry(7), frame)],
+            adapter=None,
         )
     assert invalid.value.kind == "geometry"
