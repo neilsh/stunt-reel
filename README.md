@@ -49,7 +49,7 @@ Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc e
 
 | Document | Covers |
 | --- | --- |
-| [`docs/development.md`](docs/development.md) | Requirements, setup, workflows, project layout, the quality gate and every `mise` task |
+| [`docs/development.md`](docs/development.md) | Requirements, setup, project layout, the quality gate, every `mise` task and the how-to index |
 | [`docs/SPEC.md`](docs/SPEC.md) | Goals, invariants `[I1]`–`[I8]`, evidentiary tiers, verification matrix |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module routing to specification anchors and research notes |
 | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog and Kaitai layouts |

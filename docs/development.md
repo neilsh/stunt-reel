@@ -1,6 +1,6 @@
 # Development guide
 
-Setup, workflows and the quality gate for working on `stunt-reel`. The project overview is in the [README](../README.md); contributor and agent rules are in [`AGENTS.md`](../AGENTS.md).
+Setup, project layout and the quality gate for working on `stunt-reel`; each task's commands are a [how-to guide](#how-to-guides). The project overview is in the [README](../README.md); contributor and agent rules are in [`AGENTS.md`](../AGENTS.md).
 
 ## Requirements
 
@@ -42,9 +42,9 @@ Several agents can work at once, each in its own `git worktree` under `.claude/w
 
 Code reads them there through `stunt_reel.dataroot` (`data_root()`, `corpus_root()`, `resolve_data_path()`), so a worktree holds no link and needs no setup step; a `--film corpus/...` argument resolves against the data root too, and a clone that keeps its game files in its own `corpus/` is read there only when `STUNT_DATA_ROOT` is unset, the data root has no `corpus/` directory at all (an empty one still wins), and the primary checkout's `corpus/` holds a folder of game files ([ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md)). Build outputs, the Python tool caches and `.venv` stay per worktree (see [Shared tool cache](#shared-tool-cache)). `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` first converts an old-layout data root (`stisldem`, `si_archive`, `oracle`, `target_bin`, `reference`) to the layout above, refusing a root that holds both old and new names, then moves an existing in-checkout `corpus/` into it. Worktrees an older `init` linked keep their junctions until reaped: `reap` finds them as reparse points and unlinks them, and `LINK_TARGETS` in `python/stunt_reel/dataroot.py` names the old paths for `init`'s report and `--migrate`.
 
-A film needs an `.ALL` to be captured: one beside its `.FLM`, or one that `make-all` stored under `captures/<film>/archives/`. The demo ships one for `INTRO` and `CTRY` only; for any other film run `mise run make-all -- --film <path>.FLM` once (about 90 s or more: `MAKEONE.EXE` plays the film in real time on dosbox-automation), which stores it as the film's one archive, `captures/<film>/archives/`, where `<film>` is the film's parent folder and stem (`vault-ctry`; `--name` overrides), and `capture-ref` then checks it against the film's hash ([ADR 0023](adr/0023-make-all-generates-archives-with-makeone.md), [`research/makeone-exe/driving.md`](../research/makeone-exe/driving.md)). `make-all` also writes the film's manifest, `manifests/all/<film>.toml`, for review and commit; once committed, any checkout with the game files rebuilds the `.ALL` from it into `target/linked/` without the emulator (`mise run make-all -- --manifest-only --film <path>.FLM` writes one from an archive stored earlier; [ADR 0032](adr/0032-a-films-archive-is-committed-as-a-manifest.md)). Nothing writes `corpus/`. A film has one capture of each kind, and a successful `capture-ref` or `capture-video` replaces the old one by swap; `--out` writes anywhere else, replaces nothing and refuses a directory that already holds files. Parity scores a film against its frame capture only while the content hash [`research/parity/references.toml`](../research/parity/references.toml) pins still matches, so promoting a capture is a reviewed commit, and a machine without it, or with a replaced one, fails naming the film ([ADR 0022](adr/0022-captures-are-add-only-beside-a-read-only-corpus.md), [ADR 0028](adr/0028-a-film-has-one-capture-of-each-kind.md)). Retire a worktree the way its tool does, or an older linked one with `mise run reap -- --yes`, which unlinks the junctions before `git worktree remove` runs; `mise run clean -- --yes` only clears outputs of a checkout you are keeping. See [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) and [ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md).
+A film needs an `.ALL` to be captured: one beside its `.FLM`, or one that `make-all` stored under `captures/<film>/archives/` and recorded as a committed manifest under `manifests/all/` ([Make a film's archive](howto/make-a-films-archive.md)). The demo ships one for `INTRO` and `CTRY` only. Nothing writes `corpus/`. A film has one capture of each kind, and a successful `capture-ref` or `capture-video` replaces the old one by swap; `--out` writes anywhere else, replaces nothing and refuses a directory that already holds files. Parity scores a film against its frame capture only while the content hash [`research/parity/references.toml`](../research/parity/references.toml) pins still matches, so promoting a capture is a reviewed commit, and a machine without it, or with a replaced one, fails naming the film ([ADR 0022](adr/0022-captures-are-add-only-beside-a-read-only-corpus.md), [ADR 0028](adr/0028-a-film-has-one-capture-of-each-kind.md)). Retire a worktree the way its tool does, or an older linked one with `mise run reap -- --yes`, which unlinks the junctions before `git worktree remove` runs; `mise run clean -- --yes` only clears outputs of a checkout you are keeping. See [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) and [ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md).
 
-The corpus ships the unpatched 1992 executables. `mise run game-builds` copies `corpus/stuntisl` to `<data>/builds/unpatched` and, with Disney's Patch #3 from `corpus/patches` applied as `PATSI.BAT` applies it, to `<data>/builds/patch3`, and writes `<data>/builds/patch3-manifest.json` with every file the patch adds, replaces or deletes. `capture-ref`, `play` and `make-all` run another build with `--game-root <data>/builds/patch3`; the capture picks the offsets of that `PLAYONE.EXE` by its hash and records it in `meta.json` as `playone_build` (its layout name) and `playone_sha256` (the `PLAYONE.EXE` hash), whether the engine came from the film's own folder or from `--game-root` ([`research/playone-exe/patch3.md`](../research/playone-exe/patch3.md)).
+The corpus ships the unpatched 1992 executables; `mise run game-builds` makes an unpatched and a Patch #3 tree under `<data>/builds/`, which `capture-ref`, `play` and `make-all` run with `--game-root`, and a capture records which `PLAYONE.EXE` it ran in `meta.json` ([Build the game builds](howto/build-the-game-builds.md), [`research/playone-exe/patch3.md`](../research/playone-exe/patch3.md)).
 
 ---
 
@@ -69,93 +69,21 @@ The corpus ships the unpatched 1992 executables. `mise run game-builds` copies `
 
 ---
 
-## Workflows
+## How-to guides
 
-### Play a film in the original player
+One task per file in [`docs/howto/`](howto/):
 
-```powershell
-mise run play        # CTRY.FLM; mise run play -- --film corpus/stisldem/VAULT/INTRO.FLM
-```
-
-`python/scripts/play.py` stages the film and its archive, launches `PLAYONE.EXE`, presses the keys that select the film, and leaves the window to you until you close it.
-
-### Capture reference frames and score a render
-
-```bash
-mise run capture-ref
-cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM" \
-    --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --tick-range 0..=1342 \
-    --sidata "<data root>/corpus/siarchive/Developer/FreeFlight/SIDATA" \
-    --out-dir build/parity/ours/ctry --width 320 --height 200 --viewport-rows 185
-cargo run -p stunt-cli -- parity --reference "<data root>/captures/vault-ctry/frames" \
-    --test build/parity/ours/ctry --output build/parity/report/ctry
-# after a change: re-render, then score against the previous report (before/after sheets need its render dir)
-cargo run -p stunt-cli -- parity --reference "<data root>/captures/vault-ctry/frames"     --test build/parity/ours/ctry --output build/parity/report/ctry_new     --compare build/parity/report/ctry/report.json --compare-test build/parity/ours/ctry_prev
-```
-
-`capture-ref` stores 140 reference frames, each tagged in `meta.json` with the film clock (`film_tick`) it was captured at. `--tick-range 0..=1342` (also the default range) renders ticks 0 through 1,342, the film's last tick included (the end-hold captures sit at tick 1,342), into a render store ([ADR 0027](adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)): `frames.zst` and `layers.zst` (index and layer planes in one zstd frame per film second), `palettes.zst`, a `preview/sec_NNNN.png` per second, and `render.json` (schema version 2, written last: film identity, raster geometry, each tick's palette variables, palette index and camera, and the chunk table). Parity refuses a render from before the store with the re-render action. The comparator pairs each capture with the render at its `film_tick` (captures made before film-clock tagging must be recaptured). The comparator writes `report.json` (per-frame `ssim`/`iou`, `fade_level`, `scored`; run-level `sky_indices`, `unmatched`, `mean_ssim`, `min_ssim`, `mean_iou`, `mean_ssim_scored`, `mean_iou_scored`, `min_fade_level`, `scored_frames`, `excluded_frames`) and `contact_NNNN.png` sheets under `build/parity/report/ctry/`. `--min-fade-level <F>` (default 0.25) sets the floor for the end-of-film palette fade: the film's authored brightness decides whether a frame is scored and the measured level stays a cross-check, frames below the floor are reported but not scored, and the headline is `mean_ssim_scored` with its scored-frame count (see [`research/parity/method.md`](../research/parity/method.md#21-fade-floor)).
-
-`--compare <report.json>` pairs the fresh scores with a previous report by `film_tick` and prints mean SSIM/IoU before → after over the frames present in both, the 5 most improved and 5 most regressed frames, and how many frames moved by more than 0.005; it also writes `compare.json`. The basis is `scored` (SSIM over frames scored in both runs) when both reports carry `scored`, and `all` (SSIM over all common frames) for older reports; the first `[compare]` line states which. With `--compare-test <dir>` (the previous run's render directory, with its index and layer planes) it also prints a `[verdict]` line judging each frame on the SSIM windows the change touched, adds a `verdict` object to `compare.json`, and writes `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref−before| | |ref−after|`) for the single biggest mover each way by that verdict's Δ (by frame SSIM when the previous render predates the planes and the verdict is skipped). `--noise-sigma <F>` (the film's `noise_sigma` in `research/parity/references.toml`) labels |Δ| below it as within noise, and `--build-floor <N>` labels frames with at most N changed pixels as build noise; both need `--compare-test`. The method is in [`research/parity/method.md`](../research/parity/method.md); each film's expected scores are in its expected tables in [`research/parity/references.toml`](../research/parity/references.toml).
-
-Prerequisites: `corpus/stisldem/VAULT/CTRY.FLM` and `CTRY.ALL`. No port needs to be free. How the dialog is driven (BIOS Data Area keystrokes) and how frames are sampled (post-retrace breakpoint at `0D51:0C5E`) is recorded in [`method.md`](../research/parity/method.md#1-the-loop) and [`research/playone-exe/capture.md`](../research/playone-exe/capture.md).
-
-### Render in the native engine
-
-```powershell
-cargo run -p stunt-cli -- "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL"
-```
-
-Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--tick-range <A..=B>` (0-based, inclusive 50 Hz ticks), `--at-ticks`, and the `parity` subcommand. `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn` are searched for in `--sidata <dir>` first, then the archive's directory, its parent and grandparent, then `sidata/` or `SIDATA/` inside the parent (filename case ignored); the demo's `corpus/siarchive/Developer/FreeFlight/SIDATA` needs an explicit `--sidata`.
-
-### Export a film to video container
-
-```powershell
-# Export film sequence to an MP4 video sampled at 30 fps
-cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM" \
-    --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --video build/ctry.mp4
-```
-
-Export a shape, or one frame of a film, to glTF 2.0 for viewing in Blender or any glTF viewer:
-
-```powershell
-cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAULT/CTRY.ALL" \
-    --film "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --tick 400 --out build/gltf_output/CTRY_t400.glb
-cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --shape 0x0408 --out build/gltf_output/shape.glb
-```
-
-Print the instructions one shape's `.SOD` walk executes, one line each (offset, mnemonic, operand words, `->` and the target of a taken branch), instead of adding traces to `vm.rs`:
-
-```powershell
-cargo run -p stunt-cli -- sod-trace --archive "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --shape 0x7F37
-```
-
-Draw orthographic top, side and front views of an archive's shapes, one `<ID>.png` each, with `manifest.json` recording each shape's geometry hash:
-
-```powershell
-cargo run --release -p stunt-cli -- shape-views --archive target/linked/superset/SUPERSET.ALL --shapes 7F02..=7F38 --out build/scratch/views
-```
-
-Headless video export samples the authored 50 Hz timeline at `--fps` (default 30), interpolates between slices, and encodes directly into a standard video container (`.mp4`, `.webm`, `.mkv`, or `.avi`) via `ffmpeg`, with physical $4:3$ aspect ratio correction ($320 \times 240$, `[I6]`). `--tick-range <A..=B>` limits the export to a 0-based, inclusive range of ticks. `CTRY.FLM` spans 1,342 ticks (26.84 s), producing 806 sampled frames at 30 fps; the container is trimmed to the authored span, so ffmpeg encodes 805 frames and ffprobe reports 26.833 s (nearest whole frame; 26.84 s exactly at `--fps 50`). Requires `ffmpeg` on `PATH`.
-
-### Interval-based frame capture for rapid audits
-
-```powershell
-# Capture one frame every 25 ticks (0.5 s) across the full 1,342-tick film
-cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM" \
-    --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --tick-range 0..=1341 --frame-step 25 \
-    --out-dir build/parity/ours/ctry_sparse
-```
-
-`--tick-range A..=B` takes 0-based, inclusive 50 Hz ticks (the old `--frames A..B` is now an error; it rendered ticks A-1 through B-2); `--frame-step <N>` renders every Nth tick into the store, keyed by 0-based tick. `--sample-count <N>` writes `sample_0001.png`… (1-based sample index) instead; those are not parity inputs.
-
-### Validate the format catalog against a local corpus
-
-```powershell
-mise run verify-corpus              # report anomalies
-mise run verify-corpus -- --strict  # fail on them
-```
-
-Compiles `research/formats/**/*.ksy` and checks documented headers, offsets, and opcodes against `corpus/`. Local-only: `corpus/` is gitignored and absent in CI.
+- [Play a film in the original player](howto/play-a-film.md)
+- [Build the unpatched and Patch #3 game trees](howto/build-the-game-builds.md)
+- [Make a film's archive](howto/make-a-films-archive.md) with `MAKEONE.EXE`
+- [Score a render change against `PLAYONE`](howto/score-a-render-change.md): capture a reference, render, score and compare
+- [Render a film in the native engine](howto/render-a-film.md): interactive, at an interval, or at chosen ticks
+- [Export a film to video or glTF](howto/export-a-film.md)
+- [Inspect a shape's geometry](howto/inspect-a-shape.md): `sod-trace`, `shape-views`, `shape-diff`
+- [Validate the format catalog against the corpus](howto/validate-formats-against-the-corpus.md)
+- [Run the GPU tests](howto/run-the-gpu-tests.md) under the hang watchdog
+- [Re-gate a branch after a rebase](howto/re-gate-after-a-rebase.md)
+- [Take a commit from another session's branch](howto/take-a-commit-from-another-session.md)
 
 ---
 
@@ -192,17 +120,22 @@ The gate is `mise run check`: one script ([gate.py](../python/scripts/gate.py), 
 | `verify-corpus` | `.ksy` catalog check against `corpus/` |
 | `test-corpus` | the Rust tests that read the game files, which `test-rust` skips |
 | `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
-| `frame` | render a list of film ticks in one process and write each beside its reference capture frame (`mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build]`); PNGs and the render store go to `build/scratch/frame/<film>/`. `stuntreel --at-ticks T,T,... --out-dir DIR` is the underlying flag |
-| `shape-diff` | run `stuntreel shape-views` once per value of a `DBG_*` switch and list the shapes whose geometry hash or decode failure changes (`mise run shape-diff -- --var DBG_X=0,1 [--shapes IDS\|FILE] [--archive X.ALL] [--views top,side,front] [--no-build]`); `build/scratch/shape-diff/sheet.png` draws only those shapes, one column per value. The archive defaults to `target/linked/superset/SUPERSET.ALL` (`mise run superset-all`) |
+| `frame` | render a list of film ticks in one process and write each beside its reference capture frame ([Render a film](howto/render-a-film.md#render-chosen-ticks-beside-their-capture)) |
+| `shape-diff` | list the shapes whose geometry hash or decode failure changes with a `DBG_*` switch, and draw only those ([Inspect a shape](howto/inspect-a-shape.md#find-the-shapes-a-switch-changes)) |
 | `parity-probe`, `verify-docs`, `unlzexe`, `pair-builds`, `xref`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
 The pre-commit hook is installed by `mise run init` (`core.hooksPath = .githooks`) and holds no command of its own: it runs `mise run pre-commit`, which is [prek](https://github.com/j178/prek) over [`prek.toml`](../prek.toml) ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md)). prek sets unstaged edits aside first, so the hooks check what is being committed. Its local hooks are leaf tasks of `mise.toml` — `diff-check`, `crlf-check` (CRLF in a staged text file's working copy, which `.gitattributes` would normalise away but the format check still reads; repaired when that is the only difference), `test-docs` and `check-work-frozen` (a file added to a frozen work folder, or its outcome changed) on every commit, `fmt-check-rust` when Rust is staged, `fmt-check-py` and `lint-py` when Python is — so they cannot drift from the gate the way the deleted `.pre-commit-config.yaml` did; the rest are prek built-ins (large files, Windows-illegal names, case conflicts, merge conflicts, TOML and YAML syntax, private keys). No hook changes what is committed, and `crlf-check` alone writes a file, one git already sees as unchanged: `mise run fix` (or `mise run fmt`, which only formats) fixes a format failure. It catches what commits most often broke (conflict markers left by a rebase, broken doc links) in seconds; it does not replace `mise run check` before a commit, and CI runs the built-ins on every pull request and push to `main`. Setting `core.hooksPath` turns off untracked hooks in `.git/hooks`, so `.githooks/pre-commit` and `.githooks/pre-push` chain to one there if present, and `init` names any other it turns off. `git commit --no-verify` skips the hook once.
 
 The gate's lanes build the check profile into `target/check` and the no-default-features matrix into `target/matrix`, so those builds can run beside the `target/` build instead of waiting on its lock. All three directories sit under `target/`, which `.gitignore`, ruff's exclude, the recursive walkers and `mise run clean` already cover.
 
-CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) invokes the mise tasks instead of restating them. Every pull request runs the full `mise run check` gate on Ubuntu, with Mesa's lavapipe installed and `STUNT_REQUIRE_GPU=1` set so a missing adapter fails the GPU tests instead of skipping them ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)), and `check-windows-smoke` on Windows for the tests that can behave differently there. Windows gets a smoke test rather than the whole gate on pull requests because every Windows-only behaviour in this repository lives in the Python tree — `crates/` has no `cfg(windows)` — while a warm Windows Rust build costs about nine minutes. Pushes to `main` run the full `check-windows` too (format, lint, typecheck and both test suites; GPU tests skip without a driver), and `workflow_dispatch` runs every job on any branch. A separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy; both run on every pull request and push rather than being path-filtered, since the runners are free once the repository is public. The cargo cache falls back to the newest previous lockfile through `restore-keys`, so a dependency bump rebuilds a delta instead of the whole workspace — a cold gate run measured 10m40 against 4m19 warm. Each job installs only the toolchain its task list uses (`rust`, `python`, `uv`, and Java with the Kaitai compiler where `test-py` runs), because `mise run` otherwise installs every tool `mise.toml` declares before its first task — compiling `cargo-deny` and `cargo-llvm-cov` from source and downloading DOSBox inside the gate — so the jobs set `MISE_AUTO_INSTALL=false`. Corpus- and emulator-dependent tasks stay local. A ruleset on `main` requires the four jobs that run on every pull request — `quality`, `windows-smoke`, `msrv` and `deny` — and blocks force pushes and deletion; repository admins may bypass it to push straight to `main`. The full Windows gate runs only on pushes to ... (line truncated to 2000 chars)
+CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) invokes the mise tasks instead of restating them. Every pull request runs the full `mise run check` gate on Ubuntu, with Mesa's lavapipe installed and `STUNT_REQUIRE_GPU=1` set so a missing adapter fails the GPU tests instead of skipping them ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)), and `check-windows-smoke` on Windows for the tests that can behave differently there. Windows gets a smoke test rather than the whole gate on pull requests because every Windows-only behaviour in this repository lives in the Python tree — `crates/` has no `cfg(windows)` — while a warm Windows Rust build costs about nine minutes. Pushes to `main` run the full `check-windows` too (format, lint, typecheck and both test suites; GPU tests skip without a driver), and `workflow_dispatch` runs every job on any branch. A separate job checks the declared MSRV (`1.88`), and a `cargo deny` job enforces the dependency policy; both run on every pull request and push rather than being path-filtered, since the runners are free once the repository is public. The cargo cache falls back to the newest previous lockfile through `restore-keys`, so a dependency bump rebuilds a delta instead of the whole workspace — a cold gate run measured 10m40 against 4m19 warm. Each job installs only the toolchain its task list uses (`rust`, `python`, `uv`, and Java with the Kaitai compiler where `test-py` runs), because `mise run` otherwise installs every tool `mise.toml` declares before its first task — compiling `cargo-deny` and `cargo-llvm-cov` from source and downloading DOSBox inside the gate — so the jobs set `MISE_AUTO_INSTALL=false`. Corpus- and emulator-dependent tasks stay local. A ruleset on `main` requires the four jobs that run on every pull request — `quality`, `windows-smoke`, `msrv` and `deny` — and blocks force pushes and deletion; repository admins may bypass it to push straight to `main`. The full Windows gate runs only on pushes to `main`, so it is not a required check. Actions are pinned to commit SHAs with the release in a trailing comment, and Renovate bumps them ([Dependency updates](#dependency-updates)).
 
-The `gpu` test binary (`crates/stunt-render/tests/gpu/`, kept apart from the merged `it` binary so the watchdog can run it alone) exercises the Vulkan/DX12/GL loader and vendor driver locks, and a wedge there leaves a plain `cargo test` waiting forever without printing a result. Every test in it wraps its body in `common::gpu_test`, which holds one process-wide lock and runs the body on a thread it joins before releasing the lock; opening a renderer outside it panics. The join is the point: on 2026-11-07, 12 of 150 runs on an NVIDIA RTX 4070 laptop hung because a thread that had used NVIDIA's OpenGL driver (`nvoglv64.dll`, reached through the software-only adapter's all-backends instance, or a dropped GL instance's `wgpu-hal WGL Instance Thread`) exited after an earlier lock had already been released, and its `DllMain` detach, holding the loader lock, deadlocked against the next test's Vulkan `request_device` loading a DLL; with the join, 200 runs on the same machine passed. For the same reason a test that builds its own `wgpu::Instance` leaves out `Backends::GL`: wgpu ends the WGL thread after the instance drops, outside any lock. Run GPU render tests through `mise run test-render -- --runs 20` (or `uv run python python/scripts/watch_render_test.py`): it builds the binary once, gives each attempt a 60-second wall-clock bound (`--timeout-s`), kills the whole process tree on expiry, and prints `HANG` with the elapsed time, the last 20 stdout lines and the child-process count, exiting 1. If it fires, do not leave the run unbounded: re-run with a longer `--timeout-s` and attach a debugger to the stuck process, or narrow it with `--test-threads 1`, and keep the diagnostics.
+### GPU tests
+
+The `gpu` test binary (`crates/stunt-render/tests/gpu/`, kept apart from the merged `it` binary so the watchdog can run it alone) exercises the Vulkan/DX12/GL loader and vendor driver locks, and a wedge there leaves a plain `cargo test` waiting forever without printing a result; [run it under the watchdog](howto/run-the-gpu-tests.md). Every test in it wraps its body in `common::gpu_test`, which holds one process-wide lock and runs the body on a thread it joins before releasing the lock; opening a renderer outside it panics. The join is the point: a thread that had used NVIDIA's OpenGL driver (`nvoglv64.dll`, reached through the software-only adapter's all-backends instance, or a dropped GL instance's `wgpu-hal WGL Instance Thread`) and exited after the lock was released ran its `DllMain` detach holding the loader lock, and deadlocked against the next test's Vulkan `request_device` loading a DLL (`[Bounded Observation]`: one NVIDIA RTX 4070 laptop, 12 hangs in 150 runs without the join, none in 200 with it). For the same reason a test that builds its own `wgpu::Instance` leaves out `Backends::GL`: wgpu ends the WGL thread after the instance drops, outside any lock. _Source: [2026-11-07: GPU tests hang on an NVIDIA laptop](../work/2026-11/distill-development/journal.md#2026-11-07-gpu-tests-hang-on-an-nvidia-laptop)._
+
+### `stunt-core` test kinds
+
 
 `stunt-core` tests come in three kinds. Named single inputs with exact expected results go in the `*_spec.rs` and `*_test.rs` files. Never-panics checks over random or mutated bytes are the fixed-seed `XorShift64` loops in the `*_fuzz.rs` files. A property that must hold for every valid input goes in a `*_props.rs` file, or in a `props` module beside the crate-private code it tests: write then read gives back the input, two implementations of one rotation agree, sampling at a keyframe returns that keyframe. These use [proptest](https://docs.rs/proptest), which builds constrained inputs (unit quaternions, timelines with same-tick slices) from composable strategies and shrinks a failure to a minimal case. Each runs 256 cases from a fixed seed, so the gate sees the same cases every run; setting `PROPTEST_CASES=10000` or `PROPTEST_RNG_SEED=<n>` for a `mise run test-rust` explores further without an edit. No regression files are written: when a property fails, add its shrunk input to the matching spec file as a named test, then fix the code or the property.
 
@@ -210,19 +143,11 @@ The `gpu` test binary (`crates/stunt-render/tests/gpu/`, kept apart from the mer
 
 The subject is a Conventional Commit, e.g. `feat(core): add a parser`. Write a body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or journal entry that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. Close with the gate line a passing `mise run check` prints last, such as `mise run check passes.` or `mise run check-docs passes; check-rust not run; check-py not run.` The commit-msg hook (`mise run commit-msg-check`) checks the subject and the gate line.
 
-### A commit from another session's branch
-
-A commit taken from another session's branch (a cloud session's) keeps that session's author, which the pre-push hook rejects. In a clean checkout (`git status --porcelain` prints nothing, since the gate tests untracked and unstaged files too), run `git cherry-pick --no-commit <sha>`, then `mise run check -- --full` on the picked tree, then `git commit -F <message>` with `<sha>`'s message, its gate line replaced by the one the gate printed. `--no-commit` carries no author over, so the author is you, the commit hooks check the picked changes, and the gate line states this run.
-
-### Re-gating a branch after a rebase
-
-A rebase gives every commit a new tree, so the commit-msg hook can no longer match its gate line to a passing run. In a clean checkout, `mise run regate -- <base>` ([regate.py](../python/scripts/regate.py)) gates each commit of `<base>..HEAD` detached, each in its own scope (`-- --full` after the base reaches every run), without the variables `git rev-parse --local-env-vars` lists: `git rebase --exec "mise run check"` exports `GIT_DIR`, and the tests that run git then act on the real repository. Only when every run passes does it rewrite each gate line, keeping trees, authors and dates, and move the branch; the old tip goes to `refs/backup/regate/<branch>`, whose reflog keeps earlier ones. It never pushes.
-
 ### The gate line is checked
 
 A commit body ends with the gate line a passing `mise run check` prints (AGENTS.md, Committing). The commit-msg hook ([check_commit_msg.py](../python/scripts/check_commit_msg.py)) holds each `<name> passes` claim for `check`, `check-rust`, `check-py` or `check-docs` to a run that passed. When a gate run starts, [gate_record.py](../python/scripts/gate_record.py) takes the tree of the working copy, written through a copy of the index so the real one is untouched: every tracked file and every unignored untracked one, as `git add -A` would stage them. When the run passes, it is recorded in `target/gate/<name>.tree` under the task of each half it ran, and under `check` too when it ran both `check-rust` and `check-py`. The hook refuses the line unless the staged tree is the tree a passing run of that name, or of the full `check`, recorded, and it names the paths that differ.
 
-So stage exactly what the gate tested. A commit of some of the changed files, with other edits left in the working copy, is refused, because the gate passed with those edits present. Move them aside (a WIP commit on another branch, or `git stash push -u -m <tag>`) and rerun the gate, or write `not run` for the part you did not run. CI checks the line's wording only (`commit-msg-check -- --range`), since it never saw your run.
+So stage exactly what the gate tested. A commit of some of the changed files, with other edits left in the working copy, is refused, because the gate passed with those edits present. Move them aside (a WIP commit on another branch, or `git stash push -u -m <tag>`) and rerun the gate, or write `not run` for the part you did not run. CI checks the line's wording only (`commit-msg-check -- --range`), since it never saw your run. After a rebase, [re-gate the branch](howto/re-gate-after-a-rebase.md); a commit from another session's branch keeps its author, which the pre-push hook rejects, so [re-commit it](howto/take-a-commit-from-another-session.md).
 
 ### Docstrings and doc comments
 
