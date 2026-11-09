@@ -22,7 +22,7 @@ Method, for every section below: a throwaway script (not committed) parsed all 2
 
 Every unmatched chunk has an id whose high byte no shipped archive uses as its `res_index` (`0x1D`-`0x1F` beyond `FASTSPR`, `0x5B`-`0x7E`, `0xC8`-`0xCC`), apart from 117 under `0xC0`, 107 under `0xC1`, 387 under `0xC5` and 14 under `0xC3`. The first group is the community's add-on shapes and sounds; the second is most likely sound data from other releases or add-on sound packs, unchecked. No chunk is a transformed resource: when `MAKEONE` includes a shipped resource it copies it unchanged.
 
-The two palette chunks, `0x801E` (48 bytes) and `0x8042` (720 bytes), are items `0x1E` and `0x42` of `SPRITES.RES`, whose `res_index` is `0x80`. The `GVPOLY` records once read as ground scene records in `CTRY.ALL` ([`../formats/all.md`](../formats/all.md) § 3.6) sit inside copied shape chunks.
+The two palette chunks, `0x801E` (50 bytes) and `0x8042` (722 bytes), are items `0x1E` and `0x42` of `SPRITES.RES`, whose `res_index` is `0x80`. [`../formats/all.md`](../formats/all.md) gives 48 and 720 bytes, the 16 and 240 colour triples; each chunk holds 2 bytes more, not yet explained. Every archive `make-all` stored for a reference film and the demo's `INTRO.ALL` and `SCENE01.ALL` hold both; the demo's shipped `CTRY.ALL` holds only `0x8042`. The `GVPOLY` records once read as ground scene records in `CTRY.ALL` ([`../formats/all.md`](../formats/all.md) § 3.6) sit inside copied shape chunks.
 
 ## 2. The Chunk Id
 
@@ -125,7 +125,7 @@ Cost on this machine (4 cores, lavapipe): a one-tick render starts in 0.44 to 0.
 
 `[Bounded Observation]`, `TOD.FLM` (`corpus/stuntisl/VAULT`), run 2026-11-07 at `b05da8e`.
 
-`PLAYONE.EXE` played the superset of section 7 in place of `TOD.FLM`'s own archive. With the film staged beside it, `mise run capture-ref -- --out` ran to film tick 1409 and kept 129 frames on both the unpatched and the Patch 3 `PLAYONE`. The palette is wrong: the ground draws in purple and green. The superset leaves out every `RES\` file with `res_index` of `0x80` or more, and the film's own archive holds two items of `SPRITES.RES` (index 128): `0x801E` (48 bytes) and `0x8042` (720 bytes), the two palettes of section 1. Their absence is the likely cause of the palette (`[Hypothesis]`, one film); no capture with them added has been run.
+`PLAYONE.EXE` played the superset of section 7 in place of `TOD.FLM`'s own archive. With the film staged beside it, `mise run capture-ref -- --out` ran to film tick 1409 and kept 129 frames on both the unpatched and the Patch 3 `PLAYONE`. The palette is wrong: the ground draws in purple and green. The superset leaves out every `RES\` file with `res_index` of `0x80` or more, and the film's own archive holds two items of `SPRITES.RES` (index 128): `0x801E` and `0x8042`, the two palettes of section 1. Their absence is the likely cause of the palette (`[Hypothesis]`, one film); no capture with them added has been run.
 
 On the unpatched `PLAYONE`, the colour index pages differ more than one recapture of the film's own archive did. Pages are paired by `film_tick` from each capture's `meta.json`:
 

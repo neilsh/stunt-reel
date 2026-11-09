@@ -11,7 +11,8 @@ A film then needs no extra flags for capture-ref, which checks the stored archiv
 After storing the archive it writes the film's manifest, manifests/all/<film>.toml, for review and
 commit (ADR 0032); an archive holding content the game's RES lacks gets none, and the stored
 archive stays the record. --manifest-only writes the manifest from the stored archive without
-running MAKEONE.
+running MAKEONE. --out writes the archive to a directory outside the store instead, and no
+manifest, since a manifest would stand in for the film's stored archive.
 """
 
 from __future__ import annotations
@@ -86,7 +87,19 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="write the manifest from the film's stored archive; do not run MAKEONE",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help=(
+            "new directory receiving the .ALL and meta.json instead of the film's stored archive; "
+            "no manifest is written"
+        ),
+    )
+    args = parser.parse_args()
+    if args.out is not None and args.manifest_only:
+        parser.error("--out and --manifest-only exclude each other: a backfill writes no archive")
+    return args
 
 
 def resolve(path: Path) -> Path:
@@ -235,9 +248,12 @@ def plan_archive(
             created=datetime.now(UTC).date().isoformat(),
             returned_to_dos=not hung,
         )
+        # A default run's out is a staged sibling that exists; an --out may not yet.
+        attempt.out.mkdir(parents=True, exist_ok=True)
         write_archive(attempt.out, data, meta, film=film.name)
         kept.update(meta=meta, game_root=game_root)
-        return f"wrote {attempt.target} ({len(data)} bytes in {meta.wall_seconds} s)"
+        written = attempt.target if attempt.job.out is None else attempt.out
+        return f"wrote {written} ({len(data)} bytes in {meta.wall_seconds} s)"
 
     return plan
 
@@ -272,10 +288,11 @@ def run(
         kind="archive",
         film=film,
         name=args.name,
+        out=args.out,
         game_root=args.game_root,
     )
     code = capture_run.execute(job, plan_archive(args, film, launch, kept))
-    if code != 0:
+    if code != 0 or args.out is not None:
         return code
     slug = parity_layout.slug_for(film, args.name)
     meta: ArchiveMeta = kept["meta"]

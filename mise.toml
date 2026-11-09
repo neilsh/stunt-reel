@@ -159,7 +159,7 @@ description = "Print a capture's content hash and the references.toml entry that
 run = "uv run python python/scripts/capture_digest.py"
 
 [tasks.make-all]
-description = "Generate a film's .ALL with MAKEONE.EXE on dosbox-automation into captures/<film>/archives/ (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM)"
+description = "Generate a film's .ALL with MAKEONE.EXE on dosbox-automation into captures/<film>/archives/, or --out DIR (mise run make-all -- --film corpus/stuntisl/VAULT/BALLOON.FLM [--game-root builds/unpatched] [--out DIR])"
 depends = ["ensure"]
 run = "uv run python python/scripts/make_all.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
@@ -265,7 +265,7 @@ description = "Dump the film-level events of one .FLM film (mise run flm-events 
 run = "uv run python python/scripts/flm_events.py"
 
 [tasks.superset-all]
-description = "Build one .ALL holding every stock shape in the game's RES/, for rendering a film without its own archive (mise run superset-all -- [--game corpus/stuntisl] [-o target/linked/superset/SUPERSET.ALL])"
+description = "Build one .ALL holding every stock shape in the game's RES/, for rendering a film without its own archive (mise run superset-all -- [--game corpus/stuntisl] [--with-palettes] [-o target/linked/superset/SUPERSET.ALL])"
 depends = ["ensure"]
 run = "uv run python python/scripts/superset_all.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }

@@ -4,8 +4,9 @@
 
 Read from `<data root>/builds/{unpatched,patch3}/RES/SPRITES.RES` with `superset_all.res_items` on 2026-11-08:
 
-- Items `0x1E` and `0x42` (50 and 722 bytes as stored; the archive chunks `0x801E` and `0x8042` are 48 and 720) are byte-identical in the unpatched and Patch 3 builds. "From the matching build" does not matter for the palettes; each build still uses its own `RES\` for the shapes.
+- Items `0x1E` and `0x42` (50 and 722 bytes, the same as chunks `0x801E` and `0x8042` in every stored archive; `linking.md` § 1 said 48 and 720, the colour triples alone, and is corrected) are byte-identical in the unpatched and Patch 3 builds. "From the matching build" does not matter for the palettes; each build still uses its own `RES\` for the shapes.
 - Patch 3's `SPRITES.RES` differs (sha256 `64274cae…` against `95d3e3c4…`) only in items `0x54` and `0x55`: the unpatched file holds 85 items, Patch 3 84. This partly answers `linking.md` open question 4; whether Patch 3 changes a shape file is checked while building the supersets.
+- The demo's shipped `CTRY.ALL` holds `0x8042` but not `0x801E`; every `make-all` archive and the demo's `INTRO.ALL` and `SCENE01.ALL` hold both.
 - The demo's `PLAYONE.EXE` is byte-identical to the retail unpatched one (`3c93493c…`).
 - The 2026-11-07 TOD captures behind § 7.2 are no longer in the data root, so every arm is captured fresh.
 
@@ -13,7 +14,7 @@ Read from `<data root>/builds/{unpatched,patch3}/RES/SPRITES.RES` with `superset
 
 - **`superset-all --with-palettes`**: adds `0x801E` and `0x8042` from the `--game` tree's `SPRITES.RES`. Off by default, so the renderer's superset stays as it is.
 - **`capture-ref --archive <.ALL>`**: stages that file as the film's archive and records its sha256 in `meta.json`.
-- **`make-all --game-root/--out`** (if missing): writes a build's own archive outside `captures/<film>/archives/`, so no reference pin moves.
+- **`make-all --out`** (`--game-root` already existed): writes a build's own archive outside `captures/<film>/archives/`, so no reference pin moves.
 - **`capture-compare A B`** (new): pairs two captures' index pages by exact `film_tick` and prints the shared-tick count, identical pages, median and 90th-percentile differing pixels, and whether the paired palettes are byte-equal. Fewer than 20 shared ticks is reported as unpaired, not judged. Pairing by nearest tick measures motion ([#299](https://github.com/neilsh/stunt-reel/issues/299)).
 
 Each is tested on synthetic fixtures.

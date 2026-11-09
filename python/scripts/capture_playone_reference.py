@@ -71,6 +71,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--archive",
+        type=data_path_arg,
+        default=None,
+        help=(
+            "a .ALL to play instead of the film's own, such as a superset archive; needs --out, "
+            "and meta.json records its sha256"
+        ),
+    )
+    parser.add_argument(
         "--max-frames",
         type=int,
         default=DEFAULT_MAX_FRAMES,
@@ -86,6 +95,8 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
+    if args.archive is not None and args.out is None:
+        parser.error("--archive needs --out: a stored capture plays the film's own archive")
     if args.out is None and (
         args.max_frames != DEFAULT_MAX_FRAMES or args.stride != FILM_STRIDE_TICKS
     ):
@@ -133,6 +144,7 @@ def run(args: argparse.Namespace, launch: capture_run.Launch = automation.launch
         out=args.out,
         game_root=args.game_root,
         sound_samples=args.sound_samples,
+        archive=args.archive,
     )
     return capture_run.execute(job, plan_frames(args), launch=launch)
 

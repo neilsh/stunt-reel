@@ -594,3 +594,34 @@ def test_the_binary_extracts_where_the_recorded_game_root_resolves(
     for game in ("builds/unpatched", "tests/fixtures"):
         module.extract_with_binary(tmp_path / "A.ALL", tmp_path / "A.FLM", game, "0" * 64, tmp_path)
     assert cwds == [tmp_path.resolve(), module.dataroot.REPO_ROOT]
+
+
+def test_out_writes_the_archive_there_and_no_manifest(
+    script: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    staged_repo: StagedRepo,
+    game_root: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
+    out = tmp_path / "bench" / "own"
+    extract = FakeExtract()
+    args = _args(script, monkeypatch, staged_repo.film, game_root, "--out", str(out))
+
+    assert script.run(args, launch, extract) == 0
+
+    assert (out / "CTRY.ALL").read_bytes() == ARCHIVE
+    assert (out / "meta.json").is_file()
+    assert f"wrote {out} (" in capsys.readouterr().out
+    assert _archives() == []
+    assert extract.calls == []
+    assert not (dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")).exists()
+
+
+def test_out_with_manifest_only_is_refused(
+    script: Any, monkeypatch: pytest.MonkeyPatch, staged_repo: StagedRepo, game_root: Path
+) -> None:
+    with pytest.raises(SystemExit) as exit_:
+        _args(script, monkeypatch, staged_repo.film, game_root, "--manifest-only", "--out", "x")
+    assert exit_.value.code == 2
