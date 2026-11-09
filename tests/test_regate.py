@@ -25,7 +25,9 @@ log = pathlib.Path(sys.argv[1])
 seen = sorted(name for name in os.environ if name.startswith("GIT_") and name != "GIT_TRACE")
 with log.open("a", encoding="utf-8") as out:
     out.write(" ".join(sys.argv[2:]) + "|" + ",".join(seen) + "\\n")
-if pathlib.Path("FAIL").exists():
+if pathlib.Path("LITTER").exists():
+    pathlib.Path("litter.out").write_text("left", encoding="utf-8")
+if pathlib.Path("FAIL").exists() or pathlib.Path("LITTER").exists():
     print("[gate] FAIL: a step failed")
     sys.exit(1)
 if pathlib.Path("SCRIBBLE").exists():
@@ -261,8 +263,75 @@ def test_gate_arguments_pass_through() -> None:
     assert regate.gate_command(["--full"]) == ["mise", "run", "check", "--", "--full"]
 
 
-def test_prose_before_a_gate_line_is_kept() -> None:
-    message = "fix: x\n\nWhy. Then mise run check passes.\n"
+def test_prose_around_a_gate_line_is_kept() -> None:
+    message = "fix: x\n\nWhy. Then mise run check passes. More.\n"
     assert regate.with_gate_line(message, "mise run check-docs passes; check-rust not run.") == (
-        "fix: x\n\nWhy. Then mise run check-docs passes; check-rust not run.\n"
+        "fix: x\n\nWhy. Then mise run check-docs passes; check-rust not run. More.\n"
     )
+
+
+def test_a_message_with_two_gate_lines_is_refused_before_any_gate_runs(
+    repo: Path, stub: tuple[list[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    command, log = stub
+    _commit(
+        repo,
+        {"four.txt": "4"},
+        "fix: four\n\nIt accepts mise run check passes.\n\nmise run check passes.\n",
+        1_700_000_400,
+    )
+    old_tip = _git(repo, "rev-parse", "topic")
+
+    assert regate.regate("main", command, repo) == 1
+
+    assert _git(repo, "rev-parse", "topic") == old_tip
+    assert not log.exists()
+    assert _git(repo, "rev-parse", "--short", "topic") in capsys.readouterr().err
+
+
+def test_files_a_failing_gate_leaves_behind_are_named_and_kept(
+    repo: Path, stub: tuple[list[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    command, _ = stub
+    _commit(repo, {"LITTER": "x"}, "fix: four\n", 1_700_000_400)
+    old_tip = _git(repo, "rev-parse", "topic")
+
+    assert regate.regate("main", command, repo) == 1
+
+    assert _git(repo, "rev-parse", "topic") == old_tip
+    assert (repo / "litter.out").exists()
+    assert "litter.out" in capsys.readouterr().err
+
+
+def test_a_second_regate_keeps_the_first_backup_in_the_reflog(
+    repo: Path, stub: tuple[list[str], Path]
+) -> None:
+    command, _ = stub
+    original = _git(repo, "rev-parse", "topic")
+    assert regate.regate("main", command, repo) == 0
+    first = _git(repo, "rev-parse", "topic")
+
+    assert regate.regate("main", command, repo) == 0
+
+    assert _git(repo, "rev-parse", "refs/backup/regate/topic") == first
+    assert _git(repo, "rev-parse", "refs/backup/regate/topic@{1}") == original
+
+
+def test_a_branch_that_moved_meanwhile_is_left_alone_with_no_backup(
+    repo: Path, stub: tuple[list[str], Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    command, _ = stub
+    rebuild = regate._rebuild
+    elsewhere = _git(repo, "rev-parse", "main")
+
+    def rebuild_then_move(*args: object, **kwargs: object) -> str:
+        tip = rebuild(*args, **kwargs)  # type: ignore[arg-type]
+        _git(repo, "update-ref", "refs/heads/topic", elsewhere)
+        return tip
+
+    monkeypatch.setattr(regate, "_rebuild", rebuild_then_move)
+
+    assert regate.regate("main", command, repo) == 1
+
+    assert _git(repo, "rev-parse", "topic") == elsewhere
+    assert _git(repo, "for-each-ref", "refs/backup") == ""

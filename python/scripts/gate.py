@@ -65,6 +65,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 LOG_PATH = Path("target") / "check.log"
+#: What a passing run prints before the gate line, as ``regate.py`` reads it.
+GATE_LINE_PREFIX = "[gate] gate line: "
 
 # A whole step's limit: generous enough for a cold `cargo test` build on a CI runner.
 STEP_TIMEOUT_S = 1800.0
@@ -597,7 +599,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(verdict, flush=True)
         log.write(f"\n# {verdict.removeprefix('[gate] ')}\n")
         if not failed:
-            print(f"[gate] gate line: {gate_line(halves)}", flush=True)
+            print(f"{GATE_LINE_PREFIX}{gate_line(halves)}", flush=True)
 
     return 0 if not failed else 1
 
