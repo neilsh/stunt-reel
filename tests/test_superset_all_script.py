@@ -244,6 +244,15 @@ def test_palette_file_refuses_a_sprites_file_too_short(game: Path) -> None:
         superset_all.palette_file(game / "res")
 
 
+def test_palette_file_refuses_two_files_with_index_0x80(game: Path) -> None:
+    (game / "res" / "SPRITES.RES").write_bytes(_sprites())
+    (game / "res" / "COPY.RES").write_bytes(_sprites())
+    with pytest.raises(
+        superset_all.SupersetError, match=r"COPY.RES and SPRITES.RES both have index 0x80"
+    ):
+        superset_all.palette_file(game / "res")
+
+
 def test_palette_file_refuses_a_tree_without_sprites(tmp_path: Path) -> None:
     (tmp_path / "GAME.RES").write_bytes(_res(0x01, [b"g1"]))
     with pytest.raises(superset_all.SupersetError, match=r"no \.RES file with index 0x80"):

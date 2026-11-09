@@ -121,23 +121,28 @@ def palette_file(res_dir: Path) -> SourceFile:
     """Items `0x1E` and `0x42` of the `.RES` file in *res_dir* whose `res_index` is `0x80`.
 
     Raises:
-        SupersetError: no such file, or one without both items.
+        SupersetError: no such file, two of them, or one without both items.
     """
+    found: list[tuple[Path, bytes, tuple[bytes, ...]]] = []
     for path in sorted(res_dir.iterdir()):
         if path.suffix.upper() != ".RES" or not path.is_file():
             continue
         data = path.read_bytes()
         parsed = res_items(data)
-        if parsed is None or parsed[0] != SPRITES_INDEX:
-            continue
-        items = parsed[1]
-        for number in PALETTE_ITEMS:
-            if number > len(items):
-                raise SupersetError(f"{path.name.upper()} has no item {number:#04x}")
-        digest = hashlib.sha256(data).hexdigest()
-        taken = tuple(items[n - 1] for n in PALETTE_ITEMS)
-        return SourceFile(path.name.upper(), SPRITES_INDEX, digest, taken, PALETTE_ITEMS)
-    raise SupersetError(f"no .RES file with index {SPRITES_INDEX:#04x} in {res_dir}")
+        if parsed is not None and parsed[0] == SPRITES_INDEX:
+            found.append((path, data, parsed[1]))
+    if not found:
+        raise SupersetError(f"no .RES file with index {SPRITES_INDEX:#04x} in {res_dir}")
+    if len(found) > 1:
+        first, second = (path.name.upper() for path, _, _ in found[:2])
+        raise SupersetError(f"{first} and {second} both have index {SPRITES_INDEX:#04x}")
+    path, data, items = found[0]
+    for number in PALETTE_ITEMS:
+        if number > len(items):
+            raise SupersetError(f"{path.name.upper()} has no item {number:#04x}")
+    digest = hashlib.sha256(data).hexdigest()
+    taken = tuple(items[n - 1] for n in PALETTE_ITEMS)
+    return SourceFile(path.name.upper(), SPRITES_INDEX, digest, taken, PALETTE_ITEMS)
 
 
 def pack(files: list[SourceFile]) -> bytes:
