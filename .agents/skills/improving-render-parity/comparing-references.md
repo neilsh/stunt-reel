@@ -15,3 +15,17 @@ A new capture becomes a film's reference only through a reviewed commit of `rese
 ```
 
 Restore from the copy rather than with `git checkout`, which would also discard any edit to the file that was there before step 2. Leave out `--no-render` on the second run. A render covers only the ticks its own capture tagged, so the `_current` tree from step 3 has no frames at the other reference's ticks. `--no-build` is what keeps the binary the same, so the two scores differ only by the reference.
+
+## Moving a film to another build
+
+The capture tools refuse a build the film's row does not name, and an archive that does not hash to its `all_sha256` ([ADR 0029](../../../docs/adr/0029-references-name-each-films-builds-and-reference.md)), so the row changes first:
+
+```
+- [ ] 1. In references.toml, set the row's makeone and playone to the new build (drop reason if it no longer applies)
+- [ ] 2. mise run make-all -- --film corpus/stuntisl/VAULT/<FILM>.FLM --game-root <data root>/builds/<build>
+- [ ] 3. Set the row's all_sha256 to the one make-all wrote in manifests/all/<slug>.toml
+- [ ] 4. mise run capture-ref -- --film corpus/stuntisl/VAULT/<FILM>.FLM --game-root <data root>/builds/<build>
+- [ ] 5. Score it as a candidate: the checklist above from step 1, then re-measure the expected tables
+```
+
+`CTRY` and `INTRO` are rebuilt from `corpus/stuntisl/VAULT`, whose films are byte-identical to the demo's and have no sibling `.ALL`. From `corpus/stisldem/VAULT` the demo's own `.ALL` is played instead.
