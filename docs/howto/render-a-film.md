@@ -2,7 +2,7 @@
 
 ## Watch it
 
-```powershell
+```bash
 cargo run -p stunt-cli -- "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" \
     --sidata "<data root>/corpus/siarchive/Developer/FreeFlight/SIDATA"
 ```
@@ -13,7 +13,7 @@ Opens the interactive presentation (Space pauses, C toggles authored/free camera
 
 ## Sample it at an interval
 
-```powershell
+```bash
 # Capture one frame every 25 ticks (0.5 s) across the full 1,342-tick film
 cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM" \
     --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --tick-range 0..=1342 --frame-step 25 \
@@ -24,4 +24,4 @@ cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM
 
 ## Render chosen ticks beside their capture
 
-`mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build]` renders the listed ticks in one process and writes each beside its reference capture frame; PNGs and the render store go to `build/scratch/frame/<film>/`. `stuntreel --at-ticks T,T,... --out-dir DIR` is the underlying flag.
+`mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build]` renders the listed ticks in one process and writes each beside its reference capture frame; a tick the capture holds no frame for is rendered, and its nearest captured ticks are printed instead of a picture; PNGs and the render store go to `build/scratch/frame/<film>/`. `stuntreel --at-ticks T,T,... --out-dir DIR` is the underlying flag.

@@ -10,7 +10,7 @@ cargo run -p stunt-cli -- sod-trace --archive "<data root>/corpus/stisldem/VAULT
 
 ## Draw its views
 
-Draw orthographic top, side and front views of an archive's shapes, one `<ID>.png` each, with `manifest.json` recording each shape's geometry hash:
+Draw orthographic top, side and front views of an archive's shapes, one `<ID>.png` each, with `manifest.json` recording each shape's geometry hash. `SUPERSET.ALL` is built by `mise run superset-all`, which needs the full game in the corpus:
 
 ```powershell
 cargo run --release -p stunt-cli -- shape-views --archive target/linked/superset/SUPERSET.ALL --shapes 7F02..=7F38 --out build/scratch/views
