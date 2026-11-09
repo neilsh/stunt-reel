@@ -14,7 +14,6 @@ A folder whose README has a non-empty `outcome` is frozen (work/README.md, Lifec
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -25,6 +24,7 @@ lazy from pathlib import Path
 
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.frontmatter import FrontmatterError, read_frontmatter
+from stunt_reel.git_env import isolated_env
 
 __all__ = [
     "MONTH_PATTERN",
@@ -74,8 +74,6 @@ _ISSUE_LIST = (
     ".[] | {number, state, state_reason, pull_request}",
 )
 _GIVEN_UP = frozenset(("not_planned", "duplicate"))
-# Left set by a hook or a shell, these could point git at another checkout than *repo*.
-_GIT_LOCATION = frozenset(("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"))
 _ADDED = "adds a file to a frozen work folder"
 _OUTCOME_CHANGED = "changes the outcome of a frozen work folder"
 
@@ -280,7 +278,8 @@ def run_command(args: list[str]) -> str:
 
 def _git_text(repo: Path, *args: str, check: bool = False) -> str | None:
     """``git *args``' stdout in *repo* as UTF-8, or None when it exits non-zero and not *check*."""
-    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION}
+    # The index stays the caller's: check_work_frozen reads the one `git commit -- <paths>` builds.
+    env = isolated_env(keep_index=True)
     done = subprocess.run(  # noqa: S603 - fixed git arguments
         ["git", *args],  # noqa: S607 - git from PATH, as every task
         cwd=repo,

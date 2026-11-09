@@ -12,13 +12,13 @@ commit.  Nothing here prints or chooses an exit status.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import tomllib
 from typing import TYPE_CHECKING
 
 from stunt_reel import parity_layout
 from stunt_reel.dataroot import REPO_ROOT
+from stunt_reel.git_env import isolated_env
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -35,13 +35,10 @@ CLASS_KEYS: Mapping[str, str] = {"hardware": "gpu", "cpu": "lavapipe"}
 #: Every comparison line is indented under its film's summary line.
 _INDENT = " " * 6
 
-#: Variables a hook or a shell may leave set that point git at another repository or index.
-_GIT_LOCATION = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
-
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[bytes] | None:
     """``git -C repo args`` on *repo*'s own repository and index; ``None`` if git cannot start."""
-    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION}
+    env = isolated_env(keep_index=False)
     try:
         return subprocess.run(  # noqa: S603 - fixed git arguments
             ["git", "-C", str(repo), *args],  # noqa: S607 - git from PATH, as every task

@@ -201,9 +201,6 @@ def ci_requested(env: Mapping[str, str]) -> bool:
     return env.get("CI", "").strip().lower() not in {"", "false", "0"}
 
 
-_GIT_LOCATION = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"})
-
-
 class ChangedPathsError(Exception):
     """git could not say which paths the branch changed; the message is git's."""
 
@@ -213,9 +210,11 @@ def _git_paths(repo: Path, *args: str) -> list[str]:
     git = shutil.which("git")
     if git is None:
         raise ChangedPathsError("git is not on PATH")
-    # *repo* decides the repository: GIT_DIR, GIT_WORK_TREE or GIT_COMMON_DIR left set by a hook
-    # or a shell could name another checkout and scope this run by that checkout's changes.
-    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION}
+    # *repo* decides the repository: GIT_DIR and its kin left set by a hook or a shell could name
+    # another checkout and scope this run by that checkout's changes. The index stays the
+    # caller's. gate.py runs on bare Python, so it cannot import stunt_reel.git_env.
+    drop = _git_local_env_vars() - {"GIT_INDEX_FILE"}
+    env = {key: value for key, value in os.environ.items() if key not in drop}
     proc = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
         [git, *args], cwd=repo, env=env, capture_output=True, check=False
     )
