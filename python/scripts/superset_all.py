@@ -8,8 +8,10 @@ every `RES\\` file whose `res_index` is below `0x80` (the shape ids) serves any 
 shapes all come from the stock game. Pass it as ``stuntreel --all``. Renders of `CTRY.FLM` and
 `INTRO.FLM` from it score within the noise floor of renders from their own archives
 (``linking.md`` section 7). Films with community add-on shapes still need their own archive.
-`PLAYONE.EXE` played `TOD.FLM` from it with a wrong palette (``linking.md`` section 7.2): it is
-for our renderer only.
+`PLAYONE.EXE` played `TOD.FLM` from it with a wrong palette (``linking.md`` section 7.2), since
+a film's own archive also holds the two palette items of `SPRITES.RES`; ``--with-palettes``
+adds them. With them `PLAYONE` keeps the film's palettes, but draws some pages differently from
+the film's own archive, so a superset is no stand-in for a reference capture.
 
 It also keeps a small, complete shape set for machines without the game tree. The archive is
 4.2 MB, about 1.3 MB with zstd.
@@ -20,7 +22,7 @@ linker (ADR 0032) stays the one writer. The manifest is written beside the archi
 item numbers and hashes of game files, no game bytes, but stays in ``target/``, which is
 uncommitted.
 
-Usage: ``mise run superset-all -- [--game corpus/stuntisl] [-o target/linked/superset/SUPERSET.ALL]``
+Usage: ``mise run superset-all -- [--game corpus/stuntisl] [--with-palettes] [-o target/linked/superset/SUPERSET.ALL]``
 """
 
 from __future__ import annotations
@@ -32,12 +34,16 @@ import struct
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+lazy from collections.abc import Iterator
 
 from stunt_reel import link
 from stunt_reel.dataroot import REPO_ROOT, SharedDataError, corpus_root, require_corpus
 
 #: `res_index` values below this hold shapes; `SPRITES.RES` (0x80) and the sound files above.
 SHAPE_INDEX_LIMIT = 0x80
+#: The `res_index` of `SPRITES.RES`, and the two palette items every film's own archive takes.
+SPRITES_INDEX = 0x80
+PALETTE_ITEMS = (0x1E, 0x42)
 #: Where the archive goes by default, beside the archives ``resolve_all`` rebuilds.
 DEFAULT_OUT = Path("target/linked/superset/SUPERSET.ALL")
 #: The manifest's film fields, which ``link build`` does not read: the archive has no film.
@@ -46,17 +52,22 @@ _NO_HASH = "0" * 64
 
 
 class SupersetError(RuntimeError):
-    """The game tree cannot give a superset: no shape files, or two with one index."""
+    """The game tree cannot give a superset: no shape files, two with one index, or no palettes."""
 
 
 @dataclass(frozen=True)
-class ShapeFile:
-    """One `.RES` file whose items are shapes."""
+class SourceFile:
+    """One `.RES` file and the items of it the archive takes: all of them unless *numbers* says."""
 
     name: str
     index: int
     sha256: str
     items: tuple[bytes, ...]
+    numbers: tuple[int, ...] = ()
+
+    def numbered(self) -> Iterator[tuple[int, bytes]]:
+        """`(item number, payload)` of every item taken, in order."""
+        return zip(self.numbers or range(1, len(self.items) + 1), self.items, strict=True)
 
 
 def res_items(data: bytes) -> tuple[int, tuple[bytes, ...]] | None:
@@ -76,14 +87,14 @@ def res_items(data: bytes) -> tuple[int, tuple[bytes, ...]] | None:
     return data[2], tuple(data[a:b] for a, b in itertools.pairwise(offsets))
 
 
-def shape_files(res_dir: Path) -> list[ShapeFile]:
+def shape_files(res_dir: Path) -> list[SourceFile]:
     """Every `.RES` file in *res_dir* whose `res_index` is below `0x80`, by index.
 
     Raises:
         SupersetError: no such file, two files with the same index, or a file whose header
             names a shape index but whose offsets do not parse.
     """
-    found: dict[int, ShapeFile] = {}
+    found: dict[int, SourceFile] = {}
     for path in sorted(res_dir.iterdir()):
         if path.suffix.upper() != ".RES" or not path.is_file():
             continue
@@ -100,18 +111,46 @@ def shape_files(res_dir: Path) -> list[ShapeFile]:
         if index in found:
             raise SupersetError(f"{found[index].name} and {path.name} both have index {index:#04x}")
         digest = hashlib.sha256(data).hexdigest()
-        found[index] = ShapeFile(path.name.upper(), index, digest, items)
+        found[index] = SourceFile(path.name.upper(), index, digest, items)
     if not found:
         raise SupersetError(f"no .RES file with shape ids in {res_dir}")
     return [found[index] for index in sorted(found)]
 
 
-def pack(files: list[ShapeFile]) -> bytes:
+def palette_file(res_dir: Path) -> SourceFile:
+    """Items `0x1E` and `0x42` of the `.RES` file in *res_dir* whose `res_index` is `0x80`.
+
+    Raises:
+        SupersetError: no such file, two of them, or one without both items.
+    """
+    found: list[tuple[Path, bytes, tuple[bytes, ...]]] = []
+    for path in sorted(res_dir.iterdir()):
+        if path.suffix.upper() != ".RES" or not path.is_file():
+            continue
+        data = path.read_bytes()
+        parsed = res_items(data)
+        if parsed is not None and parsed[0] == SPRITES_INDEX:
+            found.append((path, data, parsed[1]))
+    if not found:
+        raise SupersetError(f"no .RES file with index {SPRITES_INDEX:#04x} in {res_dir}")
+    if len(found) > 1:
+        first, second = (path.name.upper() for path, _, _ in found[:2])
+        raise SupersetError(f"{first} and {second} both have index {SPRITES_INDEX:#04x}")
+    path, data, items = found[0]
+    for number in PALETTE_ITEMS:
+        if number > len(items):
+            raise SupersetError(f"{path.name.upper()} has no item {number:#04x}")
+    digest = hashlib.sha256(data).hexdigest()
+    taken = tuple(items[n - 1] for n in PALETTE_ITEMS)
+    return SourceFile(path.name.upper(), SPRITES_INDEX, digest, taken, PALETTE_ITEMS)
+
+
+def pack(files: list[SourceFile]) -> bytes:
     """The `.ALL` holding every item of *files*, laid out as ``research/formats/all.ksy``."""
     chunks = [
-        ((shape.index << 8) | number, item)
-        for shape in files
-        for number, item in enumerate(shape.items, start=1)
+        ((source.index << 8) | number, item)
+        for source in files
+        for number, item in source.numbered()
     ]
     header = 6 * len(chunks) + 6
     offsets = [header]
@@ -122,7 +161,7 @@ def pack(files: list[ShapeFile]) -> bytes:
     return out + b"".join(payload for _, payload in chunks)
 
 
-def manifest_text(files: list[ShapeFile], archive: bytes, game_root: str) -> str:
+def manifest_text(files: list[SourceFile], archive: bytes, game_root: str) -> str:
     """The ``stuntreel link build`` manifest for *files*, expecting *archive*'s bytes."""
     lines = [
         "# Every stock shape in one archive (python/scripts/superset_all.py); no film.",
@@ -134,7 +173,7 @@ def manifest_text(files: list[ShapeFile], archive: bytes, game_root: str) -> str
         f'all_sha256 = "{hashlib.sha256(archive).hexdigest()}"',
     ]
     for shape in files:
-        items = ", ".join(str(n) for n in range(1, len(shape.items) + 1))
+        items = ", ".join(str(n) for n, _ in shape.numbered())
         lines += [
             "",
             "[[source]]",
@@ -146,11 +185,15 @@ def manifest_text(files: list[ShapeFile], archive: bytes, game_root: str) -> str
     return "\n".join(lines) + "\n"
 
 
-def build(game: Path, out: Path, *, run: link.Runner | None = None) -> tuple[int, int]:
+def build(
+    game: Path, out: Path, *, with_palettes: bool = False, run: link.Runner | None = None
+) -> tuple[int, int]:
     """Writes the superset of *game* to *out* and its manifest beside it; `(chunks, bytes)`.
 
+    *with_palettes* adds the two palette items of :func:`palette_file`.
+
     Raises:
-        SupersetError: as :func:`shape_files`, *game* has no `RES` folder, *out* ends in
+        SupersetError: as :func:`shape_files` and :func:`palette_file`, *game* has no `RES` folder, *out* ends in
             `.toml`, where the manifest goes, or *out* lies in the game tree or ``corpus/``,
             which nothing this project runs writes (ADR 0022).
         link.LinkError: ``stuntreel link build`` failed or wrote other bytes.
@@ -167,6 +210,8 @@ def build(game: Path, out: Path, *, run: link.Runner | None = None) -> tuple[int
     if not res_dirs:
         raise SupersetError(f"no RES folder in {game}")
     files = shape_files(res_dirs[0])
+    if with_palettes:
+        files.append(palette_file(res_dirs[0]))
     archive = pack(files)
     out.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(manifest_text(files, archive, game.as_posix()), encoding="utf-8")
@@ -175,19 +220,24 @@ def build(game: Path, out: Path, *, run: link.Runner | None = None) -> tuple[int
         link.build_archive(manifest, game, out, cwd=REPO_ROOT)
     else:
         link.build_archive(manifest, game, out, cwd=REPO_ROOT, run=run)
-    return sum(len(shape.items) for shape in files), len(archive)
+    return sum(len(source.items) for source in files), len(archive)
 
 
 def main(argv: list[str] | None = None) -> int:
     """Command-line entry point; returns the exit code."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--game", type=Path, help="game tree holding RES/ [corpus/stuntisl]")
+    parser.add_argument(
+        "--with-palettes",
+        action="store_true",
+        help="add SPRITES.RES items 0x1E and 0x42, which PLAYONE needs and our renderer ignores",
+    )
     parser.add_argument("-o", "--output", type=Path, default=DEFAULT_OUT, help="archive to write")
     args = parser.parse_args(argv)
     try:
         game = args.game if args.game is not None else require_corpus() / "stuntisl"
         out = args.output if args.output.is_absolute() else REPO_ROOT / args.output
-        chunks, size = build(game, out)
+        chunks, size = build(game, out, with_palettes=args.with_palettes)
     except (SharedDataError, SupersetError, link.LinkError, OSError) as exc:
         print(f"superset-all: {exc}", file=sys.stderr)
         return 1

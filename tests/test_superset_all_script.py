@@ -224,3 +224,54 @@ def test_main_reports_a_failure_and_exits_1(
     argv = ["--game", str(tmp_path / "game"), "-o", str(tmp_path / "out" / "X.ALL")]
     assert superset_all.main(argv) == 1
     assert "superset-all: no RES folder" in capsys.readouterr().err
+
+
+def _sprites(count: int = 0x42) -> bytes:
+    """A synthetic `SPRITES.RES` (index 0x80) whose item `n` is `b"s%02x" % n`."""
+    return _res(0x80, [b"s%02x" % n for n in range(1, count + 1)])
+
+
+def test_palette_file_takes_items_0x1e_and_0x42_of_sprites(game: Path) -> None:
+    (game / "res" / "SPRITES.RES").write_bytes(_sprites())
+    palettes = superset_all.palette_file(game / "res")
+    assert (palettes.name, palettes.index) == ("SPRITES.RES", 0x80)
+    assert list(palettes.numbered()) == [(0x1E, b"s1e"), (0x42, b"s42")]
+
+
+def test_palette_file_refuses_a_sprites_file_too_short(game: Path) -> None:
+    (game / "res" / "SPRITES.RES").write_bytes(_sprites(0x41))
+    with pytest.raises(superset_all.SupersetError, match=r"SPRITES\.RES has no item 0x42"):
+        superset_all.palette_file(game / "res")
+
+
+def test_palette_file_refuses_two_files_with_index_0x80(game: Path) -> None:
+    (game / "res" / "SPRITES.RES").write_bytes(_sprites())
+    (game / "res" / "COPY.RES").write_bytes(_sprites())
+    with pytest.raises(
+        superset_all.SupersetError, match=r"COPY.RES and SPRITES.RES both have index 0x80"
+    ):
+        superset_all.palette_file(game / "res")
+
+
+def test_palette_file_refuses_a_tree_without_sprites(tmp_path: Path) -> None:
+    (tmp_path / "GAME.RES").write_bytes(_res(0x01, [b"g1"]))
+    with pytest.raises(superset_all.SupersetError, match=r"no \.RES file with index 0x80"):
+        superset_all.palette_file(tmp_path)
+
+
+def test_pack_and_manifest_with_palettes_follow_the_shapes(game: Path) -> None:
+    (game / "res" / "SPRITES.RES").write_bytes(_sprites())
+    files = [*superset_all.shape_files(game / "res"), superset_all.palette_file(game / "res")]
+    archive = superset_all.pack(files)
+    assert [cid for cid, _ in _read_all(archive)] == [0x0101, 0x7F01, 0x7F02, 0x801E, 0x8042]
+    manifest = tomllib.loads(superset_all.manifest_text(files, archive, "g"))
+    assert manifest["source"][-1]["file"] == "RES/SPRITES.RES"
+    assert manifest["source"][-1]["items"] == [0x1E, 0x42]
+
+
+def test_build_with_palettes_counts_their_chunks(game: Path, tmp_path: Path) -> None:
+    (game / "res" / "SPRITES.RES").write_bytes(_sprites())
+    out = tmp_path / "out" / "SUPERSET.ALL"
+    chunks, _ = superset_all.build(game, out, with_palettes=True, run=FakeRunner())
+    assert chunks == 5
+    assert "items = [30, 66]" in out.with_suffix(".toml").read_text(encoding="utf-8")

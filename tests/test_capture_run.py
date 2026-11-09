@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from archive_helpers import build_all
+from archive_helpers import archive_of, build_all
 from pytest_helpers import build_avi
 from stunt_reel import capture_run, capture_store, dataroot, parity_layout, references
 from stunt_reel.all_archive import ArchiveMeta, publish_archive, stub_sound_samples
@@ -806,3 +806,63 @@ def test_a_capture_plays_the_archive_its_row_pins(
 
     assert _run(FRAMES, staged_repo, monkeypatch, emulator) == 0
     assert set(played) == {pinned}
+
+
+# ==============================================================================
+# Playing another archive (--archive)
+# ==============================================================================
+
+
+def test_archive_plays_the_given_file_and_names_it_in_meta(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    superset = archive_of([(0x0101, b"shape"), (0xC302, b"sample")])
+    other = tmp_path / "SUPERSET.ALL"
+    other.write_bytes(superset)
+    out = tmp_path / "out"
+    played: list[bytes] = []
+    emulator = Emulator(FRAMES)
+    real = emulator.launch
+
+    @contextmanager
+    def launch(write_conf: Callable[[int], Path]) -> Iterator[automation.MockAutomation]:
+        played.append((write_conf(1).parent / "mount" / "VAULT" / "CTRY.ALL").read_bytes())
+        with real(write_conf) as runner:
+            yield runner
+
+    emulator.launch = launch  # type: ignore[method-assign]
+
+    assert _run(FRAMES, staged_repo, monkeypatch, emulator, "--archive", str(other), out=out) == 0
+
+    assert set(played) == {stub_sound_samples(superset)}
+    meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
+    assert meta["all_sha256"] == hashlib.sha256(superset).hexdigest()
+    assert not _store("frames").exists()
+
+
+def test_archive_without_out_is_refused(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    superset = archive_of([(0x0101, b"shape"), (0xC302, b"sample")])
+    other = tmp_path / "SUPERSET.ALL"
+    other.write_bytes(superset)
+    with pytest.raises(SystemExit) as exit_:
+        _run(FRAMES, staged_repo, monkeypatch, Emulator(FRAMES), "--archive", str(other))
+    assert exit_.value.code == 2
+
+
+def test_a_missing_archive_is_refused_before_launch(
+    staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    emulator = Emulator(FRAMES)
+    code = _run(
+        FRAMES,
+        staged_repo,
+        monkeypatch,
+        emulator,
+        "--archive",
+        str(tmp_path / "NONE.ALL"),
+        out=tmp_path / "out",
+    )
+    assert code == 2
+    assert emulator.launches == 0

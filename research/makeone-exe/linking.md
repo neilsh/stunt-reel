@@ -1,5 +1,5 @@
 ---
-summary: "A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives."
+summary: "A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives in our renderer; on `PLAYONE` a superset with the palette items keeps the palettes, but some pages differ."
 ---
 # `MAKEONE.EXE`: What the Film Linker Puts in a `.ALL`
 
@@ -22,7 +22,7 @@ Method, for every section below: a throwaway script (not committed) parsed all 2
 
 Every unmatched chunk has an id whose high byte no shipped archive uses as its `res_index` (`0x1D`-`0x1F` beyond `FASTSPR`, `0x5B`-`0x7E`, `0xC8`-`0xCC`), apart from 117 under `0xC0`, 107 under `0xC1`, 387 under `0xC5` and 14 under `0xC3`. The first group is the community's add-on shapes and sounds; the second is most likely sound data from other releases or add-on sound packs, unchecked. No chunk is a transformed resource: when `MAKEONE` includes a shipped resource it copies it unchanged.
 
-The two palette chunks, `0x801E` (48 bytes) and `0x8042` (720 bytes), are items `0x1E` and `0x42` of `SPRITES.RES`, whose `res_index` is `0x80`. The `GVPOLY` records once read as ground scene records in `CTRY.ALL` ([`../formats/all.md`](../formats/all.md) § 3.6) sit inside copied shape chunks.
+The two palette chunks, `0x801E` (50 bytes) and `0x8042` (722 bytes), are items `0x1E` and `0x42` of `SPRITES.RES`, whose `res_index` is `0x80`. [`../formats/all.md`](../formats/all.md) gives 48 and 720 bytes, the 16 and 240 colour triples; each chunk holds 2 bytes more, not yet explained. Every archive `make-all` stored for a reference film and the demo's `INTRO.ALL` and `SCENE01.ALL` hold both; the demo's shipped `CTRY.ALL` holds only `0x8042`. The `GVPOLY` records once read as ground scene records in `CTRY.ALL` ([`../formats/all.md`](../formats/all.md) § 3.6) sit inside copied shape chunks.
 
 ## 2. The Chunk Id
 
@@ -123,20 +123,21 @@ Cost on this machine (4 cores, lavapipe): a one-tick render starts in 0.44 to 0.
 
 ### 7.2 `PLAYONE` on a Superset
 
-`[Bounded Observation]`, `TOD.FLM` (`corpus/stuntisl/VAULT`), run 2026-11-07 at `b05da8e`.
+`[Bounded Observation]`, `CTRY.FLM` and `TOD.FLM` (`corpus/stuntisl/VAULT`), run 2026-11-09 at `4f5f8e59`.
 
-`PLAYONE.EXE` played the superset of section 7 in place of `TOD.FLM`'s own archive. With the film staged beside it, `mise run capture-ref -- --out` ran to film tick 1409 and kept 129 frames on both the unpatched and the Patch 3 `PLAYONE`. The palette is wrong: the ground draws in purple and green. The superset leaves out every `RES\` file with `res_index` of `0x80` or more, and the film's own archive holds two items of `SPRITES.RES` (index 128): `0x801E` (48 bytes) and `0x8042` (720 bytes), the two palettes of section 1. Their absence is the likely cause of the palette (`[Hypothesis]`, one film); no capture with them added has been run.
+`PLAYONE.EXE` played the superset in place of each film's own `make-all` archive, every archive with its sound chunks stubbed ([ADR 0043](../../docs/adr/0043-captures-play-with-the-archives-sound-samples-stubbed.md)) so that replays repeat. `superset-all --with-palettes` adds the two palette items of section 1, `0x801E` and `0x8042` from `SPRITES.RES` (index 128), which the superset otherwise leaves out with every file of `res_index` `0x80` or more. Without them the ground drew in purple and green (TOD, 2026-11-07); with them every paired page's palette is byte-equal to the own archive's.
 
-On the unpatched `PLAYONE`, the colour index pages differ more than one recapture of the film's own archive did. Pages are paired by `film_tick` from each capture's `meta.json`:
+Some pages still differ. Two captures of the own archive agreed page for page on every row, and the superset does not. Pages are paired by `film_tick` with `mise run capture-compare`:
 
-| Pair | Identical pages | Median pixels differing | 90th percentile |
+| Film, build | Own against own | Own against superset: identical pages | Median, 90th percentile pixels differing |
 |---|---|---|---|
-| Own archive, two captures (unpatched) | 84 of 119 | 0 | 589 |
-| Own archive against superset (unpatched) | 43 of 110 | 3 | 634 |
+| CTRY, unpatched | 121 of 121 | 72 of 112 | 0, 1,649 |
+| CTRY, Patch 3 | 121 of 121 | 48 of 101 | 3, 1,186 |
+| TOD, unpatched | 128 of 128 | 108 of 115 | 0, 0 |
 
-The comparison does not separate the missing palette items from the extra props the superset places (section 7), so the cause of the extra differences is open.
+A superset with no sound chunk at all plays bit for bit like one holding the own archive's sound ids as stubs, on all three rows. Every other chunk of the own `CTRY.ALL` and `TOD.ALL` is in the superset byte for byte, so what the superset adds is the stock items these films' archives leave out, and size: 4,194,236 bytes against CTRY's 125,813. Its captures also keep other ticks (CTRY 12, 134, 178 where the own archive's keep 14, 133, 177): `PLAYONE` most likely drew some frames at other film ticks (`[Supported Inference]`). Some differing pages differ across the whole view (16 of CTRY unpatched's 40, up to 8,580 pixels), others by a few pixels in one spot. The cause is open; candidates include the extra props and the archive's size (open question 8). `MAKEONE` on Patch 3 did not finish `TOD.FLM` within 600 s on two attempts (the log kept is the second's), so TOD has no Patch 3 row.
 
-_Source: [2026-11-07: TOD on a superset archive](../../work/2026-11/242_vault-parity-films/journal.md#2026-11-07-tod-on-a-superset-archive)._
+_Source: [2026-11-09: the superset with palettes on CTRY and TOD](../../work/2026-11/301_superset-palettes-playone/journal.md#2026-11-09-the-superset-with-palettes-on-ctry-and-tod)._
 
 ---
 
@@ -146,16 +147,18 @@ _Source: [2026-11-07: TOD on a superset archive](../../work/2026-11/242_vault-pa
 - **The film inside its archive.** No chunk is the `.FLM` or starts `FILM` (section 1), although [`../formats/all.md`](../formats/all.md) § 3.1 allows for one.
 - **Whole archives as the unit of selection.** No film takes all the items of any source archive (section 4).
 - **Our renderer needing a film's own selection.** A superset of every stock shape scores within noise of the film's own archive on CTRY and INTRO, as an archive on a GPU (section 7) and read straight from `RES\` on lavapipe (section 7.1). The selection's one render effect is the `available_models` prop filter.
+- **A missing sound chunk as the cause of `PLAYONE`'s superset differences.** The superset plays alike with and without the own archive's sound ids as stubs (section 7.2).
+- **Patch #3 changing a shape file.** Of `RES\`, Patch #3 changes only `SPRITES.RES` and four sound files, and both builds' supersets are byte-identical (open question 4).
 
 ## Open questions
 
 1. Is the selection the set of resources loaded during playback? Comparing the scenery ids of `CTRY.ALL` and `INTRO.ALL` with the shapes our renderer draws, or finding where `MAKEONE` marks a resource as used, would settle it. Section 7 is a first step: the superset adds 1 and 11 props that the archives leave out, consistent with level-of-detail selection. Our renders do not depend on the answer: they match the film's own archive within noise without it (sections 7 and 7.1).
 2. Can a film's actor shapes, sounds and the fixed items (palettes, `FASTSPR`, `GAME` sprites) be listed from the `.FLM` alone?
 3. Which sound setting matches each music extension (`.ESS`, `.XMA`, `.XMM`, `.XMP`, `.XMI`), and does the setting change which ids are included or only their source? `BALLOON`'s archive from our fixed emulator profile has no music chunk at all.
-4. Does Patch #3 change any file in `RES\`, or only the selection?
+4. Patch #3 changes five files of `RES\`: `SPRITES.RES` (it drops item `0x54`, 9,398 bytes, so the unpatched `0x55` is Patch #3's `0x54`; the other 83 items are unchanged), `COMMNSND.SMP`, `SNDFX2.SMP`, `MUSIC1.ESS` and `MUSIC2.ESS`. No shape file changes, and the two builds' `make-all` archives of `CTRY.FLM` differ only in sound chunk `0xC56A` (section 7.2). Open: what the changed sound files and the dropped item hold, and whether the selection differs for any film.
 5. Does `PLAYONE` play an archive padded with unused chunks, and up to what size?
 6. Do the 205 archives with add-on chunks rebuild once their add-on `.RES` files are found?
 7. Does `--game` cost less if the scene keeps only the shapes a film draws? Its startup decodes all 2,516 shapes, and its renders take about twice as long on lavapipe (section 7.1). After `build_world`, only the actors' shape ids are still needed, so dropping the rest before the device upload would test the cause. Decoding only the ids a film references is harder, since the scenery walk decides its props from the whole set.
-8. With `SPRITES.RES` items `0x801E` and `0x8042` from the matching build added, does `PLAYONE`'s capture of a superset match a capture of the film's own archive within recapture noise (section 7.2)?
+8. Why does `PLAYONE` draw a superset's pages differently from the film's own archive once the palettes are in and sound is stubbed (section 7.2)? The superset's captures keep some ticks one or two apart from the own captures, so a differing page may be the same frame drawn at another tick: matching each against the own pages within two ticks would help tell pacing from drawing. Two padded own archives would then help separate the extra props from the archive's size: one with the superset's extra shape chunks, one with inert chunks of the same count and bytes. Neither tests the superset's other stock items, and the inert one bears on open question 5 at one size ([#348](https://github.com/neilsh/stunt-reel/issues/348)).
 
 _Found 2026-11-03; see the [parity log](../../work/2026-10/parity-log/log.md)._

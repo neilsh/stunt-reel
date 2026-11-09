@@ -109,6 +109,8 @@ class Job:
     game_root: Path | None = None
     #: Whether the staged ``.ALL`` stubs its sound samples (ADR 0043); recorded in ``meta.json``.
     sound_samples: staging.SoundSamples = "stubbed"
+    #: A ``.ALL`` to play instead of the film's own; needs *out*, so no stored capture holds it.
+    archive: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -278,6 +280,27 @@ def _store_path(kind: Kind, slug: str) -> Path:
     return dataroot.data_root() / paths[kind](slug)
 
 
+def _archive_for(job: Job, film: Path, slug: str) -> Path | None:
+    """The ``.ALL`` *job* plays: ``--archive``, else the film's own; ``None`` for an archive run.
+
+    Raises:
+        Refused: ``--archive`` names no file, or is given without ``--out``.
+        ArchiveError: the film's own archive cannot be found or rebuilt.
+    """
+    if job.archive is not None:
+        archive = _resolve(job.archive)
+        if not archive.is_file():
+            raise Refused(f"{archive} not found")
+        if job.out is None:
+            raise Refused("--archive needs --out: a stored capture plays the film's own archive")
+        return archive
+    if job.kind == "archive":
+        return None
+    return resolve_all(
+        film, dataroot.REPO_ROOT, slug, pinned=references.read_pin(dataroot.REPO_ROOT, slug)
+    )
+
+
 def _film_id(film: Path, archive: Path | None) -> FilmId:
     return FilmId(
         name=film.name,
@@ -356,13 +379,7 @@ def execute(job: Job, plan_: Plan, *, launch: Launch = automation.launched) -> i
             slug = parity_layout.slug_for(film, job.name)
         except ValueError as exc:
             raise Refused(str(exc)) from exc
-        archive = (
-            None
-            if job.kind == "archive"
-            else resolve_all(
-                film, dataroot.REPO_ROOT, slug, pinned=references.read_pin(dataroot.REPO_ROOT, slug)
-            )
-        )
+        archive = _archive_for(job, film, slug)
         film_id = _film_id(film, archive)
         store = dataroot.data_root()
         target = _store_path(job.kind, slug)

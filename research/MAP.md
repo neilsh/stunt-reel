@@ -36,7 +36,7 @@
 ## makeone-exe
 
 - [`makeone-exe/driving.md`](makeone-exe/driving.md): How the harness drives `MAKEONE.EXE` under emulation to make a film's `.ALL`: keys, text-mode return as completion signal, a working mount, output checks, run time per CPU profile and hang policy.
-- [`makeone-exe/linking.md`](makeone-exe/linking.md): A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives.
+- [`makeone-exe/linking.md`](makeone-exe/linking.md): A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives in our renderer; on `PLAYONE` a superset with the palette items keeps the palettes, but some pages differ.
 
 ## parity
 
