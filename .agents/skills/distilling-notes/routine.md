@@ -13,7 +13,7 @@ commands.
 1. Start from an up-to-date main.
 
 2. List the open PRs, one `<number> <title>` per line:
-   `gh api --paginate 'repos/neilsh/stunt-reel/pulls?state=open&per_page=100' --jq '.[] | "\(.number) \(.title)"'`.
+   `gh api 'repos/neilsh/stunt-reel/pulls?state=open&per_page=100' --jq '.[] | "\(.number) \(.title)"'`.
    If any title starts with `docs(distill):`, a distillation is still in review: end the
    run with no branch, commit or PR, and name that PR by number. If the call fails, end the run
    and say so.

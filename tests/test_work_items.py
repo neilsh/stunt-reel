@@ -14,10 +14,12 @@ import pytest
 
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.work_items import (
+    ISSUE_PAGE,
     WorkFolderError,
     folder_name,
     folder_paths,
     is_dated,
+    issue_list,
     issue_statuses,
     parse_folder,
     readme_text,
@@ -319,8 +321,7 @@ def test_folder_paths_lists_directories_in_month_directories_only(tmp_path: Path
 ISSUE_LIST = [
     "gh",
     "api",
-    "--paginate",
-    "repos/{owner}/{repo}/issues?state=all&per_page=100",
+    "repos/{owner}/{repo}/issues?state=all&per_page=100&page=1",
     "--jq",
     ".[] | {number, state, state_reason, pull_request}",
 ]
@@ -336,7 +337,7 @@ def _issue(number: int, state: str, reason: str | None = None, pull: Any = None)
     return {"number": number, "state": state, "state_reason": reason, "pull_request": pull}
 
 
-def test_issue_statuses_reads_every_issue_in_one_gh_api_call() -> None:
+def test_issue_statuses_reads_a_short_list_in_one_gh_api_call() -> None:
     answer = _rest(
         _issue(307, "open"),
         _issue(306, "open", "reopened"),
@@ -361,6 +362,23 @@ def test_issue_statuses_reads_every_issue_in_one_gh_api_call() -> None:
         304: "landed",
     }
     assert calls == [ISSUE_LIST]
+
+
+def test_issue_statuses_reads_pages_by_number_until_a_short_one() -> None:
+    """A full page asks for the next by number, never through `--paginate`'s id-named links."""
+    pages = {
+        1: _rest(*(_issue(n, "open") for n in range(1, ISSUE_PAGE + 1))),
+        2: _rest(_issue(ISSUE_PAGE + 1, "closed", "completed")),
+    }
+    calls: list[list[str]] = []
+
+    def run(args: list[str]) -> str:
+        calls.append(args)
+        return pages[int(args[2].rsplit("=", 1)[1])]
+
+    assert issue_statuses([1, ISSUE_PAGE + 1], run) == {1: "active", ISSUE_PAGE + 1: "landed"}
+    assert calls == [issue_list(1), issue_list(2)]
+    assert all("--paginate" not in call for call in calls)
 
 
 def test_issue_statuses_leaves_out_a_pull_request() -> None:

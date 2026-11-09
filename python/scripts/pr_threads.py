@@ -7,8 +7,10 @@ scripts and agent prompts: one PR's comments ran past 60 KB. This reads the revi
 through GitHub's GraphQL API, keeps the unresolved ones, and prints for each its location, its
 severity when the bot names one, its title, and the database id of its first comment, which is
 the id ``--reply`` and ``--resolve`` take. GitHub's REST API neither lists threads nor
-resolves one, so this does not work in a cloud session, whose proxy refuses GraphQL
-(``docs/cloud-sessions.md``).
+resolves one. A cloud session's proxy refuses GraphQL but offers REST routes that do
+(``/pulls/{n}/ccr/review_threads`` and ``.../ccr/comments/{id}/resolve``;
+``docs/cloud-sessions.md``), so when GraphQL is refused this reads and resolves threads through
+them instead, with each thread's comments from the REST comments list.
 
 A finding CodeRabbit cannot anchor to a changed line ("Outside diff range") lives only in its
 review's body and has no thread to resolve, so it is answered with a PR comment. Those print
@@ -92,6 +94,10 @@ SEVERITIES = ("Critical", "Major", "Minor", "Trivial", "Nitpick")
 TITLE_LIMIT = 160
 #: Seconds either gh call may take before the task gives up.
 GH_TIMEOUT = 60
+#: What the cloud proxy's 403 says when it refuses a GraphQL request.
+GRAPHQL_REFUSED = "GraphQL is not available"
+#: Items per page of a REST list; a shorter page is the last.
+REST_PAGE = 100
 
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _DETAILS = re.compile(r"<details>.*?</details>", re.DOTALL | re.IGNORECASE)
@@ -227,6 +233,8 @@ def _gh(*args: str) -> Any:
         raise GhError(f"gh {args[0]} gave no answer in {GH_TIMEOUT} s") from err
     if result.returncode != 0:
         raise GhError(result.stderr.strip() or f"gh {args[0]} exited {result.returncode}")
+    if not result.stdout.strip():
+        return None
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as err:
@@ -234,16 +242,32 @@ def _gh(*args: str) -> Any:
 
 
 def read_threads(owner: str, name: str, number: int) -> list[dict[str, Any]] | None:
-    """Every review thread of pull request *number*, page by page; ``None`` when it is absent."""
-    found = _read_pages(QUERY, "reviewThreads", owner, name, number)
+    """Every review thread of pull request *number*, page by page; ``None`` when it is absent.
+
+    Through REST (:func:`rest_threads`) when GraphQL is refused.
+    """
+    try:
+        found = _read_pages(QUERY, "reviewThreads", owner, name, number)
+    except GhError as err:
+        if GRAPHQL_REFUSED not in str(err):
+            raise
+        return rest_threads(owner, name, number)
     return None if found is None else found[1]
 
 
 def read_reviews(
     owner: str, name: str, number: int
 ) -> tuple[str | None, list[dict[str, Any]]] | None:
-    """The head commit's date and every review of pull request *number*; ``None`` if absent."""
-    found = _read_pages(REVIEWS_QUERY, "reviews", owner, name, number)
+    """The head commit's date and every review of pull request *number*; ``None`` if absent.
+
+    Through REST (:func:`rest_reviews`) when GraphQL is refused.
+    """
+    try:
+        found = _read_pages(REVIEWS_QUERY, "reviews", owner, name, number)
+    except GhError as err:
+        if GRAPHQL_REFUSED not in str(err):
+            raise
+        return rest_reviews(owner, name, number)
     if found is None:
         return None
     commits = found[0]["commits"]["nodes"]
@@ -271,6 +295,90 @@ def _read_pages(
         if not page["pageInfo"]["hasNextPage"]:
             return first, nodes
         after = page["pageInfo"]["endCursor"]
+
+
+def _rest_list(path: str) -> list[dict[str, Any]]:
+    """Every item of the REST list at *path*, page by page by number.
+
+    Not ``gh api --paginate``: it follows GitHub's next links, which name the repository by id
+    (``repositories/<id>/...``), and the cloud proxy refuses those.
+    """
+    items: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        batch = _gh("api", f"{path}?per_page={REST_PAGE}&page={page}") or []
+        items += batch
+        if len(batch) < REST_PAGE:
+            return items
+        page += 1
+
+
+def _rest_pull(owner: str, name: str, number: int) -> dict[str, Any] | None:
+    """The REST pull request *number*, or ``None`` when GitHub answers 404."""
+    try:
+        pull: dict[str, Any] = _gh("api", f"repos/{owner}/{name}/pulls/{number}")
+    except GhError as err:
+        if "HTTP 404" in str(err):
+            return None
+        raise
+    return pull
+
+
+def rest_threads(owner: str, name: str, number: int) -> list[dict[str, Any]] | None:
+    """Every review thread of pull request *number*, through REST, in the GraphQL query's shape.
+
+    The ``ccr/review_threads`` route gives each thread's state, place and comment ids, oldest
+    first; the comments list gives each comment's author and body. A thread carries no GraphQL
+    ``id`` here, since :func:`resolve` goes by comment id. ``None`` when the pull is absent.
+    """
+    if _rest_pull(owner, name, number) is None:
+        return None
+    base = f"repos/{owner}/{name}/pulls/{number}"
+    comments = {c["id"]: c for c in _rest_list(f"{base}/comments")}
+    threads: list[dict[str, Any]] = []
+    for raw in _gh("api", f"{base}/ccr/review_threads") or []:
+        ids = raw["comment_ids"]
+        first = comments.get(ids[0]) if ids else None
+        last = comments.get(ids[-1]) if ids else None
+        nodes = (
+            [
+                {
+                    "fullDatabaseId": str(first["id"]),
+                    "author": {"login": (first.get("user") or {}).get("login", "?")},
+                    "body": first.get("body") or "",
+                }
+            ]
+            if first
+            else []
+        )
+        threads.append(
+            {
+                "id": None,
+                "isResolved": raw["resolved"],
+                "isOutdated": raw["outdated"],
+                "path": raw["path"],
+                "line": raw["line"],
+                "originalLine": first.get("original_line") if first else None,
+                "comments": {"totalCount": len(ids), "nodes": nodes},
+                "latest": {"nodes": [{"author": last.get("user")}] if last else []},
+            }
+        )
+    return threads
+
+
+def rest_reviews(
+    owner: str, name: str, number: int
+) -> tuple[str | None, list[dict[str, Any]]] | None:
+    """:func:`read_reviews` through REST: the head commit's committer date and every review."""
+    pull = _rest_pull(owner, name, number)
+    if pull is None:
+        return None
+    commit = _gh("api", f"repos/{owner}/{name}/commits/{pull['head']['sha']}")
+    reviews = [
+        {"databaseId": r["id"], "submittedAt": r.get("submitted_at"), "body": r.get("body")}
+        for r in _rest_list(f"repos/{owner}/{name}/pulls/{number}/reviews")
+    ]
+    return commit["commit"]["committer"]["date"], reviews
 
 
 def _graphql_data(answer: dict[str, Any]) -> dict[str, Any]:
@@ -318,6 +426,17 @@ def resolve(owner: str, name: str, number: int, comment_id: int) -> bool | None:
         return None
     if thread["isResolved"]:
         return False
+    if thread["id"] is None:  # read through REST: resolve through the proxy's route too
+        _gh(
+            "api",
+            "-X",
+            "POST",
+            f"repos/{owner}/{name}/pulls/{number}/ccr/comments/{comment_id}/resolve",
+        )
+        after = thread_of(rest_threads(owner, name, number) or [], comment_id)
+        if after is None or not after["isResolved"]:
+            raise GhError(f"the thread of comment {comment_id} is still unresolved")
+        return True
     data = _graphql_data(
         _gh("api", "graphql", "-f", f"query={RESOLVE_MUTATION}", "-f", f"thread={thread['id']}")
     )
@@ -377,7 +496,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if (args.reply is None) != (args.body is None and args.body_file is None):
         parser.error("--reply and --body (or --body-file) go together")
     try:
-        repo = _gh("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
+        # REST, not `gh repo view`, which goes through GraphQL.
+        repo = _gh("api", "repos/{owner}/{repo}")["full_name"]
         owner, name = repo.split("/", 1)
         if args.reply is not None or args.resolve is not None:
             return _answer(args, owner, name)

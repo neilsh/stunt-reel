@@ -172,6 +172,13 @@ fails, 2 if the R2 variables are unset. Use it to check a new or resumed cloud e
 - **Use GitHub's GraphQL API.** The proxy answers every GraphQL request with 403, whatever the
   client (`gh api graphql` included), and names the REST routes it offers in its place, among them
   `/repos/{owner}/{repo}/pulls/{n}/ccr/review_threads` and `.../ccr/auto_merge` (2026-11-08).
+  `mise run pr-threads` lists, answers and resolves threads through those routes when GraphQL is
+  refused; `gh repo view` is GraphQL too, so it fails.
+- **Page with `gh api --paginate`.** GitHub's next-page links name the repository by id
+  (`repositories/<id>/...`), and the proxy refuses those with 403 ("Numeric-ID repository paths
+  ... are not supported"), so a list longer than one page fails on its second page (2026-11-09:
+  the issue list doc-health reads, past 100 issues). Ask for each page by number instead
+  (`...?per_page=100&page=2`), as `work_items.issue_list` does.
 - **Merge a stacked pull request.** GitHub's REST merge endpoint answers a stacked PR with 403
   (`Merging stacked PRs via this endpoint is not supported`), it refuses auto-merge on one, and
   `gh stack` needs GraphQL. The owner runs `gh stack merge` (2026-11-08, #302 and #303).
