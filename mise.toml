@@ -271,8 +271,12 @@ run = "uv run python python/scripts/superset_all.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.capture-compare]
-description = "Compare two frame captures of one film page by page, paired by film_tick: identical pages, differing pixels, equal palettes (mise run capture-compare -- <capture A> <capture B>)"
+description = "Compare two frame captures of one film page by page, paired by film_tick: identical pages, differing pixels, equal palettes (mise run capture-compare -- <capture A> <capture B> [--shift N])"
 run = "uv run python python/scripts/capture_compare.py"
+
+[tasks.pad-all]
+description = "Copy a film's .ALL with chunks added: those another archive has, or inert zero-filled ones (mise run pad-all -- OWN.ALL -o OUT.ALL (--add-from SOURCE.ALL | --inert COUNT BYTES) [--first-id 0xF001])"
+run = "uv run python python/scripts/pad_all.py"
 
 [tasks.stub-sound-samples]
 description = "Copy a .ALL with every sound sample stubbed, as captures play it, and print both hashes (mise run stub-sound-samples -- IN.ALL -o OUT.ALL [--sound-ids-from OWN.ALL])"

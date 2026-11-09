@@ -1,5 +1,5 @@
 ---
-summary: "A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives in our renderer; on `PLAYONE` a superset with the palette items keeps the palettes, but some pages differ."
+summary: "A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives in our renderer; on `PLAYONE` a superset with the palette items keeps the palettes, but some pages differ, as they do when the own archive is padded with inert chunks."
 ---
 # `MAKEONE.EXE`: What the Film Linker Puts in a `.ALL`
 
@@ -135,9 +135,24 @@ Some pages still differ. Two captures of the own archive agreed page for page on
 | CTRY, Patch 3 | 121 of 121 | 48 of 101 | 3, 1,186 |
 | TOD, unpatched | 128 of 128 | 108 of 115 | 0, 0 |
 
-A superset with no sound chunk at all plays bit for bit like one holding the own archive's sound ids as stubs, on all three rows. Every other chunk of the own `CTRY.ALL` and `TOD.ALL` is in the superset byte for byte, so what the superset adds is the stock items these films' archives leave out, and size: 4,194,236 bytes against CTRY's 125,813. Its captures also keep other ticks (CTRY 12, 134, 178 where the own archive's keep 14, 133, 177): `PLAYONE` most likely drew some frames at other film ticks (`[Supported Inference]`). Some differing pages differ across the whole view (16 of CTRY unpatched's 40, up to 8,580 pixels), others by a few pixels in one spot. The cause is open; candidates include the extra props and the archive's size (open question 8). `MAKEONE` on Patch 3 did not finish `TOD.FLM` within 600 s on two attempts (the log kept is the second's), so TOD has no Patch 3 row.
+A superset with no sound chunk at all plays bit for bit like one holding the own archive's sound ids as stubs, on all three rows. Every other chunk of the own `CTRY.ALL` and `TOD.ALL` is in the superset byte for byte, so what the superset adds is the stock items these films' archives leave out, and size: 4,194,236 bytes against CTRY's 125,813. Its captures also keep other ticks (CTRY 12, 134, 178 where the own archive's keep 14, 133, 177). Some differing pages differ across the whole view (16 of CTRY unpatched's 40, up to 8,580 pixels), others by a few pixels in one spot. `MAKEONE` on Patch 3 did not finish `TOD.FLM` within 600 s on two attempts (the log kept is the second's), so TOD has no Patch 3 row.
 
 _Source: [2026-11-09: the superset with palettes on CTRY and TOD](../../work/2026-11/301_superset-palettes-playone/journal.md#2026-11-09-the-superset-with-palettes-on-ctry-and-tod)._
+
+**Not a timing shift.** `capture-compare --shift 2` looks for each own page with no identical superset page at its tick among the superset's pages two ticks either side. On the unpatched rows, none of CTRY's 40 differing pages nor TOD's 7 has an exact match there, and of the ticks only the own capture keeps, 1 of 9 (CTRY) and 2 of 13 (TOD) do. So no differing superset page is a pixel-for-pixel copy of an own page from a tick within 2; what is drawn at a tick differs.
+
+_Source: [2026-11-09: no differing page is a timing shift](../../work/2026-11/348_superset-pages/journal.md#2026-11-09-no-differing-page-is-a-timing-shift)._
+
+**Padding does it too.** `[Bounded Observation]`, `CTRY.FLM` and `TOD.FLM`, unpatched build, run 2026-11-09. `mise run pad-all` added to each film's own archive either the superset's extra chunks (the props arm; stubbed as captures stage it, it is byte for byte the superset arm above, `e8110ffe…` and `bdee4cd7…`) or inert zero-filled chunks of the same count and bytes in ids `0xF001` upward, a `res_index` no game file uses (CTRY 2,529 chunks, 4,092,524 bytes; TOD 2,623, 4,138,716). `PLAYONE` played both. A second capture of the own, the props and (CTRY) the padded archive matched the first on every page; TOD's padded archive was captured once. Palettes were byte-equal on every paired tick.
+
+| Film | Own against props: identical pages | Own against padding | Props against padding |
+|---|---|---|---|
+| CTRY | 72 of 112 | 42 of 111 | 45 of 110 |
+| TOD | 108 of 115 | 51 of 109 | 53 of 109 |
+
+Padding that no film references changes more pages than the props, on both films, and as with the superset no differing page matches within 2 ticks. So the props are not needed for the difference: what `PLAYONE` draws at a film tick depends on the archive beyond the chunks the film uses. Total bytes and chunk count alone do not settle it, since props and padding share both and still draw differently from each other; ids, chunk sizes or content remain open (open question 8).
+
+_Source: [2026-11-09: padding of the props' size changes pages more than the props](../../work/2026-11/348_superset-pages/journal.md#2026-11-09-padding-of-the-props-size-changes-pages-more-than-the-props)._
 
 ---
 
@@ -148,6 +163,8 @@ _Source: [2026-11-09: the superset with palettes on CTRY and TOD](../../work/202
 - **Whole archives as the unit of selection.** No film takes all the items of any source archive (section 4).
 - **Our renderer needing a film's own selection.** A superset of every stock shape scores within noise of the film's own archive on CTRY and INTRO, as an archive on a GPU (section 7) and read straight from `RES\` on lavapipe (section 7.1). The selection's one render effect is the `available_models` prop filter.
 - **A missing sound chunk as the cause of `PLAYONE`'s superset differences.** The superset plays alike with and without the own archive's sound ids as stubs (section 7.2).
+- **A timing shift as the cause of `PLAYONE`'s superset differences.** No differing page matches the other archive's page within 2 film ticks (section 7.2; [journal](../../work/2026-11/348_superset-pages/journal.md#2026-11-09-no-differing-page-is-a-timing-shift)).
+- **The extra props as a necessary cause of `PLAYONE`'s superset differences.** Inert padding of the same count and bytes also changes pages, more of them (section 7.2; [journal](../../work/2026-11/348_superset-pages/journal.md#2026-11-09-padding-of-the-props-size-changes-pages-more-than-the-props)).
 - **Patch #3 changing a shape file.** Of `RES\`, Patch #3 changes only `SPRITES.RES` and four sound files, and both builds' supersets are byte-identical (open question 4).
 
 ## Open questions
@@ -156,9 +173,9 @@ _Source: [2026-11-09: the superset with palettes on CTRY and TOD](../../work/202
 2. Can a film's actor shapes, sounds and the fixed items (palettes, `FASTSPR`, `GAME` sprites) be listed from the `.FLM` alone?
 3. Which sound setting matches each music extension (`.ESS`, `.XMA`, `.XMM`, `.XMP`, `.XMI`), and does the setting change which ids are included or only their source? `BALLOON`'s archive from our fixed emulator profile has no music chunk at all.
 4. Patch #3 changes five files of `RES\`: `SPRITES.RES` (it drops item `0x54`, 9,398 bytes, so the unpatched `0x55` is Patch #3's `0x54`; the other 83 items are unchanged), `COMMNSND.SMP`, `SNDFX2.SMP`, `MUSIC1.ESS` and `MUSIC2.ESS`. No shape file changes, and the two builds' `make-all` archives of `CTRY.FLM` differ only in sound chunk `0xC56A` (section 7.2). Open: what the changed sound files and the dropped item hold, and whether the selection differs for any film.
-5. Does `PLAYONE` play an archive padded with unused chunks, and up to what size?
+5. Up to what size does `PLAYONE` play an archive padded with unused chunks? It played own archives padded to about 4.2 MB with some 2,500 to 2,600 zero-filled chunks in ids `0xF001` upward (section 7.2), drawing some pages differently; larger archives are untested.
 6. Do the 205 archives with add-on chunks rebuild once their add-on `.RES` files are found?
 7. Does `--game` cost less if the scene keeps only the shapes a film draws? Its startup decodes all 2,516 shapes, and its renders take about twice as long on lavapipe (section 7.1). After `build_world`, only the actors' shape ids are still needed, so dropping the rest before the device upload would test the cause. Decoding only the ids a film references is harder, since the scenery walk decides its props from the whole set.
-8. Why does `PLAYONE` draw a superset's pages differently from the film's own archive once the palettes are in and sound is stubbed (section 7.2)? The superset's captures keep some ticks one or two apart from the own captures, so a differing page may be the same frame drawn at another tick: matching each against the own pages within two ticks would help tell pacing from drawing. Two padded own archives would then help separate the extra props from the archive's size: one with the superset's extra shape chunks, one with inert chunks of the same count and bytes. Neither tests the superset's other stock items, and the inert one bears on open question 5 at one size ([#348](https://github.com/neilsh/stunt-reel/issues/348)).
+8. Which property of an archive changes what `PLAYONE` draws at a film tick (section 7.2)? Not a timing shift, and the extra props are not needed ([#348](https://github.com/neilsh/stunt-reel/issues/348)): inert padding does it too. Props and padding of the same count and bytes differ from each other, so those two alone do not decide it. Padding that varies one of chunk count, chunk size, ids and content at a time, starting small, would find what counts and how little is enough; reading where `PLAYONE` loads the archive would say why.
 
 _Found 2026-11-03; see the [parity log](../../work/2026-10/parity-log/log.md)._

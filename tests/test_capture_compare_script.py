@@ -115,3 +115,60 @@ def test_main_exits_3_when_unpaired_and_1_on_a_missing_capture(
     assert capture_compare.main([str(a), str(b)]) == 3
     assert capture_compare.main([str(a), str(tmp_path / "none")]) == 1
     assert "capture-compare:" in capsys.readouterr().err
+
+
+def _shifted_pair(tmp_path: Path) -> tuple[Path, Path]:
+    """25 ticks of distinct pages; B draws A's tick 50 at 51 and A's 100 at 99, and differs at 150."""
+    pages_a = {tick: tick + 1 for tick in range(0, 250, 10)}
+    pages_b = dict(pages_a)
+    pages_b[51] = pages_b.pop(50)
+    pages_b[99] = pages_a[100]
+    pages_b[100] = 999
+    pages_b[150] = 7777
+    return _capture(tmp_path / "a", pages_a), _capture(tmp_path / "b", pages_b)
+
+
+def test_shift_matches_a_page_drawn_at_a_neighbouring_tick(tmp_path: Path) -> None:
+    a, b = _shifted_pair(tmp_path)
+    shift = capture_compare.compare(a, b, shift=2).shift
+    assert shift is not None
+    assert (shift.differing, shift.differing_matched) == (2, 1)
+    assert (shift.only_a, shift.only_a_matched) == ((50,), 1)
+    assert shift.only_b == (51, 99)
+    assert shift.offsets == {-1: 1, 1: 1}
+    assert shift.unmatched == (capture_compare.Unmatched(150, 7626, (0, 319, 0, 24)),)
+
+
+def test_shift_report_lines(tmp_path: Path) -> None:
+    a, b = _shifted_pair(tmp_path)
+    text = capture_compare.report(capture_compare.compare(a, b, shift=2))
+    assert (
+        "shift ±2: 2 of 3 A pages with no identical B page at their tick match a B page "
+        "within 2 ticks (differing pages 1 of 2, ticks only in A 1 of 1)"
+    ) in text
+    assert "offsets (B tick minus A tick): -1: 1, +1: 1" in text
+    assert "film ticks only in A: 50; only in B: 51, 99" in text
+    assert "no match: tick 150 (7626 differing pixels, columns 0-319, rows 0-24)" in text
+
+
+def test_shift_too_small_to_reach_leaves_pages_unmatched(tmp_path: Path) -> None:
+    pages_a = {tick: tick + 1 for tick in range(0, 250, 10)}
+    pages_b = dict(pages_a)
+    pages_b[53] = pages_b.pop(50)
+    a, b = _capture(tmp_path / "a", pages_a), _capture(tmp_path / "b", pages_b)
+    shift = capture_compare.compare(a, b, shift=2).shift
+    assert shift is not None
+    assert shift.only_a_matched == 0
+    assert shift.unmatched == (capture_compare.Unmatched(50, None, None),)
+    assert "no match: tick 50 (no B page)" in capture_compare.report(
+        capture_compare.compare(a, b, shift=2)
+    )
+
+
+def test_no_shift_prints_what_it_printed_before(tmp_path: Path) -> None:
+    a, b = _shifted_pair(tmp_path)
+    result = capture_compare.compare(a, b)
+    assert result.shift is None
+    assert "shift ±" not in capture_compare.report(result)
+    with pytest.raises(SystemExit):
+        capture_compare.main([str(a), str(b), "--shift", "-1"])
