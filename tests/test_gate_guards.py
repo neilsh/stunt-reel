@@ -25,7 +25,6 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import gate  # noqa: E402
-import gate_record  # noqa: E402
 
 # The process-tree kill differs by platform, so the Windows job runs this module too.
 pytestmark = pytest.mark.windows
@@ -162,9 +161,6 @@ def test_the_rust_half_needs_no_uv(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "check.log")
     monkeypatch.setattr(gate, "_mise", lambda: "mise")
     monkeypatch.setattr(gate, "_check_uv", no_uv_check)
-    # A passing run records the tree it tested; keep this stubbed run off the real record.
-    monkeypatch.setattr(gate_record, "working_tree", lambda: "tested-tree")
-    monkeypatch.setattr(gate_record, "record", lambda *_pair: None)
     monkeypatch.setattr(gate, "_step", lambda _m, _t, _s: (0, "", 0.0))
     assert gate.main(["rust"]) == 0
 

@@ -3,7 +3,9 @@
 ## Status
 
 accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (below). Amended
-2026-11-08: `check-work-frozen` holds a frozen work folder to its outcome (below). Supersedes
+2026-11-08: `check-work-frozen` holds a frozen work folder to its outcome (below). Superseded in
+part 2026-11-09 by [ADR 0044](0044-commit-messages-carry-no-gate-line.md): the commit-msg hook
+checks the subject only, with no gate line. Supersedes
 the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
 [`gate.py`](../../python/scripts/gate.py); keeps that change's committed `.githooks/` and its
@@ -92,7 +94,8 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   lacked the gate line AGENTS.md's Committing rules ask for and only a reviewer noticed. `.githooks/commit-msg` dispatches
   `mise run commit-msg-check -- <file>`
   ([`check_commit_msg.py`](../../python/scripts/check_commit_msg.py)): a Conventional Commit
-  subject, and a line naming `mise run check` in any body. It stays out of `prek.toml`, whose
+  subject, and a line naming `mise run check` in any body (the gate line, dropped by
+  [ADR 0044](0044-commit-messages-carry-no-gate-line.md)). It stays out of `prek.toml`, whose
   local hooks take no file and run at pre-commit. CI runs the same task over a pull request's own
   commits (`--range origin/<base>..HEAD`), not over `main`, whose squash merges GitHub writes.
   Amended 2026-11-05: in a range it skips, with a line naming why, a failing commit whose

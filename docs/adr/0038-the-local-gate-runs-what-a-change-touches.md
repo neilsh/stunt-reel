@@ -6,7 +6,8 @@ accepted 2026-11-06. Designed in the
 [scoped-gate plan](../../work/2026-11/scoped-gate/spec.md); narrows the plan of
 [ADR 0014](0014-the-gate-is-one-ordered-script.md) per run, keeps the lanes of
 [ADR 0016](0016-the-gate-runs-independent-lanes.md). Amended 2026-11-08: the paths count from
-`origin/main` when it resolves, else `main` (below).
+`origin/main` when it resolves, else `main` (below). Superseded in part 2026-11-09 by
+[ADR 0044](0044-commit-messages-carry-no-gate-line.md): a passing run prints no gate line.
 
 ## Context
 
@@ -75,8 +76,10 @@ line the commit body closes with, in the form the commit-msg hook already accept
 - A scoped local run can miss a failure only CI's full gate sees, such as a Python test that reads
   AGENTS.md after a documentation-only change. CI is the backstop; the cost is a later red check,
   not a broken `main`.
-- Commit bodies may close with a scoped gate line; AGENTS.md's Committing step accepts it.
-- `tests/test_gate_plan.py` holds the category table, the forced-full triggers and the gate lines,
+- Commit bodies may close with a scoped gate line; AGENTS.md's Committing step accepts it
+  (superseded by [ADR 0044](0044-commit-messages-carry-no-gate-line.md): no gate line).
+- `tests/test_gate_plan.py` holds the category table, the forced-full triggers and, until
+  ADR 0044, the gate lines,
   and runs `changed_paths` against throwaway repositories.
 - The commit hooks (prek, [ADR 0026](0026-commit-hooks-run-the-gates-own-tasks.md)) still check
   staged content; this reads the branch's whole diff, for the gate before a commit or hand-off.
