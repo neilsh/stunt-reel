@@ -22,6 +22,17 @@ Nothing here is a fact about Stunt Island.
   Sonnet only where a calibrated workflow names it, such as the parity readout's tie-break. On
   #160 a Sonnet review missed four real bugs that an Opus review then found, among them a
   preflight that built despite `--no-build`.
+* **Subagent-driven development reviews once per PR.**
+  `superpowers:subagent-driven-development` runs one Opus review of the finished branch before
+  the PR; a fix wave goes straight to the gate and CodeRabbit. Size each task so its Opus
+  implementer finishes within about 150 turns.
+* **Approvals the user need not give.**
+  * A fresh subagent reviews each spec or plan and the author revises it before presenting it,
+    so the user sees the revised version.
+  * A [startable](agents/issue-tracker.md#conventions) issue labelled `ready-for-agent` goes
+    straight to a plan, or to implementation when it needs none; brainstorming is for the rest.
+  * On a PR outside a stack, turn on auto-merge once `mise run pr-threads -- <number>` prints
+    nothing: every CodeRabbit thread resolved and every outside-diff finding answered.
 * **Glob and search from a named folder.** Claude Code's Glob ignores `.gitignore` and `.ignore`,
   so from the root it walks every worktree under `.claude/worktrees/` (about 200,000 files each
   through their data-root links) and can time out. Pass `path`, or `ls` the root.
