@@ -6,6 +6,7 @@ import argparse
 import json
 import shutil
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, override
 
@@ -29,7 +30,16 @@ from stunt_reel.bench.run import (
     plant_tree,
     recapture_sigma,
 )
-from stunt_reel.parity_artifacts import FrameReport, I6Gate, RenderStore, Report, write_report
+from stunt_reel.parity_artifacts import (
+    FrameReport,
+    I6Gate,
+    RenderAdapter,
+    RenderStore,
+    Report,
+    read_render,
+    write_render,
+    write_report,
+)
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -254,6 +264,17 @@ def test_plant_tree_leaves_the_source_alone(tmp_path: Path, bench_fixture: Path)
     plant_tree(source, tmp_path / "out", [(Fault("shift_x", 4), range(10, 21))])
     after = {path.name: path.read_bytes() for path in source.iterdir() if path.is_file()}
     assert after == before
+
+
+def test_plant_tree_keeps_the_source_adapter(tmp_path: Path, bench_fixture: Path) -> None:
+    source = tmp_path / "src"
+    shutil.copytree(bench_fixture / "render", source)
+    adapter = RenderAdapter("NVIDIA GeForce RTX 4070", "hardware")
+    write_render(
+        source / "render.json", replace(read_render(source / "render.json"), adapter=adapter)
+    )
+    plant_tree(source, tmp_path / "out", [(Fault("shift_x", 4), range(20, 21))])
+    assert RenderStore(tmp_path / "out").record.adapter == adapter
 
 
 class NoOceanSource(LazySource):
