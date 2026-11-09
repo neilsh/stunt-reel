@@ -17,6 +17,7 @@ import json
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -55,6 +56,7 @@ __all__ = [
     "status",
     "tar_bytes",
     "upload",
+    "verify",
     "with_archive",
 ]
 
@@ -591,6 +593,51 @@ def fetch(
         else:
             lines.append(f"fetched {name} -> {into}")
     return lines
+
+
+def verify(
+    manifest: Manifest,
+    names: Sequence[str],
+    env: Mapping[str, str],
+    *,
+    run: CurlRunner = _curl,
+) -> tuple[list[str], bool]:
+    """Downloads and unpacks each archive of *names* (all when empty) into a fresh temp directory.
+
+    Signs and checks the download as :func:`fetch` does, then unpacks it, never reading or
+    writing the data root. The directory is deleted afterwards, pass or fail. Returns one
+    line per archive (``verified`` or the failing step and its error) and whether all passed.
+
+    Raises:
+        MissingCredentials: :data:`REQUIRED_ENV` or half of :data:`KEY_PAIR_ENV` is unset.
+        CloudAssetsError: no such archive.
+    """
+    lines = []
+    ok = True
+    for name in names or list(manifest.archives):
+        archive = archive_named(manifest, name)
+        if archive.key is None or archive.sha256 is None or archive.bytes is None:
+            lines.append(f"FAILED {name}: no pin in {MANIFEST_PATH.name}")
+            ok = False
+            continue
+        step = "download"
+        with tempfile.TemporaryDirectory(prefix="cloud-assets-verify-") as tmp:
+            scratch = Path(tmp)
+            try:
+                data = _download(manifest, archive, archive.key, scratch, env, run)
+                step = "unpack"
+                unpacked = scratch / "unpacked"
+                unpacked.mkdir()
+                with tarfile.open(fileobj=io.BytesIO(compression.zstd.decompress(data))) as tar:
+                    tar.extractall(unpacked, filter="data")
+            except MissingCredentials:
+                raise
+            except (CloudAssetsError, tarfile.TarError, compression.zstd.ZstdError, OSError) as err:
+                lines.append(f"FAILED {name}: {step}: {err}")
+                ok = False
+                continue
+        lines.append(f"verified {name}: {archive.key}")
+    return lines, ok
 
 
 def _run(argv: Sequence[str], cwd: Path) -> subprocess.CompletedProcess[str]:

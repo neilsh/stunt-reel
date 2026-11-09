@@ -271,7 +271,7 @@ run = "uv run python python/scripts/superset_all.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.cloud-assets]
-description = "Pack, upload or fetch the game archives cloud sessions use (mise run cloud-assets -- [--data-root DIR] pack|upload|fetch|status [ARCHIVE...]; ADR 0039)"
+description = "Pack, upload, fetch or verify the game archives cloud sessions use (mise run cloud-assets -- [--data-root DIR] pack|upload|fetch|status|verify [ARCHIVE...]; verify downloads and unpacks to a temp dir, leaving the data root alone; ADR 0039)"
 run = "uv run python python/scripts/cloud_assets.py"
 
 [tasks.cloud-session-start]

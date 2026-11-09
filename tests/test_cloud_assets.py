@@ -39,6 +39,7 @@ from stunt_reel.cloud_assets import (
     status,
     tar_bytes,
     upload,
+    verify,
     with_archive,
 )
 from stunt_reel.references import capture_digest
@@ -509,6 +510,38 @@ def test_fetch_refuses_a_hash_mismatch_and_extracts_nothing(tmp_path: Path) -> N
     assert not (data_root / "corpus" / "stuntisl").exists()
     assert not (data_root / "corpus" / "stuntisl.new").exists()
     assert not list(data_root.rglob("*.part"))
+
+
+def test_verify_passes_and_leaves_no_trace(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    before = sorted(tmp_path.rglob("*"))
+    lines, ok = verify(m, ["corpus-stuntisl"], ENV, run=FakeCurl(data))
+    assert ok
+    assert lines == [f"verified corpus-stuntisl: {m.archives['corpus-stuntisl'].key}"]
+    assert sorted(tmp_path.rglob("*")) == before
+
+
+def test_verify_reports_a_hash_mismatch(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"}, sha256="f" * 64)
+    lines, ok = verify(m, ["corpus-stuntisl"], ENV, run=FakeCurl(data))
+    assert not ok
+    [line] = lines
+    assert line.startswith("FAILED corpus-stuntisl: download:")
+    assert "sha256" in line
+
+
+def test_verify_reports_an_unpack_failure(tmp_path: Path) -> None:
+    m, data = _evil(tmp_path)
+    lines, ok = verify(m, ["corpus-stuntisl"], ENV, run=FakeCurl(data))
+    assert not ok
+    assert lines[0].startswith("FAILED corpus-stuntisl: unpack:")
+    assert not (tmp_path / "evil").exists()
+
+
+def test_verify_needs_credentials(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    with pytest.raises(MissingCredentials):
+        verify(m, ["corpus-stuntisl"], {}, run=FakeCurl(data))
 
 
 def test_fetch_refuses_a_member_outside_its_folder(tmp_path: Path) -> None:

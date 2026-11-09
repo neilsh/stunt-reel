@@ -4,12 +4,14 @@
 pin in ``manifests/cloud-assets.toml``; commit that file. ``upload`` puts the packed archives
 in the bucket with the owner's ``wrangler login``. ``fetch`` downloads and unpacks each archive
 its folder does not hold yet (ADR 0042), with the R2 key pair from ``R2_ACCOUNT_ID``, ``R2_ACCESS_KEY_ID`` and
-``R2_SECRET_ACCESS_KEY``. ``status`` shows each pin, folder and packed file. Each takes archive
+``R2_SECRET_ACCESS_KEY``. ``status`` shows each pin, folder and packed file. ``verify`` downloads each pinned archive
+into a temporary directory, checks its sha256 and unpacks it, never touching the data root, and
+exits 1 if any fails. Each takes archive
 names, all by default.
 
-Exit status: 0 done, 1 an archive could not be handled, 2 the R2 variables are unset.
+Exit status: 0 done, 1 an archive could not be handled or verified, 2 the R2 variables are unset.
 
-Usage: ``mise run cloud-assets -- [--data-root DIR] pack|upload|fetch|status [ARCHIVE...]
+Usage: ``mise run cloud-assets -- [--data-root DIR] pack|upload|fetch|status|verify [ARCHIVE...]
 [--replace-unmarked]``
 """
 
@@ -49,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     """Command-line entry point; returns the exit code."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--data-root", type=Path, help="data root [STUNT_DATA_ROOT]")
-    parser.add_argument("command", choices=("pack", "upload", "fetch", "status"))
+    parser.add_argument("command", choices=("pack", "upload", "fetch", "status", "verify"))
     parser.add_argument("archives", nargs="*", help="archive names [all]")
     parser.add_argument(
         "--replace-unmarked",
@@ -58,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
+        failed = False
         root = data_root_flag(args.data_root)
         manifest = cloud_assets.read_manifest()
         for name in args.archives:
@@ -75,6 +78,9 @@ def main(argv: list[str] | None = None) -> int:
                     os.environ,
                     replace_unmarked=args.replace_unmarked,
                 )
+            case "verify":
+                lines, verified = cloud_assets.verify(manifest, args.archives, os.environ)
+                failed = not verified
             case _:
                 lines = cloud_assets.status(manifest, root, OUT_DIR)
     except cloud_assets.MissingCredentials as exc:
@@ -85,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     for line in lines:
         print(f"cloud-assets: {line}")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
