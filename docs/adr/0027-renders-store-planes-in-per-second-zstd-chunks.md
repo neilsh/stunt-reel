@@ -7,6 +7,10 @@ version 1 under [ADR 0011](0011-parity-artifacts-are-a-versioned-port.md). Ends 
 `palette_controls.json` fallback that ADR 0011 kept scorable, since a render that carries only that
 sidecar has no store. Design and measurements: the render half of
 [`work/2026-10/capture-frame-storage/spec.md`](../../work/2026-10/capture-frame-storage/spec.md).
+The version it names is superseded: `render.json` is at schema version 3 since #118, which adds
+the per-tick `credits` flag and refuses older renders
+([`research/parity/method.md`](../../research/parity/method.md) § 2.1;
+`RENDER_SCHEMA_VERSION` in `crates/stunt-parity/src/lib.rs`).
 
 ## Context
 

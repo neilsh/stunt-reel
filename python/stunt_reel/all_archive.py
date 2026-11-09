@@ -249,7 +249,8 @@ def _from_manifest(
             f"exists only on the machine that wrote it; record it against a tree here with: "
             f"mise run make-all -- --film {flm} --game-root <tree>"
         )
-    # A corpus/... tree is the data root's (ADR 0036); any other relative tree is the checkout's.
+    # A corpus/, captures/ or builds/ tree is the data root's (ADR 0036); any other relative
+    # tree is the checkout's.
     game = dataroot.resolve_data_path(game, data)
     if not game.is_absolute():
         game = root / game
