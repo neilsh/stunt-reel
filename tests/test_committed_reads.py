@@ -69,7 +69,7 @@ def committed_reads(tree: ast.Module) -> list[int]:
         ) or (
             isinstance(node, ast.Call)
             and _is_references_call(node)
-            and any(_is_repo_root(arg) for arg in node.args)
+            and any(_is_repo_root(arg) for arg in [*node.args, *(kw.value for kw in node.keywords)])
         ):
             found.append(node.lineno)
     return sorted(found)
@@ -98,7 +98,10 @@ def test_b(tmp_path):
     tmp_path / parity_layout.REFERENCES_FILE
     REPO_ROOT / "research" / "MAP.md"
     references.reference_films(tmp_path)
+    references.reference_films(root=tmp_path)
 def test_committed_rows():
     references.read_reference(REPO_ROOT, "ctry")
+def test_c():
+    references.reference_films(root=REPO_ROOT)
 """
-    assert committed_reads(ast.parse(source)) == [2, 4, 5, 6]
+    assert committed_reads(ast.parse(source)) == [2, 4, 5, 6, 15]

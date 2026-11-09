@@ -166,12 +166,10 @@ def run(args: argparse.Namespace) -> int:
         if not recapture.is_dir():
             raise BenchError(f"{film} has no recapture at {recapture}")
         plans.append((film, slug, recapture))
-    rows = [
-        noise_row(slug, _bench_film(args, root, film, recapture)["noise"])
-        for film, slug, recapture in plans
-    ]
-    print(NOISE_HEADER)
-    print("\n".join(rows))
+    # A row is printed as its film finishes, so a later film's failure keeps the earlier rows.
+    print(NOISE_HEADER, flush=True)
+    for film, slug, recapture in plans:
+        print(noise_row(slug, _bench_film(args, root, film, recapture)["noise"]), flush=True)
     return 0
 
 
