@@ -201,7 +201,18 @@ def ci_requested(env: Mapping[str, str]) -> bool:
     return env.get("CI", "").strip().lower() not in {"", "false", "0"}
 
 
-_GIT_LOCATION = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"})
+#: Left set for `_git_paths`: the caller's index, its object stores and command-scope settings.
+_KEPT = frozenset(
+    {
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_NO_REPLACE_OBJECTS",
+        "GIT_REPLACE_REF_BASE",
+    }
+)
 
 
 class ChangedPathsError(Exception):
@@ -213,9 +224,13 @@ def _git_paths(repo: Path, *args: str) -> list[str]:
     git = shutil.which("git")
     if git is None:
         raise ChangedPathsError("git is not on PATH")
-    # *repo* decides the repository: GIT_DIR, GIT_WORK_TREE or GIT_COMMON_DIR left set by a hook
-    # or a shell could name another checkout and scope this run by that checkout's changes.
-    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION}
+    # *repo* decides the repository: GIT_DIR and its kin left set by a hook or a shell could name
+    # another checkout and scope this run by that checkout's changes. The index and command-scope
+    # settings (`git -c`, `--no-replace-objects`) stay the caller's, as gate_record.working_tree
+    # sees them, so both list the same paths. gate.py runs on bare Python, so it cannot import
+    # stunt_reel.git_env; _KEPT mirrors its INDEX_SCOPE and COMMAND_SCOPE.
+    drop = _git_local_env_vars() - _KEPT
+    env = {key: value for key, value in os.environ.items() if key not in drop}
     proc = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
         [git, *args], cwd=repo, env=env, capture_output=True, check=False
     )
