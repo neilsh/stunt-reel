@@ -35,7 +35,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, get_args
+lazy import argparse
 
 from stunt_reel import capture_store, dataroot, game_builds, parity_layout, references
 from stunt_reel.all_archive import ArchiveError, resolve_all
@@ -106,6 +107,8 @@ class Job:
     out: Path | None = None
     #: A game tree to run instead of the chosen build's (the build is then recognised by hash).
     game_root: Path | None = None
+    #: Whether the staged ``.ALL`` stubs its sound samples (ADR 0043); recorded in ``meta.json``.
+    sound_samples: staging.SoundSamples = "stubbed"
 
 
 @dataclass(frozen=True)
@@ -184,12 +187,29 @@ def _say(line: str, *, err: bool = False) -> None:
 # ==============================================================================
 
 
+def add_sound_samples_option(parser: argparse.ArgumentParser) -> None:
+    """Add ``--sound-samples stubbed|kept`` (default ``stubbed``), read into :attr:`Job.sound_samples`."""
+    parser.add_argument(
+        "--sound-samples",
+        choices=get_args(staging.SoundSamples),
+        default="stubbed",
+        help=(
+            "stubbed plays the archive with each chunk in the sound range replaced by one byte, "
+            "as replays repeat with (ADR 0043); kept plays it as is (default %(default)s)"
+        ),
+    )
+
+
 @contextmanager
 def staged_play(
-    film: Path, archive: Path, engine_root: Path | None = None
+    film: Path,
+    archive: Path,
+    engine_root: Path | None = None,
+    *,
+    sound_samples: staging.SoundSamples = "stubbed",
 ) -> Iterator[StagedMount]:
     """Stage *film* and *archive* for PLAYONE and unstage on every way out of the block."""
-    staged = staging.stage_play(film, archive, engine_root)
+    staged = staging.stage_play(film, archive, engine_root, sound_samples=sound_samples)
     try:
         yield staged
     finally:
@@ -197,9 +217,15 @@ def staged_play(
 
 
 @contextmanager
-def staged_film(film: Path, engine_root: Path | None = None) -> Iterator[StagedMount]:
+def staged_film(
+    film: Path,
+    engine_root: Path | None = None,
+    *,
+    sound_samples: staging.SoundSamples = "stubbed",
+) -> Iterator[StagedMount]:
     """:func:`staged_play` with the ``.ALL`` that sits beside *film*."""
-    with staged_play(film, film.with_suffix(".ALL"), engine_root) as staged:
+    archive = film.with_suffix(".ALL")
+    with staged_play(film, archive, engine_root, sound_samples=sound_samples) as staged:
         yield staged
 
 
@@ -358,6 +384,7 @@ def execute(job: Job, plan_: Plan, *, launch: Launch = automation.launched) -> i
     provenance = {
         "captured_on": datetime.now(UTC).date().isoformat(),
         "checkout": re.sub(r"[^A-Za-z0-9._-]", "-", dataroot.REPO_ROOT.name),
+        "sound_samples": job.sound_samples,
     }
     stalled = ""
     for index, build in enumerate(builds):
@@ -436,7 +463,7 @@ def _run_play(attempt: Attempt, film: Path, build: game_builds.BuildName, plan_:
     engine = _resolve(job.game_root) if job.game_root is not None else build_root(build)
     if job.game_root is None and not (engine / "PLAYONE.EXE").is_file():
         raise Refused(f"{engine} has no PLAYONE.EXE; run mise run game-builds")
-    with staged_play(film, attempt.archive, engine) as staged:
+    with staged_play(film, attempt.archive, engine, sound_samples=job.sound_samples) as staged:
         layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
         # The film's row names the builds its reference is made with (ADR 0029).
         references.require_builds(

@@ -52,7 +52,7 @@
 
 ## playone-exe
 
-- [`playone-exe/capture-dosbox-automation.md`](playone-exe/capture-dosbox-automation.md): dosbox-automation 0.85.1 as capture emulator: frame-locked capture reading `film_tick` per frame at `DS = 0x0F46`, bit-identical `CTRY.FLM` runs, torn pages, DAC lag and the Lua instruction budget.
+- [`playone-exe/capture-dosbox-automation.md`](playone-exe/capture-dosbox-automation.md): dosbox-automation 0.85.1 as capture emulator: frame-locked capture reading `film_tick` per frame at `DS = 0x0F46`, bit-identical `CTRY.FLM` runs with the demo archive, replays made to differ by sound samples in the archive, torn pages, DAC lag and the Lua instruction budget.
 - [`playone-exe/capture-speed.md`](playone-exe/capture-speed.md): Historical DOSBox-X tests on `vault-balloon`: no tried setting, `turbo` or sampling cuts the 0.25 s frame cost, `nosound` freezes the clock, sampled tags lag 7 to 10 ticks; and where a capture ends.
 - [`playone-exe/capture.md`](playone-exe/capture.md): Historical DOSBox-X debugger capture harness: link framing, crash constraints, BDA key injection, the `film_tick` tagging protocol, the one-tick page lag and an inferred 185-row 3D viewport.
 - [`playone-exe/debugger-plans.md`](playone-exe/debugger-plans.md): How `mise run debug-x` breakpoint plans run on DOSBox-X: boot and key entry, image offset to live `CS:IP` mapping on both builds, the `BPM` watch filter that names a writer, and the hit loop.

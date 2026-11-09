@@ -237,6 +237,10 @@ _Avoid_: parity oracle, golden frames
 One run of `PLAYONE.EXE` under dosbox-automation that records a film's captured frames and palettes. A film has at most one capture of each kind, frames and video; a new capture replaces it, and the reference capture's pin detects the change.
 _Avoid_: recording (the game's own word for filming a take), recapture (for overwriting one)
 
+**Stubbed sound samples**:
+How a capture plays a film's archive by default: every chunk in the sound range `0xC000`–`0xCFFF` replaced by one byte, which made two films' replays repeat page for page (ADR 0043). A capture records in its metadata whether its samples were stubbed or kept.
+_Avoid_: muted, silent (the chunks stay in the archive; what PLAYONE plays for one is unknown)
+
 **Reference capture**:
 The capture that parity scores a film against, chosen by an explicit promotion that the repository records.
 _Avoid_: golden frames, the reference (unqualified)

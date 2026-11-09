@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import struct
 
-__all__ = ["build_all"]
+__all__ = ["archive_of", "build_all"]
 
 
 def build_all(chunks: list[bytes]) -> bytes:
@@ -18,3 +18,13 @@ def build_all(chunks: list[bytes]) -> bytes:
     out += b"".join(struct.pack("<H", chunk_id) for chunk_id in range(1, count + 1))
     out += b"".join(struct.pack("<I", offset) for offset in offsets)
     return out + b"".join(chunks)
+
+
+def archive_of(chunks: list[tuple[int, bytes]]) -> bytes:
+    """A valid archive holding *chunks* as ``(id, payload)``, in the order given."""
+    count = len(chunks)
+    offsets = [6 * count + 6]
+    for _, payload in chunks:
+        offsets.append(offsets[-1] + len(payload))
+    head = struct.pack(f"<H{count}H{count + 1}I", count, *(i for i, _ in chunks), *offsets)
+    return head + b"".join(payload for _, payload in chunks)

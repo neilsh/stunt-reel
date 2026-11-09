@@ -11,10 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from archive_helpers import build_all
+from archive_helpers import archive_of, build_all
 from stunt_reel import all_archive, dataroot, link, parity_layout
 from stunt_reel.all_archive import (
     META_FILE,
+    SOUND_IDS,
+    SOUND_STUB,
     ArchiveError,
     ArchiveMeta,
     ArchiveMissing,
@@ -22,6 +24,7 @@ from stunt_reel.all_archive import (
     no_link,
     publish_archive,
     resolve_all,
+    stub_sound_samples,
 )
 from stunt_reel.hashing import file_sha256
 
@@ -633,3 +636,104 @@ def test_an_unreadable_corpus_copy_is_named_when_nothing_matches(
     _unreadable(monkeypatch, other)
     with pytest.raises(ArchiveError, match=r"(?s)f{64}.*denied"):
         resolve_all(film, tmp_path, SLUG, link_build=no_link, pinned="f" * 64)
+
+
+# --- stub_sound_samples ---------------------------------------------------------------
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+SOUND_FIXTURE = [(0x0001, b"shape"), (0xC302, b"\x10" * 40), (0xC307, b""), (0x0F00, b"pal")]
+
+
+def _parse(data: bytes) -> list[tuple[int, bytes]]:
+    count = check_archive(data)
+    ids = struct.unpack_from(f"<{count}H", data, 2)
+    offsets = struct.unpack_from(f"<{count + 1}I", data, 2 + 2 * count)
+    return [(ids[n], data[offsets[n] : offsets[n + 1]]) for n in range(count)]
+
+
+def test_stub_replaces_each_sound_payload_with_one_byte() -> None:
+    stubbed = stub_sound_samples(archive_of(SOUND_FIXTURE))
+
+    assert _parse(stubbed) == [
+        (0x0001, b"shape"),
+        (0xC302, b"\x04"),
+        (0xC307, b"\x04"),
+        (0x0F00, b"pal"),
+    ]
+
+
+def test_an_archive_without_sound_comes_back_byte_identical() -> None:
+    assert stub_sound_samples(build_all(CHUNKS)) == build_all(CHUNKS)
+
+
+def test_stubbing_twice_is_stubbing_once() -> None:
+    once = stub_sound_samples(archive_of(SOUND_FIXTURE))
+    assert stub_sound_samples(once) == once
+
+
+def test_sound_ids_from_adds_the_missing_ids_as_stubs_ascending() -> None:
+    own = archive_of([(0xC302, b"x" * 9), (0xC319, b"y" * 9)])
+
+    stubbed = stub_sound_samples(archive_of(SOUND_FIXTURE), sound_ids_from=own)
+
+    assert _parse(stubbed) == [
+        (0x0001, b"shape"),
+        (0x0F00, b"pal"),
+        (0xC302, b"\x04"),
+        (0xC307, b"\x04"),
+        (0xC319, b"\x04"),
+    ]
+
+
+def test_sound_ids_from_on_an_archive_without_sound_adds_them_all() -> None:
+    own = archive_of([(0xC302, b"x"), (0xC31E, b"y")])
+
+    stubbed = stub_sound_samples(archive_of([(0x0001, b"a"), (0x0002, b"b")]), sound_ids_from=own)
+
+    assert _parse(stubbed) == [
+        (0x0001, b"a"),
+        (0x0002, b"b"),
+        (0xC302, b"\x04"),
+        (0xC31E, b"\x04"),
+    ]
+
+
+def test_sound_ids_from_already_covered_gives_the_same_bytes() -> None:
+    ascending = archive_of([(0x0001, b"a"), (0xC302, b"long sample")])
+    own = archive_of([(0x0005, b"not sound"), (0xC302, b"z")])
+
+    assert stub_sound_samples(ascending, sound_ids_from=own) == stub_sound_samples(ascending)
+
+
+def test_sound_ids_from_sorts_an_unsorted_input() -> None:
+    unsorted = [(0x0F00, b"pal"), (0xC302, b"s"), (0x0001, b"shape")]
+
+    kept = stub_sound_samples(archive_of(unsorted))
+    sorted_ = stub_sound_samples(archive_of(unsorted), sound_ids_from=archive_of([(0xC302, b"s")]))
+
+    assert [i for i, _ in _parse(kept)] == [0x0F00, 0xC302, 0x0001]
+    assert [i for i, _ in _parse(sorted_)] == [0x0001, 0x0F00, 0xC302]
+
+
+@pytest.mark.parametrize("name", list(_bad_archives()))
+def test_stub_rejects(name: str) -> None:
+    with pytest.raises(ArchiveError):
+        stub_sound_samples(_bad_archives()[name])
+
+
+@pytest.mark.parametrize("name", list(_bad_archives()))
+def test_sound_ids_from_rejects(name: str) -> None:
+    with pytest.raises(ArchiveError):
+        stub_sound_samples(build_all(CHUNKS), sound_ids_from=_bad_archives()[name])
+
+
+@pytest.mark.parametrize("name", ["link_film.all"])
+def test_fixture_archives_keep_their_non_sound_chunks(name: str) -> None:
+    source = (FIXTURES / name).read_bytes()
+
+    stubbed = _parse(stub_sound_samples(source))
+
+    assert [c for c in stubbed if c[0] not in SOUND_IDS] == [
+        c for c in _parse(source) if c[0] not in SOUND_IDS
+    ]
+    assert all(payload == SOUND_STUB for i, payload in stubbed if i in SOUND_IDS)

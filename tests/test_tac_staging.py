@@ -6,13 +6,17 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from archive_helpers import archive_of
 from stunt_reel import dataroot, parity_layout
+from stunt_reel.all_archive import ArchiveError, stub_sound_samples
 from stunt_reel.tac import staging
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from tac_mock import StagedRepo
+
+from tac_mock import FAKE_ALL
 
 
 def _tree(root: Path) -> set[str]:
@@ -29,7 +33,7 @@ def test_stage_play_takes_an_explicit_archive(staged_repo: StagedRepo, tmp_path:
     archive.parent.mkdir()
     archive.write_bytes(b"stored archive")
 
-    staged = staging.stage_play(staged_repo.film, archive)
+    staged = staging.stage_play(staged_repo.film, archive, sound_samples="kept")
 
     assert (staged.mount / "VAULT" / "CTRY.ALL").read_bytes() == b"stored archive"
     assert (staged.mount / "VAULT" / "CTRY.FLM").is_file()
@@ -106,7 +110,7 @@ def test_stage_play_requires_the_archive(staged_repo: StagedRepo, tmp_path: Path
 def test_stage_film_uses_the_sibling_archive(staged_repo: StagedRepo) -> None:
     staged = staging.stage_film(staged_repo.film)
 
-    assert (staged.mount / "VAULT" / "CTRY.ALL").read_bytes() == b"ALL"
+    assert (staged.mount / "VAULT" / "CTRY.ALL").read_bytes() == stub_sound_samples(FAKE_ALL)
 
 
 def test_two_stages_of_one_film_are_distinct(staged_repo: StagedRepo) -> None:
@@ -129,7 +133,7 @@ def test_stage_play_finds_the_engine_files_when_the_film_is_outside_a_game_tree(
     archive = tmp_path / "FOO.ALL"
     archive.write_bytes(b"ARCHIVE")
 
-    staged = staging.stage_play(film, archive)
+    staged = staging.stage_play(film, archive, sound_samples="kept")
 
     assert set(staging.ENGINE_FILES) <= _tree(staged.mount)
     assert (staged.mount / "VAULT" / "FOO.ALL").read_bytes() == b"ARCHIVE"
@@ -229,3 +233,36 @@ def test_write_conf_passes_the_cpu_profile(staged_repo: StagedRepo) -> None:
     conf = staged.write_conf(1, program="makeone.exe", cpu="archive")
 
     assert "cpu_cycles = max" in conf.read_text(encoding="utf-8").splitlines()
+
+
+def test_stage_play_stubs_the_sound_samples_by_default(
+    staged_repo: StagedRepo, tmp_path: Path
+) -> None:
+    archive = tmp_path / "OWN.ALL"
+    archive.write_bytes(archive_of([(0x0001, b"shape"), (0xC302, b"sample" * 9)]))
+
+    staged = staging.stage_play(staged_repo.film, archive)
+
+    staged_all = (staged.mount / "VAULT" / "CTRY.ALL").read_bytes()
+    assert staged_all == stub_sound_samples(archive.read_bytes())
+    assert staged_all != archive.read_bytes()
+
+
+def test_stage_play_keeps_the_sound_samples_when_asked(
+    staged_repo: StagedRepo, tmp_path: Path
+) -> None:
+    archive = tmp_path / "OWN.ALL"
+    archive.write_bytes(archive_of([(0x0001, b"shape"), (0xC302, b"sample" * 9)]))
+
+    staged = staging.stage_play(staged_repo.film, archive, sound_samples="kept")
+
+    assert (staged.mount / "VAULT" / "CTRY.ALL").read_bytes() == archive.read_bytes()
+
+
+def test_a_malformed_archive_leaves_no_stage(staged_repo: StagedRepo, tmp_path: Path) -> None:
+    archive = tmp_path / "BAD.ALL"
+    archive.write_bytes(bytes(2))
+
+    with pytest.raises(ArchiveError):
+        staging.stage_play(staged_repo.film, archive)
+    assert _no_stage_left()

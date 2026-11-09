@@ -23,10 +23,10 @@ import pytest
 from archive_helpers import build_all
 from pytest_helpers import build_avi
 from stunt_reel import capture_run, capture_store, dataroot, parity_layout, references
-from stunt_reel.all_archive import ArchiveMeta, publish_archive
+from stunt_reel.all_archive import ArchiveMeta, publish_archive, stub_sound_samples
 from stunt_reel.tac import automation, makeone, plan, playone
 from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout, LaunchFailed
-from tac_mock import FakeFilm, StagedRepo, load_script, makeone_launcher
+from tac_mock import FAKE_ALL, FakeFilm, StagedRepo, load_script, makeone_launcher
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -62,6 +62,8 @@ class Emulator:
         self.script = script
         self.handler = handler or (FakeFilm().handler if script == FRAMES else self._video)
         self.engines: list[bytes] = []
+        #: The ``.ALL`` each launch staged.
+        self.archives: list[bytes] = []
         self.confs: list[str] = []
         self.fail_first: list[BaseException] = []
         self.launches = 0
@@ -84,6 +86,7 @@ class Emulator:
         conf = write_conf(41234)
         self.confs.append(conf.read_text(encoding="utf-8"))
         self.engines.append((conf.parent / "mount" / "PLAYONE.EXE").read_bytes())
+        self.archives.append((conf.parent / "mount" / "VAULT" / "CTRY.ALL").read_bytes())
         if self.fail_first:
             raise self.fail_first.pop(0)
         yield automation.MockAutomation(self.handler)
@@ -260,6 +263,53 @@ def test_out_writes_there_and_replaces_nothing(
 
     assert (out / "meta.json").is_file()
     assert not _store(_kind(script)).exists()
+
+
+@BOTH
+def test_a_run_stubs_the_sound_samples_and_pins_the_archive_as_given(
+    script: str, staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    emulator = Emulator(script)
+
+    assert _run(script, staged_repo, monkeypatch, emulator) == 0
+
+    meta = json.loads((_store(_kind(script)) / "meta.json").read_text(encoding="utf-8"))
+    assert meta["sound_samples"] == "stubbed"
+    # A frame capture keeps the archive's hash at the top; a video's in its film record.
+    pinned = meta["all_sha256"] if script == FRAMES else meta["film"]["all_sha256"]
+    assert pinned == hashlib.sha256(FAKE_ALL).hexdigest()
+    assert set(emulator.archives) == {stub_sound_samples(FAKE_ALL)}
+
+
+@BOTH
+def test_sound_samples_kept_stages_the_archive_as_is_and_says_so(
+    script: str, staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    emulator = Emulator(script)
+    out = tmp_path / "out"
+
+    assert _run(script, staged_repo, monkeypatch, emulator, "--sound-samples", "kept", out=out) == 0
+
+    meta = json.loads((out / "meta.json").read_text(encoding="utf-8"))
+    assert meta["sound_samples"] == "kept"
+    assert set(emulator.archives) == {FAKE_ALL}
+
+
+@BOTH
+def test_a_malformed_archive_is_refused_and_leaves_no_stage(
+    script: str,
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    staged_repo.film.with_suffix(".ALL").write_bytes(bytes(2))
+    emulator = Emulator(script)
+
+    assert _run(script, staged_repo, monkeypatch, emulator) == 2
+
+    assert "declares no chunks" in capsys.readouterr().err
+    assert emulator.launches == 0
+    assert _stage_is_empty()
 
 
 @BOTH
@@ -565,7 +615,7 @@ def test_a_video_run_files_the_stripped_avi_and_a_meta_naming_the_film(
     assert b"01wb" not in (store / "capture.avi").read_bytes()
     meta = json.loads((store / "meta.json").read_text(encoding="utf-8"))
     assert meta["film"]["name"] == "CTRY.FLM"
-    assert meta["film"]["all_sha256"] == hashlib.sha256(b"ALL").hexdigest()
+    assert meta["film"]["all_sha256"] == hashlib.sha256(FAKE_ALL).hexdigest()
     out = capsys.readouterr().out
     assert "[capture-video] recorded 3 frames (hold), film starts at frame 103" in out
     assert f"[capture-video] replaced the capture in {store}" in out

@@ -92,6 +92,8 @@ The 256 colors are organized into **16 functional groups of 16 contiguous colors
 Sound sample chunks contain raw 8-bit unsigned mono PCM audio clips digitized at typical Sound Blaster sample rates (e.g., 11,025 Hz or 8,000 Hz):
 - **Resource ID Resolution:** When a `.FLM` choreography stream encounters opcode `0x9C` (`sound`), operand `arg2` specifies a 16-bit resource ID in the range `0xC000`–`0xCFFF`.
 - **Runtime Binding:** The engine queries the loaded `.ALL` container for chunk `arg2`, obtaining the raw waveform bytes for playback through the Sound Blaster DSP without disk seeks.
+- **Two kinds of chunk in the range** (`[Bounded Observation]`, the seven reference archives): sample-like chunks, whose first byte is `0x00` or `0x02` (those under `0xC3` are common sounds, [`linking.md`](../makeone-exe/linking.md) § 5; the source of those under `0xC4` and `0xC5` is unchecked), and music, chunks that begin `03 'FORM'` (`0x03` then an IFF `FORM` header) under `0xC0` and `0xC1`, copied from `MUSIC1` and `MUSIC2` ([`linking.md`](../makeone-exe/linking.md) § 5).
+- **Shortened samples in the demo:** the demo's `CTRY.ALL` (`9de1bc1e`) holds `0xC302` and `0xC31E` as 1 byte (`0x04`) and `0xC319` as 1,839 bytes, where `MAKEONE` writes 16,978, 17,005 and 12; it keeps its music chunk `0xC010` whole (3,561 bytes) and lacks `MAKEONE`'s `0xC56A`. Captures replace every chunk in the range with that one byte ([capture note](../playone-exe/capture-dosbox-automation.md) § 4.4). `[Bounded Observation]`
 
 ### 3.4 Runtime Scene Reconstruction & Model Binding (`[Established]`)
 
