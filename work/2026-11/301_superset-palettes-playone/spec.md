@@ -16,7 +16,9 @@ Read from `<data root>/builds/{unpatched,patch3}/RES/SPRITES.RES` with `superset
 - **`superset-all --with-palettes`**: adds `0x801E` and `0x8042` from the `--game` tree's `SPRITES.RES`. Off by default, so the renderer's superset stays as it is.
 - **`capture-ref --archive <.ALL>`**: stages that file as the film's archive and records its sha256 in `meta.json`.
 - **`make-all --out`** (`--game-root` already existed): writes a build's own archive outside `captures/<film>/archives/`, so no reference pin moves.
-- **Stubbing an archive's sample chunks**: built in the noise session and landed with its finding; this branch rebases onto it. Nothing below runs before it lands.
+- **Stubbing an archive's sample chunks**: built by [#305](https://github.com/neilsh/stunt-reel/issues/305) (`work/2026-11/305_recapture-noise/spec.md`) in its first stacked PR, which also adopts `capture-compare`; this branch rebases onto that PR and drops its own copy of `capture-compare`. Nothing below runs before it lands. The interface:
+  - `mise run stub-sound-samples -- IN.ALL -o OUT.ALL [--sound-ids-from OWN.ALL]` replaces every `0xC000`–`0xCFFF` chunk's payload with the byte `0x04` (the demo `CTRY.ALL`'s `0xC302` stub), keeping ids and order; `--sound-ids-from` adds a stub for each sound id of `OWN` that `IN` lacks.
+  - `capture-ref --sound-samples stubbed|kept`, default `stubbed`, stubs the staged archive; `meta.json` records `sound_samples`, and `all_sha256` stays the unstubbed archive's hash.
 - **`capture-compare A B`** (new): pairs two captures' index pages by exact `film_tick` and prints the shared-tick count, identical pages, median and 90th-percentile differing pixels, and whether the paired palettes are byte-equal. Fewer than 20 shared ticks is reported as unpaired, not judged. Pairing by nearest tick measures motion ([#299](https://github.com/neilsh/stunt-reel/issues/299)).
 
 Each is tested on synthetic fixtures.
@@ -27,9 +29,9 @@ Each is tested on synthetic fixtures.
 - **Own archive**: the `make-all` rebuild for that build, for both films (not the demo's shipped `CTRY.ALL`, which comes from a third `MAKEONE`).
 - **Sounds**: every arm but one plays with the film's sample chunks stubbed, the same stubbed ids in each, so sound is not a variable.
 - **Arms per film and build**:
-  - `own-1`, `own-2`: the own archive, samples stubbed. If the pair is not bit-identical, a third (`own-3`).
-  - `superset`: the superset with palettes plus the own archive's stubbed sample chunks.
-  - `superset-bare`: the superset with palettes as `superset-all` writes it, no sound chunk; how a film with no archive plays from it.
+  - `own-1`, `own-2`: `capture-ref --archive own.ALL`, samples stubbed by the default. If the pair is not bit-identical, a third (`own-3`).
+  - `superset`: `superset.ALL` is `stub-sound-samples superset-bare.ALL --sound-ids-from own.ALL`, the superset with palettes plus the own archive's sound ids as stubs.
+  - `superset-bare`: the superset with palettes as `superset-all` writes it, no sound chunk; how a film with no archive plays from it. The default stubbing leaves it unchanged.
   - 16 captures in all (20 if every pair needs a third). No superset-without-palettes arm and no cross-build arm.
 - **Layout**: `<data root>/bench/<slug>/301/<build>/` holding `own.ALL`, `superset.ALL`, `superset-bare.ALL`, the capture directories and `compare.txt`.
 
