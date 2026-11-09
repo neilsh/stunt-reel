@@ -11,17 +11,19 @@ import os
 import shutil
 import subprocess
 
-__all__ = ["git_location_vars", "isolated_env"]
+__all__ = ["COMMAND_CONFIG", "git_location_vars", "isolated_env"]
 
 #: Listed by every git ``--local-env-vars`` reports; kept so a failing git still strips them.
 _CORE = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"})
+#: ``git -c`` settings a hook inherits: command scope, not a repository, so they stay.
+COMMAND_CONFIG = frozenset({"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"})
 
 
 @functools.cache
 def git_location_vars() -> frozenset[str]:
-    """The variables that point git at a repository: ``git rev-parse --local-env-vars``'s list.
+    """The variables that point git at a repository, from ``git rev-parse --local-env-vars``.
 
-    Always holds ``GIT_DIR``, ``GIT_WORK_TREE``, ``GIT_INDEX_FILE`` and ``GIT_COMMON_DIR``, also
+    :data:`COMMAND_CONFIG` is left out. Always holds ``GIT_DIR``, ``GIT_WORK_TREE``, ``GIT_INDEX_FILE`` and ``GIT_COMMON_DIR``, also
     when git is missing or fails.
     """
     git = shutil.which("git")
@@ -30,7 +32,9 @@ def git_location_vars() -> frozenset[str]:
     listed = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
         [git, "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=False
     )
-    return _CORE | frozenset(listed.stdout.split()) if listed.returncode == 0 else _CORE
+    if listed.returncode != 0:
+        return _CORE
+    return (_CORE | frozenset(listed.stdout.split())) - COMMAND_CONFIG
 
 
 def isolated_env(*, keep_index: bool) -> dict[str, str]:
