@@ -201,6 +201,12 @@ def ci_requested(env: Mapping[str, str]) -> bool:
     return env.get("CI", "").strip().lower() not in {"", "false", "0"}
 
 
+#: Left set for `_git_paths`: the caller's index and command-scope git settings.
+_KEPT = frozenset(
+    {"GIT_INDEX_FILE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_NO_REPLACE_OBJECTS"}
+)
+
+
 class ChangedPathsError(Exception):
     """git could not say which paths the branch changed; the message is git's."""
 
@@ -211,10 +217,11 @@ def _git_paths(repo: Path, *args: str) -> list[str]:
     if git is None:
         raise ChangedPathsError("git is not on PATH")
     # *repo* decides the repository: GIT_DIR and its kin left set by a hook or a shell could name
-    # another checkout and scope this run by that checkout's changes. The index and `git -c`
-    # settings stay the caller's, as gate_record.working_tree sees them, so both list the same
-    # untracked paths. gate.py runs on bare Python, so it cannot import stunt_reel.git_env.
-    drop = _git_local_env_vars() - {"GIT_INDEX_FILE", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"}
+    # another checkout and scope this run by that checkout's changes. The index and command-scope
+    # settings (`git -c`, `--no-replace-objects`) stay the caller's, as gate_record.working_tree
+    # sees them, so both list the same paths. gate.py runs on bare Python, so it cannot import
+    # stunt_reel.git_env; _KEPT mirrors its COMMAND_SCOPE.
+    drop = _git_local_env_vars() - _KEPT
     env = {key: value for key, value in os.environ.items() if key not in drop}
     proc = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
         [git, *args], cwd=repo, env=env, capture_output=True, check=False
