@@ -270,6 +270,10 @@ depends = ["ensure"]
 run = "uv run python python/scripts/superset_all.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
+[tasks.stub-sound-samples]
+description = "Copy a .ALL with every sound sample stubbed, as captures play it, and print both hashes (mise run stub-sound-samples -- IN.ALL -o OUT.ALL [--sound-ids-from OWN.ALL])"
+run = "uv run python python/scripts/stub_sound_samples.py"
+
 [tasks.cloud-assets]
 description = "Pack, upload, fetch or verify the game archives cloud sessions use (mise run cloud-assets -- [--data-root DIR] pack|upload|fetch|status|verify [ARCHIVE...]; verify downloads and unpacks to a temp dir, leaving the data root alone; ADR 0039)"
 run = "uv run python python/scripts/cloud_assets.py"
