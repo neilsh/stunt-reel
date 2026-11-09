@@ -373,7 +373,7 @@ class _RestGh:
         self.resolved = False
         self.calls: list[tuple[str, ...]] = []
 
-    def __call__(self, *args: str) -> Any:
+    def __call__(self, *args: str, empty_ok: bool = False) -> Any:
         """Record *args* and give the answer gh would behind the proxy."""
         self.calls.append(args)
         path = args[-1] if args[:3] != ("api", "-X", "POST") else args[3]
@@ -418,6 +418,7 @@ class _RestGh:
                 },
             ]
         if path == "repos/o/r/pulls/7/ccr/comments/111/resolve":
+            assert empty_ok, "the resolve route answers with an empty body"
             self.resolved = self.resolves
             return None
         raise AssertionError(f"unexpected gh call {args}")
@@ -501,3 +502,16 @@ def test_another_gh_error_is_not_taken_for_a_refused_graphql(
     monkeypatch.setattr(pr_threads, "_gh", gh)
     with pytest.raises(pr_threads.GhError, match="502"):
         pr_threads.read_threads("o", "r", 7)
+
+
+def test_empty_stdout_is_a_gh_error_unless_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a caller that expects no body gets ``None``; any other empty answer is a GhError."""
+
+    def run(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess([], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "gh")
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(pr_threads.GhError, match="no JSON"):
+        pr_threads._gh("api", "graphql")
+    assert pr_threads._gh("api", "-X", "POST", "x", empty_ok=True) is None

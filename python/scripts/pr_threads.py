@@ -221,7 +221,8 @@ def outside_lines(
     ]
 
 
-def _gh(*args: str) -> Any:
+def _gh(*args: str, empty_ok: bool = False) -> Any:
+    """``gh *args``' JSON answer; ``None`` for empty stdout only when *empty_ok*."""
     gh = shutil.which("gh")
     if gh is None:
         raise GhError("gh is not on PATH")
@@ -233,7 +234,7 @@ def _gh(*args: str) -> Any:
         raise GhError(f"gh {args[0]} gave no answer in {GH_TIMEOUT} s") from err
     if result.returncode != 0:
         raise GhError(result.stderr.strip() or f"gh {args[0]} exited {result.returncode}")
-    if not result.stdout.strip():
+    if empty_ok and not result.stdout.strip():
         return None
     try:
         return json.loads(result.stdout)
@@ -432,6 +433,7 @@ def resolve(owner: str, name: str, number: int, comment_id: int) -> bool | None:
             "-X",
             "POST",
             f"repos/{owner}/{name}/pulls/{number}/ccr/comments/{comment_id}/resolve",
+            empty_ok=True,
         )
         after = thread_of(rest_threads(owner, name, number) or [], comment_id)
         if after is None or not after["isResolved"]:
