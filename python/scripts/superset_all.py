@@ -10,7 +10,8 @@ shapes all come from the stock game. Pass it as ``stuntreel --all``. Renders of 
 (``linking.md`` section 7). Films with community add-on shapes still need their own archive.
 `PLAYONE.EXE` played `TOD.FLM` from it with a wrong palette (``linking.md`` section 7.2), since
 a film's own archive also holds the two palette items of `SPRITES.RES`; ``--with-palettes``
-adds them, for playing the superset in `PLAYONE`.
+adds them. With them `PLAYONE` keeps the film's palettes, but draws some pages differently from
+the film's own archive, so a superset is no stand-in for a reference capture.
 
 It also keeps a small, complete shape set for machines without the game tree. The archive is
 4.2 MB, about 1.3 MB with zstd.
