@@ -30,5 +30,27 @@
 
   - The demo `CTRY.ALL` holds its three sound chunks as stubs (`0xC302` 1 byte, `0xC319` 1,839, `0xC31E` 1); MAKEONE writes 16,978, 17,005 and 12. MAKEONE's `LOCATION.ALL` has no chunk in `0xC300`-`0xC3FF`; each of the other six reference archives has one to sixteen.
   - Stubbing the sound changes the pictures as well as removing the noise: the stubbed capture differs from the with-sound reference on more pages (66 of 96) than two with-sound captures differ from each other.
-- **Verdict**: adopted as the cause, `[Bounded Observation]` on CTRY and BALLOON. A film whose archive carries no sound sample replays page for page across builds and runs; one sample (BALLOON's `0xC307`) is enough to make it diverge. How playback changes the picture (frame pacing, the tick a render loop starts from) is not measured.
+- **Verdict**: adopted as the cause, `[Bounded Observation]` on CTRY and BALLOON. With its chunks in `0xC000`–`0xCFFF` stubbed, BALLOON's archive replays page for page; with them (the samples `0xC307` and `0xC565`) it diverges. Corrected by the next entry, which lists those chunks: this entry first named `0xC307` alone. How playback changes the picture (frame pacing, the tick a render loop starts from) is not measured.
 - **Lives in**: [`method.md`](../../../research/parity/method.md) § 2.2.1; [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4.
+
+## 2026-11-09: what the sound range holds, and CTRY stubbed
+
+- **Question**: Which chunks does the stub replace, and does stubbing them make `CTRY.FLM` from `MAKEONE`'s archive replay page for page?
+- **Method**: At `a48b50c`, a header parse of the demo `CTRY.ALL` and the seven stored reference archives (`<data root>/captures/<slug>/archives/`), listing each chunk in `0xC000`-`0xCFFF` with its size and first bytes. Then two `mise run capture-ref -- --film corpus/stuntisl/VAULT/CTRY.FLM --out <data root>/bench/vault-ctry/stubbed-{a,b}` runs with the default stub, the second started 0.1 s after the first, compared with `mise run capture-compare`.
+- **Result**:
+
+  | Archive | Chunks in `0xC000`-`0xCFFF` (bytes) |
+  |---|---|
+  | demo `CTRY.ALL` | `0xC010` FORM (3,561), `0xC302` (1), `0xC319` (1,839), `0xC31E` (1) |
+  | `CTRY` | `0xC010` FORM (3,561), `0xC302` (16,978), `0xC319` (17,005), `0xC31E` (12), `0xC56A` (2,204) |
+  | `BALLOON` | `0xC307` (8,903), `0xC565` (1,556) |
+  | `BOMB` | four FORM, `0xC307`, `0xC319`, `0xC31E`, `0xC548`, `0xC54F` |
+  | `INTRO` | one FORM, twenty samples |
+  | `LAND` | `0xC107` FORM (2,323), `0xC306` (7,001) |
+  | `LOCATION` | six FORM, `0xC447` (6,034) |
+  | `TRAINTNL` | `0xC302`, `0xC307`, `0xC537` |
+
+  - Samples begin with `0x00` or `0x02`; the other chunks begin `03 'FORM'` and sit under `0xC0` and `0xC1`, the music `res_index` values of [`linking.md`](../../../research/makeone-exe/linking.md) § 5. The stub replaces both.
+  - The stubbed CTRY pair agreed on 121 of 121 pages, palettes 121 of 121 (the with-sound 2026-11-08 pair: 27 of 111 differing).
+- **Verdict**: `[Bounded Observation]`. Stubbing the range makes CTRY replay page for page, as it did BALLOON. The previous entry's "one sample" and the notes' "`LOCATION.ALL` has no sample" were wrong: BALLOON's stub covered two samples, and LOCATION holds a sample-like chunk yet replays nearly identically (capture note open question 16).
+- **Lives in**: [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4 and open questions 16 and 18; [`all.md`](../../../research/formats/all.md) § 3.3; [`method.md`](../../../research/parity/method.md) § 2.2.1.

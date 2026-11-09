@@ -7,7 +7,7 @@ outcome: ""
 
 # Recapture noise is heavy-tailed: how should the verdict tell noise from a change?
 
-On `BALLOON.FLM` recapture noise comes from the sound sample in its archive: a capture pair with the sample stubbed agrees page for page, and `CTRY.FLM`'s stubbed demo archive replays identically too ([journal](journal.md)). This replaces consensus capture ([issue comment](https://github.com/neilsh/stunt-reel/issues/305#issuecomment-6732874951)) as the first candidate.
+On `BALLOON.FLM` and `CTRY.FLM` recapture noise comes from the archive's sound range (`0xC000`-`0xCFFF`): a capture pair with it stubbed agrees page for page, and `CTRY.FLM`'s demo archive, with shortened samples, replays identically too ([journal](journal.md)). This replaces consensus capture ([issue comment](https://github.com/neilsh/stunt-reel/issues/305#issuecomment-6732874951)) as the first candidate.
 
 ## Handoff
 

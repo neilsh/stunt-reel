@@ -6,7 +6,7 @@ Issue [#305](https://github.com/neilsh/stunt-reel/issues/305). Design agreed 202
 
 **Goal.** Make recapture noise zero on the reference films, so the regression verdict (`--compare-test`) can treat any nonzero Δ as the render's, and the headline score of a film no longer moves when it is recaptured.
 
-**Why this way.** Two captures of `BALLOON.FLM` from `MAKEONE`'s archive differ on 26 of 102 pages; with its one sound sample stubbed they agree on 108 of 108, and the demo's `CTRY.ALL`, which ships its samples stubbed, replays identically on both builds ([journal](journal.md#2026-11-09-sound-samples-in-the-archive-make-replays-differ); [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4). Removing the cause replaces the consensus capture proposed on the issue: no N-fold runs, no majority pages, no change to ADR 0028's one capture per film.
+**Why this way.** Two captures of `BALLOON.FLM` from `MAKEONE`'s archive differ on 26 of 102 pages; with its two chunks in `0xC000`–`0xCFFF` stubbed they agree on 108 of 108, and the demo's `CTRY.ALL`, whose samples are shortened, replays identically on both builds ([journal](journal.md#2026-11-09-sound-samples-in-the-archive-make-replays-differ); [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4). Removing the cause replaces the consensus capture proposed on the issue: no N-fold runs, no majority pages, no change to ADR 0028's one capture per film.
 
 **Accepted cost.** A stubbed capture is a different recording of the film, not a cleaner copy: the stubbed `BALLOON` capture differs from the with-sound reference on 66 of 96 pages. All seven references are recaptured and repinned once, and their headline scores move. The move is recorded, not gated: a reference is chosen for being repeatable, not for scoring well (Q7).
 
@@ -30,7 +30,7 @@ All in Python; nothing changes in `crates/stunt-core` or `stuntreel link`, since
 - Calls `check_archive`, from the same module, on the input and on `sound_ids_from`, so it refuses what that refuses with an `ArchiveError` naming the problem: no chunks, a header past the data, a first offset that is not the header size, offsets that decrease, and a last offset that is not the file size.
 - Pure: bytes in, bytes out.
 
-**What the stub is known to do.** PLAYONE plays and replays identically a film whose samples are this byte, on `BALLOON.FLM` (stubbed here) and the demo's `CTRY.FLM` (stubbed as shipped). What it does with the byte (skips the sample, or plays a click) is not known; a zero-length payload or a minimal well-formed sample was not tried and is not used (Q3).
+**What the stub is known to do.** Two captures with the stub replayed identically on `BALLOON.FLM` and, in PR 2's first pair, `CTRY.FLM`. The range also holds music chunks (`03 'FORM'`, under `0xC0` and `0xC1`), which the stub replaces too though the demo keeps its own whole. What it does with the byte (skips the sample, or plays a click) is not known; a zero-length payload or a minimal well-formed sample was not tried and is not used (Q3).
 
 ### 1.2 `mise run stub-sound-samples`
 
@@ -42,7 +42,7 @@ All in Python; nothing changes in `crates/stunt-core` or `stuntreel link`, since
 
 ### 1.4 Staging
 
-`staging.stage_play(film, archive, engine_root=None, *, sound_samples: SoundSamples = "stubbed")` in [`python/stunt_reel/tac/staging.py`](../../../python/stunt_reel/tac/staging.py), where `SoundSamples = Literal["stubbed", "kept"]`. With `"stubbed"` it writes `stub_sound_samples(archive.read_bytes())` as the mount's `<film stem>.ALL`; with `"kept"` it copies the archive as today. `staged_play` and `staged_film` in [`capture_run.py`](../../../python/stunt_reel/capture_run.py) take `sound_samples` and pass it on. That gives frame capture, video capture and the batch survey one shared path. `staged_film` has two other callers, `mise run play` and the light probe (`probe_playone_light.py`). Both take the default and gain no option (Q17).
+`staging.stage_play(film, archive, engine_root=None, *, sound_samples: SoundSamples = "stubbed")` in [`python/stunt_reel/tac/staging.py`](../../../python/stunt_reel/tac/staging.py), where `SoundSamples = Literal["stubbed", "kept"]`. With `"stubbed"` it writes `stub_sound_samples(archive.read_bytes())` as the mount's `<film stem>.ALL`; with `"kept"` it copies the archive as today. `staged_play` and `staged_film` in [`capture_run.py`](../../../python/stunt_reel/capture_run.py) take `sound_samples` and pass it on. That gives frame capture, video capture and the batch survey one shared path. `staged_film` has three other callers, `mise run play`, the light probe (`probe_playone_light.py`) and `mise run debug-x` (`dbx/boot.py`). All three take the default and gain no option (Q17).
 
 The stub is applied in `stage_play` to whatever archive it is given. #301's `capture-ref --archive` therefore needs no hook of its own: the file passed in is what gets stubbed, and `all_sha256` stays that file's hash.
 

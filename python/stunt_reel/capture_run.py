@@ -194,8 +194,8 @@ def add_sound_samples_option(parser: argparse.ArgumentParser) -> None:
         choices=get_args(staging.SoundSamples),
         default="stubbed",
         help=(
-            "stubbed plays the archive with each sound sample replaced by one byte, so replays "
-            "repeat (ADR 0043); kept plays it as is (default %(default)s)"
+            "stubbed plays the archive with each chunk in the sound range replaced by one byte, "
+            "as replays repeat with (ADR 0043); kept plays it as is (default %(default)s)"
         ),
     )
 

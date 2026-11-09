@@ -238,7 +238,7 @@ One run of `PLAYONE.EXE` under dosbox-automation that records a film's captured 
 _Avoid_: recording (the game's own word for filming a take), recapture (for overwriting one)
 
 **Stubbed sound samples**:
-How a capture plays a film's archive by default: every sound sample's payload replaced by one byte, so replays of the film repeat page for page. A capture records in its metadata whether its samples were stubbed or kept.
+How a capture plays a film's archive by default: every chunk in the sound range `0xC000`–`0xCFFF` replaced by one byte, which made two films' replays repeat page for page (ADR 0043). A capture records in its metadata whether its samples were stubbed or kept.
 _Avoid_: muted, silent (the chunks stay in the archive; what PLAYONE plays for one is unknown)
 
 **Reference capture**:

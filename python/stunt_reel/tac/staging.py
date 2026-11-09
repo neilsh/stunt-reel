@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 #: ``archive`` is the fast core for MAKEONE, which nothing samples (ADR 0023: 13 s against 179 s).
 CpuProfile = Literal["capture", "archive"]
 
-#: How a staged film's ``.ALL`` holds its sound samples: ``stubbed`` replaces each with the one
-#: byte the demo ships, so replays repeat (ADR 0043); ``kept`` copies the archive as is.
+#: How a staged film's ``.ALL`` holds its sound range: ``stubbed`` replaces each chunk in it with
+#: one byte, as replays repeat with (ADR 0043); ``kept`` copies the archive as is.
 SoundSamples = Literal["stubbed", "kept"]
 _CPU_LINES: dict[str, tuple[str, str]] = {
     "capture": ("core = dynamic", "cpu_cycles = 45000"),

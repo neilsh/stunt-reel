@@ -9,12 +9,16 @@ unchanged.
 ## Context
 
 On six of the seven reference films, a recapture from the film's `MAKEONE` archive differs from
-the reference on 23 to 45% of the pages they both hold. As a result, the parity verdict could
-not tell a render change from recapture noise (#305). On `BALLOON.FLM` the difference comes from the one sound sample in the
-archive. Two captures with it differed on 26 of 102 pages, and with that sample's payload cut
-to one byte, two captures agreed on 108 of 108. The demo's `CTRY.ALL`, which ships its samples
-stubbed, replays identically on both builds
-([capture note](../../research/playone-exe/capture-dosbox-automation.md) § 4.4).
+the reference on about a quarter to a half of the pages they both hold. As a result, the parity
+verdict could not tell a render change from recapture noise (#305).
+
+On `BALLOON.FLM` and `CTRY.FLM` the difference comes from the archive's chunks in the sound range
+`0xC000`–`0xCFFF`.
+- Two `BALLOON` captures with those chunks differed on 26 of 102 pages. With each payload cut to
+  one byte, two captures agreed on 108 of 108.
+- `CTRY` went from 27 of 111 pages differing to 121 of 121 agreeing, the same way.
+- The demo's `CTRY.ALL`, whose samples are shortened, also replays identically
+  ([capture note](../../research/playone-exe/capture-dosbox-automation.md) § 4.4).
 
 The stub changes the pictures as well. The stubbed `BALLOON` capture differs from the reference
 captured with sound on 66 of 96 pages. A stubbed capture is a different recording of the film,
@@ -22,10 +26,11 @@ not a cleaner copy of the old one.
 
 ## Decision
 
-- **Staging stubs every sound sample.** `staging.stage_play` writes
+- **Staging stubs the sound range.** `staging.stage_play` writes
   `all_archive.stub_sound_samples` of the film's archive into the mount. Each chunk in
   `0xC000`–`0xCFFF` gets the one byte `0x04`, the stub the demo's `CTRY.ALL` holds in `0xC302`.
-  No other chunk changes.
+  That covers both samples and the range's music chunks. The demo keeps its own music chunk
+  whole. No chunk outside the range changes.
 - **`--sound-samples kept` records with sound.** `capture-ref` and `capture-video` take it, and
   the default is `stubbed`. A capture's `meta.json` records `"sound_samples"`. A capture without
   the field played with its samples, as every capture before this ADR did.
@@ -54,5 +59,6 @@ not a cleaner copy of the old one.
   for that.
 - The batch survey's existing captures stay as they are. Their `meta.json` lacks the field, so
   they played with their samples.
-- `mise run play` and the light probe stub as well, with no option, so what a person watches
-  matches what a capture records.
+- `mise run play`, the light probe and `mise run debug-x` (`dbx/boot.py`) stub as well, with no
+  option, so what a person watches or traces matches what a capture records. A trace made before
+  this ADR played the sound.
