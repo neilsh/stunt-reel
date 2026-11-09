@@ -12,4 +12,5 @@ On `BALLOON.FLM` recapture noise comes from the sound sample in its archive: a c
 ## Handoff
 
 - Done: the cause recorded in [`method.md`](../../../research/parity/method.md) § 2.2.1 and [`capture-dosbox-automation.md`](../../../research/playone-exe/capture-dosbox-automation.md) § 4.4. The spike's captures are in `<data root>/spike/305/`.
-- Left: a design for capturing reference films from sound-stubbed archives (recapture and repin all seven, a two-capture check per film), then `noise_sigma` per film.
+- Done (PR 1): [spec](spec.md) and [plan](plan.md) Tasks 1 to 5: `stub_sound_samples`, `mise run stub-sound-samples`, `mise run capture-compare` (from #301), captures stub by default (`--sound-samples kept` otherwise), ADR 0043.
+- Left (PR 2, plan Tasks 6 to 8): the drift check without a σ, then back up, recapture each reference film twice, compare, promote, repin, re-measure and retire `noise_sigma`.

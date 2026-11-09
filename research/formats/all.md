@@ -92,6 +92,7 @@ The 256 colors are organized into **16 functional groups of 16 contiguous colors
 Sound sample chunks contain raw 8-bit unsigned mono PCM audio clips digitized at typical Sound Blaster sample rates (e.g., 11,025 Hz or 8,000 Hz):
 - **Resource ID Resolution:** When a `.FLM` choreography stream encounters opcode `0x9C` (`sound`), operand `arg2` specifies a 16-bit resource ID in the range `0xC000`–`0xCFFF`.
 - **Runtime Binding:** The engine queries the loaded `.ALL` container for chunk `arg2`, obtaining the raw waveform bytes for playback through the Sound Blaster DSP without disk seeks.
+- **Stubs in the demo:** the demo's `CTRY.ALL` (`9de1bc1e`) ships its three sound chunks as stubs: `0xC302` is 1 byte (`0x04`), `0xC319` is 1,839 bytes and `0xC31E` is 1 byte. `MAKEONE` writes the same ids as 16,978, 17,005 and 12 bytes. Captures stub every sample to that one byte ([capture note](../playone-exe/capture-dosbox-automation.md) § 4.4). `[Bounded Observation]`
 
 ### 3.4 Runtime Scene Reconstruction & Model Binding (`[Established]`)
 
