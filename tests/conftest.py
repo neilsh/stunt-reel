@@ -24,7 +24,7 @@ from pytest_helpers import (
     per_run_basetemp,
     prune_old_basetemps,
 )
-from stunt_reel import dataroot
+from stunt_reel import dataroot, parity_layout, references
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -76,6 +76,21 @@ def pytest_configure(config: pytest.Config) -> None:
     prune_old_basetemps(cache_dir(rootpath))
     if config.option.basetemp is None:
         config.option.basetemp = str(per_run_basetemp(rootpath))
+
+
+@pytest.fixture
+def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty ``references.toml`` in a stand-in checkout, which ``references`` reads instead.
+
+    A test writes the rows it needs into the returned file, so a change to the committed rows
+    breaks only the ``test_committed_*`` tests that check them.
+    """
+    checkout = tmp_path / "references-checkout"
+    pointers = checkout / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    pointers.write_text("", encoding="utf-8")
+    monkeypatch.setattr(references, "REPO_ROOT", checkout)
+    return pointers
 
 
 @pytest.fixture

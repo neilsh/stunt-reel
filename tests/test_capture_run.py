@@ -43,15 +43,7 @@ VIDEO_LOG = {
 }
 
 
-@pytest.fixture(autouse=True)
-def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An empty references.toml in a stand-in checkout, so the committed rows are not read."""
-    checkout = tmp_path / "references-checkout"
-    pointers = checkout / parity_layout.REFERENCES_FILE
-    pointers.parent.mkdir(parents=True)
-    pointers.write_text("", encoding="utf-8")
-    monkeypatch.setattr(references, "REPO_ROOT", checkout)
-    return pointers
+pytestmark = pytest.mark.usefixtures("rows")
 
 
 def _row(pointers: Path, *, playone_build: str = "patch3", makeone_build: str = "patch3") -> None:

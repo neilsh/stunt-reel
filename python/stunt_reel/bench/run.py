@@ -40,6 +40,7 @@ __all__ = [
     "bench",
     "check_fidelity",
     "plant_tree",
+    "recapture_noise",
     "recapture_sigma",
     "run_bench",
 ]
@@ -88,14 +89,14 @@ def _paired_ticks(
     return [t for t in ticks if t in a and t in b and t in rendered]
 
 
-def _recapture_sigmas(
+def _recapture_deltas(
     metrics: list[str],
     a: dict[int, CapturePlanes],
     b: dict[int, CapturePlanes],
     source: RenderSource,
     ticks: list[int],
-) -> dict[str, float | None]:
-    """Sigma of each of *metrics*, loading every paired tick's control render once."""
+) -> tuple[list[int], dict[str, list[float]]]:
+    """The paired ticks, and each metric's ``a - b`` on them, loading each control render once."""
     paired = _paired_ticks(a, b, source, ticks)
     if len(paired) < MIN_PAIRED_TICKS:
         raise BenchError(
@@ -111,11 +112,44 @@ def _recapture_sigmas(
             second = fn(b[tick], control, regions)
             if first is not None and second is not None:
                 deltas[name].append(first - second)
+    return paired, deltas
+
+
+def _sigmas(deltas: dict[str, list[float]]) -> dict[str, float | None]:
     # A metric n/a on (nearly) every frame has no noise to measure: None, so nothing it
     # scores can be called detected.
     return {
         name: float(statistics.stdev(values)) if len(values) >= 2 else None
         for name, values in deltas.items()
+    }
+
+
+def recapture_noise(
+    a: dict[int, CapturePlanes],
+    b: dict[int, CapturePlanes],
+    paired: list[int],
+    ssim_deltas: list[float],
+) -> dict[str, Any]:
+    """The whole-frame ``ssim`` noise of two captures over *paired* ticks (method.md § 2.2.1).
+
+    ``identical_pages`` counts paired ticks whose index planes match pixel for pixel;
+    ``sigma`` is the sample standard deviation of *ssim_deltas*, and ``median``, ``p90``,
+    ``p95`` and ``max`` are of their absolute values, each ``None`` without enough deltas.
+    """
+    spread = np.abs(np.asarray(ssim_deltas, dtype=np.float64))
+    identical = sum(1 for tick in paired if np.array_equal(a[tick].idx, b[tick].idx))
+
+    def quantile(q: float) -> float | None:
+        return float(np.percentile(spread, q)) if spread.size else None
+
+    return {
+        "paired": len(paired),
+        "identical_pages": identical,
+        "sigma": float(statistics.stdev(ssim_deltas)) if len(ssim_deltas) >= 2 else None,
+        "median": quantile(50),
+        "p90": quantile(90),
+        "p95": quantile(95),
+        "max": float(spread.max()) if spread.size else None,
     }
 
 
@@ -131,7 +165,7 @@ def recapture_sigma(
     Raises ``BenchError`` if fewer than :data:`MIN_PAIRED_TICKS` ticks are shared; returns
     ``None`` if fewer than two paired ticks produce a value for the metric.
     """
-    return _recapture_sigmas([metric], a, b, source, ticks)[metric]
+    return _sigmas(_recapture_deltas([metric], a, b, source, ticks)[1])[metric]
 
 
 def _build_floor(source: RenderSource, floor: RenderSource) -> dict[str, Any]:
@@ -181,7 +215,10 @@ def bench(
     """The ``bench.json`` document for one film."""
     rendered = set(source.ticks())
     film_ticks = [t for t in scored_ticks if t in reference and t in rendered]
-    sigma = _recapture_sigmas(list(METRICS), reference, recapture, source, scored_ticks)
+    paired, noise_deltas = _recapture_deltas(
+        list(METRICS), reference, recapture, source, scored_ticks
+    )
+    sigma = _sigmas(noise_deltas)
     changes: dict[str, dict[str, list[float]]] = {
         name: {fault.key: [] for fault in ALL_FAULTS} for name in METRICS
     }
@@ -242,6 +279,7 @@ def bench(
     return {
         "film_ticks": film_ticks,
         "sigma": sigma,
+        "noise": recapture_noise(reference, recapture, paired, noise_deltas.get("ssim", [])),
         "results": results,
         "detectable": detectable,
         "passes": passes,

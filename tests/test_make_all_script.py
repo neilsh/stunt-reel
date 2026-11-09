@@ -21,6 +21,9 @@ SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
 ARCHIVE = build_all([b"one", b"two"])
 
 
+pytestmark = pytest.mark.usefixtures("rows")
+
+
 class FakeClock:
     """A clock that sleeping advances, so the hang window does not wait."""
 
@@ -53,17 +56,6 @@ def script(monkeypatch: pytest.MonkeyPatch) -> Any:
     # The real extract builds and runs the release binary; tests that need it pass a fake.
     monkeypatch.setattr(module, "extract_with_binary", FakeExtract())
     return module
-
-
-@pytest.fixture(autouse=True)
-def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An empty references.toml in a stand-in checkout, so the committed rows are not read."""
-    checkout = tmp_path / "references-checkout"
-    pointers = checkout / parity_layout.REFERENCES_FILE
-    pointers.parent.mkdir(parents=True)
-    pointers.write_text("", encoding="utf-8")
-    monkeypatch.setattr(references, "REPO_ROOT", checkout)
-    return pointers
 
 
 def _row(pointers: Path, makeone: str) -> None:
@@ -364,7 +356,7 @@ def test_a_run_writes_the_manifest_after_publishing(
     assert script.run(_args(script, monkeypatch, staged_repo.film, inside), launch, extract) == 0
 
     (directory,) = _archives()
-    manifest = dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
+    manifest = staged_repo.root / parity_layout.manifest_path("vault-ctry")
     assert extract.calls == [
         (
             directory / "CTRY.ALL",
@@ -393,7 +385,7 @@ def test_a_not_linkable_archive_still_exits_0_and_says_why(
     out = capsys.readouterr().out
     assert "no manifest" in out
     assert "0x7E01" in out
-    assert not (dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")).exists()
+    assert not (staged_repo.root / parity_layout.manifest_path("vault-ctry")).exists()
 
 
 def test_a_link_error_after_publish_warns_and_exits_0(
@@ -432,7 +424,7 @@ def test_manifest_only_extracts_from_the_stored_archive_without_makeone(
         staged_repo.film,
         _stored_meta().makeone_sha256,
     )
-    assert out == dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
+    assert out == staged_repo.root / parity_layout.manifest_path("vault-ctry")
 
 
 def test_manifest_only_for_an_archive_of_an_unknown_makeone_asks_for_a_game_root(
@@ -507,7 +499,7 @@ def test_manifest_only_keeps_the_old_manifest_when_extraction_fails(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _publish(script, monkeypatch, staged_repo.film, game_root)
-    manifest = dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
+    manifest = staged_repo.root / parity_layout.manifest_path("vault-ctry")
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text("# reviewed and committed\n", encoding="utf-8")
     args = _args(script, monkeypatch, staged_repo.film, game_root, "--manifest-only")
@@ -526,7 +518,7 @@ def test_a_not_linkable_rerun_removes_the_old_manifest(
     game_root: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    manifest = dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
+    manifest = staged_repo.root / parity_layout.manifest_path("vault-ctry")
     manifest.parent.mkdir(parents=True)
     manifest.write_text("# from an earlier run\n", encoding="utf-8")
     launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
@@ -545,7 +537,7 @@ def test_a_link_error_removes_the_old_manifest_too(
     game_root: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    manifest = dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")
+    manifest = staged_repo.root / parity_layout.manifest_path("vault-ctry")
     manifest.parent.mkdir(parents=True)
     manifest.write_text("# from an earlier run\n", encoding="utf-8")
     launch, _state = makeone_launcher(text_after=1, archive=ARCHIVE)
@@ -616,7 +608,7 @@ def test_out_writes_the_archive_there_and_no_manifest(
     assert f"wrote {out} (" in capsys.readouterr().out
     assert _archives() == []
     assert extract.calls == []
-    assert not (dataroot.REPO_ROOT / parity_layout.manifest_path("vault-ctry")).exists()
+    assert not (staged_repo.root / parity_layout.manifest_path("vault-ctry")).exists()
 
 
 def test_out_with_manifest_only_is_refused(

@@ -6,18 +6,34 @@ import json
 import sys
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from stunt_reel import dataroot, parity_layout, references
-
-if TYPE_CHECKING:
-    import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import capture_digest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A stand-in checkout whose references.toml pins [ctry] and [intro] and their archives."""
+    repo = tmp_path / "checkout"
+    pointers = repo / parity_layout.REFERENCES_FILE
+    pointers.parent.mkdir(parents=True)
+    pointers.write_text(
+        "".join(
+            f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{film[0] * 64}"\n'
+            f'all_sha256 = "{"f" * 64}"\nmakeone = "patch3"\nplayone = "patch3"\n'
+            for film in ("ctry", "intro")
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dataroot, "REPO_ROOT", repo)
+    return repo
 
 
 def _capture(root: Path, slug: str) -> Path:
@@ -37,7 +53,7 @@ def test_prints_the_digest_and_the_entry_that_promotes_it(
     out = capsys.readouterr().out.splitlines()
     assert out[0] == "captures/vault-ctry/frames"
     assert out[1] == f'sha256 = "{digest}"'
-    # The committed references.toml has a [ctry] entry for vault-ctry, so the block follows.
+    # The stand-in references.toml has a [ctry] entry for vault-ctry, so the block follows.
     block = out[out.index("[ctry]") :]
     assert block[:4] == [
         "[ctry]",
@@ -98,18 +114,9 @@ def test_a_capture_of_another_archive_does_not_take_the_stored_archives_build(
     assert capture_digest.recorded_builds(tmp_path, "vault-ctry", directory) == {"makeone": "?"}
 
 
-def test_the_dir_form_hashes_the_same(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    directory = _capture(tmp_path, "vault-intro")
-    pointers = tmp_path / parity_layout.REFERENCES_FILE
-    pointers.parent.mkdir(parents=True)
-    pointers.write_text(
-        (dataroot.REPO_ROOT / parity_layout.REFERENCES_FILE).read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(dataroot, "REPO_ROOT", tmp_path)
-    assert capture_digest.main(["--dir", str(directory)], root=tmp_path) == 0
+def test_the_dir_form_hashes_the_same(checkout: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    directory = _capture(checkout, "vault-intro")
+    assert capture_digest.main(["--dir", str(directory)], root=checkout) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[1] == f'sha256 = "{references.capture_digest(directory)}"'
     assert "[intro]" in out

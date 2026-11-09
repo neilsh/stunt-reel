@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 import stunt_reel.bench.run as run_module
+from stunt_reel import dataroot, parity_layout
 from stunt_reel.bench.faults import ALL_FAULTS, Fault
 from stunt_reel.bench.metrics import METRICS
 from stunt_reel.bench.planes import (
@@ -28,6 +29,7 @@ from stunt_reel.bench.run import (
     bench,
     check_fidelity,
     plant_tree,
+    recapture_noise,
     recapture_sigma,
 )
 from stunt_reel.parity_artifacts import (
@@ -369,3 +371,77 @@ def test_rows_print_an_unmeasured_sigma_as_na(capsys: pytest.CaptureFixture[str]
     lines = capsys.readouterr().out.splitlines()
     assert "sigma n/a" in lines[1]
     assert "sigma 0.00100" in lines[0]
+
+
+def test_noise_counts_identical_pages_and_quantiles_of_the_ssim_spread() -> None:
+    page = np.zeros((H, W), dtype=np.uint8)
+    other = page.copy()
+    other[0, 0] = 1
+    a = {t: CapturePlanes(idx=page, palette=PALETTE) for t in range(4)}
+    b = {t: CapturePlanes(idx=other if t == 3 else page, palette=PALETTE) for t in range(4)}
+    noise = recapture_noise(a, b, [0, 1, 2, 3], [0.0, 0.0, 0.0, -0.04])
+    assert noise["paired"] == 4
+    assert noise["identical_pages"] == 3
+    assert noise["median"] == 0.0
+    assert noise["max"] == pytest.approx(0.04)
+    assert noise["p95"] == pytest.approx(0.034)
+    assert noise["sigma"] == pytest.approx(0.02)
+
+
+def test_noise_without_deltas_is_none() -> None:
+    noise = recapture_noise({}, {}, [], [])
+    assert noise == {
+        "paired": 0,
+        "identical_pages": 0,
+        "sigma": None,
+        "median": None,
+        "p90": None,
+        "p95": None,
+        "max": None,
+    }
+
+
+def test_bench_json_records_the_ssim_noise(document: dict[str, Any]) -> None:
+    noise = document["noise"]
+    assert noise["paired"] == len([t for t in CAPTURE_TICKS if t not in UNSCORED])
+    assert noise["identical_pages"] == 0
+    assert noise["sigma"] == pytest.approx(document["sigma"]["ssim"])
+    assert noise["median"] <= noise["p90"] <= noise["p95"] <= noise["max"]
+
+
+def test_the_noise_row_matches_the_method_table() -> None:
+    noise = {
+        "paired": 104,
+        "identical_pages": 77,
+        "sigma": 0.0052,
+        "median": 0.0,
+        "p90": 0.01,
+        "p95": 0.0143,
+        "max": 0.026,
+    }
+    assert parity_bench.noise_row("vault-ctry", noise) == (
+        "| `vault-ctry` | 104 | 77 | 0.0052 | 0 | 0.0143 | 0.026 |"
+    )
+    assert parity_bench.NOISE_HEADER.splitlines()[0].count(" | ") == 6
+    assert "p90 0.01" in parity_bench.noise_line(noise)
+
+
+def test_film_without_a_recapture_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
+    assert parity_bench.main(["run", "--film", "ctry"]) == 1
+    assert "--recapture" in capsys.readouterr().err
+
+
+def test_films_takes_no_single_film_inputs(capsys: pytest.CaptureFixture[str]) -> None:
+    assert parity_bench.main(["run", "--films", "ctry", "--recapture", "R", "--out", "O"]) == 1
+    assert "--films takes no --recapture, --out" in capsys.readouterr().err
+
+
+def test_films_names_the_missing_recapture_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rows = tmp_path / parity_layout.REFERENCES_FILE
+    rows.parent.mkdir(parents=True)
+    rows.write_text('[land]\nfilm = "vault-land"\nsha256 = "' + "0" * 64 + '"\n', encoding="utf-8")
+    monkeypatch.setattr(dataroot, "data_root_flag", lambda _flag: tmp_path)
+    assert parity_bench.main(["run", "--films", "land"]) == 1
+    assert str(tmp_path / "bench" / "vault-land" / "recapture") in capsys.readouterr().err

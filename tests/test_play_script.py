@@ -74,17 +74,6 @@ def test_play_presses_the_film_keys_waits_and_leaves_no_stage(
     assert not stage_root.exists() or not any(stage_root.iterdir())
 
 
-@pytest.fixture
-def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An empty references.toml in a stand-in checkout, so the committed rows are not read."""
-    checkout = tmp_path / "references-checkout"
-    pointers = checkout / parity_layout.REFERENCES_FILE
-    pointers.parent.mkdir(parents=True)
-    pointers.write_text("", encoding="utf-8")
-    monkeypatch.setattr(references, "REPO_ROOT", checkout)
-    return pointers
-
-
 def test_play_refuses_a_build_the_films_row_does_not_name(
     staged_repo: StagedRepo,
     monkeypatch: pytest.MonkeyPatch,

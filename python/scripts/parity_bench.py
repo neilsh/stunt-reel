@@ -3,6 +3,7 @@
 Subcommands::
 
     mise run parity-bench -- run --film ctry [--render DIR] [--report FILE] --recapture DIR
+    mise run parity-bench -- run --films ctry,land,...
         [--seed N] [--floor-render DIR] [--out DIR]
     mise run parity-bench -- plant --render DIR --out DIR --fault shift_x:4@500-599 ...
     mise run parity-bench -- errors-make --film ctry [--calibrate --recapture DIR] [--seed N]
@@ -13,7 +14,8 @@ Subcommands::
     mise run parity-bench -- errors-table --films vault-ctry,vault-land
 
 ``run`` writes ``bench.json`` into ``--out`` and prints one row per metric: whether it passes,
-its sigma, and the drop each fault causes in sigma. ``plant`` copies a render tree and writes the
+its sigma, and the drop each fault causes in sigma, then a line of the ``ssim`` recapture noise;
+``--films`` prints method.md's § 2.2.1 noise table instead. ``plant`` copies a render tree and writes the
 faults over the ticks named, so a render with known errors can be scored by the real scorer.
 ``errors-make`` writes the error readout's sheets, ``ids.txt``, ``brief.md`` and ``run.json``
 into ``build/parity/bench/<film>/errors``; a Haiku subagent reads the brief and writes
@@ -91,11 +93,38 @@ def _print_rows(document: dict[str, Any]) -> None:
         print(f"{name:<16} {verdict}  sigma {shown}  " + " ".join(cells))
 
 
-def run(args: argparse.Namespace) -> int:
-    """Run the metric bench, write ``bench.json``, and print the results."""
-    film = args.film
-    root = dataroot.data_root_flag(args.data_root)
-    recapture = args.recapture
+#: method.md § 2.2.1's table header, Greek sigma included.
+NOISE_HEADER = (
+    r"| Film | Paired | Identical pages | σ (`ssim`) | Median \|Δ\| | p95 | Largest \|Δ\| |"  # noqa: RUF001
+    "\n|---|---|---|---|---|---|---|"
+)
+
+
+def _num(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.4g}"
+
+
+def noise_line(noise: dict[str, Any]) -> str:
+    """The one-line summary of a ``bench.json`` ``noise`` entry."""
+    return (
+        f"noise: paired {noise['paired']}, identical pages {noise['identical_pages']}, "
+        f"sigma {_num(noise['sigma'])}, |delta| median {_num(noise['median'])}, "
+        f"p90 {_num(noise['p90'])}, p95 {_num(noise['p95'])}, max {_num(noise['max'])}"
+    )
+
+
+def noise_row(slug: str, noise: dict[str, Any]) -> str:
+    """One row of method.md's § 2.2.1 recapture-noise table."""
+    cells = [
+        f"`{slug}`",
+        str(noise["paired"]),
+        str(noise["identical_pages"]),
+        *(_num(noise[key]) for key in ("sigma", "median", "p95", "max")),
+    ]
+    return "| " + " | ".join(cells) + " |"
+
+
+def _bench_film(args: argparse.Namespace, root: Path, film: str, recapture: Path) -> dict[str, Any]:
     render = args.render or REPO_ROOT / parity_layout.render_dir(film)
     report = args.report or REPO_ROOT / parity_layout.report_dir(film) / "report.json"
     out = args.out or REPO_ROOT / "build" / "parity" / "bench" / film
@@ -103,8 +132,44 @@ def run(args: argparse.Namespace) -> int:
         document = run_bench(reference, recapture, render, report, args.seed, args.floor_render)
     out.mkdir(parents=True, exist_ok=True)
     (out / "bench.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-    _print_rows(document)
     print(f"[bench] wrote {out / 'bench.json'}", file=sys.stderr)
+    return document
+
+
+def default_recapture(root: Path, slug: str) -> Path:
+    """Where ``--films`` reads a film's recapture: ``<data root>/bench/<slug>/recapture``."""
+    return root / "bench" / slug / "recapture"
+
+
+def run(args: argparse.Namespace) -> int:
+    """Run the metric bench, write ``bench.json``, and print the results.
+
+    ``--film`` prints each metric's row and the noise line; ``--films`` benches each film
+    against its default recapture and prints method.md's § 2.2.1 table.
+    """
+    root = dataroot.data_root_flag(args.data_root)
+    if args.film is not None:
+        if args.recapture is None:
+            raise BenchError("--film needs --recapture DIR, a second capture of the film")
+        document = _bench_film(args, root, args.film, args.recapture)
+        _print_rows(document)
+        print(noise_line(document["noise"]))
+        return 0
+    given = [flag for flag in ("recapture", "render", "report", "out") if getattr(args, flag)]
+    if given:
+        raise BenchError(f"--films takes no --{', --'.join(given)}; they name one film's inputs")
+    films = [film.strip() for film in args.films.split(",") if film.strip()]
+    plans = []
+    for film in films:
+        slug = references.read_reference(root, film).slug
+        recapture = default_recapture(root, slug)
+        if not recapture.is_dir():
+            raise BenchError(f"{film} has no recapture at {recapture}")
+        plans.append((film, slug, recapture))
+    # A row is printed as its film finishes, so a later film's failure keeps the earlier rows.
+    print(NOISE_HEADER, flush=True)
+    for film, slug, recapture in plans:
+        print(noise_row(slug, _bench_film(args, root, film, recapture)["noise"]), flush=True)
     return 0
 
 
@@ -284,14 +349,20 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     run_p = sub.add_parser("run", help="bench the metrics on one film")
-    run_p.add_argument("--film", required=True)
+    which = run_p.add_mutually_exclusive_group(required=True)
+    which.add_argument("--film")
+    which.add_argument(
+        "--films",
+        help="comma-separated films, each against <data root>/bench/<slug>/recapture; "
+        "prints the recapture-noise table",
+    )
     run_p.add_argument("--render", type=Path, default=None)
     run_p.add_argument("--report", type=Path, default=None)
     run_p.add_argument(
         "--recapture",
         type=dataroot.data_path_arg,
-        required=True,
-        help="a second capture of the film (its --out)",
+        default=None,
+        help="a second capture of the film (its --out); --film only",
     )
     run_p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     run_p.add_argument("--floor-render", type=Path, default=None)

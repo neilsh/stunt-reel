@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from stunt_reel import dataroot, parity_artifacts, parity_layout, references
+from stunt_reel import dataroot, parity_artifacts
 from stunt_reel.parity_artifacts import CaptureSet, FilmId, Geometry
 from stunt_reel.tac import automation, framebuffer, luagen, plan, playone
 from stunt_reel.tac.emulator import EmulatorUnavailable
@@ -27,15 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-@pytest.fixture(autouse=True)
-def rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An empty references.toml for the scripts' build check, not the committed rows' pairs."""
-    checkout = tmp_path / "references-checkout"
-    pointers = checkout / parity_layout.REFERENCES_FILE
-    pointers.parent.mkdir(parents=True)
-    pointers.write_text("", encoding="utf-8")
-    monkeypatch.setattr(references, "REPO_ROOT", checkout)
-    return pointers
+pytestmark = pytest.mark.usefixtures("rows")
 
 
 def _name_builds(pointers: Path, *, playone_build: str) -> None:
