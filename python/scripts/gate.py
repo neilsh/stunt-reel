@@ -30,7 +30,10 @@ it saves.
 
 ``gate.py all`` reads the branch's changed paths from git and runs only the halves they need;
 ``--full``, a set ``CI``, an unclassified path, no changes, or paths git cannot give run the full
-gate. A passing run prints the commit body's closing gate line.
+gate. A passing run prints the commit body's closing gate line. The paths are counted from the
+merge base with ``origin/main`` when that ref resolves, else with ``main``: a local ``main`` is
+often stale, and counting from it charges the branch with every commit that has landed since.
+``--base`` names another ref.
 
 Two guards stop a run that could not pass. Before a Python or docs step, the ``uv`` on PATH must
 be the version ``mise.toml`` pins: a stale standalone uv ahead of mise's otherwise fails only in
@@ -222,12 +225,22 @@ def _git_paths(repo: Path, *args: str) -> list[str]:
     return [path for path in proc.stdout.decode("utf-8").split("\0") if path]
 
 
-def changed_paths(repo: Path, base: str = "main") -> list[str]:
+def default_base(repo: Path) -> str:
+    """``origin/main`` when it resolves to a commit in *repo*, else ``main``."""
+    try:
+        _git_paths(repo, "rev-parse", "--verify", "--quiet", "origin/main^{commit}")
+    except ChangedPathsError:
+        return "main"
+    return "origin/main"
+
+
+def changed_paths(repo: Path, base: str | None = None) -> list[str]:
     """Every path the branch changed since it left *base*: committed, staged, unstaged, untracked.
 
-    ``--no-renames`` lists both sides of a rename, so a file moved across categories counts in
-    both. ``-z`` keeps a non-ASCII name as itself instead of git's quoted octal.
+    *base* defaults to ``default_base(repo)``. ``--no-renames`` lists both sides of a rename, so a
+    file moved across categories counts in both. ``-z`` keeps a non-ASCII name as itself instead of git's quoted octal.
     """
+    base = base or default_base(repo)
     merge_base = _git_paths(repo, "merge-base", "HEAD", base)
     if not merge_base:
         raise ChangedPathsError(f"no merge base between HEAD and {base}")
@@ -515,7 +528,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tail", type=int, default=40, help="lines shown of a failing step")
     parser.add_argument("--full", action="store_true", help="run every half whatever changed")
     parser.add_argument(
-        "--base", default="main", help="the branch changes are counted from (default: main)"
+        "--base",
+        help="the ref changes are counted from (default: origin/main if it resolves, else main)",
     )
     parser.add_argument(
         "--step-timeout",
@@ -531,12 +545,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         full_flag, ci = bool(args.full), ci_requested(os.environ)
         paths: list[str] | None = None
         error = ""
+        base = str(args.base) if args.base else default_base(Path.cwd())
         if not (full_flag or ci):
             try:
-                paths = changed_paths(Path.cwd(), str(args.base))
+                paths = changed_paths(Path.cwd(), base)
             except ChangedPathsError as err:
                 error = str(err)
-        scope = scope_for(paths, full_flag=full_flag, ci=ci, error=error, base=str(args.base))
+        scope = scope_for(paths, full_flag=full_flag, ci=ci, error=error, base=base)
         halves = scope.halves
         plan = [step for scoped in halves for step in STEPS[scoped]]
         scope_lines = _scope_lines(scope)

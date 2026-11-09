@@ -5,7 +5,8 @@
 accepted 2026-11-06. Designed in the
 [scoped-gate plan](../../work/2026-11/scoped-gate/spec.md); narrows the plan of
 [ADR 0014](0014-the-gate-is-one-ordered-script.md) per run, keeps the lanes of
-[ADR 0016](0016-the-gate-runs-independent-lanes.md).
+[ADR 0016](0016-the-gate-runs-independent-lanes.md). Amended 2026-11-08: the paths count from
+`origin/main` when it resolves, else `main` (below).
 
 ## Context
 
@@ -20,9 +21,11 @@ gate's job is to catch a failure before the push, for the code the change can br
 ## Decision
 
 `mise run check` (`gate.py all`) reads the branch's changed paths and runs only the halves they
-need. The paths are `git diff --name-only --no-renames` against `git merge-base HEAD main`
-(committed, staged and unstaged), plus the untracked files; both read `-z`. Each path takes the
-first category whose rule matches:
+need. The paths are `git diff --name-only --no-renames` against `git merge-base HEAD origin/main`
+(committed, staged and unstaged), plus the untracked files; both read `-z`. Without an
+`origin/main` the base is `main`. A local `main` is often stale, and counting from it charged the
+branch with every commit landed since (amended 2026-11-08). Each path takes the first category
+whose rule matches:
 
 | order | paths | category |
 | --- | --- | --- |
@@ -41,8 +44,8 @@ taking the `docs` marker.
 
 The full gate runs, and says why, on `--full` (`mise run check -- --full`), when `CI` is set to
 anything but `false` or `0`, for any path in the other category, when nothing changed, and when
-git cannot give the paths (no local `main`). `--base REF` counts from another branch, for a
-stacked branch. `check-rust` and `check-py` stay whole halves; `check-docs` runs the docs half.
+git cannot give the paths (neither `origin/main` nor `main`). `--base REF` counts from another
+branch, for a stacked branch. `check-rust` and `check-py` stay whole halves; `check-docs` runs the docs half.
 
 The gate prints its scope and the paths behind each category before the steps, and on PASS the
 line the commit body closes with, in the form the commit-msg hook already accepts:
