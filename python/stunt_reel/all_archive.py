@@ -23,6 +23,8 @@ from stunt_reel.hashing import file_sha256
 
 __all__ = [
     "META_FILE",
+    "SOUND_IDS",
+    "SOUND_STUB",
     "ArchiveError",
     "ArchiveMeta",
     "ArchiveMissing",
@@ -32,8 +34,14 @@ __all__ = [
     "no_link",
     "publish_archive",
     "resolve_all",
+    "stub_sound_samples",
     "write_archive",
 ]
+
+#: Chunk ids of sound samples (``research/formats/all.md`` section 3.3).
+SOUND_IDS = range(0xC000, 0xD000)
+#: The payload of a stubbed sound sample: the byte the demo's ``CTRY.ALL`` holds in ``0xC302``.
+SOUND_STUB = b"\x04"
 
 #: The file inside an archive directory that says it is complete; it is written last.
 META_FILE = capture_store.META_FILE
@@ -105,6 +113,46 @@ def check_archive(data: bytes) -> int:
     if offsets[-1] != len(data):
         raise ArchiveError(f"final offset is {offsets[-1]}, expected the file size {len(data)}")
     return count
+
+
+def _chunks(data: bytes) -> list[tuple[int, bytes]]:
+    """The ``(id, payload)`` chunks of *data* in file order, after :func:`check_archive`."""
+    count = check_archive(data)
+    ids = struct.unpack_from(f"<{count}H", data, 2)
+    offsets = struct.unpack_from(f"<{count + 1}I", data, 2 + 2 * count)
+    return [(ids[n], data[offsets[n] : offsets[n + 1]]) for n in range(count)]
+
+
+def stub_sound_samples(archive: bytes, *, sound_ids_from: bytes | None = None) -> bytes:
+    """*archive* with every sound sample's payload replaced by :data:`SOUND_STUB`.
+
+    With *sound_ids_from*, each sound id of that archive missing from *archive* is added as a
+    stub and all chunks are written in ascending id order; without it the order is kept. An
+    archive with nothing to change comes back as is. Raises ArchiveError when either archive
+    fails :func:`check_archive`.
+    """
+    chunks = _chunks(archive)
+    wanted = [] if sound_ids_from is None else _chunks(sound_ids_from)
+    present = {chunk_id for chunk_id, _ in chunks}
+    stubbed = [
+        (chunk_id, SOUND_STUB if chunk_id in SOUND_IDS else payload) for chunk_id, payload in chunks
+    ]
+    stubbed += [
+        (chunk_id, SOUND_STUB)
+        for chunk_id, _ in wanted
+        if chunk_id in SOUND_IDS and chunk_id not in present
+    ]
+    if sound_ids_from is not None:
+        stubbed.sort(key=lambda chunk: chunk[0])
+    if stubbed == chunks:
+        return archive
+    count = len(stubbed)
+    offsets = [6 * count + 6]
+    for _, payload in stubbed:
+        offsets.append(offsets[-1] + len(payload))
+    ids = (chunk_id for chunk_id, _ in stubbed)
+    header = struct.pack(f"<H{count}H{count + 1}I", count, *ids, *offsets)
+    return header + b"".join(payload for _, payload in stubbed)
 
 
 def write_archive(directory: Path, data: bytes, meta: ArchiveMeta, *, film: str) -> None:
