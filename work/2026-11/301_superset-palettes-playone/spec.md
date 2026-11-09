@@ -9,12 +9,14 @@ Read from `<data root>/builds/{unpatched,patch3}/RES/SPRITES.RES` with `superset
 - The demo's shipped `CTRY.ALL` holds `0x8042` but not `0x801E`; every `make-all` archive and the demo's `INTRO.ALL` and `SCENE01.ALL` hold both.
 - The demo's `PLAYONE.EXE` is byte-identical to the retail unpatched one (`3c93493c…`).
 - The 2026-11-07 TOD captures behind § 7.2 are no longer in the data root, so every arm is captured fresh.
+- From the "Reducing capture noise" session, 2026-11-09, not yet landed: on `CTRY.FLM` and `BALLOON.FLM` (BALLOON the controlled test) recapture noise comes from the archive's sound sample chunks (`0xC000`–`0xCFFF`); with them stubbed, replays are bit-identical, and stubbing them also changes what is drawn. The superset holds no sound chunk, so the missing sounds are a third candidate for § 7.2's differences beside the palettes and the extra props. Our noise band would also have measured sample playback, not the archive's contents.
 
 ## Tooling
 
 - **`superset-all --with-palettes`**: adds `0x801E` and `0x8042` from the `--game` tree's `SPRITES.RES`. Off by default, so the renderer's superset stays as it is.
 - **`capture-ref --archive <.ALL>`**: stages that file as the film's archive and records its sha256 in `meta.json`.
 - **`make-all --out`** (`--game-root` already existed): writes a build's own archive outside `captures/<film>/archives/`, so no reference pin moves.
+- **Stubbing an archive's sample chunks**: built in the noise session and landed with its finding; this branch rebases onto it. Nothing below runs before it lands.
 - **`capture-compare A B`** (new): pairs two captures' index pages by exact `film_tick` and prints the shared-tick count, identical pages, median and 90th-percentile differing pixels, and whether the paired palettes are byte-equal. Fewer than 20 shared ticks is reported as unpaired, not judged. Pairing by nearest tick measures motion ([#299](https://github.com/neilsh/stunt-reel/issues/299)).
 
 Each is tested on synthetic fixtures.
@@ -23,18 +25,24 @@ Each is tested on synthetic fixtures.
 
 - **Films**: `CTRY.FLM` and `TOD.FLM` (slug `vault-tod`, not a reference film). **Builds**: unpatched and Patch 3, each with its own `RES\`.
 - **Own archive**: the `make-all` rebuild for that build, for both films (not the demo's shipped `CTRY.ALL`, which comes from a third `MAKEONE`).
-- **Arms per film and build**: the own archive captured 3 times (`own-1`…`own-3`), the superset with palettes once (`superset`). 16 captures in all. No superset-without-palettes arm and no cross-build arm.
-- **Layout**: `<data root>/bench/<slug>/301/<build>/` holding `own.ALL`, `superset.ALL`, the four capture directories and `compare.txt`.
+- **Sounds**: every arm but one plays with the film's sample chunks stubbed, the same stubbed ids in each, so sound is not a variable.
+- **Arms per film and build**:
+  - `own-1`, `own-2`: the own archive, samples stubbed. If the pair is not bit-identical, a third (`own-3`).
+  - `superset`: the superset with palettes plus the own archive's stubbed sample chunks.
+  - `superset-bare`: the superset with palettes as `superset-all` writes it, no sound chunk; how a film with no archive plays from it.
+  - 16 captures in all (20 if every pair needs a third). No superset-without-palettes arm and no cross-build arm.
+- **Layout**: `<data root>/bench/<slug>/301/<build>/` holding `own.ALL`, `superset.ALL`, `superset-bare.ALL`, the capture directories and `compare.txt`.
 
 ## Judging
 
-- The 3 own-vs-own pairs give the noise band: the range of their identical-page fractions and 90th-percentile differing pixels.
-- The superset arm, against each own capture, passes when its paired palettes are byte-equal and both statistics fall inside the band.
+- The own-vs-own pair gives the noise band; with samples stubbed it is expected to be zero (every paired page and palette identical). With three captures, the band is the range of their pairs' identical-page fractions and 90th-percentile differing pixels.
+- `superset` against each own capture passes when its paired palettes are byte-equal and both statistics fall inside the band; a difference left is the palettes', the props' or another chunk's, not the sounds'.
+- `superset-bare` is judged the same way; it answers whether a missing sound chunk plays like a stubbed one.
 
 ## Outcomes
 
 - **Passes on both films and builds**: § 7.2 becomes a `[Bounded Observation]` that the superset with palettes plays like a film's own archive on two films; open question 8 is answered; the `superset_all.py` docstring drops "for our renderer only" for `--with-palettes`.
-- **Fails**: record the 12 pair rows in § 7.2 and open an issue for an arm that pads the own archive with the superset's extra shape chunks, to separate the extra props from the rest.
+- **Fails**: record every pair row in § 7.2 and open an issue for an arm that pads the own archive with the superset's extra shape chunks, to separate the extra props from the rest.
 - **Either way**: open question 4 gets the Patch 3 `SPRITES.RES` finding.
 
 ## Shipping
