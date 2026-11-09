@@ -282,6 +282,7 @@ def test_a_failed_render_keeps_its_exit_and_tail(tmp_path: Path) -> None:
 def test_render_without_an_archive_is_an_error_and_starts_nothing(tmp_path: Path) -> None:
     film = _film(tmp_path)
     film.flm.parent.mkdir(parents=True)
+    film.flm.write_bytes(b"a film no committed manifest describes")
     _write_capture(tmp_path, film.slug, [7, 9])
     runner = FakeRunner()
     record = batch_stages.run_render(film, tmp_path, runner, 600.0)

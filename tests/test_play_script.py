@@ -56,6 +56,7 @@ class _Emulator:
         self.events.append("stop")
 
 
+@pytest.mark.usefixtures("rows")
 def test_play_presses_the_film_keys_waits_and_leaves_no_stage(
     staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
 ) -> None:

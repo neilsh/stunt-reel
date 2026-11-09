@@ -14,134 +14,125 @@
 # updates the table of the class it measured.
 #
 # `noise_sigma` is a film's recapture noise of the whole-frame SSIM, from the metric bench
-# (research/parity/method.md sections 2.2 and 2.2.1). INTRO has none. LAND, BALLOON, TRAINTNL and
-# BOMB have none either: their sigma would call deltas below about 0.01 to 0.017 noise, which
-# their identical pages argue against (#305).
+# (research/parity/method.md section 2.2.1, one Patch 3 recapture per film); `stuntreel parity
+# --noise-sigma` takes it. Only LOCATION has one. On the other six 23 to 45% of paired pages
+# differ, by up to 0.026 to 0.113, so one sigma (0.005 to 0.019) would call real deltas below it
+# noise (#305).
 
 [ctry]
 film = "vault-ctry"
-sha256 = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49"
+sha256 = "175464656167a681d3a5bad607b3c4562d54a69aeadd383bc0f7cce9ffd7107d"
 # The archive the film plays (ADR 0037), as the capture's meta.json records it.
-all_sha256 = "9de1bc1e8dbe491a56edd899b7c333cb78e5251cbe1e4ed75610dbc081aeb9a9"
+all_sha256 = "cb58d95b72f02819d15c5e6dad0973e72af8026455dbf5e13e41933711bb12ce"
 # The builds the reference was made with (ADR 0029): `unpatched` or `patch3`. `reason` is
 # required while either is unpatched.
-makeone = "unpatched"
-playone = "unpatched"
-reason = "captured 2026-10-31 on the demo's unpatched PLAYONE with its shipped .ALL; recapture on patch3 is a later step (ADR 0029 Consequences)"
-# Recapture noise of the whole-frame SSIM (004 against 005), from the metric bench
-# (research/parity/method.md section 2.2); `stuntreel parity --noise-sigma` takes it. It is a
-# lower bound for the noise of the verdict's delta on a few touched windows, so "within noise"
-# is conservative.
-noise_sigma = 0.000303
+makeone = "patch3"
+playone = "patch3"
 
 [ctry.expected.gpu]
-ssim = 0.8986135
-iou = 0.9896689
-crates = "641cffd3bfc895719f6078b33d7a0232e5f1750c"
-sha256 = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49"
-all_sha256 = "9de1bc1e8dbe491a56edd899b7c333cb78e5251cbe1e4ed75610dbc081aeb9a9"
-commit = "d01a3c4f6153b6f1c947432360a5e9546e0101d5"
+ssim = 0.897143
+iou = 0.98967665
+crates = "f55202b98d101834dce3c88a9b537766e4bee1b5"
+sha256 = "175464656167a681d3a5bad607b3c4562d54a69aeadd383bc0f7cce9ffd7107d"
+all_sha256 = "cb58d95b72f02819d15c5e6dad0973e72af8026455dbf5e13e41933711bb12ce"
+commit = "ff576ba0418a4101ba4a44c8329f79c2d8bfbd11"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 
 [intro]
 film = "vault-intro"
-sha256 = "ac93c3babb74c5380a0f1263d38a546b43979c8d4200fb0d2dfb58db482c0215"
-all_sha256 = "27935a3638950d4ec75fc1f84f4ac15aa7308f0975b2a9d2e0c5f8a0c843035d"
-makeone = "unpatched"
-playone = "unpatched"
-reason = "captured 2026-10-31 on the demo's unpatched PLAYONE with its shipped .ALL; recapture on patch3 is a later step (ADR 0029 Consequences)"
+sha256 = "805c4790b3668fbff21db5232ddde4a0d159dc9e768bc45d160850db894e7003"
+all_sha256 = "2dc8f628198993c420ba632c8b7c5884015afb5c010aabe58b57a75d3a3428e3"
+makeone = "patch3"
+playone = "patch3"
 
 [intro.expected.gpu]
-ssim = 0.8336824
-iou = 0.9856165
-crates = "641cffd3bfc895719f6078b33d7a0232e5f1750c"
-sha256 = "ac93c3babb74c5380a0f1263d38a546b43979c8d4200fb0d2dfb58db482c0215"
-all_sha256 = "27935a3638950d4ec75fc1f84f4ac15aa7308f0975b2a9d2e0c5f8a0c843035d"
-commit = "d01a3c4f6153b6f1c947432360a5e9546e0101d5"
+ssim = 0.8305799
+iou = 0.9852485
+crates = "f55202b98d101834dce3c88a9b537766e4bee1b5"
+sha256 = "805c4790b3668fbff21db5232ddde4a0d159dc9e768bc45d160850db894e7003"
+all_sha256 = "2dc8f628198993c420ba632c8b7c5884015afb5c010aabe58b57a75d3a3428e3"
+commit = "ff576ba0418a4101ba4a44c8329f79c2d8bfbd11"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 
 [land]
 film = "vault-land"
-sha256 = "7c0187f2944cd3cc98bb0b8e3285daeb7ba39ffd61bd9099bac68ff39bca64f1"
+sha256 = "89e67ae099ee760e40aed1033f8adb295d62ec08df06eb3a3658d5cdef11eb85"
 all_sha256 = "342003624122671573d562fb814c9bf6d1bf75e3ff8727f26fedabcda45b4218"
-makeone = "unpatched"
-playone = "unpatched"
-reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+makeone = "patch3"
+playone = "patch3"
 
 [land.expected.gpu]
-ssim = 0.8666116
-iou = 0.98567444
+ssim = 0.86880076
+iou = 0.9853098
 crates = "f55202b98d101834dce3c88a9b537766e4bee1b5"
-sha256 = "7c0187f2944cd3cc98bb0b8e3285daeb7ba39ffd61bd9099bac68ff39bca64f1"
+sha256 = "89e67ae099ee760e40aed1033f8adb295d62ec08df06eb3a3658d5cdef11eb85"
 all_sha256 = "342003624122671573d562fb814c9bf6d1bf75e3ff8727f26fedabcda45b4218"
-commit = "4170cc3134a154eda276131d7c3251717baf6420"
+commit = "ff576ba0418a4101ba4a44c8329f79c2d8bfbd11"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 
 [balloon]
 film = "vault-balloon"
-sha256 = "beccea9f25e002cfb78a52154b3264388c62795d5e45aac398d3077db457f45f"
-all_sha256 = "86628c55cb0126f3c9bc0f5f2ec5fe28351ba5e30caca9fe465dca6b99c1874d"
-makeone = "unpatched"
-playone = "unpatched"
-reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+sha256 = "824212150cea50eabd9233fdb2db252b60c22035b6f62139aa026b5ded45944b"
+all_sha256 = "e8d852fa8f77ff9b708b8066ddb26457a0498cb94060f1976741355ff510a415"
+makeone = "patch3"
+playone = "patch3"
 
 [balloon.expected.gpu]
-ssim = 0.7990838
-iou = 0.63509184
+ssim = 0.79770404
+iou = 0.63507164
 crates = "f55202b98d101834dce3c88a9b537766e4bee1b5"
-sha256 = "beccea9f25e002cfb78a52154b3264388c62795d5e45aac398d3077db457f45f"
-all_sha256 = "86628c55cb0126f3c9bc0f5f2ec5fe28351ba5e30caca9fe465dca6b99c1874d"
-commit = "4170cc3134a154eda276131d7c3251717baf6420"
+sha256 = "824212150cea50eabd9233fdb2db252b60c22035b6f62139aa026b5ded45944b"
+all_sha256 = "e8d852fa8f77ff9b708b8066ddb26457a0498cb94060f1976741355ff510a415"
+commit = "ff576ba0418a4101ba4a44c8329f79c2d8bfbd11"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 
 [traintnl]
 film = "vault-traintnl"
-sha256 = "dd41ee03e45f03915843617962ce85ee6341c5f5502d5ffd8ad6e8518f737a26"
-all_sha256 = "076750bacd04dad5eece4923fc6de436b674f59300c669b39c1cb347ca5b64fb"
-makeone = "unpatched"
-playone = "unpatched"
-reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+sha256 = "5239c66a3b6b974093a594c52716a4697a6fb5573e2db7683f8b9385bec62d4f"
+all_sha256 = "a649413eafced2c711b63e761c40c62d0e2502c5020944a62c32b97b6d27b8c9"
+makeone = "patch3"
+playone = "patch3"
 
 [traintnl.expected.gpu]
-ssim = 0.8513718
-iou = 0.965586
+ssim = 0.85212404
+iou = 0.9653354
 crates = "f55202b98d101834dce3c88a9b537766e4bee1b5"
-sha256 = "dd41ee03e45f03915843617962ce85ee6341c5f5502d5ffd8ad6e8518f737a26"
-all_sha256 = "076750bacd04dad5eece4923fc6de436b674f59300c669b39c1cb347ca5b64fb"
-commit = "4170cc3134a154eda276131d7c3251717baf6420"
+sha256 = "5239c66a3b6b974093a594c52716a4697a6fb5573e2db7683f8b9385bec62d4f"
+all_sha256 = "a649413eafced2c711b63e761c40c62d0e2502c5020944a62c32b97b6d27b8c9"
+commit = "ff576ba0418a4101ba4a44c8329f79c2d8bfbd11"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 
 [bomb]
 film = "vault-bomb"
-sha256 = "fde7759721380d8386b4f8ee8f8ce405b48bf57bfde8de07517072e59fd722f9"
-all_sha256 = "282553d404f2bbf8cb125933b99e900d8cdcfe8c77d5ef90201e1188205c6683"
-makeone = "unpatched"
-playone = "unpatched"
-reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
+sha256 = "22c0bc7e5375a7c7fa74a0d548372f7f92568545d52c67eae18478c6877cb95c"
+all_sha256 = "b1a48485d817a2d72f8f2ebaa8e8c2599d0599bc7426a78ecce6ade45d223945"
+makeone = "patch3"
+playone = "patch3"
 
 [bomb.expected.gpu]
-ssim = 0.7991337
-iou = 0.90669
+ssim = 0.7985965
+iou = 0.9055414
 crates = "f55202b98d101834dce3c88a9b537766e4bee1b5"
-sha256 = "fde7759721380d8386b4f8ee8f8ce405b48bf57bfde8de07517072e59fd722f9"
-all_sha256 = "282553d404f2bbf8cb125933b99e900d8cdcfe8c77d5ef90201e1188205c6683"
-commit = "4170cc3134a154eda276131d7c3251717baf6420"
+sha256 = "22c0bc7e5375a7c7fa74a0d548372f7f92568545d52c67eae18478c6877cb95c"
+all_sha256 = "b1a48485d817a2d72f8f2ebaa8e8c2599d0599bc7426a78ecce6ade45d223945"
+commit = "ff576ba0418a4101ba4a44c8329f79c2d8bfbd11"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 
 [location]
 film = "vault-location"
-sha256 = "5456e92098a564b3041184836cd55065b408634ff64a4da995ef7fa24a81566f"
+sha256 = "7f406b796741755911c4d9e1d35ac537f0f6c3e523f76b49048d063a65763867"
 all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
-makeone = "unpatched"
-playone = "unpatched"
-reason = "captured 2026-11-07 on the unpatched builds, the builds CTRY and INTRO use, so every reference film shares one; the move to patch3 is #300"
-noise_sigma = 0.00038
+makeone = "patch3"
+playone = "patch3"
+# 729 of 732 paired pages identical: a lower bound for the noise of the verdict's delta on a few
+# touched windows, so "within noise" is conservative.
+noise_sigma = 0.00012
 
 [location.expected.gpu]
-ssim = 0.7907437
-iou = 0.9788352
+ssim = 0.7918108
+iou = 0.97828054
 crates = "f55202b98d101834dce3c88a9b537766e4bee1b5"
-sha256 = "5456e92098a564b3041184836cd55065b408634ff64a4da995ef7fa24a81566f"
+sha256 = "7f406b796741755911c4d9e1d35ac537f0f6c3e523f76b49048d063a65763867"
 all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
-commit = "4170cc3134a154eda276131d7c3251717baf6420"
+commit = "ff576ba0418a4101ba4a44c8329f79c2d8bfbd11"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"

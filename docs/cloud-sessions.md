@@ -1,6 +1,6 @@
 # Cloud sessions
 
-A Claude Code cloud session has no data root. Its SessionStart hook fetches four archives from the
+A Claude Code cloud session has no data root. Its SessionStart hook fetches five archives from the
 private R2 bucket `stunt-reel-internal-assets`, each pinned by key and sha256 in
 [`manifests/cloud-assets.toml`](../manifests/cloud-assets.toml)
 ([ADR 0039](adr/0039-cloud-sessions-fetch-pinned-game-archives.md)).
@@ -76,8 +76,12 @@ Claude nothing. A failed setup script should also keep that environment out of t
 The repo's SessionStart hook (`.claude/settings.json`) runs `mise run cloud-session-start` on
 every session start and resume. Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
 nothing; in one it runs the cloud setup again, then
-`mise run cloud-assets -- fetch --replace-unmarked` and
-`mise run superset-all`, with the environment variables set. The setup script's cache outlives
+`mise run cloud-assets -- fetch --replace-unmarked`, `mise run game-builds` and
+`mise run superset-all`, with the environment variables set. `game-builds` makes
+`builds/unpatched` and `builds/patch3` from `corpus/stuntisl` and `corpus/patches`, the builds
+the reference rows name. The unpatched tree lacks the music files the corpus archive leaves out,
+and the Patch 3 tree lacks its six `.XMI`/`.XMM`/`.XMP` files (checked 2026-11-08: otherwise
+the same file list as a full-corpus build, and the five replaced files byte-identical). The setup script's cache outlives
 a pin change, so the rerun is what brings a new pin; work already done costs nothing. A new
 session can find an earlier session's archive folders already in its data root (seen
 2026-11-08, mechanism unknown), so fetch replaces each one that holds another pin

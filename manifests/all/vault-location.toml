@@ -1,8 +1,8 @@
 # Rebuilds LOCATION.ALL from the game's RES tree with `stuntreel link build` (ADR 0032).
 film = "LOCATION.FLM"
 flm_sha256 = "577e8ae24b7322b4a57799d04917e568b264444e6dac2bc2d13201aee39fbe20"
-game_root = "corpus/stuntisl"
-makeone_sha256 = "2963e0889851287f4d4bfe3fbfb96542e61058ff4511b9783f4d289913e0fc9f"
+game_root = "builds/patch3"
+makeone_sha256 = "426111d9a42f12acf21cca693b283e1df2306035ad6215bb94ac163aebe67bb6"
 all_bytes = 990628
 all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
 
@@ -63,7 +63,7 @@ items = [102]
 [[source]]
 file = "RES/SPRITES.RES"
 index = 128
-sha256 = "95d3e3c4b32eb77b197640caad0b983864d27830aa38add1b10d9f3c21e9a96a"
+sha256 = "64274cae596215fed1da9074203d3a222d036e825f6d9897f18437d5635577a2"
 items = [30, 66]
 
 [[source]]

@@ -1,10 +1,10 @@
 # Rebuilds BOMB.ALL from the game's RES tree with `stuntreel link build` (ADR 0032).
 film = "BOMB.FLM"
 flm_sha256 = "c989bd084741532204ad8989f3b7ef8195f8853dc1ecfc389b23bb59aad67ad7"
-game_root = "corpus/stuntisl"
-makeone_sha256 = "2963e0889851287f4d4bfe3fbfb96542e61058ff4511b9783f4d289913e0fc9f"
-all_bytes = 192318
-all_sha256 = "282553d404f2bbf8cb125933b99e900d8cdcfe8c77d5ef90201e1188205c6683"
+game_root = "builds/patch3"
+makeone_sha256 = "426111d9a42f12acf21cca693b283e1df2306035ad6215bb94ac163aebe67bb6"
+all_bytes = 193799
+all_sha256 = "b1a48485d817a2d72f8f2ebaa8e8c2599d0599bc7426a78ecce6ade45d223945"
 
 [[source]]
 file = "RES/GAME.RES"
@@ -69,7 +69,7 @@ items = [14]
 [[source]]
 file = "RES/SPRITES.RES"
 index = 128
-sha256 = "95d3e3c4b32eb77b197640caad0b983864d27830aa38add1b10d9f3c21e9a96a"
+sha256 = "64274cae596215fed1da9074203d3a222d036e825f6d9897f18437d5635577a2"
 items = [30, 66]
 
 [[source]]
@@ -87,11 +87,11 @@ items = [5, 6, 13]
 [[source]]
 file = "RES/COMMNSND.SMP"
 index = 195
-sha256 = "a3192e465badc13fd8421fbbbd118036e4d64528d1d296566f91e6f71699a01f"
+sha256 = "3e8248fa6fdbd2a85954e3e3fb0f8f9051a597f1ce9aab243ac9731e31efb645"
 items = [7, 25, 30]
 
 [[source]]
 file = "RES/SNDFX2.SMP"
 index = 197
-sha256 = "3c8e9d32cc6f0932ec1a31718b3e482a27a488948116df574ca4273b69b84429"
+sha256 = "fa4dffe364f15181ddc36ef6b89a46509372de8a426ce644d9354f255769414e"
 items = [72, 79]

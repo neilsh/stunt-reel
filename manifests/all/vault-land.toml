@@ -1,8 +1,8 @@
 # Rebuilds LAND.ALL from the game's RES tree with `stuntreel link build` (ADR 0032).
 film = "LAND.FLM"
 flm_sha256 = "f05bed9be1d895c1a1c4773e2eaa0f381b4f944375ffd4594b1a619b6c753cc9"
-game_root = "corpus/stuntisl"
-makeone_sha256 = "2963e0889851287f4d4bfe3fbfb96542e61058ff4511b9783f4d289913e0fc9f"
+game_root = "builds/patch3"
+makeone_sha256 = "426111d9a42f12acf21cca693b283e1df2306035ad6215bb94ac163aebe67bb6"
 all_bytes = 127690
 all_sha256 = "342003624122671573d562fb814c9bf6d1bf75e3ff8727f26fedabcda45b4218"
 
@@ -57,7 +57,7 @@ items = [9]
 [[source]]
 file = "RES/SPRITES.RES"
 index = 128
-sha256 = "95d3e3c4b32eb77b197640caad0b983864d27830aa38add1b10d9f3c21e9a96a"
+sha256 = "64274cae596215fed1da9074203d3a222d036e825f6d9897f18437d5635577a2"
 items = [30, 66]
 
 [[source]]
@@ -69,5 +69,5 @@ items = [7]
 [[source]]
 file = "RES/COMMNSND.SMP"
 index = 195
-sha256 = "a3192e465badc13fd8421fbbbd118036e4d64528d1d296566f91e6f71699a01f"
+sha256 = "3e8248fa6fdbd2a85954e3e3fb0f8f9051a597f1ce9aab243ac9731e31efb645"
 items = [6]

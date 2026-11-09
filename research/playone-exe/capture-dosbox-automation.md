@@ -23,7 +23,7 @@ _Source: [first evaluation](../../work/2026-11/distill-capture-dosbox-automation
 A script starts capture and presses the dialog keys at fixed emulated frames (`dosbox.frame()` counts from boot), then reads guest memory each frame.
 
 * **`DGROUP` is `DS = 0x0F46`** for `CTRY.FLM` and `INTRO.FLM` on the unpatched build, with DOSBox-X's offsets. `cpu/state` reports the running code's `DS` (`0x17C9` while `CS` is `0x0A19`, § 4.3), so scripts read `0x0F46:offset`. `[Bounded Observation]`
-* **`CTRY.FLM` replays bit for bit.** Nine runs at 8,000 cycles and 12, 16 and 24 runs started together gave identical video and tick logs, with no dropped frames; three `INTRO.FLM` runs gave identical video. Not every film replays (§ 4.4). `[Bounded Observation]`
+* **`CTRY.FLM` replays bit for bit on the unpatched build.** Nine runs at 8,000 cycles and 12, 16 and 24 runs started together gave identical video and tick logs, with no dropped frames; three `INTRO.FLM` runs gave identical video, all on the unpatched build with the demo's `.ALL`. Not every film replays (§ 4.4), and on Patch 3 with a Patch 3 `MAKEONE` archive two captures run one after the other differed on 27 of 104 paired `CTRY.FLM` pages and 78 of 172 `INTRO.FLM` pages (2026-11-08, [`../parity/method.md`](../parity/method.md) § 2.2.1). `[Bounded Observation]`
 * **Video frame *j* is emulated frame `capture_start_frame + j`**, at 70.087 Hz. The HUD timer (`film_tick / 50`, redrawn per render loop) trails the live tick by 0 to 3 ticks between render loops. `[Bounded Observation]`
 * **Recorded RGB is the DAC**, each 6-bit component expanded as `round(x * 255 / 63)` with zero error on the indices checked. Two indices can share an RGB, so video does not always give the index plane: index scoring uses the page (§ 4.1). `[Bounded Observation]`
 
@@ -137,7 +137,7 @@ _Source: [clock and window passes](../../work/2026-11/distill-capture-dosbox-aut
 2. Does a breakpoint at image `0x7417` (end of the `A000` diff-copy) give a whole page? It was read from the listing, not tried (§ 4.3).
 3. Does an `INTRO.FLM` fade (frames 6140–6400), or a second cycle count, show the one-frame and two-frame DAC lag of § 4.5?
 4. What else lives in the `DS = 0x15D4` segment (image `0x15D40` onward) that deserves a [`memory-map.md`](memory-map.md) entry, and what are the other relocated segment words `0x1DE7`, `0x1DEA` and `0x20F6`?
-5. What makes `COUNT.FLM` replays land a tick apart when `CTRY.FLM` replays are identical (§ 4.4)? Candidates: the unpatched `PLAYONE.EXE` against a film made for the patched one, sound-card IRQ timing, or BIOS time seeded from the host at boot.
+5. What makes `COUNT.FLM` replays land a tick apart when `CTRY.FLM` replays on the unpatched build are identical (§ 4.4)? Candidates: the unpatched `PLAYONE.EXE` against a film made for the patched one, sound-card IRQ timing, or BIOS time seeded from the host at boot.
 6. Do the patched `PLAYONE.EXE` (Patch #3) and its `DS`, film clock and working-palette offsets match the unpatched build's, and which films need which build?
 7. Does the torn rate scale as 1/cycles (§ 4.5)? A trace at 7,000 cycles should show about six times the rate at 45,000.
 8. Do other films double-buffer through `DS:0x22CA` and `0x22CC`? A film that does not would read as never torn; `torn_frames` per film in a batch survey would show it.
@@ -148,4 +148,4 @@ _Source: [clock and window passes](../../work/2026-11/distill-capture-dosbox-aut
 13. Should a film whose clock already runs at the clock pass's first sample keep its first goal? `Act1.flm`'s first window goal (tick 1) was left out because no sample below it exists, so its capture starts at tick 12; a window at the first sample frame would cover it.
 14. Is drift between boots (§ 4.8, up to 5 ticks on `Act1.flm`) a property of film length, of the film, or of host load? Two clock passes of one long film, alone and under `--jobs 3`, would separate them.
 15. Do two pages labelled with one `film_tick` show the same moment? On `vault-balloon` tick 265 a reference page and a recapture page agree best with renders 3 ticks apart (264 and 267), which § 4.4's "never mislabels" would not allow, if confirmed; one page checked ([`../parity/method.md`](../parity/method.md) § 2.2.1).
-16. Why does `vault-location` replay nearly bit for bit (731 of 732 paired pages identical) when the four shorter `VAULT` films match on 61.5 to 76% of paired pages ([`../parity/method.md`](../parity/method.md) § 2.2.1)?
+16. Why does `vault-location` replay nearly bit for bit (729 of 732 paired pages identical on Patch 3, 731 of 732 unpatched) when the four shorter `VAULT` films match on 59 to 74% of paired pages on Patch 3 (61.5 to 76% unpatched) ([`../parity/method.md`](../parity/method.md) § 2.2.1)?

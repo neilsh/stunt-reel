@@ -133,7 +133,7 @@ def test_committed_manifest_names_the_spec_archives() -> None:
     assert (m.bucket, m.version, sorted(m.archives)) == (
         "stunt-reel-internal-assets",
         "v2",
-        ["captures", "corpus-freeflight", "corpus-stisldem", "corpus-stuntisl"],
+        ["captures", "corpus-freeflight", "corpus-patches", "corpus-stisldem", "corpus-stuntisl"],
     )
     assert m.archives["corpus-freeflight"].into == "corpus/siarchive/Developer/FreeFlight"
 
@@ -281,9 +281,32 @@ def test_check_manifest_sources_accepts_another_spelling_of_the_game_root(
 
 
 def test_check_manifest_sources_reports_a_game_tree_no_archive_holds(tmp_path: Path) -> None:
-    repo = _manifest_repo(tmp_path, "builds/patch3", "RES/GAME.RES")
+    repo = _manifest_repo(tmp_path, "corpus/elsewhere", "RES/GAME.RES")
     [message] = check_manifest_sources(read_manifest(), repo)
-    assert "builds/patch3" in message
+    assert "corpus/elsewhere" in message
+
+
+def test_check_manifest_sources_reads_a_built_tree_from_its_corpus(tmp_path: Path) -> None:
+    assert (
+        check_manifest_sources(
+            read_manifest(), _manifest_repo(tmp_path, "builds/patch3", "RES/GAME.RES")
+        )
+        == []
+    )
+    repo = _manifest_repo(tmp_path / "x", "builds/patch3", "RES/MUSIC1.XMI")
+    [message] = check_manifest_sources(read_manifest(), repo)
+    assert "corpus-stuntisl" in message
+
+
+def test_check_manifest_sources_reports_a_built_tree_missing_its_patch(tmp_path: Path) -> None:
+    m = read_manifest()
+    without = dataclasses.replace(
+        m, archives={k: v for k, v in m.archives.items() if k != "corpus-patches"}
+    )
+    [message] = check_manifest_sources(
+        without, _manifest_repo(tmp_path, "builds/patch3", "RES/GAME.RES")
+    )
+    assert "corpus-patches" in message
 
 
 def test_committed_manifest_holds_every_reference_films_sources() -> None:
