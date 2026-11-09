@@ -58,7 +58,7 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
 
 Open `compare_regressed_*.png` and `compare_improved_*.png` (`reference | before | after | |ref-before| | |ref-after|`) before trusting the mean; a mean can hide a regression or an improvement. Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, candidate sweeps).
 
-For a side-by-side of one tick, find the frame whose `film_tick` is that tick in the capture's `meta.json` (`tick_NNNN.idx` is numbered by capture order, not by tick), decode its `frame_file` (64000 bytes, 320x200) with its `palette_file`, and paste it beside ours, `RenderStore(...).frame(tick)` in `stunt_reel.parity_artifacts`. A second's `preview/` PNG shows only that second's first tick, so use it only when that is the tick you want.
+For a side-by-side of one tick, read the capture with `read_capture` in `stunt_reel.parity_artifacts` and take the frame whose `film_tick` is that tick: `tick_NNNN.idx` is numbered by capture order, not by tick, and `read_capture` supplies the capture-order file names when an older `meta.json` omits `frame_file` and `palette_file`. Decode its frame (64000 bytes, 320x200) with its palette (`read_capture_palette`). For ours, `RenderStore(...).frame(tick)` returns a `StoredFrame` whose picture is `palette[index]` at every pixel of `indices`. A second's `preview/` PNG shows only that second's first tick, so use it only when that is the tick you want.
 
 ## 7. Record the result
 
