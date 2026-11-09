@@ -3,7 +3,8 @@
 ## Watch it
 
 ```powershell
-cargo run -p stunt-cli -- "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL"
+cargo run -p stunt-cli -- "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" \
+    --sidata "<data root>/corpus/siarchive/Developer/FreeFlight/SIDATA"
 ```
 
 Opens the interactive presentation (Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits). Interactive playback follows the authored 50 Hz timeline and interpolates between slices. `--help` lists the headless flags, `--tick-range <A..=B>` (0-based, inclusive 50 Hz ticks), `--at-ticks`, and the `parity` subcommand.
@@ -15,11 +16,11 @@ Opens the interactive presentation (Space pauses, C toggles authored/free camera
 ```powershell
 # Capture one frame every 25 ticks (0.5 s) across the full 1,342-tick film
 cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM" \
-    --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --tick-range 0..=1341 --frame-step 25 \
-    --out-dir build/parity/ours/ctry_sparse
+    --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --tick-range 0..=1342 --frame-step 25 \
+    --sidata "<data root>/corpus/siarchive/Developer/FreeFlight/SIDATA" --out-dir build/parity/ours/ctry_sparse
 ```
 
-`--tick-range A..=B` takes 0-based, inclusive 50 Hz ticks (the old `--frames A..B` is now an error; it rendered ticks A-1 through B-2); `--frame-step <N>` renders every Nth tick into the render store, keyed by 0-based tick. `--sample-count <N>` writes `sample_0001.png`… (1-based sample index) instead; those are not parity inputs. A render for scoring, and the store's files, are [Score a render change, § 4](score-a-render-change.md#4-render-by-hand).
+`--tick-range A..=B` takes 0-based, inclusive 50 Hz ticks, `0..=1342` by default (the old `--frames A..B` is now an error; it rendered ticks A-1 through B-2); `--frame-step <N>` renders every Nth tick into the render store, keyed by 0-based tick. `--sample-count <N>` writes `sample_0001.png`… (1-based sample index) instead; those are not parity inputs. A render for scoring, and the store's files, are [Score a render change, § 4](score-a-render-change.md#4-render-by-hand).
 
 ## Render chosen ticks beside their capture
 

@@ -11,4 +11,4 @@ The page was 43,901 bytes, over twice the 20 KB budget (`mise run doc-health`, 2
 - the one dated measurement, the 2026-11-07 GPU-test hangs, is [`journal.md`](journal.md);
 - the CI paragraph had ended in `... (line truncated to 2000 chars)` since `40d09cc` (#14), a tool's display marker committed as text; its last sentences are restored from `40d09cc^`, with Renovate in place of the Dependabot group #14 retired.
 
-What remains is reference and explanation (requirements, setup, layout, the gate, CI, dependency policy), with no dated narrative and no command sequence. Bringing it under 20 KB means splitting it by subject, which this distillation leaves to a person.
+What remains is reference and explanation (requirements, setup, layout, the gate, CI, dependency policy), with no dated narrative and no workflow procedure. Bringing it under 20 KB means splitting it by subject, which this distillation leaves to a person.

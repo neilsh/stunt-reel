@@ -18,4 +18,4 @@ cargo run --release -p stunt-cli -- shape-views --archive target/linked/superset
 
 ## Find the shapes a switch changes
 
-`mise run shape-diff -- --var DBG_X=0,1 [--shapes IDS|FILE] [--archive X.ALL] [--views top,side,front] [--no-build]` runs `stuntreel shape-views` once per value of a `DBG_*` switch and lists the shapes whose geometry hash or decode failure changes; `build/scratch/shape-diff/sheet.png` draws only those shapes, one column per value. The archive defaults to `target/linked/superset/SUPERSET.ALL` (`mise run superset-all`).
+`mise run shape-diff -- --var DBG_X=0,1 [--shapes IDS|FILE] [--archive X.ALL] [--views top,side,front] [--tile PX] [--no-build]` runs `stuntreel shape-views` once per value of a `DBG_*` switch and lists the shapes whose geometry hash or decode failure changes; `build/scratch/shape-diff/sheet.png` draws only those shapes, one column per value. The archive defaults to `target/linked/superset/SUPERSET.ALL` (`mise run superset-all`).

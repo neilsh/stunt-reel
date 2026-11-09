@@ -1,6 +1,6 @@
 # Make a film's archive
 
-A film needs an `.ALL` to be captured: one beside its `.FLM`, or one that `make-all` stored under `captures/<film>/archives/`. The demo ships one for `INTRO` and `CTRY` only. For any other film, once:
+A film needs an `.ALL` to be captured: one beside its `.FLM`, or one that `make-all` stored under `captures/<film>/archives/`. The demo ships one for `INTRO` and `CTRY` only, and it is an unpatched `MAKEONE.EXE`'s, which a film whose `references.toml` row pins `makeone = "patch3"` refuses. For any other film, once:
 
 ```powershell
 mise run make-all -- --film <path>.FLM
