@@ -33,8 +33,8 @@ CLASS_KEYS: Mapping[str, str] = {"hardware": "gpu", "cpu": "lavapipe"}
 
 #: Every comparison line is indented under its film's summary line.
 _INDENT = " " * 6
-#: The smallest delta called drift on a row without a ``noise_sigma``: the precision the
-#: ``expected`` tables store, so a rescore of an unchanged render is no drift.
+#: The largest delta that is no drift on a row without a ``noise_sigma``: a few f32 steps near
+#: 0.8, so a rescore of an unchanged render passes and any change to its scores does not.
 DRIFT_PRECISION = 1e-7
 
 
@@ -144,9 +144,9 @@ def comparison_line(
     if reason is not None:
         return f"{head}  not comparable: {reason}"
     if reference.noise_sigma is None:
-        # A film whose recaptures repeat page for page (ADR 0043) has no noise to allow for.
+        # The render is scored against the pinned capture, so an unchanged render scores the same.
         if abs(delta) > DRIFT_PRECISION:
-            return f"{head}  DRIFT: |delta| {abs(delta):.7f} > {DRIFT_PRECISION:.7f}"
+            return f"{head}  DRIFT: |delta| {abs(delta):.7f} > {DRIFT_PRECISION:g}"
         return f"{head}  no drift"
     if abs(delta) > reference.noise_sigma:
         return (

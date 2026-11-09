@@ -167,7 +167,8 @@ def test_the_first_reason_that_applies_is_the_one_printed(
 @pytest.mark.parametrize(
     ("ssim", "verdict"),
     [
-        (0.8987, "delta +0.0001000  DRIFT: |delta| 0.0001000 > 0.0000001"),
+        (0.8987, "delta +0.0001000  DRIFT: |delta| 0.0001000 > 1e-07"),
+        (0.8986002, "delta +0.0000002  DRIFT: |delta| 0.0000002 > 1e-07"),
         (0.89860004, "delta +0.0000000  no drift"),
         (0.8986, "delta +0.0000000  no drift"),
     ],

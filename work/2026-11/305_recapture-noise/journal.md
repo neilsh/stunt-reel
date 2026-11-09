@@ -79,7 +79,7 @@
 ## 2026-11-09: references swapped and repinned
 
 - **Question**: How much does each film's headline score move when its with-sound reference is replaced by the stubbed one (Q7: recorded, not gated)?
-- **Method**: At `865f943`, each `bench/<slug>/stubbed-a` swapped into `captures/<slug>/frames` with `capture_store.stage` and `publish`; `mise run capture-digest -- <slug>` for the row's new `sha256` (`all_sha256` unchanged on all seven). One `mise run parity` render (crates tree `1c3b167`) scored by `stuntreel parity` against the backed-up references (`backup/pre-305/<slug>/frames`) and by `mise run parity` against the new ones. The scores against the old references equal the previous `expected.gpu` tables to 7 decimals on six films and within 1.3e-5 on CTRY, so this render matches the one those tables measured. A second `mise run parity -- --no-build` re-render read "no drift" on all seven, the drift check now judging rows without a `noise_sigma`.
+- **Method**: At `865f943`, each `bench/<slug>/stubbed-a` swapped into `captures/<slug>/frames` with `capture_store.stage` and `publish`; `mise run capture-digest -- <slug>` for the row's new `sha256` (`all_sha256` unchanged on all seven). One `mise run parity` render (crates tree `1c3b167`) scored by `stuntreel parity` against the backed-up references (`backup/pre-305/<slug>/frames`) and by `mise run parity` against the new ones. The scores against the old references equal the previous `expected.gpu` tables to 7 decimals on six films, so on those six this render matches the one the tables measured; CTRY's differ by 1.3e-5 in SSIM and 9.5e-5 in IoU, so its before column is this render's, not the table's. A second `mise run parity -- --no-build` re-render read "no drift" on all seven, the drift check now judging rows without a `noise_sigma`.
 - **Result**:
 
   | Film | `mean_ssim_scored`, old reference | New reference | Δ | `mean_iou_scored`, old | New |
@@ -92,5 +92,5 @@
   | `vault-bomb` | 0.7985965 | 0.7995994 | +0.0010 | 0.9055414 | 0.9059951 |
   | `vault-location` | 0.7918108 | 0.7909090 | -0.0009 | 0.9782805 | 0.9787082 |
 
-- **Verdict**: `[Bounded Observation]`. The swap moves headlines by -0.0032 to +0.0034, within about the 0.002 adoption floor on four films and beyond it on INTRO, LAND and BALLOON, in both directions; a stubbed reference is a different recording, not a better or worse one. Adopted per Q7.
+- **Verdict**: `[Bounded Observation]`. The swap moves headlines by -0.0032 to +0.0034, within about the 0.002 adoption floor on four films and beyond it on INTRO, LAND and BALLOON, in both directions; a stubbed reference is a different recording of the film. Adopted per Q7.
 - **Lives in**: [`references.toml`](../../../research/parity/references.toml) (pins, `expected.gpu`); [`method.md`](../../../research/parity/method.md) § 2.2.1.
