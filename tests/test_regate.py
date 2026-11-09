@@ -335,3 +335,16 @@ def test_a_branch_that_moved_meanwhile_is_left_alone_with_no_backup(
 
     assert _git(repo, "rev-parse", "topic") == elsewhere
     assert _git(repo, "for-each-ref", "refs/backup") == ""
+
+
+def test_a_backup_that_cannot_be_written_leaves_the_branch_alone(
+    repo: Path, stub: tuple[list[str], Path]
+) -> None:
+    command, _ = stub
+    old_tip = _git(repo, "rev-parse", "topic")
+    # A ref under the backup's name as a directory: git cannot create the backup.
+    _git(repo, "update-ref", "refs/backup/regate/topic/blocker", old_tip)
+
+    assert regate.regate("main", command, repo) == 1
+
+    assert _git(repo, "rev-parse", "topic") == old_tip

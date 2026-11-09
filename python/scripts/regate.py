@@ -247,8 +247,15 @@ def regate(base: str, command: Sequence[str], path: Path) -> int:
         lines = _gate_each(command, repo, commits, branch)
         new_tip = _rebuild(repo, commits, lines)
         backup = f"refs/backup/regate/{branch}"
-        repo.git("update-ref", "-m", "regate", f"refs/heads/{branch}", new_tip, old_tip)
-        repo.git("update-ref", "--create-reflog", "-m", "regate: the tip before", backup, old_tip)
+        # One transaction: the branch moves only if it is still at old_tip and the backup is written.
+        repo.git(
+            "update-ref",
+            "--create-reflog",
+            "-m",
+            "regate",
+            "--stdin",
+            stdin=f"update refs/heads/{branch} {new_tip} {old_tip}\nupdate {backup} {old_tip}\n",
+        )
     except RegateError as error:
         print(f"[regate] {error}; {branch} is unchanged", file=sys.stderr)
         return 1
