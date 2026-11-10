@@ -190,7 +190,7 @@ def write_crops(
     """Writes ``parity_probe.py crop`` PNGs of the frame with the largest actor, per film."""
     written: list[Path] = []
     for name in films:
-        report_json = workdir / f"{name}_report" / "report.json"
+        report_json = parity_layout.run_report_json(workdir, name)
         render = renders[name]
         store = RenderStore(render)
         geometry = store.record.geometry

@@ -41,6 +41,10 @@ __all__ = [
     "report_dir",
     "require_slug",
     "retime_dir",
+    "run_report_dir",
+    "run_report_json",
+    "run_retime_dir",
+    "run_tree_dir",
     "slug_for",
     "stage_conf",
     "stage_dir",
@@ -199,6 +203,26 @@ def render_scratch_dir(film: str) -> Path:
 def retime_dir(film: str, suffix: str = "") -> Path:
     """The throwaway retimed copy of *film*; *suffix* is the caller's retime marker."""
     return _RETIME / f"{_film_name(film)}{CURRENT_SUFFIX}{suffix}"
+
+
+def run_tree_dir(workdir: Path, name: str) -> Path:
+    """The render of film *name* inside a sweep or batch *workdir*: ``<workdir>/<name>``."""
+    return workdir / name
+
+
+def run_report_dir(workdir: Path, name: str) -> Path:
+    """The report of film *name* inside *workdir*: ``<workdir>/<name>_report``."""
+    return workdir / f"{name}_report"
+
+
+def run_retime_dir(workdir: Path, name: str) -> Path:
+    """The retimed copy of film *name* inside *workdir*: ``<workdir>/<name>_retime``."""
+    return workdir / f"{name}_retime"
+
+
+def run_report_json(workdir: Path, name: str) -> Path:
+    """The ``report.json`` the binary writes inside :func:`run_report_dir`."""
+    return run_report_dir(workdir, name) / "report.json"
 
 
 def stage_dir(film: str, label: str) -> Path:

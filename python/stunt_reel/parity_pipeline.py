@@ -527,10 +527,14 @@ def run_film(
     run: Run = run_command,
 ) -> FilmScore:
     """Renders and scores the job's film into :func:`run_films`' tree layout."""
-    out = workdir / job.name
+    out = parity_layout.run_tree_dir(workdir, job.name)
     render_film(job, out, env, run=run)
-    request = None if retime is None else Retime(retime, workdir / f"{job.name}_retime")
-    return score_film(job, out, workdir / f"{job.name}_report", retime=request, run=run)
+    request = (
+        None if retime is None else Retime(retime, parity_layout.run_retime_dir(workdir, job.name))
+    )
+    return score_film(
+        job, out, parity_layout.run_report_dir(workdir, job.name), retime=request, run=run
+    )
 
 
 def run_films(
@@ -554,9 +558,17 @@ def run_films(
         """Renders *job*'s film into *workdir* unless reusing it, then scores it."""
         if render:
             return run_film(job, workdir, env=env, retime=retime, run=run)
-        request = None if retime is None else Retime(retime, workdir / f"{job.name}_retime")
+        request = (
+            None
+            if retime is None
+            else Retime(retime, parity_layout.run_retime_dir(workdir, job.name))
+        )
         return score_film(
-            job, workdir / job.name, workdir / f"{job.name}_report", retime=request, run=run
+            job,
+            parity_layout.run_tree_dir(workdir, job.name),
+            parity_layout.run_report_dir(workdir, job.name),
+            retime=request,
+            run=run,
         )
 
     return run_matrix(list(films), root, [None], work)[0]
