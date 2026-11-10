@@ -168,3 +168,6 @@ A made-up `SCENERY.scn` of twelve little-endian 32-bit words whose list contains
 
 ### 20. `parity/film_identity.json` (film-identity conflicts)
 Pairs of made-up film identities, a capture's and a render's, each with a waiver flag and the outcome both languages must give: `agree`, `archive_unchecked`, `archive_waived`, or `refused` with the conflicting fields in order (`name`, `flm_bytes`, `flm_sha256`, `all_sha256`). The hashes are short placeholders, not real digests. Read by `every_shared_fixture_case_has_its_outcome` in `crates/stunt-parity/src/film.rs` and `test_every_shared_film_case_has_its_outcome` in `tests/test_parity_artifacts_render.py`.
+
+### 21. `parity/matched_frames.json` (matched frames)
+A made-up six-frame capture set, the capture files present, the ticks a render holds, and which captured frames pairing them by film clock must match: frames missing a palette file, a frame file or a rendered tick are unmatched, and a rendered tick equal to an ordinal matches nothing. Read by `the_shared_fixture_matches_the_frames_it_names` in `crates/stunt-cli/src/parity/matched.rs`; the Python matched-frames module is meant to read it too.
