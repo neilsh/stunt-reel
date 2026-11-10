@@ -171,3 +171,7 @@ Pairs of made-up film identities, a capture's and a render's, each with a waiver
 
 ### 21. `parity/matched_frames.json` (matched frames)
 A made-up six-frame capture set, the capture files present, the ticks a render holds, and which captured frames pairing them by film clock must match: frames missing a palette file, a frame file or a rendered tick are unmatched, and a rendered tick equal to an ordinal matches nothing. Read by `the_shared_fixture_matches_the_frames_it_names` in `crates/stunt-cli/src/parity/matched.rs`. The Python half of #362 is to read it as well.
+
+### 22. `parity/pairing/` (matched-frame pairing)
+
+`meta.json` is a capture document of four frames to pair with `parity/bench/render/` (ticks 10 and 20), reusing the files of `parity/bench/capture/`: ordinals 1 and 2 match; ordinal 3 is at tick 30, which the render lacks; ordinal 4 names `tick_0004.idx`, which does not exist. `expected.json` lists the matched and unmatched ordinals. Pinned by `tests/test_matched_frames.py`; the Rust pairing step reads the same two files.

@@ -39,10 +39,10 @@ import parity_probe
 from cli import add_parity_options, parity_options, resolve_jobs
 
 from stunt_reel import parity_layout, references
+from stunt_reel.matched_frames import Reference
 from stunt_reel.parity_artifacts import (
     Geometry,
     RenderStore,
-    read_page,
     read_report,
 )
 from stunt_reel.parity_pipeline import (
@@ -194,20 +194,17 @@ def write_crops(
         render = renders[name]
         store = RenderStore(render)
         geometry = store.record.geometry
-        best: tuple[int, int, int, list[int]] | None = None
-        for frame in read_report(report_json).per_frame:
-            if frame.scored is not True:
-                continue
-            page = read_page(store, frame.film_tick)
-            pixels = page.actor_pixels()
-            if best is None or len(pixels) > best[0]:
-                best = (len(pixels), frame.ordinal, frame.film_tick, pixels)
-        if best is None:
-            continue
-        _, ordinal, film_tick, pixels = best
-        out = workdir / f"crop_{name}.png"
-        box = padded_box(pixels, CROP_PAD, geometry)
         with references.open_reference(root, name) as reference:
+            best: tuple[int, int, int, list[int]] | None = None
+            for matched in Reference(reference, store).from_report(read_report(report_json)):
+                pixels = matched.page.actor_pixels()
+                if best is None or len(pixels) > best[0]:
+                    best = (len(pixels), matched.ordinal, matched.film_tick, pixels)
+            if best is None:
+                continue
+            _, ordinal, film_tick, pixels = best
+            out = workdir / f"crop_{name}.png"
+            box = padded_box(pixels, CROP_PAD, geometry)
             parity_probe.make_crop(reference, render, ordinal, film_tick, box, 3, out)
         written.append(out)
     return written

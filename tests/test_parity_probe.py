@@ -14,7 +14,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import parity_probe  # noqa: E402
 
-from stunt_reel import parity_artifacts, parity_layout  # noqa: E402
+from stunt_reel import matched_frames, parity_artifacts, parity_layout  # noqa: E402
 from stunt_reel.dataroot import REPO_ROOT  # noqa: E402
 
 if TYPE_CHECKING:
@@ -172,18 +172,18 @@ def test_cmd_shift_leaves_the_captures_displaced_aircraft_out_of_the_world_match
         ours[p] = 40
         capture[p + 6] = 40  # the capture's aircraft sits six columns right of ours
     (tmp_path / "f0.idx").write_bytes(bytes(capture))
-    frame = SimpleNamespace(ordinal=0, frame_file="f0.idx")
+    frame = SimpleNamespace(ordinal=0, film_tick=5, frame_file="f0.idx", palette_file="p0.json")
     geometry = SimpleNamespace(width=width, plane_rows=lambda: rows)
     page = SimpleNamespace(indices=bytes(ours), actor_pixels=lambda: actor)
     report = SimpleNamespace(per_frame=[SimpleNamespace(scored=True, film_tick=5, ordinal=0)])
-    monkeypatch.setattr(parity_probe, "read_capture", lambda _: SimpleNamespace(frames=[frame]))
+    monkeypatch.setattr(matched_frames, "read_capture", lambda _: SimpleNamespace(frames=[frame]))
     monkeypatch.setattr(
         parity_probe,
         "RenderStore",
         lambda _: SimpleNamespace(record=SimpleNamespace(geometry=geometry)),
     )
     monkeypatch.setattr(parity_probe, "read_report", lambda _: report)
-    monkeypatch.setattr(parity_probe, "read_page", lambda _store, _tick: page)
+    monkeypatch.setattr(matched_frames, "read_page", lambda _store, _tick: page)
     args = argparse.Namespace(
         reference=tmp_path, ours=tmp_path, report=tmp_path, min_pixels=1, reach=8, world_reach=6
     )

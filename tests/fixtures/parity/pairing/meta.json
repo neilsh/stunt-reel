@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "film": "BENCH.FLM",
+  "flm_bytes": 1,
+  "frames": [
+    {"ordinal": 1, "film_tick": 10, "frame_file": "tick_0001.idx", "palette_file": "palettes_0001.json"},
+    {"ordinal": 2, "film_tick": 20, "frame_file": "tick_0002.idx", "palette_file": "palettes_0002.json"},
+    {"ordinal": 3, "film_tick": 30, "frame_file": "tick_0001.idx", "palette_file": "palettes_0001.json"},
+    {"ordinal": 4, "film_tick": 10, "frame_file": "tick_0004.idx", "palette_file": "palettes_0001.json"}
+  ],
+  "width": 320,
+  "height": 200
+}
