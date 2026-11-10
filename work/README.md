@@ -10,7 +10,7 @@ A current fact goes in [`research/`](../research/README.md) or [`docs/`](../docs
 
 ## Layout
 
-A **work item** is a GitHub issue: open is active, closed as completed is landed, closed as not planned is abandoned. It gets a folder only when it has a file to keep; otherwise the issue is the record.
+A **work item** is a GitHub issue: open is active, closed as completed is landed, closed as not planned is abandoned. It gets a folder when it ships as two or more PRs or produces a spec or plan. For a single-PR fix a folder is optional, and without one the issue is the record and holds the handoff.
 
 ```text
 work/
