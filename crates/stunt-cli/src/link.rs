@@ -296,7 +296,7 @@ fn read(path: &Path) -> Result<Vec<u8>, LinkFailure> {
 }
 
 /// Lowercase hex SHA-256.
-fn sha256(bytes: &[u8]) -> String {
+pub(crate) fn sha256(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .fold(String::with_capacity(64), |mut hex, b| {

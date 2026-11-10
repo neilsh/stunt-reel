@@ -165,3 +165,6 @@ A made-up `SCENERY.scn` of twelve little-endian 32-bit words whose list contains
 - **Word 6**: `SP_LIST` (`20`) with two children, `20` (word 10) and `12` (word 6 itself), then the `0` terminator at word 9.
 - **Word 10**: `SP_LEAF` (`10`) with object `0x0105`, the shape `synthetic_minimal.sod` stands in for.
 - Used by `cyclic_scenery_list_stops_promptly_and_reports_it` in `crates/stunt-core/tests/it/world_test.rs`: the leaf is placed once at `(-10, -20, 30)`, then the walk stops with `ScnStopReason::Cycle` at byte 24 (opcode 20) instead of recursing forever.
+
+### 20. `parity/film_identity.json` (film-identity conflicts)
+Pairs of made-up film identities, a capture's and a render's, each with a waiver flag and the outcome both languages must give: `agree`, `archive_unchecked`, `archive_waived`, or `refused` with the conflicting fields in order (`name`, `flm_bytes`, `flm_sha256`, `all_sha256`). The hashes are short placeholders, not real digests. Read by `every_shared_fixture_case_has_its_outcome` in `crates/stunt-parity/src/film.rs` and `test_every_shared_film_case_has_its_outcome` in `tests/test_parity_artifacts_render.py`.

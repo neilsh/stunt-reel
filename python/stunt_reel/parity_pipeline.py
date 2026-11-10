@@ -23,7 +23,6 @@ nothing here prints or chooses an exit code (ADR 0010).
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import shutil
 import signal
@@ -38,6 +37,7 @@ from stunt_reel import all_archive, batch_films, capture_store, dataroot, parity
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.link import BUILD_ARGV, binary_locked, binary_path
 from stunt_reel.parity_artifacts import (
+    FilmCheck,
     RenderStore,
     open_render,
     read_capture,
@@ -130,16 +130,11 @@ def reference_job(root: Path, name: str) -> Iterator[FilmJob]:
     with references.open_reference(root, name) as capture:
         if pointer.all_sha256 is not None:
             try:
-                meta = json.loads((capture / capture_store.META_FILE).read_text(encoding="utf-8"))
+                recorded = read_capture(capture).film.all_sha256
             except (OSError, ValueError) as err:
                 raise references.ReferenceCaptureError(
                     f"the capture metadata of [{name}] is unreadable: {err}"
                 ) from err
-            if not isinstance(meta, dict):
-                raise references.ReferenceCaptureError(
-                    f"the capture metadata of [{name}] is not a JSON object"
-                )
-            recorded = meta.get("all_sha256")
             if recorded != pointer.all_sha256:
                 raise references.ReferenceCaptureError(
                     f"the row [{name}] pins the archive {pointer.all_sha256}, but its capture "
@@ -382,30 +377,32 @@ def preflight(
     return problems
 
 
-def check_render(reference: Path, render: Path, ticks: Iterable[int]) -> None:
-    """Refuses a render that cannot be scored against ``reference``.
+def check_render(
+    reference: Path, render: Path, ticks: Iterable[int], *, waive_archive: bool = False
+) -> FilmCheck:
+    """Refuses a render that cannot be scored against ``reference``, else says how it may be.
 
-    Raises ``ValueError`` when the render's document names a different film or ``.FLM``
-    size than the capture's ``meta.json`` (either side may lack the tags), or when the
-    render holds no planes for a captured tick.
+    Raises ``ValueError`` when the render's film identity conflicts with the capture's
+    (:meth:`FilmId.check`, the rule ``stuntreel parity`` applies: an archive conflict passes
+    only with ``waive_archive``), or when the render holds no planes for a captured tick.
     """
     capture = read_capture(reference)
     controls = open_render(render)
-    if controls.film.names_conflict(capture.film):
-        raise ValueError(
-            f"the capture is of {capture.film.name} but the render is of {controls.film.name}"
+    film = controls.film.check(capture.film, waive_archive=waive_archive)
+    if film.outcome == "refused":
+        differences = "; ".join(
+            f"the capture's {name} is {getattr(capture.film, name)} but the render's is "
+            f"{getattr(controls.film, name)}"
+            for name in film.fields
         )
-    if controls.film.bytes_conflict(capture.film):
-        raise ValueError(
-            f"the capture's .FLM is {capture.film.flm_bytes} bytes but the render's is "
-            f"{controls.film.flm_bytes}"
-        )
+        raise ValueError(f"the render is not of the captured film: {differences}")
     held = {entry.tick for entry in controls.record.ticks}
     missing = [tick for tick in ticks if tick not in held]
     if missing:
         raise ValueError(
             f"{render} has no render planes for {len(missing)} captured tick(s), first {missing[0]}"
         )
+    return film
 
 
 def check_film(job: FilmJob, render: Path) -> None:

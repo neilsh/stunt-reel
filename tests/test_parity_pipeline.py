@@ -375,7 +375,10 @@ def test_check_render_refuses_a_render_from_before_the_store(tmp_path: Path) -> 
 
 @pytest.mark.parametrize(
     ("film", "flm_bytes", "message"),
-    [("INTRO.FLM", 100, "render is of INTRO.FLM"), ("CTRY.FLM", 101, "render's is 101$")],
+    [
+        ("INTRO.FLM", 100, "capture's name is CTRY.FLM but the render's is INTRO.FLM$"),
+        ("CTRY.FLM", 101, "capture's flm_bytes is 100 but the render's is 101$"),
+    ],
 )
 def test_check_render_refuses_another_film(
     tmp_path: Path, film: str, flm_bytes: int, message: str
@@ -383,6 +386,23 @@ def test_check_render_refuses_another_film(
     reference, render = _render_tree(tmp_path, film, flm_bytes, [7, 9])
     with pytest.raises(ValueError, match=message):
         parity_pipeline.check_render(reference, render, [7, 9])
+
+
+def test_check_render_refuses_another_archive_unless_waived(tmp_path: Path) -> None:
+    reference, render = _render_tree(tmp_path, "CTRY.FLM", 100, [7, 9])
+    meta = json.loads((reference / "meta.json").read_text(encoding="utf-8"))
+    meta["all_sha256"] = "a1a1"
+    (reference / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    write_store(
+        render,
+        [7, 9],
+        geometry=_geometry(),
+        film=FilmId(name="CTRY.FLM", flm_bytes=100, all_sha256="b2b2"),
+    )
+    with pytest.raises(ValueError, match="all_sha256 is a1a1 but the render's is b2b2"):
+        parity_pipeline.check_render(reference, render, [7, 9])
+    waived = parity_pipeline.check_render(reference, render, [7, 9], waive_archive=True)
+    assert waived.outcome == "archive_waived"
 
 
 def test_check_render_refuses_a_render_without_planes(tmp_path: Path) -> None:

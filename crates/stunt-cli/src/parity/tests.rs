@@ -3,7 +3,7 @@
 use std::fs;
 
 use serde_json::json;
-use stunt_parity::{AdapterClass, RenderAdapter};
+use stunt_parity::{AdapterClass, FilmId, RenderAdapter};
 
 use super::loss::LOSS_CLASSES;
 use super::score::FrameMetrics;
@@ -534,5 +534,134 @@ fn a_render_that_loses_its_credits_scores_lower_on_a_credits_tick() {
         "{} vs {}",
         with.ssim,
         without.ssim
+    );
+}
+
+/// Gives the synthetic capture in `reference` the film identity `capture`, and the render in
+/// `test` the identity `render`.
+fn identify(
+    reference: &std::path::Path,
+    test: &std::path::Path,
+    capture: &FilmId,
+    render: &FilmId,
+) {
+    let meta_path = reference.join("meta.json");
+    let mut meta: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&meta_path).unwrap()).unwrap();
+    let film = serde_json::to_value(capture).unwrap();
+    for (key, value) in film.as_object().unwrap() {
+        let key = if key == "name" { "film" } else { key.as_str() };
+        meta[key] = value.clone();
+    }
+    fs::write(&meta_path, meta.to_string()).unwrap();
+    let mut record = read_render_record(test).unwrap();
+    record.film = render.clone();
+    write_render_record(test, &record).unwrap();
+}
+
+fn film(name: &str, flm_bytes: u64, flm_sha256: &str, all_sha256: Option<&str>) -> FilmId {
+    FilmId {
+        name: Some(name.to_string()),
+        flm_bytes: Some(flm_bytes),
+        flm_sha256: Some(flm_sha256.to_string()),
+        all_sha256: all_sha256.map(str::to_string),
+    }
+}
+
+/// Runs parity over a one-frame capture of `capture` and render of `render`.
+fn run_identified(
+    name: &str,
+    capture: &FilmId,
+    render: &FilmId,
+    waive: bool,
+) -> (TempDir, Result<(), String>) {
+    let tmp = TempDir::new(name);
+    write_reference(&tmp.join("ref"), &[7], true);
+    write_render(&tmp.join("test"), &[7]);
+    identify(&tmp.join("ref"), &tmp.join("test"), capture, render);
+    let mut args = vec![
+        "--reference".to_string(),
+        tmp.join("ref").display().to_string(),
+        "--test".to_string(),
+        tmp.join("test").display().to_string(),
+        "--output".to_string(),
+        tmp.join("out").display().to_string(),
+    ];
+    if waive {
+        args.push("--waive-archive-conflict".to_string());
+    }
+    let result = super::run(args.into_iter());
+    (tmp, result)
+}
+
+#[test]
+fn a_render_of_another_archive_is_refused_naming_both_hashes() {
+    let capture = film("CTRY.FLM", 100, "aa", Some("a1a1"));
+    let render = film("CTRY.FLM", 100, "aa", Some("b2b2"));
+    let (_tmp, result) = run_identified("archive_refused", &capture, &render, false);
+    let error = result.unwrap_err();
+    assert!(error.contains("a1a1") && error.contains("b2b2"), "{error}");
+    assert!(error.contains("--waive-archive-conflict"), "{error}");
+}
+
+#[test]
+fn the_waiver_scores_another_archive_and_marks_the_report() {
+    let capture = film("CTRY.FLM", 100, "aa", Some("a1a1"));
+    let render = film("CTRY.FLM", 100, "aa", Some("b2b2"));
+    let (tmp, result) = run_identified("archive_waived", &capture, &render, true);
+    result.expect("the waiver lets an archive conflict through");
+    assert_eq!(
+        read_report(&tmp.join("out"))["archive_conflict_waived"],
+        true
+    );
+}
+
+#[test]
+fn an_agreeing_film_leaves_the_report_unmarked() {
+    let both = film("CTRY.FLM", 100, "aa", Some("a1a1"));
+    let (tmp, result) = run_identified("archive_agree", &both, &both, true);
+    result.expect("parity runs");
+    assert!(
+        read_report(&tmp.join("out"))
+            .get("archive_conflict_waived")
+            .is_none()
+    );
+}
+
+#[test]
+fn a_flm_conflict_refuses_with_and_without_the_waiver() {
+    let capture = film("CTRY.FLM", 100, "aa", Some("a1a1"));
+    for (name, render) in [
+        ("name", film("INTRO.FLM", 100, "aa", Some("a1a1"))),
+        ("flm_bytes", film("CTRY.FLM", 101, "aa", Some("a1a1"))),
+        ("flm_sha256", film("CTRY.FLM", 100, "bb", Some("a1a1"))),
+    ] {
+        for waive in [false, true] {
+            let (_tmp, result) =
+                run_identified(&format!("flm_{name}_{waive}"), &capture, &render, waive);
+            let error = result.unwrap_err();
+            assert!(
+                error.contains(&format!("the capture's {name} is")),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_capture_without_an_archive_hash_scores_and_says_the_archive_was_not_checked() {
+    let capture = film("CTRY.FLM", 100, "aa", None);
+    let render = film("CTRY.FLM", 100, "aa", Some("b2b2"));
+    let (tmp, result) = run_identified("archive_unchecked", &capture, &render, false);
+    result.expect("an unrecorded archive does not refuse");
+    assert!(
+        read_report(&tmp.join("out"))
+            .get("archive_conflict_waived")
+            .is_none()
+    );
+    let clearance = super::check_film(&capture, &render, false).unwrap();
+    assert_eq!(
+        clearance.note.as_deref(),
+        Some("[parity] archive not checked: the capture records no archive hash")
     );
 }

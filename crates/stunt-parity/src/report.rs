@@ -100,6 +100,10 @@ pub struct Report {
     /// Adapter the render was drawn on, from its `render.json`; null when it does not say.
     #[serde(default)]
     pub adapter: Option<RenderAdapter>,
+    /// The render read another archive than the capture played, and the run waived that
+    /// conflict; absent (false) when the archives agree or were not checked.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub archive_conflict_waived: bool,
     /// Per-frame measurements, in capture order.
     pub per_frame: Vec<FrameReport>,
 }
@@ -188,6 +192,7 @@ mod tests {
             excluded_frames: 0,
             credits_missing_frames: 0,
             adapter: None,
+            archive_conflict_waived: false,
             per_frame: vec![frame(), frame()],
         }
     }

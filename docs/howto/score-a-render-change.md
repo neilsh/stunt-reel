@@ -49,6 +49,7 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
     --noise-sigma <σ> --build-floor 0
 ```
 
+* `parity` refuses a render whose film identity conflicts with the capture's: the `.FLM` name, size or hash, or the archive hash. `--waive-archive-conflict` lets an archive-only conflict through for a deliberate stand-in (a superset render against an own-archive capture) and marks the report `archive_conflict_waived`; `mise run parity` never passes it. When either side records no archive hash, `stuntreel parity` scores and prints `archive not checked`.
 * Every run writes `report.json` and `contact_NNNN.png` sheets (`reference | rendered | |difference|`), which show only the first frame; `--compare` adds `compare.json`.
 * `--compare` prints the means over the common frames, the 5 most improved and regressed frames and the count moved by more than 0.005, and writes `compare.json`.
 * `--compare-test` adds the verdict on the windows the change touched, for example `[verdict] changed 27/121 frames: 15 closer, 12 further, 0 within noise; mean Δ +0.101 on changed windows`.

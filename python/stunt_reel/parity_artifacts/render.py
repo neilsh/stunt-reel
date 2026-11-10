@@ -49,31 +49,71 @@ AdapterClass = Literal["hardware", "cpu"]
 _ADAPTER_CLASSES: tuple[AdapterClass, ...] = ("hardware", "cpu")
 
 
+#: Fields on which two film identities can conflict, in the order a refusal names them.
+FILM_FIELDS: tuple[str, ...] = ("name", "flm_bytes", "flm_sha256", "all_sha256")
+
+#: How :meth:`FilmId.check` judges a render against a capture (``FilmCheck`` in the Rust port).
+FilmOutcome = Literal["agree", "archive_unchecked", "archive_waived", "refused"]
+
+
+@dataclass(frozen=True)
+class FilmCheck:
+    """Whether a render may be scored against a capture, judged by their film identities.
+
+    ``refused`` carries the conflicting ``fields`` in :data:`FILM_FIELDS` order; every other
+    outcome scores, ``archive_unchecked`` when one side records no archive hash.
+    """
+
+    outcome: FilmOutcome
+    fields: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True)
 class FilmId:
-    """Identity of the film an artifact was produced from.
+    """Identity of the film an artifact was produced from: the bytes of its ``.FLM`` and archive.
 
-    Every field is optional because older captures and renders may lack it; a
-    mismatch is only reported when both sides carry the same field.
+    Every field is optional because older captures and renders may lack it; two identities
+    conflict on a field only when both carry it.
     """
 
     name: str | None = None
     flm_bytes: int | None = None
     flm_sha256: str | None = None
-    #: Hash of the ``.ALL`` the capture played, so a later ``make-all`` cannot hide which one it was.
+    #: Hash of the ``.ALL`` as made (a capture records the unstubbed archive, ADR 0043), so a
+    #: later ``make-all`` cannot hide which one was played.
     all_sha256: str | None = None
 
-    def names_conflict(self, other: FilmId) -> bool:
-        """Whether both sides name a film and the names differ, ignoring case."""
-        if self.name is None or other.name is None:
-            return False
-        return self.name.lower() != other.name.lower()
+    def conflicts(self, other: FilmId) -> tuple[str, ...]:
+        """The :data:`FILM_FIELDS` both sides carry with different values.
 
-    def bytes_conflict(self, other: FilmId) -> bool:
-        """Whether both sides recorded a byte length and the lengths differ."""
-        if self.flm_bytes is None or other.flm_bytes is None:
-            return False
-        return self.flm_bytes != other.flm_bytes
+        Names and hashes compare ignoring case, the byte length exactly.
+        """
+        found = []
+        for name in FILM_FIELDS:
+            mine, theirs = getattr(self, name), getattr(other, name)
+            if mine is None or theirs is None:
+                continue
+            if isinstance(mine, str) and isinstance(theirs, str):
+                mine, theirs = mine.lower(), theirs.lower()
+            if mine != theirs:
+                found.append(name)
+        return tuple(found)
+
+    def check(self, other: FilmId, *, waive_archive: bool = False) -> FilmCheck:
+        """Whether a render of ``self`` may be scored against a capture of ``other``.
+
+        Any conflict refuses, except one on the archive hash alone when ``waive_archive`` is
+        set (a deliberate stand-in, such as a superset archive). A name, size or ``.FLM``-hash
+        conflict refuses whatever the waiver says.
+        """
+        conflicts = self.conflicts(other)
+        if not conflicts:
+            if self.all_sha256 is None or other.all_sha256 is None:
+                return FilmCheck("archive_unchecked")
+            return FilmCheck("agree")
+        if conflicts == ("all_sha256",) and waive_archive:
+            return FilmCheck("archive_waived")
+        return FilmCheck("refused", conflicts)
 
 
 @dataclass(frozen=True)

@@ -81,6 +81,9 @@ class Report:
     credits_missing_frames: int = 0
     #: Adapter the render was drawn on, from its ``render.json``; ``None`` when it does not say.
     adapter: RenderAdapter | None = None
+    #: The render read another archive than the capture played, and the run waived that
+    #: conflict; written only when true.
+    archive_conflict_waived: bool = False
 
     def headline(self) -> tuple[float, float]:
         """Headline SSIM and mask IoU: the scored means, else every matched frame."""
@@ -201,6 +204,9 @@ def _report_object(document: Any, path: Path | None) -> Report:
             raw.get("credits_missing_frames", 0), path, "credits_missing_frames"
         ),
         adapter=_adapter_object(raw.get("adapter"), path),
+        archive_conflict_waived=_as_bool(
+            raw.get("archive_conflict_waived", False), path, "archive_conflict_waived"
+        ),
     )
 
 
@@ -218,7 +224,7 @@ def _report_document(report: Report) -> dict[str, Any]:
             "scored": frame.scored,
         }
 
-    return {
+    document: dict[str, Any] = {
         "reference_frames": report.reference_frames,
         "frames": report.frames,
         "unmatched": report.unmatched,
@@ -236,8 +242,11 @@ def _report_document(report: Report) -> dict[str, Any]:
         "excluded_frames": report.excluded_frames,
         "credits_missing_frames": report.credits_missing_frames,
         "adapter": None if report.adapter is None else _adapter_document(report.adapter),
-        "per_frame": [frame_document(frame) for frame in report.per_frame],
     }
+    if report.archive_conflict_waived:
+        document["archive_conflict_waived"] = True
+    document["per_frame"] = [frame_document(frame) for frame in report.per_frame]
+    return document
 
 
 def read_report(path: Path) -> Report:
