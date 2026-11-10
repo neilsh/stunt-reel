@@ -36,15 +36,8 @@ import numpy as np
 
 from stunt_reel import dataroot, parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
-from stunt_reel.parity_artifacts import (
-    CapturedFrame,
-    CaptureSet,
-    RenderStore,
-    read_capture,
-    read_capture_palette,
-    read_page,
-    read_report,
-)
+from stunt_reel.matched_frames import Reference
+from stunt_reel.parity_artifacts import RenderStore, read_report
 from stunt_reel.parity_pipeline import RetimeError, retime_render
 
 #: Inclusive index ranges that are not "object": ground ramp, sky, shade greens.
@@ -75,13 +68,6 @@ def is_object(index: int, background: tuple[tuple[int, int], ...]) -> bool:
     if index in NEVER_OBJECT:
         return False
     return not any(lo <= index <= hi for lo, hi in background)
-
-
-def _capture_frame(capture: CaptureSet, ordinal: int) -> CapturedFrame:
-    for frame in capture.frames:
-        if frame.ordinal == ordinal:
-            return frame
-    raise ValueError(f"the capture has no ordinal {ordinal}")
 
 
 def cmd_retime(args: argparse.Namespace) -> int:
@@ -127,13 +113,12 @@ def _regions(
     scale: int,
 ) -> tuple[list[list[int]], list[list[int]]]:
     """Capture ordinal `ordinal` and our film tick `tick` over `box`, both in the capture's palette."""
-    capture = read_capture(reference)
     store = RenderStore(ours)
     width = store.record.geometry.width
-    frame = _capture_frame(capture, ordinal)
-    palette = read_capture_palette(reference / frame.palette_file)
-    theirs = render_region((reference / frame.frame_file).read_bytes(), palette, box, scale, width)
-    mine = render_region(read_page(store, tick).indices, palette, box, scale, width)
+    matched = Reference(reference, store).match(ordinal, tick)
+    palette = matched.capture_palette()
+    theirs = render_region(matched.capture_indices(), palette, box, scale, width)
+    mine = render_region(matched.page.indices, palette, box, scale, width)
     return theirs, mine
 
 
@@ -282,22 +267,18 @@ def world_shift(
 
 
 def cmd_shift(args: argparse.Namespace) -> None:
-    capture = read_capture(args.reference)
     store = RenderStore(args.ours)
     geometry = store.record.geometry
     width, rows = geometry.width, geometry.plane_rows()
+    reference = Reference(args.reference, store)
     print("film_tick actor_px dx dy hit world_dx world_dy world_agree")
     shifts: list[tuple[int, int, int, int]] = []
-    for frame in read_report(args.report).per_frame:
-        if frame.scored is not True:
-            continue
-        page = read_page(store, frame.film_tick)
+    for matched in reference.from_report(read_report(args.report)):
+        page = matched.page
         pixels = page.actor_pixels()
         if len(pixels) < args.min_pixels:
             continue
-        capture_index = (
-            args.reference / _capture_frame(capture, frame.ordinal).frame_file
-        ).read_bytes()
+        capture_index = matched.capture_indices()
         sample = pixels[::3]
         best = (-1, 0, 0)
         for dy in range(-args.reach, args.reach + 1, 2):
@@ -321,7 +302,7 @@ def cmd_shift(args: argparse.Namespace) -> None:
         )
         shifts.append((best[1], best[2], world[0], world[1]))
         print(
-            frame.film_tick,
+            matched.film_tick,
             len(pixels),
             best[1],
             best[2],
@@ -357,22 +338,19 @@ def actor_iou(
     min_pixels: int = 100,
 ) -> tuple[float, int]:
     """Mean actor-window IoU over every `every`-th scored frame, and the frames used."""
-    capture = read_capture(reference)
     store = RenderStore(ours)
     geometry = store.record.geometry
     width, rows = geometry.width, geometry.plane_rows()
     total = 0.0
     count = 0
-    scored = [frame for frame in read_report(report).per_frame if frame.scored is True]
-    for frame in scored[::every]:
-        page = read_page(store, frame.film_tick)
-        pixels = set(page.actor_pixels())
+    scored = list(Reference(reference, store).from_report(read_report(report)))
+    for matched in scored[::every]:
+        pixels = set(matched.page.actor_pixels())
         if len(pixels) < min_pixels:
             continue
         xs = [i % width for i in pixels]
         ys = [i // width for i in pixels]
-        captured = _capture_frame(capture, frame.ordinal)
-        capture_index = (reference / captured.frame_file).read_bytes()
+        capture_index = matched.capture_indices()
         seen = {
             y * width + x
             for y in range(max(0, min(ys) - pad), min(rows, max(ys) + pad))
