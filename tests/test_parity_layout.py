@@ -134,6 +134,17 @@ def test_a_film_has_one_capture_of_each_kind() -> None:
     assert parity_layout.archive_path("vault-ctry") == film / "archives"
 
 
+def test_a_run_tree_names_the_paths_reuse_and_crops_read() -> None:
+    """``--reuse`` and ``write_crops`` find a film's render, report and retime by these names."""
+    work = Path("w")
+    assert parity_layout.run_tree_dir(work, "vault-ctry") == work / "vault-ctry"
+    assert parity_layout.run_report_dir(work, "vault-ctry") == work / "vault-ctry_report"
+    assert parity_layout.run_retime_dir(work, "vault-ctry") == work / "vault-ctry_retime"
+    assert parity_layout.run_report_json(work, "vault-ctry") == (
+        work / "vault-ctry_report" / "report.json"
+    )
+
+
 def test_the_suite_never_reads_the_machines_data_root() -> None:
     """conftest points STUNT_DATA_ROOT at an empty scratch directory for every test."""
     dataroot.data_root.cache_clear()
