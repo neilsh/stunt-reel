@@ -110,11 +110,9 @@ impl SlotState {
 
     /// Slot BAM rotation `[rz, rx, ry]` as a unit quaternion, still in DOS axes.
     ///
-    /// The stored pitch `rx` uses the opposite handedness from `quat_from_euler`'s
-    /// `pitch` argument: negating it is what makes a view slot look at the drawn actor
-    /// (`CTRY.FLM` tick 1 lands 1.4° off the actor bearing; research/formats/concepts/coordinates-and-units.md). Whether
-    /// the raw convention differs in handedness more broadly is an open question
-    /// (research/formats/concepts/coordinates-and-units.md § 1.2).
+    /// This is `PLAYONE.EXE`'s matrix builder `0824:04E5`, `Ry(-ry) * Rx(rx) * Rz(rz)` on
+    /// column vectors; `rx` is negated because `quat_from_euler` turns by `-pitch`
+    /// (research/formats/concepts/coordinates-and-units.md § 3.4).
     #[must_use]
     pub fn rotation_quat_dos(&self) -> [f32; 4] {
         if self.rot_bam == [0, 0, 0] {

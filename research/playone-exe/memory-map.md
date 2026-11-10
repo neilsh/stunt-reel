@@ -202,6 +202,7 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x0000` | `[Established]` | 4-byte header | Anchor-table header (record 0 starts at `+0x04`) | `# [MEM-SOD-ANCHOR-TABLE]` |
 | `0x0004 + n*0x1C` | `[Established]` | 28-byte record | Anchor point `n`: `x/y/z` at `+0x00/+0x02/+0x04`; cache at `+0x06..+0x10`; fields `+0x12/+0x16/+0x1A`; frame stamp `+0x1B` | `# [MEM-SOD-ANCHOR-TABLE]` |
 | `0x19A8` | `[Established]` | `u8` | Per-frame transform cache counter; incremented by `CS:0x492D` | |
+| `0x19AA..0x41A9` | `[Established]` | `i16[5120]` | Q15 sine over 1¼ turns, 4096 entries per turn: `CS:0x8725` reads sine from `0x19AA` and cosine from `0x21AA` (a quarter turn on), indexed by `angle >> 4` | |
 | `0x41B8` | `[Established]` | `u16` | `OP_TAP` remaining-count scratch | |
 | `0x41C8`, `0x41CA` | `[Established]` | `u16` | Screen-projection center offsets; live `CTRY` session reads 160 and 92 (3D viewport is 185 rows; see `capture.md` § 4) | |
 | `0x41D4..0x41DA` | `[Established]` | `i32[3]` | Model→view translation | |
@@ -212,7 +213,9 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x8070` | `[Bounded Observation]` | `u16` | Projection-scale term consumed by `OP_ANIMATE`; derived from `0x8108` shifted by `0x806F` | `# [FMT-SOD-ANIMATE]` |
 | `0x8082` | `[Established]` | `u16` | Special model selector (`0x1AB1` enables TAP screen projection) | |
 | `0x8084`, `0x8086`, `0x8088` | `[Established]` | `i16` | View-origin subtraction terms applied by `OP_TAP` | |
+| `0x808A` | `[Established]` | `i16[9]` | The matrix the display list draws with: `0x80C0 · R` for an actor (`CS:0x1D31`), the matrix at `0x809C` when the object's flag `+0x0F & 1` is set (`CS:0x1D02`), the view matrix alone for scenery (`CS:0x21CA`) | |
 | `0x80C0..0x80CA` | `[Established]` | `i16[9]` | 3×3 model→view rotation matrix | |
+| `0x80D2` | `[Established]` | `i16[9]` | Scratch for the rotation `R` from `CS:0x8725` | |
 | `0x8108` | `[Established]` | `u16` | Lens mantissa, a copy of `DS:0x229C` (image `0x122E`); Q15 factor on the view matrix's two screen rows (image `0x12E3`), also read by the sun-disc drawer and `OP_ANIMATE` ([`lod.md`](lod.md) section 2.2) | `# [FMT-SOD-ANIMATE]` |
 | `0x810A` | `[Established]` | `u16` | `0x229C² × 2 >> 16` (image `0x1238`); reader not traced | |
 | `0x810C` | `[Established]` | `u16` | Lens shift count, a copy of `DS:0x229E` (image `0x123D`); arithmetic right shift on the view matrix's depth row (image `0x12F8`). Zoom is `0x8108 / 0x8000 × 2^0x810C`, about `lens / 8192` | |
@@ -265,6 +268,10 @@ See [`research/playone-exe/sod-vm.md`](sod-vm.md) for `OP_TAP` and [`research/pl
 | `CS:0xBF23` | `[Established]` | Ground-leaf polygon (VM `0x3CE3`, far): transforms stale anchors through VM `0x2C27`, copies them to `work:0x4450`, then draws flat at the stored colour through the raw gateway `lcall 0:8069` (`CX` = colour; driver `DGROUP:[0x2246]`). `0:8010` and `0:8040` are the gateways that read `CX = work:0x41E8` ([`world-scene.md`](world-scene.md) sections 2, 3) |
 | `CS:0x11FC` | `[Established]` | View setup indexed by `AX = view_obj` (`[0x4888 + 0x1A]`, loaded at `CS:0x4A32`): film variable `view_obj` (`[BX + SI + 0x7E]`) times `DS:0x22B6` (set by `CS:0x11F8`, `0x7FFF` at `CS:0x4A29`), normalised into the mantissa `DS:0x229C`, the shift count `DS:0x229E` and `DS:0x22A4`; `[BX + SI + 0x2E]` is the camera's object pointer ([`lod.md`](lod.md) section 2.1) |
 | `CS:0x12DC` | `[Established]` | Lens zoom of the view matrix: rows 0-1 (screen X, Y) times `0x229C / 0x8000`, row 2 (depth) `sar` by `0x229E`, so focal length scales by about `lens / 8192` ([`lod.md`](lod.md) section 2.2) |
+| `CS:0x8725` (VM `0x04E5`) | `[Established]` | Rotation-matrix builder: `BX`, `BP`, `SI` = angle words roll, pitch, yaw (actor slot `+0x10/+0x12/+0x14`, loaded at `CS:0x1D14`); writes `Ry(-yaw) · Rx(pitch) · Rz(roll)` as nine Q15 words, row by row, at `work:DI` ([`coordinates-and-units.md` § 3.4](../formats/concepts/coordinates-and-units.md#34-rotation-conventions--unit-quaternions-seam-2)) |
+| `CS:0x884A` (VM `0x060A`) | `[Established]` | 3×3 Q15 product `work:DI = work:SI · work:BX` (rows of `SI` times columns of `BX`) |
+| `CS:0x88C1` (VM `0x0681`) | `[Established]` | Transposed copy of a 3×3 matrix from `work:SI` to `work:DI` |
+| `CS:0x895D` (VM `0x071D`), `CS:0x88FB` | `[Established]` | Vector `AX, BX, CX` times the matrix at `work:SI`, one output per row, returned in `DX, BP, DI` |
 | `CS:0x1D96` | `[Bounded Observation]` | Stores var 12 and its negation at `0x15D4:0x8126`/`0x8128`, var 10 (with change sign and low byte) at `0x15D4:0x8120`/`0x8122`; `DS:0x22BC` keeps the previous var 10 |
 | `DS:0x2275` | `[Supported Inference]` | Video-mode flag: `0` after `int 10h` mode `0x13` (`CS:0x737B`), `0xFF` on the alternate path (`CS:0x6E1B`); selects `0x824:0x07DC` over `0x824:0x0A05` in the frame routine |
 | `CS:0x39D0` | `[Established]` | Copies the 16 live variables from `DS:0x47C8` to `DS:0x4906` (the checkpoint inside `0x39B0`) |
