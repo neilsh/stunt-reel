@@ -43,7 +43,7 @@ mise run debug-x -- --plan tools/dosbox-x/plans/ground-objects.toml
 mise run gvpoly-stream -- <ground-objects JSONL>
 ```
 
-`ground-objects` is the plan that breaks on the `GVPOLY` handlers; another plan's JSONL holds no records for this. It lists the `GVPOLY` polygons of a `debug-x` JSONL by object and ramp base, for hits at the handlers `0x995C` and `0x9A24` by default (`--handlers`; `--json <out>` writes every polygon).
+`ground-objects` is the plan that breaks on the `GVPOLY` handlers; another plan's JSONL holds no records for this. It lists the `GVPOLY` polygons of a `debug-x` JSONL by object and ramp base, for hits at the handlers `0x995C` and `0x9A24` by default (`--handlers`; `--json <out>` writes every polygon). The defaults are unpatched image offsets: for a `--build patch3` capture, pass the mapped handler offsets from the JSONL's `patched_mapping` header with `--handlers`.
 
 ## Render a frame beside its capture
 
@@ -51,4 +51,4 @@ mise run gvpoly-stream -- <ground-objects JSONL>
 mise run frame -- --film ctry --ticks 356
 ```
 
-`--var DBG_<NAME>=0,1` draws one panel per value after the capture, but only for a `DBG_*` probe present in the working tree (`DBG_X` in task help is a placeholder); `mise run sweep` scores variants over every reference film. The `DBG_NO_TERRAIN` and `DBG_TERRAIN_DROP` probes the note cites were never committed. See [`score-a-render-change.md`](score-a-render-change.md).
+`--var DBG_<NAME>=0,1` draws one panel per value after the capture, but only for a `DBG_*` probe present in the working tree (`DBG_X` in task help is a placeholder); `mise run sweep -- --var DBG_<NAME>=0,1` scores variants of such a probe over every reference film (`--var` is required unless `--reuse` is given). The `DBG_NO_TERRAIN` and `DBG_TERRAIN_DROP` probes the note cites were never committed. See [`score-a-render-change.md`](score-a-render-change.md).
