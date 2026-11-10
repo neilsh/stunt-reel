@@ -29,6 +29,7 @@ mod config;
 mod export;
 mod headless;
 mod link;
+mod page_slot;
 mod parity;
 mod parity_artifacts;
 mod playback;
