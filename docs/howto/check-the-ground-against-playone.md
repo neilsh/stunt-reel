@@ -28,24 +28,27 @@ For each active `MAP.BIN` record with no Ground polygon it compares each `--scn`
 
 ## Re-run a breakpoint plan
 
+`debug-x` boots the game tree under `<data root>/builds/<build>/`, which `mise run game-builds` creates; `unlzexe` does not.
+
 ```sh
 mise run debug-x -- --plan tools/dosbox-x/plans/ground-driver.toml
 ```
 
-The note's plans are `ground-colours`, `ground-writer`, `ground-tiles`, `ground-filler`, `ground-objects`, `ground-driver`, `terrain-records` and `terrain-tree`, all in `tools/dosbox-x/plans/` ([`debugger-plans.md`](../../research/playone-exe/debugger-plans.md)). The film defaults to `corpus/stisldem/VAULT/CTRY.FLM` and the build to `unpatched` (`--film`, `--build patch3`); the plans hold unpatched offsets, which `--build patch3` maps through the build pairing, and `terrain-tree`'s segment captures are valid only for the unpatched build under DOSBox-X. `terrain-tree` dumps the tree segment and the work segment once, and the ground leaves are walked offline from that dump.
+The note's plans are `ground-colours`, `ground-writer`, `ground-tiles`, `ground-filler`, `ground-objects`, `ground-driver`, `terrain-records` and `terrain-tree`, all in `tools/dosbox-x/plans/` ([`debugger-plans.md`](../../research/playone-exe/debugger-plans.md)). Each run writes `<data root>/debug/<film stem>/<plan>-<build>-<UTC stamp>.jsonl`. The film defaults to `corpus/stisldem/VAULT/CTRY.FLM` and the build to `unpatched` (`--film`, `--build patch3`); the plans hold unpatched offsets, which `--build patch3` maps through the build pairing. Fixed linear addresses (`lin:` captures and `linear` watches) are not mapped: `ground-colours`, `ground-writer`, `ground-tiles` and `terrain-tree` read memory valid only for the unpatched build under DOSBox-X. `terrain-tree` dumps the tree segment and the work segment once, and the ground leaves are walked offline from that dump.
 
 ## Decode captured `GVPOLY` records
 
 ```sh
-mise run gvpoly-stream -- <jsonl>
+mise run debug-x -- --plan tools/dosbox-x/plans/ground-objects.toml
+mise run gvpoly-stream -- <ground-objects JSONL>
 ```
 
-It lists the `GVPOLY` polygons of a `debug-x` JSONL by object and ramp base, for hits at the handlers `0x995C` and `0x9A24` by default (`--handlers`; `--json <out>` writes every polygon).
+`ground-objects` is the plan that breaks on the `GVPOLY` handlers; another plan's JSONL holds no records for this. It lists the `GVPOLY` polygons of a `debug-x` JSONL by object and ramp base, for hits at the handlers `0x995C` and `0x9A24` by default (`--handlers`; `--json <out>` writes every polygon).
 
 ## Render a frame beside its capture
 
 ```sh
-mise run frame -- --film ctry --ticks 356 --var DBG_X=0,1
+mise run frame -- --film ctry --ticks 356
 ```
 
-`--var` draws one panel per value after the capture; `mise run sweep` scores variants over every reference film. The `DBG_NO_TERRAIN` and `DBG_TERRAIN_DROP` probes the note cites were never committed. See [`score-a-render-change.md`](score-a-render-change.md).
+`--var DBG_<NAME>=0,1` draws one panel per value after the capture, but only for a `DBG_*` probe present in the working tree (`DBG_X` in task help is a placeholder); `mise run sweep` scores variants over every reference film. The `DBG_NO_TERRAIN` and `DBG_TERRAIN_DROP` probes the note cites were never committed. See [`score-a-render-change.md`](score-a-render-change.md).

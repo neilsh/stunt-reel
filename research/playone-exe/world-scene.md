@@ -49,7 +49,7 @@ So `MAP.BIN`'s colours are the player's ground colours. What a per-polygon colou
 
 *[Bounded Observation]* (the unpacked image of the unpatched build and FreeFlight's `MAP.BIN`; `mise run scene-ground`).
 
-The tree can be walked from the image alone. `python/stunt_reel/scene_tree.py` starts at `SS:0000` and follows the node types of [`scenery.md`](../formats/auxiliary/scenery.md), and `mise run scene-ground -- build/re/playone.img <MAP.BIN>` prints the result. It visits 7,009 nodes, with no node of an unknown type, and finds 158 Ground polygons: 146 `SP_GLEAF` leaves and 12 coarse `SP_GROUND` polygons. A type-12 node jumps into the leaf code at `0x23BC`, three bytes before the type-14 entry at `0x23BF`, so it draws through the same routine.
+The tree can be walked from the image alone. `python/stunt_reel/scene_tree.py` starts at `SS:0000` and follows the node types of [`scenery.md`](../formats/auxiliary/scenery.md), and `mise run scene-ground` prints the result ([how-to](../../docs/howto/check-the-ground-against-playone.md#walk-the-tree-and-compare-it-with-mapbin)). It visits 7,009 nodes, with no node of an unknown type, and finds 158 Ground polygons: 146 `SP_GLEAF` leaves and 12 coarse `SP_GROUND` polygons. A type-12 node jumps into the leaf code at `0x23BC`, three bytes before the type-14 entry at `0x23BF`, so it draws through the same routine.
 
 All 158 match a `MAP.BIN` record's vertices and colour once the records are read as the engine reads them: the leaf at tree offset `0x060E` is record 131, whose eighth vertex is anchor `50` (section 2). `MAP.BIN` records 52 to 55 and 62 to 65, eight sand patches, have no polygon in the tree.
 
@@ -154,7 +154,7 @@ Superseded by sections 2 and 4.1. The op `0x0168` and `0x02BE` records at `CTRY.
 
 Before the change, our render emitted `195` on most pixels it drew as terrain (71% `CTRY`, 54% `INTRO`) where the capture shows the tiles' colours (`196`, `194`, `193`, `163` on `CTRY`; `163`, `193`, `195`, `91` on `INTRO`); the worst frames were close-ups filled by one tile (`CTRY` tick 356, capture 196; `INTRO` tick 1517, capture 91). Rendering without terrain (`DBG_NO_TERRAIN=1`) put our own tiles on those pixels with the capture's colours, so the tiles were placed and decoded; the depth test hid them under `MAP.BIN` polygons in the same plane.
 
-The rule from sections 2 and 3: a ground leaf never covers the scenery placed on it. The change it licenses lets a prop lying on the terrain win over it, while the terrain still occludes what is behind it (open question 1). It raised `CTRY` from 0.8298 to 0.8645 and `INTRO` from 0.7745 to 0.7973 SSIM, as a 5 cm terrain drop (`DBG_TERRAIN_DROP`, not adopted) had predicted. _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-candidates-and-the-ground-decal-prototype)._
+The rule from sections 2 and 3: the walk paints a tile after the ground leaf it lies on, so that leaf never covers it (whether a later leaf can is open question 1). The change it licenses lets a prop lying on the terrain win over it, while the terrain still occludes what is behind it (open question 1). It raised `CTRY` from 0.8298 to 0.8645 and `INTRO` from 0.7745 to 0.7973 SSIM, as a 5 cm terrain drop (`DBG_TERRAIN_DROP`, not adopted) had predicted. _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-candidates-and-the-ground-decal-prototype)._
 
 ### 6.1 How far the tiles sit from the terrain
 
