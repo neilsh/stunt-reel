@@ -25,6 +25,8 @@ from typing import IO
 
 import pytest
 
+from stunt_reel import process_tree
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 GIT = shutil.which("git")
@@ -78,7 +80,7 @@ def _run(repo: Path, *args: str, timeout: float = _TIMEOUT) -> subprocess.Comple
         try:
             proc.wait(timeout=timeout)
         except BaseException as exc:  # an interrupted wait must not orphan the tree either
-            _kill_tree(proc)
+            process_tree.kill_tree(proc)
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=10)
             if not isinstance(exc, subprocess.TimeoutExpired):
@@ -90,22 +92,8 @@ def _run(repo: Path, *args: str, timeout: float = _TIMEOUT) -> subprocess.Comple
         return subprocess.CompletedProcess(proc.args, proc.returncode, _read(out), _read(err))
 
 
-def _kill_tree(proc: subprocess.Popen[bytes]) -> None:
-    """Kill `proc` and every process it started that is still in its tree or group."""
-    if sys.platform == "win32":
-        _taskkill(proc.pid)
-    else:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
-    proc.kill()
-
-
 def _taskkill(pid: int) -> None:
-    """Kill the Windows process `pid` and its descendants, ignoring one already gone.
-
-    A `taskkill` that cannot start or finish is ignored too: the caller still kills the direct
-    child, and a timeout's failure must not be masked by the cleanup's.
-    """
+    """Kill the Windows process `pid` and its descendants, ignoring one already gone."""
     with contextlib.suppress(OSError, subprocess.TimeoutExpired):
         subprocess.run(  # noqa: S603 - fixed arguments
             ["taskkill", "/F", "/T", "/PID", str(pid)],  # noqa: S607 - Windows built-in

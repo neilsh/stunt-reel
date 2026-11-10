@@ -20,18 +20,18 @@ attempt hung or its tests failed, ``2`` for usage or build errors.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+from stunt_reel import process_tree
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_PACKAGE = "stunt-render"
@@ -251,42 +251,6 @@ def _posix_descendant_count(pid: int) -> int:
     return _count_tree(children, pid)
 
 
-def kill_process_tree(process: subprocess.Popen[str]) -> None:
-    """Kill ``process`` and every descendant, without leaving orphans."""
-    if os.name == "nt":
-        taskkill = shutil.which("taskkill")
-        if taskkill is not None:
-            subprocess.run(  # noqa: S603 - fixed argv, taskkill resolved from PATH
-                [taskkill, "/PID", str(process.pid), "/T", "/F"],
-                capture_output=True,
-                check=False,
-            )
-    else:
-        killpg = getattr(os, "killpg", None)
-        getpgid = getattr(os, "getpgid", None)
-        sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
-        if killpg is not None and getpgid is not None:
-            with contextlib.suppress(ProcessLookupError):
-                killpg(getpgid(process.pid), sigkill)
-    with contextlib.suppress(ProcessLookupError, OSError):
-        process.kill()
-
-
-def _collect_after_kill(process: subprocess.Popen[str]) -> str:
-    """Reap the killed process and return everything it wrote before dying."""
-    try:
-        stdout, _ = process.communicate(timeout=10.0)
-        return stdout  # noqa: TRY300
-    except subprocess.TimeoutExpired:
-        with contextlib.suppress(OSError):
-            process.kill()
-    try:
-        stdout, _ = process.communicate(timeout=10.0)
-    except subprocess.TimeoutExpired:
-        return ""
-    return stdout
-
-
 def run_attempt(
     binary: Path,
     *,
@@ -301,27 +265,18 @@ def run_attempt(
     environment = dict(os.environ)
     if require_gpu:
         environment["STUNT_REQUIRE_GPU"] = "1"
-    process = subprocess.Popen(  # noqa: S603 - fixed argv, binary path from cargo or --bin
-        arguments,
-        cwd=REPO_ROOT,
-        env=environment,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        start_new_session=os.name != "nt",
-    )
     started = time.monotonic()
-    timed_out = False
     children = 0
-    try:
-        stdout, _ = process.communicate(timeout=timeout_s)
-        elapsed_s = time.monotonic() - started
-    except subprocess.TimeoutExpired:
+    timed_out = False
+
+    def count(process: subprocess.Popen[str]) -> None:
+        nonlocal children, timed_out
         timed_out = True
-        elapsed_s = time.monotonic() - started
         children = count_descendants(process.pid)
-        kill_process_tree(process)
-        stdout = _collect_after_kill(process)
+
+    with process_tree.spawn(arguments, cwd=REPO_ROOT, env=environment) as process:
+        _, stdout = process_tree.wait(process, timeout_s, on_timeout=count)
+    elapsed_s = time.monotonic() - started
     return Attempt(
         outcome=classify_attempt(stdout, timed_out=timed_out),
         elapsed_s=elapsed_s,
