@@ -212,7 +212,7 @@ _Avoid_: slice (a film's own unit), sample
 ## Artifacts
 
 **Film identity**:
-What a render record or a capture set says about the film it was made from: the `.FLM`'s name, size and hash, and the hash of the archive as made, not as staged for a capture. Archives that draw the same shapes are still different identities. Two artifacts conflict when both carry the same field and the values differ.
+What a render record or a capture set says about the film it was made from: the `.FLM`'s name, size and hash, and the hash of the archive as made, not as staged for a capture. Archives that draw the same shapes are still different identities. Two artifacts conflict when both carry the same field and the values differ; letter case never makes a name or a hash differ.
 _Avoid_: film tag, provenance (for the game build and sound samples a capture records)
 
 **Render record**:
