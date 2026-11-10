@@ -10,13 +10,13 @@ use stunt_core::credits::CreditLines;
 use stunt_core::contracts::PaletteControls;
 use stunt_core::flm::CAMERA_FORWARD;
 use stunt_core::scene::{FilmScene, SceneFrame, ViewCamera};
-use stunt_parity::{Geometry, RenderAdapter};
+use stunt_parity::{FilmId, Geometry, RenderAdapter};
 use stunt_render::{
     FfmpegVideoWriter, Offscreen, PageSink, RenderOptions, RenderedPage, Renderer, SinkError,
 };
 
 use crate::config::CliConfig;
-use crate::parity_artifacts::{RenderJournal, film_identity, render_adapter};
+use crate::parity_artifacts::{RenderJournal, render_adapter};
 use crate::playback::{Playback, SampleKey, capture_tick};
 
 /// File name written under --out-dir for an evenly spaced sample; whole ticks go to the
@@ -127,8 +127,13 @@ impl PageSink for SharedSink {
     }
 }
 
-/// Executes headless rendering without window creation.
-pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), String> {
+/// Executes headless rendering without window creation; a render store records `film`, the
+/// identity of the bytes `scene` was built from.
+pub(crate) fn run_headless(
+    config: &CliConfig,
+    scene: &FilmScene,
+    film: FilmId,
+) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
 
     if let Some(out_dir) = &config.out_dir {
@@ -216,7 +221,7 @@ pub(crate) fn run_headless(config: &CliConfig, scene: &FilmScene) -> Result<(), 
     let journal = config
         .out_dir
         .as_ref()
-        .map(|dir| RenderJournal::begin(dir, film_identity(config.flm_path.as_deref()), geometry))
+        .map(|dir| RenderJournal::begin(dir, film, geometry))
         .transpose()
         .map_err(|error| error.to_string())?;
     let sink = Rc::new(RefCell::new(SampleSink {

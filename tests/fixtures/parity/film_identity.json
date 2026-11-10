@@ -1,0 +1,65 @@
+{
+  "about": "Film-identity conflict cases. FilmId.check in stunt-parity and in stunt_reel.parity_artifacts must give each case's outcome: agree, archive_unchecked, archive_waived, or refused with the conflicting fields in field order (name, flm_bytes, flm_sha256, all_sha256).",
+  "cases": [
+    {
+      "case": "the same film and archive",
+      "capture": {"name": "CTRY.FLM", "flm_bytes": 100, "flm_sha256": "aa", "all_sha256": "11"},
+      "render": {"name": "ctry.flm", "flm_bytes": 100, "flm_sha256": "AA", "all_sha256": "11"},
+      "waive_archive": false,
+      "outcome": "agree"
+    },
+    {
+      "case": "another archive refuses",
+      "capture": {"name": "CTRY.FLM", "flm_bytes": 100, "flm_sha256": "aa", "all_sha256": "11"},
+      "render": {"name": "CTRY.FLM", "flm_bytes": 100, "flm_sha256": "aa", "all_sha256": "22"},
+      "waive_archive": false,
+      "outcome": "refused",
+      "fields": ["all_sha256"]
+    },
+    {
+      "case": "another archive with the waiver scores",
+      "capture": {"name": "CTRY.FLM", "flm_bytes": 100, "flm_sha256": "aa", "all_sha256": "11"},
+      "render": {"name": "CTRY.FLM", "flm_bytes": 100, "flm_sha256": "aa", "all_sha256": "22"},
+      "waive_archive": true,
+      "outcome": "archive_waived"
+    },
+    {
+      "case": "another name refuses even with the waiver",
+      "capture": {"name": "CTRY.FLM", "all_sha256": "11"},
+      "render": {"name": "INTRO.FLM", "all_sha256": "11"},
+      "waive_archive": true,
+      "outcome": "refused",
+      "fields": ["name"]
+    },
+    {
+      "case": "another size refuses even with the waiver",
+      "capture": {"name": "CTRY.FLM", "flm_bytes": 100},
+      "render": {"name": "CTRY.FLM", "flm_bytes": 101},
+      "waive_archive": true,
+      "outcome": "refused",
+      "fields": ["flm_bytes"]
+    },
+    {
+      "case": "another .FLM hash and archive refuse even with the waiver",
+      "capture": {"flm_sha256": "aa", "all_sha256": "11"},
+      "render": {"flm_sha256": "bb", "all_sha256": "22"},
+      "waive_archive": true,
+      "outcome": "refused",
+      "fields": ["flm_sha256", "all_sha256"]
+    },
+    {
+      "case": "a capture with no archive hash scores unchecked",
+      "capture": {"name": "CTRY.FLM", "flm_bytes": 100},
+      "render": {"name": "CTRY.FLM", "flm_bytes": 100, "flm_sha256": "aa", "all_sha256": "22"},
+      "waive_archive": false,
+      "outcome": "archive_unchecked"
+    },
+    {
+      "case": "a render with no archive hash scores unchecked",
+      "capture": {"name": "CTRY.FLM", "all_sha256": "11"},
+      "render": {"name": "CTRY.FLM"},
+      "waive_archive": false,
+      "outcome": "archive_unchecked"
+    }
+  ]
+}

@@ -30,6 +30,11 @@ pub(super) struct Args {
         allow_negative_numbers = true
     )]
     pub(super) min_fade_level: f32,
+    /// Score a render that read another archive than the capture played (a deliberate
+    /// stand-in, such as a superset archive), marking the report; any other film conflict
+    /// still refuses
+    #[arg(long)]
+    pub(super) waive_archive_conflict: bool,
     /// Match frames by `film_tick` against a previous report and print mean SSIM/IoU deltas,
     /// the 5 most improved/regressed frames and the counts changed by more than 0.005;
     /// writes compare.json

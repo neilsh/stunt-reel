@@ -26,7 +26,7 @@ pub mod video;
 
 pub use capture::{CaptureSet, CapturedFrame};
 pub use error::ArtifactError;
-pub use film::FilmId;
+pub use film::{FilmCheck, FilmField, FilmId};
 pub use render::{
     AdapterClass, CameraPose, Geometry, PALETTE_BYTES, RENDER_CHUNK_TICKS, RenderAdapter,
     RenderChunk, RenderPalette, RenderRecord, RenderTick, StoreSpan, TickSlot,

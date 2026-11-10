@@ -62,7 +62,7 @@ use mask::{CAPTURE_SKY_INDICES, overlay_drawn};
 use report::{FrameReport, I6Gate, Report};
 use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame};
 use sheets::write_contact_sheet;
-use stunt_parity::{FilmId, RenderAdapter};
+use stunt_parity::{FilmCheck, FilmField, FilmId, RenderAdapter};
 
 use crate::parity_artifacts;
 use crate::render_store::RenderStore;
@@ -84,28 +84,87 @@ fn i6_gate(mean_ssim_scored: Option<f32>) -> I6Gate {
     }
 }
 
-/// Prints a warning when the capture and the render name different films or `.FLM` sizes.
-fn warn_on_film_mismatch(capture: &FilmId, render: &FilmId) {
-    if capture.names_conflict(render) {
-        println!(
-            "[parity] warning: the capture is of {} but the render is of {}",
-            capture.name.as_deref().unwrap_or("?"),
-            render.name.as_deref().unwrap_or("?")
-        );
+/// A film-identity field's value as a message shows it, `?` when the side lacks it.
+fn film_value(film: &FilmId, field: FilmField) -> String {
+    match field {
+        FilmField::Name => film.name.clone(),
+        FilmField::FlmBytes => film.flm_bytes.map(|bytes| bytes.to_string()),
+        FilmField::FlmSha256 => film.flm_sha256.clone(),
+        FilmField::AllSha256 => film.all_sha256.clone(),
     }
-    if capture.bytes_conflict(render) {
-        println!(
-            "[parity] warning: the capture's .FLM is {} bytes but the render's is {}",
-            capture.flm_bytes.unwrap_or(0),
-            render.flm_bytes.unwrap_or(0)
-        );
-    }
-    if capture.archives_conflict(render) {
-        println!(
-            "[parity] warning: the capture played .ALL {} but the render read {}",
-            capture.all_sha256.as_deref().unwrap_or("?"),
-            render.all_sha256.as_deref().unwrap_or("?")
-        );
+    .unwrap_or_else(|| "?".to_string())
+}
+
+/// The terms on which a render may be scored against a capture, by their film identities.
+#[derive(Debug, PartialEq, Eq)]
+struct FilmClearance {
+    /// The archives differ and `--waive-archive-conflict` let the score through.
+    archive_conflict_waived: bool,
+    /// The one line parity prints about the film check, if any.
+    note: Option<String>,
+}
+
+/// Refuses a render whose film identity conflicts with the capture's ([`FilmId::check`]),
+/// naming each conflicting field's two values.
+fn check_film(
+    capture: &FilmId,
+    render: &FilmId,
+    waive_archive: bool,
+) -> Result<FilmClearance, String> {
+    let archives = || {
+        (
+            film_value(capture, FilmField::AllSha256),
+            film_value(render, FilmField::AllSha256),
+        )
+    };
+    match render.check(capture, waive_archive) {
+        FilmCheck::Agree => Ok(FilmClearance {
+            archive_conflict_waived: false,
+            note: None,
+        }),
+        FilmCheck::ArchiveUnchecked => {
+            let reason = match (&capture.all_sha256, &render.all_sha256) {
+                (None, None) => "neither side records an archive hash",
+                (None, Some(_)) => "the capture records no archive hash",
+                _ => "the render records no archive hash",
+            };
+            Ok(FilmClearance {
+                archive_conflict_waived: false,
+                note: Some(format!("[parity] archive not checked: {reason}")),
+            })
+        }
+        FilmCheck::ArchiveWaived => {
+            let (captured, rendered) = archives();
+            Ok(FilmClearance {
+                archive_conflict_waived: true,
+                note: Some(format!(
+                    "[parity] warning: scoring across archives (--waive-archive-conflict): the \
+                     capture played .ALL {captured} but the render read {rendered}"
+                )),
+            })
+        }
+        FilmCheck::Refused(fields) => {
+            let differences = fields
+                .iter()
+                .map(|&field| {
+                    format!(
+                        "the capture's {field} is {} but the render's is {}",
+                        film_value(capture, field),
+                        film_value(render, field)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            let remedy = if fields == [FilmField::AllSha256] {
+                "re-render with the capture's archive, or pass --waive-archive-conflict to score a \
+                 deliberate stand-in"
+            } else {
+                "re-render the capture's film"
+            };
+            Err(format!(
+                "the render is not of the captured film: {differences}; {remedy}"
+            ))
+        }
     }
 }
 
@@ -198,6 +257,7 @@ fn build_report(
         excluded_frames,
         credits_missing_frames: scores.iter().filter(|s| s.credits_missing).count(),
         adapter,
+        archive_conflict_waived: false,
         per_frame: scores
             .iter()
             .map(|s| FrameReport {
@@ -224,7 +284,14 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let capture =
         parity_artifacts::load_capture(&args.reference).map_err(|error| error.to_string())?;
     let mut store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
-    warn_on_film_mismatch(&capture.film, &store.record().film);
+    let clearance = check_film(
+        &capture.film,
+        &store.record().film,
+        args.waive_archive_conflict,
+    )?;
+    if let Some(note) = &clearance.note {
+        println!("{note}");
+    }
     let geometry = store.record().geometry;
     if geometry.width != capture.geometry.width || geometry.height != capture.geometry.height {
         return Err(format!(
@@ -327,13 +394,16 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         ));
     }
 
-    let report = build_report(
-        frames.len(),
-        &scores,
-        unmatched,
-        args.min_fade_level,
-        store.record().adapter.clone(),
-    );
+    let report = Report {
+        archive_conflict_waived: clearance.archive_conflict_waived,
+        ..build_report(
+            frames.len(),
+            &scores,
+            unmatched,
+            args.min_fade_level,
+            store.record().adapter.clone(),
+        )
+    };
     if let Some(tick) = first_missing_credits {
         eprintln!(
             "[parity warning] {} frame(s) expect credits the render did not draw, first at tick {tick} (no PFONT.BIN?); their ink is scored",

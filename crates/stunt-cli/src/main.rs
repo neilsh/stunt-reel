@@ -47,7 +47,7 @@ mod zmbv;
 use std::env;
 
 use config::CliConfig;
-use scene::{SceneSources, build_scene};
+use scene::{SceneSources, build_identified_scene};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() {
@@ -100,7 +100,7 @@ fn main() {
 
     let config = CliConfig::parse().unwrap_or_else(|e| e.exit());
 
-    let scene = match build_scene(&SceneSources {
+    let (scene, film) = match build_identified_scene(&SceneSources {
         flm: config.flm_path.as_deref(),
         all: config.all_path.as_deref(),
         game: config.game_dir.as_deref(),
@@ -109,7 +109,7 @@ fn main() {
         font: config.font_path.as_deref(),
         max_ticks: config.max_ticks,
     }) {
-        Ok(scene) => scene,
+        Ok(built) => built,
         Err(e) => {
             eprintln!("[stuntreel error] {e}");
             std::process::exit(1);
@@ -117,7 +117,7 @@ fn main() {
     };
 
     if config.headless {
-        if let Err(e) = headless::run_headless(&config, &scene) {
+        if let Err(e) = headless::run_headless(&config, &scene, film) {
             eprintln!("[stuntreel error] {e}");
             std::process::exit(1);
         }

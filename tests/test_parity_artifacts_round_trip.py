@@ -103,7 +103,11 @@ def _round_trip_report(directory: Path, report: Any) -> Any:
             lambda: replace(sample_record(), film=_FULL_FILM, adapter=_CPU_ADAPTER),
             set(),
         ),
-        (_round_trip_report, lambda: replace(sample_report(), adapter=_CPU_ADAPTER), set()),
+        (
+            _round_trip_report,
+            lambda: replace(sample_report(), adapter=_CPU_ADAPTER, archive_conflict_waived=True),
+            set(),
+        ),
     ],
     ids=["capture", "video", "render", "report"],
 )

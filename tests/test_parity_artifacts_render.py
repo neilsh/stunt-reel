@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-lazy from pathlib import Path
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -17,8 +18,10 @@ from artifact_helpers import (
     write_json,
 )
 from stunt_reel.parity_artifacts import (
+    FILM_FIELDS,
     RENDER_SCHEMA_VERSION,
     ArtifactError,
+    FilmCheck,
     FilmId,
     Geometry,
     RenderAdapter,
@@ -149,12 +152,24 @@ def test_tick_ordering_is_checked(tmp_path: Path) -> None:
 
 
 def test_film_conflicts_need_both_sides() -> None:
-    named = FilmId(name="CTRY.FLM", flm_bytes=100)
-    assert not named.names_conflict(FilmId())
-    assert not named.names_conflict(FilmId(name="ctry.flm"))
-    assert named.names_conflict(FilmId(name="INTRO.FLM"))
-    assert not named.bytes_conflict(FilmId())
-    assert named.bytes_conflict(FilmId(flm_bytes=101))
+    full = FilmId(name="CTRY.FLM", flm_bytes=100, flm_sha256="aa", all_sha256="bb")
+    assert full.conflicts(FilmId()) == ()
+    other = FilmId(name="intro.flm", flm_bytes=101, flm_sha256="cc", all_sha256="dd")
+    assert full.conflicts(other) == FILM_FIELDS
+
+
+_FILM_CASES = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "parity" / "film_identity.json").read_text(
+        encoding="utf-8"
+    )
+)["cases"]
+
+
+@pytest.mark.parametrize("case", _FILM_CASES, ids=[case["case"] for case in _FILM_CASES])
+def test_every_shared_film_case_has_its_outcome(case: dict[str, Any]) -> None:
+    capture, render = FilmId(**case["capture"]), FilmId(**case["render"])
+    check = render.check(capture, waive_archive=case["waive_archive"])
+    assert check == FilmCheck(case["outcome"], tuple(case.get("fields", ())))
 
 
 def test_open_render_reads_the_record(tmp_path: Path) -> None:

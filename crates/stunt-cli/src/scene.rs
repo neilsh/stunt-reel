@@ -31,8 +31,10 @@ use stunt_core::link::{LinkError, SHAPE_INDEX_LIMIT};
 use stunt_core::scene::{FilmScene, SceneError, SceneInputs, SceneReport, ShapeSource};
 use stunt_core::sod::{DecodeMode, SodStop, decode_sod};
 use stunt_core::vfs::{ResRegions, res_regions};
+use stunt_parity::FilmId;
 
 use crate::link::find_ci;
+use crate::parity_artifacts::film_identity;
 
 /// Locates the scenery data file `filename` (see the module docs for the search order).
 ///
@@ -111,8 +113,16 @@ pub(crate) struct SceneSources<'a> {
 /// `RES` tree or `--sod` model, or a film with no slices, is an error. The synthetic orbit
 /// stands in only when no film is named, and the synthetic aircraft only when no model is.
 pub(crate) fn build_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
-    let scene = build_film_scene(src)?;
-    attach_font(scene, src)
+    build_identified_scene(src).map(|(scene, _)| scene)
+}
+
+/// [`build_scene`], with the film identity of the `.FLM` and archive bytes the scene was
+/// built from, as a render records it.
+pub(crate) fn build_identified_scene(
+    src: &SceneSources<'_>,
+) -> Result<(FilmScene, FilmId), String> {
+    let (scene, film) = build_film_scene(src)?;
+    Ok((attach_font(scene, src)?, film))
 }
 
 /// Gives the scene its credits font: the `--font` file, which must load, or else, for a
@@ -154,12 +164,17 @@ fn load_font(path: &Path) -> Result<PFont, String> {
     PFont::parse(&bytes).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
-/// Builds the scene from the film, archive and scenery, without the credits font.
-fn build_film_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
-    let timeline = match src.flm {
-        Some(path) => load_film(path)?,
-        None => synthetic_orbit(src.max_ticks),
+/// Builds the scene from the film, archive and scenery, without the credits font, with the
+/// identity of the film and archive bytes it read.
+fn build_film_scene(src: &SceneSources<'_>) -> Result<(FilmScene, FilmId), String> {
+    let (timeline, flm_bytes) = match src.flm {
+        Some(path) => {
+            let bytes = read_file(path)?;
+            (parse_film(path, &bytes)?, Some(bytes))
+        }
+        None => (synthetic_orbit(src.max_ticks), None),
     };
+    let flm = src.flm.zip(flm_bytes.as_deref());
 
     // Scenery is searched for from the archive, or from the film when the shapes come from a
     // game tree, as `PLAYONE`'s own files sit beside `VAULT`.
@@ -174,7 +189,8 @@ fn build_film_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
             let model = load_or_create_model(src.sod, src.sidata)?;
             println!("[stuntreel] scene: single model {}", model.name);
             print_film(&timeline);
-            return Ok(FilmScene::with_single_model(timeline, model));
+            let film = film_identity(flm, None);
+            return Ok((FilmScene::with_single_model(timeline, model), film));
         }
     };
 
@@ -196,7 +212,11 @@ fn build_film_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
     let (scene, report) = FilmScene::load_with_timeline(timeline, &inputs)
         .map_err(|e| files.describe(&e, &regions, &base))?;
     print_report(&scene, &report, anchors.is_some());
-    Ok(scene)
+    let archive = match &files {
+        ShapeFiles::Archive(bytes) => Some(bytes.as_slice()),
+        ShapeFiles::Res { .. } => None,
+    };
+    Ok((scene, film_identity(flm, archive)))
 }
 
 /// The files a scene's shapes are read from, with their bytes.
@@ -296,11 +316,10 @@ fn read_res_tree(tree: &Path) -> Result<ShapeFiles, String> {
     Ok(ShapeFiles::Res { dir, files })
 }
 
-/// Reads and parses the film at `path`; a film with no slices is an error too.
-fn load_film(path: &Path) -> Result<FilmTimeline, String> {
-    let bytes = fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+/// Parses the film read from `path`; a film with no slices is an error too.
+fn parse_film(path: &Path, bytes: &[u8]) -> Result<FilmTimeline, String> {
     let timeline =
-        FilmTimeline::from_bytes(&bytes).map_err(|e| format!("parse {}: {e}", path.display()))?;
+        FilmTimeline::from_bytes(bytes).map_err(|e| format!("parse {}: {e}", path.display()))?;
     if timeline.slices().is_empty() {
         return Err(format!("{}: film contains no slices", path.display()));
     }
@@ -838,6 +857,33 @@ mod tests {
         };
         assert_eq!(shapes(&from_game).len(), 1);
         assert_eq!(shapes(&from_game), shapes(&from_all));
+    }
+
+    #[test]
+    fn a_scene_is_identified_by_the_film_and_archive_bytes_it_read() {
+        let t = TempTree::new();
+        let film = fixture("synthetic_minimal.flm");
+        let archive = fixture("synthetic_minimal.all");
+        let (_, identity) =
+            build_identified_scene(&sources(Some(&film), Some(&archive), None)).expect("scene");
+        assert_eq!(identity.name.as_deref(), Some("synthetic_minimal.flm"));
+        assert_eq!(identity.flm_bytes, Some(17));
+        assert_eq!(
+            identity.flm_sha256.as_deref(),
+            Some("b03bf24a8e2f0ef61c414f27517668a1ad42b0db3e2f9c1a9fae72fe3c4e762e")
+        );
+        assert_eq!(
+            identity.all_sha256.as_deref(),
+            Some("475809574b02552b42e2be0c1d5963f7e9737456af8bcc0efb505b6381099865")
+        );
+
+        // Shapes from a game tree read no archive, so there is no archive hash to record.
+        let model = fs::read(fixture("synthetic_minimal.sod")).expect("fixture");
+        let tree = res_in(&t, "game", "res", "shapes.res", &res_file(0x00, &[&model]));
+        let (_, identity) =
+            build_identified_scene(&game_sources(Some(&film), &tree)).expect("scene");
+        assert!(identity.flm_sha256.is_some());
+        assert_eq!(identity.all_sha256, None);
     }
 
     #[test]

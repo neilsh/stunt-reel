@@ -31,6 +31,7 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 | `excluded_frames` | number | Matched frames whose authored fade is below the floor (reported, not scored). `frames` = `scored_frames` + `excluded_frames`. |
 | `credits_missing_frames` | number, optional | Matched frames whose render record says the film shows credits but whose render drew no credits pixel (no `PFONT.BIN`, or a drawing fault); their captured ink is still scored. At most `frames`; absent in older reports (read as 0). |
 | `adapter` | object or null, optional | The adapter the render was drawn on, from `render.json`: `name` as its driver reports it and `class` `hardware` or `cpu`. Null when the render does not record one; absent in older reports. |
+| `archive_conflict_waived` | bool, optional | Present, and true, only when the render read another archive than the capture played and the run passed `--waive-archive-conflict` (a deliberate stand-in, such as a superset archive): the score was made across archives. Absent when the archives agree or either side records no archive hash. |
 | `per_frame` | list | One object per matched frame, in capture order (next table). |
 <!-- /fields -->
 

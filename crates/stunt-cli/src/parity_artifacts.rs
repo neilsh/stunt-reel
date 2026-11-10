@@ -22,6 +22,7 @@ use stunt_parity::{
 };
 use stunt_render::{AdapterIdentity, RenderedPage};
 
+use crate::link::sha256;
 use crate::render_store::{StoreError, StoreWriter, check_derivable};
 
 /// Document written beside a render directory's frames, last.
@@ -119,17 +120,16 @@ fn schema(path: &Path, source: SchemaError) -> AdapterError {
     }
 }
 
-/// Film identity recorded beside a render or compared against a capture.
-pub(crate) fn film_identity(path: Option<&Path>) -> FilmId {
+/// Film identity recorded beside a render: the name and bytes of the `.FLM` at `flm`, and the
+/// bytes of the archive, exactly as the scene loaded them; `None` for an input it did not read.
+pub(crate) fn film_identity(flm: Option<(&Path, &[u8])>, archive: Option<&[u8]>) -> FilmId {
     FilmId {
-        name: path
-            .and_then(Path::file_name)
+        name: flm
+            .and_then(|(path, _)| path.file_name())
             .map(|name| name.to_string_lossy().into_owned()),
-        flm_bytes: path
-            .and_then(|path| fs::metadata(path).ok())
-            .map(|meta| meta.len()),
-        flm_sha256: None,
-        all_sha256: None,
+        flm_bytes: flm.map(|(_, bytes)| bytes.len() as u64),
+        flm_sha256: flm.map(|(_, bytes)| sha256(bytes)),
+        all_sha256: archive.map(sha256),
     }
 }
 
