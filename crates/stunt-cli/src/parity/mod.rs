@@ -37,6 +37,7 @@ mod fade;
 mod frames;
 mod loss;
 mod mask;
+mod matched;
 mod report;
 mod report_diff;
 #[cfg(test)]
@@ -50,19 +51,21 @@ mod test_support;
 mod tests;
 mod verdict;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
+use std::path::Path;
 
 use args::Args;
 use compare::run_compare;
 use fade::fade_reference_set;
-use frames::{load_reference, load_render_frame, read_index_plane};
+use frames::{load_render_frame, read_index_plane};
 use loss::LOSS_CLASSES;
 use mask::{CAPTURE_SKY_INDICES, overlay_drawn};
+use matched::{Matching, ReportFrames};
 use report::{FrameReport, I6Gate, Report};
-use score::{FrameMetrics, ReferenceFrame, RenderFrame, ScorePolicy, score_frame};
-use sheets::write_contact_sheet;
-use stunt_parity::{FilmCheck, FilmField, FilmId, RenderAdapter};
+use score::{FrameMetrics, RenderFrame, ScorePolicy, score_frame};
+use sheets::ContactSheets;
+use stunt_parity::{CapturedFrame, FilmCheck, FilmField, FilmId, RenderAdapter};
 
 use crate::parity_artifacts;
 use crate::render_store::RenderStore;
@@ -177,12 +180,6 @@ fn loss_by_class(values: [f32; LOSS_CLASSES.len()]) -> BTreeMap<String, f32> {
         .collect()
 }
 
-/// Frame ordinals always rendered as contact sheets, plus the last captured frame.
-const CONTACT_SHEET_ORDINALS: [usize; 5] = [1, 20, 40, 70, 100];
-
-/// Number of additionally worst-scoring frames rendered as contact sheets.
-const CONTACT_SHEET_WORST: usize = 3;
-
 /// One matched frame's place in the capture and its measurements.
 #[derive(Debug, Clone, Copy)]
 struct FrameRow {
@@ -275,6 +272,51 @@ fn build_report(
     }
 }
 
+/// Scores each matched frame against the render at its film clock, offering every scored
+/// pair to the contact sheets; rows come back in capture order.
+fn score_matched(
+    reference_dir: &Path,
+    store: &mut RenderStore,
+    matched: &[&CapturedFrame],
+    policy: &ScorePolicy<'_>,
+    sheets: &mut ContactSheets<'_>,
+) -> Result<Vec<FrameRow>, String> {
+    let render_palettes: BTreeMap<u32, _> = store
+        .record()
+        .ticks
+        .iter()
+        .map(|tick| (tick.tick, parity_artifacts::core_palette(tick.palette)))
+        .collect();
+    let mut rows = Vec::with_capacity(matched.len());
+    for frame in matched {
+        let reference = matched::load_captured(reference_dir, frame)?;
+        let render = load_render_frame(store, frame.film_tick)?;
+        let credits_missing = render.credits && !overlay_drawn(&render.layers);
+        let score = score_frame(
+            &reference,
+            &RenderFrame {
+                controls: render_palettes.get(&frame.film_tick).copied(),
+                ..render
+            },
+            policy,
+        );
+        let ordinal = frame.ordinal as usize;
+        rows.push(FrameRow {
+            ordinal,
+            film_tick: frame.film_tick as usize,
+            metrics: score.metrics,
+            credits_missing,
+        });
+        sheets.offer(
+            ordinal,
+            score.metrics.scored.then_some(score.metrics.ssim),
+            score.reference_luminance,
+            score.render_luminance,
+        )?;
+    }
+    Ok(rows)
+}
+
 /// Runs the comparator and writes `report.json` plus contact sheets.
 pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
@@ -292,26 +334,8 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     if let Some(note) = &clearance.note {
         println!("{note}");
     }
-    let geometry = store.record().geometry;
-    if geometry.width != capture.geometry.width || geometry.height != capture.geometry.height {
-        return Err(format!(
-            "render geometry {}x{} differs from the capture's {}x{}; re-render \
-             with --width {} --height {}",
-            geometry.width,
-            geometry.height,
-            capture.geometry.width,
-            capture.geometry.height,
-            capture.geometry.width,
-            capture.geometry.height
-        ));
-    }
+    matched::check_geometry(&capture.geometry, &store.record().geometry)?;
     let frames = &capture.frames;
-    let render_palettes: BTreeMap<u32, _> = store
-        .record()
-        .ticks
-        .iter()
-        .map(|tick| (tick.tick, parity_artifacts::core_palette(tick.palette)))
-        .collect();
     let first_frame = frames
         .first()
         .ok_or_else(|| format!("{} has no captured frames", args.reference.display()))?;
@@ -322,70 +346,14 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         min_fade_level: args.min_fade_level,
     };
 
-    let mut sheet_ordinals: BTreeSet<usize> = CONTACT_SHEET_ORDINALS.iter().copied().collect();
-    sheet_ordinals.insert(frames.len());
-
-    let mut scores: Vec<FrameRow> = Vec::with_capacity(frames.len());
-    let mut unmatched = 0usize;
-    let mut first_missing_credits: Option<usize> = None;
-    let mut written_sheets: BTreeSet<usize> = BTreeSet::new();
-    let mut worst: Vec<(f32, usize, Vec<f32>, Vec<f32>)> = Vec::new();
-
-    for frame in frames {
-        let ordinal = frame.ordinal as usize;
-        let film_tick = frame.film_tick as usize;
-        let reference_file = args.reference.join(&frame.frame_file);
-        let palette_file = args.reference.join(&frame.palette_file);
-        if !reference_file.is_file() || !palette_file.is_file() || !store.holds(frame.film_tick) {
-            unmatched += 1;
-            continue;
-        }
-
-        let (indices, palette) = load_reference(&reference_file, &palette_file)?;
-        let render_frame = load_render_frame(&mut store, frame.film_tick)?;
-        let credits_missing = render_frame.credits && !overlay_drawn(&render_frame.layers);
-        if credits_missing && first_missing_credits.is_none() {
-            first_missing_credits = Some(film_tick);
-        }
-        let score = score_frame(
-            &ReferenceFrame { indices, palette },
-            &RenderFrame {
-                controls: render_palettes.get(&frame.film_tick).copied(),
-                ..render_frame
-            },
-            &policy,
-        );
-        let (metrics, reference_rescaled, test_rescaled) = (
-            score.metrics,
-            score.reference_luminance,
-            score.render_luminance,
-        );
-        scores.push(FrameRow {
-            ordinal,
-            film_tick,
-            metrics,
-            credits_missing,
-        });
-
-        if sheet_ordinals.contains(&ordinal) {
-            write_contact_sheet(&args.output, ordinal, &reference_rescaled, &test_rescaled)?;
-            written_sheets.insert(ordinal);
-        }
-
-        if metrics.scored {
-            worst.push((metrics.ssim, ordinal, reference_rescaled, test_rescaled));
-            worst.sort_by(|a, b| a.0.total_cmp(&b.0));
-            worst.truncate(CONTACT_SHEET_WORST);
-        }
-    }
-
-    for (_ssim, ordinal, reference_rescaled, test_rescaled) in &worst {
-        if written_sheets.contains(ordinal) {
-            continue;
-        }
-        write_contact_sheet(&args.output, *ordinal, reference_rescaled, test_rescaled)?;
-        written_sheets.insert(*ordinal);
-    }
+    let Matching { matched, unmatched } = matched::pair(
+        frames,
+        |name| args.reference.join(name).is_file(),
+        |tick| store.holds(tick),
+    );
+    let mut sheets = ContactSheets::new(&args.output, frames.len());
+    let scores = score_matched(&args.reference, &mut store, &matched, &policy, &mut sheets)?;
+    sheets.finish()?;
 
     if scores.is_empty() {
         return Err(format!(
@@ -404,7 +372,11 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
             store.record().adapter.clone(),
         )
     };
-    if let Some(tick) = first_missing_credits {
+    if let Some(tick) = scores
+        .iter()
+        .find(|s| s.credits_missing)
+        .map(|s| s.film_tick)
+    {
         eprintln!(
             "[parity warning] {} frame(s) expect credits the render did not draw, first at tick {tick} (no PFONT.BIN?); their ink is scored",
             report.credits_missing_frames
@@ -445,7 +417,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     }
 
     if let Some(previous_path) = &args.compare {
-        run_compare(&args, previous_path, &report, frames)?;
+        run_compare(&args, previous_path, &report, &ReportFrames::new(frames))?;
     }
     Ok(())
 }
