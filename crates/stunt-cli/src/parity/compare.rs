@@ -5,13 +5,13 @@ use std::fs;
 use std::path::Path;
 
 use super::args::Args;
-use super::frames::{load_reference, load_render_frame, load_render_rescaled, reference_luminance};
+use super::frames::{load_render_frame, load_render_rescaled, reference_luminance};
+use super::matched::{ReportFrames, load_captured};
 use super::report::Report;
 use super::report_diff::compare_reports;
-use super::score::{ReferenceFrame, RenderFrame};
+use super::score::RenderFrame;
 use super::sheets::{abs_difference, write_panel_sheet};
 use super::verdict::{FrameVerdict, Verdict, frame_verdict};
-use stunt_parity::CapturedFrame;
 
 use crate::parity_artifacts;
 use crate::render_store::RenderStore;
@@ -23,7 +23,7 @@ pub(super) fn run_compare(
     args: &Args,
     previous_path: &Path,
     report: &Report,
-    frames: &[CapturedFrame],
+    frames: &ReportFrames<'_>,
 ) -> Result<(), String> {
     let previous =
         parity_artifacts::read_report(previous_path).map_err(|error| error.to_string())?;
@@ -65,10 +65,10 @@ pub(super) fn run_compare(
         }
     };
     let mut after_store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
-    let ordinals: BTreeMap<u64, usize> = report
+    let rows: BTreeMap<u64, _> = report
         .per_frame
         .iter()
-        .map(|f| (f.film_tick, f.ordinal))
+        .map(|row| (row.film_tick, row))
         .collect();
     // The sheets show the frames that moved most: by the windows the change touched when the
     // verdict ran, else by the frame SSIM.
@@ -90,9 +90,8 @@ pub(super) fn run_compare(
             println!("[compare] no {label} frame: sheet skipped");
             continue;
         };
-        let ordinal = ordinals
+        let row = rows
             .get(&film_tick)
-            .copied()
             .ok_or_else(|| format!("film_tick {film_tick} missing from the fresh report"))?;
         let tick = u32::try_from(film_tick).map_err(|e| e.to_string())?;
         if !before_store.holds(tick) {
@@ -102,13 +101,8 @@ pub(super) fn run_compare(
             );
             continue;
         }
-        let frame = frames
-            .get(ordinal - 1)
-            .ok_or_else(|| format!("frame {ordinal} missing from the capture"))?;
-        let reference_file = args.reference.join(&frame.frame_file);
-        let palette_file = args.reference.join(&frame.palette_file);
-        let (indices, palette) = load_reference(&reference_file, &palette_file)?;
-        let reference = reference_luminance(&indices, &palette);
+        let captured = load_captured(&args.reference, frames.frame(row)?)?;
+        let reference = reference_luminance(&captured.indices, &captured.palette);
         let before = load_render_rescaled(&mut before_store, tick)?;
         let after = load_render_rescaled(&mut after_store, tick)?;
         let path = args
@@ -144,7 +138,7 @@ fn judge(
     args: &Args,
     previous_render: &Path,
     report: &Report,
-    frames: &[CapturedFrame],
+    frames: &ReportFrames<'_>,
 ) -> Result<Option<Verdict>, String> {
     let Ok(mut before_store) = RenderStore::open(previous_render) else {
         return Ok(None);
@@ -157,18 +151,12 @@ fn judge(
             judged.push(FrameVerdict::missing(entry.film_tick));
             continue;
         }
-        let frame = frames
-            .get(entry.ordinal - 1)
-            .ok_or_else(|| format!("frame {} missing from the capture", entry.ordinal))?;
-        let (indices, palette) = load_reference(
-            &args.reference.join(&frame.frame_file),
-            &args.reference.join(&frame.palette_file),
-        )?;
+        let captured = load_captured(&args.reference, frames.frame(entry)?)?;
         let before: RenderFrame = load_render_frame(&mut before_store, tick)?;
         let after: RenderFrame = load_render_frame(&mut after_store, tick)?;
         judged.push(frame_verdict(
             entry.film_tick,
-            &ReferenceFrame { indices, palette },
+            &captured,
             &before,
             &after,
             args.noise_sigma,

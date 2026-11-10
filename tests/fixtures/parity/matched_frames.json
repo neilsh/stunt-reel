@@ -1,0 +1,25 @@
+{
+  "about": "Matched frames: pairing this capture with a render holding render_ticks, when only the capture files in files are present, matches the captured frames whose ordinals are in matched and leaves unmatched frames out. Frame 2's palette file is missing, frame 4's frame file is missing, frame 5's film tick is not rendered, and tick 3 (an ordinal) is rendered but no frame shows it.",
+  "capture": {
+    "film": "CTRY.FLM",
+    "frames": [
+      {"ordinal": 1, "film_tick": 7, "frame_file": "tick_0001.idx", "palette_file": "palettes_0001.json"},
+      {"ordinal": 2, "film_tick": 8, "frame_file": "tick_0002.idx", "palette_file": "palettes_0002.json"},
+      {"ordinal": 3, "film_tick": 10, "frame_file": "tick_0003.idx", "palette_file": "palettes_0003.json"},
+      {"ordinal": 4, "film_tick": 11, "frame_file": "tick_0004.idx", "palette_file": "palettes_0004.json"},
+      {"ordinal": 5, "film_tick": 12, "frame_file": "tick_0005.idx", "palette_file": "palettes_0005.json"},
+      {"ordinal": 6, "film_tick": 14, "frame_file": "tick_0006.idx", "palette_file": "palettes_0006.json"}
+    ]
+  },
+  "files": [
+    "tick_0001.idx", "palettes_0001.json",
+    "tick_0002.idx",
+    "tick_0003.idx", "palettes_0003.json",
+    "palettes_0004.json",
+    "tick_0005.idx", "palettes_0005.json",
+    "tick_0006.idx", "palettes_0006.json"
+  ],
+  "render_ticks": [3, 7, 8, 10, 11, 14],
+  "matched": [1, 3, 6],
+  "unmatched": 3
+}
