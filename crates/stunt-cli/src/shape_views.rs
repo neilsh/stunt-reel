@@ -13,12 +13,10 @@
 //! under each naming the shape's hex id and the view, and `manifest.json`, which records
 //! each shape's geometry hash so two runs can be compared shape by shape.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
 use clap::{CommandFactory as _, Parser, ValueEnum};
 use glam::Vec3;
@@ -29,11 +27,9 @@ use stunt_core::contracts::{PaletteControls, ShapeExtent, SodModelIr};
 use stunt_core::flm::FilmTimeline;
 use stunt_core::scene::{ActorDraw, FilmScene, SceneFrame, ViewCamera, decode_archive_shapes};
 use stunt_core::sod::ShadeLight;
-use stunt_render::{
-    CameraController, Offscreen, PageSink, Projection, RenderError, RenderOptions, RenderedPage,
-    Renderer, SinkError,
-};
+use stunt_render::{CameraController, Offscreen, Projection, RenderError, RenderOptions, Renderer};
 
+use crate::page_slot::PageSlot;
 use crate::scene::find_scenery_file;
 
 /// `shape-views` options as clap parses them.
@@ -267,17 +263,6 @@ impl From<String> for ViewsError {
     }
 }
 
-/// Keeps the one page each draw produces.
-#[derive(Clone, Default)]
-struct LastPage(Rc<RefCell<Option<RenderedPage>>>);
-
-impl PageSink for LastPage {
-    fn accept(&mut self, page: RenderedPage) -> Result<(), SinkError> {
-        *self.0.borrow_mut() = Some(page);
-        Ok(())
-    }
-}
-
 /// Runs the subcommand and reports what it wrote.
 pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let argv = std::iter::once("stuntreel shape-views".to_string()).chain(args);
@@ -383,7 +368,7 @@ fn draw_shapes(
         shapes.into_iter().collect(),
         None,
     );
-    let sink = LastPage::default();
+    let sink = PageSlot::default();
     let mut renderer = None;
     for id in ids {
         let Some(model) = scene.shape(id) else {
@@ -436,8 +421,6 @@ fn draw_shapes(
                     .draw(&frame, Some(&camera))
                     .map_err(ViewsError::Render)?;
                 let page = sink
-                    .0
-                    .borrow_mut()
                     .take()
                     .ok_or_else(|| format!("shape {id:04X}: the renderer produced no page"))?;
                 let label = format!("{id:04X} {}", view.name()).to_ascii_uppercase();
