@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import file_holders
 from pytest_helpers import (
     cache_dir,
     install_windows_mkdir_shim,
@@ -27,7 +28,7 @@ from pytest_helpers import (
 from stunt_reel import dataroot, parity_layout, references
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator, Iterator
 
 pytest_plugins = ["tac_mock"]
 
@@ -76,6 +77,22 @@ def pytest_configure(config: pytest.Config) -> None:
     prune_old_basetemps(cache_dir(rootpath))
     if config.option.basetemp is None:
         config.option.basetemp = str(per_run_basetemp(rootpath))
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    call: pytest.CallInfo[None],
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    """Add the processes holding the file to a report that failed on a ``PermissionError``."""
+    report: pytest.TestReport = yield
+    if report.failed and call.excinfo is not None:
+        try:
+            held = file_holders.describe(call.excinfo.value)
+        except OSError as error:
+            held = f"could not ask the Restart Manager: {error}"
+        if held:
+            report.sections.append(("file holders", held))
+    return report
 
 
 @pytest.fixture
