@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
-"""Fail a commit message that breaks AGENTS.md, Committing: a Conventional Commit subject, and a gate line.
+"""Fail a commit message whose subject is not a Conventional Commit (AGENTS.md, Committing).
 
-The subject is ``type(scope)!: summary`` with one of the usual types. A message with a body
-(anything past the subject but git's trailers, such as ``Co-Authored-By:``) must also say what
-the gate did: ``mise run check``, or one of its parts such as ``mise run check-py``, followed
-directly by its outcome, ``passes`` or ``not run``, as in ``mise run check passes.`` or
-``mise run check-py passes; check-rust not run.`` Every gate name on the line must be followed by its outcome, so
-``mise run check failed; CI passes.`` is refused. A message with no body needs none, as AGENTS.md, Committing,
-lets a rename or a formatting commit go without one. Git's own subjects (a merge, a revert, ``fixup!``,
-``squash!``, ``amend!``) are left alone.
+The subject is ``type(scope)!: summary`` with one of the usual types. Git's own subjects (a merge,
+a revert, ``fixup!``, ``squash!``, ``amend!``) are left alone.
 
 Usage: ``mise run commit-msg-check -- <message file>`` (the commit-msg hook), or
 ``mise run commit-msg-check -- --range <base>..<head> [--pr <number>]`` to check commits already
@@ -33,8 +27,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import gate_record
-
 TYPES = (
     "build",
     "chore",
@@ -50,19 +42,7 @@ TYPES = (
 )
 SUBJECT = re.compile(rf"^(?:{'|'.join(TYPES)})(?:\([^()\s][^()]*\))?!?: \S")
 GIT_SUBJECT = re.compile(r"^(?:Merge |Revert \"|fixup! |squash! |amend! )")
-TRAILER = re.compile(r"^[A-Za-z][A-Za-z-]*: \S")
 SCISSORS = "# ------------------------ >8 ------------------------"
-GATE = "mise run check"
-#: A name of the gate or one of its parts: ``mise run check``, ``mise run check-py``, ``check-rust``.
-GATE_NAME = re.compile(r"mise run check(?:-[a-z]+)?|\bcheck-[a-z]+")
-#: The outcome that must follow each gate name directly.
-OUTCOME = re.compile(r" (?:passes|not run)\b")
-
-
-def is_gate_line(line: str) -> bool:
-    """Whether *line* names the gate and gives every gate name on it an outcome."""
-    names = list(GATE_NAME.finditer(line))
-    return GATE in line and all(OUTCOME.match(line, name.end()) for name in names)
 
 
 def _lines(message: str) -> list[str]:
@@ -87,60 +67,6 @@ def problems(message: str) -> list[str]:
         found.append(
             f"subject {subject!r} is not a Conventional Commit, type(scope): summary, "
             f"with a type of {', '.join(TYPES)}"
-        )
-    body = [line for line in lines[lines.index(subject) + 1 :] if line] if subject else []
-    if any(not TRAILER.match(line) for line in body) and not any(map(is_gate_line, body)):
-        found.append(
-            f"the body has no gate line: end it with '{GATE} passes.', or name the part of "
-            f"the gate that did not run (AGENTS.md, Committing)"
-        )
-    return found
-
-
-def unproven(message: str) -> list[str]:
-    """Each ``<name> passes`` claim on *message*'s gate line that no passing run proves.
-
-    A claim is proved when the staged tree is the tree a passing run of that gate name, or of
-    the full ``check``, recorded (``gate_record``). Only the commit-msg hook asks: a range of
-    commits already made has nothing recorded for it.
-    """
-    lines = _lines(message)
-    subject = next((line for line in lines if line), "")
-    if GIT_SUBJECT.match(subject):
-        return []
-    claimed: list[str] = []
-    for line in filter(is_gate_line, lines):
-        for match in GATE_NAME.finditer(line):
-            name = match.group().removeprefix("mise run ")
-            if line.startswith(" passes", match.end()) and name in gate_record.RECORDED:
-                claimed.append(name)
-    if not claimed:
-        return []
-    staged = gate_record.staged_tree()
-    found: list[str] = []
-    for name in dict.fromkeys(claimed):
-        proofs = [gate_record.recorded(gate) for gate in dict.fromkeys((name, "check"))]
-        if staged in proofs:
-            continue
-        tested = proofs[0] or proofs[-1]
-        if tested is None:
-            found.append(
-                f"the gate line says '{name} passes', but no passing run of mise run {name} is "
-                "recorded; run it on the tree you are committing"
-            )
-            continue
-        try:
-            paths = ", ".join(gate_record.differing(tested, staged)[:8])
-        except subprocess.CalledProcessError:
-            # Nothing references a recorded tree, so ``git gc`` may have pruned it.
-            found.append(
-                f"the gate line says '{name} passes', but the tree its last passing run tested "
-                f"is no longer in the repository; rerun mise run {name}"
-            )
-            continue
-        found.append(
-            f"the gate line says '{name} passes', but its last passing run tested another tree "
-            f"(differs in {paths}); stage exactly what it tested, or rerun it"
         )
     return found
 
@@ -287,12 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.message is not None:
         message = args.message.read_text(encoding="utf-8")
-        try:
-            listed = problems(message) + unproven(message)
-        except (OSError, subprocess.CalledProcessError) as error:
-            print(f"[commit-msg] cannot read the staged tree: {error}", file=sys.stderr)
-            return 2
-        found = [("this commit", listed)]
+        found = [("this commit", problems(message))]
     else:
         try:
             commits = [

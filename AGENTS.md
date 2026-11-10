@@ -48,7 +48,7 @@ Dated records (`work/<YYYY-MM>/`) are **not** a source of truth: state a fact in
 
 1. Run `git status` before staging: stage the paths you changed by name, never `git add -A` or `git commit -a`, and never any file from `corpus/`. If the index holds another session's work, stop and ask.
 2. Run `mise run check`; it must pass with no warnings.
-3. Commit with a Conventional Commit subject and, when a reviewer would ask "why this way?", a body that says why, closing with the gate line `mise run check` prints last: [Commit messages](docs/development.md#commit-messages). The commit-msg hook checks both.
+3. Commit with a Conventional Commit subject and, when a reviewer would ask "why this way?", a body that says why: [Commit messages](docs/development.md#commit-messages). The commit-msg hook checks the subject.
 4. Write the handoff into the work folder's README or on the issue, never only in agent memory; the finishing PR writes the README's `outcome`.
 5. A PR that changes rendered output carries a capture-beside-render picture, before and after: [Evidence for a rendering PR](.agents/skills/improving-render-parity/pr-evidence.md).
 6. A finding that needs a code fix is recorded on the fix's branch, cut from `main`, after checking the open PRs that touch the same note; a verification branch keeps only its journal entry, stacked on the fix branch when it links a note the fix adds.

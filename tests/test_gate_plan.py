@@ -22,9 +22,7 @@ SCRIPTS_DIR = ROOT / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-import check_commit_msg  # noqa: E402
 import gate  # noqa: E402
-import gate_record  # noqa: E402
 
 
 def test_lane_map_covers_every_step_exactly_once() -> None:
@@ -137,7 +135,6 @@ def test_failure_tail_header_carries_fix_hint_only_for_fixable_failures(
     monkeypatch.setattr(gate, "_check_uv", lambda: None)
     monkeypatch.setattr(gate, "_step", fake_step)
     monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
-    monkeypatch.setattr(gate_record, "working_tree", lambda: "tested-tree")
 
     assert gate.main(["all", "--full", "--tail", "1"]) == 1
     output = capsys.readouterr().out
@@ -163,53 +160,6 @@ def test_cargo_steps_share_a_lane_exactly_when_they_share_a_target_dir() -> None
         for other, other_target in target_dirs.items():
             same_lane = gate.STEP_LANES[step] == gate.STEP_LANES[other]
             assert same_lane == (target == other_target), (step, other)
-
-
-@pytest.mark.parametrize(
-    ("args", "code", "names"),
-    [
-        (["py"], 0, ["check-py"]),
-        (["rust"], 0, ["check-rust"]),
-        (["docs"], 0, ["check-docs"]),
-        (["all", "--full"], 0, ["check-rust", "check-py", "check"]),
-        (["py"], 1, []),
-    ],
-)
-def test_a_passing_run_records_the_tree_it_started_on(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, args: list[str], code: int, names: list[str]
-) -> None:
-    """The tree is taken before the steps run, so an edit made mid-run is never recorded."""
-    trees = iter(["started-tree", "edited-mid-run"])
-    recorded: list[tuple[str, str]] = []
-    monkeypatch.setattr(gate, "_mise", lambda: "mise")
-    monkeypatch.setattr(gate, "_check_uv", lambda: None)
-    monkeypatch.setattr(gate, "_step", lambda _mise, _task, _timeout: (code, "", 0.0))
-    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
-    monkeypatch.setattr(gate_record, "working_tree", lambda: next(trees))
-    monkeypatch.setattr(gate_record, "record", lambda *pair: recorded.append(pair))
-
-    assert gate.main(args) == code
-    assert recorded == [(name, "started-tree") for name in names]
-
-
-def test_a_tree_that_cannot_be_taken_records_nothing_and_still_runs(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Failing to read the tree costs the record, never the run's own verdict."""
-    recorded: list[tuple[str, str]] = []
-
-    def unreadable() -> str:
-        raise OSError("index locked")
-
-    monkeypatch.setattr(gate, "_mise", lambda: "mise")
-    monkeypatch.setattr(gate, "_check_uv", lambda: None)
-    monkeypatch.setattr(gate, "_step", lambda _mise, _task, _timeout: (0, "", 0.0))
-    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
-    monkeypatch.setattr(gate_record, "working_tree", unreadable)
-    monkeypatch.setattr(gate_record, "record", lambda *pair: recorded.append(pair))
-
-    assert gate.main(["py"]) == 0
-    assert recorded == []
 
 
 @pytest.mark.parametrize(
@@ -296,21 +246,6 @@ def test_ci_requested(env: dict[str, str], expected: bool) -> None:
     assert gate.ci_requested(env) is expected
 
 
-@pytest.mark.parametrize(
-    ("halves", "line"),
-    [
-        (("rust", "py"), "mise run check passes."),
-        (("docs",), "mise run check-docs passes; check-rust not run; check-py not run."),
-        (("rust", "docs"), "mise run check-rust passes; check-docs passes; check-py not run."),
-        (("py",), "mise run check-py passes; check-rust not run."),
-        (("rust",), "mise run check-rust passes; check-py not run; check-docs not run."),
-    ],
-)
-def test_gate_line(halves: tuple[str, ...], line: str) -> None:
-    assert gate.gate_line(halves) == line
-    assert check_commit_msg.is_gate_line(line)
-
-
 def test_a_docs_failure_names_the_docs_rerun() -> None:
     assert "re-run: mise run check-docs" in _verdict(["test-py-docs"], "all")
 
@@ -375,13 +310,6 @@ def test_docs_step_requires_the_kaitai_compiler() -> None:
 )
 def test_docs_marker_is_on_the_documentation_modules(module: str) -> None:
     assert "pytest.mark.docs" in (ROOT / "tests" / module).read_text(encoding="utf-8")
-
-
-@pytest.fixture(autouse=True)
-def _no_real_record(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A faked passing run must never write ``target/gate``, or it would prove a real commit."""
-    monkeypatch.setattr(gate_record, "working_tree", lambda: "fake-tree")
-    monkeypatch.setattr(gate_record, "record", lambda *_pair: None)
 
 
 _GIT_ENV = {
@@ -545,9 +473,7 @@ def test_a_documentation_change_runs_only_the_docs_half(
     assert "[gate] scope: docs; not run: check-rust, check-py" in out
     assert "[gate]   docs: a.md, b.md, c.md (+1 more)" in out
     assert "# scope: docs; not run: check-rust, check-py" in log
-    assert out.rstrip().endswith(
-        "[gate] gate line: mise run check-docs passes; check-rust not run; check-py not run."
-    )
+    assert out.rstrip().splitlines()[-1].startswith("[gate] PASS")
 
 
 def test_unknown_changed_paths_run_the_full_gate(
@@ -558,7 +484,7 @@ def test_unknown_changed_paths_run_the_full_gate(
     out = capsys.readouterr().out
     assert sorted(ran) == sorted(gate._plan("all"))
     assert "[gate] scope: full (changed paths unknown: no main)" in out
-    assert out.rstrip().endswith("[gate] gate line: mise run check passes.")
+    assert out.rstrip().splitlines()[-1].startswith("[gate] PASS")
 
 
 def test_an_explicit_base_reaches_changed_paths_and_the_reason(
@@ -609,24 +535,3 @@ def test_changed_paths_ignores_a_common_dir_naming_another_checkout(
     monkeypatch.setenv("GIT_COMMON_DIR", str(other / ".git"))
 
     assert gate.changed_paths(repo) == ["ours.rs"]
-
-
-def test_a_record_that_cannot_be_written_keeps_the_verdict(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A passing run still prints PASS and its gate line, and says the hook may refuse the line."""
-
-    def unwritable(_name: str, _tree: str) -> None:
-        raise OSError("disk full")
-
-    monkeypatch.setattr(gate, "_mise", lambda: "mise")
-    monkeypatch.setattr(gate, "_check_uv", lambda: None)
-    monkeypatch.setattr(gate, "_step", lambda _mise, _task, _timeout: (0, "", 0.0))
-    monkeypatch.setattr(gate, "LOG_PATH", tmp_path / "gate.log")
-    monkeypatch.setattr(gate_record, "record", unwritable)
-
-    assert gate.main(["py"]) == 0
-    out = capsys.readouterr().out
-    assert "[gate] cannot record the passing run: disk full" in out
-    assert "[gate] PASS" in out
-    assert "[gate] gate line: mise run check-py passes; check-rust not run." in out

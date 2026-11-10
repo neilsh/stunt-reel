@@ -30,10 +30,9 @@ it saves.
 
 ``gate.py all`` reads the branch's changed paths from git and runs only the halves they need;
 ``--full``, a set ``CI``, an unclassified path, no changes, or paths git cannot give run the full
-gate. A passing run prints the commit body's closing gate line. The paths are counted from the
-merge base with ``origin/main`` when that ref resolves, else with ``main``: a local ``main`` is
-often stale, and counting from it charges the branch with every commit that has landed since.
-``--base`` names another ref.
+gate. The paths are counted from the merge base with ``origin/main`` when that ref resolves, else
+with ``main``: a local ``main`` is often stale, and counting from it charges the branch with every
+commit that has landed since. ``--base`` names another ref.
 
 Two guards stop a run that could not pass. Before a Python or docs step, the ``uv`` on PATH must
 be the version ``mise.toml`` pins: a stale standalone uv ahead of mise's otherwise fails only in
@@ -63,14 +62,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO
 
-import gate_record
-
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 LOG_PATH = Path("target") / "check.log"
-#: What a passing run prints before the gate line, as ``regate.py`` reads it.
-GATE_LINE_PREFIX = "[gate] gate line: "
 
 # A whole step's limit: generous enough for a cold `cargo test` build on a CI runner.
 STEP_TIMEOUT_S = 1800.0
@@ -228,9 +223,8 @@ def _git_paths(repo: Path, *args: str) -> list[str]:
         raise ChangedPathsError("git is not on PATH")
     # *repo* decides the repository: GIT_DIR and its kin left set by a hook or a shell could name
     # another checkout and scope this run by that checkout's changes. The index and command-scope
-    # settings (`git -c`, `--no-replace-objects`) stay the caller's, as gate_record.working_tree
-    # sees them, so both list the same paths. gate.py runs on bare Python, so it cannot import
-    # stunt_reel.git_env; _KEPT mirrors its INDEX_SCOPE and COMMAND_SCOPE.
+    # settings (`git -c`, `--no-replace-objects`) stay the caller's. gate.py runs on bare Python,
+    # so it cannot import stunt_reel.git_env; _KEPT mirrors its INDEX_SCOPE and COMMAND_SCOPE.
     drop = _git_local_env_vars() - _KEPT
     env = {key: value for key, value in os.environ.items() if key not in drop}
     proc = subprocess.run(  # noqa: S603 - fixed git arguments, git resolved from PATH
@@ -286,25 +280,6 @@ def _scope_lines(scope: Scope) -> list[str]:
         more = f" (+{len(paths) - 3} more)" if len(paths) > 3 else ""
         lines.append(f"[gate]   {category}: {', '.join(paths[:3])}{more}")
     return lines
-
-
-def gate_line(halves: Sequence[str]) -> str:
-    """The commit body's closing line for a passing run of *halves* (AGENTS.md, Committing).
-
-    The first half names its task in full and the rest by name; a half that did not run is
-    named as not run, except ``docs`` after ``py``, whose ``test-py`` already ran those tests.
-    """
-    if set(_FULL) <= set(halves):
-        return "mise run check passes."
-    ran = [f"{SCOPED_TASKS[half]} passes" for half in halves]
-    skipped = [f"{task} not run" for task in _not_run(halves)]
-    return f"mise run {'; '.join([*ran, *skipped])}."
-
-
-def recorded_names(halves: Sequence[str]) -> list[str]:
-    """The gate names a passing run of *halves* proves: each half's task, and ``check`` for both."""
-    names = [SCOPED_TASKS[half] for half in halves]
-    return [*names, "check"] if set(_FULL) <= set(halves) else names
 
 
 def _plan(half: str) -> list[str]:
@@ -569,22 +544,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             except ChangedPathsError as err:
                 error = str(err)
         scope = scope_for(paths, full_flag=full_flag, ci=ci, error=error, base=base)
-        halves = scope.halves
-        plan = [step for scoped in halves for step in STEPS[scoped]]
+        plan = [step for scoped in scope.halves for step in STEPS[scoped]]
         scope_lines = _scope_lines(scope)
     else:
-        halves = (half,)
         plan = _plan(half)
     for line in scope_lines:
         print(line, flush=True)
     lanes = _lane_plan(plan)
-    # The tree under test, taken before any step runs: a passing run records it for the
-    # commit-msg hook (gate_record), and an edit made while the steps run is never recorded.
-    try:
-        tested: str | None = gate_record.working_tree()
-    except (OSError, subprocess.CalledProcessError) as exc:
-        print(f"[gate] cannot record the tree under test: {exc}", flush=True)
-        tested = None
     mise = _mise()
     if any(step in plan for half in ("py", "docs") for step in STEPS[half]):
         problem = _check_uv()
@@ -635,20 +601,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("\n".join(results[task][1].rstrip().splitlines()[-args.tail :]), flush=True)
 
         verdict = _verdict(failed, plan, half, total)
-        if not failed and tested is not None:
-            try:
-                for name in recorded_names(halves):
-                    gate_record.record(name, tested)
-            except OSError as exc:
-                print(
-                    f"[gate] cannot record the passing run: {exc}; the commit-msg hook will "
-                    "refuse a gate line it cannot match to a record",
-                    flush=True,
-                )
         print(verdict, flush=True)
         log.write(f"\n# {verdict.removeprefix('[gate] ')}\n")
-        if not failed:
-            print(f"{GATE_LINE_PREFIX}{gate_line(halves)}", flush=True)
 
     return 0 if not failed else 1
 

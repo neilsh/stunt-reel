@@ -491,12 +491,8 @@ description = "Staged files added to a frozen work folder, or a staged change to
 run = "uv run python python/scripts/check_work_frozen.py"
 
 [tasks.commit-msg-check]
-description = "A commit message's Conventional Commit subject and gate line (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
+description = "A commit message's Conventional Commit subject (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
 run = "uv run python python/scripts/check_commit_msg.py"
-
-[tasks.regate]
-description = "After a rebase, gate every commit of <base>..HEAD in a detached checkout, then give each the gate line its run printed; all or nothing, keeps the old tip as refs/backup/regate/<branch>, never pushes (python/scripts/regate.py; mise run regate -- <base> [-- <gate args>])"
-run = "uv run python python/scripts/regate.py"
 
 # The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing
 # else. prek.toml's local hooks are leaf tasks of this file like the gate's (ADR 0014): no second copy.

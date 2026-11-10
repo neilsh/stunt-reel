@@ -165,7 +165,7 @@ The `status` check comes first because once the branch moves, the other worktree
 old files checked out under it and `git status` there reports your commit reversed as staged
 changes, so a check made afterward cannot tell those from real uncommitted work. `reset --hard`
 discards anything uncommitted, and the `&&` keeps it from running when `<old-tip>` no longer
-matches and `update-ref` refuses. Writing into another worktree may need approval. Then work up the stack: rebase the next layer onto the one below, re-gate it in its own worktree with `mise run regate -- <layer below>` ([how-to](howto/re-gate-after-a-rebase.md)), and repeat. Re-gating rewrites messages, never trees, so the layer above rebases onto it with the trees it would have had anyway. `gh stack add`
+matches and `update-ref` refuses. Writing into another worktree may need approval. Then work up the stack: rebase the next layer onto the one below, run `mise run check` in its own worktree, and repeat. `gh stack add`
 works only from the top branch of the stack, so run it in the worktree that holds the top.
 
 ### Desktop app: Auto-fix and isolated subagents
