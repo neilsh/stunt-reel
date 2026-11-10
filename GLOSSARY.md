@@ -211,6 +211,10 @@ _Avoid_: slice (a film's own unit), sample
 
 ## Artifacts
 
+**Film identity**:
+What a render record or a capture set says about the film it was made from: the `.FLM`'s name, size and hash, and the hash of the archive as made, not as staged for a capture. Archives that draw the same shapes are still different identities. Two artifacts conflict when both carry the same field and the values differ.
+_Avoid_: film tag, provenance (for the game build and sound samples a capture records)
+
 **Render record**:
 The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index, camera and credits flag of every whole-tick frame, and the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)). It is written last, at schema version 3; an older render is refused.
 _Avoid_: sidecar (for the record), manifest
@@ -256,6 +260,10 @@ _Avoid_: fidelity target, parity target, pinned film
 **Captured frame**:
 One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered by capture order and tagged with the film clock read when it was taken.
 _Avoid_: tick (for the capture ordinal)
+
+**Matched frame**:
+A captured frame together with the render at its film clock. A captured frame is unmatched when its files are missing or the render holds no planes for its tick.
+_Avoid_: frame pair, joined frame
 
 **UI overlay**:
 What `PLAYONE.EXE` draws over the 3D scene in a captured frame that is not part of the film: the button bar and the mouse cursor. The renderer does not draw it, and parity leaves it out of scoring. Credits ink shares the cursor's palette index 255, so index 255 is left out only on ticks where the film shows no credits, as the render record says (see **Credits**).
