@@ -23,17 +23,21 @@ nothing here prints or chooses an exit code (ADR 0010).
 from __future__ import annotations
 
 import contextlib
-import os
 import shutil
-import signal
-import subprocess
-import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent import futures
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from stunt_reel import all_archive, batch_films, capture_store, dataroot, parity_layout, references
+from stunt_reel import (
+    all_archive,
+    batch_films,
+    capture_store,
+    dataroot,
+    parity_layout,
+    process_tree,
+    references,
+)
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.link import BUILD_ARGV, binary_locked, binary_path
 from stunt_reel.parity_artifacts import (
@@ -51,7 +55,6 @@ __all__ = [
     "RENDER_FLAGS",
     "REPO_ROOT",
     "SIDATA",
-    "TIMEOUT_EXIT",
     "Attempt",
     "CommandError",
     "FilmFailure",
@@ -84,11 +87,8 @@ __all__ = [
 RENDER_FLAGS = ("--width", "320", "--height", "200", "--viewport-rows", "185")
 #: The sprite data directory every render reads, relative to the corpus.
 SIDATA = Path("siarchive/Developer/FreeFlight/SIDATA")
-#: The exit code :func:`run_command` reports for a command it killed on its timeout.
-TIMEOUT_EXIT = 124
 #: How much of a command's combined output :func:`run_command` keeps, from the end.
 _TAIL_CHARS = 4000
-_NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
 
 class FilmInputError(RuntimeError):
@@ -226,69 +226,19 @@ def retime_render(
 Run = Callable[[list[str], dict[str, str] | None, float | None], tuple[int, str]]
 
 
-#: Seconds the tree kill and the reap after it may take before the adapter gives up waiting.
-_REAP_SECONDS = 10
-
-
 def run_command(
     argv: list[str], env: dict[str, str] | None = None, timeout: float | None = None
 ) -> tuple[int, str]:
     """Runs *argv* in the checkout to completion or *timeout*; returns its exit code and output tail.
 
-    On a timeout the whole process tree is ended, because a plain ``subprocess.run`` timeout
-    kills only the direct child, which leaks the emulator it started; the code is
-    :data:`TIMEOUT_EXIT`. An interrupt ends the tree too before it propagates: the child runs in
-    its own process group, so Ctrl+C never reaches it.
+    On a timeout the whole process tree is ended (:mod:`stunt_reel.process_tree`), because a
+    plain ``subprocess.run`` timeout kills only the direct child, which leaks the emulator it
+    started; the code is :data:`~stunt_reel.process_tree.TIMEOUT_EXIT`.
     """
-    windows = sys.platform == "win32"
-    with subprocess.Popen(  # noqa: S603 - fixed argument vectors, no shell
-        argv,
-        cwd=REPO_ROOT,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        creationflags=_NEW_GROUP if windows else 0,
-        start_new_session=not windows,
-    ) as child:
-        try:
-            output, _ = child.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _end(child)
-            return TIMEOUT_EXIT, f"timeout after {timeout:g}s"
-        except BaseException:
-            _end(child)
-            raise
-        return child.returncode, output[-_TAIL_CHARS:]
-
-
-def _end(child: subprocess.Popen[str]) -> None:
-    """End *child*'s tree, then the child itself, and reap it, all within bounded waits.
-
-    The direct kill covers a tree kill that failed or timed out: ``Popen``'s context exit waits
-    for the child without a timeout, so the child must be gone by then. A descendant the kill
-    missed may still hold the pipe, so the reap gives up after :data:`_REAP_SECONDS`.
-    """
-    _kill_tree(child.pid)
-    with contextlib.suppress(OSError):
-        child.kill()
-    with contextlib.suppress(subprocess.TimeoutExpired):
-        child.communicate(timeout=_REAP_SECONDS)
-
-
-def _kill_tree(pid: int) -> None:
-    """End *pid* and every process it started."""
-    if sys.platform == "win32":
-        command = ["taskkill", "/T", "/F", "/PID", str(pid)]
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            subprocess.run(  # noqa: S603 - fixed taskkill invocation
-                command, capture_output=True, check=False, timeout=_REAP_SECONDS
-            )
-    else:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(pid, signal.SIGKILL)
+    code, output = process_tree.run(argv, timeout, cwd=REPO_ROOT, env=env)
+    if code == process_tree.TIMEOUT_EXIT:
+        return code, f"timeout after {timeout:g}s"
+    return code, output[-_TAIL_CHARS:]
 
 
 class CommandError(RuntimeError):

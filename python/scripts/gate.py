@@ -49,9 +49,9 @@ from __future__ import annotations
 import argparse
 import contextlib
 import functools
+import importlib.util
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import threading
@@ -61,16 +61,36 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO
+lazy from types import ModuleType
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+
+def _load_process_tree() -> ModuleType:
+    """Load ``stunt_reel/process_tree.py`` by path: the gate runs as plain ``python`` (ADR 0014).
+
+    Importing the ``stunt_reel`` package would pull in its dependencies, so the one
+    standard-library file is loaded alone.
+    """
+    path = Path(__file__).resolve().parent.parent / "stunt_reel" / "process_tree.py"
+    spec = importlib.util.spec_from_file_location("stunt_reel_process_tree", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_process_tree = _load_process_tree()
+#: The exit code a timed-out step reports, defined once in ``process_tree``.
+TIMEOUT_EXIT: int = _process_tree.TIMEOUT_EXIT
 
 LOG_PATH = Path("target") / "check.log"
 
 # A whole step's limit: generous enough for a cold `cargo test` build on a CI runner.
 STEP_TIMEOUT_S = 1800.0
-# The exit code a timed-out step reports, as coreutils `timeout` does.
-TIMEOUT_EXIT = 124
 
 # The step list is every leaf task, in display order; a task that only aggregates others
 # (check, fmt-check, lint, test) must never appear here or the gate recurses. A step added here
@@ -384,20 +404,6 @@ def _check_uv() -> str | None:
     return uv_problem(uv_pin(Path("mise.toml")), found, version, _uvs_on_path())
 
 
-def _kill_tree(proc: subprocess.Popen[str]) -> None:
-    """Kill *proc* and every process it started."""
-    if sys.platform == "win32":
-        taskkill = shutil.which("taskkill") or "taskkill"
-        subprocess.run(  # noqa: S603 - taskkill with a pid we own
-            [taskkill, "/T", "/F", "/PID", str(proc.pid)], capture_output=True, check=False
-        )
-    else:
-        # The child leads its own session (start_new_session), so its group is its pid; a
-        # step that exited before the kill has nothing left to kill.
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
-
-
 # The steps running now, so an interrupted gate can kill them: on POSIX each leads its own
 # session, which Ctrl-C at the terminal never reaches. _CANCEL stops lanes starting more.
 _ACTIVE: set[subprocess.Popen[str]] = set()
@@ -413,7 +419,7 @@ def cancel_steps() -> None:
     for proc in running:
         # A step that exited between the snapshot and the kill raises; it is gone either way.
         with contextlib.suppress(OSError):
-            _kill_tree(proc)
+            _process_tree.kill_tree(proc)
 
 
 def run_bounded(
@@ -425,35 +431,20 @@ def run_bounded(
     line saying so: a grandchild holding the output pipes cannot keep the read waiting.
     ``cancel_steps`` kills it the same way, and it returns the code the kill left.
     """
-    proc = subprocess.Popen(  # noqa: S603 - callers pass fixed commands
-        list(argv),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=None if env is None else dict(env),
-        start_new_session=os.name != "nt",
-    )
+    proc = _process_tree.spawn(argv, env=env)
     with _ACTIVE_LOCK:
         _ACTIVE.add(proc)
         # cancel_steps sets _CANCEL before it reads _ACTIVE under this lock, so a step that
         # registers after that read sees the flag here and is killed at once.
         cancelled = _CANCEL.is_set()
     if cancelled:
-        _kill_tree(proc)
+        _process_tree.kill_tree(proc)
     try:
-        try:
-            output, _ = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _kill_tree(proc)
-            try:
-                output, _ = proc.communicate(timeout=30)
-            except subprocess.TimeoutExpired:
-                output = ""
+        code, output = _process_tree.wait(proc, timeout, reap=30.0)
+        if code == TIMEOUT_EXIT:
             note = f"[gate] timed out after {timeout:.0f}s; killed the step and its children"
-            return TIMEOUT_EXIT, f"{output or ''}\n{note}\n"
-        return proc.returncode, output
+            return code, f"{output}\n{note}\n"
+        return code, output
     finally:
         with _ACTIVE_LOCK:
             _ACTIVE.discard(proc)
