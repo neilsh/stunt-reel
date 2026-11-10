@@ -9,6 +9,7 @@ report asks at once.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,11 +19,14 @@ if TYPE_CHECKING:
 _MORE_DATA = 234
 
 
-def holders(path: str) -> list[str]:
-    """``"<pid> <name>"`` for each process holding *path* open; empty off Windows or on error."""
+def holders(path: str) -> list[str] | None:
+    """``"<pid> <name>"`` for each process holding *path* open; ``None`` when it cannot ask.
+
+    It cannot ask off Windows, or when a Restart Manager call fails.
+    """
     # The Windows code sits in a platform branch that returns nothing, so mypy analysing for
     # either platform finds no unreachable statement.
-    found: list[str] = []
+    found: list[str] | None = None
     if sys.platform == "win32":
         import ctypes  # noqa: PLC0415 - only needed on Windows
         from ctypes import wintypes  # noqa: PLC0415 - only needed on Windows
@@ -49,7 +53,7 @@ def holders(path: str) -> list[str]:
         key = ctypes.create_unicode_buffer(64)
         if rm.RmStartSession(ctypes.byref(session), 0, key) == 0:
             try:
-                files = (wintypes.LPCWSTR * 1)(path)
+                files = (wintypes.LPCWSTR * 1)(str(Path(path).absolute()))
                 if rm.RmRegisterResources(session, 1, files, 0, None, 0, None) == 0:
                     needed, count, reasons = wintypes.UINT(), wintypes.UINT(0), wintypes.DWORD()
                     code = rm.RmGetList(
@@ -59,7 +63,9 @@ def holders(path: str) -> list[str]:
                         None,
                         ctypes.byref(reasons),
                     )
-                    if code == _MORE_DATA:
+                    if code == 0:
+                        found = []
+                    elif code == _MORE_DATA:
                         info = (ProcessInfo * needed.value)()
                         count = wintypes.UINT(needed.value)
                         code = rm.RmGetList(
@@ -89,17 +95,29 @@ def _paths(error: BaseException) -> list[str]:
     return paths
 
 
-def describe(error: BaseException, lookup: Callable[[str], list[str]] | None = None) -> str | None:
+def _on_windows() -> bool:
+    """Whether the Restart Manager exists here, as a call so mypy cannot narrow a caller."""
+    return sys.platform == "win32"
+
+
+def describe(
+    error: BaseException, lookup: Callable[[str], list[str] | None] | None = None
+) -> str | None:
     """Who holds each file a ``PermissionError`` in *error* names, or ``None`` when none does.
 
-    *lookup* finds a path's holders, ``holders`` by default.
+    *lookup* finds a path's holders, ``holders`` by default, which off Windows names no one.
     """
     paths = _paths(error)
-    if not paths:
+    if not paths or (lookup is None and not _on_windows()):
         return None
     lines = []
     for path in paths:
         held = (lookup or holders)(path)
-        who = ", ".join(held) if held else "no process now (released, or pending delete)"
+        if held is None:
+            who = "unknown (the Restart Manager lookup failed)"
+        elif held:
+            who = ", ".join(held)
+        else:
+            who = "no process now (released, or pending delete)"
         lines.append(f"{path}: held by {who}")
     return "\n".join(lines)

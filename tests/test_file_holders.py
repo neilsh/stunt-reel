@@ -52,16 +52,42 @@ def test_the_restart_manager_names_this_process_while_it_holds_the_file(tmp_path
 
     assert file_holders.holders(str(path)) == []
     with path.open(encoding="utf-8"):
-        assert [entry.split()[0] for entry in file_holders.holders(str(path))] == [str(os.getpid())]
+        assert [entry.split()[0] for entry in file_holders.holders(str(path)) or []] == [
+            str(os.getpid())
+        ]
 
 
-def test_holders_off_windows_is_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_off_windows_no_one_is_asked_and_no_section_is_added(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
-    assert file_holders.holders(str(tmp_path)) == []
+    assert file_holders.holders(str(tmp_path)) is None
+    assert file_holders.describe(PermissionError(13, "Permission denied", "a.txt")) is None
+
+
+def test_a_failed_lookup_is_not_reported_as_no_holder() -> None:
+    error = PermissionError(13, "Permission denied", "a.txt")
+    assert file_holders.describe(error, lambda _: None) == (
+        "a.txt: held by unknown (the Restart Manager lookup failed)"
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Restart Manager is a Windows API")
+def test_a_relative_path_is_looked_up_from_the_working_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "held.txt").write_text("x", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    with (tmp_path / "held.txt").open(encoding="utf-8"):
+        assert [entry.split()[0] for entry in file_holders.holders("held.txt") or []] == [
+            str(os.getpid())
+        ]
 
 
 def test_a_failed_report_carries_the_holders(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(file_holders, "holders", lambda _: ["42 MsMpEng.exe"])
+    monkeypatch.setattr(file_holders, "_on_windows", lambda: True)
     with pytest.raises(PermissionError) as refused:
         raise PermissionError(13, "Permission denied", "held.toml")
     call = cast("pytest.CallInfo[None]", SimpleNamespace(excinfo=refused))
