@@ -24,6 +24,7 @@ from pytest_helpers import (
     install_windows_mkdir_shim,
     per_run_basetemp,
     prune_old_basetemps,
+    prunes_basetemps,
 )
 from stunt_reel import dataroot, parity_layout, references
 
@@ -74,7 +75,9 @@ def pytest_configure(config: pytest.Config) -> None:
     """Give the run a fresh temporary root inside the checkout's pytest cache."""
     install_windows_mkdir_shim()
     rootpath = Path(config.rootpath)
-    prune_old_basetemps(cache_dir(rootpath))
+    cache = cache_dir(rootpath)
+    if prunes_basetemps(config):
+        prune_old_basetemps(cache)
     if config.option.basetemp is None:
         config.option.basetemp = str(per_run_basetemp(rootpath))
 
