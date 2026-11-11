@@ -2,7 +2,7 @@
 title: "Scenery placement module"
 started: 2026-11-10
 issue: 383
-outcome: ""
+outcome: "world/scenery.rs owns the scenery walk, dedup and cull behind place_props; world.rs became world/mod.rs; 579 corpus films (868 scene builds) matched before and after"
 ---
 
 # Scenery placement module
@@ -41,9 +41,9 @@ impl SceneryWalk<'_> {
 **Chosen: A.**
 
 - B's gate injection only earns its place if some gate case cannot be reached through
-  `view_eyes`. Every one can be: an eye at a chosen distance from an `SP_1NODE` picks either side of
-  `lod_threshold`'s two branches, and the node's position and operands are visible in which shape
-  is placed and where. Injecting the gate would also let tests depend on the gate's argument list,
+  `view_eyes`. Every case the tests need can be: an eye at a chosen distance from an `SP_1NODE`
+  picks either side of `lod_threshold`'s two branches, and the node's position and operands are
+  visible in which shape is placed and where. Injecting the gate would also let tests depend on the gate's argument list,
   which is the coupling this module removes.
 - Taking `&WorldInputs` whole hands the module the anchors and `MAP.BIN`, which it must not read,
   and makes a test build an `Option` scenery and empty anchors. Two view fields say what is used.
