@@ -1,70 +1,10 @@
 ---
-summary: "Covers COL3-2.FLM and INTRO.FLM segments where PLAYONE shows a scene we do not: the unresolved COL3-2 studio, INTRO sand shots as SCENERY tiles, the montage clock, and black title cards."
+summary: "Covers INTRO.FLM segments where PLAYONE shows a scene we do not: sand shots as SCENERY tiles, the montage clock and parked aircraft, and black title cards. The COL3-2 studio is in col3-2-studio.md."
 ---
+
 # Film Segments Where the Original Shows a Scene We Do Not
 
-`[Bounded Observation]` unless a claim says otherwise. This note covers the segments of `COL3-2.FLM` and `INTRO.FLM` where `PLAYONE.EXE` draws a scene (a news studio, held sand-field shots, a montage) that `stuntreel` does not. The scoring procedure is in [`method.md`](method.md); dated results go in journal entries; earlier ones are rows of the [parity log](../../work/2026-10/parity-log/log.md). The static frame composition (UI bar, credits text) is in [`../playone-exe/sod-vm.md`](../playone-exe/sod-vm.md).
-
-## 1. `COL3-2.FLM`: the studio interior
-
-Scored against the 30 night frames of [`palette-fade.md` § 5.1](../playone-exe/palette-fade.md#51-night-capture-col3-2flm), where the modelled palette is already exact: mean SSIM 0.666, minimum 0.479, mean IoU 0.651. The four black frames (ticks 168-201) score 0.925-0.931. Every frame from tick 458 scores 0.62-0.66 with a constant IoU of 0.751. This is far below the `[I6]` gate, and the cause is not colour.
-
-_Found 2026-10-22; see the [parity log](../../work/2026-10/parity-log/log.md)._
-
-### 1.1 What the reference shows
-
-From tick 458 the original draws a studio interior: an anchorman at a desk, a window with an outdoor scene in it, caption text from the `0x99` credits opcode, and the UI bar. `stuntreel` draws only the empty outdoor view toward the horizon. The film's `CNN Headline News` credits at tick 198 and its 26 created slots fit a news-studio set.
-
-### 1.2 Evaluator state at tick 458
-
-- Active camera: slot 7 (`0x97` at tick 448) at `(6239.6, 0.30, -3247.3)` m, look target `eye + (17, -87, 996)` m, so it points almost straight along `+Z`.
-- The evaluator places 18 actors, exactly the slots 8-25 created with `0x13`/`0x17`/`0x1b` at tick 198.
-- Near actors: `15135` (0.5 x 0.1 x 0.2 m, 0.55 m away), `16495` (4.4 x 2.0 x 5.9 m, 1.14 m), `16393` and `16423` (3-5 m blocks, 34 m), `16421` (91 m, 372 m). Eleven more are 15.6 m-tall models 4.9 km away; these are the figures on our horizon. None is person-sized or room-sized.
-- Slots 2-4 are created with `0x19` at tick 194 and destroyed at tick 198 by `0x12` (exists bit clear).
-- Five other shapes (`261`, `262`, `266`, `268`, `14976`) stop early at opcode `504` (`UnknownOpcode`); none is among the placed actors.
-
-### 1.3 Where the 18 actors sit
-
-Three clusters, stable from tick 200 to 458:
-
-| Cluster | Position (m) | Shapes |
-|---|---|---|
-| Studio (camera is here) | `(6240, 0, -3247)` | `15135`, `16495`, `16423`, `16393`, one copy of `16421` |
-| Row of nine, 12 m apart, 15.6 m tall | near `(1900, 8, -879)` | `15486`-`15530` |
-| Three | near `(-3681, 1, 342)` | `15111`, `15134`, `16421` |
-
-The largest near shape, `16495`, has 52 vertices and 20 + 2 + 4 triangles in three meshes.
-
-### 1.4 The display-list decode is not lossy for the studio shapes
-
-`16495`, `15135`, `16423`, `16393`, `16421`, `15111` and `15486` use only `POLYZ`, `COLOR`, `IFVIS`, `IPG` type 0 (a cube generator), vertex arithmetic and a single `PERS`. None uses `SPHERE`, `BLOCK`, `PERFDISK` or `IPG` type 4 (subobject), the opcodes whose geometry `vm.rs` reads and discards. `16495` has 13 `POLYZ` ops and decodes to 26 triangles, so the missing studio is not dropped geometry.
-
-### 1.5 Shape census
-
-Up to tick 470 the film's `create` opcodes bind only shape ids in `0x3B07`-`0x4027`, `0x3C7E`-`0x3CAA`, `0x3E57` and `0x406F`. There is no person or character id; slots 0-7 are rigs without the draw bit. The anchorman is therefore not a shape this film binds to a slot, yet the original draws one.
-
-### 1.6 Conclusion
-
-The studio is not among the shapes the evaluator places near the camera, and `PLAYONE` has no extra layer to supply it, so the original places or builds something we do not. Candidates, none tested:
-
-- the anchorman and walls are slots whose shapes decode to less geometry than the original draws (for example a model composed of references the display-list VM does not follow);
-- `PLAYONE` places or scales slots differently from the evaluator;
-- the set is drawn from data absent from the `.ALL` and the staging mount. `COL3-2.ALL` holds no `0x8100`-`0xBFFF` scenery chunk, only 750 models, one palette and sounds.
-
-Vars 2-7, 10 and 11 change at tick 198 (see [`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)); none has a reader that explains the studio.
-
-### 1.7 With `--sidata` the studio gap is unresolved
-
-The 2026-10-22 figures above come from a render without `--sidata`. The `--sidata` world (43,199 props, 18,001,215 vertices, 504 MB) first panicked on wgpu's 256 MB buffer limit. `GpuModel` now splits an oversized model into several vertex/index buffer pairs (`plan_upload` in `crates/stunt-render/src/mesh.rs`), cutting each mesh slice into runs of whole triangles in draw order; a model that fits is uploaded unchanged. The `COL3-2.FLM` world splits on vertices (about 9.59 million per 256 MiB buffer). `CTRY.FLM` and `INTRO.FLM` re-rendered on this build score exactly as before (0.771 / 0.475 / 0.978 and 0.676 / 0.481 / 0.919).
-
-| `COL3-2.FLM` render | Scored / matched | `mean_ssim_scored` | `mean_index_agreement_scored` | `mean_iou_scored` | `mean_iou` |
-|---|---|---|---|---|---|
-| without `--sidata` | 26 / 30 | 0.636 | 0.061 | 0.021 | 0.018 |
-| with `--sidata` | 26 / 30 | **0.692** | 0.127 | **0.828** | 0.809 |
-
-Both rows use the render's sidecar for the authored fade, so 26 frames are scored, not the single one counted in section 1; they are not comparable with section 1's figures. The silhouette now largely agrees (IoU 0.83), but index agreement stays at 0.127 against 0.475 and 0.481 for the day films, so most pixels still differ in colour. `[Unknown]`: whether that is the studio gap, the night palette, or both; pixels have not been inspected. The `INTRO.FLM` sub-pixel cull is not enough to explain it.
-
-_Found 2026-10-23; see the [parity log](../../work/2026-10/parity-log/log.md)._
+`[Bounded Observation]` unless a claim says otherwise. This note covers the segments of `INTRO.FLM` (the `COL3-2.FLM` studio is in [`col3-2-studio.md`](col3-2-studio.md)) where `PLAYONE.EXE` draws a scene (held sand-field shots, a montage, title cards) that `stuntreel` does not. The scoring procedure is in [`method.md`](method.md); dated results go in journal entries; earlier ones are rows of the [parity log](../../work/2026-10/parity-log/log.md). The static frame composition (UI bar, credits text) is in [`../playone-exe/sod-vm.md`](../playone-exe/sod-vm.md).
 
 ## 2. `INTRO.FLM`: segments that do not match
 
@@ -99,7 +39,7 @@ The capture shows four large aircraft resting on a sand flat (one red biplane, g
 
 _Found 2026-10-22; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
-**The parked aircraft now draw where the capture does; re-creating an absent slot does not explain the position miss.** `[Bounded Observation]`, 2026-11-04, on `3ee5e34`. At captured ticks 1350 and 1383 (`mise run frame -- --film intro --ticks 1350,1361,1383`) the parked aircraft (slots 7, 10 and 12-14, about 70 m out at z 2488-2490) and the hero biplane (slot 0, shape `0x7F19`, 16 m from the eye) land within a few pixels of the capture's; the 2026-10-22 miss predates the actor fixes in [`framing-and-actors.md`](framing-and-actors.md) § 1. The 19 scored frames at ticks 1290-1500 now average SSIM 0.7662 (0.5769 when this section was written), and the worst three, 1350, 1361 and 1372 (0.561, 0.574, 0.584), lose to the ground: the capture's sand flat is green airfield in ours, the missing backdrop of section 2.2. (Drawn since the ground-decal change: on `48f5d49` these frames lose 0.000 to terrain, § 2.1.)
+**The parked aircraft now draw where the capture does; re-creating an absent slot does not explain the position miss.** `[Bounded Observation]`, 2026-11-04, on `3ee5e34`. At captured ticks 1350 and 1383 (`mise run frame -- --film intro --ticks 1350,1361,1383`) the parked aircraft (slots 7, 10 and 12-14, about 70 m out at z 2488-2490) and the hero biplane (slot 0, shape `0x7F19`, 16 m from the eye) land within a few pixels of the capture's; the 2026-10-22 miss predates the actor fixes in [`hero-aircraft-placement.md`](hero-aircraft-placement.md) § 1. The 19 scored frames at ticks 1290-1500 now average SSIM 0.7662 (0.5769 when this section was written), and the worst three, 1350, 1361 and 1372 (0.561, 0.574, 0.584), lose to the ground: the capture's sand flat is green airfield in ours, the missing backdrop of section 2.2. (Drawn since the ground-decal change: on `48f5d49` these frames lose 0.000 to terrain, § 2.1.)
 
 The montage does re-create slots every slice. From tick 1307 slots 8, 9, 11 and 19-24 (shape `0x101`, create flags `0x1F`) run as a pool: each is created at slot 0's position, moves about 1.8 m per tick down to the parked line at z 2488, is created again there, and is destroyed; slot 15 (shape `0x105`, flags `0x23`, a fixed position by the red biplane) is created again in slices 1383, 1388 and 1392. `[Hypothesis]` by their look: a stream of bullets and a hit flash. The worry was that the lerp, which pairs actors by `actor_id` across two trajectory records, would sweep a re-created slot from its old instance's pose to its new one. It never does in this film. Each slice is followed by a zero-duration slice at the same tick, and a slot leaves the line by a destroy in one of them and comes back by a create in a later one, so some record between the two holds no instance of the slot and nothing pairs across the jump. Over all 538 `INTRO.FLM` slices, 283 interpolated spans hold a slot that was created or destroyed in the span's later slice and is present at both ends; the largest move among them is 18.5 m over a 10-tick span (1408 to 1418), the pool's ordinary speed, against about 55 m for an end-to-start jump. `CTRY.FLM` has 2 such spans. The rule that a record without the slot separates a destroy from its create does not cover a create on a live slot (the pool's create at the parked line, slot 15 at 1383, 1388 and 1392): those spans do lerp the old instance to the new one, and are safe only because the two positions coincide, which the 18.5 m maximum move bounds. `FilmTimeline::sample` at ticks 1350-1360 confirms it: every `0x101` slot steps evenly, and a slot appears only at the start of the line.
 
@@ -127,12 +67,6 @@ Issue #73's done criteria are met in part: the lag premise is answered and a per
 
 ## Ruled out
 
-- Near-clip plane 0.5 m to 0.05 m on `COL3-2.FLM`: frame unchanged.
-- Terrain occlusion: rendering without `--sidata` still shows no studio.
-- Back-face culling: the pipeline had none when this was measured; the 2026-10-24 change is recorded in [attribution.md](attribution.md#6-back-faces). Mirrored model: the model-to-world matrices are proper rotations.
-- Visibility gates: every near mesh passes, and all 70 vertices of `15135` are in front of the camera.
-- Pulling the camera back 3 m or 10 m draws some dark furniture-scale blocks, so the near actors render, but not the walls, window or anchorman.
-- Dropped geometry in the display-list decode (section 1.4).
 - A single global tick offset for the INTRO montage (section 2.3).
 - A view-slot selection, aim or Euler-composition difference at INTRO ticks 2687-2801: `PLAYONE`'s live `view_obj`, eye and angle words match our camera to 0.4 m and 0.2 degrees (section 2.1).
 - A Ground patch coloured wrong under the INTRO sand flat: the sand is `SCENERY` tiles, and terrain loss there is 0.000 since the ground-decal change (section 2.1).
@@ -140,10 +74,8 @@ Issue #73's done criteria are met in part: the lag premise is answered and a per
 
 ## Open questions
 
-1. Read `PLAYONE`'s own slot and shape tables at runtime around tick 458 (the `0x4778` / `0x48B6` arrays and the shape each active slot resolves to) with the capture harness's debugger, and compare with our 18 actors. This separates "the evaluator drops or misplaces slots" from "the engine draws something the film does not list". ([#67](https://github.com/neilsh/stunt-reel/issues/67))
-2. Inspect `COL3-2.FLM` pixels with `--sidata` to split the 0.127 index agreement into studio gap versus night palette.
-3. Find the INTRO ticks 2690-2850 view: slot selection, aim-at target or Euler composition (section 2.1). ([#70](https://github.com/neilsh/stunt-reel/issues/70)) Answered 2026-11-06: `PLAYONE`'s live view slot, eye and angles match ours; the sand is `SCENERY` tiles, drawn since the ground-decal change. Still open there: the fireball at ticks 1506 and 2731-2742 ([#222](https://github.com/neilsh/stunt-reel/issues/222)), and why the old capture held a sand frame through 2850.
-4. Find which path places the parked aircraft in the INTRO montage (section 2.3). ([#72](https://github.com/neilsh/stunt-reel/issues/72)) Answered 2026-11-04: the ordinary slot path; they draw where the capture does at ticks 1350 and 1383. Still open there: the sand ground (section 2.2) and the hit flash of slot 15, shape `0x105`.
-5. Draw the credits overlay (`0x99` lines, cleared by `0x98`) for the INTRO title cards (section 2.4). Answered 2026-11-01: drawn from `PFONT.BIN` by the rule at `0x0F7B`, pixel-exact on the capture ([`pfont.md`](../formats/auxiliary/pfont.md)). ([#75](https://github.com/neilsh/stunt-reel/issues/75))
-6. Why does `PLAYONE` fill INTRO's first title-card view (slot 3, ticks 0–759) with black where the render drew sky (section 2.4)? Answered 2026-11-01: brightness (var 14) starts at 0 and the film first keys it at 760. Still open: why the view's indices are 193 rather than sky indices.
-7. Does the UI-overlay mask hide the credits ink, which is palette index 255 like the cursor (section 2.4)? Answered 2026-11-01: it did. The mask now drops index 255 only on ticks where the film shows no credits, by the render record's per-tick `credits` flag (2026-11-02; it first keyed on the render's `LAYER_OVERLAY` pixels, which let a render that lost its credits mask the captured ink), so credits ink is scored and misplaced or missing ink counts against the render. Scores did not move (CTRY 0.7843, INTRO 0.6902) because every title-card frame is below the fade floor and unscored.
+1. Find the INTRO ticks 2690-2850 view: slot selection, aim-at target or Euler composition (section 2.1). ([#70](https://github.com/neilsh/stunt-reel/issues/70)) Answered 2026-11-06: `PLAYONE`'s live view slot, eye and angles match ours; the sand is `SCENERY` tiles, drawn since the ground-decal change. Still open there: the fireball at ticks 1506 and 2731-2742 ([#222](https://github.com/neilsh/stunt-reel/issues/222)), and why the old capture held a sand frame through 2850.
+2. Find which path places the parked aircraft in the INTRO montage (section 2.3). ([#72](https://github.com/neilsh/stunt-reel/issues/72)) Answered 2026-11-04: the ordinary slot path; they draw where the capture does at ticks 1350 and 1383. Still open there: the sand ground (section 2.2) and the hit flash of slot 15, shape `0x105`.
+3. Draw the credits overlay (`0x99` lines, cleared by `0x98`) for the INTRO title cards (section 2.4). Answered 2026-11-01: drawn from `PFONT.BIN` by the rule at `0x0F7B`, pixel-exact on the capture ([`pfont.md`](../formats/auxiliary/pfont.md)). ([#75](https://github.com/neilsh/stunt-reel/issues/75))
+4. Why does `PLAYONE` fill INTRO's first title-card view (slot 3, ticks 0–759) with black where the render drew sky (section 2.4)? Answered 2026-11-01: brightness (var 14) starts at 0 and the film first keys it at 760. Still open: why the view's indices are 193 rather than sky indices.
+5. Does the UI-overlay mask hide the credits ink, which is palette index 255 like the cursor (section 2.4)? Answered 2026-11-01: it did. The mask now drops index 255 only on ticks where the film shows no credits, by the render record's per-tick `credits` flag (2026-11-02; it first keyed on the render's `LAYER_OVERLAY` pixels, which let a render that lost its credits mask the captured ink), so credits ink is scored and misplaced or missing ink counts against the render. Scores did not move (CTRY 0.7843, INTRO 0.6902) because every title-card frame is below the fade floor and unscored.
