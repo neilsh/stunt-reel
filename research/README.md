@@ -13,7 +13,7 @@
 | [`makeone-exe/`](makeone-exe/) | Behaviour of `MAKEONE.EXE`, the film linker, as driven under an emulator (DOSBox-X at the time, see [`playone-exe/dosbox-x-legacy.md`](playone-exe/dosbox-x-legacy.md)) to produce a film's `.ALL`, and what that archive holds | [`driving.md`](makeone-exe/driving.md), [`linking.md`](makeone-exe/linking.md) |
 | [`sd-exe/`](sd-exe/) | `SITools/SD.EXE`, the developers' scenery designer: image layout, segments, routine offsets. What its files mean stays in their format notes | [`image.md`](sd-exe/image.md) |
 | [`stunt-exe/`](stunt-exe/) | Behaviour of `STUNT.EXE`, the authoring executable: sets, events, and the editor's file handling | [`sets.md`](stunt-exe/sets.md) |
-| [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`attribution.md`](parity/attribution.md) |
+| [`parity/`](parity/) | How our render differs from the original's, and how we measure it | [`method.md`](parity/method.md), [`metric-bench.md`](parity/metric-bench.md), [`attribution.md`](parity/attribution.md), [`hero-aircraft-placement.md`](parity/hero-aircraft-placement.md) |
 | [`parity/error-examples/`](parity/error-examples/) | The only images kept in `research/`: error-category example sheets, indexed by [`parity/error-categories.toml`](parity/error-categories.toml). Every other comparison image a note cites lives in a work folder's `images/` | [`work/README.md`](../work/README.md#images) |
 
 A source card records a *document* rather than a subject; these live beside this file, e.g. [`handbook.md`](handbook.md) for the retail handbook.
@@ -23,7 +23,7 @@ To find a note rather than place a finding, read [`MAP.md`](MAP.md): every note 
 ## Routing rule
 
 1. **A fact about the original goes to the note for its subject.** "The player Gouraud-shades a `GVPOLY` polygon's index" belongs in `playone-exe/terrain-shade.md`; "a `.ALL` chunk is a copy of a `RES` item" belongs in `formats/all.md`. It does not stay in the journal of the experiment that found it.
-2. **A fact about our render's residual goes to `parity/`,** in the note for that residual (where the loss sits, framing and actors, mismatched film segments).
+2. **A fact about our render's residual goes to `parity/`,** in the note for that residual (where the loss sits, framing and camera, the hero aircraft, mismatched film segments).
 3. **Every experiment leaves a journal entry in its work folder** ([`work/README.md`](../work/README.md#journal-entries)), and the finding's provenance line links that entry's heading.
 4. **Facts stay here; procedures go to `docs/howto/`.** A note holds reference and explanation: how the original works, where our render differs from it, and the quality of the evidence (DAC lag, torn pages, recapture noise), since that decides which captures count. A tool evaluation is such a fact and stays with what the tool studies, as `playone-exe/static-tooling.md` does for `PLAYONE.EXE`. Steps for running our tools are how-to: they go to `docs/howto/<task>.md`, one task per file, and a skill links them rather than repeating them. This governs new procedures, and existing ones as their notes are distilled.
 5. **A handoff lives in the work folder's README,** or on the issue when there is no folder. Open questions about a subject go under its note's `Open questions` heading.
