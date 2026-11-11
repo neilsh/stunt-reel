@@ -645,7 +645,8 @@ fn walk_chain(
                 ni = scn_pointer(next);
             }
             22 => {
-                // SP_POSXZ: x, z, next
+                // SP_POSXZ: x, z, next. Like PLAYONE (image 0x1EA8) it keeps the height the
+                // ancestors set; nothing samples the terrain (scenery.md section 3.3).
                 let Some([x, z, next]) = scn_operands(words, ni) else {
                     walk.note(words, ni, ScnStopReason::Malformed);
                     break;
@@ -1397,6 +1398,29 @@ mod tests {
         assert_eq!(instances[0].0, 0x0105);
         // x=-10, y=-20, z=30
         assert_eq!(instances[0].1, [-10.0, -20.0, 30.0]);
+    }
+
+    #[test]
+    fn test_traverse_scn_posxz_keeps_the_ancestors_height_and_samples_no_terrain() {
+        // SP_POS (x=10, y=20, z=30) -> SP_POSXZ (x=5, z=7) -> SP_LEAF 0x0105. PLAYONE's
+        // SP_POSXZ handler (image 0x1EA8) adds x and z only, and its leaf (0x2219) adds just
+        // the shape's ground_y_offset, so the prop keeps the SP_POS height whatever the
+        // terrain under it (research/formats/auxiliary/scenery.md section 3.3).
+        let words = vec![0i32, 0, 10, 20, 30, 12, 22, 5, 7, 20, 10, 0x0105];
+        let available = HashSet::from([0x0105]);
+        let mut instances = Vec::new();
+        traverse_scn(
+            &words,
+            1,
+            0,
+            0,
+            0,
+            &mut instances,
+            &available,
+            &|_, _, _| true,
+            0,
+        );
+        assert_eq!(instances, vec![(0x0105, [-15.0, -20.0, 37.0])]);
     }
 
     #[test]
