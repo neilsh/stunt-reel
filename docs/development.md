@@ -153,6 +153,8 @@ When a test fails on a `PermissionError`, `tests/conftest.py` asks the Restart M
 
 The subject is a Conventional Commit, e.g. `feat(core): add a parser`. Write a body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or journal entry that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. The commit-msg hook (`mise run commit-msg-check`) checks the subject; a pull request's required checks, not the message, prove the full gate on the branch tip ([ADR 0044](adr/0044-commit-messages-carry-no-gate-line.md)). A commit from another session's branch keeps its author, which the pre-push hook rejects, so [re-commit it](howto/take-a-commit-from-another-session.md).
 
+A pull request's title becomes its squash commit's subject, so it is a Conventional Commit too, ending with the issue or issues it serves: `fix(parity): repin the reference films (#305)`, or `(#305, 2/2)` for one PR of a stack. GitHub appends the PR's own `(#N)` on merge, so leave it out of the title; a PR that serves no issue names none. No check gates the title.
+
 ### Docstrings and doc comments
 
 A Python docstring or Rust `///` comment states the contract a caller needs, in the fewest words that carry it:
