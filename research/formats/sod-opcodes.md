@@ -81,7 +81,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **65** | `0x0249` | 585 | `OP_POLYZSL` | `...` | Depth-sorted sliced polygon |
 | **66** | `0x0252` | 594 | `OP_SPHERESL` | `...` | Sliced sphere primitive |
 | **67** | `0x025B` | 603 | `OP_DISCSL` | `...` | Sliced disc primitive |
-| **68** | `0x0264` | 612 | `OP_PERFDISCSL`| `...` | Sliced perforated disc primitive |
+| **68** | `0x0264` | 612 | `OP_PERFDISCSL`| `...` | Sliced disc primitive, by its name a sliced `OP_PERFDISK` (not traced) |
 | **69** | `0x026D` | 621 | `OP_SIDESL` | `...` | Sliced cylinder side primitive |
 | **70** | `0x0276` | 630 | `OP_PUSHSL` | `...` | Push slicing plane onto stack |
 | **71** | `0x027F` | 639 | `OP_POPSL` | `...` | Pop slicing plane from stack |
@@ -227,7 +227,7 @@ Only **stream constraints** are recorded here — readings that must match the b
 
 ### 3.1 Operand-Order Disagreements
 
-`[Hypothesis]` — three readings that contradict § 1 or § 2.5. None of the opcodes is reached by any of the corpus models in [`sod-opcode-coverage.md` § 3](sod-opcode-coverage.md#3-census), so no render depends on them: this is a note for whoever implements a handler, not a work item.
+`[Hypothesis]` — three readings that contradict § 1 or § 2.5. None of the opcodes is reached by any of the corpus models in [`sod-opcode-coverage.md` § 3](sod-opcode-coverage.md#3-census), so no render depends on them: this is a note for whoever implements a handler, not a work item. `PERFDISK`, which the corpus does reach, has left the table (below).
 
 | Opcode | § 1 / § 2.5 says | si-tools reads | Source |
 | :--- | :--- | :--- | :--- |
@@ -244,7 +244,7 @@ Only **stream constraints** are recorded here — readings that must match the b
 `[Hypothesis]` — geometry si-tools generates, not observed in `PLAYONE`:
 
 * `SPHERE` is a 12-vertex, 20-triangle icosahedron at exactly `1.0 × radius`, radius used raw (not multiplied by the shape scale), vertices `centre + trunc(v · radius)`. `vm.rs` uses the same icosahedron at `0.92 ×` (`vm.rs:208`), tuned against `CTRY`; that factor is ours, not the format's.
-* `DISC` is a 16-segment fan at parse-time `radius × scale`, and `PERFDISK` reuses the builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so the winding is a stand-in rather than a decode.
+* si-tools' `DISC` is a 16-segment fan at parse-time `radius × scale`, and its `PERFDISK` reuses that builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so its winding is a stand-in rather than a decode. `vm.rs` draws nothing for `PERFDISK`; the handler's disc is in [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators).
 * The disc radius is multiplied by scale at parse and again at export, so exported radii come out `scale²`; that is an exporter bug, not a format fact.
 
 ### 3.3 What A Decoder's Silences Are Worth

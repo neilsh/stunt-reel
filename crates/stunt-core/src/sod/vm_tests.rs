@@ -270,17 +270,15 @@ fn test_ipg_ground_quad_corners_share_the_vectors_frame() {
     assert_eq!(positions, vec![[-100.0, 0.0, -50.0], [-100.0, 0.0, 50.0]]);
 }
 
-/// The vertical quad (`0xB4B5`) stores raw corners 1 and 3 at `(-dx, +dy, 0)` and
-/// `(+dx, -dy, 0)`, so its corners run the cube's way round and stream vectors equal to them
-/// weld onto registers 1 and 3.
+/// The vertical quad (`0xB4B5`) stores raw corner 1 at `(-dx, +dy, 0)` and corner 3 at
+/// `(+dx, -dy, 0)`, so a stream vector equal to each welds onto that register alone, beside
+/// corner 0 at turned `(-dx, -dy, 0)`.
 #[test]
 fn test_ipg_vertical_quad_corners_share_the_vectors_frame() {
-    let positions = ipg_beside_vectors(
-        &[8, 100, 50, 0],
-        &[[-100, 50, 0], [100, -50, 0]],
-        &[8, 1, 9, 3],
-    );
-    assert_eq!(positions, vec![[-100.0, 50.0, 0.0], [100.0, -50.0, 0.0]]);
+    let corner_1 = ipg_beside_vectors(&[8, 100, 50, 0], &[[-100, 50, 0]], &[8, 1, 0]);
+    assert_eq!(corner_1, vec![[-100.0, -50.0, 0.0], [100.0, -50.0, 0.0]]);
+    let corner_3 = ipg_beside_vectors(&[8, 100, 50, 0], &[[100, -50, 0]], &[8, 3, 0]);
+    assert_eq!(corner_3, vec![[-100.0, -50.0, 0.0], [-100.0, 50.0, 0.0]]);
 }
 
 /// `OP_IPG` type 6 (`0xB58D`) reads no stream word after its type, so the `COLOR` after it
