@@ -1401,11 +1401,11 @@ mod tests {
     }
 
     #[test]
-    fn test_traverse_scn_posxz_keeps_the_ancestors_height_and_samples_no_terrain() {
+    fn test_traverse_scn_posxz_keeps_the_ancestors_height() {
         // SP_POS (x=10, y=20, z=30) -> SP_POSXZ (x=5, z=7) -> SP_LEAF 0x0105. PLAYONE's
         // SP_POSXZ handler (image 0x1EA8) adds x and z only, and its leaf (0x2219) adds just
-        // the shape's ground_y_offset, so the prop keeps the SP_POS height whatever the
-        // terrain under it (research/formats/auxiliary/scenery.md section 3.3).
+        // the shape's ground_y_offset (applied here by the decoder, not the walk), so the
+        // prop keeps the SP_POS height (research/formats/auxiliary/scenery.md section 3.3).
         let words = vec![0i32, 0, 10, 20, 30, 12, 22, 5, 7, 20, 10, 0x0105];
         let available = HashSet::from([0x0105]);
         let mut instances = Vec::new();

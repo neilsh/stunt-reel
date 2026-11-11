@@ -528,9 +528,9 @@ fn mat4_mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
 /// prop on the ground it is placed at. Heuristic: a film actor's position is taken as its
 /// model origin, so the lift is undone along the actor's own +Y. Drawing actors with the
 /// lift put them about 10 rows above the capture on `CTRY.FLM`, and a sweep of the removed
-/// fraction peaks at exactly one offset on both films, but where `PLAYONE.EXE` reads header
-/// word +4, and for which objects, is not yet known (research/parity/framing-and-actors.md
-/// section 1).
+/// fraction peaks at exactly one offset on both films. `PLAYONE.EXE` applies the lift only
+/// when it places scene-tree shapes; its actor draw `0x1D5F` does not read it
+/// (research/formats/auxiliary/scenery.md section 3.3).
 fn actor_world_matrix(actor: &ActorTransform, shape: &SodModelIr) -> [f32; 16] {
     let mut matrix = actor.compute_world_matrix();
     if let Some(header) = shape.decode().map(|record| record.header) {
