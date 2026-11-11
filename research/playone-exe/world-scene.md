@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BSP scenery tree in its own image and, in live CTRY runs, paints `SCENERY2/3.RES` tiles over it, licensing our ground-decal pass."
+summary: "`PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BSP scenery tree in its own image and, in live CTRY runs, paints `SCENERY2.RES` tiles over it, licensing our ground-decal pass."
 ---
 # `PLAYONE.EXE`: How the Ground Is Drawn and Where Its Colours Come From
 
@@ -17,7 +17,7 @@ summary: "`PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BS
 
 The ground is not a display-list stream. `PLAYONE` walks a BSP scenery tree that is static data in its own image (on the unpatched build paragraph `0x2286`, image `0x22860`; on the patched build its leaves start at image `0x20736`, section 2), and each ground leaf (node type 14) carries one flat polygon inline: a colour word, a vertex count and anchor-table references. Those 146 leaves are `MAP.BIN`'s polygons, the same vertices and the same colour, on both builds (section 2). The leaf routine draws them flat, with no shade. `MAP.BIN`'s sand patches 52 to 55 and 62 to 65 are in neither this tree nor FreeFlight's `SCENERY.scn`, which is the same tree, and `PLAYONE` draws them by no other route found (section 2.1).
 
-The airfield's other colours, 193, 194 and 196 where `MAP.BIN` says 195, and the sand 91 of `INTRO.FLM`, are scenery shapes from `SCENERY2.RES` and `SCENERY3.RES`. The tree places them on top of the ground, and `OP_COLOR` sets their colour from the shape's own bytecode (section 3). The player paints in walk order, with no depth buffer, so a tile always covers the leaf under it. Our renderer places the same tiles, but its depth test hid them under the coplanar `MAP.BIN` polygons: they lie on the terrain plane to a millimetre and tie it in depth. It now snaps flat props that lie on the terrain onto it and draws them in the decal pass, which raises `CTRY.FLM` from 0.8298 to 0.8645 and `INTRO.FLM` from 0.7745 to 0.7973 SSIM (section 6).
+The airfield's other colours, 193, 194 and 196 where `MAP.BIN` says 195, and the sand 91 of `INTRO.FLM`, are scenery shapes, among them the `SCENERY2.RES` tiles of section 3. The tree places them on top of the ground, and `OP_COLOR` sets their colour from the shape's own bytecode (section 3). The player paints in walk order, with no depth buffer, so a tile always covers the leaf under it. Our renderer places the same tiles, but its depth test hid them under the coplanar `MAP.BIN` polygons: they lie on the terrain plane to a millimetre and tie it in depth. It now snaps flat props that lie on the terrain onto it and draws them in the decal pass, which raises `CTRY.FLM` from 0.8298 to 0.8645 and `INTRO.FLM` from 0.7745 to 0.7973 SSIM (section 6).
 
 The ops `0x0168` and `0x02BE`, which this note used to call the ground handlers, are the Gouraud polygons `GVPOLY`/`GVPOLY16`. In the airfield shot only the hero aircraft's object draws with them (section 4.1).
 
@@ -105,19 +105,19 @@ Not shown: one frame in full, a join of a call to a capture pixel, or Patch #3 (
 * **Patch 131 keeps its eighth vertex** (`8b36b79`; no frame of either film changes).
 * **Colours stay as stored.** The 158 Ground polygons already agree with `MAP.BIN`; no re-baking or shade is licensed (Ruled out).
 
-## 3. Scenery tiles drawn over the ground
+## 3. Scenery shapes drawn over the ground
 
 *[Bounded Observation]*, `ground-colours`, `ground-writer`, `ground-tiles` (2026-11-04).
 
 Every other flat polygon goes through the gateway `lcall 0:8010`, which reads `CX = work:0x41E8` (colour in the low byte). On the airfield shot nearly all of them come from `OP_POLYZ` (op `0x00F3`, handler `0x9B78`: `call [0x8080]`, then `lcall 0:8010` on no carry). A memory watch on `work:0x41E8` names its writer: `0x975C`, inside `OP_COLOR` (op `0x0129`, `0x975A`), 246 of 300 changing writes. In 225 of those 246 the stream after the stop is the patched `OP_POLYZ` word `0x1938` and its vertex count; 2 show the still unpatched `0x00F3` and 19 show `0x1E00`. The rest are the sky gradient (`0x8E86`, `DGROUP`) and the shade op `0xA549`.
 
-The objects drawing `0xC1..0xC6` are each a byte-for-byte copy of a `RES` shape. The only differences are opcode words the dispatch slots had already patched into handler IPs:
+The objects drawing `0xC1..0xC6`, tiles and hill fins, are each a byte-for-byte copy of a `RES` shape. The only differences are opcode words the dispatch slots had already patched into handler IPs:
 
 | Object segment (live) | Shape (`.ALL` id) | `OP_COLOR` operands |
 |---|---|---|
 | `6B71`, `6B75`, `6B79`, `6BBA`, `6BC2`, `6BC6`, `6BEC` | `SCENERY2.RES` #159, 158, 157, 151, 149, 148, 144 (`0x03A0`, `0x039F`, `0x039E`, `0x0398`, `0x0396`, `0x0395`, `0x0391`) | `0x5B`, `0x58`, `0xC4`, `0xC1`, `0x5B`, `0xC2`, `0x58` |
 | `6B7D`, `6B8A`, `6BD8`, `6BE0` | `SCENERY2.RES` #156, 155, 146, 145 | `0x5E 0x58 0xB8 0xB8`, `0x52 0xC3`, `0xC1 0x0E`, `0xC6 0x0E` |
-| `6A97`, `6A9F`, `6AB5`, `6ABC` | `SCENERY3.RES` #6, 5, 2, 1 | `0xC5 0xC4`, `0xC6 0xC5`, `0xC1 0xC0`, `0xC2 0xC1` |
+| `6A97`, `6A9F`, `6AB5`, `6ABC` | `SCENERY3.RES` #6, 5, 2, 1 (hill fins, not tiles) | `0xC5 0xC4`, `0xC6 0xC5`, `0xC1 0xC0`, `0xC2 0xC1` |
 | `67EA` | `SCENERY4.RES` #105 | `0x27` |
 
 An `.ALL` id is `(res_index << 8) | (entry + 1)` ([`all.md`](../formats/all.md) section 3.7); `CTRY.ALL` carries every one of these, and FreeFlight's `SCENERY.scn` places them as `SP_LEAF` nodes. So the colour of a tile is an operand of its own shape. The four `SCENERY3.RES` rows are not tiles, though. They are `OP_TAP` shapes, vertical fins standing in hills, coloured like the hill patches they stand in ([`sod-vm.md`](sod-vm.md) section 5). The run shows only that they were drawn in that shot, not where. The shape is drawn after the ground leaf it lies on, because the walk paints in order. In the capture at ticks 290 and 301, `0xC4`, the colour of `SCENERY2` #157, is 52-57% of the 3D view.
@@ -194,7 +194,7 @@ The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terra
 * **The ground in `CTRY.ALL` or `VDATA.BIN`** (sections 2, 5): the tree is in the image; no 8-byte window of a live leaf polygon occurs in `VDATA.BIN` or any other file of the install (`PLAYONE.EXE` itself is LZEXE-packed on disk; the tree is in its unpacked image).
 * **The tiles sit below the terrain** (section 6.1): they are on its plane to a millimetre; the 5 cm drop removes a depth tie. The earlier reading came from the `LessEqual` probe.
 * **Sinking the terrain, or a biased third terrain pass** (section 6.3): they score 0.8649 / 0.7971 and 0.8640 / 0.7943, but the first moves every polygon and the second loses 37 `INTRO` ticks; the ground-decal pass matches the first without moving terrain, and its tie holds in the renderer tests to 8 km.
-* **`SCENERY3.RES` #1, 2, 5, 6 as airfield tiles** (sections 3, 6.2): they are `OP_TAP` hill fins, vertical triangles from a hill's foot to its 155–293 m ridge, once the anchors are loaded less the shape's origin as `PLAYONE` loads them. They share the tiles' colours only because the hill patches use the same range. _Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-what-the-14-tap-shapes-are)._
+* **`SCENERY3.RES` #1, 2, 5, 6 as airfield tiles** (sections 3, 6.2): they are `OP_TAP` hill fins, vertical triangles from a hill's foot to its ridge (`0x0402` 155 m, `0x0403` 196 m, `0x0406` 155 m, `0x0407` 196 m), once the anchors are loaded less the shape's origin as `PLAYONE` loads them. They share the tiles' colours only because the hill patches use the same range. _Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-what-the-14-tap-shapes-are)._
 * **Tiles missing from our world** (section 6): `CTRY.ALL` carries them and `SCENERY.scn` places them; removing the terrain shows them.
 * **A leaf for patches 52 to 55 and 62 to 65 in FreeFlight's tree** (section 2.1): both copies of `SCENERY.scn` are the image's tree, links aside, with the same 158 Ground polygons.
 * **Another node, table or shape that draws those patches** (section 2.1): their polygon occurs in no file but `MAP.BIN`, the image included, while the same search finds all 158 drawn records there; no `OP_TAP` operand in the image, the `RES` files or any `.ALL` names one of their anchors.

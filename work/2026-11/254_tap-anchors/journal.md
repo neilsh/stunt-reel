@@ -15,7 +15,7 @@
 ## 2026-11-11: what the 14 TAP shapes are
 
 - **Question**: Resolved as `PLAYONE` resolves them, are `SCENERY3.RES` #1, 2, 5 and 6 (`0x0402`, `0x0403`, `0x0406`, `0x0407`) the flat airfield tiles that [`world-scene.md`](../../../research/playone-exe/world-scene.md) section 3 named by colour? If so, ADR 0035's decal rule should take them.
-- **Method**: A scratch script walked the image's scene tree (`scene_tree.placements`) for each TAP shape's placement. It replayed each stream from `stuntreel sod-trace` on `SUPERSET.ALL` with the `TAP` rule above and `ANCHORPT.DAT`, which equals the image's table at every anchor used. It then listed the `MAP.BIN` patches (`scene_tree.parse_map_bin`) that hold each anchor.
+- **Method**: A scratch script (not committed; `mise exec -- uv run python geom.py`) walked the image's scene tree (`scene_tree.placements`) for each TAP shape's placements. It replayed each stream from `stuntreel sod-trace` on `SUPERSET.ALL` with the `TAP` rule above and `ANCHORPT.DAT`, which equals the image's table at every anchor used. It then listed the `MAP.BIN` patches (`scene_tree.parse_map_bin`) that hold each anchor.
 - **Result**: The tree places each of the 14 shapes once. Every one has `ground_y_offset` 0 and scale 6, except `0x0204`, `0x0405` and `0x0407`.
   - `0x0402` at `(1432, 78, 3304)` (x, height, z): `(1216, 0, 3296)`, `(1648, 155, 3312)`, `(1648, 1, 3312)`.
   - `0x0406`: `(1648, 155, 3312)`, `(1984, 0, 3328)`, `(1648, 1, 3312)`.
@@ -25,6 +25,24 @@
   - `0x0202`, `0x0203`, `0x0205`, `0x0207`: x constant, peaks 58, 115, 100 and 93 m. `0x0206` and `0x0208` (60 and 93 m) lie on one line in plan.
   - `0x0204`: four triangles over anchors 14 (115 m), 185 (0 m), 193 (148 m) and its origin at `(1280, 0, -6592)`.
   - The `0x04xx` anchors are corners of `MAP.BIN` hill patches 105–123, coloured 192–198, which are the shapes' own `0xC0`–`0xC6`.
+- **Script output** (x, height, z in raw metres; one placement listed per shape, the walk found no second):
+
+  ```text
+  0x0202 scale 6 yoff 0 placed (2800,0,-7008)  corners (x, height, z): r0=(2816,-0.0,-7168), r1=(2816,58.0,-6848), r2=(2816,-0.0,-6928)
+  0x0203 scale 6 yoff 0 placed (2288,0,-6848)  corners (x, height, z): r0=(2304,-0.0,-7040), r1=(2304,115.0,-6656), r2=(2304,-0.0,-6800)
+  0x0204 scale 5 yoff 0 placed (1280,0,-6592)  corners (x, height, z): r0=(1664,115.0,-6528), r1=(896,-0.0,-6784), r2=(1280,148.0,-6400), r3=(1280,-0.0,-6592)
+  0x0205 scale 6 yoff 0 placed (240,0,-6464)  corners (x, height, z): r0=(256,-0.0,-6656), r1=(256,100.0,-6272), r2=(256,-0.0,-6416)
+  0x0206 scale 6 yoff 0 placed (-512,0,-6304)  corners (x, height, z): r0=(-640,-0.0,-6400), r1=(-384,60.0,-6208), r2=(-480,-0.0,-6280)
+  0x0207 scale 6 yoff 0 placed (-784,0,-6304)  corners (x, height, z): r0=(-768,-0.0,-6528), r1=(-768,93.0,-6080), r2=(-768,-0.0,-6220)
+  0x0208 scale 6 yoff 0 placed (-704,0,-6240)  corners (x, height, z): r0=(-640,-0.0,-6400), r1=(-768,93.0,-6080), r2=(-704,-0.0,-6240)
+  0x0402 scale 6 yoff 0 placed (1432,78,3304)  corners (x, height, z): r0=(1216,-0.0,3296), r1=(1648,155.0,3312), r2=(1648,1.0,3312)
+  0x0403 scale 6 yoff 0 placed (1329,0,3889)  corners (x, height, z): r0=(1120,-0.0,3872), r1=(1538,196.0,3906), r2=(1538,-0.0,3906)
+  0x0404 scale 6 yoff 0 placed (1243,0,4477)  corners (x, height, z): r0=(1059,-0.0,4448), r1=(1427,293.0,4506), r2=(1427,-0.0,4506)
+  0x0405 scale 7 yoff 0 placed (1941,41,2303)  corners (x, height, z): r0=(1835,82.0,2301), r1=(2047,-0.0,2305), r2=(1835,-0.0,2301)
+  0x0406 scale 6 yoff 0 placed (1816,78,3320)  corners (x, height, z): r0=(1648,155.0,3312), r1=(1984,-0.0,3328), r2=(1648,1.0,3312)
+  0x0407 scale 7 yoff 0 placed (1665,98,3937)  corners (x, height, z): r0=(1538,196.0,3906), r1=(1792,-0.0,3968), r2=(1538,-0.0,3906)
+  0x0408 scale 6 yoff 0 placed (1530,147,4509)  corners (x, height, z): r0=(1427,293.0,4506), r1=(1633,-0.0,4512), r2=(1427,1.0,4506)
+  ```
 - **Verdict**: rejected, for the tile reading. The four shapes are vertical, two-sided triangles from a hill's foot to its ridge, not flat tiles, so ADR 0035's rule rightly leaves them out. Their colours matched the airfield tiles' only because the hill patches share the range. The shapes are drawn as `PLAYONE` places them; no decal change.
 - **Lives in**: [`sod-vm.md` § 5](../../../research/playone-exe/sod-vm.md#5-hill-fins), [`world-scene.md` § 6.2](../../../research/playone-exe/world-scene.md#62-a-rule-for-ground-lying-props).
 
@@ -32,6 +50,6 @@
 
 - **Question**: Does loading the `OP_TAP` anchors less the shape's origin change either reference film?
 - **Method**: `mise run parity` at `ffec64b` without the change, then `mise run parity -- --films ctry,intro` with it, in a cloud session on lavapipe (Mesa llvmpipe, no GPU). `stuntreel parity --compare --compare-test` scored the new render against the old one. A temporary `eprintln!` in `build_world`, removed before the commit, listed which TAP shapes the scene walk places.
-- **Result**: Both films are unchanged at every scored frame. `CTRY` stays 0.8967 SSIM, IoU 0.9897, index agreement 0.901 (114 of 121 scored). `INTRO` stays 0.8339, IoU 0.9856, index agreement 0.831 (209 of 347 scored). The verdict line reads `changed 0/121` and `changed 0/347`. On `CTRY` the walk places no TAP shape: each lies under an `SP_1NODE` whose far stand-in our path-distance rule draws instead. On `INTRO` it places `0x0402`, `0x0403` and `0x0404`, which now decode to their fins (`0x0402`: from `(-216, -78, -8)` to `(-216, 77, 8)` about its placement). Neither the old misplaced points nor the fins reach a scored pixel. These are lavapipe scores (`research/parity/lavapipe.md`), so they are provisional; no GPU run was made.
+- **Result**: Both films are unchanged at every scored frame. `CTRY` stays 0.8967 SSIM, IoU 0.9897, index agreement 0.901 (114 of 121 scored). `INTRO` stays 0.8339, IoU 0.9856, index agreement 0.831 (209 of 347 scored). The verdict line reads `changed 0/121` and `changed 0/347`. On `CTRY` the walk places no TAP shape: each lies under an `SP_1NODE` whose far stand-in our path-distance rule draws instead. On `INTRO` it places `0x0402`, `0x0403` and `0x0404`, which now decode to their fins (`0x0402`: from `(-216, -78, -8)` to `(-216, 77, 8)` about its placement). No scored frame differed (`changed 0/121`, `changed 0/347`); no frame was inspected. These are lavapipe scores (`research/parity/lavapipe.md`), so they are provisional; no GPU run was made.
 - **Verdict**: control. The change is kept because it follows the handler (section 4 of `sod-vm.md`), not for a score. No expected score changes.
 - **Lives in**: [`world-scene.md`](../../../research/playone-exe/world-scene.md) open question 3.
