@@ -227,6 +227,114 @@ fn test_vectors_share_the_cube_model_frame() {
     );
 }
 
+/// Decodes `OP_IPG` with `ipg` (its type and operands, the start register 0), then raw
+/// `OP_VECTORS` stream points into registers 8.., then one `POLYZ` over `poly`, and returns
+/// the distinct vertex positions, sorted.
+fn ipg_beside_vectors(ipg: &[u16], points: &[[i16; 3]], poly: &[u16]) -> Vec<[f32; 3]> {
+    let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
+    bytes.extend_from_slice(&OP_IPG.to_le_bytes());
+    for word in ipg {
+        bytes.extend_from_slice(&word.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&u16::try_from(points.len()).expect("few").to_le_bytes());
+    bytes.extend_from_slice(&(8u16 * 12).to_le_bytes());
+    for coordinate in points.iter().flatten() {
+        bytes.extend_from_slice(&coordinate.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
+    bytes.extend_from_slice(&45u16.to_le_bytes());
+    bytes.extend_from_slice(&OP_POLYZ.to_le_bytes());
+    bytes.extend_from_slice(&u16::try_from(poly.len()).expect("few").to_le_bytes());
+    for &reg in poly {
+        let offset = reg.checked_mul(12).expect("register in range");
+        bytes.extend_from_slice(&offset.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    let ir = decode(&bytes, "IPG").expect("decode ipg");
+    let mut positions: Vec<[f32; 3]> = ir.vertices.iter().map(|v| v.position).collect();
+    positions.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+    positions.dedup();
+    positions
+}
+
+/// The ground quad (`0xB41E`) stores raw corners 0 and 1 at `(+dx, 0, -dz)` and
+/// `(+dx, 0, +dz)`, so stream vectors equal to them weld onto registers 0 and 1.
+#[test]
+fn test_ipg_ground_quad_corners_share_the_vectors_frame() {
+    let positions = ipg_beside_vectors(
+        &[2, 100, 50, 0],
+        &[[100, 0, -50], [100, 0, 50]],
+        &[8, 0, 9, 1],
+    );
+    assert_eq!(positions, vec![[-100.0, 0.0, -50.0], [-100.0, 0.0, 50.0]]);
+}
+
+/// The vertical quad (`0xB4B5`) stores raw corners 1 and 3 at `(-dx, +dy, 0)` and
+/// `(+dx, -dy, 0)`, so its corners run the cube's way round and stream vectors equal to them
+/// weld onto registers 1 and 3.
+#[test]
+fn test_ipg_vertical_quad_corners_share_the_vectors_frame() {
+    let positions = ipg_beside_vectors(
+        &[8, 100, 50, 0],
+        &[[-100, 50, 0], [100, -50, 0]],
+        &[8, 1, 9, 3],
+    );
+    assert_eq!(positions, vec![[-100.0, 50.0, 0.0], [100.0, -50.0, 0.0]]);
+}
+
+/// `OP_IPG` type 6 (`0xB58D`) reads no stream word after its type, so the `COLOR` after it
+/// still runs.
+#[test]
+fn test_ipg_type_6_reads_no_operand() {
+    let mut bytes = make_sod_header(100, 0, 0, 0);
+    bytes.extend_from_slice(&OP_IPG.to_le_bytes());
+    bytes.extend_from_slice(&6u16.to_le_bytes());
+    bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
+    bytes.extend_from_slice(&45u16.to_le_bytes());
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&3u16.to_le_bytes());
+    bytes.extend_from_slice(&(20u16 * 12).to_le_bytes());
+    for coordinate in [0i16, 0, 0, 100, 0, 0, 0, 100, 0] {
+        bytes.extend_from_slice(&coordinate.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_POLYZ.to_le_bytes());
+    bytes.extend_from_slice(&3u16.to_le_bytes());
+    for reg in [20u16, 21, 22] {
+        bytes.extend_from_slice(&(reg * 12).to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    let ir = decode(&bytes, "IPG6").expect("decode ipg 6");
+    assert_eq!(ir.vertices.len(), 3);
+    assert!(ir.vertices.iter().all(|v| v.palette_index == 45));
+}
+
+/// Every sphere face winds clockwise seen from outside, the winding the pipeline keeps, so
+/// the near half of the sphere draws.
+#[test]
+fn test_sphere_faces_wind_clockwise_from_outside() {
+    let mut bytes = make_sod_header(100, 0, 0, 0);
+    bytes.extend_from_slice(&OP_SPHERE.to_le_bytes());
+    bytes.extend_from_slice(&0u16.to_le_bytes()); // centre register 0, the origin
+    bytes.extend_from_slice(&50u16.to_le_bytes());
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    let ir = decode(&bytes, "SPHERE").expect("decode sphere");
+    assert_eq!(ir.indices.len(), 20 * 3);
+    for tri in ir.indices.chunks(3) {
+        let p: Vec<[f32; 3]> = tri
+            .iter()
+            .map(|&i| ir.vertices[i as usize].position)
+            .collect();
+        let normal = compute_polygon_normal(&p);
+        let centroid: [f32; 3] = std::array::from_fn(|k| p[0][k] + p[1][k] + p[2][k]);
+        let outward: f32 = (0..3).map(|k| normal[k] * centroid[k]).sum();
+        assert!(
+            outward < 0.0,
+            "face {tri:?} winds counter-clockwise from outside"
+        );
+    }
+}
+
 #[test]
 fn test_sod_vm_register_boundary_0_and_1023() {
     let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
