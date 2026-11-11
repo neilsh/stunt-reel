@@ -5,7 +5,7 @@ started. Implementation starts in a fresh session from this file.
 
 ## Intent
 
-[`world.rs`](../../../crates/stunt-core/src/world.rs) is 2,080 lines, about 1,230 of them outside
+[`world.rs`](../../../crates/stunt-core/src/world/mod.rs) is 2,080 lines, about 1,230 of them outside
 tests (which start at l.1227). It mixes two jobs:
 
 - Building the `World`: the ground, the terrain and the `build_world_ir` meshes.

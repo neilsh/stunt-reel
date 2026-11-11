@@ -5,7 +5,7 @@ summary: "`SCENERY.scn` ([FMT-MAP-SCENERY]) is `PLAYONE.EXE`'s stack-segment sce
 
 ## 1. Overview & File Identification
 
-`SCENERY.scn` is the island's scenery tree: a BSP of partition, level-of-detail, position and leaf nodes that places every permanent prop and carries the ground polygons. It is one of the three tables in a `SIDATA\` directory, beside [`ANCHORPT.DAT`](anchorpt.md) and [`MAP.BIN`](map.md). The renderer walks it in `world.rs` for prop placements.
+`SCENERY.scn` is the island's scenery tree: a BSP of partition, level-of-detail, position and leaf nodes that places every permanent prop and carries the ground polygons. It is one of the three tables in a `SIDATA\` directory, beside [`ANCHORPT.DAT`](anchorpt.md) and [`MAP.BIN`](map.md). The renderer walks it in `world/scenery.rs` for prop placements.
 
 - **Origin.** The game does not ship this file. `SITools/SD.EXE`, the developers' scenery compiler, writes the tree as assembler source (`\stunt\landscape.asm`) from `MAP.BIN` and `REGIONS.BIN`, and the game assembles it in ([`map.md`](map.md) section 3.2).
 - **Copy in `PLAYONE.EXE`** (`[Established]`, byte comparison of the unpacked load image, 2026-10-23). The tree is the start of the stack segment: MZ `SS = 0x2286`, image offset `0x22860`, running to the image's end (29,558 words). Patch #3 `PLAYONE.EXE` holds it too ([`world-scene.md`](../../playone-exe/world-scene.md) section 2), and both `STUNT.EXE` builds hold its ground polygons. Alberto Marnetto's `si-free-flight-2` reads the tree from this segment (see [`corpus/README.md`](../../../corpus/README.md#external-references-not-in-the-corpus)).
@@ -17,7 +17,7 @@ summary: "`SCENERY.scn` ([FMT-MAP-SCENERY]) is `PLAYONE.EXE`'s stack-segment sce
   The result is FreeFlight's 118,236-byte file exactly. Sign-extending instead leaves 3,654 words wrong. The links are 2 higher only because of that leading word.
 - **Corpus copies.** `Developer/FreeFlight/SIDATA/` and `Developer/SIRes/SiData/` hold byte-identical files.
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs), [`world.rs`](../../../crates/stunt-core/src/world.rs) and [`scene_tree.py`](../../../python/stunt_reel/scene_tree.py). No synthetic terrain fixture exists yet.
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs), [`world/scenery.rs`](../../../crates/stunt-core/src/world/scenery.rs) and [`scene_tree.py`](../../../python/stunt_reel/scene_tree.py). No synthetic terrain fixture exists yet.
 
 ---
 
@@ -71,7 +71,7 @@ This is FreeFlight's reading, not the original's: `PLAYONE.EXE` uses view-space 
 
 ### 3.3 Prop Resolution in `stuntreel`
 
-`world.rs` walks the 29,559 words from word 1 and places 6,345 static props, keeping those whose shapes the film's `.ALL` bundle carries (`[Established]`).
+`world/scenery.rs` walks the 29,559 words from word 1 and places 6,345 static props, keeping those whose shapes the film's `.ALL` bundle carries (`[Established]`).
 
 ---
 
@@ -80,7 +80,7 @@ This is FreeFlight's reading, not the original's: `PLAYONE.EXE` uses view-space 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
 | `[BK-MAP-02]` | `SP_HSLOPE` / `SP_VSLOPE` planes | Complete verification of plane equation parameters $(A, B, C, D)$ extracted from `slope` and `coord` words in slope nodes. `REGIONS.BIN` stores the same two words per node ([`map.md`](map.md) section 2.4). | `[Supported Inference]` |
-| `[BK-MAP-04]` | High-detail scenery patching (`si-8x`) | Alberto Marnetto's 8x patch replaces the `mul` by the detail word in the level-of-detail check with `mov dx, ax; shl dx, 3` ([*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island)). In `PLAYONE.EXE` that check is at image `0x212D` in the `SP_1NODE` handler (type 2 of the jump tables `DS:0x0554` / `DS:0x056C`), scaled by `DS:0x22A4 = (0x229C × GAME.VAR detail × 2) >> 16` ([`lod.md`](../../playone-exe/lod.md)). `world.rs` applies it along the film's camera path, which raised `INTRO.FLM` from 0.6799 to 0.6856 ([`lod.md` section 4.1](../../playone-exe/lod.md)). Still open: the per-shot value of `0x229C` and its exponent `0x229E`. | `[Established]` |
+| `[BK-MAP-04]` | High-detail scenery patching (`si-8x`) | Alberto Marnetto's 8x patch replaces the `mul` by the detail word in the level-of-detail check with `mov dx, ax; shl dx, 3` ([*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island)). In `PLAYONE.EXE` that check is at image `0x212D` in the `SP_1NODE` handler (type 2 of the jump tables `DS:0x0554` / `DS:0x056C`), scaled by `DS:0x22A4 = (0x229C × GAME.VAR detail × 2) >> 16` ([`lod.md`](../../playone-exe/lod.md)). `world/scenery.rs` applies it along the film's camera path, which raised `INTRO.FLM` from 0.6799 to 0.6856 ([`lod.md` section 4.1](../../playone-exe/lod.md)). Still open: the per-shot value of `0x229C` and its exponent `0x229E`. | `[Established]` |
 | `[BK-MAP-07]` | Prop base altitude | `SP_POS` adds a `y` term but `SP_POSXZ` does not, so a prop reached only through `SP_POSXZ` nodes sits at whatever `y` its ancestors accumulated, often 0. The shape header's `ground_y_offset` is relative to a ground the tree does not supply. Alberto Marnetto's free-flight remake shows the same gap: bridge roads sink into the water and the islet castle is buried ([*Vibe-exploring Stunt Island*](https://marnetto.net/2026/04/26/vibe-exploring-si), 2026-04-26). Open: how `PLAYONE.EXE` grounds such props, for example by sampling anchor-point terrain at the prop's `(x, z)`. | `[Hypothesis]` |
 
 ### 4.1 Ruled out

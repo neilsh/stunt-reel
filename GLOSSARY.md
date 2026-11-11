@@ -101,6 +101,14 @@ _Avoid_: terrain (for the whole surface), floor
 A shape placed in the world by a `SCENERY.scn` leaf. A prop has a position and no orientation; a rotated variant is a separate shape.
 _Avoid_: asset, scenegraph node
 
+**Placement**:
+A prop's shape and position in the world, as the scenery walk, dedup and the sub-pixel cull leave it.
+_Avoid_: instance
+
+**Scenery walk**:
+The traversal of `SCENERY.scn` from its root that produces placements, including its level-of-detail gate: each `SP_1NODE` keeps its subtree or draws its stand-in by the camera path's distance.
+_Avoid_: traversal, scene tree walk
+
 **Film scene**:
 A film's timeline bound to its archive's shapes and the world. Sampling it at a tick yields a scene frame.
 _Avoid_: scene bundle
