@@ -442,6 +442,20 @@ fn test_tap_points_land_on_their_anchors_in_island_metres() {
     );
 }
 
+/// A scale index with no unit (past 128 the factor is zero) cannot place anchor metres.
+#[test]
+fn test_tap_in_a_shape_without_a_unit_is_malformed() {
+    let table = [AnchorPoint { x: 1, y: 0, z: 1 }];
+    let mut bytes = make_sod_header(0, 0, 200, 0);
+    for word in [OP_TAP, 0, 1, 0, OP_RETURN] {
+        bytes.extend_from_slice(&word.to_le_bytes());
+    }
+    assert!(matches!(
+        decode_with_anchors(&bytes, "NOUNIT", &table),
+        Err(SodError::MalformedOpcode { opcode: OP_TAP, .. })
+    ));
+}
+
 #[test]
 fn test_tap_without_anchor_table_is_a_distinct_error() {
     let bytes = tap_bytes();

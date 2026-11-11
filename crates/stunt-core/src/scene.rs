@@ -28,7 +28,7 @@ use crate::sod::{
     DecodeMode, EPSILON_DISPLACEMENT, ShadeLight, SodError, SodStopReason, decode_sod_lit,
 };
 use crate::vfs::{ResRegions, VfsError};
-use crate::world::{GroundPlane, ScnStop, World, WorldInputs, build_world};
+use crate::world::{GroundPlane, ScnStop, TapFailure, World, WorldInputs, build_world};
 
 /// Column-major identity matrix.
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -109,6 +109,8 @@ pub struct SceneReport {
     pub film_stop: Option<FlmError>,
     /// Statistics of the built world; `None` when there is no world.
     pub world: Option<WorldStats>,
+    /// Placed `OP_TAP` shapes the world drew partly or not at all ([`World::tap_failures`]).
+    pub tap_failures: Vec<TapFailure>,
 }
 
 /// Shapes decoded from one [`ShapeSource`].
@@ -429,6 +431,10 @@ impl FilmScene {
                 bounds: w.bounds,
                 scenery_stop: w.scenery_stop,
             }),
+            tap_failures: world
+                .as_ref()
+                .map(|w| w.tap_failures.clone())
+                .unwrap_or_default(),
         };
         Ok((Self::new(timeline, decoded.shapes, world), report))
     }

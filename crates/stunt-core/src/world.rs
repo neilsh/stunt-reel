@@ -24,7 +24,7 @@ use crate::contracts::{
     NodeId, NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, ShapeMesh,
     SodModelIr, SodVertex, VisibilityCondition, arena_index,
 };
-use crate::sod::{DecodeMode, ShadeLight, decode_sod_lit};
+use crate::sod::{DecodeMode, ShadeLight, SodError, SodStop, decode_sod_lit};
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -89,6 +89,8 @@ pub struct World {
     pub scenery_stop: Option<ScnStop>,
     /// The terrain's triangles, for the ground plane under a point ([`Self::ground_plane`]).
     pub terrain: TerrainSurface,
+    /// Placed `OP_TAP` shapes drawn partly or not at all, in placement order.
+    pub tap_failures: Vec<TapFailure>,
 }
 
 impl World {
@@ -352,22 +354,19 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         inputs.max_zoom.max(1.0),
     );
 
-    let anchored = anchored_models(inputs, &unique_instances);
-    let placed;
-    let models = if anchored.is_empty() {
-        shapes
-    } else {
-        placed = unique_instances
-            .iter()
-            .filter_map(|&(id, _)| Some((id, shapes.get(&id)?.clone())))
-            .chain(anchored)
-            .collect::<HashMap<_, _>>();
-        &placed
-    };
+    let (own, tap_failures) = anchored_models(inputs, &unique_instances);
+    let models = PropModels { shapes, own };
 
     let base_y = 0.0;
     let terrain = TerrainSurface::new(pts, &map_areas, base_y);
-    let ir = build_world_ir(pts, &map_areas, &terrain, &unique_instances, models, base_y);
+    let ir = build_world_ir(
+        pts,
+        &map_areas,
+        &terrain,
+        &unique_instances,
+        &models,
+        base_y,
+    );
     // `build_world_ir` always emits the ocean quad, so the extent exists.
     let bounds = ir.extent()?;
     Some(World {
@@ -377,57 +376,134 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         bounds,
         scenery_stop,
         terrain,
+        tap_failures,
     })
 }
 
-/// Decodes each placed `OP_TAP` shape against the anchor table less its placement.
+/// Why a placed `OP_TAP` shape was drawn partly or not at all.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TapFailureReason {
+    /// An anchor less the placement does not fit a 16-bit word; the placement is not drawn.
+    AnchorOutOfRange {
+        /// Index of the first anchor that overflowed.
+        anchor: usize,
+    },
+    /// The stream failed to decode against the shifted table; the placement is not drawn.
+    Decode(SodError),
+    /// The decode stopped early; the part decoded before the stop is drawn.
+    Stopped(SodStop),
+}
+
+/// A placed `OP_TAP` shape that [`build_world`] drew partly or not at all.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TapFailure {
+    /// The shape's resource ID.
+    pub shape_id: u16,
+    /// Its placement in `[I1]` metres.
+    pub position: [f32; 3],
+    /// What went wrong.
+    pub reason: TapFailureReason,
+}
+
+/// Placed props' models: the shared decode of each shape, unless the placement at that
+/// index has its own (`Some`) or is dropped (`None`).
+pub(crate) struct PropModels<'a> {
+    shapes: &'a HashMap<u16, SodModelIr>,
+    own: HashMap<usize, Option<SodModelIr>>,
+}
+
+#[cfg(test)]
+impl<'a> PropModels<'a> {
+    /// Every placement uses the shared decode of its shape.
+    pub(crate) fn shared(shapes: &'a HashMap<u16, SodModelIr>) -> Self {
+        Self {
+            shapes,
+            own: HashMap::new(),
+        }
+    }
+}
+
+impl PropModels<'_> {
+    /// The model drawn for placement `index`, of shape `shape_id`.
+    fn get(&self, index: usize, shape_id: u16) -> Option<&SodModelIr> {
+        match self.own.get(&index) {
+            Some(own) => own.as_ref(),
+            None => self.shapes.get(&shape_id),
+        }
+    }
+}
+
+/// Decodes every placement of an `OP_TAP` shape against the anchor table less that
+/// placement, keyed by its index in `instances`.
 ///
 /// `PLAYONE` (image `0xAD88`) loads a tapped point as the anchor less the shape's origin, so a
 /// point a stream builds from that origin, such as `0x0403`'s `CLRV; SUBV 0`, lands where
 /// the tree puts it (`research/playone-exe/sod-vm.md` section 4). Placements are whole tree
-/// units, so the shifted table is exact. A shape placed more than once is decoded at its
-/// first placement; the island's tree places each tapped shape once.
+/// units, so the shifted table is exact. A placement whose table overflows, or whose stream
+/// fails, is dropped and reported; one whose decode stops early is drawn and reported.
 fn anchored_models(
     inputs: &WorldInputs<'_>,
     instances: &[(u16, [f32; 3])],
-) -> HashMap<u16, SodModelIr> {
-    let mut out = HashMap::new();
-    for &(shape_id, pos) in instances {
+) -> (HashMap<usize, Option<SodModelIr>>, Vec<TapFailure>) {
+    let mut own = HashMap::new();
+    let mut failures = Vec::new();
+    for (index, &(shape_id, position)) in instances.iter().enumerate() {
         let Some(data) = inputs.anchored_shapes.get(&shape_id) else {
             continue;
         };
-        if out.contains_key(&shape_id) {
-            continue;
-        }
-        // `pos` is `[I1]` (`-x, -y, z` of whole raw units), so this undoes that mapping.
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "placements are sums of i16 tree offsets, whole and inside the island"
-        )]
-        let raw = [-pos[0] as i32, -pos[1] as i32, pos[2] as i32];
-        let shift = |value: i16, by: i32| {
-            i16::try_from(i32::from(value).saturating_sub(by)).unwrap_or(value)
+        let (model, reason) = match shifted_anchors(inputs.anchors, position) {
+            Err(anchor) => (None, Some(TapFailureReason::AnchorOutOfRange { anchor })),
+            Ok(table) => {
+                let name = format!("MODEL_{shape_id:04X}.SOD");
+                match decode_sod_lit(data, &name, Some(&table), DecodeMode::Lenient, inputs.light) {
+                    Ok(ir) => {
+                        let stop = ir.decode().and_then(|record| record.stop);
+                        (Some(ir), stop.map(TapFailureReason::Stopped))
+                    }
+                    Err(error) => (None, Some(TapFailureReason::Decode(error))),
+                }
+            }
         };
-        let table: Vec<AnchorPoint> = inputs
-            .anchors
-            .iter()
-            .map(|a| AnchorPoint {
-                x: shift(a.x, raw[0]),
-                y: if a.is_valid() {
-                    shift(a.y, raw[1])
-                } else {
-                    a.y
-                },
-                z: shift(a.z, raw[2]),
-            })
-            .collect();
-        let name = format!("MODEL_{shape_id:04X}.SOD");
-        if let Ok(ir) = decode_sod_lit(data, &name, Some(&table), DecodeMode::Lenient, inputs.light)
-        {
-            out.insert(shape_id, ir);
+        if let Some(reason) = reason {
+            failures.push(TapFailure {
+                shape_id,
+                position,
+                reason,
+            });
         }
+        own.insert(index, model);
     }
-    out
+    (own, failures)
+}
+
+/// The anchor table less an `[I1]` placement (`-x, -y, z` of whole raw units).
+///
+/// A sentinel elevation is kept, so the record stays a sentinel.
+///
+/// # Errors
+/// The index of the first anchor whose shifted coordinate leaves `i16`.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "placements are sums of i16 tree offsets, whole and far inside i32"
+)]
+fn shifted_anchors(anchors: &[AnchorPoint], position: [f32; 3]) -> Result<Vec<AnchorPoint>, usize> {
+    let by = [-position[0] as i32, -position[1] as i32, position[2] as i32];
+    let shift = |value: i16, by: i32| i16::try_from(i32::from(value).checked_sub(by)?).ok();
+    anchors
+        .iter()
+        .enumerate()
+        .map(|(index, a)| {
+            let y = if a.is_valid() {
+                shift(a.y, by[1])
+            } else {
+                Some(a.y)
+            };
+            match (shift(a.x, by[0]), y, shift(a.z, by[2])) {
+                (Some(x), Some(y), Some(z)) => Ok(AnchorPoint { x, y, z }),
+                _ => Err(index),
+            }
+        })
+        .collect()
 }
 
 /// Drops repeated `(shape, position)` placements, keeping first occurrences in order.
@@ -910,7 +986,7 @@ pub(crate) fn build_world_ir(
     map_areas: &[MapArea],
     surface: &TerrainSurface,
     instances: &[(u16, [f32; 3])],
-    ir_models: &HashMap<u16, SodModelIr>,
+    ir_models: &PropModels<'_>,
     base_y: f32,
 ) -> SodModelIr {
     let mut ir = SodModelIr::new("WORLD_SCENERY");
@@ -924,8 +1000,9 @@ pub(crate) fn build_world_ir(
     }
     let grounded: Vec<Option<Vec<[f32; 3]>>> = instances
         .iter()
-        .map(|&(shape_id, pos)| {
-            let model = ir_models.get(&shape_id)?;
+        .enumerate()
+        .map(|(index, &(shape_id, pos))| {
+            let model = ir_models.get(index, shape_id)?;
             ground_decal_vertices(model, [pos[0], pos[1] + base_y, pos[2]], surface)
         })
         .collect();
@@ -1182,12 +1259,12 @@ fn push_props(
     ir: &mut SodModelIr,
     instances: &[(u16, [f32; 3])],
     grounded: &[Option<Vec<[f32; 3]>>],
-    ir_models: &HashMap<u16, SodModelIr>,
+    ir_models: &PropModels<'_>,
     base_y: f32,
     decals: bool,
 ) {
-    for (&(shape_id, pos), ground) in instances.iter().zip(grounded) {
-        let Some(model) = ir_models.get(&shape_id) else {
+    for (index, (&(shape_id, pos), ground)) in instances.iter().zip(grounded).enumerate() {
+        let Some(model) = ir_models.get(index, shape_id) else {
             continue;
         };
         for mesh in model.meshes() {
@@ -1215,11 +1292,11 @@ fn push_gated_props(
     parent: NodeId,
     instances: &[(u16, [f32; 3])],
     grounded: &[Option<Vec<[f32; 3]>>],
-    ir_models: &HashMap<u16, SodModelIr>,
+    ir_models: &PropModels<'_>,
     base_y: f32,
 ) {
-    for (&(shape_id, pos), ground) in instances.iter().zip(grounded) {
-        let Some(model) = ir_models.get(&shape_id) else {
+    for (index, (&(shape_id, pos), ground)) in instances.iter().zip(grounded).enumerate() {
+        let Some(model) = ir_models.get(index, shape_id) else {
             continue;
         };
         let offset = [pos[0], pos[1] + base_y, pos[2]];
@@ -1865,7 +1942,14 @@ mod tests {
 
         let instances = vec![(0x0100, [100.0, 50.0, 200.0])];
         let surface = TerrainSurface::new(&pts, &map_areas, 0.0);
-        let world_ir = build_world_ir(&pts, &map_areas, &surface, &instances, &ir_models, 0.0);
+        let world_ir = build_world_ir(
+            &pts,
+            &map_areas,
+            &surface,
+            &instances,
+            &PropModels::shared(&ir_models),
+            0.0,
+        );
 
         // Should contain ocean quad (4 verts), terrain triangle (3 verts), and prop base + decal
         assert!(world_ir.vertices.len() >= 7);
@@ -1878,12 +1962,71 @@ mod tests {
         assert!(decal_node.is_some());
     }
 
+    /// One placement's distinct corners in world `[I1]` metres.
+    type Corners = Vec<[f32; 3]>;
+
+    /// A two-anchor `OP_TAP` stream: `header`, then `TAP` anchors 0 and 1 into registers 0 and
+    /// 1, then `body` (which sets register 2), then one triangle over registers 0, 1 and 2.
+    fn tap_stream(ground_y_offset: i16, scale_index: u16, body: &[u16]) -> Vec<u8> {
+        use crate::sod::{OP_COLOR, OP_ID, OP_POLYZ, OP_RETURN, OP_TAP};
+        let lift = u16::from_le_bytes(ground_y_offset.to_le_bytes());
+        let mut words = vec![OP_ID, 0x3971, lift, scale_index, 0, OP_TAP, 0, 2, 0, 28];
+        words.extend_from_slice(body);
+        words.extend_from_slice(&[OP_COLOR, 0xC1, OP_POLYZ, 3, 0, 0x0C, 0x18, OP_RETURN]);
+        words.iter().flat_map(|w| w.to_le_bytes()).collect()
+    }
+
+    /// The distinct corners of each placement's own model, in world `[I1]` metres, and the
+    /// failures `anchored_models` reported.
+    fn placed_corners(
+        anchors: &[AnchorPoint],
+        shape: Vec<u8>,
+        instances: &[(u16, [f32; 3])],
+    ) -> (Vec<Option<Corners>>, Vec<TapFailure>) {
+        let streams = HashMap::from([(0x0400, shape)]);
+        let inputs = WorldInputs {
+            anchors,
+            map: None,
+            scenery: None,
+            view_eyes: &[],
+            max_zoom: 1.0,
+            anchored_shapes: &streams,
+            light: ShadeLight::default(),
+        };
+        let (own, failures) = anchored_models(&inputs, instances);
+        let corners = instances
+            .iter()
+            .enumerate()
+            .map(|(index, &(_, pos))| {
+                let model = own
+                    .get(&index)
+                    .expect("every placement has an entry")
+                    .as_ref()?;
+                let mut corners: Vec<[f32; 3]> = model
+                    .vertices
+                    .iter()
+                    .map(|v| {
+                        [
+                            v.position[0] + pos[0],
+                            v.position[1] + pos[1],
+                            v.position[2] + pos[2],
+                        ]
+                    })
+                    .collect();
+                corners.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+                corners.dedup();
+                Some(corners)
+            })
+            .collect();
+        (corners, failures)
+    }
+
     /// `CTRY.ALL` shape `0x0403` (scale 6): its third point is `-reg0`, the first anchor
     /// mirrored through the shape's origin, so it lands under the ridge anchor only when
     /// the anchors are loaded less the placement.
     #[test]
     fn test_anchored_models_load_tapped_points_less_the_placement() {
-        use crate::sod::{OP_CLRV, OP_COLOR, OP_ID, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SUBV, OP_TAP};
+        use crate::sod::{OP_CLRV, OP_PUTV, OP_SUBV};
         let anchors = [
             AnchorPoint {
                 x: 1120,
@@ -1896,48 +2039,84 @@ mod tests {
                 z: 3906,
             },
         ];
-        let mut data = Vec::new();
-        for word in [
-            OP_ID, 0x3971, 0, 6, 0, // header: scale 6, no lift
-            OP_TAP, 0, 2, 0, 28, // anchors 0 and 1 into registers 0 and 1
-            OP_CLRV, OP_SUBV, 0, OP_PUTV, 0x18, // register 2 = -register 0
-            OP_COLOR, 0xC1, OP_POLYZ, 3, 0, 0x0C, 0x18, OP_RETURN,
-        ] {
-            data.extend_from_slice(&word.to_le_bytes());
-        }
+        let shape = tap_stream(0, 6, &[OP_CLRV, OP_SUBV, 0, OP_PUTV, 0x18]);
         // Placed at raw (1329, 0, 3889), the middle of the two anchors in plan.
-        let pos = [-1329.0, 0.0, 3889.0];
-        let streams = HashMap::from([(0x0403, data)]);
-        let inputs = WorldInputs {
-            anchors: &anchors,
-            map: None,
-            scenery: None,
-            view_eyes: &[],
-            max_zoom: 1.0,
-            anchored_shapes: &streams,
-            light: ShadeLight::default(),
-        };
-        let models = anchored_models(&inputs, &[(0x0403, pos)]);
-        let mut corners: Vec<[f32; 3]> = models[&0x0403]
-            .vertices
-            .iter()
-            .map(|v| {
-                [
-                    v.position[0] + pos[0],
-                    v.position[1] + pos[1],
-                    v.position[2] + pos[2],
-                ]
-            })
-            .collect();
-        corners.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
-        corners.dedup();
+        let (corners, failures) =
+            placed_corners(&anchors, shape, &[(0x0400, [-1329.0, 0.0, 3889.0])]);
+        assert!(failures.is_empty());
         assert_eq!(
             corners,
-            vec![
+            vec![Some(vec![
                 [-1538.0, 0.0, 3906.0],
                 [-1538.0, 196.0, 3906.0],
                 [-1120.0, 0.0, 3872.0],
+            ])]
+        );
+    }
+
+    /// With a header lift the tapped points still land on their anchors, the lift applied
+    /// once, while a point at the origin (`CLRV; PUTV`) sits the lift above the placement.
+    /// Two placements of one shape each get their own decode.
+    #[test]
+    fn test_anchored_models_apply_the_lift_once_per_placement() {
+        use crate::sod::{OP_CLRV, OP_PUTV};
+        let anchors = [
+            AnchorPoint {
+                x: 1835,
+                y: -82,
+                z: 2301,
+            },
+            AnchorPoint {
+                x: 2047,
+                y: 0,
+                z: 2305,
+            },
+        ];
+        // Scale 7 (128 units per metre), lift 256 units: 2 m.
+        let shape = tap_stream(256, 7, &[OP_CLRV, OP_PUTV, 0x18]);
+        let first = [-1941.0, 41.0, 2303.0];
+        let second = [-1000.0, 0.0, 1000.0];
+        let (corners, failures) =
+            placed_corners(&anchors, shape, &[(0x0400, first), (0x0400, second)]);
+        assert!(failures.is_empty());
+        let with_origin = |origin: [f32; 3]| {
+            let mut c = vec![[-1835.0, 82.0, 2301.0], [-2047.0, 0.0, 2305.0], origin];
+            c.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+            Some(c)
+        };
+        assert_eq!(
+            corners,
+            vec![
+                with_origin([-1941.0, 43.0, 2303.0]),
+                with_origin([-1000.0, 2.0, 1000.0]),
             ]
+        );
+    }
+
+    /// A placement whose anchors less it leave `i16` is reported and not drawn.
+    #[test]
+    fn test_anchored_models_report_an_anchor_out_of_range() {
+        use crate::sod::{OP_CLRV, OP_PUTV};
+        let anchors = [
+            AnchorPoint { x: 0, y: 0, z: 0 },
+            AnchorPoint {
+                x: -20_000,
+                y: 0,
+                z: 0,
+            },
+        ];
+        let shape = tap_stream(0, 6, &[OP_CLRV, OP_PUTV, 0x18]);
+        // Raw x 20,000: anchor 1 less it is -40,000.
+        let pos = [-20_000.0, 0.0, 0.0];
+        let (corners, failures) = placed_corners(&anchors, shape, &[(0x0400, pos)]);
+        assert_eq!(corners, vec![None]);
+        assert_eq!(
+            failures,
+            vec![TapFailure {
+                shape_id: 0x0400,
+                position: pos,
+                reason: TapFailureReason::AnchorOutOfRange { anchor: 1 },
+            }]
         );
     }
 
@@ -1949,7 +2128,7 @@ mod tests {
             &[],
             &TerrainSurface::default(),
             &[],
-            &HashMap::new(),
+            &PropModels::shared(&HashMap::new()),
             5.0,
         );
         assert_eq!(world_ir.vertices.len(), 8);
@@ -2146,7 +2325,14 @@ mod tests {
         let (pts, areas) = sloped_terrain();
         let models = HashMap::from([(0x0391, prop)]);
         let surface = TerrainSurface::new(&pts, &areas, 0.0);
-        build_world_ir(&pts, &areas, &surface, &[(0x0391, at)], &models, 0.0)
+        build_world_ir(
+            &pts,
+            &areas,
+            &surface,
+            &[(0x0391, at)],
+            &PropModels::shared(&models),
+            0.0,
+        )
     }
 
     #[test]

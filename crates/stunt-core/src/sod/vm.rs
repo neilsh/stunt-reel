@@ -1158,6 +1158,18 @@ pub(crate) fn run_vm(
                 };
 
                 if let Some(table) = table {
+                    // Anchors are metres; a scale index past the table has no shape unit for
+                    // them, so every point would collapse onto the lift.
+                    if scale_factor <= 0.0 {
+                        return Err(SodError::MalformedOpcode {
+                            opcode,
+                            offset: op_offset,
+                            reason: format!(
+                                "TAP in a shape whose scale index {scale_index} has no unit"
+                            ),
+                        });
+                    }
+                    let units = 1.0 / scale_factor;
                     let start_reg = (reg_off / 12) & 1023;
                     for i in 0..count {
                         let anchor_off = r.read_u16_le()? as usize;
@@ -1199,11 +1211,6 @@ pub(crate) fn run_vm(
                         // at the island origin that is the anchor in shape units less the lift;
                         // `world.rs` shifts the table by the placement.
                         let [x, y, z] = anchor.register_position();
-                        let units = if scale_factor > 0.0 {
-                            1.0 / scale_factor
-                        } else {
-                            0.0
-                        };
                         regs.set(
                             start_reg.wrapping_add(i) & 1023, // register numbers wrap modulo 1024
                             [x * units, y * units - f32::from(ground_y_offset), z * units],
