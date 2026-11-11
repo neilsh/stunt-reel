@@ -184,3 +184,74 @@ fn test_half_turn_about_z_authors_the_identity() {
     };
     assert_eq!(slot.rotation_quat(), [0.0, 0.0, 0.0, 1.0]);
 }
+
+/// `PLAYONE.EXE`'s actor matrix builder `0824:04E5` (image `0x8725`) for slot angle words
+/// `+0x10`, `+0x12`, `+0x14` (`rot_bam[0..3]`), rows in storage order. Vertices transform as
+/// column vectors, so this is `Ry(-w2) * Rx(w1) * Rz(w0)`
+/// (research/formats/concepts/coordinates-and-units.md § 3.4).
+fn playone_actor_matrix(rot_bam: [u16; 3]) -> [[f64; 3]; 3] {
+    // The builder indexes 4096-entry sine and cosine tables with `word >> 4`.
+    let angle = |w: u16| f64::from(w >> 4) * std::f64::consts::TAU / 4096.0;
+    let (sa, ca) = angle(rot_bam[0]).sin_cos();
+    let (sb, cb) = angle(rot_bam[1]).sin_cos();
+    let (sc, cc) = angle(rot_bam[2]).sin_cos();
+    [
+        [ca * cc - sa * sb * sc, -(sa * cc + ca * sb * sc), -sc * cb],
+        [sa * cb, ca * cb, -sb],
+        [sa * sb * cc + ca * sc, ca * sb * cc - sa * sc, cc * cb],
+    ]
+}
+
+/// Rotation matrix of a unit quaternion `[x, y, z, w]` acting on column vectors.
+fn quat_matrix([x, y, z, w]: [f32; 4]) -> [[f64; 3]; 3] {
+    let [x, y, z, w] = [x, y, z, w].map(f64::from);
+    [
+        [
+            1.0 - 2.0 * (y * y + z * z),
+            2.0 * (x * y - z * w),
+            2.0 * (x * z + y * w),
+        ],
+        [
+            2.0 * (x * y + z * w),
+            1.0 - 2.0 * (x * x + z * z),
+            2.0 * (y * z - x * w),
+        ],
+        [
+            2.0 * (x * z - y * w),
+            2.0 * (y * z + x * w),
+            1.0 - 2.0 * (x * x + y * y),
+        ],
+    ]
+}
+
+#[test]
+fn test_dos_rotation_matches_playone_actor_matrix_builder() {
+    // Single-axis turns, the CTRY.FLM biplane near tick 499, INTRO.FLM's triplane, and a
+    // mixed attitude. Words are multiples of 16 so the builder's table lookup is exact.
+    let cases: [[u16; 3]; 8] = [
+        [8192, 0, 0],
+        [0, 8192, 0],
+        [0, 0, 8192],
+        [62864, 384, 43856],
+        [0, 3280, 49152],
+        [4096, 12288, 20480],
+        [40960, 57344, 1024],
+        [16384, 16384, 16384],
+    ];
+    for rot_bam in cases {
+        let slot = SlotState {
+            rot_bam,
+            ..SlotState::default()
+        };
+        let ours = quat_matrix(slot.rotation_quat_dos());
+        let playone = playone_actor_matrix(rot_bam);
+        for (r, (ours_row, playone_row)) in ours.iter().zip(&playone).enumerate() {
+            for (c, (o, p)) in ours_row.iter().zip(playone_row).enumerate() {
+                assert!(
+                    (o - p).abs() < 1e-5,
+                    "{rot_bam:?} [{r}][{c}]: ours {o}, PLAYONE {p}"
+                );
+            }
+        }
+    }
+}

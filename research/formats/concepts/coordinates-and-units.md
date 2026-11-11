@@ -76,7 +76,7 @@ Under invariant **`[I1]`**, world and model coordinates adhere strictly to the s
 
 **Eye and actor positions `[Bounded Observation]`:** on `CTRY.FLM` tick 1 the view slot sits at $(-3306.62, -14.0, 2614.11)$ m in DOS axes, 7.0 m from the drawn actor at $(-3313.4, -12.3, 2614.53)$ m, so the evaluated eye is $(3306.62, 14.0, 2614.11)$ m. The world origin is 4215 m away and behind the scene, so the view slot's BAM rotation defines the look direction: `target = eye + rotate_quat(rotation_quat, [0, 0, 1]) * 1000 m` (the stored rotation maps camera space to world space, `+Z` into the screen). With the pitch negation below, the tick 1 look direction lands 1.4 degrees off the bearing to the actor; every other axis-sign and pitch/yaw-sign combination tested lands 8 to 178 degrees off, and without the negation every frame is sky. _Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
 
-**Open question:** the evaluator negates the stored pitch `rx` (`rot_bam[1]`, the negative of `quat_from_euler`'s `pitch`) before building the quaternion, which hints that the raw rotation convention may differ in handedness from `[I1]`, beyond the $180^\circ$ Z rotation above. Not resolved here; see `Q-FLM-08` in [`flm.md`](../flm.md).
+**Pitch negation (resolved 2026-11-09):** the evaluator negates the stored pitch `rx` (`rot_bam[1]`) before `quat_from_euler`. This is not a handedness difference: `PLAYONE`'s builder turns about $X$ by $+$`rot_bam[1]` and `quat_from_euler` turns by $-$`pitch`, so with the negation the evaluator builds the same rotation, up to `PLAYONE`'s 12-bit angle lookup and Q15 rounding (§ 3.4, `[Established]`).
 
 ---
 
@@ -220,6 +220,19 @@ The engine evaluates Euler rotations in **Yaw $(\psi)$, Pitch $(\theta)$, Roll $
 1. **Yaw ($\psi$, Heading):** Rotation around the $+Y$ vertical axis.
 2. **Pitch ($\theta$, Elevation):** Rotation around the $+X$ lateral axis.
 3. **Roll ($\phi$, Bank):** Rotation around the $-Z$ longitudinal forward axis.
+
+#### Slot angle words in `PLAYONE.EXE`
+`[Established]` for the composition, from a static read of the actor matrix builder `0824:04E5` (image `0x8725`), called at `0x1D23` on the actor path `0x1CFB`. `[Bounded Observation]` that slot words `+0x10`, `+0x12`, `+0x14` are `rot_bam[0..3]` in file order: the copy from the film record into the slot is not traced, but the camera match of § 1.2 and the exact agreement below both rest on it.
+
+The actor path loads `w0 = [+0x10]`, `w1 = [+0x12]`, `w2 = [+0x14]` and the builder looks each up as `word >> 4` in 4096-entry Q15 tables, sine at `work:0x19AA` and cosine at `work:0x21AA`. In raw DOS axes, with standard right-handed rotation matrices, it builds
+
+$$R = R_y(-w_2)\,R_x(w_1)\,R_z(w_0)$$
+
+and vertices transform as column vectors, $\mathbf{p}_{view} = V R\,\mathbf{p}_{model}$: `0824:060A` forms $V R$ with the view matrix on the left, and the `OP_IPG` transform (image `0xB275`) takes each output from one stored row. A vertex is therefore rolled about $Z$ by `w0`, pitched about $X$ by `w1`, then turned about $Y$ by $-$`w2`. The camera's matrix comes from the same builder and words (view setup `0x1260..0x12DC`; the view-direction selector `DS:0x2285` would first turn the words, but playback leaves it 0, [`memory-map.md`](../../playone-exe/memory-map.md)) and is transposed into $V$ (`0824:0681`), so a view slot's angles mean the same rotation as an actor's.
+
+The list above describes the `[I1]` Seam 2 record; this subsection works in raw DOS axes, before the $180^\circ$ $Z$ conjugation of § 1.2, which flips the signs of the $X$ and $Y$ turns. `rotation_quat_dos` is this rotation, up to `PLAYONE`'s 12-bit angle lookup (`word >> 4`) and Q15 rounding: `quat_from_euler(w2, -w1, w0)` is $R_y(-w_2) R_x(w_1) R_z(w_0)$, so the negated pitch of § 1.2 compensates `quat_from_euler`'s pitch sign and is not a handedness difference. `test_dos_rotation_matches_playone_actor_matrix_builder` pins the two together. _Source: [the actor matrix builder 0x04E5 read statically](../../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._
+
+**Ruled out:** FreeFlight's reading (`sifilm.cpp`: words read as `rz, rx, ry`, drawn as `Rx(w1) · Ry(w0) · Rz(w2)`) turns `w0` about $Y$ and `w2` about $Z$, the reverse of the builder, under every sign choice; the eight sign variants scored in [`framing-and-actors.md`](../../parity/framing-and-actors.md#ruled-out) all used that axis assignment. _Source: [the actor matrix builder 0x04E5 read statically](../../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._
 
 #### Column-Major World Matrix Generation
 Given position $\mathbf{t} = [t_x, t_y, t_z]$ and normalized quaternion $\mathbf{q} = [q_x, q_y, q_z, q_w]$, the $4 \times 4$ affine transform matrix is computed per `ActorTransform::compute_world_matrix`:
