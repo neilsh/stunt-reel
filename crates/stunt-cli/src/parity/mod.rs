@@ -317,6 +317,42 @@ fn score_matched(
     Ok(rows)
 }
 
+/// Prints the run's headline, scored, loss and unmatched lines.
+fn print_summary(report: &Report, min_fade_level: f32) {
+    let (mean_ssim, mean_iou) = (report.mean_ssim, report.mean_iou);
+    let excluded_frames = report.excluded_frames;
+    println!(
+        "[parity] {} frames, mean SSIM {mean_ssim:.3}, mean IoU {mean_iou:.3}",
+        report.frames
+    );
+    match (report.mean_ssim_scored, report.mean_iou_scored) {
+        (Some(ssim), Some(iou)) => println!(
+            "[parity] {} scored frame(s) (fade level >= {min_fade_level:.2}), mean SSIM {ssim:.3}, mean IoU {iou:.3}; {excluded_frames} excluded",
+            report.scored_frames
+        ),
+        _ => println!(
+            "[parity] no frame reaches the fade floor (fade level >= {min_fade_level:.2}); {excluded_frames} excluded"
+        ),
+    }
+    if let Some(loss) = &report.mean_loss_by_class_scored {
+        let line = LOSS_CLASSES
+            .iter()
+            .filter_map(|name| Some(format!("{name} {:.3}", loss.get(*name)?)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("[parity] SSIM loss by class (sums to 1 - mean SSIM over scored frames): {line}");
+    }
+    if let Some(agreement) = report.mean_index_agreement_scored {
+        println!("[parity] mean index agreement {agreement:.3} over the scored frames with planes");
+    }
+    if report.unmatched > 0 {
+        println!(
+            "[parity] {} frame(s) missing on one side and skipped",
+            report.unmatched
+        );
+    }
+}
+
 /// Runs the comparator and writes `report.json` plus contact sheets.
 pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
@@ -385,36 +421,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let report_path = args.output.join("report.json");
     parity_artifacts::write_report(&report_path, &report).map_err(|error| error.to_string())?;
 
-    let (mean_ssim, mean_iou) = (report.mean_ssim, report.mean_iou);
-    let excluded_frames = report.excluded_frames;
-    println!(
-        "[parity] {} frames, mean SSIM {mean_ssim:.3}, mean IoU {mean_iou:.3}",
-        report.frames
-    );
-    match (report.mean_ssim_scored, report.mean_iou_scored) {
-        (Some(ssim), Some(iou)) => println!(
-            "[parity] {} scored frame(s) (fade level >= {:.2}), mean SSIM {ssim:.3}, mean IoU {iou:.3}; {excluded_frames} excluded",
-            report.scored_frames, args.min_fade_level
-        ),
-        _ => println!(
-            "[parity] no frame reaches the fade floor (fade level >= {:.2}); {excluded_frames} excluded",
-            args.min_fade_level
-        ),
-    }
-    if let Some(loss) = &report.mean_loss_by_class_scored {
-        let line = LOSS_CLASSES
-            .iter()
-            .filter_map(|name| Some(format!("{name} {:.3}", loss.get(*name)?)))
-            .collect::<Vec<_>>()
-            .join(", ");
-        println!("[parity] SSIM loss by class (sums to 1 - mean SSIM over scored frames): {line}");
-    }
-    if let Some(agreement) = report.mean_index_agreement_scored {
-        println!("[parity] mean index agreement {agreement:.3} over the scored frames with planes");
-    }
-    if unmatched > 0 {
-        println!("[parity] {unmatched} frame(s) missing on one side and skipped");
-    }
+    print_summary(&report, args.min_fade_level);
 
     if let Some(previous_path) = &args.compare {
         run_compare(&args, previous_path, &report, &ReportFrames::new(frames))?;
