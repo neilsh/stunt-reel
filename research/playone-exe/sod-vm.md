@@ -109,17 +109,19 @@ TAP operand values point **four bytes before** the record (`record = table + ope
 
 ## 4. Register Side Effects
 
-For each anchor record:
+For each anchor record (handler image `0xAD88`, transform `0xAE67`):
 
-1. If the cached stamp differs from `[0x19A8]` (frame counter), transform the raw point through the current 3×3 matrix at `[0x80C0..0x80CA]`, add translation `[0x41D4..0x41DA]`, cache the 32-bit results at record `+0x06/+0x0A/+0x0E`, and store the stamp.
-2. Convert each cached 32-bit component to a 16-bit register value with arithmetic shift `[0x806E]`.
-3. Subtract the view-origin words `[0x8084]`, `[0x8086]`, `[0x8088]`.
+1. If the cached stamp `+0x1F` differs from `[0x19A8]` (frame counter), transform the raw point through the 3×3 matrix at `[0x80C0..0x80CA]`, add the translation `[0x41D4..0x41DA]`, cache the 32-bit results at record `+0x06/+0x0A/+0x0E`, and store the stamp.
+2. Shift each cached 32-bit component right by `16 - [0x806E]` to a 16-bit value (`0xADAC..0xADF1`).
+3. Subtract the object's origin words `[0x8084]`, `[0x8086]`, `[0x8088]`.
 4. Write `x, y, z` into the 12-byte vertex register `0x4450 + reg_off + i*12`.
 5. Write `+6` and `+8` from anchor fields `+0x16`/`+0x1A`, or projected screen coordinates when `[0x8082] == 0x1AB1`; write the record flag to vertex `+0xA`.
 
-The **geometry** effect is therefore: *copy transformed terrain anchor points into the SOD vertex register bank*. Subsequent `POLYZ` reads those registers exactly like `VECTORS`-populated vertices.
+`[Established]` for the instructions. What the words hold is read from their writers. The scene walk normalises the object's 32-bit view position at `0x31CF`, which returns 16-bit words and the shift `CL`. `0x21B2..0x21BC` stores those words, rotated by `0x0824:06B0`, at `[0x8084..0x8088]`. The light setup `0x9100`, called from `0x21F9`, stores that `CL` at `[0x806E]` (`0x9113`). So a register holds the anchor's view-space position less the object's origin, in the units that origin was shifted to. Vertices loaded by `VECTORS` share those units. The cache is one per frame and shared by every object: anchors 156, 157 and 160 are each tapped by two shapes (section 5). So `0x80C0` and `0x41D4` must be the camera's rotation and translation, not an object's (`[Supported Inference]`).
 
-`[Established]`
+The **geometry** effect is therefore: *load a terrain anchor point, relative to the shape's own origin, into the SOD vertex register bank*. In the shape's frame, an unrotated scenery shape placed at `p` and lifted by `ground_y_offset >> scale_index` gets `(anchor - p) << scale_index - ground_y_offset`. Its tapped points then land on the anchors wherever it is placed. A point the stream builds from the origin itself, such as `CLRV; PUTV` or `CLRV; SUBV 0`, depends on the placement. Subsequent `POLYZ` reads those registers exactly like `VECTORS`-populated vertices.
+
+_Source: [2026-11-11: how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._
 
 ```mermaid
 flowchart TD
@@ -128,29 +130,31 @@ flowchart TD
     C -- no --> D["3x3 matrix + translation<br/>cache 32-bit xyz"]
     C -- yes --> E["cached xyz"]
     D --> E
-    E --> F["shift [0x806E]<br/>subtract origin [0x8084..0x8088]"]
+    E --> F["shift right 16 - [0x806E]<br/>subtract object origin [0x8084..0x8088]"]
     F --> G["vertex register<br/>DS:0x4450 + reg_off + i*12"]
 ```
 
 ---
 
-## 5. CTRY Hill Models
+## 5. Hill Fins
 
-`CTRY.ALL` chunks `0x0402`–`0x0408` are 14 unique TAP payloads (the seven hills are replicated across the corpus). Example `0x0402`:
+`CTRY.ALL` chunks `0x0202`–`0x0208` and `0x0402`–`0x0408` are the 14 TAP shapes (`SCENERY1.RES` and `SCENERY3.RES` #0–6, replicated across the corpus). Example `0x0402`:
 
 | Field | Value |
 |---|---|
 | Header | `bounding=0x3971`, `yoff=0`, `scale_index=6` |
 | TAP | `reg_off=0`, `count=2`, anchors `141`, `157` (`0x0F6C`, `0x112C`) |
 | Follow-up | `VECTORS` reg 511 = `(0, -4928, 0)`; `GETV 511; SHLV 1; PUTV 510` |
-| Derived vertex | `reg2 = reg1 - reg510` (raises the second anchor by 9,856 units) |
-| Emit | `POLYZ 3` over regs `0,1,2` with two `IFVIS` colors |
+| Derived vertex | `reg2 = reg1 - reg510`: 9,856 units, 154 m at scale 6, below the second anchor |
+| Emit | `POLYZ 3` over regs `0,1,2`, one colour per side (`REJ`, `IFVIS 0` / `IFVIS 1`) |
 
-`0x0204` in `BOB1.ALL` uses `count=3` (anchors `14`, `185`, `193`) and emits four triangles over registers `0`–`3`.
+`0x0204` uses `count=3` (anchors `14`, `185`, `193`) and emits four triangles over registers `0`–`3`, the fourth register being the origin (`CLRV; PUTV`).
 
-Verdict: TAP is **not** a debug marker and **not** a no-op. It is the terrain-anchor loader used by ground patches.
+`[Established]` for the streams and anchors, `[Bounded Observation]` for the shapes they make. Each was resolved as section 4 describes, at the image tree's one placement of it. Thirteen of the 14 are one vertical triangle each: all three corners lie on one line in plan. Each runs from an anchor at sea level up to a ridge anchor 58 to 293 m high. Its third corner lies within 1 m of sea level, under the ridge anchor or at the shape's origin. `0x0204` is the exception: four triangles over anchors at 0, 115 and 148 m and its origin at sea level. The ridge and foot anchors of each `0x04xx` fin are corners of the same `MAP.BIN` hill patches. `0x0402` and `0x0406` take anchors 141–157–158 (peak 155 m), shared by patches 109, 110, 113 and 114. `0x0403`/`0x0407` take 154–156–159 (196 m), `0x0404`/`0x0408` take 155–160–161 (293 m), and `0x0405` takes 149–151 (82 m). Their colours, `0xC0`–`0xC6`, are the colours of the hill patches on those anchors (192–198).
 
-`[Established]`
+Verdict: TAP is **not** a debug marker and **not** a no-op. It loads terrain anchors. The shapes that use it are vertical fins standing in the hills, not ground patches or airfield tiles.
+
+_Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-what-the-14-tap-shapes-are)._
 
 ---
 
@@ -168,13 +172,13 @@ Verdict: TAP is **not** a debug marker and **not** a no-op. It is the terrain-an
 |---|---|
 | 28-byte anchor table | `stunt_core::anchor::AnchorPoint` slice |
 | TAP operand loop | `OP_TAP` arm in [`crates/stunt-core/src/sod/vm.rs`](../../crates/stunt-core/src/sod/vm.rs) |
-| Work-segment transform/cache | Not modelled; TAP writes `[-x, -y, z]` raw units directly (identity model transform) |
+| Work-segment transform/cache | Not modelled. TAP writes the anchor's `[-x, -y, z]` in shape units, less the header lift; `world.rs` decodes each TAP shape again against the table shifted by its placement (`anchored_models`) |
 | Vertex arena write | `regs[(reg_off/12 + i) & 1023]` |
 | Anchor source | `ANCHORPT.DAT` located by [`crates/stunt-cli/src/scene.rs`](../../crates/stunt-cli/src/scene.rs); raw records supplied to the VM |
 
 Open items:
 
-- Exact fixed-point matrix and shift for non-identity model transforms `[Unknown]`.
+- A rotated TAP shape: `vm.rs` loads the anchor unrotated, which holds only for scenery, whose draw matrix is the view matrix alone ([`memory-map.md`](memory-map.md) `0x808A`).
 - Retail `PLAYONE.EXE` anchor-table population path `[Bounded Observation]`.
 - HUGETAP semantics `[Unknown]`.
 

@@ -374,10 +374,11 @@ fn test_tap_resolves_anchor_points_into_non_degenerate_polygon() {
 
     assert_eq!(ir.vertices.len(), 3);
     let vertices: Vec<[f32; 3]> = ir.vertices.iter().map(|v| v.position).collect();
-    // Header scale index 1 = 0.5 m/unit; raw anchors map through [-x, -y, z].
-    assert_eq!(vertices[0], [-50.0, 0.0, 100.0]);
-    assert_eq!(vertices[1], [-150.0, 250.0, 200.0]);
-    assert_eq!(vertices[2], [-250.0, 0.0, 300.0]);
+    // Anchors are island metres, whatever the header's scale (index 1 = 0.5 m/unit): a tapped
+    // point lands on its anchor, mapped through [-x, -y, z].
+    assert_eq!(vertices[0], [-100.0, 0.0, 200.0]);
+    assert_eq!(vertices[1], [-300.0, 500.0, 400.0]);
+    assert_eq!(vertices[2], [-500.0, 0.0, 600.0]);
 
     let area = cross(vertices[0], vertices[1], vertices[2]);
     assert!(
@@ -395,6 +396,49 @@ fn test_tap_variable_operand_width_preserves_following_opcodes() {
     assert_eq!(
         ir.vertices[0].palette_index, 40,
         "OP_COLOR after the three anchor words must be decoded"
+    );
+}
+
+/// `CTRY.ALL` shape `0x0402`'s stream (scale 6), with a header lift added: two tapped ridge
+/// anchors and a third point dropped 2 x 4928 units below the second.
+#[test]
+fn test_tap_points_land_on_their_anchors_in_island_metres() {
+    let table = [
+        AnchorPoint {
+            x: 1216,
+            y: 0,
+            z: 3296,
+        },
+        AnchorPoint {
+            x: 1648,
+            y: -155,
+            z: 3312,
+        },
+    ];
+    let mut bytes = make_sod_header(0x3971, 128, 6, 0);
+    for word in [
+        OP_TAP, 0, 2, 0, 28, // anchors 0 and 1 into registers 0 and 1
+        OP_VECTORS, 1, 0x17F4, 0, 0xECC0, 0, // register 511 = (0, -4928, 0)
+        OP_GETV, 0x17F4, OP_SHLV, 1, OP_PUTV, 0x17E8, // register 510 = 2 x register 511
+        OP_GETV, 0x0C, OP_SUBV, 0x17E8, OP_PUTV,
+        0x18, // register 2 = register 1 - register 510
+        OP_COLOR, 0xC2, OP_POLYZ, 3, 0, 0x0C, 0x18, OP_RETURN,
+    ] {
+        bytes.extend_from_slice(&word.to_le_bytes());
+    }
+    let ir = decode_with_anchors(&bytes, "0402", &table).expect("decode");
+    let mut corners: Vec<[f32; 3]> = ir.vertices.iter().map(|v| v.position).collect();
+    corners.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+    corners.dedup();
+    // A vertical face: two corners on the anchors, the third 1 m above sea level below the
+    // 155 m ridge anchor.
+    assert_eq!(
+        corners,
+        vec![
+            [-1648.0, 1.0, 3312.0],
+            [-1648.0, 155.0, 3312.0],
+            [-1216.0, 0.0, 3296.0],
+        ]
     );
 }
 

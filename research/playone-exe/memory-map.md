@@ -205,16 +205,16 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x19AA..0x41A9` | `[Established]` | `i16[5120]` | Q15 sine over 1¼ turns, 4096 entries per turn: the builder at image `0x8725` (`0824:04E5`) reads sine from `0x19AA` and cosine from `0x21AA` (a quarter turn on), indexed by `angle >> 4` | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
 | `0x41B8` | `[Established]` | `u16` | `OP_TAP` remaining-count scratch | |
 | `0x41C8`, `0x41CA` | `[Established]` | `u16` | Screen-projection center offsets; live `CTRY` session reads 160 and 92 (3D viewport is 185 rows; see `capture.md` § 4) | |
-| `0x41D4..0x41DA` | `[Established]` | `i32[3]` | Model→view translation | |
+| `0x41D4..0x41DA` | `[Established]` | `i32[3]` | Translation `OP_TAP` adds after `0x80C0` (`0xAE8B`). `[Supported Inference]` that it is the camera's: the anchor cache it fills is per frame, shared by every object ([`sod-vm.md`](sod-vm.md) section 4) | |
 | `0x4450 + n*12` | `[Established]` | 12-byte vertex | Vertex register arena (1024 entries): `x/y/z` and projection/flag fields | `# [MEM-SOD-VM]` |
 | `0x806C` | `[Established]` for writer and readers (disassembled), `[Hypothesis]` for the run-time effect | `u8` | Shadow-draw mode, set to `0xFF` only by `0x1CE7` around the actor shadow draw: nonzero makes polygon gateways draw in index 0, `GVPOLY`/`GVPOLY16` go flat, and `OP_ANIMATE` take its variable-width skip path ([`sod-vm.md` § 9.1](sod-vm.md#91-the-actor-shadow-draw)) | `# [FMT-SOD-ANIMATE]` |
-| `0x806E` | `[Established]` | `u8` | Fixed-point arithmetic shift applied by `OP_TAP` | |
+| `0x806E` | `[Established]` | `u8` | Shift of the object's view position from `0x31CF`, stored by `0x9100` (`0x9113`); `OP_TAP` shifts anchors right by `16 - [0x806E]` | _Source: [how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._ |
 | `0x806F` | `[Bounded Observation]` | `u8` | High-byte shift count used to derive the `OP_ANIMATE` projection-scale term | `# [FMT-SOD-ANIMATE]` |
 | `0x8070` | `[Bounded Observation]` | `u16` | Projection-scale term consumed by `OP_ANIMATE`; derived from `0x8108` shifted by `0x806F` | `# [FMT-SOD-ANIMATE]` |
 | `0x8082` | `[Established]` | `u16` | Special model selector (`0x1AB1` enables TAP screen projection) | |
-| `0x8084`, `0x8086`, `0x8088` | `[Established]` | `i16` | View-origin subtraction terms applied by `OP_TAP` | |
+| `0x8084`, `0x8086`, `0x8088` | `[Established]` | `i16` | The object's origin in view space, shifted (scenery: `0x21B2..0x21BC`); `OP_TAP` subtracts it, so a tapped point is relative to the shape | _Source: [how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._ |
 | `0x808A` | `[Established]` | `i16[9]` | The matrix the display list draws with: `0x80C0 · R` for an actor (`CS:0x1D31`), the matrix at `0x809C` when the object's flag `+0x0F & 1` is set (`CS:0x1D02`), for scenery the view matrix alone, or `0x809C` under the same flag (`CS:0x21C2..0x21CA`) | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
-| `0x80C0..0x80CA` | `[Established]` | `i16[9]` | 3×3 model→view rotation matrix | |
+| `0x80C0..0x80CA` | `[Established]` | `i16[9]` | 3×3 view matrix: the scenery draw matrix (`0x808A`) and the matrix `OP_TAP` transforms anchors by | |
 | `0x80D2` | `[Established]` | `i16[9]` | Scratch for the rotation `R` from image `0x8725` | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
 | `0x8108` | `[Established]` | `u16` | Lens mantissa, a copy of `DS:0x229C` (image `0x122E`); Q15 factor on the view matrix's two screen rows (image `0x12E3`), also read by the sun-disc drawer and `OP_ANIMATE` ([`lod.md`](lod.md) section 2.2) | `# [FMT-SOD-ANIMATE]` |
 | `0x810A` | `[Established]` | `u16` | `0x229C² × 2 >> 16` (image `0x1238`); reader not traced | |
@@ -229,6 +229,7 @@ Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
 | `0x3AAC` | `[Established]` `OP_ANIMATE` handler for variable-width resource selection and raster draw | `# [FMT-SOD-ANIMATE]` |
 | `0x3E58` | `OP_TAP` (`0x022E`) handler | `# [MEM-SOD-VM]` |
 | `0x3F36` | `OP_HUGETAP` (`0x0237`) entry: `int3` (unimplemented) | `# [MEM-SOD-VM]` |
+| `0x3F37` | `OP_TAP` anchor transform (image `0xAE67`): `0x80C0 · anchor + 0x41D4`, cached at record `+0x06..+0x10` | `# [MEM-SOD-VM]` |
 | `0x492D` | Per-frame anchor cache invalidation (`DS=0x1DF8`, 231 records) | `# [MEM-SOD-ANCHOR-TABLE]` |
 
 ### 3.1 Anchor Table Cache (`# [MEM-SOD-ANCHOR-TABLE]`)
