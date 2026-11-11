@@ -24,7 +24,9 @@ use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
 use crate::font::PFont;
 use crate::link::{LinkError, shape_chunks};
-use crate::sod::{DecodeMode, EPSILON_DISPLACEMENT, ShadeLight, SodError, decode_sod_lit};
+use crate::sod::{
+    DecodeMode, EPSILON_DISPLACEMENT, ShadeLight, SodError, SodStopReason, decode_sod_lit,
+};
 use crate::vfs::{ResRegions, VfsError};
 use crate::world::{GroundPlane, ScnStop, World, WorldInputs, build_world};
 
@@ -120,6 +122,10 @@ pub struct ArchiveShapes {
     pub shapes: HashMap<u16, SodModelIr>,
     /// Chunks that failed to decode.
     pub skipped: Vec<SkippedChunk>,
+    /// Streams of the shapes that run `OP_TAP`, kept only when anchors were supplied. A tapped
+    /// point depends on where the shape is placed, so the world decodes these again per
+    /// placement ([`WorldInputs::anchored_shapes`]).
+    pub anchored: HashMap<u16, Vec<u8>>,
 }
 
 /// Decodes every `MODEL_%04X.SOD` chunk of `.ALL` bytes, resolving `OP_TAP` against `anchors`
@@ -176,7 +182,18 @@ fn decode_chunks<'a>(
     let anchor_slice = (!anchors.is_empty()).then_some(anchors);
     let mut out = ArchiveShapes::default();
     for (shape_id, name, data) in chunks {
-        match decode_sod_lit(data, &name, anchor_slice, DecodeMode::Lenient, light) {
+        // Anchors only matter to `OP_TAP`; a first pass without them shows which shapes tap.
+        let mut decoded = decode_sod_lit(data, &name, None, DecodeMode::Lenient, light);
+        let taps = decoded.as_ref().is_ok_and(|ir| {
+            ir.decode()
+                .and_then(|record| record.stop.as_ref())
+                .is_some_and(|stop| stop.reason == SodStopReason::MissingAnchors)
+        });
+        if taps && anchor_slice.is_some() {
+            decoded = decode_sod_lit(data, &name, anchor_slice, DecodeMode::Lenient, light);
+            out.anchored.insert(shape_id, data.to_vec());
+        }
+        match decoded {
             Ok(ir) => {
                 out.shapes.insert(shape_id, ir);
             }
@@ -397,6 +414,8 @@ impl FilmScene {
                 scenery: inputs.scenery,
                 view_eyes: &eyes,
                 max_zoom,
+                anchored_shapes: &decoded.anchored,
+                light,
             },
             &decoded.shapes,
         );

@@ -24,6 +24,7 @@ use crate::contracts::{
     NodeId, NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, ShapeMesh,
     SodModelIr, SodVertex, VisibilityCondition, arena_index,
 };
+use crate::sod::{DecodeMode, ShadeLight, decode_sod_lit};
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -47,6 +48,12 @@ pub struct WorldInputs<'a> {
     /// of view it draws (base and lens). It scales `FOCAL_PIXELS` in the sub-pixel cull so a
     /// zoomed camera never misses a prop.
     pub max_zoom: f32,
+    /// Streams of the shapes that run `OP_TAP`, by resource ID (`ArchiveShapes::anchored`).
+    /// `PLAYONE` loads each tapped anchor less the shape's own origin, so the world decodes
+    /// these again at their placement rather than using `shapes`' copy.
+    pub anchored_shapes: &'a HashMap<u16, Vec<u8>>,
+    /// The light those shapes are decoded under, as for the rest of `shapes`.
+    pub light: ShadeLight,
 }
 
 /// PLAYONE's focal length in raster pixels at the default lens, equal on both axes
@@ -345,9 +352,22 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         inputs.max_zoom.max(1.0),
     );
 
+    let anchored = anchored_models(inputs, &unique_instances);
+    let placed;
+    let models = if anchored.is_empty() {
+        shapes
+    } else {
+        placed = unique_instances
+            .iter()
+            .filter_map(|&(id, _)| Some((id, shapes.get(&id)?.clone())))
+            .chain(anchored)
+            .collect::<HashMap<_, _>>();
+        &placed
+    };
+
     let base_y = 0.0;
     let terrain = TerrainSurface::new(pts, &map_areas, base_y);
-    let ir = build_world_ir(pts, &map_areas, &terrain, &unique_instances, shapes, base_y);
+    let ir = build_world_ir(pts, &map_areas, &terrain, &unique_instances, models, base_y);
     // `build_world_ir` always emits the ocean quad, so the extent exists.
     let bounds = ir.extent()?;
     Some(World {
@@ -358,6 +378,56 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         scenery_stop,
         terrain,
     })
+}
+
+/// Decodes each placed `OP_TAP` shape against the anchor table less its placement.
+///
+/// `PLAYONE` (image `0xAD88`) loads a tapped point as the anchor less the shape's origin, so a
+/// point a stream builds from that origin, such as `0x0403`'s `CLRV; SUBV 0`, lands where
+/// the tree puts it (`research/playone-exe/sod-vm.md` section 4). Placements are whole tree
+/// units, so the shifted table is exact. A shape placed more than once is decoded at its
+/// first placement; the island's tree places each tapped shape once.
+fn anchored_models(
+    inputs: &WorldInputs<'_>,
+    instances: &[(u16, [f32; 3])],
+) -> HashMap<u16, SodModelIr> {
+    let mut out = HashMap::new();
+    for &(shape_id, pos) in instances {
+        let Some(data) = inputs.anchored_shapes.get(&shape_id) else {
+            continue;
+        };
+        if out.contains_key(&shape_id) {
+            continue;
+        }
+        // `pos` is `[I1]` (`-x, -y, z` of whole raw units), so this undoes that mapping.
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "placements are sums of i16 tree offsets, whole and inside the island"
+        )]
+        let raw = [-pos[0] as i32, -pos[1] as i32, pos[2] as i32];
+        let shift = |value: i16, by: i32| {
+            i16::try_from(i32::from(value).saturating_sub(by)).unwrap_or(value)
+        };
+        let table: Vec<AnchorPoint> = inputs
+            .anchors
+            .iter()
+            .map(|a| AnchorPoint {
+                x: shift(a.x, raw[0]),
+                y: if a.is_valid() {
+                    shift(a.y, raw[1])
+                } else {
+                    a.y
+                },
+                z: shift(a.z, raw[2]),
+            })
+            .collect();
+        let name = format!("MODEL_{shape_id:04X}.SOD");
+        if let Ok(ir) = decode_sod_lit(data, &name, Some(&table), DecodeMode::Lenient, inputs.light)
+        {
+            out.insert(shape_id, ir);
+        }
+    }
+    out
 }
 
 /// Drops repeated `(shape, position)` placements, keeping first occurrences in order.
@@ -1830,6 +1900,69 @@ mod tests {
         assert!(base_node.is_some());
         let decal_node = world_ir.nodes.iter().find(|n| n.name == "WORLD_DECAL");
         assert!(decal_node.is_some());
+    }
+
+    /// `CTRY.ALL` shape `0x0403` (scale 6): its third point is `-reg0`, the first anchor
+    /// mirrored through the shape's origin, so it lands under the ridge anchor only when
+    /// the anchors are loaded less the placement.
+    #[test]
+    fn test_anchored_models_load_tapped_points_less_the_placement() {
+        use crate::sod::{OP_CLRV, OP_COLOR, OP_ID, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SUBV, OP_TAP};
+        let anchors = [
+            AnchorPoint {
+                x: 1120,
+                y: 0,
+                z: 3872,
+            },
+            AnchorPoint {
+                x: 1538,
+                y: -196,
+                z: 3906,
+            },
+        ];
+        let mut data = Vec::new();
+        for word in [
+            OP_ID, 0x3971, 0, 6, 0, // header: scale 6, no lift
+            OP_TAP, 0, 2, 0, 28, // anchors 0 and 1 into registers 0 and 1
+            OP_CLRV, OP_SUBV, 0, OP_PUTV, 0x18, // register 2 = -register 0
+            OP_COLOR, 0xC1, OP_POLYZ, 3, 0, 0x0C, 0x18, OP_RETURN,
+        ] {
+            data.extend_from_slice(&word.to_le_bytes());
+        }
+        // Placed at raw (1329, 0, 3889), the middle of the two anchors in plan.
+        let pos = [-1329.0, 0.0, 3889.0];
+        let streams = HashMap::from([(0x0403, data)]);
+        let inputs = WorldInputs {
+            anchors: &anchors,
+            map: None,
+            scenery: None,
+            view_eyes: &[],
+            max_zoom: 1.0,
+            anchored_shapes: &streams,
+            light: ShadeLight::default(),
+        };
+        let models = anchored_models(&inputs, &[(0x0403, pos)]);
+        let mut corners: Vec<[f32; 3]> = models[&0x0403]
+            .vertices
+            .iter()
+            .map(|v| {
+                [
+                    v.position[0] + pos[0],
+                    v.position[1] + pos[1],
+                    v.position[2] + pos[2],
+                ]
+            })
+            .collect();
+        corners.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+        corners.dedup();
+        assert_eq!(
+            corners,
+            vec![
+                [-1538.0, 0.0, 3906.0],
+                [-1538.0, 196.0, 3906.0],
+                [-1120.0, 0.0, 3872.0],
+            ]
+        );
     }
 
     /// Without `MAP.BIN` the world is the ocean quad, then a flat ground quad.

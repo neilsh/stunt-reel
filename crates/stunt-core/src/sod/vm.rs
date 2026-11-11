@@ -1206,9 +1206,19 @@ pub(crate) fn run_vm(
                             }
                         };
 
+                        // `PLAYONE` (image `0xAD88`) loads the anchor's view-space position less
+                        // the object's lifted origin, in the shape's units. For an unrotated shape
+                        // at the island origin that is the anchor in shape units less the lift;
+                        // `world.rs` shifts the table by the placement.
+                        let [x, y, z] = anchor.register_position();
+                        let units = if scale_factor > 0.0 {
+                            1.0 / scale_factor
+                        } else {
+                            0.0
+                        };
                         regs.set(
                             start_reg.wrapping_add(i) & 1023, // register numbers wrap modulo 1024
-                            anchor.register_position(),
+                            [x * units, y * units - f32::from(ground_y_offset), z * units],
                         );
                     }
                 }

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use stunt_core::anchor::{AnchorPoint, parse_anchor_table};
 use stunt_core::contracts::{NodeKind, SodModelIr};
-use stunt_core::sod::{DecodeMode, decode_sod};
+use stunt_core::sod::{DecodeMode, ShadeLight, decode_sod};
 use stunt_core::world::{ScnStopReason, WorldInputs, build_world};
 
 fn fixtures_dir() -> PathBuf {
@@ -100,6 +100,8 @@ fn nothing_to_build_yields_none() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     assert!(build_world(&inputs, &HashMap::new()).is_none());
 
@@ -111,6 +113,8 @@ fn nothing_to_build_yields_none() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     assert!(build_world(&inputs, &HashMap::new()).is_none());
 }
@@ -124,6 +128,8 @@ fn anchors_without_map_get_a_fallback_ground_plane() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.terrain_patches, 0);
@@ -156,6 +162,8 @@ fn terrain_patch_maps_anchors_into_i1() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.terrain_patches, 1);
@@ -182,6 +190,8 @@ fn patch_indexing_beyond_the_anchor_table_is_rejected() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.terrain_patches, 0);
@@ -199,6 +209,8 @@ fn patch_touching_a_sentinel_anchor_is_counted_but_not_drawn() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.terrain_patches, 1);
@@ -224,6 +236,8 @@ fn scenery_drops_props_that_stay_subpixel_along_the_camera_path() {
             scenery: Some(&scenery),
             view_eyes: eyes,
             max_zoom: 1.0,
+            anchored_shapes: &HashMap::new(),
+            light: ShadeLight::default(),
         };
         build_world(&inputs, &shapes).expect("world").props_placed
     };
@@ -276,6 +290,8 @@ fn scenery_places_deduplicated_props_offset_into_i1() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &shapes).expect("world");
     assert_eq!(world.terrain_patches, 0);
@@ -304,6 +320,8 @@ fn scenery_only_world_is_still_built() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.props_placed, 0);
@@ -329,6 +347,8 @@ fn decal_meshes_of_props_go_to_a_child_batch() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &shapes).expect("world");
     assert_eq!(world.props_placed, 1);
@@ -384,6 +404,8 @@ fn bounds_cover_every_vertex() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     for v in &world.ir.vertices {
@@ -405,6 +427,8 @@ fn cyclic_scenery_list_stops_promptly_and_reports_it() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &fixture_shapes(0x0105)).expect("world");
     // The prop listed before the back-reference is kept; the walk stops at the list that
@@ -424,6 +448,8 @@ fn well_formed_scenery_reports_no_stop() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
     };
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert!(world.scenery_stop.is_none());
