@@ -1,5 +1,5 @@
 ---
-summary: "The SOD display-list VM: self-patching dispatch slots, `OP_TAP` encoding and anchor loading [FMT-SOD-TAP], the execution model, the per-frame draw with credits, and a candidate actor shadow path."
+summary: "The SOD display-list VM: self-patching dispatch slots, `OP_TAP` encoding and anchor loading [FMT-SOD-TAP], the execution model with the model frame of every raw-coordinate generator, the per-frame draw with credits, and a candidate actor shadow path."
 ---
 # `PLAYONE.EXE`: SOD Display-List VM & `OP_TAP` Semantics
 
@@ -285,6 +285,26 @@ Section 8.5's light needs no change: `SHADES` dots the raw-frame light with the 
 
 _Found 2026-11-06; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
+### 8.8 Model Frame: the Other Generators
+
+`[Established]` for the instruction sequences, static, read from the unpatched load image with `mise run vm-handler` and `mise run disasm` (2026-11-11, [#272](https://github.com/neilsh/stunt-reel/issues/272)); nothing observed live. `OP_IPG` (`0x965F`) reads its type word and calls the word table at `work:0x1954` with `BX` = the type. Each quad handler reads `a, b, reg`, computes two corners as `M · v` (section 8.7) and writes each one's negation as its opposite corner, as the cube does. `vm.rs` stores every corner turned half a turn about z, `(−x, −y, z)`, the frame of section 8.7.
+
+| Generator | Handler (image) | Stream operands | Writes (raw, before the turn) | `vm.rs` |
+|---|---|---|---|---|
+| `OP_IPG` type 2, ground quad | `0xB41E` (VM `0x31DE`) | `a, b, reg` | `reg + 0..3` = `(+a, 0, −b)`, `(+a, 0, +b)`, `(−a, 0, +b)`, `(−a, 0, −b)`: the order of the cube's corners 0..3 | matches |
+| `OP_IPG` type 8, vertical quad | `0xB4B5` (VM `0x3275`) | `a, b, reg` | `reg + 0..3` = `(+a, +b, 0)`, `(−a, +b, 0)`, `(−a, −b, 0)`, `(+a, −b, 0)` | fixed: corners 1 and 3 were swapped, the reverse winding |
+| `OP_IPG` type 4, object bucket | `0xB54C` (VM `0x330C`) | `w` | No register. When the head `DGROUP:0x2346 + w` is nonzero it saves the 23-word block at `work:0x806E` (shift, translation, matrix), hands that pending-object list to the walker `0x1B75` ([`lod.md`](lod.md)) and restores the block. | matches (one word, no effect) |
+| `OP_IPG` type 6, streamer | `0xB58D` (VM `0x334D`) | none | Registers 4..10, whatever the stream says: point `i` (0..6) is `(M · (x_i, 0, 2(i + 1)) >> work:0x806F) + (BX, DX, BP)`, the CPU registers it was entered with (`BX` = 6 from `0x965F`; `DX`, `BP` left by the previous handler). `x_i = (sin(p + (i + 1) · 0x1000) / 2 − sin(p) / 2) / 2` from the table at `work:0x19AA`, phase `p = (DGROUP:0x22B8 & 0x3F) << 10`, one turn per 64 ticks. | fixed: it read two words; the registers are not written (open question) |
+| `OP_SPHERE` | `0x9DB5` | `reg, radius` | No register. Unless the register's flag byte (`+0x0A`) is set, it passes the register's projected point and the screen radius `((radius · work:0x8070) >> 8) / (z + work:0x8088)` to `0xCF39`, then to the flat filler `0x8010`, or plots one pixel (`0x7FFB`) when the radius is 0. No facing test. That `0xCF39` builds a filled circle is `[Supported Inference]` from its inputs. | frame matches (centre from the register); faces fixed, below |
+| `OP_PERFDISK` | `0xA040`, operands read by `0xA08E` | `centre_reg, radius, axis_reg` | No register. It skips while the shadow mode `work:0x806C` is set or the centre's depth `z + work:0x8088` is under `0x80`, else builds, from the centre, `(radius · work:0x8070) >> 16` and the normal `regs[centre] − regs[axis]`, a quadratic form that it hands to the flat filler `0x8010`: the screen outline of a disc, `[Supported Inference]`. The normal enters the outline's quadratic form only through products of its components, and no branch tests its sign, so the disc draws from both sides (`[Supported Inference]`). | mismatch: three words, nothing drawn (open question) |
+| `OP_VEC` (`0x004B`) | none | none | Not a dispatched opcode ([`sod-opcodes.md`](../formats/sod-opcodes.md) § 1): `CS:0x004B` is image `0x828B`, two bytes into slot `0x0048`'s patch store, where the bytes `FE F4` begin no defined instruction. | moot: three words, no effect |
+
+Walking the 2,425 unique models in the data root's corpus reaches type 0 in 2,192 steps, type 2 in 320, type 4 in 152, type 8 in 57, `SPHERE` in 1,584 and `PERFDISK` in 2,531, and type 6 and `OP_VEC` in none (`[Bounded Observation]`, `trace_sod` over every `0x000C`-magic entry). The type-8 fix reverses the winding of every polygon drawn on those corners, so a face that drew from the wrong side now draws from the right one.
+
+**Sphere faces.** `PLAYONE`'s sphere is a disc on screen, so it has no winding to match. The icosahedron `vm.rs` draws for it wound every face with its right-hand normal outward, counter-clockwise seen from outside, and the pipeline keeps clockwise faces (`FrontFace::Cw`, [`pipeline.rs`](../../crates/stunt-render/src/pipeline.rs)). So only the far half of each sphere drew, seen from inside. The faces now wind clockwise from outside and the near half draws, with the same outline. `[Supported Inference]` that this changes the image only where something sits inside a sphere, such as a tree trunk in its crown; not yet scored against a capture.
+
+_Source: [the generators read](../../work/2026-11/272_generator-model-frame/journal.md#2026-11-11-the-raw-coordinate-generators-read-statically)._
+
 ## 9. Per-Frame Routine and Scene Composition
 
 `[Supported Inference]`, static. The per-frame routine at `0x0EE9` (entered from `0x4A35` with `BX = 0x4888`, the snapshot copy of the film state made at `0x39B0`) builds the sun vector (`0x196C`), sets the view matrix (`0x11FC`), makes one 3D scene draw through `0x824:0x0A05`, then draws the credits string at `+0xFE` with `0x58BD`. There is no second view or window pass, so a scene the evaluator does not place has no extra layer to supply it.
@@ -314,7 +334,7 @@ _Found 2026-11-05 for [#99](https://github.com/neilsh/stunt-reel/issues/99); see
 
 ## 10. Open questions
 
-* **The model frame of the other generators** (section 8.7, [#272](https://github.com/neilsh/stunt-reel/issues/272)). Turning `OP_VECTORS` half a turn about z is backed by the cube handler, but `OP_IPG` types 2 (ground quad) and 8 (vertical quad), `OP_SPHERE`, `OP_PERFDISK` and `OP_VEC` (`0x004B`) also write raw coordinates and are not checked against their handlers. A wrong corner order there shows up as a winding error, not an upside-down shape.
+* **The other generators** (section 8.8, [#272](https://github.com/neilsh/stunt-reel/issues/272)). Closed: every `OP_IPG` type and `OP_SPHERE` read against its handler; `OP_VEC` has none. Open: `OP_PERFDISK`, reached 2,531 times in the corpus, draws nothing in `vm.rs`, where `PLAYONE` fills a two-sided disc of `radius` about `regs[centre]` with normal `regs[centre] − regs[axis]`; the streamer (type 6) writes registers 4..10 from the tick and from CPU registers its caller leaves, which no stock walk reaches; and a capture-beside-render check of the type-8 winding fix and the reversed sphere faces.
 
 * **Facing flags** (section 8.6, [#74](https://github.com/neilsh/stunt-reel/issues/74)). Ruled out: `OP_IFVIS` as a distance gate. Open: `vm.rs` implements only `REJ`, so a shape that uses `REJVEC`, `REJ2D` or `OP_BVIS` still stops there in a lenient decode; nested `IFVIS` sections keep only the inner gate; an `IFVIS` on a flag its shape never set is drawn, where PLAYONE reads a stale byte. `BZLT`, the real in-shape depth gate, is unimplemented. The `INTRO.FLM` tick 3295 "conifers drawn as round bushes" is not an `IFVIS` effect: the facing gate leaves those trees as they were.
 
