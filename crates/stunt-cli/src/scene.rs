@@ -136,8 +136,7 @@ pub(crate) fn read_anchor_table(
     base: &Path,
 ) -> Result<Vec<AnchorPoint>, String> {
     Ok(read_scenery_file(sidata, base, "ANCHORPT.DAT")?
-        .map(|data| parse_anchor_table(&data))
-        .unwrap_or_default())
+        .map_or_default(|data| parse_anchor_table(&data)))
 }
 
 /// Which files to build a scene from, as chosen on the command line.

@@ -1,5 +1,5 @@
 [toolchain]
-channel = "1.99.1"
+channel = "1.100.0"
 # `mise run cov-rust` needs the LLVM tools, and rustup resolves the toolchain from this file
 # (docs/development.md, "Dependency updates"); `mise.toml` names the same component as
 # `llvm-tools`, so either installer must provide it or coverage depends on which one ran last.

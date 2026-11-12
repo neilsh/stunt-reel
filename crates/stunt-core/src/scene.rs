@@ -460,7 +460,7 @@ impl FilmScene {
         timeline: FilmTimeline,
         inputs: &SceneInputs<'_>,
     ) -> Result<(Self, SceneReport), SceneError> {
-        let anchors = inputs.anchors.map(parse_anchor_table).unwrap_or_default();
+        let anchors = inputs.anchors.map_or_default(parse_anchor_table);
 
         // `PLAYONE` lights every object from film variable 13 (`0x196C`); the light the
         // first slice sets is the film's. Actors get it unrotated: their own light is the
@@ -522,10 +522,7 @@ impl FilmScene {
                 bounds: w.bounds,
                 scenery_stop: w.scenery_stop,
             }),
-            tap_failures: world
-                .as_ref()
-                .map(|w| w.tap_failures.clone())
-                .unwrap_or_default(),
+            tap_failures: world.as_ref().map_or_default(|w| w.tap_failures.clone()),
         };
         Ok((
             Self::new(timeline, decoded.shapes, world).with_images(decoded.images),
