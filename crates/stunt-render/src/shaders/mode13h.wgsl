@@ -5,7 +5,41 @@ struct CameraUniform {
     sun_direction: vec3<f32>,
     ambient_intensity: f32,
     inv_view_proj: mat4x4<f32>,
+    // Half a Mode 13h pixel of the view in NDC.
+    line_half_ndc: vec2<f32>,
+    _pad1: vec2<f32>,
 };
+
+// SodVertex::flags bits of a line corner (contracts/shape.rs VERTEX_FLAG_LINE*).
+const FLAG_LINE: u32 = 0x08u;
+const FLAG_LINE_SIDE: u32 = 0x10u;
+const FLAG_LINE_END: u32 = 0x20u;
+
+// Moves a line corner at `clip`, whose segment's other end is at `other`, to the corner of a
+// screen quad one pixel wide: half a pixel across the segment's minor screen axis (to the
+// side the flags name) and half a pixel past its endpoint along the major one. A steep
+// segment then covers one pixel per row and a shallow one one pixel per column, end pixels
+// included, as PLAYONE's inclusive spans draw a two-vertex polygon
+// (research/playone-exe/sod-vm.md section 8.9). Depth stays the endpoint's.
+fn widen_line(clip: vec4<f32>, other: vec4<f32>, flags: u32) -> vec4<f32> {
+    // The screen direction toward `other`, times clip.w squared (positive), so it holds while
+    // `other` is behind the eye; in half-pixel units on each axis.
+    let toward = (other.xy * clip.w - clip.xy * other.w) / camera.line_half_ndc;
+    // From the first endpoint to the second; a segment seen end-on falls back to +x.
+    var along = toward;
+    if ((flags & FLAG_LINE_END) != 0u) {
+        along = -toward;
+    }
+    let end = select(-1.0, 1.0, (flags & FLAG_LINE_END) != 0u);
+    let side = select(-1.0, 1.0, (flags & FLAG_LINE_SIDE) != 0u);
+    var offset: vec2<f32>;
+    if (abs(along.x) >= abs(along.y)) {
+        offset = vec2<f32>(end * select(1.0, -1.0, along.x < 0.0), side);
+    } else {
+        offset = vec2<f32>(side, end * select(1.0, -1.0, along.y < 0.0));
+    }
+    return vec4<f32>(clip.xy + offset * camera.line_half_ndc * clip.w, clip.zw);
+}
 
 struct ModelUniform {
     model_matrix: mat4x4<f32>,
@@ -59,6 +93,10 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     // Transform vertex position into clip space
     let world_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
     out.clip_position = camera.view_proj * world_pos;
+    if ((in.attr.y & FLAG_LINE) != 0u) {
+        let other = camera.view_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+        out.clip_position = widen_line(out.clip_position, other, in.attr.y);
+    }
     out.palette_index = in.attr.x & 255u;
     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
     // (research/playone-exe/sod-vm.md section 9.1).

@@ -7,12 +7,16 @@
 //! tessellator's per-batch weld map stores `ir.vertices.len()` positions), so they are
 //! written unchanged and `vertex_offset` is not added.
 //!
+//! A slice's screen-space lines (`VERTEX_FLAG_LINE` quads, which have no world width) become
+//! a second primitive in `LINES` mode, one segment per quad, and leave the triangle primitive.
+//!
 //! `[I5]`: decal slices own their vertices (a fresh weld map per batch) and the tessellator
 //! has already displaced them by 0.001 m along their normal, so positions are copied as-is.
 
 use serde_json::{Value, json};
 use stunt_core::contracts::{
-    NodeId, NodeKind, SodModelIr, SodNode, VisibilityCondition, get_palette_rgb_float,
+    NodeId, NodeKind, SodModelIr, SodNode, SodVertex, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END,
+    VERTEX_FLAG_LINE_SIDE, VisibilityCondition, get_palette_rgb_float,
 };
 
 use crate::GltfError;
@@ -104,28 +108,83 @@ pub(crate) fn add_shape_assets(
         if mesh.indices.is_empty() {
             continue;
         }
-        let indices = builder.add_accessor(&AccessorSpec {
-            view: index_view,
-            byte_offset: mesh.index_offset as usize * 4,
-            component_type: COMPONENT_UNSIGNED_INT,
-            count: mesh.indices.len(),
-            kind: "SCALAR",
-            bounds: None,
-        });
+        let attributes = json!({ "POSITION": position, "NORMAL": normal, "COLOR_0": color });
+        let (triangles, lines) = split_lines(mesh.indices, &model.vertices);
+        let mut primitives = Vec::new();
+        if lines.is_empty() {
+            let indices = builder.add_accessor(&AccessorSpec {
+                view: index_view,
+                byte_offset: mesh.index_offset as usize * 4,
+                component_type: COMPONENT_UNSIGNED_INT,
+                count: mesh.indices.len(),
+                kind: "SCALAR",
+                bounds: None,
+            });
+            primitives.push(json!({ "attributes": attributes, "indices": indices, "material": 0 }));
+        } else {
+            for (list, mode) in [(&triangles, MODE_TRIANGLES), (&lines, MODE_LINES)] {
+                if list.is_empty() {
+                    continue;
+                }
+                let bytes: Vec<u8> = list.iter().flat_map(|i| i.to_le_bytes()).collect();
+                let view = builder.add_view(&bytes, TARGET_ELEMENT_ARRAY_BUFFER);
+                let indices = builder.add_accessor(&AccessorSpec {
+                    view,
+                    byte_offset: 0,
+                    component_type: COMPONENT_UNSIGNED_INT,
+                    count: list.len(),
+                    kind: "SCALAR",
+                    bounds: None,
+                });
+                primitives.push(json!({
+                    "attributes": attributes,
+                    "indices": indices,
+                    "material": 0,
+                    "mode": mode,
+                }));
+            }
+        }
         let node_id = mesh.node.id.0;
         *mesh_of_node
             .get_mut(node_id as usize)
             .ok_or(GltfError::InvalidNodeReference(node_id))? = Some(builder.meshes.len());
-        builder.meshes.push(json!({
-            "name": mesh.node.name,
-            "primitives": [{
-                "attributes": { "POSITION": position, "NORMAL": normal, "COLOR_0": color },
-                "indices": indices,
-                "material": 0,
-            }],
-        }));
+        builder
+            .meshes
+            .push(json!({ "name": mesh.node.name, "primitives": primitives }));
     }
     Ok(ShapeAssets { mesh_of_node })
+}
+
+/// glTF primitive mode `LINES`.
+const MODE_LINES: u32 = 1;
+/// glTF primitive mode `TRIANGLES`.
+const MODE_TRIANGLES: u32 = 4;
+
+/// Splits a slice's triangle indices into the triangles that are not line quads and one
+/// `LINES` segment per line quad: from its corner at the first endpoint to its corner at the
+/// second, both on the negative side (`VERTEX_FLAG_LINE*`). A segment welded into several
+/// triangles is listed once.
+fn split_lines(indices: &[u32], vertices: &[SodVertex]) -> (Vec<u32>, Vec<u32>) {
+    const MASK: u8 = VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_END | VERTEX_FLAG_LINE_SIDE;
+    let flags = |i: u32| vertices.get(i as usize).map_or(0, |v| v.flags);
+    let mut triangles = Vec::with_capacity(indices.len());
+    let mut lines: Vec<u32> = Vec::new();
+    for tri in indices.chunks(3) {
+        if !tri.iter().any(|&i| flags(i) & VERTEX_FLAG_LINE != 0) {
+            triangles.extend_from_slice(tri);
+            continue;
+        }
+        let start = tri.iter().find(|&&i| flags(i) & MASK == VERTEX_FLAG_LINE);
+        let end = tri
+            .iter()
+            .find(|&&i| flags(i) & MASK == VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_END);
+        if let (Some(&a), Some(&b)) = (start, end)
+            && !lines.chunks(2).any(|seg| seg == [a, b])
+        {
+            lines.extend([a, b]);
+        }
+    }
+    (triangles, lines)
 }
 
 /// Emits one glTF node per model node (an instance of the shared assets); returns the glTF

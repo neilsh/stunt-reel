@@ -45,6 +45,19 @@ pub struct CameraUniform {
     pub ambient_intensity: f32,
     /// Inverse of `view_proj`, used by the sky pass to turn a pixel into a world ray.
     pub inv_view_proj: [f32; 16],
+    /// Half a Mode 13h pixel of the view in NDC, `[x, y]`: the offset that widens a line
+    /// vertex (`SodVertex::flags` bit 3) to a one-pixel line.
+    pub line_half_ndc: [f32; 2],
+    /// Alignment padding to the 16-byte uniform stride.
+    pub _pad1: [f32; 2],
+}
+
+/// Half a Mode 13h pixel in NDC, `[x, y]`, for a view `MODE13H_WIDTH` pixels wide whose
+/// projection squeezes its vertical scale by `y_scale` into `MODE13H_HEIGHT / y_scale` rows
+/// (`CameraController::projection_y_scale`).
+#[must_use]
+fn line_half_ndc(y_scale: f32) -> [f32; 2] {
+    [1.0 / 320.0, y_scale / 200.0]
 }
 
 impl Default for CameraUniform {
@@ -56,6 +69,8 @@ impl Default for CameraUniform {
             sun_direction: [0.3, 0.9, 0.3], // Sun shining from above and slightly to side
             ambient_intensity: 0.25,
             inv_view_proj: Mat4::IDENTITY.to_cols_array(),
+            line_half_ndc: line_half_ndc(1.0),
+            _pad1: [0.0; 2],
         }
     }
 }
@@ -304,6 +319,8 @@ impl CameraController {
             sun_direction: [sun.x, sun.y, sun.z],
             ambient_intensity: self.ambient_intensity,
             inv_view_proj: view_proj.inverse().to_cols_array(),
+            line_half_ndc: line_half_ndc(self.projection_y_scale),
+            _pad1: [0.0; 2],
         }
     }
 }
@@ -414,7 +431,7 @@ mod tests {
 
     #[test]
     fn test_camera_uniform_size_and_alignment() {
-        assert_eq!(size_of::<CameraUniform>(), 160);
+        assert_eq!(size_of::<CameraUniform>(), 176);
         assert_eq!(size_of::<CameraUniform>() % 16, 0);
     }
 
