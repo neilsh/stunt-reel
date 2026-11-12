@@ -1,5 +1,5 @@
 ---
-summary: "Census work queue for Partial SOD shapes: `OP_ANIMATE` blocks 28; two-vertex polygons, which stopped 7 more, are now drawn as lines; the films placing them, why seven side-view items export no whole model, and regeneration."
+summary: "Census work queue for Partial SOD shapes: `OP_ANIMATE` is drawn as sprites since #222 (its census rows predate that); two-vertex polygons, which stopped 7 more, are now drawn as lines; the films placing them, why seven side-view items export no whole model, and regeneration."
 ---
 # `.SOD` Opcode Coverage: Blocking-Opcode Work Queue
 
@@ -18,7 +18,7 @@ The census of 2026-11-12 (after the two-vertex polygon change of [#393](https://
 
 | Opcode or stop | Mnemonic | Seen as |
 | :---: | :--- | :--- |
-| `0x01F8` | `OP_ANIMATE` | blocking (group A, 28 models) |
+| `0x01F8` | `OP_ANIMATE` | handled since [#222](https://github.com/neilsh/stunt-reel/issues/222): emitted as sprites; the 28 group A models below are from the 2026-11-12 census, before that change (the census now reads past the table without stopping, so the rows below are stale) |
 | `0x00F3`, `0x0168`, `0x02BE` | `OP_POLYZ`, `OP_GVPOLY`, `OP_GVPOLY16` with two vertices | drawn as a line since [#393](https://github.com/neilsh/stunt-reel/issues/393); a count below two still stops (none on the paths the census walks) |
 | `0x0333` | `OP_TEXTURE` | ends the walk (loose `TESTTEXT.BIN` only; the opcode table gives no width) |
 | `0x022E` | `OP_TAP` | blocking without anchors; implemented, see [`sod-vm.md`](../playone-exe/sod-vm.md) |
@@ -31,7 +31,7 @@ Groups B to D of the 2026-11-01 census were the two-vertex polygons, which sit i
 
 | # | Implement | Unblocks (shape IDs) | Film use | Evidence for semantics |
 | :---: | :--- | :---: | :--- | :--- |
-| 1 | `OP_ANIMATE` | 28 (group A) | 191 paired films; `0105`–`010C` and `3A80` each in 39–130, including `INTRO.FLM` and `CTRY.FLM` (`0107`) | `[Established]` dispatch and blit, [`sod-animate.md`](../playone-exe/sod-animate.md); selector and `.FLM` mapping open |
+| 1 | `OP_ANIMATE` (done, #222) | 28 (group A), not yet re-censused | 191 paired films; `0105`–`010C` and `3A80` each in 39–130, including `INTRO.FLM` and `CTRY.FLM` (`0107`) | `[Established]` dispatch and blit, [`sod-animate.md`](../playone-exe/sod-animate.md); selector and `.FLM` mapping open |
 
 The handlers added on 2026-11-01 are community readings (FreeFlight `siobj.cpp`, si-tools) or `[Hypothesis]` (`SHADE`, [`sod-vm.md` § 8.5](../playone-exe/sod-vm.md#85-polygon-colour-at-shade-time)); the animation variables `ROT*` and `BVGT` read are zero (a resting pose), so articulated parts draw at rest.
 
@@ -43,7 +43,7 @@ The handlers added on 2026-11-01 are community readings (FreeFlight `siobj.cpp`,
 | :---: | :--- | :--- | :--- | :--- |
 | `0x7F24` | `PLANES.RES` item `0x24` | was `0x10A0`, `POLYZ` of two vertices | `vm.rs` stopped on `count < 3`; fixed in [#393](https://github.com/neilsh/stunt-reel/issues/393), now a whole model (below) | 6 (2026-11-01 census; lower bound): `DPLANES`, `DRUGLORD`, `JURASSIC`, `PITTJET1`, `PLANES`, `SPLANES` |
 | `0x7F34` | `PLANES.RES` item `0x34` | was `0x0F86`, `GVPOLY16` of two vertices | as `0x7F24` | 5 (2026-11-01 census; lower bound): `COWS`, `END3`, `FLAGDAY1`, `ID5`, `SFAPROMO` |
-| `0x010D` | `GAME.RES` item `0x0D` | `0x0058`, `OP_ANIMATE` (`0x01F8`) | opcode `vm.rs` does not run; byte-identical to `0x3A80`; issue #222, [`sod-animate.md`](../playone-exe/sod-animate.md) | none seen in the 22 local films; the census does not list it |
+| `0x010D` | `GAME.RES` item `0x0D` | `0x0058`, `OP_ANIMATE` (`0x01F8`) | opcode now drawn as sprites since #222 (was not run); byte-identical to `0x3A80`; [`sod-animate.md`](../playone-exe/sod-animate.md) | none seen in the 22 local films; the census does not list it |
 | `0x3A80` | `PRODTOOL.RES` item `0x80` | `0x0058`, `OP_ANIMATE` | as `0x010D`; group A | 114 (2026-11-01 census; lower bound) |
 | `0x07C6` | `SCENERY6.RES` item `0xC6` | none: walks to `RETURN` | its only drawing opcode is `OP_PERFDISK` (`0x000C 0x2400 0x0000`), which `vm.rs` skips as three words and draws nothing ([#272](https://github.com/neilsh/stunt-reel/issues/272); [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators)) | none seen in the 22 local films; the census lists film use only for blocked models |
 | `0x3C01` | `LETTERS.RES` item 1 (`SUPERSET.ALL` holds it as chunk id `0x3C01`, named `RES_3C01.BIN`) | not a shape | the chunk does not start with `0x000C`, so it is no `.SOD`; its bytes begin `Letters and Numbers` and then 16-bit values (`0x0021`, `0x0023`, `0x0024`, ...), read as a name and character-code table (`[Hypothesis]`) | none seen in the 22 local films; the census does not list it |
@@ -55,7 +55,7 @@ _Source: [2026-11-11: each shape traced, and the two-vertex stop tested by skipp
 
 **The two-vertex stop is fixed** ([#393](https://github.com/neilsh/stunt-reel/issues/393)). `[Supported Inference]`, from the code read in [`sod-vm.md` § 8.9](../playone-exe/sod-vm.md#89-polygons-of-two-vertices): `PLAYONE`'s `POLYZ` and `GVPOLY16` handlers have no count test (the clipping variant `0xC50E` was not read), and for two vertices its edge builder and span filler draw a thin line. `vm.rs` now emits `line_polygons` for a count of 2 and keeps stopping below 2. The census (§ 3) drops all seven models of old groups B to D, not only `0x7F24` and `0x7F34`, and the walk of every one reaches `RETURN`. `[Bounded Observation]`: the films that place the seven shapes (by the 2026-11-01 join: `DPLANES`, `DRUGLORD`, `JURASSIC`, `PITTJET1`, `PLANES`, `SPLANES`, `COWS`, `END3`, `FLAGDAY1`, `ID5`, `SFAPROMO`, `AWACS747`, `REXBRUCE`, `YODA`, `TALISD`, `AFTERBRN`, `REDB`) include none of the seven parity references (`CTRY`, `INTRO`, `LAND`, `BALLOON`, `TRAINTNL`, `BOMB`, `LOCATION`), though films without a paired `.ALL` are not joined (§ 4). `mise run parity` scored `CTRY` 0.8973 and `INTRO` 0.8344 with and without the change.
 
-**Follow-ups** (not yet filed): `OP_PERFDISK` (open from #272) gives `0x07C6` its disc; `OP_ANIMATE` for `0x010D` and `0x3A80` stays with #222. The renderer now draws a two-vertex polygon one pixel wide on screen, like a `ZLINETO` line ([`sod-vm.md` § 8.10](../playone-exe/sod-vm.md#810-lines-moveto-zlineto-and-linecol)); against a capture it is still unmeasured, since none of the seven parity references is known to place one.
+**Follow-ups** (not yet filed): `OP_PERFDISK` (open from #272) gives `0x07C6` its disc; `OP_ANIMATE` is handled since #222; its selector and `.FLM` mapping stay open, and the census tables above need regenerating (`mise run sod-census`). The renderer now draws a two-vertex polygon one pixel wide on screen, like a `ZLINETO` line ([`sod-vm.md` § 8.10](../playone-exe/sod-vm.md#810-lines-moveto-zlineto-and-linecol)); against a capture it is still unmeasured, since none of the seven parity references is known to place one.
 
 ---
 
@@ -101,7 +101,7 @@ Film use per placed shape (films resolved through their paired `.ALL`):
 * **2026-11-12.** Groups B to D (two-vertex `POLYZ`, `GVPOLY`, `GVPOLY16`) are gone: `vm.rs` draws a two-vertex polygon as a line and walks on. 3,398 of 3,432 chunks are clean (3,391 before), and the 20 left are group A. Loose `.BIN` models: 144 of 146 clean (142 before). The old group letters E onward are not renumbered here: the tool's output above is the table, and `TESTTEXT.BIN` is its group B now.
 * **2026-11-01.** Groups B to J (the centre stack, `GOSUB`, the matrix stack, rotations, `BVGT`, `SHADE1`) decode to the end; the walk now follows `SORTON`, `GOTO` and `GOSUB`, which exposed the two-vertex polygons of groups B to D. The 2026-10-24 census (309 archives; 3,368 clean, 50 blocked chunks) is in git history.
 * **Counts reproduce** (2026-10-24 against the hand run). 3,432 unique chunks, 3,368 clean and 14 `TAP`-only match. The hand run listed 49 blocked models because it keyed by shape ID; the tool counts 50 variants, since `7E22` has one in group A and one in group D (the hand run's "last one scanned" problem, now reported both ways).
-* **Group A (`ANIMATE`), D (`SHADE1`) and the `TAP` group are unchanged** in shape IDs. Old group E (`GOSUB`, `7E3B`, `7F03`) is group F here.
+* **Group A (`ANIMATE`), D (`SHADE1`) and the `TAP` group are unchanged** in shape IDs. (Census of 2026-11-12, before #222; the `ANIMATE` stop no longer occurs.) Old group E (`GOSUB`, `7E3B`, `7F03`) is group F here.
 * **Old group C's order was wrong.** Its models block on `BVGT`, with `PUSHCENTRE` behind it, not the reverse: a lenient decode of `INTRO.ALL` `7F09` stops at offset `0x0C34` on `0x02FD`. `BVGT` therefore has no prerequisite to be the blocking opcode, though the centre stack is still needed for a full decode.
 * **"Ends at `MOVECENTRE`" was a walk artefact.** The hand run stopped there; with every opcode-table width in the skip table the walk reaches `RETURN` in every group and finds masked `GOSUB`, `POPCENTRE`, `PUSHRELMAT`, `POPRELMAT`, `ROTX`, `ROTZ` and `GOTO`. That splits old B into B (`6403`–`641B`) and E (`7F18`, `7F1B`), and old C into C, H (`7F20`, `7F21`) and J (`7F1C`). `POPCENTRE`, listed as never reached, is reached in all of them.
 * **New scope.** `.RES` entries, loose `.BIN` models and film use were not in the hand run. They add groups G and I (`GTX.RES` bodies, also as loose `.BIN`), K (`TESTTEXT.BIN`, `OP_TEXTURE`) and L (`UFO2.BIN`).
