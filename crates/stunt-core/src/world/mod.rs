@@ -32,7 +32,9 @@ use crate::contracts::{
     NodeId, NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, ShapeMesh,
     SodModelIr, SodVertex, VisibilityCondition, arena_index,
 };
-use crate::sod::{DecodeMode, OP_TAP, ShadeLight, SodError, SodStop, decode_sod_lit, trace_sod};
+use crate::sod::{
+    DecodeMode, OP_TAP, ShadeLight, SodError, SodStop, decode_sod_lit, faces_view, trace_sod,
+};
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -74,13 +76,14 @@ pub struct WorldInputs<'a> {
 /// The assembled static world and the counts that describe how it was built.
 #[derive(Clone, Debug)]
 pub struct World {
-    /// Ocean, terrain, and props as one identity-transformed model (`WORLD_BASE` with an
-    /// optional `WORLD_DECAL` child).
+    /// Ocean, terrain, and props other than [`Self::view_facing`] as one identity-transformed
+    /// model (`WORLD_BASE` with an optional `WORLD_DECAL` child).
     pub ir: SodModelIr,
     /// Terrain patches parsed from `MAP.BIN` whose vertices all index the anchor table, less
     /// the records `PLAYONE` never draws.
     pub terrain_patches: usize,
-    /// Placements the world holds: distinct `(shape, position)` pairs that are not sub-pixel.
+    /// Placements the world holds: distinct `(shape, position)` pairs that are not sub-pixel,
+    /// [`Self::view_facing`] included.
     pub props_placed: usize,
     /// Extent of every vertex in [`Self::ir`].
     pub bounds: ShapeExtent,
@@ -92,6 +95,23 @@ pub struct World {
     pub terrain: TerrainSurface,
     /// Placed `OP_TAP` shapes drawn partly or not at all, in placement order.
     pub tap_failures: Vec<TapFailure>,
+    /// Props whose shape faces the view ([`crate::sod::HEADER_FACES_VIEW`]), left out of
+    /// [`Self::ir`] because their rotation follows the camera; each frame draws them
+    /// (`FilmScene::frame`).
+    pub view_facing: Vec<FacingProp>,
+}
+
+/// A prop drawn turned with the camera's heading rather than baked into the world mesh.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FacingProp {
+    /// Resource ID of the shape.
+    pub shape: u16,
+    /// Where the shape's origin stands, in `[I1]` metres.
+    pub position: [f32; 3],
+    /// The `SP_1NODE` branches it stands behind, outermost first, each a
+    /// [`VisibilityCondition::LodBranch`] in `[I1]`; the prop is drawn on a frame only
+    /// while every one holds (`FilmScene::frame`).
+    pub gates: Vec<VisibilityCondition>,
 }
 
 impl World {
@@ -213,35 +233,63 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
             )
         })
         .unwrap_or_default();
+    let base_y = 0.0;
+    let props_placed = placements.props.len();
+    let (view_facing, fixed) =
+        split_view_facing(&placements.props, &placements.chains, shapes, base_y);
 
-    let (own, tap_failures) = anchored_models(inputs, &placements.props);
+    let (own, tap_failures) = anchored_models(inputs, &fixed);
     let models = PropModels {
         shapes,
         own,
         chains: &placements.chains,
     };
 
-    let base_y = 0.0;
     let terrain = TerrainSurface::new(pts, &map_areas, base_y);
-    let ir = build_world_ir(
-        pts,
-        &map_areas,
-        &terrain,
-        &placements.props,
-        &models,
-        base_y,
-    );
+    let ir = build_world_ir(pts, &map_areas, &terrain, &fixed, &models, base_y);
     // `build_world_ir` always emits the ocean quad, so the extent exists.
     let bounds = ir.extent()?;
     Some(World {
         ir,
         terrain_patches: map_areas.len(),
-        props_placed: placements.props.len(),
+        props_placed,
         bounds,
         scenery_stop: placements.stop,
         terrain,
         tap_failures,
+        view_facing,
     })
+}
+
+/// `props` split into those whose shape faces the view, with the gates of their chain in
+/// `chains`, and the rest, each in walk order.
+///
+/// A view-facing prop is drawn from its shape's shared decode, so it gets neither the
+/// per-placement `OP_TAP` decode nor the ground-decal snap of a baked prop; the type-8 trees
+/// of the reference archives run no `OP_TAP`.
+fn split_view_facing(
+    props: &[Placement],
+    chains: &[Vec<LodGate>],
+    shapes: &HashMap<u16, SodModelIr>,
+    base_y: f32,
+) -> (Vec<FacingProp>, Vec<Placement>) {
+    let (facing, fixed): (Vec<Placement>, Vec<Placement>) = props
+        .iter()
+        .partition(|p| shapes.get(&p.shape).is_some_and(faces_view));
+    let facing = facing
+        .into_iter()
+        .map(|p| FacingProp {
+            shape: p.shape,
+            position: p.position,
+            gates: chains
+                .get(p.chain as usize)
+                .map_or(&[][..], Vec::as_slice)
+                .iter()
+                .map(|&gate| lod_condition(gate, base_y))
+                .collect(),
+        })
+        .collect();
+    (facing, fixed)
 }
 
 /// Why a placed `OP_TAP` shape was drawn partly or not at all.
@@ -886,22 +934,27 @@ fn lod_parent(
     let mut node = root;
     for &gate in gates {
         node = *groups.entry((node, gate)).or_insert_with(|| {
-            let [x, y, z] = gate.raw;
             ir.allocate_node(
                 "WORLD_LOD",
                 Some(node),
                 IDENTITY_MATRIX,
-                VisibilityCondition::LodBranch {
-                    point: [-(x as f32), -(y as f32) + base_y, z as f32],
-                    ext: gate.ext,
-                    splitdist: gate.splitdist,
-                    near: gate.near,
-                },
+                lod_condition(gate, base_y),
                 NodeKind::TransformGroup,
             )
         });
     }
     node
+}
+
+/// `gate` as the visibility condition the renderer tests, its node position in `[I1]`.
+fn lod_condition(gate: LodGate, base_y: f32) -> VisibilityCondition {
+    let [x, y, z] = gate.raw;
+    VisibilityCondition::LodBranch {
+        point: [-(x as f32), -(y as f32) + base_y, z as f32],
+        ext: gate.ext,
+        splitdist: gate.splitdist,
+        near: gate.near,
+    }
 }
 
 /// Appends one prop mesh at `pos`, or at its ground-snapped vertices when it has them.
@@ -1638,5 +1691,62 @@ mod tests {
                 normal: [0.0, 0.0, 1.0],
             })
         );
+    }
+
+    /// A placement of a shape with header flag bit 0 leaves the world mesh for the
+    /// per-frame view-facing list; the others stay, each list in walk order.
+    #[test]
+    fn view_facing_props_are_split_from_the_baked_ones_in_walk_order() {
+        use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, decode_sod};
+        let words = [
+            OP_ID, 100, 0, 0x0100, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24,
+        ];
+        let bytes: Vec<u8> = words
+            .iter()
+            .chain(&[OP_RETURN])
+            .flat_map(|w| w.to_le_bytes())
+            .collect();
+        let tree = decode_sod(&bytes, "TREE", None, DecodeMode::Strict).expect("decode tree");
+        let shapes = HashMap::from([(0x3A3, tree), (0x100, square_prop(None))]);
+        let at = |shape, x, chain| Placement {
+            shape,
+            position: [x, 0.0, 0.0],
+            chain,
+        };
+        let gate = LodGate {
+            raw: [10, -20, 30],
+            ext: 400,
+            splitdist: 600,
+            near: true,
+        };
+        let chains = [Vec::new(), vec![gate]];
+        let props = [
+            at(0x3A3, 1.0, 0),
+            at(0x100, 2.0, 1),
+            at(0x3A3, 3.0, 1),
+            at(0x999, 4.0, 0),
+        ];
+        let (facing, fixed) = split_view_facing(&props, &chains, &shapes, 0.0);
+        assert_eq!(
+            facing,
+            vec![
+                FacingProp {
+                    shape: 0x3A3,
+                    position: [1.0, 0.0, 0.0],
+                    gates: Vec::new(),
+                },
+                FacingProp {
+                    shape: 0x3A3,
+                    position: [3.0, 0.0, 0.0],
+                    gates: vec![VisibilityCondition::LodBranch {
+                        point: [-10.0, 20.0, 30.0],
+                        ext: 400,
+                        splitdist: 600,
+                        near: true,
+                    }],
+                },
+            ]
+        );
+        assert_eq!(fixed, vec![at(0x100, 2.0, 1), at(0x999, 4.0, 0)]);
     }
 }

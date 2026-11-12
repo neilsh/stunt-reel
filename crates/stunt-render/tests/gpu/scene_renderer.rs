@@ -318,6 +318,7 @@ fn world_is_drawn_when_present() {
             scenery_stop: None,
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
+            view_facing: Vec::new(),
         };
         let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
         let Some((w, h, drawn)) = render(&scene) else {
