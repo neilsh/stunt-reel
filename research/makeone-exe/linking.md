@@ -102,7 +102,7 @@ We rendered each film with its demo archive and again with the superset, then sc
 | CTRY | 0.8725 / 0.9897 / 0.890 | 0.8726 / 0.9899 / 0.890 |
 | INTRO | 0.8273 / 0.9856 / 0.830 | 0.8282 / 0.9856 / 0.831 |
 
-Both films stay within the 0.002 noise floor. The one thing the archive changes is which scenery props get placed. `build_world` places a scenery leaf only when the archive holds its shape (`available_models` in [`world.rs`](../../crates/stunt-core/src/world.rs)). With the superset, CTRY places 69 static props instead of 68 and INTRO 1,114 instead of 1,103. That changes 125 of 1,343 CTRY frames and 440 of 3,823 INTRO frames, by at most 164 and 373 of 64,000 pixels. `palettes.zst` is byte-identical. The extra props are most likely ones that `PLAYONE`'s per-frame level of detail never loaded and our once-per-film path-distance level of detail keeps (`[Supported Inference]`). Decoding 2,669 chunks instead of 127 or 250 adds about 0.2 s at startup.
+Both films stay within the 0.002 noise floor. The one thing the archive changes is which scenery props get placed. `build_world` places a scenery leaf only when the archive holds its shape (`place_props` in [`world/scenery.rs`](../../crates/stunt-core/src/world/scenery.rs)). With the superset, CTRY places 69 static props instead of 68 and INTRO 1,114 instead of 1,103. That changes 125 of 1,343 CTRY frames and 440 of 3,823 INTRO frames, by at most 164 and 373 of 64,000 pixels. `palettes.zst` is byte-identical. The extra props are most likely ones that `PLAYONE`'s per-frame level of detail never loaded and our once-per-film path-distance level of detail keeps (`[Supported Inference]`). Decoding 2,669 chunks instead of 127 or 250 adds about 0.2 s at startup.
 
 ### 7.1 Rendering Straight from `RES\`
 

@@ -62,7 +62,7 @@ At `0x2121` the node is `type, obj, ext, splitdist, next` at `[bp+0..8]`, matchi
 
 So `obj` is a coarse stand-in drawn **instead of** the subtree beyond the threshold, never in addition to it. A far node with `obj = 0` draws nothing. `[Established]` for the control flow; `[Supported Inference]` that `CX` is view-space depth (it is the first rotated coordinate after the frustum test, which compares the other two against it).
 
-Alberto Marnetto's MIT-licensed `si-free-flight-2` (`scenegraph_loader.cpp`, [`si-tools`](https://github.com/AlbertoMarnetto/si-tools), consulted 2026-10-23) has no level-of-detail gate. It places `obj` at the accumulated position **and** walks `next`, so a viewer built that way draws both representations at once. `world.rs` follows the PLAYONE control flow above.
+Alberto Marnetto's MIT-licensed `si-free-flight-2` (`scenegraph_loader.cpp`, [`si-tools`](https://github.com/AlbertoMarnetto/si-tools), consulted 2026-10-23) has no level-of-detail gate. It places `obj` at the accumulated position **and** walks `next`, so a viewer built that way draws both representations at once. `world/scenery.rs` follows the PLAYONE control flow above.
 
 ### 1.2 The Patch Is One Six-Byte Site Per Engine
 
@@ -124,7 +124,7 @@ The detail scale matches the article: `0xFFFF` is 100%, and the in-game slider w
 
 ### 4.1 Static `SP_1NODE` Stand-Ins (adopted)
 
-* `world.rs` builds the world once per film, so it cannot switch level of detail per frame. It keeps an `SP_1NODE`'s subtree when the camera path ever comes within `half + (splitdist - half) × scale` (`half = ext / 2`) and draws the stand-in otherwise. It uses Euclidean distance to the camera polyline for `CX`, where PLAYONE uses per-frame view-space depth, and a fixed `scale` of 0.5, the low end of the `[0.5, 1)` range of section 2.
+* `world/scenery.rs` places the props once per film, so it cannot switch level of detail per frame. It keeps an `SP_1NODE`'s subtree when the camera path ever comes within `half + (splitdist - half) × scale` (`half = ext / 2`) and draws the stand-in otherwise. It uses Euclidean distance to the camera polyline for `CX`, where PLAYONE uses per-frame view-space depth, and a fixed `scale` of 0.5, the low end of the `[0.5, 1)` range of section 2.
 * Before this, `world.rs` skipped `obj` and always descended, so every prop was drawn at its finest level of detail.
 * **Parity effect (`CTRY` / `INTRO` mean SSIM, `DBG_LOD_SCALE`, one build):** always near 0.7732 / 0.6799; scale 1.0 0.7730 / 0.6834; 0.75 0.7730 / 0.6842; 0.5 0.7733 / 0.6856. Monotonic, so 0.5 is adopted: INTRO +0.0057, CTRY +0.0001. No value below 0.5 was tried and the winner's pixels were not inspected.
 

@@ -1209,7 +1209,7 @@ pub(crate) fn run_vm(
                         // `PLAYONE` (image `0xAD88`) loads the anchor's view-space position less
                         // the object's lifted origin, in the shape's units. For an unrotated shape
                         // at the island origin that is the anchor in shape units less the lift;
-                        // `world.rs` shifts the table by the placement.
+                        // `world/mod.rs` shifts the table by the placement.
                         let [x, y, z] = anchor.register_position();
                         regs.set(
                             start_reg.wrapping_add(i) & 1023, // register numbers wrap modulo 1024

@@ -391,7 +391,7 @@ def matched_records(
 def parse_map_bin(data: bytes) -> list[MapPatch]:
     """Active ``MAP.BIN`` records of three or more vertices that all index the 1,024-entry table.
 
-    A negative count reads all eight slots, as ``world.rs`` does.
+    A negative count reads all eight slots, as ``world/mod.rs`` does.
     """
     patches = []
     for index in range(_map_record_count(data)):
