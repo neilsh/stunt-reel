@@ -63,6 +63,7 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | Unpatched | Patch #3 | Evidence | Row | Anchor |
 |---|---|---|---|---|
 | `0x0542` | `0x05BE` | 13 refs | Segment of the display-list work segment (`mov es, [0x542]` before `es:[0x8078]`) | |
+| `0x056C` | `0x05E8` | 1 disp (`jmp [bx+0x56C]` at `0x213D`, `jmp [bx+0x5E8]` at patched `0x2250`, in the paired `SP_1NODE` handlers; [`lod.md`](lod.md) section 1.2) | Scene-walker dispatch table entered by a near `SP_1NODE` | |
 | `0x05AC`, `0x05B5`, `0x05BE`, `0x05CA`, `0x05D4`, `0x05DB` | `0x0628`, `0x0631`, `0x063A`, `0x0646`, `0x0650`, `0x0657` | 1, 1, 1, 1, 2, 1 imm; bytes for each | `game.cfg`, `game.var`, `install.exe`, `pfont.bin`, `pilots`, `res\*.res` | |
 | `0x065D`, `0x069B` | `0x06D9`, `0x0717` | 1 imm each; bytes | Memory and disk-space messages | |
 | `0x09DE`, `0x09EA` | `0x0A62`, `0x0A6E` | 1 imm, 2 imm; bytes | Sky colour pairs; blended zenith and horizon | `# [MEM-PALETTE]` |
@@ -90,6 +91,7 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0x22CA`, `0x22CC` | `0x1C50`, `0x1C52`, `[Bounded Observation]` | 17, 6 refs; a live capture flagged 72 of 1,906 frames torn against 66 of 1,908 unpatched ([`patch3.md` § 3.1](patch3.md#31-composed-pages)) | Composed-page segments | |
 | `0x22CE`, `0x22D0` | `0x1C54`, `0x1C56` | 2 refs each | Saved `SS`, `SP` around the `INSTALL.EXE` EXEC | |
 | `0x22DE` | `0x1C64` | 2 refs; bytes | View camera's slot record pointer | |
+| `0x22EC` | `0x1C72` | 1 ref (`0x215A`, patched `0x226D`; [`lod.md`](lod.md) section 1.2) | `SP_1NODE` stand-in object word | |
 | `0x2A68` | `0x23EE` | 4 refs; bytes | View eye | |
 | `0x2468` | `0x1DEE` | 3 imm | Base palette | `# [MEM-PALETTE]` |
 | `0x2768` | `0x20EE` | 9 imm; a live capture read identical palettes ([`patch3.md` § 2](patch3.md#2-patched-playoneexe-offsets)) | Working palette | `# [MEM-PALETTE]` |
@@ -215,7 +217,7 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x8070` | `[Bounded Observation]` | `u16` | Projection-scale term consumed by `OP_ANIMATE`; derived from `0x8108` shifted by `0x806F` | `# [FMT-SOD-ANIMATE]` |
 | `0x8082` | `[Established]` | `u16` | Special model selector (`0x1AB1` enables TAP screen projection) | |
 | `0x8084`, `0x8086`, `0x8088` | `[Established]` | `i16` | The object's origin in view space, shifted (scenery: `0x21B2..0x21BC`); `OP_TAP` subtracts it, so a tapped point is relative to the shape | _Source: [how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._ |
-| `0x808A` | `[Established]` | `i16[9]` | The matrix the display list draws with: `0x80C0 · R` for an actor (`CS:0x1D31`), the matrix at `0x809C` when the object's flag `+0x0F & 1` is set (`CS:0x1D02`), for scenery the view matrix alone, or `0x809C` under the same flag (`CS:0x21C2..0x21CA`) | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
+| `0x808A` | `[Established]` | `i16[9]` | The matrix the display list draws with: `0x80C0 · R` for an actor (`CS:0x1D31`), the matrix at `0x809C` when the object's flag `+0x0F & 1` is set (`CS:0x1D02`), for scenery the view matrix alone, or `0x809C` under the same flag (`CS:0x21C2..0x21CA`). The flag is the shape's `header_flags` bit 0 (`[es:9]`, [`sod-vm.md`](sod-vm.md) section 8.8); `0x809C` is the view matrix built with the yaw zeroed (`CS:0x12C2`) | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
 | `0x80C0..0x80CA` | `[Established]` | `i16[9]` | 3×3 view matrix: the scenery draw matrix (`0x808A`) and the matrix `OP_TAP` transforms anchors by | |
 | `0x80D2` | `[Established]` | `i16[9]` | Scratch for the rotation `R` from image `0x8725` | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
 | `0x8108` | `[Established]` | `u16` | Lens mantissa, a copy of `DS:0x229C` (image `0x122E`); Q15 factor on the view matrix's two screen rows (image `0x12E3`), also read by the sun-disc drawer and `OP_ANIMATE` ([`lod.md`](lod.md) section 2.2) | `# [FMT-SOD-ANIMATE]` |

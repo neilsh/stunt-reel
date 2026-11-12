@@ -13,7 +13,7 @@ use crate::sod::{
     CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV, OP_IPG,
     OP_LINECOL, OP_MOVETO, OP_NEGV, OP_PERFDISK, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV,
     OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason,
-    decode_sod,
+    decode_sod, faces_view,
 };
 
 /// Decodes `data` strictly with no anchor table.
@@ -279,6 +279,26 @@ fn test_ipg_vertical_quad_corners_share_the_vectors_frame() {
     assert_eq!(corner_1, vec![[-100.0, -50.0, 0.0], [100.0, -50.0, 0.0]]);
     let corner_3 = ipg_beside_vectors(&[8, 100, 50, 0], &[[100, -50, 0]], &[8, 3, 0]);
     assert_eq!(corner_3, vec![[-100.0, -50.0, 0.0], [-100.0, 50.0, 0.0]]);
+}
+
+/// A flat tree: `header_flags`, then a vertical quad and one triangle over three corners.
+fn flat_tree(header_flags: u8) -> SodModelIr {
+    let mut bytes = make_sod_header(100, 0, 0, header_flags);
+    for word in [OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24, OP_RETURN] {
+        bytes.extend_from_slice(&word.to_le_bytes());
+    }
+    decode(&bytes, "TREE").expect("decode flat tree")
+}
+
+/// Header flag bit 0 marks a shape `PLAYONE` turns with the camera's heading (`0x21A8`,
+/// `0x1CFB`); the other bits and a shape with no decode record do not.
+#[test]
+fn test_header_flag_bit_0_marks_a_view_facing_shape() {
+    assert!(faces_view(&flat_tree(0x01)));
+    assert!(faces_view(&flat_tree(0x03)));
+    assert!(!faces_view(&flat_tree(0x00)));
+    assert!(!faces_view(&flat_tree(0x02)));
+    assert!(!faces_view(&SodModelIr::new("BUILT")));
 }
 
 /// `OP_IPG` type 6 (`0xB58D`) reads no stream word after its type, so the `COLOR` after it

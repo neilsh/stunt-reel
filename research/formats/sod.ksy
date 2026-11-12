@@ -34,7 +34,10 @@ seq:
       table, so the field is not constrained here.
   - id: header_flags
     type: u1
-    doc: Bit 0 marks flat shading.
+    doc: |
+      Bit 0 draws the shape through the view matrix built without the
+      camera's yaw, so it turns with the camera's heading (the flat
+      OP_IPG type 8 trees set it; playone-exe/sod-vm.md section 8.8).
   - id: collision_meta
     type: u2
   - id: bytecode
