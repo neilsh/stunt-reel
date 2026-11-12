@@ -19,7 +19,7 @@ Issues for this repo live as GitHub issues; an issue's spec and plan live in its
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
-File issues only into the user's own repo. Never file into `mattpocock/skills` (the repo these skills come from) unless the user owns it. In a fork, `gh` can default to the upstream parent, so before the first `gh issue create` of a session, check the target with `gh repo view --json nameWithOwner` and confirm it with the user if it is not their repo.
+File issues only into the user's own repo. Never file into `mattpocock/skills` (the repo these skills come from) unless the user owns it. In a fork, `gh` can default to the upstream parent, so before a session's first issue search, comment or `gh issue create`, check the target with `gh repo view --json nameWithOwner` and confirm it with the user if it is not their repo.
 
 ## Organizing issues
 
