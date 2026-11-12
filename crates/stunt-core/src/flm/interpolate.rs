@@ -197,6 +197,41 @@ pub(crate) fn lerp_angle(a: f32, b: f32, t: f32) -> f32 {
     a + t * delta
 }
 
+/// Interpolates a slot's `.FLM` animate word as `PLAYONE` does (image `0x3EFE`): straight
+/// from `a` to `b` as unsigned values, downward when `b < a`, never across the wrap.
+///
+/// The fraction is `t` in 1/65536 steps, the word `0x22E0` holds.
+pub(crate) fn lerp_animate(a: u16, b: u16, t: f32) -> u16 {
+    // Saturating float-to-int, then clamped: `t` 1.0 lands exactly on `b`.
+    #[expect(clippy::cast_possible_truncation, reason = "clamped to 0..=65536")]
+    let frac = ((t * 65536.0) as i64).clamp(0, 65536);
+    let (a, b) = (i64::from(a), i64::from(b));
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "both words are u16 and frac is at most 65536, so the i64 maths cannot overflow"
+    )]
+    let value = a + (((b - a) * frac) >> 16);
+    u16::try_from(value).unwrap_or(0)
+}
+
+/// Joint angles between two actors' `a` and `b` at `t`: slot 0, the animate word, by
+/// [`lerp_animate`], every other slot from the nearer record.
+fn interpolate_joints(a: &[(u16, u16)], b: &[(u16, u16)], t: f32) -> Vec<(u16, u16)> {
+    let animate = |joints: &[(u16, u16)]| {
+        joints
+            .iter()
+            .find(|&&(joint, _)| joint == 0)
+            .map_or(0, |&(_, value)| value)
+    };
+    let nearer = if t < 0.5 { a } else { b };
+    let value = lerp_animate(animate(a), animate(b), t);
+    (value != 0)
+        .then_some((0, value))
+        .into_iter()
+        .chain(nearer.iter().copied().filter(|&(joint, _)| joint != 0))
+        .collect()
+}
+
 /// Detect camera cut between successive frames based on view object change or large eye displacement.
 pub(crate) fn detect_camera_cut(
     current_eye: [f32; 3],
@@ -292,11 +327,11 @@ pub(crate) fn interpolate_trajectory(
                 } else {
                     act_b.casts_shadow
                 },
-                joint_angles_bam: if eff_alpha < 0.5 {
-                    act_a.joint_angles_bam.clone()
-                } else {
-                    act_b.joint_angles_bam.clone()
-                },
+                joint_angles_bam: interpolate_joints(
+                    &act_a.joint_angles_bam,
+                    &act_b.joint_angles_bam,
+                    eff_alpha,
+                ),
             });
         } else if eff_alpha < 0.5 {
             actors.push(act_a.clone());
@@ -350,6 +385,28 @@ fn lerp_palette(a: PaletteControls, b: PaletteControls, alpha: f32) -> PaletteCo
 mod tests {
     use super::*;
     use std::f32::consts::{FRAC_PI_2, PI};
+
+    #[test]
+    fn animate_interpolates_unsigned_and_never_wraps() {
+        // CTRY.FLM's explosion: 24576 -> 47104 rises; 47104 -> 4096 falls straight down.
+        assert_eq!(lerp_animate(24_576, 47_104, 0.0), 24_576);
+        assert_eq!(lerp_animate(24_576, 47_104, 0.5), 35_840);
+        assert_eq!(lerp_animate(24_576, 47_104, 1.0), 47_104);
+        assert_eq!(lerp_animate(47_104, 4096, 0.5), 25_600);
+        assert_eq!(lerp_animate(47_104, 4096, 1.0), 4096);
+        // A fall rounds toward the lower value, as `PLAYONE`'s `mul`/`sub` does.
+        assert_eq!(lerp_animate(1, 0, 0.25), 0);
+    }
+
+    #[test]
+    fn joints_carry_the_animate_word_in_slot_zero() {
+        assert_eq!(interpolate_joints(&[], &[(0, 1000)], 0.5), vec![(0, 500)]);
+        assert_eq!(interpolate_joints(&[(0, 10)], &[], 1.0), Vec::new());
+        assert_eq!(
+            interpolate_joints(&[(0, 0), (3, 7)], &[(3, 9)], 0.75),
+            vec![(3, 9)]
+        );
+    }
 
     /// An unrotated, visible actor with no shadow at `position_meters`.
     fn actor(actor_id: u32, position_meters: [f32; 3]) -> ActorTransform {

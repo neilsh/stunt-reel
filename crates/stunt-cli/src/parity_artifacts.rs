@@ -728,6 +728,7 @@ mod tests {
             lens: stunt_core::contracts::DEFAULT_CAMERA_LENS,
             world: false,
             actors: Vec::new(),
+            sprites: Vec::new(),
             palette: PaletteControls {
                 sky: 0x2000,
                 brightness: 0x8000,

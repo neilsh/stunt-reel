@@ -270,6 +270,35 @@ pub struct ShapeExtent {
     pub radius: f32,
 }
 
+/// A screen-aligned image an `OP_ANIMATE` draws at one of the shape's points.
+///
+/// `PLAYONE` blits the chosen frame as a square `size` across, centred on the projected
+/// point, with palette index 0 transparent, and skips it in the shadow pass
+/// (`research/playone-exe/sod-animate.md`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapeSprite {
+    /// Centre in the shape's model space, in `[I1]` metres like a mesh vertex.
+    pub anchor: [f32; 3],
+    /// Side of the drawn square in metres; the image is stretched to it on both axes.
+    pub size: f32,
+    /// Word of `PLAYONE`'s angle bank (`work:0x810E + selector`) that picks the frame.
+    pub selector: u16,
+    /// Image resource ids, one per frame.
+    pub frames: Vec<u16>,
+    /// Visibility gate of the `OP_IFVIS` section the opcode sits in.
+    pub visibility: VisibilityCondition,
+}
+
+impl ShapeSprite {
+    /// The image resource drawn when the bank word is `phase`: frame `(count × phase) >> 16`,
+    /// so `phase` sweeps the frames once per 65,536; `None` when there are no frames.
+    #[must_use]
+    pub fn frame(&self, phase: u16) -> Option<u16> {
+        let index = self.frames.len().saturating_mul(usize::from(phase)) >> 16;
+        self.frames.get(index).copied()
+    }
+}
+
 /// One mesh slice of a shape, borrowing the node that owns it and its two windows.
 #[derive(Debug, Clone, Copy)]
 pub struct ShapeMesh<'a> {
@@ -313,6 +342,9 @@ pub struct SodModelIr {
     pub vertices: Vec<SodVertex>,
     /// Consolidated index buffer (32-bit indices for modern GPU hardware).
     pub indices: Vec<u32>,
+    /// Images the shape draws in screen space (`OP_ANIMATE`), in stream order. They are
+    /// not geometry: [`Self::meshes`] and [`Self::extent`] leave them out.
+    pub sprites: Vec<ShapeSprite>,
     /// Provenance of the decode that produced this shape; `None` for authored shapes.
     decode: Option<DecodeRecord>,
 }
@@ -339,6 +371,7 @@ impl SodModelIr {
             root_nodes: Vec::new(),
             vertices: Vec::new(),
             indices: Vec::new(),
+            sprites: Vec::new(),
             decode: None,
         }
     }
@@ -681,6 +714,27 @@ mod tests {
         assert_eq!(attached.stop, Some(stop));
         assert_eq!(attached.stepped_over, vec![stop]);
         assert_eq!(attached.returned_at, Some(52));
+    }
+
+    #[test]
+    fn sprite_frame_sweeps_the_table_once_per_turn() {
+        let sprite = ShapeSprite {
+            anchor: [0.0; 3],
+            size: 1.0,
+            selector: 0x16,
+            frames: (0x1F01..=0x1F0C).collect(),
+            visibility: VisibilityCondition::Always,
+        };
+        // `(12 * phase) >> 16`: 24576 is 4.5 frames in, 47104 is 8.6, 65535 the last.
+        assert_eq!(sprite.frame(0), Some(0x1F01));
+        assert_eq!(sprite.frame(24_576), Some(0x1F05));
+        assert_eq!(sprite.frame(47_104), Some(0x1F09));
+        assert_eq!(sprite.frame(u16::MAX), Some(0x1F0C));
+        let empty = ShapeSprite {
+            frames: Vec::new(),
+            ..sprite
+        };
+        assert_eq!(empty.frame(1000), None);
     }
 
     #[test]

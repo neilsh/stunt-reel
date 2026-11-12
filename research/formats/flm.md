@@ -130,7 +130,7 @@ Encountered in Object Lifecycle opcodes (`0x00..0x3F`):
 | **Bit 2** | `0x04` | `SIF_SHADOW` | Ground Shadow: Object casts a flat-shaded projected ground shadow polygon. |
 | **Bit 3** | `0x08` | `SIF_MOVES` | Dynamic Translation: Position changes per-slice; evaluated via `interp` stream. If cleared, position is fixed static keyframe. |
 | **Bit 4** | `0x10` | `SIF_ROTATES` | Dynamic Orientation: Rotation changes per-slice; evaluated via `interp` stream. If cleared, rotation is fixed static keyframe. |
-| **Bit 5** | `0x20` | `SIF_ANIMATES`| Animation Input: Carries a per-slice `animate: u16` value. Its mapping to `OP_ANIMATE` resource selection is unresolved. |
+| **Bit 5** | `0x20` | `SIF_ANIMATES`| Animation Input: Carries a per-slice `animate: u16` value. `PLAYONE` keeps it at the slot record's `+0x16`, interpolates it between keys as an unsigned value, and an `OP_ANIMATE` with selector `0x16` picks its frame from it ([`sod-animate.md`](../playone-exe/sod-animate.md) § 2). |
 | **Bit 6..7** | `0xC0`| *Reserved* | Unassigned bits (must be zero). |
 
 ### 3.3 Master Opcode Dispatch Table (`# [FMT-FLM-OPCODES]`)

@@ -24,7 +24,12 @@ seq:
     doc: Vertical pixel count.
   - id: pixels
     size: width * height
-    doc: Row-major Mode 13h palette indices; index 0 is the transparency key.
+    doc: |
+      Row-major Mode 13h palette indices; index 0 is the transparency key.
+      PLAYONE's blitter (image 0x7DE6) reads an OP_ANIMATE frame's
+      width * height pixels from byte 6, not 4; the 2,815 corpus frames hold a zero
+      word at byte 4 and at the end, so both readings see the same picture
+      shifted by two pixels (sod-animate.md section 3).
   - id: trailer
     type: u2
     valid:

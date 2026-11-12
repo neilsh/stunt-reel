@@ -221,6 +221,8 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x8108` | `[Established]` | `u16` | Lens mantissa, a copy of `DS:0x229C` (image `0x122E`); Q15 factor on the view matrix's two screen rows (image `0x12E3`), also read by the sun-disc drawer and `OP_ANIMATE` ([`lod.md`](lod.md) section 2.2) | `# [FMT-SOD-ANIMATE]` |
 | `0x810A` | `[Established]` | `u16` | `0x229C² × 2 >> 16` (image `0x1238`); reader not traced | |
 | `0x810C` | `[Established]` | `u16` | Lens shift count, a copy of `DS:0x229E` (image `0x123D`); arithmetic right shift on the view matrix's depth row (image `0x12F8`). Zoom is `0x8108 / 0x8000 × 2^0x810C`, about `lens / 8192` | |
+| `0x811E` | `[Established]` | `u16` | The film clock `[0x4888 + 0x0E]` shifted left 12 (image `0x1DCA`): the bank word `OP_ANIMATE` selector `0x10` reads, one sweep every 16 ticks | `# [FMT-SOD-ANIMATE]` |
+| `0x8124` | `[Established]` | `u16` | The drawn slot's animate word, its record's `+0x16` (image `0x1D66`): the bank word `OP_ANIMATE` selector `0x16` and `ROT*` operand `0x16` read | `# [FMT-SOD-ANIMATE]` |
 
 Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
 
@@ -228,7 +230,7 @@ Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
 |---|---|---|
 | `0x1316 + opcode` | Opcode dispatch table, 9-byte pitch | `# [MEM-SOD-VM]` |
 | `0x150E` | `[Established]` `OP_ANIMATE` dispatch entry; jumps to `CS:0x3AAC` | `# [FMT-SOD-ANIMATE]` |
-| `0x3AAC` | `[Established]` `OP_ANIMATE` handler for variable-width resource selection and raster draw | `# [FMT-SOD-ANIMATE]` |
+| `0x3AAC` | `[Established]` `OP_ANIMATE` handler: frame `(count × [work:0x810E + selector]) >> 16` of its id table, drawn through `0:0x8073` | `# [FMT-SOD-ANIMATE]` |
 | `0x3E58` | `OP_TAP` (`0x022E`) handler | `# [MEM-SOD-VM]` |
 | `0x3F36` | `OP_HUGETAP` (`0x0237`) entry: `int3` (unimplemented) | `# [MEM-SOD-VM]` |
 | `0x3F37` | `OP_TAP` anchor transform (image `0xAE67`): `0x80C0 · anchor + 0x41D4`, cached at record `+0x06..+0x10` | `# [MEM-SOD-VM]` |
@@ -264,6 +266,10 @@ See [`research/playone-exe/sod-vm.md`](sod-vm.md) for `OP_TAP` and [`research/pl
 | `CS:0x7B70` | `[Established]` | VGA DAC upload (`0x3C8`/`0x3C9`), two retrace-gated halves |
 | `DS:0x4888` | `[Supported Inference]` | Snapshot of the `0x474A` film state taken at `CS:0x39B0` and read by the frame routine `CS:0x0EE9`; `+0x7E` (`DS:0x4906`) holds the 16 variable copies, `+0x1A` (`DS:0x48A2`) a copy of `0x474A + 0x1A`, the current `view_obj` (written by the `0x90..0x97` handler at `CS:0x3D7F`) |
 | `DS:0x4778 -> DS:0x48B6` | `[Supported Inference]` | Per-slot record pointers of the live and snapshot structs; `CS:0x39B0` copies 12 words per slot |
+| `CS:0x3E6C` | `[Established]` | Per-frame slot interpolation between the start `[di + 0x32]` and end `[di + 0x34]` records by `DS:0x22E0`, gated by the record's flag byte `+1`: position `+0x04..+0x0F` (`0x08`), angles `+0x10..+0x14` (`0x10`), and the animate word `+0x16` (`0x20`) taken unsigned, never wrapping (`0x3EF8`) ([`sod-animate.md`](sod-animate.md) § 2) |
+| `CS:0x4C41` | `[Established]` | Resource cache lookup of the id in `AX`; returns its segment in `ES`, carry set when absent. A newly loaded chunk sits at segment offset 2 (`0x4CD3`, `0x4CE0`) |
+| `CS:0x8073` | `[Established]` | `OP_ANIMATE` draw entry: looks the id up, centres a `DX`-pixel square on `CX`, `BX` and calls the blitter through `DS:0x2260` |
+| `CS:0x7DE6` | `[Established]` | Scaled transparent blit: stretches the image at `es:8` (width `es:2`, height `es:4`) to the square, clips to `DS:0x2294..0x229A` and stores every non-zero byte ([`sod-animate.md`](sod-animate.md) § 3) |
 | `CS:0x0EE9` | `[Supported Inference]` | Per-frame film render step (entered from `CS:0x4A35` with `BX = 0x4888`): sun vector, view matrix, one scene draw, credits string. `CS:0x0EE6` is the same step with `BX = 0x474A`; no static caller found |
 | `CS:0x196C` | `[Established]` | World light from var 13: called from `CS:0x0F50` with `AX = [0x4888 + 0x98]` (var 13), `angle = var 13 - 0x4000`, stored at `DS:0x49EC..0x49F0` and negated at `[DS:0x542]:0x8078..0x807C`; `CS:0x908E` projects it through the camera matrix at `0x80C0`. Values observed live: [`terrain-shade.md`](terrain-shade.md) section 4.2 |
 | `CS:0x21F9`, `CS:0x234B`, `CS:0x1D8D` | `[Bounded Observation]` | The three calls of the per-object light setup `0824:0EC0` (image `0x9100`): the first two pass `DS:0x49EC..0x49F0` unchanged, the third (after `CS:0x1CFB`) `R · L` doubled, with `R` the object's rotation from `0824:04E5` ([`terrain-shade.md`](terrain-shade.md) section 4.2) |
@@ -275,7 +281,7 @@ See [`research/playone-exe/sod-vm.md`](sod-vm.md) for `OP_TAP` and [`research/pl
 | image `0x884A` (`0824:060A`) | `[Established]` | 3×3 Q15 product `work:DI = work:SI · work:BX` (rows of `SI` times columns of `BX`) _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
 | image `0x88C1` (`0824:0681`) | `[Established]` | Transposed copy of a 3×3 matrix from `work:SI` to `work:DI` _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
 | image `0x895D` (`0824:071D`), image `0x88FB` (`0824:06BB`, inferred from the `0x8240` offset the other three share) | `[Established]` | Vector `AX, BX, CX` times the matrix at `work:SI`, one output per row, returned in `DX, BP, DI` _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
-| `CS:0x1D96` | `[Bounded Observation]` | Stores var 12 and its negation at `0x15D4:0x8126`/`0x8128`, var 10 (with change sign and low byte) at `0x15D4:0x8120`/`0x8122`; `DS:0x22BC` keeps the previous var 10 |
+| `CS:0x1D96` | `[Bounded Observation]` | Stores var 12 and its negation at `0x15D4:0x8126`/`0x8128`, var 10 (with change sign and low byte) at `0x15D4:0x8120`/`0x8122`, and the film clock shifted left 12 at `0x15D4:0x811E` (`[Established]`); `DS:0x22BC` keeps the previous var 10 |
 | `DS:0x2275` | `[Supported Inference]` | Video-mode flag: `0` after `int 10h` mode `0x13` (`CS:0x737B`), `0xFF` on the alternate path (`CS:0x6E1B`); selects `0x824:0x07DC` over `0x824:0x0A05` in the frame routine |
 | `CS:0x39D0` | `[Established]` | Copies the 16 live variables from `DS:0x47C8` to `DS:0x4906` (the checkpoint inside `0x39B0`) |
 | `CS:0x42F5` | `[Supported Inference]` | Film recorder: compares the 16 live variables with `DS:0x49C6` and emits `var_set` bytes (`0x80 + n`, from `0x90 - CL` with `CL` counting 16 to 1) when they change |
