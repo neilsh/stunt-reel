@@ -34,7 +34,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **18** | `0x00A2` | 162 | `OP_MOVETO` | `reg_off: u16` | Move pen to vertex `regs[reg]` |
 | **19** | `0x00AB` | 171 | `OP_LINETO` | `reg_off: u16` | Draw line from pen to vertex `regs[reg]` |
 | **20** | `0x00B4` | 180 | `OP_LINECOL` | `color: u16` | Set active line color index (`0..=255`) |
-| **21** | `0x00BD` | 189 | `OP_ZLINETO` | `reg_off: u16` | Depth-tested line drawing to `regs[reg]` |
+| **21** | `0x00BD` | 189 | `OP_ZLINETO` | `reg_off: u16` | One-pixel line from the pen register to `regs[reg]` (no depth test in `PLAYONE`) |
 | **22** | `0x00C6` | 198 | `OP_HUGELINETO`| `reg_off: u16` | Extended coordinates line drawing |
 | **23** | `0x00CF` | 207 | `OP_VLINETO` | `reg_off: u16` | Vertical axis constrained line drawing |
 | **24** | `0x00D8` | 216 | `OP_VOTEVIS` | `face: u16` | Vote facet visible in culling accumulator |
@@ -192,9 +192,7 @@ Because 1992 DOS real-mode software lacked hardware depth buffers:
 
 ### 2.6 `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction
 
-`[Hypothesis]`
-
-Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which only consumes one word and draws nothing, and by the VM walking whole chunks without desync). The semantics are inferred from the opcode names: `MOVETO reg_off` sets the pen to `regs[reg_off / 12]`, `ZLINETO reg_off` draws pen to that register and moves the pen, `LINECOL color` sets a line colour separate from the fill colour of `OP_COLOR`, and `DOT reg_off` plots one point. The VM draws a segment as two perpendicular ribbons (both windings) 0.03 m wide and a dot as a 0.03 m octahedron, in the line colour (fill colour until `LINECOL` is seen). The original draws 1-pixel lines; the width is a stand-in. Whether the pen persists across `RETURN`/subobjects and whether `LINECOL` is reset per chunk is `[Unknown]`.
+Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which only consumes one word and draws nothing, and by the VM walking whole chunks without desync). `MOVETO`, `ZLINETO` and `LINECOL` are read in `PLAYONE` ([`sod-vm.md` § 8.10](../playone-exe/sod-vm.md#810-lines-moveto-zlineto-and-linecol), `[Established]` static, unpatched image): `MOVETO reg_off` makes register `reg_off / 12` the pen, `ZLINETO reg_off` draws a one-pixel Bresenham line from the pen register to that register and makes it the pen, and `LINECOL color` sets the line colour. The VM takes the pen's point at `MOVETO` time and draws each segment as a line the renderer makes one pixel wide on screen, in the line colour (the fill colour until `LINECOL` is seen). `DOT reg_off` plots one point `[Hypothesis]`; the VM draws it as a 0.03 m octahedron. Whether `LINECOL` is reset per chunk is `[Unknown]`.
 
 ---
 
