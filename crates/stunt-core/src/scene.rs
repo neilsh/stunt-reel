@@ -417,6 +417,7 @@ impl FilmScene {
             .map(|camera| camera.lod_lens_words().1)
             .max()
             .unwrap_or(1);
+        let min_corner_depth = min_corner_depth(&cameras);
         let world = build_world(
             &WorldInputs {
                 anchors: &anchors,
@@ -425,6 +426,7 @@ impl FilmScene {
                 view_eyes: &eyes,
                 max_zoom,
                 max_lod_shift,
+                min_corner_depth,
                 anchored_shapes: &decoded.anchored,
                 light,
             },
@@ -584,6 +586,30 @@ fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
 }
 
+/// Smallest view-space depth over distance inside any frame `cameras` draw: at the corner of
+/// the widest one, whose half-width is 1.6 times its half-height (320 by 200 raster pixels),
+/// so `1 / sqrt(1 + 3.56 * tan(fov / 2)^2)`, about 0.805 for the default frame. Each interval
+/// is bounded by its wider base under either endpoint's lens, as [`max_magnification`] bounds
+/// the narrowest. 1.0 with no cameras.
+fn min_corner_depth(cameras: &[CameraTransform]) -> f32 {
+    cameras
+        .iter()
+        .zip(cameras.iter().skip(1).chain(cameras.last()))
+        .flat_map(|(a, b)| {
+            let base = a.fov_degrees.max(b.fov_degrees);
+            [a, b].map(|lens| {
+                let bound = CameraTransform {
+                    fov_degrees: base,
+                    ..*lens
+                };
+                let half = (ViewCamera::from_authored(&bound).fov_degrees.to_radians() / 2.0).tan();
+                1.0 / (1.0 + 3.56 * half * half).sqrt()
+            })
+        })
+        .filter(|ratio| ratio.is_finite())
+        .fold(1.0, f32::min)
+}
+
 /// Largest magnification over PLAYONE's default lens that `cameras` draw, at least 1.0,
 /// so a caller-built timeline with a narrow base is covered too. Base and lens interpolate
 /// separately between slices, so each interval is bounded by its narrower base under
@@ -664,5 +690,12 @@ mod tests {
         let cameras = [camera(PLAYONE_FOV_Y_DEGREES, DEFAULT_CAMERA_LENS)];
         assert!((max_magnification(&cameras) - 1.0).abs() < 1e-4);
         assert_eq!(max_magnification(&[]), 1.0);
+        let default_frame = min_corner_depth(&[CameraTransform::default()]);
+        assert!((default_frame - 0.805).abs() < 1e-3, "{default_frame}");
+        let wide = CameraTransform {
+            fov_degrees: 120.0,
+            ..CameraTransform::default()
+        };
+        assert!(min_corner_depth(&[CameraTransform::default(), wide]) < 0.3);
     }
 }

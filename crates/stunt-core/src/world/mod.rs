@@ -60,6 +60,9 @@ pub struct WorldInputs<'a> {
     /// ([`crate::contracts::trajectory::CameraTransform::lod_lens_words`]); 1 at the default
     /// lens. It bounds how far from the camera path an `SP_1NODE` can still keep its subtree.
     pub max_lod_shift: u8,
+    /// Smallest view-space depth over distance inside the widest frame any camera draws,
+    /// about 0.804 for the default frame. It turns that depth bound into a distance.
+    pub min_corner_depth: f32,
     /// Streams of the shapes that run `OP_TAP`, by resource ID (`ArchiveShapes::anchored`).
     /// `PLAYONE` loads each tapped anchor less the shape's own origin, so the world decodes
     /// these again at their placement rather than using `shapes`' copy.
@@ -206,6 +209,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
                 inputs.view_eyes,
                 inputs.max_zoom,
                 inputs.max_lod_shift,
+                inputs.min_corner_depth,
             )
         })
         .unwrap_or_default();
@@ -1208,6 +1212,7 @@ mod tests {
             view_eyes: &[],
             max_zoom: 1.0,
             max_lod_shift: 1,
+            min_corner_depth: 0.804,
             anchored_shapes: &streams,
             light: ShadeLight::default(),
         };
