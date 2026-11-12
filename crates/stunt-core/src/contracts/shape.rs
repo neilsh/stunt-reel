@@ -15,6 +15,18 @@ pub const SCENERY_TERRAIN: u8 = 2;
 /// Scenery class of a prop vertex, stored in `SodVertex::scenery_class`.
 pub const SCENERY_PROP: u8 = 3;
 
+/// `SodVertex::flags` bit of a line vertex, a corner of a one-pixel screen line.
+///
+/// The renderer draws the segment one Mode 13h pixel wide whatever its distance
+/// (`research/playone-exe/sod-vm.md` section 8.9). The vertex's `position` is its endpoint and
+/// its `normal` the vector to the segment's other endpoint.
+pub const VERTEX_FLAG_LINE: u8 = 0x08;
+/// `SodVertex::flags` bit of a line vertex on the positive side of its segment, which the
+/// renderer offsets half a pixel along the segment's minor screen axis (negative without it).
+pub const VERTEX_FLAG_LINE_SIDE: u8 = 0x10;
+/// `SodVertex::flags` bit of a line vertex at the segment's second endpoint.
+pub const VERTEX_FLAG_LINE_END: u8 = 0x20;
+
 /// Single vertex structure packed for direct upload to GPU vertex buffers.
 ///
 /// Formatted to guarantee standard 4-byte struct alignment and compatibility
@@ -24,7 +36,8 @@ pub const SCENERY_PROP: u8 = 3;
 pub struct SodVertex {
     /// Vertex position in metric units `[x, y, z]` per `[I1]`.
     pub position: [f32; 3],
-    /// Computed unit surface normal `[nx, ny, nz]`.
+    /// Computed unit surface normal `[nx, ny, nz]`; for a [`VERTEX_FLAG_LINE`] vertex, the
+    /// vector to its segment's other endpoint.
     pub normal: [f32; 3],
     /// Authentic 8-bit VGA Mode 13h palette index (`0..=255`) per `[fmt mtl]`.
     pub palette_index: u8,
@@ -32,6 +45,8 @@ pub struct SodVertex {
     /// - Bit 0: Coplanar decal face (requires normal-nudge `[I5]`)
     /// - Bit 1: Two-sided polygon
     /// - Bit 2: Emissive / unshaded indicator
+    /// - Bits 3..=5: Screen-space line corner ([`VERTEX_FLAG_LINE`], [`VERTEX_FLAG_LINE_SIDE`],
+    ///   [`VERTEX_FLAG_LINE_END`])
     pub flags: u8,
     /// Scenery class of a world vertex (`SCENERY_OCEAN`, `SCENERY_TERRAIN`, `SCENERY_PROP`),
     /// zero for every other vertex. The renderer adds it to the draw's base layer id.

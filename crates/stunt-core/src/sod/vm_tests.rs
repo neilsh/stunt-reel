@@ -6,7 +6,10 @@ use crate::anchor::AnchorPoint;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::contracts::shape::{NodeId, NodeKind, SodModelIr, VisibilityCondition};
+use crate::contracts::shape::{
+    NodeId, NodeKind, SodModelIr, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE,
+    VisibilityCondition,
+};
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
 use crate::sod::{
@@ -655,7 +658,7 @@ fn line_dot_bytes(ops: &[(u16, u16)]) -> Vec<u8> {
 }
 
 #[test]
-fn test_moveto_zlineto_emits_thin_ribbons_in_line_colour() {
+fn test_moveto_zlineto_emits_a_screen_line_quad_in_line_colour() {
     let bytes = line_dot_bytes(&[
         (OP_COLOR, 7),
         (OP_LINECOL, 33),
@@ -663,13 +666,46 @@ fn test_moveto_zlineto_emits_thin_ribbons_in_line_colour() {
         (OP_ZLINETO, 12),
     ]);
     let ir = decode(&bytes, "LINES").expect("decode lines");
-    // Two perpendicular ribbons, each emitted with both windings: four quads.
-    assert_eq!(ir.indices.len(), 4 * 6);
+    // One quad wound both ways: four triangles over four corners, two at each endpoint.
+    assert_eq!(ir.indices.len(), 4 * 3);
+    assert_eq!(ir.vertices.len(), 4);
+    let (a, b) = ([0.0, 0.0, 0.0], [100.0, 0.0, 0.0]);
+    let mut sides = Vec::new();
     for v in &ir.vertices {
         assert_eq!(v.palette_index, 33);
-        assert!(v.position[0] >= -1e-3 && v.position[0] <= 100.001);
-        assert!(v.position[1].abs() <= 0.03 && v.position[2].abs() <= 0.03);
+        assert_ne!(v.flags & VERTEX_FLAG_LINE, 0);
+        // No width in the world: each corner is its endpoint, its normal the way to the other.
+        let (at, other) = if v.flags & VERTEX_FLAG_LINE_END == 0 {
+            (a, b)
+        } else {
+            (b, a)
+        };
+        for axis in 0..3 {
+            assert!((v.position[axis] - at[axis]).abs() < 1e-3, "{v:?}");
+            let to_other = other[axis] - at[axis];
+            assert!((v.normal[axis] - to_other).abs() < 1e-3, "{v:?}");
+        }
+        sides.push(v.flags & (VERTEX_FLAG_LINE_END | VERTEX_FLAG_LINE_SIDE));
     }
+    sides.sort_unstable();
+    assert_eq!(
+        sides,
+        [
+            0,
+            VERTEX_FLAG_LINE_SIDE,
+            VERTEX_FLAG_LINE_END,
+            VERTEX_FLAG_LINE_END | VERTEX_FLAG_LINE_SIDE
+        ]
+    );
+    // Each winding names every corner, so one of the two survives back-face culling.
+    let (forward, backward) = ir.indices.split_at(6);
+    let wound = |tris: &[u32]| {
+        let mut corners = tris.to_vec();
+        corners.sort_unstable();
+        corners.dedup();
+        corners.len()
+    };
+    assert_eq!((wound(forward), wound(backward)), (4, 4));
 }
 
 #[test]
@@ -1245,8 +1281,9 @@ fn test_two_vertex_polyz_draws_a_line_and_does_not_stop_the_walk() {
 
     let ir = decode(&bytes, "TWO-VERTEX").expect("a two-vertex polygon decodes in strict mode");
     assert!(ir.decode().expect("record").stop.is_none());
-    // Two crossed ribbons (four quads) for the line, then the triangle after it.
-    assert_eq!(ir.indices.len(), 4 * 6 + 3);
+    // One line quad wound both ways (four triangles), then the triangle after it.
+    assert_eq!(ir.indices.len(), 4 * 3 + 3);
+    assert_ne!(ir.vertices[0].flags & VERTEX_FLAG_LINE, 0);
     assert_eq!(ir.vertices[0].palette_index, 5);
     assert_eq!(ir.vertices.last().expect("vertex").palette_index, 9);
 }
@@ -1265,7 +1302,8 @@ fn test_two_vertex_gvpoly16_draws_a_line_and_does_not_stop_the_walk() {
 
     let ir = decode(&bytes, "TWO-VERTEX16").expect("decode");
     assert!(ir.decode().expect("record").stop.is_none());
-    assert_eq!(ir.indices.len(), 4 * 6 + 3);
+    assert_eq!(ir.indices.len(), 4 * 3 + 3);
+    assert_ne!(ir.vertices[0].flags & VERTEX_FLAG_LINE, 0);
     assert_eq!(ir.vertices.last().expect("vertex").palette_index, 9);
 }
 
