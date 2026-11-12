@@ -58,7 +58,7 @@ _Source: [what picks the OP_ANIMATE frame](../../work/2026-11/222_op-animate/jou
 * **Size.** `(size × work:0x8070) >> 8`, the 32-bit product shifted by the byte moves at `0xA9FC`, divided by the register's depth plus `work:0x8088`. A size of 0 pixels draws nothing. `OP_SPHERE`'s screen radius is the same expression ([`sod-vm.md`](sod-vm.md) § 8.8), so a sprite of size `p` is as wide on screen as a sphere of radius `p` is in radius.
 * **Placement.** The handler passes the projected point (`+6`, `+8`), the size and the chosen id to `0x8073`, which looks the id up in the resource cache (`0x4C41`), puts the top-left corner at the point less half the size on both axes, and calls the blitter through `DS:0x2260` (`0x7DE6`).
 * **Blit.** `0x7DE6` stretches the image to a square `size` pixels on a side, stepping the source by `width / size` and `height / size` in 16.16, clips it to the view rectangle `[0x2294..0x229A]`, and stores every non-zero byte; index 0 is transparent. There is no depth test: the sprite lands in the object's place in the painter's order.
-* **Image layout.** The cache allocates two bytes more than a chunk (`0x4CD3`) and sets `DI = 2` before its read (`0x4CE0`); the blitter reads width at `es:2`, height at `es:4` and the first pixel at `es:8`. So a frame is `width`, `height`, a third word, then `width × height` pixels from chunk byte 6 (`[Supported Inference]` that `0x024B` is the read, from the width and height the blitter finds at `es:2` and `es:4`). All 2,815 frame chunks the corpus's tables name and its archives hold are `width × height + 6` bytes with a zero word at byte 4 and at the end (`[Bounded Observation]`); the layout is [`spr.ksy`](../formats/auxiliary/spr.ksy).
+* **Image layout.** The cache allocates two bytes more than a chunk (`0x4CD3`) and sets `DI = 2` before its read (`0x4CE0`); the blitter reads width at `es:2`, height at `es:4` and the first pixel at `es:8`. So a frame is `width`, `height`, a third word, then `width × height` pixels from chunk byte 6 (`[Supported Inference]` that `0x024B` is the read, from the width and height the blitter finds at `es:2` and `es:4`). All 2,815 frame chunks the corpus's tables name and its archives hold (144 named frames are absent) are `width × height + 6` bytes with a zero word at byte 4 and at the end (`[Bounded Observation]`); the layout is [`spr.ksy`](../formats/auxiliary/spr.ksy).
 
 _Source: [what picks the OP_ANIMATE frame](../../work/2026-11/222_op-animate/journal.md#2026-11-11-what-picks-the-op_animate-frame)._
 
@@ -67,11 +67,12 @@ _Source: [what picks the OP_ANIMATE frame](../../work/2026-11/222_op-animate/jou
 ## 4. Rust Mapping
 
 * `sod/vm.rs` runs `OP_ANIMATE`: each one becomes a `ShapeSprite` on the shape (anchor and size in metres through the shape's scale, the selector and the id table). Its census skip entry is gone.
-* `flm/interpolate.rs` interpolates the animate word, joint slot 0 of `ActorTransform::joint_angles_bam`, as `0x3EFE` does.
-* `scene.rs` picks each sprite's frame from its bank word (`bank_word`: `0x16` the actor's animate word, `0x10` the film tick's low four bits shifted left 12, any other word 0) and places it at the actor; a frame the archive lacks is not drawn. Images are read from the `.ALL` chunks or `RES` items the tables name (`sprite.rs`).
-* `stunt-render` draws each sprite as a camera-facing square of its size at its centre, one quad per run of equal pixels, depth-tested in its actor's layer and absent from the shadow pass.
+* `flm/interpolate.rs` interpolates the animate word, joint slot 0 of `ActorTransform::joint_angles_bam`, as `0x3EFE` does, but without its `SIF_ANIMATES` (`0x20`) test: a record without slot 0 reads as 0.
+* `scene.rs` picks each sprite's frame from its bank word (`bank_word`: `0x16` the actor's animate word, `0x10` the film tick's low four bits shifted left 12, any other word 0) and places it at its anchor taken through the actor's world matrix; a frame the archive lacks is not drawn. Images are read from the `.ALL` chunks or `RES` items the tables name (`sprite.rs`).
+* `stunt-render` draws each sprite as a camera-facing square `size` metres across at its centre, so its screen size comes from the perspective divide rather than `PLAYONE`'s fixed-point formula; one quad per run of equal pixels, depth-tested in its actor's layer, with no shadow draw.
+* `vm.rs` does not read the register flag (`+0x0A`), so a flagged register still yields a sprite; no stock case is known.
 
-Drawing it raised `INTRO` from 0.8344 to 0.8357 and `CTRY` from 0.8973 to 0.8974 (evidence-backed, adopted).
+Drawing it raised `INTRO` from 0.8344 to 0.8357 and `CTRY` from 0.8973 to 0.8974 (evidence-backed, adopted; one run on one GPU; the other five reference films did not fall). _Source: [2026-11-11: drawing the OP_ANIMATE sprite](../../work/2026-11/222_op-animate/journal.md#2026-11-11-drawing-the-op_animate-sprite)._
 
 _Source: [drawing the OP_ANIMATE sprite](../../work/2026-11/222_op-animate/journal.md#2026-11-11-drawing-the-op_animate-sprite)._
 
@@ -79,12 +80,12 @@ _Source: [drawing the OP_ANIMATE sprite](../../work/2026-11/222_op-animate/journ
 
 ## Ruled out
 
-* **A joint rotation.** The opcode draws an image; it does not rotate geometry. The `.FLM` `animate` word reaches it only through the bank word `0x8124` (§ 2).
+* **A joint rotation.** The opcode draws an image; it does not rotate geometry. The `.FLM` `animate` word reaches it through the bank word `0x8124` (selector `0x16`); selector `0x10` takes the film clock instead (§ 2).
 * **Pushing the square toward the eye** by a fraction of its size, kept at its screen size, to approximate the painter's order: 0, 0.25, 0.5 and 1 times the size scored `CTRY` 0.8974 / 0.8974 / 0.8975 / 0.8971 and `INTRO` 0.8357 / 0.8360 / 0.8361 / 0.8362; heuristic, below the adoption bar ([pushing the sprite toward the eye](../../work/2026-11/222_op-animate/journal.md#2026-11-11-pushing-the-sprite-toward-the-eye)).
 
 ## Open questions
 
-* **Draw order.** `PLAYONE` blits the sprite over whatever was painted before its object and under what comes after; our depth test cuts it where an object stands inside its square (`CTRY` tick 871: the capture draws the explosion over the tower beside it, we draw it behind). Matching it needs the painter's order of whole objects, not a per-pixel depth.
+* **Draw order.** `PLAYONE` blits the sprite over whatever was painted before its object and under what comes after; our depth test cuts it where an object stands inside its square (`CTRY` tick 871: the capture draws the explosion over the tower beside it, we draw it behind). Matching it likely needs the painter's order of whole objects, not a per-pixel depth (`[Hypothesis]`; pushing the sprite toward the eye did not recover it).
 * **Bank words other than `0x10` and `0x16`.** The scene reads them as 0; no multi-frame stock table uses them.
-* **Visibility gates.** Only an `ActorState` gate is evaluated for a sprite; no stock shape puts `OP_ANIMATE` under any gate.
+* **Visibility gates.** Only an `ActorState` gate is evaluated for a sprite; no gated `OP_ANIMATE` was seen in the corpus's shapes (`[Bounded Observation]`, not counted by a tool).
 * **Live check.** No breakpoint has confirmed the frame index or the image's pixel offset at run time.

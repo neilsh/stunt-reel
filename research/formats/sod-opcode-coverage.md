@@ -14,7 +14,7 @@ summary: "Census work queue for Partial SOD shapes: vm.rs's two-vertex polygon s
 
 ## 1. Summary
 
-The census of 2026-11-12 (after `OP_ANIMATE` got a handler, [#222](https://github.com/neilsh/stunt-reel/issues/222)) walks 331 archives. Of the 3,432 unique `MODEL_%04X.SOD` chunks, 3,411 walk to `OP_RETURN` with nothing stepped over (3,391 on 2026-11-01, 3,368 on 2026-10-24) and 14 stop only at `OP_TAP` because the census supplies no anchor table (a census artefact, not a gap). No opcode the corpus reaches is stepped over any more; what is left are stops:
+The census of 2026-11-12 (after `OP_ANIMATE` got a handler, [#222](https://github.com/neilsh/stunt-reel/issues/222)) walks 331 archives. Of the 3,432 unique `MODEL_%04X.SOD` chunks, 3,411 walk to `OP_RETURN` with nothing stepped over (3,391 on 2026-11-01, 3,368 on 2026-10-24) and 14 stop only at `OP_TAP` because the census supplies no anchor table (a census artefact, not a gap). No `.SOD` chunk steps over an opcode any more; what is left are stops, which the generated header below still counts as "step over an unimplemented opcode":
 
 | Opcode or stop | Mnemonic | Seen as |
 | :---: | :--- | :--- |
@@ -91,7 +91,7 @@ Film use per placed shape (films resolved through their paired `.ALL`):
 * **2026-11-12.** Old group A (`ANIMATE`: 28 models, 21 loose `.BIN` files, 191 films) is gone: `OP_ANIMATE` runs ([`sod-animate.md`](../playone-exe/sod-animate.md)). Old groups B to E are A to D, with the same models.
 * **2026-11-01.** Groups B to J (the centre stack, `GOSUB`, the matrix stack, rotations, `BVGT`, `SHADE1`) decode to the end; the walk now follows `SORTON`, `GOTO` and `GOSUB`, which exposed the two-vertex polygons of groups B to D. The 2026-10-24 census (309 archives; 3,368 clean, 50 blocked chunks) is in git history.
 * **Counts reproduce** (2026-10-24 against the hand run). 3,432 unique chunks, 3,368 clean and 14 `TAP`-only match. The hand run listed 49 blocked models because it keyed by shape ID; the tool counts 50 variants, since `7E22` has one in group A and one in group D (the hand run's "last one scanned" problem, now reported both ways).
-* **Group A (`ANIMATE`), D (`SHADE1`) and the `TAP` group are unchanged** in shape IDs. Old group E (`GOSUB`, `7E3B`, `7F03`) is group F here.
+* **Group A (`ANIMATE`), D (`SHADE1`) and the `TAP` group (2026-10-24 letters) are unchanged** in shape IDs. Old group E (`GOSUB`, `7E3B`, `7F03`) is group F here.
 * **Old group C's order was wrong.** Its models block on `BVGT`, with `PUSHCENTRE` behind it, not the reverse: a lenient decode of `INTRO.ALL` `7F09` stops at offset `0x0C34` on `0x02FD`. `BVGT` therefore has no prerequisite to be the blocking opcode, though the centre stack is still needed for a full decode.
 * **"Ends at `MOVECENTRE`" was a walk artefact.** The hand run stopped there; with every opcode-table width in the skip table the walk reaches `RETURN` in every group and finds masked `GOSUB`, `POPCENTRE`, `PUSHRELMAT`, `POPRELMAT`, `ROTX`, `ROTZ` and `GOTO`. That splits old B into B (`6403`–`641B`) and E (`7F18`, `7F1B`), and old C into C, H (`7F20`, `7F21`) and J (`7F1C`). `POPCENTRE`, listed as never reached, is reached in all of them.
 * **New scope.** `.RES` entries, loose `.BIN` models and film use were not in the hand run. They add groups G and I (`GTX.RES` bodies, also as loose `.BIN`), K (`TESTTEXT.BIN`, `OP_TEXTURE`) and L (`UFO2.BIN`).

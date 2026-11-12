@@ -601,8 +601,8 @@ impl FilmScene {
     /// order, at `tick`.
     ///
     /// Each sprite's frame comes from its bank word ([`bank_word`]). Only an `Always` or a
-    /// matching `ActorState` gate is evaluated; a sprite under another gate is drawn, since no
-    /// stock shape puts one there. A frame whose image the scene lacks is not drawn.
+    /// matching `ActorState` gate is evaluated; a sprite under another gate is drawn, since none has
+    /// been seen in a stock shape. A frame whose image the scene lacks is not drawn.
     fn sprite_draws(
         &self,
         tick: f32,
