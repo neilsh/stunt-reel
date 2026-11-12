@@ -43,7 +43,9 @@ def _alive(pid: int) -> bool:
     try:
         return ") Z " not in Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
     except OSError:
-        return True
+        # A zombie passes the kill above and its reaper can run before this read, so a missing
+        # entry means reaped, not running. Only without procfs (macOS) is the kill all we know.
+        return not Path("/proc/self/stat").exists()
 
 
 def _kill(pid: int) -> None:
@@ -64,6 +66,28 @@ def _grandchild(output: str) -> int:
         if line.startswith("grandchild "):
             return int(line.split()[1])
     raise AssertionError(output)
+
+
+@pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="reads procfs")
+def test_a_zombie_reaped_during_the_check_is_not_alive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The timeout test's grandchild is reaped by whichever process adopts it, at any moment.
+
+    Reaping between ``_alive``'s ``kill(pid, 0)`` and its procfs read once reported the dead
+    grandchild alive, failing that test on CI (PRs #387 and #388).
+    """
+    zombie = subprocess.Popen([sys.executable, "-c", "pass"])
+    deadline = time.monotonic() + 20.0
+    while _alive(zombie.pid) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not _alive(zombie.pid), "the child never exited"
+    real_kill = os.kill
+
+    def kill_then_reap(pid: int, sig: int) -> None:
+        real_kill(pid, sig)
+        zombie.wait()
+
+    monkeypatch.setattr(os, "kill", kill_then_reap)
+    assert not _alive(zombie.pid)
 
 
 def test_a_finished_command_keeps_its_exit_code_and_output() -> None:
