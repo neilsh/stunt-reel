@@ -19,7 +19,7 @@
 - **Method**: Commit `d0e1e911` (`crates` tree `b0c3846`): `vm.rs` emits each line as one two-vertex polygon, tessellation makes it a quad of zero world width whose corners carry the vector to the other endpoint (`SodVertex::flags` bits 3 to 5), and the vertex shader moves each corner half a pixel across the line's minor screen axis and half a pixel past its endpoint along the major one, so the rasteriser covers one pixel per column (`|dx| >= |dy|`) or per row, both ends included, as `0x7511` draws. A temporary `DBG_OLD_LINES=1` restored main's ribbons; `mise run sweep -- --var DBG_OLD_LINES=1,0 --no-build` scored both on all seven films. `mise run parity` on the clean commit gave the expected tables. Per-tick deltas from the two renders' `report.json` for `CTRY`, `INTRO` and `BALLOON`, and `mise run frame -- --var DBG_OLD_LINES=1,0` pictures of the largest movers. The switch is not committed. Track: evidence-backed (`0x7511` above; `sod-vm.md` § 8.9 for the two-vertex polygons, `[Supported Inference]`).
 - **Result**:
 
-  The ribbon column is the sweep's `DBG_OLD_LINES=1` render on the same commit, which reproduces main; the `references.toml` tables it replaces were measured on an older `crates` tree (`3c28cd6`), so `INTRO` and `BOMB` differ from them by more than this change (`INTRO` 0.8404 to 0.8437 there).
+  The ribbon column is the sweep's `DBG_OLD_LINES=1` render on the same commit, which reproduces main; it matches main's `references.toml` pins of #417 (measured on `c4e373a`) to four places. After merging main the `crates` tree is unchanged (`b0c3846`) and `mise run parity` gives the same seven scores.
 
   | Film | Ribbons | Screen lines | Δ |
   |---|---|---|---|
