@@ -22,7 +22,9 @@ use std::collections::HashMap;
 
 use glam::{Mat4, Vec3};
 
-use stunt_core::contracts::{NodeKind, SodModelIr, SodVertex, VisibilityCondition};
+use stunt_core::contracts::{
+    CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
+};
 use stunt_core::scene::{FilmScene, SceneFrame, SpriteDraw};
 use stunt_core::sprite::SpriteImage;
 
@@ -136,7 +138,15 @@ impl SceneRenderer {
         if frame.world
             && let Some(world) = &self.world
         {
-            let (base, decals) = world.collect_visible_meshes(0, 0.0, eye);
+            let (base, decals) = {
+                let lod_view = CameraTransform {
+                    eye: frame.view.eye,
+                    target: frame.view.target,
+                    lens: frame.lens,
+                    ..CameraTransform::default()
+                };
+                world.collect_visible_meshes(0, 0.0, eye, Some(&lod_view))
+            };
             self.prepared.push(PreparedDraw {
                 target: Target::World,
                 base,
@@ -154,7 +164,7 @@ impl SceneRenderer {
                 .inverse()
                 .transform_point3(eye);
             let (base, decals) =
-                model.collect_visible_meshes(actor.state_mask, actor.distance, local_eye);
+                model.collect_visible_meshes(actor.state_mask, actor.distance, local_eye, None);
             if base.is_empty() && decals.is_empty() {
                 continue;
             }
@@ -194,7 +204,7 @@ impl SceneRenderer {
             let Some(model) = self.images.get(&sprite.image_id) else {
                 continue;
             };
-            let (base, decals) = model.collect_visible_meshes(0, 0.0, eye);
+            let (base, decals) = model.collect_visible_meshes(0, 0.0, eye, None);
             let layer = LAYER_FIRST_ACTOR + u32::try_from(sprite.actor).unwrap_or(u32::MAX);
             let uniform = ModelUniform::new(billboard_matrix(&view, sprite), layer);
             let image_id = sprite.image_id;

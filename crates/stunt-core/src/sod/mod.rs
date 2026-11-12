@@ -48,7 +48,7 @@ impl SodStop {
             },
             SodStopReason::MalformedPolygon => SodError::MalformedPolygon {
                 reason: format!(
-                    "opcode 0x{:04X} with fewer than three vertices at offset 0x{:04X}",
+                    "opcode 0x{:04X} with fewer than two vertices at offset 0x{:04X}",
                     self.opcode, self.offset
                 ),
             },

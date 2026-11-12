@@ -13,7 +13,9 @@ use std::ops::Range;
 
 use crate::pipeline::ModelUniform;
 use glam::{Mat4, Vec3};
-use stunt_core::contracts::{NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index};
+use stunt_core::contracts::{
+    CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
+};
 
 /// Cached node data inside GPU model representation.
 #[derive(Debug, Clone)]
@@ -168,12 +170,15 @@ impl GpuModel {
     /// Evaluates visibility and collects visible mesh slices split by decal pass flag.
     ///
     /// `eye` is the camera position in this model's space, for
-    /// [`VisibilityCondition::FacesEye`].
+    /// [`VisibilityCondition::FacesEye`]. `view` is the camera that tests
+    /// [`VisibilityCondition::LodBranch`] gates, whose points must then be in its space;
+    /// without one every subtree branch is drawn and no stand-in is.
     pub fn collect_visible_meshes(
         &self,
         state_mask: u16,
         distance_to_cam: f32,
         eye: Vec3,
+        view: Option<&CameraTransform>,
     ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
         let mut base_meshes = Vec::new();
         let mut decal_meshes = Vec::new();
@@ -202,6 +207,12 @@ impl GpuModel {
                 VisibilityCondition::ActorState { mask, expected } => {
                     (state_mask & mask) == expected
                 }
+                VisibilityCondition::LodBranch {
+                    point,
+                    ext,
+                    splitdist,
+                    near,
+                } => view.is_none_or(|v| v.lod_keeps_subtree(point, ext, splitdist)) == near,
             };
 
             if !is_visible {

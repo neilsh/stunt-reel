@@ -228,6 +228,7 @@ def plan_archive(
             timeout=args.timeout,
             progress=report,
             on_hang=lambda: hung.append(True),
+            evidence_dir=dataroot.data_root() / parity_layout.timeout_root(),
             warn=lambda message: print(f"[make-all] warning: {message}", file=sys.stderr),
         )
         try:

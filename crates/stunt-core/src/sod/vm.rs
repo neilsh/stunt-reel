@@ -702,7 +702,7 @@ pub(crate) fn run_vm(
         let op_offset = r.pos();
         let opcode = r.read_u16_le()?;
         // Set by a branch that leaves the stream or spends the budget, or by a polygon with
-        // fewer than three vertices: strict fails, lenient and census keep the geometry so far
+        // fewer than two vertices: strict fails, lenient and census keep the geometry so far
         // and report the stop.
         let mut malformed: Option<SodStopReason> = None;
         // Where a branch sends the walk, applied once the instruction is traced.
@@ -874,11 +874,11 @@ pub(crate) fn run_vm(
             }
             OP_POLYZ => {
                 let count = r.read_u16_le()?;
-                if count < 3 {
+                if count < 2 {
                     if policy == Policy::Strict {
                         return Err(SodError::MalformedPolygon {
                             reason: format!(
-                                "OP_POLYZ with count {count} < 3 at offset 0x{op_offset:04X}"
+                                "OP_POLYZ with count {count} < 2 at offset 0x{op_offset:04X}"
                             ),
                         });
                     }
@@ -897,25 +897,30 @@ pub(crate) fn run_vm(
                         poly_verts.push([mx, my, mz]);
                     }
 
-                    let norm = compute_polygon_normal(&poly_verts);
-                    polygons.push(RawPolygon {
-                        vertex_palette: Vec::new(),
-                        vertices: poly_verts,
-                        palette_index: cur_color,
-                        normal: norm,
-                        flags: 0,
-                        is_decal: false,
-                        visibility: current_visibility,
-                    });
+                    if let [a, b] = poly_verts[..] {
+                        // PLAYONE draws two vertices as a thin line, not an error (`sod-vm.md` § 8.9).
+                        polygons.extend(line_polygons(a, b, cur_color, current_visibility));
+                    } else {
+                        let norm = compute_polygon_normal(&poly_verts);
+                        polygons.push(RawPolygon {
+                            vertex_palette: Vec::new(),
+                            vertices: poly_verts,
+                            palette_index: cur_color,
+                            normal: norm,
+                            flags: 0,
+                            is_decal: false,
+                            visibility: current_visibility,
+                        });
+                    }
                 }
             }
             OP_GVPOLY | OP_GVPOLY16 => {
                 let count = r.read_u16_le()?;
-                if count < 3 {
+                if count < 2 {
                     if policy == Policy::Strict {
                         return Err(SodError::MalformedPolygon {
                             reason: format!(
-                                "GVPOLY with count {count} < 3 at offset 0x{op_offset:04X}"
+                                "GVPOLY with count {count} < 2 at offset 0x{op_offset:04X}"
                             ),
                         });
                     }
@@ -973,15 +978,21 @@ pub(crate) fn run_vm(
                         .iter()
                         .map(|&l| shade_colour(base, l).clamp(0, 255) as u8)
                         .collect();
-                    polygons.push(RawPolygon {
-                        vertex_palette,
-                        normal: compute_polygon_normal(&poly_verts),
-                        vertices: poly_verts,
-                        palette_index,
-                        flags: 0,
-                        is_decal: false,
-                        visibility: current_visibility,
-                    });
+                    if let [a, b] = poly_verts[..] {
+                        // Two vertices are a thin line in PLAYONE (`0x75DB` spans are inclusive);
+                        // one colour, the mean level, stands for its shade.
+                        polygons.extend(line_polygons(a, b, palette_index, current_visibility));
+                    } else {
+                        polygons.push(RawPolygon {
+                            vertex_palette,
+                            normal: compute_polygon_normal(&poly_verts),
+                            vertices: poly_verts,
+                            palette_index,
+                            flags: 0,
+                            is_decal: false,
+                            visibility: current_visibility,
+                        });
+                    }
                 }
             }
             OP_IFVIS => {

@@ -326,10 +326,10 @@ fn matrix_scale_indices_0_to_255() {
     }
 }
 
-/// `OP_POLYZ` and `OP_GVPOLY` with 0..=2 vertices fail with `MalformedPolygon`.
+/// `OP_POLYZ` and `OP_GVPOLY` with 0 or 1 vertices fail with `MalformedPolygon`; two are a line.
 #[test]
-fn matrix_polygon_counts_under_3() {
-    for count in 0..3u16 {
+fn matrix_polygon_counts_under_2() {
+    for count in 0..2u16 {
         let mut buf = make_sod_header(50, 0, 0, 0);
         buf.extend_from_slice(&OP_POLYZ.to_le_bytes());
         buf.extend_from_slice(&count.to_le_bytes());
@@ -338,7 +338,7 @@ fn matrix_polygon_counts_under_3() {
         }
         buf.extend_from_slice(&OP_RETURN.to_le_bytes());
 
-        let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "COUNT_UNDER_3", None)));
+        let res = catch_unwind(AssertUnwindSafe(|| decode(&buf, "COUNT_UNDER_2", None)));
         assert!(res.is_ok(), "Panic on OP_POLYZ count {count}");
         assert!(matches!(
             res.unwrap().unwrap_err(),
@@ -359,7 +359,7 @@ fn matrix_polygon_counts_under_3() {
         buf_gv.extend_from_slice(&OP_RETURN.to_le_bytes());
 
         let res_gv = catch_unwind(AssertUnwindSafe(|| {
-            decode(&buf_gv, "GV_COUNT_UNDER_3", None)
+            decode(&buf_gv, "GV_COUNT_UNDER_2", None)
         }));
         assert!(res_gv.is_ok(), "Panic on OP_GVPOLY count {count}");
         assert!(matches!(

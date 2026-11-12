@@ -28,6 +28,7 @@ To find a note rather than place a finding, read [`MAP.md`](MAP.md): every note 
 4. **Facts stay here; procedures go to `docs/howto/`.** A note holds reference and explanation: how the original works, where our render differs from it, and the quality of the evidence (DAC lag, torn pages, recapture noise), since that decides which captures count. A tool evaluation is such a fact and stays with what the tool studies, as `playone-exe/static-tooling.md` does for `PLAYONE.EXE`. Steps for running our tools are how-to: they go to `docs/howto/<task>.md`, one task per file, and a skill links them rather than repeating them. This governs new procedures, and existing ones as their notes are distilled.
 5. **A handoff lives in the work folder's README,** or on the issue when there is no folder. Open questions about a subject go under its note's `Open questions` heading.
 6. **Superseded content is replaced, not kept beside the new result.** Its history is the journal entry and git.
+7. **A finding that needs a code fix is recorded on the fix's branch,** cut from `main`, after checking the open PRs that touch the same note. A verification branch keeps only its journal entry, stacked on the fix branch when it links a note the fix adds.
 
 New offsets also update the tables in [`memory-map.md`](playone-exe/memory-map.md) (`# [MEM-*]` anchors); new format facts follow [`formats/INDEX.md`](formats/INDEX.md). Evidentiary tiers are defined in [`docs/SPEC.md` § 2.4](../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
 
