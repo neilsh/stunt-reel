@@ -29,6 +29,7 @@ use crate::font::PFont;
 use crate::link::{LinkError, shape_chunks};
 use crate::sod::{
     DecodeMode, EPSILON_DISPLACEMENT, ShadeLight, SodError, SodStopReason, decode_sod_lit,
+    faces_view,
 };
 use crate::sprite::SpriteImage;
 use crate::vfs::{ResRegions, VfsError};
@@ -335,6 +336,9 @@ pub struct SceneFrame {
     pub actors: Vec<ActorDraw>,
     /// The images the actors' shapes draw at this tick, in actor order.
     pub sprites: Vec<SpriteDraw>,
+    /// One draw per [`World::view_facing`] prop whose shape is in the table, turned with
+    /// this tick's camera heading; drawn as props, never with a shadow.
+    pub view_facing: Vec<ActorDraw>,
     /// Film variables the palette is built from at this tick.
     pub palette: PaletteControls,
     /// Credits text on screen at this tick (`0x99` until `0x98`), drawn over the scene.
@@ -566,26 +570,53 @@ impl FilmScene {
                 world,
                 actors: Vec::new(),
                 sprites: Vec::new(),
+                view_facing: Vec::new(),
                 palette: PaletteControls::default(),
                 credits: None,
             };
         };
         let eye = record.camera.eye;
+        let heading = camera_heading(&record.camera);
         let mut actors: Vec<ActorDraw> = record
             .actors
             .iter()
             .filter_map(|a| self.shapes.get(&a.shape_id).map(|shape| (a, shape)))
             .map(|(a, shape)| {
-                let world_matrix = actor_world_matrix(a, shape);
+                let own = a.compute_world_matrix();
+                let world_matrix = if faces_view(shape) {
+                    lifted(facing_matrix(heading, a.position_meters), shape)
+                } else {
+                    lifted(own, shape)
+                };
                 ActorDraw {
                     shape_id: a.shape_id,
                     world_matrix,
                     state_mask: a.state_mask,
                     distance: distance(eye, a.position_meters),
+                    // The shadow entry `0x1C0D` builds its matrix from the slot's own angles
+                    // whatever the header says (research/playone-exe/sod-vm.md section 9.1).
                     shadow_matrix: a
                         .casts_shadow
-                        .then(|| self.shadow_matrix(a.position_meters, &world_matrix)),
+                        .then(|| self.shadow_matrix(a.position_meters, &lifted(own, shape))),
                 }
+            })
+            .collect();
+        let view_facing = self
+            .world
+            .iter()
+            .flat_map(|w| &w.view_facing)
+            .filter(|p| self.shapes.contains_key(&p.shape))
+            .filter(|p| {
+                p.gates
+                    .iter()
+                    .all(|gate| lod_gate_holds(&record.camera, gate))
+            })
+            .map(|p| ActorDraw {
+                shape_id: p.shape,
+                world_matrix: facing_matrix(heading, p.position),
+                state_mask: 0,
+                distance: distance(eye, p.position),
+                shadow_matrix: None,
             })
             .collect();
         if let Some(shape_id) = self.origin_shape.filter(|_| record.actors.is_empty()) {
@@ -605,6 +636,7 @@ impl FilmScene {
             world,
             actors,
             sprites,
+            view_facing,
             palette: record.palette,
             credits: self.timeline.credits_at(tick).cloned(),
         }
@@ -723,7 +755,47 @@ fn mat4_mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
     out
 }
 
-/// An actor's model-to-world matrix, with its shape's ground offset taken back out.
+/// Whether `camera` draws what stands behind `gate`: a `LodBranch` holds as the world's
+/// gate nodes do in the renderer; any other condition holds.
+fn lod_gate_holds(camera: &CameraTransform, gate: &VisibilityCondition) -> bool {
+    match *gate {
+        VisibilityCondition::LodBranch {
+            point,
+            ext,
+            splitdist,
+            near,
+        } => camera.lod_keeps_subtree(point, ext, splitdist) == near,
+        _ => true,
+    }
+}
+
+/// The camera's heading: the angle about `+Y` from `+Z` to its look direction.
+///
+/// `PLAYONE` builds the matrix a view-facing shape is drawn through (`work:0x809C`) from the
+/// view slot's roll and pitch with the yaw zeroed (image `0x12C2`), so the shape turns with
+/// the yaw alone (`research/playone-exe/sod-vm.md` section 8.8). The look direction's
+/// heading is taken to equal that yaw; past vertical it is half a turn off, and a camera
+/// looking straight down gets heading 0 where `PLAYONE` still has its yaw word.
+fn camera_heading(camera: &CameraTransform) -> f32 {
+    let [fx, _, fz] = [
+        camera.target[0] - camera.eye[0],
+        camera.target[1] - camera.eye[1],
+        camera.target[2] - camera.eye[2],
+    ];
+    fx.atan2(fz)
+}
+
+/// Column-major matrix that turns a model by `heading` about `+Y` and stands it at
+/// `position`: the model's `+Z` lies along the camera's look direction seen from above.
+fn facing_matrix(heading: f32, position: [f32; 3]) -> [f32; 16] {
+    let (sin, cos) = heading.sin_cos();
+    let [x, y, z] = position;
+    [
+        cos, 0.0, -sin, 0.0, 0.0, 1.0, 0.0, 0.0, sin, 0.0, cos, 0.0, x, y, z, 1.0,
+    ]
+}
+
+/// An actor's model-to-world `matrix`, with its shape's ground offset taken back out.
 ///
 /// The decoder lifts every vertex by the header's `ground_y_offset`, which stands a world
 /// prop on the ground it is placed at. Heuristic: a film actor's position is taken as its
@@ -732,8 +804,7 @@ fn mat4_mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
 /// fraction peaks at exactly one offset on both films. `PLAYONE.EXE` applies the lift only
 /// when it places scene-tree shapes; its actor draw `0x1D5F` does not read it
 /// (research/formats/auxiliary/scenery.md section 3.3).
-fn actor_world_matrix(actor: &ActorTransform, shape: &SodModelIr) -> [f32; 16] {
-    let mut matrix = actor.compute_world_matrix();
+fn lifted(mut matrix: [f32; 16], shape: &SodModelIr) -> [f32; 16] {
     if let Some(header) = shape.decode().map(|record| record.header) {
         let lift = -f32::from(header.ground_y_offset) * header.scale_factor;
         let [_, _, _, _, ux, uy, uz, _, _, _, _, _, tx, ty, tz, _] = &mut matrix;
@@ -860,5 +931,130 @@ mod tests {
             ..CameraTransform::default()
         };
         assert!(min_corner_depth(&[CameraTransform::default(), wide]) < 0.3);
+    }
+
+    /// The facing matrix stands the model at its position with `+Y` up and turns its `+Z`
+    /// onto the camera's look direction seen from above.
+    #[test]
+    fn a_view_facing_matrix_turns_model_z_onto_the_look_direction_from_above() {
+        let camera = CameraTransform {
+            eye: [10.0, 50.0, 10.0],
+            target: [13.0, -20.0, 14.0],
+            ..CameraTransform::default()
+        };
+        let m = facing_matrix(camera_heading(&camera), [1.0, 2.0, 3.0]);
+        let near = |a: &[f32], b: &[f32]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
+        assert!(near(&m[8..12], &[0.6, 0.0, 0.8, 0.0]), "+Z {:?}", &m[8..12]);
+        assert!(near(&m[4..8], &[0.0, 1.0, 0.0, 0.0]), "+Y {:?}", &m[4..8]);
+        assert!(near(&m[0..4], &[0.8, 0.0, -0.6, 0.0]), "+X {:?}", &m[0..4]);
+        assert_eq!(&m[12..], &[1.0, 2.0, 3.0, 1.0]);
+    }
+
+    /// A view-facing actor drops its own rotation for the camera's heading, while its
+    /// shadow keeps the slot's rotation; the world's view-facing props are drawn the same
+    /// way, at their own positions.
+    #[test]
+    fn view_facing_shapes_turn_with_the_camera_heading() {
+        use crate::contracts::{ActorTransform, TrajectoryRecord};
+        use crate::flm::SliceKeyframe;
+        use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, decode_sod};
+        use crate::world::{FacingProp, TerrainSurface};
+
+        let words = [
+            OP_ID, 100, 0, 0x0100, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24,
+        ];
+        let bytes: Vec<u8> = words
+            .iter()
+            .chain(&[OP_RETURN])
+            .flat_map(|w| w.to_le_bytes())
+            .collect();
+        let tree = decode_sod(&bytes, "TREE", None, DecodeMode::Strict).expect("decode tree");
+        // A quarter turn about +X, which the facing draw must discard.
+        let half = std::f32::consts::FRAC_1_SQRT_2;
+        let actor = ActorTransform {
+            actor_id: 0,
+            model_name: "TREE".to_string(),
+            shape_id: 9,
+            rotation_quat: [half, 0.0, 0.0, half],
+            position_meters: [4.0, 0.0, 0.0],
+            state_mask: 0,
+            casts_shadow: true,
+            joint_angles_bam: Vec::new(),
+        };
+        let record = TrajectoryRecord {
+            tick: 0,
+            camera: CameraTransform {
+                eye: [0.0, 0.0, 8.0],
+                target: [0.0, 0.0, 0.0],
+                ..CameraTransform::default()
+            },
+            actors: vec![actor.clone()],
+            audio_cues: Vec::new(),
+            palette: PaletteControls::default(),
+        };
+        let timeline = FilmTimeline::new(
+            vec![SliceKeyframe {
+                record,
+                tick: 0,
+                tick_duration: 1,
+            }],
+            Vec::new(),
+        );
+        let world = World {
+            ir: SodModelIr::new("WORLD"),
+            terrain_patches: 0,
+            props_placed: 1,
+            bounds: ShapeExtent {
+                min: [0.0; 3],
+                max: [0.0; 3],
+                radius: 0.0,
+            },
+            scenery_stop: None,
+            terrain: TerrainSurface::default(),
+            tap_failures: Vec::new(),
+            view_facing: vec![
+                FacingProp {
+                    shape: 9,
+                    position: [-2.0, 1.0, 5.0],
+                    gates: Vec::new(),
+                },
+                // Behind the stand-in branch of a node at the eye: the near test holds there,
+                // so this prop is not drawn.
+                FacingProp {
+                    shape: 9,
+                    position: [7.0, 0.0, 0.0],
+                    gates: vec![VisibilityCondition::LodBranch {
+                        point: [0.0, 0.0, 8.0],
+                        ext: 400,
+                        splitdist: 600,
+                        near: false,
+                    }],
+                },
+            ],
+        };
+        let scene = FilmScene::new(timeline, HashMap::from([(9, tree)]), Some(world));
+        let frame = scene.frame(0.0);
+
+        // The camera looks along -Z, so the heading is a half turn about +Y.
+        let turned = |x: f32, y: f32, z: f32| {
+            [
+                -1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, x, y, z, 1.0,
+            ]
+        };
+        let near =
+            |a: &[f32; 16], b: &[f32; 16]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
+        let [drawn] = frame.actors.as_slice() else {
+            panic!("one actor draw, got {}", frame.actors.len());
+        };
+        assert!(near(&drawn.world_matrix, &turned(4.0, 0.0, 0.0)));
+        let own = actor.compute_world_matrix();
+        let shadow = drawn.shadow_matrix.expect("the actor casts a shadow");
+        assert!(near(&shadow, &scene.shadow_matrix([4.0, 0.0, 0.0], &own)));
+        let [prop] = frame.view_facing.as_slice() else {
+            panic!("one view-facing draw, got {}", frame.view_facing.len());
+        };
+        assert_eq!(prop.shape_id, 9);
+        assert!(near(&prop.world_matrix, &turned(-2.0, 1.0, 5.0)));
+        assert_eq!(prop.shadow_matrix, None);
     }
 }

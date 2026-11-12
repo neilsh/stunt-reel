@@ -417,6 +417,7 @@ fn draw_shapes(
                         shadow_matrix: None,
                     }],
                     sprites: Vec::new(),
+                    view_facing: Vec::new(),
                     palette: PaletteControls::default(),
                     credits: None,
                 };
