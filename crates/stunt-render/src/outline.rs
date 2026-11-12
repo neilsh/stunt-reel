@@ -3,7 +3,7 @@
 //! `PLAYONE`'s flat filler `0x7571` draws every row of a polygon from its top row to its
 //! bottom row and every span from its left end to its right end, both ends included, so a
 //! polygon draws at least a pixel on every row it crosses, however thin it is. A rasteriser
-//! that samples pixel centres covers about a pixel less per row and per column, and drops a
+//! that samples pixel centres can cover a pixel less per row and per column, and drops a
 //! sliver under a pixel wide altogether: in `INTRO.FLM` the light half of each distant pine
 //! (`research/playone-exe/sod-vm.md` section 8.11). [`with_outlines`] gives the renderer those
 //! pixels back by drawing each polygon's outline as one-pixel screen lines, the same lines
@@ -25,7 +25,8 @@ const LINE_FLAGS: u8 = VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_SIDE | VERTEX_FLAG_LI
 /// The outline is every edge exactly one of the node's filled triangles uses, as a
 /// one-pixel screen line whose ends take the colours of the edge's vertices. A polygon's
 /// own fan diagonals are used twice, and so is an edge between two coplanar polygons of
-/// one colour, whose vertices the decoder welds, so neither is outlined. Triangles of line
+/// one colour when the decoder has welded their vertices (`tessellate.rs` welds by position,
+/// normal, colour and flags), so neither is outlined. Triangles of line
 /// corners are lines already and are left alone. The outline vertices are appended after
 /// `ir`'s, whose vertices and vertex windows stay as they were; a mesh node whose windows
 /// leave the buffers, which [`SodModelIr::meshes`] already skips, is left empty.
