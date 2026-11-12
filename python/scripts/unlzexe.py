@@ -30,20 +30,31 @@ from typing import cast
 from stunt_reel.dataroot import corpus_root, data_root, read_data_file_or_report
 
 # The 0.91 loader's code at CS:000E (push es; push cs; pop ds; mov cx,[000C]; mov si,cx; ...).
+# The Patch #3 `PLAYONE.EXE` and `MAKEONE.EXE` carry a build of it with a `push ax` (0x50) first, at CS:000E.
 LOADER_CODE = bytes.fromhex("060e1f8b0e0c008bf14e89f78cdb031e0a008ec3fdf3a4")
 LOADER_ENTRY = 0x0E
+
+
+def _loader_at(d: bytes, start: int) -> bool:
+    """True when the 0.91 loader code sits at ``start``, at its usual entry or one byte later."""
+    for entry, prefix in ((LOADER_ENTRY, b""), (LOADER_ENTRY + 1, b"P")):
+        at = start + entry
+        if d[at - len(prefix) : at + len(LOADER_CODE)] == prefix + LOADER_CODE:
+            return True
+    return False
 
 
 def _find_loader(d: bytes, hdr_par: int, cs: int) -> int:
     """Return the loader's file offset: at the entry CS, else the one paragraph that holds it."""
     at = (hdr_par + cs) * 16
-    if d[at + LOADER_ENTRY : at + LOADER_ENTRY + len(LOADER_CODE)] == LOADER_CODE:
+    if _loader_at(d, at):
         return at
     found = d.find(LOADER_CODE, hdr_par * 16)
     while found != -1:
-        start = found - LOADER_ENTRY
-        if start >= hdr_par * 16 and (start - hdr_par * 16) % 16 == 0:
-            return start
+        for entry in (LOADER_ENTRY, LOADER_ENTRY + 1):
+            start = found - entry
+            if start >= hdr_par * 16 and (start - hdr_par * 16) % 16 == 0 and _loader_at(d, start):
+                return start
         found = d.find(LOADER_CODE, found + 1)
     raise ValueError("no LZEXE 0.91 loader found")
 
