@@ -111,7 +111,7 @@ TAP operand values point **four bytes before** the record (`record = table + ope
 
 For each anchor record (handler image `0xAD88`, transform `0xAE67`):
 
-1. If the cached stamp `+0x1F` differs from `[0x19A8]` (frame counter), transform the raw point through the 3×3 matrix at `[0x80C0..0x80CA]`, add the translation `[0x41D4..0x41DA]`, cache the 32-bit results at record `+0x06/+0x0A/+0x0E`, and store the stamp.
+1. If the cached stamp `+0x1B` differs from `[0x19A8]` (frame counter), transform the raw point through the 3×3 matrix at `[0x80C0..0x80CA]`, add the translation `[0x41D4..0x41DA]`, cache the 32-bit results at record `+0x06/+0x0A/+0x0E`, and store the stamp.
 2. Shift each cached 32-bit component right by `16 - [0x806E]` to a 16-bit value (`0xADAC..0xADF1`).
 3. Subtract the object's origin words `[0x8084]`, `[0x8086]`, `[0x8088]`.
 4. Write `x, y, z` into the 12-byte vertex register `0x4450 + reg_off + i*12`.
