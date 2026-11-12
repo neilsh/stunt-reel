@@ -1,5 +1,5 @@
 ---
-summary: "Census work queue for Partial SOD shapes: `OP_ANIMATE` blocks 28, vm.rs's two-vertex polygon stop (no walk desync) cuts 7, the films placing them, why seven side-view shapes export no whole model, and regeneration."
+summary: "Census work queue for Partial SOD shapes: `OP_ANIMATE` blocks 28, vm.rs's two-vertex polygon stop cuts 7 (no desync in the two traced shapes), the films placing them, why seven side-view items export no whole model, and regeneration."
 ---
 # `.SOD` Opcode Coverage: Blocking-Opcode Work Queue
 
@@ -23,7 +23,7 @@ The census of 2026-11-01 (after the `SORTON` walk, the centre and matrix stacks,
 | `0x0333` | `OP_TEXTURE` | ends the walk (loose `TESTTEXT.BIN` only; the opcode table gives no width) |
 | `0x022E` | `OP_TAP` | blocking without anchors; implemented, see [`sod-vm.md`](../playone-exe/sod-vm.md) |
 
-Groups B to D are new: the two-vertex polygons sit in `SORTON` subtrees past the first `RETURN`, which no earlier walk reached. Strict decodes fail on them; lenient and census decodes stop there and keep the geometry before (`SodStopReason::MalformedPolygon`). The walk has not desynchronised before them (§ 2.1); whether `PLAYONE` draws a two-vertex polygon as a line, or draws nothing, is open.
+Groups B to D are new: the two-vertex polygons sit in `SORTON` subtrees past the first `RETURN`, which no earlier walk reached. Strict decodes fail on them; lenient and census decodes stop there and keep the geometry before (`SodStopReason::MalformedPolygon`). For the two traced shapes, `0x7F24` and `0x7F34`, the walk stays in step past them (§ 2.1, `[Supported Inference]`); the other models of groups B to D are unchecked; whether `PLAYONE` draws a two-vertex polygon as a line, or draws nothing, is open.
 
 ---
 
@@ -38,7 +38,7 @@ The handlers added on 2026-11-01 are community readings (FreeFlight `siobj.cpp`,
 
 ### 2.1 The side-view census: shapes that do not decode whole
 
-`[Bounded Observation]`: seven shapes of `SUPERSET.ALL` (`mise run superset-all`) export a fragment or no geometry from `stuntreel export-gltf`. `stuntreel sod-trace --archive SUPERSET.ALL --shape 0xNNNN` prints the walk that stops each. Film counts are from the 2026-11-01 census (§ 3) and, for shapes it does not list, from a one-off print over the 22 films of one machine's corpus, so they are lower bounds.
+`[Bounded Observation]`: seven items of `SUPERSET.ALL` (`mise run superset-all`) export a fragment or no geometry from `stuntreel export-gltf`; two of them are not shapes, and one walks to `RETURN` without a stop. `stuntreel sod-trace --archive SUPERSET.ALL --shape 0xNNNN` prints each walk. Film counts are from the 2026-11-01 census (§ 3) and, for shapes it does not list, from a one-off print over the 22 films of one machine's corpus, so they are lower bounds.
 
 | Shape | Source | Stops at | Cause | Films placing it |
 | :---: | :--- | :--- | :--- | :--- |
