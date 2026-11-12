@@ -323,13 +323,19 @@ fn test_sphere_faces_wind_clockwise_from_outside() {
             .iter()
             .map(|&i| ir.vertices[i as usize].position)
             .collect();
-        let normal = compute_polygon_normal(&p);
+        let edge_normal = compute_polygon_normal(&p);
         let centroid: [f32; 3] = std::array::from_fn(|k| p[0][k] + p[1][k] + p[2][k]);
-        let outward: f32 = (0..3).map(|k| normal[k] * centroid[k]).sum();
+        let winding: f32 = (0..3).map(|k| edge_normal[k] * centroid[k]).sum();
         assert!(
-            outward < 0.0,
+            winding < 0.0,
             "face {tri:?} winds counter-clockwise from outside"
         );
+        // The stored normal is the outward one, whatever the winding.
+        for &i in tri {
+            let n = ir.vertices[i as usize].normal;
+            let outward: f32 = (0..3).map(|k| n[k] * centroid[k]).sum();
+            assert!(outward > 0.0, "face {tri:?} carries an inward normal");
+        }
     }
 }
 

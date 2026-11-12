@@ -312,12 +312,14 @@ fn sphere_polygons(
                 reason = "FACES holds only the corner indices 0..12"
             )]
             let vertices: Vec<[f32; 3]> = face.iter().map(|&i| metric(corners[i])).collect();
-            let normal = compute_polygon_normal(&vertices);
+            // The faces wind clockwise from outside, so the edge cross product points inward;
+            // `normal` is the outward normal, which the shader lights.
+            let [nx, ny, nz] = compute_polygon_normal(&vertices);
             RawPolygon {
                 vertex_palette: Vec::new(),
                 vertices,
                 palette_index,
-                normal,
+                normal: [-nx, -ny, -nz],
                 flags: 0,
                 is_decal: false,
                 visibility,
