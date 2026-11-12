@@ -20,6 +20,7 @@ mod props;
 pub mod reader;
 pub mod scene;
 pub mod sod;
+pub mod sprite;
 pub mod vfs;
 pub mod world;
 

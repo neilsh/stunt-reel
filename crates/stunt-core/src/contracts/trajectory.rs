@@ -135,6 +135,19 @@ pub struct ActorTransform {
 }
 
 impl ActorTransform {
+    /// The slot's `.FLM` `animate` word, which the player carries as joint slot 0 of
+    /// [`Self::joint_angles_bam`]; 0 when the actor has none.
+    ///
+    /// `PLAYONE` keeps it at the slot record's `+0x16` and hands it to the shape as the bank
+    /// word an `OP_ANIMATE` with selector `0x16` reads (`research/playone-exe/sod-animate.md`).
+    #[must_use]
+    pub fn animate(&self) -> u16 {
+        self.joint_angles_bam
+            .iter()
+            .find(|&&(joint, _)| joint == 0)
+            .map_or(0, |&(_, value)| value)
+    }
+
     /// Computes the canonical column-major 4x4 world transformation matrix
     /// from `position_meters` (x, y, z) and unit `rotation_quat` [x, y, z, w].
     #[must_use]

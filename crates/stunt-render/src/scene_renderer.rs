@@ -12,18 +12,25 @@
 //! its shape, flattened onto the ground and filled in palette index 0, which lies on the
 //! terrain and so goes in the decal pass whole, through a pipeline that culls no faces.
 //!
+//! A sprite (`OP_ANIMATE`, [`SpriteDraw`]) is its image uploaded once as a unit square of
+//! one quad per run of equal pixels, index 0 left out, drawn through a slot whose matrix
+//! turns the square to face the camera at the sprite's centre and size, in its actor's layer.
+//!
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
 use std::collections::HashMap;
 
 use glam::{Mat4, Vec3};
 
-use stunt_core::scene::{FilmScene, SceneFrame};
+use stunt_core::contracts::{NodeKind, SodModelIr, SodVertex, VisibilityCondition};
+use stunt_core::scene::{FilmScene, SceneFrame, SpriteDraw};
+use stunt_core::sprite::SpriteImage;
 
 use crate::camera::{CameraController, CameraGpuResources};
 use crate::mesh::{GpuMeshSlice, GpuModel};
 use crate::palette::PaletteLut;
 use crate::pipeline::{LAYER_FIRST_ACTOR, ModelUniform, RenderPipelines};
+use stunt_core::contracts::arena_index;
 
 /// Which uploaded model a prepared draw uses.
 #[derive(Clone, Copy, Debug)]
@@ -32,6 +39,8 @@ enum Target {
     World,
     /// An actor shape drawn through the model-matrix slot with this index.
     Shape { shape_id: u16, slot: usize },
+    /// A sprite's image drawn through the model-matrix slot with this index.
+    Image { image_id: u16, slot: usize },
 }
 
 /// One draw ready to encode: visible base and decal slices of a target.
@@ -55,6 +64,8 @@ struct MatrixSlot {
 #[derive(Debug)]
 pub(crate) struct SceneRenderer {
     shapes: HashMap<u16, GpuModel>,
+    /// Every sprite image of the scene as a unit square ([`sprite_ir`]).
+    images: HashMap<u16, GpuModel>,
     world: Option<GpuModel>,
     slots: Vec<MatrixSlot>,
     model_layout: wgpu::BindGroupLayout,
@@ -75,11 +86,21 @@ impl SceneRenderer {
             .shapes()
             .map(|(id, ir)| (id, GpuModel::from_ir(device, queue, layout, ir)))
             .collect();
+        let images = scene
+            .images()
+            .map(|(id, image)| {
+                (
+                    id,
+                    GpuModel::from_ir(device, queue, layout, &sprite_ir(image)),
+                )
+            })
+            .collect();
         let world = scene
             .world()
             .map(|w| GpuModel::from_ir(device, queue, layout, &w.ir));
         Self {
             shapes,
+            images,
             world,
             slots: Vec::new(),
             model_layout: layout.clone(),
@@ -102,14 +123,10 @@ impl SceneRenderer {
         frame: &SceneFrame,
         camera: Option<&CameraController>,
     ) {
-        let uniform = if let Some(camera) = camera {
-            camera.build_uniform()
-        } else {
-            let mut authored = CameraController::default();
-            authored.set_authored_transform(frame.view);
-            authored.build_uniform()
-        };
-        camera_resources.upload(queue, &uniform);
+        let mut authored = CameraController::default();
+        authored.set_authored_transform(frame.view);
+        let controller = camera.unwrap_or(&authored);
+        camera_resources.upload(queue, &controller.build_uniform());
 
         self.prepared.clear();
         let eye = camera.map_or_else(
@@ -149,20 +166,42 @@ impl SceneRenderer {
             if let Some(shadow_matrix) = actor.shadow_matrix {
                 let uniform = ModelUniform::shadow(shadow_matrix, layer);
                 let shadow = base.iter().chain(&decals).copied().collect();
-                self.push_shape(
+                let shape_id = actor.shape_id;
+                self.push_draw(
                     device,
                     queue,
-                    actor.shape_id,
+                    |slot| Target::Shape { shape_id, slot },
                     &mut slot,
                     &uniform,
                     (Vec::new(), shadow),
                 );
             }
             let uniform = ModelUniform::new(actor.world_matrix, layer);
-            self.push_shape(
+            let shape_id = actor.shape_id;
+            self.push_draw(
                 device,
                 queue,
-                actor.shape_id,
+                |slot| Target::Shape { shape_id, slot },
+                &mut slot,
+                &uniform,
+                (base, decals),
+            );
+        }
+
+        // Sprites have no shadow: `PLAYONE` skips `OP_ANIMATE` in the shadow pass.
+        let view = controller.compute_view_matrix();
+        for sprite in &frame.sprites {
+            let Some(model) = self.images.get(&sprite.image_id) else {
+                continue;
+            };
+            let (base, decals) = model.collect_visible_meshes(0, 0.0, eye);
+            let layer = LAYER_FIRST_ACTOR + u32::try_from(sprite.actor).unwrap_or(u32::MAX);
+            let uniform = ModelUniform::new(billboard_matrix(&view, sprite), layer);
+            let image_id = sprite.image_id;
+            self.push_draw(
+                device,
+                queue,
+                |slot| Target::Image { image_id, slot },
                 &mut slot,
                 &uniform,
                 (base, decals),
@@ -170,13 +209,13 @@ impl SceneRenderer {
         }
     }
 
-    /// Queues a draw of `shape_id`'s `(base, decals)` slices through the next model-matrix
-    /// slot, filled with `uniform`.
-    fn push_shape(
+    /// Queues a draw of the target `target` names for the next model-matrix slot, its
+    /// `(base, decals)` slices through that slot, filled with `uniform`.
+    fn push_draw(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        shape_id: u16,
+        target: impl FnOnce(usize) -> Target,
         slot: &mut usize,
         uniform: &ModelUniform,
         (base, decals): (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>),
@@ -190,10 +229,7 @@ impl SceneRenderer {
         queue.write_buffer(&model_slot.buffer, 0, bytemuck::bytes_of(uniform));
         let [_, shadow, ..] = uniform.layer;
         self.prepared.push(PreparedDraw {
-            target: Target::Shape {
-                shape_id,
-                slot: *slot,
-            },
+            target: target(*slot),
             base,
             decals,
             shadow: shadow != 0,
@@ -248,6 +284,12 @@ impl SceneRenderer {
                             None => continue,
                         }
                     }
+                    Target::Image { image_id, slot } => {
+                        match self.images.get(&image_id).zip(self.slots.get(slot)) {
+                            Some((m, model_slot)) => (m, &model_slot.bind_group),
+                            None => continue,
+                        }
+                    }
                 };
                 rpass.set_bind_group(2, bind_group, &[]);
                 model.draw_slices(rpass, meshes);
@@ -271,5 +313,130 @@ impl SceneRenderer {
             }],
         });
         MatrixSlot { buffer, bind_group }
+    }
+}
+
+/// The matrix that draws [`sprite_ir`]'s unit square as `sprite`: facing the camera whose
+/// view matrix is `view`, `size` across, centred on its centre.
+///
+/// The square lies in the view plane, so it is `size` wide and tall on screen at the
+/// centre's depth, as `PLAYONE` blits it (`research/playone-exe/sod-animate.md`).
+fn billboard_matrix(view: &Mat4, sprite: &SpriteDraw) -> [f32; 16] {
+    let right = view.row(0).truncate() * sprite.size;
+    let up = view.row(1).truncate() * sprite.size;
+    let back = view.row(2).truncate();
+    let centre = Vec3::from_array(sprite.centre);
+    Mat4::from_cols(
+        right.extend(0.0),
+        up.extend(0.0),
+        back.extend(0.0),
+        centre.extend(1.0),
+    )
+    .to_cols_array()
+}
+
+/// `image` as a unit square in the `z = 0` plane, `x` right and `y` up from `-0.5` to `0.5`:
+/// one quad per run of equal pixels, wound clockwise seen from `+z`, as the base pipeline
+/// keeps, with index 0 left out as `PLAYONE`'s blitter skips it.
+fn sprite_ir(image: &SpriteImage) -> SodModelIr {
+    let mut ir = SodModelIr::new("SPRITE");
+    let (width, height) = (f32::from(image.width), f32::from(image.height));
+    for run in image.runs() {
+        let x0 = f32::from(run.start) / width - 0.5;
+        let x1 = f32::from(run.end) / width - 0.5;
+        let top = 0.5 - f32::from(run.row) / height;
+        let bottom = 0.5 - (f32::from(run.row) + 1.0) / height;
+        let first = arena_index(ir.vertices.len());
+        for [x, y] in [[x0, bottom], [x0, top], [x1, top], [x1, bottom]] {
+            ir.vertices.push(SodVertex {
+                position: [x, y, 0.0],
+                normal: [0.0, 0.0, 1.0],
+                palette_index: run.index,
+                flags: 0,
+                scenery_class: 0,
+                _padding: 0,
+            });
+        }
+        ir.indices
+            .extend([0, 1, 2, 0, 2, 3].map(|corner| first + corner));
+    }
+    let root = ir.allocate_node(
+        "SPRITE",
+        None,
+        Mat4::IDENTITY.to_cols_array(),
+        VisibilityCondition::Always,
+        NodeKind::TransformGroup,
+    );
+    ir.allocate_node(
+        "PIXELS",
+        Some(root),
+        Mat4::IDENTITY.to_cols_array(),
+        VisibilityCondition::Always,
+        NodeKind::Mesh {
+            vertex_offset: 0,
+            vertex_count: arena_index(ir.vertices.len()),
+            index_offset: 0,
+            index_count: arena_index(ir.indices.len()),
+            is_decal: false,
+        },
+    );
+    ir
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sprite_square_has_one_clockwise_quad_per_run() {
+        // Row 0: two 5s then a 0; row 1: a 7 then two 0s.
+        let image = SpriteImage {
+            width: 3,
+            height: 2,
+            pixels: vec![5, 5, 0, 7, 0, 0],
+        };
+        let ir = sprite_ir(&image);
+        assert_eq!(ir.vertices.len(), 8);
+        assert_eq!(ir.indices.len(), 12);
+        let corners: Vec<[f32; 3]> = ir.vertices.iter().map(|v| v.position).collect();
+        let third = 1.0 / 3.0;
+        assert_eq!(corners[0], [-0.5, 0.0, 0.0]);
+        assert_eq!(corners[2], [2.0 * third - 0.5, 0.5, 0.0]);
+        assert_eq!(ir.vertices[0].palette_index, 5);
+        assert_eq!(ir.vertices[4].palette_index, 7);
+        // Clockwise from +z: the z of (b - a) x (c - b) is negative.
+        for tri in ir.indices.as_chunks::<3>().0 {
+            let [a, b, c] = tri.map(|i| corners[i as usize]);
+            let cross_z = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+            assert!(cross_z < 0.0, "triangle {tri:?} winds counter-clockwise");
+        }
+        assert_eq!(ir.meshes().count(), 1);
+    }
+
+    #[test]
+    fn billboard_faces_the_camera_at_the_sprite_centre() {
+        // A camera at +z looking down -z: right is +x, up +y.
+        let mut camera = CameraController::default();
+        camera.set_authored_transform(stunt_core::scene::ViewCamera {
+            eye: [0.0, 0.0, 10.0],
+            target: [0.0; 3],
+            fov_degrees: 60.0,
+            roll_radians: 0.0,
+        });
+        let view = camera.compute_view_matrix();
+        let sprite = SpriteDraw {
+            image_id: 1,
+            centre: [1.0, 2.0, 3.0],
+            size: 4.0,
+            actor: 0,
+        };
+        let m = Mat4::from_cols_array(&billboard_matrix(&view, &sprite));
+        let top_right = m.transform_point3(Vec3::new(0.5, 0.5, 0.0));
+        assert!((top_right - Vec3::new(3.0, 4.0, 3.0)).length() < 1e-5);
+        let normal = m.transform_vector3(Vec3::Z);
+        assert!(
+            (normal - Vec3::Z).length() < 1e-5,
+            "the square faces the eye"
+        );
     }
 }

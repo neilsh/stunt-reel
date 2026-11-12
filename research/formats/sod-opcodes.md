@@ -69,7 +69,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **53** | `0x01DD` | 477 | `OP_ROTY` | `angle_bam: u16` | Rotate around Y axis by 16-bit BAM angle |
 | **54** | `0x01E6` | 486 | `OP_PUSHRELMAT`| *none* | Push relative orientation matrix onto stack |
 | **55** | `0x01EF` | 495 | `OP_POPRELMAT` | *none* | Pop relative orientation matrix from stack |
-| **56** | `0x01F8` | 504 | `OP_ANIMATE` | `reg_off: u16, parameter: u16, selector: u16, resource_count: u16, resource_ids: u16[resource_count]` | Selects an image resource and emits a projected pixel draw (`# [FMT-SOD-ANIMATE]`); selector semantics and `.FLM` input mapping remain open. |
+| **56** | `0x01F8` | 504 | `OP_ANIMATE` | `reg_off: u16, size: u16, selector: u16, resource_count: u16, resource_ids: u16[resource_count]` | Draws frame `(count × bank word) >> 16` of its image table as a square centred on the projected register (`# [FMT-SOD-ANIMATE]`); `selector` names the bank word, `0x16` the slot's `.FLM` animate word. |
 | **57** | `0x0201` | 513 | `OP_HUGEVECS` | `...` | Large-coordinate vector ingest |
 | **58** | `0x020A` | 522 | `OP_HUGEPERSPEC`| `...`| Large-coordinate perspective divide |
 | **59** | `0x0213` | 531 | `OP_HUGEPOLY` | `...` | Large-scale scenery polygon |
@@ -168,22 +168,18 @@ Corpus: 2,413 stop sites across 14 unique model payloads; every operand is a mul
 
 ### 2.4 Animation Resource Draw (`OP_ANIMATE`, `0x01F8`) (`# [FMT-SOD-ANIMATE]`)
 
-`[Established]` for the operand span and pixel-blit side effect in the saved runtime image. `[Bounded Observation]` for the `Ac.FLM`/`Ac.ALL` resource cross-reference. The direct mapping from `.FLM` `animate: u16` to this selector remains `[Unknown]`.
-
-The saved `PLAYONE.EXE` runtime disassembly establishes this variable-width record:
+`[Established]` for the operands, the frame selection and the blit, static ([`playone-exe/sod-animate.md`](../playone-exe/sod-animate.md), which holds the evidence).
 
 ```text
 OP_ANIMATE (0x01F8)
   vertex_reg_off : u16
-  parameter      : u16
+  size           : u16
   selector       : u16
   resource_count : u16
   resource_ids   : u16[resource_count]
 ```
 
-`vertex_reg_off` addresses the 12-byte vertex arena at `DS:0x4450`; the handler reads depth, projected coordinates, and the register flag. It combines the register depth with the view-origin/projection terms, uses `selector` to access a work-segment lookup value, and selects a resource ID from the variable-length table. `parameter` and `selector` are neutral field names; their complete domain meaning is not established. A nonzero mode gate skips the same record using three fixed words, `resource_count`, and `2 * resource_count` bytes.
-
-The selected ID is resolved through the resource cache and passed to a screen-space pixel blitter. The blitter clips the image and writes nonzero source bytes; zero bytes are skipped. This opcode emits a raster draw, not a polygon or BAM joint rotation. Corpus chunks `Ac.ALL:0x0105` and `0x0108` contain the 58-byte form; `0x0105` references `0x1F01`–`0x1F0C`, matching 64×50 image resources in that archive. See [`research/playone-exe/sod-animate.md`](../playone-exe/sod-animate.md) for the disassembly and evidence limits.
+`vertex_reg_off` addresses the 12-byte vertex arena. `selector` is a byte offset into the word bank at `work:0x810E` that `ROTX`, `ROTY` and `ROTZ` also read; the frame is `resource_ids[(resource_count × word) >> 16]`. Selector `0x16` is the drawn slot's `.FLM` `animate` word, interpolated between keys; `0x10` is the film clock times 4,096. The chosen image is stretched to a square `size` units across at the register's depth (the screen size `OP_SPHERE` gives a sphere of radius `size`), centred on the projected register, with index 0 transparent and no depth test. In the shadow pass, or when the register's flag is set, the record is skipped whole. It emits a raster draw, not a polygon or a joint rotation.
 
 ### 2.5 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)
 

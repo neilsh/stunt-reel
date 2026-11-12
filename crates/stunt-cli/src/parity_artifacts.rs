@@ -723,6 +723,7 @@ mod tests {
             view: ViewCamera::default(),
             world: false,
             actors: Vec::new(),
+            sprites: Vec::new(),
             palette: PaletteControls {
                 sky: 0x2000,
                 brightness: 0x8000,

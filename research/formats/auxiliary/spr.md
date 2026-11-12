@@ -42,6 +42,8 @@ A `.SPR` file has an extremely compact binary structure consisting of a 4-byte r
 | `0x0004`..$\text{EOF}-2$ | $W \times H$ | `u8[]` | `pixel_data` | Contiguous row-major array of 8-bit Mode 13h palette indices (`0..=255`). | `[Established]` |
 | $\text{EOF}-2$..$\text{EOF}$ | 2 | `u16` (LE) | `trailer` | Fixed end-of-file terminator word `0x0000`. | `[Established]` |
 
+**`PLAYONE` reads the pixels from byte 6.** `[Established]`, static: its blitter (image `0x7DE6`) takes width and height from bytes 0 and 2 and the first pixel from byte 6, so it treats bytes 4–5 as a third header word and has no trailer. Every stock `OP_ANIMATE` frame in the corpus holds a zero word at byte 4 and at the end, so the two readings differ by a two-pixel shift ([`sod-animate.md`](../../playone-exe/sod-animate.md) § 3).
+
 ### 2.3 Strict File Size Formula
 
 The exact file size of any valid `.SPR` file is governed by the invariant formula:

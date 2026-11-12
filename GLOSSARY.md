@@ -52,7 +52,7 @@ The two lines of text a film shows over its picture, set and cleared at authored
 _Avoid_: caption, title text, subtitles
 
 **Animation input**:
-The raw 16-bit value carried by a `.FLM` slot with `SIF_ANIMATES`. Its mapping to SOD resource selection is not established.
+The raw 16-bit value carried by a `.FLM` slot with `SIF_ANIMATES`. `PLAYONE` interpolates it between keys, and an `OP_ANIMATE` with selector `0x16` draws frame `(count × value) >> 16` of its image table.
 _Avoid_: joint angle, frame counter
 
 ## Assets and models
@@ -76,6 +76,10 @@ _Avoid_: sprite, object
 **Animation image resource**:
 A numbered `.ALL` image resource referenced by an `OP_ANIMATE` table and drawn at a projected screen position. It is distinct from a 3D shape.
 _Avoid_: shape, joint
+
+**Sprite**:
+One `OP_ANIMATE` draw of a shape: a frame of its animation image resources, stretched to a square at one of the shape's points and facing the screen, with palette index 0 transparent.
+_Avoid_: billboard (for the original's draw), shape
 
 **Slot**:
 One of the 64 timeline entity channels in a film. A slot binds a shape and carries position, orientation, and an optional animation input. Distinct from **Prop slot** and **Sound slot**, the handbook's other two uses of the word.

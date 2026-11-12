@@ -1,76 +1,90 @@
 ---
-summary: "`OP_ANIMATE` (`0x01F8`) carries a variable-length resource-ID table and blits the selected raster resource in screen space, not a joint rotation; how `.FLM` `animate` reaches it is unknown."
+summary: "`OP_ANIMATE` (`0x01F8`) blits frame `(count × bank word) >> 16` of its image table as a square centred on a projected point; selector `0x16` is the slot's interpolated `.FLM` animate word, `0x10` the film clock."
 ---
 # `PLAYONE.EXE`: `OP_ANIMATE` Resource-Draw Semantics
 
-* **Binary**: `PLAYONE.EXE` (LZEXE 0.91, DOSBox-X runtime image)
-* **Method**: Capstone 16-bit disassembly of the local saved memory image in `build/re/playone_lo.bin`, `build/re/playone_hi.bin`, and `build/re/mem/seg_1000.bin`; corpus cross-check against `Ac.ALL` and `Ac.FLM`.
-* **Scope**: `OP_ANIMATE` (`0x01F8`) dispatch, operand span, resource lookup, and pixel blit.
+* **Binary**: `PLAYONE.EXE`, the unpatched load image (`build/re/playone.img` in the data root).
+* **Method**: Static disassembly with `mise run disasm`, `mise run xref` and `mise run vm-handler`; corpus cross-check against the data root's `.ALL` archives and loose `.BIN` models, and the slot keys of `CTRY.FLM` and `INTRO.FLM`.
+* **Scope**: `OP_ANIMATE` (`0x01F8`) dispatch, operands, frame selection, the slot word that drives it, and the blit.
 * **Anchor**: `# [FMT-SOD-ANIMATE]`, `# [MEM-SOD-VM]`
 
-The memory image is local build evidence and is not committed. A live DOSBox breakpoint attempt at the saved `CS:0F17` address did not stop in this session; the findings below come from the saved runtime image and corpus bytes, not a live invocation of the handler.
+Image offsets below are the unpatched load image's; the notebook offsets of the first session are the VM segment's (`CS:0x3AAC` is image `0xA9DC`). Nothing here was observed live: a breakpoint on the handler in the first session never stopped.
 
 ---
 
-## 1. Dispatch and Operand Span
+## 1. Dispatch and Operands
 
-The saved image has `CS = 0x0F17`. The dispatch entry for `0x01F8` is `CS:0x150E` (`0x1316 + 0x01F8`): bytes `E9 9B 25` jump to `CS:0x3AAC`.
-
-At `CS:0x3AAC`, the handler uses the following wire layout:
+`[Established]`, static. Dispatch slot `0x01F8` (image `0x843E`) jumps to the handler at image `0xA9DC`. Its operands:
 
 ```text
 OP_ANIMATE (0x01F8)
-  vertex_reg_off : u16
-  parameter      : u16
-  selector       : u16
+  vertex_reg_off : u16          byte offset into the 12-byte register arena
+  size           : u16          side of the drawn square, in shape units
+  selector       : u16          byte offset into the angle bank at work:0x810E
   resource_count : u16
   resource_ids   : u16[resource_count]
 ```
 
-The names `parameter` and `selector` are neutral field labels; their complete domain meaning is not established.
+While the shadow mode `work:0x806C` is set, or the register's flag byte (`+0x0A`) is set, the handler skips the operands and runs the next opcode; it always consumes `4 + resource_count` words, so the walk continues after the table either way.
 
-The handler’s inactive path advances over three fixed words, reads `resource_count`, skips `2 * resource_count` bytes, and dispatches the next opcode. The active path reads the same fields and indexes the variable-length `resource_ids` table. Thus a fixed-width skip is invalid.
-
-`vertex_reg_off` is a byte offset into the 12-byte register arena. The handler reads the record at `DS:0x4450 + vertex_reg_off`, including its depth at `+4`, projected coordinates at `+6`/`+8`, and flag byte at `+0x0A`.
+_Source: [what picks the OP_ANIMATE frame](../../work/2026-11/222_op-animate/journal.md#2026-11-11-what-picks-the-op_animate-frame)._
 
 ---
 
-## 2. Resource Selection and Draw Effect
+## 2. Frame Selection
 
-The active path uses the vertex depth plus view-origin Z (`[0x8088]`) and projection scale (`[0x8070]`) with `parameter`. It uses `selector` to read a factor from the work-segment table addressed by `selector - 0x7EF2`; `resource_count` and that factor determine the selected `u16` resource ID. The handler passes that ID through the resource cache lookup at `CS:0x0824:0x8073`.
+`[Established]`, static. The handler reads `[selector − 0x7EF2]`, which is `work:0x810E + selector`: the same word bank `ROTX`, `ROTY` and `ROTZ` read ([`sod-vm.md`](sod-vm.md) § 8.7). The frame is `resource_ids[(resource_count × word) >> 16]` (`mul` at `0xAA13`, the product's high word as the index), so the word sweeps the table once per 65,536.
 
-The lookup returns the resource segment. Its callback pointer at `DS=0x1575:0x2260` is `0x7DE6` in the saved image. The routine at `CS=0x0824:0x7DE6` clips the resource to the screen and writes nonzero source bytes with `STOSB`; zero bytes are skipped. This is a screen-space raster draw, not polygon emission or a BAM joint rotation.
+| Selector | Bank word | Written by | Value |
+|---|---|---|---|
+| `0x16` | `work:0x8124` | `0x1D66`, on every actor draw | The slot record's `+0x16`: the `.FLM` `animate` word, interpolated (below) |
+| `0x10` | `work:0x811E` | `0x1DCA`, in the frame step | `[0x4888 + 0x0E] << 12`: the film clock `DS:0x4896` times 4,096, one sweep every 16 ticks |
+| `0x12`, `0x14`, `0x18`, `0x1A` | `work:0x8120`..`0x8128` | `0x1D96` | Words derived from film variables 10 and 12 ([`palette-fade.md`](palette-fade.md)) |
 
-The work-segment projection term `[0x8070]` is assigned by `CS:0x0F17:0x21D0` from `[0x8108]`, shifted by the high-byte count saved at `[0x806F]`. The setup routine stores its `CX` word at `[0x806E]`; the higher-level meaning of `[0x8108]` is not established.
+The frame step that writes `0x811E` is `0x0F4A`, which `0x4A2F` calls with `BX = 0x4888` ([`lod.md`](lod.md) § 2.1), so `[BX + 0x0E]` there is the active film clock.
 
----
+**The slot record.** `0x39AE` snapshots each slot as 12 words: the flag byte at `+1` (`SIF_MOVES` `0x08`, `SIF_ROTATES` `0x10`, `SIF_ANIMATES` `0x20`), position `+0x04..+0x0F`, angles `+0x10..+0x14` and the animate word at `+0x16`. Each frame `0x3E6C` interpolates the slot between its start (`[di + 0x32]`) and end (`[di + 0x34]`) records by `frac = work:0x22E0`. For the animate word (`0x3EF8..0x3F13`, while `SIF_ANIMATES` is set) it is `start + ((end − start) × frac) >> 16` taken unsigned: when `end < start` the subtraction borrows and the result is corrected by `frac`, so the value falls straight from `start` to `end` and never wraps through 0.
 
-## 3. Corpus Cross-Check
+**Corpus use.** `[Bounded Observation]`. The multi-frame tables use `0x16` (shapes `0x0105`–`0x010C` and `EXP1.BIN`–`EXP8.BIN`, 12 frames each) or `0x10` (`0x3A80`/`SMOKE.BIN`, 4 frames; `0x7E49`, 8 frames). The single-frame ones (`MINE`, `DAVEFIRE`, the Death Star, the `MAC` logos, the `0x7Cxx` and `0x7E22`/`0x7E26` shapes) use `0x10` or `0`; with one frame the word does not matter. `CTRY.FLM` keys its explosion slot (11, shape `0x0107`) at 0, 24576, 47104 and 4096 over ticks 851–885, and `CTRY.ALL` holds only frames `0x1F02`, `0x1F06` and `0x1F07` of the twelve: values the interpolated sweep passes through, not the keys themselves (`[Supported Inference]`, one film).
 
-In `corpus/siarchive/Films/MultiFLM/AmCrisis/Ac.all`:
-
-* Chunk `0x0105` is 58 bytes and contains one `OP_ANIMATE` record at byte `0x16`: register offset `0`, parameter `0x2000`, selector `0x16`, count `12`, and resource IDs `0x1F01`–`0x1F0C`.
-* The referenced chunks `0x1F01`–`0x1F0C` are each 3,206 bytes and begin with width `64`, height `50`; `64 * 50 = 3,200` bytes, consistent with image resources plus a 6-byte header.
-* Chunk `0x3A80` is 288 bytes and contains 11 repeated `OP_ANIMATE` records, each with four resource IDs.
-* `Ac.flm` carries `SIF_ANIMATES` updates for shape IDs `0x0105` and `0x0108`, with changing `animate: u16` values. This co-occurrence does **not** by itself establish how the `.FLM` value reaches the SOD selector or draw routine.
-
-The corpus scan found 847 `OP_ANIMATE` stop sites: 705 share the 58-byte body, 130 share the 288-byte body, and 12 are other sites. The 58-byte CTRY chunk `0x0107` emits no polygons, but that does not imply the opcode has no visible effect: its handler can draw a raster resource.
+_Source: [what picks the OP_ANIMATE frame](../../work/2026-11/222_op-animate/journal.md#2026-11-11-what-picks-the-op_animate-frame)._
 
 ---
 
-## 4. Rust Mapping and Open Items
+## 3. The Draw
 
-The Rust SOD VM currently has no `OP_ANIMATE` arm; it stops/errors through the unknown-opcode path. `ActorTransform.joint_angles_bam` is not evidence for this opcode’s behavior, and the current mapping of `.FLM` `animate` into joint angle slot 0 is unverified.
+`[Established]`, static.
 
-T10 remains open. Remaining work: establish whether and how the `.FLM` `animate: u16` value affects resource selection, then implement the selected resource draw in the native renderer. Do not treat the opcode as a 3D joint-angle instruction or silently rename the unknown operand fields as `var_id`/`limit`.
+* **Size.** `(size × work:0x8070) >> 8`, the 32-bit product shifted by the byte moves at `0xA9FC`, divided by the register's depth plus `work:0x8088`. A size of 0 pixels draws nothing. `OP_SPHERE`'s screen radius is the same expression ([`sod-vm.md`](sod-vm.md) § 8.8), so a sprite of size `p` is as wide on screen as a sphere of radius `p` is in radius.
+* **Placement.** The handler passes the projected point (`+6`, `+8`), the size and the chosen id to `0x8073`, which looks the id up in the resource cache (`0x4C41`), puts the top-left corner at the point less half the size on both axes, and calls the blitter through `DS:0x2260` (`0x7DE6`).
+* **Blit.** `0x7DE6` stretches the image to a square `size` pixels on a side, stepping the source by `width / size` and `height / size` in 16.16, clips it to the view rectangle `[0x2294..0x229A]`, and stores every non-zero byte; index 0 is transparent. There is no depth test: the sprite lands in the object's place in the painter's order.
+* **Image layout.** The cache allocates two bytes more than a chunk (`0x4CD3`) and sets `DI = 2` before its read (`0x4CE0`); the blitter reads width at `es:2`, height at `es:4` and the first pixel at `es:8`. So a frame is `width`, `height`, a third word, then `width × height` pixels from chunk byte 6 (`[Supported Inference]` that `0x024B` is the read, from the width and height the blitter finds at `es:2` and `es:4`). All 2,815 frame chunks the corpus's tables name and its archives hold are `width × height + 6` bytes with a zero word at byte 4 and at the end (`[Bounded Observation]`); the layout is [`spr.ksy`](../formats/auxiliary/spr.ksy).
 
-`[Established]` for the dispatch target, operand widths, resource lookup, and pixel-blit side effect in the saved runtime disassembly. `[Bounded Observation]` for the `Ac.ALL` resource cross-reference. `[Unknown]` for the `.FLM.animate`-to-SOD selection mapping and the complete semantics of `parameter` and `selector`.
+_Source: [what picks the OP_ANIMATE frame](../../work/2026-11/222_op-animate/journal.md#2026-11-11-what-picks-the-op_animate-frame)._
 
 ---
 
-## 5. Open questions
+## 4. Rust Mapping
 
-* Establish whether `.FLM` `animate: u16` (co-occurring with SOD resource tables in `Ac`: shapes `0x0105`, `0x0108`) reaches the selector at `selector - 0x7EF2`; the dataflow is unresolved.
-* A live breakpoint on the handler (`CS:0F17`) did not stop in the first session; retry before implementing the draw.
+* `sod/vm.rs` runs `OP_ANIMATE`: each one becomes a `ShapeSprite` on the shape (anchor and size in metres through the shape's scale, the selector and the id table). Its census skip entry is gone.
+* `flm/interpolate.rs` interpolates the animate word, joint slot 0 of `ActorTransform::joint_angles_bam`, as `0x3EFE` does.
+* `scene.rs` picks each sprite's frame from its bank word (`bank_word`: `0x16` the actor's animate word, `0x10` the film tick's low four bits shifted left 12, any other word 0) and places it at the actor; a frame the archive lacks is not drawn. Images are read from the `.ALL` chunks or `RES` items the tables name (`sprite.rs`).
+* `stunt-render` draws each sprite as a camera-facing square of its size at its centre, one quad per run of equal pixels, depth-tested in its actor's layer and absent from the shadow pass.
 
-_Found 2026-10-20 at `f9f0cfd`. No parity measurement was taken; T10 stays open._
+Drawing it raised `INTRO` from 0.8344 to 0.8357 and `CTRY` from 0.8973 to 0.8974 (evidence-backed, adopted).
+
+_Source: [drawing the OP_ANIMATE sprite](../../work/2026-11/222_op-animate/journal.md#2026-11-11-drawing-the-op_animate-sprite)._
+
+---
+
+## Ruled out
+
+* **A joint rotation.** The opcode draws an image; it does not rotate geometry. The `.FLM` `animate` word reaches it only through the bank word `0x8124` (§ 2).
+* **Pushing the square toward the eye** by a fraction of its size, kept at its screen size, to approximate the painter's order: 0, 0.25, 0.5 and 1 times the size scored `CTRY` 0.8974 / 0.8974 / 0.8975 / 0.8971 and `INTRO` 0.8357 / 0.8360 / 0.8361 / 0.8362; heuristic, below the adoption bar ([pushing the sprite toward the eye](../../work/2026-11/222_op-animate/journal.md#2026-11-11-pushing-the-sprite-toward-the-eye)).
+
+## Open questions
+
+* **Draw order.** `PLAYONE` blits the sprite over whatever was painted before its object and under what comes after; our depth test cuts it where an object stands inside its square (`CTRY` tick 871: the capture draws the explosion over the tower beside it, we draw it behind). Matching it needs the painter's order of whole objects, not a per-pixel depth.
+* **Bank words other than `0x10` and `0x16`.** The scene reads them as 0; no multi-frame stock table uses them.
+* **Visibility gates.** Only an `ActorState` gate is evaluated for a sprite; no stock shape puts `OP_ANIMATE` under any gate.
+* **Live check.** No breakpoint has confirmed the frame index or the image's pixel offset at run time.

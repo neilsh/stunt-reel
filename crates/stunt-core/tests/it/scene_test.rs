@@ -18,7 +18,7 @@ use stunt_core::flm::{
     FilmTimeline, FlmError, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW,
 };
 use stunt_core::link::LinkError;
-use stunt_core::scene::{FilmScene, SceneError, SceneInputs, ShapeSource};
+use stunt_core::scene::{FilmScene, SceneError, SceneInputs, ShapeSource, SpriteDraw, bank_word};
 use stunt_core::sod::{DecodeMode, EPSILON_DISPLACEMENT, OP_TAP, decode_sod};
 use stunt_core::vfs::{res_regions, write_all};
 use stunt_core::world::ScnStopReason;
@@ -527,4 +527,69 @@ fn cyclic_scenery_surfaces_its_stop_in_the_report() {
     .expect("load");
     let stop = report.world.expect("a world").scenery_stop;
     assert_eq!(stop.map(|s| s.reason), Some(ScnStopReason::Cycle));
+}
+
+#[test]
+fn an_animated_shape_draws_its_sprite_at_the_actor() {
+    let film = film(
+        [0.0, 0.0, 10.0],
+        &[(0, [9.0, 9.0, 9.0]), (7, [3.0, 0.0, 0.0])],
+    );
+    let sprite = fixture("synthetic_sprite.bin");
+    let all = archive(&[
+        (7, &fixture("synthetic_animate.sod")),
+        (0x1F01, &sprite),
+        (0x1F02, &sprite),
+    ]);
+    let (scene, _) = FilmScene::load(&SceneInputs {
+        shapes: Some(ShapeSource::Archive(&all)),
+        ..scene_inputs(&film)
+    })
+    .expect("load");
+    assert_eq!(scene.images().count(), 2);
+    assert_eq!(
+        scene.image(0x1F01).map(|i| i.pixels.clone()),
+        Some(vec![5, 0, 0, 7])
+    );
+
+    // No animate word: frame 0 of the table, 2 m across at the actor's origin. Shape 0 is not
+    // in the archive, so the animated actor is draw 0.
+    let frame = scene.frame(0.0);
+    assert_eq!(
+        frame.sprites,
+        vec![SpriteDraw {
+            image_id: 0x1F01,
+            centre: [3.0, 0.0, 0.0],
+            size: 2.0,
+            actor: 0,
+        }]
+    );
+    assert_eq!(frame.actors[0].shape_id, 7);
+}
+
+#[test]
+fn a_sprite_whose_frame_is_missing_is_not_drawn() {
+    let film = film([0.0, 0.0, 10.0], &[(7, [3.0, 0.0, 0.0])]);
+    let all = archive(&[(7, &fixture("synthetic_animate.sod"))]);
+    let (scene, _) = FilmScene::load(&SceneInputs {
+        shapes: Some(ShapeSource::Archive(&all)),
+        ..scene_inputs(&film)
+    })
+    .expect("load");
+    assert_eq!(scene.images().count(), 0);
+    let frame = scene.frame(0.0);
+    assert_eq!(frame.actors.len(), 1);
+    assert!(frame.sprites.is_empty());
+}
+
+#[test]
+fn bank_words_follow_the_film_clock_and_the_animate_word() {
+    // `0x10`: tick << 12, one sweep per 16 ticks, from the whole tick.
+    assert_eq!(bank_word(0x10, 5.7, 999), 0x5000);
+    assert_eq!(bank_word(0x10, 16.0, 999), 0);
+    assert_eq!(bank_word(0x10, 31.0, 999), 0xF000);
+    // `0x16`: the slot's animate word.
+    assert_eq!(bank_word(0x16, 3.0, 1234), 1234);
+    // Unmodelled words read as 0.
+    assert_eq!(bank_word(0x12, 3.0, 1234), 0);
 }

@@ -1148,9 +1148,68 @@ fn test_every_opcode_the_vm_names_has_a_mnemonic() {
     use crate::sod::opcode_mnemonic;
     assert_eq!(opcode_mnemonic(OP_POLYZ), Some("POLYZ"));
     assert_eq!(
-        opcode_mnemonic(0x01F8),
-        Some("ANIMATE"),
+        opcode_mnemonic(0x0360),
+        Some("CLR2D"),
         "census names fill the gaps"
     );
     assert_eq!(opcode_mnemonic(0x0002), None);
+}
+
+#[test]
+fn test_animate_draws_a_sprite_at_its_register() {
+    use crate::sod::OP_ANIMATE;
+    // Scale index 1 is 0.5 m a unit; the ground offset lifts the anchor like a vertex.
+    let mut bytes = make_sod_header(100, 4, 1, 0);
+    push_words(&mut bytes, &[OP_VECTORS, 1, 12]);
+    for c in [10i16, 20, 30] {
+        bytes.extend_from_slice(&c.to_le_bytes());
+    }
+    push_words(
+        &mut bytes,
+        &[
+            OP_ANIMATE, 12, 8, 0x16, 3, 0x1F01, 0x1F02, 0x1F03, OP_RETURN,
+        ],
+    );
+
+    let ir = decode(&bytes, "ANIMATED").expect("ANIMATE decodes strictly");
+    assert!(ir.vertices.is_empty(), "a sprite is not geometry");
+    let [sprite] = ir.sprites.as_slice() else {
+        panic!("one sprite, got {:?}", ir.sprites);
+    };
+    // OP_VECTORS stores (-x, -y, z); metres are (raw + lift on y) * 0.5.
+    assert_eq!(sprite.anchor, [-5.0, -8.0, 15.0]);
+    assert!((sprite.size - 4.0).abs() < f32::EPSILON);
+    assert_eq!(sprite.selector, 0x16);
+    assert_eq!(sprite.frames, [0x1F01, 0x1F02, 0x1F03]);
+    assert_eq!(sprite.visibility, VisibilityCondition::Always);
+}
+
+#[test]
+fn test_animate_consumes_its_whole_id_table() {
+    use crate::sod::OP_ANIMATE;
+    // The id table holds words that read as opcodes; the polygon behind it still decodes.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_ANIMATE, 0, 1, 0x10, 2, OP_POLYZ, OP_POLYZ]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 5, OP_POLYZ, 3, 12, 24, 36, OP_RETURN],
+    );
+    let ir = decode(&bytes, "TABLE").expect("decodes past the table");
+    assert_eq!(ir.sprites.len(), 1);
+    assert_eq!(ir.sprites[0].frames, [OP_POLYZ, OP_POLYZ]);
+    assert_eq!(ir.indices.len(), 3, "the triangle after the table is drawn");
+}
+
+#[test]
+fn test_census_decode_keeps_no_sprites() {
+    use crate::sod::OP_ANIMATE;
+    let mut bytes = make_sod_header(100, 0, 0, 0);
+    push_words(&mut bytes, &[OP_ANIMATE, 0, 1, 0x16, 1, 0x1F01, OP_RETURN]);
+    let ir = decode_sod(&bytes, "CENSUS", None, DecodeMode::Census).expect("census decode");
+    assert!(ir.sprites.is_empty());
+    let record = ir.decode().expect("a record");
+    assert!(
+        record.stepped_over.is_empty(),
+        "ANIMATE runs, so nothing is stepped over"
+    );
 }

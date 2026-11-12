@@ -8,7 +8,9 @@
 //! Reference specs: `# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`, historical `DECODE.C`/`SOD.H`.
 
 use crate::anchor::AnchorPoint;
-use crate::contracts::shape::{SodHeader, SodStop, SodStopReason, VisibilityCondition};
+use crate::contracts::shape::{
+    ShapeSprite, SodHeader, SodStop, SodStopReason, VisibilityCondition,
+};
 use crate::reader::ByteReader;
 use crate::sod::SodError;
 use crate::sod::light::ShadeLight;
@@ -89,6 +91,10 @@ pub const OP_MOVECENTRE: u16 = 0x0090;
 pub const OP_PUSHRELMAT: u16 = 0x01E6;
 /// Pop the relative orientation matrix (no operands).
 pub const OP_POPRELMAT: u16 = 0x01EF;
+/// Draw one frame of an image table at a register's projected point (`reg_off, size,
+/// selector, count, count * resource ids`); the frame comes from the angle-bank word
+/// `selector` names (`PLAYONE` image `0xA9DC`).
+pub const OP_ANIMATE: u16 = 0x01F8;
 /// Rotate about Y by an animation variable (`var_off: u16`).
 pub const OP_ROTY: u16 = 0x01DD;
 /// Rotate about X by an animation variable (`var_off: u16`).
@@ -556,6 +562,8 @@ pub(crate) struct VmRun {
     pub stepped_over: Vec<SodStop>,
     /// Byte offset of the first `OP_RETURN`; `None` when the stream ended without one.
     pub returned_at: Option<usize>,
+    /// Images `OP_ANIMATE` drew before the stream ended, in stream order.
+    pub sprites: Vec<ShapeSprite>,
 }
 
 /// One instruction a traced VM walk executed.
@@ -657,6 +665,7 @@ pub(crate) fn run_vm(
     let mut polygons = Vec::new();
     let mut stepped_over: Vec<SodStop> = Vec::new();
     let mut returned_at: Option<usize> = None;
+    let mut sprites: Vec<ShapeSprite> = Vec::new();
     let mut current_visibility = VisibilityCondition::Always;
     let mut visibility_scope_end = 0usize;
     // Facing flags (`PLAYONE` `work:0x7C68`) that `OP_REJ` writes and `OP_IFVIS` tests,
@@ -1076,6 +1085,27 @@ pub(crate) fn run_vm(
                 r.read_u16_le()?;
                 r.read_u16_le()?;
             }
+            OP_ANIMATE => {
+                // `0xA9DC`: a square `(size * work:0x8070 >> 8) / depth` pixels across, the
+                // screen radius `OP_SPHERE` gives a sphere of radius `size`, centred on the
+                // register's projected point. Frame `(count * bank word) >> 16` of the id
+                // table, the word at `work:0x810E + selector`; skipped in the shadow pass.
+                let reg_off = r.read_u16_le()?;
+                let size = f32::from(r.read_u16_le()?);
+                let selector = r.read_u16_le()?;
+                let count = r.read_u16_le()?;
+                let frames = std::iter::repeat_with(|| r.read_u16_le())
+                    .take(usize::from(count))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let anchor = add3(regs.get(((reg_off / 12) & 1023) as usize), relpos);
+                sprites.push(ShapeSprite {
+                    anchor: metric_point(anchor, ground_y_offset, scale_factor),
+                    size: size * scale_factor,
+                    selector,
+                    frames,
+                    visibility: current_visibility,
+                });
+            }
             OP_SPHERE => {
                 let center_off = r.read_u16_le()?;
                 let radius = f32::from(r.read_u16_le()?);
@@ -1158,6 +1188,7 @@ pub(crate) fn run_vm(
                                 stop: Some(stop),
                                 stepped_over,
                                 returned_at,
+                                sprites,
                             });
                         }
                         Blockage::StepOver(stop) => {
@@ -1215,6 +1246,7 @@ pub(crate) fn run_vm(
                                         stop: Some(stop),
                                         stepped_over,
                                         returned_at,
+                                        sprites,
                                     });
                                 }
                             }
@@ -1301,6 +1333,7 @@ pub(crate) fn run_vm(
                             stop: Some(stop),
                             stepped_over,
                             returned_at,
+                            sprites,
                         });
                     }
                     Blockage::StepOver(stop) => {
@@ -1345,6 +1378,7 @@ pub(crate) fn run_vm(
                         stop: Some(stop),
                         stepped_over,
                         returned_at,
+                        sprites,
                     });
                 }
             }
@@ -1357,6 +1391,7 @@ pub(crate) fn run_vm(
         stop: None,
         stepped_over,
         returned_at,
+        sprites,
     })
 }
 
@@ -1425,6 +1460,7 @@ pub fn opcode_mnemonic(opcode: u16) -> Option<&'static str> {
         OP_MOVECENTRE => "MOVECENTRE",
         OP_PUSHRELMAT => "PUSHRELMAT",
         OP_POPRELMAT => "POPRELMAT",
+        OP_ANIMATE => "ANIMATE",
         OP_ROTY => "ROTY",
         OP_ROTX => "ROTX",
         OP_ROTZ => "ROTZ",
@@ -1470,7 +1506,7 @@ const fn skip(opcode: u16, mnemonic: &'static str, fixed_words: u16) -> CensusSk
 /// Operand widths for opcodes the VM does not implement, used only by a census decode.
 ///
 /// Widths come from the operand column of `research/formats/sod.md` § 3.2, which follows the
-/// community `SOD.H` rather than the binary (`OP_ANIMATE` excepted), so a wrong entry
+/// community `SOD.H` rather than the binary, so a wrong entry
 /// desynchronises the walk. Opcodes whose operands § 3.2 gives as `...` or unknown are left
 /// out, and the walk ends on them.
 ///
@@ -1492,16 +1528,6 @@ pub const CENSUS_SKIPS: &[CensusSkip] = &[
     },
     skip(0x0105, "DISC", 2),
     skip(0x0183, "BVIS", 2),
-    // `OP_ANIMATE` is a clipped screen-space image draw, not geometry (T10), so the census
-    // steps over it. When the draw channel lands: delete this entry, collect the draws beside
-    // the polygon stream, and add a sibling accessor to the shape IR. `meshes()` stays
-    // geometry-only, `extent()` stays metric, and the stop policy does not change.
-    CensusSkip {
-        opcode: 0x01F8,
-        mnemonic: "ANIMATE",
-        fixed_words: 4,
-        count_word: Some(3),
-    },
     skip(0x02F4, "BVLT", 3),
     skip(0x0306, "WIDELINE", 3),
     skip(0x0318, "BZLT", 2),
