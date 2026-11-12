@@ -331,6 +331,21 @@ def test_two_timeouts_of_one_film_keep_two_pictures(
     assert len(list(tmp_path.glob("CTRY-*.png"))) == 2
 
 
+def test_a_picture_never_overwrites_one_of_the_same_name(tmp_path: Path) -> None:
+    class Guest:
+        def run_script(self, _script: str, *, timeout: float) -> dict[str, object]:
+            del timeout
+            return {"page": "x" + "00" * 64000}
+
+    first = timeout_evidence.save(Guest(), tmp_path, "CTRY-same", listing=list)
+    second = timeout_evidence.save(Guest(), tmp_path, "CTRY-same", listing=list)
+
+    assert first.picture == tmp_path / "CTRY-same.png"
+    assert second.picture == tmp_path / "CTRY-same-1.png"
+    assert first.picture.exists()
+    assert second.picture.exists()
+
+
 def test_a_timeout_saves_the_picture_without_a_warn_callback(
     staged_repo: StagedRepo, game_root: Path, tmp_path: Path
 ) -> None:

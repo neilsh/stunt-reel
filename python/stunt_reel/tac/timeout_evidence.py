@@ -119,6 +119,19 @@ def emulator_processes() -> list[str]:
     return found
 
 
+def _write_new(directory: Path, stem: str, data: bytes) -> Path:
+    """Write *data* to a new ``<stem>[-<n>].png`` in *directory* and return its path."""
+    for n in range(10_000):
+        path = directory / (f"{stem}.png" if n == 0 else f"{stem}-{n}.png")
+        try:
+            with path.open("xb") as out:
+                out.write(data)
+        except FileExistsError:
+            continue
+        return path
+    raise FileExistsError(f"no free name for {stem}.png in {directory}")
+
+
 def save(
     client: _Client,
     directory: Path,
@@ -126,15 +139,18 @@ def save(
     *,
     listing: Callable[[], list[str]] | None = None,
 ) -> Evidence:
-    """Save the guest screen as ``<stem>.png`` in *directory* and list the emulator processes."""
+    """Save the guest screen in *directory* and list the emulator processes.
+
+    The picture is ``<stem>.png``, or ``<stem>-<n>.png`` for the first free ``n`` if that
+    name is taken; it is created exclusively, so it never overwrites an earlier picture.
+    """
     problems: list[str] = []
     picture: Path | None = None
     try:
         out = client.run_script(screen_script(), timeout=_SCRIPT_TIMEOUT)
         page = bytes.fromhex(str(out["page"])[1:])
         directory.mkdir(parents=True, exist_ok=True)
-        picture = directory / f"{stem}.png"
-        picture.write_bytes(page_png(page))
+        picture = _write_new(directory, stem, page_png(page))
     except Exception as exc:  # noqa: BLE001 - evidence must never mask the timeout
         picture = None
         problems.append(f"no screen picture: {exc}")
