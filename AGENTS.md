@@ -7,7 +7,7 @@
 ## 1. Non-Negotiable Directives
 
 1. **Asset isolation**: **NEVER** commit proprietary assets, executables, or original binary disks. All tests run offline on synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md). Documented exceptions follow [`NOTICE.md`](NOTICE.md).
-2. **Quality gate**: Before concluding a task or presenting code, **verify that `mise run check` passes**: format, lint, typecheck and tests for the halves your branch touches; `-- --full` and CI run everything ([ADR 0038](docs/adr/0038-the-local-gate-runs-what-a-change-touches.md)).
+2. **Quality gate**: Before concluding a task or presenting code, **verify that `mise run check` passes** for what your branch touches; `-- --full` and CI run everything ([ADR 0038](docs/adr/0038-the-local-gate-runs-what-a-change-touches.md)).
 3. **Architectural Invariants**: Code conforms to `[I1]`–`[I8]` (coordinates, flat arena, palette indices, 50 Hz ticks, coplanar decals, parity thresholds, a pure `stunt-core`, 8.3 paths), defined in [`docs/SPEC.md` § 2](docs/SPEC.md#2-system-architectural-invariants--guardrails).
 4. **Evergreen or dated**: a current fact goes in `research/` or `docs/` and is rewritten in place; a dated record goes in [`work/`](work/README.md) and is frozen once its work lands. A new finding, ruled-out hypotheses included, lands in its note by [`research/README.md`](research/README.md), committed with the code that relies on it. Read [`recording-findings`](.agents/skills/recording-findings/SKILL.md) first.
 
@@ -35,7 +35,6 @@ Cite these; never restate them:
 | **How-to Guides** | `docs/howto/` | One task per file. |
 | **Issues & skill configuration** | [`docs/agents/`](docs/agents/) | GitHub Issues via `gh`, triage labels, domain docs, review threads. |
 | **Decisions (ADRs)** | [`docs/adr/`](docs/adr/) | Accepted design decisions. |
-| **Coding & Format Rules** | [`Cargo.toml`](Cargo.toml), [`pyproject.toml`](pyproject.toml), [`.editorconfig`](.editorconfig) | Clippy, Ruff, Mypy settings; LF, 4-space indent. |
 | **Agents & Harnesses** | [`docs/harness.md`](docs/harness.md), [`docs/harness-setup.md`](docs/harness-setup.md) | Agent policy, harness notes, machine setup, data root. |
 
 Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): run `mise run work -- new` before `superpowers:brainstorming` or `writing-plans` writes a file, and write in its folder.
@@ -61,7 +60,7 @@ Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): 
 Each turn re-sends the context, so cost is turns times context size.
 
 1. **Fewer, fuller turns.** Batch independent reads and commands into one turn. Find the file through [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before grepping, and read line ranges of files over about 20 KB.
-2. **Scoped checks while iterating.** Python: `mise run fix`, `lint-py`, `typecheck`, then `test-py -- <test file>`. Rust: `mise run check-rust`. Run `mise run check` before each commit or hand-off, re-running only the failed half.
+2. **Scoped checks while iterating.** Python: `mise run fix`, `lint-py`, `typecheck`, then `test-py -- <test file>`. Rust: `mise run check-rust`.
 3. **Scripts before subagents.** Mechanical checks belong in a script. Delegate only real chunks of work, at most about 8 subagents per task, each with a whole brief: goal, paths, output shape, stopping condition.
 4. **Drive everything through `mise run`.** `mise run *` is pre-approved and `mise tasks` lists what exists; a task not listed does not exist. A one-off runs as `mise exec -- uv run …` (expect a prompt); a command needed twice earns a task.
 5. **Fresh session per phase.** A committed spec or plan ends the session, naming its path; the next phase, and fixing review threads (`mise run pr-threads`), starts fresh from the file or PR.
@@ -80,5 +79,5 @@ Before work one covers, read its skill:
 
 ### Worktrees
 
-1. One writer per checkout path, one branch per worktree, made inside the primary checkout under `.claude/worktrees/` or `.agents/worktrees/` (Orca workspaces excepted). A read-only scout may share a path. Never work on a branch another worktree holds.
+1. One writer per checkout path, one branch per worktree, made inside the primary checkout under `.claude/worktrees/` or `.agents/worktrees/` (Orca workspaces excepted). A read-only scout may share a path.
 2. Remove a worktree an older `mise run init` linked only with `mise run reap -- --yes` from the primary checkout, never `git worktree remove`: git has deleted shared data through its junctions ([ADR 0018](docs/adr/0018-reaping-unlinks-the-data-root-links-first.md)).
