@@ -21,7 +21,7 @@ The adoption rule splits by what backs the change:
 
 - **One rule for both.** Rejected. It is either too strict for a decoded rule or too loose for a guess, and the two cases differ in what the score is evidence *of*.
 - **Adopt on correctness alone, ignore the score.** Rejected. A rule read at the wrong scope, or applied to the wrong stage, shows up as a regression, and the guard is what catches that.
-- **Lower the 0.002 floor.** Rejected. The floor is a build-level noise bound ([`method.md`](../../research/parity/method.md) section 3), so lowering it makes every margin unattributable, for heuristics too.
+- **Lower the 0.002 floor.** Rejected. The floor is a build-level noise bound ([`evidence-limits.md`](../../research/parity/evidence-limits.md) section 3), so lowering it makes every margin unattributable, for heuristics too.
 
 ## Consequences
 
