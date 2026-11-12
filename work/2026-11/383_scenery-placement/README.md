@@ -69,3 +69,22 @@ impl SceneryWalk<'_> {
   past the limit (null: no stop; out of file: `Malformed` at its holder, not `Depth`); an eye at a
   chosen distance from an `SP_1NODE` replaces the recording gate and covers both
   `lod_threshold` branches.
+
+## Taken onto main after #389 and #390
+
+PR #384 conflicted with two changes to `world.rs` that landed first; its commits were re-made
+on `main` with these resolutions:
+
+- **#389 (`OP_TAP` anchored models)** stays in `world/mod.rs`. `anchored_models` takes
+  `&[Placement]`, and `PropModels` keys each placement's own model by its index, as it keyed the
+  tuples before. `research/playone-exe/sod-vm.md` and the comment in `sod/vm.rs` now name
+  `world/mod.rs`.
+- **#390 (`SP_POSXZ` keeps the ancestors' height)** moves with the walk: its comment is in
+  `world/scenery.rs`, and its test's assertion was already
+  `a_chain_of_moves_places_its_leaf_at_the_mirrored_position`, which now cites
+  `research/formats/auxiliary/scenery.md` section 3.3. That note keeps #390's text, naming
+  `world/scenery.rs`.
+- The `stuntreel` scene report (props, vertices, indices, bounds, `TAP` failures, scenery stop)
+  of `main` and of the rebased branch matched on all 29 builds of the 13 films in the local
+  corpus (each with the game's `RES`, `SUPERSET.ALL`, and its own `.ALL` where it has one). The
+  579-film run above was made before the rebase and was not repeated.

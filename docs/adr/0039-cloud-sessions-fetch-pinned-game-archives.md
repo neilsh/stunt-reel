@@ -76,7 +76,7 @@ in it, the agent included, can read.
   scored CTRY and INTRO far below the primary machine's GPU at the same commit; its scores are
   not comparable with GPU rows until the cause is found, so an adoption decision needs a GPU
   run (measurements in
-  [`research/parity/method.md`](../../research/parity/method.md) section 3).
+  [`research/parity/evidence-limits.md`](../../research/parity/evidence-limits.md) section 3).
 - Verified in a cloud session (2026-11-07): with the key pair in environment variables, `fetch`
   downloaded and unpacked `corpus-stisldem` in 0.76 s, byte-identical file by file to the
   primary machine's. Unverified: the Bearer network secret path in a cloud session (a REST

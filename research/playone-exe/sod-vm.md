@@ -109,17 +109,19 @@ TAP operand values point **four bytes before** the record (`record = table + ope
 
 ## 4. Register Side Effects
 
-For each anchor record:
+For each anchor record (handler image `0xAD88`, transform `0xAE67`):
 
-1. If the cached stamp differs from `[0x19A8]` (frame counter), transform the raw point through the current 3×3 matrix at `[0x80C0..0x80CA]`, add translation `[0x41D4..0x41DA]`, cache the 32-bit results at record `+0x06/+0x0A/+0x0E`, and store the stamp.
-2. Convert each cached 32-bit component to a 16-bit register value with arithmetic shift `[0x806E]`.
-3. Subtract the view-origin words `[0x8084]`, `[0x8086]`, `[0x8088]`.
+1. If the cached stamp `+0x1B` differs from `[0x19A8]` (frame counter), transform the raw point through the 3×3 matrix at `[0x80C0..0x80CA]`, add the translation `[0x41D4..0x41DA]`, cache the 32-bit results at record `+0x06/+0x0A/+0x0E`, and store the stamp.
+2. Shift each cached 32-bit component right by `16 - [0x806E]` to a 16-bit value (`0xADAC..0xADF1`).
+3. Subtract the object's origin words `[0x8084]`, `[0x8086]`, `[0x8088]`.
 4. Write `x, y, z` into the 12-byte vertex register `0x4450 + reg_off + i*12`.
 5. Write `+6` and `+8` from anchor fields `+0x16`/`+0x1A`, or projected screen coordinates when `[0x8082] == 0x1AB1`; write the record flag to vertex `+0xA`.
 
-The **geometry** effect is therefore: *copy transformed terrain anchor points into the SOD vertex register bank*. Subsequent `POLYZ` reads those registers exactly like `VECTORS`-populated vertices.
+`[Established]` for the instructions. What the words hold is read from their writers. The scene walk normalises the object's 32-bit view position at `0x31CF`, which returns 16-bit words and the shift `CL`. `0x21B2..0x21BC` stores those words, rotated by `0x0824:06B0`, at `[0x8084..0x8088]`. The light setup `0x9100`, called from `0x21F9`, stores that `CL` at `[0x806E]` (`0x9113`). So a register holds the anchor's view-space position less the object's origin, in the units that origin was shifted to. Vertices loaded by `VECTORS` share those units. The cache is one per frame and shared by every object: anchors 156, 157 and 160 are each tapped by two shapes (section 5). So `0x80C0` and `0x41D4` must be the camera's rotation and translation, not an object's (`[Supported Inference]`).
 
-`[Established]`
+The **geometry** effect is therefore: *load a terrain anchor point, relative to the shape's own origin, into the SOD vertex register bank*. `[Supported Inference]` for the units: that `[0x806E]` and the header's `scale_index` (`[es:8]`, taken into `CH` at `0x21D8` and kept as `[0x806F]`) put tapped and `VECTORS` points in one unit is read from the two writers, not from a trace. On that reading, in the shape's frame, an unrotated scenery shape placed at `p` and lifted by `ground_y_offset >> scale_index` gets `(anchor - p) << scale_index - ground_y_offset`. Its tapped points then land on the anchors wherever it is placed. A point the stream builds from the origin itself, such as `CLRV; PUTV` or `CLRV; SUBV 0`, depends on the placement. Subsequent `POLYZ` reads those registers exactly like `VECTORS`-populated vertices.
+
+_Source: [2026-11-11: how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._
 
 ```mermaid
 flowchart TD
@@ -128,29 +130,31 @@ flowchart TD
     C -- no --> D["3x3 matrix + translation<br/>cache 32-bit xyz"]
     C -- yes --> E["cached xyz"]
     D --> E
-    E --> F["shift [0x806E]<br/>subtract origin [0x8084..0x8088]"]
+    E --> F["shift right 16 - [0x806E]<br/>subtract object origin [0x8084..0x8088]"]
     F --> G["vertex register<br/>DS:0x4450 + reg_off + i*12"]
 ```
 
 ---
 
-## 5. CTRY Hill Models
+## 5. Hill Fins
 
-`CTRY.ALL` chunks `0x0402`–`0x0408` are 14 unique TAP payloads (the seven hills are replicated across the corpus). Example `0x0402`:
+`CTRY.ALL` chunks `0x0202`–`0x0208` and `0x0402`–`0x0408` are the 14 TAP shapes (`SCENERY1.RES` and `SCENERY3.RES` #0–6, replicated across the corpus). Example `0x0402`:
 
 | Field | Value |
 |---|---|
 | Header | `bounding=0x3971`, `yoff=0`, `scale_index=6` |
 | TAP | `reg_off=0`, `count=2`, anchors `141`, `157` (`0x0F6C`, `0x112C`) |
 | Follow-up | `VECTORS` reg 511 = `(0, -4928, 0)`; `GETV 511; SHLV 1; PUTV 510` |
-| Derived vertex | `reg2 = reg1 - reg510` (raises the second anchor by 9,856 units) |
-| Emit | `POLYZ 3` over regs `0,1,2` with two `IFVIS` colors |
+| Derived vertex | `reg2 = reg1 - reg510`: 9,856 units, 154 m at scale 6, below the second anchor |
+| Emit | `POLYZ 3` over regs `0,1,2`, one colour per side (`REJ`, `IFVIS 0` / `IFVIS 1`) |
 
-`0x0204` in `BOB1.ALL` uses `count=3` (anchors `14`, `185`, `193`) and emits four triangles over registers `0`–`3`.
+`0x0204` uses `count=3` (anchors `14`, `185`, `193`) and emits four triangles over registers `0`–`3`, the fourth register being the origin (`CLRV; PUTV`).
 
-Verdict: TAP is **not** a debug marker and **not** a no-op. It is the terrain-anchor loader used by ground patches.
+`[Established]` for the streams and anchors, `[Bounded Observation]` for the shapes they make. Each was resolved as section 4 describes, at the image tree's one placement of it. Thirteen of the 14 are one vertical triangle each, from an anchor at sea level up to a ridge anchor 58 to 293 m high, with the third corner within 1 m of sea level. On the seven `0x04xx` fins the third corner is directly under the ridge anchor, at the same plan position. On the six `0x02xx` triangles it lies in plan on the line between the two anchors. `0x0204` is the exception: four triangles over anchors at 0, 115 and 148 m and its origin at sea level. The ridge and foot anchors of each `0x04xx` fin are corners of the same `MAP.BIN` hill patches. `0x0402` and `0x0406` take anchors 141–157–158 (peak 155 m), shared by patches 109, 110, 113 and 114. `0x0403`/`0x0407` take 154–156–159 (196 m), `0x0404`/`0x0408` take 155–160–161 (293 m), and `0x0405` takes 149–151 (82 m). Their colours, `0xC0`–`0xC6`, are the colours of the hill patches on those anchors (192–198).
 
-`[Established]`
+Verdict: TAP is **not** a debug marker and **not** a no-op. It loads terrain anchors. The shapes that use it are vertical fins standing in the hills, not ground patches or airfield tiles.
+
+_Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-what-the-14-tap-shapes-are)._
 
 ---
 
@@ -168,13 +172,13 @@ Verdict: TAP is **not** a debug marker and **not** a no-op. It is the terrain-an
 |---|---|
 | 28-byte anchor table | `stunt_core::anchor::AnchorPoint` slice |
 | TAP operand loop | `OP_TAP` arm in [`crates/stunt-core/src/sod/vm.rs`](../../crates/stunt-core/src/sod/vm.rs) |
-| Work-segment transform/cache | Not modelled; TAP writes `[-x, -y, z]` raw units directly (identity model transform) |
+| Work-segment transform/cache | Not modelled. TAP writes the anchor's `[-x, -y, z]` in shape units, less the header lift; `world/mod.rs` decodes each TAP shape again against the table shifted by its placement (`anchored_models`) |
 | Vertex arena write | `regs[(reg_off/12 + i) & 1023]` |
 | Anchor source | `ANCHORPT.DAT` located by [`crates/stunt-cli/src/scene.rs`](../../crates/stunt-cli/src/scene.rs); raw records supplied to the VM |
 
 Open items:
 
-- Exact fixed-point matrix and shift for non-identity model transforms `[Unknown]`.
+- A rotated TAP shape: `vm.rs` loads the anchor unrotated, which holds only for scenery, whose draw matrix is the view matrix alone ([`memory-map.md`](memory-map.md) `0x808A`).
 - Retail `PLAYONE.EXE` anchor-table population path `[Bounded Observation]`.
 - HUGETAP semantics `[Unknown]`.
 
@@ -269,7 +273,7 @@ Both vertex loaders store `M · v` into a register, with `M` the 3×3 matrix at 
 | `OP_VECTORS` (`0x0075`) | `0x9C51` | `count` stream vectors into consecutive registers, each `M · (x, y, z)` with the stream's own signs. |
 | `OP_IPG` type 0, cube (`dx, dy, dz, reg`) | `0x965F` calls the word table at `work:0x1954` (type 0: VM `0x3035`, image `0xB275`) | Corners `reg + 0..7` = `M ·` `(+dx, +dy, −dz)`, `(+dx, +dy, +dz)`, `(−dx, +dy, +dz)`, `(−dx, +dy, −dz)`, `(+dx, −dy, −dz)`, `(+dx, −dy, +dz)`, `(−dx, −dy, +dz)`, `(−dx, −dy, −dz)`. It computes four and writes each one's negation as its antipode. |
 
-`vm.rs` writes the cube as PLAYONE's turned half a turn about z (every corner with x and y negated), and its `TAP` writes `(−x, −y, z)`. So the reconstruction's model frame is the raw frame turned 180 degrees about z, which puts the shapes' raw −y, up in their authoring, at `[I1]` +y. `OP_VECTORS` was the exception: it stored `(x, y, z)` unturned. A shape that adds `OP_VECTORS` deltas to cube corners then decodes with those parts turned over, and one built from `OP_VECTORS` alone decodes wholly upside down. That is the "construction delta" correlate in [`framing-and-actors.md`](../parity/framing-and-actors.md) section 1.
+`vm.rs` writes the cube as PLAYONE's turned half a turn about z (every corner with x and y negated), and its `TAP` writes `(−x, −y, z)`. So the reconstruction's model frame is the raw frame turned 180 degrees about z, which puts the shapes' raw −y, up in their authoring, at `[I1]` +y. `OP_VECTORS` was the exception: it stored `(x, y, z)` unturned. A shape that adds `OP_VECTORS` deltas to cube corners then decodes with those parts turned over, and one built from `OP_VECTORS` alone decodes wholly upside down. That is the "construction delta" correlate in [`hero-aircraft-orientation.md`](../parity/hero-aircraft-orientation.md) section 1.
 
 **Adopted: `OP_VECTORS` turned the same way** (store `(−x, −y, z)`; measured first with the temporary switch `DBG_VECNEG`):
 
@@ -306,7 +310,7 @@ _Found 2026-11-01 for [#75](https://github.com/neilsh/stunt-reel/issues/75); see
 | `0x19FC` | Shadow queue. Takes the height from slot `+0x20/+0x22` when `+0x22` is nonzero. Otherwise reads the plane through the pointer at slot `+0x1E` (`a`, `b`, `c` at `+0`, `+2`, `+4`; 32-bit `D` at `+6`) and solves `y = (D - a*x - c*z) / b` at the actor's x (`+4/+6`) and z (`+0xC/+0xE`); a null pointer gives y = 0 (`0x1A12`). Then it transforms that point, looks up the slot's own shape (`[si+2]`, `0x4C41`), culls (`0x1B0C`) and queues it at `0x1AD8`. |
 | `0x1A90` | Actor queue: the same, at the actor's own y (`+8/+0xA`), with `or al, 0x80` at `0x1AD6`. The shadow entry lacks that bit. |
 | `0x1B88..0x1BFF` | Entry sort. Branches on bit `0x80` of byte `+0xF` (`0x1B9F`, `0x1BA5`), so shadows and actors are ordered by kind before depth; the direction is not worked out. |
-| `0x1C00` | Draws one entry. Bit `0x80` set goes to `0x1CFB` (the actor, light rotated into its frame, see [`terrain-shade.md`](terrain-shade.md) section 4.2). Clear goes to `0x1C0D`: builds the rotation matrix (`0x04E5`, `work:0x80D2`), halves it, replaces the Y row (second triple, `work:0x80D8..0x80DC`) with `-(a*row0 + c*row2) / b` (`idiv` by the plane's `b`; a null plane pointer zeroes it, `0x1C4B`), combines with the view matrix (`0x060A`), sets `work:0x806C = 0xFF`, calls `0x1D5F` (which runs the display list through `0x9100`) and clears the byte. |
+| `0x1C00` | Draws one entry. Bit `0x80` set goes to `0x1CFB` (the actor, light as `R · L` on the non-stored-matrix path, see [`terrain-shade.md`](terrain-shade.md) section 4.2). Clear goes to `0x1C0D`: builds the rotation matrix (`0x04E5`, `work:0x80D2`), halves it, replaces the Y row (second triple, `work:0x80D8..0x80DC`) with `-(a*row0 + c*row2) / b` (`idiv` by the plane's `b`; a null plane pointer zeroes it, `0x1C4B`), combines with the view matrix (`0x060A`), sets `work:0x806C = 0xFF`, calls `0x1D5F` (which runs the display list through `0x9100`) and clears the byte. |
 
 `work:0x806C` is read at least at `0x7FD2`, `0x7FFB`, `0x8015`, `0x8040`, `0x92B2`, `0x93C2` (inside the `OP_ANIMATE` handler), `0x97B1`, `0x9896`, `0x995C`, `0x9A24`, `0x9EC5`, `0x9F29`, `0xA040`, `0xA05C` and `0xA9DC`. Nonzero changes the VM as follows: the flat-polygon gateways `0x8010` and `0x8040` load `CX = 0` instead of `work:0x41E8` before the driver slot `[0x2246]`; `0x7FD2` loads `DI = 0` and `0x7FFB` returns without drawing; `GVPOLY` and `GVPOLY16` (`0x995C`, `0x9A24`) and the polygon handlers at `0x97B1` and `0x9896` take the flat branch (`call [0x8080]`, `lcall 0:8010`) and step over their shade words instead of running the Gouraud filler; and the `OP_ANIMATE` handler (`0x92B2`) takes its skip path. The handlers at `0x9EC5`, `0x9F29`, `0xA040`, `0xA05C` and `0xA9DC` (which read the vertex register bank and the `0x1952` slot) also test it and skip their work; what they do was not decoded. So in shadow mode every polygon is flat palette index 0, drawn from the actor's own shape flattened onto the ground plane. [`memory-map.md`](memory-map.md) listed `0x806C` as an `OP_ANIMATE` gate only; that is one of its readers. Its only writer found is `0x1CE7`/`0x1CF4`.
 
@@ -318,6 +322,6 @@ _Found 2026-11-05 for [#99](https://github.com/neilsh/stunt-reel/issues/99); see
 
 * **Facing flags** (section 8.6, [#74](https://github.com/neilsh/stunt-reel/issues/74)). Ruled out: `OP_IFVIS` as a distance gate. Open: `vm.rs` implements only `REJ`, so a shape that uses `REJVEC`, `REJ2D` or `OP_BVIS` still stops there in a lenient decode; nested `IFVIS` sections keep only the inner gate; an `IFVIS` on a flag its shape never set is drawn, where PLAYONE reads a stale byte. `BZLT`, the real in-shape depth gate, is unimplemented. The `INTRO.FLM` tick 3295 "conifers drawn as round bushes" is not an `IFVIS` effect: the facing gate leaves those trees as they were.
 
-* **The actor shadow draw** (section 9.1, [#99](https://github.com/neilsh/stunt-reel/issues/99)). Ruled out: `OP_AIRBRUSH` in the hero shape (`CTRY.ALL` `0x7F37` has no `0x0171` word). Open: who writes slot `+0x1E` (the plane pointer) and `+0x20/+0x22`; whether our renderer should draw a shadow for the view camera's slot (`[0x22DE]` holds its record, [`memory-map.md`](memory-map.md) § 1). Statically, `0x1E26` skips only its actor draw, so the slot would reach the shadow call at `0x1E35` only with draw, exists and shadow flags set and a nonzero shape `[si+2]`. `[Bounded Observation]`: the two view slots read live on `INTRO.FLM` (slot 1 at ticks 2678-2766, slot 4 at 2801) had flag byte `0x19` (bits 1 and 2 clear) and shape 0, so they reach neither draw; no live view slot has been seen to reach the shadow queue; whether any altitude test hides the shadow of a high object (`0x19FC` has none; the handbook says there is a cutoff); the sort direction at `0x1B9F`; a live check that `0x1C0D`'s matrix replacement projects straight down; what the other `0x806C` readers do; the create handler that fills slot byte `+1` from `type_flags`. See [`framing-and-actors.md`](../parity/framing-and-actors.md) section 1 for the measured shadow and the renderer change this licenses.
+* **The actor shadow draw** (section 9.1, [#99](https://github.com/neilsh/stunt-reel/issues/99)). Ruled out: `OP_AIRBRUSH` in the hero shape (`CTRY.ALL` `0x7F37` has no `0x0171` word). Open: who writes slot `+0x1E` (the plane pointer) and `+0x20/+0x22`; whether our renderer should draw a shadow for the view camera's slot (`[0x22DE]` holds its record, [`memory-map.md`](memory-map.md) § 1). Statically, `0x1E26` skips only its actor draw, so the slot would reach the shadow call at `0x1E35` only with draw, exists and shadow flags set and a nonzero shape `[si+2]`. `[Bounded Observation]`: the two view slots read live on `INTRO.FLM` (slot 1 at ticks 2678-2766, slot 4 at 2801) had flag byte `0x19` (bits 1 and 2 clear) and shape 0, so they reach neither draw; no live view slot has been seen to reach the shadow queue; whether any altitude test hides the shadow of a high object (`0x19FC` has none; the handbook says there is a cutoff); the sort direction at `0x1B9F`; a live check that `0x1C0D`'s matrix replacement projects straight down; what the other `0x806C` readers do; the create handler that fills slot byte `+1` from `type_flags`. See [`hero-shadow.md`](../parity/hero-shadow.md) section 1 for the measured shadow and the renderer change this licenses.
 * **Who sets `SodVertex::flags` bit 1 (two-sided).** The field is documented as bit 1 in [`SodVertex`](../../crates/stunt-core/src/contracts/shape.rs), but nothing is known to write it: the decal path sets bit 0, and no handler or SOD stream field is known to carry bit 1. The renderer now culls back faces on a clockwise winding, so a facet the player draws two-sided would be dropped. The only frame identified as affected is `CTRY.FLM` tick 832, worth about 0.0003 of the film mean, so this is a correctness question about a contract field rather than a parity lever.
-* **The `SHADE` light vector and the `GVPOLY16` colour path** (section 8.5). Closed: the callers that hand `0x9100` its light are the three call sites of [`terrain-shade.md`](terrain-shade.md) section 4.2, and the renderer shades with the world light ([#221](https://github.com/neilsh/stunt-reel/issues/221)). Open: an actor's own light (the world light turned by its rotation and the view, `0x1CFB`), which changes every frame while shapes are decoded once; the vertex fraction the interpolation drops; the light for a film-variable-13 value other than `0x2D`; and whether `GVPOLY16` takes its ramp from the word after its registers. They decide the colour of the aircraft parts a full `SORTON` walk would reach ([`framing-and-actors.md`](../parity/framing-and-actors.md) section 1).
+* **The `SHADE` light vector and the `GVPOLY16` colour path** (section 8.5). Closed: the callers that hand `0x9100` its light are the three call sites of [`terrain-shade.md`](terrain-shade.md) section 4.2, and the renderer shades with the world light ([#221](https://github.com/neilsh/stunt-reel/issues/221)). Open: an actor's own light (the world light turned by its rotation and the view, `0x1CFB`), which changes every frame while shapes are decoded once; the vertex fraction the interpolation drops; the light for a film-variable-13 value other than `0x2D`; and whether `GVPOLY16` takes its ramp from the word after its registers. They decide the colour of the aircraft parts a full `SORTON` walk would reach ([`hero-aircraft-placement.md`](../parity/hero-aircraft-placement.md) section 1).

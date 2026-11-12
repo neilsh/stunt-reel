@@ -384,7 +384,8 @@ impl ScnWalk<'_> {
                     ni = scn_pointer(next);
                 }
                 22 => {
-                    // SP_POSXZ: x, z, next
+                    // SP_POSXZ: x, z, next. Like PLAYONE (image 0x1EA8) it keeps the height the
+                    // ancestors set; nothing samples the terrain (scenery.md section 3.3).
                     let Some([x, z, next]) = scn_operands(words, ni) else {
                         self.note(ni, ScnStopReason::Malformed);
                         break;
@@ -603,7 +604,10 @@ mod tests {
 
     #[test]
     fn a_chain_of_moves_places_its_leaf_at_the_mirrored_position() {
-        // SP_POS (10, 20, 30) -> SP_POSXZ (1, 2) -> SP_LEAF.
+        // SP_POS (10, 20, 30) -> SP_POSXZ (1, 2) -> SP_LEAF. PLAYONE's SP_POSXZ handler
+        // (image 0x1EA8) adds x and z only, and its leaf (0x2219) adds just the shape's
+        // ground_y_offset (applied by the decoder, not the walk), so the prop keeps the
+        // SP_POS height (research/formats/auxiliary/scenery.md section 3.3).
         let words = [
             0,
             0,

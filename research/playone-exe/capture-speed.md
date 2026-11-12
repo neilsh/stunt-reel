@@ -37,7 +37,7 @@ The harness is in [`capture.md`](capture.md); a frame-locked video alternative o
 
 ## 3. Where a capture ends (the "1001 against 1335" gap)
 
-`[Supported Inference]`, 2026-11-01. The end ticks in [`batch.md`](../parity/batch.md) § 4 and § 5 do not describe the same thing. A capture does not stop early or drop its tail: the listed `vault-ctry` runs end at 1332 to 1342, within 10 ticks of `CTRY.FLM`'s last tick (1,342). Section 4's `Ticks` column is the span of the 12 frames the error readout picked (`pick_ticks` in [`errors.py`](../../python/stunt_reel/bench/errors.py): scored, `fade_level >= MIN_FADE_LEVEL` = 0.95, spread evenly), so its last tick is the last unfaded scored frame's neighbour, not the capture's last frame. Section 5 lists the capture's own first and last `film_tick`.
+`[Supported Inference]`, 2026-11-01. The end ticks in [`batch-vault-films.md`](../parity/batch-vault-films.md) § 4 and § 5 do not describe the same thing. A capture does not stop early or drop its tail: the listed `vault-ctry` runs end at 1332 to 1342, within 10 ticks of `CTRY.FLM`'s last tick (1,342). Section 4's `Ticks` column is the span of the 12 frames the error readout picked (`pick_ticks` in [`errors.py`](../../python/stunt_reel/bench/errors.py): scored, `fade_level >= MIN_FADE_LEVEL` = 0.95, spread evenly), so its last tick is the last unfaded scored frame's neighbour, not the capture's last frame. Section 5 lists the capture's own first and last `film_tick`.
 
 Captures of one film, from `captures/<slug>/frames/<run>/meta.json` (runs 001 to 006 of `vault-ctry` predate the validity check and the stepper; all stop within 10 ticks of the film end):
 

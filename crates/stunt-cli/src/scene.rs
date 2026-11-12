@@ -385,6 +385,12 @@ fn print_report(scene: &FilmScene, report: &SceneReport, anchor_file_found: bool
         }
         _ => println!("[stuntreel] world: none"),
     }
+    for failure in &report.tap_failures {
+        eprintln!(
+            "[stuntreel] TAP shape 0x{:04X} at {:?}: {:?}",
+            failure.shape_id, failure.position, failure.reason
+        );
+    }
     if let Some(stop) = report.world.and_then(|stats| stats.scenery_stop) {
         eprintln!(
             "[stuntreel] scenery stopped at byte 0x{:04X} opcode 0x{:04X} ({})",

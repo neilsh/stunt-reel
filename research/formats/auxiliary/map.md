@@ -131,7 +131,7 @@ The ocean is not in `MAP.BIN`. The renderer draws a planar quad at sea level fro
 
 ## 4. Open Questions & Analysis Backlog
 
-Anchor items `[BK-MAP-01]` and `[BK-MAP-08]` are in [`anchorpt.md`](anchorpt.md); tree items `[BK-MAP-02]`, `[BK-MAP-04]` and `[BK-MAP-07]` are in [`scenery.md`](scenery.md).
+Anchor items `[BK-MAP-01]` and `[BK-MAP-08]` are in [`anchorpt.md`](anchorpt.md); tree items `[BK-MAP-02]`, `[BK-MAP-04]` and `[BK-MAP-07]` (closed: prop height, its section 3.3) are in [`scenery.md`](scenery.md).
 
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |

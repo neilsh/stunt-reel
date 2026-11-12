@@ -147,9 +147,10 @@ it, never the teammate. A shared file (`AGENTS.md`, `docs/harness.md`, `mise.tom
 ## Claude Code
 
 [.claude/settings.json](../.claude/settings.json) is committed, so this harness's settings *can*
-ship with the checkout and be reviewed in a PR — unlike the harness above. Today it carries no
-`permissions.allow` block, so the `mise run *` policy above is unenforced for this agent: it
-will ask per command until someone commits the allow rule. [`CLAUDE.md`](../CLAUDE.md) is a stub
+ship with the checkout and be reviewed in a PR — unlike the harness above. Its
+`permissions.allow` block covers only the low-risk issue writes (`gh issue close`, `comment`,
+`edit`) and carries no `mise run *` rule, so a checkout without a local override in
+`.claude/settings.local.json` asks per command. [`CLAUDE.md`](../CLAUDE.md) is a stub
 that imports `AGENTS.md`, because Claude Code reads `CLAUDE.md` and this repo's guide has the
 other name.
 

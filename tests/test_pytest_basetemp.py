@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -47,6 +48,24 @@ def test_prune_keeps_the_newest_runs(tmp_path: Path) -> None:
         "basetemp-20261025T200003-aaaa",
         "basetemp-20261025T200004-aaaa",
     ]
+
+
+def test_prune_removes_a_run_that_holds_read_only_files(tmp_path: Path) -> None:
+    """git writes its objects read-only; a prune that skips them leaks every old run."""
+    for index in range(3):
+        objects = tmp_path / f"{pytest_helpers.BASETEMP_PREFIX}20261025T20000{index}-aaaa" / "o"
+        objects.mkdir(parents=True)
+        (objects / "blob").write_bytes(b"x")
+        (objects / "blob").chmod(stat.S_IREAD)
+        objects.chmod(stat.S_IREAD | stat.S_IEXEC)
+    pytest_helpers.prune_old_basetemps(tmp_path, keep=1)
+    assert [path.name for path in tmp_path.iterdir()] == ["basetemp-20261025T200002-aaaa"]
+
+
+def test_only_the_controller_prunes(pytestconfig: pytest.Config) -> None:
+    """Each xdist worker configuring itself would otherwise walk every old run again."""
+    worker = os.environ.get("PYTEST_XDIST_WORKER") is not None
+    assert pytest_helpers.prunes_basetemps(pytestconfig) is not worker
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows sandbox workaround")

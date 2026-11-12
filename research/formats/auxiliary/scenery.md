@@ -1,5 +1,5 @@
 ---
-summary: "`SCENERY.scn` ([FMT-MAP-SCENERY]) is `PLAYONE.EXE`'s stack-segment scenery tree widened to 32-bit words; node types `SP_POS` to `SP_POSXZ`, the `SP_1NODE` level-of-detail rule, and prop placement."
+summary: "`SCENERY.scn` ([FMT-MAP-SCENERY]) is `PLAYONE.EXE`'s stack-segment scenery tree widened to 32-bit words; node types, the `SP_1NODE` level-of-detail rule, and prop height: ancestors' `SP_POS` `y` plus the shape's `ground_y_offset` scaled by its scale index."
 ---
 # Specification: `SCENERY.scn` Scenery Tree
 
@@ -55,7 +55,7 @@ In the node structures, child pointers and continuation indices (`ptr`, `next`) 
 | `SP_HSLOPE` | `16` | `HSLOPE_TYPE` | `ptr: u32`, `next: u32`, `slope: i32`, `coord: i32` | Sloped cutting plane (horizontal slope gradient). The 33 in the tree are the type-16 nodes of `REGIONS.BIN` ([`map.md`](map.md) section 2.4). | `[Established]` |
 | `SP_VSLOPE` | `18` | `VSLOPE_TYPE` | `ptr: u32`, `next: u32`, `slope: i32`, `coord: i32` | Sloped cutting plane (vertical slope gradient). The 20 in the tree are the type-18 nodes of `REGIONS.BIN`. | `[Established]` |
 | `SP_LIST` | `20` | `LIST_TYPE` | `child_nodes[]: u32` | Array of child node indices terminated by `0`. Iteratively evaluates each child `node_idx / 2` with accumulated $\mathbf{cp}$. | `[Established]` |
-| `SP_POSXZ` | `22` | `POSXZ_TYPE` | `x, z: i16`, `next: u32` | 2D horizontal relative translation ($Y$ unchanged). Accumulates $x, z$ into $\mathbf{cp}$ and advances to `next/2`. | `[Established]` |
+| `SP_POSXZ` | `22` | `POSXZ_TYPE` | `x, z: i16`, `next: u32` | 2D horizontal relative translation ($Y$ unchanged). Accumulates $x, z$ into $\mathbf{cp}$ and advances to `next/2`. Nothing samples the terrain (section 3.3). | `[Established]` |
 
 ### 3.2 Fast Approximate Distance Algorithm
 
@@ -69,9 +69,19 @@ $$\text{approx\_dist}(\mathbf{cp}_x, -\mathbf{cp}_z, \mathbf{eye}_x, \mathbf{eye
 
 This is FreeFlight's reading, not the original's: `PLAYONE.EXE` uses view-space depth and a threshold built from `ext` and `splitdist`, and draws the node's `obj` beyond it (section 3.1, [`lod.md`](../../playone-exe/lod.md) section 1.1).
 
-### 3.3 Prop Resolution in `stuntreel`
+### 3.3 Prop Height
 
-`world/scenery.rs` walks the 29,559 words from word 1 and places 6,345 static props, keeping those whose shapes the film's `.ALL` bundle carries (`[Established]`).
+`[Established]` from the disassembly of the unpacked image. A placed shape's height is its ancestors' `SP_POS` `y` terms plus the shape header's `ground_y_offset` shifted by its `scale_index` ([`sod.md`](../sod.md) section 2.1). `PLAYONE` samples no terrain:
+
+- The walk starts (`0x1E43`) with the accumulated position `DS:0x49F2..0x49FC` (16.16 per axis) set to the negated view eye `DS:0x2A68`. `SP_POSXZ` (`0x1EA8`) adds to `x` (`0x49F4`) and `z` (`0x49FC`) only. Among the handlers that descend the tree, only `SP_POS` (`0x1E93`) changes `y` (`0x49F8`); the others save and restore it around subtrees.
+- `SP_LEAF` (`0x2219..0x2235`) and the far `SP_1NODE` stand-in (`0x2160`) add the shape's lift, `−ground_y_offset >> scale_index`, to `y` for the draw, before projecting. The shape segment from `0x4C41` holds the header at `ES:2`, so these reads are `[es:6]` and `[es:8]`. Elevation is negated in `PLAYONE`'s axes, so a positive offset raises the shape. The collision walker (`0x2434`, jump table `DS:0x0584`) uses the same rule (`0x24A0`, `0x25A1`). Neither walker reads the terrain or the anchor table.
+- `[Supported Inference]`, from one scan of the disassembly for `[es:6]` (journal): the actor draw (`0x1D5F`) reads `[es:2]`, `[es:4]` and `[es:8]` but not `[es:6]`, so film actors get no lift, and no instruction in the VM range `0x8240..0xB85C` reads `[es:6]`.
+
+`[Bounded Observation]` for what this does to the two reference films' props. In the image's tree, 140,174 of 140,922 distinct placements have no `SP_POS` `y` on their path, and nearly all of them stand at `y = 0` over sea-level Ground. For the shapes in `CTRY.ALL` and `INTRO.ALL`, with the lift applied, each such non-`OP_TAP` prop over a Ground polygon has its lowest vertex between 1.5 m below and 6.2 m above the polygon under it that is nearest in height. The exceptions are the `OP_TAP` hills (`0x0202`–`0x0208`, `0x0402`–`0x0408`), whose corners are anchor points and which sit lower at their origin, and shape `0x0401`: its 41.0 m lift stands a vertical face 300 m wide from sea level to 82 m at `(1685, 0, 2301)`, over polygons at both sea level and 41.0 m, and why is not explained. Outside those exceptions, none of the props measured here (non-`OP_TAP`, no `SP_POS` `y`, over a Ground polygon) is buried by this rule; props outside that set were not measured.
+
+In our code the two halves live apart. `world/scenery.rs` walks the 29,559 words from word 1 and places 6,345 static props, keeping those whose shapes the film's `.ALL` bundle carries; each instance is the tree's position `(−x, −y, z)`, with no lift. The lift is applied by the shape decoder ([`sod/vm.rs`](../../../crates/stunt-core/src/sod/vm.rs) `metric_point`), which adds `ground_y_offset` to each vertex's model `y` before scaling. `scene.rs` `actor_world_matrix` takes it back out along an actor's own `+Y`.
+
+_Source: [2026-11-11: how PLAYONE gives an SP_POSXZ prop its height](../../../work/2026-11/253_posxz-prop-height/journal.md#2026-11-11-how-playone-gives-an-sp_posxz-prop-its-height)._
 
 ---
 
@@ -81,17 +91,17 @@ This is FreeFlight's reading, not the original's: `PLAYONE.EXE` uses view-space 
 | :--- | :--- | :--- | :--- |
 | `[BK-MAP-02]` | `SP_HSLOPE` / `SP_VSLOPE` planes | Complete verification of plane equation parameters $(A, B, C, D)$ extracted from `slope` and `coord` words in slope nodes. `REGIONS.BIN` stores the same two words per node ([`map.md`](map.md) section 2.4). | `[Supported Inference]` |
 | `[BK-MAP-04]` | High-detail scenery patching (`si-8x`) | Alberto Marnetto's 8x patch replaces the `mul` by the detail word in the level-of-detail check with `mov dx, ax; shl dx, 3` ([*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island)). In `PLAYONE.EXE` that check is at image `0x212D` in the `SP_1NODE` handler (type 2 of the jump tables `DS:0x0554` / `DS:0x056C`), scaled by `DS:0x22A4 = (0x229C × GAME.VAR detail × 2) >> 16` ([`lod.md`](../../playone-exe/lod.md)). `world/scenery.rs` applies it along the film's camera path, which raised `INTRO.FLM` from 0.6799 to 0.6856 ([`lod.md` section 4.1](../../playone-exe/lod.md)). Still open: the per-shot value of `0x229C` and its exponent `0x229E`. | `[Established]` |
-| `[BK-MAP-07]` | Prop base altitude | `SP_POS` adds a `y` term but `SP_POSXZ` does not, so a prop reached only through `SP_POSXZ` nodes sits at whatever `y` its ancestors accumulated, often 0. The shape header's `ground_y_offset` is relative to a ground the tree does not supply. Alberto Marnetto's free-flight remake shows the same gap: bridge roads sink into the water and the islet castle is buried ([*Vibe-exploring Stunt Island*](https://marnetto.net/2026/04/26/vibe-exploring-si), 2026-04-26). Open: how `PLAYONE.EXE` grounds such props, for example by sampling anchor-point terrain at the prop's `(x, z)`. | `[Hypothesis]` |
+| `[BK-MAP-07]` | Prop base altitude | Closed 2026-11-11. A prop reached only through `SP_POSXZ` nodes keeps its ancestors' `y`, and its shape's `ground_y_offset` supplies the rest; `PLAYONE` samples no terrain (section 3.3). Alberto Marnetto's free-flight remake sinks bridge roads into the water and buries the islet castle ([*Vibe-exploring Stunt Island*](https://marnetto.net/2026/04/26/vibe-exploring-si), 2026-04-26). That fits a viewer that drops the lift, but his code was not read. | `[Established]` |
 
 ### 4.1 Ruled out
 
 - **`SCENERY.scn` made from `SITools/SCENERY.BIN` or `SQUISHED.BIN`** (2026-11-06): none of 200 probes of 32 bytes each, taken from the tree in 16-bit or 32-bit form, occurs in either file.
 - **Signed words** (section 1): sign-extending the image's words leaves 3,654 of them different from the file.
+- **`PLAYONE` grounds `SP_POSXZ` props on the terrain at their `(x, z)`** (`[BK-MAP-07]`, 2026-11-11): neither scene walker reads the terrain or the anchors, and `SP_LEAF` adds only the header lift ([journal](../../../work/2026-11/253_posxz-prop-height/journal.md#2026-11-11-how-playone-gives-an-sp_posxz-prop-its-height)).
 
 ### 4.2 Open questions
 
-1. **How `PLAYONE` grounds props reached only through `SP_POSXZ`** (`[BK-MAP-07]`).
-2. **The per-shot detail scale `0x229C`** (`[BK-MAP-04]`).
+1. **The per-shot detail scale `0x229C`** (`[BK-MAP-04]`).
 
 ---
 

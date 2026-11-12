@@ -1,4 +1,4 @@
-# Render-error categories a vision model grades per frame (research/parity/method.md section 2.3).
+# Render-error categories a vision model grades per frame (research/parity/metric-bench.md section 2.3).
 #
 # Add a category by appending a [[category]] block; the grading brief lists every block in order.
 # A grading run made before a category existed has no grade for it, which a scorer reports as
@@ -119,7 +119,7 @@ found_by = ["opus"]
 since = "2026-10-31"
 examples = ["intro-1416"]
 
-# Added from the retail VAULT films' `other` notes (research/parity/batch.md section 4), the
+# Added from the retail VAULT films' `other` notes (research/parity/batch-vault-films.md section 4), the
 # three that recurred on more than one frame.
 [[category]]
 id = "sun-missing"
@@ -160,7 +160,7 @@ end = 990
 start = 1000
 
 # compare reports a category only when its count of frames graded 2+ moves by at least this much.
-# Set by the repeatability run (research/parity/method.md section 2.3): the largest change between
+# Set by the repeatability run (research/parity/metric-bench.md section 2.3): the largest change between
 # two Haiku gradings of the same sheets was 3.
 [readout]
 min_change = 4

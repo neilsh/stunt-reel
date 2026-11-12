@@ -8,6 +8,11 @@ licenses, for [#69](https://github.com/neilsh/stunt-reel/issues/69); answers
 [#176](https://github.com/neilsh/stunt-reel/issues/176). Applies `[I5]` to a class of props that
 the SOD decode does not mark as decals.
 
+amended 2026-11-11 for [#254](https://github.com/neilsh/stunt-reel/issues/254): `SCENERY3.RES`
+#1, 2, 5, 6 are `OP_TAP` hill fins, not tiles
+([`sod-vm.md` section 5](../../research/playone-exe/sod-vm.md#5-hill-fins)), so the rule rightly
+leaves them out and the open item under Consequences is closed.
+
 ## Context
 
 `PLAYONE.EXE` has no depth buffer. It walks the scenery tree back to front, so a scenery tile laid
@@ -59,7 +64,7 @@ terrain:
   adopted because nothing needed it; revisit it if a tile on a patch whose corners are not coplanar
   flickers far away.
 * Open: `SCENERY3.RES` #1, 2, 5, 6 are not flat in our decode and are not covered (open question 4
-  of the note).
+  of the note). Closed 2026-11-11: they are hill fins, not tiles (see Status).
 
 ## Considered Options
 

@@ -12,13 +12,17 @@ from __future__ import annotations
 import os
 import secrets
 import shutil
+import stat
 import struct
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
+
+    import pytest
 
     from stunt_reel.bench.planes import RenderPlanes
 
@@ -78,8 +82,29 @@ def per_run_basetemp(
     return rootpath / CACHE_DIRNAME / f"{BASETEMP_PREFIX}{stamp}-{suffix}"
 
 
+def prunes_basetemps(config: pytest.Config) -> bool:
+    """Whether this process prunes old runs: the controller does, an xdist worker does not."""
+    return not hasattr(config, "workerinput")
+
+
+def _clear_read_only(func: Callable[[str], object], path: str, _exc: BaseException) -> None:
+    """Make *path* and its directory writable and retry; git writes its objects read-only."""
+    for target in (Path(path).parent, Path(path)):
+        try:
+            target.chmod(stat.S_IRWXU)
+        except OSError:
+            return
+    try:
+        func(path)
+    except OSError:
+        return
+
+
 def prune_old_basetemps(cache: Path, *, keep: int = KEEP_BASETEMPS) -> None:
-    """Remove the older per-run basetemps, best effort; the sandbox may refuse."""
+    """Remove the older per-run basetemps, read-only files included; best effort.
+
+    The sandbox may refuse, and a file another process holds stays until the next run.
+    """
     try:
         runs = sorted(
             path
@@ -89,7 +114,7 @@ def prune_old_basetemps(cache: Path, *, keep: int = KEEP_BASETEMPS) -> None:
     except OSError:
         return
     for path in runs[: max(0, len(runs) - keep)]:
-        shutil.rmtree(path, ignore_errors=True)
+        shutil.rmtree(path, onexc=_clear_read_only)
 
 
 def _riff_chunk(ckid: bytes, payload: bytes) -> bytes:
