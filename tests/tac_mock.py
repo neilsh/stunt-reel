@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "FILM_COLORS",
+    "SCREEN",
     "FakeFilm",
     "MakeOneState",
     "StagedRepo",
@@ -39,6 +40,8 @@ __all__ = [
 #: Distinct indices on a recorded film page.
 FILM_COLORS: int = 40
 _PAGE_BYTES = 320 * 200
+#: What a MAKEONE guest shows when asked for its screen: a gradient of palette indices.
+SCREEN: bytes = bytes(i % 256 for i in range(_PAGE_BYTES))
 
 
 class FakeFilm:
@@ -286,6 +289,8 @@ def makeone_launcher(
 
         def run_script(self, text: str, *, timeout: float) -> dict[str, object]:  # noqa: ARG002
             state.scripts.append(text)
+            if "out.page" in text:  # the timeout's screen grab
+                return {"done": True, "page": "x" + SCREEN.hex()}
             return {"done": True}
 
         def is_text_mode(self) -> bool:

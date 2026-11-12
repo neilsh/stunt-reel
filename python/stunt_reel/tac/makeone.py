@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Protocol
 
 from stunt_reel import dataroot
-from stunt_reel.tac import automation, luagen, staging
+from stunt_reel.tac import automation, luagen, staging, timeout_evidence
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -166,6 +166,20 @@ def _launch(staged: staging.StagedMount) -> AbstractContextManager[automation.Au
     )
 
 
+def _record_timeout(
+    client: MakeOneClient, directory: Path, film: Path, warn: Callable[[str], None]
+) -> None:
+    """Save the guest screen and list the emulators, reporting each through *warn*."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    kept = timeout_evidence.save(client, directory, f"{film.stem}-{stamp}")
+    if kept.picture is not None:
+        warn(f"timeout: the guest screen is saved as {kept.picture}")
+    for problem in kept.problems:
+        warn(f"timeout: {problem}")
+    shown = "; ".join(kept.processes) if kept.processes else "none"
+    warn(f"timeout: dosbox processes running (this run's among them): {shown}")
+
+
 def make_all(
     film: Path,
     *,
@@ -176,6 +190,7 @@ def make_all(
     progress: Callable[[str], None] | None = None,
     warn: Callable[[str], None] | None = None,
     on_hang: Callable[[], None] | None = None,
+    evidence_dir: Path | None = None,
     stable: float = STABLE_SECONDS,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
@@ -188,6 +203,9 @@ def make_all(
     If the guest is not back in text mode within *timeout* but the archive has stayed non-empty
     and unchanged for *stable* seconds, it is accepted; if the guest is still not in text mode
     after that, the run is a MAKEONE hang: *on_hang* is called and *warn* names it.
+
+    At the timeout, before anything is killed, a PNG of the guest screen goes to *evidence_dir*
+    (when given) and *warn* names its path and every ``dosbox`` process then running.
 
     Raises MakeOneTimeout when that archive is missing, empty or still changing, and NoArchive
     when the guest returned to DOS with no ``.ALL`` written.
@@ -209,6 +227,8 @@ def make_all(
             try:
                 wait_for_text(client, timeout=timeout, poll=poll, clock=clock, sleep=sleep)
             except MakeOneTimeout as exc:
+                if evidence_dir is not None and warn is not None:
+                    _record_timeout(client, evidence_dir, film, warn)
                 try:
                     wait_for_stable_archive(
                         vault, film, stable=stable, poll=poll, clock=clock, sleep=sleep

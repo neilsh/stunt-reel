@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import os
+import zlib
 from typing import TYPE_CHECKING
 
 import pytest
 
 from archive_helpers import build_all
 from stunt_reel import dataroot, parity_layout
-from stunt_reel.tac import automation, makeone, staging
-from tac_mock import StagedRepo, makeone_launcher
+from stunt_reel.tac import automation, makeone, staging, timeout_evidence
+from tac_mock import SCREEN, StagedRepo, makeone_launcher
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -172,6 +173,7 @@ def _hang(
     warnings: list[str] | None = None,
     hangs: list[bool] | None = None,
     text_after: int | None = None,
+    evidence_dir: Path | None = None,
 ) -> bytes:
     """A run whose guest stays in graphics past *timeout*; *change* keeps rewriting the archive.
 
@@ -201,6 +203,7 @@ def _hang(
         sleep=sleep,
         warn=(warnings if warnings is not None else []).append,
         on_hang=lambda: (hangs if hangs is not None else []).append(True),
+        evidence_dir=evidence_dir,
     )
 
 
@@ -217,6 +220,51 @@ def test_a_makeone_hang_with_a_stable_archive_is_accepted(
     assert len(warnings) == 1
     assert "MAKEONE hang" in warnings[0]
     assert _stage_dirs() == []
+
+
+def test_a_timeout_saves_the_guest_screen_and_lists_the_emulators(
+    staged_repo: StagedRepo,
+    game_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        timeout_evidence, "emulator_processes", lambda: ["101 dosbox.exe", "202 dosbox-x.exe"]
+    )
+    warnings: list[str] = []
+
+    _hang(staged_repo, game_root, ARCHIVE, warnings=warnings, evidence_dir=tmp_path / "shots")
+
+    (picture,) = (tmp_path / "shots").glob("CTRY-*.png")
+    assert any(f"saved as {picture}" in line for line in warnings)
+    assert any("101 dosbox.exe; 202 dosbox-x.exe" in line for line in warnings)
+    data = picture.read_bytes()
+    assert data.startswith(b"\x89PNG")
+    # The pixels are the guest's page, row for row.
+    idat = data.index(b"IDAT") + 4
+    rows = zlib.decompress(data[idat : data.index(b"IEND") - 8])
+    assert b"".join(rows[1 + y * 321 : 321 + y * 321] for y in range(200)) == SCREEN
+
+
+def test_a_failed_screen_grab_is_logged_and_the_run_still_ends_normally(
+    staged_repo: StagedRepo,
+    game_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def broken() -> list[str]:
+        raise OSError("no tasklist")
+
+    monkeypatch.setattr(timeout_evidence, "emulator_processes", broken)
+    monkeypatch.setattr(timeout_evidence, "screen_script", lambda: "-- no page")
+    warnings: list[str] = []
+
+    data = _hang(staged_repo, game_root, ARCHIVE, warnings=warnings, evidence_dir=tmp_path)
+
+    assert data == ARCHIVE
+    assert any("no screen picture" in line for line in warnings)
+    assert any("no process list" in line for line in warnings)
+    assert list(tmp_path.glob("*.png")) == []
 
 
 def test_a_return_to_dos_during_the_stability_wait_is_not_a_hang(
@@ -263,3 +311,12 @@ def test_a_makeone_hang_whose_mtime_alone_changes_is_refused(
 ) -> None:
     with pytest.raises(makeone.MakeOneTimeout, match="still changing"):
         _hang(staged_repo, game_root, ARCHIVE, touch=True)
+
+
+def test_the_process_list_is_a_list_of_pid_name_lines() -> None:
+    assert all(" " in line for line in timeout_evidence.emulator_processes())
+
+
+def test_a_page_png_refuses_a_page_of_the_wrong_size() -> None:
+    with pytest.raises(ValueError, match="64000"):
+        timeout_evidence.page_png(b"short")
