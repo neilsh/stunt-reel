@@ -334,8 +334,8 @@ fn sphere_polygons(
         .collect()
 }
 
-/// Outline vertices of an `OP_PERFDISK` disc. `PLAYONE` fills an exact screen ellipse
-/// (`0xD11D`), so the polygon only needs to be round enough at the sizes it is drawn.
+/// Outline vertices of an `OP_PERFDISK` disc. `PLAYONE` steps an ellipse's row spans
+/// (`0xD11D`); 16 vertices is a guess at round enough, not a measured bound.
 const DISC_SEGMENTS: usize = 16;
 
 /// Builds an `OP_PERFDISK` disc: `DISC_SEGMENTS` vertices on a circle of `radius` about
@@ -346,7 +346,7 @@ fn disc_polygons(
     centre: [f32; 3],
     normal: [f32; 3],
     radius: f32,
-    ground_y_offset: f32,
+    ground_y_offset: i16,
     scale_factor: f32,
     palette_index: u8,
     visibility: VisibilityCondition,
@@ -381,8 +381,12 @@ fn disc_polygons(
             let angle = std::f32::consts::TAU * i as f32 / DISC_SEGMENTS as f32;
             let (s, c) = angle.sin_cos();
             metric_point(
-                std::array::from_fn(|k| centre[k] + radius * (c * u[k] + s * v[k])),
-                ground_y_offset as i16,
+                [
+                    centre[0] + radius * (c * u[0] + s * v[0]),
+                    centre[1] + radius * (c * u[1] + s * v[1]),
+                    centre[2] + radius * (c * u[2] + s * v[2]),
+                ],
+                ground_y_offset,
                 scale_factor,
             )
         })
@@ -1178,7 +1182,7 @@ pub(crate) fn run_vm(
                         centre_reg[2] - axis_reg[2],
                     ],
                     radius,
-                    f32::from(ground_y_offset),
+                    ground_y_offset,
                     scale_factor,
                     cur_color,
                     current_visibility,
