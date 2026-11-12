@@ -171,8 +171,9 @@ impl GpuModel {
     ///
     /// `eye` is the camera position in this model's space, for
     /// [`VisibilityCondition::FacesEye`]. `view` is the camera that tests
-    /// [`VisibilityCondition::LodBranch`] gates, whose points must then be in its space;
-    /// without one every subtree branch is drawn and no stand-in is.
+    /// [`VisibilityCondition::LodBranch`] and [`VisibilityCondition::BeyondDepth`] gates,
+    /// whose points must then be in its space; without one every subtree branch and every
+    /// far section is drawn and no stand-in is.
     pub fn collect_visible_meshes(
         &self,
         state_mask: u16,
@@ -213,6 +214,9 @@ impl GpuModel {
                     splitdist,
                     near,
                 } => view.is_none_or(|v| v.lod_keeps_subtree(point, ext, splitdist)) == near,
+                VisibilityCondition::BeyondDepth { point, depth } => {
+                    view.is_none_or(|v| v.view_depth_exceeds(point, depth))
+                }
             };
 
             if !is_visible {

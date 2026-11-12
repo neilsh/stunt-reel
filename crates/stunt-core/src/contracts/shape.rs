@@ -129,6 +129,17 @@ pub enum VisibilityCondition {
         /// True for the subtree, false for the stand-in.
         near: bool,
     },
+    /// The section an `OP_BZLT` runs only when far (image `0x9BE5`): visible while `point`'s
+    /// depth along the view axis exceeds `depth` scaled by the lens, as tested by
+    /// [`crate::contracts::CameraTransform::view_depth_exceeds`].
+    ///
+    /// `point` is in the space of the model that owns the node.
+    BeyondDepth {
+        /// The register whose depth the gate tests.
+        point: [f32; 3],
+        /// The threshold in metres at the default lens, before PLAYONE's halving.
+        depth: f32,
+    },
     /// Viewing angle cone threshold (used for prop disc blurs or landing lights).
     AngleCone {
         /// Cone axis in world space; must be a unit vector.
@@ -511,6 +522,19 @@ impl SodModelIr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `BZLT` gate survives a JSON round trip.
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_beyond_depth_serde_roundtrip() {
+        let gate = VisibilityCondition::BeyondDepth {
+            point: [1.0, -2.0, 3.5],
+            depth: 12.5,
+        };
+        let json = serde_json::to_string(&gate).expect("serialize");
+        let back: VisibilityCondition = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, gate);
+    }
 
     #[test]
     fn test_sod_model_ir_allocation_and_hierarchy() {
