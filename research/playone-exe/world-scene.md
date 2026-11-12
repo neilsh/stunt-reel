@@ -188,6 +188,17 @@ In `CTRY`'s airfield shot no fin shows through the hill patches in front of it, 
 
 The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terrain with a tile built by hand at terrain height, as the snap would place it (they do not call `build_world_ir`). The tile shows over the terrain 80 m away, keeps at least 90% of the pixels it shows alone at 1, 1.5, 2, 4 and 8 km at a grazing angle of 5.7 degrees, and a wall of terrain in front of it hides it completely. `Depth24Plus` is enough for tiles snapped this way, so reversed-Z with `Depth32Float` was not built; it stays an option if a tile not exactly on the plane of its patch is found to flicker far away. No such tile is in these films.
 
+### 6.5 A later leaf lies over an earlier one on the same plane
+
+*[Bounded Observation]*, `INTRO` ticks 3279 and 3301 (capture and render, compared by eye) and one static tree walk of the unpatched image; the painter order is *[Supported Inference]*, since the runtime order was not observed. _Source: [2026-11-12: INTRO's lake](../../work/2026-11/428_intro-lake/journal.md#2026-11-12-intros-lake-under-the-camera)._
+
+At `INTRO` tick 3301 the capture's bottom-left corner (pixels 0-40 x 140-180) is all index 205, and ours was 195 there. The camera hangs 51 m over `MAP.BIN` records 126 and 127 (colour 205, about 100 m across, flat at height 0), which lie in the plane of record 7, the colour-195 quad 4 km across. Dropping record 7 (`DBG_SKIP`, not committed) draws the lake in ours, so the patches were built and projected: they lost the depth tie to record 7, which our terrain draws first (`Less`). Switching the whole base pass to `LessEqual` changed no pixel, consistent with the two triangulations rounding their depths differently.
+
+In a depth-first walk of the tree, record 7 is the leaf at `0x00DA` and records 127 and 126 are the leaves at `0x0274` and `0x028E`, later in the same list. If `PLAYONE` visits the list in that order (not shown at run time), it paints them over record 7, as the capture's pixels show. A throwaway script found 31 of the 34 `MAP.BIN` colour-205 records, and the colour-231 records 84 and 85, lying inside record 7's fan in its plane; it did not check which of them our parse draws, nor how they relate to section 2's 28 colour-205 leaves.
+
+* **The change.** `terrain_overlays` (`crates/stunt-core/src/world/mod.rs`) marks a patch whose corners all lie inside the fan of an earlier patch (in `MAP.BIN` order) of another colour, within 10 cm of its plane, and `build_world_ir` draws it in the decal batch (`[I5]`), which wins the tie against base geometry. Overlays tie with one another under one bias and are unresolved, and an overlay can now also beat a coplanar prop in the base pass; neither was checked.
+* **Not shown.** `MAP.BIN`'s order was checked against the tree's for record 7 against 126 and 127 only. The rule fires on other films (index agreement rises on `BALLOON` by 0.001, `INTRO` 0.005, `LOCATION` 0.007), and no capture of theirs was compared pixel by pixel.
+
 ## Ruled out
 
 * **Re-baking `MAP.BIN`'s colours** (section 2): all 146 leaves in the image carry `MAP.BIN`'s colour byte, on both builds.
