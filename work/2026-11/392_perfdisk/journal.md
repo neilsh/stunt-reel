@@ -10,6 +10,6 @@
 
 ## 2026-11-12: merged with main, re-scored
 
-- **Method**: `main` (view-facing trees #419, the census #421 and #422) merged in; `mise run parity` on commit `ea113a02` (`crates/` tree `aa69c72`, RTX 4070), against the merged pins.
-- **Result**: SSIM main to merged: CTRY 0.89962 to 0.89960, INTRO 0.84172 to 0.84228, LAND 0.86539 to 0.86499, BALLOON 0.80299 to 0.80299, TRAINTNL 0.85181 to 0.85207, BOMB 0.81014 to 0.81151, LOCATION 0.80800 to 0.80845. Worst fall LAND -0.0004. `sod-census` is unchanged by this PR.
+- **Method**: `main` merged in twice (view-facing trees #419, the census #421 and #422, then the one-pixel lines); `mise run parity` on commit `93281d5e` (`crates/` tree `2daa6db`, RTX 4070), against `main`'s pins.
+- **Result**: SSIM main to merged: CTRY 0.90153 to 0.90150, INTRO 0.84366 to 0.84428, LAND 0.86619 to 0.86576, BALLOON 0.80968 to 0.80968, TRAINTNL 0.85477 to 0.85497, BOMB 0.81291 to 0.81430, LOCATION 0.80982 to 0.81026. Worst fall LAND -0.0004. `sod-census` is unchanged by this PR.
 - **Size check**: `BOMB` ticks 2014 to 2058 show a dark disc in the capture; our render at those ticks draws a different camera, so no same-camera pair exists. Sizes agree only in order of magnitude; the radius stays unverified.
