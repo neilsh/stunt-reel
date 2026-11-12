@@ -1,5 +1,5 @@
 ---
-summary: "The SOD display-list VM: self-patching dispatch slots, `OP_TAP` encoding and anchor loading [FMT-SOD-TAP], the execution model with its facing and depth gates and the model frame of every raw-coordinate generator, two-vertex polygons and `ZLINETO` lines as one-pixel lines, the per-frame draw with credits, and a candidate actor shadow path."
+summary: "The SOD display-list VM: self-patching dispatch slots, `OP_TAP` encoding and anchor loading [FMT-SOD-TAP], the execution model with its facing and depth gates and the model frame of every raw-coordinate generator, two-vertex polygons and `ZLINETO` lines as one-pixel lines, polygon spans that include both ends, the per-frame draw with credits, and a candidate actor shadow path."
 ---
 # `PLAYONE.EXE`: SOD Display-List VM & `OP_TAP` Semantics
 
@@ -371,6 +371,23 @@ The change was adopted, every reference film's score rising, measured against ma
 
 _Source: [the ZLINETO draw path read statically](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-the-zlineto-draw-path-read-statically)._ _Source: [one-pixel screen lines scored](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-one-pixel-screen-lines-scored-on-the-seven-reference-films)._
 
+### 8.11 Polygon Spans Include Both Ends
+
+`[Established]` for the instructions, static, in the unpatched image (`mise run disasm -- 0x7571 0x75DB`; the Patch #3 image not read). The flat filler `0x7571`, which `POLYZ` reaches through the gateway (section 8.9), fills both ends of a polygon on both axes:
+
+* **Rows.** It takes the bottom row minus the top row as a count, stores it at `DS:0x10C6`, and after each row runs `dec word [0x10C6]; jns` (`0x75BE`), so it fills the top row, the bottom row and every row between.
+* **Spans.** Per row it reads the left and right ends, clips them to `[0x2294]` and `[0x2296]`, skips a row whose right end is left of its left (`sub ax,cx; jl` at `0x75A1`), and fills `right − left + 1` pixels (`inc ax` at `0x75A5`).
+
+So every row from top to bottom whose right end is not left of its left is drawn, a row with left equal to right as one pixel, however narrow the polygon. How the edge builder `0xC9D4` rounds each row's ends was not read, so the pixel-for-pixel extent of a wide polygon is not known.
+
+**What it does to thin polygons** (`[Bounded Observation]`, `INTRO.FLM` tick 3301, [#426](https://github.com/neilsh/stunt-reel/issues/426)). The pines `0x03A3` and `0x03A7` are a type-8 quad (section 8.8) whose `INTV` midpoints make two `POLYZ` triangles: the whole tree, and a sliver outside its right edge at most a sixth of its half-width across. The capture draws a six-pixel-wide pine's sliver as a strip of light green one to two pixels wide down 14 rows (21 pixels); our renderer, whose rasteriser fills only pixels whose centres a triangle covers, drew 2 pixels of it. Across the top-left 100 × 100 pixels the four tree colours covered 1,471 pixels in the capture and 815 in ours, with every tree checked in a 60 × 60 part of the crop at the same place in both. `[Supported Inference]` that the inclusive spans are why the sliver measured is drawn.
+
+The renderer follows it in part. `stunt-render` draws every edge that exactly one filled triangle of a mesh node uses as a one-pixel screen line (section 8.10), in its end vertices' colours, after the node's triangles ([`outline.rs`](../../crates/stunt-render/src/outline.rs)), so a polygon also covers the pixels its outline crosses. It does this for the shapes drawn per frame (actors and view-facing props such as these pines), not for the world mesh. With it, the pine's sliver draws 23 pixels and the crop's tree colours 1,188. Scores (`mean_ssim_scored`, RTX 4070 Laptop) before and after: `CTRY` 0.9015 to 0.9022, `INTRO` 0.8437 to 0.8460, `LAND` 0.8662 to 0.8666, `BALLOON` 0.8097 to 0.8127, `TRAINTNL` 0.8548 to 0.8558, `BOMB` 0.8129 to 0.8134, `LOCATION` 0.8098 to 0.8089. Merged with the `OP_PERFDISK` discs and SOD gates of [#424](https://github.com/neilsh/stunt-reel/pull/424) and [#427](https://github.com/neilsh/stunt-reel/pull/427), against `main`'s pins: `CTRY` 0.9015 to 0.9022, `INTRO` 0.8443 to 0.8467, `LAND` 0.8658 to 0.8663, `BALLOON` 0.8097 to 0.8127, `TRAINTNL` 0.8550 to 0.8555, `BOMB` 0.8143 to 0.8151, `LOCATION` 0.8103 to 0.8092. The outline lines are wound both ways, like every line here, so a back-facing polygon's outline still draws where nothing hides it, which `PLAYONE` does not do.
+
+Outlining the world mesh as well, terrain and ocean excluded, scored above the per-frame outlines on `CTRY`, `INTRO`, `LAND`, `BALLOON`, `TRAINTNL` and `BOMB` (`CTRY` 0.9043, `BOMB` 0.8187), with `LOCATION` not rendered; but an outline costs four vertices and twelve indices an edge: `LOCATION`'s world mesh grew from 6.7 million vertices and 7.5 million indices to 32.4 million and 84.7 million, and with terrain excluded its render failed with a wgpu out-of-memory error (with terrain included it rendered).
+
+_Source: [what thins the INTRO conifer field](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-what-thins-the-intro-conifer-field)._ _Source: [polygon outlines scored](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-polygon-outlines-scored-on-the-seven-reference-films)._
+
 ## 9. Per-Frame Routine and Scene Composition
 
 `[Supported Inference]`, static. The per-frame routine at `0x0EE9` (entered from `0x4A35` with `BX = 0x4888`, the snapshot copy of the film state made at `0x39B0`) builds the sun vector (`0x196C`), sets the view matrix (`0x11FC`), makes one 3D scene draw through `0x824:0x0A05`, then draws the credits string at `+0xFE` with `0x58BD`. There is no second view or window pass, so a scene the evaluator does not place has no extra layer to supply it.
@@ -401,8 +418,11 @@ _Found 2026-11-05 for [#99](https://github.com/neilsh/stunt-reel/issues/99); see
 ## Ruled out
 
 * **SOD lines as 0.03 m world ribbons** (section 8.10). They vanish far away and swell up close; one-pixel screen lines score higher on all seven reference films ([one-pixel screen lines scored](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-one-pixel-screen-lines-scored-on-the-seven-reference-films)).
+* **Missing placements as the cause of `INTRO`'s faint conifer field at tick 3301** (section 8.11). In a 60 × 60 crop of that tick the pines match the capture's in position, judged by eye at 8×; the slivers explain part of the gap (the crop's tree pixels go from 815 to 1,188 of the capture's 1,471). Tick 3290, whose camera sits a few pixels off the capture's, was not compared ([what thins the INTRO conifer field](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-what-thins-the-intro-conifer-field)).
 
 ## 10. Open questions
+
+* **Polygon outlines on the world mesh** (section 8.11). Outlines are drawn on the per-frame shapes only; on the world mesh they scored higher on six films (one not rendered) but multiply its vertices about five times. A line-list draw over the existing vertices (two indices an edge) would cost far less. Also open: how `0xC9D4` rounds a row's ends, so whether the outline matches the inclusive spans pixel for pixel.
 
 * **The other generators** (section 8.8, [#272](https://github.com/neilsh/stunt-reel/issues/272)). Closed: `OP_IPG` types 0, 2, 4 and 8 and `OP_SPHERE` read against their handlers, and type 6's operand width; `OP_VEC` has no handler. Open: the scale of `OP_PERFDISK`'s radius and of its normal's depth (drawn since [#392](https://github.com/neilsh/stunt-reel/issues/392), in register units); the streamer (type 6) writes registers 4..10 from the tick and from CPU registers its caller leaves, which no stock walk reaches; and a capture-beside-render check of the reversed sphere faces. The type-8 trees are checked against `INTRO.FLM` ticks 2080 and 3301 and turn with the camera's heading (section 8.8, [#399](https://github.com/neilsh/stunt-reel/issues/399)).
 
