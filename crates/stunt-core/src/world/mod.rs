@@ -213,26 +213,22 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
     let pts = inputs.anchors;
     let map_areas = inputs
         .map
-        .map(|bytes| parse_map_bin(bytes, pts.len()))
-        .unwrap_or_default();
+        .map_or_default(|bytes| parse_map_bin(bytes, pts.len()));
 
     if inputs.scenery.is_none() && pts.is_empty() && map_areas.is_empty() {
         return None;
     }
 
-    let placements = inputs
-        .scenery
-        .map(|bytes| {
-            place_props(
-                bytes,
-                shapes,
-                inputs.view_eyes,
-                inputs.max_zoom,
-                inputs.max_lod_shift,
-                inputs.min_corner_depth,
-            )
-        })
-        .unwrap_or_default();
+    let placements = inputs.scenery.map_or_default(|bytes| {
+        place_props(
+            bytes,
+            shapes,
+            inputs.view_eyes,
+            inputs.max_zoom,
+            inputs.max_lod_shift,
+            inputs.min_corner_depth,
+        )
+    });
     let base_y = 0.0;
     let props_placed = placements.props.len();
     let (view_facing, fixed) =

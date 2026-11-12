@@ -1032,8 +1032,8 @@ fn intro_film_streams_keep_invariants_and_self_parity() {
 
             // Invariant [I1]: Quaternions on all active actors must satisfy unit length
             for act in &rec.actors {
-                for c in 0..3 {
-                    assert!(act.position_meters[c].is_finite());
+                for c in act.position_meters {
+                    assert!(c.is_finite());
                 }
                 let diff = quat_norm_diff(act.rotation_quat);
                 assert!(

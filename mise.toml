@@ -13,7 +13,7 @@ lockfile = true
 # `minimal` profile, which omits both; rustup's `default` profile would add them but
 # also pull rust-docs, which the gate never uses. `minimal` is stated here too so a
 # developer machine's default profile cannot reintroduce rust-docs on a fresh install.
-rust = { version = "1.99.1", profile = "minimal", components = "llvm-tools,rustfmt,clippy" }
+rust = { version = "1.100.0", profile = "minimal", components = "llvm-tools,rustfmt,clippy" }
 
 # Python & modern packaging toolchain
 python = "3.15.2"

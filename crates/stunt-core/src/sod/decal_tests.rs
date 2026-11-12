@@ -130,7 +130,7 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
 
         // Run identification and displacement
         let processed = crate::sod::decal::identify_coplanar_decals(
-            &[base_poly.clone(), decal_poly.clone()],
+            &[base_poly, decal_poly],
             0.001,
             1e-4,
             1e-4,

@@ -224,23 +224,20 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 fn upper_extension(path: &Path) -> String {
     path.extension()
-        .map(|e| e.to_string_lossy().to_ascii_uppercase())
-        .unwrap_or_default()
+        .map_or_default(|e| e.to_string_lossy().to_ascii_uppercase())
 }
 
 fn upper_file_name(path: &Path) -> String {
     path.file_name()
-        .map(|n| n.to_string_lossy().to_ascii_uppercase())
-        .unwrap_or_default()
+        .map_or_default(|n| n.to_string_lossy().to_ascii_uppercase())
 }
 
 /// A film and its `<NAME>.ALL` share this key: their folder and uppercase stem.
 fn film_pair_key(path: &Path) -> (PathBuf, String) {
-    let folder = path.parent().map(Path::to_path_buf).unwrap_or_default();
+    let folder = path.parent().map_or_default(Path::to_path_buf);
     let stem = path
         .file_stem()
-        .map(|s| s.to_string_lossy().to_ascii_uppercase())
-        .unwrap_or_default();
+        .map_or_default(|s| s.to_string_lossy().to_ascii_uppercase());
     (folder, stem)
 }
 
