@@ -63,6 +63,7 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | Unpatched | Patch #3 | Evidence | Row | Anchor |
 |---|---|---|---|---|
 | `0x0542` | `0x05BE` | 13 refs | Segment of the display-list work segment (`mov es, [0x542]` before `es:[0x8078]`) | |
+| `0x056C` | `0x05E8` | 1 disp (`jmp [bx+0x56C]` at `0x213D`, `jmp [bx+0x5E8]` at patched `0x2250`, in the paired `SP_1NODE` handlers; [`lod.md`](lod.md) section 1.2) | Scene-walker dispatch table entered by a near `SP_1NODE` | |
 | `0x05AC`, `0x05B5`, `0x05BE`, `0x05CA`, `0x05D4`, `0x05DB` | `0x0628`, `0x0631`, `0x063A`, `0x0646`, `0x0650`, `0x0657` | 1, 1, 1, 1, 2, 1 imm; bytes for each | `game.cfg`, `game.var`, `install.exe`, `pfont.bin`, `pilots`, `res\*.res` | |
 | `0x065D`, `0x069B` | `0x06D9`, `0x0717` | 1 imm each; bytes | Memory and disk-space messages | |
 | `0x09DE`, `0x09EA` | `0x0A62`, `0x0A6E` | 1 imm, 2 imm; bytes | Sky colour pairs; blended zenith and horizon | `# [MEM-PALETTE]` |
@@ -90,6 +91,7 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0x22CA`, `0x22CC` | `0x1C50`, `0x1C52`, `[Bounded Observation]` | 17, 6 refs; a live capture flagged 72 of 1,906 frames torn against 66 of 1,908 unpatched ([`patch3.md` § 3.1](patch3.md#31-composed-pages)) | Composed-page segments | |
 | `0x22CE`, `0x22D0` | `0x1C54`, `0x1C56` | 2 refs each | Saved `SS`, `SP` around the `INSTALL.EXE` EXEC | |
 | `0x22DE` | `0x1C64` | 2 refs; bytes | View camera's slot record pointer | |
+| `0x22EC` | `0x1C72` | 1 ref (`0x215A`, patched `0x226D`; [`lod.md`](lod.md) section 1.2) | `SP_1NODE` stand-in object word | |
 | `0x2A68` | `0x23EE` | 4 refs; bytes | View eye | |
 | `0x2468` | `0x1DEE` | 3 imm | Base palette | `# [MEM-PALETTE]` |
 | `0x2768` | `0x20EE` | 9 imm; a live capture read identical palettes ([`patch3.md` § 2](patch3.md#2-patched-playoneexe-offsets)) | Working palette | `# [MEM-PALETTE]` |
