@@ -24,7 +24,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **8** | `0x0048` | 72 | `OP_SHRV` | `shift: u16` | Vector arithmetic right shift: `cur_vert >>= shift` |
 | **9** | `0x0051` | 81 | `OP_BLOKADD` | `src: u16, dst: u16, count: u16` † | Block add: `regs[dst+i] = regs[src+i] + cur_vert` |
 | **10** | `0x005A` | 90 | `OP_BLOKNEG` | `src: u16, dst: u16, count: u16` † | Block negate: `regs[dst+i] = -regs[src+i]` |
-| **11** | `0x0063` | 99 | `OP_IPG` | `type: u16, ...dims, reg: u16` | Procedural primitive generator (Cube, Ground, Quad) |
+| **11** | `0x0063` | 99 | `OP_IPG` | `type: u16, ...dims, reg: u16` | Procedural primitive generator: types 0, 2, 4, 6, 8 ([§ 2.1](#21-procedural-primitive-generator-op_ipg-0x0063)) |
 | **12** | `0x006C` | 108 | `OP_CHECKPOINT`| *unknown* | Debug / synchronization checkpoint |
 | **13** | `0x0075` | 117 | `OP_VECTORS` | `count: u16, reg: u16, count*3 words` | Batch upload 3D vectors into registers |
 | **14** | `0x007E` | 126 | `OP_PUSHCENTRE`| *none* | Push rotation center origin onto stack |
@@ -43,7 +43,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **27** | `0x00F3` | 243 | `OP_POLYZ` | `count: u16, ...regs` | Depth-sorted flat polygon emission |
 | **28** | `0x00FC` | 252 | `OP_SPHERE` | `center_reg: u16, radius: u16` | Procedural sphere primitive; `radius` is in register (vertex) units. Tree crowns use it: 19 per tree in `CTRY.ALL` `0x0504`/`0x0507` (1,399 and 933 placements), radius 600 to 1,100 at scale index 10 (crowns of about 1.2 to 2.1 m). `FreeFlight/src/siobj.cpp` leaves it unimplemented. The Rust VM draws a 20-triangle icosahedron at 0.92 of the radius (80 triangles would give a 700 MB vertex buffer on `CTRY.FLM`, over wgpu's 256 MiB); crowns match the capture's position and colour but are faceted (`[Bounded Observation]`; found 2026-10-22 at `16a3170`, [parity log](../../work/2026-10/parity-log/log.md)) |
 | **29** | `0x0105` | 261 | `OP_DISC` | `center_reg: u16, radius: u16` | Flat circular disc primitive |
-| **30** | `0x010E` | 270 | `OP_PERFDISK` | `center_reg: u16, r_in: u16, r_out: u16` † | Perforated disc (ring with center shaft) |
+| **30** | `0x010E` | 270 | `OP_PERFDISK` | `center_reg: u16, radius: u16, axis_reg: u16` | Two-sided disc of `radius` about `center_reg`, normal `center − axis` (handler `0xA040`, [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators)) |
 | **31** | `0x0117` | 279 | `OP_SIDE` | `...` | Cylindrical side primitive |
 | **32** | `0x0120` | 288 | `OP_INITDISC` | `...` | Disc rasterizer initialization |
 | **33** | `0x0129` | 297 | `OP_FILLCOL` | `color: u16` | Set active polygon fill color index (`OP_COLOR`) |
@@ -81,7 +81,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **65** | `0x0249` | 585 | `OP_POLYZSL` | `...` | Depth-sorted sliced polygon |
 | **66** | `0x0252` | 594 | `OP_SPHERESL` | `...` | Sliced sphere primitive |
 | **67** | `0x025B` | 603 | `OP_DISCSL` | `...` | Sliced disc primitive |
-| **68** | `0x0264` | 612 | `OP_PERFDISCSL`| `...` | Sliced perforated disc primitive |
+| **68** | `0x0264` | 612 | `OP_PERFDISCSL`| `...` | Sliced disc primitive, by its name a sliced `OP_PERFDISK` (not traced) |
 | **69** | `0x026D` | 621 | `OP_SIDESL` | `...` | Sliced cylinder side primitive |
 | **70** | `0x0276` | 630 | `OP_PUSHSL` | `...` | Push slicing plane onto stack |
 | **71** | `0x027F` | 639 | `OP_POPSL` | `...` | Pop slicing plane from stack |
@@ -129,11 +129,13 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 
 ### 2.1 Procedural Primitive Generator (`OP_IPG`, 0x0063)
 
-`[Supported Inference]` — operand shapes from `SOD.H` and FreeFlight, rendered by `vm.rs`; the handler is not traced in `PLAYONE.EXE`.
+`[Established]` — handlers `0x965F` and the subtype table at `work:0x1954`, read statically; corner orders and signs in [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators).
 
-Generates canonical geometric wireframe vertices centered at the local origin:
+Writes vertices centred on the local origin:
 - **Type 0 (Cube / Cuboid):** Operands `dx: i16`, `dy: i16`, `dz: i16`, `start_reg: u16`. Emits 8 vertices spanning $[\pm dx, \pm dy, \pm dz]$ into `regs[start .. start + 7]`.
 - **Type 2 (Ground Quad):** Operands `dx: i16`, `dz: i16`, `start_reg: u16`. Emits 4 horizontal vertices at $y = 0$ into `regs[start .. start + 3]`.
+- **Type 4 (Object Bucket):** One operand, the offset of a pending-object list; writes no register.
+- **Type 6 (Streamer):** No operand; writes registers 4..10 from the global tick.
 - **Type 8 (Vertical Quad):** Operands `dx: i16`, `dy: i16`, `start_reg: u16`. Emits 4 vertical vertices at $z = 0$ into `regs[start .. start + 3]`.
 
 ### 2.2 Raw Vertex Array Upload (`OP_VECTORS`, 0x0075)
@@ -225,14 +227,15 @@ Only **stream constraints** are recorded here — readings that must match the b
 
 ### 3.1 Operand-Order Disagreements
 
-`[Hypothesis]` — four readings that contradict § 1 or § 2.5. None of the opcodes is reached by any of the corpus models in [`sod-opcode-coverage.md` § 3](sod-opcode-coverage.md#3-census), so no render depends on them: this is a note for whoever implements a handler, not a work item.
+`[Hypothesis]` — three readings that contradict § 1 or § 2.5. None of the opcodes is reached by any of the corpus models in [`sod-opcode-coverage.md` § 3](sod-opcode-coverage.md#3-census), so no render depends on them: this is a note for whoever implements a handler, not a work item. `PERFDISK`, which the corpus does reach, has left the table (below).
 
 | Opcode | § 1 / § 2.5 says | si-tools reads | Source |
 | :--- | :--- | :--- | :--- |
 | `BLOKADD` (`0x0051`), `BLOKNEG` (`0x005A`) | `src, dst, count` | `count, dest/12, src/12` | `siobj_lib.cpp:900-939` |
 | `SORTON` (`0x018C`) | `plane, left_off, right_off`; § 2.5 reads it as a BSP plane test | First word is the **block size in bytes**, next two are skipped; block end = opcode index + `size/2` | `siobj_lib.cpp:1246-1260` |
-| `PERFDISK` (`0x010E`) | `center_reg, r_in, r_out` | `center_reg, radius`; the second operand is a normal/orientation register (`/12`), one radius only | `siobj_lib.cpp:1098-1126` |
 | `SHADES` (`0x0156`) | `count, ...triplets` | Two leading words (the first discarded, the second is the count), then 3 words per entry | `siobj_lib.cpp:1235-1244` |
+
+`PERFDISK` (`0x010E`) left this table: si-tools read one radius and an orientation register where § 1 had two radii, and the handler `0xA040` bears it out, with the radius second and the axis register third ([`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators)).
 
 `SHADE2` (`0x014D`) and `SHADE216` (`0x02C7`) have no case at all and take the one-word default, so their silence is not evidence of a one-word operand.
 
@@ -241,7 +244,7 @@ Only **stream constraints** are recorded here — readings that must match the b
 `[Hypothesis]` — geometry si-tools generates, not observed in `PLAYONE`:
 
 * `SPHERE` is a 12-vertex, 20-triangle icosahedron at exactly `1.0 × radius`, radius used raw (not multiplied by the shape scale), vertices `centre + trunc(v · radius)`. `vm.rs` uses the same icosahedron at `0.92 ×` (`vm.rs:208`), tuned against `CTRY`; that factor is ours, not the format's.
-* `DISC` is a 16-segment fan at parse-time `radius × scale`, and `PERFDISK` reuses the builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so the winding is a stand-in rather than a decode.
+* si-tools' `DISC` is a 16-segment fan at parse-time `radius × scale`, and its `PERFDISK` reuses that builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so its winding is a stand-in rather than a decode. `vm.rs` draws nothing for `PERFDISK`; the handler's disc is in [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators).
 * The disc radius is multiplied by scale at parse and again at export, so exported radii come out `scale²`; that is an exporter bug, not a format fact.
 
 ### 3.3 What A Decoder's Silences Are Worth

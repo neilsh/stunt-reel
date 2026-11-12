@@ -35,9 +35,11 @@ pub const OP_NEGV: u16 = 0x0036;
 pub const OP_SHLV: u16 = 0x003F;
 /// Divide the accumulator vertex by `2^shift`, rounding toward negative infinity (`shift: u16`).
 pub const OP_SHRV: u16 = 0x0048;
-/// Reserved opcode: consumes three operand words without producing geometry in this VM.
+/// `SOD.H`'s `OP_VEC`, which has no `PLAYONE` dispatch slot: this VM consumes three operand
+/// words without effect, a width the binary does not give.
 pub const OP_VEC: u16 = 0x004B;
-/// Procedural primitive generator: cube, ground plane, or quad (`type, dims, reg`).
+/// Procedural primitive generator (`type`, then its operands): cube, ground quad, object
+/// bucket, streamer or vertical quad for types 0, 2, 4, 6 and 8.
 pub const OP_IPG: u16 = 0x0063;
 /// Batch-upload vectors into consecutive registers (`count, reg, count*3 words`), each stored as
 /// `(-x, -y, z)`, the frame the `OP_IPG` cube and `OP_TAP` write.
@@ -54,7 +56,8 @@ pub const OP_ZLINETO: u16 = 0x00BD;
 pub const OP_POLYZ: u16 = 0x00F3;
 /// Emit a procedural sphere centered at `regs[center_reg]` with `radius`.
 pub const OP_SPHERE: u16 = 0x00FC;
-/// Emit a perforated disc ring (`center_reg, r_in, r_out`).
+/// A disc (`center_reg, radius, axis_reg`), its normal `regs[center] - regs[axis]`; this VM
+/// consumes the three words and draws nothing.
 pub const OP_PERFDISK: u16 = 0x010E;
 /// Branches (SORT pushes, `GOTO`, `GOSUB`) one walk may take before it is malformed.
 const MAX_BRANCHES: usize = 4096;
@@ -251,27 +254,29 @@ fn sphere_polygons(
     // is newer than the 1.88 MSRV in Cargo.toml. Spelled as bits rather than the decimal because
     // clippy's `approx_constant` rejects a retyped constant, and the bits pin the exact value.
     const PHI: f32 = f32::from_bits(0x3FCF_1BBD);
+    // Clockwise seen from outside, the winding the pipeline keeps (`FrontFace::Cw`), so the
+    // near half draws: `PLAYONE` draws the sphere as a screen disc no side culls (`0x9DB5`).
     const FACES: [[usize; 3]; 20] = [
-        [0, 11, 5],
-        [0, 5, 1],
-        [0, 1, 7],
-        [0, 7, 10],
-        [0, 10, 11],
-        [1, 5, 9],
-        [5, 11, 4],
-        [11, 10, 2],
-        [10, 7, 6],
-        [7, 1, 8],
-        [3, 9, 4],
-        [3, 4, 2],
-        [3, 2, 6],
-        [3, 6, 8],
-        [3, 8, 9],
-        [4, 9, 5],
-        [2, 4, 11],
-        [6, 2, 10],
-        [8, 6, 7],
-        [9, 8, 1],
+        [0, 5, 11],
+        [0, 1, 5],
+        [0, 7, 1],
+        [0, 10, 7],
+        [0, 11, 10],
+        [1, 9, 5],
+        [5, 4, 11],
+        [11, 2, 10],
+        [10, 6, 7],
+        [7, 8, 1],
+        [3, 4, 9],
+        [3, 2, 4],
+        [3, 6, 2],
+        [3, 8, 6],
+        [3, 9, 8],
+        [4, 5, 9],
+        [2, 11, 4],
+        [6, 10, 2],
+        [8, 7, 6],
+        [9, 1, 8],
     ];
     let unit = |v: [f32; 3]| {
         let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
@@ -307,12 +312,14 @@ fn sphere_polygons(
                 reason = "FACES holds only the corner indices 0..12"
             )]
             let vertices: Vec<[f32; 3]> = face.iter().map(|&i| metric(corners[i])).collect();
-            let normal = compute_polygon_normal(&vertices);
+            // The faces wind clockwise from outside, so the edge cross product points inward;
+            // `normal` is the outward normal, which the shader lights.
+            let [nx, ny, nz] = compute_polygon_normal(&vertices);
             RawPolygon {
                 vertex_palette: Vec::new(),
                 vertices,
                 palette_index,
-                normal,
+                normal: [-nx, -ny, -nz],
                 flags: 0,
                 is_decal: false,
                 visibility,
@@ -772,7 +779,8 @@ pub(crate) fn run_vm(
                         regs.set((start_reg + 7) & 1023, [dx, dy, -dz]);
                     }
                     2 => {
-                        // Ground Quad
+                        // Ground quad: `0xB41E` stores raw `(+dx, 0, -dz)`, `(+dx, 0, +dz)`,
+                        // `(-dx, 0, +dz)`, `(-dx, 0, -dz)`, turned half a turn about z.
                         let dx = f32::from(r.read_i16_le()?);
                         let dz = f32::from(r.read_i16_le()?);
                         let start_off = r.read_u16_le()?;
@@ -784,22 +792,28 @@ pub(crate) fn run_vm(
                         regs.set((start_reg + 3) & 1023, [dx, 0.0, -dz]);
                     }
                     8 => {
-                        // Flat Vertical Quad
+                        // Vertical quad: `0xB4B5` stores raw `(+dx, +dy, 0)`, `(-dx, +dy, 0)`,
+                        // `(-dx, -dy, 0)`, `(+dx, -dy, 0)`, turned half a turn about z.
                         let dx = f32::from(r.read_i16_le()?);
                         let dy = f32::from(r.read_i16_le()?);
                         let start_off = r.read_u16_le()?;
                         let start_reg = ((start_off / 12) & 1023) as usize;
 
                         regs.set((start_reg) & 1023, [-dx, -dy, 0.0]);
-                        regs.set((start_reg + 1) & 1023, [-dx, dy, 0.0]);
+                        regs.set((start_reg + 1) & 1023, [dx, -dy, 0.0]);
                         regs.set((start_reg + 2) & 1023, [dx, dy, 0.0]);
-                        regs.set((start_reg + 3) & 1023, [dx, -dy, 0.0]);
+                        regs.set((start_reg + 3) & 1023, [-dx, dy, 0.0]);
                     }
                     4 => {
-                        // Subobject template (`subobjs`): a single operand word.
+                        // Object bucket (`0xB54C`): one word, the offset of a pending-object
+                        // list at `DGROUP:0x2346` drawn through `0x1B75`; no register written.
                         // Skipping two words swallowed the following `RETURN` and
                         // exposed that return word as a bogus opcode (`0x0002`).
                         r.read_u16_le()?;
+                    }
+                    6 => {
+                        // Streamer (`0xB58D`): no stream operand. It writes registers 4..=10
+                        // from the tick and leftover CPU registers, which are not modelled.
                     }
                     _ => {
                         // Unrecognized IPG type arguments skipped safely
