@@ -10,9 +10,12 @@ The skills speak in terms of canonical triage roles. This file maps those roles 
 | `needs-info`               | `needs-info`         | Waiting on reporter for more information |
 | `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |
 | `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
+| _not in the template_      | `in-progress`        | A session has claimed it; its claim comment names the branch |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
 An agent can run DOSBox and DOSBox-X captures and breakpoint sessions, so needing one does not make an issue `ready-for-human`. Use `ready-for-human` for a design or visual judgment call, or a step the agent cannot do on this machine (admin rights, an asset not in the data root); the brief names which.
+
+`in-progress` is our addition to the template's flow: every session acts as the same GitHub user, so an assignee cannot say which session holds an issue. A session takes it from `ready-for-agent` or `ready-for-human` by **Claim an issue** ([issue-tracker.md](issue-tracker.md#conventions)).
 
 Every open issue without sub-issues carries exactly one state label. A parent needs none, and any it carries is ignored ([issue-tracker.md § Organizing issues](issue-tracker.md#organizing-issues)); a `wayfinder:*` map or ticket carries none, as `/wayfinder` requires. Blocking is a native issue dependency ([issue-tracker.md](issue-tracker.md)), never a label.
 
