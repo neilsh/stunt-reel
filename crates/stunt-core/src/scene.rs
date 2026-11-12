@@ -19,7 +19,10 @@ use std::collections::HashMap;
 
 use crate::anchor::{AnchorPoint, parse_anchor_table};
 use crate::contracts::trajectory::{DEFAULT_CAMERA_LENS, PLAYONE_FOV_Y_DEGREES};
-use crate::contracts::{ActorTransform, CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
+use crate::contracts::{
+    ActorTransform, CameraTransform, PaletteControls, ShapeExtent, ShapeSprite, SodModelIr,
+    VisibilityCondition,
+};
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
 use crate::font::PFont;
@@ -27,6 +30,7 @@ use crate::link::{LinkError, shape_chunks};
 use crate::sod::{
     DecodeMode, EPSILON_DISPLACEMENT, ShadeLight, SodError, SodStopReason, decode_sod_lit,
 };
+use crate::sprite::SpriteImage;
 use crate::vfs::{ResRegions, VfsError};
 use crate::world::{GroundPlane, ScnStop, TapFailure, World, WorldInputs, build_world};
 
@@ -128,6 +132,9 @@ pub struct ArchiveShapes {
     /// point depends on where the shape is placed, so the world decodes these again per
     /// placement ([`WorldInputs::anchored_shapes`]).
     pub anchored: HashMap<u16, Vec<u8>>,
+    /// The image frames the shapes' sprites name (`OP_ANIMATE`), keyed by resource id; a
+    /// frame the source lacks, or whose chunk is not an image, is absent.
+    pub images: HashMap<u16, SpriteImage>,
 }
 
 /// Decodes every `MODEL_%04X.SOD` chunk of `.ALL` bytes, resolving `OP_TAP` against `anchors`
@@ -148,7 +155,14 @@ pub fn decode_archive_shapes(
     let chunks = archive.entries.values().filter_map(|entry| {
         model_shape_id(&entry.name).map(|id| (id, entry.name.clone(), entry.data.as_slice()))
     });
-    Ok(decode_chunks(chunks, anchors, light))
+    let mut decoded = decode_chunks(chunks, anchors, light);
+    let payloads: HashMap<u16, &[u8]> = archive
+        .entries
+        .values()
+        .filter_map(|entry| resource_id(&entry.name).map(|id| (id, entry.data.as_slice())))
+        .collect();
+    decoded.images = sprite_images(&decoded.shapes, |id| payloads.get(&id).copied());
+    Ok(decoded)
 }
 
 /// Decodes every item of the shape files among `files` as [`decode_archive_shapes`] decodes an
@@ -166,13 +180,28 @@ pub fn decode_res_shapes(
     anchors: &[AnchorPoint],
     light: ShadeLight,
 ) -> Result<ArchiveShapes, LinkError> {
-    let chunks = shape_chunks(files)?
-        .into_iter()
-        .filter_map(|(id, payload)| {
-            let name = crate::vfs::chunk_name(id, payload);
-            model_shape_id(&name).map(|id| (id, name, payload))
-        });
-    Ok(decode_chunks(chunks, anchors, light))
+    let items = shape_chunks(files)?;
+    let chunks = items.iter().filter_map(|(&id, &payload)| {
+        let name = crate::vfs::chunk_name(id, payload);
+        model_shape_id(&name).map(|id| (id, name, payload))
+    });
+    let mut decoded = decode_chunks(chunks, anchors, light);
+    decoded.images = sprite_images(&decoded.shapes, |id| items.get(&id).copied());
+    Ok(decoded)
+}
+
+/// The image of every frame a sprite of `shapes` names, read from the chunk `payload` gives
+/// for its id; a missing chunk or one that is not an image is left out.
+fn sprite_images<'a>(
+    shapes: &HashMap<u16, SodModelIr>,
+    payload: impl Fn(u16) -> Option<&'a [u8]>,
+) -> HashMap<u16, SpriteImage> {
+    shapes
+        .values()
+        .flat_map(|shape| &shape.sprites)
+        .flat_map(|sprite| &sprite.frames)
+        .filter_map(|&id| Some((id, SpriteImage::parse(payload(id)?)?)))
+        .collect()
 }
 
 /// Decodes `(shape id, chunk name, payload)` chunks leniently, keeping failures as skipped.
@@ -211,6 +240,13 @@ fn model_shape_id(name: &str) -> Option<u16> {
     u16::from_str_radix(hex, 16).ok()
 }
 
+/// The resource ID of a `RES_%04X.BIN` archive entry: a chunk that is neither a film nor a
+/// shape ([`crate::vfs::chunk_name`]).
+fn resource_id(name: &str) -> Option<u16> {
+    let hex = name.strip_prefix("RES_")?.strip_suffix(".BIN")?;
+    u16::from_str_radix(hex, 16).ok()
+}
+
 /// One drawable actor in a [`SceneFrame`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ActorDraw {
@@ -228,6 +264,22 @@ pub struct ActorDraw {
     /// drawn again through this matrix in palette index 0 (`research/playone-exe/sod-vm.md`
     /// section 9.1).
     pub shadow_matrix: Option<[f32; 16]>,
+}
+
+/// One image an actor's shape draws in screen space (`OP_ANIMATE`) in a [`SceneFrame`].
+///
+/// `PLAYONE` blits it as a square `size` across at the anchor's projected point, palette
+/// index 0 transparent, with no depth test of its own (`research/playone-exe/sod-animate.md`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpriteDraw {
+    /// Image resource of the frame, a key of [`FilmScene::image`].
+    pub image_id: u16,
+    /// Centre of the square in world `[I1]` metres.
+    pub centre: [f32; 3],
+    /// Side of the square in metres.
+    pub size: f32,
+    /// Index into [`SceneFrame::actors`] of the actor whose shape draws it.
+    pub actor: usize,
 }
 
 /// The lens-zoomed camera used to draw a [`SceneFrame`].
@@ -281,6 +333,8 @@ pub struct SceneFrame {
     /// One draw per actor whose shape is in the table. Actors sharing a shape each get
     /// their own draw; there is no de-duplication.
     pub actors: Vec<ActorDraw>,
+    /// The images the actors' shapes draw at this tick, in actor order.
+    pub sprites: Vec<SpriteDraw>,
     /// Film variables the palette is built from at this tick.
     pub palette: PaletteControls,
     /// Credits text on screen at this tick (`0x99` until `0x98`), drawn over the scene.
@@ -297,6 +351,8 @@ pub struct FilmScene {
     origin_shape: Option<u16>,
     /// `PFONT.BIN`, read from the corpus beside the film, for the credits overlay.
     font: Option<PFont>,
+    /// Frames of the shapes' sprites, by resource id.
+    images: HashMap<u16, SpriteImage>,
 }
 
 impl FilmScene {
@@ -313,7 +369,27 @@ impl FilmScene {
             world,
             origin_shape: None,
             font: None,
+            images: HashMap::new(),
         }
+    }
+
+    /// Draws the shapes' sprites with `images`, keyed by resource id; without them a scene
+    /// carries no sprite draws.
+    #[must_use]
+    pub fn with_images(mut self, images: HashMap<u16, SpriteImage>) -> Self {
+        self.images = images;
+        self
+    }
+
+    /// The image with resource id `id`, if the scene has it.
+    #[must_use]
+    pub fn image(&self, id: u16) -> Option<&SpriteImage> {
+        self.images.get(&id)
+    }
+
+    /// Every sprite image with its resource id, in no particular order.
+    pub fn images(&self) -> impl Iterator<Item = (u16, &SpriteImage)> {
+        self.images.iter().map(|(id, image)| (*id, image))
     }
 
     /// Draws credits with `font`; without one a scene carries credits but draws none.
@@ -447,7 +523,10 @@ impl FilmScene {
                 .map(|w| w.tap_failures.clone())
                 .unwrap_or_default(),
         };
-        Ok((Self::new(timeline, decoded.shapes, world), report))
+        Ok((
+            Self::new(timeline, decoded.shapes, world).with_images(decoded.images),
+            report,
+        ))
     }
 
     /// The film timeline (use `cues_between` for audio).
@@ -486,6 +565,7 @@ impl FilmScene {
                 lens: DEFAULT_CAMERA_LENS,
                 world,
                 actors: Vec::new(),
+                sprites: Vec::new(),
                 palette: PaletteControls::default(),
                 credits: None,
             };
@@ -517,15 +597,59 @@ impl FilmScene {
                 shadow_matrix: None,
             });
         }
+        let sprites = self.sprite_draws(tick, &record.actors, &actors);
         SceneFrame {
             tick,
             view: ViewCamera::from_authored(&record.camera),
             lens: record.camera.lens,
             world,
             actors,
+            sprites,
             palette: record.palette,
             credits: self.timeline.credits_at(tick).cloned(),
         }
+    }
+
+    /// The sprite draws of `draws`, the actor draws [`Self::frame`] made from `actors` in
+    /// order, at `tick`.
+    ///
+    /// Each sprite's frame comes from its bank word ([`bank_word`]). Only an `Always` or a
+    /// matching `ActorState` gate is evaluated; a sprite under another gate is drawn, since none has
+    /// been seen in a stock shape. A frame whose image the scene lacks is not drawn.
+    fn sprite_draws(
+        &self,
+        tick: f32,
+        actors: &[ActorTransform],
+        draws: &[ActorDraw],
+    ) -> Vec<SpriteDraw> {
+        let drawn = actors
+            .iter()
+            .filter(|a| self.shapes.contains_key(&a.shape_id));
+        let mut out = Vec::new();
+        for (index, (actor, draw)) in drawn.zip(draws).enumerate() {
+            let Some(shape) = self.shapes.get(&draw.shape_id) else {
+                continue;
+            };
+            for sprite in &shape.sprites {
+                if !sprite_gate_open(sprite, draw.state_mask) {
+                    continue;
+                }
+                let phase = bank_word(sprite.selector, tick, actor.animate());
+                let Some(image_id) = sprite
+                    .frame(phase)
+                    .filter(|id| self.images.contains_key(id))
+                else {
+                    continue;
+                };
+                out.push(SpriteDraw {
+                    image_id,
+                    centre: transform_point(&draw.world_matrix, sprite.anchor),
+                    size: sprite.size,
+                    actor: index,
+                });
+            }
+        }
+        out
     }
 
     /// The shadow matrix of an actor at `position` drawn through `world_matrix`.
@@ -542,6 +666,45 @@ impl FilmScene {
             .map_or(GroundPlane::LEVEL_ZERO, |w| w.ground_plane(x, z, y));
         mat4_mul(&plane.flatten_matrix(EPSILON_DISPLACEMENT), world_matrix)
     }
+}
+
+/// The word of `PLAYONE`'s angle bank (`work:0x810E + selector`) a sprite's frame comes
+/// from, at film tick `tick` for an actor whose `.FLM` animate value is `animate`.
+///
+/// `0x10` is `work:0x811E`, the film clock shifted left 12 (`0x1DCA`), one sweep every 16
+/// ticks; `0x16` is `work:0x8124`, the slot's animate word (`0x1D66`). Every other word reads
+/// as 0 here: no stock sprite with more than one frame uses one.
+#[must_use]
+pub fn bank_word(selector: u16, tick: f32, animate: u16) -> u16 {
+    match selector {
+        // Saturating float-to-int: a negative or NaN tick is tick 0.
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "only the low four bits are kept"
+        )]
+        0x10 => ((tick.floor() as u32 & 0xF) << 12) as u16,
+        0x16 => animate,
+        _ => 0,
+    }
+}
+
+/// Whether a sprite's visibility gate lets it draw for an actor in `state_mask`.
+fn sprite_gate_open(sprite: &ShapeSprite, state_mask: u16) -> bool {
+    match sprite.visibility {
+        VisibilityCondition::ActorState { mask, expected } => state_mask & mask == expected,
+        _ => true,
+    }
+}
+
+/// `point` taken through the column-major affine `matrix`.
+fn transform_point(matrix: &[f32; 16], point: [f32; 3]) -> [f32; 3] {
+    let [x, y, z] = point;
+    [
+        matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
+        matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
+        matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
+    ]
 }
 
 /// The column-major product `a * b`.

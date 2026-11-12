@@ -175,3 +175,10 @@ A made-up six-frame capture set, the capture files present, the ticks a render h
 ### 22. `parity/pairing/` (matched-frame pairing)
 
 `meta.json` is a capture document of four frames to pair with `parity/bench/render/` (ticks 10 and 20), reusing the files of `parity/bench/capture/`: ordinals 1 and 2 match; ordinal 3 is at tick 30, which the render lacks; ordinal 4 names `tick_0004.idx`, which does not exist. `expected.json` lists the matched and unmatched ordinals. Pinned by `tests/test_matched_frames.py`; the Rust pairing step reads the same two files.
+
+### 23. `synthetic_animate.sod` (32 bytes) and `synthetic_sprite.bin` (10 bytes)
+A made-up `OP_ANIMATE` shape and the image both of its frames name. No byte is the game's.
+
+- **`synthetic_animate.sod`**: header (`OP_ID`, `bounding_size = 100`, `yoff = 0`, `scale_index = 1`, 0.5 m a unit, `collision = 0`), then `CLRV`, `PUTV` register 0, `OP_ANIMATE` (`0x01F8`) with register offset 0, size 4 (2 m), selector `0x16` (the slot's animate word), a count of 2 and the ids `0x1F01`, `0x1F02`, then `OP_RETURN`.
+- **`synthetic_sprite.bin`**: width 2, height 2, a zero word, then the pixels `05 00` / `00 07`, read from byte 6 as `PLAYONE`'s blitter reads them.
+- Used by `scene_test.rs`: an actor bound to the shape draws one 2 m sprite of frame `0x1F01` at its position, and none when the archive lacks the frame's chunk.

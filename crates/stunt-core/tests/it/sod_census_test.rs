@@ -7,15 +7,14 @@
 //! nothing else reads.
 
 use stunt_core::sod::{
-    DecodeMode, DecodeRecord, OP_COLOR, OP_RETURN, OP_TAP, SodError, SodStop, SodStopReason,
-    census_skip, decode_sod,
+    DecodeMode, DecodeRecord, OP_ANIMATE, OP_COLOR, OP_RETURN, OP_TAP, SodError, SodStop,
+    SodStopReason, census_skip, decode_sod,
 };
 
 const CLR2D: u16 = 0x0360;
 const SCALEIT: u16 = 0x0321;
 const BZLT: u16 = 0x0318;
 const GOSUB: u16 = 0x01A7;
-const ANIMATE: u16 = 0x01F8;
 const BVLT: u16 = 0x02F4;
 
 fn model(words: &[u16]) -> Vec<u8> {
@@ -45,7 +44,7 @@ fn masked_stream() -> Vec<u8> {
         OP_COLOR, // operand
         BVLT,     // 16
         OP_RETURN, OP_RETURN, OP_RETURN, OP_COLOR, // 24
-        7, ANIMATE, // 28: reg, parameter, selector, count = 2, then two resource IDs
+        7, OP_ANIMATE, // 28: runs: reg, size, selector, count = 2, then two resource IDs
         0, OP_RETURN, OP_RETURN, 2, OP_RETURN, OP_RETURN,
         OP_TAP, // 42: reg, count = 2, then two anchor offsets
         0, 2, OP_RETURN, 28, OP_RETURN, // 52
@@ -74,7 +73,6 @@ fn census_steps_over_and_records_each_unimplemented_opcode() {
             stopped(10, CLR2D, SodStopReason::UnknownOpcode),
             stopped(12, SCALEIT, SodStopReason::UnknownOpcode),
             stopped(16, BVLT, SodStopReason::UnknownOpcode),
-            stopped(28, ANIMATE, SodStopReason::UnknownOpcode),
             stopped(42, OP_TAP, SodStopReason::MissingAnchors),
         ]
     );
@@ -84,18 +82,18 @@ fn census_steps_over_and_records_each_unimplemented_opcode() {
 
 #[test]
 fn census_records_the_masked_opcodes_behind_the_first_blocking_one() {
-    // CLR2D blocks first; ANIMATE and TAP are masked behind it but still walked. The
-    // record keeps stream order, so entry 0 is the first blocking opcode and the rest sit
-    // behind it.
+    // CLR2D blocks first; TAP is masked behind it but still walked, past the ANIMATE that
+    // runs. The record keeps stream order, so entry 0 is the first blocking opcode and the
+    // rest sit behind it.
     let record = census(&model(&[
-        CLR2D, ANIMATE, 0, 0, 0, 0, OP_TAP, 0, 1, 0, OP_RETURN,
+        CLR2D, OP_ANIMATE, 0, 0, 0, 0, OP_TAP, 0, 1, 0, OP_RETURN,
     ]));
     assert_eq!(
         record.stepped_over[0],
         stopped(10, CLR2D, SodStopReason::UnknownOpcode)
     );
-    assert_eq!(record.stepped_over[1].opcode, ANIMATE);
-    assert_eq!(record.stepped_over[2].opcode, OP_TAP);
+    assert_eq!(record.stepped_over[1].opcode, OP_TAP);
+    assert_eq!(record.stepped_over.len(), 2);
     assert_eq!(record.returned_at, Some(30));
     assert_eq!(record.stop, None);
 }

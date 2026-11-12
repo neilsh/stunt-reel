@@ -208,7 +208,7 @@ fn process_polygon_batch(
 /// - [`DecodeMode::Lenient`]: a blocked stream stops the decode and keeps the geometry so far;
 ///   the [`DecodeRecord`] carries the stop.
 /// - [`DecodeMode::Census`]: `anchors` is ignored, known-width blocking opcodes are stepped over
-///   ([`DecodeRecord::stepped_over`]), and the shape has no vertices or indices.
+///   ([`DecodeRecord::stepped_over`]), and the shape has no vertices, indices or sprites.
 ///
 /// `anchors` is the global anchor table `OP_TAP` resolves against.
 ///
@@ -253,6 +253,9 @@ pub fn decode_sod_lit(
         Vec::new()
     };
     let mut ir = build_sod_model_ir(name, &polygons);
+    if geometry {
+        ir.sprites = run.sprites;
+    }
     ir.set_decode(DecodeRecord {
         header: run.header,
         stop: run.stop,

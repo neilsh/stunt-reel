@@ -51,7 +51,7 @@ Earlier breakdowns, superseded: CTRY on 2026-10-24 (`main`, after back-face cull
 
 * **The CTRY-derived fixes transfer to INTRO**: index agreement was 0.482 on INTRO against 0.472 on CTRY, so the unlit colours and the 185-row viewport are not CTRY artefacts.
 * INTRO is worse than CTRY, with terrain the largest class. Its capture covers ticks 769 to 3,640 and ends before tick 3,822, so it is not a full-film score.
-* `INTRO.FLM` uses the partial SOD `0x7F09` (opcode `0x02FD`, `[Unknown]`) and CTRY the partial `0x0107` (`OP_ANIMATE`, `0x01F8`); their cost is not isolated by this split.
+* `INTRO.FLM` uses the partial SOD `0x7F09` (opcode `0x02FD`, `[Unknown]`) and CTRY the partial `0x0107` (`OP_ANIMATE`, `0x01F8`); their cost is not isolated by this split. `0x0107` has since been drawn ([`sod-animate.md`](../playone-exe/sod-animate.md) § 4).
 * Worst terrain frames in the early CTRY run: ordinals 52, 55 and 35 (ticks 568, 601, 382), 0.22 to 0.25 each; not inspected.
 
 _Found 2026-10-22 and 2026-10-23 at `d90a047`; re-measured 2026-11-02 at `794daa5` and again after #132 at `793895e` ([#98](https://github.com/neilsh/stunt-reel/issues/98)); see the [parity log](../../work/2026-10/parity-log/log.md)._
