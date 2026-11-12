@@ -172,7 +172,7 @@ _Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anc
 |---|---|
 | 28-byte anchor table | `stunt_core::anchor::AnchorPoint` slice |
 | TAP operand loop | `OP_TAP` arm in [`crates/stunt-core/src/sod/vm.rs`](../../crates/stunt-core/src/sod/vm.rs) |
-| Work-segment transform/cache | Not modelled. TAP writes the anchor's `[-x, -y, z]` in shape units, less the header lift; `world.rs` decodes each TAP shape again against the table shifted by its placement (`anchored_models`) |
+| Work-segment transform/cache | Not modelled. TAP writes the anchor's `[-x, -y, z]` in shape units, less the header lift; `world/mod.rs` decodes each TAP shape again against the table shifted by its placement (`anchored_models`) |
 | Vertex arena write | `regs[(reg_off/12 + i) & 1023]` |
 | Anchor source | `ANCHORPT.DAT` located by [`crates/stunt-cli/src/scene.rs`](../../crates/stunt-cli/src/scene.rs); raw records supplied to the VM |
 

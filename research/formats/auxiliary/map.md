@@ -5,7 +5,7 @@ summary: "`MAP.BIN` ([FMT-MAP-AREA]) patch pool and `REGIONS.BIN` block tree fro
 
 ## 1. Overview & File Identification
 
-`MAP.BIN` holds the island's ground: flat polygons over [`ANCHORPT.DAT`](anchorpt.md)'s points, each with a palette colour, linked into lists of coarse patches and the finer patches that replace them up close. `REGIONS.BIN` is the block tree those lists hang from. Both are working files of `SD.EXE`, the developers' scenery compiler, which turns them into the scenery tree the game carries ([`scenery.md`](scenery.md)). The renderer reads `MAP.BIN` for terrain (`world.rs`); nothing reads `REGIONS.BIN`.
+`MAP.BIN` holds the island's ground: flat polygons over [`ANCHORPT.DAT`](anchorpt.md)'s points, each with a palette colour, linked into lists of coarse patches and the finer patches that replace them up close. `REGIONS.BIN` is the block tree those lists hang from. Both are working files of `SD.EXE`, the developers' scenery compiler, which turns them into the scenery tree the game carries ([`scenery.md`](scenery.md)). The renderer reads `MAP.BIN` for terrain (`world/mod.rs`); nothing reads `REGIONS.BIN`.
 
 ### 1.1 Origin: `SD.EXE`, the scenery compiler
 
@@ -32,7 +32,7 @@ flowchart LR
 - **Corpus.** Six `MAP.BIN` copies: `Developer/FreeFlight/SIDATA/`, `Developer/SIRes/SiData/`, `Developer/SODParse/`, `SITools/` and `SITools/OBJECTS/Dean/Egalloc/` are byte-identical. `SITools/OBJECTS/Dean/MAP.BIN` is a community edit: six records differ, and patch 22 counts 2 vertices. `REGIONS.BIN`, `SCENERY.BIN` and `SQUISHED.BIN` exist only in `SITools/`.
 - **Not in the game** (`[Established]` for the search, 2026-11-06). The unpacked `PLAYONE.EXE` (both builds) and `STUNT.EXE` (both copies, searched: the retail copy is the OldPLAY build with an entry stub appended, and both unpack to the same 248,460-byte image) hold the compiled ground: 158 of the 166 active patches as polygons with `MAP.BIN`'s colours ([`world-scene.md`](../../playone-exe/world-scene.md) section 2.1). Patches 52–55 and 62–65 appear in neither pointer nor index form in those four images or in any of the 3,844 corpus files that are not a `MAP.BIN` copy. Neither do the 12-byte headers of records 0, 1, 52 and 62. The record fields and those eight patches exist only in `MAP.BIN`, so the file cannot be rebuilt from the game.
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs), [`world.rs`](../../../crates/stunt-core/src/world.rs) and [`scene_tree.py`](../../../python/stunt_reel/scene_tree.py). No synthetic terrain fixture exists yet.
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs), [`world/mod.rs`](../../../crates/stunt-core/src/world/mod.rs) and [`scene_tree.py`](../../../python/stunt_reel/scene_tree.py). No synthetic terrain fixture exists yet.
 
 ---
 
@@ -121,7 +121,7 @@ The block tree has no schema, so its layout is recorded here (`[Established]` fo
 
 ### 3.3 Terrain Ingestion in `stuntreel`
 
-`world.rs` `parse_map_bin` reads the records after the head and keeps those in use whose vertices all index the anchor table, less the eight unlinked patches (`PATCHES_PLAYONE_NEVER_DRAWS`). That gives 158 polygons over 166 active records. The 166 records carry 584 vertex references in total: 94 records with three corners, 62 with four, 8 with five, one with six and one with eight. So `MAP.BIN` is a flat polygon list, not a tessellated mesh. Each polygon is fanned from its first corner and drawn flat at its colour (`[Established]`).
+`world/mod.rs` `parse_map_bin` reads the records after the head and keeps those in use whose vertices all index the anchor table, less the eight unlinked patches (`PATCHES_PLAYONE_NEVER_DRAWS`). That gives 158 polygons over 166 active records. The 166 records carry 584 vertex references in total: 94 records with three corners, 62 with four, 8 with five, one with six and one with eight. So `MAP.BIN` is a flat polygon list, not a tessellated mesh. Each polygon is fanned from its first corner and drawn flat at its colour (`[Established]`).
 
 ### 3.4 Global Ocean Water Quad
 
