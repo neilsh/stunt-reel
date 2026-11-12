@@ -24,7 +24,7 @@ mod scenery;
 
 use std::collections::HashMap;
 
-use scenery::{Placement, place_props};
+use scenery::{LodGate, Placement, place_props};
 pub use scenery::{ScnStop, ScnStopReason};
 
 use crate::anchor::AnchorPoint;
@@ -32,7 +32,7 @@ use crate::contracts::{
     NodeId, NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, ShapeMesh,
     SodModelIr, SodVertex, VisibilityCondition, arena_index,
 };
-use crate::sod::{DecodeMode, ShadeLight, SodError, SodStop, decode_sod_lit};
+use crate::sod::{DecodeMode, OP_TAP, ShadeLight, SodError, SodStop, decode_sod_lit, trace_sod};
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
 const IDENTITY_MATRIX: [f32; 16] = [
@@ -199,7 +199,11 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         .unwrap_or_default();
 
     let (own, tap_failures) = anchored_models(inputs, &placements.props);
-    let models = PropModels { shapes, own };
+    let models = PropModels {
+        shapes,
+        own,
+        chains: &placements.chains,
+    };
 
     let base_y = 0.0;
     let terrain = TerrainSurface::new(pts, &map_areas, base_y);
@@ -254,6 +258,8 @@ pub struct TapFailure {
 pub(crate) struct PropModels<'a> {
     shapes: &'a HashMap<u16, SodModelIr>,
     own: HashMap<usize, Option<SodModelIr>>,
+    /// The `SP_1NODE` gate chains placements index (`Placement::chain`).
+    chains: &'a [Vec<LodGate>],
 }
 
 #[cfg(test)]
@@ -263,6 +269,7 @@ impl<'a> PropModels<'a> {
         Self {
             shapes,
             own: HashMap::new(),
+            chains: &[],
         }
     }
 }
@@ -283,8 +290,10 @@ impl PropModels<'_> {
 /// `PLAYONE` (image `0xAD88`) loads a tapped point as the anchor less the shape's origin, so a
 /// point a stream builds from that origin, such as `0x0403`'s `CLRV; SUBV 0`, lands where
 /// the tree puts it (`research/playone-exe/sod-vm.md` section 4). Placements are whole tree
-/// units, so the shifted table is exact. A placement whose table overflows, or whose stream
-/// fails, is dropped and reported; one whose decode stops early is drawn and reported.
+/// units, so the shifted table is exact. A placement for which an anchor the stream taps
+/// overflows, or whose stream fails, is dropped and reported; one whose decode stops early is
+/// drawn and reported. An anchor the stream never taps may overflow: `PLAYONE` subtracts the
+/// origin from tapped anchors only.
 fn anchored_models(
     inputs: &WorldInputs<'_>,
     instances: &[Placement],
@@ -296,23 +305,35 @@ fn anchored_models(
         &Placement {
             shape: shape_id,
             position,
+            ..
         },
     ) in instances.iter().enumerate()
     {
         let Some(data) = inputs.anchored_shapes.get(&shape_id) else {
             continue;
         };
-        let (model, reason) = match shifted_anchors(inputs.anchors, position) {
-            Err(anchor) => (None, Some(TapFailureReason::AnchorOutOfRange { anchor })),
-            Ok(table) => {
-                let name = format!("MODEL_{shape_id:04X}.SOD");
-                match decode_sod_lit(data, &name, Some(&table), DecodeMode::Lenient, inputs.light) {
-                    Ok(ir) => {
-                        let stop = ir.decode().and_then(|record| record.stop);
-                        (Some(ir), stop.map(TapFailureReason::Stopped))
-                    }
-                    Err(error) => (None, Some(TapFailureReason::Decode(error))),
+        let (table, overflows) = shifted_anchors(inputs.anchors, position);
+        let tapped_overflow = (!overflows.is_empty())
+            .then(|| {
+                trace_sod(data, Some(&table), inputs.light)
+                    .steps
+                    .iter()
+                    .filter(|step| step.opcode == OP_TAP)
+                    .flat_map(|step| step.operands.iter().skip(2))
+                    .map(|&offset| usize::from(offset) / 28)
+                    .find(|anchor| overflows.contains(anchor))
+            })
+            .flatten();
+        let (model, reason) = if let Some(anchor) = tapped_overflow {
+            (None, Some(TapFailureReason::AnchorOutOfRange { anchor }))
+        } else {
+            let name = format!("MODEL_{shape_id:04X}.SOD");
+            match decode_sod_lit(data, &name, Some(&table), DecodeMode::Lenient, inputs.light) {
+                Ok(ir) => {
+                    let stop = ir.decode().and_then(|record| record.stop);
+                    (Some(ir), stop.map(TapFailureReason::Stopped))
                 }
+                Err(error) => (None, Some(TapFailureReason::Decode(error))),
             }
         };
         if let Some(reason) = reason {
@@ -327,20 +348,20 @@ fn anchored_models(
     (own, failures)
 }
 
-/// The anchor table less an `[I1]` placement (`-x, -y, z` of whole raw units).
+/// The anchor table less an `[I1]` placement (`-x, -y, z` of whole raw units), and the
+/// indices, in order, of the anchors whose shifted coordinates leave `i16`; those keep their
+/// unshifted record.
 ///
 /// A sentinel elevation is kept, so the record stays a sentinel.
-///
-/// # Errors
-/// The index of the first anchor whose shifted coordinate leaves `i16`.
 #[expect(
     clippy::cast_possible_truncation,
     reason = "placements are sums of i16 tree offsets, whole and far inside i32"
 )]
-fn shifted_anchors(anchors: &[AnchorPoint], position: [f32; 3]) -> Result<Vec<AnchorPoint>, usize> {
+fn shifted_anchors(anchors: &[AnchorPoint], position: [f32; 3]) -> (Vec<AnchorPoint>, Vec<usize>) {
     let by = [-position[0] as i32, -position[1] as i32, position[2] as i32];
     let shift = |value: i16, by: i32| i16::try_from(i32::from(value).checked_sub(by)?).ok();
-    anchors
+    let mut overflows = Vec::new();
+    let table = anchors
         .iter()
         .enumerate()
         .map(|(index, a)| {
@@ -349,12 +370,15 @@ fn shifted_anchors(anchors: &[AnchorPoint], position: [f32; 3]) -> Result<Vec<An
             } else {
                 Some(a.y)
             };
-            match (shift(a.x, by[0]), y, shift(a.z, by[2])) {
-                (Some(x), Some(y), Some(z)) => Ok(AnchorPoint { x, y, z }),
-                _ => Err(index),
+            if let (Some(x), Some(y), Some(z)) = (shift(a.x, by[0]), y, shift(a.z, by[2])) {
+                AnchorPoint { x, y, z }
+            } else {
+                overflows.push(index);
+                *a
             }
         })
-        .collect()
+        .collect();
+    (table, overflows)
 }
 
 /// Polygonal terrain patch from `MAP.BIN`.
@@ -457,6 +481,7 @@ pub(crate) fn build_world_ir(
                 &Placement {
                     shape: shape_id,
                     position: pos,
+                    ..
                 },
             )| {
                 let model = ir_models.get(index, shape_id)?;
@@ -712,7 +737,8 @@ fn ground_decal_vertices(
 /// Appends every ungated placed prop mesh slice, translated to its placement and lifted by
 /// `base_y`: those whose `is_decal` equals `decals`, except that every slice of a ground
 /// decal (`grounded` holds its snapped vertices, parallel to `instances`) goes in the decal
-/// batch. Slices behind a visibility gate go to [`push_gated_props`].
+/// batch. Slices behind a visibility gate, and every slice of a placement behind an
+/// `SP_1NODE` gate, go to [`push_gated_props`].
 fn push_props(
     ir: &mut SodModelIr,
     instances: &[Placement],
@@ -727,6 +753,7 @@ fn push_props(
             &Placement {
                 shape: shape_id,
                 position: pos,
+                ..
             },
             ground,
         ),
@@ -735,6 +762,9 @@ fn push_props(
         let Some(model) = ir_models.get(index, shape_id) else {
             continue;
         };
+        if instances.get(index).is_some_and(|p| p.chain != 0) {
+            continue;
+        }
         for mesh in model.meshes() {
             let in_decal_batch = ground.is_some() || mesh.is_decal();
             if in_decal_batch != decals
@@ -750,7 +780,8 @@ fn push_props(
 
 /// Appends every prop mesh behind a visibility gate as a node of its own under `parent`,
 /// with the gate moved into world space, so the renderer evaluates it per frame against
-/// the eye like an actor's.
+/// the eye like an actor's. A placement behind `SP_1NODE` gates puts every slice there,
+/// under the groups [`lod_parent`] makes for its chain.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
@@ -763,12 +794,15 @@ fn push_gated_props(
     ir_models: &PropModels<'_>,
     base_y: f32,
 ) {
+    let root = parent;
+    let mut groups: HashMap<(NodeId, LodGate), NodeId> = HashMap::new();
     for (
         index,
         (
             &Placement {
                 shape: shape_id,
                 position: pos,
+                ..
             },
             ground,
         ),
@@ -778,8 +812,13 @@ fn push_gated_props(
             continue;
         };
         let offset = [pos[0], pos[1] + base_y, pos[2]];
+        let chain = instances.get(index).map_or(0, |p| p.chain);
+        let parent = lod_parent(ir, parent, ir_models, chain, base_y, &mut groups);
         for mesh in model.meshes() {
-            if mesh.indices.is_empty() || mesh.node.visibility == VisibilityCondition::Always {
+            let gated_by_lod = parent != root;
+            if mesh.indices.is_empty()
+                || (!gated_by_lod && mesh.node.visibility == VisibilityCondition::Always)
+            {
                 continue;
             }
             let visibility = match mesh.node.visibility {
@@ -811,6 +850,42 @@ fn push_gated_props(
             );
         }
     }
+}
+
+/// The node a placement behind gate chain `chain` hangs under: `root` for the empty chain,
+/// otherwise the innermost of one transform group per gate, shared by placements whose
+/// chains start alike.
+fn lod_parent(
+    ir: &mut SodModelIr,
+    root: NodeId,
+    ir_models: &PropModels<'_>,
+    chain: u32,
+    base_y: f32,
+    groups: &mut HashMap<(NodeId, LodGate), NodeId>,
+) -> NodeId {
+    let gates = ir_models
+        .chains
+        .get(chain as usize)
+        .map_or(&[][..], Vec::as_slice);
+    let mut node = root;
+    for &gate in gates {
+        node = *groups.entry((node, gate)).or_insert_with(|| {
+            let [x, y, z] = gate.raw;
+            ir.allocate_node(
+                "WORLD_LOD",
+                Some(node),
+                IDENTITY_MATRIX,
+                VisibilityCondition::LodBranch {
+                    point: [-(x as f32), -(y as f32) + base_y, z as f32],
+                    ext: gate.ext,
+                    splitdist: gate.splitdist,
+                    near: gate.near,
+                },
+                NodeKind::TransformGroup,
+            )
+        });
+    }
+    node
 }
 
 /// Appends one prop mesh at `pos`, or at its ground-snapped vertices when it has them.
@@ -1029,6 +1104,7 @@ mod tests {
         let instances = [Placement {
             shape: 0x0100,
             position: [100.0, 50.0, 200.0],
+            chain: 0,
         }];
         let surface = TerrainSurface::new(&pts, &map_areas, 0.0);
         let world_ir = build_world_ir(
@@ -1049,6 +1125,46 @@ mod tests {
         assert!(base_node.is_some());
         let decal_node = world_ir.nodes.iter().find(|n| n.name == "WORLD_DECAL");
         assert!(decal_node.is_some());
+
+        // Behind an `SP_1NODE` gate the same prop leaves both batches for a mesh node per
+        // slice under one `LodBranch` group, which carries the gate in `[I1]`.
+        let gate = LodGate {
+            raw: [-100, -50, 200],
+            ext: 10,
+            splitdist: 105,
+            near: true,
+        };
+        let chains = [Vec::new(), vec![gate]];
+        let models = PropModels {
+            shapes: &ir_models,
+            own: HashMap::new(),
+            chains: &chains,
+        };
+        let gated = [Placement {
+            chain: 1,
+            ..instances[0]
+        }];
+        let world_ir = build_world_ir(&pts, &map_areas, &surface, &gated, &models, 0.0);
+        let lod: Vec<_> = world_ir
+            .nodes
+            .iter()
+            .filter(|n| n.name == "WORLD_LOD")
+            .collect();
+        assert_eq!(lod.len(), 1);
+        assert_eq!(
+            lod[0].visibility,
+            VisibilityCondition::LodBranch {
+                point: [100.0, 50.0, 200.0],
+                ext: 10,
+                splitdist: 105,
+                near: true,
+            }
+        );
+        assert_eq!(lod[0].children.len(), 2, "the base and decal slices");
+        assert!(
+            world_ir.nodes.iter().all(|n| n.name != "WORLD_DECAL"),
+            "nothing is left for the ungated decal batch"
+        );
     }
 
     /// One placement's distinct corners in world `[I1]` metres.
@@ -1084,7 +1200,11 @@ mod tests {
         };
         let placements: Vec<Placement> = instances
             .iter()
-            .map(|&(shape, position)| Placement { shape, position })
+            .map(|&(shape, position)| Placement {
+                shape,
+                position,
+                chain: 0,
+            })
             .collect();
         let (own, failures) = anchored_models(&inputs, &placements);
         let corners = instances
@@ -1211,6 +1331,29 @@ mod tests {
                 reason: TapFailureReason::AnchorOutOfRange { anchor: 1 },
             }]
         );
+    }
+
+    /// An anchor the stream never taps may leave `i16` once less the placement: the
+    /// placement is drawn, as `PLAYONE` subtracts the origin from tapped anchors only.
+    #[test]
+    fn test_anchored_models_ignore_an_untapped_anchor_out_of_range() {
+        use crate::sod::{OP_CLRV, OP_PUTV};
+        let anchors = [
+            AnchorPoint { x: 0, y: 0, z: 0 },
+            AnchorPoint { x: 100, y: 0, z: 0 },
+            AnchorPoint {
+                x: -20_000,
+                y: 0,
+                z: 0,
+            },
+        ];
+        let shape = tap_stream(0, 6, &[OP_CLRV, OP_PUTV, 0x18]);
+        // Raw x 20,000: untapped anchor 2 less it is -40,000.
+        let pos = [-20_000.0, 0.0, 0.0];
+        let (corners, failures) = placed_corners(&anchors, shape, &[(0x0400, pos)]);
+        assert!(failures.is_empty(), "{failures:?}");
+        assert_eq!(corners.len(), 1);
+        assert!(corners[0].is_some());
     }
 
     /// Without `MAP.BIN` the world is the ocean quad, then a flat ground quad.
@@ -1410,6 +1553,7 @@ mod tests {
             &[Placement {
                 shape: 0x0391,
                 position: at,
+                chain: 0,
             }],
             &PropModels::shared(&models),
             0.0,

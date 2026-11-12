@@ -721,6 +721,7 @@ mod tests {
         SceneFrame {
             tick: 7.0,
             view: ViewCamera::default(),
+            lens: stunt_core::contracts::DEFAULT_CAMERA_LENS,
             world: false,
             actors: Vec::new(),
             palette: PaletteControls {

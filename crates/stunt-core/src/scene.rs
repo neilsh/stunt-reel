@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 
 use crate::anchor::{AnchorPoint, parse_anchor_table};
-use crate::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
+use crate::contracts::trajectory::{DEFAULT_CAMERA_LENS, PLAYONE_FOV_Y_DEGREES};
 use crate::contracts::{ActorTransform, CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
@@ -273,6 +273,9 @@ pub struct SceneFrame {
     pub tick: f32,
     /// Lens-zoomed camera at this tick.
     pub view: ViewCamera,
+    /// The view camera's lens word at this tick, which also scales the scenery's
+    /// level-of-detail switch ([`CameraTransform::lod_keeps_subtree`]).
+    pub lens: u16,
     /// True when [`FilmScene::world`] should be drawn with an identity transform.
     pub world: bool,
     /// One draw per actor whose shape is in the table. Actors sharing a shape each get
@@ -472,6 +475,7 @@ impl FilmScene {
             return SceneFrame {
                 tick,
                 view: ViewCamera::default(),
+                lens: DEFAULT_CAMERA_LENS,
                 world,
                 actors: Vec::new(),
                 palette: PaletteControls::default(),
@@ -508,6 +512,7 @@ impl FilmScene {
         SceneFrame {
             tick,
             view: ViewCamera::from_authored(&record.camera),
+            lens: record.camera.lens,
             world,
             actors,
             palette: record.palette,

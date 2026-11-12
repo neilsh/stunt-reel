@@ -1,9 +1,10 @@
 //! Where the island's props stand: the **scenery walk** over `SCENERY.scn`, then dedup, then
 //! the sub-pixel cull (GLOSSARY.md: **Placement**, **Scenery walk**).
 //!
-//! [`place_props`] is the whole interface. The walk starts at the tree's root, takes each
-//! `SP_1NODE`'s subtree or its far stand-in by the camera path's distance (its LOD gate), and
-//! keeps only shapes the archive holds. Placements map raw island coordinates to `[I1]` as
+//! [`place_props`] is the whole interface. The walk starts at the tree's root, keeps both
+//! branches of each `SP_1NODE` the camera path comes near enough to need (its LOD gate, tested
+//! per frame by the renderer) and only the far stand-in of the rest, and keeps only shapes the
+//! archive holds. Placements map raw island coordinates to `[I1]` as
 //! `(-x, -y, z)`. Why the walk reads the tree this way: `research/formats/auxiliary/scenery.md`
 //! and `research/playone-exe/lod.md`.
 
@@ -18,6 +19,34 @@ pub(crate) struct Placement {
     pub(crate) shape: u16,
     /// Where the shape's origin stands, in `[I1]` metres.
     pub(crate) position: [f32; 3],
+    /// Index into [`Placements::chains`] of the `SP_1NODE` branches the prop stands behind;
+    /// 0 is the empty chain, a prop drawn on every frame.
+    pub(crate) chain: u32,
+}
+
+/// One `SP_1NODE` branch a placement stands behind, which the renderer tests per frame as a
+/// `VisibilityCondition::LodBranch`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct LodGate {
+    /// The node's accumulated position in raw island units.
+    pub(crate) raw: [i32; 3],
+    /// The node's extent word.
+    pub(crate) ext: i32,
+    /// The node's signed split distance.
+    pub(crate) splitdist: i32,
+    /// True for the subtree (drawn while near), false for the stand-in (drawn while far).
+    pub(crate) near: bool,
+}
+
+/// Which branches of one `SP_1NODE` the walk keeps.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LodChoice {
+    /// Descend into the subtree only: there is no camera path to test.
+    Near,
+    /// Draw the stand-in only.
+    Far,
+    /// Keep both, each behind a gate the renderer tests per frame.
+    Both,
 }
 
 /// What [`place_props`] found.
@@ -25,6 +54,8 @@ pub(crate) struct Placement {
 pub(crate) struct Placements {
     /// The placements in walk order, without repeats or props that stay sub-pixel.
     pub(crate) props: Vec<Placement>,
+    /// Gate chains the placements index; entry 0 is empty.
+    pub(crate) chains: Vec<Vec<LodGate>>,
     /// Why the walk ended before the end of the tree, if it did; the props gathered before
     /// the stop are kept.
     pub(crate) stop: Option<ScnStop>,
@@ -77,11 +108,12 @@ pub struct ScnStop {
 /// `view_eyes`.
 ///
 /// Only keys of `shapes` are placed, and each shape's radius sizes it for the cull. `view_eyes`
-/// are the camera eyes in time order, in `[I1]` metres: every `SP_1NODE` within its threshold
-/// of the path through them keeps its subtree, and a prop that stays under half a pixel along
-/// that path is dropped. With no eyes every subtree is kept and nothing is culled. `max_zoom`
-/// is the largest magnification over PLAYONE's default lens any camera reaches; below 1 it
-/// counts as 1.
+/// are the camera eyes in time order, in `[I1]` metres. An `SP_1NODE` the path comes within
+/// [`LOD_REACH`] of keeps both branches, each placement behind it carrying its gate chain
+/// ([`Placements::chains`]) for the renderer to test per frame; one farther away keeps only
+/// its stand-in. A prop that stays under half a pixel along the path is dropped. With no eyes
+/// every subtree is kept ungated and nothing is culled. `max_zoom` is the largest
+/// magnification over PLAYONE's default lens any camera reaches; below 1 it counts as 1.
 pub(crate) fn place_props(
     scenery: &[u8],
     shapes: &HashMap<u16, SodModelIr>,
@@ -91,17 +123,26 @@ pub(crate) fn place_props(
     let (chunks, _) = scenery.as_chunks::<4>();
     let words: Vec<i32> = chunks.iter().map(|c| i32::from_le_bytes(*c)).collect();
     let models: HashSet<u16> = shapes.keys().copied().collect();
-    // The world is built once per film, so an `SP_1NODE` keeps its subtree when the camera
-    // path ever comes within the node's threshold and draws its far stand-in otherwise.
-    // PLAYONE compares view-space depth per frame; this uses path distance.
+    let reach = LOD_REACH * max_zoom.max(1.0);
     let near = |pos: [f32; 3], ext: i32, splitdist: i32| {
-        view_eyes.is_empty() || path_distance(pos, view_eyes) <= lod_threshold(ext, splitdist)
+        if view_eyes.is_empty() {
+            return LodChoice::Near;
+        }
+        let bound = reach * splitdist.max(ext >> 1) as f32;
+        if path_distance(pos, view_eyes) > bound {
+            LodChoice::Far
+        } else {
+            LodChoice::Both
+        }
     };
     let mut walk = ScnWalk {
         words: &words,
         models: &models,
         near: &near,
         found: Vec::new(),
+        chain: Vec::new(),
+        chain_ids: HashMap::from([(Vec::new(), 0)]),
+        chains: vec![Vec::new()],
         on_path: HashSet::new(),
         visits: 0,
         budget: words.len().saturating_mul(SCN_VISITS_PER_WORD),
@@ -109,9 +150,15 @@ pub(crate) fn place_props(
         halted: false,
     };
     walk.walk_scn(1, (0, 0, 0), 0);
-    let ScnWalk { found, stop, .. } = walk;
+    let ScnWalk {
+        found,
+        stop,
+        chains,
+        ..
+    } = walk;
     Placements {
         props: cull_subpixel(dedup(found), shapes, view_eyes, max_zoom.max(1.0)),
+        chains,
         stop,
     }
 }
@@ -130,14 +177,13 @@ const CORNER_DEPTH_FLOOR: f32 = 0.804;
 /// past wgpu's 256 MiB buffer limit, and the dropped props cannot reach a pixel.
 const MIN_PROP_PIXELS: f32 = 0.5;
 
-/// Fraction of an `SP_1NODE`'s split distance beyond half its extent that counts as near.
+/// How far, as a multiple of the zoom and of the larger of an `SP_1NODE`'s `splitdist` and
+/// half its `ext`, the camera path may pass from the node and still need its subtree.
 ///
-/// PLAYONE scales that span by `DS:0x22A4 / 0x10000`, the full-detail word times the
-/// per-shot projection mantissa, which lies in `[0.5, 1)` when normalised (research/playone-exe/lod.md
-/// section 2). The value is per shot, so this is a fixed stand-in: 0.5 scored best of
-/// 0.5, 0.75 and 1.0 on both parity films (research/playone-exe/lod.md).
-const LOD_SCALE: f32 = 0.5;
-
+/// View-space depth never exceeds distance, and PLAYONE keeps the subtree to a true depth of
+/// at most `2^(0x229E + 1)` times that size, where `2^0x229E` is under twice the zoom
+/// (research/playone-exe/lod.md section 2.2).
+const LOD_REACH: f32 = 4.0;
 /// Node visits one walk may make, per word of `SCENERY.scn`. A tree walked once visits at
 /// most one node per two words, so this leaves room for subtrees shared several times over
 /// while keeping the bound proportional to the input. A fixed ceiling would be too loose: a
@@ -164,6 +210,7 @@ fn dedup(placements: Vec<Placement>) -> Vec<Placement> {
             norm_zero(pos[0]).to_bits(),
             norm_zero(pos[1]).to_bits(),
             norm_zero(pos[2]).to_bits(),
+            placement.chain,
         );
         if seen.insert(key) {
             unique.push(placement);
@@ -195,23 +242,6 @@ fn path_distance(point: [f32; 3], eyes: &[[f32; 3]]) -> f32 {
             .zip(eyes.iter().skip(1))
             .map(|(&a, &b)| point_segment_distance(point, a, b))
             .fold(f32::INFINITY, f32::min)
-    }
-}
-
-/// Camera distance in metres up to which PLAYONE draws an `SP_1NODE`'s subtree.
-///
-/// Mirrors image `0x2121..0x2147`: with `half = ext / 2`, the threshold is `splitdist` when
-/// `splitdist < half`, else `half + (splitdist - half) * LOD_SCALE`.
-#[expect(
-    clippy::arithmetic_side_effects,
-    reason = "ext is a 16-bit extent and splitdist a 16-bit signed distance, so the i32 maths cannot overflow"
-)]
-fn lod_threshold(ext: i32, splitdist: i32) -> f32 {
-    let half = ext >> 1;
-    if splitdist < half {
-        splitdist as f32
-    } else {
-        half as f32 + (splitdist - half) as f32 * LOD_SCALE
     }
 }
 
@@ -252,10 +282,16 @@ struct ScnWalk<'a> {
     words: &'a [i32],
     /// Shapes that can be placed.
     models: &'a HashSet<u16>,
-    /// The LOD gate: whether an `SP_1NODE` at `pos` with `ext` and `splitdist` keeps its subtree.
-    near: &'a dyn Fn([f32; 3], i32, i32) -> bool,
+    /// The LOD gate: which branches of an `SP_1NODE` at `pos` with `ext` and `splitdist` to keep.
+    near: &'a dyn Fn([f32; 3], i32, i32) -> LodChoice,
     /// Placements in walk order, repeats included.
     found: Vec<Placement>,
+    /// The gates the node being walked stands behind.
+    chain: Vec<LodGate>,
+    /// Index of each chain seen so far in `chains`.
+    chain_ids: HashMap<Vec<LodGate>, u32>,
+    /// Every distinct chain, in first-seen order; entry 0 is empty.
+    chains: Vec<Vec<LodGate>>,
     /// Nodes the active frames are inside, to catch a pointer back to an ancestor. A node
     /// reached again from a sibling branch is not an ancestor and is walked again.
     on_path: HashSet<usize>,
@@ -316,9 +352,15 @@ impl ScnWalk<'_> {
     /// Places `obj` at the raw island position `(cx, cy, cz)` if it is a shape the archive holds.
     fn place(&mut self, obj: u16, (cx, cy, cz): (i32, i32, i32)) {
         if self.models.contains(&obj) {
+            let next_id = u32::try_from(self.chains.len()).unwrap_or(u32::MAX);
+            let chain = *self.chain_ids.entry(self.chain.clone()).or_insert(next_id);
+            if chain == next_id {
+                self.chains.push(self.chain.clone());
+            }
             self.found.push(Placement {
                 shape: obj,
                 position: [-(cx as f32), -(cy as f32), cz as f32],
+                chain,
             });
         }
     }
@@ -336,7 +378,9 @@ impl ScnWalk<'_> {
             return;
         }
         let mut entered = Vec::new();
+        let gates = self.chain.len();
         self.walk_chain(ni, pos, depth, &mut entered);
+        self.chain.truncate(gates);
         // This frame is done, so its nodes stop being ancestors of whatever is walked next.
         for node in entered {
             self.on_path.remove(&node);
@@ -402,21 +446,38 @@ impl ScnWalk<'_> {
                 2 => {
                     // SP_1NODE: obj, ext, splitdist, next. PLAYONE descends `next` when the node
                     // is near and otherwise draws `obj` as a stand-in for the whole subtree
-                    // (image `0x2121`, research/playone-exe/lod.md section 1).
+                    // (image `0x2121`, research/playone-exe/lod.md section 1). Kept both ways,
+                    // each placement carries the gate of its branch.
                     let Some([obj, ext, splitdist, next]) = scn_operands(words, ni) else {
                         self.note(ni, ScnStopReason::Malformed);
                         break;
                     };
                     let ext = i32::from(scn_u16(ext));
                     let splitdist = scn_i16(splitdist);
-                    if (self.near)([-(cx as f32), -(cy as f32), cz as f32], ext, splitdist) {
-                        ni = scn_pointer(next);
-                    } else {
-                        let obj = scn_u16(obj);
-                        if obj != 0 {
-                            self.place(obj, (cx, cy, cz));
+                    let gate = |near| LodGate {
+                        raw: [cx, cy, cz],
+                        ext,
+                        splitdist,
+                        near,
+                    };
+                    let obj = scn_u16(obj);
+                    match (self.near)([-(cx as f32), -(cy as f32), cz as f32], ext, splitdist) {
+                        LodChoice::Near => ni = scn_pointer(next),
+                        LodChoice::Far => {
+                            if obj != 0 {
+                                self.place(obj, (cx, cy, cz));
+                            }
+                            break;
                         }
-                        break;
+                        LodChoice::Both => {
+                            if obj != 0 {
+                                self.chain.push(gate(false));
+                                self.place(obj, (cx, cy, cz));
+                                self.chain.pop();
+                            }
+                            self.chain.push(gate(true));
+                            ni = scn_pointer(next);
+                        }
                     }
                 }
                 4 | 6 | 8 | 16 | 18 => {
@@ -592,7 +653,11 @@ mod tests {
 
     /// The placement of `shape` at `position`.
     fn at(shape: u16, position: [f32; 3]) -> Placement {
-        Placement { shape, position }
+        Placement {
+            shape,
+            position,
+            chain: 0,
+        }
     }
 
     #[test]
@@ -891,27 +956,87 @@ mod tests {
         ]
     }
 
-    /// The shapes `words` places with one camera eye at `[I1]` x = `eye_x`.
+    /// The shapes `words` places with one camera eye at `[I1]` x = `eye_x`; each is 10 m
+    /// across, so the sub-pixel cull keeps it within 1.2 km.
     fn seen_from(words: &[i32], eye_x: f32) -> Vec<u16> {
-        let placements = place_props(
-            &scn(words),
-            &shapes(&[LEAF, STAND_IN]),
-            &[[eye_x, 0.0, 0.0]],
-            1.0,
-        );
+        let big = HashMap::from([(LEAF, shape(10.0)), (STAND_IN, shape(10.0))]);
+        let placements = place_props(&scn(words), &big, &[[eye_x, 0.0, 0.0]], 1.0);
         placed_shapes(&placements)
     }
 
     #[test]
-    fn a_one_node_keeps_its_subtree_within_its_threshold_and_stands_in_past_it() {
-        // splitdist >= ext / 2: the threshold is 5 + (105 - 5) * LOD_SCALE = 55 m from the node.
+    fn a_one_node_keeps_both_branches_within_reach_and_only_its_stand_in_past_it() {
+        // The reach is LOD_REACH times the larger of splitdist and half ext: 4 * 105 = 420 m.
         let words = one_node(STAND_IN, 10, 105);
-        assert_eq!(seen_from(&words, 355.0), [LEAF]);
-        assert_eq!(seen_from(&words, 356.0), [STAND_IN]);
-        // splitdist < ext / 2: the threshold is splitdist, 50 m.
+        assert_eq!(seen_from(&words, 720.0), [STAND_IN, LEAF]);
+        assert_eq!(seen_from(&words, 721.0), [STAND_IN]);
+        // Half ext is the larger: 4 * 200 = 800 m.
         let words = one_node(STAND_IN, 400, 50);
-        assert_eq!(seen_from(&words, 350.0), [LEAF]);
-        assert_eq!(seen_from(&words, 351.0), [STAND_IN]);
+        assert_eq!(seen_from(&words, 1100.0), [STAND_IN, LEAF]);
+        assert_eq!(seen_from(&words, 1101.0), [STAND_IN]);
+        // A zoom of 2 doubles the reach.
+        let big = HashMap::from([(LEAF, shape(10.0)), (STAND_IN, shape(10.0))]);
+        let placements = place_props(
+            &scn(&one_node(STAND_IN, 10, 105)),
+            &big,
+            &[[1140.0, 0.0, 0.0]],
+            2.0,
+        );
+        assert_eq!(placed_shapes(&placements), [STAND_IN, LEAF]);
+    }
+
+    #[test]
+    fn each_branch_kept_carries_its_gate_and_a_later_sibling_none() {
+        const OTHER: u16 = 0x0300;
+        // SP_LIST of: SP_POS (-300, 0, 0) -> SP_1NODE (stand-in, ext 10, split 105) -> leaf;
+        // and a leaf at the origin.
+        let words = [
+            0,
+            20,
+            ptr(7),
+            ptr(19),
+            0,
+            14,
+            0,
+            0,
+            -300,
+            0,
+            0,
+            ptr(12),
+            2,
+            i32::from(STAND_IN),
+            10,
+            105,
+            ptr(17),
+            10,
+            i32::from(LEAF),
+            10,
+            i32::from(OTHER),
+        ];
+        let placements = place_props(
+            &scn(&words),
+            &shapes(&[LEAF, STAND_IN, OTHER]),
+            &[[600.0, 0.0, 0.0]],
+            1.0,
+        );
+        let gate = |near| LodGate {
+            raw: [-300, 0, 0],
+            ext: 10,
+            splitdist: 105,
+            near,
+        };
+        let chain_of = |shape: u16| {
+            let p = placements
+                .props
+                .iter()
+                .find(|p| p.shape == shape)
+                .expect("placed");
+            placements.chains[p.chain as usize].clone()
+        };
+        assert_eq!(placed_shapes(&placements), [STAND_IN, LEAF, OTHER]);
+        assert_eq!(chain_of(STAND_IN), [gate(false)]);
+        assert_eq!(chain_of(LEAF), [gate(true)]);
+        assert!(chain_of(OTHER).is_empty());
     }
 
     #[test]
@@ -919,7 +1044,7 @@ mod tests {
         let placements = place_props(
             &scn(&one_node(STAND_IN, 10, 105)),
             &shapes(&[LEAF, STAND_IN]),
-            &[[400.0, 0.0, 0.0]],
+            &[[721.0, 0.0, 0.0]],
             1.0,
         );
         assert_eq!(placements.props, [at(STAND_IN, [300.0, -0.0, 0.0])]);

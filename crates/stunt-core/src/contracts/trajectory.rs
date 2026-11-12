@@ -74,6 +74,71 @@ impl CameraTransform {
         (product >> 16) as f32 / 32768.0 * f32::from(1u16 << shifts_left)
     }
 
+    /// PLAYONE's lens words for this camera: the level-of-detail mantissa `0x22A4` and the
+    /// depth shift `0x229E`.
+    ///
+    /// Mirrors image `0x120A..0x124D` at detail `0xFFFF` (research/playone-exe/lod.md
+    /// section 2): `0x229C` is the high word of `lens * 0x7FFF` after the normalising
+    /// shifts, `0x22A4 = (0x229C * 0xFFFF * 2) >> 16`, and `0x229E` is the shifts left over.
+    #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "`lens` is a u16, so `lens * 0x7FFF` is below 2^31; `shifts_left` stays in 0..=3; `0x229C * 0xFFFF * 2` is below 2^32"
+    )]
+    pub fn lod_lens_words(&self) -> (u16, u8) {
+        let mut product = u32::from(self.lens) * 0x7FFF;
+        let mut shifts_left = 3u8;
+        while product & 0x4000_0000 == 0 && shifts_left > 0 {
+            product <<= 1;
+            shifts_left -= 1;
+        }
+        let scale = product >> 16;
+        let mantissa = u16::try_from((u64::from(scale) * 0xFFFF * 2) >> 16).unwrap_or(u16::MAX);
+        (mantissa, shifts_left)
+    }
+
+    /// Whether PLAYONE's `SP_1NODE` switch (image `0x2121..0x2147`) descends into the
+    /// subtree of a node at `point` (`[I1]` metres) with extent `ext` and split distance
+    /// `splitdist`, seen from this camera, rather than drawing its stand-in.
+    ///
+    /// The depth compared is the high word of the zoomed view matrix's depth row (image
+    /// `0x211E`): the node's distance along the view axis halved, by the Q15 rows, and shifted
+    /// right by `0x229E`. With `half = ext >> 1` the threshold is `splitdist` when
+    /// `splitdist < half`, else `half + ((splitdist - half) * 0x22A4 >> 16)`
+    /// (research/playone-exe/lod.md sections 1.1 and 2.2).
+    #[must_use]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "ext and splitdist are 16-bit words and the mantissa a u16, so the i64 maths cannot overflow"
+    )]
+    pub fn lod_keeps_subtree(&self, point: [f32; 3], ext: i32, splitdist: i32) -> bool {
+        let (mantissa, shift) = self.lod_lens_words();
+        let forward = [
+            self.target[0] - self.eye[0],
+            self.target[1] - self.eye[1],
+            self.target[2] - self.eye[2],
+        ];
+        let len =
+            (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]).sqrt();
+        if len <= 0.0 {
+            return true;
+        }
+        let depth = ((point[0] - self.eye[0]) * forward[0]
+            + (point[1] - self.eye[1]) * forward[1]
+            + (point[2] - self.eye[2]) * forward[2])
+            / len;
+        // The depth row's high word: Q15 rows halve it, and `0x229E` shifts it further.
+        let depth = (depth / f32::from(2u16 << shift)).floor();
+        let half = i64::from(ext >> 1);
+        let split = i64::from(splitdist);
+        let threshold = if split < half {
+            split
+        } else {
+            half + (((split - half) * i64::from(mantissa)) >> 16)
+        };
+        depth <= threshold as f32
+    }
+
     /// Vertical field of view for this camera's lens, given `base_fov_degrees` at
     /// [`DEFAULT_CAMERA_LENS`], which it returns exactly. A zero lens keeps the base.
     #[must_use]
@@ -268,6 +333,45 @@ mod tests {
         let narrow = camera(44236).lens_fov_degrees(45.0);
         assert!((narrow - 8.77).abs() < 0.01, "{narrow}");
         assert_eq!(camera(0).lens_fov_degrees(45.0), 45.0);
+    }
+
+    #[test]
+    fn lod_lens_words_follow_playone_normalisation() {
+        let camera = |lens| CameraTransform {
+            lens,
+            ..CameraTransform::default()
+        };
+        // 0x22A4 = (0x229C * 0xFFFF * 2) >> 16 at full detail; 0x229E is the shifts left over.
+        assert_eq!(camera(DEFAULT_CAMERA_LENS).lod_lens_words(), (0xFFFD, 0));
+        assert_eq!(camera(20480).lod_lens_words(), (0x9FFD, 2));
+        assert_eq!(camera(44236).lod_lens_words(), (0xACC9, 3));
+    }
+
+    #[test]
+    fn lod_keeps_subtree_compares_halved_shifted_depth() {
+        // Looking down -z from the origin; node 1000 m ahead, ext 400 (half 200), split 600:
+        // the threshold is 200 + (400 * 0xFFFD >> 16) = 599.
+        let camera = |lens| CameraTransform {
+            eye: [0.0, 0.0, 0.0],
+            target: [0.0, 0.0, -1.0],
+            lens,
+            ..CameraTransform::default()
+        };
+        let at = |depth: f32| [0.0, 0.0, -depth];
+        let default = camera(DEFAULT_CAMERA_LENS);
+        // Depth is halved: 1198 m reads 599, 1200 m reads 600.
+        assert!(default.lod_keeps_subtree(at(1198.0), 400, 600));
+        assert!(!default.lod_keeps_subtree(at(1200.0), 400, 600));
+        // A split under half the extent is the threshold itself.
+        assert!(default.lod_keeps_subtree(at(200.0), 400, 100));
+        assert!(!default.lod_keeps_subtree(at(204.0), 400, 100));
+        // Lens 44236 shifts depth right three more times and scales the span by 0xACC9:
+        // 200 + (400 * 0xACC9 >> 16) = 469, so the subtree holds to 470 * 16 = 7520 m.
+        let zoomed = camera(44236);
+        assert!(zoomed.lod_keeps_subtree(at(7519.0), 400, 600));
+        assert!(!zoomed.lod_keeps_subtree(at(7520.0), 400, 600));
+        // A node behind the eye is near.
+        assert!(default.lod_keeps_subtree(at(-5000.0), 400, 600));
     }
 
     #[test]

@@ -18,6 +18,7 @@ use std::collections::HashMap;
 
 use glam::{Mat4, Vec3};
 
+use stunt_core::contracts::CameraTransform;
 use stunt_core::scene::{FilmScene, SceneFrame};
 
 use crate::camera::{CameraController, CameraGpuResources};
@@ -119,7 +120,15 @@ impl SceneRenderer {
         if frame.world
             && let Some(world) = &self.world
         {
-            let (base, decals) = world.collect_visible_meshes(0, 0.0, eye);
+            let (base, decals) = {
+                let lod_view = CameraTransform {
+                    eye: frame.view.eye,
+                    target: frame.view.target,
+                    lens: frame.lens,
+                    ..CameraTransform::default()
+                };
+                world.collect_visible_meshes(0, 0.0, eye, Some(&lod_view))
+            };
             self.prepared.push(PreparedDraw {
                 target: Target::World,
                 base,
@@ -137,7 +146,7 @@ impl SceneRenderer {
                 .inverse()
                 .transform_point3(eye);
             let (base, decals) =
-                model.collect_visible_meshes(actor.state_mask, actor.distance, local_eye);
+                model.collect_visible_meshes(actor.state_mask, actor.distance, local_eye, None);
             if base.is_empty() && decals.is_empty() {
                 continue;
             }
