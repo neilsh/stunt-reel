@@ -11,8 +11,8 @@ use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
 use crate::sod::{
     CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV, OP_IPG,
-    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SORT,
-    OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason,
+    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_PERFDISK, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV,
+    OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason,
     decode_sod,
 };
 
@@ -1265,5 +1265,85 @@ fn test_census_decode_keeps_no_sprites() {
     assert!(
         record.stepped_over.is_empty(),
         "ANIMATE runs, so nothing is stepped over"
+    );
+}
+
+/// Bytes of a model with register 1 at `centre`, register 2 at `axis` (stream signs, turned
+/// into the model frame on load) and one `OP_PERFDISK` of `radius` over them.
+fn perfdisk_model(centre: [i16; 3], axis: [i16; 3], radius: u16) -> Vec<u8> {
+    let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&2u16.to_le_bytes()); // count 2: registers 1 and 2
+    bytes.extend_from_slice(&12u16.to_le_bytes());
+    for coordinate in centre.into_iter().chain(axis) {
+        bytes.extend_from_slice(&coordinate.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
+    bytes.extend_from_slice(&45u16.to_le_bytes());
+    bytes.extend_from_slice(&OP_PERFDISK.to_le_bytes());
+    bytes.extend_from_slice(&12u16.to_le_bytes()); // centre register 1
+    bytes.extend_from_slice(&radius.to_le_bytes());
+    bytes.extend_from_slice(&24u16.to_le_bytes()); // axis register 2
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    bytes
+}
+
+/// A disc lies in the plane perpendicular to `centre - axis`, every vertex `radius` from the
+/// centre, and draws from both sides: one clockwise face per side, each normal facing its side.
+#[test]
+fn test_perfdisk_is_a_two_sided_disc_about_the_normal() {
+    // Stream (x, y, z) turns to (-x, -y, z): centre (10, 20, 30), axis (10, 20, 10), so the
+    // normal is +z.
+    let ir = decode(
+        &perfdisk_model([-10, -20, 30], [-10, -20, 10], 40),
+        "PERFDISK",
+    )
+    .expect("decode perfdisk");
+    assert_eq!(
+        ir.indices.len(),
+        2 * 14 * 3,
+        "two 16-gons, fan-triangulated"
+    );
+    for v in &ir.vertices {
+        assert_eq!(v.palette_index, 45);
+        assert!((v.position[2] - 30.0).abs() < 1e-3, "off the disc plane");
+        let d = ((v.position[0] - 10.0).powi(2) + (v.position[1] - 20.0).powi(2)).sqrt();
+        assert!((d - 40.0).abs() < 1e-3, "vertex {d} from the centre");
+    }
+    let mut sides = [0usize; 2];
+    for tri in ir.indices.chunks(3) {
+        let p: Vec<[f32; 3]> = tri
+            .iter()
+            .map(|&i| ir.vertices[i as usize].position)
+            .collect();
+        let edge_normal = compute_polygon_normal(&p);
+        let looks = ir.vertices[tri[0] as usize].normal;
+        // Clockwise seen from the side it looks toward: the edge cross points away from it.
+        assert!(
+            edge_normal[2] * looks[2] < 0.0,
+            "wrong winding for {looks:?}"
+        );
+        sides[usize::from(looks[2] > 0.0)] += 1;
+    }
+    assert_eq!(sides[0], sides[1], "one face for each side");
+}
+
+/// A disc whose axis register equals its centre has no plane and draws nothing, as does a
+/// zero radius.
+#[test]
+fn test_perfdisk_without_a_plane_or_radius_draws_nothing() {
+    let degenerate = perfdisk_model([-10, -20, 30], [-10, -20, 30], 40);
+    assert!(
+        decode(&degenerate, "PERFDISK")
+            .expect("decode")
+            .indices
+            .is_empty()
+    );
+    let empty = perfdisk_model([-10, -20, 30], [-10, -20, 10], 0);
+    assert!(
+        decode(&empty, "PERFDISK")
+            .expect("decode")
+            .indices
+            .is_empty()
     );
 }
