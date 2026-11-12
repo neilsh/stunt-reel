@@ -531,10 +531,11 @@ pub(crate) fn build_world_ir(
 
     // Ocean water quad at base_y - 1.0 per research/formats/auxiliary/map.md § 3.1.
     push_flat_quad(&mut ir, base_y - 1.0, OCEAN_COLOR, SCENERY_OCEAN);
+    let overlays = terrain_overlays(anchors, map_areas);
     if map_areas.is_empty() {
         push_flat_quad(&mut ir, base_y, GROUND_COLOR, SCENERY_TERRAIN);
     } else {
-        push_terrain(&mut ir, anchors, map_areas, base_y);
+        push_terrain(&mut ir, anchors, map_areas, &overlays, false, base_y);
     }
     let grounded: Vec<Option<Vec<[f32; 3]>>> = instances
         .iter()
@@ -557,6 +558,7 @@ pub(crate) fn build_world_ir(
 
     let base_indices = arena_index(ir.indices.len());
     let base_vertices = arena_index(ir.vertices.len());
+    push_terrain(&mut ir, anchors, map_areas, &overlays, true, base_y);
     push_props(&mut ir, instances, &grounded, ir_models, base_y, true);
     let decal_indices = arena_index(ir.indices.len()) - base_indices;
     let decal_vertices = arena_index(ir.vertices.len()) - base_vertices;
@@ -636,15 +638,90 @@ fn patch_corners(
         .collect()
 }
 
+/// A patch whose corners all lie on, and inside, an earlier patch of another colour is an
+/// overlay: `PLAYONE` paints each ground leaf over the ones drawn before it, so the later one
+/// shows, where our depth test would break the exact tie by rounding.
+///
+/// Returns one flag per area. The test uses the fans [`push_terrain`] draws, within
+/// [`GROUND_LIE_TOLERANCE`] of the earlier patch's plane. Why:
+/// `research/playone-exe/world-scene.md` section 6.5.
+fn terrain_overlays(anchors: &[AnchorPoint], map_areas: &[MapArea]) -> Vec<bool> {
+    let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
+    let corners: Vec<Option<Vec<[f32; 3]>>> = map_areas
+        .iter()
+        .map(|area| patch_corners(&pts, anchors, area))
+        .collect();
+    let mut overlays = vec![false; map_areas.len()];
+    for (j, (area, later)) in map_areas.iter().zip(&corners).enumerate() {
+        let Some(later) = later else { continue };
+        let Some(flags) = overlays.get_mut(j) else {
+            continue;
+        };
+        *flags = map_areas
+            .iter()
+            .zip(&corners)
+            .take(j)
+            .any(|(earlier_area, earlier)| {
+                earlier_area.color != area.color
+                    && earlier
+                        .as_deref()
+                        .is_some_and(|earlier| lies_on(later, earlier))
+            });
+    }
+    overlays
+}
+
+/// A point on a shared edge counts for both triangles.
+const EDGE_SLACK: f32 = -1e-4;
+
+/// Whether every corner of `poly` is over a triangle of `base`'s fan, within
+/// [`GROUND_LIE_TOLERANCE`] of its height there.
+fn lies_on(poly: &[[f32; 3]], base: &[[f32; 3]]) -> bool {
+    let Some((first, rest)) = base.split_first() else {
+        return false;
+    };
+    poly.iter().all(|p| {
+        rest.iter().zip(rest.iter().skip(1)).any(|(b, c)| {
+            let t = [*first, *b, *c];
+            let denom = (t[1][2] - t[2][2]) * (t[0][0] - t[2][0])
+                + (t[2][0] - t[1][0]) * (t[0][2] - t[2][2]);
+            if denom.abs() < 1e-9 {
+                return false;
+            }
+            let a = ((t[1][2] - t[2][2]) * (p[0] - t[2][0])
+                + (t[2][0] - t[1][0]) * (p[2] - t[2][2]))
+                / denom;
+            let b2 = ((t[2][2] - t[0][2]) * (p[0] - t[2][0])
+                + (t[0][0] - t[2][0]) * (p[2] - t[2][2]))
+                / denom;
+            let c2 = 1.0 - a - b2;
+            a >= EDGE_SLACK
+                && b2 >= EDGE_SLACK
+                && c2 >= EDGE_SLACK
+                && (a * t[0][1] + b2 * t[1][1] + c2 * t[2][1] - p[1]).abs() <= GROUND_LIE_TOLERANCE
+        })
+    })
+}
+
 /// Appends one fan-triangulated polygon per `MAP.BIN` patch whose corners are all valid
 /// anchor points, lifted by `base_y`.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
 )]
-fn push_terrain(ir: &mut SodModelIr, anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) {
+fn push_terrain(
+    ir: &mut SodModelIr,
+    anchors: &[AnchorPoint],
+    map_areas: &[MapArea],
+    overlays: &[bool],
+    overlay: bool,
+    base_y: f32,
+) {
     let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
-    for area in map_areas {
+    for (area, &is_overlay) in map_areas.iter().zip(overlays) {
+        if is_overlay != overlay {
+            continue;
+        }
         let Some(corners) = patch_corners(&pts, anchors, area) else {
             continue;
         };
@@ -1486,7 +1563,7 @@ mod tests {
             },
         ];
         let mut ir = SodModelIr::new("T");
-        push_terrain(&mut ir, &anchors, &areas, 2.0);
+        push_terrain(&mut ir, &anchors, &areas, &[false; 4], false, 2.0);
         assert_eq!(ir.vertices.len(), 4);
         assert_eq!(ir.indices, [0, 1, 2, 0, 2, 3]);
         assert!(ir.vertices.iter().all(|v| v.palette_index == 7
@@ -1494,6 +1571,45 @@ mod tests {
             && v.flags == FLAGS_UNSHADED
             && (v.position[1] - 2.0).abs() < f32::EPSILON));
         assert_eq!(ir.vertices[1].position, [10.0, 2.0, 0.0]);
+    }
+
+    /// A lake patch inside a larger flat patch of another colour is an overlay, and so is a
+    /// third patch over the lake; a patch 5 m off the plane or outside the base is not.
+    #[test]
+    fn a_patch_lying_on_an_earlier_patch_of_another_colour_is_an_overlay() {
+        let at = |x: i16, y: i16, z: i16| AnchorPoint { x, y, z };
+        let anchors = [
+            at(0, 0, 0),
+            at(-100, 0, 0),
+            at(-100, 0, 100),
+            at(0, 0, 100),
+            at(-10, 0, 10),
+            at(-20, 0, 10),
+            at(-20, 0, 20),
+            at(-10, 0, 20),
+            at(-10, -5, 10),
+            at(-20, -5, 10),
+            at(-20, -5, 20),
+            at(-10, -5, 20),
+            at(-200, 0, 10),
+            at(-210, 0, 10),
+            at(-210, 0, 20),
+        ];
+        let area = |color: u8, verts: &[usize]| MapArea {
+            color,
+            verts: verts.to_vec(),
+        };
+        let areas = [
+            area(195, &[0, 1, 2, 3]),
+            area(205, &[4, 5, 6, 7]),
+            area(195, &[4, 5, 6, 7]),
+            area(205, &[8, 9, 10, 11]),
+            area(205, &[12, 13, 14]),
+        ];
+        assert_eq!(
+            terrain_overlays(&anchors, &areas),
+            [false, true, true, false, false]
+        );
     }
 
     /// Terrain with one triangle rising 1 cm per metre of X: world corners (0, 10, 0),
