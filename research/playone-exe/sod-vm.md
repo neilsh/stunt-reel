@@ -344,7 +344,7 @@ _Source: [two-vertex polygons read](../../work/2026-11/393_two-vertex-polygons/j
 | `0x9BAA` | `LINECOL`: stores its word at `work:0x41EA`, the line colour. |
 | `0xBBD4`, `0xBB83` | Line routines that `0x9100` puts in `work:0x807E` (at `0x914F` and `0x9167`, beside `work:0x8080`'s polygon routines). `0xBBD4` reads both registers' screen words (`+6`, `+8`), clips the segment to the rectangle at `work:0x41C0..0x41C6` and calls `0:7FD2`. `0xBB83`, the clipping variant, was not read line by line. |
 | `0x7FD2` | Line gateway: `DI` = `work:0x41EA`, or 0 when `work:0x806C` is set (the shadow draw, section 9.1), then the driver slot `DS:[0x2244]`. |
-| `0x7511` | The driver's line (third word of the table at `DS:0x10A4`): a Bresenham line over the 320-byte page rows, endpoints ordered by column. When `|dx| >= |dy|` it stores `|dx| + 1` pixels, one per column; otherwise `|dy| + 1`, one per row. Both ends are drawn, in the low byte of `DI`, with no depth test. |
+| `0x7511` | The driver's line (third word of the table at `DS:0x10A4`): a Bresenham line over the 320-byte page rows, endpoints ordered by column. When `\|dx\| >= \|dy\|` it stores `\|dx\| + 1` pixels, one per column; otherwise `\|dy\| + 1`, one per row. Both ends are drawn, in the low byte of `DI`, with no depth test. |
 
 So a `ZLINETO` line is one pixel wide at any distance, from the pen register's screen point to the operand's, in the `LINECOL` colour. The pen is a register, so the line uses that register's value when `ZLINETO` runs. `0x7511` draws one pixel for coincident endpoints; whether the clipper `0xBBF3` passes such a segment was not read.
 

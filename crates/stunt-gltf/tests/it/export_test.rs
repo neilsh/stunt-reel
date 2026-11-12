@@ -22,7 +22,10 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
 use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource, ViewCamera};
-use stunt_core::sod::{DecodeMode, EPSILON_DISPLACEMENT, decode_sod};
+use stunt_core::sod::{
+    DecodeMode, EPSILON_DISPLACEMENT, OP_COLOR, OP_ID, OP_LINECOL, OP_MOVETO, OP_POLYZ, OP_RETURN,
+    OP_VECTORS, OP_ZLINETO, decode_sod,
+};
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -810,4 +813,47 @@ fn frame_without_actors_still_has_a_camera() {
     assert_eq!(glb.array("nodes").len(), 1);
     assert!(glb.bin.is_empty());
     assert_eq!(summarize(&bytes).unwrap().meshes, 0);
+}
+
+/// A `ZLINETO` line (raw points 0 to 1) and a triangle (points 0, 1, 2) at scale 1.0.
+fn line_and_triangle() -> SodModelIr {
+    let mut words: Vec<u16> = vec![OP_ID, 100, 0, 0, 0, OP_VECTORS, 3, 0];
+    for c in [0i16, 0, 0, -10, 0, 0, 0, -10, 0] {
+        words.push(c.cast_unsigned());
+    }
+    words.extend([OP_LINECOL, 33, OP_MOVETO, 0, OP_ZLINETO, 12]);
+    words.extend([OP_COLOR, 9, OP_POLYZ, 3, 0, 12, 24, OP_RETURN]);
+    let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    decode_sod(&bytes, "LINE", None, DecodeMode::Strict).expect("line shape")
+}
+
+#[test]
+fn a_screen_line_exports_as_a_lines_primitive() {
+    let glb = parse_glb(&export_shape(&line_and_triangle()).expect("export"));
+    let primitives = glb.array("meshes")[0]["primitives"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let positions = glb.floats(glb.primitive_accessor(0, "POSITION"));
+    let p = |i: u32| Vec3::from_slice(&positions[i as usize * 3..i as usize * 3 + 3]);
+    let of_mode = |mode: u64| {
+        let primitive = primitives.iter().find(|q| q["mode"] == mode).unwrap();
+        glb.indices(primitive["indices"].as_u64().map(to_usize).unwrap())
+    };
+    // One segment from the first point to the second, 10 m long.
+    let lines = of_mode(1);
+    assert_eq!(lines.len(), 2);
+    assert!(
+        (p(lines[0]) - Vec3::ZERO).length() < 1e-3,
+        "{:?}",
+        p(lines[0])
+    );
+    assert!((p(lines[1]) - Vec3::new(10.0, 0.0, 0.0)).length() < 1e-3);
+    // The triangle keeps its area; the line's zero-area quad is not among the triangles.
+    let triangles = of_mode(4);
+    assert_eq!(triangles.len(), 3);
+    let area = (p(triangles[1]) - p(triangles[0]))
+        .cross(p(triangles[2]) - p(triangles[0]))
+        .length();
+    assert!(area > 1.0, "{area}");
 }
