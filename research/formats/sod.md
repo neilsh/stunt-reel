@@ -47,6 +47,8 @@ Every `.SOD` bytecode stream begins with an immutable **10-byte header**, follow
 
 The executable header layout is [`sod.ksy`](sod.ksy). It stops at byte `0x000A`; operand widths for several opcodes remain undecoded.
 
+`PLAYONE.EXE` applies `ground_y_offset` when it places a scene-tree shape: it adds `−ground_y_offset >> scale_index` to the shape's position (`[Established]`, [`auxiliary/scenery.md`](auxiliary/scenery.md) section 3.3). The collision walker tests props against the same lifted height. No instruction in the display-list VM reads it, and the actor draw does not (`[Supported Inference]`, from one scan, same section).
+
 ### 2.2 Power-of-2 Scale Table Multiplier Constants
 
 The scale factor converts 16-bit integer model units into metric meters per Invariant `[I1]`. The scale table constants from `SOD.H` and `siobj.cpp` are:
