@@ -39,13 +39,13 @@ Every `.SOD` bytecode stream begins with an immutable **10-byte header**, follow
 | 0x0002 - 0x0003   | uint16 (LE)       | bounding_size: Bounding sphere radius   |
 | 0x0004 - 0x0005   | int16 (LE)        | ground_y_offset: Vertical placement adj |
 | 0x0006            | uint8             | scale_index: Power-of-2 scale (0..19 in corpus) |
-| 0x0007            | uint8             | header_flags: Bit 0 = Flat shading flag |
+| 0x0007            | uint8             | header_flags: Bit 0 = faces the view    |
 | 0x0008 - 0x0009   | uint16 (LE)       | collision_meta: Collision & type flags  |
 | 0x000A - EOF      | uint8[]           | Bytecode Instruction Stream             |
 +-------------------+-------------------+-----------------------------------------+
 ```
 
-The executable header layout is [`sod.ksy`](sod.ksy). It stops at byte `0x000A`; operand widths for several opcodes remain undecoded.
+The executable header layout is [`sod.ksy`](sod.ksy). `header_flags` bit 0 makes `PLAYONE` draw the shape through the view matrix built without the camera's yaw, so it turns with the camera's heading; the flat `OP_IPG` type 8 trees set it (`[Established]` for the instructions, `[Supported Inference]` for the byte they test, [`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md) section 8.8). It stops at byte `0x000A`; operand widths for several opcodes remain undecoded.
 
 `PLAYONE.EXE` applies `ground_y_offset` when it places a scene-tree shape: it adds `−ground_y_offset >> scale_index` to the shape's position (`[Established]`, [`auxiliary/scenery.md`](auxiliary/scenery.md) section 3.3). The collision walker tests props against the same lifted height. No instruction in the display-list VM reads it, and the actor draw does not (`[Supported Inference]`, from one scan, same section).
 

@@ -31,7 +31,7 @@ use stunt_core::sprite::SpriteImage;
 use crate::camera::{CameraController, CameraGpuResources};
 use crate::mesh::{GpuMeshSlice, GpuModel};
 use crate::palette::PaletteLut;
-use crate::pipeline::{LAYER_FIRST_ACTOR, ModelUniform, RenderPipelines};
+use crate::pipeline::{LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, RenderPipelines};
 use stunt_core::contracts::arena_index;
 
 /// Which uploaded model a prepared draw uses.
@@ -156,6 +156,29 @@ impl SceneRenderer {
         }
 
         let mut slot = 0;
+        for prop in &frame.view_facing {
+            let Some(model) = self.shapes.get(&prop.shape_id) else {
+                continue;
+            };
+            let local_eye = Mat4::from_cols_array(&prop.world_matrix)
+                .inverse()
+                .transform_point3(eye);
+            let meshes =
+                model.collect_visible_meshes(prop.state_mask, prop.distance, local_eye, None);
+            if meshes.0.is_empty() && meshes.1.is_empty() {
+                continue;
+            }
+            let uniform = ModelUniform::new(prop.world_matrix, LAYER_PROP);
+            let shape_id = prop.shape_id;
+            self.push_draw(
+                device,
+                queue,
+                |slot| Target::Shape { shape_id, slot },
+                &mut slot,
+                &uniform,
+                meshes,
+            );
+        }
         for (actor_index, actor) in (0u32..).zip(&frame.actors) {
             let Some(model) = self.shapes.get(&actor.shape_id) else {
                 continue;
