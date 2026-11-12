@@ -2,7 +2,7 @@
 title: "Scenery placement module"
 started: 2026-11-10
 issue: 383
-outcome: ""
+outcome: "world/scenery.rs owns the scenery walk, dedup and cull behind place_props; world.rs became world/mod.rs; 579 corpus films (868 scene builds) matched before and after"
 ---
 
 # Scenery placement module
@@ -41,9 +41,9 @@ impl SceneryWalk<'_> {
 **Chosen: A.**
 
 - B's gate injection only earns its place if some gate case cannot be reached through
-  `view_eyes`. Every one can be: an eye at a chosen distance from an `SP_1NODE` picks either side of
-  `lod_threshold`'s two branches, and the node's position and operands are visible in which shape
-  is placed and where. Injecting the gate would also let tests depend on the gate's argument list,
+  `view_eyes`. Every case the tests need can be: an eye at a chosen distance from an `SP_1NODE`
+  picks either side of `lod_threshold`'s two branches, and the node's position and operands are
+  visible in which shape is placed and where. Injecting the gate would also let tests depend on the gate's argument list,
   which is the coupling this module removes.
 - Taking `&WorldInputs` whole hands the module the anchors and `MAP.BIN`, which it must not read,
   and makes a test build an `Option` scenery and empty anchors. Two view fields say what is used.
@@ -69,3 +69,22 @@ impl SceneryWalk<'_> {
   past the limit (null: no stop; out of file: `Malformed` at its holder, not `Depth`); an eye at a
   chosen distance from an `SP_1NODE` replaces the recording gate and covers both
   `lod_threshold` branches.
+
+## Taken onto main after #389 and #390
+
+PR #384 conflicted with two changes to `world.rs` that landed first; its commits were re-made
+on `main` with these resolutions:
+
+- **#389 (`OP_TAP` anchored models)** stays in `world/mod.rs`. `anchored_models` takes
+  `&[Placement]`, and `PropModels` keys each placement's own model by its index, as it keyed the
+  tuples before. `research/playone-exe/sod-vm.md` and the comment in `sod/vm.rs` now name
+  `world/mod.rs`.
+- **#390 (`SP_POSXZ` keeps the ancestors' height)** moves with the walk: its comment is in
+  `world/scenery.rs`, and its test's assertion was already
+  `a_chain_of_moves_places_its_leaf_at_the_mirrored_position`, which now cites
+  `research/formats/auxiliary/scenery.md` section 3.3. That note keeps #390's text, naming
+  `world/scenery.rs`.
+- The `stuntreel` scene report (props, vertices, indices, bounds, `TAP` failures, scenery stop)
+  of `main` and of the rebased branch matched on all 29 builds of the 13 films in the local
+  corpus (each with the game's `RES`, `SUPERSET.ALL`, and its own `.ALL` where it has one). The
+  579-film run above was made before the rebase and was not repeated.
