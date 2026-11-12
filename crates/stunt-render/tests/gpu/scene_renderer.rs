@@ -328,6 +328,65 @@ fn world_is_drawn_when_present() {
     });
 }
 
+/// A world holding `ir` alone.
+fn world_of(ir: SodModelIr) -> World {
+    World {
+        ir,
+        terrain_patches: 0,
+        props_placed: 0,
+        bounds: ShapeExtent {
+            min: [-1.0, -1.0, 0.0],
+            max: [1.0, 1.0, 0.0],
+            radius: 1.0,
+        },
+        scenery_stop: None,
+        terrain: TerrainSurface::default(),
+        tap_failures: Vec::new(),
+        view_facing: Vec::new(),
+    }
+}
+
+/// Rows a world sliver of scenery class `class` draws, and the view's rows: a 2 m tall
+/// triangle 3 mm wide, about a tenth of a pixel at the test camera's 8 m.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
+fn sliver_rows(class: u8) -> Option<(usize, usize)> {
+    let mut ir = triangle("SLIVER", VisibilityCondition::Always);
+    for (vertex, [x, y]) in ir
+        .vertices
+        .iter_mut()
+        .zip([[0.0, -1.0], [0.003, -1.0], [0.0015, 1.0]])
+    {
+        vertex.position = [x, y, 0.0];
+        vertex.scenery_class = class;
+    }
+    let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world_of(ir)));
+    let (w, h, drawn) = render(&scene)?;
+    let rows = (0..h)
+        .filter(|&y| drawn[y * w..(y + 1) * w].iter().any(|&d| d))
+        .count();
+    Some((rows, h))
+}
+
+/// A prop polygon of the world under a pixel wide still draws a pixel on every row it
+/// spans, as `PLAYONE`'s inclusive spans do; terrain is not outlined.
+#[test]
+fn a_world_props_sliver_draws_on_every_row() {
+    common::gpu_test(|| {
+        let Some((rows, h)) = sliver_rows(stunt_core::contracts::SCENERY_PROP) else {
+            return;
+        };
+        // The sliver spans about 30% of the view's rows.
+        assert!(rows > h / 4, "prop sliver drew {rows} of {h} rows");
+        let Some((rows, h)) = sliver_rows(stunt_core::contracts::SCENERY_TERRAIN) else {
+            return;
+        };
+        assert!(rows < h / 10, "terrain sliver drew {rows} of {h} rows");
+    });
+}
+
 #[test]
 fn zero_brightness_frame_renders_black_including_the_clear_colour() {
     common::gpu_test(|| {

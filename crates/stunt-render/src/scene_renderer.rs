@@ -23,7 +23,8 @@ use std::collections::HashMap;
 use glam::{Mat4, Vec3};
 
 use stunt_core::contracts::{
-    CameraTransform, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
+    CameraTransform, NodeKind, SCENERY_OCEAN, SCENERY_TERRAIN, SodModelIr, SodVertex,
+    VERTEX_FLAG_LINE, VisibilityCondition,
 };
 use stunt_core::scene::{FilmScene, SceneFrame, SpriteDraw};
 use stunt_core::sprite::SpriteImage;
@@ -86,8 +87,9 @@ impl SceneRenderer {
     ) -> Self {
         let layout = &pipelines.model_bind_group_layout;
         // Shapes drawn per frame (actors and view-facing props such as the flat trees) take
-        // their polygon outlines; the world mesh does not, since outlines multiply its
-        // vertices about five times (research/playone-exe/sod-vm.md section 8.11).
+        // their polygon outlines as line quads; the world mesh takes its props' outlines as a
+        // line list over its own vertices, which quads would multiply about five times
+        // (research/playone-exe/sod-vm.md section 8.11).
         let shapes = scene
             .shapes()
             .map(|(id, ir)| {
@@ -108,7 +110,7 @@ impl SceneRenderer {
             .collect();
         let world = scene
             .world()
-            .map(|w| GpuModel::from_ir(device, queue, layout, &w.ir));
+            .map(|w| GpuModel::from_ir_outlined(device, queue, layout, &w.ir, outlines_in_world));
         Self {
             shapes,
             images,
@@ -343,6 +345,19 @@ impl SceneRenderer {
                 };
                 rpass.set_bind_group(2, bind_group, &[]);
                 model.draw_slices(rpass, meshes);
+                // Only the world carries edge buffers; the next draw sets its own pipeline
+                // back, as the decal pass does per draw and the base pass needs only here.
+                if matches!(draw.target, Target::World) {
+                    rpass.set_pipeline(if decal_pass {
+                        &pipelines.edge_decal_pipeline
+                    } else {
+                        &pipelines.edge_pipeline
+                    });
+                    model.draw_edges(rpass, meshes);
+                    if !decal_pass {
+                        rpass.set_pipeline(&pipelines.base_pipeline);
+                    }
+                }
             }
         }
     }
@@ -446,6 +461,15 @@ fn sprite_ir(image: &SpriteImage) -> SodModelIr {
         },
     );
     ir
+}
+
+/// Whether a world triangle with the corner `vertex` is outlined: a prop's filled polygon,
+/// not a line, terrain or ocean. Outlining terrain and ocean as well scored lower on `LAND`
+/// and `BALLOON` (`work/2026-11/430_world-mesh-slivers/journal.md`).
+fn outlines_in_world(vertex: &SodVertex) -> bool {
+    vertex.flags & VERTEX_FLAG_LINE == 0
+        && vertex.scenery_class != SCENERY_TERRAIN
+        && vertex.scenery_class != SCENERY_OCEAN
 }
 
 #[cfg(test)]
