@@ -8,8 +8,8 @@
 reviews:
   # Three paths where a review comment cannot be useful: two lockfiles and the synthetic fixture
   # bytes. And work/, whose dated records (work/README.md) a person reviews in the pull request
-  # that adds them, with the fresh reviewer of AGENTS.md working rule 7 when that pull request
-  # also changes research/ or NOTICE.md.
+  # that adds them; a spec or plan, and a pull request that also changes research/ or NOTICE.md,
+  # gets the fresh reviewer of AGENTS.md working rule 7.
   path_filters:
     - "!Cargo.lock"
     - "!uv.lock"
@@ -35,6 +35,9 @@ reviews:
   # The message posted while a review runs woke an agent watching the pull request with
   # nothing to do (four times on 2026-11-06).
   in_progress_fortune: false
+  # The "Currently processing new changes" note in the walkthrough comment did the same on #397
+  # (2026-11-11); the fortune switch does not cover it.
+  review_status: false
 
   # Every pull request, whatever branch it targets. CodeRabbit's default is the repository's
   # default branch alone, so a stacked pull request whose base is a feature branch got no
