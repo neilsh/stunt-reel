@@ -193,11 +193,17 @@ const MIN_PROP_PIXELS: f32 = 0.5;
 /// more than the larger of them (research/playone-exe/lod.md section 2.2). The field of view
 /// does not enter the gate. Depth is shorter than distance off axis, so the bound is in
 /// distance: PLAYONE tests the frustum before the gate, so a node it keeps lies within half
-/// its `ext` of the frame, where depth is at least `min_corner_depth` of distance.
+/// its `ext` of the frame, where depth is at least `min_corner_depth` of distance. A ratio that
+/// is not positive and finite bounds nothing, so the reach is then infinite.
 fn lod_reach(max_lod_shift: u8, min_corner_depth: f32, ext: i32, splitdist: i32) -> f32 {
     let depth_unit = f32::from(2u16 << max_lod_shift.min(3));
     let depth = depth_unit * (splitdist.max(ext >> 1).saturating_add(1)) as f32;
-    depth / min_corner_depth.clamp(0.01, 1.0) + (ext >> 1) as f32
+    if min_corner_depth > 0.0 && min_corner_depth.is_finite() {
+        depth / min_corner_depth.min(1.0) + (ext >> 1) as f32
+    } else {
+        // No frame bound to turn depth into distance: never prune.
+        f32::INFINITY
+    }
 }
 /// Node visits one walk may make, per word of `SCENERY.scn`. A tree walked once visits at
 /// most one node per two words, so this leaves room for subtrees shared several times over
@@ -764,6 +770,17 @@ mod tests {
             placements.props.is_empty(),
             "the halt skips the leaf after the tree"
         );
+    }
+
+    #[test]
+    fn the_reach_keeps_a_tiny_corner_depth_and_ignores_a_meaningless_one() {
+        // A 179.9-degree frame's ratio, about 0.00046, still bounds the reach: no clamp raises it.
+        // 4 * (105 + 1) / 0.00046 + 100 = 921,839 m, far past the 42,500 m a 0.01 clamp gave.
+        let reach = lod_reach(1, 0.000_46, 200, 105);
+        assert!((reach - (424.0 / 0.000_46 + 100.0)).abs() < 1.0, "{reach}");
+        for ratio in [0.0, -1.0, f32::NAN] {
+            assert_eq!(lod_reach(1, ratio, 200, 105), f32::INFINITY);
+        }
     }
 
     #[test]
