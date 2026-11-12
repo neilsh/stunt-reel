@@ -9,7 +9,7 @@
 
 use crate::anchor::AnchorPoint;
 use crate::contracts::shape::{
-    ShapeSprite, SodHeader, SodStop, SodStopReason, VisibilityCondition,
+    ShapeSprite, SodHeader, SodStop, SodStopReason, VERTEX_FLAG_LINE, VisibilityCondition,
 };
 use crate::reader::ByteReader;
 use crate::sod::SodError;
@@ -334,73 +334,33 @@ fn sphere_polygons(
         .collect()
 }
 
-/// World-space thickness in metres of the ribbons that stand in for 1-pixel lines and dots.
-const LINE_WIDTH_M: f32 = 0.03;
+/// World-space radius in metres of the octahedron that stands in for a 1-pixel dot.
+const DOT_RADIUS_M: f32 = 0.03;
 
-/// Builds a thin geometry for a `MOVETO`/`ZLINETO` segment: two perpendicular ribbons, each
-/// emitted with both windings so back-face culling cannot hide it. Endpoints are metres.
+/// Builds the line a `MOVETO`/`ZLINETO` segment or a two-vertex polygon draws, from `a` to `b`
+/// in metres: one polygon of the two endpoints flagged [`VERTEX_FLAG_LINE`], which
+/// tessellation turns into a quad the renderer draws one pixel wide at any distance
+/// (`sod-vm.md` § 8.9). Its zero normal keeps it out of decal matching. `None` when the
+/// endpoints coincide.
 fn line_polygons(
     a: [f32; 3],
     b: [f32; 3],
     palette_index: u8,
     visibility: VisibilityCondition,
-) -> Vec<RawPolygon> {
+) -> Option<RawPolygon> {
     let d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-    if len < 1e-6 {
-        return Vec::new();
+    if (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt() < 1e-6 {
+        return None;
     }
-    let dir = [d[0] / len, d[1] / len, d[2] / len];
-    // Any axis not parallel to the segment seeds the perpendicular basis.
-    let seed = if dir[1].abs() < 0.9 {
-        [0.0, 1.0, 0.0]
-    } else {
-        [1.0, 0.0, 0.0]
-    };
-    let cross = |u: [f32; 3], v: [f32; 3]| {
-        [
-            u[1] * v[2] - u[2] * v[1],
-            u[2] * v[0] - u[0] * v[2],
-            u[0] * v[1] - u[1] * v[0],
-        ]
-    };
-    let norm = |v: [f32; 3]| {
-        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-        [v[0] / l, v[1] / l, v[2] / l]
-    };
-    let p1 = norm(cross(dir, seed));
-    let p2 = norm(cross(dir, p1));
-    let h = LINE_WIDTH_M * 0.5;
-    let mut out = Vec::with_capacity(4);
-    for p in [p1, p2] {
-        let quad = [
-            [a[0] - p[0] * h, a[1] - p[1] * h, a[2] - p[2] * h],
-            [a[0] + p[0] * h, a[1] + p[1] * h, a[2] + p[2] * h],
-            [b[0] + p[0] * h, b[1] + p[1] * h, b[2] + p[2] * h],
-            [b[0] - p[0] * h, b[1] - p[1] * h, b[2] - p[2] * h],
-        ];
-        let n = compute_polygon_normal(&quad);
-        out.push(RawPolygon {
-            vertex_palette: Vec::new(),
-            vertices: quad.to_vec(),
-            palette_index,
-            normal: n,
-            flags: 0,
-            is_decal: false,
-            visibility,
-        });
-        let rev: Vec<[f32; 3]> = quad.iter().rev().copied().collect();
-        out.push(RawPolygon {
-            vertex_palette: Vec::new(),
-            vertices: rev,
-            palette_index,
-            normal: [-n[0], -n[1], -n[2]],
-            flags: 0,
-            is_decal: false,
-            visibility,
-        });
-    }
-    out
+    Some(RawPolygon {
+        vertex_palette: Vec::new(),
+        vertices: vec![a, b],
+        palette_index,
+        normal: [0.0; 3],
+        flags: VERTEX_FLAG_LINE,
+        is_decal: false,
+        visibility,
+    })
 }
 
 /// Builds a tiny octahedron (8 triangles) for an `OP_DOT` at metric position `c`.
@@ -409,7 +369,7 @@ fn dot_polygons(
     palette_index: u8,
     visibility: VisibilityCondition,
 ) -> Vec<RawPolygon> {
-    let r = LINE_WIDTH_M;
+    let r = DOT_RADIUS_M;
     let v = |x: f32, y: f32, z: f32| [c[0] + x * r, c[1] + y * r, c[2] + z * r];
     let top = v(0.0, 1.0, 0.0);
     let bot = v(0.0, -1.0, 0.0);

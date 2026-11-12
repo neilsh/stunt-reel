@@ -12,8 +12,8 @@ use crate::anchor::AnchorPoint;
 use std::collections::HashMap;
 
 use crate::contracts::shape::{
-    DecodeMode, DecodeRecord, NodeId, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
-    arena_index,
+    DecodeMode, DecodeRecord, NodeId, NodeKind, SodModelIr, SodVertex, VERTEX_FLAG_LINE,
+    VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VisibilityCondition, arena_index,
 };
 use crate::sod::ShadeLight;
 use crate::sod::SodError;
@@ -142,6 +142,10 @@ fn process_polygon_batch(
     let index_offset = arena_index(ir.indices.len());
 
     for poly in polys {
+        if poly.flags & VERTEX_FLAG_LINE != 0 {
+            push_line(ir, poly, weld_map);
+            continue;
+        }
         let num_v = poly.vertices.len();
         if num_v < 3 {
             continue;
@@ -199,6 +203,43 @@ fn process_polygon_batch(
             },
         );
     }
+}
+
+/// Appends a [`VERTEX_FLAG_LINE`] polygon's segment as a quad of four line vertices, two at
+/// each endpoint, one per side, wound both ways so back-face culling keeps one. The quad has no
+/// width in the world; the renderer widens it to one pixel on screen. A polygon without two
+/// vertices appends nothing.
+fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<WeldKey, u32>) {
+    let [a, b] = poly.vertices[..] else {
+        return;
+    };
+    let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let ba = [-ab[0], -ab[1], -ab[2]];
+    let base = poly.flags | VERTEX_FLAG_LINE;
+    let corners = [
+        (a, ab, base),
+        (a, ab, base | VERTEX_FLAG_LINE_SIDE),
+        (b, ba, base | VERTEX_FLAG_LINE_END | VERTEX_FLAG_LINE_SIDE),
+        (b, ba, base | VERTEX_FLAG_LINE_END),
+    ];
+    let mut quad = [0u32; 4];
+    for (slot, (position, to_other, flags)) in quad.iter_mut().zip(corners) {
+        let key = quantize_weld_key(&position, &to_other, poly.palette_index, flags);
+        *slot = *weld_map.entry(key).or_insert_with(|| {
+            let index = arena_index(ir.vertices.len());
+            ir.vertices.push(SodVertex {
+                position,
+                normal: to_other,
+                palette_index: poly.palette_index,
+                flags,
+                scenery_class: 0,
+                _padding: 0,
+            });
+            index
+        });
+    }
+    let [p, q, r, s] = quad;
+    ir.indices.extend([p, q, r, p, r, s, p, r, q, p, s, r]);
 }
 
 /// Decodes one `.SOD` bytecode stream into a shape (Seam 3).
