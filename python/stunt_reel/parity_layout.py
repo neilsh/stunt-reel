@@ -51,6 +51,7 @@ __all__ = [
     "stage_mount",
     "stage_root",
     "sweep_root",
+    "timeout_root",
     "video_path",
 ]
 
@@ -70,6 +71,7 @@ _STAGE = Path("stage")
 _RENDER_SCRATCH = _SCRATCH / "parity"
 _RETIME = _SCRATCH / "retime"
 _SWEEP = _SCRATCH / "sweep"
+_TIMEOUTS = _SCRATCH / "make-all-timeouts"
 _BATCH = _PARITY / "batch"
 
 #: The committed file pinning each film's reference capture by digest (ADR 0029), relative to the checkout.
@@ -243,6 +245,11 @@ def stage_mount(film: str, label: str) -> Path:
 def stage_root() -> Path:
     """The directory (relative to the data root) holding every session's stage."""
     return _STAGE
+
+
+def timeout_root() -> Path:
+    """The directory holding the guest screens a timed-out ``make-all`` saved."""
+    return _TIMEOUTS
 
 
 def sweep_root() -> Path:
