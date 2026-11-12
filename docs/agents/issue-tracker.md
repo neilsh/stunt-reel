@@ -19,7 +19,7 @@ Issues for this repo live as GitHub issues; an issue's spec and plan live in its
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
-File issues only into the user's own repo. Never file into `mattpocock/skills` (the repo these skills come from) unless the user owns it. In a fork, `gh` can default to the upstream parent, so before the first `gh issue create` of a session, check the target with `gh repo view --json nameWithOwner` and confirm it with the user if it is not their repo.
+File issues only into the user's own repo. Never file into `mattpocock/skills` (the repo these skills come from) unless the user owns it. In a fork, `gh` can default to the upstream parent, so before a session's first issue search, comment or `gh issue create`, check the target with `gh repo view --json nameWithOwner` and confirm it with the user if it is not their repo.
 
 ## Organizing issues
 
@@ -29,6 +29,7 @@ These rules cover every issue except a `wayfinder:*` map or ticket, which `/wayf
 - **An issue with open sub-issues is never startable**, whatever its labels: a spec that `/to-tickets` split keeps its `ready-for-agent` label. Skip it when choosing work.
 - **Closing the last child closes the parent.** Whoever closes a parent's last open sub-issue closes the parent too, as in **Close**.
 - **Title the problem, not the fix.** State the observed problem or the open question in present tense: "Props shade with a guessed light, not PLAYONE's world light", "Which 20 active MAP.BIN polygons have no ground leaf in PLAYONE's image?". The fix goes in the body.
+- **Search before filing.** Before `gh issue create`, run `gh issue list --state open --search "<key terms>"` with the symptom's distinctive words (the error, the file, the film). On a clear match, add the new sighting as a comment there instead of filing a duplicate.
 - **The filer labels the issue.** On `gh issue create`, apply one state label (`needs-triage` when unsure), `research` or `tooling` where either applies ([triage-labels.md](triage-labels.md)), and a parent where a goal fits.
 - No milestones or Project board: parents show progress.
 
