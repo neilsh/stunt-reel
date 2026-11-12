@@ -583,7 +583,7 @@ pub(crate) fn build_world_ir(
             IDENTITY_MATRIX,
             VisibilityCondition::Always,
             NodeKind::Mesh {
-                vertex_offset: 0,
+                vertex_offset: base_vertices,
                 vertex_count: decal_vertices,
                 index_offset: base_indices,
                 index_count: decal_indices,
