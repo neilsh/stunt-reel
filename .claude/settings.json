@@ -7,7 +7,11 @@
   "permissions": {
     "allow": [
       "Bash(gh issue close:*)",
-      "PowerShell(gh issue close:*)"
+      "PowerShell(gh issue close:*)",
+      "Bash(gh issue comment:*)",
+      "PowerShell(gh issue comment:*)",
+      "Bash(gh issue edit:*)",
+      "PowerShell(gh issue edit:*)"
     ]
   },
   "hooks": {
