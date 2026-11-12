@@ -139,6 +139,34 @@ impl CameraTransform {
         depth <= threshold as f32
     }
 
+    /// Whether `point`'s depth along this camera's view axis exceeds `depth` as PLAYONE's
+    /// `OP_BZLT` compares it, i.e. whether the section after a `BZLT` runs.
+    ///
+    /// `BZLT reg, val, rel` (image `0x9BE5`) skips its section while the register's view
+    /// depth is at most `val`. Registers hold the zoomed depth row's high word, so depth
+    /// halved and shifted right by `0x229E` (research/playone-exe/sod-vm.md section 8.6):
+    /// the section runs while `true depth / 2^(1 + 0x229E) > depth`, with `depth` the
+    /// threshold `val` in the shape's metres. A camera with no view direction keeps it.
+    #[must_use]
+    pub fn view_depth_exceeds(&self, point: [f32; 3], depth: f32) -> bool {
+        let (_, shift) = self.lod_lens_words();
+        let forward = [
+            self.target[0] - self.eye[0],
+            self.target[1] - self.eye[1],
+            self.target[2] - self.eye[2],
+        ];
+        let len =
+            (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]).sqrt();
+        if len <= 0.0 {
+            return true;
+        }
+        let along = ((point[0] - self.eye[0]) * forward[0]
+            + (point[1] - self.eye[1]) * forward[1]
+            + (point[2] - self.eye[2]) * forward[2])
+            / len;
+        along / f32::from(2u16 << shift) > depth
+    }
+
     /// Vertical field of view for this camera's lens, given `base_fov_degrees` at
     /// [`DEFAULT_CAMERA_LENS`], which it returns exactly. A zero lens keeps the base.
     #[must_use]
@@ -385,6 +413,34 @@ mod tests {
         assert!(!zoomed.lod_keeps_subtree(at(7520.0), 400, 600));
         // A node behind the eye is near.
         assert!(default.lod_keeps_subtree(at(-5000.0), 400, 600));
+    }
+
+    #[test]
+    fn view_depth_exceeds_compares_halved_shifted_depth() {
+        let camera = |lens| CameraTransform {
+            eye: [0.0, 0.0, 0.0],
+            target: [0.0, 0.0, -1.0],
+            lens,
+            ..CameraTransform::default()
+        };
+        let at = |depth: f32| [3.0, 4.0, -depth];
+        // Default lens: depth halved, so a 50 m threshold is passed beyond 100 m.
+        let default = camera(DEFAULT_CAMERA_LENS);
+        assert!(!default.view_depth_exceeds(at(100.0), 50.0));
+        assert!(default.view_depth_exceeds(at(100.5), 50.0));
+        // Lens 44236 shifts three more times: beyond 800 m.
+        let zoomed = camera(44236);
+        assert!(!zoomed.view_depth_exceeds(at(800.0), 50.0));
+        assert!(zoomed.view_depth_exceeds(at(801.0), 50.0));
+        // A point behind the eye is near.
+        assert!(!default.view_depth_exceeds(at(-500.0), 50.0));
+        // No view direction: the far section is kept.
+        let blind = CameraTransform {
+            eye: [0.0; 3],
+            target: [0.0; 3],
+            ..CameraTransform::default()
+        };
+        assert!(blind.view_depth_exceeds(at(1.0), 50.0));
     }
 
     #[test]

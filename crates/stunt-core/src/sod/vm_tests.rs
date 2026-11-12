@@ -14,8 +14,8 @@ use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
 use crate::sod::{
     CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV, OP_IPG,
-    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV, OP_SORT,
-    OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason,
+    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_PERFDISK, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV,
+    OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason,
     decode_sod, faces_view,
 };
 
@@ -1034,13 +1034,13 @@ fn facing_gate(ir: &SodModelIr) -> Option<([f32; 3], [f32; 3])> {
 #[test]
 fn test_return_from_a_subroutine_restores_the_callers_ifvis_scope() {
     use crate::sod::vm::{OP_GOSUB, OP_IFVIS, OP_REJ};
-    // REJ sets facing flag 1 from registers (1, 0, 2); then p: IFVIS 1 over 18 bytes
+    // REJ sets facing flag 1 from registers (1, 0, 2); then p: IFVIS 1 over the 18 bytes
     // { GOSUB +18 (-> p + 24); COLOR 5; POLYZ A }, RETURN at p + 24 - 2; the subroutine
     // (COLOR 9; POLYZ B; RETURN) sits past the section, so B is ungated and A, drawn after
     // the call returns, is still gated.
     let mut bytes = sort_prelude();
     push_words(&mut bytes, &[OP_REJ, 1, 1, 12, 0, 24]);
-    push_words(&mut bytes, &[OP_IFVIS, 1, 18, OP_GOSUB, 18]);
+    push_words(&mut bytes, &[OP_IFVIS, 1, 20, OP_GOSUB, 18]);
     push_words(
         &mut bytes,
         &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
@@ -1065,7 +1065,7 @@ fn test_rej_face_gates_ifvis_by_the_cross_product_of_its_registers() {
     // Registers 0, 1 and 2 are the origin, +X and +Y, so the normal is +Z through the origin.
     let mut bytes = sort_prelude();
     push_words(&mut bytes, &[OP_REJ, 4, 1, 12, 0, 24]);
-    push_words(&mut bytes, &[OP_IFVIS, 4, 10, OP_POLYZ, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[OP_IFVIS, 4, 12, OP_POLYZ, 3, 0, 12, 24]);
     push_words(&mut bytes, &[OP_RETURN]);
 
     let ir = decode(&bytes, "REJ-IFVIS").expect("decode rej ifvis");
@@ -1084,12 +1084,135 @@ fn test_ifvis_on_a_flag_no_rej_set_is_ungated() {
     // PLAYONE's flag table outlives a shape, so a flag this shape never set holds an unknown
     // value; the section is drawn.
     let mut bytes = sort_prelude();
-    push_words(&mut bytes, &[OP_IFVIS, 1, 10, OP_POLYZ, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[OP_IFVIS, 1, 12, OP_POLYZ, 3, 0, 12, 24]);
     push_words(&mut bytes, &[OP_RETURN]);
 
     let ir = decode(&bytes, "IFVIS-UNSET").expect("decode unset ifvis");
     assert_eq!(facing_gate(&ir), None);
     assert_eq!(indices_with(&ir, VisibilityCondition::Always), 3);
+}
+
+/// The `+Z` facing gate `OP_REJ 1, 1, (1, 0, 2)` sets on the prelude's registers.
+const PLUS_Z: VisibilityCondition = VisibilityCondition::FacesEye {
+    point: [0.0, 0.0, 0.0],
+    normal: [0.0, 0.0, 100.0],
+};
+
+/// An `IFVIS` section ends `size` bytes from its size word, so the polygon starting there
+/// is drawn ungated.
+#[test]
+fn test_ifvis_section_ends_size_bytes_from_the_size_word() {
+    use crate::sod::vm::{OP_IFVIS, OP_REJ};
+    // PLAYONE `0x9BD7` skips with `add si, [es:si]`, `si` at the size word: size 12 covers
+    // the 10-byte POLYZ A only, and POLYZ B, at the size word + 12, is ungated.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_REJ, 1, 1, 12, 0, 24]);
+    push_words(&mut bytes, &[OP_IFVIS, 1, 12, OP_POLYZ, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[OP_POLYZ, 3, 0, 12, 36, OP_RETURN]);
+
+    let ir = decode(&bytes, "IFVIS-END").expect("decode ifvis end");
+    assert_eq!(indices_with(&ir, PLUS_Z), 3);
+    assert_eq!(indices_with(&ir, VisibilityCondition::Always), 3);
+}
+
+/// `OP_BVIS` runs its section while the flag is clear: the face's gate turned away.
+#[test]
+fn test_bvis_gates_its_section_by_the_face_turned_away() {
+    use crate::sod::vm::{OP_BVIS, OP_REJ};
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_REJ, 1, 1, 12, 0, 24]);
+    push_words(
+        &mut bytes,
+        &[OP_BVIS, 1, 12, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+
+    let ir = decode(&bytes, "BVIS").expect("decode bvis");
+    assert_eq!(
+        facing_gate(&ir),
+        Some(([0.0, 0.0, 0.0], [0.0, 0.0, -100.0]))
+    );
+    assert_eq!(indices_with(&ir, VisibilityCondition::Always), 0);
+}
+
+/// `OP_REJVEC` takes its normal from two registers and its point from a third.
+#[test]
+fn test_rejvec_face_is_the_normal_e_minus_b_through_p() {
+    use crate::sod::vm::{OP_IFVIS, OP_REJVEC};
+    // PLAYONE `0x94D8`: the flag is the sign of (e - b) . (p - eye) for the triple (p, b, e).
+    // Triple (4, 0, 3): p = register 4, normal = register 3 - register 0 = +Z * 10.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_REJVEC, 2, 1, 48, 0, 36]);
+    push_words(
+        &mut bytes,
+        &[OP_IFVIS, 2, 12, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+
+    let ir = decode(&bytes, "REJVEC").expect("decode rejvec");
+    assert_eq!(
+        facing_gate(&ir),
+        Some(([-10.0, -10.0, 10.0], [0.0, 0.0, 10.0]))
+    );
+}
+
+/// `OP_REJ2D` sets the same gate `OP_REJ` does for the same triple.
+#[test]
+fn test_rej2d_face_matches_rej_for_the_same_triple() {
+    use crate::sod::vm::{OP_IFVIS, OP_REJ2D};
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_REJ2D, 1, 1, 12, 0, 24]);
+    push_words(
+        &mut bytes,
+        &[OP_IFVIS, 1, 12, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+
+    let ir = decode(&bytes, "REJ2D").expect("decode rej2d");
+    assert_eq!(indices_with(&ir, PLUS_Z), 3);
+}
+
+/// `OP_BZLT reg, val, size` gates its section by the register's depth; what follows it is
+/// drawn at any depth.
+#[test]
+fn test_bzlt_gates_its_section_beyond_the_register_depth() {
+    use crate::sod::vm::OP_BZLT;
+    // PLAYONE `0x9BE5` skips `size` bytes from the size word while the register's depth is
+    // at most `val`. Scale index 0 is 1 m per unit, so the threshold is 25 m at register 3.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_BZLT, 36, 25, 12, OP_POLYZ, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[OP_POLYZ, 3, 0, 12, 36, OP_RETURN]);
+
+    let ir = decode(&bytes, "BZLT").expect("decode bzlt");
+    let far = VisibilityCondition::BeyondDepth {
+        point: [0.0, 0.0, 10.0],
+        depth: 25.0,
+    };
+    assert_eq!(indices_with(&ir, far), 3);
+    assert_eq!(indices_with(&ir, VisibilityCondition::Always), 3);
+}
+
+/// A section nested in another takes the inner gate; past its end the outer gate holds.
+#[test]
+fn test_leaving_a_nested_section_restores_the_outer_gate() {
+    use crate::sod::vm::{OP_BZLT, OP_IFVIS, OP_REJ};
+    // IFVIS 1 over { BZLT r3 25 over { POLYZ A }; POLYZ B }; POLYZ C.
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_REJ, 1, 1, 12, 0, 24]);
+    push_words(&mut bytes, &[OP_IFVIS, 1, 30]);
+    push_words(&mut bytes, &[OP_BZLT, 36, 25, 12, OP_POLYZ, 3, 0, 12, 24]);
+    push_words(&mut bytes, &[OP_POLYZ, 3, 0, 12, 36]);
+    push_words(&mut bytes, &[OP_POLYZ, 3, 0, 24, 36, OP_RETURN]);
+
+    let ir = decode(&bytes, "NESTED").expect("decode nested sections");
+    let far = VisibilityCondition::BeyondDepth {
+        point: [0.0, 0.0, 10.0],
+        depth: 25.0,
+    };
+    assert_eq!(indices_with(&ir, far), 3, "A takes the inner gate");
+    assert_eq!(indices_with(&ir, PLUS_Z), 3, "B takes the outer gate again");
+    assert_eq!(
+        indices_with(&ir, VisibilityCondition::Always),
+        3,
+        "C is ungated"
+    );
 }
 
 #[test]
@@ -1323,5 +1446,85 @@ fn test_census_decode_keeps_no_sprites() {
     assert!(
         record.stepped_over.is_empty(),
         "ANIMATE runs, so nothing is stepped over"
+    );
+}
+
+/// Bytes of a model with register 1 at `centre`, register 2 at `axis` (stream signs, turned
+/// into the model frame on load) and one `OP_PERFDISK` of `radius` over them.
+fn perfdisk_model(centre: [i16; 3], axis: [i16; 3], radius: u16) -> Vec<u8> {
+    let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&2u16.to_le_bytes()); // count 2: registers 1 and 2
+    bytes.extend_from_slice(&12u16.to_le_bytes());
+    for coordinate in centre.into_iter().chain(axis) {
+        bytes.extend_from_slice(&coordinate.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
+    bytes.extend_from_slice(&45u16.to_le_bytes());
+    bytes.extend_from_slice(&OP_PERFDISK.to_le_bytes());
+    bytes.extend_from_slice(&12u16.to_le_bytes()); // centre register 1
+    bytes.extend_from_slice(&radius.to_le_bytes());
+    bytes.extend_from_slice(&24u16.to_le_bytes()); // axis register 2
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    bytes
+}
+
+/// A disc lies in the plane perpendicular to `centre - axis`, every vertex `radius` from the
+/// centre, and draws from both sides: one clockwise face per side, each normal facing its side.
+#[test]
+fn test_perfdisk_is_a_two_sided_disc_about_the_normal() {
+    // Stream (x, y, z) turns to (-x, -y, z): centre (10, 20, 30), axis (10, 20, 10), so the
+    // normal is +z.
+    let ir = decode(
+        &perfdisk_model([-10, -20, 30], [-10, -20, 10], 40),
+        "PERFDISK",
+    )
+    .expect("decode perfdisk");
+    assert_eq!(
+        ir.indices.len(),
+        2 * 14 * 3,
+        "two 16-gons, fan-triangulated"
+    );
+    for v in &ir.vertices {
+        assert_eq!(v.palette_index, 45);
+        assert!((v.position[2] - 30.0).abs() < 1e-3, "off the disc plane");
+        let d = ((v.position[0] - 10.0).powi(2) + (v.position[1] - 20.0).powi(2)).sqrt();
+        assert!((d - 40.0).abs() < 1e-3, "vertex {d} from the centre");
+    }
+    let mut sides = [0usize; 2];
+    for tri in ir.indices.chunks(3) {
+        let p: Vec<[f32; 3]> = tri
+            .iter()
+            .map(|&i| ir.vertices[i as usize].position)
+            .collect();
+        let edge_normal = compute_polygon_normal(&p);
+        let looks = ir.vertices[tri[0] as usize].normal;
+        // Clockwise seen from the side it looks toward: the edge cross points away from it.
+        assert!(
+            edge_normal[2] * looks[2] < 0.0,
+            "wrong winding for {looks:?}"
+        );
+        sides[usize::from(looks[2] > 0.0)] += 1;
+    }
+    assert_eq!(sides[0], sides[1], "one face for each side");
+}
+
+/// A disc whose axis register equals its centre has no plane and draws nothing, as does a
+/// zero radius.
+#[test]
+fn test_perfdisk_without_a_plane_or_radius_draws_nothing() {
+    let degenerate = perfdisk_model([-10, -20, 30], [-10, -20, 30], 40);
+    assert!(
+        decode(&degenerate, "PERFDISK")
+            .expect("decode")
+            .indices
+            .is_empty()
+    );
+    let empty = perfdisk_model([-10, -20, 30], [-10, -20, 10], 0);
+    assert!(
+        decode(&empty, "PERFDISK")
+            .expect("decode")
+            .indices
+            .is_empty()
     );
 }
