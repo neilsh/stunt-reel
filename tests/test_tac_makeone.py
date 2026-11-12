@@ -320,3 +320,33 @@ def test_the_process_list_is_a_list_of_pid_name_lines() -> None:
 def test_a_page_png_refuses_a_page_of_the_wrong_size() -> None:
     with pytest.raises(ValueError, match="64000"):
         timeout_evidence.page_png(b"short")
+
+
+def test_two_timeouts_of_one_film_keep_two_pictures(
+    staged_repo: StagedRepo, game_root: Path, tmp_path: Path
+) -> None:
+    for _ in range(2):
+        _hang(staged_repo, game_root, ARCHIVE, evidence_dir=tmp_path)
+
+    assert len(list(tmp_path.glob("CTRY-*.png"))) == 2
+
+
+def test_a_timeout_saves_the_picture_without_a_warn_callback(
+    staged_repo: StagedRepo, game_root: Path, tmp_path: Path
+) -> None:
+    launch, _state = makeone_launcher(text_after=None, archive=ARCHIVE, early_archive=True)
+    clock = FakeClock()
+
+    makeone.make_all(
+        staged_repo.film,
+        game_root=game_root,
+        timeout=10,
+        poll=2,
+        stable=60,
+        launch=launch,
+        clock=clock,
+        sleep=clock.sleep,
+        evidence_dir=tmp_path,
+    )
+
+    assert len(list(tmp_path.glob("CTRY-*.png"))) == 1

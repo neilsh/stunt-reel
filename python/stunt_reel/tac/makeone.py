@@ -9,9 +9,11 @@ sign of the end is the screen going back to a text mode, which ``GET /video/text
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from datetime import datetime
 from typing import TYPE_CHECKING, Protocol
 
 from stunt_reel import dataroot
@@ -170,7 +172,7 @@ def _record_timeout(
     client: MakeOneClient, directory: Path, film: Path, warn: Callable[[str], None]
 ) -> None:
     """Save the guest screen and list the emulators, reporting each through *warn*."""
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    stamp = f"{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}-{os.getpid()}"  # noqa: DTZ005 - a local label
     kept = timeout_evidence.save(client, directory, f"{film.stem}-{stamp}")
     if kept.picture is not None:
         warn(f"timeout: the guest screen is saved as {kept.picture}")
@@ -205,7 +207,7 @@ def make_all(
     after that, the run is a MAKEONE hang: *on_hang* is called and *warn* names it.
 
     At the timeout, before anything is killed, a PNG of the guest screen goes to *evidence_dir*
-    (when given) and *warn* names its path and every ``dosbox`` process then running.
+    (when given; saved whether or not *warn* is) and *warn* names its path and every ``dosbox`` process then running.
 
     Raises MakeOneTimeout when that archive is missing, empty or still changing, and NoArchive
     when the guest returned to DOS with no ``.ALL`` written.
@@ -227,8 +229,8 @@ def make_all(
             try:
                 wait_for_text(client, timeout=timeout, poll=poll, clock=clock, sleep=sleep)
             except MakeOneTimeout as exc:
-                if evidence_dir is not None and warn is not None:
-                    _record_timeout(client, evidence_dir, film, warn)
+                if evidence_dir is not None:
+                    _record_timeout(client, evidence_dir, film, warn or (lambda _line: None))
                 try:
                     wait_for_stable_archive(
                         vault, film, stable=stable, poll=poll, clock=clock, sleep=sleep
