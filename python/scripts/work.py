@@ -7,7 +7,7 @@ month the work started, and the README's frontmatter is the folder's record
 ``new <slug> --issue N`` makes this month's folder for issue N, its README titled as the issue
 is; when ``gh`` cannot give the title, the README takes the slug and one note on stderr says
 so, and that the issue may not exist. Without ``--issue`` it needs ``gh`` to file the issue
-first, titled with the slug and labelled ``needs-triage``, into the repository ``gh`` targets,
+first, titled with ``--title`` (else the slug) and labelled ``needs-triage``, into the repository ``gh`` targets,
 and only when that is the one the ``origin`` remote names: in a fork ``gh`` can target the
 upstream parent (``docs/agents/issue-tracker.md``). It refuses an issue that already has a
 folder, in any month.
@@ -18,7 +18,7 @@ status is its issue's, read in one ``gh`` call; when ``gh`` is missing or fails,
 ``abandoned`` when its README says ``status: abandoned``. ``--status`` keeps the folders with
 that status.
 
-Usage: ``mise run work -- new <slug> [--issue N]`` or ``mise run work -- list [--status
+Usage: ``mise run work -- new <slug> [--issue N | --title TEXT]`` or ``mise run work -- list [--status
 active|landed|abandoned]``; either takes ``--root DIR`` for a work root other than ``work/``.
 Exit status: ``0`` on success, ``1`` when ``new`` cannot make the folder or ``list`` finds a
 folder that breaks the layout, ``2`` for bad arguments.
@@ -79,7 +79,12 @@ def main(
     args = _parser().parse_args(argv)
     if args.command == "new":
         return _new(
-            args.slug, args.issue, args.root, run, today or datetime.now().astimezone().date()
+            args.slug,
+            args.issue,
+            args.title,
+            args.root,
+            run,
+            today or datetime.now().astimezone().date(),
         )
     return _list(args.root, args.status, run)
 
@@ -98,18 +103,22 @@ def _parser() -> argparse.ArgumentParser:
         "new", parents=[common], help="make this month's folder for an issue, filing one if none"
     )
     new.add_argument("slug", help="lowercase kebab-case, as in docs-streamline")
-    new.add_argument("--issue", type=int, help="the issue's number; without it, file one")
+    source = new.add_mutually_exclusive_group()
+    source.add_argument("--issue", type=int, help="the issue's number; without it, file one")
+    source.add_argument("--title", help="the filed issue's and README's title (default: the slug)")
     listing = commands.add_parser("list", parents=[common], help="list work folders")
     listing.add_argument("--status", choices=STATUSES, help="keep folders with this status")
     return parser
 
 
-def _new(slug: str, issue: int | None, root: Path, run: Runner, today: date) -> int:
+def _new(
+    slug: str, issue: int | None, title: str | None, root: Path, run: Runner, today: date
+) -> int:
     try:
         folder_name(issue, slug)
         if issue is None:
-            issue = _file_issue(slug, run)
-            title = slug
+            title = title or slug
+            issue = _file_issue(slug, title, run)
         else:
             _refuse_a_second_folder(root, issue)
             title = _issue_title(issue, slug, run)
@@ -156,8 +165,8 @@ def _issue_title(issue: int, slug: str, run: Runner) -> str:
     return slug
 
 
-def _file_issue(slug: str, run: Runner) -> int:
-    """File an issue titled *slug* where gh targets, once that is origin's repository."""
+def _file_issue(slug: str, title: str, run: Runner) -> int:
+    """File an issue titled *title* where gh targets, once that is origin's repository."""
     # REST throughout, as in _issue_title: `gh repo view` and `gh issue create` use GraphQL.
     target = _output(run, ["gh", "api", "repos/{owner}/{repo}", "--jq", ".full_name"]).strip()
     remote = _output(run, ["git", "remote", "get-url", "origin"]).strip()
@@ -167,11 +176,13 @@ def _file_issue(slug: str, run: Runner) -> int:
             f"gh would file the issue in {target}, but origin is {origin}: run "
             f"`gh repo set-default {origin}`, or file the issue yourself and pass --issue"
         )
-    body = (
-        f"Filed by `mise run work -- new {slug}`, which titled it with the slug: retitle it to "
-        "state the problem or question, and describe it here."
-    )
-    create = ["gh", "api", f"repos/{target}/issues", "-X", "POST", "-f", f"title={slug}"]
+    body = f"Filed by `mise run work -- new {slug}`: describe the problem or question here."
+    if title == slug:
+        body = (
+            f"Filed by `mise run work -- new {slug}`, which titled it with the slug: retitle it to "
+            "state the problem or question, and describe it here."
+        )
+    create = ["gh", "api", f"repos/{target}/issues", "-X", "POST", "-f", f"title={title}"]
     fields = ["-f", f"body={body}", "-f", "labels[]=needs-triage", "--jq", ".html_url"]
     url = _output(run, [*create, *fields]).strip()
     if not (match := _ISSUE_URL.search(url)):
