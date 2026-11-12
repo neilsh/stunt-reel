@@ -49,11 +49,7 @@ Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): 
 2. Run `mise run check`; it must pass with no warnings.
 3. Commit with a Conventional Commit subject and, when a reviewer would ask "why this way?", a body that says why: [Commit messages](docs/development.md#commit-messages). The commit-msg hook checks the subject.
 4. Write the handoff into the work folder's README or on the issue, never only in agent memory; the finishing PR writes the README's `outcome`.
-5. A PR that changes rendered output carries a capture-beside-render picture, before and after: [Evidence for a rendering PR](.agents/skills/improving-render-parity/pr-evidence.md).
-6. A finding that needs a code fix is recorded on the fix's branch, cut from `main`, after checking the open PRs that touch the same note; a verification branch keeps only its journal entry, stacked on the fix branch when it links a note the fix adds.
-7. Before a push that changes `research/`, `NOTICE.md`, `docs/howto/` or `docs/*.md`, or before committing a work `spec.md` or `plan.md`, a fresh reviewer (a subagent, or another person) reads the diff and the notes it cites, reports any claim broader than its evidence (`only`, `all`, `noise`, `within`, `equivalent`), and checks each behavioural claim against the code.
-8. Work that ships as two or more dependent PRs is a `gh stack` from its first branch, submitted with `gh stack submit --auto`.
-9. A commit from another session's branch keeps its author, which the pre-push hook rejects: [re-commit it](docs/howto/take-a-commit-from-another-session.md).
+5. Before a push that changes `research/`, `NOTICE.md`, `docs/howto/` or `docs/*.md`, or before committing a work `spec.md` or `plan.md`, a fresh reviewer (a subagent, or another person) reads the diff and the notes it cites, reports any claim broader than its evidence (`only`, `all`, `noise`, `within`, `equivalent`), and checks each behavioural claim against the code.
 
 ### Working economically
 

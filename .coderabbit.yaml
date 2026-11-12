@@ -9,7 +9,7 @@ reviews:
   # Three paths where a review comment cannot be useful: two lockfiles and the synthetic fixture
   # bytes. And work/, whose dated records (work/README.md) a person reviews in the pull request
   # that adds them; a spec or plan, and a pull request that also changes research/ or NOTICE.md,
-  # gets the fresh reviewer of AGENTS.md working rule 7.
+  # gets the fresh reviewer of AGENTS.md Committing rule 5.
   path_filters:
     - "!Cargo.lock"
     - "!uv.lock"
