@@ -25,3 +25,10 @@
   - `make-all` on Patch 3 did not return to text mode within 600 s for `TOD.FLM` on two attempts (the log kept, `vault-tod/301/patch3.make-all.log`, is the second's), so TOD has no Patch 3 row.
 - **Verdict**: rejected on page content, adopted on palettes. With the palette items, `PLAYONE` draws the right colours, and a missing sound chunk plays like a stubbed one; but on all three rows some superset pages differ where two own captures agreed on every page. The cause is open; candidates include the extra props, the other stock items, and the archive's size (about 33 times CTRY's).
 - **Lives in**: [`linking.md`](../../../research/makeone-exe/linking.md) § 7.2, Ruled out, and open questions 4, 5 and 8.
+
+## 2026-11-11: the TOD Patch 3 row
+
+- **Question**: What does the superset do on `TOD.FLM` with Patch 3, the row the 2026-11-09 entry lacked because `make-all` stalled ([#355](https://github.com/neilsh/stunt-reel/issues/355))?
+- **Method**: As the 2026-11-09 entry, under `<data root>/bench/vault-tod/301/patch3/`: the own archive is a `make-all` rerun's `TOD.ALL` (md5 `906b04f9…`; `capture-compare` names it `2d6e06aa…`, its id as the capture stages it, sound stubbed), the superset the Patch 3 one stubbed against it (`bdee4cd7…`); captures `own-1`, `own-2`, `superset`; `mise run capture-compare`.
+- **Result**: `make-all` did not stall on 4 reruns (24 to 28 s), so the 2026-11-09 stall did not recur in 4 reruns and its cause is unknown. Own against own: 128 of 128 identical. Own against superset: 53 of 108 shared ticks identical, median 1 and 90th percentile 934 pixels differing, palettes equal on 108 of 108. Closer to CTRY Patch 3's row (48 of 101) than to TOD unpatched's (108 of 115).
+- **Lives in**: [`linking.md`](../../../research/makeone-exe/linking.md) § 7.2; [`driving.md`](../../../research/makeone-exe/driving.md) item 9.

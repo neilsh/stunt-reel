@@ -64,13 +64,16 @@ def _relocation_table(relocs: list[int]) -> bytes:
     return bytes(out)
 
 
-def _packed(stub: bytes = b"") -> bytes:
+def _packed(stub: bytes = b"", push_ax: bool = False) -> bytes:
     """Header, stream, loader paragraph-aligned after it, then an optional stub."""
     stream = _stream(IMAGE)
     stream += b"\0" * (-len(stream) % 16)
     loader = bytearray(0x158)
     struct.pack_into("<4H", loader, 0, ENTRY["ip"], ENTRY["cs"], ENTRY["sp"], ENTRY["ss"])
-    loader[0x0E : 0x0E + 23] = bytes.fromhex("060e1f8b0e0c008bf14e89f78cdb031e0a008ec3fdf3a4")
+    code = bytes.fromhex("060e1f8b0e0c008bf14e89f78cdb031e0a008ec3fdf3a4")
+    if push_ax:
+        code = b"P" + code
+    loader[0x0E : 0x0E + len(code)] = code
     loader += _relocation_table(RELOCS)
     body = stream + bytes(loader)
     loader_cs, ip = len(stream) // 16, 0x0E
@@ -92,6 +95,14 @@ def test_unpacks_image_entry_and_relocations() -> None:
     assert meta["entry"] == ENTRY
     assert meta["relocs"] == RELOCS
     assert "stub" not in meta
+
+
+def test_unpacks_the_push_ax_loader_build() -> None:
+    """Patch #3 `PLAYONE.EXE` and `MAKEONE.EXE`: the same loader with a `push ax` ahead of its code."""
+    image, meta = _load().unpack(_packed(push_ax=True))
+    assert bytes(image) == IMAGE
+    assert meta["entry"] == ENTRY
+    assert meta["relocs"] == RELOCS
 
 
 def test_unpacks_the_program_under_an_entry_stub() -> None:

@@ -406,6 +406,7 @@ fn draw_shapes(
                 let frame = SceneFrame {
                     tick: 0.0,
                     view: camera.authored,
+                    lens: stunt_core::contracts::DEFAULT_CAMERA_LENS,
                     world: false,
                     actors: vec![ActorDraw {
                         shape_id: id,

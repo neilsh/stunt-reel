@@ -101,6 +101,19 @@ pub enum VisibilityCondition {
         /// Value those masked bits must equal for the node to be visible.
         expected: u16,
     },
+    /// One branch of a scenery `SP_1NODE`'s level-of-detail switch (image `0x2121`), tested
+    /// per frame by [`crate::contracts::CameraTransform::lod_keeps_subtree`]: the subtree
+    /// (`near`) is visible while that test holds, the stand-in (`!near`) while it fails.
+    LodBranch {
+        /// The node's position in the space of the model that owns the gate.
+        point: [f32; 3],
+        /// The node's extent word.
+        ext: i32,
+        /// The node's signed split distance.
+        splitdist: i32,
+        /// True for the subtree, false for the stand-in.
+        near: bool,
+    },
     /// Viewing angle cone threshold (used for prop disc blurs or landing lights).
     AngleCone {
         /// Cone axis in world space; must be a unit vector.
@@ -187,7 +200,7 @@ pub enum SodStopReason {
     /// A branch (`GOTO`, `GOSUB`, `BVGT`) targets outside the stream, or the walk exceeded
     /// its branch budget.
     MalformedBranch,
-    /// A polygon opcode (`POLYZ`, `GVPOLY`) with fewer than three vertices.
+    /// A polygon opcode (`POLYZ`, `GVPOLY`) with fewer than two vertices.
     MalformedPolygon,
 }
 
@@ -197,7 +210,7 @@ impl fmt::Display for SodStopReason {
             Self::UnknownOpcode => f.write_str("unknown opcode"),
             Self::MissingAnchors => f.write_str("missing anchor table"),
             Self::MalformedBranch => f.write_str("branch outside the stream"),
-            Self::MalformedPolygon => f.write_str("polygon with fewer than three vertices"),
+            Self::MalformedPolygon => f.write_str("polygon with fewer than two vertices"),
         }
     }
 }

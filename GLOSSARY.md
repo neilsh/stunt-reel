@@ -110,7 +110,7 @@ A prop's shape and position in the world, as the scenery walk, dedup and the sub
 _Avoid_: instance
 
 **Scenery walk**:
-The traversal of `SCENERY.scn` from its root that produces placements, including its level-of-detail gate: each `SP_1NODE` keeps its subtree or draws its stand-in by the camera path's distance.
+The traversal of `SCENERY.scn` from its root that produces placements, including its level-of-detail gate: each `SP_1NODE` the camera path comes near keeps both its subtree and its stand-in, each behind a gate the renderer tests per frame, and any other draws its stand-in.
 _Avoid_: traversal, scene tree walk
 
 **Film scene**:

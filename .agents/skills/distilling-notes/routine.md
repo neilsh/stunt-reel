@@ -29,7 +29,7 @@ commands.
    the skill's step 1 shortcut instead: no work folder, straight to its step 6. In the
    skill's step 6 a fresh reviewer subagent, which has not seen your work, reads the
    diff and the notes it cites and reports every claim broader than its evidence
-   (AGENTS.md, Committing rule 7). Fix or restore each claim it reports before you
+   (AGENTS.md, Committing rule 5). Fix or restore each claim it reports before you
    commit.
 
 5. Run `mise run links` and list each dead external link (a 404 or 410, or a host that

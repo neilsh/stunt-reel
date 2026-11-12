@@ -10,5 +10,5 @@ outcome: "OP_ANIMATE decodes into screen-facing sprites drawn from RES image chu
 ## Handoff
 
 - The handler and its frame pick are in [`sod-animate.md`](../../../research/playone-exe/sod-animate.md); the scores are in [`journal.md`](journal.md).
-- `sod-census` before: 3654 of 3703 clean, 35 stepping over an opcode; after: 3682 clean, 7 stepping over, ANIMATE gone from the queue.
+- `sod-census` before: 3654 of 3703 clean, 35 stepping over an opcode; after this change alone: 3682 clean, 7 stepping over; merged with #393: 3689 clean, only `TESTTEXT.BIN` left.
 - Open: PLAYONE paints the explosion over neighbouring objects (CTRY tick 871 tower, INTRO tick 1398 truck); our depth test cuts it. The bank words other than selectors 0x10 and 0x16 read as zero.
