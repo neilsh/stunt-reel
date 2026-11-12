@@ -8,12 +8,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{ArgGroup, CommandFactory as _, Parser};
-use stunt_core::anchor::parse_anchor_table;
 use stunt_core::scene::decode_archive_shapes;
 use stunt_core::sod::ShadeLight;
 use stunt_gltf::{export_scene_frame, export_shape, summarize};
 
-use crate::scene::{SceneSources, build_scene, find_scenery_file};
+use crate::scene::{SceneSources, build_scene, read_anchor_table};
 
 /// `export-gltf` options as clap parses them.
 #[derive(Debug, Parser)]
@@ -117,10 +116,7 @@ impl Args {
 /// Exports one shape of the archive as `.glb` bytes.
 fn glb_for_shape(archive: &Path, sidata: Option<&Path>, shape_id: u16) -> Result<Vec<u8>, String> {
     let bytes = fs::read(archive).map_err(|e| format!("read {}: {e}", archive.display()))?;
-    let anchors = find_scenery_file(sidata, archive, "ANCHORPT.DAT")
-        .and_then(|path| fs::read(path).ok())
-        .map(|data| parse_anchor_table(&data))
-        .unwrap_or_default();
+    let anchors = read_anchor_table(sidata, archive)?;
     let decoded = decode_archive_shapes(&bytes, &anchors, ShadeLight::default())
         .map_err(|e| format!("parse {}: {e}", archive.display()))?;
     let Some(model) = decoded.shapes.get(&shape_id) else {

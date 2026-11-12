@@ -22,7 +22,6 @@ use clap::{CommandFactory as _, Parser, ValueEnum};
 use glam::Vec3;
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
-use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::{PaletteControls, ShapeExtent, SodModelIr};
 use stunt_core::flm::FilmTimeline;
 use stunt_core::scene::{ActorDraw, FilmScene, SceneFrame, ViewCamera, decode_archive_shapes};
@@ -30,7 +29,7 @@ use stunt_core::sod::ShadeLight;
 use stunt_render::{CameraController, Offscreen, Projection, RenderError, RenderOptions, Renderer};
 
 use crate::page_slot::PageSlot;
-use crate::scene::find_scenery_file;
+use crate::scene::read_anchor_table;
 
 /// `shape-views` options as clap parses them.
 #[derive(Debug, Parser)]
@@ -191,7 +190,11 @@ fn parse_hex_id(token: &str) -> Result<u16, String> {
 /// SHA-256 of what the renderer draws of `model`: its vertices, triangle indices and
 /// nodes (transforms, visibility gates, mesh slices). The name and decode record are left
 /// out, so a hash changes only when the geometry does.
-fn geometry_hash(model: &SodModelIr) -> String {
+///
+/// # Errors
+///
+/// The nodes fail to serialise, so the hash cannot cover them.
+fn geometry_hash(model: &SodModelIr) -> Result<String, serde_json::Error> {
     let mut hasher = Sha256::new();
     for vertex in &model.vertices {
         for value in vertex.position.iter().chain(&vertex.normal) {
@@ -204,19 +207,18 @@ fn geometry_hash(model: &SodModelIr) -> String {
         hasher.update(index.to_le_bytes());
     }
     hasher.update(b"nodes");
-    // Serializing plain data to a Vec cannot fail.
-    hasher.update(serde_json::to_vec(&model.nodes).unwrap_or_default());
+    hasher.update(serde_json::to_vec(&model.nodes)?);
     hasher.update(b"roots");
     for root in &model.root_nodes {
         hasher.update(root.0.to_le_bytes());
     }
-    hasher
+    Ok(hasher
         .finalize()
         .iter()
         .fold(String::with_capacity(64), |mut hex, b| {
             let _ = write!(hex, "{b:02x}");
             hex
-        })
+        }))
 }
 
 /// `manifest.json`: what one run drew, keyed by shape id.
@@ -308,10 +310,7 @@ type Selection = (BTreeMap<u16, SodModelIr>, BTreeMap<u16, String>);
 fn load_shapes(options: &Options) -> Result<Selection, ViewsError> {
     let archive = &options.archive;
     let bytes = fs::read(archive).map_err(|e| format!("read {}: {e}", archive.display()))?;
-    let anchors = find_scenery_file(options.sidata.as_deref(), archive, "ANCHORPT.DAT")
-        .and_then(|path| fs::read(path).ok())
-        .map(|data| parse_anchor_table(&data))
-        .unwrap_or_default();
+    let anchors = read_anchor_table(options.sidata.as_deref(), archive)?;
     let decoded = decode_archive_shapes(&bytes, &anchors, ShadeLight::default())
         .map_err(|e| format!("parse {}: {e}", archive.display()))?;
     let mut shapes: BTreeMap<u16, SodModelIr> = decoded.shapes.into_iter().collect();
@@ -376,7 +375,9 @@ fn draw_shapes(
         };
         let mut entry = ShapeEntry {
             id: format!("{id:04X}"),
-            geometry_hash: Some(geometry_hash(model)),
+            geometry_hash: Some(
+                geometry_hash(model).map_err(|e| format!("hash shape {id:04X}: {e}"))?,
+            ),
             vertices: model.vertices.len(),
             triangles: model.indices.len() / 3,
             stop: model.decode().and_then(|record| record.stop).map(|stop| {
@@ -633,14 +634,14 @@ mod tests {
     #[test]
     fn the_geometry_hash_follows_the_geometry_only() {
         let shape = fixture_shape();
-        let hash = geometry_hash(&shape);
+        let hash = geometry_hash(&shape).expect("hash");
         assert_eq!(hash.len(), 64);
         let mut renamed = shape.clone();
         renamed.name = "OTHER".to_string();
-        assert_eq!(geometry_hash(&renamed), hash);
+        assert_eq!(geometry_hash(&renamed).expect("hash"), hash);
         let mut moved = shape;
         moved.vertices[0].position[1] += 0.5;
-        assert_ne!(geometry_hash(&moved), hash);
+        assert_ne!(geometry_hash(&moved).expect("hash"), hash);
     }
 
     #[test]
@@ -901,7 +902,10 @@ mod tests {
             serde_json::from_slice(&written.expect("manifest written")).expect("JSON");
         let entry = &written["shapes"][0];
         assert_eq!(entry["id"], "0001");
-        assert_eq!(entry["geometry_hash"], geometry_hash(&fixture_shape()));
+        assert_eq!(
+            entry["geometry_hash"],
+            geometry_hash(&fixture_shape()).expect("hash")
+        );
         assert_eq!(entry["triangles"], 2);
         assert_eq!(entry["image"], "0001.png");
         assert!(png, "0001.png written");

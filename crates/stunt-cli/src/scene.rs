@@ -20,7 +20,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use glam::Mat4;
-use stunt_core::anchor::parse_anchor_table;
+use stunt_core::anchor::{AnchorPoint, parse_anchor_table};
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SodModelIr, SodVertex, TrajectoryRecord, VisibilityCondition,
@@ -40,11 +40,16 @@ use crate::parity_artifacts::film_identity;
 ///
 /// `base` is the archive path (the film with `--game`, or the `--sod` model); `sidata` is
 /// the explicit `--sidata` directory, searched first.
+///
+/// # Errors
+///
+/// A candidate that exists but cannot be inspected or listed. Such a candidate stops the
+/// search rather than falling through to the next one.
 pub(crate) fn find_scenery_file(
     sidata: Option<&Path>,
     base: &Path,
     filename: &str,
-) -> Option<PathBuf> {
+) -> Result<Option<PathBuf>, String> {
     let base = std::path::absolute(base).unwrap_or_else(|_| base.to_path_buf());
     let mut candidates: Vec<PathBuf> = sidata.map(Path::to_path_buf).into_iter().collect();
     if let Some(dir) = base.parent() {
@@ -58,35 +63,81 @@ pub(crate) fn find_scenery_file(
             candidates.push(parent.join("SIDATA"));
         }
     }
-    candidates.iter().find_map(|dir| find_in_dir(dir, filename))
+    for dir in &candidates {
+        if let Some(path) = find_in_dir(dir, filename)? {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
+
+/// Whether `path` is a file. A missing path is `false`; any other metadata error is returned.
+fn is_file_at(path: &Path) -> Result<bool, String> {
+    match fs::metadata(path) {
+        Ok(meta) => Ok(meta.is_file()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("inspect {}: {e}", path.display())),
+    }
 }
 
 /// Finds `filename` in `dir`, preferring an exact-case match over a case-insensitive one.
-fn find_in_dir(dir: &Path, filename: &str) -> Option<PathBuf> {
-    if !dir.is_dir() {
-        return None;
+///
+/// A missing `dir` is `Ok(None)`; a `dir` or entry that cannot be inspected or listed is an error.
+fn find_in_dir(dir: &Path, filename: &str) -> Result<Option<PathBuf>, String> {
+    match fs::metadata(dir) {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => return Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("inspect {}: {e}", dir.display())),
     }
     let exact = dir.join(filename);
-    if exact.is_file() {
-        return Some(exact);
+    if is_file_at(&exact)? {
+        return Ok(Some(exact));
     }
-    fs::read_dir(dir)
-        .ok()?
-        .flatten()
-        .find(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .eq_ignore_ascii_case(filename)
-        })
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file())
+    let entries = fs::read_dir(dir).map_err(|e| format!("list {}: {e}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("list {}: {e}", dir.display()))?;
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(filename)
+        {
+            let path = entry.path();
+            return Ok(is_file_at(&path)?.then_some(path));
+        }
+    }
+    Ok(None)
 }
 
-/// Reads a scenery file located by [`find_scenery_file`], if present and readable.
-fn read_scenery_file(sidata: Option<&Path>, base: &Path, filename: &str) -> Option<Vec<u8>> {
-    let p = find_scenery_file(sidata, base, filename)?;
-    fs::read(p).ok()
+/// Reads a scenery file located by [`find_scenery_file`].
+///
+/// `Ok(None)` means no candidate directory holds `filename`; a located file that cannot be
+/// read is an error, not an absence.
+pub(crate) fn read_scenery_file(
+    sidata: Option<&Path>,
+    base: &Path,
+    filename: &str,
+) -> Result<Option<Vec<u8>>, String> {
+    let Some(path) = find_scenery_file(sidata, base, filename)? else {
+        return Ok(None);
+    };
+    fs::read(&path)
+        .map(Some)
+        .map_err(|e| format!("read {}: {e}", path.display()))
+}
+
+/// The anchor table of `ANCHORPT.DAT`, empty when the file is not found.
+///
+/// # Errors
+///
+/// A located `ANCHORPT.DAT` that cannot be read.
+pub(crate) fn read_anchor_table(
+    sidata: Option<&Path>,
+    base: &Path,
+) -> Result<Vec<AnchorPoint>, String> {
+    Ok(read_scenery_file(sidata, base, "ANCHORPT.DAT")?
+        .map(|data| parse_anchor_table(&data))
+        .unwrap_or_default())
 }
 
 /// Which files to build a scene from, as chosen on the command line.
@@ -141,11 +192,15 @@ fn attach_font(scene: FilmScene, src: &SceneSources<'_>) -> Result<FilmScene, St
     // A candidate that does not load leaves the next one, the film's, still to try.
     let mut error = "no PFONT.BIN was found".to_string();
     let game = src.game.map(game_search_base);
-    let candidates = [src.all, game.as_deref(), src.flm]
-        .into_iter()
-        .flatten()
-        .filter_map(|base| find_scenery_file(src.sidata, base, "PFONT.BIN"));
-    for path in candidates {
+    for base in [src.all, game.as_deref(), src.flm].into_iter().flatten() {
+        let path = match find_scenery_file(src.sidata, base, "PFONT.BIN") {
+            Ok(Some(path)) => path,
+            Ok(None) => continue,
+            Err(e) => {
+                error = e;
+                continue;
+            }
+        };
         match load_font(&path) {
             Ok(font) => {
                 println!("[stuntreel] credits font: {}", path.display());
@@ -194,9 +249,9 @@ fn build_film_scene(src: &SceneSources<'_>) -> Result<(FilmScene, FilmId), Strin
         }
     };
 
-    let anchors = read_scenery_file(src.sidata, &base, "ANCHORPT.DAT");
-    let map = read_scenery_file(src.sidata, &base, "MAP.BIN");
-    let scenery = read_scenery_file(src.sidata, &base, "SCENERY.scn");
+    let anchors = read_scenery_file(src.sidata, &base, "ANCHORPT.DAT")?;
+    let map = read_scenery_file(src.sidata, &base, "MAP.BIN")?;
+    let scenery = read_scenery_file(src.sidata, &base, "SCENERY.scn")?;
     let regions = files.split()?;
     let inputs = SceneInputs {
         film: &[],
@@ -435,9 +490,7 @@ fn load_or_create_model(path: Option<&Path>, sidata: Option<&Path>) -> Result<So
     let bytes = fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?;
 
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("MODEL");
-    let anchors = read_scenery_file(sidata, path, "ANCHORPT.DAT")
-        .map(|b| parse_anchor_table(&b))
-        .unwrap_or_default();
+    let anchors = read_anchor_table(sidata, path)?;
     let anchor_slice = (!anchors.is_empty()).then_some(anchors.as_slice());
     decode_sod(&bytes, stem, anchor_slice, DecodeMode::Strict)
         .map_err(|e| format!("parse {}: {e}", path.display()))
@@ -570,8 +623,9 @@ mod tests {
         }
     }
 
-    fn found_in(path: Option<PathBuf>) -> String {
-        fs::read_to_string(path.expect("file found")).expect("read found file")
+    fn found_in(path: Result<Option<PathBuf>, String>) -> String {
+        let path = path.expect("search succeeds").expect("file found");
+        fs::read_to_string(path).expect("read found file")
     }
 
     #[test]
@@ -607,7 +661,45 @@ mod tests {
             );
             fs::remove_file(t.0.join(rel)).expect("remove");
         }
-        assert!(find_scenery_file(None, &all, "SCENERY.scn").is_none());
+        assert_eq!(find_scenery_file(None, &all, "SCENERY.scn"), Ok(None));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_discovery_error_is_not_an_absence() {
+        let t = TempTree::new();
+        let all = t.file("film/MOVIE.ALL", "");
+        // `file/child` cannot be inspected: the parent component is a regular file (ENOTDIR).
+        t.file("blocker", "");
+        let blocked = t.0.join("blocker").join("sidata");
+        let error = find_scenery_file(Some(&blocked), &all, "ANCHORPT.DAT").unwrap_err();
+        assert!(error.starts_with("inspect "), "{error}");
+        // The error stops the search: the film's own directory is not consulted.
+        t.file("film/ANCHORPT.DAT", "later");
+        let error = read_scenery_file(Some(&blocked), &all, "ANCHORPT.DAT").unwrap_err();
+        assert!(error.starts_with("inspect "), "{error}");
+    }
+
+    #[test]
+    fn read_scenery_file_tells_absent_from_present() {
+        let t = TempTree::new();
+        let all = t.file("film/MOVIE.ALL", "");
+        assert_eq!(read_scenery_file(None, &all, "ANCHORPT.DAT"), Ok(None));
+        t.file("film/ANCHORPT.DAT", "abc");
+        assert_eq!(
+            read_scenery_file(None, &all, "ANCHORPT.DAT"),
+            Ok(Some(b"abc".to_vec()))
+        );
+    }
+
+    #[test]
+    fn a_missing_anchor_file_is_an_empty_table() {
+        let t = TempTree::new();
+        let all = t.file("film/MOVIE.ALL", "");
+        assert_eq!(read_anchor_table(None, &all), Ok(Vec::new()));
+        // One whole 28-byte record is read; the trailing partial one is dropped.
+        t.file("film/ANCHORPT.DAT", &"\0".repeat(28 + 5));
+        assert_eq!(read_anchor_table(None, &all).expect("table").len(), 1);
     }
 
     #[test]
@@ -626,7 +718,10 @@ mod tests {
         let t = TempTree::new();
         let all = t.file("film/MOVIE.ALL", "");
         let nowhere = t.0.join("no_such_dir");
-        assert!(find_scenery_file(Some(&nowhere), &all, "STUNTREEL_ABSENT.DAT").is_none());
+        assert_eq!(
+            find_scenery_file(Some(&nowhere), &all, "STUNTREEL_ABSENT.DAT"),
+            Ok(None)
+        );
     }
 
     #[test]
