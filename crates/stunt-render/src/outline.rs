@@ -8,7 +8,9 @@
 //! (`research/playone-exe/sod-vm.md` section 8.11). [`with_outlines`] gives the renderer those
 //! pixels back by drawing each polygon's outline as one-pixel screen lines, the same lines
 //! a `ZLINETO` draws (section 8.10). An outline costs four vertices and twelve indices an
-//! edge, so it is drawn on the shapes the renderer places per frame and not on the world mesh.
+//! edge, so it is drawn this way on the shapes the renderer places per frame; the world mesh
+//! draws the [`boundary_edges`] of its props as a line list over its own vertices instead
+//! (`GpuModel::from_ir_outlined`), at two indices an edge.
 
 use std::collections::HashMap;
 
@@ -69,35 +71,41 @@ fn append_outline(
     source: &[SodVertex],
     triangles: &[u32],
 ) {
-    // Each undirected edge's use count, keyed by its sorted ends, in first-use order.
-    let mut uses: HashMap<(u32, u32), u32> = HashMap::new();
-    let mut order: Vec<(u32, u32)> = Vec::new();
-    for tri in triangles.as_chunks::<3>().0 {
-        let corners = tri.map(|i| source.get(i as usize));
-        if corners
-            .iter()
-            .any(|v| v.is_none_or(|v| v.flags & VERTEX_FLAG_LINE != 0))
-        {
-            continue;
-        }
-        let [a, b, c] = *tri;
-        for (p, q) in [(a, b), (b, c), (c, a)] {
-            let key = (p.min(q), p.max(q));
-            let count = uses.entry(key).or_insert(0);
-            if *count == 0 {
-                order.push((p, q));
-            }
-            *count = count.saturating_add(1);
-        }
-    }
-    for (p, q) in order {
-        if uses.get(&(p.min(q), p.max(q))) != Some(&1) {
-            continue;
-        }
+    let filled = |i: u32| {
+        source
+            .get(i as usize)
+            .is_some_and(|v| v.flags & VERTEX_FLAG_LINE == 0)
+    };
+    for [p, q] in boundary_edges(triangles, filled) {
         if let (Some(a), Some(b)) = (source.get(p as usize), source.get(q as usize)) {
             push_segment(vertices, indices, a, b);
         }
     }
+}
+
+/// The outline of the triangles `triangles` as edges between their indices: every edge
+/// exactly one of them uses, in first-use order, each from its first corner to its second.
+///
+/// A triangle with a corner `outlined` rejects is skipped, neither counted nor outlined.
+pub(crate) fn boundary_edges(triangles: &[u32], outlined: impl Fn(u32) -> bool) -> Vec<[u32; 2]> {
+    // Each undirected edge's use count, keyed by its sorted ends, in first-use order.
+    let mut uses: HashMap<(u32, u32), u32> = HashMap::new();
+    let mut order: Vec<[u32; 2]> = Vec::new();
+    for tri in triangles.as_chunks::<3>().0 {
+        if !tri.iter().all(|&i| outlined(i)) {
+            continue;
+        }
+        let [a, b, c] = *tri;
+        for (p, q) in [(a, b), (b, c), (c, a)] {
+            let count = uses.entry((p.min(q), p.max(q))).or_insert(0);
+            if *count == 0 {
+                order.push([p, q]);
+            }
+            *count = count.saturating_add(1);
+        }
+    }
+    order.retain(|&[p, q]| uses.get(&(p.min(q), p.max(q))) == Some(&1));
+    order
 }
 
 /// Appends the segment from `a` to `b` as a line quad, laid out as the decoder lays out a
@@ -214,6 +222,16 @@ mod tests {
             },
             [0.0, 1.0, 0.0]
         ));
+    }
+
+    #[test]
+    fn boundary_edges_skip_the_diagonal_and_rejected_triangles() {
+        let ir = quad();
+        let edges = boundary_edges(&ir.indices, |_| true);
+        assert_eq!(edges, vec![[0, 1], [1, 2], [2, 3], [3, 0]]);
+        // Rejecting vertex 1 drops the first triangle, so the diagonal is the second's edge.
+        let edges = boundary_edges(&ir.indices, |i| i != 1);
+        assert_eq!(edges, vec![[0, 2], [2, 3], [3, 0]]);
     }
 
     #[test]
