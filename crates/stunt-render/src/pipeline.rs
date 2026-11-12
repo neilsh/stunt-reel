@@ -74,6 +74,13 @@ pub(crate) struct RenderPipelines {
     /// it faces the eye, and culling dropped every face wound downward (a wing's underside)
     /// and broke the shadow into specks.
     pub(crate) shadow_pipeline: wgpu::RenderPipeline,
+    /// Line-list pipeline for the world mesh's polygon outlines (`GpuModel::draw_edges`),
+    /// with the base depth test. Lines are not culled, since they have no winding.
+    pub(crate) edge_pipeline: wgpu::RenderPipeline,
+    /// The edge pipeline with the decal depth test, for the outlines of decal slices. wgpu
+    /// allows depth bias only on triangles, so it compares `LessEqual` without the `[I5]`
+    /// bias.
+    pub(crate) edge_decal_pipeline: wgpu::RenderPipeline,
     /// Fullscreen pipeline that paints the sky bands behind all geometry.
     pub(crate) sky_pipeline: wgpu::RenderPipeline,
     /// Solid-black fullscreen pipeline used to paint `[I6]` letterbox bars.
@@ -285,7 +292,7 @@ impl RenderPipelines {
                 targets: &targets,
             }),
             primitive: model_primitive,
-            depth_stencil: Some(base_depth_stencil),
+            depth_stencil: Some(base_depth_stencil.clone()),
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
             cache: None,
@@ -312,6 +319,42 @@ impl RenderPipelines {
             multiview_mask: None,
             cache: None,
         });
+
+        let edge_primitive = wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::LineList,
+            ..primitive
+        };
+        let edge_pipeline_with = |depth_stencil: wgpu::DepthStencilState, label: &str| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader_module,
+                    entry_point: Some("vs_main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    buffers: &vertex_buffers,
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader_module,
+                    entry_point: Some(fragment_entry),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    targets: &targets,
+                }),
+                primitive: edge_primitive,
+                depth_stencil: Some(depth_stencil),
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let edge_pipeline = edge_pipeline_with(base_depth_stencil, "stunt_edge_pipeline");
+        let edge_decal_pipeline = edge_pipeline_with(
+            wgpu::DepthStencilState {
+                bias: wgpu::DepthBiasState::default(),
+                ..decal_depth_stencil.clone()
+            },
+            "stunt_edge_decal_pipeline",
+        );
 
         let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("stunt_mode13h_shadow_pipeline"),
@@ -408,6 +451,8 @@ impl RenderPipelines {
             base_pipeline,
             decal_pipeline,
             shadow_pipeline,
+            edge_pipeline,
+            edge_decal_pipeline,
             sky_pipeline,
             bar_pipeline,
             model_bind_group_layout,

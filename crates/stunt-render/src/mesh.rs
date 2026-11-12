@@ -51,6 +51,10 @@ pub struct GpuMeshSlice {
     pub index_count: u32,
     /// Whether the slice is a coplanar decal drawn through the depth-bias pipeline `[I5]`.
     pub is_decal: bool,
+    /// First index of the slice's outline in its chunk's edge buffer.
+    pub edge_offset: u32,
+    /// Number of outline indices of the slice (two per edge); zero when it has no outline.
+    pub edge_count: u32,
 }
 
 /// GPU-resident representation of a transpiled `SodModelIr`.
@@ -82,6 +86,31 @@ impl GpuModel {
         model_bind_group_layout: &wgpu::BindGroupLayout,
         ir: &SodModelIr,
     ) -> Self {
+        Self::upload(device, queue, model_bind_group_layout, ir, None)
+    }
+
+    /// Like [`Self::from_ir`], and gives each mesh slice its outline for [`Self::draw_edges`]:
+    /// every edge exactly one of the slice's triangles uses, as two indices into the same
+    /// vertices, so it costs eight bytes an edge. Triangles with a corner `outlined` rejects
+    /// are left out. A slice split over chunks is outlined per run, so a split also outlines
+    /// the edges along its cut.
+    pub fn from_ir_outlined(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        model_bind_group_layout: &wgpu::BindGroupLayout,
+        ir: &SodModelIr,
+        outlined: fn(&SodVertex) -> bool,
+    ) -> Self {
+        Self::upload(device, queue, model_bind_group_layout, ir, Some(outlined))
+    }
+
+    fn upload(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        model_bind_group_layout: &wgpu::BindGroupLayout,
+        ir: &SodModelIr,
+        outlined: Option<fn(&SodVertex) -> bool>,
+    ) -> Self {
         let limit = device.limits().max_buffer_size;
         // A buffer larger than the address space is capped at what it can address.
         let max_vertices =
@@ -105,18 +134,23 @@ impl GpuModel {
             })
             .collect();
         let mesh_sources: Vec<SourceSlice> = sources.iter().flatten().copied().collect();
-        let plan = plan_upload(
+        let mut plan = plan_upload(
             ir.vertices.len(),
             &ir.indices,
             &mesh_sources,
             max_vertices,
             max_indices,
         );
+        let edges = match outlined {
+            Some(keep) => plan_edges(&mut plan, ir, keep),
+            None => vec![Vec::new(); plan.chunks.len()],
+        };
         let chunks = plan
             .chunks
             .iter()
+            .zip(&edges)
             .enumerate()
-            .map(|(n, chunk)| GpuChunk::upload(device, queue, ir, n, chunk))
+            .map(|(n, (chunk, edges))| GpuChunk::upload(device, queue, ir, n, chunk, edges))
             .collect();
 
         // Model uniform buffer & bind group
@@ -262,6 +296,74 @@ impl GpuModel {
             );
         }
     }
+
+    /// Encodes the outlines of `meshes` into `rpass` as a line list, binding each slice's
+    /// chunk buffers when it changes; slices without an outline are skipped.
+    ///
+    /// The pipeline (a `LineList` one) and bind groups must already be set.
+    pub fn draw_edges(&self, rpass: &mut wgpu::RenderPass<'_>, meshes: &[GpuMeshSlice]) {
+        let mut bound = None;
+        for mesh in meshes.iter().filter(|m| m.edge_count > 0) {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "draw slices come from this upload's plan, which numbers only its own chunks"
+            )]
+            let chunk = &self.chunks[mesh.chunk as usize];
+            if bound != Some(mesh.chunk) {
+                rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                rpass.set_index_buffer(chunk.edges.slice(..), wgpu::IndexFormat::Uint32);
+                bound = Some(mesh.chunk);
+            }
+            rpass.draw_indexed(
+                mesh.edge_offset..(mesh.edge_offset + mesh.edge_count),
+                mesh.vertex_offset,
+                0..1,
+            );
+        }
+    }
+}
+
+/// Fills in each planned slice's outline and returns each chunk's edge indices.
+fn plan_edges(
+    plan: &mut UploadPlan,
+    ir: &SodModelIr,
+    keep: fn(&SodVertex) -> bool,
+) -> Vec<Vec<u32>> {
+    // A split chunk's vertices, in buffer order, as source vertex numbers.
+    let local: Vec<Option<Vec<usize>>> = plan
+        .chunks
+        .iter()
+        .map(|c| {
+            c.indices
+                .as_ref()
+                .map(|_| c.vertex_ranges.iter().flat_map(Clone::clone).collect())
+        })
+        .collect();
+    let mut edges = vec![Vec::new(); plan.chunks.len()];
+    for slice in plan.slices.iter_mut().flatten() {
+        let n = slice.chunk as usize;
+        let (Some(chunk), Some(local), Some(out)) =
+            (plan.chunks.get(n), local.get(n), edges.get_mut(n))
+        else {
+            continue;
+        };
+        let indices = chunk.indices.as_deref().unwrap_or(&ir.indices);
+        let start = slice.index_offset as usize;
+        let Some(triangles) = indices.get(start..start + slice.index_count as usize) else {
+            continue;
+        };
+        let base = slice.vertex_offset.cast_unsigned();
+        let vertex = |i: u32| {
+            let at = base.saturating_add(i) as usize;
+            let source = local.as_ref().map_or(Some(at), |l| l.get(at).copied())?;
+            ir.vertices.get(source)
+        };
+        let found = crate::outline::boundary_edges(triangles, |i| vertex(i).is_some_and(keep));
+        slice.edge_offset = arena_index(out.len());
+        slice.edge_count = arena_index(2 * found.len());
+        out.extend(found.into_iter().flatten());
+    }
+    edges
 }
 
 /// One vertex/index buffer pair of a [`GpuModel`].
@@ -271,6 +373,8 @@ pub struct GpuChunk {
     pub vertex_buffer: wgpu::Buffer,
     /// 32-bit index buffer of the chunk.
     pub index_buffer: wgpu::Buffer,
+    /// 32-bit line-list index buffer of the chunk's outlines, into the same vertices.
+    pub edges: wgpu::Buffer,
 }
 
 impl GpuChunk {
@@ -280,6 +384,7 @@ impl GpuChunk {
         ir: &SodModelIr,
         n: usize,
         plan: &ChunkPlan,
+        edges: &[u32],
     ) -> Self {
         // Chunk 0 keeps the labels of an unsplit model.
         let suffix = if n == 0 {
@@ -318,9 +423,20 @@ impl GpuChunk {
         if !index_bytes.is_empty() {
             queue.write_buffer(&index_buffer, 0, index_bytes);
         }
+        let edge_bytes: &[u8] = bytemuck::cast_slice(edges);
+        let edge_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(&format!("{}_edge_buffer{suffix}", ir.name)),
+            size: (edge_bytes.len().max(size_of::<u32>())) as u64,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        if !edge_bytes.is_empty() {
+            queue.write_buffer(&edge_buffer, 0, edge_bytes);
+        }
         Self {
             vertex_buffer,
             index_buffer,
+            edges: edge_buffer,
         }
     }
 }
@@ -393,6 +509,8 @@ pub(crate) fn plan_upload(
                     index_offset: s.index_offset,
                     index_count: s.index_count,
                     is_decal: s.is_decal,
+                    edge_offset: 0,
+                    edge_count: 0,
                 }]
             })
             .collect();
@@ -490,6 +608,8 @@ fn flush_run(
         index_offset: arena_index(indices.len()),
         index_count: arena_index(3 * tris.len()),
         is_decal,
+        edge_offset: 0,
+        edge_count: 0,
     };
     indices.extend(
         tris.iter()
@@ -531,6 +651,54 @@ mod tests {
             }
         }
         out
+    }
+
+    /// A unit quad of two triangles, as a model with one mesh node.
+    fn quad_ir() -> SodModelIr {
+        let vertex = |x: f32, y: f32| SodVertex {
+            position: [x, y, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            palette_index: 7,
+            flags: 0,
+            scenery_class: 0,
+            _padding: 0,
+        };
+        let mut ir = SodModelIr::new("QUAD");
+        ir.vertices = vec![
+            vertex(0.0, 0.0),
+            vertex(1.0, 0.0),
+            vertex(1.0, 1.0),
+            vertex(0.0, 1.0),
+        ];
+        ir.indices = vec![0, 1, 2, 0, 2, 3];
+        ir
+    }
+
+    #[test]
+    fn an_unsplit_slice_is_outlined_without_its_diagonal() {
+        let ir = quad_ir();
+        let mut plan = plan_upload(4, &ir.indices, &[source(0, 6)], 4, 6);
+        let edges = plan_edges(&mut plan, &ir, |_| true);
+        assert_eq!(edges, vec![vec![0, 1, 1, 2, 2, 3, 3, 0]]);
+        let slice = plan.slices[0][0];
+        assert_eq!((slice.edge_offset, slice.edge_count), (0, 8));
+    }
+
+    #[test]
+    fn a_split_slice_is_outlined_per_run_in_chunk_indices() {
+        let ir = quad_ir();
+        // Three vertices a chunk: each triangle is its own run, and the cut is outlined twice.
+        let mut plan = plan_upload(4, &ir.indices, &[source(0, 6)], 3, 6);
+        let edges = plan_edges(&mut plan, &ir, |_| true);
+        assert_eq!(edges.len(), 2);
+        assert!(edges.iter().all(|e| e.len() == 6));
+        for slice in &plan.slices[0] {
+            assert_eq!(slice.edge_count, 6);
+        }
+        // Rejecting every vertex leaves no outline.
+        let edges = plan_edges(&mut plan, &ir, |_| false);
+        assert!(edges.iter().all(Vec::is_empty));
+        assert!(plan.slices[0].iter().all(|s| s.edge_count == 0));
     }
 
     #[test]
