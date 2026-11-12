@@ -21,7 +21,8 @@
 - **Question**: Does drawing `OP_ANIMATE` as `PLAYONE` selects and sizes it raise `CTRY` and `INTRO`?
 - **Method**: Evidence-backed track (image `0xA9DC`, `0x7DE6`, `0x3EFE`, `0x1D66`, `0x1DCA`). The VM records each `OP_ANIMATE` as a shape sprite; the scene picks its frame from the bank word and places it at the actor; the renderer draws the image as a camera-facing square of the sprite's size, depth-tested in the actor's layer. `mise run sweep -- --var DBG_SPRITES=0,1 --films ctry,intro` (a temporary switch that dropped the sprite draws), RTX 4070, on branch `feat/222-op-animate` from `1308da0`.
 - **Result**: `CTRY` 0.8973 → 0.8974, `INTRO` 0.8344 → 0.8357; IoU unchanged (0.9897, 0.9856). The explosions land where the capture draws them (`CTRY` ticks 859–881, `INTRO` 1387–1409 and 2707–2729); where an object stands within the explosion's square, the capture draws the whole image over it and our depth test cuts it.
-- **Verdict**: adopted (no film falls, both rise).
+  - Every reference film, `mise run parity` on `1308da0` and on `2977e7f` (the change, `crates/` tree `6fd36ce`): `ctry` 0.8973 → 0.8974, `intro` 0.8344 → 0.8357, `bomb` 0.7998 → 0.8000, `land` 0.8656, `balloon` 0.8008, `traintnl` 0.8511 and `location` 0.7909 unchanged at four places.
+- **Verdict**: adopted (no film falls, three rise); the `expected.gpu` tables now hold the `2977e7f` scores.
 - **Lives in**: [`sod-animate.md`](../../../research/playone-exe/sod-animate.md) § 4; the `expected.gpu` scores of `vault-ctry` and `vault-intro` in [`references.toml`](../../../research/parity/references.toml) (the parity log is retired for these entries).
 
 ## 2026-11-11: pushing the sprite toward the eye
