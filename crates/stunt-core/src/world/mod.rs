@@ -894,6 +894,16 @@ fn push_gated_props(
                     ],
                     normal,
                 },
+                VisibilityCondition::BeyondDepth { point, depth } => {
+                    VisibilityCondition::BeyondDepth {
+                        point: [
+                            point[0] + offset[0],
+                            point[1] + offset[1],
+                            point[2] + offset[2],
+                        ],
+                        depth,
+                    }
+                }
                 other => other,
             };
             let vertex_offset = arena_index(ir.vertices.len());
@@ -1689,6 +1699,27 @@ mod tests {
             Some(VisibilityCondition::FacesEye {
                 point: [60.0, 13.6, 20.0],
                 normal: [0.0, 0.0, 1.0],
+            })
+        );
+    }
+
+    /// A `BZLT` far section of a prop moves with the placement like a facing gate.
+    #[test]
+    fn a_depth_gated_prop_section_carries_its_point_into_world_space() {
+        let mut prop = square_prop(Some(5.0));
+        if let Some(node) = prop.nodes.first_mut() {
+            node.visibility = VisibilityCondition::BeyondDepth {
+                point: [0.0, 1.0, 0.0],
+                depth: 40.0,
+            };
+        }
+        let ir = world_with(prop, [60.0, 12.6, 20.0]);
+        let gated = ir.nodes.iter().find(|n| n.name == "WORLD_GATED");
+        assert_eq!(
+            gated.map(|n| n.visibility),
+            Some(VisibilityCondition::BeyondDepth {
+                point: [60.0, 13.6, 20.0],
+                depth: 40.0,
             })
         );
     }
