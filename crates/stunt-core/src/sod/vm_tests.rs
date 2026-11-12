@@ -1205,6 +1205,15 @@ fn test_census_decode_keeps_no_sprites() {
     use crate::sod::OP_ANIMATE;
     let mut bytes = make_sod_header(100, 0, 0, 0);
     push_words(&mut bytes, &[OP_ANIMATE, 0, 1, 0x16, 1, 0x1F01, OP_RETURN]);
+    let run = crate::sod::vm::run_vm(
+        &bytes,
+        crate::sod::vm::Policy::Census,
+        None,
+        crate::sod::ShadeLight::default(),
+        None,
+    )
+    .expect("census run");
+    assert!(run.sprites.is_empty(), "the census VM keeps no frame table");
     let ir = decode_sod(&bytes, "CENSUS", None, DecodeMode::Census).expect("census decode");
     assert!(ir.sprites.is_empty());
     let record = ir.decode().expect("a record");

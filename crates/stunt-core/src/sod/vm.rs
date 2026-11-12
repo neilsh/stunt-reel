@@ -1094,17 +1094,25 @@ pub(crate) fn run_vm(
                 let size = f32::from(r.read_u16_le()?);
                 let selector = r.read_u16_le()?;
                 let count = r.read_u16_le()?;
-                let frames = std::iter::repeat_with(|| r.read_u16_le())
-                    .take(usize::from(count))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let anchor = add3(regs.get(((reg_off / 12) & 1023) as usize), relpos);
-                sprites.push(ShapeSprite {
-                    anchor: metric_point(anchor, ground_y_offset, scale_factor),
-                    size: size * scale_factor,
-                    selector,
-                    frames,
-                    visibility: current_visibility,
-                });
+                if policy == Policy::Census {
+                    // The census keeps no sprite: read past the table without holding it, so a
+                    // looping stream cannot pile up tables.
+                    for _ in 0..count {
+                        r.read_u16_le()?;
+                    }
+                } else {
+                    let frames = std::iter::repeat_with(|| r.read_u16_le())
+                        .take(usize::from(count))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let anchor = add3(regs.get(((reg_off / 12) & 1023) as usize), relpos);
+                    sprites.push(ShapeSprite {
+                        anchor: metric_point(anchor, ground_y_offset, scale_factor),
+                        size: size * scale_factor,
+                        selector,
+                        frames,
+                        visibility: current_visibility,
+                    });
+                }
             }
             OP_SPHERE => {
                 let center_off = r.read_u16_le()?;
