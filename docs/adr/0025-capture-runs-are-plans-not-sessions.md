@@ -42,7 +42,7 @@ where it draws fewer pages.
   checked-in DOSBox-X confs are gone. The offline streamer model stayed at first for the Rust
   oracle's sake and was retired later (#106); the oracle fixture is hand-written.
 - Pages are read between emulated frames without a retrace wait, so a page can tear; the rule for
-  judging one is in [`method.md`](../../research/parity/method.md) § 3.1 and is not yet applied in `pick`.
+  judging one is in [`evidence-limits.md`](../../research/parity/evidence-limits.md#31-captures-from-dosbox-automation) § 3.1 and is not yet applied in `pick`.
 - Existing references (`references.toml`) were captured on DOSBox-X; promoting a new-path capture
   is a separate reviewed edit after a rescore.
 - A run costs a replay of the boot per dump pass, so a long film takes several passes instead of

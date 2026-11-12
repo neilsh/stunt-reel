@@ -31,7 +31,7 @@ Lavapipe only; a `DBG_SHADE` sweep plus one `mise run parity` per candidate, on 
 * **The actor shadow draw** (CTRY 422): with it off, the ground stays black.
 * **The decal depth bias** (CTRY 422): with slope 0, the ground stays black.
 * **Crossing the near plane as the cause in this frame**: 61 of 62 near-crossing triangles at CTRY 422 stay finite (section 2), though an edge of constant screen x can produce the NaN at the near plane alone.
-* **A renderer change, #249's adapter choice included, as the cause of the lavapipe loss**: guarding the one NaN value leaves lavapipe less than the 0.002 adoption margin from the GPU at the same renderer (section 3), too little for a renderer change to hide a 0.23 loss behind.
+* **A renderer change, #249's adapter choice included, as the cause of the lavapipe loss**: guarding the one NaN value leaves lavapipe less than the 0.002 adoption margin from the GPU at the same renderer ([`evidence-limits.md`](evidence-limits.md) section 3), too little for a renderer change to hide a 0.23 loss behind.
 
 ## Open questions
 

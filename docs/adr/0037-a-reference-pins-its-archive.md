@@ -13,7 +13,7 @@ A `references.toml` row pinned the capture by its digest and named the builds, b
 archive the film plays. The render found its archive by path: the first copy of the film's slug in
 sorted corpus order, then the `.ALL` beside it. For both references that copy is under
 `siarchive/Films/NewPLAY/Vault/`, whose archives differ from the demo archives the captures
-recorded in `meta.json` `all_sha256` (`research/parity/method.md` § 3, the 2026-11-06 archive
+recorded in `meta.json` `all_sha256` (`research/parity/evidence-limits.md` § 3, the 2026-11-06 archive
 finding). The two render the same to four decimals, so no recorded score moved, but nothing
 checked the render's archive against the capture's.
 
