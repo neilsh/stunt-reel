@@ -345,6 +345,81 @@ fn sphere_polygons(
         .collect()
 }
 
+/// Outline vertices of an `OP_PERFDISK` disc. `PLAYONE` steps an ellipse's row spans
+/// (`0xD11D`); 16 vertices is a guess at round enough, not a measured bound.
+const DISC_SEGMENTS: usize = 16;
+
+/// Builds an `OP_PERFDISK` disc: `DISC_SEGMENTS` vertices on a circle of `radius` about
+/// `centre`, in the plane perpendicular to `normal`, emitted with both windings because
+/// `PLAYONE` tests no facing (`0xA040`). `centre`, `normal` and `radius` are raw register
+/// units; the result is in metres. A zero `normal` has no plane and yields nothing.
+fn disc_polygons(
+    centre: [f32; 3],
+    normal: [f32; 3],
+    radius: f32,
+    ground_y_offset: i16,
+    scale_factor: f32,
+    palette_index: u8,
+    visibility: VisibilityCondition,
+) -> Vec<RawPolygon> {
+    let len = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    if len < 1e-6 || radius <= 0.0 {
+        return Vec::new();
+    }
+    let n = [normal[0] / len, normal[1] / len, normal[2] / len];
+    let cross = |a: [f32; 3], b: [f32; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    // Any axis the normal is least aligned with gives a non-degenerate first basis vector.
+    let helper = if n[0].abs() <= n[1].abs() && n[0].abs() <= n[2].abs() {
+        [1.0, 0.0, 0.0]
+    } else if n[1].abs() <= n[2].abs() {
+        [0.0, 1.0, 0.0]
+    } else {
+        [0.0, 0.0, 1.0]
+    };
+    let u = cross(n, helper);
+    let u_len = (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt();
+    let u = [u[0] / u_len, u[1] / u_len, u[2] / u_len];
+    let v = cross(n, u);
+    // Counter-clockwise seen from `+n`, so its edge cross product points along `+n`.
+    let ccw: Vec<[f32; 3]> = (0..DISC_SEGMENTS)
+        .map(|i| {
+            let angle = std::f32::consts::TAU * i as f32 / DISC_SEGMENTS as f32;
+            let (s, c) = angle.sin_cos();
+            metric_point(
+                [
+                    centre[0] + radius * (c * u[0] + s * v[0]),
+                    centre[1] + radius * (c * u[1] + s * v[1]),
+                    centre[2] + radius * (c * u[2] + s * v[2]),
+                ],
+                ground_y_offset,
+                scale_factor,
+            )
+        })
+        .collect();
+    let mut cw = ccw.clone();
+    cw.reverse();
+    // The pipeline keeps clockwise faces; `normal` is the side the face looks toward, which
+    // is opposite the edge cross product of a clockwise loop.
+    [(cw, n), (ccw, [-n[0], -n[1], -n[2]])]
+        .into_iter()
+        .map(|(vertices, normal)| RawPolygon {
+            vertex_palette: Vec::new(),
+            vertices,
+            palette_index,
+            normal,
+            flags: 0,
+            is_decal: false,
+            visibility,
+        })
+        .collect()
+}
+
 /// World-space radius in metres of the octahedron that stands in for a 1-pixel dot.
 const DOT_RADIUS_M: f32 = 0.03;
 
@@ -1107,7 +1182,29 @@ pub(crate) fn run_vm(
                     }
                 }
             }
-            OP_PERFDISK | OP_VEC => {
+            OP_PERFDISK => {
+                // `0xA040`: a filled disc of `radius` about `regs[centre]`, its plane
+                // perpendicular to `regs[centre] - regs[axis]`, drawn from both sides.
+                let centre_off = r.read_u16_le()?;
+                let radius = f32::from(r.read_u16_le()?);
+                let axis_off = r.read_u16_le()?;
+                let centre_reg = regs.get(((centre_off / 12) & 1023) as usize);
+                let axis_reg = regs.get(((axis_off / 12) & 1023) as usize);
+                polygons.extend(disc_polygons(
+                    add3(centre_reg, relpos),
+                    [
+                        centre_reg[0] - axis_reg[0],
+                        centre_reg[1] - axis_reg[1],
+                        centre_reg[2] - axis_reg[2],
+                    ],
+                    radius,
+                    ground_y_offset,
+                    scale_factor,
+                    cur_color,
+                    current_visibility,
+                ));
+            }
+            OP_VEC => {
                 r.read_u16_le()?;
                 r.read_u16_le()?;
                 r.read_u16_le()?;
