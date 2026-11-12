@@ -200,7 +200,7 @@ pub enum SodStopReason {
     /// A branch (`GOTO`, `GOSUB`, `BVGT`) targets outside the stream, or the walk exceeded
     /// its branch budget.
     MalformedBranch,
-    /// A polygon opcode (`POLYZ`, `GVPOLY`) with fewer than three vertices.
+    /// A polygon opcode (`POLYZ`, `GVPOLY`) with fewer than two vertices.
     MalformedPolygon,
 }
 
@@ -210,7 +210,7 @@ impl fmt::Display for SodStopReason {
             Self::UnknownOpcode => f.write_str("unknown opcode"),
             Self::MissingAnchors => f.write_str("missing anchor table"),
             Self::MalformedBranch => f.write_str("branch outside the stream"),
-            Self::MalformedPolygon => f.write_str("polygon with fewer than three vertices"),
+            Self::MalformedPolygon => f.write_str("polygon with fewer than two vertices"),
         }
     }
 }
