@@ -9,12 +9,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{CommandFactory as _, Parser};
-use stunt_core::anchor::parse_anchor_table;
 use stunt_core::sod::{ShadeLight, SodTrace, TraceStep, opcode_mnemonic, trace_sod};
 use stunt_core::vfs::parse_all;
 
 use crate::export::parse_shape_id;
-use crate::scene::find_scenery_file;
+use crate::scene::read_anchor_table;
 
 /// `sod-trace` options as clap parses them.
 #[derive(Debug, Parser)]
@@ -65,10 +64,7 @@ fn trace_shape(archive: &Path, sidata: Option<&Path>, shape_id: u16) -> Result<S
         .values()
         .find(|entry| entry.name == name)
         .ok_or_else(|| format!("{} has no shape 0x{shape_id:04X}", archive.display()))?;
-    let anchors = find_scenery_file(sidata, archive, "ANCHORPT.DAT")
-        .and_then(|path| fs::read(path).ok())
-        .map(|data| parse_anchor_table(&data))
-        .unwrap_or_default();
+    let anchors = read_anchor_table(sidata, archive)?;
     let anchors = (!anchors.is_empty()).then_some(anchors.as_slice());
     Ok(trace_sod(&entry.data, anchors, ShadeLight::default()))
 }

@@ -256,13 +256,17 @@ pub(crate) fn read_render_record(dir: &Path) -> Result<RenderRecord, AdapterErro
     let value = read_json(&path)?;
     let version = value.get("schema_version").and_then(Value::as_u64);
     if version != Some(u64::from(RENDER_SCHEMA_VERSION)) {
-        return Err(schema(
-            &path,
-            SchemaError::UnsupportedVersion {
-                found: version.and_then(|v| u32::try_from(v).ok()).unwrap_or(0),
+        let source = match version {
+            None => SchemaError::MissingField {
+                field: "schema_version (an unsigned integer)".to_string(),
+            },
+            // A version too large for `u32` saturates; it must not read as version 0.
+            Some(found) => SchemaError::UnsupportedVersion {
+                found: u32::try_from(found).unwrap_or(u32::MAX),
                 expected: RENDER_SCHEMA_VERSION,
             },
-        ));
+        };
+        return Err(schema(&path, source));
     }
     let record: RenderRecord =
         serde_json::from_value(value).map_err(|source| AdapterError::Parse {
@@ -949,6 +953,27 @@ mod tests {
         let dir = temp_dir("no-document");
         let error = read_render_record(&dir).expect_err("no document");
         assert!(error.to_string().contains("render.json"), "{error}");
+    }
+
+    #[test]
+    fn an_unusable_schema_version_is_named_not_read_as_zero() {
+        let dir = temp_dir("version-unusable");
+        let huge = u64::from(u32::MAX) + 1;
+        for (document, expected) in [
+            (json!({"film": {}}), "missing field schema_version"),
+            (
+                json!({"schema_version": "3"}),
+                "missing field schema_version",
+            ),
+            (
+                json!({"schema_version": huge}),
+                "schema version 4294967295; expected 3",
+            ),
+        ] {
+            write_json(&dir.join(RENDER_DOCUMENT), &document, true).expect("write record");
+            let error = read_render_record(&dir).expect_err("unusable version");
+            assert!(error.to_string().contains(expected), "{error}");
+        }
     }
 
     #[test]
