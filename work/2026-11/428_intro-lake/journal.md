@@ -1,0 +1,13 @@
+# Journal: INTRO's lake
+
+## 2026-11-12: INTRO's lake under the camera
+
+- **Question**: At `INTRO` tick 3301 the capture's pixels 0-40 x 140-180 are all index 205 and ours are 195. Does a colour-205 leaf cover the area, and what colour does our `MAP.BIN` patch there have?
+- **Method**: `mise run frame -- --film intro --ticks 3279,3301` at `main` `2a289b9b`. The render's `render.json` gave the camera at tick 3301 (eye `(231, 51, 3317)`). A temporary `DBG_SKIP` list in `parse_map_bin` and a temporary `DBG_LE` switch (depth `LessEqual` for the base pipeline) isolated the cause; neither is committed. A depth-first walk of the tree segment (node types of `python/stunt_reel/scene_tree.py`) listed the ground polygons in draw order with their `MAP.BIN` records. Scores: `mise run parity` on `main` and on commit `6dccacc4` (`crates` tree `1a69504`).
+- **Result**:
+  - Records 126 and 127 (colour 205, flat at height 0, about 100 m across) lie under the eye. Our parse draws them in colour 205, and they lose the depth tie to record 7 (195, flat at 0, 4 km across), which `Less` keeps from the earlier draw. Dropping record 7 shows the lake in ours. `LessEqual` on the whole base pass changed no pixel, consistent with rounding differences between the two triangulations; a bias is needed.
+  - In the tree, record 7 is the leaf at `0x00DA`; 127 and 126 follow at `0x0274` and `0x028E`. 31 of the 34 colour-205 records, and colour-231 records 84 and 85, lie inside record 7 in its plane.
+  - `terrain_overlays` marks a patch whose corners all lie within 10 cm on an earlier patch (in `MAP.BIN` order) of another colour, and the world builder draws it in the decal batch. Ticks 3279 and 3301 then show the capture's lake, compared by eye.
+  - Scores, `main` then the commit: `CTRY` 0.9015 / 0.9015, `INTRO` 0.8437 / 0.8436, `LAND` 0.8662 / 0.8662, `BALLOON` 0.8097 / 0.8093, `TRAINTNL` 0.8548 / 0.8548, `BOMB` 0.8129 / 0.8129, `LOCATION` 0.8098 / 0.8101. Index agreement: `INTRO` 0.843 / 0.848, `BALLOON` 0.470 / 0.471, `LOCATION` 0.799 / 0.806, the rest equal to three places.
+- **Verdict**: Adopted on the evidence-backed track: the rule is the painter order of the ground leaves (one static depth-first tree walk, `[Supported Inference]`), with the capture's lake pixels at two ticks (`[Bounded Observation]`). No film falls by 0.002 (worst `BALLOON`, -0.00041, and `INTRO` and `LAND` fall by less); the cause of those small falls was not attributed. `LOCATION` rises.
+- **Lives in**: [`world-scene.md`](../../../research/playone-exe/world-scene.md) section 6.5; [`references.toml`](../../../research/parity/references.toml).
