@@ -23,6 +23,7 @@
 - **Result**: `CTRY` 0.8973 → 0.8974, `INTRO` 0.8344 → 0.8357; IoU unchanged (0.9897, 0.9856). The explosions land where the capture draws them (`CTRY` ticks 859–881, `INTRO` 1387–1409 and 2707–2729); where an object stands within the explosion's square, the capture draws the whole image over it and our depth test cuts it.
   - Every reference film, `mise run parity` on `1308da0` and on `2977e7f` (the change, `crates/` tree `6fd36ce`): `ctry` 0.8973 → 0.8974, `intro` 0.8344 → 0.8357, `bomb` 0.7998 → 0.8000, `land` 0.8656, `balloon` 0.8008, `traintnl` 0.8511 and `location` 0.7909 unchanged at four places.
 - **Verdict**: adopted (no film falls, three rise); the `expected.gpu` tables now hold the `2977e7f` scores.
+  - Merged with `main` at `a7d6ec1` (#402 `SP_1NODE` gate, #414 two-vertex polygons, `crates/` tree `06747ed`), against `main`'s expected scores: `ctry` 0.8995 to 0.8996, `intro` 0.8404 to 0.8418, `bomb` 0.8098 to 0.8101, the other four unchanged; the `expected.gpu` tables now hold these.
 - **Lives in**: [`sod-animate.md`](../../../research/playone-exe/sod-animate.md) § 4; the `expected.gpu` scores of `vault-ctry` and `vault-intro` in [`references.toml`](../../../research/parity/references.toml) (the parity log is retired for these entries).
 
 ## 2026-11-11: pushing the sprite toward the eye
