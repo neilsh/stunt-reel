@@ -688,13 +688,13 @@ mod tests {
     }
 
     #[test]
-    fn a_two_vertex_polygon_stop_names_its_reason() {
-        let data = model(&[0x00F3, 2, 0, 12, 0x0195]);
+    fn a_one_vertex_polygon_stop_names_its_reason() {
+        let data = model(&[0x00F3, 1, 0, 0x0195]);
         let ir = decode_sod(&data, "CENSUS", None, DecodeMode::Census).expect("census decode");
         let pattern = pattern(ir.decode().expect("record")).expect("a stop is a pattern");
         assert_eq!(
             pattern.ends_at,
-            "0x00F3 (polygon with fewer than three vertices)"
+            "0x00F3 (polygon with fewer than two vertices)"
         );
     }
 

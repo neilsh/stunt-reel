@@ -1056,29 +1056,74 @@ fn test_lenient_decode_keeps_geometry_before_a_branch_outside_the_stream() {
 }
 
 #[test]
-fn test_lenient_decode_keeps_geometry_before_a_two_vertex_polygon() {
-    // Nine corpus models (`7E09`, `PIPER.BIN`, ...) hold a two-vertex `POLYZ`/`GVPOLY` in a
-    // SORT subtree; lenient and census decodes stop there and keep what came before.
-    let mut bytes = sort_prelude();
-    push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24]);
-    let bad_at = bytes.len();
-    push_words(&mut bytes, &[OP_POLYZ, 2, 0, 12, OP_RETURN]);
+fn test_lenient_decode_keeps_geometry_before_a_one_vertex_polygon() {
+    use crate::sod::vm::OP_GVPOLY;
+    // `PLAYONE`'s clipper loops on `CX - 1` vertices, so a count below two reads past the
+    // stream; lenient and census decodes stop there and keep what came before.
+    for (op, tail) in [
+        (OP_POLYZ, vec![1u16, 0, OP_RETURN]),
+        (OP_POLYZ, vec![0, OP_RETURN]),
+        (OP_GVPOLY, vec![1, 0, 0x3001, 2, OP_RETURN]),
+    ] {
+        let mut bytes = sort_prelude();
+        push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 3, 0, 12, 24]);
+        let bad_at = bytes.len();
+        push_words(&mut bytes, &[op]);
+        push_words(&mut bytes, &tail);
 
-    let ir = decode_sod(&bytes, "TWO-VERTEX", None, DecodeMode::Lenient).expect("lenient decode");
-    assert_eq!(ir.indices.len(), 3);
-    let stop = ir
-        .decode()
-        .expect("record")
-        .stop
-        .expect("a stop is reported");
-    assert_eq!(
-        (stop.offset, stop.opcode, stop.reason),
-        (bad_at, OP_POLYZ, SodStopReason::MalformedPolygon)
+        let ir =
+            decode_sod(&bytes, "ONE-VERTEX", None, DecodeMode::Lenient).expect("lenient decode");
+        assert_eq!(ir.indices.len(), 3);
+        let stop = ir
+            .decode()
+            .expect("record")
+            .stop
+            .expect("a stop is reported");
+        assert_eq!(
+            (stop.offset, stop.opcode, stop.reason),
+            (bad_at, op, SodStopReason::MalformedPolygon)
+        );
+        assert!(matches!(
+            decode(&bytes, "ONE-VERTEX"),
+            Err(SodError::MalformedPolygon { .. })
+        ));
+    }
+}
+
+/// A two-vertex `POLYZ` is a line in the running colour, and the walk goes on past it.
+#[test]
+fn test_two_vertex_polyz_draws_a_line_and_does_not_stop_the_walk() {
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[OP_COLOR, 5, OP_POLYZ, 2, 0, 12]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 9, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
     );
-    assert!(matches!(
-        decode(&bytes, "TWO-VERTEX"),
-        Err(SodError::MalformedPolygon { .. })
-    ));
+
+    let ir = decode(&bytes, "TWO-VERTEX").expect("a two-vertex polygon decodes in strict mode");
+    assert!(ir.decode().expect("record").stop.is_none());
+    // Two crossed ribbons (four quads) for the line, then the triangle after it.
+    assert_eq!(ir.indices.len(), 4 * 6 + 3);
+    assert_eq!(ir.vertices[0].palette_index, 5);
+    assert_eq!(ir.vertices.last().expect("vertex").palette_index, 9);
+}
+
+/// A two-vertex `GVPOLY16` is a line too; its operand words (`2 * count + 1`) are skipped.
+#[test]
+fn test_two_vertex_gvpoly16_draws_a_line_and_does_not_stop_the_walk() {
+    use crate::sod::vm::OP_GVPOLY16;
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[0x0156, 0, 1, 0, 32767, 0]);
+    push_words(&mut bytes, &[OP_GVPOLY16, 2, 0, 12, 0x3002, 0, 0]);
+    push_words(
+        &mut bytes,
+        &[OP_COLOR, 9, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+    );
+
+    let ir = decode(&bytes, "TWO-VERTEX16").expect("decode");
+    assert!(ir.decode().expect("record").stop.is_none());
+    assert_eq!(ir.indices.len(), 4 * 6 + 3);
+    assert_eq!(ir.vertices.last().expect("vertex").palette_index, 9);
 }
 
 #[test]

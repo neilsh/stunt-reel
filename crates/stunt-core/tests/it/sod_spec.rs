@@ -759,15 +759,14 @@ fn invalid_opcode_reports_byte_offset() {
     );
 }
 
-/// An `OP_POLYZ` with 2 vertices fails with `MalformedPolygon`.
+/// An `OP_POLYZ` with 1 vertex fails with `MalformedPolygon`; with 2 it is a line.
 #[test]
-fn polygon_under_three_vertices_is_malformed() {
+fn polygon_under_two_vertices_is_malformed() {
     let mut bytes = make_sod_header(50, 0, 0, 0);
-    // OP_POLYZ with count 2 (< 3)
+    // OP_POLYZ with count 1 (< 2)
     bytes.extend_from_slice(&OP_POLYZ.to_le_bytes());
-    bytes.extend_from_slice(&2u16.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes());
     bytes.extend_from_slice(&0u16.to_le_bytes());
-    bytes.extend_from_slice(&12u16.to_le_bytes());
 
     let err = decode(&bytes, "DEGEN_POLY", None).unwrap_err();
     assert!(matches!(err, SodError::MalformedPolygon { .. }));
