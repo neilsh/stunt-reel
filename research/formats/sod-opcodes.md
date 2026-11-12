@@ -101,7 +101,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **85** | `0x02FD` | 765 | `OP_BVGT` | `reg: u16, val: i16, rel_off: i16` | Branch if vector coordinate is greater than threshold |
 | **86** | `0x0306` | 774 | `OP_WIDELINE` | `p1: u16, p2: u16, width: u16` | Thick anti-aliased or multi-pixel wire line |
 | **87** | `0x030F` | 783 | `OP_SPLITQUAD`| `...` | Split quadrilateral into two triangles |
-| **88** | `0x0318` | 792 | `OP_BZLT` | `val: i16, rel_off: i16` | Branch if viewer Z distance is less than threshold |
+| **88** | `0x0318` | 792 | `OP_BZLT` | `reg_off: u16, val: i16, size: u16` | Run the next `size` bytes, counted from the size word, only while `regs[reg]`'s view depth, halved and lens-shifted as the `SP_1NODE` gate's, exceeds `val` ([`sod-vm.md` § 8.6](../playone-exe/sod-vm.md#86-facing-flags-op_rej-and-op_ifvis)) |
 | **89** | `0x0321` | 801 | `OP_SCALEIT` | `scale_idx: u16` | Dynamic runtime scale modification |
 | **90** | `0x032A` | 810 | `OP_SPRITE` | `sprite_id: u16, reg: u16` | Billboarding decal sprite billboard |
 | **91** | `0x0333` | 819 | `OP_TEXTURE` | `tex_id: u16, ...coords` | Texture-mapped quad polygon |
@@ -189,6 +189,8 @@ Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `REJ` (`0x01B9`), `REJVEC` (`0x01B0`) and `REJ2D` (`0x01C2`) write one facing flag per face into `work:0x7C68`, starting at byte offset `first`: set when the face points at the eye.
 - `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>` (its flag byte). Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
 - `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the section when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`); otherwise skip `size` bytes counted from the size word ([`sod-vm.md` § 8.6](../playone-exe/sod-vm.md#86-facing-flags-op_rej-and-op_ifvis)). The operand is a flag offset, not a condition code: there is no distance form.
+- `OP_BZLT <reg> <val>` (0x0318): the in-shape depth gate. It skips its section, `size` bytes from the size word, while the register's view depth is at most `val` scaled as the `SP_1NODE` gate scales depth, so the section is the far form.
+- The reconstruction decodes every one of these into `VisibilityCondition::FacesEye` or `VisibilityCondition::BeyondDepth`, evaluated per frame. No census walk of a stock shape reaches `REJVEC`, `REJ2D`, `BVIS` or `BZLT` (`sod-vm.md` § 8.6).
 
 ### 2.6 `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction
 
@@ -211,7 +213,7 @@ Only **stream constraints** are recorded here — readings that must match the b
 | `PUSHRELMAT` / `POPRELMAT` | Push and pop a 3×3 matrix that `VECTORS` applies to raw input points | agrees |
 | `ROTX` / `ROTY` / `ROTZ` | The operand is a **variable byte offset** (`variable[w / 2]`), not an immediate; the variable is an angle with 4096 units per turn, post-multiplied into the matrix | **differs**: coverage § 1 assumes an immediate `angle_bam` |
 | `BVLT` / `BVGT` | `reg` is a **variable byte offset**; branch when `variable <= val` (`BVLT`) or `variable >= val` (`BVGT`), unsigned | **differs**: coverage § 1 reads `reg` as a register |
-| `BZLT` | Branch when the register's local Z `<= val - relpos.z`; the handler's `shift` scaling is not modelled | not in coverage § 1 |
+| `BZLT` | Branch when the register's local Z `<= val - relpos.z`; the handler's `shift` scaling is not modelled | not in coverage § 1; the handler (`0x9BE5`) compares view depth, not local Z, with `val >> work:0x806F` ([`sod-vm.md` § 8.6](../playone-exe/sod-vm.md#86-facing-flags-op_rej-and-op_ifvis)) |
 | `GOTO` / `GOSUB` | Target = address of the operand word + `rel_offset` bytes; `GOSUB` runs the target until `RETURN` | agrees; coverage § 1 leaves the base unstated |
 | `SHADE1` | Two operand words, no geometry | agrees |
 | `ANIMATE` | `point_reg`, `radius / 2`, `variable offset`, `count`, then `count` words | agrees with [`sod-animate.md`](../playone-exe/sod-animate.md) |

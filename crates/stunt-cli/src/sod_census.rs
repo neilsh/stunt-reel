@@ -659,10 +659,10 @@ mod tests {
         let blocked = model(&[0x0360, 0x0321, 0, 0x0195]);
         scan.variant(&blocked).shape_ids.extend([0x6403, 0x6405]);
         scan.variant(&blocked).films.insert("INTRO.FLM".to_string());
-        scan.variant(&model(&[0x0318, 0, 0, 0x0195]))
+        scan.variant(&model(&[0x032A, 0, 0, 0x0195]))
             .shape_ids
             .insert(0x7E17);
-        scan.variant(&model(&[0x0318, 1, 0, 0x0195]))
+        scan.variant(&model(&[0x032A, 1, 0, 0x0195]))
             .loose
             .insert("COLT45.BIN".to_string());
         scan.variant(&model(&[0x022E, 0, 1, 0, 0x0195]))
@@ -682,7 +682,7 @@ mod tests {
         assert_eq!(report.loose_only.blocked, 1);
         let md = report.markdown(&scan, "2026-10-23");
         assert!(md.contains("| B | `CLR2D`, `SCALEIT` | `RETURN` | 1 | `6403`, `6405` | — | 1 |"));
-        assert!(md.contains("| A | `BZLT` | `RETURN` | 1 | `7E17` | `COLT45.BIN` | 0 |"));
+        assert!(md.contains("| A | `SPRITE` | `RETURN` | 1 | `7E17` | `COLT45.BIN` | 0 |"));
         assert!(md.contains("| — | `TAP` (no anchors supplied) | `RETURN` | 1 | `0202` | — | 0 |"));
         assert!(md.contains("| `6405` | B | 1 | INTRO.FLM |"));
     }

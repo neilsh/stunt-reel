@@ -26,6 +26,7 @@ pub mod video;
     reason = "the renderer does not use mesh.rs yet, so its pub items are unreachable and unused"
 )]
 mod mesh;
+mod outline;
 mod palette;
 mod pipeline;
 mod scene_renderer;

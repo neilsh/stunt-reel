@@ -30,6 +30,7 @@ use stunt_core::sprite::SpriteImage;
 
 use crate::camera::{CameraController, CameraGpuResources};
 use crate::mesh::{GpuMeshSlice, GpuModel};
+use crate::outline::with_outlines;
 use crate::palette::PaletteLut;
 use crate::pipeline::{LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, RenderPipelines};
 use stunt_core::contracts::arena_index;
@@ -84,9 +85,17 @@ impl SceneRenderer {
         scene: &FilmScene,
     ) -> Self {
         let layout = &pipelines.model_bind_group_layout;
+        // Shapes drawn per frame (actors and view-facing props such as the flat trees) take
+        // their polygon outlines; the world mesh does not, since outlines multiply its
+        // vertices about five times (research/playone-exe/sod-vm.md section 8.11).
         let shapes = scene
             .shapes()
-            .map(|(id, ir)| (id, GpuModel::from_ir(device, queue, layout, ir)))
+            .map(|(id, ir)| {
+                (
+                    id,
+                    GpuModel::from_ir(device, queue, layout, &with_outlines(ir)),
+                )
+            })
             .collect();
         let images = scene
             .images()
@@ -160,11 +169,15 @@ impl SceneRenderer {
             let Some(model) = self.shapes.get(&prop.shape_id) else {
                 continue;
             };
-            let local_eye = Mat4::from_cols_array(&prop.world_matrix)
-                .inverse()
-                .transform_point3(eye);
-            let meshes =
-                model.collect_visible_meshes(prop.state_mask, prop.distance, local_eye, None);
+            let to_model = Mat4::from_cols_array(&prop.world_matrix).inverse();
+            let local_eye = to_model.transform_point3(eye);
+            let view = model_view(&to_model, frame);
+            let meshes = model.collect_visible_meshes(
+                prop.state_mask,
+                prop.distance,
+                local_eye,
+                Some(&view),
+            );
             if meshes.0.is_empty() && meshes.1.is_empty() {
                 continue;
             }
@@ -183,11 +196,15 @@ impl SceneRenderer {
             let Some(model) = self.shapes.get(&actor.shape_id) else {
                 continue;
             };
-            let local_eye = Mat4::from_cols_array(&actor.world_matrix)
-                .inverse()
-                .transform_point3(eye);
-            let (base, decals) =
-                model.collect_visible_meshes(actor.state_mask, actor.distance, local_eye, None);
+            let to_model = Mat4::from_cols_array(&actor.world_matrix).inverse();
+            let local_eye = to_model.transform_point3(eye);
+            let view = model_view(&to_model, frame);
+            let (base, decals) = model.collect_visible_meshes(
+                actor.state_mask,
+                actor.distance,
+                local_eye,
+                Some(&view),
+            );
             if base.is_empty() && decals.is_empty() {
                 continue;
             }
@@ -346,6 +363,21 @@ impl SceneRenderer {
             }],
         });
         MatrixSlot { buffer, bind_group }
+    }
+}
+
+/// `frame`'s camera taken into a model's space by `to_model`, the inverse of its world
+/// matrix, for the gates that test depth along the view axis.
+fn model_view(to_model: &Mat4, frame: &SceneFrame) -> CameraTransform {
+    CameraTransform {
+        eye: to_model
+            .transform_point3(Vec3::from_array(frame.view.eye))
+            .to_array(),
+        target: to_model
+            .transform_point3(Vec3::from_array(frame.view.target))
+            .to_array(),
+        lens: frame.lens,
+        ..CameraTransform::default()
     }
 }
 
