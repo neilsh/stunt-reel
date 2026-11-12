@@ -30,7 +30,7 @@ work/
 
 ## Tools
 
-- `mise run work -- new <slug> [--issue N]` makes this month's folder and its README; without `--issue` it files the issue first. Run it before a brainstorming or plan-writing skill writes a file, and write `spec.md` and `plan.md` into the folder, not the skill's default location (`docs/superpowers/` fails `mise run check`).
+- `mise run work -- new <slug> [--issue N | --title TEXT]` makes this month's folder and its README; without `--issue` it files the issue first, titled `--title` or else the slug. Run it before a brainstorming or plan-writing skill writes a file, and write `spec.md` and `plan.md` into the folder, not the skill's default location (`docs/superpowers/` fails `mise run check`).
 - `mise run work -- list [--status active|landed|abandoned]` prints every folder with its issue's status, read through `gh` (`unknown` without it).
 - `mise run doc-health` reports, among other things, folders that break the layout, and folders whose issue is open with no commit in 14 days or closed with no `outcome`.
 
