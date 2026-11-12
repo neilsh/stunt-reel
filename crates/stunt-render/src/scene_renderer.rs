@@ -30,6 +30,7 @@ use stunt_core::sprite::SpriteImage;
 
 use crate::camera::{CameraController, CameraGpuResources};
 use crate::mesh::{GpuMeshSlice, GpuModel};
+use crate::outline::with_outlines;
 use crate::palette::PaletteLut;
 use crate::pipeline::{LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, RenderPipelines};
 use stunt_core::contracts::arena_index;
@@ -84,9 +85,17 @@ impl SceneRenderer {
         scene: &FilmScene,
     ) -> Self {
         let layout = &pipelines.model_bind_group_layout;
+        // Shapes drawn per frame (actors and view-facing props such as the flat trees) take
+        // their polygon outlines; the world mesh does not, since outlines multiply its
+        // vertices about five times (research/playone-exe/sod-vm.md section 8.11).
         let shapes = scene
             .shapes()
-            .map(|(id, ir)| (id, GpuModel::from_ir(device, queue, layout, ir)))
+            .map(|(id, ir)| {
+                (
+                    id,
+                    GpuModel::from_ir(device, queue, layout, &with_outlines(ir)),
+                )
+            })
             .collect();
         let images = scene
             .images()
