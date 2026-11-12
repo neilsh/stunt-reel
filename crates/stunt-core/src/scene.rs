@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 
 use crate::anchor::{AnchorPoint, parse_anchor_table};
-use crate::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
+use crate::contracts::trajectory::{DEFAULT_CAMERA_LENS, PLAYONE_FOV_Y_DEGREES};
 use crate::contracts::{ActorTransform, CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
@@ -273,6 +273,9 @@ pub struct SceneFrame {
     pub tick: f32,
     /// Lens-zoomed camera at this tick.
     pub view: ViewCamera,
+    /// The view camera's lens word at this tick, which also scales the scenery's
+    /// level-of-detail switch ([`CameraTransform::lod_keeps_subtree`]).
+    pub lens: u16,
     /// True when [`FilmScene::world`] should be drawn with an identity transform.
     pub world: bool,
     /// One draw per actor whose shape is in the table. Actors sharing a shape each get
@@ -409,6 +412,12 @@ impl FilmScene {
             .map(|slice| slice.record.camera)
             .collect();
         let max_zoom = max_magnification(&cameras);
+        let max_lod_shift = cameras
+            .iter()
+            .map(|camera| camera.lod_lens_words().1)
+            .max()
+            .unwrap_or(1);
+        let min_corner_depth = min_corner_depth(&cameras);
         let world = build_world(
             &WorldInputs {
                 anchors: &anchors,
@@ -416,6 +425,8 @@ impl FilmScene {
                 scenery: inputs.scenery,
                 view_eyes: &eyes,
                 max_zoom,
+                max_lod_shift,
+                min_corner_depth,
                 anchored_shapes: &decoded.anchored,
                 light,
             },
@@ -472,6 +483,7 @@ impl FilmScene {
             return SceneFrame {
                 tick,
                 view: ViewCamera::default(),
+                lens: DEFAULT_CAMERA_LENS,
                 world,
                 actors: Vec::new(),
                 palette: PaletteControls::default(),
@@ -508,6 +520,7 @@ impl FilmScene {
         SceneFrame {
             tick,
             view: ViewCamera::from_authored(&record.camera),
+            lens: record.camera.lens,
             world,
             actors,
             palette: record.palette,
@@ -571,6 +584,30 @@ fn actor_world_matrix(actor: &ActorTransform, shape: &SodModelIr) -> [f32; 16] {
 fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     let d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+}
+
+/// Smallest view-space depth over distance inside any frame `cameras` draw: at the corner of
+/// the widest one, whose half-width is 1.6 times its half-height (320 by 200 raster pixels),
+/// so `1 / sqrt(1 + 3.56 * tan(fov / 2)^2)`, about 0.805 for the default frame. Each interval
+/// is bounded by its wider base under either endpoint's lens, as [`max_magnification`] bounds
+/// the narrowest. 1.0 with no cameras.
+fn min_corner_depth(cameras: &[CameraTransform]) -> f32 {
+    cameras
+        .iter()
+        .zip(cameras.iter().skip(1).chain(cameras.last()))
+        .flat_map(|(a, b)| {
+            let base = a.fov_degrees.max(b.fov_degrees);
+            [a, b].map(|lens| {
+                let bound = CameraTransform {
+                    fov_degrees: base,
+                    ..*lens
+                };
+                let half = (ViewCamera::from_authored(&bound).fov_degrees.to_radians() / 2.0).tan();
+                1.0 / (1.0 + 3.56 * half * half).sqrt()
+            })
+        })
+        .filter(|ratio| ratio.is_finite())
+        .fold(1.0, f32::min)
 }
 
 /// Largest magnification over PLAYONE's default lens that `cameras` draw, at least 1.0,
@@ -653,5 +690,12 @@ mod tests {
         let cameras = [camera(PLAYONE_FOV_Y_DEGREES, DEFAULT_CAMERA_LENS)];
         assert!((max_magnification(&cameras) - 1.0).abs() < 1e-4);
         assert_eq!(max_magnification(&[]), 1.0);
+        let default_frame = min_corner_depth(&[CameraTransform::default()]);
+        assert!((default_frame - 0.805).abs() < 1e-3, "{default_frame}");
+        let wide = CameraTransform {
+            fov_degrees: 120.0,
+            ..CameraTransform::default()
+        };
+        assert!(min_corner_depth(&[CameraTransform::default(), wide]) < 0.3);
     }
 }
