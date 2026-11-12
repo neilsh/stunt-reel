@@ -174,6 +174,8 @@ $$\text{ScaleFactor}(s) = \begin{cases} 10.0 & \text{if } s = 0 \\ 5.0 \times 2^
 Given a raw vertex $[x_{\text{raw}}, y_{\text{raw}}, z_{\text{raw}}] \in \mathbb{Z}^3$, the metric model coordinates $[x_{\text{m}}, y_{\text{m}}, z_{\text{m}}]$ are evaluated as:
 $$\mathbf{v}_{\text{m}} = \mathbf{v}_{\text{raw}} \times \text{ScaleFactor}(s)$$
 
+`SOD.H` counts in editor units (10 per metre, as in section 3.2), so the table is in tenths of a metre per raw unit: the decoder divides it by 10 (`compute_scale_factor` in [`vm.rs`](../../../crates/stunt-core/src/sod/vm.rs)) and `SodHeader.scale_factor` is metres per raw unit. Scale index 13 is 0.00122 in the table and 0.000122 m per raw unit, so the hero's `ground_y_offset` 2624 is 0.32 m, not 3.2 m The decoder's divide is `[Established]` (read from code); that `SOD.H`'s unit is the editor unit is `[Supported Inference]`, from the roughly 10 rows the lift moves the hero in [`hero-aircraft-placement.md`](../../parity/hero-aircraft-placement.md) agreeing with 0.32 m at the hero's 80 px wingspan, not from `SOD.H` itself. The formula above is in table units, so metres need the divide by 10.
+
 ### 3.2 World Space Conversion (.SET & .FLM)
 
 World-space scenery layout (`.SET`) and film choreography (`.FLM`) anchor the simulation domain to a $20\text{ km} \times 20\text{ km}$ island bounding square.
