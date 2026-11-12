@@ -46,33 +46,6 @@ def _alive(pid: int) -> bool:
         return True
 
 
-def _diag(pid: int, child: int, kill_at: float) -> str:  # DIAGNOSTIC, temporary
-    import platform  # noqa: PLC0415
-
-    lines = [f"child={child} now={time.monotonic():.3f} kill_at~{kill_at:.3f}"]
-    lines.append(f"uptime={Path('/proc/uptime').read_text()} clk={os.sysconf('SC_CLK_TCK')}")
-    lines.append(
-        f"pid_max={Path('/proc/sys/kernel/pid_max').read_text().strip()} kernel={platform.release()}"
-    )
-    lines.append(f"self={os.getpid()} pgid={os.getpgid(0)} sid={os.getsid(0)}")
-    for f in ("stat", "status", "cmdline", "wchan", "environ"):
-        try:
-            data = Path(f"/proc/{pid}/{f}").read_bytes()
-            if f == "environ":
-                data = b" ".join(
-                    x for x in data.split(b"\0") if x.startswith((b"PYTEST", b"RUNNER_TRACKING"))
-                )
-            lines.append(f"--{f}: {data!r}")
-        except OSError as e:
-            lines.append(f"--{f}: {e!r}")
-    try:
-        ppid = int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1])
-        lines.append(f"--parent {ppid}: {Path(f'/proc/{ppid}/cmdline').read_bytes()!r}")
-    except (OSError, ValueError, IndexError) as e:
-        lines.append(f"--parent: {e!r}")
-    return "\n".join(lines)
-
-
 def _kill(pid: int) -> None:
     """Kill process *pid*, a test's leftover."""
     if os.name == "nt":
@@ -109,7 +82,6 @@ def test_timeout_kills_the_grandchild_too() -> None:
         started = time.monotonic()
         with process_tree.spawn([sys.executable, "-c", _CHILD]) as proc:
             code, output = process_tree.wait(proc, 2.0, on_timeout=lambda _p: seen.append("hook"))
-        kill_at = time.monotonic()
         assert time.monotonic() - started < 20.0
         assert code == process_tree.TIMEOUT_EXIT
         assert seen == ["hook"]
@@ -117,9 +89,7 @@ def test_timeout_kills_the_grandchild_too() -> None:
         deadline = time.monotonic() + 5.0
         while _alive(grandchild) and time.monotonic() < deadline:
             time.sleep(0.1)
-        assert not _alive(grandchild), (
-            f"the grandchild outlived the kill\n{_diag(grandchild, proc.pid, kill_at)}"
-        )
+        assert not _alive(grandchild), "the grandchild outlived the kill"
     finally:
         if grandchild and _alive(grandchild):
             _kill(grandchild)

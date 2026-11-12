@@ -97,19 +97,7 @@ jobs:
           # STUNT_REQUIRE_GPU=1 makes a missing adapter fail the GPU tests instead of
           # skipping them.
           STUNT_REQUIRE_GPU: "1"
-        # DIAGNOSTIC, temporary: repeat the full gate to catch the grandchild failure.
-        run: |
-          cat /proc/sys/kernel/pid_max; nproc; uname -r
-          fails=0
-          for i in $(seq 8); do
-            if ! mise run check; then
-              fails=$((fails+1))
-              grep -n -A60 "outlived the kill" target/check.log | head -120 || true
-              grep -n "kill_tree" target/check.log || true
-            fi
-            echo "iteration $i done, pid now $(sh -c 'echo $$')"
-          done
-          echo "FAILS=$fails"
+        run: mise run check
       - name: Commit-hook built-ins on the changes
         # ADR 0026: a commit made with --no-verify, or pushed straight to main, still gets the
         # prek built-ins. The local hooks are skipped: the gate above ran the format, lint and

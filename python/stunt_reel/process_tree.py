@@ -67,10 +67,8 @@ def kill_tree(proc: subprocess.Popen[Any]) -> None:
             )
     else:
         # The child leads its own session (``spawn``), so its group is its pid.
-        try:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError) as exc:  # DIAGNOSTIC, temporary
-            print(f"[kill_tree] killpg({proc.pid}) raised {exc!r}", file=sys.stderr, flush=True)  # noqa: T201
     with contextlib.suppress(OSError):
         proc.kill()
 
