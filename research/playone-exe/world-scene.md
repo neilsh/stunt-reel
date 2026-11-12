@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BSP scenery tree in its own image and, in live CTRY runs, paints `SCENERY2/3.RES` tiles over it, licensing our ground-decal pass."
+summary: "`PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BSP scenery tree in its own image and, in live CTRY runs, paints `SCENERY2.RES` tiles over it, licensing our ground-decal pass."
 ---
 # `PLAYONE.EXE`: How the Ground Is Drawn and Where Its Colours Come From
 
@@ -17,7 +17,7 @@ summary: "`PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BS
 
 The ground is not a display-list stream. `PLAYONE` walks a BSP scenery tree that is static data in its own image (on the unpatched build paragraph `0x2286`, image `0x22860`; on the patched build its leaves start at image `0x20736`, section 2), and each ground leaf (node type 14) carries one flat polygon inline: a colour word, a vertex count and anchor-table references. Those 146 leaves are `MAP.BIN`'s polygons, the same vertices and the same colour, on both builds (section 2). The leaf routine draws them flat, with no shade. `MAP.BIN`'s sand patches 52 to 55 and 62 to 65 are in neither this tree nor FreeFlight's `SCENERY.scn`, which is the same tree, and `PLAYONE` draws them by no other route found (section 2.1).
 
-The airfield's other colours, 193, 194 and 196 where `MAP.BIN` says 195, and the sand 91 of `INTRO.FLM`, are scenery shapes from `SCENERY2.RES` and `SCENERY3.RES`. The tree places them on top of the ground, and `OP_COLOR` sets their colour from the shape's own bytecode (section 3). The player paints in walk order, with no depth buffer, so a tile always covers the leaf under it. Our renderer places the same tiles, but its depth test hid them under the coplanar `MAP.BIN` polygons: they lie on the terrain plane to a millimetre and tie it in depth. It now snaps flat props that lie on the terrain onto it and draws them in the decal pass, which raises `CTRY.FLM` from 0.8298 to 0.8645 and `INTRO.FLM` from 0.7745 to 0.7973 SSIM (section 6).
+The airfield's other colours, 193, 194 and 196 where `MAP.BIN` says 195, and the sand 91 of `INTRO.FLM`, are scenery shapes, among them the `SCENERY2.RES` tiles of section 3. The tree places them on top of the ground, and `OP_COLOR` sets their colour from the shape's own bytecode (section 3). The player paints in walk order, with no depth buffer, so a tile always covers the leaf under it. Our renderer places the same tiles, but its depth test hid them under the coplanar `MAP.BIN` polygons: they lie on the terrain plane to a millimetre and tie it in depth. It now snaps flat props that lie on the terrain onto it and draws them in the decal pass, which raises `CTRY.FLM` from 0.8298 to 0.8645 and `INTRO.FLM` from 0.7745 to 0.7973 SSIM (section 6).
 
 The ops `0x0168` and `0x02BE`, which this note used to call the ground handlers, are the Gouraud polygons `GVPOLY`/`GVPOLY16`. In the airfield shot only the hero aircraft's object draws with them (section 4.1).
 
@@ -105,22 +105,22 @@ Not shown: one frame in full, a join of a call to a capture pixel, or Patch #3 (
 * **Patch 131 keeps its eighth vertex** (`8b36b79`; no frame of either film changes).
 * **Colours stay as stored.** The 158 Ground polygons already agree with `MAP.BIN`; no re-baking or shade is licensed (Ruled out).
 
-## 3. Scenery tiles drawn over the ground
+## 3. Scenery shapes drawn over the ground
 
 *[Bounded Observation]*, `ground-colours`, `ground-writer`, `ground-tiles` (2026-11-04).
 
 Every other flat polygon goes through the gateway `lcall 0:8010`, which reads `CX = work:0x41E8` (colour in the low byte). On the airfield shot nearly all of them come from `OP_POLYZ` (op `0x00F3`, handler `0x9B78`: `call [0x8080]`, then `lcall 0:8010` on no carry). A memory watch on `work:0x41E8` names its writer: `0x975C`, inside `OP_COLOR` (op `0x0129`, `0x975A`), 246 of 300 changing writes. In 225 of those 246 the stream after the stop is the patched `OP_POLYZ` word `0x1938` and its vertex count; 2 show the still unpatched `0x00F3` and 19 show `0x1E00`. The rest are the sky gradient (`0x8E86`, `DGROUP`) and the shade op `0xA549`.
 
-The objects drawing `0xC1..0xC6` are each a byte-for-byte copy of a `RES` shape. The only differences are opcode words the dispatch slots had already patched into handler IPs:
+The objects drawing `0xC1..0xC6`, tiles and hill fins, are each a byte-for-byte copy of a `RES` shape. The only differences are opcode words the dispatch slots had already patched into handler IPs:
 
 | Object segment (live) | Shape (`.ALL` id) | `OP_COLOR` operands |
 |---|---|---|
 | `6B71`, `6B75`, `6B79`, `6BBA`, `6BC2`, `6BC6`, `6BEC` | `SCENERY2.RES` #159, 158, 157, 151, 149, 148, 144 (`0x03A0`, `0x039F`, `0x039E`, `0x0398`, `0x0396`, `0x0395`, `0x0391`) | `0x5B`, `0x58`, `0xC4`, `0xC1`, `0x5B`, `0xC2`, `0x58` |
 | `6B7D`, `6B8A`, `6BD8`, `6BE0` | `SCENERY2.RES` #156, 155, 146, 145 | `0x5E 0x58 0xB8 0xB8`, `0x52 0xC3`, `0xC1 0x0E`, `0xC6 0x0E` |
-| `6A97`, `6A9F`, `6AB5`, `6ABC` | `SCENERY3.RES` #6, 5, 2, 1 | `0xC5 0xC4`, `0xC6 0xC5`, `0xC1 0xC0`, `0xC2 0xC1` |
+| `6A97`, `6A9F`, `6AB5`, `6ABC` | `SCENERY3.RES` #6, 5, 2, 1 (hill fins, not tiles) | `0xC5 0xC4`, `0xC6 0xC5`, `0xC1 0xC0`, `0xC2 0xC1` |
 | `67EA` | `SCENERY4.RES` #105 | `0x27` |
 
-An `.ALL` id is `(res_index << 8) | (entry + 1)` ([`all.md`](../formats/all.md) section 3.7); `CTRY.ALL` carries every one of these, and FreeFlight's `SCENERY.scn` places them as `SP_LEAF` nodes. So the colour of a tile is an operand of its own shape. The shape is drawn after the ground leaf it lies on, because the walk paints in order. In the capture at ticks 290 and 301, `0xC4`, the colour of `SCENERY2` #157, is 52-57% of the 3D view.
+An `.ALL` id is `(res_index << 8) | (entry + 1)` ([`all.md`](../formats/all.md) section 3.7); `CTRY.ALL` carries every one of these, and FreeFlight's `SCENERY.scn` places them as `SP_LEAF` nodes. So the colour of a tile is an operand of its own shape. The four `SCENERY3.RES` rows are not tiles, though. They are `OP_TAP` shapes, vertical fins standing in hills, coloured like the hill patches they stand in ([`sod-vm.md`](sod-vm.md) section 5). The run shows only that they were drawn in that shot, not where. The shape is drawn after the ground leaf it lies on, because the walk paints in order. In the capture at ticks 290 and 301, `0xC4`, the colour of `SCENERY2` #157, is 52-57% of the 3D view.
 
 ## 4. The dispatch slots patch the stream themselves
 
@@ -170,7 +170,7 @@ The rule from sections 2 and 3: the walk paints a tile after the ground leaf it 
 
 A prop is a ground decal when its shape is flat (all vertices within 5 cm of one height), at least one vertex has terrain below it, and every vertex that does is within 10 cm of it. On the two films it picks the 16 known tiles and nothing that stands up. It also picks, as the same kind of object, the markings and patches listed in 6.1 (`0x02AA`, `0x0370`, `0x03BE..0x03C3`, `0x064A`, `0x06D5`, and on `INTRO` `0x05CB..0x05D7`). The gap between the groups is wide: the largest offset of anything it picks is 3.2 cm, the smallest of anything it rejects is 22 cm. `ground_decal_vertices` in `crates/stunt-core/src/world.rs` implements it.
 
-The tile list in section 3 names `SCENERY3.RES` #1, 2, 5, 6. Those are ids `0x0402`, `0x0403`, `0x0406`, `0x0407`, and the rule does not pick them: they are `OP_TAP` shapes, six vertices each, that our decode stands up 3 to 197 m, with offsets from -13 m to +233 m against the ground (open question 3).
+The rule does not pick `SCENERY3.RES` #1, 2, 5 and 6 (`0x0402`, `0x0403`, `0x0406`, `0x0407`), and should not. They are not tiles but vertical fins standing in the hills. `OP_TAP` loads each anchor less the shape's origin, and our decode first got this wrong ([`sod-vm.md`](sod-vm.md) sections 4 and 5). _Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-what-the-14-tap-shapes-are)._
 
 ### 6.3 Candidates
 
@@ -194,6 +194,7 @@ The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terra
 * **The ground in `CTRY.ALL` or `VDATA.BIN`** (sections 2, 5): the tree is in the image; no 8-byte window of a live leaf polygon occurs in `VDATA.BIN` or any other file of the install (`PLAYONE.EXE` itself is LZEXE-packed on disk; the tree is in its unpacked image).
 * **The tiles sit below the terrain** (section 6.1): they are on its plane to a millimetre; the 5 cm drop removes a depth tie. The earlier reading came from the `LessEqual` probe.
 * **Sinking the terrain, or a biased third terrain pass** (section 6.3): they score 0.8649 / 0.7971 and 0.8640 / 0.7943, but the first moves every polygon and the second loses 37 `INTRO` ticks; the ground-decal pass matches the first without moving terrain, and its tie holds in the renderer tests to 8 km.
+* **`SCENERY3.RES` #1, 2, 5, 6 as airfield tiles** (sections 3, 6.2): they are `OP_TAP` hill fins, vertical triangles from a hill's foot to its ridge (`0x0402` 155 m, `0x0403` 196 m, `0x0406` 155 m, `0x0407` 196 m), once the anchors are loaded less the shape's origin as `PLAYONE` loads them. They share the tiles' colours only because the hill patches use the same range. _Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-what-the-14-tap-shapes-are)._
 * **Tiles missing from our world** (section 6): `CTRY.ALL` carries them and `SCENERY.scn` places them; removing the terrain shows them.
 * **A leaf for patches 52 to 55 and 62 to 65 in FreeFlight's tree** (section 2.1): both copies of `SCENERY.scn` are the image's tree, links aside, with the same 158 Ground polygons.
 * **Another node, table or shape that draws those patches** (section 2.1): their polygon occurs in no file but `MAP.BIN`, the image included, while the same search finds all 158 drawn records there; no `OP_TAP` operand in the image, the `RES` files or any `.ALL` names one of their anchors.
@@ -205,5 +206,5 @@ The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terra
 
 1. **Leaves drawn after props** ([#176](https://github.com/neilsh/stunt-reel/issues/176)). The walk is back to front, so a mountain leaf in front of a prop is drawn after it and covers it. The renderer keeps that with its depth test: only flat props within 10 cm of the ground leave the base pass (section 6.2), and the decal pass still loses to nearer terrain (tested). What is open is whether `PLAYONE` ever draws a leaf *after* a tile lying on it, which would hide the tile again; the order of the airfield leaves in the tree, read from the image, would say. The tie was not a gap (section 6.1): the tiles are on the plane to a millimetre.
 2. **The four floating quads** `0x04A9..0x04AC` (colour 193, `y = 75.03`) have no `MAP.BIN` polygon under them in our parse. The tree of `PLAYONE` has no leaf that `MAP.BIN` lacks (section 2.1, Ruled out), so either the polygon under them is among the records our parse drops, or nothing is.
-3. **`SCENERY3.RES` #1, 2, 5, 6 (`0x0402`, `0x0403`, `0x0406`, `0x0407`).** Section 3 names them by colour (`0xC1`..`0xC6`), but our decode makes them `OP_TAP` shapes standing 3 to 197 m high that miss the terrain by -13 to +233 m. Whether the anchors resolve the way `PLAYONE` resolves them is not checked.
+3. **Where `PLAYONE` draws the hill fins.** The `OP_TAP` fins (`0x0202`–`0x0208`, `0x0402`–`0x0408`) stand in hills ([`sod-vm.md`](sod-vm.md) section 5). Section 3's run saw four of them drawn in `CTRY`'s airfield shot, but our scene walk places none of them on `CTRY`: each sits behind an `SP_1NODE` whose far stand-in our path-distance stand-in for `PLAYONE`'s per-frame test picks instead ([`lod.md`](lod.md)). On `INTRO` it places `0x0402`–`0x0404`, and no scored frame changed when they were resolved correctly. So whether a fin shows through the hill patches in front of it, as the painter might draw it, is not seen in either film. _Source: [2026-11-11: rescoring both films](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-rescoring-both-films)._
 4. **`INTRO` ticks 1086 (-0.0056) and 1317 (-0.0027)** lose with the prototype: the props loss rises where a tile now covers pixels that a base prop won. The prop was not identified; `mise run frame -- --film intro --ticks 1086` would show it.

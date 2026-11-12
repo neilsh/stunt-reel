@@ -52,8 +52,7 @@ The depth buffer gets one case visibly wrong: a later polygon that ties an earli
 * **Between a prop and the terrain** (ADR 0035): a flat prop lying within 10 cm of the terrain is a decal of it.
 
 Both draw the decal after its base with `LessEqual` and a bias toward the viewer. A decal therefore wins any near-tie, not only the one against its own base, while still losing to anything clearly in front, as in the painter. Where a rule's net is wrong, we differ:
-- **Missed:** `SCENERY3.RES` #1, 2, 5 and 6 are named as tiles but are not flat in our decode ([`world-scene.md`](../playone-exe/world-scene.md) open question 4).
-- **Wrong winner:** on `INTRO` tick 1086 a tile now covers a prop; whether `PLAYONE`'s order covers it too is not known (open question 5 there).
+- **Wrong winner:** on `INTRO` tick 1086 a tile now covers a prop; whether `PLAYONE`'s order covers it too is not known (open question 4 there).
 
 Rejected ways to win the tie:
 - Sinking the terrain by a constant: only right while the constant exceeds the depth step, which grows with the square of distance.
