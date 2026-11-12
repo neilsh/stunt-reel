@@ -56,6 +56,10 @@ pub struct WorldInputs<'a> {
     /// of view it draws (base and lens). It scales the focal length of the sub-pixel cull
     /// (`FOCAL_PIXELS` in the `scenery` module) so a zoomed camera never misses a prop.
     pub max_zoom: f32,
+    /// Largest depth shift `0x229E` any camera's lens gives
+    /// ([`crate::contracts::trajectory::CameraTransform::lod_lens_words`]); 1 at the default
+    /// lens. It bounds how far from the camera path an `SP_1NODE` can still keep its subtree.
+    pub max_lod_shift: u8,
     /// Streams of the shapes that run `OP_TAP`, by resource ID (`ArchiveShapes::anchored`).
     /// `PLAYONE` loads each tapped anchor less the shape's own origin, so the world decodes
     /// these again at their placement rather than using `shapes`' copy.
@@ -195,7 +199,15 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
 
     let placements = inputs
         .scenery
-        .map(|bytes| place_props(bytes, shapes, inputs.view_eyes, inputs.max_zoom))
+        .map(|bytes| {
+            place_props(
+                bytes,
+                shapes,
+                inputs.view_eyes,
+                inputs.max_zoom,
+                inputs.max_lod_shift,
+            )
+        })
         .unwrap_or_default();
 
     let (own, tap_failures) = anchored_models(inputs, &placements.props);
@@ -1195,6 +1207,7 @@ mod tests {
             scenery: None,
             view_eyes: &[],
             max_zoom: 1.0,
+            max_lod_shift: 1,
             anchored_shapes: &streams,
             light: ShadeLight::default(),
         };

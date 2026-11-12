@@ -109,27 +109,28 @@ pub struct ScnStop {
 ///
 /// Only keys of `shapes` are placed, and each shape's radius sizes it for the cull. `view_eyes`
 /// are the camera eyes in time order, in `[I1]` metres. An `SP_1NODE` the path comes within
-/// [`LOD_REACH`] of keeps both branches, each placement behind it carrying its gate chain
+/// [`lod_reach`] of keeps both branches, each placement behind it carrying its gate chain
 /// ([`Placements::chains`]) for the renderer to test per frame; one farther away keeps only
 /// its stand-in. A prop that stays under half a pixel along the path is dropped. With no eyes
 /// every subtree is kept ungated and nothing is culled. `max_zoom` is the largest
 /// magnification over PLAYONE's default lens any camera reaches; below 1 it counts as 1.
+/// `max_lod_shift` is the largest depth shift `0x229E` any camera's lens gives
+/// ([`crate::contracts::trajectory::CameraTransform::lod_lens_words`]).
 pub(crate) fn place_props(
     scenery: &[u8],
     shapes: &HashMap<u16, SodModelIr>,
     view_eyes: &[[f32; 3]],
     max_zoom: f32,
+    max_lod_shift: u8,
 ) -> Placements {
     let (chunks, _) = scenery.as_chunks::<4>();
     let words: Vec<i32> = chunks.iter().map(|c| i32::from_le_bytes(*c)).collect();
     let models: HashSet<u16> = shapes.keys().copied().collect();
-    let reach = LOD_REACH * max_zoom.max(1.0);
     let near = |pos: [f32; 3], ext: i32, splitdist: i32| {
         if view_eyes.is_empty() {
             return LodChoice::Near;
         }
-        let bound = reach * splitdist.max(ext >> 1) as f32;
-        if path_distance(pos, view_eyes) > bound {
+        if path_distance(pos, view_eyes) > lod_reach(max_lod_shift, ext, splitdist) {
             LodChoice::Far
         } else {
             LodChoice::Both
@@ -177,13 +178,19 @@ const CORNER_DEPTH_FLOOR: f32 = 0.804;
 /// past wgpu's 256 MiB buffer limit, and the dropped props cannot reach a pixel.
 const MIN_PROP_PIXELS: f32 = 0.5;
 
-/// How far, as a multiple of the zoom and of the larger of an `SP_1NODE`'s `splitdist` and
-/// half its `ext`, the camera path may pass from the node and still need its subtree.
+/// How far the camera path may pass from an `SP_1NODE` with extent `ext` and split distance
+/// `splitdist`, seen through a lens whose depth shift `0x229E` is at most `max_lod_shift`,
+/// and still need its subtree.
 ///
-/// View-space depth never exceeds distance, and PLAYONE keeps the subtree to a true depth of
-/// at most `2^(0x229E + 1)` times that size, where `2^0x229E` is under twice the zoom
-/// (research/playone-exe/lod.md section 2.2).
-const LOD_REACH: f32 = 4.0;
+/// [`CameraTransform::lod_keeps_subtree`](crate::contracts::trajectory::CameraTransform::lod_keeps_subtree)
+/// keeps it while `floor(depth / 2^(0x229E + 1))` is at most a threshold no larger than
+/// `splitdist` or half `ext`, so only below `2^(0x229E + 1)` times one more than the larger
+/// of them; view-space depth never exceeds distance (research/playone-exe/lod.md section
+/// 2.2). The field of view does not enter the gate, so the projection's zoom does not either.
+fn lod_reach(max_lod_shift: u8, ext: i32, splitdist: i32) -> f32 {
+    let depth_unit = f32::from(2u16 << max_lod_shift.min(3));
+    depth_unit * (splitdist.max(ext >> 1).saturating_add(1)) as f32
+}
 /// Node visits one walk may make, per word of `SCENERY.scn`. A tree walked once visits at
 /// most one node per two words, so this leaves room for subtrees shared several times over
 /// while keeping the bound proportional to the input. A fixed ceiling would be too loose: a
@@ -643,7 +650,7 @@ mod tests {
 
     /// `words` placed with shapes `ids` and no camera path.
     fn place(words: &[i32], ids: &[u16]) -> Placements {
-        place_props(&scn(words), &shapes(ids), &[], 1.0)
+        place_props(&scn(words), &shapes(ids), &[], 1.0, 1)
     }
 
     /// The shapes placed, in order.
@@ -960,27 +967,29 @@ mod tests {
     /// across, so the sub-pixel cull keeps it within 1.2 km.
     fn seen_from(words: &[i32], eye_x: f32) -> Vec<u16> {
         let big = HashMap::from([(LEAF, shape(10.0)), (STAND_IN, shape(10.0))]);
-        let placements = place_props(&scn(words), &big, &[[eye_x, 0.0, 0.0]], 1.0);
+        let placements = place_props(&scn(words), &big, &[[eye_x, 0.0, 0.0]], 1.0, 1);
         placed_shapes(&placements)
     }
 
     #[test]
     fn a_one_node_keeps_both_branches_within_reach_and_only_its_stand_in_past_it() {
-        // The reach is LOD_REACH times the larger of splitdist and half ext: 4 * 105 = 420 m.
+        // At the default lens's shift of 1 the reach is 2^2 times one more than the larger of
+        // splitdist and half ext: 4 * 106 = 424 m.
         let words = one_node(STAND_IN, 10, 105);
-        assert_eq!(seen_from(&words, 720.0), [STAND_IN, LEAF]);
-        assert_eq!(seen_from(&words, 721.0), [STAND_IN]);
-        // Half ext is the larger: 4 * 200 = 800 m.
+        assert_eq!(seen_from(&words, 724.0), [STAND_IN, LEAF]);
+        assert_eq!(seen_from(&words, 725.0), [STAND_IN]);
+        // Half ext is the larger: 4 * 201 = 804 m.
         let words = one_node(STAND_IN, 400, 50);
-        assert_eq!(seen_from(&words, 1100.0), [STAND_IN, LEAF]);
-        assert_eq!(seen_from(&words, 1101.0), [STAND_IN]);
-        // A zoom of 2 doubles the reach.
+        assert_eq!(seen_from(&words, 1104.0), [STAND_IN, LEAF]);
+        assert_eq!(seen_from(&words, 1105.0), [STAND_IN]);
+        // A shift of 3 (lens 44236) multiplies it by four, whatever the projection's zoom.
         let big = HashMap::from([(LEAF, shape(10.0)), (STAND_IN, shape(10.0))]);
         let placements = place_props(
             &scn(&one_node(STAND_IN, 10, 105)),
             &big,
-            &[[1140.0, 0.0, 0.0]],
-            2.0,
+            &[[1996.0, 0.0, 0.0]],
+            1.0,
+            3,
         );
         assert_eq!(placed_shapes(&placements), [STAND_IN, LEAF]);
     }
@@ -1018,6 +1027,7 @@ mod tests {
             &shapes(&[LEAF, STAND_IN, OTHER]),
             &[[600.0, 0.0, 0.0]],
             1.0,
+            1,
         );
         let gate = |near| LodGate {
             raw: [-300, 0, 0],
@@ -1044,8 +1054,9 @@ mod tests {
         let placements = place_props(
             &scn(&one_node(STAND_IN, 10, 105)),
             &shapes(&[LEAF, STAND_IN]),
-            &[[721.0, 0.0, 0.0]],
+            &[[725.0, 0.0, 0.0]],
             1.0,
+            1,
         );
         assert_eq!(placements.props, [at(STAND_IN, [300.0, -0.0, 0.0])]);
     }
@@ -1068,6 +1079,7 @@ mod tests {
             &shapes(&[LEAF]),
             &[[1000.0, 0.0, 0.0]],
             1.0,
+            1,
         );
         assert!(
             placements.props.is_empty(),
@@ -1114,15 +1126,17 @@ mod tests {
         let words = leaves_at(&[(LEAF, -1000), (LEAF, -2)]);
         let tiny = HashMap::from([(LEAF, shape(0.01))]);
         let eyes = [[0.0, 0.0, 0.0]];
-        let placements = place_props(&scn(&words), &tiny, &eyes, 1.0);
+        let placements = place_props(&scn(&words), &tiny, &eyes, 1.0, 1);
         assert_eq!(placements.props, [at(LEAF, [2.0, -0.0, 0.0])]);
         // Zoomed 200 times, the far prop covers 512 px and is kept.
         assert_eq!(
-            place_props(&scn(&words), &tiny, &eyes, 200.0).props.len(),
+            place_props(&scn(&words), &tiny, &eyes, 200.0, 1)
+                .props
+                .len(),
             2
         );
         // With no camera path nothing is culled.
-        assert_eq!(place_props(&scn(&words), &tiny, &[], 1.0).props.len(), 2);
+        assert_eq!(place_props(&scn(&words), &tiny, &[], 1.0, 1).props.len(), 2);
     }
 
     #[test]
@@ -1131,7 +1145,7 @@ mod tests {
         // were a zoom of 0.5 applied.
         let words = leaves_at(&[(LEAF, -500)]);
         let eyes = [[0.0, 0.0, 0.0]];
-        let placements = place_props(&scn(&words), &shapes(&[LEAF]), &eyes, 0.5);
+        let placements = place_props(&scn(&words), &shapes(&[LEAF]), &eyes, 0.5, 1);
         assert_eq!(placed_shapes(&placements), [LEAF]);
     }
 }

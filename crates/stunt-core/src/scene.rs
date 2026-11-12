@@ -412,6 +412,11 @@ impl FilmScene {
             .map(|slice| slice.record.camera)
             .collect();
         let max_zoom = max_magnification(&cameras);
+        let max_lod_shift = cameras
+            .iter()
+            .map(|camera| camera.lod_lens_words().1)
+            .max()
+            .unwrap_or(1);
         let world = build_world(
             &WorldInputs {
                 anchors: &anchors,
@@ -419,6 +424,7 @@ impl FilmScene {
                 scenery: inputs.scenery,
                 view_eyes: &eyes,
                 max_zoom,
+                max_lod_shift,
                 anchored_shapes: &decoded.anchored,
                 light,
             },

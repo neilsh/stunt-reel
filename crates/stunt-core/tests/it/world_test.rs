@@ -100,6 +100,7 @@ fn nothing_to_build_yields_none() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -113,6 +114,7 @@ fn nothing_to_build_yields_none() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -128,6 +130,7 @@ fn anchors_without_map_get_a_fallback_ground_plane() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -162,6 +165,7 @@ fn terrain_patch_maps_anchors_into_i1() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -190,6 +194,7 @@ fn patch_indexing_beyond_the_anchor_table_is_rejected() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -209,6 +214,7 @@ fn patch_touching_a_sentinel_anchor_is_counted_but_not_drawn() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -236,6 +242,7 @@ fn scenery_drops_props_that_stay_subpixel_along_the_camera_path() {
             scenery: Some(&scenery),
             view_eyes: eyes,
             max_zoom: 1.0,
+            max_lod_shift: 1,
             anchored_shapes: &HashMap::new(),
             light: ShadeLight::default(),
         };
@@ -290,6 +297,7 @@ fn scenery_places_deduplicated_props_offset_into_i1() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -320,6 +328,7 @@ fn scenery_only_world_is_still_built() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -347,6 +356,7 @@ fn decal_meshes_of_props_go_to_a_child_batch() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -404,6 +414,7 @@ fn bounds_cover_every_vertex() {
         scenery: None,
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -427,6 +438,7 @@ fn cyclic_scenery_list_stops_promptly_and_reports_it() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
@@ -448,6 +460,7 @@ fn well_formed_scenery_reports_no_stop() {
         scenery: Some(&scenery),
         view_eyes: &[],
         max_zoom: 1.0,
+        max_lod_shift: 1,
         anchored_shapes: &HashMap::new(),
         light: ShadeLight::default(),
     };
