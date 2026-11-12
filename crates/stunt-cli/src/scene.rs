@@ -672,10 +672,12 @@ mod tests {
         // `file/child` cannot be inspected: the parent component is a regular file (ENOTDIR).
         t.file("blocker", "");
         let blocked = t.0.join("blocker").join("sidata");
-        assert!(find_scenery_file(Some(&blocked), &all, "ANCHORPT.DAT").is_err());
+        let error = find_scenery_file(Some(&blocked), &all, "ANCHORPT.DAT").unwrap_err();
+        assert!(error.starts_with("inspect "), "{error}");
         // The error stops the search: the film's own directory is not consulted.
         t.file("film/ANCHORPT.DAT", "later");
-        assert!(read_scenery_file(Some(&blocked), &all, "ANCHORPT.DAT").is_err());
+        let error = read_scenery_file(Some(&blocked), &all, "ANCHORPT.DAT").unwrap_err();
+        assert!(error.starts_with("inspect "), "{error}");
     }
 
     #[test]
