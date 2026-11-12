@@ -143,6 +143,30 @@ def test_new_without_issue_files_one_after_checking_the_repo(tmp_path: Path) -> 
     assert run.calls.index(create) > run.calls.index(run.called(TARGET)[0])
 
 
+def test_new_with_title_titles_the_filed_issue_and_readme(tmp_path: Path) -> None:
+    run = FakeRunner(
+        {
+            TARGET: "neilsh/stunt-reel\n",
+            "git remote get-url": "https://github.com/neilsh/stunt-reel.git\n",
+            CREATE: "https://github.com/neilsh/stunt-reel/issues/412\n",
+        }
+    )
+    assert _main(tmp_path, "new", "docs-streamline", "--title", "Streamline docs", run=run) == 0
+    assert parse_folder(tmp_path / "2026-11" / "412_docs-streamline").title == "Streamline docs"
+    [create] = run.called(CREATE)
+    fields = [create[i + 1] for i, flag in enumerate(create) if flag == "-f"]
+    assert fields[0] == "title=Streamline docs"
+    assert "retitle" not in fields[1]
+
+
+def test_new_refuses_title_with_issue(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        _main(
+            tmp_path, "new", "docs-streamline", "--issue", "307", "--title", "T", run=FakeRunner({})
+        )
+    assert exit_info.value.code == 2
+
+
 @pytest.mark.parametrize(
     "origin", ["git@github.com:me/stunt-reel.git", "https://github.com/me/stunt-reel"]
 )

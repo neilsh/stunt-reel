@@ -14,12 +14,13 @@ Issues for this repo live as GitHub issues; an issue's spec and plan live in its
 - **Attach an image**: `gh issue edit <n> --body-file body.md --attach './img.png#Alt text'` (also `gh issue create`; `gh` 2.103 or newer). `gh` uploads the file and rewrites each `![alt](./img.png)` in the body to the hosted attachment URL, resolving paths against the body file's directory; an attachment the body does not reference is appended. Use this, not the browser.
 - **Link code from an issue body**: use a permalink at a full commit SHA on `origin/main` (`https://github.com/<owner>/<repo>/blob/<sha>/<path>#L12`, SHA from `git fetch origin` then `git rev-parse origin/main`). A relative path resolves against the issue URL and 404s, and a branch link points at different lines as the file changes.
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
+- **Claim an issue**: a session's first write on an issue it will work, before any branch commit. Re-read its labels; if it already carries `in-progress`, it is taken: pick another or ask the user. Otherwise `gh issue edit <n> --remove-label ready-for-agent --add-label in-progress` (or `ready-for-human`), then `gh issue comment <n> --body "Claimed by branch <branch>."`, then re-read the comments: the earliest `Claimed by branch` since the latest `Released claim:` holds the issue, and a later claimant comments `Lost claim to <branch>.`, leaves the labels alone and picks another. The holder re-reads the labels and adds `in-progress` if it is missing. A session that stops without a PR comments `Released claim: <why>.`, then swaps the label back. An `in-progress` issue whose named branch is gone, with no open PR, is a dropped claim: ask the user before taking it over, then comment `Released claim: <branch> dropped it.` before your own claim. When choosing work, skip `in-progress` issues.
 - **Close**: post the explanation with `gh issue comment <number> --body "..."`, then `gh issue close <number>`. On an already-closed issue, `gh issue close --comment` drops the comment and still exits 0.
 - **Close an issue fixed by a stacked PR**: a closing keyword (`Fixes #N`) fires only when the PR merges into the default branch, so an issue whose PR merges into another PR's branch stays open. Once `gh stack merge` lands the stack on `main`, close it by hand as in **Close**, naming the PR.
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
-File issues only into the user's own repo. Never file into `mattpocock/skills` (the repo these skills come from) unless the user owns it. In a fork, `gh` can default to the upstream parent, so before the first `gh issue create` of a session, check the target with `gh repo view --json nameWithOwner` and confirm it with the user if it is not their repo.
+File issues only into the user's own repo. Never file into `mattpocock/skills` (the repo these skills come from) unless the user owns it. In a fork, `gh` can default to the upstream parent, so before a session's first issue search, comment or `gh issue create`, check the target with `gh repo view --json nameWithOwner` and confirm it with the user if it is not their repo.
 
 ## Organizing issues
 
@@ -29,6 +30,7 @@ These rules cover every issue except a `wayfinder:*` map or ticket, which `/wayf
 - **An issue with open sub-issues is never startable**, whatever its labels: a spec that `/to-tickets` split keeps its `ready-for-agent` label. Skip it when choosing work.
 - **Closing the last child closes the parent.** Whoever closes a parent's last open sub-issue closes the parent too, as in **Close**.
 - **Title the problem, not the fix.** State the observed problem or the open question in present tense: "Props shade with a guessed light, not PLAYONE's world light", "Which 20 active MAP.BIN polygons have no ground leaf in PLAYONE's image?". The fix goes in the body.
+- **Search before filing.** Before `gh issue create`, run `gh issue list --state open --search "<key terms>"` with the symptom's distinctive words (the error, the file, the film). On a clear match, add the new sighting as a comment there instead of filing a duplicate.
 - **The filer labels the issue.** On `gh issue create`, apply one state label (`needs-triage` when unsure), `research` or `tooling` where either applies ([triage-labels.md](triage-labels.md)), and a parent where a goal fits.
 - No milestones or Project board: parents show progress.
 
