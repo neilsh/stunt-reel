@@ -13,7 +13,7 @@ use stunt_core::sod::{
 
 const CLR2D: u16 = 0x0360;
 const SCALEIT: u16 = 0x0321;
-const BZLT: u16 = 0x0318;
+const SPRITE: u16 = 0x032A;
 const GOSUB: u16 = 0x01A7;
 const BVLT: u16 = 0x02F4;
 
@@ -48,7 +48,7 @@ fn masked_stream() -> Vec<u8> {
         0, OP_RETURN, OP_RETURN, 2, OP_RETURN, OP_RETURN,
         OP_TAP, // 42: reg, count = 2, then two anchor offsets
         0, 2, OP_RETURN, 28, OP_RETURN, // 52
-        BZLT,      // after the first RETURN: never reached
+        SPRITE,    // after the first RETURN: never reached
         0, 0,
     ])
 }
@@ -131,10 +131,10 @@ fn census_follows_gosub_into_its_subroutine() {
 #[test]
 fn census_stops_on_an_opcode_without_a_width() {
     assert_eq!(census_skip(0x0FFF), None);
-    let record = census(&model(&[BZLT, 0, 0, 0x0FFF, OP_RETURN]));
+    let record = census(&model(&[SPRITE, 0, 0, 0x0FFF, OP_RETURN]));
     assert_eq!(
         record.stepped_over,
-        vec![stopped(10, BZLT, SodStopReason::UnknownOpcode)]
+        vec![stopped(10, SPRITE, SodStopReason::UnknownOpcode)]
     );
     assert_eq!(
         record.stop,

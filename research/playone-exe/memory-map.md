@@ -135,6 +135,7 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0x8A1C`, `0x8C45` (VM `0x07DC`, `0x0A05`) | `0x7D13`, `0x7F3C` (VM `0x07D3`, `0x09FC`) | Frame-routine targets chosen by the video-mode flag | `# [MEM-PALETTE]` |
 | `0x908E` | `0x8385` | Sun projection through the camera matrix | `# [MEM-PALETTE]` |
 | `0x9100`, `0x9106` | `0x83F7`, `0x83FD` | Light setup entries | |
+| `0x94D8`, `0x95C0`, `0x9BB3`, `0x9BCC`, `0x9BE5` | `0x87CF`, `0x88B7`, `0x8DBE`, `0x8DD7`, `0x8DF0` | `REJVEC`, `REJ2D`, `BVIS`, `IFVIS` and `BZLT` handlers, byte for byte | `# [FMT-SOD-IFVIS]` |
 | `0xA9DC` (notebook `0x3AAC`) | `0x9BE7` | `OP_ANIMATE` handler | `# [FMT-SOD-ANIMATE]` |
 | `0xAD88`, `0xAE66` (notebook `0x3E58`, `0x3F36`) | `0x9F93`, `0xA071` | `OP_TAP` handler, `OP_HUGETAP` entry | `# [MEM-SOD-VM]` |
 | `0xB85D` (notebook `0x492D`) | `0xAA68` | Anchor-cache invalidation | `# [MEM-SOD-ANCHOR-TABLE]` |
@@ -211,9 +212,10 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x41C8`, `0x41CA` | `[Established]` | `u16` | Screen-projection center offsets; live `CTRY` session reads 160 and 92 (3D viewport is 185 rows; see `capture.md` § 4) | |
 | `0x41D4..0x41DA` | `[Established]` | `i32[3]` | Translation `OP_TAP` adds after `0x80C0` (`0xAE8B`). `[Supported Inference]` that it is the camera's: the anchor cache it fills is per frame, shared by every object ([`sod-vm.md`](sod-vm.md) section 4) | |
 | `0x4450 + n*12` | `[Established]` | 12-byte vertex | Vertex register arena (1024 entries): `x/y/z` and projection/flag fields | `# [MEM-SOD-VM]` |
+| `0x7C68` | `[Established]` | `u8[]` | Facing flags, one byte per face: `REJ` (`0x9567`), `REJVEC` (`0x94D8`) and `REJ2D` (`0x95C0`) write `0xFF` while the face points at the eye, else 0; `IFVIS` (`0x9BCC`), `BVIS` (`0x9BB3`) and `SORTON` (`0x9183`) read them ([`sod-vm.md`](sod-vm.md) section 8.6) | `# [FMT-SOD-IFVIS]` |
 | `0x806C` | `[Established]` for writer and readers (disassembled), `[Hypothesis]` for the run-time effect | `u8` | Shadow-draw mode, set to `0xFF` only by `0x1CE7` around the actor shadow draw: nonzero makes polygon gateways draw in index 0, `GVPOLY`/`GVPOLY16` go flat, and `OP_ANIMATE` take its variable-width skip path ([`sod-vm.md` § 9.1](sod-vm.md#91-the-actor-shadow-draw)) | `# [FMT-SOD-ANIMATE]` |
 | `0x806E` | `[Established]` | `u8` | Shift of the object's view position from `0x31CF`, stored by `0x9100` (`0x9113`); `OP_TAP` shifts anchors right by `16 - [0x806E]` | _Source: [how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._ |
-| `0x806F` | `[Bounded Observation]` | `u8` | High-byte shift count used to derive the `OP_ANIMATE` projection-scale term | `# [FMT-SOD-ANIMATE]` |
+| `0x806F` | `[Established]` | `u8` | `CH − CL` stored by the object entry `0x9100` (`0x9111..0x9113`), the header's scale shift less the view-position shift: the right shift `OP_VECTORS` applies to each register (`0x9C5A`), the shift of `OP_BZLT`'s threshold (`0x9BEB`), and the shift `0x8070` is derived with | `# [FMT-SOD-ANIMATE]` |
 | `0x8070` | `[Bounded Observation]` | `u16` | Projection-scale term consumed by `OP_ANIMATE`; derived from `0x8108` shifted by `0x806F` | `# [FMT-SOD-ANIMATE]` |
 | `0x8082` | `[Established]` | `u16` | Special model selector (`0x1AB1` enables TAP screen projection) | |
 | `0x8084`, `0x8086`, `0x8088` | `[Established]` | `i16` | The object's origin in view space, shifted (scenery: `0x21B2..0x21BC`); `OP_TAP` subtracts it, so a tapped point is relative to the shape | _Source: [how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._ |
@@ -221,7 +223,7 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x80C0..0x80CA` | `[Established]` | `i16[9]` | 3×3 view matrix: the scenery draw matrix (`0x808A`) and the matrix `OP_TAP` transforms anchors by | |
 | `0x80D2` | `[Established]` | `i16[9]` | Scratch for the rotation `R` from image `0x8725` | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
 | `0x8108` | `[Established]` | `u16` | Lens mantissa, a copy of `DS:0x229C` (image `0x122E`); Q15 factor on the view matrix's two screen rows (image `0x12E3`), also read by the sun-disc drawer and `OP_ANIMATE` ([`lod.md`](lod.md) section 2.2) | `# [FMT-SOD-ANIMATE]` |
-| `0x810A` | `[Established]` | `u16` | `0x229C² × 2 >> 16` (image `0x1238`); reader not traced | |
+| `0x810A` | `[Established]` | `u16` | `0x229C² × 2 >> 16` (image `0x1238`); `OP_REJVEC` scales its depth term by it (`0x953F`), undoing the lens zoom ([`sod-vm.md`](sod-vm.md) section 8.6) | |
 | `0x810C` | `[Established]` | `u16` | Lens shift count, a copy of `DS:0x229E` (image `0x123D`); arithmetic right shift on the view matrix's depth row (image `0x12F8`). Zoom is `0x8108 / 0x8000 × 2^0x810C`, about `lens / 8192` | |
 | `0x811E` | `[Established]` | `u16` | The film clock `[0x4888 + 0x0E]` shifted left 12 (image `0x1DCA`): the bank word `OP_ANIMATE` selector `0x10` reads, one sweep every 16 ticks | `# [FMT-SOD-ANIMATE]` |
 | `0x8124` | `[Established]` | `u16` | The drawn slot's animate word, its record's `+0x16` (image `0x1D66`): the bank word `OP_ANIMATE` selector `0x16` and `ROT*` operand `0x16` read | `# [FMT-SOD-ANIMATE]` |

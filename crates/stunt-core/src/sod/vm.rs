@@ -75,8 +75,10 @@ pub const OP_SHADE2: u16 = 0x014D;
 pub const OP_SHADE216: u16 = 0x02C7;
 /// Emit a normal-lit shaded polygon (`count, regs..., normal, shades...`).
 pub const OP_GVPOLY: u16 = 0x0168;
-/// Conditionally skip the enclosed section based on a visibility code (`cond, size`).
+/// Run the next section while facing flag `flag` is set (`flag, size`; `PLAYONE` `0x9BCC`).
 pub const OP_IFVIS: u16 = 0x017A;
+/// Run the next section while facing flag `flag` is clear (`flag, size`; `PLAYONE` `0x9BB3`).
+pub const OP_BVIS: u16 = 0x0183;
 /// Reserved BSP branch (`plane, left_off, right_off`); operands are skipped and stream order is kept.
 pub const OP_SORT: u16 = 0x018C;
 /// End the display list or return from a bytecode subroutine (no operands).
@@ -112,6 +114,15 @@ pub const OP_END: u16 = 0x0195;
 /// Facing test (`first_flag, count, count * (reg_a, reg_b, reg_c)`): face `i` sets flag
 /// `first_flag + i` when `(a - b) x (c - b)` points at the eye (`PLAYONE` `0x9567`).
 pub const OP_REJ: u16 = 0x01B9;
+/// Facing test (`first_flag, count, count * (reg_p, reg_b, reg_e)`): face `i` sets flag
+/// `first_flag + i` when the normal `e - b` points at the eye from `p` (`PLAYONE` `0x94D8`).
+pub const OP_REJVEC: u16 = 0x01B0;
+/// Facing test (`first_flag, count, count * (reg_a, reg_b, reg_c)`) from the screen winding
+/// of the three projected registers (`PLAYONE` `0x95C0`).
+pub const OP_REJ2D: u16 = 0x01C2;
+/// Run the next section only while a register is far (`reg_off, val, size`; `PLAYONE`
+/// `0x9BE5`): skip it while the register's view depth is at most `val`.
+pub const OP_BZLT: u16 = 0x0318;
 /// Copy `count` anchor-table points into consecutive vertex registers
 /// (`reg_off, count, count * anchor_byte_offsets`).
 pub const OP_TAP: u16 = 0x022E;
@@ -495,6 +506,19 @@ fn parse_visibility_condition(
         .unwrap_or(VisibilityCondition::Always)
 }
 
+/// The gate of an `OP_BVIS` section, which runs while the flag `OP_IFVIS` tests is clear
+/// (`PLAYONE` `0x9BB3`): a face's gate turned to face away. A flag the shape never set stays
+/// ungated, as for `OP_IFVIS`.
+fn facing_away(set: VisibilityCondition) -> VisibilityCondition {
+    match set {
+        VisibilityCondition::FacesEye { point, normal } => VisibilityCondition::FacesEye {
+            point,
+            normal: normal.map(|c| -c),
+        },
+        other => other,
+    }
+}
+
 /// A raw register point (rotation-centre origin included) in `[I1]` metres, converted as a
 /// polygon vertex is.
 fn metric_point(raw: [f32; 3], ground_y_offset: i16, scale_factor: f32) -> [f32; 3] {
@@ -668,6 +692,9 @@ pub(crate) fn run_vm(
     let mut sprites: Vec<ShapeSprite> = Vec::new();
     let mut current_visibility = VisibilityCondition::Always;
     let mut visibility_scope_end = 0usize;
+    // The gates of the sections the current one is nested in, innermost last, each with its
+    // end. A polygon in a nested section takes the innermost gate only.
+    let mut outer_scopes: Vec<(VisibilityCondition, usize)> = Vec::new();
     // Facing flags (`PLAYONE` `work:0x7C68`) that `OP_REJ` writes and `OP_IFVIS` tests,
     // keyed by flag byte offset, each kept as the gate it opens.
     let mut faces: HashMap<u16, VisibilityCondition> = HashMap::new();
@@ -684,8 +711,13 @@ pub(crate) fn run_vm(
     let total_len = data.len();
 
     while r.pos() < total_len {
-        if r.pos() >= visibility_scope_end && current_visibility != VisibilityCondition::Always {
-            current_visibility = VisibilityCondition::Always;
+        // Leaving a section restores the gate of the section around it, if any.
+        while r.pos() >= visibility_scope_end
+            && (current_visibility != VisibilityCondition::Always || !outer_scopes.is_empty())
+        {
+            (current_visibility, visibility_scope_end) = outer_scopes
+                .pop()
+                .unwrap_or((VisibilityCondition::Always, visibility_scope_end));
         }
 
         let opcode_end = r.pos().checked_add(2).ok_or(SodError::UnexpectedEof {
@@ -995,13 +1027,37 @@ pub(crate) fn run_vm(
                     }
                 }
             }
-            OP_IFVIS => {
-                let cond_code = r.read_u16_le()?;
-                let sec_len = r.read_u16_le()? as usize;
-                if let Some(scope_end) =
-                    r.pos().checked_add(sec_len).filter(|&end| end <= total_len)
-                {
-                    current_visibility = parse_visibility_condition(cond_code, &faces);
+            OP_IFVIS | OP_BVIS | OP_BZLT => {
+                // A gated section. PLAYONE skips it by adding the size word to that word's own
+                // address (`add si, [es:si]` at `0x9BBE`, `0x9BD7` and `0x9BFB`), so it ends
+                // `size` bytes from the size word.
+                let gate = if opcode == OP_BZLT {
+                    let reg_off = r.read_u16_le()?;
+                    let val = r.read_i16_le()?;
+                    let point = metric_point(
+                        add3(regs.get(((reg_off / 12) & 1023) as usize), relpos),
+                        ground_y_offset,
+                        scale_factor,
+                    );
+                    VisibilityCondition::BeyondDepth {
+                        point,
+                        depth: f32::from(val) * scale_factor,
+                    }
+                } else {
+                    let set = parse_visibility_condition(r.read_u16_le()?, &faces);
+                    if opcode == OP_BVIS {
+                        facing_away(set)
+                    } else {
+                        set
+                    }
+                };
+                let size_at = r.pos();
+                let size = usize::from(r.read_u16_le()?);
+                if let Some(scope_end) = size_at.checked_add(size).filter(|&end| end <= total_len) {
+                    if op_offset < visibility_scope_end {
+                        outer_scopes.push((current_visibility, visibility_scope_end));
+                    }
+                    current_visibility = gate;
                     visibility_scope_end = scope_end;
                 } else {
                     // Clamped beyond EOF
@@ -1142,10 +1198,13 @@ pub(crate) fn run_vm(
                 r.read_u16_le()?;
                 r.read_u16_le()?;
             }
-            OP_REJ => {
-                // `0x9567` (normal by `0xB621`): flag = sign of ((a - b) x (c - b)) . (b - eye),
-                // set while negative. The eye is known only per frame, so the face is kept as
-                // the gate the renderer evaluates.
+            OP_REJ | OP_REJ2D | OP_REJVEC => {
+                // Each face sets flag `first + i` while it points at the eye. The eye is known
+                // only per frame, so the face is kept as the gate the renderer evaluates.
+                // `REJ` (`0x9567`, normal by `0xB621`): the sign of ((a - b) x (c - b)) . (b - eye).
+                // `REJ2D` (`0x95C0`): the sign of the screen winding of a, b and c, which is
+                // the same test for points in front of the eye. `REJVEC` (`0x94D8`): the sign
+                // of (e - b) . (p - eye) for the triple (p, b, e), the lens zoom undone.
                 let first = r.read_u16_le()?;
                 let num_faces = r.read_u16_le()?;
                 for i in 0..num_faces {
@@ -1158,16 +1217,23 @@ pub(crate) fn run_vm(
                         ))
                     };
                     let (a, b, c) = (corner()?, corner()?, corner()?);
-                    let u = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-                    let v = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
-                    let normal = [
-                        u[1] * v[2] - u[2] * v[1],
-                        u[2] * v[0] - u[0] * v[2],
-                        u[0] * v[1] - u[1] * v[0],
-                    ];
+                    let (point, normal) = if opcode == OP_REJVEC {
+                        (a, [c[0] - b[0], c[1] - b[1], c[2] - b[2]])
+                    } else {
+                        let u = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+                        let v = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+                        (
+                            b,
+                            [
+                                u[1] * v[2] - u[2] * v[1],
+                                u[2] * v[0] - u[0] * v[2],
+                                u[0] * v[1] - u[1] * v[0],
+                            ],
+                        )
+                    };
                     faces.insert(
                         first.wrapping_add(i),
-                        VisibilityCondition::FacesEye { point: b, normal },
+                        VisibilityCondition::FacesEye { point, normal },
                     );
                 }
             }
@@ -1487,6 +1553,10 @@ pub fn opcode_mnemonic(opcode: u16) -> Option<&'static str> {
         OP_GOTO => "GOTO",
         OP_GOSUB => "GOSUB",
         OP_REJ => "REJ",
+        OP_REJ2D => "REJ2D",
+        OP_REJVEC => "REJVEC",
+        OP_BVIS => "BVIS",
+        OP_BZLT => "BZLT",
         OP_TAP => "TAP",
         OP_SHADE16 => "SHADE16",
         OP_GVPOLY16 => "GVPOLY16",
@@ -1546,10 +1616,8 @@ pub const CENSUS_SKIPS: &[CensusSkip] = &[
         count_word: Some(0),
     },
     skip(0x0105, "DISC", 2),
-    skip(0x0183, "BVIS", 2),
     skip(0x02F4, "BVLT", 3),
     skip(0x0306, "WIDELINE", 3),
-    skip(0x0318, "BZLT", 2),
     skip(0x0321, "SCALEIT", 1),
     skip(0x032A, "SPRITE", 2),
     skip(0x034E, "LETTER", 2),
