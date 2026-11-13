@@ -174,3 +174,23 @@ You suggested looking at past rejected cases. [#255's journal](../255_sp1node-le
 - **Rebuild**: `123a2d9` with the one line of `CameraTransform::lod_keeps_subtree` (`crates/stunt-core/src/contracts/trajectory.rs`) that divides the depth chosen by an environment switch: `0` no division, `1` by `1 << shift`, `2` (committed) by `2 << shift`. Scratch worktree, not committed.
 - **Keep rule** (as Q2 and Q6): a case stays only if each film's score is within 0.0005 of #255's column, absolute values (and as a delta over its own baseline if the baselines differ by more than 0.0005). Otherwise it is dropped and the journal says so.
 - **No target** for either case, so this round tests the film-mean bar (Q2) and not the per-frame bound; the journal's named `INTRO` ranges (1216-1290, 2511-2624) were found after adoption and are not used as targets.
+
+## 2026-11-12: third-round results: R4 and R5 are valid rejected cases
+
+- **Method**: as fixed above. Three seven-film runs by `mise run parity -- --no-build`: the static rule (`1308da0`, from `mise run build-at`), and the patched `123a2d9` with `DBG_LOD_EXP=0` (R4) and `1` (R5). Scratch under `build/scratch/spike/` (`lodexp0`, `lodexp1`, `static1308`), not committed.
+- **Reproduction of #255's column** (absolute mean SSIM, all within 0.00005 of the journal's four-place values): static rule 0.89728, 0.83438, 0.86561, 0.80080, 0.85106, 0.79976, 0.79086; R4 0.89612, 0.83390, 0.85550, 0.80137, 0.84031, 0.79002, 0.78222; R5 0.89612, 0.83404, 0.85650, 0.80136, 0.84890, 0.79002, 0.78316 (`CTRY`, `INTRO`, `LAND`, `BALLOON`, `TRAINTNL`, `BOMB`, `LOCATION`). Both cases pass the keep rule.
+- **Result** (candidate minus the static rule):
+
+  | Film | R4 ΔSSIM / ΔIdx | R5 ΔSSIM / ΔIdx |
+  |---|---|---|
+  | `CTRY` | −0.00116 / −0.00063 | −0.00116 / −0.00063 |
+  | `INTRO` | −0.00049 / +0.00197 | −0.00035 / +0.00195 |
+  | `LAND` | **−0.01011** / −0.02134 | **−0.00911** / −0.02018 |
+  | `BALLOON` | +0.00056 / +0.00031 | +0.00056 / +0.00031 |
+  | `TRAINTNL` | **−0.01075** / −0.02023 | **−0.00216** / −0.00335 |
+  | `BOMB` | **−0.00974** / −0.00923 | **−0.00974** / −0.00923 |
+  | `LOCATION` | **−0.00864** / −0.01116 | **−0.00770** / −0.00885 |
+
+  Frames more than 0.005 / 0.010 below the baseline over all films: R4 572 / 426, R5 537 / 395; the worst single frame is −0.162 in both; no scored tick lost.
+- **Verdict** (`[Bounded Observation]`, one run per variant): both fall on four films by more than 0.002 (R5's `TRAINTNL` −0.00216 is the closest to the bar), so the Q2 film-mean bar rejects both, as #255 did. They are the spike's first valid rejected cases, and the film-mean bar is validated against them: it rejects them on films the adopted cases (A1 to A3) do not fall on by 0.002.
+- **What this does not test**: the per-frame bound (0.030 SSIM, proposal) and the target-frame test, since neither case has a target. A target-frame guard is still validated only against F1 (not an SSIM-raising fault) and A1, A2, R1. Their false-adoption protection rests on the film-mean bar.
