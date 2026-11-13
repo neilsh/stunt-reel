@@ -131,3 +131,30 @@ Answers (user, `y` to all four): (Q1) PR 1 and the spec's bounds wait for a vali
 - **A1b target.** #429 (`dd9a22cf`) names `INTRO` ticks 3290 and 3301 as its symptom ([#429's PR body](https://github.com/neilsh/stunt-reel/pull/429), from #426's issue); its pictures also show 3323, but those are the ticks that *gained most*, so a range built on them is chosen from the result and is not used. Target: `intro:3290-3301`. It holds 2 frames, below the 3 frame minimum of Q4, so the case is reported as having no valid target whatever its numbers. Weakness: both ticks lie inside the first range, whose per-tick Δs are already in the earlier tables, so this range is not blind.
 - **F1b ranges.** `actors_removed` planted on the `9bc0fb78` renders over every scored tick of `CTRY` (114) and of `INTRO` (209), one fault run per film. No other range is tried. If SSIM still falls on both films, no SSIM-raising fault exists on these two films and the false-adoption protection rests on the film-mean bar.
 - **R2 rebuild.** `DBG_INCLUSIVE=1` from #430's journal on `dd9a22cf`: the world drawn through the base and decal pipelines with `PrimitiveState::conservative`, the world's line quads narrowed to a thousandth of their width. Kept as a rejected case only if every film's score is within 0.0005 of #430's column (`CTRY` 0.8961, `INTRO` 0.8480, `LAND` 0.8653, `BALLOON` 0.8127, `TRAINTNL` 0.8545, `BOMB` 0.8158, `LOCATION` 0.8069); #430's base is `dd9a22cf` itself, so absolute values are comparable here. Its target: none (broad change). Not scored yet.
+
+## 2026-11-12: second-round results: A1b, F1b and R2
+
+- **A1b** (`intro:3290-3301`, `dd9a22cf` against `9bc0fb78`): 2 frames, below the 3 frame minimum, so A1 has no valid target. Tick 3290: ΔSSIM −0.00329, ΔIdx −0.00490; tick 3301: +0.00840, +0.00343 (means +0.00255 and −0.00074).
+- **F1b** (`actors_removed` over every scored tick, `9bc0fb78` renders, planted stores in `build/scratch/spike/f1b/`, not committed):
+
+  | Film | Scored ticks | ΔSSIM mean | Ticks with ΔSSIM > 0 | Worst / best ΔSSIM | ΔIdx mean |
+  |---|---|---|---|---|---|
+  | `CTRY` | 114 | −0.02922 | 6 | −0.0724 / +0.0002 | −0.01499 |
+  | `INTRO` | 209 | −0.05093 | 26 | −0.2408 / +0.0153 | −0.03968 |
+
+  The fault lowers SSIM on both whole films, so no SSIM-raising fault exists on these two (`[Bounded Observation]`, one fault, two films). The false-adoption protection stays the film-mean bar. The bench's earlier "removing actors raises `ssim`" (`metric-bench.md` § 2.2, 2026-10-31) is not reproduced on the current render.
+- **R2 rebuilt** from #430's description on a scratch worktree of `dd9a22cf` (not committed): the world drawn through copies of the base and decal pipelines with `PrimitiveState::conservative`, the `CONSERVATIVE_RASTERIZATION` device feature requested, and the world's line quads (model layer 0) narrowed to a thousandth of their width in the vertex shader; `DBG_INCLUSIVE=1`, all seven films by `mise run parity -- --no-build`.
+
+  | Film | #430 `1` | R2 rebuilt | Diff | #430 Δ over base | R2 Δ over `dd9a22cf` |
+  |---|---|---|---|---|---|
+  | `CTRY` | 0.8961 | 0.90127 | **+0.00517** | −0.0061 | −0.00094 |
+  | `INTRO` | 0.8480 | 0.84826 | +0.00026 | +0.0013 | +0.00161 |
+  | `LAND` | 0.8653 | 0.86299 | **−0.00231** | −0.0010 | −0.00330 |
+  | `BALLOON` | 0.8127 | 0.81074 | **−0.00196** | 0.0000 | −0.00198 |
+  | `TRAINTNL` | 0.8545 | 0.85430 | −0.00020 | −0.0010 | −0.00117 |
+  | `BOMB` | 0.8158 | 0.81629 | +0.00049 | +0.0007 | +0.00117 |
+  | `LOCATION` | 0.8069 | 0.80713 | +0.00023 | −0.0023 | −0.00202 |
+
+  The baselines agree with #430's to four places, so absolute values are comparable. R2 reproduces the signs of six films but misses #430's column by more than 0.0005 on `CTRY`, `LAND` and `BALLOON`.
+- **Verdict**: R2 **dropped** under the Q2 rule. The spike still has no valid rejected case. The rebuild may differ from #430's switch in what narrowed (here: every world line quad, by layer), which the journal does not specify; whether conservative rasterization was active was not checked beyond the adapter reporting the feature. R3 stays dropped.
+- **Consequence for the bound**: the 0.030 per-frame SSIM bound has still not been tested against a change the rule should reject, and no SSIM-raising fault is available. Recommendation for the user, not a rule: write the film-mean bar and the target test, label the per-frame bound unvalidated, and take a real rejected case from the next change that scores a target and a film worse (the spec's own case list gains it then).
