@@ -53,13 +53,9 @@ Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): 
 
 ### Working economically
 
-Each turn re-sends the context, so cost is turns times context size.
-
-1. **Fewer, fuller turns.** Batch independent reads and commands into one turn. Find the file through [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before grepping, and read line ranges of files over about 20 KB.
-2. **Scoped checks while iterating.** Python: `mise run fix`, `lint-py`, `typecheck`, then `test-py -- <test file>`. Rust: `mise run check-rust`.
-3. **Scripts before subagents.** Mechanical checks belong in a script. Delegate only real chunks of work, at most about 8 subagents per task, each with a whole brief: goal, paths, output shape, stopping condition.
-4. **Drive everything through `mise run`.** `mise run *` is pre-approved and `mise tasks` lists what exists; a task not listed does not exist. A one-off runs as `mise exec -- uv run …` (expect a prompt); a command needed twice earns a task.
-5. **Fresh session per phase.** A committed spec or plan ends the session, naming its path and branch; the next phase, and fixing review threads (`mise run pr-threads`), starts fresh from the file or PR.
+1. **Scoped checks while iterating.** `mise run fix`, then `test-py -- <file>`, `check-py` or `check-rust`; the full `mise run check` once, before committing.
+2. **Run tasks through `mise run`.** `mise tasks` lists every task, and none other exists. A one-off runs as `mise exec -- uv run …`; a command needed twice earns a task.
+3. **Fresh session per phase when it pays.** Start the next phase in a new session, naming the file or PR it starts from and the branch, when this session is long (compacted, or dozens of turns), the next phase will run more than about ten turns, and it can start from a committed file or PR. Stay when it needs what is only in this conversation.
 
 ### Docstrings
 
