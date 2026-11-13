@@ -1,6 +1,6 @@
 # Spec: adopt a render change on its target frames, guarded per frame
 
-Issue [#440](https://github.com/neilsh/stunt-reel/issues/440). Design agreed 2026-11-12 by grilling: decisions Q1 to Q31, then Q32 to Q39 after a review, Q40 to Q45 from the spike, and Q46 and Q47 after a review of it. S1 to S8 came from checking the design against the code. Some later decisions revise earlier ones; the Decisions table at the end marks which.
+Issue [#440](https://github.com/neilsh/stunt-reel/issues/440). Design agreed 2026-11-12 by grilling: decisions Q1 to Q31, then Q32 to Q39 after a review, Q40 to Q45 from the spike, and Q46 and Q47 after a review of it. S1 to S9 came from checking the design against the code. Some later decisions revise earlier ones; the Decisions table at the end marks which.
 
 ## Intent
 
@@ -146,6 +146,7 @@ Changes to [`python/scripts/parity_sweep.py`](../../../python/scripts/parity_swe
 - Variants finish in completion order, not listed order (`on_variant`, `parity_sweep.py`), so the baseline may finish last.
 - The sweep therefore holds each variant's per-frame scores in memory: SSIM and index agreement, by film and tick. It deletes render directories as it does today.
 - It judges once every variant has finished (Q39).
+- The per-frame join and the judging live in a module of their own, also run as `mise run judge -- <baseline report dir> <candidate report dir> [--target ...] [--track ...]` on two existing `stuntreel parity` report trees. It prints the same table and winner line. The spike, and its review, each wrote this join as a scratch script (S9).
 - `--keep-best` keeps the winner under the new ranking.
 
 ### 3.4 Output
@@ -193,8 +194,8 @@ For each film with target frames, the sweep picks up to **5** ticks (Q11, Q20, Q
 | [`pr-evidence.md`](../../../.agents/skills/improving-render-parity/pr-evidence.md) | A targeted round's PR attaches its committed pictures under **Evidence** in place of step 3's renders. A change with no target frames keeps today's steps (Q28). |
 | [`evidence-limits.md`](../../../research/parity/evidence-limits.md) | The policy-bound item adds the settled bounds, the 3-frame minimum, and the spike that chose them. |
 | [`metric-bench.md`](../../../research/parity/metric-bench.md) | The note records why index agreement is the target metric: A2's target gain shows in it and not in whole-frame SSIM (Q40). The spike's finding that removing the actors now lowers SSIM (F1b) was recorded with the spike. |
-| [`docs/howto/score-a-render-change.md`](../../../docs/howto/score-a-render-change.md) | The sweep's new options, and how to read the winner line. |
-| [`mise.toml`](../../../mise.toml) | The `sweep` task's description lists the new options. |
+| [`docs/howto/score-a-render-change.md`](../../../docs/howto/score-a-render-change.md) | The sweep's new options, the `judge` task (S9), and how to read the winner line. |
+| [`mise.toml`](../../../mise.toml) | The `sweep` task's description lists the new options, and a new `judge` task runs the join on two report trees (S9). |
 | [`NOTICE.md`](../../../NOTICE.md) | Delete the sentence that lists the current image sets ("The current sets are …"). The limits stay word for word (Q31). |
 | [`GLOSSARY.md`](../../../GLOSSARY.md) | **Target frames** is added with this spec, and **Adoption** and **Sweep** now name every reference film. PR 1 adds the target branch and per-frame guard to **Adoption**. |
 
@@ -229,6 +230,7 @@ All offline, on synthetic data, in [`tests/test_parity_sweep.py`](../../../tests
   - Picks keep the 50-tick spacing, then 25, and never closer.
   - Guard pictures fall outside the cap.
 - **Edge frames.** A frame just outside a range that falls by more than 0.010 is flagged on stderr and does not change the verdict; a frame two captured frames out is not flagged (Q47).
+- **`judge` task.** On two fixture report trees, `mise run judge` prints the same table and winner line as a sweep given the same per-frame scores (S9).
 - **Picture layout.** Drawing a synthetic capture beside two synthetic renders gives the expected panel order, width, divider and file name.
 
 No GPU run is needed for the tests. The spike (§ 1) is the check on the bounds. The first targeted round after both PRs land is the field test of the pictures, and its journal entry says so. The first heuristic targeted round is likewise the field test of the target branch, which no spike case ran (Q41).
@@ -236,14 +238,14 @@ No GPU run is needed for the tests. The spike (§ 1) is the check on the bounds.
 ## 7. Delivery
 
 1. **Spike:** § 1, done 2026-11-12; its numbers are in [the journal](journal.md), and the user settled § 1.3 from them (Q40 to Q45).
-2. **PR 1, the verdict:** § 2 with the settled figures, and § 3 except `--images`, `--topic` and `--crop`. Their tests come with it, and so do the `loop-rules.md`, `evidence-limits.md`, how-to, `mise.toml` and `GLOSSARY.md` changes and `SKILL.md`'s target-frames step. Also `metric-bench.md`'s note on the target metric.
+2. **PR 1, the verdict:** § 2 with the settled figures, and § 3 except `--images`, `--topic` and `--crop`. Their tests come with it, as does the `judge` task (S9), and so do the `loop-rules.md`, `evidence-limits.md`, how-to, `mise.toml` and `GLOSSARY.md` changes and `SKILL.md`'s target-frames step. Also `metric-bench.md`'s note on the target metric.
 3. **PR 2, the pictures:** § 4, the remaining options and their tests, `SKILL.md`'s pictures step, and the `pr-evidence.md` and `NOTICE.md` rows. The how-to and `mise.toml` gain the picture options.
 
 PR 2 finishes the item: it writes this folder's README `outcome` and closes #440.
 
 ## Decisions
 
-Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day after a review. Q40 to Q45 were settled from the spike, and Q46 and Q47 after a review of it. S1 to S8 are calls made while writing the spec against the code. "Revised by" marks a decision a later one changed.
+Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day after a review. Q40 to Q45 were settled from the spike, and Q46 and Q47 after a review of it. S1 to S9 are calls made while writing the spec against the code. "Revised by" marks a decision a later one changed.
 
 | # | Decision |
 |---|---|
@@ -301,3 +303,4 @@ Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day af
 | S6 | Variants that adopt rank above those that do not (folded into Q39). |
 | S7 | Replaced by Q32: the retrospective check became the spike. |
 | S8 | Pictures choose their ticks by whole-frame SSIM Δ, the per-frame guard's metric, not by the target metric. |
+| S9 | The per-frame join is a module with its own `mise run judge` task over two report trees, so rescoring old cases needs no scratch script. |
