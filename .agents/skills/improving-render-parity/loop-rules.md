@@ -23,8 +23,8 @@ An adopted change updates the expected table in [`references.toml`](../../../res
 
 **Repin, never hand-merge.** `mise run parity-repin -- [--class gpu|lavapipe]` writes every film's table from its current report after `mise run parity` on a clean `crates/`, and writes nothing when a film lacks a report measured on that tree.
 
-- Expected tables change only when the measured `crates/` tree changes.
-- On a conflict in an expected table, take `main`'s `references.toml`, rerun `mise run parity` on the merged tree, run `mise run parity-repin` and commit. Never hand-merge the numbers: a merged number was measured on no tree.
+- Expected tables change only when the measured `crates/` tree or a film's `sha256` or `all_sha256` pin changes.
+- On a conflict in an expected table, take `main`'s expected tables while keeping the branch's other edits to `references.toml` (a new row or pin), rerun `mise run parity` on the merged tree, run `mise run parity-repin` and commit. Never hand-merge the numbers: a merged number was measured on no tree.
 - A catch-up repin (the tables' `crates` lags `main`) is allowed in any PR, but only as its own commit, such as `chore(parity): repin expected scores`.
 - A research note cites the journal entry for before-and-after scores and never copies the expected scores.
 

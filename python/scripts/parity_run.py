@@ -140,6 +140,12 @@ def main(argv: list[str] | None = None) -> int:
     if problems:
         print("parity_run: " + "\n  ".join(problems), file=sys.stderr)
         return 2
+    # Sampled before the build, and kept only if the build left it unchanged.
+    built_from = recorded_crates(
+        no_build=options.no_build,
+        no_render=args.no_render,
+        rescored=rescored_with(options) is not None,
+    )
     if not options.no_build:
         print("[parity] cargo build --release -p stunt-cli", file=sys.stderr)
         try:
@@ -148,11 +154,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"parity_run: build failed: {err}", file=sys.stderr)
             return 1
 
-    crates = recorded_crates(
-        no_build=options.no_build,
-        no_render=args.no_render,
-        rescored=rescored_with(options) is not None,
-    )
+    crates = built_from if built_from == clean_crates_tree() else None
 
     def work(job: FilmJob, _variant: None) -> FilmScore:
         """Renders (or reuses) *job*'s film and scores it, printing nothing."""
