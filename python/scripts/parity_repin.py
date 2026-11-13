@@ -260,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
             f"{measured.film:<9} {old} ssim {measured.values['ssim']} iou {measured.values['iou']}"
         )
     if tables:
-        tree = tables[0].values["crates"]
+        tree = tables[0].values["crates"].strip('"')
         print(f"[parity-repin] {args.renderer} tables now measure crates/ {tree}")
     return 0
 
