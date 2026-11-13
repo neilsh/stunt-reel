@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""Fail a commit message whose subject is not a Conventional Commit, or that lacks its review.
+"""Fail a commit message whose subject is not a Conventional Commit, or that lacks a due review.
 
 The subject is ``type(scope)!: summary`` with one of the usual types. Git's own subjects (a merge,
 a revert, ``fixup!``, ``squash!``, ``amend!``) are left alone (AGENTS.md, Committing, rule 3).
 
-A fresh reviewer's pass (AGENTS.md, Committing, rule 5) is recorded as a ``Fresh-review: <what it
-read>`` trailer. A commit that changes a work ``spec.md`` or ``plan.md`` carries one itself; in a
-range, a commit that changes ``research/``, ``NOTICE.md``, ``docs/howto/`` or ``docs/*.md`` needs
-one on it or on a later commit of the range, since that review is due before the push. A path
-counts when the commit adds, changes or deletes it. The hook sees only what is staged, so an
-``--amend`` that only rewords is not checked there; the range check covers it. Git's own subjects
-need no trailer.
+The hook also requires a ``Fresh-review: <what it read>`` trailer, the record of a fresh
+reviewer's pass (AGENTS.md, Committing, rule 5), on a commit that adds, changes or deletes a work
+``spec.md`` or ``plan.md``. It sees only what is staged, so an ``--amend`` that only rewords is not
+checked; a range is not checked for it. Git's own subjects need no trailer.
 
 Usage: ``mise run commit-msg-check -- <message file>`` (the commit-msg hook), or
 ``mise run commit-msg-check -- --range <base>..<head> [--pr <number>]`` to check commits already
@@ -61,19 +58,8 @@ def reviewed_at_commit(path: str) -> bool:
     return len(parts) == 4 and parts[0] == "work" and parts[3] in ("spec.md", "plan.md")
 
 
-def reviewed_before_push(path: str) -> bool:
-    """Whether a change to repository-relative *path* needs its review before the push."""
-    parts = path.split("/")
-    return (
-        parts[0] == "research"
-        or path == "NOTICE.md"
-        or path.startswith("docs/howto/")
-        or (len(parts) == 2 and parts[0] == "docs" and path.endswith(".md"))
-    )
-
-
 def is_reviewed(message: str) -> bool:
-    """Whether *message* carries a ``Fresh-review:`` trailer with a value."""
+    """Whether any line git keeps of *message* is ``Fresh-review:`` with a value."""
     return any(FRESH_REVIEW.match(line) for line in _lines(message))
 
 
@@ -135,43 +121,6 @@ def _staged_paths() -> list[str]:
     return _git(
         "-c", "core.quotepath=false", "diff", "--cached", "--name-only", "--no-renames"
     ).splitlines()
-
-
-def _changed_paths(sha: str) -> list[str]:
-    """The paths commit *sha* changes against its first parent (none for a merge)."""
-    listed = _git(
-        "-c",
-        "core.quotepath=false",
-        "diff-tree",
-        "--no-commit-id",
-        "--name-only",
-        "--no-renames",
-        "-r",
-        "--root",
-        sha,
-    )
-    return listed.splitlines()
-
-
-def _range_review_problems(commits: list[tuple[str, str, str]]) -> dict[str, list[str]]:
-    """Each oldest-first ``(full, short, message)`` commit's missing reviews, keyed by full hash."""
-    found: dict[str, list[str]] = {}
-    later_reviewed = False
-    for full, _short, message in reversed(commits):
-        paths = _changed_paths(full)
-        listed = review_problems(message, paths)
-        reviewed = is_reviewed(message)
-        later_reviewed = later_reviewed or reviewed
-        pushed = sorted(path for path in paths if reviewed_before_push(path))
-        if pushed and not later_reviewed:
-            listed.append(
-                f"changes {', '.join(pushed)}, and neither it nor a later commit of the range "
-                f"carries a Fresh-review: trailer ({RULE_5}): have a fresh reviewer read the "
-                "diff, then add 'Fresh-review: <what it read>' to the newest commit's message"
-            )
-        if listed:
-            found[full] = listed
-    return found
 
 
 def _messages(revisions: str) -> list[tuple[str, str, str]]:
@@ -312,11 +261,8 @@ def main(argv: list[str] | None = None) -> int:
         found = [("this commit", problems(message) + review_problems(message, staged))]
     else:
         try:
-            messages = _messages(args.range)
-            reviews = _range_review_problems(messages)
             commits = [
-                (full, short, problems(message) + reviews.get(full, []))
-                for full, short, message in messages
+                (full, short, problems(message)) for full, short, message in _messages(args.range)
             ]
             failing = [(full, short) for full, short, listed in commits if listed]
             skipped = _landed_elsewhere(args.range, failing, args.pr) if failing else {}

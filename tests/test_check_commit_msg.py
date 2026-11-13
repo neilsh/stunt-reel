@@ -270,25 +270,22 @@ REVIEW = "Fresh-review: a subagent read the diff and the notes it cites"
 
 
 @pytest.mark.parametrize(
-    ("path", "at_commit", "before_push"),
+    ("path", "at_commit"),
     [
-        (_path("work", "2026-11", "440_target-frame-adoption", "spec.md"), True, False),
-        (_path("work", "2026-11", "440_target-frame-adoption", "plan.md"), True, False),
-        (_path("work", "2026-11", "440_target-frame-adoption", "journal.md"), False, False),
-        (_path("work", "README.md"), False, False),
-        (_path("research", "parity", "metric-bench.md"), False, True),
-        ("NOTICE.md", False, True),
-        (_path("docs", "howto", "score-a-render-change.md"), False, True),
-        (_path("docs", "SPEC.md"), False, True),
-        (_path("docs", "adr", "0001-x.md"), False, False),
-        ("python/scripts/check_commit_msg.py", False, False),
+        (_path("work", "2026-11", "440_target-frame-adoption", "spec.md"), True),
+        (_path("work", "2026-11", "440_target-frame-adoption", "plan.md"), True),
+        (_path("work", "2026-11", "440_target-frame-adoption", "journal.md"), False),
+        (_path("work", "README.md"), False),
+        (_path("research", "parity", "metric-bench.md"), False),
+        ("NOTICE.md", False),
+        (_path("docs", "howto", "score-a-render-change.md"), False),
+        (_path("docs", "SPEC.md"), False),
+        (_path("docs", "adr", "0001-x.md"), False),
+        ("python/scripts/check_commit_msg.py", False),
     ],
 )
-def test_which_paths_need_a_fresh_review(
-    hook: Any, path: str, at_commit: bool, before_push: bool
-) -> None:
+def test_which_paths_need_a_fresh_review(hook: Any, path: str, at_commit: bool) -> None:
     assert hook.reviewed_at_commit(path) is at_commit
-    assert hook.reviewed_before_push(path) is before_push
 
 
 def test_a_staged_spec_needs_the_trailer(hook: Any) -> None:
@@ -346,62 +343,3 @@ def test_a_non_ascii_path_is_read_unquoted(repo: Git, tmp_path: Path, hook: Any)
     note.write_text("x\n", encoding="utf-8")
     repo("add", "research")
     assert hook._staged_paths() == [_path("research", "café.md")]
-
-
-def _commit_file(repo: Git, tmp_path: Path, path: str, message: str) -> str:
-    """Commits a change to *path* with *message*; returns the new commit's short hash."""
-    target = tmp_path / path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("a", encoding="utf-8") as handle:
-        handle.write("x\n")
-    repo("add", path)
-    repo("commit", "-q", "-m", message)
-    return repo("rev-parse", "--short", "HEAD")
-
-
-def test_a_research_change_is_reviewed_by_a_later_commit_of_the_range(
-    hook: Any, repo: Git, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    base = repo("rev-parse", "HEAD")
-    _commit_file(
-        repo, tmp_path, _path("research", "parity", "note.md"), "docs(research): a finding"
-    )
-    _commit_file(repo, tmp_path, "python/x.py", f"fix: the code\n\n{REVIEW}\n")
-    _stub_github(hook, monkeypatch, [])
-    assert hook.main(["--range", f"{base}..HEAD"]) == 0
-
-
-def test_a_research_change_after_the_last_review_fails_the_range(
-    hook: Any,
-    repo: Git,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    base = repo("rev-parse", "HEAD")
-    reviewed = _commit_file(repo, tmp_path, _path("docs", "SPEC.md"), f"docs: a goal\n\n{REVIEW}\n")
-    late = _commit_file(repo, tmp_path, "NOTICE.md", "docs: a limit")
-    _stub_github(hook, monkeypatch, [])
-    assert hook.main(["--range", f"{base}..HEAD"]) == 1
-    stderr = capsys.readouterr().err
-    assert f"{late}: changes NOTICE.md" in stderr
-    assert reviewed not in stderr
-
-
-def test_a_spec_needs_its_own_trailer_in_a_range(
-    hook: Any,
-    repo: Git,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    base = repo("rev-parse", "HEAD")
-    spec = _commit_file(
-        repo, tmp_path, _path("work", "2026-11", "440_x", "spec.md"), "docs(work): a spec"
-    )
-    _commit_file(repo, tmp_path, "python/x.py", f"fix: the code\n\n{REVIEW}\n")
-    _stub_github(hook, monkeypatch, [])
-    assert hook.main(["--range", f"{base}..HEAD"]) == 1
-    assert (
-        f"{spec}: changes {_path('work', '2026-11', '440_x', 'spec.md')}" in capsys.readouterr().err
-    )

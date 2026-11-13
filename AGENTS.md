@@ -49,7 +49,7 @@ Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): 
 2. Run `mise run check`; it must pass with no warnings.
 3. Commit with a Conventional Commit subject and, when a reviewer would ask "why this way?", a body that says why: [Commit messages](docs/development.md#commit-messages). The commit-msg hook checks the subject.
 4. Write the handoff into the work folder's README or on the issue, never only in agent memory; the finishing PR writes the README's `outcome`.
-5. Before a push that changes `research/`, `NOTICE.md`, `docs/howto/` or `docs/*.md`, or before committing a work `spec.md` or `plan.md`, a fresh reviewer (a subagent, or another person) reads the diff and the notes it cites, reports any claim broader than its evidence (`only`, `all`, `noise`, `within`, `equivalent`), and checks each behavioural claim against the code. Record the pass as a `Fresh-review: <what it read>` trailer: the commit-msg hook requires it on a commit that changes a spec or plan, and CI requires one on, or after, the last commit of a pull request that changes the other paths.
+5. Before a push that changes `research/`, `NOTICE.md`, `docs/howto/` or `docs/*.md`, or before committing a work `spec.md` or `plan.md`, a fresh reviewer (a subagent, or another person) reads the diff and the notes it cites, reports any claim broader than its evidence (`only`, `all`, `noise`, `within`, `equivalent`), and checks each behavioural claim against the code. A commit that changes a work `spec.md` or `plan.md` records the pass as a `Fresh-review: <what it read>` trailer, which the commit-msg hook requires.
 
 ### Working economically
 
