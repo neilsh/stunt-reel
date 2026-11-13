@@ -53,7 +53,7 @@ Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): 
 
 ### Working economically
 
-1. **Scoped checks while iterating.** `mise run fix`, then `test-py -- <file>`, `check-py` or `check-rust`; the full `mise run check` once, before committing.
+1. **Scoped checks while iterating.** `mise run fix`, then `mise run test-py -- <file>`, `mise run check-py` or `mise run check-rust`; the full `mise run check` once, before committing.
 2. **Run tasks through `mise run`.** `mise tasks` lists every task, and none other exists. A one-off runs as `mise exec -- uv run …`; a command needed twice earns a task.
 3. **Fresh session per phase when it pays.** Start the next phase in a new session, naming the file or PR it starts from and the branch, when this session is long (compacted, or dozens of turns), the next phase will run more than about ten turns, and it can start from a committed file or PR. Stay when it needs what is only in this conversation.
 
