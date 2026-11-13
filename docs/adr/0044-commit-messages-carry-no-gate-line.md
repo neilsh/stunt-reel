@@ -5,7 +5,8 @@
 accepted 2026-11-09. Supersedes in part [ADR 0026](0026-commit-hooks-run-the-gates-own-tasks.md)
 (the commit-msg hook's gate-line check) and [ADR 0038](0038-the-local-gate-runs-what-a-change-touches.md)
 (the scoped gate line). Keeps the commit-msg hook's Conventional Commit subject check and CI's
-range check of a pull request's commits.
+range check of a pull request's commits. Amended 2026-11-12: the hook also requires a
+`Fresh-review:` trailer on a commit that changes a work spec or plan (below).
 
 ## Context
 
@@ -24,8 +25,11 @@ on a range of commits by wording alone, since it never saw a local run.
 
 - **A commit message needs a Conventional Commit subject and, when a reviewer would ask why, a
   body that says why.** It carries no gate line.
-- **The commit-msg hook checks only the subject**
+- **The commit-msg hook checks the subject**
   ([`check_commit_msg.py`](../../python/scripts/check_commit_msg.py)); CI's range check stays.
+  Since 2026-11-12 the hook also requires a `Fresh-review: <what it read>` trailer on a commit
+  that changes a work `spec.md` or `plan.md` (`work/<month>/<folder>/`), the record of the
+  fresh review AGENTS.md § Committing rule 5 asks for there; the range check does not look for it.
 - **`gate.py` neither records the tree it tested nor prints a gate line.** `gate_record.py`,
   `regate.py`, the `regate` task and its how-to are deleted.
 

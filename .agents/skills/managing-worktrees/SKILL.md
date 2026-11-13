@@ -27,6 +27,7 @@ Game files and captures live outside every checkout, in one shared data root; a 
 | Squash-merged, cherry-picked, leftovers | `gh` recognises merged PRs; `--cherry`; `--prune` |
 | Work at risk | `--stash-dirty`, `--discard-untracked` |
 | Clear build outputs of a kept checkout | `mise run clean -- --yes` |
+
 ## Common mistakes
 
 - **Looking for captures under `corpus/` or in the worktree.** Captures are in the data root.
