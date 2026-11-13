@@ -10,10 +10,17 @@ Usage::
 
     mise run sweep -- --var DBG_PITCH=0,-0.5 --var DBG_DY=-0.2,-0.3 [--films ctry,intro]
         [--probe film|iou] [--keep-best] [--data-root DIR] [--no-build] [--retime N]
+        [--track evidence|heuristic [--target <film>:<lo>-<hi> ...]]
     mise run sweep -- --reuse <retime root> [--films ctry,intro] [--retime N]
 
-stdout carries only the table and the winner line; progress goes to stderr. Variants are ranked
-by mean SSIM over the films (then mean mask IoU), so a CTRY-only gain that costs INTRO shows up.
+stdout carries only the ``--target`` echo, the table and the winner line; progress and the
+listed frames go to stderr. The baseline is the variant of each ``--var``'s first value, and
+every other variant is judged against it once all have finished (``stunt_reel.parity_judge``).
+With ``--track`` the winner line gives the adoption rule's verdict (loop-rules.md) and the
+baseline never wins; ``--track`` and ``--target`` refuse a ``--films`` subset, ``--reuse`` and
+a single variant, and a ``--target`` range holding no captured tick stops the sweep before it
+renders. Without ``--track`` variants are ranked by mean SSIM over the films (then mean mask
+IoU), so a CTRY-only gain that costs INTRO shows up, and there is no verdict.
 ``--probe iou`` adds the actor-window IoU of ``parity_probe.py`` (its CTRY background ranges are
 used for every film). ``--data-root`` points at a checkout holding ``corpus/`` and the capture
 directories when this one (a worktree) has none. ``--no-build`` reuses the existing release
@@ -32,7 +39,7 @@ import re
 import shutil
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import parity_probe
@@ -43,7 +50,23 @@ from stunt_reel.matched_frames import Reference
 from stunt_reel.parity_artifacts import (
     Geometry,
     RenderStore,
+    read_capture,
     read_report,
+)
+from stunt_reel.parity_judge import (
+    BASELINE,
+    TRACKS,
+    FilmRun,
+    Headline,
+    Judgement,
+    Target,
+    Track,
+    Variant,
+    decide,
+    judge,
+    label,
+    outcome_lines,
+    sort_key,
 )
 from stunt_reel.parity_pipeline import (
     REPO_ROOT,
@@ -65,28 +88,6 @@ if TYPE_CHECKING:
 VAR_NAME = re.compile(r"DBG_[A-Z0-9_]+")
 #: Padding around the actor's silhouette in the winner's crop, in pixels.
 CROP_PAD = 25
-
-
-@dataclass
-class Variant:
-    """One combination of values; ``scores`` holds ``None`` for a film that failed."""
-
-    index: int
-    values: tuple[str, ...]
-    scores: dict[str, Score | None]
-    renders: dict[str, Path] = field(default_factory=dict)
-
-    def mean_ssim(self) -> float | None:
-        return self._mean([s.ssim if s else None for s in self.scores.values()])
-
-    def mean_iou(self) -> float | None:
-        return self._mean([s.iou if s else None for s in self.scores.values()])
-
-    @staticmethod
-    def _mean(values: list[float | None]) -> float | None:
-        if not values or any(v is None for v in values):
-            return None
-        return sum(v for v in values if v is not None) / len(values)
 
 
 @dataclass(frozen=True)
@@ -114,59 +115,6 @@ def expand_variants(names: list[str], value_lists: list[list[str]]) -> list[tupl
     if len(set(names)) != len(names):
         raise ValueError("a --var name is given twice")
     return list(itertools.product(*value_lists))
-
-
-def rank(variants: list[Variant]) -> list[Variant]:
-    """Best first by mean SSIM, then mean IoU; variants with a failed film go last."""
-
-    def key(v: Variant) -> tuple[int, float, float, int]:
-        ssim, iou = v.mean_ssim(), v.mean_iou()
-        if ssim is None or iou is None:
-            return (1, 0.0, 0.0, v.index)
-        return (0, -ssim, -iou, v.index)
-
-    return sorted(variants, key=key)
-
-
-def label(names: list[str], values: tuple[str, ...]) -> str:
-    return " ".join(f"{n}={v}" for n, v in zip(names, values, strict=True))
-
-
-def _cell(value: float | None) -> str:
-    return "-" if value is None else f"{value:.4f}"
-
-
-def format_table(names: list[str], films: list[str], variants: list[Variant], probe: str) -> str:
-    """Aligned table, one line per variant in the order given."""
-    header = list(names)
-    for film in films:
-        header += [f"{film} SSIM", f"{film} IoU"]
-        if probe == "iou":
-            header.append(f"{film} actor")
-    if len(films) > 1:
-        header.append("mean SSIM")
-    rows = [header]
-    for v in variants:
-        row = list(v.values)
-        for film in films:
-            s = v.scores.get(film)
-            row += [_cell(s.ssim if s else None), _cell(s.iou if s else None)]
-            if probe == "iou":
-                row.append(_cell(s.actor_iou if s else None))
-        if len(films) > 1:
-            row.append(_cell(v.mean_ssim()))
-        rows.append(row)
-    widths = [max(len(r[i]) for r in rows) for i in range(len(header))]
-    return "\n".join(
-        "  ".join(c.rjust(w) for c, w in zip(r, widths, strict=True)).rstrip() for r in rows
-    )
-
-
-def winner_line(names: list[str], variants: list[Variant]) -> str:
-    best = variants[0] if variants else None
-    if best is None or best.mean_ssim() is None:
-        return "winner: none (every variant failed)"
-    return f"winner: {label(names, best.values)} (mean SSIM {_cell(best.mean_ssim())})"
 
 
 def padded_box(pixels: list[int], pad: int, geometry: Geometry) -> tuple[int, int, int, int]:
@@ -210,11 +158,7 @@ def write_crops(
     return written
 
 
-#: Adoption floor: a margin under this is not attributable to a change (probes.md section 6).
-NOISE_FLOOR = 0.002
-
-
-def _same_scores(left: Score | None, right: Score | None) -> bool:
+def _same_scores(left: Headline | None, right: Headline | None) -> bool:
     if left is None or right is None:
         return False
     return round(left.ssim, 4) == round(right.ssim, 4) and round(left.iou, 4) == round(right.iou, 4)
@@ -230,19 +174,60 @@ def identical_variant_pairs(variants: list[Variant]) -> list[tuple[Variant, Vari
     return pairs
 
 
-def noise_note(margin: float) -> str:
-    """Appended to a winner line when the lead over the runner-up is inside the noise floor."""
-    if margin < NOISE_FLOOR:
-        return " (noise floor +/-0.002; winner is ~within noise)"
-    return ""
-
-
 def validate_selector(reuse: Path | None, specs: list[str]) -> None:
     """``--var`` is required for a sweep and forbidden with ``--reuse``."""
     if reuse is not None and specs:
         raise ValueError("--var cannot be combined with --reuse")
     if reuse is None and not specs:
         raise ValueError("--var is required unless --reuse is given")
+
+
+def validate_judging(
+    targets: list[Target],
+    track: Track | None,
+    *,
+    films: list[str],
+    pinned: tuple[str, ...],
+    reuse: Path | None,
+    variants: int,
+) -> None:
+    """Raises ``ValueError`` unless the judging flags are usable.
+
+    ``--target`` needs ``--track``; either refuses a ``--films`` subset, ``--reuse``, a single
+    variant, and a target on a film that is not a reference film.
+    """
+    if targets and track is None:
+        raise ValueError("--target needs --track")
+    if track is None:
+        return
+    flag = "--target" if targets else "--track"
+    if set(films) != set(pinned):
+        raise ValueError(f"{flag} judges every reference film, so it refuses a --films subset")
+    if reuse is not None:
+        raise ValueError(f"{flag} cannot be combined with --reuse, which has no baseline")
+    if variants < 2:
+        raise ValueError(f"{flag} needs two variants or more; the first is the baseline")
+    unknown = [t.spec() for t in targets if t.film not in pinned]
+    if unknown:
+        raise ValueError(f"--target {unknown[0]} names no reference film ({', '.join(pinned)})")
+
+
+def uncaptured_ranges(root: Path, targets: list[Target]) -> list[str]:
+    """A problem per ``--target`` range whose film's reference capture holds no tick in it."""
+    problems = []
+    for film in dict.fromkeys(t.film for t in targets):
+        try:
+            with references.open_reference(root, film) as capture:
+                ticks = [frame.film_tick for frame in read_capture(capture).frames]
+        except (references.ReferenceCaptureError, OSError, ValueError) as err:
+            problems.append(str(err))
+            continue
+        problems += [
+            f"--target {t.spec()} holds no captured tick"
+            for t in targets
+            if t.film == film and not any(t.lo <= tick <= t.hi for tick in ticks)
+        ]
+    return problems
 
 
 def _first_line(error: Exception, limit: int) -> str:
@@ -283,14 +268,26 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     add_parity_options(parser)
     parser.add_argument("--probe", choices=("film", "iou"), default="film")
     parser.add_argument("--keep-best", action="store_true", help="keep the winner's render dirs")
+    parser.add_argument(
+        "--target",
+        action="append",
+        default=[],
+        metavar="FILM:LO-HI",
+        help="repeatable: an inclusive range of film ticks the round targets; needs --track",
+    )
+    parser.add_argument(
+        "--track", choices=TRACKS, default=None, help="judge by this track's adoption rule"
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Renders and scores every variant on every chosen film, then ranks the variants.
+    """Renders and scores every variant on every chosen film, then judges and ranks them.
 
-    Exits 2 on a refused invocation or a failed preflight. Every variant's work directory is
-    removed on the way out, interrupted or not, except the winner's under ``--keep-best``.
+    Exits 2 on a refused invocation, a failed preflight or a ``--target`` range holding no
+    captured tick. Every variant's work directory is removed on the way out, interrupted or
+    not, except the best one's under ``--keep-best``; with ``--track`` that is never the
+    baseline.
     """
     args = parse_args(argv)
     try:
@@ -299,12 +296,24 @@ def main(argv: list[str] | None = None) -> int:
         names = [n for n, _ in parsed]
         combos = expand_variants(names, [v for _, v in parsed])
         options = parity_options(args)
+        targets = [Target.parse(spec) for spec in args.target]
+        track: Track | None = args.track
+        validate_judging(
+            targets,
+            track,
+            films=list(options.films),
+            pinned=references.reference_films(options.data_root),
+            reuse=options.reuse,
+            variants=len(combos),
+        )
     except ValueError as err:
         print(f"parity_sweep: {err}", file=sys.stderr)
         return 2
     films = list(options.films)
     root = options.data_root
     problems = preflight(root, films, build_required=not options.no_build)
+    if not problems:
+        problems = uncaptured_ranges(root, targets)
     if problems:
         print("parity_sweep: " + "\n  ".join(problems), file=sys.stderr)
         return 2
@@ -334,48 +343,76 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(plan.workdir, ignore_errors=True)
     variants: list[Variant] = []
     best: Variant | None = None
+    baseline: Variant | None = None
+    #: Variants finished before the baseline, kept until they can be judged against it.
+    waiting: list[Variant] = []
     started = time.monotonic()
 
     def work(job: FilmJob, plan: SweepPlan) -> FilmScore:
         """Renders and scores *job*'s film in *plan*'s work directory and environment."""
         return run_film(job, plan.workdir, env=plan.env, retime=options.retime)
 
-    def on_variant(position: int, row: list[FilmScore | FilmFailure]) -> None:
-        """Reports a finished variant and keeps the best one's work directory so far.
+    def key(variant: Variant) -> tuple[float, ...]:
+        """The variant's rank; with a track, judged against the finished baseline."""
+        judged: Judgement | None = None
+        if track is not None and baseline is not None:
+            judged = judge(baseline.frames, variant.frames, targets, track)
+        return sort_key(variant, judged, track)
 
-        Called on this thread as each variant's last film finishes, in completion order; rank
-        breaks ties by index, so the best kept does not depend on that order.
-        """
+    def keep(variant: Variant) -> None:
+        """Keeps *variant*'s work directory when it ranks above the best so far, else removes it."""
         nonlocal best
-        plan = plans[position]
-        variant = plan.variant
-        notes = []
-        for attempt in row:
-            if isinstance(attempt, FilmFailure):
-                variant.scores[attempt.film] = None
-                notes.append(f"{attempt.film} FAILED ({_first_line(attempt.error, 80)})")
-                continue
-            try:
-                measured = with_actor_iou(attempt, root) if args.probe == "iou" else attempt.score
-            except (RuntimeError, ValueError, OSError, KeyError) as err:
-                variant.scores[attempt.film] = None
-                notes.append(f"{attempt.film} FAILED ({_first_line(err, 80)})")
-                continue
-            variant.renders[attempt.film] = attempt.render
-            variant.scores[attempt.film] = measured
-            notes.append(f"{attempt.film} {measured.ssim:.4f}")
-        variants.append(variant)
-        mean = variant.mean_ssim()
         if (
             args.keep_best
-            and mean is not None
-            and (best is None or rank([best, variant])[0] is variant)
+            and variant.mean_ssim() is not None
+            and (best is None or key(variant) < key(best))
         ):
             if best is not None:
                 shutil.rmtree(scratch / f"v{best.index:03d}", ignore_errors=True)
             best = variant
         else:
+            shutil.rmtree(scratch / f"v{variant.index:03d}", ignore_errors=True)
+
+    def on_variant(position: int, row: list[FilmScore | FilmFailure]) -> None:
+        """Records a finished variant's scores and per-frame reports; keeps the best so far.
+
+        Called on this thread as each variant's last film finishes, in completion order. With a
+        track the baseline is never kept, and a variant finishing before it waits for it; ranks
+        break ties by index, so the best kept does not depend on that order.
+        """
+        nonlocal baseline
+        plan = plans[position]
+        variant = plan.variant
+        notes = []
+        for attempt in row:
+            if isinstance(attempt, FilmFailure):
+                variant.scores[attempt.film] = variant.frames[attempt.film] = None
+                notes.append(f"{attempt.film} FAILED ({_first_line(attempt.error, 80)})")
+                continue
+            try:
+                measured = with_actor_iou(attempt, root) if args.probe == "iou" else attempt.score
+                frames = FilmRun.of(read_report(attempt.report / "report.json"))
+            except (RuntimeError, ValueError, OSError, KeyError) as err:
+                variant.scores[attempt.film] = variant.frames[attempt.film] = None
+                notes.append(f"{attempt.film} FAILED ({_first_line(err, 80)})")
+                continue
+            variant.renders[attempt.film] = attempt.render
+            variant.scores[attempt.film] = measured
+            variant.frames[attempt.film] = frames
+            notes.append(f"{attempt.film} {measured.ssim:.4f}")
+        variants.append(variant)
+        if track is None:
+            keep(variant)
+        elif variant.index == BASELINE:
+            baseline = variant
             shutil.rmtree(plan.workdir, ignore_errors=True)
+            for held in waiting:
+                keep(held)
+            waiting.clear()
+        elif baseline is None and args.keep_best:
+            waiting.append(variant)
+        else:
+            keep(variant)
         print(
             f"[{variant.index}/{len(combos)}] {label(names, variant.values)}: {', '.join(notes)}"
             f" ({time.monotonic() - started:.0f}s)",
@@ -391,19 +428,18 @@ def main(argv: list[str] | None = None) -> int:
             if best is None or plan.variant is not best:
                 shutil.rmtree(plan.workdir, ignore_errors=True)
 
-    ordered = rank(variants)
-    print(format_table(names, films, ordered, args.probe))
-    for left, right in identical_variant_pairs(ordered)[:3]:
+    decision = decide(variants, targets, track)
+    out, notes = outcome_lines(names, films, decision, args.probe)
+    print("\n".join(out[:-1]))
+    for left, right in identical_variant_pairs(decision.ordered)[:3]:
         print(
             f"warning: variants {label(names, left.values)} and {label(names, right.values)}"
             " scored identically; the switch may not be wired",
             file=sys.stderr,
         )
-    line = winner_line(names, ordered)
-    if len(ordered) > 1:
-        first, second = ordered[0].mean_ssim(), ordered[1].mean_ssim()
-        if first is not None and second is not None:
-            line += noise_note(first - second)
+    for note in notes:
+        print(f"[sweep] {note}", file=sys.stderr)
+    line = out[-1]
     if best is not None:
         workdir = scratch / f"v{best.index:03d}"
         crops = write_crops(films, root, workdir, best.renders)

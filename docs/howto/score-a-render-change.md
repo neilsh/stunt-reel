@@ -64,3 +64,34 @@ For a side-by-side of one tick, read the capture with `read_capture` in `stunt_r
 ## 7. Record the result
 
 Write a journal entry in the work item's `journal.md` ([`work/README.md`](../../work/README.md#journal-entries)): commit hash, matched frames, means, the reason for any movement, and the verdict. `mise run parity-probe -- summary --report build/parity/report/ctry_current/report.json` prints the scores and worst frames the entry quotes, so nothing is retyped by hand. A PR that adopts a change updates the expected table of each reference film for the renderer class it measured (`ssim`, `iou`, `adapter`, the row's `sha256` and `all_sha256`, and `crates` from `git rev-parse <commit>:crates`, rendered with `crates/` clean; [method § 1](../../research/parity/method.md#1-the-loop) step 0); the other class keeps its older entry until someone measures it. Commit `crates/`, run `mise run parity` without `--no-build`, `--no-render`, `--reuse` or `--retime`, then `mise run parity-repin -- [--class gpu|lavapipe]`: it writes every film's table from its report, or writes nothing and says which film's report is missing, was rendered on another tree or another class, or that `crates/` is dirty.
+
+## 8. Judge a candidate against a baseline
+
+The adoption rule ([`loop-rules.md`](../../.agents/skills/improving-render-parity/loop-rules.md#adoption-rule)) is applied by the sweep, from each variant's per-frame scores held in memory once every variant has finished; the join and the rule live in [`parity_judge.py`](../../python/stunt_reel/parity_judge.py).
+
+```bash
+mise run sweep -- --var DBG_X=0,1 --track heuristic --target intro:3279-3301 [--target ctry:859-881 ...]
+```
+
+* **The baseline** is the variant of each `--var`'s first value (`DBG_X=0` here). It is listed in the table and, with `--track`, never wins.
+* `--track evidence|heuristic` names the round's track; with it the winner line gives the verdict. Without `--track` the sweep ranks by mean SSIM, as it always has, and gives no verdict, but still prints each variant's change against the baseline and the stderr lines below.
+* `--target <film>:<lo>-<hi>` names an inclusive range of film ticks on one reference film, repeatable, and needs `--track`. Quote the flags in the journal entry before the sweep runs; the sweep echoes them as its first stdout line (`targets: --target intro:3279-3301`).
+* Both flags refuse a `--films` subset, `--reuse` and a single variant, since they judge every reference film against a baseline; `--retime` is allowed. Before rendering, the sweep stops on a `--target` range holding no tick of the film's reference capture. After rendering, a range holding no tick the baseline scores gives `winner: no verdict (...)`, naming it.
+* `--keep-best` with `--track` keeps the top-ranked variant other than the baseline, the winner when one adopts; without `--track` it keeps the top-ranked variant.
+
+**The table** adds, per variant against the baseline: `target dSSIM` and `target dIdx`, the pooled target mean in SSIM and in index agreement; `worst target`, the worst target frame's change in SSIM, which the 0.025 guard reads; `worst frame`, the worst change in SSIM over every scored frame of every film; and `down>0.005`, the count of frames down by more than 0.005. The baseline's row shows `-`. Variants that adopt rank first, then by `target dIdx` (with `--target`) and mean SSIM.
+
+**The winner line** names the branch the winner adopts on, or why the best variant other than the baseline does not:
+
+```
+winner: DBG_X=1 adopts (heuristic target idx +0.0213, 18/24 frames up; films ok; worst target frame -0.0041 intro:3302)
+winner: DBG_X=1 adopts (evidence, film means; target idx +0.0071 attribution; worst target frame +0.0012 intro:3290; 3 frames down >0.005, listed)
+winner: none adopts (best DBG_X=1: target-frame guard ctry:871 -0.0639)
+winner: no verdict (baseline film ctry failed)
+```
+
+The failing reason is the first guard or test the variant fails: `film <film> failed`, `lost ticks`, `target-frame guard`, `film-mean guard`, `no film rises` (evidence-backed), or the film-mean branch falling short followed by the target branch's first failed condition (heuristic). On an adopting winner line, `thin evidence: 3 target frames` marks a verdict at the 3-frame minimum and `target branch not run` a heuristic round with fewer; a heuristic rejection with fewer says `target branch needs 3 scored target frames`. The note on a lead under 0.002 over the next variant stays.
+
+**Stderr** describes the winner, or the best variant other than the baseline when none adopts: one line lists every frame down by more than 0.005 (`ctry:871 -0.0639, ...`), one counts per film the frames outside the target that moved by more than 0.005 (the side effects), and one more flags each edge frame, the baseline's nearest scored tick before or after a range, when it fell by more than 0.010 in SSIM. An edge frame is a report and never changes the verdict.
+
+**Two existing report trees.** `mise run judge -- <baseline report dir> <candidate report dir> [--target ...] [--track ...]` prints the same table and winner line for two `stuntreel parity` runs, the rows labelled `run=baseline` and `run=candidate`. A report dir holds each film's report as `<film>_report/report.json` (a sweep variant kept by `--keep-best`), `<film>_current/report.json` (`build/parity/report`) or `<film>/report.json`; a film without one counts as failed on that side. To judge two commits, copy `build/parity/report` aside after `mise run parity` on the first, then run it on the second.

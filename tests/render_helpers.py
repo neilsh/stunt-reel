@@ -131,3 +131,24 @@ def reference_tree(
         (vault / f"{name.upper()}.ALL").write_bytes(b"")
         pin_reference(root, name, [{"film_tick": tick} for tick in ticks])
     return root
+
+
+def write_report(
+    directory: Path, frames: list[tuple[int, float, float, bool]]
+) -> parity_pipeline.Score:
+    """Writes a ``report.json`` of ``(film_tick, ssim, index_agreement, scored)`` *frames*; returns
+    its headline."""
+    scored = [f for f in frames if f[3]]
+    ssim = sum(f[1] for f in scored) / len(scored)
+    directory.mkdir(parents=True, exist_ok=True)
+    document = {
+        "per_frame": [
+            {"film_tick": t, "ssim": s, "iou": 0.8, "index_agreement": i, "scored": sc}
+            for t, s, i, sc in frames
+        ],
+        "mean_ssim_scored": ssim,
+        "mean_iou_scored": 0.8,
+        "scored_frames": len(scored),
+    }
+    (directory / "report.json").write_text(json.dumps(document), encoding="utf-8")
+    return parity_pipeline.Score(ssim, 0.8)

@@ -326,7 +326,7 @@ One run of `mise run sweep` over the product of one hypothesis class's candidate
 _Avoid_: batch run, grid search
 
 **Adoption**:
-Keeping a round's best candidate. An evidence-backed change (a rule read from `PLAYONE.EXE`, cited at an image offset) adopts when no reference film regresses by more than 0.002 SSIM and one improves; a heuristic change needs no film down by 0.002 or more, and either every film above +0.002 or one above +0.004.
+Keeping a round's best candidate. An evidence-backed change (a rule read from `PLAYONE.EXE`, cited at an image offset) adopts when no reference film regresses by more than 0.002 SSIM and one improves; a heuristic change needs no film down by 0.002 or more, and either every film above +0.002 or one above +0.004, or a target branch: over at least 3 scored target frames, a pooled gain in index agreement above +0.010, every target range rising and at least half the frames up. On both tracks a per-frame guard rejects a change that lowers any target frame by more than 0.025 SSIM, and a lost tick or failed film rejects it too.
 _Avoid_: acceptance, merge (for the parity decision)
 
 ## Records
