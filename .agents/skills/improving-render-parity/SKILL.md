@@ -13,19 +13,20 @@ The loop's commands are [`docs/howto/score-a-render-change.md`](../../../docs/ho
 
 ## Workflow
 
-Read [`loop-rules.md`](loop-rules.md) first: one goal, at most four rounds, and the adoption rule step 5 applies. Copy this checklist into your task list and tick items off:
+Read [`loop-rules.md`](loop-rules.md) first: one goal, at most four rounds, and the adoption rule step 6 applies. Copy this checklist into your task list and tick items off:
 
 ```
 - [ ] 1. Baseline: mise run parity (per film, its score line and its expected line)
 - [ ] 2. Read the residual note's Ruled out, then rg <term> work/, for prior attempts at this hypothesis
 - [ ] 3. If no renderer-only lever fits, read the PLAYONE rule this round tests and write it into its playone-exe note
-- [ ] 4. One hypothesis class: all variants in one sweep, or retime for timing
-- [ ] 5. Apply the adoption rule to the result
-- [ ] 6. Crop the winner and the worst mover; inspect only those
-- [ ] 7. Record outcomes, run mise run check, commit (body says why: [AGENTS.md § Committing](../../../AGENTS.md#committing)), write the handoff
+- [ ] 4. If the defect shows on a run of frames, quote the sweep's --track and --target <film>:<lo>-<hi> flags in the journal entry before it runs
+- [ ] 5. One hypothesis class: all variants in one sweep (--track, and step 4's --target flags), or retime for timing
+- [ ] 6. Apply the adoption rule: the sweep's winner line gives the verdict
+- [ ] 7. Crop the winner and the worst mover; inspect only those
+- [ ] 8. Record outcomes, run mise run check, commit (body says why: [AGENTS.md § Committing](../../../AGENTS.md#committing)), write the handoff
 ```
 
-If step 5 rejects the change, record the negative and end the round; do not chain a second hypothesis class onto a failed sweep.
+If step 6 rejects the change, record the negative and end the round; do not chain a second hypothesis class onto a failed sweep.
 
 ## Files beside this skill
 

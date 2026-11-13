@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from render_helpers import reference_tree, tick_entry
+from render_helpers import reference_tree, tick_entry, write_report
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -16,10 +21,10 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import parity_probe  # noqa: E402
 import parity_sweep  # noqa: E402
-from parity_sweep import Variant  # noqa: E402
 
-from stunt_reel import parity_artifacts, parity_layout, parity_pipeline  # noqa: E402
+from stunt_reel import parity_artifacts, parity_judge, parity_layout, parity_pipeline  # noqa: E402
 from stunt_reel.parity_artifacts import FilmId, Geometry, StoredFrame  # noqa: E402
+from stunt_reel.parity_judge import Variant  # noqa: E402
 from stunt_reel.parity_pipeline import Score  # noqa: E402
 
 
@@ -61,12 +66,12 @@ def test_rank_orders_by_mean_ssim_and_puts_failures_last() -> None:
     ctry_only_gain = _variant(2, "-0.3", 0.784, 0.660)  # mean 0.722: the regression shows
     best = _variant(3, "-0.1", 0.780, 0.676)  # mean 0.728
     failed = _variant(4, "bad", 0.9, None)
-    assert [v.index for v in parity_sweep.rank([low, failed, ctry_only_gain, best])] == [3, 1, 2, 4]
+    assert [v.index for v in parity_judge.rank([low, failed, ctry_only_gain, best])] == [3, 1, 2, 4]
 
 
 def test_format_table_aligns_columns_and_marks_failures() -> None:
-    ordered = parity_sweep.rank([_variant(1, "0", 0.771, 0.676), _variant(2, "-0.3", 0.784, None)])
-    table = parity_sweep.format_table(["DBG_DY"], ["ctry", "intro"], ordered, "film").splitlines()
+    ordered = parity_judge.rank([_variant(1, "0", 0.771, 0.676), _variant(2, "-0.3", 0.784, None)])
+    table = parity_judge.format_table(["DBG_DY"], ["ctry", "intro"], ordered, "film").splitlines()
     assert table[0].split("  ")[-1] == "mean SSIM"
     assert table[1].split() == ["0", "0.7710", "0.8000", "0.6760", "0.8000", "0.7235"]
     assert table[2].split() == ["-0.3", "0.7840", "0.8000", "-", "-", "-"]
@@ -74,7 +79,7 @@ def test_format_table_aligns_columns_and_marks_failures() -> None:
 
 
 def test_format_table_iou_probe_adds_actor_column() -> None:
-    table = parity_sweep.format_table(["DBG_DY"], ["ctry"], [_variant(1, "0", 0.771, None)], "iou")
+    table = parity_judge.format_table(["DBG_DY"], ["ctry"], [_variant(1, "0", 0.771, None)], "iou")
     header, row = table.splitlines()
     assert "ctry actor" in header
     assert "mean SSIM" not in header  # one film: the mean is the film's own SSIM
@@ -82,10 +87,11 @@ def test_format_table_iou_probe_adds_actor_column() -> None:
 
 
 def test_winner_line_names_values_or_reports_failure() -> None:
-    ordered = parity_sweep.rank([_variant(1, "0", 0.771, 0.676), _variant(2, "-1", 0.8, 0.7)])
-    assert parity_sweep.winner_line(["DBG_DY"], ordered) == "winner: DBG_DY=-1 (mean SSIM 0.7500)"
-    failed = parity_sweep.rank([_variant(1, "0", None, None)])
-    assert parity_sweep.winner_line(["DBG_DY"], failed).startswith("winner: none")
+    ordered = parity_judge.rank([_variant(1, "0", 0.771, 0.676), _variant(2, "-1", 0.8, 0.7)])
+    decision = parity_judge.decide(ordered)
+    assert parity_judge.winner_line(["DBG_DY"], decision) == "winner: DBG_DY=-1 (mean SSIM 0.7500)"
+    failed = parity_judge.decide([_variant(1, "0", None, None)])
+    assert parity_judge.winner_line(["DBG_DY"], failed).startswith("winner: none")
 
 
 def test_padded_box_clamps_to_viewport() -> None:
@@ -152,9 +158,9 @@ def test_identical_variants_accepts_a_legitimate_tie() -> None:
 
 
 def test_noise_note_appears_only_inside_the_adoption_floor() -> None:
-    assert "within noise" in parity_sweep.noise_note(0.0019)
-    assert parity_sweep.noise_note(0.002) == ""
-    assert parity_sweep.noise_note(0.01) == ""
+    assert "within noise" in parity_judge.noise_note(0.0019)
+    assert parity_judge.noise_note(0.002) == ""
+    assert parity_judge.noise_note(0.01) == ""
 
 
 def test_validate_selector_requires_var_or_reuse() -> None:
@@ -166,13 +172,19 @@ def test_validate_selector_requires_var_or_reuse() -> None:
         parity_sweep.validate_selector(None, [])
 
 
+#: Each ``DBG_X`` value's frames on every film: ``(film_tick, ssim, index_agreement, scored)``.
+FRAMES = {
+    value: [(7, ssim, ssim, True)]
+    for value, ssim in {"a": 0.5, "b": 0.5, "c": 0.4, "d": 0.51, "e": 0.6}.items()
+} | {"u": [(7, 0.5, 0.5, False), (8, 0.5, 0.5, True)]}
+
+
 def _sweep_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interrupt_on: str | None = None
 ) -> Path:
     """Patch ``parity_sweep`` so ``main`` runs offline: fake renders scored by ``DBG_X``."""
     root = reference_tree(tmp_path / "data", [7])
     repo = tmp_path / "repo"
-    scores = {"a": 0.5, "b": 0.5, "c": 0.4}
 
     def fake_run_film(
         job: parity_pipeline.FilmJob,
@@ -186,8 +198,8 @@ def _sweep_env(
             raise KeyboardInterrupt
         out = workdir / job.name
         out.mkdir(parents=True, exist_ok=True)
-        score = parity_pipeline.Score(scores[value], scores[value])
-        return parity_pipeline.FilmScore(job.name, out, workdir / f"{job.name}_report", score)
+        report = workdir / f"{job.name}_report"
+        return parity_pipeline.FilmScore(job.name, out, report, write_report(report, FRAMES[value]))
 
     monkeypatch.setattr(parity_sweep, "REPO_ROOT", repo)
     monkeypatch.setattr(parity_sweep, "run_film", fake_run_film)
@@ -228,3 +240,113 @@ def test_sweep_interrupt_leaves_no_work_directories(
         parity_sweep.main(argv)
     sweep = tmp_path / "repo" / parity_layout.sweep_root()
     assert not sweep.exists() or not any(sweep.glob("v*"))
+
+
+def _reversed_matrix(
+    films: list[str],
+    root: Path,
+    variants: list[parity_sweep.SweepPlan],
+    work: Callable[[parity_pipeline.FilmJob, parity_sweep.SweepPlan], parity_pipeline.FilmScore],
+    *,
+    jobs: int = 1,  # noqa: ARG001 - run_matrix's signature
+    on_variant: Callable[[int, list[parity_pipeline.Attempt]], None] | None = None,
+) -> list[list[parity_pipeline.Attempt]]:
+    """``run_matrix`` finishing the variants last first, so the baseline finishes last."""
+    rows: list[list[parity_pipeline.Attempt]] = [[] for _ in variants]
+    for position in reversed(range(len(variants))):
+
+        def report(_index: int, row: list[parity_pipeline.Attempt], at: int = position) -> None:
+            rows[at] = row
+            if on_variant is not None:
+                on_variant(at, row)
+
+        parity_pipeline.run_matrix(films, root, [variants[position]], work, on_variant=report)
+    return rows
+
+
+@pytest.mark.parametrize("baseline_last", [False, True])
+def test_keep_best_keeps_the_judged_best_never_the_baseline(
+    baseline_last: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    if baseline_last:
+        monkeypatch.setattr(parity_sweep, "run_matrix", _reversed_matrix)
+    argv = ["--var", "DBG_X=e,d,c", "--keep-best", "--no-build", "--data-root", str(root)]
+    sweep = tmp_path / "repo" / parity_layout.sweep_root()
+    assert parity_sweep.main([*argv, "--jobs", "1"]) == 0
+    assert sorted(path.name for path in sweep.iterdir()) == [
+        "v001"
+    ]  # no track: e has the best SSIM
+    capsys.readouterr()
+    assert parity_sweep.main([*argv, "--jobs", "1", "--track", "heuristic"]) == 0
+    assert sorted(path.name for path in sweep.iterdir()) == ["v002"]
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert line.startswith("winner: none adopts (best DBG_X=d: film-mean guard ctry -0.0900)")
+    assert line.endswith("; kept build/scratch/sweep/v002".replace("/", os.sep))
+
+
+@pytest.mark.parametrize("jobs", ["1", "4"])
+def test_judged_sweep_does_not_depend_on_completion_order(
+    jobs: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    argv = ["--var", "DBG_X=a,c,d,b", "--track", "heuristic", "--target", "ctry:7-7"]
+    argv += ["--no-build", "--data-root", str(root), "--jobs", jobs, "--keep-best"]
+    assert parity_sweep.main(argv) == 0
+    forward = capsys.readouterr().out
+    monkeypatch.setattr(parity_sweep, "run_matrix", _reversed_matrix)
+    assert parity_sweep.main(argv) == 0
+    assert capsys.readouterr().out == forward
+    assert forward.splitlines()[0] == "targets: --target ctry:7-7"
+    assert forward.splitlines()[-1].startswith("winner: DBG_X=d adopts (heuristic, film means;")
+
+
+@pytest.mark.parametrize(
+    ("flags", "message"),
+    [
+        (["--var", "DBG_X=a,b", "--target", "ctry:5-9"], "--target needs --track"),
+        (["--var", "DBG_X=a,b", "--track", "evidence", "--films", "ctry"], "--films subset"),
+        (["--reuse", "elsewhere", "--track", "evidence"], "--reuse"),
+        (["--var", "DBG_X=a", "--track", "evidence"], "two variants or more"),
+        (["--var", "DBG_X=a,b", "--track", "evidence", "--target", "land:5-9"], "land:5-9"),
+        (["--var", "DBG_X=a,b", "--track", "evidence", "--target", "ctry:5"], "--target must"),
+        (
+            ["--var", "DBG_X=a,b", "--track", "evidence", "--target", "ctry:8-9"],
+            "--target ctry:8-9 holds no captured tick",
+        ),
+    ],
+)
+def test_judging_flags_refuse_before_rendering(
+    flags: list[str],
+    message: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(parity_sweep, "run_film", None)  # rendering would raise
+    assert parity_sweep.main([*flags, "--no-build", "--data-root", str(root)]) == 2
+    assert message in capsys.readouterr().err
+
+
+def test_judging_accepts_retime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    argv = ["--var", "DBG_X=a,d", "--track", "heuristic", "--retime", "1", "--no-build"]
+    assert parity_sweep.main([*argv, "--data-root", str(root)]) == 0
+    assert capsys.readouterr().out.splitlines()[-1].startswith("winner: DBG_X=d adopts")
+
+
+def test_range_with_no_scored_baseline_tick_gives_no_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    argv = ["--var", "DBG_X=u,d", "--track", "heuristic", "--target", "ctry:7-7", "--no-build"]
+    assert parity_sweep.main([*argv, "--data-root", str(root)]) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == (
+        "winner: no verdict (target ctry:7-7 holds no tick the baseline scores)"
+    )
