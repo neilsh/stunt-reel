@@ -13,7 +13,7 @@ The skills speak in terms of canonical triage roles. This file maps those roles 
 | _not in the template_      | `in-progress`        | A session has claimed it; its claim comment names the branch |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
-An agent can run DOSBox and DOSBox-X captures and breakpoint sessions, so needing one does not make an issue `ready-for-human`. Use `ready-for-human` for a design or visual judgment call, or a step the agent cannot do on this machine (admin rights, an asset not in the data root); the brief names which.
+An agent can run DOSBox and DOSBox-X captures and breakpoint sessions, so needing one does not make an issue `ready-for-human`. Use `ready-for-human` for a design or visual judgment call, or a step no agent can do (admin rights, an asset not in the data root); the brief names which. Work only the primary machine can do is `local-only` (**Environment roles**), not `ready-for-human`.
 
 `in-progress` is our addition to the template's flow: every session acts as the same GitHub user, so an assignee cannot say which session holds an issue. A session takes it from `ready-for-agent` or `ready-for-human` by **Claim an issue** ([issue-tracker.md](issue-tracker.md#conventions)).
 
@@ -32,5 +32,15 @@ This repo's category labels instead say what finishing the issue means. Apply at
 | ---------- | ------- |
 | `research` | Done when a `research/` note answers the question; the closing comment links the note |
 | `tooling`  | Work on the dev environment (gate, hooks, worktrees, PR tooling), not the reconstruction |
+
+## Environment roles
+
+An environment label says where an issue can run. It goes beside the state label, so an issue can be `ready-for-agent` and `local-only`.
+
+| Label        | Meaning |
+| ------------ | ------- |
+| `local-only` | Needs a resource a cloud session lacks, so a session on the primary machine does it. A cloud session renders on lavapipe, not a GPU ([ADR 0039](../adr/0039-cloud-sessions-fetch-pinned-game-archives.md)), has no DOSBox ([ADR 0042](../adr/0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md)), and cannot upload archives, which runs with the owner's `wrangler login` (ADR 0039). The brief names the resource: a real GPU, DOSBox or DOSBox-X, `wrangler login`, or a data-root file the issue names that the cloud archives do not hold |
+
+An asset missing from the data root itself still makes an issue `ready-for-human`. A session on the primary machine that finds the resource unavailable (a lapsed login, no GPU adapter) comments `Released claim: <resource> unavailable (<error>).`, relabels the issue `ready-for-human`, and names the one command a person must run.
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from these tables.
