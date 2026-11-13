@@ -491,7 +491,7 @@ description = "Staged files added to a frozen work folder, or a staged change to
 run = "uv run python python/scripts/check_work_frozen.py"
 
 [tasks.commit-msg-check]
-description = "A commit message's Conventional Commit subject (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
+description = "A commit message's Conventional Commit subject and Fresh-review trailer (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
 run = "uv run python python/scripts/check_commit_msg.py"
 
 # The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing

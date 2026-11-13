@@ -121,7 +121,8 @@ jobs:
           fi
           mise exec -- prek run --config prek.toml "$@"
       - name: Commit messages on the pull request
-        # AGENTS.md SOP 3, for a commit made with --no-verify. Only a pull request's own commits:
+        # AGENTS.md Committing rules 3 and 5 (the Fresh-review trailer), for a commit made with --no-verify or
+        # a review due before the push. Only a pull request's own commits:
         # main's history holds GitHub squash merges, whose messages the hook never saw. A branch
         # stacked on a since squash-merged pull request still carries that parent's commits;
         # the script skips a failing commit that a merged pull request other than this one
