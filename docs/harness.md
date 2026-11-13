@@ -157,11 +157,14 @@ other name.
 Not yet documented: its timeout behaviour, and its sandboxing beyond the integrity label below.
 Fill that in from observation, not from vendor documentation — this page records what we have seen.
 
-### Editing a stack layer another worktree holds
+### Fixing a branch another worktree holds
 
-Observed 2026-10-31, stacked PRs under `gh stack`, one worktree per layer. Git refuses to check
-out a branch another worktree holds, and the session could write only inside its own worktree,
-so a fix to a lower layer is made on a detached `HEAD` and the branch is moved underneath:
+Git refuses to check out a branch another worktree holds, and a session may be unable to write
+outside its own worktree. So the fix is committed in your own worktree and the branch is moved underneath the
+other one; leave the other worktree's `HEAD` where it is until the fix is in.
+
+**A local branch, such as a stack layer.** Observed 2026-10-31, stacked PRs under `gh stack`, one
+worktree per layer. A fix to a lower layer is made on a detached `HEAD`:
 
 ```sh
 git -C <worktree-holding-layer> status --porcelain  # must print nothing: stop here if it does
@@ -177,6 +180,23 @@ changes, so a check made afterward cannot tell those from real uncommitted work.
 discards anything uncommitted, and the `&&` keeps it from running when `<old-tip>` no longer
 matches and `update-ref` refuses. Writing into another worktree may need approval. Then work up the stack: rebase the next layer onto the one below, run `mise run check` in its own worktree, and repeat. `gh stack add`
 works only from the top branch of the stack, so run it in the worktree that holds the top.
+
+**A pushed branch, such as another session's open PR.** Observed once, 2026-11-12. Build the fix
+on a branch of your own from the remote tip and push it to the PR's branch:
+
+```sh
+git fetch origin
+git -C <worktree-holding-branch> status --porcelain       # must print nothing: stop if it does
+git -C <worktree-holding-branch> rev-list origin/<branch>..HEAD  # likewise: unpushed commits
+git switch -c <tmp> origin/<branch>                       # in your own worktree
+# edit, mise run check, git commit
+git push origin HEAD:<branch>                             # refuses if the PR moved on
+```
+
+Then bring the holding worktree up to the pushed tip with `git -C <worktree-holding-branch>
+merge --ff-only origin/<branch>` when it has the branch checked out, which refuses if it has
+diverged, or with `git -C <worktree-holding-branch> switch --detach origin/<branch>` when it
+sits on a detached `HEAD`. Delete `<tmp>` once the PR merges.
 
 ### Desktop app: Auto-fix and isolated subagents
 

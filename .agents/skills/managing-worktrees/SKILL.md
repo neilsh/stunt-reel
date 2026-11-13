@@ -1,11 +1,11 @@
 ---
 name: managing-worktrees
-description: "Use when creating, removing or reaping a stunt-reel worktree, running `mise run reap` or `clean`, or when a task in a worktree needs the corpus, a capture or the data root (`STUNT_DATA_ROOT`)."
+description: "Use when creating, removing or reaping a stunt-reel worktree, running `mise run reap` or `clean`, fixing a branch another worktree holds, or when a task in a worktree needs the corpus, a capture or the data root (`STUNT_DATA_ROOT`)."
 ---
 
 # Managing worktrees
 
-Game files and captures live outside every checkout, in one shared data root; a worktree only reads them. Machine setup is in [`docs/harness-setup.md`](../../../docs/harness-setup.md), writer modes in [`docs/harness.md`](../../../docs/harness.md).
+Game files and captures live outside every checkout, in one shared data root; a worktree only reads them. Machine setup is in [`docs/harness-setup.md`](../../../docs/harness-setup.md), writer modes and fixing another worktree's branch in [`docs/harness.md`](../../../docs/harness.md#fixing-a-branch-another-worktree-holds).
 
 ## Steps
 
@@ -27,7 +27,6 @@ Game files and captures live outside every checkout, in one shared data root; a 
 | Squash-merged, cherry-picked, leftovers | `gh` recognises merged PRs; `--cherry`; `--prune` |
 | Work at risk | `--stash-dirty`, `--discard-untracked` |
 | Clear build outputs of a kept checkout | `mise run clean -- --yes` |
-
 ## Common mistakes
 
 - **Looking for captures under `corpus/` or in the worktree.** Captures are in the data root.
