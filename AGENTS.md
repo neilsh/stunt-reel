@@ -72,6 +72,7 @@ Before work one covers, read its skill:
 - **Seam contracts**: a type, field or parser under `crates/stunt-core/src/contracts/`, or its fixtures: [`changing-seam-contracts`](.agents/skills/changing-seam-contracts/SKILL.md).
 - **Worktrees and the data root**: making, removing or reaping a worktree, or finding the corpus or a capture: [`managing-worktrees`](.agents/skills/managing-worktrees/SKILL.md).
 - **Render parity**: parity, SSIM, IoU, capture, probe or sweep work: [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md).
+- **Unattended queue runs**: draining open PRs and `ready-for-agent` issues unattended or overnight: [`running-unattended`](.agents/skills/running-unattended/SKILL.md).
 
 ### Worktrees
 
