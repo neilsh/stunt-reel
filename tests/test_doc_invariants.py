@@ -617,7 +617,6 @@ WORK_POINTERS: frozenset[tuple[str, str]] = frozenset(
                 "research/parity/method.md",
                 "research/parity/probes.md",
                 "research/parity/render-model.md",
-                "research/playone-exe/sod-vm.md",
             )
         ),
         ("docs/ARCHITECTURE.md", "work/2026-10/architecture-deepening/overview.md"),
