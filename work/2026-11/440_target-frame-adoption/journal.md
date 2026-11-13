@@ -158,3 +158,19 @@ Answers (user, `y` to all four): (Q1) PR 1 and the spec's bounds wait for a vali
   The baselines agree with #430's to four places, so absolute values are comparable. R2 reproduces the signs of six films but misses #430's column by more than 0.0005 on `CTRY`, `LAND` and `BALLOON`.
 - **Verdict**: R2 **dropped** under the Q2 rule. The spike still has no valid rejected case. The rebuild may differ from #430's switch in what narrowed (here: every world line quad, by layer), which the journal does not specify; whether conservative rasterization was active was not checked beyond the adapter reporting the feature. R3 stays dropped.
 - **Consequence for the bound**: the 0.030 per-frame SSIM bound has still not been tested against a change the rule should reject, and no SSIM-raising fault is available. Recommendation for the user, not a rule: write the film-mean bar and the target test, label the per-frame bound unvalidated, and take a real rejected case from the next change that scores a target and a film worse (the spec's own case list gains it then).
+
+## 2026-11-12: third-round rejected cases from #255, fixed before scoring
+
+You suggested looking at past rejected cases. [#255's journal](../255_sp1node-lens/journal.md) ("rescoring the per-frame gate") records two per-frame `SP_1NODE` gate variants that were rejected on their scores, against the static rule at `1308da0`, with a full seven-film column each and a variant switch simple enough to rebuild from the committed code.
+
+- **Cases** (both evidence-backed track, candidate against the static rule `1308da0`):
+
+  | Case | Candidate | #255's column (`CTRY`, `INTRO`, `LAND`, `BALLOON`, `TRAINTNL`, `BOMB`, `LOCATION`) | Target |
+  |---|---|---|---|
+  | R4 | per-frame gate, true depth (`DBG_LOD_EXP=0`) | 0.8961, 0.8339, 0.8555, 0.8014, 0.8403, 0.7900, 0.7822 | none (broad change) |
+  | R5 | per-frame gate, depth shifted by `0x229E` (`DBG_LOD_EXP=1`) | 0.8961, 0.8340, 0.8565, 0.8014, 0.8489, 0.7900, 0.7832 | none (broad change) |
+
+  Baseline column (static rule at `1308da0`): 0.8973, 0.8344, 0.8656, 0.8008, 0.8511, 0.7998, 0.7909. The adopted variant (`123a2d9`, depth halved and shifted) is not a case here.
+- **Rebuild**: `123a2d9` with the one line of `CameraTransform::lod_keeps_subtree` (`crates/stunt-core/src/contracts/trajectory.rs`) that divides the depth chosen by an environment switch: `0` no division, `1` by `1 << shift`, `2` (committed) by `2 << shift`. Scratch worktree, not committed.
+- **Keep rule** (as Q2 and Q6): a case stays only if each film's score is within 0.0005 of #255's column, absolute values (and as a delta over its own baseline if the baselines differ by more than 0.0005). Otherwise it is dropped and the journal says so.
+- **No target** for either case, so this round tests the film-mean bar (Q2) and not the per-frame bound; the journal's named `INTRO` ranges (1216-1290, 2511-2624) were found after adoption and are not used as targets.
