@@ -20,6 +20,9 @@ ISSUE_TITLE = "Streamline docs into evergreen notes and dated work folders"
 TITLE = "gh api repos/{owner}/{repo}/issues/307"
 TARGET = "gh api repos/{owner}/{repo}"
 CREATE = "gh api repos/neilsh/stunt-reel/issues"
+OPEN = "gh api repos/neilsh/stunt-reel/issues?state=open&per_page=100&page=1"
+BRANCH = "git branch --show-current"
+PROBLEM = "Docs mix evergreen notes with dated records."
 #: Issues as `gh api --jq` prints them, one JSON object a line.
 ISSUES = "".join(
     json.dumps({"number": number, "state": state, "state_reason": reason, "pull_request": None})
@@ -105,6 +108,29 @@ def _issue_less_folder(root: Path, month: str, slug: str, *, abandoned: bool = F
     return _folder(root, month, slug, fields)
 
 
+def _filing(**answers: str | Exception) -> FakeRunner:
+    """A FakeRunner for `new` filing #412 from branch `claude/docs`, with no open issue yet."""
+    return FakeRunner(
+        {
+            TARGET: "neilsh/stunt-reel\n",
+            "git remote get-url": "https://github.com/neilsh/stunt-reel.git\n",
+            OPEN: "",
+            BRANCH: "claude/docs\n",
+            CREATE: "https://github.com/neilsh/stunt-reel/issues/412\n",
+            **answers,
+        }
+    )
+
+
+def _open_issue(number: int, title: str) -> str:
+    return json.dumps({"number": number, "title": title, "pull_request": None}) + "\n"
+
+
+def _fields(run: FakeRunner) -> list[str]:
+    [create] = run.called(CREATE + " ")
+    return [create[i + 1] for i, flag in enumerate(create) if flag == "-f"]
+
+
 def _columns(out: str) -> list[list[str]]:
     """Month, folder and status of each line `list` printed."""
     return [line.split()[:3] for line in out.splitlines()]
@@ -124,39 +150,87 @@ def test_new_with_issue_makes_this_months_folder(tmp_path: Path) -> None:
 
 
 def test_new_without_issue_files_one_after_checking_the_repo(tmp_path: Path) -> None:
-    run = FakeRunner(
-        {
-            TARGET: "neilsh/stunt-reel\n",
-            "git remote get-url": "https://github.com/neilsh/stunt-reel.git\n",
-            CREATE: "https://github.com/neilsh/stunt-reel/issues/412\n",
-        }
-    )
-    assert _main(tmp_path, "new", "docs-streamline", run=run) == 0
+    run = _filing()
+    assert _main(tmp_path, "new", "docs-streamline", "--problem", PROBLEM, run=run) == 0
     folder = parse_folder(tmp_path / "2026-11" / "412_docs-streamline")
     assert (folder.issue, folder.title) == (412, "docs-streamline")
-    [create] = run.called(CREATE)
+    [create] = run.called(CREATE + " ")
     assert create[:5] == ["gh", "api", "repos/neilsh/stunt-reel/issues", "-X", "POST"]
-    fields = [create[i + 1] for i, flag in enumerate(create) if flag == "-f"]
+    fields = _fields(run)
     assert fields[0] == "title=docs-streamline"
-    assert fields[1].startswith("body=Filed by `mise run work -- new docs-streamline`")
+    assert fields[1] == (
+        f"body={PROBLEM}\n\n---\nFiled by `mise run work -- new docs-streamline` on branch "
+        "`claude/docs`. It is titled with the slug: retitle it to state the problem or question."
+    )
     assert fields[2:] == ["labels[]=needs-triage"]
+    assert run.calls.index(create) > run.calls.index(run.called(OPEN)[0])
     assert run.calls.index(create) > run.calls.index(run.called(TARGET)[0])
 
 
 def test_new_with_title_titles_the_filed_issue_and_readme(tmp_path: Path) -> None:
-    run = FakeRunner(
-        {
-            TARGET: "neilsh/stunt-reel\n",
-            "git remote get-url": "https://github.com/neilsh/stunt-reel.git\n",
-            CREATE: "https://github.com/neilsh/stunt-reel/issues/412\n",
-        }
-    )
-    assert _main(tmp_path, "new", "docs-streamline", "--title", "Streamline docs", run=run) == 0
+    run = _filing()
+    argv = ["new", "docs-streamline", "--title", "Streamline docs", "--problem", PROBLEM]
+    assert _main(tmp_path, *argv, run=run) == 0
     assert parse_folder(tmp_path / "2026-11" / "412_docs-streamline").title == "Streamline docs"
-    [create] = run.called(CREATE)
-    fields = [create[i + 1] for i, flag in enumerate(create) if flag == "-f"]
+    fields = _fields(run)
     assert fields[0] == "title=Streamline docs"
     assert "retitle" not in fields[1]
+
+
+@pytest.mark.parametrize(
+    "branch", ["\n", subprocess.CalledProcessError(128, ["git"], "", "not a git repository")]
+)
+def test_new_without_a_branch_leaves_it_out_of_the_body(
+    tmp_path: Path, branch: str | Exception
+) -> None:
+    run = _filing(**{BRANCH: branch})
+    argv = ["new", "docs-streamline", "--title", "T", "--problem", PROBLEM]
+    assert _main(tmp_path, *argv, run=run) == 0
+    assert _fields(run)[1].endswith("---\nFiled by `mise run work -- new docs-streamline`.")
+
+
+@pytest.mark.parametrize(
+    ("title", "argv"),
+    [
+        ("expected-scores-layout", ["expected-score-layout"]),
+        ("Streamline Docs!", ["other-slug", "--title", "streamline doc"]),
+    ],
+    ids=["plural-slug", "title"],
+)
+def test_new_refuses_a_duplicate_of_an_open_issue(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], title: str, argv: list[str]
+) -> None:
+    pull = json.dumps({"number": 9, "title": argv[0], "pull_request": {"url": "u"}}) + "\n"
+    run = _filing(**{OPEN: pull + _open_issue(436, title)})
+    assert _main(tmp_path, "new", *argv, "--problem", PROBLEM, run=run) == 1
+    assert run.called(CREATE + " ") == []
+    assert list(tmp_path.iterdir()) == []
+    assert "open issue 436" in capsys.readouterr().err
+
+
+def test_new_reads_every_page_of_open_issues(tmp_path: Path) -> None:
+    first = "".join(_open_issue(n, f"Issue {n}") for n in range(100))
+    second = OPEN.removesuffix("&page=1") + "&page=2"
+    run = _filing(**{OPEN: first, second: _open_issue(500, "docs-streamline")})
+    assert _main(tmp_path, "new", "docs-streamline", "--problem", PROBLEM, run=run) == 1
+    assert run.called(CREATE + " ") == []
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["docs-streamline"],
+        ["docs-streamline", "--problem", "  "],
+        ["docs-streamline", "--issue", "307", "--problem", PROBLEM],
+    ],
+    ids=["no-problem", "blank-problem", "problem-with-issue"],
+)
+def test_new_refuses_a_missing_or_stray_problem(tmp_path: Path, argv: list[str]) -> None:
+    run = FakeRunner({})
+    with pytest.raises(SystemExit) as exit_info:
+        _main(tmp_path, "new", *argv, run=run)
+    assert exit_info.value.code == 2
+    assert run.calls == []
 
 
 def test_new_refuses_title_with_issue(tmp_path: Path) -> None:
@@ -174,7 +248,7 @@ def test_new_without_issue_refuses_a_repo_other_than_origin(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], origin: str
 ) -> None:
     run = FakeRunner({TARGET: "neilsh/stunt-reel\n", "git remote get-url": origin})
-    assert _main(tmp_path, "new", "docs-streamline", run=run) == 1
+    assert _main(tmp_path, "new", "docs-streamline", "--problem", PROBLEM, run=run) == 1
     assert run.called(CREATE) == []
     assert list(tmp_path.iterdir()) == []
     err = capsys.readouterr().err
@@ -197,7 +271,9 @@ def test_new_refuses_an_existing_folder(
     assert [f.path.name for f in scan(tmp_path)] == [name]
 
 
-@pytest.mark.parametrize("argv", [["Docs_Streamline"], ["docs", "--issue", "0"]])
+@pytest.mark.parametrize(
+    "argv", [["Docs_Streamline", "--problem", PROBLEM], ["docs", "--issue", "0"]]
+)
 def test_new_checks_slug_and_issue_before_calling_gh(tmp_path: Path, argv: list[str]) -> None:
     run = FakeRunner({})
     assert _main(tmp_path, "new", *argv, run=run) == 1
@@ -245,7 +321,7 @@ def test_new_with_issue_but_no_title_from_gh_titles_it_with_the_slug(
 def test_new_without_issue_or_gh_fails_cleanly(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], run: Any
 ) -> None:
-    assert _main(tmp_path, "new", "docs-streamline", run=run) == 1
+    assert _main(tmp_path, "new", "docs-streamline", "--problem", PROBLEM, run=run) == 1
     assert list(tmp_path.iterdir()) == []
     err = capsys.readouterr().err
     assert "gh" in err

@@ -27,7 +27,7 @@ Done when the note has a current `summary:` and ends with `## Ruled out` and `##
 ## Quick reference
 
 - **Which note:** `research/MAP.md`, then `research/README.md` § Routing rule.
-- **Work folder:** `mise run work -- new <slug> [--issue N]`.
+- **Work folder:** `mise run work -- new <slug> (--issue N | --problem TEXT)`.
 - **Check it all:** `mise run verify-docs`, then `mise run check`.
 
 ## Common mistakes

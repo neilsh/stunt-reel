@@ -115,7 +115,7 @@ description = "A pull request's unresolved review threads, one line each with th
 run = "uv run python python/scripts/pr_threads.py"
 
 [tasks.work]
-description = "Start a work item's folder, work/<YYYY-MM>/<issue>_<slug>/, filing its GitHub issue first unless --issue names one; or list every work folder with its issue's status (mise run work -- new <slug> [--issue N] | list [--status active|landed|abandoned])"
+description = "Start a work item's folder, work/<YYYY-MM>/<issue>_<slug>/, filing its GitHub issue first unless --issue names one; or list every work folder with its issue's status (mise run work -- new <slug> (--issue N | --problem TEXT [--title TEXT]) | list [--status active|landed|abandoned])"
 run = "uv run python python/scripts/work.py"
 
 [tasks.knowledge-map]
