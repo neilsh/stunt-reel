@@ -17,7 +17,7 @@ Build the queue at the start and refresh it after each merge. Keep the queue on 
 
 1. **Open PRs** (`gh pr list --state open --limit 100 --json number,title,headRefName,baseRefName,isDraft,labels,mergeable,statusCheckRollup`), skipping any PR labeled `ready-for-human` or handed off earlier in this run, in dependency or stack order (bottom layer first when `baseRefName` is not `main`).
 2. **Unblocked `ready-for-agent` issues** with no open PR (`gh issue list --label ready-for-agent --state open --limit 100 --json number,title,body,labels`), skipping any issue with open blockers or open sub-issues ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions), "Count open blockers") or carrying `in-progress`. In a cloud session (`CLAUDE_CODE_REMOTE=true`, [`cloud-sessions.md`](../../../docs/cloud-sessions.md)), also skip `local-only` ([`triage-labels.md`](../../../docs/agents/triage-labels.md#environment-roles)).
-3. **Unblocked issues you filed as `ready-for-agent` during this run**, only once 1 and 2 are empty.
+3. **Unblocked issues you filed as `ready-for-agent` during this run**, only once 1 and 2 are empty, skipping `local-only` in a cloud session.
 
 ## Implementing an issue and bounding rounds
 

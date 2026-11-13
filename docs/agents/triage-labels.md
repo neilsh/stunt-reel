@@ -39,8 +39,8 @@ An environment label says where an issue can run. It goes beside the state label
 
 | Label        | Meaning |
 | ------------ | ------- |
-| `local-only` | Needs a resource a cloud session lacks, so a session on the primary machine does it. A cloud session renders on lavapipe, not a GPU ([ADR 0039](../adr/0039-cloud-sessions-fetch-pinned-game-archives.md)), has no DOSBox ([ADR 0042](../adr/0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md)), and cannot upload archives, which runs with the owner's `wrangler login` (ADR 0039). The brief names the resource: a real GPU, DOSBox or DOSBox-X, `wrangler login`, or a data-root file the issue names that the cloud archives do not hold |
+| `local-only` | Needs a resource a cloud session lacks, so a session on the primary machine does it: a real GPU (the cloud renders on lavapipe, [ADR 0039](../adr/0039-cloud-sessions-fetch-pinned-game-archives.md)), DOSBox or DOSBox-X ([cloud-sessions.md](../cloud-sessions.md#the-cloud-setup)), the owner's `wrangler login` for archive uploads (ADR 0039), or a data-root file the cloud archives do not hold. The brief names the resource |
 
-An asset missing from the data root itself still makes an issue `ready-for-human`. A session on the primary machine that finds the resource unavailable (a lapsed login, no GPU adapter) comments `Released claim: <resource> unavailable (<error>).`, relabels the issue `ready-for-human`, and names the one command a person must run.
+An asset missing from the data root itself still makes an issue `ready-for-human`. A primary-machine session that finds the resource unavailable (a lapsed login, no GPU adapter) releases its claim ([issue-tracker.md](issue-tracker.md#conventions)) with `Released claim: <resource> unavailable (<error>).`, relabels the issue `ready-for-human`, and names the one command a person must run.
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from these tables.
