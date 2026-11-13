@@ -1,7 +1,6 @@
 # Agents and harnesses
 
-This repository is worked by more than one agent harness — DeepSeek Harness and Claude Code
-today, and whichever one the next contributor brings — as well as by people. The policy below is
+This repository is worked by more than one agent harness — DeepSeek Harness, Claude Code and Antigravity today, and whichever one the next contributor brings — as well as by people. The policy below is
 the same for all of them because it is a policy of the repository; the notes under it are
 capability facts about one harness on one host, which is why they are dated and kept apart.
 Nothing here is a fact about Stunt Island.
@@ -15,17 +14,9 @@ Nothing here is a fact about Stunt Island.
   current `HEAD`, commits only on its own branch, and at most two writers plus the Lead work
   at once; the Lead integrates in the same session, in dependency order, with the full gate at
   the tip. The contract is [the retro-hardening plan](../work/2026-10/retro-hardening/retro-hardening-2026-10-25.md).
-* **Subagents take Haiku for simple work and Opus for everything else.** Haiku only where the
-  brief fully specifies the work and the result is easy to check: surveys, mapping tables,
-  mechanical edits, grading against a calibrated rubric. Diagnosis, design, implementation and
-  every review subagent (a standards or spec axis, a whole-branch review before a PR) run on Opus;
-  Sonnet only where a calibrated workflow names it, such as the parity readout's tie-break. On
-  #160 a Sonnet review missed four real bugs that an Opus review then found, among them a
-  preflight that built despite `--no-build`.
+* **Subagents use the session model (`inherit`) by default, and the same provider's `fast` tier only for simple bounded work.** Use `fast` (`Haiku` on Claude Code, `Gemini 4 Hydrogen` / `flash` on Antigravity) only where the brief fully specifies the work and the result is easy to check: surveys, mapping tables, mechanical edits, grading against a calibrated rubric, and browser UI. Diagnosis, design, implementation and every review subagent (a standards or spec axis, a whole-branch review before a PR) use `inherit` (the session model — `Orchestrator (Argon)` on Antigravity, `Opus` on Claude Code); never escalate above the session model or switch provider families unasked. A mid tier (`Sonnet` on Claude Code) is used only where a calibrated workflow names it, such as the parity readout's tie-break. On #160 a Sonnet review missed four real bugs that an Opus review then found, among them a preflight that built despite `--no-build`.
 * **Subagent-driven development reviews once per PR.**
-  `superpowers:subagent-driven-development` runs one Opus review of the finished branch before
-  the PR; a fix wave goes straight to the gate and CodeRabbit. Size each task so its Opus
-  implementer finishes within about 150 turns.
+  `superpowers:subagent-driven-development` runs one fresh-context `inherit` review of the finished branch before the PR; a fix wave goes straight to the gate and CodeRabbit. Size each task so its implementer finishes within about 150 turns.
 * **Approvals the user need not give.**
   * A fresh subagent reviews each spec or plan and the author revises it before presenting it,
     so the user sees the revised version.
@@ -221,10 +212,18 @@ inheritable `Mandatory Label\Low`, which `.venv` inherited; `icacls .venv` shows
 owner removes it with `icacls <checkout> /setintegritylevel (OI)(CI)M` and recreates `.venv`.
 Evidence and sources: [the research note](../work/2026-11/windows-sandbox-integrity-label/windows-sandbox-integrity-label-2026-11-01.md).
 
+## Antigravity
+
+Observed on this host, 2026-11-13:
+
+* **What it confines:** File tools write inside the active workspace and the conversation's artifact directory under `~/.gemini/antigravity/brain/<conversation-id>` (reads can also reach installed skills under `~/.gemini/`). When `Orchestrator (Argon)` is selected, planning and `[plan review]` turns run on Argon with editing tools (`edit_file`, `write_file`) refused until `exit_plan_mode` hands the plan to the Hydrogen execution turn.
+* **The shell it gives you:** Each `run_command` call starts a fresh Windows PowerShell process in the workspace root (`$env:` assignments and `Set-Location` do not persist across calls), so the [Windows PowerShell 5.1](#windows-powershell-51) rules below apply. Commands that run past `WaitMsBeforeAsync` continue as background tasks and wake the turn on completion; `schedule` sets one-shot timers without shell polling.
+* **Approvals and settings:** Project skills under [`.agents/skills/`](../.agents/skills/) and [`AGENTS.md`](../AGENTS.md) ship with the checkout. Model selection, sandbox mode, and command allowlists live in `~/.gemini/antigravity` on the host and cannot be committed.
+
 ## Windows PowerShell 5.1
 
 Any harness that shells out through the host's Windows PowerShell 5.1 meets these; observed
-under DeepSeek Harness (2026-10-25) and Claude Code (2026-10-31).
+under DeepSeek Harness (2026-10-25), Claude Code (2026-10-31) and Antigravity (2026-11-13).
 
 * **No `utf8NoBOM`.** `Set-Content -Encoding utf8NoBOM` fails with "Unable to match the
   identifier name utf8NoBOM to a valid enumerator name", and one sweep's writes all failed while
@@ -235,6 +234,7 @@ under DeepSeek Harness (2026-10-25) and Claude Code (2026-10-31).
   write over many.
 * **Commit messages from a file.** A here-string piped to `git commit -F -` does not reach git.
   Write the message with `WriteAllText` above and run `git commit -F <file>`.
+* **Issue and PR bodies from a file.** Double-quoted PowerShell strings (`"..."` and `@"..."@`) treat backticks (`` ` ``) as escape characters and corrupt Markdown code spans. Write the body to `build/scratch/<name>.md` (with the harness's file-write tool, or `WriteAllText` with a single-quoted `@'...'@` string) and pass `--body-file <file>` to `gh issue` and `gh pr`.
 * **Search with the Grep tool, not a shell.** A pattern with quotes in it does not survive 5.1's
   quoting into a native command's arguments intact; the harness's own search tool takes it as
   written.
@@ -255,6 +255,7 @@ Do not assume a behaviour because a different harness has it. Split this page in
 | --- | --- | --- |
 | DeepSeek Harness | `~/.dsh` on this host | no — host-local |
 | Claude Code | [.claude/settings.json](../.claude/settings.json) plus `~/.claude/settings.json` | repo file yes, user file no |
+| Antigravity | [.agents/skills/](../.agents/skills/) plus `~/.gemini/antigravity` | skills yes, user settings no |
 
 A checkout cannot ship the DeepSeek Harness policy, so this page is the repository's record of
 what it should be.
