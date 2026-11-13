@@ -194,3 +194,13 @@ You suggested looking at past rejected cases. [#255's journal](../255_sp1node-le
   Frames more than 0.005 / 0.010 below the baseline over all films: R4 572 / 426, R5 537 / 395; the worst single frame is −0.162 in both; no scored tick lost.
 - **Verdict** (`[Bounded Observation]`, one run per variant): both fall on four films by more than 0.002 (R5's `TRAINTNL` −0.00216 is the closest to the bar), so the Q2 film-mean bar rejects both, as #255 did. They are the spike's first valid rejected cases, and the film-mean bar is validated against them: it rejects them on films the adopted cases (A1 to A3) do not fall on by 0.002.
 - **What this does not test**: the per-frame bound (0.030 SSIM, proposal) and the target-frame test, since neither case has a target. A target-frame guard is still validated only against F1 (not an SSIM-raising fault) and A1, A2, R1. Their false-adoption protection rests on the film-mean bar.
+
+## 2026-11-12: a rejected case with a target (#407), fixed before scoring
+
+You asked for a rejected case with a target. [#407's journal](../407_sprite-draw-order/journal.md) records `DBG_SPRITE_MODE=3`: the `OP_ANIMATE` sprite drawn after every base and decal draw with depth compare `Always`, rejected because it does not match the capture at `CTRY` tick 871 (the hill appears to hide the explosion; ours draws the whole square over it) and falls `CTRY` by 0.0012. Its targets are the explosions' tick ranges that [#222's journal](../222_op-animate/journal.md) names, from before #407 scored anything: `CTRY` 859-881, `INTRO` 1387-1409 and `INTRO` 2707-2729.
+
+- **Case R6**: mode 3 against `dbfd0ed4` (#407's base), evidence-backed track. #407's column for mode 3 (`CTRY`, `INTRO`, `BOMB`, the three films it swept): 0.8984, 0.8422, 0.8101; baseline 0.8996, 0.8418, 0.8101.
+- **Targets**: `ctry:859-881`, `intro:1387-1409`, `intro:2707-2729`. Each holds 3 scored frames (859, 871, 881; 1387, 1398, 1409; 2707, 2718, 2729), so each meets the 3 frame minimum and the pooled 9 frames are also scored. Weakness: tick 871 is also the frame #407's rejection rests on.
+- **Rebuild**: on a scratch worktree of `dbfd0ed4`, a sprite pipeline (the base pipeline with depth compare `Always`) drawing every `Target::Image` draw after the base and decal passes, with the same draws left out of those passes. Not committed.
+- **Keep rule** (as before): all seven films run; kept only if `CTRY`, `INTRO` and `BOMB` are within 0.0005 of #407's column. Otherwise dropped, and the journal says so.
+- **What the rule should do with it**: no film falls by 0.002 (R6 expected at −0.0012 on `CTRY` only), so the film-mean bar alone would adopt it; the target test and per-frame bound are what could reject it. That is the test this case adds.
