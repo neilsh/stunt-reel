@@ -64,12 +64,12 @@ For each case and film, the spike entry records:
 The user settled these on 2026-11-12 from [the journal's](journal.md) numbers (Q40 to Q45):
 
 1. **The target metric** is index agreement. A2 passes only on it (target +0.0193, SSIM -0.0011). Whole-frame SSIM is printed beside it.
-2. **The heuristic target bar** stays +0.010, now on index agreement. A2 clears it (+0.0193); no rejected case does. It was not tuned at its margin.
-3. **The per-frame bound** is **0.025** in whole-frame SSIM, on the target frames only, hard on both tracks. The worst target frame of a case adopted or kept was -0.0164 (R1), and of a rejected case -0.0345 (R6, `CTRY`): 0.025 is the midpoint. Whole-film counts of falling frames do not separate cases (A3 adopted with 18 frames down more than 0.010; F1 has 20), so they are listed and not bounded. Five cases measure it.
+2. **The heuristic target bar** stays +0.010, now on index agreement. A2 clears it (+0.0193) and no rejected case does, but every spike case is evidence-backed, A2 included, so the heuristic target branch has judged no case it would run on. A2 and R6 illustrate the +0.010 bar, the per-range condition and the majority condition; they do not validate them. It was not tuned at its margin.
+3. **The per-frame bound** is **0.025** in whole-frame SSIM, on the target frames only, hard on both tracks. The worst target frame of a case adopted or kept was -0.0164 (R1), and of a rejected case -0.0345 (R6, `CTRY`): 0.025 is the midpoint. Whole-film counts of falling frames do not separate cases (A3 adopted with 18 frames down more than 0.010; F1 has 20), so they are listed and not bounded. It is a measured separation on one rejected case of 3 frames: the bound sits 0.0095 inside R6's mildest fall (-0.0345), and R6's worst frame, `CTRY` 871 (-0.0639), is the one #407's rejection already rested on.
 4. **The minimum of scored target frames** stays 3. A2 sits on it, so a case at the minimum is reported as thin evidence; A1's second range (2 frames) has no valid target.
-5. **The film-mean bar** stays 0.002 (Q17). R4 and R5 fall by more than it on four films each; R6 passes it, so the target guards carry that case.
+5. **The film-mean bar** stays 0.002 (Q17). R4 and R5 fall by more than it on four films each; R6 passes it, so only the per-frame bound rejects that case.
 
-**What counted as passing, and how it came out.** A1 to A3 should adopt, and the rejected cases should not. A2 and A3 adopt; A1's target falls on both metrics (partly selection, above); R4 and R5 are rejected by the film-mean bar and R6 by the target guards. No SSIM-raising fault exists on `CTRY` or `INTRO`, so no false adoption of that kind was tested. "No false rejection" and "no false adoption" are reported separately; neither proves the bounds right.
+**What counted as passing, and how it came out.** A1 to A3 should adopt, and the rejected cases should not. A2 and A3 adopt; A1's target falls on both metrics (partly selection, above); R4 and R5 are rejected by the film-mean bar. R6 is evidence-backed, so the target branch never runs on it, and only the 0.025 per-frame bound rejects it. No SSIM-raising fault exists on `CTRY` or `INTRO`, so no false adoption of that kind was tested. "No false rejection" and "no false adoption" are reported separately; neither proves the bounds right.
 
 ## 2. The adoption rule
 
@@ -108,7 +108,7 @@ The heuristic target branch adopts when all three hold (Q15, Q36, Q40, Q44), the
    A failed baseline film means the sweep gives no verdict.
 
 **How every bound is measured.**
-- Each bound is a difference in whole-frame SSIM: the candidate's `per_frame[].ssim` minus the baseline's, taken over the film ticks the baseline scores.
+- The film-mean bars and the 0.025 per-frame bound are differences in whole-frame SSIM: the candidate's `mean_ssim_scored` or `per_frame[].ssim` minus the baseline's, taken over the film ticks the baseline scores. The target bar and the target means are differences in index agreement (Q40), over the same ticks.
 - A tick captured more than once (`CTRY`'s end hold) counts once, by its first frame, as `--compare` does ([`method.md`](../../../research/parity/method.md) § 5) (S3).
 - Comparisons use unrounded values (Q39).
 
@@ -280,10 +280,10 @@ Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day af
 | Q38 | 5 pictures per targeted film; spacing never below 25 ticks. |
 | Q39 | Judge after every variant finishes, from per-frame scores held in memory. Re-render the chosen ticks for pictures. Adopting variants rank first, and `winner: none adopts` prints when none does. Echo `--target` on stdout. Test the join against `compare.json`. Compare unrounded values. |
 | Q40 | The target metric is index agreement (the spike, 2026-11-12). Whole-frame SSIM is printed beside it. |
-| Q41 | The heuristic target bar stays +0.010, on index agreement; not tuned at its margin. |
+| Q41 | The heuristic target bar stays +0.010, on index agreement; not tuned at its margin. No spike case is heuristic, so the bar has judged no case it would run on; A2 illustrates it and does not validate it. |
 | Q42 | The film-mean bar stays 0.002; R4 and R5 are rejected by it, R6 passes it. |
-| Q43 | The per-frame bound is 0.025 in whole-frame SSIM, on the target frames only, hard on both tracks; no whole-film bound (counts do not separate cases). It revises Q16, Q29 and Q35. Measured on five cases (R6 -0.0345 rejected; R1 -0.0164 kept), the midpoint of the gap. |
-| Q44 | The target test is taken per target range, not pooled: R6's `CTRY` range falls -0.035 while an `INTRO` range rises, and the pooled mean barely rejects it. |
+| Q43 | The per-frame bound is 0.025 in whole-frame SSIM, on the target frames only, hard on both tracks; no whole-film bound (counts do not separate cases). It revises Q16, Q29 and Q35. A measured separation on one rejected case of 3 frames (R6, mildest fall -0.0345, 0.0095 outside the bound; its worst frame 871 is the one #407 already rejected on) against kept cases (R1 -0.0164): the midpoint of the gap. |
+| Q44 | The target test is taken per target range, not pooled: R6's `CTRY` range falls -0.035 while an `INTRO` range rises, and the pooled mean barely rejects it. The per-range condition has never judged a case it would run on (heuristic track only; Q41). |
 | Q45 | The 3-frame minimum stays; a case at the minimum is reported as thin evidence. |
 | S1 | The baseline is each `--var`'s first listed value, so no new flag is needed. |
 | S2 | `--target` and `--track` refuse a `--films` subset, because the guards cover every reference film. |
