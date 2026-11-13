@@ -21,11 +21,12 @@ work/
       spec.md, plan.md
       journal.md
       images/
+      switches/            DBG_<NAME>.diff: a sweep's switch, kept as a patch
     distill-method/        <slug>: a folder with no issue
 ```
 
 - **Path.** `work/<YYYY-MM>/<issue>_<slug>/`: the month the work started, the bare issue number, and a lowercase kebab-case slug (`^[a-z0-9]+(-[a-z0-9]+)*$`). A folder with no issue is `work/<YYYY-MM>/<slug>/`. A folder never moves. The month directories are the only index.
-- **Files.** `spec.md` and `plan.md` (`spec-<topic>.md` for a second spec), `journal.md` and `images/`. Other files keep their basename.
+- **Files.** `spec.md` and `plan.md` (`spec-<topic>.md` for a second spec), `journal.md`, `images/` and `switches/` ([`probes.md`](../research/parity/probes.md) § 4). Other files keep their basename.
 - **README frontmatter.** A `---` block of `key: value` lines: `title`, `started` (ISO date, in the folder's month), `outcome` (one line, `""` until the work lands), and, in an issue folder, `issue` (the number in its name), whose status is its issue's. A folder with no issue is a landed record unless it carries `status: abandoned`, for dropped work. No other key or `status` value is allowed.
 
 ## Tools
@@ -42,7 +43,7 @@ Each new entry in `journal.md` is a `##` heading `YYYY-MM-DD: <title>`, then:
 - **Question**: what the entry set out to learn.
 - **Method**: what was run, on which commit.
 - **Result**: what came out, with scores stated in the text.
-- **Verdict**: adopted, rejected or control.
+- **Verdict**: adopted, rejected or control, naming what decided it: the adoption rule's figures, or another reason (cost, a visual mismatch, a dependency). A variant set aside for another reason is not a rejection by score, so a later rescoring must not count it as a rejected case.
 - **Lives in**: the evergreen note or ADR that now holds the fact.
 
 An entry a distillation writes keeps the moved text verbatim under its dated heading, then **Lives in**.
