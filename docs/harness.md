@@ -143,7 +143,10 @@ ship with the checkout and be reviewed in a PR — unlike the harness above. Its
 `edit`) and carries no `mise run *` rule, so a checkout without a local override in
 `.claude/settings.local.json` asks per command. [`CLAUDE.md`](../CLAUDE.md) is a stub
 that imports `AGENTS.md`, because Claude Code reads `CLAUDE.md` and this repo's guide has the
-other name.
+other name. `.claude/skills` is likewise a committed symlink to `../.agents/skills`, because
+Claude Code looks for project skills in `.claude/skills/`, not `.agents/skills/`. A checkout made
+without symlink support (`core.symlinks=false`, common on Windows without Developer Mode) gets a
+one-line text file there instead, and Claude Code sees no project skills.
 
 Not yet documented: its timeout behaviour, and its sandboxing beyond the integrity label below.
 Fill that in from observation, not from vendor documentation — this page records what we have seen.
@@ -254,7 +257,7 @@ Do not assume a behaviour because a different harness has it. Split this page in
 | Harness | Settings | Ship with the checkout? |
 | --- | --- | --- |
 | DeepSeek Harness | `~/.dsh` on this host | no — host-local |
-| Claude Code | [.claude/settings.json](../.claude/settings.json) plus `~/.claude/settings.json` | repo file yes, user file no |
+| Claude Code | [.claude/settings.json](../.claude/settings.json), `.claude/skills` (link to `.agents/skills/`) plus `~/.claude/settings.json` | repo files yes, user file no |
 | Antigravity | [.agents/skills/](../.agents/skills/) plus `~/.gemini/antigravity` | skills yes, user settings no |
 
 A checkout cannot ship the DeepSeek Harness policy, so this page is the repository's record of
