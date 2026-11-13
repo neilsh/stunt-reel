@@ -204,3 +204,25 @@ You asked for a rejected case with a target. [#407's journal](../407_sprite-draw
 - **Rebuild**: on a scratch worktree of `dbfd0ed4`, a sprite pipeline (the base pipeline with depth compare `Always`) drawing every `Target::Image` draw after the base and decal passes, with the same draws left out of those passes. Not committed.
 - **Keep rule** (as before): all seven films run; kept only if `CTRY`, `INTRO` and `BOMB` are within 0.0005 of #407's column. Otherwise dropped, and the journal says so.
 - **What the rule should do with it**: no film falls by 0.002 (R6 expected at −0.0012 on `CTRY` only), so the film-mean bar alone would adopt it; the target test and per-frame bound are what could reject it. That is the test this case adds.
+
+## 2026-11-12: R6 scored: a rejected case with targets
+
+- **Method**: as fixed above. Two seven-film runs by `mise run parity -- --no-build`: `dbfd0ed4` (`mise run build-at`) and the patched `dbfd0ed4` with `DBG_SPRITE_LATE=1` (the `OP_ANIMATE` sprite drawn after every base and decal draw through a depth-`Always` pipeline). Scratch under `build/scratch/spike/` (`base_dbfd`, `sprlate`), not committed.
+- **Reproduction of #407**: baseline `CTRY` 0.89960, `INTRO` 0.84177, `BOMB` 0.81009 against #407's 0.8996, 0.8418, 0.8101; mode 3 0.89843, 0.84222, 0.81009 against 0.8984, 0.8422, 0.8101. Every film within 0.00003, so R6 passes the keep rule. The other four films do not move (≤ 0.00001), as the sprites appear only in `CTRY`, `INTRO` and `BOMB`.
+- **Film means** (ΔSSIM / ΔIdx): `CTRY` −0.00118 / −0.00092, `INTRO` +0.00045 / +0.00071, `BOMB` 0.00000, the rest 0.00000.
+- **Target frames** (ΔSSIM and ΔIdx per scored frame):
+
+  | Target | Frames | ΔSSIM | ΔIdx |
+  |---|---|---|---|
+  | `ctry:859-881` | 859, 871, 881 | −0.0345, −0.0639, −0.0357 | −0.0258, −0.0499, −0.0296 |
+  | `intro:1387-1409` | 1387, 1398, 1409 | +0.0014, −0.0034, +0.0027 | 0.0000, −0.0019, −0.0000 |
+  | `intro:2707-2729` | 2707, 2718, 2729 | +0.0085, +0.0181, +0.0458 | +0.0064, +0.0160, +0.0661 |
+  | Pooled (9) | | mean −0.00677, worst −0.0639 | mean −0.00207, worst −0.0499 |
+
+  Frames more than 0.005 / 0.010 below the baseline over all films: 4 / 4. They are the three `CTRY` target frames and `INTRO` tick 2740 (−0.0219), the frame just after the `intro:2707-2729` target, which the target test does not cover.
+- **What each guard does with R6** (`[Bounded Observation]`, one case):
+  - Film-mean bar (no film falls by 0.002): adopts it, `CTRY` falls by 0.0012 only.
+  - Target test on the pooled 9 frames, mean ΔIdx ≥ 0: rejects it, but barely (−0.00207), because `intro:2707-2729` rises by +0.0295 and offsets `CTRY`'s −0.0351. Taken per target range it rejects `CTRY` clearly (−0.0351) and passes the two `INTRO` ranges.
+  - Per-frame bound of 0.030 SSIM: rejects it on all three `CTRY` target frames (−0.0345 to −0.0639), none on `INTRO`. This is the first time the bound meets a real rejected change.
+- **Bound margins** (SSIM drop of the worst single target frame): rejecting, `CTRY` target −0.0345 to −0.0639; adopted or kept, A1 −0.0132, A2 −0.0040, R1 −0.0164 (R1 is not a rejection case, see the corrections). The two sides are separated by 0.0164 to 0.0345; the 0.030 proposal sits 0.0045 under the smallest rejecting drop, so the midpoint 0.025 leaves the larger margin on both sides.
+- **Consequences**: (a) a target test must be taken per target range and not pooled across the ranges of a case, or a gain in one range hides a loss in another; (b) the film-mean bar alone adopts R6, so the target guards carry weight; (c) the per-frame bound now has one rejected case and four non-rejected ones, five cases in all, so it is a measured separation and no more.
