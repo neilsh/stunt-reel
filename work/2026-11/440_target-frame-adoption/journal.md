@@ -92,3 +92,24 @@
   | F1 | not a SSIM-raising case here (lowers SSIM on every target frame) | −0.01054 film mean | −0.06006 / −0.03296 (20 frames) | 20 / 20 |
 
 - **Not done**: the index-agreement check (`report.json`'s per-frame `index_agreement` against the spec's definition) is still unverified; the four questions to the user are not yet put.
+
+## 2026-11-12: the user's answers, and target-frame drops scored
+
+- **Answers** (user, all six as recommended): (Q1) the target-frame test uses index agreement, A1 reported as a known false rejection of it; (Q2) film-mean bar: no reference film's mean SSIM falls by 0.002 or more; (Q3) the per-frame bound guards the target range only, no whole-film count; (Q4) keep the 3 scored target frame minimum, and report a case at the minimum as thin evidence; (Q5) keep F1 as a rejection sanity case and record that no SSIM-raising fault has been tested; (Q6) the R1 rebuild is compared by delta over its own baseline, so R1 is reinstated and its target scored. This reverses the R1 drop in the previous entry.
+- **Method**: as above; per-frame `ssim` and `index_agreement` of each case minus its baseline over the baseline's scored ticks in the target range (scratch `build/scratch/spike/target_worst.py`, not committed). F1 re-scored from the planted store.
+- **Result** (Δ = candidate − baseline; worst = the most negative single frame):
+
+  | Case | Target (n) | ΔSSIM mean / worst | ΔIdx mean / worst | Frames with ΔIdx > 0 |
+  |---|---|---|---|---|
+  | A1 | `intro:3235-3301` (7) | −0.00503 / −0.01316 | −0.00334 / −0.00747 | 2 |
+  | A2 | `intro:3279-3301` (3, at the minimum) | −0.00113 / −0.00403 | +0.01934 / −0.02858 | 1 |
+  | R1 | `intro:3235-3301` (7) | −0.00723 / −0.01643 | −0.00010 / −0.00583 | 3 |
+  | F1 | `ctry:485-694` (20) | −0.06006 / −0.07237 | −0.03296 / −0.03642 | 0 |
+
+  R1's film-mean ΔIdx over `9bc0fb78` is positive on all seven films (+0.0005 to +0.0028); its film-mean ΔSSIM is +0.00005 to +0.00484 (previous entry).
+- **Observations** (`[Bounded Observation]`, four cases, one run each):
+  - A mean target ΔIdx at or above 0 separates A2 (+0.0193) from the three cases below it, but R1 (−0.0001) is a near tie and A1 (−0.0033) falls: the index test as written rejects A1 and R1 and adopts A2, F1 is rejected by both metrics by a wide margin (ΔIdx −0.033).
+  - A per-frame ΔIdx bound does not separate the cases: A2, an adopted case, has a single target frame at −0.0286, close to F1's frames (−0.026 to −0.036).
+  - A per-frame ΔSSIM drop on target frames does separate F1 from the rest: A1, A2 and R1's worst frames are −0.013, −0.004 and −0.016; every F1 frame is at least −0.045. Any bound between 0.017 and 0.044 splits these four; one number is not established by four cases.
+- **Proposal for the bound, not a rule**: a target frame may fall by at most 0.030 SSIM (the midpoint of the gap, rounded). It rests on four cases, one of which (F1) is not an SSIM-raising fault, so it is a starting point to be re-tested, not a measured bound.
+- **Not done**: R2 and R3 stay dropped; the index-agreement definition check (`report.json` against the spec's) and any SSIM-raising false-adoption case are open. PR 1 and PR 2 are not started.
