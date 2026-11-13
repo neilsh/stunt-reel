@@ -1,8 +1,9 @@
-"""The commit-msg hook: a Conventional Commit subject (AGENTS.md, Committing)."""
+"""The commit-msg hook: a Conventional Commit subject and the fresh review (AGENTS.md, Committing)."""
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -77,13 +78,14 @@ def test_git_generated_subjects_are_left_alone(hook: Any, subject: str) -> None:
 
 
 def test_the_script_checks_a_message_file(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)  # noqa: S603, S607
     good, bad = tmp_path / "good", tmp_path / "bad"
     good.write_text("fix: a thing\n", encoding="utf-8")
     bad.write_text("a thing\n", encoding="utf-8")
     run = [sys.executable, str(SCRIPT)]
-    assert subprocess.run([*run, str(good)], check=False).returncode == 0  # noqa: S603
+    assert subprocess.run([*run, str(good)], cwd=tmp_path, check=False).returncode == 0  # noqa: S603
     failed = subprocess.run(  # noqa: S603
-        [*run, str(bad)], capture_output=True, text=True, check=False
+        [*run, str(bad)], cwd=tmp_path, capture_output=True, text=True, check=False
     )
     assert failed.returncode == 1
     assert "Conventional Commit" in failed.stderr
@@ -257,3 +259,87 @@ def test_a_gh_call_that_times_out_makes_github_unavailable(
         hook._merged_pulls("0" * 40)
     assert calls[0]["timeout"] == hook.GH_TIMEOUT
     assert calls[0]["stdin"] is subprocess.DEVNULL
+
+
+def _path(*parts: str) -> str:
+    """A repository-relative path from *parts*, so the doc checks do not read it as a citation."""
+    return "/".join(parts)
+
+
+REVIEW = "Fresh-review: a subagent read the diff and the notes it cites"
+
+
+@pytest.mark.parametrize(
+    ("path", "at_commit"),
+    [
+        (_path("work", "2026-11", "440_target-frame-adoption", "spec.md"), True),
+        (_path("work", "2026-11", "440_target-frame-adoption", "plan.md"), True),
+        (_path("work", "2026-11", "440_target-frame-adoption", "journal.md"), False),
+        (_path("work", "README.md"), False),
+        (_path("research", "parity", "metric-bench.md"), False),
+        ("NOTICE.md", False),
+        (_path("docs", "howto", "score-a-render-change.md"), False),
+        (_path("docs", "SPEC.md"), False),
+        (_path("docs", "adr", "0001-x.md"), False),
+        ("python/scripts/check_commit_msg.py", False),
+    ],
+)
+def test_which_paths_need_a_fresh_review(hook: Any, path: str, at_commit: bool) -> None:
+    assert hook.reviewed_at_commit(path) is at_commit
+
+
+def test_a_staged_spec_needs_the_trailer(hook: Any) -> None:
+    spec = _path("work", "2026-11", "440_x", "spec.md")
+    [problem] = hook.review_problems("docs(work): a spec\n", [spec, "README.md"])
+    assert spec in problem
+    assert "Fresh-review:" in problem
+    assert hook.review_problems(f"docs(work): a spec\n\n{REVIEW}\n", [spec]) == []
+    assert hook.review_problems("docs(work): a spec\n\nFresh-review:\n", [spec]) != []
+
+
+def test_the_hook_reads_the_staged_paths(repo: Git, tmp_path: Path) -> None:
+    spec = tmp_path / "work" / "2026-11" / "440_x" / "spec.md"
+    spec.parent.mkdir(parents=True)
+    spec.write_text("# Spec\n", encoding="utf-8")
+    repo("add", "work")
+    unreviewed, reviewed = tmp_path / "unreviewed", tmp_path / "reviewed"
+    unreviewed.write_text("docs(work): a spec\n", encoding="utf-8")
+    reviewed.write_text(f"docs(work): a spec\n\n{REVIEW}\n", encoding="utf-8")
+    run = [sys.executable, str(SCRIPT)]
+    failed = subprocess.run(  # noqa: S603
+        [*run, str(unreviewed)], cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+    assert failed.returncode == 1
+    assert "Fresh-review:" in failed.stderr
+    assert subprocess.run([*run, str(reviewed)], cwd=tmp_path, check=False).returncode == 0  # noqa: S603
+
+
+@pytest.mark.parametrize(
+    "subject", ["Merge branch 'spec'", 'Revert "docs(work): a spec"', "fixup! docs(work): a spec"]
+)
+def test_git_subjects_need_no_review(hook: Any, subject: str) -> None:
+    spec = _path("work", "2026-11", "440_x", "spec.md")
+    assert hook.review_problems(subject + "\n", [spec]) == []
+
+
+def test_the_hook_fails_closed_outside_a_repository(tmp_path: Path) -> None:
+    message = tmp_path / "message"
+    message.write_text("fix: a thing\n", encoding="utf-8")
+    failed = subprocess.run(  # noqa: S603
+        [sys.executable, str(SCRIPT), str(message)],
+        cwd=tmp_path,
+        env={**os.environ, "GIT_CEILING_DIRECTORIES": str(tmp_path.parent)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert failed.returncode == 2
+    assert "cannot read the staged paths" in failed.stderr
+
+
+def test_a_non_ascii_path_is_read_unquoted(repo: Git, tmp_path: Path, hook: Any) -> None:
+    note = tmp_path / "research" / "café.md"
+    note.parent.mkdir()
+    note.write_text("x\n", encoding="utf-8")
+    repo("add", "research")
+    assert hook._staged_paths() == [_path("research", "café.md")]

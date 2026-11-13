@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Fail a commit message whose subject is not a Conventional Commit (AGENTS.md, Committing).
+"""Fail a commit message whose subject is not a Conventional Commit, or that lacks a due review.
 
 The subject is ``type(scope)!: summary`` with one of the usual types. Git's own subjects (a merge,
-a revert, ``fixup!``, ``squash!``, ``amend!``) are left alone.
+a revert, ``fixup!``, ``squash!``, ``amend!``) are left alone (AGENTS.md, Committing, rule 3).
+
+The hook also requires a ``Fresh-review: <what it read>`` trailer, the record of a fresh
+reviewer's pass (AGENTS.md, Committing, rule 5), on a commit that adds, changes or deletes a work
+``spec.md`` or ``plan.md``. It sees only what is staged, so an ``--amend`` that only rewords is not
+checked; a range is not checked for it. Git's own subjects need no trailer.
 
 Usage: ``mise run commit-msg-check -- <message file>`` (the commit-msg hook), or
 ``mise run commit-msg-check -- --range <base>..<head> [--pr <number>]`` to check commits already
@@ -43,6 +48,34 @@ TYPES = (
 SUBJECT = re.compile(rf"^(?:{'|'.join(TYPES)})(?:\([^()\s][^()]*\))?!?: \S")
 GIT_SUBJECT = re.compile(r"^(?:Merge |Revert \"|fixup! |squash! |amend! )")
 SCISSORS = "# ------------------------ >8 ------------------------"
+FRESH_REVIEW = re.compile(r"^Fresh-review:[ \t]*\S")
+RULE_5 = "AGENTS.md, Committing, rule 5"
+
+
+def reviewed_at_commit(path: str) -> bool:
+    """Whether a change to repository-relative *path* needs its review before the commit."""
+    parts = path.split("/")
+    return len(parts) == 4 and parts[0] == "work" and parts[3] in ("spec.md", "plan.md")
+
+
+def is_reviewed(message: str) -> bool:
+    """Whether any line git keeps of *message* is ``Fresh-review:`` with a value."""
+    return any(FRESH_REVIEW.match(line) for line in _lines(message))
+
+
+def review_problems(message: str, paths: list[str]) -> list[str]:
+    """The review *message* lacks for a commit changing *paths* that must be reviewed first."""
+    lines = _lines(message)
+    if GIT_SUBJECT.match(next((line for line in lines if line), "")):
+        return []
+    due = sorted(path for path in paths if reviewed_at_commit(path))
+    if not due or is_reviewed(message):
+        return []
+    problem = (
+        f"changes {', '.join(due)} with no Fresh-review: trailer ({RULE_5}): have a fresh "
+        "reviewer read the diff, then add 'Fresh-review: <what it read>' to the message"
+    )
+    return [problem]
 
 
 def _lines(message: str) -> list[str]:
@@ -81,6 +114,13 @@ def _git(*args: str) -> str:
         check=True,
     )
     return done.stdout
+
+
+def _staged_paths() -> list[str]:
+    """The paths the commit being made changes, as the index holds them."""
+    return _git(
+        "-c", "core.quotepath=false", "diff", "--cached", "--name-only", "--no-renames"
+    ).splitlines()
 
 
 def _messages(revisions: str) -> list[tuple[str, str, str]]:
@@ -213,7 +253,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.message is not None:
         message = args.message.read_text(encoding="utf-8")
-        found = [("this commit", problems(message))]
+        try:
+            staged = _staged_paths()
+        except (OSError, subprocess.CalledProcessError) as error:
+            print(f"[commit-msg] cannot read the staged paths: {error}", file=sys.stderr)
+            return 2
+        found = [("this commit", problems(message) + review_problems(message, staged))]
     else:
         try:
             commits = [
