@@ -61,6 +61,56 @@ def _kill(pid: int) -> None:
             os.kill(pid, 9)
 
 
+def _describe(pid: int, since: float) -> str:
+    """What procfs says of a surviving *pid*, to tell a stuck exit, a reused pid and an
+    undelivered kill apart; *since* is the test's ``time.time()`` at its start.
+
+    The start offset is good to about a second: the kernel's boot time is whole seconds.
+    """
+    proc = Path(f"/proc/{pid}")
+    if not Path("/proc/self/stat").exists():
+        return f"pid {pid} (no procfs)"
+    lines = [f"pid {pid}"]
+    try:
+        stat = (proc / "stat").read_text(encoding="utf-8")
+        lines.append(f"stat: {stat.strip()}")
+        ticks = int(stat.rsplit(")", 1)[1].split()[19])
+        boot = next(
+            int(line.split()[1])
+            for line in Path("/proc/stat").read_text(encoding="utf-8").splitlines()
+            if line.startswith("btime ")
+        )
+        # ``os.sysconf`` exists only off Windows, which this branch never runs on.
+        born = boot + ticks / getattr(os, "sysconf", lambda _name: 100)("SC_CLK_TCK")
+        lines.append(f"started {born - since:+.2f} s from the test's start")
+    except (OSError, ValueError, IndexError, StopIteration) as error:
+        lines.append(f"stat: {error!r}")
+    keys = ("State:", "PPid:", "SigPnd:", "ShdPnd:", "SigBlk:", "SigIgn:")
+    for name in ("status", "cmdline", "wchan"):
+        try:
+            text = (proc / name).read_bytes().decode("utf-8", "replace")
+        except OSError as error:
+            lines.append(f"{name}: {error!r}")
+            continue
+        if name == "status":
+            lines.extend(line for line in text.splitlines() if line.startswith(keys))
+        else:
+            lines.append(f"{name}: {text.replace(chr(0), ' ').strip()}")
+    return "\n".join(lines)
+
+
+@pytest.mark.skipif(not Path("/proc/self/stat").exists(), reason="reads procfs")
+def test_a_survivor_is_described_by_its_state_signals_and_start() -> None:
+    since = time.time()
+    with subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"]) as proc:
+        try:
+            text = _describe(proc.pid, since)
+        finally:
+            proc.kill()
+    for needle in ("State:", "PPid:", "SigPnd:", "cmdline:", "wchan:", "s from the test's start"):
+        assert needle in text, text
+
+
 def _grandchild(output: str) -> int:
     for line in output.splitlines():
         if line.startswith("grandchild "):
@@ -102,6 +152,7 @@ def test_timeout_kills_the_grandchild_too() -> None:
     """A surviving grandchild holds the pipe, so the read would wait out its 30 s sleep."""
     grandchild = 0
     seen: list[str] = []
+    since = time.time()
     try:
         started = time.monotonic()
         with process_tree.spawn([sys.executable, "-c", _CHILD]) as proc:
@@ -113,7 +164,8 @@ def test_timeout_kills_the_grandchild_too() -> None:
         deadline = time.monotonic() + 5.0
         while _alive(grandchild) and time.monotonic() < deadline:
             time.sleep(0.1)
-        assert not _alive(grandchild), "the grandchild outlived the kill"
+        if _alive(grandchild):
+            pytest.fail(f"the grandchild outlived the kill\n{_describe(grandchild, since)}")
     finally:
         if grandchild and _alive(grandchild):
             _kill(grandchild)
