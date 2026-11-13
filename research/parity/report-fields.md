@@ -32,6 +32,7 @@ The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `
 | `credits_missing_frames` | number, optional | Matched frames whose render record says the film shows credits but whose render drew no credits pixel (no `PFONT.BIN`, or a drawing fault); their captured ink is still scored. At most `frames`; absent in older reports (read as 0). |
 | `adapter` | object or null, optional | The adapter the render was drawn on, from `render.json`: `name` as its driver reports it and `class` `hardware` or `cpu`. Null when the render does not record one; absent in older reports. |
 | `archive_conflict_waived` | bool, optional | Present, and true, only when the render read another archive than the capture played and the run passed `--waive-archive-conflict` (a deliberate stand-in, such as a superset archive): the score was made across archives. Absent when the archives agree or either side records no archive hash. |
+| `crates` | string or null, optional | The `crates/` git tree the render was built from, as `stuntreel parity --crates` was given it. `mise run parity` passes `git rev-parse HEAD:crates` when it built the binary and made the render itself on a clean `crates/`, and nothing for a `crates/` with uncommitted changes or a `--no-build`, `--no-render`, `--reuse` or `--retime` run, so the field is null there. Absent in older reports, which read as null. `mise run parity-repin` refuses a report whose `crates` is not the current tree. |
 | `per_frame` | list | One object per matched frame, in capture order (next table). |
 <!-- /fields -->
 

@@ -19,7 +19,9 @@ relabels that tree by N ticks (see ``parity_probe.py retime``) and scores the co
 ``_retime<N>`` report so the baseline report is not overwritten. Progress goes to stderr;
 stdout carries only each film's summary line, under it the comparison with the film's expected
 score for the renderer class it rendered on (``stunt_reel.expected_scores``: the delta, and
-drift only when the scores compare), and the noise note.
+drift only when the scores compare), and the noise note. A run that builds and renders on a
+clean ``crates/`` records that tree in each report (``crates``), which ``mise run parity-repin``
+requires; any other run records null.
 """
 
 from __future__ import annotations
@@ -28,11 +30,12 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
+lazy from collections.abc import Callable
 
 from cli import ParityOptions, UsageError, add_parity_options, parity_options, resolve_jobs
 
 from stunt_reel import parity_layout
-from stunt_reel.expected_scores import comparison_line
+from stunt_reel.expected_scores import clean_crates_tree, comparison_line
 from stunt_reel.parity_artifacts import read_report
 from stunt_reel.parity_pipeline import (
     REPO_ROOT,
@@ -97,6 +100,23 @@ def rescored_with(options: ParityOptions) -> str | None:
     return None
 
 
+def recorded_crates(
+    *,
+    no_build: bool,
+    no_render: bool,
+    rescored: bool,
+    tree: Callable[[], str | None] = clean_crates_tree,
+) -> str | None:
+    """The ``crates/`` tree the run's reports record: *tree*'s, only for a fresh build and render.
+
+    ``None`` when the binary was not built now (``--no-build``), the render was not made now
+    (``--no-render``), another tree is scored (``--reuse``, ``--retime``), or ``crates/`` is dirty.
+    """
+    if no_build or no_render or rescored:
+        return None
+    return tree()
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_parity_options(parser)
@@ -128,6 +148,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"parity_run: build failed: {err}", file=sys.stderr)
             return 1
 
+    crates = recorded_crates(
+        no_build=options.no_build,
+        no_render=args.no_render,
+        rescored=rescored_with(options) is not None,
+    )
+
     def work(job: FilmJob, _variant: None) -> FilmScore:
         """Renders (or reuses) *job*'s film and scores it, printing nothing."""
         source = prepare_source(job, options, no_render=args.no_render)
@@ -137,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
             suffix = f"_retime{options.retime:+d}"
             request = Retime(options.retime, REPO_ROOT / parity_layout.retime_dir(job.name, suffix))
         report = REPO_ROOT / parity_layout.report_dir(job.name, suffix)
-        result = score_film(job, source, report, retime=request)
+        result = score_film(job, source, report, retime=request, crates=crates)
         if result.retime is not None:
             print(
                 f"[parity] {job.name}: copied {result.retime.copied} frames; "

@@ -269,6 +269,14 @@ _Avoid_: golden frames, the reference (unqualified)
 A film the parity loop scores against its reference capture; each one counts in the adoption rule, so a change that lowers any reference film by more than the adoption rule allows is not adopted.
 _Avoid_: fidelity target, parity target, pinned film
 
+**Expected score**:
+A reference film's parity score recorded for one renderer class on one measured `crates/` tree; drift is judged against it.
+_Avoid_: baseline (unqualified), pinned score
+
+**Repin**:
+Rewriting every reference film's expected scores for one renderer class from reports rendered on the current `crates/` tree.
+_Avoid_: rebaseline, hand-merging scores
+
 **Captured frame**:
 One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered by capture order and tagged with the film clock read when it was taken.
 _Avoid_: tick (for the capture ordinal)

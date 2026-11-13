@@ -255,6 +255,7 @@ fn build_report(
         credits_missing_frames: scores.iter().filter(|s| s.credits_missing).count(),
         adapter,
         archive_conflict_waived: false,
+        crates: None,
         per_frame: scores
             .iter()
             .map(|s| FrameReport {
@@ -400,6 +401,7 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
 
     let report = Report {
         archive_conflict_waived: clearance.archive_conflict_waived,
+        crates: args.crates.clone(),
         ..build_report(
             frames.len(),
             &scores,

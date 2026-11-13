@@ -2,7 +2,7 @@
 title: "Stop render PRs conflicting on references.toml expected tables"
 started: 2026-11-12
 issue: 436
-outcome: ""
+outcome: "Layout (d): reports record their crates/ tree, mise run parity-repin rewrites the expected tables, and the parity rules forbid hand-merged scores"
 ---
 
 # Stop render PRs conflicting on references.toml expected tables
