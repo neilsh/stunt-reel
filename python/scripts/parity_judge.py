@@ -90,8 +90,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Prints the verdict; exits 2 on a refused invocation, an unreadable ``references.toml``
-    or a missing report dir."""
+    """Prints the verdict; 2 on a refused invocation, unreadable references or a missing report.
+
+    A refused invocation is a bad ``--target`` or ``--track``; unreadable references are an
+    unreadable ``references.toml`` or data root; a missing report is a missing report dir.
+    """
     args = parse_args(argv)
     try:
         films = list(references.reference_films(dataroot.data_root_flag(args.data_root)))
