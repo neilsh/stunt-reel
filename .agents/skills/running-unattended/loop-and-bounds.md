@@ -4,7 +4,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
 
 ## Clock and disk space
 
-- **Clock:** If the user gave a deadline, stop starting new items 30 minutes before it (`cutoff`). Check the time before starting each item. At the deadline, if a branch has unmerged work: run `mise run fix` (fixing any lint or doc error a pre-commit hook reports, or saving an uncommittable hunk to `build/scratch/wip-<slug>.patch`), commit with a `chore: wip <summary>` subject (never `--no-verify`), push, open or update a **draft** PR with a handoff comment (what is done, what is left, last gate/CI result), and run **Shutdown**. Without a deadline, run until the queue is empty or free disk space falls under 5 GB.
+- **Clock:** If the user gave a deadline, stop starting new items 30 minutes before it (`cutoff`). Check the time before starting each item. At the deadline, if a branch has unmerged work: run `mise run fix` (fixing any lint or doc error a pre-commit hook reports, or saving an uncommittable hunk to `build/scratch/wip-<slug>.patch`), commit with a `chore: wip <summary>` subject (never `--no-verify`), push, open or update a **draft** PR with a handoff comment (what is done, what is left, last gate/CI result, and any saved `wip-<slug>.patch` inside a collapsible `<details>` block), and run **Shutdown**. Without a deadline, run until the queue is empty or free disk space falls under 5 GB.
 - **Disk space:** Check free GB on the checkout's drive (`(Get-PSDrive E).Free / 1GB`, using the checkout's drive letter) at the start, before each item, and after each merge, then tidy from the primary checkout ([`managing-worktrees`](../managing-worktrees/SKILL.md)):
   1. `mise run reap -- --yes` (removes clean worktrees whose branches have merged when free space is under `reap`'s 20 GB bar; above 20 GB it is a no-op without `--force`, which requires asking the user). A linkless worktree created since [ADR 0036](../../../docs/adr/0036-worktrees-reach-shared-state-by-configuration.md) may also be removed by the tool that made it once merged.
   2. Under **10 GB free** after reaping: create no new worktrees, and run `mise run clean -- --yes` in any kept worktree that is pushed and idle.
@@ -15,7 +15,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
 
 Build the queue at the start and refresh it after each merge. Keep the queue on your task list so compaction cannot lose it:
 
-1. **Open PRs** (`gh pr list --state open --limit 100 --json number,title,headRefName,baseRefName,isDraft,mergeable,statusCheckRollup`), in dependency or stack order (bottom layer first when `baseRefName` is not `main`).
+1. **Open PRs** (`gh pr list --state open --limit 100 --json number,title,headRefName,baseRefName,isDraft,labels,mergeable,statusCheckRollup`), skipping any PR labeled `ready-for-human` or handed off earlier in this run, in dependency or stack order (bottom layer first when `baseRefName` is not `main`).
 2. **Unblocked `ready-for-agent` issues** with no open PR (`gh issue list --label ready-for-agent --state open --limit 100 --json number,title,body,labels`), skipping any issue with open blockers or open sub-issues ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions), "Count open blockers") or carrying `in-progress`.
 3. **Unblocked issues you filed as `ready-for-agent` during this run**, only once 1 and 2 are empty.
 

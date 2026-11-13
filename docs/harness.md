@@ -212,10 +212,18 @@ inheritable `Mandatory Label\Low`, which `.venv` inherited; `icacls .venv` shows
 owner removes it with `icacls <checkout> /setintegritylevel (OI)(CI)M` and recreates `.venv`.
 Evidence and sources: [the research note](../work/2026-11/windows-sandbox-integrity-label/windows-sandbox-integrity-label-2026-11-01.md).
 
+## Antigravity
+
+Observed on this host, 2026-11-13:
+
+* **What it confines:** File tools write inside the active workspace and the conversation's artifact directory under `~/.gemini/antigravity/brain/<conversation-id>` (reads can also reach installed skills under `~/.gemini/`). When `Orchestrator (Argon)` is selected, planning and `[plan review]` turns run on Argon with editing tools (`edit_file`, `write_file`) refused until `exit_plan_mode` hands the plan to the Hydrogen execution turn.
+* **The shell it gives you:** Each `run_command` call starts a fresh Windows PowerShell process in the workspace root (`$env:` assignments and `Set-Location` do not persist across calls), so the [Windows PowerShell 5.1](#windows-powershell-51) rules below apply. Commands that run past `WaitMsBeforeAsync` continue as background tasks and wake the turn on completion; `schedule` sets one-shot timers without shell polling.
+* **Approvals and settings:** Project skills under [`.agents/skills/`](../.agents/skills/) and [`AGENTS.md`](../AGENTS.md) ship with the checkout. Model selection, sandbox mode, and command allowlists live in `~/.gemini/antigravity` on the host and cannot be committed.
+
 ## Windows PowerShell 5.1
 
 Any harness that shells out through the host's Windows PowerShell 5.1 meets these; observed
-under DeepSeek Harness (2026-10-25) and Claude Code (2026-10-31).
+under DeepSeek Harness (2026-10-25), Claude Code (2026-10-31) and Antigravity (2026-11-13).
 
 * **No `utf8NoBOM`.** `Set-Content -Encoding utf8NoBOM` fails with "Unable to match the
   identifier name utf8NoBOM to a valid enumerator name", and one sweep's writes all failed while

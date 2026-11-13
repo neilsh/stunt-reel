@@ -11,9 +11,9 @@ Part of the [`running-unattended`](SKILL.md) skill.
    - **Real and out of scope:** file an issue and reply with the link.
    - **Wrong:** reply with the evidence.
    Reply and resolve inline review threads with `mise run pr-threads -- <n> --reply <id> --resolve <id> --body-file <path>`. Answer "Outside diff" review-body findings (which have no thread ID) with `gh pr comment <n> --body-file <path>`.
-4. **CodeRabbit timeout:** Treat CodeRabbit as stuck if 20 minutes pass after the latest push with no review or status, or if its status says rate-limited or paused; note that in a PR comment and proceed.
+4. **CodeRabbit timeout:** Treat CodeRabbit as stuck if 20 minutes pass after the latest push without a completed review on `HEAD` (including when its check status stays pending), or if its status says rate-limited or paused; note that in a PR comment and proceed.
 5. **Merge bar:** Squash-merge (`gh pr merge <n> --squash --delete-branch`) only when all hold:
-   - CI is green on `HEAD` and `mise run check` passed locally on that same commit.
+   - CI is green on `HEAD`, `mise run check` passed locally on that same commit, and CodeRabbit has either completed its review of `HEAD` or hit the step 4 timeout for the latest push.
    - Zero unresolved review threads remain, every outside-diff finding is answered, and the fresh-context `inherit` review is clean.
    - Acceptance criteria are met and the PR body carries `Fixes #N` (or `Part of #N`).
    - **Allowed vs blocked changes:** Updating `[film.expected.<class>]` in `research/parity/references.toml` for an adopted parity change is **allowed** to merge (`crates` must be `git rev-parse HEAD:crates` with `crates/` clean). **Never** merge draft PRs, PRs that repin a film's capture hash (`sha256` or `all_sha256` in `references.toml`), PRs that add a dependency to `stunt-core` (`[I7]`), or PRs that add or modify an ADR (unless an accepted ADR is already approved by the user) — hand those to a human (`ready-for-human`).
