@@ -162,7 +162,7 @@ Changes to [`python/scripts/parity_sweep.py`](../../../python/scripts/parity_swe
 
   The existing 0.002 note on a winner's lead over the runner-up stays.
 - **Stderr.** One line lists every frame down by more than 0.005. Another counts, per film, the frames outside the target that moved by more than 0.005.
-- **Edge frames.** With `--target`, a third line flags each frame outside a range but within one captured frame of its edge, that is the baseline's nearest scored tick before or after the range, that falls by more than 0.025 in SSIM. It reports only and is not a guard (Q47). R6's `INTRO` 2740, one frame past its range, prompted it, but fell 0.0219 and so would not be flagged.
+- **Edge frames.** With `--target`, a third line flags each frame outside a range but within one captured frame of its edge, that is the baseline's nearest scored tick before or after the range, that falls by more than 0.010 in SSIM. It reports only and is not a guard (Q47). It flags R6's `INTRO` 2740 (-0.0219), one frame past its range.
 
 ## 4. Pictures
 
@@ -228,7 +228,7 @@ All offline, on synthetic data, in [`tests/test_parity_sweep.py`](../../../tests
   - The lowest-Δ frame comes first.
   - Picks keep the 50-tick spacing, then 25, and never closer.
   - Guard pictures fall outside the cap.
-- **Edge frames.** A frame just outside a range that falls by more than 0.025 is flagged on stderr and does not change the verdict; a frame two captured frames out is not flagged (Q47).
+- **Edge frames.** A frame just outside a range that falls by more than 0.010 is flagged on stderr and does not change the verdict; a frame two captured frames out is not flagged (Q47).
 - **Picture layout.** Drawing a synthetic capture beside two synthetic renders gives the expected panel order, width, divider and file name.
 
 No GPU run is needed for the tests. The spike (§ 1) is the check on the bounds. The first targeted round after both PRs land is the field test of the pictures, and its journal entry says so. The first heuristic targeted round is likewise the field test of the target branch, which no spike case ran (Q41).
@@ -292,7 +292,7 @@ Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day af
 | Q44 | The target test is taken per target range, not pooled: R6's `CTRY` range falls -0.035 while an `INTRO` range rises, and the pooled mean barely rejects it. The per-range condition has never judged a case it would run on (heuristic track only; Q41). |
 | Q45 | The 3-frame minimum stays; a case at the minimum is reported as thin evidence. |
 | Q46 | A `--target` range that holds no captured tick stops the sweep before rendering; one that holds no tick the baseline scores gives no verdict. A range of one scored frame is accepted: the 3-frame minimum counts every range together, and the per-range condition only adds a way to reject. |
-| Q47 | A frame outside a range but within one captured frame of its edge that falls by more than 0.025 in SSIM is flagged on stderr. It reports only and is not a guard. It was prompted by R6's `INTRO` 2740, which at -0.0219 it would not flag. |
+| Q47 | A frame outside a range but within one captured frame of its edge that falls by more than 0.010 in SSIM is flagged on stderr. It reports only and is not a guard. It flags R6's `INTRO` 2740 (-0.0219), which prompted it. Revised from 0.025, which would not have flagged 2740; a report costs little when wrong, and 0.010 stays above the 0.005 listing. |
 | S1 | The baseline is each `--var`'s first listed value, so no new flag is needed. |
 | S2 | `--target` and `--track` refuse a `--films` subset, because the guards cover every reference film. |
 | S3 | Per-frame Δ is taken over the ticks the baseline scores, a repeated tick counting once by its first frame. Tightened by Q37. |
