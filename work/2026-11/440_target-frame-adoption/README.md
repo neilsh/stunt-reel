@@ -11,4 +11,4 @@ The spec is [spec.md](spec.md). The spike that rescored known adoptions, rejecti
 
 ## Handoff
 
-2026-11-12: the spike (spec § 1) is done, and the user settled the target metric and the bounds from it (spec § 1.3, Q40 to Q45; Q46 and Q47 after a review). PR 1 (spec § 7) is next and not started. The work is on branch `claude/stoic-easley-065cbe`, not yet pushed.
+2026-11-12: the spike (spec § 1) is done, and the user settled the target metric and the bounds from it (spec § 1.3, Q40 to Q45; Q46 and Q47 after a review; Q48 after a third). The spec and spike are in [PR #442](https://github.com/neilsh/stunt-reel/pull/442), branch `claude/stoic-easley-065cbe`. Next: PR 1 (spec § 7), not started.

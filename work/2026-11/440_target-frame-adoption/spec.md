@@ -1,6 +1,6 @@
 # Spec: adopt a render change on its target frames, guarded per frame
 
-Issue [#440](https://github.com/neilsh/stunt-reel/issues/440). Design agreed 2026-11-12 by grilling: decisions Q1 to Q31, then Q32 to Q39 after a review, Q40 to Q45 from the spike, and Q46 and Q47 after a review of it. S1 to S9 came from checking the design against the code. Some later decisions revise earlier ones; the Decisions table at the end marks which.
+Issue [#440](https://github.com/neilsh/stunt-reel/issues/440). Design agreed 2026-11-12 by grilling: decisions Q1 to Q31, then Q32 to Q39 after a review, Q40 to Q45 from the spike, Q46 and Q47 after a review of it, and Q48 after a third review. S1 to S9 came from checking the design against the code. Some later decisions revise earlier ones; the Decisions table at the end marks which.
 
 ## Intent
 
@@ -63,13 +63,13 @@ For each case and film, the spike entry records:
 
 The user settled these on 2026-11-12 from [the journal's](journal.md) numbers (Q40 to Q45):
 
-1. **The target metric** is index agreement. A2 passes only on it (target +0.0193, SSIM -0.0011). Whole-frame SSIM is printed beside it.
-2. **The heuristic target bar** stays +0.010, now on index agreement. A2 clears it (+0.0193) and no rejected case does, but every spike case is evidence-backed, A2 included, so the heuristic target branch has judged no case it would run on. A2 and R6 illustrate the +0.010 bar, the per-range condition and the majority condition; they do not validate them. It was not tuned at its margin.
-3. **The per-frame bound** is **0.025** in whole-frame SSIM, on the target frames only, hard on both tracks. The worst target frame of a case adopted or kept was -0.0164 (R1), and of a rejected case -0.0345 (R6, `CTRY`): 0.025 is the midpoint. Whole-film counts of falling frames do not separate cases (A3 adopted with 18 frames down more than 0.010; F1 has 20), so they are listed and not bounded. It is a measured separation on one rejected case of 3 frames: the bound sits 0.0095 inside R6's mildest fall (-0.0345), and R6's worst frame, `CTRY` 871 (-0.0639), is the one #407's rejection already rested on.
+1. **The target metric** is index agreement. A2's pooled target mean clears the bar only on it (target +0.0193, SSIM -0.0011). Whole-frame SSIM is printed beside it.
+2. **The heuristic target bar** stays +0.010, now on index agreement. A2 clears it (+0.0193) and no rejected case does. But only 1 of A2's 3 target frames rose, so the majority condition (§ 2.1, condition 3; Q48) would reject it: had A2 been a heuristic change, the target branch would not have adopted the one adopted case with a valid target. Every spike case is evidence-backed, A2 included, so the heuristic target branch has judged no case it would run on. A2 and R6 illustrate the +0.010 bar, the per-range condition and the majority condition; they do not validate them. It was not tuned at its margin.
+3. **The per-frame bound** is **0.025** in whole-frame SSIM, on the target frames only, hard on both tracks. The worst target frame of a case adopted or kept was -0.0164 (R1), and the mildest target-frame fall of the rejected case R6 was -0.0345 (`CTRY`; its worst -0.0639): 0.025 is the midpoint. F1, a planted fault, falls by at least 0.045 on every target frame. Whole-film counts of falling frames do not separate cases (A3 adopted with 18 frames down more than 0.010; F1 has 20), so they are listed and not bounded. It is a measured separation on one rejected change of 3 frames: R6's mildest fall (-0.0345) lies 0.0095 beyond the bound, and R6's worst frame, `CTRY` 871 (-0.0639), is the one #407's rejection already rested on.
 4. **The minimum of scored target frames** stays 3. A2 sits on it, so a case at the minimum is reported as thin evidence; A1's second range (2 frames) has no valid target.
 5. **The film-mean bar** stays 0.002 (Q17). R4 and R5 fall by more than it on four films each; R6 passes it, so only the per-frame bound rejects that case.
 
-**What counted as passing, and how it came out.** A1 to A3 should adopt, and the rejected cases should not. A2 and A3 adopt; A1's target falls on both metrics (partly selection, above); R4 and R5 are rejected by the film-mean bar. R6 is evidence-backed, so the target branch never runs on it, and only the 0.025 per-frame bound rejects it. The one fault re-tested, actors removed, lowers SSIM on both `CTRY` and `INTRO`, so no SSIM-raising fault is known there and no false adoption of that kind was tested. "No false rejection" and "no false adoption" are reported separately; neither proves the bounds right.
+**What counted as passing, and how it came out.** A1 to A3 should adopt, and the rejected cases should not. A2 and A3 adopt, A2 on its film means (the heuristic target branch would reject it, item 2); A1's target falls on both metrics (partly selection, above); R4 and R5 are rejected by the film-mean bar. R6 is evidence-backed, so the target branch never runs on it, and only the 0.025 per-frame bound rejects it. Only one fault was re-tested: actors removed, which lowers SSIM on both `CTRY` and `INTRO`. The bench's other faults have not been re-scored, so no SSIM-raising fault was tested and no false adoption of that kind was tested. "No false rejection" and "no false adoption" are reported separately; neither proves the bounds right.
 
 ## 2. The adoption rule
 
@@ -82,10 +82,10 @@ Replaces the **Adoption rule** section of [`loop-rules.md`](../../../.agents/ski
 | Evidence-backed | at least one film rises | none. The target mean is reported as attribution (Q34). |
 | Heuristic | every film above +0.002, or one above +0.004 | see the three conditions below |
 
-The heuristic target branch adopts when all three hold (Q15, Q36, Q40, Q44), the target mean being the mean change in index agreement:
+The heuristic target branch adopts when all three hold (Q15, Q36, Q40, Q44, Q48), the target mean being the mean change in index agreement:
 1. the pooled target mean rises by more than +0.010;
 2. each target range's own target mean rises, a range being one `--target` flag, so that a gain in one range cannot hide a fall in another (R6);
-3. more than half of all scored target frames rise.
+3. at least half of all scored target frames rise.
 
 **Why the target branch is heuristic-only.** Under the evidence-backed track, the film-mean branch adopts whenever any film rises. A target branch could only add adoptions where the target frames rose and the film as a whole did not, that is, where the other frames fell by more (Q34).
 
@@ -163,7 +163,7 @@ Changes to [`python/scripts/parity_sweep.py`](../../../python/scripts/parity_swe
 
   The existing 0.002 note on a winner's lead over the runner-up stays.
 - **Stderr.** One line lists every frame down by more than 0.005. Another counts, per film, the frames outside the target that moved by more than 0.005.
-- **Edge frames.** With `--target`, a third line flags each frame outside a range but within one captured frame of its edge, that is the baseline's nearest scored tick before or after the range, that falls by more than 0.010 in SSIM. It reports only and is not a guard (Q47). It flags R6's `INTRO` 2740 (-0.0219), one frame past its range.
+- **Edge frames.** With `--target`, a third line flags the baseline's nearest scored tick before and after each range when it falls by more than 0.010 in SSIM. It reports only and is not a guard (Q47). It flags R6's `INTRO` 2740 (-0.0219), the nearest scored tick after its range.
 
 ## 4. Pictures
 
@@ -208,7 +208,7 @@ All offline, on synthetic data, in [`tests/test_parity_sweep.py`](../../../tests
 - **Target test and guards.** Pure functions over two variants' per-frame scores. Cover:
   - each bound, either side;
   - the pooled mean and the per-range condition over two ranges, one of which falls;
-  - the majority condition;
+  - the majority condition, including exactly half of the target frames rising, which passes (Q48);
   - the 3-frame minimum;
   - a range holding one scored frame, judged on that frame alone (Q46);
   - a tick captured twice;
@@ -229,7 +229,7 @@ All offline, on synthetic data, in [`tests/test_parity_sweep.py`](../../../tests
   - The lowest-Δ frame comes first.
   - Picks keep the 50-tick spacing, then 25, and never closer.
   - Guard pictures fall outside the cap.
-- **Edge frames.** A frame just outside a range that falls by more than 0.010 is flagged on stderr and does not change the verdict; a frame two captured frames out is not flagged (Q47).
+- **Edge frames.** The baseline's nearest scored tick before or after a range, falling by more than 0.010, is flagged on stderr and does not change the verdict; a scored tick beyond it is not flagged (Q47).
 - **`judge` task.** On two fixture report trees, `mise run judge` prints the same table and winner line as a sweep given the same per-frame scores (S9).
 - **Picture layout.** Drawing a synthetic capture beside two synthetic renders gives the expected panel order, width, divider and file name.
 
@@ -245,7 +245,7 @@ PR 2 finishes the item: it writes this folder's README `outcome` and closes #440
 
 ## Decisions
 
-Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day after a review. Q40 to Q45 were settled from the spike, and Q46 and Q47 after a review of it. S1 to S9 are calls made while writing the spec against the code. "Revised by" marks a decision a later one changed.
+Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day after a review. Q40 to Q45 were settled from the spike, Q46 and Q47 after a review of it, and Q48 after a third review. S1 to S9 are calls made while writing the spec against the code. "Revised by" marks a decision a later one changed.
 
 | # | Decision |
 |---|---|
@@ -282,19 +282,20 @@ Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day af
 | Q32 | A spike rescores known adoptions, known rejections and one SSIM-raising fault before any rule is written. Its results settle the metric and the bounds. |
 | Q33 | Index agreement is printed beside SSIM on target frames. Settled by Q40: it is the target metric. |
 | Q34 | The target branch is heuristic-only. On the evidence-backed track the target mean is attribution. |
-| Q35 | The per-frame bound is hard on the heuristic track. On the evidence-backed track, falls above 0.005 are listed, pictured and explained in the journal. |
-| Q36 | Heuristic target branch: each targeted film's target mean rises, and most target frames rise, as well as the pooled bar. Revised by Q44: each target range, not each film. |
+| Q35 | The per-frame bound is hard on the heuristic track. On the evidence-backed track, falls above 0.005 are listed, pictured and explained in the journal. Revised by Q43: 0.025, target frames only, hard on both tracks. |
+| Q36 | Heuristic target branch: each targeted film's target mean rises, and most target frames rise, as well as the pooled bar. Revised by Q44: each target range, not each film. Revised by Q48: at least half, not most. |
 | Q37 | A tick lost from the baseline's scored set, or a failed variant film, rejects the variant. A failed baseline film gives no verdict. |
 | Q38 | 5 pictures per targeted film; spacing never below 25 ticks. |
 | Q39 | Judge after every variant finishes, from per-frame scores held in memory. Re-render the chosen ticks for pictures. Adopting variants rank first, and `winner: none adopts` prints when none does. Echo `--target` on stdout. Test the join against `compare.json`. Compare unrounded values. |
 | Q40 | The target metric is index agreement (the spike, 2026-11-12). Whole-frame SSIM is printed beside it. |
 | Q41 | The heuristic target bar stays +0.010, on index agreement; not tuned at its margin. No spike case is heuristic, so the bar has judged no case it would run on; A2 illustrates it and does not validate it. |
 | Q42 | The film-mean bar stays 0.002; R4 and R5 are rejected by it, R6 passes it. |
-| Q43 | The per-frame bound is 0.025 in whole-frame SSIM, on the target frames only, hard on both tracks; no whole-film bound (counts do not separate cases). It revises Q16, Q29 and Q35. A measured separation on one rejected case of 3 frames (R6, mildest fall -0.0345, 0.0095 outside the bound; its worst frame 871 is the one #407 already rejected on) against kept cases (R1 -0.0164): the midpoint of the gap. |
-| Q44 | The target test is taken per target range, not pooled: R6's `CTRY` range falls -0.035 while an `INTRO` range rises, and the pooled mean barely rejects it. The per-range condition has never judged a case it would run on (heuristic track only; Q41). |
+| Q43 | The per-frame bound is 0.025 in whole-frame SSIM, on the target frames only, hard on both tracks; no whole-film bound (counts do not separate cases). It revises Q16, Q29 and Q35. A measured separation on one rejected case of 3 frames (R6, mildest fall -0.0345, 0.0095 beyond the bound; its worst frame 871 is the one #407 already rejected on) against kept cases (R1 -0.0164): the midpoint of the gap. |
+| Q44 | The target test is taken per target range, not pooled: R6's `CTRY` range falls -0.035 while an `INTRO` range rises. Under the +0.010 bar the pooled mean (-0.0021) already rejects R6, so no case yet shows the per-range condition deciding a verdict. It has never judged a case it would run on (heuristic track only; Q41). |
 | Q45 | The 3-frame minimum stays; a case at the minimum is reported as thin evidence. |
 | Q46 | A `--target` range that holds no captured tick stops the sweep before rendering; one that holds no tick the baseline scores gives no verdict. A range of one scored frame is accepted: the 3-frame minimum counts every range together, and the per-range condition only adds a way to reject. |
-| Q47 | A frame outside a range but within one captured frame of its edge that falls by more than 0.010 in SSIM is flagged on stderr. It reports only and is not a guard. It flags R6's `INTRO` 2740 (-0.0219), which prompted it. Revised from 0.025, which would not have flagged 2740; a report costs little when wrong, and 0.010 stays above the 0.005 listing. |
+| Q47 | The baseline's nearest scored tick before and after each range is flagged on stderr when it falls by more than 0.010 in SSIM. It reports only and is not a guard. It flags R6's `INTRO` 2740 (-0.0219), which prompted it. Revised from 0.025, which would not have flagged 2740; a report costs little when wrong, and 0.010 stays above the 0.005 listing. |
+| Q48 | The majority condition is at least half of the scored target frames rising, not more than half, so an even split no longer rejects. It revises Q36. It changes no spike verdict: A2 (1 of 3), A1 (2 of 7), R1 (3 of 7) and R6 (3 of 9) all stay below half. A2, the one adopted case with a valid target, fails it, so on the heuristic track the target branch would not have adopted A2. |
 | S1 | The baseline is each `--var`'s first listed value, so no new flag is needed. |
 | S2 | `--target` and `--track` refuse a `--films` subset, because the guards cover every reference film. |
 | S3 | Per-frame Δ is taken over the ticks the baseline scores, a repeated tick counting once by its first frame. Tightened by Q37. |

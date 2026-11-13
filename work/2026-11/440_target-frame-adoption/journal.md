@@ -22,6 +22,8 @@
   - R2 and R3 are not yet rebuilt. `DBG_INCLUSIVE` values 1 and 3 need a conservative-rasterization state and a line-list edge pass, as described in [#430's journal](../430_world-mesh-slivers/journal.md). Each is dropped if its rebuild cannot reproduce #430's column for that value.
 - **Verdict**: no scores yet. Scoring starts only after the open items above are fixed or dropped, and the user has reviewed this table.
 
+- **Lives in**: none: a pre-registration. Approximate ranges are also in `spec.md` § 1.1.
+
 ## 2026-11-12: spike results for A1–A3
 
 - **Method**: four release builds (`mise run build-at`) of `9bc0fb78`, `dd9a22cf`, `826ddddd` and `59d62f12`, each rendered and scored by `mise run parity -- --no-build` on all seven films. Candidate minus baseline on each scored tick, from each `report.json`'s `per_frame` (`ssim`, `index_agreement`), over the ticks the baseline scores; no tick was lost. The scoring script is scratch (`build/scratch/spike/score.py`, not committed).
@@ -44,12 +46,16 @@
   - The four questions to the user (target metric, heuristic bar, per-frame bound, 3-frame minimum) are not yet put, since § 1 needs R1–R3 and F1 for the "what counts as passing" check.
 - **Verdict**: no bound is written. A1 is the open case: its target frames fell, so the heuristic target rule would reject an adopted change.
 
+- **Lives in**: none yet; PR 1 records the spike in [`evidence-limits.md`](../../../research/parity/evidence-limits.md).
+
 ## 2026-11-12: F1's range fixed before planting
 
-- **Question**: which `CTRY` range the actors-removed fault (F1) is planted on, fixed before the fault is planted or scored (`spec.md` § 1, Q3).
+- **Question**: which `CTRY` range the actors-removed fault (F1) is planted on, fixed before the fault is planted or scored (`spec.md` § 1.1).
 - **Method**: the scored ticks of `CTRY` at `9bc0fb78` (114 scored, baseline `report.json`). Actor pixels per tick: the count of pixels whose layer is at or above the bench's `ACTOR_LAYER` (16) in that render's layer plane. The capture stores no layer plane, so the render's is the only per-pixel actor count available; the fault removes exactly those pixels, so this is the quantity it changes. For each run of 20 consecutive scored ticks, the summed actor pixels; the densest run is taken. Scratch script `build/scratch/spike/f1_range.py` (not committed).
 - **Result**: the densest run is ticks 485 to 694 (20 scored ticks, 52,217 actor pixels in total; per tick 2,074 to 2,874). Target range for F1: `ctry:485-694`.
 - **Verdict**: fixed. F1 is planted on `ctry:485-694` only; no other range is tried.
+
+- **Lives in**: none: a pre-registration.
 
 ## 2026-11-12: F1 scored: the actors-removed fault lowers SSIM on `CTRY`
 
@@ -62,6 +68,8 @@
 
 - **Observation**: the fault falls on every target frame. The spec expected an SSIM-raising fault (`metric-bench.md` § 2.2 reported `ssim` rising 15σ on `CTRY` when actors were removed), and this range does not show that. Possible causes, not tested: the bench measured a different build and reference (`2461289` against `004`/`005`), and a dense actor range differs from the bench's whole-film average. The fault is therefore not the SSIM-raising case the spike needed; whether to keep it as a rejection case is a question for the user (see the spike's open questions).
 - **Verdict**: F1 as planted here is a fault SSIM already rejects (it moves the score down by more than the 0.010 bound on every target frame), so it tests nothing about false adoption. Reported, not replaced.
+
+- **Lives in**: [`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.2, superseded there by F1b (second-round results below).
 
 ## 2026-11-12: R1 rebuilt and scored; R2 and R3 dropped
 
@@ -79,12 +87,12 @@
   | `LOCATION` | 0.8134 | 0.81371 | +0.00031 | +0.0036 | +0.00344 | −0.00016 |
 
 - **Verdict**: R1 **dropped** under the rule as written: the absolute column is not reproduced within 0.0005 on `INTRO` (+0.0006) and `BOMB` (+0.0017). Two things are not the same in the two runs: their baselines differ (`BOMB` 0.8129 in #426 against 0.8143 at `9bc0fb78`; `INTRO` 0.8437 against 0.8443), so the absolute column also carries that offset. Measured as the change over each run's own baseline, every film agrees within 0.0005 (`TRAINTNL` at −0.00046 is the closest). Whether the rule should compare deltas is a question for the user, not decided here.
-- **R2 and R3 dropped** (`spec.md` § 1, Q4, approved): `DBG_INCLUSIVE` values 1 and 3 are not rebuilt. The spec's rule is to keep a rejected case only if its switch can be rebuilt from its journal; #430's journal records their description and the scores but not the conservative-rasterization state or the line-list pass as code, and a rebuild that could not be checked against #430's column would not be evidence. Stated plainly: dropped for lack of a checkable rebuild, not because their scores were looked at.
+- **R2 and R3 dropped** (approved by the user): `DBG_INCLUSIVE` values 1 and 3 are not rebuilt. The spec's rule is to keep a rejected case only if its switch can be rebuilt from its journal; #430's journal records their description and the scores but not the conservative-rasterization state or the line-list pass as code, and a rebuild that could not be checked against #430's column would not be evidence. Stated plainly: dropped for lack of a checkable rebuild, not because their scores were looked at.
 - **Summary of the spike, as scored**:
 
   | Case | Verdict (provisional) | Film mean ΔSSIM range (films) | Target ΔSSIM / ΔIdx | Frames > 0.005 / > 0.010 down |
   |---|---|---|---|---|
-  | A1 | rejected by the SSIM target test; adopted by the film means (false rejection under SSIM, per Q2) | −0.00111 to +0.00303 | −0.00503 / −0.00334 | 127 / 56 |
+  | A1 | rejected by the SSIM target test; adopted by the film means (a false rejection under SSIM) | −0.00111 to +0.00303 | −0.00503 / −0.00334 | 127 / 56 |
   | A2 | adopted on the index test (target ΔIdx +0.0193; SSIM −0.0011) | −0.00041 to +0.00756 (ΔIdx) | −0.00113 / +0.01934 | 11 / 6 |
   | A3 | adopted (all seven films up) | +0.00021 to +0.00503 | none | 68 / 18 |
   | R1 | dropped (rebuild outside 0.0005 on 2 films) | see the table above | — | — |
@@ -93,9 +101,11 @@
 
 - **Not done**: the index-agreement check (`report.json`'s per-frame `index_agreement` against the spec's definition) is still unverified; the four questions to the user are not yet put.
 
+- **Lives in**: none yet; PR 1 records the spike in [`evidence-limits.md`](../../../research/parity/evidence-limits.md).
+
 ## 2026-11-12: the user's answers, and target-frame drops scored
 
-- **Answers** (user, all six as recommended): (Q1) the target-frame test uses index agreement, A1 reported as a known false rejection of it; (Q2) film-mean bar: no reference film's mean SSIM falls by 0.002 or more; (Q3) the per-frame bound guards the target range only, no whole-film count; (Q4) keep the 3 scored target frame minimum, and report a case at the minimum as thin evidence; (Q5) keep F1 as a rejection sanity case and record that no SSIM-raising fault has been tested; (Q6) the R1 rebuild is compared by delta over its own baseline, so R1 is reinstated and its target scored. This reverses the R1 drop in the previous entry.
+- **Answers** of the first round (user, all six as recommended; numbered here, not the spec's Q numbers): (answer 1) the target-frame test uses index agreement, A1 reported as a known false rejection of it; (answer 2) film-mean bar: no reference film's mean SSIM falls by 0.002 or more; (answer 3) the per-frame bound guards the target range only, no whole-film count; (answer 4) keep the 3 scored target frame minimum, and report a case at the minimum as thin evidence; (answer 5) keep F1 as a rejection sanity case and record that no SSIM-raising fault has been tested; (answer 6) the R1 rebuild is compared by delta over its own baseline, so R1 is reinstated and its target scored. This reverses the R1 drop in the previous entry.
 - **Method**: as above; per-frame `ssim` and `index_agreement` of each case minus its baseline over the baseline's scored ticks in the target range (scratch `build/scratch/spike/target_worst.py`, not committed). F1 re-scored from the planted store.
 - **Result** (Δ = candidate − baseline; worst = the most negative single frame):
 
@@ -114,23 +124,29 @@
 - **Proposal for the bound, not a rule**: a target frame may fall by at most 0.030 SSIM (the midpoint of the gap, rounded). It rests on four cases, one of which (F1) is not an SSIM-raising fault, so it is a starting point to be re-tested, not a measured bound.
 - **Not done**: R2 and R3 stay dropped; the index-agreement definition check (`report.json` against the spec's) and any SSIM-raising false-adoption case are open. PR 1 and PR 2 are not started.
 
+- **Lives in**: none yet; PR 1 writes the rule into [`loop-rules.md`](../../../.agents/skills/improving-render-parity/loop-rules.md) and the spike into `evidence-limits.md`.
+
 ## 2026-11-12: corrections after an independent review of the spike
 
 An independent script (written without the scratch scripts here) reproduced every film Δ, target mean, worst frame, rise count and falling-frame count (127/56, 11/6, 68/18), with no tick lost. It raised the following, each checked against the code or journals below.
 
 - **Index agreement is closed.** `report.json`'s `index_agreement` is `parity::mask::index_agreement` (`crates/stunt-cli/src/parity/mask.rs`): the fraction of non-overlay pixels whose index equals the capture's. That is the measure the spec quotes for #428. Remove it from the "Not done" lists above.
 - **R1 is not a rejection case.** In [#426's journal](../426_intro-conifers/journal.md) `POLY_EDGES=1` scored above the adopted `OUTLINE=3` on five films (`CTRY`, `BALLOON`, `TRAINTNL`, `BOMB`, `LOCATION`) and below it on two (`INTRO` 0.8455 against 0.8460, `LAND` 0.8662 against 0.8666). It was set aside for cost (outlining the world mesh multiplied `LOCATION`'s vertices about five times), not for its score, and #434 (A3) later adopted the props-only outline as a line list. The spec § 1 table's "rejected" for R1 is an error. "The index test rejects R1" therefore is not evidence for the rule, and R1 is not counted as a rejected case.
-- **A1's target range is suspect.** `intro:3235-3301` was pre-registered above from R1's worst movers in #426, where our camera sits a few pixels off the capture's, so added detail lands in the wrong place and any change that adds detail there will probably score lower. A1's falling target is at least partly a selection effect, so it is not a clean false rejection of the index test. The range was fixed before scoring; the weakness showed only afterwards. This qualifies the Q1 answer's "A1 reported as a known false rejection".
+- **A1's target range is suspect.** `intro:3235-3301` was pre-registered above from R1's worst movers in #426, where our camera sits a few pixels off the capture's, so added detail lands in the wrong place and any change that adds detail there will probably score lower. A1's falling target is at least partly a selection effect, so it is not a clean false rejection of the index test. The range was fixed before scoring; the weakness showed only afterwards. This qualifies first-round answer 1's "A1 reported as a known false rejection".
 - **A claim above is wrong.** "Only 7 of the 67 ticks in `3235-3301` are scored" is wrong: the film holds a frame every 11 ticks, so the range has 7 frames and all 7 are scored (checked in the baseline report).
 - **Consequence.** The spike has no valid rejected case (R1 invalid, R2 and R3 dropped) and no SSIM-raising fault (F1 lowers SSIM). The proposed 0.030 per-frame SSIM bound separates F1 from A1, A2 and R1, but has not been tested against any change the rule should reject, so it stays a starting point.
 
+- **Lives in**: none yet; PR 1 records the spike in [`evidence-limits.md`](../../../research/parity/evidence-limits.md).
+
 ## 2026-11-12: second-round cases fixed before scoring
 
-Answers (user, `y` to all four): (Q1) PR 1 and the spec's bounds wait for a valid rejected case and an SSIM-raising fault; (Q2) R2 is rebuilt, kept only if it reproduces #430's column; (Q3) the actors-removed fault is planted over every scored tick of `CTRY` and `INTRO`; (Q4) A1 gets a second target from #429's own evidence.
+Answers of the second round (user, `y` to all four): (answer 1) PR 1 and the spec's bounds wait for a valid rejected case and an SSIM-raising fault; (answer 2) R2 is rebuilt, kept only if it reproduces #430's column; (answer 3) the actors-removed fault is planted over every scored tick of `CTRY` and `INTRO`; (answer 4) A1 gets a second target from #429's own evidence.
 
-- **A1b target.** #429 (`dd9a22cf`) names `INTRO` ticks 3290 and 3301 as its symptom ([#429's PR body](https://github.com/neilsh/stunt-reel/pull/429), from #426's issue); its pictures also show 3323, but those are the ticks that *gained most*, so a range built on them is chosen from the result and is not used. Target: `intro:3290-3301`. It holds 2 frames, below the 3 frame minimum of Q4, so the case is reported as having no valid target whatever its numbers. Weakness: both ticks lie inside the first range, whose per-tick Δs are already in the earlier tables, so this range is not blind.
-- **F1b ranges.** `actors_removed` planted on the `9bc0fb78` renders over every scored tick of `CTRY` (114) and of `INTRO` (209), one fault run per film. No other range is tried. If SSIM still falls on both films, no SSIM-raising fault exists on these two films and the false-adoption protection rests on the film-mean bar.
+- **A1b target.** #429 (`dd9a22cf`) names `INTRO` ticks 3290 and 3301 as its symptom ([#429's PR body](https://github.com/neilsh/stunt-reel/pull/429), from #426's issue); its pictures also show 3323, but those are the ticks that *gained most*, so a range built on them is chosen from the result and is not used. Target: `intro:3290-3301`. It holds 2 frames, below the 3 frame minimum (first-round answer 4, spec Q45), so the case is reported as having no valid target whatever its numbers. Weakness: both ticks lie inside the first range, whose per-tick Δs are already in the earlier tables, so this range is not blind.
+- **F1b ranges.** `actors_removed` planted on the `9bc0fb78` renders over every scored tick of `CTRY` (114) and of `INTRO` (209), one fault run per film. No other range is tried. If SSIM still falls on both films, this fault does not raise SSIM on them, and the false-adoption protection rests on the film-mean bar.
 - **R2 rebuild.** `DBG_INCLUSIVE=1` from #430's journal on `dd9a22cf`: the world drawn through the base and decal pipelines with `PrimitiveState::conservative`, the world's line quads narrowed to a thousandth of their width. Kept as a rejected case only if every film's score is within 0.0005 of #430's column (`CTRY` 0.8961, `INTRO` 0.8480, `LAND` 0.8653, `BALLOON` 0.8127, `TRAINTNL` 0.8545, `BOMB` 0.8158, `LOCATION` 0.8069); #430's base is `dd9a22cf` itself, so absolute values are comparable here. Its target: none (broad change). Not scored yet.
+
+- **Lives in**: none: a pre-registration.
 
 ## 2026-11-12: second-round results: A1b, F1b and R2
 
@@ -142,7 +158,7 @@ Answers (user, `y` to all four): (Q1) PR 1 and the spec's bounds wait for a vali
   | `CTRY` | 114 | −0.02922 | 6 | −0.0724 / +0.0002 | −0.01499 |
   | `INTRO` | 209 | −0.05093 | 26 | −0.2408 / +0.0153 | −0.03968 |
 
-  The fault lowers SSIM on both whole films, so no SSIM-raising fault exists on these two (`[Bounded Observation]`, one fault, two films). The false-adoption protection stays the film-mean bar. The bench's earlier "removing actors raises `ssim`" (`metric-bench.md` § 2.2, 2026-10-31) is not reproduced on the current render.
+  The fault lowers SSIM on both whole films (`[Bounded Observation]`, one fault, two films). Only this fault was re-tested; the bench's other faults have not been re-scored. The false-adoption protection stays the film-mean bar. The bench's earlier "removing actors raises `ssim`" (`metric-bench.md` § 2.2, 2026-10-31) is not reproduced on the current render.
 - **R2 rebuilt** from #430's description on a scratch worktree of `dd9a22cf` (not committed): the world drawn through copies of the base and decal pipelines with `PrimitiveState::conservative`, the `CONSERVATIVE_RASTERIZATION` device feature requested, and the world's line quads (model layer 0) narrowed to a thousandth of their width in the vertex shader; `DBG_INCLUSIVE=1`, all seven films by `mise run parity -- --no-build`.
 
   | Film | #430 `1` | R2 rebuilt | Diff | #430 Δ over base | R2 Δ over `dd9a22cf` |
@@ -156,12 +172,14 @@ Answers (user, `y` to all four): (Q1) PR 1 and the spec's bounds wait for a vali
   | `LOCATION` | 0.8069 | 0.80713 | +0.00023 | −0.0023 | −0.00202 |
 
   The baselines agree with #430's to four places, so absolute values are comparable. R2 reproduces the signs of six films but misses #430's column by more than 0.0005 on `CTRY`, `LAND` and `BALLOON`.
-- **Verdict**: R2 **dropped** under the Q2 rule. The spike still has no valid rejected case. The rebuild may differ from #430's switch in what narrowed (here: every world line quad, by layer), which the journal does not specify; whether conservative rasterization was active was not checked beyond the adapter reporting the feature. R3 stays dropped.
+- **Verdict**: R2 **dropped** under second-round answer 2. The spike still has no valid rejected case. The rebuild may differ from #430's switch in what narrowed (here: every world line quad, by layer), which the journal does not specify; whether conservative rasterization was active was not checked beyond the adapter reporting the feature. R3 stays dropped.
 - **Consequence for the bound**: the 0.030 per-frame SSIM bound has still not been tested against a change the rule should reject, and no SSIM-raising fault is available. Recommendation for the user, not a rule: write the film-mean bar and the target test, label the per-frame bound unvalidated, and take a real rejected case from the next change that scores a target and a film worse (the spec's own case list gains it then).
+
+- **Lives in**: F1b: [`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.2. A1b and R2: none yet; PR 1 records the spike in [`evidence-limits.md`](../../../research/parity/evidence-limits.md).
 
 ## 2026-11-12: third-round rejected cases from #255, fixed before scoring
 
-You suggested looking at past rejected cases. [#255's journal](../255_sp1node-lens/journal.md) ("rescoring the per-frame gate") records two per-frame `SP_1NODE` gate variants that were rejected on their scores, against the static rule at `1308da0`, with a full seven-film column each and a variant switch simple enough to rebuild from the committed code.
+The user suggested looking at past rejected cases. [#255's journal](../255_sp1node-lens/journal.md) ("rescoring the per-frame gate") records two per-frame `SP_1NODE` gate variants that were rejected on their scores, against the static rule at `1308da0`, with a full seven-film column each and a variant switch simple enough to rebuild from the committed code.
 
 - **Cases** (both evidence-backed track, candidate against the static rule `1308da0`):
 
@@ -172,8 +190,10 @@ You suggested looking at past rejected cases. [#255's journal](../255_sp1node-le
 
   Baseline column (static rule at `1308da0`): 0.8973, 0.8344, 0.8656, 0.8008, 0.8511, 0.7998, 0.7909. The adopted variant (`123a2d9`, depth halved and shifted) is not a case here.
 - **Rebuild**: `123a2d9` with the one line of `CameraTransform::lod_keeps_subtree` (`crates/stunt-core/src/contracts/trajectory.rs`) that divides the depth chosen by an environment switch: `0` no division, `1` by `1 << shift`, `2` (committed) by `2 << shift`. Scratch worktree, not committed.
-- **Keep rule** (as Q2 and Q6): a case stays only if each film's score is within 0.0005 of #255's column, absolute values (and as a delta over its own baseline if the baselines differ by more than 0.0005). Otherwise it is dropped and the journal says so.
-- **No target** for either case, so this round tests the film-mean bar (Q2) and not the per-frame bound; the journal's named `INTRO` ranges (1216-1290, 2511-2624) were found after adoption and are not used as targets.
+- **Keep rule** (as second-round answer 2 and first-round answer 6): a case stays only if each film's score is within 0.0005 of #255's column, absolute values (and as a delta over its own baseline if the baselines differ by more than 0.0005). Otherwise it is dropped and the journal says so.
+- **No target** for either case, so this round tests the film-mean bar (first-round answer 2) and not the per-frame bound; the journal's named `INTRO` ranges (1216-1290, 2511-2624) were found after adoption and are not used as targets.
+
+- **Lives in**: none: a pre-registration.
 
 ## 2026-11-12: third-round results: R4 and R5 are valid rejected cases
 
@@ -192,18 +212,22 @@ You suggested looking at past rejected cases. [#255's journal](../255_sp1node-le
   | `LOCATION` | **−0.00864** / −0.01116 | **−0.00770** / −0.00885 |
 
   Frames more than 0.005 / 0.010 below the baseline over all films: R4 572 / 426, R5 537 / 395; the worst single frame is −0.162 in both; no scored tick lost.
-- **Verdict** (`[Bounded Observation]`, one run per variant): both fall on four films by more than 0.002 (R5's `TRAINTNL` −0.00216 is the closest to the bar), so the Q2 film-mean bar rejects both, as #255 did. They are the spike's first valid rejected cases, and the film-mean bar is validated against them: it rejects them on films the adopted cases (A1 to A3) do not fall on by 0.002.
+- **Verdict** (`[Bounded Observation]`, one run per variant): both fall on four films by more than 0.002 (R5's `TRAINTNL` −0.00216 is the closest to the bar), so the film-mean bar (first-round answer 2) rejects both, as #255 did. They are the spike's first valid rejected cases, and the film-mean bar is validated against them: it rejects them on films the adopted cases (A1 to A3) do not fall on by 0.002.
 - **What this does not test**: the per-frame bound (0.030 SSIM, proposal) and the target-frame test, since neither case has a target. A target-frame guard is still validated only against F1 (not an SSIM-raising fault) and A1, A2, R1. Their false-adoption protection rests on the film-mean bar.
+
+- **Lives in**: none yet; PR 1 records the spike in [`evidence-limits.md`](../../../research/parity/evidence-limits.md).
 
 ## 2026-11-12: a rejected case with a target (#407), fixed before scoring
 
-You asked for a rejected case with a target. [#407's journal](../407_sprite-draw-order/journal.md) records `DBG_SPRITE_MODE=3`: the `OP_ANIMATE` sprite drawn after every base and decal draw with depth compare `Always`, rejected because it does not match the capture at `CTRY` tick 871 (the hill appears to hide the explosion; ours draws the whole square over it) and falls `CTRY` by 0.0012. Its targets are the explosions' tick ranges that [#222's journal](../222_op-animate/journal.md) names, from before #407 scored anything: `CTRY` 859-881, `INTRO` 1387-1409 and `INTRO` 2707-2729.
+The user asked for a rejected case with a target. [#407's journal](../407_sprite-draw-order/journal.md) records `DBG_SPRITE_MODE=3`: the `OP_ANIMATE` sprite drawn after every base and decal draw with depth compare `Always`, rejected because it does not match the capture at `CTRY` tick 871 (the hill appears to hide the explosion; ours draws the whole square over it) and falls `CTRY` by 0.0012. Its targets are the explosions' tick ranges that [#222's journal](../222_op-animate/journal.md) names, from before #407 scored anything: `CTRY` 859-881, `INTRO` 1387-1409 and `INTRO` 2707-2729.
 
 - **Case R6**: mode 3 against `dbfd0ed4` (#407's base), evidence-backed track. #407's column for mode 3 (`CTRY`, `INTRO`, `BOMB`, the three films it swept): 0.8984, 0.8422, 0.8101; baseline 0.8996, 0.8418, 0.8101.
 - **Targets**: `ctry:859-881`, `intro:1387-1409`, `intro:2707-2729`. Each holds 3 scored frames (859, 871, 881; 1387, 1398, 1409; 2707, 2718, 2729), so each meets the 3 frame minimum and the pooled 9 frames are also scored. Weakness: tick 871 is also the frame #407's rejection rests on.
 - **Rebuild**: on a scratch worktree of `dbfd0ed4`, a sprite pipeline (the base pipeline with depth compare `Always`) drawing every `Target::Image` draw after the base and decal passes, with the same draws left out of those passes. Not committed.
 - **Keep rule** (as before): all seven films run; kept only if `CTRY`, `INTRO` and `BOMB` are within 0.0005 of #407's column. Otherwise dropped, and the journal says so.
 - **What the rule should do with it**: no film falls by 0.002 (R6 expected at −0.0012 on `CTRY` only), so the film-mean bar alone would adopt it; the target test and per-frame bound are what could reject it. That is the test this case adds.
+
+- **Lives in**: none: a pre-registration.
 
 ## 2026-11-12: R6 scored: a rejected case with targets
 
@@ -227,13 +251,17 @@ You asked for a rejected case with a target. [#407's journal](../407_sprite-draw
 - **Bound margins** (SSIM drop of the worst single target frame): rejecting, `CTRY` target −0.0345 to −0.0639; adopted or kept, A1 −0.0132, A2 −0.0040, R1 −0.0164 (R1 is not a rejection case, see the corrections). The two sides are separated by 0.0164 to 0.0345; the 0.030 proposal sits 0.0045 under the smallest rejecting drop, so the midpoint 0.025 leaves the larger margin on both sides.
 - **Consequences**: (a) a target test must be taken per target range and not pooled across the ranges of a case, or a gain in one range hides a loss in another; (b) the film-mean bar alone adopts R6, so the target guards carry weight; (c) the per-frame bound now has one rejected case and four non-rejected ones, five cases in all, so it is a measured separation and no more.
 
+- **Lives in**: none yet; PR 1 writes the rule into [`loop-rules.md`](../../../.agents/skills/improving-render-parity/loop-rules.md) and the spike into `evidence-limits.md`.
+
 ## 2026-11-12: Corrections to the settled spec
 
 A peer reviewer recomputed R4 to R6 from the `report.json` files; every film Δ and every R6 target frame matched, including `INTRO` 2740 at −0.0219. It found three faults in the spec as committed in `e4ff7b98`, fixed here and in `spec.md`. Earlier entries above are left as written.
 
 - **Contradiction in § 2.2.** "Each bound is a difference in whole-frame SSIM" conflicted with Q40, which put the target mean and the +0.010 bar in index agreement. Now: film-mean bars and the 0.025 per-frame bound are in SSIM; the target bar and target means are in index agreement.
-- **The heuristic target branch is untested.** It runs on the heuristic track only, and every spike case is evidence-backed, A2 included. The +0.010 bar, the per-range condition (Q44) and the majority condition have judged no case they would run on. A2 and R6 illustrate them and do not validate them. Said in § 1.3 and in Q41 and Q44.
-- **R6 is rejected by the per-frame bound alone.** The entry above says "the target guards carry weight", and § 1.3 said "rejected by the target guards". R6 is evidence-backed, so the target branch never runs on it; only the 0.025 bound rejects it. That bound rests on one rejected case of 3 frames, 0.0095 inside its mildest fall (−0.0345), and R6's worst frame, `CTRY` 871 (−0.0639), is the frame #407's rejection already rested on. "Five cases measure it" is replaced by that statement, and 0.025 is called a measured separation on one rejected case (§ 1.3, Q43). Consequence (c) of the entry above (five cases) is superseded.
+- **The heuristic target branch is untested.** It runs on the heuristic track only, and every spike case is evidence-backed, A2 included. The +0.010 bar, the per-range condition (Q44) and the majority condition have judged no case they would run on. A2 would fail the majority condition (1 of its 3 target frames rose; spec Q48). A2 and R6 illustrate them and do not validate them. Said in § 1.3 and in Q41 and Q44.
+- **R6 is rejected by the per-frame bound alone.** The entry above says "the target guards carry weight", and § 1.3 said "rejected by the target guards". R6 is evidence-backed, so the target branch never runs on it; only the 0.025 bound rejects it. That bound rests on one rejected case of 3 frames, whose mildest fall (−0.0345) lies 0.0095 beyond it, and R6's worst frame, `CTRY` 871 (−0.0639), is the frame #407's rejection already rested on. "Five cases measure it" is replaced by that statement, and 0.025 is called a measured separation on one rejected case (§ 1.3, Q43). Consequence (c) of the entry above (five cases) is superseded.
+
+- **Lives in**: none yet; PR 1 writes the rule into [`loop-rules.md`](../../../.agents/skills/improving-render-parity/loop-rules.md) and the spike into `evidence-limits.md`.
 
 ## 2026-11-12: a second review of the settled spec
 
@@ -243,3 +271,12 @@ A peer review of `7a1fe2a4` and a fresh reviewer's pass over the changes it aske
 - **Edge frames (Q47).** A frame within one captured frame outside a range that falls by more than 0.025 in SSIM is flagged on stderr, as a report and not a guard. R6's `INTRO` 2740 (−0.0219), which prompted it, falls by less and would not be flagged.
 - **F1b's references.** The `9bc0fb78` `CTRY` report pairs 121 reference frames, the stubbed Patch 3 capture's count (`metric-bench.md` § 2.2.1), so F1b was scored against the current references. That finding is now in `metric-bench.md` § 2.2.
 - **Q47 revised.** The user lowered the edge-frame flag from 0.025 to 0.010 in SSIM, so it flags `INTRO` 2740. The flag only reports, so a false flag costs little, and 0.010 stays above the 0.005 listing. The bullet above records the 0.025 first draft.
+- **Lives in**: F1b's references: [`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.2. The rest: none yet; PR 1 writes the rule into [`loop-rules.md`](../../../.agents/skills/improving-render-parity/loop-rules.md) and the spike into `evidence-limits.md`.
+
+## 2026-11-12: a third review: the majority condition, and claims narrowed
+
+- **Question**: does the settled rule do what `spec.md` § 1.3 says on the spike's cases, and does each claim stay within its evidence?
+- **Method**: a review of `cf5036dd` (PR #442) recomputed A2's target frames from the `dd9a22cf` and `826ddddd` `report.json` files, and read each claim against this journal and the code. The user approved its fixes.
+- **Result**: A2's target frames move by ΔIdx −0.0031 (3279), −0.0286 (3290) and +0.0897 (3301). The pooled mean clears +0.010, but 1 of 3 rose, so condition 3 of `spec.md` § 2.1 rejects A2. R6's pooled ΔIdx (−0.0021) misses the +0.010 bar by about 0.012, so no case shows the per-range condition deciding a verdict. Several lines claimed more than one re-tested fault shows.
+- **Verdict**: the user relaxed condition 3 to at least half of the target frames rising (spec Q48). That changes no spike verdict, and A2 still fails it; § 1.3 says so. Over-broad claims here, in `spec.md` and in `metric-bench.md` were narrowed. Unlike the corrections entry above, earlier entries were edited in place, which `work/README.md` allows while the issue is open; the per-round answers were renamed so they do not read as the spec's Q numbers.
+- **Lives in**: one fault re-tested: [`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.2. The rest: none yet; PR 1 writes the rule into `loop-rules.md`.

@@ -302,7 +302,7 @@ A captured frame that enters a mean: matched to a render at its film clock, not 
 _Avoid_: valid frame, sampled frame
 
 **Target frames**:
-The scored frames a round names, before its sweep, as showing the defect it addresses. They are reported apart from the rest of the film; any other frame the candidate changes is a side effect.
+The scored frames a round names, before its sweep, as showing the defect it addresses; any other frame the candidate changes is a side effect.
 _Avoid_: bug frames, affected frames, segment (the editor's marked span for a palette effect)
 
 **Probe**:
