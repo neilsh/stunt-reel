@@ -301,6 +301,10 @@ _Avoid_: sky index, clear colour (the render's framebuffer clear)
 A captured frame that enters a mean: matched to a render at its film clock, not excluded by the fade floor or the UI overlay. `mean_ssim_scored` averages scored frames only, so a score is always quoted with its count.
 _Avoid_: valid frame, sampled frame
 
+**Target frames**:
+The scored frames a round names, before its sweep, as showing the defect it addresses. They are reported apart from the rest of the film, and judged on the heuristic track; any other frame the candidate changes is a side effect.
+_Avoid_: bug frames, affected frames, segment (the editor's marked span for a palette effect)
+
 **Probe**:
 A measurement of one frame or region through `parity_probe.py` — crop, shift, actor IoU, retime. An investigation that is still open is an open question, not a probe.
 _Avoid_: probe (for a hypothesis still to be settled)
@@ -310,11 +314,11 @@ One hypothesis class closed by one batched sweep, its adoption decision and its 
 _Avoid_: iteration, pass
 
 **Sweep**:
-One run of `mise run sweep` over the product of one hypothesis class's candidate values, scoring every variant on both films. The round ends at its result.
+One run of `mise run sweep` over the product of one hypothesis class's candidate values, scoring every variant on every chosen film (by default every reference film). The round ends at its result.
 _Avoid_: batch run, grid search
 
 **Adoption**:
-Keeping a round's best candidate. An evidence-backed change (a rule read from `PLAYONE.EXE`, cited at an image offset) adopts when neither film regresses by more than 0.002 SSIM and one improves; a heuristic change needs both films above +0.002, or one above +0.004 with the other within 0.002.
+Keeping a round's best candidate. An evidence-backed change (a rule read from `PLAYONE.EXE`, cited at an image offset) adopts when no reference film regresses by more than 0.002 SSIM and one improves; a heuristic change needs no film down by 0.002 or more, and either every film above +0.002 or one above +0.004.
 _Avoid_: acceptance, merge (for the parity decision)
 
 ## Records

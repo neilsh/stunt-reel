@@ -234,3 +234,11 @@ A peer reviewer recomputed R4 to R6 from the `report.json` files; every film Δ 
 - **Contradiction in § 2.2.** "Each bound is a difference in whole-frame SSIM" conflicted with Q40, which put the target mean and the +0.010 bar in index agreement. Now: film-mean bars and the 0.025 per-frame bound are in SSIM; the target bar and target means are in index agreement.
 - **The heuristic target branch is untested.** It runs on the heuristic track only, and every spike case is evidence-backed, A2 included. The +0.010 bar, the per-range condition (Q44) and the majority condition have judged no case they would run on. A2 and R6 illustrate them and do not validate them. Said in § 1.3 and in Q41 and Q44.
 - **R6 is rejected by the per-frame bound alone.** The entry above says "the target guards carry weight", and § 1.3 said "rejected by the target guards". R6 is evidence-backed, so the target branch never runs on it; only the 0.025 bound rejects it. That bound rests on one rejected case of 3 frames, 0.0095 inside its mildest fall (−0.0345), and R6's worst frame, `CTRY` 871 (−0.0639), is the frame #407's rejection already rested on. "Five cases measure it" is replaced by that statement, and 0.025 is called a measured separation on one rejected case (§ 1.3, Q43). Consequence (c) of the entry above (five cases) is superseded.
+
+## 2026-11-12: a second review of the settled spec
+
+A peer review of `7a1fe2a4` and a fresh reviewer's pass over the changes it asked for; both edited `spec.md`. The peer relayed the user's approval of its eight items.
+
+- **Ranges checked (Q46).** A `--target` range with no captured tick stops the sweep before rendering; one with no tick the baseline scores gives no verdict. A range of one scored frame is accepted, since the 3-frame minimum counts every range together and the per-range condition only adds a way to reject.
+- **Edge frames (Q47).** A frame within one captured frame outside a range that falls by more than 0.025 in SSIM is flagged on stderr, as a report and not a guard. R6's `INTRO` 2740 (−0.0219), which prompted it, falls by less and would not be flagged.
+- **F1b's references.** The `9bc0fb78` `CTRY` report pairs 121 reference frames, the stubbed Patch 3 capture's count (`metric-bench.md` § 2.2.1), so F1b was scored against the current references. That finding is now in `metric-bench.md` § 2.2.

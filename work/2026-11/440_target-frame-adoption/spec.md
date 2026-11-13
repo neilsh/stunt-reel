@@ -1,23 +1,23 @@
 # Spec: adopt a render change on its target frames, guarded per frame
 
-Issue [#440](https://github.com/neilsh/stunt-reel/issues/440). Design agreed 2026-11-12 by grilling: decisions Q1 to Q31, then Q32 to Q39 after a review. S1 to S7 came from checking the design against the code. Some later decisions revise earlier ones; the Decisions table at the end marks which.
+Issue [#440](https://github.com/neilsh/stunt-reel/issues/440). Design agreed 2026-11-12 by grilling: decisions Q1 to Q31, then Q32 to Q39 after a review, Q40 to Q45 from the spike, and Q46 and Q47 after a review of it. S1 to S8 came from checking the design against the code. Some later decisions revise earlier ones; the Decisions table at the end marks which.
 
 ## Intent
 
-**Goal.** Let a round adopt a fix that shows on a short run of frames. Judge it on those frames, and guard every film, and every frame, against getting worse.
+**Goal.** Let a round adopt a fix that shows on a short run of frames. Judge it on those frames, and guard every film against getting worse: each target frame against a hard bound, and every other frame that falls by more than 0.005 by listing and explaining it.
 
 **Why.** Recent defects are local: #426's conifers and #428's lake each show on one stretch of `INTRO`.
 
 - **A film mean dilutes a fix.** It divides the gain by the film's scored-frame count, which was 97 (`LAND`) to 732 (`LOCATION`) in the seven reports of 2026-11-09 (`scored_frames`). Twenty frames that each rise 0.02 move `INTRO`'s mean (209 scored) about +0.0019 and `LOCATION`'s about +0.0005. That is under both heuristic bars of today's [adoption rule](../../../.agents/skills/improving-render-parity/loop-rules.md#adoption-rule).
 - **The same dilution hides a local regression.** Ten frames falling 0.02 move a film of more than 100 scored frames by less than 0.002, so the film-mean guard misses them.
 
-**What is not known yet.** Whole-frame SSIM may not register such fixes at all. #428's lake moved `INTRO`'s SSIM from 0.8437 to 0.8436 while its index agreement rose from 0.843 to 0.848 ([journal](../428_intro-lake/journal.md)). The target metric and the bounds were therefore decided by a spike (§ 1) before any rule was written (Q32); [the journal](journal.md) holds its numbers and § 1.3 what it settled (Q40 to Q45).
+**Why a spike.** Whole-frame SSIM may not register such fixes at all. #428's lake moved `INTRO`'s SSIM from 0.8437 to 0.8436 while its index agreement rose from 0.843 to 0.848 ([journal](../428_intro-lake/journal.md)). The target metric and the bounds were therefore decided by a spike (§ 1) before any rule was written (Q32); [the journal](journal.md) holds its numbers and § 1.3 what it settled (Q40 to Q45).
 
 **What changes.**
 - A round may name **target frames** before its sweep.
 - A heuristic change may adopt on those frames' mean (Q34).
 - An evidence-backed change reports the target mean as attribution only.
-- A per-frame guard joins every branch: a hard bound on the target frames of both tracks, and a journal account of every other fall above 0.005 (Q43).
+- A per-frame guard joins every branch: a hard bound on the target frames of both tracks, and a journal account of every other fall above 0.005 (Q35, Q43).
 - A targeted round commits a few capture | before | after pictures to its work folder.
 
 **Out of scope.**
@@ -28,7 +28,7 @@ Issue [#440](https://github.com/neilsh/stunt-reel/issues/440). Design agreed 202
 
 ## 1. Spike: rescore known cases first
 
-The spike runs before PR 1 and writes no rule (Q32). It is one journal entry in this folder, from a scratch script that is not committed.
+The spike runs before PR 1 and writes no rule (Q32). It is recorded in journal entries in this folder, from scratch scripts that are not committed.
 
 ### 1.1 Cases
 
@@ -57,7 +57,7 @@ For each case and film, the spike entry records:
 - the film-mean Δ, both SSIM and index agreement;
 - on the target frames, the pooled and per-film mean Δ of SSIM and of index agreement, and the count of frames that rose;
 - the frames that fell by more than 0.005 and by more than 0.010, in SSIM;
-- the verdict of the provisional rule of § 2 on each track.
+- the verdict of § 2's rule, as drafted before the spike, on each track.
 
 ### 1.3 What it decided
 
@@ -69,7 +69,7 @@ The user settled these on 2026-11-12 from [the journal's](journal.md) numbers (Q
 4. **The minimum of scored target frames** stays 3. A2 sits on it, so a case at the minimum is reported as thin evidence; A1's second range (2 frames) has no valid target.
 5. **The film-mean bar** stays 0.002 (Q17). R4 and R5 fall by more than it on four films each; R6 passes it, so only the per-frame bound rejects that case.
 
-**What counted as passing, and how it came out.** A1 to A3 should adopt, and the rejected cases should not. A2 and A3 adopt; A1's target falls on both metrics (partly selection, above); R4 and R5 are rejected by the film-mean bar. R6 is evidence-backed, so the target branch never runs on it, and only the 0.025 per-frame bound rejects it. No SSIM-raising fault exists on `CTRY` or `INTRO`, so no false adoption of that kind was tested. "No false rejection" and "no false adoption" are reported separately; neither proves the bounds right.
+**What counted as passing, and how it came out.** A1 to A3 should adopt, and the rejected cases should not. A2 and A3 adopt; A1's target falls on both metrics (partly selection, above); R4 and R5 are rejected by the film-mean bar. R6 is evidence-backed, so the target branch never runs on it, and only the 0.025 per-frame bound rejects it. The one fault re-tested, actors removed, lowers SSIM on both `CTRY` and `INTRO`, so no SSIM-raising fault is known there and no false adoption of that kind was tested. "No false rejection" and "no false adoption" are reported separately; neither proves the bounds right.
 
 ## 2. The adoption rule
 
@@ -138,6 +138,8 @@ Changes to [`python/scripts/parity_sweep.py`](../../../python/scripts/parity_swe
   - `--reuse`, which has no `--var` and so no baseline (S4);
   - a sweep of a single variant, which has nothing to compare (Q30).
 - `--retime` is allowed, because it relabels every variant, the baseline included.
+- Before rendering, the sweep opens each targeted film's reference capture and stops with an error naming any `--target` range that holds no captured tick. After every variant finishes, a range that holds no tick the baseline scores gives no verdict, naming the range (Q46).
+- A range may hold a single scored frame. The 3-frame minimum (§ 2.1) counts every range together, so the per-range condition may rest on one frame; that is accepted (Q46).
 
 ### 3.3 Judging after every variant
 
@@ -148,18 +150,19 @@ Changes to [`python/scripts/parity_sweep.py`](../../../python/scripts/parity_swe
 
 ### 3.4 Output
 
-- **Ranking.** Variants that adopt rank first. Within each group, the order is target mean (with `--target`), then mean film SSIM. The baseline is listed but never wins (Q39, S6).
+- **Ranking.** Variants that adopt rank first. Within each group, the order is the target mean in index agreement (with `--target`), then mean film SSIM. The baseline is listed but never wins (Q39, S6).
 - **Table.** Each variant's row gains columns for:
   - the target mean Δ in SSIM and in index agreement (with `--target`);
-  - the largest per-frame fall;
+  - the worst target frame's fall in SSIM, the per-frame guard's figure (with `--target`), and the worst fall in SSIM over every scored frame of every film;
   - the count of frames down by more than 0.005.
 - **Winner line.** It names the branch the winner adopts on, or the guard or test it fails, for the declared track. Examples:
   - `winner: DBG_X=1 adopts (heuristic target idx +0.0213, 18/24 frames up; films ok; worst target frame -0.0041 intro:3302)`
-  - `winner: DBG_X=1 adopts (evidence, film means; target +0.0071 attribution; 3 frames down >0.005, listed)`
+  - `winner: DBG_X=1 adopts (evidence, film means; target idx +0.0071 attribution; 3 frames down >0.005, listed)`
   - `winner: none adopts (best DBG_X=1: target-frame guard ctry:871 -0.0639)`
 
   The existing 0.002 note on a winner's lead over the runner-up stays.
 - **Stderr.** One line lists every frame down by more than 0.005. Another counts, per film, the frames outside the target that moved by more than 0.005.
+- **Edge frames.** With `--target`, a third line flags each frame outside a range but within one captured frame of its edge, that is the baseline's nearest scored tick before or after the range, that falls by more than 0.025 in SSIM. It reports only and is not a guard (Q47). R6's `INTRO` 2740, one frame past its range, prompted it, but fell 0.0219 and so would not be flagged.
 
 ## 4. Pictures
 
@@ -174,7 +177,7 @@ Changes to [`python/scripts/parity_sweep.py`](../../../python/scripts/parity_swe
 
 ### 4.2 Which ticks
 
-For each film with target frames, the sweep picks up to **5** ticks (Q11, Q20, Q25, Q38):
+For each film with target frames, the sweep picks up to **5** ticks (Q11, Q20, Q25, Q38). Δ here is whole-frame SSIM, not the target metric: the pictures show what the eye and the per-frame guard see (S8).
 1. First, the target frame with the lowest Δ, its biggest fall or smallest rise, so the set is not only best cases.
 2. Then the target frames in descending Δ, each taken only if it lies at least **N = 50** ticks from every tick already chosen.
 3. If fewer than 5 are chosen, the sweep halves N to **25** and goes down the list again. It never goes below 25 ticks, about two captured frames, so a film may get fewer than 5.
@@ -189,7 +192,7 @@ For each film with target frames, the sweep picks up to **5** ticks (Q11, Q20, Q
 | [`SKILL.md`](../../../.agents/skills/improving-render-parity/SKILL.md) | New steps: name the target frames and write the `--target` flags in the journal before step 4 (PR 1); commit the pictures with the journal entry in step 7 (PR 2). |
 | [`pr-evidence.md`](../../../.agents/skills/improving-render-parity/pr-evidence.md) | A targeted round's PR attaches its committed pictures under **Evidence** in place of step 3's renders. A change with no target frames keeps today's steps (Q28). |
 | [`evidence-limits.md`](../../../research/parity/evidence-limits.md) | The policy-bound item adds the settled bounds, the 3-frame minimum, and the spike that chose them. |
-| [`metric-bench.md`](../../../research/parity/metric-bench.md) | If the spike makes index agreement part of the target test, the note records why. |
+| [`metric-bench.md`](../../../research/parity/metric-bench.md) | The note records why index agreement is the target metric: A2's target gain shows in it and not in whole-frame SSIM (Q40). The spike's finding that removing the actors now lowers SSIM (F1b) was recorded with the spike. |
 | [`docs/howto/score-a-render-change.md`](../../../docs/howto/score-a-render-change.md) | The sweep's new options, and how to read the winner line. |
 | [`mise.toml`](../../../mise.toml) | The `sweep` task's description lists the new options. |
 | [`NOTICE.md`](../../../NOTICE.md) | Delete the sentence that lists the current image sets ("The current sets are …"). The limits stay word for word (Q31). |
@@ -206,6 +209,7 @@ All offline, on synthetic data, in [`tests/test_parity_sweep.py`](../../../tests
   - the pooled mean and the per-range condition over two ranges, one of which falls;
   - the majority condition;
   - the 3-frame minimum;
+  - a range holding one scored frame, judged on that frame alone (Q46);
   - a tick captured twice;
   - a tick scored in the baseline only, which rejects;
   - a failed variant film, which rejects;
@@ -218,26 +222,28 @@ All offline, on synthetic data, in [`tests/test_parity_sweep.py`](../../../tests
   - Completion order does not change the result.
 - **Option checks.**
   - `--target` and `--track` refuse a `--films` subset, `--reuse`, a single variant and an unknown film, and accept `--retime`.
+  - A range that holds no captured tick stops the sweep before rendering, and one that holds no tick the baseline scores gives no verdict; each names the range (Q46).
   - `--images` refuses without `--target` or `--topic`, and refuses an existing path.
 - **Tick choice.**
   - The lowest-Δ frame comes first.
   - Picks keep the 50-tick spacing, then 25, and never closer.
   - Guard pictures fall outside the cap.
+- **Edge frames.** A frame just outside a range that falls by more than 0.025 is flagged on stderr and does not change the verdict; a frame two captured frames out is not flagged (Q47).
 - **Picture layout.** Drawing a synthetic capture beside two synthetic renders gives the expected panel order, width, divider and file name.
 
-No GPU run is needed for the tests. The spike (§ 1) is the check on the bounds. The first targeted round after both PRs land is the field test of the pictures, and its journal entry says so.
+No GPU run is needed for the tests. The spike (§ 1) is the check on the bounds. The first targeted round after both PRs land is the field test of the pictures, and its journal entry says so. The first heuristic targeted round is likewise the field test of the target branch, which no spike case ran (Q41).
 
 ## 7. Delivery
 
-1. **Spike:** § 1, one journal entry. Its results go to the user, who settles § 1.3 before PR 1 starts.
-2. **PR 1, the verdict:** § 2 with the settled figures, and § 3 except `--images`, `--topic` and `--crop`. Their tests come with it, and so do the `loop-rules.md`, `evidence-limits.md`, how-to, `mise.toml` and `GLOSSARY.md` changes and `SKILL.md`'s target-frames step. Also `metric-bench.md`, if the spike makes it needed.
+1. **Spike:** § 1, done 2026-11-12; its numbers are in [the journal](journal.md), and the user settled § 1.3 from them (Q40 to Q45).
+2. **PR 1, the verdict:** § 2 with the settled figures, and § 3 except `--images`, `--topic` and `--crop`. Their tests come with it, and so do the `loop-rules.md`, `evidence-limits.md`, how-to, `mise.toml` and `GLOSSARY.md` changes and `SKILL.md`'s target-frames step. Also `metric-bench.md`'s note on the target metric.
 3. **PR 2, the pictures:** § 4, the remaining options and their tests, `SKILL.md`'s pictures step, and the `pr-evidence.md` and `NOTICE.md` rows. The how-to and `mise.toml` gain the picture options.
 
 PR 2 finishes the item: it writes this folder's README `outcome` and closes #440.
 
 ## Decisions
 
-Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day after a review. S1 to S7 are calls made while writing the spec against the code. "Revised by" marks a decision a later one changed.
+Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day after a review. Q40 to Q45 were settled from the spike, and Q46 and Q47 after a review of it. S1 to S8 are calls made while writing the spec against the code. "Revised by" marks a decision a later one changed.
 
 | # | Decision |
 |---|---|
@@ -285,6 +291,8 @@ Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day af
 | Q43 | The per-frame bound is 0.025 in whole-frame SSIM, on the target frames only, hard on both tracks; no whole-film bound (counts do not separate cases). It revises Q16, Q29 and Q35. A measured separation on one rejected case of 3 frames (R6, mildest fall -0.0345, 0.0095 outside the bound; its worst frame 871 is the one #407 already rejected on) against kept cases (R1 -0.0164): the midpoint of the gap. |
 | Q44 | The target test is taken per target range, not pooled: R6's `CTRY` range falls -0.035 while an `INTRO` range rises, and the pooled mean barely rejects it. The per-range condition has never judged a case it would run on (heuristic track only; Q41). |
 | Q45 | The 3-frame minimum stays; a case at the minimum is reported as thin evidence. |
+| Q46 | A `--target` range that holds no captured tick stops the sweep before rendering; one that holds no tick the baseline scores gives no verdict. A range of one scored frame is accepted: the 3-frame minimum counts every range together, and the per-range condition only adds a way to reject. |
+| Q47 | A frame outside a range but within one captured frame of its edge that falls by more than 0.025 in SSIM is flagged on stderr. It reports only and is not a guard. It was prompted by R6's `INTRO` 2740, which at -0.0219 it would not flag. |
 | S1 | The baseline is each `--var`'s first listed value, so no new flag is needed. |
 | S2 | `--target` and `--track` refuse a `--films` subset, because the guards cover every reference film. |
 | S3 | Per-frame Δ is taken over the ticks the baseline scores, a repeated tick counting once by its first frame. Tightened by Q37. |
@@ -292,3 +300,4 @@ Q1 to Q31 were settled by grilling on 2026-11-12, and Q32 to Q39 the same day af
 | S5 | Picture names follow `work/README.md`'s `<film>-<tick>-<topic>.png`, and an existing picture is never overwritten. |
 | S6 | Variants that adopt rank above those that do not (folded into Q39). |
 | S7 | Replaced by Q32: the retrospective check became the spike. |
+| S8 | Pictures choose their ticks by whole-frame SSIM Δ, the per-frame guard's metric, not by the target metric. |
