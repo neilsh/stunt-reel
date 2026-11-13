@@ -2,6 +2,7 @@
 title: "Adopt a render change on its target frames, guarded per frame"
 started: 2026-11-12
 issue: 440
+outcome: ""
 ---
 
 # Adopt a render change on its target frames, guarded per frame
