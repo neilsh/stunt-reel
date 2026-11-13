@@ -208,6 +208,10 @@ impl GpuModel {
     /// [`VisibilityCondition::LodBranch`] and [`VisibilityCondition::BeyondDepth`] gates,
     /// whose points must then be in its space; without one every subtree branch and every
     /// far section is drawn and no stand-in is.
+    ///
+    /// Base slices come last sibling first, decal slices in the nodes' own order: the base
+    /// pipeline's `Less` keeps the first draw of an exact depth tie and the decal pipeline's
+    /// `LessEqual` the last, so both let `PLAYONE`'s later sibling win the tie.
     pub fn collect_visible_meshes(
         &self,
         state_mask: u16,
@@ -215,62 +219,15 @@ impl GpuModel {
         eye: Vec3,
         view: Option<&CameraTransform>,
     ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
-        let mut base_meshes = Vec::new();
-        let mut decal_meshes = Vec::new();
-
-        let dist_sq = distance_to_cam * distance_to_cam;
-
-        // Traverse flat arena starting from root nodes
-        let mut stack = Vec::new();
-        for &root_id in &self.root_nodes {
-            stack.push(root_id);
+        VisibleWalk {
+            nodes: &self.nodes,
+            roots: &self.root_nodes,
+            state_mask,
+            dist_sq: distance_to_cam * distance_to_cam,
+            eye,
+            view,
         }
-
-        while let Some(node_id) = stack.pop() {
-            let Some(node) = self.nodes.get(node_id.0 as usize) else {
-                continue;
-            };
-
-            // Evaluate dynamic visibility condition
-            let is_visible = match node.visibility {
-                // An angle cone is not tested here, so it defaults to visible.
-                VisibilityCondition::Always | VisibilityCondition::AngleCone { .. } => true,
-                VisibilityCondition::LodDistanceSq(max_sq) => dist_sq <= max_sq,
-                VisibilityCondition::FacesEye { point, normal } => {
-                    Vec3::from_array(normal).dot(Vec3::from_array(point) - eye) < 0.0
-                }
-                VisibilityCondition::ActorState { mask, expected } => {
-                    (state_mask & mask) == expected
-                }
-                VisibilityCondition::LodBranch {
-                    point,
-                    ext,
-                    splitdist,
-                    near,
-                } => view.is_none_or(|v| v.lod_keeps_subtree(point, ext, splitdist)) == near,
-                VisibilityCondition::BeyondDepth { point, depth } => {
-                    view.is_none_or(|v| v.view_depth_exceeds(point, depth))
-                }
-            };
-
-            if !is_visible {
-                continue;
-            }
-
-            for &mesh in &node.meshes {
-                if mesh.is_decal {
-                    decal_meshes.push(mesh);
-                } else {
-                    base_meshes.push(mesh);
-                }
-            }
-
-            for &child_id in &node.children {
-                stack.push(child_id);
-            }
-        }
-
-        (base_meshes, decal_meshes)
+        .collect()
     }
 
     /// Encodes `meshes` into `rpass`, binding each slice's chunk buffers when it changes.
@@ -621,6 +578,90 @@ fn flush_run(
     slice
 }
 
+/// One visibility pass over a model's node arena from `roots`, for
+/// [`GpuModel::collect_visible_meshes`].
+struct VisibleWalk<'a> {
+    nodes: &'a [GpuNode],
+    roots: &'a [NodeId],
+    state_mask: u16,
+    dist_sq: f32,
+    eye: Vec3,
+    view: Option<&'a CameraTransform>,
+}
+
+impl VisibleWalk<'_> {
+    /// The visible base slices, last sibling first, and decal slices, in draw order.
+    fn collect(&self) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
+        let mut base_meshes = Vec::new();
+        let mut decal_meshes = Vec::new();
+        self.walk(false, |mesh| {
+            if !mesh.is_decal {
+                base_meshes.push(mesh);
+            }
+        });
+        self.walk(true, |mesh| {
+            if mesh.is_decal {
+                decal_meshes.push(mesh);
+            }
+        });
+        (base_meshes, decal_meshes)
+    }
+
+    /// Calls `emit` with each slice of every visible node, depth first: siblings in draw
+    /// order when `forward`, last sibling first otherwise.
+    fn walk(&self, forward: bool, mut emit: impl FnMut(GpuMeshSlice)) {
+        let mut stack: Vec<NodeId> = Vec::new();
+        if forward {
+            stack.extend(self.roots.iter().rev());
+        } else {
+            stack.extend(self.roots);
+        }
+        while let Some(node_id) = stack.pop() {
+            let Some(node) = self.nodes.get(node_id.0 as usize) else {
+                continue;
+            };
+            if !self.is_visible(&node.visibility) {
+                continue;
+            }
+            for &mesh in &node.meshes {
+                emit(mesh);
+            }
+            if forward {
+                stack.extend(node.children.iter().rev());
+            } else {
+                stack.extend(&node.children);
+            }
+        }
+    }
+
+    fn is_visible(&self, visibility: &VisibilityCondition) -> bool {
+        match *visibility {
+            // An angle cone is not tested here, so it defaults to visible.
+            VisibilityCondition::Always | VisibilityCondition::AngleCone { .. } => true,
+            VisibilityCondition::LodDistanceSq(max_sq) => self.dist_sq <= max_sq,
+            VisibilityCondition::FacesEye { point, normal } => {
+                Vec3::from_array(normal).dot(Vec3::from_array(point) - self.eye) < 0.0
+            }
+            VisibilityCondition::ActorState { mask, expected } => {
+                (self.state_mask & mask) == expected
+            }
+            VisibilityCondition::LodBranch {
+                point,
+                ext,
+                splitdist,
+                near,
+            } => {
+                self.view
+                    .is_none_or(|v| v.lod_keeps_subtree(point, ext, splitdist))
+                    == near
+            }
+            VisibilityCondition::BeyondDepth { point, depth } => {
+                self.view.is_none_or(|v| v.view_depth_exceeds(point, depth))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -784,5 +825,55 @@ mod tests {
                 assert!(range.end <= 6, "vertex range {range:?} leaves the buffer");
             }
         }
+    }
+
+    /// A node `id` under `parent` holding one slice tagged by `index_offset`.
+    fn node(id: u32, parent: Option<u32>, children: &[u32], is_decal: bool) -> GpuNode {
+        GpuNode {
+            id: NodeId(id),
+            name: format!("N{id}"),
+            parent: parent.map(NodeId),
+            children: children.iter().copied().map(NodeId).collect(),
+            local_matrix: Mat4::IDENTITY,
+            visibility: VisibilityCondition::Always,
+            meshes: vec![GpuMeshSlice {
+                chunk: 0,
+                vertex_offset: 0,
+                index_offset: id,
+                index_count: 3,
+                is_decal,
+                edge_offset: 0,
+                edge_count: 0,
+            }],
+        }
+    }
+
+    #[test]
+    fn base_slices_come_last_sibling_first_and_decals_in_draw_order() {
+        // Root 0 draws base 1 then base 2, then group 3 with decals 4 then 5.
+        let nodes = [
+            node(0, None, &[1, 2, 3], false),
+            node(1, Some(0), &[], false),
+            node(2, Some(0), &[], false),
+            node(3, Some(0), &[4, 5], false),
+            node(4, Some(3), &[], true),
+            node(5, Some(3), &[], true),
+        ];
+        let walk = VisibleWalk {
+            nodes: &nodes,
+            roots: &[NodeId(0)],
+            state_mask: 0,
+            dist_sq: 0.0,
+            eye: Vec3::ZERO,
+            view: None,
+        };
+        let (base, decal) = walk.collect();
+        let order = |slices: &[GpuMeshSlice]| -> Vec<u32> {
+            slices.iter().map(|s| s.index_offset).collect()
+        };
+        // `Less` keeps the first draw of a tie, so the later sibling must come first.
+        assert_eq!(order(&base), vec![0, 3, 2, 1]);
+        // `LessEqual` keeps the last draw, so decals keep the authored order.
+        assert_eq!(order(&decal), vec![4, 5]);
     }
 }
