@@ -26,3 +26,4 @@ Part of the [`running-unattended`](SKILL.md) skill.
 3. **Labels:** Apply one state label ([`triage-labels.md`](../../../docs/agents/triage-labels.md)):
    - Label a newly filed issue `ready-for-agent` only when it is an unblocked out-of-scope finding that (a) names the files involved, (b) carries the evidence (`file:line`, offset, or command), (c) has a testable done condition, and (d) has no non-obvious design choice.
    - Always label blocked follow-ups split from the current ticket `needs-triage` (or `ready-for-human` when a human decision is the blocker).
+   - Add `local-only` ([`triage-labels.md`](../../../docs/agents/triage-labels.md#environment-roles)) when the issue needs a GPU, DOSBox or `wrangler login`.
