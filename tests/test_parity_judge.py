@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -236,6 +237,84 @@ def test_a_range_of_one_frame_is_judged_on_that_frame(index: float, adopts: bool
     assert result.adopts is adopts, result.reason
 
 
+# --- each bound exactly on it, on a 0.0 baseline where the difference is exact ------------
+
+
+def zero() -> Runs:
+    return base(0.0, 0.0)
+
+
+def _above(bound: float) -> float:
+    """The next float above *bound*: the smallest change that is more than it."""
+    return math.nextafter(bound, math.inf)
+
+
+def _below(bound: float) -> float:
+    return math.nextafter(bound, -math.inf)
+
+
+def on_zero(changes: Changes, every: dict[str, tuple[float, float]] | None = None) -> Runs:
+    """:func:`moved` on a 0.0 baseline: each frame's value is its change, exactly."""
+    runs: Runs = {}
+    for film in FILMS:
+        shift = (every or {}).get(film, (0.0, 0.0))
+        runs[film] = FilmRun({t: Frame(*changes.get((film, t), shift), True) for t in TICKS}, True)
+    return runs
+
+
+@pytest.mark.parametrize(("fall", "adopts"), [(-0.025, True), (_below(-0.025), False)])
+def test_target_frame_bound_exactly(fall: float, adopts: bool) -> None:
+    candidate = on_zero({("ctry", 30): (fall, 0.0)}, {"ctry": (0.01, 0.0), "intro": (0.01, 0.0)})
+    result = judge(zero(), candidate, targets("ctry:20-40"), "evidence")
+    worst = result.worst_target()
+    assert worst is not None
+    assert worst.ssim == fall
+    assert result.adopts is adopts, result.reason
+
+
+@pytest.mark.parametrize(("rise", "adopts"), [(0.010, False), (_above(0.010), True)])
+def test_pooled_target_bar_exactly(rise: float, adopts: bool) -> None:
+    candidate = on_zero({("ctry", t): (0.0, rise) for t in (10, 20, 30, 40)})
+    result = judge(zero(), candidate, targets("ctry:10-40"), "heuristic")
+    assert result.target_mean()[1] == rise
+    assert result.adopts is adopts, result.reason
+
+
+def _one_frame(ctry: float, intro: float) -> tuple[Runs, Runs]:
+    """A one-frame baseline at 0.0 and a candidate at *ctry* and *intro*: exact film means."""
+
+    def run(ssim: float) -> FilmRun:
+        return FilmRun({10: Frame(ssim, 0.0, True)}, True)
+
+    return {"ctry": run(0.0), "intro": run(0.0)}, {"ctry": run(ctry), "intro": run(intro)}
+
+
+@pytest.mark.parametrize(("rise", "adopts"), [(0.004, False), (_above(0.004), True)])
+def test_heuristic_one_film_bar_exactly(rise: float, adopts: bool) -> None:
+    result = judge(*_one_frame(rise, 0.0), (), "heuristic")
+    assert result.joins["ctry"].mean_ssim == rise
+    assert result.adopts is adopts, result.reason
+    if not adopts:
+        assert result.reason == "film means short of +0.002 each or +0.004 on one"
+
+
+@pytest.mark.parametrize(("rise", "adopts"), [(0.002, False), (_above(0.002), True)])
+def test_heuristic_every_film_bar_exactly(rise: float, adopts: bool) -> None:
+    result = judge(*_one_frame(rise, rise), (), "heuristic")
+    assert result.joins["intro"].mean_ssim == rise
+    assert result.adopts is adopts, result.reason
+    if not adopts:
+        assert result.reason == "film means short of +0.002 each or +0.004 on one"
+
+
+@pytest.mark.parametrize(("fall", "flagged"), [(-0.010, False), (_below(-0.010), True)])
+def test_edge_flag_exactly(fall: float, flagged: bool) -> None:
+    candidate = on_zero({("ctry", 20): (fall, 0.0)}, {"ctry": (0.01, 0.0)})
+    result = judge(zero(), candidate, targets("ctry:30-50"), "evidence")
+    assert [d.tick for _, d in result.edge_frames()] == ([20] if flagged else [])
+    assert result.adopts is True
+
+
 # --- the join, against `stuntreel parity --compare` ------------------------------------------
 
 
@@ -325,6 +404,32 @@ def test_baseline_never_wins() -> None:
     assert no_track.winner is baseline  # without a track, the old ranking and no verdict
 
 
+def test_noise_note_compares_the_winner_with_the_next_adopter() -> None:
+    baseline = variant(1, base())
+    # The winner adopts on its target and ranks above a non-adopter with a higher SSIM.
+    winner = variant(2, moved({("ctry", t): (0.0, 0.05) for t in (20, 30, 40)}))
+    rejected = variant(3, moved({("ctry", 30): (-0.03, 0.0)}, {"ctry": (0.01, 0.0)}))
+    decision = _decision([baseline, winner, rejected], "heuristic", "ctry:20-40")
+    assert [v.index for v in decision.ordered] == [2, 3, 1]
+    assert "within noise" not in winner_line(["DBG_X"], decision)
+    close = variant(4, moved({("ctry", t): (0.001, 0.04) for t in (20, 30, 40)}))
+    decision = _decision([baseline, winner, rejected, close], "heuristic", "ctry:20-40")
+    assert decision.winner is winner
+    assert "within noise" in winner_line(["DBG_X"], decision)
+
+
+def test_a_missing_target_index_ranks_below_a_falling_one() -> None:
+    falling = variant(2, moved({("ctry", t): (0.0, -0.01) for t in (20, 30, 40)}))
+    no_index = moved({})
+    run = no_index["ctry"]
+    assert run is not None
+    no_index["ctry"] = FilmRun({t: Frame(f.ssim, None, True) for t, f in run.frames.items()}, True)
+    decision = _decision(
+        [variant(1, base()), variant(3, no_index), falling], "heuristic", "ctry:20-40"
+    )
+    assert [v.index for v in decision.ordered] == [1, 2, 3]
+
+
 def test_completion_order_does_not_change_the_result() -> None:
     variants = [
         variant(1, base()),
@@ -345,9 +450,8 @@ def test_winner_lines_name_the_branch_or_the_failure() -> None:
     line = winner_line(["DBG_X"], _decision([baseline, evidence], "evidence", "ctry:20-40"))
     assert line == (
         "winner: DBG_X=2 adopts (evidence, film means; target idx +0.0100 attribution; "
-        "worst target frame +0.0010 ctry:20; thin evidence: 3 target frames; "
-        "1 frames down >0.005, listed) (noise floor +/-0.002; winner is ~within noise)"
-    )
+        "worst target frame +0.0010 ctry:20; 1 frames down >0.005, listed)"
+    )  # attribution only: no thin-evidence note, and no other adopter to lead
     failed = _decision([baseline], "evidence")
     assert winner_line(["DBG_X"], failed) == "winner: none adopts (no variant besides the baseline)"
     broken = base()

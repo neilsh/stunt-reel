@@ -136,8 +136,10 @@ def reference_tree(
 def write_report(
     directory: Path, frames: list[tuple[int, float, float, bool]]
 ) -> parity_pipeline.Score:
-    """Writes a ``report.json`` of ``(film_tick, ssim, index_agreement, scored)`` *frames*; returns
-    its headline."""
+    """Writes a ``report.json`` of *frames* into *directory* and returns its headline.
+
+    Each frame is ``(film_tick, ssim, index_agreement, scored)``.
+    """
     scored = [f for f in frames if f[3]]
     ssim = sum(f[1] for f in scored) / len(scored)
     directory.mkdir(parents=True, exist_ok=True)

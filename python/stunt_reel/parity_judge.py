@@ -419,16 +419,20 @@ def sort_key(
 ) -> tuple[float, ...]:
     """The variant's rank, lowest best.
 
-    With a track: adopting variants first, then pooled target index agreement, mean SSIM and
-    mean IoU; without one, mean SSIM and IoU. A variant with a failed film goes last in its group.
+    With a track: adopting variants first, then pooled target index agreement (a variant
+    without one below every variant with one; the baseline at 0), mean SSIM and mean IoU;
+    without one, mean SSIM and IoU. A variant with a failed film goes last in its group.
     """
     ssim, iou = variant.mean_ssim(), variant.mean_iou()
     scores = (1, 0.0, 0.0) if ssim is None or iou is None else (0, -ssim, -iou)
     if track is None:
         return (*scores, variant.index)
     adopts = judgement is not None and judgement.adopts is True
-    index = judgement.target_mean()[1] if judgement is not None and judgement.targets else None
-    return (0 if adopts else 1, scores[0], -(index or 0.0), *scores[1:], variant.index)
+    index: float | None = 0.0
+    if judgement is not None and judgement.targets:
+        index = judgement.target_mean()[1]
+    target = (1, 0.0) if index is None else (0, -index)
+    return (0 if adopts else 1, scores[0], *target, *scores[1:], variant.index)
 
 
 def rank(
@@ -574,9 +578,13 @@ def winner_line(names: Sequence[str], decision: Decision) -> str:
     else:
         parts = _adoption_parts(decision.judgements[winner.index], decision.track)
         line = f"winner: {label(names, winner.values)} adopts ({'; '.join(parts)})"
-    position = decision.ordered.index(winner)
-    if position + 1 < len(decision.ordered):
-        first, second = winner.mean_ssim(), decision.ordered[position + 1].mean_ssim()
+    # The runner-up is the next variant in the ranking; with a track, the next that adopts.
+    following = decision.ordered[decision.ordered.index(winner) + 1 :]
+    if decision.track is not None:
+        adopting = {i for i, j in decision.judgements.items() if j.adopts}
+        following = [v for v in following if v.index in adopting]
+    if following:
+        first, second = winner.mean_ssim(), following[0].mean_ssim()
         if first is not None and second is not None:
             line += noise_note(first - second)
     return line
@@ -593,7 +601,7 @@ def _adoption_parts(judgement: Judgement, track: Track) -> list[str]:
         worst = judgement.worst_target()
         if worst is not None:
             parts.append(f"worst target frame {worst.ssim:+.4f} {worst.where()}")
-        if n == MIN_TARGET_FRAMES:
+        if n == MIN_TARGET_FRAMES and judgement.reason.startswith("heuristic target"):
             parts.append(f"thin evidence: {n} target frames")
         elif n < MIN_TARGET_FRAMES and track == "heuristic":
             parts.append(f"target branch not run: {n} scored target frames")
