@@ -20,6 +20,7 @@ from stunt_reel.parity_artifacts._fields import (
     _number_map,
     _optional_bool,
     _optional_float,
+    _optional_string,
     _parse_json,
     _read_json,
     _write_json,
@@ -84,6 +85,9 @@ class Report:
     #: The render read another archive than the capture played, and the run waived that
     #: conflict; written only when true.
     archive_conflict_waived: bool = False
+    #: The ``crates/`` git tree the render was built from (``stuntreel parity --crates``);
+    #: ``None`` when the scorer was not told, as for a ``crates/`` with uncommitted changes.
+    crates: str | None = None
 
     def headline(self) -> tuple[float, float]:
         """Headline SSIM and mask IoU: the scored means, else every matched frame."""
@@ -207,6 +211,7 @@ def _report_object(document: Any, path: Path | None) -> Report:
         archive_conflict_waived=_as_bool(
             raw.get("archive_conflict_waived", False), path, "archive_conflict_waived"
         ),
+        crates=_optional_string(raw.get("crates"), path, "crates"),
     )
 
 
@@ -245,6 +250,7 @@ def _report_document(report: Report) -> dict[str, Any]:
     }
     if report.archive_conflict_waived:
         document["archive_conflict_waived"] = True
+    document["crates"] = report.crates
     document["per_frame"] = [frame_document(frame) for frame in report.per_frame]
     return document
 

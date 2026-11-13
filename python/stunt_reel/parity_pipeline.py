@@ -413,6 +413,7 @@ def score_film(
     report: Path,
     *,
     retime: Retime | None = None,
+    crates: str | None = None,
     run: Run = run_command,
     timeout: float | None = None,
 ) -> FilmScore:
@@ -420,7 +421,8 @@ def score_film(
 
     The binary writes ``report.json`` inside ``report``. A relabelled copy is written
     where ``retime`` asks and is the tree scored, so the caller keeps the unshifted
-    original.
+    original. *crates*, the ``crates/`` tree the render was built from, goes into the report;
+    leave it ``None`` when that tree is unknown or was dirty.
     """
     if not render.is_dir():
         raise ValueError(f"{render} is not a render directory")
@@ -440,6 +442,8 @@ def score_film(
         "--output",
         str(report),
     ]
+    if crates is not None:
+        argv += ["--crates", crates]
     _execute(run, argv, None, timeout)
     ssim, iou = read_report(report / "report.json").headline()
     return FilmScore(

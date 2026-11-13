@@ -575,6 +575,16 @@ fn run_identified(
     render: &FilmId,
     waive: bool,
 ) -> (TempDir, Result<(), String>) {
+    run_identified_with(name, capture, render, waive, &[])
+}
+
+fn run_identified_with(
+    name: &str,
+    capture: &FilmId,
+    render: &FilmId,
+    waive: bool,
+    extra: &[&str],
+) -> (TempDir, Result<(), String>) {
     let tmp = TempDir::new(name);
     write_reference(&tmp.join("ref"), &[7], true);
     write_render(&tmp.join("test"), &[7]);
@@ -590,6 +600,7 @@ fn run_identified(
     if waive {
         args.push("--waive-archive-conflict".to_string());
     }
+    args.extend(extra.iter().map(|a| (*a).to_string()));
     let result = super::run(args.into_iter());
     (tmp, result)
 }
@@ -664,4 +675,23 @@ fn a_capture_without_an_archive_hash_scores_and_says_the_archive_was_not_checked
         clearance.note.as_deref(),
         Some("[parity] archive not checked: the capture records no archive hash")
     );
+}
+
+#[test]
+fn the_report_records_the_crates_tree_it_was_given() {
+    let both = film("CTRY.FLM", 100, "aa", Some("a1a1"));
+    let tree = "9fefa9ea41d4db760901118fcd0fab22d8b946ea";
+    let (tmp, result) =
+        run_identified_with("crates_given", &both, &both, false, &["--crates", tree]);
+    result.expect("parity runs");
+    assert_eq!(read_report(&tmp.join("out"))["crates"], tree);
+}
+
+#[test]
+fn without_a_crates_tree_the_report_says_null() {
+    let both = film("CTRY.FLM", 100, "aa", Some("a1a1"));
+    let (tmp, result) = run_identified("crates_absent", &both, &both, false);
+    result.expect("parity runs");
+    let report = read_report(&tmp.join("out"));
+    assert!(report["crates"].is_null(), "{}", report["crates"]);
 }

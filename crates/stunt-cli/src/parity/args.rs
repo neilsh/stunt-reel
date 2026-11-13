@@ -35,6 +35,10 @@ pub(super) struct Args {
     /// still refuses
     #[arg(long)]
     pub(super) waive_archive_conflict: bool,
+    /// The `crates/` git tree the render was built from, written to the report as `crates`;
+    /// leave it out when that tree is unknown or had uncommitted changes
+    #[arg(long, value_name = "TREE")]
+    pub(super) crates: Option<String>,
     /// Match frames by `film_tick` against a previous report and print mean SSIM/IoU deltas,
     /// the 5 most improved/regressed frames and the counts changed by more than 0.005;
     /// writes compare.json

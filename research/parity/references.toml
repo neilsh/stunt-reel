@@ -11,7 +11,8 @@
 # and `all_sha256` are the row's pins it was measured against; `adapter` is the adapter's name,
 # and drift is judged only against a render on an adapter of that name. `commit`, the commit
 # measured, is optional and only says where: it is never compared. A PR that adopts a change
-# updates the table of the class it measured.
+# updates the table of the class it measured, with `mise run parity-repin`; a conflict here is
+# resolved by re-measuring the merged tree and repinning, never by hand-merging numbers.
 #
 # A row may set `noise_sigma`, a film's recapture noise of the whole-frame SSIM, which `stuntreel
 # parity --noise-sigma` takes and drift is judged against. None does: every reference is captured

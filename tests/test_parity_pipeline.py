@@ -746,3 +746,13 @@ def test_reference_job_reports_unreadable_capture_metadata(tmp_path: Path, meta:
         parity_pipeline.reference_job(root, "ctry"),
     ):
         pass
+
+
+def test_score_film_passes_the_crates_tree_it_is_given(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [])
+    render, report = tmp_path / "ours", tmp_path / "report"
+    _write_render(render)
+    fake = FakeRun()
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_pipeline.score_film(job, render, report, crates="f" * 40, run=fake)
+    assert fake.calls[0][-2:] == ["--crates", "f" * 40]

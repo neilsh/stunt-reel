@@ -104,6 +104,11 @@ pub struct Report {
     /// conflict; absent (false) when the archives agree or were not checked.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub archive_conflict_waived: bool,
+    /// The `crates/` git tree the render was built from, as its scorer was told
+    /// (`stuntreel parity --crates`); null when it was not, as for a `crates/` with uncommitted
+    /// changes. A report older than the field reads as null.
+    #[serde(default)]
+    pub crates: Option<String>,
     /// Per-frame measurements, in capture order.
     pub per_frame: Vec<FrameReport>,
 }
@@ -193,6 +198,7 @@ mod tests {
             credits_missing_frames: 0,
             adapter: None,
             archive_conflict_waived: false,
+            crates: None,
             per_frame: vec![frame(), frame()],
         }
     }
@@ -244,5 +250,6 @@ mod tests {
         assert_eq!(report.per_frame.len(), 1);
         assert_eq!(report.per_frame[0].scored, None);
         assert_eq!(report.adapter, None);
+        assert_eq!(report.crates, None);
     }
 }

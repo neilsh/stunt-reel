@@ -184,6 +184,10 @@ description = "Parity baseline: render every reference film with the current bin
 run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
+[tasks.parity-repin]
+description = "Rewrite every reference film's [<film>.expected.<class>] table in references.toml from its current parity report, measured on this clean crates/ tree; writes nothing and says why otherwise (mise run parity-repin -- [--class gpu|lavapipe])"
+run = "uv run python python/scripts/parity_repin.py"
+
 [tasks.parity-bench]
 description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry --recapture DIR [--render DIR] | run --films ctry,land (recapture-noise table) | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] [--batch] | errors-disputes --film ctry | errors-score --film ctry [--against FILE] [--batch] | errors-example --film ctry --tick T --category ID | errors-table --films vault-ctry,vault-land)"
 run = "uv run python python/scripts/parity_bench.py"

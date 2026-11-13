@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from stunt_reel.parity_artifacts import Report
     from stunt_reel.references import Expected, Reference
 
-__all__ = ["CLASS_KEYS", "changed_since", "comparison_line", "crates_tree"]
+__all__ = ["CLASS_KEYS", "changed_since", "clean_crates_tree", "comparison_line", "crates_tree"]
 
 #: The renderer class (``references.RENDERER_CLASSES``) of each adapter class a report names.
 CLASS_KEYS: Mapping[str, str] = {"hardware": "gpu", "cpu": "lavapipe"}
@@ -84,6 +84,19 @@ def crates_tree(repo: Path = REPO_ROOT) -> str | None:
     if tree is None or tree.returncode != 0:
         return None
     return _text(tree)
+
+
+def clean_crates_tree(repo: Path = REPO_ROOT) -> str | None:
+    """``git rev-parse HEAD:crates`` when *repo*'s ``crates/`` matches it; else ``None``.
+
+    ``None`` covers uncommitted or untracked changes under ``crates/`` and any git failure, so
+    a tree this returns is one a commit holds.
+    """
+    found = crates_tree(repo)
+    head = _git(repo, "rev-parse", "--verify", "--quiet", "HEAD:crates")
+    if found is None or head is None or head.returncode != 0 or _text(head) != found:
+        return None
+    return found
 
 
 def _text(done: subprocess.CompletedProcess[bytes]) -> str:
