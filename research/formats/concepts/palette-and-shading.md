@@ -100,7 +100,7 @@ pub struct SodVertex {
 ```
 
 #### Vertex Flag Bitfield (`flags: u8`)
-- **Bit 0 (`0x01`) — Coplanar Decal (`is_decal`):** Identifies coplanar surface markings (runway stripes, aircraft insignias, wing stars). Requires outward normal displacement ($\epsilon = 0.001\text{ m}$) under glTF export or hardware depth biasing in `wgpu` (`[I5]`).
+- **Bit 0 (`0x01`) — Coplanar Decal (`is_decal`):** Identifies coplanar surface markings (runway stripes, aircraft insignias, wing stars). Drawn in `wgpu`'s ordered decal pass (depth bias, no depth write), and moved $\epsilon = 0.001\text{ m}$ toward its front only by the glTF exporter (`[I5]`).
 - **Bit 1 (`0x02`) — Two-Sided Facet:** Disables back-face culling for this polygon.
 - **Bit 2 (`0x04`) — Emissive / Unshaded:** Bypasses directional lighting table; renders at full unshaded diffuse brightness (used for landing lights and muzzle flares).
 - **Bits 3..7 (`0xF8`):** Reserved (must be zero).

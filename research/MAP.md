@@ -54,7 +54,7 @@
 - [`parity/method.md`](parity/method.md): Defines the parity loop that judges a render change against PLAYONE.EXE: capture, render, SSIM and IoU scoring with the fade floor, compare verdicts, dead ends and how to read the legacy parity log.
 - [`parity/metric-bench.md`](parity/metric-bench.md): Records how the parity metrics behave: the planted-fault metric bench, recapture noise of the reference films (with and without sound), and error categories graded by a vision model.
 - [`parity/probes.md`](parity/probes.md): Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou and retime, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls.
-- [`parity/render-model.md`](parity/render-model.md): Compares PLAYONE's back-to-front software painter with our depth-buffer renderer stage by stage, naming each known divergence and the `[I5]` and ground-decal rules that imitate its tie order.
+- [`parity/render-model.md`](parity/render-model.md): Compares PLAYONE's back-to-front software painter with our depth-buffer renderer stage by stage, naming each known divergence and the `[I5]` ordered decal pass and ground-decal rules that imitate its tie order.
 - [`parity/report-fields.md`](parity/report-fields.md): The keys and JSON types of the parity reports `report.json` and `compare.json`, checked against `stuntreel parity` output on synthetic fixtures by the `report_doc.rs` test.
 
 ## playone-exe

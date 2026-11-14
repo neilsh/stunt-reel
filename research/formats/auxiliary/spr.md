@@ -119,7 +119,7 @@ Per Invariant `[I1]`:
 
 ### 3.6 Billboards vs. Coplanar Decals (`[I5]`)
 
-Unlike coplanar decals which require normal displacement ($\epsilon = 0.001\text{ m}$) against underlying mesh faces (`[I5]`), `.SPR` billboards exist as standalone 3D volumetric proxies with distinct depth buffer writes and alpha testing.
+Unlike coplanar decals, which are drawn in an ordered pass over their underlying mesh faces (`[I5]`), `.SPR` billboards exist as standalone 3D volumetric proxies with distinct depth buffer writes and alpha testing.
 
 ---
 

@@ -1,0 +1,36 @@
+diff --git a/crates/stunt-render/src/outline.rs b/crates/stunt-render/src/outline.rs
+index 124cc146..3fa24d84 100644
+--- a/crates/stunt-render/src/outline.rs
++++ b/crates/stunt-render/src/outline.rs
+@@ -56,7 +56,12 @@ pub(crate) fn with_outlines(ir: &SodModelIr) -> SodModelIr {
+             *vertex_count = 0;
+         }
+         let start = arena_index(out.indices.len());
+-        if *is_decal {
++        let dbg_fans = std::env::var("DBG_DECAL_OUTLINE")
++            .ok()
++            .and_then(|v| v.parse::<u8>().ok())
++            .unwrap_or(1)
++            != 0;
++        if *is_decal && dbg_fans {
+             append_decal_fans(&mut out.vertices, &mut out.indices, &ir.vertices, source);
+         } else {
+             out.indices.extend_from_slice(source);
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index c7e4e7d3..4f16826b 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -371,7 +371,12 @@ impl SceneRenderer {
+                 rpass.set_bind_group(2, bind_group, &[]);
+                 // A world decal slice's outline follows its own fill, so a later slice covers
+                 // it as it covers the fill: the decal pass writes no depth to hide it ([I5]).
+-                if decal_pass && matches!(draw.target, Target::World) {
++                let dbg_fans = std::env::var("DBG_DECAL_OUTLINE")
++                    .ok()
++                    .and_then(|v| v.parse::<u8>().ok())
++                    .unwrap_or(1)
++                    != 0;
++                if dbg_fans && decal_pass && matches!(draw.target, Target::World) {
+                     for slice in meshes {
+                         let slices = std::slice::from_ref(slice);
+                         rpass.set_pipeline(&pipelines.decal_pipeline);
