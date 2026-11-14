@@ -25,6 +25,9 @@ SHA_CTRY = "a" * 64
 SHA_INTRO = "b" * 64
 ALL_CTRY = "c" * 64
 OLD_TREE = "1" * 40
+#: The pins each row of :data:`DOCUMENT` records: ctry's capture and archive, intro's capture
+#: alone.
+ROW_PINS = {"ctry": (SHA_CTRY, ALL_CTRY), "intro": (SHA_INTRO, None)}
 
 #: Two rows: ctry with an archive pin, a comment and an old gpu table carrying `commit`; intro
 #: with neither an archive pin nor a table.
@@ -97,8 +100,14 @@ class Repo:
         *,
         crates: str | None = "tree",
         adapter: RenderAdapter = GPU,
+        pins: tuple[str | None, str | None] | None = None,
     ) -> Report:
-        """Writes *film*'s current report; *crates* ``"tree"`` stands for :attr:`tree`."""
+        """Writes *film*'s current report; *crates* ``"tree"`` stands for :attr:`tree`.
+
+        *pins* are the ``sha256`` and ``all_sha256`` it records; ``None`` records the film's
+        own row, as a run against that row's capture does.
+        """
+        sha256, all_sha256 = ROW_PINS[film] if pins is None else pins
         report = Report(
             per_frame=(),
             mean_ssim_scored=ssim,
@@ -108,6 +117,8 @@ class Repo:
             reference_frames=1,
             adapter=adapter,
             crates=self.tree if crates == "tree" else crates,
+            sha256=sha256,
+            all_sha256=all_sha256,
         )
         path = self.root / parity_layout.report_dir(film) / "report.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -209,6 +220,22 @@ def test_a_report_of_another_or_no_tree_is_refused(
     repo: Repo, crates: str | None, says: str
 ) -> None:
     repo.report("ctry", 0.8, 0.9, crates=crates)
+    repo.report("intro", 0.7, 0.9)
+    assert f"ctry: the report {says}" in _refused(repo)
+
+
+@pytest.mark.parametrize(
+    ("pins", "says"),
+    [
+        ((None, None), "records no reference pin"),
+        ((SHA_INTRO, ALL_CTRY), "was scored against capture"),
+        ((SHA_CTRY, None), "records no archive pin"),
+    ],
+)
+def test_a_report_scored_against_other_pins_is_refused(
+    repo: Repo, pins: tuple[str | None, str | None], says: str
+) -> None:
+    repo.report("ctry", 0.8, 0.9, pins=pins)
     repo.report("intro", 0.7, 0.9)
     assert f"ctry: the report {says}" in _refused(repo)
 

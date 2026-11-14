@@ -101,8 +101,9 @@ class FilmJob:
 
     ``name`` is what the caller calls the film (a ``references.toml`` row, or a survey slug),
     ``root`` the data root holding ``corpus/`` and the captures, and ``capture`` the directory
-    that fixes the ticks to render and the frames to score. ``all_sha256`` is the archive the
-    row pins, when it pins one (ADR 0037); the render plays that archive and no other.
+    that fixes the ticks to render and the frames to score. ``sha256`` and ``all_sha256`` are the
+    row's reference pins: the capture content hash its snapshot was verified against, and the
+    archive it plays when the row pins one (ADR 0037); the render plays that archive and no other.
     """
 
     name: str
@@ -110,6 +111,7 @@ class FilmJob:
     flm: Path
     capture: Path
     root: Path
+    sha256: str | None = None
     all_sha256: str | None = None
 
 
@@ -141,7 +143,9 @@ def reference_job(root: Path, name: str) -> Iterator[FilmJob]:
                     f"recorded {recorded}; recapture with the pinned archive, or change the row "
                     "in a reviewed commit"
                 )
-        yield FilmJob(pointer.film, pointer.slug, film.flm, capture, root, pointer.all_sha256)
+        yield FilmJob(
+            pointer.film, pointer.slug, film.flm, capture, root, pointer.sha256, pointer.all_sha256
+        )
 
 
 def current_job(film: BatchFilm, root: Path) -> FilmJob | None:
@@ -414,6 +418,8 @@ def score_film(
     *,
     retime: Retime | None = None,
     crates: str | None = None,
+    sha256: str | None = None,
+    all_sha256: str | None = None,
     run: Run = run_command,
     timeout: float | None = None,
 ) -> FilmScore:
@@ -422,7 +428,8 @@ def score_film(
     The binary writes ``report.json`` inside ``report``. A relabelled copy is written
     where ``retime`` asks and is the tree scored, so the caller keeps the unshifted
     original. *crates*, the ``crates/`` tree the render was built from, goes into the report;
-    leave it ``None`` when that tree is unknown or was dirty.
+    leave it ``None`` when that tree is unknown or was dirty. *sha256* and *all_sha256* are the
+    reference pins the score was made against, recorded the same way.
     """
     if not render.is_dir():
         raise ValueError(f"{render} is not a render directory")
@@ -444,6 +451,10 @@ def score_film(
     ]
     if crates is not None:
         argv += ["--crates", crates]
+    if sha256 is not None:
+        argv += ["--sha256", sha256]
+    if all_sha256 is not None:
+        argv += ["--all-sha256", all_sha256]
     _execute(run, argv, None, timeout)
     ssim, iou = read_report(report / "report.json").headline()
     return FilmScore(

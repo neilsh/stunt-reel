@@ -8,8 +8,9 @@ the film's row. Comments, row order and every other line stay as they are; a ``c
 a rewritten table is dropped, since it named an older measurement.
 
 It writes nothing, and says why, when ``crates/`` has uncommitted changes, a reference film has
-no report, a report's ``crates`` is missing or is not the current tree, or a report was drawn on
-an adapter of another class. It never repins a subset of the films.
+no report, a report's ``crates`` is missing or is not the current tree, a report was drawn on an
+adapter of another class, or a report's recorded reference pins are missing or are not the film's
+current ones. It never repins a subset of the films.
 
 Usage: ``mise run parity-repin -- [--class gpu|lavapipe]`` after ``mise run parity`` on a clean
 ``crates/``.
@@ -67,6 +68,11 @@ def _toml_string(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _pin(pin: str | None) -> str:
+    """*pin* as a refusal names it: its first 12 characters, ``-`` when absent."""
+    return "-" if pin is None else pin[:12]
+
+
 def _measure(repo: Path, film: str, renderer: str, tree: str) -> tuple[Measured | None, str | None]:
     """*film*'s new table from its current report, or why it cannot be written."""
     path = repo / parity_layout.report_dir(film) / "report.json"
@@ -94,6 +100,21 @@ def _measure(repo: Path, film: str, renderer: str, tree: str) -> tuple[Measured 
     if report.mean_ssim_scored is None or report.mean_iou_scored is None:
         return None, f"{film}: the report scored no frame"
     reference = read_reference(repo, film)
+    if report.sha256 is None:
+        return None, (
+            f"{film}: the report records no reference pin for the capture it was scored "
+            "against; re-score it with mise run parity"
+        )
+    if report.all_sha256 is None and reference.all_sha256 is not None:
+        return None, (
+            f"{film}: the report records no archive pin; re-score it with mise run parity"
+        )
+    if (report.sha256, report.all_sha256) != (reference.sha256, reference.all_sha256):
+        return None, (
+            f"{film}: the report was scored against capture {_pin(report.sha256)}/archive "
+            f"{_pin(report.all_sha256)}, now {_pin(reference.sha256)}/"
+            f"{_pin(reference.all_sha256)}"
+        )
     values = {
         "ssim": f"{report.mean_ssim_scored:.7f}",
         "iou": f"{report.mean_iou_scored:.7f}",
@@ -176,8 +197,9 @@ def _rewrite(text: str, renderer: str, tables: Sequence[Measured]) -> str:
 def repin(repo: Path, renderer: str) -> list[Measured]:
     """Rewrites *repo*'s expected tables for *renderer*; raises :class:`RepinRefusedError` instead.
 
-    Every reference film must have a current report measured on *repo*'s clean ``crates/`` tree
-    and drawn on an adapter of *renderer*'s class; otherwise nothing is written.
+    Every reference film must have a current report measured on *repo*'s clean ``crates/`` tree,
+    drawn on an adapter of *renderer*'s class and against the row's current pins; otherwise
+    nothing is written.
     """
     if renderer not in RENDERER_CLASSES:
         raise RepinRefusedError([f"unknown renderer class {renderer!r}"])

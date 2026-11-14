@@ -21,7 +21,8 @@ stdout carries only each film's summary line, under it the comparison with the f
 score for the renderer class it rendered on (``stunt_reel.expected_scores``: the delta, and
 drift only when the scores compare), and the noise note. A run that builds and renders on a
 clean ``crates/`` records that tree in each report (``crates``), which ``mise run parity-repin``
-requires; any other run records null.
+requires; any other run records null. Every report also records the reference pins it was scored
+against (``sha256``, ``all_sha256``), which ``parity-repin`` checks against the film's row.
 """
 
 from __future__ import annotations
@@ -165,7 +166,15 @@ def main(argv: list[str] | None = None) -> int:
             suffix = f"_retime{options.retime:+d}"
             request = Retime(options.retime, REPO_ROOT / parity_layout.retime_dir(job.name, suffix))
         report = REPO_ROOT / parity_layout.report_dir(job.name, suffix)
-        result = score_film(job, source, report, retime=request, crates=crates)
+        result = score_film(
+            job,
+            source,
+            report,
+            retime=request,
+            crates=crates,
+            sha256=job.sha256,
+            all_sha256=job.all_sha256,
+        )
         if result.retime is not None:
             print(
                 f"[parity] {job.name}: copied {result.retime.copied} frames; "

@@ -695,3 +695,21 @@ fn without_a_crates_tree_the_report_says_null() {
     let report = read_report(&tmp.join("out"));
     assert!(report["crates"].is_null(), "{}", report["crates"]);
 }
+
+#[test]
+fn the_report_records_the_reference_pins_it_was_given() {
+    let both = film("CTRY.FLM", 100, "aa", Some("a1a1"));
+    let sha = "1".repeat(64);
+    let all = "2".repeat(64);
+    let (tmp, result) = run_identified_with(
+        "pins_given",
+        &both,
+        &both,
+        false,
+        &["--sha256", sha.as_str(), "--all-sha256", all.as_str()],
+    );
+    result.expect("parity runs");
+    let report = read_report(&tmp.join("out"));
+    assert_eq!(report["sha256"], sha);
+    assert_eq!(report["all_sha256"], all);
+}

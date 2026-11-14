@@ -88,6 +88,12 @@ class Report:
     #: The ``crates/`` git tree the render was built from (``stuntreel parity --crates``);
     #: ``None`` when the scorer was not told, as for a ``crates/`` with uncommitted changes.
     crates: str | None = None
+    #: The reference capture's content hash (``references.toml`` ``sha256``) the score was made
+    #: against (``stuntreel parity --sha256``); ``None`` when the scorer was not told.
+    sha256: str | None = None
+    #: The reference film's archive pin (``references.toml`` ``all_sha256``); ``None`` when the
+    #: row pins no archive, or the scorer was not told.
+    all_sha256: str | None = None
 
     def headline(self) -> tuple[float, float]:
         """Headline SSIM and mask IoU: the scored means, else every matched frame."""
@@ -212,6 +218,8 @@ def _report_object(document: Any, path: Path | None) -> Report:
             raw.get("archive_conflict_waived", False), path, "archive_conflict_waived"
         ),
         crates=_optional_string(raw.get("crates"), path, "crates"),
+        sha256=_optional_string(raw.get("sha256"), path, "sha256"),
+        all_sha256=_optional_string(raw.get("all_sha256"), path, "all_sha256"),
     )
 
 
@@ -251,6 +259,8 @@ def _report_document(report: Report) -> dict[str, Any]:
     if report.archive_conflict_waived:
         document["archive_conflict_waived"] = True
     document["crates"] = report.crates
+    document["sha256"] = report.sha256
+    document["all_sha256"] = report.all_sha256
     document["per_frame"] = [frame_document(frame) for frame in report.per_frame]
     return document
 
