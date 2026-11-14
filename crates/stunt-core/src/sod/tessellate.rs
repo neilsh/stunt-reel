@@ -76,35 +76,37 @@ pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodMode
         return ir;
     }
 
-    // Group polygons into batches partitioned by (is_decal, visibility) preserving order.
-    // Base geometry meshes (is_decal: false) are processed first, followed by decal meshes (is_decal: true) per Invariant [I5].
+    // Base geometry (is_decal: false) comes first, then decals (is_decal: true) per Invariant [I5].
+    // Base batches group every polygon of one visibility: the depth test orders them. Decal
+    // batches are runs of consecutive polygons of one visibility, so the nodes in arena order
+    // reproduce the stream order the ordered decal pass relies on.
     for is_decal in [false, true] {
         let matching_polys: Vec<&RawPolygon> =
             polygons.iter().filter(|p| p.is_decal == is_decal).collect();
-        if matching_polys.is_empty() {
-            continue;
-        }
-
-        // Determine unique visibility conditions in order of appearance
-        let mut vis_conditions: Vec<VisibilityCondition> = Vec::new();
-        for p in &matching_polys {
-            if !vis_conditions.contains(&p.visibility) {
-                vis_conditions.push(p.visibility);
-            }
-        }
-
         let prefix = if is_decal { "DECAL" } else { "BASE" };
 
-        for (batch_idx, &vis) in vis_conditions.iter().enumerate() {
-            let batch: Vec<&RawPolygon> = matching_polys
-                .iter()
-                .copied()
-                .filter(|p| p.visibility == vis)
-                .collect();
-            if batch.is_empty() {
-                continue;
+        let mut batches: Vec<(VisibilityCondition, Vec<&RawPolygon>)> = Vec::new();
+        for p in matching_polys {
+            let reuse = if is_decal {
+                batches.last().is_some_and(|(v, _)| *v == p.visibility)
+            } else {
+                batches.iter().any(|(v, _)| *v == p.visibility)
+            };
+            if reuse {
+                let batch = if is_decal {
+                    batches.last_mut()
+                } else {
+                    batches.iter_mut().find(|(v, _)| *v == p.visibility)
+                };
+                if let Some((_, polys)) = batch {
+                    polys.push(p);
+                }
+            } else {
+                batches.push((p.visibility, vec![p]));
             }
+        }
 
+        for (batch_idx, (vis, batch)) in batches.iter().enumerate() {
             let node_name = if batch_idx == 0 {
                 format!("{name}_{prefix}")
             } else {
@@ -116,9 +118,9 @@ pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodMode
                 &mut ir,
                 root_id,
                 &node_name,
-                &batch,
+                batch,
                 is_decal,
-                vis,
+                *vis,
                 &mut weld_map,
             );
         }

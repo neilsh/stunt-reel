@@ -98,7 +98,7 @@ In original DOS software rendering, decals (wing insignia, national roundels, le
   1. Unit normal parallelism: $\mathbf{n}_A \cdot \mathbf{n}_B \ge 1.0 - 10^{-4}$
   2. Plane constant equality: $|\mathbf{n}_A \cdot \mathbf{v}_{A0} - \mathbf{n}_B \cdot \mathbf{v}_{B0}| \le 10^{-4}\text{ m}$
   3. Bounding box spatial overlap in all three dimensions within $10^{-4}\text{ m}$.
-- **Resolution:** decal facets are flagged with `flags |= 0x01` (`is_decal = true`) and keep their decoded positions. The renderer (`crates/stunt-render/`) draws them after all base geometry, in stream order, in a pass with `LessEqual`, hardware depth bias (`DepthBiasState { constant: -2, slope_scale: -2.0, clamp: 0.0 }`) and no depth write, so a later coplanar decal covers an earlier one. Only `stunt-gltf` moves decal vertices $\epsilon = 0.001\text{ m}$ toward their front on export, since glTF has no depth bias or draw order ([ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)).
+- **Resolution:** decal facets are flagged `flags |= 0x01` (`is_decal = true`) and keep their decoded positions. How they are drawn is the renderer's policy, in [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md) and [`render-model.md`](../parity/render-model.md) section 3.
 
 ---
 

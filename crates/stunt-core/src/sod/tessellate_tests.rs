@@ -395,3 +395,45 @@ fn test_sod_vm_ifvis_conditional_sections() {
         ir.nodes[2].visibility
     );
 }
+
+/// Decals keep stream order across visibility conditions: a later coplanar decal draws over
+/// an earlier one even when an `IFVIS` gate sits between them (`[I5]`).
+#[test]
+fn test_decal_stream_order_survives_visibility_batches() {
+    let gate = VisibilityCondition::FacesEye {
+        point: [0.0; 3],
+        normal: [0.0, 0.0, 1.0],
+    };
+    let decal = |palette_index: u8, visibility| RawPolygon {
+        vertex_palette: Vec::new(),
+        vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        palette_index,
+        normal: [0.0, 0.0, 1.0],
+        flags: 0,
+        is_decal: true,
+        visibility,
+    };
+    let polygons = [
+        decal(1, VisibilityCondition::Always),
+        decal(2, gate),
+        decal(3, VisibilityCondition::Always),
+    ];
+    let ir = crate::sod::tessellate::build_sod_model_ir("DECAL_ORDER", &polygons);
+
+    // Palette index of each decal triangle in the order the renderer draws the nodes.
+    let mut drawn = Vec::new();
+    for node in &ir.nodes {
+        if let NodeKind::Mesh {
+            index_offset,
+            index_count,
+            is_decal: true,
+            ..
+        } = node.kind
+        {
+            let first = ir.indices[index_offset as usize] as usize;
+            assert_eq!(index_count, 3);
+            drawn.push(ir.vertices[first].palette_index);
+        }
+    }
+    assert_eq!(drawn, [1, 2, 3], "decal draw order must equal stream order");
+}
