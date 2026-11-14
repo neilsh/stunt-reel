@@ -36,7 +36,9 @@ class Anchor:
 
 
 SPEC = "docs/SPEC.md"
-MEMORY_MAP = "research/playone-exe/memory-map.md"
+MEMORY_MAP_RUNTIME = "research/playone-exe/memory-map-runtime.md"
+MEMORY_MAP_VM = "research/playone-exe/memory-map-vm.md"
+MEMORY_MAP_MAIN = "research/playone-exe/memory-map-main.md"
 MEMORY_NOTES = "research/playone-exe/memory.md"
 
 ANCHORS: tuple[Anchor, ...] = (
@@ -127,21 +129,21 @@ ANCHORS: tuple[Anchor, ...] = (
         "research/formats/auxiliary/scenery.md",
         "3.1 Node Opcode Table (`# [FMT-MAP-SCENERY]`)",
     ),
-    # --- Runtime memory anchors: defined in the memory map (plus one evidence note) ---
-    Anchor("MEM-VSYNC-03DA", MEMORY_MAP, "# [MEM-VSYNC-03DA]"),
-    Anchor("MEM-FLM-TICK", MEMORY_MAP, "# [MEM-FLM-TICK]"),
-    Anchor("MEM-FLM-VARS", MEMORY_MAP, "# [MEM-FLM-VARS]"),
-    Anchor("MEM-PALETTE", MEMORY_MAP, "# [MEM-PALETTE]"),
-    Anchor("MEM-CAMERA-RIG", MEMORY_MAP, "# [MEM-CAMERA-RIG]"),
-    Anchor("MEM-ACTOR-TABLE", MEMORY_MAP, "# [MEM-ACTOR-TABLE]"),
+    # --- Runtime memory anchors: defined in the memory-map files (plus one evidence note) ---
+    Anchor("MEM-VSYNC-03DA", MEMORY_MAP_RUNTIME, "# [MEM-VSYNC-03DA]"),
+    Anchor("MEM-FLM-TICK", MEMORY_MAP_RUNTIME, "# [MEM-FLM-TICK]"),
+    Anchor("MEM-FLM-VARS", MEMORY_MAP_MAIN, "# [MEM-FLM-VARS]"),
+    Anchor("MEM-PALETTE", MEMORY_MAP_MAIN, "# [MEM-PALETTE]"),
+    Anchor("MEM-CAMERA-RIG", MEMORY_MAP_RUNTIME, "# [MEM-CAMERA-RIG]"),
+    Anchor("MEM-ACTOR-TABLE", MEMORY_MAP_RUNTIME, "# [MEM-ACTOR-TABLE]"),
     Anchor(
         "MEM-SOD-VM",
-        MEMORY_MAP,
+        MEMORY_MAP_VM,
         "3. SOD Display-List VM Work Segment (`# [MEM-SOD-VM]`)",
     ),
     Anchor(
         "MEM-SOD-ANCHOR-TABLE",
-        MEMORY_MAP,
+        MEMORY_MAP_VM,
         "3.1 Anchor Table Cache (`# [MEM-SOD-ANCHOR-TABLE]`)",
     ),
     Anchor(

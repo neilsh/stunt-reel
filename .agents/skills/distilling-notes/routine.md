@@ -20,7 +20,7 @@ commands.
 
 3. Run `mise run doc-health -- --json` and keep its output. Take the first finding whose
    kind is size, summary or heading, skipping a file the skill excludes, such as
-   research/playone-exe/memory-map.md, which is split by segment, not distilled. If no
+   research/playone-exe/memory-map*.md, which are split by segment, not distilled. If no
    finding is left, skip to step 5. <stem> is the file's name without .md, in lower
    case; create the branch claude/distill-<stem>.
 

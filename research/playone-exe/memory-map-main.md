@@ -1,0 +1,56 @@
+---
+summary: "`DS` data and code offsets of `PLAYONE.EXE`'s main program and resident mixer: film variables and state, palette build and DAC upload, view setup, world light, matrix and draw routines."
+---
+# Memory Map: Main Program and Resident Mixer
+
+Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the conventions every table uses (target binary, image base, linear address). Section numbers run across the files.
+
+## # [MEM-FLM-VARS]
+
+## # [MEM-PALETTE]
+
+`DS`-relative data and code in the segment that runs at `CS = 0x0824` (load-image segment `0x0000`). Evidence: [`research/playone-exe/palette-fade.md`](palette-fade.md). Patch #3 offsets: [§ 1.1](memory-map-patch3.md#11-patch-3-build).
+
+| Offset | Evidentiary Tier | Purpose |
+|---|---|---|
+| `DS:0x474A + 0x7E + 2n` | `[Established]` | Live film variable `n` (`u16[16]`), interpolated per frame between `+0xBE + 2n` and `+0xDE + 2n` |
+| `DS:0x474A + 0x98` | `[Established]` | Var 13, palette night term |
+| `DS:0x474A + 0x9A`, `+ 0x9C` | `[Established]` | Var 14 (palette brightness) and var 15 (palette saturation); 32768 = full |
+| `DS:0x09DE` | `[Established]` | Six `(day, night)` sky colour pairs, 6-bit DAC units; blended by the night term into `DS:0x09EA` (zenith, horizon) |
+| `DS:0x09F0`, `DS:0x09F6` | `[Established]` | Day and night colours of palette entries 213–214 |
+| `DS:0x2240` | `[Established]` | 17-entry graphics driver vector table, copied from `DS:0x10A4` (`set_palette` at `+0x12`, palette-resource load at `+0x1E`) |
+| `DS:0x2468` | `[Established]` | Base palette, 6-bit DAC units |
+| `DS:0x2768` | `[Established]` | Working palette sent to the DAC (256 x 3 bytes) |
+| `DS:0x227A` | `[Supported Inference]` | Screen-faded flag; suppresses DAC writes while set |
+| `DS:0x227B..0x227D` | `[Established]` | Cached brightness/saturation/sky inputs of the palette build |
+| `CS:0x0FD2` | `[Established]` | Palette build from vars 13–15 (entries 0–239) |
+| `CS:0x136F` | `[Established]` | Per-frame film-variable interpolation |
+| `CS:0x3D54` | `[Established]` | `var_set` handler |
+| `CS:0x7B70` | `[Established]` | VGA DAC upload (`0x3C8`/`0x3C9`), two retrace-gated halves |
+| `DS:0x4888` | `[Supported Inference]` | Snapshot of the `0x474A` film state taken at `CS:0x39B0` and read by the frame routine `CS:0x0EE9`; `+0x7E` (`DS:0x4906`) holds the 16 variable copies, `+0x1A` (`DS:0x48A2`) a copy of `0x474A + 0x1A`, the current `view_obj` (written by the `0x90..0x97` handler at `CS:0x3D7F`) |
+| `DS:0x4778 -> DS:0x48B6` | `[Supported Inference]` | Per-slot record pointers of the live and snapshot structs; `CS:0x39B0` copies 12 words per slot |
+| `CS:0x3E6C` | `[Established]` | Per-frame slot interpolation between the start `[di + 0x32]` and end `[di + 0x34]` records by `DS:0x22E0`, gated by the record's flag byte `+1`: position `+0x04..+0x0F` (`0x08`), angles `+0x10..+0x14` (`0x10`), and the animate word `+0x16` (`0x20`) taken unsigned, never wrapping (`0x3EF8`) ([`sod-animate.md`](sod-animate.md) § 2) |
+| `CS:0x3CF2` | `[Established]` | `create` handler (opcodes `0x00..0x3F`): stores the `type_flags` byte verbatim at slot `+1` (`0x3CFD`), then `0x3DDA` reads the shape, position and angles the flags call for _Source: [the #478 static read](../../work/2026-11/478_shadow-plane/journal.md#2026-11-14-the-shadow-plane-writer-the-view-slot-and-the-0x806c-readers-read-statically)._ |
+| `CS:0x1463`, `CS:0x240A` | `[Established]` | Per-frame slot update and its ground and collision probe: for each slot with `SIF_MOVES`, a shape, and `SIF_DRAW` or byte `+0` bit 3, `0x240A` walks the scenery tree through `DS:0x584`, storing the containing ground leaf's plane at slot `+0x1E` (`0x2631`, `0x26BE`) and a code-8 collision box's top at `+0x20/+0x22` (`0x2A5B`) ([`sod-vm.md` § 9.1](sod-vm.md#91-the-actor-shadow-draw)) _Source: [the #478 static read](../../work/2026-11/478_shadow-plane/journal.md#2026-11-14-the-shadow-plane-writer-the-view-slot-and-the-0x806c-readers-read-statically)._ |
+| `CS:0x4C41` | `[Established]` | Resource cache lookup of the id in `AX`; returns its segment in `ES`, carry set when absent. A newly loaded chunk sits at segment offset 2 (`0x4CD3`, `0x4CE0`) |
+| `CS:0x8073` | `[Established]` | `OP_ANIMATE` draw entry: looks the id up, centres a `DX`-pixel square on `CX`, `BX` and calls the blitter through `DS:0x2260` |
+| `CS:0x7DE6` | `[Established]` | Scaled transparent blit: stretches the image at `es:8` (width `es:2`, height `es:4`) to the square, clips to `DS:0x2294..0x229A` and stores every non-zero byte; never reads the encoding word `es:6` ([`sod-animate.md`](sod-animate.md) § 3) |
+| `CS:0x7C2E`, `CS:0x7C39`, `CS:0x7CBA` | `[Established]` | Unscaled image draw: tests the encoding word `es:6` (`0x7C2E`); on 0 copies raw rows from `es:8` clipped to `DS:0x2294..0x229A` (`0x7C39`), otherwise draws span-coded rows clipped to the 320 × 200 screen (`0x7CBA`) ([`spr.md`](../formats/auxiliary/spr.md) § 2) _Source: [where an SPR image's pixels start](../../work/2026-11/481_spr-pixel-start/journal.md#2026-11-14-where-an-spr-images-pixels-start)._ |
+| `CS:0x0EE9` | `[Supported Inference]` | Per-frame film render step (entered from `CS:0x4A35` with `BX = 0x4888`): sun vector, view matrix, one scene draw, credits string. `CS:0x0EE6` is the same step with `BX = 0x474A`; no static caller found |
+| `CS:0x196C` | `[Established]` | World light from var 13: called from `CS:0x0F50` with `AX = [0x4888 + 0x98]` (var 13), `angle = var 13 - 0x4000`, stored at `DS:0x49EC..0x49F0` and negated at `[DS:0x542]:0x8078..0x807C`; `CS:0x908E` projects it through the camera matrix at `0x80C0`. Values observed live: [`terrain-shade.md`](terrain-shade.md) section 4.2 |
+| `CS:0x21F9`, `CS:0x234B`, `CS:0x1D8D` | `[Bounded Observation]` | The three calls of the per-object light setup `0824:0EC0` (image `0x9100`): the first two pass `DS:0x49EC..0x49F0` unchanged, the third (after `CS:0x1CFB`) `R · L` doubled, with `R` the object's rotation from `0824:04E5` ([`terrain-shade.md`](terrain-shade.md) section 4.2) |
+| `CS:0x23BF` | `[Established]` | Scenery-walker handler of node type 14 (ground leaf; dispatch `jmp [bx+0x554]`, type 12 at `CS:0x2360`): back-face test against the eye `DS:0x2A6A..0x2A72`, then `lcall 0824:3CE3` at `CS:0x23F6` with `ES = SS` on the leaf's polygon (colour word, count, anchor offsets `0x1C * n`). The tree is image paragraph `0x2286` (image `0x22860`, `SS = 0x2AAA` under DOSBox-X); its 146 leaves are `MAP.BIN`'s polygons and colours ([`world-scene.md`](world-scene.md) section 2) |
+| image `0xBBD4`, `0x7FD2`, `0x7511` | `[Established]` | `ZLINETO`'s draw: the line routine clips both registers' screen points to `work:0x41C0..0x41C6`, the gateway `0:7FD2` loads the colour (`work:0x41EA`, or 0 in a shadow draw) and calls driver slot `DGROUP:[0x2244]`, `0x7511`, a one-pixel Bresenham line with both ends ([`sod-vm.md`](sod-vm.md) section 8.10) _Source: [the ZLINETO draw path read](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-the-zlineto-draw-path-read-statically)._ |
+| image `0x7571` | `[Established]` | Flat polygon filler (driver slot `DGROUP:[0x2246]`): fills from the top row to the bottom row and each span from its left end to its right end, both ends included, counting rows down in `DGROUP:0x10C6` and clipping spans to `[0x2294]`, `[0x2296]` ([`sod-vm.md`](sod-vm.md) section 8.11) _Source: [what thins the INTRO conifer field](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-what-thins-the-intro-conifer-field)._ |
+| `CS:0xBF23` | `[Established]` | Ground-leaf polygon (VM `0x3CE3`, far): transforms stale anchors through VM `0x2C27`, copies them to `work:0x4450`, then draws flat at the stored colour through the raw gateway `lcall 0:8069` (`CX` = colour; driver `DGROUP:[0x2246]`). `0:8010` and `0:8040` are the gateways that read `CX = work:0x41E8` ([`world-scene.md`](world-scene.md) sections 2, 3) |
+| `CS:0x11FC` | `[Established]` | View setup indexed by `AX = view_obj` (`[0x4888 + 0x1A]`, loaded at `CS:0x4A32`): film variable `view_obj` (`[BX + SI + 0x7E]`) times `DS:0x22B6` (set by `CS:0x11F8`, `0x7FFF` at `CS:0x4A29`), normalised into the mantissa `DS:0x229C`, the shift count `DS:0x229E` and `DS:0x22A4`; `[BX + SI + 0x2E]` is the camera's object pointer ([`lod.md`](lod.md) section 2.1) |
+| `CS:0x12DC` | `[Established]` | Lens zoom of the view matrix: rows 0-1 (screen X, Y) times `0x229C / 0x8000`, row 2 (depth) `sar` by `0x229E`, so focal length scales by about `lens / 8192` ([`lod.md`](lod.md) section 2.2) |
+| image `0x8725` (`0824:04E5`) | `[Established]` | Rotation-matrix builder: `BX`, `BP`, `SI` = angle words roll, pitch, yaw (actor slot `+0x10/+0x12/+0x14`, loaded at `CS:0x1D14`); writes `Ry(-yaw) · Rx(pitch) · Rz(roll)` as nine Q15 words, row by row, at `work:DI` ([`coordinates-and-units.md` § 3.4](../formats/concepts/coordinates-and-units.md#34-rotation-conventions--unit-quaternions-seam-2)) _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
+| image `0x884A` (`0824:060A`) | `[Established]` | 3×3 Q15 product `work:DI = work:SI · work:BX` (rows of `SI` times columns of `BX`) _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
+| image `0x88C1` (`0824:0681`) | `[Established]` | Transposed copy of a 3×3 matrix from `work:SI` to `work:DI` _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
+| image `0x895D` (`0824:071D`), image `0x88FB` (`0824:06BB`, inferred from the `0x8240` offset the other three share) | `[Established]` | Vector `AX, BX, CX` times the matrix at `work:SI`, one output per row, returned in `DX, BP, DI` _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
+| `CS:0x1D96` | `[Established]` | Fills bank words `0x10`..`0x14`, `0x18`, `0x1A` (`0x15D4:0x811E`..`0x8128`) once per frame from the film clock and vars 10 and 12 of `DS:0x4888`; only caller `CS:0x1DD5` (from `CS:0x0F77`), before the object loop; `DS:0x22BC` keeps the previous frame's var 10 ([`angle-bank.md`](angle-bank.md)) |
+| `DS:0x2275` | `[Supported Inference]` | Video-mode flag: `0` after `int 10h` mode `0x13` (`CS:0x737B`), `0xFF` on the alternate path (`CS:0x6E1B`); selects `0x824:0x07DC` over `0x824:0x0A05` in the frame routine |
+| `CS:0x39D0` | `[Established]` | Copies the 16 live variables from `DS:0x47C8` to `DS:0x4906` (the checkpoint inside `0x39B0`) |
+| `CS:0x42F5` | `[Supported Inference]` | Film recorder: compares the 16 live variables with `DS:0x49C6` and emits `var_set` bytes (`0x80 + n`, from `0x90 - CL` with `CL` counting 16 to 1) when they change |
+| `0x1DEA:0x05B1` | `[Supported Inference]` | Resident PCM mixer setter: `AX = 1` stores `DX` in `cs:[0x49]`, otherwise `cs:[0xD7]` (var 11); channel blocks are 0x8E bytes apart and no reader of that field was found |
