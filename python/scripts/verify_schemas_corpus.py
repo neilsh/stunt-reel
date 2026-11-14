@@ -379,7 +379,7 @@ class OtherLayout(Exception):  # noqa: N818 - a verdict on the file, not a sweep
 
 
 def _span_rows_fill(data: bytes, width: int, height: int) -> bool:
-    """True when ``height`` span-coded rows from byte 6 end exactly at the end of ``data``."""
+    """True when ``height`` span-coded rows from byte 6, every span inside ``width``, end at the end of ``data``."""
     at = 6
     for _ in range(height):
         while True:

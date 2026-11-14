@@ -2,7 +2,7 @@
 //!
 //! A frame is a `.SPR` image (`research/formats/auxiliary/spr.ksy`): `width: u16`,
 //! `height: u16`, an encoding word, then from byte 6 either `width × height` raw palette
-//! indices `[I3]` (encoding 0) or span-coded rows (any other encoding), index 0 transparent.
+//! indices `[I3]` (encoding 0) or span-coded rows (any other encoding); index 0 is transparent to the `OP_ANIMATE` blitter.
 //! [`SpriteImage::parse`] decodes both. `PLAYONE`'s `OP_ANIMATE` blitter (image `0x7DE6`)
 //! ignores the encoding word and reads raw rows; no corpus frame it draws is span-coded
 //! (`research/playone-exe/sod-animate.md` § 3), so decoding spans changes no drawn frame.
