@@ -166,15 +166,7 @@ def main(argv: list[str] | None = None) -> int:
             suffix = f"_retime{options.retime:+d}"
             request = Retime(options.retime, REPO_ROOT / parity_layout.retime_dir(job.name, suffix))
         report = REPO_ROOT / parity_layout.report_dir(job.name, suffix)
-        result = score_film(
-            job,
-            source,
-            report,
-            retime=request,
-            crates=crates,
-            sha256=job.sha256,
-            all_sha256=job.all_sha256,
-        )
+        result = score_film(job, source, report, retime=request, crates=crates)
         if result.retime is not None:
             print(
                 f"[parity] {job.name}: copied {result.retime.copied} frames; "

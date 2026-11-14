@@ -181,6 +181,8 @@ def test_score_film_runs_parity_and_reads_the_report(tmp_path: Path) -> None:
             str(render),
             "--output",
             str(report),
+            "--sha256",
+            job.sha256,
         ]
     ]
     assert result.score == parity_pipeline.Score(0.8, 0.9)
@@ -755,4 +757,23 @@ def test_score_film_passes_the_crates_tree_it_is_given(tmp_path: Path) -> None:
     fake = FakeRun()
     with parity_pipeline.reference_job(root, "ctry") as job:
         parity_pipeline.score_film(job, render, report, crates="f" * 40, run=fake)
-    assert fake.calls[0][-2:] == ["--crates", "f" * 40]
+    assert _after(fake.calls[0], "--crates") == "f" * 40
+
+
+def test_score_film_passes_the_jobs_reference_pins(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [], films=("ctry",))
+    render, report = tmp_path / "ours", tmp_path / "report"
+    _write_render(render)
+    plain = FakeRun()
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_pipeline.score_film(job, render, report, run=plain)
+    assert _after(plain.calls[0], "--sha256") == references.read_reference(root, "ctry").sha256
+    assert _after(plain.calls[0], "--all-sha256") is None, "a row without an archive pin adds none"
+    archive = "c" * 64
+    _pin_archive(root, "ctry", archive, archive)
+    pinned = FakeRun()
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_pipeline.score_film(job, render, report, run=pinned)
+    pin = references.read_reference(root, "ctry").sha256
+    assert _after(pinned.calls[0], "--sha256") == pin
+    assert _after(pinned.calls[0], "--all-sha256") == archive

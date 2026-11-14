@@ -229,6 +229,7 @@ def test_a_report_of_another_or_no_tree_is_refused(
     [
         ((None, None), "records no reference pin"),
         ((SHA_INTRO, ALL_CTRY), "was scored against capture"),
+        ((SHA_CTRY, "d" * 64), "was scored against capture"),
         ((SHA_CTRY, None), "records no archive pin"),
     ],
 )
@@ -238,6 +239,12 @@ def test_a_report_scored_against_other_pins_is_refused(
     repo.report("ctry", 0.8, 0.9, pins=pins)
     repo.report("intro", 0.7, 0.9)
     assert f"ctry: the report {says}" in _refused(repo)
+
+
+def test_a_report_recording_an_archive_the_row_does_not_pin_is_refused(repo: Repo) -> None:
+    repo.report("ctry", 0.8, 0.9)
+    repo.report("intro", 0.7, 0.9, pins=(SHA_INTRO, ALL_CTRY))
+    assert "intro: the report was scored against capture" in _refused(repo)
 
 
 def test_a_report_of_another_class_is_refused(repo: Repo) -> None:
@@ -252,12 +259,14 @@ def test_clean_crates_tree_is_head_crates_only_when_clean(repo: Repo) -> None:
     assert clean_crates_tree(repo.root) is None
 
 
-def test_a_report_round_trips_its_crates_tree(tmp_path: Path) -> None:
+def test_a_report_round_trips_its_crates_tree_and_pins(tmp_path: Path) -> None:
     path = tmp_path / "report.json"
-    write_report(path, Report(per_frame=(), crates="f" * 40))
-    assert read_report(path).crates == "f" * 40
+    write_report(path, Report(per_frame=(), crates="f" * 40, sha256="a" * 64, all_sha256="b" * 64))
+    report = read_report(path)
+    assert (report.crates, report.sha256, report.all_sha256) == ("f" * 40, "a" * 64, "b" * 64)
     path.write_text('{"per_frame": []}', encoding="utf-8")
-    assert read_report(path).crates is None
+    legacy = read_report(path)
+    assert (legacy.crates, legacy.sha256, legacy.all_sha256) == (None, None, None)
 
 
 @pytest.mark.parametrize(
