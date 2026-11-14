@@ -42,7 +42,9 @@ types:
     seq:
       - id: pixels
         size: _root.width * _root.height
-        doc: Row-major palette indices, top row first; index 0 is transparent.
+        doc: |
+          Row-major palette indices, top row first. Index 0 is transparent to
+          the scaled blitter (0x7DE6) only; the unscaled draw copies raw rows whole.
   span_rows:
     seq:
       - id: rows

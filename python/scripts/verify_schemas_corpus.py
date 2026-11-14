@@ -378,11 +378,37 @@ class OtherLayout(Exception):  # noqa: N818 - a verdict on the file, not a sweep
     """The file is another tool's layout, which the schema does not describe."""
 
 
+def _span_rows_fill(data: bytes, width: int, height: int) -> bool:
+    """True when ``height`` span-coded rows from byte 6 end exactly at the end of ``data``."""
+    at = 6
+    for _ in range(height):
+        while True:
+            if at >= len(data):
+                return False
+            count = data[at]
+            at += 1
+            if count == 0:
+                break
+            if at + 2 > len(data) or struct.unpack_from("<H", data, at)[0] + count > width:
+                return False
+            at += 2 + count
+    return at == len(data)
+
+
 def _spr_cases(data: bytes) -> Iterator[ParseCase]:
-    """One case for the file, or OtherLayout for ``PCX2SPR`` output (``spr.md`` section 2.3)."""
+    """One case for the file, or OtherLayout for ``PCX2SPR`` output (``spr.md`` section 2.3).
+
+    ``PCX2SPR`` output has a non-zero word at byte 4, ``width * height + 6`` bytes and a zero
+    last word; a span-coded image of that size whose rows fill the file is kept as an image.
+    """
     if len(data) >= 6:
         width, height, word = struct.unpack_from("<3H", data)
-        if word and len(data) == width * height + 6 and data[-2:] == bytes(2):
+        if (
+            word
+            and len(data) == width * height + 6
+            and data[-2:] == bytes(2)
+            and not _span_rows_fill(data, width, height)
+        ):
             raise OtherLayout("PCX2SPR layout: pixels from byte 4, a zero word after them")
     return iter((ParseCase("image", (), data),))
 

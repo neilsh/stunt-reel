@@ -1,10 +1,11 @@
 //! Image resources an `OP_ANIMATE` draws (`research/playone-exe/sod-animate.md`).
 //!
 //! A frame is a `.SPR` image (`research/formats/auxiliary/spr.ksy`): `width: u16`,
-//! `height: u16`, an encoding word, then `width × height` palette indices `[I3]` from byte 6,
-//! row by row, index 0 transparent. `PLAYONE`'s `OP_ANIMATE` blitter (image `0x7DE6`) ignores
-//! the encoding word, and so does [`SpriteImage::parse`]: a span-coded image becomes raw rows,
-//! or `None` when it holds fewer than `width × height` bytes after the header.
+//! `height: u16`, an encoding word, then from byte 6 either `width × height` raw palette
+//! indices `[I3]` (encoding 0) or span-coded rows (any other encoding), index 0 transparent.
+//! [`SpriteImage::parse`] decodes both. `PLAYONE`'s `OP_ANIMATE` blitter (image `0x7DE6`)
+//! ignores the encoding word and reads raw rows; no corpus frame it draws is span-coded
+//! (`research/playone-exe/sod-animate.md` § 3), so decoding spans changes no drawn frame.
 
 /// Byte offset of the first pixel `PLAYONE` reads.
 const PIXELS_AT: usize = 6;
@@ -34,19 +35,24 @@ pub struct PixelRun {
 }
 
 impl SpriteImage {
-    /// Reads an image chunk, or `None` when it is not one: a zero width or height, or fewer
-    /// than `6 + width × height` bytes.
+    /// Reads a raw or span-coded image chunk, or `None` when it is not one: a zero width or
+    /// height, a header shorter than 6 bytes, fewer than `width × height` raw pixels, or span
+    /// rows that run past the chunk or past the width. Columns no span covers read as 0.
     #[must_use]
     pub fn parse(payload: &[u8]) -> Option<Self> {
-        let width = u16::from_le_bytes([*payload.first()?, *payload.get(1)?]);
-        let height = u16::from_le_bytes([*payload.get(2)?, *payload.get(3)?]);
+        let [w0, w1, h0, h1, e0, e1] = *payload.first_chunk::<PIXELS_AT>()?;
+        let (width, height) = (u16::from_le_bytes([w0, w1]), u16::from_le_bytes([h0, h1]));
+        let encoding = u16::from_le_bytes([e0, e1]);
         if width == 0 || height == 0 {
             return None;
         }
         let count = usize::from(width).checked_mul(usize::from(height))?;
-        let pixels = payload
-            .get(PIXELS_AT..PIXELS_AT.checked_add(count)?)?
-            .to_vec();
+        let body = payload.get(PIXELS_AT..)?;
+        let pixels = if encoding == 0 {
+            body.get(..count)?.to_vec()
+        } else {
+            decode_spans(body, usize::from(width), usize::from(height))?
+        };
         Some(Self {
             width,
             height,
@@ -76,6 +82,27 @@ impl SpriteImage {
     }
 }
 
+/// The `width × height` pixels of `height` span-coded rows (`span_row` in `spr.ksy`; image
+/// `0x7CBA`), or `None` when a row runs past `body` or a span past `width`.
+fn decode_spans(mut body: &[u8], width: usize, height: usize) -> Option<Vec<u8>> {
+    let mut pixels = vec![0; width.checked_mul(height)?];
+    for row in pixels.chunks_mut(width) {
+        loop {
+            let (&count, rest) = body.split_first()?;
+            if count == 0 {
+                body = rest;
+                break;
+            }
+            let (x, rest) = rest.split_first_chunk::<2>()?;
+            let (x, count) = (usize::from(u16::from_le_bytes(*x)), usize::from(count));
+            let (span, rest) = rest.split_at_checked(count)?;
+            row.get_mut(x..x.checked_add(count)?)?.copy_from_slice(span);
+            body = rest;
+        }
+    }
+    Some(pixels)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,12 +125,31 @@ mod tests {
     }
 
     #[test]
-    fn parse_reads_every_byte_after_the_encoding_word_as_pixels() {
-        // Non-zero encoding word and last pixels: neither is header nor trailer to 0x7DE6.
-        let mut bytes = vec![2, 0, 1, 0, 2, 0];
-        bytes.extend_from_slice(&[7, 8]);
-        let image = SpriteImage::parse(&bytes).expect("an image");
+    fn parse_reads_raw_pixels_to_the_end_with_no_trailer() {
+        // Opaque last pixels: a byte-4 reading would shift by two and take 7, 8 as a trailer.
+        let image = SpriteImage::parse(&chunk(2, 1, &[7, 8])).expect("an image");
         assert_eq!(image.pixels, [7, 8]);
+    }
+
+    #[test]
+    fn parse_decodes_span_coded_rows() {
+        // Encoding 2; row 0: two pixels at column 1; row 1: one at 0, one at 3.
+        let bytes = [
+            4, 0, 2, 0, 2, 0, //
+            2, 1, 0, 9, 9, 0, //
+            1, 0, 0, 7, 1, 3, 0, 5, 0,
+        ];
+        let image = SpriteImage::parse(&bytes).expect("an image");
+        assert_eq!(image.pixels, [0, 9, 9, 0, 7, 0, 0, 5]);
+    }
+
+    #[test]
+    fn parse_rejects_spans_past_the_width_or_the_chunk() {
+        assert_eq!(
+            SpriteImage::parse(&[2, 0, 1, 0, 2, 0, 2, 1, 0, 9, 9, 0]),
+            None
+        );
+        assert_eq!(SpriteImage::parse(&[2, 0, 1, 0, 2, 0, 1, 0, 0, 9]), None);
     }
 
     #[test]

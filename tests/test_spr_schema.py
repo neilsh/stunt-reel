@@ -77,3 +77,11 @@ def test_sweep_sets_pcx2spr_output_aside() -> None:
         list(verifier._spr_cases(pcx2spr))
     raw = struct.pack("<3H", 2, 1, 0) + bytes([5, 6])
     assert [case.data for case in verifier._spr_cases(raw)] == [raw]
+
+
+def test_sweep_keeps_a_span_coded_image_of_pcx2spr_size() -> None:
+    # 4 by 2, encoding 2: three pixels at column 0, then an empty row; 8 + 6 bytes ending 00 00.
+    data = struct.pack("<3H", 4, 2, 2) + bytes([3, 0, 0, 9, 9, 9, 0]) + bytes([0])
+    assert len(data) == 4 * 2 + 6
+    verifier = _verifier()
+    assert [case.data for case in verifier._spr_cases(data)] == [data]

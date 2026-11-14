@@ -56,7 +56,7 @@ A raw image's pixels run from the top-left corner $(0, 0)$ row by row to the bot
 
 ### 3.2 Color Index 0 Transparency Key
 
-- **Transparent Pixel:** Palette index `0x00` (`0`) is defined as unconditionally transparent. When rasterizing `.SPR` pixels into the VGA framebuffer or modern render target, texels with index `0` are discarded (transparent keying / alpha mask test `alpha = 0.0`), allowing background 3D scenery and skyboxes to show through without overdraw.
+- **Transparent Pixel:** Palette index `0x00` (`0`) is transparent where the blitter keys it: the scaled `OP_ANIMATE` blit (`0x7DE6`) stores only non-zero bytes. The unscaled draw does not key it: raw rows are copied whole (`rep movsb` at `0x7CA7`), and span-coded rows copy every byte of a span, leaving only the columns no span covers untouched (`[Established]`, static; § 2.2). When rasterizing `.SPR` pixels into the VGA framebuffer or modern render target, texels with index `0` are discarded (transparent keying / alpha mask test `alpha = 0.0`), allowing background 3D scenery and skyboxes to show through without overdraw.
 - **Opaque Pixels:** Palette indices `0x01` through `0xFF` (`1..=255`) represent visible, opaque surface colors.
 
 ### 3.3 Procedural `.SOD` Billboard Coupling
