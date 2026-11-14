@@ -28,12 +28,14 @@ def test_ramp_word_follows_the_registers() -> None:
     assert poly.size == 22
 
 
-def test_shade_count_is_the_ramp_words_low_nibble() -> None:
-    # `0x3024`: base 0x30, and only the low nibble (4) counts shades, as the handler's tail does.
-    data = struct.pack("<H4HH4HH", 4, 12, 24, 36, 48, 0x3024, 1, 2, 3, 4, 0x17E4)
+def test_shade_count_is_the_ramp_words_whole_low_byte() -> None:
+    # `0x3012`: base 0x30 and 18 shades, as the Gouraud loop's `dec cl` counts; the skip
+    # tail's `& 0x0F` would give 2.
+    shades = list(range(1, 19))
+    data = struct.pack("<H2HH18HH", 2, 12, 24, 0x3012, *shades, 0x17E4)
     poly = decode_record(data, 0x1000, G2BE)
     assert poly is not None
-    assert (poly.base, poly.shades, poly.next_ip) == (0x30, (1, 2, 3, 4), 0x17E4)
+    assert (poly.base, poly.shades, poly.next_ip) == (0x30, tuple(shades), 0x17E4)
 
 
 def test_record_shades_and_next_ip() -> None:
