@@ -39,6 +39,14 @@ pub(super) struct Args {
     /// leave it out when that tree is unknown or had uncommitted changes
     #[arg(long, value_name = "TREE")]
     pub(super) crates: Option<String>,
+    /// The reference capture's content hash the score is made against, written to the report as
+    /// `sha256`; leave it out when it is unknown
+    #[arg(long, value_name = "SHA256")]
+    pub(super) sha256: Option<String>,
+    /// The reference film's archive pin, written to the report as `all_sha256`; leave it out
+    /// when the row pins no archive
+    #[arg(long, value_name = "SHA256")]
+    pub(super) all_sha256: Option<String>,
     /// Match frames by `film_tick` against a previous report and print mean SSIM/IoU deltas,
     /// the 5 most improved/regressed frames and the counts changed by more than 0.005;
     /// writes compare.json
@@ -153,11 +161,24 @@ mod tests {
     }
 
     #[test]
+    fn reference_pin_flags_parse_and_default_to_none() {
+        let args = parse(&["--sha256", "aa", "--all-sha256", "bb"]).unwrap();
+        assert_eq!(args.sha256.as_deref(), Some("aa"));
+        assert_eq!(args.all_sha256.as_deref(), Some("bb"));
+        let defaults = parse(&[]).unwrap();
+        assert!(defaults.sha256.is_none() && defaults.all_sha256.is_none());
+    }
+
+    #[test]
     fn usage_names_the_subcommand_and_its_flags() {
         let text = usage();
         assert!(text.contains("stuntreel parity"), "{text}");
         assert!(
             text.contains("--min-fade-level") && text.contains("--compare-test"),
+            "{text}"
+        );
+        assert!(
+            text.contains("--sha256") && text.contains("--all-sha256"),
             "{text}"
         );
     }

@@ -22,7 +22,7 @@ from cli import ParityOptions, UsageError, add_parity_options, parity_options  #
 
 from archive_helpers import build_all  # noqa: E402
 from render_helpers import reference_tree  # noqa: E402
-from stunt_reel import dataroot, parity_layout, parity_pipeline  # noqa: E402
+from stunt_reel import dataroot, parity_layout, parity_pipeline, references  # noqa: E402
 from stunt_reel.all_archive import ArchiveMeta, publish_archive  # noqa: E402
 from stunt_reel.parity_artifacts import Report, write_report  # noqa: E402
 
@@ -176,9 +176,12 @@ def test_parity_run_rotates_trees_the_same_at_any_jobs(
         out.mkdir(parents=True)
         (out / "marker").write_text(str(renders.count(job.name)), encoding="utf-8")
 
+    scored_jobs: list[parity_pipeline.FilmJob] = []
+
     def fake_score(
         job: parity_pipeline.FilmJob, render: Path, report: Path, **_k: object
     ) -> parity_pipeline.FilmScore:
+        scored_jobs.append(job)
         report.mkdir(parents=True, exist_ok=True)
         write_report(report / "report.json", Report(per_frame=()))  # no adapter recorded
         return parity_pipeline.FilmScore(job.name, render, report, parity_pipeline.Score(0.5, 0.5))
@@ -195,6 +198,10 @@ def test_parity_run_rotates_trees_the_same_at_any_jobs(
     compare = "      no adapter in the report: re-render to compare"
     film_lines = ["ctry scored", compare, "intro scored", compare, parity_run.NOISE_NOTE]
     assert capsys.readouterr().out.splitlines() == film_lines * 2
+    pins = {job.name: (job.sha256, job.all_sha256) for job in scored_jobs}
+    assert pins == {
+        film: (references.read_reference(root, film).sha256, None) for film in ("ctry", "intro")
+    }, "scoring a reference film carries its row's pins"
     for film in ("ctry", "intro"):
         current = repo / parity_layout.render_dir(film) / "marker"
         previous = repo / parity_layout.previous_dir(film) / "marker"

@@ -109,6 +109,15 @@ pub struct Report {
     /// changes. A report older than the field reads as null.
     #[serde(default)]
     pub crates: Option<String>,
+    /// The reference capture's content hash (`references.toml` `sha256`) the score was made
+    /// against, as its scorer was told (`stuntreel parity --sha256`); null when it was not told
+    /// or the report predates the field.
+    #[serde(default)]
+    pub sha256: Option<String>,
+    /// The reference film's archive pin (`references.toml` `all_sha256`) the score was made
+    /// against; null when the row pins no archive or the scorer was not told.
+    #[serde(default)]
+    pub all_sha256: Option<String>,
     /// Per-frame measurements, in capture order.
     pub per_frame: Vec<FrameReport>,
 }
@@ -199,6 +208,8 @@ mod tests {
             adapter: None,
             archive_conflict_waived: false,
             crates: None,
+            sha256: Some("a".repeat(64)),
+            all_sha256: Some("b".repeat(64)),
             per_frame: vec![frame(), frame()],
         }
     }
@@ -251,5 +262,7 @@ mod tests {
         assert_eq!(report.per_frame[0].scored, None);
         assert_eq!(report.adapter, None);
         assert_eq!(report.crates, None);
+        assert_eq!(report.sha256, None);
+        assert_eq!(report.all_sha256, None);
     }
 }

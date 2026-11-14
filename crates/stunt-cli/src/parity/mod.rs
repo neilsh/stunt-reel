@@ -256,6 +256,8 @@ fn build_report(
         adapter,
         archive_conflict_waived: false,
         crates: None,
+        sha256: None,
+        all_sha256: None,
         per_frame: scores
             .iter()
             .map(|s| FrameReport {
@@ -402,6 +404,8 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let report = Report {
         archive_conflict_waived: clearance.archive_conflict_waived,
         crates: args.crates.clone(),
+        sha256: args.sha256.clone(),
+        all_sha256: args.all_sha256.clone(),
         ..build_report(
             frames.len(),
             &scores,

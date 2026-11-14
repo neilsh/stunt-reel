@@ -63,7 +63,7 @@ It needs at least 3 scored target frames over every range together; with fewer, 
 
 An adopted change updates the expected table in [`references.toml`](../../../research/parity/references.toml) for the renderer class it measured (`ssim`, `iou`, `adapter` from that run; `crates` from `git rev-parse <commit>:crates` on the commit it rendered, with `crates/` clean (no uncommitted or untracked files under it), not the commit itself, which a squash merge keeps off `main`; `sha256` and `all_sha256` copied from the film's row); the other class keeps its older entry, if any, until someone measures it.
 
-**Repin, never hand-merge.** `mise run parity-repin -- [--class gpu|lavapipe]` writes every film's table from its current report after `mise run parity` on a clean `crates/`, and writes nothing when a film lacks a report measured on that tree.
+**Repin, never hand-merge.** `mise run parity-repin -- [--class gpu|lavapipe]` writes every film's table from its current report after `mise run parity` on a clean `crates/`, and writes nothing when a film lacks a report measured on that tree, was scored against another capture or archive, or has no recorded pins.
 
 - Expected tables change only when the measured `crates/` tree or a film's `sha256` or `all_sha256` pin changes.
 - On a conflict in an expected table, take `main`'s expected tables while keeping the branch's other edits to `references.toml` (a new row or pin), rerun `mise run parity` on the merged tree, run `mise run parity-repin` and commit. Never hand-merge the numbers: a merged number was measured on no tree.

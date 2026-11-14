@@ -106,7 +106,12 @@ def _round_trip_report(directory: Path, report: Any) -> Any:
         (
             _round_trip_report,
             lambda: replace(
-                sample_report(), adapter=_CPU_ADAPTER, archive_conflict_waived=True, crates="f" * 40
+                sample_report(),
+                adapter=_CPU_ADAPTER,
+                archive_conflict_waived=True,
+                crates="f" * 40,
+                sha256="a" * 64,
+                all_sha256="b" * 64,
             ),
             set(),
         ),
