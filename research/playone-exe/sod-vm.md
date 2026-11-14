@@ -1,5 +1,5 @@
 ---
-summary: "The SOD display-list VM: self-patching dispatch slots, `OP_TAP` encoding and anchor loading [FMT-SOD-TAP], the execution model with its facing and depth gates and the model frame of every raw-coordinate generator, two-vertex polygons and `ZLINETO` lines as one-pixel lines, polygon spans that include both ends, the per-frame draw with credits, and a candidate actor shadow path."
+summary: "The SOD display-list VM: self-patching dispatch slots, `OP_TAP` encoding and anchor loading [FMT-SOD-TAP], the execution model with its facing and depth gates and the model frame of every raw-coordinate generator, two-vertex polygons and `ZLINETO` lines as one-pixel lines, polygon spans that include both ends, the per-frame draw with credits, and the actor shadow draw (the plane probe `0x240A`, the flattened second draw in index 0, the `work:0x806C` readers), with its altitude cutoff still open."
 ---
 # `PLAYONE.EXE`: SOD Display-List VM & `OP_TAP` Semantics
 
