@@ -10,8 +10,9 @@
 //! (`FrontFace::Cw`, `CullMode::Back`), the side `PLAYONE` fills (`POLYZ` at `0x9B78`; the
 //! filler `0x7571` skips a row whose ends cross, `0x75A1`). It is derived from the winding,
 //! not from [`RawPolygon::normal`], which shades and follows two conventions. The level
-//! keeps `PLAYONE`'s painter order within a shape: a later coplanar polygon covers an
-//! earlier one (`research/playone-exe/world-scene.md` section 6.6).
+//! puts a later coplanar polygon above the earlier ones it overlaps, as `PLAYONE`'s painter
+//! covers them, wherever 1 mm exceeds the depth step (`research/parity/render-model.md`
+//! section 3).
 
 use crate::contracts::shape::VERTEX_FLAG_LINE;
 use crate::sod::vm::{RawPolygon, compute_polygon_normal};
@@ -140,7 +141,7 @@ pub(crate) fn displace_decal_polygon(poly: &RawPolygon, offset: f32) -> RawPolyg
 /// bounds meet. Its stack level is one above the highest level among those earlier polygons
 /// whose area it overlaps (a polygon that is no decal has level 0), and it moves
 /// `level * eps_displacement` toward its front, so each decal lies above what it was painted
-/// over while decals side by side share a level.
+/// over; touching along an edge does not raise a level.
 #[must_use]
 pub(crate) fn identify_coplanar_decals(
     polygons: &[RawPolygon],
@@ -175,8 +176,8 @@ pub(crate) fn identify_coplanar_decals(
 }
 
 /// Whether two coplanar convex polygons share area deeper than `tol`: no separating axis
-/// among their edge normals, projected into the plane of `a`. Touching along an edge is
-/// not overlap.
+/// among their edge normals, projected onto the coordinate plane `a` faces most (so `tol` is
+/// in projected units). Touching along an edge is not overlap.
 #[must_use]
 pub(crate) fn areas_overlap(a: &RawPolygon, b: &RawPolygon, tol: f32) -> bool {
     let n = front_normal(a);

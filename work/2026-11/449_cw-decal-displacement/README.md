@@ -11,4 +11,4 @@ outcome: ""
 
 ## Handoff
 
-Shipped on `fix/449-cw-decal-displacement`. Open: decal levels do not separate far from the eye, and an actor's shadow (lifted 1 mm) lies under ground decals of level 2 and above off the terrain; [`world-scene.md`](../../../research/playone-exe/world-scene.md) open question 6. `0x037C`'s ground slices are also what [#446](https://github.com/neilsh/stunt-reel/issues/446) moves into a `WORLD_GROUND` pass.
+Committed on `fix/449-cw-decal-displacement` (PR pending). Open: decal levels do not separate far from the eye, and an actor's shadow (lifted 1 mm) lies under ground decals of level 2 and above off the terrain; [`render-model.md`](../../../research/parity/render-model.md) open question 6. `0x037C`'s ground slices are also what [#446](https://github.com/neilsh/stunt-reel/issues/446) moves into a `WORLD_GROUND` pass.
