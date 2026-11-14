@@ -74,9 +74,10 @@ def background_for(reference: Path, root: Path | None = None) -> tuple[tuple[int
     """The backdrop index bands of the film the capture in *reference* shows.
 
     They are the ``background`` field of that film's ``references.toml`` row, found by the
-    ``.FLM`` stem in the capture's ``meta.json``, read under *root* (default: the data root). Raises ``ReferenceCaptureError`` when the
-    capture names no film, the film has no row, or its row has no ``background``: a guessed
-    band would score another film's sky and ground as aircraft.
+    ``.FLM`` stem in the capture's ``meta.json`` and read under *root* (default: the data root).
+    Raises ``ReferenceCaptureError`` when the capture names no film, the film has no row, or its
+    row has no ``background``: a guessed band would score another film's sky and ground as
+    aircraft.
     """
     name = read_capture(reference).film.name
     if not name:

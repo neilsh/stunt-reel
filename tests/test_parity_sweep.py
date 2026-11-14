@@ -5,6 +5,7 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import re
 import struct
 import sys
 import zlib
@@ -791,12 +792,12 @@ def test_probe_iou_scores_the_banded_film_and_dashes_the_other(
     assert parity_sweep.main(argv) == 0
     captured = capsys.readouterr()
     header, *table = captured.out.splitlines()[:3]
-    assert "ctry actor" in header
     assert "FAILED" not in captured.out
-    cells = table[0].split()
-    assert "0.6000" in cells  # the mean of 0.5 and 0.7, so neither SSIM was dropped
-    assert cells.count("0.5000") == 2  # ctry's SSIM, and its actor IoU: half the actor is seen
-    assert cells[-1] == "-"  # intro has no bands
+    columns = re.split(r" {2,}", header.strip())
+    row = dict(zip(columns, re.split(r" {2,}", table[0].strip()), strict=True))
+    assert row["mean SSIM"] == "0.6000"  # the mean of 0.5 and 0.7, so neither SSIM was dropped
+    assert row["ctry actor"] == "0.5000"  # half the actor is seen over ctry's backdrop
+    assert row["intro actor"] == "-"  # intro has no bands
     assert captured.err.count("intro: no actor IoU") == 1  # once per film, not per variant
 
 
