@@ -124,11 +124,11 @@ When `PLAYONE.EXE`, a `.FLM` choreography stream, or a `.SET` scenery file refer
 
 ### 3.3 Master Resource Index Enumeration Table
 
-The authoritative catalog of `.RES` indices, recovered from `SITools/ResMaker/indices.txt` and verified against the retail CD-ROM file set:
+The catalog of `.RES` indices, recovered from `SITools/ResMaker/indices.txt` and checked against the retail CD-ROM file set. The last column follows the § 3.1 rule; for `GAME.RES` it is `[Bounded Observation]`: region 0 of the retail and Patch #3 copies begins with the SOD magic `0x000C`, not a name. _Source: [GAME.RES has no name table](../../work/2026-11/472_research-contradictions/journal.md#2026-11-13-gameres-has-no-name-table)._
 
 | Index (Dec) | Index (Hex) | Archive Filename | Contents & Engine Role | String Table Present? |
 | :---: | :---: | :--- | :--- | :---: |
-| **1** | `0x01` | `GAME.RES` | Core UI dialog strings, fonts, menus, and system bitmaps | Yes |
+| **1** | `0x01` | `GAME.RES` | Core UI dialog strings, fonts, menus, and system bitmaps (per `indices.txt`, unchecked; its item `0x0D` is a shape) | No (`ofs[0]` direct to SOD) |
 | **2** | `0x02` | `SCENERY1.RES` | Island terrain scenery models (Sector 1: Airfield & Coast) | No (`ofs[0]` direct to SOD) |
 | **3** | `0x03` | `SCENERY2.RES` | Island terrain scenery models (Sector 2: Mountain Range) | No (`ofs[0]` direct to SOD) |
 | **4** | `0x04` | `SCENERY3.RES` | Island terrain scenery models (Sector 3: City & Downtown) | No (`ofs[0]` direct to SOD) |

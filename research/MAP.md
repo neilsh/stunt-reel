@@ -26,7 +26,7 @@
 
 - [`formats/concepts/compression.md`](formats/concepts/compression.md): DOS storage tiers: LZEXE 0.91 packing of `PLAYONE.EXE` and its LZSS bitstream, uncompressed retail `.RES` and `.ALL` payloads, PCX RLE in sprite sources, and the [I8] uppercase 8.3 path rules.
 - [`formats/concepts/coordinates-and-units.md`](formats/concepts/coordinates-and-units.md): [I1] coordinate frames from model to screen: right-handed metric basis, 16.16 fixed point, BAM angles, `sod_scale_table`, editor units to metres, focal length and FOV, attribute-keyed vertex welding.
-- [`formats/concepts/palette-and-shading.md`](formats/concepts/palette-and-shading.md): [I3] palette model: three 6-to-8-bit DAC scalings, palettes 0x8042 and 0x801E, colour groups and 32-level ramps, CTRY capture evidence against a sun-derived shade, sky bands 227-238, 256x32 LUT.
+- [`formats/concepts/palette-and-shading.md`](formats/concepts/palette-and-shading.md): [I3] palette model: DAC scalings, palettes 0x8042 and 0x801E, colour groups and 32-level ramps, an unlit ground, `SHADES` lit by film variable 13's light, sky bands 227-238, 256x32 LUT.
 - [`formats/concepts/timeline-and-ticks.md`](formats/concepts/timeline-and-ticks.md): [I4] playback timing: 50 Hz PIT divisor 0x5D38, slice ticks as cumulative `tick_duration`, lerp and slerp sub-tick interpolation, shorter-arc roll, cut suppression, and 0x9C audio cues.
 
 ## formats/memory
