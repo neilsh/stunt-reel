@@ -430,3 +430,9 @@ def test_a_malformed_background_is_refused_naming_the_row(tmp_path: Path, value:
 def test_committed_ctry_row_records_the_bands_the_probe_used_to_hardcode() -> None:
     reference = references.read_reference(REPO_ROOT, "ctry")
     assert reference.background == ((192, 199), (228, 238), (161, 165))
+
+
+def test_committed_rows_all_record_nonempty_background_bands() -> None:
+    for film in references.reference_films(REPO_ROOT):
+        background = references.read_reference(REPO_ROOT, film).background
+        assert background, f"[{film}] has no `background`; shift and iou refuse it"

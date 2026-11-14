@@ -17,10 +17,11 @@ through the same adapter:
   frames of one report: the scores a journal entry quotes, so the numbers are
   never retyped by hand.
 
-Object pixels are capture pixels that are not sky, ground ramp, button bar or
-cursor. ``shift`` and ``iou`` take the backdrop index bands from the ``background`` field of the
-``references.toml`` row of the film the capture's ``meta.json`` names, and refuse a film whose
-row has none.
+Object pixels are capture pixels outside the film's ``background`` bands and not
+index 0 or 255, within the render's viewport rows (``viewport_rows`` of 185 or less leaves out
+the button bar). ``shift`` and ``iou`` take the backdrop index bands from the ``background``
+field of the ``references.toml`` row of the film the capture's ``meta.json`` names, and refuse a
+film whose row has none.
 """
 
 from __future__ import annotations

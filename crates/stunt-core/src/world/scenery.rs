@@ -1,7 +1,8 @@
-//! Where the island's props stand: the **scenery walk** over `SCENERY.scn`, then dedup, then
-//! the sub-pixel cull (GLOSSARY.md: **Placement**, **Scenery walk**).
+//! Where the island's props stand: the **scenery walk** over `SCENERY.scn`, then dedup, and
+//! the sub-pixel test the world applies once each placement has its model
+//! (GLOSSARY.md: **Placement**, **Scenery walk**).
 //!
-//! [`place_props`] is the whole interface. The walk starts at the tree's root, keeps both
+//! [`place_props`] and [`reaches_a_pixel`] are the whole interface. The walk starts at the tree's root, keeps both
 //! branches of each `SP_1NODE` the camera path comes near enough to need (its LOD gate, tested
 //! per frame by the renderer) and only the far stand-in of the rest, and keeps only shapes the
 //! archive holds. Placements map raw island coordinates to `[I1]` as
@@ -52,7 +53,7 @@ enum LodChoice {
 /// What [`place_props`] found.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Placements {
-    /// The placements in walk order, without repeats or props that stay sub-pixel.
+    /// The placements in walk order, without repeats.
     pub(crate) props: Vec<Placement>,
     /// Gate chains the placements index; entry 0 is empty.
     pub(crate) chains: Vec<Vec<LodGate>>,
@@ -107,14 +108,13 @@ pub struct ScnStop {
 /// The placements of `scenery` (`SCENERY.scn` bytes) seen from a camera that passes through
 /// `view_eyes`.
 ///
-/// Only keys of `shapes` are placed, and each shape's radius sizes it for the cull. `view_eyes`
+/// Only keys of `shapes` are placed. `view_eyes`
 /// are the camera eyes in time order, in `[I1]` metres. An `SP_1NODE` the path comes within
 /// [`lod_reach`] of keeps both branches, each placement behind it carrying its gate chain
 /// ([`Placements::chains`]) for the renderer to test per frame; one farther away keeps only
-/// its stand-in. A prop that stays under half a pixel along the path is dropped. With no eyes
-/// every subtree is kept ungated and nothing is culled. `max_zoom` is the largest
-/// magnification over PLAYONE's default lens any camera reaches; below 1 it counts as 1.
-/// `max_lod_shift` is the largest depth shift `0x229E` any camera's lens gives
+/// its stand-in. With no eyes every subtree is kept ungated. Nothing is culled here: a prop's
+/// size is known only once it has its model, which for an `OP_TAP` shape depends on its
+/// placement, so the caller culls with [`reaches_a_pixel`]. `max_lod_shift` is the largest depth shift `0x229E` any camera's lens gives
 /// ([`crate::contracts::trajectory::CameraTransform::lod_lens_words`]), and
 /// `min_corner_depth` the smallest view-space depth over distance inside the widest frame
 /// any camera draws ([`CORNER_DEPTH_FLOOR`] for the default frame).
@@ -122,7 +122,6 @@ pub(crate) fn place_props(
     scenery: &[u8],
     shapes: &HashMap<u16, SodModelIr>,
     view_eyes: &[[f32; 3]],
-    max_zoom: f32,
     max_lod_shift: u8,
     min_corner_depth: f32,
 ) -> Placements {
@@ -163,7 +162,7 @@ pub(crate) fn place_props(
         ..
     } = walk;
     Placements {
-        props: cull_subpixel(dedup(found), shapes, view_eyes, max_zoom.max(1.0)),
+        props: dedup(found),
         chains,
         stop,
     }
@@ -266,35 +265,23 @@ fn path_distance(point: [f32; 3], eyes: &[[f32; 3]]) -> f32 {
     }
 }
 
-/// Drops placements whose bounding sphere stays under [`MIN_PROP_PIXELS`] along `eyes`.
+/// Whether a prop of bounding `radius` (metres about its origin) standing at `position` covers
+/// at least [`MIN_PROP_PIXELS`] somewhere along the camera path through `eyes`, seen at up to
+/// `zoom` times PLAYONE's default magnification (below 1 counts as 1). True with no eyes.
 ///
-/// Consecutive eyes are joined by segments, so a camera cut only makes the cull more
-/// conservative. With fewer than one eye every placement is kept. `zoom` multiplies
-/// [`FOCAL_PIXELS`], so it should be the largest magnification the film reaches, and the
-/// distance is reduced to the corner depth ([`CORNER_DEPTH_FLOOR`]).
-fn cull_subpixel(
-    placements: Vec<Placement>,
-    shapes: &HashMap<u16, SodModelIr>,
+/// Consecutive eyes are joined by segments, so a camera cut only makes the test more
+/// conservative, and the distance is reduced to the corner depth ([`CORNER_DEPTH_FLOOR`]).
+pub(crate) fn reaches_a_pixel(
+    radius: f32,
+    position: [f32; 3],
     eyes: &[[f32; 3]],
     zoom: f32,
-) -> Vec<Placement> {
+) -> bool {
     if eyes.is_empty() {
-        return placements;
+        return true;
     }
-    let mut radii: HashMap<u16, f32> = HashMap::new();
-    placements
-        .into_iter()
-        .filter(|p| {
-            let radius = *radii.entry(p.shape).or_insert_with(|| {
-                shapes
-                    .get(&p.shape)
-                    .and_then(SodModelIr::extent)
-                    .map_or(0.0, |extent| extent.radius)
-            });
-            let depth = CORNER_DEPTH_FLOOR * path_distance(p.position, eyes);
-            radius * FOCAL_PIXELS * zoom >= MIN_PROP_PIXELS * depth.max(1.0)
-        })
-        .collect()
+    let depth = CORNER_DEPTH_FLOOR * path_distance(position, eyes);
+    radius * FOCAL_PIXELS * zoom.max(1.0) >= MIN_PROP_PIXELS * depth.max(1.0)
 }
 
 /// One scenery walk: its inputs, what it has placed, and the state shared by every frame.
@@ -675,7 +662,7 @@ mod tests {
 
     /// `words` placed with shapes `ids` and no camera path.
     fn place(words: &[i32], ids: &[u16]) -> Placements {
-        place_props(&scn(words), &shapes(ids), &[], 1.0, 1, CORNER_DEPTH_FLOOR)
+        place_props(&scn(words), &shapes(ids), &[], 1, CORNER_DEPTH_FLOOR)
     }
 
     /// The shapes placed, in order.
@@ -798,7 +785,6 @@ mod tests {
             &scn(&words),
             &shapes(&[LEAF, STAND_IN]),
             &[[300.0, 0.0, 0.0]],
-            1.0,
             1,
             CORNER_DEPTH_FLOOR,
         );
@@ -1037,7 +1023,6 @@ mod tests {
             &scn(words),
             &big,
             &[[eye_x, 0.0, 0.0]],
-            1.0,
             1,
             CORNER_DEPTH_FLOOR,
         );
@@ -1062,7 +1047,6 @@ mod tests {
             &scn(&one_node(STAND_IN, 10, 105)),
             &big,
             &[[2414.0, 0.0, 0.0]],
-            1.0,
             3,
             CORNER_DEPTH_FLOOR,
         );
@@ -1084,7 +1068,7 @@ mod tests {
         assert!(camera.lod_keeps_subtree([300.0, 0.0, 0.0], 10, 105));
         let big = HashMap::from([(LEAF, shape(10.0)), (STAND_IN, shape(10.0))]);
         let words = scn(&one_node(STAND_IN, 10, 105));
-        let kept = |ratio| placed_shapes(&place_props(&words, &big, &[camera.eye], 1.0, 1, ratio));
+        let kept = |ratio| placed_shapes(&place_props(&words, &big, &[camera.eye], 1, ratio));
         assert_eq!(kept(0.29), [STAND_IN, LEAF]);
         // The default frame's bound, 532 m, would have dropped it.
         assert_eq!(kept(CORNER_DEPTH_FLOOR), [STAND_IN]);
@@ -1122,7 +1106,6 @@ mod tests {
             &scn(&words),
             &shapes(&[LEAF, STAND_IN, OTHER]),
             &[[600.0, 0.0, 0.0]],
-            1.0,
             1,
             CORNER_DEPTH_FLOOR,
         );
@@ -1152,7 +1135,6 @@ mod tests {
             &scn(&one_node(STAND_IN, 10, 105)),
             &shapes(&[LEAF, STAND_IN]),
             &[[833.0, 0.0, 0.0]],
-            1.0,
             1,
             CORNER_DEPTH_FLOOR,
         );
@@ -1176,7 +1158,6 @@ mod tests {
             &scn(&one_node(STAND_IN, 10, 105)),
             &shapes(&[LEAF]),
             &[[1000.0, 0.0, 0.0]],
-            1.0,
             1,
             CORNER_DEPTH_FLOOR,
         );
@@ -1219,44 +1200,30 @@ mod tests {
     }
 
     #[test]
-    fn a_prop_that_stays_sub_pixel_along_the_camera_path_is_dropped() {
+    fn a_prop_that_stays_sub_pixel_along_the_camera_path_does_not_reach_a_pixel() {
         // A 1 cm prop 1,000 m from the path covers 2.56 px against the 402 px the cull asks of
-        // it there; the same prop 2 m away is kept.
-        let words = leaves_at(&[(LEAF, -1000), (LEAF, -2)]);
-        let tiny = HashMap::from([(LEAF, shape(0.01))]);
+        // it there; the same prop 2 m away reaches one.
         let eyes = [[0.0, 0.0, 0.0]];
-        let placements = place_props(&scn(&words), &tiny, &eyes, 1.0, 1, CORNER_DEPTH_FLOOR);
-        assert_eq!(placements.props, [at(LEAF, [2.0, -0.0, 0.0])]);
-        // Zoomed 200 times, the far prop covers 512 px and is kept.
-        assert_eq!(
-            place_props(&scn(&words), &tiny, &eyes, 200.0, 1, CORNER_DEPTH_FLOOR)
-                .props
-                .len(),
-            2
-        );
-        // With no camera path nothing is culled.
-        assert_eq!(
-            place_props(&scn(&words), &tiny, &[], 1.0, 1, CORNER_DEPTH_FLOOR)
-                .props
-                .len(),
-            2
-        );
+        assert!(!reaches_a_pixel(0.01, [1000.0, 0.0, 0.0], &eyes, 1.0));
+        assert!(reaches_a_pixel(0.01, [2.0, 0.0, 0.0], &eyes, 1.0));
+        // Zoomed 200 times, the far prop covers 512 px.
+        assert!(reaches_a_pixel(0.01, [1000.0, 0.0, 0.0], &eyes, 200.0));
+        // With no camera path every prop does.
+        assert!(reaches_a_pixel(0.01, [1000.0, 0.0, 0.0], &[], 1.0));
     }
 
     #[test]
     fn a_zoom_below_one_counts_as_one() {
-        // A 1 m prop 500 m away needs 201 px: kept at 256 px unzoomed, dropped at 128 px
-        // were a zoom of 0.5 applied.
-        let words = leaves_at(&[(LEAF, -500)]);
-        let eyes = [[0.0, 0.0, 0.0]];
-        let placements = place_props(
-            &scn(&words),
-            &shapes(&[LEAF]),
-            &eyes,
-            0.5,
-            1,
-            CORNER_DEPTH_FLOOR,
-        );
-        assert_eq!(placed_shapes(&placements), [LEAF]);
+        // A 1 m prop 500 m away needs 201 px: it reaches them at 256 px unzoomed, and would
+        // not at 128 px were a zoom of 0.5 applied.
+        assert!(reaches_a_pixel(1.0, [500.0, 0.0, 0.0], &[[0.0; 3]], 0.5));
+    }
+
+    #[test]
+    fn the_walk_keeps_a_sub_pixel_prop_for_the_caller_to_cull() {
+        let words = leaves_at(&[(LEAF, -1000)]);
+        let tiny = HashMap::from([(LEAF, shape(0.01))]);
+        let placements = place_props(&scn(&words), &tiny, &[[0.0; 3]], 1, CORNER_DEPTH_FLOOR);
+        assert_eq!(placements.props, [at(LEAF, [1000.0, -0.0, 0.0])]);
     }
 }

@@ -1,14 +1,17 @@
 //! Image resources an `OP_ANIMATE` draws (`research/playone-exe/sod-animate.md`).
 //!
-//! A frame is a `.SPR`-sized chunk: `width: u16`, `height: u16`, a third word, then
-//! `width × height` palette indices `[I3]`, row by row, index 0 transparent. `PLAYONE`'s
-//! blitter (image `0x7DE6`) reads the pixels from byte 6, two bytes later than the
-//! community layout in `research/formats/auxiliary/spr.ksy` puts them.
+//! A frame is a `.SPR` image (`research/formats/auxiliary/spr.ksy`): `width: u16`,
+//! `height: u16`, an encoding word, then from byte 6 either `width × height` raw palette
+//! indices `[I3]` (encoding 0) or span-coded rows (any other encoding);
+//! index 0 is transparent to the `OP_ANIMATE` blitter.
+//! [`SpriteImage::parse`] decodes both. `PLAYONE`'s `OP_ANIMATE` blitter (image `0x7DE6`)
+//! ignores the encoding word and reads raw rows; no corpus frame it draws is span-coded
+//! (`research/playone-exe/sod-animate.md` § 3), so decoding spans changes no drawn frame.
 
 /// Byte offset of the first pixel `PLAYONE` reads.
 const PIXELS_AT: usize = 6;
 
-/// One frame of an animated image, its pixels as `PLAYONE` reads them.
+/// One frame of an animated image, its pixels decoded from raw rows or spans.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpriteImage {
     /// Columns.
@@ -33,19 +36,24 @@ pub struct PixelRun {
 }
 
 impl SpriteImage {
-    /// Reads an image chunk, or `None` when it is not one: a zero width or height, or fewer
-    /// than `6 + width × height` bytes.
+    /// Reads a raw or span-coded image chunk, or `None` when it is not one: a zero width or
+    /// height, a header shorter than 6 bytes, fewer than `width × height` raw pixels, or span
+    /// rows that run past the chunk or past the width. Columns no span covers read as 0.
     #[must_use]
     pub fn parse(payload: &[u8]) -> Option<Self> {
-        let width = u16::from_le_bytes([*payload.first()?, *payload.get(1)?]);
-        let height = u16::from_le_bytes([*payload.get(2)?, *payload.get(3)?]);
+        let [w0, w1, h0, h1, e0, e1] = *payload.first_chunk::<PIXELS_AT>()?;
+        let (width, height) = (u16::from_le_bytes([w0, w1]), u16::from_le_bytes([h0, h1]));
+        let encoding = u16::from_le_bytes([e0, e1]);
         if width == 0 || height == 0 {
             return None;
         }
         let count = usize::from(width).checked_mul(usize::from(height))?;
-        let pixels = payload
-            .get(PIXELS_AT..PIXELS_AT.checked_add(count)?)?
-            .to_vec();
+        let body = payload.get(PIXELS_AT..)?;
+        let pixels = if encoding == 0 {
+            body.get(..count)?.to_vec()
+        } else {
+            decode_spans(body, usize::from(width), usize::from(height))?
+        };
         Some(Self {
             width,
             height,
@@ -75,6 +83,38 @@ impl SpriteImage {
     }
 }
 
+/// The pixel count of a span image, or `None` when `body_len` cannot hold `height` rows: each
+/// takes at least its terminator byte, so the grid is refused before it is allocated. There is
+/// no cap on `width × height`: a body of `height` zero bytes still describes a blank grid of that
+/// size, and no evidence sets a limit.
+fn grid_len(body_len: usize, width: usize, height: usize) -> Option<usize> {
+    if body_len < height {
+        return None;
+    }
+    width.checked_mul(height)
+}
+
+/// The `width × height` pixels of `height` span-coded rows (`span_row` in `spr.ksy`; image
+/// `0x7CBA`), or `None` when `body` is shorter than `height`, a row runs past it or a span past `width`.
+fn decode_spans(mut body: &[u8], width: usize, height: usize) -> Option<Vec<u8>> {
+    let mut pixels = vec![0; grid_len(body.len(), width, height)?];
+    for row in pixels.chunks_mut(width) {
+        loop {
+            let (&count, rest) = body.split_first()?;
+            if count == 0 {
+                body = rest;
+                break;
+            }
+            let (x, rest) = rest.split_first_chunk::<2>()?;
+            let (x, count) = (usize::from(u16::from_le_bytes(*x)), usize::from(count));
+            let (span, rest) = rest.split_at_checked(count)?;
+            row.get_mut(x..x.checked_add(count)?)?.copy_from_slice(span);
+            body = rest;
+        }
+    }
+    Some(pixels)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,6 +134,55 @@ mod tests {
         let image = SpriteImage::parse(&chunk(2, 2, &[1, 2, 3, 4])).expect("an image");
         assert_eq!((image.width, image.height), (2, 2));
         assert_eq!(image.pixels, [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn parse_reads_raw_pixels_to_the_end_with_no_trailer() {
+        // Opaque last pixels: a byte-4 reading would shift by two and take 7, 8 as a trailer.
+        let image = SpriteImage::parse(&chunk(2, 1, &[7, 8])).expect("an image");
+        assert_eq!(image.pixels, [7, 8]);
+    }
+
+    #[test]
+    fn parse_decodes_span_coded_rows() {
+        // Encoding 2; row 0: two pixels at column 1; row 1: one at 0, one at 3.
+        let bytes = [
+            4, 0, 2, 0, 2, 0, //
+            2, 1, 0, 9, 9, 0, //
+            1, 0, 0, 7, 1, 3, 0, 5, 0,
+        ];
+        let image = SpriteImage::parse(&bytes).expect("an image");
+        assert_eq!(image.pixels, [0, 9, 9, 0, 7, 0, 0, 5]);
+    }
+
+    #[test]
+    fn parse_rejects_spans_past_the_width_or_the_chunk() {
+        assert_eq!(
+            SpriteImage::parse(&[2, 0, 1, 0, 2, 0, 2, 1, 0, 9, 9, 0]),
+            None
+        );
+        assert_eq!(SpriteImage::parse(&[2, 0, 1, 0, 2, 0, 1, 0, 0, 9]), None);
+    }
+
+    #[test]
+    fn grid_len_refuses_a_body_shorter_than_its_rows_before_any_allocation() {
+        // This is what the guard is for: `parse` alone returns `None` either way, but without
+        // the guard a 65535 × 65535 grid would be allocated first.
+        assert_eq!(grid_len(1, 65535, 65535), None);
+        assert_eq!(grid_len(1, 1, 2), None);
+        assert_eq!(grid_len(2, 1, 2), Some(2));
+    }
+
+    #[test]
+    fn parse_accepts_a_body_of_exactly_one_empty_row_per_height() {
+        let image = SpriteImage::parse(&[1, 0, 2, 0, 2, 0, 0, 0]).expect("an image");
+        assert_eq!(image.pixels, [0, 0]);
+    }
+
+    #[test]
+    fn parse_rejects_a_body_shorter_than_its_row_count() {
+        // Checks the result only: it also holds without the guard, which `grid_len` pins.
+        assert_eq!(SpriteImage::parse(&[255, 255, 255, 255, 2, 0, 0]), None);
     }
 
     #[test]

@@ -28,7 +28,9 @@ Nothing here is a fact about Stunt Island.
 * No harness enforces any of this for you: `mise.toml` and `gate.py` enforce the gate, and the
   rest is reviewed.
 
-## DeepSeek Harness (this host, observed 2026-10-25)
+## DeepSeek Harness (this host)
+
+Observed on this host 2026-10-25.
 
 | Mode | Read | Write | Typical use |
 | --- | --- | --- | --- |

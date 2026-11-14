@@ -108,9 +108,9 @@ The renderer-only levers are exhausted, so each item starts by reading one `PLAY
 3. **The `INTRO.FLM` flat-sand frames** — the sand 91 is a `SCENERY2.RES` tile under our terrain (tick 1517: 91 on all 59.2k terrain pixels once the terrain is removed; [world-scene.md](../playone-exe/world-scene.md) section 6). As first written: 11 frames lose more than 0.30 to terrain at IoU 0.97 to 1.0 and index agreement 0.00 to 0.33 (ticks 1088, 1098, 1308-1374, 1505 and 2690-2778), where the capture is 54 to 97% sand index 91 and we draw 195 or 208. Coverage is right and content is absent, so a colour rule alone cannot fix it; at tick 1505 the capture also carries about 17.8% of indices 216 to 218, which we never emit. This is not the montage tick rule: the montage window (ticks 1290 to 1500) scored 0.7807 on 2026-10-24, above that run's film mean of 0.7224 (both before #47; the window has not been re-scored since). ([#70](https://github.com/neilsh/stunt-reel/issues/70))
 4. **Prop shading and detail** — props are 0.0568 / 0.0654 (2026-11-02 after #132; 0.0779 / 0.0727 on 2026-10-24), the second class on both films, and the one lever left that needs no decode. ([#74](https://github.com/neilsh/stunt-reel/issues/74))
 
-### Where the 2026-10-24 goal stopped
+### Where the ground-and-light goal stopped
 
-The goal ran two rounds and adopted nothing, which is its own stop rule. Both rounds went at the ground question from opposite ends and both were stopped by missing evidence rather than by a negative result:
+The 2026-10-24 ground-and-light goal ran two rounds and adopted nothing, which is its own stop rule. Both rounds went at the ground question from opposite ends and both were stopped by missing evidence rather than by a negative result:
 
 * **The stream is not in conventional memory.** The runner at `0x9161` calls the display list's first word as code, so a relocated record carries the handler's offset; `0x995C` occurs in none of the 96 dumps and `0x9A24` twice ([world-scene.md](../playone-exe/world-scene.md) section 6).
 * **The light is handed in, not computed.** `0x9100` writes `L` from AX/BX/DX and fills the rest of its block from DGROUP; the caller is the binary's one genuinely unreferenced entry ([terrain-shade.md](../playone-exe/terrain-shade.md#41-the-entry-decodes-but-it-is-handed-its-light)).

@@ -87,8 +87,6 @@ $$Z_{\text{metric}} = Z_{\text{raw}} \times S_k$$
 
 ## 3. Data Structures & Opcode Table
 
-## 3. Data Structures & Opcode Table
-
 A `.SOD` body is a display list for a stack-based, register-oriented VM: 1024 twelve-byte vertex registers, a vector accumulator, a rotation-centre stack and a relative-matrix stack, and `GOTO`/`GOSUB`/`SORTON`/`IFVIS` control flow. The model and its `PLAYONE.EXE` evidence are in [`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md) section 8. Every opcode, its operands and the opcode-specific semantics (`OP_TAP`, `OP_ANIMATE`, `OP_IFVIS`, `OP_IPG`, `OP_VECTORS`) are in [`sod-opcodes.md`](sod-opcodes.md), whose 107-opcode table is `# [FMT-SOD-OPCODES]`. The unimplemented-opcode work queue is [`sod-opcode-coverage.md`](sod-opcode-coverage.md).
 
 ### 3.1 Coplanar Decal Detection (`[I5]`)
@@ -115,7 +113,7 @@ The following backlog documents open questions regarding `.SOD` virtual machine 
 | **Q-SOD-05** | Level-of-Detail Detail Gates (`complex1..3`) | Model source branches on `complex1..3` flags (e.g. `iftrue complex2 ;if max complexity do surface detail` in `SITools/OBJECTS/Planes/SABRE.SOD`). What sets the flags at runtime is unknown. `SI-8x` does not touch them: it patches the separate distance gate at image `0x212D`, whose threshold scales with `GAME.VAR`'s detail word and the per-shot scale ([`lod.md`](../playone-exe/lod.md)). The one in-shape depth gate found in the binary is `BZLT` (`0x9BE5`, [`sod-vm.md`](../playone-exe/sod-vm.md) section 8.6), decoded into `VisibilityCondition::BeyondDepth` and tested per frame, though no census walk of a stock shape reaches it; `IFVIS` is a facing gate (Q-SOD-01). | `[Bounded Observation]` | Transpiler exposes all detail branches; modern rendering renders maximum detail, which over-draws distant objects compared with PLAYONE's distance gate. |
 | **Q-SOD-06** | Real-Mode Dynamic Memory Paging of 1024 Register Bank | In 640 KB conventional DOS memory, whether `PLAYONE.EXE` dynamically paged the 1024-vertex register bank (12 KB) into EMS/XMS or reserved a static `DGROUP` scratchpad buffer. | `[Hypothesis]` | Modern engine allocates contiguous flat arena vectors; memory constraints are eliminated. |
 | **Q-SOD-07** | `OP_TAP` (`0x022E`) | Resolved: variable-width anchor-table load; handler at `CS:0x3E58`. | `[Established]` | Requires `ANCHORPT.DAT`; missing table returns a distinct stop reason. |
-| **Q-SOD-08** | Unimplemented opcodes in the corpus | Corpus census (`mise run sod-census`, 2026-11-12): no `.SOD` chunk steps over an opcode any more; seven shapes stop on a two-vertex polygon and `TESTTEXT.BIN` on `OP_TEXTURE`; queue, model IDs and film use in [`sod-opcode-coverage.md`](sod-opcode-coverage.md). | `[Bounded Observation]` | Lenient decode keeps geometry before the blocking opcode (Partial SOD). |
+| **Q-SOD-08** | Unimplemented opcodes in the corpus | Corpus census (`mise run sod-census`, 2026-11-12): of 3,432 unique `MODEL_%04X.SOD` chunks, 3,418 walk clean to `OP_RETURN`, 14 stop only at `OP_TAP` without an anchor table, and 0 step over an unimplemented opcode; 393 loose `.BIN` models add 146 unique models not in archives, of which 145 walk clean and only `TESTTEXT.BIN` stops on `OP_TEXTURE`; see [`sod-opcode-coverage.md`](sod-opcode-coverage.md). | `[Bounded Observation]` | Lenient decode keeps geometry before the blocking opcode (Partial SOD). |
 
 ---
 

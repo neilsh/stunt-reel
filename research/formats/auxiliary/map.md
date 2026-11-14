@@ -150,7 +150,6 @@ Anchor items `[BK-MAP-01]` and `[BK-MAP-08]` are in [`anchorpt.md`](anchorpt.md)
 
 1. **What `SCENERY.BIN` and `SQUISHED.BIN` encode.** The `SD.EXE` code that writes them (`0xE9B6`–`0xED28`) is unread, and they do not hold the tree in either form ([`scenery.md`](scenery.md) section 4.1).
 2. **Whether running `SD.EXE` on the corpus files reproduces the shipped tree word for word.** That would make `SCENERY.scn` rebuildable from source as well as from the image.
-3. **`mise run unlzexe` fails on `STUNT.EXE`** with an `IndexError` while decoding the relocation table. Its decompressor alone unpacks the image used here.
 
 ---
 
