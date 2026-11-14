@@ -101,3 +101,27 @@ exclude = "^(tests/fixtures|work)/"
 id = "end-of-file-fixer"
 args = ["--check"]
 exclude = "^(tests/fixtures|work)/"
+
+# `.claude/skills` is a committed symlink, which a Windows checkout without core.symlinks turns
+# into a text file; destroyed-symlinks reads `git status`, so it guards the commit, not CI.
+# check-vcs-permalinks skips dated work folders, which are frozen records.
+[[repos.hooks]]
+id = "check-symlinks"
+
+[[repos.hooks]]
+id = "destroyed-symlinks"
+
+[[repos.hooks]]
+id = "check-json"
+
+[[repos.hooks]]
+id = "fix-byte-order-marker"
+args = ["--check"]
+exclude = "^(tests/fixtures|work)/"
+
+[[repos.hooks]]
+id = "check-vcs-permalinks"
+exclude = "^work/"
+
+[[repos.hooks]]
+id = "forbid-new-submodules"

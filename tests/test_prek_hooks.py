@@ -287,8 +287,20 @@ def test_prek_checks_the_staged_content(prek: str, tmp_path: Path) -> None:
         ("blob.txt", "x" * 600_000 + "\n"),
         ("notes.txt", "a \n"),
         ("notes.txt", "a"),
+        ("bad.json", "{\n"),
+        ("bom.txt", chr(0xFEFF) + "a" + chr(10)),
+        # Joined at run time, so that this file is not itself a branch link.
+        ("doc.md", "https://github.com/o/r/blob/" + "main/f.py#L3\n"),
     ],
-    ids=["conflict-markers", "large-file", "trailing-whitespace", "missing-final-newline"],
+    ids=[
+        "conflict-markers",
+        "large-file",
+        "trailing-whitespace",
+        "missing-final-newline",
+        "json",
+        "bom",
+        "permalink",
+    ],
 )
 def test_ci_built_ins_catch_a_committed_change(
     prek: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, content: str

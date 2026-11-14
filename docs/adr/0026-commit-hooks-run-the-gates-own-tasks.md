@@ -8,7 +8,7 @@ part 2026-11-09 by [ADR 0044](0044-commit-messages-carry-no-gate-line.md): the c
 checks the subject only, with no gate line. Amended 2026-11-13: two shebang built-ins (below).
 Amended 2026-11-15: `crlf-check` is removed, and CI checks the pull request title, not every
 commit (below). Amended 2026-11-16: the whitespace built-ins replace
-`diff-check` (below).
+`diff-check`, and six more built-ins join (below).
 Supersedes
 the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
@@ -79,6 +79,11 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | `check-toml`, `check-yaml` | `mise.toml`, `pyproject.toml`, `.github/` and `.coderabbit.yaml` are configuration |
   | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
   | `trailing-whitespace`, `end-of-file-fixer` | `.editorconfig` (final newline, trimmed trailing whitespace; in Markdown only a two-space hard break is allowed); they replace `diff-check` |
+  | `check-symlinks`, `destroyed-symlinks` | `.claude/skills` is a committed symlink, which a Windows checkout without `core.symlinks` turns into a text file; `destroyed-symlinks` reads `git status`, so it guards the commit and passes unread in CI |
+  | `fix-byte-order-marker` | PowerShell 5.1's `Out-File` and `>` write a UTF-8 BOM; run with `--check`, like the whitespace pair, with the same exemptions |
+  | `check-json` | the tracked `.json` configuration and fixtures |
+  | `check-vcs-permalinks` | links in `docs/` and `research/` must name a commit, not a branch; dated `work/` folders are exempt |
+  | `forbid-new-submodules` | the repository has none |
   | `check-shebang-scripts-are-executable`, `check-executables-have-shebangs` | Linux CI's ruff fails a script whose shebang and executable bit disagree (`EXE001`), which a Windows checkout cannot see; these read git's staged mode there (added 2026-11-13, #461) |
 
   No hook rewrites files: the two fixers run with `--check`, which reports and writes nothing, and
@@ -244,6 +249,12 @@ lines; and Markdown is stricter, since `.gitattributes` once let any trailing wh
 0.5.10 with it. This supersedes the hook table's `diff-check` row, "`diff-check` and `crlf-check`
 run on every commit" above, and the `SKIP` list in the 2026-11-15 amendment: CI's `SKIP` list is
 `fmt-check-rust,fmt-check-py,lint-py,test-docs,check-work-frozen`.
+
+The same amendment adds `check-symlinks`, `destroyed-symlinks`, `check-json`,
+`fix-byte-order-marker --check`, `check-vcs-permalinks` and `forbid-new-submodules`.
+Considered and left out: `no-commit-to-branch` (CI's push to `main` would fail it), `deny-filename-pattern`
+(its fixture false positives are unchecked), `mixed-line-ending` (the index is LF already) and
+`pretty-format-json` (it reformats files).
 
 The commit-message hook, `check-work-frozen` and `test-docs` stay: no built-in checks a
 Conventional Commit subject, a trailer required only when a work `spec.md` or `plan.md` changes,

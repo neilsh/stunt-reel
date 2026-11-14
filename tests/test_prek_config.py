@@ -53,6 +53,12 @@ BUILTINS: dict[str, dict[str, Any]] = {
     "check-executables-have-shebangs": {},
     "trailing-whitespace": {"args": ["--check", "--markdown-linebreak-ext=md"], "exclude": EXEMPT},
     "end-of-file-fixer": {"args": ["--check"], "exclude": EXEMPT},
+    "check-symlinks": {},
+    "destroyed-symlinks": {},
+    "check-json": {},
+    "fix-byte-order-marker": {"args": ["--check"], "exclude": EXEMPT},
+    "check-vcs-permalinks": {"exclude": "^work/"},
+    "forbid-new-submodules": {},
 }
 
 
