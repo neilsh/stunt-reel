@@ -6,14 +6,14 @@ The skills speak in terms of canonical triage roles. This file maps those roles 
 
 | Label in mattpocock/skills | Label in our tracker | Meaning                                  |
 | -------------------------- | -------------------- | ---------------------------------------- |
-| `needs-triage`             | `needs-triage`       | Maintainer needs to evaluate this issue  |
-| `needs-info`               | `needs-info`         | Waiting on reporter for more information |
+| `needs-triage`             | `needs-triage`       | Not yet evaluated; the maintainer decides its state |
+| `needs-info`               | `needs-info`         | Waits on a fact only a person can supply |
 | `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |
 | `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
 | _not in the template_      | `in-progress`        | A session has claimed it; its claim comment names the branch |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 
-An agent can run DOSBox and DOSBox-X captures and breakpoint sessions, so needing one does not make an issue `ready-for-human`. Use `ready-for-human` for a design or visual judgment call, or a step no agent can do (admin rights, an asset not in the data root); the brief names which. Work only the primary machine can do is `local-only` (**Environment roles**), not `ready-for-human`.
+A fact an agent can find (a probe, capture, census or static read) labels an issue `ready-for-agent` and `research`, with the brief saying how to find it; `needs-info` is for what only a person knows, such as what the filer meant. An agent can run DOSBox and DOSBox-X captures and breakpoint sessions, so needing one does not make an issue `ready-for-human`. Use `ready-for-human` for a design or visual judgment call, or a step no agent can do (admin rights, an asset not in the data root); the brief names which. Work only the primary machine can do is `local-only` (**Environment roles**), not `ready-for-human`.
 
 `in-progress` is our addition to the template's flow: every session acts as the same GitHub user, so an assignee cannot say which session holds an issue. A session takes it from `ready-for-agent` or `ready-for-human` by **Claim an issue** ([issue-tracker.md](issue-tracker.md#conventions)).
 
