@@ -4,8 +4,9 @@
 Each line names the item and either ``ready`` or why it is skipped, for the reasons that need no
 judgement:
 
-- a PR labelled ``ready-for-human``, or one whose auto-merge is armed and whose checks are
-  pending or passed; an armed PR with a failed check is ``ready``, since it needs a fix;
+- a PR labelled ``ready-for-human``; one stacked on another open PR, which waits for its base
+  to merge; or one whose auto-merge is armed and whose checks are pending. An armed PR with a
+  failed check, a conflict, or passed checks yet still open is ``ready``, since it needs work;
 - an issue labelled ``in-progress``, or ``local-only`` in a cloud session
   (``CLAUDE_CODE_REMOTE=true``; ``docs/agents/triage-labels.md`` § Environment roles);
 - an issue with an open blocker or open sub-issue (``docs/agents/issue-tracker.md``, "Count open
@@ -42,7 +43,8 @@ _CLAIM = re.compile(
 _NUMBER = re.compile(r"#(\d+)")
 _PART_OF_LINE = re.compile(r"^[ \t]*part of[ \t]+#(\d+)", re.IGNORECASE | re.MULTILINE)
 _BLOCKED_BY_LINE = re.compile(r"^[ \t]*blocked by:?[ \t]*(.*)$", re.IGNORECASE | re.MULTILINE)
-_BRANCH_ISSUE = re.compile(r"(?:^|/)(\d+)-")
+#: A branch named for an issue, ``feat/440-slug``; not ``0044-…`` nor a date, ``2026-11-…``.
+_BRANCH_ISSUE = re.compile(r"(?:^|/)([1-9]\d*)-[a-z]", re.IGNORECASE)
 _FAILED = {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
 
 
@@ -140,19 +142,25 @@ def stack_order(prs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def pr_items(prs: list[dict[str, Any]], checks: dict[int, str]) -> list[Item]:
     """A line per open REST PR, in stack order.
 
-    *checks* is each armed PR's :func:`checks_state`, or ``conflict`` when it no longer merges.
+    *checks* is each armed PR's :func:`armed_state`.
     """
+    heads = {pr["head"]["ref"]: pr["number"] for pr in prs}
+    armed_notes = {
+        "failed": "auto-merge armed, a check failed",
+        "conflict": "auto-merge armed, conflicts with main",
+        "passed": "auto-merge armed, checks passed but not merged",
+    }
     items = []
     for pr in stack_order(prs):
         item = Item("PR", pr["number"], pr["title"], _labels(pr))
         if "ready-for-human" in item.labels:
             item.skip.append("ready-for-human")
+        if pr["base"]["ref"] in heads:
+            item.skip.append(f"base #{heads[pr['base']['ref']]} open")
         if pr.get("auto_merge"):
             state = checks.get(pr["number"], "pending")
-            if state == "failed":
-                item.notes.append("auto-merge armed, a check failed")
-            elif state == "conflict":
-                item.notes.append("auto-merge armed, conflicts with main")
+            if state in armed_notes:
+                item.notes.append(armed_notes[state])
             else:
                 item.skip.append(f"armed, checks {state}")
         if pr.get("draft"):
@@ -195,7 +203,8 @@ def issue_items(
         if blockers:
             item.skip.append(f"{blockers} open blocker(s)")
         sub = issue.get("sub_issues_summary") or {}
-        open_subs = sub.get("total", 0) - sub.get("completed", 0) + children.get(item.number, 0)
+        # A native sub-issue may also say "Part of #n": count one source, not both.
+        open_subs = sub.get("total", 0) - sub.get("completed", 0) or children.get(item.number, 0)
         if open_subs:
             item.skip.append(f"{open_subs} open sub-issue(s)")
         if item.number in claimed:
@@ -209,7 +218,7 @@ def armed_state(pr: dict[str, Any]) -> str:
     detail = gh_json("api", f"repos/{{owner}}/{{repo}}/pulls/{pr['number']}")
     if detail.get("mergeable_state") == "dirty":
         return "conflict"
-    path = f"repos/{{owner}}/{{repo}}/commits/{pr['head']['sha']}/check-runs"
+    path = f"repos/{{owner}}/{{repo}}/commits/{pr['head']['sha']}/check-runs?per_page=100"
     return checks_state(gh_json("api", path)["check_runs"])
 
 

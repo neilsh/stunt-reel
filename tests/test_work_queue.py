@@ -67,14 +67,14 @@ def test_a_pr_for_a_human_is_skipped_and_drafts_are_noted() -> None:
         [_pr(1, "a", labels=[{"name": "ready-for-human"}]), _pr(2, "b", base="a", draft=True)], {}
     )
     assert first.skip == ["ready-for-human"]
-    assert (second.skip, second.notes) == ([], ["draft", "base=a"])
+    assert (second.skip, second.notes) == (["base #1 open"], ["draft", "base=a"])
 
 
 @pytest.mark.parametrize(
     ("state", "skip", "notes"),
     [
         ("pending", ["armed, checks pending"], []),
-        ("passed", ["armed, checks passed"], []),
+        ("passed", [], ["auto-merge armed, checks passed but not merged"]),
         ("failed", [], ["auto-merge armed, a check failed"]),
         ("conflict", [], ["auto-merge armed, conflicts with main"]),
     ],
@@ -125,6 +125,33 @@ def test_each_mechanical_skip_names_its_reason() -> None:
         6: [],
         7: ["1 open blocker(s)"],
     }
+
+
+def test_a_sub_issue_named_both_ways_counts_once() -> None:
+    issues = [
+        _issue(5, sub_issues_summary={"total": 1, "completed": 0}),
+        _issue(6, body="Part of #5"),
+    ]
+    assert _skips(q.issue_items(issues, [], cloud=False))[5] == ["1 open sub-issue(s)"]
+
+
+@pytest.mark.parametrize(
+    ("branch", "claims"),
+    [
+        ("feat/440-slug", True),
+        ("440-slug", True),
+        ("docs/0044-adr", False),
+        ("chore/2026-11-x", False),
+    ],
+)
+def test_only_an_issue_number_in_a_branch_claims_it(branch: str, claims: bool) -> None:
+    issues = [_issue(n) for n in (440, 44, 2026)]
+    skipped = {
+        n
+        for n, skip in _skips(q.issue_items(issues, [_pr(9, branch)], cloud=False)).items()
+        if skip
+    }
+    assert bool(skipped) is claims
 
 
 def test_a_closing_keyword_in_an_issue_body_is_no_sub_issue() -> None:
@@ -178,7 +205,7 @@ def test_fetch_flattens_pages_drops_prs_and_reads_checks_only_for_armed_prs(
             "/issues?": [[_issue(3), {**_issue(1), "pull_request": {}}], [_issue(4)]],
             "/pulls/2": {"mergeable_state": "blocked"},
             "/pulls/5": {"mergeable_state": "dirty"},
-            "/commits/sha2/check-runs": {"check_runs": [{"status": "queued"}]},
+            "/commits/sha2/check-runs?per_page=100": {"check_runs": [{"status": "queued"}]},
         },
     )
     prs, checks, issues = q.fetch()

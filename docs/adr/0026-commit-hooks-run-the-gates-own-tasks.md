@@ -5,7 +5,8 @@
 accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (below). Amended
 2026-11-08: `check-work-frozen` holds a frozen work folder to its outcome (below). Superseded in
 part 2026-11-09 by [ADR 0044](0044-commit-messages-carry-no-gate-line.md): the commit-msg hook
-checks the subject only, with no gate line. Supersedes
+checks the subject only, with no gate line. Amended 2026-11-13: two shebang built-ins (below).
+Supersedes
 the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
 [`gate.py`](../../python/scripts/gate.py); keeps that change's committed `.githooks/` and its
