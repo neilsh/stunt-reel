@@ -234,7 +234,7 @@ impl GpuModel {
     /// Like [`Self::collect_visible_meshes`] for the static world, with the slices of its
     /// [`GROUND_NODE`] nodes taken out first, in the nodes' own order: ground, base and decal
     /// slices. A ground slice is drawn over whatever is there, so the walk's order is the
-    /// order `PLAYONE` paints the flat ground in (`world-scene.md` section 6.6).
+    /// order the flat ground is painted in (`stunt_core::world::GROUND_NODE`).
     pub fn collect_world_meshes(
         &self,
         eye: Vec3,
