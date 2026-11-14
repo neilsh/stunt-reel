@@ -41,7 +41,7 @@ _Source: [what picks the OP_ANIMATE frame](../../work/2026-11/222_op-animate/jou
 |---|---|---|---|
 | `0x16` | `work:0x8124` | `0x1D66`, on every actor draw | The slot record's `+0x16`: the `.FLM` `animate` word, interpolated (below) |
 | `0x10` | `work:0x811E` | `0x1DCA`, in the frame step | `[0x4888 + 0x0E] << 12`: the film clock `DS:0x4896` times 4,096, one sweep every 16 ticks |
-| `0x12`, `0x14`, `0x18`, `0x1A` | `work:0x8120`..`0x8128` | `0x1D96` | Words derived from film variables 10 and 12 ([`palette-fade.md`](palette-fade.md)) |
+| `0x12`, `0x14`, `0x18`, `0x1A` | `work:0x8120`..`0x8128` | `0x1D96`, in the frame step | Var 10's change over the frame, the previous frame's var 10, and `±var 12` ([`angle-bank.md`](angle-bank.md)) |
 
 The frame step that writes `0x811E` is `0x0F4A`, which `0x4A2F` calls with `BX = 0x4888` ([`lod.md`](lod.md) § 2.1), so `[BX + 0x0E]` there is the active film clock.
 
