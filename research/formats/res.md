@@ -98,7 +98,7 @@ The engine distinguishes two primary `.RES` operational profiles based on the Re
 - **String Table Termination:** The string table ends with an extra null byte (`0x00\0x00`) or is bounded by `ofs[1]`.
 
 #### 2. Scenery Resource Archives (`res_index <= 0x0F` / `idBase <= 0x0F00`)
-- **Containers:** `SCENERY1.RES` (`0x02`) through `SCENERY6.RES` (`0x07`).
+- **Containers:** `SCENERY1.RES` (`0x02`) through `SCENERY6.RES` (`0x07`), and `GAME.RES` (`0x01`), whose region 0 is also a shape (§ 3.3).
 - **Absence of Names:** Scenery models are never selected through the interactive Set Designer GUI. They are placed automatically across the island landscape by `MAP.BIN` using global scenery object IDs.
 - **Data Layout:** The ASCII string table is omitted. The first offset $\text{ofs}[0]$ points directly to the first raw `.SOD` geometry model (starting with the 2-byte magic word `0x000C`).
 - **Parser Fallback:** When a parser encounters a scenery file, it detects that `data[ofs[0]..ofs[1]]` starts with `0x000C` (or contains non-ASCII graphics bytes) and automatically generates synthetic 8.3 entry names: `0000.BIN`, `0001.BIN`, etc.

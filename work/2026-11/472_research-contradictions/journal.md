@@ -8,6 +8,7 @@ Nine rulings from [#472](https://github.com/neilsh/stunt-reel/issues/472): seven
 - **Method**: the claim moved from `research/parity/framing-and-actors.md` to `research/parity/hero-aircraft-placement.md` in #386. Read its § 1 and Ruled out against `terrain-shade.md` § 5, `world-scene.md` § 4.1, `sod-vm.md` § 8.5 and its open questions, and the `OP_GVPOLY16` arm of `crates/stunt-core/src/sod/vm.rs`.
 - **Result**: `terrain-shade.md` § 5 (`[Established]`, static) gives the index both Gouraud handlers compose, `base + max(0, highbyte(s >> 1) + G)`, with `base` read by `mov ch, es:[si+1]`; `world-scene.md` § 4.1 reads that byte as the high byte of the record word `(ramp base << 8) | count`. `vm.rs` takes the ramp from the high byte of the word after the registers and has done so since #233 or before. `sod-vm.md` § 8.5 still lists "whether `GVPOLY16` takes its ramp from the word after its registers" as open: the handlers were not traced for which stream word that record is. `hero-aircraft-placement.md` § 1 (two 2026-11-01 bullets) and its Open question 1 still called the rule undecoded and named the `SHADE` light and per-vertex interpolation as open, both closed by #233 per `sod-vm.md`'s open questions. Its Ruled out entry "colour from the high byte of the `GVPOLY16` trailing word (0.7779 / 0.5449)" was scored before #233 lit shapes with the world light, and the renderer now does exactly that.
 - **Verdict**: the rule is decoded; the parity note was stale. Which word supplies the ramp stays open, in `sod-vm.md` only.
+- **Also read**: `world-scene.md` § 4.1's live probe saw base `0x00` on all 32 records the hero aircraft passed to `0x9A24`, while `vm.rs` reads base `0x30` from `0x7F37`'s `0x3004`; that bears on the open question and is cited beside it.
 - **Lives in**: `research/parity/hero-aircraft-placement.md` § 1, Ruled out and Open questions.
 
 ## 2026-11-13: SHADES lights from film variable 13, not from the SET time of day
@@ -55,14 +56,15 @@ Nine rulings from [#472](https://github.com/neilsh/stunt-reel/issues/472): seven
 - **Question**: `capture.md` § 4 says the captured page lags the film clock by one tick because `PLAYONE` advances the clock at the start of a frame; `dosbox-x-legacy.md` § 5 says the lag came from the debugger's late, wall-paced tags. Which cause does the evidence support?
 - **Method**: read both sections, `memory.md` § 3.2, `capture-dosbox-automation.md` § 3 and `crates/stunt-cli/src/playback.rs` (`capture_tick`).
 - **Result**: the one-tick fit is measured (`[Bounded Observation]`: one tick back CTRY 0.7713 to 0.7732, INTRO 0.6775 to 0.6793; two ticks 0.7723 / 0.6773; integer phase). Neither cause is backed. `memory.md` § 3.2 places the clock increment in the 50 Hz interrupt (`0x43B0`), and no note cites code showing the clock moving before the page is drawn. The late-tag measurement (a page matching a stepped page 7 to 10 ticks earlier than its tag) is not one tick, and no run isolated the tags' share of the fitted lag. `capture-dosbox-automation.md` § 3 sees the page lag the clock "by different ticks in each emulator", which points at the harness but does not measure it.
+- **Note**: the clock itself is incremented in the 50 Hz interrupt, so the first reading is about when the frame step takes the clock relative to its draw, not when it increments it.
 - **Verdict**: open. Both notes now state the fit and give each cause as a `[Hypothesis]`; `playback.rs` stops stating the first as fact.
 - **Lives in**: `research/playone-exe/capture.md` § 4, `research/playone-exe/dosbox-x-legacy.md` § 5 and its Open questions.
 
-## 2026-11-13: unlzexe unpacks every STUNT.EXE
+## 2026-11-13: unlzexe unpacks every STUNT.EXE in the data root
 
 - **Question**: `map.md` open question 3 says `mise run unlzexe` fails on `STUNT.EXE` with an `IndexError` in the relocation table. Does it still?
 - **Method**: ran `unlzexe.unpack` and `unlzexe.to_mz` from `python/scripts/unlzexe.py` on every `STUNT.EXE` in the data root (the retail install, its `NEV_001` copy, OldPLAY, and the `unpatched`, `patched` and `patch3` build trees with their `NEV_001` copies); read `tests/test_unlzexe.py`.
-- **Result**: all nine unpack without error: the unpatched copies to a 248,460-byte image with 248 relocations, the `patched` and `patch3` root copies to 244,684 bytes with 256. `test_unpacks_the_program_under_an_entry_stub` covers the retail install's stubbed copy.
+- **Result**: all nine unpack without error: the seven unpatched copies (every `NEV_001` copy included) to a 248,460-byte image with 248 relocations, the `patched` and `patch3` root copies to 244,684 bytes with 256. `test_unpacks_the_program_under_an_entry_stub` models the retail install's stubbed copy with a synthetic stub.
 - **Verdict**: the open question is answered; removed.
 - **Lives in**: `research/formats/auxiliary/map.md` § 4.2 (removed), `research/formats/concepts/compression.md` (unchanged, already current).
 

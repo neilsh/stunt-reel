@@ -56,8 +56,8 @@ impl Playback {
 
 /// The authored tick whose page a capture tagged film-clock `tick` shows, one tick earlier.
 ///
-/// The one-tick shift is fitted, not derived: rendering one tick early matches the capture
-/// on both films (CTRY 0.7713 -> 0.7732, INTRO 0.6775 -> 0.6793). Whether PLAYONE or the
+/// The one-tick shift is fitted, not derived: rendering one tick early matched the 2026-10
+/// DOSBox-X captures of both films (CTRY 0.7713 -> 0.7732, INTRO 0.6775 -> 0.6793). Whether PLAYONE or the
 /// capture harness causes it is open (research/playone-exe/capture.md).
 #[must_use]
 pub(crate) fn capture_tick(tick: f32) -> f32 {
