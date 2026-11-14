@@ -8,6 +8,7 @@ import os
 import struct
 import sys
 import zlib
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -39,6 +40,7 @@ from stunt_reel import (  # noqa: E402
     parity_layout,
     parity_pictures,
     parity_pipeline,
+    references,
 )
 from stunt_reel.parity_artifacts import FilmId, Geometry, StoredFrame  # noqa: E402
 from stunt_reel.parity_judge import Variant  # noqa: E402
@@ -715,3 +717,18 @@ def test_an_images_path_that_is_a_file_is_refused_before_rendering(
     images.write_bytes(b"x")
     assert parity_sweep.main(_images_argv(root, images)) == 2
     assert "is not a directory" in capsys.readouterr().err
+
+
+def test_a_film_without_background_bands_keeps_its_scores_and_drops_the_actor_iou(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--probe iou` over every film must not lose a film's SSIM to the probe's refusal (#485)."""
+    attempt = parity_pipeline.FilmScore("land", tmp_path, tmp_path / "ours", Score(0.8, 0.9))
+
+    def refuse(*_args: object) -> tuple[float, int]:
+        raise references.ReferenceCaptureError("LAND.FLM: the [land] row has no `background`")
+
+    monkeypatch.setattr(references, "open_reference", lambda *_: nullcontext(tmp_path))
+    monkeypatch.setattr(parity_probe, "actor_iou", refuse)
+    assert parity_sweep.with_actor_iou(attempt, tmp_path) == Score(0.8, 0.9, None)
+    assert "land: no actor IoU" in capsys.readouterr().err

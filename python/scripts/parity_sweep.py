@@ -28,8 +28,8 @@ the best variant that is not the baseline), one PNG per chosen tick into ``DIR``
 (``stunt_reel.parity_pictures`` chooses the ticks). It re-renders only those ticks, refuses before
 rendering when a path it could write exists, and never replaces a picture. ``--crop x0,y0,x1,y1``
 crops every picture to that box, enlarged 3 times; without it a picture is the whole frame.
-``--probe iou`` adds the actor-window IoU of ``parity_probe.py`` (its CTRY background ranges are
-used for every film). ``--data-root`` points at a checkout holding ``corpus/`` and the capture
+``--probe iou`` adds the actor-window IoU of ``parity_probe.py``, which reads each film's backdrop
+bands from its ``references.toml`` row; a film without them shows ``-`` for it and keeps its SSIM. ``--data-root`` points at a checkout holding ``corpus/`` and the capture
 directories when this one (a worktree) has none. ``--no-build`` reuses the existing release
 binary, ``--reuse DIR`` scores an existing ``DIR/<film>`` tree without rendering, and ``--retime
 N`` relabels each film directory by N ticks before scoring (see ``parity_probe.py retime``). Two
@@ -293,9 +293,22 @@ def _first_line(error: Exception, limit: int) -> str:
 
 
 def with_actor_iou(attempt: FilmScore, root: Path) -> Score:
-    """Adds ``parity_probe``'s actor-window IoU to one pipeline score."""
+    """Adds ``parity_probe``'s actor-window IoU to one pipeline score.
+
+    A film whose ``references.toml`` row has no ``background`` keeps its SSIM and IoU with no actor
+    IoU (a ``-`` cell), so one film without bands does not drop the variant's mean SSIM.
+    """
     with references.open_reference(root, attempt.film) as reference:
-        actor, _ = parity_probe.actor_iou(attempt.report / "report.json", reference, attempt.render)
+        try:
+            actor, _ = parity_probe.actor_iou(
+                attempt.report / "report.json", reference, attempt.render
+            )
+        except references.ReferenceCaptureError as err:
+            print(
+                f"parity_sweep: {attempt.film}: no actor IoU ({_first_line(err, 120)})",
+                file=sys.stderr,
+            )
+            return attempt.score
     return Score(attempt.score.ssim, attempt.score.iou, actor)
 
 
