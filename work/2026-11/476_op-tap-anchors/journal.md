@@ -1,0 +1,25 @@
+# Journal: OP_TAP placements, their rotation and their cull
+
+## 2026-11-13: whether PLAYONE turns a scenery prop's tapped anchors
+
+- **Question**: `anchored_models` loads each tapped anchor less the placement, with no rotation term ([#476](https://github.com/neilsh/stunt-reel/issues/476)). Does `PLAYONE.EXE` rotate a scenery prop, and if so, how does it carry the rotation into the anchors `OP_TAP` loads?
+- **Method**: `mise run disasm -- 0x2180 0x2200` on the unpatched image `playone.img` from the data root, read against [`sod-vm.md` § 4](../../../research/playone-exe/sod-vm.md) (the `OP_TAP` handler `0xAD88` and transform `0xAE67`) and the `SCENERY.scn` node table ([`scenery.md` § 3.1](../../../research/formats/auxiliary/scenery.md)). Base `4986b89`. No debugger run.
+- **Result**:
+  - The scenery object path reads the accumulated tree position (`[0x49FA]`, `[0x49FC]` at `0x2187`; the full `0x49F2..0x49FC` layout is [`scenery.md` § 3.3](../../../research/formats/auxiliary/scenery.md)), normalises it (`call 0x31CF`) and rotates it by the matrix at `0x80C0` (`mov si,0x80C0; call 0x0824:06B0`, `0x2195..0x2198`). `call 0x1B0C` then shifts it and culls (it reads `[es:4]` and `[es:9]`, no angle), and `0x21B2..0x21BC` stores it in the origin words `[0x8084..0x8088]`.
+  - It then copies the draw matrix `0x808A` from `0x80C0`, or from `0x809C` when header byte `[es:9]` bit 0 is set (`0x21A8`, `0x21C2..0x21D0`). Nothing in the path reads a per-prop angle, and no `SCENERY.scn` node carries one: the tree holds translations (`SP_POS`, `SP_POSXZ`) and the leaf holds only a shape id.
+  - `OP_TAP` loads `0x80C0 · anchor + [0x41D4]` less `[0x8084..0x8088]`. With `0x41D4` the camera translation (the reading `sod-vm.md` § 4 already makes), a prop at `p` gets `R (anchor − p)` with `R` the matrix at `0x80C0`, and `VECTORS` points get `R v` from the same `0x808A = 0x80C0`. So in the shape's frame the tapped point is `anchor − p`, which `anchored_models` already loads.
+  - A view-facing shape (bit 0) would draw through `0x809C` while its anchors still go through `0x80C0`, so its tapped points would not be `anchor − p` in its frame. The view-facing shapes of `INTRO.ALL` and `CTRY.ALL` (the type-8 trees) run no `OP_TAP` (`sod-vm.md` § 8.8), and `split_view_facing` gives them the shared decode.
+- **Verdict**: control. `PLAYONE` does not rotate scenery props, so there is no rotation to carry into the anchors; the translation-only load stays. No film was found with a rotated `OP_TAP` scenery prop, and on this reading none is expected. Tier `[Supported Inference]`: the instructions are read, and that `0x41D4` is the camera's translation is inferred.
+- **Lives in**: [`sod-vm.md` § 4](../../../research/playone-exe/sod-vm.md).
+
+## 2026-11-13: culling OP_TAP props by their own decode
+
+- **Question**: `place_props` culled sub-pixel props before `anchored_models` decoded each `OP_TAP` placement, so a tapped prop was sized by its shared decode against the unshifted anchor table. Does sizing it by its own decode change which props a reference film keeps?
+- **Method**: `build_world` now decodes each `OP_TAP` placement first and culls with `reaches_a_pixel` on the model it draws; a temporary `DBG_TAP_CULL_SHARED=1` sized tapped props by the shared decode as before. Each of the seven reference films was built headless at tick 0 with both values (`stuntreel <film> <archive> --sidata …/FreeFlight/SIDATA --headless --at-ticks 0 --out-dir …`), comparing the `world:` line. Then `mise run sweep -- --var DBG_TAP_CULL_SHARED=1,0 --films ctry --jobs 2`, on a GPU shared with another worker's sweep. Base `4986b89`.
+- **Result**:
+  - Static props and world vertices are equal under both values on every film: CTRY 316 / 20,060, INTRO 26,386 / 819,190, LAND 845 / 32,140, BALLOON 8,983 / 569,368, TRAINTNL 1,049 / 112,155, BOMB 1,158 / 244,830, LOCATION 56,395 / 6,703,585. The shared decode puts the tapped points at the anchors' island positions, so it is hundreds of metres across and never culled a hill these films keep; each hill's own decode is also large enough to stay.
+  - CTRY sweep: mean SSIM 0.9162 and IoU 0.9910 under both values, no frame moved by more than 0.005 (the sweep warned the variants scored identically, as the equal worlds predict).
+  - A failed `OP_TAP` placement (no model, radius 0) is now culled whenever the film has camera eyes, so it leaves `props_placed`; it drew nothing before either, and it is still reported in `tap_failures`.
+  - Unit tests on synthetic fixtures show both directions the old order got wrong: `test_build_world_sizes_a_tap_prop_by_its_own_decode_when_kept` (anchors near the island origin, prop 1,000 m out: shared decode 1 m across, culled before, kept now) and `..._when_culled` (anchors 1 m from the prop, seen from 2,000 m: kept before, culled now).
+- **Verdict**: adopted for correctness, with no pixel change on the reference films (the world each builds is the same); the switch is removed.
+- **Lives in**: the code (`build_world`, `reaches_a_pixel`); no research note holds the cull order.

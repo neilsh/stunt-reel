@@ -123,6 +123,10 @@ The **geometry** effect is therefore: *load a terrain anchor point, relative to 
 
 _Source: [2026-11-11: how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._
 
+**No rotation term for scenery.** `PLAYONE` does not rotate a scenery prop. The scenery object path rotates the tree position by `0x80C0` (`0x2195..0x2198`); `0x1B0C` shifts the result and culls it (reading `[es:4]` and `[es:9]`, no angle), and `0x21B2..0x21BC` stores it in the origin words. The path then copies the draw matrix `0x808A` from `0x80C0`, or from `0x809C` when header bit 0 is set (`0x21A8`, `0x21C2..0x21D0`). That path, `0x2187..0x21D0` with `0x1B0C`, reads no per-prop angle, and no `SCENERY.scn` node carries one ([`scenery.md`](../formats/auxiliary/scenery.md) section 3.1). With `R` the matrix at `0x80C0`, a tapped register holds `R (anchor − p)` and a `VECTORS` point `R v`, so in the shape's frame the tapped point is `anchor − p`, the translation-only load `anchored_models` makes. `[Established]` for the instructions; `[Supported Inference]` for the conclusion, which rests on `0x41D4` being the camera's translation. A view-facing (bit 0) shape would draw through `0x809C` with its anchors still through `0x80C0`, so a tapped point would not land at `anchor − p` in its frame; no view-facing shape in `INTRO.ALL` or `CTRY.ALL` runs `OP_TAP` (section 8.8, `[Bounded Observation]`).
+
+_Source: [2026-11-13: whether PLAYONE turns a scenery prop's tapped anchors](../../work/2026-11/476_op-tap-anchors/journal.md#2026-11-13-whether-playone-turns-a-scenery-props-tapped-anchors)._
+
 ```mermaid
 flowchart TD
     A["TAP operand: anchor byte offset"] --> B["anchor record DS:offset+4"]
@@ -178,7 +182,7 @@ _Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anc
 
 Open items:
 
-- A rotated TAP shape: `vm.rs` loads the anchor unrotated, which holds only for scenery, whose draw matrix is the view matrix alone ([`memory-map.md`](memory-map.md) `0x808A`).
+- A TAP shape drawn rotated: `vm.rs` loads the anchor unrotated, which holds for scenery, never rotated (section 4). An actor (draw matrix `0x80C0 · R`, [`memory-map.md`](memory-map.md) `0x808A`) or a view-facing shape running `OP_TAP` would need the inverse turn; none is known in `INTRO.ALL` or `CTRY.ALL`.
 - Retail `PLAYONE.EXE` anchor-table population path `[Bounded Observation]`.
 - HUGETAP semantics `[Unknown]`.
 
