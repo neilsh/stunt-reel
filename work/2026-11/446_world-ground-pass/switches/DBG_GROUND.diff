@@ -1,0 +1,1017 @@
+diff --git a/crates/stunt-core/src/world/mod.rs b/crates/stunt-core/src/world/mod.rs
+index 95866199..d5355c38 100644
+--- a/crates/stunt-core/src/world/mod.rs
++++ b/crates/stunt-core/src/world/mod.rs
+@@ -23,6 +23,7 @@
+ mod scenery;
+
+ use std::collections::HashMap;
++use std::ops::Range;
+
+ use scenery::{LodGate, Placement, place_props};
+ pub use scenery::{ScnStop, ScnStopReason};
+@@ -30,10 +31,11 @@ pub use scenery::{ScnStop, ScnStopReason};
+ use crate::anchor::AnchorPoint;
+ use crate::contracts::{
+     NodeId, NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent, ShapeMesh,
+-    SodModelIr, SodVertex, VisibilityCondition, arena_index,
++    SodModelIr, SodVertex, VERTEX_FLAG_LINE, VisibilityCondition, arena_index,
+ };
+ use crate::sod::{
+-    DecodeMode, OP_TAP, ShadeLight, SodError, SodStop, decode_sod_lit, faces_view, trace_sod,
++    DECAL_FLAG_BIT, DecodeMode, EPSILON_DISPLACEMENT, OP_TAP, ShadeLight, SodError, SodStop,
++    decode_sod_lit, faces_view, trace_sod,
+ };
+
+ /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
+@@ -506,11 +508,29 @@ const OCEAN_COLOR: u8 = 208;
+ const GROUND_COLOR: u8 = 194;
+ const UP: [f32; 3] = [0.0, 1.0, 0.0];
+
++/// Name of the world's flat-ground mesh nodes: the ocean, then every `MAP.BIN` patch and prop
++/// triangle lying flat on the ground plane `y = base_y`, in `PLAYONE`'s walk order.
++///
++/// `PLAYONE` has no depth buffer and paints these in walk order, the later over the earlier;
++/// a renderer draws these nodes' slices first, in a forward walk, each over whatever is
++/// already there (`research/playone-exe/world-scene.md` section 6.6).
++pub const GROUND_NODE: &str = "WORLD_GROUND";
++
++// DBG_GROUND (sweep switch, not committed): 0 = no ground pass, 1 = one node per mesh,
++// 2 = one node per run of line or fill triangles.
++fn dbg_ground() -> u8 {
++    std::env::var("DBG_GROUND")
++        .ok()
++        .and_then(|v| v.parse().ok())
++        .unwrap_or(2)
++}
++
+ /// Builds the consolidated static world scenery and terrain intermediate representation.
+ ///
+-/// Vertices are laid out ocean, then terrain, then props (base batch, then decal batch),
+-/// each tagged with its scenery class. The props' coplanar decals get their own node so
+-/// renderers can depth-bias them (`[I5]`).
++/// The root `WORLD_BASE` holds raised terrain and props; under it come the [`GROUND_NODE`]
++/// nodes of the ocean and the flat terrain, the props' coplanar decals in `WORLD_DECAL`
++/// (`[I5]`), then each prop's own flat-ground and gated nodes in placement order. Every
++/// vertex is tagged with its scenery class.
+ #[expect(
+     clippy::arithmetic_side_effects,
+     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; the decal counts are growth since the base counts"
+@@ -523,16 +543,12 @@ pub(crate) fn build_world_ir(
+     ir_models: &PropModels<'_>,
+     base_y: f32,
+ ) -> SodModelIr {
++    let ground_pass = dbg_ground() != 0;
+     let mut ir = SodModelIr::new("WORLD_SCENERY");
+-
+-    // Ocean water quad at base_y - 1.0 per research/formats/auxiliary/map.md § 3.1.
+-    push_flat_quad(&mut ir, base_y - 1.0, OCEAN_COLOR, SCENERY_OCEAN);
+     let overlays = terrain_overlays(anchors, map_areas);
+-    if map_areas.is_empty() {
+-        push_flat_quad(&mut ir, base_y, GROUND_COLOR, SCENERY_TERRAIN);
+-    } else {
+-        push_terrain(&mut ir, anchors, map_areas, &overlays, false, base_y);
+-    }
++    let terrain = |ir: &mut SodModelIr, patches: Patches| {
++        push_terrain(ir, anchors, map_areas, &overlays, patches, base_y);
++    };
+     let grounded: Vec<Option<Vec<[f32; 3]>>> = instances
+         .iter()
+         .enumerate()
+@@ -550,11 +566,30 @@ pub(crate) fn build_world_ir(
+             },
+         )
+         .collect();
++
++    // Ocean water quad at base_y - 1.0 per research/formats/auxiliary/map.md § 3.1.
++    let ocean = |ir: &mut SodModelIr| {
++        push_flat_quad(ir, base_y - 1.0, OCEAN_COLOR, SCENERY_OCEAN);
++    };
++    let flat_terrain = |ir: &mut SodModelIr| {
++        if map_areas.is_empty() {
++            push_flat_quad(ir, base_y, GROUND_COLOR, SCENERY_TERRAIN);
++        } else {
++            terrain(ir, Patches::Flat);
++        }
++    };
++    if !ground_pass {
++        ocean(&mut ir);
++        if map_areas.is_empty() {
++            push_flat_quad(&mut ir, base_y, GROUND_COLOR, SCENERY_TERRAIN);
++        }
++    }
++    terrain(&mut ir, Patches::Raised { overlay: false });
+     push_props(&mut ir, instances, &grounded, ir_models, base_y, false);
+
+     let base_indices = arena_index(ir.indices.len());
+     let base_vertices = arena_index(ir.vertices.len());
+-    push_terrain(&mut ir, anchors, map_areas, &overlays, true, base_y);
++    terrain(&mut ir, Patches::Raised { overlay: true });
+     push_props(&mut ir, instances, &grounded, ir_models, base_y, true);
+     let decal_indices = arena_index(ir.indices.len()) - base_indices;
+     let decal_vertices = arena_index(ir.vertices.len()) - base_vertices;
+@@ -572,6 +607,11 @@ pub(crate) fn build_world_ir(
+             is_decal: false,
+         },
+     );
++    if ground_pass {
++        let always = VisibilityCondition::Always;
++        push_mesh_node(&mut ir, GROUND_NODE, root_base, always, false, ocean);
++        push_mesh_node(&mut ir, GROUND_NODE, root_base, always, false, flat_terrain);
++    }
+     if decal_indices > 0 {
+         ir.allocate_node(
+             "WORLD_DECAL",
+@@ -591,6 +631,41 @@ pub(crate) fn build_world_ir(
+     ir
+ }
+
++/// Appends the geometry `push` adds as a mesh node named `name` under `parent`, or nothing
++/// when it adds no index.
++#[expect(
++    clippy::arithmetic_side_effects,
++    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; the counts are growth since the offsets"
++)]
++fn push_mesh_node(
++    ir: &mut SodModelIr,
++    name: &str,
++    parent: NodeId,
++    visibility: VisibilityCondition,
++    is_decal: bool,
++    push: impl FnOnce(&mut SodModelIr),
++) {
++    let vertex_offset = arena_index(ir.vertices.len());
++    let index_offset = arena_index(ir.indices.len());
++    push(ir);
++    let index_count = arena_index(ir.indices.len()) - index_offset;
++    if index_count > 0 {
++        ir.allocate_node(
++            name,
++            Some(parent),
++            IDENTITY_MATRIX,
++            visibility,
++            NodeKind::Mesh {
++                vertex_offset,
++                vertex_count: arena_index(ir.vertices.len()) - vertex_offset,
++                index_offset,
++                index_count,
++                is_decal,
++            },
++        );
++    }
++}
++
+ /// Appends an unshaded, upward-facing quad spanning the world at height `y`.
+ #[expect(
+     clippy::arithmetic_side_effects,
+@@ -699,8 +774,25 @@ fn lies_on(poly: &[[f32; 3]], base: &[[f32; 3]]) -> bool {
+     })
+ }
+
+-/// Appends one fan-triangulated polygon per `MAP.BIN` patch whose corners are all valid
+-/// anchor points, lifted by `base_y`.
++/// How far from `base_y`, in metres, a vertex may lie and still be on the ground plane.
++const GROUND_PLANE_TOLERANCE: f32 = 1e-4;
++
++/// Whether every height of `ys`, each relative to `base_y`, lies on the ground plane.
++fn on_ground_plane(mut ys: impl Iterator<Item = f32>) -> bool {
++    dbg_ground() != 0 && ys.all(|y| y.abs() <= GROUND_PLANE_TOLERANCE)
++}
++
++/// Which `MAP.BIN` patches [`push_terrain`] appends.
++#[derive(Clone, Copy, PartialEq, Eq)]
++enum Patches {
++    /// Every patch flat on the ground plane, overlay or not.
++    Flat,
++    /// The patches off the ground plane whose [`terrain_overlays`] flag is `overlay`.
++    Raised { overlay: bool },
++}
++
++/// Appends one fan-triangulated polygon per `MAP.BIN` patch of `patches` whose corners are
++/// all valid anchor points, lifted by `base_y`, in `MAP.BIN` order.
+ #[expect(
+     clippy::arithmetic_side_effects,
+     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
+@@ -710,17 +802,24 @@ fn push_terrain(
+     anchors: &[AnchorPoint],
+     map_areas: &[MapArea],
+     overlays: &[bool],
+-    overlay: bool,
++    patches: Patches,
+     base_y: f32,
+ ) {
+     let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
+     for (area, &is_overlay) in map_areas.iter().zip(overlays) {
+-        if is_overlay != overlay {
+-            continue;
+-        }
+         let Some(corners) = patch_corners(&pts, anchors, area) else {
+             continue;
+         };
++        let wanted = if on_ground_plane(corners.iter().map(|p| p[1])) {
++            Patches::Flat
++        } else {
++            Patches::Raised {
++                overlay: is_overlay,
++            }
++        };
++        if wanted != patches {
++            continue;
++        }
+         let &[p0, p1, p2, ..] = corners.as_slice() else {
+             continue;
+         };
+@@ -865,12 +964,24 @@ fn ground_decal_vertices(
+                 snapped.push([p[0], h, p[2]]);
+             }
+             Some(_) => return None,
+-            None => snapped.push(p),
++            // Off the terrain a decal keeps its height less its `[I5]` lift, so it lies in
++            // the same plane as the base polygon under it, as the vertices over terrain do.
++            None => snapped.push([p[0], unlifted_height(v, p[1]), p[2]]),
+         }
+     }
+     on_terrain.then_some(snapped)
+ }
+
++/// `y`, the height of prop vertex `v`, less the lift along its normal that the decoder gives
++/// a coplanar decal (`[I5]`); a line's `normal` is no normal, so a line keeps `y`.
++fn unlifted_height(v: &SodVertex, y: f32) -> f32 {
++    if dbg_ground() != 0 && v.flags & DECAL_FLAG_BIT != 0 && v.flags & VERTEX_FLAG_LINE == 0 {
++        y - EPSILON_DISPLACEMENT * v.normal[1]
++    } else {
++        y
++    }
++}
++
+ /// Appends every ungated placed prop mesh slice, translated to its placement and lifted by
+ /// `base_y`: those whose `is_decal` equals `decals`, except that every slice of a ground
+ /// decal (`grounded` holds its snapped vertices, parallel to `instances`) goes in the decal
+@@ -910,15 +1021,21 @@ fn push_props(
+             {
+                 continue;
+             }
+-            push_prop_mesh(ir, &mesh, pos, ground.as_deref(), base_y);
++            let placed = Placed {
++                pos,
++                ground: ground.as_deref(),
++                base_y,
++            };
++            push_prop_mesh(ir, &mesh, placed, false);
+         }
+     }
+ }
+
+-/// Appends every prop mesh behind a visibility gate as a node of its own under `parent`,
+-/// with the gate moved into world space, so the renderer evaluates it per frame against
+-/// the eye like an actor's. A placement behind `SP_1NODE` gates puts every slice there,
+-/// under the groups [`lod_parent`] makes for its chain.
++/// Appends, per placement and mesh, the prop's flat-ground triangles as [`GROUND_NODE`]
++/// nodes, then its gated triangles off the ground plane as a node of its own, each under
++/// `parent` with the gate moved into world space, so the renderer evaluates it per frame
++/// against the eye like an actor's. A placement behind `SP_1NODE` gates hangs every node
++/// under the groups [`lod_parent`] makes for its chain, and counts as gated.
+ #[expect(
+     clippy::arithmetic_side_effects,
+     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
+@@ -951,11 +1068,14 @@ fn push_gated_props(
+         let offset = [pos[0], pos[1] + base_y, pos[2]];
+         let chain = instances.get(index).map_or(0, |p| p.chain);
+         let parent = lod_parent(ir, parent, ir_models, chain, base_y, &mut groups);
++        let gated_by_lod = parent != root;
++        let placed = Placed {
++            pos,
++            ground: ground.as_deref(),
++            base_y,
++        };
+         for mesh in model.meshes() {
+-            let gated_by_lod = parent != root;
+-            if mesh.indices.is_empty()
+-                || (!gated_by_lod && mesh.node.visibility == VisibilityCondition::Always)
+-            {
++            if mesh.indices.is_empty() {
+                 continue;
+             }
+             let visibility = match mesh.node.visibility {
+@@ -979,22 +1099,35 @@ fn push_gated_props(
+                 }
+                 other => other,
+             };
++
++            // One node per run, all over the mesh's appended vertices, so a run's outline
++            // is drawn before the run after it.
+             let vertex_offset = arena_index(ir.vertices.len());
+-            let index_offset = arena_index(ir.indices.len());
+-            push_prop_mesh(ir, &mesh, pos, ground.as_deref(), base_y);
+-            ir.allocate_node(
+-                "WORLD_GATED",
+-                Some(parent),
+-                IDENTITY_MATRIX,
+-                visibility,
+-                NodeKind::Mesh {
+-                    vertex_offset,
+-                    vertex_count: arena_index(ir.vertices.len()) - vertex_offset,
+-                    index_offset,
+-                    index_count: arena_index(ir.indices.len()) - index_offset,
+-                    is_decal: ground.is_some() || mesh.is_decal(),
+-                },
+-            );
++            let runs = push_prop_mesh(ir, &mesh, placed, true);
++            let vertex_count = arena_index(ir.vertices.len()) - vertex_offset;
++            for run in runs {
++                ir.allocate_node(
++                    GROUND_NODE,
++                    Some(parent),
++                    IDENTITY_MATRIX,
++                    visibility,
++                    NodeKind::Mesh {
++                        vertex_offset,
++                        vertex_count,
++                        index_offset: run.start,
++                        index_count: run.end - run.start,
++                        is_decal: false,
++                    },
++                );
++            }
++
++            if !gated_by_lod && mesh.node.visibility == VisibilityCondition::Always {
++                continue;
++            }
++            let is_decal = ground.is_some() || mesh.is_decal();
++            push_mesh_node(ir, "WORLD_GATED", parent, visibility, is_decal, |ir| {
++                push_prop_mesh(ir, &mesh, placed, false);
++            });
+         }
+     }
+ }
+@@ -1040,46 +1173,107 @@ fn lod_condition(gate: LodGate, base_y: f32) -> VisibilityCondition {
+     }
+ }
+
+-/// Appends one prop mesh at `pos`, or at its ground-snapped vertices when it has them.
++/// Where one placement of a prop lies: its position, its ground-snapped vertices if it has
++/// them ([`ground_decal_vertices`]), and the ground height `base_y`.
++#[derive(Clone, Copy)]
++struct Placed<'a> {
++    pos: [f32; 3],
++    ground: Option<&'a [[f32; 3]]>,
++    base_y: f32,
++}
++
++impl Placed<'_> {
++    /// The world position of vertex `v`, number `index` of its shape.
++    fn position(&self, v: &SodVertex, index: usize) -> [f32; 3] {
++        self.ground
++            .and_then(|snapped| snapped.get(index))
++            .copied()
++            .unwrap_or([
++                v.position[0] + self.pos[0],
++                v.position[1] + self.pos[1] + self.base_y,
++                v.position[2] + self.pos[2],
++            ])
++    }
++}
++
++/// Appends the triangles of one prop mesh at its placement that lie on the ground plane
++/// `y = base_y` when `on_ground`, or the others otherwise, and returns their index ranges.
++///
++/// A triangle is on the ground plane when its three corners are, less any `[I5]` lift; its
++/// corners are then put exactly on it. Each range is a run of line triangles or of filled
++/// ones, in the mesh's order. A corner shared by the triangles appended stays shared, so
++/// outlines skip the edges inside.
+ #[expect(
+     clippy::arithmetic_side_effects,
+-    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; each mesh index is at least its mesh's vertex_offset"
++    reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
+ )]
+ fn push_prop_mesh(
+     ir: &mut SodModelIr,
+     mesh: &ShapeMesh<'_>,
+-    pos: [f32; 3],
+-    ground: Option<&[[f32; 3]]>,
+-    base_y: f32,
+-) {
+-    let start = arena_index(ir.vertices.len());
+-    for (i, v) in mesh.vertices.iter().enumerate() {
+-        let position = ground
+-            .and_then(|snapped| snapped.get(mesh.vertex_offset as usize + i))
+-            .copied()
+-            .unwrap_or([
+-                v.position[0] + pos[0],
+-                v.position[1] + pos[1] + base_y,
+-                v.position[2] + pos[2],
+-            ]);
+-        ir.vertices.push(SodVertex {
+-            position,
+-            normal: v.normal,
+-            palette_index: v.palette_index,
+-            flags: v.flags,
+-            scenery_class: SCENERY_PROP,
+-            _padding: 0,
++    placed: Placed<'_>,
++    on_ground: bool,
++) -> Vec<Range<u32>> {
++    let mut runs: Vec<(bool, Range<u32>)> = Vec::new();
++    let mut remap: Vec<Option<u32>> = vec![None; mesh.vertices.len()];
++    for tri in mesh.indices.as_chunks::<3>().0 {
++        let corners = tri.map(|index| {
++            let local = index.checked_sub(mesh.vertex_offset)? as usize;
++            let v = mesh.vertices.get(local)?;
++            Some((local, v, placed.position(v, index as usize)))
+         });
++        let [Some(a), Some(b), Some(c)] = corners else {
++            continue;
++        };
++        let corners = [a, b, c];
++        let flat = on_ground_plane(
++            corners
++                .iter()
++                .map(|&(_, v, p)| unlifted_height(v, p[1]) - placed.base_y),
++        );
++        if flat != on_ground {
++            continue;
++        }
++        let is_line = a.1.flags & VERTEX_FLAG_LINE != 0;
++        let start = arena_index(ir.indices.len());
++        if runs
++            .last()
++            .is_none_or(|&(line, _)| line != is_line && dbg_ground() != 1)
++        {
++            runs.push((is_line, start..start));
++        }
++        for (local, v, p) in corners {
++            let Some(slot) = remap.get_mut(local) else {
++                continue;
++            };
++            let index = *slot.get_or_insert_with(|| {
++                ir.vertices.push(SodVertex {
++                    position: if on_ground {
++                        [p[0], placed.base_y, p[2]]
++                    } else {
++                        p
++                    },
++                    normal: v.normal,
++                    palette_index: v.palette_index,
++                    flags: v.flags,
++                    scenery_class: SCENERY_PROP,
++                    _padding: 0,
++                });
++                arena_index(ir.vertices.len() - 1)
++            });
++            ir.indices.push(index);
++        }
++        if let Some((_, run)) = runs.last_mut() {
++            run.end = arena_index(ir.indices.len());
++        }
+     }
+-    for &index in mesh.indices {
+-        ir.indices.push(start + index - mesh.vertex_offset);
+-    }
++    runs.into_iter().map(|(_, run)| run).collect()
+ }
+
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use crate::anchor::parse_anchor_table;
++    use crate::contracts::{VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE};
+
+     #[test]
+     fn test_parse_anchorpt_valid_and_invalid() {
+@@ -1569,7 +1763,7 @@ mod tests {
+             },
+         ];
+         let mut ir = SodModelIr::new("T");
+-        push_terrain(&mut ir, &anchors, &areas, &[false; 4], false, 2.0);
++        push_terrain(&mut ir, &anchors, &areas, &[false; 4], Patches::Flat, 2.0);
+         assert_eq!(ir.vertices.len(), 4);
+         assert_eq!(ir.indices, [0, 1, 2, 0, 2, 3]);
+         assert!(ir.vertices.iter().all(|v| v.palette_index == 7
+@@ -1790,6 +1984,63 @@ mod tests {
+         assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
+     }
+
++    /// The index counts of the world's prop-holding [`GROUND_NODE`] nodes, in order.
++    fn ground_runs(ir: &SodModelIr) -> Vec<u32> {
++        ir.meshes()
++            .filter(|m| m.node.name == GROUND_NODE)
++            .filter(|m| {
++                m.indices
++                    .iter()
++                    .any(|&i| ir.vertices[i as usize].scenery_class == SCENERY_PROP)
++            })
++            .map(|m| arena_index(m.indices.len()))
++            .collect()
++    }
++
++    /// A prop flat on the ground plane off the terrain is ground, one node per run of
++    /// filled or line triangles, so the fill's outline is drawn before the line.
++    #[test]
++    fn a_prop_on_the_ground_plane_is_ground_in_runs_of_fill_and_line() {
++        let mut prop = square_prop(None);
++        let line = |x: f32, flags: u8| SodVertex {
++            position: [x, 0.0, 0.0],
++            normal: [4.0, 0.0, 0.0],
++            palette_index: 40,
++            flags: VERTEX_FLAG_LINE | flags,
++            scenery_class: 0,
++            _padding: 0,
++        };
++        prop.vertices.extend([
++            line(-2.0, 0),
++            line(-2.0, VERTEX_FLAG_LINE_SIDE),
++            line(2.0, VERTEX_FLAG_LINE_END | VERTEX_FLAG_LINE_SIDE),
++            line(2.0, VERTEX_FLAG_LINE_END),
++        ]);
++        // Fill, line, then fill again.
++        prop.indices = vec![0, 1, 2, 4, 5, 6, 4, 6, 7, 0, 2, 3];
++        if let Some(NodeKind::Mesh {
++            vertex_count,
++            index_count,
++            ..
++        }) = prop.nodes.first_mut().map(|n| &mut n.kind)
++        {
++            *vertex_count = 8;
++            *index_count = 12;
++        }
++        let ir = world_with(prop, [500.0, 0.0, 20.0]);
++        assert_eq!(ground_runs(&ir), [3, 6, 3]);
++        assert!(prop_vertices(&ir, "WORLD_BASE").is_empty());
++        assert!(prop_vertices(&ir, GROUND_NODE).iter().all(|p| p[1] == 0.0));
++    }
++
++    /// Only the triangles on the ground plane leave a standing prop for the ground.
++    #[test]
++    fn a_standing_prop_keeps_its_raised_triangles_in_the_base_batch() {
++        let ir = world_with(square_prop(Some(5.0)), [500.0, 0.0, 20.0]);
++        assert_eq!(ground_runs(&ir), [6]);
++        assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 3);
++    }
++
+     /// A gated prop section leaves the base batch for a `WORLD_GATED` node whose gate is
+     /// moved by the prop's placement.
+     #[test]
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 6463a0e2..83d1f7aa 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -16,6 +16,7 @@ use glam::{Mat4, Vec3};
+ use stunt_core::contracts::{
+     CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
+ };
++use stunt_core::world::GROUND_NODE;
+
+ /// Cached node data inside GPU model representation.
+ #[derive(Debug, Clone)]
+@@ -230,6 +231,26 @@ impl GpuModel {
+         .collect()
+     }
+
++    /// Like [`Self::collect_visible_meshes`] for the static world, with the slices of its
++    /// [`GROUND_NODE`] nodes taken out first, in the nodes' own order: ground, base and decal
++    /// slices. A ground slice is drawn over whatever is there, so the walk's order is the
++    /// order `PLAYONE` paints the flat ground in (`world-scene.md` section 6.6).
++    pub fn collect_world_meshes(
++        &self,
++        eye: Vec3,
++        view: Option<&CameraTransform>,
++    ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
++        VisibleWalk {
++            nodes: &self.nodes,
++            roots: &self.root_nodes,
++            state_mask: 0,
++            dist_sq: 0.0,
++            eye,
++            view,
++        }
++        .collect_world()
++    }
++
+     /// Encodes `meshes` into `rpass`, binding each slice's chunk buffers when it changes.
+     ///
+     /// The pipeline and bind groups must already be set.
+@@ -592,24 +613,43 @@ struct VisibleWalk<'a> {
+ impl VisibleWalk<'_> {
+     /// The visible base slices, last sibling first, and decal slices, in draw order.
+     fn collect(&self) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
++        let (_, base, decals) = self.split(|_| false);
++        (base, decals)
++    }
++
++    /// The visible ground slices in draw order, then [`Self::collect`]'s base and decal
++    /// slices of the other nodes.
++    fn collect_world(&self) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
++        self.split(|node| node.name == GROUND_NODE)
++    }
++
++    /// The visible slices of the nodes `is_ground` picks, in draw order, then the others'
++    /// base slices, last sibling first, and decal slices, in draw order.
++    fn split(
++        &self,
++        is_ground: impl Fn(&GpuNode) -> bool,
++    ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
++        let mut ground_meshes = Vec::new();
+         let mut base_meshes = Vec::new();
+         let mut decal_meshes = Vec::new();
+-        self.walk(false, |mesh| {
+-            if !mesh.is_decal {
++        self.walk(false, |node, mesh| {
++            if !is_ground(node) && !mesh.is_decal {
+                 base_meshes.push(mesh);
+             }
+         });
+-        self.walk(true, |mesh| {
+-            if mesh.is_decal {
++        self.walk(true, |node, mesh| {
++            if is_ground(node) {
++                ground_meshes.push(mesh);
++            } else if mesh.is_decal {
+                 decal_meshes.push(mesh);
+             }
+         });
+-        (base_meshes, decal_meshes)
++        (ground_meshes, base_meshes, decal_meshes)
+     }
+
+-    /// Calls `emit` with each slice of every visible node, depth first: siblings in draw
+-    /// order when `forward`, last sibling first otherwise.
+-    fn walk(&self, forward: bool, mut emit: impl FnMut(GpuMeshSlice)) {
++    /// Calls `emit` with each slice of every visible node and the node, depth first:
++    /// siblings in draw order when `forward`, last sibling first otherwise.
++    fn walk(&self, forward: bool, mut emit: impl FnMut(&GpuNode, GpuMeshSlice)) {
+         let mut stack: Vec<NodeId> = Vec::new();
+         if forward {
+             stack.extend(self.roots.iter().rev());
+@@ -624,7 +664,7 @@ impl VisibleWalk<'_> {
+                 continue;
+             }
+             for &mesh in &node.meshes {
+-                emit(mesh);
++                emit(node, mesh);
+             }
+             if forward {
+                 stack.extend(node.children.iter().rev());
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 1e030408..83c3795b 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -65,6 +65,12 @@ impl Default for ModelUniform {
+ /// Dual presentation pipelines separating base solid geometry from coplanar decals.
+ #[derive(Debug)]
+ pub(crate) struct RenderPipelines {
++    /// The world's flat-ground pipeline: `Always` depth compare with depth write, so each
++    /// slice paints over the last as `PLAYONE` paints the ground (`stunt_core::world::GROUND_NODE`).
++    pub(crate) ground_pipeline: wgpu::RenderPipeline,
++    /// Line-list pipeline for the outlines of the world's flat-ground slices, compared like
++    /// [`Self::ground_pipeline`].
++    pub(crate) ground_edge_pipeline: wgpu::RenderPipeline,
+     /// Base mesh pipeline with zero depth bias and `Less` depth compare.
+     pub(crate) base_pipeline: wgpu::RenderPipeline,
+     /// Decal mesh pipeline conforming to `[I5]` with hardware depth bias and `LessEqual` compare.
+@@ -276,6 +282,33 @@ impl RenderPipelines {
+             }));
+         }
+
++        let ground_depth_stencil = wgpu::DepthStencilState {
++            depth_compare: Some(wgpu::CompareFunction::Always),
++            ..base_depth_stencil.clone()
++        };
++
++        let ground_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
++            label: Some("stunt_mode13h_ground_pipeline"),
++            layout: Some(&pipeline_layout),
++            vertex: wgpu::VertexState {
++                module: &shader_module,
++                entry_point: Some("vs_main"),
++                compilation_options: wgpu::PipelineCompilationOptions::default(),
++                buffers: &vertex_buffers,
++            },
++            fragment: Some(wgpu::FragmentState {
++                module: &shader_module,
++                entry_point: Some(fragment_entry),
++                compilation_options: wgpu::PipelineCompilationOptions::default(),
++                targets: &targets,
++            }),
++            primitive: model_primitive,
++            depth_stencil: Some(ground_depth_stencil.clone()),
++            multisample: wgpu::MultisampleState::default(),
++            multiview_mask: None,
++            cache: None,
++        });
++
+         let base_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+             label: Some("stunt_mode13h_base_pipeline"),
+             layout: Some(&pipeline_layout),
+@@ -347,6 +380,8 @@ impl RenderPipelines {
+                 cache: None,
+             })
+         };
++        let ground_edge_pipeline =
++            edge_pipeline_with(ground_depth_stencil, "stunt_ground_edge_pipeline");
+         let edge_pipeline = edge_pipeline_with(base_depth_stencil, "stunt_edge_pipeline");
+         let edge_decal_pipeline = edge_pipeline_with(
+             wgpu::DepthStencilState {
+@@ -448,6 +483,8 @@ impl RenderPipelines {
+         });
+
+         Self {
++            ground_pipeline,
++            ground_edge_pipeline,
+             base_pipeline,
+             decal_pipeline,
+             shadow_pipeline,
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 0faff57b..59dd0f60 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -47,10 +47,12 @@ enum Target {
+     Image { image_id: u16, slot: usize },
+ }
+
+-/// One draw ready to encode: visible base and decal slices of a target.
++/// One draw ready to encode: visible ground, base and decal slices of a target.
+ #[derive(Debug)]
+ struct PreparedDraw {
+     target: Target,
++    /// The world's flat-ground slices in draw order; empty for every other target.
++    ground: Vec<GpuMeshSlice>,
+     base: Vec<GpuMeshSlice>,
+     decals: Vec<GpuMeshSlice>,
+     /// A ground shadow, drawn through the shadow pipeline, which culls no faces.
+@@ -149,17 +151,18 @@ impl SceneRenderer {
+         if frame.world
+             && let Some(world) = &self.world
+         {
+-            let (base, decals) = {
++            let (ground, base, decals) = {
+                 let lod_view = CameraTransform {
+                     eye: frame.view.eye,
+                     target: frame.view.target,
+                     lens: frame.lens,
+                     ..CameraTransform::default()
+                 };
+-                world.collect_visible_meshes(0, 0.0, eye, Some(&lod_view))
++                world.collect_world_meshes(eye, Some(&lod_view))
+             };
+             self.prepared.push(PreparedDraw {
+                 target: Target::World,
++                ground,
+                 base,
+                 decals,
+                 shadow: false,
+@@ -282,6 +285,7 @@ impl SceneRenderer {
+         let [_, shadow, ..] = uniform.layer;
+         self.prepared.push(PreparedDraw {
+             target: target(*slot),
++            ground: Vec::new(),
+             base,
+             decals,
+             shadow: shadow != 0,
+@@ -304,6 +308,26 @@ impl SceneRenderer {
+         rpass.set_bind_group(1, &palette.bind_group, &[]);
+         rpass.draw(0..3, 0..1);
+
++        // The world's flat ground first, each slice over what is there, then its outline:
++        // a run of lines that follows is a slice of its own, so no outline covers it.
++        let world_ground = self.world.as_ref().zip(
++            self.prepared
++                .iter()
++                .find(|d| matches!(d.target, Target::World) && !d.ground.is_empty()),
++        );
++        if let Some((world, draw)) = world_ground {
++            rpass.set_bind_group(2, &world.model_bind_group, &[]);
++            for slice in &draw.ground {
++                let slices = std::slice::from_ref(slice);
++                rpass.set_pipeline(&pipelines.ground_pipeline);
++                world.draw_slices(rpass, slices);
++                if slice.edge_count > 0 {
++                    rpass.set_pipeline(&pipelines.ground_edge_pipeline);
++                    world.draw_edges(rpass, slices);
++                }
++            }
++        }
++
+         for decal_pass in [false, true] {
+             rpass.set_pipeline(if decal_pass {
+                 &pipelines.decal_pipeline
+diff --git a/crates/stunt-render/tests/gpu/scene_renderer.rs b/crates/stunt-render/tests/gpu/scene_renderer.rs
+index c5bf368c..b01f6aca 100644
+--- a/crates/stunt-render/tests/gpu/scene_renderer.rs
++++ b/crates/stunt-render/tests/gpu/scene_renderer.rs
+@@ -10,12 +10,13 @@ use std::collections::HashMap;
+
+ use stunt_core::contracts::palette::PaletteControls;
+ use stunt_core::contracts::{
+-    ActorTransform, CameraTransform, NodeKind, ShapeExtent, SodModelIr, SodVertex,
+-    TrajectoryRecord, VisibilityCondition,
++    ActorTransform, CameraTransform, NodeKind, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent,
++    SodModelIr, SodVertex, TrajectoryRecord, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END,
++    VERTEX_FLAG_LINE_SIDE, VisibilityCondition,
+ };
+ use stunt_core::flm::{FilmTimeline, SliceKeyframe};
+ use stunt_core::scene::{FilmScene, ViewCamera};
+-use stunt_core::world::{TerrainSurface, World};
++use stunt_core::world::{GROUND_NODE, TerrainSurface, World};
+ use stunt_render::{CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, RenderOptions};
+
+ const SHAPE_ID: u16 = 7;
+@@ -304,7 +305,7 @@ fn world_is_drawn_when_present() {
+         let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
+         // World vertices carry their scenery class; the layer plane reads it.
+         for vertex in &mut ir.vertices {
+-            vertex.scenery_class = stunt_core::contracts::SCENERY_TERRAIN;
++            vertex.scenery_class = SCENERY_TERRAIN;
+         }
+         let world = World {
+             ir,
+@@ -375,12 +376,12 @@ fn sliver_rows(class: u8) -> Option<(usize, usize)> {
+ #[test]
+ fn a_world_props_sliver_draws_on_every_row() {
+     common::gpu_test(|| {
+-        let Some((rows, h)) = sliver_rows(stunt_core::contracts::SCENERY_PROP) else {
++        let Some((rows, h)) = sliver_rows(SCENERY_PROP) else {
+             return;
+         };
+         // The sliver spans about 30% of the view's rows.
+         assert!(rows > h / 4, "prop sliver drew {rows} of {h} rows");
+-        let Some((rows, h)) = sliver_rows(stunt_core::contracts::SCENERY_TERRAIN) else {
++        let Some((rows, h)) = sliver_rows(SCENERY_TERRAIN) else {
+             return;
+         };
+         assert!(rows < h / 10, "terrain sliver drew {rows} of {h} rows");
+@@ -523,3 +524,175 @@ fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
+         );
+     });
+ }
++
++// The world's flat ground: `GROUND_NODE` slices drawn first, in walk order, each over what is
++// there, as `PLAYONE` paints them with no depth buffer (research/playone-exe/world-scene.md
++// section 6.6).
++
++const FIRST: u8 = 40;
++const SECOND: u8 = 220;
++const RAIL: u8 = 33;
++/// `SodVertex::flags` of a flat-coloured face.
++const UNSHADED: u8 = 4;
++
++/// A still timeline whose camera stands 12 m over the ground looking 80 m ahead along -Z.
++fn timeline_over_ground() -> FilmTimeline {
++    let record = TrajectoryRecord {
++        tick: 0,
++        camera: CameraTransform {
++            eye: [0.0, 12.0, 0.0],
++            target: [0.0, 0.0, -80.0],
++            fov_degrees: 45.0,
++            roll_radians: 0.0,
++            cut_from_previous: false,
++            ..Default::default()
++        },
++        actors: Vec::new(),
++        audio_cues: Vec::new(),
++        palette: PaletteControls::default(),
++    };
++    FilmTimeline::new(
++        vec![SliceKeyframe {
++            record,
++            tick: 0,
++            tick_duration: 1,
++        }],
++        Vec::new(),
++    )
++}
++
++fn ground_vertex(x: f32, z: f32, palette_index: u8, flags: u8, class: u8) -> SodVertex {
++    SodVertex {
++        position: [x, 0.0, z],
++        normal: [0.0, 1.0, 0.0],
++        palette_index,
++        flags,
++        scenery_class: class,
++        _padding: 0,
++    }
++}
++
++/// A world of an empty root and one `GROUND_NODE` child per `(vertices, indices)` part, in
++/// order; each part's indices count from its own first vertex.
++fn ground_world(parts: Vec<(Vec<SodVertex>, Vec<u32>)>) -> FilmScene {
++    let mut ir = SodModelIr::new("WORLD_SCENERY");
++    let root = ir.allocate_node(
++        "WORLD_BASE",
++        None,
++        glam::Mat4::IDENTITY.to_cols_array(),
++        VisibilityCondition::Always,
++        NodeKind::TransformGroup,
++    );
++    for (vertices, indices) in parts {
++        let vertex_offset = u32::try_from(ir.vertices.len()).unwrap();
++        let index_offset = u32::try_from(ir.indices.len()).unwrap();
++        ir.indices
++            .extend(indices.iter().map(|&i| i + vertex_offset));
++        ir.allocate_node(
++            GROUND_NODE,
++            Some(root),
++            glam::Mat4::IDENTITY.to_cols_array(),
++            VisibilityCondition::Always,
++            NodeKind::Mesh {
++                vertex_offset,
++                vertex_count: u32::try_from(vertices.len()).unwrap(),
++                index_offset,
++                index_count: u32::try_from(indices.len()).unwrap(),
++                is_decal: false,
++            },
++        );
++        ir.vertices.extend(vertices);
++    }
++    ir.root_nodes = vec![root];
++    FilmScene::new(timeline_over_ground(), HashMap::new(), Some(world_of(ir)))
++}
++
++/// Pixels drawn with each of `indices` on any layer but the sky's.
++fn counts<const N: usize>(scene: &FilmScene, indices: [u8; N]) -> Option<[usize; N]> {
++    let mut test = common::gpu_or_skip(scene)?;
++    let page = test.draw(&scene.frame(0.0));
++    Some(indices.map(|wanted| {
++        page.layers()
++            .iter()
++            .zip(page.indices())
++            .filter(|&(&layer, &index)| layer != LAYER_NONE && index == wanted)
++            .count()
++    }))
++}
++
++/// A flat ground slice drawn after another in the same plane covers it on every pixel,
++/// although the two are triangulated along different diagonals and round their depths apart.
++#[test]
++fn a_later_ground_slice_wins_every_pixel_of_the_plane() {
++    common::gpu_test(|| {
++        let quad = |index: u8| -> Vec<SodVertex> {
++            [
++                [-300.0, -2000.0],
++                [300.0, -2000.0],
++                [300.0, -1.0],
++                [-300.0, -1.0],
++            ]
++            .map(|[x, z]| ground_vertex(x, z, index, UNSHADED, SCENERY_TERRAIN))
++            .to_vec()
++        };
++        // Clockwise from above: far-left, far-right, near-right, and the other diagonal.
++        let scene = ground_world(vec![
++            (quad(FIRST), vec![0, 1, 2, 0, 2, 3]),
++            (quad(SECOND), vec![1, 2, 3, 1, 3, 0]),
++        ]);
++        let Some([first, second]) = counts(&scene, [FIRST, SECOND]) else {
++            return;
++        };
++        assert!(second > 10_000, "the later slice covers {second} pixels");
++        assert_eq!(first, 0, "the earlier slice shows on {first} pixels");
++    });
++}
++
++/// A prop's line drawn after its fill keeps every pixel it draws alone, although the
++/// fill's outline crosses it: the outline is drawn with its own slice, before the line's.
++#[test]
++fn a_ground_outline_does_not_cover_the_line_after_it() {
++    common::gpu_test(|| {
++        // A tie 6 m wide across the view, whose outline is drawn.
++        let tie: Vec<SodVertex> = [[-3.0, -40.0], [3.0, -40.0], [3.0, -38.0], [-3.0, -38.0]]
++            .map(|[x, z]| ground_vertex(x, z, FIRST, UNSHADED, SCENERY_PROP))
++            .to_vec();
++        // A rail along the view crossing the tie, laid out as the decoder lays out a line.
++        let (a, b) = ([0.0, 0.0, -50.0], [0.0, 0.0, -30.0]);
++        let ab = [0.0, 0.0, 20.0];
++        let ba = [0.0, 0.0, -20.0];
++        let rail: Vec<SodVertex> = [
++            (a, ab, VERTEX_FLAG_LINE),
++            (a, ab, VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_SIDE),
++            (
++                b,
++                ba,
++                VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_END | VERTEX_FLAG_LINE_SIDE,
++            ),
++            (b, ba, VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_END),
++        ]
++        .map(|(position, normal, flags)| SodVertex {
++            position,
++            normal,
++            palette_index: RAIL,
++            flags: flags | UNSHADED,
++            scenery_class: SCENERY_PROP,
++            _padding: 0,
++        })
++        .to_vec();
++        let rail_indices = vec![0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2];
++        let with_tie = ground_world(vec![
++            (tie, vec![0, 1, 2, 0, 2, 3]),
++            (rail.clone(), rail_indices.clone()),
++        ]);
++        let alone = ground_world(vec![(rail, rail_indices)]);
++        let (Some([over, tie]), Some([alone])) =
++            (counts(&with_tie, [RAIL, FIRST]), counts(&alone, [RAIL]))
++        else {
++            return;
++        };
++        assert!(tie > 100, "the tie covers {tie} pixels");
++        assert!(alone > 20, "the rail alone covers {alone} pixels");
++        assert_eq!(over, alone, "the rail keeps {over} of its {alone} pixels");
++    });
++}

@@ -16,7 +16,7 @@ summary: "Compares PLAYONE's back-to-front software painter with our depth-buffe
 4. The palette, built per frame from film variables, gives the colours.
 
 Our renderer replaces the painting with a GPU depth buffer, by design: [`docs/SPEC.md`](../../docs/SPEC.md) section 2.1 makes "CPU-side Painter's Algorithm / BSP polygon sorting" a non-goal.
-- It builds the world once per film (`crates/stunt-core/src/world/mod.rs`) and draws a sky pass, a base pass (`Less`) and an `[I5]` decal pass (`LessEqual`, bias `-2, -2.0`; `crates/stunt-render/src/pipeline.rs`).
+- It builds the world once per film (`crates/stunt-core/src/world/mod.rs`) and draws a sky pass, a world ground pass (`Always`, depth write) that paints the flat ground in walk order ([ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)), a base pass (`Less`) and an `[I5]` decal pass (`LessEqual`, bias `-2, -2.0`; `crates/stunt-render/src/pipeline.rs`).
 - Depth is `Depth24Plus` with near 0.5 m and far 25 km (`renderer.rs`, `camera.rs`).
 - Polygons are flat at their palette index through the `[I3]` 256 × 32 lookup, with no lighting (`shaders/mode13h.wgsl`).
 
@@ -50,6 +50,7 @@ The depth buffer gets one case visibly wrong: a later polygon that ties an earli
 
 * **Within a shape** (`[I5]`): a coplanar polygon later in the display list is a decal of the one under it.
 * **Between a prop and the terrain** (ADR 0035): a flat prop lying within 10 cm of the terrain is a decal of it.
+* **On the ground plane** (ADR 0045): the ocean, flat `MAP.BIN` patches and prop triangles on `y = base_y` are not depth-tested at all; they are painted first, in walk order, each over the last.
 
 Both draw the decal after its base with `LessEqual` and a bias toward the viewer. A decal therefore wins any near-tie, not only the one against its own base, while still losing to anything clearly in front, as in the painter. Where a rule's net is wrong, we differ:
 - **Wrong winner:** on `INTRO` tick 1086 a tile now covers a prop; whether `PLAYONE`'s order covers it too is not known (open question 4 there).
@@ -64,7 +65,7 @@ Both are in [`world-scene.md`](../playone-exe/world-scene.md) section 6.3.
 
 ## Ruled out
 
-* **A painter's renderer of our own:** it would be the exact model, but [SPEC](../../docs/SPEC.md) section 2.1 rules out CPU painting, and the ties it would fix are handled by the decal rules at a cost of a few ticks.
+* **A painter's renderer of our own:** it would be the exact model, but [SPEC](../../docs/SPEC.md) section 2.1 rules out CPU painting, and the ties it would fix are handled by the decal rules and, on the ground plane, by the GPU's draw order (ADR 0045), at a cost of a few ticks.
 * **A constant terrain sink, a biased terrain pass:** section 3 and [`world-scene.md`](../playone-exe/world-scene.md) section 6.3.
 
 ## Open questions

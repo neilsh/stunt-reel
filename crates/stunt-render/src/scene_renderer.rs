@@ -47,10 +47,12 @@ enum Target {
     Image { image_id: u16, slot: usize },
 }
 
-/// One draw ready to encode: visible base and decal slices of a target.
+/// One draw ready to encode: visible ground, base and decal slices of a target.
 #[derive(Debug)]
 struct PreparedDraw {
     target: Target,
+    /// The world's flat-ground slices in draw order; empty for every other target.
+    ground: Vec<GpuMeshSlice>,
     base: Vec<GpuMeshSlice>,
     decals: Vec<GpuMeshSlice>,
     /// A ground shadow, drawn through the shadow pipeline, which culls no faces.
@@ -149,17 +151,18 @@ impl SceneRenderer {
         if frame.world
             && let Some(world) = &self.world
         {
-            let (base, decals) = {
+            let (ground, base, decals) = {
                 let lod_view = CameraTransform {
                     eye: frame.view.eye,
                     target: frame.view.target,
                     lens: frame.lens,
                     ..CameraTransform::default()
                 };
-                world.collect_visible_meshes(0, 0.0, eye, Some(&lod_view))
+                world.collect_world_meshes(eye, Some(&lod_view))
             };
             self.prepared.push(PreparedDraw {
                 target: Target::World,
+                ground,
                 base,
                 decals,
                 shadow: false,
@@ -282,6 +285,7 @@ impl SceneRenderer {
         let [_, shadow, ..] = uniform.layer;
         self.prepared.push(PreparedDraw {
             target: target(*slot),
+            ground: Vec::new(),
             base,
             decals,
             shadow: shadow != 0,
@@ -303,6 +307,26 @@ impl SceneRenderer {
         rpass.set_bind_group(0, &camera_resources.bind_group, &[]);
         rpass.set_bind_group(1, &palette.bind_group, &[]);
         rpass.draw(0..3, 0..1);
+
+        // The world's flat ground first, each slice over what is there, then its outline:
+        // a run of lines that follows is a slice of its own, so no outline covers it.
+        let world_ground = self.world.as_ref().zip(
+            self.prepared
+                .iter()
+                .find(|d| matches!(d.target, Target::World) && !d.ground.is_empty()),
+        );
+        if let Some((world, draw)) = world_ground {
+            rpass.set_bind_group(2, &world.model_bind_group, &[]);
+            for slice in &draw.ground {
+                let slices = std::slice::from_ref(slice);
+                rpass.set_pipeline(&pipelines.ground_pipeline);
+                world.draw_slices(rpass, slices);
+                if slice.edge_count > 0 {
+                    rpass.set_pipeline(&pipelines.ground_edge_pipeline);
+                    world.draw_edges(rpass, slices);
+                }
+            }
+        }
 
         for decal_pass in [false, true] {
             rpass.set_pipeline(if decal_pass {

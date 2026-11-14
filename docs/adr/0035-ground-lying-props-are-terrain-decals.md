@@ -13,6 +13,12 @@ amended 2026-11-11 for [#254](https://github.com/neilsh/stunt-reel/issues/254): 
 ([`sod-vm.md` section 5](../../research/playone-exe/sod-vm.md#5-hill-fins)), so the rule rightly
 leaves them out and the open item under Consequences is closed.
 
+superseded in part 2026-11-13 by [ADR 0045](0045-flat-ground-is-painted-in-walk-order.md): geometry
+flat on the ground plane `y = base_y` is painted in walk order in its own pass, not routed to
+`WORLD_DECAL`. The **Rule** and **Snap** below stand, and **Route** still holds off that plane. The
+"back to front" of the Context below is a fixed walk order: `SP_2NODE` does not swap its children
+on the eye's side.
+
 ## Context
 
 `PLAYONE.EXE` has no depth buffer. It walks the scenery tree back to front, so a scenery tile laid
@@ -52,7 +58,7 @@ terrain:
   0.0004 without that candidate range limit (a constant that shrinks as a fraction of the depth step
   the further the camera is) and without moving any mountain leaf. Ticks 2918-2973, which the biased
   terrain pass lost, are unchanged. At `INTRO` tick 1086 a decal now covers pixels that a base-pass
-  prop won; that prop is not identified (open question 5 of
+  prop won; that prop is not identified (open question 4 of
   [`world-scene.md`](../../research/playone-exe/world-scene.md#open-questions)).
 * The rule also takes flat markings and patches that lie on the ground (`0x03BE..0x03C3`, `0x064A`,
   `INTRO` `0x05CB..0x05D7` and others), which is the same kind of object. Flat props that hover

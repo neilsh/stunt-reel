@@ -76,7 +76,7 @@
 - [`playone-exe/startup.md`](playone-exe/startup.md): `PLAYONE.EXE` startup: LZEXE 0.91 packing, a command tail that honours only `?` (runs `install.exe`), the `game.cfg`, memory and disk checks, asset paths, and how to reproduce the static analysis.
 - [`playone-exe/static-tooling.md`](playone-exe/static-tooling.md): Which static tool answers which `PLAYONE.EXE` question (`mise run disasm`/`xref`/`vm-handler`, Ghidra, rea), what Ghidra cannot see in the VM handlers, and the address coordinate conversions.
 - [`playone-exe/terrain-shade.md`](playone-exe/terrain-shade.md): `GVPOLY`/`GVPOLY16` shade as a Gouraud ramp on the palette index (`SHADES` term, `idx = base + (s >> 9)`, screen-space fill), lit by the world light the var-13 handler writes; the ground does not.
-- [`playone-exe/world-scene.md`](playone-exe/world-scene.md): `PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BSP scenery tree in its own image and, in live CTRY runs, paints `SCENERY2.RES` tiles over it, licensing our ground-decal pass.
+- [`playone-exe/world-scene.md`](playone-exe/world-scene.md): `PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BSP scenery tree in its own image and, in live CTRY runs, paints `SCENERY2.RES` tiles over it, licensing our ground-decal pass; with no depth buffer it paints the flat ground in walk order, which our `WORLD_GROUND` pass follows in part.
 
 ## research
 
