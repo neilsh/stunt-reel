@@ -179,7 +179,7 @@ def test_area2_sod_vm_opcodes_and_geometry() -> dict[str, Any]:
     findings["arena_passed"] = len(arena_errors) == 0
     findings["arena_errors"] = arena_errors
 
-    # 3. Coplanar Decal Normal Displacement [I5] (epsilon = 0.001 m)
+    # 3. glTF export lift of a coplanar decal along its normal [I5] (epsilon = 0.001 m)
     norm = [0.0, 1.0, 0.0]
     vert = [10.0, 5.0, -20.0]
     eps = 0.001
@@ -377,7 +377,7 @@ def main() -> int:
         f"107-Opcode Jump Table Formula (Opcode = Index * 9) Passed: {res2['opcode_table_passed']}"
     )
     print(f"12-Byte Register Stride & 1024 Arena Passed: {res2['arena_passed']}")
-    print(f"Invariant [I5] Decal Displacement (0.001 m) Passed: {res2['decal_passed']}")
+    print(f"Invariant [I5] glTF Export Decal Lift (0.001 m) Passed: {res2['decal_passed']}")
 
     print("\n--- AREA 3: Film Timeline & Choreography ---")
     res3 = test_area3_flm_timeline_and_cuts()

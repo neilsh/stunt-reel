@@ -34,8 +34,7 @@ use crate::contracts::{
     SodModelIr, SodVertex, VERTEX_FLAG_LINE, VisibilityCondition, arena_index,
 };
 use crate::sod::{
-    DECAL_FLAG_BIT, DecodeMode, EPSILON_DISPLACEMENT, OP_TAP, ShadeLight, SodError, SodStop,
-    decode_sod_lit, faces_view, trace_sod,
+    DecodeMode, OP_TAP, ShadeLight, SodError, SodStop, decode_sod_lit, faces_view, trace_sod,
 };
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
@@ -990,22 +989,11 @@ fn ground_decal_vertices(
                 snapped.push([p[0], h, p[2]]);
             }
             Some(_) => return None,
-            // Off the terrain a decal keeps its height less its `[I5]` lift, so it lies in
-            // the same plane as the base polygon under it, as the vertices over terrain do.
-            None => snapped.push([p[0], unlifted_height(v, p[1]), p[2]]),
+            // Off the terrain a vertex keeps its height: decals carry no `[I5]` lift.
+            None => snapped.push(p),
         }
     }
     on_terrain.then_some(snapped)
-}
-
-/// `y`, the height of prop vertex `v`, less the lift along its normal that the decoder gives
-/// a coplanar decal (`[I5]`); a line's `normal` is no normal, so a line keeps `y`.
-fn unlifted_height(v: &SodVertex, y: f32) -> f32 {
-    if v.flags & DECAL_FLAG_BIT != 0 && v.flags & VERTEX_FLAG_LINE == 0 {
-        y - EPSILON_DISPLACEMENT * v.normal[1]
-    } else {
-        y
-    }
 }
 
 /// Appends every ungated placed prop mesh slice, translated to its placement and lifted by
@@ -1221,23 +1209,13 @@ impl Placed<'_> {
                 v.position[2] + self.pos[2],
             ])
     }
-
-    /// The height of vertex `v` at world position `p` less its `[I5]` lift; a snapped vertex
-    /// has none left ([`ground_decal_vertices`]).
-    fn unlifted_height(&self, v: &SodVertex, p: [f32; 3]) -> f32 {
-        if self.ground.is_some() {
-            p[1]
-        } else {
-            unlifted_height(v, p[1])
-        }
-    }
 }
 
 /// Appends the triangles of one prop mesh at its placement that lie on the ground plane
 /// `y = base_y` when `on_ground`, or the others otherwise, and returns their index ranges.
 ///
-/// A triangle is on the ground plane when its three corners are, less any `[I5]` lift; its
-/// corners are then put exactly on it. Each range is a run of line triangles or of filled
+/// A triangle is on the ground plane when its three corners are; its corners are then put
+/// exactly on it. Each range is a run of line triangles or of filled
 /// ones, in the mesh's order. A corner shared by the triangles appended stays shared, so
 /// outlines skip the edges inside.
 #[expect(
@@ -1262,11 +1240,7 @@ fn push_prop_mesh(
             continue;
         };
         let corners = [a, b, c];
-        let flat = on_ground_plane(
-            corners
-                .iter()
-                .map(|&(_, v, p)| placed.unlifted_height(v, p) - placed.base_y),
-        );
+        let flat = on_ground_plane(corners.iter().map(|&(_, _, p)| p[1] - placed.base_y));
         if flat != on_ground {
             continue;
         }
@@ -1308,6 +1282,7 @@ mod tests {
     use super::*;
     use crate::anchor::parse_anchor_table;
     use crate::contracts::{VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE};
+    use crate::sod::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
 
     #[test]
     fn test_parse_anchorpt_valid_and_invalid() {
@@ -2143,8 +2118,8 @@ mod tests {
         assert!(prop_vertices(&ir, GROUND_NODE).iter().all(|p| p[1] == 0.0));
     }
 
-    /// A tile snapped onto level terrain at the ground plane is ground, its decal triangles
-    /// included: the snap already took their `[I5]` lift away.
+    /// A tile lying 1 mm above level terrain at the ground plane is snapped onto it and is
+    /// ground, its decal triangles included.
     #[test]
     fn a_snapped_decal_on_level_terrain_is_ground() {
         let mut prop = square_prop(None);

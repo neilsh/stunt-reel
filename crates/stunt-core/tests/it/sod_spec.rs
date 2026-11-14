@@ -10,7 +10,7 @@
 //! - `[I1]` metric coordinates (scale lookup + `ground_y_offset`)
 //! - `[I2]` flat arena nodes indexed by `NodeId` and buffer slices
 //! - `[I3]` Mode 13h palette index retention across all 256 colors
-//! - `[I5]` decal flagging and normal displacement, via the `synthetic_minimal.sod` fixture
+//! - `[I5]` decal flagging, via the `synthetic_minimal.sod` fixture
 //! - Scale table lookup and fallback, IPG primitives, `OP_GVPOLY` explicit normals, `OP_IFVIS` clamping
 //! - Header, opcode and polygon error variants with their `Display` messages
 //!
@@ -24,8 +24,8 @@ use std::path::PathBuf;
 use stunt_core::anchor::AnchorPoint;
 use stunt_core::contracts::shape::{NodeId, NodeKind, SodModelIr, SodVertex};
 use stunt_core::sod::{
-    DECAL_FLAG_BIT, EPSILON_DISPLACEMENT, OP_COLOR, OP_GETV, OP_GVPOLY, OP_ID, OP_IFVIS, OP_IPG,
-    OP_POLYZ, OP_RETURN, OP_VECTORS, SOD_SCALE_TABLE, compute_scale_factor,
+    DECAL_FLAG_BIT, OP_COLOR, OP_GETV, OP_GVPOLY, OP_ID, OP_IFVIS, OP_IPG, OP_POLYZ, OP_RETURN,
+    OP_VECTORS, SOD_SCALE_TABLE, compute_scale_factor,
 };
 use stunt_core::sod::{DecodeMode, SodError, decode_sod};
 
@@ -144,7 +144,7 @@ fn sod_vertex_pod_roundtrip() {
 // Synthetic fixture, scale table, IPG and shaded polygons
 // =============================================================================
 
-/// `[I2]` `[I3]` `[I5]`: the 76-byte fixture yields a root, a base mesh and a displaced decal mesh.
+/// `[I2]` `[I3]` `[I5]`: the 76-byte fixture yields a root, a base mesh and a decal mesh.
 #[test]
 fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
     let path = fixtures_dir().join("synthetic_minimal.sod");
@@ -236,7 +236,8 @@ fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
     assert_eq!(ir.vertices[1].position, [-5.0, 0.0, 0.0]);
     assert_eq!(ir.vertices[2].position, [0.0, -5.0, 0.0]);
 
-    // Decal face vertices (Palette 15, flags & 1 != 0, displaced along normal by 0.001 m)
+    // Decal face vertices (Palette 15, flags & 1 != 0), left in the base's plane: the
+    // renderer's decal pass, not an offset, resolves the tie (`[I5]`)
     for v in &ir.vertices[3..6] {
         assert_eq!(v.palette_index, 15, "decal vertex palette must be 15");
         assert_ne!(
@@ -245,15 +246,10 @@ fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
             "decal vertex must have DECAL_FLAG_BIT set in flags"
         );
         assert_eq!(v.normal, [0.0, 0.0, 1.0]);
-        // Invariant [I5]: displaced by eps = 0.001 m along outward normal
-        assert!(
-            (v.position[2] - EPSILON_DISPLACEMENT).abs() < 1e-6,
-            "decal vertex z coordinate must be displaced by exactly 0.001 m"
-        );
     }
-    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, 0.001]);
-    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, 0.001]);
-    assert_eq!(ir.vertices[5].position, [0.0, -5.0, 0.001]);
+    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, 0.0]);
+    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, 0.0]);
+    assert_eq!(ir.vertices[5].position, [0.0, -5.0, 0.0]);
 }
 
 /// Scale indices 0..=17 read `SOD_SCALE_TABLE`; indices >= 18 use `5 / 2^(index - 1)`.

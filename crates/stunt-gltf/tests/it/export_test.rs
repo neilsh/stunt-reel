@@ -23,8 +23,8 @@ use stunt_core::contracts::{
 use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
 use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource, ViewCamera};
 use stunt_core::sod::{
-    DecodeMode, EPSILON_DISPLACEMENT, OP_COLOR, OP_ID, OP_LINECOL, OP_MOVETO, OP_POLYZ, OP_RETURN,
-    OP_VECTORS, OP_ZLINETO, decode_sod,
+    DECAL_FLAG_BIT, DecodeMode, EPSILON_DISPLACEMENT, OP_COLOR, OP_ID, OP_LINECOL, OP_MOVETO,
+    OP_POLYZ, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
 };
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
@@ -268,9 +268,12 @@ fn accessors_match_the_model_and_bounds_are_exact() {
     assert_eq!(as_f32(&accessor["min"]), min);
     assert_eq!(as_f32(&accessor["max"]), max);
 
-    // Positions and normals are copied unchanged ([I1]).
+    // Positions and normals are copied unchanged ([I1]); decal positions are lifted
+    // ([I5], `decal_slice_is_lifted_toward_its_front_on_export`).
     for (i, v) in ir.vertices.iter().enumerate() {
-        assert_eq!(positions[i * 3..i * 3 + 3], v.position);
+        if v.flags & DECAL_FLAG_BIT == 0 {
+            assert_eq!(positions[i * 3..i * 3 + 3], v.position);
+        }
     }
     let normals = glb.floats(normal);
     for (i, v) in ir.vertices.iter().enumerate() {
@@ -305,7 +308,7 @@ fn vertex_colors_are_the_palette_colors() {
 }
 
 #[test]
-fn decal_slice_is_displaced_once_along_its_normal() {
+fn decal_slice_is_lifted_toward_its_front_on_export() {
     let ir = model("synthetic_minimal.sod");
     let glb = parse_glb(&export_shape(&ir).expect("export"));
     let positions = glb.floats(glb.primitive_accessor(0, "POSITION"));
@@ -317,22 +320,23 @@ fn decal_slice_is_displaced_once_along_its_normal() {
     assert!(decal.1 >= base.1 + base.2);
 
     let base_vertex = &ir.vertices[base.1 as usize];
+    // The shading normal is the edge cross product; the front (`FrontFace::Cw`) is opposite.
     let n = base_vertex.normal;
     let plane = |p: [f32; 3]| p[0] * n[0] + p[1] * n[1] + p[2] * n[2];
     let base_d = plane(base_vertex.position);
     for i in decal.1 as usize..(decal.1 + decal.2) as usize {
         let p = [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
-        assert_eq!(
-            p, ir.vertices[i].position,
-            "exported as decoded, not nudged twice"
+        assert!(
+            (plane(ir.vertices[i].position) - base_d).abs() < 1e-6,
+            "decoded decal {i} lies in the base plane"
         );
         assert_eq!(
             ir.vertices[i].normal, n,
             "decal is coplanar with the base facet"
         );
         assert!(
-            (plane(p) - base_d - EPSILON_DISPLACEMENT).abs() < 1e-5,
-            "decal vertex {i} sits 0.001 m above the base plane"
+            (plane(p) - base_d + EPSILON_DISPLACEMENT).abs() < 1e-5,
+            "exported decal vertex {i} sits 0.001 m in front of the base plane"
         );
     }
     for i in base.1 as usize..(base.1 + base.2) as usize {

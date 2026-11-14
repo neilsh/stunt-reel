@@ -45,6 +45,7 @@ pub(crate) fn with_outlines(ir: &SodModelIr) -> SodModelIr {
             vertex_count,
             index_offset,
             index_count,
+            is_decal,
             ..
         } = &mut node.kind
         else {
@@ -55,12 +56,53 @@ pub(crate) fn with_outlines(ir: &SodModelIr) -> SodModelIr {
             *vertex_count = 0;
         }
         let start = arena_index(out.indices.len());
-        out.indices.extend_from_slice(source);
-        append_outline(&mut out.vertices, &mut out.indices, &ir.vertices, source);
+        if *is_decal {
+            append_decal_fans(&mut out.vertices, &mut out.indices, &ir.vertices, source);
+        } else {
+            out.indices.extend_from_slice(source);
+            append_outline(&mut out.vertices, &mut out.indices, &ir.vertices, source);
+        }
         *index_offset = start;
         *index_count = arena_index(out.indices.len()).saturating_sub(start);
     }
     out
+}
+
+/// Appends a decal node's `triangles` (indices into `source`) fan by fan, each fan (a run of
+/// triangles sharing their first corner, one decoded polygon) followed by its share of the
+/// node's outline, so a later decal covers an earlier one's outline as it covers its fill:
+/// the decal pass writes no depth to hide it (`[I5]`).
+fn append_decal_fans(
+    vertices: &mut Vec<SodVertex>,
+    indices: &mut Vec<u32>,
+    source: &[SodVertex],
+    triangles: &[u32],
+) {
+    let filled = |i: u32| {
+        source
+            .get(i as usize)
+            .is_some_and(|v| v.flags & VERTEX_FLAG_LINE == 0)
+    };
+    let outline = boundary_edges(triangles, filled);
+    let mut pending: HashMap<(u32, u32), [u32; 2]> = outline
+        .iter()
+        .map(|&[p, q]| ((p.min(q), p.max(q)), [p, q]))
+        .collect();
+    for fan in triangles.as_chunks::<3>().0.chunk_by(|a, b| a[0] == b[0]) {
+        for &[a, b, c] in fan {
+            indices.extend([a, b, c]);
+        }
+        for &[a, b, c] in fan {
+            for (p, q) in [(a, b), (b, c), (c, a)] {
+                let Some([p, q]) = pending.remove(&(p.min(q), p.max(q))) else {
+                    continue;
+                };
+                if let (Some(a), Some(b)) = (source.get(p as usize), source.get(q as usize)) {
+                    push_segment(vertices, indices, a, b);
+                }
+            }
+        }
+    }
 }
 
 /// Appends the outline of the filled triangles `triangles` (indices into `source`) to

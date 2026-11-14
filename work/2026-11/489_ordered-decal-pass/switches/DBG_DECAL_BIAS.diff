@@ -1,0 +1,29 @@
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 26303d2b..a98f55c5 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -240,14 +240,22 @@ impl RenderPipelines {
+         // (work/2026-10/parity-log/log.md, 2026-10-23). Decals write no depth, so each is
+         // tested against the base geometry's depth, not other decals', and a later coplanar
+         // decal covers an earlier one, as PLAYONE's painter does.
++        let dbg_c: i32 = std::env::var("DBG_DECAL_BIAS_C")
++            .ok()
++            .and_then(|v| v.parse().ok())
++            .unwrap_or(-2);
++        let dbg_s: f32 = std::env::var("DBG_DECAL_BIAS_S")
++            .ok()
++            .and_then(|v| v.parse().ok())
++            .unwrap_or(-2.0);
+         let decal_depth_stencil = wgpu::DepthStencilState {
+             format: depth_format,
+             depth_write_enabled: Some(false),
+             depth_compare: Some(wgpu::CompareFunction::LessEqual),
+             stencil: wgpu::StencilState::default(),
+             bias: wgpu::DepthBiasState {
+-                constant: -2,
+-                slope_scale: -2.0,
++                constant: dbg_c,
++                slope_scale: dbg_s,
+                 clamp: 0.0,
+             },
+         };

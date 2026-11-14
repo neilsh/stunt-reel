@@ -4,7 +4,7 @@
 //! Governed by architectural invariants:
 //! - `[I1]` Metric right-handed coordinate basis (+Y up, +Z toward viewer, -Z forward)
 //! - `[I2]` Flat contiguous arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`)
-//! - `[I5]` Coplanar decal identification and normal displacement rules
+//! - `[I5]` Coplanar decal identification (decals keep their position)
 
 use std::fmt;
 
@@ -42,7 +42,8 @@ pub struct SodVertex {
     /// Authentic 8-bit VGA Mode 13h palette index (`0..=255`) per `[fmt mtl]`.
     pub palette_index: u8,
     /// Bitflags:
-    /// - Bit 0: Coplanar decal face (requires normal-nudge `[I5]`)
+    /// - Bit 0: Coplanar decal face, matched by the decoder and kept in place (`[I5]`); the
+    ///   mesh node's `is_decal`, not this bit, decides the decal pass and the glTF-export lift
     /// - Bit 1: Two-sided polygon
     /// - Bit 2: Emissive / unshaded indicator
     /// - Bits 3..=5: Screen-space line corner ([`VERTEX_FLAG_LINE`], [`VERTEX_FLAG_LINE_SIDE`],

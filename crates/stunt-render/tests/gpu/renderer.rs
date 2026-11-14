@@ -193,6 +193,77 @@ fn coplanar_decal_wins_the_depth_tie() {
 }
 
 #[test]
+fn a_later_coplanar_decal_covers_an_earlier_one() {
+    common::gpu_test(|| {
+        // Base, decal 220, then decal 100 covering all of 220, on a plane tilted away from the
+        // camera so depth varies across it. The decal pass writes no depth, so each decal is
+        // tested against the base alone and 100, painted last, covers 220 as PLAYONE's
+        // painter does, outline included ([I5]).
+        let tilted = |x: f32, y: f32, palette_index: u8, flags: u8| SodVertex {
+            position: [x, y, -0.5 * y],
+            ..vertex(x, y, palette_index, flags)
+        };
+        let vertices = vec![
+            tilted(-1.0, -1.0, 40, 0),
+            tilted(1.0, -1.0, 40, 0),
+            tilted(0.0, 1.0, 40, 0),
+            tilted(-0.3, -0.3, 220, 1),
+            tilted(0.3, -0.3, 220, 1),
+            tilted(0.0, 0.3, 220, 1),
+            tilted(-0.6, -0.6, 100, 1),
+            tilted(0.6, -0.6, 100, 1),
+            tilted(0.0, 0.6, 100, 1),
+        ];
+        let mut ir = SodModelIr::new("STACKED_DECALS");
+        ir.vertices = vertices;
+        ir.indices = vec![0, 2, 1, 3, 5, 4, 6, 8, 7];
+        ir.allocate_node(
+            "BASE",
+            None,
+            glam::Mat4::IDENTITY.to_cols_array(),
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: 3,
+                index_offset: 0,
+                index_count: 3,
+                is_decal: false,
+            },
+        );
+        let base = ir.nodes[0].id;
+        ir.root_nodes = vec![base];
+        ir.allocate_node(
+            "DECAL",
+            Some(base),
+            glam::Mat4::IDENTITY.to_cols_array(),
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset: 3,
+                vertex_count: 6,
+                index_offset: 3,
+                index_count: 6,
+                is_decal: true,
+            },
+        );
+        let scene = scene_with_model(ir);
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+
+        let page = test.draw(&scene.frame(0.0));
+        let count = |palette_index: u8| {
+            page.indices()
+                .iter()
+                .zip(page.layers())
+                .filter(|&(&index, &layer)| index == palette_index && layer != LAYER_NONE)
+                .count()
+        };
+        assert!(count(100) > 100, "later decal missing: {}", count(100));
+        assert_eq!(count(220), 0, "earlier decal shows through the later one");
+    });
+}
+
+#[test]
 fn draw_accepts_exactly_one_page() {
     common::gpu_test(|| {
         let scene = empty_scene();
