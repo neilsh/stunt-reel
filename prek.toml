@@ -12,14 +12,6 @@
 repo = "local"
 
 [[repos.hooks]]
-id = "diff-check"
-name = "Staged conflict markers and whitespace errors (git diff --cached --check)"
-entry = "mise run diff-check"
-language = "system"
-always_run = true
-pass_filenames = false
-
-[[repos.hooks]]
 id = "fmt-check-rust"
 name = "Rust formatting (cargo fmt --check)"
 entry = "mise run fmt-check-rust"
@@ -95,3 +87,17 @@ exclude = '(\.rs$|^work/)'
 
 [[repos.hooks]]
 id = "check-executables-have-shebangs"
+
+# These two run with --check, so they report and rewrite nothing. A Markdown hard break (two
+# trailing spaces) is allowed, as .gitattributes allows it. Fixtures are byte-exact test inputs
+# and dated work folders are frozen, so both are exempt here, not by a top-level `exclude`, which
+# would also hide them from the large-file and private-key checks.
+[[repos.hooks]]
+id = "trailing-whitespace"
+args = ["--check", "--markdown-linebreak-ext=md"]
+exclude = "^(tests/fixtures|work)/"
+
+[[repos.hooks]]
+id = "end-of-file-fixer"
+args = ["--check"]
+exclude = "^(tests/fixtures|work)/"

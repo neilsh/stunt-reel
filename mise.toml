@@ -26,7 +26,7 @@ uv = "0.13.1"
 "cargo:cargo-llvm-cov" = "0.9.1"
 
 # Runs the commit hooks (`mise run pre-commit`); they call mise tasks, never their own tools (ADR 0026).
-prek = "0.5.5"
+prek = "0.5.10"
 
 # The research site's build; site/package.json
 bun = "1.4.4"
@@ -517,10 +517,6 @@ run = "uv run pytest tests/test_doc_invariants.py -q"
 [tasks.test-py-docs]
 description = "Documentation tests only (`pytest -m docs`: anchors and links, the formats catalog, the schema contract); the gate's docs step"
 run = "uv run pytest -m docs"
-
-[tasks.diff-check]
-description = "Staged conflict markers and whitespace errors (git diff --cached --check); a pre-commit hook"
-run = "git diff --cached --check"
 
 [tasks.check-work-frozen]
 description = "Staged files added to a frozen work folder, or a staged change to its README outcome (python/scripts/check_work_frozen.py, work/README.md Lifecycle); a pre-commit hook. `-- --branch` checks the branch since the gate's base"
