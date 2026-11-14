@@ -16,6 +16,7 @@ use glam::{Mat4, Vec3};
 use stunt_core::contracts::{
     CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
 };
+use stunt_core::world::GROUND_NODE;
 
 /// Cached node data inside GPU model representation.
 #[derive(Debug, Clone)]
@@ -228,6 +229,26 @@ impl GpuModel {
             view,
         }
         .collect()
+    }
+
+    /// Like [`Self::collect_visible_meshes`] for the static world, with the slices of its
+    /// [`GROUND_NODE`] nodes taken out first, in the nodes' own order: ground, base and decal
+    /// slices. A ground slice is drawn over whatever is there, so the walk's order is the
+    /// order `PLAYONE` paints the flat ground in (`world-scene.md` section 6.6).
+    pub fn collect_world_meshes(
+        &self,
+        eye: Vec3,
+        view: Option<&CameraTransform>,
+    ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
+        VisibleWalk {
+            nodes: &self.nodes,
+            roots: &self.root_nodes,
+            state_mask: 0,
+            dist_sq: 0.0,
+            eye,
+            view,
+        }
+        .collect_world()
     }
 
     /// Encodes `meshes` into `rpass`, binding each slice's chunk buffers when it changes.
@@ -592,24 +613,43 @@ struct VisibleWalk<'a> {
 impl VisibleWalk<'_> {
     /// The visible base slices, last sibling first, and decal slices, in draw order.
     fn collect(&self) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
+        let (_, base, decals) = self.split(|_| false);
+        (base, decals)
+    }
+
+    /// The visible ground slices in draw order, then [`Self::collect`]'s base and decal
+    /// slices of the other nodes.
+    fn collect_world(&self) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
+        self.split(|node| node.name == GROUND_NODE)
+    }
+
+    /// The visible slices of the nodes `is_ground` picks, in draw order, then the others'
+    /// base slices, last sibling first, and decal slices, in draw order.
+    fn split(
+        &self,
+        is_ground: impl Fn(&GpuNode) -> bool,
+    ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
+        let mut ground_meshes = Vec::new();
         let mut base_meshes = Vec::new();
         let mut decal_meshes = Vec::new();
-        self.walk(false, |mesh| {
-            if !mesh.is_decal {
+        self.walk(false, |node, mesh| {
+            if !is_ground(node) && !mesh.is_decal {
                 base_meshes.push(mesh);
             }
         });
-        self.walk(true, |mesh| {
-            if mesh.is_decal {
+        self.walk(true, |node, mesh| {
+            if is_ground(node) {
+                ground_meshes.push(mesh);
+            } else if mesh.is_decal {
                 decal_meshes.push(mesh);
             }
         });
-        (base_meshes, decal_meshes)
+        (ground_meshes, base_meshes, decal_meshes)
     }
 
-    /// Calls `emit` with each slice of every visible node, depth first: siblings in draw
-    /// order when `forward`, last sibling first otherwise.
-    fn walk(&self, forward: bool, mut emit: impl FnMut(GpuMeshSlice)) {
+    /// Calls `emit` with each slice of every visible node and the node, depth first:
+    /// siblings in draw order when `forward`, last sibling first otherwise.
+    fn walk(&self, forward: bool, mut emit: impl FnMut(&GpuNode, GpuMeshSlice)) {
         let mut stack: Vec<NodeId> = Vec::new();
         if forward {
             stack.extend(self.roots.iter().rev());
@@ -624,7 +664,7 @@ impl VisibleWalk<'_> {
                 continue;
             }
             for &mesh in &node.meshes {
-                emit(mesh);
+                emit(node, mesh);
             }
             if forward {
                 stack.extend(node.children.iter().rev());

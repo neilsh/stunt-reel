@@ -65,6 +65,12 @@ impl Default for ModelUniform {
 /// Dual presentation pipelines separating base solid geometry from coplanar decals.
 #[derive(Debug)]
 pub(crate) struct RenderPipelines {
+    /// The world's flat-ground pipeline: `Always` depth compare with depth write, so each
+    /// slice paints over the last as `PLAYONE` paints the ground (`stunt_core::world::GROUND_NODE`).
+    pub(crate) ground_pipeline: wgpu::RenderPipeline,
+    /// Line-list pipeline for the outlines of the world's flat-ground slices, compared like
+    /// [`Self::ground_pipeline`].
+    pub(crate) ground_edge_pipeline: wgpu::RenderPipeline,
     /// Base mesh pipeline with zero depth bias and `Less` depth compare.
     pub(crate) base_pipeline: wgpu::RenderPipeline,
     /// Decal mesh pipeline conforming to `[I5]` with hardware depth bias and `LessEqual` compare.
@@ -276,6 +282,33 @@ impl RenderPipelines {
             }));
         }
 
+        let ground_depth_stencil = wgpu::DepthStencilState {
+            depth_compare: Some(wgpu::CompareFunction::Always),
+            ..base_depth_stencil.clone()
+        };
+
+        let ground_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("stunt_mode13h_ground_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader_module,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &vertex_buffers,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader_module,
+                entry_point: Some(fragment_entry),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &targets,
+            }),
+            primitive: model_primitive,
+            depth_stencil: Some(ground_depth_stencil.clone()),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
         let base_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("stunt_mode13h_base_pipeline"),
             layout: Some(&pipeline_layout),
@@ -347,6 +380,8 @@ impl RenderPipelines {
                 cache: None,
             })
         };
+        let ground_edge_pipeline =
+            edge_pipeline_with(ground_depth_stencil, "stunt_ground_edge_pipeline");
         let edge_pipeline = edge_pipeline_with(base_depth_stencil, "stunt_edge_pipeline");
         let edge_decal_pipeline = edge_pipeline_with(
             wgpu::DepthStencilState {
@@ -448,6 +483,8 @@ impl RenderPipelines {
         });
 
         Self {
+            ground_pipeline,
+            ground_edge_pipeline,
             base_pipeline,
             decal_pipeline,
             shadow_pipeline,

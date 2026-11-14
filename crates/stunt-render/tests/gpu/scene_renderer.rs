@@ -10,12 +10,13 @@ use std::collections::HashMap;
 
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
-    ActorTransform, CameraTransform, NodeKind, ShapeExtent, SodModelIr, SodVertex,
-    TrajectoryRecord, VisibilityCondition,
+    ActorTransform, CameraTransform, NodeKind, SCENERY_PROP, SCENERY_TERRAIN, ShapeExtent,
+    SodModelIr, SodVertex, TrajectoryRecord, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END,
+    VERTEX_FLAG_LINE_SIDE, VisibilityCondition,
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::{FilmScene, ViewCamera};
-use stunt_core::world::{TerrainSurface, World};
+use stunt_core::world::{GROUND_NODE, TerrainSurface, World};
 use stunt_render::{CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
@@ -304,7 +305,7 @@ fn world_is_drawn_when_present() {
         let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
         // World vertices carry their scenery class; the layer plane reads it.
         for vertex in &mut ir.vertices {
-            vertex.scenery_class = stunt_core::contracts::SCENERY_TERRAIN;
+            vertex.scenery_class = SCENERY_TERRAIN;
         }
         let world = World {
             ir,
@@ -375,12 +376,12 @@ fn sliver_rows(class: u8) -> Option<(usize, usize)> {
 #[test]
 fn a_world_props_sliver_draws_on_every_row() {
     common::gpu_test(|| {
-        let Some((rows, h)) = sliver_rows(stunt_core::contracts::SCENERY_PROP) else {
+        let Some((rows, h)) = sliver_rows(SCENERY_PROP) else {
             return;
         };
         // The sliver spans about 30% of the view's rows.
         assert!(rows > h / 4, "prop sliver drew {rows} of {h} rows");
-        let Some((rows, h)) = sliver_rows(stunt_core::contracts::SCENERY_TERRAIN) else {
+        let Some((rows, h)) = sliver_rows(SCENERY_TERRAIN) else {
             return;
         };
         assert!(rows < h / 10, "terrain sliver drew {rows} of {h} rows");
@@ -521,5 +522,177 @@ fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
             "{wrong} of {} ground pixels lost their index",
             ground.len()
         );
+    });
+}
+
+// The world's flat ground: `GROUND_NODE` slices drawn first, in walk order, each over what is
+// there, as `PLAYONE` paints them with no depth buffer (research/playone-exe/world-scene.md
+// section 6.6).
+
+const FIRST: u8 = 40;
+const SECOND: u8 = 220;
+const RAIL: u8 = 33;
+/// `SodVertex::flags` of a flat-coloured face.
+const UNSHADED: u8 = 4;
+
+/// A still timeline whose camera stands 12 m over the ground looking 80 m ahead along -Z.
+fn timeline_over_ground() -> FilmTimeline {
+    let record = TrajectoryRecord {
+        tick: 0,
+        camera: CameraTransform {
+            eye: [0.0, 12.0, 0.0],
+            target: [0.0, 0.0, -80.0],
+            fov_degrees: 45.0,
+            roll_radians: 0.0,
+            cut_from_previous: false,
+            ..Default::default()
+        },
+        actors: Vec::new(),
+        audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
+    };
+    FilmTimeline::new(
+        vec![SliceKeyframe {
+            record,
+            tick: 0,
+            tick_duration: 1,
+        }],
+        Vec::new(),
+    )
+}
+
+fn ground_vertex(x: f32, z: f32, palette_index: u8, flags: u8, class: u8) -> SodVertex {
+    SodVertex {
+        position: [x, 0.0, z],
+        normal: [0.0, 1.0, 0.0],
+        palette_index,
+        flags,
+        scenery_class: class,
+        _padding: 0,
+    }
+}
+
+/// A world of an empty root and one `GROUND_NODE` child per `(vertices, indices)` part, in
+/// order; each part's indices count from its own first vertex.
+fn ground_world(parts: Vec<(Vec<SodVertex>, Vec<u32>)>) -> FilmScene {
+    let mut ir = SodModelIr::new("WORLD_SCENERY");
+    let root = ir.allocate_node(
+        "WORLD_BASE",
+        None,
+        glam::Mat4::IDENTITY.to_cols_array(),
+        VisibilityCondition::Always,
+        NodeKind::TransformGroup,
+    );
+    for (vertices, indices) in parts {
+        let vertex_offset = u32::try_from(ir.vertices.len()).unwrap();
+        let index_offset = u32::try_from(ir.indices.len()).unwrap();
+        ir.indices
+            .extend(indices.iter().map(|&i| i + vertex_offset));
+        ir.allocate_node(
+            GROUND_NODE,
+            Some(root),
+            glam::Mat4::IDENTITY.to_cols_array(),
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset,
+                vertex_count: u32::try_from(vertices.len()).unwrap(),
+                index_offset,
+                index_count: u32::try_from(indices.len()).unwrap(),
+                is_decal: false,
+            },
+        );
+        ir.vertices.extend(vertices);
+    }
+    ir.root_nodes = vec![root];
+    FilmScene::new(timeline_over_ground(), HashMap::new(), Some(world_of(ir)))
+}
+
+/// Pixels drawn with each of `indices` on any layer but the sky's.
+fn counts<const N: usize>(scene: &FilmScene, indices: [u8; N]) -> Option<[usize; N]> {
+    let mut test = common::gpu_or_skip(scene)?;
+    let page = test.draw(&scene.frame(0.0));
+    Some(indices.map(|wanted| {
+        page.layers()
+            .iter()
+            .zip(page.indices())
+            .filter(|&(&layer, &index)| layer != LAYER_NONE && index == wanted)
+            .count()
+    }))
+}
+
+/// A flat ground slice drawn after another in the same plane covers it on every pixel,
+/// although the two are triangulated along different diagonals and round their depths apart.
+#[test]
+fn a_later_ground_slice_wins_every_pixel_of_the_plane() {
+    common::gpu_test(|| {
+        let quad = |index: u8| -> Vec<SodVertex> {
+            [
+                [-300.0, -2000.0],
+                [300.0, -2000.0],
+                [300.0, -1.0],
+                [-300.0, -1.0],
+            ]
+            .map(|[x, z]| ground_vertex(x, z, index, UNSHADED, SCENERY_TERRAIN))
+            .to_vec()
+        };
+        // Clockwise from above: far-left, far-right, near-right, and the other diagonal.
+        let scene = ground_world(vec![
+            (quad(FIRST), vec![0, 1, 2, 0, 2, 3]),
+            (quad(SECOND), vec![1, 2, 3, 1, 3, 0]),
+        ]);
+        let Some([first, second]) = counts(&scene, [FIRST, SECOND]) else {
+            return;
+        };
+        assert!(second > 10_000, "the later slice covers {second} pixels");
+        assert_eq!(first, 0, "the earlier slice shows on {first} pixels");
+    });
+}
+
+/// A prop's line drawn after its fill keeps every pixel it draws alone, although the
+/// fill's outline crosses it: the outline is drawn with its own slice, before the line's.
+#[test]
+fn a_ground_outline_does_not_cover_the_line_after_it() {
+    common::gpu_test(|| {
+        // A tie 6 m wide across the view, whose outline is drawn.
+        let tie: Vec<SodVertex> = [[-3.0, -40.0], [3.0, -40.0], [3.0, -38.0], [-3.0, -38.0]]
+            .map(|[x, z]| ground_vertex(x, z, FIRST, UNSHADED, SCENERY_PROP))
+            .to_vec();
+        // A rail along the view crossing the tie, laid out as the decoder lays out a line.
+        let (a, b) = ([0.0, 0.0, -50.0], [0.0, 0.0, -30.0]);
+        let ab = [0.0, 0.0, 20.0];
+        let ba = [0.0, 0.0, -20.0];
+        let rail: Vec<SodVertex> = [
+            (a, ab, VERTEX_FLAG_LINE),
+            (a, ab, VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_SIDE),
+            (
+                b,
+                ba,
+                VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_END | VERTEX_FLAG_LINE_SIDE,
+            ),
+            (b, ba, VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_END),
+        ]
+        .map(|(position, normal, flags)| SodVertex {
+            position,
+            normal,
+            palette_index: RAIL,
+            flags: flags | UNSHADED,
+            scenery_class: SCENERY_PROP,
+            _padding: 0,
+        })
+        .to_vec();
+        let rail_indices = vec![0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2];
+        let with_tie = ground_world(vec![
+            (tie, vec![0, 1, 2, 0, 2, 3]),
+            (rail.clone(), rail_indices.clone()),
+        ]);
+        let alone = ground_world(vec![(rail, rail_indices)]);
+        let (Some([over, tie]), Some([alone])) =
+            (counts(&with_tie, [RAIL, FIRST]), counts(&alone, [RAIL]))
+        else {
+            return;
+        };
+        assert!(tie > 100, "the tie covers {tie} pixels");
+        assert!(alone > 20, "the rail alone covers {alone} pixels");
+        assert_eq!(over, alone, "the rail keeps {over} of its {alone} pixels");
     });
 }
