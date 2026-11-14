@@ -70,11 +70,11 @@ def is_object(index: int, background: tuple[tuple[int, int], ...]) -> bool:
     return not any(lo <= index <= hi for lo, hi in background)
 
 
-def background_for(reference: Path) -> tuple[tuple[int, int], ...]:
+def background_for(reference: Path, root: Path | None = None) -> tuple[tuple[int, int], ...]:
     """The backdrop index bands of the film the capture in *reference* shows.
 
     They are the ``background`` field of that film's ``references.toml`` row, found by the
-    ``.FLM`` stem in the capture's ``meta.json``. Raises ``ReferenceCaptureError`` when the
+    ``.FLM`` stem in the capture's ``meta.json``, read under *root* (default: the data root). Raises ``ReferenceCaptureError`` when the
     capture names no film, the film has no row, or its row has no ``background``: a guessed
     band would score another film's sky and ground as aircraft.
     """
@@ -83,11 +83,11 @@ def background_for(reference: Path) -> tuple[tuple[int, int], ...]:
         raise references.ReferenceCaptureError(f"{reference / 'meta.json'} names no film")
     film = Path(name).stem.lower()
     try:
-        row = references.read_reference(dataroot.data_root(), film)
+        row = references.read_reference(dataroot.data_root() if root is None else root, film)
     except references.ReferenceCaptureError as err:
         raise references.ReferenceCaptureError(
-            f"{name}: there is no [{film}] row in {parity_layout.REFERENCES_FILE.as_posix()} "
-            f"to read its backdrop from ({err})"
+            f"{name}: cannot read the [{film}] row in "
+            f"{parity_layout.REFERENCES_FILE.as_posix()} for its backdrop ({err})"
         ) from err
     if row.background is None:
         raise references.ReferenceCaptureError(
@@ -235,7 +235,8 @@ def capture_actor_pixels(
 ) -> list[int]:
     """The capture's object pixels near ``silhouette``, so the capture's aircraft is left out whole.
 
-    A capture pixel is an object pixel unless its index lies in a ``background`` band.
+    A capture pixel is an object pixel as :func:`is_object` says: not cursor or shadow
+    (``NEVER_OBJECT``) and not in a ``background`` band.
 
     The capture's aircraft can be larger than our silhouette moved onto it, so every capture
     object pixel within ``pad`` pixels (in x and in y) of a silhouette pixel is taken as aircraft.
@@ -373,12 +374,13 @@ def actor_iou(
     every: int = 2,
     pad: int = 25,
     min_pixels: int = 100,
+    root: Path | None = None,
 ) -> tuple[float, int]:
     """Mean actor-window IoU over every `every`-th scored frame, and the frames used.
 
-    Backdrop is the capture film's ``background`` bands (:func:`background_for`).
+    Backdrop is the capture film's ``background`` bands (:func:`background_for`, read under *root*).
     """
-    background = background_for(reference)
+    background = background_for(reference, root)
     store = RenderStore(ours)
     geometry = store.record.geometry
     width, rows = geometry.width, geometry.plane_rows()

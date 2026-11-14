@@ -19,7 +19,6 @@ if str(SCRIPTS_DIR) not in sys.path:
 import parity_probe  # noqa: E402
 
 from stunt_reel import (  # noqa: E402
-    dataroot,
     matched_frames,
     parity_artifacts,
     parity_layout,
@@ -30,6 +29,7 @@ from stunt_reel.parity_artifacts import FilmId, Geometry, StoredFrame  # noqa: E
 
 #: The bands the probe once hardcoded for every film, now `ctry`'s `background` row field.
 CTRY_BANDS = ((192, 199), (228, 238), (161, 165))
+CTRY_BANDS_TOML = "[[192, 199], [228, 238], [161, 165]]"
 
 
 def _report(per_frame: tuple[parity_artifacts.FrameReport, ...]) -> parity_artifacts.Report:
@@ -174,12 +174,16 @@ def test_scenery_between_two_separated_actors_stays_in_the_world_match() -> None
 
 
 def test_cmd_shift_leaves_the_captures_displaced_aircraft_out_of_the_world_match(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    rows: Path,
 ) -> None:
-    width, rows = 24, 12
+    _write_rows(rows, _row("ctry", f"background = {CTRY_BANDS_TOML}"))
+    width, height = 24, 12
     # Backdrop indices only, so nothing in the scene counts as an object; period 19 > reach.
     backdrop = [*range(192, 200), *range(228, 239)]
-    scene = bytes(backdrop[(x * 7 + y * 13) % 19] for y in range(rows) for x in range(width))
+    scene = bytes(backdrop[(x * 7 + y * 13) % 19] for y in range(height) for x in range(width))
     ours = bytearray(scene)
     capture = bytearray(scene)
     actor = [y * width + x for y in range(4, 8) for x in range(4, 9)]
@@ -189,7 +193,7 @@ def test_cmd_shift_leaves_the_captures_displaced_aircraft_out_of_the_world_match
     (tmp_path / "f0.idx").write_bytes(bytes(capture))
     _capture_of(tmp_path, "CTRY.FLM")
     frame = SimpleNamespace(ordinal=0, film_tick=5, frame_file="f0.idx", palette_file="p0.json")
-    geometry = SimpleNamespace(width=width, plane_rows=lambda: rows)
+    geometry = SimpleNamespace(width=width, plane_rows=lambda: height)
     page = SimpleNamespace(indices=bytes(ours), actor_pixels=lambda: actor)
     report = SimpleNamespace(per_frame=[SimpleNamespace(scored=True, film_tick=5, ordinal=0)])
     monkeypatch.setattr(matched_frames, "read_capture", lambda _: SimpleNamespace(frames=[frame]))
@@ -219,11 +223,9 @@ def test_report_defaults_to_the_one_parity_run_writes() -> None:
         assert parser.parse_args(argv).report == written
 
 
-def _reference_rows(*rows: str) -> None:
-    """Write a `references.toml` of `rows` (each a table body) at the data root's pointer path."""
-    pointer = dataroot.data_root() / parity_layout.REFERENCES_FILE
-    pointer.parent.mkdir(parents=True, exist_ok=True)
-    pointer.write_text("\n".join(rows) + "\n", encoding="utf-8")
+def _write_rows(pointer: Path, *tables: str) -> None:
+    """Write `tables` (each a row's text) into the stand-in `references.toml` of the `rows` fixture."""
+    pointer.write_text("\n".join(tables) + "\n", encoding="utf-8")
 
 
 def _row(film: str, *fields: str) -> str:
@@ -240,8 +242,11 @@ def _capture_of(directory: Path, film_file: str) -> Path:
     return directory
 
 
-def test_background_comes_from_the_row_of_the_film_the_capture_names(tmp_path: Path) -> None:
-    _reference_rows(
+def test_background_comes_from_the_row_of_the_film_the_capture_names(
+    tmp_path: Path, rows: Path
+) -> None:
+    _write_rows(
+        rows,
         _row("ctry", "background = [[192, 199]]"),
         _row("land", "background = [[10, 20], [100, 100]]"),
     )
@@ -249,20 +254,22 @@ def test_background_comes_from_the_row_of_the_film_the_capture_names(tmp_path: P
     assert parity_probe.background_for(land) == ((10, 20), (100, 100))
 
 
-def test_a_film_with_no_row_is_refused_not_guessed(tmp_path: Path) -> None:
-    _reference_rows(_row("ctry", "background = [[192, 199]]"))
-    with pytest.raises(references.ReferenceCaptureError, match=r"LAND\.FLM.*no \[land\] row"):
+def test_a_film_with_no_row_is_refused_not_guessed(tmp_path: Path, rows: Path) -> None:
+    _write_rows(rows, _row("ctry", "background = [[192, 199]]"))
+    with pytest.raises(
+        references.ReferenceCaptureError, match=r"LAND\.FLM.*\[land\] row.*names no reference"
+    ):
         parity_probe.background_for(_capture_of(tmp_path / "land", "LAND.FLM"))
 
 
-def test_a_row_without_background_is_refused_naming_the_field(tmp_path: Path) -> None:
-    _reference_rows(_row("land"))
+def test_a_row_without_background_is_refused_naming_the_field(tmp_path: Path, rows: Path) -> None:
+    _write_rows(rows, _row("land"))
     with pytest.raises(references.ReferenceCaptureError, match=r"\[land\].*`background`"):
         parity_probe.background_for(_capture_of(tmp_path / "land", "LAND.FLM"))
 
 
-def test_a_capture_that_names_no_film_is_refused(tmp_path: Path) -> None:
-    _reference_rows(_row("ctry", "background = [[192, 199]]"))
+def test_a_capture_that_names_no_film_is_refused(tmp_path: Path, rows: Path) -> None:
+    _write_rows(rows, _row("ctry", "background = [[192, 199]]"))
     directory = tmp_path / "anon"
     directory.mkdir()
     (directory / "meta.json").write_text(json.dumps({"frames": []}), encoding="utf-8")
@@ -314,26 +321,59 @@ def _iou_inputs(tmp_path: Path, film_file: str, ground: int) -> tuple[Path, Path
     return report, tmp_path
 
 
-def test_actor_iou_reads_a_non_ctry_films_ground_as_backdrop(tmp_path: Path) -> None:
-    _reference_rows(_row("land", "background = [[100, 100]]"))
+def test_actor_iou_reads_a_non_ctry_films_ground_as_backdrop(tmp_path: Path, rows: Path) -> None:
+    _write_rows(rows, _row("land", "background = [[100, 100]]"))
     report, directory = _iou_inputs(tmp_path, "LAND.FLM", ground=100)
     value, count = parity_probe.actor_iou(report, directory, directory, every=1)
     assert count == 1
     assert value == pytest.approx(0.5)  # 50 of 100 actor pixels seen, none from the ground
 
 
-def test_actor_iou_refuses_a_film_with_no_background_row(tmp_path: Path) -> None:
-    _reference_rows(_row("ctry", "background = [[192, 199]]"))
+def test_actor_iou_refuses_a_film_with_no_background_row(tmp_path: Path, rows: Path) -> None:
+    _write_rows(rows, _row("ctry", "background = [[192, 199]]"))
     report, directory = _iou_inputs(tmp_path, "LAND.FLM", ground=100)
     with pytest.raises(references.ReferenceCaptureError, match=r"LAND\.FLM"):
         parity_probe.actor_iou(report, directory, directory, every=1)
 
 
-def test_cmd_shift_refuses_a_film_with_no_background_row(tmp_path: Path) -> None:
-    _reference_rows(_row("ctry", "background = [[192, 199]]"))
+def test_cmd_shift_refuses_a_film_with_no_background_row(tmp_path: Path, rows: Path) -> None:
+    _write_rows(rows, _row("ctry", "background = [[192, 199]]"))
     directory = _capture_of(tmp_path / "land", "LAND.FLM")
     args = argparse.Namespace(
         reference=directory, ours=tmp_path, report=tmp_path, min_pixels=1, reach=8, world_reach=6
     )
     with pytest.raises(references.ReferenceCaptureError, match=r"LAND\.FLM"):
         parity_probe.cmd_shift(args)
+
+
+def test_background_reads_a_ctry_capture_from_its_stand_in_row(tmp_path: Path, rows: Path) -> None:
+    _write_rows(rows, _row("ctry", f"background = {CTRY_BANDS_TOML}"))
+    ctry = _capture_of(tmp_path / "ctry", "CTRY.FLM")
+    assert parity_probe.background_for(ctry) == CTRY_BANDS
+
+
+def test_background_reads_the_row_under_the_root_it_is_given(tmp_path: Path, rows: Path) -> None:
+    _write_rows(rows, _row("land", "background = [[1, 2]]"))
+    root = tmp_path / "root"
+    (root / parity_layout.REFERENCES_FILE).parent.mkdir(parents=True)
+    (root / parity_layout.REFERENCES_FILE).write_text(
+        _row("land", "background = [[7, 8]]") + "\n", encoding="utf-8"
+    )
+    land = _capture_of(tmp_path / "land", "LAND.FLM")
+    assert parity_probe.background_for(land, root) == ((7, 8),)
+
+
+def test_main_refuses_a_film_with_no_background_row_with_exit_1(
+    tmp_path: Path,
+    rows: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_rows(rows, _row("ctry", f"background = {CTRY_BANDS_TOML}"))
+    land = _capture_of(tmp_path / "land", "LAND.FLM")
+    argv = ["parity_probe", "iou", "--reference", str(land), "--ours", str(tmp_path)]
+    monkeypatch.setattr(sys, "argv", argv)
+    assert parity_probe.main() == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("parity_probe: LAND.FLM: cannot read the [land] row")
