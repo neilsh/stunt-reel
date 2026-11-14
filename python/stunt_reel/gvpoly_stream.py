@@ -45,7 +45,7 @@ def decode_record(data: bytes, linear: int, handler: int) -> Polygon | None:
     (ramp,) = struct.unpack_from("<H", data, ramp_at)
     # The Gouraud loop counts shades with `dec cl` over the ramp word's whole low byte
     # (`0x9ACF`); only the skip tail masks it to `& 0x0F` (`0x9A38`).
-    shade_count = ramp & 0xFF
+    shade_count = (ramp & 0xFF) or 256  # `dec cl` from 0 runs 256 times
     if len(data) < ramp_at + 4 + 2 * shade_count:
         return None
     words = struct.unpack_from(f"<{shade_count + 1}H", data, ramp_at + 2)
