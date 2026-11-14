@@ -228,8 +228,9 @@ def test_a_found_ghidra_writes_the_unpacked_image_and_slot_file(
     assert (project / "input" / "playone-unpatched-slots.tsv").is_file()
 
 
-def test_the_command_keeps_paths_with_spaces_whole(tmp_path: Path) -> None:
-    launcher = tmp_path / "Ghidra Install" / "support" / "analyzeHeadless"
+@pytest.mark.parametrize("launcher_name", ["analyzeHeadless", "analyzeHeadless.bat"])
+def test_the_command_keeps_paths_with_spaces_whole(tmp_path: Path, launcher_name: str) -> None:
+    launcher = tmp_path / "Ghidra Install" / "support" / launcher_name
     project = tmp_path / "project dir"
     mz = tmp_path / "input dir" / "playone.exe"
     slots = tmp_path / "input dir" / "slots.tsv"
@@ -262,12 +263,15 @@ def test_a_run_without_the_success_line_fails(
 def test_a_script_error_line_is_forwarded_and_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(ghidra.subprocess, "run", _fake_success)
     project = tmp_path / "project"
-    project.mkdir()
-    (project / "script.log").write_text(
-        "SodDispatchTable: no instruction at handler\n", encoding="utf-8"
-    )
+
+    def fake_run(*_args: object, **_kwargs: object) -> object:
+        (project / "script.log").write_text(
+            "SodDispatchTable: no instruction at handler\n", encoding="utf-8"
+        )
+        return ghidra.subprocess.CompletedProcess(args=[], returncode=0)
+
+    monkeypatch.setattr(ghidra.subprocess, "run", fake_run)
     code = ghidra._run_ghidra(
         Path("/x/analyzeHeadless"), project, "PLAYONE", tmp_path / "x.exe", tmp_path / "x.tsv"
     )
@@ -275,6 +279,39 @@ def test_a_script_error_line_is_forwarded_and_fails(
     captured = capsys.readouterr()
     assert "SodDispatchTable: no instruction at handler" in captured.out
     assert "did not report success" in captured.err
+
+
+def test_diagnostics_are_forwarded_when_the_run_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = tmp_path / "project"
+
+    def fake_run(*_args: object, **_kwargs: object) -> object:
+        (project / "script.log").write_text("SodDispatchTable: boom\n", encoding="utf-8")
+        return ghidra.subprocess.CompletedProcess(args=[], returncode=1)
+
+    monkeypatch.setattr(ghidra.subprocess, "run", fake_run)
+    code = ghidra._run_ghidra(
+        Path("/x/analyzeHeadless"), project, "PLAYONE", tmp_path / "x.exe", tmp_path / "x.tsv"
+    )
+    assert code == 1
+    captured = capsys.readouterr()
+    assert "SodDispatchTable: boom" in captured.out
+    assert "analyzeHeadless failed with 1" in captured.err
+
+
+def test_a_stale_log_is_not_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "script.log").write_text("ghidra-sod-table: OK - stale\n", encoding="utf-8")
+    monkeypatch.setattr(ghidra.subprocess, "run", _fake_success)
+    code = ghidra._run_ghidra(
+        Path("/x/analyzeHeadless"), project, "PLAYONE", tmp_path / "x.exe", tmp_path / "x.tsv"
+    )
+    assert code == 1
+    assert "did not report success" in capsys.readouterr().err
 
 
 def test_an_opcode_table_whose_rows_are_not_9_apart_is_rejected(tmp_path: Path) -> None:

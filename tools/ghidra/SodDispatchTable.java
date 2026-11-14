@@ -138,12 +138,13 @@ public class SodDispatchTable extends GhidraScript {
             }
             int imm16 = (bytes[4] & 0xFF) | ((bytes[5] & 0xFF) << 8);
             // The handler is an offset in the slot run's CODE_1 segment, so table.add(imm16) is
-            // the address; imageBase.add(entry.handler) must agree (static-tooling.md section 3).
+            // the address; its image offset must equal the slot file's (static-tooling.md section 3).
             Address handler = table.add(imm16);
-            Address fromImage = imageBase.add(entry.handler);
-            if (!handler.equals(fromImage)) {
-                throw new IOException("SodDispatchTable: slot " + entry.index + " names handler "
-                    + fromImage + " from its image offset but " + handler + " from its segment");
+            long handlerImage = handler.subtract(imageBase);
+            if (handlerImage != entry.handler) {
+                throw new IOException("SodDispatchTable: slot " + entry.index
+                    + " resolves to image 0x" + Long.toHexString(handlerImage)
+                    + " but the slot file says 0x" + Integer.toHexString(entry.handler));
             }
             DisassembleCommand disassemble = new DisassembleCommand(handler, null, true);
             boolean changed = disassemble.applyTo(currentProgram, monitor);

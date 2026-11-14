@@ -9,10 +9,11 @@ each handler and names it from `research/formats/sod-opcodes.md`. Ghidra saves t
 `build/re/ghidra/` when the session ends.
 
 The slot count comes from the run itself, never a constant: 108 in the unpatched executable and
-107 in Patch #3 (issue #480). The names apply the table's rows by slot index. Above opcode
-`0x0333` the two builds dispatch different handlers from one opcode word, and which build's
-numbering the table follows is open (`research/playone-exe/patch3.md` section 4.1); the summary
-and the slot file state the assumption, and a slot past the table is left unnamed.
+107 in Patch #3 (issue #480). The names apply the table's rows by slot index in the loaded
+executable's slot order, with no shift. Above opcode `0x0333` the two builds dispatch different
+handlers from one opcode word, and which build's numbering the table follows stays open
+(`research/playone-exe/patch3.md` section 4.1); the summary and the slot file say so, and a slot
+past the table is left unnamed.
 
 Usage::
 
@@ -52,9 +53,9 @@ SCRIPT_DIR = REPO / "tools" / "ghidra"
 PROJECT_DIR = REPO / "build" / "re" / "ghidra"
 #: The alignment the names assume, printed in the summary and written into the slot file.
 NAMING_ASSUMPTION = (
-    "names come from research/formats/sod-opcodes.md by slot index; above opcode 0x0333 the"
-    " table's rows match Patch #3's slot count, so the names there assume its numbering"
-    " (open, issue #480)"
+    "names come from research/formats/sod-opcodes.md by slot index in the loaded executable's"
+    " slot order; above opcode 0x0333 the two builds dispatch different handlers from one"
+    " opcode word, and which build's numbering the table follows stays open (issue #480)"
 )
 
 #: One dispatch slot: the six-byte self-patch and the near jump after it.
@@ -102,12 +103,12 @@ def read_names(path: Path = OPCODE_TABLE) -> tuple[str, ...]:
 
 
 def handler_name(index: int, names: tuple[str, ...]) -> str | None:
-    """The table's mnemonic for slot *index*, or None past the table.
+    """The table's mnemonic for slot *index* in the loaded executable, or None past the table.
 
-    The rows are applied by slot index with no assumed shift. Above opcode `0x0333` the two
-    builds dispatch different handlers from one opcode word and the table's 107 rows match
-    Patch #3's slot count, so the names there assume its numbering
-    (`research/playone-exe/patch3.md` section 4.1, issue #480).
+    The rows are applied by slot index in that executable's slot order, with no shift. Above
+    opcode `0x0333` the two builds dispatch different handlers from one opcode word, and which
+    build's numbering the table follows stays open (`research/playone-exe/patch3.md` section 4.1,
+    issue #480).
     """
     return names[index] if 0 <= index < len(names) else None
 
@@ -250,6 +251,13 @@ def _command(
 def _run_ghidra(launcher: Path, project_dir: Path, project_name: str, mz: Path, slots: Path) -> int:
     """Import *mz*, run the post-script and report what it named; 0 when it reports success."""
     project_dir.mkdir(parents=True, exist_ok=True)
+    logs = (project_dir / "script.log", project_dir / "analyze.log")
+    for log in logs:
+        try:
+            log.unlink(missing_ok=True)
+        except OSError as error:
+            print(f"[ghidra-sod-table] cannot remove stale {log}: {error}", file=sys.stderr)
+            return 1
     command = _command(launcher, project_dir, project_name, mz, slots)
     print(f"[ghidra-sod-table] {' '.join(command)}")
     try:
@@ -257,6 +265,13 @@ def _run_ghidra(launcher: Path, project_dir: Path, project_name: str, mz: Path, 
     except OSError as error:
         print(f"[ghidra-sod-table] could not start analyzeHeadless: {error}", file=sys.stderr)
         return 1
+    log_lines: list[str] = []
+    for log in logs:
+        if log.is_file():
+            log_lines.extend(log.read_text(encoding="utf-8", errors="replace").splitlines())
+    for line in log_lines:
+        if "ghidra-sod-table:" in line or "SodDispatchTable:" in line:
+            print(line)
     if done.returncode != 0:
         print(
             f"[ghidra-sod-table] analyzeHeadless failed with {done.returncode}; "
@@ -264,13 +279,6 @@ def _run_ghidra(launcher: Path, project_dir: Path, project_name: str, mz: Path, 
             file=sys.stderr,
         )
         return 1
-    log_lines: list[str] = []
-    for log in (project_dir / "script.log", project_dir / "analyze.log"):
-        if log.is_file():
-            log_lines.extend(log.read_text(encoding="utf-8", errors="replace").splitlines())
-    for line in log_lines:
-        if "ghidra-sod-table:" in line or "SodDispatchTable:" in line:
-            print(line)
     if not any("ghidra-sod-table: OK" in line for line in log_lines):
         print(
             "[ghidra-sod-table] the post-script did not report success; "
