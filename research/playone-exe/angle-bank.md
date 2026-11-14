@@ -1,5 +1,5 @@
 ---
-summary: "Bank words `0x10`..`0x1A` (`work:0x811E`..`0x8128`) are written once per frame for the whole film from the clock and film variables 10 and 12, never per actor; only `0x16` is per actor."
+summary: "Bank words `0x10`..`0x14`, `0x18` and `0x1A` (`work:0x811E`..`0x8128`) are written once per frame for the whole film from the clock and film variables 10 and 12; only `0x16` is per actor."
 ---
 # `PLAYONE.EXE`: the Angle Bank and Film Variables 10 and 12
 
@@ -28,7 +28,7 @@ Once per frame, before the object loop at `0x1E07`, `0x1D96` fills the bank from
 
 `0x22BC` is `xchg`ed with the new `v10` (`0x1DAF`), so `p10` is the value the previous call stored. No other instruction names `0x22BC` (`mise run xref`, one reference), and its image value is 0, so it starts at 0; no film-start fill found covers it (the `rep stos` sites at `0x3747`, `0x37C8`, `0x37EF`, `0x3F5F` and `0x4021` do not), so a film's first frame likely takes `p10` from whatever ran before it (`[Supported Inference]`).
 
-**Per film, not per actor.** The only call of `0x1D96` is `0x1DD6`, the first thing `0x1DD5` does, and `0x1DD5`'s only call is `0x0F77` in the frame step `0x0F4A`, which `0x4A2F` reaches through `0x0EE9` with `BX = 0x4888` (byte scan for near `call`/`jmp` targets, and `mise run disasm`). `0x1DD5` then walks the object list at `[bx + 0x2E]` (`0x1E07..0x1E3A`) and draws each object whose flag tests pass, so every actor of a frame reads the same words `0x10`..`0x14`, `0x18` and `0x1A`.
+**Per film, not per actor.** The only call of `0x1D96` is `0x1DD6`, the first thing `0x1DD5` does, and `0x1DD5`'s only call is `0x0F77` in the frame step `0x0F4A`, which `0x4A2F` reaches through `0x0EE9` with `BX = 0x4888` (byte scan for near `call`/`jmp` targets, and `mise run disasm`). `0x1DD5` then walks the object list at `[bx + 0x2E]` (`0x1E07..0x1E3A`) and queues each object whose flag tests pass (`0x1A90`, `0x19FC`), then walks the scene from `0x1E82` to draw them through `0x1C00` ([`sod-vm.md`](sod-vm.md) § 9.1), so every actor of a frame reads the same words `0x10`..`0x14`, `0x18` and `0x1A`.
 
 **Film variables 10 and 12 move only as film variables.** `0x1D9B` (`[bx+0x96]`) and `0x1DA9` (`[bx+0x92]`) are the only instructions that name them by offset (`mise run xref` on `0x92`, `0x96`, `0x47DC`, `0x47E0`, `0x491A`, `0x491E`). Every other access is generic over all 16 variables: `var_set` keys (`0x3D54`), `before` records (`0x3D2A`), the per-frame interpolation `0x136F` and the film-start reset ([`palette-fade.md`](palette-fade.md) § 2). So per tick, var 10 and var 12 are their `var_set` keys interpolated linearly by the film clock, as vars 13 to 15 are; no code adds a rate or a per-actor term.
 
