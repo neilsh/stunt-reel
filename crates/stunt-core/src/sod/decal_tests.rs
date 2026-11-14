@@ -479,3 +479,72 @@ fn a_line_on_a_facet_is_no_decal() {
     assert!(!processed[1].is_decal);
     assert_eq!(processed[1].vertices, line.vertices);
 }
+
+/// `BOMB`'s truck `0x4142` in miniature, on a side wall `x = 0` facing `-x`: a `PERFDISK`
+/// wheel disc emitted in both windings, a `POLYZ` panel (`137`) overlapping only the disc,
+/// then a `POLYZ` panel (`59`) overlapping only `137`. The panels stack at levels 1 and 2
+/// toward the wall's front, the disc's inward copy matches nothing, and every shading
+/// normal is kept (`[I5]`).
+#[test]
+fn a_panel_on_a_panel_on_a_wheel_disc_stacks_two_levels() {
+    // Wound (y, then z) seen from -x, so the edge cross product is +x and the front -x.
+    let wall = |palette_index: u8, y: [f32; 2], z: [f32; 2]| {
+        let vertices = vec![
+            [0.0, y[0], z[0]],
+            [0.0, y[1], z[0]],
+            [0.0, y[1], z[1]],
+            [0.0, y[0], z[1]],
+        ];
+        RawPolygon {
+            vertex_palette: Vec::new(),
+            normal: crate::sod::vm::compute_polygon_normal(&vertices),
+            vertices,
+            palette_index,
+            flags: 0,
+            is_decal: false,
+            visibility: VisibilityCondition::Always,
+        }
+    };
+    // `disc_polygons`: an octagon about (0, 1, 1), the copy facing -x first with its front
+    // as the stored normal, then the reversed copy storing +x.
+    let outward: Vec<[f32; 3]> = (0..8)
+        .map(|i| {
+            let (s, c) = (std::f32::consts::TAU * i as f32 / 8.0).sin_cos();
+            [0.0, 1.0 + c, 1.0 + s]
+        })
+        .collect();
+    let mut inward = outward.clone();
+    inward.reverse();
+    let disc = |vertices: Vec<[f32; 3]>, normal: [f32; 3]| RawPolygon {
+        vertex_palette: Vec::new(),
+        vertices,
+        palette_index: 7,
+        normal,
+        flags: 0,
+        is_decal: false,
+        visibility: VisibilityCondition::Always,
+    };
+    let disc_out = disc(outward, [-1.0, 0.0, 0.0]);
+    let disc_in = disc(inward, [1.0, 0.0, 0.0]);
+    let panel_137 = wall(137, [1.5, 3.0], [0.0, 2.0]);
+    let panel_59 = wall(59, [2.5, 3.0], [0.5, 1.5]);
+    assert_eq!(panel_137.normal, [1.0, 0.0, 0.0], "POLYZ stores the back");
+
+    let input = [disc_out, disc_in, panel_137, panel_59];
+    let processed = crate::sod::decal::identify_coplanar_decals(&input, 0.001, 1e-4, 1e-4);
+
+    for (before, after) in input.iter().zip(&processed) {
+        assert_eq!(after.normal, before.normal, "shading normal is kept");
+    }
+    for disc in &processed[..2] {
+        assert!(!disc.is_decal);
+    }
+    assert_eq!(
+        processed[1].vertices, input[1].vertices,
+        "inward copy untouched"
+    );
+    let xs = |p: &RawPolygon| p.vertices.iter().map(|v| v[0]).collect::<Vec<_>>();
+    assert!(processed[2].is_decal && processed[3].is_decal);
+    assert_eq!(xs(&processed[2]), [-0.001; 4], "137 at level 1, toward -x");
+    assert_eq!(xs(&processed[3]), [-0.002; 4], "59 at level 2, toward -x");
+}
