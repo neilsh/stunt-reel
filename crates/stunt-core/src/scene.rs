@@ -15,7 +15,7 @@
 //! their decode record, so a partial shape is still a value with provenance. The anchor
 //! table follows ADR-0001.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::anchor::{AnchorPoint, parse_anchor_table};
 use crate::contracts::trajectory::{DEFAULT_CAMERA_LENS, PLAYONE_FOV_Y_DEGREES};
@@ -547,6 +547,27 @@ impl FilmScene {
         self.shapes.iter().map(|(id, ir)| (*id, ir))
     }
 
+    /// The scene less every shape [`Self::frame`] can never draw. Kept are any slice's actor
+    /// shapes, the world's view-facing props whatever their gates, and the origin shape;
+    /// the world mesh holds its baked props' own geometry, so their shapes go.
+    #[must_use]
+    pub fn drawn_only(mut self) -> Self {
+        let actors = self
+            .timeline
+            .slices()
+            .iter()
+            .flat_map(|slice| &slice.record.actors)
+            .map(|actor| actor.shape_id);
+        let props = self
+            .world
+            .iter()
+            .flat_map(|w| &w.view_facing)
+            .map(|prop| prop.shape);
+        let drawn: HashSet<u16> = actors.chain(props).chain(self.origin_shape).collect();
+        self.shapes.retain(|id, _| drawn.contains(id));
+        self
+    }
+
     /// The static world, drawn with an identity transform.
     #[must_use]
     pub fn world(&self) -> Option<&World> {
@@ -1053,5 +1074,67 @@ mod tests {
         assert_eq!(prop.shape_id, 9);
         assert!(near(&prop.world_matrix, &turned(-2.0, 1.0, 5.0)));
         assert_eq!(prop.shadow_matrix, None);
+    }
+
+    /// A drawn-only scene keeps every actor shape of every slice and every view-facing prop,
+    /// one reachable only behind a level-of-detail gate included, and nothing else.
+    #[test]
+    fn a_drawn_only_scene_keeps_the_actor_and_view_facing_shapes() {
+        use crate::contracts::{ActorTransform, TrajectoryRecord};
+        use crate::flm::SliceKeyframe;
+        use crate::world::{FacingProp, TerrainSurface};
+
+        let slice = |tick: u32, shape_id: u16| SliceKeyframe {
+            record: TrajectoryRecord {
+                tick,
+                camera: CameraTransform::default(),
+                actors: vec![ActorTransform {
+                    actor_id: 0,
+                    model_name: String::new(),
+                    shape_id,
+                    rotation_quat: [0.0, 0.0, 0.0, 1.0],
+                    position_meters: [0.0; 3],
+                    state_mask: 0,
+                    casts_shadow: false,
+                    joint_angles_bam: Vec::new(),
+                }],
+                audio_cues: Vec::new(),
+                palette: PaletteControls::default(),
+            },
+            tick,
+            tick_duration: 1,
+        };
+        // Shape 7 is an actor's but missing from the scene, so nothing can draw it.
+        let timeline = FilmTimeline::new(vec![slice(0, 1), slice(10, 2), slice(20, 7)], Vec::new());
+        let world = World {
+            ir: SodModelIr::new("WORLD"),
+            terrain_patches: 0,
+            props_placed: 1,
+            bounds: ShapeExtent {
+                min: [0.0; 3],
+                max: [0.0; 3],
+                radius: 0.0,
+            },
+            scenery_stop: None,
+            terrain: TerrainSurface::default(),
+            tap_failures: Vec::new(),
+            // A tree standing only behind the near branch of a level-of-detail node.
+            view_facing: vec![FacingProp {
+                shape: 3,
+                position: [0.0; 3],
+                gates: vec![VisibilityCondition::LodBranch {
+                    point: [0.0; 3],
+                    ext: 400,
+                    splitdist: 600,
+                    near: true,
+                }],
+            }],
+        };
+        let shapes = (1..=4).map(|id| (id, SodModelIr::new("SHAPE"))).collect();
+        let scene = FilmScene::new(timeline, shapes, Some(world));
+
+        let mut drawn: Vec<u16> = scene.drawn_only().shapes().map(|(id, _)| id).collect();
+        drawn.sort_unstable();
+        assert_eq!(drawn, [1, 2, 3]);
     }
 }
