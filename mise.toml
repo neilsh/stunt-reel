@@ -236,6 +236,10 @@ run = "uv run python python/scripts/skill_eval.py"
 description = "Unpack PLAYONE.EXE with LZEXE 0.91, by default the data root's corpus/stuntisl/PLAYONE.EXE to its build/re/playone.img (mise run unlzexe -- [<exe> <out>] [--mz])"
 run = "uv run python python/scripts/unlzexe.py"
 
+[tasks.ghidra-sod-table]
+description = "Create a function at each .SOD VM dispatch handler in Ghidra headless, name it from the opcode table, and save the project under build/re/ghidra/ (mise run ghidra-sod-table -- [--build unpatched|patch3] [--parse-only] [--exe PATH]; needs Ghidra 12.1.x with analyzeHeadless on PATH or in GHIDRA_INSTALL_DIR)"
+run = "uv run python python/scripts/ghidra_sod_dispatch.py"
+
 [tasks.debug-x]
 description = "Run a breakpoint plan on DOSBox-X's debugger (mise run debug-x -- --plan tools/dosbox-x/plans/smoke.toml [--film F] [--build patch3])"
 run = "uv run python python/scripts/debug_x.py"
