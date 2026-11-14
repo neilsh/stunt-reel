@@ -58,8 +58,8 @@ pub const OP_ZLINETO: u16 = 0x00BD;
 pub const OP_POLYZ: u16 = 0x00F3;
 /// Emit a procedural sphere centered at `regs[center_reg]` with `radius`.
 pub const OP_SPHERE: u16 = 0x00FC;
-/// A disc (`center_reg, radius, axis_reg`), its normal `regs[center] - regs[axis]`; this VM
-/// consumes the three words and draws nothing.
+/// A filled disc (`center_reg, radius, axis_reg`), its normal `regs[center] - regs[axis]`,
+/// drawn as a two-sided 16-gon in the current colour.
 pub const OP_PERFDISK: u16 = 0x010E;
 /// Branches (SORT pushes, `GOTO`, `GOSUB`) one walk may take before it is malformed.
 const MAX_BRANCHES: usize = 4096;

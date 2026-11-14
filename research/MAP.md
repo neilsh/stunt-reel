@@ -26,7 +26,7 @@
 
 - [`formats/concepts/compression.md`](formats/concepts/compression.md): DOS storage tiers: LZEXE 0.91 packing of `PLAYONE.EXE` and its LZSS bitstream, uncompressed retail `.RES` and `.ALL` payloads, PCX RLE in sprite sources, and the [I8] uppercase 8.3 path rules.
 - [`formats/concepts/coordinates-and-units.md`](formats/concepts/coordinates-and-units.md): [I1] coordinate frames from model to screen: right-handed metric basis, 16.16 fixed point, BAM angles, `sod_scale_table`, editor units to metres, focal length and FOV, attribute-keyed vertex welding.
-- [`formats/concepts/palette-and-shading.md`](formats/concepts/palette-and-shading.md): [I3] palette model: three 6-to-8-bit DAC scalings, palettes 0x8042 and 0x801E, colour groups and 32-level ramps, CTRY capture evidence against a sun-derived shade, sky bands 227-238, 256x32 LUT.
+- [`formats/concepts/palette-and-shading.md`](formats/concepts/palette-and-shading.md): [I3] palette model: DAC scalings, palettes 0x8042 and 0x801E, colour groups and 32-level ramps, an unlit ground, `SHADES` lit by film variable 13's light, sky bands 227-238, 256x32 LUT.
 - [`formats/concepts/timeline-and-ticks.md`](formats/concepts/timeline-and-ticks.md): [I4] playback timing: 50 Hz PIT divisor 0x5D38, slice ticks as cumulative `tick_duration`, lerp and slerp sub-tick interpolation, shorter-arc roll, cut suppression, and 0x9C audio cues.
 
 ## formats/memory
@@ -75,7 +75,7 @@
 - [`playone-exe/sod-vm.md`](playone-exe/sod-vm.md): The SOD display-list VM: self-patching dispatch slots, `OP_TAP` encoding and anchor loading [FMT-SOD-TAP], the execution model with its facing and depth gates and the model frame of every raw-coordinate generator, two-vertex polygons and `ZLINETO` lines as one-pixel lines, polygon spans that include both ends, the per-frame draw with credits, and the actor shadow draw (the plane probe `0x240A`, the flattened second draw in index 0, the `work:0x806C` readers), with its altitude cutoff still open.
 - [`playone-exe/startup.md`](playone-exe/startup.md): `PLAYONE.EXE` startup: LZEXE 0.91 packing, a command tail that honours only `?` (runs `install.exe`), the `game.cfg`, memory and disk checks, asset paths, and how to reproduce the static analysis.
 - [`playone-exe/static-tooling.md`](playone-exe/static-tooling.md): Which static tool answers which `PLAYONE.EXE` question (`mise run disasm`/`xref`/`vm-handler`, Ghidra, rea), what Ghidra cannot see in the VM handlers, and the address coordinate conversions.
-- [`playone-exe/terrain-shade.md`](playone-exe/terrain-shade.md): `GVPOLY`/`GVPOLY16` shade as a Gouraud ramp on the palette index (`SHADES` term, `idx = base + (s >> 9)`, screen-space fill), lit by the world light the var-13 handler writes; the ground does not.
+- [`playone-exe/terrain-shade.md`](playone-exe/terrain-shade.md): `GVPOLY`/`GVPOLY16` shade as a Gouraud ramp on the palette index (`idx = base + (s >> 9)`, `s >> 10` for `GVPOLY16`), lit by the world light the var-13 handler writes; the ground does not.
 - [`playone-exe/world-scene.md`](playone-exe/world-scene.md): `PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BSP scenery tree in its own image and, in live CTRY runs, paints `SCENERY2.RES` tiles over it, licensing our ground-decal pass; with no depth buffer it paints the flat ground in walk order, which our `WORLD_GROUND` pass follows in part.
 
 ## research

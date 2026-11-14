@@ -98,7 +98,7 @@ The engine distinguishes two primary `.RES` operational profiles based on the Re
 - **String Table Termination:** The string table ends with an extra null byte (`0x00\0x00`) or is bounded by `ofs[1]`.
 
 #### 2. Scenery Resource Archives (`res_index <= 0x0F` / `idBase <= 0x0F00`)
-- **Containers:** `SCENERY1.RES` (`0x02`) through `SCENERY6.RES` (`0x07`).
+- **Containers:** `SCENERY1.RES` (`0x02`) through `SCENERY6.RES` (`0x07`), and `GAME.RES` (`0x01`), whose region 0 is also a shape (§ 3.3).
 - **Absence of Names:** Scenery models are never selected through the interactive Set Designer GUI. They are placed automatically across the island landscape by `MAP.BIN` using global scenery object IDs.
 - **Data Layout:** The ASCII string table is omitted. The first offset $\text{ofs}[0]$ points directly to the first raw `.SOD` geometry model (starting with the 2-byte magic word `0x000C`).
 - **Parser Fallback:** When a parser encounters a scenery file, it detects that `data[ofs[0]..ofs[1]]` starts with `0x000C` (or contains non-ASCII graphics bytes) and automatically generates synthetic 8.3 entry names: `0000.BIN`, `0001.BIN`, etc.
@@ -124,11 +124,11 @@ When `PLAYONE.EXE`, a `.FLM` choreography stream, or a `.SET` scenery file refer
 
 ### 3.3 Master Resource Index Enumeration Table
 
-The authoritative catalog of `.RES` indices, recovered from `SITools/ResMaker/indices.txt` and verified against the retail CD-ROM file set:
+The catalog of `.RES` indices, recovered from `SITools/ResMaker/indices.txt` and checked against the retail CD-ROM file set. The last column follows the § 3.1 rule; for `GAME.RES` it is `[Bounded Observation]`: region 0 of the retail and Patch #3 copies begins with the SOD magic `0x000C`, not a name. _Source: [GAME.RES has no name table](../../work/2026-11/472_research-contradictions/journal.md#2026-11-13-gameres-has-no-name-table)._
 
 | Index (Dec) | Index (Hex) | Archive Filename | Contents & Engine Role | String Table Present? |
 | :---: | :---: | :--- | :--- | :---: |
-| **1** | `0x01` | `GAME.RES` | Core UI dialog strings, fonts, menus, and system bitmaps | Yes |
+| **1** | `0x01` | `GAME.RES` | Core UI dialog strings, fonts, menus, and system bitmaps (per `indices.txt`, unchecked; its item `0x0D` is a shape) | No (`ofs[0]` direct to SOD) |
 | **2** | `0x02` | `SCENERY1.RES` | Island terrain scenery models (Sector 1: Airfield & Coast) | No (`ofs[0]` direct to SOD) |
 | **3** | `0x03` | `SCENERY2.RES` | Island terrain scenery models (Sector 2: Mountain Range) | No (`ofs[0]` direct to SOD) |
 | **4** | `0x04` | `SCENERY3.RES` | Island terrain scenery models (Sector 3: City & Downtown) | No (`ofs[0]` direct to SOD) |

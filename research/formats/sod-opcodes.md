@@ -53,7 +53,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **37** | `0x014D` | 333 | `OP_SHADE2` | `normal_reg: u16, ramp: u16` | Back-facing directional lighting ramp |
 | **38** | `0x0156` | 342 | `OP_SHADES` | `count: u16, ...triplets` | Batch upload lighting normal vectors: each writes the shade word `s = -clamp((N . L) >> 16, +-0x3FFF)` (`PLAYONE` `0x9481`) that the `SHADE*` and `GVPOLY*` opcodes read. Applied with the world light `L = (99, 32766, -17)` in the raw model frame (`[Supported Inference]`, [`sod-vm.md` § 8.5](../playone-exe/sod-vm.md#85-polygon-colour-at-shade-time)); `siobj.cpp` discards them |
 | **39** | `0x015F` | 351 | `OP_GOURAUD` | `...` | Smooth Gouraud-shaded polygon |
-| **40** | `0x0168` | 360 | `OP_SHADEPOLY`| `count: u16, regs..., norm, shades...` | Normal-lit shaded polygon (`OP_GVPOLY`) |
+| **40** | `0x0168` | 360 | `OP_SHADEPOLY`| `count: u16, regs..., (ramp << 8) \| count: u16, shades...` | Normal-lit shaded polygon (`OP_GVPOLY`) |
 | **41** | `0x0171` | 369 | `OP_AIRBRUSH` | `...` | Dithered / airbrushed soft shadow polygon |
 | **42** | `0x017A` | 378 | `OP_IFVIS` | `flag: u16, size: u16` | Run the next `size` bytes only if facing flag `flag` is set, i.e. the face points at the eye |
 | **43** | `0x0183` | 387 | `OP_BVIS` | `flag: u16, size: u16` | Run the next `size` bytes only if facing flag `flag` is clear |
@@ -91,7 +91,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **75** | `0x02A3` | 675 | `OP_ADDSL` | `...` | Slicing plane addition |
 | **76** | `0x02AC` | 684 | `OP_DUPSL` | `...` | Duplicate slicing plane |
 | **77** | `0x02B5` | 693 | `OP_SHADE16` | `norm: u16, ramp: u16` | 16-level directional lighting ramp sample: sets the polygon colour from the ramp `base` and the per-normal shade `OP_SHADES` wrote (`[Hypothesis]`, [`sod-vm.md` § 8.5](../playone-exe/sod-vm.md#85-polygon-colour-at-shade-time)) |
-| **78** | `0x02BE` | 702 | `OP_GVPOLY16` | `count: u16, regs..., norm, shades...` | 16-level shaded polygon emission |
+| **78** | `0x02BE` | 702 | `OP_GVPOLY16` | `count: u16, regs..., (ramp << 8) \| count: u16, shades...` | 16-level shaded polygon emission |
 | **79** | `0x02C7` | 711 | `OP_SHADE216` | `norm: u16, ramp: u16` | 16-level back-facing lighting ramp sample |
 | **80** | `0x02D0` | 720 | `OP_DOT` | `reg_off: u16` | Draw single point / pixel dot at `regs[reg]` |
 | **81** | `0x02D9` | 729 | `OP_BLOCK` | `reg_off: u16, size: u16` | Draw solid rectangular box block |

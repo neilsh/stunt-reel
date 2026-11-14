@@ -14,18 +14,33 @@ G168, G2BE = 0x995C, 0x9A24
 
 
 def record(base: int, shades: list[int], next_ip: int) -> bytes:
-    return struct.pack(f"<H{len(shades)}HH", base << 8 | len(shades), *shades, next_ip)
+    """`count`, a register offset per vertex, the ramp word, the shades, the next IP."""
+    n = len(shades)
+    regs = [12 * (i + 1) for i in range(n)]
+    return struct.pack(f"<H{n}HH{n}HH", n, *regs, base << 8 | n, *shades, next_ip)
 
 
-def test_count_low_nibble_only() -> None:
-    poly = decode_record(struct.pack("<H", 0xC32D) + bytes(30), 0x1000, G168)
+def test_ramp_word_follows_the_registers() -> None:
+    # The first word is `count`; the base is the high byte of the word after the registers.
+    poly = decode_record(record(0x30, [4, 8, 12, 16], 0x17E4), 0x1000, G2BE)
     assert poly is not None
-    assert (poly.base, poly.count) == (0xC3, 13)
+    assert (poly.base, poly.count, poly.regs) == (0x30, 4, (12, 24, 36, 48))
+    assert poly.size == 22
+
+
+def test_shade_count_is_the_ramp_words_whole_low_byte() -> None:
+    # `0x3012`: base 0x30 and 18 shades, as the Gouraud loop's `dec cl` counts; the skip
+    # tail's `& 0x0F` would give 2.
+    shades = list(range(1, 19))
+    data = struct.pack("<H2HH18HH", 2, 12, 24, 0x3012, *shades, 0x17E4)
+    poly = decode_record(data, 0x1000, G2BE)
+    assert poly is not None
+    assert (poly.base, poly.shades, poly.next_ip) == (0x30, tuple(shades), 0x17E4)
 
 
 def test_record_shades_and_next_ip() -> None:
     poly = decode_record(record(0xC4, [1, 2, 3], 0x17E4), 0x6B71C, G168)
-    assert poly == Polygon(0x6B71C, G168, 0xC4, 3, (1, 2, 3), 0x17E4)
+    assert poly == Polygon(0x6B71C, G168, 0xC4, 3, (12, 24, 36), (1, 2, 3), 0x17E4)
 
 
 def test_short_record_is_none() -> None:
