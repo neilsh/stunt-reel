@@ -155,11 +155,12 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
     );
     assert_eq!(ir.indices.len(), 12, "4 triangles * 3 = 12 indices");
 
-    // Verify all decal vertices have DECAL_FLAG_BIT set and z == 0.001
+    // Decal vertices carry DECAL_FLAG_BIT and sit at z == -0.001: the facets wind
+    // counter-clockwise seen from +z, so their front (`FrontFace::Cw`) faces -z.
     for v in &ir.vertices[4..8] {
         assert_eq!(v.palette_index, 15);
         assert_ne!(v.flags & DECAL_FLAG_BIT, 0);
-        assert!((v.position[2] - 0.001).abs() < 1e-6);
+        assert!((v.position[2] + 0.001).abs() < 1e-6);
     }
 }
 

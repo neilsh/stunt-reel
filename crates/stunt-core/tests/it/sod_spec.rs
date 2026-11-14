@@ -236,7 +236,8 @@ fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
     assert_eq!(ir.vertices[1].position, [-5.0, 0.0, 0.0]);
     assert_eq!(ir.vertices[2].position, [0.0, -5.0, 0.0]);
 
-    // Decal face vertices (Palette 15, flags & 1 != 0, displaced along normal by 0.001 m)
+    // Decal face vertices (Palette 15, flags & 1 != 0, displaced 0.001 m toward their front:
+    // the face winds counter-clockwise seen from +z, so under `FrontFace::Cw` it faces -z)
     for v in &ir.vertices[3..6] {
         assert_eq!(v.palette_index, 15, "decal vertex palette must be 15");
         assert_ne!(
@@ -245,15 +246,15 @@ fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
             "decal vertex must have DECAL_FLAG_BIT set in flags"
         );
         assert_eq!(v.normal, [0.0, 0.0, 1.0]);
-        // Invariant [I5]: displaced by eps = 0.001 m along outward normal
+        // Invariant [I5]: displaced by eps = 0.001 m along the outward (front) normal
         assert!(
-            (v.position[2] - EPSILON_DISPLACEMENT).abs() < 1e-6,
+            (v.position[2] + EPSILON_DISPLACEMENT).abs() < 1e-6,
             "decal vertex z coordinate must be displaced by exactly 0.001 m"
         );
     }
-    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, 0.001]);
-    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, 0.001]);
-    assert_eq!(ir.vertices[5].position, [0.0, -5.0, 0.001]);
+    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, -0.001]);
+    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, -0.001]);
+    assert_eq!(ir.vertices[5].position, [0.0, -5.0, -0.001]);
 }
 
 /// Scale indices 0..=17 read `SOD_SCALE_TABLE`; indices >= 18 use `5 / 2^(index - 1)`.

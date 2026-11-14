@@ -15,6 +15,8 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
     // 4. Vertical wall facing +X (normal [1, 0, 0])
     // 5. 45-degree ramp (normal [0, 1/sqrt(2), 1/sqrt(2)])
     // 6. 3D diagonal plane (normal [1/sqrt(3), 1/sqrt(3), 1/sqrt(3)])
+    // Each facet winds clockwise seen from its normal's side, so that side is its front
+    // under `FrontFace::Cw` and the decal moves toward it.
 
     let test_cases: Vec<([f32; 3], Vec<[f32; 3]>)> = vec![
         // Normal [0, 1, 0]
@@ -41,20 +43,20 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
         (
             [0.0, 0.0, 1.0],
             vec![
-                [-5.0, -5.0, 2.0],
-                [5.0, -5.0, 2.0],
-                [5.0, 5.0, 2.0],
                 [-5.0, 5.0, 2.0],
+                [5.0, 5.0, 2.0],
+                [5.0, -5.0, 2.0],
+                [-5.0, -5.0, 2.0],
             ],
         ),
         // Normal [1, 0, 0]
         (
             [1.0, 0.0, 0.0],
             vec![
-                [3.0, -5.0, -5.0],
-                [3.0, 5.0, -5.0],
-                [3.0, 5.0, 5.0],
                 [3.0, -5.0, 5.0],
+                [3.0, 5.0, 5.0],
+                [3.0, 5.0, -5.0],
+                [3.0, -5.0, -5.0],
             ],
         ),
         // Oblique 45-degree ramp: normal [0, 1/sqrt(2), 1/sqrt(2)]
@@ -63,10 +65,10 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
             (
                 [0.0, inv_sqrt2, inv_sqrt2],
                 vec![
-                    [-2.0, 0.0, 0.0],
-                    [2.0, 0.0, 0.0],
-                    [2.0, 2.0, -2.0],
                     [-2.0, 2.0, -2.0],
+                    [2.0, 2.0, -2.0],
+                    [2.0, 0.0, 0.0],
+                    [-2.0, 0.0, 0.0],
                 ],
             )
         },
@@ -75,7 +77,7 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
             let inv_sqrt3 = 1.0 / 3.0f32.sqrt();
             (
                 [inv_sqrt3, inv_sqrt3, inv_sqrt3],
-                vec![[3.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 3.0]],
+                vec![[0.0, 0.0, 3.0], [0.0, 3.0, 0.0], [3.0, 0.0, 0.0]],
             )
         },
     ];
@@ -380,4 +382,41 @@ fn test_polygon_bounds_and_overlap() {
         &[25.0, 25.0, 25.0],
         1e-4
     ));
+}
+
+/// A flat ground decal moves toward the side from which it winds clockwise, whatever its
+/// shading normal says (`[I5]`, `FrontFace::Cw`).
+#[test]
+fn ground_decal_moves_toward_its_clockwise_side() {
+    let poly = |vertices: Vec<[f32; 3]>| RawPolygon {
+        vertex_palette: Vec::new(),
+        normal: crate::sod::vm::compute_polygon_normal(&vertices),
+        vertices,
+        palette_index: 15,
+        flags: 0,
+        is_decal: false,
+        visibility: VisibilityCondition::Always,
+    };
+    // Clockwise seen from above (+X right, -Z away): the edge cross product points down.
+    let cw = |s: f32| vec![[0.0, 0.0, 0.0], [s, 0.0, 0.0], [0.0, 0.0, s]];
+    let ccw = |s: f32| vec![[0.0, 0.0, 0.0], [0.0, 0.0, s], [s, 0.0, 0.0]];
+    for (base, decal, y) in [(cw(10.0), cw(2.0), 0.001), (ccw(10.0), ccw(2.0), -0.001)] {
+        let processed = crate::sod::decal::identify_coplanar_decals(
+            &[poly(base), poly(decal)],
+            0.001,
+            1e-4,
+            1e-4,
+        );
+        let [base, decal] = processed.as_slice() else {
+            panic!("two polygons");
+        };
+        assert!(decal.is_decal && !base.is_decal);
+        assert_eq!(decal.normal, base.normal, "shading normal is kept");
+        assert!(
+            decal.vertices.iter().all(|v| (v[1] - y).abs() < 1e-6),
+            "{:?}",
+            decal.vertices
+        );
+        assert!(base.vertices.iter().all(|v| v[1] == 0.0));
+    }
 }

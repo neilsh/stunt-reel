@@ -4,8 +4,14 @@
 //! (insignias, roundels, markings, runway stripes), coplanar decal polygons are
 //! identified and displaced along their unit outward surface normal:
 //! `v' = v + eps * n_hat` where `eps = 0.001 m` (1.0 mm).
+//!
+//! The outward normal is the polygon's front side under the renderer's culling
+//! (`FrontFace::Cw`, `CullMode::Back`): the side from which its vertices wind clockwise,
+//! opposite the edge cross product that [`RawPolygon::normal`] carries for shading. The
+//! two-sided flag is not decoded, so a decal on a face `PLAYONE` never culls is still
+//! displaced to its clockwise side.
 
-use crate::sod::vm::RawPolygon;
+use crate::sod::vm::{RawPolygon, compute_polygon_normal};
 
 /// Bit 0 in [`crate::contracts::shape::SodVertex::flags`] indicates a coplanar decal face.
 pub const DECAL_FLAG_BIT: u8 = 0x01;
@@ -87,19 +93,22 @@ pub(crate) fn is_coplanar_facet(
     bounds_overlap(&min_a, &max_a, &min_b, &max_b, plane_tol)
 }
 
-/// Displaces all vertices of a coplanar decal polygon outward along its surface normal.
+/// Unit normal of the side of `vertices` that survives back-face culling: the side from
+/// which they wind clockwise (`FrontFace::Cw`).
+#[must_use]
+pub(crate) fn front_normal(vertices: &[[f32; 3]]) -> [f32; 3] {
+    compute_polygon_normal(vertices).map(|c| -c)
+}
+
+/// Displaces all vertices of a coplanar decal polygon by `eps` along its [`front_normal`],
+/// keeping its shading normal.
 #[must_use]
 pub(crate) fn displace_decal_polygon(poly: &RawPolygon, eps: f32) -> RawPolygon {
+    let n = front_normal(&poly.vertices);
     let displaced_vertices: Vec<[f32; 3]> = poly
         .vertices
         .iter()
-        .map(|v| {
-            [
-                v[0] + eps * poly.normal[0],
-                v[1] + eps * poly.normal[1],
-                v[2] + eps * poly.normal[2],
-            ]
-        })
+        .map(|v| [v[0] + eps * n[0], v[1] + eps * n[1], v[2] + eps * n[2]])
         .collect();
 
     RawPolygon {
