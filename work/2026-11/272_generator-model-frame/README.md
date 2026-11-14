@@ -2,7 +2,7 @@
 title: "OP_IPG quads, OP_SPHERE, OP_PERFDISK and OP_VEC write coordinates in an unchecked model frame"
 started: 2026-11-11
 issue: 272
-outcome: ""
+outcome: "Generator handlers read in sod-vm.md section 8.8; type-8 IPG winding, type-6 operand count and reversed sphere faces fixed in vm.rs (#388)."
 ---
 
 # OP_IPG quads, OP_SPHERE, OP_PERFDISK and OP_VEC write coordinates in an unchecked model frame

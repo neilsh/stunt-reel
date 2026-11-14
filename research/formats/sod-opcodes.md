@@ -240,7 +240,7 @@ Only **stream constraints** are recorded here — readings that must match the b
 `[Hypothesis]` — geometry si-tools generates, not observed in `PLAYONE`:
 
 * `SPHERE` is a 12-vertex, 20-triangle icosahedron at exactly `1.0 × radius`, radius used raw (not multiplied by the shape scale), vertices `centre + trunc(v · radius)`. `vm.rs` uses the same icosahedron at `0.92 ×` (`vm.rs:208`), tuned against `CTRY`; that factor is ours, not the format's.
-* si-tools' `DISC` is a 16-segment fan at parse-time `radius × scale`, and its `PERFDISK` reuses that builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so its winding is a stand-in rather than a decode. `vm.rs` draws nothing for `PERFDISK`; the handler's disc is in [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators).
+* si-tools' `DISC` is a 16-segment fan at parse-time `radius × scale`, and its `PERFDISK` reuses that builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so its winding is a stand-in rather than a decode. `vm.rs` now draws `PERFDISK` as a two-sided 16-gon of raw register `radius` perpendicular to `regs[centre] - regs[axis]`; the handler's conic disc is in [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators).
 * The disc radius is multiplied by scale at parse and again at export, so exported radii come out `scale²`; that is an exporter bug, not a format fact.
 
 ### 3.3 What A Decoder's Silences Are Worth

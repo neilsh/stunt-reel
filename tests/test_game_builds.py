@@ -283,35 +283,11 @@ def test_an_output_holding_a_source_tree_is_refused(tmp_path: Path) -> None:
     assert (game / "STUNT.EXE").is_file()
 
 
-def test_build_tree_names_the_patch3_tree(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_build_tree_names_the_patch3_tree(tmp_path: Path) -> None:
     (tmp_path / "patch3").mkdir()
     assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patch3"
-    assert capsys.readouterr().err == ""
-
-
-def test_build_tree_falls_back_to_the_old_patched_name_with_a_message(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    (tmp_path / "patched").mkdir()
-    assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patched"
-    err = capsys.readouterr().err
-    assert str(tmp_path / "patched") in err
-    assert str(tmp_path / "patch3") in err
-    assert "mise run game-builds" in err
-    assert game_builds.build_tree(tmp_path, "unpatched") == tmp_path / "unpatched"
-    assert capsys.readouterr().err == ""
-
-
-def test_build_tree_prefers_patch3_over_patched(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    (tmp_path / "patched").mkdir()
-    (tmp_path / "patch3").mkdir()
-    assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patch3"
-    assert capsys.readouterr().err == ""
 
 
 def test_build_tree_of_an_empty_directory_is_the_new_name(tmp_path: Path) -> None:
     assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patch3"
+    assert game_builds.build_tree(tmp_path, "unpatched") == tmp_path / "unpatched"

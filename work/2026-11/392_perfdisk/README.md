@@ -2,7 +2,7 @@
 title: "OP_PERFDISK draws nothing, though the corpus walk reaches it 2,531 times"
 started: 2026-11-12
 issue: 392
-outcome: ""
+outcome: "OP_PERFDISK draws as a two-sided 16-gon disc from handler 0xA040 (sod-vm.md section 8.8, #424); BOMB rises 0.81291 to 0.81429 (+0.0014) and the worst reference fall is LAND (-0.0004)."
 ---
 
 # OP_PERFDISK draws nothing, though the corpus walk reaches it 2,531 times

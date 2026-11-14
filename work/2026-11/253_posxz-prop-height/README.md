@@ -2,7 +2,7 @@
 title: "Props reached only through SP_POSXZ nodes get no ground height"
 started: 2026-11-11
 issue: 253
-outcome: ""
+outcome: "[BK-MAP-07] closed in scenery.md section 3.3 (#390): PLAYONE samples no terrain for an SP_POSXZ prop; its height is its ancestors' SP_POS y plus the header lift, matching world/scenery.rs and sod/vm.rs."
 ---
 
 # Props reached only through SP_POSXZ nodes get no ground height
