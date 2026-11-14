@@ -15,7 +15,7 @@
 - Edit only `.agents/skills/running-unattended/pr-and-filing.md` and `.agents/skills/running-unattended/SKILL.md`. Do not touch any other file, and do not edit `loop-and-bounds.md`.
 - Keep the existing step numbers 1-6 in `pr-and-filing.md`.
 - Use the old text exactly as quoted when locating an edit; use the Edit tool, one edit per step.
-- No `docs/*.md`, `research/`, `NOTICE.md` or `docs/howto/` file changes, so `AGENTS.md` §3 rule 5 (fresh review before push) is not triggered by your commit. If you changed any of those, stop and ask. This `plan.md` and its README are already on `main`; do not stage them.
+- No `docs/*.md`, `research/`, `NOTICE.md` or `docs/howto/` file changes, so `AGENTS.md` §3 rule 5 (fresh review before push) is not triggered by your commit. If you changed any of those, stop and ask. This `plan.md` and its README are already committed on the plans branch; do not stage them.
 - Commit with a Conventional Commit subject; stage files by name.
 
 ## Review Focus
@@ -25,6 +25,8 @@
 - A comment whose first line is not `<Reviewer> review at <7-char SHA>: <verdict>` does not count (the command matches the first line only).
 
 ### Task 1: Comment contract and merge bar
+
+- [ ] **Step 0: Branch.** In Git Bash run `git status --porcelain` (expected: no output; any line: STOP), then `git fetch origin && git switch -c docs/507-reviewer-pr-comments origin/neilsh/open-tasks-dsh` (the plans branch, PR #514; it need not be merged). Expected: `Switched to a new branch 'docs/507-reviewer-pr-comments'`.
 
 **Files:**
 - Modify: `.agents/skills/running-unattended/pr-and-filing.md` (step 2 at line 8, step 5 second bullet at line 17)
@@ -100,8 +102,14 @@ New text:
 
 ```bash
 git add .agents/skills/running-unattended/pr-and-filing.md .agents/skills/running-unattended/SKILL.md
-git commit -m "docs(skills): require SHA-stamped reviewer PR comments and a clean one at HEAD (#507)"
+git commit -F - <<'EOF'
+docs(skills): require SHA-stamped reviewer PR comments and a clean one at HEAD (#507)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+EOF
 ```
+
+- [ ] **Step 7: Push and open the PR.** `git push -u origin HEAD`, then open the PR against `main` with the `pr` skill: title as the commit subject, `Closes #507`, and one line saying it carries the plans commit from PR #514.
 
 ## Self-Review
 
@@ -109,3 +117,5 @@ git commit -m "docs(skills): require SHA-stamped reviewer PR comments and a clea
 - Criterion 2 (merge bar needs clean at current head): Step 2.
 - Criterion 3 (`mise run check` passes): Step 5.
 - Proportion: three edits for a three-criterion issue.
+
+- [ ] **Step 8: Sync with `main` before merging.** This branch and its sibling PRs (#514 and the other plans' PRs) each carry the same plans commit, and a sibling's squash merge does not make that commit an ancestor here. So after any sibling has merged, and before this PR merges, run in Git Bash: `git fetch origin && git merge origin/main`. An add/add conflict under `work/2026-11/` is expected: for each conflicted path under `work/2026-11/507_reviewer-pr-comments/`, run `git checkout --ours -- <path>`; for each other conflicted path under `work/2026-11/`, run `git checkout --theirs -- <path>`. Then `git add` those paths, `git commit --no-edit`, run `mise run check` (expect `PASS`), and push. Any conflict outside `work/2026-11/`: STOP and report.

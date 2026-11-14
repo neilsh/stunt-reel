@@ -43,7 +43,7 @@
 2. **A link to a fragment that moved.** After the split no evergreen file may link `memory-map.md#` with any fragment but `#1-dgroup-memory-reference-table`. Task 1 Step 6 checks this.
 3. **A relinked sentence that now points at the wrong file** (for example a `0x8108` citation sent to `memory-map-main.md`). The reviewer in Task 2 checks each rewritten link against the row its sentence cites.
 4. **The new intro claiming more than the files hold** ("split by segment": the main-program file is the code segment plus its `DS` rows and the resident mixer's setter; the Patch #3 file has `unmapped` rows). The reviewer checks the index table and each `summary:` against the file it describes.
-5. **The script run on a changed `memory-map.md`.** If `main` changed the file since `54bdacf1`, the script exits with `is blob …, not f60aa45…` and writes nothing; the plan then needs re-cutting, not a hand fix.
+5. **The script run on a changed `memory-map.md`.** If the file changed since `54bdacf1` (on the plans branch, or through a merge of `origin/main`), the script exits with `is blob …, not f60aa45…` and writes nothing; the plan then needs re-cutting, not a hand fix.
 
 ---
 
@@ -53,12 +53,19 @@
 - Create: `research/playone-exe/memory-map-patch3.md`, `memory-map-runtime.md`, `memory-map-vm.md`, `memory-map-main.md`
 - Modify: `research/playone-exe/memory-map.md`, `research/MAP.md` (generated), `python/stunt_reel/doc_anchors.py`, and the 20 other inbound-link files listed under Decisions
 - Record: `work/2026-11/473_memory-map-split/split_473.py`
-- Never stage: `work/2026-11/473_memory-map-split/plan.md` and `README.md` (the coordinator commits them before this task, with a `Fresh-review:` trailer)
+- Never stage: `work/2026-11/473_memory-map-split/plan.md`, `README.md` or `split_473.py` (all three are committed on the plans branch)
 
 - [ ] **Step 1: Check the starting point**
 
-Run: `git status --short && git rev-parse --abbrev-ref HEAD && git hash-object research/playone-exe/memory-map.md`
-Expected: no modified or staged tracked file. `plan.md` and `README.md` of this folder are already committed. `split_473.py` is either committed too or listed as `?? work/2026-11/473_memory-map-split/split_473.py`; other untracked `work/` folders of other issues may be listed and are left alone. The branch is not `main` and contains `54bdacf1` (`git merge-base --is-ancestor 54bdacf1 HEAD` exits 0). The hash is `f60aa453e72dd8f6776c0a700fcf04cd610a912a`. If the hash differs, stop and report: the plan must be re-cut.
+First run `git status --porcelain`. Expected: no output; any line: STOP. Then make the branch from the plans branch (PR #514; it need not be merged):
+
+```bash
+git fetch origin
+git switch -c docs/473-memory-map-split origin/neilsh/open-tasks-dsh
+```
+
+Run: `git rev-parse --abbrev-ref HEAD && git hash-object research/playone-exe/memory-map.md`
+Expected: `docs/473-memory-map-split`, and `git ls-files work/2026-11/473_memory-map-split` lists `README.md`, `plan.md` and `split_473.py`. The branch contains `54bdacf1` (`git merge-base --is-ancestor 54bdacf1 HEAD` exits 0). The hash is `f60aa453e72dd8f6776c0a700fcf04cd610a912a`. If the hash differs, stop and report: the plan must be re-cut.
 
 - [ ] **Step 2: Run the split**
 
@@ -160,8 +167,7 @@ git add research/playone-exe/memory-map.md research/playone-exe/memory-map-patch
   research/playone-exe/capture.md research/playone-exe/capture-dosbox-automation.md \
   research/playone-exe/lod.md research/playone-exe/memory.md research/playone-exe/patch3.md \
   research/playone-exe/sod-vm.md research/playone-exe/static-tooling.md \
-  research/playone-exe/terrain-shade.md research/playone-exe/world-scene.md \
-  work/2026-11/473_memory-map-split/split_473.py
+  research/playone-exe/terrain-shade.md research/playone-exe/world-scene.md
 git status --short
 git commit -F - <<'EOF'
 docs(research): split memory-map.md by segment (#473)
@@ -176,7 +182,7 @@ an expected count on every edit; doc_anchors.py names each [MEM-*] anchor's new 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
 ```
-Expected: `git status --short` before the commit shows 28 staged paths (`M ` or `A `): the 27 of Step 4 plus `split_473.py` (27 if `split_473.py` was already committed, in which case `git add` of it is a no-op). Nothing in this folder besides `split_473.py` is staged; never stage `plan.md` or `README.md`. The commit-msg hook passes.
+Expected: `git status --short` before the commit shows exactly the 27 staged paths of Step 4 (`M ` or `A `). Nothing under `work/` is staged. The commit-msg hook passes.
 
 ---
 
@@ -192,7 +198,7 @@ AGENTS.md § Committing rule 5: before a push that changes `research/` or `docs/
 
 - [ ] **Step 3: Write the outcome**
 
-Edit `work/2026-11/473_memory-map-split/README.md`: set `outcome: "memory-map.md split by segment into five files, each under 20 KB, with every [MEM-*] anchor re-homed and inbound links rewritten."` and change the `**Status.**` line to `**Status.** Landed in one PR.` Do not touch `plan.md` (committed before Task 1).
+Edit `work/2026-11/473_memory-map-split/README.md`: set `outcome: "memory-map.md split by segment into five files, each under 20 KB, with every [MEM-*] anchor re-homed and inbound links rewritten."` and change the `**Status.**` line to `**Status.** Landed in one PR.` Do not touch `plan.md`.
 
 ```bash
 git add work/2026-11/473_memory-map-split/README.md
@@ -206,4 +212,6 @@ Expected: the commit-msg hook passes.
 
 - [ ] **Step 4: Push and open the PR**
 
-Run `git push -u origin HEAD`, then open the PR with the `pr` skill: title `docs(research): split memory-map.md by segment (#473)`, body naming the five files and sizes from the Decisions table, `Closes #473`, and any reviewer finding answered rather than fixed.
+Run `git push -u origin HEAD`, then open the PR against `main` with the `pr` skill. It carries the plans commit from PR #514; say so in one line of the body. Title `docs(research): split memory-map.md by segment (#473)`, body naming the five files and sizes from the Decisions table, `Closes #473`, and any reviewer finding answered rather than fixed.
+
+- [ ] **Step 5: Sync with `main` before merging.** This branch and its sibling PRs (#514 and the other plans' PRs) each carry the same plans commit, and a sibling's squash merge does not make that commit an ancestor here. So after any sibling has merged, and before this PR merges, run in Git Bash: `git fetch origin && git merge origin/main`. An add/add conflict under `work/2026-11/` is expected: for each conflicted path under `work/2026-11/473_memory-map-split/`, run `git checkout --ours -- <path>`; for each other conflicted path under `work/2026-11/`, run `git checkout --theirs -- <path>`. Then `git add` those paths, `git commit --no-edit`, run `mise run check` (expect `PASS`), and push. Any conflict outside `work/2026-11/`: STOP and report.

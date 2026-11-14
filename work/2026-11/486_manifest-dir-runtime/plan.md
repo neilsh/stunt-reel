@@ -14,11 +14,11 @@
 
 - Run every command through `mise run <task>`; `mise tasks` lists them. Do not run `cargo` directly: the cargo tasks set `CARGO_HOME`, and a bare `cargo` rebuilds every dependency.
 - `mise run check` must pass with no warnings before each commit (AGENTS.md, Committing rule 2).
-- Stage files by name; never `git add -A`, `git commit -a`, anything under `corpus/`, or the untracked folders `work/2026-11/473_memory-map-split/` and `work/2026-11/507_reviewer-pr-comments/`.
+- Stage files by name; never `git add -A`, `git commit -a`, or anything under `corpus/`.
 - Commit subjects are Conventional Commits; end every commit message with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (or the attribution line your harness gives).
-- Do not push and do not open a PR. Task 6 ends with a report. The `docs/` changes of Task 6 need a fresh reviewer before any push (AGENTS.md, Committing rule 5); that happens after this plan.
+- Do not push and do not open a PR: the coordinator pushes the branch and opens the PR after the fresh review. Task 6 ends with a report. The `docs/` changes of Task 6 need a fresh reviewer before any push (AGENTS.md, Committing rule 5); that happens after this plan.
 - Commit with a Bash (Git Bash) heredoc, `git commit -F - <<'EOF' … EOF`, as each commit step shows. Never commit from PowerShell: a here-string is an argument, not stdin, and PowerShell 5.1 mangles quotes in `-m`.
-- `plan.md` and `README.md` of this folder reach `origin/main` through a separate plans PR before you start. Never stage `plan.md`.
+- Start from the plans branch `origin/neilsh/open-tasks-dsh` (PR #514), which already holds this `plan.md` and `README.md`; it need not be merged. Never stage `plan.md`.
 - `grep` calls `crates/stunt-core/tests/it/vfs_spec.rs` a binary file (it holds one NUL byte inside a literal). It is valid UTF-8; edit it normally and search it with `grep -a`.
 - **STOP and ask** (do not guess) wherever a step says STOP, and whenever a command's output differs from the "Expected" line in a way the step does not cover.
 
@@ -30,7 +30,7 @@
 - `include_str!` / `include_bytes!` with relative paths stay: rustc records them workspace-relative (`crates\stunt-core\tests\it\../../../../tests/fixtures/...`), which resolve inside each checkout. Task 6 step 5 checks this on a real seeded worktree.
 - A fingerprint directory `<package>-<hash>` and its rustc dep-info `deps/<crate_name>-<hash>.d` share the hash (checked on `E:\git\stunt-reel\target\debug` on 2026-11-14: `.fingerprint/stunt-core-7c670b3f046ddfe9` ↔ `deps/it-7c670b3f046ddfe9.d`). A unit with zero or several matching `.d` files rebuilds.
 - rustc dep-info lists each source a second time as a phony rule, a line that ends in `:`; the parser reads only those lines and the `# env-dep:` lines.
-- One PR, three commits (Tasks 4, 5 and 6), branched from `origin/main` after the plans PR that adds this file has merged.
+- One PR, three commits (Tasks 4, 5 and 6), branched from `origin/neilsh/open-tasks-dsh`. The PR targets `main` and carries the plans commit with it.
 - ADR 0030 is amended in place, in ADR 0035's form (`amended <date> for [#486](…)`, newest amendment first).
 
 ## Review Focus
@@ -51,39 +51,32 @@
 **Interfaces:**
 - Produces: `test_no_crate_reads_cargo_manifest_dir_at_compile_time[<crate dir>]`, one case per `crates/*` directory holding a `Cargo.toml`.
 
-- [ ] **Step 1: Check the plan is on `origin/main`**
+- [ ] **Step 1: Check the plans branch**
 
 In Bash:
 
 ```bash
 git fetch origin
-git cat-file -e origin/main:work/2026-11/486_manifest-dir-runtime/plan.md && echo plan-on-main
+git cat-file -e origin/neilsh/open-tasks-dsh:work/2026-11/486_manifest-dir-runtime/plan.md && echo plan-on-branch
 ```
 
-Expected: `plan-on-main`. Anything else (the plans PR has not merged): STOP.
+Expected: `plan-on-branch`. Anything else: STOP.
 
-- [ ] **Step 2: Clear untracked copies of this folder's files**
-
-An untracked `plan.md` or `README.md` here would block the switch to `origin/main`, which tracks them. In Bash:
+- [ ] **Step 2: Check the tree is clean**
 
 ```bash
-for f in plan.md README.md; do
-  p=work/2026-11/486_manifest-dir-runtime/$f
-  if [ -n "$(git status --porcelain -- "$p" | grep '^??')" ]; then
-    if [ "$(git hash-object "$p")" = "$(git rev-parse "origin/main:$p")" ]; then rm "$p"; echo "removed $p"; else echo "DIFFERS $p"; fi
-  fi
-done
+git status --porcelain
 ```
 
-Expected: nothing, or `removed ...` lines. Any `DIFFERS` line: STOP (the local copy holds edits that `origin/main` lacks).
+Expected: no output. Any line: STOP.
 
 - [ ] **Step 3: Make the branch**
 
 ```bash
-git switch -c perf/486-manifest-dir-runtime origin/main
+git switch -c perf/486-manifest-dir-runtime origin/neilsh/open-tasks-dsh
 ```
 
-Expected: `Switched to a new branch 'perf/486-manifest-dir-runtime'`. The untracked folders `work/2026-11/473_memory-map-split/` and `work/2026-11/507_reviewer-pr-comments/` stay untracked. If git refuses, STOP.
+Expected: `Switched to a new branch 'perf/486-manifest-dir-runtime'`. If git refuses, STOP.
 
 - [ ] **Step 4: Write the guard test**
 
@@ -958,7 +951,7 @@ git add work/2026-11/486_manifest-dir-runtime/journal.md work/2026-11/486_manife
 git status
 ```
 
-The second `git status` must show only those four files staged (`plan.md` is already on `origin/main` and unchanged). Anything else staged: STOP.
+The second `git status` must show only those four files staged (`plan.md` is already committed on the plans branch and unchanged). Anything else staged: STOP.
 
 ```bash
 git commit -F - <<'EOF'
@@ -969,3 +962,5 @@ EOF
 ```
 
 Do not push: the `docs/` changes need a fresh reviewer first (AGENTS.md, Committing rule 5). Report: the three commit hashes, the before, after and warm figures, the units-built counts and `stunt` lines, and that nothing was pushed.
+
+- [ ] **Step 10 (whoever pushes the branch): Sync with `main` before merging.** This branch and its sibling PRs (#514 and the other plans' PRs) each carry the same plans commit, and a sibling's squash merge does not make that commit an ancestor here. So after any sibling has merged, and before this PR merges, run in Git Bash: `git fetch origin && git merge origin/main`. An add/add conflict under `work/2026-11/` is expected: for each conflicted path under `work/2026-11/486_manifest-dir-runtime/`, run `git checkout --ours -- <path>`; for each other conflicted path under `work/2026-11/`, run `git checkout --theirs -- <path>`. Then `git add` those paths, `git commit --no-edit`, run `mise run check` (expect `PASS`), and push. Any conflict outside `work/2026-11/`: STOP and report.
