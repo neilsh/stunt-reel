@@ -28,8 +28,8 @@ the best variant that is not the baseline), one PNG per chosen tick into ``DIR``
 (``stunt_reel.parity_pictures`` chooses the ticks). It re-renders only those ticks, refuses before
 rendering when a path it could write exists, and never replaces a picture. ``--crop x0,y0,x1,y1``
 crops every picture to that box, enlarged 3 times; without it a picture is the whole frame.
-``--probe iou`` adds the actor-window IoU of ``parity_probe.py`` (its CTRY background ranges are
-used for every film). ``--data-root`` points at a checkout holding ``corpus/`` and the capture
+``--probe iou`` adds the actor-window IoU of ``parity_probe.py``, which reads each film's backdrop
+bands from its ``references.toml`` row; a film without them shows ``-`` for it and keeps its SSIM. ``--data-root`` points at a checkout holding ``corpus/`` and the capture
 directories when this one (a worktree) has none. ``--no-build`` reuses the existing release
 binary, ``--reuse DIR`` scores an existing ``DIR/<film>`` tree without rendering, and ``--retime
 N`` relabels each film directory by N ticks before scoring (see ``parity_probe.py retime``). Two
@@ -292,10 +292,40 @@ def _first_line(error: Exception, limit: int) -> str:
     return str(error).splitlines()[0][:limit]
 
 
-def with_actor_iou(attempt: FilmScore, root: Path) -> Score:
-    """Adds ``parity_probe``'s actor-window IoU to one pipeline score."""
+def unbanded_films(root: Path, films: list[str]) -> list[str]:
+    """The *films* whose ``references.toml`` row under *root* has no ``background`` bands."""
+    missing = []
+    for film in films:
+        try:
+            banded = references.read_reference(root, film).background is not None
+        except references.ReferenceCaptureError:
+            banded = False
+        if not banded:
+            missing.append(film)
+    return missing
+
+
+def with_actor_iou(attempt: FilmScore, root: Path, noted: set[str] | None = None) -> Score:
+    """Adds ``parity_probe``'s actor-window IoU to one pipeline score.
+
+    A film whose ``references.toml`` row has no ``background`` keeps its SSIM and IoU with no actor
+    IoU (a ``-`` cell), so one film without bands does not drop the variant's mean SSIM; its
+    notice goes to stderr once per film in *noted*. Any other failure of the probe propagates.
+    """
+    if references.read_reference(root, attempt.film).background is None:
+        if noted is None or attempt.film not in noted:
+            print(
+                f"parity_sweep: {attempt.film}: no actor IoU, its references.toml row has no "
+                "`background`",
+                file=sys.stderr,
+            )
+            if noted is not None:
+                noted.add(attempt.film)
+        return attempt.score
     with references.open_reference(root, attempt.film) as reference:
-        actor, _ = parity_probe.actor_iou(attempt.report / "report.json", reference, attempt.render)
+        actor, _ = parity_probe.actor_iou(
+            attempt.report / "report.json", reference, attempt.render, root=root
+        )
     return Score(attempt.score.ssim, attempt.score.iou, actor)
 
 
@@ -496,6 +526,16 @@ def main(argv: list[str] | None = None) -> int:
     problems = preflight(root, films, build_required=not options.no_build)
     if not problems:
         problems = uncaptured_ranges(root, targets)
+    if (
+        not problems
+        and args.probe == "iou"
+        and options.reuse is None
+        and len(unbanded_films(root, films)) == len(films)
+    ):
+        listed = ", ".join(films)
+        problems = [
+            f"--probe iou needs a `background` in a references.toml row of {listed}: none has"
+        ]
     if problems:
         print("parity_sweep: " + "\n  ".join(problems), file=sys.stderr)
         return 2
@@ -529,6 +569,7 @@ def main(argv: list[str] | None = None) -> int:
     #: Variants finished before the baseline, kept until they can be judged against it.
     waiting: list[Variant] = []
     started = time.monotonic()
+    noted: set[str] = set()
 
     def work(job: FilmJob, plan: SweepPlan) -> FilmScore:
         """Renders and scores *job*'s film in *plan*'s work directory and environment."""
@@ -572,7 +613,9 @@ def main(argv: list[str] | None = None) -> int:
                 notes.append(f"{attempt.film} FAILED ({_first_line(attempt.error, 80)})")
                 continue
             try:
-                measured = with_actor_iou(attempt, root) if args.probe == "iou" else attempt.score
+                measured = (
+                    with_actor_iou(attempt, root, noted) if args.probe == "iou" else attempt.score
+                )
                 frames = FilmRun.of(read_report(attempt.report / "report.json"))
             except (RuntimeError, ValueError, OSError, KeyError) as err:
                 variant.scores[attempt.film] = variant.frames[attempt.film] = None

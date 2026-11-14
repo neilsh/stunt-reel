@@ -15,6 +15,10 @@ A row also names the game builds its reference was made with, ``makeone`` and ``
 :func:`require_builds` is the one check that a run's build pair is the pair its film's row
 names; ``play`` and the capture scripts call it before they launch the emulator.
 
+A row may name ``background``, the capture palette-index bands that are backdrop or ground
+rather than a model, as ``[[lo, hi], ...]`` inclusive pairs; ``parity_probe.py shift`` and ``iou``
+read it, and refuse a film whose row has none.
+
 A row may also record the film's recapture noise, ``noise_sigma``, and in
 ``[<film>.expected.<class>]`` the scores the film is expected to reach on each renderer class,
 with the ``crates/`` tree and pins they were measured on; :func:`read_reference` checks both.
@@ -136,7 +140,8 @@ class Reference:
     ``all_sha256`` pins the archive the film plays, when the row names one (ADR 0037): parity
     renders and captures with the archive of exactly those bytes. ``expected`` holds the row's
     expected scores by renderer class, read-only and empty without any; ``noise_sigma`` is the
-    recapture noise of the whole-frame SSIM, when the row names it.
+    recapture noise of the whole-frame SSIM, when the row names it. ``background`` is the row's
+    inclusive ``(lo, hi)`` palette-index bands of backdrop and ground, ``None`` when it names none.
     """
 
     film: str
@@ -149,6 +154,7 @@ class Reference:
         default_factory=lambda: MappingProxyType({}), hash=False
     )
     noise_sigma: float | None = None
+    background: tuple[tuple[int, int], ...] | None = None
 
 
 # Not cached: a capture is replaced in place (ADR 0028), so a digest keyed by path goes stale.
@@ -240,7 +246,31 @@ def read_reference(root: Path, film: str) -> Reference:
         _pin(path, name, entry),
         expected=_expected(path, name, entry),
         noise_sigma=_noise_sigma(path, name, entry),
+        background=_background(path, name, entry),
     )
+
+
+def _background(
+    path: Path, name: str, entry: dict[str, object]
+) -> tuple[tuple[int, int], ...] | None:
+    """The ``background`` bands row *name* of *path* names, each ``lo <= hi`` in 0..255, or ``None``."""
+    value = entry.get("background")
+    if value is None:
+        return None
+    wanted = "a non-empty array of [lo, hi] palette-index pairs, 0 <= lo <= hi <= 255"
+    if not isinstance(value, list) or not value:
+        raise _invalid(path, name, "background", value, wanted)
+    bands: list[tuple[int, int]] = []
+    for band in value:
+        if (
+            not isinstance(band, list)
+            or len(band) != 2
+            or not all(isinstance(end, int) and not isinstance(end, bool) for end in band)
+            or not 0 <= band[0] <= band[1] <= 255
+        ):
+            raise _invalid(path, name, "background", band, wanted)
+        bands.append((band[0], band[1]))
+    return tuple(bands)
 
 
 def _pin(path: Path, name: str, entry: dict[str, object]) -> str | None:

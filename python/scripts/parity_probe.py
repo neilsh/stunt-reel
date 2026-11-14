@@ -18,7 +18,9 @@ through the same adapter:
   never retyped by hand.
 
 Object pixels are capture pixels that are not sky, ground ramp, button bar or
-cursor; the index ranges default to ``CTRY.FLM`` and are per film.
+cursor. ``shift`` and ``iou`` take the backdrop index bands from the ``background`` field of the
+``references.toml`` row of the film the capture's ``meta.json`` names, and refuse a film whose
+row has none.
 """
 
 from __future__ import annotations
@@ -37,11 +39,9 @@ import numpy as np
 from stunt_reel import dataroot, parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.matched_frames import Reference
-from stunt_reel.parity_artifacts import RenderStore, read_report
+from stunt_reel.parity_artifacts import RenderStore, read_capture, read_report
 from stunt_reel.parity_pipeline import RetimeError, retime_render
 
-#: Inclusive index ranges that are not "object": ground ramp, sky, shade greens.
-CTRY_BACKGROUND = ((192, 199), (228, 238), (161, 165))
 #: Cursor (255) and shadow/black (0) are never object pixels.
 NEVER_OBJECT = (0, 255)
 
@@ -68,6 +68,34 @@ def is_object(index: int, background: tuple[tuple[int, int], ...]) -> bool:
     if index in NEVER_OBJECT:
         return False
     return not any(lo <= index <= hi for lo, hi in background)
+
+
+def background_for(reference: Path, root: Path | None = None) -> tuple[tuple[int, int], ...]:
+    """The backdrop index bands of the film the capture in *reference* shows.
+
+    They are the ``background`` field of that film's ``references.toml`` row, found by the
+    ``.FLM`` stem in the capture's ``meta.json`` and read under *root* (default: the data root).
+    Raises ``ReferenceCaptureError`` when the capture names no film, the film has no row, or its
+    row has no ``background``: a guessed band would score another film's sky and ground as
+    aircraft.
+    """
+    name = read_capture(reference).film.name
+    if not name:
+        raise references.ReferenceCaptureError(f"{reference / 'meta.json'} names no film")
+    film = Path(name).stem.lower()
+    try:
+        row = references.read_reference(dataroot.data_root() if root is None else root, film)
+    except references.ReferenceCaptureError as err:
+        raise references.ReferenceCaptureError(
+            f"{name}: cannot read the [{film}] row in "
+            f"{parity_layout.REFERENCES_FILE.as_posix()} for its backdrop ({err})"
+        ) from err
+    if row.background is None:
+        raise references.ReferenceCaptureError(
+            f"{name}: the [{film}] row of {parity_layout.REFERENCES_FILE.as_posix()} has no "
+            "`background` (inclusive [lo, hi] palette-index bands of sky and ground); record it"
+        )
+    return row.background
 
 
 def cmd_retime(args: argparse.Namespace) -> int:
@@ -199,9 +227,17 @@ def shifted_pixels(pixels: list[int], dx: int, dy: int, width: int, rows: int) -
 
 
 def capture_actor_pixels(
-    capture: bytes, silhouette: list[int], width: int, rows: int, pad: int = 8
+    capture: bytes,
+    silhouette: list[int],
+    width: int,
+    rows: int,
+    background: tuple[tuple[int, int], ...],
+    pad: int = 8,
 ) -> list[int]:
     """The capture's object pixels near ``silhouette``, so the capture's aircraft is left out whole.
+
+    A capture pixel is an object pixel as :func:`is_object` says: not cursor or shadow
+    (``NEVER_OBJECT``) and not in a ``background`` band.
 
     The capture's aircraft can be larger than our silhouette moved onto it, so every capture
     object pixel within ``pad`` pixels (in x and in y) of a silhouette pixel is taken as aircraft.
@@ -222,9 +258,7 @@ def capture_actor_pixels(
                 spread[:, step:] |= grown[:, :-step]
                 spread[:, :-step] |= grown[:, step:]
         grown = spread
-    return [
-        int(p) for p in np.flatnonzero(grown.reshape(-1)) if is_object(capture[p], CTRY_BACKGROUND)
-    ]
+    return [int(p) for p in np.flatnonzero(grown.reshape(-1)) if is_object(capture[p], background)]
 
 
 def world_shift(
@@ -267,6 +301,7 @@ def world_shift(
 
 
 def cmd_shift(args: argparse.Namespace) -> None:
+    background = background_for(args.reference)
     store = RenderStore(args.ours)
     geometry = store.record.geometry
     width, rows = geometry.width, geometry.plane_rows()
@@ -289,13 +324,17 @@ def cmd_shift(args: argparse.Namespace) -> None:
                     if (
                         0 <= x < width
                         and 0 <= y < rows
-                        and is_object(capture_index[y * width + x], CTRY_BACKGROUND)
+                        and is_object(capture_index[y * width + x], background)
                     ):
                         hit += 1
                 if hit > best[0]:
                     best = (hit, dx, dy)
         capture_actor = capture_actor_pixels(
-            capture_index, shifted_pixels(pixels, best[1], best[2], width, rows), width, rows
+            capture_index,
+            shifted_pixels(pixels, best[1], best[2], width, rows),
+            width,
+            rows,
+            background,
         )
         world = world_shift(
             page.indices, capture_index, pixels, width, rows, args.world_reach, capture_actor
@@ -336,8 +375,13 @@ def actor_iou(
     every: int = 2,
     pad: int = 25,
     min_pixels: int = 100,
+    root: Path | None = None,
 ) -> tuple[float, int]:
-    """Mean actor-window IoU over every `every`-th scored frame, and the frames used."""
+    """Mean actor-window IoU over every `every`-th scored frame, and the frames used.
+
+    Backdrop is the capture film's ``background`` bands (:func:`background_for`, read under *root*).
+    """
+    background = background_for(reference, root)
     store = RenderStore(ours)
     geometry = store.record.geometry
     width, rows = geometry.width, geometry.plane_rows()
@@ -355,7 +399,7 @@ def actor_iou(
             y * width + x
             for y in range(max(0, min(ys) - pad), min(rows, max(ys) + pad))
             for x in range(max(0, min(xs) - pad), min(width, max(xs) + pad))
-            if is_object(capture_index[y * width + x], CTRY_BACKGROUND)
+            if is_object(capture_index[y * width + x], background)
         }
         total += len(pixels & seen) / len(pixels | seen)
         count += 1
@@ -470,7 +514,11 @@ def main() -> int:
             except references.ReferenceCaptureError as err:
                 print(f"parity_probe: {err}", file=sys.stderr)
                 return 1
-        result = args.func(args)
+        try:
+            result = args.func(args)
+        except references.ReferenceCaptureError as err:
+            print(f"parity_probe: {err}", file=sys.stderr)
+            return 1
     return 0 if result is None else int(result)
 
 
