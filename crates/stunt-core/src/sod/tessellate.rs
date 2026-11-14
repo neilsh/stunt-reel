@@ -4,7 +4,7 @@
 //! - `[I1]` Metric right-handed coordinates and attribute-preserving vertex welding
 //! - `[I2]` Flat arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`)
 //! - `[I3]` VGA Mode 13h palette index preservation
-//! - `[I5]` Coplanar decal identification and normal displacement
+//! - `[I5]` Coplanar decal identification and decal groups
 //!
 //! Reference verification: Gate G03 (`std::mem::size_of::<SodVertex>() == 28`).
 
@@ -33,7 +33,7 @@ pub const IDENTITY_MATRIX: [f32; 16] = [
 ];
 
 /// Attribute tuple key used for vertex deduplication per Invariant `[I1]`.
-pub(crate) type WeldKey = (i64, i64, i64, i32, i32, i32, u8, u8);
+pub(crate) type WeldKey = (i64, i64, i64, i32, i32, i32, u8, u8, u8);
 
 /// Quantizes vertex attributes into a deduplication key per Invariant `[I1]`.
 ///
@@ -56,11 +56,12 @@ pub(crate) fn quantize_weld_key(
     let nx = (normal[0] * 1_000.0).round() as i32;
     let ny = (normal[1] * 1_000.0).round() as i32;
     let nz = (normal[2] * 1_000.0).round() as i32;
-    (px, py, pz, nx, ny, nz, palette_index, flags)
+    (px, py, pz, nx, ny, nz, palette_index, flags, 0)
 }
 
-/// Builds a [`SodModelIr`] from a processed polygon list.
-pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodModelIr {
+/// Builds a [`SodModelIr`] from a processed polygon list and each polygon's decal group
+/// (missing entries are group 0).
+pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon], groups: &[u8]) -> SodModelIr {
     let mut ir = SodModelIr::new(name);
 
     // Invariant [I2]: Allocate root transform group
@@ -78,16 +79,27 @@ pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodMode
 
     // Group polygons into batches partitioned by (is_decal, visibility) preserving order.
     // Base geometry meshes (is_decal: false) are processed first, followed by decal meshes (is_decal: true) per Invariant [I5].
+    // Within a batch, polygons are sorted by decal group (stable, so stream order holds
+    // inside a group), so the renderer draws each group as one run.
+    let grouped: Vec<(&RawPolygon, u8)> = polygons
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (p, groups.get(i).copied().unwrap_or(0)))
+        .collect();
     for is_decal in [false, true] {
-        let matching_polys: Vec<&RawPolygon> =
-            polygons.iter().filter(|p| p.is_decal == is_decal).collect();
+        let mut matching_polys: Vec<(&RawPolygon, u8)> = grouped
+            .iter()
+            .copied()
+            .filter(|(p, _)| p.is_decal == is_decal)
+            .collect();
+        matching_polys.sort_by_key(|&(_, g)| g);
         if matching_polys.is_empty() {
             continue;
         }
 
         // Determine unique visibility conditions in order of appearance
         let mut vis_conditions: Vec<VisibilityCondition> = Vec::new();
-        for p in &matching_polys {
+        for (p, _) in &matching_polys {
             if !vis_conditions.contains(&p.visibility) {
                 vis_conditions.push(p.visibility);
             }
@@ -96,10 +108,10 @@ pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodMode
         let prefix = if is_decal { "DECAL" } else { "BASE" };
 
         for (batch_idx, &vis) in vis_conditions.iter().enumerate() {
-            let batch: Vec<&RawPolygon> = matching_polys
+            let batch: Vec<(&RawPolygon, u8)> = matching_polys
                 .iter()
                 .copied()
-                .filter(|p| p.visibility == vis)
+                .filter(|(p, _)| p.visibility == vis)
                 .collect();
             if batch.is_empty() {
                 continue;
@@ -133,7 +145,7 @@ fn process_polygon_batch(
     ir: &mut SodModelIr,
     parent_id: NodeId,
     node_name: &str,
-    polys: &[&RawPolygon],
+    polys: &[(&RawPolygon, u8)],
     is_decal: bool,
     visibility: VisibilityCondition,
     weld_map: &mut HashMap<WeldKey, u32>,
@@ -141,9 +153,9 @@ fn process_polygon_batch(
     let vertex_offset = arena_index(ir.vertices.len());
     let index_offset = arena_index(ir.indices.len());
 
-    for poly in polys {
+    for &(poly, group) in polys {
         if poly.flags & VERTEX_FLAG_LINE != 0 {
-            push_line(ir, poly, weld_map);
+            push_line(ir, poly, group, weld_map);
             continue;
         }
         let num_v = poly.vertices.len();
@@ -158,7 +170,8 @@ fn process_polygon_batch(
                 .get(corner)
                 .copied()
                 .unwrap_or(poly.palette_index);
-            let weld_key = quantize_weld_key(v_pos, &poly.normal, palette_index, poly.flags);
+            let mut weld_key = quantize_weld_key(v_pos, &poly.normal, palette_index, poly.flags);
+            weld_key.8 = group;
             if let Some(&existing_idx) = weld_map.get(&weld_key) {
                 poly_indices.push(existing_idx);
             } else {
@@ -169,7 +182,7 @@ fn process_polygon_batch(
                     palette_index,
                     flags: poly.flags,
                     scenery_class: 0,
-                    _padding: 0,
+                    decal_group: group,
                 });
                 weld_map.insert(weld_key, new_idx);
                 poly_indices.push(new_idx);
@@ -209,7 +222,12 @@ fn process_polygon_batch(
 /// each endpoint, one per side, wound both ways so back-face culling keeps one. The quad has no
 /// width in the world; the renderer widens it to one pixel on screen. A polygon without two
 /// vertices appends nothing.
-fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<WeldKey, u32>) {
+fn push_line(
+    ir: &mut SodModelIr,
+    poly: &RawPolygon,
+    group: u8,
+    weld_map: &mut HashMap<WeldKey, u32>,
+) {
     let [a, b] = poly.vertices[..] else {
         return;
     };
@@ -224,7 +242,8 @@ fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<Weld
     ];
     let mut quad = [0u32; 4];
     for (slot, (position, to_other, flags)) in quad.iter_mut().zip(corners) {
-        let key = quantize_weld_key(&position, &to_other, poly.palette_index, flags);
+        let mut key = quantize_weld_key(&position, &to_other, poly.palette_index, flags);
+        key.8 = group;
         *slot = *weld_map.entry(key).or_insert_with(|| {
             let index = arena_index(ir.vertices.len());
             ir.vertices.push(SodVertex {
@@ -233,7 +252,7 @@ fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<Weld
                 palette_index: poly.palette_index,
                 flags,
                 scenery_class: 0,
-                _padding: 0,
+                decal_group: group,
             });
             index
         });
@@ -288,12 +307,12 @@ pub fn decode_sod_lit(
         DecodeMode::Census => (Policy::Census, None, false),
     };
     let run = run_vm(data, policy, anchors, light, None)?;
-    let polygons = if geometry {
-        identify_coplanar_decals(&run.polygons, 0.001, 1e-4, 1e-4)
+    let (polygons, groups) = if geometry {
+        identify_coplanar_decals(&run.polygons, 1e-4, 1e-4)
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
-    let mut ir = build_sod_model_ir(name, &polygons);
+    let mut ir = build_sod_model_ir(name, &polygons, &groups);
     if geometry {
         ir.sprites = run.sprites;
     }

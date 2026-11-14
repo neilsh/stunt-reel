@@ -2,7 +2,10 @@
 //!
 //! Complies with Architectural Invariants:
 //! - `[I3]` VGA Mode 13h palette index color mapping and flat shading.
-//! - `[I5]` Hardware depth bias decal pass (`constant: -2, slope_scale: -2.0, clamp: 0.0`).
+//! - `[I5]` Ordered decal pass: every polygon of a decal group writes the group's stencil
+//!   reference as it is drawn depth-tested; the group's decals are then drawn again in
+//!   stream order where the stencil matches, with no depth test and no depth write, so a
+//!   later coplanar polygon covers an earlier one as `PLAYONE` paints it.
 
 use stunt_core::contracts::SodVertex;
 
@@ -71,9 +74,16 @@ pub(crate) struct RenderPipelines {
     /// Line-list pipeline for the outlines of the world's flat-ground slices, compared like
     /// [`Self::ground_pipeline`].
     pub(crate) ground_edge_pipeline: wgpu::RenderPipeline,
-    /// Base mesh pipeline with zero depth bias and `Less` depth compare.
+    /// Base mesh pipeline with zero depth bias and `Less` depth compare; it writes the
+    /// draw's stencil reference, the slice's decal group or zero.
     pub(crate) base_pipeline: wgpu::RenderPipeline,
-    /// Decal mesh pipeline conforming to `[I5]` with hardware depth bias and `LessEqual` compare.
+    /// Decal slices drawn among the base geometry: depth-tested with the old `[I5]` depth
+    /// bias (`LessEqual`, depth write), writing the slice's stencil reference, so a group's
+    /// stencil covers its decals where they reach past its first polygon. A decal of group
+    /// zero (a terrain decal) is drawn only here.
+    pub(crate) cover_pipeline: wgpu::RenderPipeline,
+    /// The ordered decal pass `[I5]`: no depth test or write, drawn where the stencil equals
+    /// the slice's reference, so it paints over its own group's visible pixels only.
     pub(crate) decal_pipeline: wgpu::RenderPipeline,
     /// The decal pipeline without back-face culling, for an actor's ground shadow: its
     /// faces are flattened onto the ground, so a face's winding there no longer says whether
@@ -83,10 +93,12 @@ pub(crate) struct RenderPipelines {
     /// Line-list pipeline for the world mesh's polygon outlines (`GpuModel::draw_edges`),
     /// with the base depth test. Lines are not culled, since they have no winding.
     pub(crate) edge_pipeline: wgpu::RenderPipeline,
-    /// The edge pipeline with the decal depth test, for the outlines of decal slices. wgpu
-    /// allows depth bias only on triangles, so it compares `LessEqual` without the `[I5]`
-    /// bias.
+    /// The edge pipeline compared like [`Self::decal_pipeline`], for the outlines of decal
+    /// slices of a nonzero group.
     pub(crate) edge_decal_pipeline: wgpu::RenderPipeline,
+    /// The edge pipeline compared `LessEqual` with depth write and stencil replace, for the
+    /// outlines of decal slices of group zero.
+    pub(crate) edge_cover_pipeline: wgpu::RenderPipeline,
     /// Fullscreen pipeline that paints the sky bands behind all geometry.
     pub(crate) sky_pipeline: wgpu::RenderPipeline,
     /// Solid-black fullscreen pipeline used to paint `[I6]` letterbox bars.
@@ -217,12 +229,33 @@ impl RenderPipelines {
         let vertex_layout = Self::vertex_buffer_layout();
         let vertex_buffers = [Some(vertex_layout)];
 
+        let stencil_with = |compare, pass_op| {
+            let face = wgpu::StencilFaceState {
+                compare,
+                fail_op: wgpu::StencilOperation::Keep,
+                depth_fail_op: wgpu::StencilOperation::Keep,
+                pass_op,
+            };
+            wgpu::StencilState {
+                front: face,
+                back: face,
+                read_mask: 0xFF,
+                write_mask: 0xFF,
+            }
+        };
+        let stencil_replace = stencil_with(
+            wgpu::CompareFunction::Always,
+            wgpu::StencilOperation::Replace,
+        );
+        let stencil_equal =
+            stencil_with(wgpu::CompareFunction::Equal, wgpu::StencilOperation::Keep);
+
         // Base geometry depth stencil state: normal depth test, zero bias
         let base_depth_stencil = wgpu::DepthStencilState {
             format: depth_format,
             depth_write_enabled: Some(true),
             depth_compare: Some(wgpu::CompareFunction::Less),
-            stencil: wgpu::StencilState::default(),
+            stencil: stencil_replace.clone(),
             bias: wgpu::DepthBiasState {
                 constant: 0,
                 slope_scale: 0.0,
@@ -236,7 +269,7 @@ impl RenderPipelines {
         // the sign (it was positive until 2026-10-23) makes decals win the tie, as the capture
         // does: CTRY 0.7708 -> 0.7713, INTRO 0.6762 -> 0.6775
         // (work/2026-10/parity-log/log.md, 2026-10-23).
-        let decal_depth_stencil = wgpu::DepthStencilState {
+        let biased_depth_stencil = wgpu::DepthStencilState {
             format: depth_format,
             depth_write_enabled: Some(true),
             depth_compare: Some(wgpu::CompareFunction::LessEqual),
@@ -246,6 +279,17 @@ impl RenderPipelines {
                 slope_scale: -2.0,
                 clamp: 0.0,
             },
+        };
+        let cover_depth_stencil = wgpu::DepthStencilState {
+            stencil: stencil_replace,
+            ..biased_depth_stencil
+        };
+        let decal_depth_stencil = wgpu::DepthStencilState {
+            format: depth_format,
+            depth_write_enabled: Some(false),
+            depth_compare: Some(wgpu::CompareFunction::Always),
+            stencil: stencil_equal,
+            bias: wgpu::DepthBiasState::default(),
         };
 
         let primitive = wgpu::PrimitiveState {
@@ -284,7 +328,8 @@ impl RenderPipelines {
 
         let ground_depth_stencil = wgpu::DepthStencilState {
             depth_compare: Some(wgpu::CompareFunction::Always),
-            ..base_depth_stencil.clone()
+            stencil: wgpu::StencilState::default(),
+            ..base_depth_stencil
         };
 
         let ground_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -353,6 +398,28 @@ impl RenderPipelines {
             cache: None,
         });
 
+        let cover_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("stunt_mode13h_cover_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader_module,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &vertex_buffers,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader_module,
+                entry_point: Some(fragment_entry),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &targets,
+            }),
+            primitive: model_primitive,
+            depth_stencil: Some(cover_depth_stencil.clone()),
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
         let edge_primitive = wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::LineList,
             ..primitive
@@ -383,12 +450,14 @@ impl RenderPipelines {
         let ground_edge_pipeline =
             edge_pipeline_with(ground_depth_stencil, "stunt_ground_edge_pipeline");
         let edge_pipeline = edge_pipeline_with(base_depth_stencil, "stunt_edge_pipeline");
-        let edge_decal_pipeline = edge_pipeline_with(
+        let edge_decal_pipeline =
+            edge_pipeline_with(decal_depth_stencil, "stunt_edge_decal_pipeline");
+        let edge_cover_pipeline = edge_pipeline_with(
             wgpu::DepthStencilState {
                 bias: wgpu::DepthBiasState::default(),
-                ..decal_depth_stencil.clone()
+                ..cover_depth_stencil
             },
-            "stunt_edge_decal_pipeline",
+            "stunt_edge_cover_pipeline",
         );
 
         let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -407,7 +476,7 @@ impl RenderPipelines {
                 targets: &targets,
             }),
             primitive,
-            depth_stencil: Some(decal_depth_stencil),
+            depth_stencil: Some(biased_depth_stencil),
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
             cache: None,
@@ -486,10 +555,12 @@ impl RenderPipelines {
             ground_pipeline,
             ground_edge_pipeline,
             base_pipeline,
+            cover_pipeline,
             decal_pipeline,
             shadow_pipeline,
             edge_pipeline,
             edge_decal_pipeline,
+            edge_cover_pipeline,
             sky_pipeline,
             bar_pipeline,
             model_bind_group_layout,

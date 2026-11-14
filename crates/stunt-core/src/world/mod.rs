@@ -34,8 +34,7 @@ use crate::contracts::{
     SodModelIr, SodVertex, VERTEX_FLAG_LINE, VisibilityCondition, arena_index,
 };
 use crate::sod::{
-    DECAL_FLAG_BIT, DecodeMode, EPSILON_DISPLACEMENT, OP_TAP, ShadeLight, SodError, SodStop,
-    decode_sod_lit, faces_view, trace_sod,
+    DecodeMode, OP_TAP, ShadeLight, SodError, SodStop, decode_sod_lit, faces_view, trace_sod,
 };
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
@@ -573,13 +572,34 @@ pub(crate) fn build_world_ir(
             terrain(ir, Patches::Flat);
         }
     };
+    // Each placement's decal groups follow the previous placement's, so placements of one
+    // shape get distinct groups until the 255 stencil values wrap (`[I5]`).
+    let group_bases: Vec<u32> = instances
+        .iter()
+        .enumerate()
+        .scan(0u32, |next, (index, placement)| {
+            let base = *next;
+            let groups = ir_models.get(index, placement.shape).map_or(0, |m| {
+                m.vertices.iter().map(|v| v.decal_group).max().unwrap_or(0)
+            });
+            *next = (base + u32::from(groups)) % 255;
+            Some(base)
+        })
+        .collect();
+    let props = Props {
+        instances,
+        grounded: &grounded,
+        group_bases: &group_bases,
+        ir_models,
+        base_y,
+    };
     terrain(&mut ir, Patches::Raised { overlay: false });
-    push_props(&mut ir, instances, &grounded, ir_models, base_y, false);
+    push_props(&mut ir, &props, false);
 
     let base_indices = arena_index(ir.indices.len());
     let base_vertices = arena_index(ir.vertices.len());
     terrain(&mut ir, Patches::Raised { overlay: true });
-    push_props(&mut ir, instances, &grounded, ir_models, base_y, true);
+    push_props(&mut ir, &props, true);
     let decal_indices = arena_index(ir.indices.len()) - base_indices;
     let decal_vertices = arena_index(ir.vertices.len()) - base_vertices;
 
@@ -614,7 +634,7 @@ pub(crate) fn build_world_ir(
             },
         );
     }
-    push_gated_props(&mut ir, root_base, instances, &grounded, ir_models, base_y);
+    push_gated_props(&mut ir, root_base, &props);
     ir
 }
 
@@ -668,7 +688,7 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
             palette_index: color,
             flags: FLAGS_UNSHADED,
             scenery_class,
-            _padding: 0,
+            decal_group: 0,
         });
     }
     ir.indices
@@ -832,7 +852,7 @@ fn push_terrain(
                 palette_index: area.color,
                 flags: FLAGS_UNSHADED,
                 scenery_class: SCENERY_TERRAIN,
-                _padding: 0,
+                decal_group: 0,
             });
         }
         for k in 1..(arena_index(area.verts.len()) - 1) {
@@ -951,22 +971,11 @@ fn ground_decal_vertices(
                 snapped.push([p[0], h, p[2]]);
             }
             Some(_) => return None,
-            // Off the terrain a decal keeps its height less its `[I5]` lift, so it lies in
-            // the same plane as the base polygon under it, as the vertices over terrain do.
-            None => snapped.push([p[0], unlifted_height(v, p[1]), p[2]]),
+            // Off the terrain a vertex keeps its height.
+            None => snapped.push(p),
         }
     }
     on_terrain.then_some(snapped)
-}
-
-/// `y`, the height of prop vertex `v`, less the lift along its normal that the decoder gives
-/// a coplanar decal (`[I5]`); a line's `normal` is no normal, so a line keeps `y`.
-fn unlifted_height(v: &SodVertex, y: f32) -> f32 {
-    if v.flags & DECAL_FLAG_BIT != 0 && v.flags & VERTEX_FLAG_LINE == 0 {
-        y - EPSILON_DISPLACEMENT * v.normal[1]
-    } else {
-        y
-    }
 }
 
 /// Appends every ungated placed prop mesh slice, translated to its placement and lifted by
@@ -975,14 +984,14 @@ fn unlifted_height(v: &SodVertex, y: f32) -> f32 {
 /// batch. Triangles on the ground plane are left to [`push_gated_props`], which makes them
 /// [`GROUND_NODE`] nodes, as are slices behind a visibility gate and every slice of a
 /// placement behind an `SP_1NODE` gate.
-fn push_props(
-    ir: &mut SodModelIr,
-    instances: &[Placement],
-    grounded: &[Option<Vec<[f32; 3]>>],
-    ir_models: &PropModels<'_>,
-    base_y: f32,
-    decals: bool,
-) {
+fn push_props(ir: &mut SodModelIr, props: &Props<'_, '_>, decals: bool) {
+    let Props {
+        instances,
+        grounded,
+        group_bases,
+        ir_models,
+        base_y,
+    } = *props;
     for (
         index,
         (
@@ -1013,6 +1022,7 @@ fn push_props(
                 pos,
                 ground: ground.as_deref(),
                 base_y,
+                group_base: group_bases.get(index).copied().unwrap_or(0),
             };
             push_prop_mesh(ir, &mesh, placed, false);
         }
@@ -1028,14 +1038,14 @@ fn push_props(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
 )]
-fn push_gated_props(
-    ir: &mut SodModelIr,
-    parent: NodeId,
-    instances: &[Placement],
-    grounded: &[Option<Vec<[f32; 3]>>],
-    ir_models: &PropModels<'_>,
-    base_y: f32,
-) {
+fn push_gated_props(ir: &mut SodModelIr, parent: NodeId, props: &Props<'_, '_>) {
+    let Props {
+        instances,
+        grounded,
+        group_bases,
+        ir_models,
+        base_y,
+    } = *props;
     let root = parent;
     let mut groups: HashMap<(NodeId, LodGate), NodeId> = HashMap::new();
     for (
@@ -1061,6 +1071,7 @@ fn push_gated_props(
             pos,
             ground: ground.as_deref(),
             base_y,
+            group_base: group_bases.get(index).copied().unwrap_or(0),
         };
         for mesh in model.meshes() {
             if mesh.indices.is_empty() {
@@ -1168,6 +1179,20 @@ struct Placed<'a> {
     pos: [f32; 3],
     ground: Option<&'a [[f32; 3]]>,
     base_y: f32,
+    /// Offset added to the prop's decal groups ([`Placed::decal_group`]).
+    group_base: u32,
+}
+
+/// The placed props [`build_world_ir`] appends, parallel to `instances`.
+#[derive(Clone, Copy)]
+struct Props<'a, 'm> {
+    instances: &'a [Placement],
+    /// Snapped vertices of each ground decal ([`ground_decal_vertices`]).
+    grounded: &'a [Option<Vec<[f32; 3]>>],
+    /// Each placement's decal group offset ([`Placed::decal_group`]).
+    group_bases: &'a [u32],
+    ir_models: &'a PropModels<'m>,
+    base_y: f32,
 }
 
 impl Placed<'_> {
@@ -1183,21 +1208,27 @@ impl Placed<'_> {
             ])
     }
 
-    /// The height of vertex `v` at world position `p` less its `[I5]` lift; a snapped vertex
-    /// has none left ([`ground_decal_vertices`]).
-    fn unlifted_height(&self, v: &SodVertex, p: [f32; 3]) -> f32 {
-        if self.ground.is_some() {
-            p[1]
-        } else {
-            unlifted_height(v, p[1])
+    /// The world decal group of a vertex in model decal group `group` (`[I5]`): zero stays
+    /// zero, others are offset by this placement's `group_base` and wrap within `1..=255`.
+    fn decal_group(&self, group: u8) -> u8 {
+        if group == 0 {
+            return 0;
         }
+        let wrapped = self
+            .group_base
+            .wrapping_add(u32::from(group))
+            .wrapping_sub(1)
+            .checked_rem(255)
+            .unwrap_or(0)
+            .saturating_add(1);
+        u8::try_from(wrapped).unwrap_or(u8::MAX)
     }
 }
 
 /// Appends the triangles of one prop mesh at its placement that lie on the ground plane
 /// `y = base_y` when `on_ground`, or the others otherwise, and returns their index ranges.
 ///
-/// A triangle is on the ground plane when its three corners are, less any `[I5]` lift; its
+/// A triangle is on the ground plane when its three corners are; its
 /// corners are then put exactly on it. Each range is a run of line triangles or of filled
 /// ones, in the mesh's order. A corner shared by the triangles appended stays shared, so
 /// outlines skip the edges inside.
@@ -1223,11 +1254,7 @@ fn push_prop_mesh(
             continue;
         };
         let corners = [a, b, c];
-        let flat = on_ground_plane(
-            corners
-                .iter()
-                .map(|&(_, v, p)| placed.unlifted_height(v, p) - placed.base_y),
-        );
+        let flat = on_ground_plane(corners.iter().map(|&(_, _, p)| p[1] - placed.base_y));
         if flat != on_ground {
             continue;
         }
@@ -1251,7 +1278,7 @@ fn push_prop_mesh(
                     palette_index: v.palette_index,
                     flags: v.flags,
                     scenery_class: SCENERY_PROP,
-                    _padding: 0,
+                    decal_group: placed.decal_group(v.decal_group),
                 });
                 arena_index(ir.vertices.len() - 1)
             });
@@ -1269,6 +1296,7 @@ mod tests {
     use super::*;
     use crate::anchor::parse_anchor_table;
     use crate::contracts::{VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE};
+    use crate::sod::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
 
     #[test]
     fn test_parse_anchorpt_valid_and_invalid() {
@@ -1436,7 +1464,7 @@ mod tests {
                 palette_index: 10,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                decal_group: 0,
             },
         );
         prop_ir.indices = vec![0, 1, 2, 0, 1, 2];
@@ -1878,7 +1906,7 @@ mod tests {
             palette_index: 193,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_group: 0,
         };
         let mut ir = SodModelIr::new("TILE");
         ir.vertices = vec![
@@ -2012,7 +2040,7 @@ mod tests {
             palette_index: 40,
             flags: VERTEX_FLAG_LINE | flags,
             scenery_class: 0,
-            _padding: 0,
+            decal_group: 0,
         };
         prop.vertices.extend([
             line(-2.0, 0),
@@ -2038,7 +2066,7 @@ mod tests {
     }
 
     /// A tile snapped onto level terrain at the ground plane is ground, its decal triangles
-    /// included: the snap already took their `[I5]` lift away.
+    /// included: the snap puts them on the terrain.
     #[test]
     fn a_snapped_decal_on_level_terrain_is_ground() {
         let mut prop = square_prop(None);

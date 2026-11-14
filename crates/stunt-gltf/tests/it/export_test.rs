@@ -23,8 +23,8 @@ use stunt_core::contracts::{
 use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
 use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource, ViewCamera};
 use stunt_core::sod::{
-    DecodeMode, EPSILON_DISPLACEMENT, OP_COLOR, OP_ID, OP_LINECOL, OP_MOVETO, OP_POLYZ, OP_RETURN,
-    OP_VECTORS, OP_ZLINETO, decode_sod,
+    DECAL_FLAG_BIT, DecodeMode, EPSILON_DISPLACEMENT, OP_COLOR, OP_ID, OP_LINECOL, OP_MOVETO,
+    OP_POLYZ, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
 };
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
@@ -268,9 +268,11 @@ fn accessors_match_the_model_and_bounds_are_exact() {
     assert_eq!(as_f32(&accessor["min"]), min);
     assert_eq!(as_f32(&accessor["max"]), max);
 
-    // Positions and normals are copied unchanged ([I1]).
+    // Positions other than decals' ([I5]) and normals are copied unchanged ([I1]).
     for (i, v) in ir.vertices.iter().enumerate() {
-        assert_eq!(positions[i * 3..i * 3 + 3], v.position);
+        if v.flags & DECAL_FLAG_BIT == 0 {
+            assert_eq!(positions[i * 3..i * 3 + 3], v.position);
+        }
     }
     let normals = glb.floats(normal);
     for (i, v) in ir.vertices.iter().enumerate() {
@@ -305,7 +307,7 @@ fn vertex_colors_are_the_palette_colors() {
 }
 
 #[test]
-fn decal_slice_is_displaced_once_along_its_normal() {
+fn decal_slice_is_moved_toward_its_front_on_export() {
     let ir = model("synthetic_minimal.sod");
     let glb = parse_glb(&export_shape(&ir).expect("export"));
     let positions = glb.floats(glb.primitive_accessor(0, "POSITION"));
@@ -317,22 +319,23 @@ fn decal_slice_is_displaced_once_along_its_normal() {
     assert!(decal.1 >= base.1 + base.2);
 
     let base_vertex = &ir.vertices[base.1 as usize];
+    // The shading normal is the edge cross product; the front (`FrontFace::Cw`) is opposite.
     let n = base_vertex.normal;
     let plane = |p: [f32; 3]| p[0] * n[0] + p[1] * n[1] + p[2] * n[2];
     let base_d = plane(base_vertex.position);
     for i in decal.1 as usize..(decal.1 + decal.2) as usize {
         let p = [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
-        assert_eq!(
+        assert_ne!(
             p, ir.vertices[i].position,
-            "exported as decoded, not nudged twice"
+            "the exporter moves a decal, which the decoder leaves in place"
         );
         assert_eq!(
             ir.vertices[i].normal, n,
             "decal is coplanar with the base facet"
         );
         assert!(
-            (plane(p) - base_d - EPSILON_DISPLACEMENT).abs() < 1e-5,
-            "decal vertex {i} sits 0.001 m above the base plane"
+            (plane(p) - base_d + EPSILON_DISPLACEMENT).abs() < 1e-5,
+            "decal vertex {i} sits 0.001 m in front of the base plane"
         );
     }
     for i in base.1 as usize..(base.1 + base.2) as usize {
@@ -412,7 +415,7 @@ fn hierarchy_visibility_and_joints_are_preserved() {
             palette_index: 4,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_group: 0,
         });
     }
     ir.indices = vec![0, 1, 2];
@@ -856,4 +859,40 @@ fn a_screen_line_exports_as_a_lines_primitive() {
         .cross(p(triangles[2]) - p(triangles[0]))
         .length();
     assert!(area > 1.0, "{area}");
+}
+
+/// A ground facet wound clockwise seen from above with a smaller decal on it, at scale 1.0.
+fn cw_ground_decal() -> SodModelIr {
+    let mut words: Vec<u16> = vec![OP_ID, 100, 0, 0, 0, OP_VECTORS, 6, 0];
+    // `OP_VECTORS` negates x and y, so these raw points are metric (0,0,0), (10,0,0),
+    // (0,0,10) and (1,0,1), (3,0,1), (1,0,3).
+    for c in [
+        0i16, 0, 0, -10, 0, 0, 0, 0, 10, -1, 0, 1, -3, 0, 1, -1, 0, 3,
+    ] {
+        words.push(c.cast_unsigned());
+    }
+    words.extend([OP_COLOR, 9, OP_POLYZ, 3, 0, 12, 24]);
+    words.extend([OP_COLOR, 15, OP_POLYZ, 3, 36, 48, 60, OP_RETURN]);
+    let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    decode_sod(&bytes, "GROUND", None, DecodeMode::Strict).expect("ground shape")
+}
+
+#[test]
+fn a_clockwise_ground_decal_exports_above_its_facet() {
+    let ir = cw_ground_decal();
+    let glb = parse_glb(&export_shape(&ir).expect("export"));
+    let positions = glb.floats(glb.primitive_accessor(0, "POSITION"));
+    let nodes = mesh_nodes(&ir);
+    let decal = nodes.iter().find(|n| n.5).expect("decal mesh");
+    let base = nodes.iter().find(|n| !n.5).expect("base mesh");
+    for i in decal.1 as usize..(decal.1 + decal.2) as usize {
+        let y = positions[i * 3 + 1];
+        assert!(
+            (y - EPSILON_DISPLACEMENT).abs() < 1e-6,
+            "decal vertex {i} y = {y}"
+        );
+    }
+    for i in base.1 as usize..(base.1 + base.2) as usize {
+        assert_eq!(positions[i * 3 + 1], 0.0, "base vertex {i}");
+    }
 }

@@ -35,7 +35,7 @@ fn vertex(x: f32, y: f32, palette_index: u8, flags: u8) -> SodVertex {
         palette_index,
         flags,
         scenery_class: 0,
-        _padding: 0,
+        decal_group: 0,
     }
 }
 
@@ -419,7 +419,7 @@ fn ground_vertex(x: f32, y: f32, z: f32, palette_index: u8) -> SodVertex {
         palette_index,
         flags: 0,
         scenery_class: 0,
-        _padding: 0,
+        decal_group: 0,
     }
 }
 

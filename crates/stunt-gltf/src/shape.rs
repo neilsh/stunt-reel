@@ -10,14 +10,18 @@
 //! A slice's screen-space lines (`VERTEX_FLAG_LINE` quads, which have no world width) become
 //! a second primitive in `LINES` mode, one segment per quad, and leave the triangle primitive.
 //!
-//! `[I5]`: decal slices own their vertices (a fresh weld map per batch) and the tessellator
-//! has already displaced them by 0.001 m along their normal, so positions are copied as-is.
+//! `[I5]`: decal slices own their vertices (a fresh weld map per batch) and lie in their
+//! base's plane. glTF has no draw order or depth bias, so the exporter alone moves each decal
+//! triangle's corners `EPSILON_DISPLACEMENT` toward its front (the side it winds clockwise
+//! from, `FrontFace::Cw`).
 
 use serde_json::{Value, json};
 use stunt_core::contracts::{
     NodeId, NodeKind, SodModelIr, SodNode, SodVertex, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END,
     VERTEX_FLAG_LINE_SIDE, VisibilityCondition, get_palette_rgb_float,
 };
+
+use stunt_core::sod::EPSILON_DISPLACEMENT;
 
 use crate::GltfError;
 use crate::glb::{
@@ -62,16 +66,25 @@ pub(crate) fn add_shape_assets(
     model: &SodModelIr,
 ) -> Result<ShapeAssets, GltfError> {
     let mut mesh_of_node = vec![None; model.nodes.len()];
-    let Some(extent) = model.extent() else {
+    if model.extent().is_none() {
         return Ok(ShapeAssets { mesh_of_node });
-    };
+    }
     let vertex_count = model.vertices.len();
+    let placed = decal_positions(model);
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
+    for p in &placed {
+        for ((lo, hi), &c) in min.iter_mut().zip(&mut max).zip(p) {
+            *lo = lo.min(c);
+            *hi = hi.max(c);
+        }
+    }
 
     let mut positions = Vec::with_capacity(vertex_count * 12);
     let mut normals = Vec::with_capacity(vertex_count * 12);
     let mut colors = Vec::with_capacity(vertex_count * 16);
-    for v in &model.vertices {
-        for (p, n) in v.position.iter().zip(&v.normal) {
+    for (v, placed) in model.vertices.iter().zip(&placed) {
+        for (p, n) in placed.iter().zip(&v.normal) {
             positions.extend_from_slice(&p.to_le_bytes());
             normals.extend_from_slice(&n.to_le_bytes());
         }
@@ -96,7 +109,7 @@ pub(crate) fn add_shape_assets(
         builder,
         &positions,
         "VEC3",
-        Some((extent.min.to_vec(), extent.max.to_vec())),
+        Some((min.to_vec(), max.to_vec())),
     );
     let normal = vec_accessor(builder, &normals, "VEC3", None);
     let color = vec_accessor(builder, &colors, "VEC4", None);
@@ -249,4 +262,49 @@ fn node_json(node: &SodNode, assets: &ShapeAssets, children: &[usize]) -> Value 
 
 fn visibility_text(visibility: VisibilityCondition) -> String {
     format!("{visibility:?}")
+}
+
+/// Every vertex position of `model`, a decal slice's filled triangles moved
+/// [`EPSILON_DISPLACEMENT`] toward their front, the side they wind clockwise from (`[I5]`).
+fn decal_positions(model: &SodModelIr) -> Vec<[f32; 3]> {
+    let mut placed: Vec<[f32; 3]> = model.vertices.iter().map(|v| v.position).collect();
+    for mesh in model
+        .meshes()
+        .filter(stunt_core::contracts::ShapeMesh::is_decal)
+    {
+        for tri in mesh.indices.as_chunks::<3>().0 {
+            let corners = tri.map(|i| model.vertices.get(i as usize));
+            let [Some(a), Some(b), Some(c)] = corners else {
+                continue;
+            };
+            if a.flags & VERTEX_FLAG_LINE != 0 {
+                continue;
+            }
+            let (a, b, c) = (a.position, b.position, c.position);
+            let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let cross = [
+                u[1] * w[2] - u[2] * w[1],
+                u[2] * w[0] - u[0] * w[2],
+                u[0] * w[1] - u[1] * w[0],
+            ];
+            let len = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+            if len < 1e-12 {
+                continue;
+            }
+            let lift = cross.map(|c| -c / len * EPSILON_DISPLACEMENT);
+            for &i in tri {
+                if let (Some(p), Some(v)) =
+                    (placed.get_mut(i as usize), model.vertices.get(i as usize))
+                {
+                    *p = [
+                        v.position[0] + lift[0],
+                        v.position[1] + lift[1],
+                        v.position[2] + lift[2],
+                    ];
+                }
+            }
+        }
+    }
+    placed
 }

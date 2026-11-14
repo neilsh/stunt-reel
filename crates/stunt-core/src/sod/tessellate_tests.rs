@@ -71,7 +71,8 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_ORACLE", &[tri1, tri2, tri3, tri4]);
+    let ir =
+        crate::sod::tessellate::build_sod_model_ir("WELD_ORACLE", &[tri1, tri2, tri3, tri4], &[]);
 
     // tri1 emits 3 vertices (indices 0, 1, 2)
     // tri2 reuses vertices 0 and 1, emits 1 new vertex (index 3) -> total 4 vertices so far
@@ -135,15 +136,16 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
         visibility: VisibilityCondition::Always,
     };
 
-    let processed =
-        crate::sod::decal::identify_coplanar_decals(&[base, decal1, decal2], 0.001, 1e-4, 1e-4);
+    let (processed, groups) =
+        crate::sod::decal::identify_coplanar_decals(&[base, decal1, decal2], 1e-4, 1e-4);
+    assert_eq!(groups, [1, 1, 1]);
 
     assert_eq!(processed.len(), 3);
     assert!(!processed[0].is_decal);
     assert!(processed[1].is_decal);
     assert!(processed[2].is_decal);
 
-    let ir = crate::sod::tessellate::build_sod_model_ir("DECAL_WELD", &processed);
+    let ir = crate::sod::tessellate::build_sod_model_ir("DECAL_WELD", &processed, &groups);
 
     // Base mesh: 1 quad -> 2 triangles -> 4 welded vertices (indices: 6)
     // Decal mesh: 2 triangles sharing 2 vertices -> 4 unique vertices (indices: 6)
@@ -155,12 +157,14 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
     );
     assert_eq!(ir.indices.len(), 12, "4 triangles * 3 = 12 indices");
 
-    // Verify all decal vertices have DECAL_FLAG_BIT set and z == 0.001
+    // Decal vertices carry DECAL_FLAG_BIT and the base's group, and stay at z == 0
     for v in &ir.vertices[4..8] {
         assert_eq!(v.palette_index, 15);
         assert_ne!(v.flags & DECAL_FLAG_BIT, 0);
-        assert!((v.position[2] - 0.001).abs() < 1e-6);
+        assert_eq!(v.decal_group, 1);
+        assert_eq!(v.position[2], 0.0);
     }
+    assert!(ir.vertices[..4].iter().all(|v| v.decal_group == 1));
 }
 
 /// Positions closer than the weld tolerance merge and farther ones stay apart (`[I1]`).
@@ -190,7 +194,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir_welded = crate::sod::tessellate::build_sod_model_ir("SUB_TOL", &[poly_a, poly_b]);
+    let ir_welded = crate::sod::tessellate::build_sod_model_ir("SUB_TOL", &[poly_a, poly_b], &[]);
     assert_eq!(
         ir_welded.vertices.len(),
         3,
@@ -217,7 +221,8 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir_distinct = crate::sod::tessellate::build_sod_model_ir("SUPER_TOL", &[poly_c, poly_d]);
+    let ir_distinct =
+        crate::sod::tessellate::build_sod_model_ir("SUPER_TOL", &[poly_c, poly_d], &[]);
     assert_eq!(
         ir_distinct.vertices.len(),
         6,
@@ -262,7 +267,7 @@ fn test_attribute_preserving_vertex_welding() {
         visibility: VisibilityCondition::Always,
     };
 
-    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_TEST", &[p1, p2, p3, p4]);
+    let ir = crate::sod::tessellate::build_sod_model_ir("WELD_TEST", &[p1, p2, p3, p4], &[]);
 
     // 4 triangles = 12 indices
     assert_eq!(ir.indices.len(), 12);
@@ -324,7 +329,7 @@ fn internal_defects_are_refused_loudly() {
             palette_index: 1,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_group: 0,
         },
     );
     ir.indices = vec![0, 1, 2];

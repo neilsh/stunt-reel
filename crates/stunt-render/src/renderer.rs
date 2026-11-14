@@ -50,8 +50,8 @@ pub const DEFAULT_CLEAR_PALETTE_INDEX: u8 = 180;
 /// Colour format of the offscreen readback target.
 const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
-/// Depth format of the offscreen and surface passes.
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+/// Depth and stencil format of the offscreen and surface passes; the stencil holds decal groups `[I5]`.
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
 
 /// Pixel geometry of a page: the offscreen target or the configured window surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -716,7 +716,10 @@ impl Renderer {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
                     }),
-                    stencil_ops: None,
+                    stencil_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -881,7 +884,10 @@ impl OffscreenTarget {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
                     }),
-                    stencil_ops: None,
+                    stencil_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0),
+                        store: wgpu::StoreOp::Discard,
+                    }),
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,

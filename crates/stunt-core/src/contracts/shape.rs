@@ -4,7 +4,7 @@
 //! Governed by architectural invariants:
 //! - `[I1]` Metric right-handed coordinate basis (+Y up, +Z toward viewer, -Z forward)
 //! - `[I2]` Flat contiguous arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`)
-//! - `[I5]` Coplanar decal identification and normal displacement rules
+//! - `[I5]` Coplanar decal identification and decal groups
 
 use std::fmt;
 
@@ -42,7 +42,7 @@ pub struct SodVertex {
     /// Authentic 8-bit VGA Mode 13h palette index (`0..=255`) per `[fmt mtl]`.
     pub palette_index: u8,
     /// Bitflags:
-    /// - Bit 0: Coplanar decal face (requires normal-nudge `[I5]`)
+    /// - Bit 0: Coplanar decal face, drawn in the ordered decal pass `[I5]`
     /// - Bit 1: Two-sided polygon
     /// - Bit 2: Emissive / unshaded indicator
     /// - Bits 3..=5: Screen-space line corner ([`VERTEX_FLAG_LINE`], [`VERTEX_FLAG_LINE_SIDE`],
@@ -51,8 +51,10 @@ pub struct SodVertex {
     /// Scenery class of a world vertex (`SCENERY_OCEAN`, `SCENERY_TERRAIN`, `SCENERY_PROP`),
     /// zero for every other vertex. The renderer adds it to the draw's base layer id.
     pub scenery_class: u8,
-    /// Alignment padding; must be zero.
-    pub _padding: u8,
+    /// Coplanar decal group `[I5]`: zero, or the stencil group (`1..=255`) shared by every
+    /// polygon of one set of coplanar overlapping polygons, the first one included. The
+    /// renderer draws a group's decals only where the group's own polygons are visible.
+    pub decal_group: u8,
 }
 
 // Manual bytemuck trait implementations to eliminate mandatory crate dependencies
@@ -637,7 +639,7 @@ mod tests {
                 palette_index: 1,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                decal_group: 0,
             })
             .collect();
         ir.indices = vec![0, 1, 2];
@@ -707,7 +709,7 @@ mod tests {
                 palette_index: 1,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                decal_group: 0,
             },
             SodVertex {
                 position: [2.0, 1.0, 0.0],
@@ -715,7 +717,7 @@ mod tests {
                 palette_index: 1,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                decal_group: 0,
             },
         ];
         let extent = ir.extent().expect("two vertices");
@@ -792,7 +794,7 @@ mod tests {
             palette_index: 42,
             flags: 1,
             scenery_class: 0,
-            _padding: 0,
+            decal_group: 0,
         };
         let bytes = bytemuck::bytes_of(&vertex);
         assert_eq!(bytes.len(), 28);

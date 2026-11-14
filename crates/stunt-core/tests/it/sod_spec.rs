@@ -24,8 +24,8 @@ use std::path::PathBuf;
 use stunt_core::anchor::AnchorPoint;
 use stunt_core::contracts::shape::{NodeId, NodeKind, SodModelIr, SodVertex};
 use stunt_core::sod::{
-    DECAL_FLAG_BIT, EPSILON_DISPLACEMENT, OP_COLOR, OP_GETV, OP_GVPOLY, OP_ID, OP_IFVIS, OP_IPG,
-    OP_POLYZ, OP_RETURN, OP_VECTORS, SOD_SCALE_TABLE, compute_scale_factor,
+    DECAL_FLAG_BIT, OP_COLOR, OP_GETV, OP_GVPOLY, OP_ID, OP_IFVIS, OP_IPG, OP_POLYZ, OP_RETURN,
+    OP_VECTORS, SOD_SCALE_TABLE, compute_scale_factor,
 };
 use stunt_core::sod::{DecodeMode, SodError, decode_sod};
 
@@ -89,7 +89,7 @@ fn sod_vertex_size_alignment_and_field_offsets() {
         palette_index: 42,
         flags: 1,
         scenery_class: 0,
-        _padding: 0,
+        decal_group: 0,
     };
 
     let base_ptr = &raw const dummy as usize;
@@ -98,7 +98,7 @@ fn sod_vertex_size_alignment_and_field_offsets() {
     let pal_ptr = &raw const dummy.palette_index as usize;
     let flags_ptr = &raw const dummy.flags as usize;
     let class_ptr = &raw const dummy.scenery_class as usize;
-    let pad_ptr = &raw const dummy._padding as usize;
+    let pad_ptr = &raw const dummy.decal_group as usize;
 
     assert_eq!(pos_ptr - base_ptr, 0, "position offset must be 0");
     assert_eq!(norm_ptr - base_ptr, 12, "normal offset must be 12");
@@ -121,7 +121,7 @@ fn sod_vertex_pod_roundtrip() {
         palette_index: 215,
         flags: 0x03,
         scenery_class: 0,
-        _padding: 0,
+        decal_group: 0,
     };
 
     // Treat as raw 28 bytes
@@ -137,7 +137,7 @@ fn sod_vertex_pod_roundtrip() {
     assert_eq!(recovered.palette_index, original.palette_index);
     assert_eq!(recovered.flags, original.flags);
     assert_eq!(recovered.scenery_class, original.scenery_class);
-    assert_eq!(recovered._padding, 0);
+    assert_eq!(recovered.decal_group, 0);
 }
 
 // =============================================================================
@@ -236,7 +236,7 @@ fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
     assert_eq!(ir.vertices[1].position, [-5.0, 0.0, 0.0]);
     assert_eq!(ir.vertices[2].position, [0.0, -5.0, 0.0]);
 
-    // Decal face vertices (Palette 15, flags & 1 != 0, displaced along normal by 0.001 m)
+    // Decal face vertices (Palette 15, flags & 1 != 0, in the base's plane and group)
     for v in &ir.vertices[3..6] {
         assert_eq!(v.palette_index, 15, "decal vertex palette must be 15");
         assert_ne!(
@@ -245,15 +245,14 @@ fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
             "decal vertex must have DECAL_FLAG_BIT set in flags"
         );
         assert_eq!(v.normal, [0.0, 0.0, 1.0]);
-        // Invariant [I5]: displaced by eps = 0.001 m along outward normal
-        assert!(
-            (v.position[2] - EPSILON_DISPLACEMENT).abs() < 1e-6,
-            "decal vertex z coordinate must be displaced by exactly 0.001 m"
-        );
+        // Invariant [I5]: a decal is not moved; the renderer orders it
+        assert_eq!(v.position[2], 0.0, "decal vertices lie on z = 0");
+        assert_eq!(v.decal_group, 1, "decal joins its base's group");
     }
-    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, 0.001]);
-    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, 0.001]);
-    assert_eq!(ir.vertices[5].position, [0.0, -5.0, 0.001]);
+    assert!(ir.vertices[..3].iter().all(|v| v.decal_group == 1));
+    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, 0.0]);
+    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, 0.0]);
+    assert_eq!(ir.vertices[5].position, [0.0, -5.0, 0.0]);
 }
 
 /// Scale indices 0..=17 read `SOD_SCALE_TABLE`; indices >= 18 use `5 / 2^(index - 1)`.

@@ -34,7 +34,7 @@ fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
         palette_index: 40,
         flags: 4,
         scenery_class: 0,
-        _padding: 0,
+        decal_group: 0,
     };
     let mut ir = SodModelIr::new(name);
     ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
@@ -437,7 +437,7 @@ fn ground_square(index: u8) -> SodModelIr {
         palette_index: index,
         flags: 4,
         scenery_class: 0,
-        _padding: 0,
+        decal_group: 0,
     };
     let mut ir = SodModelIr::new("GROUND");
     ir.vertices = vec![
@@ -568,7 +568,7 @@ fn ground_vertex(x: f32, z: f32, palette_index: u8, flags: u8, class: u8) -> Sod
         palette_index,
         flags,
         scenery_class: class,
-        _padding: 0,
+        decal_group: 0,
     }
 }
 
@@ -677,7 +677,7 @@ fn a_ground_outline_does_not_cover_the_line_after_it() {
             palette_index: RAIL,
             flags: flags | UNSHADED,
             scenery_class: SCENERY_PROP,
-            _padding: 0,
+            decal_group: 0,
         })
         .to_vec();
         let rail_indices = vec![0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2];
@@ -694,5 +694,87 @@ fn a_ground_outline_does_not_cover_the_line_after_it() {
         assert!(tie > 100, "the tie covers {tie} pixels");
         assert!(alone > 20, "the rail alone covers {alone} pixels");
         assert_eq!(over, alone, "the rail keeps {over} of its {alone} pixels");
+    });
+}
+
+/// A shape facing the eye at +z: a base square (index 40) carrying two stacked coplanar
+/// decals in its group (60, then 80 inside it), and an unrelated square (100) 1 m nearer
+/// over the left of the centre.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
+)]
+fn decal_stack_shape() -> SodModelIr {
+    let mut ir = SodModelIr::new("STACK");
+    // Each square winds clockwise seen from +z, the side the pipeline keeps.
+    let square = |ir: &mut SodModelIr, x: [f32; 2], y: [f32; 2], z: f32, index: u8, group: u8| {
+        let first = u32::try_from(ir.vertices.len()).unwrap();
+        let decal = u8::from(group != 0 && index != 40);
+        for (px, py) in [(x[0], y[0]), (x[0], y[1]), (x[1], y[1]), (x[1], y[0])] {
+            ir.vertices.push(SodVertex {
+                position: [px, py, z],
+                normal: [0.0, 0.0, 1.0],
+                palette_index: index,
+                flags: 4 | decal,
+                scenery_class: 0,
+                decal_group: group,
+            });
+        }
+        ir.indices
+            .extend([0, 1, 2, 0, 2, 3].map(|corner| first + corner));
+    };
+    square(&mut ir, [-2.0, 2.0], [-2.0, 2.0], 0.0, 40, 1);
+    square(&mut ir, [-2.0, -0.25], [-2.0, 2.0], 1.0, 100, 0);
+    square(&mut ir, [-1.0, 1.0], [-1.0, 1.0], 0.0, 60, 1);
+    square(&mut ir, [-0.5, 0.5], [-0.5, 0.5], 0.0, 80, 1);
+    let root = ir.allocate_node(
+        "STACK",
+        None,
+        glam::Mat4::IDENTITY.to_cols_array(),
+        VisibilityCondition::Always,
+        NodeKind::TransformGroup,
+    );
+    for (name, index_offset, is_decal) in [("BASE", 0, false), ("DECAL", 12, true)] {
+        ir.allocate_node(
+            name,
+            Some(root),
+            glam::Mat4::IDENTITY.to_cols_array(),
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: 16,
+                index_offset,
+                index_count: 12,
+                is_decal,
+            },
+        );
+    }
+    ir.root_nodes = vec![ir.nodes[0].id];
+    ir
+}
+
+/// The ordered decal pass `[I5]`: the later of two stacked coplanar decals covers the
+/// earlier, and neither paints over nearer geometry, though the pass tests no depth.
+#[test]
+fn a_later_coplanar_decal_covers_the_earlier_but_not_what_is_nearer() {
+    common::gpu_test(|| {
+        let shapes = HashMap::from([(SHAPE_ID, decal_stack_shape())]);
+        let scene = FilmScene::new(timeline(vec![actor_at(0.0, 0)]), shapes, None);
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+        let page = test.draw(&scene.frame(0.0));
+        let (w, h) = (page.width() as usize, page.height() as usize);
+        let row = &page.indices()[(h / 2) * w..(h / 2 + 1) * w];
+        let centre = w / 2;
+        assert_eq!(row[centre], 80, "the later decal is on top");
+        // Rightwards from the centre: the later decal, the earlier, then the base.
+        let mut right: Vec<u8> = row[centre..].to_vec();
+        right.dedup();
+        assert_eq!(&right[..3], &[80, 60, 40], "{right:?}");
+        // Leftwards: the nearer square hides both decals where it covers them.
+        let mut left: Vec<u8> = row[..=centre].iter().rev().copied().collect();
+        left.dedup();
+        assert_eq!(&left[..2], &[80, 100], "{left:?}");
     });
 }

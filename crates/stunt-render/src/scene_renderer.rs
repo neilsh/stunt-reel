@@ -8,7 +8,11 @@
 //! Frame use is two-phase because a render pass borrows its bind groups: call
 //! [`SceneRenderer::prepare`] (uploads camera and matrices, may allocate slots), then
 //! [`SceneRenderer::draw`] inside the pass. Opaque base meshes of every draw precede the
-//! decal meshes of every draw per `[I5]`. An actor that casts a shadow gets a second draw of
+//! decal meshes of every draw per `[I5]`: each slice of a decal group writes the group's
+//! stencil reference as it is drawn depth-tested, and the decal pass then paints each
+//! group's decals in stream order where the stencil holds that reference. A draw's groups
+//! take the stencil values after the previous draw's, wrapping within `1..=255`, so two
+//! groups share a value only 255 groups apart in a frame. An actor that casts a shadow gets a second draw of
 //! its shape, flattened onto the ground and filled in palette index 0, which lies on the
 //! terrain and so goes in the decal pass whole, through a pipeline that culls no faces.
 //!
@@ -57,6 +61,23 @@ struct PreparedDraw {
     decals: Vec<GpuMeshSlice>,
     /// A ground shadow, drawn through the shadow pipeline, which culls no faces.
     shadow: bool,
+    /// Offset added to the slices' decal groups to make their stencil references.
+    stencil_base: u32,
+}
+
+/// The stencil reference of decal group `group` in a draw whose groups start after
+/// `stencil_base`: zero for group zero, otherwise in `1..=255`.
+fn stencil_ref(stencil_base: u32, group: u8) -> u32 {
+    if group == 0 {
+        0
+    } else {
+        stencil_base
+            .wrapping_add(u32::from(group))
+            .wrapping_sub(1)
+            .checked_rem(255)
+            .unwrap_or(0)
+            .saturating_add(1)
+    }
 }
 
 /// A per-draw model matrix: uniform buffer plus its bind group.
@@ -76,6 +97,8 @@ pub(crate) struct SceneRenderer {
     slots: Vec<MatrixSlot>,
     model_layout: wgpu::BindGroupLayout,
     prepared: Vec<PreparedDraw>,
+    /// The stencil base the next prepared draw takes.
+    next_stencil: u32,
 }
 
 impl SceneRenderer {
@@ -120,6 +143,7 @@ impl SceneRenderer {
             slots: Vec::new(),
             model_layout: layout.clone(),
             prepared: Vec::new(),
+            next_stencil: 0,
         }
     }
 
@@ -144,6 +168,7 @@ impl SceneRenderer {
         camera_resources.upload(queue, &controller.build_uniform());
 
         self.prepared.clear();
+        self.next_stencil = 0;
         let eye = camera.map_or_else(
             || Vec3::from_array(frame.view.eye),
             CameraController::eye_position,
@@ -166,7 +191,9 @@ impl SceneRenderer {
                 base,
                 decals,
                 shadow: false,
+                stencil_base: 0,
             });
+            self.next_stencil = u32::from(world.max_group).checked_rem(255).unwrap_or(0);
         }
 
         let mut slot = 0;
@@ -283,12 +310,25 @@ impl SceneRenderer {
         };
         queue.write_buffer(&model_slot.buffer, 0, bytemuck::bytes_of(uniform));
         let [_, shadow, ..] = uniform.layer;
+        let target = target(*slot);
+        let groups = match target {
+            _ if shadow != 0 => 0,
+            Target::World => 0,
+            Target::Shape { shape_id, .. } => self.shapes.get(&shape_id).map_or(0, |m| m.max_group),
+            Target::Image { image_id, .. } => self.images.get(&image_id).map_or(0, |m| m.max_group),
+        };
+        let stencil_base = self.next_stencil;
+        self.next_stencil = stencil_base
+            .wrapping_add(u32::from(groups))
+            .checked_rem(255)
+            .unwrap_or(0);
         self.prepared.push(PreparedDraw {
-            target: target(*slot),
+            target,
             ground: Vec::new(),
             base,
             decals,
             shadow: shadow != 0,
+            stencil_base,
         });
         *slot += 1;
     }
@@ -328,61 +368,89 @@ impl SceneRenderer {
             }
         }
 
-        for decal_pass in [false, true] {
-            rpass.set_pipeline(if decal_pass {
-                &pipelines.decal_pipeline
-            } else {
-                &pipelines.base_pipeline
-            });
-            rpass.set_bind_group(0, &camera_resources.bind_group, &[]);
-            rpass.set_bind_group(1, &palette.bind_group, &[]);
-            for draw in &self.prepared {
-                let meshes = if decal_pass { &draw.decals } else { &draw.base };
-                if meshes.is_empty() {
-                    continue;
-                }
-                // A shadow is all decal, so only the decal pass switches pipelines.
-                if decal_pass {
-                    rpass.set_pipeline(if draw.shadow {
-                        &pipelines.shadow_pipeline
-                    } else {
-                        &pipelines.decal_pipeline
-                    });
-                }
-                let (model, bind_group) = match draw.target {
-                    Target::World => match &self.world {
-                        Some(w) => (w, &w.model_bind_group),
-                        None => continue,
-                    },
-                    Target::Shape { shape_id, slot } => {
-                        match self.shapes.get(&shape_id).zip(self.slots.get(slot)) {
-                            Some((m, model_slot)) => (m, &model_slot.bind_group),
-                            None => continue,
-                        }
-                    }
-                    Target::Image { image_id, slot } => {
-                        match self.images.get(&image_id).zip(self.slots.get(slot)) {
-                            Some((m, model_slot)) => (m, &model_slot.bind_group),
-                            None => continue,
-                        }
-                    }
-                };
-                rpass.set_bind_group(2, bind_group, &[]);
-                model.draw_slices(rpass, meshes);
-                // Only the world carries edge buffers; the next draw sets its own pipeline
-                // back, as the decal pass does per draw and the base pass needs only here.
-                if matches!(draw.target, Target::World) {
-                    rpass.set_pipeline(if decal_pass {
-                        &pipelines.edge_decal_pipeline
-                    } else {
-                        &pipelines.edge_pipeline
-                    });
-                    model.draw_edges(rpass, meshes);
-                    if !decal_pass {
-                        rpass.set_pipeline(&pipelines.base_pipeline);
-                    }
+        rpass.set_bind_group(0, &camera_resources.bind_group, &[]);
+        rpass.set_bind_group(1, &palette.bind_group, &[]);
+        let one = std::slice::from_ref;
+        // Base pass: base slices, then decal slices depth-tested as cover, each writing its
+        // stencil reference, so a group's stencil marks where its polygons are visible.
+        for draw in self.prepared.iter().filter(|d| !d.shadow) {
+            let Some((model, bind_group)) = self.resolve(draw.target) else {
+                continue;
+            };
+            let world = matches!(draw.target, Target::World);
+            let at = |slice: &GpuMeshSlice| stencil_ref(draw.stencil_base, slice.group);
+            rpass.set_bind_group(2, bind_group, &[]);
+            rpass.set_pipeline(&pipelines.base_pipeline);
+            for slice in &draw.base {
+                rpass.set_stencil_reference(at(slice));
+                model.draw_slices(rpass, one(slice));
+            }
+            // Only the world carries edge buffers.
+            if world {
+                rpass.set_pipeline(&pipelines.edge_pipeline);
+                for slice in draw.base.iter().filter(|s| s.edge_count > 0) {
+                    rpass.set_stencil_reference(at(slice));
+                    model.draw_edges(rpass, one(slice));
                 }
             }
+            rpass.set_pipeline(&pipelines.cover_pipeline);
+            for slice in &draw.decals {
+                rpass.set_stencil_reference(at(slice));
+                model.draw_slices(rpass, one(slice));
+            }
+            // A decal of group zero lies on terrain and is drawn only as cover.
+            if world {
+                rpass.set_pipeline(&pipelines.edge_cover_pipeline);
+                for slice in draw
+                    .decals
+                    .iter()
+                    .filter(|s| s.group == 0 && s.edge_count > 0)
+                {
+                    rpass.set_stencil_reference(0);
+                    model.draw_edges(rpass, one(slice));
+                }
+            }
+        }
+
+        // Decal pass: each group's decals in stream order where the stencil holds the group,
+        // with no depth test, so a later coplanar polygon covers an earlier one; shadows.
+        for draw in &self.prepared {
+            let Some((model, bind_group)) = self.resolve(draw.target) else {
+                continue;
+            };
+            rpass.set_bind_group(2, bind_group, &[]);
+            if draw.shadow {
+                rpass.set_pipeline(&pipelines.shadow_pipeline);
+                model.draw_slices(rpass, &draw.decals);
+                continue;
+            }
+            let world = matches!(draw.target, Target::World);
+            for slice in draw.decals.iter().filter(|s| s.group != 0) {
+                rpass.set_stencil_reference(stencil_ref(draw.stencil_base, slice.group));
+                rpass.set_pipeline(&pipelines.decal_pipeline);
+                model.draw_slices(rpass, one(slice));
+                if world && slice.edge_count > 0 {
+                    rpass.set_pipeline(&pipelines.edge_decal_pipeline);
+                    model.draw_edges(rpass, one(slice));
+                }
+            }
+        }
+    }
+
+    /// The uploaded model `target` names and the bind group of its matrix.
+    fn resolve(&self, target: Target) -> Option<(&GpuModel, &wgpu::BindGroup)> {
+        match target {
+            Target::World => self.world.as_ref().map(|w| (w, &w.model_bind_group)),
+            Target::Shape { shape_id, slot } => self
+                .shapes
+                .get(&shape_id)
+                .zip(self.slots.get(slot))
+                .map(|(m, s)| (m, &s.bind_group)),
+            Target::Image { image_id, slot } => self
+                .images
+                .get(&image_id)
+                .zip(self.slots.get(slot))
+                .map(|(m, s)| (m, &s.bind_group)),
         }
     }
 
@@ -458,7 +526,7 @@ fn sprite_ir(image: &SpriteImage) -> SodModelIr {
                 palette_index: run.index,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                decal_group: 0,
             });
         }
         ir.indices

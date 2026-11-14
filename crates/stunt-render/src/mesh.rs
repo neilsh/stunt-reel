@@ -50,8 +50,11 @@ pub struct GpuMeshSlice {
     pub index_offset: u32,
     /// Number of indices in the slice (three per triangle).
     pub index_count: u32,
-    /// Whether the slice is a coplanar decal drawn through the depth-bias pipeline `[I5]`.
+    /// Whether the slice is a coplanar decal, drawn in the ordered decal pass `[I5]`.
     pub is_decal: bool,
+    /// The decal group of every triangle of the slice (`SodVertex::decal_group`), zero when
+    /// the slice is in none; the renderer turns it into the slice's stencil reference.
+    pub group: u8,
     /// First index of the slice's outline in its chunk's edge buffer.
     pub edge_offset: u32,
     /// Number of outline indices of the slice (two per edge); zero when it has no outline.
@@ -63,6 +66,8 @@ pub struct GpuMeshSlice {
 pub struct GpuModel {
     /// Model name identifier.
     pub name: String,
+    /// The highest decal group of any vertex (`SodVertex::decal_group`).
+    pub max_group: u8,
     /// Vertex/index buffer pairs; one unless the model exceeds `max_buffer_size`.
     pub chunks: Vec<GpuChunk>,
     /// Total vertex count of the source model.
@@ -121,17 +126,18 @@ impl GpuModel {
         // back to the same nodes. `meshes()` already skips a node whose window is unsafe.
         // `meshes()` walks the nodes in arena order, so each node takes the next mesh if
         // that mesh is its own.
+        // A node's slice is cut into runs of one decal group each, so each run can take
+        // its own stencil reference (`[I5]`).
         let mut meshes = ir.meshes().peekable();
-        let sources: Vec<Option<SourceSlice>> = ir
+        let sources: Vec<Vec<SourceSlice>> = ir
             .nodes
             .iter()
             .map(|node| {
-                let mesh = meshes.next_if(|mesh| std::ptr::eq(mesh.node, node))?;
-                Some(SourceSlice {
-                    index_offset: mesh.index_offset,
-                    index_count: arena_index(mesh.indices.len()),
-                    is_decal: mesh.is_decal(),
-                })
+                meshes
+                    .next_if(|mesh| std::ptr::eq(mesh.node, node))
+                    .map_or_else(Vec::new, |mesh| {
+                        group_runs(ir, mesh.index_offset, mesh.indices, mesh.is_decal())
+                    })
             })
             .collect();
         let mesh_sources: Vec<SourceSlice> = sources.iter().flatten().copied().collect();
@@ -186,12 +192,16 @@ impl GpuModel {
                 children: node.children.clone(),
                 local_matrix: Mat4::from_cols_array(&node.local_matrix),
                 visibility: node.visibility,
-                meshes: source.and_then(|_| planned.next()).unwrap_or_default(),
+                meshes: source
+                    .iter()
+                    .flat_map(|_| planned.next().unwrap_or_default())
+                    .collect(),
             })
             .collect();
 
         Self {
             name: ir.name.clone(),
+            max_group: ir.vertices.iter().map(|v| v.decal_group).max().unwrap_or(0),
             chunks,
             vertex_count: arena_index(ir.vertices.len()),
             index_count: arena_index(ir.indices.len()),
@@ -425,6 +435,7 @@ pub(crate) struct SourceSlice {
     pub index_offset: u32,
     pub index_count: u32,
     pub is_decal: bool,
+    pub group: u8,
 }
 
 /// Contents of one chunk.
@@ -487,6 +498,7 @@ pub(crate) fn plan_upload(
                     index_offset: s.index_offset,
                     index_count: s.index_count,
                     is_decal: s.is_decal,
+                    group: s.group,
                     edge_offset: 0,
                     edge_count: 0,
                 }]
@@ -535,7 +547,7 @@ pub(crate) fn plan_upload(
                 }
             }
             if let Some((window, tris)) = run.take() {
-                out.push(flush_run(&mut chunks, source.is_decal, window, &tris));
+                out.push(flush_run(&mut chunks, source, window, &tris));
             }
             let last = chunks.last().expect("a split plan starts with a chunk");
             let room = last.vertex_count + (hi - lo) <= max_vertices
@@ -546,7 +558,7 @@ pub(crate) fn plan_upload(
             run = Some((lo..hi, vec![tri]));
         }
         if let Some((window, tris)) = run.take() {
-            out.push(flush_run(&mut chunks, source.is_decal, window, &tris));
+            out.push(flush_run(&mut chunks, source, window, &tris));
         }
         slices.push(out);
     }
@@ -570,7 +582,7 @@ const fn base_vertex(count: usize) -> i32 {
 )]
 fn flush_run(
     chunks: &mut [ChunkPlan],
-    is_decal: bool,
+    source: &SourceSlice,
     window: Range<usize>,
     tris: &[[usize; 3]],
 ) -> GpuMeshSlice {
@@ -585,7 +597,8 @@ fn flush_run(
         vertex_offset: base_vertex(chunk.vertex_count),
         index_offset: arena_index(indices.len()),
         index_count: arena_index(3 * tris.len()),
-        is_decal,
+        is_decal: source.is_decal,
+        group: source.group,
         edge_offset: 0,
         edge_count: 0,
     };
@@ -597,6 +610,37 @@ fn flush_run(
     chunk.vertex_count += window.len();
     chunk.vertex_ranges.push(window);
     slice
+}
+
+/// `indices` (a mesh starting at `index_offset` in the IR) cut into runs of triangles of one
+/// decal group each, in order; a triangle's group is its first corner's.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "index offsets and counts stay inside one mesh's window of a u32-indexed buffer"
+)]
+fn group_runs(
+    ir: &SodModelIr,
+    index_offset: u32,
+    indices: &[u32],
+    is_decal: bool,
+) -> Vec<SourceSlice> {
+    let mut runs: Vec<SourceSlice> = Vec::new();
+    for (n, tri) in (0u32..).zip(indices.as_chunks::<3>().0) {
+        let group = ir
+            .vertices
+            .get(tri[0] as usize)
+            .map_or(0, |v| v.decal_group);
+        match runs.last_mut() {
+            Some(run) if run.group == group => run.index_count += 3,
+            _ => runs.push(SourceSlice {
+                index_offset: index_offset + 3 * n,
+                index_count: 3,
+                is_decal,
+                group,
+            }),
+        }
+    }
+    runs
 }
 
 /// One visibility pass over a model's node arena from `roots`, for
@@ -711,6 +755,7 @@ mod tests {
             index_offset,
             index_count,
             is_decal: false,
+            group: 0,
         }
     }
 
@@ -742,7 +787,7 @@ mod tests {
             palette_index: 7,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_group: 0,
         };
         let mut ir = SodModelIr::new("QUAD");
         ir.vertices = vec![
@@ -882,6 +927,7 @@ mod tests {
                 index_offset: id,
                 index_count: 3,
                 is_decal,
+                group: 0,
                 edge_offset: 0,
                 edge_count: 0,
             }],

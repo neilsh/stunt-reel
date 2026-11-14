@@ -153,10 +153,10 @@ fn test_challenge_synthetic_minimal_fixture_precision() {
         _ => panic!("Expected mesh"),
     }
 
-    // Decal vertex displacement check; `OP_VECTORS` turns x and y into `[I1]`
-    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, 0.001]);
-    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, 0.001]);
-    assert_eq!(ir.vertices[5].position, [0.0, -5.0, 0.001]);
+    // Decal vertices stay in the base's plane; `OP_VECTORS` turns x and y into `[I1]`
+    assert_eq!(ir.vertices[3].position, [-1.0, -1.0, 0.0]);
+    assert_eq!(ir.vertices[4].position, [-3.0, -1.0, 0.0]);
+    assert_eq!(ir.vertices[5].position, [0.0, -5.0, 0.0]);
 
     // Palettes
     assert_eq!(ir.vertices[0].palette_index, 40);
