@@ -16,4 +16,4 @@ A distillation rewrites an evergreen note as what is true now and moves its date
 5. **Move how-to out.** Commands, flags and troubleshooting for running our tools go to `docs/howto/<task>.md`, one task per file, linked from the note and any skill that repeated them. Done when the note holds only reference and explanation.
 6. **Review and land.** Run `mise run fix` and `mise run check`; fix each broken heading link it reports. A fresh reviewer subagent works from [its brief](reviewer-brief.md) (AGENTS.md Committing rule 5). A folder README's `outcome`, if any, holds no figure review can change; it freezes. Commit; open a PR titled `docs(distill): <path>`. Done when each reviewer finding is fixed or answered, the check passes, and the note is under 20 KB or the PR says why not.
 
-An offset registry (`research/playone-exe/memory-map*.md`) is split by segment, not distilled. Text a test reads by path moves only in its own PR, with the code.
+An offset registry (`research/playone-exe/memory-map*.md`) is split into files, not distilled. Text a test reads by path moves only in its own PR, with the code.

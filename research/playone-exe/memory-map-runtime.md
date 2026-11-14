@@ -3,7 +3,7 @@ summary: "`PLAYONE.EXE` runtime capture anchors: the per-frame retrace trap, the
 ---
 # Memory Map: Runtime Capture Anchors
 
-Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the conventions every table uses (target binary, image base, linear address). Section numbers run across the files.
+Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so. Section numbers run across the files.
 
 ## 2. Runtime Dynamic Capture Anchors
 

@@ -3,15 +3,15 @@ summary: "Index of the `PLAYONE.EXE` memory-map files and the conventions they s
 ---
 # Runtime Memory Map & Real-Mode Offsets
 
-**The memory map is split by segment; this file lists its files, states the conventions below, and holds the `DGROUP` table (§ 1).** Other notes keep subject tables of their own, such as the file-name strings in [`startup.md` § 4](startup.md#4-primary-asset-dependencies). The evidence behind a row (disassembly, live samples, provenance) lives in [`research/playone-exe/`](./) and is linked from the row; it is not restated here. Tier names come from the enum owned by [`python/scripts/verify_formats_docs.py`](../../python/scripts/verify_formats_docs.py) (`EVIDENTIARY_TIERS`) and defined in [`SPEC.md` § 2.4](../../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
+**The memory map is split across five files; this file lists its files, states the conventions below, and holds the `DGROUP` table (§ 1).** Other notes keep subject tables of their own, such as the file-name strings in [`startup.md` § 4](startup.md#4-primary-asset-dependencies). The evidence behind a row (disassembly, live samples, provenance) lives in [`research/playone-exe/`](./) and is linked from the row; it is not restated here. Tier names come from the enum owned by [`python/scripts/verify_formats_docs.py`](../../python/scripts/verify_formats_docs.py) (`EVIDENTIARY_TIERS`) and defined in [`SPEC.md` § 2.4](../../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
 
 | File | Holds | Anchors defined |
 |---|---|---|
 | [`memory-map.md`](memory-map.md) | § 1: `DGROUP` (`DS`) offsets of the unpatched build | |
-| [`memory-map-patch3.md`](memory-map-patch3.md) | § 1.1: Patch #3 counterparts of the rows of the other files, with the unmapped ones marked | |
+| [`memory-map-patch3.md`](memory-map-patch3.md) | § 1.1: Patch #3 counterparts of § 1, § 3 and `[MEM-PALETTE]` rows, with the unmapped ones marked | |
 | [`memory-map-runtime.md`](memory-map-runtime.md) | § 2: runtime capture anchors | `[MEM-VSYNC-03DA]`, `[MEM-FLM-TICK]`, `[MEM-CAMERA-RIG]`, `[MEM-ACTOR-TABLE]` |
 | [`memory-map-vm.md`](memory-map-vm.md) | § 3: the SOD display-list VM's work segment and its code anchors | `[MEM-SOD-VM]`, `[MEM-SOD-ANCHOR-TABLE]` |
-| [`memory-map-main.md`](memory-map-main.md) | `DS` data and code of the main program and the resident mixer: film state and variables, palette, view setup, light, matrix and draw routines | `[MEM-FLM-VARS]`, `[MEM-PALETTE]` |
+| [`memory-map-main.md`](memory-map-main.md) | `DS` data offsets, code addresses and the resident mixer setter: film state and variables, palette, view setup, light, matrix and draw routines | `[MEM-FLM-VARS]`, `[MEM-PALETTE]` |
 
 `[MEM-UNPACK-LOCKOUT]` is defined in [`memory.md` § 3.4](memory.md#34-lzexe-unpack-lockout--mem-unpack-lockout); [`doc_anchors.py`](../../python/stunt_reel/doc_anchors.py) names each anchor's home.
 

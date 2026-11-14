@@ -1,9 +1,9 @@
 ---
-summary: "`DS` data and code offsets of `PLAYONE.EXE`'s main program and resident mixer: film variables and state, palette build and DAC upload, view setup, world light, matrix and draw routines."
+summary: "`PLAYONE.EXE` `DS` data offsets, code addresses and the resident mixer setter: film variables and state, palette build and DAC upload, view setup, world light, matrix and draw routines."
 ---
-# Memory Map: Main Program and Resident Mixer
+# Memory Map: Film State, Palette and Draw Code
 
-Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the conventions every table uses (target binary, image base, linear address). Section numbers run across the files.
+Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so. Section numbers run across the files.
 
 ## # [MEM-FLM-VARS]
 

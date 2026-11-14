@@ -3,7 +3,7 @@ summary: "Offsets in the work segment of `PLAYONE.EXE`'s SOD display-list VM: an
 ---
 # Memory Map: SOD VM Work Segment
 
-Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the conventions every table uses (target binary, image base, linear address). Section numbers run across the files.
+Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so. Section numbers run across the files.
 
 ## 3. SOD Display-List VM Work Segment (`# [MEM-SOD-VM]`)
 
