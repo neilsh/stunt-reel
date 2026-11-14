@@ -1178,6 +1178,16 @@ impl Placed<'_> {
                 v.position[2] + self.pos[2],
             ])
     }
+
+    /// The height of vertex `v` at world position `p` less its `[I5]` lift; a snapped vertex
+    /// has none left ([`ground_decal_vertices`]).
+    fn unlifted_height(&self, v: &SodVertex, p: [f32; 3]) -> f32 {
+        if self.ground.is_some() {
+            p[1]
+        } else {
+            unlifted_height(v, p[1])
+        }
+    }
 }
 
 /// Appends the triangles of one prop mesh at its placement that lie on the ground plane
@@ -1212,7 +1222,7 @@ fn push_prop_mesh(
         let flat = on_ground_plane(
             corners
                 .iter()
-                .map(|&(_, v, p)| unlifted_height(v, p[1]) - placed.base_y),
+                .map(|&(_, v, p)| placed.unlifted_height(v, p) - placed.base_y),
         );
         if flat != on_ground {
             continue;
@@ -1816,6 +1826,15 @@ mod tests {
         (pts, areas)
     }
 
+    /// `sloped_terrain`'s triangle laid flat on the ground plane.
+    fn level_terrain() -> (Vec<AnchorPoint>, Vec<MapArea>) {
+        let (mut pts, areas) = sloped_terrain();
+        for p in &mut pts {
+            p.y = 0;
+        }
+        (pts, areas)
+    }
+
     /// The ground plane over the terrain is its triangle's plane; off the map there is none.
     #[test]
     fn the_ground_plane_is_the_terrain_triangle_under_the_point_and_level_off_the_map() {
@@ -2012,6 +2031,34 @@ mod tests {
         assert_eq!(ground_runs(&ir), [3, 6, 3]);
         assert!(prop_vertices(&ir, "WORLD_BASE").is_empty());
         assert!(prop_vertices(&ir, GROUND_NODE).iter().all(|p| p[1] == 0.0));
+    }
+
+    /// A tile snapped onto level terrain at the ground plane is ground, its decal triangles
+    /// included: the snap already took their `[I5]` lift away.
+    #[test]
+    fn a_snapped_decal_on_level_terrain_is_ground() {
+        let mut prop = square_prop(None);
+        for v in &mut prop.vertices {
+            v.position[1] = EPSILON_DISPLACEMENT;
+            v.flags = DECAL_FLAG_BIT;
+        }
+        let (pts, areas) = level_terrain();
+        let models = HashMap::from([(0x0391, prop)]);
+        let surface = TerrainSurface::new(&pts, &areas, 0.0);
+        let ir = build_world_ir(
+            &pts,
+            &areas,
+            &surface,
+            &[Placement {
+                shape: 0x0391,
+                position: [60.0, 0.0, 20.0],
+                chain: 0,
+            }],
+            &PropModels::shared(&models),
+            0.0,
+        );
+        assert_eq!(ground_runs(&ir), [6]);
+        assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
     }
 
     /// Only the triangles on the ground plane leave a standing prop for the ground.
