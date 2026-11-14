@@ -1,5 +1,5 @@
 ---
-summary: "`GVPOLY`/`GVPOLY16` shade as a Gouraud ramp on the palette index (`SHADES` term, `idx = base + (s >> 9)`, screen-space fill), lit by the world light the var-13 handler writes; the ground does not."
+summary: "`GVPOLY`/`GVPOLY16` shade as a Gouraud ramp on the palette index (`idx = base + (s >> 9)`, `s >> 10` for `GVPOLY16`), lit by the world light the var-13 handler writes; the ground does not."
 ---
 # `PLAYONE.EXE`: Terrain Shading (Gouraud in Palette-Index Space)
 
@@ -100,10 +100,11 @@ _Found 2026-11-04; the whole-film series added 2026-11-05; see the [parity log](
 
 ## 5. Index composition
 
-Opcodes `0x0168` (handler `0x995C`, per-vertex path) and `0x02BE` (handler `0x9A24`) both do:
+Opcode `0x0168` (`GVPOLY`, handler `0x995C`), Gouraud route (`work:[0x806B]` set), after the edge builder `0xC9D4` has read the count and registers:
 
 ```asm
-9988  8b 6c 01 00     mov  ch, es:[si+1]   ; base palette index (195 for the airfield)
+99c9  26 ad           lodsw es:[si]        ; (ramp base << 8) | count
+99cb  8b c8           mov  cx, ax          ; CH = base palette index, CL = count
 99e5  8b 87 68 74     mov  ax, [bx+0x7468] ; s
 99e9  d1 f8           sar  ax, 1           ; s / 2, fraction kept in AL
 99eb  02 26 2e 81     add  ah, [0x812E]    ; + global one-step offset G
@@ -118,7 +119,7 @@ idx    = max(0, highbyte(s >> 1) + G) + base
 vertex = (idx << 8) | lowbyte(s >> 1)
 ```
 
-The flat variant at `0x9A58` (used when `work:[0x806B] == 0`) replaces `s >> 1` with `s >> 3`, so `idx = base + (s >> 11)`.
+Opcode `0x02BE` (`GVPOLY16`, handler `0x9A24`; Patch #3 `0x8C2F`) runs the same per-vertex loop with `sar ax, 2` (`c1 f8 02` at `0x9AB8`, Patch #3 `0x8CC3`) in place of `sar ax, 1`, so `idx = max(0, highbyte(s >> 2) + G) + base`, one ramp step per 1,024 units of `s`. Its flat variant at `0x9A58` (used when `work:[0x806B] == 0`) does `sar ax, 2` (`0x9A5C`, Patch #3 `0x8C67`), clamps at 0, then `shr ax, 1`, so `idx = base + (s >> 11)` for `s >= 0`. `[Established]`, static, both builds. _Source: [GVPOLY16 shifts its shade by two](../../work/2026-11/472_research-contradictions/journal.md#2026-11-14-gvpoly16-shifts-its-shade-by-two-and-reads-its-ramp-after-the-registers)._
 
 **The global offset `G` is 0 in the shipped build.** At `0x0E1C` startup computes `G` from `DGROUP:0x713`, which is `0xFF` in the image (`neg al; mov es:[0x812E], ah`). So there is no constant global darkening anywhere: every visible offset has to come from the light term.
 
@@ -143,9 +144,9 @@ Edge entries are prepared at `0xC65A` and clipped by the Cohen-Sutherland clippe
 ## 7. Consequences for parity
 
 * Inside one polygon the written index is `base + floor(k)` for a continuously varying `k`, so pixels fall into two to four adjacent ramp entries with **hard boundaries along straight lines**: the level sets of a linear function of screen position. For ground seen by a pitched camera a constant-screen-`y` iso-line is approximately a constant-world-`z` line (the 18-20 m boundary measured from the captures), but it is not a plane in world `(x, z)`, which is why a world-space plane fit and a per-patch lookup both fail (section 9, [Ruled out](#ruled-out)).
-* Per-shot movement can only come from `L` or from a different ground polygon with different vertex normals. The scale is `idx = base + (s >> 9)`, so **one ramp step is 512 units of `s`**: a small change of `N . L`. A faithful reconstruction needs `L` exactly, not merely "a sun".
+* Per-shot movement can only come from `L` or from a different ground polygon with different vertex normals. The scale is `idx = base + (s >> 9)` for `GVPOLY` (`s >> 10` for `GVPOLY16`), so **one ramp step is 512 units of `s`** (1,024 for `GVPOLY16`): a small change of `N . L`. A faithful reconstruction needs `L` exactly, not merely "a sun".
 * A flat polygon whose vertex normals are all equal produces no ramp. The three shades inside `MAP.BIN` patch 4 are scenery tiles drawn over it, not a ramp (see the correction above).
-* An exact implementation needs per-vertex `s`, `idx = base + (s >> 9)`, 8.8 interpolation with `@interpolate(linear)` on the shade varying, quantised per fragment.
+* An exact implementation needs per-vertex `s`, `idx = base + (s >> 9)` (`s >> 10` for `GVPOLY16`), 8.8 interpolation with `@interpolate(linear)` on the shade varying, quantised per fragment.
 
 ## 8. Measured inputs: the light and the additive-only rule
 

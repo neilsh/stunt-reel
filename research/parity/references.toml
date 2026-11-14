@@ -50,6 +50,7 @@ sha256 = "f8c971f3569d424ec44571ea4ec762efd9289d20a6ba2a51f893ca20fcaa148c"
 all_sha256 = "2dc8f628198993c420ba632c8b7c5884015afb5c010aabe58b57a75d3a3428e3"
 makeone = "patch3"
 playone = "patch3"
+background = [[164, 164], [195, 195]]
 
 [intro.expected.gpu]
 ssim = 0.8534789
@@ -65,6 +66,7 @@ sha256 = "bc159031dd44974a3e3e6c250489c8edb8a0cd0138305e86b9f0bcd4536d7469"
 all_sha256 = "342003624122671573d562fb814c9bf6d1bf75e3ff8727f26fedabcda45b4218"
 makeone = "patch3"
 playone = "patch3"
+background = [[164, 164], [195, 195]]
 
 [land.expected.gpu]
 ssim = 0.8928874
@@ -80,6 +82,7 @@ sha256 = "911e95c499b03d164c27c069480388b05beeee915d7b0918cae968d693195287"
 all_sha256 = "e8d852fa8f77ff9b708b8066ddb26457a0498cb94060f1976741355ff510a415"
 makeone = "patch3"
 playone = "patch3"
+background = [[162, 164], [194, 195], [197, 198], [208, 208], [228, 238]]
 
 [balloon.expected.gpu]
 ssim = 0.8173704
@@ -95,6 +98,7 @@ sha256 = "78394e1f328680bd509606bb054b5290cb9bac578faf267a5a8a503f00f12e8d"
 all_sha256 = "a649413eafced2c711b63e761c40c62d0e2502c5020944a62c32b97b6d27b8c9"
 makeone = "patch3"
 playone = "patch3"
+background = [[195, 195], [228, 228], [232, 238]]
 
 [traintnl.expected.gpu]
 ssim = 0.8566446
@@ -110,6 +114,7 @@ sha256 = "1fa390a598947c4125cd235e699e9b319ce26be45739f4e097a7ec0dc45d51f3"
 all_sha256 = "b1a48485d817a2d72f8f2ebaa8e8c2599d0599bc7426a78ecce6ade45d223945"
 makeone = "patch3"
 playone = "patch3"
+background = [[163, 164], [208, 208], [227, 235], [238, 238]]
 
 [bomb.expected.gpu]
 ssim = 0.8394078
@@ -125,6 +130,7 @@ sha256 = "2ea6fe3fc28688b4232003381385bd896ba94205b89987e8b9e4215bff2f8b1c"
 all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
 makeone = "patch3"
 playone = "patch3"
+background = [[164, 164], [195, 195], [208, 208]]
 
 [location.expected.gpu]
 ssim = 0.8287817

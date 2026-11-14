@@ -66,15 +66,25 @@ These are local tools: they are not in `mise run check`, not in CI, and nothing 
 * **Keep outputs local.** Snapshots, projects and query output go under `build/` (for example `build/scratch/rea/`) or the WSL home directory.
 * **rea forgets annotations.** Renames and comments last only for one session. Notes in `research/` are the durable record.
 
-## 5. Next Step: Turn The Slot Table Into Functions
+## 5. Turn The Slot Table Into Functions
 
-The slot table at image `0x8240` gives the address of every one of the 108 handlers (`imm16 + 0x8240`). A short Ghidra headless post-script could use it to:
+The slot table at image `0x8240` gives the address of every handler (`imm16` plus the slot run's image offset). `mise run ghidra-sod-table` reads it and runs a Ghidra headless post-script that:
 
-1. create a function at each handler address,
-2. name it from the opcode table in [`research/formats/sod.md`](../formats/sod.md),
-3. save the project under `build/re/ghidra/`.
+1. creates a function at each handler address,
+2. names it from the opcode table in [`research/formats/sod-opcodes.md`](../formats/sod-opcodes.md),
+3. saves the project under `build/re/ghidra/`.
 
-That would make the VM handlers decompilable and give them callers, callees and data references. That's what the open static questions need: the 14 unimplemented opcodes in [`sod-opcode-coverage.md`](../formats/sod-opcode-coverage.md), the viewport setter for `0x41C8/0x41CA`, and who sets `0x9100`'s inputs. rea can't do this itself, because it only edits existing functions and keeps nothing between sessions, so this is plain Ghidra work. If the script proves useful, keep it under `python/scripts/` or a `tools/ghidra/` directory with a note on how to run it.
+The run takes the slot count from the build instead of assuming one: 108 slots in the unpatched executable at `0x8240`, and 107 in Patch #3 at `0x7540` ([`patch3.md`](patch3.md) section 4.1, [#480](https://github.com/neilsh/stunt-reel/issues/480)). The names apply the table's rows by slot index in the loaded executable's slot order, with no shift; above opcode `0x0333` the two builds dispatch different handlers from one opcode word, and which build's numbering [`sod-opcodes.md`](../formats/sod-opcodes.md) matches stays open under #480, as the run says in its summary and slot file. The unpatched build's 108th slot (opcode `0x03C3`) is past the table and is left unnamed. It needs Ghidra 12.1.x with a JDK ([section 4](#4-setup)), found as `analyzeHeadless` on `PATH` or under `GHIDRA_INSTALL_DIR`:
+
+```sh
+mise run ghidra-sod-table
+mise run ghidra-sod-table -- --build patch3   # needs mise run game-builds first
+mise run ghidra-sod-table -- --parse-only     # read and print the run's summary; writes nothing
+```
+
+The driver is [`python/scripts/ghidra_sod_dispatch.py`](../../python/scripts/ghidra_sod_dispatch.py); the post-script it runs is [`tools/ghidra/SodDispatchTable.java`](../../tools/ghidra/SodDispatchTable.java). `--parse-only` reads the table without Ghidra, and `tests/test_ghidra_sod_dispatch.py` checks that reading on a synthetic image. Ghidra saves the imported program and its new functions when the headless session ends, unless `-readOnly` or `-deleteProject` is passed.
+
+Creating the functions would make the VM handlers decompilable and let Ghidra follow the helpers they call and the data they reference, bounded by what it can see: dispatch reaches every handler through a `jmp ax` on a stream word, not a call, so a handler's own callers stay invisible (section 2). That is the aim for the open static questions: the `OP_*` opcodes the census still stops on ([`sod-opcode-coverage.md`](../formats/sod-opcode-coverage.md) records 0 archive models blocked, 14 `TAP`-only stops and one loose `.BIN` on `OP_TEXTURE`), the viewport setter for `0x41C8/0x41CA`, and who sets `0x9100`'s inputs. rea can't do this itself, because it only edits existing functions and keeps nothing between sessions, so this is plain Ghidra work.
 
 ## 6. Evidence Rules For Tool Output
 

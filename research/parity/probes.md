@@ -5,7 +5,7 @@ summary: "Procedures for diagnosing one parity discrepancy: `parity_probe.py` cr
 
 Procedures for finding out *what* is wrong once [`method.md`](method.md) says *where* the loss is. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md). Dated outcomes go in journal entries; earlier ones are rows of the [parity log](../../work/2026-10/parity-log/log.md) and the notes it links; the helpers are [`python/scripts/parity_probe.py`](../../python/scripts/parity_probe.py) and [`parity_sweep.py`](../../python/scripts/parity_sweep.py).
 
-All probes read a capture directory (`<data root>/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`). "Object pixels" are capture pixels that are not sky, ground ramp, button bar or cursor; `shift` and `iou` take the backdrop index bands from the `background` field of the `references.toml` row of the film the capture's `meta.json` names, and refuse a film whose row has none (only `ctry`'s is recorded).
+All probes read a capture directory (`<data root>/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`). "Object pixels" are capture pixels outside the film's `background` bands and not index 0 or 255; `shift` and `iou` take the backdrop index bands from the `background` field of the `references.toml` row of the film the capture's `meta.json` names, and refuse a film whose row has none (every reference film's row records one; [section 3](#3-actor-window-iou-iou)).
 
 ## 1. Side-by-side crop (`crop`)
 
@@ -27,6 +27,83 @@ IoU of our actor pixels against capture object pixels inside the actor's boundin
 
 **Trap (`[Bounded Observation]`).** IoU rewards silhouette coverage. The best of 48 orientations scored 0.247 against 0.109 for the current one, yet its crop was a monoplane seen from above while the capture is a biplane seen from behind at about 45 degrees. Treat an IoU gain as a lead, and confirm it with a crop (section 1).
 
+**Backdrop bands** (`background` in each `references.toml` row). `[Bounded Observation]`, 2026-11-14, #490 and the #501 review, on `crates` tree `d2cd090` (`expected.gpu` was measured on `adbde141`; scores matched it to 1e-6), RTX 4070. The rule, one for all six films: an index is backdrop when
+
+* it has at least 0.05 % of the capture's rows 0..184 over capture frames 0, 4, 8, ... of the scored frames (`[0::4]`, 25 to 183 frames);
+* at least 85 % of those capture pixels lie where our layer plane is none (0), ocean (1) or terrain (2); an index our render draws mostly on the props layer (3) is scenery and stays out, however large and however well our index agrees;
+* **no actor pixel of ours carries it in any scored frame** (layer 16 and up, every scored frame, not the sample): a missing backdrop index only lowers IoU, one an actor paints hides the actor;
+* where the index is not mostly sky, our index equals the capture's on at least 90 % of those pixels; where it is mostly none (sky), it lies in 227-238, the sky of `CAPTURE_SKY_INDICES` (`crates/stunt-cli/src/parity/mask.rs`; 224 to 226 and 239 are `[Unknown]` in [`palette-and-shading.md`](../formats/concepts/palette-and-shading.md)).
+
+Reproduce one film's bands after `mise run parity`, from the repo root:
+
+```bash
+mise exec -- uv run python - land < snippet.py   # the script below, saved as snippet.py
+```
+
+```python
+import sys
+from pathlib import Path
+import numpy as np
+from stunt_reel import dataroot
+from stunt_reel.matched_frames import Reference
+from stunt_reel.parity_artifacts import RenderStore, read_report
+
+film, n = sys.argv[1], 320 * 185  # run from the repo root after `mise run parity`
+store = RenderStore(Path(f"build/parity/ours/{film}_current"))
+ref = Reference(dataroot.data_root() / "captures" / f"vault-{film}" / "frames", store)
+frames = list(ref.from_report(read_report(Path(f"build/parity/report/{film}_current/report.json"))))
+actor, count, agree = (np.zeros(256) for _ in range(3))
+cap, sky = np.zeros(256), np.zeros(256)
+for k, m in enumerate(frames):  # every scored frame: what our actors paint
+    layers = np.array(m.page.layers[:n])
+    ours = np.frombuffer(m.page.indices, np.uint8)[:n]
+    actor += np.bincount(ours[layers >= 16], minlength=256)
+    if k % 4:  # capture statistics on frames 0, 4, 8, ...
+        continue
+    c = np.frombuffer(m.capture_indices(), np.uint8)[:n]
+    cap += np.bincount(c, minlength=256)
+    sky += np.bincount(c[layers == 0], minlength=256)
+    ground = (layers == 1) | (layers == 2)
+    count += np.bincount(c[ground], minlength=256)
+    agree += np.bincount(c[ground & (c == ours)], minlength=256)
+keep = [
+    i
+    for i in range(1, 255)
+    if cap[i] >= 0.0005 * cap.sum()
+    and actor[i] == 0
+    and (sky[i] + count[i]) >= 0.85 * cap[i]
+    and (227 <= i <= 238 if sky[i] > 0.5 * cap[i] else agree[i] >= 0.9 * count[i])
+]
+bands = []
+for i in keep:
+    if bands and bands[-1][1] == i - 1:
+        bands[-1][1] = i
+    else:
+        bands.append([i, i])
+print(film, bands, f"{100 * cap[keep].sum() / cap.sum():.0f}% of capture pixels")
+```
+
+The `ctry` row is #485's and predates this rule (it keeps the ground ramp 192-199 and shade greens 161-165); it was not rederived, and its 237 breaks the rule (9 actor px in 3 frames). An earlier, looser rule put actor-painted indices in the bands; the strict one drops them. _Source: [per-film derivation and shift test](../../work/2026-11/490_background-bands/journal.md#2026-11-14-backdrop-bands-for-the-six-non-ctry-films)._
+
+| Film | `background` | Capture pixels covered | `iou` (every 2nd scored frame) |
+|---|---|---|---|
+| `ctry` | `[192,199] [228,238] [161,165]` (#485) | not measured | 0.5405 (38) |
+| `intro` | `[164,164] [195,195]` | 10 % | 0.1487 (89) |
+| `land` | `[164,164] [195,195]` | 34 % | 0.1879 (47) |
+| `balloon` | `[162,164] [194,195] [197,198] [208,208] [228,238]` | 57 % | 0.6796 (43) |
+| `traintnl` | `[195,195] [228,228] [232,238]` | 62 % | 0.3397 (44) |
+| `bomb` | `[163,164] [208,208] [227,235] [238,238]` | 34 % | 0.2709 (129) |
+| `location` | `[164,164] [195,195] [208,208]` | 27 % | 0.1164 (86) |
+
+"Covered" is the share of all rows 0..184 capture pixels, 0 and 255 included in the denominator, over the sampled frames; an index below 0.05 % of them, or absent from the sampled frames, counts as object. The figures are leads only (`[Bounded Observation]`, [trap above](#3-actor-window-iou-iou)), for these reasons:
+
+* **The strict test costs backdrop.** Every index our actors paint anywhere in the film counts as object pixels wherever it is backdrop. `land` has no sky band because actor paint covers 227 to 238 (5,605 px at 229 to 238); `intro` has none either (2,643 px, mostly 236 to 238); `bomb` loses terrain 195 (24 % of its capture) to 1 px in 1 scored frame; `traintnl` 231 goes for 1 px in 1 frame while 233 stays. The test follows rasterizer edges.
+* **Props-layer scenery.** Tarmac, hills, tunnel and track props our render draws on layer 3 are object pixels, inside the actor's box on `traintnl` (crop of tick 628).
+* **Weak discrimination on `intro` and `location`.** Shifting our actor by (0,-15) or (0,+10) scores as well as or better than (0,0) on `intro`, and (+25,+25) costs `location` 12 % of its IoU, against about half on `land`, `traintnl`, `balloon` and `bomb` (journal). Do not use the actor IoU of `intro` or `location` to rank a 15 to 25 px placement change.
+* **A render fault inflates `location`.** From tick 717 to 903 our render draws a black foreground quadrilateral, mostly growing, that the capture lacks ([#504](https://github.com/neilsh/stunt-reel/issues/504)). It overlaps capture index 76, which is no band, so it adds object pixels our actor "finds": per-frame IoU is 0.34 to 0.35 at ticks 805 to 892 against 0.05 to 0.12 at 717 to 760 (different actor content, so an inference). It does not lower the figure.
+
+The final bands were not cropped by eye (the first round's were, journal).
+
 ## 4. Candidate sweeps
 
 For a hypothesis with a few dozen variants (axis permutations, Euler order and signs, camera or actor offsets):
@@ -39,7 +116,7 @@ For a hypothesis with a few dozen variants (axis permutations, Euler order and s
    ```
 
    It builds `stunt-cli` once, renders every combination of the `--var` values for each film with those variables in the environment (flags from [`method.md`](method.md) section 1; each film's capture and `.FLM` come from its [`references.toml`](references.toml) row and the corpus), scores each with `stuntreel parity`, and prints one line per variant sorted best first, then the winner. Every film `references.toml` pins is the default and the ranking is by mean SSIM over them, so a gain on one film that costs another shows up in the table. With `--track`, and the round's `--target` ranges, the sweep instead judges every variant against the first value's by the adoption rule ([`score-a-render-change.md`](../../docs/howto/score-a-render-change.md) § 8). `--jobs N` (default 8, capped by cores and pairs) runs N (variant, film) pairs at once, with the table in the same order as a sequential run ([`evidence-limits.md`](evidence-limits.md) section 3 has the cost per job). Render directories go under `build/scratch/sweep/` and are deleted after scoring.
-3. `--probe iou` adds the actor-window IoU of section 3 per film, for a hypothesis about an actor (it reads each film's `background` bands from its `references.toml` row; a film whose row has none shows `-` in the actor column and keeps its SSIM, so only `ctry` has an actor IoU for now). `--keep-best` keeps the winner's render directory and writes `crop_<film>.png` there: section 1's crop of the frame with the largest actor. Look at it before trusting a score change.
+3. `--probe iou` adds the actor-window IoU of section 3 per film, for a hypothesis about an actor (it reads each film's `background` bands from its `references.toml` row; a film whose row has none shows `-` in the actor column and keeps its SSIM). `--keep-best` keeps the winner's render directory and writes `crop_<film>.png` there: section 1's crop of the frame with the largest actor. Look at it before trusting a score change.
 4. Re-run the winner against the other films if `--films` narrowed the sweep. Three CTRY-only gains (camera height, terrain base, hero lift) regressed `INTRO.FLM` and were not adopted.
 5. For a winner you adopt, keep the switch until its PR pictures and scores are made ([Evidence for a rendering PR](../../.agents/skills/improving-render-parity/pr-evidence.md)), since `mise run frame -- --var` needs it. Before removing any switch, adopted or not, save it as a patch from Git Bash: `git diff HEAD -- <paths> > work/<YYYY-MM>/<folder>/switches/DBG_<NAME>.diff` (`git add -N` a new file first), and cite that file in the journal entry. A later rule change can then rescore the case: `git apply --check`, then `git apply`, on the commit the entry's **Method** names. Then `git restore <paths>` to remove it. Record the outcome, including a negative one, as a journal entry in the work item's folder and in the note that owns the residual.
 

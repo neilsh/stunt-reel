@@ -1,6 +1,6 @@
 # #65: the records read at the two GVPOLY handlers (op 0x168 at 0x995C, op 0x2BE at 0x9A24),
-# which are entered with ES:SI on a record's first word; plus the object headers of the frames
-# around them, from the light setup 0x9100. Armed at tick 270, in the airfield shot (tick 273).
+# which are entered with ES:SI on the record's `count` word, ahead of its registers and ramp
+# word (sod-vm.md section 8.5); plus the object headers of the frames around them, from the light setup 0x9100. Armed at tick 270, in the airfield shot (tick 273).
 # Only the hero aircraft drew with them; the ground is drawn elsewhere (world-scene.md section 2).
 [run]
 stop_tick = 900
