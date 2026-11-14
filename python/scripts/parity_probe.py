@@ -17,8 +17,8 @@ through the same adapter:
   frames of one report: the scores a journal entry quotes, so the numbers are
   never retyped by hand.
 
-Object pixels are capture pixels that are not sky, ground ramp, button bar or
-cursor. ``shift`` and ``iou`` take the backdrop index bands from the ``background`` field of the
+Object pixels are capture pixels outside the film's ``background`` bands and not
+index 0 or 255. ``shift`` and ``iou`` take the backdrop index bands from the ``background`` field of the
 ``references.toml`` row of the film the capture's ``meta.json`` names, and refuse a film whose
 row has none.
 """
