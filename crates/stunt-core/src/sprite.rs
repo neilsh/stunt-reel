@@ -3,7 +3,8 @@
 //! A frame is a `.SPR` image (`research/formats/auxiliary/spr.ksy`): `width: u16`,
 //! `height: u16`, an encoding word, then `width × height` palette indices `[I3]` from byte 6,
 //! row by row, index 0 transparent. `PLAYONE`'s `OP_ANIMATE` blitter (image `0x7DE6`) ignores
-//! the encoding word, so a span-coded image is read as raw rows here too.
+//! the encoding word, and so does [`SpriteImage::parse`]: a span-coded image becomes raw rows,
+//! or `None` when it holds fewer than `width × height` bytes after the header.
 
 /// Byte offset of the first pixel `PLAYONE` reads.
 const PIXELS_AT: usize = 6;

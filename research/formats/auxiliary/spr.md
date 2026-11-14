@@ -26,18 +26,18 @@ An image is three header words, width, height and an encoding word, then its bod
 
 ### 2.1 Encodings
 
-* **Raw** (encoding 0): `width × height` palette indices, row by row, so the size is `width × height + 6`.
-* **Span-coded** (any other value; the game's images carry 2): each row is a list of spans, each a count, the column of its first pixel and that many pixels, ended by a zero count. Columns no span covers are not drawn.
+* **Raw** (encoding 0): palette indices row by row, so the size is `width × height + 6`.
+* **Span-coded** (any other value; the game's images carry 2): each row is a list of spans of pixels placed at a column (`span_row` in [`spr.ksy`](spr.ksy)). Columns no span covers are not drawn.
 
 ### 2.2 Field Definitions (`# [FMT-SPR-HEADER]`)
 
-**The game reads pixels from byte 6.** `[Established]` for `PLAYONE`, static: its unscaled draw tests the word at byte 4 (`0x7C2E`), copies raw rows on 0 (`0x7C39`) and walks spans otherwise (`0x7CBA`); the `OP_ANIMATE` blitter (`0x7DE6`) ignores the word and reads raw rows ([`sod-animate.md`](../../playone-exe/sod-animate.md) § 3). `STUNT.EXE` and `MAKEONE.EXE`, unpatched and Patch #3, carry the same instruction bytes and a loader that places the chunk the same way (`[Supported Inference]`: matched, not traced from a caller). Every image-shaped chunk of the corpus's `.RES` and `.ALL` archives but one `PCX2SPR` copy (§ 2.3) fits it (`[Bounded Observation]`, deduplicated by content): 125 raw images, 50 of which end in a non-zero word, so there is no trailer, and 58 span-coded ones (`FASTSPR.RES` 8, `SPRITES.RES` 50), each of which the schema reads to exactly its end. `0x7C2E` tests only for zero; no value but 0 and 2 occurs.
+**The game reads pixels from byte 6.** `[Established]` for `PLAYONE`, static: its unscaled draw tests the word at byte 4 (`0x7C2E`), copies raw rows on 0 (`0x7C39`) and walks spans otherwise (`0x7CBA`); the `OP_ANIMATE` blitter (`0x7DE6`) ignores the word and reads raw rows ([`sod-animate.md`](../../playone-exe/sod-animate.md) § 3). `STUNT.EXE` and `MAKEONE.EXE`, unpatched and Patch #3, carry the same flag test, entry points and scaled-blitter opening bytes, and a loader that places the chunk the same way (`[Supported Inference]`: byte sequences matched, not traced from a caller). The corpus's `.RES` and `.ALL` archives, deduplicated by content, hold 125 raw images (`[Bounded Observation]`), 50 of which end in a non-zero word, so there is no trailer; they include `f0.spr`, a `PCX2SPR` sample whose first two pixels are 0 (§ 2.3). Of the 93 chunks with screen-sized dimensions, a non-zero word at byte 4 and another size, 58 read as span-coded images to exactly their end (`FASTSPR.RES` 8, `SPRITES.RES` 50, all with encoding 2); the other 35 were not identified. `0x7C2E` tests only for zero; in the game's archives no encoding but 0 and 2 occurs.
 
 _Source: [where an SPR image's pixels start](../../../work/2026-11/481_spr-pixel-start/journal.md#2026-11-14-where-an-spr-images-pixels-start)._
 
 ### 2.3 `PCX2SPR` Output
 
-`PCX2SPR` (SpriteMaker) writes width, height, the `width × height` pixels from byte 4, then a zero word: `MACLOGO.SPR` and `DSTAR.SPR` equal their `.PCX` sources' pixels from byte 4 byte for byte, and `dethstar.spr` differs from its source in 74 bytes read from byte 4 against 114,387 from byte 6 (`[Bounded Observation]`, three samples with sources). `DSTAR.SPR`'s copy is item `0x1E00` of the community `SITools/GameReady/Death.RES.RES`. The sizes agree (`width × height + 6`), but the game reads the first two pixels as the encoding word. Through `OP_ANIMATE`, the route `MAKESPR` models take, such a sprite is therefore drawn two pixels to the left, each row ending with the next row's first two pixels and the last row with the zero word (`[Supported Inference]`, not observed in a capture). The schema sweep reports the three non-zero samples as known anomalies.
+`PCX2SPR` (SpriteMaker) writes width, height, the `width × height` pixels from byte 4, then a zero word: `MACLOGO.SPR` and `DSTAR.SPR` equal their `.PCX` sources' pixels from byte 4 byte for byte, and `dethstar.spr` differs from its source in 74 bytes read from byte 4 against 114,387 from byte 6 (`[Bounded Observation]`, three samples with sources). `DSTAR.SPR`'s copy is item `0x1E00` of the community `SITools/GameReady/Death.RES.RES`. The sizes agree (`width × height + 6`), but the game reads the first two pixels as the encoding word. Through `OP_ANIMATE`, the route `MAKESPR` models take, such a sprite is therefore drawn two pixels to the left, each row ending with the next row's first two pixels and the last row with the zero word (`[Hypothesis]`: read from the code, not observed in a capture). The schema sweep reports the three non-zero samples as known anomalies.
 
 | File Path | Width ($W$) | Height ($H$) | Size ($W \cdot H + 6$) | Word at byte 4 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -52,11 +52,7 @@ _Source: [where an SPR image's pixels start](../../../work/2026-11/481_spr-pixel
 
 ### 3.1 Pixel Payload & Row-Major Addressing
 
-A raw image's pixels run from the top-left corner $(0, 0)$ row by row to the bottom-right $(W-1, H-1)$:
-
-$$\text{ByteOffset}(x, y) = 6 + (y \times \text{Width}) + x$$
-
-Each byte is an index into the active 256-colour VGA Mode 13h palette.
+A raw image's pixels run from the top-left corner $(0, 0)$ row by row to the bottom-right $(W-1, H-1)$ ([`spr.ksy`](spr.ksy)). Each byte is an index into the active 256-colour VGA Mode 13h palette.
 
 ### 3.2 Color Index 0 Transparency Key
 
