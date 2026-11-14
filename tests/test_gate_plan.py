@@ -193,7 +193,10 @@ def test_every_file_rust_reads_outside_crates_runs_the_rust_half() -> None:
     reads = {
         match
         for source in (ROOT / "crates").rglob("*.rs")
-        for match in re.findall(r'"\.\./\.\./([^"]+)"', source.read_text(encoding="utf-8"))
+        for match in re.findall(
+            r'(?:"\.\./\.\./|workspace_root\(\)\s*\.join\(\s*")([^"]+)"',
+            source.read_text(encoding="utf-8"),
+        )
         if not match.startswith("tests/fixtures/")
     }
     assert "research/parity/report-fields.md" in reads

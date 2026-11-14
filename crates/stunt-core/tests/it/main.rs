@@ -25,6 +25,7 @@ mod sod_census_test;
 mod sod_fuzz;
 mod sod_spec;
 mod sod_tap_test;
+mod test_support;
 mod vfs_fuzz;
 mod vfs_props;
 mod vfs_spec;

@@ -254,10 +254,9 @@ mod tests {
     use super::*;
     use crate::avi;
 
-    const FIXTURE: &str = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/fixtures/parity/video/synthetic.avi"
-    );
+    fn fixture() -> std::path::PathBuf {
+        crate::test_support::workspace_root().join("tests/fixtures/parity/video/synthetic.avi")
+    }
 
     fn expected_frame(n: usize) -> Vec<u8> {
         let mut out = Vec::new();
@@ -281,7 +280,7 @@ mod tests {
 
     #[test]
     fn the_synthetic_fixture_decodes_exactly() {
-        let bytes = std::fs::read(FIXTURE).unwrap();
+        let bytes = std::fs::read(fixture()).unwrap();
         let mut seen = 0;
         let count = avi::decode_frames(&bytes, |i, frame| {
             assert_eq!(frame, expected_frame(i).as_slice(), "frame {i}");
@@ -294,7 +293,7 @@ mod tests {
 
     #[test]
     fn the_fixture_has_keyframes_and_deltas() {
-        let bytes = std::fs::read(FIXTURE).unwrap();
+        let bytes = std::fs::read(fixture()).unwrap();
         let video = avi::read_video(&bytes).unwrap();
         assert_eq!((video.width, video.height), (64, 48));
         let flags: Vec<u8> = video.chunks.iter().map(|r| bytes[r.start]).collect();

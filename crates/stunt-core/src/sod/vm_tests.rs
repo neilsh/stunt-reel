@@ -34,11 +34,7 @@ fn decode_with_anchors(
 }
 
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
+    crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures")
 }

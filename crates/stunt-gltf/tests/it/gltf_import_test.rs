@@ -13,8 +13,6 @@
 //! reference importer parses and validates the same bytes (`Gltf::from_slice` runs the
 //! validation pass and fails on any error). Inputs are the synthetic fixtures only.
 
-use std::path::PathBuf;
-
 use gltf::Gltf;
 use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::NodeKind;
@@ -23,9 +21,7 @@ use stunt_core::sod::{DecodeMode, decode_sod};
 use stunt_gltf::{export_scene_frame, export_shape};
 
 fn fixture(name: &str) -> Vec<u8> {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
+    let dir = crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures");
     std::fs::read(dir.join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"))

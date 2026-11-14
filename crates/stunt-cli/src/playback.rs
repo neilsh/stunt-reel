@@ -302,8 +302,8 @@ mod tests {
     /// (`tests/fixtures/synthetic_timeline.flm`), whose clock is a few ticks long.
     fn fixture_playback(args: &[&str]) -> (Playback, usize) {
         use crate::scene::{SceneSources, build_scene};
-        let flm = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/synthetic_timeline.flm");
+        let flm =
+            crate::test_support::workspace_root().join("tests/fixtures/synthetic_timeline.flm");
         let scene = build_scene(&SceneSources {
             flm: Some(&flm),
             all: None,

@@ -21,6 +21,8 @@ pub mod reader;
 pub mod scene;
 pub mod sod;
 pub mod sprite;
+#[cfg(test)]
+mod test_support;
 pub mod vfs;
 pub mod world;
 

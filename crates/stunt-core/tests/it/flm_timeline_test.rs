@@ -9,9 +9,7 @@ use std::path::PathBuf;
 use stunt_core::flm::{FilmTimeline, SliceKeyframe, TIMELINE_HZ};
 
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
+    crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures")
 }

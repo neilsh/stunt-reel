@@ -108,8 +108,8 @@ mod tests {
     }
 
     fn fixture() -> Fixture {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/parity/matched_frames.json");
+        let path =
+            crate::test_support::workspace_root().join("tests/fixtures/parity/matched_frames.json");
         let text = std::fs::read_to_string(&path).expect("read the fixture");
         serde_json::from_str(&text).expect("parse the fixture")
     }

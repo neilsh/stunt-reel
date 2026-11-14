@@ -196,12 +196,7 @@ fn build_res_with_name_table(names_raw: &[u8]) -> Vec<u8> {
 
 #[test]
 fn res_synthetic_minimal_fixture_parses() {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let fixture_path = std::path::Path::new(manifest_dir)
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
+    let fixture_path = crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures")
         .join("synthetic_minimal.res");
@@ -1501,11 +1496,7 @@ fn vfs_error_display_and_traits() {
 // ---------------------------------------------------------------------------
 
 fn fixture(name: &str) -> Vec<u8> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
+    let root = crate::test_support::workspace_root();
     std::fs::read(root.join("tests").join("fixtures").join(name)).expect("read fixture")
 }
 

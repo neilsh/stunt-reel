@@ -10,11 +10,7 @@ use stunt_core::anchor::AnchorPoint;
 use stunt_core::sod::{DecodeMode, OP_TAP, SodError, SodStop, SodStopReason, decode_sod};
 
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
+    crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures")
 }

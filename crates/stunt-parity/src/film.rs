@@ -126,8 +126,6 @@ impl FilmId {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use serde::Deserialize;
 
     use super::*;
@@ -164,8 +162,8 @@ mod tests {
 
     #[test]
     fn every_shared_fixture_case_has_its_outcome() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/parity/film_identity.json");
+        let path =
+            crate::test_support::workspace_root().join("tests/fixtures/parity/film_identity.json");
         let text = std::fs::read_to_string(&path).expect("read the fixture");
         let fixture: Fixture = serde_json::from_str(&text).expect("parse the fixture");
         assert!(!fixture.cases.is_empty());
