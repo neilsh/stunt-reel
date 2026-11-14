@@ -111,7 +111,7 @@ TAP operand values point **four bytes before** the record (`record = table + ope
 
 For each anchor record (handler image `0xAD88`, transform `0xAE67`):
 
-1. If the cached stamp `+0x1B` differs from `[0x19A8]` (frame counter), transform the raw point through the 3×3 matrix at `[0x80C0..0x80CA]`, add the translation `[0x41D4..0x41DA]`, cache the 32-bit results at record `+0x06/+0x0A/+0x0E`, and store the stamp.
+1. If the cached stamp `+0x1B` differs from `[0x19A8]` (frame counter), transform the raw point through the 3×3 matrix at `[0x80C0..0x80CA]`, add the translation `[0x41D4..0x41DF]`, cache the 32-bit results at record `+0x06/+0x0A/+0x0E`, and store the stamp.
 2. Shift each cached 32-bit component right by `16 - [0x806E]` to a 16-bit value (`0xADAC..0xADF1`).
 3. Subtract the object's origin words `[0x8084]`, `[0x8086]`, `[0x8088]`.
 4. Write `x, y, z` into the 12-byte vertex register `0x4450 + reg_off + i*12`.
@@ -122,6 +122,10 @@ For each anchor record (handler image `0xAD88`, transform `0xAE67`):
 The **geometry** effect is therefore: *load a terrain anchor point, relative to the shape's own origin, into the SOD vertex register bank*. `[Supported Inference]` for the units: that `[0x806E]` and the header's `scale_index` (`[es:8]`, taken into `CH` at `0x21D8` and kept as `[0x806F]`) put tapped and `VECTORS` points in one unit is read from the two writers, not from a trace. On that reading, in the shape's frame, an unrotated scenery shape placed at `p` and lifted by `ground_y_offset >> scale_index` gets `(anchor - p) << scale_index - ground_y_offset`. Its tapped points then land on the anchors wherever it is placed. A point the stream builds from the origin itself, such as `CLRV; PUTV` or `CLRV; SUBV 0`, depends on the placement. Subsequent `POLYZ` reads those registers exactly like `VECTORS`-populated vertices.
 
 _Source: [2026-11-11: how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._
+
+**No rotation term for scenery.** `PLAYONE` does not rotate a scenery prop. Both scenery draw branches were read: the `SP_1NODE` far stand-in (`0x2152..0x220A`) and `SP_LEAF` (`0x220B..0x235F`, jump-table type 10), the leaf branch that places the `OP_TAP` shapes the walk reaches. Each rotates the tree position `[0x49F2..0x49FC]` by `0x80C0` (`0x2195..0x2198`; `0x225F..0x2262`) and culls it in `0x1B0C`, which reads the header's `[es:8]`, `[es:4]` and `[es:9]` and no angle. Each then copies the draw matrix `0x808A` from `0x80C0`, or from `0x809C` when header bit 0 is set (`0x21A8`, `0x21C2..0x21D0`; `SP_LEAF` after drawing the pending objects it sorts in front, `0x2276`, `0x2302..0x2317`), and stores the rotated position in the origin words `[0x8084..0x8088]` (`0x21B2..0x21BC`; `0x231A..0x2324`). Neither branch reads a per-prop angle, and no `SCENERY.scn` node carries one ([`scenery.md`](../formats/auxiliary/scenery.md) section 3.1). The anchor translation `0x41D4` is written by `0x0824:03F5` (image `0x8635..0x8724`, called at `0x1DF0` with the view eye `[0x2A68..0x2A72]`): the eye negated, times `0x80C0` through `0x88FB`. So with `R` the matrix at `0x80C0`, `p` the placement with the header lift added ([`scenery.md`](../formats/auxiliary/scenery.md) section 3.3) and the walk's position relative to the eye, a tapped register holds `R (anchor − eye) − R (p − eye) = R (anchor − p)` and a `VECTORS` point `R v`; in the shape's frame the tapped point is `anchor − p`, the translation-only load `anchored_models` makes. `[Established]` for the instructions; `[Supported Inference]` for the conclusion, since `0x41D4` is the 16.16 eye shifted right by 16 and turned by `R` (`0x867F..0x8702` correct the signed multiply of the low words), and that `ANCHORPT.DAT` units equal the eye's whole-metre unit is not checked; no frame was traced live. A view-facing (bit 0) shape would draw through `0x809C` with its anchors still through `0x80C0`, so a tapped point would not land at `anchor − p` in its frame; no view-facing shape in `INTRO.ALL` or `CTRY.ALL` runs `OP_TAP` (section 8.8, `[Bounded Observation]`).
+
+_Source: [2026-11-13: whether PLAYONE turns a scenery prop's tapped anchors](../../work/2026-11/476_op-tap-anchors/journal.md#2026-11-13-whether-playone-turns-a-scenery-props-tapped-anchors)._
 
 ```mermaid
 flowchart TD
@@ -178,7 +182,7 @@ _Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anc
 
 Open items:
 
-- A rotated TAP shape: `vm.rs` loads the anchor unrotated, which holds only for scenery, whose draw matrix is the view matrix alone ([`memory-map.md`](memory-map.md) `0x808A`).
+- A TAP shape drawn rotated: `vm.rs` loads the anchor unrotated, which holds for non-view-facing scenery (section 4). An actor (draw matrix `0x80C0 · R`, [`memory-map.md`](memory-map.md) `0x808A`) or a view-facing shape running `OP_TAP` would need the inverse turn; none is known in `INTRO.ALL` or `CTRY.ALL`.
 - Retail `PLAYONE.EXE` anchor-table population path `[Bounded Observation]`.
 - HUGETAP semantics `[Unknown]`.
 

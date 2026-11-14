@@ -25,7 +25,7 @@ mod scenery;
 use std::collections::HashMap;
 use std::ops::Range;
 
-use scenery::{LodGate, Placement, place_props};
+use scenery::{LodGate, Placement, place_props, reaches_a_pixel};
 pub use scenery::{ScnStop, ScnStopReason};
 
 use crate::anchor::AnchorPoint;
@@ -95,7 +95,8 @@ pub struct World {
     pub scenery_stop: Option<ScnStop>,
     /// The terrain's triangles, for the ground plane under a point ([`Self::ground_plane`]).
     pub terrain: TerrainSurface,
-    /// Placed `OP_TAP` shapes drawn partly or not at all, in placement order.
+    /// Placed `OP_TAP` shapes drawn partly or not at all, in placement order; a failed
+    /// placement is reported whether or not the sub-pixel cull would have dropped it.
     pub tap_failures: Vec<TapFailure>,
     /// Props whose shape faces the view ([`crate::sod::HEADER_FACES_VIEW`]), left out of
     /// [`Self::ir`] because their rotation follows the camera; each frame draws them
@@ -226,20 +227,56 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
             bytes,
             shapes,
             inputs.view_eyes,
-            inputs.max_zoom,
             inputs.max_lod_shift,
             inputs.min_corner_depth,
         )
     });
     let base_y = 0.0;
-    let props_placed = placements.props.len();
-    let (view_facing, fixed) =
-        split_view_facing(&placements.props, &placements.chains, shapes, base_y);
+    let (facing, fixed) = split_view_facing(&placements.props, shapes);
 
-    let (own, tap_failures) = anchored_models(inputs, &fixed);
+    // The cull sizes each prop by the model it draws, so an `OP_TAP` placement is decoded
+    // first: its tapped points depend on where it stands.
+    let (mut own, tap_failures) = anchored_models(inputs, &fixed);
+    let mut shared_radii: HashMap<u16, f32> = HashMap::new();
+    let mut visible = |model: Option<&SodModelIr>, shared: bool, p: &Placement| {
+        let radius_of = |m: Option<&SodModelIr>| {
+            m.and_then(SodModelIr::extent)
+                .map_or(0.0, |extent| extent.radius)
+        };
+        let radius = if shared {
+            *shared_radii
+                .entry(p.shape)
+                .or_insert_with(|| radius_of(model))
+        } else {
+            radius_of(model)
+        };
+        reaches_a_pixel(radius, p.position, inputs.view_eyes, inputs.max_zoom)
+    };
+    let mut kept = Vec::with_capacity(fixed.len());
+    let mut kept_own = HashMap::new();
+    for (index, p) in fixed.into_iter().enumerate() {
+        let anchored = own.remove(&index);
+        let shows = match &anchored {
+            Some(model) => visible(model.as_ref(), false, &p),
+            None => visible(shapes.get(&p.shape), true, &p),
+        };
+        if shows {
+            if let Some(model) = anchored {
+                kept_own.insert(kept.len(), model);
+            }
+            kept.push(p);
+        }
+    }
+    let facing: Vec<Placement> = facing
+        .into_iter()
+        .filter(|p| visible(shapes.get(&p.shape), true, p))
+        .collect();
+    let props_placed = kept.len().saturating_add(facing.len());
+    let view_facing = facing_props(&facing, &placements.chains, base_y);
+    let fixed = kept;
     let models = PropModels {
         shapes,
-        own,
+        own: kept_own,
         chains: &placements.chains,
     };
 
@@ -259,23 +296,25 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
     })
 }
 
-/// `props` split into those whose shape faces the view, with the gates of their chain in
-/// `chains`, and the rest, each in walk order.
+/// `props` split into those whose shape faces the view and the rest, each in walk order.
+fn split_view_facing(
+    props: &[Placement],
+    shapes: &HashMap<u16, SodModelIr>,
+) -> (Vec<Placement>, Vec<Placement>) {
+    props
+        .iter()
+        .partition(|p| shapes.get(&p.shape).is_some_and(faces_view))
+}
+
+/// `props`, whose shapes face the view, as drawn each frame, each behind the gates of its
+/// chain in `chains`, in walk order.
 ///
 /// A view-facing prop is drawn from its shape's shared decode, so it gets neither the
 /// per-placement `OP_TAP` decode nor the ground-decal snap of a baked prop; the type-8 trees
 /// of the reference archives run no `OP_TAP`.
-fn split_view_facing(
-    props: &[Placement],
-    chains: &[Vec<LodGate>],
-    shapes: &HashMap<u16, SodModelIr>,
-    base_y: f32,
-) -> (Vec<FacingProp>, Vec<Placement>) {
-    let (facing, fixed): (Vec<Placement>, Vec<Placement>) = props
+fn facing_props(props: &[Placement], chains: &[Vec<LodGate>], base_y: f32) -> Vec<FacingProp> {
+    props
         .iter()
-        .partition(|p| shapes.get(&p.shape).is_some_and(faces_view));
-    let facing = facing
-        .into_iter()
         .map(|p| FacingProp {
             shape: p.shape,
             position: p.position,
@@ -286,8 +325,7 @@ fn split_view_facing(
                 .map(|&gate| lod_condition(gate, base_y))
                 .collect(),
         })
-        .collect();
-    (facing, fixed)
+        .collect()
 }
 
 /// Why a placed `OP_TAP` shape was drawn partly or not at all.
@@ -351,7 +389,8 @@ impl PropModels<'_> {
 ///
 /// `PLAYONE` (image `0xAD88`) loads a tapped point as the anchor less the shape's origin, so a
 /// point a stream builds from that origin, such as `0x0403`'s `CLRV; SUBV 0`, lands where
-/// the tree puts it (`research/playone-exe/sod-vm.md` section 4). Placements are whole tree
+/// the tree puts it (`research/playone-exe/sod-vm.md` section 4). No rotation applies: a
+/// scenery prop that does not face the view is drawn through the matrix the anchors are turned by. Placements are whole tree
 /// units, so the shifted table is exact. A placement for which an anchor the stream taps
 /// overflows, or whose stream fails, is dropped and reported; one whose decode stops early is
 /// drawn and reported. An anchor the stream never taps may overflow: `PLAYONE` subtracts the
@@ -1699,6 +1738,73 @@ mod tests {
         assert!(corners[0].is_some());
     }
 
+    /// `build_world` over one `SP_POS` to raw `(x, 0, 0)` then an `SP_LEAF` of the `OP_TAP`
+    /// shape `0x0400` (`tap_stream` with its third point at the origin), seen from `eye`.
+    /// Returns the props placed.
+    fn tap_props_placed(anchors: &[AnchorPoint], x: i32, eye: [f32; 3]) -> usize {
+        use crate::sod::{OP_CLRV, OP_PUTV};
+        let stream = tap_stream(0, 6, &[OP_CLRV, OP_PUTV, 0x18]);
+        let shared = crate::sod::decode_sod(
+            &stream,
+            "MODEL_0400.SOD",
+            Some(anchors),
+            DecodeMode::Lenient,
+        )
+        .expect("decode against the unshifted table");
+        let shapes = HashMap::from([(0x0400, shared)]);
+        let streams = HashMap::from([(0x0400, stream)]);
+        let scenery: Vec<u8> = [0, 0, x, 0, 0, 12, 10, 0x0400]
+            .iter()
+            .flat_map(|w: &i32| w.to_le_bytes())
+            .collect();
+        let eyes = [eye];
+        let inputs = WorldInputs {
+            anchors,
+            map: None,
+            scenery: Some(&scenery),
+            view_eyes: &eyes,
+            max_zoom: 1.0,
+            max_lod_shift: 1,
+            min_corner_depth: 0.804,
+            anchored_shapes: &streams,
+            light: ShadeLight::default(),
+        };
+        build_world(&inputs, &shapes).expect("a world").props_placed
+    }
+
+    /// A tapped hill whose anchors lie near the island origin, placed 1,000 m out and seen
+    /// from the origin: the shared decode, against the unshifted table, spans 1 m about the
+    /// shape's origin and would be culled, but the placement's own decode reaches back
+    /// 1,000 m to its anchors and is kept.
+    #[test]
+    fn test_build_world_sizes_a_tap_prop_by_its_own_decode_when_kept() {
+        let anchors = [
+            AnchorPoint { x: 0, y: 0, z: 0 },
+            AnchorPoint { x: 1, y: 0, z: 0 },
+        ];
+        assert_eq!(tap_props_placed(&anchors, 1000, [0.0; 3]), 1);
+    }
+
+    /// The converse: anchors 1 m from the placement, seen 2,000 m away. The shared decode
+    /// spans the 1,000 m to the anchors and would be kept; the placement's own decode is
+    /// 1 m across and is culled.
+    #[test]
+    fn test_build_world_sizes_a_tap_prop_by_its_own_decode_when_culled() {
+        let anchors = [
+            AnchorPoint {
+                x: 1000,
+                y: 0,
+                z: 0,
+            },
+            AnchorPoint {
+                x: 1001,
+                y: 0,
+                z: 0,
+            },
+        ];
+        assert_eq!(tap_props_placed(&anchors, 1000, [-1000.0, 0.0, 2000.0]), 0);
+    }
+
     /// Without `MAP.BIN` the world is the ocean quad, then a flat ground quad.
     #[test]
     fn test_build_world_ir_without_map_lays_ocean_then_ground() {
@@ -2152,9 +2258,9 @@ mod tests {
             at(0x3A3, 3.0, 1),
             at(0x999, 4.0, 0),
         ];
-        let (facing, fixed) = split_view_facing(&props, &chains, &shapes, 0.0);
+        let (facing, fixed) = split_view_facing(&props, &shapes);
         assert_eq!(
-            facing,
+            facing_props(&facing, &chains, 0.0),
             vec![
                 FacingProp {
                     shape: 0x3A3,
