@@ -2,10 +2,10 @@
 
 ## Status
 
-proposed 2026-11-13 for [#489](https://github.com/neilsh/stunt-reel/issues/489); needs human
-sign-off. Supersedes the **What is flat ground** clause of
-[ADR 0045](0045-flat-ground-is-painted-in-walk-order.md) where it removes "any `[I5]` lift the
-decoder gave a decal": decals have no lift left to remove. ADR 0045's other decisions stand.
+accepted 2026-11-14 for [#489](https://github.com/neilsh/stunt-reel/issues/489). Supersedes the
+**What is flat ground** clause of [ADR 0045](0045-flat-ground-is-painted-in-walk-order.md) where
+it removes "any `[I5]` lift the decoder gave a decal": decals have no lift left to remove. ADR
+0045's other decisions stand.
 
 ## Context
 

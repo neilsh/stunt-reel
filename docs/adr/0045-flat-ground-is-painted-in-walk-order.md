@@ -7,7 +7,7 @@ accepted 2026-11-13 for [#446](https://github.com/neilsh/stunt-reel/issues/446).
 on the ground plane; ADR 0035's **Rule** and **Snap** stand, and its **Route** still applies to a
 ground-lying prop off that plane, such as a tile on a hill. The `[I5]` lift that **What is flat
 ground** subtracts is gone under [ADR 0046](0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)
-(proposed).
+(accepted 2026-11-14).
 
 ## Context
 
