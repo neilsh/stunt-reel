@@ -114,6 +114,10 @@ run = "uv run python python/scripts/worktree_init.py reap"
 description = "A pull request's unresolved review threads, one line each with the comment id to reply to, then its outside-diff findings; or reply in and resolve a thread. Uses GraphQL, or in a cloud session the proxy's REST thread routes (mise run pr-threads -- <number> [--all] | [--reply <id> --body <text>|--body-file <path>] [--resolve <id>])"
 run = "uv run python python/scripts/pr_threads.py"
 
+[tasks.queue]
+description = "The unattended queue: open PRs in stack order, then open ready-for-agent issues, one line each with ready or the mechanical reason to skip it; prints no bodies"
+run = "uv run python python/scripts/work_queue.py"
+
 [tasks.work]
 description = "Start a work item's folder, work/<YYYY-MM>/<issue>_<slug>/, filing its GitHub issue first unless --issue names one; or list every work folder with its issue's status (mise run work -- new <slug> (--issue N | --problem TEXT [--title TEXT]) | list [--status active|landed|abandoned])"
 run = "uv run python python/scripts/work.py"

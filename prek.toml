@@ -94,3 +94,12 @@ id = "check-yaml"
 
 [[repos.hooks]]
 id = "detect-private-key"
+
+# A Windows checkout records no executable bit, so these read git's staged mode there. Rust's
+# `#![...]` inner attributes read as shebangs, and dated work folders are frozen.
+[[repos.hooks]]
+id = "check-shebang-scripts-are-executable"
+exclude = '(\.rs$|^work/)'
+
+[[repos.hooks]]
+id = "check-executables-have-shebangs"

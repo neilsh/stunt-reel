@@ -60,6 +60,7 @@ def test_the_layout_answers_every_artifact_location() -> None:
     assert parity_layout.stage_dir("INTRO", "42") == Path("stage/intro-42")
     assert parity_layout.stage_conf("INTRO", "42") == Path("stage/intro-42/dosbox.conf")
     assert parity_layout.stage_mount("INTRO", "42") == Path("stage/intro-42/mount")
+    assert parity_layout.scratch_root() == Path("build/scratch")
     assert parity_layout.sweep_root() == Path("build/scratch/sweep")
     assert parity_layout.batch_root() == Path("build/parity/batch")
     assert parity_layout.batch_film_dir("vault-ctry") == Path("build/parity/batch/vault-ctry")

@@ -5,7 +5,8 @@
 accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (below). Amended
 2026-11-08: `check-work-frozen` holds a frozen work folder to its outcome (below). Superseded in
 part 2026-11-09 by [ADR 0044](0044-commit-messages-carry-no-gate-line.md): the commit-msg hook
-checks the subject only, with no gate line. Supersedes
+checks the subject only, with no gate line. Amended 2026-11-13: two shebang built-ins (below).
+Supersedes
 the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
 [`gate.py`](../../python/scripts/gate.py); keeps that change's committed `.githooks/` and its
@@ -74,6 +75,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | `check-merge-conflict` | union-merged append-only files ([AGENTS.md, Committing](../../AGENTS.md#committing)) must not keep markers |
   | `check-toml`, `check-yaml` | `mise.toml`, `pyproject.toml`, `.github/` and `.coderabbit.yaml` are configuration |
   | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
+  | `check-shebang-scripts-are-executable`, `check-executables-have-shebangs` | Linux CI's ruff fails a script whose shebang and executable bit disagree (`EXE001`), which a Windows checkout cannot see; these read git's staged mode there (added 2026-11-13, #461) |
 
   No hook rewrites files: the whitespace and end-of-file fixers are left out, and the fix for a
   format failure is `mise run fmt`.
