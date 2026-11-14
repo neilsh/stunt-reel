@@ -80,7 +80,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
   | `trailing-whitespace`, `end-of-file-fixer` | `.editorconfig` (final newline, trimmed trailing whitespace; in Markdown only a two-space hard break is allowed); they replace `diff-check` |
   | `check-symlinks`, `destroyed-symlinks` | `.claude/skills` is a committed symlink, which a Windows checkout without `core.symlinks` turns into a text file; `destroyed-symlinks` reads `git status`, so it guards the commit and passes unread in CI |
-  | `fix-byte-order-marker` | PowerShell 5.1's `Out-File` and `>` write a UTF-8 BOM; run with `--check`, like the whitespace pair, with the same exemptions |
+  | `fix-byte-order-marker` | PowerShell 5.1 can write a UTF-8 BOM (`Out-File -Encoding utf8`); a UTF-16 file is not caught; run with `--check`, like the whitespace pair, with the same exemptions |
   | `check-json` | the tracked `.json` configuration and fixtures |
   | `check-vcs-permalinks` | links in `docs/` and `research/` must name a commit, not a branch; dated `work/` folders are exempt |
   | `forbid-new-submodules` | the repository has none |
