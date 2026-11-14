@@ -101,11 +101,28 @@ def flip_byte(data: bytes, at: int = 0) -> bytes:
     return bytes(changed)
 
 
-def pin_reference(root: Path, film: str, frames: list[dict[str, int]]) -> Path:
-    """Write a capture of *film* under *root* and name it in the root's references.toml."""
+def pin_reference(
+    root: Path,
+    film: str,
+    frames: list[dict[str, int]],
+    *,
+    flm: str | None = None,
+    background: str | None = None,
+    files: dict[str, bytes] | None = None,
+) -> Path:
+    """Write a capture of *film* under *root* and name it in the root's references.toml.
+
+    *flm* names the film in the capture's ``meta.json``, *background* is the row's ``background``
+    value as TOML text, and *files* are extra capture files (name to bytes), pinned with it.
+    """
     reference = root / parity_layout.frames_path(f"vault-{film}")
     reference.mkdir(parents=True, exist_ok=True)
-    (reference / "meta.json").write_text(json.dumps({"frames": frames}), encoding="utf-8")
+    meta: dict[str, object] = {"frames": frames}
+    if flm is not None:
+        meta["film"] = flm
+    (reference / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    for name, data in (files or {}).items():
+        (reference / name).write_bytes(data)
     pointers = root / parity_layout.REFERENCES_FILE
     pointers.parent.mkdir(parents=True, exist_ok=True)
     digest = references.capture_digest(reference)
@@ -114,6 +131,8 @@ def pin_reference(root: Path, film: str, frames: list[dict[str, int]]) -> Path:
             f'[{film}]\nfilm = "vault-{film}"\nsha256 = "{digest}"\n'
             'makeone = "patch3"\nplayone = "patch3"\n'
         )
+        if background is not None:
+            handle.write(f"background = {background}\n")
     return reference
 
 

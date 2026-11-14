@@ -5,6 +5,7 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import re
 import struct
 import sys
 import zlib
@@ -16,6 +17,7 @@ import pytest
 
 from render_helpers import (
     TINY,
+    pin_reference,
     reference_tree,
     rewrite_store,
     tick_entry,
@@ -121,12 +123,15 @@ def test_padded_box_clamps_to_viewport() -> None:
     assert parity_sweep.padded_box([], 25, geometry) == (0, 0, width, rows)
 
 
-def test_actor_iou_on_synthetic_planes(tmp_path: Path) -> None:
+def test_actor_iou_on_synthetic_planes(tmp_path: Path, rows: Path) -> None:
     """The refactored probe: ours is a 10x10 square, the capture shows an overlapping 10x5."""
+    rows.write_text(
+        '[ctry]\nfilm = "vault-ctry"\nsha256 = "0"\nbackground = [[228, 238]]\n', encoding="utf-8"
+    )
     geometry = _geometry()
-    width, rows = geometry.width, geometry.plane_rows()
+    width, height = geometry.width, geometry.plane_rows()
     layer = bytearray(2 * width * geometry.height)
-    capture = bytearray([233]) * (width * rows)  # sky is never an object pixel
+    capture = bytearray([233]) * (width * height)  # sky is never an object pixel
     for y in range(50, 60):
         for x in range(100, 110):
             layer[2 * (y * width + x)] = parity_artifacts.LAYER_FIRST_ACTOR
@@ -715,3 +720,103 @@ def test_an_images_path_that_is_a_file_is_refused_before_rendering(
     images.write_bytes(b"x")
     assert parity_sweep.main(_images_argv(root, images)) == 2
     assert "is not a directory" in capsys.readouterr().err
+
+
+#: Film name to the `background` TOML of its row; `None` leaves the row without one.
+Backgrounds = dict[str, str | None]
+
+
+def _probe_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, backgrounds: Backgrounds) -> Path:
+    """A data root of synthetic films and fake renders, so `main --probe iou` runs the real probe.
+
+    Each film's capture shows the top half of our 10x10 actor over ground index 100; a row's
+    `background = [[100, 100]]` therefore reads that ground as backdrop (actor IoU 0.5).
+    """
+    geometry = _geometry()
+    width, height = geometry.width, geometry.plane_rows()
+    capture = bytearray([100]) * (width * height)
+    layer = bytearray(2 * width * geometry.height)
+    for y in range(50, 60):
+        for x in range(100, 110):
+            layer[2 * (y * width + x)] = parity_artifacts.LAYER_FIRST_ACTOR
+            if y < 55:
+                capture[y * width + x] = 10
+    stored = StoredFrame(
+        indices=bytes(width * geometry.height), layers=bytes(layer), palette=bytes(768)
+    )
+    root = reference_tree(tmp_path / "data", [7], films=())
+    vault = root / "corpus" / "stisldem" / "VAULT"
+    for name, background in backgrounds.items():
+        (vault / f"{name.upper()}.FLM").write_bytes(name.encode())
+        (vault / f"{name.upper()}.ALL").write_bytes(b"")
+        pin_reference(
+            root,
+            name,
+            [{"film_tick": 7}],
+            flm=f"{name.upper()}.FLM",
+            background=background,
+            files={"tick_0001.idx": bytes(capture)},
+        )
+    ssims = {name: 0.5 + 0.2 * index for index, name in enumerate(backgrounds)}
+
+    def fake_run_film(
+        job: parity_pipeline.FilmJob,
+        workdir: Path,
+        *,
+        env: dict[str, str] | None = None,  # noqa: ARG001 - run_film's signature
+        retime: int | None = None,  # noqa: ARG001 - run_film's signature
+    ) -> parity_pipeline.FilmScore:
+        render = workdir / job.name
+        parity_artifacts.write_render_store(
+            render, FilmId(), geometry, [(tick_entry(7), stored)], adapter=None
+        )
+        report = workdir / f"{job.name}_report"
+        report.mkdir(parents=True)
+        row = {"film_tick": 7, "ordinal": 1, "ssim": ssims[job.name], "iou": 0.8, "scored": True}
+        document = {"per_frame": [row], "mean_ssim_scored": ssims[job.name], "scored_frames": 1}
+        (report / "report.json").write_text(json.dumps(document), encoding="utf-8")
+        return parity_pipeline.FilmScore(job.name, render, report, Score(ssims[job.name], 0.8))
+
+    monkeypatch.setattr(parity_sweep, "REPO_ROOT", tmp_path / "repo")
+    monkeypatch.setattr(parity_sweep, "run_film", fake_run_film)
+    monkeypatch.setattr(parity_sweep, "preflight", lambda *_a, **_k: [])
+    return root
+
+
+def test_probe_iou_scores_the_banded_film_and_dashes_the_other(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One film with bands, one without: the mean SSIM survives and the actor cells differ (#485)."""
+    root = _probe_env(tmp_path, monkeypatch, {"ctry": "[[100, 100]]", "intro": None})
+    argv = ["--var", "DBG_X=a,b", "--probe", "iou", "--no-build", "--data-root", str(root)]
+    assert parity_sweep.main(argv) == 0
+    captured = capsys.readouterr()
+    header, *table = captured.out.splitlines()[:3]
+    assert "FAILED" not in captured.out
+    columns = re.split(r" {2,}", header.strip())
+    row = dict(zip(columns, re.split(r" {2,}", table[0].strip()), strict=True))
+    assert row["mean SSIM"] == "0.6000"  # the mean of 0.5 and 0.7, so neither SSIM was dropped
+    assert row["ctry actor"] == "0.5000"  # half the actor is seen over ctry's backdrop
+    assert row["intro actor"] == "-"  # intro has no bands
+    assert captured.err.count("intro: no actor IoU") == 1  # once per film, not per variant
+
+
+def test_probe_iou_is_refused_when_no_selected_film_has_bands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _probe_env(tmp_path, monkeypatch, {"ctry": None, "intro": None})
+    argv = ["--var", "DBG_X=a", "--probe", "iou", "--no-build", "--data-root", str(root)]
+    assert parity_sweep.main(argv) == 2
+    err = capsys.readouterr().err
+    assert "`background`" in err
+    assert "ctry, intro" in err
+    assert not (tmp_path / "repo" / parity_layout.sweep_root()).exists()
+
+
+def test_probe_iou_is_not_refused_when_a_selected_film_has_bands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _probe_env(tmp_path, monkeypatch, {"ctry": "[[100, 100]]", "intro": None})
+    argv = ["--var", "DBG_X=a", "--probe", "iou", "--no-build", "--data-root", str(root)]
+    assert parity_sweep.main([*argv, "--films", "intro"]) == 2
+    assert parity_sweep.main([*argv, "--films", "ctry"]) == 0

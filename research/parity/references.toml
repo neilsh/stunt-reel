@@ -14,6 +14,11 @@
 # updates the table of the class it measured, with `mise run parity-repin`; a conflict here is
 # resolved by re-measuring the merged tree and repinning, never by hand-merging numbers.
 #
+# A row may set `background`, inclusive `[lo, hi]` capture palette-index bands that are backdrop or
+# ground (sky, ground ramp, shade greens) rather than a model, which `parity_probe.py shift` and
+# `iou` use to tell the capture's object pixels apart. A film without it is refused by those
+# probes rather than read with another film's bands.
+#
 # A row may set `noise_sigma`, a film's recapture noise of the whole-frame SSIM, which `stuntreel
 # parity --noise-sigma` takes and drift is judged against. None does: every reference is captured
 # with its archive's sound range stubbed (ADR 0043), and two such captures of each film agreed
@@ -29,6 +34,7 @@ all_sha256 = "cb58d95b72f02819d15c5e6dad0973e72af8026455dbf5e13e41933711bb12ce"
 # required while either is unpatched.
 makeone = "patch3"
 playone = "patch3"
+background = [[192, 199], [228, 238], [161, 165]]
 
 [ctry.expected.gpu]
 ssim = 0.9185174

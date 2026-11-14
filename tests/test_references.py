@@ -406,3 +406,27 @@ def test_a_malformed_expected_entry_is_named(tmp_path: Path, lines: list[str], f
     assert str(tmp_path / parity_layout.REFERENCES_FILE) in message
     assert "[ctry]" in message
     assert field in message
+
+
+def test_a_row_reads_its_background_index_bands(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, "background = [[192, 199], [228, 238]]")
+    assert references.read_reference(tmp_path, "ctry").background == ((192, 199), (228, 238))
+
+
+def test_a_row_without_background_reads_none(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3)
+    assert references.read_reference(tmp_path, "ctry").background is None
+
+
+@pytest.mark.parametrize(
+    "value", ["[]", "[[1]]", "[[5, 2]]", "[[0, 256]]", "[[-1, 3]]", '"195"', "[[1.5, 3]]"]
+)
+def test_a_malformed_background_is_refused_naming_the_row(tmp_path: Path, value: str) -> None:
+    _row(tmp_path, PATCH3, f"background = {value}")
+    with pytest.raises(references.ReferenceCaptureError, match=r"\[ctry\].*background"):
+        references.read_reference(tmp_path, "ctry")
+
+
+def test_committed_ctry_row_records_the_bands_the_probe_used_to_hardcode() -> None:
+    reference = references.read_reference(REPO_ROOT, "ctry")
+    assert reference.background == ((192, 199), (228, 238), (161, 165))
