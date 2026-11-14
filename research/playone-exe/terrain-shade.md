@@ -100,10 +100,11 @@ _Found 2026-11-04; the whole-film series added 2026-11-05; see the [parity log](
 
 ## 5. Index composition
 
-Opcode `0x0168` (`GVPOLY`, handler `0x995C`), per-vertex path:
+Opcode `0x0168` (`GVPOLY`, handler `0x995C`), Gouraud route (`work:[0x806B]` set), after the edge builder `0xC9D4` has read the count and registers:
 
 ```asm
-9988  8b 6c 01 00     mov  ch, es:[si+1]   ; base palette index (195 for the airfield)
+99c9  26 ad           lodsw es:[si]        ; (ramp base << 8) | count
+99cb  8b c8           mov  cx, ax          ; CH = base palette index, CL = count
 99e5  8b 87 68 74     mov  ax, [bx+0x7468] ; s
 99e9  d1 f8           sar  ax, 1           ; s / 2, fraction kept in AL
 99eb  02 26 2e 81     add  ah, [0x812E]    ; + global one-step offset G
@@ -143,7 +144,7 @@ Edge entries are prepared at `0xC65A` and clipped by the Cohen-Sutherland clippe
 ## 7. Consequences for parity
 
 * Inside one polygon the written index is `base + floor(k)` for a continuously varying `k`, so pixels fall into two to four adjacent ramp entries with **hard boundaries along straight lines**: the level sets of a linear function of screen position. For ground seen by a pitched camera a constant-screen-`y` iso-line is approximately a constant-world-`z` line (the 18-20 m boundary measured from the captures), but it is not a plane in world `(x, z)`, which is why a world-space plane fit and a per-patch lookup both fail (section 9, [Ruled out](#ruled-out)).
-* Per-shot movement can only come from `L` or from a different ground polygon with different vertex normals. The scale is `idx = base + (s >> 9)` for `GVPOLY` (`s >> 10` for `GVPOLY16`), so **one ramp step is 512 units of `s`** (1,024): a small change of `N . L`. A faithful reconstruction needs `L` exactly, not merely "a sun".
+* Per-shot movement can only come from `L` or from a different ground polygon with different vertex normals. The scale is `idx = base + (s >> 9)` for `GVPOLY` (`s >> 10` for `GVPOLY16`), so **one ramp step is 512 units of `s`** (1,024 for `GVPOLY16`): a small change of `N . L`. A faithful reconstruction needs `L` exactly, not merely "a sun".
 * A flat polygon whose vertex normals are all equal produces no ramp. The three shades inside `MAP.BIN` patch 4 are scenery tiles drawn over it, not a ramp (see the correction above).
 * An exact implementation needs per-vertex `s`, `idx = base + (s >> 9)` (`s >> 10` for `GVPOLY16`), 8.8 interpolation with `@interpolate(linear)` on the shade varying, quantised per fragment.
 
