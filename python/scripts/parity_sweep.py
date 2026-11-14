@@ -10,17 +10,24 @@ Usage::
 
     mise run sweep -- --var DBG_PITCH=0,-0.5 --var DBG_DY=-0.2,-0.3 [--films ctry,intro]
         [--probe film|iou] [--keep-best] [--data-root DIR] [--no-build] [--retime N]
-        [--track evidence|heuristic [--target <film>:<lo>-<hi> ...]]
+        [--track evidence|heuristic [--target <film>:<lo>-<hi> ...
+            [--images DIR --topic WORDS [--crop x0,y0,x1,y1]]]]
     mise run sweep -- --reuse <retime root> [--films ctry,intro] [--retime N]
 
-stdout carries only the ``--target`` echo, the table and the winner line; progress and the
-listed frames go to stderr. The baseline is the variant of each ``--var``'s first value, and
-every other variant is judged against it once all have finished (``stunt_reel.parity_judge``).
+stdout carries only the ``--target`` echo, the table and the winner line; progress, the
+listed frames and the picture paths go to stderr. The baseline is the variant of each
+``--var``'s first value, and every other variant is judged against it once all have finished (``stunt_reel.parity_judge``).
 With ``--track`` the winner line gives the adoption rule's verdict (loop-rules.md) and the
 baseline never wins; ``--track`` and ``--target`` refuse a ``--films`` subset, ``--reuse`` and
 a single variant, and a ``--target`` range holding no captured tick stops the sweep before it
 renders. Without ``--track`` variants are ranked by mean SSIM over the films (then mean mask
 IoU), so a CTRY-only gain that costs INTRO shows up, and there is no verdict.
+``--images DIR --topic WORDS`` (both, and only with ``--target``) then draws, for the winner (else
+the best variant that is not the baseline), one PNG per chosen tick into ``DIR`` as
+``<film>-<tick>-<topic>.png``: the capture, the baseline and the winner, left to right
+(``stunt_reel.parity_pictures`` chooses the ticks). It re-renders only those ticks, refuses before
+rendering when a path it could write exists, and never replaces a picture. ``--crop x0,y0,x1,y1``
+crops every picture to that box, enlarged 3 times; without it a picture is the whole frame.
 ``--probe iou`` adds the actor-window IoU of ``parity_probe.py`` (its CTRY background ranges are
 used for every film). ``--data-root`` points at a checkout holding ``corpus/`` and the capture
 directories when this one (a worktree) has none. ``--no-build`` reuses the existing release
@@ -40,7 +47,7 @@ import shutil
 import sys
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import parity_probe
 from cli import add_parity_options, parity_options, resolve_jobs
@@ -56,6 +63,7 @@ from stunt_reel.parity_artifacts import (
 from stunt_reel.parity_judge import (
     BASELINE,
     TRACKS,
+    Decision,
     FilmRun,
     Headline,
     Judgement,
@@ -68,6 +76,16 @@ from stunt_reel.parity_judge import (
     outcome_lines,
     sort_key,
 )
+from stunt_reel.parity_pictures import (
+    CROP_SCALE,
+    Picture,
+    existing_paths,
+    films_with,
+    parse_crop,
+    plan_pictures,
+    topic_clashes,
+    topic_slug,
+)
 from stunt_reel.parity_pipeline import (
     REPO_ROOT,
     FilmFailure,
@@ -77,13 +95,13 @@ from stunt_reel.parity_pipeline import (
     build_release,
     format_summary,
     preflight,
+    reference_job,
+    render_film,
+    retime_render,
     run_film,
     run_films,
     run_matrix,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 VAR_NAME = re.compile(r"DBG_[A-Z0-9_]+")
 #: Padding around the actor's silhouette in the winner's crop, in pixels.
@@ -92,7 +110,7 @@ CROP_PAD = 25
 
 @dataclass(frozen=True)
 class SweepPlan:
-    """One variant to run: its score record, its work directory and the environment it renders in."""
+    """One variant to run: its score record, work directory and rendering environment."""
 
     variant: Variant
     workdir: Path
@@ -212,6 +230,45 @@ def validate_judging(
         raise ValueError(f"--target {unknown[0]} names no reference film ({', '.join(pinned)})")
 
 
+@dataclass(frozen=True)
+class PictureOptions:
+    """``--images``, ``--topic`` and ``--crop`` as resolved: where, under what topic, which box."""
+
+    directory: Path
+    topic: str
+    #: ``None`` draws the whole frame.
+    box: tuple[int, int, int, int] | None
+
+
+def validate_pictures(
+    images: Path | None, topic: str | None, crop: str | None, targets: list[Target]
+) -> PictureOptions | None:
+    """The picture options, or ``None`` when none is given; raises ``ValueError`` when unusable.
+
+    ``--images`` and ``--topic`` go together, ``--images`` needs ``--target``, ``--crop`` needs
+    ``--images``, and a picture of that topic already in the directory refuses the sweep.
+    """
+    if images is None and topic is None and crop is None:
+        return None
+    if images is None:
+        raise ValueError("--topic needs --images" if topic is not None else "--crop needs --images")
+    if topic is None:
+        raise ValueError("--images needs --topic")
+    if not targets:
+        raise ValueError("--images needs --target")
+    if images.exists() and not images.is_dir():
+        raise ValueError(f"--images {images} is not a directory")
+    slug = topic_slug(topic)
+    box = parse_crop(crop) if crop is not None else None
+    clashes = topic_clashes(images, slug)
+    if clashes:
+        raise ValueError(
+            f"{clashes[0].name} already exists in {images}; a picture is never replaced, "
+            "so name another --topic"
+        )
+    return PictureOptions(images, slug, box)
+
+
 def uncaptured_ranges(root: Path, targets: list[Target]) -> list[str]:
     """A problem per ``--target`` range whose film's reference capture holds no tick in it."""
     problems = []
@@ -260,6 +317,119 @@ def run_reuse(reuse: Path, retime: int | None, films: list[str], root: Path) -> 
     return 0 if failures == 0 else 1
 
 
+def render_ticks(
+    job: FilmJob, out: Path, env: dict[str, str], ticks: list[int], retime: int | None
+) -> None:
+    """Renders only *ticks* of the job's film into *out*, as the sweep's variant was scored.
+
+    With a retime, film tick ``t`` shows source tick ``t + retime``: those ticks are rendered
+    and relabelled into *out*.
+    """
+    if retime is None:
+        render_film(job, out, env, ticks=ticks)
+        return
+    raw = out.with_name(out.name + "_raw")
+    render_film(job, raw, env, ticks=[tick + retime for tick in ticks])
+    retime_render(raw, job.capture, out, retime, force=True, allow_missing=True)
+
+
+def draw_film(
+    capture: Path,
+    stores: tuple[Path, Path],
+    pictures: list[Picture],
+    directory: Path,
+    *,
+    box: tuple[int, int, int, int] | None,
+    scale: int,
+) -> list[Path]:
+    """Writes one PNG per picture: *capture*'s frame, then each of *stores* at that tick.
+
+    *box* is cut from the whole frame, enlarged *scale* times; ``None`` is the whole frame.
+    Raises ``ValueError`` for a tick the capture or a store lacks, a box outside the frame, or
+    a picture that exists.
+    """
+    ordinals: dict[int, int] = {}
+    for frame in read_capture(capture).frames:
+        ordinals.setdefault(frame.film_tick, frame.ordinal)
+    geometry = RenderStore(stores[0]).record.geometry
+    box = box or (0, 0, geometry.width, geometry.height)
+    if not (0 <= box[0] < box[2] <= geometry.width and 0 <= box[1] < box[3] <= geometry.height):
+        raise ValueError(f"--crop {box} is outside the {geometry.width}x{geometry.height} frame")
+    held = [RenderStore(store) for store in stores]
+    directory.mkdir(parents=True, exist_ok=True)
+    written = []
+    for picture in pictures:
+        if picture.tick not in ordinals or not all(store.holds(picture.tick) for store in held):
+            raise ValueError(
+                f"{picture.film} tick {picture.tick} is not in the capture and renders"
+            )
+        out = directory / picture.name
+        if out.exists():
+            raise ValueError(f"{out} already exists; a picture is never replaced")
+        ordinal = ordinals[picture.tick]
+        parity_probe.make_strip(capture, list(stores), ordinal, picture.tick, box, scale, out)
+        written.append(out)
+    return written
+
+
+def write_pictures(
+    decision: Decision,
+    plans: list[SweepPlan],
+    options: PictureOptions,
+    *,
+    root: Path,
+    retime: int | None,
+    scratch: Path,
+) -> int:
+    """Draws the winner's pictures against the baseline's; the exit code.
+
+    With no winner the best variant that is not the baseline is drawn, as the stderr lines
+    describe it. A decision with no verdict, or no variant to draw, draws nothing and says so.
+    Only the chosen ticks are re-rendered, into a scratch directory removed afterwards.
+    """
+    shown = decision.winner or decision.best
+    if decision.no_verdict is not None or shown is None:
+        print("[sweep] no pictures: the sweep gave no verdict to draw", file=sys.stderr)
+        return 0
+    pictures = plan_pictures(decision.judgements[shown.index], options.topic)
+    taken = existing_paths(options.directory, [p.name for p in pictures])
+    if taken:
+        print(f"parity_sweep: {taken[0]} already exists; no pictures drawn", file=sys.stderr)
+        return 1
+    if not pictures:
+        print("[sweep] no pictures: no target frame was scored in both variants", file=sys.stderr)
+        return 0
+    work = scratch / "pictures"
+    shutil.rmtree(work, ignore_errors=True)
+    scale = CROP_SCALE if options.box is not None else 1
+    drawn = (plans[BASELINE - 1], plans[shown.index - 1])
+    written: list[Path] = []
+    try:
+        for film, ticks in films_with(pictures).items():
+            stores = (work / film / "baseline", work / film / "shown")
+            with reference_job(root, film) as job:
+                for store, plan in zip(stores, drawn, strict=True):
+                    render_ticks(job, store, plan.env, ticks, retime)
+                written += draw_film(
+                    job.capture,
+                    stores,
+                    [p for p in pictures if p.film == film],
+                    options.directory,
+                    box=options.box,
+                    scale=scale,
+                )
+    except (RuntimeError, ValueError, OSError, references.ReferenceCaptureError) as err:
+        print(f"parity_sweep: pictures failed: {_first_line(err, 200)}", file=sys.stderr)
+        return 1
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    which = "the winner" if decision.winner is not None else "the best variant, not adopted"
+    print(f"[sweep] {len(written)} picture(s) of {which}: capture | baseline | it", file=sys.stderr)
+    for path in written:
+        print(f"[sweep] picture {path}", file=sys.stderr)
+    return 0
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -278,6 +448,17 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--track", choices=TRACKS, default=None, help="judge by this track's adoption rule"
     )
+    parser.add_argument(
+        "--images",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="draw the winner's capture | baseline | winner pictures here; needs --target, --topic",
+    )
+    parser.add_argument("--topic", default=None, help="a few words naming what the pictures show")
+    parser.add_argument(
+        "--crop", default=None, metavar="x0,y0,x1,y1", help="crop every picture, enlarged 3 times"
+    )
     return parser.parse_args(argv)
 
 
@@ -285,9 +466,9 @@ def main(argv: list[str] | None = None) -> int:
     """Renders and scores every variant on every chosen film, then judges and ranks them.
 
     Exits 2 on a refused invocation, a failed preflight or a ``--target`` range holding no
-    captured tick. Every variant's work directory is removed on the way out, interrupted or
-    not, except the best one's under ``--keep-best``; with ``--track`` that is never the
-    baseline.
+    captured tick, and 1 when the pictures of ``--images`` fail after the verdict printed.
+    Every variant's work directory is removed on the way out, interrupted or not, except the
+    best one's under ``--keep-best``; with ``--track`` that is never the baseline.
     """
     args = parse_args(argv)
     try:
@@ -306,6 +487,7 @@ def main(argv: list[str] | None = None) -> int:
             reuse=options.reuse,
             variants=len(combos),
         )
+        pictures = validate_pictures(args.images, args.topic, args.crop, targets)
     except ValueError as err:
         print(f"parity_sweep: {err}", file=sys.stderr)
         return 2
@@ -447,6 +629,10 @@ def main(argv: list[str] | None = None) -> int:
             f", crops {len(crops)}" if crops else ""
         )
     print(line)
+    if pictures is not None:
+        return write_pictures(
+            decision, plans, pictures, root=root, retime=options.retime, scratch=scratch
+        )
     return 0
 
 

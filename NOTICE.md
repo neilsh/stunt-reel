@@ -49,10 +49,7 @@ The captured frames are game-derived and are not relicensed by this project. Eve
 
 A pull request that changes rendered output attaches comparison images of the same kind to its
 description, under the same first two limits; GitHub hosts them, and they are not committed. All
-other captures stay in the external data root. The current sets are
-`work/2026-11/lavapipe-nan-shade/images/`, `work/2026-11/aircraft-render/images/`, and
-`research/parity/error-examples/`; only the last is indexed, by
-`research/parity/error-categories.toml`.
+other captures stay in the external data root.
 
 ## Third-party material and credits
 

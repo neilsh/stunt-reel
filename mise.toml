@@ -178,7 +178,7 @@ run = "uv run python python/scripts/migrate_captures.py"
 
 [tasks.sweep]
 depends = ["ensure"]
-description = "Candidate sweep: render and score DBG_* variants on every reference film, judged against the first value's variant (mise run sweep -- --var DBG_X=0,1 [--track evidence|heuristic [--target film:lo-hi ...]] [--films ctry] [--probe iou] [--keep-best] [--jobs N] [--no-build] [--reuse DIR] [--retime N])"
+description = "Candidate sweep: render and score DBG_* variants on every reference film, judged against the first value's variant (mise run sweep -- --var DBG_X=0,1 [--track evidence|heuristic [--target film:lo-hi ... [--images DIR --topic WORDS [--crop x0,y0,x1,y1]]]] [--films ctry] [--probe iou] [--keep-best] [--jobs N] [--no-build] [--reuse DIR] [--retime N])"
 run = "uv run python python/scripts/parity_sweep.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
