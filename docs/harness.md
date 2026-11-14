@@ -30,6 +30,8 @@ Nothing here is a fact about Stunt Island.
 
 ## DeepSeek Harness (this host)
 
+Observed on this host 2026-10-25.
+
 | Mode | Read | Write | Typical use |
 | --- | --- | --- | --- |
 | `read-only` | yes | no | inspecting a worktree you do not own |
