@@ -136,7 +136,7 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
     };
 
     let processed =
-        crate::sod::decal::identify_coplanar_decals(&[base, decal1, decal2], 0.001, 1e-4, 1e-4);
+        crate::sod::decal::identify_coplanar_decals(&[base, decal1, decal2], 1e-4, 1e-4);
 
     assert_eq!(processed.len(), 3);
     assert!(!processed[0].is_decal);
@@ -155,11 +155,11 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
     );
     assert_eq!(ir.indices.len(), 12, "4 triangles * 3 = 12 indices");
 
-    // Verify all decal vertices have DECAL_FLAG_BIT set and z == 0.001
+    // Decal vertices carry DECAL_FLAG_BIT and stay in the base's plane z == 0.
     for v in &ir.vertices[4..8] {
         assert_eq!(v.palette_index, 15);
         assert_ne!(v.flags & DECAL_FLAG_BIT, 0);
-        assert!((v.position[2] - 0.001).abs() < 1e-6);
+        assert_eq!(v.position[2], 0.0);
     }
 }
 

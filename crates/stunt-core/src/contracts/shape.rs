@@ -4,7 +4,7 @@
 //! Governed by architectural invariants:
 //! - `[I1]` Metric right-handed coordinate basis (+Y up, +Z toward viewer, -Z forward)
 //! - `[I2]` Flat contiguous arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`)
-//! - `[I5]` Coplanar decal identification and normal displacement rules
+//! - `[I5]` Coplanar decal identification (decals keep their position)
 
 use std::fmt;
 

@@ -4,7 +4,7 @@
 //! - `[I1]` Metric right-handed coordinates and attribute-preserving vertex welding
 //! - `[I2]` Flat arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`)
 //! - `[I3]` VGA Mode 13h palette index preservation
-//! - `[I5]` Coplanar decal identification and normal displacement
+//! - `[I5]` Coplanar decal identification (decals keep their position)
 //!
 //! Reference verification: Gate G03 (`std::mem::size_of::<SodVertex>() == 28`).
 
@@ -289,7 +289,7 @@ pub fn decode_sod_lit(
     };
     let run = run_vm(data, policy, anchors, light, None)?;
     let polygons = if geometry {
-        identify_coplanar_decals(&run.polygons, 0.001, 1e-4, 1e-4)
+        identify_coplanar_decals(&run.polygons, 1e-4, 1e-4)
     } else {
         Vec::new()
     };

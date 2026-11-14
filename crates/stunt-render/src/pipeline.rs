@@ -2,7 +2,8 @@
 //!
 //! Complies with Architectural Invariants:
 //! - `[I3]` VGA Mode 13h palette index color mapping and flat shading.
-//! - `[I5]` Hardware depth bias decal pass (`constant: -2, slope_scale: -2.0, clamp: 0.0`).
+//! - `[I5]` Ordered decal pass: `LessEqual`, no depth write, hardware depth bias
+//!   (`constant: -2, slope_scale: -2.0, clamp: 0.0`).
 
 use stunt_core::contracts::SodVertex;
 
@@ -73,7 +74,8 @@ pub(crate) struct RenderPipelines {
     pub(crate) ground_edge_pipeline: wgpu::RenderPipeline,
     /// Base mesh pipeline with zero depth bias and `Less` depth compare.
     pub(crate) base_pipeline: wgpu::RenderPipeline,
-    /// Decal mesh pipeline conforming to `[I5]` with hardware depth bias and `LessEqual` compare.
+    /// Decal mesh pipeline conforming to `[I5]`: hardware depth bias, `LessEqual` compare and
+    /// no depth write, so decals drawn in stream order cover the earlier ones on their base.
     pub(crate) decal_pipeline: wgpu::RenderPipeline,
     /// The decal pipeline without back-face culling, for an actor's ground shadow: its
     /// faces are flattened onto the ground, so a face's winding there no longer says whether
@@ -235,10 +237,12 @@ impl RenderPipelines {
         // viewer to win that tie; a positive bias would push it behind and hide it. Flipping
         // the sign (it was positive until 2026-10-23) makes decals win the tie, as the capture
         // does: CTRY 0.7708 -> 0.7713, INTRO 0.6762 -> 0.6775
-        // (work/2026-10/parity-log/log.md, 2026-10-23).
+        // (work/2026-10/parity-log/log.md, 2026-10-23). Decals write no depth, so each is
+        // tested against the base alone and a later coplanar decal covers an earlier one, as
+        // PLAYONE's painter does; the bias only beats interpolation error against the base.
         let decal_depth_stencil = wgpu::DepthStencilState {
             format: depth_format,
-            depth_write_enabled: Some(true),
+            depth_write_enabled: Some(false),
             depth_compare: Some(wgpu::CompareFunction::LessEqual),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState {

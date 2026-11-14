@@ -10,14 +10,17 @@
 //! A slice's screen-space lines (`VERTEX_FLAG_LINE` quads, which have no world width) become
 //! a second primitive in `LINES` mode, one segment per quad, and leave the triangle primitive.
 //!
-//! `[I5]`: decal slices own their vertices (a fresh weld map per batch) and the tessellator
-//! has already displaced them by 0.001 m along their normal, so positions are copied as-is.
+//! `[I5]`: decal slices own their vertices (a fresh weld map per batch) and lie in their
+//! base's plane. glTF has no depth bias or draw order, so the exporter alone lifts each decal
+//! vertex [`EPSILON_DISPLACEMENT`] along its triangle's front normal (the side that winds
+//! clockwise, opposite the edge cross product).
 
 use serde_json::{Value, json};
 use stunt_core::contracts::{
-    NodeId, NodeKind, SodModelIr, SodNode, SodVertex, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END,
-    VERTEX_FLAG_LINE_SIDE, VisibilityCondition, get_palette_rgb_float,
+    NodeId, NodeKind, ShapeMesh, SodModelIr, SodNode, SodVertex, VERTEX_FLAG_LINE,
+    VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VisibilityCondition, get_palette_rgb_float,
 };
+use stunt_core::sod::EPSILON_DISPLACEMENT;
 
 use crate::GltfError;
 use crate::glb::{
@@ -62,16 +65,25 @@ pub(crate) fn add_shape_assets(
     model: &SodModelIr,
 ) -> Result<ShapeAssets, GltfError> {
     let mut mesh_of_node = vec![None; model.nodes.len()];
-    let Some(extent) = model.extent() else {
+    if model.vertices.is_empty() {
         return Ok(ShapeAssets { mesh_of_node });
-    };
+    }
     let vertex_count = model.vertices.len();
+    let lifted = lifted_positions(model);
+    let mut lo = [f32::INFINITY; 3];
+    let mut hi = [f32::NEG_INFINITY; 3];
+    for p in &lifted {
+        for ((l, h), c) in lo.iter_mut().zip(&mut hi).zip(p) {
+            *l = l.min(*c);
+            *h = h.max(*c);
+        }
+    }
 
     let mut positions = Vec::with_capacity(vertex_count * 12);
     let mut normals = Vec::with_capacity(vertex_count * 12);
     let mut colors = Vec::with_capacity(vertex_count * 16);
-    for v in &model.vertices {
-        for (p, n) in v.position.iter().zip(&v.normal) {
+    for (v, lifted) in model.vertices.iter().zip(&lifted) {
+        for (p, n) in lifted.iter().zip(&v.normal) {
             positions.extend_from_slice(&p.to_le_bytes());
             normals.extend_from_slice(&n.to_le_bytes());
         }
@@ -96,7 +108,7 @@ pub(crate) fn add_shape_assets(
         builder,
         &positions,
         "VEC3",
-        Some((extent.min.to_vec(), extent.max.to_vec())),
+        Some((lo.to_vec(), hi.to_vec())),
     );
     let normal = vec_accessor(builder, &normals, "VEC3", None);
     let color = vec_accessor(builder, &colors, "VEC4", None);
@@ -164,6 +176,51 @@ const MODE_TRIANGLES: u32 = 4;
 /// `LINES` segment per line quad: from its corner at the first endpoint to its corner at the
 /// second, both on the negative side (`VERTEX_FLAG_LINE*`). A segment welded into several
 /// triangles is listed once.
+/// Each vertex's exported position: a vertex of a decal slice's filled triangle lifted
+/// [`EPSILON_DISPLACEMENT`] toward the front of the first such triangle that uses it, every
+/// other vertex as decoded (`[I5]`).
+fn lifted_positions(model: &SodModelIr) -> Vec<[f32; 3]> {
+    let mut out: Vec<[f32; 3]> = model.vertices.iter().map(|v| v.position).collect();
+    let mut done = vec![false; out.len()];
+    for mesh in model.meshes().filter(ShapeMesh::is_decal) {
+        let (triangles, _) = split_lines(mesh.indices, &model.vertices);
+        for tri in triangles.as_chunks::<3>().0 {
+            let [Some(a), Some(b), Some(c)] =
+                tri.map(|i| model.vertices.get(i as usize).map(|v| v.position))
+            else {
+                continue;
+            };
+            let (u, w) = (sub(b, a), sub(c, a));
+            // Front = -(u x w) = w x u.
+            let n = [
+                w[1] * u[2] - w[2] * u[1],
+                w[2] * u[0] - w[0] * u[2],
+                w[0] * u[1] - w[1] * u[0],
+            ];
+            let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            if len < 1e-12 {
+                continue;
+            }
+            for &i in tri {
+                let i = i as usize;
+                if let (Some(p), Some(seen)) = (out.get_mut(i), done.get_mut(i))
+                    && !*seen
+                {
+                    *seen = true;
+                    for (c, nc) in p.iter_mut().zip(n) {
+                        *c += EPSILON_DISPLACEMENT * nc / len;
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
 fn split_lines(indices: &[u32], vertices: &[SodVertex]) -> (Vec<u32>, Vec<u32>) {
     const MASK: u8 = VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_END | VERTEX_FLAG_LINE_SIDE;
     let flags = |i: u32| vertices.get(i as usize).map_or(0, |v| v.flags);

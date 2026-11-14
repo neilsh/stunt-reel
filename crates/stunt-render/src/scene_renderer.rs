@@ -8,7 +8,8 @@
 //! Frame use is two-phase because a render pass borrows its bind groups: call
 //! [`SceneRenderer::prepare`] (uploads camera and matrices, may allocate slots), then
 //! [`SceneRenderer::draw`] inside the pass. Opaque base meshes of every draw precede the
-//! decal meshes of every draw per `[I5]`. An actor that casts a shadow gets a second draw of
+//! decal meshes of every draw per `[I5]`, which write no depth, so a later decal covers an
+//! earlier one wherever both pass against the base. An actor that casts a shadow gets a second draw of
 //! its shape, flattened onto the ground and filled in palette index 0, which lies on the
 //! terrain and so goes in the decal pass whole, through a pipeline that culls no faces.
 //!
@@ -368,6 +369,20 @@ impl SceneRenderer {
                     }
                 };
                 rpass.set_bind_group(2, bind_group, &[]);
+                // A world decal slice's outline follows its own fill, so a later slice covers
+                // it as it covers the fill: the decal pass writes no depth to hide it ([I5]).
+                if decal_pass && matches!(draw.target, Target::World) {
+                    for slice in meshes {
+                        let slices = std::slice::from_ref(slice);
+                        rpass.set_pipeline(&pipelines.decal_pipeline);
+                        model.draw_slices(rpass, slices);
+                        if slice.edge_count > 0 {
+                            rpass.set_pipeline(&pipelines.edge_decal_pipeline);
+                            model.draw_edges(rpass, slices);
+                        }
+                    }
+                    continue;
+                }
                 model.draw_slices(rpass, meshes);
                 // Only the world carries edge buffers; the next draw sets its own pipeline
                 // back, as the decal pass does per draw and the base pass needs only here.

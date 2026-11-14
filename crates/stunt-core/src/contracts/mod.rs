@@ -14,7 +14,7 @@
 //! - `[I2]` Flat contiguous arena allocation (`Vec<SodNode>` indexed by `NodeId(u32)`)
 //! - `[I3]` Fixed VGA Mode 13h palette index color correspondence
 //! - `[I4]` Decoupled fixed simulation ticks (50 Hz) with sub-tick interpolation
-//! - `[I5]` Coplanar decal identification and normal displacement rules
+//! - `[I5]` Coplanar decal identification (decals keep their position)
 //! - `[I6]` Visual parity acceptance thresholds (SSIM >= 0.88 / 0.90)
 //! - `[I7]` Asset isolation and a core limited to small, pure-Rust dependencies (no I/O, windowing, GPU, audio or emulator)
 //! - `[I8]` Uppercase DOS 8.3 filename normalization
