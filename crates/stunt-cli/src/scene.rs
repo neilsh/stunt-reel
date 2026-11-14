@@ -266,6 +266,9 @@ fn build_film_scene(src: &SceneSources<'_>) -> Result<(FilmScene, FilmId), Strin
     let (scene, report) = FilmScene::load_with_timeline(timeline, &inputs)
         .map_err(|e| files.describe(&e, &regions, &base))?;
     print_report(&scene, &report, anchors.is_some());
+    // The renderer uploads every shape the scene holds, and `--game` decodes all of them
+    // (research/makeone-exe/linking.md section 7.1).
+    let scene = scene.drawn_only();
     let archive = match &files {
         ShapeFiles::Archive(bytes) => Some(bytes.as_slice()),
         ShapeFiles::Res { .. } => None,
@@ -944,7 +947,8 @@ mod tests {
         // `synthetic_minimal.all` holds the model as chunk 0x0001: item 1 of index 0x00.
         let tree = res_in(&t, "game", "res", "shapes.res", &res_file(0x00, &[&model]));
         res_in(&t, "game", "res", "sprites.res", &res_file(0x80, &[b"x"]));
-        let film = fixture("synthetic_minimal.flm");
+        // Its actor draws shape 0x0001, so the scene keeps it.
+        let film = fixture("synthetic_timeline.flm");
         let archive = fixture("synthetic_minimal.all");
 
         let from_game = build_scene(&game_sources(Some(&film), &tree)).expect("scene");
@@ -957,6 +961,25 @@ mod tests {
         };
         assert_eq!(shapes(&from_game).len(), 1);
         assert_eq!(shapes(&from_game), shapes(&from_all));
+    }
+
+    #[test]
+    fn a_game_scene_keeps_only_the_shapes_its_film_draws() {
+        let t = TempTree::new();
+        let model = fs::read(fixture("synthetic_minimal.sod")).expect("fixture");
+        // Items 1 and 2 of index 0x00 are shapes 0x0001 and 0x0002; the film draws only 0x0001.
+        let tree = res_in(
+            &t,
+            "game",
+            "res",
+            "shapes.res",
+            &res_file(0x00, &[&model, &model]),
+        );
+        let film = fixture("synthetic_timeline.flm");
+
+        let scene = build_scene(&game_sources(Some(&film), &tree)).expect("scene");
+        let ids: Vec<u16> = scene.shapes().map(|(id, _)| id).collect();
+        assert_eq!(ids, [0x0001]);
     }
 
     #[test]
