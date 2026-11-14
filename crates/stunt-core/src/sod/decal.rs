@@ -16,8 +16,8 @@ use crate::sod::vm::{RawPolygon, compute_polygon_normal};
 /// Bit 0 in [`crate::contracts::shape::SodVertex::flags`] indicates a coplanar decal face.
 pub const DECAL_FLAG_BIT: u8 = 0x01;
 
-/// Lift (1.0 mm) for geometry that has no ordered decal pass: an actor's flattened ground
-/// shadow and the decal slices `stunt-gltf` exports.
+/// Lift (1.0 mm) toward the front: of decal slices in `stunt-gltf`'s export, which has no
+/// decal pass, and of an actor's flattened ground shadow. Decoded decals are not lifted.
 pub const EPSILON_DISPLACEMENT: f32 = 0.001;
 
 /// Computes the axis-aligned bounding box `(min_xyz, max_xyz)` for a polygon.

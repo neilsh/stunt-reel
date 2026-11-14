@@ -2012,8 +2012,8 @@ mod tests {
         assert!(prop_vertices(&ir, GROUND_NODE).iter().all(|p| p[1] == 0.0));
     }
 
-    /// A tile snapped onto level terrain at the ground plane is ground, its decal triangles
-    /// included: the snap already took their `[I5]` lift away.
+    /// A tile lying 1 mm above level terrain at the ground plane is snapped onto it and is
+    /// ground, its decal triangles included.
     #[test]
     fn a_snapped_decal_on_level_terrain_is_ground() {
         let mut prop = square_prop(None);

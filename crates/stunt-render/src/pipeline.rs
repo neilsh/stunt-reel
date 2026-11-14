@@ -238,8 +238,8 @@ impl RenderPipelines {
         // the sign (it was positive until 2026-10-23) makes decals win the tie, as the capture
         // does: CTRY 0.7708 -> 0.7713, INTRO 0.6762 -> 0.6775
         // (work/2026-10/parity-log/log.md, 2026-10-23). Decals write no depth, so each is
-        // tested against the base alone and a later coplanar decal covers an earlier one, as
-        // PLAYONE's painter does; the bias only beats interpolation error against the base.
+        // tested against the base geometry's depth, not other decals', and a later coplanar
+        // decal covers an earlier one, as PLAYONE's painter does.
         let decal_depth_stencil = wgpu::DepthStencilState {
             format: depth_format,
             depth_write_enabled: Some(false),

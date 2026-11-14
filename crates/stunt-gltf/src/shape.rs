@@ -172,10 +172,6 @@ const MODE_LINES: u32 = 1;
 /// glTF primitive mode `TRIANGLES`.
 const MODE_TRIANGLES: u32 = 4;
 
-/// Splits a slice's triangle indices into the triangles that are not line quads and one
-/// `LINES` segment per line quad: from its corner at the first endpoint to its corner at the
-/// second, both on the negative side (`VERTEX_FLAG_LINE*`). A segment welded into several
-/// triangles is listed once.
 /// Each vertex's exported position: a vertex of a decal slice's filled triangle lifted
 /// [`EPSILON_DISPLACEMENT`] toward the front of the first such triangle that uses it, every
 /// other vertex as decoded (`[I5]`).
@@ -221,6 +217,10 @@ fn sub(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
+/// Splits a slice's triangle indices into the triangles that are not line quads and one
+/// `LINES` segment per line quad: from its corner at the first endpoint to its corner at the
+/// second, both on the negative side (`VERTEX_FLAG_LINE*`). A segment welded into several
+/// triangles is listed once.
 fn split_lines(indices: &[u32], vertices: &[SodVertex]) -> (Vec<u32>, Vec<u32>) {
     const MASK: u8 = VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_END | VERTEX_FLAG_LINE_SIDE;
     let flags = |i: u32| vertices.get(i as usize).map_or(0, |v| v.flags);

@@ -179,7 +179,7 @@ def test_area2_sod_vm_opcodes_and_geometry() -> dict[str, Any]:
     findings["arena_passed"] = len(arena_errors) == 0
     findings["arena_errors"] = arena_errors
 
-    # 3. Coplanar Decal Normal Displacement [I5] (epsilon = 0.001 m)
+    # 3. glTF export lift of a coplanar decal along its normal [I5] (epsilon = 0.001 m)
     norm = [0.0, 1.0, 0.0]
     vert = [10.0, 5.0, -20.0]
     eps = 0.001
