@@ -15,16 +15,16 @@ Offsets are load-image offsets; `DS:` offsets are `DGROUP`-relative and `work:` 
 
 `[Established]` for the instruction sequences, static, and observed live: all 94 stops at the writer's `ret` across three runs match the table below (section 3).
 
-Once per frame, before the object loop at `0x1E07`, `0x1D96` fills the bank from the film state at `DS:0x4888`. With `v10` and `v12` film variables 10 and 12 as interpolated for this frame, `p10` the `v10` of the previous call (kept at `DS:0x22BC`) and `clock` the film clock `[0x4888 + 0x0E]`:
+Once per frame, before the object loop at `0x1E07`, `0x1D96` fills the bank from the film state at `DS:0x4888`; each operand's word is `work:0x810E + operand` ([`memory-map.md`](memory-map.md#3-sod-display-list-vm-work-segment--mem-sod-vm) § 3). With `v10` and `v12` film variables 10 and 12 as interpolated for this frame, `p10` the `v10` of the previous call (kept at `DS:0x22BC`) and `clock` the film clock `[0x4888 + 0x0E]`:
 
-| Operand | Word | Image offset | Value |
-|---|---|---|---|
-| `0x10` | `work:0x811E` | `0x1DCA..0x1DD0` | `clock << 12` |
-| `0x12` | `work:0x8120` | `0x1DA9..0x1DBD` | `d << 8` with `d = (v10 − p10) mod 2^16` when `d < 256`, else `0xFF00`: the change of var 10 since the previous frame, saturated at 255, a fall included |
-| `0x14` | `work:0x8122` | `0x1DC2..0x1DC6` | `(p10 & 0xFF) << 8`: the low byte of the **previous** frame's var 10 |
-| `0x16` | `work:0x8124` | `0x1D66..0x1D69` | The drawn slot's animate word, written by the actor draw for each actor, not by `0x1D96` ([`sod-animate.md`](sod-animate.md) § 2) |
-| `0x18` | `work:0x8126` | `0x1D9B..0x1D9F` | `v12` |
-| `0x1A` | `work:0x8128` | `0x1DA3..0x1DA5` | `−v12 mod 2^16` |
+| Operand | Image offset | Value |
+|---|---|---|
+| [`0x10`](memory-map.md#3-sod-display-list-vm-work-segment--mem-sod-vm) | `0x1DCA..0x1DD0` | `clock << 12` |
+| [`0x12`](memory-map.md#3-sod-display-list-vm-work-segment--mem-sod-vm) | `0x1DA9..0x1DBD` | `d << 8` with `d = (v10 − p10) mod 2^16` when `d < 256`, else `0xFF00`: the change of var 10 since the previous frame, saturated at 255, a fall included |
+| [`0x14`](memory-map.md#3-sod-display-list-vm-work-segment--mem-sod-vm) | `0x1DC2..0x1DC6` | `(p10 & 0xFF) << 8`: the low byte of the **previous** frame's var 10 |
+| [`0x16`](memory-map.md#3-sod-display-list-vm-work-segment--mem-sod-vm) | `0x1D66..0x1D69` | The drawn slot's animate word, written by the actor draw for each actor, not by `0x1D96` ([`sod-animate.md`](sod-animate.md) § 2) |
+| [`0x18`](memory-map.md#3-sod-display-list-vm-work-segment--mem-sod-vm) | `0x1D9B..0x1D9F` | `v12` |
+| [`0x1A`](memory-map.md#3-sod-display-list-vm-work-segment--mem-sod-vm) | `0x1DA3..0x1DA5` | `−v12 mod 2^16` |
 
 `0x22BC` is `xchg`ed with the new `v10` (`0x1DAF`), so `p10` is the value the previous call stored. No other instruction names `0x22BC` (`mise run xref`, one reference), and its image value is 0, so it starts at 0; no film-start fill found covers it (the `rep stos` sites at `0x3747`, `0x37C8`, `0x37EF`, `0x3F5F` and `0x4021` do not), so a film's first frame likely takes `p10` from whatever ran before it (`[Supported Inference]`).
 
