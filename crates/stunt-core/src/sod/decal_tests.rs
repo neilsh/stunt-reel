@@ -16,7 +16,7 @@ fn test_challenge_i5_decal_on_each_plane_is_flagged_in_place() {
     // 5. 45-degree ramp (normal [0, 1/sqrt(2), 1/sqrt(2)])
     // 6. 3D diagonal plane (normal [1/sqrt(3), 1/sqrt(3), 1/sqrt(3)])
     // Each facet winds clockwise seen from its normal's side, so that side is its front
-    // under `FrontFace::Cw` and the decal moves toward it.
+    // under `FrontFace::Cw`.
 
     let test_cases: Vec<([f32; 3], Vec<[f32; 3]>)> = vec![
         // Normal [0, 1, 0]

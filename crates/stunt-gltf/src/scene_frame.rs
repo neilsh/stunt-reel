@@ -3,8 +3,8 @@
 //! All transforms are `[I1]` and copied unchanged (`world_matrix` is column-major, glTF's
 //! `matrix` layout). Each distinct shape's meshes and accessors are written once; every
 //! actor using that shape gets its own node subtree that references the shared mesh
-//! indices. `[I5]` decal displacement is already part of the IR positions (see
-//! [`crate::export_shape`]).
+//! indices. `[I5]`: decal vertices lie in their base's plane in the IR; the shared shape
+//! assets lift them 1 mm toward their front on export, as [`crate::export_shape`] does.
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;

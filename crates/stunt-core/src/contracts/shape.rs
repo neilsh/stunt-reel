@@ -42,7 +42,8 @@ pub struct SodVertex {
     /// Authentic 8-bit VGA Mode 13h palette index (`0..=255`) per `[fmt mtl]`.
     pub palette_index: u8,
     /// Bitflags:
-    /// - Bit 0: Coplanar decal face (requires normal-nudge `[I5]`)
+    /// - Bit 0: Coplanar decal face, kept in place: drawn in the renderer's ordered decal pass
+    ///   and lifted 1 mm toward its front only by the glTF exporter (`[I5]`)
     /// - Bit 1: Two-sided polygon
     /// - Bit 2: Emissive / unshaded indicator
     /// - Bits 3..=5: Screen-space line corner ([`VERTEX_FLAG_LINE`], [`VERTEX_FLAG_LINE_SIDE`],

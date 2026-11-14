@@ -377,7 +377,7 @@ def main() -> int:
         f"107-Opcode Jump Table Formula (Opcode = Index * 9) Passed: {res2['opcode_table_passed']}"
     )
     print(f"12-Byte Register Stride & 1024 Arena Passed: {res2['arena_passed']}")
-    print(f"Invariant [I5] Decal Displacement (0.001 m) Passed: {res2['decal_passed']}")
+    print(f"Invariant [I5] glTF Export Decal Lift (0.001 m) Passed: {res2['decal_passed']}")
 
     print("\n--- AREA 3: Film Timeline & Choreography ---")
     res3 = test_area3_flm_timeline_and_cuts()

@@ -144,7 +144,7 @@ fn sod_vertex_pod_roundtrip() {
 // Synthetic fixture, scale table, IPG and shaded polygons
 // =============================================================================
 
-/// `[I2]` `[I3]` `[I5]`: the 76-byte fixture yields a root, a base mesh and a displaced decal mesh.
+/// `[I2]` `[I3]` `[I5]`: the 76-byte fixture yields a root, a base mesh and a decal mesh.
 #[test]
 fn synthetic_minimal_fixture_builds_base_and_decal_meshes() {
     let path = fixtures_dir().join("synthetic_minimal.sod");
