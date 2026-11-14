@@ -734,3 +734,79 @@ def test_exclusive_gives_up_after_its_timeout(
         target_seed.exclusive(tmp_path / "lock", timeout=0.0),
     ):
         pass
+
+
+#: A member unit's fingerprint directory, its dep-info, and the source it names. The hash differs
+#: from ``_built``'s serde_core dep-info, which would otherwise match the same ``*-<hash>.d``.
+UNIT = "stunt-core-fedcba9876543210"
+UNIT_DEP_INFO = "stunt_core-fedcba9876543210.d"
+SOURCE = "crates/core/src/lib.rs"
+#: The donor source's modification time, in nanoseconds (2001-09-09).
+OLD_NS = 1_000_000_000_000_000_000
+
+
+def _copy_tree(source: Path, destination: Path) -> None:
+    shutil.copytree(source, destination)
+
+
+def _member_build(donor: Path, here: Path, variant: str) -> None:
+    """The donor's debug build of member stunt-core from ``SOURCE``, which *here* holds too,
+    spoiled the way *variant* names; ``same`` spoils nothing."""
+    theirs = donor / SOURCE
+    theirs.parent.mkdir(parents=True, exist_ok=True)
+    theirs.write_text("pub fn a() {}\n", encoding="utf-8")
+    os.utime(theirs, ns=(OLD_NS, OLD_NS))
+    if variant != "missing":
+        ours = here / SOURCE
+        ours.parent.mkdir(parents=True, exist_ok=True)
+        text = "pub fn b() {}\n" if variant == "differs" else "pub fn a() {}\n"
+        ours.write_text(text, encoding="utf-8")
+    debug = donor / "target" / "debug"
+    (debug / ".fingerprint" / UNIT).mkdir(parents=True)
+    named = f"{donor.as_posix()}/{SOURCE}" if variant == "absolute" else SOURCE
+    lines = [f"{debug.as_posix()}/deps/{UNIT_DEP_INFO}: {named}", "", f"{named}:"]
+    if variant == "env_dep":
+        value = str(donor / "crates" / "core").replace("\\", "\\\\")
+        lines.append(f"# env-dep:CARGO_MANIFEST_DIR={value}")
+    dep_info = debug / "deps" / UNIT_DEP_INFO
+    if variant == "garbled":
+        dep_info.write_bytes(b"\xff\xfe" + SOURCE.encode() + b":\n")
+    elif variant != "no_dep_info":
+        dep_info.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if variant == "ambiguous":
+        (debug / "deps" / "it-fedcba9876543210.d").write_text(f"{SOURCE}:\n", encoding="utf-8")
+
+
+def _seed_member_build(tmp_path: Path, variant: str) -> tuple[Path, Path]:
+    here = _fresh(tmp_path / "here", "stunt-core")
+    donor = _donor(tmp_path / "d")
+    _member_build(donor, here, variant)
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_copy_tree,
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("seeded", f"from {donor}")
+    return here, donor
+
+
+def test_seed_keeps_a_member_unit_whose_sources_match_the_donor(tmp_path: Path) -> None:
+    """The kept unit's sources take the donor's times, so Cargo judges it as the donor would."""
+    here, _ = _seed_member_build(tmp_path, "same")
+    assert (here / "target" / "debug" / ".fingerprint" / UNIT).is_dir()
+    assert (here / SOURCE).stat().st_mtime_ns == OLD_NS
+
+
+@pytest.mark.parametrize(
+    "variant",
+    ["differs", "missing", "absolute", "env_dep", "garbled", "ambiguous", "no_dep_info"],
+)
+def test_seed_drops_a_member_unit_it_cannot_prove_unchanged(tmp_path: Path, variant: str) -> None:
+    here, donor = _seed_member_build(tmp_path, variant)
+    assert not (here / "target" / "debug" / ".fingerprint" / UNIT).exists()
+    assert (donor / "target" / "debug" / ".fingerprint" / UNIT).is_dir()
+    if variant != "missing":
+        assert (here / SOURCE).stat().st_mtime_ns != OLD_NS

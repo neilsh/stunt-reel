@@ -2,9 +2,10 @@
 
 Cargo finds a unit fresh from its fingerprint and its outputs' modification times, so a copy that
 keeps both leaves every dependency fresh in another checkout, provided both name the shared cargo
-cache by the same path: a different ``CARGO_HOME`` path alone rebuilds every dependency. The
-checkout's own crates always rebuild, because the seed drops their fingerprints
-(``drop_member_fingerprints``). On ReFS the copy clones blocks instead of writing them, so a
+cache by the same path: a different ``CARGO_HOME`` path alone rebuilds every dependency. A unit
+of the checkout's own crates keeps its fingerprint only where every file it was built from
+matches the donor's, and rebuilds otherwise (``prune_member_fingerprints``). On ReFS the copy
+clones blocks instead of writing them, so a
 seeded ``target/`` costs little disk. See
 [ADR 0030](../../docs/adr/0030-new-worktrees-seed-target-by-block-clone.md) and the plan
 ``work/2026-11/target-seeding/spec.md``.
@@ -40,6 +41,8 @@ STAGING = ".seeding"
 #: How much of a dep-info file is read looking for a registry source path.
 _DEP_INFO_BYTES = 4096
 _REGISTRY_MARKERS = ("\\registry\\src\\", "/registry/src/")
+#: The dep-info line prefix rustc writes for an environment variable a crate read at compile time.
+_ENV_DEP = "# env-dep:"
 
 
 def _norm(path: str | Path) -> str:
@@ -167,13 +170,73 @@ def workspace_members(checkout: Path) -> frozenset[str]:
     return frozenset(names)
 
 
-def drop_member_fingerprints(seeded: Path, members: frozenset[str]) -> None:
-    """Delete the fingerprints of *members*' units under the copied directory *seeded*.
+def _unit_sources(dep_info: Path, donor: Path) -> list[str] | None:
+    """The workspace-relative files rustc read to build a unit, from its dep-info *dep_info*.
+
+    ``None`` when the unit cannot be reused: the file is unreadable or names no source, a source
+    is absolute, or a recorded environment value holds *donor*'s path.
+    """
+    try:
+        text = dep_info.read_text(encoding="utf-8")
+    except OSError, ValueError:
+        return None
+    donor_path = _norm(donor)
+    sources: list[str] = []
+    for line in text.splitlines():
+        if line.startswith(_ENV_DEP):
+            # rustc doubles each backslash in an env-dep value.
+            if donor_path in _norm(line.removeprefix(_ENV_DEP).replace("\\\\", "\\")):
+                return None
+            continue
+        # Each source appears once more as a phony rule of its own: a line ending in a colon.
+        if line.startswith("#") or not line.endswith(":"):
+            continue
+        source = line[:-1].replace("\\ ", " ")
+        if source.startswith(("/", "\\")) or os.path.splitdrive(source)[0]:
+            return None
+        sources.append(source)
+    return sources or None
+
+
+def _reusable_unit(
+    fingerprint: Path, *, donor: Path, checkout: Path
+) -> list[tuple[Path, os.stat_result]] | None:
+    """*checkout*'s files the unit *fingerprint* was built from, each with *donor*'s stat.
+
+    ``None`` unless exactly one dep-info in the sibling ``deps/`` carries the unit's hash and
+    every file it names is byte-identical in both checkouts and unchanged while read.
+    """
+    unit_hash = fingerprint.name.rsplit("-", 1)[1]
+    dep_infos = list((fingerprint.parent.parent / "deps").glob(f"*-{unit_hash}.d"))
+    if len(dep_infos) != 1:
+        return None
+    sources = _unit_sources(dep_infos[0], donor)
+    if sources is None:
+        return None
+    stamps: list[tuple[Path, os.stat_result]] = []
+    for source in sources:
+        theirs, ours = donor / source, checkout / source
+        try:
+            before = theirs.stat()
+            same = theirs.read_bytes() == ours.read_bytes()
+            after = theirs.stat()
+        except OSError:
+            return None
+        if not same or before.st_mtime_ns != after.st_mtime_ns:
+            return None
+        stamps.append((ours, before))
+    return stamps
+
+
+def prune_member_fingerprints(
+    seeded: Path, members: frozenset[str], *, donor: Path, checkout: Path
+) -> None:
+    """Delete the fingerprints of *members*' units under the copied directory *seeded*, except
+    those whose sources are byte-identical in *checkout* and *donor*.
 
     Cargo calls a workspace unit fresh when its sources are older than its outputs, whatever they
-    hold, so a donor's build of the checkout's own crates could pass for this checkout's: it would
-    run the donor's code and the donor's ``CARGO_MANIFEST_DIR``. Without a fingerprint Cargo
-    rebuilds the unit; dependencies, named by registry path, keep theirs.
+    hold, so a unit that may differ from the donor's must rebuild. A kept unit's sources take the
+    donor's modification times, so Cargo judges it here as it would in *donor*.
     """
     if not members:
         return
@@ -182,8 +245,14 @@ def drop_member_fingerprints(seeded: Path, members: frozenset[str]) -> None:
         if not fingerprints.is_dir():
             continue
         for entry in fingerprints.iterdir():
-            if unit.fullmatch(entry.name):
+            if not unit.fullmatch(entry.name):
+                continue
+            stamps = _reusable_unit(entry, donor=donor, checkout=checkout)
+            if stamps is None:
                 shutil.rmtree(entry)
+                continue
+            for path, stat in stamps:
+                os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
 
 
 def donor_problem(checkout: Path, *, rustc_vv: str, cargo_home: Path) -> str | None:
@@ -472,7 +541,8 @@ def _copy_from(
 ) -> SeedOutcome:
     """Copy *donor*'s *lanes* and seeded files into *target*, undoing all of it on failure.
 
-    The copy keeps no fingerprint of *members*, the checkout's own crates: they always rebuild.
+    The copy keeps a fingerprint of *members*, the checkout's own crates, only where the unit's
+    sources match the donor's (``prune_member_fingerprints``).
     Each directory is copied and stripped of them under ``target/.seeding`` and only then moved
     into place, so a seed stopped part way (Ctrl-C, a killed process) never leaves a directory
     that holds them and that ``needs_seed`` would count as built.
@@ -484,7 +554,9 @@ def _copy_from(
             source = donor / "target" / name
             if source.is_dir():
                 copy(source, staging / name)
-                drop_member_fingerprints(staging / name, members)
+                prune_member_fingerprints(
+                    staging / name, members, donor=donor, checkout=target.parent
+                )
                 (staging / name).rename(target / name)
                 moved.append(target / name)
         for name in SEEDED_FILES:
