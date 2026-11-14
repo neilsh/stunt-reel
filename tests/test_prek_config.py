@@ -46,6 +46,8 @@ BUILTINS = {
     "check-toml",
     "check-yaml",
     "detect-private-key",
+    "check-shebang-scripts-are-executable",
+    "check-executables-have-shebangs",
 }
 
 

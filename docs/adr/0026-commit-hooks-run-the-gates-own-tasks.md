@@ -74,6 +74,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | `check-merge-conflict` | union-merged append-only files ([AGENTS.md, Committing](../../AGENTS.md#committing)) must not keep markers |
   | `check-toml`, `check-yaml` | `mise.toml`, `pyproject.toml`, `.github/` and `.coderabbit.yaml` are configuration |
   | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
+  | `check-shebang-scripts-are-executable`, `check-executables-have-shebangs` | Linux CI's ruff fails a script whose shebang and executable bit disagree (`EXE001`), which a Windows checkout cannot see; these read git's staged mode there (added 2026-11-13, #461) |
 
   No hook rewrites files: the whitespace and end-of-file fixers are left out, and the fix for a
   format failure is `mise run fmt`.
