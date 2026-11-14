@@ -1,5 +1,5 @@
 ---
-summary: "Patch #3 `PLAYONE.EXE` counterparts of memory-map rows, unmapped ones marked: moved `DGROUP` offsets, the unchanged work segment, and code addresses, paired function by function."
+summary: "Patch #3 `PLAYONE.EXE` counterparts of memory-map rows, unmapped ones marked: moved `DGROUP` offsets, unchanged work-segment offsets, and code addresses, paired function by function."
 ---
 # Memory Map: Patch #3 Build
 

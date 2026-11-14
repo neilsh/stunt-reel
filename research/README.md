@@ -30,7 +30,7 @@ To find a note rather than place a finding, read [`MAP.md`](MAP.md): every note 
 6. **Superseded content is replaced, not kept beside the new result.** Its history is the journal entry and git.
 7. **A finding that needs a code fix is recorded on the fix's branch,** cut from `main`, after checking the open PRs that touch the same note. A verification branch keeps only its journal entry, stacked on the fix branch when it links a note the fix adds.
 
-New offsets also update their segment's table in the memory-map files that [`memory-map.md`](playone-exe/memory-map.md) lists (`# [MEM-*]` anchors); new format facts follow [`formats/INDEX.md`](formats/INDEX.md). Evidentiary tiers are defined in [`docs/SPEC.md` § 2.4](../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
+New offsets also update the appropriate table in the memory-map files that [`memory-map.md`](playone-exe/memory-map.md) lists (`# [MEM-*]` anchors); new format facts follow [`formats/INDEX.md`](formats/INDEX.md). Evidentiary tiers are defined in [`docs/SPEC.md` § 2.4](../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
 
 ## Note shape
 
