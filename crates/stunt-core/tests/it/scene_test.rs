@@ -593,3 +593,108 @@ fn bank_words_follow_the_film_clock_and_the_animate_word() {
     // Unmodelled words read as 0.
     assert_eq!(bank_word(0x12, 3.0, 1234), 0);
 }
+
+/// A `SCENERY.scn` of `words`, each a little-endian `i32`.
+fn scenery(words: &[i32]) -> Vec<u8> {
+    words.iter().flat_map(|w| w.to_le_bytes()).collect()
+}
+
+/// A drawn-only scene loaded with `SP_1NODE` scenery keeps the actor's shape and the
+/// view-facing child of the node, and drops the baked child, whose geometry stays in the
+/// world mesh, and a shape nothing places.
+#[test]
+fn a_drawn_only_scene_keeps_the_actor_and_the_view_facing_lod_child() {
+    use stunt_core::contracts::SCENERY_PROP;
+    use stunt_core::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN};
+
+    const ACTOR: u16 = 0x0001;
+    const TREE: u16 = 0x0102;
+    const BAKED: u16 = 0x0105;
+    const UNUSED: u16 = 0x0107;
+    // A shape the archive lacks, standing in for the node's subtree.
+    const STAND_IN: u16 = 0x0200;
+
+    // A view-facing tree: header flag 0x0100 marks the shape as facing the camera.
+    let tree: Vec<u8> = [
+        OP_ID, 100, 0, 0x0100, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24, OP_RETURN,
+    ]
+    .iter()
+    .flat_map(|w| w.to_le_bytes())
+    .collect();
+    let sod = fixture("synthetic_minimal.sod");
+    let all = archive(&[(ACTOR, &sod), (TREE, &tree), (BAKED, &sod), (UNUSED, &sod)]);
+    // Word 1: SP_POS at the origin, next -> word 6.
+    // Word 6: SP_1NODE (stand-in, ext 10, splitdist 105), its subtree -> word 11.
+    // Word 11: SP_LIST of the leaves at words 15 and 17.
+    let words = [
+        0,
+        0,
+        0,
+        0,
+        0,
+        12,
+        2,
+        i32::from(STAND_IN),
+        10,
+        105,
+        22,
+        20,
+        30,
+        34,
+        0,
+        10,
+        i32::from(TREE),
+        10,
+        i32::from(BAKED),
+    ];
+    let scenery = scenery(&words);
+    let film = film([0.0, 0.0, 10.0], &[(ACTOR, [1.0, 0.0, 0.0])]);
+
+    let (scene, _) = FilmScene::load(&SceneInputs {
+        shapes: Some(ShapeSource::Archive(&all)),
+        scenery: Some(&scenery),
+        ..scene_inputs(&film)
+    })
+    .expect("load");
+    let world = scene.world().expect("a world");
+    let facing: Vec<u16> = world.view_facing.iter().map(|p| p.shape).collect();
+    assert_eq!(facing, [TREE], "the tree is placed behind the node's gate");
+    assert_eq!(world.view_facing[0].gates.len(), 1);
+    let baked = world
+        .ir
+        .vertices
+        .iter()
+        .filter(|v| v.scenery_class == SCENERY_PROP)
+        .count();
+    assert_eq!(
+        baked,
+        model(&sod).vertices.len(),
+        "the baked child's geometry"
+    );
+
+    let scene = scene.drawn_only();
+    let mut kept: Vec<u16> = scene.shapes().map(|(id, _)| id).collect();
+    kept.sort_unstable();
+    assert_eq!(kept, [ACTOR, TREE]);
+    let still_baked = scene.world().map_or(0, |w| {
+        w.ir.vertices
+            .iter()
+            .filter(|v| v.scenery_class == SCENERY_PROP)
+            .count()
+    });
+    assert_eq!(
+        still_baked, baked,
+        "the world keeps the dropped shape's geometry"
+    );
+}
+
+#[test]
+fn a_drawn_only_scene_keeps_its_origin_shape() {
+    let film = film([0.0, 0.0, 10.0], &[]);
+    let timeline = FilmTimeline::from_bytes(&film).expect("timeline");
+    let scene = FilmScene::with_single_model(timeline, model(&fixture("synthetic_minimal.sod")))
+        .drawn_only();
+
+    assert_eq!(scene.shapes().count(), 1);
+    assert_eq!(scene.frame(0.0).actors.len(), 1);
+}
