@@ -11,4 +11,4 @@ outcome: "Seven contradictions from #307 plan Task 16 and two stale claims ruled
 
 **Status.** One PR. The [journal](journal.md) holds one entry per item: the evidence read, the ruling, and the note that now holds it.
 
-**Handoff.** Left open, in the notes: the cause of the one-tick page lag ([`dosbox-x-legacy.md`](../../../research/playone-exe/dosbox-x-legacy.md) open question 1), and which stream word supplies the `GVPOLY16` ramp ([`sod-vm.md`](../../../research/playone-exe/sod-vm.md) open questions). Which build's opcode numbering `sod-opcodes.md` follows is [#480](https://github.com/neilsh/stunt-reel/issues/480). The `memory-map.md` split (plan Task 16) can now start.
+**Handoff.** Left open, in the notes: the cause of the one-tick page lag ([`dosbox-x-legacy.md`](../../../research/playone-exe/dosbox-x-legacy.md) open question 1). The `GVPOLY16` ramp word, left open at first, was traced in review (the journal's 2026-11-14 entry). Which build's opcode numbering `sod-opcodes.md` follows is [#480](https://github.com/neilsh/stunt-reel/issues/480). The `memory-map.md` split (plan Task 16) can now start.
