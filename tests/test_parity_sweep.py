@@ -696,3 +696,22 @@ def test_a_picture_without_a_crop_shows_the_whole_frame(tmp_path: Path) -> None:
     )
     width, rows = _png_width_rows(path)
     assert (width, len(rows)) == (TINY.width * 3 + 4, TINY.height)
+
+
+def test_topic_clash_matches_the_exact_name_shape(tmp_path: Path) -> None:
+    for name in ("intro-3302-conifer-edge.png", "ctry-5-edge.png", "land-9-edge-guard.png"):
+        (tmp_path / name).write_bytes(b"x")
+    clashes = parity_pictures.topic_clashes(tmp_path, "edge")
+    assert [p.name for p in clashes] == ["ctry-5-edge.png", "land-9-edge-guard.png"]
+    assert parity_pictures.topic_clashes(tmp_path / "missing", "edge") == []
+
+
+def test_an_images_path_that_is_a_file_is_refused_before_rendering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(parity_sweep, "run_film", None)  # rendering would raise
+    images = tmp_path / "images"
+    images.write_bytes(b"x")
+    assert parity_sweep.main(_images_argv(root, images)) == 2
+    assert "is not a directory" in capsys.readouterr().err

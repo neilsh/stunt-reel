@@ -82,7 +82,7 @@ def picture_name(film: str, tick: int, topic: str, *, guard: bool = False) -> st
 
 
 def parse_crop(text: str) -> tuple[int, int, int, int]:
-    """``x0,y0,x1,y1`` as a box; raises ``ValueError`` unless it is a non-empty box on the screen."""
+    """``x0,y0,x1,y1`` as a box; raises ``ValueError`` unless it is a box on the screen."""
     try:
         x0, y0, x1, y1 = (int(part) for part in text.split(","))
     except ValueError:
@@ -152,14 +152,12 @@ def existing_paths(directory: Path, names: Iterable[str]) -> list[Path]:
 
 
 def topic_clashes(directory: Path, topic: str) -> list[Path]:
-    """Files in *directory* a picture of this topic could overwrite, whatever tick it names."""
+    """Files in *directory* named for this topic, whatever film and tick: ``<film>-<tick>-<topic>``
+    with or without ``-guard``. A picture of the topic could overwrite one of them."""
     if not directory.is_dir():
         return []
-    return sorted(
-        path
-        for pattern in (f"*-*-{topic}.png", f"*-*-{topic}-guard.png")
-        for path in directory.glob(pattern)
-    )
+    shape = re.compile(rf"[a-z0-9_-]+-\d+-{re.escape(topic)}(-guard)?\.png")
+    return sorted(path for path in directory.iterdir() if shape.fullmatch(path.name))
 
 
 def films_with(pictures: Iterable[Picture]) -> Mapping[str, list[int]]:

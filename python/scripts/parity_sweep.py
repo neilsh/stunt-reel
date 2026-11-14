@@ -15,8 +15,8 @@ Usage::
     mise run sweep -- --reuse <retime root> [--films ctry,intro] [--retime N]
 
 stdout carries only the ``--target`` echo, the table and the winner line; progress, the
-listed frames and the picture paths go to stderr. The baseline is the variant of each ``--var``'s first value, and
-every other variant is judged against it once all have finished (``stunt_reel.parity_judge``).
+listed frames and the picture paths go to stderr. The baseline is the variant of each
+``--var``'s first value, and every other variant is judged against it once all have finished (``stunt_reel.parity_judge``).
 With ``--track`` the winner line gives the adoption rule's verdict (loop-rules.md) and the
 baseline never wins; ``--track`` and ``--target`` refuse a ``--films`` subset, ``--reuse`` and
 a single variant, and a ``--target`` range holding no captured tick stops the sweep before it
@@ -110,7 +110,7 @@ CROP_PAD = 25
 
 @dataclass(frozen=True)
 class SweepPlan:
-    """One variant to run: its score record, its work directory and the environment it renders in."""
+    """One variant to run: its score record, work directory and rendering environment."""
 
     variant: Variant
     workdir: Path
@@ -256,6 +256,8 @@ def validate_pictures(
         raise ValueError("--images needs --topic")
     if not targets:
         raise ValueError("--images needs --target")
+    if images.exists() and not images.is_dir():
+        raise ValueError(f"--images {images} is not a directory")
     slug = topic_slug(topic)
     box = parse_crop(crop) if crop is not None else None
     clashes = topic_clashes(images, slug)
@@ -393,7 +395,7 @@ def write_pictures(
     taken = existing_paths(options.directory, [p.name for p in pictures])
     if taken:
         print(f"parity_sweep: {taken[0]} already exists; no pictures drawn", file=sys.stderr)
-        return 2
+        return 1
     if not pictures:
         print("[sweep] no pictures: no target frame was scored in both variants", file=sys.stderr)
         return 0
@@ -464,9 +466,9 @@ def main(argv: list[str] | None = None) -> int:
     """Renders and scores every variant on every chosen film, then judges and ranks them.
 
     Exits 2 on a refused invocation, a failed preflight or a ``--target`` range holding no
-    captured tick, and 1 when the pictures of ``--images`` fail after the verdict printed. Every variant's work directory is removed on the way out, interrupted or
-    not, except the best one's under ``--keep-best``; with ``--track`` that is never the
-    baseline.
+    captured tick, and 1 when the pictures of ``--images`` fail after the verdict printed.
+    Every variant's work directory is removed on the way out, interrupted or not, except the
+    best one's under ``--keep-best``; with ``--track`` that is never the baseline.
     """
     args = parse_args(argv)
     try:
