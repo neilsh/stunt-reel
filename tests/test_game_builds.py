@@ -288,6 +288,11 @@ def test_build_tree_names_the_patch3_tree(tmp_path: Path) -> None:
     assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patch3"
 
 
+def test_build_tree_ignores_an_old_patched_directory(tmp_path: Path) -> None:
+    (tmp_path / "patched").mkdir()
+    assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patch3"
+
+
 def test_build_tree_of_an_empty_directory_is_the_new_name(tmp_path: Path) -> None:
     assert game_builds.build_tree(tmp_path, "patch3") == tmp_path / "patch3"
     assert game_builds.build_tree(tmp_path, "unpatched") == tmp_path / "unpatched"

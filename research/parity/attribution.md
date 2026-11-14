@@ -110,7 +110,7 @@ The renderer-only levers are exhausted, so each item starts by reading one `PLAY
 
 ### Where the ground-and-light goal stopped
 
-The goal ran two rounds and adopted nothing, which is its own stop rule. Both rounds went at the ground question from opposite ends and both were stopped by missing evidence rather than by a negative result:
+The 2026-10-24 ground-and-light goal ran two rounds and adopted nothing, which is its own stop rule. Both rounds went at the ground question from opposite ends and both were stopped by missing evidence rather than by a negative result:
 
 * **The stream is not in conventional memory.** The runner at `0x9161` calls the display list's first word as code, so a relocated record carries the handler's offset; `0x995C` occurs in none of the 96 dumps and `0x9A24` twice ([world-scene.md](../playone-exe/world-scene.md) section 6).
 * **The light is handed in, not computed.** `0x9100` writes `L` from AX/BX/DX and fills the rest of its block from DGROUP; the caller is the binary's one genuinely unreferenced entry ([terrain-shade.md](../playone-exe/terrain-shade.md#41-the-entry-decodes-but-it-is-handed-its-light)).

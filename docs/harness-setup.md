@@ -64,8 +64,9 @@ Run these in a normal terminal, outside an agent sandbox.
    are handed the same corpus by `run_with_corpus.py`.
 
    The data root also holds `builds/`, which `mise run game-builds` writes: `builds/unpatched`
-   and `builds/patch3`. Run `mise run game-builds` before invoking `capture-ref`, `capture-video`,
-   `play`, `make-all`, `debug-x`, or `pair-builds` against those directories.
+   and `builds/patch3` (an old `builds/patched` is no longer read and can be deleted).
+   Run `mise run game-builds` before invoking `capture-ref`, `capture-video`, `play`, `make-all`,
+   `debug-x`, or `pair-builds` against those directories.
 
 ## A new worktree
 

@@ -3,6 +3,8 @@ summary: "Whether runtime memory records fit `.ksy`: `actor_record.ksy`, for the
 ---
 # Kaitai for runtime memory structs: spike findings
 
+_Spike run 2026-10-23._
+
 Question: can runtime DOS memory records be described by `.ksy` schemas like the file formats? Probe: the 64-byte actor entry (`# [MEM-ACTOR-TABLE]`, Layout A, `[Hypothesis]`), schema [`actor_record.ksy`](actor_record.ksy).
 
 ## Results (`[Bounded Observation]`, KSC 0.11 on this machine via `mise exec`)
