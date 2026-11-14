@@ -28,6 +28,14 @@ def test_ramp_word_follows_the_registers() -> None:
     assert poly.size == 22
 
 
+def test_shade_count_is_the_ramp_words_low_nibble() -> None:
+    # `0x3024`: base 0x30, and only the low nibble (4) counts shades, as the handler's tail does.
+    data = struct.pack("<H4HH4HH", 4, 12, 24, 36, 48, 0x3024, 1, 2, 3, 4, 0x17E4)
+    poly = decode_record(data, 0x1000, G2BE)
+    assert poly is not None
+    assert (poly.base, poly.shades, poly.next_ip) == (0x30, (1, 2, 3, 4), 0x17E4)
+
+
 def test_record_shades_and_next_ip() -> None:
     poly = decode_record(record(0xC4, [1, 2, 3], 0x17E4), 0x6B71C, G168)
     assert poly == Polygon(0x6B71C, G168, 0xC4, 3, (12, 24, 36), (1, 2, 3), 0x17E4)
