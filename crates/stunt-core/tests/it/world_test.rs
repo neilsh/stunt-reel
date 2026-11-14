@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use stunt_core::anchor::{AnchorPoint, parse_anchor_table};
-use stunt_core::contracts::{NodeKind, SodModelIr};
+use stunt_core::contracts::{NodeKind, SCENERY_PROP, SodModelIr};
 use stunt_core::sod::{DecodeMode, ShadeLight, decode_sod};
-use stunt_core::world::{ScnStopReason, WorldInputs, build_world};
+use stunt_core::world::{GROUND_NODE, ScnStopReason, WorldInputs, build_world};
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -176,12 +176,11 @@ fn terrain_patch_maps_anchors_into_i1() {
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert_eq!(world.terrain_patches, 1);
 
-    // Ocean quad, then the single triangle; no fallback ground plane.
-    assert_eq!(world.ir.vertices.len(), 4 + 3);
-    assert_eq!(world.ir.indices.len(), 6 + 3);
-    let tri = &world.ir.vertices[4..];
-    assert_eq!(tri.len(), 3, "one triangle after the ocean quad");
-    assert_eq!(tri.len(), 3, "one triangle after the ocean quad");
+    // The raised triangle in the base batch, then the ocean quad; no fallback ground plane.
+    assert_eq!(world.ir.vertices.len(), 3 + 4);
+    assert_eq!(world.ir.indices.len(), 3 + 6);
+    let tri = &world.ir.vertices[..3];
+    assert_eq!(tri.len(), 3, "one triangle before the ocean quad");
     assert_eq!(tri[0].position, [-100.0, 500.0, 200.0]);
     assert_eq!(tri[1].position, [-300.0, 500.0, 200.0]);
     assert_eq!(tri[2].position, [-100.0, 500.0, 400.0]);
@@ -312,11 +311,18 @@ fn scenery_places_deduplicated_props_offset_into_i1() {
     let world = build_world(&inputs, &shapes).expect("world");
     assert_eq!(world.terrain_patches, 0);
     assert_eq!(world.props_placed, 1);
-    // Ocean quad (4) and the fallback ground quad (4, no terrain patches) precede the prop.
-    assert_eq!(world.ir.vertices.len(), 8 + base_vertices);
+    // Besides the prop, only the ocean quad and the fallback ground quad (no terrain patches).
+    let placed: Vec<[f32; 3]> = world
+        .ir
+        .vertices
+        .iter()
+        .filter(|v| v.scenery_class == SCENERY_PROP)
+        .map(|v| v.position)
+        .collect();
+    assert!(!placed.is_empty());
+    assert_eq!(world.ir.vertices.len() - placed.len(), 8);
 
     // Each prop vertex is the model vertex shifted by the [I1] placement (-10, -20, 30).
-    let placed: Vec<[f32; 3]> = world.ir.vertices[8..].iter().map(|v| v.position).collect();
     for p in &placed {
         let found = model.vertices.iter().any(|mv| {
             (mv.position[0] - 10.0 - p[0]).abs() < 1e-4
@@ -404,10 +410,15 @@ fn decal_meshes_of_props_go_to_a_child_batch() {
         panic!("base node is a mesh");
     };
     assert_eq!(index_offset, base_indices);
-    assert_eq!(
-        (index_offset + index_count) as usize,
-        world.ir.indices.len()
-    );
+    // Only flat-ground nodes follow the decal batch.
+    let end = index_offset + index_count;
+    for node in &world.ir.nodes {
+        if let NodeKind::Mesh { index_offset, .. } = node.kind
+            && index_offset >= end
+        {
+            assert_eq!(node.name, GROUND_NODE);
+        }
+    }
 }
 
 #[test]
