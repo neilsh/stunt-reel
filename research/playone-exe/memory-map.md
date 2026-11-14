@@ -86,7 +86,7 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0x229C`, `0x229E`, `0x22A4` | `0x1C22`, `0x1C24`, `0x1C2A` | 4, 4, 2 refs | Lens mantissa, lens shift count, `0x22A4` | `# [MEM-PALETTE]` |
 | `0x22B6` | `0x1C3C` | 2 refs | View-setup scale | `# [MEM-PALETTE]` |
 | `0x22B8` | `0x1C3E` | 3 refs; a live capture ([`patch3.md` § 2](patch3.md#2-patched-playoneexe-offsets)) | Global 50 Hz tick | `# [MEM-FLM-TICK]` |
-| `0x22BC` | `0x1C42` | 1 ref | Previous var 10 | `# [MEM-PALETTE]` |
+| `0x22BC` | `0x1C42` | 1 ref | Var 10 at the previous frame's bank write (`0x1D96`) | `# [MEM-PALETTE]` |
 | `0x22C4` | `0x1C4A`, `[Established]` | 3 refs (`mov [0x1C4A], es` in the patched entry routine) | Stored PSP segment | |
 | `0x22CA`, `0x22CC` | `0x1C50`, `0x1C52`, `[Bounded Observation]` | 17, 6 refs; a live capture flagged 72 of 1,906 frames torn against 66 of 1,908 unpatched ([`patch3.md` § 3.1](patch3.md#31-composed-pages)) | Composed-page segments | |
 | `0x22CE`, `0x22D0` | `0x1C54`, `0x1C56` | 2 refs each | Saved `SS`, `SP` around the `INSTALL.EXE` EXEC | |
@@ -229,7 +229,10 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x810A` | `[Established]` | `u16` | `0x229C² × 2 >> 16` (image `0x1238`); `OP_REJVEC` scales its depth term by it (`0x953F`), undoing the lens zoom ([`sod-vm.md`](sod-vm.md) section 8.6) | |
 | `0x810C` | `[Established]` | `u16` | Lens shift count, a copy of `DS:0x229E` (image `0x123D`); arithmetic right shift on the view matrix's depth row (image `0x12F8`). Zoom is `0x8108 / 0x8000 × 2^0x810C`, about `lens / 8192` | |
 | `0x811E` | `[Established]` | `u16` | The film clock `[0x4888 + 0x0E]` shifted left 12 (image `0x1DCA`): the bank word `OP_ANIMATE` selector `0x10` reads, one sweep every 16 ticks | `# [FMT-SOD-ANIMATE]` |
+| `0x8120` | `[Established]` | `u16` | Var 10's change since the previous frame, saturated at 255, shifted left 8 (image `0x1DBD`): bank operand `0x12` ([`angle-bank.md`](angle-bank.md)) | |
+| `0x8122` | `[Established]` | `u16` | The previous frame's var 10, low byte shifted left 8 (image `0x1DC6`): bank operand `0x14`, the stock propellers' `ROTZ` angle ([`angle-bank.md`](angle-bank.md)) | |
 | `0x8124` | `[Established]` | `u16` | The drawn slot's animate word, its record's `+0x16` (image `0x1D66`): the bank word `OP_ANIMATE` selector `0x16` and `ROT*` operand `0x16` read | `# [FMT-SOD-ANIMATE]` |
+| `0x8126`, `0x8128` | `[Established]` | `i16` | Var 12 and its negation (image `0x1D9F`, `0x1DA5`): bank operands `0x18` and `0x1A` ([`angle-bank.md`](angle-bank.md)) | |
 
 Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
 
@@ -290,7 +293,7 @@ See [`research/playone-exe/sod-vm.md`](sod-vm.md) for `OP_TAP` and [`research/pl
 | image `0x884A` (`0824:060A`) | `[Established]` | 3×3 Q15 product `work:DI = work:SI · work:BX` (rows of `SI` times columns of `BX`) _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
 | image `0x88C1` (`0824:0681`) | `[Established]` | Transposed copy of a 3×3 matrix from `work:SI` to `work:DI` _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
 | image `0x895D` (`0824:071D`), image `0x88FB` (`0824:06BB`, inferred from the `0x8240` offset the other three share) | `[Established]` | Vector `AX, BX, CX` times the matrix at `work:SI`, one output per row, returned in `DX, BP, DI` _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
-| `CS:0x1D96` | `[Bounded Observation]` | Stores var 12 and its negation at `0x15D4:0x8126`/`0x8128`, var 10 (with change sign and low byte) at `0x15D4:0x8120`/`0x8122`, and the film clock shifted left 12 at `0x15D4:0x811E` (`[Established]`); `DS:0x22BC` keeps the previous var 10 |
+| `CS:0x1D96` | `[Established]` | Fills bank words `0x10`..`0x14`, `0x18`, `0x1A` (`0x15D4:0x811E`..`0x8128`) once per frame from the film clock and vars 10 and 12 of `DS:0x4888`; only caller `CS:0x1DD5` (from `CS:0x0F77`), before the object loop; `DS:0x22BC` keeps the previous frame's var 10 ([`angle-bank.md`](angle-bank.md)) |
 | `DS:0x2275` | `[Supported Inference]` | Video-mode flag: `0` after `int 10h` mode `0x13` (`CS:0x737B`), `0xFF` on the alternate path (`CS:0x6E1B`); selects `0x824:0x07DC` over `0x824:0x0A05` in the frame routine |
 | `CS:0x39D0` | `[Established]` | Copies the 16 live variables from `DS:0x47C8` to `DS:0x4906` (the checkpoint inside `0x39B0`) |
 | `CS:0x42F5` | `[Supported Inference]` | Film recorder: compares the 16 live variables with `DS:0x49C6` and emits `var_set` bytes (`0x80 + n`, from `0x90 - CL` with `CL` counting 16 to 1) when they change |

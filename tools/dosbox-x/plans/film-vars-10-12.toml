@@ -1,0 +1,64 @@
+# #456: how film variables 10 and 12 reach the ROT* angle bank. 0x1D96 copies them from the
+# snapshot film state (BX = 0x4888) into work:0x811E..0x8128; 0x1DD4 is its ret, where ES is the
+# work segment. Run on INTRO.FLM: var 10 ramps about 23 a tick over ticks 1261-1485, var 12 is
+# 16384 from tick 2786. The frame step 0x4A2F and the actor draw 0x1D66 count calls per frame;
+# the two watches name every changing writer of var 10, live (DS:0x47DC) and snapshot (DS:0x491A).
+[run]
+stop_tick = 2880
+
+[[probe]]
+name = "bank-1300"
+kind = "break"
+at = 0x1DD4
+arm = { tick = 1300 }
+hits = 24
+capture = ["mem:ES:0x811E:12", "mem:DS:0x4888:0x20", "mem:DS:0x4906:0x20", "mem:DS:0x22BC:2"]
+
+[[probe]]
+name = "frame-1300"
+kind = "break"
+at = 0x4A2F
+arm = { tick = 1300 }
+hits = 24
+
+[[probe]]
+name = "actor-1300"
+kind = "break"
+at = 0x1D66
+arm = { tick = 1300 }
+hits = 60
+
+[[probe]]
+name = "var10-live"
+kind = "watch"
+mem = "DS:0x47DC"
+size = 2
+arm = { tick = 1300 }
+hits = 24
+
+[[probe]]
+name = "var10-snap"
+kind = "watch"
+mem = "DS:0x491A"
+size = 2
+arm = { tick = 1300 }
+hits = 24
+
+[[probe]]
+name = "bank-2800"
+kind = "break"
+at = 0x1DD4
+arm = { tick = 2790 }
+hits = 12
+capture = ["mem:ES:0x811E:12", "mem:DS:0x4888:0x20", "mem:DS:0x4906:0x20", "mem:DS:0x22BC:2"]
+
+# Every changing write to bank words 0x10..0x1A (work:0x811E..0x8129). Unpatched only: the work
+# segment is 0x1DF8 under DOSBox-X (ES at 0x1DD4 in the first run), so the bank sits at linear
+# 0x2609E. Armed with the others at 1300, where bank words 0x10..0x14 change every frame.
+[[probe]]
+name = "bank-watch"
+kind = "watch"
+linear = 0x2609E
+size = 12
+arm = { tick = 1300 }
+hits = 40
