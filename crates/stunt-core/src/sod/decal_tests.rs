@@ -15,6 +15,8 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
     // 4. Vertical wall facing +X (normal [1, 0, 0])
     // 5. 45-degree ramp (normal [0, 1/sqrt(2), 1/sqrt(2)])
     // 6. 3D diagonal plane (normal [1/sqrt(3), 1/sqrt(3), 1/sqrt(3)])
+    // Each facet winds clockwise seen from its normal's side, so that side is its front
+    // under `FrontFace::Cw` and the decal moves toward it.
 
     let test_cases: Vec<([f32; 3], Vec<[f32; 3]>)> = vec![
         // Normal [0, 1, 0]
@@ -41,20 +43,20 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
         (
             [0.0, 0.0, 1.0],
             vec![
-                [-5.0, -5.0, 2.0],
-                [5.0, -5.0, 2.0],
-                [5.0, 5.0, 2.0],
                 [-5.0, 5.0, 2.0],
+                [5.0, 5.0, 2.0],
+                [5.0, -5.0, 2.0],
+                [-5.0, -5.0, 2.0],
             ],
         ),
         // Normal [1, 0, 0]
         (
             [1.0, 0.0, 0.0],
             vec![
-                [3.0, -5.0, -5.0],
-                [3.0, 5.0, -5.0],
-                [3.0, 5.0, 5.0],
                 [3.0, -5.0, 5.0],
+                [3.0, 5.0, 5.0],
+                [3.0, 5.0, -5.0],
+                [3.0, -5.0, -5.0],
             ],
         ),
         // Oblique 45-degree ramp: normal [0, 1/sqrt(2), 1/sqrt(2)]
@@ -63,10 +65,10 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
             (
                 [0.0, inv_sqrt2, inv_sqrt2],
                 vec![
-                    [-2.0, 0.0, 0.0],
-                    [2.0, 0.0, 0.0],
-                    [2.0, 2.0, -2.0],
                     [-2.0, 2.0, -2.0],
+                    [2.0, 2.0, -2.0],
+                    [2.0, 0.0, 0.0],
+                    [-2.0, 0.0, 0.0],
                 ],
             )
         },
@@ -75,7 +77,7 @@ fn test_challenge_i5_exact_normal_displacement_across_multiple_planes() {
             let inv_sqrt3 = 1.0 / 3.0f32.sqrt();
             (
                 [inv_sqrt3, inv_sqrt3, inv_sqrt3],
-                vec![[3.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 3.0]],
+                vec![[0.0, 0.0, 3.0], [0.0, 3.0, 0.0], [3.0, 0.0, 0.0]],
             )
         },
     ];
@@ -237,14 +239,15 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
         "Parallel facets offset in plane constant must not be flagged as coplanar decals"
     );
 
-    // 3. Tilted normal by 5 degrees (~0.087 rad)
+    // 3. Tilted by 5 degrees about z through x = 3 (tan 5 deg ~ 0.0875); matching reads
+    // the winding, not the stored normal
     let tilted = RawPolygon {
         vertex_palette: Vec::new(),
         vertices: vec![
-            [2.0, 0.0, 2.0],
-            [4.0, 0.0, 2.0],
-            [4.0, 0.0, 4.0],
-            [2.0, 0.0, 4.0],
+            [2.0, 0.0875, 2.0],
+            [4.0, -0.0875, 2.0],
+            [4.0, -0.0875, 4.0],
+            [2.0, 0.0875, 4.0],
         ],
         palette_index: 20,
         normal: [0.087_155, 0.996_195, 0.0],
@@ -308,14 +311,14 @@ fn test_coplanar_decal_geometry_resolution() {
         visibility: VisibilityCondition::Always,
     };
 
-    // Skewed normal polygon
+    // Skewed polygon, tilted about z through the origin
     let skewed = RawPolygon {
         vertex_palette: Vec::new(),
         vertices: vec![
-            [-2.0, 0.0, -2.0],
-            [2.0, 0.0, -2.0],
-            [2.0, 0.0, 2.0],
-            [-2.0, 0.0, 2.0],
+            [-2.0, 0.2, -2.0],
+            [2.0, -0.2, -2.0],
+            [2.0, -0.2, 2.0],
+            [-2.0, 0.2, 2.0],
         ],
         palette_index: 40,
         normal: [0.1, 0.99, 0.0],
@@ -380,4 +383,99 @@ fn test_polygon_bounds_and_overlap() {
         &[25.0, 25.0, 25.0],
         1e-4
     ));
+}
+
+/// A flat ground decal moves toward the side from which it winds clockwise, whatever its
+/// shading normal says (`[I5]`, `FrontFace::Cw`).
+#[test]
+fn ground_decal_moves_toward_its_clockwise_side() {
+    let poly = |vertices: Vec<[f32; 3]>| RawPolygon {
+        vertex_palette: Vec::new(),
+        normal: crate::sod::vm::compute_polygon_normal(&vertices),
+        vertices,
+        palette_index: 15,
+        flags: 0,
+        is_decal: false,
+        visibility: VisibilityCondition::Always,
+    };
+    // Clockwise seen from above (+X right, -Z away): the edge cross product points down.
+    let cw = |s: f32| vec![[0.0, 0.0, 0.0], [s, 0.0, 0.0], [0.0, 0.0, s]];
+    let ccw = |s: f32| vec![[0.0, 0.0, 0.0], [0.0, 0.0, s], [s, 0.0, 0.0]];
+    for (base, decal, y) in [(cw(10.0), cw(2.0), 0.001), (ccw(10.0), ccw(2.0), -0.001)] {
+        let processed = crate::sod::decal::identify_coplanar_decals(
+            &[poly(base), poly(decal)],
+            0.001,
+            1e-4,
+            1e-4,
+        );
+        let [base, decal] = processed.as_slice() else {
+            panic!("two polygons");
+        };
+        assert!(decal.is_decal && !base.is_decal);
+        assert_eq!(decal.normal, base.normal, "shading normal is kept");
+        assert!(
+            decal.vertices.iter().all(|v| (v[1] - y).abs() < 1e-6),
+            "{:?}",
+            decal.vertices
+        );
+        assert!(base.vertices.iter().all(|v| v[1] == 0.0));
+    }
+}
+
+/// A clockwise-from-above ground square `[x0, x0 + s] x [z0, z0 + s]` at height 0.
+fn ground_square(x0: f32, z0: f32, s: f32, palette_index: u8) -> RawPolygon {
+    let vertices = vec![
+        [x0, 0.0, z0],
+        [x0 + s, 0.0, z0],
+        [x0 + s, 0.0, z0 + s],
+        [x0, 0.0, z0 + s],
+    ];
+    RawPolygon {
+        vertex_palette: Vec::new(),
+        normal: crate::sod::vm::compute_polygon_normal(&vertices),
+        vertices,
+        palette_index,
+        flags: 0,
+        is_decal: false,
+        visibility: VisibilityCondition::Always,
+    }
+}
+
+/// A decal painted over another decal lies one level above it, so the later one stays on
+/// top as the stream paints it; a decal beside it, touching only along an edge, shares its
+/// level (`[I5]`).
+#[test]
+fn stacked_decals_rise_one_level_per_polygon_they_cover() {
+    let polygons = [
+        ground_square(0.0, 0.0, 10.0, 137),
+        ground_square(1.0, 1.0, 4.0, 59),
+        ground_square(2.0, 2.0, 2.0, 224),
+        ground_square(5.0, 1.0, 4.0, 59),
+    ];
+    let processed = crate::sod::decal::identify_coplanar_decals(&polygons, 0.001, 1e-4, 1e-4);
+    let heights: Vec<f32> = processed.iter().map(|p| p.vertices[0][1]).collect();
+    assert_eq!(heights, [0.0, 0.001, 0.002, 0.001]);
+    assert!(processed.iter().skip(1).all(|p| p.is_decal));
+}
+
+/// A line has no side, so it is never a decal, even lying on a facet.
+#[test]
+fn a_line_on_a_facet_is_no_decal() {
+    let line = RawPolygon {
+        vertex_palette: Vec::new(),
+        vertices: vec![[1.0, 0.0, 1.0], [5.0, 0.0, 1.0]],
+        palette_index: 50,
+        normal: [0.0; 3],
+        flags: crate::contracts::shape::VERTEX_FLAG_LINE,
+        is_decal: false,
+        visibility: VisibilityCondition::Always,
+    };
+    let processed = crate::sod::decal::identify_coplanar_decals(
+        &[ground_square(0.0, 0.0, 10.0, 162), line.clone()],
+        0.001,
+        1e-4,
+        1e-4,
+    );
+    assert!(!processed[1].is_decal);
+    assert_eq!(processed[1].vertices, line.vertices);
 }

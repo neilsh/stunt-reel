@@ -13,8 +13,8 @@
 //! - `[I3]` Each vertex's Mode 13h palette index is exported as a `COLOR_0` attribute through
 //!   [`stunt_core::contracts::get_palette_rgb_float`], and the single material is
 //!   `KHR_materials_unlit`, so the authentic palette colours are shown without lighting.
-//! - `[I5]` Coplanar decal slices are already displaced by 0.001 m along their normal by the
-//!   SOD tessellator (`stunt_core::sod::EPSILON_DISPLACEMENT`); the exporter copies those
+//! - `[I5]` Coplanar decal slices are already displaced toward their front, 0.001 m per stack
+//!   level, by the SOD tessellator (`stunt_core::sod::EPSILON_DISPLACEMENT`); the exporter copies those
 //!   positions and does not displace them a second time.
 //!
 //! # Layout

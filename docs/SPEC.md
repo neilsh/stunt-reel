@@ -87,8 +87,9 @@ Delivery is sequential. This section records what each phase is for and whether 
 
 #### [I5] Coplanar Decal Resolution
 
-  * *Decoder / glTF 2.0 export:* Because core glTF 2.0 lacks pipeline depth-bias states, coplanar decal polygons (runway markings, aircraft insignias, wing roundels) are geometrically displaced along their outward surface normal $\hat{\mathbf{n}}$ by $\epsilon = 0.001\text{ m}$ by the SOD decoder, and `stunt-gltf` exports the displaced geometry unchanged:
-    $$\mathbf{v}' = \mathbf{v} + 0.001\hat{\mathbf{n}}$$
+  * *Decoder / glTF 2.0 export:* Because core glTF 2.0 lacks pipeline depth-bias states, coplanar decal polygons (runway markings, aircraft insignias, wing roundels) are geometrically displaced along their outward surface normal $\hat{\mathbf{n}}$ by $k\epsilon$, $\epsilon = 0.001\text{ m}$, by the SOD decoder, and `stunt-gltf` exports the displaced geometry unchanged:
+    $$\mathbf{v}' = \mathbf{v} + 0.001\,k\,\hat{\mathbf{n}}$$
+    The outward normal is the polygon's front, the side from which it winds clockwise (the side `FrontFace::Cw` keeps), read from its winding rather than its shading normal. The stack level $k \ge 1$ is one above the highest level among the earlier coplanar polygons whose area the decal overlaps, a polygon that is no decal having level 0, so a decal stays above what its shape painted before it ([`world-scene.md`](../research/playone-exe/world-scene.md) section 6.6).
   * *Phase 2 (`wgpu` Engine):* Coplanar decal batches are rendered in a dedicated pipeline pass using hardware depth biasing (`DepthBiasState { constant: -2, slope_scale: -2.0, clamp: 0.0 }`, with `LessEqual`).
 
 #### [I6] Visual Parity Acceptance Thresholds & VGA 1:1.2 Aspect Ratio Correction

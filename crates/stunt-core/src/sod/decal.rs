@@ -3,14 +3,23 @@
 //! Because 3D rasterizers suffer from Z-fighting when rendering coplanar facets
 //! (insignias, roundels, markings, runway stripes), coplanar decal polygons are
 //! identified and displaced along their unit outward surface normal:
-//! `v' = v + eps * n_hat` where `eps = 0.001 m` (1.0 mm).
+//! `v' = v + k * eps * n_hat` where `eps = 0.001 m` (1.0 mm) and `k >= 1` is the decal's
+//! stack level.
+//!
+//! The outward normal is the polygon's front side under the renderer's culling
+//! (`FrontFace::Cw`, `CullMode::Back`), the side `PLAYONE` fills (`POLYZ` at `0x9B78`; the
+//! filler `0x7571` skips a row whose ends cross, `0x75A1`). It is derived from the winding,
+//! not from [`RawPolygon::normal`], which shades and follows two conventions. The level
+//! keeps `PLAYONE`'s painter order within a shape: a later coplanar polygon covers an
+//! earlier one (`research/playone-exe/world-scene.md` section 6.6).
 
-use crate::sod::vm::RawPolygon;
+use crate::contracts::shape::VERTEX_FLAG_LINE;
+use crate::sod::vm::{RawPolygon, compute_polygon_normal};
 
 /// Bit 0 in [`crate::contracts::shape::SodVertex::flags`] indicates a coplanar decal face.
 pub const DECAL_FLAG_BIT: u8 = 0x01;
 
-/// Default displacement along outward surface normal (1.0 mm) per Invariant `[I5]`.
+/// Displacement per stack level along a decal's front normal (1.0 mm), per Invariant `[I5]`.
 pub const EPSILON_DISPLACEMENT: f32 = 0.001;
 
 /// Computes the axis-aligned bounding box `(min_xyz, max_xyz)` for a polygon.
@@ -51,7 +60,7 @@ pub(crate) fn bounds_overlap(
 
 /// Determines whether two polygons share an identical supporting geometric plane per Invariant `[I5]`.
 ///
-/// Criteria:
+/// Criteria, on each polygon's [`front_normal`]:
 /// 1. Parallel unit normals: `dot(n_a, n_b) >= 1.0 - normal_tol`
 /// 2. Identical plane distance: `|dot(n_a, v_a0) - dot(n_b, v_b0)| < plane_tol`
 /// 3. Spatial bounding box overlap within `plane_tol`.
@@ -65,18 +74,17 @@ pub(crate) fn is_coplanar_facet(
     let (Some(a0), Some(b0)) = (poly_a.vertices.first(), poly_b.vertices.first()) else {
         return false;
     };
+    let (n_a, n_b) = (front_normal(poly_a), front_normal(poly_b));
 
     // 1. Parallel normal test
-    let dot_n = poly_a.normal[0] * poly_b.normal[0]
-        + poly_a.normal[1] * poly_b.normal[1]
-        + poly_a.normal[2] * poly_b.normal[2];
+    let dot_n = n_a[0] * n_b[0] + n_a[1] * n_b[1] + n_a[2] * n_b[2];
     if dot_n < 1.0 - normal_tol {
         return false;
     }
 
     // 2. Identical plane distance test
-    let d_a = poly_a.normal[0] * a0[0] + poly_a.normal[1] * a0[1] + poly_a.normal[2] * a0[2];
-    let d_b = poly_b.normal[0] * b0[0] + poly_b.normal[1] * b0[1] + poly_b.normal[2] * b0[2];
+    let d_a = n_a[0] * a0[0] + n_a[1] * a0[1] + n_a[2] * a0[2];
+    let d_b = n_b[0] * b0[0] + n_b[1] * b0[1] + n_b[2] * b0[2];
     if (d_a - d_b).abs() > plane_tol {
         return false;
     }
@@ -87,17 +95,30 @@ pub(crate) fn is_coplanar_facet(
     bounds_overlap(&min_a, &max_a, &min_b, &max_b, plane_tol)
 }
 
-/// Displaces all vertices of a coplanar decal polygon outward along its surface normal.
+/// Unit normal of the side of `poly` that survives back-face culling (`FrontFace::Cw`): the
+/// side from which its vertices wind clockwise, opposite their edge cross product. A line or
+/// a polygon of fewer than three vertices has no side and yields zero, so it is never a decal.
 #[must_use]
-pub(crate) fn displace_decal_polygon(poly: &RawPolygon, eps: f32) -> RawPolygon {
+pub(crate) fn front_normal(poly: &RawPolygon) -> [f32; 3] {
+    if poly.vertices.len() < 3 || poly.flags & VERTEX_FLAG_LINE != 0 {
+        return [0.0; 3];
+    }
+    compute_polygon_normal(&poly.vertices).map(|c| -c)
+}
+
+/// Moves every vertex of `poly` by `offset` metres along its [`front_normal`] and marks it a
+/// decal, keeping its shading normal.
+#[must_use]
+pub(crate) fn displace_decal_polygon(poly: &RawPolygon, offset: f32) -> RawPolygon {
+    let n = front_normal(poly);
     let displaced_vertices: Vec<[f32; 3]> = poly
         .vertices
         .iter()
         .map(|v| {
             [
-                v[0] + eps * poly.normal[0],
-                v[1] + eps * poly.normal[1],
-                v[2] + eps * poly.normal[2],
+                v[0] + offset * n[0],
+                v[1] + offset * n[1],
+                v[2] + offset * n[2],
             ]
         })
         .collect();
@@ -113,10 +134,13 @@ pub(crate) fn displace_decal_polygon(poly: &RawPolygon, eps: f32) -> RawPolygon 
     }
 }
 
-/// Scans polygon stream in draw order, identifying and displacing coplanar decals per `[I5]`.
+/// Scans the polygon stream in draw order, identifying and displacing coplanar decals per `[I5]`.
 ///
-/// A polygon evaluated at index `i > j` is classified as a decal if it is coplanar
-/// with an earlier polygon `j` in the draw order and spatially overlaps it.
+/// A polygon is a decal when it is coplanar with an earlier polygon in the stream and their
+/// bounds meet. Its stack level is one above the highest level among those earlier polygons
+/// whose area it overlaps (a polygon that is no decal has level 0), and it moves
+/// `level * eps_displacement` toward its front, so each decal lies above what it was painted
+/// over while decals side by side share a level.
 #[must_use]
 pub(crate) fn identify_coplanar_decals(
     polygons: &[RawPolygon],
@@ -124,23 +148,71 @@ pub(crate) fn identify_coplanar_decals(
     normal_tol: f32,
     plane_tol: f32,
 ) -> Vec<RawPolygon> {
+    let mut levels: Vec<u16> = Vec::with_capacity(polygons.len());
     let mut result: Vec<RawPolygon> = Vec::with_capacity(polygons.len());
 
     for curr in polygons {
         let mut is_decal = false;
-        for prev in &result {
+        let mut below = 0;
+        for (prev, &prev_level) in polygons.iter().zip(&levels) {
             if is_coplanar_facet(curr, prev, normal_tol, plane_tol) {
                 is_decal = true;
-                break;
+                if areas_overlap(curr, prev, plane_tol) {
+                    below = below.max(prev_level);
+                }
             }
         }
-
-        if is_decal {
-            result.push(displace_decal_polygon(curr, eps_displacement));
+        let level = if is_decal { below.saturating_add(1) } else { 0 };
+        levels.push(level);
+        result.push(if level == 0 {
+            curr.clone()
         } else {
-            result.push(curr.clone());
-        }
+            displace_decal_polygon(curr, eps_displacement * f32::from(level))
+        });
     }
 
     result
+}
+
+/// Whether two coplanar convex polygons share area deeper than `tol`: no separating axis
+/// among their edge normals, projected into the plane of `a`. Touching along an edge is
+/// not overlap.
+#[must_use]
+pub(crate) fn areas_overlap(a: &RawPolygon, b: &RawPolygon, tol: f32) -> bool {
+    let n = front_normal(a);
+    // Drop the axis the plane faces most, which keeps the projection's area.
+    let (u, v) = if n[0].abs() >= n[1].abs() && n[0].abs() >= n[2].abs() {
+        (1, 2)
+    } else if n[1].abs() >= n[2].abs() {
+        (0, 2)
+    } else {
+        (0, 1)
+    };
+    let flat = |p: &RawPolygon| -> Vec<[f32; 2]> {
+        p.vertices
+            .iter()
+            .filter_map(|c| Some([*c.get(u)?, *c.get(v)?]))
+            .collect()
+    };
+    let (pa, pb) = (flat(a), flat(b));
+    let span = |pts: &[[f32; 2]], axis: [f32; 2]| {
+        pts.iter()
+            .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), p| {
+                let d = p[0] * axis[0] + p[1] * axis[1];
+                (lo.min(d), hi.max(d))
+            })
+    };
+    [&pa, &pb].into_iter().all(|pts| {
+        pts.iter().zip(pts.iter().cycle().skip(1)).all(|(p, q)| {
+            let e = [q[0] - p[0], q[1] - p[1]];
+            let len = e[0].hypot(e[1]);
+            if len < 1e-9 {
+                return true;
+            }
+            let axis = [-e[1] / len, e[0] / len];
+            let (a_lo, a_hi) = span(&pa, axis);
+            let (b_lo, b_hi) = span(&pb, axis);
+            a_hi.min(b_hi) - a_lo.max(b_lo) > tol
+        })
+    })
 }
