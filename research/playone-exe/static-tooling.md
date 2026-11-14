@@ -74,17 +74,17 @@ The slot table at image `0x8240` gives the address of every handler (`imm16` plu
 2. names it from the opcode table in [`research/formats/sod-opcodes.md`](../formats/sod-opcodes.md),
 3. saves the project under `build/re/ghidra/`.
 
-The run takes the slot count from the build instead of assuming one: 108 slots in the unpatched executable at `0x8240`, and 107 in Patch #3 at `0x7540` ([`patch3.md`](patch3.md) section 4.1, [#480](https://github.com/neilsh/stunt-reel/issues/480)). It needs Ghidra 12.1.x with a JDK ([section 4](#4-setup)), found as `analyzeHeadless` on `PATH` or under `GHIDRA_INSTALL_DIR`:
+The run takes the slot count from the build instead of assuming one: 108 slots in the unpatched executable at `0x8240`, and 107 in Patch #3 at `0x7540` ([`patch3.md`](patch3.md) section 4.1, [#480](https://github.com/neilsh/stunt-reel/issues/480)). The names apply the table's rows by slot index; above opcode `0x0333` the two builds dispatch different handlers from one opcode word, the table's 107 rows match Patch #3's slot count, and so the run assumes its numbering there and says so in its summary and slot file. The unpatched build's 108th slot (opcode `0x03C3`) is past the table and is left unnamed. It needs Ghidra 12.1.x with a JDK ([section 4](#4-setup)), found as `analyzeHeadless` on `PATH` or under `GHIDRA_INSTALL_DIR`:
 
 ```sh
 mise run ghidra-sod-table
 mise run ghidra-sod-table -- --build patch3   # needs mise run game-builds first
-mise run ghidra-sod-table -- --parse-only     # read and print the table; no Ghidra
+mise run ghidra-sod-table -- --parse-only     # read and print the run's summary; writes nothing
 ```
 
 The driver is [`python/scripts/ghidra_sod_dispatch.py`](../../python/scripts/ghidra_sod_dispatch.py); the post-script it runs is [`tools/ghidra/SodDispatchTable.java`](../../tools/ghidra/SodDispatchTable.java). `--parse-only` reads the table without Ghidra, and `tests/test_ghidra_sod_dispatch.py` checks that reading on a synthetic image. Ghidra saves the imported program and its new functions when the headless session ends, unless `-readOnly` or `-deleteProject` is passed.
 
-That makes the VM handlers decompilable and gives them callers, callees and data references. That's what the open static questions need: the 14 unimplemented opcodes in [`sod-opcode-coverage.md`](../formats/sod-opcode-coverage.md), the viewport setter for `0x41C8/0x41CA`, and who sets `0x9100`'s inputs. rea can't do this itself, because it only edits existing functions and keeps nothing between sessions, so this is plain Ghidra work.
+Creating the functions would make the VM handlers decompilable and let Ghidra follow the helpers they call and the data they reference, bounded by what it can see: dispatch reaches every handler through a `jmp ax` on a stream word, not a call, so a handler's own callers stay invisible (section 2). That is the aim for the open static questions: the `OP_*` opcodes the census still stops on ([`sod-opcode-coverage.md`](../formats/sod-opcode-coverage.md) records 0 archive models blocked, 14 `TAP`-only stops and one loose `.BIN` on `OP_TEXTURE`), the viewport setter for `0x41C8/0x41CA`, and who sets `0x9100`'s inputs. rea can't do this itself, because it only edits existing functions and keeps nothing between sessions, so this is plain Ghidra work.
 
 ## 6. Evidence Rules For Tool Output
 

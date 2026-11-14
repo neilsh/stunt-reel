@@ -39,6 +39,7 @@ public class SodDispatchTable extends GhidraScript {
     private static final byte[] SLOT_PREFIX = { 0x26, (byte) 0xC7, 0x44, (byte) 0xFE };
     private static final int SLOT_BYTES = 9;
     private static final int MIN_SLOTS = 100;
+    private static final int NUMBERING_START = 0x0333;
     private static final long MAX_BLOCK = 64L * 1024 * 1024;
 
     private static final class Entry {
@@ -59,8 +60,9 @@ public class SodDispatchTable extends GhidraScript {
     public void run() throws Exception {
         String[] args = getScriptArgs();
         if (args.length < 1) {
-            printerr("SodDispatchTable: usage: SodDispatchTable.java <slots.tsv>");
-            return;
+            String message = "SodDispatchTable: usage: SodDispatchTable.java <slots.tsv>";
+            printerr(message);
+            throw new IllegalArgumentException(message);
         }
         String build = "";
         int tableImage = -1;
@@ -119,6 +121,7 @@ public class SodDispatchTable extends GhidraScript {
                 + Integer.toHexString(tableImage));
         }
         int named = 0;
+        int unnamed = 0;
         int failed = 0;
         for (Entry entry : entries) {
             Address slot = table.add((long) entry.index * SLOT_BYTES);
@@ -134,13 +137,20 @@ public class SodDispatchTable extends GhidraScript {
                     + " is not a dispatch slot");
             }
             int imm16 = (bytes[4] & 0xFF) | ((bytes[5] & 0xFF) << 8);
-            Address handler = imageBase.add(entry.handler);
-            if (!handler.equals(table.add(imm16))) {
+            // The handler is an offset in the slot run's CODE_1 segment, so table.add(imm16) is
+            // the address; imageBase.add(entry.handler) must agree (static-tooling.md section 3).
+            Address handler = table.add(imm16);
+            Address fromImage = imageBase.add(entry.handler);
+            if (!handler.equals(fromImage)) {
                 throw new IOException("SodDispatchTable: slot " + entry.index + " names handler "
-                    + table.add(imm16) + " but the slot file says " + handler);
+                    + fromImage + " from its image offset but " + handler + " from its segment");
             }
             DisassembleCommand disassemble = new DisassembleCommand(handler, null, true);
-            disassemble.applyTo(currentProgram, monitor);
+            boolean changed = disassemble.applyTo(currentProgram, monitor);
+            if (currentProgram.getListing().getInstructionAt(handler) == null) {
+                throw new IOException("SodDispatchTable: no instruction at handler " + handler
+                    + " after disassembling (changed=" + changed + ")");
+            }
             Function function = currentProgram.getFunctionManager().getFunctionAt(handler);
             if (function == null) {
                 CreateFunctionCmd command = new CreateFunctionCmd(handler);
@@ -166,22 +176,40 @@ public class SodDispatchTable extends GhidraScript {
                     failed++;
                     continue;
                 }
+                named++;
+            } else {
+                unnamed++;
             }
             function.setComment(comment(entry, build));
-            named++;
         }
-        println("ghidra-sod-table: " + named + " handlers named from " + entries.size()
-            + " slots, " + failed + " failed; table at " + table + " (image 0x"
-            + Integer.toHexString(tableImage) + "), " + build + " build");
+        if (failed > 0) {
+            throw new IOException("SodDispatchTable: " + failed + " of " + entries.size()
+                + " handlers failed");
+        }
+        println("ghidra-sod-table: OK - " + (named + unnamed) + " functions from "
+            + entries.size() + " slots (" + named + " named, " + unnamed + " unnamed); table at "
+            + table + " (image 0x" + Integer.toHexString(tableImage) + "), " + build + " build");
     }
 
     private String comment(Entry entry, String build) {
-        return String.format(
+        StringBuilder text = new StringBuilder(String.format(
             "SOD display-list handler for opcode 0x%04X (dispatch slot %d), at image 0x%04X"
-                + " in the %s build.%nNamed from research/formats/sod-opcodes.md; which build's"
-                + " opcode numbering the names above 0x0333 follow is open"
-                + " (research/playone-exe/patch3.md section 4.1, issue #480).",
-            entry.opcode, entry.index, entry.handler, build.isEmpty() ? "custom" : build);
+                + " in the %s build.",
+            entry.opcode, entry.index, entry.handler, build.isEmpty() ? "custom" : build));
+        if (entry.name.isEmpty()) {
+            text.append(String.format("%nNo name: the opcode is past the table's rows."));
+        } else {
+            text.append(String.format(
+                "%nNamed %s from research/formats/sod-opcodes.md by slot index.", entry.name));
+        }
+        if (entry.opcode > NUMBERING_START) {
+            text.append(String.format(
+                "%nAbove opcode 0x%04X the two builds dispatch different handlers from one opcode"
+                    + " word; which build's numbering the table follows is open"
+                    + " (research/playone-exe/patch3.md section 4.1, issue #480).",
+                NUMBERING_START));
+        }
+        return text.toString();
     }
 
     private static boolean isSlot(byte[] data, int at) {
@@ -222,7 +250,11 @@ public class SodDispatchTable extends GhidraScript {
             byte[] data = new byte[(int) block.getSize()];
             block.getBytes(block.getStart(), data);
             for (int at = 0; at + MIN_SLOTS * SLOT_BYTES <= data.length; at++) {
-                if (!isSlot(data, at) || slotRun(data, at) < MIN_SLOTS) {
+                if (!isSlot(data, at)) {
+                    continue;
+                }
+                int run = slotRun(data, at);
+                if (run < MIN_SLOTS) {
                     continue;
                 }
                 Address candidate = block.getStart().add(at);
@@ -231,6 +263,7 @@ public class SodDispatchTable extends GhidraScript {
                         + " and " + candidate);
                 }
                 found = candidate;
+                at += run * SLOT_BYTES - 1;
             }
         }
         if (found == null) {

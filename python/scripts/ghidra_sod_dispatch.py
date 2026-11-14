@@ -9,10 +9,10 @@ each handler and names it from `research/formats/sod-opcodes.md`. Ghidra saves t
 `build/re/ghidra/` when the session ends.
 
 The slot count comes from the run itself, never a constant: 108 in the unpatched executable and
-107 in Patch #3 (issue #480). Above opcode `0x0333` the two builds' opcode words dispatch
-different handlers (`research/playone-exe/patch3.md` section 4.1), so a handler is named for the
-slot index it pairs with in the 107-name table; the unpatched build's slot 92, which Patch #3
-drops, is named `OP_033C_UNPATCHED_ONLY`.
+107 in Patch #3 (issue #480). The names apply the table's rows by slot index. Above opcode
+`0x0333` the two builds dispatch different handlers from one opcode word, and which build's
+numbering the table follows is open (`research/playone-exe/patch3.md` section 4.1); the summary
+and the slot file state the assumption, and a slot past the table is left unnamed.
 
 Usage::
 
@@ -22,9 +22,9 @@ Usage::
     mise run ghidra-sod-table -- --exe PATH/PLAYONE.EXE [--ghidra-install-dir DIR]
 
 `--build patch3` reads `<data root>/builds/patch3/PLAYONE.EXE`, which `mise run game-builds`
-writes. `--parse-only` reads and prints the table without Ghidra. Exit status: 0 on success;
-1 when the Ghidra run fails; 2 when the executable, the slot run or `analyzeHeadless` cannot be
-read or found.
+writes. `--parse-only` reads the table and prints the run's summary, writing nothing. Exit status: 0 on success;
+1 when the Ghidra run fails or its post-script reports a failure; 2 when the executable, the slot
+run or `analyzeHeadless` cannot be read or found.
 """
 
 from __future__ import annotations
@@ -50,15 +50,18 @@ POST_SCRIPT = "SodDispatchTable.java"
 SCRIPT_DIR = REPO / "tools" / "ghidra"
 #: The default project location; `build/` is gitignored.
 PROJECT_DIR = REPO / "build" / "re" / "ghidra"
+#: The alignment the names assume, printed in the summary and written into the slot file.
+NAMING_ASSUMPTION = (
+    "names come from research/formats/sod-opcodes.md by slot index; above opcode 0x0333 the"
+    " table's rows match Patch #3's slot count, so the names there assume its numbering"
+    " (open, issue #480)"
+)
 
 #: One dispatch slot: the six-byte self-patch and the near jump after it.
 SLOT_BYTES = 9
 SLOT_PREFIX = bytes.fromhex("26c744fe")
 #: Fewer consecutive slots than this is not the VM's run (`python/scripts/dbx/addr.py`).
 MIN_SLOTS = 100
-#: The slot Patch #3 drops, so the unpatched build has one more than the name table has rows.
-UNPATCHED_ONLY_INDEX = 92
-UNPATCHED_ONLY_NAME = "OP_033C_UNPATCHED_ONLY"
 #: A name table row: `| **N** | 0xNNNN | N*9 | OP_NAME | ...`.
 NAME_ROW = re.compile(r"^\| \*\*(\d+)\*\* \| `(0x[0-9A-F]{4})` \| \d+ \| `(OP_[A-Z0-9]+)`")
 
@@ -98,17 +101,14 @@ def read_names(path: Path = OPCODE_TABLE) -> tuple[str, ...]:
     return tuple(name for _, _, name in rows)
 
 
-def handler_name(index: int, count: int, names: tuple[str, ...]) -> str | None:
-    """The function name for slot *index* of a *count*-slot build, or None past the table.
+def handler_name(index: int, names: tuple[str, ...]) -> str | None:
+    """The table's mnemonic for slot *index*, or None past the table.
 
-    The build with one slot more than the table is the unpatched executable: Patch #3 drops
-    slot 92, and every later slot names the handler it pairs with
+    The rows are applied by slot index with no assumed shift. Above opcode `0x0333` the two
+    builds dispatch different handlers from one opcode word and the table's 107 rows match
+    Patch #3's slot count, so the names there assume its numbering
     (`research/playone-exe/patch3.md` section 4.1, issue #480).
     """
-    if len(names) == 107 and count == 108:
-        if index == UNPATCHED_ONLY_INDEX:
-            return UNPATCHED_ONLY_NAME
-        return names[index] if index < UNPATCHED_ONLY_INDEX else names[index - 1]
     return names[index] if 0 <= index < len(names) else None
 
 
@@ -125,15 +125,22 @@ def _slot_run(data: bytes, table: int) -> int:
 
 
 def find_slot_table(data: bytes) -> int:
-    """The image offset of the first run of at least MIN_SLOTS dispatch slots."""
-    for at in range(len(data) - MIN_SLOTS * SLOT_BYTES + 1):
-        if (
-            data[at : at + 4] == SLOT_PREFIX
-            and data[at + 6] == 0xE9
-            and _slot_run(data, at) >= MIN_SLOTS
-        ):
-            return at
-    raise ValueError(f"no run of {MIN_SLOTS} display-list dispatch slots")
+    """The image offset of the only run of at least MIN_SLOTS dispatch slots."""
+    found = -1
+    at = 0
+    while at + MIN_SLOTS * SLOT_BYTES <= len(data):
+        if data[at : at + 4] == SLOT_PREFIX and data[at + 6] == 0xE9:
+            run = _slot_run(data, at)
+            if run >= MIN_SLOTS:
+                if found >= 0:
+                    raise ValueError(f"two dispatch-slot runs, at {found:#06x} and {at:#06x}")
+                found = at
+                at += run * SLOT_BYTES
+                continue
+        at += 1
+    if found < 0:
+        raise ValueError(f"no run of {MIN_SLOTS} display-list dispatch slots")
+    return found
 
 
 def _parse_slots(data: bytes, table: int) -> tuple[Slot, ...]:
@@ -164,14 +171,15 @@ def parse_slot_table(data: bytes, names: tuple[str, ...] | None = None) -> SlotT
     source = read_names() if names is None else names
     return SlotTable(
         table,
-        tuple(replace(slot, name=handler_name(slot.index, len(slots), source)) for slot in slots),
+        tuple(replace(slot, name=handler_name(slot.index, source)) for slot in slots),
     )
 
 
 def slot_lines(table: SlotTable, build: str) -> list[str]:
-    """The slot file the post-script reads: a header naming the build, table and count, then rows."""
+    """The slot file the post-script reads: the run, the naming assumption, then one row per slot."""
     lines = [
         f"# ghidra-sod-dispatch build={build} table=0x{table.image:X} slots={len(table.slots)}",
+        f"# {NAMING_ASSUMPTION}",
         "# index\topcode\thandler\tname",
     ]
     lines.extend(
@@ -218,8 +226,9 @@ def _command(
     launcher: Path, project_dir: Path, project_name: str, mz: Path, slots: Path
 ) -> list[str]:
     """The `analyzeHeadless` argv; headless saves the project because neither -readOnly nor
-    -deleteProject is passed."""
-    command = [
+    -deleteProject is passed. The list goes to subprocess unchanged, so a path with spaces stays
+    one argument (a Windows .bat runs directly; `subprocess` quotes the command line)."""
+    return [
         str(launcher),
         str(project_dir),
         project_name,
@@ -236,13 +245,10 @@ def _command(
         "-scriptlog",
         str(project_dir / "script.log"),
     ]
-    if launcher.suffix.lower() in {".bat", ".cmd"}:
-        return [os.environ.get("COMSPEC", "cmd.exe"), "/c", *command]
-    return command
 
 
 def _run_ghidra(launcher: Path, project_dir: Path, project_name: str, mz: Path, slots: Path) -> int:
-    """Import *mz*, run the post-script and report what it named; 0 on success."""
+    """Import *mz*, run the post-script and report what it named; 0 when it reports success."""
     project_dir.mkdir(parents=True, exist_ok=True)
     command = _command(launcher, project_dir, project_name, mz, slots)
     print(f"[ghidra-sod-table] {' '.join(command)}")
@@ -258,17 +264,26 @@ def _run_ghidra(launcher: Path, project_dir: Path, project_name: str, mz: Path, 
             file=sys.stderr,
         )
         return 1
-    script_log = project_dir / "script.log"
-    if script_log.is_file():
-        for line in script_log.read_text(encoding="utf-8", errors="replace").splitlines():
-            if "ghidra-sod-table:" in line:
-                print(line)
+    log_lines: list[str] = []
+    for log in (project_dir / "script.log", project_dir / "analyze.log"):
+        if log.is_file():
+            log_lines.extend(log.read_text(encoding="utf-8", errors="replace").splitlines())
+    for line in log_lines:
+        if "ghidra-sod-table:" in line or "SodDispatchTable:" in line:
+            print(line)
+    if not any("ghidra-sod-table: OK" in line for line in log_lines):
+        print(
+            "[ghidra-sod-table] the post-script did not report success; "
+            f"see {project_dir / 'script.log'}",
+            file=sys.stderr,
+        )
+        return 1
     print(f"[ghidra-sod-table] project {project_name} at {project_dir}, saved by Ghidra")
     return 0
 
 
-def _summary(table: SlotTable, build: str) -> list[str]:
-    """The lines printed before the Ghidra run: the table, its count and what is not named."""
+def _summary(table: SlotTable, build: str, names: tuple[str, ...]) -> list[str]:
+    """The lines printed before the Ghidra run: the run, the naming assumption and what is unnamed."""
     last = table.slots[-1]
     named = sum(1 for slot in table.slots if slot.name is not None)
     lines = [
@@ -276,16 +291,13 @@ def _summary(table: SlotTable, build: str) -> list[str]:
             f"[ghidra-sod-table] {build}: {len(table.slots)} slots at image 0x{table.image:X} "
             f"(opcodes 0x0000..0x{last.opcode:04X}), {named} named"
         ),
+        f"[ghidra-sod-table] {NAMING_ASSUMPTION}",
     ]
-    for slot in table.slots:
-        if slot.name == UNPATCHED_ONLY_NAME:
-            lines.append(
-                f"[ghidra-sod-table]   slot {slot.index} (opcode 0x{slot.opcode:04X}) is the one "
-                f"Patch #3 drops: {UNPATCHED_ONLY_NAME}"
-            )
-    unnamed = sum(1 for slot in table.slots if slot.name is None)
+    unnamed = len(table.slots) - named
     if unnamed:
-        lines.append(f"[ghidra-sod-table]   {unnamed} slot(s) past the opcode table stay unnamed")
+        lines.append(
+            f"[ghidra-sod-table] {unnamed} slot(s) past the {len(names)}-row opcode table are unnamed"
+        )
     return lines
 
 
@@ -297,7 +309,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--parse-only",
         action="store_true",
-        help="read and print the slot table, then stop before Ghidra",
+        help="read the slot table, print its summary, write nothing, then stop before Ghidra",
     )
     parser.add_argument(
         "--ghidra-install-dir",
@@ -316,20 +328,36 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     """Read the build's table and run the post-script; see the module docstring for exit codes."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    exe = _build_exe(args.build, args.exe)
     try:
+        exe = _build_exe(args.build, args.exe)
         image, meta = unlzexe.unpack(exe.read_bytes())
-    except (OSError, ValueError) as error:
-        print(f"[ghidra-sod-table] {exe}: {error}", file=sys.stderr)
-        return 2
-    payload = bytes(image)
-    try:
-        table = parse_slot_table(payload)
     except (OSError, ValueError) as error:
         print(f"[ghidra-sod-table] {error}", file=sys.stderr)
         return 2
-    for line in _summary(table, args.build):
+    payload = bytes(image)
+    try:
+        names = read_names()
+        table = parse_slot_table(payload, names)
+    except (OSError, ValueError) as error:
+        print(f"[ghidra-sod-table] {error}", file=sys.stderr)
+        return 2
+    for line in _summary(table, args.build, names):
         print(line)
+    if args.parse_only:
+        return 0
+    launcher = _analyze_headless(args.ghidra_install_dir)
+    if launcher is None:
+        print(
+            "[ghidra-sod-table] analyzeHeadless is not on PATH or in GHIDRA_INSTALL_DIR; "
+            "the table parsed but nothing was written",
+            file=sys.stderr,
+        )
+        print(
+            "[ghidra-sod-table] set GHIDRA_INSTALL_DIR to a Ghidra 12.1.x install "
+            "(research/playone-exe/static-tooling.md section 4), or pass --ghidra-install-dir",
+            file=sys.stderr,
+        )
+        return 2
     project_dir: Path = args.project_dir
     inputs = project_dir / "input"
     try:
@@ -342,21 +370,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ghidra-sod-table] {project_dir}: {error}", file=sys.stderr)
         return 2
     print(f"[ghidra-sod-table] wrote {mz} and {slots}")
-    if args.parse_only:
-        return 0
-    launcher = _analyze_headless(args.ghidra_install_dir)
-    if launcher is None:
-        print(
-            "[ghidra-sod-table] analyzeHeadless is not on PATH or in GHIDRA_INSTALL_DIR; "
-            "the table parsed but no project was written",
-            file=sys.stderr,
-        )
-        print(
-            "[ghidra-sod-table] set GHIDRA_INSTALL_DIR to a Ghidra 12.1.x install "
-            "(research/playone-exe/static-tooling.md section 4), or pass --ghidra-install-dir",
-            file=sys.stderr,
-        )
-        return 2
     project_name = args.project_name or (
         "PLAYONE" if args.build == "unpatched" else f"PLAYONE_{args.build}"
     )
