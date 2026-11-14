@@ -37,6 +37,7 @@ import importlib
 import io
 import itertools
 import re
+import struct
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -276,7 +277,18 @@ PROBES: dict[str, Callable[[Any, int], list[str]]] = {
 #   satisfy. ``CORSAIR``, ``JASON``, and ``PITTS`` carry class-3 tags (``0xF0``,
 #   ``0xCC``, ``0xFD``) that no documented opcode defines; ``MOVIE``, ``ROD``,
 #   ``SR71FLM``, and ``TUTORIAL`` run out of bytes inside an opcode payload.
+# - ``spr``: the SpriteMaker samples are ``PCX2SPR`` output, which puts the pixels
+#   at byte 4 (``MACLOGO`` and ``DSTAR`` match their ``.PCX`` sources there byte for
+#   byte), where the game reads an encoding word (``spr.md`` section 2.3).
 KNOWN_ANOMALIES: dict[tuple[str, str, str], str] = {
+    **{
+        (
+            "spr",
+            f"siarchive/SITools/SpriteMaker/{name}",
+            "PCX2SPR layout: pixels from byte 4, a zero word after them",
+        ): "community PCX2SPR sample"
+        for name in ("dethstar.spr", "DSTAR.SPR", "MACLOGO.SPR")
+    },
     (
         "res",
         "siarchive/SITools/GameReady/F-14 Test-80.RES",
@@ -362,8 +374,22 @@ def _flm_cases(data: bytes) -> Iterator[ParseCase]:
     )
 
 
+class OtherLayout(Exception):  # noqa: N818 - a verdict on the file, not a sweep failure
+    """The file is another tool's layout, which the schema does not describe."""
+
+
+def _spr_cases(data: bytes) -> Iterator[ParseCase]:
+    """One case for the file, or OtherLayout for ``PCX2SPR`` output (``spr.md`` section 2.3)."""
+    if len(data) >= 6:
+        width, height, word = struct.unpack_from("<3H", data)
+        if word and len(data) == width * height + 6 and data[-2:] == bytes(2):
+            raise OtherLayout("PCX2SPR layout: pixels from byte 4, a zero word after them")
+    return iter((ParseCase("image", (), data),))
+
+
 CASE_PROVIDERS: dict[str, Callable[[bytes], Iterator[ParseCase]]] = {
     "flm_slice": _flm_cases,
+    "spr": _spr_cases,
 }
 
 
@@ -403,6 +429,9 @@ def sweep(spec: SchemaSpec, parser: Any, corpus_dir: Path, verbose: bool = False
                 cases = provider(path.read_bytes())
             except flm_walk.FlmWalkError as exc:
                 result.anomalies.append((rel, f"slice walk failed: {exc}"))
+                continue
+            except OtherLayout as exc:
+                result.anomalies.append((rel, str(exc)))
                 continue
         result.files_parsed += 1
         for case in cases:

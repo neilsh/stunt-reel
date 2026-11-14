@@ -20,7 +20,7 @@
 - [`formats/auxiliary/scenery.md`](formats/auxiliary/scenery.md): `SCENERY.scn` ([FMT-MAP-SCENERY]) is `PLAYONE.EXE`'s stack-segment scenery tree widened to 32-bit words; node types, the `SP_1NODE` level-of-detail rule, and prop height: ancestors' `SP_POS` `y` plus the shape's `ground_y_offset` scaled by its scale index.
 - [`formats/auxiliary/set.md`](formats/auxiliary/set.md): `.SET` stage ([FMT-SET-HEADER]): 84-byte header, 67-byte event records from 0x54, 64-byte prop records; `TYPESET.EXE` event operator codes; size formula closes on 129 sets, prop field map open.
 - [`formats/auxiliary/sio.md`](formats/auxiliary/sio.md): `.SIO` SLICE modeller format ([FMT-SIO-RECORDS]): `Sds` magic, grid byte, 0x12 vertex and 0x06 midpoint records, `FF FF 00 00` trailer; the tool compiling `.SIO` to `.SOD` is unidentified.
-- [`formats/auxiliary/spr.md`](formats/auxiliary/spr.md): `.SPR` sprite ([FMT-SPR-HEADER]): u16 width and height, row-major palette indices with colour 0 transparent, zero trailer word (size W*H+6), and the `MAKESPR` `.SOD` billboard wrapper.
+- [`formats/auxiliary/spr.md`](formats/auxiliary/spr.md): `.SPR` image ([FMT-SPR-HEADER]): u16 width, height and encoding, then from byte 6 raw rows (encoding 0) or span-coded rows, colour 0 transparent, no trailer; `PCX2SPR` writes pixels from byte 4, which the game draws two pixels shifted; the `MAKESPR` `.SOD` billboard wrapper.
 
 ## formats/concepts
 

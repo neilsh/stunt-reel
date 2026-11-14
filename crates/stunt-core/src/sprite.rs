@@ -1,9 +1,9 @@
 //! Image resources an `OP_ANIMATE` draws (`research/playone-exe/sod-animate.md`).
 //!
-//! A frame is a `.SPR`-sized chunk: `width: u16`, `height: u16`, a third word, then
-//! `width × height` palette indices `[I3]`, row by row, index 0 transparent. `PLAYONE`'s
-//! blitter (image `0x7DE6`) reads the pixels from byte 6, two bytes later than the
-//! community layout in `research/formats/auxiliary/spr.ksy` puts them.
+//! A frame is a `.SPR` image (`research/formats/auxiliary/spr.ksy`): `width: u16`,
+//! `height: u16`, an encoding word, then `width × height` palette indices `[I3]` from byte 6,
+//! row by row, index 0 transparent. `PLAYONE`'s `OP_ANIMATE` blitter (image `0x7DE6`) ignores
+//! the encoding word, so a span-coded image is read as raw rows here too.
 
 /// Byte offset of the first pixel `PLAYONE` reads.
 const PIXELS_AT: usize = 6;
@@ -94,6 +94,15 @@ mod tests {
         let image = SpriteImage::parse(&chunk(2, 2, &[1, 2, 3, 4])).expect("an image");
         assert_eq!((image.width, image.height), (2, 2));
         assert_eq!(image.pixels, [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn parse_reads_every_byte_after_the_encoding_word_as_pixels() {
+        // Non-zero encoding word and last pixels: neither is header nor trailer to 0x7DE6.
+        let mut bytes = vec![2, 0, 1, 0, 2, 0];
+        bytes.extend_from_slice(&[7, 8]);
+        let image = SpriteImage::parse(&bytes).expect("an image");
+        assert_eq!(image.pixels, [7, 8]);
     }
 
     #[test]
