@@ -3,7 +3,7 @@ summary: "Evidence for the memory map: `DS` per emulator, the [MEM-FLM-TICK] cou
 ---
 # `PLAYONE.EXE`: Memory Architecture & Data Segment Layout
 
-This document is the **evidence narrative** for `PLAYONE.EXE`'s real-mode memory: how offsets were found, what was observed live, and what is still unverified. It holds no offset tables. Every `DGROUP` offset, struct layout and `# [MEM-*]` anchor lives in [`research/playone-exe/memory-map.md`](memory-map.md); this file links to the rows it supports.
+This document is the **evidence narrative** for `PLAYONE.EXE`'s real-mode memory: how offsets were found, what was observed live, and what is still unverified. It holds no offset tables. Every `DGROUP` offset and struct layout, and every `# [MEM-*]` anchor but `[MEM-UNPACK-LOCKOUT]` (§ 3.4), lives in the memory-map files that [`research/playone-exe/memory-map.md`](memory-map.md) lists; this file links to the rows it supports.
 
 ---
 
@@ -61,11 +61,11 @@ If total available conventional memory falls below this threshold, the applicati
 
 ## 3. Runtime Kinematics Evidence
 
-During film playback, `PLAYONE.EXE` updates world-space kinematics and camera parameters on a discrete simulation clock. The installed INT 8 handler runs at **50 Hz** (PIT divisor `0x5D38` = 23,864), not the 20/30 Hz previously assumed; see [`timeline-and-ticks.md` § 1.1](../formats/concepts/timeline-and-ticks.md#11-hardware-timer-principles-in-ms-dos). The structures themselves are specified in [`MEMORY_MAP.md`](memory-map.md).
+During film playback, `PLAYONE.EXE` updates world-space kinematics and camera parameters on a discrete simulation clock. The installed INT 8 handler runs at **50 Hz** (PIT divisor `0x5D38` = 23,864), not the 20/30 Hz previously assumed; see [`timeline-and-ticks.md` § 1.1](../formats/concepts/timeline-and-ticks.md#11-hardware-timer-principles-in-ms-dos). The structures themselves are specified in [`memory-map-runtime.md`](memory-map-runtime.md).
 
 ### 3.1 Post-Retrace Vertical Blank Trap
 
-Contract and the unresolved `0C5E` conflict: [`MEMORY_MAP.md` `# [MEM-VSYNC-03DA]`](memory-map.md#-mem-vsync-03da).
+Contract and the unresolved `0C5E` conflict: [`memory-map-runtime.md` `# [MEM-VSYNC-03DA]`](memory-map-runtime.md#-mem-vsync-03da).
 
 The primary rendering loop synchronizes with VGA vertical retrace via port `0x03DA`. The listing below is the reconstruction recorded when the trap was introduced. **It is unverified**: it places a `call render_frame_flush` at `0D51:0C5E`, which [`startup.md`](startup.md) gives as the unpacked entry point, and its `0C50` bytes overlap the `0C50` offset `MEMORY_MAP` uses for the actor pointer in a different segment base. Treat it as illustrative until the live re-verification described in `MEMORY_MAP` is done. A static check (2026-10-30, [`capture-dosbox-automation.md`](capture-dosbox-automation.md) § 4.3) found that `0F17:0C5E` (image `0x7B8E`) is the `ret` of `set_palette` (image `0x7B70`), whose second retrace-gated DAC half runs after it. That check covers image `0x7B8E` only: `0D51:0C5E` is linear `0xE16E`, which maps to image `0x592E` or `0xC21E` under the recorded load bases, not `0x7B8E`. So it neither confirms nor rules out the listed `render_frame_flush` call, and the 3DA poll above is not established as the `set_palette` loop at image `0x7B79` to `0x7B84`.
 
@@ -86,7 +86,7 @@ The primary rendering loop synchronizes with VGA vertical retrace via port `0x03
 
 ### 3.2 Tick-Counter Evidence
 
-This is the **only** copy of the evidence for the two tick counters; the contract is `# [MEM-FLM-TICK]` in [`MEMORY_MAP.md`](memory-map.md#-mem-flm-tick).
+This is the **only** copy of the evidence for the two tick counters; the contract is `# [MEM-FLM-TICK]` in [`memory-map-runtime.md`](memory-map-runtime.md#-mem-flm-tick).
 
 *Static (`[Established]`).* The 50 Hz handler at `0x53AF` calls the engine tick routine at `0x43A5` on every interrupt. It executes `inc word ptr [0x22B8]` (at `0x43B0`) only while the playback flag `DS:0x2272` is non-zero. The film reader at `0x3A88` compares the active film clock (`[bx+0x0E]`, struct base `0x4888` -> `DS:0x4896`) with the current slice's start tick, reads the next slice's `tick_duration` at `0x3B8D`, adds it at `0x3B19`, and divides elapsed ticks by it (`0x3AE9`–`0x3AF7`) for the sub-tick interpolation factor (`[Supported Inference]`, see [`timeline-and-ticks.md`](../formats/concepts/timeline-and-ticks.md)).
 
@@ -100,7 +100,7 @@ This is the **only** copy of the evidence for the two tick counters; the contrac
 
 ### 3.3 Camera Rig & Actor Table: Provenance
 
-The layouts are in [`MEMORY_MAP.md`](memory-map.md#-mem-camera-rig) under `# [MEM-CAMERA-RIG]` and `# [MEM-ACTOR-TABLE]`. The evidence record is thin and is stated here once:
+The layouts are in [`memory-map-runtime.md`](memory-map-runtime.md#-mem-camera-rig) under `# [MEM-CAMERA-RIG]` and `# [MEM-ACTOR-TABLE]`. The evidence record is thin and is stated here once:
 
 * Both layouts were written by the offline `MockTransport` and decoded by the streamer against the same mock. They were never read from a live `PLAYONE.EXE`: the capture loop deliberately skips them ([`capture.md` § 3](capture.md#3-working-protocol)).
 * This file used to carry a second, different actor-entry layout (`3×3 i16` matrix at `+0x18`, state mask at `+0x2A`) next to `MEMORY_MAP`'s quaternion layout, both tagged `[Established]`. Neither is supported by disassembly, so both were downgraded to `[Hypothesis]` and the duplicate was removed.

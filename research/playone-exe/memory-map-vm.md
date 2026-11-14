@@ -1,0 +1,63 @@
+---
+summary: "Offsets in the work segment of `PLAYONE.EXE`'s SOD display-list VM: anchor table, sine table, vertex arena, view matrices, lens and bank words, shadow mode, and VM code anchors."
+---
+# Memory Map: SOD VM Work Segment
+
+Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so. Section numbers run across the files.
+
+## 3. SOD Display-List VM Work Segment (`# [MEM-SOD-VM]`)
+
+The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the captured `CTRY.FLM` session). Offsets are stable; the segment base is runtime-selected. `ES:SI` addresses the bytecode, `DS` the work segment. The Patch #3 build keeps every offset in this section; its code addresses are in [§ 1.1](memory-map-patch3.md#11-patch-3-build).
+
+| Offset in work segment | Evidentiary Tier | Data Type | Purpose / Value | Anchor |
+|---|---|---|---|---|
+| `0x0000` | `[Established]` | 4-byte header | Anchor-table header (record 0 starts at `+0x04`) | `# [MEM-SOD-ANCHOR-TABLE]` |
+| `0x0004 + n*0x1C` | `[Established]` | 28-byte record | Anchor point `n`: `x/y/z` at `+0x00/+0x02/+0x04`; cache at `+0x06..+0x10`; fields `+0x12/+0x16/+0x1A`; frame stamp `+0x1B` | `# [MEM-SOD-ANCHOR-TABLE]` |
+| `0x1952` | `[Established]` | `u16` | Span arena pointer: the sliced ops (`OP_DISCSL` `0x9F29`, `OP_PERFDISCSL` `0xA05C` and others) build a span table at it, then move it past the table ([`sod-vm.md` § 9.1](sod-vm.md#91-the-actor-shadow-draw)) _Source: [the #478 static read](../../work/2026-11/478_shadow-plane/journal.md#2026-11-14-the-shadow-plane-writer-the-view-slot-and-the-0x806c-readers-read-statically)._ | |
+| `0x1954` | `[Established]` | `u16[5]` | `OP_IPG` subtype table, indexed by the type word (0, 2, 4, 6, 8): VM offsets `0x3035`, `0x31DE`, `0x330C`, `0x334D`, `0x3275` (image `0xB275`, `0xB41E`, `0xB54C`, `0xB58D`, `0xB4B5`); these pointers are unpatched-build values, and `0x1952..0x195D` is the range that differs on Patch #3 ([§ 1.1](memory-map-patch3.md#11-patch-3-build)), so check the Patch #3 words before relying on them there | _Source: [the generators read](../../work/2026-11/272_generator-model-frame/journal.md#2026-11-11-the-raw-coordinate-generators-read-statically)._ |
+| `0x19A8` | `[Established]` | `u8` | Per-frame transform cache counter; incremented by `CS:0x492D` | |
+| `0x19AA..0x41A9` | `[Established]` | `i16[5120]` | Q15 sine over 1¼ turns, 4096 entries per turn: the builder at image `0x8725` (`0824:04E5`) reads sine from `0x19AA` and cosine from `0x21AA` (a quarter turn on), indexed by `angle >> 4` | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
+| `0x41B8` | `[Established]` | `u16` | `OP_TAP` remaining-count scratch | |
+| `0x41C8`, `0x41CA` | `[Established]` | `u16` | Screen-projection center offsets; live `CTRY` session reads 160 and 92 (3D viewport is 185 rows; see `capture.md` § 4) | |
+| `0x41EA` | `[Established]` | `u16` | Line colour: written by `LINECOL` (`0x9BAA`), read by the line gateway `0x7FD2` ([`sod-vm.md`](sod-vm.md) section 8.10) | _Source: [the ZLINETO draw path read](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-the-zlineto-draw-path-read-statically)._ |
+| `0x41EC` | `[Established]` | `u16` | Pen: the register byte offset `MOVETO` (`0x968D`) stores and `ZLINETO` (`0x9696`) draws from | _Source: [the ZLINETO draw path read](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-the-zlineto-draw-path-read-statically)._ |
+| `0x41D4..0x41DF` | `[Established]` | `i32[3]` | Translation `OP_TAP` adds after `0x80C0` (`0xAE8B`): the negated view eye `0x2A68` times `0x80C0`, written by `0x0824:03F5` (image `0x8635..0x8724`, called at `0x1DF0`). The anchor cache it fills is per frame, shared by every object ([`sod-vm.md`](sod-vm.md) section 4) | |
+| `0x423E + n` | `[Established]` | `u16[]` | Start of the span table a sliced op built for its last operand `n`, 0 when it skipped (the two sliced disc ops store 0 in shadow mode; the other sliced ops do not test it); read by the ops at image `0xA47F..0xA517` _Source: [the #478 static read](../../work/2026-11/478_shadow-plane/journal.md#2026-11-14-the-shadow-plane-writer-the-view-slot-and-the-0x806c-readers-read-statically)._ | |
+| `0x4450 + n*12` | `[Established]` | 12-byte vertex | Vertex register arena (1024 entries): `x/y/z` and projection/flag fields | `# [MEM-SOD-VM]` |
+| `0x7C68` | `[Established]` | `u8[]` | Facing flags, one byte per face: `REJ` (`0x9567`), `REJVEC` (`0x94D8`) and `REJ2D` (`0x95C0`) write `0xFF` while the face points at the eye, else 0; `IFVIS` (`0x9BCC`), `BVIS` (`0x9BB3`) and `SORTON` (`0x9183`) read them ([`sod-vm.md`](sod-vm.md) section 8.6) | `# [FMT-SOD-IFVIS]` |
+| `0x806C` | `[Established]` for writer and readers (disassembled), `[Hypothesis]` for the run-time effect | `u8` | Shadow-draw mode, set to `0xFF` by `0x1CE7` and cleared by `0x1CF4` around the actor shadow draw, the only writers found (static): nonzero makes the line and flat-polygon gateways (`0x7FD2`, `0x8010`, `0x8040`) draw in index 0 and `0x7FFB` draw nothing; `GVPOLY`/`GVPOLY16` and opcodes `0x333`/`0x33C` go flat; the normal builders `0x15F`/`0x132`, `OP_DISC`, `OP_PERFDISK` and `OP_ANIMATE` skip their operands; and `OP_DISCSL`/`OP_PERFDISCSL` store 0 at `0x423E + n` ([`sod-vm.md` § 9.1](sod-vm.md#91-the-actor-shadow-draw)) _Source: [the #478 static read](../../work/2026-11/478_shadow-plane/journal.md#2026-11-14-the-shadow-plane-writer-the-view-slot-and-the-0x806c-readers-read-statically)._ | `# [FMT-SOD-ANIMATE]` |
+| `0x806E` | `[Established]` | `u8` | Shift of the object's view position from `0x31CF`, stored by `0x9100` (`0x9113`); `OP_TAP` shifts anchors right by `16 - [0x806E]` | _Source: [how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._ |
+| `0x806F` | `[Established]` | `u8` | `CH − CL` stored by the object entry `0x9100` (`0x9111..0x9113`), the header's scale shift less the view-position shift: the right shift `OP_VECTORS` applies to each register (`0x9C5A`), the shift of `OP_BZLT`'s threshold (`0x9BEB`), and the shift `0x8070` is derived with | `# [FMT-SOD-ANIMATE]` |
+| `0x8070` | `[Bounded Observation]` | `u16` | Projection-scale term consumed by `OP_ANIMATE`; derived from `0x8108` shifted by `0x806F` | `# [FMT-SOD-ANIMATE]` |
+| `0x807E` | `[Established]` | `u16` | Line routine `ZLINETO` calls, set by `0x9100` beside `0x8080`: VM `0x3994` (image `0xBBD4`) or `0x3943` (image `0xBB83`, the clipping variant) | _Source: [the ZLINETO draw path read](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-the-zlineto-draw-path-read-statically)._ |
+| `0x8082` | `[Established]` | `u16` | Special model selector (`0x1AB1` enables TAP screen projection) | |
+| `0x8084`, `0x8086`, `0x8088` | `[Established]` | `i16` | The object's origin in view space, shifted (scenery: `0x21B2..0x21BC`); `OP_TAP` subtracts it, so a tapped point is relative to the shape | _Source: [how OP_TAP places its points](../../work/2026-11/254_tap-anchors/journal.md#2026-11-11-how-op_tap-places-its-points)._ |
+| `0x808A` | `[Established]` | `i16[9]` | The matrix the display list draws with: `0x80C0 · R` for an actor (`CS:0x1D31`), the matrix at `0x809C` when the object's flag `+0x0F & 1` is set (`CS:0x1D02`), for scenery the view matrix alone, or `0x809C` under the same flag (`CS:0x21C2..0x21CA`). The flag is the shape's `header_flags` bit 0 (`[es:9]`, [`sod-vm.md`](sod-vm.md) section 8.8); `0x809C` is the view matrix built with the yaw zeroed (`CS:0x12C2`) | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
+| `0x80C0..0x80CA` | `[Established]` | `i16[9]` | 3×3 view matrix: the scenery draw matrix (`0x808A`) and the matrix `OP_TAP` transforms anchors by | |
+| `0x80D2` | `[Established]` | `i16[9]` | Scratch for the rotation `R` from image `0x8725` | _Source: [the 0x04E5 read](../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._ |
+| `0x8108` | `[Established]` | `u16` | Lens mantissa, a copy of `DS:0x229C` (image `0x122E`); Q15 factor on the view matrix's two screen rows (image `0x12E3`), also read by the sun-disc drawer and `OP_ANIMATE` ([`lod.md`](lod.md) section 2.2) | `# [FMT-SOD-ANIMATE]` |
+| `0x810A` | `[Established]` | `u16` | `0x229C² × 2 >> 16` (image `0x1238`); `OP_REJVEC` scales its depth term by it (`0x953F`), undoing the lens zoom ([`sod-vm.md`](sod-vm.md) section 8.6) | |
+| `0x810C` | `[Established]` | `u16` | Lens shift count, a copy of `DS:0x229E` (image `0x123D`); arithmetic right shift on the view matrix's depth row (image `0x12F8`). Zoom is `0x8108 / 0x8000 × 2^0x810C`, about `lens / 8192` | |
+| `0x811E` | `[Established]` | `u16` | The film clock `[0x4888 + 0x0E]` shifted left 12 (image `0x1DCA`): the bank word `OP_ANIMATE` selector `0x10` reads, one sweep every 16 ticks | `# [FMT-SOD-ANIMATE]` |
+| `0x8120` | `[Established]` | `u16` | Var 10's change since the previous frame, saturated at 255, shifted left 8 (image `0x1DBD`): bank operand `0x12` ([`angle-bank.md`](angle-bank.md)) | |
+| `0x8122` | `[Established]` | `u16` | The previous frame's var 10, low byte shifted left 8 (image `0x1DC6`): bank operand `0x14`, the stock propellers' `ROTZ` angle ([`angle-bank.md`](angle-bank.md)) | |
+| `0x8124` | `[Established]` | `u16` | The drawn slot's animate word, its record's `+0x16` (image `0x1D66`): the bank word `OP_ANIMATE` selector `0x16` and `ROT*` operand `0x16` read | `# [FMT-SOD-ANIMATE]` |
+| `0x8126`, `0x8128` | `[Established]` | `i16` | Var 12 and its negation (image `0x1D9F`, `0x1DA5`): bank operands `0x18` and `0x1A` ([`angle-bank.md`](angle-bank.md)) | |
+
+Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
+
+| Code offset | Purpose | Anchor |
+|---|---|---|
+| `0x1316 + opcode` | Opcode dispatch table, 9-byte pitch | `# [MEM-SOD-VM]` |
+| `0x150E` | `[Established]` `OP_ANIMATE` dispatch entry; jumps to `CS:0x3AAC` | `# [FMT-SOD-ANIMATE]` |
+| `0x3AAC` | `[Established]` `OP_ANIMATE` handler: frame `(count × [work:0x810E + selector]) >> 16` of its id table, drawn through `0:0x8073` | `# [FMT-SOD-ANIMATE]` |
+| `0x3E58` | `OP_TAP` (`0x022E`) handler | `# [MEM-SOD-VM]` |
+| `0x3F36` | `OP_HUGETAP` (`0x0237`) entry: `int3` (unimplemented) | `# [MEM-SOD-VM]` |
+| `0x3F37` | `OP_TAP` anchor transform (image `0xAE67`): `0x80C0 · anchor + 0x41D4`, cached at record `+0x06..+0x10` | `# [MEM-SOD-VM]` |
+| `0x492D` | Per-frame anchor cache invalidation (`DS=0x1DF8`, 231 records) | `# [MEM-SOD-ANCHOR-TABLE]` |
+
+### 3.1 Anchor Table Cache (`# [MEM-SOD-ANCHOR-TABLE]`)
+
+The anchor table is the `0x0000` header and `0x0004 + n*0x1C` records in the work-segment table above, invalidated per frame by `CS:0x492D` over 231 records; `OP_TAP` copies records from it into the vertex register arena. The fields are not restated here: see that table and the cache walk-through in [`sod-vm.md`](sod-vm.md).
+
+See [`research/playone-exe/sod-vm.md`](sod-vm.md) for `OP_TAP` and [`research/playone-exe/sod-animate.md`](sod-animate.md) for `OP_ANIMATE` disassembly and operand evidence.

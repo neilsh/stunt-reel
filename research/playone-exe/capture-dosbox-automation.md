@@ -146,7 +146,7 @@ _Source: [clock and window passes](../../work/2026-11/distill-capture-dosbox-aut
 1. What leaves 653, 489 and 1,082 pixels at DOSBox-X ticks 220, 495 and 660 with no exact dosbox-automation page (§ 3)? Is it a sub-tick state, a tear, or DOSBox-X variance? Capture two DOSBox-X runs of the same film to measure its own variance first.
 2. Does a breakpoint at image `0x7417` (end of the `A000` diff-copy) give a whole page? It was read from the listing, not tried (§ 4.3).
 3. Does an `INTRO.FLM` fade (frames 6140–6400), or a second cycle count, show the one-frame and two-frame DAC lag of § 4.5?
-4. What else lives in the `DS = 0x15D4` segment (image `0x15D40` onward) that deserves a [`memory-map.md`](memory-map.md) entry, and what are the other relocated segment words `0x1DE7`, `0x1DEA` and `0x20F6`?
+4. What else lives in the `DS = 0x15D4` segment (image `0x15D40` onward) that deserves a [`memory-map-vm.md`](memory-map-vm.md) entry, and what are the other relocated segment words `0x1DE7`, `0x1DEA` and `0x20F6`?
 5. Likely answered (`[Supported Inference]`, § 4.4): the sound sample in `COUNT.FLM`'s archive; the three fallback setups were not needed.
 6. Do the patched `PLAYONE.EXE` (Patch #3) and its `DS`, film clock and working-palette offsets match the unpatched build's, and which films need which build?
 7. Does the torn rate scale as 1/cycles (§ 4.5)? A trace at 7,000 cycles should show about six times the rate at 45,000.

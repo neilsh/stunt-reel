@@ -5,7 +5,7 @@ instructions with an iced-x86 decode (``build_pairing.py`` beside this script), 
 requested data offset or code address became. Defaults to the unpatched and Patch #3
 ``PLAYONE.EXE`` that ``mise run game-builds`` writes under ``<data root>/builds/``; the method and
 the resulting map are in ``research/playone-exe/patch3.md`` section 4 and
-``research/playone-exe/memory-map.md`` section 1.1. Nothing it reads or prints is committed.
+``research/playone-exe/memory-map-patch3.md`` section 1.1. Nothing it reads or prints is committed.
 
 Usage::
 

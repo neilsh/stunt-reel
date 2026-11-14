@@ -48,7 +48,7 @@ One instruction has several names. Convert to the image offset before comparing 
 
 DGROUP is image paragraph `0x0D51` (offset `0xD510`). It runs at `DS = 0x1575` in the captured session and at segment `0x1D51` in Ghidra/rea. A `DS:` offset therefore maps to image `0xD510 + off`.
 
-The display-list VM's **dispatch table** is image `0x8246` (notebook `CS:0x1316`, VM `0x0006`): opcode `op` jumps from the slot at `0x8246 + op` ([`sod-vm.md`](sod-vm.md) section 1). The VM's **work segment**, which is `DS` while the VM runs, is image paragraph `0x15D4` (offset `0x15D40`), so `work:off` maps to image `0x15D40 + off`, and the image holds the segment's initial values. `OP_IPG`'s subtype table `work:0x1954` is image `0x17694`. Patch #3 moves the VM segment to `0x0754` and the work segment to `0x14BF` ([`memory-map.md`](memory-map.md)); `mise run vm-handler` takes `--vm-seg` and `--work-seg` for it.
+The display-list VM's **dispatch table** is image `0x8246` (notebook `CS:0x1316`, VM `0x0006`): opcode `op` jumps from the slot at `0x8246 + op` ([`sod-vm.md`](sod-vm.md) section 1). The VM's **work segment**, which is `DS` while the VM runs, is image paragraph `0x15D4` (offset `0x15D40`), so `work:off` maps to image `0x15D40 + off`, and the image holds the segment's initial values. `OP_IPG`'s subtype table `work:0x1954` is image `0x17694`. Patch #3 moves the VM segment to `0x0754` and the work segment to `0x14BF` ([`memory-map-patch3.md`](memory-map-patch3.md)); `mise run vm-handler` takes `--vm-seg` and `--work-seg` for it.
 
 ## 4. Setup
 
