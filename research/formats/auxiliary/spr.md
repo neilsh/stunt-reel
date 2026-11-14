@@ -1,5 +1,5 @@
 ---
-summary: "`.SPR` image ([FMT-SPR-HEADER]): u16 width, height and encoding, then from byte 6 raw rows (encoding 0) or span-coded rows, colour 0 transparent, no trailer; `PCX2SPR` writes pixels from byte 4, which the code would draw two pixels shifted (`[Hypothesis]`); the `MAKESPR` `.SOD` billboard wrapper."
+summary: "`.SPR` image ([FMT-SPR-HEADER]): u16 width, height and encoding, then from byte 6 raw rows (encoding 0) or span-coded rows, no trailer; colour 0 is keyed transparent by the scaled `OP_ANIMATE` blit, copied by the unscaled draw; `PCX2SPR` writes pixels from byte 4, which the code would draw two pixels shifted (`[Hypothesis]`); the `MAKESPR` `.SOD` billboard wrapper."
 ---
 # Specification: .SPR Sprite Bitmap Format
 
@@ -14,7 +14,7 @@ The `.SPR` format represents 8-bit indexed raster (raw or span-coded) billboard 
 - **Engine Lifecycle Role:**
   1. *Raster Texture Storage:* Contains 8-bit (raw or span-coded) VGA Mode 13h palette indices formatted for rapid scanline blitting into the $320 \times 200$ VGA video buffer.
   2. *Procedural Billboard Binding:* Bound to procedural `.SOD` (display list) models compiled by `MAKESPR.EXE`. The `.SOD` model defines the spatial transform, billboard orientation vector, animation frame count, and resource indices, while the `.SPR` payload supplies the texel colors.
-  3. *Dynamic Visual Effects:* Rendered as camera-facing billboards centered at the entity's 3D origin, with index `0` acting as a strict transparency key.
+  3. *Dynamic Visual Effects:* Rendered as camera-facing billboards centered at the entity's 3D origin, with index `0` keyed transparent by the scaled `OP_ANIMATE` blit (§ 3.2).
 
 **Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs); palette scaling is defined once in [`palette-and-shading.md`](../concepts/palette-and-shading.md#11-vga-hardware-dac-principles). Synthetic raw and span-coded images are built in [`test_spr_schema.py`](../../../tests/test_spr_schema.py); [`sprite.rs`](../../../crates/stunt-core/src/sprite.rs) reads `OP_ANIMATE` frames.
 

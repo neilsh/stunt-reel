@@ -86,6 +86,10 @@ impl SpriteImage {
 /// The `width × height` pixels of `height` span-coded rows (`span_row` in `spr.ksy`; image
 /// `0x7CBA`), or `None` when a row runs past `body` or a span past `width`.
 fn decode_spans(mut body: &[u8], width: usize, height: usize) -> Option<Vec<u8>> {
+    // Every row takes at least its terminator byte: refuse before allocating the grid.
+    if body.len() < height {
+        return None;
+    }
     let mut pixels = vec![0; width.checked_mul(height)?];
     for row in pixels.chunks_mut(width) {
         loop {
@@ -151,6 +155,12 @@ mod tests {
             None
         );
         assert_eq!(SpriteImage::parse(&[2, 0, 1, 0, 2, 0, 1, 0, 0, 9]), None);
+    }
+
+    #[test]
+    fn parse_rejects_a_body_shorter_than_its_row_count() {
+        // 65535 × 65535 rows from a one-byte body: refused without a 4 GiB grid.
+        assert_eq!(SpriteImage::parse(&[255, 255, 255, 255, 2, 0, 0]), None);
     }
 
     #[test]
