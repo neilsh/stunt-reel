@@ -20,9 +20,9 @@ Read [`loop-rules.md`](loop-rules.md) first: one goal, at most four rounds, and 
 - [ ] 2. Read the residual note's Ruled out, then rg <term> work/, for prior attempts at this hypothesis
 - [ ] 3. If no renderer-only lever fits, read the PLAYONE rule this round tests and write it into its playone-exe note
 - [ ] 4. If the defect shows on a run of frames, quote the sweep's --track and --target <film>:<lo>-<hi> flags in the journal entry before it runs
-- [ ] 5. One hypothesis class: all variants in one sweep (--track, and step 4's --target flags), or retime for timing
+- [ ] 5. One hypothesis class: all variants in one sweep (--track, step 4's --target flags, --images, --topic), or retime for timing
 - [ ] 6. Apply the adoption rule: the sweep's winner line gives the verdict
-- [ ] 7. Crop the winner and the worst mover; inspect only those
+- [ ] 7. Commit the sweep's pictures with the journal entry; else crop the winner and worst mover
 - [ ] 8. Record outcomes, run mise run check, commit (body says why: [AGENTS.md § Committing](../../../AGENTS.md#committing)), write the handoff
 ```
 
@@ -30,7 +30,7 @@ If step 6 rejects the change, record the negative and end the round; do not chai
 
 ## Files beside this skill
 
-Read each when its step comes up:
+Read each at its step:
 
 - [`cost-rules.md`](cost-rules.md): before the first render or sweep of a session.
 - [`comparing-references.md`](comparing-references.md): deciding whether to promote a new capture to reference.

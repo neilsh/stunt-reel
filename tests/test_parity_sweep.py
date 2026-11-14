@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
+import struct
 import sys
+import zlib
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
-from render_helpers import reference_tree, tick_entry, write_report
+from render_helpers import (
+    TINY,
+    reference_tree,
+    rewrite_store,
+    tick_entry,
+    write_report,
+    write_store,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -22,7 +33,13 @@ if str(SCRIPTS_DIR) not in sys.path:
 import parity_probe  # noqa: E402
 import parity_sweep  # noqa: E402
 
-from stunt_reel import parity_artifacts, parity_judge, parity_layout, parity_pipeline  # noqa: E402
+from stunt_reel import (  # noqa: E402
+    parity_artifacts,
+    parity_judge,
+    parity_layout,
+    parity_pictures,
+    parity_pipeline,
+)
 from stunt_reel.parity_artifacts import FilmId, Geometry, StoredFrame  # noqa: E402
 from stunt_reel.parity_judge import Variant  # noqa: E402
 from stunt_reel.parity_pipeline import Score  # noqa: E402
@@ -350,3 +367,332 @@ def test_range_with_no_scored_baseline_tick_gives_no_verdict(
     assert capsys.readouterr().out.splitlines()[-1] == (
         "winner: no verdict (target ctry:7-7 holds no tick the baseline scores)"
     )
+
+
+# --- pictures (spec § 4) ---------------------------------------------------------------------
+
+
+def _delta(tick: int, ssim: float, film: str = "intro") -> parity_judge.Delta:
+    return parity_judge.Delta(film, tick, ssim, 0.0)
+
+
+def test_lowest_change_is_chosen_first_then_the_biggest_gains() -> None:
+    frames = [_delta(0, 0.01), _delta(100, -0.02), _delta(200, 0.05), _delta(300, 0.03)]
+    assert parity_pictures.choose_ticks(frames) == [100, 200, 300, 0]
+
+
+def test_picks_keep_fifty_ticks_apart_then_twenty_five_and_never_closer() -> None:
+    frames = [_delta(0, 0.09), _delta(30, 0.08), _delta(60, 0.07), _delta(85, 0.06)]
+    frames += [_delta(90, 0.05), _delta(110, -0.01)]
+    picks = parity_pictures.choose_ticks(frames)
+    # The 50-tick pass takes 110, 0 and 60; the 25-tick pass adds 30 and 85, then stops at five.
+    assert picks == [110, 0, 60, 30, 85]
+    assert all(abs(a - b) >= 50 for a, b in itertools.combinations(picks[:3], 2))
+    assert all(abs(a - b) >= 25 for a, b in itertools.combinations(picks, 2))
+
+
+def test_spacing_never_goes_below_twenty_five_so_a_film_may_get_fewer_than_five() -> None:
+    frames = [_delta(0, 0.03), _delta(24, 0.02), _delta(49, 0.01), _delta(60, -0.01)]
+    # 24 is 24 from 0, and 49 is 11 from 60.
+    assert parity_pictures.choose_ticks(frames) == [60, 0]
+
+
+def test_choice_caps_at_five_and_ties_go_to_the_lower_tick() -> None:
+    frames = [_delta(tick, 0.02) for tick in range(0, 700, 100)]
+    assert parity_pictures.choose_ticks(frames) == [0, 100, 200, 300, 400]
+    assert parity_pictures.choose_ticks([]) == []
+
+
+def _judged(changes: dict[tuple[str, int], float], targets: list[str]) -> parity_judge.Judgement:
+    """Every film scores ticks 0, 10, ..., 90 at 0.0; *changes* move single frames' SSIM."""
+    films = ("ctry", "intro", "land")
+
+    def run(film: str, *, moved: bool) -> parity_judge.FilmRun:
+        shift = {t: changes.get((film, t), 0.0) if moved else 0.0 for t in range(0, 100, 10)}
+        return parity_judge.FilmRun(
+            {t: parity_judge.Frame(shift[t], 0.5, True) for t in shift}, True
+        )
+
+    return parity_judge.judge(
+        {film: run(film, moved=False) for film in films},
+        {film: run(film, moved=True) for film in films},
+        [parity_judge.Target.parse(t) for t in targets],
+    )
+
+
+def test_guard_pictures_are_each_films_worst_frame_beyond_the_listing_threshold() -> None:
+    judged = _judged({("ctry", 30): -0.0051, ("ctry", 40): -0.02, ("land", 50): -0.005}, [])
+    # land's worst fall is exactly 0.005, which is not beyond it.
+    assert [(d.film, d.tick) for d in parity_pictures.guard_pictures(judged)] == [("ctry", 40)]
+
+
+def test_guard_pictures_fall_outside_the_cap_and_never_repeat_a_target_pick() -> None:
+    changes = {("intro", t): 0.001 * t for t in range(0, 100, 10)}
+    changes[("intro", 90)] = -0.03  # intro's worst frame, which is also a target pick
+    changes[("ctry", 40)] = -0.02  # an untargeted film's worst frame
+    changes[("land", 10)] = -0.01
+    pictures = parity_pictures.plan_pictures(_judged(changes, ["intro:0-90"]), "lake")
+    picks = [p for p in pictures if not p.guard]
+    guards = [p for p in pictures if p.guard]
+    assert [p.tick for p in picks] == [90, 40, 10]
+    assert len(picks) <= parity_pictures.MAX_PER_FILM
+    assert picks[0].name == "intro-90-lake.png"
+    assert [(p.film, p.tick, p.name) for p in guards] == [
+        ("ctry", 40, "ctry-40-lake-guard.png"),
+        ("land", 10, "land-10-lake-guard.png"),
+    ]
+
+
+def test_only_targeted_films_get_target_pictures() -> None:
+    judged = _judged({}, ["ctry:0-90"])
+    assert {p.film for p in parity_pictures.plan_pictures(judged, "x")} == {"ctry"}
+
+
+@pytest.mark.parametrize(
+    ("words", "slug"),
+    [("Lake edge", "lake-edge"), ("  conifers--3 ", "conifers-3"), ("lake", "lake")],
+)
+def test_topic_becomes_a_file_name_part(words: str, slug: str) -> None:
+    assert parity_pictures.topic_slug(words) == slug
+
+
+@pytest.mark.parametrize("words", ["", "  ", "---", "!!"])
+def test_a_topic_with_no_words_is_refused(words: str) -> None:
+    with pytest.raises(ValueError, match="--topic"):
+        parity_pictures.topic_slug(words)
+
+
+def test_picture_names_follow_the_work_folder_scheme() -> None:
+    assert parity_pictures.picture_name("ctry", 422, "lake") == "ctry-422-lake.png"
+    assert (
+        parity_pictures.picture_name("ctry", 422, "lake", guard=True) == "ctry-422-lake-guard.png"
+    )
+
+
+def test_crop_is_four_edges_of_a_box() -> None:
+    assert parity_pictures.parse_crop("10,20,110,120") == (10, 20, 110, 120)
+    for text in ("1,2,3", "a,b,c,d", "5,0,5,9", "-1,0,5,9", "0,9,5,9", "0,0,321,9", "0,0,9,201"):
+        with pytest.raises(ValueError, match="--crop"):
+            parity_pictures.parse_crop(text)
+
+
+@pytest.mark.parametrize(
+    ("flags", "message"),
+    [
+        (["--images", "{dir}"], "--images needs --topic"),
+        (["--topic", "lake"], "--topic needs --images"),
+        (["--images", "{dir}", "--topic", "lake"], "--images needs --target"),
+        (["--crop", "0,0,10,10"], "--crop needs --images"),
+        (["--images", "{dir}", "--topic", "!", "--target", "ctry:7-7"], "--topic"),
+        (["--images", "{dir}", "--topic", "x", "--target", "ctry:7-7", "--crop", "9,9"], "--crop"),
+    ],
+)
+def test_picture_options_refuse_before_rendering(
+    flags: list[str],
+    message: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(parity_sweep, "run_film", None)  # rendering would raise
+    argv = ["--var", "DBG_X=a,d", "--track", "heuristic", "--no-build", "--data-root", str(root)]
+    argv += [flag.replace("{dir}", str(tmp_path / "images")) for flag in flags]
+    assert parity_sweep.main(argv) == 2
+    assert message in capsys.readouterr().err
+
+
+def test_an_existing_picture_is_never_overwritten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(parity_sweep, "run_film", None)  # refused before rendering
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "ctry-422-lake.png").write_bytes(b"first")
+    argv = ["--var", "DBG_X=a,d", "--track", "heuristic", "--target", "ctry:7-7", "--no-build"]
+    argv += ["--images", str(images), "--topic", "lake", "--data-root", str(root)]
+    assert parity_sweep.main(argv) == 2
+    assert "ctry-422-lake.png already exists" in capsys.readouterr().err
+    assert (images / "ctry-422-lake.png").read_bytes() == b"first"
+
+
+def _pictures_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, list[dict[str, object]], list[tuple[str, list[int]]]]:
+    """``_sweep_env`` with fake picture renders and drawing, which record what they were given."""
+    root = _sweep_env(tmp_path, monkeypatch)
+    drawn: list[dict[str, object]] = []
+    rendered: list[tuple[str, list[int]]] = []
+
+    def fake_render(
+        job: parity_pipeline.FilmJob,  # noqa: ARG001 - render_film's signature
+        out: Path,
+        env: dict[str, str] | None = None,
+        *,
+        ticks: list[int] | None = None,
+    ) -> None:
+        rendered.append(((env or {})["DBG_X"], list(ticks or [])))
+        write_store(out, ticks or [])
+
+    def fake_draw(
+        capture: Path,  # noqa: ARG001 - draw_film's signature
+        stores: tuple[Path, Path],  # noqa: ARG001
+        pictures: list[parity_pictures.Picture],
+        directory: Path,
+        *,
+        box: tuple[int, int, int, int] | None,
+        scale: int,
+    ) -> list[Path]:
+        drawn.append({"names": [p.name for p in pictures], "box": box, "scale": scale})
+        directory.mkdir(parents=True, exist_ok=True)
+        paths = [directory / p.name for p in pictures]
+        for path in paths:
+            path.write_bytes(b"png")
+        return paths
+
+    monkeypatch.setattr(parity_sweep, "render_film", fake_render)
+    monkeypatch.setattr(parity_sweep, "draw_film", fake_draw)
+    return root, drawn, rendered
+
+
+def _images_argv(root: Path, images: Path, *extra: str) -> list[str]:
+    argv = ["--var", "DBG_X=a,d", "--track", "heuristic", "--target", "ctry:7-7", "--no-build"]
+    return [
+        *argv,
+        "--images",
+        str(images),
+        "--topic",
+        "Lake edge",
+        "--data-root",
+        str(root),
+        *extra,
+    ]
+
+
+def test_pictures_show_the_winner_against_the_baseline_on_the_chosen_ticks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root, drawn, rendered = _pictures_env(tmp_path, monkeypatch)
+    images = tmp_path / "work" / "images"
+    assert parity_sweep.main(_images_argv(root, images)) == 0
+    captured = capsys.readouterr()
+    assert captured.out.splitlines()[-1].startswith("winner: DBG_X=d adopts")
+    assert sorted(rendered) == [("a", [7]), ("d", [7])]  # baseline and winner, chosen ticks only
+    assert drawn == [{"names": ["ctry-7-lake-edge.png"], "box": None, "scale": 1}]
+    assert [p.name for p in images.iterdir()] == ["ctry-7-lake-edge.png"]
+    assert "ctry-7-lake-edge.png" in captured.err
+    assert "ctry-7-lake-edge.png" not in captured.out
+    assert not (tmp_path / "repo" / parity_layout.sweep_root() / "pictures").exists()
+
+
+def test_a_crop_enlarges_every_picture_three_times(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, drawn, _ = _pictures_env(tmp_path, monkeypatch)
+    argv = _images_argv(root, tmp_path / "images", "--crop", "10,20,110,120")
+    assert parity_sweep.main(argv) == 0
+    assert (drawn[0]["box"], drawn[0]["scale"]) == ((10, 20, 110, 120), 3)
+
+
+def test_a_round_that_is_not_adopted_still_draws_its_best_variant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root, drawn, rendered = _pictures_env(tmp_path, monkeypatch)
+    argv = _images_argv(root, tmp_path / "images")
+    argv[argv.index("DBG_X=a,d")] = "DBG_X=a,c"
+    assert parity_sweep.main(argv) == 0
+    assert capsys.readouterr().out.splitlines()[-1].startswith("winner: none adopts")
+    # Both films fall, so the untargeted INTRO's worst frame gets a guard picture beside CTRY's.
+    assert sorted(rendered) == [("a", [7]), ("a", [7]), ("c", [7]), ("c", [7])]
+    assert [call["names"] for call in drawn] == [
+        ["ctry-7-lake-edge.png"],
+        ["intro-7-lake-edge-guard.png"],
+    ]
+
+
+def test_no_verdict_draws_nothing_and_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root, drawn, rendered = _pictures_env(tmp_path, monkeypatch)
+    argv = _images_argv(root, tmp_path / "images")
+    argv[argv.index("DBG_X=a,d")] = "DBG_X=u,d"
+    assert parity_sweep.main(argv) == 0
+    assert (drawn, rendered) == ([], [])
+    assert "no pictures" in capsys.readouterr().err
+
+
+def test_pictures_of_a_retimed_sweep_render_the_shifted_source_ticks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _, rendered = _pictures_env(tmp_path, monkeypatch)
+    relabelled: list[int] = []
+
+    def fake_retime(
+        ours: Path,  # noqa: ARG001 - retime_render's signature
+        reference: Path,  # noqa: ARG001
+        out: Path,
+        by: int,
+        **_kw: object,
+    ) -> None:
+        relabelled.append(by)
+        write_store(out, [7])
+
+    monkeypatch.setattr(parity_sweep, "retime_render", fake_retime)
+    assert parity_sweep.main(_images_argv(root, tmp_path / "images", "--retime", "2")) == 0
+    assert sorted(rendered) == [("a", [9]), ("d", [9])]  # tick 7 is source tick 9
+    assert relabelled == [2, 2]
+
+
+def _capture_with_planes(directory: Path, tick: int, value: int) -> Path:
+    directory.mkdir(parents=True)
+    (directory / "f.idx").write_bytes(bytes([value] * (TINY.width * TINY.height)))
+    palette = [[i, i, 0] for i in range(256)]
+    (directory / "p.json").write_text(json.dumps(palette), encoding="utf-8")
+    frame = {"ordinal": 3, "film_tick": tick, "frame_file": "f.idx", "palette_file": "p.json"}
+    (directory / "meta.json").write_text(json.dumps({"frames": [frame]}), encoding="utf-8")
+    return directory
+
+
+def _png_width_rows(path: Path) -> tuple[int, list[bytes]]:
+    data = path.read_bytes()
+    width, height = struct.unpack(">II", data[16:24])
+    start = data.index(b"IDAT") + 4
+    length = struct.unpack(">I", data[start - 8 : start - 4])[0]
+    raw = zlib.decompress(data[start : start + length])
+    stride = 1 + width * 3
+    return width, [raw[y * stride + 1 : (y + 1) * stride] for y in range(height)]
+
+
+def test_a_picture_is_the_capture_then_the_baseline_then_the_winner(tmp_path: Path) -> None:
+    reference = _capture_with_planes(tmp_path / "ref", 5, 1)
+    base, winner = tmp_path / "base", tmp_path / "winner"
+    write_store(base, [5], geometry=TINY)
+    rewrite_store(
+        base, winner, lambda _, frame: replace(frame, indices=bytes([9] * len(frame.indices)))
+    )
+    pictures = [parity_pictures.Picture("ctry", 5, "ctry-5-lake.png")]
+    images = tmp_path / "images"
+    (path,) = parity_sweep.draw_film(
+        reference, (base, winner), pictures, images, box=(0, 0, 4, 2), scale=1
+    )
+    assert path == images / "ctry-5-lake.png"
+    width, rows = _png_width_rows(path)
+    assert (width, len(rows)) == (4 + 2 + 4 + 2 + 4, 2)
+    assert rows[0][:3] == bytes([1, 1, 0])  # the capture first
+    assert rows[0][4 * 3 : 6 * 3] == bytes([255, 0, 255] * 2)  # the magenta divider
+    assert rows[0][6 * 3 : 10 * 3] == bytes([5, 5, 0, 6, 6, 0, 7, 7, 0, 8, 8, 0])  # baseline
+    assert rows[0][12 * 3 :] == bytes([9, 9, 0] * 4)  # winner
+
+
+def test_a_picture_without_a_crop_shows_the_whole_frame(tmp_path: Path) -> None:
+    reference = _capture_with_planes(tmp_path / "ref", 5, 1)
+    base, winner = tmp_path / "base", tmp_path / "winner"
+    write_store(base, [5], geometry=TINY)
+    write_store(winner, [5], geometry=TINY)
+    pictures = [parity_pictures.Picture("ctry", 5, "ctry-5-lake.png")]
+    (path,) = parity_sweep.draw_film(
+        reference, (base, winner), pictures, tmp_path / "images", box=None, scale=1
+    )
+    width, rows = _png_width_rows(path)
+    assert (width, len(rows)) == (TINY.width * 3 + 4, TINY.height)
