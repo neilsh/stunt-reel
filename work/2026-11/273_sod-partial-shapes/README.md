@@ -2,7 +2,7 @@
 title: "Seven stock shapes decode to fragments or no geometry"
 started: 2026-11-11
 issue: 273
-outcome: ""
+outcome: "All seven SUPERSET items traced and recorded in sod-opcode-coverage.md section 2.1 (#391); two-vertex polygons and OP_PERFDISK followed in #393 and #392."
 ---
 
 # Seven stock shapes decode to fragments or no geometry

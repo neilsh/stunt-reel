@@ -18,7 +18,6 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import sys
 import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
@@ -47,8 +46,6 @@ BUILDS_DIR = dataroot.BUILDS_DIRNAME
 MANIFEST_NAME = "patch3-manifest.json"
 BuildName = Literal["unpatched", "patch3"]
 BUILD_NAMES: tuple[BuildName, ...] = ("unpatched", "patch3")
-#: What ``builds/patch3`` was called before issue #181 renamed it.
-_OLD_PATCH3_DIR = "patched"
 
 #: What ``PATSI.BAT`` deletes, in its order (``DEL`` at the root, then ``CD RES``).
 PATCH3_DELETES: tuple[str, ...] = (
@@ -198,20 +195,8 @@ def diff_trees(before: Path, after: Path) -> list[Change]:
 
 
 def build_tree(builds: Path, name: BuildName) -> Path:
-    """Return the directory of build *name* under the data root's *builds* directory.
-
-    Transitional (issue #181): ``patch3`` was called ``patched``. A data root that still has
-    only ``builds/patched`` keeps working, with a message on stderr; delete this fallback and
-    the ``_OLD_PATCH3_DIR`` constant once every data root has run ``mise run game-builds``.
-    """
-    tree = builds / name
-    old = builds / _OLD_PATCH3_DIR
-    if name == "patch3" and not tree.exists() and old.is_dir():
-        sys.stderr.write(
-            f"[builds] using the old {old}; run mise run game-builds again to create {tree}\n"
-        )
-        return old
-    return tree
+    """Return the directory of build *name* under the data root's *builds* directory."""
+    return builds / name
 
 
 def _replace_dir(staging: Path, final: Path) -> None:
