@@ -27,19 +27,82 @@ IoU of our actor pixels against capture object pixels inside the actor's boundin
 
 **Trap (`[Bounded Observation]`).** IoU rewards silhouette coverage. The best of 48 orientations scored 0.247 against 0.109 for the current one, yet its crop was a monoplane seen from above while the capture is a biplane seen from behind at about 45 degrees. Treat an IoU gain as a lead, and confirm it with a crop (section 1).
 
-**Backdrop bands** (`background` in each `references.toml` row). `[Bounded Observation]`, 2026-11-14, #490, on every 4th scored frame of each capture (25 to 183 frames), rows 0..184, `crates` tree `d2cd090`, RTX 4070. Method: histogram the capture's indices; for each index with at least 0.05 % of the pixels, read our layer plane at those pixels (none, ocean/terrain, props, actor 16+) and our share of actor pixels that carry the index. An index is backdrop when at least 85 % of its capture pixels lie on our non-actor layers and our actors paint under 0.1 % of their pixels with it (under 0.5 % when it is mostly layer none, i.e. sky). Sky (227-238, widened to 224-239 on `balloon` and 226-238 on `bomb` where the same layer-none rule passed those indices) and sea (208) are judged on layers none and ocean/terrain; indices our render draws on the props layer are added only for large flat masses the capture and our render agree on (index equal on 90 % or more of those pixels) that no actor paints: `ctry`'s precedent of sky, ground ramp and shade greens, no scenery. Frequency alone misleads, as #490 warned: `balloon` 224 (17 %, our sky is a different index there) is sky; `bomb` 59 (4 %) and `location` 14 (5 %) are painted by our actors on 6.3 % and 1.2 % of their pixels and stay out. A crop of one scored frame per film (`land` 540, `balloon` 595, `traintnl` 628, `bomb` 1750, `intro` 2454, `location` 4148), looked at by eye, showed in those frames sky, sea and field as backdrop and the aircraft (`land`, `traintnl`, `bomb`, `intro`), the parachutist (`balloon`) and the platform and tower (`location`) as the objects.
+**Backdrop bands** (`background` in each `references.toml` row). `[Bounded Observation]`, 2026-11-14, #490 and the #501 review, on a render of `crates` tree `d2cd090` (the `expected.gpu` tables were measured on `adbde141`; every film's score matched them to 1e-6) on an RTX 4070. The rule, one for all six films: an index is backdrop when
+
+* it has at least 0.05 % of the capture's rows 0..184 over capture frames 0, 4, 8, ... of the scored frames (`[0::4]`, 25 to 183 frames);
+* at least 85 % of those capture pixels lie where our layer plane is none (0), ocean (1) or terrain (2); an index our render draws mostly on the props layer (3) is scenery and stays out, however large and however well our index agrees;
+* **no actor pixel of ours carries it in any scored frame** (layer 16 and up, every scored frame, not the sample): a missing backdrop index only lowers IoU, one an actor paints hides the actor;
+* where the layer is mostly ground or sea, our index equals the capture's on at least 90 % of those pixels; where it is mostly none (sky), it lies in 227-238, the sky of `CAPTURE_SKY_INDICES` (`crates/stunt-cli/src/parity/mask.rs`; 224 to 226 and 239 are `[Unknown]` in [`palette-and-shading.md`](../formats/concepts/palette-and-shading.md)).
+
+Reproduce one film's bands after `mise run parity`, from the repo root:
+
+```bash
+mise exec -- uv run python - land < snippet.py   # the script below, saved as snippet.py
+```
+
+```python
+import sys
+from pathlib import Path
+import numpy as np
+from stunt_reel import dataroot
+from stunt_reel.matched_frames import Reference
+from stunt_reel.parity_artifacts import RenderStore, read_report
+
+film, n = sys.argv[1], 320 * 185  # run from the repo root after `mise run parity`
+store = RenderStore(Path(f"build/parity/ours/{film}_current"))
+ref = Reference(dataroot.data_root() / "captures" / f"vault-{film}" / "frames", store)
+frames = list(ref.from_report(read_report(Path(f"build/parity/report/{film}_current/report.json"))))
+actor, count, agree = (np.zeros(256) for _ in range(3))
+cap, sky = np.zeros(256), np.zeros(256)
+for k, m in enumerate(frames):  # every scored frame: what our actors paint
+    layers = np.array(m.page.layers[:n])
+    ours = np.frombuffer(m.page.indices, np.uint8)[:n]
+    actor += np.bincount(ours[layers >= 16], minlength=256)
+    if k % 4:  # capture statistics on frames 0, 4, 8, ...
+        continue
+    c = np.frombuffer(m.capture_indices(), np.uint8)[:n]
+    cap += np.bincount(c, minlength=256)
+    sky += np.bincount(c[layers == 0], minlength=256)
+    ground = (layers == 1) | (layers == 2)
+    count += np.bincount(c[ground], minlength=256)
+    agree += np.bincount(c[ground & (c == ours)], minlength=256)
+keep = [
+    i
+    for i in range(1, 255)
+    if cap[i] >= 0.0005 * cap.sum()
+    and actor[i] == 0
+    and (sky[i] + count[i]) >= 0.85 * cap[i]
+    and (227 <= i <= 238 if sky[i] > 0.5 * cap[i] else agree[i] >= 0.9 * count[i])
+]
+bands = []
+for i in keep:
+    if bands and bands[-1][1] == i - 1:
+        bands[-1][1] = i
+    else:
+        bands.append([i, i])
+print(film, bands, f"{100 * cap[keep].sum() / cap.sum():.0f}% of capture pixels")
+```
+
+The `ctry` row is #485's and predates this rule (it keeps the ground ramp 192-199 and shade greens 161-165); it was not rederived. Zero tolerance is why the sets are small: the first round, which tolerated 0.1 % actor paint and took props-layer masses, put into bands the parachutist's visor on `balloon` (224), the train's 163 and 164 on `traintnl`, tarmac 13/14 on `land` and `bomb`, sky that cockpit canopies paint on `land` and `location`, and singletons that one shape paints (`location` 76 and 205, `intro` 208).
 
 | Film | `background` | Capture pixels covered | `iou` (every 2nd scored frame) |
 |---|---|---|---|
 | `ctry` | `[192,199] [228,238] [161,165]` (#485) | not measured | 0.5405 (38) |
-| `intro` | `[162,164] [172,176] [193,196] [205,205] [208,208] [227,238]` | 78 % | 0.5683 (89) |
-| `land` | `[13,14] [161,164] [195,195] [208,208] [229,238]` | 88 % | 0.5358 (47) |
-| `balloon` | `[161,164] [194,195] [197,198] [205,205] [208,208] [224,239]` | 78 % | 0.8944 (43) |
-| `traintnl` | `[163,164] [195,195] [208,208] [228,238]` | 71 % | 0.3668 (44) |
-| `bomb` | `[14,14] [163,164] [194,195] [197,197] [208,208] [226,238]` | 77 % | 0.5488 (129) |
-| `location` | `[76,76] [163,164] [192,193] [195,195] [205,205] [208,208] [227,235] [238,238]` | 56 % | 0.2462 (86) |
+| `intro` | `[164,164] [195,195]` | 10 % | 0.1487 (89) |
+| `land` | `[164,164] [195,195]` | 34 % | 0.1879 (47) |
+| `balloon` | `[162,164] [194,195] [197,198] [208,208] [228,238]` | 57 % | 0.6796 (43) |
+| `traintnl` | `[195,195] [228,228] [232,238]` | 62 % | 0.3397 (44) |
+| `bomb` | `[163,164] [208,208] [227,235] [238,238]` | 34 % | 0.2709 (129) |
+| `location` | `[164,164] [195,195] [208,208]` | 27 % | 0.1164 (86) |
 
-Limits: bands list only indices seen in the sampled frames, so an index never sampled counts as object, and so does one the props-layer rule rejected (`bomb` 196, 0.26 % of pixels). `location` omits 236 and 237, sky that our actors paint on 0.7 % of their pixels, which keeps them as object pixels. `intro` 91 (12 % of capture pixels, drawn on the props layer, our actors paint 0.23 %) is left out for the same reason; the crop of tick 2454 shows hill-like masses of ours and the capture's that agree, but the index was not tied to the hill by pixel readout. The low `location` figure is likely dominated by the platform and tower, which our render draws on the props layer and not as actors (no split of the IoU was measured). The figures are comparable only between runs of one film.
+"Covered" is the share of all rows 0..184 capture pixels, 0 and 255 included in the denominator, over the sampled frames. Four things lower the figures, and the IoU is a lead only (`[Bounded Observation]`, [trap above](#3-actor-window-iou-iou)):
+
+* **A band limit, not a render gap.** The bands leave out every index our actors paint anywhere in the film, so those indices count as object pixels wherever they are backdrop. On `traintnl` the tunnel and track props inside the actor's box (visible in the crop of tick 628) are object pixels; `intro` has no sky band at all (our actors paint every index of 227-238 in some frame).
+* **Props-layer scenery.** Tarmac, hills and buildings our render draws on layer 3 are object pixels in the capture, so `land`, `bomb` and `location` read low.
+* **`location`'s omitted bands.** 161, 162, 236 and 237 (our actors paint each in some frame), the props-layer ground and the hillside stay in the object pixels.
+* **A render fault.** `location` shows a black quadrilateral in the foreground that the capture lacks (crop of tick 848; our actor-pixel count is about 7,400 in each sampled frame from tick 805 to 892; [#504](https://github.com/neilsh/stunt-reel/issues/504)). The #501 review attributes it to camera-mount shapes `0x3E57` and `0x3A26`; that was not checked here.
+
+Checks by eye: the first-round bands were cropped at `land` tick 540 (tarmac and canopy sky counted as backdrop), `balloon` 595, `traintnl` 628, `bomb` 1750, `intro` 2454 (hill masses in the object pixels) and `location` 4148 (platform and tower objects, sea and hill backdrop); the final bands were not re-cropped. Unsampled indices (a ramp neighbour a film shows in 0.05 % of pixels or less) count as object.
 
 ## 4. Candidate sweeps
 
