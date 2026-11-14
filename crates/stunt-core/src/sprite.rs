@@ -83,14 +83,21 @@ impl SpriteImage {
     }
 }
 
-/// The `width × height` pixels of `height` span-coded rows (`span_row` in `spr.ksy`; image
-/// `0x7CBA`), or `None` when a row runs past `body` or a span past `width`.
-fn decode_spans(mut body: &[u8], width: usize, height: usize) -> Option<Vec<u8>> {
-    // Every row takes at least its terminator byte: refuse before allocating the grid.
-    if body.len() < height {
+/// The pixel count of a span image, or `None` when `body_len` cannot hold `height` rows: each
+/// takes at least its terminator byte, so the grid is refused before it is allocated. There is
+/// no cap on `width × height`: a body of `height` zero bytes still describes a blank grid of that
+/// size, and no evidence sets a limit.
+fn grid_len(body_len: usize, width: usize, height: usize) -> Option<usize> {
+    if body_len < height {
         return None;
     }
-    let mut pixels = vec![0; width.checked_mul(height)?];
+    width.checked_mul(height)
+}
+
+/// The `width × height` pixels of `height` span-coded rows (`span_row` in `spr.ksy`; image
+/// `0x7CBA`), or `None` when `body` is shorter than `height`, a row runs past it or a span past `width`.
+fn decode_spans(mut body: &[u8], width: usize, height: usize) -> Option<Vec<u8>> {
+    let mut pixels = vec![0; grid_len(body.len(), width, height)?];
     for row in pixels.chunks_mut(width) {
         loop {
             let (&count, rest) = body.split_first()?;
@@ -158,8 +165,23 @@ mod tests {
     }
 
     #[test]
+    fn grid_len_refuses_a_body_shorter_than_its_rows_before_any_allocation() {
+        // This is what the guard is for: `parse` alone returns `None` either way, but without
+        // the guard a 65535 × 65535 grid would be allocated first.
+        assert_eq!(grid_len(1, 65535, 65535), None);
+        assert_eq!(grid_len(1, 1, 2), None);
+        assert_eq!(grid_len(2, 1, 2), Some(2));
+    }
+
+    #[test]
+    fn parse_accepts_a_body_of_exactly_one_empty_row_per_height() {
+        let image = SpriteImage::parse(&[1, 0, 2, 0, 2, 0, 0, 0]).expect("an image");
+        assert_eq!(image.pixels, [0, 0]);
+    }
+
+    #[test]
     fn parse_rejects_a_body_shorter_than_its_row_count() {
-        // 65535 × 65535 rows from a one-byte body: refused without a 4 GiB grid.
+        // Checks the result only: it also holds without the guard, which `grid_len` pins.
         assert_eq!(SpriteImage::parse(&[255, 255, 255, 255, 2, 0, 0]), None);
     }
 
