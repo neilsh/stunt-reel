@@ -31,9 +31,9 @@ makeone = "patch3"
 playone = "patch3"
 
 [ctry.expected.gpu]
-ssim = 0.9048628
+ssim = 0.9161684
 iou = 0.9910146
-crates = "9fefa9ea41d4db760901118fcd0fab22d8b946ea"
+crates = "224203903259c4b254a3745cfabdb66520305d43"
 sha256 = "dade17cae3d85a23fb829366c1c42813de51d91e9fdd93ffc8470cbc897b4c77"
 all_sha256 = "cb58d95b72f02819d15c5e6dad0973e72af8026455dbf5e13e41933711bb12ce"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -46,9 +46,9 @@ makeone = "patch3"
 playone = "patch3"
 
 [intro.expected.gpu]
-ssim = 0.8469210
-iou = 0.9863489
-crates = "9fefa9ea41d4db760901118fcd0fab22d8b946ea"
+ssim = 0.8534789
+iou = 0.9863501
+crates = "224203903259c4b254a3745cfabdb66520305d43"
 sha256 = "f8c971f3569d424ec44571ea4ec762efd9289d20a6ba2a51f893ca20fcaa148c"
 all_sha256 = "2dc8f628198993c420ba632c8b7c5884015afb5c010aabe58b57a75d3a3428e3"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -61,9 +61,9 @@ makeone = "patch3"
 playone = "patch3"
 
 [land.expected.gpu]
-ssim = 0.8666185
+ssim = 0.8928874
 iou = 0.9851951
-crates = "9fefa9ea41d4db760901118fcd0fab22d8b946ea"
+crates = "224203903259c4b254a3745cfabdb66520305d43"
 sha256 = "bc159031dd44974a3e3e6c250489c8edb8a0cd0138305e86b9f0bcd4536d7469"
 all_sha256 = "342003624122671573d562fb814c9bf6d1bf75e3ff8727f26fedabcda45b4218"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -76,9 +76,9 @@ makeone = "patch3"
 playone = "patch3"
 
 [balloon.expected.gpu]
-ssim = 0.8136836
+ssim = 0.8173704
 iou = 0.6408634
-crates = "9fefa9ea41d4db760901118fcd0fab22d8b946ea"
+crates = "224203903259c4b254a3745cfabdb66520305d43"
 sha256 = "911e95c499b03d164c27c069480388b05beeee915d7b0918cae968d693195287"
 all_sha256 = "e8d852fa8f77ff9b708b8066ddb26457a0498cb94060f1976741355ff510a415"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -91,9 +91,9 @@ makeone = "patch3"
 playone = "patch3"
 
 [traintnl.expected.gpu]
-ssim = 0.8571628
+ssim = 0.8566446
 iou = 0.9658589
-crates = "9fefa9ea41d4db760901118fcd0fab22d8b946ea"
+crates = "224203903259c4b254a3745cfabdb66520305d43"
 sha256 = "78394e1f328680bd509606bb054b5290cb9bac578faf267a5a8a503f00f12e8d"
 all_sha256 = "a649413eafced2c711b63e761c40c62d0e2502c5020944a62c32b97b6d27b8c9"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -106,9 +106,9 @@ makeone = "patch3"
 playone = "patch3"
 
 [bomb.expected.gpu]
-ssim = 0.8218551
+ssim = 0.8394078
 iou = 0.9118285
-crates = "9fefa9ea41d4db760901118fcd0fab22d8b946ea"
+crates = "224203903259c4b254a3745cfabdb66520305d43"
 sha256 = "1fa390a598947c4125cd235e699e9b319ce26be45739f4e097a7ec0dc45d51f3"
 all_sha256 = "b1a48485d817a2d72f8f2ebaa8e8c2599d0599bc7426a78ecce6ade45d223945"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -121,9 +121,9 @@ makeone = "patch3"
 playone = "patch3"
 
 [location.expected.gpu]
-ssim = 0.8161204
-iou = 0.9784061
-crates = "9fefa9ea41d4db760901118fcd0fab22d8b946ea"
+ssim = 0.8287817
+iou = 0.9784065
+crates = "224203903259c4b254a3745cfabdb66520305d43"
 sha256 = "2ea6fe3fc28688b4232003381385bd896ba94205b89987e8b9e4215bff2f8b1c"
 all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"

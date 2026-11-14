@@ -90,6 +90,7 @@ Delivery is sequential. This section records what each phase is for and whether 
   * *Decoder / glTF 2.0 export:* Because core glTF 2.0 lacks pipeline depth-bias states, coplanar decal polygons (runway markings, aircraft insignias, wing roundels) are geometrically displaced along their outward surface normal $\hat{\mathbf{n}}$ by $\epsilon = 0.001\text{ m}$ by the SOD decoder, and `stunt-gltf` exports the displaced geometry unchanged:
     $$\mathbf{v}' = \mathbf{v} + 0.001\hat{\mathbf{n}}$$
   * *Phase 2 (`wgpu` Engine):* Coplanar decal batches are rendered in a dedicated pipeline pass using hardware depth biasing (`DepthBiasState { constant: -2, slope_scale: -2.0, clamp: 0.0 }`, with `LessEqual`).
+  * *Flat ground (`wgpu` Engine):* The ocean quad below the ground plane `y = base_y`, and the `MAP.BIN` patches and prop triangles flat on that plane, are drawn outside the depth-bias pass, first and in walk order (which follows `PLAYONE`'s painter order only in part), each slice replacing what is under it while writing depth ([ADR 0045](adr/0045-flat-ground-is-painted-in-walk-order.md)).
 
 #### [I6] Visual Parity Acceptance Thresholds & VGA 1:1.2 Aspect Ratio Correction
 
