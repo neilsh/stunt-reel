@@ -94,13 +94,11 @@ A `.SOD` body is a display list for a stack-based, register-oriented VM: 1024 tw
 ### 3.1 Coplanar Decal Detection (`[I5]`)
 
 In original DOS software rendering, decals (wing insignia, national roundels, lettering) were drawn over base facets via sequential framebuffer overwrites. In modern depth-buffered rendering, coplanar facets produce severe Z-fighting.
-- **Coplanar Detection Criteria:** Two facets $A$ and $B$ are coplanar decals if:
+- **Coplanar Detection Criteria:** a polygon $B$ is a decal when an earlier polygon $A$ of the same stream satisfies all three, on each polygon's **front normal** (the side `FrontFace::Cw` keeps, the negated edge cross product of its winding; a line or a polygon of fewer than three vertices has none and is never a decal), not on the stored shading normal (`crates/stunt-core/src/sod/decal.rs`):
   1. Unit normal parallelism: $\mathbf{n}_A \cdot \mathbf{n}_B \ge 1.0 - 10^{-4}$
-  2. Plane constant equality: $|\mathbf{n}_A \cdot \mathbf{v}_{A0} - \mathbf{n}_B \cdot \mathbf{v}_{B0}| < 10^{-4}\text{ m}$
+  2. Plane constant equality: $|\mathbf{n}_A \cdot \mathbf{v}_{A0} - \mathbf{n}_B \cdot \mathbf{v}_{B0}| \le 10^{-4}\text{ m}$
   3. Bounding box spatial overlap in all three dimensions within $10^{-4}\text{ m}$.
-- **Resolution:** Decal facets are flagged with `flags |= 0x01` (`is_decal = true`) and their vertices are nudged along outward surface normal $\hat{\mathbf{n}}$ by:
-  $$\epsilon = 0.001\text{ m} \quad (1.0\text{ mm})$$
-  In modern GPU presentation (`crates/stunt-render/`), decals are rendered in a dedicated pass with hardware depth-biasing (`DepthBiasState { constant: 2, slope_scale: 2.0, clamp: 0.0 }`).
+- **Resolution:** decal facets are flagged with `flags |= 0x01` (`is_decal = true`) and keep their decoded positions. The renderer (`crates/stunt-render/`) draws them after all base geometry, in stream order, in a pass with `LessEqual`, hardware depth bias (`DepthBiasState { constant: -2, slope_scale: -2.0, clamp: 0.0 }`) and no depth write, so a later coplanar decal covers an earlier one. Only `stunt-gltf` moves decal vertices $\epsilon = 0.001\text{ m}$ toward their front on export, since glTF has no depth bias or draw order ([ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)).
 
 ---
 
