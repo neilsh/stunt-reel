@@ -508,10 +508,12 @@ const OCEAN_COLOR: u8 = 208;
 const GROUND_COLOR: u8 = 194;
 const UP: [f32; 3] = [0.0, 1.0, 0.0];
 
-/// Name of the world's flat-ground mesh nodes: the ocean quad below the ground plane
-/// `y = base_y`, every `MAP.BIN` patch flat on that plane in `MAP.BIN` order, then each placed
-/// prop's triangles on it in placement order, except that placements sharing an `SP_1NODE`
-/// group come together where the group's first placement does.
+/// Name of the world's flat-ground mesh nodes, which a renderer paints first, in walk order.
+///
+/// They hold the ocean quad below the ground plane `y = base_y`, every `MAP.BIN` patch flat on
+/// that plane in `MAP.BIN` order, then each placed prop's triangles on it in placement order,
+/// except that placements sharing an `SP_1NODE` group come together where the group's first
+/// placement does.
 ///
 /// `PLAYONE` has no depth buffer and paints the ground in walk order, the later over the
 /// earlier; a renderer draws these nodes' slices first, in a forward walk, each over whatever
