@@ -28,9 +28,9 @@ seq:
   - id: encoding
     type: u2
     doc: |
-      0 for raw rows; any other value for span-coded rows (the game's
-      images carry 2). PLAYONE's unscaled blitter branches on it at image
-      0x7C2E; the OP_ANIMATE blitter (0x7DE6) ignores it and reads raw rows.
+      0 for raw rows; any other value for span-coded rows (2 observed
+      in the 58 images that parse as spans). PLAYONE's unscaled blitter
+      branches on it at image 0x7C2E; the OP_ANIMATE blitter (0x7DE6) ignores it and reads raw rows.
   - id: body
     type:
       switch-on: encoding
