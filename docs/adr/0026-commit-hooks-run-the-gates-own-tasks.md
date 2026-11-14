@@ -78,7 +78,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | `check-merge-conflict` | union-merged append-only files ([AGENTS.md, Committing](../../AGENTS.md#committing)) must not keep markers |
   | `check-toml`, `check-yaml` | `mise.toml`, `pyproject.toml`, `.github/` and `.coderabbit.yaml` are configuration |
   | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
-  | `trailing-whitespace`, `end-of-file-fixer` | `.editorconfig` (final newline, trimmed trailing whitespace except in Markdown, whose hard breaks `.gitattributes` keeps); they replace `diff-check` |
+  | `trailing-whitespace`, `end-of-file-fixer` | `.editorconfig` (final newline, trimmed trailing whitespace; in Markdown only a two-space hard break is allowed); they replace `diff-check` |
   | `check-shebang-scripts-are-executable`, `check-executables-have-shebangs` | Linux CI's ruff fails a script whose shebang and executable bit disagree (`EXE001`), which a Windows checkout cannot see; these read git's staged mode there (added 2026-11-13, #461) |
 
   No hook rewrites files: the two fixers run with `--check`, which reports and writes nothing, and
@@ -238,9 +238,12 @@ gate on every title edit.
 (`--check --markdown-linebreak-ext=md`) and `end-of-file-fixer` (`--check`) back the same rules and
 `.editorconfig`, and unlike a check of the index they also run in CI over a commit range.
 `check-merge-conflict` already covered conflict markers. What is lost is git's `space-before-tab`
-rule. prek moves to 0.5.10 with it. This supersedes the hook table's `diff-check` row, "`diff-check`
-and `crlf-check` run on every commit" above, and the `SKIP` list in the 2026-11-15 amendment: CI's
-`SKIP` list is `fmt-check-rust,fmt-check-py,lint-py,test-docs,check-work-frozen`.
+rule. Two differences to expect: they read whole files, where `diff --check` read only added
+lines; and Markdown is stricter, since `.gitattributes` once let any trailing whitespace through in
+`.md` and now only exactly two spaces (a hard break) pass, so one space or three fail. prek moves to
+0.5.10 with it. This supersedes the hook table's `diff-check` row, "`diff-check` and `crlf-check`
+run on every commit" above, and the `SKIP` list in the 2026-11-15 amendment: CI's `SKIP` list is
+`fmt-check-rust,fmt-check-py,lint-py,test-docs,check-work-frozen`.
 
 The commit-message hook, `check-work-frozen` and `test-docs` stay: no built-in checks a
 Conventional Commit subject, a trailer required only when a work `spec.md` or `plan.md` changes,
