@@ -45,6 +45,7 @@ __all__ = [
     "run_report_json",
     "run_retime_dir",
     "run_tree_dir",
+    "scratch_root",
     "slug_for",
     "stage_conf",
     "stage_dir",
@@ -250,6 +251,11 @@ def stage_root() -> Path:
 def timeout_root() -> Path:
     """The directory holding the guest screens a timed-out ``make-all`` saved."""
     return _TIMEOUTS
+
+
+def scratch_root() -> Path:
+    """The gitignored folder for issue bodies, logs and one-off scripts; ``ensure`` makes it."""
+    return _SCRATCH
 
 
 def sweep_root() -> Path:

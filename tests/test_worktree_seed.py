@@ -270,6 +270,15 @@ def test_ensure_tags_a_target_it_creates(tmp_path: Path, monkeypatch: pytest.Mon
     assert tag.startswith("Signature: 8a477f597d28d172789f06886806bc55")
 
 
+def test_ensure_makes_the_scratch_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A shell redirect into build/scratch/ fails in a fresh worktree unless something makes it."""
+    monkeypatch.setattr(worktree_init, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(worktree_init, "ensure_hooks_path", lambda _repo: [])
+    monkeypatch.setattr(worktree_init, "_seed_target", list)
+    assert worktree_init._ensure() == 0
+    assert (tmp_path / "build" / "scratch").is_dir()
+
+
 def test_ensure_carries_on_when_the_lock_times_out(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

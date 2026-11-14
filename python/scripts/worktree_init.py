@@ -2,8 +2,8 @@
 
 A worktree needs no provisioning (ADR 0036): code reads the data root directly, mise
 names the shared caches by absolute path, and ``ensure``, a dependency of every task
-that builds Rust, seeds an empty ``target/`` and sets ``core.hooksPath`` and
-``blame.ignoreRevsFile`` under a lock.
+that builds Rust, makes the scratch folder, seeds an empty ``target/`` and sets
+``core.hooksPath`` and ``blame.ignoreRevsFile`` under a lock.
 ``mise run init`` does the same eagerly with a full report, runs ``uv sync``, and names
 any link an older ``init`` left, which ``reap`` unlinks.  ``mise run
 clean`` reports the per-worktree build outputs and
@@ -357,7 +357,8 @@ CACHEDIR_TAG = (
 
 
 def _ensure(*, report: bool = False) -> int:
-    """Seed an empty target/ and set ``core.hooksPath``; quiet when neither needed doing.
+    """Make the scratch folder, seed an empty target/ and set ``core.hooksPath``; quiet when no
+    seed or hooks change was needed.
 
     Every task that builds Rust depends on this (ADR 0036), so it is the step a new worktree
     used to need ``init`` for; *report* prints every line, as ``init`` does. A failed seed, a
@@ -382,6 +383,12 @@ def _ensure(*, report: bool = False) -> int:
         lines = [
             Line("!", f"ensure: {err}; target/ not seeded, core.hooksPath not checked", news=True)
         ]
+    scratch = parity_layout.scratch_root()
+    try:
+        # Agents write bodies, logs and scripts here; a shell redirect does not make the folder.
+        (REPO_ROOT / scratch).mkdir(parents=True, exist_ok=True)
+    except OSError as err:
+        lines.append(Line("!", f"ensure: {err}; {scratch.as_posix()}/ not made", news=True))
     for line in lines:
         print(line)
     return 0
