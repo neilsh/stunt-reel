@@ -32,7 +32,7 @@ IoU of our actor pixels against capture object pixels inside the actor's boundin
 * it has at least 0.05 % of the capture's rows 0..184 over capture frames 0, 4, 8, ... of the scored frames (`[0::4]`, 25 to 183 frames);
 * at least 85 % of those capture pixels lie where our layer plane is none (0), ocean (1) or terrain (2); an index our render draws mostly on the props layer (3) is scenery and stays out, however large and however well our index agrees;
 * **no actor pixel of ours carries it in any scored frame** (layer 16 and up, every scored frame, not the sample): a missing backdrop index only lowers IoU, one an actor paints hides the actor;
-* where the layer is mostly ground or sea, our index equals the capture's on at least 90 % of those pixels; where it is mostly none (sky), it lies in 227-238, the sky of `CAPTURE_SKY_INDICES` (`crates/stunt-cli/src/parity/mask.rs`; 224 to 226 and 239 are `[Unknown]` in [`palette-and-shading.md`](../formats/concepts/palette-and-shading.md)).
+* where the index is not mostly sky, our index equals the capture's on at least 90 % of those pixels; where it is mostly none (sky), it lies in 227-238, the sky of `CAPTURE_SKY_INDICES` (`crates/stunt-cli/src/parity/mask.rs`; 224 to 226 and 239 are `[Unknown]` in [`palette-and-shading.md`](../formats/concepts/palette-and-shading.md)).
 
 Reproduce one film's bands after `mise run parity`, from the repo root:
 
@@ -83,7 +83,7 @@ for i in keep:
 print(film, bands, f"{100 * cap[keep].sum() / cap.sum():.0f}% of capture pixels")
 ```
 
-The `ctry` row is #485's and predates this rule (it keeps the ground ramp 192-199 and shade greens 161-165); it was not rederived. Zero tolerance is why the sets are small: the first round, which tolerated 0.1 % actor paint and took props-layer masses, put into bands the parachutist's visor on `balloon` (224), the train's 163 and 164 on `traintnl`, tarmac 13/14 on `land` and `bomb`, sky that cockpit canopies paint on `land` and `location`, and singletons that one shape paints (`location` 76 and 205, `intro` 208).
+The `ctry` row is #485's and predates this rule (it keeps the ground ramp 192-199 and shade greens 161-165); it was not rederived. The first round of #501 used a looser rule (actor paint under 0.1 %, or under 0.5 % for a mostly-sky index, and props-layer masses that agreed with ours) and so put in bands indices that our actors paint: `balloon` 224 (0.33 % of actor pixels), `traintnl` 163 and 164 (7 px in 4 frames and 17 px in 14 frames), sky 227-238 on `land` and `location`, and `location` 76 and 205 and `intro` 208 (24 to 43 frames each); which shape paints them was not read out. It also took props-layer indices (13 and 14 on `land`, 14 on `bomb`, 172 to 176 and 193 to 196 on `intro`), which no actor paints but which are scenery, so the props-layer clause drops them. Zero tolerance is why the sets are small.
 
 | Film | `background` | Capture pixels covered | `iou` (every 2nd scored frame) |
 |---|---|---|---|
@@ -99,10 +99,10 @@ The `ctry` row is #485's and predates this rule (it keeps the ground ramp 192-19
 
 * **A band limit, not a render gap.** The bands leave out every index our actors paint anywhere in the film, so those indices count as object pixels wherever they are backdrop. On `traintnl` the tunnel and track props inside the actor's box (visible in the crop of tick 628) are object pixels; `intro` has no sky band at all (our actors paint every index of 227-238 in some frame).
 * **Props-layer scenery.** Tarmac, hills and buildings our render draws on layer 3 are object pixels in the capture, so `land`, `bomb` and `location` read low.
-* **`location`'s omitted bands.** 161, 162, 236 and 237 (our actors paint each in some frame), the props-layer ground and the hillside stay in the object pixels.
-* **A render fault.** `location` shows a black quadrilateral in the foreground that the capture lacks (crop of tick 848; our actor-pixel count is about 7,400 in each sampled frame from tick 805 to 892; [#504](https://github.com/neilsh/stunt-reel/issues/504)). The #501 review attributes it to camera-mount shapes `0x3E57` and `0x3A26`; that was not checked here.
+* **`location`'s omitted indices.** Among them 161, 162 and 227 to 238 (our actors paint each in some frame; 76, 192, 193 and 205 too) and the props-layer ground and hillside stay in the object pixels.
+* **A render fault.** `location` shows a black quadrilateral in the foreground that the capture lacks (crop of tick 848; our actor-pixel count is about 7,400 in each every-2nd scored frame from tick 805 to 892; [#504](https://github.com/neilsh/stunt-reel/issues/504)). The #501 review attributes it to camera-mount shapes `0x3E57` and `0x3A26`; that was not checked here.
 
-Checks by eye: the first-round bands were cropped at `land` tick 540 (tarmac and canopy sky counted as backdrop), `balloon` 595, `traintnl` 628, `bomb` 1750, `intro` 2454 (hill masses in the object pixels) and `location` 4148 (platform and tower objects, sea and hill backdrop); the final bands were not re-cropped. Unsampled indices (a ramp neighbour a film shows in 0.05 % of pixels or less) count as object.
+Checks by eye: the first-round bands were cropped at `land` tick 540, `balloon` 595, `traintnl` 628, `bomb` 1750, `intro` 2454 and `location` 4148; each looked right then (sky, sea and field as backdrop, aircraft, parachutist, platform and tower as objects), and the #501 review found those bands wrong where a crop could not show it, at `land` 540 the tarmac and canopy, at `intro` 2454 props left in the object pixels; the final bands were not re-cropped. An index below 0.05 % of the sampled pixels, or absent from the sampled frames, counts as object.
 
 ## 4. Candidate sweeps
 

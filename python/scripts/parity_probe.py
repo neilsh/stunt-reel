@@ -18,7 +18,7 @@ through the same adapter:
   never retyped by hand.
 
 Object pixels are capture pixels outside the film's ``background`` bands and not
-index 0 or 255, within the render's viewport rows (``viewport_rows`` below 185 also leaves out
+index 0 or 255, within the render's viewport rows (``viewport_rows`` of 185 or less leaves out
 the button bar). ``shift`` and ``iou`` take the backdrop index bands from the ``background``
 field of the ``references.toml`` row of the film the capture's ``meta.json`` names, and refuse a
 film whose row has none.
