@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: "Review a PR diff against AGENTS.md and docs/SPEC.md and post the verdict comment. Use for re-reviews; a first review of a Sonnet- or dsh-built PR is an explicit Opus or Antigravity review."
+description: "Review a PR diff against AGENTS.md and docs/SPEC.md and post the verdict comment. Use for every review by default; the first review of a Sonnet- or dsh-built PR goes to Opus or Antigravity instead."
 model: sonnet
 tools: Read, Grep, Glob, Bash, Write
 ---

@@ -9,12 +9,13 @@ Nothing here is a fact about Stunt Island.
 
 * **The gate, `mise run` and the one-writer rule are in [AGENTS.md](../AGENTS.md#working-economically)**;
   worktree placement and reaping are under [Worktrees](../AGENTS.md#worktrees).
-* **Worktree-per-writer runs about two implementers at once**, each writer in its own
-  worktree; they must be genuinely independent tickets: disjoint files, separately verifiable,
-  no shared file. Each writer branches from the Lead's current `HEAD`, commits only on its own
-  branch, and at most two writers plus the Lead work at once; the Lead integrates in the same
-  session, in dependency order, with the full gate at the tip. The contract is
-  [the retro-hardening plan](../work/2026-10/retro-hardening/retro-hardening-2026-10-25.md).
+* **Worktree-per-writer is an opt-in mode** for at least two genuinely independent tickets:
+  disjoint files, separately verifiable, no shared file. Each writer branches from the Lead's
+  current `HEAD`, commits only on its own branch, and at most two writers plus the Lead work
+  at once; the Lead integrates in the same session, in dependency order, with the full gate at
+  the tip. The contract is [the retro-hardening plan](../work/2026-10/retro-hardening/retro-hardening-2026-10-25.md).
+  Unattended runs use about two implementers the same way, except each opens its own PR; a
+  dependent item starts after its parent merges, or is stacked and armed after it.
 * **Route implementers by fit:** dsh first where the spec is clear and the task needs no
   judgment over evidence (prefix-cache hit rate is not the test); `Sonnet` for other
   well-specified implementation; `Opus` for research, diagnosis, design, and items expected to
@@ -23,12 +24,15 @@ Nothing here is a fact about Stunt Island.
   Hydrogen` / `flash` on Antigravity): surveys, mapping tables, mechanical edits, grading
   against a calibrated rubric, and browser UI; never escalate above the session model or switch
   provider families outside this routing.
-* **Review:** a Sonnet- or dsh-built PR gets its first review from `Opus` or Antigravity,
-  requested explicitly; on #160 a Sonnet review missed four real bugs that an Opus review then
-  found, among them a preflight that built despite `--no-build`. Re-reviews use the `Sonnet`
-  [reviewer agent](../.claude/agents/reviewer.md), or Antigravity when Gemini quota allows,
-  cover only what changed since the last reviewed commit, run once after every finding is
-  fixed, and are skipped for a wording-only fix (reply with the new text).
+* **Review:** dispatch the Sonnet [reviewer agent](../.claude/agents/reviewer.md) by default,
+  for first reviews and re-reviews. The first review of a Sonnet- or dsh-built PR is the
+  exception: Opus or Antigravity, as a general-purpose subagent with `model: opus` and `Opus` as
+  `<Reviewer>` in the brief, or as an Antigravity worker; not the `reviewer` agent with a model
+  override, which names `Sonnet`. On #160 a Sonnet review missed four real bugs that an Opus
+  review then found, among them a preflight that built despite `--no-build`. Re-reviews prefer
+  Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what
+  changed since the last reviewed commit, run once after every finding is fixed, and are skipped
+  for a wording-only fix (reply with the new text).
 * **A Claude implementer ends when its PR opens**, or earlier if its context passes about 150k
   tokens; a fresh worker starts from the PR and the review comment to make the fixes, while dsh
   workers may keep their session. Before asking for review, the implementer scans its own diff
@@ -39,8 +43,9 @@ Nothing here is a fact about Stunt Island.
   PR needs a fix or revert afterwards.
 * **Subagent-driven development reviews once per PR.**
   `superpowers:subagent-driven-development` runs one fresh-context review of the finished branch
-  before the PR (Opus or Antigravity for a Sonnet- or dsh-built branch); a fix wave goes straight
-  to the gate and CodeRabbit. Size each task so its implementer finishes within about 150 turns.
+  before the PR — the `reviewer` agent, or Opus or Antigravity for a Sonnet- or dsh-built
+  branch; a fix wave goes straight to the gate and CodeRabbit. Size each task so its implementer
+  finishes within about 150 turns.
 * **Approvals the user need not give.**
   * A fresh subagent reviews each spec or plan and the author revises it before presenting it,
     so the user sees the revised version.

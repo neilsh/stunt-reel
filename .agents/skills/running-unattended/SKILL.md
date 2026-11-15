@@ -10,13 +10,9 @@ Drains open PRs and `ready-for-agent` issues in queue order without blocking on 
 ## Concurrency and models
 
 - **Implementers by fit:** dsh first where the spec is clear and the task needs no judgment over evidence; Sonnet for other well-specified implementation; Opus for research, diagnosis, design, and items expected to need rounds of hypotheses. Prefix-cache hit rate is not the test.
-- **About two at once:** run two implementers in parallel, each writer in its own worktree; the Lead integrates in dependency order. Never use `/swarm`.
-- **First review:** a PR built by Sonnet or dsh gets its first review from Opus or Antigravity, requested explicitly; on #160 a Sonnet review missed four bugs.
-- **Re-reviews:** the Sonnet [`reviewer`](../../../.claude/agents/reviewer.md) agent, or Antigravity when Gemini quota allows; they cover only what changed since the last reviewed commit and run once, after every finding is fixed. A wording-only fix gets no re-review: reply to the finding with the new text.
-- **Worker lifetime:** a Claude implementer ends when its PR opens, or earlier past about 150k tokens of context; a fresh worker makes the fixes from the PR and the review comment. dsh workers may keep their session.
-- **Prototypes:** stop once measured — no PR polish, review or docs until one is chosen; run parallel prototypes only for decisions hard to undo.
-- **Before review:** the implementer scans its own diff for the `AGENTS.md` § 3 rule 5 words and checks every quoted figure against its source.
-- **Cost (optional):** compare with `ccusage` blocks and sessions joined to roles; the guard is that no merged PR needs a fix or revert afterwards.
+- **About two at once:** run two items in parallel only when they touch different files, each writer in its own worktree; if one depends on the other, start it after its parent merges, or stack it and arm it after the parent merges. Never use `/swarm`.
+- **Reviews:** the Sonnet [`reviewer`](../../../.claude/agents/reviewer.md) agent by default, for first reviews and re-reviews. The first review of a Sonnet- or dsh-built PR goes to Opus or Antigravity instead, because on #160 a Sonnet review missed four bugs: request it as a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>` in the brief, or as an Antigravity worker, not as a `reviewer` model override, which names `Sonnet`. A re-review prefers Antigravity when Gemini quota allows, otherwise the `reviewer` agent. A re-review covers only what changed since the last reviewed commit, runs once after every finding is fixed, and a wording-only fix gets none: reply with the new text.
+- **Elsewhere:** worker lifetime, prototype bounds, the pre-review diff scan and optional `ccusage` measuring are in [`loop-and-bounds.md`](loop-and-bounds.md) and [`pr-and-filing.md`](pr-and-filing.md).
 
 ## Workflow
 
@@ -26,7 +22,7 @@ Read [`loop-and-bounds.md`](loop-and-bounds.md) and [`pr-and-filing.md`](pr-and-
 - [ ] 1. Check clock cutoff and free disk space; tidy with reap/clean (loop-and-bounds.md)
 - [ ] 2. Build or refresh the queue with mise run queue (loop-and-bounds.md)
 - [ ] 3. Claim up to two items (one per writer worktree), cap at 3 hypothesis rounds each, and ship any clean gate-passing slice while filing blocked pieces as needs-triage (loop-and-bounds.md)
-- [ ] 4. Run the first review (Opus or Antigravity) and re-reviews (Sonnet) at HEAD, triage CI and CodeRabbit threads, and arm squash auto-merge under the merge bar (pr-and-filing.md)
+- [ ] 4. Run the reviews at HEAD (the `reviewer` by default; a Sonnet/dsh-built first review goes to Opus or Antigravity; a re-review to Antigravity when Gemini quota allows, otherwise the `reviewer`), triage CI and CodeRabbit threads, and arm squash auto-merge under the merge bar (pr-and-filing.md)
 - [ ] 5. File out-of-scope or split issues via build/scratch/*.md and --body-file (pr-and-filing.md)
 - [ ] 6. At empty queue, deadline, or < 5 GB free, run Shutdown and print the report (loop-and-bounds.md)
 ```
