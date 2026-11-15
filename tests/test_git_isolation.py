@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 GIT = shutil.which("git")
 
 #: A test whose fixture runs ``git init`` and ``git config user.name`` in its scratch directory.
-_SCRATCH_REPO_TEST = "tests/test_check_commit_msg.py::test_the_script_checks_a_commit_range"
+_SCRATCH_REPO_TEST = "tests/test_check_commit_msg.py::test_the_hook_reads_the_staged_paths"
 
 
 @pytest.mark.skipif(GIT is None, reason="git is not on PATH")

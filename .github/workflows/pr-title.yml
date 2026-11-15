@@ -1,0 +1,42 @@
+name: PR title
+
+# A pull request's title becomes its squash commit's subject on main, so it is checked as a
+# Conventional Commit (#577's spec, section 2). This is its own workflow, not a job in ci.yml:
+# ci.yml's pull_request trigger and cancel-in-progress cover the whole workflow, so adding
+# `edited` there would re-run the quality gate on every title or body edit and cancel a gate
+# in flight. Naming `types` replaces GitHub's defaults, so all four are listed.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+# `edited` fires often; only the newest title matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  title:
+    name: PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # As in ci.yml: the first `mise run` installs only install_args below, not every tool.
+      MISE_AUTO_INSTALL: "false"
+      # As in ci.yml: read tool releases from the GitHub API, because mise-versions.jdx.dev
+      # answered 502 and failed jobs whose tool cache missed.
+      MISE_USE_VERSIONS_HOST: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: python uv
+      - name: Conventional Commit title
+        # The title reaches the shell through env, never by expression interpolation into the
+        # command line, so backticks and `$(...)` in it stay text. The `=` form keeps a title
+        # starting with `-` from reading as a flag.
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: mise run commit-msg-check -- --subject="$TITLE"

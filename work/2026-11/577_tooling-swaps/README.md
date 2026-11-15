@@ -2,7 +2,7 @@
 title: "Retire the CRLF hook, CI's commit-range check and the GPU watchdog script"
 started: 2026-11-15
 issue: 577
-outcome: ""
+outcome: "Three swaps landed: a 60 s per-test hang deadline inside the gpu test binary (10x the 4.7 s lavapipe run, floor 60 s) replaced watch_render_test.py (#582); crlf-check was deleted (#583); CI checks the pull request title instead of every commit (#584)."
 ---
 
 # Retire the CRLF hook, CI's commit-range check and the GPU watchdog script
