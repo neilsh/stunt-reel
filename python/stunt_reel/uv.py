@@ -49,13 +49,13 @@ def uv_problem(pin: str, found: str | None, version: str, every: Sequence[str]) 
 def uv_shadowed_problem(pin: str, found: str | None, every: Sequence[str]) -> str | None:
     """Why a uv outside mise's install, besides *found*, would fail the pin when mise's is gone.
 
-    ``None`` when every uv further along PATH either sits under mise's install or runs *pin*.
-    Only init and ensure ask: the gate checks the uv first on PATH, which every step inherits.
+    ``None`` when every uv further along PATH sits under mise's install or its shim directory,
+    which resolves the pin, or runs *pin*. Only init and ensure ask: the gate checks the uv
+    first on PATH, which every step inherits.
     """
-    root = _mise_uv_root(found)
     stale: list[tuple[str, str]] = []
     for path in every:
-        if path == found or (root is not None and _under(path, root)):
+        if path == found or _mise_uv(path):
             continue
         running = _version(path)
         if running != pin:
@@ -72,23 +72,45 @@ def uv_shadowed_problem(pin: str, found: str | None, every: Sequence[str]) -> st
 
 def _version(path: str) -> str:
     """The version word ``path --version`` prints, or an empty string when it prints none."""
-    proc = subprocess.run(  # noqa: S603 - the resolved uv, fixed arguments
-        [path, "--version"], capture_output=True, text=True, check=False
-    )
+    try:
+        proc = subprocess.run(  # noqa: S603 - the resolved uv, fixed arguments
+            [path, "--version"], capture_output=True, text=True, check=False, timeout=5
+        )
+    except subprocess.TimeoutExpired:
+        return ""
     words = proc.stdout.split()
     return words[1] if len(words) >= 2 else proc.stdout.strip()
 
 
-def _mise_uv_root(found: str | None) -> Path | None:
-    """Mise's uv install directory, read off the first uv on PATH, or None when it is not mise's."""
-    if found is None:
+def _mise_data_dir(path: str | None) -> Path | None:
+    """Mise's data directory read off *path*: the ancestor of ``installs/uv``, or a ``shims`` folder beside one."""
+    if path is None:
         return None
-    parts = Path(found).parts
+    parts = Path(path).parts
     folders = [part.lower() for part in parts]
     for index in range(len(parts) - 1):
         if folders[index] == "installs" and folders[index + 1] == "uv":
-            return Path(*parts[: index + 2])
+            return Path(*parts[:index])
+    shims = Path(path).parent
+    if shims.name.lower() == "shims" and (shims.parent / "installs" / "uv").is_dir():
+        return shims.parent
     return None
+
+
+def _mise_shim(path: str | None) -> bool:
+    """Whether *path* is a mise shim, which resolves the pinned uv rather than being it."""
+    if path is None:
+        return False
+    shims = Path(path).parent
+    return shims.name.lower() == "shims" and (shims.parent / "installs" / "uv").is_dir()
+
+
+def _mise_uv(path: str) -> bool:
+    """Whether *path* is a uv mise manages: under its ``installs/uv`` or its ``shims`` folder."""
+    data = _mise_data_dir(path)
+    return data is not None and (
+        _under(path, data / "installs" / "uv") or _under(path, data / "shims")
+    )
 
 
 def _under(path: str, root: Path) -> bool:
@@ -123,10 +145,13 @@ def check_uv(mise_toml: Path, *, shadowed: bool = False) -> str | None:
     found = shutil.which("uv")
     version = ""
     if found is not None:
-        proc = subprocess.run(  # noqa: S603 - the resolved uv, fixed arguments
-            [found, "--version"], capture_output=True, text=True, check=False
-        )
-        version = proc.stdout
+        if _mise_shim(found):
+            version = f"uv {pin}"
+        else:
+            proc = subprocess.run(  # noqa: S603 - the resolved uv, fixed arguments
+                [found, "--version"], capture_output=True, text=True, check=False
+            )
+            version = proc.stdout
     problem = uv_problem(pin, found, version, every)
     if problem is not None or not shadowed:
         return problem

@@ -102,6 +102,22 @@ def _fake_uv(folder: Path, version: str) -> Path:
     return path
 
 
+def _recording_uv(folder: Path, version: str, log: Path) -> Path:
+    """An executable uv that records each run in *log* and prints *version*."""
+    folder.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        path = folder / "uv.cmd"
+        path.write_text(f'@echo called>>"{log}"\r\n@echo uv {version} (fake)\r\n', encoding="ascii")
+    else:
+        path = folder / "uv"
+        path.write_text(
+            f"#!/bin/sh\nprintf 'called\\n' >> '{log}'\nprintf 'uv {version} (fake)\\n'\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+    return path
+
+
 def test_a_stale_uv_outside_mise_is_named_when_the_pinned_uv_is_first(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -130,6 +146,52 @@ def test_a_matching_uv_outside_mise_is_quiet(
     mise.write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
 
     assert uv.check_uv(mise, shadowed=True) is None
+
+
+def test_a_mise_shim_first_on_path_is_not_spawned_or_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A shim resolves the pin, so checking it must not start mise through it."""
+    data = tmp_path / "mise"
+    log = tmp_path / "shim-calls.log"
+    shim = _recording_uv(data / "shims", "0.10.9", log)
+    _fake_uv(data / "installs" / "uv" / "0.13.1", "0.13.1")
+    monkeypatch.setenv("PATH", str(shim.parent))
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
+
+    assert uv.check_uv(mise, shadowed=True) is None
+    assert not log.exists()
+
+
+def test_a_mise_shim_later_on_path_is_skipped_without_spawning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A shim further along PATH is not a stale uv to spawn and name."""
+    data = tmp_path / "mise"
+    log = tmp_path / "shim-calls.log"
+    shim = _recording_uv(data / "shims", "0.10.9", log)
+    _fake_uv(data / "installs" / "uv" / "0.13.1", "0.13.1")
+    first = _fake_uv(tmp_path / "local" / "bin", "0.13.1")
+    monkeypatch.setenv("PATH", os.pathsep.join((str(first.parent), str(shim.parent))))
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
+
+    assert uv.check_uv(mise, shadowed=True) is None
+    assert not log.exists()
+
+
+def test_a_uv_version_that_times_out_is_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A uv that hangs on --version is unknown, not a hang in the gate."""
+    calls: list[object] = []
+
+    def hang(*_args: object, **kwargs: object) -> None:
+        calls.append(kwargs.get("timeout"))
+        raise subprocess.TimeoutExpired([], 5)
+
+    monkeypatch.setattr(subprocess, "run", hang)
+    assert uv._version("/fake/uv") == ""
+    assert calls == [5]
 
 
 def test_a_hung_command_times_out_with_a_note() -> None:

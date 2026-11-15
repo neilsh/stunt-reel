@@ -160,6 +160,10 @@ Claude Code looks for project skills in `.claude/skills/`, not `.agents/skills/`
 without symlink support (`core.symlinks=false`, common on Windows without Developer Mode) gets a
 one-line text file there instead, and Claude Code sees no project skills.
 
+Python one-offs go in a file here too, because a Bash tool's heredoc (`python - <<'EOF'`) loses
+backslashes and quotes through its shell; write the script to `build/scratch/<name>.py` and run
+it.
+
 Not yet documented: its timeout behaviour, and its sandboxing beyond the integrity label below.
 Fill that in from observation, not from vendor documentation — this page records what we have seen.
 
@@ -250,7 +254,7 @@ under DeepSeek Harness (2026-10-25), Claude Code (2026-10-31) and Antigravity (2
 * **Commit messages from a file.** A here-string piped to `git commit -F -` does not reach git.
   Write the message with `WriteAllText` above and run `git commit -F <file>`.
 * **Issue and PR bodies from a file.** Double-quoted PowerShell strings (`"..."` and `@"..."@`) treat backticks (`` ` ``) as escape characters and corrupt Markdown code spans. Write the body to `build/scratch/<name>.md` (with the harness's file-write tool, or `WriteAllText` with a single-quoted `@'...'@` string) and pass `--body-file <file>` to `gh issue` and `gh pr`.
-* **Python one-offs go in a file.** A nested `python -c "..."` loses backslashes and quotes through PowerShell 5.1; write the script to `build/scratch/<name>.py` with the file-write tool and run `python build/scratch/<name>.py`. A Bash tool's heredoc (`python - <<'EOF'`) loses them through its shell too, so write the file there as well. A long JSON request body for `gh api` goes in a file with `gh api --input <file>`; a long jq filter has no from-file form, so ask for the fields with `--json` and filter with `ConvertFrom-Json` below.
+* **Python one-offs go in a file.** A nested `python -c "..."` loses backslashes and quotes through PowerShell 5.1; write the script to `build/scratch/<name>.py` with the file-write tool and run `python build/scratch/<name>.py`. A long JSON request body for `gh api` goes in a file with `gh api --input <file>`; a long jq filter has no from-file form, so ask for the fields with `--json` and filter with `ConvertFrom-Json` below.
 * **`;`, not `&&`.** 5.1 rejects `cmd1 && cmd2` with a `ParserError`; chain with `;`, and put a step that must stop on failure in its own call.
 * **Here-strings keep their text.** `@'` must end its line (`$x = @'`) and `'@` must start one, at column 0; the single-quoted form passes text unchanged, while `@"..."@` expands `$` and backtick escapes.
 * **JSON written with a BOM.** 5.1's `-Encoding UTF8` writes a BOM, which Python's `json` rejects (`Unexpected UTF-8 BOM`); read such a file with `encoding="utf-8-sig"`, which strips it, or write the JSON from Python.
