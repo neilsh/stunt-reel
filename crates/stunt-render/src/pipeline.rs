@@ -202,6 +202,11 @@ impl RenderPipelines {
         } else {
             "fs_main"
         };
+        let sky_fragment_entry = if plane_format.is_some() {
+            "fs_sky_plane"
+        } else {
+            "fs_sky"
+        };
         let model_bind_group_layout = Self::create_model_bind_group_layout(device);
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -216,21 +221,15 @@ impl RenderPipelines {
 
         let shader_module =
             device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
-        let vertex_layout = Self::vertex_buffer_layout();
-        let vertex_buffers = [Some(vertex_layout)];
+        let vertex_buffers = [Some(Self::vertex_buffer_layout())];
+        let targets = color_targets(color_format, plane_format);
 
-        // Base geometry depth stencil state: normal depth test, zero bias
-        let base_depth_stencil = wgpu::DepthStencilState {
-            format: depth_format,
-            depth_write_enabled: Some(true),
-            depth_compare: Some(wgpu::CompareFunction::Less),
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState {
-                constant: 0,
-                slope_scale: 0.0,
-                clamp: 0.0,
-            },
-        };
+        let base_depth_stencil = depth_stencil(
+            depth_format,
+            true,
+            wgpu::CompareFunction::Less,
+            wgpu::DepthBiasState::default(),
+        );
 
         // Decal geometry depth stencil state: Invariant [I5] hardware depth bias.
         // A decal is coplanar with the surface it sits on, so it has to be nudged toward the
@@ -240,27 +239,18 @@ impl RenderPipelines {
         // (work/2026-10/parity-log/log.md, 2026-10-23). Decals write no depth, so each is
         // tested against the base geometry's depth, not other decals', and a later coplanar
         // decal covers an earlier one, as PLAYONE's painter does.
-        let decal_depth_stencil = wgpu::DepthStencilState {
-            format: depth_format,
-            depth_write_enabled: Some(false),
-            depth_compare: Some(wgpu::CompareFunction::LessEqual),
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState {
+        let decal_depth_stencil = depth_stencil(
+            depth_format,
+            false,
+            wgpu::CompareFunction::LessEqual,
+            wgpu::DepthBiasState {
                 constant: -2,
                 slope_scale: -2.0,
                 clamp: 0.0,
             },
-        };
+        );
 
-        let primitive = wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: None,
-            unclipped_depth: false,
-            polygon_mode: wgpu::PolygonMode::Fill,
-            conservative: false,
-        };
+        let primitive = primitive_state(wgpu::PrimitiveTopology::TriangleList);
 
         // PLAYONE culls back faces. The models wind clockwise for their outward faces, so the
         // `Ccw` default treated every interior wall as front-facing; culling the true back faces
@@ -273,180 +263,83 @@ impl RenderPipelines {
             ..primitive
         };
 
-        let mut targets = vec![Some(wgpu::ColorTargetState {
-            format: color_format,
-            blend: None, // Mode 13h opaque flat rendering
-            write_mask: wgpu::ColorWrites::ALL,
-        })];
-        if let Some(format) = plane_format {
-            targets.push(Some(wgpu::ColorTargetState {
-                format,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            }));
-        }
-
         let ground_depth_stencil = wgpu::DepthStencilState {
             depth_compare: Some(wgpu::CompareFunction::Always),
             ..base_depth_stencil.clone()
         };
-
-        let ground_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("stunt_mode13h_ground_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader_module,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &vertex_buffers,
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
-                entry_point: Some(fragment_entry),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &targets,
-            }),
-            primitive: model_primitive,
-            depth_stencil: Some(ground_depth_stencil.clone()),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
-        let base_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("stunt_mode13h_base_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader_module,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &vertex_buffers,
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
-                entry_point: Some(fragment_entry),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &targets,
-            }),
-            primitive: model_primitive,
-            depth_stencil: Some(base_depth_stencil.clone()),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
-        let decal_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("stunt_mode13h_decal_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader_module,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &vertex_buffers,
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
-                entry_point: Some(fragment_entry),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &targets,
-            }),
-            primitive: model_primitive,
-            depth_stencil: Some(decal_depth_stencil.clone()),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-
-        let edge_primitive = wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::LineList,
-            ..primitive
+        let edge_decal_depth_stencil = wgpu::DepthStencilState {
+            bias: wgpu::DepthBiasState::default(),
+            ..decal_depth_stencil.clone()
         };
-        let edge_pipeline_with = |depth_stencil: wgpu::DepthStencilState, label: &str| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(label),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader_module,
-                    entry_point: Some("vs_main"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    buffers: &vertex_buffers,
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader_module,
-                    entry_point: Some(fragment_entry),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    targets: &targets,
-                }),
-                primitive: edge_primitive,
-                depth_stencil: Some(depth_stencil),
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
-            })
-        };
-        let ground_edge_pipeline =
-            edge_pipeline_with(ground_depth_stencil, "stunt_ground_edge_pipeline");
-        let edge_pipeline = edge_pipeline_with(base_depth_stencil, "stunt_edge_pipeline");
-        let edge_decal_pipeline = edge_pipeline_with(
-            wgpu::DepthStencilState {
-                bias: wgpu::DepthBiasState::default(),
-                ..decal_depth_stencil.clone()
-            },
-            "stunt_edge_decal_pipeline",
+        // The bars and the sky ignore depth entirely; both must still match the pass's format.
+        let overlay_depth_stencil = depth_stencil(
+            depth_format,
+            false,
+            wgpu::CompareFunction::Always,
+            wgpu::DepthBiasState::default(),
         );
 
-        let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("stunt_mode13h_shadow_pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader_module,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &vertex_buffers,
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
-                entry_point: Some(fragment_entry),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &targets,
-            }),
+        let scene_pipeline = |label: &str,
+                              primitive: wgpu::PrimitiveState,
+                              depth_stencil: wgpu::DepthStencilState| {
+            create_pipeline(
+                device,
+                label,
+                Some(&pipeline_layout),
+                vertex_state(&shader_module, "vs_main", &vertex_buffers),
+                fragment_state(&shader_module, fragment_entry, &targets),
+                primitive,
+                depth_stencil,
+            )
+        };
+
+        let ground_pipeline = scene_pipeline(
+            "stunt_mode13h_ground_pipeline",
+            model_primitive,
+            ground_depth_stencil.clone(),
+        );
+        let base_pipeline = scene_pipeline(
+            "stunt_mode13h_base_pipeline",
+            model_primitive,
+            base_depth_stencil.clone(),
+        );
+        let decal_pipeline = scene_pipeline(
+            "stunt_mode13h_decal_pipeline",
+            model_primitive,
+            decal_depth_stencil.clone(),
+        );
+
+        let edge_primitive = primitive_state(wgpu::PrimitiveTopology::LineList);
+        let ground_edge_pipeline = scene_pipeline(
+            "stunt_ground_edge_pipeline",
+            edge_primitive,
+            ground_depth_stencil,
+        );
+        let edge_pipeline =
+            scene_pipeline("stunt_edge_pipeline", edge_primitive, base_depth_stencil);
+        let edge_decal_pipeline = scene_pipeline(
+            "stunt_edge_decal_pipeline",
+            edge_primitive,
+            edge_decal_depth_stencil,
+        );
+
+        let shadow_pipeline = scene_pipeline(
+            "stunt_mode13h_shadow_pipeline",
             primitive,
-            depth_stencil: Some(decal_depth_stencil),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+            decal_depth_stencil,
+        );
 
         // Letterbox bars: no vertex data, no bind groups, constant black output.
         let bar_shader = device.create_shader_module(wgpu::include_wgsl!("shaders/bars.wgsl"));
-        let bar_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("stunt_letterbox_bar_pipeline"),
-            layout: None,
-            vertex: wgpu::VertexState {
-                module: &bar_shader,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &bar_shader,
-                entry_point: Some(fragment_entry),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &targets,
-            }),
+        let bar_pipeline = create_pipeline(
+            device,
+            "stunt_letterbox_bar_pipeline",
+            None,
+            vertex_state(&bar_shader, "vs_main", &[]),
+            fragment_state(&bar_shader, fragment_entry, &targets),
             primitive,
-            // Must match the render pass attachment format; bars ignore depth entirely.
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth_format,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::Always),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+            overlay_depth_stencil.clone(),
+        );
 
         // Sky: first draw of the pass, ignores and never writes depth. It needs no model matrix.
         let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -454,37 +347,15 @@ impl RenderPipelines {
             bind_group_layouts: &[Some(camera_layout), Some(palette_layout)],
             immediate_size: 0,
         });
-        let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("stunt_sky_pipeline"),
-            layout: Some(&sky_layout),
-            vertex: wgpu::VertexState {
-                module: &shader_module,
-                entry_point: Some("vs_sky"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
-                entry_point: Some(if plane_format.is_some() {
-                    "fs_sky_plane"
-                } else {
-                    "fs_sky"
-                }),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &targets,
-            }),
+        let sky_pipeline = create_pipeline(
+            device,
+            "stunt_sky_pipeline",
+            Some(&sky_layout),
+            vertex_state(&shader_module, "vs_sky", &[]),
+            fragment_state(&shader_module, sky_fragment_entry, &targets),
             primitive,
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth_format,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::Always),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+            overlay_depth_stencil,
+        );
 
         Self {
             ground_pipeline,
@@ -499,6 +370,110 @@ impl RenderPipelines {
             model_bind_group_layout,
         }
     }
+}
+
+/// The colour target of every pipeline: the colour attachment, then the plane when the pass
+/// carries one. Mode 13h flat rendering writes opaque colours, so neither state blends.
+fn color_targets(
+    color_format: wgpu::TextureFormat,
+    plane_format: Option<wgpu::TextureFormat>,
+) -> Vec<Option<wgpu::ColorTargetState>> {
+    let mut targets = vec![Some(wgpu::ColorTargetState {
+        format: color_format,
+        blend: None,
+        write_mask: wgpu::ColorWrites::ALL,
+    })];
+    if let Some(format) = plane_format {
+        targets.push(Some(wgpu::ColorTargetState {
+            format,
+            blend: None,
+            write_mask: wgpu::ColorWrites::ALL,
+        }));
+    }
+    targets
+}
+
+/// A depth-stencil state over `format` that writes depth when `depth_write_enabled` and
+/// compares with `depth_compare`, biased by `bias`.
+fn depth_stencil(
+    format: wgpu::TextureFormat,
+    depth_write_enabled: bool,
+    depth_compare: wgpu::CompareFunction,
+    bias: wgpu::DepthBiasState,
+) -> wgpu::DepthStencilState {
+    wgpu::DepthStencilState {
+        format,
+        depth_write_enabled: Some(depth_write_enabled),
+        depth_compare: Some(depth_compare),
+        stencil: wgpu::StencilState::default(),
+        bias,
+    }
+}
+
+/// The primitive state of *topology* with counter-clockwise front faces and no culling, the
+/// base each pipeline's variant starts from.
+fn primitive_state(topology: wgpu::PrimitiveTopology) -> wgpu::PrimitiveState {
+    wgpu::PrimitiveState {
+        topology,
+        strip_index_format: None,
+        front_face: wgpu::FrontFace::Ccw,
+        cull_mode: None,
+        unclipped_depth: false,
+        polygon_mode: wgpu::PolygonMode::Fill,
+        conservative: false,
+    }
+}
+
+/// The vertex stage of `entry_point` in `shader` over `buffers`.
+fn vertex_state<'a>(
+    shader: &'a wgpu::ShaderModule,
+    entry_point: &'a str,
+    buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
+) -> wgpu::VertexState<'a> {
+    wgpu::VertexState {
+        module: shader,
+        entry_point: Some(entry_point),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        buffers,
+    }
+}
+
+/// The fragment stage of `entry_point` in `shader` writing `targets`.
+fn fragment_state<'a>(
+    shader: &'a wgpu::ShaderModule,
+    entry_point: &'a str,
+    targets: &'a [Option<wgpu::ColorTargetState>],
+) -> wgpu::FragmentState<'a> {
+    wgpu::FragmentState {
+        module: shader,
+        entry_point: Some(entry_point),
+        compilation_options: wgpu::PipelineCompilationOptions::default(),
+        targets,
+    }
+}
+
+/// Creates one render pipeline over *layout*, with the multisample, multiview and cache defaults
+/// every pipeline here shares.
+fn create_pipeline<'a>(
+    device: &wgpu::Device,
+    label: &'a str,
+    layout: Option<&'a wgpu::PipelineLayout>,
+    vertex: wgpu::VertexState<'a>,
+    fragment: wgpu::FragmentState<'a>,
+    primitive: wgpu::PrimitiveState,
+    depth_stencil: wgpu::DepthStencilState,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(label),
+        layout,
+        vertex,
+        fragment: Some(fragment),
+        primitive,
+        depth_stencil: Some(depth_stencil),
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 #[cfg(test)]

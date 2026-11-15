@@ -31,7 +31,7 @@ where, and did the walk stop early? Its tests go through that question only.
 
 - **Entry point.** `build_world(inputs: &WorldInputs, shapes: &HashMap<u16, SodModelIr>) ->
   Option<World>` (l.305) is the only public entry. Its only non-test caller is
-  [`scene.rs:393`](../../../crates/stunt-core/src/scene.rs).
+  [`scene/film.rs`](../../../crates/stunt-core/src/scene/film.rs).
 - **Order inside `build_world`:**
   1. `available_models` is built from `shapes.keys()` (l.321).
   2. `near` is built from `inputs.view_eyes` with `path_distance`, `lod_threshold` and `LOD_SCALE`
