@@ -3,7 +3,7 @@ summary: "The 107-opcode `.SOD` table ([FMT-SOD-OPCODES]) dispatched as multiple
 ---
 # `.SOD` Opcode Reference
 
-This is the opcode-level companion to [`sod.md`](sod.md): the 107-opcode table, the semantics established for individual opcodes, and the community readings of opcodes not yet traced in the binary. The general VM model (registers, accumulator, transform stack, dispatch) is lab-notebook evidence in [`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md); the implementation queue for unhandled opcodes is [`sod-opcode-coverage.md`](sod-opcode-coverage.md). Byte layouts of the container are in [`sod.ksy`](sod.ksy).
+This is the opcode-level companion to [`sod.md`](sod.md): the 107-opcode table, the semantics established for individual opcodes, and the community readings of opcodes not yet traced in the binary. The general VM model (registers, accumulator, transform stack) is lab-notebook evidence in [`playone-exe/sod-vm-execution.md`](../playone-exe/sod-vm-execution.md), and dispatch in [`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md); the implementation queue for unhandled opcodes is [`sod-opcode-coverage.md`](sod-opcode-coverage.md). Byte layouts of the container are in [`sod.ksy`](sod.ksy).
 
 ---
 
@@ -43,7 +43,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **27** | `0x00F3` | 243 | `OP_POLYZ` | `count: u16, ...regs` | Depth-sorted flat polygon emission |
 | **28** | `0x00FC` | 252 | `OP_SPHERE` | `center_reg: u16, radius: u16` | Procedural sphere primitive; `radius` is in register (vertex) units. Tree crowns use it: 19 per tree in `CTRY.ALL` `0x0504`/`0x0507` (1,399 and 933 placements), radius 600 to 1,100 at scale index 10 (crowns of about 1.2 to 2.1 m). `FreeFlight/src/siobj.cpp` leaves it unimplemented. The Rust VM draws a 20-triangle icosahedron at 0.92 of the radius (80 triangles would give a 700 MB vertex buffer on `CTRY.FLM`, over wgpu's 256 MiB); crowns match the capture's position and colour but are faceted (`[Bounded Observation]`; found 2026-10-22 at `16a3170`, [parity log](../../work/2026-10/parity-log/log.md)) |
 | **29** | `0x0105` | 261 | `OP_DISC` | `center_reg: u16, radius: u16` | Flat circular disc primitive |
-| **30** | `0x010E` | 270 | `OP_PERFDISK` | `center_reg: u16, radius: u16, axis_reg: u16` | Two-sided disc of `radius` about `center_reg`, normal `center − axis` (handler `0xA040`, [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators)) |
+| **30** | `0x010E` | 270 | `OP_PERFDISK` | `center_reg: u16, radius: u16, axis_reg: u16` | Two-sided disc of `radius` about `center_reg`, normal `center − axis` (handler `0xA040`, [`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)) |
 | **31** | `0x0117` | 279 | `OP_SIDE` | `...` | Cylindrical side primitive |
 | **32** | `0x0120` | 288 | `OP_INITDISC` | `...` | Disc rasterizer initialization |
 | **33** | `0x0129` | 297 | `OP_FILLCOL` | `color: u16` | Set active polygon fill color index (`OP_COLOR`) |
@@ -51,7 +51,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **35** | `0x013B` | 315 | `OP_MISTY` | `...` | Distance fog / atmospheric haze attenuation |
 | **36** | `0x0144` | 324 | `OP_SHADE1` | `normal_reg: u16, ramp: u16` | Front-facing directional lighting ramp |
 | **37** | `0x014D` | 333 | `OP_SHADE2` | `normal_reg: u16, ramp: u16` | Back-facing directional lighting ramp |
-| **38** | `0x0156` | 342 | `OP_SHADES` | `count: u16, ...triplets` | Batch upload lighting normal vectors: each writes the shade word `s = -clamp((N . L) >> 16, +-0x3FFF)` (`PLAYONE` `0x9481`) that the `SHADE*` and `GVPOLY*` opcodes read. Applied with the world light `L = (99, 32766, -17)` in the raw model frame (`[Supported Inference]`, [`sod-vm.md` § 8.5](../playone-exe/sod-vm.md#85-polygon-colour-at-shade-time)); `siobj.cpp` discards them |
+| **38** | `0x0156` | 342 | `OP_SHADES` | `count: u16, ...triplets` | Batch upload lighting normal vectors: each writes the shade word `s = -clamp((N . L) >> 16, +-0x3FFF)` (`PLAYONE` `0x9481`) that the `SHADE*` and `GVPOLY*` opcodes read. Applied with the world light `L = (99, 32766, -17)` in the raw model frame (`[Supported Inference]`, [`sod-vm-execution.md` § 8.5](../playone-exe/sod-vm-execution.md#85-polygon-colour-at-shade-time)); `siobj.cpp` discards them |
 | **39** | `0x015F` | 351 | `OP_GOURAUD` | `...` | Smooth Gouraud-shaded polygon |
 | **40** | `0x0168` | 360 | `OP_SHADEPOLY`| `count: u16, regs..., (ramp << 8) \| count: u16, shades...` | Normal-lit shaded polygon (`OP_GVPOLY`) |
 | **41** | `0x0171` | 369 | `OP_AIRBRUSH` | `...` | Dithered / airbrushed soft shadow polygon |
@@ -90,7 +90,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **74** | `0x029A` | 666 | `OP_SUBSL` | `...` | Slicing plane subtraction |
 | **75** | `0x02A3` | 675 | `OP_ADDSL` | `...` | Slicing plane addition |
 | **76** | `0x02AC` | 684 | `OP_DUPSL` | `...` | Duplicate slicing plane |
-| **77** | `0x02B5` | 693 | `OP_SHADE16` | `norm: u16, ramp: u16` | 16-level directional lighting ramp sample: sets the polygon colour from the ramp `base` and the per-normal shade `OP_SHADES` wrote (`[Hypothesis]`, [`sod-vm.md` § 8.5](../playone-exe/sod-vm.md#85-polygon-colour-at-shade-time)) |
+| **77** | `0x02B5` | 693 | `OP_SHADE16` | `norm: u16, ramp: u16` | 16-level directional lighting ramp sample: sets the polygon colour from the ramp `base` and the per-normal shade `OP_SHADES` wrote (`[Hypothesis]`, [`sod-vm-execution.md` § 8.5](../playone-exe/sod-vm-execution.md#85-polygon-colour-at-shade-time)) |
 | **78** | `0x02BE` | 702 | `OP_GVPOLY16` | `count: u16, regs..., (ramp << 8) \| count: u16, shades...` | 16-level shaded polygon emission |
 | **79** | `0x02C7` | 711 | `OP_SHADE216` | `norm: u16, ramp: u16` | 16-level back-facing lighting ramp sample |
 | **80** | `0x02D0` | 720 | `OP_DOT` | `reg_off: u16` | Draw single point / pixel dot at `regs[reg]` |
@@ -101,7 +101,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **85** | `0x02FD` | 765 | `OP_BVGT` | `reg: u16, val: i16, rel_off: i16` | Branch if vector coordinate is greater than threshold |
 | **86** | `0x0306` | 774 | `OP_WIDELINE` | `p1: u16, p2: u16, width: u16` | Thick anti-aliased or multi-pixel wire line |
 | **87** | `0x030F` | 783 | `OP_SPLITQUAD`| `...` | Split quadrilateral into two triangles |
-| **88** | `0x0318` | 792 | `OP_BZLT` | `reg_off: u16, val: i16, size: u16` | Run the next `size` bytes, counted from the size word, only while `regs[reg]`'s view depth, halved and lens-shifted as the `SP_1NODE` gate's, exceeds `val` ([`sod-vm.md` § 8.6](../playone-exe/sod-vm.md#86-facing-flags-op_rej-and-op_ifvis)) |
+| **88** | `0x0318` | 792 | `OP_BZLT` | `reg_off: u16, val: i16, size: u16` | Run the next `size` bytes, counted from the size word, only while `regs[reg]`'s view depth, halved and lens-shifted as the `SP_1NODE` gate's, exceeds `val` ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)) |
 | **89** | `0x0321` | 801 | `OP_SCALEIT` | `scale_idx: u16` | Dynamic runtime scale modification |
 | **90** | `0x032A` | 810 | `OP_SPRITE` | `sprite_id: u16, reg: u16` | Billboarding decal sprite billboard |
 | **91** | `0x0333` | 819 | `OP_TEXTURE` | `tex_id: u16, ...coords` | Texture-mapped quad polygon |
@@ -129,7 +129,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 
 ### 2.1 Procedural Primitive Generator (`OP_IPG`, 0x0063)
 
-`[Established]` — handlers `0x965F` and the subtype table at `work:0x1954`, read statically; corner orders and signs in [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators).
+`[Established]` — handlers `0x965F` and the subtype table at `work:0x1954`, read statically; corner orders and signs in [`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators).
 
 Writes vertices centred on the local origin:
 - **Type 0 (Cube / Cuboid):** Operands `dx: i16`, `dy: i16`, `dz: i16`, `start_reg: u16`. Emits 8 vertices spanning $[\pm dx, \pm dy, \pm dz]$ into `regs[start .. start + 7]`.
@@ -183,18 +183,18 @@ OP_ANIMATE (0x01F8)
 
 ### 2.5 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)
 
-`[Established]` for the handlers, static ([`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md) section 8.6, Q-SOD-01 in [`sod.md`](sod.md#4-open-questions--analysis-backlog)); the macro-source reading below agrees with them.
+`[Established]` for the handlers, static ([`playone-exe/sod-vm-execution.md`](../playone-exe/sod-vm-execution.md) section 8.6, Q-SOD-01 in [`sod.md`](sod.md#4-open-questions--analysis-backlog)); the macro-source reading below agrees with them.
 
 Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `REJ` (`0x01B9`), `REJVEC` (`0x01B0`) and `REJ2D` (`0x01C2`) write one facing flag per face into `work:0x7C68`, starting at byte offset `first`: set when the face points at the eye.
 - `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>` (its flag byte). Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
-- `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the section when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`); otherwise skip `size` bytes counted from the size word ([`sod-vm.md` § 8.6](../playone-exe/sod-vm.md#86-facing-flags-op_rej-and-op_ifvis)). The operand is a flag offset, not a condition code: there is no distance form.
+- `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the section when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`); otherwise skip `size` bytes counted from the size word ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)). The operand is a flag offset, not a condition code: there is no distance form.
 - `OP_BZLT <reg> <val>` (0x0318): the in-shape depth gate. It skips its section, `size` bytes from the size word, while the register's view depth is at most `val` scaled as the `SP_1NODE` gate scales depth, so the section is the far form.
-- The reconstruction decodes every one of these into `VisibilityCondition::FacesEye` or `VisibilityCondition::BeyondDepth`, evaluated per frame. No census walk of a stock shape reaches `REJVEC`, `REJ2D`, `BVIS` or `BZLT` (`sod-vm.md` § 8.6).
+- The reconstruction decodes every one of these into `VisibilityCondition::FacesEye` or `VisibilityCondition::BeyondDepth`, evaluated per frame. No census walk of a stock shape reaches `REJVEC`, `REJ2D`, `BVIS` or `BZLT` (`sod-vm-execution.md` § 8.6).
 
 ### 2.6 `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction
 
-Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which only consumes one word and draws nothing, and by the VM walking whole chunks without desync). `MOVETO`, `ZLINETO` and `LINECOL` are read in `PLAYONE` ([`sod-vm.md` § 8.10](../playone-exe/sod-vm.md#810-lines-moveto-zlineto-and-linecol), `[Established]` static, unpatched image): `MOVETO reg_off` makes register `reg_off / 12` the pen, `ZLINETO reg_off` draws a one-pixel Bresenham line from the pen register to that register and makes it the pen, and `LINECOL color` sets the line colour. The VM takes the pen's point at `MOVETO` time and draws each segment as a line the renderer makes one pixel wide on screen, in the line colour (the fill colour until `LINECOL` is seen). `DOT reg_off` plots one point `[Hypothesis]`; the VM draws it as a 0.03 m octahedron. Whether `LINECOL` is reset per chunk is `[Unknown]`.
+Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which only consumes one word and draws nothing, and by the VM walking whole chunks without desync). `MOVETO`, `ZLINETO` and `LINECOL` are read in `PLAYONE` ([`sod-vm-generators.md` § 8.10](../playone-exe/sod-vm-generators.md#810-lines-moveto-zlineto-and-linecol), `[Established]` static, unpatched image): `MOVETO reg_off` makes register `reg_off / 12` the pen, `ZLINETO reg_off` draws a one-pixel Bresenham line from the pen register to that register and makes it the pen, and `LINECOL color` sets the line colour. The VM takes the pen's point at `MOVETO` time and draws each segment as a line the renderer makes one pixel wide on screen, in the line colour (the fill colour until `LINECOL` is seen). `DOT reg_off` plots one point `[Hypothesis]`; the VM draws it as a 0.03 m octahedron. Whether `LINECOL` is reset per chunk is `[Unknown]`.
 
 ---
 
@@ -213,7 +213,7 @@ Only **stream constraints** are recorded here — readings that must match the b
 | `PUSHRELMAT` / `POPRELMAT` | Push and pop a 3×3 matrix that `VECTORS` applies to raw input points | agrees |
 | `ROTX` / `ROTY` / `ROTZ` | The operand is a **variable byte offset** (`variable[w / 2]`), not an immediate; the variable is an angle with 4096 units per turn, post-multiplied into the matrix | **differs**: coverage § 1 assumes an immediate `angle_bam` |
 | `BVLT` / `BVGT` | `reg` is a **variable byte offset**; branch when `variable <= val` (`BVLT`) or `variable >= val` (`BVGT`), unsigned | **differs**: coverage § 1 reads `reg` as a register |
-| `BZLT` | Branch when the register's local Z `<= val - relpos.z`; the handler's `shift` scaling is not modelled | not in coverage § 1; the handler (`0x9BE5`) compares view depth, not local Z, with `val >> work:0x806F` ([`sod-vm.md` § 8.6](../playone-exe/sod-vm.md#86-facing-flags-op_rej-and-op_ifvis)) |
+| `BZLT` | Branch when the register's local Z `<= val - relpos.z`; the handler's `shift` scaling is not modelled | not in coverage § 1; the handler (`0x9BE5`) compares view depth, not local Z, with `val >> work:0x806F` ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)) |
 | `GOTO` / `GOSUB` | Target = address of the operand word + `rel_offset` bytes; `GOSUB` runs the target until `RETURN` | agrees; coverage § 1 leaves the base unstated |
 | `SHADE1` | Two operand words, no geometry | agrees |
 | `ANIMATE` | `point_reg`, `radius / 2`, `variable offset`, `count`, then `count` words | agrees with [`sod-animate.md`](../playone-exe/sod-animate.md) |
@@ -231,7 +231,7 @@ Only **stream constraints** are recorded here — readings that must match the b
 | `SORTON` (`0x018C`) | `plane, left_off, right_off`; § 2.5 reads it as a BSP plane test | First word is the **block size in bytes**, next two are skipped; block end = opcode index + `size/2` | `siobj_lib.cpp:1246-1260` |
 | `SHADES` (`0x0156`) | `count, ...triplets` | Two leading words (the first discarded, the second is the count), then 3 words per entry | `siobj_lib.cpp:1235-1244` |
 
-`PERFDISK` (`0x010E`) left this table: si-tools read one radius and an orientation register where § 1 had two radii, and the handler `0xA040` bears it out, with the radius second and the axis register third ([`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators)).
+`PERFDISK` (`0x010E`) left this table: si-tools read one radius and an orientation register where § 1 had two radii, and the handler `0xA040` bears it out, with the radius second and the axis register third ([`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)).
 
 `SHADE2` (`0x014D`) and `SHADE216` (`0x02C7`) have no case at all and take the one-word default, so their silence is not evidence of a one-word operand.
 
@@ -240,7 +240,7 @@ Only **stream constraints** are recorded here — readings that must match the b
 `[Hypothesis]` — geometry si-tools generates, not observed in `PLAYONE`:
 
 * `SPHERE` is a 12-vertex, 20-triangle icosahedron at exactly `1.0 × radius`, radius used raw (not multiplied by the shape scale), vertices `centre + trunc(v · radius)`. `vm.rs` uses the same icosahedron at `0.92 ×` (`vm.rs:208`), tuned against `CTRY`; that factor is ours, not the format's.
-* si-tools' `DISC` is a 16-segment fan at parse-time `radius × scale`, and its `PERFDISK` reuses that builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so its winding is a stand-in rather than a decode. `vm.rs` draws `PERFDISK` as a two-sided 16-gon of `radius` in register units perpendicular to `regs[centre] - regs[axis]`; the handler's conic disc is in [`sod-vm.md` § 8.8](../playone-exe/sod-vm.md#88-model-frame-the-other-generators).
+* si-tools' `DISC` is a 16-segment fan at parse-time `radius × scale`, and its `PERFDISK` reuses that builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so its winding is a stand-in rather than a decode. `vm.rs` draws `PERFDISK` as a two-sided 16-gon of `radius` in register units perpendicular to `regs[centre] - regs[axis]`; the handler's conic disc is in [`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators).
 * The disc radius is multiplied by scale at parse and again at export, so exported radii come out `scale²`; that is an exporter bug, not a format fact.
 
 ### 3.3 What A Decoder's Silences Are Worth

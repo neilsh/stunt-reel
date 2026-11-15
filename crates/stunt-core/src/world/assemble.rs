@@ -91,7 +91,7 @@ impl World {
     /// The plane of the terrain triangle under `(x, z)` nearest height `y`, or the level
     /// plane `y = 0` off the map: PLAYONE's shadow queue `0x19FC` solves the height on one
     /// plane and takes `y = 0` for a null plane (`0x1A12`)
-    /// (`research/playone-exe/sod-vm.md` section 9.1).
+    /// (`research/playone-exe/sod-vm-frame.md` section 9.1).
     #[must_use]
     pub fn ground_plane(&self, x: f32, z: f32, y: f32) -> GroundPlane {
         self.terrain

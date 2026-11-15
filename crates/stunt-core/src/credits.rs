@@ -1,6 +1,6 @@
 //! The two-line credits overlay that `.FLM` opcode `0x99` sets and `0x98` clears.
 //!
-//! `PLAYONE.EXE` draws it after the 3D scene (`0x0F7B`, `research/playone-exe/sod-vm.md`
+//! `PLAYONE.EXE` draws it after the 3D scene (`0x0F7B`, `research/playone-exe/sod-vm-frame.md`
 //! § 9): each line centred in the view's clip rectangle, the first at
 //! `top + ((bottom - top - 28) >> 1)` and the second 20 rows below, each drawn by `0x58BD`
 //! as a colour-0 shadow one pixel right and then colour-255 ink over it.

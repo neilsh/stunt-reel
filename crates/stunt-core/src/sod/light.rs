@@ -5,7 +5,7 @@
 //! unchanged; the film-variable-13 handler `0x196C` writes it
 //! (`research/playone-exe/terrain-shade.md` section 4.2). `OP_SHADES` dots `L` with the raw
 //! normal words of the shape, so `L` is in the shape's raw model frame and needs no axis
-//! mapping: the decoder reads both in that frame (`research/playone-exe/sod-vm.md` section 8.5).
+//! mapping: the decoder reads both in that frame (`research/playone-exe/sod-vm-execution.md` section 8.5).
 
 /// A light vector in a shape's raw model frame, at 1.0 = 32767.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

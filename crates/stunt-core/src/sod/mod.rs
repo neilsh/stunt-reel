@@ -35,7 +35,7 @@ pub use vm::{
 /// `PLAYONE` draws such a shape through the view matrix built without the camera's yaw
 /// (`work:0x809C`) instead of the whole view (`0x80C0`): scenery at image `0x21A8`, actors at
 /// `0x1CFB`. In `INTRO.ALL` and `CTRY.ALL` every shape that opens with an `OP_IPG` type 8
-/// quad (the flat trees) sets it (`research/playone-exe/sod-vm.md` section 8.8).
+/// quad (the flat trees) sets it (`research/playone-exe/sod-vm-generators.md` section 8.8).
 pub const HEADER_FACES_VIEW: u8 = 0x01;
 
 /// Whether `shape`'s header sets [`HEADER_FACES_VIEW`]; false for a shape with no decode record.

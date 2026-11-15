@@ -147,7 +147,7 @@ The specification does not carry binary-analysis findings. They live in `researc
 | Modal `LOAD FILM` dialog, prefix search, BIOS Data Area keystroke injection, `.FLM` + `.ALL` pairing rule | [`research/playone-exe/navigation.md`](../research/playone-exe/navigation.md) |
 | `DGROUP` offsets, work-segment offsets, `# [MEM-*]` anchors | [`research/playone-exe/memory-map.md`](../research/playone-exe/memory-map.md) and the memory-map files it lists (evidence: [`memory.md`](../research/playone-exe/memory.md)) |
 | dosbox-automation capture harness and plan protocol | [`research/playone-exe/capture-dosbox-automation.md`](../research/playone-exe/capture-dosbox-automation.md) |
-| Display-list VM, `OP_TAP`, `OP_ANIMATE` | [`sod-vm.md`](../research/playone-exe/sod-vm.md), [`sod-animate.md`](../research/playone-exe/sod-animate.md) |
+| Display-list VM, `OP_TAP`, `OP_ANIMATE` | [`sod-vm.md`](../research/playone-exe/sod-vm.md), [`sod-vm-execution.md`](../research/playone-exe/sod-vm-execution.md), [`sod-vm-generators.md`](../research/playone-exe/sod-vm-generators.md), [`sod-vm-frame.md`](../research/playone-exe/sod-vm-frame.md), [`sod-animate.md`](../research/playone-exe/sod-animate.md) |
 | File formats and byte layouts | [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas |
 | Parity: method, residuals, where the loss sits | [`research/parity/`](../research/parity/) |
 
