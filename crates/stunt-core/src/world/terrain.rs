@@ -105,7 +105,7 @@ pub(super) fn patch_corners(
 ///
 /// Returns one flag per area. The test uses the fans [`push_terrain`] draws, within
 /// [`GROUND_LIE_TOLERANCE`] of the earlier patch's plane. Why:
-/// `research/playone-exe/world-scene.md` section 6.5.
+/// `research/playone-exe/world-scene-residuals.md` section 6.5.
 pub(super) fn terrain_overlays(anchors: &[AnchorPoint], map_areas: &[MapArea]) -> Vec<bool> {
     let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
     let corners: Vec<Option<Vec<[f32; 3]>>> = map_areas
@@ -330,7 +330,8 @@ impl TerrainSurface {
 /// A ground decal is flat (within [`GROUND_FLAT_TOLERANCE`]), has terrain under at least one
 /// vertex, and every such vertex lies within [`GROUND_LIE_TOLERANCE`] of it. Those vertices take
 /// the ground height exactly; the rest stay at the placement. `pos` includes `base_y`. Why:
-/// `research/playone-exe/world-scene.md` sections 3, 6.
+/// `research/playone-exe/world-scene.md` section 3 and
+/// `research/playone-exe/world-scene-residuals.md` section 6.
 pub(super) fn ground_decal_vertices(
     model: &SodModelIr,
     pos: [f32; 3],

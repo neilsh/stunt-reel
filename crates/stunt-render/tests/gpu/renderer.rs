@@ -477,8 +477,9 @@ fn interval_samples_are_accepted_once_each() {
 
 // Ground decals: a prop lying on the terrain is drawn in the decal batch after the terrain,
 // as PLAYONE paints a scenery tile over the leaf under it (research/playone-exe/world-scene.md
-// sections 3 and 6). The tile's vertices are snapped to the terrain plane by `stunt-core`, so
-// the two tie in depth and only the decal pass's bias separates them.
+// section 3 and research/playone-exe/world-scene-residuals.md section 6). The tile's vertices
+// are snapped to the terrain plane by `stunt-core`, so the two tie in depth and only the decal
+// pass's bias separates them.
 
 const TERRAIN: u8 = 40;
 const TILE: u8 = 220;

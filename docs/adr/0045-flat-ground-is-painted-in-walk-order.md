@@ -60,7 +60,7 @@ outline could cover the one-pixel rail drawn after the tie; the tie's own fill, 
   [#448](https://github.com/neilsh/stunt-reel/issues/448).
 * Flat patches are painted in `MAP.BIN` order and all of them before any prop. `PLAYONE`'s tree
   interleaves terrain leaves and props, and its order was checked against `MAP.BIN`'s for three
-  records only (`world-scene.md` section 6.5), so a patch painted over a prop, or the other way
+  records only (`world-scene-residuals.md` section 6.5), so a patch painted over a prop, or the other way
   round, can still come out wrong.
 * In the static world, `[I5]`'s depth bias now separates only decals off the ground plane; actor
   decals keep it everywhere.

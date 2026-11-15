@@ -59,7 +59,7 @@ pub(super) const UP: [f32; 3] = [0.0, 1.0, 0.0];
 /// `PLAYONE` has no depth buffer and paints the ground in walk order, the later over the
 /// earlier; a renderer draws these nodes' slices first, in a forward walk, each over whatever
 /// is already there. This order follows `PLAYONE`'s only in part: its tree interleaves
-/// patches and props (`research/playone-exe/world-scene.md` section 6.6).
+/// patches and props (`research/playone-exe/world-scene-residuals.md` section 6.6).
 pub const GROUND_NODE: &str = "WORLD_GROUND";
 
 /// Builds the consolidated static world scenery and terrain intermediate representation.
