@@ -43,7 +43,7 @@
       "Bash(gh pr comment *)",
       "Bash(gh pr edit *)",
       "Bash(gh pr checks *)",
-      "Bash(gh pr merge * --squash --auto --delete-branch)",
+      "Bash(gh pr merge * --squash --auto)",
       "Bash(gh pr merge * --disable-auto)",
       "Bash(gh issue view *)",
       "Bash(gh issue list *)",
