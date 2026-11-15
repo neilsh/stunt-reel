@@ -437,10 +437,10 @@ description = "Run Rust unit and integration tests"
 run = "cargo test --locked --workspace --all-features"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
-[tasks.test-render]
+[tasks.test-gpu]
 depends = ["ensure"]
-description = "Run stunt-render's GPU test binary (`gpu`) with a bounded hang watchdog (detects hangs instead of waiting forever)"
-run = "uv run python python/scripts/watch_render_test.py"
+description = "Run stunt-render's GPU test binary (`gpu`); a test still running past its deadline (60 s, `STUNT_GPU_TEST_DEADLINE_S`) aborts with a HANG line"
+run = "cargo test --locked -p stunt-render --test gpu"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.cov-rust]
@@ -517,16 +517,12 @@ run = "uv run pytest -m docs"
 description = "Staged conflict markers and whitespace errors (git diff --cached --check); a pre-commit hook"
 run = "git diff --cached --check"
 
-[tasks.crlf-check]
-description = "Staged text files whose working copy has CRLF line endings (python/scripts/check_crlf.py); a pre-commit hook"
-run = "uv run python python/scripts/check_crlf.py"
-
 [tasks.check-work-frozen]
 description = "Staged files added to a frozen work folder, or a staged change to its README outcome (python/scripts/check_work_frozen.py, work/README.md Lifecycle); a pre-commit hook. `-- --branch` checks the branch since the gate's base"
 run = "uv run python python/scripts/check_work_frozen.py"
 
 [tasks.commit-msg-check]
-description = "A commit message's Conventional Commit subject, and its Fresh-review trailer on a work spec or plan (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
+description = "A commit message's Conventional Commit subject, and its Fresh-review trailer on a work spec or plan; with --subject, a pull request title's subject only (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
 run = "uv run python python/scripts/check_commit_msg.py"
 
 # The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing

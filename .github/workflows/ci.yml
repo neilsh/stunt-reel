@@ -31,8 +31,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      # The commit-message step asks which pull requests hold a commit.
-      pull-requests: read
     env:
       # mise installs every tool mise.toml declares on the first `mise run` unless this is
       # off. Inside CI that compiled cargo-deny and cargo-llvm-cov from source on every job
@@ -107,7 +105,7 @@ jobs:
         # pull request checks its diff from the base branch, a push its diff from the previous
         # tip, and a manual run (or a push whose previous tip is gone) every file.
         env:
-          SKIP: diff-check,crlf-check,fmt-check-rust,fmt-check-py,lint-py,test-docs,check-work-frozen
+          SKIP: diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs,check-work-frozen
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
           BEFORE: ${{ github.event.before }}
@@ -120,19 +118,6 @@ jobs:
             set -- --all-files
           fi
           mise exec -- prek run --config prek.toml "$@"
-      - name: Commit messages on the pull request
-        # AGENTS.md SOP 3, for a commit made with --no-verify. Only a pull request's own commits:
-        # main's history holds GitHub squash merges, whose messages the hook never saw. A branch
-        # stacked on a since squash-merged pull request still carries that parent's commits;
-        # the script skips a failing commit that a merged pull request other than this one
-        # holds (asked through gh, hence the token and pull-requests: read), and says so.
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: mise run commit-msg-check -- --range "origin/$BASE_REF..HEAD" --pr "$PR_NUMBER"
 
   windows-smoke:
     name: Windows smoke

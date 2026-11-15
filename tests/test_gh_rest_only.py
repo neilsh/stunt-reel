@@ -22,8 +22,6 @@ _RUNNERS = frozenset(("gh", "_gh"))
 LOCAL_ONLY = {
     # GitHub's REST API neither lists a pull request's review threads nor resolves one.
     "scripts/pr_threads.py",
-    # Only CI runs `--range`, which asks GraphQL for the merged PRs that hold a commit.
-    "scripts/check_commit_msg.py",
     # Only `reap`, run from the owner's primary checkout, lists merged PRs with `gh pr list`.
     "stunt_reel/worktree_reap.py",
 }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -91,6 +92,23 @@ def test_the_script_checks_a_message_file(tmp_path: Path) -> None:
     assert "Conventional Commit" in failed.stderr
 
 
+@pytest.mark.parametrize("title", ["feat(core): add a parser", 'Revert "feat: x"'])
+def test_a_conventional_or_git_title_passes(hook: Any, title: str) -> None:
+    assert hook.main(["--subject", title]) == 0
+
+
+def test_a_bad_title_is_named(hook: Any, capsys: pytest.CaptureFixture[str]) -> None:
+    assert hook.main(["--subject", "Update stuff"]) == 1
+    assert "pull request title" in capsys.readouterr().err
+
+
+def test_a_title_with_shell_text_is_only_read(hook: Any, tmp_path: Path) -> None:
+    # Review Focus 1: the title is data, never run.
+    marker = tmp_path / "ran"
+    assert hook.main(["--subject", f"feat: $(touch {marker}) `touch {marker}`"]) == 0
+    assert not marker.exists()
+
+
 Git = Callable[..., str]
 
 
@@ -114,151 +132,6 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Git:
     git("commit", "-q", "--allow-empty", "-m", "chore: start")
     monkeypatch.chdir(tmp_path)
     return git
-
-
-def _stub_github(
-    hook: Any, monkeypatch: pytest.MonkeyPatch, merged: list[int] | Exception
-) -> list[str]:
-    """Answer every ``_merged_pulls`` call with *merged*, or raise it; returns the hashes asked."""
-    asked: list[str] = []
-
-    def merged_pulls(sha: str) -> list[int]:
-        asked.append(sha)
-        if isinstance(merged, Exception):
-            raise merged
-        return merged
-
-    monkeypatch.setattr(hook, "_merged_pulls", merged_pulls)
-    return asked
-
-
-def test_the_script_checks_a_commit_range(
-    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    base = repo("rev-parse", "HEAD")
-    repo("commit", "-q", "--allow-empty", "-m", "feat: fine")
-    repo("commit", "-q", "--allow-empty", "-m", "not conventional")
-    asked = _stub_github(hook, monkeypatch, [])
-    assert hook.main(["--range", f"{base}..HEAD"]) == 1
-    stderr = capsys.readouterr().err
-    assert "not conventional" in stderr
-    assert "feat: fine" not in stderr
-    assert asked == [repo("rev-parse", "HEAD")], "GitHub is asked only about failing commits"
-
-
-def test_a_commit_merged_in_another_pull_request_is_skipped(
-    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    base = repo("rev-parse", "HEAD")
-    repo("commit", "-q", "--allow-empty", "-m", "the stacked parent's commit")
-    _stub_github(hook, monkeypatch, [224, 228])
-    assert hook.main(["--range", f"{base}..HEAD", "--pr", "228"]) == 0
-    stderr = capsys.readouterr().err
-    assert f"skip {repo('rev-parse', '--short', 'HEAD')}: merged in #224" in stderr
-    assert "Conventional Commit" not in stderr
-
-
-def test_a_commit_only_in_this_pull_request_is_checked(
-    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    base = repo("rev-parse", "HEAD")
-    repo("commit", "-q", "--allow-empty", "-m", "not conventional")
-    _stub_github(hook, monkeypatch, [228])
-    assert hook.main(["--range", f"{base}..HEAD", "--pr", "228"]) == 1
-    stderr = capsys.readouterr().err
-    assert "skip" not in stderr
-    assert "not conventional" in stderr
-
-
-def test_a_commit_whose_patch_is_in_the_base_is_skipped_without_github(
-    hook: Any,
-    repo: Git,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo("switch", "-q", "-c", "stacked")
-    (tmp_path / "notes.txt").write_text("a change\n", encoding="utf-8")
-    repo("add", "notes.txt")
-    repo("commit", "-q", "-m", "not conventional")
-    repo("switch", "-q", "main")
-    (tmp_path / "notes.txt").write_text("a change\n", encoding="utf-8")
-    repo("add", "notes.txt")
-    repo("commit", "-q", "-m", "docs: the same change, squash-merged")
-    asked = _stub_github(hook, monkeypatch, RuntimeError("GitHub must not be asked"))
-    assert hook.main(["--range", "main..stacked"]) == 0
-    assert "its patch is already in the base" in capsys.readouterr().err
-    assert asked == []
-
-
-def test_an_empty_commit_is_not_skipped_for_an_empty_commit_in_the_base(
-    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    repo("switch", "-q", "-c", "stacked")
-    repo("commit", "-q", "--allow-empty", "-m", "not conventional")
-    repo("switch", "-q", "main")
-    repo("commit", "-q", "--allow-empty", "-m", "chore: an empty commit in the base")
-    _stub_github(hook, monkeypatch, [])
-    assert hook.main(["--range", "main..stacked"]) == 1
-    stderr = capsys.readouterr().err
-    assert "skip" not in stderr
-    assert "not conventional" in stderr
-
-
-def test_github_is_asked_only_for_pull_requests_into_this_repository(
-    hook: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    commands: list[list[str]] = []
-
-    def answer(command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
-        commands.append(command)
-        return subprocess.CompletedProcess(command, 0, stdout="[224]\n", stderr="")
-
-    monkeypatch.setattr(hook.shutil, "which", lambda _name: "gh")
-    monkeypatch.setattr(hook.subprocess, "run", answer)
-    assert hook._merged_pulls("a" * 40) == [224]
-    assert f"oid={'a' * 40}" in commands[0]
-    jq = commands[0][commands[0].index("--jq") + 1]
-    assert ".baseRepository.nameWithOwner == $r.nameWithOwner" in jq, "a fork's merge never counts"
-
-
-def test_without_github_every_failing_commit_counts(
-    hook: Any, repo: Git, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    base = repo("rev-parse", "HEAD")
-    repo("commit", "-q", "--allow-empty", "-m", "not conventional")
-    repo("commit", "-q", "--allow-empty", "-m", "also not conventional")
-    asked = _stub_github(hook, monkeypatch, hook.GitHubUnavailableError("offline"))
-    assert hook.main(["--range", f"{base}..HEAD", "--pr", "228"]) == 1
-    stderr = capsys.readouterr().err
-    assert "cannot ask GitHub" in stderr
-    assert "offline" in stderr
-    assert "not conventional" in stderr
-    assert "also not conventional" in stderr
-    assert len(asked) == 1, "a failed call is not repeated for every commit"
-
-
-def test_github_is_unavailable_without_gh(hook: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(hook.shutil, "which", lambda _name: None)
-    with pytest.raises(hook.GitHubUnavailableError, match="gh"):
-        hook._merged_pulls("0" * 40)
-
-
-def test_a_gh_call_that_times_out_makes_github_unavailable(
-    hook: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    calls: list[dict[str, Any]] = []
-
-    def hang(command: list[str], **kwargs: Any) -> None:
-        calls.append(kwargs)
-        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-
-    monkeypatch.setattr(hook.shutil, "which", lambda _name: "gh")
-    monkeypatch.setattr(hook.subprocess, "run", hang)
-    with pytest.raises(hook.GitHubUnavailableError, match="timed out"):
-        hook._merged_pulls("0" * 40)
-    assert calls[0]["timeout"] == hook.GH_TIMEOUT
-    assert calls[0]["stdin"] is subprocess.DEVNULL
 
 
 def _path(*parts: str) -> str:
@@ -343,3 +216,19 @@ def test_a_non_ascii_path_is_read_unquoted(repo: Git, tmp_path: Path, hook: Any)
     note.write_text("x\n", encoding="utf-8")
     repo("add", "research")
     assert hook._staged_paths() == [_path("research", "café.md")]
+
+
+def test_a_title_starting_with_a_dash_is_read_as_text(hook: Any) -> None:
+    assert hook.main(["--subject=-x"]) == 1
+
+
+def test_the_title_workflow_rechecks_edits_and_never_interpolates_the_title() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "pr-title.yml").read_text(encoding="utf-8")
+    assert re.search(r"types: \[opened, edited, synchronize, reopened\]", workflow)
+    assert "TITLE: ${{ github.event.pull_request.title }}" in workflow  # via env only
+    # Every `run:` is one line here, so a line scan sees it whole; keep it so.
+    run_lines = [line for line in workflow.splitlines() if "run:" in line]
+    assert all("${{" not in line and not line.rstrip().endswith(("|", ">")) for line in run_lines)
+    assert 'commit-msg-check -- --subject="$TITLE"' in workflow
+    assert 'MISE_AUTO_INSTALL: "false"' in workflow
+    assert "name: PR title" in workflow

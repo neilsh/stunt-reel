@@ -6,6 +6,8 @@ accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (bel
 2026-11-08: `check-work-frozen` holds a frozen work folder to its outcome (below). Superseded in
 part 2026-11-09 by [ADR 0044](0044-commit-messages-carry-no-gate-line.md): the commit-msg hook
 checks the subject only, with no gate line. Amended 2026-11-13: two shebang built-ins (below).
+Amended 2026-11-15: `crlf-check` is removed, and CI checks the pull request title, not every
+commit (below).
 Supersedes
 the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
@@ -54,7 +56,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | hook id | entry | fires on |
   | --- | --- | --- |
   | `diff-check` | `mise run diff-check` (`git diff --cached --check`) | every commit (`always_run`) |
-  | `crlf-check` | `mise run crlf-check` ([`check_crlf.py`](../../python/scripts/check_crlf.py)) | every commit (`always_run`) |
+  | `crlf-check` | `mise run crlf-check` (`check_crlf.py`, deleted 2026-11-15) | every commit (`always_run`) |
   | `fmt-check-rust` | `mise run fmt-check-rust` | `types = ["rust"]` |
   | `fmt-check-py` | `mise run fmt-check-py` | `types = ["python"]` |
   | `lint-py` | `mise run lint-py` | `types = ["python"]` |
@@ -180,3 +182,48 @@ Consequences:
   content of the commit never changes.
 - A file with unstaged edits, an unstaged mode change, or a CR in its index blob is still
   rejected and left untouched.
+
+## Amendment 2026-11-15: `crlf-check` is removed
+
+The `crlf-check` hook, its `mise` task and `check_crlf.py` are deleted, with nothing in their
+place. This supersedes the hook table's `crlf-check` row, the `SKIP` list and "`diff-check` and
+`crlf-check` run on every commit" above, and the 2026-11-05 amendment's exception to "No hook
+rewrites files": no hook rewrites a file again. CI's `SKIP` list is
+`diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs,check-work-frozen`.
+
+Evidence is #577's spec, in its 2026-11-15 spike:
+
+- Six tracked files rewritten to all-CRLF pass `ruff format --check` (`line-ending = "auto"`),
+  `ruff check` and `cargo fmt --check` (`newline_style = "Auto"`); both settings date from
+  2026-10-17, before the hook. A file with mixed endings still fails `ruff format --check`.
+- A CRLF `research/MAP.md` fails `test_research_map_is_current`, which compares its bytes.
+- CRLF never reaches a commit: `.gitattributes` (`* text=auto eol=lf`) normalises what `git add`
+  stores, and on 2026-11-15 `git ls-files --eol` showed none of the 955 tracked files stored with
+  CRLF or mixed endings.
+
+Consequences:
+
+- No hook rewrites a file or rejects an all-CRLF working copy. A Python file with mixed endings
+  can still fail `fmt-check-py` at commit and in the gate, and a CRLF `MAP.md` fails the gate;
+  `mise run fix` is expected to repair both. No hook checks a Markdown, TOML or YAML file for
+  CRLF, apart from the gate's byte-level tests (the `MAP.md` comparison and the AGENTS.md
+  budget); that is harmless since the index stores LF.
+- The cost the 2026-11-05 amendment fixed
+  ([#219](https://github.com/neilsh/stunt-reel/issues/219)), a commit rejected for a working copy
+  that differs from its index blob only in line endings, does not recur for an all-CRLF copy.
+- [`docs/harness.md`](../harness.md) still tells writers to produce LF.
+
+## Amendment 2026-11-15: CI checks the pull request title
+
+The `--range`/`--pr` mode described under "Decision" is gone. CI's `PR title` workflow
+(`.github/workflows/pr-title.yml`) runs `mise run commit-msg-check -- --subject="$TITLE"` on the
+pull request's title instead, on `opened`, `edited`, `synchronize` and `reopened`. The title is
+what GitHub squash-merges onto `main`, and the range check cost a `gh` lookup and a skip rule for
+every branch stacked on a squash-merged parent. The local commit-msg hook is unchanged: it still
+checks each commit's subject and the `Fresh-review:` trailer.
+
+Consequences: a commit made with `--no-verify` is no longer checked in CI; only the title is. The
+check binds only once the repository owner turns off rebase merging, sets squash merges' title to
+"Pull request title" and adds `PR title` to the `main` ruleset's required checks (#577's spec,
+section 2). A separate workflow, not a `ci.yml` job, so that `edited` does not re-run the quality
+gate on every title edit.
