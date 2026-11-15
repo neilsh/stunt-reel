@@ -309,6 +309,30 @@ def test_code_cited_docs_exist() -> None:
     assert not missing, "Code cites missing documents:\n" + "\n".join(sorted(set(missing)))
 
 
+#: A repo-relative source or schema path, as code cites one in a comment or docstring.
+CODE_SOURCE_PATH_REGEX = re.compile(
+    r"(?<![\w./-])((?:crates|python|research)/[\w./-]*[\w-]\.(?:rs|py|ksy|wgsl|toml))(?![\w/])"
+)
+
+
+def test_code_cited_sources_exist() -> None:
+    """Every crates/, python/ or research/ source path named in code outside tests/ exists.
+
+    A path may also be relative to the crate holding the citing file.
+    """
+    missing: list[str] = []
+    for path in _code_files():
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        if rel.startswith("tests/"):
+            continue
+        crate = next((p for p in path.parents if (p / "Cargo.toml").exists()), REPO_ROOT)
+        for match in CODE_SOURCE_PATH_REGEX.finditer(path.read_text("utf-8", errors="replace")):
+            cited = match.group(1)
+            if not ((REPO_ROOT / cited).exists() or (crate / cited).exists()):
+                missing.append(f"{rel}: {cited}")
+    assert not missing, "Code cites missing sources:\n" + "\n".join(sorted(set(missing)))
+
+
 def _write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
