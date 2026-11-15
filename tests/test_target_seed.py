@@ -736,22 +736,27 @@ def test_exclusive_gives_up_after_its_timeout(
         pass
 
 
-#: A member unit's fingerprint directory, its dep-info, and the source it names. The hash differs
-#: from ``_built``'s serde_core dep-info, which would otherwise match the same ``*-<hash>.d``.
-UNIT = "stunt-core-fedcba9876543210"
-UNIT_DEP_INFO = "stunt_core-fedcba9876543210.d"
+#: A member unit's hash, the source its dep-info names, and that source's modification time in
+#: the donor, in nanoseconds (2001-09-09). The hash differs from ``_built``'s serde_core
+#: dep-info, which would otherwise match the same ``*-<hash>.d``.
+UNIT_HASH = "fedcba9876543210"
 SOURCE = "crates/core/src/lib.rs"
-#: The donor source's modification time, in nanoseconds (2001-09-09).
 OLD_NS = 1_000_000_000_000_000_000
+#: Where member stunt-core's unit keeps its fingerprint and its dep-info under ``target/debug``:
+#: Cargo 1.100's ``build/<package>/<hash>/`` and older Cargo's flat layout.
+LAYOUTS = {
+    "build": (f"build/stunt-core/{UNIT_HASH}/fingerprint", f"build/stunt-core/{UNIT_HASH}/out"),
+    "flat": (f".fingerprint/stunt-core-{UNIT_HASH}", "deps"),
+}
 
 
 def _copy_tree(source: Path, destination: Path) -> None:
     shutil.copytree(source, destination)
 
 
-def _member_build(donor: Path, here: Path, variant: str) -> None:
-    """The donor's debug build of member stunt-core from ``SOURCE``, which *here* holds too,
-    spoiled the way *variant* names; ``same`` spoils nothing."""
+def _member_build(donor: Path, here: Path, variant: str, layout: str) -> None:
+    """The donor's debug build of member stunt-core from ``SOURCE`` in *layout*, which *here*
+    holds too, spoiled the way *variant* names; ``same`` spoils nothing."""
     theirs = donor / SOURCE
     theirs.parent.mkdir(parents=True, exist_ok=True)
     theirs.write_text("pub fn a() {}\n", encoding="utf-8")
@@ -762,25 +767,33 @@ def _member_build(donor: Path, here: Path, variant: str) -> None:
         text = "pub fn b() {}\n" if variant == "differs" else "pub fn a() {}\n"
         ours.write_text(text, encoding="utf-8")
     debug = donor / "target" / "debug"
-    (debug / ".fingerprint" / UNIT).mkdir(parents=True)
+    fingerprint, dep_infos = LAYOUTS[layout]
+    (debug / fingerprint).mkdir(parents=True)
+    (debug / dep_infos).mkdir(parents=True, exist_ok=True)
+    dep_info = debug / dep_infos / f"stunt_core-{UNIT_HASH}.d"
     named = f"{donor.as_posix()}/{SOURCE}" if variant == "absolute" else SOURCE
-    lines = [f"{debug.as_posix()}/deps/{UNIT_DEP_INFO}: {named}", "", f"{named}:"]
+    lines = [f"{dep_info.as_posix()}: {named}", "", f"{named}:"]
     if variant == "env_dep":
         value = str(donor / "crates" / "core").replace("\\", "\\\\")
         lines.append(f"# env-dep:CARGO_MANIFEST_DIR={value}")
-    dep_info = debug / "deps" / UNIT_DEP_INFO
     if variant == "garbled":
         dep_info.write_bytes(b"\xff\xfe" + SOURCE.encode() + b":\n")
     elif variant != "no_dep_info":
         dep_info.write_text("\n".join(lines) + "\n", encoding="utf-8")
     if variant == "ambiguous":
-        (debug / "deps" / "it-fedcba9876543210.d").write_text(f"{SOURCE}:\n", encoding="utf-8")
+        (debug / dep_infos / f"it-{UNIT_HASH}.d").write_text(f"{SOURCE}:\n", encoding="utf-8")
+    # Cargo's own dep-info names a file in the package relative to it, and any other file, such
+    # as a fixture under the workspace's tests/, by its absolute path.
+    recorded = b"\x00src\\lib.rs"
+    if variant == "watches_donor":
+        recorded += b"\x00" + str(donor / "tests" / "fixtures" / "a.bin").encode()
+    (debug / fingerprint / "dep-lib-stunt_core").write_bytes(recorded)
 
 
-def _seed_member_build(tmp_path: Path, variant: str) -> tuple[Path, Path]:
+def _seed_member_build(tmp_path: Path, variant: str, layout: str) -> tuple[Path, Path]:
     here = _fresh(tmp_path / "here", "stunt-core")
     donor = _donor(tmp_path / "d")
-    _member_build(donor, here, variant)
+    _member_build(donor, here, variant, layout)
     out = seed(
         here,
         checkouts=[donor],
@@ -793,20 +806,82 @@ def _seed_member_build(tmp_path: Path, variant: str) -> tuple[Path, Path]:
     return here, donor
 
 
-def test_seed_keeps_a_member_unit_whose_sources_match_the_donor(tmp_path: Path) -> None:
+@pytest.mark.parametrize("layout", sorted(LAYOUTS))
+def test_seed_keeps_a_member_unit_whose_sources_match_the_donor(
+    tmp_path: Path, layout: str
+) -> None:
     """The kept unit's sources take the donor's times, so Cargo judges it as the donor would."""
-    here, _ = _seed_member_build(tmp_path, "same")
-    assert (here / "target" / "debug" / ".fingerprint" / UNIT).is_dir()
+    here, _ = _seed_member_build(tmp_path, "same", layout)
+    assert (here / "target" / "debug" / LAYOUTS[layout][0]).is_dir()
     assert (here / SOURCE).stat().st_mtime_ns == OLD_NS
 
 
+@pytest.mark.parametrize("layout", sorted(LAYOUTS))
 @pytest.mark.parametrize(
     "variant",
-    ["differs", "missing", "absolute", "env_dep", "garbled", "ambiguous", "no_dep_info"],
+    [
+        "differs",
+        "missing",
+        "absolute",
+        "env_dep",
+        "garbled",
+        "ambiguous",
+        "no_dep_info",
+        "watches_donor",
+    ],
 )
-def test_seed_drops_a_member_unit_it_cannot_prove_unchanged(tmp_path: Path, variant: str) -> None:
-    here, donor = _seed_member_build(tmp_path, variant)
-    assert not (here / "target" / "debug" / ".fingerprint" / UNIT).exists()
-    assert (donor / "target" / "debug" / ".fingerprint" / UNIT).is_dir()
+def test_seed_drops_a_member_unit_it_cannot_prove_unchanged(
+    tmp_path: Path, variant: str, layout: str
+) -> None:
+    here, donor = _seed_member_build(tmp_path, variant, layout)
+    fingerprint = LAYOUTS[layout][0]
+    assert not (here / "target" / "debug" / fingerprint).exists()
+    assert (donor / "target" / "debug" / fingerprint).is_dir()
     if variant != "missing":
         assert (here / SOURCE).stat().st_mtime_ns != OLD_NS
+
+
+def test_seed_drops_member_fingerprints_in_cargo_1_100_layout(tmp_path: Path) -> None:
+    """Cargo 1.100 keeps a unit in ``build/<package>/<hash>/``: the seed deletes a member's
+    ``fingerprint/`` there in every lane and leaves other packages' units alone."""
+    here = _fresh(tmp_path / "here", "stunt-core", "stunt-cli")
+    donor = _donor(tmp_path / "d", lanes=("check", "matrix"))
+    kept = ("serde", "stunt-core-extra")
+    dropped = ("stunt-core", "stunt-cli")
+    for profile in ("debug", "check/debug", "matrix/debug"):
+        for name in (*kept, *dropped):
+            unit = donor / "target" / profile / "build" / name / "0123456789abcdef"
+            (unit / "fingerprint").mkdir(parents=True)
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_copy_tree,
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("seeded", f"from {donor}")
+    for profile in ("debug", "check/debug", "matrix/debug"):
+        build = here / "target" / profile / "build"
+        left = sorted(entry.parent.parent.name for entry in build.glob("*/*/fingerprint"))
+        assert left == sorted(kept), profile
+        assert (build / "stunt-core" / "0123456789abcdef").is_dir(), profile
+        assert (donor / "target" / profile / "build" / dropped[0] / "0123456789abcdef").is_dir()
+
+
+def test_a_target_built_only_by_cargo_1_100_can_donate(tmp_path: Path) -> None:
+    """Cargo 1.100 writes no ``.fingerprint/`` or ``deps/``: a unit and its dep-info sit in
+    ``build/<package>/<hash>/``."""
+    here = _fresh(tmp_path / "here")
+    a = _donor(tmp_path / "a")
+    shutil.rmtree(a / "target" / "debug" / ".fingerprint")
+    shutil.rmtree(a / "target" / "debug" / "deps")
+    out = a / "target" / "debug" / "build" / "serde_core" / "0123456789abcdef" / "out"
+    out.mkdir(parents=True)
+    source = HOME + r"\registry\src\index\serde_core\src\lib.rs"
+    (out / "serde_core-0123456789abcdef.d").write_text(
+        f"{out}\\serde_core-0123456789abcdef.d: {source}\n", encoding="utf-8"
+    )
+    assert uses_cargo_home(a / "target", Path(HOME))
+    assert not uses_cargo_home(a / "target", Path(r"E:\packages\cargo"))
+    assert rank_donors([a], here=here, rustc_vv=RUSTC, cargo_home=Path(HOME)) == [a]

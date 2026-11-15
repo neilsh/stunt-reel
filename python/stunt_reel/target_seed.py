@@ -81,10 +81,12 @@ def uses_cargo_home(target: Path, cargo_home: Path) -> bool:
     """Whether *target*'s latest dependency build used the registry under *cargo_home*.
 
     A target/ once built with another cache keeps those dep-info files, so the newest one that
-    names a registry source decides.
+    names a registry source decides. Cargo 1.100 writes dep-info to ``build/<package>/<hash>/out/``,
+    older Cargo to ``deps/``; both are read.
     """
     wanted = _norm(cargo_home)
-    dep_infos = (target / "debug" / "deps").glob("*.d")
+    debug = target / "debug"
+    dep_infos = [*(debug / "deps").glob("*.d"), *(debug / "build").glob("*/*/out/*.d")]
     for dep_info in sorted(dep_infos, key=_mtime, reverse=True):
         try:
             with dep_info.open(encoding="utf-8", errors="replace") as handle:
@@ -198,17 +200,52 @@ def _unit_sources(dep_info: Path, donor: Path) -> list[str] | None:
     return sources or None
 
 
+def _member_units(seeded: Path, members: frozenset[str]) -> Iterator[tuple[Path, list[Path]]]:
+    """Each unit of *members* in the copied directory *seeded*: its fingerprint directory and
+    the rustc dep-info files that carry its hash.
+
+    Cargo 1.100 keeps a unit in ``build/<package>/<hash>/``, its fingerprint in ``fingerprint/``
+    and its dep-info in ``out/``; older Cargo kept ``.fingerprint/<package>-<hash>/`` and
+    ``deps/``. A copy can hold both.
+    """
+    flat = re.compile("(?:" + "|".join(map(re.escape, sorted(members))) + r")-([0-9a-f]{16})")
+    for profile in (seeded, *(entry for entry in seeded.iterdir() if entry.is_dir())):
+        fingerprints = profile / ".fingerprint"
+        if fingerprints.is_dir():
+            for entry in fingerprints.iterdir():
+                if match := flat.fullmatch(entry.name):
+                    yield entry, list((profile / "deps").glob(f"*-{match[1]}.d"))
+        for member in sorted(members):
+            for fingerprint in (profile / "build" / member).glob("*/fingerprint"):
+                unit = fingerprint.parent
+                yield fingerprint, list((unit / "out").glob(f"*-{unit.name}.d"))
+
+
+def _names_donor(fingerprint: Path, donor: Path) -> bool:
+    """Whether a file in the unit's fingerprint directory *fingerprint* holds *donor*'s path.
+
+    Cargo records a file outside the package, such as a fixture read by ``include_bytes!`` or
+    clippy's ``clippy.toml``, by its absolute path, so a copied unit would watch the donor's file.
+    """
+    wanted = {_norm(donor), _norm(os.path.realpath(donor))}
+    try:
+        held = [entry.read_bytes() for entry in fingerprint.iterdir() if entry.is_file()]
+    except OSError:
+        return True
+    texts = [_norm(data.decode("utf-8", "replace")) for data in held]
+    return any(path in text for text in texts for path in wanted)
+
+
 def _reusable_unit(
-    fingerprint: Path, *, donor: Path, checkout: Path
+    fingerprint: Path, dep_infos: list[Path], *, donor: Path, checkout: Path
 ) -> list[tuple[Path, os.stat_result]] | None:
     """*checkout*'s files the unit *fingerprint* was built from, each with *donor*'s stat.
 
-    ``None`` unless exactly one dep-info in the sibling ``deps/`` carries the unit's hash and
-    every file it names is byte-identical in both checkouts and unchanged while read.
+    ``None`` unless *dep_infos*, the unit's rustc dep-info files, is exactly one, no file in
+    *fingerprint* holds *donor*'s path, and every file the dep-info names is byte-identical in
+    both checkouts and unchanged while read.
     """
-    unit_hash = fingerprint.name.rsplit("-", 1)[1]
-    dep_infos = list((fingerprint.parent.parent / "deps").glob(f"*-{unit_hash}.d"))
-    if len(dep_infos) != 1:
+    if len(dep_infos) != 1 or _names_donor(fingerprint, donor):
         return None
     sources = _unit_sources(dep_infos[0], donor)
     if sources is None:
@@ -240,25 +277,36 @@ def prune_member_fingerprints(
     """
     if not members:
         return
-    unit = re.compile("(?:" + "|".join(map(re.escape, sorted(members))) + r")-[0-9a-f]{16}")
-    for fingerprints in (seeded / ".fingerprint", *seeded.glob("*/.fingerprint")):
-        if not fingerprints.is_dir():
+    # Listed before any deletion, which would otherwise change the directories being walked.
+    for fingerprint, dep_infos in list(_member_units(seeded, members)):
+        stamps = _reusable_unit(fingerprint, dep_infos, donor=donor, checkout=checkout)
+        if stamps is None:
+            shutil.rmtree(fingerprint)
             continue
-        for entry in fingerprints.iterdir():
-            if not unit.fullmatch(entry.name):
-                continue
-            stamps = _reusable_unit(entry, donor=donor, checkout=checkout)
-            if stamps is None:
-                shutil.rmtree(entry)
-                continue
-            for path, stat in stamps:
-                os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        for path, stat in stamps:
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+
+#: Where a profile keeps its units' fingerprints: ``build/`` since Cargo 1.100, ``.fingerprint/``
+#: before.
+_FINGERPRINT_DIRS: tuple[str, ...] = ("build", ".fingerprint")
+
+
+def _last_build(target: Path) -> float | None:
+    """The newest modification time of *target*'s debug fingerprint directories, or ``None``
+    when it has none: *target* was never built."""
+    times = [
+        _mtime(target / "debug" / name)
+        for name in _FINGERPRINT_DIRS
+        if (target / "debug" / name).is_dir()
+    ]
+    return max(times) if times else None
 
 
 def donor_problem(checkout: Path, *, rustc_vv: str, cargo_home: Path) -> str | None:
     """Why *checkout*'s target/ cannot seed another, or ``None`` when it can."""
     target = checkout / "target"
-    if not (target / "debug" / ".fingerprint").is_dir():
+    if _last_build(target) is None:
         return "not built"
     if not built_by(target, rustc_vv):
         return "built by another rustc"
@@ -283,7 +331,6 @@ def rank_donors(
         lock = None
     ranked: list[tuple[bool, float, Path]] = []
     for checkout in checkouts:
-        fingerprint = checkout / "target" / "debug" / ".fingerprint"
         if _norm(checkout.resolve()) == own:
             continue
         if donor_problem(checkout, rustc_vv=rustc_vv, cargo_home=cargo_home) is not None:
@@ -292,7 +339,7 @@ def rank_donors(
             same_lock = lock is not None and (checkout / "Cargo.lock").read_bytes() == lock
         except OSError:
             same_lock = False
-        ranked.append((same_lock, fingerprint.stat().st_mtime, checkout))
+        ranked.append((same_lock, _last_build(checkout / "target") or 0.0, checkout))
     ranked.sort(key=lambda row: (row[0], row[1]), reverse=True)
     return [checkout for _, _, checkout in ranked]
 
