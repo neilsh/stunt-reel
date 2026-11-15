@@ -7,12 +7,16 @@ the gate until the whole task was stopped by hand.
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
 import pytest
+
+from stunt_reel import uv
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT / "python" / "scripts"
@@ -52,6 +56,34 @@ def test_no_uv_on_path_is_a_problem() -> None:
     problem = gate.uv_problem("0.13.1", None, "", [])
     assert problem is not None
     assert "not on PATH" in problem
+
+
+def test_the_shared_uv_check_reads_the_pin_and_the_uv_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate, init and ensure share one check, so a shadowed uv is named the same way."""
+    (tmp_path / "mise.toml").write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
+    monkeypatch.setattr(shutil, "which", lambda _name, **_kwargs: "/stale/uv")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "uv 0.10.9 (x)\n", ""),
+    )
+    problem = uv.check_uv(tmp_path / "mise.toml")
+    assert problem is not None
+    assert "0.10.9" in problem
+    assert "0.13.1" in problem
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "uv 0.13.1 (x)\n", ""),
+    )
+    assert uv.check_uv(tmp_path / "mise.toml") is None
+
+
+def test_the_shared_uv_check_says_nothing_without_a_pin(tmp_path: Path) -> None:
+    assert uv.check_uv(tmp_path / "missing.toml") is None
 
 
 def test_a_hung_command_times_out_with_a_note() -> None:

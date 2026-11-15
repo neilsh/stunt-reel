@@ -56,7 +56,6 @@ import subprocess
 import sys
 import threading
 import time
-import tomllib
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -64,17 +63,17 @@ from typing import TYPE_CHECKING, Literal, TextIO
 lazy from types import ModuleType
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 
-def _load_process_tree() -> ModuleType:
-    """Load ``stunt_reel/process_tree.py`` by path: the gate runs as plain ``python`` (ADR 0014).
+def _load_stunt_reel(name: str) -> ModuleType:
+    """Load ``stunt_reel/<name>.py`` by path: the gate runs as plain ``python`` (ADR 0014).
 
-    Importing the ``stunt_reel`` package would pull in its dependencies, so the one
+    Importing the ``stunt_reel`` package would pull in its dependencies, so a
     standard-library file is loaded alone.
     """
-    path = Path(__file__).resolve().parent.parent / "stunt_reel" / "process_tree.py"
-    spec = importlib.util.spec_from_file_location("stunt_reel_process_tree", path)
+    path = Path(__file__).resolve().parent.parent / "stunt_reel" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"stunt_reel_{name}", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
@@ -83,7 +82,12 @@ def _load_process_tree() -> ModuleType:
     return module
 
 
-_process_tree = _load_process_tree()
+_process_tree = _load_stunt_reel("process_tree")
+#: The uv check init and ensure share, loaded the same way for the same reason.
+_uv = _load_stunt_reel("uv")
+uv_pin: Callable[[Path], str] = _uv.uv_pin
+uv_problem: Callable[[str, str | None, str, Sequence[str]], str | None] = _uv.uv_problem
+check_uv: Callable[[Path], str | None] = _uv.check_uv
 #: The exit code a timed-out step reports, defined once in ``process_tree``.
 TIMEOUT_EXIT: int = _process_tree.TIMEOUT_EXIT
 
@@ -357,51 +361,9 @@ def _mise() -> str:
     return executable
 
 
-def uv_pin(mise_toml: Path) -> str:
-    """The uv version ``mise.toml`` pins under ``[tools]``."""
-    with mise_toml.open("rb") as handle:
-        return str(tomllib.load(handle)["tools"]["uv"])
-
-
-def uv_problem(pin: str, found: str | None, version: str, every: Sequence[str]) -> str | None:
-    """Why the uv at *found* (``uv --version`` printed *version*) cannot run the gate, or None.
-
-    *every* is each uv on PATH, in order, so the message names what shadows mise's.
-    """
-    if found is None:
-        return f"uv is not on PATH; mise.toml pins {pin}: run the gate through 'mise run check'"
-    words = version.split()
-    if len(words) >= 2 and words[1] == pin:
-        return None
-    running = words[1] if len(words) >= 2 else repr(version.strip())
-    listed = "".join(f"\n  {path}" for path in every) or f"\n  {found}"
-    return (
-        f"uv {running} at {found} runs, but mise.toml pins {pin}. "
-        f"Every uv on PATH, first wins:{listed}\n"
-        "Remove the stale one, or run the gate from a shell where mise's comes first."
-    )
-
-
-def _uvs_on_path() -> list[str]:
-    """Every uv executable on PATH, in PATH order."""
-    found: list[str] = []
-    for folder in os.environ.get("PATH", "").split(os.pathsep):
-        hit = shutil.which("uv", path=folder) if folder else None
-        if hit and hit not in found:
-            found.append(hit)
-    return found
-
-
 def _check_uv() -> str | None:
-    """The ``uv_problem`` for this process's PATH, which every step inherits."""
-    found = shutil.which("uv")
-    version = ""
-    if found is not None:
-        proc = subprocess.run(  # noqa: S603 - the resolved uv, fixed arguments
-            [found, "--version"], capture_output=True, text=True, check=False
-        )
-        version = proc.stdout
-    return uv_problem(uv_pin(Path("mise.toml")), found, version, _uvs_on_path())
+    """The shared uv check for this process's PATH, which every step inherits."""
+    return check_uv(Path("mise.toml"))
 
 
 # The steps running now, so an interrupted gate can kill them: on POSIX each leads its own
