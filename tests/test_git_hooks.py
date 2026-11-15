@@ -11,18 +11,14 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 import tomllib
 from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS_DIR = REPO_ROOT / "python" / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
+from stunt_reel import worktree_git
 
-import worktree_init  # noqa: E402
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 GIT = shutil.which("git")
 needs_git = pytest.mark.skipif(GIT is None, reason="git is not on PATH")
@@ -83,18 +79,18 @@ def test_the_hooks_are_executable_in_the_index() -> None:
 def test_init_sets_the_hooks_path_once(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     (repo / ".githooks").mkdir()
-    assert list(map(str, worktree_init.ensure_hooks_path(repo))) == [
+    assert list(map(str, worktree_git.ensure_hooks_path(repo))) == [
         "  + core.hooksPath -> .githooks"
     ]
     assert _git(repo, "config", "--get", "core.hooksPath").stdout.strip() == ".githooks"
-    assert list(map(str, worktree_init.ensure_hooks_path(repo))) == ["  = core.hooksPath .githooks"]
+    assert list(map(str, worktree_git.ensure_hooks_path(repo))) == ["  = core.hooksPath .githooks"]
 
 
 @needs_git
 def test_init_leaves_a_hooks_path_someone_chose(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _git(repo, "config", "core.hooksPath", ".husky")
-    lines = list(map(str, worktree_init.ensure_hooks_path(repo)))
+    lines = list(map(str, worktree_git.ensure_hooks_path(repo)))
     assert len(lines) == 1
     assert lines[0].startswith("  ! core.hooksPath is '.husky'")
     assert _git(repo, "config", "--get", "core.hooksPath").stdout.strip() == ".husky"
@@ -104,7 +100,7 @@ _OPTIONAL_IGNORE = ":(optional).git-blame-ignore-revs"
 
 
 def _needs_optional_paths(repo: Path) -> None:
-    if not worktree_init.git_marks_paths_optional(repo):
+    if not worktree_git.git_marks_paths_optional(repo):
         pytest.skip("this git cannot mark a config path :(optional)")
 
 
@@ -113,11 +109,11 @@ def test_init_points_blame_at_the_ignore_file_once(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _needs_optional_paths(repo)
     (repo / ".git-blame-ignore-revs").write_text("# none yet\n", encoding="utf-8")
-    assert list(map(str, worktree_init.ensure_blame_ignore(repo))) == [
+    assert list(map(str, worktree_git.ensure_blame_ignore(repo))) == [
         f"  + blame.ignoreRevsFile -> {_OPTIONAL_IGNORE}"
     ]
     assert _git(repo, "config", "--get", "blame.ignoreRevsFile").stdout.strip() == _OPTIONAL_IGNORE
-    assert list(map(str, worktree_init.ensure_blame_ignore(repo))) == [
+    assert list(map(str, worktree_git.ensure_blame_ignore(repo))) == [
         f"  = blame.ignoreRevsFile {_OPTIONAL_IGNORE}"
     ]
 
@@ -128,7 +124,7 @@ def test_init_makes_a_plain_ignore_file_setting_optional(tmp_path: Path) -> None
     _needs_optional_paths(repo)
     (repo / ".git-blame-ignore-revs").write_text("# none yet\n", encoding="utf-8")
     _git(repo, "config", "blame.ignoreRevsFile", ".git-blame-ignore-revs")
-    assert list(map(str, worktree_init.ensure_blame_ignore(repo))) == [
+    assert list(map(str, worktree_git.ensure_blame_ignore(repo))) == [
         f"  + blame.ignoreRevsFile -> {_OPTIONAL_IGNORE}"
     ]
 
@@ -147,7 +143,7 @@ def test_blame_still_runs_in_a_worktree_older_than_the_ignore_file(tmp_path: Pat
     _git(repo, "commit", "-q", "-m", "new")
     old = tmp_path / "old"
     assert _git(repo, "worktree", "add", "-q", "--detach", str(old), "HEAD~1").returncode == 0
-    worktree_init.ensure_blame_ignore(repo)
+    worktree_git.ensure_blame_ignore(repo)
     blamed = _git(old, "blame", "--", "a.txt")
     assert blamed.returncode == 0, blamed.stderr
 
@@ -158,8 +154,8 @@ def test_init_sets_no_blame_ignore_file_git_could_not_skip(
 ) -> None:
     repo = _repo(tmp_path)
     (repo / ".git-blame-ignore-revs").write_text("# none yet\n", encoding="utf-8")
-    monkeypatch.setattr(worktree_init, "git_marks_paths_optional", lambda _repo: False)
-    lines = list(map(str, worktree_init.ensure_blame_ignore(repo)))
+    monkeypatch.setattr(worktree_git, "git_marks_paths_optional", lambda _repo: False)
+    lines = list(map(str, worktree_git.ensure_blame_ignore(repo)))
     assert len(lines) == 1
     assert lines[0].startswith("  ! ")
     assert _git(repo, "config", "--get", "blame.ignoreRevsFile").stdout == ""
@@ -169,7 +165,7 @@ def test_init_sets_no_blame_ignore_file_git_could_not_skip(
 def test_init_sets_no_blame_ignore_file_the_checkout_lacks(tmp_path: Path) -> None:
     # git blame fails outright when the configured file is missing.
     repo = _repo(tmp_path)
-    assert worktree_init.ensure_blame_ignore(repo) == []
+    assert worktree_git.ensure_blame_ignore(repo) == []
     assert _git(repo, "config", "--get", "blame.ignoreRevsFile").stdout == ""
 
 
@@ -178,7 +174,7 @@ def test_init_leaves_a_blame_ignore_file_someone_chose(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     (repo / ".git-blame-ignore-revs").write_text("# none yet\n", encoding="utf-8")
     _git(repo, "config", "blame.ignoreRevsFile", "my-revs")
-    lines = list(map(str, worktree_init.ensure_blame_ignore(repo)))
+    lines = list(map(str, worktree_git.ensure_blame_ignore(repo)))
     assert len(lines) == 1
     assert lines[0].startswith("  ! blame.ignoreRevsFile is 'my-revs'")
     assert _git(repo, "config", "--get", "blame.ignoreRevsFile").stdout.strip() == "my-revs"
@@ -194,7 +190,7 @@ def test_init_names_local_hooks_the_setting_turns_off(tmp_path: Path) -> None:
     (hooks / "pre-push").write_text("#!/bin/sh\n", encoding="utf-8")
     (hooks / "commit-msg").write_text("#!/bin/sh\n", encoding="utf-8")
     (hooks / "commit-msg.sample").write_text("#!/bin/sh\n", encoding="utf-8")
-    lines = list(map(str, worktree_init.ensure_hooks_path(repo)))
+    lines = list(map(str, worktree_git.ensure_hooks_path(repo)))
     named = [line for line in lines if "no longer runs" in line]
     assert len(named) == 1
     assert "commit-msg" in named[0]
