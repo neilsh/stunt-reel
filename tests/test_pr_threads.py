@@ -173,6 +173,56 @@ def test_a_review_body_yields_its_outside_diff_findings() -> None:
     assert pr_threads.outside_diff("**Actionable comments posted: 1**") == []
 
 
+# The shape of CodeRabbit's review-body section for findings it could not post inline at all.
+_ADDITIONAL_BODY = """<!-- coderabbit-ai-generated:v1 -->
+
+<details>
+<summary><picture><img src="message-square-off.svg" alt=""></picture> Additional comments: 2</summary><blockquote>
+<dl>
+<dd>
+<br>
+
+<details>
+<summary>.agents/skills/running-unattended/pr-and-filing.md-39-39: 1</summary><blockquote>
+<dl>
+<dd>
+<br>
+
+`39-39`: **<picture><img src="major-16.svg" alt=""></picture> Major** · **Functional Correctness** · **Heavy lift**
+
+<picture><img src="pre-merge-checks-warning.svg" alt=""></picture> **Unverified finding**
+Verification ran but could not confirm this finding. It is shown for review, not as a verified issue.
+
+**Bind the clean verdict to the dispatched review.**
+
+The filter checks only comment text.
+
+<!-- cr-comment:v1:7971929275265c14eca49140 -->
+
+</dd>
+</dl>
+</blockquote></details>
+
+<details>
+<summary>python/scripts/pr_threads.py-84-91: 1</summary><blockquote>
+<dl>
+<dd>
+<br>
+
+`84-91`: **<picture><img src="minor-16.svg" alt=""></picture> Minor** · **Maintainability** · **Quick win**
+
+**Keep the parser and the printer in step.**
+
+</dd>
+</dl>
+</blockquote></details>
+
+</dd>
+</dl>
+</blockquote></details>
+"""
+
+
 def test_outside_diff_findings_come_from_reviews_after_the_head_commit() -> None:
     reviews = [
         {"databaseId": 1, "submittedAt": "2026-11-04T10:00:00Z", "body": _REVIEW_BODY},
@@ -185,6 +235,33 @@ def test_outside_diff_findings_come_from_reviews_after_the_head_commit() -> None
         "pair.py:84-91 [Major] Count the ?[2Jbytes. | outside diff, review 2",
     ]
     assert len(pr_threads.outside_lines(reviews, since, include_all=True)) == 4
+
+
+def test_a_review_body_yields_its_additional_comment_findings() -> None:
+    assert pr_threads.additional_diff(_ADDITIONAL_BODY) == [
+        (
+            ".agents/skills/running-unattended/pr-and-filing.md:39",
+            "Major",
+            "Bind the clean verdict to the dispatched review.",
+        ),
+        ("python/scripts/pr_threads.py:84-91", "Minor", "Keep the parser and the printer in step."),
+    ]
+
+
+def test_outside_and_additional_findings_print_from_one_review_body() -> None:
+    reviews = [{"databaseId": 7, "submittedAt": None, "body": _REVIEW_BODY + _ADDITIONAL_BODY}]
+    assert pr_threads.outside_lines(reviews, None, include_all=False) == [
+        "tests/test_x.py:17 [Minor] Fix the import. | outside diff, review 7",
+        "pair.py:84-91 [Major] Count the ?[2Jbytes. | outside diff, review 7",
+        (
+            ".agents/skills/running-unattended/pr-and-filing.md:39 [Major] "
+            "Bind the clean verdict to the dispatched review. | additional comments, review 7"
+        ),
+        (
+            "python/scripts/pr_threads.py:84-91 [Minor] Keep the parser and the printer in step. "
+            "| additional comments, review 7"
+        ),
+    ]
 
 
 def test_every_page_of_reviews_is_read_with_the_head_commit_date(
