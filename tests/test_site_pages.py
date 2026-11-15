@@ -154,7 +154,14 @@ def test_page_text_keeps_a_handwritten_title(site: Site) -> None:
     fields, body = _fields(page_text(text, "site/reading.md", site, set()))
     assert fields["title"] == "How to read these notes"
     assert "# Evidence tags" in body
+    assert fields["sidebar.label"] == "How to read these notes"
     assert fields["editUrl"] == f"{REPO_URL}/blob/main/site/reading.md"
+
+
+def test_page_text_title_keeps_a_leading_code_span(site: Site) -> None:
+    text = "# `PLAYONE.EXE`: SOD VM & `OP_TAP`\n\nBody\n"
+    fields, _ = _fields(page_text(text, _SRC, site, set()))
+    assert fields["title"] == "PLAYONE.EXE: SOD VM & OP_TAP"
 
 
 def test_page_text_h1_inside_code_is_not_the_title(site: Site) -> None:

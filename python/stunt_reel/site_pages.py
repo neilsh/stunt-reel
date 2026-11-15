@@ -127,20 +127,23 @@ def page_text(text: str, source: str, site: Site, images: set[str]) -> str:
         visible = prose("".join(lines)).splitlines()
         for index, line in enumerate(visible):
             heading = HEADING_REGEX.match(line)
-            if heading and heading[1] == "#":
-                title = _plain(lines[index][heading.start(2) : heading.end(2)])
+            # The blanked line only says this is a heading; its code span is blank there.
+            original = HEADING_REGEX.match(lines[index])
+            if heading and original and heading[1] == "#":
+                title = _plain(original[2])
                 del lines[index]
                 break
         else:
             raise ValueError(f"{source}: no title: in the front matter and no '# ' heading")
     out = {"title": str(title)}
+    label = str(title) if "title" in fields else None
     description = fields.get("description", fields.get("summary"))
     if description is not None:
         out["description"] = str(description)
     out["editUrl"] = f"{REPO_URL}/blob/main/{source}"
     stem = posixpath.splitext(posixpath.basename(source))[0]
     head = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in out.items()]
-    head.append(f"sidebar:\n  label: {json.dumps(_SIDEBAR_LABELS.get(stem, stem))}")
+    head.append(f"sidebar:\n  label: {json.dumps(label or _SIDEBAR_LABELS.get(stem, stem))}")
     content = rewrite_links("".join(lines), source, site, images)
     return "---\n" + "\n".join(head) + "\n---\n\n" + content.lstrip("\r\n")
 
