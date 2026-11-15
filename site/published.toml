@@ -1,0 +1,11 @@
+# The repository paths the research site publishes; python/scripts/site_prep.py reads it.
+# `source` is a repo-relative file or directory, `dest` its path under the site's content root.
+[[section]]
+source = "research"
+dest = "research"
+label = "Research notes"
+
+[[section]]
+source = "GLOSSARY.md"
+dest = "glossary.md"
+label = "Glossary"

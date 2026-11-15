@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import posixpath
 import re
+import shutil
+import tomllib
 from dataclasses import dataclass
 from urllib.parse import unquote
 lazy from collections.abc import Mapping
@@ -23,10 +25,13 @@ __all__ = [
     "BASE",
     "IMAGE_SUFFIXES",
     "REPO_URL",
+    "Section",
     "Site",
     "link_target",
+    "load_sections",
     "page_text",
     "page_url",
+    "prepare",
     "rewrite_links",
 ]
 
@@ -158,3 +163,85 @@ def _without_leading_comments(lines: list[str]) -> list[str]:
 def _plain(heading: str) -> str:
     """A heading's text without code backticks, bold marks or link targets."""
     return _MARKUP_LINK.sub(r"\1", heading).replace("`", "").replace("**", "")
+
+
+@dataclass(frozen=True)
+class Section:
+    """One entry of ``site/published.toml``: repo path *source* published at *dest* under the
+    content root, headed *label* in the sidebar."""
+
+    source: str
+    dest: str
+    label: str
+
+
+def load_sections(text: str) -> list[Section]:
+    """The ``[[section]]`` entries of ``published.toml`` *text*. Raises ValueError, naming the
+    section, for a missing or non-string key, an absolute path or a ``..`` in a path."""
+    sections = []
+    for number, entry in enumerate(tomllib.loads(text).get("section", []), start=1):
+        for key in ("source", "dest", "label"):
+            if not isinstance(entry.get(key), str) or not entry[key]:
+                raise ValueError(f"section {number}: {key!r} is missing or not a string")
+        for key in ("source", "dest"):
+            path = entry[key]
+            parts = path.replace("\\", "/").split("/")
+            if path.startswith(("/", "\\")) or ":" in parts[0] or ".." in parts:
+                raise ValueError(f"section {number}: {key} {path!r} must be a relative path")
+        sections.append(Section(entry["source"], entry["dest"], entry["label"]))
+    return sections
+
+
+_HAND_WRITTEN = ("index.md", "reading.md")
+
+
+def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
+    """Write the site's content under *site_dir* from the repo at *root*: ``src/content/docs``,
+    ``public/media`` and ``src/generated/sidebar.json``, replacing what was there.
+
+    Returns the pages written and the images copied. Raises ValueError, naming the file, for a
+    page or section that cannot be published.
+    """
+    sections = load_sections((site_dir / "published.toml").read_text(encoding="utf-8"))
+    site_rel = site_dir.resolve().relative_to(root.resolve()).as_posix()
+    pages: dict[str, str] = {}
+    dirs: list[str] = []
+    for section in sections:
+        path = root / section.source
+        if path.is_dir():
+            dirs.append(section.source)
+            for note in sorted(path.rglob("*.md"), key=lambda n: n.as_posix()):
+                rel = note.relative_to(root).as_posix()
+                pages[rel] = f"{section.dest}/{note.relative_to(path).as_posix()}"
+        elif path.is_file():
+            pages[section.source] = section.dest
+        else:
+            raise ValueError(f"{section.source}: published.toml names no such file or directory")
+    for name in _HAND_WRITTEN:
+        pages[f"{site_rel}/{name}"] = name
+    site = Site(root=root, pages=pages, published_dirs=tuple(dirs))
+
+    docs = site_dir / "src/content/docs"
+    media = site_dir / "public/media"
+    generated = site_dir / "src/generated"
+    for stale in (docs, media, generated):
+        shutil.rmtree(stale, ignore_errors=True)
+    images: set[str] = set()
+    for source, dest in pages.items():
+        text = (root / source).read_text(encoding="utf-8")
+        target = docs / dest
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(page_text(text, source, site, images).encode("utf-8"))
+    for image in sorted(images):
+        target = media / image
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(root / image, target)
+    sidebar: list[dict[str, object]] = [{"slug": "reading"}]
+    for section in sections:
+        if (root / section.source).is_dir():
+            sidebar.append({"label": section.label, "autogenerate": {"directory": section.dest}})
+        else:
+            sidebar.append({"label": section.label, "slug": section.dest.removesuffix(".md")})
+    generated.mkdir(parents=True)
+    (generated / "sidebar.json").write_bytes((json.dumps(sidebar, indent=2) + "\n").encode())
+    return len(pages), len(images)
