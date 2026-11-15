@@ -22,7 +22,7 @@ Read [`loop-and-bounds.md`](loop-and-bounds.md) and [`pr-and-filing.md`](pr-and-
 - [ ] 1. Check clock cutoff and free disk space; tidy with reap/clean (loop-and-bounds.md)
 - [ ] 2. Build or refresh the queue with mise run queue (loop-and-bounds.md)
 - [ ] 3. Claim one item, cap at 3 hypothesis rounds, and ship any clean gate-passing slice while filing blocked pieces as needs-triage (loop-and-bounds.md)
-- [ ] 4. Run fresh-context inherit review, triage CI and CodeRabbit threads, and arm squash auto-merge under the merge bar (pr-and-filing.md)
+- [ ] 4. Run fresh-context inherit review (its verdict comment on the PR at HEAD), triage CI and CodeRabbit threads, and arm squash auto-merge under the merge bar (pr-and-filing.md)
 - [ ] 5. File out-of-scope or split issues via build/scratch/*.md and --body-file (pr-and-filing.md)
 - [ ] 6. At empty queue, deadline, or < 5 GB free, run Shutdown and print the report (loop-and-bounds.md)
 ```
