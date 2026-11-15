@@ -1,0 +1,52 @@
+name: Pages
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - "research/**"
+      - "GLOSSARY.md"
+      - "site/**"
+      - "python/stunt_reel/site_pages.py"
+      - "python/stunt_reel/frontmatter.py"
+      - "python/stunt_reel/markdown_links.py"
+      - "python/scripts/site_prep.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "mise.toml"
+      - "mise.lock"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths: *paths
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages-${{ github.ref }}
+  # A PR's stale build is cancelled; a deploy from main runs to completion.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: bun python uv
+      - run: mise run site
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site/dist
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
