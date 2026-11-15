@@ -98,6 +98,17 @@ jobs:
           # skipping them.
           STUNT_REQUIRE_GPU: "1"
         run: mise run check
+      - name: TEMP measure gpu test time on lavapipe (drop before merge)
+        # Issue #577: sizes DEFAULT_DEADLINE in the gpu test watchdog. The first run builds the
+        # binary (its features differ from the gate's); `real` of the second is the figure.
+        shell: bash
+        env:
+          STUNT_REQUIRE_GPU: "1"
+          # The path the gate's cargo tasks use (mise.toml vars.cargo_home), so the cache hits.
+          CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+        run: |
+          mise exec -- cargo test --locked -p stunt-render --test gpu
+          time mise exec -- cargo test --locked -p stunt-render --test gpu
       - name: Commit-hook built-ins on the changes
         # ADR 0026: a commit made with --no-verify, or pushed straight to main, still gets the
         # prek built-ins. The local hooks are skipped: the gate above ran the format, lint and
