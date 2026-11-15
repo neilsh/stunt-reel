@@ -100,9 +100,12 @@ inside the task.
 ## Consequences
 
 - Reaping is one command, and the destructive path is never reached through a data-root
-  link: no link git does not track exists when the delete starts. The only links left are
-  symlinks git tracks, which `git worktree remove` deletes as leaves (measured on git
-  2.55.0.windows.3, issue #541).
+  link: no link git does not track exists when the delete starts. The only links left sit at
+  paths git tracks as symlinks; the clean-tree check refuses a worktree where anything but
+  that symlink sits there, and `git worktree remove` deletes the symlink as a leaf (measured
+  on git 2.55.0.windows.3, issue #541). One exception remains: with `--stash-dirty`, a
+  junction at a path git tracks as a symlink is deleted through by `git stash push` before
+  the unlink step runs (issue #557).
 - A dirty worktree is preserved by default. A stash made with `--stash-dirty` survives the
   removal in the shared repository (`git stash list`), and its message names the branch.
 - Pool leftovers and branches orphaned by a removal are reclaimed only with `--prune`,
