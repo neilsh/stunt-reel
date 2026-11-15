@@ -2,9 +2,9 @@
 
 /// Polygonal terrain patch from `MAP.BIN`.
 #[derive(Clone, Debug)]
-pub(crate) struct MapArea {
-    pub(crate) color: u8,
-    pub(crate) verts: Vec<usize>,
+pub(super) struct MapArea {
+    pub(super) color: u8,
+    pub(super) verts: Vec<usize>,
 }
 
 /// `MAP.BIN` records `PLAYONE` never draws: eight sand patches with no polygon in its scene
@@ -22,7 +22,7 @@ const MAP_SLOTS: usize = 8;
 
 /// Parses the 30-byte polygon patch records that follow `MAP.BIN`'s 2-byte list head, leaving
 /// out the records in [`PATCHES_PLAYONE_NEVER_DRAWS`].
-pub(crate) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
+pub(super) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
     let (records, _partial) = data.get(MAP_HEAD..).unwrap_or_default().as_chunks::<30>();
     let mut areas = Vec::new();
     for (index, record) in records.iter().enumerate() {

@@ -80,7 +80,7 @@ impl GroundPlane {
 
 /// The corners of a `MAP.BIN` patch in `[I1]` metres, or `None` unless it has three or more
 /// corners that are all valid anchor points.
-pub(crate) fn patch_corners(
+pub(super) fn patch_corners(
     pts: &[[f32; 3]],
     anchors: &[AnchorPoint],
     area: &MapArea,
@@ -106,7 +106,7 @@ pub(crate) fn patch_corners(
 /// Returns one flag per area. The test uses the fans [`push_terrain`] draws, within
 /// [`GROUND_LIE_TOLERANCE`] of the earlier patch's plane. Why:
 /// `research/playone-exe/world-scene.md` section 6.5.
-pub(crate) fn terrain_overlays(anchors: &[AnchorPoint], map_areas: &[MapArea]) -> Vec<bool> {
+pub(super) fn terrain_overlays(anchors: &[AnchorPoint], map_areas: &[MapArea]) -> Vec<bool> {
     let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
     let corners: Vec<Option<Vec<[f32; 3]>>> = map_areas
         .iter()
@@ -168,13 +168,13 @@ fn lies_on(poly: &[[f32; 3]], base: &[[f32; 3]]) -> bool {
 const GROUND_PLANE_TOLERANCE: f32 = 1e-4;
 
 /// Whether every height of `ys`, each relative to `base_y`, lies on the ground plane.
-pub(crate) fn on_ground_plane(mut ys: impl Iterator<Item = f32>) -> bool {
+pub(super) fn on_ground_plane(mut ys: impl Iterator<Item = f32>) -> bool {
     ys.all(|y| y.abs() <= GROUND_PLANE_TOLERANCE)
 }
 
 /// Which `MAP.BIN` patches [`push_terrain`] appends.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Patches {
+pub(super) enum Patches {
     /// Every patch flat on the ground plane, overlay or not.
     Flat,
     /// The patches off the ground plane whose [`terrain_overlays`] flag is `overlay`.
@@ -187,7 +187,7 @@ pub(crate) enum Patches {
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
 )]
-pub(crate) fn push_terrain(
+pub(super) fn push_terrain(
     ir: &mut SodModelIr,
     anchors: &[AnchorPoint],
     map_areas: &[MapArea],
@@ -264,7 +264,7 @@ pub struct TerrainSurface {
 
 impl TerrainSurface {
     /// The triangles of every `MAP.BIN` patch over `anchors`, lifted by `base_y`.
-    pub(crate) fn new(anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) -> Self {
+    pub(super) fn new(anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) -> Self {
         let pts: Vec<[f32; 3]> = anchors
             .iter()
             .map(|a| {
@@ -331,7 +331,7 @@ impl TerrainSurface {
 /// vertex, and every such vertex lies within [`GROUND_LIE_TOLERANCE`] of it. Those vertices take
 /// the ground height exactly; the rest stay at the placement. `pos` includes `base_y`. Why:
 /// `research/playone-exe/world-scene.md` sections 3, 6.
-pub(crate) fn ground_decal_vertices(
+pub(super) fn ground_decal_vertices(
     model: &SodModelIr,
     pos: [f32; 3],
     surface: &TerrainSurface,

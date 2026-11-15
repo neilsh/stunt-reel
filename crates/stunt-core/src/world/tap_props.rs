@@ -45,7 +45,7 @@ pub struct TapFailure {
 /// overflows, or whose stream fails, is dropped and reported; one whose decode stops early is
 /// drawn and reported. An anchor the stream never taps may overflow: `PLAYONE` subtracts the
 /// origin from tapped anchors only.
-pub(crate) fn anchored_models(
+pub(super) fn anchored_models(
     inputs: &WorldInputs<'_>,
     instances: &[Placement],
 ) -> (HashMap<usize, Option<SodModelIr>>, Vec<TapFailure>) {

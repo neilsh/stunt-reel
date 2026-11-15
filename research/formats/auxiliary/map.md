@@ -121,7 +121,7 @@ The block tree has no schema, so its layout is recorded here (`[Established]` fo
 
 ### 3.3 Terrain Ingestion in `stuntreel`
 
-`world/mod.rs` `parse_map_bin` reads the records after the head and keeps those in use whose vertices all index the anchor table, less the eight unlinked patches (`PATCHES_PLAYONE_NEVER_DRAWS`). That gives 158 polygons over 166 active records. The 166 records carry 584 vertex references in total: 94 records with three corners, 62 with four, 8 with five, one with six and one with eight. So `MAP.BIN` is a flat polygon list, not a tessellated mesh. Each polygon is fanned from its first corner and drawn flat at its colour (`[Established]`).
+`world/map_bin.rs` `parse_map_bin` reads the records after the head and keeps those in use whose vertices all index the anchor table, less the eight unlinked patches (`PATCHES_PLAYONE_NEVER_DRAWS`). That gives 158 polygons over 166 active records. The 166 records carry 584 vertex references in total: 94 records with three corners, 62 with four, 8 with five, one with six and one with eight. So `MAP.BIN` is a flat polygon list, not a tessellated mesh. Each polygon is fanned from its first corner and drawn flat at its colour (`[Established]`).
 
 ### 3.4 Global Ocean Water Quad
 

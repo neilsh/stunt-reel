@@ -16,23 +16,23 @@ use super::terrain::{
 };
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
-pub(crate) const IDENTITY_MATRIX: [f32; 16] = [
+pub(super) const IDENTITY_MATRIX: [f32; 16] = [
     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
 ];
 
 /// Placed props' models: the shared decode of each shape, unless the placement at that
 /// index has its own (`Some`) or is dropped (`None`).
-pub(crate) struct PropModels<'a> {
-    pub(crate) shapes: &'a HashMap<u16, SodModelIr>,
-    pub(crate) own: HashMap<usize, Option<SodModelIr>>,
+pub(super) struct PropModels<'a> {
+    pub(super) shapes: &'a HashMap<u16, SodModelIr>,
+    pub(super) own: HashMap<usize, Option<SodModelIr>>,
     /// The `SP_1NODE` gate chains placements index (`Placement::chain`).
-    pub(crate) chains: &'a [Vec<LodGate>],
+    pub(super) chains: &'a [Vec<LodGate>],
 }
 
 #[cfg(test)]
 impl<'a> PropModels<'a> {
     /// Every placement uses the shared decode of its shape.
-    pub(crate) fn shared(shapes: &'a HashMap<u16, SodModelIr>) -> Self {
+    fn shared(shapes: &'a HashMap<u16, SodModelIr>) -> Self {
         Self {
             shapes,
             own: HashMap::new(),
@@ -54,12 +54,12 @@ impl PropModels<'_> {
 /// Half-width of the ocean and fallback ground quads, in metres.
 const WORLD_EXTENT: f32 = 32000.0;
 /// `SodVertex::flags` bit for unshaded faces.
-pub(crate) const FLAGS_UNSHADED: u8 = 0x04;
+pub(super) const FLAGS_UNSHADED: u8 = 0x04;
 /// Palette index of the ocean quad.
-pub(crate) const OCEAN_COLOR: u8 = 208;
+const OCEAN_COLOR: u8 = 208;
 /// Palette index of the fallback ground plane drawn when `MAP.BIN` is absent.
-pub(crate) const GROUND_COLOR: u8 = 194;
-pub(crate) const UP: [f32; 3] = [0.0, 1.0, 0.0];
+const GROUND_COLOR: u8 = 194;
+pub(super) const UP: [f32; 3] = [0.0, 1.0, 0.0];
 
 /// Name of the world's flat-ground mesh nodes, which a renderer paints first, in walk order.
 ///
@@ -84,7 +84,7 @@ pub const GROUND_NODE: &str = "WORLD_GROUND";
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; the decal counts are growth since the base counts"
 )]
-pub(crate) fn build_world_ir(
+pub(super) fn build_world_ir(
     anchors: &[AnchorPoint],
     map_areas: &[MapArea],
     surface: &TerrainSurface,
@@ -410,7 +410,7 @@ fn lod_parent(
 }
 
 /// `gate` as the visibility condition the renderer tests, its node position in `[I1]`.
-pub(crate) fn lod_condition(gate: LodGate, base_y: f32) -> VisibilityCondition {
+pub(super) fn lod_condition(gate: LodGate, base_y: f32) -> VisibilityCondition {
     let [x, y, z] = gate.raw;
     VisibilityCondition::LodBranch {
         point: [-(x as f32), -(y as f32) + base_y, z as f32],

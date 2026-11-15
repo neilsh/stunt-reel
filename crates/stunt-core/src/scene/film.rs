@@ -501,12 +501,7 @@ impl FilmScene {
         out
     }
 
-    /// The shadow matrix of an actor at `position` drawn through `world_matrix`.
-    ///
-    /// PLAYONE solves one ground plane at the actor's x and z (`0x19FC`) and flattens the
-    /// whole object onto it (`0x1C0D`), so every vertex lands on that plane, not on the
-    /// terrain under its own x and z. The plane here is the terrain triangle under the
-    /// origin; with no world it is `y = 0`, as for PLAYONE's null plane (`0x1A12`).
+    /// `ground_shadow` against this scene's world.
     fn shadow_matrix(&self, position: [f32; 3], world_matrix: &[f32; 16]) -> [f32; 16] {
         ground_shadow(self.world.as_ref(), position, world_matrix)
     }
