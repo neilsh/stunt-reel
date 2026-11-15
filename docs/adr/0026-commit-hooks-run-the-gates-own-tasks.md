@@ -5,7 +5,8 @@
 accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (below). Amended
 2026-11-08: `check-work-frozen` holds a frozen work folder to its outcome (below). Superseded in
 part 2026-11-09 by [ADR 0044](0044-commit-messages-carry-no-gate-line.md): the commit-msg hook
-checks the subject only, with no gate line. Amended 2026-11-13: two shebang built-ins (below). Amended 2026-11-15: `crlf-check` is removed (below).
+checks the subject only, with no gate line. Amended 2026-11-13: two shebang built-ins (below).
+Amended 2026-11-15: `crlf-check` is removed (below).
 Supersedes
 the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
@@ -189,7 +190,7 @@ place. This supersedes the hook table's `crlf-check` row, the `SKIP` list and "`
 rewrites files": no hook rewrites a file again. CI's `SKIP` list is
 `diff-check,fmt-check-rust,fmt-check-py,lint-py,test-docs,check-work-frozen`.
 
-Evidence is the #577's spec, in its 2026-11-15 spike:
+Evidence is #577's spec, in its 2026-11-15 spike:
 
 - Six tracked files rewritten to all-CRLF pass `ruff format --check` (`line-ending = "auto"`),
   `ruff check` and `cargo fmt --check` (`newline_style = "Auto"`); both settings date from
@@ -201,9 +202,12 @@ Evidence is the #577's spec, in its 2026-11-15 spike:
 
 Consequences:
 
-- A Python file with mixed endings, or a CRLF `MAP.md`, fails `mise run check` instead of the
-  commit hook; `mise run fix` is expected to repair both. A Markdown, TOML or YAML file with CRLF
-  is checked by nothing, which is harmless since the index stores LF.
-- No commit is rejected for a CRLF working copy, so the cost the 2026-11-05 amendment fixed
-  ([#219](https://github.com/neilsh/stunt-reel/issues/219)) cannot recur.
+- No hook rewrites a file or rejects an all-CRLF working copy. A Python file with mixed endings
+  can still fail `fmt-check-py` at commit and in the gate, and a CRLF `MAP.md` fails the gate;
+  `mise run fix` is expected to repair both. No hook checks a Markdown, TOML or YAML file for
+  CRLF, apart from the gate's byte-level tests (the `MAP.md` comparison and the AGENTS.md
+  budget); that is harmless since the index stores LF.
+- The cost the 2026-11-05 amendment fixed
+  ([#219](https://github.com/neilsh/stunt-reel/issues/219)), a commit rejected for a working copy
+  that differs from its index blob only in line endings, does not recur for an all-CRLF copy.
 - [`docs/harness.md`](../harness.md) still tells writers to produce LF.
