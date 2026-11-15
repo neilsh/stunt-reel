@@ -4,7 +4,8 @@ A report, never a gate. It finds:
 
 * ``size``: an evergreen file (``research/**/*.md``, ``docs/*.md``, ``docs/agents/*.md``,
   ``docs/howto/*.md``, ``AGENTS.md``, but not ``research/MAP.md``,
-  ``research/formats/sod-opcode-coverage.md`` or ``docs/adr/**``) over 20480 bytes on disk;
+  ``research/formats/sod-opcode-coverage.md`` or ``docs/adr/**``) over its byte budget on
+  disk: 32 KiB under ``research/``, 20 KiB under ``docs/`` and everywhere else;
 * ``summary``: a research note (``stunt_reel.research_notes``) without a ``summary:``;
 * ``heading``: a heading in an evergreen file, outside fenced code, that contains an ISO date
   or an ordinal round ("Second round"), or whose words after any section number start with
@@ -52,7 +53,13 @@ from stunt_reel.work_items import (
 
 type Kind = Literal["size", "summary", "heading", "stale-issue", "missing-outcome", "folder"]
 
-SIZE_BUDGET = 20480
+#: Byte budget of an evergreen file, by its repo-relative prefix, longest first: a research
+#: note may reach 32 KiB, a docs page and everything else 20 KiB. Over its budget is flagged.
+SIZE_BUDGETS: tuple[tuple[str, int], ...] = (
+    ("research/", 32_768),
+    ("docs/", 20_480),
+    ("", 20_480),
+)
 STALE_DAYS = 14
 EVERGREEN = ("research/**/*.md", "docs/*.md", "docs/agents/*.md", "docs/howto/*.md", "AGENTS.md")
 EXEMPT = ("research/MAP.md", "research/formats/sod-opcode-coverage.md", "docs/adr/**")
@@ -91,8 +98,9 @@ def collect(repo_root: Path, run: Runner, today: date) -> list[Finding]:
     findings: list[Finding] = []
     for path in _evergreen(repo_root):
         relative = path.relative_to(repo_root).as_posix()
-        if (size := len(path.read_bytes())) > SIZE_BUDGET:
-            detail = f"{size} bytes, over the {SIZE_BUDGET}-byte budget"
+        budget = size_budget(relative)
+        if (size := len(path.read_bytes())) > budget:
+            detail = f"{size} bytes, over the {budget}-byte budget"
             findings.append(Finding(relative, "size", detail, size))
         text = path.read_text(encoding="utf-8", errors="replace")
         findings += [Finding(relative, "heading", line, 1) for line in _session_headings(text)]
@@ -133,6 +141,11 @@ def main(
         for finding in findings:
             print(f"{finding.kind.ljust(kinds)}  {finding.path.ljust(paths)}  {finding.detail}")
     return 0
+
+
+def size_budget(relative: str) -> int:
+    """The byte budget for the evergreen file at repo path *relative*."""
+    return next(budget for prefix, budget in SIZE_BUDGETS if relative.startswith(prefix))
 
 
 def _evergreen(repo_root: Path) -> list[Path]:

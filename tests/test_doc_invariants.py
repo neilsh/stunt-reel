@@ -699,7 +699,7 @@ def test_the_walk_skips_pytests_own_temporary_files(tmp_path: Path) -> None:
 
 
 AGENTS_MD_MAX_BYTES = 8192
-SKILL_MAX_WORDS = 500
+SKILL_MAX_WORDS = 600
 
 
 def test_adr_numbers_are_unique() -> None:
@@ -720,14 +720,28 @@ def test_agents_md_fits_its_budget() -> None:
     )
 
 
-def test_skills_fit_their_budget() -> None:
-    """A SKILL.md stays under 500 words (``wc -w``); longer procedures go in files beside it."""
-    over = {
-        path.relative_to(REPO_ROOT).as_posix(): words
-        for path in sorted((REPO_ROOT / ".agents" / "skills").glob("*/SKILL.md"))
-        if (words := len(path.read_text(encoding="utf-8").split())) >= SKILL_MAX_WORDS
+def _skills_over_budget(skills: Path) -> dict[str, int]:
+    """Each SKILL.md under *skills* over ``SKILL_MAX_WORDS``, by its path, with its word count."""
+    return {
+        path.relative_to(skills).as_posix(): words
+        for path in sorted(skills.glob("*/SKILL.md"))
+        if (words := len(path.read_text(encoding="utf-8").split())) > SKILL_MAX_WORDS
     }
+
+
+def test_skills_fit_their_budget() -> None:
+    """A SKILL.md holds at most 600 words (``wc -w``); longer procedures go in files beside it."""
+    over = _skills_over_budget(REPO_ROOT / ".agents" / "skills")
     assert not over, (
-        f"Skills at or over {SKILL_MAX_WORDS} words; move detail into a file beside SKILL.md "
+        f"Skills over {SKILL_MAX_WORDS} words; move detail into a file beside SKILL.md "
         f"and link it: {over}"
     )
+
+
+def test_a_skill_gets_600_words_and_not_601(tmp_path: Path) -> None:
+    """600 words is the cap, not 599; one word more fails (issue #522)."""
+    for name, words in (("at-the-cap", 600), ("over-the-cap", 601)):
+        folder = tmp_path / name
+        folder.mkdir()
+        (folder / "SKILL.md").write_text("word " * words, encoding="utf-8")
+    assert _skills_over_budget(tmp_path) == {"over-the-cap/SKILL.md": 601}
