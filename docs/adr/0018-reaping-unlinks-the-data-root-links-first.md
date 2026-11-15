@@ -48,12 +48,16 @@ that no recursive delete ever sees a link:
    clean;
 2. **refuse** — modified tracked files need `--stash-dirty`, untracked files need
    `--discard-untracked`, and any refusal stops the run before the first delete;
-3. **unlink** — every reparse point under the worktree is removed with `remove_link`
-   (`rmdir`/`unlink` on the link, never its target), by a walker that never descends
-   into one;
-4. **prove** — the walker runs again and the run aborts if any reparse point remains;
+3. **unlink** — every reparse point under the worktree that git does not track is removed
+   with `remove_link` (`rmdir`/`unlink` on the link, never its target), by a walker that
+   never descends into one; a path git records as a symlink (mode 120000) is left for git to
+   delete as a leaf, because unlinking it first leaves the checkout modified and the
+   clean-tree check then refuses (issue #541);
+4. **prove** — the walker runs again and the run aborts if any reparse point git does not
+   track remains;
 5. **remove** — only now does `git worktree remove` run (`--force` only when untracked
-   files were explicitly allowed, and by then there is no link left to follow);
+   files were explicitly allowed); no link git does not track is left to follow, and git
+   removes the tracked symlinks as leaves;
 6. **delete the branch** — `-d` for an ancestor of `main`, `-D` for a patch-equivalent
    branch;
 7. **`--prune`** — remove pool directories git no longer registers (only when they hold

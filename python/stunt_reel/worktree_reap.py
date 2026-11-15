@@ -203,15 +203,16 @@ def _reparse_points(root: Path) -> list[Path]:
     return found
 
 
-def _tracked_symlinks(worktree: Path) -> frozenset[str]:
-    """The *worktree*'s tracked symlink paths (git mode 120000), relative to its root.
+def _tracked_symlinks(worktree: Path) -> frozenset[str] | None:
+    """The *worktree*'s tracked symlink paths (git mode 120000) relative to its root.
 
     Git removes a tracked symlink as a leaf, so reap must leave it in place: unlinking it
     leaves the checkout modified and the clean-tree check then refuses (issue #541).
+    Returns ``None`` when git cannot list them: unlink nothing blind, refuse the worktree.
     """
     result = _git(worktree, "ls-files", "-s", "-z")
     if result.returncode != 0:
-        return frozenset()
+        return None
     tracked: set[str] = set()
     for entry in result.stdout.split("\0"):
         if entry.startswith("120000 "):
@@ -370,6 +371,8 @@ def _reap_one(
         if _changed(path, untracked=False):
             return f"{branch}: still modified after stashing"
     tracked = _tracked_symlinks(path)
+    if tracked is None:
+        return f"{branch}: cannot list tracked symlinks; left alone"
     failures = _unlink_reparse_points(path, tracked=tracked)
     if failures:
         return f"{branch}: cannot unlink: {'; '.join(failures)}"
