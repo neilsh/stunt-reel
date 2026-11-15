@@ -43,9 +43,18 @@ The captured frames are game-derived and are not relicensed by this project. Eve
 - is a single 320x200 screen, or a crop or enlargement of one, never a run of frames or a video;
 - holds nothing extracted from game files (no shapes, textures, artwork or sound), only what the
   screen showed;
+- shows a captured frame only inside a comparison, beside this project's render of the same
+  moment, never on its own;
+- may be a comparison sheet: one captured screen, or crops or enlargements of it, beside one or
+  more of our renders of the same moment, with optional difference images; the 320x200 limit
+  above applies to the captured content, not to the sheet;
 - lives under `research/` or `work/` and is cited by a note or index, so each one has a stated
   purpose. New images go in `work/<YYYY-MM>/<folder>/images/`, where `<folder>` is the work
   folder of the investigation that produced them ([`work/README.md`](work/README.md#images)).
+
+The project's research site, which GitHub Pages builds from this repository, may serve a
+committed image that a published page cites, under the same rules. It serves no image the
+repository could not hold.
 
 A pull request that changes rendered output attaches comparison images of the same kind to its
 description, under the same first two limits; GitHub hosts them, and they are not committed. All
