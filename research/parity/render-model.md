@@ -17,7 +17,7 @@ summary: "Compares PLAYONE's back-to-front software painter with our depth-buffe
 
 Our renderer replaces the painting with a GPU depth buffer, by design: [`docs/SPEC.md`](../../docs/SPEC.md) section 2.1 makes "CPU-side Painter's Algorithm / BSP polygon sorting" a non-goal.
 - It builds the world once per film (`crates/stunt-core/src/world/mod.rs`) and draws a sky pass, a world ground pass (`Always`, depth write) that paints the flat ground in walk order ([ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)), a base pass (`Less`) and an `[I5]` decal pass (`LessEqual`, bias `-2, -2.0`, no depth write; `crates/stunt-render/src/pipeline.rs`, [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)).
-- Depth is `Depth24Plus` with near 0.5 m and far 25 km (`renderer.rs`, `camera.rs`).
+- Depth is `Depth24Plus` with near 0.5 m and far 25 km (`renderer/mod.rs`, `camera.rs`).
 - Polygons are flat at their palette index through the `[I3]` 256 × 32 lookup, with no lighting (`shaders/mode13h.wgsl`).
 
 The two orders agree wherever the nearer surface is also painted later, which is most of the frame. They differ in three ways:
