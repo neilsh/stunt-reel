@@ -10,6 +10,7 @@ import importlib.util
 import re
 import shutil
 import subprocess
+import tomllib
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -565,3 +566,327 @@ def test_move_phase_refuses_a_folder_inside_a_moved_directory(
     assert _apply(root, "move") == 1
     assert _snapshot(root) == before
     assert "inside the moved directory work/2026-11/hangar" in capsys.readouterr().err
+
+
+# Splitting a note into topic files: [[split]] relinks section links; it does not cut the note.
+
+SPLIT = _md("research/split/x")
+SPLIT_GOALS = _md("research/split/x-goals")
+SPLIT_GOALS_1 = _md("research/split/x-goals-1")
+SPLIT_DECISIONS = _md("research/split/x-decisions")
+SPLIT_INDEX = _md("research/split/x-index")
+NOTE = _md("docs/note")
+DEEP_NOTE = _md("research/deep/note")
+OLD = _md("research/old")
+DEEP_OLD = _md("research/deep/old")
+RENAME_FROM = _md("research/a")
+RENAME_TO = _md("research/b")
+MOVE_OUT = _md("docs/a")
+SPLIT_DIR_NEW = "research/renamed"
+RENAMED = _md(f"{SPLIT_DIR_NEW}/x")
+RENAMED_GOALS = _md(f"{SPLIT_DIR_NEW}/x-goals")
+SPLIT_MOVES = "work/2026-11/9_split/moves.toml"
+SPLITS = f"""\
+[[split]]
+from = "{SPLIT}#goals"
+to = "{SPLIT_GOALS}"
+
+[[split]]
+from = "{SPLIT}#goals-1"
+to = "{SPLIT_GOALS_1}"
+
+[[split]]
+from = "{SPLIT}#decisions"
+to = "{SPLIT_DECISIONS}#decisions-made"
+
+[[split]]
+from = "{SPLIT}"
+to = "{SPLIT_INDEX}"
+"""
+SPLIT_TREE: dict[str, str | bytes] = {
+    NOTE: (
+        f"See [goals](../{SPLIT}#goals), [second](../{SPLIT}#goals-1), "
+        f"[d](../{SPLIT}#decisions) and [x](../{SPLIT}).\n"
+    ),
+    DEEP_NOTE: "See [second](../split/x.md#goals-1).\n",
+    SPLIT: "# X\n\n## Goals\n\n## Goals\n\n## Decisions\n",
+    "corpus/notes.md": f"[goals](../{SPLIT}#goals)\n",
+    SPLIT_MOVES: SPLITS,
+}
+
+
+def _splits() -> Any:
+    return move_docs._splits(tomllib.loads(SPLITS))
+
+
+def _split_rewrite(text: str, source: str, new_source: str | None = None) -> str:
+    result: str = move_docs.rewrite_text(
+        text, source, new_source or source, {}, markdown=True, splits=_splits()
+    )
+    return result
+
+
+def test_a_section_link_goes_to_the_file_mapped_for_its_anchor() -> None:
+    text = (
+        f"See [goals](../{SPLIT}#goals), [second](../{SPLIT}#goals-1) "
+        f"and [d](../{SPLIT}#decisions).\n"
+    )
+    assert _split_rewrite(text, NOTE) == (
+        f"See [goals](../{SPLIT_GOALS}#goals), "
+        f"[second](../{SPLIT_GOALS_1}#goals-1) and "
+        f"[d](../{SPLIT_DECISIONS}#decisions-made).\n"
+    )
+
+
+def test_a_bare_link_to_a_split_note_goes_to_its_whole_file_destination() -> None:
+    text = f"See [x](../{SPLIT}) and [y](../{SPLIT}?plain=1).\n"
+    assert _split_rewrite(text, NOTE) == (
+        f"See [x](../{SPLIT_INDEX}) and [y](../{SPLIT_INDEX}?plain=1).\n"
+    )
+
+
+def test_a_section_link_with_no_split_mapping_is_reported() -> None:
+    unmapped: list[str] = []
+    text = f"[gone](../{SPLIT}#goals-2)\n"
+    assert (
+        move_docs.rewrite_text(
+            text,
+            NOTE,
+            NOTE,
+            {},
+            markdown=True,
+            splits=_splits(),
+            unmapped=unmapped,
+        )
+        == text
+    )
+    assert unmapped == [
+        f"{NOTE}: ../{SPLIT}#goals-2 points at a section of {SPLIT} with no [[split]] mapping"
+    ]
+
+
+@needs_git
+def test_move_phase_relinks_split_sections_and_keeps_skipped_sources(tmp_path: Path) -> None:
+    root = _repo(tmp_path, SPLIT_TREE)
+
+    assert _apply(root, "move", moves=SPLIT_MOVES) == 0
+
+    assert (root / NOTE).read_text(encoding="utf-8") == (
+        f"See [goals](../{SPLIT_GOALS}#goals), "
+        f"[second](../{SPLIT_GOALS_1}#goals-1), "
+        f"[d](../{SPLIT_DECISIONS}#decisions-made) and [x](../{SPLIT_INDEX}).\n"
+    )
+    assert (root / DEEP_NOTE).read_text(encoding="utf-8") == (
+        "See [second](../split/x-goals-1.md#goals-1).\n"
+    )
+    # A skipped link source keeps its old link; the note itself is not cut.
+    assert (root / "corpus/notes.md").read_text(encoding="utf-8") == (
+        f"[goals](../{SPLIT}#goals)\n"
+    )
+    assert (root / SPLIT_MOVES).read_text(encoding="utf-8") == SPLITS
+    assert (root / SPLIT).read_text(encoding="utf-8") == (
+        "# X\n\n## Goals\n\n## Goals\n\n## Decisions\n"
+    )
+
+
+@needs_git
+def test_an_unmapped_section_link_fails_even_a_dry_run_without_writing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tree = {**SPLIT_TREE, NOTE: f"See [gone](../{SPLIT}#goals-2).\n"}
+    root = _repo(tmp_path, tree)
+    before = _snapshot(root)
+
+    assert _apply(root, "move", moves=SPLIT_MOVES) == 1
+    err = capsys.readouterr().err
+    assert "no [[split]] mapping" in err
+    assert f"{NOTE}: ../{SPLIT}#goals-2" in err
+    assert _snapshot(root) == before
+
+    assert _apply(root, "move", "--dry-run", moves=SPLIT_MOVES) == 1
+    assert "no [[split]] mapping" in capsys.readouterr().err
+    assert _snapshot(root) == before
+
+
+@needs_git
+def test_inside_phase_relinks_a_moved_files_section_link(tmp_path: Path) -> None:
+    plan = SPLITS + f'\n[[move]]\nfrom = "{OLD}"\nto = "{DEEP_OLD}"\n'
+    tree: dict[str, str | bytes] = {
+        OLD: "See [g](split/x.md#goals).\n",
+        SPLIT: "# X\n\n## Goals\n\n## Goals\n\n## Decisions\n",
+        "plan.toml": plan,
+    }
+    root = _repo(tmp_path, tree)
+    assert _apply(root, "move", moves="plan.toml") == 0
+    assert _apply(root, "inside", moves="plan.toml") == 0
+
+    assert (root / DEEP_OLD).read_text(encoding="utf-8") == (
+        "See [g](../split/x-goals.md#goals).\n"
+    )
+
+
+@needs_git
+def test_inside_phase_accepts_a_renamed_files_split_link(tmp_path: Path) -> None:
+    """A rename keeps the old link resolvable, but that is not evidence the inside phase ran."""
+    plan = SPLITS + f'\n[[move]]\nfrom = "{RENAME_FROM}"\nto = "{RENAME_TO}"\n'
+    tree: dict[str, str | bytes] = {
+        RENAME_FROM: "See [g](split/x.md#goals).\n",
+        SPLIT: "# X\n\n## Goals\n\n## Goals\n\n## Decisions\n",
+        "plan.toml": plan,
+    }
+    root = _repo(tmp_path, tree)
+    assert _apply(root, "move", moves="plan.toml") == 0
+
+    assert _apply(root, "inside", moves="plan.toml") == 0
+    assert (root / RENAME_TO).read_text(encoding="utf-8") == ("See [g](split/x-goals.md#goals).\n")
+
+
+@needs_git
+def test_an_unmapped_link_in_a_moved_file_fails_the_move_phase(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The move phase reads the files about to move too, before any git mv runs (issue #523)."""
+    plan = SPLITS + f'\n[[move]]\nfrom = "{RENAME_FROM}"\nto = "{MOVE_OUT}"\n'
+    tree: dict[str, str | bytes] = {
+        RENAME_FROM: "See [gone](split/x.md#goals-2).\n",
+        SPLIT: "# X\n\n## Goals\n\n## Goals\n\n## Decisions\n",
+        "plan.toml": plan,
+    }
+    root = _repo(tmp_path, tree)
+    before = _snapshot(root)
+
+    assert _apply(root, "move", moves="plan.toml") == 1
+    err = capsys.readouterr().err
+    assert "no [[split]] mapping" in err
+    assert f"{RENAME_FROM}: split/x.md#goals-2" in err
+    assert _snapshot(root) == before
+
+    assert _apply(root, "move", "--dry-run", moves="plan.toml") == 1
+    assert "no [[split]] mapping" in capsys.readouterr().err
+    assert _snapshot(root) == before
+
+
+def test_a_split_anchor_must_name_a_heading_of_the_note(tmp_path: Path) -> None:
+    note = tmp_path / SPLIT
+    note.parent.mkdir(parents=True)
+    note.write_text("# X\n\n## Goals\n\n## Goals\n\n## Decisions\n", encoding="utf-8")
+    renamed = tmp_path / RENAMED
+    renamed.parent.mkdir(parents=True)
+    renamed.write_text(note.read_text(encoding="utf-8"), encoding="utf-8")
+    splits = move_docs._splits(tomllib.loads(SPLITS))
+    # goals, goals-1 and decisions pass.
+    move_docs._check_splits(splits, tmp_path, [SPLIT], {}, moving=True)
+    # A note the plan moves is read at its old path, then at its new one.
+    move_docs._check_splits(splits, tmp_path, [SPLIT], {SPLIT: RENAMED}, moving=True)
+    move_docs._check_splits(splits, tmp_path, [RENAMED], {SPLIT: RENAMED}, moving=False)
+
+    bad = f'[[split]]\nfrom = "{SPLIT}#no-such"\nto = "{SPLIT_GOALS}"\n'
+    with pytest.raises(move_docs.MovesError, match="names no heading"):
+        move_docs._check_splits(
+            move_docs._splits(tomllib.loads(bad)), tmp_path, [SPLIT], {}, moving=True
+        )
+    with pytest.raises(move_docs.MovesError, match="not a tracked note"):
+        move_docs._check_splits(splits, tmp_path, [], {}, moving=True)
+    with pytest.raises(move_docs.MovesError, match="move destination"):
+        move_docs._check_splits(splits, tmp_path, [SPLIT], {OLD: SPLIT}, moving=True)
+    # Keyed by a moved directory's new path, it is refused and names the pre-move path.
+    keyed_new = move_docs._splits(tomllib.loads(SPLITS.replace(SPLIT, f"{SPLIT_DIR_NEW}/x.md")))
+    with pytest.raises(move_docs.MovesError, match="key it by its pre-move path"):
+        move_docs._check_splits(keyed_new, tmp_path, [SPLIT], {SPLIT: RENAMED}, moving=True)
+
+
+def test_a_self_link_to_a_moved_section_is_a_warning() -> None:
+    unmapped: list[str] = []
+    warnings: list[str] = []
+    text = "See [a](#goals) and [b](#not-mapped).\n"
+    assert (
+        move_docs.rewrite_text(
+            text,
+            SPLIT,
+            SPLIT,
+            {},
+            markdown=True,
+            splits=_splits(),
+            unmapped=unmapped,
+            warnings=warnings,
+        )
+        == text
+    )
+    assert unmapped == []
+    assert warnings == [
+        f"{SPLIT}: #goals is a self-link whose section moved to {SPLIT_GOALS}#goals"
+    ]
+
+
+def test_a_destination_files_own_section_is_a_bare_fragment() -> None:
+    text = "See [g](x.md#goals).\n"
+    assert (
+        move_docs.rewrite_text(text, SPLIT_GOALS, SPLIT_GOALS, {}, markdown=True, splits=_splits())
+        == "See [g](#goals).\n"
+    )
+
+
+@needs_git
+def test_a_split_note_the_plan_moves_is_read_in_each_phase(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A note split and moved by one plan is read at its old path, then at its new one."""
+    plan = SPLITS + f'\n[[move]]\nfrom = "{SPLIT}"\nto = "{RENAMED}"\n'
+    tree: dict[str, str | bytes] = {
+        NOTE: f"See [goals](../{SPLIT}#goals).\n",
+        SPLIT: "# X\n\n- [Goals](#goals)\n\n## Goals\n\n## Goals\n\n## Decisions\n",
+        "plan.toml": plan,
+    }
+    root = _repo(tmp_path, tree)
+
+    assert _apply(root, "move", moves="plan.toml") == 0
+    out = capsys.readouterr().out
+    assert "Self-links in the split note" in out
+    assert "#goals is a self-link whose section moved to" in out
+    assert (root / NOTE).read_text(encoding="utf-8") == f"See [goals](../{SPLIT_GOALS}#goals).\n"
+    assert (root / RENAMED).is_file()
+    assert not (root / SPLIT).exists()
+
+    assert _apply(root, "inside", moves="plan.toml") == 0
+    assert "Self-links in the split note" in capsys.readouterr().out
+    assert (root / NOTE).read_text(encoding="utf-8") == f"See [goals](../{SPLIT_GOALS}#goals).\n"
+
+
+@needs_git
+def test_a_split_note_inside_a_moved_directory_is_read_in_each_phase(tmp_path: Path) -> None:
+    plan = SPLITS + f'\n[[move]]\nfrom = "research/split/"\nto = "{SPLIT_DIR_NEW}"\n'
+    tree: dict[str, str | bytes] = {
+        NOTE: f"See [goals](../{SPLIT}#goals).\n",
+        SPLIT: "# X\n\n## Goals\n\n## Goals\n\n## Decisions\n",
+        "plan.toml": plan,
+    }
+    root = _repo(tmp_path, tree)
+
+    assert _apply(root, "move", moves="plan.toml") == 0
+    expected = f"See [goals](../{RENAMED_GOALS}#goals).\n"
+    assert (root / NOTE).read_text(encoding="utf-8") == expected
+    assert (root / RENAMED).is_file()
+
+    assert _apply(root, "inside", moves="plan.toml") == 0
+    assert (root / NOTE).read_text(encoding="utf-8") == expected
+
+
+@needs_git
+def test_a_split_keyed_by_a_moved_directorys_new_path_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    renamed = SPLITS.replace(SPLIT, f"{SPLIT_DIR_NEW}/x.md")
+    plan = renamed + f'\n[[move]]\nfrom = "research/split/"\nto = "{SPLIT_DIR_NEW}"\n'
+    tree: dict[str, str | bytes] = {
+        NOTE: f"See [goals](../{SPLIT}#goals).\n",
+        SPLIT: "# X\n\n## Goals\n\n## Goals\n\n## Decisions\n",
+        "plan.toml": plan,
+    }
+    root = _repo(tmp_path, tree)
+    before = _snapshot(root)
+
+    assert _apply(root, "move", moves="plan.toml") == 1
+    err = capsys.readouterr().err
+    assert "key it by its pre-move path" in err
+    assert f"{SPLIT_DIR_NEW}/x.md" in err
+    assert _snapshot(root) == before
