@@ -8,7 +8,11 @@ use std::time::{Duration, Instant};
 pub(crate) const DEADLINE_ENV: &str = "STUNT_GPU_TEST_DEADLINE_S";
 
 /// The per-test deadline when [`DEADLINE_ENV`] is unset.
-pub(crate) const DEFAULT_DEADLINE: Duration = Duration::from_secs(120);
+///
+/// The whole `gpu` binary took 4.7 s on lavapipe in CI, an upper bound on its slowest test
+/// (<https://github.com/neilsh/stunt-reel/actions/runs/43765101119/job/132968312213>). The
+/// deadline is `max(60, 10 x 4.7)` seconds rounded up to a multiple of 30.
+pub(crate) const DEFAULT_DEADLINE: Duration = Duration::from_secs(60);
 
 /// The deadline for `value` (the raw [`DEADLINE_ENV`] contents): `None` is
 /// [`DEFAULT_DEADLINE`].
