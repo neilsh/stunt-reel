@@ -40,6 +40,14 @@ ALLOWED: dict[tuple[str, str], str] = {
         "_engine_root",
     ): "a film outside a game tree takes the configured demo's engine",
     ("tac.staging", "_stage"): "a capture stages its DOSBox mount under the configured store",
+    (
+        "worktree_provision",
+        "_init",
+    ): "init reports the configured data root and migrates the old layout into it",
+    (
+        "worktree_provision",
+        "_stranded_data",
+    ): "init names old link paths holding data the configured corpus does not read",
 }
 
 

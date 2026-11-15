@@ -25,7 +25,7 @@ LOCAL_ONLY = {
     # Only CI runs `--range`, which asks GraphQL for the merged PRs that hold a commit.
     "scripts/check_commit_msg.py",
     # Only `reap`, run from the owner's primary checkout, lists merged PRs with `gh pr list`.
-    "scripts/worktree_init.py",
+    "stunt_reel/worktree_reap.py",
 }
 
 
@@ -56,7 +56,7 @@ def _subcommands(tree: ast.AST) -> list[tuple[int, tuple[str, ...]]]:
             name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
             if name in _RUNNERS:
                 args = list(node.args)
-                # A runner may take a working directory before the argv, as worktree_init's does.
+                # A runner may take a working directory before the argv, as reap's does.
                 while args and not isinstance(args[0], ast.Constant | ast.Starred):
                     args.pop(0)
                 found.append((node.lineno, _words(args)))
