@@ -40,9 +40,9 @@ Part of the [`running-unattended`](SKILL.md) skill.
      # local (GraphQL):
      gh pr view <n> --json headRefOid,comments --jq '.headRefOid[0:7] as $h | [.comments[] | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR")) | .body | split("\n")[0] | rtrimstr("\r") | select(test("^[^:]+ review at " + $h + ": "))] | last | (. // "") | test(": clean$")'
 
-     # cloud (REST), the same boolean; page with &page=2 past 100 comments:
+     # cloud (REST), the same boolean; --paginate walks every page, so a long history is never cut short:
      H=$(gh api repos/{owner}/{repo}/pulls/<n> --jq '.head.sha[0:7]')
-     gh api "repos/{owner}/{repo}/issues/<n>/comments?per_page=100" --jq "[.[] | select(.author_association | IN(\"OWNER\",\"MEMBER\",\"COLLABORATOR\")) | .body | split(\"\\n\")[0] | rtrimstr(\"\\r\") | select(test(\"^[^:]+ review at $H: \"))] | last | (. // \"\") | test(\": clean$\")"
+     gh api --paginate "repos/{owner}/{repo}/issues/<n>/comments?per_page=100" --jq ".[] | select(.author_association | IN(\"OWNER\",\"MEMBER\",\"COLLABORATOR\")) | .body | split(\"\\n\")[0] | rtrimstr(\"\\r\") | select(test(\"^[^:]+ review at $H: \"))" | tail -n 1 | grep -q ': clean$' && echo true || echo false
      ```
    - Acceptance criteria are met and the PR body carries `Fixes #N` (or `Part of #N`).
    - **Allowed vs blocked changes:** Updating `[film.expected.<class>]` in `research/parity/references.toml` for an adopted parity change is **allowed** to merge (`crates` must be `git rev-parse HEAD:crates` with `crates/` clean). **Never** arm or merge draft PRs, PRs that repin a film's capture hash (`sha256` or `all_sha256` in `references.toml`), PRs that add a dependency to `stunt-core` (`[I7]`), or PRs that add or modify an ADR (unless an accepted ADR is already approved by the user) — hand those to a human (`ready-for-human`).
