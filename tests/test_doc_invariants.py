@@ -721,7 +721,7 @@ def test_agents_md_fits_its_budget() -> None:
 
 
 def _skills_over_budget(skills: Path) -> dict[str, int]:
-    """Each SKILL.md under *skills* over ``SKILL_MAX_WORDS`, by its path, with its word count."""
+    """Each SKILL.md under *skills* over ``SKILL_MAX_WORDS``, by its path, with its word count."""
     return {
         path.relative_to(skills).as_posix(): words
         for path in sorted(skills.glob("*/SKILL.md"))
