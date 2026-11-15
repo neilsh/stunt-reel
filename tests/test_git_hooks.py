@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from stunt_reel.git_env import isolated_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -31,7 +33,13 @@ needs_git = pytest.mark.skipif(GIT is None, reason="git is not on PATH")
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     assert GIT is not None
     return subprocess.run(  # noqa: S603 - fixed test arguments
-        [GIT, *args], cwd=repo, capture_output=True, text=True, check=False
+        [GIT, *args],
+        cwd=repo,
+        # A hook's GIT_DIR would otherwise send git to the caller's repository (issue #520).
+        env=isolated_env(keep_index=False),
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -42,6 +50,26 @@ def _repo(path: Path) -> Path:
     # A user's commit.gpgSign would otherwise make every fixture commit fail without a key.
     _git(path, "config", "commit.gpgSign", "false")
     return path
+
+
+@needs_git
+def test_the_repo_fixture_leaves_the_callers_repository_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hook's GIT_DIR must not receive the fixture's identity (issue #520)."""
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    _git(caller, "init", "-q")
+    config = caller / ".git" / "config"
+    before = config.read_text(encoding="utf-8")
+    monkeypatch.setenv("GIT_DIR", str(caller / ".git"))
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+
+    repo = _repo(fixture)
+
+    assert config.read_text(encoding="utf-8") == before
+    assert "test@example.invalid" in (repo / ".git" / "config").read_text(encoding="utf-8")
 
 
 def _mise_tasks() -> set[str]:

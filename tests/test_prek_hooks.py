@@ -26,6 +26,7 @@ from typing import IO
 import pytest
 
 from stunt_reel import process_tree
+from stunt_reel.git_env import isolated_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -76,6 +77,8 @@ def _run(repo: Path, *args: str, timeout: float = _TIMEOUT) -> subprocess.Comple
             stdout=out,
             stderr=err,
             start_new_session=True,  # one process group to kill on POSIX; ignored on Windows
+            # A hook's GIT_DIR would otherwise send git to the caller's repository (issue #520).
+            env=isolated_env(keep_index=False),
         )
         try:
             proc.wait(timeout=timeout)
@@ -182,6 +185,26 @@ def _repo(path: Path) -> Path:
     _run(path, GIT, "add", "prek.toml", "a.toml")
     assert _run(path, GIT, "commit", "-q", "-m", "one").returncode == 0
     return path
+
+
+def test_the_repo_fixture_leaves_the_callers_repository_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hook's GIT_DIR must not receive the fixture's identity (issue #520)."""
+    assert GIT is not None
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    _run(caller, GIT, "init", "-q")
+    config = caller / ".git" / "config"
+    before = config.read_text(encoding="utf-8")
+    monkeypatch.setenv("GIT_DIR", str(caller / ".git"))
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+
+    repo = _repo(fixture)
+
+    assert config.read_text(encoding="utf-8") == before
+    assert "test@example.invalid" in (repo / ".git" / "config").read_text(encoding="utf-8")
 
 
 def test_prek_checks_the_staged_content(prek: str, tmp_path: Path) -> None:
