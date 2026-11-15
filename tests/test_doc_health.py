@@ -80,8 +80,8 @@ def _found(findings: list[Any], kind: str) -> list[tuple[str, str]]:
 
 
 def test_flags_an_oversized_note_and_ranks_it_first(tmp_path: Path) -> None:
-    _write(tmp_path, f"{RESEARCH}/formats/mid.md", _sized(21000))
-    _write(tmp_path, f"{RESEARCH}/parity/big.md", _sized(30000))
+    _write(tmp_path, f"{RESEARCH}/formats/at-budget.md", _sized(32768))
+    _write(tmp_path, f"{RESEARCH}/parity/big.md", _sized(40000))
     _write(tmp_path, f"{DOCS}/agents/guide.md", _sized(25000))
     _write(tmp_path, f"{DOCS}/howto/run.md", _sized(22000))
     _write(tmp_path, f"{DOCS}/SPEC.md", _sized(20480))
@@ -89,15 +89,25 @@ def test_flags_an_oversized_note_and_ranks_it_first(tmp_path: Path) -> None:
     _write(tmp_path, "README.md", _sized(40000))
     _write(tmp_path, f"{RESEARCH}/unsummarised.md", "# Note\n")
     findings = doc_health.collect(tmp_path, _unused, TODAY)
-    assert [(f.kind, f.path, f.weight) for f in findings[:4]] == [
-        ("size", f"{RESEARCH}/parity/big.md", 30000),
+    assert [(f.kind, f.path, f.weight) for f in findings[:3]] == [
+        ("size", f"{RESEARCH}/parity/big.md", 40000),
         ("size", f"{DOCS}/agents/guide.md", 25000),
         ("size", f"{DOCS}/howto/run.md", 22000),
-        ("size", f"{RESEARCH}/formats/mid.md", 21000),
     ]
-    assert findings[0].detail == "30000 bytes, over the 20480-byte budget"
-    assert [f.kind for f in findings[4:]] == ["summary"]
-    assert all(f.weight == 1 for f in findings[4:])
+    assert findings[0].detail == "40000 bytes, over the 32768-byte budget"
+    assert [f.kind for f in findings[3:]] == ["summary"]
+    assert all(f.weight == 1 for f in findings[3:])
+
+
+def test_a_research_note_may_reach_32_kib_but_a_docs_page_may_not(tmp_path: Path) -> None:
+    _write(tmp_path, f"{RESEARCH}/mid.md", _sized(25000))
+    _write(tmp_path, f"{RESEARCH}/big.md", _sized(32769))
+    _write(tmp_path, f"{DOCS}/big.md", _sized(20481))
+
+    assert _found(doc_health.collect(tmp_path, _unused, TODAY), "size") == [
+        (f"{RESEARCH}/big.md", "32769 bytes, over the 32768-byte budget"),
+        (f"{DOCS}/big.md", "20481 bytes, over the 20480-byte budget"),
+    ]
 
 
 def test_size_is_bytes_on_disk(tmp_path: Path) -> None:
@@ -266,7 +276,7 @@ def test_a_broken_work_folder_is_a_finding(tmp_path: Path) -> None:
 
 
 def test_json_output_lists_findings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _write(tmp_path, f"{RESEARCH}/parity/big.md", _sized(30000))
+    _write(tmp_path, f"{RESEARCH}/parity/big.md", _sized(40000))
     _write(tmp_path, f"{RESEARCH}/bare.md", "# Bare\n")
     assert doc_health.main(["--json", "--root", str(tmp_path)], _unused, TODAY) == 0
     out, err = capsys.readouterr()
@@ -275,8 +285,8 @@ def test_json_output_lists_findings(tmp_path: Path, capsys: pytest.CaptureFixtur
         {
             "path": f"{RESEARCH}/parity/big.md",
             "kind": "size",
-            "detail": "30000 bytes, over the 20480-byte budget",
-            "weight": 30000,
+            "detail": "40000 bytes, over the 32768-byte budget",
+            "weight": 40000,
         },
         {
             "path": f"{RESEARCH}/bare.md",
