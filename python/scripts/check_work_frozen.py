@@ -8,8 +8,8 @@ what can be told apart. ``stunt_reel.work_items.frozen_violations`` holds the ru
 With no arguments (the pre-commit hook, ``mise run check-work-frozen``) it diffs the index for
 the changed paths, and judges frozenness at the merge base of ``HEAD`` and the gate's base
 (``origin/main`` when it resolves, else ``main``): an outcome this branch wrote is not frozen
-until it lands. With no base to compare -- no commit yet, no ``main``/``origin/main`` -- it
-judges at ``HEAD``. With ``--branch`` it compares the working tree with that same merge base,
+until it lands. With no ``main``/``origin/main`` to compare it judges at ``HEAD``; before the
+first commit it checks nothing. With ``--branch`` it compares the working tree with that same merge base,
 over the paths ``gate.py`` counts; ``tests/test_work_frozen.py`` runs that in the gate's docs
 half, so CI checks it too.
 
