@@ -19,3 +19,7 @@ Run with `/orchestration`: dsh for straightforward implementation, Sonnet, Opus 
 - **PR C** (Opus): step 3's attribution, only if a film is outside the 0.002 margin.
 
 First review of each dsh or Sonnet PR: the `reviewer` agent on Opus; mechanical rechecks on Haiku. Every PR touching `research/` or `docs/` gets a fresh-review pass before push.
+
+## Status
+
+- 2026-11-15: #455 launched as cloud session [`session_01754SzQMKMSE3sZxgSTfyms`](https://claude.ai/code/session_01754SzQMKMSE3sZxgSTfyms) on Sonnet; its result arrives as a PR or a comment on #455. Next: `/orchestration` for PR A from this folder.
