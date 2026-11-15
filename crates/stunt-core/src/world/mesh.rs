@@ -499,8 +499,11 @@ fn push_prop_mesh(
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::{level_terrain, sloped_terrain, square_prop};
+    use super::*;
+    use crate::contracts::{VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE};
+    use crate::sod::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
 
-    #[cfg(test)]
     impl<'a> PropModels<'a> {
         /// Every placement uses the shared decode of its shape.
         fn shared(shapes: &'a HashMap<u16, SodModelIr>) -> Self {
@@ -511,11 +514,6 @@ mod tests {
             }
         }
     }
-
-    use super::super::test_support::{level_terrain, sloped_terrain, square_prop};
-    use super::*;
-    use crate::contracts::{VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE};
-    use crate::sod::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
 
     /// A world with terrain and a prop has the ocean, the terrain, and base and decal nodes.
     #[test]

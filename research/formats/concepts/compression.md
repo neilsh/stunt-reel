@@ -225,6 +225,6 @@ pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<
 - **Adrian Stephens & FreeFlight Team:** Implementation of `ripres.c` and `sires.cpp` establishing uncompressed `.RES` and `.ALL` payload slicing in `corpus/siarchive/Developer/SODParse/` and `Developer/FreeFlight/`.
 - **Doug Armknecht (2002):** Corpus-wide extraction of uncompressed film streams and chunk boundaries via `flm_extract.py` in `corpus/siarchive/Developer/SI_FLM_Format/`.
 - **Neil Halelamien (2004):** Analysis of `.SET` scene files and documentation of uppercase 8.3 filename conventions in `corpus/siarchive/Developer/Notes_SETFile/Stunt_Island_SET_fileformat_notes.txt`.
-- **Stunt Reel contributors (2026):** Invariant `[I8]` specification, `VfsArchive` case-normalization contract, and synthetic test fixtures (`crates/stunt-core/src/contracts/vfs.rs`, `tests/fixtures/synthetic_minimal.res`).
+- **Stunt Reel contributors (2026):** Invariant `[I8]` specification, `VfsArchive` case-normalization contract, and synthetic test fixtures (`crates/stunt-core/tests/it/contracts_vfs_test.rs`, `tests/fixtures/synthetic_minimal.res`).
 
 ---

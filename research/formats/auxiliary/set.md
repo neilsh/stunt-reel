@@ -16,7 +16,7 @@ The `.SET` format encapsulates complete world scenes, stage configurations, prop
   2. *Prop Entity Instantiation:* Allocates and positions both static scenery props (buildings, trees, runway lights) and dynamic actor entities (aircraft, ground vehicles, cameras) in world space.
   3. *Scripted Event Triggering:* Drives deterministic gameplay and cinematic triggers (timed explosions, dynamic camera cuts, audio cue playback, and vehicle autopilot takeover).
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape/mod.rs) and [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs). A synthetic scene ([`synthetic_minimal.set`](../../../tests/fixtures/README.md)) exercises the schema offline through [`tests/test_set_schema.py`](../../../tests/test_set_schema.py).
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape/mod.rs`](../../../crates/stunt-core/src/contracts/shape/mod.rs) and [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs). A synthetic scene ([`synthetic_minimal.set`](../../../tests/fixtures/README.md)) exercises the schema offline through [`tests/test_set_schema.py`](../../../tests/test_set_schema.py).
 
 ---
 

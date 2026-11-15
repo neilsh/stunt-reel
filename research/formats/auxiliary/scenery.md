@@ -17,7 +17,7 @@ summary: "`SCENERY.scn` ([FMT-MAP-SCENERY]) is `PLAYONE.EXE`'s stack-segment sce
   The result is FreeFlight's 118,236-byte file exactly. Sign-extending instead leaves 3,654 words wrong. The links are 2 higher only because of that leading word.
 - **Corpus copies.** `Developer/FreeFlight/SIDATA/` and `Developer/SIRes/SiData/` hold byte-identical files.
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape/mod.rs), [`world/scenery.rs`](../../../crates/stunt-core/src/world/scenery/mod.rs) and [`scene_tree.py`](../../../python/stunt_reel/scene_tree.py). No synthetic terrain fixture exists yet.
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/shape/mod.rs`](../../../crates/stunt-core/src/contracts/shape/mod.rs), [`world/scenery/mod.rs`](../../../crates/stunt-core/src/world/scenery/mod.rs) and [`scene_tree.py`](../../../python/stunt_reel/scene_tree.py). No synthetic terrain fixture exists yet.
 
 ---
 

@@ -10,7 +10,7 @@ struct CameraUniform {
     _pad1: vec2<f32>,
 };
 
-// SodVertex::flags bits of a line corner (contracts/shape.rs VERTEX_FLAG_LINE*).
+// SodVertex::flags bits of a line corner (contracts/shape/mod.rs VERTEX_FLAG_LINE*).
 const FLAG_LINE: u32 = 0x08u;
 const FLAG_LINE_SIDE: u32 = 0x10u;
 const FLAG_LINE_END: u32 = 0x20u;
