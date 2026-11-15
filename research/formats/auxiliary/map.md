@@ -5,7 +5,7 @@ summary: "`MAP.BIN` ([FMT-MAP-AREA]) patch pool and `REGIONS.BIN` block tree fro
 
 ## 1. Overview & File Identification
 
-`MAP.BIN` holds the island's ground: flat polygons over [`ANCHORPT.DAT`](anchorpt.md)'s points, each with a palette colour, linked into lists of coarse patches and the finer patches that replace them up close. `REGIONS.BIN` is the block tree those lists hang from. Both are working files of `SD.EXE`, the developers' scenery compiler, which turns them into the scenery tree the game carries ([`scenery.md`](scenery.md)). The renderer reads `MAP.BIN` for terrain (`world/mod.rs`); nothing reads `REGIONS.BIN`.
+`MAP.BIN` holds the island's ground: flat polygons over [`ANCHORPT.DAT`](anchorpt.md)'s points, each with a palette colour, linked into lists of coarse patches and the finer patches that replace them up close. `REGIONS.BIN` is the block tree those lists hang from. Both are working files of `SD.EXE`, the developers' scenery compiler, which turns them into the scenery tree the game carries ([`scenery.md`](scenery.md)). The renderer reads `MAP.BIN` for terrain (`world/map_bin.rs`); nothing reads `REGIONS.BIN`.
 
 ### 1.1 Origin: `SD.EXE`, the scenery compiler
 

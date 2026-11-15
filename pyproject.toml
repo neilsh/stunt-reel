@@ -152,6 +152,13 @@ extend-safe-fixes = ["TC001", "TC002", "TC003", "TID255"]
     "PERF401", # clarity over speed in one-shot tooling
 ]
 
+# The worktree commands print the report their CLI shows; they were split out of
+# python/scripts/worktree_init.py, which the entry above covers.
+"python/stunt_reel/worktree_*.py" = [
+    "T20",     # the commands print their report
+    "BLE001",  # a failed seed or git check is reported, never raised (ADR 0036)
+]
+
 "python/scripts/adversarial_formats_challenge.py" = [
     "PTH",     # one-off corpus probe written against open()/glob
     "PLC0415", # imports the corpus parser after extending sys.path

@@ -13,4 +13,4 @@ outcome: "The film path drops every shape no frame can draw before the device up
 
 - Experiment and raw timings: [`journal.md`](journal.md).
 - Finding: [`research/makeone-exe/linking.md` § 7.1](../../../research/makeone-exe/linking.md#71-rendering-straight-from-res) and its open question 7.
-- Code: `FilmScene::drawn_only` in [`crates/stunt-core/src/scene/film.rs`](../../../crates/stunt-core/src/scene/film.rs), applied after the load report in [`crates/stunt-cli/src/scene.rs`](../../../crates/stunt-cli/src/scene.rs); tests in both and in [`crates/stunt-core/tests/it/scene_test.rs`](../../../crates/stunt-core/tests/it/scene_test.rs).
+- Code: `FilmScene::drawn_only` in [`crates/stunt-core/src/scene/film.rs`](../../../crates/stunt-core/src/scene/film.rs), applied after the load report in [`crates/stunt-cli/src/scene/mod.rs`](../../../crates/stunt-cli/src/scene/mod.rs); tests in both and in [`crates/stunt-core/tests/it/scene_test.rs`](../../../crates/stunt-core/tests/it/scene_test.rs).

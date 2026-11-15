@@ -9,6 +9,7 @@ from stunt_reel.markdown_links import (
     SECTION_NUMBER_REGEX,
     URL_SCHEME_REGEX,
     prose,
+    slug,
 )
 
 
@@ -20,6 +21,22 @@ def test_blanks_fenced_blocks_and_inline_code_in_place() -> None:
     lines = ["# Title `code`", "", "```sh", "# 2026-11-06 sweep", "```", "See [a](b.md)."]
     blanked = ["# Title" + _blank(" `code`"), "", *map(_blank, lines[2:5]), lines[5]]
     assert prose("\n".join(lines) + "\n") == "\n".join(blanked) + "\n"
+
+
+def test_inline_code_may_stay_unblanked() -> None:
+    """The catalog checker reads links inside inline code, so it asks prose to leave them."""
+    text = "a `code` b\n```\nfenced\n```\n"
+    assert prose(text, inline_code=False) == "a `code` b\n   \n      \n   \n"
+
+
+def test_a_heading_slug_is_githubs_anchor() -> None:
+    """Lower case, punctuation dropped and spaces to hyphens, as GitHub names a heading."""
+    assert (
+        slug("2.1 Explicit scope boundaries & non-goals")
+        == "21-explicit-scope-boundaries--non-goals"
+    )
+    assert slug("`stunt-core` crate") == "stunt-core-crate"
+    assert slug("  [MEM-VSYNC-03DA]  ") == "mem-vsync-03da"
 
 
 def test_keeps_every_line_ending() -> None:

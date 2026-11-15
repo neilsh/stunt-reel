@@ -11,6 +11,7 @@ __all__ = [
     "SECTION_NUMBER_REGEX",
     "URL_SCHEME_REGEX",
     "prose",
+    "slug",
 ]
 
 #: An ATX heading line, as GitHub renders one: group 1 is its ``#`` marks, group 2 its text
@@ -31,8 +32,14 @@ _FENCE = "```"
 _INLINE_CODE = re.compile(r"`[^`\n]*`")
 
 
-def prose(text: str) -> str:
-    """*text* with fenced blocks, their fence lines and inline code spans blanked to spaces.
+def slug(heading: str) -> str:
+    """GitHub's heading anchor for *heading* text: lower case, punctuation dropped, spaces to
+    hyphens."""
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+
+
+def prose(text: str, *, inline_code: bool = True) -> str:
+    """*text* with fenced blocks, their fence lines and, when *inline_code*, code spans blanked.
 
     Every line ending stays, so an offset or line number in the result is the same in *text*.
     A line whose stripped text starts with three backticks opens or closes a block.
@@ -47,7 +54,7 @@ def prose(text: str) -> str:
             content = " " * len(content)
         elif in_block:
             content = " " * len(content)
-        else:
+        elif inline_code:
             content = _INLINE_CODE.sub(lambda code: " " * len(code[0]), content)
         out.append(content + ending)
     return "".join(out)

@@ -22,8 +22,6 @@ pub mod error;
 pub mod film;
 pub mod render;
 pub mod report;
-#[cfg(test)]
-mod test_support;
 pub mod video;
 
 pub use capture::{CaptureSet, CapturedFrame};
