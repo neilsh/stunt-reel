@@ -46,7 +46,7 @@ was handed with `palette[index]` and refuses the tick on a mismatch, so the stor
 drop a picture that is not derivable. `--sample-count` and `--video` runs, keyed by sample index
 rather than tick, keep their PNGs and write no planes.
 
-One module per language knows the layout: `stunt-cli/src/render_store.rs` (the `zstd` and `png`
+One module per language knows the layout: `stunt-cli/src/render_store/mod.rs` (the `zstd` and `png`
 crates; `stunt-cli` is not bound by [I7]'s pure-Rust clause, which covers `stunt-core`) and
 `RenderStore`/`RenderStoreWriter` in `python/stunt_reel/parity_artifacts/`, on the standard
 library's `compression.zstd` (Python 3.14+; the project requires 3.15). `stunt_reel` keeps

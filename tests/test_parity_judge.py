@@ -326,7 +326,7 @@ def _report(frames: list[tuple[int, float, bool | None]]) -> FilmRun:
 
 
 def test_join_matches_compare_by_film_tick() -> None:
-    """The figures of report_diff.rs's `compare_matches_by_film_tick_and_averages_the_common_frames`."""
+    """The figures of `parity/report_diff/tests.rs`'s `compare_matches_by_film_tick_and_averages_the_common_frames`."""
     before = _report(
         [(5, 0.9, None), (10, 0.5, None), (20, 0.6, None), (30, 0.7, None), (40, 0.4, None)]
     )
@@ -339,7 +339,7 @@ def test_join_matches_compare_by_film_tick() -> None:
 
 
 def test_join_counts_frames_scored_in_both() -> None:
-    """report_diff.rs's `compare_uses_ssim_over_frames_scored_in_both`."""
+    """`parity/report_diff/tests.rs`'s `compare_uses_ssim_over_frames_scored_in_both`."""
     before = _report([(10, 0.5, True), (20, 0.6, True), (30, 0.9, False)])
     after = _report([(10, 0.7, True), (20, 0.1, False), (30, 0.9, True), (40, 0.5, True)])
     join = join_film("ctry", before, after)
@@ -350,7 +350,7 @@ def test_join_counts_frames_scored_in_both() -> None:
 
 
 def test_join_counts_moves_beyond_the_listing_threshold() -> None:
-    """report_diff.rs's `compare_lists_at_most_five_frames_worst_and_best_first`."""
+    """`parity/report_diff/tests.rs`'s `compare_lists_at_most_five_frames_worst_and_best_first`."""
     before = _report([(t, 0.5, None) for t in range(12)])
     after = _report([(t, 0.5 + (t / 100 if t % 2 else -t / 100), None) for t in range(12)])
     assert join_film("ctry", before, after).moved() == (6, 5)
