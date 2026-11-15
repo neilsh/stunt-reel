@@ -28,6 +28,9 @@ uv = "0.13.1"
 # Runs the commit hooks (`mise run pre-commit`); they call mise tasks, never their own tools (ADR 0026).
 prek = "0.5.5"
 
+# The research site's build; site/package.json
+bun = "1.4.4"
+
 # Checks the docs' external links; the gardening routine runs it (ADR 0041).
 lychee = "0.24.2"
 
@@ -121,6 +124,22 @@ run = "uv run python python/scripts/work_queue.py"
 [tasks.work]
 description = "Start a work item's folder, work/<YYYY-MM>/<issue>_<slug>/, filing its GitHub issue first unless --issue names one; or list every work folder with its issue's status (mise run work -- new <slug> (--issue N | --problem TEXT [--title TEXT]) | list [--status active|landed|abandoned])"
 run = "uv run python python/scripts/work.py"
+
+[tasks.site-prep]
+description = "Write the research site's Starlight content (site/src/content/docs, site/public/media, the sidebar) from the published set in site/published.toml; mise run site runs it first"
+run = "uv run python python/scripts/site_prep.py"
+
+[tasks.site]
+description = "Build the research site into site/dist: mise run site-prep, then Starlight, failing on a broken link or anchor; the Pages workflow deploys this build"
+depends = ["site-prep"]
+dir = "{{config_root}}/site"
+run = ["bun install --frozen-lockfile", "bun run build"]
+
+[tasks.site-serve]
+description = "Preview the research site at http://localhost:4321/stunt-reel/, after mise run site-prep"
+depends = ["site-prep"]
+dir = "{{config_root}}/site"
+run = ["bun install --frozen-lockfile", "bun run dev"]
 
 [tasks.knowledge-map]
 description = "Rewrite research/MAP.md, every research note listed by folder with its summary: frontmatter, or exit 1 naming it when it is stale (mise run knowledge-map -- --write | --check [--root DIR]); mise run fix runs --write"
@@ -497,10 +516,6 @@ run = "uv run pytest -m docs"
 [tasks.diff-check]
 description = "Staged conflict markers and whitespace errors (git diff --cached --check); a pre-commit hook"
 run = "git diff --cached --check"
-
-[tasks.crlf-check]
-description = "Staged text files whose working copy has CRLF line endings (python/scripts/check_crlf.py); a pre-commit hook"
-run = "uv run python python/scripts/check_crlf.py"
 
 [tasks.check-work-frozen]
 description = "Staged files added to a frozen work folder, or a staged change to its README outcome (python/scripts/check_work_frozen.py, work/README.md Lifecycle); a pre-commit hook. `-- --branch` checks the branch since the gate's base"

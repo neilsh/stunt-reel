@@ -1,0 +1,13 @@
+# The repository paths the research site publishes; python/scripts/site_prep.py reads it.
+# `source` is a repo-relative file or directory, `dest` its path under the site's content root.
+# Add each new `source` to the `paths` lists in .github/workflows/pages.yml, or a change to it
+# will not trigger the Pages build.
+[[section]]
+source = "research"
+dest = "research"
+label = "Research notes"
+
+[[section]]
+source = "GLOSSARY.md"
+dest = "glossary.md"
+label = "Glossary"
