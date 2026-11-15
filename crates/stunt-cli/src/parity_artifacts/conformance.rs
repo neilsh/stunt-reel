@@ -2,6 +2,7 @@ use super::*;
 use crate::render_store::{Palette, RenderStore};
 use std::collections::BTreeMap;
 use stunt_parity::SCHEMA_VERSION;
+
 /// The shared corpus, resolved without the process working directory.
 fn corpus() -> PathBuf {
     crate::test_support::workspace_root().join("tests/fixtures/parity/v1")
