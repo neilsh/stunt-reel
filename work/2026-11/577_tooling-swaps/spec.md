@@ -8,7 +8,7 @@ Two driving factors, in the owner's words: **fewer lines to maintain** and **mor
 
 ## Goals
 
-1. **CRLF hook.** Delete [`check_crlf.py`](../../../python/scripts/check_crlf.py) (250 lines), [`tests/test_check_crlf.py`](../../../tests/test_check_crlf.py) (465 lines), the `crlf-check` task and its prek hook, with nothing in their place.
+1. **CRLF hook.** Delete `check_crlf.py` (250 lines), `tests/test_check_crlf.py` (465 lines), the `crlf-check` task and its prek hook, with nothing in their place.
 2. **Commit subjects.** Make the PR title the subject a merged PR puts on `main`, check the title in CI, and delete the range mode of [`check_commit_msg.py`](../../../python/scripts/check_commit_msg.py) (`--range`, `--pr`, `git cherry`, the `gh` merged-PR query) with its tests.
 3. **GPU hang watchdog.** Delete `watch_render_test.py` (391 lines), `tests/test_watch_render_test.py` (91 lines) and the `test-render` task; a hang deadline inside the GPU tests' `gpu_test` wrapper takes over.
 
