@@ -33,6 +33,8 @@ export default defineConfig({
     starlight({
       title: "Stunt Reel research",
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/neilsh/stunt-reel" }],
+      // The stylesheet of the one katex package.json's `overrides` forces on rehype-katex; drop
+      // the override once remarkjs/remark-math#122 ships.
       customCss: ["katex/dist/katex.min.css"],
       sidebar,
       plugins: [starlightLinksValidator()],

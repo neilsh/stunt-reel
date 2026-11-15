@@ -10,6 +10,13 @@ compliance, plus `AGENTS.md` § 3 rule 5 when the diff touches `research/`, `NOT
 `docs/howto/` or `docs/*.md`. On a re-review, read only what changed since the last reviewed
 commit. Do not edit the branch.
 
+Review in the shared worktree `.claude/worktrees/review` of the primary checkout, switched with
+`git checkout --detach origin/<branch>`; never use a worker's checkout, and leave the worktree
+in place. Diff a re-review as `git diff <last-reviewed SHA>..HEAD`. Skip `mise run check` when the
+diff touches only Markdown and CI is green at HEAD. Where the diff fixes an earlier finding,
+probe the new code with the inputs that broke the old one. After a move or split, search for
+every old path, symbol and section number in prose and comments as well as links.
+
 Post the verdict as a PR comment with `gh pr comment <n> --body-file build/scratch/review-<n>.md`
 (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/review-<n>.md`).
 Its first line is exactly `<Reviewer> review at <7-char head SHA>: clean` or

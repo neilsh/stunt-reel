@@ -16,7 +16,7 @@ Issue [#576](https://github.com/neilsh/stunt-reel/issues/576). Should `site/` ke
 +  "overrides": { "katex": "0.18.11" }
 ```
 
-In `.github/renovate.jsonc`, the `katex` rule changes from `allowedVersions: "<0.17.0"` to `"<0.19.0"`, and its comment changes with it. The override and the stylesheet pin then move together. PR #578 applied all of this as `ff59c406`.
+In `.github/renovate.jsonc`, the `katex` rule changes from `allowedVersions: "<0.17.0"` to `"<0.19.0"`, and its comment changes with it. The override and the stylesheet pin then move together. PR [#578](https://github.com/neilsh/stunt-reel/pull/578) applied all of this before it merged.
 
 Why this version:
 
