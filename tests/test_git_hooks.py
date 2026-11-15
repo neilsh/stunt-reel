@@ -17,27 +17,103 @@ from pathlib import Path
 import pytest
 
 from stunt_reel import worktree_git
+from stunt_reel.git_env import isolated_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 GIT = shutil.which("git")
 needs_git = pytest.mark.skipif(GIT is None, reason="git is not on PATH")
 
+#: Every git call carries its identity, and needs no key for a commit. ``core.longpaths``
+#: because the fixtures sit under the checkout's per-run basetemp, whose paths run long.
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.invalid",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.invalid",
+    "GIT_CONFIG_COUNT": "2",
+    "GIT_CONFIG_KEY_0": "commit.gpgSign",
+    "GIT_CONFIG_VALUE_0": "false",
+    "GIT_CONFIG_KEY_1": "core.longpaths",
+    "GIT_CONFIG_VALUE_1": "true",
+}
 
-def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+
+def _git(repo: Path, *args: str, check: bool = False) -> subprocess.CompletedProcess[str]:
     assert GIT is not None
     return subprocess.run(  # noqa: S603 - fixed test arguments
-        [GIT, *args], cwd=repo, capture_output=True, text=True, check=False
+        [GIT, *args],
+        cwd=repo,
+        # A hook's GIT_DIR would otherwise send git to the caller's repository (issue #520).
+        env={
+            **isolated_env(keep_index=False),
+            # Stop discovery at the fixture's parent, so a failed init cannot walk up into the
+            # checkout that holds the tests (issue #520).
+            "GIT_CEILING_DIRECTORIES": str(repo.parent),
+            **_GIT_ENV,
+        },
+        capture_output=True,
+        text=True,
+        check=check,
     )
 
 
 def _repo(path: Path) -> Path:
-    _git(path, "init", "-q")
-    _git(path, "config", "user.name", "test")
-    _git(path, "config", "user.email", "test@example.invalid")
-    # A user's commit.gpgSign would otherwise make every fixture commit fail without a key.
-    _git(path, "config", "commit.gpgSign", "false")
+    """A scratch repository at *path*; the identity rides in ``_GIT_ENV``, never its config."""
+    _git(path, "init", "-q", check=True)
     return path
+
+
+@needs_git
+def test_the_repo_fixture_leaves_the_callers_repository_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hook's GIT_DIR must not receive the fixture's identity (issue #520)."""
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    _git(caller, "init", "-q")
+    config = caller / ".git" / "config"
+    before = config.read_text(encoding="utf-8")
+    monkeypatch.setenv("GIT_DIR", str(caller / ".git"))
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+
+    repo = _repo(fixture)
+
+    assert config.read_text(encoding="utf-8") == before
+    assert "[user]" not in (repo / ".git" / "config").read_text(encoding="utf-8")
+
+
+@needs_git
+def test_the_repo_fixture_raises_when_init_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused init must stop the fixture, not let git config walk up to a caller (issue #520)."""
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    _git(caller, "init", "-q")
+    config = caller / ".git" / "config"
+    before = config.read_text(encoding="utf-8")
+    real_run = subprocess.run
+
+    def refuse_init(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "init" in command:
+            result = subprocess.CompletedProcess(
+                args=command, returncode=128, stdout="", stderr="init refused"
+            )
+            if kwargs.get("check"):
+                raise subprocess.CalledProcessError(128, command, result.stdout, result.stderr)
+            return result
+        return real_run(command, **kwargs)  # type: ignore[call-overload,no-any-return]
+
+    monkeypatch.setattr(subprocess, "run", refuse_init)
+    fixture = caller / "fixture"
+    fixture.mkdir()
+
+    with pytest.raises(subprocess.CalledProcessError):
+        _repo(fixture)
+
+    assert config.read_text(encoding="utf-8") == before
 
 
 def _mise_tasks() -> set[str]:

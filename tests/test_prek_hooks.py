@@ -26,6 +26,7 @@ from typing import IO
 import pytest
 
 from stunt_reel import process_tree
+from stunt_reel.git_env import isolated_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -33,6 +34,20 @@ GIT = shutil.which("git")
 
 #: `_run` kills a timed-out process tree differently on Windows.
 pytestmark = pytest.mark.windows
+
+#: Every git call carries its identity, and needs no key for a commit. ``core.longpaths``
+#: because the fixtures sit under the checkout's per-run basetemp, whose paths run long.
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.invalid",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.invalid",
+    "GIT_CONFIG_COUNT": "2",
+    "GIT_CONFIG_KEY_0": "commit.gpgSign",
+    "GIT_CONFIG_VALUE_0": "false",
+    "GIT_CONFIG_KEY_1": "core.longpaths",
+    "GIT_CONFIG_VALUE_1": "true",
+}
 
 #: A prek configuration of one built-in that parses the staged file.
 _CONFIG = '[[repos]]\nrepo = "builtin"\n\n[[repos.hooks]]\nid = "check-toml"\n'
@@ -76,6 +91,13 @@ def _run(repo: Path, *args: str, timeout: float = _TIMEOUT) -> subprocess.Comple
             stdout=out,
             stderr=err,
             start_new_session=True,  # one process group to kill on POSIX; ignored on Windows
+            # A hook's GIT_DIR would otherwise send git to the caller's repository (issue #520),
+            # and the ceiling keeps a failed init from walking up into the test's checkout.
+            env={
+                **isolated_env(keep_index=False),
+                "GIT_CEILING_DIRECTORIES": str(repo.parent),
+                **_GIT_ENV,
+            },
         )
         try:
             proc.wait(timeout=timeout)
@@ -170,18 +192,71 @@ def _kill_survivor(pid_file: Path, beat: Path) -> None:
             os.kill(pid, signal.SIGKILL)
 
 
-def _repo(path: Path) -> Path:
+def _git_ok(path: Path, *args: str) -> None:
+    """Run git in *path*, failing the test with its output unless it exits 0."""
     assert GIT is not None
-    _run(path, GIT, "init", "-q")
-    _run(path, GIT, "config", "user.name", "test")
-    _run(path, GIT, "config", "user.email", "test@example.invalid")
-    # A user's commit.gpgSign would otherwise make every fixture commit fail without a key.
-    _run(path, GIT, "config", "commit.gpgSign", "false")
+    result = _run(path, GIT, *args)
+    assert result.returncode == 0, f"git {' '.join(args)}: {result.stderr}"
+
+
+def _repo(path: Path) -> Path:
+    """A scratch repository at *path* with one commit; the identity rides in ``_GIT_ENV``."""
+    assert GIT is not None
+    _git_ok(path, "init", "-q")
     (path / "prek.toml").write_text(_CONFIG, encoding="utf-8", newline="\n")
     (path / "a.toml").write_text("x = 1\n", encoding="utf-8", newline="\n")
-    _run(path, GIT, "add", "prek.toml", "a.toml")
-    assert _run(path, GIT, "commit", "-q", "-m", "one").returncode == 0
+    _git_ok(path, "add", "prek.toml", "a.toml")
+    _git_ok(path, "commit", "-q", "-m", "one")
     return path
+
+
+def test_the_repo_fixture_leaves_the_callers_repository_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hook's GIT_DIR must not receive the fixture's identity (issue #520)."""
+    assert GIT is not None
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    _run(caller, GIT, "init", "-q")
+    config = caller / ".git" / "config"
+    before = config.read_text(encoding="utf-8")
+    monkeypatch.setenv("GIT_DIR", str(caller / ".git"))
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+
+    repo = _repo(fixture)
+
+    assert config.read_text(encoding="utf-8") == before
+    assert "[user]" not in (repo / ".git" / "config").read_text(encoding="utf-8")
+
+
+def test_the_repo_fixture_raises_when_init_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused init must stop the fixture, not let git config walk up to a caller (issue #520)."""
+    assert GIT is not None
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    _run(caller, GIT, "init", "-q")
+    config = caller / ".git" / "config"
+    before = config.read_text(encoding="utf-8")
+    real_run = _run
+
+    def refuse_init(repo: Path, *args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args and args[0] == GIT and "init" in args:
+            return subprocess.CompletedProcess(
+                args=list(args), returncode=128, stdout="", stderr=""
+            )
+        return real_run(repo, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(sys.modules[__name__], "_run", refuse_init)
+    fixture = caller / "fixture"
+    fixture.mkdir()
+
+    with pytest.raises(AssertionError):
+        _repo(fixture)
+
+    assert config.read_text(encoding="utf-8") == before
 
 
 def test_prek_checks_the_staged_content(prek: str, tmp_path: Path) -> None:
@@ -311,7 +386,7 @@ def test_ci_empty_diff_step_judges_the_tree(tmp_path: Path, change: str, *, fail
     result = subprocess.run(  # noqa: S603 - fixed test arguments
         [bash, "-e", "-c", _empty_diff_script()],
         cwd=repo,
-        env={**os.environ, "BASE_REF": "main"},
+        env={**isolated_env(keep_index=False), "BASE_REF": "main"},
         capture_output=True,
         text=True,
         check=False,
