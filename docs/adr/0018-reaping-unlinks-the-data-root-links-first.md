@@ -5,6 +5,8 @@
 amended 2026-11-04 by [ADR 0036](0036-worktrees-reach-shared-state-by-configuration.md): new worktrees hold no links; this applies to old ones until
 reaped.
 
+amended 2026-11-14 (issue #541): links git tracks as symlinks are left for git to remove.
+
 accepted; `mise run reap` is the only supported way to remove a linked worktree.
 
 ## Context
@@ -12,7 +14,7 @@ accepted; `mise run reap` is the only supported way to remove a linked worktree.
 [ADR 0008](0008-worktrees-share-one-read-only-data-root.md) links the shared data root
 into every worktree with junctions, so `corpus/` and
 `build/parity/captures/` work unchanged (the links were `corpus/`, `target_bin/` and
-`build/parity/reference/` until [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md); reaping unlinks any reparse point, so it serves either set). A linked worktree therefore holds several reparse
+`build/parity/reference/` until [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md); reaping unlinks any reparse point git does not track, so it serves either set). A linked worktree therefore holds several reparse
 points whose targets live outside it, and `mise run init` recreates them on demand.
 
 Removing that worktree is not one operation. `git worktree remove` is the documented
@@ -40,7 +42,7 @@ junction unless `/XJ` is given. The practice cannot depend on which build is ins
 ## Decision
 
 `mise run reap` (`python/scripts/worktree_init.py reap`) removes worktrees, ordered so
-that no recursive delete ever sees a link:
+that no recursive delete ever sees a link git does not track:
 
 1. **classify** — the branch must be an ancestor of `main` (`--cherry` also accepts a
    branch whose patches `main` already holds), the worktree must live inside this
@@ -48,12 +50,16 @@ that no recursive delete ever sees a link:
    clean;
 2. **refuse** — modified tracked files need `--stash-dirty`, untracked files need
    `--discard-untracked`, and any refusal stops the run before the first delete;
-3. **unlink** — every reparse point under the worktree is removed with `remove_link`
-   (`rmdir`/`unlink` on the link, never its target), by a walker that never descends
-   into one;
-4. **prove** — the walker runs again and the run aborts if any reparse point remains;
+3. **unlink** — every reparse point under the worktree that git does not track is removed
+   with `remove_link` (`rmdir`/`unlink` on the link, never its target), by a walker that
+   never descends into one; a path git records as a symlink (mode 120000) is left for git to
+   delete as a leaf, because unlinking it first leaves the checkout modified and the
+   clean-tree check then refuses (issue #541);
+4. **prove** — the walker runs again and the run aborts if any reparse point git does not
+   track remains;
 5. **remove** — only now does `git worktree remove` run (`--force` only when untracked
-   files were explicitly allowed, and by then there is no link left to follow);
+   files were explicitly allowed); no link git does not track is left to follow, and git
+   removes the tracked symlinks as leaves;
 6. **delete the branch** — `-d` for an ancestor of `main`, `-D` for a patch-equivalent
    branch;
 7. **`--prune`** — remove pool directories git no longer registers (only when they hold
@@ -93,13 +99,18 @@ inside the task.
 
 ## Consequences
 
-- Reaping is one command and is safe on any git build: the destructive path is never
-  reached because no link exists when the delete starts.
+- Reaping is one command, and the destructive path is never reached through a data-root
+  link: no link git does not track exists when the delete starts. The only links left sit at
+  paths git tracks as symlinks; the clean-tree check refuses a worktree where anything but
+  that symlink sits there, and `git worktree remove` deletes the symlink as a leaf (measured
+  on git 2.55.0.windows.3, issue #541). One exception remains: with `--stash-dirty`, a
+  junction at a path git tracks as a symlink is deleted through by `git stash push` before
+  the unlink step runs (issue #557).
 - A dirty worktree is preserved by default. A stash made with `--stash-dirty` survives the
   removal in the shared repository (`git stash list`), and its message names the branch.
 - Pool leftovers and branches orphaned by a removal are reclaimed only with `--prune`,
   which deletes a leftover directory only when it holds nothing but links.
 - A junction skeleton is no longer routine residue: if one appears, `reap` has a bug, and
-  the tool aborts rather than deleting anything when a link survives the unlink step.
+  the tool aborts rather than deleting anything when an untracked link survives the unlink step.
   `robocopy /MIR` over a checkout still needs `/XJ`, and `cmd /c rmdir` on a link remains
   the safe way to remove one by hand.

@@ -1,9 +1,10 @@
 """``reap``: remove merged worktrees without letting git delete through a data-root link.
 
 Git's ``worktree remove`` has recursed through Windows junctions on some builds, so reap
-unlinks every reparse point, proves none remain, and only then removes the checkout
-(ADR 0018). A merged pull request whose head is the branch tip is found with ``gh``, and a
-confirmed reap refuses while any source it runs differs from ``origin/main``'s (issue #218).
+unlinks every link git does not track, leaves the symlinks it does (git removes those as
+leaves), proves no untracked link remains, and only then removes the checkout (ADR 0018). A
+merged pull request whose head is the branch tip is found with ``gh``, and a confirmed reap
+refuses while any source it runs differs from ``origin/main``'s (issue #218).
 """
 
 from __future__ import annotations
@@ -202,10 +203,38 @@ def _reparse_points(root: Path) -> list[Path]:
     return found
 
 
-def _unlink_reparse_points(root: Path) -> list[str]:
-    """Unlink every link under *root*; return the ones that refused."""
+def _tracked_symlinks(worktree: Path) -> frozenset[str] | None:
+    """The *worktree*'s tracked symlink paths (git mode 120000) relative to its root.
+
+    Git removes a tracked symlink as a leaf, so reap must leave it in place: unlinking it
+    leaves the checkout modified and the clean-tree check then refuses (issue #541).
+    Returns ``None`` when git cannot list them: unlink nothing blind, refuse the worktree.
+    """
+    result = _git(worktree, "ls-files", "-s", "-z")
+    if result.returncode != 0:
+        return None
+    tracked: set[str] = set()
+    for entry in result.stdout.split("\0"):
+        if entry.startswith("120000 "):
+            _, _, relative = entry.partition("\t")
+            if relative:
+                tracked.add(os.path.normcase(relative))
+    return frozenset(tracked)
+
+
+def _links_reap_may_unlink(root: Path, tracked: frozenset[str]) -> list[Path]:
+    """Links under *root* that *tracked* does not name, and so that reap may unlink."""
+    return [
+        path
+        for path in _reparse_points(root)
+        if os.path.normcase(path.relative_to(root).as_posix()) not in tracked
+    ]
+
+
+def _unlink_reparse_points(root: Path, *, tracked: frozenset[str] = frozenset()) -> list[str]:
+    """Unlink every link under *root* that *tracked* does not name; return the ones that refused."""
     failures: list[str] = []
-    for path in _reparse_points(root):
+    for path in _links_reap_may_unlink(root, tracked):
         try:
             remove_link(path)
         except OSError as err:
@@ -341,10 +370,13 @@ def _reap_one(
             return f"{branch}: git stash failed: {stash.stderr.strip()}"
         if _changed(path, untracked=False):
             return f"{branch}: still modified after stashing"
-    failures = _unlink_reparse_points(path)
+    tracked = _tracked_symlinks(path)
+    if tracked is None:
+        return f"{branch}: cannot list tracked symlinks; left alone"
+    failures = _unlink_reparse_points(path, tracked=tracked)
     if failures:
         return f"{branch}: cannot unlink: {'; '.join(failures)}"
-    remaining = _reparse_points(path)
+    remaining = _links_reap_may_unlink(path, tracked)
     if remaining:
         return f"{branch}: links remain: {', '.join(str(item) for item in remaining)}"
     if _changed(path, untracked=False):

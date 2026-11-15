@@ -1,9 +1,9 @@
 """The reap path never lets git delete through a data-root link.
 
 Git's ``worktree remove`` has recursed through Windows junctions on one build and left
-their skeletons on another, so [worktree_reap.py](../python/scripts/worktree_reap.py)
-unlinks every reparse point, proves none remain, and only then removes the checkout.
-These tests hold that order, the walker that never descends, and the refusal rules.
+their skeletons on another, so [worktree_reap.py](../python/stunt_reel/worktree_reap.py)
+unlinks every link git does not track, proves none remain, and only then removes the
+checkout. These tests hold that order, the walker that never descends, and the refusal rules.
 """
 
 from __future__ import annotations
@@ -116,6 +116,14 @@ def _junction(link: Path, target: Path) -> None:
         text=True,
         check=True,
     )
+
+
+def _symlink(link: Path, target: Path) -> None:
+    """Make *link* a symlink to *target*, skipping where the OS refuses the privilege."""
+    try:
+        link.symlink_to(target, target_is_directory=target.is_dir())
+    except OSError as err:
+        pytest.skip(f"cannot make a symlink here: {err}")
 
 
 def test_parse_worktrees_reads_primary_branch_and_detached() -> None:
@@ -340,6 +348,99 @@ def test_reap_one_unlinks_then_removes_and_keeps_the_target(tmp_path: Path) -> N
     assert (target / "nested" / "keep.txt").read_text(encoding="utf-8") == "keep"
     branches = _run_git(repo, "branch", "--format=%(refname:short)")
     assert "wt-test" not in branches.split()
+
+
+def test_reap_one_keeps_a_tracked_symlink_and_reaps(tmp_path: Path) -> None:
+    """A tracked symlink is git's leaf to remove, not a data-root link (issue #541)."""
+    repo = _init_repo(tmp_path)
+    target = tmp_path / "shared"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    _symlink(repo / "skills", target)
+    _run_git(repo, "add", "skills")
+    _run_git(
+        repo,
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        "tracked symlink",
+    )
+    mode = _run_git(repo, "ls-files", "-s", "skills").split(" ", 1)[0]
+    if mode != "120000":
+        pytest.skip(f"git recorded the symlink as mode {mode}; core.symlinks is off here")
+    worktree = tmp_path / "wt"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-test")
+    assert dataroot.is_link(worktree / "skills")
+    assert _run_git(worktree, "status", "--porcelain").strip() == ""
+    candidate = worktree_reap._Candidate(
+        worktree=worktree_git._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
+        merged=True,
+        dirty=[],
+        untracked=[],
+        links=worktree_reap._reparse_points(worktree),
+        size=0,
+    )
+
+    error = worktree_reap._reap_one(repo, candidate, stash_dirty=False, discard_untracked=False)
+
+    assert error is None
+    assert not worktree.exists()
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_reap_one_refuses_when_the_tracked_links_cannot_be_listed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unreadable link list must stop reap before it unlinks anything (issue #541)."""
+    repo = _init_repo(tmp_path)
+    target = tmp_path / "shared"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    _symlink(repo / "skills", target)
+    _run_git(repo, "add", "skills")
+    _run_git(
+        repo,
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        "tracked symlink",
+    )
+    mode = _run_git(repo, "ls-files", "-s", "skills").split(" ", 1)[0]
+    if mode != "120000":
+        pytest.skip(f"git recorded the symlink as mode {mode}; core.symlinks is off here")
+    worktree = tmp_path / "wt"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-test")
+    real_git = worktree_git._git
+
+    def refuse_ls_files(repo_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        if args[:3] == ("ls-files", "-s", "-z"):
+            return subprocess.CompletedProcess(
+                args=["git", *args], returncode=128, stdout="", stderr="boom"
+            )
+        return real_git(repo_path, *args)
+
+    monkeypatch.setattr(worktree_reap, "_git", refuse_ls_files)
+    candidate = worktree_reap._Candidate(
+        worktree=worktree_git._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
+        merged=True,
+        dirty=[],
+        untracked=[],
+        links=worktree_reap._reparse_points(worktree),
+        size=0,
+    )
+
+    error = worktree_reap._reap_one(repo, candidate, stash_dirty=False, discard_untracked=False)
+
+    assert error is not None
+    assert "tracked symlinks" in error
+    assert worktree.is_dir()
+    assert dataroot.is_link(worktree / "skills")
 
 
 def test_reap_one_discards_the_worktrees_cached_environment(

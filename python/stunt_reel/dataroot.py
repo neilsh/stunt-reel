@@ -11,8 +11,8 @@ by any tool works on first use with no link in it (ADR 0036).
 Older worktrees still hold the junctions an earlier ``mise run init`` made, including a
 ``.venv`` parked at ``<cache>/venvs/<checkout>-<digest>`` (ADR 0019, superseded).
 ``LINK_TARGETS`` names them for ``init``'s report and ``--migrate``; ``reap`` finds and unlinks
-any reparse point under a checkout (ADR 0018), and the environment sweep clears the parked
-environments.
+any reparse point under a checkout that git does not track (ADR 0018), and the environment
+sweep clears the parked environments.
 """
 
 from __future__ import annotations
