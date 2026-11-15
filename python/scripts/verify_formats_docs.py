@@ -5,7 +5,8 @@ Programmatically validates:
 2. Schema Conformance: 5-section uniform structure across specs and concepts (invariants,
    Seam contracts and fixtures are linked from section 1, not restated), links to the .ksy
    schema that owns each byte layout,
-   sequential header ordering, evidentiary tier tagging (see EVIDENTIARY_TIERS),
+   sequential header ordering, evidentiary tier tagging (see EVIDENTIARY_TIERS in
+   formats_docs/catalog.py),
    and Mermaid asset graphs.
 3. Provenance & Attribution: Direct citations to corpus/siarchive/, .agents/teamwork/,
    and explicit credit to community researchers.

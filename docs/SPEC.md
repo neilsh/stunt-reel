@@ -123,7 +123,7 @@ Delivery is sequential. This section records what each phase is for and whether 
 
 ### 2.4 Evidentiary Tiers & Contract Anchor System
 
-* **Evidentiary Confidence Tiers:** Every recovered binary struct, memory offset, or opcode carries one explicit evidentiary tag. The vocabulary is owned by `EVIDENTIARY_TIERS` in [`python/scripts/verify_formats_docs.py`](../python/scripts/verify_formats_docs.py), which fails `mise run check` if any document uses another tag or if this section stops defining one. In promotion order:
+* **Evidentiary Confidence Tiers:** Every recovered binary struct, memory offset, or opcode carries one explicit evidentiary tag. The vocabulary is owned by `EVIDENTIARY_TIERS` in [`python/scripts/formats_docs/catalog.py`](../python/scripts/formats_docs/catalog.py), which fails `mise run check` if any document uses another tag or if this section stops defining one. In promotion order:
   * **`[Unknown]`**: Unmapped padding bytes or unencountered opcodes; parsers must fail loudly with explicit byte-offset context if encountered.
   * **`[Hypothesis]`**: Proposed from reasoning, community notes, or an offline mock; not observed in the binary or a corpus file. Never cite as fact.
   * **`[Bounded Observation]`**: Observed empirically in a single film or fixture; behavior outside observed value ranges remains unverified.
