@@ -1,6 +1,6 @@
 # Run the GPU tests
 
-A plain `cargo test` of stunt-render's `gpu` binary waits forever if a driver wedges ([why](../development.md#gpu-tests)). Run it under the watchdog instead:
+A plain `cargo test` of stunt-render's `gpu` binary waits forever if a driver wedges ([why](../quality-gate.md#gpu-tests)). Run it under the watchdog instead:
 
 ```powershell
 mise run test-render -- --runs 20

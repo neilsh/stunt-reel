@@ -226,7 +226,7 @@ fn footprint(view: &[image::Rgba<u8>], size: u32, colour: image::Rgba<u8>) -> [u
 }
 
 /// Serializes the renderers these tests open: concurrent `wgpu` instances deadlock on
-/// Windows (`docs/development.md`).
+/// Windows (`docs/quality-gate.md`).
 static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Runs `draw`; returns `None` to skip without an adapter unless

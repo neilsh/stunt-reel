@@ -2,7 +2,7 @@
 // that carries comments. Renovate replaces Dependabot for every ecosystem here - crates,
 // Python dev dependencies,
 // GitHub Actions and the tools `mise.toml` pins, which Dependabot could never see. The rules
-// and the reasoning live in docs/development.md ("Dependency updates"); the `description`
+// and the reasoning live in docs/toolchain.md ("Dependency updates"); the `description`
 // fields below stay because Renovate reads them and comments are only for us.
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
