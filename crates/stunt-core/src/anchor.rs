@@ -51,3 +51,30 @@ pub fn parse_anchor_table(data: &[u8]) -> Vec<AnchorPoint> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_anchorpt_valid_and_invalid() {
+        let mut data = vec![0u8; 56]; // 2 records of 28 bytes
+        // Record 0: x = 100, y = -500, z = 200
+        data[0..2].copy_from_slice(&100i16.to_le_bytes());
+        data[2..4].copy_from_slice(&(-500i16).to_le_bytes());
+        data[4..6].copy_from_slice(&200i16.to_le_bytes());
+
+        // Record 1: x = 0, y = -32500 (invalid tap point), z = 0
+        data[28..30].copy_from_slice(&0i16.to_le_bytes());
+        data[30..32].copy_from_slice(&(-32500i16).to_le_bytes());
+        data[32..34].copy_from_slice(&0i16.to_le_bytes());
+
+        let anchors = parse_anchor_table(&data);
+        assert_eq!(anchors.len(), 2);
+        assert_eq!(anchors[0].register_position(), [-100.0, 500.0, 200.0]); // inverted elevation
+        assert!(anchors[0].is_valid());
+
+        assert_eq!(anchors[1].register_position()[1], 0.0); // sentinel elevation decodes as sea level
+        assert!(!anchors[1].is_valid());
+    }
+}

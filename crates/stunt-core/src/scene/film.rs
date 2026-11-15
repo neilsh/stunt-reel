@@ -1,44 +1,28 @@
-//! Film scene: a [`FilmTimeline`] bound to the shapes and world it plays in, without a GPU.
-//!
-//! A film scene is the data a renderer needs to draw any moment of a film (GLOSSARY.md:
-//! **Film scene**, **Scene frame**). [`FilmScene::frame`] samples the timeline and pairs each
-//! actor with the shape its `shape_id` names, producing a [`SceneFrame`] of plain data in
-//! `[I1]` metres. Nothing here touches the filesystem or a graphics API: callers locate the
-//! files and hand over their bytes ([`SceneInputs`]) or pre-built parts ([`FilmScene::new`]).
-//!
-//! Shapes come from a film's `.ALL` archive or straight from the game's `RES` files
-//! ([`ShapeSource`]); a stock archive chunk is a copy of a `RES` item, so both give the same
-//! shape for an id (`research/makeone-exe/linking.md` §§ 2 and 7). Archive chunk names follow
-//! `# [FMT-ALL-CHUNKS]` (`MODEL_%04X.SOD`, `[I8]`): the hex in the name is the resource ID that
-//! `ActorTransform::shape_id` carries. Chunks that stop at an
-//! opcode outside the decoded table keep the geometry parsed so far and carry the stop in
-//! their decode record, so a partial shape is still a value with provenance. The anchor
-//! table follows ADR-0001.
+//! The film scene: the timeline bound to its shapes and world, and the frame it draws.
 
 use std::collections::{HashMap, HashSet};
 
-use crate::anchor::{AnchorPoint, parse_anchor_table};
-use crate::contracts::trajectory::{DEFAULT_CAMERA_LENS, PLAYONE_FOV_Y_DEGREES};
-use crate::contracts::{
-    ActorTransform, CameraTransform, PaletteControls, ShapeExtent, ShapeSprite, SodModelIr,
-    VisibilityCondition,
-};
+use crate::anchor::parse_anchor_table;
+use crate::contracts::trajectory::DEFAULT_CAMERA_LENS;
+use crate::contracts::{ActorTransform, CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
 use crate::font::PFont;
-use crate::link::{LinkError, shape_chunks};
-use crate::sod::{
-    DecodeMode, EPSILON_DISPLACEMENT, ShadeLight, SodError, SodStopReason, decode_sod_lit,
-    faces_view,
-};
+use crate::link::LinkError;
+use crate::sod::{ShadeLight, faces_view};
 use crate::sprite::SpriteImage;
-use crate::vfs::{ResRegions, VfsError};
-use crate::world::{GroundPlane, ScnStop, TapFailure, World, WorldInputs, build_world};
+use crate::vfs::VfsError;
+use crate::world::{ScnStop, TapFailure, World, WorldInputs, build_world};
 
-/// Column-major identity matrix.
-const IDENTITY_MATRIX: [f32; 16] = [
-    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-];
+use super::projection::{
+    IDENTITY_MATRIX, ViewCamera, camera_heading, distance, facing_matrix, lifted, lod_gate_holds,
+    max_magnification, min_corner_depth, transform_point,
+};
+use super::shadow::ground_shadow;
+use super::shapes::{
+    ArchiveShapes, ShapeSource, SkippedChunk, decode_archive_shapes, decode_res_shapes,
+};
+use super::sprite::{bank_word, sprite_gate_open};
 
 /// Raw bytes of the files that make up one film scene; the caller locates and reads them.
 #[derive(Clone, Copy, Debug)]
@@ -55,16 +39,6 @@ pub struct SceneInputs<'a> {
     pub scenery: Option<&'a [u8]>,
 }
 
-/// Where a scene's shapes come from.
-#[derive(Clone, Copy, Debug)]
-pub enum ShapeSource<'a> {
-    /// `.ALL` archive bytes carrying the `MODEL_%04X.SOD` shapes.
-    Archive(&'a [u8]),
-    /// The game's `RES` files, split, read as [`decode_res_shapes`] reads them; files without
-    /// shapes are ignored.
-    Res(&'a [ResRegions<'a>]),
-}
-
 /// Why a film scene could not be built.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SceneError {
@@ -78,15 +52,6 @@ pub enum SceneError {
     /// items.
     #[error("RES files: {0}")]
     Res(LinkError),
-}
-
-/// A `MODEL_*.SOD` chunk that could not be decoded at all.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SkippedChunk {
-    /// Archive entry name, e.g. `MODEL_0042.SOD`; a `RES` item is named as its chunk would be.
-    pub name: String,
-    /// The decode failure.
-    pub error: SodError,
 }
 
 /// Size and extent of the built static world.
@@ -116,136 +81,6 @@ pub struct SceneReport {
     pub world: Option<WorldStats>,
     /// Placed `OP_TAP` shapes the world drew partly or not at all ([`World::tap_failures`]).
     pub tap_failures: Vec<TapFailure>,
-}
-
-/// Shapes decoded from one [`ShapeSource`].
-#[derive(Debug, Clone, Default)]
-pub struct ArchiveShapes {
-    /// Decoded models keyed by the resource ID in their chunk name.
-    ///
-    /// A shape that stopped at an unrecognized opcode is still here: its
-    /// [`crate::contracts::SodModelIr::decode`] record carries the stop, so partiality
-    /// travels with the shape rather than as a parallel list.
-    pub shapes: HashMap<u16, SodModelIr>,
-    /// Chunks that failed to decode.
-    pub skipped: Vec<SkippedChunk>,
-    /// Streams of the shapes that run `OP_TAP`, kept only when anchors were supplied. A tapped
-    /// point depends on where the shape is placed, so the world decodes these again per
-    /// placement ([`WorldInputs::anchored_shapes`]).
-    pub anchored: HashMap<u16, Vec<u8>>,
-    /// The image frames the shapes' sprites name (`OP_ANIMATE`), keyed by resource id; a
-    /// frame the source lacks, or whose chunk is not an image, is absent.
-    pub images: HashMap<u16, SpriteImage>,
-}
-
-/// Decodes every `MODEL_%04X.SOD` chunk of `.ALL` bytes, resolving `OP_TAP` against `anchors`
-/// and shading `OP_SHADES` normals against `light`.
-///
-/// Other chunks are ignored. An empty `anchors` table is treated as absent.
-///
-/// # Errors
-/// Returns the [`VfsError`] from [`crate::vfs::parse_all`] if `archive` is not a well-formed
-/// `.ALL` container. A single chunk that fails to decode is not an error: it is listed in
-/// [`ArchiveShapes::skipped`].
-pub fn decode_archive_shapes(
-    archive: &[u8],
-    anchors: &[AnchorPoint],
-    light: ShadeLight,
-) -> Result<ArchiveShapes, VfsError> {
-    let archive = crate::vfs::parse_all(archive)?;
-    let chunks = archive.entries.values().filter_map(|entry| {
-        model_shape_id(&entry.name).map(|id| (id, entry.name.clone(), entry.data.as_slice()))
-    });
-    let mut decoded = decode_chunks(chunks, anchors, light);
-    let payloads: HashMap<u16, &[u8]> = archive
-        .entries
-        .values()
-        .filter_map(|entry| resource_id(&entry.name).map(|id| (id, entry.data.as_slice())))
-        .collect();
-    decoded.images = sprite_images(&decoded.shapes, |id| payloads.get(&id).copied());
-    Ok(decoded)
-}
-
-/// Decodes every item of the shape files among `files` as [`decode_archive_shapes`] decodes an
-/// archive's chunks.
-///
-/// The same ids, names, anchors, light and lenient decoding, and only the items an archive would
-/// name `MODEL_%04X.SOD`.
-///
-/// # Errors
-/// Returns the [`LinkError`] from [`crate::link::shape_chunks`]: two shape files share an
-/// index, or one has more than 255 items. A single item that fails to decode is not an error:
-/// it is listed in [`ArchiveShapes::skipped`].
-pub fn decode_res_shapes(
-    files: &[ResRegions<'_>],
-    anchors: &[AnchorPoint],
-    light: ShadeLight,
-) -> Result<ArchiveShapes, LinkError> {
-    let items = shape_chunks(files)?;
-    let chunks = items.iter().filter_map(|(&id, &payload)| {
-        let name = crate::vfs::chunk_name(id, payload);
-        model_shape_id(&name).map(|id| (id, name, payload))
-    });
-    let mut decoded = decode_chunks(chunks, anchors, light);
-    decoded.images = sprite_images(&decoded.shapes, |id| items.get(&id).copied());
-    Ok(decoded)
-}
-
-/// The image of every frame a sprite of `shapes` names, read from the chunk `payload` gives
-/// for its id; a missing chunk or one that is not an image is left out.
-fn sprite_images<'a>(
-    shapes: &HashMap<u16, SodModelIr>,
-    payload: impl Fn(u16) -> Option<&'a [u8]>,
-) -> HashMap<u16, SpriteImage> {
-    shapes
-        .values()
-        .flat_map(|shape| &shape.sprites)
-        .flat_map(|sprite| &sprite.frames)
-        .filter_map(|&id| Some((id, SpriteImage::parse(payload(id)?)?)))
-        .collect()
-}
-
-/// Decodes `(shape id, chunk name, payload)` chunks leniently, keeping failures as skipped.
-fn decode_chunks<'a>(
-    chunks: impl Iterator<Item = (u16, String, &'a [u8])>,
-    anchors: &[AnchorPoint],
-    light: ShadeLight,
-) -> ArchiveShapes {
-    let anchor_slice = (!anchors.is_empty()).then_some(anchors);
-    let mut out = ArchiveShapes::default();
-    for (shape_id, name, data) in chunks {
-        // Anchors only matter to `OP_TAP`; a first pass without them shows which shapes tap.
-        let mut decoded = decode_sod_lit(data, &name, None, DecodeMode::Lenient, light);
-        let taps = decoded.as_ref().is_ok_and(|ir| {
-            ir.decode()
-                .and_then(|record| record.stop.as_ref())
-                .is_some_and(|stop| stop.reason == SodStopReason::MissingAnchors)
-        });
-        if taps && anchor_slice.is_some() {
-            decoded = decode_sod_lit(data, &name, anchor_slice, DecodeMode::Lenient, light);
-            out.anchored.insert(shape_id, data.to_vec());
-        }
-        match decoded {
-            Ok(ir) => {
-                out.shapes.insert(shape_id, ir);
-            }
-            Err(error) => out.skipped.push(SkippedChunk { name, error }),
-        }
-    }
-    out
-}
-
-/// Extracts the resource ID from a `MODEL_%04X.SOD` archive entry name.
-fn model_shape_id(name: &str) -> Option<u16> {
-    let hex = name.strip_prefix("MODEL_")?.strip_suffix(".SOD")?;
-    u16::from_str_radix(hex, 16).ok()
-}
-
-/// The resource ID of a `RES_%04X.BIN` archive entry: a chunk that is neither a film nor a
-/// shape ([`crate::vfs::chunk_name`]).
-fn resource_id(name: &str) -> Option<u16> {
-    let hex = name.strip_prefix("RES_")?.strip_suffix(".BIN")?;
-    u16::from_str_radix(hex, 16).ok()
 }
 
 /// One drawable actor in a [`SceneFrame`].
@@ -281,42 +116,6 @@ pub struct SpriteDraw {
     pub size: f32,
     /// Index into [`SceneFrame::actors`] of the actor whose shape draws it.
     pub actor: usize,
-}
-
-/// The lens-zoomed camera used to draw a [`SceneFrame`].
-///
-/// This is a **view** camera, not the authored [`CameraTransform`] a trajectory
-/// record carries: [`Self::from_authored`] is the only place the lens zoom is
-/// applied, so a record never holds a final field of view.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ViewCamera {
-    /// Camera world position in meters `[x, y, z]` per `[I1]`.
-    pub eye: [f32; 3],
-    /// Look-at point in meters `[x, y, z]`.
-    pub target: [f32; 3],
-    /// Vertical field of view in degrees after the lens zoom.
-    pub fov_degrees: f32,
-    /// View roll about the forward axis in radians.
-    pub roll_radians: f32,
-}
-
-impl ViewCamera {
-    /// Applies the authored lens zoom to a trajectory record's camera.
-    #[must_use]
-    pub fn from_authored(camera: &CameraTransform) -> Self {
-        Self {
-            eye: camera.eye,
-            target: camera.target,
-            fov_degrees: camera.lens_fov_degrees(camera.fov_degrees),
-            roll_radians: camera.roll_radians,
-        }
-    }
-}
-
-impl Default for ViewCamera {
-    fn default() -> Self {
-        Self::from_authored(&CameraTransform::default())
-    }
 }
 
 /// Everything to draw at one tick.
@@ -709,264 +508,15 @@ impl FilmScene {
     /// terrain under its own x and z. The plane here is the terrain triangle under the
     /// origin; with no world it is `y = 0`, as for PLAYONE's null plane (`0x1A12`).
     fn shadow_matrix(&self, position: [f32; 3], world_matrix: &[f32; 16]) -> [f32; 16] {
-        let [x, y, z] = position;
-        let plane = self
-            .world
-            .as_ref()
-            .map_or(GroundPlane::LEVEL_ZERO, |w| w.ground_plane(x, z, y));
-        mat4_mul(&plane.flatten_matrix(EPSILON_DISPLACEMENT), world_matrix)
+        ground_shadow(self.world.as_ref(), position, world_matrix)
     }
-}
-
-/// The word of `PLAYONE`'s angle bank (`work:0x810E + selector`) a sprite's frame comes
-/// from, at film tick `tick` for an actor whose `.FLM` animate value is `animate`.
-///
-/// `0x10` is `work:0x811E`, the film clock shifted left 12 (`0x1DCA`), one sweep every 16
-/// ticks; `0x16` is `work:0x8124`, the slot's animate word (`0x1D66`). Every other word reads
-/// as 0 here: no stock sprite with more than one frame uses one.
-#[must_use]
-pub fn bank_word(selector: u16, tick: f32, animate: u16) -> u16 {
-    match selector {
-        // Saturating float-to-int: a negative or NaN tick is tick 0.
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "only the low four bits are kept"
-        )]
-        0x10 => ((tick.floor() as u32 & 0xF) << 12) as u16,
-        0x16 => animate,
-        _ => 0,
-    }
-}
-
-/// Whether a sprite's visibility gate lets it draw for an actor in `state_mask`.
-fn sprite_gate_open(sprite: &ShapeSprite, state_mask: u16) -> bool {
-    match sprite.visibility {
-        VisibilityCondition::ActorState { mask, expected } => state_mask & mask == expected,
-        _ => true,
-    }
-}
-
-/// `point` taken through the column-major affine `matrix`.
-fn transform_point(matrix: &[f32; 16], point: [f32; 3]) -> [f32; 3] {
-    let [x, y, z] = point;
-    [
-        matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
-        matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
-        matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
-    ]
-}
-
-/// The column-major product `a * b`.
-fn mat4_mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
-    let (a_cols, _) = a.as_chunks::<4>();
-    let (b_cols, _) = b.as_chunks::<4>();
-    let mut out = [0.0; 16];
-    let (out_cols, _) = out.as_chunks_mut::<4>();
-    for (out_col, b_col) in out_cols.iter_mut().zip(b_cols) {
-        for (a_col, &weight) in a_cols.iter().zip(b_col) {
-            for (o, &v) in out_col.iter_mut().zip(a_col) {
-                *o += v * weight;
-            }
-        }
-    }
-    out
-}
-
-/// Whether `camera` draws what stands behind `gate`: a `LodBranch` holds as the world's
-/// gate nodes do in the renderer; any other condition holds.
-fn lod_gate_holds(camera: &CameraTransform, gate: &VisibilityCondition) -> bool {
-    match *gate {
-        VisibilityCondition::LodBranch {
-            point,
-            ext,
-            splitdist,
-            near,
-        } => camera.lod_keeps_subtree(point, ext, splitdist) == near,
-        _ => true,
-    }
-}
-
-/// The camera's heading: the angle about `+Y` from `+Z` to its look direction.
-///
-/// `PLAYONE` builds the matrix a view-facing shape is drawn through (`work:0x809C`) from the
-/// view slot's roll and pitch with the yaw zeroed (image `0x12C2`), so the shape turns with
-/// the yaw alone (`research/playone-exe/sod-vm.md` section 8.8). The look direction's
-/// heading is taken to equal that yaw; past vertical it is half a turn off, and a camera
-/// looking straight down gets heading 0 where `PLAYONE` still has its yaw word.
-fn camera_heading(camera: &CameraTransform) -> f32 {
-    let [fx, _, fz] = [
-        camera.target[0] - camera.eye[0],
-        camera.target[1] - camera.eye[1],
-        camera.target[2] - camera.eye[2],
-    ];
-    fx.atan2(fz)
-}
-
-/// Column-major matrix that turns a model by `heading` about `+Y` and stands it at
-/// `position`: the model's `+Z` lies along the camera's look direction seen from above.
-fn facing_matrix(heading: f32, position: [f32; 3]) -> [f32; 16] {
-    let (sin, cos) = heading.sin_cos();
-    let [x, y, z] = position;
-    [
-        cos, 0.0, -sin, 0.0, 0.0, 1.0, 0.0, 0.0, sin, 0.0, cos, 0.0, x, y, z, 1.0,
-    ]
-}
-
-/// An actor's model-to-world `matrix`, with its shape's ground offset taken back out.
-///
-/// The decoder lifts every vertex by the header's `ground_y_offset`, which stands a world
-/// prop on the ground it is placed at. Heuristic: a film actor's position is taken as its
-/// model origin, so the lift is undone along the actor's own +Y. Drawing actors with the
-/// lift put them about 10 rows above the capture on `CTRY.FLM`, and a sweep of the removed
-/// fraction peaks at exactly one offset on both films. `PLAYONE.EXE` applies the lift only
-/// when it places scene-tree shapes; its actor draw `0x1D5F` does not read it
-/// (research/formats/auxiliary/scenery.md section 3.3).
-fn lifted(mut matrix: [f32; 16], shape: &SodModelIr) -> [f32; 16] {
-    if let Some(header) = shape.decode().map(|record| record.header) {
-        let lift = -f32::from(header.ground_y_offset) * header.scale_factor;
-        let [_, _, _, _, ux, uy, uz, _, _, _, _, _, tx, ty, tz, _] = &mut matrix;
-        *tx += *ux * lift;
-        *ty += *uy * lift;
-        *tz += *uz * lift;
-    }
-    matrix
-}
-
-fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
-    let d = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
-}
-
-/// Smallest view-space depth over distance inside any frame `cameras` draw: at the corner of
-/// the widest one, whose half-width is 1.6 times its half-height (320 by 200 raster pixels),
-/// so `1 / sqrt(1 + 3.56 * tan(fov / 2)^2)`, about 0.805 for the default frame. Each interval
-/// is bounded by its wider base under either endpoint's lens, as [`max_magnification`] bounds
-/// the narrowest. 1.0 with no cameras.
-fn min_corner_depth(cameras: &[CameraTransform]) -> f32 {
-    cameras
-        .iter()
-        .zip(cameras.iter().skip(1).chain(cameras.last()))
-        .flat_map(|(a, b)| {
-            let base = a.fov_degrees.max(b.fov_degrees);
-            [a, b].map(|lens| {
-                let bound = CameraTransform {
-                    fov_degrees: base,
-                    ..*lens
-                };
-                let half = (ViewCamera::from_authored(&bound).fov_degrees.to_radians() / 2.0).tan();
-                1.0 / (1.0 + 3.56 * half * half).sqrt()
-            })
-        })
-        .filter(|ratio| ratio.is_finite())
-        .fold(1.0, f32::min)
-}
-
-/// Largest magnification over PLAYONE's default lens that `cameras` draw, at least 1.0,
-/// so a caller-built timeline with a narrow base is covered too. Base and lens interpolate
-/// separately between slices, so each interval is bounded by its narrower base under
-/// either endpoint's lens: a zero lens keeps the base field of view, so the stronger lens
-/// is not always the larger `lens_zoom()`.
-fn max_magnification(cameras: &[CameraTransform]) -> f32 {
-    let default_half = (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan();
-    cameras
-        .iter()
-        .zip(cameras.iter().skip(1).chain(cameras.last()))
-        .flat_map(|(a, b)| {
-            let base = a.fov_degrees.min(b.fov_degrees);
-            [a, b].map(|lens| {
-                let bound = CameraTransform {
-                    fov_degrees: base,
-                    ..*lens
-                };
-                let fov = ViewCamera::from_authored(&bound).fov_degrees;
-                default_half / (fov.to_radians() / 2.0).tan()
-            })
-        })
-        .filter(|zoom| zoom.is_finite())
-        .fold(1.0, f32::max)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contracts::trajectory::DEFAULT_CAMERA_LENS;
-
-    /// The default authored camera with this field of view and lens.
-    fn camera(fov_degrees: f32, lens: u16) -> CameraTransform {
-        CameraTransform {
-            fov_degrees,
-            lens,
-            ..CameraTransform::default()
-        }
-    }
-
-    /// The shadow matrix keeps the actor's x and z, puts it on `y = 0` lifted by the
-    /// `[I5]` displacement, and drops every model height.
-    #[test]
-    fn a_shadow_matrix_flattens_the_actor_matrix_onto_the_plane() {
-        let translate = [
-            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 5.0, 2.0, 1.0,
-        ];
-        let flat = GroundPlane::LEVEL_ZERO.flatten_matrix(EPSILON_DISPLACEMENT);
-        let shadow = mat4_mul(&flat, &translate);
-        assert_eq!(&shadow[12..], &[1.0, EPSILON_DISPLACEMENT, 2.0, 1.0]);
-        assert_eq!(&shadow[4..8], &[0.0; 4]);
-        assert_eq!(mat4_mul(&IDENTITY_MATRIX, &translate), translate);
-    }
-
-    fn drawn_magnification(camera: &CameraTransform) -> f32 {
-        let fov = ViewCamera::from_authored(camera).fov_degrees;
-        (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan() / (fov.to_radians() / 2.0).tan()
-    }
-
-    #[test]
-    fn a_zero_lens_beside_a_nonzero_lens_bounds_at_its_full_base() {
-        // Lens 0 draws at the full 20 degree base (about 2.22x); lens 4096 widens it.
-        let cameras = [camera(20.0, 0), camera(20.0, 4096)];
-        let zero = drawn_magnification(&cameras[0]);
-        assert!(zero > 2.0, "zero-lens magnification {zero}");
-        let bound = max_magnification(&cameras);
-        assert!(bound >= zero - 1e-4, "bound {bound} below {zero}");
-    }
-
-    #[test]
-    fn an_interval_takes_its_narrower_base_under_its_stronger_lens() {
-        let cameras = [camera(50.0, DEFAULT_CAMERA_LENS), camera(140.0, u16::MAX)];
-        let mixed = drawn_magnification(&camera(50.0, u16::MAX));
-        assert!(max_magnification(&cameras) >= mixed - 1e-4);
-    }
-
-    #[test]
-    fn the_default_lens_bounds_at_one() {
-        let cameras = [camera(PLAYONE_FOV_Y_DEGREES, DEFAULT_CAMERA_LENS)];
-        assert!((max_magnification(&cameras) - 1.0).abs() < 1e-4);
-        assert_eq!(max_magnification(&[]), 1.0);
-        let default_frame = min_corner_depth(&[CameraTransform::default()]);
-        assert!((default_frame - 0.805).abs() < 1e-3, "{default_frame}");
-        let wide = CameraTransform {
-            fov_degrees: 120.0,
-            ..CameraTransform::default()
-        };
-        assert!(min_corner_depth(&[CameraTransform::default(), wide]) < 0.3);
-    }
-
-    /// The facing matrix stands the model at its position with `+Y` up and turns its `+Z`
-    /// onto the camera's look direction seen from above.
-    #[test]
-    fn a_view_facing_matrix_turns_model_z_onto_the_look_direction_from_above() {
-        let camera = CameraTransform {
-            eye: [10.0, 50.0, 10.0],
-            target: [13.0, -20.0, 14.0],
-            ..CameraTransform::default()
-        };
-        let m = facing_matrix(camera_heading(&camera), [1.0, 2.0, 3.0]);
-        let near = |a: &[f32], b: &[f32]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
-        assert!(near(&m[8..12], &[0.6, 0.0, 0.8, 0.0]), "+Z {:?}", &m[8..12]);
-        assert!(near(&m[4..8], &[0.0, 1.0, 0.0, 0.0]), "+Y {:?}", &m[4..8]);
-        assert!(near(&m[0..4], &[0.8, 0.0, -0.6, 0.0]), "+X {:?}", &m[0..4]);
-        assert_eq!(&m[12..], &[1.0, 2.0, 3.0, 1.0]);
-    }
+    use crate::contracts::VisibilityCondition;
+    use crate::sod::DecodeMode;
 
     /// A view-facing actor drops its own rotation for the camera's heading, while its
     /// shadow keeps the slot's rotation; the world's view-facing props are drawn the same
