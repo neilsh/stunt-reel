@@ -25,6 +25,9 @@ jobs:
     env:
       # As in ci.yml: the first `mise run` installs only install_args below, not every tool.
       MISE_AUTO_INSTALL: "false"
+      # As in ci.yml: read tool releases from the GitHub API, because mise-versions.jdx.dev
+      # answered 502 and failed jobs whose tool cache missed.
+      MISE_USE_VERSIONS_HOST: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
