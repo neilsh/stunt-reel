@@ -49,7 +49,9 @@ Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc e
 
 | Document | Covers |
 | --- | --- |
-| [`docs/development.md`](docs/development.md) | Requirements, setup, project layout, the quality gate, every `mise` task and the how-to index |
+| [`docs/development.md`](docs/development.md) | Requirements, setup, project layout, the quick `mise` task map and the how-to index |
+| [`docs/quality-gate.md`](docs/quality-gate.md) | The gate's steps and scope, its pre-commit hook and CI, the test kinds, and the GPU and Windows `PermissionError` notes |
+| [`docs/toolchain.md`](docs/toolchain.md) | Running pinned tools, shared caches and target seeding, Python dependency policy and Renovate |
 | [`docs/SPEC.md`](docs/SPEC.md) | Goals, invariants `[I1]`–`[I8]`, evidentiary tiers, verification matrix |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module routing to specification anchors and research notes |
 | [`research/formats/INDEX.md`](research/formats/INDEX.md) | Format catalog and Kaitai layouts |
