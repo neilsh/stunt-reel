@@ -10,8 +10,9 @@ summary: "`PLAYONE` draws the ground flat from `MAP.BIN`-coloured leaves of a BS
 
 * **Evidence tier**: `[Established]` for the instruction sequences, the tree's place in the image and its identity with `MAP.BIN` and `SCENERY.scn`; `[Supported Inference]` that `PLAYONE` never draws `MAP.BIN` patches 52 to 55 and 62 to 65; `[Bounded Observation]` for what the live runs drew (one emulator, `CTRY.FLM`, unpatched; each run's ticks are in its journal entry)
 * **Reproducing**: [`docs/howto/check-the-ground-against-playone.md`](../../docs/howto/check-the-ground-against-playone.md)
-* **Renderer residuals**: the renderer's ground findings, leaf ordering and decal pass, with
-  this note's `Ruled out` and `Open questions`, are in [`world-scene-residuals.md`](world-scene-residuals.md)
+* **Renderer residuals**: the renderer's ground findings, leaf ordering and decal pass are in
+  [`world-scene-residuals.md`](world-scene-residuals.md), which keeps its own `Ruled out` and
+  `Open questions` for those sections.
 
 ---
 
@@ -149,3 +150,19 @@ _Source: found 2026-10-23 at `6ae7b31`; see the [parity log](../../work/2026-10/
 ## 5. The ground ops are in `CTRY.ALL`
 
 Superseded by sections 2 and 4.1. The op `0x0168` and `0x02BE` records at `CTRY.ALL` offsets `0x13FC` and `0xEFE4` are `GVPOLY` records of the film's `RES` shapes, not ground, and `CTRY.FLM` holds no ground either: the ground is in `PLAYONE.EXE`. _Source: [2026-10-23: the ground ops in CTRY.ALL](../../work/2026-11/distill-world-scene/journal.md#2026-10-23-the-ground-ops-in-ctryall-superseded)._
+
+## Ruled out
+
+* **Re-baking `MAP.BIN`'s colours** (section 2): all 146 leaves in the image carry `MAP.BIN`'s colour byte, on both builds.
+* **A shaded or Gouraud ground** (section 2): the leaf routine `0xBF23` hands its stored colour word to `0:8069` unchanged. On unpatched `CTRY.FLM`, a break on the driver filler `0x7571` at ticks 280-293 saw only leaf-set colours from the Ground caller (section 2.2, `[Bounded Observation]`; Patch #3 not observed). The Gouraud filler `0:75DB` was called only for the aircraft in the airfield shot, on the same build (section 4.1).
+* **Ops `0x0168`/`0x02BE` as the ground** (section 4.1): they are `GVPOLY`/`GVPOLY16`, used there only by object `608A`.
+* **The ground in `CTRY.ALL` or `VDATA.BIN`** (sections 2, 5): the tree is in the image; no 8-byte window of a live leaf polygon occurs in `VDATA.BIN` or any other file of the install (`PLAYONE.EXE` itself is LZEXE-packed on disk; the tree is in its unpacked image).
+* **A leaf for patches 52 to 55 and 62 to 65 in FreeFlight's tree** (section 2.1): both copies of `SCENERY.scn` are the image's tree, links aside, with the same 158 Ground polygons.
+* **Another node, table or shape that draws those patches** (section 2.1): their polygon occurs in no file but `MAP.BIN`, the image included, while the same search finds all 158 drawn records there; no `OP_TAP` operand in the image, the `RES` files or any `.ALL` names one of their anchors.
+* **A field of the record that marks those patches** (section 2.1): their `pos` is `0x00FF`, as it is for 26 drawn records. What sets them apart is that nothing links to their chains, not a field of their own.
+* **A leaf of `PLAYONE`'s tree that `MAP.BIN` lacks** (section 2.1, open question 2): `mise run scene-ground` finds no tree-only polygon; all 158 are `MAP.BIN` records.
+* **The earlier memory scans** (2026-10-23/24): they looked for a display-list stream of `0x995C`/`0x9A24` words in conventional memory. The ground was never in that form, so "no resident list" was true but beside the point. The image region `0x23200-0x24E80` they flagged as "a serialised scenery program" is the tree.
+
+## Open questions
+
+1. **The four floating quads** `0x04A9..0x04AC` (colour 193, `y = 75.03`) have no `MAP.BIN` polygon under them in our parse. The tree of `PLAYONE` has no leaf that `MAP.BIN` lacks (section 2.1, Ruled out), so either the polygon under them is among the records our parse drops, or nothing is.
