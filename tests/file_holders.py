@@ -1,7 +1,7 @@
 """Name the processes holding a file, for a test that failed with ``PermissionError`` on Windows.
 
 The Restart Manager lists a file's holders without admin rights, but only while they still
-hold it, so the failure report asks at once. Why: docs/development.md.
+hold it, so the failure report asks at once. Why: docs/quality-gate.md.
 """
 
 from __future__ import annotations

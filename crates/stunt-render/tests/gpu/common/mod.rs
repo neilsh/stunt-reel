@@ -27,7 +27,7 @@ pub(crate) fn require_gpu() -> bool {
 
 /// Serializes every GPU test in this process, from its first driver call until the thread that
 /// made it has exited: a driver-touching thread that exits while another test is in the driver
-/// can deadlock NVIDIA's ICD under the loader lock (`docs/development.md`, the `gpu` binary).
+/// can deadlock NVIDIA's ICD under the loader lock (`docs/quality-gate.md`, the `gpu` binary).
 static GPU_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 thread_local! {

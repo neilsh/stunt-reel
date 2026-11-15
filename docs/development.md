@@ -123,8 +123,6 @@ The gate script, its step list, the pre-commit hook, its lanes and CI are in [qu
 | `shape-diff` | list the shapes whose geometry hash or decode failure changes with a `DBG_*` switch, and draw only those ([Inspect a shape](howto/inspect-a-shape.md#find-the-shapes-a-switch-changes)) |
 | `parity-probe`, `verify-docs`, `unlzexe`, `pair-builds`, `xref`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
-The pre-commit hook, the gate lanes and CI are in [quality gate](quality-gate.md).
-
 The GPU tests' hang rationale is in [quality gate § GPU tests](quality-gate.md#gpu-tests).
 
 The Windows `PermissionError` investigation, with its ruled-out causes, is in [quality gate § A PermissionError on Windows](quality-gate.md#a-permissionerror-on-windows).

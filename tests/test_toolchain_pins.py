@@ -4,7 +4,7 @@
 version appears as a pin (`mise.toml`), a floor (`requires-python`), two targets
 (`[tool.ruff]`, `[tool.mypy]`) and the interpreter uv is told to run
 (`[tool.uv] python-preference`).  The "Dependency updates" section of
-[docs/development.md](../docs/development.md) splits those into pins a bot may move, floors
+[docs/toolchain.md](../docs/toolchain.md) splits those into pins a bot may move, floors
 it may not, and targets that follow the pin (mypy's equals it; ruff's may trail it by one minor
 until the apply-ruff PR); this is what makes the split enforceable instead of aspirational.
 """
