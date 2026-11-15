@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print a pull request's open review threads and outside-diff findings, one line each.
+"""Print a pull request's open review threads and review-body findings, one line each.
 
 ``gh pr view --comments`` and the REST comments endpoint return every comment whole, and a
 bot review (CodeRabbit) wraps each finding in HTML comments, ``<details>`` blocks of analysis
@@ -12,13 +12,13 @@ resolves one. A cloud session's proxy refuses GraphQL but offers REST routes tha
 ``docs/cloud-sessions.md``), so when GraphQL is refused this reads and resolves threads through
 them instead, with each thread's comments from the REST comments list.
 
-A finding CodeRabbit cannot anchor to a changed line ("Outside diff range") lives only in its
-review's body and has no thread to resolve, so it is answered with a PR comment. Those print
-after the threads, from every review submitted since the head commit; the commit date stands in
-for "not yet answered by a push".
+Findings CodeRabbit cannot post as a thread, under "Outside diff range comments" or
+"Additional comments", live only in its review's body and have no thread to resolve, so they
+are answered with a PR comment. Those print after the threads, from every review submitted
+since the head commit; the commit date stands in for "not yet answered by a push".
 
 Usage: ``mise run pr-threads -- <number> [--all]``. ``--all`` keeps resolved threads, marked
-``resolved``, and outside-diff findings from every review. Every page of threads and reviews
+``resolved``, and review-body findings from every review. Every page of threads and reviews
 is read.
 
 To answer a thread: ``mise run pr-threads -- <number> --reply <id> --body <text>`` (or
@@ -115,28 +115,63 @@ _OUTSIDE_FINDING = re.compile(
     r"<summary><strong>.*?\b(" + "|".join(SEVERITIES) + r")</strong>\s*·\s*(.+?)\s*·\s*"
     r"<code>([^<]+)</code></summary>"
 )
+#: The heading of the blockquote that holds a review's additional-comment findings.
+_ADDITIONAL = re.compile(r"Additional comments:\s*\d+")
+#: One additional-comment finding's summary: ``path-L1-L2: N``.
+_ADDITIONAL_FINDING = re.compile(r"<summary>([^<]+)-(\d+)-(\d+): \d+</summary>")
+#: The bold status line CodeRabbit prints before a finding's title.
+_STATUS_BOLD = frozenset({"Unverified finding"})
+#: One finding's line range inside a file block: a backticked ``L1-L2`` followed by a colon.
+_ADDITIONAL_RANGE = re.compile(r"^`(\d+)-(\d+)`:", re.MULTILINE)
+#: The opening or closing tag of a ``<details>`` block, for matching one to its close.
+_DETAILS_TAG = re.compile(r"</?details\b[^>]*>", re.IGNORECASE)
+#: Fenced blocks and inline code spans, whose backticks can quote HTML tags.
+_CODE = re.compile(r"```.*?```|`[^`\n]*`", re.DOTALL)
 
 
 class GhError(Exception):
     """A ``gh`` command failed or printed something other than the expected JSON."""
 
 
-def summarize(body: str) -> tuple[str | None, str]:
-    """A comment's severity, when it names one, and its title line, without markup."""
-    text = _TAG.sub("", _DETAILS.sub("", _HTML_COMMENT.sub("", body)))
+def _is_status(line: str, skip: frozenset[str]) -> bool:
+    """Whether *line* is one of the bold status lines *skip* names."""
+    bold = _BOLD_LINE.match(line)
+    return bold is not None and bold.group(1) in skip
+
+
+def _severity_and_title(text: str, *, skip: frozenset[str] = frozenset()) -> tuple[str | None, str]:
+    """A finding's severity and title from *text*, whose markup the caller has stripped.
+
+    *skip* names bold status lines, such as CodeRabbit's "Unverified finding", that are not
+    titles.
+    """
     match = _SEVERITY.search(text)
     severity = match.group(1) if match else None
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     title = next(
-        (m.group(1) for m in map(_BOLD_LINE.match, lines) if m and m.group(1) not in SEVERITIES),
+        (
+            bold.group(1)
+            for line in lines
+            if (bold := _BOLD_LINE.match(line)) is not None
+            and bold.group(1) not in SEVERITIES
+            and bold.group(1) not in skip
+        ),
         None,
     )
     if title is None:
         # The severity line is the only bold line, or there is none: take the first prose line.
-        title = next((line for line in lines if not _SEVERITY.search(line)), "")
+        title = next(
+            (line for line in lines if not _SEVERITY.search(line) and not _is_status(line, skip)),
+            "",
+        )
     if len(title) > TITLE_LIMIT:
         title = title[: TITLE_LIMIT - 1] + "…"
     return severity, title
+
+
+def summarize(body: str) -> tuple[str | None, str]:
+    """A comment's severity, when it names one, and its title line, without markup."""
+    return _severity_and_title(_TAG.sub("", _DETAILS.sub("", _HTML_COMMENT.sub("", body))))
 
 
 def _printable(text: str) -> str:
@@ -205,20 +240,89 @@ def outside_diff(body: str) -> list[tuple[str, str, str]]:
     ]
 
 
+def _without_code(text: str) -> str:
+    """*text* with fenced blocks and inline code spans blanked, same length and offsets."""
+    return _CODE.sub(lambda match: " " * len(match.group(0)), text)
+
+
+def _additional_section_end(body: str, *, start: int) -> int:
+    """The index just past the ``</details>`` that closes the block holding *start*.
+
+    A finding may quote a tag as code, so code spans are blanked before the tags are counted.
+    """
+    markup = _without_code(body)
+    opening = markup.rfind("<details", 0, start)
+    if opening == -1:
+        return len(body)
+    depth = 0
+    for tag in _DETAILS_TAG.finditer(markup, opening):
+        depth += 1 if tag.group(0).lower().startswith("<details") else -1
+        if depth == 0:
+            return tag.end()
+    return len(body)
+
+
+def additional_diff(body: str) -> list[tuple[str, str, str]]:
+    """A review body's additional-comment findings as ``(where, severity, title)``.
+
+    CodeRabbit nests these under "Additional comments: N": one ``<summary>path-L1-L2: N`` per
+    file, then one backticked ``L1-L2`` line per finding with its severity, then the title. A
+    block without a marker uses the summary's range, and a finding without a severity prints
+    ``?``, so a format change shows up instead of vanishing.
+    """
+    heading = _ADDITIONAL.search(body)
+    if heading is None:
+        return []
+    section_end = _additional_section_end(body, start=heading.start())
+    files = list(_ADDITIONAL_FINDING.finditer(body, heading.end(), section_end))
+    findings: list[tuple[str, str, str]] = []
+    for index, file_match in enumerate(files):
+        end = files[index + 1].start() if index + 1 < len(files) else section_end
+        block = body[file_match.end() : end]
+        markers = list(_ADDITIONAL_RANGE.finditer(block))
+        pieces: list[tuple[str, str, str]] = []
+        if markers:
+            for position, marker in enumerate(markers):
+                stop = markers[position + 1].start() if position + 1 < len(markers) else len(block)
+                pieces.append((marker.group(1), marker.group(2), block[marker.end() : stop]))
+        else:
+            pieces.append((file_match.group(2), file_match.group(3), block))
+        for first, last, raw in pieces:
+            text = _TAG.sub("", _HTML_COMMENT.sub("", raw))
+            severity, title = _severity_and_title(text, skip=_STATUS_BOLD)
+            where = (
+                f"{file_match.group(1)}:{first}"
+                if first == last
+                else f"{file_match.group(1)}:{first}-{last}"
+            )
+            findings.append((_printable(where), severity or "?", _printable(title)))
+    return findings
+
+
 def outside_lines(
     reviews: Iterable[dict[str, Any]], since: str | None, *, include_all: bool
 ) -> list[str]:
-    """One line per outside-diff finding of each review submitted after *since*.
+    """One line per review-body finding of each review submitted after *since*.
 
-    *since* is an ISO 8601 UTC timestamp, so string order is time order; with *include_all*,
-    or when it is ``None``, every review counts.
+    Covers findings under "Outside diff range comments" and "Additional comments", both of
+    which have no thread. *since* is an ISO 8601 UTC timestamp, so string order is time order;
+    with *include_all*, or when it is ``None``, every review counts.
     """
-    return [
-        f"{where} [{severity}] {title} | outside diff, review {review['databaseId']}"
-        for review in reviews
-        if include_all or since is None or (review["submittedAt"] or "") > since
-        for where, severity, title in outside_diff(review["body"] or "")
-    ]
+    lines: list[str] = []
+    for review in reviews:
+        if not (include_all or since is None or (review["submittedAt"] or "") > since):
+            continue
+        body = review["body"] or ""
+        review_id = review["databaseId"]
+        lines += [
+            f"{where} [{severity}] {title} | outside diff, review {review_id}"
+            for where, severity, title in outside_diff(body)
+        ]
+        lines += [
+            f"{where} [{severity}] {title} | additional comments, review {review_id}"
+            for where, severity, title in additional_diff(body)
+        ]
+    return lines
 
 
 def _gh(*args: str, empty_ok: bool = False) -> Any:
@@ -481,7 +585,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="include resolved threads and outside-diff findings from every review",
+        help="include resolved threads and review-body findings from every review",
     )
     parser.add_argument(
         "--reply", type=int, metavar="COMMENT_ID", help="reply in the thread this comment starts"
@@ -515,11 +619,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"{len(lines)} {'review' if args.all else 'open review'} threads on {repo}#{args.number}")
     for line in lines:
         print(line)
-    outside = outside_lines(reviews[1], reviews[0], include_all=args.all)
-    if outside:
+    findings = outside_lines(reviews[1], reviews[0], include_all=args.all)
+    if findings:
         scope = "every review" if args.all else "reviews since the head commit"
-        print(f"{len(outside)} outside-diff findings from {scope} (answer with gh pr comment)")
-        for line in outside:
+        print(f"{len(findings)} review-body findings from {scope} (answer with gh pr comment)")
+        for line in findings:
             print(line)
     return 0
 
