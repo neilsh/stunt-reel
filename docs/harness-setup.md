@@ -147,7 +147,8 @@ DSH's `run_code` traps, each hit several times by workers on 2026-11-14:
   changed since it was read" or "old_string not found": re-read after either.
 - **`read` caps a call at about 1300 lines and truncates lines over 2000 characters**, so a
   `read` then `write` round trip silently cuts long lines (`ARCHITECTURE.md`, research tables).
-  Edit in place with `edit`, or copy with `git show <ref>:<path>`.
+  Edit in place with `edit`; to copy a file for a move or split, use `git show <ref>:<path>`,
+  which gives its committed content without uncommitted edits.
 - **PowerShell 5.1 sets exit 1 when a native command writes to stderr**, even on success: trust
   `$LASTEXITCODE` or the gate's `] PASS` line. Its `>` writes UTF-16; pipe to
   `Out-File -Encoding utf8` instead.
