@@ -16,7 +16,7 @@ lazy from formats_docs.catalog import VerificationResult
 
 
 def _default_repo_root() -> Path:
-    """The checkout, four directories above this module (``python/scripts/formats_docs/``)."""
+    """The checkout, three directories above ``python/scripts/formats_docs/``."""
     return Path(__file__).resolve().parents[3]
 
 
