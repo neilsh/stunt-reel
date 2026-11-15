@@ -266,6 +266,87 @@ def test_one_file_block_may_hold_several_findings() -> None:
     ]
 
 
+def _additional_blocks(*files: tuple[str, str]) -> str:
+    """A CodeRabbit Additional comments section with one block per (summary, raw) pair."""
+    blocks = "".join(
+        f"""
+<details>
+<summary>{summary}</summary><blockquote>
+<dl>
+<dd>
+<br>
+
+{raw}
+
+</dd>
+</dl>
+</blockquote></details>
+"""
+        for summary, raw in files
+    )
+    return (
+        "<details>\n<summary>Additional comments: 9</summary><blockquote>\n<dl>\n<dd>\n<br>\n"
+        f"{blocks}\n</dd>\n</dl>\n</blockquote></details>\n"
+    )
+
+
+def test_a_backticked_closing_tag_does_not_end_the_section() -> None:
+    """A finding that quotes a closing detail tag must not drop the files after it."""
+    body = _additional_blocks(
+        (
+            "a.py-1-9: 2",
+            (
+                f"{_MARK}1-1{_MARK}: **Major** · **Correctness**\n\n**P1**\n\n"
+                f"Close with {_MARK}</details>{_MARK} here.\n\n"
+                f"{_MARK}9-9{_MARK}: **Minor** · **Maintainability**\n\n**P2**"
+            ),
+        ),
+        ("b.py-5-5: 1", f"{_MARK}5-5{_MARK}: **Critical** · **Security**\n\n**P3**"),
+    )
+
+    assert pr_threads.additional_diff(body) == [
+        ("a.py:1", "Major", "P1"),
+        ("a.py:9", "Minor", "P2"),
+        ("b.py:5", "Critical", "P3"),
+    ]
+
+
+def test_a_backticked_opening_tag_does_not_keep_the_section_open() -> None:
+    """A finding that quotes an opening detail tag must not take a later severity."""
+    body = (
+        _additional_blocks(
+            (
+                "a.py-1-9: 1",
+                (
+                    f"{_MARK}1-1{_MARK}: **Correctness** · **Quick win**\n\n**Q1**\n\n"
+                    f"Open with {_MARK}<details>{_MARK} here."
+                ),
+            ),
+        )
+        + "\n**Major**\nlater\n"
+    )
+
+    assert pr_threads.additional_diff(body) == [("a.py:1", "?", "Q1")]
+
+
+def test_a_file_block_without_a_marker_prints_with_its_summary_range() -> None:
+    """A format change shows up: no line marker falls back to the summary's range."""
+    body = _additional_section(
+        "**Major** · **Correctness**\n\n**No marker here.**", "a/b.py-12-14: 1"
+    )
+
+    assert pr_threads.additional_diff(body) == [("a/b.py:12-14", "Major", "No marker here.")]
+
+
+def test_a_marker_without_a_severity_prints_a_question_mark() -> None:
+    """A format change shows up: a finding without a severity prints a question mark."""
+    raw = f"{_MARK}7-7{_MARK}: **Correctness** · **Quick win**\n\n**No severity.**"
+
+    assert pr_threads.additional_diff(_additional_section(raw, "a/b.py-7-7: 1")) == [
+        ("a/b.py:7", "?", "No severity.")
+    ]
+
+
 def test_a_finding_without_a_severity_does_not_borrow_one_from_a_later_section() -> None:
     """The Additional slice ends where the section does, not at the review body's end."""
     raw = (
@@ -274,7 +355,7 @@ def test_a_finding_without_a_severity_does_not_borrow_one_from_a_later_section()
     )
     body = _additional_section(raw, "a/b.py-7-7: 1") + "\n\n**Major**\n\nA later section."
 
-    assert pr_threads.additional_diff(body) == []
+    assert pr_threads.additional_diff(body) == [("a/b.py:7", "?", "No severity in this block.")]
 
 
 def test_a_finding_without_a_bold_title_falls_back_like_a_comment() -> None:

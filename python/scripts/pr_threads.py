@@ -125,6 +125,8 @@ _STATUS_BOLD = frozenset({"Unverified finding"})
 _ADDITIONAL_RANGE = re.compile(r"^`(\d+)-(\d+)`:", re.MULTILINE)
 #: The opening or closing tag of a ``<details>`` block, for matching one to its close.
 _DETAILS_TAG = re.compile(r"</?details\b[^>]*>", re.IGNORECASE)
+#: Fenced blocks and inline code spans, whose backticks can quote HTML tags.
+_CODE = re.compile(r"```.*?```|`[^`\n]*`", re.DOTALL)
 
 
 class GhError(Exception):
@@ -238,13 +240,22 @@ def outside_diff(body: str) -> list[tuple[str, str, str]]:
     ]
 
 
+def _without_code(text: str) -> str:
+    """*text* with fenced blocks and inline code spans blanked, same length and offsets."""
+    return _CODE.sub(lambda match: " " * len(match.group(0)), text)
+
+
 def _additional_section_end(body: str, *, start: int) -> int:
-    """The index just past the ``</details>`` that closes the block holding *start*."""
-    opening = body.rfind("<details", 0, start)
+    """The index just past the ``</details>`` that closes the block holding *start*.
+
+    A finding may quote a tag as code, so code spans are blanked before the tags are counted.
+    """
+    markup = _without_code(body)
+    opening = markup.rfind("<details", 0, start)
     if opening == -1:
         return len(body)
     depth = 0
-    for tag in _DETAILS_TAG.finditer(body, opening):
+    for tag in _DETAILS_TAG.finditer(markup, opening):
         depth += 1 if tag.group(0).lower().startswith("<details") else -1
         if depth == 0:
             return tag.end()
@@ -255,7 +266,9 @@ def additional_diff(body: str) -> list[tuple[str, str, str]]:
     """A review body's additional-comment findings as ``(where, severity, title)``.
 
     CodeRabbit nests these under "Additional comments: N": one ``<summary>path-L1-L2: N`` per
-    file, then one backticked ``L1-L2`` line per finding with its severity, then the title.
+    file, then one backticked ``L1-L2`` line per finding with its severity, then the title. A
+    block without a marker uses the summary's range, and a finding without a severity prints
+    ``?``, so a format change shows up instead of vanishing.
     """
     heading = _ADDITIONAL.search(body)
     if heading is None:
@@ -267,21 +280,22 @@ def additional_diff(body: str) -> list[tuple[str, str, str]]:
         end = files[index + 1].start() if index + 1 < len(files) else section_end
         block = body[file_match.end() : end]
         markers = list(_ADDITIONAL_RANGE.finditer(block))
-        for marker_index, marker in enumerate(markers):
-            stop = (
-                markers[marker_index + 1].start() if marker_index + 1 < len(markers) else len(block)
-            )
-            text = _TAG.sub("", _HTML_COMMENT.sub("", block[marker.end() : stop]))
+        pieces: list[tuple[str, str, str]] = []
+        if markers:
+            for position, marker in enumerate(markers):
+                stop = markers[position + 1].start() if position + 1 < len(markers) else len(block)
+                pieces.append((marker.group(1), marker.group(2), block[marker.end() : stop]))
+        else:
+            pieces.append((file_match.group(2), file_match.group(3), block))
+        for first, last, raw in pieces:
+            text = _TAG.sub("", _HTML_COMMENT.sub("", raw))
             severity, title = _severity_and_title(text, skip=_STATUS_BOLD)
-            if severity is None:
-                continue
-            first, last = marker.group(1), marker.group(2)
             where = (
                 f"{file_match.group(1)}:{first}"
                 if first == last
                 else f"{file_match.group(1)}:{first}-{last}"
             )
-            findings.append((_printable(where), severity, _printable(title)))
+            findings.append((_printable(where), severity or "?", _printable(title)))
     return findings
 
 
