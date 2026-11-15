@@ -57,7 +57,7 @@ The first two draw the decal after its base with `LessEqual`, a bias toward the 
 _Source: [prototype A wins the comparison](../../work/2026-11/489_ordered-decal-pass/comparison.md#2026-11-13-prototype-a-depth-bias-wins-the-comparison)._
 
 Where a rule's net is wrong, we differ:
-- **Wrong winner:** on `INTRO` tick 1086 a tile now covers a prop; whether `PLAYONE`'s order covers it too is not known (open question 4 there).
+- **Wrong winner:** on `INTRO` tick 1086 a tile now covers a prop; whether `PLAYONE`'s order covers it too is not known (open question 3 of [`world-scene-residuals.md`](../playone-exe/world-scene-residuals.md)).
 - **Near surfaces:** the bias is in depth-buffer units, so a decal also beats any other surface within a few depth steps of it; two steps of `Depth24Plus` are about 24 cm at 1 km by the arithmetic below, more at grazing angles, where the slope term grows (`[Hypothesis]`, not measured). In one sweep (`[Bounded Observation]`), the constant changed no score from −1 to −8, a slope of `-8` let decals through near surfaces (109 frames down by more than 0.005) and `-0.5` cost a target frame 0.016.
 - **Edge pixels between coplanar decals:** on `LOCATION`'s facades, pixels where coplanar bands and a roof edge meet changed owner (tick 3202, 343 pixels, −0.0152, the worst frame of the judge's list); in the two rows looked at, the capture matches the old render. The outlines of one world decal slice are drawn after all of its fills, while an earlier slice's outline now lies under every later slice; which of the two moves these pixels is not attributed. `[Bounded Observation]`.
 - **Overhangs:** a decal that overhangs its base writes no depth there, so a decal drawn later behind it can paint over the overhang. Not seen in a film.

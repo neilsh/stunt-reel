@@ -58,7 +58,7 @@ terrain:
   0.0004 without that candidate range limit (a constant that shrinks as a fraction of the depth step
   the further the camera is) and without moving any mountain leaf. Ticks 2918-2973, which the biased
   terrain pass lost, are unchanged. At `INTRO` tick 1086 a decal now covers pixels that a base-pass
-  prop won; that prop is not identified (open question 4 of
+  prop won; that prop is not identified (open question 3 of
   [`world-scene-residuals.md`](../../research/playone-exe/world-scene-residuals.md#open-questions)).
 * The rule also takes flat markings and patches that lie on the ground (`0x03BE..0x03C3`, `0x064A`,
   `INTRO` `0x05CB..0x05D7` and others), which is the same kind of object. Flat props that hover
@@ -69,8 +69,9 @@ terrain:
   angle in the renderer tests, for tiles snapped as above. Reversed-Z with `Depth32Float` was not
   adopted because nothing needed it; revisit it if a tile on a patch whose corners are not coplanar
   flickers far away.
-* Open: `SCENERY3.RES` #1, 2, 5, 6 are not flat in our decode and are not covered (open question 4
-  of the note). Closed 2026-11-11: they are hill fins, not tiles (see Status).
+* Open: `SCENERY3.RES` #1, 2, 5, 6 are not flat in our decode and are not covered (then an open question; now
+  [`world-scene-residuals.md` § Ruled out](../../research/playone-exe/world-scene-residuals.md#ruled-out)).
+  Closed 2026-11-11: they are hill fins, not tiles (see Status).
 
 ## Considered Options
 

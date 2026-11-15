@@ -36,7 +36,7 @@ In `CTRY`'s airfield shot no fin shows through the hill patches in front of it, 
 
 *[Bounded Observation]*, both films, `mean_ssim_scored` (`CTRY` / `INTRO`). _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-candidates-and-the-ground-decal-prototype)._
 
-* **Ground decals (adopted)**: 0.8645 / 0.7973 from 0.8298 / 0.7745; IoU unchanged, index agreement 0.587 to 0.884 / 0.663 to 0.812. No `CTRY` tick loses more than 0.002 (worst 510, -0.0011); on `INTRO` tick 1086 loses 0.0056 and 1317 0.0027 (open question 4).
+* **Ground decals (adopted)**: 0.8645 / 0.7973 from 0.8298 / 0.7745; IoU unchanged, index agreement 0.587 to 0.884 / 0.663 to 0.812. No `CTRY` tick loses more than 0.002 (worst 510, -0.0011); on `INTRO` tick 1086 loses 0.0056 and 1317 0.0027 (open question 3).
 * **Terrain sunk 0.02 to 0.10 m**: 0.8649 / 0.7968 to 0.7971 (0.05 m: within 0.0004 / 0.0002 of the decals), but it moves every polygon and its tie depends on the depth step, which grows with distance. No `CTRY` tick lost more than 0.001; 6 `INTRO` ticks lost more than 0.002, worst 1086 (-0.006); ticks far from the camera were not checked.
 * **A third pipeline drawing terrain with slope-scale bias 0.25**: 0.8640 / 0.7943, losing 37 `INTRO` ticks (ticks 2918-2973 down to -0.04); any constant bias term hurt.
 

@@ -112,7 +112,7 @@ The renderer-only levers are exhausted, so each item starts by reading one `PLAY
 
 The 2026-10-24 ground-and-light goal ran two rounds and adopted nothing, which is its own stop rule. Both rounds went at the ground question from opposite ends and both were stopped by missing evidence rather than by a negative result:
 
-* **The stream is not in conventional memory.** The runner at `0x9161` calls the display list's first word as code, so a relocated record carries the handler's offset; `0x995C` occurs in none of the 96 dumps and `0x9A24` twice ([world-scene-residuals.md](../playone-exe/world-scene-residuals.md) section 6).
+* **The stream is not in conventional memory.** The runner at `0x9161` calls the display list's first word as code, so a relocated record carries the handler's offset; `0x995C` occurs in none of the 96 dumps and `0x9A24` twice ([world-scene.md § Ruled out](../playone-exe/world-scene.md#ruled-out)).
 * **The light is handed in, not computed.** `0x9100` writes `L` from AX/BX/DX and fills the rest of its block from DGROUP; the caller is the binary's one genuinely unreferenced entry ([terrain-shade.md](../playone-exe/terrain-shade.md#41-the-entry-decodes-but-it-is-handed-its-light)).
 
 So the next goal cannot open on item 1 or on the model-origin half of item 2 without evidence this one could not obtain. The two routes that would produce it are an EMS page-frame dump during playback, and the loader's relocation rule from the unpacked image — the first is a harness job, the second static work this notebook has the addresses for. Item 3 (the flat-sand frames) is untouched and does not depend on either.
