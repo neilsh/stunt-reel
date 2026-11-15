@@ -121,7 +121,7 @@ Vulkan, made no consistent difference). Opening the device took 0.13 s and compi
 
 `Renderer::offscreen` now chooses its adapter once per process and opens a fresh device from it
 for each renderer (`offscreen_adapter` in
-[renderer.rs](../../crates/stunt-render/src/renderer.rs)). The lanes do not change. Re-measured
+[renderer/adapter.rs](../../crates/stunt-render/src/renderer/adapter.rs)). The lanes do not change. Re-measured
 warm on 2026-11-04, after #187 built the GPU tests as one `gpu` binary; three runs of the binary,
 one of the workspace's tests, two gates:
 

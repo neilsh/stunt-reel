@@ -35,7 +35,7 @@ physical cores, 31 GiB of RAM and an RTX 4070 Laptop GPU with 8 GiB. The scripts
 ### 3.1 Parallel renders (D6)
 
 * **Renders run on the GPU.** Headless mode asks wgpu for the `HighPerformance` adapter
-  ([`renderer.rs`](../../../crates/stunt-render/src/renderer.rs) `select_adapter`). Each render
+  ([`renderer/adapter.rs`](../../../crates/stunt-render/src/renderer/adapter.rs) `select_adapter`). Each render
   runs about 57 threads but keeps only 0.4 to 0.65 of a core busy.
 * **The cost per render is flat.** About 300 MiB of RAM and about 200 MiB of VRAM, the same for
   `BOMB.FLM` (339 ticks drawn), `LOCATION.FLM` (751 ticks), CTRY and INTRO. A score takes about
