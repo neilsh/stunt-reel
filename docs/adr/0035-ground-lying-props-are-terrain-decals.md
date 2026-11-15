@@ -3,7 +3,7 @@
 ## Status
 
 accepted 2026-11-04. Implements the change that
-[`world-scene.md` section 6](../../research/playone-exe/world-scene.md#6-what-the-renderer-gets-wrong-and-the-change-it-licenses)
+[`world-scene-residuals.md` section 6](../../research/playone-exe/world-scene-residuals.md#6-what-the-renderer-gets-wrong-and-the-change-it-licenses)
 licenses, for [#69](https://github.com/neilsh/stunt-reel/issues/69); answers
 [#176](https://github.com/neilsh/stunt-reel/issues/176). Applies `[I5]` to a class of props that
 the SOD decode does not mark as decals.
@@ -25,7 +25,7 @@ on the eye's side.
 on the ground is painted after the ground leaf under it and always covers it. Our renderer has a
 depth buffer, and the tiles tie the terrain exactly: measured against the `MAP.BIN` triangle under
 each vertex, the 16 airfield and sand tiles sit within 8 mm of it, most within 1 mm
-([`world-scene.md` section 6.1](../../research/playone-exe/world-scene.md#61-how-far-the-tiles-sit-from-the-terrain)).
+([`world-scene-residuals.md` section 6.1](../../research/playone-exe/world-scene-residuals.md#61-how-far-the-tiles-sit-from-the-terrain)).
 The tile quads and the fan triangles of the patch are different triangulations of one plane, so
 their depths differ by rounding and the terrain wins about half the pixels. The base pass draws
 them all with `Less`, so the tile shows only where it happens to round in front. On the pixels the
@@ -59,7 +59,7 @@ terrain:
   the further the camera is) and without moving any mountain leaf. Ticks 2918-2973, which the biased
   terrain pass lost, are unchanged. At `INTRO` tick 1086 a decal now covers pixels that a base-pass
   prop won; that prop is not identified (open question 4 of
-  [`world-scene.md`](../../research/playone-exe/world-scene.md#open-questions)).
+  [`world-scene-residuals.md`](../../research/playone-exe/world-scene-residuals.md#open-questions)).
 * The rule also takes flat markings and patches that lie on the ground (`0x03BE..0x03C3`, `0x064A`,
   `INTRO` `0x05CB..0x05D7` and others), which is the same kind of object. Flat props that hover
   (`INTRO` `0x0790..0x07B4`, 2 m up) stay in the base pass.
