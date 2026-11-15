@@ -1,6 +1,6 @@
 """Runs ``stuntreel link``: a film's ``.ALL`` recorded as a manifest, and rebuilt from one.
 
-The linking is Rust (``crates/stunt-cli/src/link.rs``); this module only builds the argv,
+The linking is Rust (``crates/stunt-cli/src/link/mod.rs``); this module only builds the argv,
 runs the release binary and turns its exit code into an exception: 0 returns, 3 raises
 :class:`NotLinkable` (the archive holds content the game's ``RES/`` lacks), anything else
 raises :class:`LinkError`. It also owns the binary's location and the command that builds it.

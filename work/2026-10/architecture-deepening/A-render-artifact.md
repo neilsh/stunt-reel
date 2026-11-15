@@ -96,7 +96,7 @@ File naming and numbering; the page-to-film-clock rule; plane layouts and length
 
 **Follow-up (2026-10-28).** The shared fixtures above never landed: neither language has a conformance document, and the page bytes have no cross-language pin. The corpus that lands them — the three documents, a legacy capture, and the `.idx`/`.layer` page pair — is specified in [parity-conformance-corpus.md](../parity-conformance-corpus/spec.md).
 
-**Landed (2026-10-29).** That corpus now exists in `tests/fixtures/parity/v1/` and both adapters are pinned against it: a `conformance` module in [parity_artifacts.rs](../../../crates/stunt-cli/src/parity_artifacts.rs) and [test_parity_conformance.py](../../../tests/test_parity_conformance.py). The page bytes stay pinned end to end now that `parity_artifacts.read_page` replaces the four hand-decoded reads. The `Round` and `ReportBuilder` half of the unit is still unlanded and is tracked separately.
+**Landed (2026-10-29).** That corpus now exists in `tests/fixtures/parity/v1/` and both adapters are pinned against it: a `conformance` module in [parity_artifacts.rs](../../../crates/stunt-cli/src/parity_artifacts/mod.rs) and [test_parity_conformance.py](../../../tests/test_parity_conformance.py). The page bytes stay pinned end to end now that `parity_artifacts.read_page` replaces the four hand-decoded reads. The `Round` and `ReportBuilder` half of the unit is still unlanded and is tracked separately.
 
 ## 8. Deletions
 
