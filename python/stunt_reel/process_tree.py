@@ -19,7 +19,7 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
 __all__ = ["REAP_SECONDS", "TIMEOUT_EXIT", "end", "kill_tree", "run", "spawn", "wait"]
@@ -91,19 +91,16 @@ def wait(
     timeout: float | None,
     *,
     reap: float = REAP_SECONDS,
-    on_timeout: Callable[[subprocess.Popen[str]], None] | None = None,
 ) -> tuple[int, str]:
     """Wait for *proc*; returns ``(exit code, combined output)``.
 
-    Past *timeout* seconds, *on_timeout* runs (while the tree is still alive), the tree is killed
-    and the code is :data:`TIMEOUT_EXIT` with whatever output the child had written. An interrupt
-    ends the tree too before it propagates: the child's own group never sees Ctrl+C.
+    Past *timeout* seconds the tree is killed and the code is :data:`TIMEOUT_EXIT` with whatever
+    output the child had written. An interrupt ends the tree too before it propagates: the child's
+    own group never sees Ctrl+C.
     """
     try:
         output, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        if on_timeout is not None:
-            on_timeout(proc)
         return TIMEOUT_EXIT, end(proc, reap)
     except BaseException:
         end(proc, reap)

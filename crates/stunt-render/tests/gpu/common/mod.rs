@@ -2,6 +2,8 @@
 
 #![allow(dead_code, reason = "each test crate uses a subset of the helpers")]
 
+pub(crate) mod watchdog;
+
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -38,6 +40,8 @@ thread_local! {
 /// Runs a test body that touches the GPU on a thread of its own, holding the process-wide GPU
 /// lock until that thread has exited, and re-raises its panic.
 pub(crate) fn gpu_test(body: impl FnOnce() + Send) {
+    // Spawn the watchdog thread before any GPU call, so a hang in the first one is bounded too.
+    let watchdog = watchdog::Watchdog::global();
     let _guard = GPU_TEST_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
@@ -46,6 +50,11 @@ pub(crate) fn gpu_test(body: impl FnOnce() + Send) {
         .name()
         .unwrap_or("gpu_test")
         .to_owned();
+    // Bound before the scope so it drops after the join; the lock is held, so the slot is ours.
+    let _armed = watchdog.arm(
+        &name,
+        watchdog::parse_deadline(std::env::var(watchdog::DEADLINE_ENV).ok().as_deref()),
+    );
     // An explicit join waits for the OS thread to exit, DLL detach included; leaving the scope
     // alone returns once the body has finished.
     let outcome = std::thread::scope(|scope| {

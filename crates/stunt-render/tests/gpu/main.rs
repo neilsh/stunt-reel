@@ -1,4 +1,4 @@
-//! The GPU integration tests, kept as their own binary so `mise run test-render` can run them under the hang watchdog.
+//! The GPU integration tests, kept as their own binary so `mise run test-gpu` can run them alone in the hang-rate loop.
 
 #![allow(
     clippy::unwrap_used,

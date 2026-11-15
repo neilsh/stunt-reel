@@ -151,15 +151,13 @@ def test_a_finished_command_keeps_its_exit_code_and_output() -> None:
 def test_timeout_kills_the_grandchild_too() -> None:
     """A surviving grandchild holds the pipe, so the read would wait out its 30 s sleep."""
     grandchild = 0
-    seen: list[str] = []
     since = time.time()
     try:
         started = time.monotonic()
         with process_tree.spawn([sys.executable, "-c", _CHILD]) as proc:
-            code, output = process_tree.wait(proc, 2.0, on_timeout=lambda _p: seen.append("hook"))
+            code, output = process_tree.wait(proc, 2.0)
         assert time.monotonic() - started < 20.0
         assert code == process_tree.TIMEOUT_EXIT
-        assert seen == ["hook"]
         grandchild = _grandchild(output)
         deadline = time.monotonic() + 5.0
         while _alive(grandchild) and time.monotonic() < deadline:

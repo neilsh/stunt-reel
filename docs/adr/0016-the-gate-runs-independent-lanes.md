@@ -4,7 +4,8 @@
 
 accepted; implemented. Amended 2026-11-02: `doc` moved from the `rust-build` lane to `rust-lint`
 (below). Amended 2026-11-03 by [ADR 0040](0040-the-gate-runs-pytest-across-every-core.md): the
-`py-test` lane runs pytest across every core.
+`py-test` lane runs pytest across every core. Amended 2026-11-15: the in-test GPU deadline replaces
+`test-render` (below).
 
 ## Context
 
@@ -131,8 +132,18 @@ one of the workspace's tests, two gates:
 | after | 3.2-3.6 s | 7.1 s | 12-19 s |
 
 The gate is now bound by `test-py` (39-50 s) alone, with `test-rust` well behind it. Twenty runs of
-`mise run test-render -- --runs 20 --require-gpu` passed with no hang, so the shared adapter does
+`mise run test-render -- --runs 20 --require-gpu` (deleted 2026-11-15) passed with no hang, so the shared adapter does
 not bring back the driver deadlock that `GPU_TEST_LOCK` guards against. Rejected: a
 `rust-render` lane with its own target directory, which would build wgpu a second time to overlap
 work that now takes about 3 s; and `cargo-nextest`, a new tool that runs each test in its own process,
 so every GPU test would pay the 2.2 s again.
+
+## Amendment 2026-11-15: the in-test GPU deadline replaces test-render
+
+`test-render` and its watchdog script `watch_render_test.py` are deleted
+([#577](https://github.com/neilsh/stunt-reel/issues/577)). Every test in the `gpu` binary now runs
+under a per-test deadline inside `gpu_test`: a test still running after `STUNT_GPU_TEST_DEADLINE_S`
+seconds (default 60) prints `HANG: <test> still running after <N>s` to stderr and aborts the
+process, so a plain `mise run test-gpu` is bounded without an outer process. The hang-rate loop is
+that task run repeatedly with `STUNT_REQUIRE_GPU=1`
+([howto](../howto/run-the-gpu-tests.md)). The lanes do not change.
