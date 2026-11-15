@@ -8,9 +8,9 @@ import re
 import shutil
 import tomllib
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import unquote
 lazy from collections.abc import Mapping
-lazy from pathlib import Path
 
 from stunt_reel.frontmatter import read_frontmatter
 from stunt_reel.markdown_links import (
@@ -229,7 +229,9 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
     images: set[str] = set()
     for source, dest in pages.items():
         text = (root / source).read_text(encoding="utf-8")
-        target = docs / dest
+        # Lower-cased file name: starlight-links-validator drops only a lower-case `index`,
+        # so a page written as INDEX.md would be unreachable at its folder's URL.
+        target = docs / Path(dest).parent / Path(dest).name.lower()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(page_text(text, source, site, images).encode("utf-8"))
     for image in sorted(images):
@@ -239,7 +241,9 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
     sidebar: list[dict[str, object]] = [{"slug": "reading"}]
     for section in sections:
         if (root / section.source).is_dir():
-            sidebar.append({"label": section.label, "autogenerate": {"directory": section.dest}})
+            # Starlight 0.39+ takes autogenerate inside a group's items, not beside its label.
+            items = [{"autogenerate": {"directory": section.dest}}]
+            sidebar.append({"label": section.label, "items": items})
         else:
             sidebar.append({"label": section.label, "slug": section.dest.removesuffix(".md")})
     generated.mkdir(parents=True)

@@ -28,6 +28,9 @@ uv = "0.13.1"
 # Runs the commit hooks (`mise run pre-commit`); they call mise tasks, never their own tools (ADR 0026).
 prek = "0.5.5"
 
+# The research site's build; site/package.json
+bun = "1.4.4"
+
 # Checks the docs' external links; the gardening routine runs it (ADR 0041).
 lychee = "0.24.2"
 
@@ -125,6 +128,18 @@ run = "uv run python python/scripts/work.py"
 [tasks.site-prep]
 description = "Write the research site's Starlight content (site/src/content/docs, site/public/media, the sidebar) from the published set in site/published.toml; mise run site runs it first"
 run = "uv run python python/scripts/site_prep.py"
+
+[tasks.site]
+description = "Build the research site into site/dist: mise run site-prep, then Starlight, failing on a broken link or anchor; the Pages workflow deploys this build"
+depends = ["site-prep"]
+dir = "{{config_root}}/site"
+run = ["bun install --frozen-lockfile", "bun run build"]
+
+[tasks.site-serve]
+description = "Preview the research site at http://localhost:4321/stunt-reel/, after mise run site-prep"
+depends = ["site-prep"]
+dir = "{{config_root}}/site"
+run = ["bun install --frozen-lockfile", "bun run dev"]
 
 [tasks.knowledge-map]
 description = "Rewrite research/MAP.md, every research note listed by folder with its summary: frontmatter, or exit 1 naming it when it is stale (mise run knowledge-map -- --write | --check [--root DIR]); mise run fix runs --write"

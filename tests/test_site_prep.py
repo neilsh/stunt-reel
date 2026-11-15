@@ -75,13 +75,15 @@ def test_prepare_writes_pages_media_and_sidebar(repo: Path) -> None:
     assert (pages, images) == (5, 1)
     docs = repo / "site/src/content/docs"
     assert (docs / "research/formats/sod.md").is_file()
+    names = {p.name for p in (docs / "research/formats").iterdir()}
+    assert "index.md" in names  # INDEX.md, lower-cased
     assert (docs / "glossary.md").is_file()
     assert (docs / "index.md").is_file()
     assert (repo / "site/public/media/research/parity/error-examples/a.png").is_file()
     sidebar = json.loads((repo / "site/src/generated/sidebar.json").read_text())
     assert sidebar == [
         {"slug": "reading"},
-        {"label": "Research notes", "autogenerate": {"directory": "research"}},
+        {"label": "Research notes", "items": [{"autogenerate": {"directory": "research"}}]},
         {"label": "Glossary", "slug": "glossary"},
     ]
 
