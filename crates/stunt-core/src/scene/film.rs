@@ -411,7 +411,7 @@ impl FilmScene {
                     state_mask: a.state_mask,
                     distance: distance(eye, a.position_meters),
                     // The shadow entry `0x1C0D` builds its matrix from the slot's own angles
-                    // whatever the header says (research/playone-exe/sod-vm.md section 9.1).
+                    // whatever the header says (research/playone-exe/sod-vm-frame.md section 9.1).
                     shadow_matrix: a
                         .casts_shadow
                         .then(|| self.shadow_matrix(a.position_meters, &lifted(own, shape))),

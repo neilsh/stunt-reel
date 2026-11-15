@@ -144,7 +144,7 @@ impl CameraTransform {
     ///
     /// `BZLT reg, val, rel` (image `0x9BE5`) skips its section while the register's view
     /// depth is at most `val`. Registers hold the zoomed depth row's high word, so depth
-    /// halved and shifted right by `0x229E` (research/playone-exe/sod-vm.md section 8.6):
+    /// halved and shifted right by `0x229E` (research/playone-exe/sod-vm-execution.md section 8.6):
     /// the section runs while `true depth / 2^(1 + 0x229E) > depth`, with `depth` the
     /// threshold `val` in the shape's metres. A camera with no view direction keeps it.
     #[must_use]
@@ -219,7 +219,7 @@ pub struct ActorTransform {
     pub state_mask: u16,
     /// The slot casts a ground shadow: its create flags carry `SIF_SHADOW` (`0x04`), on
     /// which PLAYONE's actor loop queues the flattened shadow draw (image `0x1E35`,
-    /// `research/playone-exe/sod-vm.md` section 9.1).
+    /// `research/playone-exe/sod-vm-frame.md` section 9.1).
     #[cfg_attr(feature = "serde", serde(default))]
     pub casts_shadow: bool,
     /// Articulated subobject BAM rotation angles `(subobject_id, raw_bam_u16)`.

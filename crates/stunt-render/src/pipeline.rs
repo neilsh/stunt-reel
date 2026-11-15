@@ -47,7 +47,7 @@ impl ModelUniform {
 
     /// A uniform drawing a ground shadow with `model_matrix` into `layer`: every polygon
     /// flat in palette index 0, as PLAYONE draws one with `work:0x806C` set
-    /// (`research/playone-exe/sod-vm.md` section 9.1).
+    /// (`research/playone-exe/sod-vm-frame.md` section 9.1).
     #[must_use]
     pub(crate) fn shadow(model_matrix: [f32; 16], layer: u32) -> Self {
         Self {

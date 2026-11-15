@@ -92,7 +92,7 @@ impl SceneRenderer {
         // Shapes drawn per frame (actors and view-facing props such as the flat trees) take
         // their polygon outlines as line quads; the world mesh takes its props' outlines as a
         // line list over its own vertices, which quads would multiply about five times
-        // (research/playone-exe/sod-vm.md section 8.11).
+        // (research/playone-exe/sod-vm-generators.md section 8.11).
         let shapes = scene
             .shapes()
             .map(|(id, ir)| {
@@ -218,7 +218,7 @@ impl SceneRenderer {
             // The shadow lies on the terrain, so all of it is a decal [I5]. PLAYONE's entry
             // sort (`0x1B88`) paints every shadow before every actor; here the depth test
             // keeps the actor in front of its shadow where the two overlap
-            // (research/playone-exe/sod-vm.md section 9.1).
+            // (research/playone-exe/sod-vm-frame.md section 9.1).
             if let Some(shadow_matrix) = actor.shadow_matrix {
                 let uniform = ModelUniform::shadow(shadow_matrix, layer);
                 let shadow = base.iter().chain(&decals).copied().collect();

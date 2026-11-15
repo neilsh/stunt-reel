@@ -34,7 +34,7 @@ Each glyph row is one byte, bit 7 the leftmost pixel, so a glyph is at most 8 pi
 
 ### 3.2 Drawing the Credits
 
-`[Established]`, static at the image offsets below and pixel-exact on the capture. The per-frame routine draws the credits after the 3D scene (`0x0F7B`, [`sod-vm.md` § 9](../../playone-exe/sod-vm.md#9-per-frame-routine-and-scene-composition)):
+`[Established]`, static at the image offsets below and pixel-exact on the capture. The per-frame routine draws the credits after the 3D scene (`0x0F7B`, [`sod-vm-frame.md` § 9](../../playone-exe/sod-vm-frame.md#9-per-frame-routine-and-scene-composition)):
 
 | Step | Rule | Offset |
 |---|---|---|

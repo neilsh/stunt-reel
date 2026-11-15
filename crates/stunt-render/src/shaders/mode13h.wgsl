@@ -20,7 +20,7 @@ const FLAG_LINE_END: u32 = 0x20u;
 // side the flags name) and half a pixel past its endpoint along the major one. A steep
 // segment then covers one pixel per row and a shallow one one pixel per column, end pixels
 // included, as PLAYONE's inclusive spans draw a two-vertex polygon
-// (research/playone-exe/sod-vm.md section 8.9). Depth stays the endpoint's.
+// (research/playone-exe/sod-vm-generators.md section 8.9). Depth stays the endpoint's.
 fn widen_line(clip: vec4<f32>, other: vec4<f32>, flags: u32) -> vec4<f32> {
     // The screen direction toward `other`, times clip.w squared (positive), so it holds while
     // `other` is behind the eye; in half-pixel units on each axis.
@@ -99,7 +99,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     }
     out.palette_index = in.attr.x & 255u;
     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
-    // (research/playone-exe/sod-vm.md section 9.1).
+    // (research/playone-exe/sod-vm-frame.md section 9.1).
     if (model.layer.y != 0u) {
         out.palette_index = 0u;
     }

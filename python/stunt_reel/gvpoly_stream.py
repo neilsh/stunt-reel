@@ -5,7 +5,7 @@ on the record's first word, because the dispatch slot has already consumed the o
 `SI-2` and patched it into the handler's VM-space IP (`research/playone-exe/world-scene.md`
 section 4). A record is `count`, `count` vertex-register offsets (read by the edge builder
 `0xC9D4`), the ramp word `(base << 8) | count`, one shade offset per vertex, then the next IP
-(`research/playone-exe/sod-vm.md` section 8.5). `base` is the palette index the Gouraud ramp
+(`research/playone-exe/sod-vm-execution.md` section 8.5). `base` is the palette index the Gouraud ramp
 starts from.
 """
 

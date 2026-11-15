@@ -423,7 +423,7 @@ const DOT_RADIUS_M: f32 = 0.03;
 /// Builds the line a `MOVETO`/`ZLINETO` segment or a two-vertex polygon draws, from `a` to `b`
 /// in metres: one polygon of the two endpoints flagged [`VERTEX_FLAG_LINE`], which
 /// tessellation turns into a quad the renderer draws one pixel wide at any distance
-/// (`sod-vm.md` § 8.9). Its zero normal keeps it out of decal matching. `None` when the
+/// (`sod-vm-generators.md` § 8.9). Its zero normal keeps it out of decal matching. `None` when the
 /// endpoints coincide.
 fn line_polygons(
     a: [f32; 3],
@@ -1116,7 +1116,7 @@ impl<'a> Vm<'a> {
         }
 
         if let [a, b] = poly_verts[..] {
-            // PLAYONE draws two vertices as a thin line, not an error (`sod-vm.md` § 8.9).
+            // PLAYONE draws two vertices as a thin line, not an error (`sod-vm-generators.md` § 8.9).
             self.polygons
                 .extend(line_polygons(a, b, self.cur_color, self.current_visibility));
         } else {

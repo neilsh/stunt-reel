@@ -88,7 +88,7 @@ pub(super) fn lod_gate_holds(camera: &CameraTransform, gate: &VisibilityConditio
 ///
 /// `PLAYONE` builds the matrix a view-facing shape is drawn through (`work:0x809C`) from the
 /// view slot's roll and pitch with the yaw zeroed (image `0x12C2`), so the shape turns with
-/// the yaw alone (`research/playone-exe/sod-vm.md` section 8.8). The look direction's
+/// the yaw alone (`research/playone-exe/sod-vm-generators.md` section 8.8). The look direction's
 /// heading is taken to equal that yaw; past vertical it is half a turn off, and a camera
 /// looking straight down gets heading 0 where `PLAYONE` still has its yaw word.
 pub(super) fn camera_heading(camera: &CameraTransform) -> f32 {

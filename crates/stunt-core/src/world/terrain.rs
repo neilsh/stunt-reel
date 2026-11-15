@@ -53,7 +53,7 @@ impl GroundPlane {
     /// Column-major matrix that moves each point straight down (along `-Y`) onto this plane
     /// raised `lift` metres along its normal, keeping its `x` and `z`. PLAYONE's shadow draw
     /// does the same to the object matrix: `0x1C0D` replaces its Y row with
-    /// `-(a*row0 + c*row2) / b` (`research/playone-exe/sod-vm.md` section 9.1).
+    /// `-(a*row0 + c*row2) / b` (`research/playone-exe/sod-vm-frame.md` section 9.1).
     #[must_use]
     pub fn flatten_matrix(&self, lift: f32) -> [f32; 16] {
         let [nx, ny, nz] = self.normal;

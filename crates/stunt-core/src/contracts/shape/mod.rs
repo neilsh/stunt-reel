@@ -18,7 +18,7 @@ pub const SCENERY_PROP: u8 = 3;
 /// `SodVertex::flags` bit of a line vertex, a corner of a one-pixel screen line.
 ///
 /// The renderer draws the segment one Mode 13h pixel wide whatever its distance
-/// (`research/playone-exe/sod-vm.md` section 8.9). The vertex's `position` is its endpoint and
+/// (`research/playone-exe/sod-vm-generators.md` section 8.9). The vertex's `position` is its endpoint and
 /// its `normal` the vector to the segment's other endpoint.
 pub const VERTEX_FLAG_LINE: u8 = 0x08;
 /// `SodVertex::flags` bit of a line vertex on the positive side of its segment, which the

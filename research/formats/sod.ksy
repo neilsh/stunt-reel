@@ -37,7 +37,7 @@ seq:
     doc: |
       Bit 0 draws the shape through the view matrix built without the
       camera's yaw, so it turns with the camera's heading (the flat
-      OP_IPG type 8 trees set it; playone-exe/sod-vm.md section 8.8).
+      OP_IPG type 8 trees set it; playone-exe/sod-vm-generators.md section 8.8).
   - id: collision_meta
     type: u2
   - id: bytecode
