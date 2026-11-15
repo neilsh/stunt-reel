@@ -6,7 +6,7 @@ depend on the slot flags bound by the most recent `create` for that slot, so no
 stateless schema can walk the chain. `research/formats/flm_slice.ksy` parses one
 slice given the three slot masks; `walk_film` supplies them.
 
-The rules mirror `FlmParser::parse_slice` in `crates/stunt-core/src/flm/parser.rs`,
+The rules mirror `FlmPlayer::decode_slice` in `crates/stunt-core/src/flm/player/mod.rs`,
 which stays authoritative for engine behaviour; this walker only produces slice
 bounds and masks.
 """
