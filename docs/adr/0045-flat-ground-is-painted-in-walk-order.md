@@ -14,7 +14,7 @@ ground** subtracts is gone under [ADR 0046](0046-coplanar-decals-are-drawn-in-an
 `PLAYONE.EXE` has no depth buffer. It paints the scenery in its walk order, the later polygon over
 the earlier, and `SP_2NODE` (`0x1EC0..0x1EEE`) visits its first child and then its second without
 testing which side the eye is on
-([`world-scene.md` section 6.6](../../research/playone-exe/world-scene.md#66-ocean-coloured-tile-polygons-over-land)).
+([`world-scene-residuals.md` section 6.6](../../research/playone-exe/world-scene-residuals.md#66-ocean-coloured-tile-polygons-over-land)).
 
 Our renderer resolved the flat ground by depth. ADR 0035 routed ground-lying props to the
 `WORLD_DECAL` node, drawn under `[I5]`'s biased `LessEqual` pass. Every polygon in the plane
@@ -60,7 +60,7 @@ outline could cover the one-pixel rail drawn after the tie; the tie's own fill, 
   [#448](https://github.com/neilsh/stunt-reel/issues/448).
 * Flat patches are painted in `MAP.BIN` order and all of them before any prop. `PLAYONE`'s tree
   interleaves terrain leaves and props, and its order was checked against `MAP.BIN`'s for three
-  records only (`world-scene.md` section 6.5), so a patch painted over a prop, or the other way
+  records only (`world-scene-residuals.md` section 6.5), so a patch painted over a prop, or the other way
   round, can still come out wrong.
 * In the static world, `[I5]`'s depth bias now separates only decals off the ground plane; actor
   decals keep it everywhere.

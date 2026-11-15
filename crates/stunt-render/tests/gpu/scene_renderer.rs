@@ -526,7 +526,7 @@ fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
 }
 
 // The world's flat ground: `GROUND_NODE` slices drawn first, in walk order, each over what is
-// there, as `PLAYONE` paints them with no depth buffer (research/playone-exe/world-scene.md
+// there, as `PLAYONE` paints them with no depth buffer (research/playone-exe/world-scene-residuals.md
 // section 6.6).
 
 const FIRST: u8 = 40;
