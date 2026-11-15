@@ -13,7 +13,7 @@ determines it. Each producer — [`flm/mod.rs`](../../crates/stunt-core/src/flm/
 [`flm/interpolate.rs`](../../crates/stunt-core/src/flm/interpolate.rs) and the Python
 reference in `python/stunt_reel/tac/streamer.py` —
 constructs the record with zeros and then assigns `compute_world_matrix()`; tests fill
-the field by hand. [`FilmScene::frame`](../../crates/stunt-core/src/scene.rs) copies it
+the field by hand. [`FilmScene::frame`](../../crates/stunt-core/src/scene/film.rs) copies it
 unchecked into `ActorDraw`. One missed assignment draws every actor at the origin, and
 nothing downstream can notice: the field is a cache every caller must remember to fill.
 
@@ -36,7 +36,7 @@ matrix per frame.
 `CameraTransform` is the authored camera: `fov_degrees` is the field of view at the
 default lens, `lens` is the authored zoom word, and `cut_from_previous` is authored
 timing. A new `ViewCamera` value in
-[`crates/stunt-core/src/scene.rs`](../../crates/stunt-core/src/scene.rs) holds `eye`,
+[`crates/stunt-core/src/scene/projection.rs`](../../crates/stunt-core/src/scene/projection.rs) holds `eye`,
 `target`, `fov_degrees` and `roll_radians`; `ViewCamera::from_authored(&record.camera)`
 applies `lens_fov_degrees`. `SceneFrame` carries `view: ViewCamera` instead of
 `camera: CameraTransform`, and `FilmScene::frame` is the only place that builds it. The
