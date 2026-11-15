@@ -38,6 +38,8 @@ mod scene;
 mod shape_views;
 mod sod_census;
 mod sod_trace;
+#[cfg(test)]
+mod test_support;
 mod window;
 #[expect(
     dead_code,

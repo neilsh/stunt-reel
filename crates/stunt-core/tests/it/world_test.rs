@@ -13,11 +13,7 @@ use stunt_core::sod::{DecodeMode, ShadeLight, decode_sod};
 use stunt_core::world::{GROUND_NODE, ScnStopReason, WorldInputs, build_world};
 
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
+    crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures")
 }

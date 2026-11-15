@@ -539,8 +539,8 @@ mod tests {
     use stunt_core::contracts::{NodeKind, SodVertex, VisibilityCondition, arena_index};
 
     fn fixture(name: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures")
+        crate::test_support::workspace_root()
+            .join("tests/fixtures")
             .join(name)
     }
 

@@ -361,7 +361,7 @@ mod conformance {
     use crate::render_store::{Palette, RenderStore};
     /// The shared corpus, resolved without the process working directory.
     fn corpus() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/v1")
+        crate::test_support::workspace_root().join("tests/fixtures/parity/v1")
     }
 
     /// Fails unless `|actual - expected| <= 1e-6 * max(1, |actual|, |expected|)`.
@@ -403,7 +403,7 @@ mod conformance {
 
     /// The version-3 render under `tests/fixtures/parity/v3/render`.
     fn v3_render() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/v3/render")
+        crate::test_support::workspace_root().join("tests/fixtures/parity/v3/render")
     }
 
     /// The adapter the v3 render and the v1 report name.
@@ -597,7 +597,7 @@ mod conformance {
 
     #[test]
     fn the_video_fixture_loads() {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/video");
+        let dir = crate::test_support::workspace_root().join("tests/fixtures/parity/video");
         let capture = load_video_capture(&dir).expect("load video capture");
         assert_eq!(capture.log.frame.len(), 4);
         assert_eq!(capture.palettes.changes.len(), 1);

@@ -334,8 +334,7 @@ fn build_report_gate_follows_the_scored_mean_not_the_overall_mean() {
 /// re-tests the numpy copy.
 #[test]
 fn bench_fixture_matches_its_golden_ssim() {
-    let bench =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/bench");
+    let bench = crate::test_support::workspace_root().join("tests/fixtures/parity/bench");
     let tmp = TempDir::new("bench_golden");
     run_parity(
         &bench.join("capture"),
@@ -360,8 +359,7 @@ fn bench_fixture_matches_its_golden_ssim() {
 /// The Rust verdict agrees with the numpy `differential` on the bench fixture.
 #[test]
 fn verdict_matches_the_numpy_golden() {
-    let bench =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/parity/bench");
+    let bench = crate::test_support::workspace_root().join("tests/fixtures/parity/bench");
     let golden: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(bench.join("golden.json")).unwrap()).unwrap();
     let expected = &golden["differential"]["20"];

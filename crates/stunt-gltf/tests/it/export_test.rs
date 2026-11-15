@@ -12,8 +12,6 @@
 //! Everything is synthetic: fixture SODs and anchors from `tests/fixtures/` plus hand-built
 //! `.FLM` and `.ALL` bytes, so nothing depends on `corpus/`.
 
-use std::path::PathBuf;
-
 use glam::{Quat, Vec3};
 use serde_json::Value;
 use stunt_core::anchor::parse_anchor_table;
@@ -29,9 +27,7 @@ use stunt_core::sod::{
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
 fn fixture(name: &str) -> Vec<u8> {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
+    let dir = crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures");
     std::fs::read(dir.join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"))

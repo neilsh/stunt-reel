@@ -30,7 +30,7 @@ type Table = BTreeMap<String, Field>;
 
 /// Every `<!-- fields: NAME -->` table of the report-fields note, by name.
 fn documented() -> BTreeMap<String, Table> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../research/parity/report-fields.md");
+    let path = crate::test_support::workspace_root().join("research/parity/report-fields.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let mut tables = BTreeMap::new();
     let mut open: Option<(String, Table)> = None;

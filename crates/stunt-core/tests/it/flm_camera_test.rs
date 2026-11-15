@@ -8,7 +8,7 @@
 //! ```
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use stunt_core::flm::{CAMERA_LOOKAHEAD_METERS, FilmTimeline};
 
@@ -21,12 +21,7 @@ const CTRY_ACTOR_SHAPE: u16 = 0x7F37;
 fn corpus_film() -> PathBuf {
     std::env::var_os("STUNT_CORPUS")
         .map_or_else(
-            || {
-                Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("..")
-                    .join("..")
-                    .join("corpus")
-            },
+            || crate::test_support::workspace_root().join("corpus"),
             PathBuf::from,
         )
         .join("stisldem")

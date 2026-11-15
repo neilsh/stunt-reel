@@ -367,7 +367,6 @@ fn after_help() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     fn parse(args: &[&str]) -> Result<CliConfig, clap::Error> {
         CliConfig::parse_from(args.iter().map(|a| (*a).to_string()))
@@ -493,8 +492,7 @@ mod tests {
 
     #[test]
     fn test_all_companion_autodiscovery() {
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+        let workspace_root = crate::test_support::workspace_root();
         let fixture_flm = workspace_root.join("tests/fixtures/synthetic_minimal.flm");
         let expected_all = workspace_root.join("tests/fixtures/synthetic_minimal.all");
         let config = CliConfig::parse_from(vec![
@@ -512,8 +510,7 @@ mod tests {
 
     #[test]
     fn test_flm_companion_autodiscovery_from_all() {
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+        let workspace_root = crate::test_support::workspace_root();
         let fixture_flm = workspace_root.join("tests/fixtures/synthetic_minimal.flm");
         let fixture_all = workspace_root.join("tests/fixtures/synthetic_minimal.all");
         let config = CliConfig::parse_from(vec![
@@ -546,8 +543,8 @@ mod tests {
 
     #[test]
     fn test_game_plays_like_an_archive_without_looking_for_one() {
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let fixture_flm = manifest_dir.join("../../tests/fixtures/synthetic_minimal.flm");
+        let fixture_flm =
+            crate::test_support::workspace_root().join("tests/fixtures/synthetic_minimal.flm");
         let cfg = parse(&[
             fixture_flm.to_str().expect("utf-8 path"),
             "--game",

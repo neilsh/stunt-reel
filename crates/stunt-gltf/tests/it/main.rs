@@ -2,3 +2,4 @@
 
 mod export_test;
 mod gltf_import_test;
+mod test_support;

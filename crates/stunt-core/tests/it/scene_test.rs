@@ -10,7 +10,6 @@
 use crate::common;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use common::{ACTOR_RZ_BAM, push_interp, res_file};
 use stunt_core::contracts::{SodModelIr, SodStop, SodStopReason};
@@ -24,9 +23,7 @@ use stunt_core::vfs::{res_regions, write_all};
 use stunt_core::world::ScnStopReason;
 
 fn fixture(name: &str) -> Vec<u8> {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
+    let dir = crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures");
     std::fs::read(dir.join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"))

@@ -23,7 +23,7 @@
 use crate::common;
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::trajectory::{
     ActorTransform, AudioCue, CameraTransform, PLAYONE_FOV_Y_DEGREES, TrajectoryRecord,
@@ -36,9 +36,7 @@ use stunt_core::flm::{
 use common::{assert_gate_g04, build_synthetic_intro_flm, quat_norm_diff};
 
 fn fixtures_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
+    crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures")
 }
