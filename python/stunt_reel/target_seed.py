@@ -294,21 +294,15 @@ def prune_member_fingerprints(
 _FINGERPRINT_DIRS: tuple[str, ...] = ("build", ".fingerprint")
 
 
-def _last_build(target: Path) -> float | None:
-    """The newest modification time of *target*'s debug fingerprint directories, or ``None``
-    when it has none: *target* was never built."""
-    times = [
-        _mtime(target / "debug" / name)
-        for name in _FINGERPRINT_DIRS
-        if (target / "debug" / name).is_dir()
-    ]
-    return max(times) if times else None
+def _is_built(target: Path) -> bool:
+    """Whether *target* holds Cargo's debug fingerprint directory, and so was built."""
+    return any((target / "debug" / name).is_dir() for name in _FINGERPRINT_DIRS)
 
 
 def donor_problem(checkout: Path, *, rustc_vv: str, cargo_home: Path) -> str | None:
     """Why *checkout*'s target/ cannot seed another, or ``None`` when it can."""
     target = checkout / "target"
-    if _last_build(target) is None:
+    if not _is_built(target):
         return "not built"
     if not built_by(target, rustc_vv):
         return "built by another rustc"
@@ -396,10 +390,11 @@ def rank_donors(
     """The checkouts whose target/ can seed *here*'s, best first.
 
     A donor must be another existing checkout whose target/ was built by the same compiler against
-    the same cargo cache. One whose ``HEAD`` is *here*'s commit ranks first, since its member units
-    need no rebuild; then one with *here*'s exact ``Cargo.lock``, since no dependency rebuilds; ties
-    go to the most recent build, read from the fingerprint files Cargo rewrites rather than a
-    block-cloned directory's time (issue #521).
+    the same cargo cache. One whose ``HEAD`` is *here*'s commit ranks first: HEAD stands in for the
+    commit its target/ was built at, so its member units usually need the fewest rebuilds. Then one
+    with *here*'s exact ``Cargo.lock``, since no dependency rebuilds; ties go to the most recent
+    build, read from the fingerprint files Cargo rewrites rather than a block-cloned directory's
+    time (issue #521).
     """
     own = _norm(here.resolve())
     head = _head(here)

@@ -110,9 +110,17 @@ def test_uses_cargo_home_false_without_registry_dep_info(tmp_path: Path) -> None
     assert not uses_cargo_home(a / "target", Path(HOME))
 
 
-def _fingerprint_file(donor: Path, stamp: float) -> None:
-    """An old-layout unit's ``invoked.timestamp``, which Cargo rewrites on every build."""
-    unit = donor / "target" / "debug" / ".fingerprint" / "serde_core-0123456789abcdef"
+def _fingerprint_file(donor: Path, stamp: float, layout: str = "flat") -> None:
+    """A unit's ``invoked.timestamp``, which Cargo rewrites on every build, in *layout*.
+
+    *layout* is ``"flat"`` for the older ``debug/.fingerprint/<unit>/`` or ``"build"`` for Cargo
+    1.100's ``debug/build/<package>/<hash>/fingerprint/``.
+    """
+    debug = donor / "target" / "debug"
+    if layout == "build":
+        unit = debug / "build" / "serde_core" / "0123456789abcdef" / "fingerprint"
+    else:
+        unit = debug / ".fingerprint" / "serde_core-0123456789abcdef"
     unit.mkdir(parents=True, exist_ok=True)
     invoked = unit / "invoked.timestamp"
     invoked.write_text("", encoding="utf-8")
@@ -146,8 +154,9 @@ def test_rank_drops_self_missing_and_disqualified(tmp_path: Path) -> None:
     ) == [good]
 
 
+@pytest.mark.parametrize("layout", ["flat", "build"])
 def test_rank_reads_fingerprint_files_not_the_block_cloned_directory_time(
-    tmp_path: Path,
+    tmp_path: Path, layout: str
 ) -> None:
     """A seed keeps the fingerprint directory's time; the files say when Cargo last built."""
     here = tmp_path / "here"
@@ -155,11 +164,14 @@ def test_rank_reads_fingerprint_files_not_the_block_cloned_directory_time(
     (here / "Cargo.lock").write_text("a", encoding="utf-8")
     older = _donor(tmp_path / "older", age=600)
     newer = _donor(tmp_path / "newer", age=10)
-    _fingerprint_file(older, time.time() - 600)
-    _fingerprint_file(newer, time.time() - 10)
+    _fingerprint_file(older, time.time() - 600, layout)
+    _fingerprint_file(newer, time.time() - 10, layout)
     cloned = time.time() - 1
     for root in (older, newer):
-        os.utime(root / "target" / "debug" / ".fingerprint", (cloned, cloned))
+        debug = root / "target" / "debug"
+        for name in (".fingerprint", "build"):
+            if (debug / name).is_dir():
+                os.utime(debug / name, (cloned, cloned))
 
     assert rank_donors([older, newer], here=here, rustc_vv=RUSTC, cargo_home=Path(HOME)) == [
         newer,
