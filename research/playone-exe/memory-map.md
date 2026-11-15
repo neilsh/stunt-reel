@@ -3,7 +3,7 @@ summary: "Index of the `PLAYONE.EXE` memory-map files and the conventions they s
 ---
 # Runtime Memory Map & Real-Mode Offsets
 
-**The memory map is split across five files; this file lists its files, states the conventions below, and holds the `DGROUP` table (§ 1).** Other notes keep subject tables of their own, such as the file-name strings in [`startup.md` § 4](startup.md#4-primary-asset-dependencies). The evidence behind a row (disassembly, live samples, provenance) lives in [`research/playone-exe/`](./) and is linked from the row; it is not restated here. Tier names come from the enum owned by [`python/scripts/verify_formats_docs.py`](../../python/scripts/verify_formats_docs.py) (`EVIDENTIARY_TIERS`) and defined in [`SPEC.md` § 2.4](../../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
+**The memory map is split across five files; this file lists its files, states the conventions below, and holds the `DGROUP` table (§ 1).** Other notes keep subject tables of their own, such as the file-name strings in [`startup.md` § 4](startup.md#4-primary-asset-dependencies). The evidence behind a row (disassembly, live samples, provenance) lives in [`research/playone-exe/`](./) and is linked from the row; it is not restated here. Tier names come from the list `EVIDENTIARY_TIERS` in [`python/scripts/formats_docs/catalog.py`](../../python/scripts/formats_docs/catalog.py) and defined in [`SPEC.md` § 2.4](../../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
 
 | File | Holds | Anchors defined |
 |---|---|---|
