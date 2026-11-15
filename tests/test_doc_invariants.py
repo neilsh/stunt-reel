@@ -24,6 +24,7 @@ from stunt_reel.markdown_links import (
     SECTION_NUMBER_REGEX,
     URL_SCHEME_REGEX,
     prose,
+    slug,
 )
 from stunt_reel.work_items import is_dated
 
@@ -161,11 +162,6 @@ def _link_sources(root: Path, skipped: tuple[str, ...] = ()) -> list[Path]:
     ]
 
 
-def _slug(heading: str) -> str:
-    """GitHub's heading anchor: lower case, punctuation dropped, spaces to hyphens."""
-    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
-
-
 @functools.cache
 def _anchors(path: Path) -> set[str]:
     """Every fragment a link may target in a Markdown file, duplicates numbered like GitHub."""
@@ -173,10 +169,10 @@ def _anchors(path: Path) -> set[str]:
     seen: dict[str, int] = {}
     text = path.read_text(encoding="utf-8")
     for heading in _heading_texts(path):
-        slug = _slug(heading)
-        count = seen.get(slug, 0)
-        anchors.add(slug if count == 0 else f"{slug}-{count}")
-        seen[slug] = count + 1
+        anchor = slug(heading)
+        count = seen.get(anchor, 0)
+        anchors.add(anchor if count == 0 else f"{anchor}-{count}")
+        seen[anchor] = count + 1
     anchors.update(HTML_ID_REGEX.findall(text))
     return anchors
 

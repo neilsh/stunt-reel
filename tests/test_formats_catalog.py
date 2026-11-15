@@ -16,6 +16,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import verify_formats_docs  # noqa: E402
+from formats_docs import fixtures  # noqa: E402
 
 pytestmark = pytest.mark.docs
 
@@ -102,10 +103,10 @@ def test_kaitai_cross_checks_reject_a_compiler_of_the_wrong_version(
         "kaitai-struct-compiler 0.11-SNAPSHOT",
         "kaitai-struct-compiler 0.110",
     ):
-        monkeypatch.setattr(verify_formats_docs, "compiler_version", lambda banner=banner: banner)
+        monkeypatch.setattr(fixtures, "compiler_version", lambda banner=banner: banner)
         for check in (
-            verify_formats_docs._validate_res_with_kaitai,
-            verify_formats_docs._validate_flm_with_kaitai,
+            fixtures._validate_res_with_kaitai,
+            fixtures._validate_flm_with_kaitai,
         ):
             errors, _details = check(REPO_ROOT, b"")
             assert any("version mismatch" in error for error in errors), (check.__name__, banner)
