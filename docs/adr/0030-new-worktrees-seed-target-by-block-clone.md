@@ -2,6 +2,14 @@
 
 ## Status
 
+amended 2026-11-14 for [#486](https://github.com/neilsh/stunt-reel/issues/486): Rust tests
+read `CARGO_MANIFEST_DIR` at run time, and the seed keeps a workspace crate's unit only where
+every file it was built from is byte-identical to the donor's and Cargo records none of them by
+the donor's absolute path, giving those files the donor's modification times; clippy's and
+rustdoc's units, and test units that embed workspace fixtures, still rebuild. A new worktree's
+first Rust lanes took 18.5 s against 23 s
+([journal](../../work/2026-11/486_manifest-dir-runtime/journal.md)).
+
 amended 2026-11-04 by [ADR 0036](0036-worktrees-reach-shared-state-by-configuration.md): seeding runs from `ensure`, a dependency of every
 building task.
 

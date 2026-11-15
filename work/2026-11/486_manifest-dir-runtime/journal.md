@@ -1,0 +1,17 @@
+# Journal: Read `CARGO_MANIFEST_DIR` at run time (#486)
+
+## 2026-11-14: First check-rust of a seeded worktree, before and after
+
+- **Question**: How long does a new worktree's first `mise run check-rust` take once the seed keeps unchanged workspace units, against origin/main's seed, which drops them all?
+- **Method**: On `E:` (ReFS), for each commit, worktree A built by `mise run check-rust` twice, then worktree B made with `git worktree add --detach`, seeded by `mise run init` from A, and timed with `mise run check-rust` (the gate's own total). Before: `54bdacf122d4412f9014d95aa7043f5ae77b9e40`; after: `3b5e6af79e65d5e2adf924562e8f3025ffa15042`. Units built counted from B's `target/check.log` (`Compiling`, `Checking` and `Documenting` lines). Four pairs were measured, alternating before then after, and each B was recreated before its run. `mise run init` picks a donor by `debug/.fingerprint`'s directory time (`rank_donors` on origin/main), and a block-cloned target carries the donor's directory times, so every candidate A tied; immediately before each `mise run init` the harness set the intended A's `target/debug/.fingerprint` modification time to now, and for the after A also its `target/debug/build`, neither of which Cargo's freshness reads. No cargo, rustc, clippy-driver or rustdoc process was running before any of the eight timed runs. In the after B, `crates/stunt-core/src/lib.rs` carried A's modification time after the seed, no kept fingerprint file named A's path, a touched `crates/stunt-gltf/src/lib.rs` made `mise run test-rust` compile `stunt-gltf`, and a touched `tests/fixtures/synthetic_pfont.bin` made it compile `stunt-core`. Cargo 1.100.0 keeps a unit in `build/<package>/<hash>/` (`fingerprint/`, `out/<crate>-<hash>.d`), and its own dep-info (`fingerprint/dep-*`) names a file outside the package by absolute path: clippy's `clippy.toml` and `Cargo.toml`, and fixtures under `tests/fixtures/`; the seed drops such units.
+- **Result**: Warm (A's second run): 10 s before, 10 s after. Before: 23 s, 20 units built (6 `Compiling`, 9 `Checking`, 5 `Documenting`, all for `stunt-*` crates). After: 18.5 s, 13 units built (3 `Compiling`: `stunt-core` twice and `stunt-render`; 5 `Checking` and 5 `Documenting`: `stunt-core`, `stunt-parity`, `stunt-render`, `stunt-gltf`, `stunt-cli`); member units kept per lane: debug 10, check 4, matrix 1. Per step before/after (medians): fmt 3/3.5, clippy 9.5/9.5, test 23/18.5, doc 3/2.5, matrix 9/8. No other build was running at any timed step.
+
+  | Pair | Before (s) | Before steps fmt/clippy/test/doc/matrix | Before units | After (s) | After steps fmt/clippy/test/doc/matrix | After units |
+  |---|---|---|---|---|---|---|
+  | 1 | 23 | 2/10/23/3/10 | 20 | 27 | 5/13/26/4/17 | 13 |
+  | 2 | 23 | 4/9/23/3/8 | 20 | 18 | 3/10/18/2/7 | 13 |
+  | 3 | 23 | 4/10/23/3/9 | 20 | 17 | 4/8/17/2/7 | 13 |
+  | 4 | 23 | 2/9/23/3/9 | 20 | 19 | 2/9/19/3/9 | 13 |
+
+- **Verdict**: adopted: the after B passed the gate, rebuilt only the units the seed must drop (clippy's, rustdoc's, and the test units that embed workspace fixtures), and rebuilt `stunt-gltf` and `stunt-core` on the two touches; its first Rust lanes took 18.5 s against 23 s (median of four pairs; pair 1's 27 s was the outlier).
+- **Lives in**: [`docs/development.md`](../../../docs/development.md) (Shared tool cache) and [ADR 0030](../../../docs/adr/0030-new-worktrees-seed-target-by-block-clone.md) (Status).

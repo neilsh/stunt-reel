@@ -2,7 +2,7 @@
 title: "Read CARGO_MANIFEST_DIR at runtime in Rust tests (~18 s worktree seed speedup) and re-test mbx on Cargo 1.100"
 started: 2026-11-14
 issue: 486
-outcome: ""
+outcome: "Tests read CARGO_MANIFEST_DIR at run time; the seed keeps unchanged workspace units. First seeded check-rust 18.5 s against 23 s (journal.md)."
 ---
 
 # Read CARGO_MANIFEST_DIR at runtime in Rust tests (~18 s worktree seed speedup) and re-test mbx on Cargo 1.100
