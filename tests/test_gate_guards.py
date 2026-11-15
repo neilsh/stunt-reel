@@ -7,12 +7,17 @@ the gate until the whole task was stopped by hand.
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
 import pytest
+
+from stunt_reel import uv
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT / "python" / "scripts"
@@ -52,6 +57,141 @@ def test_no_uv_on_path_is_a_problem() -> None:
     problem = gate.uv_problem("0.13.1", None, "", [])
     assert problem is not None
     assert "not on PATH" in problem
+
+
+def test_the_shared_uv_check_reads_the_pin_and_the_uv_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate, init and ensure share one check, so a shadowed uv is named the same way."""
+    (tmp_path / "mise.toml").write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
+    monkeypatch.setattr(shutil, "which", lambda _name, **_kwargs: "/stale/uv")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "uv 0.10.9 (x)\n", ""),
+    )
+    problem = uv.check_uv(tmp_path / "mise.toml")
+    assert problem is not None
+    assert "0.10.9" in problem
+    assert "0.13.1" in problem
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "uv 0.13.1 (x)\n", ""),
+    )
+    assert uv.check_uv(tmp_path / "mise.toml") is None
+
+
+def test_the_shared_uv_check_needs_the_pin(tmp_path: Path) -> None:
+    """The gate cannot check the first uv without a pin, so it raises as it did inline."""
+    with pytest.raises(FileNotFoundError):
+        uv.check_uv(tmp_path / "missing.toml")
+
+
+def _fake_uv(folder: Path, version: str) -> Path:
+    """An executable uv that prints *version* for --version."""
+    folder.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        path = folder / "uv.cmd"
+        path.write_text(f"@echo uv {version} (fake)\r\n", encoding="ascii")
+    else:
+        path = folder / "uv"
+        path.write_text(f"#!/bin/sh\necho 'uv {version} (fake)'\n", encoding="utf-8")
+        path.chmod(0o755)
+    return path
+
+
+def _recording_uv(folder: Path, version: str, log: Path) -> Path:
+    """An executable uv that records each run in *log* and prints *version*."""
+    folder.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        path = folder / "uv.cmd"
+        path.write_text(f'@echo called>>"{log}"\r\n@echo uv {version} (fake)\r\n', encoding="ascii")
+    else:
+        path = folder / "uv"
+        path.write_text(
+            f"#!/bin/sh\nprintf 'called\\n' >> '{log}'\nprintf 'uv {version} (fake)\\n'\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+    return path
+
+
+def test_a_stale_uv_outside_mise_is_named_when_the_pinned_uv_is_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Under mise the pin is first; a stale uv further along PATH still runs outside mise."""
+    pinned = _fake_uv(tmp_path / "mise" / "installs" / "uv" / "0.13.1", "0.13.1")
+    stale = _fake_uv(tmp_path / "local" / "bin", "0.10.9")
+    monkeypatch.setenv("PATH", os.pathsep.join((str(pinned.parent), str(stale.parent))))
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
+
+    assert uv.check_uv(mise) is None
+    problem = uv.check_uv(mise, shadowed=True)
+    assert problem is not None
+    assert "0.10.9" in problem
+    assert "0.13.1" in problem
+    assert str(stale.parent) in problem
+
+
+def test_a_matching_uv_outside_mise_is_quiet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pinned = _fake_uv(tmp_path / "mise" / "installs" / "uv" / "0.13.1", "0.13.1")
+    other = _fake_uv(tmp_path / "local" / "bin", "0.13.1")
+    monkeypatch.setenv("PATH", os.pathsep.join((str(pinned.parent), str(other.parent))))
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
+
+    assert uv.check_uv(mise, shadowed=True) is None
+
+
+def test_a_mise_shim_first_on_path_is_not_spawned_or_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A shim resolves the pin, so checking it must not start mise through it."""
+    data = tmp_path / "mise"
+    log = tmp_path / "shim-calls.log"
+    shim = _recording_uv(data / "shims", "0.10.9", log)
+    _fake_uv(data / "installs" / "uv" / "0.13.1", "0.13.1")
+    monkeypatch.setenv("PATH", str(shim.parent))
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
+
+    assert uv.check_uv(mise, shadowed=True) is None
+    assert not log.exists()
+
+
+def test_a_mise_shim_later_on_path_is_skipped_without_spawning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A shim further along PATH is not a stale uv to spawn and name."""
+    data = tmp_path / "mise"
+    log = tmp_path / "shim-calls.log"
+    shim = _recording_uv(data / "shims", "0.10.9", log)
+    _fake_uv(data / "installs" / "uv" / "0.13.1", "0.13.1")
+    first = _fake_uv(tmp_path / "local" / "bin", "0.13.1")
+    monkeypatch.setenv("PATH", os.pathsep.join((str(first.parent), str(shim.parent))))
+    mise = tmp_path / "mise.toml"
+    mise.write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
+
+    assert uv.check_uv(mise, shadowed=True) is None
+    assert not log.exists()
+
+
+def test_a_uv_version_that_times_out_is_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A uv that hangs on --version is unknown, not a hang in the gate."""
+    calls: list[object] = []
+
+    def hang(*_args: object, **kwargs: object) -> None:
+        calls.append(kwargs.get("timeout"))
+        raise subprocess.TimeoutExpired([], 5)
+
+    monkeypatch.setattr(subprocess, "run", hang)
+    assert uv._version("/fake/uv") == ""
+    assert calls == [5]
 
 
 def test_a_hung_command_times_out_with_a_note() -> None:

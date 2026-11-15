@@ -14,6 +14,7 @@ from pathlib import Path
 from stunt_reel import parity_layout
 from stunt_reel.dataroot import REPO_ROOT, SharedDataError, cache_root, primary_checkout
 from stunt_reel.target_seed import SeedOutcome, exclusive, needs_seed, seed
+from stunt_reel.uv import check_uv
 from stunt_reel.worktree_git import Line, _worktrees, ensure_blame_ignore, ensure_hooks_path
 
 
@@ -105,6 +106,13 @@ def _ensure(*, report: bool = False) -> int:
     git that will not run or a lock held past its timeout is a slower first build or an unset
     hooks path, not a reason to stop the task, so it returns 0 whatever happened.
     """
+    try:
+        uv_warning = check_uv(REPO_ROOT / "mise.toml", shadowed=True)
+    except OSError, KeyError, ValueError:
+        # The gate needs the pin; a checkout without a readable one still ensures quietly.
+        uv_warning = None
+    if uv_warning is not None:
+        print(f"  ! {uv_warning}")
     target = REPO_ROOT / "target"
     try:
         # The gate's cargo lanes run this at once, so another may make target/ or the tag first.

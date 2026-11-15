@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -344,6 +346,37 @@ def test_init_warns_about_data_at_an_old_link_path(
     assert worktree_provision._init(migrate=False) == 0
     out = capsys.readouterr().out
     assert "build/parity/captures holds data the data root does not read" in out
+
+
+def test_init_warns_about_a_uv_that_shadows_mises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A global uv ahead of mise's fails bare uv calls, so init names it before syncing."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "mise.toml").write_text('[tools]\nuv = "0.13.1"\n', encoding="utf-8")
+    game = checkout.parent / "data" / "corpus" / "stisldem"
+    game.mkdir(parents=True)
+    (game / "PLAYONE.EXE").write_bytes(b"MZ")
+    monkeypatch.setattr(worktree_provision, "REPO_ROOT", checkout)
+    monkeypatch.setattr(worktree_ensure, "REPO_ROOT", checkout)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", checkout)
+    monkeypatch.setenv(dataroot.DATA_ENV, str(checkout.parent / "data"))
+    dataroot.data_root.cache_clear()
+    monkeypatch.setattr(worktree_provision, "_uv_sync", lambda: 0)
+    monkeypatch.setattr(worktree_ensure, "ensure_hooks_path", lambda _repo: [])
+    monkeypatch.setattr(worktree_ensure, "_seed_target", list)
+    monkeypatch.setattr(shutil, "which", lambda _name, **_kwargs: str(checkout / ".local" / "uv"))
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "uv 0.10.9 (x)\n", ""),
+    )
+
+    assert worktree_provision._init(migrate=False) == 0
+    out = capsys.readouterr().out
+    assert "uv 0.10.9" in out
+    assert "0.13.1" in out
 
 
 def test_ensure_tags_a_target_another_lane_just_made(
