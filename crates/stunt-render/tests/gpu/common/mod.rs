@@ -2,6 +2,8 @@
 
 #![allow(dead_code, reason = "each test crate uses a subset of the helpers")]
 
+pub(crate) mod watchdog;
+
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
