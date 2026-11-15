@@ -29,18 +29,6 @@ pub(super) struct PropModels<'a> {
     pub(super) chains: &'a [Vec<LodGate>],
 }
 
-#[cfg(test)]
-impl<'a> PropModels<'a> {
-    /// Every placement uses the shared decode of its shape.
-    fn shared(shapes: &'a HashMap<u16, SodModelIr>) -> Self {
-        Self {
-            shapes,
-            own: HashMap::new(),
-            chains: &[],
-        }
-    }
-}
-
 impl PropModels<'_> {
     /// The model drawn for placement `index`, of shape `shape_id`.
     fn get(&self, index: usize, shape_id: u16) -> Option<&SodModelIr> {
@@ -515,6 +503,17 @@ mod tests {
     use super::*;
     use crate::contracts::{VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE};
     use crate::sod::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
+
+    impl<'a> PropModels<'a> {
+        /// Every placement uses the shared decode of its shape.
+        fn shared(shapes: &'a HashMap<u16, SodModelIr>) -> Self {
+            Self {
+                shapes,
+                own: HashMap::new(),
+                chains: &[],
+            }
+        }
+    }
 
     /// A world with terrain and a prop has the ocean, the terrain, and base and decal nodes.
     #[test]

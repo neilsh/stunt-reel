@@ -20,7 +20,7 @@ are game-derived and are not relicensed by this project:
   (240 scene entries + 16 UI entries). It was transcribed from the community
   `SODParse/pal.h` in the Stunt Island Central archive and re-encoded as 6-bit DAC
   levels shifted left by two. It is committed in three places, kept identical so the Rust
-  and Python copies cannot drift: `crates/stunt-core/src/contracts/palette.rs`,
+  and Python copies cannot drift: `crates/stunt-core/src/contracts/palette/mod.rs`,
   `python/stunt_reel/tac/palette.py` and the test pin `tests/fixtures/mode13h_palette.json`.
 - `SOD_SCALE_TABLE` (18 floating-point entries), the scale table from the community
   `SODParse/SOD.H` (Dave Palmowski), matching the historical `DECODE.C` implementation.

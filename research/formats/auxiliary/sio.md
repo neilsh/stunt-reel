@@ -16,7 +16,7 @@ The `.SIO` format is an intermediate 3D mesh and point-cloud authoring format cr
   2. *Upstream of the compiled shape:* the source of a display-list `.SOD` / `.BIN` model. The compiler is unidentified: `SD.EXE`, the scenery designer, names no `.SIO` or `.SOD` file and only places compiled `shapes\*.bin` ([`sd-exe/image.md`](../../sd-exe/image.md)).
   3. *Parametric Vertex Construction:* Implements explicit coordinates alongside parametric midpoint generator opcodes, reducing file size and enforcing geometric symmetry.
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape.rs`](../../../crates/stunt-core/src/contracts/shape.rs). No synthetic `.SIO` fixture exists yet.
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape/mod.rs`](../../../crates/stunt-core/src/contracts/shape/mod.rs). No synthetic `.SIO` fixture exists yet.
 
 ---
 

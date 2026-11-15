@@ -10,7 +10,7 @@ accepted; implemented by C1 of the architecture-deepening programme. Design sign
 `ActorTransform` (Seam 2, [`crates/stunt-core/src/contracts/trajectory.rs`](../../crates/stunt-core/src/contracts/trajectory.rs))
 stores `world_matrix` beside `position_meters` and `rotation_quat`, the pose that
 determines it. Each producer — [`flm/mod.rs`](../../crates/stunt-core/src/flm/mod.rs),
-[`flm/interpolate.rs`](../../crates/stunt-core/src/flm/interpolate.rs) and the Python
+[`flm/interpolate/mod.rs`](../../crates/stunt-core/src/flm/interpolate/mod.rs) and the Python
 reference in `python/stunt_reel/tac/streamer.py` —
 constructs the record with zeros and then assigns `compute_world_matrix()`; tests fill
 the field by hand. [`FilmScene::frame`](../../crates/stunt-core/src/scene/film.rs) copies it

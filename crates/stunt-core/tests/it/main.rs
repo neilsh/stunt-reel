@@ -11,6 +11,9 @@
 )]
 
 mod common;
+mod contracts_shape_test;
+mod contracts_trajectory_test;
+mod contracts_vfs_test;
 mod fixtures_test;
 mod flm_axes_test;
 mod flm_camera_test;
