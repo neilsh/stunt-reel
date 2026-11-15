@@ -9,14 +9,38 @@ Nothing here is a fact about Stunt Island.
 
 * **The gate, `mise run` and the one-writer rule are in [AGENTS.md](../AGENTS.md#working-economically)**;
   worktree placement and reaping are under [Worktrees](../AGENTS.md#worktrees).
-* **Worktree-per-writer is an opt-in mode** for at least two genuinely independent tickets:
-  disjoint files, separately verifiable, no shared file. Each writer branches from the Lead's
-  current `HEAD`, commits only on its own branch, and at most two writers plus the Lead work
-  at once; the Lead integrates in the same session, in dependency order, with the full gate at
-  the tip. The contract is [the retro-hardening plan](../work/2026-10/retro-hardening/retro-hardening-2026-10-25.md).
-* **Subagents use the session model (`inherit`) by default, and the same provider's `fast` tier only for simple bounded work.** Use `fast` (`Haiku` on Claude Code, `Gemini 4 Hydrogen` / `flash` on Antigravity) only where the brief fully specifies the work and the result is easy to check: surveys, mapping tables, mechanical edits, grading against a calibrated rubric, and browser UI. Diagnosis, design, implementation and every review subagent (a standards or spec axis, a whole-branch review before a PR) use `inherit` (the session model — `Orchestrator (Argon)` on Antigravity, `Opus` on Claude Code); never escalate above the session model or switch provider families unasked. A mid tier (`Sonnet` on Claude Code) is used only where a calibrated workflow names it, such as the parity readout's tie-break. On #160 a Sonnet review missed four real bugs that an Opus review then found, among them a preflight that built despite `--no-build`.
+* **Worktree-per-writer runs about two implementers at once**, each writer in its own
+  worktree; they must be genuinely independent tickets: disjoint files, separately verifiable,
+  no shared file. Each writer branches from the Lead's current `HEAD`, commits only on its own
+  branch, and at most two writers plus the Lead work at once; the Lead integrates in the same
+  session, in dependency order, with the full gate at the tip. The contract is
+  [the retro-hardening plan](../work/2026-10/retro-hardening/retro-hardening-2026-10-25.md).
+* **Route implementers by fit:** dsh first where the spec is clear and the task needs no
+  judgment over evidence (prefix-cache hit rate is not the test); `Sonnet` for other
+  well-specified implementation; `Opus` for research, diagnosis, design, and items expected to
+  need rounds of hypotheses. Otherwise subagents use the session model (`inherit`) and the same
+  provider's `fast` tier only for simple bounded work (`Haiku` on Claude Code, `Gemini 4
+  Hydrogen` / `flash` on Antigravity): surveys, mapping tables, mechanical edits, grading
+  against a calibrated rubric, and browser UI; never escalate above the session model or switch
+  provider families outside this routing.
+* **Review:** a Sonnet- or dsh-built PR gets its first review from `Opus` or Antigravity,
+  requested explicitly; on #160 a Sonnet review missed four real bugs that an Opus review then
+  found, among them a preflight that built despite `--no-build`. Re-reviews use the `Sonnet`
+  [reviewer agent](../.claude/agents/reviewer.md), or Antigravity when Gemini quota allows,
+  cover only what changed since the last reviewed commit, run once after every finding is
+  fixed, and are skipped for a wording-only fix (reply with the new text).
+* **A Claude implementer ends when its PR opens**, or earlier if its context passes about 150k
+  tokens; a fresh worker starts from the PR and the review comment to make the fixes, while dsh
+  workers may keep their session. Before asking for review, the implementer scans its own diff
+  for the `AGENTS.md` § 3 rule 5 words and checks every quoted figure against its source.
+* **Prototypes stop once measured:** no PR polish, review or docs until one is chosen; run
+  parallel prototypes only for decisions that are hard to undo. Measuring is optional — compare
+  cost with `ccusage` blocks and sessions joined to roles; the quality guard is that no merged
+  PR needs a fix or revert afterwards.
 * **Subagent-driven development reviews once per PR.**
-  `superpowers:subagent-driven-development` runs one fresh-context `inherit` review of the finished branch before the PR; a fix wave goes straight to the gate and CodeRabbit. Size each task so its implementer finishes within about 150 turns.
+  `superpowers:subagent-driven-development` runs one fresh-context review of the finished branch
+  before the PR (Opus or Antigravity for a Sonnet- or dsh-built branch); a fix wave goes straight
+  to the gate and CodeRabbit. Size each task so its implementer finishes within about 150 turns.
 * **Approvals the user need not give.**
   * A fresh subagent reviews each spec or plan and the author revises it before presenting it,
     so the user sees the revised version.

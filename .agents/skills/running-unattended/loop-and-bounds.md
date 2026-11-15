@@ -23,14 +23,22 @@ A "stop after N PRs" limit counts armed PRs: start no new item once N are armed.
 
 ## Implementing an issue and bounding rounds
 
+Run about two implementers at once, each writer in its own worktree; the Lead integrates in dependency order ([`AGENTS.md` § Worktrees](../../../AGENTS.md#worktrees)). A Claude implementer ends when its PR opens, or earlier if its context passes about 150k tokens; a fresh worker starts from the PR and the review comment to make the fixes. dsh workers may keep their session.
+
 1. **Claim it** before any branch commit ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions), "Claim an issue"): re-read its labels, swap `ready-for-agent` for `in-progress`, comment `Claimed by branch <branch>.`, and re-read comments to verify your claim is earliest.
 2. **Branch** from an up-to-date `origin/main` (`git fetch origin`, then `git switch -c <branch> origin/main`).
 3. **3-round cap:** Spend at most **3 hypothesis rounds** (or 3 failures for the same gate/CI/approach reason) on an issue. Do not chain a new heuristic onto a failed sweep ([`improving-render-parity`](../improving-render-parity/SKILL.md)).
+
+   A prototype stops once measured: no PR polish, review or docs until one is chosen; run parallel prototypes only for decisions that are hard to undo.
 4. **Ship the clean slice, file the rest:** If a self-contained, evidence-backed subset passes `mise run check` — and, for a rendering change, satisfies the [`loop-rules.md`](../improving-render-parity/loop-rules.md#adoption-rule) adoption rule (`mise run parity` exits `0` even on drift, so read the winner line of `mise run sweep -- --var ... --track <track>` or `mise run judge -- <base> <cand> --track <track>`) — while the rest of the issue is blocked or exposes entangled bugs:
    - Commit the blocked prototype on its own branch from `origin/main` (`proto/<issue>-<slug>`, with no `DBG_*` switch and the hooks passing) and push it, then revert the blocked changes so only the clean subset remains, and complete the required artifacts for the kept subset (including `[film.expected.<class>]` in `references.toml`, the work folder journal entry, [`error-readout.md`](../improving-render-parity/error-readout.md), and [`pr-evidence.md`](../improving-render-parity/pr-evidence.md) for rendering changes).
    - Verify `mise run check`, and ship the clean subset as a PR (`Fixes #N` when all remaining work is split into standalone follow-up issues, else `Part of #N`).
    - File `needs-triage` follow-up issues for the blocked pieces, naming each prototype's branch and commit ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#organizing-issues), "A prototype lives on a branch"; [`pr-and-filing.md`](pr-and-filing.md#filing-issues-and-powershell-safety)). If `#N` stays open (`Part of #N`), comment `Released claim: <why>.` on `#N` and swap `in-progress` for `ready-for-human` (or back to `ready-for-agent` with a `blocked-by` edge to the follow-up issue) so `#N` is not left in `in-progress`.
 5. **Stuck or needs a human:** If 3 rounds finish with no shippable slice, or a non-obvious design/visual choice blocks progress, comment on the issue or PR with `Released claim: <why>.` (when releasing an unmerged issue), what you tried, the evidence, and the exact decision or resource needed; replace `in-progress` / `ready-for-agent` with `ready-for-human` (or `needs-info` when what blocks is a fact only a person knows); and move on.
+
+## Measuring
+
+Cost comparison is optional: join `ccusage` blocks and sessions to roles. The quality guard is that no merged PR needs a fix or revert afterwards.
 
 ## Never
 
