@@ -5,11 +5,13 @@ that it changes only for link fixes (``work/README.md``, Lifecycle). A link fix 
 from another edit, so edits to existing files pass and review covers them; this check refuses
 what can be told apart. ``stunt_reel.work_items.frozen_violations`` holds the rule.
 
-With no arguments (the pre-commit hook, ``mise run check-work-frozen``) it compares the index
-with ``HEAD``. With ``--branch`` it compares the working tree with the merge base of ``HEAD``
-and the gate's base (``origin/main`` when it resolves, else ``main``; ``--base`` names another),
-the paths ``gate.py`` counts; ``tests/test_work_frozen.py`` runs that in the gate's docs half,
-so CI checks it too.
+With no arguments (the pre-commit hook, ``mise run check-work-frozen``) it diffs the index for
+the changed paths, and judges frozenness at the merge base of ``HEAD`` and the gate's base
+(``origin/main`` when it resolves, else ``main``): an outcome this branch wrote is not frozen
+until it lands. With no ``main``/``origin/main`` to compare it judges at ``HEAD``; before the
+first commit it checks nothing. With ``--branch`` it compares the working tree with that same merge base,
+over the paths ``gate.py`` counts; ``tests/test_work_frozen.py`` runs that in the gate's docs
+half, so CI checks it too.
 
 Exit status: ``0`` when nothing breaks a frozen folder, ``1`` when something does, ``2`` when git
 cannot be run.
@@ -42,15 +44,27 @@ def _git(repo: Path, *args: str) -> str:
     ).stdout
 
 
+def _merge_base(repo: Path, base: str | None = None) -> str | None:
+    """The merge base of ``HEAD`` and *base* (default: the gate's), or ``None`` if one is absent."""
+    try:
+        return _git(repo, "merge-base", "HEAD", base or gate.default_base(repo)).strip()
+    except subprocess.CalledProcessError:
+        return None
+
+
 def staged_violations(repo: Path) -> list[FrozenViolation]:
-    """What the index, against ``HEAD``, breaks; none before the first commit."""
+    """What the index breaks, judged at the gate's merge base; none before the first commit.
+
+    The changed paths still come from the index against ``HEAD``, but frozenness is what the
+    base holds (``HEAD`` when no base resolves), so a branch may rewrite an outcome it wrote.
+    """
     try:
         _git(repo, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
     except subprocess.CalledProcessError:
         return []
     output = _git(repo, "diff", "--cached", "--name-only", "--no-renames", "-z", "HEAD")
     paths = [path for path in output.split("\0") if path]
-    return frozen_violations("HEAD", paths, staged=True, repo=repo)
+    return frozen_violations(_merge_base(repo) or "HEAD", paths, staged=True, repo=repo)
 
 
 def branch_violations(repo: Path, base: str | None = None) -> list[FrozenViolation]:
@@ -61,7 +75,9 @@ def branch_violations(repo: Path, base: str | None = None) -> list[FrozenViolati
     """
     base = base or gate.default_base(repo)
     paths = gate.changed_paths(repo, base)
-    merge_base = _git(repo, "merge-base", "HEAD", base).strip()
+    merge_base = _merge_base(repo, base)
+    if merge_base is None:
+        raise gate.ChangedPathsError(f"no merge base between HEAD and {base}")
     return frozen_violations(merge_base, paths, repo=repo)
 
 

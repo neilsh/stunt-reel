@@ -199,6 +199,63 @@ def test_the_branch_check_counts_from_the_base(
     assert check_work_frozen.main(["--branch", "--base", "feat"]) == 0
 
 
+def test_a_branch_changes_an_outcome_it_wrote_itself(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The hook judges frozenness by main, so an outcome this branch wrote is not frozen."""
+    _git(repo, "switch", "-q", "-c", "feat")
+    _write(repo, f"{OPEN}/README.md", _readme(3, "Landed in #6."))
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "outcome")
+    _write(repo, f"{OPEN}/README.md", _readme(3, "Landed in #6 and #7."))
+    _git(repo, "add", ".")
+    monkeypatch.chdir(repo)
+
+    assert check_work_frozen.main([]) == 0
+
+
+def test_a_staged_outcome_main_holds_is_still_refused(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _git(repo, "switch", "-q", "-c", "feat")
+    _write(repo, f"{FROZEN}/README.md", _readme(1, "Rewritten."))
+    _git(repo, "add", ".")
+    monkeypatch.chdir(repo)
+
+    assert check_work_frozen.main([]) == 1
+    assert "changes the outcome of a frozen work folder" in capsys.readouterr().err
+
+
+def test_without_a_base_the_hook_judges_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A repository with no main nor origin/main falls back to HEAD (issue #506)."""
+    _git(tmp_path, "init", "-q", "-b", "feat")
+    _write(tmp_path, f"{OPEN}/README.md", _readme(3, "Landed in #5."))
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "outcome")
+    _write(tmp_path, f"{OPEN}/README.md", _readme(3, "Landed in #6."))
+    _git(tmp_path, "add", ".")
+    monkeypatch.chdir(tmp_path)
+
+    assert check_work_frozen.main([]) == 1
+
+
+def test_the_branch_check_passes_an_outcome_the_branch_wrote(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--branch mode still judges at the merge base, so its behaviour is unchanged."""
+    _git(repo, "switch", "-q", "-c", "feat")
+    _write(repo, f"{OPEN}/README.md", _readme(3, "Landed in #6."))
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "outcome")
+    _write(repo, f"{OPEN}/README.md", _readme(3, "Landed in #7."))
+    _git(repo, "add", ".")
+    monkeypatch.chdir(repo)
+
+    assert check_work_frozen.main(["--branch"]) == 0
+
+
 def test_this_branch_leaves_frozen_work_folders_frozen() -> None:
     """The gate's half of the rule: the branch since the gate's base (origin/main, else main)."""
     try:
