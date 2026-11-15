@@ -16,7 +16,7 @@ Issue [#576](https://github.com/neilsh/stunt-reel/issues/576). Should `site/` ke
 +  "overrides": { "katex": "0.18.11" }
 ```
 
-In `.github/renovate.jsonc`, the `katex` rule changes from `allowedVersions: "<0.17.0"` to `"<0.19.0"`, and its comment changes with it. The override and the stylesheet pin then move together.
+In `.github/renovate.jsonc`, the `katex` rule changes from `allowedVersions: "<0.17.0"` to `"<0.19.0"`, and its comment changes with it. The override and the stylesheet pin then move together. PR #578 applied all of this as `ff59c406`.
 
 Why this version:
 
@@ -26,7 +26,7 @@ Why this version:
 
 Remove the override once [remarkjs/remark-math#122](https://github.com/remarkjs/remark-math/pull/122) ships. That PR widens `rehype-katex` to `katex ^0.19.0`. When it does, move to 0.19.x if mermaid has followed by then.
 
-Keep Temml in reserve, through the local plugin under [Prototype B](#prototype-b-temml-through-a-local-plugin). Use it if a future KaTeX ever breaks `rehype-katex` and nobody releases a fix. It is not better for these notes today.
+If a future KaTeX ever breaks `rehype-katex` and nobody releases a fix, fall back to MathJax 4 through a local plugin, in CHTML output. A follow-up spike, recorded in closed PR [#580](https://github.com/neilsh/stunt-reel/pull/580), found that it draws these notes about as well as KaTeX does, bold subscripts included. Temml ([Prototype B](#prototype-b-temml-through-a-local-plugin)) sets those subscripts low. MathJax 4 is not the choice today: it adds 17 packages and 98 MB of install, and makes pages 1.2–1.3× larger.
 
 ## What "unmaintained" means here
 
