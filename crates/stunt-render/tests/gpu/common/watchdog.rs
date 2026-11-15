@@ -59,6 +59,8 @@ impl Watchdog {
     }
 
     /// Sets the deadline for `test`; dropping the result disarms it, unwinding included.
+    ///
+    /// The watchdog has one slot, so callers must hold `GPU_TEST_LOCK`, as `gpu_test` does.
     pub(crate) fn arm(&'static self, test: &str, after: Duration) -> Armed {
         *self.lock() = Some((test.to_owned(), Instant::now(), after));
         self.changed.notify_all();
