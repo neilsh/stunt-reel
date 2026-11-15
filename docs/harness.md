@@ -46,6 +46,10 @@ Nothing here is a fact about Stunt Island.
   before the PR — the `reviewer` agent, or Opus or Antigravity for a Sonnet- or dsh-built
   branch; a fix wave goes straight to the gate and CodeRabbit. Size each task so its implementer
   finishes within about 150 turns.
+* **A subagent leaves nothing running when it reports.** It runs the gate in the foreground
+  (on Claude Code, with a 600 s timeout) and stops any background job or monitor before its
+  report: on #578 a Haiku implementer's leftover monitors woke it after its report, and it
+  reported three more times.
 * **Approvals the user need not give.**
   * A fresh subagent reviews each spec or plan and the author revises it before presenting it,
     so the user sees the revised version.
@@ -251,6 +255,11 @@ Observed 2026-11-08.
   `git switch -c <branch> <commit>`, and the subagent reports `<branch>` as the one holding its
   work. That worktree and branch outlive it and go as
   [`managing-worktrees`](../.agents/skills/managing-worktrees/SKILL.md) step 5 says.
+* **A session that hands the rest of its work to a session it starts stays quiet.** The app wakes
+  it whenever that session ends a turn. It answers each progress note in one line with no tool
+  calls and checks the result once, when the session reports it done. Observed 2026-11-15: the
+  #576 planning session spent 16 Opus turns at about 190k tokens of context relaying its build
+  session, 6 of them re-running `git log`.
 * **A started session's brief asks for its whole answer in its wrap-up recap.** The note that
   wakes the starting session quotes the recap, then the final message, cut at 400 characters
   ("first 400 of 1176 characters"), so an answer in the recap needs no read of the session's events.
