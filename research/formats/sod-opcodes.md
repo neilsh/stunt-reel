@@ -183,7 +183,7 @@ OP_ANIMATE (0x01F8)
 
 ### 2.5 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)
 
-`[Established]` for the handlers, static ([`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md) section 8.6, Q-SOD-01 in [`sod.md`](sod.md#4-open-questions--analysis-backlog)); the macro-source reading below agrees with them.
+`[Established]` for the handlers, static ([`playone-exe/sod-vm-execution.md`](../playone-exe/sod-vm-execution.md) section 8.6, Q-SOD-01 in [`sod.md`](sod.md#4-open-questions--analysis-backlog)); the macro-source reading below agrees with them.
 
 Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `REJ` (`0x01B9`), `REJVEC` (`0x01B0`) and `REJ2D` (`0x01C2`) write one facing flag per face into `work:0x7C68`, starting at byte offset `first`: set when the face points at the eye.

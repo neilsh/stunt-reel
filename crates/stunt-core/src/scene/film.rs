@@ -97,7 +97,7 @@ pub struct ActorDraw {
     /// Model-to-world matrix of the actor's ground shadow, when its slot casts one
     /// (`SIF_SHADOW`): the actor flattened straight down onto the ground plane under its
     /// origin and lifted by the `[I5]` decal displacement. The shadow is the same shape
-    /// drawn again through this matrix in palette index 0 (`research/playone-exe/sod-vm.md`
+    /// drawn again through this matrix in palette index 0 (`research/playone-exe/sod-vm-frame.md`
     /// section 9.1).
     pub shadow_matrix: Option<[f32; 16]>,
 }

@@ -4,7 +4,7 @@ summary: "Records the COL3-2.FLM studio interior (anchorman, desk, window) that 
 
 # Film Segments: the `COL3-2.FLM` Studio Interior
 
-`[Bounded Observation]` unless a claim says otherwise. This note covers the segment of `COL3-2.FLM` where `PLAYONE.EXE` draws a news studio that `stuntreel` does not. The `INTRO.FLM` segments are in [`film-segments.md`](film-segments.md). The scoring procedure is in [`method.md`](method.md); dated results go in journal entries; earlier ones are rows of the parity log. The static frame composition (UI bar, credits text) is in [`../playone-exe/sod-vm.md`](../playone-exe/sod-vm.md).
+`[Bounded Observation]` unless a claim says otherwise. This note covers the segment of `COL3-2.FLM` where `PLAYONE.EXE` draws a news studio that `stuntreel` does not. The `INTRO.FLM` segments are in [`film-segments.md`](film-segments.md). The scoring procedure is in [`method.md`](method.md); dated results go in journal entries; earlier ones are rows of the parity log. The static frame composition (UI bar, credits text) is in [`../playone-exe/sod-vm-frame.md`](../playone-exe/sod-vm-frame.md).
 
 ## 1. `COL3-2.FLM`: the studio interior
 

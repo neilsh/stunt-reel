@@ -4,15 +4,17 @@ summary: "The SOD VM execution model: the vertex and vector banks, the transform
 
 # `PLAYONE.EXE`: SOD VM Execution Model
 
+Part of the SOD VM notes: [`sod-vm.md`](sod-vm.md) lists the files and states the binary and method; section numbers run across the files.
+
 ## 8. Execution Model
 
-The VM is a stack-based, register-oriented geometry engine. Opcode semantics and operand widths are in [`formats/sod-opcodes.md`](../formats/sod-opcodes.md); this section holds the state the opcodes act on. Dispatch is section 1. Each claim carries its tier.
+The VM is a stack-based, register-oriented geometry engine. Opcode semantics and operand widths are in [`formats/sod-opcodes.md`](../formats/sod-opcodes.md); this section holds the state the opcodes act on. Dispatch is [section 1](sod-vm.md#1-dispatch). Each claim carries its tier.
 
 ### 8.1 Vertex Register Bank
 
-`[Established]` for the 12-byte stride, the 1024-entry arena at `DS:0x4450` and the `x/y/z` words (section 4 step 4). `[Supported Inference]` for the index mask.
+`[Established]` for the 12-byte stride, the 1024-entry arena at `DS:0x4450` and the `x/y/z` words ([section 4](sod-vm.md#4-register-side-effects) step 4). `[Supported Inference]` for the index mask.
 
-- The VM keeps 1024 vertex registers (`regs[0..1023]`). In `PLAYONE.EXE` each is 12 bytes: three signed 16-bit coordinate words plus projection and flag words at `+6`, `+8` and `+0xA` (section 3).
+- The VM keeps 1024 vertex registers (`regs[0..1023]`). In `PLAYONE.EXE` each is 12 bytes: three signed 16-bit coordinate words plus projection and flag words at `+6`, `+8` and `+0xA` ([section 3](sod-vm.md#3-anchor-record-layout)).
 - Bytecode operands address a register by **byte offset** (a multiple of 12). The reconstruction decodes `reg_index = (reg_off / 12) & 1023`; the mask keeps a bad operand inside the bank.
 - The reconstruction stores each register as three floating-point metres `[x, y, z]`, scaled by the header scale table ([`sod.md`](../formats/sod.md) section 2); the original holds raw 16-bit units.
 - Whether `PLAYONE.EXE` paged the bank or kept it in the work segment is Q-SOD-06 in [`sod.md`](../formats/sod.md). The captured session holds it in the work segment `0x1DF8`.
@@ -28,7 +30,7 @@ The VM keeps one 3D accumulator, `cur_vert = [x, y, z]`, which the vector opcode
 - `OP_SHLV n` and `OP_SHRV n` multiply or divide by `2^n`.
 - `OP_BLOKADD` and `OP_BLOKNEG` apply the accumulator or a negation across a register range.
 
-The CTRY hill example in section 5 uses this pattern: `GETV 511; SHLV 1; PUTV 510`.
+The CTRY hill example in [section 5](sod-vm.md#5-hill-fins) uses this pattern: `GETV 511; SHLV 1; PUTV 510`.
 
 ### 8.3 Transform Stack and Subobject Articulation
 
@@ -117,3 +119,9 @@ Section 8.5's light needs no change: `SHADES` dots the raw-frame light with the 
 **The `ROT*` angle bank.** `ROTZ` (`0xA807`), `ROTX` (`0xA8F3`) and `ROTY` (`0xA906`) take their angle from the word at `work:0x810E + operand` and skip a zero. The draw path fills that bank: operand `0x16` is slot `+0x16` (`0x1D5F`), and `0x1D96` writes the rest once per frame for the whole film, never per actor: `0x10` the film clock `<< 12`, `0x12` var 10's change since the previous frame saturated at 255 `<< 8`, `0x14` the previous frame's `(var 10 & 0xFF) << 8`, and `0x18`/`0x1A` `±var 12` ([`angle-bank.md`](angle-bank.md), `[Established]`, static and by breakpoint). The stock aircraft use `0x14` with `ROTZ` on propellers, and `0x18`/`0x1A` with `ROTX` and `ROTZ`. `PUSHRELMAT` (`0xA99A`) pushes the nine words at `0x808A` and the translation at `0x8072..0x8076`; `POPRELMAT` (`0xA9B8`) restores them. `vm.rs` holds every angle at zero ([#271](https://github.com/neilsh/stunt-reel/issues/271)).
 
 _Found 2026-11-06; see the [parity log](../../work/2026-10/parity-log/log.md)._
+
+## 10. Open questions
+
+* **Facing flags and depth sections** (section 8.6, [#74](https://github.com/neilsh/stunt-reel/issues/74), [#235](https://github.com/neilsh/stunt-reel/issues/235)). Ruled out: `OP_IFVIS` as a distance gate; on the paths the census walks, any of `BZLT`, `BVIS`, `REJVEC`, `REJ2D` or a nested section as a parity lever, since no census walk of the stock shapes reaches one (`[Bounded Observation]`; `BVLT`'s branch and code no walked branch reaches are unchecked). Open: a polygon in a nested section takes only the inner gate, and a `GOSUB` or `SORTON` resume restores the current gate but not the outer ones; at `n · (b − eye) = 0` `BVIS` draws in PLAYONE and in neither form here; an `IFVIS` or `BVIS` on a flag its shape never set is drawn, where PLAYONE reads a stale byte; `REJ2D` for a triple with a point behind the eye; no `BZLT` has been traced live. The `INTRO.FLM` "conifers drawn as round bushes" grader note (tick 3295, not in the current capture) no longer shows at ticks 3290 and 3301, where ours draws conifers since [#399](https://github.com/neilsh/stunt-reel/issues/399); the capture's conifer field there is denser than ours ([#426](https://github.com/neilsh/stunt-reel/issues/426)).
+
+* **The `SHADE` light vector and the `GVPOLY16` colour path** (section 8.5). Closed: the callers that hand `0x9100` its light are the three call sites of [`terrain-shade.md`](terrain-shade.md) section 4.2, and the renderer shades with the world light ([#221](https://github.com/neilsh/stunt-reel/issues/221)); `GVPOLY16` reads its ramp from the word after its registers (section 8.5). Open: an actor's own light (the world light turned by its rotation and the view, `0x1CFB`), which changes every frame while shapes are decoded once; the vertex fraction the interpolation drops; the light for a film-variable-13 value other than `0x2D`; and `vm.rs`'s `shade_level`, which subtracts 2 from a `GVPOLY`/`GVPOLY16` level when the base is `0x10` (the triplane's red ramp), where the handlers' Gouraud routes add `G` (`[0x812E]`, `0x99EB`, `0x9ABB`) and `GVPOLY16`'s flat route `0x9A58..0x9A65` adds neither `G` nor an adjustment (section 8.5, [`terrain-shade.md`](terrain-shade.md) section 5). They decide the colour of the aircraft parts a full `SORTON` walk would reach ([`hero-aircraft-placement.md`](../parity/hero-aircraft-placement.md) section 1).
