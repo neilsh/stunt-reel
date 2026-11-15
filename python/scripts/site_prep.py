@@ -35,7 +35,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(f"{root / 'site' / 'published.toml'} is not a file")
     try:
         pages, images = prepare(root, root / "site")
-    except ValueError as err:
+    except (ValueError, OSError) as err:
         print(err, file=sys.stderr)
         return 1
     print(f"wrote {pages} pages and {images} images to site/")

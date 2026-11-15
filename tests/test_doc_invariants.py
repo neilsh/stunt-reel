@@ -127,10 +127,11 @@ CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
 #: their work lands and not a source of truth; the README beside them is evergreen.
 WORK_DIR = REPO_ROOT / "work"
 #: Repo-relative path prefixes whose own links ``test_markdown_links_resolve`` leaves unchecked
-#: while a move is half done; the rule on links into dated records still reads them. The research
-#: site's generated pages (gitignored) hold site-absolute URLs that starlight-links-validator
-#: checks in ``mise run site``.
-LINK_SOURCES_SKIPPED: tuple[str, ...] = ("site/src/content/docs/",)
+#: while a move is half done; the rule on links into dated records still reads them.
+LINK_SOURCES_SKIPPED: tuple[str, ...] = ()
+#: Gitignored directories ``mise run site-prep`` writes. Their links are site-absolute URLs that
+#: starlight-links-validator checks in ``mise run site``, so they are never link sources here.
+GENERATED_DOC_DIRS: tuple[str, ...] = ("site/src/content/docs/",)
 #: A link from an evergreen file to a dated record is allowed after a provenance marker on its
 #: line (``_Source:`` or a legacy ``_Found <date>``, italic with ``_`` or ``*``, at the line's
 #: start or after whitespace), or under a Ruled out heading, until the next heading of the same
@@ -289,11 +290,11 @@ def test_markdown_links_resolve() -> None:
     """Every relative Markdown link points at an existing file and, for .md targets, heading.
 
     A link from a dated record (``work/<YYYY-MM>/``) to an evergreen file is checked for the file
-    only (``_check_link``). Files under ``LINK_SOURCES_SKIPPED`` are not sources here alone.
+    only (``_check_link``). Files under ``LINK_SOURCES_SKIPPED`` or ``GENERATED_DOC_DIRS`` are not sources here alone.
     """
     broken = [
         f"{path.relative_to(REPO_ROOT).as_posix()}: {target} ({problem})"
-        for path in _link_sources(REPO_ROOT, LINK_SOURCES_SKIPPED)
+        for path in _link_sources(REPO_ROOT, GENERATED_DOC_DIRS + LINK_SOURCES_SKIPPED)
         for target, _ in _links(path)
         if (problem := _check_link(path, target, WORK_DIR))
     ]

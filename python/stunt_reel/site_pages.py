@@ -29,6 +29,7 @@ __all__ = [
     "Site",
     "link_target",
     "load_sections",
+    "normalize_display_math",
     "page_text",
     "page_url",
     "prepare",
@@ -44,6 +45,7 @@ IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".gif", ".svg"})
 _SEGMENT = re.compile(r"[A-Za-z0-9-]+")
 _MARKUP_LINK = re.compile(r"\[([^\]\n]*)\]\([^)\n]*\)")
 _SIDEBAR_LABELS = {"INDEX": "Index", "README": "About this folder"}
+_MATH_FENCE = "$$"
 
 
 @dataclass(frozen=True)
@@ -74,15 +76,18 @@ def link_target(target: str, source: str, site: Site, images: set[str]) -> str:
     """*target*, a link in the repo file *source*, as the site links it: a page URL, a
     ``/media/`` URL (the image's repo path is added to *images*) or a GitHub URL.
 
-    Raises ValueError for a target resolving outside the repository.
+    Raises ValueError for a target resolving outside the repository, or for a page whose
+    content path `page_url` rejects.
     """
     if not target or target.startswith(("#", "/")) or URL_SCHEME_REGEX.match(target):
         return target
     raw, hash_, fragment = target.partition("#")
     suffix = hash_ + fragment
     path = posixpath.normpath(posixpath.join(posixpath.dirname(source), unquote(raw)))
-    if path == ".." or path.startswith("../") or path == ".":
+    if path == ".." or path.startswith("../"):
         raise ValueError(f"{source}: link {target!r} leaves the repository")
+    if path == ".":
+        return f"{REPO_URL}{suffix}"
     if path in site.pages:
         return page_url(site.pages[path]) + suffix
     if (site.root / path).is_dir():
@@ -113,38 +118,77 @@ def rewrite_links(text: str, source: str, site: Site, images: set[str]) -> str:
     return text
 
 
-def page_text(text: str, source: str, site: Site, images: set[str]) -> str:
+def normalize_display_math(text: str) -> str:
+    """*text* with each display-math block's ``$$`` fences on lines of their own.
+
+    micromark reads a fence line's remainder as meta, so ``$$x$$``, ``$$x`` and ``x$$`` lose
+    their maths where GitHub renders it. Only a fence outside code, with no other ``$$`` on its
+    line, moves; a lone ``$$`` line and a line holding ``$$`` mid-line stay as they are.
+    """
+    out: list[str] = []
+    open_block = False
+    for line, visible in zip(
+        text.splitlines(keepends=True), prose(text).splitlines(keepends=True), strict=True
+    ):
+        body = line.rstrip("\r\n")
+        ending = line[len(body) :] or "\n"
+        stripped = visible.strip()
+        indent = line[: len(line) - len(line.lstrip(" \t"))]
+        count = stripped.count(_MATH_FENCE)
+        pieces: list[str] | None = None
+        if stripped == _MATH_FENCE:
+            open_block = not open_block
+        elif stripped.startswith(_MATH_FENCE) and not open_block:
+            content = body.strip()[2:]
+            if count == 2 and content.endswith(_MATH_FENCE) and len(content) > 2:
+                pieces = [_MATH_FENCE, content[:-2], _MATH_FENCE]
+            elif count == 1:
+                pieces = [_MATH_FENCE, content]
+                open_block = True
+        elif stripped.endswith(_MATH_FENCE) and open_block and count == 1:
+            pieces = [body.strip()[:-2], _MATH_FENCE]
+            open_block = False
+        if pieces is None:
+            out.append(line)
+        else:
+            out.append("".join(indent + piece + ending for piece in pieces if piece.strip()))
+    return "".join(out)
+
+
+def page_text(
+    text: str, source: str, site: Site, images: set[str], *, title: str | None = None
+) -> str:
     """The content page for repo file *source* whose Markdown is *text*, with Starlight front
-    matter and links rewritten. Raises ValueError, naming *source*, for a page with neither a
+    matter and links rewritten; a given *title* replaces the one the page carries. Raises ValueError, naming *source*, for a page with neither a
     ``title:`` nor a ``# `` heading, or a bad link or front matter."""
     try:
         fields, body = read_frontmatter(text)
     except ValueError as err:
         raise ValueError(f"{source}: {err}") from err
     lines = _without_leading_comments(body.splitlines(keepends=True))
-    title = fields.get("title")
-    if title is None:
+    found = fields.get("title")
+    if found is None:
         visible = prose("".join(lines)).splitlines()
         for index, line in enumerate(visible):
             heading = HEADING_REGEX.match(line)
             # The blanked line only says this is a heading; its code span is blank there.
             original = HEADING_REGEX.match(lines[index])
             if heading and original and heading[1] == "#":
-                title = _plain(original[2])
+                found = _plain(original[2])
                 del lines[index]
                 break
         else:
             raise ValueError(f"{source}: no title: in the front matter and no '# ' heading")
-    out = {"title": str(title)}
-    label = str(title) if "title" in fields else None
+    out = {"title": title if title is not None else str(found)}
+    label = str(found) if "title" in fields else None
     description = fields.get("description", fields.get("summary"))
     if description is not None:
-        out["description"] = str(description)
+        out["description"] = _plain(str(description))
     out["editUrl"] = f"{REPO_URL}/blob/main/{source}"
     stem = posixpath.splitext(posixpath.basename(source))[0]
     head = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in out.items()]
     head.append(f"sidebar:\n  label: {json.dumps(label or _SIDEBAR_LABELS.get(stem, stem))}")
-    content = rewrite_links("".join(lines), source, site, images)
+    content = rewrite_links(normalize_display_math("".join(lines)), source, site, images)
     return "---\n" + "\n".join(head) + "\n---\n\n" + content.lstrip("\r\n")
 
 
@@ -164,7 +208,7 @@ def _without_leading_comments(lines: list[str]) -> list[str]:
 
 
 def _plain(heading: str) -> str:
-    """A heading's text without code backticks, bold marks or link targets."""
+    """A heading's or description's text without code backticks, bold marks or link targets."""
     return _MARKUP_LINK.sub(r"\1", heading).replace("`", "").replace("**", "")
 
 
@@ -180,17 +224,24 @@ class Section:
 
 def load_sections(text: str) -> list[Section]:
     """The ``[[section]]`` entries of ``published.toml`` *text*. Raises ValueError, naming the
-    section, for a missing or non-string key, an absolute path or a ``..`` in a path."""
+    file or section, for invalid TOML, a missing or non-string key, an absolute path, a
+    backslash or a ``..`` in a path."""
+    try:
+        entries = tomllib.loads(text).get("section", [])
+    except tomllib.TOMLDecodeError as err:
+        raise ValueError(f"site/published.toml: {err}") from err
     sections = []
-    for number, entry in enumerate(tomllib.loads(text).get("section", []), start=1):
+    for number, entry in enumerate(entries, start=1):
         for key in ("source", "dest", "label"):
             if not isinstance(entry.get(key), str) or not entry[key]:
                 raise ValueError(f"section {number}: {key!r} is missing or not a string")
         for key in ("source", "dest"):
             path = entry[key]
-            parts = path.replace("\\", "/").split("/")
-            if path.startswith(("/", "\\")) or ":" in parts[0] or ".." in parts:
-                raise ValueError(f"section {number}: {key} {path!r} must be a relative path")
+            parts = path.split("/")
+            if "\\" in path or path.startswith("/") or ":" in parts[0] or ".." in parts:
+                raise ValueError(
+                    f"section {number}: {key} {path!r} must be a relative path with '/' only"
+                )
         sections.append(Section(entry["source"], entry["dest"], entry["label"]))
     return sections
 
@@ -198,16 +249,28 @@ def load_sections(text: str) -> list[Section]:
 _HAND_WRITTEN = ("index.md", "reading.md")
 
 
+def _target_name(dest: str) -> Path:
+    """*dest* with a lower-cased file name: starlight-links-validator drops only a lower-case
+    ``index``, so a page written as INDEX.md would be unreachable at its folder's URL."""
+    path = Path(dest)
+    return path.parent / path.name.lower()
+
+
 def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
     """Write the site's content under *site_dir* from the repo at *root*: ``src/content/docs``,
     ``public/media`` and ``src/generated/sidebar.json``, replacing what was there.
 
     Returns the pages written and the images copied. Raises ValueError, naming the file, for a
-    page or section that cannot be published.
+    page or section that cannot be published, an unreadable file, or two sources written to one
+    path (compared lower-cased).
     """
-    sections = load_sections((site_dir / "published.toml").read_text(encoding="utf-8"))
+    try:
+        sections = load_sections((site_dir / "published.toml").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError) as err:
+        raise ValueError(f"site/published.toml: {err}") from err
     site_rel = site_dir.resolve().relative_to(root.resolve()).as_posix()
     pages: dict[str, str] = {}
+    titles: dict[str, str] = {}
     dirs: list[str] = []
     for section in sections:
         path = root / section.source
@@ -218,11 +281,18 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
                 pages[rel] = f"{section.dest}/{note.relative_to(path).as_posix()}"
         elif path.is_file():
             pages[section.source] = section.dest
+            titles[section.source] = section.label
         else:
             raise ValueError(f"{section.source}: published.toml names no such file or directory")
     for name in _HAND_WRITTEN:
         pages[f"{site_rel}/{name}"] = name
     site = Site(root=root, pages=pages, published_dirs=tuple(dirs))
+    written: dict[str, str] = {}
+    for source, dest in pages.items():
+        key = _target_name(dest).as_posix().lower()
+        if key in written:
+            raise ValueError(f"{written[key]} and {source} both write {dest}")
+        written[key] = source
 
     docs = site_dir / "src/content/docs"
     media = site_dir / "public/media"
@@ -231,16 +301,21 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
         shutil.rmtree(stale, ignore_errors=True)
     images: set[str] = set()
     for source, dest in pages.items():
-        text = (root / source).read_text(encoding="utf-8")
-        # Lower-cased file name: starlight-links-validator drops only a lower-case `index`,
-        # so a page written as INDEX.md would be unreachable at its folder's URL.
-        target = docs / Path(dest).parent / Path(dest).name.lower()
+        try:
+            text = (root / source).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as err:
+            raise ValueError(f"{source}: {err}") from err
+        target = docs / _target_name(dest)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(page_text(text, source, site, images).encode("utf-8"))
+        page = page_text(text, source, site, images, title=titles.get(source))
+        target.write_bytes(page.encode("utf-8"))
     for image in sorted(images):
         target = media / image
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(root / image, target)
+        try:
+            shutil.copyfile(root / image, target)
+        except OSError as err:
+            raise ValueError(f"{image}: {err}") from err
     sidebar: list[dict[str, object]] = [{"slug": "reading"}]
     for section in sections:
         if (root / section.source).is_dir():

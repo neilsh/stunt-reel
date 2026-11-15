@@ -64,6 +64,8 @@ def test_load_sections_rejects_bad_paths() -> None:
         '[[section]]\nsource = "C:/a"\ndest = "a"\nlabel = "A"\n',
         '[[section]]\nsource = "a/../b"\ndest = "a"\nlabel = "A"\n',
         '[[section]]\nsource = "a"\ndest = "../a"\nlabel = "A"\n',
+        '[[section]]\nsource = "research\\\\formats"\ndest = "a"\nlabel = "A"\n',
+        '[[section]]\nsource = "a"\ndest = "a\\\\b"\nlabel = "A"\n',
     ]
     for text in bad:
         with pytest.raises(ValueError, match="section 1"):
@@ -115,3 +117,36 @@ def test_cli_exits_1_naming_the_bad_note(repo: Path, capsys: pytest.CaptureFixtu
 def test_cli_reports_the_counts(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert site_prep.main(["--root", str(repo)]) == 0
     assert capsys.readouterr().out == "wrote 5 pages and 1 images to site/\n"
+
+
+def test_load_sections_names_the_file_for_bad_toml() -> None:
+    with pytest.raises(ValueError, match=r"site/published\.toml"):
+        load_sections("[[section")
+
+
+def test_prepare_titles_a_file_section_by_its_label(repo: Path) -> None:
+    prepare(repo, repo / "site")
+    glossary = (repo / "site/src/content/docs/glossary.md").read_text(encoding="utf-8")
+    assert glossary.startswith('---\ntitle: "Glossary"\n')
+
+
+def test_prepare_refuses_two_sources_for_one_path_by_case(repo: Path) -> None:
+    _write(repo / "NOTES.md", "# N\n")
+    extra = '\n[[section]]\nsource = "NOTES.md"\ndest = "Glossary.md"\nlabel = "N"\n'
+    _write(repo / "site/published.toml", PUBLISHED + extra)
+    with pytest.raises(ValueError, match=r"GLOSSARY\.md and NOTES\.md both write Glossary\.md"):
+        prepare(repo, repo / "site")
+
+
+def test_prepare_refuses_a_section_over_a_hand_written_page(repo: Path) -> None:
+    _write(repo / "NOTES.md", "# N\n")
+    published = PUBLISHED + '\n[[section]]\nsource = "NOTES.md"\ndest = "reading.md"\nlabel = "N"\n'
+    _write(repo / "site/published.toml", published)
+    with pytest.raises(ValueError, match=r"NOTES\.md and site/reading\.md both write reading\.md"):
+        prepare(repo, repo / "site")
+
+
+def test_cli_names_a_missing_published_file(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (repo / "site/reading.md").unlink()
+    assert site_prep.main(["--root", str(repo)]) == 1
+    assert "reading.md" in capsys.readouterr().err

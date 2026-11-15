@@ -11,6 +11,7 @@ from stunt_reel.site_pages import (
     REPO_URL,
     Site,
     link_target,
+    normalize_display_math,
     page_text,
     page_url,
     rewrite_links,
@@ -70,6 +71,7 @@ _CASES = [
         "../parity/error-examples/a.png",
         "/stunt-reel/media/research/parity/error-examples/a.png",
     ),
+    ("../../.", REPO_URL),
     ("https://example.com/a.md", "https://example.com/a.md"),
     ("#local", "#local"),
 ]
@@ -124,7 +126,7 @@ NOTE = (
 def test_page_text_title_from_h1_and_description_from_summary(site: Site) -> None:
     fields, body = _fields(page_text(NOTE, _SRC, site, set()))
     assert fields["title"] == "Spec: .SOD format bytecode"
-    assert fields["description"] == "`.SOD` model: a **VM**."
+    assert fields["description"] == ".SOD model: a VM."
     assert fields["editUrl"] == f"{REPO_URL}/blob/main/research/formats/sod.md"
     assert not body.lstrip().startswith("# ")
     assert "[l](/stunt-reel/research/formats/sod/)" in body
@@ -174,3 +176,32 @@ def test_page_text_h1_inside_code_is_not_the_title(site: Site) -> None:
 def test_page_text_without_a_title_names_the_source(site: Site) -> None:
     with pytest.raises(ValueError, match=r"research/formats/sod.md"):
         page_text("no heading\n", _SRC, site, set())
+
+
+def test_page_text_given_title_replaces_the_heading_title(site: Site) -> None:
+    text = "# Stunt Reel\n\nBody\n"
+    fields, body = _fields(page_text(text, "GLOSSARY.md", site, set(), title="Glossary"))
+    assert fields["title"] == "Glossary"
+    assert "# Stunt Reel" not in body
+
+
+def test_page_text_description_loses_markdown(site: Site) -> None:
+    text = "---\nsummary: Router to the `.ksy` **schemas** and [sod](sod.md)\n---\n# T\n"
+    fields, _ = _fields(page_text(text, _SRC, site, set()))
+    assert fields["description"] == "Router to the .ksy schemas and sod"
+
+
+_MATH_CASES = [
+    ("$$x = 1$$\n", "$$\nx = 1\n$$\n"),
+    ("$$M = \\begin{b}\na\n\\end{b}$$\n", "$$\nM = \\begin{b}\na\n\\end{b}\n$$\n"),
+    ("$$\nx\n$$\n", "$$\nx\n$$\n"),
+    ("  $$x$$\r\n", "  $$\r\n  x\r\n  $$\r\n"),
+    ("a | $$x$$ | b\n| $$ |\ntext $$x$$\n", "a | $$x$$ | b\n| $$ |\ntext $$x$$\n"),
+    ("`$$x$$` and `SPOOL.$$$`\n", "`$$x$$` and `SPOOL.$$$`\n"),
+    ("```\n$$x$$\n$$y\nz$$\n```\n", "```\n$$x$$\n$$y\nz$$\n```\n"),
+]
+
+
+@pytest.mark.parametrize(("text", "expected"), _MATH_CASES)
+def test_normalize_display_math(text: str, expected: str) -> None:
+    assert normalize_display_math(text) == expected
