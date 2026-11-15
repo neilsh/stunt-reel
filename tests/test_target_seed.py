@@ -110,6 +110,15 @@ def test_uses_cargo_home_false_without_registry_dep_info(tmp_path: Path) -> None
     assert not uses_cargo_home(a / "target", Path(HOME))
 
 
+def _fingerprint_file(donor: Path, stamp: float) -> None:
+    """An old-layout unit's ``invoked.timestamp``, which Cargo rewrites on every build."""
+    unit = donor / "target" / "debug" / ".fingerprint" / "serde_core-0123456789abcdef"
+    unit.mkdir(parents=True, exist_ok=True)
+    invoked = unit / "invoked.timestamp"
+    invoked.write_text("", encoding="utf-8")
+    os.utime(invoked, (stamp, stamp))
+
+
 def test_rank_prefers_matching_lock_then_newest(tmp_path: Path) -> None:
     here = tmp_path / "here"
     here.mkdir()
@@ -117,6 +126,8 @@ def test_rank_prefers_matching_lock_then_newest(tmp_path: Path) -> None:
     old_same = _donor(tmp_path / "old", lock="a", age=600)
     new_same = _donor(tmp_path / "new", lock="a", age=10)
     newest_other = _donor(tmp_path / "other", lock="b", age=1)
+    for donor, age in ((old_same, 600), (new_same, 10), (newest_other, 1)):
+        _fingerprint_file(donor, time.time() - age)
     assert rank_donors(
         [old_same, newest_other, new_same], here=here, rustc_vv=RUSTC, cargo_home=Path(HOME)
     ) == [new_same, old_same, newest_other]
@@ -133,6 +144,47 @@ def test_rank_drops_self_missing_and_disqualified(tmp_path: Path) -> None:
         rustc_vv=RUSTC,
         cargo_home=Path(HOME),
     ) == [good]
+
+
+def test_rank_reads_fingerprint_files_not_the_block_cloned_directory_time(
+    tmp_path: Path,
+) -> None:
+    """A seed keeps the fingerprint directory's time; the files say when Cargo last built."""
+    here = tmp_path / "here"
+    here.mkdir()
+    (here / "Cargo.lock").write_text("a", encoding="utf-8")
+    older = _donor(tmp_path / "older", age=600)
+    newer = _donor(tmp_path / "newer", age=10)
+    _fingerprint_file(older, time.time() - 600)
+    _fingerprint_file(newer, time.time() - 10)
+    cloned = time.time() - 1
+    for root in (older, newer):
+        os.utime(root / "target" / "debug" / ".fingerprint", (cloned, cloned))
+
+    assert rank_donors([older, newer], here=here, rustc_vv=RUSTC, cargo_home=Path(HOME)) == [
+        newer,
+        older,
+    ]
+
+
+def test_rank_prefers_heres_commit_over_a_newer_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A donor at here's commit needs no member rebuild, however old its build is."""
+    here = tmp_path / "here"
+    here.mkdir()
+    (here / "Cargo.lock").write_text("a", encoding="utf-8")
+    same = _donor(tmp_path / "same", age=600)
+    newer = _donor(tmp_path / "newer", age=1)
+    _fingerprint_file(same, time.time() - 600)
+    _fingerprint_file(newer, time.time() - 1)
+    heads = {here.resolve(): "c0ffee", same.resolve(): "c0ffee", newer.resolve(): "beef"}
+    monkeypatch.setattr(target_seed, "_head", lambda path: heads.get(path.resolve()))
+
+    assert rank_donors([newer, same], here=here, rustc_vv=RUSTC, cargo_home=Path(HOME)) == [
+        same,
+        newer,
+    ]
 
 
 def _never(source: Path, destination: Path) -> None:
