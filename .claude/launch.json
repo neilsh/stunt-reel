@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site",
+      "runtimeExecutable": "mise",
+      "runtimeArgs": ["run", "site-serve"],
+      "port": 4321
+    },
+    {
+      "name": "site-dist",
+      "runtimeExecutable": "mise",
+      "runtimeArgs": ["run", "site-preview"],
+      "port": 4322
+    }
+  ]
+}

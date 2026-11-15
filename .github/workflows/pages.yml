@@ -33,6 +33,15 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           install_args: bun python uv
+      # The page loads katex's stylesheet directly, so it must match the copy rehype-katex
+      # renders with; site/package.json's override keeps the tree to one.
+      - name: One katex in bun.lock
+        run: |
+          n=$(grep -cE '^    "([^"]*/)?katex": \["katex@' site/bun.lock || true)
+          if [ "$n" -ne 1 ]; then
+            echo "::error file=site/bun.lock::bun.lock resolves $n copies of katex; keep one with the override in site/package.json"
+            exit 1
+          fi
       - run: mise run site
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
