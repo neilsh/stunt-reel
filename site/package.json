@@ -11,10 +11,13 @@
     "@astrojs/starlight": "0.43.1",
     "astro": "7.4.12",
     "astro-mermaid": "2.2.0",
-    "katex": "0.16.47",
+    "katex": "0.18.11",
     "mermaid": "12.3.0",
     "rehype-katex": "7.0.1",
     "remark-math": "6.0.0",
     "starlight-links-validator": "0.27.0"
+  },
+  "overrides": {
+    "katex": "0.18.11"
   }
 }

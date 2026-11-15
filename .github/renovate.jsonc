@@ -73,13 +73,15 @@
       "matchManagers": ["bun", "npm"],
       "groupName": "research site",
     },
-    // site/astro.config.mjs loads katex's stylesheet; it must match the katex rehype-katex
-    // renders with (0.16.x for rehype-katex 7), whose class names differ from later releases.
+    // site/package.json forces one katex through `overrides`, because rehype-katex 7 still
+    // declares ^0.16.0; the direct pin is the stylesheet astro.config.mjs loads, and the two must
+    // match (0.18 renamed KaTeX's classes). Mermaid takes ^0.18.0, so stay below 0.19. Drop the
+    // override and this rule once remarkjs/remark-math#122 (katex ^0.19.0) ships.
     {
-      "description": "Keep katex on the major rehype-katex renders with.",
+      "description": "Keep katex inside mermaid's range while site/package.json overrides it.",
       "matchManagers": ["bun", "npm"],
       "matchPackageNames": ["katex"],
-      "allowedVersions": "<0.17.0",
+      "allowedVersions": "<0.19.0",
     },
     // Patch and minor crate bumps fail the same way; a major is where msrv and deny go red, so
     // it gets its own PR where a failure names one crate instead of hiding behind a green bump.
