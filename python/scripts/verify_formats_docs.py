@@ -13,7 +13,7 @@ Programmatically validates:
 4. Asset isolation: ZERO binary files in research/formats/, valid UTF-8 encoding,
    no null bytes, and offline synthetic test fixture alignment [I7].
 5. Link Integrity: Zero broken relative markdown links or anchor targets across
-   the catalog and docs/ARCHITECTURE.md.
+   the catalog and the routing tables (docs/ARCHITECTURE.md, docs/architecture-python.md).
 6. Synthetic Fixture Consistency: Documented headers, offsets, and opcodes align
    byte-for-byte with synthetic test fixtures in tests/fixtures/.
 
