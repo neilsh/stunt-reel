@@ -141,6 +141,11 @@ depends = ["site-prep"]
 dir = "{{config_root}}/site"
 run = ["bun install --frozen-lockfile", "bun run dev"]
 
+[tasks.site-preview]
+description = "Serve the built site/dist at http://localhost:4322/stunt-reel/, after mise run site; the site-dist entry in .claude/launch.json runs it"
+dir = "{{config_root}}/site"
+run = "bun run preview --port 4322"
+
 [tasks.knowledge-map]
 description = "Rewrite research/MAP.md, every research note listed by folder with its summary: frontmatter, or exit 1 naming it when it is stale (mise run knowledge-map -- --write | --check [--root DIR]); mise run fix runs --write"
 run = "uv run python python/scripts/knowledge_map.py"

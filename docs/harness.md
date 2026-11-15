@@ -260,6 +260,14 @@ Observed 2026-11-08.
   calls and checks the result once, when the session reports it done. Observed 2026-11-15: the
   #576 planning session spent 16 Opus turns at about 190k tokens of context relaying its build
   session, 6 of them re-running `git log`.
+* **A started session's brief asks for its whole answer in its wrap-up recap.** The note that
+  wakes the starting session quotes the recap, then the final message, cut at 400 characters
+  ("first 400 of 1176 characters"), so an answer in the recap needs no read of the session's events.
+  Observed 2026-11-15: the #576 planning session called `list_events` 5 times, twice paging back,
+  for two started sessions' reports its notes had cut off.
+* **A started session's branch and PR state comes from `gh`.** A turn the user drives in that
+  session sends no note, so its notes go stale. Observed 2026-11-15: the #576 planning session told
+  the user two spike branches were unpushed after the user had them opened as #580 and #581.
 
 ### A low-integrity virtualenv
 
