@@ -462,6 +462,7 @@ SCRIPT_PATHS: tuple[str, ...] = (
     "python/stunt_reel/worktree_git.py",
     "python/stunt_reel/worktree_provision.py",
     "python/stunt_reel/worktree_reap.py",
+    "python/stunt_reel/dataroot.py",
 )
 FETCH_TIMEOUT = 30
 
@@ -472,8 +473,8 @@ def _script_is_stale(repo: Path) -> tuple[bool, list[str]]:
     The primary checkout runs its own copy, so a checkout left on an old branch reaps with
     rules main has since fixed (issue #218). Each of :data:`SCRIPT_PATHS` must match main in
     both the committed copy and the working-tree file reap actually runs. A failed fetch
-    compares with the last fetched ``origin/main``; a side that cannot be read is reported and
-    does not count as stale.
+    compares with the last fetched ``origin/main``; a side that cannot be read is reported,
+    does not count as stale on its own, and does not stop the other files being compared.
     """
     lines: list[str] = []
     fetch_error = _fetch_main(repo)
@@ -483,19 +484,23 @@ def _script_is_stale(repo: Path) -> tuple[bool, list[str]]:
         )
     for relative in SCRIPT_PATHS:
         blobs: list[str] = []
+        unreadable = False
         for rev in ("HEAD", "origin/main"):
             result = _git(repo, "rev-parse", "--verify", "--quiet", f"{rev}:{relative}")
             if result.returncode != 0:
                 lines.append(f"  ! {rev}:{relative} is unreadable; cannot tell if reap is current")
-                return False, lines
+                unreadable = True
+                break
             blobs.append(result.stdout.strip())
+        if unreadable:
+            continue
         ours, main = blobs
         if ours == main:
             # HEAD matches, but reap runs the working-tree file, edits included.
             hashed = _git(repo, "hash-object", "--", relative)
             if hashed.returncode != 0:
                 lines.append(f"  ! {relative} is unreadable; cannot tell if reap is current")
-                return False, lines
+                continue
             local = hashed.stdout.strip()
             if local == main:
                 continue

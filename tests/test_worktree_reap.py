@@ -1016,15 +1016,20 @@ def _stale_env(
     *,
     stale: bool = True,
     source: str = ENTRY,
+    missing: str | None = None,
 ) -> tuple[Path, Path, dict[str, str], dict[str, str]]:
     """``_reap_env`` plus a local ``origin`` whose main holds a newer reap source when *stale*.
 
     *source* is the file main changed, by default the entrypoint; pass a module to hold a stale
-    one. Returns the repo, the squash-merged worktree, and the blobs of HEAD's and main's copy.
+    one. *missing* is a file main drops, which HEAD still has. Returns the repo, the
+    squash-merged worktree, and the blobs of HEAD's and main's copy.
     """
     repo, worktree = _reap_env(monkeypatch, tmp_path, free)
     ours = _commit_scripts(repo, _all_sources("old rules"))
     main = _commit_scripts(repo, {source: "new rules"}) if stale else ours
+    if stale and missing is not None:
+        _run_git(repo, "rm", "-q", missing)
+        _run_git(repo, "commit", "-q", "--amend", "--no-edit")
     origin = tmp_path / "origin.git"
     _run_git(tmp_path, "clone", "-q", "--bare", str(repo), str(origin))
     _run_git(repo, "remote", "add", "origin", str(origin))
@@ -1063,6 +1068,23 @@ def test_a_stale_module_refuses_a_confirmed_reap(
     out = capsys.readouterr().out
     assert f"stale reap: HEAD:{module} is {ours[module]}" in out
     assert f"origin/main:{module} is {main[module]}" in out
+    assert "--allow-stale-script" in out
+
+
+def test_an_unreadable_source_does_not_mask_a_later_stale_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A source main dropped is reported, and the guard still compares the rest."""
+    module = "python/stunt_reel/worktree_reap.py"
+    _, worktree, ours, _ = _stale_env(
+        monkeypatch, tmp_path, 5 * worktree_reap.GIB, source=module, missing=ENTRY
+    )
+
+    assert worktree_reap._reap(True) == 1
+    assert worktree.is_dir()
+    out = capsys.readouterr().out
+    assert f"origin/main:{ENTRY} is unreadable" in out
+    assert f"stale reap: HEAD:{module} is {ours[module]}" in out
     assert "--allow-stale-script" in out
 
 

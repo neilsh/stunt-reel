@@ -107,8 +107,9 @@ Nothing to do. Create it with any tool, under `.claude/worktrees/` or `.agents/w
 - `reap` removes nothing while the primary checkout's drive has 20 GB or more free
   (`--min-free-gb N` moves the bar, `--force` skips it); a dry run still lists the candidates.
 - `reap -- --yes` refuses when any file reap's code lives in differs from `origin/main`'s
-  (fetched quietly first): `python/scripts/worktree_init.py` and the `python/stunt_reel/worktree_*.py`
-  modules it imports, since it would reap by rules main has since changed; a dry run only warns.
+  (fetched quietly first): `python/scripts/worktree_init.py`, `python/stunt_reel/dataroot.py` and
+  the `python/stunt_reel/worktree_*.py` modules it imports, since it would reap by rules main has
+  since changed; a dry run only warns.
   Update the primary checkout, or pass `--allow-stale-script`.
 
 ## Claude Code
