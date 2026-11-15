@@ -223,6 +223,75 @@ The filter checks only comment text.
 """
 
 
+#: CodeRabbit wraps a finding's line range in backticks; built without one in the source.
+_MARK = chr(96)
+
+
+def _additional_section(raw: str, summary: str = "a/b.py-10-40: 1") -> str:
+    """A minimal CodeRabbit Additional comments section holding *raw* finding markup."""
+    return f"""<details>
+<summary>Additional comments: 1</summary><blockquote>
+<dl>
+<dd>
+<br>
+
+<details>
+<summary>{summary}</summary><blockquote>
+<dl>
+<dd>
+<br>
+
+{raw}
+
+</dd>
+</dl>
+</blockquote></details>
+
+</dd>
+</dl>
+</blockquote></details>
+"""
+
+
+def test_one_file_block_may_hold_several_findings() -> None:
+    """CodeRabbit groups a file's findings under one summary with a count (review of #558)."""
+    raw = (
+        f"{_MARK}10-12{_MARK}: **Major** · **Correctness**\n\n**First title.**\n\n"
+        f"{_MARK}40-40{_MARK}: **Critical** · **Security**\n\n**Second title.**"
+    )
+
+    assert pr_threads.additional_diff(_additional_section(raw, "a/b.py-10-40: 2")) == [
+        ("a/b.py:10-12", "Major", "First title."),
+        ("a/b.py:40", "Critical", "Second title."),
+    ]
+
+
+def test_a_finding_without_a_severity_does_not_borrow_one_from_a_later_section() -> None:
+    """The Additional slice ends where the section does, not at the review body's end."""
+    raw = (
+        f"{_MARK}7-7{_MARK}: **Functional Correctness** · **Heavy lift**\n\n"
+        "**No severity in this block.**"
+    )
+    body = _additional_section(raw, "a/b.py-7-7: 1") + "\n\n**Major**\n\nA later section."
+
+    assert pr_threads.additional_diff(body) == []
+
+
+def test_a_finding_without_a_bold_title_falls_back_like_a_comment() -> None:
+    """With no bold title, the first prose line, cut to the title limit (review of #558)."""
+    raw = f"{_MARK}5-5{_MARK}: **Minor** · **Maintainability**\n\nA plain prose title."
+    assert pr_threads.additional_diff(_additional_section(raw, "a/b.py-5-5: 1")) == [
+        ("a/b.py:5", "Minor", "A plain prose title.")
+    ]
+    long = "y" * (pr_threads.TITLE_LIMIT + 40)
+    body = _additional_section(
+        f"{_MARK}6-6{_MARK}: ** Minor** · **Maintainability** · **Quick win**\n\n" + long,
+        "a/b.py-6-6: 1",
+    )
+    (_, _, title) = pr_threads.additional_diff(body)[0]
+    assert title == "y" * (pr_threads.TITLE_LIMIT - 1) + "…"
+
+
 def test_outside_diff_findings_come_from_reviews_after_the_head_commit() -> None:
     reviews = [
         {"databaseId": 1, "submittedAt": "2026-11-04T10:00:00Z", "body": _REVIEW_BODY},

@@ -121,28 +121,55 @@ _ADDITIONAL = re.compile(r"Additional comments:\s*\d+")
 _ADDITIONAL_FINDING = re.compile(r"<summary>([^<]+)-(\d+)-(\d+): \d+</summary>")
 #: The bold status line CodeRabbit prints before a finding's title.
 _STATUS_BOLD = frozenset({"Unverified finding"})
+#: One finding's line range inside a file block: a backticked ``L1-L2`` followed by a colon.
+_ADDITIONAL_RANGE = re.compile(r"^`(\d+)-(\d+)`:", re.MULTILINE)
+#: The opening or closing tag of a ``<details>`` block, for matching one to its close.
+_DETAILS_TAG = re.compile(r"</?details\b[^>]*>", re.IGNORECASE)
 
 
 class GhError(Exception):
     """A ``gh`` command failed or printed something other than the expected JSON."""
 
 
-def summarize(body: str) -> tuple[str | None, str]:
-    """A comment's severity, when it names one, and its title line, without markup."""
-    text = _TAG.sub("", _DETAILS.sub("", _HTML_COMMENT.sub("", body)))
+def _is_status(line: str, skip: frozenset[str]) -> bool:
+    """Whether *line* is one of the bold status lines *skip* names."""
+    bold = _BOLD_LINE.match(line)
+    return bold is not None and bold.group(1) in skip
+
+
+def _severity_and_title(text: str, *, skip: frozenset[str] = frozenset()) -> tuple[str | None, str]:
+    """A finding's severity and title from *text*, whose markup the caller has stripped.
+
+    *skip* names bold status lines, such as CodeRabbit's "Unverified finding", that are not
+    titles.
+    """
     match = _SEVERITY.search(text)
     severity = match.group(1) if match else None
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     title = next(
-        (m.group(1) for m in map(_BOLD_LINE.match, lines) if m and m.group(1) not in SEVERITIES),
+        (
+            bold.group(1)
+            for line in lines
+            if (bold := _BOLD_LINE.match(line)) is not None
+            and bold.group(1) not in SEVERITIES
+            and bold.group(1) not in skip
+        ),
         None,
     )
     if title is None:
         # The severity line is the only bold line, or there is none: take the first prose line.
-        title = next((line for line in lines if not _SEVERITY.search(line)), "")
+        title = next(
+            (line for line in lines if not _SEVERITY.search(line) and not _is_status(line, skip)),
+            "",
+        )
     if len(title) > TITLE_LIMIT:
         title = title[: TITLE_LIMIT - 1] + "…"
     return severity, title
+
+
+def summarize(body: str) -> tuple[str | None, str]:
+    """A comment's severity, when it names one, and its title line, without markup."""
+    return _severity_and_title(_TAG.sub("", _DETAILS.sub("", _HTML_COMMENT.sub("", body))))
 
 
 def _printable(text: str) -> str:
@@ -211,41 +238,50 @@ def outside_diff(body: str) -> list[tuple[str, str, str]]:
     ]
 
 
-def _finding_title(lines: list[str]) -> str:
-    """The first bold line that is not a severity or CodeRabbit's status line."""
-    return next(
-        (
-            m.group(1)
-            for line in lines
-            if (m := _BOLD_LINE.match(line))
-            and m.group(1) not in SEVERITIES
-            and m.group(1) not in _STATUS_BOLD
-        ),
-        "",
-    )
+def _additional_section_end(body: str, *, start: int) -> int:
+    """The index just past the ``</details>`` that closes the block holding *start*."""
+    opening = body.rfind("<details", 0, start)
+    if opening == -1:
+        return len(body)
+    depth = 0
+    for tag in _DETAILS_TAG.finditer(body, opening):
+        depth += 1 if tag.group(0).lower().startswith("<details") else -1
+        if depth == 0:
+            return tag.end()
+    return len(body)
 
 
 def additional_diff(body: str) -> list[tuple[str, str, str]]:
     """A review body's additional-comment findings as ``(where, severity, title)``.
 
     CodeRabbit nests these under "Additional comments: N": one ``<summary>path-L1-L2: N`` per
-    file, then a line naming ``L1-L2`` with the severity, then the bold title.
+    file, then one backticked ``L1-L2`` line per finding with its severity, then the title.
     """
     heading = _ADDITIONAL.search(body)
     if heading is None:
         return []
-    starts = list(_ADDITIONAL_FINDING.finditer(body, heading.end()))
+    section_end = _additional_section_end(body, start=heading.start())
+    files = list(_ADDITIONAL_FINDING.finditer(body, heading.end(), section_end))
     findings: list[tuple[str, str, str]] = []
-    for index, match in enumerate(starts):
-        end = starts[index + 1].start() if index + 1 < len(starts) else len(body)
-        text = _TAG.sub("", _HTML_COMMENT.sub("", body[match.end() : end]))
-        severity = _SEVERITY.search(text)
-        if severity is None:
-            continue
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        first, last = match.group(2), match.group(3)
-        where = f"{match.group(1)}:{first}" if first == last else f"{match.group(1)}:{first}-{last}"
-        findings.append((_printable(where), severity.group(1), _printable(_finding_title(lines))))
+    for index, file_match in enumerate(files):
+        end = files[index + 1].start() if index + 1 < len(files) else section_end
+        block = body[file_match.end() : end]
+        markers = list(_ADDITIONAL_RANGE.finditer(block))
+        for marker_index, marker in enumerate(markers):
+            stop = (
+                markers[marker_index + 1].start() if marker_index + 1 < len(markers) else len(block)
+            )
+            text = _TAG.sub("", _HTML_COMMENT.sub("", block[marker.end() : stop]))
+            severity, title = _severity_and_title(text, skip=_STATUS_BOLD)
+            if severity is None:
+                continue
+            first, last = marker.group(1), marker.group(2)
+            where = (
+                f"{file_match.group(1)}:{first}"
+                if first == last
+                else f"{file_match.group(1)}:{first}-{last}"
+            )
+            findings.append((_printable(where), severity, _printable(title)))
     return findings
 
 
