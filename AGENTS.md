@@ -21,7 +21,7 @@ Cite these; never restate them:
 |---|---|---|
 | **Domain Glossary** | [`GLOSSARY.md`](GLOSSARY.md) | Project vocabulary. |
 | **System Specification** | [`docs/SPEC.md`](docs/SPEC.md) | Goals, invariants, evidentiary tiers, verification matrix. |
-| **Architecture & 1-Hop Routing** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Code path → governing anchors and research notes. |
+| **Architecture & 1-Hop Routing** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`architecture-python.md`](docs/architecture-python.md) | Code path → governing anchors and research notes; Rust, then Python. |
 | **Anchor Registry** | [`python/stunt_reel/doc_anchors.py`](python/stunt_reel/doc_anchors.py) | Where each `[I*]`, `[FMT-*]`, `[MEM-*]` anchor is defined. |
 | **Runtime Memory Map** | [`research/playone-exe/memory-map.md`](research/playone-exe/memory-map.md) | Index, conventions, `DGROUP` offsets, and the memory-map files defining `[MEM-*]` anchors. |
 | **Seam Contracts** | [`contracts/mod.rs`](crates/stunt-core/src/contracts/mod.rs) | Seams 1–4: VFS, trajectory, shape, capture and compare. |

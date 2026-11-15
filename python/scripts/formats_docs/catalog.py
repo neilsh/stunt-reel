@@ -129,6 +129,7 @@ LINK_SCAN_FILES: list[str] = [
     "README.md",
     "AGENTS.md",
     "docs/ARCHITECTURE.md",
+    "docs/architecture-python.md",
     "docs/SPEC.md",
     "research/playone-exe/memory-map.md",
     "GLOSSARY.md",

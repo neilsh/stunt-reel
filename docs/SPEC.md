@@ -162,7 +162,7 @@ The system integrates across four seams, defined by the types in `crates/stunt-c
 * **Seam 3 (`SodModelIr`)**: the Shape IR, a flat-arena node graph of one shape, produced by the single `decode_sod` entry point in strict, lenient or census mode; a decoded shape carries its `DecodeRecord` (header, first blocking opcode, census step-overs, first `OP_RETURN`) and authored shapes carry none, and the shape owns its mesh slices and extent ([`shape/mod.rs`](../crates/stunt-core/src/contracts/shape/mod.rs)); see `[I2]`.
 * **Seam 4 (`VisualParityGate`)**: capture-vs-render SSIM and the `[I6]` gate, reported by `stuntreel parity` ([`parity/`](../crates/stunt-cli/src/parity/)); the seam has no core types ([`contracts/mod.rs`](../crates/stunt-core/src/contracts/mod.rs)). The render, capture and report documents it exchanges are typed by the pure [`stunt-parity`](../crates/stunt-parity/) port, with one adapter per language ([ADR 0011](adr/0011-parity-artifacts-are-a-versioned-port.md)); see `[I6]`.
 
-Which code path is governed by which seam, anchor and note: [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Which code path is governed by which seam, anchor and note: [`ARCHITECTURE.md`](ARCHITECTURE.md), and [`architecture-python.md`](architecture-python.md) for Python paths.
 
 ---
 
