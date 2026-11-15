@@ -137,6 +137,25 @@ gate run under `workspace-write` panicked in `test-rust` with
 `mise run *` and use a short timeout, so a blocked command returns a decision rather than a
 deadline.
 
+DSH's `run_code` traps, each hit several times by workers on 2026-11-14:
+
+- **Backticks and `${` in a JS template literal** end or interpolate it, so a Python or
+  Markdown edit containing them fails mid-batch with earlier edits already applied. Write such
+  text with the `write` or `edit` tool, one edit per call, and after a failed call check what
+  landed.
+- **`mise run fix` and the commit hooks rewrite files**, so a later `edit` fails with "file
+  changed since it was read" or "old_string not found": re-read after either.
+- **`read` caps a call at about 1300 lines and truncates lines over 2000 characters**, so a
+  `read` then `write` round trip silently cuts long lines (`ARCHITECTURE.md`, research tables).
+  Edit in place with `edit`; to copy a file for a move or split, use `git show <ref>:<path>`,
+  which gives its committed content without uncommitted edits.
+- **PowerShell 5.1 sets exit 1 when a native command writes to stderr**, even on success: trust
+  `$LASTEXITCODE` or the gate's `] PASS` line. Its `>` writes UTF-16; pipe to
+  `Out-File -Encoding utf8` instead.
+- **`orca orchestration send` breaks on a quoted or multi-line `--body`:** keep `--body` to one
+  plain line and put the report in a file passed as `--report-path`, with `--task-id` copied
+  from the current brief. `orca orchestration check` takes `--terminal <handle>`, not `--from`.
+
 ## Orca
 
 Orca workspaces are the one exception to the in-checkout rule in AGENTS.md, Worktrees. Orca chooses their path,
