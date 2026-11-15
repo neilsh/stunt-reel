@@ -418,10 +418,10 @@ description = "Run Rust unit and integration tests"
 run = "cargo test --locked --workspace --all-features"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
-[tasks.test-render]
+[tasks.test-gpu]
 depends = ["ensure"]
-description = "Run stunt-render's GPU test binary (`gpu`) with a bounded hang watchdog (detects hangs instead of waiting forever)"
-run = "uv run python python/scripts/watch_render_test.py"
+description = "Run stunt-render's GPU test binary (`gpu`); a test still running past its deadline (60 s, `STUNT_GPU_TEST_DEADLINE_S`) aborts with a HANG line"
+run = "cargo test --locked -p stunt-render --test gpu"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.cov-rust]

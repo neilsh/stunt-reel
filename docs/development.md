@@ -59,7 +59,7 @@ The corpus ships the unpatched 1992 executables; `mise run game-builds` makes an
 | `python/stunt_reel/tac/` | dosbox-automation harness: Lua generator, REST client, capture plans, staging, MAKEONE driver — [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
 | `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |
 | `python/scripts/` | Entry points for capture, parity, format and documentation checks (e.g. `capture_playone_reference.py`, `parity_run.py`, `parity_sweep.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`) plus maintenance tools |
-| `tests/` | Python suite and synthetic fixtures — [`tests/fixtures/README.md`](../tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/it/` (one test binary per crate: add a test as a module in `it/main.rs`, run one with `cargo test -p <crate> --test it -- <module>::`), apart from stunt-render's GPU tests in `tests/gpu/`, which stay a second binary for the hang watchdog |
+| `tests/` | Python suite and synthetic fixtures — [`tests/fixtures/README.md`](../tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/it/` (one test binary per crate: add a test as a module in `it/main.rs`, run one with `cargo test -p <crate> --test it -- <module>::`), apart from stunt-render's GPU tests in `tests/gpu/`, which stay a second binary so the hang-rate loop can run them alone |
 | `docs/` | Living spec, architecture routing, ADRs, and guides (`howto/`, `agents/`) |
 | `manifests/all/` | One committed TOML manifest per film whose `.ALL` `make-all` stored: the game items the archive is rebuilt from, with their hashes ([ADR 0032](adr/0032-a-films-archive-is-committed-as-a-manifest.md)) |
 | `research/` | Format specifications beside their `.ksy` layouts plus `PLAYONE.EXE` analysis notes — [`research/formats/INDEX.md`](../research/formats/INDEX.md) |
@@ -81,7 +81,7 @@ One task per file in [`docs/howto/`](howto/):
 - [Export a film to video or glTF](howto/export-a-film.md)
 - [Inspect a shape's geometry](howto/inspect-a-shape.md): `sod-trace`, `shape-views`, `shape-diff`
 - [Validate the format catalog against the corpus](howto/validate-formats-against-the-corpus.md)
-- [Run the GPU tests](howto/run-the-gpu-tests.md) under the hang watchdog
+- [Run the GPU tests](howto/run-the-gpu-tests.md) under the per-test hang deadline
 - [Take a commit from another session's branch](howto/take-a-commit-from-another-session.md)
 
 ---
