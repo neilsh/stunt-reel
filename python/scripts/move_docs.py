@@ -28,10 +28,14 @@ A ``[[split]]`` table relinks one section of a note split into topic files: ``fr
 are repo-relative POSIX paths, and each may end in ``#<anchor>``, a GitHub heading anchor
 (duplicate headings take the ``-1``, ``-2`` suffixes GitHub gives them). A ``to`` without a
 fragment keeps the section's anchor; a ``from`` without one names the whole-file destination
-for links to the note that carry no fragment, once per note. On either phase a link to a split
-note is written to the mapped file with its query kept, and an inbound link whose fragment names
-no mapped section is reported and makes the run exit non-zero without writing. The tool relinks
-only: the note's own text is not cut into the new files.
+for links to the note that carry no fragment, once per note. ``from`` names the note by its
+pre-move path; the note must be tracked and each anchor must be one of its headings. On either
+phase a link to a split note is written to the mapped file with its query kept, and an inbound
+link whose fragment names no mapped section is reported and makes the run exit non-zero without
+writing; the move phase checks the files that stay and the files about to move before any
+git mv runs. A self-link (a bare ``#<anchor>`` in the note) whose section a rule moved is
+reported rather than rewritten, since the note's text is not cut; a link in a destination file
+to its own section is written as ``#<anchor>``.
 
 Usage: ``mise run move-docs -- apply <moves.toml> --phase move|inside [--dry-run] [--root DIR]``.
 Exit status: ``0`` on success, ``1`` for a moves file that does not fit the tree or a failed git
@@ -57,6 +61,7 @@ lazy from collections.abc import Collection, Iterable
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.git_env import isolated_env
 from stunt_reel.markdown_links import (
+    HEADING_REGEX,
     LINK_DEFINITION_REGEX,
     MARKDOWN_LINK_REGEX,
     URL_SCHEME_REGEX,
@@ -164,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         moves = _moves(data, tracked)
         mapping = path_map(moves)
         splits = _splits(data)
+        _check_splits(splits, root, tracked, mapping)
         files = [(old, new) for old, new in moves if not old.endswith("/")]
         _check_phase(root, tracked, moves, moving=moving)
         unmapped: list[str] = []
@@ -172,8 +178,9 @@ def main(argv: list[str] | None = None) -> int:
             skipped = {old for old, _ in files} | {_relative(args.moves, root)}
             stay = [(path, path) for path in sorted(tracked - skipped)]
             rewrites, untouched = _rewrites(root, stay, mapping, splits, unmapped)
+            unmapped += _unmapped_in_moved(root, files, mapping, splits)
         else:
-            _check_not_relinked(root, tracked, files, mapping, splits)
+            _check_not_relinked(root, tracked, files, mapping)
             readmes = []
             rewrites, untouched = _rewrites(root, files, mapping, splits, unmapped)
         _check_unmapped(unmapped)
@@ -281,6 +288,47 @@ def _splits(data: dict[str, Any]) -> Splits:
             None if destination_anchor is None else slug(destination_anchor),
         )
     return splits
+
+
+def _check_splits(
+    splits: Splits, root: Path, tracked: Collection[str], mapping: dict[str, str]
+) -> None:
+    """Raise MovesError unless each split source is a tracked note whose headings map its anchors.
+
+    *source* is the note's pre-move path: keyed by a move destination, the rules would silently
+    never apply, so that is refused. The note is read where the phase has it, at its new path
+    after the move phase.
+    """
+    for source, split in splits.items():
+        if source in mapping.values():
+            raise MovesError(
+                f"[[split]] {source} is a move destination; key it by the note's pre-move path"
+            )
+        current = mapping.get(source, source)
+        if current not in tracked:
+            raise MovesError(f"[[split]] {source} is not a tracked note")
+        note = root / current
+        if not note.is_file():
+            raise MovesError(f"[[split]] {source} does not exist")
+        anchors = _heading_anchors(note.read_text(encoding="utf-8"))
+        for key in split.sections:
+            if key not in anchors:
+                raise MovesError(f"[[split]] {source}#{key} names no heading of {source}")
+
+
+def _heading_anchors(text: str) -> set[str]:
+    """GitHub's anchors for *text*'s headings, outside fenced code, duplicates numbered -1 onward."""
+    anchors: set[str] = set()
+    seen: dict[str, int] = {}
+    for blanked, line in zip(prose(text).splitlines(), text.splitlines(), strict=True):
+        heading = HEADING_REGEX.match(line) if HEADING_REGEX.match(blanked) else None
+        if heading is None:
+            continue
+        base = slug(heading[2])
+        count = seen.get(base, 0)
+        anchors.add(base if count == 0 else f"{base}-{count}")
+        seen[base] = count + 1
+    return anchors
 
 
 def _split_side(value: object, what: str) -> tuple[str, str | None]:
@@ -409,6 +457,27 @@ def _check_phase(
             raise MovesError(f"{old} has not moved to {new}; run --phase move first")
 
 
+def _unmapped_in_moved(
+    root: Path,
+    files: list[tuple[str, str]],
+    mapping: dict[str, str],
+    splits: Splits,
+) -> list[str]:
+    """Section links in the files that will move, resolved from their old paths, that no rule maps.
+
+    The move phase does not rewrite a moved file, so this only collects the report: an unmapped
+    section link is refused before any git mv runs (issue #523).
+    """
+    unmapped: list[str] = []
+    for old, _new in files:
+        contents = _contents(root, old) if old.endswith(".md") else None
+        if not isinstance(contents, str):
+            continue
+        for start, end in _link_spans(contents):
+            _relink(contents[start:end], old, old, mapping, splits, unmapped)
+    return unmapped
+
+
 def _check_unmapped(unmapped: list[str]) -> None:
     """Raise MovesError naming every section link no ``[[split]]`` rule maps."""
     if unmapped:
@@ -423,7 +492,6 @@ def _check_not_relinked(
     tracked: set[str],
     files: list[tuple[str, str]],
     mapping: dict[str, str],
-    splits: Splits,
 ) -> None:
     """Raise MovesError when a moved file's relative link that the inside phase would change
     already resolves from the file's new place to a tracked file or directory: the phase ran."""
@@ -440,7 +508,8 @@ def _check_not_relinked(
             split = _split_target(target)
             if split is None or split[0].startswith("/"):
                 continue
-            if _relink(target, old, new, mapping, splits) is None:
+            # Only the move matters here: a split rewrite is not evidence the inside phase ran.
+            if _relink(target, old, new, mapping) is None:
                 continue
             here = _resolve(split[0], new)
             if here is not None and (here in tracked or here in directories):
@@ -521,6 +590,9 @@ def _relink(
     unmapped: list[str] | None = None,
 ) -> str | None:
     """The link *target* rewritten for the move or split, or None when it stays."""
+    if target.startswith("#"):
+        _split_self_link(target, source_old, source_new, splits, unmapped)
+        return None
     split = _split_target(target)
     if split is None:
         return None
@@ -533,6 +605,9 @@ def _relink(
     if section is not None:
         destination, section_rest = section
         destination = _moved(destination, mapping) or destination
+        if destination == source_new and section_rest.startswith("#"):
+            # The file already is the destination: its own section is a bare fragment.
+            return None if section_rest == target else section_rest
         if rooted:
             new = f"/{destination}"
         else:
@@ -552,6 +627,31 @@ def _relink(
         new += "/"
     new += rest
     return None if new == target else new
+
+
+def _split_self_link(
+    target: str,
+    source_old: str,
+    source_new: str,
+    splits: Splits | None,
+    unmapped: list[str] | None,
+) -> None:
+    """Note a bare fragment in the split note whose section a rule moved to another file.
+
+    The tool does not cut the note, so the note's own links cannot be relinked; it reports them
+    for the person making the split instead.
+    """
+    if not splits or unmapped is None or (split := splits.get(source_old)) is None:
+        return
+    fragment = target[1:]
+    if not fragment or (section := split.sections.get(slug(fragment))) is None:
+        return
+    destination, anchor = section
+    if destination != source_old:
+        unmapped.append(
+            f"{source_new}: {target} is a self-link whose section moved to "
+            f"{destination}#{anchor or slug(fragment)}"
+        )
 
 
 def _split_section(
