@@ -1,11 +1,25 @@
 # Run the GPU tests
 
-A plain `cargo test` of stunt-render's `gpu` binary waits forever if a driver wedges ([why](../quality-gate.md#gpu-tests)). Run it under the watchdog instead:
-
 ```powershell
-mise run test-render -- --runs 20
+mise run test-gpu
 ```
 
-(or `uv run python python/scripts/watch_render_test.py --runs 20`; one run is the default). It builds the binary once, gives each attempt a 60-second wall-clock bound (`--timeout-s`), kills the whole process tree on expiry, and prints `HANG` with the elapsed time, the last 20 stdout lines and the child-process count, exiting 1.
+A driver that wedges would leave a plain `cargo test` of stunt-render's `gpu` binary waiting forever ([why](../quality-gate.md#gpu-tests)). Every test in it runs under a deadline instead: a test still running after `STUNT_GPU_TEST_DEADLINE_S` seconds (a positive whole number; default 60) prints `HANG: <test> still running after <N>s` to stderr and aborts the process.
 
-If it fires, do not leave the run unbounded: re-run with a longer `--timeout-s` and attach a debugger to the stuck process, or narrow it with `--test-threads 1`, and keep the diagnostics.
+To measure the hang rate, run the task in a loop that stops at the first failure.
+
+PowerShell:
+
+```powershell
+$env:STUNT_REQUIRE_GPU = "1"; 1..20 | % { mise run test-gpu; if ($LASTEXITCODE) { break } }
+```
+
+bash:
+
+```bash
+for i in $(seq 20); do STUNT_REQUIRE_GPU=1 mise run test-gpu || break; done
+```
+
+`STUNT_REQUIRE_GPU=1` makes a machine with no adapter fail instead of skipping every test, which would let the loop pass.
+
+If a `HANG` line appears, re-run with a longer `STUNT_GPU_TEST_DEADLINE_S`, attach a debugger to the stuck process, or narrow it with `mise run test-gpu -- -- --test-threads 1`, and keep the diagnostics.
