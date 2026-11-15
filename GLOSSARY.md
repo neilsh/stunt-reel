@@ -269,6 +269,10 @@ _Avoid_: golden frames, the reference (unqualified)
 A film the parity loop scores against its reference capture and the adoption rule counts.
 _Avoid_: fidelity target, parity target, pinned film
 
+**Renderer class**:
+The kind of adapter a render ran on: `gpu` for hardware, `lavapipe` for any CPU adapter, WARP included. Expected scores are kept per class.
+_Avoid_: backend (wgpu's term for Vulkan, DX12 and the rest)
+
 **Expected score**:
 A reference film's parity score recorded for one renderer class on one measured `crates/` tree; drift is judged against it.
 _Avoid_: baseline (unqualified), pinned score
