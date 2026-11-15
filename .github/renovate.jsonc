@@ -73,6 +73,14 @@
       "matchManagers": ["bun", "npm"],
       "groupName": "research site",
     },
+    // site/astro.config.mjs loads katex's stylesheet; it must match the katex rehype-katex
+    // renders with (0.16.x for rehype-katex 7), whose class names differ from later releases.
+    {
+      "description": "Keep katex on the major rehype-katex renders with.",
+      "matchManagers": ["bun", "npm"],
+      "matchPackageNames": ["katex"],
+      "allowedVersions": "<0.17.0",
+    },
     // Patch and minor crate bumps fail the same way; a major is where msrv and deny go red, so
     // it gets its own PR where a failure names one crate instead of hiding behind a green bump.
     {
