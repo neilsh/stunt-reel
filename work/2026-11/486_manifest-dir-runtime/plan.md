@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A new worktree seeded from a donor keeps the donor's builds of the workspace crates whose sources are unchanged, so its first `mise run check-rust` drops from about 40 s toward the 22 s warm time.
+**Goal:** A new worktree seeded from a donor keeps the donor's builds of the workspace crates whose sources are unchanged, so its first `mise run check-rust` drops from about 23 s toward the 13 s warm time (one measurement each, 2026-11-14, Cargo 1.100.0; a prototype of Task 5R took 14–18 s over three runs).
 
-**Architecture:** Two changes, one branch, two code commits. (1) Every Rust test finds the workspace root at run time through one helper, `test_support::workspace_root()`, copied byte-for-byte into each test crate, so no binary records the donor's `CARGO_MANIFEST_DIR` (rustc writes an `env!` read into dep-info as `# env-dep:`, and Cargo rebuilds a unit whose recorded value differs). (2) `target_seed.py` stops dropping every member fingerprint: it keeps a member unit when every file its rustc dep-info lists is byte-identical in the new checkout, and copies the donor's modification times onto those files, so Cargo judges the unit exactly as it would in the donor.
+**Architecture:** Two changes, one branch, three code commits (Task 5R corrects Task 5 for Cargo 1.100). (1) Every Rust test finds the workspace root at run time through one helper, `test_support::workspace_root()`, copied byte-for-byte into each test crate, so no binary records the donor's `CARGO_MANIFEST_DIR` (rustc writes an `env!` read into dep-info as `# env-dep:`, and Cargo rebuilds a unit whose recorded value differs). (2) `target_seed.py` stops dropping every member fingerprint: it keeps a member unit when every file its rustc dep-info lists is byte-identical in the new checkout, and copies the donor's modification times onto those files, so Cargo judges the unit exactly as it would in the donor. It finds units in Cargo 1.100's `build/<package>/<hash>/` layout and the older flat one, and drops a unit whose Cargo fingerprint names the donor's path.
 
 **Tech Stack:** Rust 2024 (cargo test, clippy pedantic), Python 3.14 (pytest, ruff), mise tasks, PowerShell 5.1 for the benchmark.
 
@@ -18,7 +18,7 @@
 - Commit subjects are Conventional Commits; end every commit message with the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (or the attribution line your harness gives).
 - Do not push and do not open a PR: the coordinator pushes the branch and opens the PR after the fresh review. Task 6 ends with a report. The `docs/` changes of Task 6 need a fresh reviewer before any push (AGENTS.md, Committing rule 5); that happens after this plan.
 - Commit with a Bash (Git Bash) heredoc, `git commit -F - <<'EOF' … EOF`, as each commit step shows. Never commit from PowerShell: a here-string is an argument, not stdin, and PowerShell 5.1 mangles quotes in `-m`.
-- Start from the plans branch `origin/neilsh/open-tasks-dsh` (PR #514), which already holds this `plan.md` and `README.md`; it need not be merged. Never stage `plan.md`.
+- Start from the plans branch `origin/neilsh/open-tasks-dsh` (PR #514), which already holds this `plan.md` and `README.md`; it need not be merged. Never stage `plan.md`. Tasks 1–5 are already committed on `perf/486-manifest-dir-runtime` in `E:\orca\workspaces\stunt-reel\dsh-486` (`7e28b21a`, `f8d2c7c7`; not pushed): continue there at Task 5R.
 - `grep` calls `crates/stunt-core/tests/it/vfs_spec.rs` a binary file (it holds one NUL byte inside a literal). It is valid UTF-8; edit it normally and search it with `grep -a`.
 - **STOP and ask** (do not guess) wherever a step says STOP, and whenever a command's output differs from the "Expected" line in a way the step does not cover.
 
@@ -27,19 +27,23 @@
 - 30 sites, not the issue's 29 (counted by `grep -rn 'CARGO_MANIFEST_DIR' crates/` plus `grep -an` on `vfs_spec.rs`). All are test code.
 - One helper, copied as one identical file into each of the five test crates. A shared crate or a `pub` function in `stunt-core` would put run-time environment reads into the pure core (`[I7]`); `#[path]` to a file in `crates/` would sit inside the `crates/*` members glob.
 - Every site calls the helper by its full path, `crate::test_support::workspace_root()`, so no `use` line is added anywhere.
-- `include_str!` / `include_bytes!` with relative paths stay: rustc records them workspace-relative (`crates\stunt-core\tests\it\../../../../tests/fixtures/...`), which resolve inside each checkout. Task 6 step 5 checks this on a real seeded worktree.
-- A fingerprint directory `<package>-<hash>` and its rustc dep-info `deps/<crate_name>-<hash>.d` share the hash (checked on `E:\git\stunt-reel\target\debug` on 2026-11-14: `.fingerprint/stunt-core-7c670b3f046ddfe9` ↔ `deps/it-7c670b3f046ddfe9.d`). A unit with zero or several matching `.d` files rebuilds.
+- `include_str!` / `include_bytes!` with relative paths stay. rustc's dep-info records them workspace-relative (`crates\stunt-core\tests\it\../../../../tests/fixtures/...`), but Cargo's own (`fingerprint/dep-*`, binary) recorded such files by absolute path (observed 2026-11-14: `include_bytes!` fixtures, e.g. `E:\git\stunt-reel\.claude\worktrees\bench486-after-a\crates\stunt-core\tests\it\../../../../tests/fixtures/synthetic_pfont.bin`, and in clippy units `clippy.toml` and the workspace `Cargo.toml`). A unit kept with such a path watched the donor's fixture: touching B's copy left it `Fresh`. So the seed drops a unit when a file in its fingerprint directory holds the donor's path (`_names_donor`); those units rebuild in every seeded worktree.
+- Cargo 1.100 keeps a unit in `target/debug/build/<package>/<hash>/` (and under `target/check/debug/` and `target/matrix/debug/`), its fingerprint in `fingerprint/` and its rustc dep-info in `out/<crate_name>-<hash>.d` (checked on `bench486-after-a` on 2026-11-14: `build/stunt-cli/855d84e6a30c8126/fingerprint/` ↔ `out/stuntreel-855d84e6a30c8126.d`). Registry crates sit in `build/<package>/<hash>/` too; a fresh 1.100 build has no `.fingerprint/` or `deps/` at all. The `.fingerprint/<package>-<hash>/` and `deps/<crate_name>-<hash>.d` entries in today's targets are Cargo 1.99 leftovers. The seed handles both layouts, because a copy can carry those leftovers and an unverified member fingerprint must not survive in either. A unit with zero or several matching `.d` files rebuilds. The seed drops a unit by deleting its fingerprint directory and leaves its outputs.
+- Under Cargo 1.100 a seeded unit rebuilt only because the checkout's sources are newer than the donor's build (``Dirty stunt-core v0.1.0 (...): the file `crates\stunt-core\src\world\scenery.rs` has changed (13439171682.900649500s, 33s after last build at 13439171649.019108100s)``); the unit hashes and fingerprint JSON, the inputs to freshness, hold no checkout path. The kept outputs do (`out/*.d`, `.rlib`, `.rmeta`, `.pdb`), so panic locations and backtraces from a kept unit name the donor's files. Copying the donor's times onto byte-identical sources was enough in the 2026-11-14 run.
+- A target/ counts as built, and as a donor, when its `debug/` holds `build/` or `.fingerprint/` (`_last_build`, whose newest mtime also ranks donors), and `uses_cargo_home` reads dep-info in both `deps/` and `build/*/*/out/`. Before Task 5R both looked only at the 1.99 layout, so a target/ built only by Cargo 1.100 was never chosen as a donor; today's targets qualify only through 1.99 leftovers.
 - rustc dep-info lists each source a second time as a phony rule, a line that ends in `:`; the parser reads only those lines and the `# env-dep:` lines.
-- One PR, three commits (Tasks 4, 5 and 6), branched from `origin/neilsh/open-tasks-dsh`. The PR targets `main` and carries the plans commit with it.
+- One PR, four commits (Tasks 1–4, Task 5, Task 5R and Task 6), branched from `origin/neilsh/open-tasks-dsh`. Task 5R is a new commit on top of `f8d2c7c7`, not an amend. The PR targets `main` and carries the plans commit with it.
 - ADR 0030 is amended in place, in ADR 0035's form (`amended <date> for [#486](…)`, newest amendment first).
 
 ## Review Focus
 
 1. A source edited in the donor after its last build: the copied modification time is newer than the donor's fingerprint, so Cargo rebuilds the unit in the new checkout as it would in the donor. Pinned by `test_seed_keeps_a_member_unit_whose_sources_match_the_donor` asserting the copied `st_mtime_ns`.
-2. A fixture pulled in by `include_bytes!` and edited (touched) in the new worktree must rebuild the unit. Pinned by Task 6 step 5 on a real seeded worktree.
-3. A dep-info file that is not UTF-8, missing, or ambiguous (two `.d` with one hash): the unit rebuilds. Pinned by the `garbled`, `no_dep_info`, `ambiguous` cases in Task 5.
+2. A fixture pulled in by `include_bytes!` and edited (touched) in the new worktree must rebuild the unit. Cargo records such a file by the donor's absolute path, so the seed drops the unit (`watches_donor` case in Task 5R); Task 6 step 3 checks that no kept fingerprint names the donor, and step 5 that the rebuilt unit watches B's fixture.
+3. A dep-info file that is not UTF-8, missing, or ambiguous (two `.d` with one hash): the unit rebuilds. Pinned by the `garbled`, `no_dep_info`, `ambiguous` cases in Task 5R, in both layouts.
 4. A unit that still reads the donor's path at compile time (a future `env!("CARGO_MANIFEST_DIR")`): the seed drops it (`env_dep` case), and the guard test of Task 1 fails the gate.
-5. Tests run outside Cargo (`CARGO_MANIFEST_DIR` unset): the helper panics with `CARGO_MANIFEST_DIR is unset: run the tests through cargo`. Not tested; every gate lane runs through Cargo.
+5. Units that always rebuild in a seeded worktree, by design: clippy's (they record the donor's `clippy.toml`), rustdoc's (their fingerprint directory holds no `dep-*` file and `out/` no `.d`; Cargo judges them by a `Precalculated` newest-file time, observed 2026-11-14), and test units that embed files under the workspace's `tests/fixtures/`. Keeping them would mean rewriting Cargo's binary dep-info; out of scope.
+6. `_names_donor` is a substring match on the normalised donor path, and on `os.path.realpath` of it (which resolves junctions); a `\\?\` prefix is still a match. A donor that Cargo recorded under yet another spelling (an 8.3 short name, a second junction or drive mapping) would not match, so its units would be kept and watch the donor's files. Not tested; the realpath spelling is not tested either.
+7. Tests run outside Cargo (`CARGO_MANIFEST_DIR` unset): the helper panics with `CARGO_MANIFEST_DIR is unset: run the tests through cargo`. Not tested; every gate lane runs through Cargo.
 
 ---
 
@@ -500,36 +504,80 @@ EOF
 
 ---
 
-### Task 5: The seed keeps unchanged member units
+### Task 5: The seed keeps unchanged member units (done: `f8d2c7c7`)
+
+Committed as `f8d2c7c7` (`perf(seed): keep a member unit whose sources match the donor's (#486)`). It added `prune_member_fingerprints`, `_reusable_unit` and `_unit_sources` for Cargo 1.99's flat layout (`.fingerprint/<package>-<hash>/`, `deps/<crate>-<hash>.d`). Cargo 1.100 does not use that layout, so the code finds no member unit: Task 6 step 3 measured every `stunt-*` crate rebuilt (22 s, 20 units, against 23 s and 20 units for origin/main's seed). Do not redo Task 5; Task 5R fixes it.
+
+---
+
+### Task 5R: Fit the seed to Cargo 1.100's layout
+
+Why the units rebuilt (checked 2026-11-14 on `bench486-after-b`, seeded from `bench486-after-a`, cargo 1.100.0, `CARGO_TERM_VERBOSE=true mise run lint-rust`):
+
+```
+Dirty stunt-core v0.1.0 (...\bench486-after-b\crates\stunt-core): the file `crates\stunt-core\src\world\scenery.rs` has changed (13439171682.900649500s, 33s after last build at 13439171649.019108100s)
+Dirty stunt-render v0.1.0 (...): the dependency `stunt-core` was rebuilt
+```
+
+The only reason given is the checkout's source modification times: the unit hashes, fingerprint JSON (`"path"` is a hash of the package-relative path) and `rustflags` matched. Copying the donor's times onto the sources makes those units fresh. Two facts about Cargo 1.100 shape the code:
+
+- A unit lives in `target/debug/build/<package>/<hash>/` (`target/check/debug/build/...` and `target/matrix/debug/build/...` in the gate lanes): its fingerprint in `fingerprint/`, its rustc dep-info in `out/<crate>-<hash>.d` (for example `build/stunt-cli/855d84e6a30c8126/fingerprint/test-bin-stuntreel.json` and `.../out/stuntreel-855d84e6a30c8126.d`).
+- Cargo's own dep-info, `fingerprint/dep-*` (binary), names a file inside the package relative to the package; the files outside it that were observed are named by absolute path. So `stunt-core`'s test units record `E:\...\bench486-after-a\crates\stunt-core\tests\it\../../../../tests/fixtures/synthetic_pfont.bin`, and every clippy unit records the donor's `clippy.toml` and workspace `Cargo.toml`. A copied unit that holds the donor's path watches the donor's file: touching the fixture in B left the test binary `Fresh`. The seed therefore also drops a unit when any file in its fingerprint directory holds the donor's path.
+
+- A fresh 1.100 build writes no `debug/.fingerprint/` or `debug/deps/`. `donor_problem` called a target/ without `.fingerprint/` "not built" and `rank_donors` read that directory's mtime, so a target/ built only by 1.100 could never donate; the bench targets passed only through 1.99 leftovers.
+
+The seed keeps handling the flat layout too: a target/ copied from the primary checkout still carries 1.99-era `.fingerprint/` directories, and an unverified member fingerprint must never survive in either layout.
 
 **Files:**
-- Modify: `python/stunt_reel/target_seed.py` (module docstring lines 1–11; replace `drop_member_fingerprints` lines 170–186; `_copy_from` lines 466–487)
-- Test: `tests/test_target_seed.py` (append)
+- Modify: `python/stunt_reel/target_seed.py` (`uses_cargo_home`; `_reusable_unit`; the loop in `prune_member_fingerprints`; `donor_problem`; `rank_donors`)
+- Test: `tests/test_target_seed.py` (replace the block Task 5 appended)
 
 **Interfaces:**
-- Produces: `prune_member_fingerprints(seeded: Path, members: frozenset[str], *, donor: Path, checkout: Path) -> None` (replaces `drop_member_fingerprints`, whose only caller is `_copy_from`). Private helpers `_unit_sources(dep_info: Path, donor: Path) -> list[str] | None` and `_reusable_unit(fingerprint: Path, *, donor: Path, checkout: Path) -> list[tuple[Path, os.stat_result]] | None`.
+- Produces: private `_member_units(seeded: Path, members: frozenset[str]) -> Iterator[tuple[Path, list[Path]]]`, `_names_donor(fingerprint: Path, donor: Path) -> bool` and `_last_build(target: Path) -> float | None`, plus the constant `_FINGERPRINT_DIRS`. `_reusable_unit` becomes `_reusable_unit(fingerprint: Path, dep_infos: list[Path], *, donor: Path, checkout: Path)`. `prune_member_fingerprints`' signature is unchanged.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Check the starting point**
 
-Append to `tests/test_target_seed.py`:
+In Bash:
+
+```bash
+git log --oneline -3
+git status --short
+```
+
+Expected: the first line starts `f8d2c7c7 perf(seed): keep a member unit whose sources match the donor's (#486)`, the second `7e28b21a test: read CARGO_MANIFEST_DIR at run time in every Rust test (#486)`; `git status --short` prints nothing, or only ` M work/2026-11/486_manifest-dir-runtime/plan.md`. Anything else: STOP.
+
+- [ ] **Step 2: Replace the tests**
+
+In `tests/test_target_seed.py`, delete everything from the line
 
 ```python
 #: A member unit's fingerprint directory, its dep-info, and the source it names. The hash differs
-#: from ``_built``'s serde_core dep-info, which would otherwise match the same ``*-<hash>.d``.
-UNIT = "stunt-core-fedcba9876543210"
-UNIT_DEP_INFO = "stunt_core-fedcba9876543210.d"
+```
+
+to the end of the file (the block Task 5 appended, 74 lines), and append in its place:
+
+```python
+#: A member unit's hash, the source its dep-info names, and that source's modification time in
+#: the donor, in nanoseconds (2001-09-09). The hash differs from ``_built``'s serde_core
+#: dep-info, which would otherwise match the same ``*-<hash>.d``.
+UNIT_HASH = "fedcba9876543210"
 SOURCE = "crates/core/src/lib.rs"
-#: The donor source's modification time, in nanoseconds (2001-09-09).
 OLD_NS = 1_000_000_000_000_000_000
+#: Where member stunt-core's unit keeps its fingerprint and its dep-info under ``target/debug``:
+#: Cargo 1.100's ``build/<package>/<hash>/`` and older Cargo's flat layout.
+LAYOUTS = {
+    "build": (f"build/stunt-core/{UNIT_HASH}/fingerprint", f"build/stunt-core/{UNIT_HASH}/out"),
+    "flat": (f".fingerprint/stunt-core-{UNIT_HASH}", "deps"),
+}
 
 
 def _copy_tree(source: Path, destination: Path) -> None:
     shutil.copytree(source, destination)
 
 
-def _member_build(donor: Path, here: Path, variant: str) -> None:
-    """The donor's debug build of member stunt-core from ``SOURCE``, which *here* holds too,
-    spoiled the way *variant* names; ``same`` spoils nothing."""
+def _member_build(donor: Path, here: Path, variant: str, layout: str) -> None:
+    """The donor's debug build of member stunt-core from ``SOURCE`` in *layout*, which *here*
+    holds too, spoiled the way *variant* names; ``same`` spoils nothing."""
     theirs = donor / SOURCE
     theirs.parent.mkdir(parents=True, exist_ok=True)
     theirs.write_text("pub fn a() {}\n", encoding="utf-8")
@@ -540,25 +588,33 @@ def _member_build(donor: Path, here: Path, variant: str) -> None:
         text = "pub fn b() {}\n" if variant == "differs" else "pub fn a() {}\n"
         ours.write_text(text, encoding="utf-8")
     debug = donor / "target" / "debug"
-    (debug / ".fingerprint" / UNIT).mkdir(parents=True)
+    fingerprint, dep_infos = LAYOUTS[layout]
+    (debug / fingerprint).mkdir(parents=True)
+    (debug / dep_infos).mkdir(parents=True, exist_ok=True)
+    dep_info = debug / dep_infos / f"stunt_core-{UNIT_HASH}.d"
     named = f"{donor.as_posix()}/{SOURCE}" if variant == "absolute" else SOURCE
-    lines = [f"{debug.as_posix()}/deps/{UNIT_DEP_INFO}: {named}", "", f"{named}:"]
+    lines = [f"{dep_info.as_posix()}: {named}", "", f"{named}:"]
     if variant == "env_dep":
         value = str(donor / "crates" / "core").replace("\\", "\\\\")
         lines.append(f"# env-dep:CARGO_MANIFEST_DIR={value}")
-    dep_info = debug / "deps" / UNIT_DEP_INFO
     if variant == "garbled":
         dep_info.write_bytes(b"\xff\xfe" + SOURCE.encode() + b":\n")
     elif variant != "no_dep_info":
         dep_info.write_text("\n".join(lines) + "\n", encoding="utf-8")
     if variant == "ambiguous":
-        (debug / "deps" / "it-fedcba9876543210.d").write_text(f"{SOURCE}:\n", encoding="utf-8")
+        (debug / dep_infos / f"it-{UNIT_HASH}.d").write_text(f"{SOURCE}:\n", encoding="utf-8")
+    # Cargo's own dep-info names a file in the package relative to it, and any other file, such
+    # as a fixture under the workspace's tests/, by its absolute path.
+    recorded = b"\x00src\\lib.rs"
+    if variant == "watches_donor":
+        recorded += b"\x00" + str(donor / "tests" / "fixtures" / "a.bin").encode()
+    (debug / fingerprint / "dep-lib-stunt_core").write_bytes(recorded)
 
 
-def _seed_member_build(tmp_path: Path, variant: str) -> tuple[Path, Path]:
+def _seed_member_build(tmp_path: Path, variant: str, layout: str) -> tuple[Path, Path]:
     here = _fresh(tmp_path / "here", "stunt-core")
     donor = _donor(tmp_path / "d")
-    _member_build(donor, here, variant)
+    _member_build(donor, here, variant, layout)
     out = seed(
         here,
         checkouts=[donor],
@@ -571,89 +627,138 @@ def _seed_member_build(tmp_path: Path, variant: str) -> tuple[Path, Path]:
     return here, donor
 
 
-def test_seed_keeps_a_member_unit_whose_sources_match_the_donor(tmp_path: Path) -> None:
+@pytest.mark.parametrize("layout", sorted(LAYOUTS))
+def test_seed_keeps_a_member_unit_whose_sources_match_the_donor(
+    tmp_path: Path, layout: str
+) -> None:
     """The kept unit's sources take the donor's times, so Cargo judges it as the donor would."""
-    here, _ = _seed_member_build(tmp_path, "same")
-    assert (here / "target" / "debug" / ".fingerprint" / UNIT).is_dir()
+    here, _ = _seed_member_build(tmp_path, "same", layout)
+    assert (here / "target" / "debug" / LAYOUTS[layout][0]).is_dir()
     assert (here / SOURCE).stat().st_mtime_ns == OLD_NS
 
 
+@pytest.mark.parametrize("layout", sorted(LAYOUTS))
 @pytest.mark.parametrize(
     "variant",
-    ["differs", "missing", "absolute", "env_dep", "garbled", "ambiguous", "no_dep_info"],
+    [
+        "differs",
+        "missing",
+        "absolute",
+        "env_dep",
+        "garbled",
+        "ambiguous",
+        "no_dep_info",
+        "watches_donor",
+    ],
 )
-def test_seed_drops_a_member_unit_it_cannot_prove_unchanged(tmp_path: Path, variant: str) -> None:
-    here, donor = _seed_member_build(tmp_path, variant)
-    assert not (here / "target" / "debug" / ".fingerprint" / UNIT).exists()
-    assert (donor / "target" / "debug" / ".fingerprint" / UNIT).is_dir()
+def test_seed_drops_a_member_unit_it_cannot_prove_unchanged(
+    tmp_path: Path, variant: str, layout: str
+) -> None:
+    here, donor = _seed_member_build(tmp_path, variant, layout)
+    fingerprint = LAYOUTS[layout][0]
+    assert not (here / "target" / "debug" / fingerprint).exists()
+    assert (donor / "target" / "debug" / fingerprint).is_dir()
     if variant != "missing":
         assert (here / SOURCE).stat().st_mtime_ns != OLD_NS
+
+
+def test_seed_drops_member_fingerprints_in_cargo_1_100_layout(tmp_path: Path) -> None:
+    """Cargo 1.100 keeps a unit in ``build/<package>/<hash>/``: the seed deletes a member's
+    ``fingerprint/`` there in every lane and leaves other packages' units alone."""
+    here = _fresh(tmp_path / "here", "stunt-core", "stunt-cli")
+    donor = _donor(tmp_path / "d", lanes=("check", "matrix"))
+    kept = ("serde", "stunt-core-extra")
+    dropped = ("stunt-core", "stunt-cli")
+    for profile in ("debug", "check/debug", "matrix/debug"):
+        for name in (*kept, *dropped):
+            unit = donor / "target" / profile / "build" / name / "0123456789abcdef"
+            (unit / "fingerprint").mkdir(parents=True)
+    out = seed(
+        here,
+        checkouts=[donor],
+        rustc_vv=RUSTC,
+        cargo_home=Path(HOME),
+        copy=_copy_tree,
+        volume_clones=_clones,
+    )
+    assert out == SeedOutcome("seeded", f"from {donor}")
+    for profile in ("debug", "check/debug", "matrix/debug"):
+        build = here / "target" / profile / "build"
+        left = sorted(entry.parent.parent.name for entry in build.glob("*/*/fingerprint"))
+        assert left == sorted(kept), profile
+        assert (build / "stunt-core" / "0123456789abcdef").is_dir(), profile
+        assert (donor / "target" / profile / "build" / dropped[0] / "0123456789abcdef").is_dir()
+
+
+def test_a_target_built_only_by_cargo_1_100_can_donate(tmp_path: Path) -> None:
+    """Cargo 1.100 writes no ``.fingerprint/`` or ``deps/``: a unit and its dep-info sit in
+    ``build/<package>/<hash>/``."""
+    here = _fresh(tmp_path / "here")
+    a = _donor(tmp_path / "a")
+    shutil.rmtree(a / "target" / "debug" / ".fingerprint")
+    shutil.rmtree(a / "target" / "debug" / "deps")
+    out = a / "target" / "debug" / "build" / "serde_core" / "0123456789abcdef" / "out"
+    out.mkdir(parents=True)
+    source = HOME + r"\registry\src\index\serde_core\src\lib.rs"
+    (out / "serde_core-0123456789abcdef.d").write_text(
+        f"{out}\\serde_core-0123456789abcdef.d: {source}\n", encoding="utf-8"
+    )
+    assert uses_cargo_home(a / "target", Path(HOME))
+    assert not uses_cargo_home(a / "target", Path(r"E:\packages\cargo"))
+    assert rank_donors([a], here=here, rustc_vv=RUSTC, cargo_home=Path(HOME)) == [a]
 ```
 
-- [ ] **Step 2: Run them and see the keep test fail**
+Write the block with the Edit or Write tool, not through a shell or a Python string literal: either can turn a doubled backslash into one. The backslashes must reach the file exactly as shown, notably in `b"\x00src\\lib.rs"` and `f"{out}\\serde_core-0123456789abcdef.d: {source}\n"`. If Step 3 reports a `SyntaxError` about an invalid escape sequence, make those lines match the block above and rerun.
+
+- [ ] **Step 3: Run them and see the new cases fail**
 
 Run: `mise run test-py -- tests/test_target_seed.py`
-Expected: exactly one failure, `test_seed_keeps_a_member_unit_whose_sources_match_the_donor` (the unit is dropped today); the seven `drops` cases and every existing test pass. Otherwise STOP.
+Expected: `12 failed, 43 passed`, and the failures are exactly:
 
-- [ ] **Step 3: Implement**
+```
+test_seed_keeps_a_member_unit_whose_sources_match_the_donor[build]
+test_seed_drops_a_member_unit_it_cannot_prove_unchanged[differs-build]
+test_seed_drops_a_member_unit_it_cannot_prove_unchanged[missing-build]
+test_seed_drops_a_member_unit_it_cannot_prove_unchanged[absolute-build]
+test_seed_drops_a_member_unit_it_cannot_prove_unchanged[env_dep-build]
+test_seed_drops_a_member_unit_it_cannot_prove_unchanged[garbled-build]
+test_seed_drops_a_member_unit_it_cannot_prove_unchanged[ambiguous-build]
+test_seed_drops_a_member_unit_it_cannot_prove_unchanged[no_dep_info-build]
+test_seed_drops_a_member_unit_it_cannot_prove_unchanged[watches_donor-build]
+test_seed_drops_a_member_unit_it_cannot_prove_unchanged[watches_donor-flat]
+test_seed_drops_member_fingerprints_in_cargo_1_100_layout
+test_a_target_built_only_by_cargo_1_100_can_donate
+```
+
+Any other count or name: STOP.
+
+- [ ] **Step 4: Implement**
 
 In `python/stunt_reel/target_seed.py`:
 
-(a) Module docstring: replace these three lines (lines 5–7)
-
-```
-cache by the same path: a different ``CARGO_HOME`` path alone rebuilds every dependency. The
-checkout's own crates always rebuild, because the seed drops their fingerprints
-(``drop_member_fingerprints``). On ReFS the copy clones blocks instead of writing them, so a
-```
-
-with these four
-
-```
-cache by the same path: a different ``CARGO_HOME`` path alone rebuilds every dependency. A unit
-of the checkout's own crates keeps its fingerprint only where every file it was built from
-matches the donor's, and rebuilds otherwise (``prune_member_fingerprints``). On ReFS the copy
-clones blocks instead of writing them, so a
-```
-
-(b) Below `_REGISTRY_MARKERS = ...` add:
+(a) In `uses_cargo_home`, replace
 
 ```python
-#: The dep-info line prefix rustc writes for an environment variable a crate read at compile time.
-_ENV_DEP = "# env-dep:"
-```
-
-(c) Replace the whole `drop_member_fingerprints` function (lines 170–186) with:
-
-```python
-def _unit_sources(dep_info: Path, donor: Path) -> list[str] | None:
-    """The workspace-relative files rustc read to build a unit, from its dep-info *dep_info*.
-
-    ``None`` when the unit cannot be reused: the file is unreadable or names no source, a source
-    is absolute, or a recorded environment value holds *donor*'s path.
+    names a registry source decides.
     """
-    try:
-        text = dep_info.read_text(encoding="utf-8")
-    except OSError, ValueError:
-        return None
-    donor_path = _norm(donor)
-    sources: list[str] = []
-    for line in text.splitlines():
-        if line.startswith(_ENV_DEP):
-            # rustc doubles each backslash in an env-dep value.
-            if donor_path in _norm(line.removeprefix(_ENV_DEP).replace("\\\\", "\\")):
-                return None
-            continue
-        # Each source appears once more as a phony rule of its own: a line ending in a colon.
-        if line.startswith("#") or not line.endswith(":"):
-            continue
-        source = line[:-1].replace("\\ ", " ")
-        if source.startswith(("/", "\\")) or os.path.splitdrive(source)[0]:
-            return None
-        sources.append(source)
-    return sources or None
+    wanted = _norm(cargo_home)
+    dep_infos = (target / "debug" / "deps").glob("*.d")
+```
 
+with
 
+```python
+    names a registry source decides. Cargo 1.100 writes dep-info to ``build/<package>/<hash>/out/``,
+    older Cargo to ``deps/``; both are read.
+    """
+    wanted = _norm(cargo_home)
+    debug = target / "debug"
+    dep_infos = [*(debug / "deps").glob("*.d"), *(debug / "build").glob("*/*/out/*.d")]
+```
+
+(b) Replace the head of `_reusable_unit`, from its `def` line through its `if len(dep_infos) != 1:` line and the `return None` under it:
+
+```python
 def _reusable_unit(
     fingerprint: Path, *, donor: Path, checkout: Path
 ) -> list[tuple[Path, os.stat_result]] | None:
@@ -666,36 +771,65 @@ def _reusable_unit(
     dep_infos = list((fingerprint.parent.parent / "deps").glob(f"*-{unit_hash}.d"))
     if len(dep_infos) != 1:
         return None
-    sources = _unit_sources(dep_infos[0], donor)
-    if sources is None:
-        return None
-    stamps: list[tuple[Path, os.stat_result]] = []
-    for source in sources:
-        theirs, ours = donor / source, checkout / source
-        try:
-            before = theirs.stat()
-            same = theirs.read_bytes() == ours.read_bytes()
-            after = theirs.stat()
-        except OSError:
-            return None
-        if not same or before.st_mtime_ns != after.st_mtime_ns:
-            return None
-        stamps.append((ours, before))
-    return stamps
+```
 
+with
 
-def prune_member_fingerprints(
-    seeded: Path, members: frozenset[str], *, donor: Path, checkout: Path
-) -> None:
-    """Delete the fingerprints of *members*' units under the copied directory *seeded*, except
-    those whose sources are byte-identical in *checkout* and *donor*.
+```python
+def _member_units(seeded: Path, members: frozenset[str]) -> Iterator[tuple[Path, list[Path]]]:
+    """Each unit of *members* in the copied directory *seeded*: its fingerprint directory and
+    the rustc dep-info files that carry its hash.
 
-    Cargo calls a workspace unit fresh when its sources are older than its outputs, whatever they
-    hold, so a unit that may differ from the donor's must rebuild. A kept unit's sources take the
-    donor's modification times, so Cargo judges it here as it would in *donor*.
+    Cargo 1.100 keeps a unit in ``build/<package>/<hash>/``, its fingerprint in ``fingerprint/``
+    and its dep-info in ``out/``; older Cargo kept ``.fingerprint/<package>-<hash>/`` and
+    ``deps/``. A copy can hold both.
     """
-    if not members:
-        return
+    flat = re.compile("(?:" + "|".join(map(re.escape, sorted(members))) + r")-([0-9a-f]{16})")
+    for profile in (seeded, *(entry for entry in seeded.iterdir() if entry.is_dir())):
+        fingerprints = profile / ".fingerprint"
+        if fingerprints.is_dir():
+            for entry in fingerprints.iterdir():
+                if match := flat.fullmatch(entry.name):
+                    yield entry, list((profile / "deps").glob(f"*-{match[1]}.d"))
+        for member in sorted(members):
+            for fingerprint in (profile / "build" / member).glob("*/fingerprint"):
+                unit = fingerprint.parent
+                yield fingerprint, list((unit / "out").glob(f"*-{unit.name}.d"))
+
+
+def _names_donor(fingerprint: Path, donor: Path) -> bool:
+    """Whether a file in the unit's fingerprint directory *fingerprint* holds *donor*'s path.
+
+    Cargo records a file outside the package, such as a fixture read by ``include_bytes!`` or
+    clippy's ``clippy.toml``, by its absolute path, so a copied unit would watch the donor's file.
+    """
+    wanted = {_norm(donor), _norm(os.path.realpath(donor))}
+    try:
+        held = [entry.read_bytes() for entry in fingerprint.iterdir() if entry.is_file()]
+    except OSError:
+        return True
+    texts = [_norm(data.decode("utf-8", "replace")) for data in held]
+    return any(path in text for text in texts for path in wanted)
+
+
+def _reusable_unit(
+    fingerprint: Path, dep_infos: list[Path], *, donor: Path, checkout: Path
+) -> list[tuple[Path, os.stat_result]] | None:
+    """*checkout*'s files the unit *fingerprint* was built from, each with *donor*'s stat.
+
+    ``None`` unless *dep_infos*, the unit's rustc dep-info files, is exactly one, no file in
+    *fingerprint* holds *donor*'s path, and every file the dep-info names is byte-identical in
+    both checkouts and unchanged while read.
+    """
+    if len(dep_infos) != 1 or _names_donor(fingerprint, donor):
+        return None
+```
+
+The rest of `_reusable_unit` (from `sources = _unit_sources(dep_infos[0], donor)` on) stays.
+
+(c) In `prune_member_fingerprints`, replace everything after `        return` (the end of `if not members:`) to the end of the function:
+
+```python
     unit = re.compile("(?:" + "|".join(map(re.escape, sorted(members))) + r")-[0-9a-f]{16}")
     for fingerprints in (seeded / ".fingerprint", *seeded.glob("*/.fingerprint")):
         if not fingerprints.is_dir():
@@ -711,42 +845,87 @@ def prune_member_fingerprints(
                 os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
 ```
 
-(d) In `_copy_from`: replace the docstring sentence
+with
 
+```python
+    # Listed before any deletion, which would otherwise change the directories being walked.
+    for fingerprint, dep_infos in list(_member_units(seeded, members)):
+        stamps = _reusable_unit(fingerprint, dep_infos, donor=donor, checkout=checkout)
+        if stamps is None:
+            shutil.rmtree(fingerprint)
+            continue
+        for path, stat in stamps:
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
 ```
-    The copy keeps no fingerprint of *members*, the checkout's own crates: they always rebuild.
+
+(d) Replace the head of `donor_problem`:
+
+```python
+def donor_problem(checkout: Path, *, rustc_vv: str, cargo_home: Path) -> str | None:
+    """Why *checkout*'s target/ cannot seed another, or ``None`` when it can."""
+    target = checkout / "target"
+    if not (target / "debug" / ".fingerprint").is_dir():
+        return "not built"
 ```
 
 with
 
-```
-    The copy keeps a fingerprint of *members*, the checkout's own crates, only where the unit's
-    sources match the donor's (``prune_member_fingerprints``).
+```python
+#: Where a profile keeps its units' fingerprints: ``build/`` since Cargo 1.100, ``.fingerprint/``
+#: before.
+_FINGERPRINT_DIRS: tuple[str, ...] = ("build", ".fingerprint")
+
+
+def _last_build(target: Path) -> float | None:
+    """The newest modification time of *target*'s debug fingerprint directories, or ``None``
+    when it has none: *target* was never built."""
+    times = [
+        _mtime(target / "debug" / name)
+        for name in _FINGERPRINT_DIRS
+        if (target / "debug" / name).is_dir()
+    ]
+    return max(times) if times else None
+
+
+def donor_problem(checkout: Path, *, rustc_vv: str, cargo_home: Path) -> str | None:
+    """Why *checkout*'s target/ cannot seed another, or ``None`` when it can."""
+    target = checkout / "target"
+    if _last_build(target) is None:
+        return "not built"
 ```
 
-and replace the call
+(e) In `rank_donors`, delete the line
 
 ```python
-                drop_member_fingerprints(staging / name, members)
+        fingerprint = checkout / "target" / "debug" / ".fingerprint"
+```
+
+and replace
+
+```python
+        ranked.append((same_lock, fingerprint.stat().st_mtime, checkout))
 ```
 
 with
 
 ```python
-                prune_member_fingerprints(
-                    staging / name, members, donor=donor, checkout=target.parent
-                )
+        ranked.append((same_lock, _last_build(checkout / "target") or 0.0, checkout))
 ```
 
-- [ ] **Step 4: Run the tests**
+`Iterator` is already imported under `if TYPE_CHECKING:`; add no import.
+
+- [ ] **Step 5: Run the tests**
 
 Run: `mise run fix`, then `mise run test-py -- tests/test_target_seed.py`
-Expected: all pass, including `test_seed_drops_workspace_fingerprints` unchanged: its fingerprint directories are still dropped, since none has a dep-info that names a workspace source.
+Expected: `55 passed`. Otherwise STOP.
+
+Run: `git status --short`
+Expected: ` M python/stunt_reel/target_seed.py`, ` M tests/test_target_seed.py`, and ` M work/2026-11/486_manifest-dir-runtime/plan.md` if this plan was edited in place. `mise run fix` also rewrites `research/MAP.md` from the notes (it did not change it on 2026-11-14); if `research/MAP.md` is listed, nothing in this task touched `research/`, so run `git restore research/MAP.md`, and if `mise run check` in Step 6 then fails on it: STOP and report. Any other file listed: STOP.
 
 Run: `mise run check-py`
-Expected: exits 0 (ruff, mypy, pytest). A mypy error about `os.stat_result` or the `except OSError, ValueError:` form: STOP.
+Expected: `[gate] PASS 4/4 steps ...`. A ruff or mypy finding in the lines above: STOP and report it.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 Run `mise run check` (Expected: `[gate] PASS ...`), then in Bash:
 
@@ -754,24 +933,32 @@ Run `mise run check` (Expected: `[gate] PASS ...`), then in Bash:
 git status
 git add python/stunt_reel/target_seed.py tests/test_target_seed.py
 git commit -F - <<'EOF'
-perf(seed): keep a member unit whose sources match the donor's (#486)
+fix(seed): find member units in Cargo 1.100's build/ layout (#486)
 
-A workspace unit was always rebuilt in a seeded worktree, about 18 s. Now
-the seed keeps a member's fingerprint when every file its rustc dep-info
-lists is byte-identical in the new checkout, and gives those files the
-donor's times, so Cargo judges the unit as it would in the donor. A unit
-whose dep-info is missing, ambiguous, names an absolute path or records the
-donor's path still rebuilds.
+Cargo 1.100 keeps a unit in build/<package>/<hash>/ (fingerprint/ and
+out/<crate>-<hash>.d), not .fingerprint/ and deps/, so the seed found no
+member unit and a seeded worktree rebuilt every workspace crate: the
+checkout's sources are newer than the donor's build. The seed now walks
+both layouts. It also drops a unit whose fingerprint holds the donor's
+path: Cargo records a file outside the package, a fixture read by
+include_bytes! or clippy's clippy.toml, by its absolute path, so the copy
+would watch the donor's file. A target/ with build/ but no .fingerprint/,
+which a fresh 1.100 build makes, now counts as built and can donate, and
+uses_cargo_home reads 1.100's dep-info too.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
 ```
+
+`git status` before `git add` must list only those two files as modified, and `work/2026-11/486_manifest-dir-runtime/plan.md` if this plan was edited in place; never stage `plan.md`.
 
 ---
 
 ### Task 6: Measure before and after on `E:`, record, update the docs
 
 This task runs on the primary machine only (the issue is `local-only`): seeding needs ReFS, and `E:` is the ReFS volume. The measuring commands are PowerShell 5.1 (no `&&`). PowerShell variables do not survive between tool calls, so every block starts by setting them again; replace `<before hash>` and `<after hash>` with the values step 1 printed. Do not run another build on the machine while timing; if `Get-Process cargo,rustc -ErrorAction SilentlyContinue` lists anything at a timing step, wait for it to finish and note it.
+
+The four bench worktrees may already exist from the first attempt (they did on 2026-11-14). Steps 2 and 3 reuse an existing A worktree, which keeps its build, and always make B afresh, so B's sources are newer than A's build exactly as in a new worktree.
 
 **Files:**
 - Create: `work/2026-11/486_manifest-dir-runtime/journal.md`
@@ -792,19 +979,21 @@ The first line is `<before hash>`, the second `<after hash>`. Write both down.
 - [ ] **Step 2: Measure "before" (origin/main's seed)**
 
 ```powershell
-$P = 'E:\git\stunt-reel'; $Before = '<before hash>'
-git -C $P worktree add --detach "$P\.claude\worktrees\bench486-before-a" $Before
-Set-Location "$P\.claude\worktrees\bench486-before-a"
+$P = 'E:\git\stunt-reel'; $Before = '<before hash>'; $W = "$P\.claude\worktrees\bench486-before-a"
+if (Test-Path $W) { git -C $W checkout --detach $Before } else { git -C $P worktree add --detach $W $Before }
+Set-Location $W
 mise run check-rust
 mise run check-rust
 ```
 
-The second run is the donor's warm time: record its `[gate] PASS ... in Ns` figure as **warm**. Then:
+A `git checkout` error (local changes in the worktree): STOP. The second run is the donor's warm time: record its `[gate] PASS ... in Ns` figure as **warm**. Then:
 
 ```powershell
-$P = 'E:\git\stunt-reel'; $Before = '<before hash>'
-git -C $P worktree add --detach "$P\.claude\worktrees\bench486-before-b" $Before
-Set-Location "$P\.claude\worktrees\bench486-before-b"
+$P = 'E:\git\stunt-reel'; $Before = '<before hash>'; $W = "$P\.claude\worktrees\bench486-before-b"
+Set-Location $P
+if (Test-Path $W) { git -C $P worktree remove --force $W }
+git -C $P worktree add --detach $W $Before
+Set-Location $W
 mise run init
 ```
 
@@ -822,19 +1011,21 @@ Record as **before**: the `[gate] PASS ... in Ns` figure, each step's seconds, t
 - [ ] **Step 3: Measure "after" (this branch's seed)**
 
 ```powershell
-$P = 'E:\git\stunt-reel'; $After = '<after hash>'
-git -C $P worktree add --detach "$P\.claude\worktrees\bench486-after-a" $After
-Set-Location "$P\.claude\worktrees\bench486-after-a"
+$P = 'E:\git\stunt-reel'; $After = '<after hash>'; $W = "$P\.claude\worktrees\bench486-after-a"
+if (Test-Path $W) { git -C $W checkout --detach $After } else { git -C $P worktree add --detach $W $After }
+Set-Location $W
 mise run check-rust
 mise run check-rust
 ```
 
-Expected: both `[gate] PASS`. Then:
+Expected: both `[gate] PASS`. A `git checkout` error: STOP. Then:
 
 ```powershell
-$P = 'E:\git\stunt-reel'; $After = '<after hash>'
-git -C $P worktree add --detach "$P\.claude\worktrees\bench486-after-b" $After
-Set-Location "$P\.claude\worktrees\bench486-after-b"
+$P = 'E:\git\stunt-reel'; $After = '<after hash>'; $W = "$P\.claude\worktrees\bench486-after-b"
+Set-Location $P
+if (Test-Path $W) { git -C $P worktree remove --force $W }
+git -C $P worktree add --detach $W $After
+Set-Location $W
 mise run init
 ```
 
@@ -849,6 +1040,16 @@ $P = 'E:\git\stunt-reel'
 
 Expected: `True`. `False`: the seed kept no `stunt-core` unit; STOP and report.
 
+Count the member units the seed kept in each lane, and the kept fingerprint files that still name A:
+
+```powershell
+Set-Location 'E:\git\stunt-reel\.claude\worktrees\bench486-after-b'
+foreach ($l in 'debug','check\debug','matrix\debug') { "$l " + @(Get-Item "target\$l\build\stunt-*\*\fingerprint").Count }
+@(Get-Item "target\debug\build\stunt-*\*\fingerprint\*","target\check\debug\build\stunt-*\*\fingerprint\*","target\matrix\debug\build\stunt-*\*\fingerprint\*" | Select-String -SimpleMatch -List 'bench486-after-a').Count
+```
+
+Expected (2026-11-14): `debug 10`, `check\debug 4`, `matrix\debug 1`, then `0`. Record the three counts as **kept**; other non-zero counts are fine. A lane at `0`, or a last line other than `0` (a kept unit would watch A's files): STOP and report.
+
 ```powershell
 Set-Location 'E:\git\stunt-reel\.claude\worktrees\bench486-after-b'
 mise run check-rust
@@ -856,21 +1057,29 @@ mise run check-rust
 Select-String -Path target\check.log -Pattern '^\s+(Compiling|Checking|Documenting) stunt' | ForEach-Object { $_.Line.Trim() }
 ```
 
-Record as **after**: the `[gate] PASS ... in Ns` figure, each step's seconds, the units-built count, and the `stunt` lines. Expected: `[gate] PASS`, which is the issue's "tests pass from a seeded worktree whose donor sits at a different path" (a FAIL: STOP and report the failing step's log), and no `Compiling stunt` or `Checking stunt` line, since A and B hold the same sources (`Documenting stunt` lines are allowed: a rustdoc unit with no dep-info rebuilds). A `Compiling stunt` or `Checking stunt` line: STOP and report the lines.
+Record as **after**: the `[gate] PASS ... in Ns` figure, each step's seconds, the units-built count, and the `stunt` lines. Expected: `[gate] PASS`, which is the issue's "tests pass from a seeded worktree whose donor sits at a different path" (a FAIL: STOP and report the failing step's log). Expected `stunt` lines (2026-11-14: 13 units built in all, every one of them a `stunt` line), the units the seed must drop:
+
+- `Checking stunt-core`, `stunt-parity`, `stunt-render`, `stunt-gltf`, `stunt-cli`: clippy's units, which record A's `clippy.toml` and `Cargo.toml` by absolute path;
+- `Documenting` the same five: rustdoc's units, which have no dep-info;
+- `Compiling stunt-core` (twice: test lane and matrix lane) and `Compiling stunt-render`: test units that `include_*` files under the workspace's `tests/fixtures/`, which Cargo records by absolute path.
+
+A `Compiling stunt-gltf`, `Compiling stunt-parity` or `Compiling stunt-cli` line, or a `stunt` line of a kind not listed: STOP and report the lines.
 
 - [ ] **Step 4: Check that a kept unit still rebuilds on an edit**
 
+`stunt-gltf`'s units were all kept and none rebuilt in step 3.
+
 ```powershell
 Set-Location 'E:\git\stunt-reel\.claude\worktrees\bench486-after-b'
-(Get-Item crates\stunt-core\src\lib.rs).LastWriteTime = Get-Date
-mise run test-rust 2>&1 | Select-String 'Compiling stunt-core'
+(Get-Item crates\stunt-gltf\src\lib.rs).LastWriteTime = Get-Date
+mise run test-rust 2>&1 | Select-String 'Compiling stunt-gltf'
 ```
 
-Expected: at least one `Compiling stunt-core` line.
+Expected: at least one `Compiling stunt-gltf` line.
 
 - [ ] **Step 5: Check that an included fixture rebuilds its unit**
 
-`tests/fixtures/synthetic_pfont.bin` reaches `stunt-core`'s `it` binary through `include_bytes!`.
+`tests/fixtures/synthetic_pfont.bin` reaches `stunt-core`'s `it` binary through `include_bytes!`. The seed dropped that unit and step 3 rebuilt it in B, so this checks that Cargo now watches B's copy of the fixture, not A's.
 
 ```powershell
 Set-Location 'E:\git\stunt-reel\.claude\worktrees\bench486-after-b'
@@ -903,9 +1112,9 @@ Create `work/2026-11/486_manifest-dir-runtime/journal.md` (replace each `<...>` 
 ## <YYYY-MM-DD>: First check-rust of a seeded worktree, before and after
 
 - **Question**: How long does a new worktree's first `mise run check-rust` take once the seed keeps unchanged workspace units, against origin/main's seed, which drops them all?
-- **Method**: On `E:` (ReFS), for each commit, worktree A built by `mise run check-rust` twice, then worktree B made with `git worktree add --detach`, seeded by `mise run init` from A, and timed with `mise run check-rust` (the gate's own total). Before: `<before hash>`; after: `<after hash>`. Units built counted from B's `target/check.log` (`Compiling`, `Checking` and `Documenting` lines). In the after B, `crates/stunt-core/src/lib.rs` carried A's modification time after the seed, and a touched `crates/stunt-core/src/lib.rs` and a touched `tests/fixtures/synthetic_pfont.bin` each made `mise run test-rust` compile `stunt-core`.
-- **Result**: Warm (A's second run): <warm> s. Before: <before> s, <before count> units built (<before stunt lines, comma-separated>). After: <after> s, <after count> units built (<after stunt lines, or "none">). Per step before/after: fmt <s>/<s>, clippy <s>/<s>, test <s>/<s>, doc <s>/<s>, matrix <s>/<s>. <Note any other build seen running.>
-- **Verdict**: adopted: the after B passed the gate, built no `stunt` unit but rustdoc's, and rebuilt `stunt-core` on both touches; its first Rust lanes took <after> s against <before> s.
+- **Method**: On `E:` (ReFS), for each commit, worktree A built by `mise run check-rust` twice, then worktree B made with `git worktree add --detach`, seeded by `mise run init` from A, and timed with `mise run check-rust` (the gate's own total). Before: `<before hash>`; after: `<after hash>`. Units built counted from B's `target/check.log` (`Compiling`, `Checking` and `Documenting` lines). In the after B, `crates/stunt-core/src/lib.rs` carried A's modification time after the seed, no kept fingerprint file named A's path, a touched `crates/stunt-gltf/src/lib.rs` made `mise run test-rust` compile `stunt-gltf`, and a touched `tests/fixtures/synthetic_pfont.bin` made it compile `stunt-core`. Cargo 1.100.0 keeps a unit in `build/<package>/<hash>/` (`fingerprint/`, `out/<crate>-<hash>.d`), and its own dep-info (`fingerprint/dep-*`) names a file outside the package by absolute path: clippy's `clippy.toml` and `Cargo.toml`, and fixtures under `tests/fixtures/`; the seed drops such units.
+- **Result**: Warm (A's second run): <warm> s. Before: <before> s, <before count> units built (<before stunt lines, comma-separated>). After: <after> s, <after count> units built (<after stunt lines, comma-separated>); member units kept per lane: debug <n>, check <n>, matrix <n>. Per step before/after: fmt <s>/<s>, clippy <s>/<s>, test <s>/<s>, doc <s>/<s>, matrix <s>/<s>. <Note any other build seen running.>
+- **Verdict**: adopted: the after B passed the gate, rebuilt only the units the seed must drop (clippy's, rustdoc's, and the test units that embed workspace fixtures), and rebuilt `stunt-gltf` and `stunt-core` on the two touches; its first Rust lanes took <after> s against <before> s.
 - **Lives in**: [`docs/development.md`](../../../docs/development.md) (Shared tool cache) and [ADR 0030](../../../docs/adr/0030-new-worktrees-seed-target-by-block-clone.md) (Status).
 ```
 
@@ -922,7 +1131,7 @@ every dependency arrives fresh, and the workspace crates always rebuild. A new w
 with
 
 ```
-every dependency arrives fresh, and a workspace crate's unit is kept only where every file it was built from is byte-identical to the donor's, and rebuilds otherwise. A new worktree's first Rust lanes take about <after, rounded to whole seconds> s instead of 91 s.
+every dependency arrives fresh, and a workspace crate's unit is kept only where every file it was built from is byte-identical to the donor's and Cargo records none of them by the donor's absolute path; clippy's and rustdoc's units, and test units that embed files under `tests/fixtures/`, rebuild. A new worktree's first Rust lanes take about <after, rounded to whole seconds> s instead of 91 s.
 ```
 
 `docs/adr/0030-new-worktrees-seed-target-by-block-clone.md`: insert directly under the `## Status` heading and its blank line, before the `amended 2026-11-04 ...` paragraph (newest amendment first), this paragraph and one blank line:
@@ -930,8 +1139,10 @@ every dependency arrives fresh, and a workspace crate's unit is kept only where 
 ```
 amended <YYYY-MM-DD> for [#486](https://github.com/neilsh/stunt-reel/issues/486): Rust tests
 read `CARGO_MANIFEST_DIR` at run time, and the seed keeps a workspace crate's unit only where
-every file it was built from is byte-identical to the donor's, giving those files the donor's
-modification times; a new worktree's first Rust lanes took <after> s against <before> s
+every file it was built from is byte-identical to the donor's and Cargo records none of them by
+the donor's absolute path, giving those files the donor's modification times; clippy's and
+rustdoc's units, and test units that embed workspace fixtures, still rebuild. A new worktree's
+first Rust lanes took <after> s against <before> s
 ([journal](../../work/2026-11/486_manifest-dir-runtime/journal.md)).
 ```
 
@@ -961,6 +1172,6 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
 ```
 
-Do not push: the `docs/` changes need a fresh reviewer first (AGENTS.md, Committing rule 5). Report: the three commit hashes, the before, after and warm figures, the units-built counts and `stunt` lines, and that nothing was pushed.
+Do not push: the `docs/` changes need a fresh reviewer first (AGENTS.md, Committing rule 5). Report: the four commit hashes, the before, after and warm figures, the units-built counts and `stunt` lines, and that nothing was pushed.
 
 - [ ] **Step 10 (whoever pushes the branch): Sync with `main` before merging.** This branch and its sibling PRs (#514 and the other plans' PRs) each carry the same plans commit, and a sibling's squash merge does not make that commit an ancestor here. So after any sibling has merged, and before this PR merges, run in Git Bash: `git fetch origin && git merge origin/main`. An add/add conflict under `work/2026-11/` is expected: for each conflicted path under `work/2026-11/486_manifest-dir-runtime/`, run `git checkout --ours -- <path>`; for each other conflicted path under `work/2026-11/`, run `git checkout --theirs -- <path>`. Then `git add` those paths, `git commit --no-edit`, run `mise run check` (expect `PASS`), and push. Any conflict outside `work/2026-11/`: STOP and report.
