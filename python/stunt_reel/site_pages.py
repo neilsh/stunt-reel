@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import posixpath
 import re
 from dataclasses import dataclass
@@ -9,7 +10,9 @@ from urllib.parse import unquote
 lazy from collections.abc import Mapping
 lazy from pathlib import Path
 
+from stunt_reel.frontmatter import read_frontmatter
 from stunt_reel.markdown_links import (
+    HEADING_REGEX,
     LINK_DEFINITION_REGEX,
     MARKDOWN_LINK_REGEX,
     URL_SCHEME_REGEX,
@@ -22,6 +25,7 @@ __all__ = [
     "REPO_URL",
     "Site",
     "link_target",
+    "page_text",
     "page_url",
     "rewrite_links",
 ]
@@ -33,6 +37,8 @@ REPO_URL = "https://github.com/neilsh/stunt-reel"
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".gif", ".svg"})
 
 _SEGMENT = re.compile(r"[A-Za-z0-9-]+")
+_MARKUP_LINK = re.compile(r"\[([^\]\n]*)\]\([^)\n]*\)")
+_SIDEBAR_LABELS = {"INDEX": "Index", "README": "About this folder"}
 
 
 @dataclass(frozen=True)
@@ -100,3 +106,55 @@ def rewrite_links(text: str, source: str, site: Site, images: set[str]) -> str:
         new = link_target(text[start:end], source, site, images)
         text = text[:start] + new + text[end:]
     return text
+
+
+def page_text(text: str, source: str, site: Site, images: set[str]) -> str:
+    """The content page for repo file *source* whose Markdown is *text*, with Starlight front
+    matter and links rewritten. Raises ValueError, naming *source*, for a page with neither a
+    ``title:`` nor a ``# `` heading, or a bad link or front matter."""
+    try:
+        fields, body = read_frontmatter(text)
+    except ValueError as err:
+        raise ValueError(f"{source}: {err}") from err
+    lines = _without_leading_comments(body.splitlines(keepends=True))
+    title = fields.get("title")
+    if title is None:
+        visible = prose("".join(lines)).splitlines()
+        for index, line in enumerate(visible):
+            heading = HEADING_REGEX.match(line)
+            if heading and heading[1] == "#":
+                title = _plain(lines[index][heading.start(2) : heading.end(2)])
+                del lines[index]
+                break
+        else:
+            raise ValueError(f"{source}: no title: in the front matter and no '# ' heading")
+    out = {"title": str(title)}
+    description = fields.get("description", fields.get("summary"))
+    if description is not None:
+        out["description"] = str(description)
+    out["editUrl"] = f"{REPO_URL}/blob/main/{source}"
+    stem = posixpath.splitext(posixpath.basename(source))[0]
+    head = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in out.items()]
+    head.append(f"sidebar:\n  label: {json.dumps(_SIDEBAR_LABELS.get(stem, stem))}")
+    content = rewrite_links("".join(lines), source, site, images)
+    return "---\n" + "\n".join(head) + "\n---\n\n" + content.lstrip("\r\n")
+
+
+def _without_leading_comments(lines: list[str]) -> list[str]:
+    """*lines* without the single-line ``<!-- -->`` comments that open them."""
+    kept = list(lines)
+    index = 0
+    while index < len(kept):
+        stripped = kept[index].strip()
+        if not stripped:
+            index += 1
+        elif stripped.startswith("<!--") and stripped.endswith("-->"):
+            del kept[index]
+        else:
+            break
+    return kept
+
+
+def _plain(heading: str) -> str:
+    """A heading's text without code backticks, bold marks or link targets."""
+    return _MARKUP_LINK.sub(r"\1", heading).replace("`", "").replace("**", "")
