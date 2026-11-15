@@ -25,11 +25,13 @@ import time
 import tomllib
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal
+
+from stunt_reel.dataroot import is_link
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
-    from pathlib import Path
 
 #: The target directories a seed copies, in copy order: the gate's build, clippy and matrix lanes.
 SEEDED_DIRS: tuple[str, ...] = ("debug", "check", "matrix")
@@ -292,21 +294,15 @@ def prune_member_fingerprints(
 _FINGERPRINT_DIRS: tuple[str, ...] = ("build", ".fingerprint")
 
 
-def _last_build(target: Path) -> float | None:
-    """The newest modification time of *target*'s debug fingerprint directories, or ``None``
-    when it has none: *target* was never built."""
-    times = [
-        _mtime(target / "debug" / name)
-        for name in _FINGERPRINT_DIRS
-        if (target / "debug" / name).is_dir()
-    ]
-    return max(times) if times else None
+def _is_built(target: Path) -> bool:
+    """Whether *target* holds Cargo's debug fingerprint directory, and so was built."""
+    return any((target / "debug" / name).is_dir() for name in _FINGERPRINT_DIRS)
 
 
 def donor_problem(checkout: Path, *, rustc_vv: str, cargo_home: Path) -> str | None:
     """Why *checkout*'s target/ cannot seed another, or ``None`` when it can."""
     target = checkout / "target"
-    if _last_build(target) is None:
+    if not _is_built(target):
         return "not built"
     if not built_by(target, rustc_vv):
         return "built by another rustc"
@@ -315,21 +311,98 @@ def donor_problem(checkout: Path, *, rustc_vv: str, cargo_home: Path) -> str | N
     return None
 
 
+def _head(checkout: Path) -> str | None:
+    """The commit *checkout* has checked out, or ``None`` when git cannot say."""
+    git = shutil.which("git")
+    if git is None:
+        return None
+    try:
+        result = subprocess.run(  # noqa: S603 - fixed argv
+            [git, "-C", str(checkout), "rev-parse", "--verify", "--quiet", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    head = result.stdout.strip()
+    return head if result.returncode == 0 and head else None
+
+
+def _newest_file(directory: Path) -> float | None:
+    """The newest modification time of the files directly in *directory*, or ``None``."""
+    newest: float | None = None
+    try:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                if is_link(path) or not entry.is_file(follow_symlinks=False):
+                    continue
+                try:
+                    stamp = entry.stat(follow_symlinks=False).st_mtime
+                except OSError:
+                    continue
+                newest = stamp if newest is None else max(newest, stamp)
+    except OSError:
+        return None
+    return newest
+
+
+def _unit_dirs(directory: Path) -> list[Path]:
+    """The immediate subdirectories of *directory*, never a link, so a walk cannot leave it."""
+    try:
+        with os.scandir(directory) as entries:
+            return [
+                Path(entry.path)
+                for entry in entries
+                if entry.is_dir(follow_symlinks=False) and not is_link(Path(entry.path))
+            ]
+    except OSError:
+        return []
+
+
+def _build_recency(target: Path) -> float | None:
+    """The newest mtime of the files Cargo rewrites on every build, or ``None``.
+
+    Cargo 1.100 writes each unit's ``fingerprint/`` under ``debug/build/<package>/<hash>/``;
+    older Cargo wrote ``debug/.fingerprint/<package>-<hash>/``. Reading those files, one level
+    of unit directories at a time, tells a real build apart from a seeded copy: a block clone
+    keeps the donor's directory times (issue #521).
+    """
+    debug = target / "debug"
+    stamps = [
+        stamp
+        for package in _unit_dirs(debug / "build")
+        for unit in _unit_dirs(package)
+        if (stamp := _newest_file(unit / "fingerprint")) is not None
+    ]
+    stamps += [
+        stamp
+        for unit in _unit_dirs(debug / ".fingerprint")
+        if (stamp := _newest_file(unit)) is not None
+    ]
+    return max(stamps) if stamps else None
+
+
 def rank_donors(
     checkouts: Sequence[Path], *, here: Path, rustc_vv: str, cargo_home: Path
 ) -> list[Path]:
     """The checkouts whose target/ can seed *here*'s, best first.
 
     A donor must be another existing checkout whose target/ was built by the same compiler against
-    the same cargo cache. One with *here*'s exact ``Cargo.lock`` ranks above one without, since
-    then no dependency rebuilds; ties go to the most recent build.
+    the same cargo cache. One whose ``HEAD`` is *here*'s commit ranks first: HEAD stands in for the
+    commit its target/ was built at, so its member units usually need the fewest rebuilds. Then one
+    with *here*'s exact ``Cargo.lock``, since no dependency rebuilds; ties go to the most recent
+    build, read from the fingerprint files Cargo rewrites rather than a block-cloned directory's
+    time (issue #521).
     """
     own = _norm(here.resolve())
+    head = _head(here)
     try:
         lock = (here / "Cargo.lock").read_bytes()
     except OSError:
         lock = None
-    ranked: list[tuple[bool, float, Path]] = []
+    ranked: list[tuple[bool, bool, float, Path]] = []
     for checkout in checkouts:
         if _norm(checkout.resolve()) == own:
             continue
@@ -339,9 +412,10 @@ def rank_donors(
             same_lock = lock is not None and (checkout / "Cargo.lock").read_bytes() == lock
         except OSError:
             same_lock = False
-        ranked.append((same_lock, _last_build(checkout / "target") or 0.0, checkout))
-    ranked.sort(key=lambda row: (row[0], row[1]), reverse=True)
-    return [checkout for _, _, checkout in ranked]
+        same_head = head is not None and _head(checkout) == head
+        ranked.append((same_head, same_lock, _build_recency(checkout / "target") or 0.0, checkout))
+    ranked.sort(key=lambda row: (row[0], row[1], row[2]), reverse=True)
+    return [checkout for _, _, _, checkout in ranked]
 
 
 #: Cargo's lock files in a profile directory; a build holds them while it writes.
