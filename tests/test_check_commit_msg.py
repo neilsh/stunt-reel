@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -215,3 +216,19 @@ def test_a_non_ascii_path_is_read_unquoted(repo: Git, tmp_path: Path, hook: Any)
     note.write_text("x\n", encoding="utf-8")
     repo("add", "research")
     assert hook._staged_paths() == [_path("research", "café.md")]
+
+
+def test_a_title_starting_with_a_dash_is_read_as_text(hook: Any) -> None:
+    assert hook.main(["--subject=-x"]) == 1
+
+
+def test_the_title_workflow_rechecks_edits_and_never_interpolates_the_title() -> None:
+    workflow = (REPO_ROOT / ".github" / "workflows" / "pr-title.yml").read_text(encoding="utf-8")
+    assert re.search(r"types: \[opened, edited, synchronize, reopened\]", workflow)
+    assert "TITLE: ${{ github.event.pull_request.title }}" in workflow  # via env only
+    # Every `run:` is one line here, so a line scan sees it whole; keep it so.
+    run_lines = [line for line in workflow.splitlines() if "run:" in line]
+    assert all("${{" not in line and not line.rstrip().endswith(("|", ">")) for line in run_lines)
+    assert 'commit-msg-check -- --subject="$TITLE"' in workflow
+    assert 'MISE_AUTO_INSTALL: "false"' in workflow
+    assert "name: PR title" in workflow

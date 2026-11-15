@@ -6,7 +6,8 @@ accepted 2026-11-09. Supersedes in part [ADR 0026](0026-commit-hooks-run-the-gat
 (the commit-msg hook's gate-line check) and [ADR 0038](0038-the-local-gate-runs-what-a-change-touches.md)
 (the scoped gate line). Keeps the commit-msg hook's Conventional Commit subject check and CI's
 range check of a pull request's commits. Amended 2026-11-12: the hook also requires a
-`Fresh-review:` trailer on a commit that changes a work spec or plan (below).
+`Fresh-review:` trailer on a commit that changes a work spec or plan (below). Amended 2026-11-15: the
+range check is replaced by a pull-request title check (below).
 
 ## Context
 
@@ -46,3 +47,12 @@ on a range of commits by wording alone, since it never saw a local run.
   the message records that you did. A missed local failure surfaces as a red required check.
 - A rebase needs no follow-up beyond the gate on the new tip.
 - Commits made before this change keep their gate lines; nothing reads them.
+
+## Amendment 2026-11-15: the range check is replaced by a PR-title check
+
+The Decision's "CI's range check stays" no longer holds. CI's `PR title` workflow checks the pull
+request's title with the hook's subject rule, since the title is the squash commit's subject on
+`main`; the range of commits is not checked in CI, and the local hook remains the only check of a
+commit's subject and of the `Fresh-review:` trailer. See the matching
+[amendment to ADR 0026](0026-commit-hooks-run-the-gates-own-tasks.md#amendment-2026-11-15-ci-checks-the-pull-request-title)
+(#577's spec, section 2).
