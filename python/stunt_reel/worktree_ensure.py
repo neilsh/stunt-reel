@@ -106,7 +106,11 @@ def _ensure(*, report: bool = False) -> int:
     git that will not run or a lock held past its timeout is a slower first build or an unset
     hooks path, not a reason to stop the task, so it returns 0 whatever happened.
     """
-    uv_warning = check_uv(REPO_ROOT / "mise.toml")
+    try:
+        uv_warning = check_uv(REPO_ROOT / "mise.toml", shadowed=True)
+    except OSError, KeyError, ValueError:
+        # The gate needs the pin; a checkout without a readable one still ensures quietly.
+        uv_warning = None
     if uv_warning is not None:
         print(f"  ! {uv_warning}")
     target = REPO_ROOT / "target"
