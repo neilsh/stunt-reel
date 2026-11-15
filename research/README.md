@@ -45,6 +45,8 @@ End each subject note with two headings, since the link check finds a Ruled out 
 - **`Ruled out`:** hypotheses tested and rejected, one or two lines each: what was tried, the score or observation, the verdict, and its journal link.
 - **`Open questions`:** open work in priority order.
 
+The notes are published as the research site ([`site/`](../site/published.toml), built by `mise run site`). A note needs a file name in `[A-Za-z0-9-]` and a `# ` heading, or front matter with `title:`; the site build fails otherwise.
+
 Headings carry no evidentiary tier tag, so links survive a tier promotion; state the tier in the section's first line. Anchor tokens (`# [FMT-*]`, `# [MEM-*]`) stay in headings.
 
 ## Size

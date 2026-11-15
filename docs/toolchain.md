@@ -18,7 +18,7 @@ The Python half runs on the standard library unless a dependency earns its place
 
 ## Dependency updates
 
-Renovate keeps every ecosystem current — crates, Python dev dependencies, GitHub Actions pinned to commit SHAs, and the tools [`mise.toml`](../mise.toml) pins, which Dependabot could never reach. A dependency bot that cannot touch the toolchain is not managing the most consequential dependency in the tree: a crate bump changes one library, while a `rust` bump changes the compiler that produced every artifact and the verdict in the `msrv` job.
+Renovate keeps every ecosystem current — crates, Python dev dependencies, GitHub Actions pinned to commit SHAs, the research site's Bun/npm packages, and the tools [`mise.toml`](../mise.toml) pins, which Dependabot could never reach. A dependency bot that cannot touch the toolchain is not managing the most consequential dependency in the tree: a crate bump changes one library, while a `rust` bump changes the compiler that produced every artifact and the verdict in the `msrv` job.
 
 It runs as the Mend-hosted app rather than a self-hosted workflow. The allowed-actions policy admits GitHub-owned actions and the two third-party patterns [`ci.yml`](../.github/workflows/ci.yml) names, so self-hosting would mean admitting a third pattern and keeping a token or App key alive — for a job that is a schedule and an API client. The hosted app costs one file, [`.github/renovate.jsonc`](../.github/renovate.jsonc), and no repository secrets.
 

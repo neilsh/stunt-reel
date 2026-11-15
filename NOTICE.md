@@ -45,9 +45,9 @@ The captured frames are game-derived and are not relicensed by this project. Eve
   screen showed;
 - shows a captured frame only inside a comparison, beside this project's render of the same
   moment, never on its own;
-- may be a comparison sheet: one captured screen with our render, their difference and enlarged
-  crops of that same screen; the 320x200 limit above applies to the captured content, not to
-  the sheet;
+- may be a comparison sheet: one captured screen, or crops or enlargements of it, beside one or
+  more of our renders of the same moment, with optional difference images; the 320x200 limit
+  above applies to the captured content, not to the sheet;
 - lives under `research/` or `work/` and is cited by a note or index, so each one has a stated
   purpose. New images go in `work/<YYYY-MM>/<folder>/images/`, where `<folder>` is the work
   folder of the investigation that produced them ([`work/README.md`](work/README.md#images)).
