@@ -52,7 +52,7 @@ The VGA Digital-to-Analog Converter (DAC, typically an Inmos INMOS G171 or compa
   | :--- | :--- | :--- | :--- |
   | **Capture scaling** (canonical for DAC reads) | $\lfloor (255c + 31) / 63 \rfloor$ | `255` | `parse_dac_palette` in the retired `transport.py` (formerly `_scale_6bit` in `framebuffer.py`; the same rule now lives in the generated Lua and `plan.py`), applied to every `VGA DACPAL` read of the reference capture ([`capture.md`](../../playone-exe/capture.md)) |
   | Bit replication | $(c \ll 2) \mid (c \gg 4)$ | `255` | none; an approximation of the capture scaling that differs by 1 at $c \in \{11..15, 48..52\}$ |
-  | **Authored table** | $c \ll 2$ | `252` | `MODE_13H_PALETTE` in `crates/stunt-core/src/contracts/palette.rs` (every stored channel is a multiple of 4; the test pins index 255 to `(252, 252, 252)`) and, through it, the `stunt-render` LUT |
+  | **Authored table** | $c \ll 2$ | `252` | `MODE_13H_PALETTE` in `crates/stunt-core/src/contracts/palette/mod.rs` (every stored channel is a multiple of 4; the test pins index 255 to `(252, 252, 252)`) and, through it, the `stunt-render` LUT |
 
   Normalized division $c / 63.0$ is the same quantity as the capture scaling before rounding. Consequence: the native renderer's palette tops out at `252` while the captured reference reaches `255`, a $\le 3/255$ channel offset. Its effect on the `[I6]` SSIM scores has not been measured; treat it as a known discrepancy, not an equivalence. Whether the authored table should store capture-scaled values is an open decision `[Hypothesis]`; the table's literals are the Stunt Island master palette (240 scene entries plus 16 UI entries), transcribed from the community SODParse `pal.h` in the Stunt Island Central archive. They are game-derived, not the IBM VGA default and not a synthetic construction, and were not re-derived from a DAC read.
 
@@ -86,7 +86,7 @@ In *Stunt Island* scene packages (`.ALL`), color tables are packaged as raw bina
 
 ### 2.2 Vertex Palette Index & Decal Flags (`SodVertex`)
 
-In `crates/stunt-core/src/contracts/shape.rs`, vertices emitted by `.SOD` display lists store their authentic Mode 13h palette correspondence in an aligned 28-byte GPU vertex layout:
+In `crates/stunt-core/src/contracts/shape/mod.rs`, vertices emitted by `.SOD` display lists store their authentic Mode 13h palette correspondence in an aligned 28-byte GPU vertex layout:
 
 ```rust
 #[repr(C)]

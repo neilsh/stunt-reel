@@ -29,18 +29,6 @@ pub(super) struct PropModels<'a> {
     pub(super) chains: &'a [Vec<LodGate>],
 }
 
-#[cfg(test)]
-impl<'a> PropModels<'a> {
-    /// Every placement uses the shared decode of its shape.
-    fn shared(shapes: &'a HashMap<u16, SodModelIr>) -> Self {
-        Self {
-            shapes,
-            own: HashMap::new(),
-            chains: &[],
-        }
-    }
-}
-
 impl PropModels<'_> {
     /// The model drawn for placement `index`, of shape `shape_id`.
     fn get(&self, index: usize, shape_id: u16) -> Option<&SodModelIr> {
@@ -511,6 +499,19 @@ fn push_prop_mesh(
 
 #[cfg(test)]
 mod tests {
+
+    #[cfg(test)]
+    impl<'a> PropModels<'a> {
+        /// Every placement uses the shared decode of its shape.
+        fn shared(shapes: &'a HashMap<u16, SodModelIr>) -> Self {
+            Self {
+                shapes,
+                own: HashMap::new(),
+                chains: &[],
+            }
+        }
+    }
+
     use super::super::test_support::{level_terrain, sloped_terrain, square_prop};
     use super::*;
     use crate::contracts::{VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE};

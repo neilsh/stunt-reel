@@ -22,7 +22,7 @@ has one decode entry, `decode_sod(data, name, anchors, DecodeMode)`, where
 `DecodeMode` is strict, lenient or census. All three run one VM pass and differ
 only in the policy applied at a blockage.
 
-A decoded shape carries its own [`DecodeRecord`](../../crates/stunt-core/src/contracts/shape.rs):
+A decoded shape carries its own [`DecodeRecord`](../../crates/stunt-core/src/contracts/shape/mod.rs):
 the stream's 10-byte header, the first blocking opcode (`stop`), the opcodes a
 census decode stepped over in stream order, and the byte offset of the first
 `OP_RETURN`. `SodModelIr::decode()` returns it, and authored shapes - the world
