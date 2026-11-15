@@ -64,9 +64,14 @@
       "enabled": false,
     },
     {
-      "description": "One PR a week for the four actions, SHA and version comment kept in step.",
+      "description": "One PR a week for the six actions, SHA and version comment kept in step.",
       "matchManagers": ["github-actions"],
       "groupName": "github actions",
+    },
+    {
+      "description": "Astro, Starlight and their plugins share peer ranges, so they move in one PR.",
+      "matchManagers": ["bun", "npm"],
+      "groupName": "research site",
     },
     // Patch and minor crate bumps fail the same way; a major is where msrv and deny go red, so
     // it gets its own PR where a failure names one crate instead of hiding behind a green bump.
