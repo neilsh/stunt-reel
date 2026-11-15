@@ -135,7 +135,7 @@ description = "Check every external (http or https) link in the docs with lychee
 run = "lychee --no-progress --scheme http --scheme https ."
 
 [tasks.move-docs]
-description = "Apply a moves file: --phase move runs git mv for each [[move]], writes each [[folder]] README and rewrites every link and repo path to the moved files in the files that stay; --phase inside then rewrites the moved files' own links; both print the old-to-new table for the PR body (mise run move-docs -- apply <moves.toml> --phase move|inside [--dry-run] [--root DIR])"
+description = "Apply a moves file: --phase move runs git mv for each [[move]], writes each [[folder]] README, relinks the section links each [[split]] maps and rewrites every link and repo path to the moved files in the files that stay; --phase inside then rewrites the moved files' own links; both print the old-to-new table for the PR body (mise run move-docs -- apply <moves.toml> --phase move|inside [--dry-run] [--root DIR])"
 run = "uv run python python/scripts/move_docs.py"
 
 [tasks.build-at]

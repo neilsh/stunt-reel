@@ -24,6 +24,15 @@ tracked file outside ``corpus/`` that decodes as UTF-8 and holds no NUL byte; an
 whose bytes name a moved path is listed for a person to edit. The moves file itself is never
 rewritten.
 
+A ``[[split]]`` table relinks one section of a note split into topic files: ``from`` and ``to``
+are repo-relative POSIX paths, and each may end in ``#<anchor>``, a GitHub heading anchor
+(duplicate headings take the ``-1``, ``-2`` suffixes GitHub gives them). A ``to`` without a
+fragment keeps the section's anchor; a ``from`` without one names the whole-file destination
+for links to the note that carry no fragment, once per note. On either phase a link to a split
+note is written to the mapped file with its query kept, and an inbound link whose fragment names
+no mapped section is reported and makes the run exit non-zero without writing. The tool relinks
+only: the note's own text is not cut into the new files.
+
 Usage: ``mise run move-docs -- apply <moves.toml> --phase move|inside [--dry-run] [--root DIR]``.
 Exit status: ``0`` on success, ``1`` for a moves file that does not fit the tree or a failed git
 command, ``2`` for bad arguments.
@@ -39,6 +48,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -51,12 +61,26 @@ from stunt_reel.markdown_links import (
     MARKDOWN_LINK_REGEX,
     URL_SCHEME_REGEX,
     prose,
+    slug,
 )
 from stunt_reel.work_items import WorkFolderError, is_dated, parse_folder, readme_text
 
 type Edit = tuple[int, int, str]
+type Splits = dict[str, "Split"]
+
+
+@dataclass
+class Split:
+    """How links to one split note are relinked: its whole-file destination and its sections."""
+
+    #: Where a link to the note with no fragment goes; None leaves such links alone.
+    default: str | None = None
+    #: Each section's GitHub anchor to (its new file, the anchor to write there or None).
+    sections: dict[str, tuple[str, str | None]] = field(default_factory=dict)
+
 
 _MOVE_KEYS = frozenset(("from", "to"))
+_SPLIT_KEYS = frozenset(("from", "to"))
 _FOLDER_KEYS = frozenset(("path", "title", "started", "issue", "status", "outcome", "state_source"))
 #: Where a link target's path ends and its query or fragment begins.
 _QUERY_OR_FRAGMENT = re.compile(r"[?#]")
@@ -97,20 +121,29 @@ def path_map(moves: Iterable[tuple[str, str]]) -> dict[str, str]:
 
 
 def rewrite_text(
-    text: str, source_old: str, source_new: str, mapping: dict[str, str], *, markdown: bool
+    text: str,
+    source_old: str,
+    source_new: str,
+    mapping: dict[str, str],
+    *,
+    markdown: bool,
+    splits: Splits | None = None,
+    unmapped: list[str] | None = None,
 ) -> str:
     """*text*, the file at repo path *source_old* that now sits at *source_new*, after *mapping*.
 
     When *markdown*, each link outside code whose target is in *mapping* (a file, a directory or
     a path under one), or whose file moved, is written relative to *source_new*, with its query
-    and fragment kept. Unless *source_new* is a dated record, every repo-root-relative path in
-    *mapping* is replaced where it appears outside those links, on path boundaries, a directory
-    as a prefix. Every other character is kept.
+    and fragment kept. A link to a note in *splits* goes to the file mapped for its fragment, or
+    to the note's whole-file destination when it has none; a fragment with no mapping is added to
+    *unmapped* and the link is left as it is. Unless *source_new* is a dated record, every
+    repo-root-relative path in *mapping* is replaced where it appears outside those links, on
+    path boundaries, a directory as a prefix. Every other character is kept.
     """
     edits: list[Edit] = []
     links = _link_spans(text) if markdown else []
     for start, end in links:
-        new = _relink(text[start:end], source_old, source_new, mapping)
+        new = _relink(text[start:end], source_old, source_new, mapping, splits, unmapped)
         if new is not None:
             edits.append((start, end, new))
     if mapping and not is_dated(source_new):
@@ -130,17 +163,20 @@ def main(argv: list[str] | None = None) -> int:
         data = _read(args.moves)
         moves = _moves(data, tracked)
         mapping = path_map(moves)
+        splits = _splits(data)
         files = [(old, new) for old, new in moves if not old.endswith("/")]
         _check_phase(root, tracked, moves, moving=moving)
+        unmapped: list[str] = []
         if moving:
             readmes = _readmes(data, root, tracked, moves)
             skipped = {old for old, _ in files} | {_relative(args.moves, root)}
             stay = [(path, path) for path in sorted(tracked - skipped)]
-            rewrites, untouched = _rewrites(root, stay, mapping)
+            rewrites, untouched = _rewrites(root, stay, mapping, splits, unmapped)
         else:
-            _check_not_relinked(root, tracked, files, mapping)
+            _check_not_relinked(root, tracked, files, mapping, splits)
             readmes = []
-            rewrites, untouched = _rewrites(root, files, mapping)
+            rewrites, untouched = _rewrites(root, files, mapping, splits, unmapped)
+        _check_unmapped(unmapped)
         _print_tables(files, data.get("folder", []) if moving else [])
         if not args.dry_run:
             _write(root, files if moving else [], [*readmes, *rewrites])
@@ -189,22 +225,23 @@ def _read(path: Path) -> dict[str, Any]:
             data = tomllib.load(handle)
     except tomllib.TOMLDecodeError as error:
         raise MovesError(f"{path}: not valid TOML: {error}") from error
-    if unknown := sorted(data.keys() - {"move", "folder"}):
+    if unknown := sorted(data.keys() - {"move", "folder", "split"}):
         raise MovesError(
-            f"{path}: unknown key(s) {', '.join(unknown)}; expected [[move]], [[folder]]"
+            f"{path}: unknown key(s) {', '.join(unknown)}; "
+            "expected [[move]], [[folder]] or [[split]]"
         )
-    for key in ("move", "folder"):
+    for key in ("move", "folder", "split"):
         tables = data.get(key, [])
         if not isinstance(tables, list) or not all(isinstance(table, dict) for table in tables):
             raise MovesError(f"{path}: {key} must be [[{key}]] tables")
-    if not data.get("move"):
-        raise MovesError(f"{path}: lists no [[move]]")
+    if not data.get("move") and not data.get("split"):
+        raise MovesError(f"{path}: lists no [[move]] or [[split]]")
     return data
 
 
 def _moves(data: dict[str, Any], tracked: Collection[str]) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
-    for number, table in enumerate(data["move"], start=1):
+    for number, table in enumerate(data.get("move", []), start=1):
         if table.keys() != _MOVE_KEYS:
             raise MovesError(f"[[move]] {number} needs from and to, and nothing else")
         old = _clean(table["from"], f"[[move]] {number} from")
@@ -217,6 +254,42 @@ def _moves(data: dict[str, Any], tracked: Collection[str]) -> list[tuple[str, st
                 raise MovesError(f"{pair[side]} appears twice in the moves")
             seen.add(pair[side])
     return pairs
+
+
+def _splits(data: dict[str, Any]) -> Splits:
+    """*data*'s ``[[split]]`` rules: each split note's whole-file destination and its sections."""
+    splits: Splits = {}
+    for number, table in enumerate(data.get("split", []), start=1):
+        if table.keys() != _SPLIT_KEYS:
+            raise MovesError(f"[[split]] {number} needs from and to, and nothing else")
+        source, anchor = _split_side(table["from"], f"[[split]] {number} from")
+        destination, destination_anchor = _split_side(table["to"], f"[[split]] {number} to")
+        for side, path in (("from", source), ("to", destination)):
+            if not path.endswith(".md"):
+                raise MovesError(f"[[split]] {number} {side} {path} is not a Markdown file")
+        split = splits.setdefault(source, Split())
+        if anchor is None:
+            if split.default is not None:
+                raise MovesError(f"{source} names its whole-file destination twice")
+            split.default = destination
+            continue
+        key = slug(anchor)
+        if key in split.sections:
+            raise MovesError(f"{source}#{anchor} appears twice in the splits")
+        split.sections[key] = (
+            destination,
+            None if destination_anchor is None else slug(destination_anchor),
+        )
+    return splits
+
+
+def _split_side(value: object, what: str) -> tuple[str, str | None]:
+    """A ``path[#anchor]`` split value as its repo path and its GitHub anchor, if it has one."""
+    raw = value if isinstance(value, str) else ""
+    path, hashmark, anchor = raw.partition("#")
+    if hashmark and (not slug(anchor) or anchor != anchor.strip() or "#" in anchor):
+        raise MovesError(f"{what} {value!r} does not end in a non-empty heading anchor")
+    return _clean(path, what), (anchor if hashmark else None)
 
 
 def _expand(old: str, new: str, tracked: Collection[str]) -> list[tuple[str, str]]:
@@ -336,8 +409,21 @@ def _check_phase(
             raise MovesError(f"{old} has not moved to {new}; run --phase move first")
 
 
+def _check_unmapped(unmapped: list[str]) -> None:
+    """Raise MovesError naming every section link no ``[[split]]`` rule maps."""
+    if unmapped:
+        raise MovesError(
+            "these links point at a section with no [[split]] mapping:\n  "
+            + "\n  ".join(dict.fromkeys(unmapped))
+        )
+
+
 def _check_not_relinked(
-    root: Path, tracked: set[str], files: list[tuple[str, str]], mapping: dict[str, str]
+    root: Path,
+    tracked: set[str],
+    files: list[tuple[str, str]],
+    mapping: dict[str, str],
+    splits: Splits,
 ) -> None:
     """Raise MovesError when a moved file's relative link that the inside phase would change
     already resolves from the file's new place to a tracked file or directory: the phase ran."""
@@ -354,7 +440,7 @@ def _check_not_relinked(
             split = _split_target(target)
             if split is None or split[0].startswith("/"):
                 continue
-            if _relink(target, old, new, mapping) is None:
+            if _relink(target, old, new, mapping, splits) is None:
                 continue
             here = _resolve(split[0], new)
             if here is not None and (here in tracked or here in directories):
@@ -365,10 +451,17 @@ def _check_not_relinked(
 
 
 def _rewrites(
-    root: Path, files: list[tuple[str, str]], mapping: dict[str, str]
+    root: Path,
+    files: list[tuple[str, str]],
+    mapping: dict[str, str],
+    splits: Splits,
+    unmapped: list[str],
 ) -> tuple[list[tuple[str, str]], list[str]]:
     """(path, new text) for each (old, current) path pair whose text the move changes, and the
-    paths of the files that are not text but whose bytes name a moved path, for a person."""
+    paths of the files that are not text but whose bytes name a moved path, for a person.
+
+    A section link with no split mapping is appended to *unmapped*.
+    """
     rewrites: list[tuple[str, str]] = []
     untouched: list[str] = []
     for old, path in files:
@@ -377,7 +470,15 @@ def _rewrites(
             if not is_dated(path) and any(key.encode() in contents for key in mapping):
                 untouched.append(path)
         elif contents is not None:
-            text = rewrite_text(contents, old, path, mapping, markdown=path.endswith(".md"))
+            text = rewrite_text(
+                contents,
+                old,
+                path,
+                mapping,
+                markdown=path.endswith(".md"),
+                splits=splits,
+                unmapped=unmapped,
+            )
             if text != contents:
                 rewrites.append((path, text))
     return rewrites, untouched
@@ -411,8 +512,15 @@ def _print_list(heading: str, paths: list[str]) -> None:
         print(f"  {path}")
 
 
-def _relink(target: str, source_old: str, source_new: str, mapping: dict[str, str]) -> str | None:
-    """The link *target* rewritten for the move, or None when it stays."""
+def _relink(
+    target: str,
+    source_old: str,
+    source_new: str,
+    mapping: dict[str, str],
+    splits: Splits | None = None,
+    unmapped: list[str] | None = None,
+) -> str | None:
+    """The link *target* rewritten for the move or split, or None when it stays."""
     split = _split_target(target)
     if split is None:
         return None
@@ -421,6 +529,16 @@ def _relink(target: str, source_old: str, source_new: str, mapping: dict[str, st
     resolved = _resolve(path, source_old)
     if resolved is None:
         return None
+    section = _split_section(resolved, rest, splits, source_new, target, unmapped)
+    if section is not None:
+        destination, section_rest = section
+        destination = _moved(destination, mapping) or destination
+        if rooted:
+            new = f"/{destination}"
+        else:
+            new = _relative_path(destination, posixpath.dirname(source_new))
+        new += section_rest
+        return None if new == target else new
     moved = _moved(resolved, mapping)
     # A rooted link, `/docs/x.md`, reads the same from anywhere.
     if moved is None and (rooted or source_old == source_new):
@@ -434,6 +552,32 @@ def _relink(target: str, source_old: str, source_new: str, mapping: dict[str, st
         new += "/"
     new += rest
     return None if new == target else new
+
+
+def _split_section(
+    resolved: str,
+    rest: str,
+    splits: Splits | None,
+    source_new: str,
+    target: str,
+    unmapped: list[str] | None,
+) -> tuple[str, str] | None:
+    """The new file and query/fragment for a link to a split note, or None when it stays."""
+    if not splits or (split := splits.get(resolved)) is None:
+        return None
+    query, hashmark, fragment = rest.partition("#")
+    if not hashmark or not fragment:
+        return (split.default, rest) if split.default is not None else None
+    section = split.sections.get(slug(fragment))
+    if section is None:
+        if unmapped is not None:
+            unmapped.append(
+                f"{source_new}: {target} points at a section of {resolved} "
+                "with no [[split]] mapping"
+            )
+        return None
+    destination, anchor = section
+    return destination, f"{query}#{anchor or slug(fragment)}"
 
 
 def _link_spans(text: str) -> list[tuple[int, int]]:
