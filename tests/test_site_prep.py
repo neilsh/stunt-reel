@@ -48,7 +48,7 @@ def repo(tmp_path: Path) -> Path:
     _write(tmp_path / "site/published.toml", PUBLISHED)
     _write(tmp_path / "site/index.md", '---\ntitle: "Home"\n---\n')
     _write(tmp_path / "site/reading.md", '---\ntitle: "Reading"\n---\n')
-    _write(tmp_path / "GLOSSARY.md", "# Glossary\n\nSee [sod](research/formats/sod.md).\n")
+    _write(tmp_path / "GLOSSARY.md", "# Stunt Reel\n\nSee [sod](research/formats/sod.md).\n")
     _write(tmp_path / "research/formats/INDEX.md", "# Formats\n\n[sod](sod.md)\n")
     _write(
         tmp_path / "research/formats/sod.md",
