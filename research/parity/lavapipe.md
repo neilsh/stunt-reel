@@ -1,5 +1,5 @@
 ---
-summary: "Mesa's software clipper can interpolate the shade varying to NaN; with the non-finite shade guard, local lavapipe (mesa-dist-win 25.2.8) scores within 0.002 of the RTX 4070 on all seven reference films, local and cloud lavapipe agree within 0.00004, and Gouraud polygons the clipper breaks draw flat; one model-matrix upload per frame instead of per draw took a lavapipe LOCATION render from 150.5 s to 81.8 s."
+summary: "Mesa's software clipper can interpolate the shade varying to NaN; with the non-finite shade guard, local lavapipe (mesa-dist-win 25.2.8) scores within 0.002 of the RTX 4070 on all seven reference films, local and cloud lavapipe agree within 0.00004, and Gouraud polygons the clipper breaks draw flat; one model-matrix upload per frame instead of per draw took a lavapipe render of LOCATION ticks 12-300 from 150.5 s to 81.8 s."
 ---
 # Parity: Rendering on Lavapipe
 
@@ -65,7 +65,7 @@ Before [#596](https://github.com/neilsh/stunt-reel/issues/596), on a build of `c
 | GPU, LOCATION's captured ticks (12-8262) | 301.2 s | 229.6 s |
 | GPU, INTRO's captured ticks (12-3818) | 96.8 s | 67.8 s |
 
-`frames.zst`, `layers.zst` and `palettes.zst` are byte-identical before and after on lavapipe for ticks 12-300, and on the GPU over every reference film's captured ticks. After the change, 16 of 20 `cdb` main-thread samples sit in `wgpu_hal::vulkan::DeviceShared::wait_for_fence`, sleeping on a condition variable inside `vulkan_lvp`; none are in staging allocation; the other 4 are in command encoding (`CommandEncoder::finish`, `draw_indexed`) and `Device::poll`. What lavapipe does while the main thread waits is not measured ([#600](https://github.com/neilsh/stunt-reel/issues/600)).
+`frames.zst`, `layers.zst` and `palettes.zst` are byte-identical before and after on lavapipe for ticks 12-300, and on the GPU over every reference film's captured ticks. After the change, 16 of 20 `cdb` main-thread samples sit in `wgpu_hal::vulkan::DeviceShared::wait_for_fence`, sleeping on a condition variable inside `vulkan_lvp`; none are in staging allocation; of the other 4, one is in command encoding (`CommandEncoder::finish`, `draw_indexed`), two in `Device::poll` and one in `GpuModel::collect_world_meshes` under `prepare`. What lavapipe does while the main thread waits is not measured ([#600](https://github.com/neilsh/stunt-reel/issues/600)).
 
 ## Ruled out
 
@@ -84,5 +84,5 @@ Before [#596](https://github.com/neilsh/stunt-reel/issues/596), on a build of `c
 1. Whether the clipper moves the depth of a polygon it breaks (LOCATION 2859, section 5), why another polygon wins at BOMB 1910 and LOCATION 2599, and what moves LAND 227's other 536 pixels ([#595](https://github.com/neilsh/stunt-reel/issues/595)).
 2. Whether to stop Gouraud polygons drawing flat on lavapipe (section 5): recomputing the weight in the shader (for example interpolating `shade` as `perspective` alongside a `linear` copy and using it only when the `linear` one is not finite), each byte-identical on a GPU only if tested so. Not filed upstream either: a report to Mesa would cite `t_nopersp`'s zero divisor (section 2). ([#595](https://github.com/neilsh/stunt-reel/issues/595))
 3. Whether Mesa 26.2.6 scores as 25.2.8 does: it was rendered at six ticks only, with no parity run; and CI's lavapipe has not been compared with these rows.
-4. What lavapipe does while a frame's main thread waits in `wait_for_fence`, about 0.28 s per LOCATION tick after #596, apparently on one thread (section 6, [#600](https://github.com/neilsh/stunt-reel/issues/600)).
+4. What lavapipe does while a frame's main thread waits in `wait_for_fence`, about 16 of 20 main-thread samples of a 0.28 s LOCATION tick after #596; before it the process ran at 1.00 core, and no thread count was measured after (section 6, [#600](https://github.com/neilsh/stunt-reel/issues/600)).
 5. Whether a cloud session can reach `gitlab.freedesktop.org`: [`cloud-sessions.md`](../../docs/cloud-sessions.md) lists it in the environment's network access, but no cloud session is recorded reaching it; the reads in section 2 were made from the RTX 4070 laptop. Unchecked.

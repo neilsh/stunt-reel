@@ -4,8 +4,8 @@
 //! [`ModelUniform`] at its own dynamic offset in one uniform buffer, so two actors sharing a
 //! shape render at their own poses within one render pass. [`SceneRenderer::prepare`] fills
 //! every slot of a frame with one `Queue::write_buffer`, before the pass is submitted:
-//! one write per draw made wgpu allocate a staging buffer per draw, which dominated
-//! lavapipe renders (`research/parity/lavapipe.md` section 6).
+//! one write per draw made wgpu allocate a staging buffer per draw, which took about half
+//! of a lavapipe render's main-thread samples (`research/parity/lavapipe.md` section 6).
 //!
 //! Frame use is two-phase because a render pass borrows its bind groups: call
 //! [`SceneRenderer::prepare`] (uploads camera and matrices, may allocate slots), then
