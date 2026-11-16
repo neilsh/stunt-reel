@@ -39,8 +39,8 @@ The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the
 | `0x810A` | `[Established]` | `u16` | `0x229C² × 2 >> 16` (image `0x1238`); `OP_REJVEC` scales its depth term by it (`0x953F`), undoing the lens zoom ([`sod-vm-execution.md`](sod-vm-execution.md) section 8.6) | |
 | `0x810C` | `[Established]` | `u16` | Lens shift count, a copy of `DS:0x229E` (image `0x123D`); arithmetic right shift on the view matrix's depth row (image `0x12F8`). Zoom is `0x8108 / 0x8000 × 2^0x810C`, about `lens / 8192` | |
 | `0x811E` | `[Established]` | `u16` | The film clock `[0x4888 + 0x0E]` shifted left 12 (image `0x1DCA`): the bank word `OP_ANIMATE` selector `0x10` reads, one sweep every 16 ticks | `# [FMT-SOD-ANIMATE]` |
-| `0x8120` | `[Established]` | `u16` | Var 10's change since the previous frame, saturated at 255, shifted left 8 (image `0x1DBD`): bank operand `0x12` ([`angle-bank.md`](angle-bank.md)) | |
-| `0x8122` | `[Established]` | `u16` | The previous frame's var 10, low byte shifted left 8 (image `0x1DC6`): bank operand `0x14`, the stock propellers' `ROTZ` angle ([`angle-bank.md`](angle-bank.md)) | |
+| `0x8120` | `[Established]` | `u16` | Var 10's change since the previous frame, saturated at 255, shifted left 8 (image `0x1DBD`): bank operand `0x12`, which `BVGT` (`0x9C23`) reads to pick a rotor's solid or line blades ([`angle-bank.md`](angle-bank.md) § 4) | |
+| `0x8122` | `[Established]` | `u16` | The previous frame's var 10, low byte shifted left 8 (image `0x1DC6`): bank operand `0x14`, the stock propellers' `ROTZ` angle and the `0x3E57` rotors' `ROTY` and `ROTX` angles ([`angle-bank.md`](angle-bank.md)) | |
 | `0x8124` | `[Established]` | `u16` | The drawn slot's animate word, its record's `+0x16` (image `0x1D66`): the bank word `OP_ANIMATE` selector `0x16` and `ROT*` operand `0x16` read | `# [FMT-SOD-ANIMATE]` |
 | `0x8126`, `0x8128` | `[Established]` | `i16` | Var 12 and its negation (image `0x1D9F`, `0x1DA5`): bank operands `0x18` and `0x1A` ([`angle-bank.md`](angle-bank.md)) | |
 
