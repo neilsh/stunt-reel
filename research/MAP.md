@@ -40,8 +40,8 @@
 
 ## parity
 
-- [`parity/attribution.md`](parity/attribution.md): Splits the CTRY.FLM and INTRO.FLM SSIM loss by render layer: props are the largest class once ground tiles are decals, and a pre-decal CTRY window study puts most loss at edges, not flat colour.
-- [`parity/batch-vault-films.md`](parity/batch-vault-films.md): Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, and the suspects rescored on the stride plan.
+- [`parity/attribution.md`](parity/attribution.md): Splits the SSIM loss of the seven VAULT reference films by render layer: props lead on four and terrain on two, BALLOON's low mask IoU comes from a straight-down camera we draw blank and a zenith sky outside the scorer's band, and a pre-decal CTRY window study puts most loss at edges, not flat colour.
+- [`parity/batch-vault-films.md`](parity/batch-vault-films.md): Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and a 2026-11-16 readout of the Patch #3 references where `sea-band-wrong` leads on two of six films and no aircraft category reaches 3 frames.
 - [`parity/batch.md`](parity/batch.md): Survey of corpus films through `mise run batch-parity`'s archive, capture, render and score stages: the score spread of the 79 of 529 scored when it stopped, stage costs, capture failures, rescores.
 - [`parity/col3-2-studio.md`](parity/col3-2-studio.md): Records the COL3-2.FLM studio interior (anchorman, desk, window) that PLAYONE draws from tick 458 and we do not: evaluator state, actor clusters, shape census, and why the gap is unresolved.
 - [`parity/evidence-limits.md`](parity/evidence-limits.md): Lists what the parity scores do not yet establish: film coverage, metric caveats, the non-deterministic reference, GPU and lavapipe differences, and what dosbox-automation captures can and cannot show.

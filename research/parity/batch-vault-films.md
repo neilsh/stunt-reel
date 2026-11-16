@@ -1,5 +1,5 @@
 ---
-summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, and the suspects rescored on the stride plan."
+summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and a 2026-11-16 readout of the Patch #3 references where `sea-band-wrong` leads on two of six films and no aircraft category reaches 3 frames."
 ---
 
 # Batch Parity Survey: Retail Vault Films
@@ -72,6 +72,27 @@ Seven of ten films are scored; none is a stuck clock or under 2 frames. SSIM, Io
 * **`vault-location` captures.** Off the known-stalls list, it captured 746 frames over ticks 12 to 8262 in 557 s and scores 0.684 (IoU 0.957, index agreement 0.651, 733 scored), so eight of the ten `VAULT` films now score.
 * **`collage4-elbarto`** is the lowest of the six on every measure and the only one under 0.6; it is a lead for the error readout, not yet a finding.
 
+## 7. The Patch #3 references on today's renderer
+
+`[Bounded Observation]`, 2026-11-16, `main` at `76872e89`, RTX 4070. Sections 4 to 6 scored the survey's own captures. Since then seven of these films have Patch #3 reference captures pinned in [`references.toml`](references.toml), with their sound range stubbed, and `mise run parity` scores them. Their scores, loss by render layer and `balloon`'s low mask IoU are in [`attribution.md`](attribution.md) sections 2 and 7. Here is what the error readout sees on the same renders: 12 sheets per film, two Haiku passes, a Sonnet tie-break on the disputed sheets, frames graded 2 or more of 12.
+
+| Film | Ticks | Categories graded 2+ (frames) | `other` notes |
+|---|---|---|---|
+| `vault-intro` | 1002–3477 | `background-misregistration` 2, `sea-band-wrong` 1 | 5 |
+| `vault-land` | 12–903 | `sea-band-wrong` 3, `scenery-missing` 3, `terrain-type-wrong` 1, `shadow-shape-wrong` 1, `ground-shade-edges` 1, `aircraft-misplaced` 1 | 3 |
+| `vault-balloon` | 12–1178 | `sun-missing` 3, `frame-blank` 2, `aircraft-absent` 2 | 8 |
+| `vault-traintnl` | 12–1233 | `sea-band-wrong` 6 | 7 |
+| `vault-bomb` | 12–3477 | `sea-band-wrong` 4, `background-misregistration` 1 | 3 |
+| `vault-location` | 134–6161 | `sea-band-wrong` 2, `ground-shade-edges` 2, `terrain-type-wrong` 1, `background-misregistration` 1 | 1 |
+
+`vault-ctry` has no readout in this run (one grader pass of two).
+
+* **No aircraft category reaches the 3-frame lead threshold** of section 4 on any of the six. In section 4 the top aircraft category reached 5 to 11 frames on each of the four films both readouts graded. Those readouts graded older renders of other captures, so the counts are not paired frame for frame, and the drop is a lead rather than a measured change.
+* **`sea-band-wrong` is a finding on `vault-traintnl` (6) and `vault-bomb` (4)**, at 4 frames or more. On `vault-land` it ties with `scenery-missing` at 3, a lead. On `vault-bomb` the three `other` notes name a pale grey sky above the horizon where the capture shows light blue.
+* **`vault-balloon`'s graded frames fall on the two runs that set its IoU**: `sun-missing` on the zenith-sky frames (12, 122, 221), `frame-blank` and `aircraft-absent` on the straight-down camera (650, 749) ([`attribution.md`](attribution.md) section 7).
+
+_Source: [error readout on the Patch 3 references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-error-readout-on-the-patch-3-references)._
+
 ## Ruled out
 
 None recorded here. Rejected survey approaches are in [`batch.md`](batch.md#ruled-out).
@@ -81,4 +102,4 @@ None recorded here. Rejected survey approaches are in [`batch.md`](batch.md#rule
 1. ~~Why does a scored single-frame film show IoU 0.83 and index agreement 0.001?~~ Answered: the one frame was not a film frame, and recaptured whole the films score normally (section 6).
 2. Why do `vault-intro`, `vault-location` and `vault-tod` stop with `instruction limit exceeded` about 40 s into Mode 13h, on every attempt (section 4)? Answered: the trace script has a fixed budget of one million Lua instructions and ends only once the film clock holds above 0. `TOD.FLM` and `INTRO.FLM` come from `siarchive/Films/NewPLAY/`, whose folder ships Patch #3's `PLAYONE.EXE`; that build stalls on those two retail archives (TOD's clock falls back to 0, INTRO holds a title card), while the unpatched build or a `make-all` archive plays both, and `--game-root builds/unpatched` captured them (`vault-tod/frames/001`, `vault-intro/frames/006`). The batch first captured those two on that build with a hand-kept list; the capture lifecycle's fallback is expected to find it by itself (a stall exception on patch3, then the unpatched build, and a suggested `references.toml` row), pending a capture run that shows patch3 raising one for these films. It has run only against a mock emulator; a patch3 attempt that completes normally is published and is not retried, and `TOD.FLM` is not an example of a stall the fallback sees, because the trace script ends only once the film clock holds above 0. `LOCATION.FLM` plays but, at 8,266 ticks, was too long for one trace script; on the clock and window passes it captures (section 6). Open: what in those archives stalls the patched build ([`../playone-exe/capture-dosbox-automation.md`](../playone-exe/capture-dosbox-automation.md#47-the-instruction-budget-and-three-retail-archives) § 4.7).
 3. ~~Why does a capture's end tick differ by 100 to 400 ticks between runs?~~ Answered: it does not; section 4's column was the readout's picked span, not the capture's ([`../playone-exe/capture-speed.md`](../playone-exe/capture-speed.md) § 3).
-4. Section 4's error readout graded renders from `ea99618` of older captures; should the Haiku readout be rerun on the render-store renders and the fresh captures? Not done here.
+4. ~~Section 4's error readout graded renders from `ea99618` of older captures; should the Haiku readout be rerun on the render-store renders and the fresh captures?~~ Rerun on 2026-11-16 for six of the pinned Patch #3 references, against their reference captures (section 7). Open: `vault-ctry`'s readout ([#619](https://github.com/neilsh/stunt-reel/issues/619)), and the three films that are not references (`vault-highways`, `vault-splanes`, `vault-tod`).
