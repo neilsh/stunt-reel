@@ -1,6 +1,10 @@
 //! Draws a [`SceneFrame`] of a [`FilmScene`]: the world plus one draw per actor.
 //!
-//! Every shape is uploaded once. Each actor draw gets its own per-draw uniform, a
+//! Every shape is uploaded once. An actor whose light differs from the scene's
+//! ([`stunt_core::scene::ActorDraw::light`]) draws its own copy of its shape decoded under that
+//! light, since `OP_SHADES` bakes the light into the colours; the copy is kept while the actor
+//! draws the same shape, and a new light rewrites its vertices only when their colours change.
+//! Each actor draw gets its own per-draw uniform, a
 //! [`ModelUniform`] at its own dynamic offset in one uniform buffer, so two actors sharing a
 //! shape render at their own poses within one render pass. [`SceneRenderer::prepare`] uploads
 //! every per-draw uniform of a frame with one `Queue::write_buffer` before the pass is submitted, never
@@ -28,7 +32,8 @@ use stunt_core::contracts::{
     CameraTransform, NodeKind, SCENERY_OCEAN, SCENERY_TERRAIN, SodModelIr, SodVertex,
     VERTEX_FLAG_LINE, VisibilityCondition,
 };
-use stunt_core::scene::{FilmScene, SceneFrame, SpriteDraw};
+use stunt_core::scene::{FilmScene, RelitShapes, SceneFrame, SpriteDraw};
+use stunt_core::sod::ShadeLight;
 use stunt_core::sprite::SpriteImage;
 
 use crate::camera::{CameraController, CameraGpuResources};
@@ -45,6 +50,9 @@ enum Target {
     World,
     /// An actor shape drawn through the per-draw uniform with this index.
     Shape { shape_id: u16, uniform: usize },
+    /// The actor with this index in the frame, drawn from its shape decoded under its own
+    /// light through the per-draw uniform with this index.
+    Lit { actor: usize, uniform: usize },
     /// A sprite's image drawn through the per-draw uniform with this index.
     Image { image_id: u16, uniform: usize },
 }
@@ -167,6 +175,35 @@ impl DrawUniforms {
     }
 }
 
+/// An actor's shape decoded under the actor's own light, with the vertices last uploaded.
+#[derive(Debug)]
+struct LitShape {
+    shape_id: u16,
+    light: ShadeLight,
+    vertices: Vec<SodVertex>,
+    model: GpuModel,
+}
+
+impl LitShape {
+    /// Uploads `ir`, shape `shape_id` decoded under `light`, as a model of its own.
+    fn upload(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layout: &wgpu::BindGroupLayout,
+        shape_id: u16,
+        light: ShadeLight,
+        ir: SodModelIr,
+    ) -> Self {
+        let model = GpuModel::from_ir(device, queue, layout, &ir);
+        Self {
+            shape_id,
+            light,
+            vertices: ir.vertices,
+            model,
+        }
+    }
+}
+
 /// GPU renderer for the scene frames of one [`FilmScene`].
 #[derive(Debug)]
 pub(crate) struct SceneRenderer {
@@ -174,6 +211,11 @@ pub(crate) struct SceneRenderer {
     /// Every sprite image of the scene as a unit square ([`sprite_ir`]).
     images: HashMap<u16, GpuModel>,
     world: Option<GpuModel>,
+    /// The actors' shape streams, decoded again under each actor's own light.
+    relit: RelitShapes,
+    /// Each actor's shape decoded under its own light, by actor index in the frame; `None`
+    /// for an actor drawn under the scene's light.
+    lit: Vec<Option<LitShape>>,
     uniforms: DrawUniforms,
     model_layout: wgpu::BindGroupLayout,
     prepared: Vec<PreparedDraw>,
@@ -218,6 +260,8 @@ impl SceneRenderer {
             shapes,
             images,
             world,
+            relit: scene.relit_shapes().clone(),
+            lit: Vec::new(),
             uniforms: DrawUniforms::new(device),
             model_layout: layout.clone(),
             prepared: Vec::new(),
@@ -295,8 +339,22 @@ impl SceneRenderer {
                 meshes,
             );
         }
-        for (actor_index, actor) in (0u32..).zip(&frame.actors) {
-            let Some(model) = self.shapes.get(&actor.shape_id) else {
+        self.lit.resize_with(frame.actors.len(), || None);
+        for ((actor_index, actor), slot) in (0u32..).zip(&frame.actors).zip(0usize..) {
+            let lit = actor.light != self.relit.light()
+                && self.relight(device, queue, slot, actor.shape_id, actor.light);
+            if !lit && let Some(stale) = self.lit.get_mut(slot) {
+                *stale = None;
+            }
+            let model = if lit {
+                self.lit
+                    .get(slot)
+                    .and_then(Option::as_ref)
+                    .map(|l| &l.model)
+            } else {
+                self.shapes.get(&actor.shape_id)
+            };
+            let Some(model) = model else {
                 continue;
             };
             let to_model = Mat4::from_cols_array(&actor.world_matrix).inverse();
@@ -316,23 +374,24 @@ impl SceneRenderer {
             // sort (`0x1B88`) paints every shadow before every actor; here the depth test
             // keeps the actor in front of its shadow where the two overlap
             // (research/playone-exe/sod-vm-frame.md section 9.1).
+            let shape_id = actor.shape_id;
+            let target = |uniform| {
+                if lit {
+                    Target::Lit {
+                        actor: slot,
+                        uniform,
+                    }
+                } else {
+                    Target::Shape { shape_id, uniform }
+                }
+            };
             if let Some(shadow_matrix) = actor.shadow_matrix {
                 let uniform = ModelUniform::shadow(shadow_matrix, layer);
                 let shadow = base.iter().chain(&decals).copied().collect();
-                let shape_id = actor.shape_id;
-                self.push_draw(
-                    |uniform| Target::Shape { shape_id, uniform },
-                    &uniform,
-                    (Vec::new(), shadow),
-                );
+                self.push_draw(target, &uniform, (Vec::new(), shadow));
             }
             let uniform = ModelUniform::new(actor.world_matrix, layer);
-            let shape_id = actor.shape_id;
-            self.push_draw(
-                |uniform| Target::Shape { shape_id, uniform },
-                &uniform,
-                (base, decals),
-            );
+            self.push_draw(target, &uniform, (base, decals));
         }
 
         // Sprites have no shadow: `PLAYONE` skips `OP_ANIMATE` in the shadow pass.
@@ -352,6 +411,57 @@ impl SceneRenderer {
             );
         }
         self.uniforms.upload(device, queue, &self.model_layout);
+    }
+
+    /// Whether actor `slot`'s shape `shape_id` lit by `light` is in `self.lit`, decoding it
+    /// first if not.
+    ///
+    /// The slot's model is kept while the actor draws the same shape and the decode keeps its
+    /// vertex and index counts: a new light rewrites its vertices, and only when they changed.
+    /// False, with the slot cleared, when the scene keeps no stream for the shape or it fails
+    /// to decode; the actor then draws the shape uploaded at start-up.
+    fn relight(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        slot: usize,
+        shape_id: u16,
+        light: ShadeLight,
+    ) -> bool {
+        let Some(entry) = self.lit.get_mut(slot) else {
+            return false;
+        };
+        if entry
+            .as_ref()
+            .is_some_and(|lit| lit.shape_id == shape_id && lit.light == light)
+        {
+            return true;
+        }
+        let Some(ir) = self.relit.decode(shape_id, light) else {
+            *entry = None;
+            return false;
+        };
+        let ir = with_outlines(&ir);
+        if let Some(lit) = entry.as_mut().filter(|lit| lit.shape_id == shape_id) {
+            if lit.vertices == ir.vertices {
+                lit.light = light;
+                return true;
+            }
+            if lit.model.rewrite_vertices(queue, &ir) {
+                lit.light = light;
+                lit.vertices = ir.vertices;
+                return true;
+            }
+        }
+        *entry = Some(LitShape::upload(
+            device,
+            queue,
+            &self.model_layout,
+            shape_id,
+            light,
+            ir,
+        ));
+        true
     }
 
     /// Queues a draw of the target `target` names for the next per-draw uniform, filled with
@@ -441,6 +551,17 @@ impl SceneRenderer {
                             .zip(self.uniforms.binding(uniform))
                         {
                             Some((m, (bind_group, offset))) => (m, bind_group, offset),
+                            None => continue,
+                        }
+                    }
+                    Target::Lit { actor, uniform } => {
+                        match self
+                            .lit
+                            .get(actor)
+                            .and_then(Option::as_ref)
+                            .zip(self.uniforms.binding(uniform))
+                        {
+                            Some((lit, (bind_group, offset))) => (&lit.model, bind_group, offset),
                             None => continue,
                         }
                     }

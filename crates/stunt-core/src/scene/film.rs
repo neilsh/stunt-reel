@@ -20,7 +20,7 @@ use super::projection::{
 };
 use super::shadow::ground_shadow;
 use super::shapes::{
-    ArchiveShapes, ShapeSource, SkippedChunk, decode_archive_shapes, decode_res_shapes,
+    ArchiveShapes, RelitShapes, ShapeSource, SkippedChunk, decode_archive_shapes, decode_res_shapes,
 };
 use super::sprite::{bank_word, sprite_gate_open};
 
@@ -100,6 +100,11 @@ pub struct ActorDraw {
     /// drawn again through this matrix in palette index 0 (`research/playone-exe/sod-vm-frame.md`
     /// section 9.1).
     pub shadow_matrix: Option<[f32; 16]>,
+    /// The light `OP_SHADES` shades the shape's normals against for this draw: the world
+    /// light turned by the actor's rotation ([`ShadeLight::for_actor`]), the world light for
+    /// a view-facing draw. A renderer decodes the shape again under it
+    /// ([`FilmScene::relit_shapes`]) when it differs from the light the scene decoded under.
+    pub light: ShadeLight,
 }
 
 /// One image an actor's shape draws in screen space (`OP_ANIMATE`) in a [`SceneFrame`].
@@ -156,6 +161,8 @@ pub struct FilmScene {
     font: Option<PFont>,
     /// Frames of the shapes' sprites, by resource id.
     images: HashMap<u16, SpriteImage>,
+    /// The actors' shape streams, to decode again under each actor's light.
+    relit: RelitShapes,
 }
 
 impl FilmScene {
@@ -173,7 +180,22 @@ impl FilmScene {
             origin_shape: None,
             font: None,
             images: HashMap::new(),
+            relit: RelitShapes::default(),
         }
+    }
+
+    /// Lights each actor by its own rotation, decoding its shape again from `relit`; without
+    /// it every actor keeps the shape as the scene decoded it.
+    #[must_use]
+    pub fn with_relit_shapes(mut self, relit: RelitShapes) -> Self {
+        self.relit = relit;
+        self
+    }
+
+    /// The actors' shape streams and the world light the scene's shapes were decoded under.
+    #[must_use]
+    pub fn relit_shapes(&self) -> &RelitShapes {
+        &self.relit
     }
 
     /// Draws the shapes' sprites with `images`, keyed by resource id; without them a scene
@@ -262,8 +284,8 @@ impl FilmScene {
         let anchors = inputs.anchors.map_or_default(parse_anchor_table);
 
         // `PLAYONE` lights every object from film variable 13 (`0x196C`); the light the
-        // first slice sets is the film's. Actors get it unrotated: their own light is the
-        // world light turned by their rotation and the view, which changes every frame.
+        // first slice sets is the film's. Shapes decode under it; an actor's own light,
+        // turned by its rotation, is set per frame (`ActorDraw::light`).
         let light = ShadeLight::world(
             timeline
                 .slices()
@@ -323,8 +345,18 @@ impl FilmScene {
             }),
             tap_failures: world.as_ref().map_or_default(|w| w.tap_failures.clone()),
         };
+        let actor_shapes: HashSet<u16> = timeline
+            .slices()
+            .iter()
+            .flat_map(|slice| &slice.record.actors)
+            .map(|actor| actor.shape_id)
+            .collect();
+        let mut streams = decoded.streams;
+        streams.retain(|id, _| actor_shapes.contains(id));
         Ok((
-            Self::new(timeline, decoded.shapes, world).with_images(decoded.images),
+            Self::new(timeline, decoded.shapes, world)
+                .with_images(decoded.images)
+                .with_relit_shapes(RelitShapes::new(streams, light)),
             report,
         ))
     }
@@ -400,10 +432,16 @@ impl FilmScene {
             .filter_map(|a| self.shapes.get(&a.shape_id).map(|shape| (a, shape)))
             .map(|(a, shape)| {
                 let own = a.compute_world_matrix();
-                let world_matrix = if faces_view(shape) {
+                let faces = faces_view(shape);
+                let world_matrix = if faces {
                     lifted(facing_matrix(heading, a.position_meters), shape)
                 } else {
                     lifted(own, shape)
+                };
+                let light = if faces {
+                    self.relit.light()
+                } else {
+                    self.relit.light().for_actor(a.rotation_quat)
                 };
                 ActorDraw {
                     shape_id: a.shape_id,
@@ -415,6 +453,7 @@ impl FilmScene {
                     shadow_matrix: a
                         .casts_shadow
                         .then(|| self.shadow_matrix(a.position_meters, &lifted(own, shape))),
+                    light,
                 }
             })
             .collect();
@@ -434,6 +473,7 @@ impl FilmScene {
                 state_mask: 0,
                 distance: distance(eye, p.position),
                 shadow_matrix: None,
+                light: self.relit.light(),
             })
             .collect();
         if let Some(shape_id) = self.origin_shape.filter(|_| record.actors.is_empty()) {
@@ -443,6 +483,7 @@ impl FilmScene {
                 state_mask: 0,
                 distance: distance(eye, [0.0; 3]),
                 shadow_matrix: None,
+                light: self.relit.light(),
             });
         }
         let sprites = self.sprite_draws(tick, &record.actors, &actors);
@@ -619,6 +660,66 @@ mod tests {
         assert_eq!(prop.shape_id, 9);
         assert!(near(&prop.world_matrix, &turned(-2.0, 1.0, 5.0)));
         assert_eq!(prop.shadow_matrix, None);
+        // A view-facing draw keeps the world light whatever the slot's rotation.
+        assert_eq!(drawn.light, ShadeLight::WORLD_0X2D);
+        assert_eq!(prop.light, ShadeLight::WORLD_0X2D);
+    }
+
+    /// A rotated actor is lit by its rotation times the world light, an unrotated one by the
+    /// world light, and its kept stream decodes under the world light to the scene's shape.
+    #[test]
+    fn a_rotated_actor_is_lit_by_its_own_rotation() {
+        use crate::contracts::{ActorTransform, TrajectoryRecord};
+        use crate::flm::SliceKeyframe;
+        use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, decode_sod};
+
+        let words = [
+            OP_ID, 100, 0, 0, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24, OP_RETURN,
+        ];
+        let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let shape = decode_sod(&bytes, "BOX", None, DecodeMode::Strict).expect("decode box");
+        assert!(!faces_view(&shape));
+        let half = std::f32::consts::FRAC_1_SQRT_2;
+        let actor = |actor_id, rotation_quat| ActorTransform {
+            actor_id,
+            model_name: "BOX".to_string(),
+            shape_id: 9,
+            rotation_quat,
+            position_meters: [0.0; 3],
+            state_mask: 0,
+            casts_shadow: false,
+            joint_angles_bam: Vec::new(),
+        };
+        let pitched = [half, 0.0, 0.0, half];
+        let record = TrajectoryRecord {
+            tick: 0,
+            camera: CameraTransform::default(),
+            actors: vec![actor(0, pitched), actor(1, [0.0, 0.0, 0.0, 1.0])],
+            audio_cues: Vec::new(),
+            palette: PaletteControls::default(),
+        };
+        let timeline = FilmTimeline::new(
+            vec![SliceKeyframe {
+                record,
+                tick: 0,
+                tick_duration: 1,
+            }],
+            Vec::new(),
+        );
+        let streams = HashMap::from([(9, ("BOX".to_string(), bytes))]);
+        let scene = FilmScene::new(timeline, HashMap::from([(9, shape.clone())]), None)
+            .with_relit_shapes(RelitShapes::new(streams, ShadeLight::WORLD_0X2D));
+        let frame = scene.frame(0.0);
+
+        let [turned, level] = frame.actors.as_slice() else {
+            panic!("two actor draws, got {}", frame.actors.len());
+        };
+        assert_eq!(turned.light, ShadeLight::WORLD_0X2D.for_actor(pitched));
+        assert_ne!(turned.light, ShadeLight::WORLD_0X2D);
+        assert_eq!(level.light, ShadeLight::WORLD_0X2D);
+        let relit = scene.relit_shapes();
+        assert_eq!(relit.decode(9, ShadeLight::WORLD_0X2D), Some(shape));
+        assert_eq!(relit.decode(10, ShadeLight::WORLD_0X2D), None);
     }
 
     /// A drawn-only scene keeps every actor shape of every slice and every view-facing prop,
