@@ -1,5 +1,5 @@
 ---
-summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. The four largest remaining differences are near-coplanar depth ties the vertex stage's rounding flips, and a perspective copy of the shade keeps Gouraud polygons the clipper breaks from drawing flat. One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe."
+summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. The four largest remaining differences are near-coplanar depth ties the vertex stage's rounding flips, and a perspective copy of the shade keeps Gouraud polygons the clipper breaks from drawing flat. One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe. A LOCATION frame encodes 127,910 `draw_indexed` calls, nearly three quarters of them world base fills and outlines, none of which coalescing contiguous base slices in walk order removes on LOCATION."
 ---
 # Parity: Rendering on Lavapipe
 
@@ -91,6 +91,21 @@ above was measured on `80a3ad5`, the branch behind #601; this machine measured 8
 
 _Source: [Two frames in flight in headless capture](../../work/2026-11/602_headless-capture-two-frames/journal.md#2026-11-15-two-frames-in-flight-in-headless-capture)._
 
+**Draws per frame (#603).** `[Bounded Observation]`, 2026-11-16, `b0f6c120` with a temporary
+counter in `SceneRenderer::draw`, LOCATION ticks 12-300, on mesa-dist-win 25.2.8 and the RTX 4070,
+which printed one line per frame and the same 289 lines on both. The median frame encodes 127,910
+`draw_indexed` calls: 8,963 world ground fills and 6,269 ground outlines, 49,257 world base fills
+and 45,560 base outlines (94,817 calls, 74.1% of the total), 5,550 world decal fills and 5,549
+decal outlines, and 6,762 prop, actor and sprite fills. The world uploads as one chunk of
+6,702,496 vertices and 7,488,138 indices, so every base slice draws with base vertex 0 from its
+own index range; the base walk takes siblings last first while the IR numbers nodes in creation
+order, so a parent's child slices come out in the reverse of their index order, and in each of
+the 289 frames no adjacent pair of base slices continued the previous one's index range.
+Coalescing contiguous base slices in walk order therefore removes 0 fill and 0 outline calls in
+each of the 289 frames, against the 25% bar #603 set, so #603's decision is no-go; the counts
+replace its estimate of a hundred to a thousand world mesh slices per frame.
+_Source: [Draws per frame, and coalescing adjacent base slices](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices)._
+
 ## Ruled out
 
 * **The actor shadow draw** (CTRY 422): with it off, the ground stays black.
@@ -105,6 +120,7 @@ _Source: [Two frames in flight in headless capture](../../work/2026-11/602_headl
 * **A different depth format on the two backends**: both take `X8_D24_UNORM_PACK32` for `Depth24Plus` (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **The clipper as the sole cause of the depth residues** (mesa-dist-win 25.2.8): polygons the side planes do not clip differ in depth too, and provoking vertices differ out of the vertex stage (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **An upstream fix by Mesa 26.2.6**: its clipper still makes the NaN, and `interp()` is unchanged through `main` (section 2); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
+* **Coalescing contiguous world base slices as a speed-up** (LOCATION): no adjacent pair of the base list in walk order continues the previous one's index range, so it removes 0 of a frame's 127,910 `draw_indexed` calls on the 289 frames measured (section 6); [journal](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices).
 
 ## Open questions
 
