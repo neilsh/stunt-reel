@@ -99,7 +99,7 @@ The `ctry` row is #485's. It meets the no-actor-pixel test since #505 dropped 23
 
 * **The strict test costs backdrop.** Every index our actors paint anywhere in the film counts as object pixels wherever it is backdrop. `land` has no sky band because actor paint covers 227 to 238 (5,605 px at 229 to 238); `intro` has none either (2,643 px, mostly 236 to 238); `bomb` loses terrain 195 (24 % of its capture) to 1 px in 1 scored frame (140 px in 14 frames on tree `7aeabce`, #505); `traintnl` 231 goes for 1 px in 1 frame while 233 stays. The test follows rasterizer edges.
 * **Props-layer scenery.** Tarmac, hills, tunnel and track props our render draws on layer 3 are object pixels, inside the actor's box on `traintnl` (crop of tick 628).
-* **Weak discrimination on `intro` and `location`.** Shifting our actor by (0,-15) or (0,+10) scores as well as or better than (0,0) on `intro`, and (+25,+25) costs `location` 12 % of its IoU, against about half on `land`, `traintnl`, `balloon` and `bomb` (journal). Do not use the actor IoU of `intro` or `location` to rank a 15 to 25 px placement change.
+* **Weak discrimination on `intro` and `location`.** Shifting our actor by (0,-15) or (0,+10) scores as well as or better than (0,0) on `intro`, and (+25,+25) costs `location` 4 % of its IoU, against about half on `land`, `traintnl`, `balloon` and `bomb` (tree `7aeabce`, window around the moved actor; #490's window gave `location` 12 %). Do not use the actor IoU of `intro` or `location` to rank a 15 to 25 px placement change. _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
 * **A render fault inflates `location`.** From tick 717 to 903 our render draws a black foreground quadrilateral, mostly growing, that the capture lacks ([#504](https://github.com/neilsh/stunt-reel/issues/504)). It overlaps capture index 76, which is no band, so it adds object pixels our actor "finds": per-frame IoU is 0.34 to 0.35 at ticks 805 to 892 against 0.05 to 0.12 at 717 to 760 (different actor content, so an inference). It does not lower the figure.
 
 The final bands were not cropped by eye (the first round's were, journal).
@@ -129,12 +129,23 @@ The final bands were not cropped by eye (the first round's were, journal).
 | `traintnl` | `n<=10`, `n<=100`, `s<=0.1%` | 163, 229-231 | 69 % | 26 (9) | 0.3535 | 0.53 | no |
 | `traintnl` | `s<=0.01%` | 229-231 | 68 % | 19 (9) | 0.3504 | 0.53 | no |
 
-* **An edge-sized tolerance changes little.** `n<=10` admits 5 to 26 px in at most 9 frames per index; `intro`'s ratio goes from 0.96 to 0.93 and a shift still beats (0,0), `land` and `location` gain nothing.
-* **The tolerances that fix `intro` and `location` admit actor paint, not edges.** The listed ones admit 93 to 2,607 px, the admitted index painted in 34 to 84 frames (`s<=1%`, not listed, admits 1,631 on `intro` and 10,389 on `location`). `location`'s gain at `s<=0.01%` is index 76 alone, the index under the #504 foreground fault.
-* **`land`'s sky comes back only at `s<=1%`**, which admits 3,111 actor px with one index in 95 frames: our actors paint those sky indices through the film.
-* **The strict rule's output moves with the render.** On this tree `bomb` 195 has 140 actor px in 14 frames (1 px in 1 frame on `d2cd090`), and the strict rule now gives `traintnl` 164 (0 actor px), which its committed row lacks.
 
-No tolerance measured restores more of the sky bands of `intro` and `land` than `n<=10`'s two `intro` indices (229-230) without admitting actor paint in tens of frames. _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
+Each admitted index as its share of capture pixels (rows 0..184, frames `[0::4]`), then our actor pixels on it over all scored frames and the scored frames they fall in:
+
+| Film | Admitted index: capture share, actor px (frames) |
+|---|---|
+| `intro` | 163: 13.5 %, 51 (29); 205: 1.2 %, 31 (15); 208: 5.5 %, 524 (25); 227: 0.2 %, 19 (19); 228: 0.9 %, 23 (22); 229: 3.1 %, 1 (1); 230: 4.6 %, 5 (5); 231: 3.4 %, 36 (34); 232: 2.5 %, 56 (47); 233: 1.6 %, 24 (17); 234: 1.0 %, 92 (36) |
+| `land` | 161: 2.8 %, 20 (1); 162: 3.5 %, 35 (2); 163: 0.7 %, 14 (1); 229: 0.7 %, 199 (50); 230: 1.6 %, 232 (54); 231: 1.4 %, 335 (69); 232: 1.1 %, 617 (95); 233: 1.0 %, 549 (70); 234: 1.2 %, 580 (93); 235: 1.0 %, 530 (90) |
+| `location` | 76: 12.7 %, 207 (39); 163: 1.1 %, 88 (59); 230: 1.4 %, 585 (84); 231: 1.9 %, 580 (68); 232: 2.0 %, 445 (81); 233: 1.6 %, 702 (82) |
+| `bomb` | 195: 24.4 %, 140 (14); 236: 1.1 %, 5 (1); 237: 0.8 %, 67 (2) |
+| `traintnl` | 163: 0.8 %, 7 (4); 229: 1.5 %, 10 (9); 230: 1.2 %, 8 (8); 231: 1.7 %, 1 (1) |
+
+* **An edge-sized tolerance changes little.** `n<=10` admits 5 to 26 px in at most 9 frames per index; `intro`'s ratio goes from 0.96 to 0.93 and a shift still beats (0,0), `land` and `location` gain nothing.
+* **The tolerances that fix `intro` and `location` admit actor paint, not edges.** `intro`'s `n<=100`, `s<=0.01%` and `s<=0.1%` and `location`'s `s<=0.01%` and `s<=0.1%` admit 93 to 2,607 px, the most-painted admitted index in 34 to 84 frames (`s<=1%`, not listed, admits 1,631 on `intro` and 10,389 on `location`). `location`'s `n<=100` admits 88 px (163, in 59 frames) and does not change its discrimination (ratio 0.96). `location`'s gain at `s<=0.01%` is index 76 alone, the index under the #504 foreground fault.
+* **`land`'s sky comes back only at `s<=1%`**, which admits 3,111 actor px with one index in 95 frames: our actors paint those sky indices through the film.
+* **The strict rule's output moves with the render.** On this tree `bomb` 195 has 140 actor px in 14 frames (1 px in 1 frame on `d2cd090`), and the strict rule now gives `traintnl` 164 (0 actor px), which its committed row lacks. Rederiving the other films' rows on the current tree is [#614](https://github.com/neilsh/stunt-reel/issues/614).
+
+Sky indices come back as follows: `n<=10` restores `intro` 229-230 (6 px in 5 frames), `s<=0.01%` `intro` 229-231 (most-painted index in 34 frames), `n<=100` `intro` 227-234 (47 frames), and `s<=1%` `land` 229-235 (95 frames). _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
 
 ## 4. Candidate sweeps
 
