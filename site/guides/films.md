@@ -38,7 +38,7 @@ Notice what is missing. The game's film editor offered camera behaviours such as
 
 A .ALL is a bundle. The original linking tool, MAKEONE.EXE, gathers every asset a film refers to and writes them into one file beside the .FLM. The bundle is a numbered directory followed by the items themselves, so any item can be found directly from its number.
 
-The number also says what kind of item it is. The format note divides the range of identifiers into regions: models, small colour ramps, full master palettes, scenery and map data (a region reserved for that data, since no archive in the corpus has an identifier there), and digital sounds. That is how a film's sound cue finds its sound: the cue carries a number, and the bundle holds the sample under that number.
+The number also says what kind of item it is. The format note divides the range of identifiers into regions: models, small colour ramps, full master palettes, scenery and map data (a region set aside for scenery and map data, though no archive in the corpus uses it), and digital sounds. That is how a film's sound cue finds its sound: the cue carries a number, and the bundle holds the sample under that number.
 
 Colour matters here because the original drew with a limited palette, and a film's fades and tints change it. The [drawing guide](drawing.md) explains how models are shaded from it.
 
