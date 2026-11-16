@@ -174,6 +174,12 @@ def test_local_only_is_skipped_only_in_a_cloud_session(cloud: bool, skip: list[s
     assert q.issue_items([_issue(1, "local-only")], [], cloud=cloud)[0].skip == skip
 
 
+@pytest.mark.parametrize(("cloud", "skip"), [(False, []), (True, ["local-only"])])
+def test_a_local_only_pr_is_skipped_only_in_a_cloud_session(cloud: bool, skip: list[str]) -> None:
+    pr = _pr(1, "a", labels=[{"name": "local-only"}])
+    assert q.pr_items([pr], {}, cloud=cloud)[0].skip == skip
+
+
 def test_a_line_names_the_item_its_state_and_its_labels() -> None:
     item = q.Item("issue", 12, "A  title\nover lines", ["tooling"], skip=["in-progress"])
     assert item.line() == "issue #12    skip: in-progress            A title over lines  [tooling]"
@@ -186,6 +192,10 @@ def _fake_gh(monkeypatch: pytest.MonkeyPatch, replies: dict[str, Any]) -> list[t
         calls.append(args)
         for key, reply in replies.items():
             if key in args[-1]:
+                # A list endpoint ("...?") replies with its pages, read by `page=<n>`.
+                if key.endswith("?"):
+                    page = int(args[-1].rsplit("page=", 1)[1])
+                    return reply[page - 1] if page <= len(reply) else []
                 return reply
         raise AssertionError(args)
 
@@ -196,12 +206,13 @@ def _fake_gh(monkeypatch: pytest.MonkeyPatch, replies: dict[str, Any]) -> list[t
 def test_fetch_flattens_pages_drops_prs_and_reads_checks_only_for_armed_prs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(q, "PER_PAGE", 2)
     armed = _pr(2, "b", auto_merge={"merge_method": "squash"})
     conflicted = _pr(5, "c", auto_merge={"merge_method": "squash"})
     calls = _fake_gh(
         monkeypatch,
         {
-            "/pulls?": [[_pr(1, "a")], [armed, conflicted]],
+            "/pulls?": [[_pr(1, "a"), armed], [conflicted]],
             "/issues?": [[_issue(3), {**_issue(1), "pull_request": {}}], [_issue(4)]],
             "/pulls/2": {"mergeable_state": "blocked"},
             "/pulls/5": {"mergeable_state": "dirty"},
@@ -212,7 +223,12 @@ def test_fetch_flattens_pages_drops_prs_and_reads_checks_only_for_armed_prs(
     assert [pr["number"] for pr in prs] == [1, 2, 5]
     assert checks == {2: "pending", 5: "conflict"}
     assert [issue["number"] for issue in issues] == [3, 4]
-    assert len(calls) == 5
+    assert len(calls) == 7
+    assert not any("--paginate" in call for call in calls)
+    assert [call[-1].rsplit("&", 2)[1:] for call in calls[:2]] == [
+        ["per_page=2", "page=1"],
+        ["per_page=2", "page=2"],
+    ]
 
 
 def test_a_gh_failure_exits_2(

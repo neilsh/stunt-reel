@@ -17,6 +17,7 @@ A PR that changes rendered output — anything that moves a pixel `stuntreel` dr
 - [ ] 6. gh pr create (or gh pr edit <n>) --body-file build/scratch/pr/body.md, then one --attach per picture the body references:
        DBG: --attach build/scratch/pr/intro_48.png
        otherwise: --attach build/scratch/pr/before/intro_48.png --attach build/scratch/pr/after/intro_48.png
+       cloud session, which has no --attach: commit each picture as work/<YYYY-MM>/<issue>_<slug>/images/<film>-<tick>-<topic>.png (mise run work -- new <slug> --issue <n> makes the folder when the issue has none), cite it from a journal entry there, open or edit the PR through the REST routes in working-in-an-environment/cloud.md, and link each picture in the body at its commit: https://github.com/<owner>/<repo>/blob/<commit>/<path>?raw=true
 - [ ] 7. A non-zero exit that still printed the PR URL means the PR exists but some uploads failed: re-run as gh pr edit <n> with the same --body-file and --attach flags until it exits 0 (no URL printed means nothing was created). Then confirm gh pr view <n> --json body --jq .body holds no ](./ reference
 ```
 

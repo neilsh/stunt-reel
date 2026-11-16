@@ -57,8 +57,10 @@ committed image that a published page cites, under the same rules. It serves no 
 repository could not hold.
 
 A pull request that changes rendered output attaches comparison images of the same kind to its
-description, under the same first two limits; GitHub hosts them, and they are not committed. All
-other captures stay in the external data root.
+description, under the same first two limits; GitHub hosts them, and they are not committed. A
+pull request made where `gh` cannot attach files, as in a cloud session, commits them instead,
+as comparison sheets in its issue's work folder, each cited by a journal entry there and under
+every limit above. All other captures stay in the external data root.
 
 ## Third-party material and credits
 

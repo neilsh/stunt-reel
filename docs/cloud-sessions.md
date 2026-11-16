@@ -76,7 +76,9 @@ Claude nothing. A failed setup script should also keep that environment out of t
 ## The SessionStart hook
 
 The repo's SessionStart hook (`.claude/settings.json`) runs `mise run cloud-session-start` on
-every session start and resume. Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
+every session start and resume. A second hook, `mise run session-environment`, prints the session's
+environment at start, resume, clear and compaction, and in a cloud session the file to read
+([`working-in-an-environment`](../.agents/skills/working-in-an-environment/SKILL.md)). Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
 nothing; in one it runs the cloud setup again, then
 `mise run cloud-assets -- fetch --replace-unmarked`, `mise run game-builds` and
 `mise run superset-all`, with the environment variables set. `game-builds` makes
@@ -160,20 +162,16 @@ fails, 2 if the R2 variables are unset. Use it to check a new or resumed cloud e
 - **Attach a picture to a pull request.** The image's `gh` is older than the 2.103 that `--attach`
   needs, and its `gh` reaches GitHub only through REST: `gh api` lists, opens and reads pull
   requests (the 2026-11-08 gardening run opened #319 that way), but the proxy refuses the
-  GraphQL that `gh pr` and `gh issue` use. The session's own GitHub tools upload no files. PR pictures are attached, not committed ([`NOTICE.md`](../NOTICE.md)),
-  and the PNG stays on the session's own machine, which no one else can reach. Describe each one
-  in the PR body with the revision it renders and the `mise run frame` command (film, ticks, crop,
-  never `--no-build`, so the recipient's binary is rebuilt for that revision); a before-and-after
-  made with a `DBG_*` switch gives the base and head revisions and a command for each, since the
-  switch is not committed. Someone with GitHub access and the data root regenerates it and
-  attaches it. Only a picture that a
-  research note or a journal entry cites as evidence for a finding is committed, under
-  `work/<YYYY-MM>/<folder>/images/` ([`work/README.md`](../work/README.md#images)); the PR body
-  may then link it at its commit
+  GraphQL that `gh pr` and `gh issue` use. The session's own GitHub tools upload no files. So a
+  cloud PR commits its pictures instead, as comparison sheets under its issue's work folder, each
+  cited by a journal entry there ([`NOTICE.md`](../NOTICE.md), [`pr-evidence.md`](../.agents/skills/improving-render-parity/pr-evidence.md)
+  step 6), and its body links each at its commit
   (`https://github.com/<owner>/<repo>/blob/<commit>/<path>?raw=true`), as #264 did.
-- **Measure the GPU.** The renderer runs on lavapipe, whose scores are not yet shown to equal a
-  GPU's ([`research/parity/lavapipe.md`](../research/parity/lavapipe.md)). An adoption decision
-  still needs a GPU run. It is also slower: `mise run parity` on the seven reference films took
+- **Measure the GPU.** The renderer runs on lavapipe, which scores within 0.002 of the GPU on all
+  seven reference films ([`lavapipe.md` § 4](../research/parity/lavapipe.md#4-lavapipe-beside-the-gpu-on-one-crates-tree)),
+  so an adoption decision stands on lavapipe's scores, except for a change where its residues lie
+  ([`cloud.md` § Rendering](../.agents/skills/working-in-an-environment/cloud.md#rendering)); GPU
+  timing still needs the GPU. Lavapipe is also slower: `mise run parity` on the seven reference films took
   177 s on 2026-11-08, its release build included.
 - **Use GitHub's GraphQL API.** The proxy answers every GraphQL request with 403, whatever the
   client (`gh api graphql` included), and names the REST routes it offers in its place, among them
