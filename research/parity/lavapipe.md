@@ -1,5 +1,5 @@
 ---
-summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe. A LOCATION frame encodes 127,910 `draw_indexed` calls, nearly three quarters of them the world base pass's slices, which coalescing contiguous base slices cannot merge."
+summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe. A LOCATION frame encodes 127,910 `draw_indexed` calls, nearly three quarters of them world base fills and outlines, none of which coalescing contiguous base slices in walk order removes on LOCATION."
 ---
 # Parity: Rendering on Lavapipe
 
@@ -88,14 +88,16 @@ _Source: [Two frames in flight in headless capture](../../work/2026-11/602_headl
 counter in `SceneRenderer::draw`, LOCATION ticks 12-300, on mesa-dist-win 25.2.8 and the RTX 4070,
 which printed one line per frame and the same 289 lines on both. The median frame encodes 127,910
 `draw_indexed` calls: 8,963 world ground fills and 6,269 ground outlines, 49,257 world base fills
-and 45,560 base outlines, 5,550 world decal fills and 5,549 decal outlines, and 6,762 prop, actor
-and sprite fills. The world uploads as one chunk of 6,702,496 vertices and 7,488,138 indices, so
-every base slice draws with base vertex 0 from its own index range; the base walk takes siblings
-last first while the IR numbers nodes in creation order, so a parent's child slices come out in
-the reverse of their index order, and in each of the 289 frames no adjacent pair of base slices
-continued the previous one's index range. Coalescing contiguous base slices therefore removes 0
-fill and 0 outline calls, against the 25% bar #603 set, so the issue closed no-go; the counts
-replace its estimate of a hundred to a thousand world mesh slices per frame. _Source: [Draws per frame, and coalescing adjacent base slices](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices)._
+and 45,560 base outlines (94,817 calls, 74.1% of the total), 5,550 world decal fills and 5,549
+decal outlines, and 6,762 prop, actor and sprite fills. The world uploads as one chunk of
+6,702,496 vertices and 7,488,138 indices, so every base slice draws with base vertex 0 from its
+own index range; the base walk takes siblings last first while the IR numbers nodes in creation
+order, so a parent's child slices come out in the reverse of their index order, and in each of
+the 289 frames no adjacent pair of base slices continued the previous one's index range.
+Coalescing contiguous base slices in walk order therefore removes 0 fill and 0 outline calls in
+each of the 289 frames, against the 25% bar #603 set, so #603's decision is no-go; the counts
+replace its estimate of a hundred to a thousand world mesh slices per frame.
+_Source: [Draws per frame, and coalescing adjacent base slices](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices)._
 
 ## Ruled out
 
@@ -108,7 +110,7 @@ replace its estimate of a hundred to a thousand world mesh slices per frame. _So
 * **The GPU polygon's shade at BOMB 1910 and LOCATION 2599 and 2859**: all-flat polygons still differ there (section 5); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
 * **LLVM shader compilation, or `LP_NUM_THREADS`, as the cost of a lavapipe render** (mesa-dist-win 25.2.8): `GALLIVM_PERF=nopt` (47.5 s against 48.4 s over LOCATION ticks 12-100) and 1, 4 or unset threads left the time and the frames unchanged; [journal](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-one-model-matrix-upload-per-frame).
 * **An upstream fix by Mesa 26.2.6**: its clipper still makes the NaN, and `interp()` is unchanged through `main` (section 2); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
-* **Coalescing contiguous world base slices as a speed-up** (LOCATION): no adjacent pair of the base list continues the previous one's index range, so it removes 0 of a frame's 127,910 `draw_indexed` calls (section 6); [journal](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices).
+* **Coalescing contiguous world base slices as a speed-up** (LOCATION): no adjacent pair of the base list in walk order continues the previous one's index range, so it removes 0 of a frame's 127,910 `draw_indexed` calls on the 289 frames measured (section 6); [journal](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices).
 
 ## Open questions
 

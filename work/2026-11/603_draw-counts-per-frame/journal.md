@@ -9,7 +9,11 @@
     `SceneRenderer::draw` (`crates/stunt-render/src/scene_renderer.rs`). It counted the
     `draw_indexed` calls the prepared lists encode, one line per frame into a file, and ran the
     candidate `coalesce_base_meshes` (`mesh.rs`) over each base list to count what it would
-    remove. Both files were reverted afterwards; no renderer change is committed.
+    remove. Both files were reverted afterwards, and the diff is kept as
+    [`draw-counter.patch`](draw-counter.patch): `git apply --unidiff-zero` it from the worktree
+    root on `b0f6c120` (it carries no context lines, so the file itself passes the repo's
+    whitespace check), then set `DBG_DRAWCOUNT_FILE` to a path to collect one line per frame (or
+    leave it unset for stderr). No renderer change is committed.
   - Rendered LOCATION ticks 12-300 (289 frames) headless with the parity pipeline's arguments
     (`--at-ticks` for those ticks, `--width 320 --height 200 --viewport-rows 185`), one process
     per adapter: on mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`,
@@ -31,6 +35,13 @@
     | prop, actor and sprite fill | 6,762 |
     | **all** | **127,910** |
 
+    Each fill row is one `draw_indexed` per slice in that list, and each outline row one per
+    slice with a non-empty outline (`edge_count > 0`). The prop row adds `draw.base.len() +
+    draw.decals.len()` over every non-world `PreparedDraw`: props, sprites, actors and each
+    actor's shadow, which is its own `PreparedDraw` with an empty base and the actor's slices as
+    decals, so **shadow fills are in the prop row**. No prop, actor or sprite slice draws an
+    outline: only the world uploads edge buffers.
+
     Only the base and prop rows move across the span: on the frames whose gated props drop out,
     the base rows fall to 48,900 and 45,203 and the prop row rises to 6,763, so the lightest frame
     issues 127,197 calls.
@@ -42,8 +53,9 @@
     the 49,257 fill and 0 of the 45,560 outline calls. The base walk takes siblings last first
     (`VisibleWalk::walk`) while the IR numbers nodes in creation order, so a parent's child
     slices come out in the reverse of their index order, and none continued the one before it.
-- **Verdict**: no-go. Coalescing contiguous base slices removes 0 of the median frame's 127,910
-  `draw_indexed` calls, against the issue's 25% bar, so the counts decide it rather than a
-  timing. They also replace the issue's estimate of 10^2-10^3 world mesh slices per frame: the
-  median frame issues 1.3 x 10^5 calls, nearly three quarters of them in the world base pass.
+- **Verdict**: no-go. On the 289 LOCATION frames measured, coalescing contiguous base slices in
+  walk order removes 0 of the median frame's 127,910 `draw_indexed` calls, against the issue's
+  25% bar, so the counts decide it rather than a timing. They also replace the issue's estimate of
+  10^2-10^3 world mesh slices per frame: the median frame issues 1.3 x 10^5 calls, nearly three
+  quarters of them world base fills and outlines.
 - **Lives in**: [`research/parity/lavapipe.md`](../../../research/parity/lavapipe.md) section 6.
