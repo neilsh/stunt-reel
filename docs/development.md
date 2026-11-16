@@ -121,6 +121,7 @@ The gate script, its step list, the pre-commit hook, its lanes and CI are in [qu
 | `play` | play a film in `PLAYONE.EXE` on dosbox-automation |
 | `frame` | render a list of film ticks in one process and write each beside its reference capture frame ([Render a film](howto/render-a-film.md#render-chosen-ticks-beside-their-capture)) |
 | `shape-diff` | list the shapes whose geometry hash or decode failure changes with a `DBG_*` switch, and draw only those ([Inspect a shape](howto/inspect-a-shape.md#find-the-shapes-a-switch-changes)) |
+| `parity-residue` | differing index-plane pixels between two render-store trees of `<film>_current` stores, film by film: ticks compared and differing, mean differing pixels per tick, the largest and its tick, and with `--ticks` the count at each named tick under the film that holds it, a tick no store holds going to stderr instead (`mise run parity-residue -- <render root A> <render root B> [--films f1,f2] [--ticks t1,t2]`) |
 | `parity-probe`, `verify-docs`, `unlzexe`, `pair-builds`, `xref`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
 The GPU tests' hang rationale is in [quality gate § GPU tests](quality-gate.md#gpu-tests).

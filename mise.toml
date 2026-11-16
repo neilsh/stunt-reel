@@ -228,6 +228,10 @@ run = "uv run python python/scripts/parity_repin.py"
 description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry --recapture DIR [--render DIR] | run --films ctry,land (recapture-noise table) | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] [--batch] | errors-disputes --film ctry | errors-score --film ctry [--against FILE] [--batch] | errors-example --film ctry --tick T --category ID | errors-table --films vault-ctry,vault-land)"
 run = "uv run python python/scripts/parity_bench.py"
 
+[tasks.parity-residue]
+description = "Count the index-plane pixels two render-store trees differ on, film by film (mise run parity-residue -- <render root A> <render root B> [--films f1,f2] [--ticks t1,t2]); exits 1 when a film's tick sets differ or a film is missing from a root"
+run = "uv run python python/scripts/parity_residue.py"
+
 [tasks.parity-probe]
 depends = ["ensure"]
 description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the scores a journal entry quotes)"
