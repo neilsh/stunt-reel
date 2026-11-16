@@ -23,7 +23,8 @@ def _pages() -> list[Path]:
 
 def _read(path: Path) -> tuple[dict[str, str | int], str]:
     """The front matter and the body with its mermaid fences removed."""
-    fields, body = read_frontmatter(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8").replace("\r\n", "\n")  # a CRLF checkout
+    fields, body = read_frontmatter(text)
     return fields, _MERMAID.sub("", body)
 
 
@@ -31,15 +32,14 @@ def test_the_five_guides_exist() -> None:
     assert {p.stem for p in _pages()} == {"films", "drawing", "island", "reconstruction", "process"}
 
 
-def test_guides_have_a_title_and_distinct_orders() -> None:
+def test_guides_have_a_title_and_the_cards_order() -> None:
     orders = {}
     for page in _pages():
         fields, _ = _read(page)
         assert isinstance(fields.get("title"), str), page.name
         orders[page.stem] = fields.get("order")
-    assert set(orders.values()) == {1, 2, 3, 4, 5}
-    assert orders["films"] == 1
-    assert orders["process"] == 5
+    # The order of the home page's cards (site/index.md).
+    assert orders == {"films": 1, "drawing": 2, "island": 3, "reconstruction": 4, "process": 5}
 
 
 @pytest.mark.parametrize("page", _pages(), ids=lambda p: p.stem)
