@@ -12,7 +12,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
    **Review-comment template.** The comment's first line is exactly `<Reviewer> review at <head SHA>: <verdict>`, then your findings or verification summary:
    - `<Reviewer>` is the reviewer's own name, with no `:` in it: `Sonnet`, `Opus`, `Antigravity`, or the worker's agent name.
    - `<head SHA>` is the 7-character short SHA printed by `gh pr view <n> --json headRefOid --jq '.headRefOid[0:7]'` (cloud: `gh api repos/{owner}/{repo}/pulls/<n> --jq '.head.sha[0:7]'`), read when you start reviewing and again before you post; confirm local `HEAD` matches it and review the diff of that commit against `origin/main` (or the stack parent). If it changed, review the new head.
-   - `<verdict>` is `clean` (no finding left to fix) or `needs changes`.
+   - `<verdict>` is `clean` (no finding left to fix) or `needs changes` (any `blocking` finding, or a `nit` that must be fixed before merge).
    - **Body lines:** each finding gives `file:line — problem — fix` with severity (`blocking` or `nit`); a `clean` verdict states `No findings`, what was checked (files, gates, commands), and anything you could not verify.
 
    ```

@@ -25,4 +25,6 @@ Its first line is exactly `<Reviewer> review at <7-char head SHA>: clean` or
 `<Reviewer> review at <7-char head SHA>: needs changes`; use `Sonnet` as `<Reviewer>`. Then
 give each finding as `file:line — problem — fix`, marked `blocking` or `nit`; a clean verdict
 says `No findings`, what was checked (files, gates, commands), and what could not be verified.
+The verdict rule, a must-fix `nit` included, is in
+`.agents/skills/running-unattended/pr-and-filing.md` § Review-comment template.
 Reply with the comment's URL.
