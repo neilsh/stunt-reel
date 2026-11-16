@@ -8,13 +8,14 @@ extra shapes from its size:
   extra shape chunks.
 - ``--inert COUNT BYTES`` adds COUNT chunks of zero bytes, BYTES in all (sizes differ by at most
   one byte), with ids from ``--first-id`` (default ``0xF001``, a `res_index` no game file uses)
-  upward, skipping item 0 of each index as `RES\\` files number items from 1.
+  upward, skipping item 0 of each index as `RES\\` files number items from 1. ``--fill BYTE``
+  fills them with BYTE in place of zero.
 
 Chunks are written in ascending id order, as every shipped archive is (``linking.md`` section 3).
 Prints the SHA-256 of OWN and OUT and how many chunks and bytes were added. OUT must not exist.
 
 Usage: ``mise run pad-all -- OWN.ALL -o OUT.ALL (--add-from SOURCE.ALL | --inert COUNT BYTES)
-[--first-id 0xF001]``
+[--first-id 0xF001] [--fill 0x00]``
 """
 
 from __future__ import annotations
@@ -65,17 +66,22 @@ def inert_ids(first: int, count: int, taken: set[int]) -> list[int]:
     return ids
 
 
-def inert(first: int, count: int, total: int, taken: set[int]) -> list[tuple[int, bytes]]:
-    """*count* zero-filled chunks of *total* bytes in all, the first ``total % count`` a byte longer.
+def inert(
+    first: int, count: int, total: int, taken: set[int], fill: int = 0
+) -> list[tuple[int, bytes]]:
+    """*count* chunks of byte *fill*, *total* bytes in all, the first ``total % count`` a byte longer.
 
     Raises:
-        PadError: *count* is under 1, *total* under *count*, or the ids do not fit.
+        PadError: *count* is under 1, *total* under *count*, *fill* not a byte, or the ids do not
+            fit.
     """
     if count < 1 or total < count:
         raise PadError(f"--inert needs at least one chunk and a byte each, not {count} and {total}")
+    if not 0 <= fill <= 0xFF:
+        raise PadError(f"--fill {fill:#x} is not a byte")
     size, longer = divmod(total, count)
     ids = inert_ids(first, count, taken)
-    return [(chunk_id, bytes(size + (n < longer))) for n, chunk_id in enumerate(ids)]
+    return [(chunk_id, bytes([fill]) * (size + (n < longer))) for n, chunk_id in enumerate(ids)]
 
 
 def pad(own: bytes, added: list[tuple[int, bytes]]) -> bytes:
@@ -117,12 +123,19 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_FIRST_ID,
         help="the first inert chunk's id (default 0xF001)",
     )
+    parser.add_argument(
+        "--fill",
+        type=lambda text: int(text, 0),
+        help="the byte inert chunks hold (default 0x00)",
+    )
     args = parser.parse_args(argv)
     out: Path = args.output
     if out.exists():
         return _refuse(f"{out} exists; pick a new output")
     if not out.parent.is_dir():
         return _refuse(f"{out.parent} is not a directory")
+    if args.fill is not None and args.inert is None:
+        return _refuse("--fill applies to --inert only")
     try:
         own = args.own.read_bytes()
         chunks = archive_chunks(own)
@@ -130,7 +143,8 @@ def main(argv: list[str] | None = None) -> int:
             added = added_from(chunks, args.add_from.read_bytes())
         else:
             count, total = args.inert
-            added = inert(args.first_id, count, total, {chunk_id for chunk_id, _ in chunks})
+            taken = {chunk_id for chunk_id, _ in chunks}
+            added = inert(args.first_id, count, total, taken, args.fill or 0)
         padded = pad(own, added)
         with out.open("xb") as handle:
             handle.write(padded)

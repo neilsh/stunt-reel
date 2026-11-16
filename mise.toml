@@ -315,7 +315,7 @@ description = "Compare two frame captures of one film page by page, paired by fi
 run = "uv run python python/scripts/capture_compare.py"
 
 [tasks.pad-all]
-description = "Copy a film's .ALL with chunks added: those another archive has, or inert zero-filled ones (mise run pad-all -- OWN.ALL -o OUT.ALL (--add-from SOURCE.ALL | --inert COUNT BYTES) [--first-id 0xF001])"
+description = "Copy a film's .ALL with chunks added: those another archive has, or inert ones (mise run pad-all -- OWN.ALL -o OUT.ALL (--add-from SOURCE.ALL | --inert COUNT BYTES) [--first-id 0xF001] [--fill 0x00])"
 run = "uv run python python/scripts/pad_all.py"
 
 [tasks.stub-sound-samples]
