@@ -1,0 +1,109 @@
+# Rebuilds BRETT.ALL from the game's RES tree with `stuntreel link build` (ADR 0032).
+film = "BRETT.FLM"
+flm_sha256 = "0e47eb6eef88c0ce148d6d8a539a5a3b51db38c0ec81fae047d6f5b113ddebd5"
+game_root = "builds/patch3"
+makeone_sha256 = "426111d9a42f12acf21cca693b283e1df2306035ad6215bb94ac163aebe67bb6"
+all_bytes = 174304
+all_sha256 = "4aba3a75a2b4e8bb1b4c7b348a4c940988d059cfc76f3b57d4147690fccfae29"
+
+[[source]]
+file = "RES/GAME.RES"
+index = 1
+sha256 = "6bb16fdce8ff82fc5563fcdfb3bfb21eac1c111c73a58b5445ac373b1fc6c361"
+items = [3, 5, 9]
+
+[[source]]
+file = "RES/SCENERY1.RES"
+index = 2
+sha256 = "f5b588f40411619060e0966d817df2af992d2b14cf04e8fb4c249a51a6cef859"
+items = [12, 17, 21, 27, 28, 29, 58, 65, 71, 80, 81, 99, 105, 106, 107, 140, 141, 142, 143, 170, 248, 249, 250, 251, 252, 253, 254]
+
+[[source]]
+file = "RES/SCENERY2.RES"
+index = 3
+sha256 = "d319d03e1fbc2d63ffcd375fcd5a73525761bedab481a0716f3f4d9c64e86036"
+items = [1, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 25, 26, 38, 111, 115, 117, 118, 119, 133, 134, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 163, 164, 167, 168, 170, 171, 172, 176, 180, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 197, 208, 212, 214, 218, 222]
+
+[[source]]
+file = "RES/SCENERY3.RES"
+index = 4
+sha256 = "5e018beb5413fdb4b95bf5bdd1ee728dd95c37ff35e976c08af292c83387dbfb"
+items = [1, 2, 3, 4, 5, 6, 7, 8, 75, 79, 81, 83, 86, 88, 115, 116, 117, 118, 119, 120, 160, 161, 164, 166, 168, 169, 170, 171, 172, 185]
+
+[[source]]
+file = "RES/SCENERY4.RES"
+index = 5
+sha256 = "8402fa11c47f672efa458d0022b87d3b35e1c542cb439f8955641a6f262a6dc4"
+items = [79, 84, 87, 88, 99, 105, 106, 107, 109, 110, 111, 112, 113, 114, 125, 134, 135, 136, 144, 146, 172, 173, 174, 175, 176, 177, 182, 184, 188, 189, 204, 205, 206, 208, 210, 212]
+
+[[source]]
+file = "RES/SCENERY5.RES"
+index = 6
+sha256 = "2133515b6b1ab3d2e100af57a98b1dd56155e62cab83a4e7daf68a773aef102f"
+items = [3, 5, 7, 11, 17, 20, 23, 26, 29, 32, 34, 37, 40, 43, 46, 49, 52, 55, 58, 59, 72, 74, 104, 200, 212, 216, 217]
+
+[[source]]
+file = "RES/SCENERY6.RES"
+index = 7
+sha256 = "2a3164f4d72b7a41f5bf1d9cb0f478bc32b2f4424db6fddc6a66f99b5539fff0"
+items = [32, 65, 188]
+
+[[source]]
+file = "RES/FASTSPR.RES"
+index = 31
+sha256 = "b21e107d8360a6c64bb0c9fff2bbcd0ef2cd6e58b17a0bc092afafa556bb6267"
+items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+[[source]]
+file = "RES/PRODTOOL.RES"
+index = 58
+sha256 = "43f43e2d4fc0e61ec6bf1175802b221ea78aa2c3643e4fb5fed05361e3951cb4"
+items = [38, 39]
+
+[[source]]
+file = "RES/STRUCTUR.RES"
+index = 64
+sha256 = "5b052e877ed7552bd3b4880b02ff07b58c862447d7eccd4e01f9d590bd96c6ea"
+items = [29]
+
+[[source]]
+file = "RES/VEHICLES.RES"
+index = 65
+sha256 = "1d1a08fd4526b6b03b7c8cd871f173091104e7784fb1c4a4b343aac48a4ce4de"
+items = [92]
+
+[[source]]
+file = "RES/SPRITES.RES"
+index = 128
+sha256 = "64274cae596215fed1da9074203d3a222d036e825f6d9897f18437d5635577a2"
+items = [30, 66]
+
+[[source]]
+file = "RES/MUSIC1.XMA"
+index = 192
+sha256 = "4def4b17c75c437df326ad834a5f7c68d6fb653b17f368bcca1b0cb43a1fddbd"
+items = [6, 7, 9, 12]
+
+[[source]]
+file = "RES/MUSIC2.XMA"
+index = 193
+sha256 = "70e60163196cde3d866c7400b1bcc37c730e83a73bbb0a0a71029430794e6407"
+items = [8]
+
+[[source]]
+file = "RES/COMMNSND.SMP"
+index = 195
+sha256 = "3e8248fa6fdbd2a85954e3e3fb0f8f9051a597f1ce9aab243ac9731e31efb645"
+items = [31]
+
+[[source]]
+file = "RES/SNDFX1.SMP"
+index = 196
+sha256 = "db88729ede35e19600e9fc10460c3c303ab44f6254932ab230862c8076c22651"
+items = [9, 57]
+
+[[source]]
+file = "RES/SNDFX2.SMP"
+index = 197
+sha256 = "fa4dffe364f15181ddc36ef6b89a46509372de8a426ce644d9354f255769414e"
+items = [72]
