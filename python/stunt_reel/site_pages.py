@@ -45,6 +45,7 @@ IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".gif", ".svg"})
 _SEGMENT = re.compile(r"[A-Za-z0-9-]+")
 _MARKUP_LINK = re.compile(r"\[([^\]\n]*)\]\([^)\n]*\)")
 _SIDEBAR_LABELS = {"INDEX": "Index", "README": "About this folder"}
+_ADR_STEM = re.compile(r"\d{4}-")
 _MATH_FENCE = "$$"
 
 
@@ -159,8 +160,13 @@ def page_text(
     text: str, source: str, site: Site, images: set[str], *, title: str | None = None
 ) -> str:
     """The content page for repo file *source* whose Markdown is *text*, with Starlight front
-    matter and links rewritten; a given *title* replaces the one the page carries. Raises ValueError, naming *source*, for a page with neither a
-    ``title:`` nor a ``# `` heading, or a bad link or front matter."""
+    matter and links rewritten; a given *title* replaces the page's own as its title only.
+
+    The sidebar label is a fixed one for ``INDEX``/``README``, else the page's own title, numbered
+    for an ADR; an int ``order:`` becomes ``sidebar.order``. Raises ValueError, naming *source*,
+    for a page with neither a ``title:`` nor a ``# `` heading, a non-int ``order:``, or a bad link
+    or front matter.
+    """
     try:
         fields, body = read_frontmatter(text)
     except ValueError as err:
@@ -180,14 +186,21 @@ def page_text(
         else:
             raise ValueError(f"{source}: no title: in the front matter and no '# ' heading")
     out = {"title": title if title is not None else str(found)}
-    label = str(found) if "title" in fields else None
+    own = _plain(str(found))
+    order = fields.get("order")
+    if order is not None and (not isinstance(order, int) or isinstance(order, bool)):
+        raise ValueError(f"{source}: order: must be an integer, not {order!r}")
     description = fields.get("description", fields.get("summary"))
     if description is not None:
         out["description"] = _plain(str(description))
     out["editUrl"] = f"{REPO_URL}/blob/main/{source}"
     stem = posixpath.splitext(posixpath.basename(source))[0]
     head = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in out.items()]
-    head.append(f"sidebar:\n  label: {json.dumps(label or _SIDEBAR_LABELS.get(stem, stem))}")
+    label = _SIDEBAR_LABELS.get(stem) or (f"{stem[:4]} {own}" if _ADR_STEM.match(stem) else own)
+    sidebar = f"sidebar:\n  label: {json.dumps(label, ensure_ascii=False)}"
+    if order is not None:
+        sidebar += f"\n  order: {order}"
+    head.append(sidebar)
     content = rewrite_links(normalize_display_math("".join(lines)), source, site, images)
     return "---\n" + "\n".join(head) + "\n---\n\n" + content.lstrip("\r\n")
 
