@@ -91,7 +91,8 @@ id = "check-executables-have-shebangs"
 # These two run with --check, so they report and rewrite nothing. A Markdown hard break (two
 # trailing spaces) is allowed, as .gitattributes allows it. Fixtures are byte-exact test inputs
 # and dated work folders are frozen, so both are exempt here, not by a top-level `exclude`, which
-# would also hide them from the large-file and private-key checks.
+# would also hide them from the large-file and private-key checks. The CC BY 4.0 licence is kept
+# as published, trailing blank line included.
 [[repos.hooks]]
 id = "trailing-whitespace"
 args = ["--check", "--markdown-linebreak-ext=md"]
@@ -100,7 +101,7 @@ exclude = "^(tests/fixtures|work)/"
 [[repos.hooks]]
 id = "end-of-file-fixer"
 args = ["--check"]
-exclude = "^(tests/fixtures|work)/"
+exclude = '^((tests/fixtures|work)/|LICENSE-CC-BY-4\.0$)'
 
 # `.claude/skills` is a committed symlink, which a Windows checkout without core.symlinks turns
 # into a text file; destroyed-symlinks reads `git status`, so it guards the commit, not CI.

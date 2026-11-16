@@ -82,7 +82,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | `check-symlinks`, `destroyed-symlinks` | `.claude/skills` is a committed symlink, which a Windows checkout without `core.symlinks` turns into a text file; `destroyed-symlinks` reads `git status`, so it guards the commit and passes unread in CI |
   | `fix-byte-order-marker` | PowerShell 5.1 can write a UTF-8 BOM (`Out-File -Encoding utf8`); a UTF-16 file is not caught; run with `--check`, like the whitespace pair, with the same exemptions |
   | `check-json` | the tracked `.json` configuration and fixtures |
-  | `check-vcs-permalinks` | links in `docs/` and `research/` must name a commit, not a branch; dated `work/` folders are exempt |
+  | `check-vcs-permalinks` | a GitHub `blob` link with a line anchor (`#L<n>`) must name a commit, not a branch, since the lines move; dated `work/` folders are exempt |
   | `forbid-new-submodules` | the repository has none |
   | `check-shebang-scripts-are-executable`, `check-executables-have-shebangs` | Linux CI's ruff fails a script whose shebang and executable bit disagree (`EXE001`), which a Windows checkout cannot see; these read git's staged mode there (added 2026-11-13, #461) |
 
@@ -95,7 +95,8 @@ prek runs the commit-time checks; `gate.py` stays the gate.
 - **CI runs the hooks' extra checks.** The `quality` job installs prek and runs it with the
   local hooks skipped (`SKIP=diff-check,crlf-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`): the gate
   it already runs covers the format, lint and doc checks, and `diff-check` reads an index that is
-  empty in CI, so `check-merge-conflict` stands in for its conflict markers. CI stages nothing and
+  empty in CI, so `check-merge-conflict` stands in for its conflict markers (the current list is
+  in the 2026-11-16 amendment). CI stages nothing and
   is not mid-merge, so `check-added-large-files` takes `--enforce-all` and `check-merge-conflict`
   takes `--assume-in-merge`; without them both pass a commit unread. A pull request is checked
   over `--from-ref origin/<base>`, a push to `main` over `--from-ref <previous tip>` (admins may
