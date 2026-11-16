@@ -330,7 +330,9 @@ impl SceneRenderer {
         let mut authored = CameraController::default();
         authored.set_authored_transform(frame.view);
         let controller = camera.unwrap_or(&authored);
-        camera_resources.upload(queue, &controller.build_uniform());
+        let camera_uniform = controller.build_uniform();
+        camera_resources.upload(queue, &camera_uniform);
+        let view_proj = Mat4::from_cols_array(&camera_uniform.view_proj);
 
         self.prepared.clear();
         let eye = camera.map_or_else(
@@ -347,7 +349,7 @@ impl SceneRenderer {
                     lens: frame.lens,
                     ..CameraTransform::default()
                 };
-                world.collect_world_meshes(eye, Some(&lod_view))
+                world.collect_world_meshes(eye, Some(&lod_view), view_proj)
             };
             self.prepared.push(PreparedDraw {
                 target: Target::World,

@@ -36,6 +36,166 @@ pub struct GpuNode {
     /// Geometry slices in draw order: none for pure transform groups, several when the
     /// node's mesh spans more than one chunk.
     pub meshes: Vec<GpuMeshSlice>,
+    /// Box around this node's slices and every descendant's, in the model's space; `None` when
+    /// neither holds a vertex.
+    pub bounds: Option<NodeBounds>,
+}
+
+/// An axis-aligned box in a model's space, the unit of the world's view-frustum cull.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NodeBounds {
+    /// Corner holding the smallest value on every axis.
+    pub min: Vec3,
+    /// Corner holding the largest value on every axis.
+    pub max: Vec3,
+}
+
+impl NodeBounds {
+    /// The box around a slice's vertices, or `None` when there are none.
+    fn around<'a>(vertices: impl Iterator<Item = &'a SodVertex>) -> Option<Self> {
+        let mut box_: Option<Self> = None;
+        for vertex in vertices {
+            let point = Vec3::from_array(vertex.position);
+            box_ = Some(match box_ {
+                None => Self {
+                    min: point,
+                    max: point,
+                },
+                Some(current) => Self {
+                    min: current.min.min(point),
+                    max: current.max.max(point),
+                },
+            });
+        }
+        box_
+    }
+
+    /// This box with *other*'s extent added, if there is one.
+    fn union(self, other: Option<Self>) -> Self {
+        match other {
+            Some(other) => Self {
+                min: self.min.min(other.min),
+                max: self.max.max(other.max),
+            },
+            None => self,
+        }
+    }
+
+    /// The box around this one's eight corners after `matrix`, which stays a superset of the
+    /// transformed box when the matrix rotates it out of the axes.
+    fn transformed(self, matrix: Mat4) -> Self {
+        let corners = [
+            [self.min.x, self.min.y, self.min.z],
+            [self.max.x, self.min.y, self.min.z],
+            [self.min.x, self.max.y, self.min.z],
+            [self.max.x, self.max.y, self.min.z],
+            [self.min.x, self.min.y, self.max.z],
+            [self.max.x, self.min.y, self.max.z],
+            [self.min.x, self.max.y, self.max.z],
+            [self.max.x, self.max.y, self.max.z],
+        ];
+        corners
+            .into_iter()
+            .map(|corner| matrix.transform_point3(Vec3::from_array(corner)))
+            .fold(
+                Self {
+                    min: Vec3::splat(f32::INFINITY),
+                    max: Vec3::splat(f32::NEG_INFINITY),
+                },
+                |current, point| Self {
+                    min: current.min.min(point),
+                    max: current.max.max(point),
+                },
+            )
+    }
+}
+
+/// Every node's box: its own slices' vertices and its descendants', in the model's space.
+///
+/// The arena numbers a parent before its children (`SodModelIr::allocate_node`), so one pass
+/// forward places each node under its parent's matrix and one pass backward adds each subtree's
+/// box to its parent's.
+fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
+    let count = ir.nodes.len();
+    let mut world = vec![Mat4::IDENTITY; count];
+    for (n, node) in ir.nodes.iter().enumerate() {
+        let local = Mat4::from_cols_array(&node.local_matrix);
+        let parent = node
+            .parent
+            .and_then(|parent| world.get(parent.0 as usize))
+            .copied()
+            .unwrap_or(Mat4::IDENTITY);
+        if let Some(slot) = world.get_mut(n) {
+            *slot = parent * local;
+        }
+    }
+    let mut bounds: Vec<Option<NodeBounds>> = vec![None; count];
+    for mesh in ir.meshes() {
+        let Some(own) = NodeBounds::around(mesh.vertices.iter()) else {
+            continue;
+        };
+        let into = world
+            .get(mesh.node.id.0 as usize)
+            .copied()
+            .unwrap_or(Mat4::IDENTITY);
+        let own = own.transformed(into);
+        if let Some(slot) = bounds.get_mut(mesh.node.id.0 as usize) {
+            *slot = Some(slot.map_or(own, |current| current.union(Some(own))));
+        }
+    }
+    for (n, node) in ir.nodes.iter().enumerate().rev() {
+        let Some(subtree) = bounds.get(n).copied().flatten() else {
+            continue;
+        };
+        let Some(parent) = node
+            .parent
+            .and_then(|parent| bounds.get_mut(parent.0 as usize))
+        else {
+            continue;
+        };
+        *parent = Some(parent.map_or(subtree, |current| current.union(Some(subtree))));
+    }
+    bounds
+}
+
+/// Whether any of `bounds` is inside `view_proj`'s view frustum; `false` only when the box lies
+/// wholly outside one plane, so a box that touches the frustum is kept.
+///
+/// `bounds` is in the space `view_proj` takes to clip space. The six planes are its rows, for a
+/// clip space whose depth runs over `[0, w]` as `glam::rh::proj::directx` gives and the vertex
+/// shader multiplies by: left `w + x`, right `w - x`, bottom `w + y`, top `w - y`, near `z` and
+/// far `w - z`. A reversed-Z or infinite-far projection (issue #637) changes the last two, and
+/// this is the one place to change them.
+fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
+    let [x, y, z, w] = [
+        view_proj.row(0),
+        view_proj.row(1),
+        view_proj.row(2),
+        view_proj.row(3),
+    ];
+    let planes = [w + x, w - x, w + y, w - y, z, w - z];
+    planes.into_iter().all(|plane| {
+        // The corner farthest along the plane's inward normal: when even it is outside, the
+        // whole box is.
+        let corner = Vec3::new(
+            if plane.x >= 0.0 {
+                bounds.max.x
+            } else {
+                bounds.min.x
+            },
+            if plane.y >= 0.0 {
+                bounds.max.y
+            } else {
+                bounds.min.y
+            },
+            if plane.z >= 0.0 {
+                bounds.max.z
+            } else {
+                bounds.min.z
+            },
+        );
+        plane.truncate().dot(corner) + plane.w >= 0.0
+    })
 }
 
 /// Polygonal geometry slice pointing into consolidated GPU vertex and index buffers.
@@ -175,11 +335,13 @@ impl GpuModel {
 
         // Translate nodes into GpuNode flat arena
         let mut planned = plan.slices.into_iter();
+        let bounds = node_bounds(ir);
         let nodes = ir
             .nodes
             .iter()
             .zip(&sources)
-            .map(|(node, source)| GpuNode {
+            .enumerate()
+            .map(|(n, (node, source))| GpuNode {
                 id: node.id,
                 name: node.name.clone(),
                 parent: node.parent,
@@ -187,6 +349,7 @@ impl GpuModel {
                 local_matrix: Mat4::from_cols_array(&node.local_matrix),
                 visibility: node.visibility,
                 meshes: source.and_then(|_| planned.next()).unwrap_or_default(),
+                bounds: bounds.get(n).copied().flatten(),
             })
             .collect();
 
@@ -248,6 +411,7 @@ impl GpuModel {
             dist_sq: distance_to_cam * distance_to_cam,
             eye,
             view,
+            view_proj: None,
         }
         .collect()
     }
@@ -256,10 +420,16 @@ impl GpuModel {
     /// [`GROUND_NODE`] nodes taken out first, in the nodes' own order: ground, base and decal
     /// slices. A ground slice is drawn over whatever is there, so the walk's order is the
     /// order the flat ground is painted in (`stunt_core::world::GROUND_NODE`).
+    ///
+    /// `view_proj` is the matrix the vertex shader multiplies a vertex by, which for the world
+    /// is its own identity model matrix composed with the camera's: a node whose box it cannot
+    /// see is skipped with its subtree (`frustum_keeps`), which draws no fewer pixels because
+    /// an off-screen slice covers none, and keeps the order of the slices that survive.
     pub fn collect_world_meshes(
         &self,
         eye: Vec3,
         view: Option<&CameraTransform>,
+        view_proj: Mat4,
     ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
         VisibleWalk {
             nodes: &self.nodes,
@@ -268,6 +438,7 @@ impl GpuModel {
             dist_sq: 0.0,
             eye,
             view,
+            view_proj: Some(view_proj),
         }
         .collect_world()
     }
@@ -654,6 +825,9 @@ struct VisibleWalk<'a> {
     dist_sq: f32,
     eye: Vec3,
     view: Option<&'a CameraTransform>,
+    /// The matrix the vertex shader takes a vertex of the model to clip space by, for the
+    /// world's view-frustum cull; `None` draws every node the gates keep.
+    view_proj: Option<Mat4>,
 }
 
 impl VisibleWalk<'_> {
@@ -706,6 +880,13 @@ impl VisibleWalk<'_> {
             let Some(node) = self.nodes.get(node_id.0 as usize) else {
                 continue;
             };
+            // Off-screen geometry draws no pixels, and skipping it keeps the survivors' order.
+            if let Some(view_proj) = self.view_proj
+                && let Some(bounds) = node.bounds
+                && !frustum_keeps(view_proj, bounds)
+            {
+                continue;
+            }
             if !self.is_visible(&node.visibility) {
                 continue;
             }
@@ -931,6 +1112,7 @@ mod tests {
                 edge_offset: 0,
                 edge_count: 0,
             }],
+            bounds: None,
         }
     }
 
@@ -952,6 +1134,7 @@ mod tests {
             dist_sq: 0.0,
             eye: Vec3::ZERO,
             view: None,
+            view_proj: None,
         };
         let (base, decal) = walk.collect();
         let order = |slices: &[GpuMeshSlice]| -> Vec<u32> {
@@ -961,5 +1144,179 @@ mod tests {
         assert_eq!(order(&base), vec![0, 3, 2, 1]);
         // `LessEqual` keeps the last draw, so decals keep the authored order.
         assert_eq!(order(&decal), vec![4, 5]);
+    }
+
+    /// The view-projection matrix the vertex shader multiplies by, from the same
+    /// `CameraController` the renderer builds: the eye at the origin looking down -Z through a
+    /// 45-degree lens, so at 10 m the frustum is 4.14 m tall and 6.63 m wide either side.
+    fn test_view_proj() -> Mat4 {
+        let mut controller = crate::camera::CameraController::default();
+        controller.set_authored_transform(stunt_core::scene::ViewCamera {
+            eye: [0.0, 0.0, 0.0],
+            target: [0.0, 0.0, -1.0],
+            fov_degrees: 45.0,
+            roll_radians: 0.0,
+        });
+        Mat4::from_cols_array(&controller.build_uniform().view_proj)
+    }
+
+    /// A box of half-extent `half` on every axis around `center`.
+    fn boxed(center: [f32; 3], half: f32) -> NodeBounds {
+        let center = Vec3::from_array(center);
+        NodeBounds {
+            min: center - Vec3::splat(half),
+            max: center + Vec3::splat(half),
+        }
+    }
+
+    #[test]
+    fn a_box_wholly_behind_the_eye_is_culled() {
+        assert!(!frustum_keeps(
+            test_view_proj(),
+            boxed([0.0, 0.0, 10.0], 1.0)
+        ));
+    }
+
+    #[test]
+    fn a_box_wholly_beside_the_frustum_is_culled() {
+        // At z = -10 the lens spans x in [-6.63, 6.63] and y in [-4.14, 4.14].
+        assert!(!frustum_keeps(
+            test_view_proj(),
+            boxed([20.0, 0.0, -10.0], 1.0)
+        ));
+        assert!(!frustum_keeps(
+            test_view_proj(),
+            boxed([0.0, 20.0, -10.0], 1.0)
+        ));
+    }
+
+    #[test]
+    fn a_box_straddling_a_plane_is_kept() {
+        let straddling = NodeBounds {
+            min: Vec3::new(-7.5, -1.0, -11.0),
+            max: Vec3::new(-6.0, 1.0, -9.0),
+        };
+        assert!(frustum_keeps(test_view_proj(), straddling));
+        assert!(frustum_keeps(
+            test_view_proj(),
+            boxed([0.0, 0.0, -10.0], 1.0)
+        ));
+    }
+
+    #[test]
+    fn a_box_containing_the_eye_is_kept() {
+        assert!(frustum_keeps(test_view_proj(), boxed([0.0, 0.0, 0.0], 1.0)));
+    }
+
+    #[test]
+    fn a_node_culled_with_its_subtree() {
+        let view_proj = test_view_proj();
+        let mut root = node(0, None, &[1], false);
+        root.bounds = Some(boxed([0.0, 0.0, 10.0], 1.0));
+        let mut child = node(1, Some(0), &[], false);
+        child.bounds = Some(boxed([0.0, 0.0, -10.0], 1.0));
+        let nodes = [root.clone(), child];
+        let walk = VisibleWalk {
+            nodes: &nodes,
+            roots: &[NodeId(0)],
+            state_mask: 0,
+            dist_sq: 0.0,
+            eye: Vec3::ZERO,
+            view: None,
+            view_proj: Some(view_proj),
+        };
+        let (base, decals) = walk.collect();
+        assert!(
+            base.is_empty(),
+            "the culled root's subtree was walked: {base:?}"
+        );
+        assert!(decals.is_empty(), "the culled root drew a decal");
+
+        // The same subtree with the root's box in view keeps both slices, parent first.
+        let mut seen = root;
+        seen.bounds = Some(boxed([0.0, 0.0, -10.0], 1.0));
+        let nodes = [seen, nodes[1].clone()];
+        let walk = VisibleWalk {
+            nodes: &nodes,
+            roots: &[NodeId(0)],
+            state_mask: 0,
+            dist_sq: 0.0,
+            eye: Vec3::ZERO,
+            view: None,
+            view_proj: Some(view_proj),
+        };
+        let order: Vec<u32> = walk
+            .collect()
+            .0
+            .iter()
+            .map(|mesh| mesh.index_offset)
+            .collect();
+        assert_eq!(order, vec![0, 1]);
+    }
+
+    /// A model of two mesh nodes: a parent at the origin, and a child translated to `offset`.
+    fn two_node_ir(offset: f32) -> SodModelIr {
+        use stunt_core::contracts::NodeKind;
+
+        let vertex = |x: f32, y: f32| SodVertex {
+            position: [x, y, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            palette_index: 7,
+            flags: 0,
+            scenery_class: 0,
+            _padding: 0,
+        };
+        let mut ir = SodModelIr::new("TWO");
+        ir.vertices = vec![
+            vertex(0.0, 0.0),
+            vertex(1.0, 0.0),
+            vertex(1.0, 1.0),
+            vertex(2.0, 0.0),
+            vertex(3.0, 0.0),
+            vertex(3.0, 1.0),
+        ];
+        ir.indices = vec![0, 1, 2, 3, 4, 5];
+        let mesh = |vertex_offset, index_offset| NodeKind::Mesh {
+            vertex_offset,
+            vertex_count: 3,
+            index_offset,
+            index_count: 3,
+            is_decal: false,
+        };
+        let parent = ir.allocate_node(
+            "PARENT",
+            None,
+            Mat4::IDENTITY.to_cols_array(),
+            VisibilityCondition::Always,
+            mesh(0, 0),
+        );
+        ir.allocate_node(
+            "CHILD",
+            Some(parent),
+            Mat4::from_translation(Vec3::new(offset, 0.0, 0.0)).to_cols_array(),
+            VisibilityCondition::Always,
+            mesh(3, 3),
+        );
+        ir.root_nodes = vec![parent];
+        ir
+    }
+
+    #[test]
+    fn a_node_box_covers_its_descendants() {
+        let bounds = node_bounds(&two_node_ir(10.0));
+        assert_eq!(
+            bounds.first().copied().flatten(),
+            Some(NodeBounds {
+                min: Vec3::new(0.0, 0.0, 0.0),
+                max: Vec3::new(13.0, 1.0, 0.0),
+            })
+        );
+        assert_eq!(
+            bounds.get(1).copied().flatten(),
+            Some(NodeBounds {
+                min: Vec3::new(12.0, 0.0, 0.0),
+                max: Vec3::new(13.0, 1.0, 0.0),
+            })
+        );
     }
 }
