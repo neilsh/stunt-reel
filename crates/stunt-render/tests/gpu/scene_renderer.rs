@@ -587,7 +587,9 @@ fn projected_ground_corners(
 /// The palette index `shade`'s screen-linear interpolation gives at pixel centre `(x, y)`: the
 /// affine function of pixel position through the three projected corners of the triangle that
 /// covers it. The quad's two triangles, `(0, 1, 2)` and `(0, 2, 3)`, meet on the diagonal from
-/// corner 0 to corner 2, so which side of that line the pixel falls on picks the triangle.
+/// corner 0 to corner 2, so which side of that line the pixel falls on picks the triangle; that
+/// assumes corner 1 is in front of the eye, as it is here, since a corner behind it would flip
+/// its side.
 /// `None` within one pixel of the diagonal, where either triangle's rounding may land.
 fn screen_linear_index(corners: &[[f32; 3]; 4], x: f32, y: f32) -> Option<f32> {
     let (corner_0, corner_1, corner_2, corner_3) = (corners[0], corners[1], corners[2], corners[3]);
@@ -617,9 +619,9 @@ fn screen_linear_index(corners: &[[f32; 3]; 4], x: f32, y: f32) -> Option<f32> {
 /// The polygon reaches behind the eye and past the side planes, which is what makes Mesa's
 /// clipper interpolate the `@interpolate(linear)` varying to NaN (`research/parity/lavapipe.md`
 /// section 2), so on lavapipe the index comes from the ratio of the perspective copies of
-/// `shade * w` and `w`. Every pixel is compared against the affine function of pixel position
-/// through the quad's projected corners, which is the screen-linear value wherever the clipper
-/// cut it.
+/// `shade * w` and `w`. Every pixel more than one pixel from the quad's diagonal is compared
+/// against the affine function of pixel position through the quad's projected corners, which
+/// is the screen-linear value wherever the clipper cut it.
 #[test]
 #[expect(
     clippy::cast_possible_truncation,
@@ -645,7 +647,10 @@ fn a_gouraud_ground_polygon_under_a_low_eye_keeps_its_gradient() {
             };
             let expected = (shade + 0.5).floor().clamp(0.0, 255.0) as u8;
             // A modelled value sitting on a rounding boundary may round either way: the
-            // rasterizer interpolates in f32, this model in f64.
+            // rasterizer snaps vertices to its subpixel grid and evaluates in its own order,
+            // which this f32 model does not copy. The 0.02 is a guard, not a measured bound: on
+            // lavapipe (Mesa 25.2.8) no pixel needs it. All 47,680 ground pixels are checked
+            // (none lies within a pixel of the diagonal) and each equals the model's index.
             let boundary = ((shade + 0.5) - (shade + 0.5).round()).abs() <= 0.02;
             let adjacent = index.abs_diff(expected) == 1;
             checked += 1;

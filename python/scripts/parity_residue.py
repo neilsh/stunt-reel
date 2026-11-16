@@ -133,7 +133,7 @@ def row(residue: Residue, width: int) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Prints the residue table; 1 when a film's tick sets differ, 2 on a refused invocation."""
+    """Prints the residue table; 1 when a film's tick sets differ or a film is missing from a root, 2 on a refused invocation."""
     args = parse_args(argv)
     try:
         films = parse_names(args.films) if args.films is not None else None

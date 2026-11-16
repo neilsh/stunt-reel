@@ -123,8 +123,8 @@ fn vs_main(in: VertexInput) -> VertexOutput {
         out.palette_index = 0u;
     }
     out.shade = f32(out.palette_index);
-    // `shade * w` and `w` at the vertex, after `widen_line` moved a line corner: no line is a
-    // Gouraud polygon, and the ratio restores `shade` either way.
+    // `shade * w` and `w` at the vertex. `widen_line` keeps `clip.w`, so `w` is the vertex's
+    // own; a line is flat, and its ratio is its `shade`.
     let w = out.clip_position.w;
     out.shade_w = out.shade * w;
     out.w = w;
