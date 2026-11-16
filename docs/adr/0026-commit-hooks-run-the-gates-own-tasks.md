@@ -78,11 +78,11 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | `check-merge-conflict` | union-merged append-only files ([AGENTS.md, Committing](../../AGENTS.md#committing)) must not keep markers |
   | `check-toml`, `check-yaml` | `mise.toml`, `pyproject.toml`, `.github/` and `.coderabbit.yaml` are configuration |
   | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
-  | `trailing-whitespace`, `end-of-file-fixer` | `.editorconfig` (final newline, trimmed trailing whitespace; in Markdown only a two-space hard break is allowed); they replace `diff-check` |
+  | `trailing-whitespace`, `end-of-file-fixer` | `.editorconfig` (final newline, trimmed trailing whitespace); in Markdown, where `.editorconfig` keeps trailing whitespace, `--markdown-linebreak-ext=md` lets only a two-space hard break through; they replace `diff-check` |
   | `check-symlinks`, `destroyed-symlinks` | `.claude/skills` is a committed symlink, which a Windows checkout without `core.symlinks` turns into a text file; `destroyed-symlinks` reads `git status`, so it guards the commit and passes unread in CI |
   | `fix-byte-order-marker` | PowerShell 5.1 can write a UTF-8 BOM (`Out-File -Encoding utf8`); a UTF-16 file is not caught; run with `--check`, like the whitespace pair, with the same exemptions |
   | `check-json` | the tracked `.json` configuration and fixtures |
-  | `check-vcs-permalinks` | a GitHub `blob` link with a line anchor (`#L<n>`) must name a commit, not a branch, since the lines move; dated `work/` folders are exempt |
+  | `check-vcs-permalinks` | a GitHub `blob` link with a line anchor (`#L<n>`) must name a commit, not a branch, since the lines move; `work/` is exempt |
   | `forbid-new-submodules` | the repository has none |
   | `check-shebang-scripts-are-executable`, `check-executables-have-shebangs` | Linux CI's ruff fails a script whose shebang and executable bit disagree (`EXE001`), which a Windows checkout cannot see; these read git's staged mode there (added 2026-11-13, #461) |
 
