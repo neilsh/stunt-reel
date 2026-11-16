@@ -43,7 +43,11 @@ reviews:
   # default branch alone, so a stacked pull request whose base is a feature branch got no
   # automatic review at all. `.*` is a regex over base branch names, and the default branch
   # stays included: this widens the set rather than replacing it.
+  #
+  # Off (2026-11-15): no pull request is reviewed automatically. A review still runs on request
+  # (`@coderabbitai review`), and the rest of this file applies to it.
   auto_review:
+    enabled: false
     drafts: false
     base_branches:
       - ".*"
