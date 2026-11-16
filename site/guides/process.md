@@ -12,7 +12,7 @@ flowchart LR
     A["Issue"] --> B["Work folder and journal"]
     B --> C["Finding recorded in research/"]
     C --> D["Quality gate"]
-    D --> E{"Changes research notes, docs or these guides?"}
+    D --> E{"Changes notes, docs, guides, the notice, or a work spec or plan?"}
     E -->|"yes"| F["Fresh review"]
     E -->|"no"| G["Pull request and merge"]
     F --> G

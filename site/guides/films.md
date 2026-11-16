@@ -9,7 +9,7 @@ A film is a recorded timeline of where every actor and the camera are, step by s
 
 A [film](../../GLOSSARY.md#film-playback) does not contain a picture of anything. It contains instructions about the scene: which actors exist, where each one is, which way it faces, which camera is active, what text to show, which sound to start. The player turns those instructions into a picture, frame by frame, using the models from the companion file.
 
-The film is cut into [slices](../../GLOSSARY.md#film-playback). A slice is one recorded moment: a short list of changes to the scene, plus how much time has passed since the previous slice. Time is counted in [ticks](../../GLOSSARY.md#film-playback), the steps of the original player's fixed playback clock. A slice's place on the clock is the sum of the durations before it, which is why the glossary calls a film's slices placed on that clock its [timeline](../../GLOSSARY.md#film-playback).
+The film is cut into [slices](../../GLOSSARY.md#film-playback). A slice is one recorded moment: a short list of changes to the scene, plus how much time has passed since the previous slice. Time is counted in [ticks](../../GLOSSARY.md#film-playback), the steps of the original player's fixed playback clock. A slice's place on the clock is the sum of the durations up to and including its own, which is why the glossary calls a film's slices placed on that clock its [timeline](../../GLOSSARY.md#film-playback).
 
 A slice can have no time at all. Such slices often bundle several changes that happen at the same instant, such as a title appearing together with a sound.
 
