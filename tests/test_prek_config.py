@@ -52,10 +52,7 @@ BUILTINS: dict[str, dict[str, Any]] = {
     "check-shebang-scripts-are-executable": {"exclude": r"(\.rs$|^work/)"},
     "check-executables-have-shebangs": {},
     "trailing-whitespace": {"args": ["--check", "--markdown-linebreak-ext=md"], "exclude": EXEMPT},
-    "end-of-file-fixer": {
-        "args": ["--check"],
-        "exclude": r"^((tests/fixtures|work)/|LICENSE-CC-BY-4\.0$)",
-    },
+    "end-of-file-fixer": {"args": ["--check"], "exclude": EXEMPT},
     "check-symlinks": {},
     "destroyed-symlinks": {},
     "check-json": {},
