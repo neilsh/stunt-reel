@@ -255,3 +255,25 @@ def _github_glob(pattern: str) -> re.Pattern[str]:
     parts = re.split(r"(\*\*|\*|\?)", pattern)
     wild = {"**": ".*", "*": "[^/]*", "?": "[^/]"}
     return re.compile("".join(wild.get(part, re.escape(part)) for part in parts))
+
+
+def test_prepare_publishes_guides_with_their_order(repo: Path) -> None:
+    _write(repo / "site/guides/b.md", '---\ntitle: "B"\norder: 1\n---\n\nBody b.\n')
+    _write(repo / "site/guides/a.md", '---\ntitle: "A"\norder: 2\n---\n\nBody a.\n')
+    published = PUBLISHED.replace(
+        '[[section]]\nsource = "research"',
+        '[[section]]\nsource = "site/guides"\ndest = "guides"\nlabel = "Guides"\n\n'
+        '[[section]]\nsource = "research"',
+        1,
+    )
+    _write(repo / "site/published.toml", published)
+    prepare(repo, repo / "site")
+    docs = repo / "site/src/content/docs/guides"
+    for name, order in (("b", 1), ("a", 2)):
+        text = (docs / f"{name}.md").read_text(encoding="utf-8")
+        assert f"\n  order: {order}\n---" in text
+    sidebar = json.loads((repo / "site/src/generated/sidebar.json").read_text())
+    assert sidebar[1:3] == [
+        {"label": "Guides", "items": [{"autogenerate": {"directory": "guides"}}]},
+        {"label": "Research notes", "items": [{"autogenerate": {"directory": "research"}}]},
+    ]

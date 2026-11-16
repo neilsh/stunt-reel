@@ -3,6 +3,11 @@
 # Add each new `source` to the `paths` lists in .github/workflows/pages.yml, or a change to it
 # will not trigger the Pages build.
 [[section]]
+source = "site/guides"
+dest = "guides"
+label = "Guides"
+
+[[section]]
 source = "research"
 dest = "research"
 label = "Research notes"

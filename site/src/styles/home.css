@@ -1,0 +1,21 @@
+.sr-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.sr-card {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  color: var(--sl-color-text);
+}
+
+.sr-card > * {
+  margin: 0;
+}
+
+.sr-card > * + * {
+  margin-top: 0.5rem;
+}
