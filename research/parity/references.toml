@@ -34,7 +34,7 @@ all_sha256 = "cb58d95b72f02819d15c5e6dad0973e72af8026455dbf5e13e41933711bb12ce"
 # required while either is unpatched.
 makeone = "patch3"
 playone = "patch3"
-background = [[192, 199], [228, 238], [161, 165]]
+background = [[192, 199], [228, 236], [238, 238], [161, 165]]
 
 [ctry.expected.gpu]
 ssim = 0.9185174
