@@ -3,7 +3,7 @@ title: "How Stunt Reel is developed"
 order: 5
 ---
 
-Stunt Reel is partly a testbed for agentic workflows. The reverse engineering of Stunt Island is real work with real results, and so is the experiment running beside it: how can AI agents do that work reliably? Several of the rules below came from something going wrong; ADR 0041 below is one. The [harness page](../../docs/harness.md) records the project's policy for agents and the harnesses it has been worked with.
+Stunt Reel is partly a testbed for agentic workflows. The reverse engineering of Stunt Island is real work with real results, and so is the experiment running beside it: how can AI agents do that work reliably? Some of the rules below came from something going wrong; ADR 0041 below is one. The [harness page](../../docs/harness.md) records the project's policy for agents and the harnesses it has been worked with.
 
 ## One piece of work, issue to merge
 
