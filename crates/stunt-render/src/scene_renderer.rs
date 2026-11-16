@@ -1,9 +1,11 @@
 //! Draws a [`SceneFrame`] of a [`FilmScene`]: the world plus one draw per actor.
 //!
-//! Every shape is uploaded once. Each actor draw gets its own model-matrix slot (a 64-byte
-//! uniform buffer and bind group), grown on demand during [`SceneRenderer::prepare`], so
-//! two actors sharing a shape render at their own poses within one render pass. Slots are
-//! filled with `Queue::write_buffer` before the pass is submitted, never between draws.
+//! Every shape is uploaded once. Each actor draw gets its own model-matrix slot, a
+//! [`ModelUniform`] at its own dynamic offset in one uniform buffer, so two actors sharing a
+//! shape render at their own poses within one render pass. [`SceneRenderer::prepare`] fills
+//! every slot of a frame with one `Queue::write_buffer`, before the pass is submitted:
+//! one write per draw made wgpu allocate a staging buffer per draw, which dominated
+//! lavapipe renders (`research/parity/lavapipe.md` section 6).
 //!
 //! Frame use is two-phase because a render pass borrows its bind groups: call
 //! [`SceneRenderer::prepare`] (uploads camera and matrices, may allocate slots), then
@@ -60,11 +62,13 @@ struct PreparedDraw {
     shadow: bool,
 }
 
-/// A per-draw model matrix: uniform buffer plus its bind group.
+/// The model-matrix slots of a frame: `capacity` [`ModelUniform`]s `stride` bytes apart in
+/// one uniform buffer, bound through one bind group at the slot's offset.
 #[derive(Debug)]
-struct MatrixSlot {
+struct MatrixBuffer {
     buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
+    capacity: usize,
 }
 
 /// GPU renderer for the scene frames of one [`FilmScene`].
@@ -74,7 +78,13 @@ pub(crate) struct SceneRenderer {
     /// Every sprite image of the scene as a unit square ([`sprite_ir`]).
     images: HashMap<u16, GpuModel>,
     world: Option<GpuModel>,
-    slots: Vec<MatrixSlot>,
+    /// `None` until a frame has a draw that needs a slot.
+    matrices: Option<MatrixBuffer>,
+    /// Bytes between slots: a [`ModelUniform`] rounded up to the device's uniform offset
+    /// alignment.
+    stride: usize,
+    /// This frame's slot uniforms, packed `stride` apart, uploaded at the end of `prepare`.
+    staged: Vec<u8>,
     model_layout: wgpu::BindGroupLayout,
     prepared: Vec<PreparedDraw>,
 }
@@ -118,7 +128,10 @@ impl SceneRenderer {
             shapes,
             images,
             world,
-            slots: Vec::new(),
+            matrices: None,
+            stride: size_of::<ModelUniform>()
+                .next_multiple_of(device.limits().min_uniform_buffer_offset_alignment as usize),
+            staged: Vec::new(),
             model_layout: layout.clone(),
             prepared: Vec::new(),
         }
@@ -170,7 +183,7 @@ impl SceneRenderer {
             });
         }
 
-        let mut slot = 0;
+        self.staged.clear();
         for prop in &frame.view_facing {
             let Some(model) = self.shapes.get(&prop.shape_id) else {
                 continue;
@@ -189,14 +202,7 @@ impl SceneRenderer {
             }
             let uniform = ModelUniform::new(prop.world_matrix, LAYER_PROP);
             let shape_id = prop.shape_id;
-            self.push_draw(
-                device,
-                queue,
-                |slot| Target::Shape { shape_id, slot },
-                &mut slot,
-                &uniform,
-                meshes,
-            );
+            self.push_draw(|slot| Target::Shape { shape_id, slot }, &uniform, meshes);
         }
         for (actor_index, actor) in (0u32..).zip(&frame.actors) {
             let Some(model) = self.shapes.get(&actor.shape_id) else {
@@ -224,10 +230,7 @@ impl SceneRenderer {
                 let shadow = base.iter().chain(&decals).copied().collect();
                 let shape_id = actor.shape_id;
                 self.push_draw(
-                    device,
-                    queue,
                     |slot| Target::Shape { shape_id, slot },
-                    &mut slot,
                     &uniform,
                     (Vec::new(), shadow),
                 );
@@ -235,10 +238,7 @@ impl SceneRenderer {
             let uniform = ModelUniform::new(actor.world_matrix, layer);
             let shape_id = actor.shape_id;
             self.push_draw(
-                device,
-                queue,
                 |slot| Target::Shape { shape_id, slot },
-                &mut slot,
                 &uniform,
                 (base, decals),
             );
@@ -255,43 +255,55 @@ impl SceneRenderer {
             let uniform = ModelUniform::new(billboard_matrix(&view, sprite), layer);
             let image_id = sprite.image_id;
             self.push_draw(
-                device,
-                queue,
                 |slot| Target::Image { image_id, slot },
-                &mut slot,
                 &uniform,
                 (base, decals),
             );
         }
+        self.upload_slots(device, queue);
     }
 
     /// Queues a draw of the target `target` names for the next model-matrix slot, its
     /// `(base, decals)` slices through that slot, filled with `uniform`.
     fn push_draw(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
         target: impl FnOnce(usize) -> Target,
-        slot: &mut usize,
         uniform: &ModelUniform,
         (base, decals): (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>),
     ) {
-        if *slot == self.slots.len() {
-            self.slots.push(Self::new_slot(device, &self.model_layout));
-        }
-        let Some(model_slot) = self.slots.get(*slot) else {
-            return;
-        };
-        queue.write_buffer(&model_slot.buffer, 0, bytemuck::bytes_of(uniform));
+        let slot = self.staged.len() / self.stride;
+        self.staged.extend_from_slice(bytemuck::bytes_of(uniform));
+        self.staged.resize((slot + 1) * self.stride, 0);
         let [_, shadow, ..] = uniform.layer;
         self.prepared.push(PreparedDraw {
-            target: target(*slot),
+            target: target(slot),
             ground: Vec::new(),
             base,
             decals,
             shadow: shadow != 0,
         });
-        *slot += 1;
+    }
+
+    /// Writes the frame's staged slots with one `write_buffer`, first doubling the buffer
+    /// until they fit; it never shrinks.
+    fn upload_slots(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let needed = self.staged.len() / self.stride;
+        if needed == 0 {
+            return;
+        }
+        let capacity = self.matrices.as_ref().map_or(0, |m| m.capacity);
+        if needed > capacity {
+            let capacity = needed.next_power_of_two().max(capacity * 2);
+            self.matrices = Some(self.new_matrices(device, capacity));
+        }
+        if let Some(matrices) = &self.matrices {
+            queue.write_buffer(&matrices.buffer, 0, &self.staged);
+        }
+    }
+
+    /// The bind offset of model-matrix slot `slot`.
+    fn slot_offset(&self, slot: usize) -> u32 {
+        u32::try_from(slot * self.stride).unwrap_or(u32::MAX)
     }
 
     /// Encodes the draws chosen by the last [`Self::prepare`] into `rpass`.
@@ -317,7 +329,7 @@ impl SceneRenderer {
                 .find(|d| matches!(d.target, Target::World) && !d.ground.is_empty()),
         );
         if let Some((world, draw)) = world_ground {
-            rpass.set_bind_group(2, &world.model_bind_group, &[]);
+            rpass.set_bind_group(2, &world.model_bind_group, &[0]);
             for slice in &draw.ground {
                 let slices = std::slice::from_ref(slice);
                 rpass.set_pipeline(&pipelines.ground_pipeline);
@@ -350,25 +362,29 @@ impl SceneRenderer {
                         &pipelines.decal_pipeline
                     });
                 }
-                let (model, bind_group) = match draw.target {
+                let (model, bind_group, offset) = match draw.target {
                     Target::World => match &self.world {
-                        Some(w) => (w, &w.model_bind_group),
+                        Some(w) => (w, &w.model_bind_group, 0),
                         None => continue,
                     },
                     Target::Shape { shape_id, slot } => {
-                        match self.shapes.get(&shape_id).zip(self.slots.get(slot)) {
-                            Some((m, model_slot)) => (m, &model_slot.bind_group),
+                        match self.shapes.get(&shape_id).zip(self.matrices.as_ref()) {
+                            Some((m, matrices)) => {
+                                (m, &matrices.bind_group, self.slot_offset(slot))
+                            }
                             None => continue,
                         }
                     }
                     Target::Image { image_id, slot } => {
-                        match self.images.get(&image_id).zip(self.slots.get(slot)) {
-                            Some((m, model_slot)) => (m, &model_slot.bind_group),
+                        match self.images.get(&image_id).zip(self.matrices.as_ref()) {
+                            Some((m, matrices)) => {
+                                (m, &matrices.bind_group, self.slot_offset(slot))
+                            }
                             None => continue,
                         }
                     }
                 };
-                rpass.set_bind_group(2, bind_group, &[]);
+                rpass.set_bind_group(2, bind_group, &[offset]);
                 // A world decal slice's outline follows its own fill, so a later slice covers
                 // it as it covers the fill: the decal pass writes no depth to hide it ([I5]).
                 if decal_pass && matches!(draw.target, Target::World) {
@@ -401,22 +417,31 @@ impl SceneRenderer {
         }
     }
 
-    fn new_slot(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> MatrixSlot {
+    /// A slot buffer of `capacity` slots, its bind group showing one [`ModelUniform`].
+    fn new_matrices(&self, device: &wgpu::Device, capacity: usize) -> MatrixBuffer {
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("stunt_scene_actor_model_uniform"),
-            size: size_of::<ModelUniform>() as u64,
+            label: Some("stunt_scene_actor_model_uniforms"),
+            size: (capacity * self.stride) as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("stunt_scene_actor_model_bind_group"),
-            layout,
+            layout: &self.model_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: buffer.as_entire_binding(),
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(size_of::<ModelUniform>() as u64),
+                }),
             }],
         });
-        MatrixSlot { buffer, bind_group }
+        MatrixBuffer {
+            buffer,
+            bind_group,
+            capacity,
+        }
     }
 }
 
