@@ -23,3 +23,11 @@
 - **Result**: before, GPU 6.1 s and lavapipe 12.5 s. (a) GPU 7.8 s, lavapipe 55.0 s. (b) GPU 6.0 s, lavapipe 23.9 s; it rewrites the vertices on 951 of INTRO's 3,823 rendered ticks. (c) lavapipe 13.5 s. (d) GPU 8.4 s, lavapipe 167.8 s. (e) lavapipe 26.0 s. So the decode costs little, and on lavapipe each frame that changes the vertex data of a buffer in flight costs about 11 ms, whether written into the buffer or given a new mapped buffer. Why is not measured.
 - **Verdict**: (b) kept: the GPU render time is unchanged and lavapipe takes about twice as long on `INTRO`. The lavapipe cost is left to a follow-up issue.
 - **Lives in**: the PR; `SceneRenderer::relight`.
+
+## 2026-11-16: The frames R · L lowers
+
+- **Question**: why do BALLOON 254 and LOCATION 7723 to 7800 fall by more than 0.005 under `R · L`, and what does TRAINTNL, the other film whose mean falls, lose?
+- **Method**: `mise run parity` with `DBG_ACTOR_LIGHT` at 0 and at 1, on the GPU, per-frame `ssim` from each film's `report.json`; then `mise run frame -- --film <film> --ticks <tick> --var DBG_ACTOR_LIGHT=0,1` at BALLOON 254, TRAINTNL 1233 and LOCATION 7734, each panel capture, before, after.
+- **Result**: BALLOON moves 24 frames by more than 0.0005, mean 0.8174 to 0.8175, worst 254 (-0.0076), best 452 (+0.0031); TRAINTNL 7, mean 0.8599 to 0.8598, worst 1233 (-0.0045); LOCATION 85, mean 0.8292 to 0.8293, worst 7756 (-0.0154), best 452 (+0.0101). At BALLOON 254 the parachutist, seen from behind and pitched, keeps a uniformly dark olive body in the capture; under `R · L` the lower back and legs turn lighter, under the world light they were nearer the capture. At TRAINTNL 1233 the biplane, head on, changes the shade of a few fuselage faces. At LOCATION 7734, as at 7756, our helicopter's rotor and tail boom already miss the capture's, and the body darkens.
+- **Verdict**: not explained. The BALLOON fall is on the parachutist's lower body; whether its legs are a sub-model with its own `ROT*` turn, which [`terrain-shade.md`](../../../research/playone-exe/terrain-shade.md) open question 3 leaves open (#271), was not checked. The LOCATION falls sit on a helicopter whose geometry already differs from the capture's. No film's mean falls by more than 0.0002 (TRAINTNL, -0.00015).
+- **Lives in**: the PR.
