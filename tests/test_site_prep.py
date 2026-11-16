@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import importlib.util
 import json
 from pathlib import Path
@@ -209,3 +210,27 @@ def test_load_sections_rejects_a_non_string_group() -> None:
     text = '[[section]]\nsource = "a"\ndest = "a"\nlabel = "A"\ngroup = 1\n'
     with pytest.raises(ValueError, match="section 1"):
         load_sections(text)
+
+
+def _workflow_paths(workflow: Path) -> list[str]:
+    """The quoted `- "..."` entries under the `paths: &paths` line, read line by line."""
+    found: list[str] = []
+    reading = False
+    for line in workflow.read_text(encoding="utf-8").splitlines():
+        if line.strip() == "paths: &paths":
+            reading = True
+        elif reading and line.strip().startswith('- "'):
+            found.append(line.strip().removeprefix('- "').removesuffix('"'))
+        elif reading:
+            break
+    return found
+
+
+def test_pages_workflow_watches_every_published_source() -> None:
+    root = SCRIPTS.parent.parent
+    sections = load_sections((root / "site/published.toml").read_text(encoding="utf-8"))
+    paths = _workflow_paths(root / ".github/workflows/pages.yml")
+    assert paths
+    for section in sections:
+        probe = section.source if (root / section.source).is_file() else f"{section.source}/x.md"
+        assert any(fnmatch.fnmatch(probe, p.replace("**", "*")) for p in paths), section.source

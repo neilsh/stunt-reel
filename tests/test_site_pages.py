@@ -85,6 +85,16 @@ def test_link_target(site: Site, target: str, expected: str) -> None:
     assert images == wanted
 
 
+def test_link_target_to_a_published_docs_page(site: Site) -> None:
+    published = Site(
+        root=site.root,
+        pages={**site.pages, "docs/SPEC.md": "docs/spec.md"},
+        published_dirs=("research",),
+    )
+    target = link_target("../../docs/SPEC.md#24-x", _SRC, published, set())
+    assert target == "/stunt-reel/docs/spec/#24-x"
+
+
 def test_link_target_refuses_escape(site: Site) -> None:
     with pytest.raises(ValueError, match=r"research/formats/sod.md"):
         link_target("../../../../x.md", _SRC, site, set())

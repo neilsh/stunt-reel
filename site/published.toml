@@ -8,6 +8,43 @@ dest = "research"
 label = "Research notes"
 
 [[section]]
+source = "docs/SPEC.md"
+dest = "docs/spec.md"
+label = "Spec"
+group = "Project docs"
+
+[[section]]
+source = "docs/ARCHITECTURE.md"
+dest = "docs/architecture.md"
+label = "Architecture"
+group = "Project docs"
+
+[[section]]
+source = "docs/development.md"
+dest = "docs/development.md"
+label = "Development"
+group = "Project docs"
+
+[[section]]
+source = "docs/harness.md"
+dest = "docs/harness.md"
+label = "Agents"
+group = "Project docs"
+
+[[section]]
+source = "docs/howto"
+dest = "docs/howto"
+label = "How-to"
+group = "Project docs"
+
+[[section]]
+source = "docs/adr"
+dest = "docs/adr"
+label = "Decisions"
+group = "Project docs"
+
+[[section]]
 source = "GLOSSARY.md"
 dest = "glossary.md"
 label = "Glossary"
+title = "Glossary"

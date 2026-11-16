@@ -5,6 +5,12 @@ on:
     paths: &paths
       - "research/**"
       - "GLOSSARY.md"
+      - "docs/SPEC.md"
+      - "docs/ARCHITECTURE.md"
+      - "docs/development.md"
+      - "docs/harness.md"
+      - "docs/howto/**"
+      - "docs/adr/**"
       - "site/**"
       - "python/stunt_reel/site_pages.py"
       - "python/stunt_reel/frontmatter.py"
