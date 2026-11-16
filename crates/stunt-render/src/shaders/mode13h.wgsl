@@ -1,10 +1,12 @@
+// The view's rotation and projection only: every model matrix arrives eye-relative, with the
+// eye's translation applied on the CPU in f64 (camera.rs `eye_relative_matrix`), so the only
+// world-scale arithmetic left here is a world vertex's `position - eye`, rounded once
+// (research/parity/lavapipe.md section 5).
 struct CameraUniform {
-    view_proj: mat4x4<f32>,
-    camera_pos: vec3<f32>,
-    _pad0: f32,
+    rotation_proj: mat4x4<f32>,
     sun_direction: vec3<f32>,
     ambient_intensity: f32,
-    inv_view_proj: mat4x4<f32>,
+    inv_rotation_proj: mat4x4<f32>,
     // Half a Mode 13h pixel of the view in NDC.
     line_half_ndc: vec2<f32>,
     _pad1: vec2<f32>,
@@ -109,11 +111,11 @@ struct PlaneOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    // Transform vertex position into clip space
-    let world_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
-    out.clip_position = camera.view_proj * world_pos;
+    // Model space to eye-relative space to clip space.
+    let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
+    out.clip_position = camera.rotation_proj * eye_pos;
     if ((in.attr.y & FLAG_LINE) != 0u) {
-        let other = camera.view_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+        let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
         out.clip_position = widen_line(out.clip_position, other, in.attr.y);
     }
     out.palette_index = in.attr.x & 255u;
@@ -183,8 +185,9 @@ fn vs_sky(@builtin(vertex_index) vertex_index: u32) -> SkyVertexOutput {
 }
 
 fn sky_index(ndc: vec2<f32>) -> u32 {
-    let far = camera.inv_view_proj * vec4<f32>(ndc, 1.0, 1.0);
-    let ray = far.xyz / far.w - camera.camera_pos;
+    // The far-plane point under the pixel, eye-relative, is the view ray from the eye.
+    let far = camera.inv_rotation_proj * vec4<f32>(ndc, 1.0, 1.0);
+    let ray = far.xyz / far.w;
     let sin_elevation = ray.y / length(ray);
     var index = 238u;
     for (var k = 0u; k < 10u; k = k + 1u) {

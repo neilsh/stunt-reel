@@ -565,7 +565,8 @@ fn projected_ground_corners(
 ) -> [[f32; 3]; 4] {
     let mut controller = CameraController::default();
     controller.set_authored_transform(scene.frame(0.0).view);
-    let view_proj = glam::Mat4::from_cols_array(&controller.build_uniform().view_proj);
+    let rotation_proj = glam::Mat4::from_cols_array(&controller.build_uniform().rotation_proj);
+    let eye = controller.eye_position();
     [
         (-half, -half, west),
         (half, -half, east),
@@ -573,7 +574,8 @@ fn projected_ground_corners(
         (-half, half, west),
     ]
     .map(|(x, z, index)| {
-        let clip = view_proj * glam::Vec4::new(x, 0.0, z, 1.0);
+        // The vertex stage's transform: the eye's translation comes off the model matrix.
+        let clip = rotation_proj * (glam::Vec3::new(x, 0.0, z) - eye).extend(1.0);
         let [u, v] = [(clip.x / clip.w), (clip.y / clip.w)];
         let [half_width, half_height] = [page.0 as f32 / 2.0, page.1 as f32 / 2.0];
         [
