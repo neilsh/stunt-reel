@@ -7,7 +7,8 @@ accepted. Amended 2026-11-05: `crlf-check` repairs a CRLF-only working copy (bel
 part 2026-11-09 by [ADR 0044](0044-commit-messages-carry-no-gate-line.md): the commit-msg hook
 checks the subject only, with no gate line. Amended 2026-11-13: two shebang built-ins (below).
 Amended 2026-11-15: `crlf-check` is removed, and CI checks the pull request title, not every
-commit (below).
+commit (below). Amended 2026-11-16: the whitespace built-ins replace
+`diff-check`, and six more built-ins join (below).
 Supersedes
 the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to
@@ -55,7 +56,7 @@ prek runs the commit-time checks; `gate.py` stays the gate.
 
   | hook id | entry | fires on |
   | --- | --- | --- |
-  | `diff-check` | `mise run diff-check` (`git diff --cached --check`) | every commit (`always_run`) |
+  | `diff-check` | `mise run diff-check` (`git diff --cached --check`) | every commit (`always_run`; removed 2026-11-16) |
   | `crlf-check` | `mise run crlf-check` (`check_crlf.py`, deleted 2026-11-15) | every commit (`always_run`) |
   | `fmt-check-rust` | `mise run fmt-check-rust` | `types = ["rust"]` |
   | `fmt-check-py` | `mise run fmt-check-py` | `types = ["python"]` |
@@ -77,16 +78,25 @@ prek runs the commit-time checks; `gate.py` stays the gate.
   | `check-merge-conflict` | union-merged append-only files ([AGENTS.md, Committing](../../AGENTS.md#committing)) must not keep markers |
   | `check-toml`, `check-yaml` | `mise.toml`, `pyproject.toml`, `.github/` and `.coderabbit.yaml` are configuration |
   | `detect-private-key` | the repository is public ([ADR 0015](0015-publication-with-a-documented-palette-exception.md)) |
+  | `trailing-whitespace`, `end-of-file-fixer` | `.editorconfig` (final newline, trimmed trailing whitespace); in Markdown, where `.editorconfig` keeps trailing whitespace, `--markdown-linebreak-ext=md` lets only a two-space hard break through; they replace `diff-check` |
+  | `check-symlinks`, `destroyed-symlinks` | `.claude/skills` is a committed symlink, which a Windows checkout without `core.symlinks` turns into a text file; `destroyed-symlinks` reads `git status`, so it guards the commit and passes unread in CI |
+  | `fix-byte-order-marker` | PowerShell 5.1 can write a UTF-8 BOM (`Out-File -Encoding utf8`); a UTF-16 file is not caught; run with `--check`, like the whitespace pair, with the same exemptions |
+  | `check-json` | the tracked `.json` configuration and fixtures |
+  | `check-vcs-permalinks` | a GitHub `blob` link with a line anchor (`#L<n>`) must name a commit, not a branch, since the lines move; `work/` is exempt |
+  | `forbid-new-submodules` | the repository has none |
   | `check-shebang-scripts-are-executable`, `check-executables-have-shebangs` | Linux CI's ruff fails a script whose shebang and executable bit disagree (`EXE001`), which a Windows checkout cannot see; these read git's staged mode there (added 2026-11-13, #461) |
 
-  No hook rewrites files: the whitespace and end-of-file fixers are left out, and the fix for a
-  format failure is `mise run fmt`.
+  No hook rewrites files: the two fixers run with `--check`, which reports and writes nothing, and
+  the fix for a format failure is `mise run fmt`. They skip `tests/fixtures/` (byte-exact test
+  inputs) and `work/` (dated records, frozen) through a per-hook `exclude`, never a top-level one,
+  which would also hide those paths from `check-added-large-files` and `detect-private-key`.
 - **`gate.py staged` is removed** with its constants, its log path and its tests; `gate.py` runs
   only `all`, `rust` and `py` again.
 - **CI runs the hooks' extra checks.** The `quality` job installs prek and runs it with the
   local hooks skipped (`SKIP=diff-check,crlf-check,fmt-check-rust,fmt-check-py,lint-py,test-docs`): the gate
   it already runs covers the format, lint and doc checks, and `diff-check` reads an index that is
-  empty in CI, so `check-merge-conflict` stands in for its conflict markers. CI stages nothing and
+  empty in CI, so `check-merge-conflict` stands in for its conflict markers (the current list is
+  in the 2026-11-16 amendment). CI stages nothing and
   is not mid-merge, so `check-added-large-files` takes `--enforce-all` and `check-merge-conflict`
   takes `--assume-in-merge`; without them both pass a commit unread. A pull request is checked
   over `--from-ref origin/<base>`, a push to `main` over `--from-ref <previous tip>` (admins may
@@ -227,3 +237,26 @@ check binds only once the repository owner turns off rebase merging, sets squash
 "Pull request title" and adds `PR title` to the `main` ruleset's required checks (#577's spec,
 section 2). A separate workflow, not a `ci.yml` job, so that `edited` does not re-run the quality
 gate on every title edit.
+
+## Amendment 2026-11-16: whitespace built-ins replace `diff-check`
+
+`diff-check` (`git diff --cached --check`) is removed, with its mise task. `trailing-whitespace`
+(`--check --markdown-linebreak-ext=md`) and `end-of-file-fixer` (`--check`) back the same rules and
+`.editorconfig`, and unlike a check of the index they also run in CI over a commit range.
+`check-merge-conflict` already covered conflict markers. What is lost is git's `space-before-tab`
+rule. Two differences to expect: they read whole files, where `diff --check` read only added
+lines; and Markdown is stricter, since `.gitattributes` once let any trailing whitespace through in
+`.md` and now only exactly two spaces (a hard break) pass, so one space or three fail. prek moves to
+0.5.10 with it. This supersedes the hook table's `diff-check` row, "`diff-check` and `crlf-check`
+run on every commit" above, and the `SKIP` list in the 2026-11-15 amendment: CI's `SKIP` list is
+`fmt-check-rust,fmt-check-py,lint-py,test-docs,check-work-frozen`.
+
+The same amendment adds `check-symlinks`, `destroyed-symlinks`, `check-json`,
+`fix-byte-order-marker --check`, `check-vcs-permalinks` and `forbid-new-submodules`.
+Considered and left out: `no-commit-to-branch` (CI's push to `main` would fail it), `deny-filename-pattern`
+(its fixture false positives are unchecked), `mixed-line-ending` (the index is LF already) and
+`pretty-format-json` (it reformats files).
+
+The commit-message hook, `check-work-frozen` and `test-docs` stay: no built-in checks a
+Conventional Commit subject, a trailer required only when a work `spec.md` or `plan.md` changes,
+or a frozen folder. Tracked in [#462](https://github.com/neilsh/stunt-reel/issues/462).

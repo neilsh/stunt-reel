@@ -285,8 +285,22 @@ def test_prek_checks_the_staged_content(prek: str, tmp_path: Path) -> None:
     [
         ("log.md", "one\n<<<<<<< HEAD\ntwo\n=======\nthree\n>>>>>>> main\n"),
         ("blob.txt", "x" * 600_000 + "\n"),
+        ("notes.txt", "a \n"),
+        ("notes.txt", "a"),
+        ("bad.json", "{\n"),
+        ("bom.txt", chr(0xFEFF) + "a" + chr(10)),
+        # Joined at run time, so that this file is not itself a branch link.
+        ("doc.md", "https://github.com/o/r/blob/" + "main/f.py#L3\n"),
     ],
-    ids=["conflict-markers", "large-file"],
+    ids=[
+        "conflict-markers",
+        "large-file",
+        "trailing-whitespace",
+        "missing-final-newline",
+        "json",
+        "bom",
+        "permalink",
+    ],
 )
 def test_ci_built_ins_catch_a_committed_change(
     prek: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, content: str
@@ -309,6 +323,48 @@ def test_ci_built_ins_catch_a_committed_change(
         repo, prek, "run", "--config", "prek.toml", "--from-ref", "HEAD~1", "--to-ref", "HEAD"
     )
     assert result.returncode != 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("breaks.md", "a  \nb\n"),
+        ("tests/fixtures/x.flm", "a"),
+        (Path("work", "2026-01", "1_x", "journal.md").as_posix(), "a \n"),
+    ],
+    ids=["markdown-hard-break", "fixture", "work-folder"],
+)
+def test_ci_built_ins_pass_exempt_content(
+    prek: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, content: str
+) -> None:
+    """A Markdown hard break, a fixture's bytes and a frozen work folder are not findings."""
+    assert GIT is not None
+    repo = _repo(tmp_path)
+    shutil.copyfile(REPO_ROOT / "prek.toml", repo / "prek.toml")
+    _run(repo, GIT, "add", "prek.toml")
+    assert _run(repo, GIT, "commit", "-q", "-m", "config").returncode == 0
+    (repo / name).parent.mkdir(parents=True, exist_ok=True)
+    (repo / name).write_bytes(content.encode())
+    _run(repo, GIT, "add", name)
+    assert _run(repo, GIT, "commit", "-q", "--no-verify", "-m", "ok").returncode == 0
+    monkeypatch.setenv("SKIP", _ci_skip())
+    result = _run(
+        repo, prek, "run", "--config", "prek.toml", "--from-ref", "HEAD~1", "--to-ref", "HEAD"
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_check_mode_leaves_the_file_alone(prek: str, tmp_path: Path) -> None:
+    """The whitespace built-ins report; they never rewrite a staged file (ADR 0026)."""
+    assert GIT is not None
+    repo = _repo(tmp_path)
+    shutil.copyfile(REPO_ROOT / "prek.toml", repo / "prek.toml")
+    target = repo / "notes.txt"
+    target.write_bytes(b"a \n")
+    _run(repo, GIT, "add", "prek.toml", "notes.txt")
+    result = _run(repo, prek, "run", "--config", "prek.toml")
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert target.read_bytes() == b"a \n"
 
 
 def _ci_skip() -> str:

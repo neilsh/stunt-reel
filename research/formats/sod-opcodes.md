@@ -246,4 +246,3 @@ Only **stream constraints** are recorded here — readings that must match the b
 ### 3.3 What A Decoder's Silences Are Worth
 
 si-tools is an OBJ exporter, not an emulator. It never shades, never culls, never projects, never writes the animation variables, and skips a dozen opcodes of known width with a single word. None of that is evidence about `PLAYONE.EXE`, and this note records none of it. What survives is the byte layout: the five-word shape header (magic `0x000C`, size, `y_offset`, scale/flags, collision), `GVPOLY`'s high-byte colour, `SHADES`' leading word, `IPG`'s per-type operand counts, `ANIMATE`'s field order, and the `0x000C` first word that identifies a `.SOD` chunk inside a `.RES`, which [`res.md`](res.md) already derives from the archive structure.
-

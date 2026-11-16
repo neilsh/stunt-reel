@@ -16,12 +16,11 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-#: The local hooks in `prek.toml` order, and the trigger keys each sets. `diff-check`,
+#: The local hooks in `prek.toml` order, and the trigger keys each sets.
 #: `test-docs` and `check-work-frozen` fire on every commit: prek passes no deleted
 #: files to hooks, so a commit that only deletes a linked page would otherwise skip the doc
 #: invariants, and `check-work-frozen` reads the whole index itself.
 LOCAL_HOOKS: dict[str, dict[str, Any]] = {
-    "diff-check": {"always_run": True},
     "fmt-check-rust": {"types": ["rust"]},
     "fmt-check-py": {"types": ["python"]},
     "lint-py": {"types": ["python"]},
@@ -36,17 +35,30 @@ REQUIRED_KEYS = {"id", "name", "entry", "language", "pass_filenames"}
 #: `exclude`, `args`) could silence a hook or change what it runs.
 TRIGGER_KEYS = {"types", "always_run"}
 
-#: The prek built-ins ADR 0026 adopts; none of them rewrites a file.
-BUILTINS = {
-    "check-added-large-files",
-    "check-illegal-windows-names",
-    "check-case-conflict",
-    "check-merge-conflict",
-    "check-toml",
-    "check-yaml",
-    "detect-private-key",
-    "check-shebang-scripts-are-executable",
-    "check-executables-have-shebangs",
+#: Paths the whitespace built-ins leave alone: fixtures are byte-exact test inputs, and a work
+#: folder is a dated record that changes only for link fixes (AGENTS.md, directive 1.4).
+EXEMPT = "^(tests/fixtures|work)/"
+
+#: The prek built-ins ADR 0026 adopts, each with every key beyond `id`. The whitespace fixers run
+#: with `--check`, so none of them rewrites a file.
+BUILTINS: dict[str, dict[str, Any]] = {
+    "check-added-large-files": {"args": ["--enforce-all"]},
+    "check-illegal-windows-names": {},
+    "check-case-conflict": {},
+    "check-merge-conflict": {"args": ["--assume-in-merge"]},
+    "check-toml": {},
+    "check-yaml": {},
+    "detect-private-key": {},
+    "check-shebang-scripts-are-executable": {"exclude": r"(\.rs$|^work/)"},
+    "check-executables-have-shebangs": {},
+    "trailing-whitespace": {"args": ["--check", "--markdown-linebreak-ext=md"], "exclude": EXEMPT},
+    "end-of-file-fixer": {"args": ["--check"], "exclude": EXEMPT},
+    "check-symlinks": {},
+    "destroyed-symlinks": {},
+    "check-json": {},
+    "fix-byte-order-marker": {"args": ["--check"], "exclude": EXEMPT},
+    "check-vcs-permalinks": {"exclude": "^work/"},
+    "forbid-new-submodules": {},
 }
 
 
@@ -95,7 +107,11 @@ def test_local_hooks_fire_as_the_adr_says() -> None:
 
 
 def test_builtin_hooks_are_the_adr_set() -> None:
-    assert {hook["id"] for hook in _hooks("builtin")} == BUILTINS
+    found = {
+        hook["id"]: {key: value for key, value in hook.items() if key != "id"}
+        for hook in _hooks("builtin")
+    }
+    assert found == BUILTINS
 
 
 def test_only_local_and_builtin_repositories() -> None:
@@ -108,7 +124,6 @@ def test_pre_commit_task_runs_prek() -> None:
     mise = _mise()
     tasks = mise["tasks"]
     assert tasks["pre-commit"]["run"] == "prek run --quiet --config prek.toml"
-    assert tasks["diff-check"]["run"] == "git diff --cached --check"
     assert "hooks" not in tasks, "nothing installs prek's own shim (ADR 0026)"
     assert re.fullmatch(r"\d+\.\d+\.\d+", mise["tools"]["prek"])
 

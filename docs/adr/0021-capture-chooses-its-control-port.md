@@ -76,7 +76,7 @@ codebase already keeps per-process scratch (`stunt_tac_read_<pid>.bin` in
 
 Two captures still contend for the machine's cores. `LAUNCH_TIMEOUT_SECONDS` and the
 dialog-settle budgets are wall-clock, so a second session can spend them; a timeout is
-then a scheduling measurement, not a reason to bring the lock back. 
+then a scheduling measurement, not a reason to bring the lock back.
 
 Frames are not byte-identical between runs, and this change did not make them so: the
 captured page lags the film clock by a whole tick and the alignment drifts by 0-2 ticks
