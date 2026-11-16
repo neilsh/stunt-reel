@@ -86,9 +86,10 @@ def test_link_target(site: Site, target: str, expected: str) -> None:
 
 
 def test_link_target_to_a_published_docs_page(site: Site) -> None:
+    dest = "docs/spec.md"
     published = Site(
         root=site.root,
-        pages={**site.pages, "docs/SPEC.md": "docs/spec.md"},
+        pages={**site.pages, "docs/SPEC.md": dest},
         published_dirs=("research",),
     )
     target = link_target("../../docs/SPEC.md#24-x", _SRC, published, set())
