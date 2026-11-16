@@ -44,7 +44,7 @@ Nothing here is a fact about Stunt Island.
 * **Subagent-driven development reviews once per PR.**
   `superpowers:subagent-driven-development` runs one fresh-context review of the finished branch
   before the PR — the `reviewer` agent, or Opus or Antigravity for a Sonnet- or dsh-built
-  branch; a fix wave goes straight to the gate and CodeRabbit. Size each task so its implementer
+  branch; a fix wave goes straight to the gate. Size each task so its implementer
   finishes within about 150 turns.
 * **A subagent leaves nothing running when it reports.** It runs the gate in the foreground
   (on Claude Code, with a 600 s timeout) and stops any background job or monitor before its

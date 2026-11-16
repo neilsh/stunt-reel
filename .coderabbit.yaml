@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 #
-# CodeRabbit reviews pull requests as a second reader, never as a second gate: the gate
+# CodeRabbit reviews a pull request on request, as a second reader, never as a second gate: the gate
 # (`mise run check`) and a person decide whether a pull request merges, and a comment here is
 # advice (see CONTRIBUTING.md). Everything this file does not mention stays at CodeRabbit's
 # default; the entries below exist only where a default cannot say it.
@@ -39,11 +39,15 @@ reviews:
   # (2026-11-11); the fortune switch does not cover it.
   review_status: false
 
-  # Every pull request, whatever branch it targets. CodeRabbit's default is the repository's
-  # default branch alone, so a stacked pull request whose base is a feature branch got no
-  # automatic review at all. `.*` is a regex over base branch names, and the default branch
-  # stays included: this widens the set rather than replacing it.
+  # Off (2026-11-15): no pull request is reviewed automatically. A review still runs on request
+  # (`@coderabbitai review`), and the rest of this file applies to it. `base_branches` below
+  # applied to automatic reviews, so it is inert while `enabled` is false; it is kept for when
+  # automatic review is switched back on: every pull request, whatever branch it targets.
+  # CodeRabbit's default is the repository's default branch alone, so a stacked pull request
+  # whose base is a feature branch got no automatic review. `.*` is a regex over base branch
+  # names, and the default branch stays included: this widens the set rather than replacing it.
   auto_review:
+    enabled: false
     drafts: false
     base_branches:
       - ".*"

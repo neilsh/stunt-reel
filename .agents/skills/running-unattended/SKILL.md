@@ -22,7 +22,7 @@ Read [`loop-and-bounds.md`](loop-and-bounds.md) and [`pr-and-filing.md`](pr-and-
 - [ ] 1. Check clock cutoff and free disk space; tidy with reap/clean (loop-and-bounds.md)
 - [ ] 2. Build or refresh the queue with mise run queue (loop-and-bounds.md)
 - [ ] 3. Claim up to two items (one per writer worktree), cap at 3 hypothesis rounds each, and ship any clean gate-passing slice while filing blocked pieces as needs-triage (loop-and-bounds.md)
-- [ ] 4. Run the reviews at HEAD (the `reviewer` by default; a Sonnet/dsh-built first review goes to Opus or Antigravity; a re-review to Antigravity when Gemini quota allows, otherwise the `reviewer`), triage CI and CodeRabbit threads, and arm squash auto-merge under the merge bar (pr-and-filing.md)
+- [ ] 4. Run the reviews at HEAD (the `reviewer` by default; a Sonnet/dsh-built first review goes to Opus or Antigravity; a re-review to Antigravity when Gemini quota allows, otherwise the `reviewer`), triage CI and any review threads, and arm squash auto-merge under the merge bar (pr-and-filing.md)
 - [ ] 5. File out-of-scope or split issues via build/scratch/*.md and --body-file (pr-and-filing.md)
 - [ ] 6. At empty queue, deadline, or < 5 GB free, run Shutdown and print the report (loop-and-bounds.md)
 ```
