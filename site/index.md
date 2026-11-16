@@ -41,19 +41,19 @@ We compare our frames with the original player's and track where they differ.
 
 **[How do we know what we know?](reading.md)**
 
-Findings in these notes carry a tag for how well the evidence supports them.
+Where the evidence comes from, and how each finding is tagged.
 
 </div>
 <div class="sr-card">
 
 **[How is Stunt Reel developed?](guides/process.md)**
 
-Partly a testbed for how AI agents can do this work reliably, in small, checked steps.
+Stunt Reel is partly a testbed for how AI agents can do this work reliably, in small, checked steps.
 
 </div>
 </div>
 
-- [How to read these notes](reading.md)
+- [How we know what we know](reading.md)
 - [The full list of notes](../research/MAP.md)
 - [The glossary](../GLOSSARY.md)
 - [The repository on GitHub](https://github.com/neilsh/stunt-reel)
