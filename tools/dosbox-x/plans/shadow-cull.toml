@@ -5,6 +5,9 @@
 # actor's own cull, and 0x1C0D draws a shadow that survived. The #512 runs armed it at tick 100 on
 # CTRY.FLM and at 120 and 1000 on Films/NewPLAY/Vault/FLIP.FLM
 # (--film corpus/siarchive/Films/NewPLAY/Vault/FLIP.FLM); change `arm` to sample another stretch.
+# `queued` (0x1AD8) is the shared tail of both queues: its return word is 0x1E38 for a shadow (called
+# at 0x1E35) and 0x1E2F for an actor. Armed at 830 and 859 on
+# corpus/siarchive/Films/MultiFLM/Unknown/THE.FLM it showed shadows over raised ground queued and drawn.
 [run]
 stop_tick = 1200
 
@@ -54,3 +57,11 @@ at = 0x1C0D
 arm = { tick = 1000 }
 hits = 6
 capture = ["mem:DS:SI:0x10"]
+
+[[probe]]
+name = "queued"
+kind = "break"
+at = 0x1AD8
+arm = { tick = 1000 }
+hits = 6
+capture = ["stack:1", "mem:DS:SI:0x24"]
