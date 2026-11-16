@@ -1,6 +1,7 @@
 // The view's rotation and projection only: every model matrix arrives eye-relative, with the
-// eye's translation applied on the CPU in f64 (camera.rs `eye_relative_matrix`), so no vertex
-// transform cancels world coordinates in the thousands (research/parity/lavapipe.md section 5).
+// eye's translation applied on the CPU in f64 (camera.rs `eye_relative_matrix`), so the only
+// world-scale arithmetic left here is a world vertex's `position - eye`, rounded once
+// (research/parity/lavapipe.md section 5).
 struct CameraUniform {
     rotation_proj: mat4x4<f32>,
     sun_direction: vec3<f32>,

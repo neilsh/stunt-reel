@@ -2,7 +2,7 @@
 title: "Large world coordinates make the vertex transform round differently on lavapipe and the GPU"
 started: 2026-11-16
 issue: 636
-outcome: "Eye-relative transforms cut the lavapipe/GPU index-plane residue by 46% to 84% per film and remove the four near-coplanar tie residues; GPU parity within the 0.002 guard on every film (LOCATION -0.0005, the stadium infield now losing its tie to the ground), GPU repinned, lavapipe repin left to the owner."
+outcome: "Eye-relative transforms cut the lavapipe/GPU index-plane residue by 46% to 84% per film and leave 17 pixels or fewer at each of the four near-coplanar tie residues; GPU parity within the 0.002 guard on every film (LOCATION -0.0005, the stadium infield now losing its tie to the ground), GPU repinned, lavapipe repin left to the owner."
 ---
 
 # Large world coordinates make the vertex transform round differently on lavapipe and the GPU
