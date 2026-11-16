@@ -98,3 +98,16 @@ def test_an_arm_is_required_and_only_one(own: Path, tmp_path: Path) -> None:
         script.main([str(own), "-o", out])
     with pytest.raises(SystemExit):
         script.main([str(own), "-o", out, "--inert", "1", "1", "--add-from", str(own)])
+
+
+def test_fill_sets_the_inert_chunks_byte(own: Path, tmp_path: Path) -> None:
+    out = tmp_path / "OUT.ALL"
+    assert script.main([str(own), "-o", str(out), "--inert", "2", "3", "--fill", "0xFF"]) == 0
+    assert archive_chunks(out.read_bytes())[3:] == [(0xF001, b"\xff\xff"), (0xF002, b"\xff")]
+
+
+def test_fill_out_of_byte_range_or_without_inert_is_refused(own: Path, tmp_path: Path) -> None:
+    out = tmp_path / "OUT.ALL"
+    assert script.main([str(own), "-o", str(out), "--inert", "1", "1", "--fill", "256"]) == 2
+    assert script.main([str(own), "-o", str(out), "--add-from", str(own), "--fill", "1"]) == 2
+    assert not out.exists()
