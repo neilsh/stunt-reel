@@ -4,11 +4,12 @@
 //! ([`stunt_core::scene::ActorDraw::light`]) draws its own copy of its shape decoded under that
 //! light, since `OP_SHADES` bakes the light into the colours; the copy is kept while the actor
 //! draws the same shape, and a new light rewrites its vertices only when their colours change.
-//! Each actor draw gets its own per-draw uniform, a
-//! [`ModelUniform`] at its own dynamic offset in one uniform buffer, so two actors sharing a
-//! shape render at their own poses within one render pass. [`SceneRenderer::prepare`] uploads
-//! every per-draw uniform of a frame with one `Queue::write_buffer` before the pass is submitted, never
-//! one per draw (`research/parity/lavapipe.md`).
+//! Each draw, the world's included, gets its own per-draw uniform, a [`ModelUniform`] at its
+//! own dynamic offset in one uniform buffer, so two actors sharing a shape render at their own
+//! poses within one render pass. Its matrix is eye-relative ([`eye_relative_matrix`]): the
+//! camera uniform carries no translation. [`SceneRenderer::prepare`] uploads every per-draw
+//! uniform of a frame with one `Queue::write_buffer` before the pass is submitted, never one per
+//! draw (`research/parity/lavapipe.md`).
 //!
 //! Frame use is two-phase because a render pass borrows its bind groups: call
 //! [`SceneRenderer::prepare`] (uploads camera and matrices, may grow the uniform buffer), then
@@ -36,7 +37,7 @@ use stunt_core::scene::{FilmScene, RelitShapes, SceneFrame, SpriteDraw};
 use stunt_core::sod::ShadeLight;
 use stunt_core::sprite::SpriteImage;
 
-use crate::camera::{CameraController, CameraGpuResources};
+use crate::camera::{CameraController, CameraGpuResources, eye_relative_matrix};
 use crate::mesh::{GpuMeshSlice, GpuModel};
 use crate::outline::with_outlines;
 use crate::palette::PaletteLut;
@@ -46,8 +47,8 @@ use stunt_core::contracts::{SodNode, arena_index};
 /// Which uploaded model a prepared draw uses.
 #[derive(Clone, Copy, Debug)]
 enum Target {
-    /// The static world, drawn with its own identity bind group.
-    World,
+    /// The static world, drawn through the per-draw uniform with this index.
+    World { uniform: usize },
     /// An actor shape drawn through the per-draw uniform with this index.
     Shape { shape_id: u16, uniform: usize },
     /// The actor with this index in the frame, drawn from its shape decoded under its own
@@ -235,7 +236,6 @@ impl LitShape {
     fn upload(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        layout: &wgpu::BindGroupLayout,
         shape_id: u16,
         light: ShadeLight,
         ir: &SodModelIr,
@@ -243,7 +243,7 @@ impl LitShape {
         Self {
             light,
             layout: LitLayout::of(shape_id, ir),
-            model: GpuModel::from_ir(device, queue, layout, ir),
+            model: GpuModel::from_ir(device, queue, ir),
         }
     }
 }
@@ -266,7 +266,7 @@ pub(crate) struct SceneRenderer {
 }
 
 impl SceneRenderer {
-    /// Uploads every shape and the world of `scene`; the world keeps an identity matrix.
+    /// Uploads every shape and the world of `scene`.
     #[must_use]
     pub(crate) fn new(
         device: &wgpu::Device,
@@ -281,25 +281,15 @@ impl SceneRenderer {
         // (research/playone-exe/sod-vm-generators.md section 8.11).
         let shapes = scene
             .shapes()
-            .map(|(id, ir)| {
-                (
-                    id,
-                    GpuModel::from_ir(device, queue, layout, &with_outlines(ir)),
-                )
-            })
+            .map(|(id, ir)| (id, GpuModel::from_ir(device, queue, &with_outlines(ir))))
             .collect();
         let images = scene
             .images()
-            .map(|(id, image)| {
-                (
-                    id,
-                    GpuModel::from_ir(device, queue, layout, &sprite_ir(image)),
-                )
-            })
+            .map(|(id, image)| (id, GpuModel::from_ir(device, queue, &sprite_ir(image))))
             .collect();
         let world = scene
             .world()
-            .map(|w| GpuModel::from_ir_outlined(device, queue, layout, &w.ir, outlines_in_world));
+            .map(|w| GpuModel::from_ir_outlined(device, queue, &w.ir, outlines_in_world));
         Self {
             shapes,
             images,
@@ -335,10 +325,8 @@ impl SceneRenderer {
         let view_proj = Mat4::from_cols_array(&camera_uniform.view_proj);
 
         self.prepared.clear();
-        let eye = camera.map_or_else(
-            || Vec3::from_array(frame.view.eye),
-            CameraController::eye_position,
-        );
+        self.uniforms.clear();
+        let eye = controller.eye_position();
         if frame.world
             && let Some(world) = &self.world
         {
@@ -351,8 +339,12 @@ impl SceneRenderer {
                 };
                 world.collect_world_meshes(eye, Some(&lod_view), view_proj)
             };
+            let uniform = self.uniforms.push(&ModelUniform::new(
+                eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array()),
+                0,
+            ));
             self.prepared.push(PreparedDraw {
-                target: Target::World,
+                target: Target::World { uniform },
                 ground,
                 base,
                 decals,
@@ -360,7 +352,6 @@ impl SceneRenderer {
             });
         }
 
-        self.uniforms.clear();
         for prop in &frame.view_facing {
             let Some(model) = self.shapes.get(&prop.shape_id) else {
                 continue;
@@ -377,7 +368,8 @@ impl SceneRenderer {
             if meshes.0.is_empty() && meshes.1.is_empty() {
                 continue;
             }
-            let uniform = ModelUniform::new(prop.world_matrix, LAYER_PROP);
+            let uniform =
+                ModelUniform::new(eye_relative_matrix(eye, &prop.world_matrix), LAYER_PROP);
             let shape_id = prop.shape_id;
             self.push_draw(
                 |uniform| Target::Shape { shape_id, uniform },
@@ -430,11 +422,11 @@ impl SceneRenderer {
                 }
             };
             if let Some(shadow_matrix) = actor.shadow_matrix {
-                let uniform = ModelUniform::shadow(shadow_matrix, layer);
+                let uniform = ModelUniform::shadow(eye_relative_matrix(eye, &shadow_matrix), layer);
                 let shadow = base.iter().chain(&decals).copied().collect();
                 self.push_draw(target, &uniform, (Vec::new(), shadow));
             }
-            let uniform = ModelUniform::new(actor.world_matrix, layer);
+            let uniform = ModelUniform::new(eye_relative_matrix(eye, &actor.world_matrix), layer);
             self.push_draw(target, &uniform, (base, decals));
         }
 
@@ -446,7 +438,10 @@ impl SceneRenderer {
             };
             let (base, decals) = model.collect_visible_meshes(0, 0.0, eye, None);
             let layer = LAYER_FIRST_ACTOR + u32::try_from(sprite.actor).unwrap_or(u32::MAX);
-            let uniform = ModelUniform::new(billboard_matrix(&view, sprite), layer);
+            let uniform = ModelUniform::new(
+                eye_relative_matrix(eye, &billboard_matrix(&view, sprite)),
+                layer,
+            );
             let image_id = sprite.image_id;
             self.push_draw(
                 |uniform| Target::Image { image_id, uniform },
@@ -500,14 +495,7 @@ impl SceneRenderer {
                 Refresh::Rewrite | Refresh::Upload => {}
             }
         }
-        *entry = Some(LitShape::upload(
-            device,
-            queue,
-            &self.model_layout,
-            shape_id,
-            light,
-            &ir,
-        ));
+        *entry = Some(LitShape::upload(device, queue, shape_id, light, &ir));
         true
     }
 
@@ -547,13 +535,14 @@ impl SceneRenderer {
 
         // The world's flat ground first, each slice over what is there, then its outline:
         // a run of lines that follows is a slice of its own, so no outline covers it.
-        let world_ground = self.world.as_ref().zip(
-            self.prepared
-                .iter()
-                .find(|d| matches!(d.target, Target::World) && !d.ground.is_empty()),
-        );
-        if let Some((world, draw)) = world_ground {
-            rpass.set_bind_group(2, &world.model_bind_group, &[0]);
+        let world_ground = self.prepared.iter().find_map(|draw| match draw.target {
+            Target::World { uniform } if !draw.ground.is_empty() => {
+                Some((self.world.as_ref()?, draw, self.uniforms.binding(uniform)?))
+            }
+            _ => None,
+        });
+        if let Some((world, draw, (bind_group, offset))) = world_ground {
+            rpass.set_bind_group(2, bind_group, &[offset]);
             for slice in &draw.ground {
                 let slices = std::slice::from_ref(slice);
                 rpass.set_pipeline(&pipelines.ground_pipeline);
@@ -587,10 +576,12 @@ impl SceneRenderer {
                     });
                 }
                 let (model, bind_group, offset) = match draw.target {
-                    Target::World => match &self.world {
-                        Some(w) => (w, &w.model_bind_group, 0),
-                        None => continue,
-                    },
+                    Target::World { uniform } => {
+                        match self.world.as_ref().zip(self.uniforms.binding(uniform)) {
+                            Some((w, (bind_group, offset))) => (w, bind_group, offset),
+                            None => continue,
+                        }
+                    }
                     Target::Shape { shape_id, uniform } => {
                         match self
                             .shapes
@@ -626,7 +617,7 @@ impl SceneRenderer {
                 rpass.set_bind_group(2, bind_group, &[offset]);
                 // A world decal slice's outline follows its own fill, so a later slice covers
                 // it as it covers the fill: the decal pass writes no depth to hide it ([I5]).
-                if decal_pass && matches!(draw.target, Target::World) {
+                if decal_pass && matches!(draw.target, Target::World { .. }) {
                     for slice in meshes {
                         let slices = std::slice::from_ref(slice);
                         rpass.set_pipeline(&pipelines.decal_pipeline);
@@ -641,7 +632,7 @@ impl SceneRenderer {
                 model.draw_slices(rpass, meshes);
                 // Only the world carries edge buffers; the next draw sets its own pipeline
                 // back, as the decal pass does per draw and the base pass needs only here.
-                if matches!(draw.target, Target::World) {
+                if matches!(draw.target, Target::World { .. }) {
                     rpass.set_pipeline(if decal_pass {
                         &pipelines.edge_decal_pipeline
                     } else {

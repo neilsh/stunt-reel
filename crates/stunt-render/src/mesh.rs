@@ -11,7 +11,6 @@
 
 use std::ops::Range;
 
-use crate::pipeline::ModelUniform;
 use glam::{Mat4, Vec3};
 use stunt_core::contracts::{
     CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
@@ -233,21 +232,12 @@ pub struct GpuModel {
     pub nodes: Vec<GpuNode>,
     /// Root node IDs.
     pub root_nodes: Vec<NodeId>,
-    /// Uniform buffer for model-to-world transformation matrix.
-    pub model_uniform_buffer: wgpu::Buffer,
-    /// Bind group for `@group(2) @binding(0)`.
-    pub model_bind_group: wgpu::BindGroup,
 }
 
 impl GpuModel {
     /// Uploads a `SodModelIr` into GPU buffers.
-    pub fn from_ir(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        model_bind_group_layout: &wgpu::BindGroupLayout,
-        ir: &SodModelIr,
-    ) -> Self {
-        Self::upload(device, queue, model_bind_group_layout, ir, None)
+    pub fn from_ir(device: &wgpu::Device, queue: &wgpu::Queue, ir: &SodModelIr) -> Self {
+        Self::upload(device, queue, ir, None)
     }
 
     /// Like [`Self::from_ir`], and gives each mesh slice its outline for [`Self::draw_edges`]:
@@ -258,17 +248,15 @@ impl GpuModel {
     pub fn from_ir_outlined(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        model_bind_group_layout: &wgpu::BindGroupLayout,
         ir: &SodModelIr,
         outlined: fn(&SodVertex) -> bool,
     ) -> Self {
-        Self::upload(device, queue, model_bind_group_layout, ir, Some(outlined))
+        Self::upload(device, queue, ir, Some(outlined))
     }
 
     fn upload(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        model_bind_group_layout: &wgpu::BindGroupLayout,
         ir: &SodModelIr,
         outlined: Option<fn(&SodVertex) -> bool>,
     ) -> Self {
@@ -314,25 +302,6 @@ impl GpuModel {
             .map(|(n, (chunk, edges))| GpuChunk::upload(device, queue, ir, n, chunk, edges))
             .collect();
 
-        // Model uniform buffer & bind group
-        let model_uniform = ModelUniform::default();
-        let model_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(&format!("{}_model_uniform", ir.name)),
-            size: size_of::<ModelUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        queue.write_buffer(&model_uniform_buffer, 0, bytemuck::bytes_of(&model_uniform));
-
-        let model_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&format!("{}_model_bind_group", ir.name)),
-            layout: model_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: model_uniform_buffer.as_entire_binding(),
-            }],
-        });
-
         // Translate nodes into GpuNode flat arena
         let mut planned = plan.slices.into_iter();
         let bounds = node_bounds(ir);
@@ -360,8 +329,6 @@ impl GpuModel {
             index_count: arena_index(ir.indices.len()),
             nodes,
             root_nodes: ir.root_nodes.clone(),
-            model_uniform_buffer,
-            model_bind_group,
         }
     }
 

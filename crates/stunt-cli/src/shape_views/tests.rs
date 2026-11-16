@@ -51,8 +51,7 @@ fn views_are_parsed_in_order() {
 
 /// Where `point` lands in normalized device coordinates (x right, y up).
 fn on_screen(camera: &CameraController, point: Vec3) -> Vec3 {
-    let uniform = camera.build_uniform();
-    glam::Mat4::from_cols_array(&uniform.view_proj).project_point3(point)
+    camera.world_view_proj().project_point3(point)
 }
 
 #[test]

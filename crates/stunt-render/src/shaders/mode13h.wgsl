@@ -1,10 +1,12 @@
+// The view's rotation and projection only: every model matrix arrives eye-relative, with the
+// eye's translation applied on the CPU in f64 (camera.rs `eye_relative_matrix`), so the only
+// world-scale arithmetic left here is a world vertex's `position - eye`, rounded once
+// (research/parity/lavapipe.md section 5).
 struct CameraUniform {
-    view_proj: mat4x4<f32>,
-    camera_pos: vec3<f32>,
-    _pad0: f32,
+    rotation_proj: mat4x4<f32>,
     sun_direction: vec3<f32>,
     ambient_intensity: f32,
-    inv_view_proj: mat4x4<f32>,
+    inv_rotation_proj: mat4x4<f32>,
     // Half a Mode 13h pixel of the view in NDC.
     line_half_ndc: vec2<f32>,
     _pad1: vec2<f32>,
@@ -65,8 +67,10 @@ struct VertexOutput {
     // filler interpolates a Gouraud polygon's index (research/playone-exe/terrain-shade.md
     // section 6). A flat polygon has one index at every vertex, so it is unchanged.
     @location(3) @interpolate(linear) shade: f32,
-    // `shade` interpolated perspective-correct, read only where `shade` is not finite.
-    @location(4) @interpolate(perspective) shade_perspective: f32,
+    // `shade * w` and `w` at the vertex, both interpolated perspective-correct: their ratio is
+    // the screen-space linear interpolation of `shade` (`fragment_index`).
+    @location(4) @interpolate(perspective) shade_w: f32,
+    @location(5) @interpolate(perspective) w: f32,
 };
 
 // Whether `x` is NaN or infinite: all exponent bits set. WGSL has no isNan, and `x != x`
@@ -78,17 +82,21 @@ fn is_non_finite(x: f32) -> bool {
 // The whole palette index a fragment draws [I3]. Mesa's software clipper (lavapipe) can
 // interpolate a `linear` varying to NaN on a polygon that reaches behind the eye past a side
 // plane, while it interpolates a `perspective` one with a finite weight
-// (research/parity/lavapipe.md section 2). There a Gouraud polygon reads the perspective
-// copy, and the provoking vertex's index is the last resort. A GPU interpolates finite values
-// to finite ones, so neither branch should fire there: the RTX 4070's renders of the reference
-// films are byte-identical with and without them.
+// (research/parity/lavapipe.md section 2). There a Gouraud polygon reads the ratio of the
+// perspective copies of `shade * w` and `w`, which is `shade` interpolated linearly in screen
+// space, the way PLAYONE's filler interpolates it (research/playone-exe/terrain-shade.md
+// section 6); the provoking vertex's index is the last resort when that ratio is not finite
+// either. A GPU interpolates finite values to finite ones, so neither branch should fire
+// there: the RTX 4070's renders of the reference films are byte-identical with and without
+// them.
 fn fragment_index(in: VertexOutput) -> u32 {
     var shade = in.shade;
     if (is_non_finite(shade)) {
-        if (is_non_finite(in.shade_perspective)) {
+        let screen_linear = in.shade_w / in.w;
+        if (is_non_finite(screen_linear)) {
             return in.palette_index;
         }
-        shade = in.shade_perspective;
+        shade = screen_linear;
     }
     return u32(clamp(floor(shade + 0.5), 0.0, 255.0));
 }
@@ -103,11 +111,11 @@ struct PlaneOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    // Transform vertex position into clip space
-    let world_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
-    out.clip_position = camera.view_proj * world_pos;
+    // Model space to eye-relative space to clip space.
+    let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
+    out.clip_position = camera.rotation_proj * eye_pos;
     if ((in.attr.y & FLAG_LINE) != 0u) {
-        let other = camera.view_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+        let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
         out.clip_position = widen_line(out.clip_position, other, in.attr.y);
     }
     out.palette_index = in.attr.x & 255u;
@@ -117,7 +125,11 @@ fn vs_main(in: VertexInput) -> VertexOutput {
         out.palette_index = 0u;
     }
     out.shade = f32(out.palette_index);
-    out.shade_perspective = out.shade;
+    // `shade * w` and `w` at the vertex. `widen_line` keeps `clip.w`, so `w` is the vertex's
+    // own; a line is flat, and its ratio is its `shade`.
+    let w = out.clip_position.w;
+    out.shade_w = out.shade * w;
+    out.w = w;
     out.layer = model.layer.x + in.attr.z;
 
     // Polygons are drawn at their palette index with no directional lighting: against
@@ -173,8 +185,9 @@ fn vs_sky(@builtin(vertex_index) vertex_index: u32) -> SkyVertexOutput {
 }
 
 fn sky_index(ndc: vec2<f32>) -> u32 {
-    let far = camera.inv_view_proj * vec4<f32>(ndc, 1.0, 1.0);
-    let ray = far.xyz / far.w - camera.camera_pos;
+    // The far-plane point under the pixel, eye-relative, is the view ray from the eye.
+    let far = camera.inv_rotation_proj * vec4<f32>(ndc, 1.0, 1.0);
+    let ray = far.xyz / far.w;
     let sin_elevation = ray.y / length(ray);
     var index = 238u;
     for (var k = 0u; k < 10u; k = k + 1u) {
