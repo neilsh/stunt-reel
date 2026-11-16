@@ -11,4 +11,4 @@ Ten `PLAYONE` captures (nine CTRY, one TOD) varying one property of an inert-pad
 
 ## Handoff
 
-Content is ruled out; chunk count, bytes and ids each change pages, and in every capture pages change exactly when the film's frames fall later in emulator frames. Thresholds between 300 and 2,529 one-byte chunks and between 60,000 and 4,092,524 bytes are not bisected. Why load time changes the drawing is [#609](https://github.com/neilsh/stunt-reel/issues/609) (`needs-triage`).
+Content is ruled out; ids change pages varied alone, and chunk count and bytes each do once large, and in every capture pages change exactly when the film's frames fall later in emulator frames. Thresholds between 300 and 2,529 one-byte chunks and between 60,000 and 4,092,524 bytes are not bisected ([#611](https://github.com/neilsh/stunt-reel/issues/611)). Why load time changes the drawing is [#609](https://github.com/neilsh/stunt-reel/issues/609) (`needs-triage`).
