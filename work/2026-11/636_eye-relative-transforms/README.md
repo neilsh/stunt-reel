@@ -11,4 +11,4 @@ outcome: "Eye-relative transforms cut the lavapipe/GPU index-plane residue by 46
 
 ## Status
 
-- 2026-11-16: implemented and measured in [journal.md](journal.md); finding in `lavapipe.md` section 5 and open question 1. Left: the stadium infield at LOCATION 2586-2872 (a world prop lying on the ground, which PLAYONE paints and the depth test now hides), the ties at LOCATION 3815 and LAND 415, and #637 (reversed-Z) next.
+- 2026-11-16: implemented and measured in [journal.md](journal.md); finding in `lavapipe.md` section 5 and open question 1. Left: the stadium infield at LOCATION 2586-2872 (a world prop lying on the ground, which PLAYONE paints and the depth test now hides; #651), the ties at LOCATION 3815 and LAND 415, and #637 (reversed-Z) next.
