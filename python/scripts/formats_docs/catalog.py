@@ -146,6 +146,8 @@ LINK_SCAN_GLOBS: list[str] = [
     "research/*.md",
     "docs/adr/*.md",
     ".agents/skills/*/SKILL.md",
+    "site/*.md",
+    "site/guides/*.md",
 ]
 
 # Markdown scanned for evidentiary tier tags (recursive globs plus single files).
