@@ -391,6 +391,163 @@ def test_reap_one_keeps_a_tracked_symlink_and_reaps(tmp_path: Path) -> None:
     assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
 
 
+def _tracked_symlink_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A repo whose skills path is a tracked symlink, a worktree holding it, and its target."""
+    repo = _init_repo(tmp_path)
+    target = tmp_path / "shared"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    _symlink(repo / "skills", target)
+    _run_git(repo, "add", "skills")
+    _run_git(
+        repo,
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        "tracked symlink",
+    )
+    mode = _run_git(repo, "ls-files", "-s", "skills").split(" ", 1)[0]
+    if mode != "120000":
+        pytest.skip(f"git recorded the symlink as mode {mode}; core.symlinks is off here")
+    worktree = tmp_path / "wt"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-test")
+    assert dataroot.is_link(worktree / "skills")
+    return repo, worktree, target
+
+
+def _candidate(worktree: Path) -> worktree_reap._Candidate:
+    """The candidate _reap_one would see for a worktree holding wt-test."""
+    return worktree_reap._Candidate(
+        worktree=worktree_git._Worktree(path=worktree, head=_head(worktree), branch="wt-test"),
+        merged=True,
+        dirty=[],
+        untracked=[],
+        links=worktree_reap._reparse_points(worktree),
+        size=0,
+    )
+
+
+def test_reap_one_unlinks_a_junction_at_a_tracked_symlink_before_stashing(
+    tmp_path: Path,
+) -> None:
+    """The stash restores the tracked symlink through the junction, emptying its target."""
+    repo, worktree, target = _tracked_symlink_repo(tmp_path)
+    link = worktree / "skills"
+    link.unlink()
+    _junction(link, target)
+    (worktree / "a.txt").write_text("edited", encoding="utf-8")
+
+    error = worktree_reap._reap_one(
+        repo, _candidate(worktree), stash_dirty=True, discard_untracked=False
+    )
+
+    assert error is None
+    assert not worktree.exists()
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert [path.name for path in target.iterdir()] == ["keep.txt"]
+
+
+def test_reap_one_unlinks_a_junction_over_a_tracked_directory_before_stashing(
+    tmp_path: Path,
+) -> None:
+    """The stash wrote the tracked files through the junction into its target."""
+    repo = _init_repo(tmp_path)
+    (repo / "skills").mkdir()
+    (repo / "skills" / "a.txt").write_text("a", encoding="utf-8")
+    (repo / "skills" / "b.txt").write_text("b", encoding="utf-8")
+    _run_git(repo, "add", "skills")
+    _run_git(
+        repo,
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        "tracked directory",
+    )
+    target = tmp_path / "shared"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    worktree = tmp_path / "wt"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "wt-test")
+    shutil.rmtree(worktree / "skills")
+    _junction(worktree / "skills", target)
+    (worktree / "a.txt").write_text("edited", encoding="utf-8")
+    # The target's own file looks untracked beneath the tracked directory, so this run
+    # has to allow discarding untracked files as well as stashing the edit.
+    assert "?? skills/keep.txt" in _run_git(worktree, "status", "--porcelain")
+
+    error = worktree_reap._reap_one(
+        repo, _candidate(worktree), stash_dirty=True, discard_untracked=True
+    )
+
+    assert error is None
+    assert not worktree.exists()
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert [path.name for path in target.iterdir()] == ["keep.txt"]
+
+
+def test_stashing_another_file_leaves_a_clean_tracked_symlink_to_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a link git reports changed is unlinked; a clean one stays for git (#541)."""
+    repo, worktree, target = _tracked_symlink_repo(tmp_path)
+    (worktree / "a.txt").write_text("edited", encoding="utf-8")
+    unlinked: list[Path] = []
+    remove = dataroot.remove_link
+
+    def record(path: Path) -> None:
+        unlinked.append(path)
+        remove(path)
+
+    monkeypatch.setattr(worktree_reap, "remove_link", record)
+
+    error = worktree_reap._reap_one(
+        repo, _candidate(worktree), stash_dirty=True, discard_untracked=False
+    )
+
+    assert error is None
+    assert not worktree.exists()
+    assert worktree / "skills" not in unlinked
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert "reap wt-test: uncommitted work" in _run_git(repo, "stash", "list")
+
+
+def test_reap_one_refuses_to_stash_when_a_changed_tracked_link_cannot_be_unlinked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A link the stash would follow is unlinked first, or the worktree is left alone."""
+    repo, worktree, target = _tracked_symlink_repo(tmp_path)
+    link = worktree / "skills"
+    link.unlink()
+    _junction(link, target)
+    (worktree / "a.txt").write_text("edited", encoding="utf-8")
+    _refuse_rmdir_on(monkeypatch, link)
+
+    def refuse_shell(_path: Path) -> None:
+        raise OSError("rmdir exited 5: Access is denied.")
+
+    monkeypatch.setattr(dataroot, "_shell_rmdir", refuse_shell)
+
+    error = worktree_reap._reap_one(
+        repo, _candidate(worktree), stash_dirty=True, discard_untracked=False
+    )
+
+    assert error is not None
+    assert "cannot unlink" in error
+    assert str(link) in error
+    assert worktree.is_dir()
+    assert dataroot.is_link(link)
+    assert (worktree / "a.txt").read_text(encoding="utf-8") == "edited"
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert _run_git(worktree, "stash", "list") == ""
+    assert "wt-test" in _run_git(repo, "branch", "--format=%(refname:short)").split()
+
+
 def test_reap_one_refuses_when_the_tracked_links_cannot_be_listed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

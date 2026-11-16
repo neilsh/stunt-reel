@@ -3,8 +3,9 @@
 Git's ``worktree remove`` has recursed through Windows junctions on some builds, so reap
 unlinks every link git does not track, leaves the symlinks it does (git removes those as
 leaves), proves no untracked link remains, and only then removes the checkout (ADR 0018). A
-merged pull request whose head is the branch tip is found with ``gh``, and a confirmed reap
-refuses while any source it runs differs from ``origin/main``'s (issue #218).
+``--stash-dirty`` stash runs only after the links it would write through are unlinked (issue
+#557). A merged pull request whose head is the branch tip is found with ``gh``, and a
+confirmed reap refuses while any source it runs differs from ``origin/main``'s (issue #218).
 """
 
 from __future__ import annotations
@@ -222,6 +223,49 @@ def _tracked_symlinks(worktree: Path) -> frozenset[str] | None:
     return frozenset(tracked)
 
 
+def _changed_paths(worktree: Path) -> frozenset[str] | None:
+    """The tracked paths git status reports changed, normalized, or None if it cannot say.
+
+    Read in its NUL-separated form, which quotes no name, so a path holding a space, a
+    quote or a non-ASCII character stays exact.
+    """
+    result = _git(worktree, "status", "--porcelain=v1", "-z", "--untracked-files=no")
+    if result.returncode != 0:
+        return None
+    fields = result.stdout.split("\0")
+    paths: set[str] = set()
+    index = 0
+    while index < len(fields):
+        entry = fields[index]
+        index += 1
+        if len(entry) < 4:
+            continue
+        paths.add(os.path.normcase(entry[3:]))
+        # A rename or copy names the path it came from in the field that follows.
+        if (entry[0] in "RC" or entry[1] in "RC") and index < len(fields) and fields[index]:
+            paths.add(os.path.normcase(fields[index]))
+            index += 1
+    return frozenset(paths)
+
+
+def _links_a_stash_would_follow(root: Path, changed: frozenset[str]) -> list[Path]:
+    """Links whose path, or a path beneath it, git status reports changed.
+
+    git stash push restores a changed tracked path by writing it out, and a link at that
+    path or above it sends the write through the link: on Windows a junction at a tracked
+    symlink's path loses the target's contents, and one over a tracked directory receives
+    the tracked files (issue #557). A link git checked out clean, such as a tracked
+    symlink, is in no changed path and stays for git to remove as a leaf (issue #541).
+    """
+    following: list[Path] = []
+    for link in _reparse_points(root):
+        relative = os.path.normcase(link.relative_to(root).as_posix())
+        beneath = relative + os.sep
+        if any(path == relative or path.startswith(beneath) for path in changed):
+            following.append(link)
+    return following
+
+
 def _links_reap_may_unlink(root: Path, tracked: frozenset[str]) -> list[Path]:
     """Links under *root* that *tracked* does not name, and so that reap may unlink."""
     return [
@@ -231,15 +275,20 @@ def _links_reap_may_unlink(root: Path, tracked: frozenset[str]) -> list[Path]:
     ]
 
 
-def _unlink_reparse_points(root: Path, *, tracked: frozenset[str] = frozenset()) -> list[str]:
-    """Unlink every link under *root* that *tracked* does not name; return the ones that refused."""
+def _unlink_links(links: list[Path]) -> list[str]:
+    """Unlink *links* without following them; return the ones that refused."""
     failures: list[str] = []
-    for path in _links_reap_may_unlink(root, tracked):
+    for path in links:
         try:
             remove_link(path)
         except OSError as err:
             failures.append(f"{path}: {err}")
     return failures
+
+
+def _unlink_reparse_points(root: Path, *, tracked: frozenset[str] = frozenset()) -> list[str]:
+    """Unlink every link under *root* that *tracked* does not name; return the ones that refused."""
+    return _unlink_links(_links_reap_may_unlink(root, tracked))
 
 
 def _candidates(
@@ -365,6 +414,14 @@ def _reap_one(
     if untracked and not discard_untracked:
         return f"{branch}: untracked files"
     if dirty:
+        # The stash writes a changed tracked path back out through any link at or above it:
+        # on Windows that empties a junction's target or fills it with tracked files (#557).
+        changed = _changed_paths(path)
+        if changed is None:
+            return f"{branch}: cannot list the changed paths; left alone"
+        failures = _unlink_links(_links_a_stash_would_follow(path, changed))
+        if failures:
+            return f"{branch}: cannot unlink: {'; '.join(failures)}"
         stash = _git(path, "stash", "push", "--message", f"reap {branch}: uncommitted work")
         if stash.returncode != 0:
             return f"{branch}: git stash failed: {stash.stderr.strip()}"
