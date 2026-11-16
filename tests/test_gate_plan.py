@@ -326,9 +326,11 @@ _GIT_ENV = {
 def _git(repo: Path, *args: str) -> None:
     git = shutil.which("git")
     assert git is not None, "git is not on PATH"
-    subprocess.run(  # noqa: S603
-        [git, *args], cwd=repo, env={**os.environ, **_GIT_ENV}, capture_output=True, check=True
+    done = subprocess.run(  # noqa: S603
+        [git, *args], cwd=repo, env={**os.environ, **_GIT_ENV}, capture_output=True, check=False
     )
+    # Quote git's own reason: one exit 128 under concurrent gates lost it (issue #571).
+    assert done.returncode == 0, f"git {' '.join(args)}: exit {done.returncode}, {done.stderr!r}"
 
 
 def _write(repo: Path, name: str) -> None:
