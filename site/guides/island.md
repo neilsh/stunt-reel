@@ -36,7 +36,7 @@ That note also records that the game does not ship the tree as a file. It sits i
 Level of detail means drawing less when things are far away. The tree carries two kinds of node for it.
 
 - A coarse ground patch records a distance at which its finer patches replace it. The notes give that distance as data in the files, not how the original film player chooses between the two.
-- A detail node on the props side holds a simple stand-in model. Beyond a threshold distance the original film player draws the stand-in, if the node has one, and stops walking that branch. Closer than the threshold it skips the stand-in and carries on into the detailed subtree.
+- A detail node on the props side may hold a simple stand-in model. Beyond a threshold distance the original film player draws the stand-in, if the node has one, and stops walking that branch. Closer than the threshold it skips the stand-in and carries on into the detailed subtree.
 
 So the stand-in is drawn instead of the subtree, not on top of it. The [scenery note](../../research/formats/auxiliary/scenery.md) states this, and the [level-of-detail note](../../research/playone-exe/lod.md) traces it in the player's code.
 

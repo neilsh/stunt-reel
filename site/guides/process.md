@@ -10,10 +10,11 @@ Stunt Reel is partly a testbed for agentic workflows. The reverse engineering of
 ```mermaid
 flowchart LR
     A["Issue"] --> B["Work folder and journal"]
+    B -.->|"spec or plan"| S["Fresh review before it is committed"]
     B --> C["Finding recorded in research/"]
     C --> D["Quality gate"]
-    D --> E{"Changes notes, docs, guides, the notice, or a work spec or plan?"}
-    E -->|"yes"| F["Fresh review"]
+    D --> E{"Push changes notes, docs, guides or the notice?"}
+    E -->|"yes"| F["Fresh review before the push"]
     E -->|"no"| G["Pull request and merge"]
     F --> G
 ```
