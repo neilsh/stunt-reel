@@ -1,5 +1,5 @@
 ---
-summary: "The per-frame routine and scene composition: the 3D scene and credits, and the actor shadow draw (the plane probe `0x240A`, the flattened second draw in index 0, the `work:0x806C` readers, and the view cull `0x1B0C`, which drops a high actor's shadow when its ground point is out of view and, in the one film checked, passed it to the draw when it was in view; the probe's ground plane does not depend on height; the view slot's own shadow, drawn when the cull keeps it)."
+summary: "The per-frame routine and scene composition: the 3D scene and credits, and the actor shadow draw (the plane probe `0x240A`, the flattened second draw in index 0, the `work:0x806C` readers, and the view cull `0x1B0C`, which drops a high actor's shadow when its ground point is out of view and, in the one film checked, passed it to the draw when it was in view; the probe's ground plane does not depend on height; the view slot's own shadow, drawn when the cull kept it in the three slots read)."
 ---
 
 # `PLAYONE.EXE`: Per-Frame Routine and Scene Composition
