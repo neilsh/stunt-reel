@@ -31,7 +31,7 @@ summary: "`STUNT.EXE`'s film shadow draw is `PLAYONE`'s code at a fixed offset, 
 | `0xBE88` | `or byte [di+1], 4` | A fixed setup that also stores flags `0x19` and shape `0x104` in another record (`0xBE93..0xBE98`) |
 | `0x92C4` | `mov [di+1], al` | The film stream's create, `es lodsb` |
 
-None of them compares a height. The stream censuses agree: drawn shapes keep `SIF_SHADOW` more than 100 m up in 262 of the 529 distinct corpus films, and the flag's flips follow no one height ([`sod-vm-frame.md` § 9.1](../playone-exe/sod-vm-frame.md#91-the-actor-shadow-draw)).
+None of them compares a height. The stream censuses agree: drawn shapes keep `SIF_SHADOW` more than 100 m up in 262 of the 529 distinct corpus films (`[Bounded Observation]`, counted by the census script the source below names), and the flag's flips follow no one height ([`sod-vm-frame.md` § 9.1](../playone-exe/sod-vm-frame.md#91-the-actor-shadow-draw)).
 
 _Source: [the shadow's cull, the display-list run and STUNT.EXE's shadow draw](../../work/2026-11/512_altitude-cutoff/journal.md#2026-11-16-the-shadows-cull-the-display-list-run-and-stuntexes-shadow-draw)._
 
