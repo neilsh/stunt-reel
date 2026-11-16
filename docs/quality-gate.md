@@ -32,7 +32,7 @@ The other six did not fail again. 12 full `pytest -n auto` runs (three at once, 
 
 - `test_gate_plan` (`test_changed_paths_counts_from_origin_main_past_a_stale_local_main`): `git add landed.md` exited 128 in the test's scratch repository, and its stderr was not shown. The `_git` helpers in `test_gate_plan.py` and `test_work_frozen.py` now quote git's stderr, so the next failure names its cause. A refused file, as in [A PermissionError on Windows](#a-permissionerror-on-windows), would fit, but that is not confirmed.
 - The formats catalog: no message survives from this run. An earlier failure (2026-10-31) was the Kaitai compiler's JVM crashing at start-up (`guarantee(name != nullptr) failed: jimage file name is null`).
-- `test_tac_capture` (`test_capture_reports_windows_with_no_usable_page`), `test_target_seed` (`[ambiguous-build]`), `test_capture_run` (`test_a_stall_on_patch3_…[error0-…]`) and `test_work_frozen`: only their names survive. Each keeps its files under its own `tmp_path`, none of the named tests has a timeout, and CPU load did not make them fail. `test_target_seed`'s fixtures do stamp file times from `time.time()`, some only 1 to 10 s apart.
+- `test_tac_capture` (`test_capture_reports_windows_with_no_usable_page`), `test_target_seed` (`[ambiguous-build]`), `test_capture_run` (`test_a_stall_on_patch3_…[error0-…]`) and `test_work_frozen`: only their names survive. Each writes its files under its own `tmp_path` (the branch check in `test_work_frozen` also reads the repository at `REPO_ROOT`), none of the named tests has a timeout, and none failed under the CPU load of the runs above. `test_target_seed`'s fixtures do stamp file times from `time.time()`, some only 1 to 10 s apart.
 
 ## `stunt-core` test kinds
 
