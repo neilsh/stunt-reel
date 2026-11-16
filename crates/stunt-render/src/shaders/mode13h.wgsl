@@ -80,7 +80,8 @@ fn is_non_finite(x: f32) -> bool {
 // plane, while it interpolates a `perspective` one with a finite weight
 // (research/parity/lavapipe.md section 2). There a Gouraud polygon reads the perspective
 // copy, and the provoking vertex's index is the last resort. A GPU interpolates finite values
-// to finite ones, so there neither branch fires.
+// to finite ones, so neither branch should fire there: the RTX 4070's renders of the reference
+// films are byte-identical with and without them.
 fn fragment_index(in: VertexOutput) -> u32 {
     var shade = in.shade;
     if (is_non_finite(shade)) {
