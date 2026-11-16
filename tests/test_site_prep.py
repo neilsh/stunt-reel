@@ -22,6 +22,7 @@ label = "Research notes"
 source = "GLOSSARY.md"
 dest = "glossary.md"
 label = "Glossary"
+title = "Glossary"
 """
 
 
@@ -124,7 +125,7 @@ def test_load_sections_names_the_file_for_bad_toml() -> None:
         load_sections("[[section")
 
 
-def test_prepare_titles_a_file_section_by_its_label(repo: Path) -> None:
+def test_prepare_titles_a_file_section_by_its_title_key(repo: Path) -> None:
     prepare(repo, repo / "site")
     glossary = (repo / "site/src/content/docs/glossary.md").read_text(encoding="utf-8")
     assert glossary.startswith('---\ntitle: "Glossary"\n')
@@ -150,3 +151,61 @@ def test_cli_names_a_missing_published_file(repo: Path, capsys: pytest.CaptureFi
     (repo / "site/reading.md").unlink()
     assert site_prep.main(["--root", str(repo)]) == 1
     assert "reading.md" in capsys.readouterr().err
+
+
+GROUPED = (
+    PUBLISHED
+    + """
+[[section]]
+source = "docs/SPEC.md"
+dest = "docs/spec.md"
+label = "Spec"
+group = "Project docs"
+
+[[section]]
+source = "NOTES.md"
+dest = "notes.md"
+label = "Notes"
+
+[[section]]
+source = "docs/adr"
+dest = "docs/adr"
+label = "Decisions"
+group = "Project docs"
+"""
+)
+
+
+def _grouped(repo: Path) -> None:
+    _write(repo / "docs/SPEC.md", "# SPEC: Stunt Reel, a long title\n")
+    _write(repo / "docs" / "adr" / "0041-dated.md", "# Dated records\n")
+    _write(repo / "NOTES.md", "# N\n")
+    _write(repo / "site/published.toml", GROUPED)
+    prepare(repo, repo / "site")
+
+
+def test_prepare_nests_a_group_at_its_first_member(repo: Path) -> None:
+    _grouped(repo)
+    sidebar = json.loads((repo / "site/src/generated/sidebar.json").read_text())
+    assert sidebar[3:] == [
+        {
+            "label": "Project docs",
+            "items": [
+                {"label": "Spec", "slug": "docs/spec"},
+                {"label": "Decisions", "items": [{"autogenerate": {"directory": "docs/adr"}}]},
+            ],
+        },
+        {"label": "Notes", "slug": "notes"},
+    ]
+
+
+def test_prepare_keeps_a_file_sections_own_title(repo: Path) -> None:
+    _grouped(repo)
+    spec = (repo / "site/src/content/docs/docs/spec.md").read_text(encoding="utf-8")
+    assert spec.startswith('---\ntitle: "SPEC: Stunt Reel, a long title"\n')
+
+
+def test_load_sections_rejects_a_non_string_group() -> None:
+    text = '[[section]]\nsource = "a"\ndest = "a"\nlabel = "A"\ngroup = 1\n'
+    with pytest.raises(ValueError, match="section 1"):
+        load_sections(text)

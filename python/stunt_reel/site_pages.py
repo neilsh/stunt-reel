@@ -215,17 +215,21 @@ def _plain(heading: str) -> str:
 @dataclass(frozen=True)
 class Section:
     """One entry of ``site/published.toml``: repo path *source* published at *dest* under the
-    content root, headed *label* in the sidebar."""
+    content root, headed *label* in the sidebar, nested under sidebar group *group* when set.
+    *title* overrides a file page's own heading as its page title."""
 
     source: str
     dest: str
     label: str
+    group: str | None = None
+    title: str | None = None
 
 
 def load_sections(text: str) -> list[Section]:
     """The ``[[section]]`` entries of ``published.toml`` *text*. Raises ValueError, naming the
-    file or section, for invalid TOML, a missing or non-string key, an absolute path, a
-    backslash or a ``..`` in a path."""
+    file or section, for invalid TOML, a missing or non-string key, a present ``group`` or
+    ``title`` that is not a non-empty string, an absolute path, a backslash or a ``..`` in a
+    path."""
     try:
         entries = tomllib.loads(text).get("section", [])
     except tomllib.TOMLDecodeError as err:
@@ -235,6 +239,9 @@ def load_sections(text: str) -> list[Section]:
         for key in ("source", "dest", "label"):
             if not isinstance(entry.get(key), str) or not entry[key]:
                 raise ValueError(f"section {number}: {key!r} is missing or not a string")
+        for key in ("group", "title"):
+            if key in entry and (not isinstance(entry[key], str) or not entry[key]):
+                raise ValueError(f"section {number}: {key!r} is not a non-empty string")
         for key in ("source", "dest"):
             path = entry[key]
             parts = path.split("/")
@@ -242,7 +249,15 @@ def load_sections(text: str) -> list[Section]:
                 raise ValueError(
                     f"section {number}: {key} {path!r} must be a relative path with '/' only"
                 )
-        sections.append(Section(entry["source"], entry["dest"], entry["label"]))
+        sections.append(
+            Section(
+                entry["source"],
+                entry["dest"],
+                entry["label"],
+                entry.get("group"),
+                entry.get("title"),
+            )
+        )
     return sections
 
 
@@ -270,7 +285,6 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
         raise ValueError(f"site/published.toml: {err}") from err
     site_rel = site_dir.resolve().relative_to(root.resolve()).as_posix()
     pages: dict[str, str] = {}
-    titles: dict[str, str] = {}
     dirs: list[str] = []
     for section in sections:
         path = root / section.source
@@ -281,7 +295,6 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
                 pages[rel] = f"{section.dest}/{note.relative_to(path).as_posix()}"
         elif path.is_file():
             pages[section.source] = section.dest
-            titles[section.source] = section.label
         else:
             raise ValueError(f"{section.source}: published.toml names no such file or directory")
     for name in _HAND_WRITTEN:
@@ -300,6 +313,7 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
     for stale in (docs, media, generated):
         shutil.rmtree(stale, ignore_errors=True)
     images: set[str] = set()
+    titles = {section.source: section.title for section in sections}
     for source, dest in pages.items():
         try:
             text = (root / source).read_text(encoding="utf-8")
@@ -317,13 +331,24 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
         except OSError as err:
             raise ValueError(f"{image}: {err}") from err
     sidebar: list[dict[str, object]] = [{"slug": "reading"}]
+    groups: dict[str, list[object]] = {}
     for section in sections:
+        entry: dict[str, object]
         if (root / section.source).is_dir():
             # Starlight 0.39+ takes autogenerate inside a group's items, not beside its label.
-            items = [{"autogenerate": {"directory": section.dest}}]
-            sidebar.append({"label": section.label, "items": items})
+            entry = {
+                "label": section.label,
+                "items": [{"autogenerate": {"directory": section.dest}}],
+            }
         else:
-            sidebar.append({"label": section.label, "slug": section.dest.removesuffix(".md")})
+            entry = {"label": section.label, "slug": section.dest.removesuffix(".md")}
+        if section.group is None:
+            sidebar.append(entry)
+        elif section.group in groups:
+            groups[section.group].append(entry)
+        else:
+            groups[section.group] = [entry]
+            sidebar.append({"label": section.group, "items": groups[section.group]})
     generated.mkdir(parents=True)
     (generated / "sidebar.json").write_bytes((json.dumps(sidebar, indent=2) + "\n").encode())
     return len(pages), len(images)
