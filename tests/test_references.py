@@ -427,9 +427,9 @@ def test_a_malformed_background_is_refused_naming_the_row(tmp_path: Path, value:
         references.read_reference(tmp_path, "ctry")
 
 
-def test_committed_ctry_row_records_the_bands_the_probe_used_to_hardcode() -> None:
+def test_committed_ctry_row_records_the_hardcoded_bands_without_actor_painted_237() -> None:
     reference = references.read_reference(REPO_ROOT, "ctry")
-    assert reference.background == ((192, 199), (228, 238), (161, 165))
+    assert reference.background == ((192, 199), (228, 236), (238, 238), (161, 165))
 
 
 def test_committed_rows_all_record_nonempty_background_bands() -> None:

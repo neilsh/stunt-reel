@@ -83,11 +83,11 @@ for i in keep:
 print(film, bands, f"{100 * cap[keep].sum() / cap.sum():.0f}% of capture pixels")
 ```
 
-The `ctry` row is #485's and predates this rule (it keeps the ground ramp 192-199 and shade greens 161-165); it was not rederived, and its 237 breaks the rule (9 actor px in 3 frames). An earlier, looser rule put actor-painted indices in the bands; the strict one drops them. _Source: [per-film derivation and shift test](../../work/2026-11/490_background-bands/journal.md#2026-11-14-backdrop-bands-for-the-six-non-ctry-films)._
+The `ctry` row is #485's. It meets the no-actor-pixel test since #505 dropped 237 (9 actor px in 3 frames), but not the other tests: rederived whole, the rule keeps `[162,164] [228,236] [238,238]` (25 % covered) and the probe stops working (IoU 0.0879, every shift in the shift test scores above it), because our `ctry` render draws ground 193, 194 and 196 (57 % of the capture) off layers 0 to 2 (at most 1 % of their pixels on them), so they fail the 85 % test. `ctry` keeps #485's ground ramp and shade greens for that reason. An earlier, looser rule put actor-painted indices in the bands; the strict one drops them. _Source: [per-film derivation and shift test](../../work/2026-11/490_background-bands/journal.md#2026-11-14-backdrop-bands-for-the-six-non-ctry-films), [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
 
 | Film | `background` | Capture pixels covered | `iou` (every 2nd scored frame) |
 |---|---|---|---|
-| `ctry` | `[192,199] [228,238] [161,165]` (#485) | not measured | 0.5405 (38) |
+| `ctry` | `[192,199] [228,236] [238,238] [161,165]` (#485, 237 dropped by #505) | 85 % | 0.5369 (38), 0.5402 with 237 (tree `7aeabce`) |
 | `intro` | `[164,164] [195,195]` | 10 % | 0.1487 (89) |
 | `land` | `[164,164] [195,195]` | 34 % | 0.1879 (47) |
 | `balloon` | `[162,164] [194,195] [197,198] [208,208] [228,238]` | 57 % | 0.6796 (43) |
@@ -97,12 +97,44 @@ The `ctry` row is #485's and predates this rule (it keeps the ground ramp 192-19
 
 "Covered" is the share of all rows 0..184 capture pixels, 0 and 255 included in the denominator, over the sampled frames; an index below 0.05 % of them, or absent from the sampled frames, counts as object. The figures are leads only (`[Bounded Observation]`, [trap above](#3-actor-window-iou-iou)), for these reasons:
 
-* **The strict test costs backdrop.** Every index our actors paint anywhere in the film counts as object pixels wherever it is backdrop. `land` has no sky band because actor paint covers 227 to 238 (5,605 px at 229 to 238); `intro` has none either (2,643 px, mostly 236 to 238); `bomb` loses terrain 195 (24 % of its capture) to 1 px in 1 scored frame; `traintnl` 231 goes for 1 px in 1 frame while 233 stays. The test follows rasterizer edges.
+* **The strict test costs backdrop.** Every index our actors paint anywhere in the film counts as object pixels wherever it is backdrop. `land` has no sky band because actor paint covers 227 to 238 (5,605 px at 229 to 238); `intro` has none either (2,643 px, mostly 236 to 238); `bomb` loses terrain 195 (24 % of its capture) to 1 px in 1 scored frame (140 px in 14 frames on tree `7aeabce`, #505); `traintnl` 231 goes for 1 px in 1 frame while 233 stays. The test follows rasterizer edges.
 * **Props-layer scenery.** Tarmac, hills, tunnel and track props our render draws on layer 3 are object pixels, inside the actor's box on `traintnl` (crop of tick 628).
 * **Weak discrimination on `intro` and `location`.** Shifting our actor by (0,-15) or (0,+10) scores as well as or better than (0,0) on `intro`, and (+25,+25) costs `location` 12 % of its IoU, against about half on `land`, `traintnl`, `balloon` and `bomb` (journal). Do not use the actor IoU of `intro` or `location` to rank a 15 to 25 px placement change.
 * **A render fault inflates `location`.** From tick 717 to 903 our render draws a black foreground quadrilateral, mostly growing, that the capture lacks ([#504](https://github.com/neilsh/stunt-reel/issues/504)). It overlaps capture index 76, which is no band, so it adds object pixels our actor "finds": per-frame IoU is 0.34 to 0.35 at ticks 805 to 892 against 0.05 to 0.12 at 717 to 760 (different actor content, so an inference). It does not lower the figure.
 
 The final bands were not cropped by eye (the first round's were, journal).
+
+**Per-index tolerance (#505): strict rule kept.** `[Bounded Observation]`, 2026-11-16, `crates` tree `7aeabce`, RTX 4070. The actor test was relaxed to admit an index our actors paint at most N px over the scored frames (`n<=N`), or at most a share of that index's capture pixels over the same frames (`s<=x`); every other test was kept. The shift test moves our actor by (dx, dy) and puts the window around the moved silhouette, so its shifted figures differ from #490's by up to 0.015; compare within this table. "Actor px" is our actor pixels on admitted indices over all scored frames, with the most frames any one admitted index appears in; "ratio" is IoU at (+25,+25) over IoU at (0,0), lower separating better; "beaten" says a shift scored above (0,0).
+
+| Film | Rule | Indices added to strict | Covered | Actor px (frames) | IoU (0,0) | Ratio | Beaten |
+|---|---|---|---|---|---|---|---|
+| `intro` | strict | | 10 % | 0 | 0.1488 | 0.96 | yes |
+| `intro` | `n<=10` | 229-230 | 18 % | 6 (5) | 0.1542 | 0.93 | yes |
+| `intro` | `n<=100` | 163, 205, 227-234 | 42 % | 338 (47) | 0.2244 | 0.76 | no |
+| `intro` | `s<=0.01%` | 163, 229-231 | 35 % | 93 (34) | 0.1977 | 0.80 | no |
+| `intro` | `s<=0.1%` | 163, 205, 208, 227-234 | 48 % | 862 (47) | 0.2604 | 0.68 | no |
+| `land` | strict, `n<=10`, `s<=0.01%` | | 34 % | 0 | 0.1879 | 0.52 | no |
+| `land` | `n<=100`, `s<=0.1%` | 161-163 | 41 % | 69 (2) | 0.2299 | 0.43 | no |
+| `land` | `s<=1%` | 161-163, 229-235 | 49 % | 3,111 (95) | 0.2502 | 0.40 | no |
+| `location` | strict, `n<=10` | | 27 % | 0 | 0.1161 | 0.96 | no |
+| `location` | `n<=100` | 163 | 28 % | 88 (59) | 0.1163 | 0.96 | no |
+| `location` | `s<=0.01%` | 76 | 40 % | 207 (39) | 0.1277 | 0.52 | no |
+| `location` | `s<=0.1%` | 76, 163, 230-233 | 48 % | 2,607 (84) | 0.1742 | 0.42 | no |
+| `bomb` | strict | | 34 % | 0 | 0.2708 | 0.45 | no |
+| `bomb` | `n<=10` | 236 | 35 % | 5 (1) | 0.2726 | 0.45 | no |
+| `bomb` | `n<=100` | 236-237 | 36 % | 72 (2) | 0.2744 | 0.44 | no |
+| `bomb` | `s<=0.01%` | 195, 236 | 60 % | 145 (14) | 0.4220 | 0.27 | no |
+| `bomb` | `s<=0.1%` | 195, 236-237 | 60 % | 212 (14) | 0.4370 | 0.26 | no |
+| `traintnl` | strict | | 64 % | 0 | 0.3423 | 0.54 | no |
+| `traintnl` | `n<=10`, `n<=100`, `s<=0.1%` | 163, 229-231 | 69 % | 26 (9) | 0.3535 | 0.53 | no |
+| `traintnl` | `s<=0.01%` | 229-231 | 68 % | 19 (9) | 0.3504 | 0.53 | no |
+
+* **An edge-sized tolerance changes little.** `n<=10` admits 5 to 26 px in at most 9 frames per index; `intro`'s ratio goes from 0.96 to 0.93 and a shift still beats (0,0), `land` and `location` gain nothing.
+* **The tolerances that fix `intro` and `location` admit actor paint, not edges.** The listed ones admit 93 to 2,607 px, the admitted index painted in 34 to 84 frames (`s<=1%`, not listed, admits 1,631 on `intro` and 10,389 on `location`). `location`'s gain at `s<=0.01%` is index 76 alone, the index under the #504 foreground fault.
+* **`land`'s sky comes back only at `s<=1%`**, which admits 3,111 actor px with one index in 95 frames: our actors paint those sky indices through the film.
+* **The strict rule's output moves with the render.** On this tree `bomb` 195 has 140 actor px in 14 frames (1 px in 1 frame on `d2cd090`), and the strict rule now gives `traintnl` 164 (0 actor px), which its committed row lacks.
+
+No tolerance measured restores more of the sky bands of `intro` and `land` than `n<=10`'s two `intro` indices (229-230) without admitting actor paint in tens of frames. _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
 
 ## 4. Candidate sweeps
 
