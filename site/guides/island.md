@@ -17,7 +17,7 @@ Some patches are coarse and come with a set of finer patches. The files record a
 
 ## From files to a scenery tree
 
-The game carries compiled copies of the anchor table and the ground, but MAP.BIN is not among them. The files were working files of SD.EXE, a scenery compiler that the note identifies as the developers' own tool, though that the shipped game was built with it is an inference. The compiler also takes a second file, REGIONS.BIN, which divides the island into blocks by a tree of cutting planes. It slots each top-level patch into the block it belongs to and writes out one combined structure, the scenery tree.
+The game carries compiled copies of the anchor table and most of the ground, but MAP.BIN is not among them. The files were working files of SD.EXE, a scenery compiler that the note identifies as the developers' own tool. That the shipped game was built with it is an inference. The compiler also takes a second file, REGIONS.BIN, which divides the island into blocks by a tree of cutting planes. It slots each top-level patch into the block it belongs to and writes out one combined structure, the scenery tree.
 
 ```mermaid
 flowchart LR
