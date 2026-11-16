@@ -38,8 +38,7 @@ The tree is how the player decides how much to draw. Two kinds of node make that
 - A ground patch with finer patches below it: near the viewer the player descends into the finer list, and farther away it draws the coarse polygon.
 - A detail node on the props side: it holds a simple stand-in model. Beyond a threshold distance the player draws the stand-in and stops walking that branch. Closer than the threshold it skips the stand-in and carries on into the detailed subtree.
 
-So the stand-in is drawn instead of the subtree, not on top of it. The [scenery note](../../research/formats/auxiliary/scenery.md) states this, and the [level-of-detail note](../../research/playone-exe/lod.md) traces it in the player's code. The same note records an earlier community viewer that drew both together, which is one place a reconstruction can go wrong.
-
+So the stand-in is drawn instead of the subtree, not on top of it. The [scenery note](../../research/formats/auxiliary/scenery.md) states this, and the [level-of-detail note](../../research/playone-exe/lod.md) traces it in the player's code.
 The threshold is not a fixed distance. The level-of-detail note finds that it is scaled by a detail setting that the game reads from a settings file, and by the shot's zoom, so a zoomed shot keeps its fine detail further out than a wide one. The same note records that our reference captures were made without that settings file, so they probably run at full detail. Even then the original film player still switches to coarser nodes as things recede.
 
 ## Props sit on the ground by their own height
@@ -48,7 +47,7 @@ One surprise from the scenery note is how a prop gets its height. The player doe
 
 ## What the notes leave open
 
-The glossary says what supplies the rest of the ground, such as the sand flats, is not established, so the patches are one known source rather than a full account. The [world and scene note](../../research/playone-exe/world-scene.md) also reports that in the live runs it checked of one film, the airfield's other ground colours came from scenery shapes placed on top, painted in walk order.
+The glossary says what supplies the rest of the ground, such as the sand flats, is not established. The [world and scene note](../../research/playone-exe/world-scene.md) reports that in its live runs of one film, the airfield's other ground colours came from scenery shapes placed on top.
 
 ## Read next
 
