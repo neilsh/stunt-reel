@@ -85,6 +85,17 @@ def test_link_target(site: Site, target: str, expected: str) -> None:
     assert images == wanted
 
 
+def test_link_target_to_a_published_docs_page(site: Site) -> None:
+    dest = "docs/spec.md"
+    published = Site(
+        root=site.root,
+        pages={**site.pages, "docs/SPEC.md": dest},
+        published_dirs=("research",),
+    )
+    target = link_target("../../docs/SPEC.md#24-x", _SRC, published, set())
+    assert target == "/stunt-reel/docs/spec/#24-x"
+
+
 def test_link_target_refuses_escape(site: Site) -> None:
     with pytest.raises(ValueError, match=r"research/formats/sod.md"):
         link_target("../../../../x.md", _SRC, site, set())
@@ -133,14 +144,37 @@ def test_page_text_title_from_h1_and_description_from_summary(site: Site) -> Non
 
 
 def test_page_text_sidebar_labels(site: Site) -> None:
-    text = "# T\n"
-    for source, label in [
-        ("research/formats/sod.md", "sod"),
-        ("research/formats/INDEX.md", "Index"),
-        ("research/README.md", "About this folder"),
+    adr = "docs/adr/" + "0041-dated-records.md"
+    for source, text, label in [
+        ("research/formats/sod.md", "# Spec: `.SOD` [VM](x.md)\n", "Spec: .SOD VM"),
+        ("research/formats/INDEX.md", '---\ntitle: "Formats"\n---\n', "Index"),
+        ("research/README.md", "# T\n", "About this folder"),
+        (adr, "# Dated records live in work folders\n", "0041 Dated records live in work folders"),
     ]:
         fields, _ = _fields(page_text(text, source, site, set()))
         assert fields["sidebar.label"] == label
+
+
+def test_page_text_label_ignores_a_given_title(site: Site) -> None:
+    fields, _ = _fields(page_text("# Stunt Reel\n", "GLOSSARY.md", site, set(), title="Glossary"))
+    # A file section's sidebar label comes from published.toml, not from page_text.
+    assert fields["sidebar.label"] == "Stunt Reel"
+
+
+def test_page_text_passes_order_through(site: Site) -> None:
+    text = '---\ntitle: "G"\norder: 2\n---\n'
+    fields, _ = _fields(page_text(text, "site/guides/g.md", site, set()))
+    assert fields["sidebar.order"] == 2
+
+
+def test_page_text_without_order_writes_none(site: Site) -> None:
+    fields, _ = _fields(page_text("# T\n", "site/guides/g.md", site, set()))
+    assert "sidebar.order" not in fields
+
+
+def test_page_text_rejects_a_non_int_order(site: Site) -> None:
+    with pytest.raises(ValueError, match=r"site/guides/g\.md"):
+        page_text('---\ntitle: "G"\norder: "first"\n---\n', "site/guides/g.md", site, set())
 
 
 def test_page_text_without_frontmatter_drops_leading_comment(site: Site) -> None:
