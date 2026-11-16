@@ -288,7 +288,9 @@ Observed on this host, 2026-11-13:
 ## Windows PowerShell 5.1
 
 Any harness that shells out through the host's Windows PowerShell 5.1 meets these; observed
-under DeepSeek Harness (2026-10-25), Claude Code (2026-10-31) and Antigravity (2026-11-13).
+under DeepSeek Harness (2026-10-25), Claude Code (2026-10-31) and Antigravity (2026-11-13). They
+are the shell of the `local-windows` environment
+([`working-in-an-environment` § local-windows](../.agents/skills/working-in-an-environment/local-windows.md)).
 
 * **No `utf8NoBOM`.** `Set-Content -Encoding utf8NoBOM` fails with "Unable to match the
   identifier name utf8NoBOM to a valid enumerator name", and one sweep's writes all failed while

@@ -4,8 +4,8 @@
 Each line names the item and either ``ready`` or why it is skipped, for the reasons that need no
 judgement:
 
-- a PR labelled ``ready-for-human``; one stacked on another open PR, which waits for its base
-  to merge; or one whose auto-merge is armed and whose checks are pending. An armed PR with a
+- a PR labelled ``ready-for-human``, or ``local-only`` in a cloud session; one stacked on another
+  open PR, which waits for its base to merge; or one whose auto-merge is armed and whose checks are pending. An armed PR with a
   failed check, a conflict, or passed checks yet still open is ``ready``, since it needs work;
 - an issue labelled ``in-progress``, or ``local-only`` in a cloud session
   (``CLAUDE_CODE_REMOTE=true``; ``docs/agents/triage-labels.md`` § Environment roles);
@@ -34,6 +34,9 @@ from typing import Any
 
 #: Seconds before a ``gh`` call counts as failed.
 GH_TIMEOUT = 60
+
+#: Entries requested per REST page; a shorter page is the last.
+PER_PAGE = 100
 
 #: A PR's claim on issues: ``Part of`` or a GitHub closing keyword, then one or more ``#<n>``.
 _CLAIM = re.compile(
@@ -139,10 +142,12 @@ def stack_order(prs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(prs, key=lambda pr: (depth(pr), pr["number"]))
 
 
-def pr_items(prs: list[dict[str, Any]], checks: dict[int, str]) -> list[Item]:
+def pr_items(
+    prs: list[dict[str, Any]], checks: dict[int, str], *, cloud: bool = False
+) -> list[Item]:
     """A line per open REST PR, in stack order.
 
-    *checks* is each armed PR's :func:`armed_state`.
+    *checks* is each armed PR's :func:`armed_state`; *cloud* skips ``local-only`` PRs.
     """
     heads = {pr["head"]["ref"]: pr["number"] for pr in prs}
     armed_notes = {
@@ -155,6 +160,8 @@ def pr_items(prs: list[dict[str, Any]], checks: dict[int, str]) -> list[Item]:
         item = Item("PR", pr["number"], pr["title"], _labels(pr))
         if "ready-for-human" in item.labels:
             item.skip.append("ready-for-human")
+        if cloud and "local-only" in item.labels:
+            item.skip.append("local-only")
         if pr["base"]["ref"] in heads:
             item.skip.append(f"base #{heads[pr['base']['ref']]} open")
         if pr.get("auto_merge"):
@@ -223,18 +230,29 @@ def armed_state(pr: dict[str, Any]) -> str:
 
 
 def _pages(path: str) -> list[dict[str, Any]]:
-    """Every entry of a paginated REST list, flattened from ``--slurp``'s pages."""
-    return [entry for page in gh_json("api", "--paginate", "--slurp", path) for entry in page]
+    """Every entry of a REST list at *path* (no ``per_page`` or ``page``), read page by page.
+
+    Pages go by number because ``gh api --paginate`` follows GitHub's next links, which name the
+    repository by id (``repositories/<id>/...``), and a cloud session's proxy refuses those
+    (``docs/cloud-sessions.md``).
+    """
+    entries: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        sep = "&" if "?" in path else "?"
+        batch = gh_json("api", f"{path}{sep}per_page={PER_PAGE}&page={page}")
+        entries.extend(batch)
+        if len(batch) < PER_PAGE:
+            return entries
+        page += 1
 
 
 def fetch() -> tuple[list[dict[str, Any]], dict[int, str], list[dict[str, Any]]]:
     """Every open PR, each armed PR's state for :func:`pr_items`, and every open issue (PRs dropped)."""
-    prs = _pages("repos/{owner}/{repo}/pulls?state=open&per_page=100")
+    prs = _pages("repos/{owner}/{repo}/pulls?state=open")
     checks = {pr["number"]: armed_state(pr) for pr in prs if pr.get("auto_merge")}
     issues = [
-        i
-        for i in _pages("repos/{owner}/{repo}/issues?state=open&per_page=100")
-        if "pull_request" not in i
+        i for i in _pages("repos/{owner}/{repo}/issues?state=open") if "pull_request" not in i
     ]
     return prs, checks, issues
 
@@ -246,7 +264,7 @@ def main() -> int:
         print(f"queue: {err}", file=sys.stderr)
         return 2
     cloud = os.environ.get("CLAUDE_CODE_REMOTE", "").lower() == "true"
-    for item in pr_items(prs, checks) + issue_items(issues, prs, cloud=cloud):
+    for item in pr_items(prs, checks, cloud=cloud) + issue_items(issues, prs, cloud=cloud):
         print(item.line())
     return 0
 

@@ -86,6 +86,16 @@
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mise run session-environment",
+            "timeout": 60
+          }
+        ]
+      },
+      {
         "matcher": "startup|resume",
         "hooks": [
           {

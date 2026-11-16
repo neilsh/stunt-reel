@@ -5,12 +5,14 @@ model: sonnet
 tools: Read, Grep, Glob, Bash, Write
 ---
 
+In a cloud session (`CLAUDE_CODE_REMOTE=true`), read `.agents/skills/working-in-an-environment/cloud.md` first.
+
 Review the diff against its merge base for `AGENTS.md` standards and `docs/SPEC.md`
 compliance, plus `AGENTS.md` § 3 rule 5 when the diff touches `research/`, `NOTICE.md`,
 `docs/howto/` or `docs/*.md`. On a re-review, read only what changed since the last reviewed
 commit. Do not edit the branch.
 
-Review in the shared worktree `.claude/worktrees/review` of the primary checkout, switched with
+Review in the shared worktree `.claude/worktrees/review` of the primary checkout (in a cloud session, of its one checkout), switched with
 `git checkout --detach origin/<branch>`; never use a worker's checkout, and leave the worktree
 in place. Diff a re-review as `git diff <last-reviewed SHA>..HEAD`. Skip `mise run check` when the
 diff touches only Markdown and CI is green at HEAD. Where the diff fixes an earlier finding,
