@@ -1,10 +1,10 @@
 ---
-summary: "Mesa's software clipper can interpolate the shade varying to NaN; with the non-finite shade guard, local lavapipe (mesa-dist-win 25.2.8) scores within 0.002 of the RTX 4070 on all seven reference films, local and cloud lavapipe agree within 0.00004, and Gouraud polygons the clipper breaks draw flat."
+summary: "Mesa's software clipper can interpolate the shade varying to NaN; with the non-finite shade guard, local lavapipe (mesa-dist-win 25.2.8) scores within 0.002 of the RTX 4070 on all seven reference films, local and cloud lavapipe agree within 0.00004, and Gouraud polygons the clipper breaks draw flat; one model-matrix upload per frame instead of per draw took a lavapipe LOCATION render from 150.5 s to 81.8 s."
 ---
 # Parity: Rendering on Lavapipe
 
-* **Scope**: how Mesa's software Vulkan driver, lavapipe, renders our frames differently from a GPU, and what the renderer does about it. Cloud sessions ([ADR 0039](../../docs/adr/0039-cloud-sessions-fetch-pinned-game-archives.md)) and CI ([ADR 0006](../../docs/adr/0006-ci-renders-on-lavapipe.md)) both render on it. The findings name the Mesa build they come from; three builds were measured: Ubuntu's `mesa-vulkan-drivers` 25.2.8 (`llvmpipe (LLVM 20.1.2, 256 bits)`, cloud), and mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and 26.2.6 (`llvmpipe (LLVM 23.1.4, 256 bits)`) on the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md).
-* **Sources**: Mesa source (`src/gallium/auxiliary/draw/draw_pipe_clip.c` at `mesa-25.2.8`, `mesa-26.2.6` and `main`; `src/gallium/drivers/llvmpipe/lp_context.c`), parity runs logged in [`log.md`](../../work/2026-10/parity-log/log.md) on 2026-11-07 and 2026-11-15, and the #265 journal.
+* **Scope**: how Mesa's software Vulkan driver, lavapipe, renders our frames differently from a GPU, and what the renderer does about it, and how long a lavapipe render takes. Cloud sessions ([ADR 0039](../../docs/adr/0039-cloud-sessions-fetch-pinned-game-archives.md)) and CI ([ADR 0006](../../docs/adr/0006-ci-renders-on-lavapipe.md)) both render on it. The findings name the Mesa build they come from; three builds were measured: Ubuntu's `mesa-vulkan-drivers` 25.2.8 (`llvmpipe (LLVM 20.1.2, 256 bits)`, cloud), and mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and 26.2.6 (`llvmpipe (LLVM 23.1.4, 256 bits)`) on the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md).
+* **Sources**: Mesa source (`src/gallium/auxiliary/draw/draw_pipe_clip.c` at `mesa-25.2.8`, `mesa-26.2.6` and `main`; `src/gallium/drivers/llvmpipe/lp_context.c`), `cdb` stack samples and timed renders from #596, parity runs logged in [`log.md`](../../work/2026-10/parity-log/log.md) on 2026-11-07 and 2026-11-15, and the #265 journal.
 * **Evidence tier**: stated at the start of each section.
 
 ## 1. Near ground polygons drew palette index 0
@@ -50,6 +50,23 @@ A first local LOCATION run scored 0.6344817 (563 frames down more than 0.005). I
 
 A near-zero but finite divisor would give a Gouraud polygon a wrong but finite weight that the guard cannot catch; the sentinel found no `shade` below -0.5 or above 255.5 on lavapipe at any tick rendered, and no case is known. _Source: [Lavapipe beside the GPU on one crates tree](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree)._
 
+## 6. Render time
+
+`[Bounded Observation]`, 2026-11-15, mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) on the RTX 4070 laptop, one headless run per row, `--tick-range 12..=300` of LOCATION at 320×200 unless stated.
+
+Before [#596](https://github.com/neilsh/stunt-reel/issues/596), on a build of `crates` `52d84e6`, the render took 151 s on lavapipe against 21 s on the GPU, at 1.00 core whether `LP_NUM_THREADS` was 1, 4 or unset (identical `frames.zst`). Over ticks 12-100, `GALLIVM_PERF=nopt` changed neither the time (47.5 s against 48.4 s) nor the frames, so LLVM compilation was not the cost; `DRAW_USE_LLVM=0` took 76.1 s and changed the frames. In 30 non-invasive `cdb` samples of the main thread, about half were in `gpu_allocator::FreeListAllocator::allocate`, reached from `wgpu_core::resource::StagingBuffer::new` under `Queue::write_buffer` in `SceneRenderer::prepare`, and the rest in `wait_for_fence`, with lavapipe's rasterizer threads idle in nearly every sample. `prepare` wrote each draw's model matrix with its own `write_buffer`, so every drawn prop, actor and sprite made wgpu allocate a staging buffer. Why that allocation costs so much more on lavapipe than on the NVIDIA driver is not measured.
+
+#596 packs a frame's matrices into one uniform buffer at dynamic offsets, uploaded with one `write_buffer` (`scene_renderer.rs`). Built from `c72727b` without and with it:
+
+| Run | Before | After |
+|---|---|---|
+| lavapipe, ticks 12-300 | 150.5 s | 81.8 s |
+| GPU, ticks 12-300 | 20.9 s | 16.0 s |
+| GPU, LOCATION's captured ticks (12-8262) | 301.2 s | 229.6 s |
+| GPU, INTRO's captured ticks (12-3818) | 96.8 s | 67.8 s |
+
+`frames.zst`, `layers.zst` and `palettes.zst` are byte-identical before and after on lavapipe for ticks 12-300, and on the GPU over every reference film's captured ticks. After the change, 16 of 20 `cdb` main-thread samples sit in `wgpu_hal::vulkan::DeviceShared::wait_for_fence`, sleeping on a condition variable inside `vulkan_lvp`; none are in staging allocation; the other 4 are in command encoding (`CommandEncoder::finish`, `draw_indexed`) and `Device::poll`. What lavapipe does while the main thread waits is not measured ([#600](https://github.com/neilsh/stunt-reel/issues/600)).
+
 ## Ruled out
 
 * **The actor shadow draw** (CTRY 422): with it off, the ground stays black.
@@ -59,6 +76,7 @@ A near-zero but finite divisor would give a Gouraud polygon a wrong but finite w
 * **A LOCATION fault the guard misses** (mesa-dist-win 25.2.8): the 0.6344817 run used a guard-removed binary (section 4); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
 * **A finite out-of-range `shade` on lavapipe, at the ticks rendered**: the sentinel drew no `shade` below -0.5 or above 255.5 at CTRY 400 and 422, LOCATION 3994, 4005, 4445 and 4467, BALLOON 145, LAND 227, BOMB 1910 or LOCATION 2599 and 2859, on 25.2.8, nor at the first six on 26.2.6 (section 5); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
 * **The GPU polygon's shade at BOMB 1910 and LOCATION 2599 and 2859**: all-flat polygons still differ there (section 5); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
+* **LLVM shader compilation, or `LP_NUM_THREADS`, as the cost of a lavapipe render** (mesa-dist-win 25.2.8): `GALLIVM_PERF=nopt` and 1, 4 or unset threads left the time and the frames unchanged (section 6).
 * **An upstream fix by Mesa 26.2.6**: its clipper still makes the NaN, and `interp()` is unchanged through `main` (section 2); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
 
 ## Open questions
@@ -66,4 +84,5 @@ A near-zero but finite divisor would give a Gouraud polygon a wrong but finite w
 1. Whether the clipper moves the depth of a polygon it breaks (LOCATION 2859, section 5), why another polygon wins at BOMB 1910 and LOCATION 2599, and what moves LAND 227's other 536 pixels ([#595](https://github.com/neilsh/stunt-reel/issues/595)).
 2. Whether to stop Gouraud polygons drawing flat on lavapipe (section 5): recomputing the weight in the shader (for example interpolating `shade` as `perspective` alongside a `linear` copy and using it only when the `linear` one is not finite), each byte-identical on a GPU only if tested so. Not filed upstream either: a report to Mesa would cite `t_nopersp`'s zero divisor (section 2). ([#595](https://github.com/neilsh/stunt-reel/issues/595))
 3. Whether Mesa 26.2.6 scores as 25.2.8 does: it was rendered at six ticks only, with no parity run; and CI's lavapipe has not been compared with these rows.
-4. Whether a cloud session can reach `gitlab.freedesktop.org`: [`cloud-sessions.md`](../../docs/cloud-sessions.md) lists it in the environment's network access, but no cloud session is recorded reaching it; the reads in section 2 were made from the RTX 4070 laptop. Unchecked.
+4. What lavapipe does while a frame's main thread waits in `wait_for_fence`, about 0.28 s per LOCATION tick after #596, apparently on one thread (section 6, [#600](https://github.com/neilsh/stunt-reel/issues/600)).
+5. Whether a cloud session can reach `gitlab.freedesktop.org`: [`cloud-sessions.md`](../../docs/cloud-sessions.md) lists it in the environment's network access, but no cloud session is recorded reaching it; the reads in section 2 were made from the RTX 4070 laptop. Unchecked.
