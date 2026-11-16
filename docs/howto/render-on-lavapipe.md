@@ -20,6 +20,8 @@ New-Item -ItemType Directory -Force $mesa | Out-Null
 7z x -y "-o$mesa" $archive
 ```
 
+Mesa 26.2.6 unpacks the same way into `tools\mesa-26.2.6`: `mesa3d-26.2.6-release-msvc.7z`, 55,964,101 bytes, SHA-256 `b2e00615feaba45942343c265cc8c5f576142ca682c1ac6661922d4b72492877` (GitHub's digest, measured the same on 2026-11-15); its llvmpipe reports `llvmpipe (LLVM 23.1.4, 256 bits)`.
+
 The archive holds `x64\` and `x86\` driver trees, an ICD manifest for each of its two Vulkan drivers (lavapipe and Dozen — the OpenGL, OpenCL, VA-API and WARP DLLs beside them have none), `modules\`, `readme.txt` and the release's two deploy scripts. Do not run the scripts: the variable below is not system-wide, it reaches this shell and every process the shell starts.
 
 ## 2. Name only the lavapipe ICD
@@ -38,6 +40,8 @@ mise run frame -- --film ctry --ticks 400,422 --software-only
 ```
 
 `--software-only` reaches `stuntreel`'s film renderer, which sets `RenderOptions::software_only` for the headless and the windowed path alike. Both halves are needed, and `mise run frame` records the adapter each render used in the frame store's `build/scratch/frame/<film>/store/render.json`; on this machine (an RTX 4070 laptop), with the ICD named but no flag, the first Vulkan attempt found only lavapipe and passed it over, the all-backends attempt found the GPU, and the one-tick run (`--ticks 400`) recorded `NVIDIA GeForce RTX 4070 Laptop GPU` in the store. With the flag but no `VK_DRIVER_FILES`, Vulkan had no CPU driver and the same run recorded `Microsoft Basic Render Driver`, WARP.
+
+`--no-build` renders with whatever `target/release/stuntreel.exe` holds. Rebuild after any temporary renderer edit, such as removing the NaN-shade guard to test it: a guard-removed binary left there by #265's byte-identity check rendered a lavapipe LOCATION run 0.19 below the GPU ([`lavapipe.md`](../../research/parity/lavapipe.md) section 4).
 
 ## 4. Check the adapter
 

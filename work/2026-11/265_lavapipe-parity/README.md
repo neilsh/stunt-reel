@@ -23,3 +23,4 @@ First review of each dsh or Sonnet PR: the `reviewer` agent on Opus; mechanical 
 ## Status
 
 - 2026-11-15: #455 launched as cloud session [`session_01754SzQMKMSE3sZxgSTfyms`](https://claude.ai/code/session_01754SzQMKMSE3sZxgSTfyms) on Sonnet; its result arrives as a PR or a comment on #455. Next: `/orchestration` for PR A from this folder.
+- 2026-11-15: PR B: LOCATION's local lavapipe loss was a stale guard-removed binary; re-rendered with the guard it scores 0.8292054, within the margin of the GPU and the cloud row. Mesa 26.2.6 still makes the NaN; Gouraud polygons the clipper breaks draw flat. Findings in [`lavapipe.md`](../../../research/parity/lavapipe.md), experiment in [journal.md](journal.md). Left open: the `lavapipe.md` Open questions.
