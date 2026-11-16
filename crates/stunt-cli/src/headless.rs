@@ -1,6 +1,7 @@
 //! Offscreen playback: a single PNG, an --out-dir render store or sample sequence, or an ffmpeg
 //! video.
 
+use std::collections::VecDeque;
 use std::fs;
 use std::path::PathBuf;
 use stunt_core::credits::CreditLines;
@@ -127,6 +128,23 @@ impl SampleSink {
     }
 }
 
+/// Writes every page the renderer has handed back, pairing each with the facts of the frame it
+/// was submitted for. Pages arrive in submission order, so the oldest fact goes first, one
+/// submission after its frame.
+fn write_landed_pages(
+    slot: &PageSlot,
+    pending: &mut VecDeque<(SampleKey, FrameFacts)>,
+    sink: &mut SampleSink,
+) -> Result<(), String> {
+    while let Some(page) = slot.take() {
+        let Some((key, facts)) = pending.pop_front() else {
+            return Err("the renderer handed back a page for no submitted frame".to_string());
+        };
+        sink.write(key, facts, &page)?;
+    }
+    Ok(())
+}
+
 /// Executes headless rendering without window creation; a render store records `film`, the
 /// identity of the bytes `scene` was built from.
 pub(crate) fn run_headless(
@@ -236,16 +254,23 @@ pub(crate) fn run_headless(
         if CAMERA_FORWARD[2] < 0.0 { "-Z" } else { "+Z" }
     );
 
+    // The renderer keeps two frames in flight: submitting a frame retires the page of the one
+    // before it, so each page lands here one submission after its frame.
+    let mut pending: VecDeque<(SampleKey, FrameFacts)> = VecDeque::new();
     for (key, tick) in samples {
         let frame = scene.frame(capture_tick(tick));
         renderer
-            .draw(&frame, None)
+            .submit(&frame, None)
             .map_err(|e| format!("render {key}: {e}"))?;
-        // The renderer hands its sink exactly one page per successful draw.
-        let page = slot
-            .take()
-            .ok_or_else(|| format!("render {key}: the renderer drew without producing a page"))?;
-        sink.write(key, FrameFacts::of(&frame), &page)?;
+        pending.push_back((key, FrameFacts::of(&frame)));
+        write_landed_pages(&slot, &mut pending, &mut sink)?;
+    }
+    renderer
+        .finish()
+        .map_err(|e| format!("finish the last frame: {e}"))?;
+    write_landed_pages(&slot, &mut pending, &mut sink)?;
+    if !pending.is_empty() {
+        return Err("the renderer did not hand back every submitted frame".to_string());
     }
     let adapter = render_adapter(renderer.adapter());
     drop(renderer);
@@ -384,6 +409,24 @@ mod tests {
         assert!(dir.0.join("sample_0003.png").is_file());
         assert_eq!(sink.written_frames, 1);
         assert_eq!(sink.written_video_frames, 0);
+    }
+
+    #[test]
+    fn landed_pages_are_written_in_submission_order() {
+        let dir = TempDir::new("order");
+        let mut sink = store_sink(&dir.0);
+        let mut slot = PageSlot::default();
+        let mut pending =
+            VecDeque::from([(SampleKey::Tick(7), facts()), (SampleKey::Tick(9), facts())]);
+        // Two frames were submitted before either page landed, as the pipeline's first pair does.
+        slot.accept(page()).expect("accept");
+        slot.accept(page()).expect("accept");
+        write_landed_pages(&slot, &mut pending, &mut sink).expect("write");
+        assert!(pending.is_empty());
+        sink.finish_journal(adapter()).expect("finish");
+        let record = read_render_record(&dir.0).expect("record");
+        let ticks: Vec<u32> = record.ticks.iter().map(|tick| tick.tick).collect();
+        assert_eq!(ticks, [7, 9]);
     }
 
     #[test]

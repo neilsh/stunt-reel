@@ -2,12 +2,17 @@
 
 use super::RenderError;
 
-/// Maps a buffer, copies its rows out without the pitch padding, and unmaps it.
+/// Maps a buffer once `submission` has executed, copies its rows out without the pitch padding,
+/// and unmaps it.
+///
+/// The wait names `submission` rather than the latest one, so a later frame keeps rendering
+/// while this page is mapped.
 pub(super) fn read_back(
     device: &wgpu::Device,
     buffer: &wgpu::Buffer,
     width: u32,
     padded_row_bytes: u32,
+    submission: &wgpu::SubmissionIndex,
 ) -> Result<Vec<u8>, RenderError> {
     let buffer_slice = buffer.slice(..);
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -17,7 +22,10 @@ pub(super) fn read_back(
     });
 
     device
-        .poll(wgpu::PollType::wait_indefinitely())
+        .poll(wgpu::PollType::Wait {
+            submission_index: Some(submission.clone()),
+            timeout: None,
+        })
         .map_err(|error| RenderError::Readback(error.to_string()))?;
 
     receiver
