@@ -222,6 +222,26 @@ def test_render_env_keeps_the_inherited_environment(monkeypatch: pytest.MonkeyPa
     assert parity_frame.render_env(None) is None
 
 
+def test_draw_hands_software_only_to_the_render(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[bool] = []
+
+    def fake_render(_job: object, _out: Path, *_a: object, **kwargs: object) -> None:
+        seen.append(bool(kwargs.get("software_only")))
+
+    monkeypatch.setattr(parity_frame, "read_capture", lambda _path: _capture_set([10]))
+    monkeypatch.setattr(parity_pipeline, "render_film", fake_render)
+    monkeypatch.setattr(parity_frame, "clear_previous", lambda *_a: None)
+    data = tmp_path / "data"
+    job = parity_pipeline.FilmJob("ctry", "vault-ctry", data / "CTRY.FLM", data / "cap", data)
+    variants = parity_frame.variant_stores(tmp_path / "stores", None)
+    parity_frame._draw(
+        job, argparse.Namespace(film="ctry", software_only=True), [10], None, variants
+    )
+    assert seen == [True]
+
+
 def test_frame_pictures_stay_in_the_checkout_when_the_data_root_is_elsewhere(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -232,7 +252,7 @@ def test_frame_pictures_stay_in_the_checkout_when_the_data_root_is_elsewhere(
     monkeypatch.setattr(parity_frame, "clear_previous", lambda out, _film: cleared.append(out))
     data = tmp_path / "data"
     job = parity_pipeline.FilmJob("ctry", "vault-ctry", data / "CTRY.FLM", data / "cap", data)
-    args = argparse.Namespace(film="ctry")
+    args = argparse.Namespace(film="ctry", software_only=False)
     variants = parity_frame.variant_stores(tmp_path / "stores", None)
     parity_frame._draw(job, args, [10], None, variants)
     assert cleared == [dataroot.REPO_ROOT / parity_frame.FRAME_DIR / "ctry"]

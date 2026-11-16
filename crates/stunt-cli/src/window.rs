@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use stunt_core::flm::TIMELINE_HZ;
 use stunt_core::scene::FilmScene;
-use stunt_render::{CameraController, CameraMode, RenderError, RenderOptions, Renderer};
+use stunt_render::{CameraController, CameraMode, RenderError, Renderer};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
@@ -159,10 +159,7 @@ impl ApplicationHandler for WindowApp {
             }
         };
 
-        let options = RenderOptions {
-            clear_palette_index: self.config.clear_index,
-            software_only: false,
-        };
+        let options = self.config.render_options();
         let mut renderer = match Renderer::surface(&self.scene, Arc::clone(&window), options) {
             Ok(renderer) => renderer,
             Err(error) => {

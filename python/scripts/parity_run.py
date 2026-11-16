@@ -11,7 +11,7 @@ can be compared later with ``--reuse`` on the previous root.
 Usage::
 
     mise run parity -- [--films ctry,intro] [--no-build] [--no-render]
-        [--reuse DIR] [--retime N] [--data-root DIR]
+        [--reuse DIR] [--retime N] [--software-only] [--data-root DIR]
 
 ``--no-build`` reuses the existing release binary; ``--no-render`` scores the existing
 ``_current`` render tree; ``--reuse DIR`` scores ``DIR/<film>`` instead; ``--retime N``
@@ -58,7 +58,9 @@ from stunt_reel.references import read_reference
 NOISE_NOTE = "noise floor +/-0.002 SSIM; margin below 0.002 is not an adoption"
 
 
-def prepare_source(job: FilmJob, options: ParityOptions, *, no_render: bool) -> Path:
+def prepare_source(
+    job: FilmJob, options: ParityOptions, *, no_render: bool, software_only: bool
+) -> Path:
     """The render directory to score: reused, existing, or freshly rendered ``_current``."""
     film = job.name
     current = REPO_ROOT / parity_layout.render_dir(film)
@@ -73,7 +75,7 @@ def prepare_source(job: FilmJob, options: ParityOptions, *, no_render: bool) -> 
     print(f"[parity] rendering {film} into {current}", file=sys.stderr)
     scratch = REPO_ROOT / parity_layout.render_scratch_dir(film)
     shutil.rmtree(scratch, ignore_errors=True)
-    render_film(job, scratch)
+    render_film(job, scratch, software_only=software_only)
     check_film(job, scratch)
     current.parent.mkdir(parents=True, exist_ok=True)
     # Rename rather than copy: the previous tree stays scoreable with --reuse and the
@@ -122,6 +124,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_parity_options(parser)
     parser.add_argument("--no-render", action="store_true", help="score the existing _current dirs")
+    parser.add_argument(
+        "--software-only",
+        action="store_true",
+        help="render on the software adapter (lavapipe, WARP), even when a GPU is available",
+    )
     return parser.parse_args(argv)
 
 
@@ -159,7 +166,9 @@ def main(argv: list[str] | None = None) -> int:
 
     def work(job: FilmJob, _variant: None) -> FilmScore:
         """Renders (or reuses) *job*'s film and scores it, printing nothing."""
-        source = prepare_source(job, options, no_render=args.no_render)
+        source = prepare_source(
+            job, options, no_render=args.no_render, software_only=args.software_only
+        )
         suffix = ""
         request = None
         if options.retime is not None:

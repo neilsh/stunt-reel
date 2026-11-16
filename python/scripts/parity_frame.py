@@ -3,7 +3,7 @@
 Usage::
 
     mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N]
-        [--no-build] [--var DBG_NAME=v1,v2]
+        [--no-build] [--software-only] [--var DBG_NAME=v1,v2]
 
 One ``stuntreel --at-ticks`` process renders every tick (process startup is almost all of a
 single frame's cost), into the render store ``build/scratch/frame/<film>/store``. For each tick
@@ -128,6 +128,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--scale", type=int, default=1)
     parser.add_argument("--no-build", action="store_true", help="reuse the release binary")
     parser.add_argument(
+        "--software-only",
+        action="store_true",
+        help="render on the software adapter (lavapipe, WARP), even when a GPU is available",
+    )
+    parser.add_argument(
         "--var", default=None, help="DBG_NAME=v1,v2: one panel per value after the capture"
     )
     return parser.parse_args(argv)
@@ -171,7 +176,9 @@ def _draw(
     out = REPO_ROOT / FRAME_DIR / args.film
     clear_previous(out, args.film)
     for _, env, variant_dir in variants:
-        parity_pipeline.render_film(job, variant_dir, render_env(env), ticks=ticks)
+        parity_pipeline.render_film(
+            job, variant_dir, render_env(env), ticks=ticks, software_only=args.software_only
+        )
     store_dir = variants[0][2]
     stores = [variant_dir for _, _, variant_dir in variants]
 

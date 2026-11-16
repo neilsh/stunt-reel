@@ -142,7 +142,8 @@ pub struct RenderOptions {
     /// Restrict adapter acquisition to the software fallback adapter.
     ///
     /// The normal policy already falls back to a software adapter when no other is available;
-    /// setting this only forces that attempt, for tests that must exercise the software path.
+    /// setting this only forces that attempt, which `stuntreel --software-only` and the GPU
+    /// tests' software path both ask for.
     pub software_only: bool,
 }
 
