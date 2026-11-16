@@ -426,12 +426,19 @@ fn zero_brightness_frame_renders_black_including_the_clear_colour() {
 
 /// A 1 km square on the ground plane at palette index `index`, wound both ways so no
 /// face is culled.
+fn ground_square(index: u8) -> SodModelIr {
+    ground_gradient(500.0, index, index)
+}
+
+/// A square of half-side `half` on the ground plane, wound both ways so no face is culled,
+/// whose palette index runs from `west` at its -X edge to `east` at its +X edge (a Gouraud
+/// polygon when they differ).
 #[expect(
     clippy::indexing_slicing,
     reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
 )]
-fn ground_square(index: u8) -> SodModelIr {
-    let vertex = |x: f32, z: f32| SodVertex {
+fn ground_gradient(half: f32, west: u8, east: u8) -> SodModelIr {
+    let vertex = |x: f32, z: f32, index: u8| SodVertex {
         position: [x, 0.0, z],
         normal: [0.0, 1.0, 0.0],
         palette_index: index,
@@ -441,10 +448,10 @@ fn ground_square(index: u8) -> SodModelIr {
     };
     let mut ir = SodModelIr::new("GROUND");
     ir.vertices = vec![
-        vertex(-500.0, -500.0),
-        vertex(500.0, -500.0),
-        vertex(500.0, 500.0),
-        vertex(-500.0, 500.0),
+        vertex(-half, -half, west),
+        vertex(half, -half, east),
+        vertex(half, half, east),
+        vertex(-half, half, west),
     ];
     ir.indices = vec![0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2];
     ir.allocate_node(
@@ -464,54 +471,65 @@ fn ground_square(index: u8) -> SodModelIr {
     ir
 }
 
+/// A still film whose eye stands 3 m over `ground`, looking down 20 m ahead along -Z.
+fn low_eye_scene(ground: SodModelIr) -> FilmScene {
+    let record = TrajectoryRecord {
+        tick: 0,
+        camera: CameraTransform {
+            eye: [0.0, 3.0, 0.0],
+            target: [0.0, 0.0, -20.0],
+            fov_degrees: 45.0,
+            roll_radians: 0.0,
+            cut_from_previous: false,
+            ..Default::default()
+        },
+        actors: vec![actor_at(0.0, 0)],
+        audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
+    };
+    let timeline = FilmTimeline::new(
+        vec![SliceKeyframe {
+            record,
+            tick: 0,
+            tick_duration: 1,
+        }],
+        Vec::new(),
+    );
+    FilmScene::new(timeline, HashMap::from([(SHAPE_ID, ground)]), None)
+}
+
+/// The palette index of every pixel `scene`'s ground covers on the software adapter, or
+/// `None` when there is none.
+fn ground_indices_on_software(scene: &FilmScene) -> Option<Vec<u8>> {
+    let mut test = common::gpu_or_skip_software(scene)?;
+    let page = test.draw(&scene.frame(0.0));
+    let ground: Vec<u8> = page
+        .layers()
+        .iter()
+        .zip(page.indices())
+        .filter(|&(&layer, _)| layer == LAYER_FIRST_ACTOR)
+        .map(|(_, &index)| index)
+        .collect();
+    assert!(
+        ground.len() > 10_000,
+        "ground covers {} pixels",
+        ground.len()
+    );
+    Some(ground)
+}
+
 /// A ground polygon that reaches behind a low eye and past the side planes keeps its own
 /// index on every pixel. Mesa's software clipper (lavapipe, CI's adapter) can interpolate
 /// the `linear` shade varying of such a polygon to NaN, which used to draw index 0
-/// (`research/parity/method.md` section 3).
+/// (`research/parity/lavapipe.md` section 1).
 #[test]
 fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
     common::gpu_test(|| {
         const GROUND_INDEX: u8 = 40;
-        let record = TrajectoryRecord {
-            tick: 0,
-            camera: CameraTransform {
-                eye: [0.0, 3.0, 0.0],
-                target: [0.0, 0.0, -20.0],
-                fov_degrees: 45.0,
-                roll_radians: 0.0,
-                cut_from_previous: false,
-                ..Default::default()
-            },
-            actors: vec![actor_at(0.0, 0)],
-            audio_cues: Vec::new(),
-            palette: PaletteControls::default(),
-        };
-        let timeline = FilmTimeline::new(
-            vec![SliceKeyframe {
-                record,
-                tick: 0,
-                tick_duration: 1,
-            }],
-            Vec::new(),
-        );
-        let shapes = HashMap::from([(SHAPE_ID, ground_square(GROUND_INDEX))]);
-        let scene = FilmScene::new(timeline, shapes, None);
-        let Some(mut test) = common::gpu_or_skip_software(&scene) else {
+        let scene = low_eye_scene(ground_square(GROUND_INDEX));
+        let Some(ground) = ground_indices_on_software(&scene) else {
             return;
         };
-        let page = test.draw(&scene.frame(0.0));
-        let ground: Vec<u8> = page
-            .layers()
-            .iter()
-            .zip(page.indices())
-            .filter(|&(&layer, _)| layer == LAYER_FIRST_ACTOR)
-            .map(|(_, &index)| index)
-            .collect();
-        assert!(
-            ground.len() > 10_000,
-            "ground covers {} pixels",
-            ground.len()
-        );
         let wrong = ground
             .iter()
             .filter(|&&index| index != GROUND_INDEX)
@@ -522,6 +540,27 @@ fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
             "{wrong} of {} ground pixels lost their index",
             ground.len()
         );
+    });
+}
+
+/// A Gouraud ground polygon in the same place keeps its gradient: where the clipper makes
+/// the `linear` shade NaN, the perspective copy still varies across the polygon, so it is
+/// not drawn flat at its provoking vertex's index (`research/parity/lavapipe.md` section 3).
+/// Only the gradient's survival is checked: WARP, the software adapter where lavapipe is not
+/// installed, draws most of this polygon outside `WEST..=EAST`.
+#[test]
+fn a_gouraud_ground_polygon_under_a_low_eye_keeps_its_gradient() {
+    common::gpu_test(|| {
+        const WEST: u8 = 40;
+        const EAST: u8 = 100;
+        let scene = low_eye_scene(ground_gradient(60.0, WEST, EAST));
+        let Some(ground) = ground_indices_on_software(&scene) else {
+            return;
+        };
+        let mut distinct = ground;
+        distinct.sort_unstable();
+        distinct.dedup();
+        assert!(distinct.len() >= 5, "the ground draws only {distinct:?}");
     });
 }
 

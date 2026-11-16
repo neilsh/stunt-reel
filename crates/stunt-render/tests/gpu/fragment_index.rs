@@ -3,8 +3,9 @@
 use crate::common;
 use wgpu::util::DeviceExt as _;
 
-/// Runs the actual WGSL function; storage inputs prevent constant folding of NaNs.
-fn check_indices(cases: &[(u32, u32, u32)]) {
+/// Runs the actual WGSL function on `(shade bits, perspective shade bits, fallback index,
+/// expected index)` cases; storage inputs prevent constant folding of NaNs.
+fn check_indices(cases: &[(u32, u32, u32, u32)]) {
     common::assert_in_gpu_test();
     // No GL: dropping a GL instance ends its WGL thread later, outside the GPU test lock, and
     // that thread's exit deadlocks NVIDIA's driver against the next test (see `common`).
@@ -26,14 +27,15 @@ fn check_indices(cases: &[(u32, u32, u32)]) {
         "{}\n{}",
         include_str!("../../src/shaders/mode13h.wgsl"),
         "
-@group(3) @binding(0) var<storage, read> inputs: array<vec2<u32>>;
+@group(3) @binding(0) var<storage, read> inputs: array<vec4<u32>>;
 @group(3) @binding(1) var<storage, read_write> results: array<u32>;
 
 @compute @workgroup_size(1)
 fn test_fragment_index(@builtin(global_invocation_id) id: vec3<u32>) {
     var vertex: VertexOutput;
     vertex.shade = bitcast<f32>(inputs[id.x].x);
-    vertex.palette_index = inputs[id.x].y;
+    vertex.shade_perspective = bitcast<f32>(inputs[id.x].y);
+    vertex.palette_index = inputs[id.x].z;
     results[id.x] = fragment_index(vertex);
 }
 "
@@ -50,12 +52,12 @@ fn test_fragment_index(@builtin(global_invocation_id) id: vec3<u32>) {
         compilation_options: Default::default(),
         cache: None,
     });
-    let inputs: Vec<[u32; 2]> = cases
+    let inputs: Vec<[u32; 4]> = cases
         .iter()
-        .map(|&(bits, index, _)| [bits, index])
+        .map(|&(bits, perspective, index, _)| [bits, perspective, index, 0])
         .collect();
     let input = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("shade bits and fallback indices"),
+        label: Some("shade bits, perspective shade bits and fallback indices"),
         contents: bytemuck::cast_slice(&inputs),
         usage: wgpu::BufferUsages::STORAGE,
     });
@@ -115,33 +117,57 @@ fn test_fragment_index(@builtin(global_invocation_id) id: vec3<u32>) {
     let mapped = readback.slice(..).get_mapped_range().unwrap();
     let actual: &[u32] = bytemuck::cast_slice(&mapped);
     assert_eq!(actual.len(), cases.len(), "one result per case");
-    for (&(bits, fallback, expected), &actual) in cases.iter().zip(actual) {
+    for (&(bits, perspective, fallback, expected), &actual) in cases.iter().zip(actual) {
         assert_eq!(
             actual, expected,
-            "shade bits {bits:#010x}, fallback {fallback}"
+            "shade bits {bits:#010x}, perspective bits {perspective:#010x}, fallback {fallback}"
         );
     }
     drop(mapped);
     readback.unmap();
 }
 
+/// Both infinities, quiet/signaling NaNs, both signs, and distinct NaN payloads.
+const NON_FINITE: [u32; 8] = [
+    0x7f80_0000,
+    0xff80_0000,
+    0x7fc0_0000,
+    0xffc0_0000,
+    0x7f80_0001,
+    0xff80_0001,
+    0x7fff_ffff,
+    0xffff_ffff,
+];
+
 #[test]
 fn fragment_index_non_finite_shades_use_the_flat_palette_index() {
     common::gpu_test(|| {
         let mut cases = Vec::new();
-        // Both infinities, quiet/signaling NaNs, both signs, and distinct NaN payloads.
-        for bits in [
-            0x7f80_0000,
-            0xff80_0000,
-            0x7fc0_0000,
-            0xffc0_0000,
-            0x7f80_0001,
-            0xff80_0001,
-            0x7fff_ffff,
-            0xffff_ffff,
-        ] {
-            for index in [0, 1, 40, 255] {
-                cases.push((bits, index, index));
+        for bits in NON_FINITE {
+            for perspective in [bits, 0x7fc0_0000] {
+                for index in [0, 1, 40, 255] {
+                    cases.push((bits, perspective, index, index));
+                }
+            }
+        }
+        check_indices(&cases);
+    });
+}
+
+#[test]
+fn fragment_index_non_finite_shades_round_a_finite_perspective_shade() {
+    common::gpu_test(|| {
+        let mut cases = Vec::new();
+        for bits in NON_FINITE {
+            for (perspective, expected) in [
+                (-1.0f32, 0),
+                (39.49, 39),
+                (39.5, 40),
+                (169.0, 169),
+                (254.5, 255),
+                (256.0, 255),
+            ] {
+                cases.push((bits, perspective.to_bits(), 123, expected));
             }
         }
         check_indices(&cases);
@@ -171,7 +197,7 @@ fn fragment_index_finite_shades_round_and_clamp_without_using_the_fallback() {
             (f32::MAX, 255),
         ]
         .into_iter()
-        .map(|(shade, expected)| (shade.to_bits(), 123, expected))
+        .map(|(shade, expected)| (shade.to_bits(), f32::NAN.to_bits(), 123, expected))
         .collect();
         check_indices(&cases);
     });
