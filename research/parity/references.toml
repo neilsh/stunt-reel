@@ -197,7 +197,7 @@ all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
 
 # #510: the view slot casts its own shadow. Slot 0 (flags 0x1F, shape 0x415C, 0.15 m up) is the
-# view slot at ticks 400-444 and 595-758, and PLAYONE queues and draws its shadow (the #510
+# view slot at stream ticks 400-444 and 595-758 (captured frames 409-452 and 606-761), and PLAYONE queues and draws its shadow (the #510
 # journal, work/2026-11/510_view-slot-shadow/). `background` by the research/parity/probes.md
 # rule (52 % of capture pixels).
 [brett]
@@ -215,3 +215,11 @@ crates = "7aeabce0970a80a501169f1d88bff8814d8694be"
 sha256 = "97136a978bdcd82aec1d9b3cc032b8eaefdbf8d1a39ea0dd87191c7b5186dc90"
 all_sha256 = "4aba3a75a2b4e8bb1b4c7b348a4c940988d059cfc76f3b57d4147690fccfae29"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
+
+[brett.expected.lavapipe]
+ssim = 0.8478901
+iou = 0.9865924
+crates = "7aeabce0970a80a501169f1d88bff8814d8694be"
+sha256 = "97136a978bdcd82aec1d9b3cc032b8eaefdbf8d1a39ea0dd87191c7b5186dc90"
+all_sha256 = "4aba3a75a2b4e8bb1b4c7b348a4c940988d059cfc76f3b57d4147690fccfae29"
+adapter = "llvmpipe (LLVM 21.1.7, 256 bits)"

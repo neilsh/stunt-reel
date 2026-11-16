@@ -6,7 +6,8 @@
 # entry that survived (its word +4 is the slot record). A hit whose SI equals the captured [0x22DE]
 # is the view slot's. The #510 runs armed it at tick 600 on Films/OldPLAY/Vault/BRETT.FLM
 # (--film corpus/siarchive/Films/OldPLAY/Vault/BRETT.FLM), at 800 on OldPLAY/Vault/TERMIN.FLM
-# and at 1800 on NewPLAY/Vault/NEWFX.FLM; change `arm` and `stop_tick` for another stretch.
+# and at 1800 on NewPLAY/Vault/NEWFX.FLM; the #499 item 3 run on BRETT.FLM armed the 0x1A03 and
+# 0x1A12 breaks at tick 1 with stop_tick 1430. Change `arm` and `stop_tick` for another stretch.
 [run]
 stop_tick = 800
 
