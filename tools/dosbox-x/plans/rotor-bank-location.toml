@@ -1,0 +1,14 @@
+# #504: whether LOCATION.FLM's helicopter rotor (shape 0x3E57: ROTY on bank 0x14, then BVGT on
+# bank 0x12 >= 0x0FA0 choosing the fast arm) is drawn as spinning blades or the fast arm at the
+# ticks where the capture shows the black blade (837, 881) and where it does not (826, 848).
+# 0x1DD4 is the bank writer's ret; ES is the work segment there (angle-bank.md).
+[run]
+stop_tick = 900
+
+[[probe]]
+name = "bank-820"
+kind = "break"
+at = 0x1DD4
+arm = { tick = 820 }
+hits = 40
+capture = ["mem:ES:0x811E:12", "mem:DS:0x4888:0x20", "mem:DS:0x22BC:2"]

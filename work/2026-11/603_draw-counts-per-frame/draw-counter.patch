@@ -1,0 +1,127 @@
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index f15e4545..cb579f06 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -303,0 +304,50 @@ impl GpuModel {
++/// Merges runs of adjacent base slices that one chunk's buffers continue, so the base pass
++/// issues one `draw_indexed` for the run instead of one per slice; its triangles stay in the
++/// same order, so a depth tie resolves as before.
++///
++/// A slice joins the run behind it when it shares that run's chunk and base vertex, its first
++/// index follows the run's last, and its outline continues the run's when both draw one
++/// ([ADR 0046](../../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)).
++/// Ground and decal slices are never merged: each fills, then outlines, before the next one
++/// draws, so a later slice covers an earlier one's outline (`[I5]`).
++pub(crate) fn coalesce_base_meshes(slices: Vec<GpuMeshSlice>) -> Vec<GpuMeshSlice> {
++    let mut out: Vec<GpuMeshSlice> = Vec::with_capacity(slices.len());
++    for slice in slices {
++        match out.last_mut() {
++            Some(last) if continues(*last, slice) => *last = joined(*last, slice),
++            _ => out.push(slice),
++        }
++    }
++    out
++}
++
++/// Whether `next` can join the run ending at `last`.
++fn continues(last: GpuMeshSlice, next: GpuMeshSlice) -> bool {
++    !last.is_decal
++        && !next.is_decal
++        && last.chunk == next.chunk
++        && last.vertex_offset == next.vertex_offset
++        && last.index_offset + last.index_count == next.index_offset
++        && (last.edge_count == 0
++            || next.edge_count == 0
++            || last.edge_offset + last.edge_count == next.edge_offset)
++}
++
++/// The run of `last` with `next` appended: both index ranges, and the outlines they draw.
++fn joined(last: GpuMeshSlice, next: GpuMeshSlice) -> GpuMeshSlice {
++    let (edge_offset, edge_count) = match (last.edge_count, next.edge_count) {
++        (0, _) => (next.edge_offset, next.edge_count),
++        (_, 0) => (last.edge_offset, last.edge_count),
++        _ => (last.edge_offset, last.edge_count + next.edge_count),
++    };
++    GpuMeshSlice {
++        chunk: last.chunk,
++        vertex_offset: last.vertex_offset,
++        index_offset: last.index_offset,
++        index_count: last.index_count + next.index_count,
++        is_decal: false,
++        edge_offset,
++        edge_count,
++    }
++}
++
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 458f81e3..66df1b28 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -35 +35 @@ use crate::camera::{CameraController, CameraGpuResources};
+-use crate::mesh::{GpuMeshSlice, GpuModel};
++use crate::mesh::{GpuMeshSlice, GpuModel, coalesce_base_meshes};
+@@ -488,0 +489,64 @@ impl SceneRenderer {
++        // TEMP #603 draw counter (uncommitted): one line per frame to stderr.
++        {
++            let edges = |slices: &[GpuMeshSlice]| slices.iter().filter(|m| m.edge_count > 0).count();
++            let (mut ground_fill, mut ground_edge) = (0, 0);
++            let (mut base_fill, mut base_edge) = (0, 0);
++            let (mut decal_fill, mut decal_edge) = (0, 0);
++            let (mut prop_fill, mut merged_fill, mut merged_edge) = (0, 0, 0);
++            let (mut world_chunks, mut world_vertices, mut world_indices) = (0, 0, 0);
++            let (mut base_offsets, mut contiguous_ne, mut ascending) = (0, 0, 0);
++            for draw in &self.prepared {
++                match draw.target {
++                    Target::World => {
++                        ground_fill += draw.ground.len();
++                        ground_edge += edges(&draw.ground);
++                        base_fill += draw.base.len();
++                        base_edge += edges(&draw.base);
++                        decal_fill += draw.decals.len();
++                        decal_edge += edges(&draw.decals);
++                        if let Some(world) = &self.world {
++                            world_chunks = world.chunks.len();
++                            world_vertices = world.vertex_count;
++                            world_indices = world.index_count;
++                        }
++                        let mut offsets: Vec<i32> =
++                            draw.base.iter().map(|m| m.vertex_offset).collect();
++                        offsets.sort_unstable();
++                        offsets.dedup();
++                        base_offsets = offsets.len();
++                        for pair in draw.base.windows(2) {
++                            if pair[0].index_offset + pair[0].index_count == pair[1].index_offset {
++                                ascending += 1;
++                                if pair[0].chunk != pair[1].chunk
++                                    || pair[0].vertex_offset != pair[1].vertex_offset
++                                {
++                                    contiguous_ne += 1;
++                                }
++                            }
++                        }
++                    }
++                    Target::Shape { .. } | Target::Image { .. } => {
++                        prop_fill += draw.base.len() + draw.decals.len();
++                    }
++                }
++                let merged = coalesce_base_meshes(draw.base.clone());
++                merged_fill += draw.base.len() - merged.len();
++                merged_edge += edges(&draw.base) - edges(&merged);
++            }
++            let line = format!(
++                "DRAWFRAME ground_fill={ground_fill} ground_edge={ground_edge} world_base_fill={base_fill} world_base_edge={base_edge} world_decal_fill={decal_fill} world_decal_edge={decal_edge} prop_fill={prop_fill} merged_fill={merged_fill} merged_edge={merged_edge} world_chunks={world_chunks} world_vertices={world_vertices} world_indices={world_indices} base_offsets={base_offsets} contiguous_ne={contiguous_ne} ascending={ascending}"
++            );
++            match std::env::var("DBG_DRAWCOUNT_FILE") {
++                Ok(path) => {
++                    use std::io::Write as _;
++                    if let Ok(mut file) = std::fs::OpenOptions::new()
++                        .create(true)
++                        .append(true)
++                        .open(path)
++                    {
++                        writeln!(file, "{line}").expect("write the draw count");
++                    }
++                }
++                Err(_) => eprintln!("{line}"),
++            }
++        }
