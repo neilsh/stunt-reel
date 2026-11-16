@@ -36,6 +36,10 @@ pub(crate) struct ModelUniform {
 }
 
 impl ModelUniform {
+    /// The size of one uniform, which every `@group(2)` binding shows.
+    pub(crate) const BINDING_SIZE: Option<wgpu::BufferSize> =
+        wgpu::BufferSize::new(size_of::<Self>() as u64);
+
     /// A uniform drawing with `model_matrix` into `layer`.
     #[must_use]
     pub(crate) fn new(model_matrix: [f32; 16], layer: u32) -> Self {
@@ -135,7 +139,9 @@ impl RenderPipelines {
         }
     }
 
-    /// Creates the bind group layout for per-model uniform buffer (`@group(2)`).
+    /// Creates the bind group layout for the per-model uniform (`@group(2)`): one
+    /// [`ModelUniform`] at a dynamic offset, so every bind passes one offset (`&[0]` for a
+    /// buffer that holds a single uniform).
     pub(crate) fn create_model_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("stunt_model_uniform_layout"),
@@ -144,8 +150,8 @@ impl RenderPipelines {
                 visibility: wgpu::ShaderStages::VERTEX,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+                    has_dynamic_offset: true,
+                    min_binding_size: ModelUniform::BINDING_SIZE,
                 },
                 count: None,
             }],

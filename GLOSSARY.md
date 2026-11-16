@@ -73,6 +73,10 @@ _Avoid_: universal archive, full archive, SUPERSET (the file, for the concept)
 A 3D `.SOD` model chunk in an archive, identified by `shape_id`. One shape may be bound to several slots.
 _Avoid_: sprite, object
 
+**Mesh slice**:
+A contiguous run of one shape's or the world's polygons that the renderer draws and orders as one unit.
+_Avoid_: slice (alone; a **Slice** is a timeline record), draw range
+
 **Animation image resource**:
 A numbered `.ALL` image resource referenced by an `OP_ANIMATE` table and drawn at a projected screen position. It is distinct from a 3D shape.
 _Avoid_: shape, joint
