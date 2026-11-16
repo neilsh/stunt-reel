@@ -45,7 +45,7 @@ IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".gif", ".svg"})
 _SEGMENT = re.compile(r"[A-Za-z0-9-]+")
 _MARKUP_LINK = re.compile(r"\[([^\]\n]*)\]\([^)\n]*\)")
 _SIDEBAR_LABELS = {"INDEX": "Index", "README": "About this folder"}
-_ADR_STEM = re.compile(r"\d{4}-")
+_ADR_STEM = re.compile(r"(\d{4})-")
 _MATH_FENCE = "$$"
 
 
@@ -186,7 +186,7 @@ def page_text(
         else:
             raise ValueError(f"{source}: no title: in the front matter and no '# ' heading")
     out = {"title": title if title is not None else str(found)}
-    own = _plain(str(found))
+    plain_title = _plain(str(found))
     order = fields.get("order")
     if order is not None and (not isinstance(order, int) or isinstance(order, bool)):
         raise ValueError(f"{source}: order: must be an integer, not {order!r}")
@@ -196,7 +196,8 @@ def page_text(
     out["editUrl"] = f"{REPO_URL}/blob/main/{source}"
     stem = posixpath.splitext(posixpath.basename(source))[0]
     head = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in out.items()]
-    label = _SIDEBAR_LABELS.get(stem) or (f"{stem[:4]} {own}" if _ADR_STEM.match(stem) else own)
+    adr = _ADR_STEM.match(stem)
+    label = _SIDEBAR_LABELS.get(stem) or (f"{adr[1]} {plain_title}" if adr else plain_title)
     sidebar = f"sidebar:\n  label: {json.dumps(label, ensure_ascii=False)}"
     if order is not None:
         sidebar += f"\n  order: {order}"
@@ -302,6 +303,8 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
     for section in sections:
         path = root / section.source
         if path.is_dir():
+            if section.title is not None:
+                raise ValueError(f"{section.source}: title is for a file section, not a folder")
             dirs.append(section.source)
             for note in sorted(path.rglob("*.md"), key=lambda n: n.as_posix()):
                 rel = note.relative_to(root).as_posix()
@@ -326,7 +329,7 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
     for stale in (docs, media, generated):
         shutil.rmtree(stale, ignore_errors=True)
     images: set[str] = set()
-    titles = {section.source: section.title for section in sections}
+    titles = {section.source: section.title for section in sections if section.title}
     for source, dest in pages.items():
         try:
             text = (root / source).read_text(encoding="utf-8")

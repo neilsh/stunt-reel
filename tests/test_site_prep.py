@@ -206,6 +206,15 @@ def test_prepare_keeps_a_file_sections_own_title(repo: Path) -> None:
     assert spec.startswith('---\ntitle: "SPEC: Stunt Reel, a long title"\n')
 
 
+def test_prepare_refuses_a_title_on_a_folder_section(repo: Path) -> None:
+    published = PUBLISHED.replace(
+        'label = "Research notes"', 'label = "Research notes"\ntitle = "R"'
+    )
+    _write(repo / "site/published.toml", published)
+    with pytest.raises(ValueError, match=r"research: title is for a file section"):
+        prepare(repo, repo / "site")
+
+
 def test_load_sections_rejects_a_non_string_group() -> None:
     text = '[[section]]\nsource = "a"\ndest = "a"\nlabel = "A"\ngroup = 1\n'
     with pytest.raises(ValueError, match="section 1"):

@@ -157,9 +157,8 @@ def test_page_text_sidebar_labels(site: Site) -> None:
 
 def test_page_text_label_ignores_a_given_title(site: Site) -> None:
     fields, _ = _fields(page_text("# Stunt Reel\n", "GLOSSARY.md", site, set(), title="Glossary"))
-    assert (
-        fields["sidebar.label"] == "Stunt Reel"
-    )  # a file section's label comes from published.toml
+    # A file section's sidebar label comes from published.toml, not from page_text.
+    assert fields["sidebar.label"] == "Stunt Reel"
 
 
 def test_page_text_passes_order_through(site: Site) -> None:
