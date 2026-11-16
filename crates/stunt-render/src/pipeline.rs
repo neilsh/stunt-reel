@@ -27,7 +27,8 @@ pub(crate) const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uin
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ModelUniform {
-    /// 4x4 column-major affine model-to-world transform matrix.
+    /// 4x4 column-major model-to-eye-relative matrix: the model's world matrix with the eye's
+    /// translation taken off (`camera::eye_relative_matrix`).
     pub(crate) model_matrix: [f32; 16],
     /// Base layer id (first word) written to the plane target, added to the vertex's scenery
     /// class (zero except for world vertices); the second word is nonzero for a shadow draw,

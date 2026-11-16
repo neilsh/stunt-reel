@@ -5,7 +5,7 @@
 //! - `[I6]` VGA 4:3 physical aspect ratio ($320 \times 240$ base), applied after a
 //!   square-pixel projection on the $320 \times 200$ raster.
 
-use glam::{Mat4, Vec3, camera::rh};
+use glam::{DMat4, DVec3, Mat4, Vec3, camera::rh};
 use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use stunt_core::scene::ViewCamera;
 
@@ -33,18 +33,17 @@ pub const DEFAULT_FAR_CLIP: f32 = 25_000.0;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
-    /// Combined 4x4 view-projection matrix in column-major order.
-    pub view_proj: [f32; 16],
-    /// Camera world position in metric meters.
-    pub camera_pos: [f32; 3],
-    /// Alignment padding to maintain 16-byte boundary.
-    pub _pad0: f32,
+    /// The view's rotation, then the projection, column-major: eye-relative space to clip
+    /// space. It carries no translation; each draw's matrix arrives eye-relative
+    /// ([`eye_relative_matrix`]).
+    pub rotation_proj: [f32; 16],
     /// Normalized world direction vector towards the primary sun light source.
     pub sun_direction: [f32; 3],
     /// Ambient floor light intensity [0.0..1.0].
     pub ambient_intensity: f32,
-    /// Inverse of `view_proj`, used by the sky pass to turn a pixel into a world ray.
-    pub inv_view_proj: [f32; 16],
+    /// Inverse of `rotation_proj`, used by the sky pass to turn a pixel into a view ray from
+    /// the eye.
+    pub inv_rotation_proj: [f32; 16],
     /// Half a Mode 13h pixel of the view in NDC, `[x, y]`: the offset that widens a line
     /// vertex (`SodVertex::flags` bit 3) to a one-pixel line.
     pub line_half_ndc: [f32; 2],
@@ -63,16 +62,29 @@ fn line_half_ndc(y_scale: f32) -> [f32; 2] {
 impl Default for CameraUniform {
     fn default() -> Self {
         Self {
-            view_proj: Mat4::IDENTITY.to_cols_array(),
-            camera_pos: [0.0, 10.0, 50.0],
-            _pad0: 0.0,
+            rotation_proj: Mat4::IDENTITY.to_cols_array(),
             sun_direction: [0.3, 0.9, 0.3], // Sun shining from above and slightly to side
             ambient_intensity: 0.25,
-            inv_view_proj: Mat4::IDENTITY.to_cols_array(),
+            inv_rotation_proj: Mat4::IDENTITY.to_cols_array(),
             line_half_ndc: line_half_ndc(1.0),
             _pad1: [0.0; 2],
         }
     }
+}
+
+/// `model` moved to eye-relative space: `translate(-eye) * model`, computed in `f64` and
+/// rounded once to `f32`.
+///
+/// The camera uniform's `rotation_proj` then takes the result to clip space. The only
+/// world-scale arithmetic left on the GPU is a world vertex's `position - eye`, whose identity
+/// matrix rounds it once in any evaluation order; every other step works on values on the
+/// scale of the vertex's distance from the eye (`research/parity/lavapipe.md` section 5).
+#[must_use]
+pub fn eye_relative_matrix(eye: Vec3, model: &[f32; 16]) -> [f32; 16] {
+    let model = DMat4::from_cols_array(&model.map(f64::from));
+    (DMat4::from_translation(-DVec3::from(eye)) * model)
+        .as_mat4()
+        .to_cols_array()
 }
 
 /// Operational mode of the presentation camera.
@@ -303,22 +315,32 @@ impl CameraController {
         }
     }
 
+    /// The view matrix without its translation: eye-relative space to view space.
+    #[must_use]
+    pub fn compute_view_rotation(&self) -> Mat4 {
+        let mut view = self.compute_view_matrix();
+        view.w_axis = glam::Vec4::W;
+        view
+    }
+
+    /// World space to clip space, `proj * view`, for CPU-side tests of world points; the GPU
+    /// takes eye-relative points through [`CameraUniform::rotation_proj`] instead.
+    #[must_use]
+    pub fn world_view_proj(&self) -> Mat4 {
+        self.compute_proj_matrix() * self.compute_view_matrix()
+    }
+
     /// Builds the `CameraUniform` data ready for GPU buffer upload.
     #[must_use]
     pub fn build_uniform(&self) -> CameraUniform {
-        let view = self.compute_view_matrix();
-        let proj = self.compute_proj_matrix();
-        let view_proj = proj * view;
-        let eye = self.eye_position();
+        let rotation_proj = self.compute_proj_matrix() * self.compute_view_rotation();
         let sun = self.sun_direction.normalize();
 
         CameraUniform {
-            view_proj: view_proj.to_cols_array(),
-            camera_pos: [eye.x, eye.y, eye.z],
-            _pad0: 0.0,
+            rotation_proj: rotation_proj.to_cols_array(),
             sun_direction: [sun.x, sun.y, sun.z],
             ambient_intensity: self.ambient_intensity,
-            inv_view_proj: view_proj.inverse().to_cols_array(),
+            inv_rotation_proj: rotation_proj.inverse().to_cols_array(),
             line_half_ndc: line_half_ndc(self.projection_y_scale),
             _pad1: [0.0; 2],
         }
@@ -429,9 +451,90 @@ mod tests {
         }
     }
 
+    /// An authored camera over the far corner of a large world, where the eye's coordinates
+    /// are in the thousands of metres.
+    fn far_camera() -> CameraController {
+        let mut camera = CameraController::default();
+        camera.set_authored_transform(ViewCamera {
+            eye: [3200.25, 12.5, -4100.75],
+            target: [3260.0, 2.0, -4180.0],
+            fov_degrees: PLAYONE_FOV_Y_DEGREES,
+            roll_radians: 0.1,
+        });
+        camera
+    }
+
+    #[test]
+    fn eye_relative_matrix_takes_the_eye_off_the_translation_only() {
+        let model = (Mat4::from_translation(Vec3::new(3210.5, 0.0, -4090.125))
+            * Mat4::from_rotation_y(0.7))
+        .to_cols_array();
+        let eye = Vec3::new(3200.25, 12.5, -4100.75);
+        let relative = Mat4::from_cols_array(&eye_relative_matrix(eye, &model));
+        let model = Mat4::from_cols_array(&model);
+        assert_eq!(relative.x_axis, model.x_axis);
+        assert_eq!(relative.y_axis, model.y_axis);
+        assert_eq!(relative.z_axis, model.z_axis);
+        assert_eq!(relative.w_axis, glam::Vec4::new(10.25, -12.5, 10.625, 1.0));
+    }
+
+    #[test]
+    fn rotation_proj_after_eye_relative_matches_view_proj_after_model() {
+        let camera = far_camera();
+        let rotation_proj =
+            DMat4::from_cols_array(&camera.build_uniform().rotation_proj.map(f64::from));
+        let world_view_proj = camera.world_view_proj().as_dmat4();
+        let model = (Mat4::from_translation(Vec3::new(3230.0, 4.0, -4150.0))
+            * Mat4::from_rotation_y(-1.2))
+        .to_cols_array();
+        let relative = DMat4::from_cols_array(
+            &eye_relative_matrix(camera.eye_position(), &model).map(f64::from),
+        );
+        let model = DMat4::from_cols_array(&model.map(f64::from));
+        for local in [
+            DVec3::ZERO,
+            DVec3::new(5.0, 2.0, -3.0),
+            DVec3::new(-8.0, 0.5, 6.0),
+        ] {
+            let point = local.extend(1.0);
+            let expected = world_view_proj * model * point;
+            let actual = rotation_proj * relative * point;
+            let error = (actual - expected).abs().max_element();
+            assert!(
+                error < 1e-4 * expected.w.abs(),
+                "{local}: {actual} vs {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn sky_ray_direction_is_unchanged_by_dropping_the_translation() {
+        let camera = far_camera();
+        let inverse = Mat4::from_cols_array(&camera.build_uniform().inv_rotation_proj);
+        let world_inverse = camera.world_view_proj().as_dmat4().inverse();
+        let eye = camera.eye_position().as_dvec3();
+        for ndc in [
+            [0.0, 0.0],
+            [-1.0, -1.0],
+            [3.0, -1.0],
+            [-1.0, 3.0],
+            [0.4, -0.7],
+        ] {
+            let far = inverse * glam::Vec4::new(ndc[0], ndc[1], 1.0, 1.0);
+            let ray = (far.truncate() / far.w).as_dvec3().normalize();
+            let world_far =
+                world_inverse * glam::DVec4::new(ndc[0].into(), ndc[1].into(), 1.0, 1.0);
+            let expected = (world_far.truncate() / world_far.w - eye).normalize();
+            assert!(
+                (ray - expected).length() < 1e-5,
+                "{ndc:?}: {ray} vs {expected}"
+            );
+        }
+    }
+
     #[test]
     fn test_camera_uniform_size_and_alignment() {
-        assert_eq!(size_of::<CameraUniform>(), 176);
+        assert_eq!(size_of::<CameraUniform>(), 160);
         assert_eq!(size_of::<CameraUniform>() % 16, 0);
     }
 

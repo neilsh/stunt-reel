@@ -12,6 +12,7 @@
 //! The offscreen render tests moved to `gpu/renderer.rs`, where they cross the Renderer entry
 //! point and assert on `RenderedPage`: the plane is the test seam.
 
+use glam::Vec3;
 use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use stunt_core::scene::ViewCamera;
 use stunt_render::{
@@ -86,8 +87,12 @@ fn test_camera_controller_and_aspect_ratio() {
     assert!((fy_256 - 256.0).abs() < 1e-2, "fy {fy_256}");
     let uniform = cam.build_uniform();
 
-    assert_eq!(uniform.camera_pos, [10.0, 20.0, 30.0]);
-    assert_eq!(uniform.view_proj, (proj * view).to_cols_array());
+    assert_eq!(cam.eye_position(), Vec3::new(10.0, 20.0, 30.0));
+    assert_eq!(cam.world_view_proj(), proj * view);
+    assert_eq!(
+        uniform.rotation_proj,
+        (proj * cam.compute_view_rotation()).to_cols_array()
+    );
 
     // Switch to FreeCam
     cam.toggle_mode();
@@ -98,6 +103,5 @@ fn test_camera_controller_and_aspect_ratio() {
     cam.free_cam.move_up(2.0);
     cam.free_cam.rotate(0.1, -0.05);
 
-    let free_uniform = cam.build_uniform();
-    assert_ne!(free_uniform.camera_pos, [10.0, 20.0, 30.0]);
+    assert_ne!(cam.eye_position(), Vec3::new(10.0, 20.0, 30.0));
 }
