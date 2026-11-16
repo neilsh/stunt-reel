@@ -27,7 +27,8 @@
     | lavapipe, second round, after binary first | 89.89 s | 78.15 s |
     | GPU, second round, after binary first | 16.64 s | 12.56 s |
 
-  - **Byte identity:** all three store files are identical before and after.
+  - **Byte identity:** all three store files are identical before and after on both measured
+    sets.
     - On lavapipe over LOCATION ticks 12-300, both sides hash
       `frames.zst` `ba77c2018d3d509b8b236f702e4f49f3f058a8d0f8c517a277b98b3dba56372f`,
       `layers.zst` `f9efdd2c72a683c0181beda17fd67d969e427d819ccfdc457f6bc17c81c880ae`,
@@ -46,7 +47,7 @@
     that a page is held until the next submission and that three pipelined pages match, in order,
     the pages a synchronous draw gives; the headless test
     `landed_pages_are_written_in_submission_order` pairs two landed pages with their frames.
-- **Verdict**: adopted. The render stores are byte-identical and both adapters render the LOCATION
-  span faster, the GPU by about a quarter and lavapipe by about an eighth.
+- **Verdict**: adopted. The stores measured above are byte-identical and both adapters render the
+  LOCATION span faster, the GPU by about a quarter and lavapipe by about an eighth.
 - **Lives in**: [`research/parity/lavapipe.md`](../../../research/parity/lavapipe.md) section 6
   and open question 5.

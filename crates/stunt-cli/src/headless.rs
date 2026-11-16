@@ -418,7 +418,7 @@ mod tests {
         let mut slot = PageSlot::default();
         let mut pending =
             VecDeque::from([(SampleKey::Tick(7), facts()), (SampleKey::Tick(9), facts())]);
-        // Two frames were submitted before either page landed, as the pipeline's first pair does.
+        // Two queued pages drain in the order they landed, paired with their frames.
         slot.accept(page()).expect("accept");
         slot.accept(page()).expect("accept");
         write_landed_pages(&slot, &mut pending, &mut sink).expect("write");

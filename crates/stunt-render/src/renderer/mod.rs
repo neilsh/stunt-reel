@@ -337,8 +337,9 @@ impl fmt::Debug for Renderer {
 impl Renderer {
     /// Opens an offscreen renderer that reads every page back into the sink.
     ///
-    /// The page size is fixed here; `Renderer::resize` is a no-op. Every `Renderer::draw` calls
-    /// sink.accept exactly once.
+    /// The page size is fixed here; `Renderer::resize` is a no-op. `Renderer::draw` hands the
+    /// sink exactly one page, and each frame queued by `Renderer::submit` hands one back from
+    /// `submit` or `Renderer::finish`.
     ///
     /// # Errors
     /// - [`RenderError::NoGpuAdapter`] if no adapter can be acquired.
@@ -461,9 +462,9 @@ impl Renderer {
 
     /// Submits the frame for offscreen readback without waiting for its page.
     ///
-    /// Two frames may be in flight; a third submission reads the oldest page back to the sink
-    /// first, so pages arrive in submission order. A surface destination presents the frame now,
-    /// as `draw` does.
+    /// A submission queues one frame; once two are queued it reads the oldest page back to the
+    /// sink before returning, so at most one frame stays queued between calls and pages arrive
+    /// in submission order. A surface destination presents the frame now, as `draw` does.
     ///
     /// # Errors
     /// - [`RenderError::Readback`] if a page this submission retires cannot be read back.

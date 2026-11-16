@@ -24,7 +24,9 @@ pub(super) struct OffscreenTarget {
     readbacks: [Readback; FRAMES_IN_FLIGHT],
     /// The readback buffer the next submission fills.
     next_readback: usize,
-    /// Submitted frames whose pages have not reached the sink, oldest first.
+    /// Submitted frames whose pages have not reached the sink, oldest first. The submission
+    /// that fills the last slot drains the oldest before returning, so one slot is always free
+    /// between calls.
     in_flight: VecDeque<InFlight>,
     pub(super) size: PageSize,
     padded_row_bytes: u32,
@@ -120,7 +122,8 @@ impl OffscreenTarget {
     }
 
     /// Clears both targets, runs the draw inside the pass, copies the page into a readback buffer
-    /// and submits it, then retires the oldest page once two frames are in flight.
+    /// and submits it, then retires the oldest page once two frames are in flight, so at most one
+    /// stays queued between calls.
     pub(super) fn submit(
         &mut self,
         device: &wgpu::Device,
@@ -130,10 +133,6 @@ impl OffscreenTarget {
         draw: impl FnOnce(&mut wgpu::RenderPass<'_>),
         overlay: Option<Overlay>,
     ) -> Result<(), RenderError> {
-        // A caller that submits past the pipeline's depth needs the oldest slot back first.
-        if self.in_flight.len() == FRAMES_IN_FLIGHT {
-            self.read_back_oldest(device)?;
-        }
         let readback = self.next_readback;
         self.next_readback = (readback + 1) % FRAMES_IN_FLIGHT;
 

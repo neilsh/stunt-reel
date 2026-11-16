@@ -1,5 +1,5 @@
 ---
-summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further without changing a stored byte."
+summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe."
 ---
 # Parity: Rendering on Lavapipe
 
@@ -67,7 +67,7 @@ The render stores (`frames.zst`, `layers.zst`, `palettes.zst`) are byte-identica
 
 **Two frames in flight (#602).** `[Bounded Observation]`, 2026-11-15, `5844b4b8` before and the
 issue-602 tree after, mesa-dist-win 25.2.8 and the RTX 4070 laptop, LOCATION ticks 12-300, one
-headless process per row at 320×200. The headless loop now submits tick N+1 before it maps tick
+headless process per run at 320×200. The headless loop now submits tick N+1 before it maps tick
 N's readback buffers, and waits only for tick N's own submission; pages still reach the sink in
 tick order. Each binary was timed twice, the second round with the after binary first:
 
@@ -101,7 +101,7 @@ _Source: [Two frames in flight in headless capture](../../work/2026-11/602_headl
 1. Whether the clipper moves the depth of a polygon it breaks (LOCATION 2859, section 5), why another polygon wins at BOMB 1910 and LOCATION 2599, and what moves LAND 227's other 536 pixels ([#595](https://github.com/neilsh/stunt-reel/issues/595)).
 2. Whether to stop Gouraud polygons drawing flat on lavapipe (section 5): recomputing the weight in the shader (for example interpolating `shade` as `perspective` alongside a `linear` copy and using it only when the `linear` one is not finite), each byte-identical on a GPU only if tested so. Not filed upstream either: a report to Mesa would cite `t_nopersp`'s zero divisor (section 2). ([#595](https://github.com/neilsh/stunt-reel/issues/595))
 3. Whether Mesa 26.2.6 scores as 25.2.8 does: it was rendered at six ticks only, with no parity run; and CI's lavapipe has not been compared with these rows.
-4. Which lavapipe functions hold its command-buffer thread, busy in 52 of 65 samples of a 0.28 s LOCATION tick after #596, and whether fewer draws or a readback overlapped with the next tick's work shortens it (section 6, [#600](https://github.com/neilsh/stunt-reel/issues/600)).
+4. Which lavapipe functions hold its command-buffer thread, busy in 52 of 65 samples of a 0.28 s LOCATION tick after #596, and whether fewer draws ([#603](https://github.com/neilsh/stunt-reel/issues/603)) shorten it (section 6, [#600](https://github.com/neilsh/stunt-reel/issues/600)); #602 overlapped the readback with the next tick's work, which section 6 measures.
 5. Whether caching the world's visible mesh slices while the camera holds still is worth it now
    that readback overlaps the next tick (#602, section 6): `GpuModel::collect_world_meshes`
    depends only on the world, the eye, and the authored view's eye, target and lens, and took 8
