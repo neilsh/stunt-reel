@@ -3,7 +3,7 @@ title: "What's in a film"
 order: 1
 ---
 
-A film is a recorded timeline of where every actor and the camera are, step by step. It comes as two files that travel together: a .FLM holding the timeline, beside a .ALL holding the models, sounds and palettes it uses. Stunt Reel plays a film by reading both.
+A film is a recorded timeline of where every actor and the camera are, step by step. It normally comes as two files that travel together: a .FLM holding the timeline, beside a .ALL holding the models, sounds and palettes it uses. Stunt Reel plays a film by reading both.
 
 ## The timeline
 
@@ -11,15 +11,15 @@ A [film](../../GLOSSARY.md#film-playback) does not contain a picture of anything
 
 The film is cut into [slices](../../GLOSSARY.md#film-playback). A slice is one recorded moment: a short list of changes to the scene, plus how much time has passed since the previous slice. Time is counted in [ticks](../../GLOSSARY.md#film-playback), the steps of the original player's fixed playback clock. A slice's place on the clock is the sum of the durations before it, which is why the glossary calls a film's slices placed on that clock its [timeline](../../GLOSSARY.md#film-playback).
 
-A slice can have no time at all. These slices bundle several changes that happen at the same instant, such as a title appearing together with a sound.
+A slice can have no time at all. Such slices often bundle several changes that happen at the same instant, such as a title appearing together with a sound.
 
-mermaid
+```mermaid
 flowchart LR
     A["Slice 0: set the scene"] --> B["Slice: move actors, a little later"]
     B --> C["Slice: more motion"]
     C --> D["Slice: cut to another camera, no time passes"]
     D --> E["End-of-film marker"]
-
+```
 
 ## What a slice can say
 
@@ -32,23 +32,23 @@ Each change in a slice names an actor or a camera by a numbered slot. The film n
 - **Credits**: show or clear a two-line text banner.
 - **Sound**: start a recorded sound, named by an identifier that points into the companion file.
 
-Notice what is missing. The Editing Room offered camera behaviours such as following an actor, but the film has no way to say so. The camera's aim is simply recorded as a direction, like any actor's, and the player reads it from there. The film notes mark this as an inference, not something proven from the original program.
+Notice what is missing. The game's film editor offered camera behaviours such as following an actor, but the film has no way to say so. The camera's aim is simply recorded as a direction, like any actor's, and a player can read the aim from there. The film notes mark this as an inference, not something proven from the original program.
 
 ## The companion file
 
 A .ALL is a bundle. The original linking tool, MAKEONE.EXE, gathers every asset a film refers to and writes them into one file beside the .FLM. The bundle is a numbered directory followed by the items themselves, so any item can be found directly from its number.
 
-The number also says what kind of item it is. The format note divides the range of identifiers into regions: models, small colour ramps, full master palettes, scenery and map data, and digital sounds. That is how a film's sound cue finds its sound: the cue carries a number, and the bundle holds the sample under that number.
+The number also says what kind of item it is. The format note divides the range of identifiers into regions: models, small colour ramps, full master palettes, scenery and map data (a region reserved for that data, since no archive in the corpus has an identifier there), and digital sounds. That is how a film's sound cue finds its sound: the cue carries a number, and the bundle holds the sample under that number.
 
-Colour matters here because the original drew with a fixed palette of colours, and a film's fades and tints are changes to that palette. The [drawing guide](drawing.md) explains how models are shaded from it.
+Colour matters here because the original drew with a limited palette, and a film's fades and tints change it. The [drawing guide](drawing.md) explains how models are shaded from it.
 
 The .ALL is different from the .RES archives, which hold the game's shared libraries of models, sprites, dialogue and scenery in a similar numbered layout. The .RES note is worth reading to see the same idea applied to the permanent assets.
 
 ## Why it is built this way
 
-Because a film is a script and not a video, it can be played at any size and any frame rate, and the same film always produces the same motion. That is what lets Stunt Reel replay a film at modern resolutions, and what lets us compare our frames with the original player's frame for frame.
+Because a film is a script and not a video, it can be played at any size and any frame rate, and the same film gives the same motion each time. That is what lets Stunt Reel replay a film at modern resolutions, and what lets us compare our frames with the original player's frame by frame at matching moments.
 
-The cost is that a film means nothing without its companion. A film names models and sounds by number, and only the .ALL can say what those numbers are.
+The cost is that a film needs an archive to say what its numbers mean, normally its own .ALL. A film names models and sounds by number, and some models can also be found in the game's .RES libraries.
 
 ## Read next
 
