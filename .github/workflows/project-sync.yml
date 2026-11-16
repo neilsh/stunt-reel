@@ -1,0 +1,45 @@
+name: Project sync
+
+# Keeps the owner's Issue Radar project's Status in step with each issue's labels and state
+# (docs/agents/issue-tracker.md § Organizing issues). Labels are the source of truth; this is
+# the only writer of Status, so every built-in project workflow but Auto-archive is off.
+# The daily run catches what no issue event announces, such as a sub-issue added to a parent.
+on:
+  issues:
+    types: [opened, reopened, closed, labeled, unlabeled, transferred]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+# One run per issue at a time; a queued run reads the issue afresh, so a newer one may replace it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || 'all' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync Status from labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # A classic PAT with `project` scope: the repository's GITHUB_TOKEN cannot reach a project
+      # owned by a user account.
+      GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+      ARGS: --repo ${{ github.repository }} --owner neilsh --project 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: python/scripts/project_sync.py
+          sparse-checkout-cone-mode: false
+      # The script needs only the standard library and gh, both on the runner, so no toolchain.
+      - name: Sync one issue
+        if: github.event_name == 'issues'
+        env:
+          ISSUE: ${{ github.event.issue.number }}
+        run: python3 python/scripts/project_sync.py $ARGS "$ISSUE"
+      - name: Sync every open issue and project item
+        if: github.event_name != 'issues'
+        run: python3 python/scripts/project_sync.py $ARGS --all

@@ -117,6 +117,10 @@ run = "uv run python python/scripts/worktree_init.py reap"
 description = "A pull request's unresolved review threads, one line each with the comment id to reply to, then its review-body findings; or reply in and resolve a thread. Uses GraphQL, or in a cloud session the proxy's REST thread routes (mise run pr-threads -- <number> [--all] | [--reply <id> --body <text>|--body-file <path>] [--resolve <id>])"
 run = "uv run python python/scripts/pr_threads.py"
 
+[tasks.project-sync]
+description = "Set the owner's Issue Radar project's Status from each issue's labels and state, as the project-sync workflow does; needs gh with project scope (mise run project-sync -- <issue>... | --all)"
+run = "uv run python python/scripts/project_sync.py --repo neilsh/stunt-reel --owner neilsh --project 1"
+
 [tasks.queue]
 description = "The unattended queue: open PRs in stack order, then open ready-for-agent issues, one line each with ready or the mechanical reason to skip it; prints no bodies"
 run = "uv run python python/scripts/work_queue.py"
