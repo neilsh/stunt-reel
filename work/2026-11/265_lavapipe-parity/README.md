@@ -2,7 +2,7 @@
 title: "Lavapipe parity scores are not yet shown to match the GPU's"
 started: 2026-11-15
 issue: 265
-outcome: ""
+outcome: "Local lavapipe (mesa-dist-win 25.2.8) scores within 0.002 of the RTX 4070 on all seven films once the guard is in the binary, and within 0.00004 of the cloud rows; the guard leaves the RTX 4070's index planes byte-identical. Residues (polygons drawn over others, flat Gouraud polygons) moved to #595."
 ---
 
 # Lavapipe parity scores are not yet shown to match the GPU's
@@ -23,3 +23,5 @@ First review of each dsh or Sonnet PR: the `reviewer` agent on Opus; mechanical 
 ## Status
 
 - 2026-11-15: #455 launched as cloud session [`session_01754SzQMKMSE3sZxgSTfyms`](https://claude.ai/code/session_01754SzQMKMSE3sZxgSTfyms) on Sonnet; its result arrives as a PR or a comment on #455. Next: `/orchestration` for PR A from this folder.
+- 2026-11-15: PR B: LOCATION's local lavapipe loss was a stale guard-removed binary; re-rendered with the guard it scores 0.8292054, within the margin of the GPU and the cloud row. Mesa 26.2.6 still makes the NaN; Gouraud polygons the clipper breaks draw flat. Findings in [`lavapipe.md`](../../../research/parity/lavapipe.md), experiment in [journal.md](journal.md). Left open: the `lavapipe.md` Open questions.
+- 2026-11-16: PR B (#594) closes #265; follow-up #595.
