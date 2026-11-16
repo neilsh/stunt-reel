@@ -58,7 +58,7 @@ _Source: [the bank writer read and broken on](../../work/2026-11/456_film-vars-1
 
 ## 4. A Reader of Word `0x12`: the Rotor of Shape `0x3E57`
 
-`[Established]` for the handler and the shape's stream, static; `[Bounded Observation]` for the live words, one film under DOSBox-X.
+`[Established]` for the handler and the shape's stream, static; `[Bounded Observation]` for the live words, one film under DOSBox-X, run with the `.ALL` from `corpus/siarchive/Films/OldPLAY/Vault`, which differs from the reference capture's (the `.FLM` is the same, and the bank words come from it).
 
 * **`BVGT` reads the bank.** Its handler `0x9C23` (unpatched dispatch slot `0x853D`) loads the operand word into `BX`, compares `[BX + 0x810E]` with the threshold word, and branches by the rel word unless the bank word is below it (`jb` at `0x9C2D`): taken when `bank[op] >= val`, unsigned, the target being the rel word's address plus the rel word. This confirms the si-tools reading in [`sod-opcodes.md`](../formats/sod-opcodes.md) § 3.
 * **The rotor.** The helicopter shape `0x3E57` (in `LOCATION.ALL`) turns its main rotor by `ROTY` on operand `0x14` inside `PUSHRELMAT`/`POPRELMAT` (stream `0x0D7E..0x0D98`), then runs `BVGT 0x12, 0x0FA0`: below the threshold it calls `0x13E2`, the hub and two solid blades (colours 0 and `0x17`); at or above it, `0x18A0`, the hub with the blades as `ZLINETO` lines. The tail rotor (`0x0E76`) repeats the pattern with `ROTX`. So the solid blades are drawn when var 10 moved by less than 16 since the previous frame, and the line blades otherwise. This answers open question 1 for `BVGT`, not for `ROT*`.
