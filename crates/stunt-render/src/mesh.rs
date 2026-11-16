@@ -126,9 +126,10 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
 ///
 /// `bounds` is in the space `view_proj` takes to clip space. The six planes are its rows, for a
 /// clip space whose depth runs over `[0, w]` as `glam::rh::proj::directx` gives and the vertex
-/// shader multiplies by: left `w + x`, right `w - x`, bottom `w + y`, top `w - y`, near `z` and
-/// far `w - z`. A reversed-Z or infinite-far projection (issue #637) changes the last two, and
-/// this is the one place to change them.
+/// shader multiplies by: left `w + x`, right `w - x`, bottom `w + y`, top `w - y`, far `z` and
+/// near `w - z`, depth being reversed. Under the infinite perspective clip z is the constant
+/// near distance, so the far plane keeps every box in front of the eye
+/// (`docs/adr/0054-depth-is-reversed-and-infinite-in-float.md`).
 ///
 /// The test has no margin: `view_proj` is an `f32` product the GPU does not form, so a box
 /// within rounding of a plane can fall either way; such a box covers no more than a
@@ -364,8 +365,8 @@ impl GpuModel {
     /// far section is drawn and no stand-in is.
     ///
     /// Base slices come last sibling first, decal slices in the nodes' own order: the base
-    /// pipeline's `Less` keeps the first draw of an exact depth tie and the decal pipeline's
-    /// `LessEqual` the last, so both let `PLAYONE`'s later sibling win the tie.
+    /// pipeline's `Greater` keeps the first draw of an exact depth tie and the decal pipeline's
+    /// `GreaterEqual` the last, so both let `PLAYONE`'s later sibling win the tie.
     pub fn collect_visible_meshes(
         &self,
         state_mask: u16,
@@ -1520,9 +1521,9 @@ mod tests {
         let order = |slices: &[GpuMeshSlice]| -> Vec<u32> {
             slices.iter().map(|s| s.index_offset).collect()
         };
-        // `Less` keeps the first draw of a tie, so the later sibling must come first.
+        // `Greater` keeps the first draw of a tie, so the later sibling must come first.
         assert_eq!(order(&base), vec![0, 3, 2, 1]);
-        // `LessEqual` keeps the last draw, so decals keep the authored order.
+        // `GreaterEqual` keeps the last draw, so decals keep the authored order.
         assert_eq!(order(&decal), vec![4, 5]);
     }
 
@@ -1587,6 +1588,15 @@ mod tests {
     #[test]
     fn a_box_containing_the_eye_is_kept() {
         assert!(frustum_keeps(test_view_proj(), boxed([0.0, 0.0, 0.0], 1.0)));
+    }
+
+    #[test]
+    fn a_box_beyond_the_old_far_plane_is_kept() {
+        // The perspective is infinite: 100 km ahead is past the orthographic 25 km far clip.
+        assert!(frustum_keeps(
+            test_view_proj(),
+            boxed([0.0, 0.0, -100_000.0], 1.0)
+        ));
     }
 
     #[test]

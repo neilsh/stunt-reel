@@ -55,8 +55,13 @@ pub const DEFAULT_CLEAR_PALETTE_INDEX: u8 = 180;
 /// Colour format of the offscreen readback target.
 const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
-/// Depth format of the offscreen and surface passes.
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+/// Depth format of the offscreen and surface passes. Depth is reversed (nearer is larger) and
+/// stored as `f32`, so its precision follows the depth's own magnitude
+/// (`docs/adr/0054-depth-is-reversed-and-infinite-in-float.md`).
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+
+/// The depth a pass clears to: 0, the far plane under reversed depth.
+const DEPTH_CLEAR: f32 = 0.0;
 
 /// Pixel geometry of a page: the offscreen target or the configured window surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -695,7 +700,7 @@ impl Renderer {
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &target.depth_view,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
+                        load: wgpu::LoadOp::Clear(DEPTH_CLEAR),
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
