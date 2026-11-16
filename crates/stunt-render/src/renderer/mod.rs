@@ -2,9 +2,9 @@
 //!
 //! Opens an instance, an adapter and a device through a single acquisition policy, uploads the
 //! film's shapes once, and then draws one `SceneFrame` per `Renderer::draw` call. The destination is
-//! fixed at open: an Offscreen renderer reads every drawn page back and hands it to its `PageSink`,
-//! a surface renderer presents it. The caller never branches on the destination and never sees a
-//! readback.
+//! fixed at open: an Offscreen renderer keeps up to two frames in flight and hands each page to its
+//! `PageSink` in submission order; a surface renderer presents it. The caller never branches on the
+//! destination and never sees a readback.
 //!
 //! Invariants:
 //! - `[I3]` the frame palette is uploaded into the 256x32 LUT before anything is drawn, and the
@@ -269,8 +269,13 @@ impl RenderedPage {
 
 /// Consumes the pages an offscreen Renderer reads back.
 ///
-/// The renderer calls `PageSink::accept` exactly once per `Renderer::draw` and does not know what a
-/// page becomes; the sink owns every file. An error is terminal for the run.
+/// What an offscreen frame paints over its page once the page is read back: owned, because the
+/// frame that asked for it is gone by then.
+type Overlay = Box<dyn FnOnce(&mut RenderedPage)>;
+
+/// The renderer calls `PageSink::accept` exactly once per submitted frame, in submission order,
+/// and does not know what a page becomes; the sink owns every file. An error is terminal for the
+/// run.
 pub trait PageSink {
     /// Consumes one rendered page.
     ///
@@ -332,8 +337,9 @@ impl fmt::Debug for Renderer {
 impl Renderer {
     /// Opens an offscreen renderer that reads every page back into the sink.
     ///
-    /// The page size is fixed here; `Renderer::resize` is a no-op. Every `Renderer::draw` calls
-    /// sink.accept exactly once.
+    /// The page size is fixed here; `Renderer::resize` is a no-op. `Renderer::draw` hands the
+    /// sink exactly one page, and each frame queued by `Renderer::submit` hands one back from
+    /// `submit` or `Renderer::finish`.
     ///
     /// # Errors
     /// - [`RenderError::NoGpuAdapter`] if no adapter can be acquired.
@@ -433,8 +439,9 @@ impl Renderer {
     /// Draws the frame, exactly once, to the destination fixed at open.
     ///
     /// A `camera` override replaces the frame's view but not its per-actor LOD distances.
-    /// Offscreen reads the page back and hands it to the sink; a surface presents it, and a lost,
-    /// outdated, timed-out or occluded surface skips the frame without error.
+    /// Offscreen submits the frame and reads its page back before returning, handing it to the
+    /// sink; a surface presents it, and a lost, outdated, timed-out or occluded surface skips the
+    /// frame without error.
     ///
     /// # Errors
     /// - [`RenderError::Readback`] if an offscreen page cannot be read back from the GPU.
@@ -445,11 +452,48 @@ impl Renderer {
         camera: Option<&CameraController>,
     ) -> Result<(), RenderError> {
         if matches!(&self.destination, Destination::Offscreen(_)) {
-            self.draw_offscreen(frame, camera)
+            self.submit_offscreen(frame, camera)?;
+            self.finish()
         } else {
             self.draw_surface(frame, camera);
             Ok(())
         }
+    }
+
+    /// Submits the frame for offscreen readback without waiting for its page.
+    ///
+    /// A submission queues one frame; once two are queued it reads the oldest page back to the
+    /// sink before returning, so at most one frame stays queued between calls and pages arrive
+    /// in submission order. A surface destination presents the frame now, as `draw` does.
+    ///
+    /// # Errors
+    /// - [`RenderError::Readback`] if a page this submission retires cannot be read back.
+    /// - [`RenderError::Sink`] if the sink rejects a retired page.
+    pub fn submit(
+        &mut self,
+        frame: &SceneFrame,
+        camera: Option<&CameraController>,
+    ) -> Result<(), RenderError> {
+        if matches!(&self.destination, Destination::Offscreen(_)) {
+            self.submit_offscreen(frame, camera)
+        } else {
+            self.draw_surface(frame, camera);
+            Ok(())
+        }
+    }
+
+    /// Reads back every submitted offscreen frame, handing each page to the sink in submission
+    /// order; a surface destination has nothing queued.
+    ///
+    /// # Errors
+    /// - [`RenderError::Readback`] if a page cannot be read back from the GPU.
+    /// - [`RenderError::Sink`] if the sink rejects a page.
+    pub fn finish(&mut self) -> Result<(), RenderError> {
+        let device = &self.device;
+        let Destination::Offscreen(target) = &mut self.destination else {
+            return Ok(());
+        };
+        target.finish(device)
     }
 
     /// Reconfigures a surface destination to the given size, clamped to the adapter's maximum
@@ -462,7 +506,7 @@ impl Renderer {
         target.resize(device, width, height);
     }
 
-    fn draw_offscreen(
+    fn submit_offscreen(
         &mut self,
         frame: &SceneFrame,
         camera: Option<&CameraController>,
@@ -505,25 +549,27 @@ impl Renderer {
             b: f64::from(b),
             a: 1.0,
         };
-        let credits = font.as_ref().zip(frame.credits.as_ref());
         let viewport_rows = target.viewport_rows;
-        target.capture(
+        // The credits are painted when the page is read back, after this frame is gone, so the
+        // overlay owns what it draws.
+        let credits: Option<Overlay> =
+            font.as_ref()
+                .zip(frame.credits.as_ref())
+                .map(|(font, lines)| -> Overlay {
+                    let font = font.clone();
+                    let lines = lines.clone();
+                    let palette = frame.palette.film_palette();
+                    Box::new(move |page| {
+                        paint_credits(page, &font, &lines, viewport_rows, &palette);
+                    })
+                });
+        target.submit(
             device,
             queue,
             clear_color,
             *clear_palette_index,
             |rpass| scene_pass.draw(rpass, pipelines, camera_resources, palette_lut),
-            |page| {
-                if let Some((font, lines)) = credits {
-                    paint_credits(
-                        page,
-                        font,
-                        lines,
-                        viewport_rows,
-                        &frame.palette.film_palette(),
-                    );
-                }
-            },
+            credits,
         )
     }
 

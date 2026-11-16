@@ -279,6 +279,59 @@ fn draw_accepts_exactly_one_page() {
     });
 }
 
+/// Pipelining must not change a page: the same frames, submitted two in flight, land in
+/// submission order with the bytes a synchronous draw gives them.
+#[test]
+fn pipelined_submits_hand_pages_back_in_submission_order() {
+    common::gpu_test(|| {
+        let ir = model(
+            vec![
+                vertex(-1.0, -1.0, 40, 0),
+                vertex(1.0, -1.0, 40, 0),
+                vertex(0.0, 1.0, 40, 0),
+            ],
+            vec![0, 2, 1],
+            false,
+        );
+        let scene = scene_with_model(ir);
+        let eye_at = |depth: f32| {
+            let mut camera = CameraController::default();
+            camera.set_authored_transform(ViewCamera {
+                eye: [0.0, 0.0, 5.0 - depth],
+                target: [0.0, 0.0, 0.0],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+            });
+            camera
+        };
+
+        let Some(mut synchronous) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+        let expected: Vec<RenderedPage> = (0..3)
+            .map(|step| synchronous.draw_with(&scene.frame(0.0), Some(&eye_at(step as f32))))
+            .collect();
+
+        let Some(mut pipelined) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+        for step in 0..3 {
+            pipelined
+                .renderer
+                .submit(&scene.frame(0.0), Some(&eye_at(step as f32)))
+                .expect("submit");
+            // The first frame is still in flight; each later submission retires one page.
+            assert_eq!(pipelined.pages(), step, "after submit {step}");
+            if step > 0 {
+                assert_eq!(pipelined.sink.take(), expected[step - 1]);
+            }
+        }
+        pipelined.renderer.finish().expect("finish");
+        assert_eq!(pipelined.pages(), 3, "finish drains the last frame");
+        assert_eq!(pipelined.sink.take(), expected[2]);
+    });
+}
+
 #[test]
 fn sink_failure_surfaces_as_a_render_error() {
     common::gpu_test(|| {

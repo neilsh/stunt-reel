@@ -1,5 +1,5 @@
 ---
-summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films, and one matrix upload per frame nearly halved its LOCATION render time."
+summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe."
 ---
 # Parity: Rendering on Lavapipe
 
@@ -63,7 +63,26 @@ A near-zero but finite divisor would give a Gouraud polygon a wrong but finite w
 | GPU, LOCATION's captured ticks (12-8262) | 301.2 s | 229.6 s |
 | GPU, INTRO's captured ticks (12-3818) | 96.8 s | 67.8 s |
 
-The render stores (`frames.zst`, `layers.zst`, `palettes.zst`) are byte-identical before and after, on lavapipe over LOCATION ticks 12-300 and on the GPU over every reference film's captured ticks. After the change, 16 of 20 main-thread samples sit in `wgpu_hal::vulkan::DeviceShared::wait_for_fence`, inside `vulkan_lvp`, and none in staging allocation. All-thread samples put lavapipe's work on one `vulkan_lvp` thread, the one that executes command buffers (busy in 52 of 65), while the other `vulkan_lvp` threads stay parked on a condition variable, and `OffscreenTarget::capture` waits for each frame's readback, so the main thread and that thread do not overlap. Mesa-dist-win ships no PDBs, so the thread's functions are known by offset only ([#600](https://github.com/neilsh/stunt-reel/issues/600)). On the GPU only the main thread is busy: of 42 samples, 14 in wgpu's render-pass encoding, 11 waiting on the GPU and 8 in `GpuModel::collect_world_meshes`. _Source: [2026-11-15: where a frame's time goes after the change](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-where-a-frames-time-goes-after-the-change), [2026-11-15: one model-matrix upload per frame](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-one-model-matrix-upload-per-frame)._
+The render stores (`frames.zst`, `layers.zst`, `palettes.zst`) are byte-identical before and after, on lavapipe over LOCATION ticks 12-300 and on the GPU over every reference film's captured ticks. After the change, 16 of 20 main-thread samples sit in `wgpu_hal::vulkan::DeviceShared::wait_for_fence`, inside `vulkan_lvp`, and none in staging allocation. All-thread samples put lavapipe's work on one `vulkan_lvp` thread, the one that executes command buffers (busy in 52 of 65), while the other `vulkan_lvp` threads stay parked on a condition variable, and the offscreen target waited for each frame's readback, so the main thread and that thread did not overlap — the serialisation #602 removed (below). Mesa-dist-win ships no PDBs, so the thread's functions are known by offset only ([#600](https://github.com/neilsh/stunt-reel/issues/600)). On the GPU only the main thread is busy: of 42 samples, 14 in wgpu's render-pass encoding, 11 waiting on the GPU and 8 in `GpuModel::collect_world_meshes`. _Source: [2026-11-15: where a frame's time goes after the change](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-where-a-frames-time-goes-after-the-change), [2026-11-15: one model-matrix upload per frame](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-one-model-matrix-upload-per-frame)._
+
+**Two frames in flight (#602).** `[Bounded Observation]`, 2026-11-15, `5844b4b8` before and the
+issue-602 tree after, mesa-dist-win 25.2.8 and the RTX 4070 laptop, LOCATION ticks 12-300, one
+headless process per run at 320×200. The headless loop now submits tick N+1 before it maps tick
+N's readback buffers, and waits only for tick N's own submission; pages still reach the sink in
+tick order. Each binary was timed twice, the second round with the after binary first:
+
+| Run | Before | After |
+|---|---|---|
+| lavapipe, LOCATION ticks 12-300 | 88.7 s, 89.9 s | 76.3 s, 78.2 s |
+| GPU, LOCATION ticks 12-300 | 16.7 s, 16.6 s | 12.4 s, 12.6 s |
+
+The render stores are byte-identical before and after, on lavapipe over LOCATION ticks 12-300 and
+on the GPU over every reference film's captured ticks, 20,621 ticks in all: each of the 21 file
+pairs matches, and the seven `mise run parity` score lines do not move. The 81.8 s lavapipe row
+above was measured on `80a3ad5`, the branch behind #601; this machine measured 88.7 s for
+`5844b4b8`, so the paired rounds here, not that row, are the comparison.
+
+_Source: [Two frames in flight in headless capture](../../work/2026-11/602_headless-capture-two-frames/journal.md#2026-11-15-two-frames-in-flight-in-headless-capture)._
 
 ## Ruled out
 
@@ -82,6 +101,11 @@ The render stores (`frames.zst`, `layers.zst`, `palettes.zst`) are byte-identica
 1. Whether the clipper moves the depth of a polygon it breaks (LOCATION 2859, section 5), why another polygon wins at BOMB 1910 and LOCATION 2599, and what moves LAND 227's other 536 pixels ([#595](https://github.com/neilsh/stunt-reel/issues/595)).
 2. Whether to stop Gouraud polygons drawing flat on lavapipe (section 5): recomputing the weight in the shader (for example interpolating `shade` as `perspective` alongside a `linear` copy and using it only when the `linear` one is not finite), each byte-identical on a GPU only if tested so. Not filed upstream either: a report to Mesa would cite `t_nopersp`'s zero divisor (section 2). ([#595](https://github.com/neilsh/stunt-reel/issues/595))
 3. Whether Mesa 26.2.6 scores as 25.2.8 does: it was rendered at six ticks only, with no parity run; and CI's lavapipe has not been compared with these rows.
-4. Which lavapipe functions hold its command-buffer thread, busy in 52 of 65 samples of a 0.28 s LOCATION tick after #596, and whether fewer draws or a readback overlapped with the next tick's work shortens it (section 6, [#600](https://github.com/neilsh/stunt-reel/issues/600)).
-5. Whether caching the world's visible mesh slices while the camera holds still is worth it once readback overlaps the next tick: `GpuModel::collect_world_meshes` depends only on the world, the eye, and the authored view's eye, target and lens, and took 8 of 42 GPU main-thread samples (section 6).
+4. Which lavapipe functions hold its command-buffer thread, busy in 52 of 65 samples of a 0.28 s LOCATION tick after #596, and whether fewer draws ([#603](https://github.com/neilsh/stunt-reel/issues/603)) shorten it (section 6, [#600](https://github.com/neilsh/stunt-reel/issues/600)); #602 overlapped the readback with the next tick's work, which section 6 measures.
+5. Whether caching the world's visible mesh slices while the camera holds still is worth it now
+   that readback overlaps the next tick (#602, section 6): `GpuModel::collect_world_meshes`
+   depends only on the world, the eye, and the authored view's eye, target and lens, and took 8
+   of 42 GPU main-thread samples in #596's profile. The overlap took the GPU run from 16.7 s to
+   12.4 s, so what remains is the main-thread work plus the part of the wait the pipeline cannot
+   hide; whether a cache shortens that enough to pay is unmeasured.
 6. Whether a cloud session can reach `gitlab.freedesktop.org`: [`cloud-sessions.md`](../../docs/cloud-sessions.md) lists it in the environment's network access, but no cloud session is recorded reaching it; the reads in section 2 were made from the RTX 4070 laptop. Unchecked.
