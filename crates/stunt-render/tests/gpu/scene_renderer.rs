@@ -498,24 +498,35 @@ fn low_eye_scene(ground: SodModelIr) -> FilmScene {
     FilmScene::new(timeline, HashMap::from([(SHAPE_ID, ground)]), None)
 }
 
-/// The palette index of every pixel `scene`'s ground covers on the software adapter, or
-/// `None` when there is none.
-fn ground_indices_on_software(scene: &FilmScene) -> Option<Vec<u8>> {
+/// A page's width and height in pixels.
+type PagePixels = (u32, u32);
+
+/// A pixel's column, row, and the palette index drawn at it.
+type IndexedPixel = (u32, u32, u8);
+
+/// The page size and the pixel position and palette index of every pixel `scene`'s ground
+/// covers on the software adapter, or `None` when there is none.
+fn ground_pixels_on_software(scene: &FilmScene) -> Option<(PagePixels, Vec<IndexedPixel>)> {
     let mut test = common::gpu_or_skip_software(scene)?;
     let page = test.draw(&scene.frame(0.0));
-    let ground: Vec<u8> = page
+    let width = page.width();
+    let ground: Vec<IndexedPixel> = page
         .layers()
         .iter()
         .zip(page.indices())
-        .filter(|&(&layer, _)| layer == LAYER_FIRST_ACTOR)
-        .map(|(_, &index)| index)
+        .enumerate()
+        .filter(|&(_, (&layer, _))| layer == LAYER_FIRST_ACTOR)
+        .map(|(at, (_, &index))| {
+            let at = u32::try_from(at).unwrap();
+            (at % width, at / width, index)
+        })
         .collect();
     assert!(
         ground.len() > 10_000,
         "ground covers {} pixels",
         ground.len()
     );
-    Some(ground)
+    Some(((width, page.height()), ground))
 }
 
 /// A ground polygon that reaches behind a low eye and past the side planes keeps its own
@@ -527,12 +538,12 @@ fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
     common::gpu_test(|| {
         const GROUND_INDEX: u8 = 40;
         let scene = low_eye_scene(ground_square(GROUND_INDEX));
-        let Some(ground) = ground_indices_on_software(&scene) else {
+        let Some((_, ground)) = ground_pixels_on_software(&scene) else {
             return;
         };
         let wrong = ground
             .iter()
-            .filter(|&&index| index != GROUND_INDEX)
+            .filter(|(_, _, index)| *index != GROUND_INDEX)
             .count();
         assert_eq!(
             wrong,
@@ -543,24 +554,115 @@ fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
     });
 }
 
-/// A Gouraud ground polygon in the same place keeps its gradient: where the clipper makes
-/// the `linear` shade NaN, the perspective copy still varies across the polygon, so it is
-/// not drawn flat at its provoking vertex's index (`research/parity/lavapipe.md` section 3).
-/// Only the gradient's survival is checked: WARP, the software adapter where lavapipe is not
-/// installed, draws most of this polygon outside `WEST..=EAST`.
+/// The four corners of `ground_gradient(half, west, east)`'s quad in page pixels, with the
+/// palette index each carries, projected through the camera the renderer draws `scene` with.
+fn projected_ground_corners(
+    scene: &FilmScene,
+    page: (u32, u32),
+    half: f32,
+    west: u8,
+    east: u8,
+) -> [[f32; 3]; 4] {
+    let mut controller = CameraController::default();
+    controller.set_authored_transform(scene.frame(0.0).view);
+    let view_proj = glam::Mat4::from_cols_array(&controller.build_uniform().view_proj);
+    [
+        (-half, -half, west),
+        (half, -half, east),
+        (half, half, east),
+        (-half, half, west),
+    ]
+    .map(|(x, z, index)| {
+        let clip = view_proj * glam::Vec4::new(x, 0.0, z, 1.0);
+        let [u, v] = [(clip.x / clip.w), (clip.y / clip.w)];
+        let [half_width, half_height] = [page.0 as f32 / 2.0, page.1 as f32 / 2.0];
+        [
+            (u + 1.0) * half_width,
+            (1.0 - v) * half_height,
+            f32::from(index),
+        ]
+    })
+}
+
+/// The palette index `shade`'s screen-linear interpolation gives at pixel centre `(x, y)`: the
+/// affine function of pixel position through the three projected corners of the triangle that
+/// covers it. The quad's two triangles, `(0, 1, 2)` and `(0, 2, 3)`, meet on the diagonal from
+/// corner 0 to corner 2, so which side of that line the pixel falls on picks the triangle.
+/// `None` within one pixel of the diagonal, where either triangle's rounding may land.
+fn screen_linear_index(corners: &[[f32; 3]; 4], x: f32, y: f32) -> Option<f32> {
+    let (corner_0, corner_1, corner_2, corner_3) = (corners[0], corners[1], corners[2], corners[3]);
+    let diagonal = [corner_2[0] - corner_0[0], corner_2[1] - corner_0[1]];
+    let side =
+        |p: [f32; 3]| diagonal[0] * (p[1] - corner_0[1]) - diagonal[1] * (p[0] - corner_0[0]);
+    let at = side([x, y, 0.0]);
+    if at.abs() < diagonal[0].hypot(diagonal[1]) {
+        return None;
+    }
+    let triangle = if at * side(corner_1) > 0.0 {
+        [corner_0, corner_1, corner_2]
+    } else {
+        [corner_0, corner_2, corner_3]
+    };
+    let [start, row, last] = triangle;
+    let det =
+        (row[0] - start[0]) * (last[1] - start[1]) - (row[1] - start[1]) * (last[0] - start[0]);
+    let along =
+        ((x - start[0]) * (last[1] - start[1]) - (y - start[1]) * (last[0] - start[0])) / det;
+    let up = ((row[0] - start[0]) * (y - start[1]) - (row[1] - start[1]) * (x - start[0])) / det;
+    Some(start[2] + along * (row[2] - start[2]) + up * (last[2] - start[2]))
+}
+
+/// A Gouraud ground polygon under a low eye keeps the gradient `PLAYONE`'s filler draws: linear
+/// in screen space, not perspective-correct (`research/playone-exe/terrain-shade.md` section 6).
+/// The polygon reaches behind the eye and past the side planes, which is what makes Mesa's
+/// clipper interpolate the `@interpolate(linear)` varying to NaN (`research/parity/lavapipe.md`
+/// section 2), so on lavapipe the index comes from the ratio of the perspective copies of
+/// `shade * w` and `w`. Every pixel is compared against the affine function of pixel position
+/// through the quad's projected corners, which is the screen-linear value wherever the clipper
+/// cut it.
 #[test]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the value is clamped to 0..=255 just before the cast"
+)]
 fn a_gouraud_ground_polygon_under_a_low_eye_keeps_its_gradient() {
     common::gpu_test(|| {
         const WEST: u8 = 40;
         const EAST: u8 = 100;
-        let scene = low_eye_scene(ground_gradient(60.0, WEST, EAST));
-        let Some(ground) = ground_indices_on_software(&scene) else {
+        const HALF: f32 = 60.0;
+        let scene = low_eye_scene(ground_gradient(HALF, WEST, EAST));
+        let Some((page, ground)) = ground_pixels_on_software(&scene) else {
             return;
         };
-        let mut distinct = ground;
-        distinct.sort_unstable();
-        distinct.dedup();
-        assert!(distinct.len() >= 5, "the ground draws only {distinct:?}");
+        let corners = projected_ground_corners(&scene, page, HALF, WEST, EAST);
+        let mut wrong = Vec::new();
+        let mut checked = 0usize;
+        for &(x, y, index) in &ground {
+            let centre = (x as f32 + 0.5, y as f32 + 0.5);
+            let Some(shade) = screen_linear_index(&corners, centre.0, centre.1) else {
+                continue;
+            };
+            let expected = (shade + 0.5).floor().clamp(0.0, 255.0) as u8;
+            // A modelled value sitting on a rounding boundary may round either way: the
+            // rasterizer interpolates in f32, this model in f64.
+            let boundary = ((shade + 0.5) - (shade + 0.5).round()).abs() <= 0.02;
+            let adjacent = index.abs_diff(expected) == 1;
+            checked += 1;
+            if index != expected && !(boundary && adjacent) {
+                wrong.push((x, y, expected, index, shade));
+            }
+        }
+        assert!(
+            checked > 10_000,
+            "only {checked} ground pixels were checked"
+        );
+        assert!(
+            wrong.is_empty(),
+            "{} of {checked} ground pixels are not screen-linear; first: {:?}",
+            wrong.len(),
+            wrong.get(..8).unwrap_or(&wrong)
+        );
     });
 }
 
