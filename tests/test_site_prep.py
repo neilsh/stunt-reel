@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import fnmatch
 import importlib.util
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -240,6 +240,18 @@ def test_pages_workflow_watches_every_published_source() -> None:
     sections = load_sections((root / "site/published.toml").read_text(encoding="utf-8"))
     paths = _workflow_paths(root / ".github/workflows/pages.yml")
     assert paths
+    watched = [_github_glob(p) for p in paths]
     for section in sections:
-        probe = section.source if (root / section.source).is_file() else f"{section.source}/x.md"
-        assert any(fnmatch.fnmatch(probe, p.replace("**", "*")) for p in paths), section.source
+        source = root / section.source
+        files = sorted(source.rglob("*.md")) if source.is_dir() else [source]
+        assert files, section.source
+        for file in files:
+            rel = file.relative_to(root).as_posix()
+            assert any(glob.fullmatch(rel) for glob in watched), rel
+
+
+def _github_glob(pattern: str) -> re.Pattern[str]:
+    """*pattern* as GitHub's path filters read it: ``*`` stops at ``/``, ``**`` does not."""
+    parts = re.split(r"(\*\*|\*|\?)", pattern)
+    wild = {"**": ".*", "*": "[^/]*", "?": "[^/]"}
+    return re.compile("".join(wild.get(part, re.escape(part)) for part in parts))
