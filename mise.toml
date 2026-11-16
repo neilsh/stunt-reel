@@ -366,6 +366,20 @@ fi
 '''
 run_windows = "exit 0"
 
+[tasks.session-environment]
+description = "The SessionStart hook's environment line: which environment of the working-in-an-environment skill this session runs in"
+hide = true
+# Runs at startup, resume, clear and compact, so the line survives compaction in a long run.
+# Only a cloud session is told to read its file at once; local-windows reads it on demand.
+run = '''
+if [ "${CLAUDE_CODE_REMOTE:-}" = true ]; then
+  echo "environment: cloud; read .agents/skills/working-in-an-environment/cloud.md before other work"
+else
+  echo "environment: unsupported ($(uname -s)); see .agents/skills/working-in-an-environment/SKILL.md"
+fi
+'''
+run_windows = "echo environment: local-windows"
+
 [tasks.adversarial]
 description = "Adversarial stress suite over the formats catalog's constraints and claims"
 run = "uv run python python/scripts/adversarial_formats_challenge.py"

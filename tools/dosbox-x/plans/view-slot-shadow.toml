@@ -1,0 +1,67 @@
+# #510: whether PLAYONE queues and draws the view slot's own shadow. The scene walk skips the actor
+# queue for the slot equal to [0x22DE] (0x1E26) but still calls the shadow queue 0x19FC (0x1E35).
+# Inside it, 0x1A03 takes a code-8 collision box's height (slot +0x22 nonzero), 0x1A18 the ground
+# plane; 0x1A8A calls the cull 0x1B0C with SI the slot record (DX, BP, DI the shadow's view-space
+# point, CL its exponent; ES the shape), 0x1A8F returns when culled, and 0x1C0D draws a shadow
+# entry that survived (its word +4 is the slot record). A hit whose SI equals the captured [0x22DE]
+# is the view slot's. The #510 runs armed it at tick 600 on Films/OldPLAY/Vault/BRETT.FLM
+# (--film corpus/siarchive/Films/OldPLAY/Vault/BRETT.FLM), at 800 on OldPLAY/Vault/TERMIN.FLM
+# and at 1800 on NewPLAY/Vault/NEWFX.FLM; the #499 item 3 run on BRETT.FLM armed the 0x1A03 and
+# 0x1A12 breaks at tick 1 with stop_tick 1430. Change `arm` and `stop_tick` for another stretch.
+[run]
+stop_tick = 800
+
+[[probe]]
+name = "box-height"
+kind = "break"
+at = 0x1A03
+arm = { tick = 600 }
+hits = 4
+capture = ["mem:DS:0x22DE:2", "mem:DS:SI:0x24"]
+
+[[probe]]
+name = "null-plane"
+kind = "break"
+at = 0x1A12
+arm = { tick = 600 }
+hits = 4
+capture = ["mem:DS:0x22DE:2", "mem:DS:SI:0x24"]
+
+[[probe]]
+name = "plane"
+kind = "break"
+at = 0x1A18
+arm = { tick = 600 }
+hits = 4
+capture = ["mem:DS:0x22DE:2", "mem:DS:SI:0x24", "mem:SS:DI:10"]
+
+[[probe]]
+name = "shadow-cull"
+kind = "break"
+at = 0x1A8A
+arm = { tick = 600 }
+hits = 8
+capture = ["mem:DS:0x22DE:2", "mem:DS:0x229C:8", "mem:ES:0:10"]
+
+[[probe]]
+name = "shadow-culled"
+kind = "break"
+at = 0x1A8F
+arm = { tick = 600 }
+hits = 8
+
+[[probe]]
+name = "actor-cull"
+kind = "break"
+at = 0x1AD1
+arm = { tick = 600 }
+hits = 8
+capture = ["mem:DS:0x22DE:2"]
+
+[[probe]]
+name = "drawn"
+kind = "break"
+at = 0x1C0D
+arm = { tick = 600 }
+hits = 8
+capture = ["mem:DS:SI:0x10"]
