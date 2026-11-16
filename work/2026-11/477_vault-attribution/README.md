@@ -12,4 +12,4 @@ Refreshed the render-layer attribution of the seven `VAULT` Patch #3 references 
 ## Handoff
 
 - Follow-ups filed: [#615](https://github.com/neilsh/stunt-reel/issues/615) (straight-down camera drawn blank), [#616](https://github.com/neilsh/stunt-reel/issues/616) (scorer sky band omits 224 to 226), [#617](https://github.com/neilsh/stunt-reel/issues/617) (zenith bands and sun disc).
-- Not done: `vault-ctry`'s error readout. Only one of its two grader passes ran, so it has no `readout.json`.
+- Not done: `vault-ctry`'s error readout. Only one of its two grader passes ran, so it has no `readout.json` ([#619](https://github.com/neilsh/stunt-reel/issues/619)).

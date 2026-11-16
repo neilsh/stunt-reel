@@ -48,7 +48,7 @@ Props are the largest class on `ctry`, `intro`, `bomb` and `location`, terrain o
 
 **Question**: which kinds of error does a vision-model readout see on the current renders of the pinned references, against the 2026-11-01 readout of [`batch-vault-films.md`](../../../research/parity/batch-vault-films.md) section 4 (its open question 4)?
 
-**Method**: the renders of the first entry (`76872e89`), `mise run parity-bench -- errors-make --film <film>` (12 sheets per film, seed 1), two Haiku passes per film, `errors-disputes`, a Sonnet tie-break on the disputed sheets (intro 4, land 8, balloon 1, traintnl 3, bomb 1, location 4), then `errors-score` with no `--against` (no earlier `readout.json` exists in this checkout). `ctry` got one Haiku pass only: the session's permission check refused the second grader, so `ctry` has no readout here.
+**Method**: the renders of the first entry (`76872e89`), `mise run parity-bench -- errors-make --film <film>` (12 sheets per film, seed 1), two Haiku passes per film, `errors-disputes`, a Sonnet tie-break on the disputed sheets (intro 4, land 8, balloon 1, traintnl 3, bomb 1, location 4), then `errors-score` with no `--against` (no earlier `readout.json` exists in this checkout). `ctry` got one Haiku pass only: the session's permission check refused the second grader, so `ctry` has no readout here ([#619](https://github.com/neilsh/stunt-reel/issues/619)). The table below is built by hand from each film's `readout.json`, not pasted from `errors-table` as `error-readout.md` asks: `errors-table` reads the batch survey's reports (`build/parity/batch/<film>/report/report.json`) and refused these `mise run parity` renders.
 
 **Result**: frames graded 2 or more of 12, per category (all categories with any):
 
