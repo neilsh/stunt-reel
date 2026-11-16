@@ -94,7 +94,6 @@ The `ctry` row is #485's. It meets the no-actor-pixel test since #505 dropped 23
 | `traintnl` | `[195,195] [228,228] [232,238]` | 62 % | 0.3397 (44) |
 | `bomb` | `[163,164] [208,208] [227,235] [238,238]` | 34 % | 0.2709 (129) |
 | `location` | `[164,164] [195,195] [208,208]` | 27 % | 0.1164 (86) |
-| `brett` | `[162,164] [195,195] [229,231] [235,235] [238,238]` (#510, tree `7aeabce`) | 52 % | 0.1902 (36) |
 
 "Covered" is the share of all rows 0..184 capture pixels, 0 and 255 included in the denominator, over the sampled frames; an index below 0.05 % of them, or absent from the sampled frames, counts as object. The figures are leads only (`[Bounded Observation]`, [trap above](#3-actor-window-iou-iou)), for these reasons:
 

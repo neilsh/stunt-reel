@@ -21,4 +21,14 @@ The break runs used the unpatched build and the film's shipped `.ALL` (the stage
 
 **Verdict**: adopted as findings. The view slot's shadow is queued and drawn when its ground point survives the cull: `[Bounded Observation]`, by breakpoint (`BRETT.FLM` ticks 633 to 648 and `NEWFX.FLM` ticks 1831 to 1855, slot 0 in each) and by capture (`BRETT.FLM`, the black band on all 20 captured frames of its two view-slot spans). It is culled when its ground point is outside the view: `[Bounded Observation]`, `TERMIN.FLM` ticks 840 to 897, slot 2. `BRETT.FLM` becomes the reference `[brett]`: its view slot's shadow is in frame on 20 of its 130 captured frames, and it has neither #499 item 2 nor item 3. `NEWFX.FLM`, which has item 2, was set aside because no `MAKEONE` build wrote its archive within 600 s, not by score.
 
-**Lives in**: [`sod-vm-frame.md` § 9.1](../../../research/playone-exe/sod-vm-frame.md#91-the-actor-shadow-draw), [`hero-shadow.md`](../../../research/parity/hero-shadow.md) question 10, [`references.toml`](../../../research/parity/references.toml) `[brett]`, the `memory-map-main.md` row for `0x19FC`.
+**Lives in**: [`sod-vm-frame.md` § 9.1](../../../research/playone-exe/sod-vm-frame.md#91-the-actor-shadow-draw), [`hero-shadow.md`](../../../research/parity/hero-shadow.md) question 10, the `memory-map-main.md` row for `0x19FC`.
+
+## 2026-11-16: `[brett]` dropped as a parity reference
+
+**Question**: whether `BRETT.FLM` should stay a reference in [`references.toml`](../../../research/parity/references.toml).
+
+**Result**: it is a community film (`corpus/siarchive/Films/OldPLAY/Vault/`), not one of the retail game's `VAULT/` films the other seven references are. The cloud archives in [`manifests/cloud-assets.toml`](../../../manifests/cloud-assets.toml) hold the captures and archives but no community `.FLM`, and `mise run parity`'s preflight stops the whole run when a reference row has no `.FLM` in the corpus, so a `[brett]` row would stop every cloud parity run.
+
+**Verdict**: the owner chose to keep community films out of the parity references. The `[brett]` row, its `probes.md` bands row and the repacked captures pin are dropped; the findings above stand, the capture and archive stay in the data root (`captures/vault-brett/`), and [`manifests/all/vault-brett.toml`](../../../manifests/all/vault-brett.toml) still rebuilds the archive. #499's view-slot change is scored against that capture by hand, on the primary machine, until a retail film with a shadowed view slot is found.
+
+**Lives in**: [`hero-shadow.md`](../../../research/parity/hero-shadow.md) question 10.
