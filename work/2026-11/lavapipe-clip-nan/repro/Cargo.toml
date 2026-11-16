@@ -1,0 +1,13 @@
+[package]
+name = "clip-nan-repro"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Mesa gallium draw clipper: a noperspective varying reads NaN after clipping"
+
+# Its own workspace root: not a member of the enclosing repository's workspace.
+[workspace]
+
+[dependencies]
+ash = "0.38"
+naga = { version = "30", features = ["glsl-in", "spv-out"] }
