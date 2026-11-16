@@ -20,14 +20,32 @@ from stunt_reel import process_tree
 
 pytestmark = pytest.mark.windows
 
-_GRANDCHILD = "import time; time.sleep(30)"
-#: Starts a grandchild that inherits the output pipe and prints its pid, then sleeps.
+#: Outlives the wait for its kill, so a grandchild found gone was killed: no load can make it
+#: exit on its own first, as an elapsed-time bound would (issue #571).
+_GRANDCHILD = "import time; time.sleep(180)"
+#: Starts a grandchild that inherits the output pipe and prints its pid, then sleeps. Its own
+#: 30 s sleep bounds the test when the kill is broken.
 _CHILD = (
     "import subprocess, sys, time\n"
     f"p = subprocess.Popen([sys.executable, '-c', {_GRANDCHILD!r}])\n"
     "print('grandchild', p.pid, flush=True)\n"
     "time.sleep(30)\n"
 )
+#: Seconds to wait for a killed process to disappear: a bound on a hang, not a timing claim.
+_GONE_WITHIN = 60.0
+
+
+def _spawned(monkeypatch: pytest.MonkeyPatch) -> list[subprocess.Popen[str]]:
+    """Record each process `process_tree.run` spawns, to read its exit code afterwards."""
+    procs: list[subprocess.Popen[str]] = []
+    real_spawn = process_tree.spawn
+
+    def spawn(*args: Any, **kwargs: Any) -> subprocess.Popen[str]:
+        procs.append(real_spawn(*args, **kwargs))
+        return procs[-1]
+
+    monkeypatch.setattr(process_tree, "spawn", spawn)
+    return procs
 
 
 def _alive(pid: int) -> bool:
@@ -141,32 +159,40 @@ def test_a_zombie_reaped_during_the_check_is_not_alive(monkeypatch: pytest.Monke
 
 
 def test_a_finished_command_keeps_its_exit_code_and_output() -> None:
+    # No timeout: under concurrent gates the child's start alone outlasted 30 s (issue #571).
     code, output = process_tree.run(
-        [sys.executable, "-c", "import sys; print('out'); sys.exit(3)"], 30.0
+        [sys.executable, "-c", "import sys; print('out'); sys.exit(3)"], None
     )
     assert code == 3
     assert "out" in output
 
 
 def test_timeout_kills_the_grandchild_too() -> None:
-    """A surviving grandchild holds the pipe, so the read would wait out its 30 s sleep."""
+    """A surviving grandchild holds the pipe, so the read would wait out its sleep.
+
+    The grandchild's pid is read before the timeout starts, so a loaded machine cannot start it
+    only after the kill (issue #571).
+    """
     grandchild = 0
     since = time.time()
-    try:
-        started = time.monotonic()
-        with process_tree.spawn([sys.executable, "-c", _CHILD]) as proc:
-            code, output = process_tree.wait(proc, 2.0)
-        assert time.monotonic() - started < 20.0
-        assert code == process_tree.TIMEOUT_EXIT
-        grandchild = _grandchild(output)
-        deadline = time.monotonic() + 5.0
-        while _alive(grandchild) and time.monotonic() < deadline:
-            time.sleep(0.1)
-        if _alive(grandchild):
-            pytest.fail(f"the grandchild outlived the kill\n{_describe(grandchild, since)}")
-    finally:
-        if grandchild and _alive(grandchild):
-            _kill(grandchild)
+    survivor = ""
+    # Checked before the block closes the pipe: on Windows that close waits for every holder,
+    # so a surviving grandchild would be gone by its natural exit, not the kill.
+    with process_tree.spawn([sys.executable, "-c", _CHILD]) as proc:
+        try:
+            assert proc.stdout is not None
+            grandchild = _grandchild(proc.stdout.readline())
+            code, _output = process_tree.wait(proc, 0.5)
+            deadline = time.monotonic() + _GONE_WITHIN
+            while _alive(grandchild) and time.monotonic() < deadline:
+                time.sleep(0.1)
+            if _alive(grandchild):
+                survivor = _describe(grandchild, since)
+        finally:
+            if grandchild and _alive(grandchild):
+                _kill(grandchild)
+    assert code == process_tree.TIMEOUT_EXIT
+    assert not survivor, f"the grandchild outlived the kill\n{survivor}"
 
 
 def test_an_interrupt_kills_the_tree_and_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -188,11 +214,13 @@ def test_an_interrupt_kills_the_tree_and_propagates(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(process_tree, "kill_tree", kill)
     monkeypatch.setattr(subprocess.Popen, "communicate", communicate)
-    started = time.monotonic()
+    procs = _spawned(monkeypatch)
     with pytest.raises(KeyboardInterrupt):
         process_tree.run([sys.executable, "-c", "import time; time.sleep(30)"], 60)
     assert len(killed) == 1
-    assert time.monotonic() - started < 20
+    # Killed, not slept out: a child left to finish its sleep exits 0. An elapsed-time bound
+    # here failed under concurrent gates (issue #571).
+    assert procs[0].returncode not in (None, 0)
 
 
 def test_a_tree_kill_that_does_nothing_still_ends_the_child(
@@ -201,7 +229,7 @@ def test_a_tree_kill_that_does_nothing_still_ends_the_child(
     """The direct kill keeps ``Popen``'s exit wait from hanging when the tree kill fails."""
     monkeypatch.setattr(os, "killpg", lambda *_a: None, raising=False)
     monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: None)
-    started = time.monotonic()
+    procs = _spawned(monkeypatch)
     code, _output = process_tree.run([sys.executable, "-c", "import time; time.sleep(30)"], 1)
     assert code == process_tree.TIMEOUT_EXIT
-    assert time.monotonic() - started < 20
+    assert procs[0].returncode not in (None, 0), "the child slept out its 30 s"
