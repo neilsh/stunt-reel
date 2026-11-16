@@ -159,9 +159,10 @@ def test_a_zombie_reaped_during_the_check_is_not_alive(monkeypatch: pytest.Monke
 
 
 def test_a_finished_command_keeps_its_exit_code_and_output() -> None:
-    # No timeout: under concurrent gates the child's start alone outlasted 30 s (issue #571).
+    # Under concurrent gates the child's start alone outlasted 30 s (issue #571); 600 s still
+    # fails a hung child rather than hanging the run.
     code, output = process_tree.run(
-        [sys.executable, "-c", "import sys; print('out'); sys.exit(3)"], None
+        [sys.executable, "-c", "import sys; print('out'); sys.exit(3)"], 600.0
     )
     assert code == 3
     assert "out" in output
@@ -176,8 +177,8 @@ def test_timeout_kills_the_grandchild_too() -> None:
     grandchild = 0
     since = time.time()
     survivor = ""
-    # Checked before the block closes the pipe: on Windows that close waits for every holder,
-    # so a surviving grandchild would be gone by its natural exit, not the kill.
+    # Checked inside the block: with the kill disabled, the block's exit on Windows did not return
+    # until the grandchild's sleep ended, so a check after it passed (issue #571).
     with process_tree.spawn([sys.executable, "-c", _CHILD]) as proc:
         try:
             assert proc.stdout is not None
