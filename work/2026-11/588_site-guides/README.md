@@ -2,7 +2,7 @@
 title: "Research site: guides for new readers and published project docs"
 started: 2026-11-15
 issue: 588
-outcome: ""
+outcome: "Implemented 2026-11-15 in three pull requests: the project docs published on the research site (#590), a home page of question cards (#592), and five newcomer guides with the evidence page retitled \"How we know what we know\" (the pull request that sets this line)."
 ---
 
 # Research site: guides for new readers and published project docs
