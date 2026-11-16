@@ -735,3 +735,91 @@ fn a_ground_outline_does_not_cover_the_line_after_it() {
         assert_eq!(over, alone, "the rail keeps {over} of its {alone} pixels");
     });
 }
+
+/// A one-triangle shape stream whose colour `OP_SHADES` and `OP_SHADE1` take from the light:
+/// its one normal points down, so a light from above shades it brightest.
+fn shaded_triangle_stream() -> Vec<u8> {
+    use stunt_core::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, OP_SHADE1, OP_SHADES};
+    let down = 0x8001; // -32767
+    let words = [
+        OP_ID, 100, 0, 0, 0, OP_IPG, 8, 100, 50, 0, OP_SHADES, 0, 1, 0, down, 0, OP_SHADE1, 0,
+        0x40, OP_POLYZ, 3, 0, 12, 24, OP_RETURN,
+    ];
+    words.iter().flat_map(|w| w.to_le_bytes()).collect()
+}
+
+/// A rotated actor draws its shape decoded under its own light, `R · L`, frame by frame: the
+/// unrotated first frame keeps the world light, and each turn after it recolours the shape.
+#[test]
+fn a_rotated_actor_draws_in_the_colours_of_its_own_light() {
+    use stunt_core::scene::RelitShapes;
+    use stunt_core::sod::{DecodeMode, ShadeLight, decode_sod_lit};
+
+    common::gpu_test(|| {
+        let stream = shaded_triangle_stream();
+        let decode = |light: ShadeLight| {
+            decode_sod_lit(&stream, "SHADED", None, DecodeMode::Lenient, light)
+                .expect("decode the shaded triangle")
+        };
+        let world = ShadeLight::WORLD_0X2D;
+        // Roll about the view axis, so the triangle keeps facing the camera.
+        let roll = |degrees: f32| {
+            let half = degrees.to_radians() / 2.0;
+            [0.0, 0.0, half.sin(), half.cos()]
+        };
+        let turns = [roll(0.0), roll(90.0), roll(45.0)];
+        let keyframes = turns
+            .iter()
+            .zip(0u32..)
+            .map(|(&rotation_quat, n)| {
+                let mut actor = actor_at(0.0, 0);
+                actor.rotation_quat = rotation_quat;
+                let mut slice = timeline(vec![actor]).slices()[0].clone();
+                slice.tick = n * 10;
+                slice.record.tick = n * 10;
+                slice.tick_duration = 10;
+                slice
+            })
+            .collect();
+        let shapes = HashMap::from([(SHAPE_ID, decode(world))]);
+        let streams = HashMap::from([(SHAPE_ID, ("SHADED".to_string(), stream.clone()))]);
+        let scene = FilmScene::new(FilmTimeline::new(keyframes, Vec::new()), shapes, None)
+            .with_relit_shapes(RelitShapes::new(streams, world));
+        let Some(mut test) = common::gpu_or_skip(&scene) else {
+            return;
+        };
+        let mut seen = Vec::new();
+        for (n, &rotation) in (0u8..).zip(&turns) {
+            let frame = scene.frame(f32::from(n) * 10.0);
+            let [actor] = frame.actors.as_slice() else {
+                panic!("one actor draw at turn {n}");
+            };
+            assert_eq!(actor.light, world.for_actor(rotation));
+            let expected = decode(actor.light).vertices[0].palette_index;
+            let page = test.draw(&frame);
+            let drawn: Vec<u8> = page
+                .indices()
+                .iter()
+                .zip(page.layers())
+                .filter(|&(_, &layer)| layer == LAYER_FIRST_ACTOR)
+                .map(|(&index, _)| index)
+                .collect();
+            assert!(
+                drawn.len() > 50,
+                "turn {n}: the actor covers {} pixels",
+                drawn.len()
+            );
+            assert!(
+                drawn.iter().all(|&index| index == expected),
+                "turn {n}: expected index {expected} everywhere, drew {:?}",
+                drawn
+                    .iter()
+                    .copied()
+                    .collect::<std::collections::BTreeSet<_>>()
+            );
+            seen.push(expected);
+        }
+        seen.dedup();
+        assert_eq!(seen.len(), 3, "each turn shades differently: {seen:?}");
+    });
+}

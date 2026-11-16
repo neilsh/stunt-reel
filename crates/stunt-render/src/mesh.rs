@@ -206,9 +206,11 @@ impl GpuModel {
     /// true; returns false, writing nothing, when `ir`'s vertex or index count differs from
     /// the uploaded model's.
     ///
-    /// For a model whose geometry stays and whose vertex attributes change, such as an actor's
-    /// shape decoded under another light: it costs one buffer write per chunk instead of a new
-    /// model's buffers.
+    /// `ir` must have the indices and nodes the model was uploaded from: only the counts are
+    /// checked here, and other indices at equal counts would bind triangles to the wrong
+    /// vertices. For a model whose geometry stays and whose vertex attributes change, such as
+    /// an actor's shape decoded under another light: it costs one buffer write per chunk
+    /// instead of a new model's buffers.
     pub fn rewrite_vertices(&self, queue: &wgpu::Queue, ir: &SodModelIr) -> bool {
         if arena_index(ir.vertices.len()) != self.vertex_count
             || arena_index(ir.indices.len()) != self.index_count
@@ -443,6 +445,13 @@ impl GpuChunk {
     /// Writes `vertices`' windows of this chunk into its vertex buffer with one write, since
     /// each write allocates a staging buffer (`research/parity/lavapipe.md`).
     fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex]) {
+        // An unsplit chunk is one window: write it straight from the source.
+        if let [range] = self.vertex_ranges.as_slice() {
+            if let Some(window) = vertices.get(range.clone()).filter(|w| !w.is_empty()) {
+                queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(window));
+            }
+            return;
+        }
         let mut packed = Vec::new();
         for range in &self.vertex_ranges {
             let Some(window) = vertices.get(range.clone()) else {

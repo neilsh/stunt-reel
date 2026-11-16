@@ -41,7 +41,7 @@ use crate::mesh::{GpuMeshSlice, GpuModel};
 use crate::outline::with_outlines;
 use crate::palette::PaletteLut;
 use crate::pipeline::{LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, RenderPipelines};
-use stunt_core::contracts::arena_index;
+use stunt_core::contracts::{SodNode, arena_index};
 
 /// Which uploaded model a prepared draw uses.
 #[derive(Clone, Copy, Debug)]
@@ -175,12 +175,58 @@ impl DrawUniforms {
     }
 }
 
-/// An actor's shape decoded under the actor's own light, with the vertices last uploaded.
+/// What a new decode of an actor's lit shape asks of the model its slot holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Refresh {
+    /// The decode equals what the model holds.
+    Keep,
+    /// Only the vertices differ: the model's indices, nodes and slices still fit them.
+    Rewrite,
+    /// Another shape, or the decode's indices or nodes differ (welding and outlines can
+    /// move them at equal counts): upload a new model.
+    Upload,
+}
+
+/// The decode a lit model was uploaded from, less what the GPU keeps of it.
+#[derive(Debug)]
+struct LitLayout {
+    shape_id: u16,
+    vertices: Vec<SodVertex>,
+    indices: Vec<u32>,
+    nodes: Vec<SodNode>,
+}
+
+impl LitLayout {
+    fn of(shape_id: u16, ir: &SodModelIr) -> Self {
+        Self {
+            shape_id,
+            vertices: ir.vertices.clone(),
+            indices: ir.indices.clone(),
+            nodes: ir.nodes.clone(),
+        }
+    }
+
+    /// What `ir`, shape `shape_id` decoded again, asks of a model uploaded from `self`.
+    fn refresh(&self, shape_id: u16, ir: &SodModelIr) -> Refresh {
+        if self.shape_id != shape_id
+            || self.vertices.len() != ir.vertices.len()
+            || self.indices != ir.indices
+            || self.nodes != ir.nodes
+        {
+            Refresh::Upload
+        } else if self.vertices == ir.vertices {
+            Refresh::Keep
+        } else {
+            Refresh::Rewrite
+        }
+    }
+}
+
+/// An actor's shape decoded under the actor's own light, with the decode last uploaded.
 #[derive(Debug)]
 struct LitShape {
-    shape_id: u16,
     light: ShadeLight,
-    vertices: Vec<SodVertex>,
+    layout: LitLayout,
     model: GpuModel,
 }
 
@@ -192,14 +238,12 @@ impl LitShape {
         layout: &wgpu::BindGroupLayout,
         shape_id: u16,
         light: ShadeLight,
-        ir: SodModelIr,
+        ir: &SodModelIr,
     ) -> Self {
-        let model = GpuModel::from_ir(device, queue, layout, &ir);
         Self {
-            shape_id,
             light,
-            vertices: ir.vertices,
-            model,
+            layout: LitLayout::of(shape_id, ir),
+            model: GpuModel::from_ir(device, queue, layout, ir),
         }
     }
 }
@@ -341,11 +385,9 @@ impl SceneRenderer {
         }
         self.lit.resize_with(frame.actors.len(), || None);
         for ((actor_index, actor), slot) in (0u32..).zip(&frame.actors).zip(0usize..) {
+            // A slot drawn under the scene's light keeps its model for the actor's next turn.
             let lit = actor.light != self.relit.light()
                 && self.relight(device, queue, slot, actor.shape_id, actor.light);
-            if !lit && let Some(stale) = self.lit.get_mut(slot) {
-                *stale = None;
-            }
             let model = if lit {
                 self.lit
                     .get(slot)
@@ -416,10 +458,10 @@ impl SceneRenderer {
     /// Whether actor `slot`'s shape `shape_id` lit by `light` is in `self.lit`, decoding it
     /// first if not.
     ///
-    /// The slot's model is kept while the actor draws the same shape and the decode keeps its
-    /// vertex and index counts: a new light rewrites its vertices, and only when they changed.
-    /// False, with the slot cleared, when the scene keeps no stream for the shape or it fails
-    /// to decode; the actor then draws the shape uploaded at start-up.
+    /// The slot's model is kept while a new decode keeps its shape, indices and nodes
+    /// ([`LitLayout::refresh`]): a new light then rewrites its vertices, and only when they
+    /// changed. False, with the slot cleared, when the scene keeps no stream for the shape or
+    /// it fails to decode; the actor then draws the shape uploaded at start-up.
     fn relight(
         &mut self,
         device: &wgpu::Device,
@@ -433,7 +475,7 @@ impl SceneRenderer {
         };
         if entry
             .as_ref()
-            .is_some_and(|lit| lit.shape_id == shape_id && lit.light == light)
+            .is_some_and(|lit| lit.layout.shape_id == shape_id && lit.light == light)
         {
             return true;
         }
@@ -442,15 +484,18 @@ impl SceneRenderer {
             return false;
         };
         let ir = with_outlines(&ir);
-        if let Some(lit) = entry.as_mut().filter(|lit| lit.shape_id == shape_id) {
-            if lit.vertices == ir.vertices {
-                lit.light = light;
-                return true;
-            }
-            if lit.model.rewrite_vertices(queue, &ir) {
-                lit.light = light;
-                lit.vertices = ir.vertices;
-                return true;
+        if let Some(lit) = entry.as_mut() {
+            match lit.layout.refresh(shape_id, &ir) {
+                Refresh::Keep => {
+                    lit.light = light;
+                    return true;
+                }
+                Refresh::Rewrite if lit.model.rewrite_vertices(queue, &ir) => {
+                    lit.light = light;
+                    lit.layout.vertices = ir.vertices;
+                    return true;
+                }
+                Refresh::Rewrite | Refresh::Upload => {}
             }
         }
         *entry = Some(LitShape::upload(
@@ -459,7 +504,7 @@ impl SceneRenderer {
             &self.model_layout,
             shape_id,
             light,
-            ir,
+            &ir,
         ));
         true
     }
@@ -703,6 +748,84 @@ fn outlines_in_world(vertex: &SodVertex) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::{LitLayout, Refresh};
+    use stunt_core::contracts::{NodeKind, SodModelIr, SodVertex, VisibilityCondition};
+
+    /// Two triangles over four vertices, each vertex at palette index `colour`, drawn by
+    /// `indices`.
+    fn quad(colour: u8, indices: [u32; 6]) -> SodModelIr {
+        let vertex = |x: f32, y: f32| SodVertex {
+            position: [x, y, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            palette_index: colour,
+            flags: 0,
+            scenery_class: 0,
+            _padding: 0,
+        };
+        let mut ir = SodModelIr::new("QUAD");
+        ir.vertices = vec![
+            vertex(0.0, 0.0),
+            vertex(1.0, 0.0),
+            vertex(1.0, 1.0),
+            vertex(0.0, 1.0),
+        ];
+        ir.indices = indices.to_vec();
+        ir.allocate_node(
+            "QUAD",
+            None,
+            Mat4::IDENTITY.to_cols_array(),
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: 4,
+                index_offset: 0,
+                index_count: 6,
+                is_decal: false,
+            },
+        );
+        ir
+    }
+
+    const ONE_DIAGONAL: [u32; 6] = [0, 2, 1, 0, 3, 2];
+    const OTHER_DIAGONAL: [u32; 6] = [0, 3, 1, 1, 3, 2];
+
+    /// The same decode keeps the model, as the old renderer's one upload per shape did.
+    #[test]
+    fn an_unchanged_decode_keeps_the_model() {
+        let layout = LitLayout::of(9, &quad(40, ONE_DIAGONAL));
+        assert_eq!(layout.refresh(9, &quad(40, ONE_DIAGONAL)), Refresh::Keep);
+    }
+
+    /// New colours over the same indices and nodes rewrite the vertices in place.
+    #[test]
+    fn new_colours_over_the_same_indices_rewrite_the_vertices() {
+        let layout = LitLayout::of(9, &quad(40, ONE_DIAGONAL));
+        assert_eq!(layout.refresh(9, &quad(41, ONE_DIAGONAL)), Refresh::Rewrite);
+    }
+
+    /// Indices that differ at equal vertex and index counts, as welding by palette index and
+    /// the outlines can make them, upload a new model rather than rebinding the old indices.
+    #[test]
+    fn other_indices_at_equal_counts_upload_a_new_model() {
+        let layout = LitLayout::of(9, &quad(40, ONE_DIAGONAL));
+        let moved = quad(41, OTHER_DIAGONAL);
+        assert_eq!(moved.indices.len(), layout.indices.len());
+        assert_eq!(moved.vertices.len(), layout.vertices.len());
+        assert_eq!(layout.refresh(9, &moved), Refresh::Upload);
+        assert_eq!(
+            layout.refresh(9, &quad(40, OTHER_DIAGONAL)),
+            Refresh::Upload,
+            "equal vertices do not save other indices"
+        );
+    }
+
+    /// Another shape in the slot uploads a new model.
+    #[test]
+    fn another_shape_uploads_a_new_model() {
+        let layout = LitLayout::of(9, &quad(40, ONE_DIAGONAL));
+        assert_eq!(layout.refresh(10, &quad(40, ONE_DIAGONAL)), Refresh::Upload);
+    }
+
     use super::*;
 
     #[test]
