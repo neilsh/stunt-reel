@@ -3,7 +3,7 @@ title: "The island"
 order: 3
 ---
 
-The ground is flat coloured patches over anchor points, compiled into a scenery tree, and distance decides how much detail is drawn. This guide follows the island from the files that describe it to what the original film player does with them each frame.
+The ground is drawn largely from flat coloured patches over anchor points, compiled into a scenery tree, and distance decides how much detail is drawn. This guide follows the island from the files that describe it to what the original film player does with them each frame.
 
 ## Anchor points
 
@@ -17,7 +17,7 @@ Some patches are coarse and come with a set of finer patches. The files record a
 
 ## From files to a scenery tree
 
-The game carries compiled copies of the anchor table and most of the ground, but MAP.BIN is not among them. The files were working files of SD.EXE, a scenery compiler that the note identifies as the developers' own tool. That the shipped game was built with it is an inference. The compiler also takes a second file, REGIONS.BIN, which divides the island into blocks by a tree of cutting planes. It slots each top-level patch into the block it belongs to and writes out one combined structure, the scenery tree.
+The game carries compiled copies of the anchor table and most of the ground, but MAP.BIN is not among them. The files were working files of SD.EXE, a scenery compiler that the [map note](../../research/formats/auxiliary/map.md) identifies as the developers' own tool. That the shipped game was built with it is an inference. The compiler also takes a second file, REGIONS.BIN, which divides the island into blocks by a tree of cutting planes. It slots each top-level patch into the block it belongs to and writes out one combined structure, the scenery tree.
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,7 @@ flowchart LR
 
 The [glossary](../../GLOSSARY.md#assets-and-models) calls the island's static content the world: the ocean, the ground patches, and the props placed by the scenery tree. The [scenery note](../../research/formats/auxiliary/scenery.md) describes the tree as a space-dividing tree. Some of its nodes cut the island in two along a plane, so the player can tell which side of a cut the viewer is on. Some nodes shift the position where their children sit. Some are ground patches and some are leaves that stand a model, a prop, in place.
 
-That note also records that the game does not ship the tree as a file. It sits inside the player program itself, and the file that other tools read is that copy, widened. The [map note](../../research/formats/auxiliary/map.md) adds a detail about what survives the journey. The patch file has a few patches that nothing links to, so the compiler never writes them into the tree. The notes infer from this that the original film player never draws them.
+That note also records that the game does not ship the tree as a file. It sits inside the player program itself, and the file that other tools read is that copy, widened. The map note adds a detail about what survives the journey. The patch file has a few patches that nothing links to, so the compiler never writes them into the tree. The notes find them in no other file the player could draw from, and infer that it never draws them.
 
 ## Distance and detail
 

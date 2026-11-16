@@ -3,7 +3,7 @@ title: "How close is the reconstruction"
 order: 4
 ---
 
-We play the same film in the original player and in ours, then score the frames. This guide explains how the scoring works, where the remaining differences are, and what a score cannot tell you. It quotes no scores itself. Each figure lives in the note that measured it, with the date and the code it was measured on.
+We play the same film in the original player and in ours, then score the frames. This guide explains how the scoring works, where the remaining differences are, and what a score cannot tell you. It quotes no scores itself. Each figure is in the research notes or the dated records they cite.
 
 ## The same film, twice
 
@@ -33,22 +33,22 @@ The [attribution note](../../research/parity/attribution.md) splits each frame's
 
 - **Ground.** Much of the early loss came from the ground. Flat ground tiles that the original paints over its terrain were hidden by our depth test. Drawing them as decals on the terrain cut the terrain loss sharply, and the notes record the before and after.
 - **Props.** After that change props are the largest class on both films. Part of that is bookkeeping: tiles that were hidden are now drawn, and their remaining error is credited to props. Adding the facing check inside shapes left the props loss where it was, so that is not the cause. Other visibility checks are not reached on the paths the notes walked, and the notes infer the shading light is not it either. Other causes stay open.
-- **The aircraft.** When AI models graded contact sheets of sample aircraft frames, the graders often noted missing parts and a broken shape, and in the second film a misplaced aircraft. The notes warn that small changes in those counts are within grader noise.
+- **The aircraft.** When AI models graded contact sheets of sample frames, the graders often noted missing parts and a broken shape, and in the second film a misplaced aircraft. The notes warn that small changes in those counts are within grader noise.
 
 ## What the scores cannot show
 
 The [evidence limits note](../../research/parity/evidence-limits.md) is a list of what is not yet proved.
 
 - **Which films.** The reference scores come from a small set of films and do not speak for other films.
-- **Repeat captures.** In early captures of one film on one machine, repeats at the same tick disagreed with each other, for a cause the notes have not identified, so a near-perfect score could not be told from that noise. Later, with the films' sounds cut out, one repeat of each reference film matched page for page.
+- **Repeat captures.** In early captures of one film on one machine, repeats at the same tick disagreed with each other, for a cause the notes have not identified, so a near-perfect score could not be told from that noise. Later, with the films' sounds cut out, one repeat of each reference film matched page for page, which does not rule out rarer differences.
 - **Sparse samples.** Captures are many ticks apart, so motion between them goes unobserved.
 - **Metric blind spots.** The notes infer that SSIM punishes a slightly misplaced thin object and cares about flat brightness, and that IoU ignores everything inside the outline. When they disagree, look at the pictures.
-- **Machines differ.** The same code scored differently on a software graphics driver in a cloud session and on a graphics card, until a fix reduced the gap. Until a graphics-card run confirms the fix, a decision to adopt a change needs one.
+- **Machines differ.** The same code scored differently on a software graphics driver in a cloud session and on a graphics card, until a fix closed most of the gap. A later check on one machine found that the fix leaves the card's pictures unchanged and that one build of the driver scores within the adoption margin on every reference film, so its scores now stand in for the card's. The copy the automated checks use is not yet compared, and small differences remain.
 - **Odd frames.** One captured palette blanks part of itself. Whether the original does that or the capture caught it half-updated is unknown, so the frame stays in and the anomaly is recorded.
 
 ## Beyond the reference films
 
-The [batch note](../../research/parity/batch.md) describes a survey that ran the whole pipeline on films from the wider corpus of community and demo films: archive, capture, render, score. It was stopped on purpose after a fraction of the films, once the failure modes were clear. Among the films it scored, a bounded observation, the ones we never tuned for land in roughly the same band as the two we did, as tuned at the time, and none came near the score the project set as its sign-off goal. Most of those scores were never checked against the survey's later validity rule, and some early ones were not evidence at all, such as one from a capture whose film clock never moved.
+The [batch note](../../research/parity/batch.md) describes a survey that ran the whole pipeline on films from the wider corpus of retail, demo and community films: archive, capture, render, score. It was stopped on purpose after a fraction of the films, once the failure modes were clear. Among the films it scored, a bounded observation, the ones we never tuned for land in roughly the same band as the two we did, as tuned at the time, and none with a valid capture came near the score the project set as its sign-off goal. Most of those scores were never checked against the survey's later validity rule, and some early ones were not evidence at all, such as one from a capture whose film clock never moved.
 
 ## Read next
 

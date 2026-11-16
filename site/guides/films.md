@@ -23,9 +23,9 @@ flowchart LR
 
 ## What a slice can say
 
-Each change in a slice names an actor or a camera by a numbered slot. The film notes list the kinds of change:
+Most changes in a slice name an actor or a camera by a numbered slot. The film notes list the main kinds of change:
 
-- **Create**: bring an actor into the scene, say which model draws it, and give its starting position and direction. A slot whose model is left out is not drawn at all. The film notes describe such slots as invisible camera rigs, which is how cameras are placed in the world.
+- **Create**: bring an actor into the scene and say which model draws it. An actor that never moves or turns gets its fixed position or direction here; one that does gets them from updates. A slot whose model is left out is not drawn at all. The film notes describe such slots as invisible camera rigs or markers, which is how cameras are placed in the world.
 - **Update**: give the new position, direction or animation value for an actor or camera. Between two slices the player works out the in-between poses itself, so a film does not need an entry for every tick.
 - **Choose the camera**: switch which camera rig the picture is taken from. This is a hard cut, so the player jumps to the new view and does not glide towards it.
 - **Set a variable**: a small set of numbers the player blends over time. Some of them drive the palette, which is how fades and dusk are authored.
@@ -36,9 +36,9 @@ Notice what is missing. The game's film editor offered camera behaviours such as
 
 ## The companion file
 
-A .ALL is a bundle. The original linking tool, MAKEONE.EXE, gathers every asset a film refers to and writes them into one file beside the .FLM. The bundle is a numbered directory followed by the items themselves, so any item can be found directly from its number.
+A .ALL is an [archive](../../GLOSSARY.md#assets-and-models). The original linking tool, MAKEONE.EXE, gathers every asset a film refers to and writes them into one file beside the .FLM. The archive is a numbered directory followed by the items themselves, so any item can be found directly from its number.
 
-The number also says what kind of item it is. The format note divides the range of identifiers into regions: models, small colour ramps, full master palettes, scenery and map data (a region set aside for them, though no archive in the corpus uses it), and digital sounds. That is how a film's sound cue finds its sound: the cue carries a number, and the bundle holds the sample under that number.
+The number also says what kind of item it is. The format note divides the range of identifiers into regions: models, small colour ramps, full master palettes, a region that community code expects to hold scenery and map data (though no archive in the corpus uses it), and digital sounds. That is how a film's sound cue finds its sound: the cue carries a number, and the archive holds the sample under that number.
 
 Colour matters here because the original drew with a limited palette, and a film's fades and tints change it. The [drawing guide](drawing.md) explains how models are shaded from it.
 
@@ -53,6 +53,6 @@ The cost is that a film needs an archive to say what its numbers mean, normally 
 ## Read next
 
 - [The film format](../../research/formats/flm.md) — the timeline stream slice by slice, and each kind of change a slice can make
-- [The scene bundle format](../../research/formats/all.md) — how the companion file is laid out and which identifiers mean which kind of asset
+- [The scene archive format](../../research/formats/all.md) — how the companion file is laid out and which identifiers mean which kind of asset
 - [Timeline and ticks](../../research/formats/concepts/timeline-and-ticks.md) — how the playback clock turns slices into smooth motion, and how camera cuts are handled
-- [The resource archive format](../../research/formats/res.md) — the permanent libraries of models, sprites and dialogue that sit beside the per-film bundles
+- [The resource archive format](../../research/formats/res.md) — the permanent libraries of models, sprites and dialogue that sit beside the per-film archives

@@ -19,10 +19,10 @@ flowchart LR
 ```
 
 1. **Issue.** A piece of work is a GitHub issue, and the issue's status is the work's status: open is active, closed as completed is landed.
-2. **Work folder and journal.** When the work has a spec or plan, or will ship as more than one pull request, it gets a folder under work/ and a journal of dated entries. Each entry asks a question, says how it was tried, records the result and gives a verdict. The [work folders page](../../work/README.md) has the layout.
+2. **Work folder and journal.** When the work has a spec or plan, or will ship as more than one pull request, it gets a folder under work/ and a journal of dated entries. Each entry asks a question, says how it was tried, records the result, gives a verdict and names the note that now holds the fact. The [work folders page](../../work/README.md) has the layout.
 3. **Finding recorded.** A current fact belongs in research/ or docs/ and is rewritten in place, while the dated record stays in the work folder. The project's rule is that a finding, including a ruled-out hypothesis, is committed with the code that relies on it. The [recording-findings skill](../../.agents/skills/recording-findings/SKILL.md) says how.
 4. **Quality gate.** The gate is the project's automated set of checks. Before work is presented, it must pass for what the branch touches.
-5. **Fresh review.** Under the project's [rule](../../AGENTS.md#committing), a reviewer with no memory of the work (a subagent, meaning another agent started fresh, or another person) reads the diff and the notes it cites before a change to research notes, docs or these guides is pushed, and before a work spec or plan is committed.
+5. **Fresh review.** Under the project's [rule](../../AGENTS.md#committing), a reviewer with no memory of the work (a subagent, meaning another agent started fresh, or another person) reads the diff and the notes it cites before a change to research notes, the top-level docs pages and how-to guides, the notice file, the reading page or these guides is pushed, and before a work spec or plan is committed.
 6. **Pull request.** The title is a conventional commit subject (a short type, scope and summary, such as "docs(site): …"), because it is the subject that lands on the main branch.
 
 ## The workflows in use
