@@ -32,7 +32,7 @@ Some pixels are left out on purpose: the on-screen controls, and frames fading t
 The [attribution note](../../research/parity/attribution.md) splits each frame's loss by what our render drew there: ocean, terrain, props (scenery such as trees and buildings), actors, sky. It is a bounded observation, from one capture set for each of two films, and it says where the loss is, not what is wrong.
 
 - **Ground.** Much of the early loss came from the ground. Flat ground tiles that the original paints over its terrain were hidden by our depth test. Drawing them as decals on the terrain cut the terrain loss sharply, and the notes record the before and after.
-- **Props.** After that change props are the largest class on both films. Part of that is bookkeeping: tiles that were hidden are now drawn, and their remaining error is credited to props. On the paths the notes walked, the facing check inside shapes was ruled out as the cause, and the notes infer the shading light is not it either. Other causes stay open.
+- **Props.** After that change props are the largest class on both films. Part of that is bookkeeping: tiles that were hidden are now drawn, and their remaining error is credited to props. Adding the facing check inside shapes left the props loss where it was, so that is not the cause. Other visibility checks are not reached on the paths the notes walked, and the notes infer the shading light is not it either. Other causes stay open.
 - **The aircraft.** In graded sheets of the aircraft frames, the graders often noted missing parts and a broken shape, and in the second film a misplaced aircraft. The notes warn that small changes in those counts are within grader noise.
 
 ## What the scores cannot show
@@ -48,7 +48,7 @@ The [evidence limits note](../../research/parity/evidence-limits.md) is a list o
 
 ## Beyond the reference films
 
-The [batch note](../../research/parity/batch.md) describes a survey that ran the whole pipeline on films from the wider corpus of community and demo films: archive, capture, render, score. It was stopped on purpose after a fraction of the films, once the failure modes were clear. Among the films it scored, a bounded observation, the ones we never tuned for land in roughly the same band as the two we did, and none came near the project's sign-off score. Most of those scores were never checked against the survey's later validity rule, and some early ones were not evidence at all: a few came from captures whose film clock never moved.
+The [batch note](../../research/parity/batch.md) describes a survey that ran the whole pipeline on films from the wider corpus of community and demo films: archive, capture, render, score. It was stopped on purpose after a fraction of the films, once the failure modes were clear. Among the films it scored, a bounded observation, the ones we never tuned for land in roughly the same band as the two we did, and none came near the score the project set as its sign-off goal. Most of those scores were never checked against the survey's later validity rule, and some early ones were not evidence at all: a few came from captures whose film clock never moved.
 
 ## Read next
 
