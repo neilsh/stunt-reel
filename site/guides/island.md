@@ -3,7 +3,7 @@ title: "The island"
 order: 3
 ---
 
-The ground is drawn largely from flat coloured patches over anchor points, compiled into a scenery tree, and distance decides how much detail is drawn. This guide follows the island from the files that describe it to what the original film player does with them each frame.
+The ground is drawn in part from flat coloured patches over anchor points, compiled into a scenery tree, and distance decides how much detail is drawn. This guide follows the island from the files that describe it to what the original film player does with them each frame.
 
 ## Anchor points
 

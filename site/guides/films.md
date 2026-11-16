@@ -23,9 +23,9 @@ flowchart LR
 
 ## What a slice can say
 
-Most changes in a slice name an actor or a camera by a numbered slot. The film notes list the main kinds of change:
+A change to an actor or a camera names it by a numbered slot. The film notes list the main kinds of change:
 
-- **Create**: bring an actor into the scene and say which model draws it. An actor that never moves or turns gets its fixed position or direction here; one that does gets them from updates. A slot whose model is left out is not drawn at all. The film notes describe such slots as invisible camera rigs or markers, which is how cameras are placed in the world.
+- **Create**: bring an actor into the scene and say which model draws it. An actor that never moves gets its fixed position here, and one that never turns its fixed direction; otherwise they come from updates. A slot whose model is left out is not drawn at all. The film notes describe such slots as invisible camera rigs or markers, which is how cameras are placed in the world.
 - **Update**: give the new position, direction or animation value for an actor or camera. Between two slices the player works out the in-between poses itself, so a film does not need an entry for every tick.
 - **Choose the camera**: switch which camera rig the picture is taken from. This is a hard cut, so the player jumps to the new view and does not glide towards it.
 - **Set a variable**: a small set of numbers the player blends over time. Some of them drive the palette, which is how fades and dusk are authored.
