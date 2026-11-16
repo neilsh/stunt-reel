@@ -20,7 +20,7 @@ New-Item -ItemType Directory -Force $mesa | Out-Null
 7z x -y "-o$mesa" $archive
 ```
 
-The archive holds `x64\` and `x86\` driver trees, an ICD manifest for each driver, and the release's two deploy scripts. Do not run the scripts: the variable below is not system-wide, it reaches this shell and every process the shell starts.
+The archive holds `x64\` and `x86\` driver trees, an ICD manifest for each of its two Vulkan drivers (lavapipe and Dozen — the OpenGL, OpenCL, VA-API and WARP DLLs beside them have none), `modules\`, `readme.txt` and the release's two deploy scripts. Do not run the scripts: the variable below is not system-wide, it reaches this shell and every process the shell starts.
 
 ## 2. Name only the lavapipe ICD
 
@@ -37,7 +37,7 @@ mise run parity -- --films ctry --software-only
 mise run frame -- --film ctry --ticks 400,422 --software-only
 ```
 
-`--software-only` reaches `stuntreel`'s film renderer, which sets `RenderOptions::software_only` for the headless and the windowed path alike. Both halves are needed: with the ICD named but no flag, the first Vulkan attempt finds only lavapipe and passes it over, the all-backends attempt finds the RTX 4070, and the render lands on the GPU — `mise run frame -- --film ctry --ticks 400` recorded `NVIDIA GeForce RTX 4070 Laptop GPU`. With the flag but no `VK_DRIVER_FILES`, Vulkan has no CPU adapter and the same frame recorded `Microsoft Basic Render Driver`, WARP.
+`--software-only` reaches `stuntreel`'s film renderer, which sets `RenderOptions::software_only` for the headless and the windowed path alike. Both halves are needed, and `mise run frame` records the adapter each render used in the frame store's `build/scratch/frame/<film>/store/render.json`; on this machine (an RTX 4070 laptop), with the ICD named but no flag, the first Vulkan attempt found only lavapipe and passed it over, the all-backends attempt found the GPU, and the one-tick run (`--ticks 400`) recorded `NVIDIA GeForce RTX 4070 Laptop GPU` in the store. With the flag but no `VK_DRIVER_FILES`, Vulkan had no CPU driver and the same run recorded `Microsoft Basic Render Driver`, WARP.
 
 ## 4. Check the adapter
 
@@ -51,10 +51,10 @@ prints
 {"name":"llvmpipe (LLVM 21.1.7, 256 bits)","class":"cpu"}
 ```
 
-on lavapipe, and `{"name":"NVIDIA GeForce RTX 4070 Laptop GPU","class":"hardware"}` on the GPU. The LLVM version moves with the Mesa release. `Microsoft Basic Render Driver` with class `cpu` is WARP: the loader did not find the ICD (a relative path, or the wrong JSON), and the all-backends attempt took the software adapter it found. The GPU's own name with class `hardware` on this setup indicates `--software-only` did not reach the render. The report copies the adapter from the render's `render.json`, so re-render rather than edit it. A run overwrites `build/parity/report/<film>_current`, so copy a report elsewhere before switching adapters:
+on lavapipe, and `{"name":"NVIDIA GeForce RTX 4070 Laptop GPU","class":"hardware"}` on this machine's GPU. The LLVM version moves with the Mesa release. `Microsoft Basic Render Driver` with class `cpu` is WARP: the loader did not find the ICD (a relative path, or the wrong JSON), and, with `--software-only`, the all-backends attempt took the software adapter it found. The GPU's own name with class `hardware` on this setup indicates `--software-only` did not reach the render. The report copies the adapter from the render's `render.json`, so re-render rather than edit it. A run overwrites `build/parity/report/<film>_current`, so copy a report elsewhere before switching adapters:
 
 ```powershell
 Copy-Item build/parity/report/ctry_current build/parity/report/ctry_lavapipe -Recurse
 ```
 
-Without a `[ctry.expected.lavapipe]` table in [`references.toml`](../../research/parity/references.toml), the run's comparison line says `no expected score for lavapipe yet: add it`; #455 adds those rows. A `crates/` tree that differs from the row's recorded one makes the line say `crates/ changed` instead, and its `delta` is then not a verdict.
+Without a `[ctry.expected.lavapipe]` table in [`references.toml`](../../research/parity/references.toml), the run's comparison line says `no expected score for lavapipe yet: add it`; #455 adds those rows. Once a row exists, `comparison_line` in [`expected_scores.py`](../../python/stunt_reel/expected_scores.py) checks the adapter name before `changed_since`: a row measured on an adapter with another name gives `not comparable: other adapter (expected on {expected.adapter})`, and only a row on the same adapter name, where the checkout's `crates/` tree differs from the row's recorded one, gives `crates/ changed: tree {found[:7]}, measured on {expected.crates[:7]}`. The first is the likely case here, since #455's cloud rows come from Ubuntu's Mesa build and its llvmpipe need not carry the same LLVM version; neither line is a verdict on the delta.
