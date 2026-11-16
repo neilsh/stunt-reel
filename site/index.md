@@ -20,14 +20,14 @@ A film records where every actor and the camera are, moment by moment.
 
 **[How does the game draw a frame?](guides/drawing.md)**
 
-Each picture is built up from models, colours and a camera view.
+Each model draws itself, and the picture is painted from back to front.
 
 </div>
 <div class="sr-card">
 
 **[How is the island built?](guides/island.md)**
 
-The island is a set of terrain, sets and props that films are staged on.
+The ground is flat coloured patches, and distance decides how much detail is drawn.
 
 </div>
 <div class="sr-card">
@@ -41,14 +41,14 @@ We compare our frames with the original player's and track where they differ.
 
 **[How do we know what we know?](reading.md)**
 
-Each claim in these notes is marked with how well the evidence supports it.
+Findings in these notes carry a tag for how well the evidence supports them.
 
 </div>
 <div class="sr-card">
 
 **[How is Stunt Reel developed?](guides/process.md)**
 
-The project is built in small steps, with checks that keep the work honest.
+Partly a testbed for how AI agents can do this work reliably, in small, checked steps.
 
 </div>
 </div>
