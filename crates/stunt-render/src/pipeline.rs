@@ -36,6 +36,10 @@ pub(crate) struct ModelUniform {
 }
 
 impl ModelUniform {
+    /// The size of one uniform, which every `@group(2)` binding shows.
+    pub(crate) const BINDING_SIZE: Option<wgpu::BufferSize> =
+        wgpu::BufferSize::new(size_of::<Self>() as u64);
+
     /// A uniform drawing with `model_matrix` into `layer`.
     #[must_use]
     pub(crate) fn new(model_matrix: [f32; 16], layer: u32) -> Self {
@@ -147,7 +151,7 @@ impl RenderPipelines {
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: true,
-                    min_binding_size: wgpu::BufferSize::new(size_of::<ModelUniform>() as u64),
+                    min_binding_size: ModelUniform::BINDING_SIZE,
                 },
                 count: None,
             }],
