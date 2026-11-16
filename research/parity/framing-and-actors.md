@@ -1,5 +1,5 @@
 ---
-summary: "Records the camera and projection corrections tried against the capture: square 256 px projection (adopted) and the eye-height, pitch, FOV, framing-offset and tick-phase sweeps that were ruled out."
+summary: "Records the camera and projection corrections tried against the capture: square 256 px projection (adopted) and the eye-height, pitch, FOV, framing-offset and tick-phase sweeps that were ruled out; and the `location` rotor drawn frozen at rest (#504)."
 ---
 
 # Parity: Framing and Camera
@@ -15,10 +15,21 @@ summary: "Records the camera and projection corrections tried against the captur
 
 This is why the eye-height sweeps below found no consistent answer: a height offset was partly compensating for a projection error that changes with pitch, so its best value depended on the shot.
 
+## 3. `location`: the rotor drawn frozen at rest
+
+`[Established]` that the black trapezoid over `location`'s foreground at ticks 717 to 903 is the solid-blade arm of shape `0x3E57`'s main rotor in its rest pose, by the shape's stream and a render that takes the other arm ([#504](https://github.com/neilsh/stunt-reel/issues/504)). The rotor's angle (`ROTY` on bank `0x14`) and its arm (`BVGT` on bank `0x12`) both come from the angle bank ([`angle-bank.md`](../playone-exe/angle-bank.md) § 4), whose words our VM reads as 0 for `ROT*` and `BVGT`: the angle stays at 0, the blades pointing at the camera, and this `BVGT` never branches, so the solid blades are drawn on every tick. `PLAYONE` spins the rotor and draws line blades whenever var 10 moved by 16 or more since its previous frame. The trapezoid persists after #495 (`location` at its expected score).
+
+The capture agrees: rows 100 to 184 hold 63 to 69 index-0 pixels at ticks 826, 848, 859, 870 and 892, and the solid blades at 837 (7,454 pixels of index 0, 197 of 23) and 881 (4,785 and 201), at two angles, neither our rest pose. Not wrong geometry: with `BVGT` forced to branch, our render draws short lines and no trapezoid.
+
+`[Supported Inference]` that 837 and 881 are frames in which var 10 moved by less than 16 since the previous one: under DOSBox-X every frame from 836 to 901 took the line arm, and the capture harness's frame spacing is unmeasured. The fix is [#624](https://github.com/neilsh/stunt-reel/issues/624), beside [#271](https://github.com/neilsh/stunt-reel/issues/271)'s `ROT*` angles.
+
+_Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest)._
+
 ## Ruled out
 
 All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named. Baselines moved between rounds (0.771 / 0.676 on 2026-10-22, 0.7708 / 0.6762 at `d90a047`, 0.7732 / 0.6799 after page timing); each sweep is read against its own baseline. Nothing below was adopted.
 
+* **Wrong geometry for the `location` trapezoid** (2026-11-16, [#504](https://github.com/neilsh/stunt-reel/issues/504)): the other `BVGT` arm of the same shape draws the capture's line blades; see § 3. [Journal](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest).
 * **A montage tick-skipping rule** (2026-11-05, `[Bounded Observation]`, [#73](https://github.com/neilsh/stunt-reel/issues/73)). Offset search over -200..+10 on `captures/vault-intro`: the best-matching render tick follows the capture tick at slope 0.99 (largest deviation 7 ticks), so the 0.9-lag reading was a search saturating at -180. See [`film-segments.md`](film-segments.md#23-montage-frames).
 
 **Vertical placement, CTRY-only gains** (2026-10-22, [log row](../../work/2026-10/parity-log/log.md)). Each helps CTRY and costs INTRO, so no global rule:
@@ -51,3 +62,4 @@ _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](../../work/2
 1. Closed 2026-11-05: the montage needs no tick-skipping rule; see Ruled out. ([#73](https://github.com/neilsh/stunt-reel/issues/73))
 2. The coastline band (capture sand where we draw airfield green) remains; see [`attribution.md`](attribution.md#5-coastline-and-sea). ([#71](https://github.com/neilsh/stunt-reel/issues/71))
 3. Two things the projection change of § 2 leaves open. First, the projection centre: our 185-row viewport centres it at row 92.5, while the horizon fit gives 91.9 and `0x41CA` reads 92; half a row has not been swept. Second, the finite ground: at a 500 m eye height our sea edge sits about 5 px below PLAYONE's horizon, which is at infinity. That accounts for about half of the INTRO slot 4 offset.
+4. Whether `PLAYONE` under dosbox-automation draws some `location` frames less than 16 var-10 units after the previous one, which § 3 infers for ticks 837 and 881; a bank read in the capture harness would show it. ([#624](https://github.com/neilsh/stunt-reel/issues/624))

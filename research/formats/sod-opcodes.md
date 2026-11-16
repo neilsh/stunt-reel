@@ -212,7 +212,7 @@ Only **stream constraints** are recorded here — readings that must match the b
 | `MOVECENTRE` | `relpos += register[reg_off / 12]` | agrees |
 | `PUSHRELMAT` / `POPRELMAT` | Push and pop a 3×3 matrix that `VECTORS` applies to raw input points | agrees |
 | `ROTX` / `ROTY` / `ROTZ` | The operand is a **variable byte offset** (`variable[w / 2]`), not an immediate; the variable is an angle with 4096 units per turn, post-multiplied into the matrix | **differs**: coverage § 1 assumes an immediate `angle_bam` |
-| `BVLT` / `BVGT` | `reg` is a **variable byte offset**; branch when `variable <= val` (`BVLT`) or `variable >= val` (`BVGT`), unsigned | **differs**: coverage § 1 reads `reg` as a register |
+| `BVLT` / `BVGT` | `reg` is a **variable byte offset**; branch when `variable <= val` (`BVLT`) or `variable >= val` (`BVGT`), unsigned | **differs**: coverage § 1 reads `reg` as a register. `BVGT` confirmed at its handler `0x9C23`: the variable is the angle-bank word `work:0x810E + reg` ([`angle-bank.md`](../playone-exe/angle-bank.md) § 4) |
 | `BZLT` | Branch when the register's local Z `<= val - relpos.z`; the handler's `shift` scaling is not modelled | not in coverage § 1; the handler (`0x9BE5`) compares view depth, not local Z, with `val >> work:0x806F` ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)) |
 | `GOTO` / `GOSUB` | Target = address of the operand word + `rel_offset` bytes; `GOSUB` runs the target until `RETURN` | agrees; coverage § 1 leaves the base unstated |
 | `SHADE1` | Two operand words, no geometry | agrees |

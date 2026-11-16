@@ -1,5 +1,5 @@
 ---
-summary: "Bank words `0x10`..`0x14`, `0x18` and `0x1A` (`work:0x811E`..`0x8128`) are written once per frame for the whole film from the clock and film variables 10 and 12; only `0x16` is per actor."
+summary: "Bank words `0x10`..`0x14`, `0x18` and `0x1A` (`work:0x811E`..`0x8128`) are written once per frame for the whole film from the clock and film variables 10 and 12; only `0x16` is per actor. `BVGT` reads the bank too, and a rotor picks solid or line blades by word `0x12`."
 ---
 # `PLAYONE.EXE`: the Angle Bank and Film Variables 10 and 12
 
@@ -56,6 +56,20 @@ _Source: [the bank writer read and broken on](../../work/2026-11/456_film-vars-1
 
 ---
 
+## 4. A Reader of Word `0x12`: the Rotor of Shape `0x3E57`
+
+`[Established]` for the handler and the shape's stream, static; `[Bounded Observation]` for the live words, one film under DOSBox-X.
+
+* **`BVGT` reads the bank.** Its handler `0x9C23` (unpatched dispatch slot `0x853D`) loads the operand word into `BX`, compares `[BX + 0x810E]` with the threshold word, and branches by the rel word unless the bank word is below it (`jb` at `0x9C2D`): taken when `bank[op] >= val`, unsigned, the target being the rel word's address plus the rel word. This confirms the si-tools reading in [`sod-opcodes.md`](../formats/sod-opcodes.md) § 3.
+* **The rotor.** The helicopter shape `0x3E57` (in `LOCATION.ALL`) turns its main rotor by `ROTY` on operand `0x14` inside `PUSHRELMAT`/`POPRELMAT` (stream `0x0D7E..0x0D98`), then runs `BVGT 0x12, 0x0FA0`: below the threshold it calls `0x13E2`, the hub and two solid blades (colours 0 and `0x17`); at or above it, `0x18A0`, the hub with the blades as `ZLINETO` lines. The tail rotor (`0x0E76`) repeats the pattern with `ROTX`. So the solid blades are drawn when var 10 moved by less than 16 since the previous frame, and the line blades otherwise. This answers open question 1 for `BVGT`, not for `ROT*`.
+* **Live, `LOCATION.FLM`.** On Patch #3 under DOSBox-X at 8000 cycles, 30 stops at the bank writer over ticks 836 to 901 had frames 2 or 3 ticks apart and word `0x12` between `0x1D00` and `0x9000`, so every frame took the line arm.
+
+How our render differs is in [`framing-and-actors.md`](../parity/framing-and-actors.md) § 3.
+
+_Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest)._
+
+---
+
 ## Ruled out
 
 * **A per-actor value for operands `0x10`..`0x14`, `0x18`, `0x1A`.** One caller per frame, before the object loop; `BX = 0x4888` on every stop; no writer but `0x1D96` in the bank watch. [Journal](../../work/2026-11/456_film-vars-10-12/journal.md#2026-11-13-the-bank-writer-read-and-broken-on).
@@ -64,6 +78,6 @@ _Source: [the bank writer read and broken on](../../work/2026-11/456_film-vars-1
 
 ## Open questions
 
-1. Whether any stock shape reads operand `0x12` with a `ROT*` (no `OP_ANIMATE` does, [`sod-animate.md`](sod-animate.md) § 2); if one does, its angle depends on `PLAYONE`'s frame spacing, which section 2 bounds only under DOSBox-X.
+1. Whether any stock shape reads operand `0x12` with a `ROT*` (no `OP_ANIMATE` does, [`sod-animate.md`](sod-animate.md) § 2). `BVGT` reads it (section 4), so which arm a rotor draws already depends on `PLAYONE`'s frame spacing, which section 2 bounds only under DOSBox-X; the spacing under dosbox-automation, where the reference captures are made, is unmeasured.
 2. The watch on `work:0x811E..0x8129` never named the `0x811E` store at `0x1DD0`, though the break stops show the word following the clock; why the watch misses it is not known.
 3. Why `0x136F` writes var 10 in the `DS:0x4888` struct during playback while the `DS:0x474A` copy stays still, given [`palette-fade.md`](palette-fade.md) § 3.2's copy from `0x47C8` to `0x4906`.
