@@ -40,14 +40,19 @@ Part of the [`running-unattended`](SKILL.md) skill.
      # local (GraphQL):
      gh pr view <n> --json headRefOid,comments --jq '.headRefOid[0:7] as $h | [.comments[] | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR")) | .body | split("\n")[0] | rtrimstr("\r") | select(test("^[^:]+ review at " + $h + ": "))] | last | (. // "") | test(": clean$")'
 
-     # cloud (REST), the same boolean; --paginate walks every page, so a long history is never cut short:
+     # cloud (REST), the same boolean; pages go by number, since the proxy refuses --paginate's next links:
      H=$(gh api repos/{owner}/{repo}/pulls/<n> --jq '.head.sha[0:7]')
-     gh api --paginate "repos/{owner}/{repo}/issues/<n>/comments?per_page=100" --jq ".[] | select(.author_association | IN(\"OWNER\",\"MEMBER\",\"COLLABORATOR\")) | .body | split(\"\\n\")[0] | rtrimstr(\"\\r\") | select(test(\"^[^:]+ review at $H: \"))" | tail -n 1 | grep -q ': clean$' && echo true || echo false
+     F=".[] | select(.author_association | IN(\"OWNER\",\"MEMBER\",\"COLLABORATOR\")) | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(test(\"^[^:]+ review at $H: \"))"
+     p=1; while :; do
+       gh api "repos/{owner}/{repo}/issues/<n>/comments?per_page=100&page=$p" --jq "$F"
+       [ "$(gh api "repos/{owner}/{repo}/issues/<n>/comments?per_page=100&page=$p" --jq length)" -lt 100 ] && break
+       p=$((p+1))
+     done | tail -n 1 | grep -q ': clean$' && echo true || echo false
      ```
    - Acceptance criteria are met and the PR body carries `Fixes #N` (or `Part of #N`).
    - **Environment:** in a cloud session, a rendering PR that [`cloud.md` § Rendering](../working-in-an-environment/cloud.md#rendering) sends to the GPU takes `local-only` and stays unarmed. A local-windows run takes such a PR from the queue, runs `mise run judge` on the GPU as the PR body asks, and, when the GPU's verdict matches lavapipe's, removes `local-only` and arms it under this bar; otherwise it fixes the PR as for a failed check.
    - **Allowed vs blocked changes:** Updating `[film.expected.<class>]` in `research/parity/references.toml` for an adopted parity change is **allowed** to merge (`crates` must be `git rev-parse HEAD:crates` with `crates/` clean). **Never** arm or merge draft PRs, PRs that repin a film's capture hash (`sha256` or `all_sha256` in `references.toml`), PRs that add a dependency to `stunt-core` (`[I7]`), or PRs that add or modify an ADR (unless an accepted ADR is already approved by the user) — hand those to a human (`ready-for-human`).
-6. **After arming:** Fast-forward the `main` ref without switching any checkout (`git fetch origin main:main`; skip it when git refuses because a checkout has `main` checked out), run the disk check and tidy ([`loop-and-bounds.md`](loop-and-bounds.md#clock-and-disk-space)), and refresh the queue.
+6. **After arming:** Fast-forward the `main` ref without switching any checkout (`git fetch origin main:main`; skip it when git refuses because a checkout has `main` checked out), on local-windows run the disk check and tidy ([`loop-and-bounds.md`](loop-and-bounds.md#clock-and-disk-space)), and refresh the queue.
 
 ## Filing issues and PowerShell safety
 

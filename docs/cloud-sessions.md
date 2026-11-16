@@ -76,9 +76,7 @@ Claude nothing. A failed setup script should also keep that environment out of t
 ## The SessionStart hook
 
 The repo's SessionStart hook (`.claude/settings.json`) runs `mise run cloud-session-start` on
-every session start and resume. A second hook, `mise run session-environment`, prints the session's
-environment at start, resume, clear and compaction, and in a cloud session the file to read
-([`working-in-an-environment`](../.agents/skills/working-in-an-environment/SKILL.md)). Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
+every session start and resume. Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does
 nothing; in one it runs the cloud setup again, then
 `mise run cloud-assets -- fetch --replace-unmarked`, `mise run game-builds` and
 `mise run superset-all`, with the environment variables set. `game-builds` makes
@@ -93,6 +91,10 @@ session can find an earlier session's archive folders already in its data root (
 prints one line to the session, `ready` or `FAILED`, and appends the rest to
 `/tmp/cloud-session-start.log` under a `== <UTC time> <commit> ==` line per run, so a rerun keeps
 the startup run's output.
+
+A second hook, `mise run session-environment`, prints the session's environment at start, resume,
+clear and compaction, and in a cloud session the file to read
+([`working-in-an-environment`](../.agents/skills/working-in-an-environment/SKILL.md)).
 
 The hook does not run where Claude Code loads no repo settings: a cloud session with several
 repositories, or a cloud thread of a project. Nothing is fetched there and no line is printed;
@@ -167,8 +169,8 @@ fails, 2 if the R2 variables are unset. Use it to check a new or resumed cloud e
   cited by a journal entry there ([`NOTICE.md`](../NOTICE.md), [`pr-evidence.md`](../.agents/skills/improving-render-parity/pr-evidence.md)
   step 6), and its body links each at its commit
   (`https://github.com/<owner>/<repo>/blob/<commit>/<path>?raw=true`), as #264 did.
-- **Measure the GPU.** The renderer runs on lavapipe, which scores within 0.002 of the GPU on all
-  seven reference films ([`lavapipe.md` § 4](../research/parity/lavapipe.md#4-lavapipe-beside-the-gpu-on-one-crates-tree)),
+- **Measure the GPU.** The renderer runs on lavapipe, which scored within 0.002 of the GPU on all
+  seven reference films on the `crates` tree it measured ([`lavapipe.md` § 4](../research/parity/lavapipe.md#4-lavapipe-beside-the-gpu-on-one-crates-tree)),
   so an adoption decision stands on lavapipe's scores, except for a change where its residues lie
   ([`cloud.md` § Rendering](../.agents/skills/working-in-an-environment/cloud.md#rendering)); GPU
   timing still needs the GPU. Lavapipe is also slower: `mise run parity` on the seven reference films took

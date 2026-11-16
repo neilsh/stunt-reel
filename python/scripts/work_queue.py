@@ -4,8 +4,8 @@
 Each line names the item and either ``ready`` or why it is skipped, for the reasons that need no
 judgement:
 
-- a PR labelled ``ready-for-human``, or ``local-only`` in a cloud session; one stacked on another open PR, which waits for its base
-  to merge; or one whose auto-merge is armed and whose checks are pending. An armed PR with a
+- a PR labelled ``ready-for-human``, or ``local-only`` in a cloud session; one stacked on another
+  open PR, which waits for its base to merge; or one whose auto-merge is armed and whose checks are pending. An armed PR with a
   failed check, a conflict, or passed checks yet still open is ``ready``, since it needs work;
 - an issue labelled ``in-progress``, or ``local-only`` in a cloud session
   (``CLAUDE_CODE_REMOTE=true``; ``docs/agents/triage-labels.md`` § Environment roles);
@@ -230,7 +230,7 @@ def armed_state(pr: dict[str, Any]) -> str:
 
 
 def _pages(path: str) -> list[dict[str, Any]]:
-    """Every entry of a REST list at *path* (a query string, no ``page``), read page by page.
+    """Every entry of a REST list at *path* (no ``per_page`` or ``page``), read page by page.
 
     Pages go by number because ``gh api --paginate`` follows GitHub's next links, which name the
     repository by id (``repositories/<id>/...``), and a cloud session's proxy refuses those
@@ -239,7 +239,8 @@ def _pages(path: str) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     page = 1
     while True:
-        batch = gh_json("api", f"{path}&per_page={PER_PAGE}&page={page}")
+        sep = "&" if "?" in path else "?"
+        batch = gh_json("api", f"{path}{sep}per_page={PER_PAGE}&page={page}")
         entries.extend(batch)
         if len(batch) < PER_PAGE:
             return entries

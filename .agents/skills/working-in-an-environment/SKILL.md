@@ -14,4 +14,4 @@ Stunt-reel runs in two environments. Each has a file stating what it has, what i
 
 Any other machine has no file yet: say so, and work from `local-windows.md` only where the resource it names is there.
 
-The SessionStart hook prints `environment: <name>` at startup, resume and compaction, and in a cloud session adds the file to read. A subagent sees neither the hook nor this skill, so a brief for a subagent in a cloud session tells it to read `cloud.md` first.
+The SessionStart hook prints `environment: <name>` at startup, resume, clear and compaction, and in a cloud session adds the file to read. A subagent sees neither the hook nor this skill, so a brief for a subagent in a cloud session tells it to read `cloud.md` first.
