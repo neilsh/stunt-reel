@@ -65,19 +65,31 @@ struct VertexOutput {
     // filler interpolates a Gouraud polygon's index (research/playone-exe/terrain-shade.md
     // section 6). A flat polygon has one index at every vertex, so it is unchanged.
     @location(3) @interpolate(linear) shade: f32,
+    // `shade` interpolated perspective-correct, read only where `shade` is not finite.
+    @location(4) @interpolate(perspective) shade_perspective: f32,
 };
 
-// The whole palette index a fragment draws [I3]. A non-finite `shade` falls back to the
-// provoking vertex's index: Mesa's software clipper (lavapipe) can interpolate a `linear`
-// varying to NaN on a polygon that reaches behind the eye past a side plane
-// (research/parity/method.md section 3). A GPU interpolates finite values to finite ones,
-// so there the branch never fires.
+// Whether `x` is NaN or infinite: all exponent bits set. WGSL has no isNan, and `x != x`
+// may be folded.
+fn is_non_finite(x: f32) -> bool {
+    return (bitcast<u32>(x) & 0x7f800000u) == 0x7f800000u;
+}
+
+// The whole palette index a fragment draws [I3]. Mesa's software clipper (lavapipe) can
+// interpolate a `linear` varying to NaN on a polygon that reaches behind the eye past a side
+// plane, while it interpolates a `perspective` one with a finite weight
+// (research/parity/lavapipe.md section 2). There a Gouraud polygon reads the perspective
+// copy, and the provoking vertex's index is the last resort. A GPU interpolates finite values
+// to finite ones, so there neither branch fires.
 fn fragment_index(in: VertexOutput) -> u32 {
-    // All exponent bits set is NaN or infinity; WGSL has no isNan, and `x != x` may be folded.
-    if ((bitcast<u32>(in.shade) & 0x7f800000u) == 0x7f800000u) {
-        return in.palette_index;
+    var shade = in.shade;
+    if (is_non_finite(shade)) {
+        if (is_non_finite(in.shade_perspective)) {
+            return in.palette_index;
+        }
+        shade = in.shade_perspective;
     }
-    return u32(clamp(floor(in.shade + 0.5), 0.0, 255.0));
+    return u32(clamp(floor(shade + 0.5), 0.0, 255.0));
 }
 
 struct PlaneOutput {
@@ -104,6 +116,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
         out.palette_index = 0u;
     }
     out.shade = f32(out.palette_index);
+    out.shade_perspective = out.shade;
     out.layer = model.layer.x + in.attr.z;
 
     // Polygons are drawn at their palette index with no directional lighting: against
