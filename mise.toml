@@ -212,7 +212,7 @@ run = "uv run python python/scripts/parity_judge.py"
 
 [tasks.parity]
 depends = ["ensure"]
-description = "Parity baseline: render every reference film with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--jobs N] [--no-build] [--no-render] [--reuse DIR] [--retime N])"
+description = "Parity baseline: render every reference film with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--jobs N] [--no-build] [--no-render] [--reuse DIR] [--retime N] [--software-only])"
 run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
@@ -232,7 +232,7 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.frame]
 depends = ["ensure"]
-description = "Render film ticks in one process and write each beside its reference capture frame (mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build] [--var DBG_X=0,1]; --var draws one panel per value after the capture)"
+description = "Render film ticks in one process and write each beside its reference capture frame (mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build] [--software-only] [--var DBG_X=0,1]; --var draws one panel per value after the capture)"
 run = "uv run python python/scripts/parity_frame.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 

@@ -9,9 +9,7 @@ use stunt_core::contracts::PaletteControls;
 use stunt_core::flm::CAMERA_FORWARD;
 use stunt_core::scene::{FilmScene, SceneFrame, ViewCamera};
 use stunt_parity::{FilmId, Geometry, RenderAdapter};
-use stunt_render::{
-    FfmpegVideoWriter, Offscreen, PageSink, RenderOptions, RenderedPage, Renderer, SinkError,
-};
+use stunt_render::{FfmpegVideoWriter, Offscreen, PageSink, RenderedPage, Renderer, SinkError};
 
 use crate::config::CliConfig;
 use crate::page_slot::PageSlot;
@@ -169,10 +167,7 @@ pub(crate) fn run_headless(
     if let Some(rows) = config.viewport_rows {
         offscreen = offscreen.with_viewport_rows(rows);
     }
-    let options = RenderOptions {
-        clear_palette_index: config.clear_index,
-        software_only: false,
-    };
+    let options = config.render_options();
 
     if config.out_dir.is_none() && video_writer.is_none() {
         let output_path = config

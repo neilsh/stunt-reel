@@ -77,6 +77,26 @@ def test_the_shared_flags_are_defined_once() -> None:
     assert actions["reuse"].help == "score DIR/<film> without rendering"
 
 
+def test_software_only_reaches_the_render_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert parity_run.parse_args(["--software-only"]).software_only is True
+    root = reference_tree(tmp_path / "data", [7], films=("ctry",))
+    renders: list[dict[str, object]] = []
+
+    def fake_render(_job: Any, out: Path, *_a: Any, **kwargs: Any) -> None:
+        renders.append(kwargs)
+        out.mkdir(parents=True)
+
+    monkeypatch.setattr(parity_run, "REPO_ROOT", tmp_path / "repo")
+    monkeypatch.setattr(parity_run, "render_film", fake_render)
+    monkeypatch.setattr(parity_run, "check_film", lambda *_a: None)
+    options = _options(parity_run, ["--films", "ctry", "--data-root", str(root)])
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_run.prepare_source(job, options, no_render=False, software_only=True)
+    assert renders == [{"software_only": True}]
+
+
 def test_script_specific_flags_stay_local() -> None:
     assert parity_run.parse_args(["--no-render"]).no_render is True
     sweep = parity_sweep.parse_args(["--probe", "iou", "--var", "DBG_X=0", "--keep-best"])

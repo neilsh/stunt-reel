@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use clap::error::ErrorKind;
 use clap::{CommandFactory as _, FromArgMatches as _, Parser};
 
+use stunt_render::RenderOptions;
+
 use crate::{export, link, parity, shape_views, sod_census, sod_trace};
 
 /// Options as clap parses them, before cross-option rules and companion discovery.
@@ -90,6 +92,9 @@ struct Options {
     /// --game, else 180)
     #[arg(long, value_name = "I")]
     clear_index: Option<u8>,
+    /// Render on the software adapter (lavapipe, WARP), even when a GPU is available
+    #[arg(long)]
+    software_only: bool,
     /// Run offscreen without opening a window
     #[arg(long)]
     headless: bool,
@@ -125,6 +130,8 @@ pub(crate) struct CliConfig {
     /// Draw the scene into the top this-many rows of the target only (`--viewport-rows`).
     pub viewport_rows: Option<u32>,
     pub clear_index: u8,
+    /// Render on the software adapter even when a GPU is available (`--software-only`).
+    pub software_only: bool,
     pub headless: bool,
     pub output_png: Option<PathBuf>,
     pub max_ticks: Option<usize>,
@@ -147,6 +154,15 @@ impl CliConfig {
         Self::from_options(options).map_err(|msg| command.error(ErrorKind::ArgumentConflict, msg))
     }
 
+    /// The render options this configuration asks for, headless or windowed.
+    #[must_use]
+    pub(crate) fn render_options(&self) -> RenderOptions {
+        RenderOptions {
+            clear_palette_index: self.clear_index,
+            software_only: self.software_only,
+        }
+    }
+
     fn from_options(options: Options) -> Result<Self, String> {
         let Options {
             inputs,
@@ -167,6 +183,7 @@ impl CliConfig {
             height,
             viewport_rows,
             clear_index,
+            software_only,
             headless,
             output: output_png,
             max_ticks,
@@ -242,6 +259,7 @@ impl CliConfig {
             height,
             viewport_rows,
             clear_index,
+            software_only,
             headless,
             output_png,
             max_ticks,

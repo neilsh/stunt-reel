@@ -90,6 +90,19 @@ fn test_any_nonzero_width_parses() {
 }
 
 #[test]
+fn test_software_only_reaches_the_render_options() {
+    let default = parse(&["--headless"]).expect("default").render_options();
+    assert!(!default.software_only, "the flag defaults off");
+    let config = parse(&["--headless", "--software-only"]).expect("parses");
+    assert_eq!(config.software_only, config.render_options().software_only);
+    assert!(config.render_options().software_only);
+    assert_eq!(
+        config.render_options().clear_palette_index,
+        config.clear_index
+    );
+}
+
+#[test]
 fn test_tick_range_and_sample_options_parse() {
     let config = CliConfig::parse_from(vec![
         "film.flm".to_string(),

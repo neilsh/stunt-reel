@@ -137,6 +137,15 @@ def test_render_film_asks_for_the_captured_tick_range(tmp_path: Path) -> None:
     assert fake.envs == [None]
 
 
+def test_render_film_puts_software_only_on_the_command_line(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7, 9])
+    fake = FakeRun()
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_pipeline.render_film(job, tmp_path / "out", software_only=True, run=fake)
+    assert fake.calls[0][-1] == "--software-only"
+    assert fake.calls[0].count("--software-only") == 1
+
+
 def test_render_film_passes_the_environment_and_timeout_to_the_adapter(tmp_path: Path) -> None:
     root = reference_tree(tmp_path, [7, 9])
     fake = FakeRun()
