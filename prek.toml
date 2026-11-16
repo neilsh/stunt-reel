@@ -12,14 +12,6 @@
 repo = "local"
 
 [[repos.hooks]]
-id = "diff-check"
-name = "Staged conflict markers and whitespace errors (git diff --cached --check)"
-entry = "mise run diff-check"
-language = "system"
-always_run = true
-pass_filenames = false
-
-[[repos.hooks]]
 id = "fmt-check-rust"
 name = "Rust formatting (cargo fmt --check)"
 entry = "mise run fmt-check-rust"
@@ -95,3 +87,41 @@ exclude = '(\.rs$|^work/)'
 
 [[repos.hooks]]
 id = "check-executables-have-shebangs"
+
+# These two run with --check, so they report and rewrite nothing. A Markdown hard break (two
+# trailing spaces) is allowed, as .gitattributes allows it. Fixtures are byte-exact test inputs
+# and dated work folders are frozen, so both are exempt here, not by a top-level `exclude`, which
+# would also hide them from the large-file and private-key checks.
+[[repos.hooks]]
+id = "trailing-whitespace"
+args = ["--check", "--markdown-linebreak-ext=md"]
+exclude = "^(tests/fixtures|work)/"
+
+[[repos.hooks]]
+id = "end-of-file-fixer"
+args = ["--check"]
+exclude = "^(tests/fixtures|work)/"
+
+# `.claude/skills` is a committed symlink, which a Windows checkout without core.symlinks turns
+# into a text file; destroyed-symlinks reads `git status`, so it guards the commit, not CI.
+# check-vcs-permalinks skips dated work folders, which are frozen records.
+[[repos.hooks]]
+id = "check-symlinks"
+
+[[repos.hooks]]
+id = "destroyed-symlinks"
+
+[[repos.hooks]]
+id = "check-json"
+
+[[repos.hooks]]
+id = "fix-byte-order-marker"
+args = ["--check"]
+exclude = "^(tests/fixtures|work)/"
+
+[[repos.hooks]]
+id = "check-vcs-permalinks"
+exclude = "^work/"
+
+[[repos.hooks]]
+id = "forbid-new-submodules"

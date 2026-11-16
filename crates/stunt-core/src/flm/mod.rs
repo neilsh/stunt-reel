@@ -13,7 +13,11 @@ mod oracle;
 mod player;
 mod timeline;
 
+#[cfg(test)]
+pub(crate) use interpolate::quat_from_euler;
+pub(crate) use interpolate::rotate_quat;
 pub use oracle::{GATE_G04_RMSE_THRESHOLD_METERS, compute_position_rmse};
+pub(crate) use player::dos_to_i1_actor_quat;
 pub use player::{
     SIF_ANIMATES, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW, SIFILM_MAX_OBJ,
     SlotState,

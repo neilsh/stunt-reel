@@ -202,6 +202,27 @@ impl GpuModel {
         }
     }
 
+    /// Overwrites the vertices with `ir`'s, keeping the indices, nodes and slices, and returns
+    /// true; returns false, writing nothing, when `ir`'s vertex or index count differs from
+    /// the uploaded model's.
+    ///
+    /// `ir` must have the indices and nodes the model was uploaded from: only the counts are
+    /// checked here, and other indices at equal counts would bind triangles to the wrong
+    /// vertices. For a model whose geometry stays and whose vertex attributes change, such as
+    /// an actor's shape decoded under another light: it costs one buffer write per chunk
+    /// instead of a new model's buffers.
+    pub fn rewrite_vertices(&self, queue: &wgpu::Queue, ir: &SodModelIr) -> bool {
+        if arena_index(ir.vertices.len()) != self.vertex_count
+            || arena_index(ir.indices.len()) != self.index_count
+        {
+            return false;
+        }
+        for chunk in &self.chunks {
+            chunk.rewrite_vertices(queue, &ir.vertices);
+        }
+        true
+    }
+
     /// Evaluates visibility and collects visible mesh slices split by decal pass flag.
     ///
     /// `eye` is the camera position in this model's space, for
@@ -353,6 +374,8 @@ pub struct GpuChunk {
     pub index_buffer: wgpu::Buffer,
     /// 32-bit line-list index buffer of the chunk's outlines, into the same vertices.
     pub edges: wgpu::Buffer,
+    /// The source vertex ranges copied back to back into `vertex_buffer`.
+    pub vertex_ranges: Vec<Range<usize>>,
 }
 
 impl GpuChunk {
@@ -415,6 +438,29 @@ impl GpuChunk {
             vertex_buffer,
             index_buffer,
             edges: edge_buffer,
+            vertex_ranges: plan.vertex_ranges.clone(),
+        }
+    }
+
+    /// Writes `vertices`' windows of this chunk into its vertex buffer with one write, since
+    /// each write allocates a staging buffer (`research/parity/lavapipe.md`).
+    fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex]) {
+        // An unsplit chunk is one window: write it straight from the source.
+        if let [range] = self.vertex_ranges.as_slice() {
+            if let Some(window) = vertices.get(range.clone()).filter(|w| !w.is_empty()) {
+                queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(window));
+            }
+            return;
+        }
+        let mut packed = Vec::new();
+        for range in &self.vertex_ranges {
+            let Some(window) = vertices.get(range.clone()) else {
+                return;
+            };
+            packed.extend_from_slice(window);
+        }
+        if !packed.is_empty() {
+            queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&packed));
         }
     }
 }
