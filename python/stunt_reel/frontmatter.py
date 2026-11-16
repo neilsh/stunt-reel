@@ -46,7 +46,8 @@ def read_frontmatter(text: str) -> tuple[dict[str, str | int], str]:
 
 
 def _scalar(value: str, number: int) -> str | int:
-    if value.isascii() and value.isdecimal():
+    digits = value.removeprefix("-")
+    if digits.isascii() and digits.isdecimal():
         return int(value)
     if len(value) >= 2 and value[0] == value[-1] == '"':
         return _unescaped(value, number)

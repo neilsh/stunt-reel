@@ -120,7 +120,11 @@ def test_cited_anchors_are_registered() -> None:
 # .superpowers is agent scratch, not docs.
 LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "worktrees", ".superpowers"}
 HTML_ID_REGEX = re.compile(r"<a\s+(?:name|id)=\"([^\"]+)\"")
-CODE_DOC_PATH_REGEX = re.compile(r"(?<![\w./-])((?:research|docs|work)/[\w./-]+?\.md)\b")
+#: A ``dest = "…"`` value is a page's path on the research site (``site/published.toml``), not
+#: a repo path, so the lookbehind skips it.
+CODE_DOC_PATH_REGEX = re.compile(
+    r"(?<![\w./-])(?<!dest = \")((?:research|docs|work)/[\w./-]+?\.md)\b"
+)
 CODE_SUFFIXES = frozenset({".rs", ".py", ".wgsl", ".toml"})
 
 #: Work folders. Only its month directories (``work/<YYYY-MM>/``) hold dated records, frozen once

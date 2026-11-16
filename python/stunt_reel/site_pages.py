@@ -45,6 +45,7 @@ IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".gif", ".svg"})
 _SEGMENT = re.compile(r"[A-Za-z0-9-]+")
 _MARKUP_LINK = re.compile(r"\[([^\]\n]*)\]\([^)\n]*\)")
 _SIDEBAR_LABELS = {"INDEX": "Index", "README": "About this folder"}
+_ADR_STEM = re.compile(r"(\d{4})-")
 _MATH_FENCE = "$$"
 
 
@@ -159,8 +160,13 @@ def page_text(
     text: str, source: str, site: Site, images: set[str], *, title: str | None = None
 ) -> str:
     """The content page for repo file *source* whose Markdown is *text*, with Starlight front
-    matter and links rewritten; a given *title* replaces the one the page carries. Raises ValueError, naming *source*, for a page with neither a
-    ``title:`` nor a ``# `` heading, or a bad link or front matter."""
+    matter and links rewritten; a given *title* replaces the page's own as its title only.
+
+    The sidebar label is a fixed one for ``INDEX``/``README``, else the page's own title, numbered
+    for an ADR; an int ``order:`` becomes ``sidebar.order``. Raises ValueError, naming *source*,
+    for a page with neither a ``title:`` nor a ``# `` heading, a non-int ``order:``, or a bad link
+    or front matter.
+    """
     try:
         fields, body = read_frontmatter(text)
     except ValueError as err:
@@ -180,14 +186,22 @@ def page_text(
         else:
             raise ValueError(f"{source}: no title: in the front matter and no '# ' heading")
     out = {"title": title if title is not None else str(found)}
-    label = str(found) if "title" in fields else None
+    plain_title = _plain(str(found))
+    order = fields.get("order")
+    if order is not None and (not isinstance(order, int) or isinstance(order, bool)):
+        raise ValueError(f"{source}: order: must be an integer, not {order!r}")
     description = fields.get("description", fields.get("summary"))
     if description is not None:
         out["description"] = _plain(str(description))
     out["editUrl"] = f"{REPO_URL}/blob/main/{source}"
     stem = posixpath.splitext(posixpath.basename(source))[0]
     head = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in out.items()]
-    head.append(f"sidebar:\n  label: {json.dumps(label or _SIDEBAR_LABELS.get(stem, stem))}")
+    adr = _ADR_STEM.match(stem)
+    label = _SIDEBAR_LABELS.get(stem) or (f"{adr[1]} {plain_title}" if adr else plain_title)
+    sidebar = f"sidebar:\n  label: {json.dumps(label, ensure_ascii=False)}"
+    if order is not None:
+        sidebar += f"\n  order: {order}"
+    head.append(sidebar)
     content = rewrite_links(normalize_display_math("".join(lines)), source, site, images)
     return "---\n" + "\n".join(head) + "\n---\n\n" + content.lstrip("\r\n")
 
@@ -215,17 +229,21 @@ def _plain(heading: str) -> str:
 @dataclass(frozen=True)
 class Section:
     """One entry of ``site/published.toml``: repo path *source* published at *dest* under the
-    content root, headed *label* in the sidebar."""
+    content root, headed *label* in the sidebar, nested under sidebar group *group* when set.
+    *title* overrides a file page's own heading as its page title."""
 
     source: str
     dest: str
     label: str
+    group: str | None = None
+    title: str | None = None
 
 
 def load_sections(text: str) -> list[Section]:
     """The ``[[section]]`` entries of ``published.toml`` *text*. Raises ValueError, naming the
-    file or section, for invalid TOML, a missing or non-string key, an absolute path, a
-    backslash or a ``..`` in a path."""
+    file or section, for invalid TOML, a missing or non-string key, a present ``group`` or
+    ``title`` that is not a non-empty string, an absolute path, a backslash or a ``..`` in a
+    path."""
     try:
         entries = tomllib.loads(text).get("section", [])
     except tomllib.TOMLDecodeError as err:
@@ -235,6 +253,9 @@ def load_sections(text: str) -> list[Section]:
         for key in ("source", "dest", "label"):
             if not isinstance(entry.get(key), str) or not entry[key]:
                 raise ValueError(f"section {number}: {key!r} is missing or not a string")
+        for key in ("group", "title"):
+            if key in entry and (not isinstance(entry[key], str) or not entry[key]):
+                raise ValueError(f"section {number}: {key!r} is not a non-empty string")
         for key in ("source", "dest"):
             path = entry[key]
             parts = path.split("/")
@@ -242,7 +263,15 @@ def load_sections(text: str) -> list[Section]:
                 raise ValueError(
                     f"section {number}: {key} {path!r} must be a relative path with '/' only"
                 )
-        sections.append(Section(entry["source"], entry["dest"], entry["label"]))
+        sections.append(
+            Section(
+                entry["source"],
+                entry["dest"],
+                entry["label"],
+                entry.get("group"),
+                entry.get("title"),
+            )
+        )
     return sections
 
 
@@ -270,18 +299,18 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
         raise ValueError(f"site/published.toml: {err}") from err
     site_rel = site_dir.resolve().relative_to(root.resolve()).as_posix()
     pages: dict[str, str] = {}
-    titles: dict[str, str] = {}
     dirs: list[str] = []
     for section in sections:
         path = root / section.source
         if path.is_dir():
+            if section.title is not None:
+                raise ValueError(f"{section.source}: title is for a file section, not a folder")
             dirs.append(section.source)
             for note in sorted(path.rglob("*.md"), key=lambda n: n.as_posix()):
                 rel = note.relative_to(root).as_posix()
                 pages[rel] = f"{section.dest}/{note.relative_to(path).as_posix()}"
         elif path.is_file():
             pages[section.source] = section.dest
-            titles[section.source] = section.label
         else:
             raise ValueError(f"{section.source}: published.toml names no such file or directory")
     for name in _HAND_WRITTEN:
@@ -300,6 +329,7 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
     for stale in (docs, media, generated):
         shutil.rmtree(stale, ignore_errors=True)
     images: set[str] = set()
+    titles = {section.source: section.title for section in sections if section.title}
     for source, dest in pages.items():
         try:
             text = (root / source).read_text(encoding="utf-8")
@@ -317,13 +347,24 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
         except OSError as err:
             raise ValueError(f"{image}: {err}") from err
     sidebar: list[dict[str, object]] = [{"slug": "reading"}]
+    groups: dict[str, list[object]] = {}
     for section in sections:
+        entry: dict[str, object]
         if (root / section.source).is_dir():
             # Starlight 0.39+ takes autogenerate inside a group's items, not beside its label.
-            items = [{"autogenerate": {"directory": section.dest}}]
-            sidebar.append({"label": section.label, "items": items})
+            entry = {
+                "label": section.label,
+                "items": [{"autogenerate": {"directory": section.dest}}],
+            }
         else:
-            sidebar.append({"label": section.label, "slug": section.dest.removesuffix(".md")})
+            entry = {"label": section.label, "slug": section.dest.removesuffix(".md")}
+        if section.group is None:
+            sidebar.append(entry)
+        elif section.group in groups:
+            groups[section.group].append(entry)
+        else:
+            groups[section.group] = [entry]
+            sidebar.append({"label": section.group, "items": groups[section.group]})
     generated.mkdir(parents=True)
     (generated / "sidebar.json").write_bytes((json.dumps(sidebar, indent=2) + "\n").encode())
     return len(pages), len(images)

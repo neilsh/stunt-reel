@@ -15,6 +15,11 @@ def test_reads_scalars_and_returns_the_body() -> None:
     assert body == "# H\n"
 
 
+def test_a_signed_integer_reads_as_int_and_a_quoted_one_as_str() -> None:
+    fields, _ = read_frontmatter('---\norder: -1\nissue: "-1"\nnote: -\n---\n')
+    assert fields == {"order": -1, "issue": "-1", "note": "-"}
+
+
 def test_text_without_a_block_is_all_body() -> None:
     assert read_frontmatter("# H\n") == ({}, "# H\n")
 
