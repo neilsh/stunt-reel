@@ -46,7 +46,7 @@
   - Searched the mesa-dist-win 25.2.8 tree for debug symbols.
 - **Result**:
   - **Lavapipe:** only two threads were ever busy, the main thread and one `vulkan_lvp` thread that executes command buffers.
-    - The `vulkan_lvp` thread was busy in 52 of 65 samples. Every other `vulkan_lvp` thread was parked on a condition variable in every sample, and exactly one thread was busy in each.
+    - A thread counts as waiting when one of its top three frames is a wait or sleep call (`ZwWaitForAlertByThreadId`, `SleepConditionVariableCS`, `NtWait*`), and as busy otherwise, heap and JIT frames included. By that rule the `vulkan_lvp` thread was busy in 52 of 65 samples and the main thread in the other 13. Every other `vulkan_lvp` thread was parked on a condition variable in every sample, and exactly one thread was busy in each.
     - The main thread was in `wait_for_fence` in 20 of 25, under `OffscreenTarget::capture`'s synchronous readback, so main-thread work and the lavapipe thread's work do not overlap.
     - Process CPU was 0.92 core, `cdb` included.
     - The tree has no PDBs and `vulkan_lvp.dll` exports only `vk_icd*`, so the busy thread's frames are known by module and offset only.
