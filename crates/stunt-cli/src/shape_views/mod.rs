@@ -415,6 +415,7 @@ fn draw_shapes(
                         state_mask: 0,
                         distance: 0.0,
                         shadow_matrix: None,
+                        light: ShadeLight::default(),
                     }],
                     sprites: Vec::new(),
                     view_facing: Vec::new(),

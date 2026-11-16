@@ -1,0 +1,26 @@
+diff --git a/crates/stunt-core/src/scene/film.rs b/crates/stunt-core/src/scene/film.rs
+index e615e9d3..fce489d2 100644
+--- a/crates/stunt-core/src/scene/film.rs
++++ b/crates/stunt-core/src/scene/film.rs
+@@ -438,10 +438,18 @@ impl FilmScene {
+                 } else {
+                     lifted(own, shape)
+                 };
+-                let light = if faces {
+-                    self.relit.light()
++                let world_light = self.relit.light();
++                let dbg: u8 = std::env::var("DBG_ACTOR_LIGHT")
++                    .ok()
++                    .and_then(|v| v.parse().ok())
++                    .unwrap_or(1);
++                let light = if faces || dbg == 0 {
++                    world_light
++                } else if dbg == 2 {
++                    let [x, y, z, w] = a.rotation_quat;
++                    world_light.for_actor([-x, -y, -z, w])
+                 } else {
+-                    self.relit.light().for_actor(a.rotation_quat)
++                    world_light.for_actor(a.rotation_quat)
+                 };
+                 ActorDraw {
+                     shape_id: a.shape_id,

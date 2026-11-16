@@ -46,6 +46,43 @@ pub struct ArchiveShapes {
     /// The image frames the shapes' sprites name (`OP_ANIMATE`), keyed by resource id; a
     /// frame the source lacks, or whose chunk is not an image, is absent.
     pub images: HashMap<u16, SpriteImage>,
+    /// The chunk name and stream of every shape that decoded without `OP_TAP`, so a scene
+    /// can decode an actor's shape again under its own light ([`RelitShapes`]).
+    pub streams: HashMap<u16, (String, Vec<u8>)>,
+}
+
+/// The streams of the shapes actors draw, decoded again under each actor's own light.
+///
+/// `OP_SHADES` bakes the light into a shape's colours as it decodes, and `PLAYONE` lights a
+/// rotated actor by its own rotation ([`ShadeLight::for_actor`]), so an actor's colours
+/// change with its pose.
+#[derive(Debug, Clone, Default)]
+pub struct RelitShapes {
+    streams: HashMap<u16, (String, Vec<u8>)>,
+    light: ShadeLight,
+}
+
+impl RelitShapes {
+    /// Keeps `streams` (shape id to chunk name and stream), whose shapes the scene decoded
+    /// under the world light `light`.
+    #[must_use]
+    pub fn new(streams: HashMap<u16, (String, Vec<u8>)>, light: ShadeLight) -> Self {
+        Self { streams, light }
+    }
+
+    /// The world light the scene's own shapes were decoded under.
+    #[must_use]
+    pub const fn light(&self) -> ShadeLight {
+        self.light
+    }
+
+    /// Shape `shape_id` decoded leniently under `light`, or `None` when no stream is kept
+    /// for it or it fails to decode.
+    #[must_use]
+    pub fn decode(&self, shape_id: u16, light: ShadeLight) -> Option<SodModelIr> {
+        let (name, data) = self.streams.get(&shape_id)?;
+        decode_sod_lit(data, name, None, DecodeMode::Lenient, light).ok()
+    }
 }
 
 /// Decodes every `MODEL_%04X.SOD` chunk of `.ALL` bytes, resolving `OP_TAP` against `anchors`
@@ -134,6 +171,8 @@ fn decode_chunks<'a>(
         if taps && anchor_slice.is_some() {
             decoded = decode_sod_lit(data, &name, anchor_slice, DecodeMode::Lenient, light);
             out.anchored.insert(shape_id, data.to_vec());
+        } else if !taps && decoded.is_ok() {
+            out.streams.insert(shape_id, (name.clone(), data.to_vec()));
         }
         match decoded {
             Ok(ir) => {

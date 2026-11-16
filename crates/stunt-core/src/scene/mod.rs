@@ -26,6 +26,6 @@ pub use self::film::{
 };
 pub use self::projection::ViewCamera;
 pub use self::shapes::{
-    ArchiveShapes, ShapeSource, SkippedChunk, decode_archive_shapes, decode_res_shapes,
+    ArchiveShapes, RelitShapes, ShapeSource, SkippedChunk, decode_archive_shapes, decode_res_shapes,
 };
 pub use self::sprite::bank_word;
