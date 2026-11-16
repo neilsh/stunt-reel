@@ -388,8 +388,8 @@ impl GpuModel {
     /// slices. A ground slice is drawn over whatever is there, so the walk's order is the
     /// order the flat ground is painted in (`stunt_core::world::GROUND_NODE`).
     ///
-    /// `view_proj` is the matrix the vertex shader multiplies a vertex by, which for the world
-    /// is its own identity model matrix composed with the camera's: a node whose box it cannot
+    /// `view_proj` takes a world vertex to clip space: the camera's `rotation_proj` composed
+    /// with the world's eye-relative model matrix ([`crate::camera::eye_relative_matrix`]). A node whose box it cannot
     /// see is skipped with its subtree (`frustum_keeps`), which draws no fewer pixels because
     /// an off-screen slice covers none, and keeps the order of the slices that survive.
     pub fn collect_world_meshes(
@@ -1124,7 +1124,8 @@ mod tests {
             fov_degrees: 45.0,
             roll_radians: 0.0,
         });
-        Mat4::from_cols_array(&controller.build_uniform().view_proj)
+        // With the eye at the origin the world's eye-relative matrix is the identity.
+        Mat4::from_cols_array(&controller.build_uniform().rotation_proj)
     }
 
     /// A box of half-extent `half` on every axis around `center`.
