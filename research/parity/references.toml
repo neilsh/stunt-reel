@@ -197,9 +197,9 @@ all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
 
 # #510: the view slot casts its own shadow. Slot 0 (flags 0x1F, shape 0x415C, 0.15 m up) is the
-# view slot at stream ticks 400-444 and 595-758 (captured frames 409-452 and 606-761), and PLAYONE queues and draws its shadow (the #510
-# journal, work/2026-11/510_view-slot-shadow/). `background` by the research/parity/probes.md
-# rule (52 % of capture pixels).
+# view slot from stream tick 400 to 455 and 595 to 766 (captured frames 409-452 and 606-761), and
+# PLAYONE queues and draws its shadow (the #510 journal, work/2026-11/510_view-slot-shadow/).
+# `background` by the research/parity/probes.md rule (52 % of capture pixels).
 [brett]
 film = "vault-brett"
 sha256 = "97136a978bdcd82aec1d9b3cc032b8eaefdbf8d1a39ea0dd87191c7b5186dc90"

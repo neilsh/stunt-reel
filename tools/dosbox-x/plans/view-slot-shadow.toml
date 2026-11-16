@@ -20,6 +20,14 @@ hits = 4
 capture = ["mem:DS:0x22DE:2", "mem:DS:SI:0x24"]
 
 [[probe]]
+name = "null-plane"
+kind = "break"
+at = 0x1A12
+arm = { tick = 600 }
+hits = 4
+capture = ["mem:DS:0x22DE:2", "mem:DS:SI:0x24"]
+
+[[probe]]
 name = "plane"
 kind = "break"
 at = 0x1A18
