@@ -1,0 +1,56 @@
+# #512: where a high actor's shadow is lost. The shadow queue 0x19FC solves the ground point on
+# the slot's plane (0x1A18 with SS:DI the plane a, b, c, D; 0x1A12 when slot +0x1E is null), then
+# culls it with 0x1B0C at 0x1A8A (registers: DX, BP, DI the view-space point, CL its exponent; ES
+# the shape, header words +4 radius and +8 scale) and returns at 0x1A8F when culled. 0x1AD1 is the
+# actor's own cull, and 0x1C0D draws a shadow that survived. The #512 runs armed it at tick 100 on
+# CTRY.FLM and at 120 and 1000 on Films/NewPLAY/Vault/FLIP.FLM
+# (--film corpus/siarchive/Films/NewPLAY/Vault/FLIP.FLM); change `arm` to sample another stretch.
+[run]
+stop_tick = 1200
+
+[[probe]]
+name = "plane"
+kind = "break"
+at = 0x1A18
+arm = { tick = 1000 }
+hits = 6
+capture = ["mem:DS:SI:0x24", "mem:SS:DI:10"]
+
+[[probe]]
+name = "null-plane"
+kind = "break"
+at = 0x1A12
+arm = { tick = 1000 }
+hits = 6
+capture = ["mem:DS:SI:0x24"]
+
+[[probe]]
+name = "shadow-cull"
+kind = "break"
+at = 0x1A8A
+arm = { tick = 1000 }
+hits = 6
+capture = ["mem:DS:0x229C:8", "mem:ES:0:10"]
+
+[[probe]]
+name = "shadow-culled"
+kind = "break"
+at = 0x1A8F
+arm = { tick = 1000 }
+hits = 6
+
+[[probe]]
+name = "actor-cull"
+kind = "break"
+at = 0x1AD1
+arm = { tick = 1000 }
+hits = 6
+capture = ["mem:DS:0x229C:8", "mem:ES:0:10"]
+
+[[probe]]
+name = "drawn"
+kind = "break"
+at = 0x1C0D
+arm = { tick = 1000 }
+hits = 6
+capture = ["mem:DS:SI:0x10"]
