@@ -79,67 +79,23 @@ impl NodeBounds {
             None => self,
         }
     }
-
-    /// The box around this one's eight corners after `matrix`, which stays a superset of the
-    /// transformed box when the matrix rotates it out of the axes.
-    fn transformed(self, matrix: Mat4) -> Self {
-        let corners = [
-            [self.min.x, self.min.y, self.min.z],
-            [self.max.x, self.min.y, self.min.z],
-            [self.min.x, self.max.y, self.min.z],
-            [self.max.x, self.max.y, self.min.z],
-            [self.min.x, self.min.y, self.max.z],
-            [self.max.x, self.min.y, self.max.z],
-            [self.min.x, self.max.y, self.max.z],
-            [self.max.x, self.max.y, self.max.z],
-        ];
-        corners
-            .into_iter()
-            .map(|corner| matrix.transform_point3(Vec3::from_array(corner)))
-            .fold(
-                Self {
-                    min: Vec3::splat(f32::INFINITY),
-                    max: Vec3::splat(f32::NEG_INFINITY),
-                },
-                |current, point| Self {
-                    min: current.min.min(point),
-                    max: current.max.max(point),
-                },
-            )
-    }
 }
 
-/// Every node's box: its own slices' vertices and its descendants', in the model's space.
+/// Every node's box: its own slices' vertices and its descendants', as the vertex shader
+/// takes them, in the model's space.
 ///
-/// The arena numbers a parent before its children (`SodModelIr::allocate_node`), so one pass
-/// forward places each node under its parent's matrix and one pass backward adds each subtree's
-/// box to its parent's.
+/// A node's `local_matrix` is not applied: the draw does not apply it either (a slice is
+/// drawn with its model's one matrix), so the box is around the vertices that are drawn. The
+/// arena numbers a parent before its children (`SodModelIr::allocate_node`), so one pass
+/// backward adds each subtree's box to its parent's.
 fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
-    let count = ir.nodes.len();
-    let mut world = vec![Mat4::IDENTITY; count];
-    for (n, node) in ir.nodes.iter().enumerate() {
-        let local = Mat4::from_cols_array(&node.local_matrix);
-        let parent = node
-            .parent
-            .and_then(|parent| world.get(parent.0 as usize))
-            .copied()
-            .unwrap_or(Mat4::IDENTITY);
-        if let Some(slot) = world.get_mut(n) {
-            *slot = parent * local;
-        }
-    }
-    let mut bounds: Vec<Option<NodeBounds>> = vec![None; count];
+    let mut bounds: Vec<Option<NodeBounds>> = vec![None; ir.nodes.len()];
     for mesh in ir.meshes() {
         let Some(own) = NodeBounds::around(mesh.vertices.iter()) else {
             continue;
         };
-        let into = world
-            .get(mesh.node.id.0 as usize)
-            .copied()
-            .unwrap_or(Mat4::IDENTITY);
-        let own = own.transformed(into);
         if let Some(slot) = bounds.get_mut(mesh.node.id.0 as usize) {
-            *slot = Some(slot.map_or(own, |current| current.union(Some(own))));
+            *slot = Some(own.union(*slot));
         }
     }
     for (n, node) in ir.nodes.iter().enumerate().rev() {
@@ -152,7 +108,7 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
         else {
             continue;
         };
-        *parent = Some(parent.map_or(subtree, |current| current.union(Some(subtree))));
+        *parent = Some(subtree.union(*parent));
     }
     bounds
 }
@@ -165,6 +121,10 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
 /// shader multiplies by: left `w + x`, right `w - x`, bottom `w + y`, top `w - y`, near `z` and
 /// far `w - z`. A reversed-Z or infinite-far projection (issue #637) changes the last two, and
 /// this is the one place to change them.
+///
+/// The test has no margin: `view_proj` is an `f32` product the GPU does not form, so a box
+/// within rounding of a plane can fall either way; such a box covers no more than a
+/// sub-pixel sliver of the view.
 fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
     let [x, y, z, w] = [
         view_proj.row(0),
@@ -1222,7 +1182,8 @@ mod tests {
         assert_eq!(order, vec![0, 1]);
     }
 
-    /// A model of two mesh nodes: a parent at the origin, and a child translated to `offset`.
+    /// A model of two mesh nodes: a parent at the origin, and a child whose `local_matrix`
+    /// translates it by `offset`, which the draw does not apply.
     fn two_node_ir(offset: f32) -> SodModelIr {
         use stunt_core::contracts::NodeKind;
 
@@ -1270,20 +1231,20 @@ mod tests {
     }
 
     #[test]
-    fn a_node_box_covers_its_descendants() {
+    fn a_node_box_covers_its_descendants_as_drawn() {
         let bounds = node_bounds(&two_node_ir(10.0));
         assert_eq!(
             bounds.first().copied().flatten(),
             Some(NodeBounds {
                 min: Vec3::new(0.0, 0.0, 0.0),
-                max: Vec3::new(13.0, 1.0, 0.0),
+                max: Vec3::new(3.0, 1.0, 0.0),
             })
         );
         assert_eq!(
             bounds.get(1).copied().flatten(),
             Some(NodeBounds {
-                min: Vec3::new(12.0, 0.0, 0.0),
-                max: Vec3::new(13.0, 1.0, 0.0),
+                min: Vec3::new(2.0, 0.0, 0.0),
+                max: Vec3::new(3.0, 1.0, 0.0),
             })
         );
     }
