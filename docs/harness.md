@@ -35,6 +35,14 @@ Nothing here is a fact about Stunt Island.
   for a wording-only fix (reply with the new text), except on a PR whose diff touches a path rule 5
   names: any fix or rebase there is committed locally and re-reviewed at its SHA before the push,
   and a rebase needs a fresh `clean` comment at the new head.
+* **An unattended run has a coordinator and workers.** The coordinator runs on Sonnet from the
+  start, reads no diffs or issue bodies (workers read them and report), keeps
+  `build/scratch/run-state.md` rewritten at every item transition, and hands off to a fresh
+  coordinator that starts from that file when its context passes about 150k tokens, instead of
+  compacting. It checks CodeRabbit once, at the 20-minute timeout. The skill lists the
+  `orca orchestration` flags the coordinator and workers need, so nobody loads `--help` or the
+  orchestration guide into context. The contract is
+  [`coordinator.md`](../.agents/skills/running-unattended/coordinator.md); the reasons are in #509.
 * **A Claude implementer ends when its PR opens** (for a diff that changes a path rule 5 names,
   when it commits: the coordinator pushes after the fresh review, and a spec or plan is reviewed
   before its commit), or earlier if its context passes about 150k
