@@ -2,7 +2,7 @@
 title: "CI scopes its jobs by the files a pull request changes"
 started: 2026-11-17
 issue: 659
-outcome: ""
+outcome: "CI runs the docs half for a pull request whose changed paths are all docs (ADR 0047); seen on GitHub: docs-only, full, failing-scope (a non-docs diff) and cancelled runs, and a docs-only pull request to main with a clean merge state."
 ---
 
 # CI scopes its jobs by the files a pull request changes
@@ -11,8 +11,6 @@ outcome: ""
 
 ## Handoff
 
-- **Done**: plan Tasks 1–3 on branch `ccr-903b2056-eak7i0`: 88fcde1, 1c226ff, dd38699, f5bd51b, 11ab741. The final whole-branch review's fixes: 2ba85dd (evergreen docs and ADR 0047 Consequences), the commit that adds this handoff, and a wording follow-up. Not pushed; nothing has run on GitHub.
-- **Remains**: plan Task 4, verification on GitHub: the PR for this branch to `main`; three throwaway PRs based on the branch (docs-only, a `.py` change, a `gate.py` that does not parse); after the merge, the first docs-only PR to `main`, to confirm skipped jobs satisfy the ruleset. Then the finishing PR writes `outcome` and closes #659.
-- **Not in `plan.md`; add when Task 4's PRs are open**: cancel a throwaway PR's run while `scope` runs and read the four gated checks' conclusions (skipped would pass, cancelled would fail); record it in #659 and ADR 0047.
-- **Open once Task 4 has run**: [`quality-gate.md`](../../../docs/quality-gate.md)'s "Neither the skip nor the failed-`scope` path has run in this repository yet (ADR 0047)" and ADR 0047's not-yet-exercised and cancel-during-`scope` Consequences need rewriting to what was seen; a measured figure for the `scope` wait.
+- **Done**: the scoping landed in #667 (`gate.py scope`, the `scope` job and the skips in `ci.yml`, ADR 0047, `docs/quality-gate.md`); the verification on GitHub is recorded on [#659](https://github.com/neilsh/stunt-reel/issues/659) and in ADR 0047's Consequences; the finishing pull request is #675, itself the first docs-only pull request to `main`.
+- **Not seen**: a failed `scope` beside a docs-only diff (the failing-`scope` throwaway edited `ci.yml`, so its diff was not docs-only); the cancel result is from one cancel (a second push, then an API cancel).
 - **Parked minors**: no test that `gate.py scope` ignores `--full` and `--tail`; the text-level tests in `tests/test_ci_scope.py` break on a reformat of `ci.yml`, by design.

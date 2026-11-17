@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CaptureSet",
+  "description": "Document written by the capture harness as `meta.json`.",
+  "type": "object",
+  "properties": {
+    "all_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "film": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "flm_bytes": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
+    },
+    "flm_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FrameDocument"
+      }
+    },
+    "height": {
+      "type": "integer",
+      "format": "uint32",
+      "default": 200,
+      "minimum": 0
+    },
+    "schema_version": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint32",
+      "minimum": 0
+    },
+    "width": {
+      "type": "integer",
+      "format": "uint32",
+      "default": 320,
+      "minimum": 0
+    }
+  },
+  "required": [
+    "frames"
+  ],
+  "$defs": {
+    "FrameDocument": {
+      "description": "One frame entry of the flat `meta.json`; the ordinal and names may be absent.",
+      "type": "object",
+      "properties": {
+        "film_tick": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "frame_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ordinal": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "palette_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
