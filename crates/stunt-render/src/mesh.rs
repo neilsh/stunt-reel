@@ -203,8 +203,8 @@ impl GpuModel {
     /// Like [`Self::from_ir`], and gives each mesh slice its outline for [`Self::draw_edges`]:
     /// every edge exactly one of the slice's triangles uses, as two indices into the same
     /// vertices, so it costs eight bytes an edge. Triangles with a corner `outlined` rejects
-    /// are left out. A slice split over chunks is outlined per run, so a split also outlines
-    /// the edges along its cut.
+    /// are left out. A slice split over chunks is outlined as a whole: the edges along a cut
+    /// between its runs are not outlined, each run draws its share.
     pub fn from_ir_outlined(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -437,28 +437,58 @@ fn plan_edges(
         })
         .collect();
     let mut edges = vec![Vec::new(); plan.chunks.len()];
-    for slice in plan.slices.iter_mut().flatten() {
-        let n = slice.chunk as usize;
-        let (Some(chunk), Some(local), Some(out)) =
-            (plan.chunks.get(n), local.get(n), edges.get_mut(n))
-        else {
-            continue;
-        };
-        let indices = chunk.indices.as_deref().unwrap_or(&ir.indices);
-        let start = slice.index_offset as usize;
-        let Some(triangles) = indices.get(start..start + slice.index_count as usize) else {
-            continue;
-        };
-        let base = slice.vertex_offset.cast_unsigned();
-        let vertex = |i: u32| {
-            let at = base.saturating_add(i) as usize;
+    for runs in &mut plan.slices {
+        // A run's source vertex number for each of its chunk indices.
+        let source_of = |run: &GpuMeshSlice, i: u32| -> Option<u32> {
+            let at = run.vertex_offset.cast_unsigned().saturating_add(i) as usize;
+            let local = local.get(run.chunk as usize)?;
             let source = local.as_ref().map_or(Some(at), |l| l.get(at).copied())?;
-            ir.vertices.get(source)
+            u32::try_from(source).ok()
         };
-        let found = crate::outline::boundary_edges(triangles, |i| vertex(i).is_some_and(keep));
-        slice.edge_offset = arena_index(out.len());
-        slice.edge_count = arena_index(2 * found.len());
-        out.extend(found.into_iter().flatten());
+        let triangles_of = |run: &GpuMeshSlice| -> Option<&[u32]> {
+            let chunk = plan.chunks.get(run.chunk as usize)?;
+            let indices = chunk.indices.as_deref().unwrap_or(&ir.indices);
+            let start = run.index_offset as usize;
+            indices.get(start..start + run.index_count as usize)
+        };
+        let outlined = |source: Option<u32>| {
+            source
+                .and_then(|s| ir.vertices.get(s as usize))
+                .is_some_and(keep)
+        };
+        // The slice's boundary over all its runs, in source vertex numbers: an edge along a
+        // cut is used once in each of two runs, so it is not a boundary of the slice.
+        let whole: Vec<u32> = runs
+            .iter()
+            .filter_map(|run| {
+                let tris = triangles_of(run)?;
+                tris.iter()
+                    .map(|&i| source_of(run, i))
+                    .collect::<Option<Vec<_>>>()
+            })
+            .flatten()
+            .collect();
+        let boundary: std::collections::HashSet<(u32, u32)> =
+            crate::outline::boundary_edges(&whole, |s| outlined(Some(s)))
+                .into_iter()
+                .map(|[p, q]| (p.min(q), p.max(q)))
+                .collect();
+        for run in runs.iter_mut() {
+            let (Some(triangles), Some(out)) =
+                (triangles_of(run), edges.get_mut(run.chunk as usize))
+            else {
+                continue;
+            };
+            let mut found =
+                crate::outline::boundary_edges(triangles, |i| outlined(source_of(run, i)));
+            found.retain(|&[p, q]| match (source_of(run, p), source_of(run, q)) {
+                (Some(p), Some(q)) => boundary.contains(&(p.min(q), p.max(q))),
+                _ => false,
+            });
+            run.edge_offset = arena_index(out.len());
+            run.edge_count = arena_index(2 * found.len());
+            out.extend(found.into_iter().flatten());
+        }
     }
     edges
 }
@@ -920,15 +950,16 @@ mod tests {
     }
 
     #[test]
-    fn a_split_slice_is_outlined_per_run_in_chunk_indices() {
+    fn a_split_slice_is_outlined_as_a_whole_in_chunk_indices() {
         let ir = quad_ir();
-        // Three vertices a chunk: each triangle is its own run, and the cut is outlined twice.
+        // Three vertices a chunk: each triangle is its own run; the cut (the diagonal) is no
+        // boundary of the slice, so each run draws its two outer edges.
         let mut plan = plan_upload(4, &ir.indices, &[source(0, 6)], 3, 6);
         let edges = plan_edges(&mut plan, &ir, |_| true);
         assert_eq!(edges.len(), 2);
-        assert!(edges.iter().all(|e| e.len() == 6));
+        assert!(edges.iter().all(|e| e.len() == 4));
         for slice in &plan.slices[0] {
-            assert_eq!(slice.edge_count, 6);
+            assert_eq!(slice.edge_count, 4);
         }
         // Rejecting every vertex leaves no outline.
         let edges = plan_edges(&mut plan, &ir, |_| false);
