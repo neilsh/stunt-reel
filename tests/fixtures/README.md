@@ -102,6 +102,8 @@ The shared wire-contract corpus for the two parity artifact adapters: the Rust p
 
 **Evolution.** v1 may gain optional fields in place: a reader that uses `serde(default)` or `.get(...)` tolerates them, and the fixtures and both conformance tests are updated without touching `SCHEMA_VERSION`. A required change — a new required field, a rename, or a changed shape — forks the fixture directory and bumps the schema version; the v1 fixtures and tests stay while v1 is accepted. The render document did this twice: `render.json` is at version 3 (`RENDER_SCHEMA_VERSION`; 2 moved its planes into chunks, 3 added each tick's `credits` flag) while captures and reports stay at 1, and an older render is refused rather than read, so its fixture moved from `v2/` to `v3/`.
 
+**Schema.** Every `render.json`, `report.json` and `meta*.json` under `tests/fixtures/parity/` is also validated against the JSON Schema generated from the `stunt-parity` types (`crates/stunt-parity/schema/`; [ADR 0048](../../docs/adr/0048-the-python-parity-adapter-is-checked-against-a-generated-schema.md)), so a new fixture there must conform to it.
+
 **Read-only.** The conformance tests read these files and never write them; round-trip tests write to their own temporary directories. `git status` after a test run must show the corpus unchanged.
 
 

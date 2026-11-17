@@ -14,5 +14,6 @@ mod capture_test;
 mod film_test;
 mod render_test;
 mod report_test;
+mod schema_test;
 mod test_support;
 mod video_test;
