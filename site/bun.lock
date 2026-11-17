@@ -9,6 +9,7 @@
         "@astrojs/starlight": "0.43.1",
         "astro": "7.4.12",
         "astro-mermaid": "2.2.0",
+        "github-slugger": "2.0.0",
         "katex": "0.18.11",
         "mermaid": "12.3.0",
         "rehype-katex": "7.0.1",
