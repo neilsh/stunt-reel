@@ -32,7 +32,10 @@ it saves.
 ``--full``, a set ``CI``, an unclassified path, no changes, or paths git cannot give run the full
 gate. The paths are counted from the merge base with ``origin/main`` when that ref resolves, else
 with ``main``: a local ``main`` is often stale, and counting from it charges the branch with every
-commit that has landed since. ``--base`` names another ref.
+commit that has landed since. ``--base`` names another ref. ``gate.py scope`` prints
+``docs_only=true`` when the changed paths need only the docs half, else ``docs_only=false``
+(also when git cannot give the paths), and exits 0; CI's ``scope`` job reads it
+([`ci.yml`](../../.github/workflows/ci.yml)).
 
 Two guards stop a run that could not pass. Before a Python or docs step, the ``uv`` on PATH must
 be the version ``mise.toml`` pins: a stale standalone uv ahead of mise's otherwise fails only in
@@ -40,7 +43,7 @@ be the version ``mise.toml`` pins: a stale standalone uv ahead of mise's otherwi
 a step past it is killed with its child processes and reported as failed, where a hung test
 would otherwise hold the gate until stopped by hand.
 
-Usage: ``python python/scripts/gate.py {all|rust|py|docs} [--full] [--base REF] [--tail N]
+Usage: ``python python/scripts/gate.py {all|rust|py|docs|scope} [--full] [--base REF] [--tail N]
 [--step-timeout S]``
 """
 
@@ -215,6 +218,12 @@ def scope_for(
     if "py" not in halves:
         halves.append("docs")
     return Scope(tuple(halves), full=False, paths=grouped)
+
+
+def docs_only(paths: list[str] | None) -> bool:
+    """Whether *paths* need only the docs half; ``None`` (unreadable) and no paths are not."""
+    scope = scope_for(paths, full_flag=False, ci=False)
+    return not scope.full and scope.halves == ("docs",)
 
 
 def ci_requested(env: Mapping[str, str]) -> bool:
@@ -468,7 +477,9 @@ def _run_lane(
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "half", choices=("all", "rust", "py", "docs"), help="which half of the gate"
+        "half",
+        choices=("all", "rust", "py", "docs", "scope"),
+        help="which half of the gate, or scope to print whether the change is docs-only",
     )
     parser.add_argument("--tail", type=int, default=40, help="lines shown of a failing step")
     parser.add_argument("--full", action="store_true", help="run every half whatever changed")
@@ -485,6 +496,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     half = str(args.half)
+    if half == "scope":
+        base = str(args.base) if args.base else default_base(Path.cwd())
+        changed: list[str] | None = None
+        try:
+            changed = changed_paths(Path.cwd(), base)
+        except ChangedPathsError as err:
+            print(f"[gate] changed paths unknown: {err}", file=sys.stderr)
+        print(f"docs_only={'true' if docs_only(changed) else 'false'}")
+        return 0
     scope_lines: list[str] = []
     if half == "all":
         full_flag, ci = bool(args.full), ci_requested(os.environ)
