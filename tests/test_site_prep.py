@@ -92,6 +92,21 @@ def test_prepare_writes_pages_media_and_sidebar(repo: Path) -> None:
     ]
 
 
+def test_prepare_writes_no_tiers_without_a_spec(repo: Path) -> None:
+    prepare(repo, repo / "site")
+    assert json.loads((repo / "site/src/generated/tiers.json").read_text()) == []
+
+
+def test_prepare_writes_the_tiers_the_spec_defines(repo: Path) -> None:
+    _write(
+        repo / "docs/SPEC.md",
+        "# S\n\n### 2.4 Tiers\n\n  * **`[Hypothesis]`**: Proposed, not observed.\n",
+    )
+    prepare(repo, repo / "site")
+    tiers = json.loads((repo / "site/src/generated/tiers.json").read_text())
+    assert tiers == [{"name": "Hypothesis", "meaning": "Proposed, not observed."}]
+
+
 def test_prepare_removes_stale_output(repo: Path) -> None:
     prepare(repo, repo / "site")
     (repo / "research/formats/sod.md").unlink()

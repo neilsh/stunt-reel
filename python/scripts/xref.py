@@ -1,6 +1,7 @@
 """Find the instructions that reference a string or data offset in a DOS executable.
 
-Usage: ``mise run xref -- <exe|img> (--string TEXT | --offset 0xN) [--ds 0xSEG] [--context N]``
+Usage: ``mise run re-tool -- xref <exe|img> (--string TEXT | --offset 0xN) [--ds 0xSEG]
+[--context N]``
 
 The input is an MZ file, an LZEXE 0.91 one (unpacked first), or a bare load image (which needs
 ``--ds``). ``--string`` finds the text, case-insensitively, and turns its image offset into an

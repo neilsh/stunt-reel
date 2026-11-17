@@ -32,8 +32,25 @@ Nothing here is a fact about Stunt Island.
   review then found, among them a preflight that built despite `--no-build`. Re-reviews prefer
   Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what
   changed since the last reviewed commit, run once after every finding is fixed, and are skipped
-  for a wording-only fix (reply with the new text).
-* **A Claude implementer ends when its PR opens**, or earlier if its context passes about 150k
+  for a wording-only fix (reply with the new text), except on a PR whose diff touches a path rule 5
+  names: any fix or rebase there is committed locally and re-reviewed at its SHA before the push,
+  and a rebase needs a fresh `clean` comment at the new head.
+* **An unattended run has a coordinator and workers.** The coordinator runs on Sonnet from the
+  start, reads no diffs or issue bodies (workers read them and report), keeps
+  `build/scratch/run-state.md` rewritten at every item transition, and hands off, when its
+  context passes about 150k tokens, instead of compacting: it starts a fresh coordinator from that
+  file's content (a cloud session's new container cannot read the gitignored file, so the content
+  goes in the new session's prompt), or runs Shutdown where it cannot start one. In a cloud
+  session either waits until no worker is in flight, or until every in-flight item has a pushed
+  branch (a rule 5 item only after its review and push), since an unpushed commit is lost with
+  the container; any other item is released and listed under Needs you. When a person has
+  asked CodeRabbit for a review, it checks once, at the 20-minute timeout. The skill lists the
+  `orca orchestration` flags the coordinator and workers need, so nobody loads `--help` or the
+  orchestration guide into context. The contract is
+  [`coordinator.md`](../.agents/skills/running-unattended/coordinator.md); the reasons are in #509.
+* **A Claude implementer ends when its PR opens** (for a diff that changes a path rule 5 names,
+  when it commits: the coordinator pushes after the fresh review, and a spec or plan is reviewed
+  before its commit), or earlier if its context passes about 150k
   tokens; a fresh worker starts from the PR and the review comment to make the fixes, while dsh
   workers may keep their session. Before asking for review, the implementer scans its own diff
   for the `AGENTS.md` § 3 rule 5 words and checks every quoted figure against its source.

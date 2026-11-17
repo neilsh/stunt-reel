@@ -1,5 +1,5 @@
 ---
-summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. Eye-relative transforms, which take the eye's translation off each draw's matrix on the CPU, cut the per-tick difference by 46% to 84% on each film and shrink the four near-coplanar depth-tie residues to 17 pixels or fewer each; other ties remain. The screen-linear ratio `shade·w / w` makes the Gouraud polygons the clipper breaks draw the GPU's gradient (BALLOON 145 on `3a7afb76`: all 4,044 broken pixels match the GPU, 1,097 differing pixels in the frame become 7). One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe. A LOCATION frame encodes 127,910 `draw_indexed` calls, nearly three quarters of them world base fills and outlines, none of which coalescing contiguous base slices in walk order removes on LOCATION."
+summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. Eye-relative transforms, which take the eye's translation off each draw's matrix on the CPU, cut the per-tick difference by 46% to 84% on each film and shrink the four near-coplanar depth-tie residues to 17 pixels or fewer each; other ties remain. The screen-linear ratio `shade·w / w` makes the Gouraud polygons the clipper breaks draw the GPU's gradient (BALLOON 145 on `3a7afb76`: all 4,044 broken pixels match the GPU, 1,097 differing pixels in the frame become 7). One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe. A LOCATION frame encodes 127,910 `draw_indexed` calls, nearly three quarters of them world base fills and outlines, none of which coalescing contiguous base slices in walk order removes on LOCATION; culling world nodes outside the view frustum cuts the median frame to 6,791 calls and LOCATION ticks 12-300's lavapipe render time by 83% (one run), with the stores byte-identical over every film's captured ticks."
 ---
 # Parity: Rendering on Lavapipe
 
@@ -136,6 +136,27 @@ Coalescing contiguous base slices in walk order therefore removes 0 fill and 0 o
 each of the 289 frames, against the 25% bar #603 set, so #603's decision is no-go; the counts
 replace its estimate of a hundred to a thousand world mesh slices per frame.
 _Source: [Draws per frame, and coalescing adjacent base slices](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices)._
+
+**Frustum cull (#644).** `[Bounded Observation]`, 2026-11-16, PR #652 at `3e956d1a` against
+`857f80a8`, mesa-dist-win 25.2.8 and the RTX 4070 laptop, LOCATION ticks 12-300, one run each.
+The world walk skips a node whose box around its own and its descendants' vertices lies wholly
+outside one plane of the view frustum. Over #603's 289 frames the median frame's `draw_indexed`
+calls fall from 127,910 to 6,791: the six world categories' medians from 121,148 in sum to 29
+(the world's per-frame total at most 133), as these frames
+look at an aircraft against sea and sky; the 6,762 prop, actor and sprite fills are not culled.
+
+| Run | Before | After |
+|---|---|---|
+| lavapipe, LOCATION ticks 12-300 | 81.7 s | 13.7 s |
+| GPU, LOCATION ticks 12-300 | 14.6 s | 4.7 s |
+
+The render stores are byte-identical before and after on the GPU over every reference film's
+captured ticks (21 of 21 files) and on lavapipe over LOCATION ticks 12-300. On top of #636's
+eye-relative transforms (`e6fb29c`), on `origin/main` `734d3a8`, Ubuntu's Mesa 25.2.8 rendered all seven films' captured
+ticks byte-identical with and without the cull, 2026-11-17; the GPU was not re-checked there.
+`852db54`, which stops moving each box by the node's `local_matrix`, was not re-run; every world
+node's `local_matrix` is the identity (`stunt_core::world::mesh`), so no box changes.
+_Source: [culling world nodes outside the view frustum](../../work/2026-11/644_frustum-cull/journal.md#2026-11-16-culling-world-nodes-outside-the-view-frustum), [the cull on top of eye-relative transforms](../../work/2026-11/644_frustum-cull/journal.md#2026-11-17-the-cull-on-top-of-eye-relative-transforms)._
 
 ## Ruled out
 

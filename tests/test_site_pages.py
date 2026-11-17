@@ -6,10 +6,12 @@ import json
 lazy from pathlib import Path
 
 import pytest
+from formats_docs.catalog import EVIDENTIARY_TIERS
 
 from stunt_reel.site_pages import (
     REPO_URL,
     Site,
+    evidence_tiers,
     link_target,
     normalize_display_math,
     page_text,
@@ -155,6 +157,45 @@ def test_page_text_sidebar_labels(site: Site) -> None:
         assert fields["sidebar.label"] == label
 
 
+def test_page_text_sidebar_label_replaces_the_title_as_label_only(site: Site) -> None:
+    text = '---\ntitle: "A Very Long Specification Title"\nsidebar_label: "Short"\n---\n\nBody\n'
+    fields, _ = _fields(page_text(text, "research/formats/sod.md", site, set()))
+    assert fields["sidebar.label"] == "Short"
+    assert fields["title"] == "A Very Long Specification Title"
+    assert "sidebar_label" not in fields
+
+
+def test_page_text_sidebar_label_beats_the_fixed_labels(site: Site) -> None:
+    text = '---\nsidebar_label: "Folder"\n---\n\n# T\n'
+    fields, _ = _fields(page_text(text, "research/README.md", site, set()))
+    assert fields["sidebar.label"] == "Folder"
+
+
+def test_page_text_sidebar_label_beats_the_adr_numbering(site: Site) -> None:
+    text = '---\nsidebar_label: "Short ADR"\n---\n\n# A Much Longer ADR Title\n'
+    adr = "docs/adr/" + "0041-dated-records.md"  # split so the cited-docs check skips a stem
+    fields, _ = _fields(page_text(text, adr, site, set()))
+    assert fields["sidebar.label"] == "Short ADR"
+
+
+def test_page_text_sidebar_label_is_plain_text(site: Site) -> None:
+    text = '---\nsidebar_label: "The `.SOD` **VM**"\n---\n\n# T\n'
+    fields, _ = _fields(page_text(text, "research/formats/sod.md", site, set()))
+    assert fields["sidebar.label"] == "The .SOD VM"
+
+
+def test_page_text_without_sidebar_label_uses_the_title(site: Site) -> None:
+    fields, _ = _fields(page_text("# Own title\n", "research/formats/sod.md", site, set()))
+    assert fields["sidebar.label"] == "Own title"
+
+
+@pytest.mark.parametrize("value", ["", "7"])
+def test_page_text_rejects_a_bad_sidebar_label(site: Site, value: str) -> None:
+    text = f'---\ntitle: "T"\nsidebar_label: {value}\n---\n'
+    with pytest.raises(ValueError, match=r"sod\.md: sidebar_label"):
+        page_text(text, "research/formats/sod.md", site, set())
+
+
 def test_page_text_label_ignores_a_given_title(site: Site) -> None:
     fields, _ = _fields(page_text("# Stunt Reel\n", "GLOSSARY.md", site, set(), title="Glossary"))
     # A file section's sidebar label comes from published.toml, not from page_text.
@@ -223,6 +264,42 @@ def test_page_text_description_loses_markdown(site: Site) -> None:
     text = "---\nsummary: Router to the `.ksy` **schemas** and [sod](sod.md)\n---\n# T\n"
     fields, _ = _fields(page_text(text, _SRC, site, set()))
     assert fields["description"] == "Router to the .ksy schemas and sod"
+
+
+_SPEC = """\
+## 2. Invariants
+
+### 2.4 Evidentiary Tiers
+
+* **Tiers:** the vocabulary lives in [`catalog.py`](../catalog.py). In order:
+  * **`[Unknown]`**: Unmapped bytes; parsers must fail.
+  * **`[Bounded Observation]`**: Seen in **one** film, see [the guide](g.md).
+* **Anchors:**
+  * Tokens (`[I1]`) are cited from code.
+
+### 2.5 Next
+
+  * **`[Established]`**: not a tier of 2.4.
+"""
+
+
+def test_evidence_tiers_reads_section_2_4_in_order() -> None:
+    assert evidence_tiers(_SPEC) == [
+        {"name": "Unknown", "meaning": "Unmapped bytes; parsers must fail."},
+        {"name": "Bounded Observation", "meaning": "Seen in one film, see the guide."},
+    ]
+
+
+def test_evidence_tiers_is_empty_for_a_spec_without_them() -> None:
+    assert evidence_tiers("### 2.4 Evidentiary Tiers\n\nNothing.\n") == []
+    assert evidence_tiers("## 1. Goals\n") == []
+
+
+def test_evidence_tiers_of_the_real_spec_match_the_shared_vocabulary() -> None:
+    spec = (Path(__file__).resolve().parent.parent / "docs" / "SPEC.md").read_text(encoding="utf-8")
+    names = [t["name"] for t in evidence_tiers(spec)]
+    assert sorted(f"[{n}]" for n in names) == sorted(EVIDENTIARY_TIERS)
+    assert all(t["meaning"] for t in evidence_tiers(spec))
 
 
 _MATH_CASES = [

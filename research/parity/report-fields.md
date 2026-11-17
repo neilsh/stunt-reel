@@ -1,5 +1,6 @@
 ---
 summary: "The keys and JSON types of the parity reports `report.json` and `compare.json`, checked against `stuntreel parity` output on synthetic fixtures by the `report_doc.rs` test."
+sidebar_label: "report.json & compare.json fields"
 ---
 # Parity report fields: `report.json` and `compare.json`
 

@@ -1,5 +1,6 @@
 ---
-summary: "Which static tool answers which `PLAYONE.EXE` question (`mise run disasm`/`xref`/`vm-handler`, Ghidra, rea), what Ghidra cannot see in the VM handlers, and the address coordinate conversions."
+summary: "Which static tool answers which `PLAYONE.EXE` question (`mise run re-tool -- disasm`/`xref`/`vm-handler`, Ghidra, rea), what Ghidra cannot see in the VM handlers, and the address coordinate conversions."
+sidebar_label: "Static-analysis tooling"
 ---
 # `PLAYONE.EXE`: Static-Analysis Tooling (iced-x86, Ghidra, rea)
 
@@ -16,10 +17,10 @@ The trial record (timings, the Windows refusal, the load-image attestation) is o
 
 | Question | Tool | Why |
 |---|---|---|
-| What are the instructions between two image offsets? | `mise run disasm -- <start> <end>` | iced-x86 over `PLAYONE.EXE`, unpacked in memory from the data root, so no unpacked image is needed. Prints image offset, bytes and NASM text. |
-| Which instructions use this 16-bit value as an immediate or displacement? | `mise run xref -- <imm16>` | Under a second, over the code below `DGROUP` (`--code-end` to change it), with neighbours. `xref 0x8124` finds the `work:0x8124` store at `0x1D69`. The DGROUP writer scan for `0x22C4/0x22CE/0x22D0` is this question. |
-| Which handler runs a display-list opcode? | `mise run vm-handler -- <opcode>` | Follows the opcode's dispatch slot (section 3) to its handler and, when the handler calls through a work-segment word table, lists that table: `vm-handler 0x0063` gives `OP_IPG` at `0x965F` and its cube at `0xB275`. |
-| Which instructions reference this string or DGROUP offset? | `mise run xref -- <exe> --string TEXT`, or `--offset 0xN --ds 0xSEG` (any MZ, LZEXE or image file) | Under a second. It resolves the string's offset in each segment the code loads into `DS` or the relocation table names, then prints each 16-bit operand equal to it with its neighbours. |
+| What are the instructions between two image offsets? | `mise run re-tool -- disasm <start> <end>` | iced-x86 over `PLAYONE.EXE`, unpacked in memory from the data root, so no unpacked image is needed. Prints image offset, bytes and NASM text. |
+| Which instructions use this 16-bit value as an immediate or displacement? | `mise run re-tool -- xref <imm16>` | Under a second, over the code below `DGROUP` (`--code-end` to change it), with neighbours. `xref 0x8124` finds the `work:0x8124` store at `0x1D69`. The DGROUP writer scan for `0x22C4/0x22CE/0x22D0` is this question. |
+| Which handler runs a display-list opcode? | `mise run re-tool -- vm-handler <opcode>` | Follows the opcode's dispatch slot (section 3) to its handler and, when the handler calls through a work-segment word table, lists that table: `vm-handler 0x0063` gives `OP_IPG` at `0x965F` and its cube at `0xB275`. |
+| Which instructions reference this string or DGROUP offset? | `mise run re-tool -- xref <exe> --string TEXT`, or `--offset 0xN --ds 0xSEG` (any MZ, LZEXE or image file) | Under a second. It resolves the string's offset in each segment the code loads into `DS` or the relocation table names, then prints each 16-bit operand equal to it with its neighbours. |
 | What are the functions, their bodies, callers and callees? What does one decompile to? | Ghidra (headless or GUI) on the MZ file | 222 functions recovered, with decompilation and reference tracking. |
 | Who reads or writes a fixed DGROUP offset? | Ghidra | Works for absolute `[disp16]` accesses once `DS` is known. The `0x22C4` writer in `entry` shows up in the listing and the pseudocode. |
 | The same questions, asked by an agent over MCP, with results that record their inputs | rea, with `--snapshot` | Each result carries the target SHA-256, tool versions and analysis profile. Without a snapshot every call re-imports (about 12 s); with one, about 1.4 s. |
@@ -48,7 +49,7 @@ One instruction has several names. Convert to the image offset before comparing 
 
 DGROUP is image paragraph `0x0D51` (offset `0xD510`). It runs at `DS = 0x1575` in the captured session and at segment `0x1D51` in Ghidra/rea. A `DS:` offset therefore maps to image `0xD510 + off`.
 
-The display-list VM's **dispatch table** is image `0x8246` (notebook `CS:0x1316`, VM `0x0006`): opcode `op` jumps from the slot at `0x8246 + op` ([`sod-vm.md`](sod-vm.md) section 1). The VM's **work segment**, which is `DS` while the VM runs, is image paragraph `0x15D4` (offset `0x15D40`), so `work:off` maps to image `0x15D40 + off`, and the image holds the segment's initial values. `OP_IPG`'s subtype table `work:0x1954` is image `0x17694`. Patch #3 moves the VM segment to `0x0754` and the work segment to `0x14BF` ([`memory-map-patch3.md`](memory-map-patch3.md)); `mise run vm-handler` takes `--vm-seg` and `--work-seg` for it.
+The display-list VM's **dispatch table** is image `0x8246` (notebook `CS:0x1316`, VM `0x0006`): opcode `op` jumps from the slot at `0x8246 + op` ([`sod-vm.md`](sod-vm.md) section 1). The VM's **work segment**, which is `DS` while the VM runs, is image paragraph `0x15D4` (offset `0x15D40`), so `work:off` maps to image `0x15D40 + off`, and the image holds the segment's initial values. `OP_IPG`'s subtype table `work:0x1954` is image `0x17694`. Patch #3 moves the VM segment to `0x0754` and the work segment to `0x14BF` ([`memory-map-patch3.md`](memory-map-patch3.md)); `mise run re-tool -- vm-handler` takes `--vm-seg` and `--work-seg` for it.
 
 ## 4. Setup
 

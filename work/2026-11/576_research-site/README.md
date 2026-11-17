@@ -2,7 +2,7 @@
 title: "Publish research/ as a GitHub Pages site"
 started: 2026-11-15
 issue: 576
-outcome: ""
+outcome: "research/ and GLOSSARY.md publish as a Starlight site at neilsh.github.io/stunt-reel, built from main by .github/workflows/pages.yml with the content generated into gitignored folders, so there is no second copy to keep in sync; publishing docs/SPEC.md, a non-goal here, followed in #590"
 ---
 
 # Publish research/ as a GitHub Pages site

@@ -1,5 +1,6 @@
 ---
 summary: "What the retired DOSBox-X harness established, for reading old captures: link framing, debugger verbs and quirks, crash constraints, `DS = 0x1575`, late wall-paced tags and `dacexpand` rounding."
+sidebar_label: "Retired DOSBox-X harness"
 ---
 # `PLAYONE.EXE`: The Retired DOSBox-X Capture Harness
 

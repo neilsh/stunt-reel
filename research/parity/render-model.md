@@ -1,5 +1,6 @@
 ---
 summary: "Compares PLAYONE's back-to-front software painter with our depth-buffer renderer stage by stage, naming each known divergence and the `[I5]` ordered decal pass and ground-decal rules that imitate its tie order."
+sidebar_label: "Render model: painter vs depth"
 ---
 # Render Model: PLAYONE's Painter Against Our Depth Buffer
 
@@ -23,7 +24,7 @@ Our renderer replaces the painting with a GPU depth buffer, by design: [`docs/SP
 The two orders agree wherever the nearer surface is also painted later, which is most of the frame. They differ in three ways:
 * **Ties.** Two surfaces at the same depth: the painter takes the later one, a depth buffer takes whichever rounds nearer. Every rule in section 3 exists for this case.
 * **Grain.** The painter decides per polygon or per object, the depth buffer per pixel. Objects that pass through each other, or a polygon the walk orders wrongly, come out differently. We do not reproduce the painter's errors.
-* **Fixed-once work.** Some things `PLAYONE` decides per frame we decide once per film: level of detail, and which props are ground decals.
+* **Fixed-once work.** Some things `PLAYONE` decides per frame we decide once per film, when the world is built, whatever the camera does: which props are ground decals ([ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md)) and which prop triangles are flat ground ([ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)). Level of detail is per frame in both; what ours fixes once per film is which `SP_1NODE` nodes get both branches built, from the camera path, with the stand-in alone for the rest ([`lod.md`](../playone-exe/lod.md) section 4.1), and the renderer gates each built branch per frame.
 
 ## 2. Stage by stage
 

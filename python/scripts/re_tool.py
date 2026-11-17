@@ -2,13 +2,15 @@
 
 Usage:
 
-* ``mise run disasm -- <start> <end>``: the instructions from image offset ``start`` to ``end``.
-* ``mise run xref -- <imm16> [--code-end 0xN]``: every instruction whose 16-bit immediate or
-  displacement is ``imm16``. ``mise run xref -- <exe> --string TEXT | --offset 0xN --ds 0xSEG``
-  is ``xref.py``'s file mode, passed through unchanged.
-* ``mise run vm-handler -- <opcode>``: the display-list VM handler for ``opcode``, read from its
-  dispatch slot at image ``0x8246 + opcode``. A handler that calls through a word table at
-  ``[bx + disp16]`` (``OP_IPG``'s subtype table at ``work:0x1954``) has the table's entries listed.
+* ``mise run re-tool -- disasm <start> <end>``: the instructions from image offset ``start`` to
+  ``end``.
+* ``mise run re-tool -- xref <imm16> [--code-end 0xN]``: every instruction whose 16-bit immediate
+  or displacement is ``imm16``. ``mise run re-tool -- xref <exe> --string TEXT | --offset 0xN
+  --ds 0xSEG`` is ``xref.py``'s file mode, passed through unchanged.
+* ``mise run re-tool -- vm-handler <opcode>``: the display-list VM handler for ``opcode``, read
+  from its dispatch slot at image ``0x8246 + opcode``. A handler that calls through a word table
+  at ``[bx + disp16]`` (``OP_IPG``'s subtype table at ``work:0x1954``) has the table's entries
+  listed.
 
 Each reads ``--image`` (default ``corpus/stuntisl/PLAYONE.EXE`` in the data root, unpacked in
 memory), which may be an MZ, LZEXE 0.91 or bare load-image file. Addresses are load-image

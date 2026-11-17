@@ -1,5 +1,6 @@
 ---
 summary: "A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives in our renderer; on `PLAYONE` a superset with the palette items keeps the palettes, but some pages differ, as they do when the own archive is padded with inert chunks: not by content, nor by count, bytes or ids alone, but, in 13 CTRY captures, exactly when the padding made the film run later in emulator frames."
+sidebar_label: "What the linker puts in a .ALL"
 ---
 # `MAKEONE.EXE`: What the Film Linker Puts in a `.ALL`
 

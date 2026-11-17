@@ -1,5 +1,6 @@
 ---
 summary: "Evidence for the memory map: `DS` per emulator, the [MEM-FLM-TICK] counters (film clock read equal to `0x22B8` until it holds), the unverified `0C5E` trap, [MEM-UNPACK-LOCKOUT] and image relocation."
+sidebar_label: "Memory & data segment layout"
 ---
 # `PLAYONE.EXE`: Memory Architecture & Data Segment Layout
 
@@ -123,9 +124,9 @@ Practical rule for the harness: wait for the `LOAD FILM` dialog page to stop cha
 
 ## 4. Image-to-Memory Relocation and a Candidate Embedded Data Region
 
-*[Bounded Observation].* The player's memory is the unpacked load image relocated by a constant, so an image offset maps to a known runtime linear address and searches for runtime structures belong over the image, not over arbitrary segments.
+`[Bounded Observation]`. The player's memory is the unpacked load image relocated by a constant, so an image offset maps to a known runtime linear address and searches for runtime structures belong over the image, not over arbitrary segments.
 
 * **The constant.** The image holds `DGROUP` at `0xD510` and `DGROUP` runs at segment `0x1575`, so `runtime_linear = image_offset + 0x8240` (check: `0xD510 + 0x8240 = 0x15750`, segment `0x1575`). The VM code segment is paragraph `0x824` (image `0x8240`), so VM `CS:IP` equals `image - 0x8240`; the notebook's `CS = 0x0F17` addresses equal `image - 0x6F30`. Any image offset can be located in a memory dump, and any dump address mapped back. The rule is recorded in [`memory-map.md`](memory-map.md) section 1.
-* **A candidate embedded data region.** The image holds large tables from about `0x2E380` to `0x2F000`: 16-bit words that are mostly small signed offsets (`0xFFA0`, `0xFF60`, `0xFF02`), pointer-like values ascending through `0xBB6E`, `0xBB76`, `0xBB88`, `0xBB9A`, `0xBBA2`, `0xBBB2`, `0xBBC2`, `0xBBD8`, `0xBBF0`, `0xBC08`, `0xBC1E`, and the literal `0x0016` (22) recurring as a length or tag. Bytes 192-199 occur in it. It is not decoded and may be a sector/object table rather than ground polygons; the later scan in [`world-scene.md` § Ruled out](world-scene.md#ruled-out) found it to be loader-relocated template data, not a colour map.
+* **A candidate embedded data region.** The image holds large tables from about `0x2E380` to `0x2F000`: 16-bit words that are mostly small signed offsets (`0xFFA0`, `0xFF60`, `0xFF02`), pointer-like values ascending through `0xBB6E`, `0xBB76`, `0xBB88`, `0xBB9A`, `0xBBA2`, `0xBBB2`, `0xBBC2`, `0xBBD8`, `0xBBF0`, `0xBC08`, `0xBC1E`, and the literal `0x0016` (22) recurring as a length or tag. Bytes 192-199 occur in it. It is not decoded and may be a sector/object table rather than ground polygons; the scenery tree is the image from `0x22860` to its end `0x30F4C` (`[Established]`, [`scenery.md`](../formats/auxiliary/scenery.md) section 1), so this region is tree data, not a loader template ([earlier scans](world-scene.md#ruled-out)); what these tables are within the tree is undecoded.
 
 _Found 2026-10-23 at `48b955a`; see the [parity log](../../work/2026-10/parity-log/log.md)._

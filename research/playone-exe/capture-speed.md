@@ -1,5 +1,6 @@
 ---
 summary: "Historical DOSBox-X tests on `vault-balloon`: no tried setting, `turbo` or sampling cuts the 0.25 s frame cost, `nosound` freezes the clock, sampled tags lag 7 to 10 ticks; and where a capture ends."
+sidebar_label: "Capture speed & DOSBox-X config"
 ---
 # `PLAYONE.EXE`: Capture Speed and DOSBox-X Configuration Experiments
 

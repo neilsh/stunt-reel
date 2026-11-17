@@ -27,6 +27,7 @@ __all__ = [
     "REPO_URL",
     "Section",
     "Site",
+    "evidence_tiers",
     "link_target",
     "load_sections",
     "normalize_display_math",
@@ -47,6 +48,8 @@ _MARKUP_LINK = re.compile(r"\[([^\]\n]*)\]\([^)\n]*\)")
 _SIDEBAR_LABELS = {"INDEX": "Index", "README": "About this folder"}
 _ADR_STEM = re.compile(r"(\d{4})-")
 _MATH_FENCE = "$$"
+_TIERS_SECTION = re.compile(r"^### 2\.4 .*?(?=^#{1,3} |\Z)", re.DOTALL | re.MULTILINE)
+_TIER_BULLET = re.compile(r"^\s*[*-]\s+\*\*`\[([^\]\n]+)\]`\*\*:\s*(.+?)\s*$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,18 @@ def page_url(content_path: str) -> str:
     if segments[-1] == "index":
         segments.pop()
     return f"{BASE}/{'/'.join(segments)}/" if segments else f"{BASE}/"
+
+
+def evidence_tiers(spec: str) -> list[dict[str, str]]:
+    """The evidentiary tiers *spec* (the text of ``docs/SPEC.md``) defines in section 2.4, in its
+    order, as ``{"name": "Established", "meaning": "..."}`` with the meaning's Markdown removed;
+    empty when the section is missing or defines none (``tests/test_site_pages.py`` pins the real
+    SPEC to ``EVIDENTIARY_TIERS``).
+    """
+    section = _TIERS_SECTION.search(spec)
+    if not section:
+        return []
+    return [{"name": m[1], "meaning": _plain(m[2])} for m in _TIER_BULLET.finditer(section[0])]
 
 
 def link_target(target: str, source: str, site: Site, images: set[str]) -> str:
@@ -162,10 +177,11 @@ def page_text(
     """The content page for repo file *source* whose Markdown is *text*, with Starlight front
     matter and links rewritten; a given *title* replaces the page's own as its title only.
 
-    The sidebar label is a fixed one for ``INDEX``/``README``, else the page's own title, numbered
-    for an ADR; an int ``order:`` becomes ``sidebar.order``. Raises ValueError, naming *source*,
-    for a page with neither a ``title:`` nor a ``# `` heading, a non-int ``order:``, or a bad link
-    or front matter.
+    The sidebar label is the page's ``sidebar_label:`` when it has one, else a fixed one for
+    ``INDEX``/``README``, else the page's own title, numbered for an ADR; an int ``order:`` becomes
+    ``sidebar.order``. Raises ValueError, naming *source*, for a page with neither a ``title:`` nor
+    a ``# `` heading, a non-int ``order:``, an empty or non-string ``sidebar_label:``, or a bad
+    link or front matter.
     """
     try:
         fields, body = read_frontmatter(text)
@@ -190,6 +206,9 @@ def page_text(
     order = fields.get("order")
     if order is not None and (not isinstance(order, int) or isinstance(order, bool)):
         raise ValueError(f"{source}: order: must be an integer, not {order!r}")
+    sidebar_label = fields.get("sidebar_label")
+    if sidebar_label is not None and (not isinstance(sidebar_label, str) or not sidebar_label):
+        raise ValueError(f"{source}: sidebar_label: must be a non-empty string")
     description = fields.get("description", fields.get("summary"))
     if description is not None:
         out["description"] = _plain(str(description))
@@ -197,7 +216,11 @@ def page_text(
     stem = posixpath.splitext(posixpath.basename(source))[0]
     head = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in out.items()]
     adr = _ADR_STEM.match(stem)
-    label = _SIDEBAR_LABELS.get(stem) or (f"{adr[1]} {plain_title}" if adr else plain_title)
+    label = (
+        (_plain(sidebar_label) if sidebar_label else None)
+        or _SIDEBAR_LABELS.get(stem)
+        or (f"{adr[1]} {plain_title}" if adr else plain_title)
+    )
     sidebar = f"sidebar:\n  label: {json.dumps(label, ensure_ascii=False)}"
     if order is not None:
         sidebar += f"\n  order: {order}"
@@ -287,7 +310,8 @@ def _target_name(dest: str) -> Path:
 
 def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
     """Write the site's content under *site_dir* from the repo at *root*: ``src/content/docs``,
-    ``public/media`` and ``src/generated/sidebar.json``, replacing what was there.
+    ``public/media`` and ``src/generated/`` (``sidebar.json``, and ``tiers.json`` when the repo
+    has ``docs/SPEC.md``: the tiers the pages' evidence tags badge), replacing what was there.
 
     Returns the pages written and the images copied. Raises ValueError, naming the file, for a
     page or section that cannot be published, an unreadable file, or two sources written to one
@@ -366,5 +390,13 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
             groups[section.group] = [entry]
             sidebar.append({"label": section.group, "items": groups[section.group]})
     generated.mkdir(parents=True)
+    spec = root / "docs/SPEC.md"
+    tiers: list[dict[str, str]] = []
+    if spec.is_file():
+        try:
+            tiers = evidence_tiers(spec.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as err:
+            raise ValueError(f"docs/SPEC.md: {err}") from err
+    (generated / "tiers.json").write_bytes((json.dumps(tiers, indent=2) + "\n").encode())
     (generated / "sidebar.json").write_bytes((json.dumps(sidebar, indent=2) + "\n").encode())
     return len(pages), len(images)

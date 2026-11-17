@@ -41,7 +41,7 @@ java = "temurin-21"
 "github:kaitai-io/kaitai_struct_compiler" = { version = "0.11", asset_pattern = "kaitai-struct-compiler-0.11.zip", strip_components = 1, bin_path = "bin", checksum = "sha256:ff89389d9dc9e770d78a24af328763cb1f8e7b31ce7766c9edf10669a060f2a2" }
 
 # dosbox-automation (DOSBox Staging fork with a REST/Lua automation API): the emulator behind
-# capture-ref, probe-light, make-all and play. Windows portable zip, pinned by checksum.
+# capture-ref, make-all and play. Windows portable zip, pinned by checksum.
 [tools."github:dosbox-automation/dosbox-automation"]
 version = "0.85.1"
 os = ["windows"]
@@ -200,10 +200,6 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 description = "Build the unpatched and the Patch #3 game trees under <data root>/builds/ with a manifest of what the patch changes (mise run game-builds)"
 run = "uv run python python/scripts/game_builds.py"
 
-[tasks.migrate-captures]
-description = "One-time move to one capture of each kind per film (ADR 0028): keep the pinned references, delete the other runs; a dry run unless given --yes"
-run = "uv run python python/scripts/migrate_captures.py"
-
 [tasks.sweep]
 depends = ["ensure"]
 description = "Candidate sweep: render and score DBG_* variants on every reference film, judged against the first value's variant (mise run sweep -- --var DBG_X=0,1 [--track evidence|heuristic [--target film:lo-hi ... [--images DIR --topic WORDS [--crop x0,y0,x1,y1]]]] [--films ctry] [--probe iou] [--keep-best] [--jobs N] [--no-build] [--reuse DIR] [--retime N])"
@@ -284,21 +280,9 @@ run = "uv run python python/scripts/gvpoly_stream.py"
 description = "Pair two builds' functions with an iced-x86 decode and map offsets (mise run pair-builds -- [--ds 0x0542,0x8072@0x824] [--code 0x196C] [--unpaired])"
 run = "uv run python python/scripts/pair_builds.py"
 
-[tasks.xref]
-description = "Find the code whose 16-bit operand is a value in PLAYONE.EXE, or that references a string or data offset in any MZ, LZEXE or image file (mise run xref -- <imm16> [--code-end 0xD510] [--image F] | <exe> --string map.bin | <exe> --offset 0x22C2 --ds 0x163D [--context N])"
-run = "uv run python python/scripts/re_tool.py xref"
-
-[tasks.disasm]
-description = "Disassemble PLAYONE.EXE between two load-image offsets (mise run disasm -- <start> <end> [--image F])"
-run = "uv run python python/scripts/re_tool.py disasm"
-
-[tasks.vm-handler]
-description = "Follow a display-list opcode's dispatch slot to its PLAYONE.EXE handler and any subtype table (mise run vm-handler -- 0x0063 [--image F] [--vm-seg 0x824] [--work-seg 0x15D4])"
-run = "uv run python python/scripts/re_tool.py vm-handler"
-
-[tasks.probe-light]
-description = "Probe PLAYONE per-shot light and shade arrays through dosbox-automation (mise run probe-light -- --ticks 10,150,273,448)"
-run = "uv run python python/scripts/probe_playone_light.py"
+[tasks.re-tool]
+description = "Static reading of PLAYONE.EXE: disasm <start> <end> | xref <imm16> [--code-end 0xD510] | xref <exe> --string TEXT | --offset 0x22C2 --ds 0x163D | vm-handler <opcode> [--vm-seg 0x824] [--work-seg 0x15D4]; disasm, vm-handler and xref <imm16> take --image F (mise run re-tool -- disasm 0x7571 0x75DB)"
+run = "uv run python python/scripts/re_tool.py"
 
 [tasks.scene-ground]
 description = "Walk PLAYONE's embedded scene tree and compare its Ground polygons with MAP.BIN (mise run scene-ground -- build/re/playone.img corpus/siarchive/Developer/FreeFlight/SIDATA/MAP.BIN)"

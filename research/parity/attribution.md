@@ -1,5 +1,6 @@
 ---
 summary: "Splits the SSIM loss of the seven VAULT reference films by render layer: props lead on four and terrain on two, BALLOON's low mask IoU comes from a straight-down camera we draw blank and a zenith sky outside the scorer's band, and a pre-decal CTRY window study puts most loss at edges, not flat colour."
+sidebar_label: "Attribution: where our loss sits"
 ---
 # Parity Attribution: Where Our Render's Loss Sits
 
@@ -150,7 +151,7 @@ The renderer-only levers are exhausted, so each item starts by reading one `PLAY
 
 The 2026-10-24 ground-and-light goal ran two rounds and adopted nothing, which is its own stop rule. Both rounds went at the ground question from opposite ends and both were stopped by missing evidence rather than by a negative result:
 
-* **The stream is not in conventional memory.** The runner at `0x9161` calls the display list's first word as code, so a relocated record carries the handler's offset; `0x995C` occurs in none of the 96 dumps and `0x9A24` twice ([world-scene.md § Ruled out](../playone-exe/world-scene.md#ruled-out)).
+* **The stream is absent from the 96 memory dumps.** The runner at `0x9161` calls the display list's first word as code, so a relocated record carries the handler's offset; `0x995C` occurs in none of the 96 dumps and `0x9A24` twice, and the notebook concludes the list is outside the 16 dumped segments, in the EMS page frame or the 4 KiB tail the `0xF000`-byte dump skips; the log row says item 1 "needs" them ([world-scene.md § Ruled out](../playone-exe/world-scene.md#ruled-out), [parity log](../../work/2026-10/parity-log/log.md)).
 * **The light is handed in, not computed.** `0x9100` writes `L` from AX/BX/DX and fills the rest of its block from DGROUP; the caller is the binary's one genuinely unreferenced entry ([terrain-shade.md](../playone-exe/terrain-shade.md#41-the-entry-decodes-but-it-is-handed-its-light)).
 
 So the next goal cannot open on item 1 or on the model-origin half of item 2 without evidence this one could not obtain. The two routes that would produce it are an EMS page-frame dump during playback, and the loader's relocation rule from the unpacked image — the first is a harness job, the second static work this notebook has the addresses for. Item 3 (the flat-sand frames) is untouched and does not depend on either.

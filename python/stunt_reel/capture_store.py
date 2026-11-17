@@ -62,7 +62,8 @@ def check_replaceable(directory: Path) -> None:
     if directory.exists() and current(directory) is None:
         raise ValueError(
             f"{directory} holds no complete capture, so it is not replaced; if it holds numbered "
-            "runs, run mise run migrate-captures first"
+            "runs of the old layout (ADR 0028), move the run a references.toml pin names up "
+            "into the directory and delete the other runs first"
         )
 
 

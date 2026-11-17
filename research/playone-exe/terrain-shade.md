@@ -1,5 +1,6 @@
 ---
 summary: "`GVPOLY`/`GVPOLY16` shade as a Gouraud ramp on the palette index (`idx = base + (s >> 9)`, `s >> 10` for `GVPOLY16`), lit by the world light the var-13 handler writes, turned as `R · L` for a rotated actor; the ground takes no light."
+sidebar_label: "Terrain shading (Gouraud)"
 ---
 # `PLAYONE.EXE`: Terrain Shading (Gouraud in Palette-Index Space)
 
@@ -73,7 +74,7 @@ So the light is not computed here: it arrives in registers from the caller (sect
 
 ### 4.2 Who hands it the light
 
-*[Bounded Observation]* for the calls (DOSBox-X breakpoint plans `light-caller`, `light-callers-tilt`, `light-source`, `light-work` and `light-writers` in `tools/dosbox-x/plans/`, [`debugger-plans.md`](debugger-plans.md); `CTRY.FLM` and `INTRO.FLM`, both builds, 2026-11-04); *[Established]* for the instruction sequences. `0x9100` is called once per drawn object, each with its own object segment in `ES` (the stream at `ES:0x000C`, `es:[2]` to `SI`, `es:[4]` to `BP`, `es:[8]` to `CH`, `[0x22EC]` pushed), from three sites:
+`[Bounded Observation]` for the calls (DOSBox-X breakpoint plans `light-caller`, `light-callers-tilt`, `light-source`, `light-work` and `light-writers` in `tools/dosbox-x/plans/`, [`debugger-plans.md`](debugger-plans.md); `CTRY.FLM` and `INTRO.FLM`, both builds, 2026-11-04); `[Established]` for the instruction sequences. `0x9100` is called once per drawn object, each with its own object segment in `ES` (the stream at `ES:0x000C`, `es:[2]` to `SI`, `es:[4]` to `BP`, `es:[8]` to `CH`, `[0x22EC]` pushed), from three sites:
 
 | Call site (return) | Patch #3 return | Passes | Share of 40 calls, ticks 169-173 |
 |---|---|---|---|
@@ -87,7 +88,7 @@ The third caller is reached through `0x1CFB`. Unless the object's flag `[si+0x0F
 
 So every object set up through `0x9100` without a rotation is lit by the world light, a function of variable 13 alone, and a rotated object by that light in its own frame. The ground takes no light: its leaves are drawn flat and never pass through `0x9100` ([`world-scene.md`](world-scene.md) section 2). The per-shot tilts of section 8 are the light of rotated objects and sub-models, sampled at `work:0x8072` after the last object of the frame was set up. At every sampled tick of both films the world light was `(99, 32766, -17) / 32767` with variable 13 at `0x002D`. Whether a renderer computes `L` from variable 13 or tabulates it is still open (Open questions).
 
-*[Bounded Observation]* for the series over the whole of `CTRY.FLM` (plan `light-world-series`: a break on `0x196C`, Patch #3 `0x1A7F`, to `stop_tick = 1342`, logging the registers (`AX` is variable 13) and `DS:0x49EC..0x49F0` on every entry; one film, DOSBox-X 2026.10.01, 2026-11-05, both runs on the committed plan). The handler was entered 161 times unpatched (film clock 51 to 1340) and 156 times on Patch #3 (53 to 1340), and every entry carried the same values:
+`[Bounded Observation]` for the series over the whole of `CTRY.FLM` (plan `light-world-series`: a break on `0x196C`, Patch #3 `0x1A7F`, to `stop_tick = 1342`, logging the registers (`AX` is variable 13) and `DS:0x49EC..0x49F0` on every entry; one film, DOSBox-X 2026.10.01, 2026-11-05, both runs on the committed plan). The handler was entered 161 times unpatched (film clock 51 to 1340) and 156 times on Patch #3 (53 to 1340), and every entry carried the same values:
 
 | Build | Entries | Clock range | `AX` (variable 13) | `DS:0x49EC..0x49F0` on entry | Caller |
 |---|---|---|---|---|---|
@@ -100,7 +101,7 @@ _Found 2026-11-04; the whole-film series added 2026-11-05; see the [parity log](
 
 ### 4.3 A rotated actor is lit by `R · L`
 
-*[Bounded Observation]*, `CTRY.FLM`, unpatched build, DOSBox-X 2026.10.01, two runs of plan `actor-light` (`tools/dosbox-x/plans/`): breaks at `0x1D20` (the angle words in `BX`, `BP`, `SI`), `0x1D49` (the `0824:071D` result in `DX`, `BP`, `DI`, with `work:0x80D2`, `0x80C0` and `0x808A`), `0x1D8D` (the object segment) and the `OP_SHADES` loop head `0x948C` (`work:0x8072` and the normal at `ES:SI`). The one object on the `0x1CFB` path is the biplane, actor 0, shape `0x7F37`, pitched about 37 degrees nose down and turned about 167 degrees (angle words `0xE5CB`, `0x000E`, `0x88D2` at film tick 166).
+`[Bounded Observation]`, `CTRY.FLM`, unpatched build, DOSBox-X 2026.10.01, two runs of plan `actor-light` (`tools/dosbox-x/plans/`): breaks at `0x1D20` (the angle words in `BX`, `BP`, `SI`), `0x1D49` (the `0824:071D` result in `DX`, `BP`, `DI`, with `work:0x80D2`, `0x80C0` and `0x808A`), `0x1D8D` (the object segment) and the `OP_SHADES` loop head `0x948C` (`work:0x8072` and the normal at `ES:SI`). The one object on the `0x1CFB` path is the biplane, actor 0, shape `0x7F37`, pitched about 37 degrees nose down and turned about 167 degrees (angle words `0xE5CB`, `0x000E`, `0x88D2` at film tick 166).
 
 * **The handed-on light is `R · L`.** On 12 hits between film ticks 166 and 195 the doubled result equals `work:0x80D2 · DS:0x49EC` to within 2 per component. `Rᵀ · L` differs by up to about 6,600 in `z` on the same hits: at tick 166, `R · L` is `(-19299, 26136, -4223)`, the handed-on light `(-19300, 26134, -4224)`, and `Rᵀ · L` `(-19752, 26140, 38)`.
 * **`R` is the builder's matrix.** `work:0x80D2` equals `Ry(-w2) Rx(w1) Rz(w0)` from the angle words to within 0.0017 per entry (Q15 and the 12-bit angle tables), and `work:0x808A` equals `V · R` as `0824:060A` computes it (Q15 products, shifted right by 15), with no difference on any hit, `V` being `work:0x80C0`: the composition of [`coordinates-and-units.md` § 3.4](../formats/concepts/coordinates-and-units.md#34-rotation-conventions--unit-quaternions-seam-2), observed live.
@@ -160,7 +161,7 @@ Edge entries are prepared at `0xC65A` and clipped by the Cohen-Sutherland clippe
 
 ## 8. Measured inputs: the light and the additive-only rule
 
-*[Bounded Observation] for the samples, [Supported Inference] for the consequence.* These samples read `work:0x8072` once per frame, so they show the light of the last object set up in that frame: the world light after scenery, a rotated copy after a rotated object (section 4.2). The light vector was measured live with [`probe_playone_light.py`](../../python/scripts/probe_playone_light.py) (DOSBox-X TAC harness, film `CTRY.FLM`). At the post-retrace trap the display-list work segment is `0x1DF8` (far pointer at `DS:0x0542`); `work:0x8072` holds the light of the last object set up (the world light for an unrotated one, a rotated copy otherwise), `DS:0x49EC` holds the world light in its first three words, and `work:0x8078` holds the world light negated. `L` is a unit vector at 1.0 = 32767 (magnitudes 32761-32766):
+`[Bounded Observation]` for the samples, `[Supported Inference]` for the consequence. These samples read `work:0x8072` once per frame, so they show the light of the last object set up in that frame: the world light after scenery, a rotated copy after a rotated object (section 4.2). The light vector was measured live with [`probe_playone_light.py`](../../python/scripts/probe_playone_light.py) (DOSBox-X TAC harness, film `CTRY.FLM`). At the post-retrace trap the display-list work segment is `0x1DF8` (far pointer at `DS:0x0542`); `work:0x8072` holds the light of the last object set up (the world light for an unrotated one, a rotated copy otherwise), `DS:0x49EC` holds the world light in its first three words, and `work:0x8078` holds the world light negated. `L` is a unit vector at 1.0 = 32767 (magnitudes 32761-32766):
 
 | Film clock | `L` at `work:0x8072` |
 |---|---|
@@ -178,7 +179,7 @@ _Found 2026-10-23 at `b44c6bc`; see the [parity log](../../work/2026-10/parity-l
 
 ## 9. What the captures show on the flat airfield
 
-*[Bounded Observation], `CTRY.FLM`, 114 scored frames.* Our render's index and layer planes were joined to the capture at the same `film_tick`; view depth `w` and screen position were reconstructed for the colour-195 flat patches by intersecting each pixel ray (authored camera from `palette_controls.json`, 45 degree FOV, 4:3, the 200/185 vertical squeeze, roll about the view axis) with the plane `y = 0`. That is exact because all 12 colour-195 patches carry raw y 0.
+`[Bounded Observation]`, `CTRY.FLM`, 114 scored frames. Our render's index and layer planes were joined to the capture at the same `film_tick`; view depth `w` and screen position were reconstructed for the colour-195 flat patches by intersecting each pixel ray (authored camera from `palette_controls.json`, 45 degree FOV, 4:3, the 200/185 vertical squeeze, roll about the view axis) with the plane `y = 0`. That is exact because all 12 colour-195 patches carry raw y 0.
 
 * **The data colour is almost never drawn.** The capture draws 195 on under 1% of those pixels. The whole patch sits at one neighbouring ramp entry for long stretches and switches between them:
 
