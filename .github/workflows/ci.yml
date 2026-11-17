@@ -53,6 +53,7 @@ jobs:
         # Anything but the one expected line fails this job, and a failed scope runs every
         # job below.
         run: |
+          echo "::error::throwaway: scope fails on purpose (#659), never merge"; exit 1
           out=$(mise exec -- python python/scripts/gate.py scope --base "origin/$BASE_REF")
           echo "$out"
           case "$out" in
