@@ -260,6 +260,23 @@ def test_no_changes_names_the_base() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("paths", "expected"),
+    [
+        (["a.md", "b.ksy"], True),
+        (["a.md", "crates/a.rs"], False),
+        (["a.md", "a.py"], False),
+        (["a.md", "mise.toml"], False),
+        (["a.md", ".github/workflows/ci.yml"], False),
+        (["a.md", "tests/fixtures/x.json"], False),
+        ([], False),
+        (None, False),
+    ],
+)
+def test_docs_only(paths: list[str] | None, expected: bool) -> None:
+    assert gate.docs_only(paths) is expected
+
+
 def test_a_step_runs_without_the_callers_git_repository_variables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -515,6 +532,79 @@ def test_full_flag_runs_the_full_gate(
 
     assert set(ran) == set(gate._plan("all"))
     assert "[gate] scope: full (--full)" in capsys.readouterr().out
+
+
+def _run_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    paths: list[str] | Exception,
+    *args: str,
+    expected_base: str = "origin/main",
+) -> int:
+    """Run ``gate.main(["scope", ...])`` with every step failing the test; return its exit code."""
+
+    def step(_mise: str, task: str, _timeout: float) -> tuple[int, str, float]:
+        raise AssertionError(f"scope ran {task}")
+
+    def changed(_repo: Path, base: str | None = None) -> list[str]:
+        assert base == expected_base
+        if isinstance(paths, Exception):
+            raise paths
+        return paths
+
+    monkeypatch.setattr(gate, "_step", step)
+    monkeypatch.setattr(gate, "changed_paths", changed)
+    monkeypatch.setattr(gate, "default_base", lambda _repo: "origin/main")
+    return gate.main(["scope", *args])
+
+
+def test_scope_prints_docs_only_for_a_documentation_change(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _run_scope(monkeypatch, ["a.md", "b.ksy"]) == 0
+
+    assert capsys.readouterr().out == "docs_only=true\n"
+
+
+def test_scope_is_false_when_git_cannot_say(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _run_scope(monkeypatch, gate.ChangedPathsError("no main")) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out == "docs_only=false\n"
+    assert "no main" in captured.err
+
+
+def test_scope_ignores_ci_being_set(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("CI", "true")
+
+    assert _run_scope(monkeypatch, ["a.md"]) == 0
+
+    assert capsys.readouterr().out == "docs_only=true\n"
+
+
+def test_scope_passes_an_explicit_base(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _run_scope(monkeypatch, ["a.md"], "--base", "main", expected_base="main") == 0
+
+    assert capsys.readouterr().out == "docs_only=true\n"
+
+
+def test_scope_counts_both_sides_of_a_rename(tmp_path: Path) -> None:
+    repo = _feature_repo(tmp_path)
+    _git(repo, "switch", "-q", "main")
+    _write(repo, "a.py")
+    _git(repo, "add", "a.py")
+    _git(repo, "commit", "-qm", "python on main")
+    _git(repo, "switch", "-q", "-c", "mv")
+    _git(repo, "mv", "a.py", "a.md")
+    _git(repo, "commit", "-qm", "rename")
+
+    assert sorted(gate.changed_paths(repo)) == ["a.md", "a.py"]
+    assert gate.docs_only(gate.changed_paths(repo)) is False
 
 
 def test_changed_paths_ignores_git_variables_naming_another_checkout(

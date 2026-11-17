@@ -7,7 +7,7 @@
 ## 1. Non-Negotiable Directives
 
 1. **Asset isolation**: **NEVER** commit proprietary assets, executables, or original binary disks. All tests run offline on synthetic fixtures in [`tests/fixtures/`](tests/fixtures/README.md). Documented exceptions follow [`NOTICE.md`](NOTICE.md).
-2. **Quality gate**: Before concluding a task or presenting code, **verify that `mise run check` passes** for what your branch touches; `-- --full` and CI run everything ([ADR 0038](docs/adr/0038-the-local-gate-runs-what-a-change-touches.md)).
+2. **Quality gate**: Before concluding a task or presenting code, **verify that `mise run check` passes** for what your branch touches; `-- --full` and CI run everything ([ADR 0038](docs/adr/0038-the-local-gate-runs-what-a-change-touches.md)), except that a docs-only pull request's CI runs the docs half ([ADR 0047](docs/adr/0047-ci-scopes-a-docs-only-pull-request.md)).
 3. **Architectural Invariants**: Code conforms to `[I1]`–`[I8]` (coordinates, flat arena, palette indices, 50 Hz ticks, coplanar decals, parity thresholds, a pure `stunt-core`, 8.3 paths), defined in [`docs/SPEC.md` § 2](docs/SPEC.md#2-system-architectural-invariants--guardrails).
 4. **Evergreen or dated**: a current fact goes in `research/` or `docs/` and is rewritten in place; a dated record goes in [`work/`](work/README.md) and is frozen once its work lands. A new finding, ruled-out hypotheses included, lands in its note by [`research/README.md`](research/README.md), committed with the code that relies on it. Read [`recording-findings`](.agents/skills/recording-findings/SKILL.md) first.
 

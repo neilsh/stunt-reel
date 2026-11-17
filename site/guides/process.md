@@ -32,7 +32,7 @@ flowchart LR
 
 **Work folders and journals.** The project's rule is that a current fact is rewritten in place, and a dated record is frozen once its work lands. [ADR 0041](../../docs/adr/0041-dated-records-live-in-work-folders.md), an ADR being a short decision record, records the decision and why: investigations had been appending dated rounds to the notes for their subject, and nothing made a writer replace what a round superseded.
 
-**The quality gate.** One command runs the checks, and since [ADR 0038](../../docs/adr/0038-the-local-gate-runs-what-a-change-touches.md) the local run covers what a change touches, with a full option and continuous integration (the automated checks on GitHub) running everything. [The quality gate page](../../docs/quality-gate.md) lists the steps.
+**The quality gate.** One command runs the checks, and since [ADR 0038](../../docs/adr/0038-the-local-gate-runs-what-a-change-touches.md) the local run covers what a change touches, with a full option and continuous integration (the automated checks on GitHub) running everything, except that a pull request whose changed files the gate's own classifier counts as documentation runs the documentation checks ([ADR 0047](../../docs/adr/0047-ci-scopes-a-docs-only-pull-request.md)); pushes to the main branch and manual runs stay full. [The quality gate page](../../docs/quality-gate.md) lists the steps.
 
 **Unattended queue runs.** An agent can work through the open pull requests and the issues marked ready for an agent without a person present. The [running-unattended skill](../../.agents/skills/running-unattended/SKILL.md) describes the loop: an item that needs a human decision is handed off, and the run moves on.
 
