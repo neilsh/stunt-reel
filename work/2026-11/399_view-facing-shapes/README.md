@@ -9,4 +9,4 @@ outcome: "Type-8 trees face the camera heading: header_flags bit 0 selects the y
 
 ## Handoff
 
-Landed in one PR: the cause is in [`sod-vm.md` § 8.8](../../../research/playone-exe/sod-vm.md#88-model-frame-the-other-generators), the measurement in the [journal](journal.md). Not done: the clipping variant `0xC50E` of the edge builder was not read, and a view-facing shape seen with the camera pitched past vertical turns half a turn off `PLAYONE`'s yaw.
+Landed in one PR: the cause is in [`sod-vm.md` § 8.8](../../../research/playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators), the measurement in the [journal](journal.md). Not done: the clipping variant `0xC50E` of the edge builder was not read, and a view-facing shape seen with the camera pitched past vertical turns half a turn off `PLAYONE`'s yaw.

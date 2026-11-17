@@ -281,6 +281,10 @@ pub struct DecodeRecord {
     pub stepped_over: Vec<SodStop>,
     /// Byte offset of the first `OP_RETURN`; `None` when the stream ended without one.
     pub returned_at: Option<usize>,
+    /// The angle-bank operands the walk's `OP_ROTX`, `OP_ROTY` and `OP_ROTZ` read, ascending
+    /// and without repeats; empty for a shape with no articulated parts. A draw whose bank
+    /// agrees with the decode's at these operands draws the same pose.
+    pub bank_operands: Vec<u16>,
 }
 
 /// Axis-aligned extent of a shape's vertices in `[I1]` metres, plus its bounding radius.

@@ -9,4 +9,4 @@ outcome: "Generator handlers read in sod-vm.md section 8.8; type-8 IPG winding, 
 
 ## Handoff
 
-The handlers are read and `vm.rs` matches them except where [`sod-vm.md` § 8.8](../../../research/playone-exe/sod-vm.md#88-model-frame-the-other-generators) says otherwise; the [journal](journal.md) has the method. Before the PR: capture-beside-render pictures of a type-8 user and of tree crowns, for the type-8 winding fix and the reversed sphere faces. Left open: drawing `OP_PERFDISK`, and the type-6 streamer's registers.
+The handlers are read and `vm.rs` matches them except where [`sod-vm.md` § 8.8](../../../research/playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators) says otherwise; the [journal](journal.md) has the method. Before the PR: capture-beside-render pictures of a type-8 user and of tree crowns, for the type-8 winding fix and the reversed sphere faces. Left open: drawing `OP_PERFDISK`, and the type-6 streamer's registers.

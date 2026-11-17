@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use crate::anchor::AnchorPoint;
 use crate::contracts::SodModelIr;
 use crate::link::{LinkError, shape_chunks};
-use crate::sod::{DecodeMode, ShadeLight, SodError, SodStopReason, decode_sod_lit};
+use crate::sod::{
+    AngleBank, DecodeMode, ShadeLight, SodError, SodStopReason, decode_sod_lit, decode_sod_posed,
+};
 use crate::sprite::SpriteImage;
 use crate::vfs::{ResRegions, VfsError};
 
@@ -51,11 +53,13 @@ pub struct ArchiveShapes {
     pub streams: HashMap<u16, (String, Vec<u8>)>,
 }
 
-/// The streams of the shapes actors draw, decoded again under each actor's own light.
+/// The streams of the shapes actors draw, decoded again under each actor's own light and
+/// angle bank.
 ///
 /// `OP_SHADES` bakes the light into a shape's colours as it decodes, and `PLAYONE` lights a
 /// rotated actor by its own rotation ([`ShadeLight::for_actor`]), so an actor's colours
-/// change with its pose.
+/// change with its pose. Its `ROT*` turn its articulated parts by the bank as it decodes, so
+/// its geometry changes with the bank's words.
 #[derive(Debug, Clone, Default)]
 pub struct RelitShapes {
     streams: HashMap<u16, (String, Vec<u8>)>,
@@ -76,12 +80,12 @@ impl RelitShapes {
         self.light
     }
 
-    /// Shape `shape_id` decoded leniently under `light`, or `None` when no stream is kept
-    /// for it or it fails to decode.
+    /// Shape `shape_id` decoded leniently under `light` with its parts posed by `bank`, or
+    /// `None` when no stream is kept for it or it fails to decode.
     #[must_use]
-    pub fn decode(&self, shape_id: u16, light: ShadeLight) -> Option<SodModelIr> {
+    pub fn decode(&self, shape_id: u16, light: ShadeLight, bank: AngleBank) -> Option<SodModelIr> {
         let (name, data) = self.streams.get(&shape_id)?;
-        decode_sod_lit(data, name, None, DecodeMode::Lenient, light).ok()
+        decode_sod_posed(data, name, None, DecodeMode::Lenient, light, bank).ok()
     }
 }
 

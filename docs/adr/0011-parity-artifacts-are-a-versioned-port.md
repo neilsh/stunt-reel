@@ -53,3 +53,6 @@ document shape; neither adapter invents a field the other does not read.
 - Renders that carry only the legacy `palette_controls.json` stay scorable until
   they age out; ADR 0005 governs when the fallback is removed.
 - The Python adapter joins the shipped package and stays standard-library only.
+- Python conformance is checked against the JSON Schemas generated from these types
+  ([ADR 0048](0048-the-python-parity-adapter-is-checked-against-a-generated-schema.md)); moving to
+  generated Python code would require amending ADR 0010.

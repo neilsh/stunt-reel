@@ -740,6 +740,30 @@ fn test_census_skip_table_never_shadows_a_real_handler() {
     }
 }
 
+#[test]
+fn test_census_steps_over_patch3_2d_widths_and_stops_at_letter() {
+    // `BLOKADD2D` and `CIRCLESL` take three words in the Patch #3 handlers (`patch3.md`
+    // § 4.1); `LETTER` dispatches to `int3`, so it has no width and ends the walk.
+    let mut bytes = make_sod_header(0, 0, 0, 0);
+    for (opcode, words) in [(0x03A8u16, 3), (0x03BA, 3)] {
+        bytes.extend_from_slice(&opcode.to_le_bytes());
+        for _ in 0..words {
+            bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+        }
+    }
+    let letter_at = bytes.len();
+    bytes.extend_from_slice(&0x034Eu16.to_le_bytes());
+    bytes.extend_from_slice(&[0u8; 4]);
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    let ir = decode_sod(&bytes, "CENSUS", None, DecodeMode::Census).expect("census decode");
+    let record = ir.decode().expect("a record");
+    let stepped: Vec<u16> = record.stepped_over.iter().map(|s| s.opcode).collect();
+    assert_eq!(stepped, [0x03A8, 0x03BA], "operand words read as opcodes");
+    let stop = record.stop.expect("LETTER has no width");
+    assert_eq!((stop.opcode, stop.offset), (0x034E, letter_at));
+    assert_eq!(stop.reason, SodStopReason::UnknownOpcode);
+}
+
 /// A header and five non-coplanar points in registers 0..=4, for the `OP_SORT` tests.
 fn sort_prelude() -> Vec<u8> {
     let mut bytes = make_sod_header(100, 0, 0, 0);
@@ -1432,6 +1456,7 @@ fn test_census_decode_keeps_no_sprites() {
         crate::sod::vm::Policy::Census,
         None,
         crate::sod::ShadeLight::default(),
+        crate::sod::AngleBank::REST,
         None,
     )
     .expect("census run");
@@ -1523,4 +1548,170 @@ fn test_perfdisk_without_a_plane_or_radius_draws_nothing() {
             .indices
             .is_empty()
     );
+}
+
+/// Decodes `data` strictly under the world light with its parts posed by `bank`.
+fn decode_posed(data: &[u8], bank: crate::sod::AngleBank) -> SodModelIr {
+    use crate::sod::{ShadeLight, decode_sod_posed};
+    decode_sod_posed(
+        data,
+        "POSED",
+        None,
+        DecodeMode::Strict,
+        ShadeLight::default(),
+        bank,
+    )
+    .expect("decode posed")
+}
+
+/// A bank with `word` at operand `operand` (one of `0x10..=0x1A`) and every other word 0.
+#[expect(
+    clippy::arithmetic_side_effects,
+    reason = "test operands lie in 0x10..=0x1A"
+)]
+fn bank_with(operand: u16, word: u16) -> crate::sod::AngleBank {
+    let mut words = [0u16; 6];
+    words[usize::from((operand - 0x10) / 2)] = word;
+    crate::sod::AngleBank::new(words)
+}
+
+/// `VECTORS` of `points` into registers from `first`, then `POLYZ` over the three of them.
+#[expect(clippy::arithmetic_side_effects, reason = "test registers are small")]
+fn vectors_and_triangle(bytes: &mut Vec<u8>, first: u16, points: [[i16; 3]; 3]) {
+    push_words(bytes, &[OP_VECTORS, 3, first * 12]);
+    for c in points.iter().flatten() {
+        bytes.extend_from_slice(&c.to_le_bytes());
+    }
+    push_words(
+        bytes,
+        &[
+            OP_COLOR,
+            45,
+            OP_POLYZ,
+            3,
+            first * 12,
+            (first + 1) * 12,
+            (first + 2) * 12,
+        ],
+    );
+}
+
+/// The decoded vertex positions, rounded to millimetres, sorted and deduplicated.
+fn positions_mm(ir: &SodModelIr) -> Vec<[i32; 3]> {
+    #[expect(clippy::cast_possible_truncation, reason = "test positions are small")]
+    let mut out: Vec<[i32; 3]> = ir
+        .vertices
+        .iter()
+        .map(|v| v.position.map(|c| (c * 1000.0).round() as i32))
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// `PUSHRELMAT; ROT* operand; VECTORS (100,0,0) (0,100,0) (0,0,100); POLYZ; POPRELMAT`, then
+/// the same triangle again after the pop.
+fn rotated_then_rest(rot: u16, operand: u16) -> Vec<u8> {
+    use crate::sod::{OP_POPRELMAT, OP_PUSHRELMAT};
+    let points = [[100, 0, 0], [0, 100, 0], [0, 0, 100]];
+    let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
+    push_words(&mut bytes, &[OP_PUSHRELMAT, rot, operand]);
+    vectors_and_triangle(&mut bytes, 0, points);
+    push_words(&mut bytes, &[OP_POPRELMAT]);
+    vectors_and_triangle(&mut bytes, 3, points);
+    push_words(&mut bytes, &[OP_RETURN]);
+    bytes
+}
+
+/// `ROTZ` turns the parts loaded after it by its bank word, about raw z, until `POPRELMAT`
+/// restores the frame (`PLAYONE` `0xA807`, `0xA99A`, `0xA9B8`); a word of 0 is skipped.
+#[test]
+fn test_rotz_turns_the_parts_loaded_inside_its_relmat_scope() {
+    use crate::sod::{AngleBank, OP_ROTZ};
+    let bytes = rotated_then_rest(OP_ROTZ, 0x14);
+    let rest = decode(&bytes, "POSED").expect("rest");
+    assert_eq!(decode_posed(&bytes, AngleBank::REST), rest);
+    assert_eq!(rest.decode().expect("record").bank_operands, [0x14]);
+    // At rest both triangles are the raw points turned into the model frame, `(-x, -y, z)`.
+    assert_eq!(
+        positions_mm(&rest),
+        [[-100_000, 0, 0], [0, -100_000, 0], [0, 0, 100_000]]
+    );
+    // A quarter turn about raw z takes raw (100,0,0) to (0,100,0) and (0,100,0) to
+    // (-100,0,0), (0,-100,0) and (100,0,0) once turned; the triangle after the pop stays.
+    let turned = decode_posed(&bytes, bank_with(0x14, 0x4000));
+    assert_eq!(
+        positions_mm(&turned),
+        [
+            [-100_000, 0, 0],
+            [0, -100_000, 0],
+            [0, 0, 100_000],
+            [100_000, 0, 0]
+        ]
+    );
+    // A word the shape does not read leaves it at rest.
+    assert_eq!(decode_posed(&bytes, bank_with(0x18, 0x4000)), rest);
+}
+
+/// `ROTX` turns by `Rx(a)` and `ROTY` by `Ry(-a)`: the builder `0x8725` with the angle as its
+/// pitch and as its yaw (`PLAYONE` `0xA8F3`, `0xA906`).
+#[test]
+fn test_rotx_and_roty_turn_about_raw_x_and_against_raw_y() {
+    use crate::sod::{OP_ROTX, OP_ROTY};
+    // Rx(90°): raw (0,0,100) to (0,-100,0), (0,100,0) once turned.
+    let rotx = decode_posed(&rotated_then_rest(OP_ROTX, 0x18), bank_with(0x18, 0x4000));
+    assert!(
+        positions_mm(&rotx).contains(&[0, 100_000, 0]),
+        "raw (0,-100,0)"
+    );
+    // Ry(-90°): raw (0,0,100) to (-100,0,0), (100,0,0) once turned.
+    let roty = decode_posed(&rotated_then_rest(OP_ROTY, 0x18), bank_with(0x18, 0x4000));
+    assert!(
+        positions_mm(&roty).contains(&[100_000, 0, 0]),
+        "raw (-100,0,0)"
+    );
+    assert_eq!(roty.decode().expect("record").bank_operands, [0x18]);
+}
+
+/// Nested rotations post-multiply the frame: a part inside `ROTZ` then `ROTX` is turned by
+/// `Rz · Rx`, so `Rx` acts on it first.
+#[test]
+fn test_nested_rotations_post_multiply() {
+    use crate::sod::{OP_POPRELMAT, OP_PUSHRELMAT, OP_ROTX, OP_ROTZ};
+    let mut bytes = make_sod_header(100, 0, 0, 0);
+    push_words(
+        &mut bytes,
+        &[OP_PUSHRELMAT, OP_ROTZ, 0x14, OP_PUSHRELMAT, OP_ROTX, 0x18],
+    );
+    vectors_and_triangle(&mut bytes, 0, [[0, 100, 0], [0, 0, 0], [100, 100, 100]]);
+    push_words(&mut bytes, &[OP_POPRELMAT, OP_POPRELMAT, OP_RETURN]);
+    let mut words = [0u16; 6];
+    words[2] = 0x4000; // operand 0x14
+    words[4] = 0x4000; // operand 0x18
+    let ir = decode_posed(&bytes, crate::sod::AngleBank::new(words));
+    // Rx takes raw (0,100,0) to (0,0,100), which Rz leaves; the reverse order would give
+    // raw (-100,0,0).
+    assert!(positions_mm(&ir).contains(&[0, 0, 100_000]));
+    assert_eq!(ir.decode().expect("record").bank_operands, [0x14, 0x18]);
+}
+
+/// `ROTZ` also turns the light `OP_SHADES` reads, and `ROTX` does not (`PLAYONE` `0xA8BC`).
+#[test]
+fn test_rotz_turns_the_shading_light_and_rotx_does_not() {
+    use crate::sod::{OP_PUSHRELMAT, OP_ROTX, OP_ROTZ};
+    let shaded_under = |rot: u16| {
+        let mut bytes = sort_prelude();
+        push_words(&mut bytes, &[OP_PUSHRELMAT, rot, 0x14]);
+        push_words(&mut bytes, &[0x0156, 0, 1, 0, 32767, 0]);
+        push_words(
+            &mut bytes,
+            &[0x02B5, 0, 0x30, OP_POLYZ, 3, 0, 12, 24, OP_RETURN],
+        );
+        decode_posed(&bytes, bank_with(0x14, 0x8000)).vertices[0].palette_index
+    };
+    // A half turn about z points the world light (along raw +y) down, so the upward normal
+    // takes the ramp's last step, as a light along -y does in
+    // `test_shades_dots_the_normal_with_the_light_it_is_given`.
+    assert_eq!(shaded_under(OP_ROTZ), 0x3F);
+    assert_eq!(shaded_under(OP_ROTX), 0x30);
 }

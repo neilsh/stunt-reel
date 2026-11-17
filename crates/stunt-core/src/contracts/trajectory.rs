@@ -314,6 +314,24 @@ pub struct TrajectoryRecord {
     /// Film variables 13-15 that drive the palette at this tick.
     #[cfg_attr(feature = "serde", serde(default))]
     pub palette: PaletteControls,
+    /// Film variables 10 and 12, which fill the angle bank at this tick.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub bank: BankVariables,
+}
+
+/// The film variables `PLAYONE` fills its angle bank from once a frame (`0x1D96`): the words
+/// articulated parts turn by (`research/playone-exe/angle-bank.md`).
+///
+/// Sampled per frame with the same linear interpolation as the palette's variables
+/// (`CS:0x136F`). [`Self::default`], both 0, is a film that never sets them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BankVariables {
+    /// Var 10: its low byte is the propeller and rotor phase, in 1/256 turns (bank `0x14`);
+    /// its change over a frame is bank `0x12`.
+    pub var10: u16,
+    /// Var 12: bank `0x18`, and its negation bank `0x1A`.
+    pub var12: u16,
 }
 
 /// Static prop placed once in the stage at film start.

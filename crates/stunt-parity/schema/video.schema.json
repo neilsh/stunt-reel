@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VideoCapture",
+  "description": "Document written by the video capture harness as `meta.json`.\n\nFields the harness adds as diagnostics are ignored on read.",
+  "type": "object",
+  "properties": {
+    "capture_start_frame": {
+      "description": "Capture frame number of video frame 0.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "cpu_profile": {
+      "description": "CPU profile the emulator ran under.",
+      "type": "string"
+    },
+    "end": {
+      "description": "How the recording stopped.",
+      "$ref": "#/$defs/CaptureEnd"
+    },
+    "film": {
+      "description": "Film the capture shows.",
+      "$ref": "#/$defs/FilmId"
+    },
+    "film_start_frame": {
+      "description": "First logged frame at which the film clock moved.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "geometry": {
+      "description": "Raster geometry of the video.",
+      "$ref": "#/$defs/Geometry"
+    },
+    "kind": {
+      "description": "Document kind; always `\"video\"`. Absent in a frame capture's `meta.json`.",
+      "type": "string",
+      "default": ""
+    },
+    "log": {
+      "description": "Per-frame clocks.",
+      "$ref": "#/$defs/TickLog"
+    },
+    "palettes": {
+      "description": "Palette history.",
+      "$ref": "#/$defs/PaletteLog"
+    },
+    "playone_build": {
+      "description": "Build of `PLAYONE.EXE` that was recorded.",
+      "type": "string"
+    },
+    "playone_sha256": {
+      "description": "SHA-256 of the `PLAYONE.EXE` that was recorded; absent from captures made before the\nharness recorded it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "description": "Schema version of the document.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema_version",
+    "film",
+    "geometry",
+    "playone_build",
+    "cpu_profile",
+    "capture_start_frame",
+    "film_start_frame",
+    "end",
+    "log",
+    "palettes"
+  ],
+  "$defs": {
+    "CaptureEnd": {
+      "description": "How the recording stopped.",
+      "oneOf": [
+        {
+          "description": "The film ended and the harness held on its last frame.",
+          "type": "string",
+          "const": "hold"
+        },
+        {
+          "description": "The harness stopped at its frame cap before the film ended.",
+          "type": "string",
+          "const": "capped"
+        }
+      ]
+    },
+    "FilmId": {
+      "description": "Identity of the film an artifact was produced from: the bytes of its `.FLM` and archive.\n\nEvery field is optional because older captures and renders may lack it; two identities\nconflict on a field only when both carry it.",
+      "type": "object",
+      "properties": {
+        "all_sha256": {
+          "description": "SHA-256 of the `.ALL` as made, so a later `make-all` cannot hide which one was played.\nA capture records the unstubbed archive, not the sound-stubbed copy it plays (ADR 0043).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "flm_bytes": {
+          "description": "Length of the `.FLM` in bytes.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "flm_sha256": {
+          "description": "SHA-256 of the `.FLM`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "File name of the `.FLM`, without a directory.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Geometry": {
+      "description": "Raster geometry an artifact describes.",
+      "type": "object",
+      "properties": {
+        "height": {
+          "description": "Height in pixels.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "viewport_rows": {
+          "description": "Rows the 3D scene was drawn into when the render narrowed its viewport.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "width": {
+          "description": "Width in pixels.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ]
+    },
+    "PaletteChange": {
+      "description": "A run of palette entries the game rewrote at one frame.",
+      "type": "object",
+      "properties": {
+        "first": {
+          "description": "Index of the first rewritten entry.",
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "frame": {
+          "description": "Capture frame number at which the new entries took effect.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "rgb": {
+          "description": "The rewritten entries, 8-bit RGB.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0
+            },
+            "maxItems": 3,
+            "minItems": 3
+          }
+        }
+      },
+      "required": [
+        "frame",
+        "first",
+        "rgb"
+      ]
+    },
+    "PaletteLog": {
+      "description": "The palette at the start of the log and every later write.",
+      "type": "object",
+      "properties": {
+        "changes": {
+          "description": "Palette writes in ascending frame order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PaletteChange"
+          }
+        },
+        "initial": {
+          "description": "The 256 entries in force at the first logged frame.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0
+            },
+            "maxItems": 3,
+            "minItems": 3
+          }
+        }
+      },
+      "required": [
+        "initial",
+        "changes"
+      ]
+    },
+    "TickLog": {
+      "description": "Per-frame clocks, one entry per recorded video frame, as parallel columns.",
+      "type": "object",
+      "properties": {
+        "film_tick": {
+          "description": "Film clock the frame shows.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "frame": {
+          "description": "Capture frame number of each row; ascends by one.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "global_tick": {
+          "description": "Game-wide tick counter at the frame.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "frame",
+        "film_tick",
+        "global_tick"
+      ]
+    }
+  }
+}

@@ -74,6 +74,7 @@ fn record(tick: u32, eye: [f32; 3], cut: bool, actors: Vec<ActorTransform>) -> T
         actors,
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: BankVariables::default(),
     }
 }
 

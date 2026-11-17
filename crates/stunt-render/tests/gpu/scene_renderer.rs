@@ -89,6 +89,7 @@ fn timeline_with_palette(actors: Vec<ActorTransform>, palette: PaletteControls) 
         actors,
         audio_cues: Vec::new(),
         palette,
+        bank: Default::default(),
     };
     FilmTimeline::new(
         vec![SliceKeyframe {
@@ -267,6 +268,7 @@ fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
                 actors: vec![actor],
                 audio_cues: Vec::new(),
                 palette: PaletteControls::default(),
+                bank: Default::default(),
             };
             let timeline = FilmTimeline::new(
                 vec![SliceKeyframe {
@@ -486,6 +488,7 @@ fn low_eye_scene(ground: SodModelIr) -> FilmScene {
         actors: vec![actor_at(0.0, 0)],
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
     let timeline = FilmTimeline::new(
         vec![SliceKeyframe {
@@ -698,6 +701,7 @@ fn timeline_over_ground() -> FilmTimeline {
         actors: Vec::new(),
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
     FilmTimeline::new(
         vec![SliceKeyframe {

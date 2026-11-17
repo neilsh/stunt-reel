@@ -25,7 +25,7 @@ use sha2::{Digest as _, Sha256};
 use stunt_core::contracts::{PaletteControls, ShapeExtent, SodModelIr};
 use stunt_core::flm::FilmTimeline;
 use stunt_core::scene::{ActorDraw, FilmScene, SceneFrame, ViewCamera, decode_archive_shapes};
-use stunt_core::sod::ShadeLight;
+use stunt_core::sod::{AngleBank, ShadeLight};
 use stunt_render::{CameraController, Offscreen, Projection, RenderError, RenderOptions, Renderer};
 
 use crate::page_slot::PageSlot;
@@ -416,6 +416,7 @@ fn draw_shapes(
                         distance: 0.0,
                         shadow_matrix: None,
                         light: ShadeLight::default(),
+                        bank: AngleBank::REST,
                     }],
                     sprites: Vec::new(),
                     view_facing: Vec::new(),

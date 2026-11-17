@@ -638,6 +638,7 @@ fn sub_tick_interpolation_is_linear_when_not_a_cut() {
                 actors: vec![actor(1, "FOKKER", [0.0, 10.0, 0.0])],
                 audio_cues: Vec::new(),
                 palette: PaletteControls::default(),
+                bank: Default::default(),
             }),
             keyframe(TrajectoryRecord {
                 tick: 1,
@@ -645,6 +646,7 @@ fn sub_tick_interpolation_is_linear_when_not_a_cut() {
                 actors: vec![actor(1, "FOKKER", [0.0, 10.0, 2.0])],
                 audio_cues: Vec::new(),
                 palette: PaletteControls::default(),
+                bank: Default::default(),
             }),
         ],
         Vec::new(),
@@ -665,6 +667,7 @@ fn sub_tick_interpolation_is_linear_when_not_a_cut() {
             pan: 0.0,
         }],
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
     let frame_1 = TrajectoryRecord {
         tick: 1,
@@ -677,6 +680,7 @@ fn sub_tick_interpolation_is_linear_when_not_a_cut() {
             pan: 0.0,
         }],
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
 
     let timeline = timeline_of(vec![frame_0, frame_1]);
@@ -794,6 +798,7 @@ fn sample_clamps_to_the_keyframe_range() {
         actors: vec![actor(1, "ACTOR", [0.0, 0.0, 0.0])],
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
     let frame_1 = TrajectoryRecord {
         tick: 11,
@@ -801,6 +806,7 @@ fn sample_clamps_to_the_keyframe_range() {
         actors: vec![actor(1, "ACTOR", [10.0, 0.0, 0.0])],
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
 
     // Ticks before the first keyframe clamp to the first slice, ticks after the last
@@ -831,6 +837,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         actors: vec![actor(1, "FOKKER", [0.0, 10.0, 100.0])],
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
     // Frame B has cut_from_previous = true (camera jump to tower)
     let frame_b = TrajectoryRecord {
@@ -839,6 +846,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         actors: vec![actor(1, "FOKKER", [0.0, 10.0, 101.2])],
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
     let timeline = FilmTimeline::new(
         vec![keyframe(frame_a.clone()), keyframe(frame_b)],
@@ -861,6 +869,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         actors: vec![actor(1, "FOKKER", [10.0, 5.0, -50.0])],
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
     // Frame B is a cut: camera moved 500 meters away to a hilltop tower
     let frame_b = TrajectoryRecord {
@@ -869,6 +878,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         actors: vec![actor(1, "FOKKER", [10.0, 5.0, -48.0])],
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
 
     let timeline = timeline_of(vec![frame_a.clone(), frame_b.clone()]);
@@ -926,6 +936,7 @@ fn camera_cut_holds_prior_pose_until_the_cut_tick() {
         actors: frame_b.actors.clone(),
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
     let timeline = timeline_of(vec![frame_a.clone(), frame_b.clone(), frame_c]);
 
@@ -951,6 +962,7 @@ fn actor_spawn_and_despawn_switch_at_the_sub_tick_midpoint() {
         actors: vec![actor(1, "ACTOR_1", [0.0, 0.0, 0.0])],
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
 
     // Frame 1 has actor 2 only (actor 1 despawned, actor 2 spawned)
@@ -960,6 +972,7 @@ fn actor_spawn_and_despawn_switch_at_the_sub_tick_midpoint() {
         actors: vec![actor(2, "ACTOR_2", [10.0, 10.0, 10.0])],
         audio_cues: Vec::new(),
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
 
     let timeline = timeline_of(vec![frame_0, frame_1]);
