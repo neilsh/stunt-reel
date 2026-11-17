@@ -217,7 +217,7 @@ def page_text(
     head = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in out.items()]
     adr = _ADR_STEM.match(stem)
     label = (
-        sidebar_label
+        (_plain(sidebar_label) if sidebar_label else None)
         or _SIDEBAR_LABELS.get(stem)
         or (f"{adr[1]} {plain_title}" if adr else plain_title)
     )

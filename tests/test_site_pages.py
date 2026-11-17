@@ -171,6 +171,19 @@ def test_page_text_sidebar_label_beats_the_fixed_labels(site: Site) -> None:
     assert fields["sidebar.label"] == "Folder"
 
 
+def test_page_text_sidebar_label_beats_the_adr_numbering(site: Site) -> None:
+    text = '---\nsidebar_label: "Short ADR"\n---\n\n# A Much Longer ADR Title\n'
+    adr = "docs/adr/" + "0041-dated-records.md"  # split so the cited-docs check skips a stem
+    fields, _ = _fields(page_text(text, adr, site, set()))
+    assert fields["sidebar.label"] == "Short ADR"
+
+
+def test_page_text_sidebar_label_is_plain_text(site: Site) -> None:
+    text = '---\nsidebar_label: "The `.SOD` **VM**"\n---\n\n# T\n'
+    fields, _ = _fields(page_text(text, "research/formats/sod.md", site, set()))
+    assert fields["sidebar.label"] == "The .SOD VM"
+
+
 def test_page_text_without_sidebar_label_uses_the_title(site: Site) -> None:
     fields, _ = _fields(page_text("# Own title\n", "research/formats/sod.md", site, set()))
     assert fields["sidebar.label"] == "Own title"

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import Slugger from "github-slugger";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightLinksValidator from "starlight-links-validator";
@@ -17,10 +18,22 @@ const base = "/stunt-reel";
 // does not see a badge's link (the plugin adds it after the Markdown is parsed), so renaming the
 // heading would break every badge silently; fail the build instead.
 const tiersAnchor = "evidence-tags";
-const readingHeadings = readFileSync(new URL("./reading.md", import.meta.url), "utf8")
-  .split("\n")
-  .filter((line) => /^#{1,6} /.test(line))
-  .map((line) => line.replace(/^#+ /, "").toLowerCase().replace(/[^a-z0-9]+/g, "-"));
+// Slug each heading as Astro does (github-slugger, in document order), and skip `#` lines inside
+// fenced code, which are not headings. A link's target is dropped as the renderer drops it.
+const slugger = new Slugger();
+let fence = null;
+const readingHeadings = [];
+for (const line of readFileSync(new URL("./reading.md", import.meta.url), "utf8").split("\n")) {
+  const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+  if (marker && fence === null) {
+    fence = marker[0];
+  } else if (marker && marker[0] === fence) {
+    fence = null;
+  } else if (fence === null && /^#{1,6} /.test(line)) {
+    const text = line.replace(/^#+ +/, "").replace(/ +#+ *$/, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+    readingHeadings.push(slugger.slug(text));
+  }
+}
 if (!readingHeadings.includes(tiersAnchor)) {
   throw new Error(`site/reading.md has no heading for #${tiersAnchor}, which the tier badges link to`);
 }
