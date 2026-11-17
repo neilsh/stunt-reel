@@ -320,7 +320,8 @@ impl SceneRenderer {
         let mut authored = CameraController::default();
         authored.set_authored_transform(frame.view);
         let controller = camera.unwrap_or(&authored);
-        camera_resources.upload(queue, &controller.build_uniform());
+        let camera_uniform = controller.build_uniform();
+        camera_resources.upload(queue, &camera_uniform);
 
         self.prepared.clear();
         self.uniforms.clear();
@@ -328,6 +329,11 @@ impl SceneRenderer {
         if frame.world
             && let Some(world) = &self.world
         {
+            // The world's own matrix, and with the camera's the one its vertices reach clip
+            // space by, in the shader's order: the cull sees what the draw would.
+            let world_matrix = eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array());
+            let view_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj)
+                * Mat4::from_cols_array(&world_matrix);
             let (ground, base, decals) = {
                 let lod_view = CameraTransform {
                     eye: frame.view.eye,
@@ -335,12 +341,9 @@ impl SceneRenderer {
                     lens: frame.lens,
                     ..CameraTransform::default()
                 };
-                world.collect_world_meshes(eye, Some(&lod_view))
+                world.collect_world_meshes(eye, Some(&lod_view), view_proj)
             };
-            let uniform = self.uniforms.push(&ModelUniform::new(
-                eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array()),
-                0,
-            ));
+            let uniform = self.uniforms.push(&ModelUniform::new(world_matrix, 0));
             self.prepared.push(PreparedDraw {
                 target: Target::World { uniform },
                 ground,
