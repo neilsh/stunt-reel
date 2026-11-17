@@ -1,5 +1,6 @@
 ---
 summary: "What Patch #3 changes, the patched `PLAYONE.EXE` offsets mapped by function pairing (one dispatch slot fewer, inferred statically), and which build each tested film needs to play and capture."
+sidebar_label: "Patch #3: the patched build"
 ---
 # Patch #3: The Patched Build of `PLAYONE.EXE` and `MAKEONE.EXE`
 

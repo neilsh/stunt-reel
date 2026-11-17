@@ -1,5 +1,6 @@
 ---
 summary: "`.SOD` model bytecode ([FMT-SOD-HEADER]): 0x000C magic, 10-byte header, power-of-two scale table (indices 18 and 19 seen in corpus), VM overview, coplanar decal rule, `OP_IFVIS` as a facing gate."
+sidebar_label: ".SOD geometry & bytecode"
 ---
 # Technical Reference Specification: Stunt Island `.SOD` 3D Geometry & Bytecode Format
 

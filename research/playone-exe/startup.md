@@ -1,5 +1,6 @@
 ---
 summary: "`PLAYONE.EXE` startup: LZEXE 0.91 packing, a command tail that honours only `?` (runs `install.exe`), the `game.cfg`, memory and disk checks, asset paths, and how to reproduce the static analysis."
+sidebar_label: "Startup & argument parsing"
 ---
 # `PLAYONE.EXE`: Startup, Initialization & Argument Parsing
 

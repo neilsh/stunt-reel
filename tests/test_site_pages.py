@@ -157,6 +157,32 @@ def test_page_text_sidebar_labels(site: Site) -> None:
         assert fields["sidebar.label"] == label
 
 
+def test_page_text_sidebar_label_replaces_the_title_as_label_only(site: Site) -> None:
+    text = '---\ntitle: "A Very Long Specification Title"\nsidebar_label: "Short"\n---\n\nBody\n'
+    fields, _ = _fields(page_text(text, "research/formats/sod.md", site, set()))
+    assert fields["sidebar.label"] == "Short"
+    assert fields["title"] == "A Very Long Specification Title"
+    assert "sidebar_label" not in fields
+
+
+def test_page_text_sidebar_label_beats_the_fixed_labels(site: Site) -> None:
+    text = '---\nsidebar_label: "Folder"\n---\n\n# T\n'
+    fields, _ = _fields(page_text(text, "research/README.md", site, set()))
+    assert fields["sidebar.label"] == "Folder"
+
+
+def test_page_text_without_sidebar_label_uses_the_title(site: Site) -> None:
+    fields, _ = _fields(page_text("# Own title\n", "research/formats/sod.md", site, set()))
+    assert fields["sidebar.label"] == "Own title"
+
+
+@pytest.mark.parametrize("value", ["", "7"])
+def test_page_text_rejects_a_bad_sidebar_label(site: Site, value: str) -> None:
+    text = f'---\ntitle: "T"\nsidebar_label: {value}\n---\n'
+    with pytest.raises(ValueError, match=r"sod\.md: sidebar_label"):
+        page_text(text, "research/formats/sod.md", site, set())
+
+
 def test_page_text_label_ignores_a_given_title(site: Site) -> None:
     fields, _ = _fields(page_text("# Stunt Reel\n", "GLOSSARY.md", site, set(), title="Glossary"))
     # A file section's sidebar label comes from published.toml, not from page_text.

@@ -177,10 +177,11 @@ def page_text(
     """The content page for repo file *source* whose Markdown is *text*, with Starlight front
     matter and links rewritten; a given *title* replaces the page's own as its title only.
 
-    The sidebar label is a fixed one for ``INDEX``/``README``, else the page's own title, numbered
-    for an ADR; an int ``order:`` becomes ``sidebar.order``. Raises ValueError, naming *source*,
-    for a page with neither a ``title:`` nor a ``# `` heading, a non-int ``order:``, or a bad link
-    or front matter.
+    The sidebar label is the page's ``sidebar_label:`` when it has one, else a fixed one for
+    ``INDEX``/``README``, else the page's own title, numbered for an ADR; an int ``order:`` becomes
+    ``sidebar.order``. Raises ValueError, naming *source*, for a page with neither a ``title:`` nor
+    a ``# `` heading, a non-int ``order:``, an empty or non-string ``sidebar_label:``, or a bad
+    link or front matter.
     """
     try:
         fields, body = read_frontmatter(text)
@@ -205,6 +206,9 @@ def page_text(
     order = fields.get("order")
     if order is not None and (not isinstance(order, int) or isinstance(order, bool)):
         raise ValueError(f"{source}: order: must be an integer, not {order!r}")
+    sidebar_label = fields.get("sidebar_label")
+    if sidebar_label is not None and (not isinstance(sidebar_label, str) or not sidebar_label):
+        raise ValueError(f"{source}: sidebar_label: must be a non-empty string")
     description = fields.get("description", fields.get("summary"))
     if description is not None:
         out["description"] = _plain(str(description))
@@ -212,7 +216,11 @@ def page_text(
     stem = posixpath.splitext(posixpath.basename(source))[0]
     head = [f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in out.items()]
     adr = _ADR_STEM.match(stem)
-    label = _SIDEBAR_LABELS.get(stem) or (f"{adr[1]} {plain_title}" if adr else plain_title)
+    label = (
+        sidebar_label
+        or _SIDEBAR_LABELS.get(stem)
+        or (f"{adr[1]} {plain_title}" if adr else plain_title)
+    )
     sidebar = f"sidebar:\n  label: {json.dumps(label, ensure_ascii=False)}"
     if order is not None:
         sidebar += f"\n  order: {order}"

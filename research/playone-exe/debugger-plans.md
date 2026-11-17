@@ -1,5 +1,6 @@
 ---
 summary: "How `mise run debug-x` breakpoint plans run on DOSBox-X: boot and key entry, image offset to live `CS:IP` mapping on both builds, the `BPM` watch filter that names a writer, and the hit loop."
+sidebar_label: "Breakpoint plans (DOSBox-X)"
 ---
 # `PLAYONE.EXE`: Breakpoint Plans on DOSBox-X's Debugger
 
@@ -77,7 +78,7 @@ Writes by the build's own slot run (the slots patching the display list) are cou
 ("rep, span unknown"): if DOSBox runs a `rep` in chunks between breakpoint checks, `DI` may be
 far past the byte the chunk changed (`[Hypothesis]`; no live `rep` writer has been watched yet).
 
-*[Bounded Observation], 2026-11-04.* DOSBox-X arms a `BPM` with a stored value of `00`
+`[Bounded Observation]`, 2026-11-04. DOSBox-X arms a `BPM` with a stored value of `00`
 (`BPLIST` shows `BPMEM 1575:49EC (00)` while the byte holds `0x63`), so every watched byte that
 is not zero stops once, spuriously, right after arming, at whatever instruction runs next. The
 filter drops these; in the `light-writers` run all five such stops sat on the `rep stosw` at

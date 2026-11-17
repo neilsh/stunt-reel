@@ -1,5 +1,6 @@
 ---
 summary: "Compares PLAYONE's back-to-front software painter with our depth-buffer renderer stage by stage, naming each known divergence and the `[I5]` ordered decal pass and ground-decal rules that imitate its tie order."
+sidebar_label: "Render model: painter vs depth"
 ---
 # Render Model: PLAYONE's Painter Against Our Depth Buffer
 

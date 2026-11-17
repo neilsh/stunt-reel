@@ -1,5 +1,6 @@
 ---
 summary: "Records how the parity metrics behave: the planted-fault metric bench, recapture noise of the reference films (with and without sound), and error categories graded by a vision model."
+sidebar_label: "Metric bench & recapture noise"
 ---
 
 # Parity Method: Metric Bench, Recapture Noise and Error Categories

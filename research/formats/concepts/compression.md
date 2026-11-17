@@ -1,5 +1,6 @@
 ---
 summary: "DOS storage tiers: LZEXE 0.91 packing of `PLAYONE.EXE` and its LZSS bitstream, uncompressed retail `.RES` and `.ALL` payloads, PCX RLE in sprite sources, and the [I8] uppercase 8.3 path rules."
+sidebar_label: "Compression & 8.3 path rules"
 ---
 # Stunt Island Technical Reference: Compression Architecture & DOS 8.3 Path Normalization
 

@@ -1,5 +1,6 @@
 ---
 summary: "Covers INTRO.FLM segments where PLAYONE shows a scene we do not: sand shots as SCENERY tiles, the montage clock and parked aircraft, and black title cards. The COL3-2 studio is in col3-2-studio.md."
+sidebar_label: "Film segments we do not show"
 ---
 
 # Film Segments Where the Original Shows a Scene We Do Not
