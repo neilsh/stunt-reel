@@ -205,8 +205,8 @@ public class SodDispatchTable extends GhidraScript {
         }
         if (entry.opcode > NUMBERING_START) {
             text.append(String.format(
-                "%nAbove opcode 0x%04X the two builds dispatch different handlers from one opcode"
-                    + " word; which build's numbering the table follows is open"
+                "%nAbove opcode 0x%04X the table's names number Patch #3; in the unpatched build the"
+                    + " slots from 0x0345 up are one slot off, behind an extra unnamed 0x033C"
                     + " (research/playone-exe/patch3.md section 4.1, issue #480).",
                 NUMBERING_START));
         }

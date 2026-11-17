@@ -1,5 +1,5 @@
 ---
-summary: "The 107-opcode `.SOD` table ([FMT-SOD-OPCODES]) dispatched as multiples of 9, the `OP_TAP`, `OP_ANIMATE` and `IFVIS`/`BVIS` facing-flag semantics, and si-tools readings kept as hypotheses."
+summary: "The 107-opcode `.SOD` table ([FMT-SOD-OPCODES]) dispatched as multiples of 9, numbered as Patch #3 numbers them (the unpatched build adds `0x033C`), the `OP_TAP`, `OP_ANIMATE` and `IFVIS`/`BVIS` facing-flag semantics, and si-tools readings kept as hypotheses."
 ---
 # `.SOD` Opcode Reference
 
@@ -9,7 +9,7 @@ This is the opcode-level companion to [`sod.md`](sod.md): the 107-opcode table, 
 
 ## 1. The Authoritative 107-Opcode Reference Table (`# [FMT-SOD-OPCODES]`)
 
-In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machine dispatched bytecode instructions through an internal jump table where every handler entry was spaced by **9 bytes**. Consequently, **every opcode `PLAYONE` dispatches is an exact multiple of 9** ($\text{Opcode} = \text{Index} \times 9$). Two constants in `SOD.H` and `vm.rs` are not: `0x000C` (`OP_ID`) is the header magic, which `vm.rs` also skips when it meets it mid-stream, and `0x004B` (`OP_VEC`, `SOD.H:35`) has no handler slot: in the unpacked image the table sits at `0x8246` (runtime `CS:0x1316`), and the bytes at `+0x0C` and `+0x4B` are gap filler (`26 C7 44`), not `E9` jumps (`[Bounded Observation]`, static). Neither is a dispatched opcode, so neither appears below. The two builds of `PLAYONE.EXE` agree on every opcode up to `0x0333`; above that the unpatched build has one more slot, `0x033C`, and its later opcodes are 9 higher than the patched build's ([`patch3.md` § 4.1](../playone-exe/patch3.md#41-the-patched-build-has-one-dispatch-slot-fewer)). Which build the names from `0x033C` up follow is open:
+In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machine dispatched bytecode instructions through an internal jump table where every handler entry was spaced by **9 bytes**. Consequently, **every opcode `PLAYONE` dispatches is an exact multiple of 9** ($\text{Opcode} = \text{Index} \times 9$). Two constants in `SOD.H` and `vm.rs` are not: `0x000C` (`OP_ID`) is the header magic, which `vm.rs` also skips when it meets it mid-stream, and `0x004B` (`OP_VEC`, `SOD.H:35`) has no handler slot: in the unpacked image the table sits at `0x8246` (runtime `CS:0x1316`), and the bytes at `+0x0C` and `+0x4B` are gap filler (`26 C7 44`), not `E9` jumps (`[Bounded Observation]`, static). Neither is a dispatched opcode, so neither appears below. The two builds of `PLAYONE.EXE` agree on every opcode up to `0x0333`. The table numbers the Patch #3 build, whose handlers from `0x033C` up do what the names say; the unpatched build has one more slot, `0x033C`, which `SOD.H` does not name, and its opcode `n` from `0x0345` up is the table's `n - 9` (`[Established]`, static). No `.SOD` stream the census walks reaches an opcode above `0x0333`, and the patch changed none ([`patch3.md` § 4.1](../playone-exe/patch3.md#41-the-patched-build-has-one-dispatch-slot-fewer)):
 
 | Index | Opcode (Hex) | Opcode (Dec) | Mnemonic | Operands & Memory Signature | Semantic Description |
 | :---: | :---: | :---: | :--- | :--- | :--- |
@@ -107,7 +107,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **91** | `0x0333` | 819 | `OP_TEXTURE` | `tex_id: u16, ...coords` | Texture-mapped quad polygon |
 | **92** | `0x033C` | 828 | `OP_VECELLIPSE`| `...` | Vector elliptical arc |
 | **93** | `0x0345` | 837 | `OP_VECELLSL` | `...` | Sliced vector ellipse |
-| **94** | `0x034E` | 846 | `OP_LETTER` | `char_code: u16, reg: u16` | Vector font glyph rendering |
+| **94** | `0x034E` | 846 | `OP_LETTER` | *unimplemented* | Dispatches to `int3` in both builds of `PLAYONE.EXE`; no encoding established |
 | **95** | `0x0357` | 855 | `OP_VECTORS2D`| `count: u16, ...` | 2D UI screen vector ingest |
 | **96** | `0x0360` | 864 | `OP_CLR2D` | *none* | Clear 2D vector accumulator |
 | **97** | `0x0369` | 873 | `OP_GET2D` | `reg: u16` | Load 2D vector register |
@@ -246,3 +246,13 @@ Only **stream constraints** are recorded here — readings that must match the b
 ### 3.3 What A Decoder's Silences Are Worth
 
 si-tools is an OBJ exporter, not an emulator. It never shades, never culls, never projects, never writes the animation variables, and skips a dozen opcodes of known width with a single word. None of that is evidence about `PLAYONE.EXE`, and this note records none of it. What survives is the byte layout: the five-word shape header (magic `0x000C`, size, `y_offset`, scale/flags, collision), `GVPOLY`'s high-byte colour, `SHADES`' leading word, `IPG`'s per-type operand counts, `ANIMATE`'s field order, and the `0x000C` first word that identifies a `.SOD` chunk inside a `.RES`, which [`res.md`](res.md) already derives from the archive structure.
+
+## Ruled out
+
+- **`OP_LETTER` as `char_code, reg`.** Its slot jumps to an `int3` in both builds, so `PLAYONE` gives it no operands; the census no longer steps over it with two words. _Source: [no census walk reaches the shifted opcodes](../../work/2026-11/480_patch3-opcode-numbering/journal.md#2026-11-17-no-census-walk-reaches-the-shifted-opcodes-and-sodh-numbers-the-patched-build)._
+- **The table numbering the unpatched build above `0x0333`.** The Patch #3 handlers match the names in order; the unpatched ones sit one slot later ([`patch3.md` § 4.1](../playone-exe/patch3.md#41-the-patched-build-has-one-dispatch-slot-fewer)).
+
+## Open questions
+
+1. The operands of the opcodes the table gives as `...`, each to be read from its handler before `vm.rs` implements it; the queue is [`sod-opcode-coverage.md`](sod-opcode-coverage.md).
+2. What the unpatched build's extra opcode `0x033C` draws ([`patch3.md`](../playone-exe/patch3.md#open-questions) Open question 1).

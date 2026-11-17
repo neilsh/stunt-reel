@@ -44,7 +44,7 @@
   0x0408 scale 6 yoff 0 placed (1530,147,4509)  corners (x, height, z): r0=(1427,293.0,4506), r1=(1633,-0.0,4512), r2=(1427,1.0,4506)
   ```
 - **Verdict**: rejected, for the tile reading. The four shapes are vertical, two-sided triangles from a hill's foot to its ridge, not flat tiles, so ADR 0035's rule rightly leaves them out. Their colours matched the airfield tiles' only because the hill patches share the range. The shapes are drawn as `PLAYONE` places them; no decal change.
-- **Lives in**: [`sod-vm.md` § 5](../../../research/playone-exe/sod-vm.md#5-hill-fins), [`world-scene.md` § 6.2](../../../research/playone-exe/world-scene.md#62-a-rule-for-ground-lying-props).
+- **Lives in**: [`sod-vm.md` § 5](../../../research/playone-exe/sod-vm.md#5-hill-fins), [`world-scene.md` § 6.2](../../../research/playone-exe/world-scene-residuals.md#62-a-rule-for-ground-lying-props).
 
 ## 2026-11-11: rescoring both films
 
