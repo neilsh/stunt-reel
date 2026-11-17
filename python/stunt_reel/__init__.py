@@ -12,3 +12,5 @@ def version() -> str:
 
 
 __all__ = ["__version__", "stunt_tac", "tac", "version"]
+
+# throwaway: #659 python-change verification, never merge
