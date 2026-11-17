@@ -740,6 +740,30 @@ fn test_census_skip_table_never_shadows_a_real_handler() {
     }
 }
 
+#[test]
+fn test_census_steps_over_patch3_2d_widths_and_stops_at_letter() {
+    // `BLOKADD2D` and `CIRCLESL` take three words in the Patch #3 handlers (`patch3.md`
+    // § 4.1); `LETTER` dispatches to `int3`, so it has no width and ends the walk.
+    let mut bytes = make_sod_header(0, 0, 0, 0);
+    for (opcode, words) in [(0x03A8u16, 3), (0x03BA, 3)] {
+        bytes.extend_from_slice(&opcode.to_le_bytes());
+        for _ in 0..words {
+            bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+        }
+    }
+    let letter_at = bytes.len();
+    bytes.extend_from_slice(&0x034Eu16.to_le_bytes());
+    bytes.extend_from_slice(&[0u8; 4]);
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+    let ir = decode_sod(&bytes, "CENSUS", None, DecodeMode::Census).expect("census decode");
+    let record = ir.decode().expect("a record");
+    let stepped: Vec<u16> = record.stepped_over.iter().map(|s| s.opcode).collect();
+    assert_eq!(stepped, [0x03A8, 0x03BA], "operand words read as opcodes");
+    let stop = record.stop.expect("LETTER has no width");
+    assert_eq!((stop.opcode, stop.offset), (0x034E, letter_at));
+    assert_eq!(stop.reason, SodStopReason::UnknownOpcode);
+}
+
 /// A header and five non-coplanar points in registers 0..=4, for the `OP_SORT` tests.
 fn sort_prelude() -> Vec<u8> {
     let mut bytes = make_sod_header(100, 0, 0, 0);

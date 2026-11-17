@@ -1812,10 +1812,11 @@ const fn skip(opcode: u16, mnemonic: &'static str, fixed_words: u16) -> CensusSk
 
 /// Operand widths for opcodes the VM does not implement, used only by a census decode.
 ///
-/// Widths come from the operand column of `research/formats/sod.md` § 3.2, which follows the
-/// community `SOD.H` rather than the binary, so a wrong entry
-/// desynchronises the walk. Opcodes whose operands § 3.2 gives as `...` or unknown are left
-/// out, and the walk ends on them.
+/// Widths come from the operand column of `research/formats/sod-opcodes.md` § 1, which follows
+/// the community `SOD.H`, except `BLOKADD2D`, `CIRCLE`, `CIRCLESL` and the 2D register ops,
+/// read from their Patch #3 handlers (the numbering `SOD.H` uses; `patch3.md` § 4.1). A wrong
+/// entry desynchronises the walk. Opcodes given as `...`, unknown or dispatched to `int3`
+/// (`LETTER`, `HUGETAP`) are left out, and the walk ends on them.
 ///
 /// The table holds only unimplemented opcodes: implementing an opcode in the VM loop means
 /// deleting its entry here. `vm_tests` fails while an entry shadows a real handler.
@@ -1838,7 +1839,6 @@ pub const CENSUS_SKIPS: &[CensusSkip] = &[
     skip(0x0306, "WIDELINE", 3),
     skip(0x0321, "SCALEIT", 1),
     skip(0x032A, "SPRITE", 2),
-    skip(0x034E, "LETTER", 2),
     skip(0x0360, "CLR2D", 0),
     skip(0x0369, "GET2D", 1),
     skip(0x0372, "PUT2D", 1),
@@ -1847,7 +1847,9 @@ pub const CENSUS_SKIPS: &[CensusSkip] = &[
     skip(0x038D, "SUB2D", 1),
     skip(0x0396, "SHL2D", 1),
     skip(0x039F, "SHR2D", 1),
+    skip(0x03A8, "BLOKADD2D", 3),
     skip(0x03B1, "CIRCLE", 2),
+    skip(0x03BA, "CIRCLESL", 3),
 ];
 
 /// The [`CENSUS_SKIPS`] entry for `opcode`, if any.
