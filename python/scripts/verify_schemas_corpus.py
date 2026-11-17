@@ -223,6 +223,29 @@ def _probe_consumed(root: Any, size: int) -> list[str]:
     return [] if consumed == size else [f"parsed {consumed} of {size} bytes"]
 
 
+SET_PROP_SLOTS = 40
+"""Authored prop slots in a set; a record's leading word is its slot, 0-based."""
+
+
+def _probe_set(root: Any, size: int) -> list[str]:
+    """Check the prop-record rules of `set.md` section 3.1 on one set."""
+    problems = _probe_consumed(root, size)
+    props = [bytes(prop) for prop in root.props]
+    slots = [int.from_bytes(prop[:2], "little") for prop in props]
+    if any(later <= earlier for earlier, later in itertools.pairwise(slots)):
+        problems.append("prop slot words do not strictly increase")
+    if any(slot >= SET_PROP_SLOTS for slot in slots):
+        problems.append(f"prop slot word outside 0..{SET_PROP_SLOTS - 1}")
+    spills = [
+        f"slot {slot}"
+        for (slot, prop), (following, nxt) in itertools.pairwise(zip(slots, props, strict=True))
+        if following == slot + 1 and prop[0x3E:0x40] != nxt[2:4]
+    ]
+    if spills:
+        problems.append("trailing word differs from the next slot's flags at " + ", ".join(spills))
+    return problems
+
+
 def _probe_map_area(root: Any, size: int) -> list[str]:
     problems = _probe_consumed(root, size)
     outliers = [
@@ -249,7 +272,7 @@ PROBES: dict[str, Callable[[Any, int], list[str]]] = {
     "all": _probe_all,
     "spr": _probe_consumed,
     "sio": _probe_consumed,
-    "set": _probe_consumed,
+    "set": _probe_set,
     "anchorpt": _probe_consumed,
     "map_area": _probe_map_area,
     "sod": _probe_consumed,
