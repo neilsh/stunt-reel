@@ -1,5 +1,6 @@
 ---
 summary: "Which static tool answers which `PLAYONE.EXE` question (`mise run disasm`/`xref`/`vm-handler`, Ghidra, rea), what Ghidra cannot see in the VM handlers, and the address coordinate conversions."
+sidebar_label: "Static-analysis tooling"
 ---
 # `PLAYONE.EXE`: Static-Analysis Tooling (iced-x86, Ghidra, rea)
 

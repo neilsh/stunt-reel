@@ -1,5 +1,6 @@
 ---
 summary: "`OP_ANIMATE` (`0x01F8`) blits frame `(count × bank word) >> 16` of its image table as a square centred on a projected point; selector `0x16` is the slot's interpolated `.FLM` animate word, `0x10` the film clock."
+sidebar_label: "OP_ANIMATE resource-draw"
 ---
 # `PLAYONE.EXE`: `OP_ANIMATE` Resource-Draw Semantics
 

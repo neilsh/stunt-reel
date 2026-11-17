@@ -1,5 +1,6 @@
 ---
 summary: "Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou and retime, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls."
+sidebar_label: "Parity probes"
 ---
 # Parity Probes: Diagnosing One Discrepancy
 

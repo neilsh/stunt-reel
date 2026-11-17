@@ -1,5 +1,6 @@
 ---
 summary: "[I1] coordinate frames from model to screen: right-handed metric basis, 16.16 fixed point, BAM angles, `sod_scale_table`, editor units to metres, focal length and FOV, attribute-keyed vertex welding."
+sidebar_label: "Coordinates, units & maths"
 ---
 # Stunt Island Technical Reference: Coordinates, Units & Spatial Mathematics
 

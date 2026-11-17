@@ -1,5 +1,6 @@
 ---
 summary: "The SOD VM raw-coordinate generators: `PERFDISK`, the model frames, two-vertex polygons, `MOVETO`/`ZLINETO`/`LINECOL` lines, and polygon spans that include both ends."
+sidebar_label: "SOD VM frames, lines & spans"
 ---
 
 # `PLAYONE.EXE`: SOD VM Model Frames, Lines and Spans

@@ -1,5 +1,6 @@
 ---
 summary: "`MAP.BIN` ([FMT-MAP-AREA]) patch pool and `REGIONS.BIN` block tree from `SD.EXE`: fields as list links and split distance, how `SD.EXE` compiles them into the scenery tree, eight unlinked patches."
+sidebar_label: "MAP.BIN terrain patches"
 ---
 # Specification: `MAP.BIN` Terrain Patches and the `SD.EXE` Scenery Build
 

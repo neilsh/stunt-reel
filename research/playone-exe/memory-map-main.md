@@ -1,5 +1,6 @@
 ---
 summary: "`PLAYONE.EXE` `DS` data offsets, code addresses and the resident mixer setter: film variables and state, palette build and DAC upload, view setup, world light, matrix and draw routines."
+sidebar_label: "Memory map: film state & draw code"
 ---
 # Memory Map: Film State, Palette and Draw Code
 

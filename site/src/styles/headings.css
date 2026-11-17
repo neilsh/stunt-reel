@@ -1,0 +1,7 @@
+/* Muted spec numbers in headings: site/src/plugins/rehype-heading-numbers.mjs. */
+.sr-secno {
+  margin-inline-end: 0.15em;
+  color: var(--sl-color-gray-3);
+  font-size: 0.7em;
+  font-weight: 400;
+}

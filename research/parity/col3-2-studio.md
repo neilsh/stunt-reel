@@ -1,5 +1,6 @@
 ---
 summary: "Records the COL3-2.FLM studio interior (anchorman, desk, window) that PLAYONE draws from tick 458 and we do not: evaluator state, actor clusters, shape census, and why the gap is unresolved."
+sidebar_label: "COL3-2.FLM studio interior"
 ---
 
 # Film Segments: the `COL3-2.FLM` Studio Interior
