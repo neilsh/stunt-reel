@@ -31,7 +31,7 @@ Delivery is sequential; open work is in [GitHub issues][issues]. _Source: the Mi
    * `PLAYONE.EXE` unpacked and disassembled for startup, memory, navigation and the display-list VM ([`research/playone-exe/`](../research/playone-exe/)).
 
 2. **Phase 1: Capture Harness & AOT glTF 2.0 Exporter *(Status: Complete; Milestone 1 gate passed)***
-   * Treats `PLAYONE.EXE` as a reference black-box kinematics compiler inside dosbox-automation, driven as a Lua plan over its REST API, with snapshots gated on the film clock ([`capture.md`](../research/playone-exe/capture.md), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md)).
+   * Treats `PLAYONE.EXE` as a reference black-box kinematics compiler inside dosbox-automation, driven as a Lua plan over its REST API, with snapshots gated on the film clock ([`capture-dosbox-automation.md`](../research/playone-exe/capture-dosbox-automation.md), [`MEMORY_MAP.md`](../research/playone-exe/memory-map.md)).
    * Emits a synthetic trajectory oracle (hand-written kinematics under `build/oracle/`, not captured from `PLAYONE.EXE`; [ADR 0022](adr/0022-captures-are-add-only-beside-a-read-only-corpus.md)) and self-contained animated glTF 2.0 files (capture in `python/stunt_reel/tac/`; glTF export in `crates/stunt-gltf/`).
 
 3. **Phase 2: Native Rust Engine *(Status: Complete; Milestone 2 gate passed)***
