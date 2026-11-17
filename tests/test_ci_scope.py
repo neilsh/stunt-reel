@@ -15,9 +15,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 CI = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
-#: The skip condition, in the two halves every docs-only test looks for.
-_SUCCEEDED = "needs.scope.result == 'success'"
-_DOCS_ONLY = "needs.scope.outputs.docs_only == 'true'"
+#: The skip condition, exactly: `scope` succeeded and said docs_only=true. Matching the whole
+#: text, not its two halves, fails a condition that joins them with `||` or negates one alone.
+_SKIP_CONDITION = "needs.scope.result == 'success' && needs.scope.outputs.docs_only == 'true'"
 
 
 def _job(name: str) -> str:
@@ -59,6 +59,19 @@ def test_scope_job_reads_the_pull_request_diff() -> None:
     assert 'MISE_AUTO_INSTALL: "false"' in scope
 
 
+def test_scope_fails_on_any_line_but_docs_only() -> None:
+    """Only `docs_only=true|false` reaches the output; anything else fails `scope`, which runs
+    every dependent."""
+    scope = _job("scope")
+    guard = re.search(
+        r'case "\$out" in\n\s+docs_only=true \| docs_only=false\) echo "\$out" >> '
+        r'"\$GITHUB_OUTPUT" ;;\n\s+\*\) .*exit 1 ;;\n\s+esac',
+        scope,
+    )
+    assert guard is not None
+    assert scope.count("$GITHUB_OUTPUT") == 1, "the output is written only inside the guard"
+
+
 def test_every_dependent_runs_unless_scope_succeeded_with_docs_only() -> None:
     for name in ("quality", "msrv", "deny", "windows-smoke"):
         block = _job(name)
@@ -69,10 +82,8 @@ def test_every_dependent_runs_unless_scope_succeeded_with_docs_only() -> None:
         if name == "quality":
             assert condition in {"${{ !cancelled() }}", "!cancelled()"}, name
             continue
-        negated = condition[condition.index("!(") :]
-        assert _SUCCEEDED in negated, name
-        assert _DOCS_ONLY in negated, name
-    assert "github.event_name == 'pull_request'" in _job_if(_job("windows-smoke"))
+        event = "github.event_name == 'pull_request' && " if name == "windows-smoke" else ""
+        assert condition == f"${{{{ !cancelled() && {event}!({_SKIP_CONDITION}) }}}}", name
     assert "needs:" not in _job("windows")
 
 
@@ -80,8 +91,7 @@ def test_a_docs_only_quality_run_runs_check_docs_and_skips_the_full_gate() -> No
     quality = _job("quality")
     docs_only = re.search(r"^      DOCS_ONLY: (.+)$", quality, re.MULTILINE)
     assert docs_only is not None, "quality sets DOCS_ONLY at job level"
-    assert _SUCCEEDED in docs_only.group(1)
-    assert _DOCS_ONLY in docs_only.group(1)
+    assert docs_only.group(1) == f"${{{{ {_SKIP_CONDITION} }}}}"
     on_docs = "if: env.DOCS_ONLY == 'true'"
     off_docs = "if: env.DOCS_ONLY != 'true'"
     assert on_docs in _step(quality, "run: mise run check-docs")
