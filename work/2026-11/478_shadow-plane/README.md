@@ -7,4 +7,4 @@ outcome: "Static reads: the probe 0x240A writes slot +0x1E (ground-leaf plane) a
 
 # Hero shadow plane (+0x1E/+0x22), altitude cutoff, camera slot shadow check, and 0x806C readers
 
-Journal: [journal.md](journal.md). Findings live in [`sod-vm.md` § 9.1](../../../research/playone-exe/sod-vm.md#91-the-actor-shadow-draw); renderer follow-up in [#499](https://github.com/neilsh/stunt-reel/issues/499). Open: the handbook's altitude cutoff, a live frame of a view slot's shadow.
+Journal: [journal.md](journal.md). Findings live in [`sod-vm.md` § 9.1](../../../research/playone-exe/sod-vm-frame.md#91-the-actor-shadow-draw); renderer follow-up in [#499](https://github.com/neilsh/stunt-reel/issues/499). Open: the handbook's altitude cutoff, a live frame of a view slot's shadow.
