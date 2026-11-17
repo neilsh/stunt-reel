@@ -6,6 +6,11 @@
 //! and the Python adapter in `python/stunt_reel/parity_artifacts/`; both
 //! speak the types defined here.
 //!
+//! The document types derive `schemars::JsonSchema`; the schemas they emit are committed in
+//! `schema/` and the Python adapter's tests validate against them (ADR 0047). A field change
+//! regenerates them with
+//! `STUNT_UPDATE_SCHEMA=1 mise exec -- cargo test -p stunt-parity --test it schema`.
+//!
 //! `render.json` carries [`RENDER_SCHEMA_VERSION`] and a capture's `meta.json`
 //! [`SCHEMA_VERSION`]; the render moved to version 2 alone when its planes moved
 //! into per-second zstd chunks (ADR 0027), and to version 3 when each tick gained

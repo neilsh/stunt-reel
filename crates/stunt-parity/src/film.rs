@@ -3,13 +3,14 @@
 
 use std::fmt;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Identity of the film an artifact was produced from: the bytes of its `.FLM` and archive.
 ///
 /// Every field is optional because older captures and renders may lack it; two identities
 /// conflict on a field only when both carry it.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct FilmId {
     /// File name of the `.FLM`, without a directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
