@@ -76,11 +76,13 @@ filter never starts leaves its check pending, which blocks the merge.
 - Not yet exercised on GitHub: that a job skipped by its `if:` satisfies its required check, that
   a failed `scope` runs every job it gates, and that the prek built-ins step runs without Rust installed.
   The pull requests that follow this change verify them; this ADR does not.
-- `quality`, `msrv`, `deny` and `windows-smoke` now wait on `scope`, so on every pull request
-  that is not docs-only the required jobs start only after `scope` finishes its full-history
-  checkout and mise Python install; that wait is not measured.
+- The four gated jobs (`quality`, `msrv`, `deny`, `windows-smoke`) start only after `scope`
+  finishes its full-history checkout and mise Python install; that wait is not measured.
+  `PR title` does not wait.
 - A manual cancel of a run while `scope` is running might leave those four checks skipped, which
-  counts as passing, rather than cancelled, which fails. This is unverified; Task 4 of the
-  [plan](../../work/2026-11/659_ci-scope-by-changed-paths/plan.md) exercises it.
+  counts as passing, rather than cancelled, which fails. This is not yet verified: it is to be
+  tried on a throwaway pull request (cancel the run while `scope` runs, then read the four
+  checks' conclusions) once the verification pull requests are open, and the result recorded in
+  #659 and in this ADR.
 - `tests/test_ci_scope.py` pins the skip condition, the job names and the absence of path filters
   in `ci.yml`; `tests/test_gate_plan.py` covers `gate.py scope`.
