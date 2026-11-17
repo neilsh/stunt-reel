@@ -37,9 +37,11 @@ Nothing here is a fact about Stunt Island.
   and a rebase needs a fresh `clean` comment at the new head.
 * **An unattended run has a coordinator and workers.** The coordinator runs on Sonnet from the
   start, reads no diffs or issue bodies (workers read them and report), keeps
-  `build/scratch/run-state.md` rewritten at every item transition, and hands off to a fresh
-  coordinator that starts from that file when its context passes about 150k tokens, instead of
-  compacting. It checks CodeRabbit once, at the 20-minute timeout. The skill lists the
+  `build/scratch/run-state.md` rewritten at every item transition, and hands off, when its
+  context passes about 150k tokens, instead of compacting: it starts a fresh coordinator from that
+  file's content (a cloud session's new container cannot read the gitignored file, so the content
+  goes in the new session's prompt), or runs Shutdown where it cannot start one. When a person has
+  asked CodeRabbit for a review, it checks once, at the 20-minute timeout. The skill lists the
   `orca orchestration` flags the coordinator and workers need, so nobody loads `--help` or the
   orchestration guide into context. The contract is
   [`coordinator.md`](../.agents/skills/running-unattended/coordinator.md); the reasons are in #509.

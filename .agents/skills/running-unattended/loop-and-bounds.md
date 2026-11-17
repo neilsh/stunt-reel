@@ -27,7 +27,7 @@ Run about two items at once only when they touch different files, each writer in
 
 The worker does steps 2 to 4; the coordinator does steps 1, 5 and 6, from the worker's report.
 
-1. **Claim it** before any branch commit ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions), "Claim an issue"): re-read its labels, swap `ready-for-agent` for `in-progress`, comment `Claimed by branch <branch>.`, and re-read comments to verify your claim is earliest.
+1. **Claim it** before any branch commit ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions), "Claim an issue"): re-read its labels, swap `ready-for-agent` for `in-progress`, comment `Claimed by branch <branch>.`, and re-read the claim comments to verify yours is earliest, by first line, not whole comments (cloud: `gh api 'repos/{owner}/{repo}/issues/<n>/comments?per_page=100' --jq '.[] | select(.body | test("^(Claimed by branch|Released claim:|Lost claim to)")) | [.created_at, (.body | split("\n")[0])] | @tsv'`).
 2. **Branch** from an up-to-date `origin/main` (`git fetch origin`, then `git switch -c <branch> origin/main`).
 3. **3-round cap:** Spend at most **3 hypothesis rounds** (or 3 failures for the same gate/CI/approach reason) on an issue. Do not chain a new heuristic onto a failed sweep ([`improving-render-parity`](../improving-render-parity/SKILL.md)).
 
