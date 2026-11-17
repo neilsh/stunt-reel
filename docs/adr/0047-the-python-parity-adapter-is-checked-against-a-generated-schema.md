@@ -30,8 +30,12 @@ filesystem, image or GPU code, so ADR 0011's rule for the crate holds.
 files with `jsonschema` (dev group), every parity document under `tests/fixtures/parity/`, and every
 document the adapter writes. The schemas follow serde, which ignores unknown fields, so a written
 document is validated against a copy that refuses any property the schema does not name; otherwise a
-renamed optional field would pass under its old name. A fixture is validated against the schema as
-emitted, because a harness may add diagnostics to a document it authored.
+renamed optional field would pass under its old name. That check judges a field when a written
+document sets it, so the test writes documents that set every property the adapter can write, and a second test
+fails when a property a schema names, at any depth, is set in none of them; a property the adapter
+deliberately never writes goes in an allow-list in the test, with its reason, which is empty. A
+fixture is validated against the schema as emitted, because a harness may add diagnostics to a
+document it authored.
 
 `stunt_reel` keeps no runtime dependencies: `jsonschema` and `types-jsonschema` sit in the dev group
 beside `pytest`, and only tests import them.
@@ -47,10 +51,12 @@ ADR 0010's checks, for each package `uv.lock` adds:
 | `rpds-py` 2026.9.1 | `cp315` wheels for Linux (glibc and musl, x86-64 and aarch64 among others), macOS (x86-64 and arm64) and Windows (x64, x86 and arm64) | `py.typed` | MIT | 2026-10-04 |
 | `types-jsonschema` 4.26.0.20261006 | `py3-none-any` | typeshed stubs | Apache-2.0 | 2026-10-06 |
 
-`uv sync --locked` therefore never builds from source on a CI platform. The one departure from
-ADR 0010's typed tier is `jsonschema` itself, which ships no `py.typed` marker; `types-jsonschema`,
-typeshed's stubs for it, are admitted with it, and mypy's strict mode and `disallow_any_unimported`
-stay on without an `ignore_missing_imports` override.
+`uv sync --locked` therefore never builds from source on a CI platform. This record departs from
+ADR 0010's typed check, which accepts a `py.typed` marker or a maintained mypy plugin: the one
+imported package without a marker is `jsonschema` itself (`jsonschema-specifications` has none
+either, but no code imports it). `types-jsonschema`, typeshed's stubs for it, are admitted with it,
+and mypy's strict mode and `disallow_any_unimported` stay on without an `ignore_missing_imports`
+override. The departure is for the owner to accept; ADR 0010 is unchanged.
 
 The job `jsonschema` does is validate a JSON document against a JSON Schema (2020-12, with `$ref`,
 `$defs`, nullable type unions, `required` and `additionalProperties`). The standard library has no
@@ -81,7 +87,8 @@ Dependency tree (`uv tree --package jsonschema`):
 
 - Changing a field of a `stunt-parity` document without regenerating its schema fails
   `mise run test-rust`; regenerating it without updating the adapter fails the Python conformance
-  test, and the failure names the property.
+  tests, and the failure names the property. A property added to a document that the adapter does
+  not write fails the coverage test until the adapter writes it or the test's allow-list names it.
 - The schema describes the shape serde accepts. It does not state rules the Rust code checks after
   parsing (`validate()`, the `film_tick` that `meta.json` requires of each frame), so the adapter's
   own validation and the fixtures still carry those.
