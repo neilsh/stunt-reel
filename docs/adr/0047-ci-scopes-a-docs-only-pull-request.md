@@ -69,20 +69,28 @@ filter never starts leaves its check pending, which blocks the merge.
   would escape the scope, since `classify` would call that path docs. `tests/test_gate_plan.py`
   finds only the reads written as `"../../` and `workspace_root().join("`; such an include would
   need its path in `_RUST_READS`.
-- Dropping `rust` from the docs-only install rests on one local run (2026-11-17): with cargo and
-  rustup off `PATH`, `rust` listed as missing by mise and `MISE_AUTO_INSTALL=false`,
-  `mise run check-docs` passed. That run used the system Java, where CI installs Java through mise,
-  and had `CI` unset, which `gate.py docs` does not read.
-- Not yet exercised on GitHub: that a job skipped by its `if:` satisfies its required check, that
-  a failed `scope` runs every job it gates, and that the prek built-ins step runs without Rust installed.
-  The pull requests that follow this change verify them; this ADR does not.
-- The four gated jobs (`quality`, `msrv`, `deny`, `windows-smoke`) start only after `scope`
-  finishes its full-history checkout and mise Python install; that wait is not measured.
-  `PR title` does not wait.
-- A manual cancel of a run while `scope` is running might leave those four checks skipped, which
-  counts as passing, rather than cancelled, which fails. This is not yet verified: it is to be
-  tried on a throwaway pull request (cancel the run while `scope` runs, then read the four
-  checks' conclusions) once the verification pull requests are open, and the result recorded in
-  #659 and in this ADR.
+- Dropping `rust` from the docs-only install was first checked in one local run (2026-11-17): with
+  cargo and rustup off `PATH`, `rust` listed as missing by mise and `MISE_AUTO_INSTALL=false`,
+  `mise run check-docs` passed. That run used the system Java and had `CI` unset, which
+  `gate.py docs` does not read; the docs-only run on GitHub below used CI's mise Java.
+- Seen on GitHub on 2026-11-17, in the pull request that landed this ADR (#667) and three throwaway
+  draft pull requests based on its branch (#668 to #670), recorded on #659:
+  - a docs-only edit ran `check-docs` and the commit-hook built-ins in `quality` without lavapipe,
+    the cargo cache or `mise run check`, so the prek built-ins step starts without mise's `rust` (the runner's own `cargo` was not checked);
+    that job took about 34 s, where the full gate on #667 took about 2 min 14 s with a warm cache;
+    `msrv`, `deny` and `windows-smoke` were skipped;
+  - a `.py` edit started every job;
+  - a `scope` made to fail by an edit to `ci.yml` (so a working `scope` would have said `false`:
+    the diff was not docs-only) left every other job running and passing; a failed `scope` beside
+    a docs-only diff was not run;
+  - a run cancelled while `scope` was running ended with all four gated checks `cancelled`, not
+    skipped.
+- The four gated jobs (`quality`, `msrv`, `deny`, `windows-smoke`) start only after `scope` finishes
+  its full-history checkout, mise Python install and classification: 12 s on #667, 19 s on #668 and
+  22 s on #669. `PR title` does not wait.
+- A docs-only pull request to `main` (#675, the one that wrote these lines) showed the skipped
+  `MSRV check`, `Dependency policy` and `Windows smoke` not blocking `main`'s ruleset: with
+  `Quality gate (ubuntu)` and `PR title` passed, its merge state read `clean` once the Pages
+  `build` check, which the ruleset does not require, finished.
 - `tests/test_ci_scope.py` pins the skip condition, the job names and the absence of path filters
   in `ci.yml`; `tests/test_gate_plan.py` covers `gate.py scope`.

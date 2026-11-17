@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Report",
+  "description": "The `report.json` document.",
+  "type": "object",
+  "properties": {
+    "adapter": {
+      "description": "Adapter the render was drawn on, from its `render.json`; null when it does not say.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RenderAdapter"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "all_sha256": {
+      "description": "The reference film's archive pin (`references.toml` `all_sha256`) the score was made\nagainst; null when the row pins no archive or the scorer was not told.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "archive_conflict_waived": {
+      "description": "The render read another archive than the capture played, and the run waived that\nconflict; absent (false) when the archives agree or were not checked.",
+      "type": "boolean"
+    },
+    "crates": {
+      "description": "The `crates/` git tree the render was built from, as its scorer was told\n(`stuntreel parity --crates`); null when it was not, as for a `crates/` with uncommitted\nchanges. A report older than the field reads as null.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "credits_missing_frames": {
+      "description": "Matched frames whose render record expects credits but whose render drew none\n(no font, or a drawing fault); their captured ink is still scored.",
+      "type": "integer",
+      "format": "uint",
+      "default": 0,
+      "minimum": 0
+    },
+    "excluded_frames": {
+      "description": "Matched frames below the fade floor.",
+      "type": "integer",
+      "format": "uint",
+      "default": 0,
+      "minimum": 0
+    },
+    "frames": {
+      "description": "Matched frames.",
+      "type": "integer",
+      "format": "uint",
+      "default": 0,
+      "minimum": 0
+    },
+    "i6_gate": {
+      "description": "Whether the scored mean reached each I6 threshold.",
+      "$ref": "#/$defs/I6Gate",
+      "default": {
+        "initial": false,
+        "sign_off": false
+      }
+    },
+    "mean_index_agreement_scored": {
+      "description": "Mean index agreement over scored frames.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "float",
+      "default": null
+    },
+    "mean_iou": {
+      "description": "Mean `IoU` over every matched frame.",
+      "type": "number",
+      "format": "float",
+      "default": 0.0
+    },
+    "mean_iou_scored": {
+      "description": "Mean `IoU` over scored frames.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "float",
+      "default": null
+    },
+    "mean_loss_by_class_scored": {
+      "description": "Mean SSIM loss per class over scored frames.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "number",
+        "format": "float"
+      },
+      "default": null
+    },
+    "mean_ssim": {
+      "description": "Mean SSIM over every matched frame.",
+      "type": "number",
+      "format": "float",
+      "default": 0.0
+    },
+    "mean_ssim_scored": {
+      "description": "Mean SSIM over scored frames; null when none scored.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "format": "float",
+      "default": null
+    },
+    "min_fade_level": {
+      "description": "Fade floor the run used.",
+      "type": "number",
+      "format": "float",
+      "default": 0.0
+    },
+    "min_ssim": {
+      "description": "Lowest SSIM over every matched frame.",
+      "type": "number",
+      "format": "float",
+      "default": 0.0
+    },
+    "per_frame": {
+      "description": "Per-frame measurements, in capture order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FrameReport"
+      }
+    },
+    "reference_frames": {
+      "description": "Reference frames the capture held.",
+      "type": "integer",
+      "format": "uint",
+      "default": 0,
+      "minimum": 0
+    },
+    "scored_frames": {
+      "description": "Scored frames.",
+      "type": "integer",
+      "format": "uint",
+      "default": 0,
+      "minimum": 0
+    },
+    "sha256": {
+      "description": "The reference capture's content hash (`references.toml` `sha256`) the score was made\nagainst, as its scorer was told (`stuntreel parity --sha256`); null when it was not told\nor the report predates the field.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "sky_indices": {
+      "description": "Inclusive palette-index range of the capture's sky.",
+      "type": "array",
+      "default": [
+        0,
+        0
+      ],
+      "items": {
+        "type": "integer",
+        "format": "uint8",
+        "maximum": 255,
+        "minimum": 0
+      },
+      "maxItems": 2,
+      "minItems": 2
+    },
+    "unmatched": {
+      "description": "Captured frames with no render on the other side.",
+      "type": "integer",
+      "format": "uint",
+      "default": 0,
+      "minimum": 0
+    }
+  },
+  "required": [
+    "per_frame"
+  ],
+  "$defs": {
+    "AdapterClass": {
+      "description": "What kind of adapter drew a render.",
+      "oneOf": [
+        {
+          "description": "A GPU: any adapter that is not a CPU implementation.",
+          "type": "string",
+          "const": "hardware"
+        },
+        {
+          "description": "A CPU implementation, such as lavapipe or WARP.",
+          "type": "string",
+          "const": "cpu"
+        }
+      ]
+    },
+    "FrameReport": {
+      "description": "One matched frame's measurements.",
+      "type": "object",
+      "properties": {
+        "authored_fade_level": {
+          "description": "Fade level the film authored at this tick, when a sidecar was present.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float",
+          "default": null
+        },
+        "fade_level": {
+          "description": "Fade level measured from the captured palette.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float",
+          "default": null
+        },
+        "film_tick": {
+          "description": "Film clock the frame was matched on.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "index_agreement": {
+          "description": "Fraction of pixels whose palette index agrees.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "float",
+          "default": null
+        },
+        "iou": {
+          "description": "Mask `IoU` against the capture.",
+          "type": "number",
+          "format": "float"
+        },
+        "loss_by_class": {
+          "description": "SSIM loss split by layer class.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "number",
+            "format": "float"
+          },
+          "default": null
+        },
+        "ordinal": {
+          "description": "1-based capture order.",
+          "type": "integer",
+          "format": "uint",
+          "default": 0,
+          "minimum": 0
+        },
+        "scored": {
+          "description": "Whether the frame reached the fade floor.",
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "default": null
+        },
+        "ssim": {
+          "description": "Structural similarity against the capture.",
+          "type": "number",
+          "format": "float"
+        }
+      },
+      "required": [
+        "film_tick",
+        "ssim",
+        "iou"
+      ]
+    },
+    "I6Gate": {
+      "description": "Whether the scored mean SSIM reaches each I6 threshold.",
+      "type": "object",
+      "properties": {
+        "initial": {
+          "description": "The initial acceptance threshold was reached.",
+          "type": "boolean"
+        },
+        "sign_off": {
+          "description": "The sign-off threshold was reached.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "initial",
+        "sign_off"
+      ]
+    },
+    "RenderAdapter": {
+      "description": "The graphics adapter a render was drawn on.",
+      "type": "object",
+      "properties": {
+        "class": {
+          "description": "Whether the adapter is a GPU or a CPU implementation.",
+          "$ref": "#/$defs/AdapterClass"
+        },
+        "name": {
+          "description": "Adapter name as its driver reports it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "class"
+      ]
+    }
+  }
+}
