@@ -13,6 +13,7 @@ use crate::contracts::shape::{
 };
 use crate::reader::ByteReader;
 use crate::sod::SodError;
+use crate::sod::bank::{AngleBank, Mat3, RotAxis, apply3, mul3, rotation, rotz_light};
 use crate::sod::light::ShadeLight;
 use std::collections::HashMap;
 
@@ -620,6 +621,8 @@ pub(crate) struct VmRun {
     pub returned_at: Option<usize>,
     /// Images `OP_ANIMATE` drew before the stream ended, in stream order.
     pub sprites: Vec<ShapeSprite>,
+    /// The bank operands the walk's `ROT*` read, ascending and without repeats.
+    pub bank_operands: Vec<u16>,
 }
 
 /// One instruction a traced VM walk executed.
@@ -679,6 +682,14 @@ struct Vm<'a> {
     policy: Policy,
     anchors: Option<&'a [AnchorPoint]>,
     light: [i64; 3],
+    // The angle bank `ROT*` read (`work:0x810E + operand`).
+    bank: AngleBank,
+    // The rotation `ROT*` have post-multiplied into the draw matrix (`work:0x808A`) since the
+    // walk began, in the raw frame; `None` while it is the identity.
+    rel: Option<Mat3>,
+    // `PUSHRELMAT` saves the matrix and the light, which `ROTZ` also turns.
+    rel_stack: Vec<(Option<Mat3>, [i64; 3])>,
+    bank_operands: Vec<u16>,
     header: SodHeader,
     // 1024 3D vector registers per specification
     regs: WrapTable<[f32; 3], 1024>,
@@ -721,6 +732,7 @@ impl<'a> Vm<'a> {
         policy: Policy,
         anchors: Option<&'a [AnchorPoint]>,
         light: ShadeLight,
+        bank: AngleBank,
     ) -> Result<Self, SodError> {
         let light = light.0.map(i64::from);
         if data.len() < 10 {
@@ -763,6 +775,10 @@ impl<'a> Vm<'a> {
             policy,
             anchors,
             light,
+            bank,
+            rel: None,
+            rel_stack: Vec::new(),
+            bank_operands: Vec::new(),
             header,
             regs: WrapTable([[0.0f32; 3]; 1024]),
             cur_vert: [0.0f32; 3],
@@ -795,6 +811,7 @@ impl<'a> Vm<'a> {
             stepped_over: self.stepped_over,
             returned_at: self.returned_at,
             sprites: self.sprites,
+            bank_operands: self.bank_operands,
         }
     }
 
@@ -888,15 +905,18 @@ impl<'a> Vm<'a> {
             OP_SORT => self.sort(op_offset)?,
             OP_PUSHCENTRE | OP_POPCENTRE | OP_MOVECENTRE => self.centre_op(opcode)?,
             OP_GOTO | OP_GOSUB => self.goto(opcode)?,
-            OP_ID | OP_PUSHRELMAT | OP_POPRELMAT => {
+            OP_ID => {
                 // `OP_ID`: secondary ID sentinel in stream; safely ignored.
-                // `OP_PUSHRELMAT` and `OP_POPRELMAT`: the relative matrix stays the identity: its only users here are `ROT*`,
-                // and the animation variables they read are zero in a resting pose.
             }
-            OP_ROTX | OP_ROTY | OP_ROTZ => {
-                // Operand is an animation-variable byte offset; variable 0 is a zero angle.
-                self.r.read_u16_le()?;
+            OP_PUSHRELMAT => self.rel_stack.push((self.rel, self.light)),
+            OP_POPRELMAT => {
+                // `0xA9B8` pops whatever is on the stack; an unmatched pop keeps the frame.
+                if let Some((rel, light)) = self.rel_stack.pop() {
+                    self.rel = rel;
+                    self.light = light;
+                }
             }
+            OP_ROTX | OP_ROTY | OP_ROTZ => self.rotate(opcode)?,
             OP_BVGT => self.bvgt()?,
             OP_PERFDISK => self.perfdisk()?,
             OP_VEC => {
@@ -1001,15 +1021,18 @@ impl<'a> Vm<'a> {
                 let dz = f32::from(self.r.read_i16_le()?);
                 let start_reg = self.read_reg_index()?;
 
-                let regs = &mut self.regs;
-                regs.set((start_reg) & 1023, [-dx, -dy, -dz]);
-                regs.set(start_reg.wrapping_add(1) & 1023, [-dx, -dy, dz]);
-                regs.set(start_reg.wrapping_add(2) & 1023, [dx, -dy, dz]);
-                regs.set(start_reg.wrapping_add(3) & 1023, [dx, -dy, -dz]);
-                regs.set(start_reg.wrapping_add(4) & 1023, [-dx, dy, -dz]);
-                regs.set(start_reg.wrapping_add(5) & 1023, [-dx, dy, dz]);
-                regs.set(start_reg.wrapping_add(6) & 1023, [dx, dy, dz]);
-                regs.set(start_reg.wrapping_add(7) & 1023, [dx, dy, -dz]);
+                // Raw corners, as `0xB275` writes them; `load` turns each into the model frame.
+                let corners = [
+                    [dx, dy, -dz],
+                    [dx, dy, dz],
+                    [-dx, dy, dz],
+                    [-dx, dy, -dz],
+                    [dx, -dy, -dz],
+                    [dx, -dy, dz],
+                    [-dx, -dy, dz],
+                    [-dx, -dy, -dz],
+                ];
+                self.load_run(start_reg, &corners);
             }
             2 => {
                 // Ground quad: `0xB41E` stores raw `(+dx, 0, -dz)`, `(+dx, 0, +dz)`,
@@ -1018,11 +1041,14 @@ impl<'a> Vm<'a> {
                 let dz = f32::from(self.r.read_i16_le()?);
                 let start_reg = self.read_reg_index()?;
 
-                let regs = &mut self.regs;
-                regs.set((start_reg) & 1023, [-dx, 0.0, -dz]);
-                regs.set(start_reg.wrapping_add(1) & 1023, [-dx, 0.0, dz]);
-                regs.set(start_reg.wrapping_add(2) & 1023, [dx, 0.0, dz]);
-                regs.set(start_reg.wrapping_add(3) & 1023, [dx, 0.0, -dz]);
+                // y is -0.0 so that the turn stores +0.0, as the quad always has.
+                let corners = [
+                    [dx, -0.0, -dz],
+                    [dx, -0.0, dz],
+                    [-dx, -0.0, dz],
+                    [-dx, -0.0, -dz],
+                ];
+                self.load_run(start_reg, &corners);
             }
             8 => {
                 // Vertical quad: `0xB4B5` stores raw `(+dx, +dy, 0)`, `(-dx, +dy, 0)`,
@@ -1031,11 +1057,13 @@ impl<'a> Vm<'a> {
                 let dy = f32::from(self.r.read_i16_le()?);
                 let start_reg = self.read_reg_index()?;
 
-                let regs = &mut self.regs;
-                regs.set((start_reg) & 1023, [-dx, -dy, 0.0]);
-                regs.set(start_reg.wrapping_add(1) & 1023, [dx, -dy, 0.0]);
-                regs.set(start_reg.wrapping_add(2) & 1023, [dx, dy, 0.0]);
-                regs.set(start_reg.wrapping_add(3) & 1023, [-dx, dy, 0.0]);
+                let corners = [
+                    [dx, dy, 0.0],
+                    [-dx, dy, 0.0],
+                    [-dx, -dy, 0.0],
+                    [dx, -dy, 0.0],
+                ];
+                self.load_run(start_reg, &corners);
             }
             4 => {
                 // Object bucket (`0xB54C`): one word, the offset of a pending-object
@@ -1069,8 +1097,49 @@ impl<'a> Vm<'a> {
             // Turned half a turn about z, as the `OP_IPG` cube and `TAP` are: `PLAYONE`
             // stores both loaders in one raw frame (`0x9C51`, `0xB275`).
             // Register numbers wrap modulo 1024, as `PLAYONE` masks them.
-            self.regs
-                .set(start_reg.wrapping_add(i as usize) & 1023, [-vx, -vy, vz]);
+            self.regs.set(
+                start_reg.wrapping_add(i as usize) & 1023,
+                self.load([vx, vy, vz]),
+            );
+        }
+        Ok(())
+    }
+
+    /// A raw stream vector as the vertex loaders store it: through the draw matrix's
+    /// `ROT*` part, then turned half a turn about z into the model frame, `(−x, −y, z)`.
+    fn load(&self, raw: [f32; 3]) -> [f32; 3] {
+        let [x, y, z] = self.rel.as_ref().map_or(raw, |m| apply3(m, raw));
+        [-x, -y, z]
+    }
+
+    /// Loads `raw` vectors into consecutive registers from `start_reg`, as [`Self::load`] does.
+    fn load_run(&mut self, start_reg: usize, raw: &[[f32; 3]]) {
+        for (i, &v) in raw.iter().enumerate() {
+            let loaded = self.load(v);
+            self.regs.set(start_reg.wrapping_add(i) & 1023, loaded);
+        }
+    }
+
+    /// `OP_ROTX`, `OP_ROTY` and `OP_ROTZ`: turn the parts loaded after it by the bank word
+    /// the operand names, skipped when the word is 0 (`0xA80F`, `0xA8FB`, `0xA90F`).
+    fn rotate(&mut self, opcode: u16) -> Result<(), SodError> {
+        let operand = self.r.read_u16_le()?;
+        if let Err(at) = self.bank_operands.binary_search(&operand) {
+            self.bank_operands.insert(at, operand);
+        }
+        let angle = self.bank.word(operand);
+        if angle == 0 {
+            return Ok(());
+        }
+        let axis = match opcode {
+            OP_ROTX => RotAxis::X,
+            OP_ROTY => RotAxis::Y,
+            _ => RotAxis::Z,
+        };
+        let turn = rotation(axis, angle);
+        self.rel = Some(self.rel.as_ref().map_or(turn, |m| mul3(m, &turn)));
+        if axis == RotAxis::Z {
+            self.light = rotz_light(self.light, angle);
         }
         Ok(())
     }
@@ -1693,9 +1762,10 @@ pub(crate) fn run_vm(
     policy: Policy,
     anchors: Option<&[AnchorPoint]>,
     light: ShadeLight,
+    bank: AngleBank,
     trace: Option<&mut Vec<TraceStep>>,
 ) -> Result<VmRun, SodError> {
-    Vm::new(data, policy, anchors, light)?.run(trace)
+    Vm::new(data, policy, anchors, light, bank)?.run(trace)
 }
 
 /// A lenient VM walk of one shape, instruction by instruction.
@@ -1717,7 +1787,14 @@ pub struct SodTrace {
 #[must_use]
 pub fn trace_sod(data: &[u8], anchors: Option<&[AnchorPoint]>, light: ShadeLight) -> SodTrace {
     let mut steps = Vec::new();
-    let (stop, error) = match run_vm(data, Policy::Lenient, anchors, light, Some(&mut steps)) {
+    let (stop, error) = match run_vm(
+        data,
+        Policy::Lenient,
+        anchors,
+        light,
+        AngleBank::REST,
+        Some(&mut steps),
+    ) {
         Ok(run) => (run.stop, None),
         Err(error) => (None, Some(error)),
     };

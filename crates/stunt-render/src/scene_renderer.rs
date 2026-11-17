@@ -1,9 +1,11 @@
 //! Draws a [`SceneFrame`] of a [`FilmScene`]: the world plus one draw per actor.
 //!
 //! Every shape is uploaded once. An actor whose light differs from the scene's
-//! ([`stunt_core::scene::ActorDraw::light`]) draws its own copy of its shape decoded under that
-//! light, since `OP_SHADES` bakes the light into the colours; the copy is kept while the actor
-//! draws the same shape, and a new light rewrites its vertices only when their colours change.
+//! ([`stunt_core::scene::ActorDraw::light`]), or whose shape's parts are turned by the angle
+//! bank ([`stunt_core::scene::ActorDraw::bank`]), draws its own copy of its shape decoded under
+//! that light and bank, since `OP_SHADES` bakes the light into the colours and the `ROT*`
+//! opcodes turn the parts as the shape decodes; the copy is kept while the actor draws the same
+//! shape, and a new light or bank rewrites its vertices only when they change.
 //! Each draw, the world's included, gets its own per-draw uniform, a [`ModelUniform`] at its
 //! own dynamic offset in one uniform buffer, so two actors sharing a shape render at their own
 //! poses within one render pass. Its matrix is eye-relative ([`eye_relative_matrix`]): the
@@ -34,7 +36,7 @@ use stunt_core::contracts::{
     VERTEX_FLAG_LINE, VisibilityCondition,
 };
 use stunt_core::scene::{FilmScene, RelitShapes, SceneFrame, SpriteDraw};
-use stunt_core::sod::ShadeLight;
+use stunt_core::sod::{AngleBank, ShadeLight};
 use stunt_core::sprite::SpriteImage;
 
 use crate::camera::{CameraController, CameraGpuResources, eye_relative_matrix};
@@ -223,25 +225,29 @@ impl LitLayout {
     }
 }
 
-/// An actor's shape decoded under the actor's own light, with the decode last uploaded.
+/// The light and angle bank an actor's shape is decoded under.
+type Pose = (ShadeLight, AngleBank);
+
+/// An actor's shape decoded under the actor's own light and bank, with the decode last
+/// uploaded.
 #[derive(Debug)]
 struct LitShape {
-    light: ShadeLight,
+    pose: Pose,
     layout: LitLayout,
     model: GpuModel,
 }
 
 impl LitShape {
-    /// Uploads `ir`, shape `shape_id` decoded under `light`, as a model of its own.
+    /// Uploads `ir`, shape `shape_id` decoded under `pose`, as a model of its own.
     fn upload(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         shape_id: u16,
-        light: ShadeLight,
+        pose: Pose,
         ir: &SodModelIr,
     ) -> Self {
         Self {
-            light,
+            pose,
             layout: LitLayout::of(shape_id, ir),
             model: GpuModel::from_ir(device, queue, ir),
         }
@@ -255,10 +261,10 @@ pub(crate) struct SceneRenderer {
     /// Every sprite image of the scene as a unit square ([`sprite_ir`]).
     images: HashMap<u16, GpuModel>,
     world: Option<GpuModel>,
-    /// The actors' shape streams, decoded again under each actor's own light.
+    /// The actors' shape streams, decoded again under each actor's own light and bank.
     relit: RelitShapes,
-    /// Each actor's shape decoded under its own light, by actor index in the frame; `None`
-    /// for an actor drawn under the scene's light.
+    /// Each actor's shape decoded under its own light and bank, by actor index in the frame;
+    /// `None` for an actor drawn under the scene's light at rest.
     lit: Vec<Option<LitShape>>,
     uniforms: DrawUniforms,
     model_layout: wgpu::BindGroupLayout,
@@ -380,9 +386,16 @@ impl SceneRenderer {
         }
         self.lit.resize_with(frame.actors.len(), || None);
         for ((actor_index, actor), slot) in (0u32..).zip(&frame.actors).zip(0usize..) {
-            // A slot drawn under the scene's light keeps its model for the actor's next turn.
-            let lit = actor.light != self.relit.light()
-                && self.relight(device, queue, slot, actor.shape_id, actor.light);
+            // A slot drawn under the scene's light at rest keeps its model for the actor's next
+            // turn.
+            let lit = (actor.light != self.relit.light() || actor.bank != AngleBank::REST)
+                && self.relight(
+                    device,
+                    queue,
+                    slot,
+                    actor.shape_id,
+                    (actor.light, actor.bank),
+                );
             let model = if lit {
                 self.lit
                     .get(slot)
@@ -453,11 +466,11 @@ impl SceneRenderer {
         self.uniforms.upload(device, queue, &self.model_layout);
     }
 
-    /// Whether actor `slot`'s shape `shape_id` lit by `light` is in `self.lit`, decoding it
-    /// first if not.
+    /// Whether actor `slot`'s shape `shape_id` decoded under `pose` is in `self.lit`,
+    /// decoding it first if not.
     ///
     /// The slot's model is kept while a new decode keeps its shape, indices and nodes
-    /// ([`LitLayout::refresh`]): a new light then rewrites its vertices, and only when they
+    /// ([`LitLayout::refresh`]): a new pose then rewrites its vertices, and only when they
     /// changed. False, with the slot cleared, when the scene keeps no stream for the shape or
     /// it fails to decode; the actor then draws the shape uploaded at start-up.
     fn relight(
@@ -466,18 +479,18 @@ impl SceneRenderer {
         queue: &wgpu::Queue,
         slot: usize,
         shape_id: u16,
-        light: ShadeLight,
+        pose: Pose,
     ) -> bool {
         let Some(entry) = self.lit.get_mut(slot) else {
             return false;
         };
         if entry
             .as_ref()
-            .is_some_and(|lit| lit.layout.shape_id == shape_id && lit.light == light)
+            .is_some_and(|lit| lit.layout.shape_id == shape_id && lit.pose == pose)
         {
             return true;
         }
-        let Some(ir) = self.relit.decode(shape_id, light) else {
+        let Some(ir) = self.relit.decode(shape_id, pose.0, pose.1) else {
             *entry = None;
             return false;
         };
@@ -485,18 +498,18 @@ impl SceneRenderer {
         if let Some(lit) = entry.as_mut() {
             match lit.layout.refresh(shape_id, &ir) {
                 Refresh::Keep => {
-                    lit.light = light;
+                    lit.pose = pose;
                     return true;
                 }
                 Refresh::Rewrite if lit.model.rewrite_vertices(queue, &ir) => {
-                    lit.light = light;
+                    lit.pose = pose;
                     lit.layout.vertices = ir.vertices;
                     return true;
                 }
                 Refresh::Rewrite | Refresh::Upload => {}
             }
         }
-        *entry = Some(LitShape::upload(device, queue, shape_id, light, &ir));
+        *entry = Some(LitShape::upload(device, queue, shape_id, pose, &ir));
         true
     }
 

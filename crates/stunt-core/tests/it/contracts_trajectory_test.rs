@@ -178,12 +178,25 @@ fn test_contracts_serde_roundtrip() {
             brightness: 0x4000,
             saturation: 0x8000,
         },
+        bank: BankVariables {
+            var10: 12928,
+            var12: 0x4000,
+        },
     };
 
     let json = serde_json::to_string_pretty(&record).expect("serialization succeeds");
     let deserialized: TrajectoryRecord =
         serde_json::from_str(&json).expect("deserialization succeeds");
     assert_eq!(record, deserialized);
+
+    // A record written before the bank variables existed loads with both at 0.
+    let mut legacy: serde_json::Value = serde_json::from_str(&json).expect("json value");
+    legacy
+        .as_object_mut()
+        .expect("record object")
+        .remove("bank");
+    let legacy: TrajectoryRecord = serde_json::from_value(legacy).expect("legacy record loads");
+    assert_eq!(legacy.bank, BankVariables::default());
 
     // Test FilmCapture roundtrip
     let capture = FilmCapture {

@@ -15,12 +15,14 @@
 //! their decode record, so a partial shape is still a value with provenance. The anchor
 //! table follows ADR-0001.
 
+mod bank;
 mod film;
 mod projection;
 mod shadow;
 mod shapes;
 mod sprite;
 
+pub use self::bank::{PREVIOUS_FRAME_TICKS, angle_bank};
 pub use self::film::{
     ActorDraw, FilmScene, SceneError, SceneFrame, SceneInputs, SceneReport, SpriteDraw, WorldStats,
 };
@@ -28,4 +30,3 @@ pub use self::projection::ViewCamera;
 pub use self::shapes::{
     ArchiveShapes, RelitShapes, ShapeSource, SkippedChunk, decode_archive_shapes, decode_res_shapes,
 };
-pub use self::sprite::bank_word;

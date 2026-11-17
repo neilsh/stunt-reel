@@ -5,7 +5,9 @@
 //! - `[I4]` Discrete simulation ticks (50 Hz) with sub-tick interpolation and cut suppression
 
 use crate::contracts::palette::PaletteControls;
-use crate::contracts::trajectory::{ActorTransform, CameraTransform, TrajectoryRecord};
+use crate::contracts::trajectory::{
+    ActorTransform, BankVariables, CameraTransform, TrajectoryRecord,
+};
 use std::f32::consts::TAU;
 
 /// Threshold in meters for camera displacement triggering cut suppression `[I4]`.
@@ -334,6 +336,10 @@ pub(crate) fn interpolate_trajectory(
         },
         // Film variables keep interpolating across camera cuts, so they use the raw alpha.
         palette: lerp_palette(record_a.palette, record_b.palette, alpha_clamped),
+        bank: BankVariables {
+            var10: lerp_variable(record_a.bank.var10, record_b.bank.var10, alpha_clamped),
+            var12: lerp_variable(record_a.bank.var12, record_b.bank.var12, alpha_clamped),
+        },
     }
 }
 

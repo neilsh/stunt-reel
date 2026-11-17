@@ -464,6 +464,7 @@ fn matrix_kinematic_extremes_and_extreme_sample_ticks() {
         actors: vec![],
         audio_cues: vec![],
         palette: PaletteControls::default(),
+        bank: Default::default(),
     };
     let single = FilmTimeline::new(
         vec![SliceKeyframe {
