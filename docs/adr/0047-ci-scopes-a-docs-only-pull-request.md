@@ -19,10 +19,10 @@ On 2026-11-17 no `include_str!` or `include_bytes!` in `crates/` named a `.md` o
 called cargo. So a change whose paths are all in ADR 0038's docs category reaches neither the Rust
 build, nor `msrv`, nor `deny`.
 
-The `main` ruleset requires five checks, matched by display name: `Quality gate (ubuntu)`,
-`Windows smoke`, `MSRV check`, `Dependency policy` and `PR title`. A job skipped by its own `if:`
-reports as passing; a workflow that a `paths:` filter never starts leaves its check pending, which
-blocks the merge.
+The `main` ruleset (read through the API on 2026-11-17) requires five checks, matched by display
+name: `Quality gate (ubuntu)`, `Windows smoke`, `MSRV check`, `Dependency policy` and `PR title`.
+GitHub documents that a job skipped by its own `if:` reports as passing; a workflow that a `paths:`
+filter never starts leaves its check pending, which blocks the merge.
 
 ## Decision
 
@@ -63,17 +63,18 @@ blocks the merge.
 - `deny` does not run on a docs-only pull request, so a new advisory first shows on the next code
   pull request or push to `main`. Pushes to `main` and `workflow_dispatch` runs run every job they
   ran before.
-- A change to `ci.yml` or `mise.toml` is an `other` path, so its pull request runs every job.
-- A future `include_str!` or `include_bytes!` of a `.md` or `.ksy` path in `crates/` would escape
-  the scope, since `classify` would call that path docs. `tests/test_gate_plan.py` finds only the
-  reads written as `"../../` and `workspace_root().join("`; such an include would need its path
-  in `_RUST_READS`.
+- A change to `ci.yml` or `mise.toml` is an `other` path, so its pull request runs every
+  pull-request job, as before.
+- A future `include_str!` or `include_bytes!` in `crates/` of a `.md` or `.ksy` file outside it
+  would escape the scope, since `classify` would call that path docs. `tests/test_gate_plan.py`
+  finds only the reads written as `"../../` and `workspace_root().join("`; such an include would
+  need its path in `_RUST_READS`.
 - Dropping `rust` from the docs-only install rests on one local run (2026-11-17): with cargo and
   rustup off `PATH`, `rust` listed as missing by mise and `MISE_AUTO_INSTALL=false`,
   `mise run check-docs` passed. That run used the system Java, where CI installs Java through mise,
   and had `CI` unset, which `gate.py docs` does not read.
 - Not yet exercised on GitHub: that a job skipped by its `if:` satisfies its required check, that
-  a failed `scope` runs every job, and that the prek built-ins step runs without Rust installed.
+  a failed `scope` runs every job it gates, and that the prek built-ins step runs without Rust installed.
   The pull requests that follow this change verify them; this ADR does not.
 - `tests/test_ci_scope.py` pins the skip condition, the job names and the absence of path filters
   in `ci.yml`; `tests/test_gate_plan.py` covers `gate.py scope`.
