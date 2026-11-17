@@ -14,7 +14,8 @@ use super::timeline::SliceKeyframe;
 use super::{CAMERA_FORWARD, CAMERA_LOOKAHEAD_METERS, FlmError};
 use crate::contracts::palette::PaletteControls;
 use crate::contracts::trajectory::{
-    ActorTransform, AudioCue, CameraTransform, PLAYONE_FOV_Y_DEGREES, TrajectoryRecord,
+    ActorTransform, AudioCue, BankVariables, CameraTransform, PLAYONE_FOV_Y_DEGREES,
+    TrajectoryRecord,
 };
 use crate::credits::{CreditLines, CreditsChange};
 use crate::reader::ByteReader;
@@ -150,6 +151,10 @@ impl SlotState {
     }
 }
 
+/// Film variable 10: the angle bank's part phase (`research/playone-exe/angle-bank.md`).
+const VAR_BANK_PHASE: usize = 10;
+/// Film variable 12: the angle bank's words `0x18` and `0x1A`.
+const VAR_BANK_TILT: usize = 12;
 /// Film variable 13: the palette's night term (`research/playone-exe/palette-fade.md`).
 const VAR_SKY: usize = 13;
 /// Film variable 14: palette brightness.
@@ -632,6 +637,10 @@ impl<'a> FlmPlayer<'a> {
                 sky: self.variables[VAR_SKY],
                 brightness: self.variables[VAR_BRIGHTNESS],
                 saturation: self.variables[VAR_SATURATION],
+            },
+            bank: BankVariables {
+                var10: self.variables[VAR_BANK_PHASE],
+                var12: self.variables[VAR_BANK_TILT],
             },
         }
     }

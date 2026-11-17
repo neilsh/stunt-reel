@@ -4,16 +4,19 @@ use std::collections::{HashMap, HashSet};
 
 use crate::anchor::parse_anchor_table;
 use crate::contracts::trajectory::DEFAULT_CAMERA_LENS;
-use crate::contracts::{ActorTransform, CameraTransform, PaletteControls, ShapeExtent, SodModelIr};
+use crate::contracts::{
+    ActorTransform, BankVariables, CameraTransform, PaletteControls, ShapeExtent, SodModelIr,
+};
 use crate::credits::CreditLines;
 use crate::flm::{FilmTimeline, FlmError};
 use crate::font::PFont;
 use crate::link::LinkError;
-use crate::sod::{ShadeLight, faces_view};
+use crate::sod::{AngleBank, ShadeLight, faces_view};
 use crate::sprite::SpriteImage;
 use crate::vfs::VfsError;
 use crate::world::{ScnStop, TapFailure, World, WorldInputs, build_world};
 
+use super::bank::{PREVIOUS_FRAME_TICKS, angle_bank};
 use super::projection::{
     IDENTITY_MATRIX, ViewCamera, camera_heading, distance, facing_matrix, lifted, lod_gate_holds,
     max_magnification, min_corner_depth, transform_point,
@@ -22,7 +25,7 @@ use super::shadow::ground_shadow;
 use super::shapes::{
     ArchiveShapes, RelitShapes, ShapeSource, SkippedChunk, decode_archive_shapes, decode_res_shapes,
 };
-use super::sprite::{bank_word, sprite_gate_open};
+use super::sprite::sprite_gate_open;
 
 /// Raw bytes of the files that make up one film scene; the caller locates and reads them.
 #[derive(Clone, Copy, Debug)]
@@ -105,6 +108,11 @@ pub struct ActorDraw {
     /// a view-facing draw. A renderer decodes the shape again under it
     /// ([`FilmScene::relit_shapes`]) when it differs from the light the scene decoded under.
     pub light: ShadeLight,
+    /// The angle-bank words the shape's `OP_ROTX`, `OP_ROTY` and `OP_ROTZ` read at this tick,
+    /// every other word 0 ([`AngleBank::only`]). A renderer decodes the shape again in this
+    /// pose ([`FilmScene::relit_shapes`]) unless it is [`AngleBank::REST`], the pose the scene
+    /// decoded.
+    pub bank: AngleBank,
 }
 
 /// One image an actor's shape draws in screen space (`OP_ANIMATE`) in a [`SceneFrame`].
@@ -426,6 +434,7 @@ impl FilmScene {
         };
         let eye = record.camera.eye;
         let heading = camera_heading(&record.camera);
+        let previous = self.previous_bank(tick, record.bank);
         let mut actors: Vec<ActorDraw> = record
             .actors
             .iter()
@@ -454,6 +463,10 @@ impl FilmScene {
                         .casts_shadow
                         .then(|| self.shadow_matrix(a.position_meters, &lifted(own, shape))),
                     light,
+                    bank: shape.decode().map_or(AngleBank::REST, |decode| {
+                        angle_bank(tick, a.animate(), record.bank, previous)
+                            .only(&decode.bank_operands)
+                    }),
                 }
             })
             .collect();
@@ -474,6 +487,7 @@ impl FilmScene {
                 distance: distance(eye, p.position),
                 shadow_matrix: None,
                 light: self.relit.light(),
+                bank: AngleBank::REST,
             })
             .collect();
         if let Some(shape_id) = self.origin_shape.filter(|_| record.actors.is_empty()) {
@@ -484,9 +498,10 @@ impl FilmScene {
                 distance: distance(eye, [0.0; 3]),
                 shadow_matrix: None,
                 light: self.relit.light(),
+                bank: AngleBank::REST,
             });
         }
-        let sprites = self.sprite_draws(tick, &record.actors, &actors);
+        let sprites = self.sprite_draws(tick, &record.actors, &actors, (record.bank, previous));
         SceneFrame {
             tick,
             view: ViewCamera::from_authored(&record.camera),
@@ -503,7 +518,8 @@ impl FilmScene {
     /// The sprite draws of `draws`, the actor draws [`Self::frame`] made from `actors` in
     /// order, at `tick`.
     ///
-    /// Each sprite's frame comes from its bank word ([`bank_word`]). Only an `Always` or a
+    /// Each sprite's frame comes from its bank word ([`angle_bank`], with film variables 10
+    /// and 12 at this frame and at the previous one). Only an `Always` or a
     /// matching `ActorState` gate is evaluated; a sprite under another gate is drawn, since none has
     /// been seen in a stock shape. A frame whose image the scene lacks is not drawn.
     fn sprite_draws(
@@ -511,6 +527,7 @@ impl FilmScene {
         tick: f32,
         actors: &[ActorTransform],
         draws: &[ActorDraw],
+        (now, previous): (BankVariables, BankVariables),
     ) -> Vec<SpriteDraw> {
         let drawn = actors
             .iter()
@@ -524,7 +541,7 @@ impl FilmScene {
                 if !sprite_gate_open(sprite, draw.state_mask) {
                     continue;
                 }
-                let phase = bank_word(sprite.selector, tick, actor.animate());
+                let phase = angle_bank(tick, actor.animate(), now, previous).word(sprite.selector);
                 let Some(image_id) = sprite
                     .frame(phase)
                     .filter(|id| self.images.contains_key(id))
@@ -540,6 +557,15 @@ impl FilmScene {
             }
         }
         out
+    }
+
+    /// Film variables 10 and 12 at the `PLAYONE` frame before the one at `tick`
+    /// ([`PREVIOUS_FRAME_TICKS`] earlier, clamped to tick 0), or `now` when the timeline has
+    /// no record there.
+    fn previous_bank(&self, tick: f32, now: BankVariables) -> BankVariables {
+        self.timeline
+            .sample((tick - PREVIOUS_FRAME_TICKS).max(0.0))
+            .map_or(now, |record| record.bank)
     }
 
     /// `ground_shadow` against this scene's world.
@@ -595,6 +621,7 @@ mod tests {
             actors: vec![actor.clone()],
             audio_cues: Vec::new(),
             palette: PaletteControls::default(),
+            bank: BankVariables::default(),
         };
         let timeline = FilmTimeline::new(
             vec![SliceKeyframe {
@@ -697,6 +724,7 @@ mod tests {
             actors: vec![actor(0, pitched), actor(1, [0.0, 0.0, 0.0, 1.0])],
             audio_cues: Vec::new(),
             palette: PaletteControls::default(),
+            bank: BankVariables::default(),
         };
         let timeline = FilmTimeline::new(
             vec![SliceKeyframe {
@@ -718,8 +746,62 @@ mod tests {
         assert_ne!(turned.light, ShadeLight::WORLD_0X2D);
         assert_eq!(level.light, ShadeLight::WORLD_0X2D);
         let relit = scene.relit_shapes();
-        assert_eq!(relit.decode(9, ShadeLight::WORLD_0X2D), Some(shape));
-        assert_eq!(relit.decode(10, ShadeLight::WORLD_0X2D), None);
+        assert_eq!(
+            relit.decode(9, ShadeLight::WORLD_0X2D, AngleBank::REST),
+            Some(shape)
+        );
+        assert_eq!(
+            relit.decode(10, ShadeLight::WORLD_0X2D, AngleBank::REST),
+            None
+        );
+    }
+
+    /// An actor's draw carries the bank words its shape's `ROT*` read, from film variable 10
+    /// at the previous frame, and a shape with no `ROT*` draws at rest.
+    #[test]
+    fn an_actor_draw_carries_the_bank_words_its_shape_reads() {
+        use crate::contracts::{ActorTransform, TrajectoryRecord};
+        use crate::flm::SliceKeyframe;
+        use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, OP_ROTZ, decode_sod};
+
+        let shape_of = |words: &[u16]| {
+            let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+            decode_sod(&bytes, "PART", None, DecodeMode::Strict).expect("decode")
+        };
+        let quad = [OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24, OP_RETURN];
+        let plain = shape_of(&[[OP_ID, 100, 0, 0, 0].as_slice(), &quad].concat());
+        let turning = shape_of(&[[OP_ID, 100, 0, 0, 0, OP_ROTZ, 0x14].as_slice(), &quad].concat());
+        let actor = |actor_id, shape_id| ActorTransform {
+            actor_id,
+            model_name: String::new(),
+            shape_id,
+            rotation_quat: [0.0, 0.0, 0.0, 1.0],
+            position_meters: [0.0; 3],
+            state_mask: 0,
+            casts_shadow: false,
+            joint_angles_bam: Vec::new(),
+        };
+        let slice = |tick: u32, var10: u16| SliceKeyframe {
+            record: TrajectoryRecord {
+                tick,
+                camera: CameraTransform::default(),
+                actors: vec![actor(0, 1), actor(1, 2)],
+                audio_cues: Vec::new(),
+                palette: PaletteControls::default(),
+                bank: BankVariables { var10, var12: 9 },
+            },
+            tick,
+            tick_duration: 10,
+        };
+        let timeline = FilmTimeline::new(vec![slice(0, 0x0100), slice(10, 0x0200)], Vec::new());
+        let scene = FilmScene::new(timeline, HashMap::from([(1, plain), (2, turning)]), None);
+        // Var 10 climbs 25.6 a tick, so 3 ticks before tick 8 it is 0x0100 + 128.
+        let frame = scene.frame(8.0);
+        let [still, turned] = frame.actors.as_slice() else {
+            panic!("two actor draws, got {}", frame.actors.len());
+        };
+        assert_eq!(still.bank, AngleBank::REST);
+        assert_eq!(turned.bank, AngleBank::new([0, 0, 0x8000, 0, 0, 0]));
     }
 
     /// A drawn-only scene keeps every actor shape of every slice and every view-facing prop,
@@ -746,6 +828,7 @@ mod tests {
                 }],
                 audio_cues: Vec::new(),
                 palette: PaletteControls::default(),
+                bank: BankVariables::default(),
             },
             tick,
             tick_duration: 1,

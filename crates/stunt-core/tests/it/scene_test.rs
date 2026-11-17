@@ -12,12 +12,12 @@ use crate::common;
 use std::collections::HashMap;
 
 use common::{ACTOR_RZ_BAM, push_interp, res_file};
-use stunt_core::contracts::{SodModelIr, SodStop, SodStopReason};
+use stunt_core::contracts::{BankVariables, SodModelIr, SodStop, SodStopReason};
 use stunt_core::flm::{
     FilmTimeline, FlmError, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW,
 };
 use stunt_core::link::LinkError;
-use stunt_core::scene::{FilmScene, SceneError, SceneInputs, ShapeSource, SpriteDraw, bank_word};
+use stunt_core::scene::{FilmScene, SceneError, SceneInputs, ShapeSource, SpriteDraw, angle_bank};
 use stunt_core::sod::{DecodeMode, EPSILON_DISPLACEMENT, OP_TAP, decode_sod};
 use stunt_core::vfs::{res_regions, write_all};
 use stunt_core::world::ScnStopReason;
@@ -581,14 +581,48 @@ fn a_sprite_whose_frame_is_missing_is_not_drawn() {
 
 #[test]
 fn bank_words_follow_the_film_clock_and_the_animate_word() {
+    let rest = BankVariables::default();
+    let word = |selector, tick, animate| angle_bank(tick, animate, rest, rest).word(selector);
     // `0x10`: tick << 12, one sweep per 16 ticks, from the whole tick.
-    assert_eq!(bank_word(0x10, 5.7, 999), 0x5000);
-    assert_eq!(bank_word(0x10, 16.0, 999), 0);
-    assert_eq!(bank_word(0x10, 31.0, 999), 0xF000);
+    assert_eq!(word(0x10, 5.7, 999), 0x5000);
+    assert_eq!(word(0x10, 16.0, 999), 0);
+    assert_eq!(word(0x10, 31.0, 999), 0xF000);
     // `0x16`: the slot's animate word.
-    assert_eq!(bank_word(0x16, 3.0, 1234), 1234);
-    // Unmodelled words read as 0.
-    assert_eq!(bank_word(0x12, 3.0, 1234), 0);
+    assert_eq!(word(0x16, 3.0, 1234), 1234);
+    // Words outside the bank read as 0.
+    assert_eq!(word(0x1C, 3.0, 1234), 0);
+    assert_eq!(word(0x0E, 3.0, 1234), 0);
+}
+
+#[test]
+fn bank_words_follow_film_variables_10_and_12() {
+    let previous = BankVariables {
+        var10: 0x3201,
+        var12: 7,
+    };
+    let now = BankVariables {
+        var10: 0x3280,
+        var12: 0x4000,
+    };
+    let bank = angle_bank(0.0, 0, now, previous);
+    // `0x12`: the change of var 10 since the previous frame, shifted left 8.
+    assert_eq!(bank.word(0x12), 0x7F00);
+    // `0x14`: the previous frame's var 10, low byte shifted left 8 (angle-bank.md § 3).
+    assert_eq!(bank.word(0x14), 0x0100);
+    // `0x18` and `0x1A`: var 12 at this frame and its negation.
+    assert_eq!(bank.word(0x18), 0x4000);
+    assert_eq!(bank.word(0x1A), 0xC000);
+    // A change of 256 or more, or a fall, saturates `0x12` at 255.
+    let jump = BankVariables {
+        var10: 0x3301,
+        ..now
+    };
+    assert_eq!(angle_bank(0.0, 0, jump, previous).word(0x12), 0xFF00);
+    let fall = BankVariables {
+        var10: 0x3200,
+        ..now
+    };
+    assert_eq!(angle_bank(0.0, 0, fall, previous).word(0x12), 0xFF00);
 }
 
 /// A `SCENERY.scn` of `words`, each a little-endian `i32`.

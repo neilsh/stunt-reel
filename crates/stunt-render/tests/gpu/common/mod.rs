@@ -222,6 +222,7 @@ pub(crate) fn still_timeline(camera: CameraTransform) -> FilmTimeline {
         actors: Vec::new(),
         audio_cues: Vec::new(),
         palette: Default::default(),
+        bank: Default::default(),
     };
     FilmTimeline::new(
         vec![SliceKeyframe {

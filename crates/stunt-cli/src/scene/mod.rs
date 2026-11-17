@@ -519,6 +519,7 @@ fn synthetic_orbit(max_ticks: Option<usize>) -> FilmTimeline {
                     actors: Vec::new(),
                     audio_cues: Vec::new(),
                     palette: PaletteControls::default(),
+                    bank: stunt_core::contracts::BankVariables::default(),
                 },
                 tick,
                 tick_duration: u8::from(tick != 0),

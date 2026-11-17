@@ -114,6 +114,7 @@ fn record() -> impl Strategy<Value = TrajectoryRecord> {
                         brightness,
                         saturation,
                     },
+                    bank: Default::default(),
                 }
             },
         )

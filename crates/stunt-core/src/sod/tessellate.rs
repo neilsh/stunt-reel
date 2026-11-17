@@ -15,10 +15,10 @@ use crate::contracts::shape::{
     DecodeMode, DecodeRecord, NodeId, NodeKind, SodModelIr, SodVertex, VERTEX_FLAG_LINE,
     VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VisibilityCondition, arena_index,
 };
-use crate::sod::ShadeLight;
 use crate::sod::SodError;
 use crate::sod::decal::identify_coplanar_decals;
 use crate::sod::vm::{Policy, RawPolygon, run_vm};
+use crate::sod::{AngleBank, ShadeLight};
 
 // Compile-time assertion of Gate G03 requirements
 const _: () = assert!(
@@ -284,12 +284,32 @@ pub fn decode_sod_lit(
     mode: DecodeMode,
     light: ShadeLight,
 ) -> Result<SodModelIr, SodError> {
+    decode_sod_posed(data, name, anchors, mode, light, AngleBank::REST)
+}
+
+/// [`decode_sod_lit`] with the angle bank the shape's `OP_ROTX`, `OP_ROTY` and `OP_ROTZ` read,
+/// which turns its articulated parts (propellers, rotors, control surfaces) into that pose.
+///
+/// [`AngleBank::REST`] skips every rotation, as [`decode_sod_lit`] does. The operands the
+/// walk's rotations read are in [`DecodeRecord::bank_operands`].
+///
+/// # Errors
+///
+/// As [`decode_sod`].
+pub fn decode_sod_posed(
+    data: &[u8],
+    name: &str,
+    anchors: Option<&[AnchorPoint]>,
+    mode: DecodeMode,
+    light: ShadeLight,
+    bank: AngleBank,
+) -> Result<SodModelIr, SodError> {
     let (policy, anchors, geometry) = match mode {
         DecodeMode::Strict => (Policy::Strict, anchors, true),
         DecodeMode::Lenient => (Policy::Lenient, anchors, true),
         DecodeMode::Census => (Policy::Census, None, false),
     };
-    let run = run_vm(data, policy, anchors, light, None)?;
+    let run = run_vm(data, policy, anchors, light, bank, None)?;
     let polygons = if geometry {
         identify_coplanar_decals(&run.polygons, 1e-4, 1e-4)
     } else {
@@ -304,6 +324,7 @@ pub fn decode_sod_lit(
         stop: run.stop,
         stepped_over: run.stepped_over,
         returned_at: run.returned_at,
+        bank_operands: run.bank_operands,
     });
     check_shape_invariants(&ir)?;
     Ok(ir)

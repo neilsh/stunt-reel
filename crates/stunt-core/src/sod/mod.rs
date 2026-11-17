@@ -3,6 +3,7 @@
 //! Provides transpilation from raw `.SOD` bytecode into arena-allocated [`crate::contracts::shape::SodModelIr`]
 //! instances adhering to Seam 3 and Invariants `[I1]`, `[I2]`, `[I3]`, `[I5]`.
 
+mod bank;
 mod decal;
 mod light;
 mod tessellate;
@@ -16,9 +17,10 @@ mod tessellate_tests;
 mod vm_tests;
 
 pub use crate::contracts::shape::{DecodeMode, DecodeRecord, SodHeader, SodStop, SodStopReason};
+pub use bank::AngleBank;
 pub use decal::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
 pub use light::ShadeLight;
-pub use tessellate::{IDENTITY_MATRIX, decode_sod, decode_sod_lit};
+pub use tessellate::{IDENTITY_MATRIX, decode_sod, decode_sod_lit, decode_sod_posed};
 pub use vm::{
     CENSUS_SKIPS, CensusSkip, OP_ADDV, OP_ANIMATE, OP_BLOCK, OP_BVGT, OP_BVIS, OP_BZLT, OP_CLRV,
     OP_COLOR, OP_DOT, OP_END, OP_GETV, OP_GOSUB, OP_GOTO, OP_GVPOLY, OP_GVPOLY16, OP_ID, OP_IFVIS,
