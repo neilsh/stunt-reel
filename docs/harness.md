@@ -32,9 +32,11 @@ Nothing here is a fact about Stunt Island.
   review then found, among them a preflight that built despite `--no-build`. Re-reviews prefer
   Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what
   changed since the last reviewed commit, run once after every finding is fixed, and are skipped
-  for a wording-only fix (reply with the new text).
+  for a wording-only fix (reply with the new text), except to a path rule 5 names: a fix or rebase
+  there is committed locally and re-reviewed at its SHA before the push.
 * **A Claude implementer ends when its PR opens** (for a diff that changes a path rule 5 names,
-  when it commits: the coordinator pushes after the fresh review), or earlier if its context passes about 150k
+  when it commits: the coordinator pushes after the fresh review, and a spec or plan is reviewed
+  before its commit), or earlier if its context passes about 150k
   tokens; a fresh worker starts from the PR and the review comment to make the fixes, while dsh
   workers may keep their session. Before asking for review, the implementer scans its own diff
   for the `AGENTS.md` § 3 rule 5 words and checks every quoted figure against its source.
