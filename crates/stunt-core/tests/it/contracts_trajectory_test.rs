@@ -1,5 +1,6 @@
 //! `contracts::trajectory` contract tests (Seam 2): camera, LOD, world matrices and serde.
 
+#[cfg(feature = "serde")]
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::trajectory::*;
 
