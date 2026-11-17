@@ -200,7 +200,7 @@ def run(args: argparse.Namespace) -> int:
                 layout=layout,
             )
     except (capture_run.Refused, playone.UnknownBuild, RuntimeError, TimeoutError, OSError) as exc:
-        return capture_run.report_failure("probe", exc, task="probe-light")
+        return capture_run.report_failure("probe", exc)
     return 0
 
 

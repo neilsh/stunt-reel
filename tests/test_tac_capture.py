@@ -511,7 +511,7 @@ def test_probe_script_failure_lines_and_exit_codes(
     missing = EmulatorUnavailable("dosbox-automation is not installed")
     stub_raises(missing)
     assert module.run(args) == 1
-    assert capsys.readouterr().err == f"[probe] {missing}; run via mise run probe-light\n"
+    assert capsys.readouterr().err == f"[probe] {missing}\n"
 
     stub_raises(RuntimeError("boom"))
     assert module.run(args) == 1

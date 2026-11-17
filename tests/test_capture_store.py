@@ -59,11 +59,11 @@ def test_an_incomplete_capture_is_never_published(tmp_path: Path) -> None:
 
 
 def test_a_directory_that_is_not_a_capture_is_never_replaced(tmp_path: Path) -> None:
-    """The numbered runs of the old layout must survive until the migration moves them."""
+    """The numbered runs of the old layout are never replaced, and the error says what to keep."""
     target = tmp_path / "frames"
     (target / "004").mkdir(parents=True)
     _fill(target / "004", "pinned")
-    with pytest.raises(ValueError, match="migrate-captures"):
+    with pytest.raises(ValueError, match=r"move the run a references\.toml pin names"):
         capture_store.check_replaceable(target)
     staged = _fill(capture_store.stage(target), "new")
     with pytest.raises(ValueError, match="no complete capture"):

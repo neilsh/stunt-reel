@@ -4,7 +4,7 @@ summary: "`OP_ANIMATE` (`0x01F8`) blits frame `(count × bank word) >> 16` of it
 # `PLAYONE.EXE`: `OP_ANIMATE` Resource-Draw Semantics
 
 * **Binary**: `PLAYONE.EXE`, the unpatched load image (`build/re/playone.img` in the data root).
-* **Method**: Static disassembly with `mise run disasm`, `mise run xref` and `mise run vm-handler`; corpus cross-check against the data root's `.ALL` archives and loose `.BIN` models, and the slot keys of `CTRY.FLM` and `INTRO.FLM`.
+* **Method**: Static disassembly with `mise run re-tool -- disasm`, `mise run re-tool -- xref` and `mise run re-tool -- vm-handler`; corpus cross-check against the data root's `.ALL` archives and loose `.BIN` models, and the slot keys of `CTRY.FLM` and `INTRO.FLM`.
 * **Scope**: `OP_ANIMATE` (`0x01F8`) dispatch, operands, frame selection, the slot word that drives it, and the blit.
 * **Anchor**: `# [FMT-SOD-ANIMATE]`, `# [MEM-SOD-VM]`
 
