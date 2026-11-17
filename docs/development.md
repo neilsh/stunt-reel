@@ -30,7 +30,7 @@ Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` runs `uv sy
 
 ### 2. dosbox-automation
 
-`mise install` puts `dosbox` on the `mise` path; `capture-ref`, `probe-light`, `make-all` and `play` find it through `mise exec` (or `DOSBOX_AUTOMATION_EXE`). Nothing is registered with an agent: each run stages a mount and a conf under the data root (`<data>/stage/<film>-<label>/`), starts the emulator on a free web-server port with a random bearer token passed in the environment, and talks to it over REST. A capture is a plan, a trace pass and a dump pass of Lua that Python checks against each other ([ADR 0025](adr/0025-capture-runs-are-plans-not-sessions.md)), so two runs never collide.
+`mise install` puts `dosbox` on the `mise` path; `capture-ref`, `make-all` and `play` find it through `mise exec` (or `DOSBOX_AUTOMATION_EXE`). Nothing is registered with an agent: each run stages a mount and a conf under the data root (`<data>/stage/<film>-<label>/`), starts the emulator on a free web-server port with a random bearer token passed in the environment, and talks to it over REST. A capture is a plan, a trace pass and a dump pass of Lua that Python checks against each other ([ADR 0025](adr/0025-capture-runs-are-plans-not-sessions.md)), so two runs never collide.
 
 ### 3. Worktrees and the shared data root
 
@@ -121,7 +121,7 @@ The gate script, its step list, the pre-commit hook, its lanes and CI are in [qu
 | `frame` | render a list of film ticks in one process and write each beside its reference capture frame ([Render a film](howto/render-a-film.md#render-chosen-ticks-beside-their-capture)) |
 | `shape-diff` | list the shapes whose geometry hash or decode failure changes with a `DBG_*` switch, and draw only those ([Inspect a shape](howto/inspect-a-shape.md#find-the-shapes-a-switch-changes)) |
 | `parity-residue` | differing index-plane pixels between two render-store trees of `<film>_current` stores, film by film: ticks compared and differing, mean differing pixels per tick, the largest and its tick, and with `--ticks` the count at each named tick under the film that holds it, a tick no store holds going to stderr instead (`mise run parity-residue -- <render root A> <render root B> [--films f1,f2] [--ticks t1,t2]`) |
-| `parity-probe`, `verify-docs`, `unlzexe`, `pair-builds`, `xref`, `probe-light`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
+| `parity-probe`, `verify-docs`, `unlzexe`, `pair-builds`, `re-tool`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
 
 The GPU tests' hang rationale is in [quality gate § GPU tests](quality-gate.md#gpu-tests).
 

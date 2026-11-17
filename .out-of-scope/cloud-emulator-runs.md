@@ -1,7 +1,7 @@
 # Running the emulator in a cloud session
 
-A cloud session does not run dosbox-automation, so it cannot run `capture-ref`, `capture-video`,
-`probe-light` or `make-all`. A cloud task that needs fresh reference frames or an archive writes
+A cloud session does not run dosbox-automation, so it cannot run `capture-ref`, `capture-video`
+or `make-all`. A cloud task that needs fresh reference frames or an archive writes
 down what it needs (film, ticks, archive); the owner runs the task on the primary machine and
 repacks `captures` ([`docs/cloud-sessions.md`](../docs/cloud-sessions.md)). That archive holds
 only each film's `frames/` and `archives/` (`manifests/cloud-assets.toml`), so a video capture or
