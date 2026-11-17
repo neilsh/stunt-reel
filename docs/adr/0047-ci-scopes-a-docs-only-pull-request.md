@@ -88,8 +88,9 @@ filter never starts leaves its check pending, which blocks the merge.
 - The four gated jobs (`quality`, `msrv`, `deny`, `windows-smoke`) start only after `scope` finishes
   its full-history checkout, mise Python install and classification: 12 s on #667, 19 s on #668 and
   22 s on #669. `PR title` does not wait.
-- Not yet seen: whether `main`'s ruleset accepts a skipped job as its required check. The throwaway
-  pull requests were based on a branch, not on `main`; the first docs-only pull request to `main`
-  is that test.
+- A docs-only pull request to `main` (#675, the one that wrote these lines) showed the skipped
+  `MSRV check`, `Dependency policy` and `Windows smoke` not blocking `main`'s ruleset: with
+  `Quality gate (ubuntu)` and `PR title` passed, its merge state read `clean` once the Pages
+  `build` check, which the ruleset does not require, finished.
 - `tests/test_ci_scope.py` pins the skip condition, the job names and the absence of path filters
   in `ci.yml`; `tests/test_gate_plan.py` covers `gate.py scope`.
