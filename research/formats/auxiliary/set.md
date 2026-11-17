@@ -1,5 +1,6 @@
 ---
 summary: "`.SET` stage ([FMT-SET-HEADER]): 84-byte header, 67-byte event records from 0x54, 64-byte prop records; `TYPESET.EXE` event operator codes; size formula closes on 129 sets, prop field map open."
+sidebar_label: ".SET scenery & world layout"
 ---
 # Specification: .SET Scenery & World Layout Format
 

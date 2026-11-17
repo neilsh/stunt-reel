@@ -1,5 +1,6 @@
 ---
 summary: "`STUNT.EXE` evidence on `.SET`: neither `MAKEONE` nor `PLAYONE` names it, its display templates give the IF/AND/THEN vocabulary with operand widths; also the crack stub and TYPESET as dump oracle."
+sidebar_label: "Set engine & event vocabulary"
 ---
 # STUNT.EXE: The Set Engine and Its Event Vocabulary
 

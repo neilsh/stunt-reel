@@ -1,5 +1,6 @@
 ---
 summary: "`.FLM` film stream ([FMT-FLM-OPCODES]): FILM magic, 3-byte slice header (back-pointer, 50 Hz `tick_duration`), end-of-film epilogue, and opcodes create, interp, var_set, view_obj, credits, sound."
+sidebar_label: ".FLM choreography & trajectory"
 ---
 # Technical Reference Specification: Stunt Island `.FLM` Choreography & Trajectory Format
 

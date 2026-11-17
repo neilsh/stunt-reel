@@ -1,5 +1,6 @@
 ---
 summary: "dosbox-automation 0.85.1 as capture emulator: frame-locked capture reading `film_tick` per frame at `DS = 0x0F46`, bit-identical `CTRY.FLM` runs with the demo archive, replays made to differ by sound samples in the archive, torn pages, DAC lag and the Lua instruction budget."
+sidebar_label: "Capture with dosbox-automation"
 ---
 # `PLAYONE.EXE`: Capture with dosbox-automation (Frame-Locked Video)
 

@@ -1,5 +1,6 @@
 ---
 summary: "`STUNT.EXE`'s film shadow draw is `PLAYONE`'s code at a fixed offset, and its writers of the slot shadow flag (the prop editor's SHD toggle, the prop-to-slot build, a fixed setup, the film-stream create) compare no height."
+sidebar_label: "Actor shadow draw & flag"
 ---
 
 # STUNT.EXE: The Actor Shadow Draw and the Shadow Flag

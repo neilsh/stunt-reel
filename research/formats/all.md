@@ -1,5 +1,6 @@
 ---
 summary: "`.ALL` bundle from `MAKEONE.EXE` ([FMT-ALL-CHUNKS]): u16 count, id table, u32 offsets with EOF sentinel, id ranges, palettes 0x8042 and 0x801E; shipped-game chunks are unchanged `.RES`/`.SMP` items."
+sidebar_label: ".ALL full-scene bundle"
 ---
 # Technical Reference Specification: Stunt Island `.ALL` Full-Scene Bundle Format
 

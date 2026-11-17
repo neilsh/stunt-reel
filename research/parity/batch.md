@@ -1,5 +1,6 @@
 ---
 summary: "Survey of corpus films through `mise run batch-parity`'s archive, capture, render and score stages: the score spread of the 79 of 529 scored when it stopped, stage costs, capture failures, rescores."
+sidebar_label: "Batch survey: corpus films"
 ---
 # Batch Parity Survey: Every Distinct Corpus Film
 

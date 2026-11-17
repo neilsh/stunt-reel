@@ -1,5 +1,6 @@
 ---
 summary: "Bank words `0x10`..`0x14`, `0x18` and `0x1A` (`work:0x811E`..`0x8128`) are written once per frame for the whole film from the clock and film variables 10 and 12; only `0x16` is per actor. `BVGT` reads the bank too, and a rotor picks solid or line blades by word `0x12`."
+sidebar_label: "Angle bank & film variables"
 ---
 # `PLAYONE.EXE`: the Angle Bank and Film Variables 10 and 12
 

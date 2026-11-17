@@ -1,5 +1,6 @@
 ---
 summary: "The SOD display-list VM: self-patching dispatch slots, `OP_TAP` encoding and anchor loading [FMT-SOD-TAP], anchor records, register side effects, hill fins, HUGETAP and the Rust mapping."
+sidebar_label: "SOD display-list VM & OP_TAP"
 ---
 
 # `PLAYONE.EXE`: SOD Display-List VM & `OP_TAP` Semantics

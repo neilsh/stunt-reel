@@ -1,5 +1,6 @@
 ---
 summary: "Census work queue for Partial SOD shapes: `OP_ANIMATE` is drawn as sprites since #222 (the census no longer stops on it); two-vertex polygons, which stopped 7 more, are now drawn as lines; the films placing them, why seven side-view items export no whole model, and regeneration."
+sidebar_label: ".SOD opcode coverage queue"
 ---
 # `.SOD` Opcode Coverage: Blocking-Opcode Work Queue
 

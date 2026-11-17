@@ -1,5 +1,6 @@
 ---
 summary: "Splits the SSIM loss of the seven VAULT reference films by render layer: props lead on four and terrain on two, BALLOON's low mask IoU comes from a straight-down camera we draw blank and a zenith sky outside the scorer's band, and a pre-decal CTRY window study puts most loss at edges, not flat colour."
+sidebar_label: "Attribution: where our loss sits"
 ---
 # Parity Attribution: Where Our Render's Loss Sits
 

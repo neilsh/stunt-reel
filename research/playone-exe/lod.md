@@ -1,5 +1,6 @@
 ---
 summary: "The `SP_1NODE` distance gate at `0x2121` compares half the view-space depth, shifted right by the lens exponent `0x229E`, with a threshold scaled by `DS:0x22A4` (the `GAME.VAR` detail word times the lens mantissa); Patch #3 runs the same gate code; the renderer tests it per frame, and captures likely run at full detail."
+sidebar_label: "Level-of-detail distance gate"
 ---
 # `PLAYONE.EXE`: Level-of-Detail Distance Gate and the `GAME.VAR` Detail Word
 
