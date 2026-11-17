@@ -27,6 +27,7 @@ __all__ = [
     "REPO_URL",
     "Section",
     "Site",
+    "evidence_tiers",
     "link_target",
     "load_sections",
     "normalize_display_math",
@@ -47,6 +48,8 @@ _MARKUP_LINK = re.compile(r"\[([^\]\n]*)\]\([^)\n]*\)")
 _SIDEBAR_LABELS = {"INDEX": "Index", "README": "About this folder"}
 _ADR_STEM = re.compile(r"(\d{4})-")
 _MATH_FENCE = "$$"
+_TIERS_SECTION = re.compile(r"^### 2\.4 .*?(?=^#{1,3} |\Z)", re.DOTALL | re.MULTILINE)
+_TIER_BULLET = re.compile(r"^\s*[*-]\s+\*\*`\[([^\]\n]+)\]`\*\*:\s*(.+?)\s*$", re.MULTILINE)
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,18 @@ def page_url(content_path: str) -> str:
     if segments[-1] == "index":
         segments.pop()
     return f"{BASE}/{'/'.join(segments)}/" if segments else f"{BASE}/"
+
+
+def evidence_tiers(spec: str) -> list[dict[str, str]]:
+    """The evidentiary tiers *spec* (the text of ``docs/SPEC.md``) defines in section 2.4, in its
+    order, as ``{"name": "Established", "meaning": "..."}`` with the meaning's Markdown removed;
+    empty when the section is missing or defines none (``tests/test_site_pages.py`` pins the real
+    SPEC to ``EVIDENTIARY_TIERS``).
+    """
+    section = _TIERS_SECTION.search(spec)
+    if not section:
+        return []
+    return [{"name": m[1], "meaning": _plain(m[2])} for m in _TIER_BULLET.finditer(section[0])]
 
 
 def link_target(target: str, source: str, site: Site, images: set[str]) -> str:
@@ -287,7 +302,8 @@ def _target_name(dest: str) -> Path:
 
 def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
     """Write the site's content under *site_dir* from the repo at *root*: ``src/content/docs``,
-    ``public/media`` and ``src/generated/sidebar.json``, replacing what was there.
+    ``public/media`` and ``src/generated/`` (``sidebar.json``, and ``tiers.json`` when the repo
+    has ``docs/SPEC.md``: the tiers the pages' evidence tags badge), replacing what was there.
 
     Returns the pages written and the images copied. Raises ValueError, naming the file, for a
     page or section that cannot be published, an unreadable file, or two sources written to one
@@ -366,5 +382,13 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
             groups[section.group] = [entry]
             sidebar.append({"label": section.group, "items": groups[section.group]})
     generated.mkdir(parents=True)
+    spec = root / "docs/SPEC.md"
+    tiers: list[dict[str, str]] = []
+    if spec.is_file():
+        try:
+            tiers = evidence_tiers(spec.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as err:
+            raise ValueError(f"docs/SPEC.md: {err}") from err
+    (generated / "tiers.json").write_bytes((json.dumps(tiers, indent=2) + "\n").encode())
     (generated / "sidebar.json").write_bytes((json.dumps(sidebar, indent=2) + "\n").encode())
     return len(pages), len(images)

@@ -1,7 +1,7 @@
 """Write the research site's Starlight content from the paths ``site/published.toml`` names.
 
-Replaces ``site/src/content/docs``, ``site/public/media`` and ``site/src/generated/sidebar.json``
-with pages carrying Starlight front matter and links pointing at site pages or GitHub.
+Replaces ``site/src/content/docs``, ``site/public/media`` and ``site/src/generated`` (the sidebar
+and the evidence tiers the pages badge) with pages carrying Starlight front matter and links pointing at site pages or GitHub.
 
 Usage: ``mise run site-prep``; ``--root DIR`` names a repository root other than this one.
 Exit status: ``0`` when the content is written, ``1`` when a published file cannot be turned

@@ -5,7 +5,11 @@ import mermaid from "astro-mermaid";
 import { unified } from "@astrojs/markdown-remark";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import rehypeEvidenceTags from "./src/plugins/rehype-evidence-tags.mjs";
 import sidebar from "./src/generated/sidebar.json" with { type: "json" };
+import tiers from "./src/generated/tiers.json" with { type: "json" };
+
+const base = "/stunt-reel";
 
 // rehype-katex renders a bad formula as a red span and only records a message, so the build
 // would pass with the page broken; throw instead.
@@ -20,12 +24,17 @@ function failOnKatexError() {
 
 export default defineConfig({
   site: "https://neilsh.github.io",
-  base: "/stunt-reel",
+  base,
   trailingSlash: "always",
   markdown: {
     processor: unified({
       remarkPlugins: [remarkMath],
-      rehypePlugins: [rehypeKatex, failOnKatexError],
+      rehypePlugins: [
+        rehypeKatex,
+        failOnKatexError,
+        // The page the badges link to explains the tiers (site/reading.md, "Evidence tags").
+        [rehypeEvidenceTags, { tiers, href: `${base}/reading/#evidence-tags` }],
+      ],
     }),
   },
   integrations: [
@@ -35,7 +44,8 @@ export default defineConfig({
       social: [{ icon: "github", label: "GitHub", href: "https://github.com/neilsh/stunt-reel" }],
       // The stylesheet of the one katex package.json's `overrides` forces on rehype-katex; drop
       // the override once remarkjs/remark-math#122 ships.
-      customCss: ["katex/dist/katex.min.css", "./src/styles/home.css"],
+      customCss: ["katex/dist/katex.min.css", "./src/styles/home.css", "./src/styles/tiers.css"],
+      components: { PageTitle: "./src/components/PageTitle.astro" },
       sidebar,
       plugins: [starlightLinksValidator()],
     }),
