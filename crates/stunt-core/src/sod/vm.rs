@@ -622,6 +622,9 @@ pub(crate) struct VmRun {
     /// Images `OP_ANIMATE` drew before the stream ended, in stream order.
     pub sprites: Vec<ShapeSprite>,
     /// The bank operands the walk's `ROT*` read, ascending and without repeats.
+    ///
+    /// Recorded from the rest-pose walk, so complete only while nothing branches on the bank
+    /// (`BVGT` still reads 0, #624); revisit when `BVGT` reads the bank.
     pub bank_operands: Vec<u16>,
 }
 

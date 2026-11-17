@@ -7,7 +7,7 @@ use crate::sod::AngleBank;
 /// `0x12` and `0x14` read (`research/playone-exe/angle-bank.md` section 2).
 ///
 /// `[Hypothesis]`: frames were 2 to 5 ticks apart under DOSBox-X in `INTRO.FLM`; the spacing
-/// under the capture harness is unmeasured, so this takes 3.
+/// under the capture harness is unmeasured, so this guesses 3, within that range.
 pub const PREVIOUS_FRAME_TICKS: f32 = 3.0;
 
 /// The angle bank at film tick `tick` for an actor whose `.FLM` animate value is `animate`,
