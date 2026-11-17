@@ -27,7 +27,7 @@ Each model draws itself, and the picture is painted from back to front.
 
 **[How is the island built?](guides/island.md)**
 
-The ground is flat coloured patches, and distance decides how much detail is drawn.
+Part of the ground is flat coloured patches, and distance decides how much detail is drawn.
 
 </div>
 <div class="sr-card">
