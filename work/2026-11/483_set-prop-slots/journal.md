@@ -13,7 +13,7 @@
 - The positive `+0x1A` values name a slot present in the same set in 37 of 38 records, the positive `+0x1C` values in 129 of 129, and neither ever names its own slot. The non-positive values are 0 and −1 only.
 - Constant columns: `+0x01`, `+0x18`, `+0x19` and `+0x31` are zero in 715 of 715 records. In the 501 records of slots 8–39, `+0x20`–`+0x25` are `00 20 00 00 00 00` in 501 of 501 and `+0x2E`–`+0x2F` are zero in 501 of 501; slots 0–7 vary there.
 - `+0x02` has bit 0 set in 715 of 715 records, and bits 1 or 2 set in 127 records, all of slots 0–7. `+0x03` has bit 0 set in 715 of 715.
-- `+0x34` is `0x00`, `0x40`, `0x80` or `0xC0` in 711 of 715; bits 2 and 3, which § 3.4 named, are set in 2 records.
+- `+0x34` is `0x00`, `0x40`, `0x80` or `0xC0` in 712 of 715; bits 2 and 3, which § 3.4 named, are set in 2 records.
 - `+0x35`–`+0x3D` are nonzero in 202 of 715 records (79 of 214 in slots 0–7, 123 of 501 in 8–39).
 - Read as 16.16, `x` spans −9135.5 to 7738.0 and `z` −6779.5 to 7645.7; `y` is at most 0 in 715 of 715.
 

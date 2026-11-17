@@ -89,7 +89,7 @@ The viewpoint mode selects the initial camera tracking perspective:
 
 Prop records begin where the events end, at `0x54 + 67 × num_events`, and run to end of file in 64-byte strides (§ 3.5). [`set.ksy`](set.ksy) owns that stride and leaves each record's fields raw.
 
-**A record is stored only for an occupied prop slot.** Its leading word is the slot number, 0-based, so the handbook's prop slot 1, the stunt aircraft, is word 0: the authoring tools offer 40 slots, of which slots 1 to 8 record film (*handbook* p.62; [`GLOSSARY.md`](../../../GLOSSARY.md)). On the 36 retail sets (715 records) the word strictly increases through each file, never exceeds 39 and starts at 0 in every set, matching `STUNT.EXE`'s `Prop 1 needs to be placed` ([`sets.md` § 2](../../stunt-exe/sets.md#2-stuntexe-alone-reads-and-writes-set)). Every one of the 36 skips at least one slot, so the word equals its record index only up to the first empty slot. This explains the retail share of the sweep's 427 words at or above the record count (137) and its 503 words that differ from the index; the other 290 come from the 93 community sets, which no cloud archive holds. `[Supported Inference]`: the handbook names the 40 slots, and the bytes keep to them. `mise run verify-corpus -- --schema set` checks the order, the range and the trailing word below, and passes `--strict` on the retail sets (`mise run verify-corpus -- --corpus corpus/stuntisl/SETS --schema set`).
+**A record is stored only for an occupied prop slot.** Its leading word is the slot number, 0-based, so the handbook's prop slot 1, the stunt aircraft, is word 0: the authoring tools offer 40 slots, of which slots 1 to 8 record film (*handbook* p.62; [`GLOSSARY.md`](../../../GLOSSARY.md)). On the 36 retail sets (715 records) the word strictly increases through each file, never exceeds 39 and starts at 0 in every set, matching `STUNT.EXE`'s `Prop 1 needs to be placed` ([`sets.md` § 2](../../stunt-exe/sets.md#2-stuntexe-alone-reads-and-writes-set)). Every one of the 36 skips at least one slot, so the word equals its record index only up to the first empty slot. This explains the retail share of the sweep's 427 words at or above the record count (137) and its 503 of the 715 retail words that differ from the index; the other 290 come from the 93 community sets, which no cloud archive holds. `[Supported Inference]`: the handbook names the 40 slots, and the bytes keep to them. `mise run verify-corpus -- --schema set` checks the order, the range and the trailing word below, and passes `--strict` on the retail sets (`mise run verify-corpus -- --corpus corpus/stuntisl/SETS --schema set`).
 
 **The trailing word belongs to the next slot.** Bytes `+0x3E`–`+0x3F` equal bytes `+0x02`–`+0x03` of the record for the next slot number in 626 of 626 records whose next slot is present, which reads as the editor writing 62 bytes from a table of 60-byte entries. `[Supported Inference]` for the equality; the write itself has not been read in `STUNT.EXE`.
 
@@ -103,23 +103,23 @@ The *Observed* column counts the 715 retail records, split where it matters into
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `+0x00` | 2 | `u16` (LE) | `prop_slot_id` | Prop slot, 0-based (handbook slot − 1); stored slots only, ascending | 0–39, ascending in 36 of 36 sets; high byte 0 in 715 | `[Supported Inference]` |
 | `+0x02` | 1 | `u8` | `behavior_flags` | Behavior and interaction bitfield (see § 3.2) | bit 0 set in 715; bits 1–2 set in 127, all in slots 0–7 | `[Established]` |
-| `+0x03` | 1 | `u8` | `placement_flags` | World placement and shadow bitfield (see § 3.3) | bit 0 set in 715 | `[Established]` |
+| `+0x03` | 1 | `u8` | `placement_flags` | World placement and shadow bitfield (see § 3.3) | bit 0 set in 715 | `[Bounded Observation]` |
 | `+0x04` | 2 | `u16` (LE) | `object_model_id` | Catalog ID mapping `.SOD` geometry: `(res_index << 8) \| item_index` | varies | `[Established]` |
 | `+0x06` | 4 | `i32` (LE) | `coord_x_fixed` | East/West position in 16.16 fixed point: $X = (x_{\text{editor}} - 100000) / 10$ | −9135.5 to 7738.0 | `[Established]` |
-| `+0x0A` | 4 | `i32` (LE) | `coord_y_fixed` | Altitude position in 16.16 fixed point: $Y = y_{\text{editor}} / 10$ | ≤ 0 in 715, so height is stored negated | `[Established]` |
+| `+0x0A` | 4 | `i32` (LE) | `coord_y_fixed` | Altitude position in 16.16 fixed point: $Y = y_{\text{editor}} / 10$ (§ 3.7); the sign convention is unconfirmed | ≤ 0 in all 715 (maximum 0.0) | `[Supported Inference]` |
 | `+0x0E` | 4 | `i32` (LE) | `coord_z_fixed` | North/South position in 16.16 fixed point: $Z = (z_{\text{editor}} - 100000) / 10$ | −6779.5 to 7645.7 | `[Established]` |
 | `+0x12` | 2 | `i16` (LE) | `roll_bam` | Roll orientation angle in 16-bit BAM ($0..65535 \equiv 0..2\pi$) | varies | `[Established]` |
 | `+0x14` | 2 | `i16` (LE) | `pitch_bam` | Pitch orientation angle in 16-bit BAM | varies | `[Established]` |
 | `+0x16` | 2 | `i16` (LE) | `yaw_bam` | Yaw (heading) orientation angle in 16-bit BAM | varies | `[Established]` |
 | `+0x18` | 2 | `u16` (LE) | `unknown_18` | Unknown; never nonzero | 0 in 715 | `[Bounded Observation]` |
-| `+0x1A` | 2 | `i16` (LE) | `slot_ref_1a` | A slot reference, −1 for none; which property it holds is unknown | −1, 0, or a slot present in the same set (37 of 38 positive values), never its own | `[Bounded Observation]` |
-| `+0x1C` | 2 | `i16` (LE) | `slot_ref_1c` | A second slot reference, −1 for none; property unknown | −1, 0, or a slot present in the same set (129 of 129), never its own | `[Bounded Observation]` |
+| `+0x1A` | 2 | `i16` (LE) | `slot_ref_1a` | A slot reference, −1 for none; which property it holds is unknown | −1, 0, or a slot present in the same set (37 of 38 positive values); no positive value is its own slot, and 0 may be "none" or slot 0 | `[Bounded Observation]` |
+| `+0x1C` | 2 | `i16` (LE) | `slot_ref_1c` | A second slot reference, −1 for none; property unknown | −1, 0, or a slot present in the same set (129 of 129 positive values); no positive value is its own slot, and 0 may be "none" or slot 0 | `[Bounded Observation]` |
 | `+0x1E` | 2 | `u16` (LE) | `speed` | Scalar speed magnitude in knots or internal simulation units | varies | `[Established]` |
 | `+0x20`–`+0x25` | 6 | `u8[6]` | `unknown_20` | Unknown; set only for recording slots | `00 20 00 00 00 00` in 501 of 501 in slots 8–39 | `[Bounded Observation]` |
 | `+0x26`–`+0x2F` | 10 | `u8[10]` | `unknown_26` | Unknown; `+0x2E`–`+0x2F` set only for recording slots | nonzero in 295; `+0x2E`–`+0x2F` 0 in 501 of 501 in slots 8–39 | `[Bounded Observation]` |
 | `+0x30` | 1 | `u8` | `unknown_30` | Unknown small enumeration | 0–5 in 715 | `[Bounded Observation]` |
 | `+0x31`–`+0x33` | 3 | `u8[3]` | `unknown_31` | Unknown; almost always zero | `+0x31` 0 in 715; `+0x32`–`+0x33` 0 in 713 | `[Bounded Observation]` |
-| `+0x34` | 1 | `u8` | `override_flags` | Bitfield whose meaning is unknown; § 3.4's bits are withdrawn | `0x00`, `0x40`, `0x80` or `0xC0` in 711 | `[Bounded Observation]` |
+| `+0x34` | 1 | `u8` | `override_flags` | Bitfield whose meaning is unknown; § 3.4's bits are withdrawn | `0x00`, `0x40`, `0x80` or `0xC0` in 712 of 715 | `[Bounded Observation]` |
 | `+0x35`–`+0x3D` | 9 | `u8[9]` | `unknown_35` | Unknown; not padding | nonzero in 202 | `[Bounded Observation]` |
 | `+0x3E`–`+0x3F` | 2 | `u8[2]` | `next_slot_flags` | Copy of the next slot's `+0x02`–`+0x03` | equal in 626 of 626 where that slot is present | `[Supported Inference]` |
 
@@ -150,11 +150,11 @@ Bit:   7   6   5   4   3   2   1   0
                        +---------- Cast real-time ground shadow (1 = shadow active)
 ```
 
-On the 715 retail records, bit 0 is set in every record, which fits only occupied slots being stored, but the drawing does not cover the rest: bit 1 is set in 688, bit 3 in 333 and bit 4, drawn as reserved, in 504; bits 5 to 7 are never set. `[Bounded Observation]`
+On the 715 retail records, bit 0 is set in every record. The drawing does not cover the rest, so this bit map is unconfirmed: bit 1 is set in 688, bit 2 in 51, bit 3 in 333 and bit 4 in 504, though the drawing leaves bits 3 to 7 reserved; bits 5 to 7 are never set. `[Bounded Observation]`
 
 ### 3.4 Prop Override Flags (`override_flags`, `+0x34`)
 
-The meaning of this byte is unknown. On the 715 retail records it is `0x00`, `0x40`, `0x80` or `0xC0` in 711, so its variation sits in bits 6 and 7. The hidden and locked bits this section used to place at bits 2 and 3 are set in 2 records, both recording slots, and are withdrawn. `[Bounded Observation]`
+The meaning of this byte is unknown. On the 715 retail records it is `0x00`, `0x40`, `0x80` or `0xC0` in 712, so its variation sits in bits 6 and 7. The hidden and locked bits this section used to place at bits 2 and 3 are set in 2 records, both recording slots, and are withdrawn. `[Bounded Observation]`
 
 ### 3.5 File Layout: the Event Table at `0x54`
 
