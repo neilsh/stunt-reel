@@ -195,7 +195,8 @@ def test_parse_only_prints_the_table_and_writes_nothing(
     assert code == 0
     out = capsys.readouterr().out
     assert "108 slots" in out
-    assert "above opcode 0x0333" in out
+    assert "the table numbers Patch #3" in out
+    assert "0x0345 up are one slot off" in out
     assert not project.exists()
 
 
