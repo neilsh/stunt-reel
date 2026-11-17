@@ -8,6 +8,8 @@ accepted 2026-11-06. Designed in the
 [ADR 0016](0016-the-gate-runs-independent-lanes.md). Amended 2026-11-08: the paths count from
 `origin/main` when it resolves, else `main` (below). Superseded in part 2026-11-09 by
 [ADR 0044](0044-commit-messages-carry-no-gate-line.md): a passing run prints no gate line.
+Superseded in part 2026-11-17 by [ADR 0047](0047-ci-scopes-a-docs-only-pull-request.md): CI's
+`quality` job runs the docs half, not the full gate, for a docs-only pull request.
 
 ## Context
 
