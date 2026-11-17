@@ -431,18 +431,23 @@ fn stacked_decals_stay_in_the_plane_in_stream_order() {
     assert!(processed.iter().skip(1).all(|p| p.is_decal));
 }
 
-/// A line has no side, so it is never a decal, even lying on a facet.
-#[test]
-fn a_line_on_a_facet_is_no_decal() {
-    let line = RawPolygon {
+/// A `MOVETO`/`ZLINETO` segment from `a` to `b` in colour 50.
+fn line(a: [f32; 3], b: [f32; 3]) -> RawPolygon {
+    RawPolygon {
         vertex_palette: Vec::new(),
-        vertices: vec![[1.0, 0.0, 1.0], [5.0, 0.0, 1.0]],
+        vertices: vec![a, b],
         palette_index: 50,
         normal: [0.0; 3],
         flags: crate::contracts::shape::VERTEX_FLAG_LINE,
         is_decal: false,
         visibility: VisibilityCondition::Always,
-    };
+    }
+}
+
+/// A line on a base facet, with no decal under it, stays in the base pass.
+#[test]
+fn a_line_on_a_facet_is_no_decal() {
+    let line = line([1.0, 0.0, 1.0], [5.0, 0.0, 1.0]);
     let processed = crate::sod::decal::identify_coplanar_decals(
         &[ground_square(0.0, 0.0, 10.0, 162), line.clone()],
         1e-4,
@@ -521,4 +526,29 @@ fn a_panel_on_a_panel_on_a_wheel_disc_stacks_in_stream_order() {
         [7, 7, 137, 59],
         "137 before 59, as the stream paints them"
     );
+}
+
+/// `LOCATION`'s stadium `0x037C` in miniature: a field (`162`), a coplanar decal on it
+/// (`169`), then a yard line on the decal. The line is a decal of it, after it in stream
+/// order, so the decal pass draws it on top; a line above the plane, or one drawn before
+/// the decal, is not (`[I5]`, #448).
+#[test]
+fn a_line_on_an_earlier_decal_is_a_decal() {
+    let on = line([3.0, 0.0, 2.0], [3.0, 0.0, 4.0]);
+    let above = line([3.0, 0.01, 2.0], [3.0, 0.01, 4.0]);
+    let processed = crate::sod::decal::identify_coplanar_decals(
+        &[
+            ground_square(0.0, 0.0, 10.0, 162),
+            on.clone(),
+            ground_square(1.0, 1.0, 6.0, 169),
+            on.clone(),
+            above,
+        ],
+        1e-4,
+        1e-4,
+    );
+    let decals: Vec<bool> = processed.iter().map(|p| p.is_decal).collect();
+    assert_eq!(decals, [false, false, true, true, false]);
+    assert_eq!(processed[3].vertices, on.vertices);
+    assert_ne!(processed[3].flags & DECAL_FLAG_BIT, 0);
 }
