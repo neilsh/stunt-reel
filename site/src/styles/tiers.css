@@ -1,0 +1,52 @@
+/* Evidence-tag badges: site/src/plugins/rehype-evidence-tags.mjs. A tier's class is its name
+   lower-cased with hyphens; a tier without a rule here keeps the neutral default. */
+.sr-tier {
+  --sr-tier-bg: var(--sl-color-gray-5);
+  --sr-tier-fg: var(--sl-color-gray-1);
+  display: inline-block;
+  padding: 0 0.5em;
+  border-radius: 0.75em;
+  background: var(--sr-tier-bg);
+  color: var(--sr-tier-fg);
+  font-size: 0.8em;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-decoration: none;
+  vertical-align: 0.05em;
+  cursor: help;
+}
+
+a.sr-tier:hover,
+a.sr-tier:focus-visible {
+  text-decoration: underline;
+}
+
+.sr-tier-established {
+  --sr-tier-bg: var(--sl-color-green-low);
+  --sr-tier-fg: var(--sl-color-green-high);
+}
+
+.sr-tier-supported-inference {
+  --sr-tier-bg: var(--sl-color-blue-low);
+  --sr-tier-fg: var(--sl-color-blue-high);
+}
+
+.sr-tier-bounded-observation {
+  --sr-tier-bg: var(--sl-color-purple-low);
+  --sr-tier-fg: var(--sl-color-purple-high);
+}
+
+.sr-tier-hypothesis {
+  --sr-tier-bg: var(--sl-color-orange-low);
+  --sr-tier-fg: var(--sl-color-orange-high);
+}
+
+.sr-tier-unknown {
+  --sr-tier-bg: var(--sl-color-red-low);
+  --sr-tier-fg: var(--sl-color-red-high);
+}
+
+.sr-tier-superseded {
+  text-decoration: line-through;
+}
