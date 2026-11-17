@@ -81,7 +81,7 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 | **65** | `0x0249` | 585 | `OP_POLYZSL` | `...` | Depth-sorted sliced polygon |
 | **66** | `0x0252` | 594 | `OP_SPHERESL` | `...` | Sliced sphere primitive |
 | **67** | `0x025B` | 603 | `OP_DISCSL` | `...` | Sliced disc primitive |
-| **68** | `0x0264` | 612 | `OP_PERFDISCSL`| `...` | Sliced disc primitive, by its name a sliced `OP_PERFDISK` (not traced) |
+| **68** | `0x0264` | 612 | `OP_PERFDISCSL`| `...` | Sliced disc primitive; traced: the same builder `0xA08E` as `OP_PERFDISK`, storing the span table's start at `work:0x423E + n` instead of filling ([`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)) |
 | **69** | `0x026D` | 621 | `OP_SIDESL` | `...` | Sliced cylinder side primitive |
 | **70** | `0x0276` | 630 | `OP_PUSHSL` | `...` | Push slicing plane onto stack |
 | **71** | `0x027F` | 639 | `OP_POPSL` | `...` | Pop slicing plane from stack |
