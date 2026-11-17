@@ -9,6 +9,7 @@
 
 use std::fmt;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ArtifactError;
@@ -24,7 +25,7 @@ const DEFAULT_HEIGHT: u32 = 200;
 const FRAMES_DIR: &str = "frames/";
 
 /// One captured frame's place in a capture directory.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CapturedFrame {
     /// Capture order, 1-based; not a time axis.
     pub ordinal: u32,
@@ -37,7 +38,7 @@ pub struct CapturedFrame {
 }
 
 /// Document written by the capture harness as `meta.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(try_from = "CaptureDocument")]
 pub struct CaptureSet {
     /// Schema version; older captures without the field read as the current version.
@@ -100,7 +101,7 @@ impl CaptureSet {
 }
 
 /// The flat `meta.json` shape, which predates the port's nested film records.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct CaptureDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     schema_version: Option<u32>,
@@ -120,7 +121,7 @@ struct CaptureDocument {
 }
 
 /// One frame entry of the flat `meta.json`; the ordinal and names may be absent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 struct FrameDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ordinal: Option<u32>,

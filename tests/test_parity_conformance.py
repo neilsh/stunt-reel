@@ -4,15 +4,24 @@ The corpus pins the wire contract this adapter shares with the Rust port. These 
 committed bytes and write only into `tmp_path`; a fixture is never rewritten, so `git status`
 stays clean after a run. `v3/render/` (a render store) and `v1/report.json` are authored by the
 Rust side, while `v1/meta.json` and `v1/meta_legacy.json` are authored through `write_capture`.
+
+The adapter is also checked against the JSON Schemas generated from the `stunt-parity` types
+(`crates/stunt-parity/schema/`, ADR 0011): every fixture under `tests/fixtures/parity/` and every
+document the adapter writes must validate. A written document is held to a strict schema that
+refuses a field the Rust type lacks, which catches a field renamed or dropped on the Rust side.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator
 
+from artifact_helpers import sample_capture, sample_record, sample_report, sample_video
 from render_helpers import tick_entry
 from stunt_reel.parity_artifacts import (
     RENDER_SCHEMA_VERSION,
@@ -21,6 +30,7 @@ from stunt_reel.parity_artifacts import (
     CapturedFrame,
     FilmId,
     Geometry,
+    RenderAdapter,
     RenderStore,
     StoredFrame,
     read_capture,
@@ -31,10 +41,12 @@ from stunt_reel.parity_artifacts import (
     write_render,
     write_render_store,
     write_report,
+    write_video_capture,
 )
 
 CORPUS = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "parity" / "v1"
 RENDER = CORPUS.parent / "v3" / "render"
+SCHEMAS = Path(__file__).resolve().parents[1] / "crates" / "stunt-parity" / "schema"
 APPROX_REL = 1e-6
 APPROX_ABS = 1e-9
 
@@ -222,3 +234,221 @@ def test_a_viewport_taller_than_the_raster_is_refused(tmp_path: Path) -> None:
             adapter=None,
         )
     assert invalid.value.kind == "geometry"
+
+
+def _schema(kind: str, *, strict: bool) -> Draft202012Validator:
+    """Validator for one document kind, from the schema `stunt-parity` generates.
+
+    `strict` refuses a property the schema does not name, at every object that lists any. The
+    derive leaves objects open because serde ignores unknown fields, so a renamed optional field
+    on the Rust side would otherwise still validate what the adapter writes under the old name.
+    """
+    schema = json.loads((SCHEMAS / f"{kind}.schema.json").read_text(encoding="utf-8"))
+    if strict:
+        _close_objects(schema)
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+def _close_objects(node: object) -> None:
+    if isinstance(node, dict):
+        if "properties" in node:
+            node["additionalProperties"] = False
+        for child in node.values():
+            _close_objects(child)
+    elif isinstance(node, list):
+        for child in node:
+            _close_objects(child)
+
+
+def _assert_valid(validator: Draft202012Validator, document: object, label: str) -> None:
+    problems = sorted(
+        f"{'/'.join(str(part) for part in error.absolute_path) or '<root>'}: {error.message}"
+        for error in validator.iter_errors(document)
+    )
+    assert not problems, f"{label} does not conform to its schema:\n" + "\n".join(problems)
+
+
+def _kind_of(path: Path, document: dict[str, Any]) -> str:
+    if path.name == "render.json":
+        return "render"
+    if path.name == "report.json":
+        return "report"
+    assert path.name.startswith("meta"), f"{path} is not a parity document"
+    return "video" if document.get("kind") == "video" else "capture"
+
+
+def _fixture_documents() -> list[Path]:
+    return sorted(
+        path
+        for pattern in ("**/render.json", "**/report.json", "**/meta*.json")
+        for path in CORPUS.parent.glob(pattern)
+    )
+
+
+def test_a_schema_exists_for_every_document_kind() -> None:
+    assert sorted(path.name for path in SCHEMAS.glob("*.schema.json")) == [
+        "capture.schema.json",
+        "render.schema.json",
+        "report.schema.json",
+        "video.schema.json",
+    ]
+
+
+def test_the_fixtures_cover_every_document_kind() -> None:
+    kinds = {
+        _kind_of(path, json.loads(path.read_text(encoding="utf-8")))
+        for path in _fixture_documents()
+    }
+    assert kinds == {"render", "report", "capture", "video"}
+
+
+@pytest.mark.parametrize(
+    "path",
+    _fixture_documents(),
+    ids=lambda path: str(path.relative_to(CORPUS.parent)),
+)
+def test_a_fixture_the_adapter_reads_conforms_to_the_schema(path: Path) -> None:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    _assert_valid(_schema(_kind_of(path, document), strict=False), document, str(path))
+
+
+# Properties the schema names that the adapter deliberately never writes, as
+# "<kind>:<path>" (array items are "[]"), each with the reason. Empty: the adapter writes
+# every property the schemas name.
+NEVER_WRITTEN: dict[str, str] = {}
+
+
+def _written_documents(tmp_path: Path) -> list[tuple[str, dict[str, Any]]]:
+    """Documents written through every adapter writer, setting each optional field it can write.
+
+    The film identity carries both hashes, the render and the report an adapter, the report its
+    `archive_conflict_waived` flag and provenance, and the video a viewport and an engine hash.
+    """
+    film = FilmId(name="SYNTH.FLM", flm_bytes=17, flm_sha256="ab" * 32, all_sha256="cd" * 32)
+    adapter = RenderAdapter(name="Test GPU", adapter_class="hardware")
+    written: list[tuple[str, Path]] = []
+
+    for index, record in enumerate(
+        (
+            read_render(RENDER / "render.json"),
+            replace(sample_record(), film=film, adapter=adapter),
+        )
+    ):
+        path = tmp_path / f"render_{index}.json"
+        write_render(path, record)
+        written.append(("render", path))
+    store = tmp_path / "store"
+    frame = StoredFrame(indices=bytes(12), layers=bytes(24), palette=bytes(768))
+    write_render_store(
+        store,
+        film,
+        Geometry(width=4, height=3, viewport_rows=2),
+        [(tick_entry(7), frame)],
+        adapter=adapter,
+    )
+    written.append(("render", store / "render.json"))
+
+    full_report = replace(
+        sample_report(),
+        adapter=adapter,
+        archive_conflict_waived=True,
+        credits_missing_frames=1,
+        crates="0" * 40,
+        sha256="ef" * 32,
+        all_sha256="cd" * 32,
+    )
+    for index, report in enumerate((read_report(CORPUS / "report.json"), full_report)):
+        path = tmp_path / f"report_{index}.json"
+        write_report(path, report)
+        written.append(("report", path))
+
+    full_capture = replace(sample_capture(), film=film)
+    for index, capture in enumerate((read_capture(CORPUS), full_capture)):
+        directory = tmp_path / f"capture_{index}"
+        directory.mkdir()
+        write_capture(directory, capture)
+        written.append(("capture", directory / "meta.json"))
+
+    video = tmp_path / "video"
+    video.mkdir()
+    full_video = replace(
+        sample_video(),
+        film=film,
+        geometry=Geometry(width=4, height=2, viewport_rows=2),
+        playone_sha256="12" * 32,
+    )
+    write_video_capture(video, full_video, diagnostics={})
+    written.append(("video", video / "meta.json"))
+
+    return [(kind, json.loads(path.read_text(encoding="utf-8"))) for kind, path in written]
+
+
+def _item_prefix(prefix: str) -> str:
+    return f"{prefix[:-1]}[]." if prefix else "[]."
+
+
+def _schema_paths(schema: dict[str, Any]) -> set[str]:
+    """Every property the schema names, at any depth, as dotted paths with `[]` for array items."""
+    defs = schema.get("$defs", {})
+    paths: set[str] = set()
+
+    def walk(node: Any, prefix: str) -> None:
+        if not isinstance(node, dict):
+            return
+        if "$ref" in node:
+            walk(defs[node["$ref"].removeprefix("#/$defs/")], prefix)
+        for key in ("anyOf", "oneOf", "allOf"):
+            for branch in node.get(key, []):
+                walk(branch, prefix)
+        for name, child in node.get("properties", {}).items():
+            paths.add(f"{prefix}{name}")
+            walk(child, f"{prefix}{name}.")
+        if "items" in node:
+            walk(node["items"], _item_prefix(prefix))
+
+    walk(schema, "")
+    return paths
+
+
+def _document_paths(node: Any, prefix: str = "") -> set[str]:
+    """The paths of every non-null value in a document, in `_schema_paths`'s notation."""
+    paths: set[str] = set()
+    if isinstance(node, dict):
+        for name, child in node.items():
+            if child is not None:
+                paths.add(f"{prefix}{name}")
+                paths |= _document_paths(child, f"{prefix}{name}.")
+    elif isinstance(node, list):
+        for child in node:
+            paths |= _document_paths(child, _item_prefix(prefix))
+    return paths
+
+
+def test_every_document_the_adapter_writes_conforms_to_the_schema(tmp_path: Path) -> None:
+    documents = _written_documents(tmp_path)
+    assert {kind for kind, _ in documents} == {"render", "report", "capture", "video"}
+    for index, (kind, document) in enumerate(documents):
+        _assert_valid(_schema(kind, strict=True), document, f"{kind} document {index}")
+
+
+@pytest.mark.parametrize("kind", ["render", "report", "capture", "video"])
+def test_the_written_documents_set_every_property_the_schema_names(
+    kind: str, tmp_path: Path
+) -> None:
+    """A property no written document sets could be renamed on the Rust side unseen."""
+    written: set[str] = set()
+    for document_kind, document in _written_documents(tmp_path):
+        if document_kind == kind:
+            written |= _document_paths(document)
+    schema = json.loads((SCHEMAS / f"{kind}.schema.json").read_text(encoding="utf-8"))
+    allowed = {path.split(":", 1)[1] for path in NEVER_WRITTEN if path.startswith(f"{kind}:")}
+    assert sorted(_schema_paths(schema) - written - allowed) == []
+
+
+def test_a_field_the_schema_lacks_is_refused_in_a_written_document() -> None:
+    document = json.loads((CORPUS / "report.json").read_text(encoding="utf-8"))
+    document["renamed_on_the_rust_side"] = 1
+    _assert_valid(_schema("report", strict=False), document, "lenient")
+    with pytest.raises(AssertionError, match="renamed_on_the_rust_side"):
+        _assert_valid(_schema("report", strict=True), document, "strict")

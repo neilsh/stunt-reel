@@ -2,13 +2,14 @@
 
 use std::collections::BTreeMap;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ArtifactError;
 use crate::render::RenderAdapter;
 
 /// Whether the scored mean SSIM reaches each I6 threshold.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct I6Gate {
     /// The initial acceptance threshold was reached.
     pub initial: bool,
@@ -17,7 +18,7 @@ pub struct I6Gate {
 }
 
 /// One matched frame's measurements.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct FrameReport {
     /// 1-based capture order.
     #[serde(default)]
@@ -46,7 +47,7 @@ pub struct FrameReport {
 }
 
 /// The `report.json` document.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Report {
     /// Reference frames the capture held.
     #[serde(default)]
