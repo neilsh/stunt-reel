@@ -10,8 +10,8 @@ each handler and names it from `research/formats/sod-opcodes.md`. Ghidra saves t
 
 The slot count comes from the run itself, never a constant: 108 in the unpatched executable and
 107 in Patch #3 (issue #480). The names apply the table's rows by slot index in the loaded
-executable's slot order, with no shift. Above opcode `0x0333` the two builds dispatch different
-handlers from one opcode word, and which build's numbering the table follows stays open
+executable's slot order, with no shift. The table numbers Patch #3; in the unpatched build the
+slots from opcode `0x0345` up are one slot off, behind an extra, unnamed `0x033C`
 (`research/playone-exe/patch3.md` section 4.1); the summary and the slot file say so, and a slot
 past the table is left unnamed.
 
@@ -54,8 +54,8 @@ PROJECT_DIR = REPO / "build" / "re" / "ghidra"
 #: The alignment the names assume, printed in the summary and written into the slot file.
 NAMING_ASSUMPTION = (
     "names come from research/formats/sod-opcodes.md by slot index in the loaded executable's"
-    " slot order; above opcode 0x0333 the two builds dispatch different handlers from one"
-    " opcode word, and which build's numbering the table follows stays open (issue #480)"
+    " slot order; the table numbers Patch #3, and in the unpatched build the slots from opcode"
+    " 0x0345 up are one slot off, behind an extra unnamed 0x033C (issue #480)"
 )
 
 #: One dispatch slot: the six-byte self-patch and the near jump after it.
@@ -105,10 +105,9 @@ def read_names(path: Path = OPCODE_TABLE) -> tuple[str, ...]:
 def handler_name(index: int, names: tuple[str, ...]) -> str | None:
     """The table's mnemonic for slot *index* in the loaded executable, or None past the table.
 
-    The rows are applied by slot index in that executable's slot order, with no shift. Above
-    opcode `0x0333` the two builds dispatch different handlers from one opcode word, and which
-    build's numbering the table follows stays open (`research/playone-exe/patch3.md` section 4.1,
-    issue #480).
+    The rows are applied by slot index in that executable's slot order, with no shift. The
+    table numbers Patch #3; in the unpatched build the slots from opcode `0x0345` up are one slot
+    off, behind an extra unnamed `0x033C` (`research/playone-exe/patch3.md` section 4.1, issue #480).
     """
     return names[index] if 0 <= index < len(names) else None
 
