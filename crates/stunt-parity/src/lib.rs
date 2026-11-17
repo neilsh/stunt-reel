@@ -7,7 +7,7 @@
 //! speak the types defined here.
 //!
 //! The document types derive `schemars::JsonSchema`; the schemas they emit are committed in
-//! `schema/` and the Python adapter's tests validate against them (ADR 0047). A field change
+//! `schema/` and the Python adapter's tests validate against them (ADR 0048). A field change
 //! regenerates them with
 //! `STUNT_UPDATE_SCHEMA=1 mise exec -- cargo test -p stunt-parity --test it schema`.
 //!
