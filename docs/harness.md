@@ -41,9 +41,9 @@ Nothing here is a fact about Stunt Island.
   context passes about 150k tokens, instead of compacting: it starts a fresh coordinator from that
   file's content (a cloud session's new container cannot read the gitignored file, so the content
   goes in the new session's prompt), or runs Shutdown where it cannot start one. In a cloud
-  session either waits until no worker is in flight or each in-flight rule 5 item is reviewed and
-  pushed, since an unpushed commit is lost with the container; any other item is released and
-  listed under Needs you. When a person has
+  session either waits until no worker is in flight, or until every in-flight item has a pushed
+  branch (a rule 5 item only after its review and push), since an unpushed commit is lost with
+  the container; any other item is released and listed under Needs you. When a person has
   asked CodeRabbit for a review, it checks once, at the 20-minute timeout. The skill lists the
   `orca orchestration` flags the coordinator and workers need, so nobody loads `--help` or the
   orchestration guide into context. The contract is
