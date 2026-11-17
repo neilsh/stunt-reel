@@ -33,7 +33,8 @@ Nothing here is a fact about Stunt Island.
   Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what
   changed since the last reviewed commit, run once after every finding is fixed, and are skipped
   for a wording-only fix (reply with the new text).
-* **A Claude implementer ends when its PR opens**, or earlier if its context passes about 150k
+* **A Claude implementer ends when its PR opens** (for a diff that changes a path rule 5 names,
+  when it commits: the coordinator pushes after the fresh review), or earlier if its context passes about 150k
   tokens; a fresh worker starts from the PR and the review comment to make the fixes, while dsh
   workers may keep their session. Before asking for review, the implementer scans its own diff
   for the `AGENTS.md` § 3 rule 5 words and checks every quoted figure against its source.
