@@ -5,6 +5,7 @@
 //! (768-byte palettes). This record is the table of contents of those files; the adapters own the
 //! bytes.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ArtifactError;
@@ -17,7 +18,7 @@ pub const RENDER_CHUNK_TICKS: u32 = 50;
 pub const PALETTE_BYTES: usize = 768;
 
 /// Raster geometry an artifact describes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Geometry {
     /// Width in pixels.
     pub width: u32,
@@ -56,7 +57,7 @@ impl Geometry {
 }
 
 /// Film palette controls the frame at a tick was drawn with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RenderPalette {
     /// Film variable 13, the palette's night term.
     pub sky: u16,
@@ -67,7 +68,7 @@ pub struct RenderPalette {
 }
 
 /// Camera pose the frame was drawn from.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct CameraPose {
     /// Camera world position in metres.
     pub eye: [f32; 3],
@@ -80,7 +81,7 @@ pub struct CameraPose {
 }
 
 /// One rendered tick: its film clock, how it was drawn, and which stored palette it shows.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RenderTick {
     /// Film clock of the frame (0-based 50 Hz tick).
     pub tick: u32,
@@ -97,7 +98,7 @@ pub struct RenderTick {
 }
 
 /// A byte range of one of a render's plane files.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct StoreSpan {
     /// First byte of the chunk in the file.
     pub offset: u64,
@@ -106,7 +107,7 @@ pub struct StoreSpan {
 }
 
 /// One film second of a render: an independent zstd frame in each plane file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RenderChunk {
     /// Film second the chunk holds: the ticks with `tick / RENDER_CHUNK_TICKS == second`.
     pub second: u32,
@@ -128,7 +129,7 @@ pub struct TickSlot {
 }
 
 /// What kind of adapter drew a render.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum AdapterClass {
     /// A GPU: any adapter that is not a CPU implementation.
@@ -138,7 +139,7 @@ pub enum AdapterClass {
 }
 
 /// The graphics adapter a render was drawn on.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RenderAdapter {
     /// Adapter name as its driver reports it.
     pub name: String,
@@ -147,7 +148,7 @@ pub struct RenderAdapter {
 }
 
 /// Document written beside a render directory's plane files, last.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RenderRecord {
     /// Schema version; see [`crate::RENDER_SCHEMA_VERSION`].
     pub schema_version: u32,

@@ -7,6 +7,7 @@
 //! `kind` marks the document so a frame capture's `meta.json` is not mistaken
 //! for one.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ArtifactError;
@@ -23,7 +24,7 @@ const KIND: &str = "video";
 const PALETTE_ENTRIES: usize = 256;
 
 /// How the recording stopped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CaptureEnd {
     /// The film ended and the harness held on its last frame.
@@ -33,7 +34,7 @@ pub enum CaptureEnd {
 }
 
 /// Per-frame clocks, one entry per recorded video frame, as parallel columns.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TickLog {
     /// Capture frame number of each row; ascends by one.
     pub frame: Vec<u64>,
@@ -44,7 +45,7 @@ pub struct TickLog {
 }
 
 /// A run of palette entries the game rewrote at one frame.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PaletteChange {
     /// Capture frame number at which the new entries took effect.
     pub frame: u64,
@@ -55,7 +56,7 @@ pub struct PaletteChange {
 }
 
 /// The palette at the start of the log and every later write.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PaletteLog {
     /// The 256 entries in force at the first logged frame.
     pub initial: Vec<[u8; 3]>,
@@ -66,7 +67,7 @@ pub struct PaletteLog {
 /// Document written by the video capture harness as `meta.json`.
 ///
 /// Fields the harness adds as diagnostics are ignored on read.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct VideoCapture {
     /// Schema version of the document.
     pub schema_version: u32,
