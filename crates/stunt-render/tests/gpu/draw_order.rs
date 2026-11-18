@@ -308,8 +308,9 @@ fn a_zlineto_line_wins_over_the_facet_it_lies_on_near_and_far() {
                 return;
             };
             let k = f32::from(k);
-            // The decoder mirrors a shape's X, so the plane `z = x` of the stream is `z = -x` here.
-            let plane = |x: f32, y: f32| [-x * k, y * k, x * k];
+            // The decoder turns each vector half a turn about z, `(-x, -y, z)` (`Vm::load`), so
+            // the stream's plane `z = x` is `z = -x` here.
+            let plane = |x: f32, y: f32| [-x * k, -y * k, x * k];
             // The line is one pixel wide, so a column of it shows `LINE` on the row of its
             // centre or the row beside it, never the decal it lies on.
             let line_in_column = |x: f32| {
@@ -443,7 +444,7 @@ fn a_tile_within_the_lie_tolerance_wins_over_the_terrain_near_and_far() {
 fn a_tile_beyond_the_lie_tolerance_stays_under_the_terrain_near_and_far() {
     common::gpu_test(|| {
         for (label, d) in RANGES {
-            // Out of tolerance it is no ground tile: its depth, `0.01 d` under the ground,
+            // Out of tolerance it is no ground tile: its depth, `0.1 + 0.01 d` metres under the ground,
             // loses to the terrain.
             let Some(shot) = shoot(&tile_on_terrain(d, -(0.1 + 0.01 * d))) else {
                 return;
