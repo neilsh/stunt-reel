@@ -5,7 +5,7 @@
 //! and writes the report.
 
 use stunt_core::contracts::{PALETTE_CONTROL_FULL, PaletteControls};
-use stunt_render::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
+use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
 use crate::render_store::Palette;
 
@@ -151,7 +151,7 @@ pub(super) fn score_frame(
 #[cfg(test)]
 mod tests {
     use stunt_core::contracts::get_palette_rgb;
-    use stunt_render::{LAYER_NONE, LAYER_TERRAIN};
+    use stunt_core::frame::{LAYER_NONE, LAYER_TERRAIN};
 
     use super::*;
     use crate::parity::fade::fade_reference_set;
