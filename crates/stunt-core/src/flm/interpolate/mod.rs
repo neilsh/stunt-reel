@@ -306,6 +306,11 @@ pub(crate) fn interpolate_trajectory(
                 } else {
                     act_b.casts_shadow
                 },
+                view: if eff_alpha < 0.5 {
+                    act_a.view
+                } else {
+                    act_b.view
+                },
                 joint_angles_bam: interpolate_joints(
                     &act_a.joint_angles_bam,
                     &act_b.joint_angles_bam,

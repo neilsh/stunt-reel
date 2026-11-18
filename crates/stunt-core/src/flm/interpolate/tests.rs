@@ -56,6 +56,7 @@ fn actor(actor_id: u32, position_meters: [f32; 3]) -> ActorTransform {
         position_meters,
         state_mask: 1,
         casts_shadow: false,
+        view: false,
         joint_angles_bam: Vec::new(),
     }
 }

@@ -222,6 +222,11 @@ pub struct ActorTransform {
     /// `research/playone-exe/sod-vm-frame.md` section 9.1).
     #[cfg_attr(feature = "serde", serde(default))]
     pub casts_shadow: bool,
+    /// The slot is the view camera's (`[0x22DE]`): PLAYONE queues no actor draw for it
+    /// (image `0x1E26`) but still queues its shadow, so the player lists it only when it
+    /// casts one (`research/playone-exe/sod-vm-frame.md` section 9.1).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub view: bool,
     /// Articulated subobject BAM rotation angles `(subobject_id, raw_bam_u16)`.
     #[cfg_attr(feature = "serde", serde(default))]
     pub joint_angles_bam: Vec<(u16, u16)>,
