@@ -48,6 +48,7 @@ from stunt_reel import dataroot, parity_layout, parity_pipeline, references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.matched_frames import Reference
 from stunt_reel.parity_artifacts import (
+    ArtifactError,
     CaptureSet,
     RenderStore,
     read_capture,
@@ -209,7 +210,7 @@ def index_rows(reference: Path, ours: Path, ticks: list[int], lo: int, hi: int) 
             before, after = missing[tick]
             lines.append(f"{tick} not in the capture (nearest captured: {before}, {after})")
         elif not store.holds(tick):
-            lines.append(f"{tick} not rendered (past the film's end)")
+            lines.append(f"{tick} not in the render")
         else:
             matched = held.match(found[tick], tick)
             theirs = index_stats(matched.capture_indices(), width, rows, lo, hi)
@@ -230,8 +231,12 @@ def cmd_index(args: argparse.Namespace) -> int:
         return 2
     root = dataroot.data_root()
     if args.ours is not None:
-        with references.open_reference(root, args.film) as reference:
-            lines = index_rows(reference, args.ours, ticks, lo, hi)
+        try:
+            with references.open_reference(root, args.film) as reference:
+                lines = index_rows(reference, args.ours, ticks, lo, hi)
+        except ArtifactError as err:
+            print(f"parity_probe: {err}", file=sys.stderr)
+            return 2
     else:
         problems = parity_pipeline.preflight(root, [args.film], build_required=not args.no_build)
         if problems:

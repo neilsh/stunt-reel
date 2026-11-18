@@ -309,7 +309,7 @@ mise run parity-probe -- index --film balloon --ticks 155,200 --index 228-238 --
 
 For each film tick it prints, for the capture and for our render, the pixel count of one palette index (or an inclusive range such as `228-238`), its bounding box `x0,y0,x1,y1` and its centroid `x,y`, then the centroid offset `dx dy`, ours minus the capture's.
 It counts index-plane pixels in the viewport rows (the same plane the other probes read), so the answer does not depend on how a PNG or the palette colours it.
-An absent index prints a count of 0 with `-` for its box and centroid, and the offset is `-` when either side is empty; a tick the capture lacks prints its nearest captured ticks, as `mise run frame` does.
+An absent index prints a count of 0 with `-` for its box and centroid, and the offset is `-` when either side is empty; a tick the capture lacks prints its nearest captured ticks, as `mise run frame` does, and a captured tick the render holds no page for prints `not in the render`.
 
 With `--film` alone it renders the ticks once (`--no-build` reuses the release binary, `--software-only` forces the software adapter) into `build/scratch/index/<film>`, replacing that folder, and reads the capture through the verified snapshot `mise run frame` uses.
 With `--ours <render directory>` it reads that store and renders nothing, so a retimed render or a `DBG_` variant from `mise run frame` is measured as is.

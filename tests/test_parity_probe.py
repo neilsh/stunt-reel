@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+lazy from collections.abc import Iterator
 
 import pytest
 
@@ -19,6 +21,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 import parity_probe  # noqa: E402
 
 from stunt_reel import (  # noqa: E402
+    dataroot,
     matched_frames,
     parity_artifacts,
     parity_layout,
@@ -463,3 +466,42 @@ def test_index_rows_reports_both_sides_and_the_offset_per_tick(tmp_path: Path) -
         "8 1 2,1,2,1 2.00,1.00 0 - - - -",
         "9 not in the capture (nearest captured: 8, None)",
     ]
+
+
+def test_index_rows_says_not_in_the_render_for_a_captured_tick_the_store_lacks(
+    tmp_path: Path,
+) -> None:
+    geometry = Geometry(width=8, height=6, viewport_rows=5)
+    ours, reference = tmp_path / "ours", tmp_path / "reference"
+    reference.mkdir()
+    frame = StoredFrame(indices=bytes(8 * 6), layers=bytes(2 * 8 * 6), palette=bytes(768))
+    parity_artifacts.write_render_store(
+        ours, FilmId(), geometry, [(tick_entry(7), frame)], adapter=None
+    )
+    (reference / "tick_0001.idx").write_bytes(bytes(8 * 5))
+    (reference / "tick_0002.idx").write_bytes(bytes(8 * 5))
+    (reference / "meta.json").write_text(
+        json.dumps({"film": "X.FLM", "frames": [{"film_tick": 7}, {"film_tick": 9}]}),
+        encoding="utf-8",
+    )
+    assert parity_probe.index_rows(reference, ours, [9], 9, 9)[1:] == ["9 not in the render"]
+
+
+def test_cmd_index_refuses_a_missing_render_directory_with_exit_2(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+
+    @contextlib.contextmanager
+    def held(_root: Path, _film: str) -> Iterator[Path]:
+        yield tmp_path
+
+    monkeypatch.setattr(references, "open_reference", held)
+    args = argparse.Namespace(
+        film="ctry", ticks="1", index="9", ours=tmp_path / "absent", no_build=True
+    )
+    assert parity_probe.cmd_index(args) == 2
+    assert "parity_probe:" in capsys.readouterr().err
