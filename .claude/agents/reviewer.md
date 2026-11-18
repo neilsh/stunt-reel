@@ -11,7 +11,8 @@ Review the diff against its merge base for `AGENTS.md` standards and `docs/SPEC.
 On a re-review, read only what changed since the last reviewed commit.
 Do not edit the branch.
 
-Review in the shared worktree `.claude/worktrees/review` of the primary checkout (in a cloud session, of its one checkout), switched with `git checkout --detach origin/<branch>`, or, for a commit not yet pushed, `git checkout --detach <SHA>`; never use a worker's checkout, and leave the worktree in place.
+Review in your own detached worktree `.claude/worktrees/review-<PR or SHA>` of the primary checkout (in a cloud session, of its one checkout), made with `git worktree add --detach <path> origin/<branch>`, or, for a commit not yet pushed, `<SHA>`; leave it in place, since settings deny `git worktree remove` (`managing-worktrees` removes it after the run).
+Never run `git checkout` or `git switch` in the implementer's checkout; if your working directory is not a `review-*` worktree, create one first.
 Diff a re-review as `git diff <last-reviewed SHA>..HEAD`.
 Skip `mise run check` when the diff touches only Markdown and CI is green at HEAD; an unpushed commit has no CI, so run `mise run check-docs` (or `check`).
 Where the diff fixes an earlier finding, probe the new code with the inputs that broke the old one.

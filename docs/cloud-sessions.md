@@ -170,6 +170,11 @@ Its output is working output only: a cloud capture or archive is never promoted 
   The image's `gh` is 2.89.0; Ubuntu's apt package is 2.45.0, older, and the proxy refuses `cli.github.com` and GitHub's release downloads (2026-11-08).
   A newer `gh` would still meet the GraphQL refusal above.
 
+## Container limits
+
+A cloud session's container has 4 CPUs, 15 GB RAM and about 28 GB of free disk (2026-11-18).
+Each worktree builds its own `target/`: about six Rust-building subagents plus a Mesa build in one container reached load 18, so run at most about two Rust builds at once there and give anything heavier a child session of its own ([`running-unattended`](../.agents/skills/running-unattended/SKILL.md)).
+
 ## Rotating the token
 
 Rotate on any sighting of the secret in a log, transcript or commit: create a new token as above, replace the two key variables (or the network secret: delete it and add it again) in the cloud environment, then delete the old token in the dashboard.

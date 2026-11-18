@@ -4,19 +4,20 @@ Part of the [`running-unattended`](SKILL.md) skill.
 
 ## Bringing a PR to mergeable and Merge bar
 
-1. **Rebase** onto `origin/main` (or onto the stack parent) and resolve conflicts: a worker does it, since the coordinator reads no diff.
+1. **Rebase** an unpushed branch onto `origin/main` (or onto the stack parent) and resolve conflicts; for a branch already pushed, merge `origin/main` into its head instead, since a force-push may be refused in auto mode and the squash merge keeps `main` linear anyway: a worker does it, since the coordinator reads no diff.
    The worker makes a design choice only when it is cheap or one option is clearly better, and records it in the PR body; otherwise it reports, and the coordinator hands the PR to a human (`ready-for-human`).
    Then push, with one exception.
    A *rule 5 PR* is one whose diff touches a path [`AGENTS.md` § Committing](../../../AGENTS.md#committing) rule 5 names.
    Its first commit and every later fix or rebase is committed locally and not pushed until step 2 has reviewed it at its local SHA; you then push it unchanged and, for the first push, open the PR.
-   A rebase changes the SHA, so it needs a fresh `clean` comment at the new head.
+   A rebase or merge changes the SHA, so it needs a fresh `clean` comment at the new head; for a merge commit whose tree equals an already-reviewed tree, the re-review only confirms that identity (`git diff <reviewed> <merge>` is empty).
    Any other PR pushes now: confirm local `HEAD` matches `origin/<branch>` before starting step 2.
    A work `spec.md` or `plan.md` is different: its fresh review reads the uncommitted diff, in the implementer's own worktree, by a subagent the implementer dispatches there; the commit carries the `Fresh-review:` trailer ([`development.md`](../../../docs/development.md#commit-messages)), and rule 5 does not hold it back from a push.
 2. **Fresh-context review:** dispatch the Sonnet [`reviewer`](../../../.claude/agents/reviewer.md) agent by default, for the first review and re-reviews.
    The first review of a PR built by Sonnet or dsh is the exception: dispatch it to Opus or Antigravity, as a general-purpose subagent with `model: opus`, given the reviewer instruction below with `Opus` as `<Reviewer>`, or as an Antigravity worker; do not run the `reviewer` agent with a model override, because it names `Sonnet` in the verdict.
    On #160 a Sonnet review missed four bugs.
    Have the reviewer review the diff against the merge base for `AGENTS.md` standards and `docs/SPEC.md` compliance (plus `AGENTS.md` Committing rule 5 when the diff touches a path it names).
-   Reviewers share one detached worktree, `.claude/worktrees/review` in the primary checkout, switched per PR with `git checkout --detach origin/<branch>`, or, for a commit not yet pushed, with `git checkout --detach <SHA>` of the commit the implementer reported; settings deny `git worktree remove`, so a worktree per review outlives the run.
+   Each review gets its own detached worktree, `.claude/worktrees/review-<PR or SHA>` in the primary checkout, made with `git worktree add --detach <path> origin/<branch>`, or, for a commit not yet pushed, `<SHA>` of the commit the implementer reported; settings deny `git worktree remove`, so remove it after the run as [`managing-worktrees`](../managing-worktrees/SKILL.md) says.
+   Never run `git checkout` or `git switch` in the implementer's checkout; if your working directory is not a `review-*` worktree, create one first.
    Before asking, the implementer scans its own diff for rule 5's over-broad words and checks every quoted figure against its source.
    Every reviewer brief, whatever the reviewer (Claude subagent, Orca worker or Antigravity), ends with this instruction, copied into the brief word for word:
 
@@ -62,8 +63,8 @@ Part of the [`running-unattended`](SKILL.md) skill.
    Leave out `--delete-branch`: on a PR that merges at once it also deletes the local worktree holding the branch, and the repo deletes the remote branch on merge anyway.
    GitHub then merges once the `main` ruleset's required checks pass and every review thread is resolved, but it reads neither the review comment nor review-body findings, so arm last, and disarm (`gh pr merge <n> --disable-auto`) before pushing a fix.
    A stacked PR's base has no ruleset, so arming it would merge it into its parent without CI: arm it only once its parent has merged and GitHub has retargeted it to `main`.
-   `gh pr merge --auto` uses GraphQL, which a cloud session's proxy refuses: there, arm and disarm through the REST route in [`cloud.md`](../working-in-an-environment/cloud.md#github-rest-only).
-   Until that row records the route's method and body, a cloud run leaves a PR that meets this bar unarmed, says so in a PR comment, and lists it under **Needs you**.
+   `gh pr merge --auto` uses GraphQL, which a cloud session's proxy refuses: there, arm, merge and disarm through the MCP tools in [`cloud.md`](../working-in-an-environment/cloud.md#github-rest-only).
+   In a cloud session, arm with the MCP tool `enable_pr_auto_merge`, or merge a `clean` PR directly, as the rows of that table say.
    - No check has failed on `HEAD`, `mise run check` passed locally on that same commit, and any CodeRabbit review a person requested since the latest push has completed or had its step 4 check.
    - Every review-body finding is answered (the ruleset enforces resolved threads), and the dispatched review's comment at `HEAD` says `clean` (for a rule 5 PR, the comment you posted from its pre-push review): confirm its URL came from the review you dispatched at `HEAD` and run the local (GraphQL) or cloud (REST) command below, whichever your shell can run (both accept only `OWNER`/`MEMBER`/`COLLABORATOR` comments).
      The bar is met only when it prints `true`.
