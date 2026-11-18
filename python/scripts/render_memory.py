@@ -5,19 +5,9 @@ Usage::
     mise run render-memory -- --film location [--ticks 12..=120] [--binary [LABEL=]PATH ...]
         [--runs N] [--software-only] [--no-build]
 
-Each run is one ``stuntreel`` process with the parity pipeline's command
-(:func:`stunt_reel.parity_pipeline.render_film`), rendering into
-``build/scratch/render-memory/<film>/<label>_<n>/store`` with its output in ``log.txt`` beside
-it. Peak is the process's high-water resident set: ``ru_maxrss`` from ``wait4`` where the
-platform has it (Linux, macOS), else the peak working set, with peak private bytes beside it
-(Windows). Steady is the median resident set, sampled every 0.1 s, over the last four fifths
-of the run, past start-up and the world's upload. Each line also gives the SHA-256 prefixes of
-the run's ``frames.zst``, ``layers.zst`` and ``palettes.zst``, and the last line says whether
-every run's stores are identical.
-
-Without ``--binary`` it measures the release binary, built first unless ``--no-build``. With
-several, runs alternate (A, B, A, B, ...) so drift on the machine falls on both; a binary from
-``mise run build-at`` is the usual "before".
+Each run renders the film in one ``stuntreel`` process with the parity pipeline's command,
+into ``build/scratch/render-memory/<film>/<label>_<n>/``; runs of several binaries alternate.
+What each figure is, and how to compare two builds: ``docs/howto/measure-a-renders-memory.md``.
 """
 
 from __future__ import annotations
@@ -148,7 +138,10 @@ def verdict(rows: Sequence[Row]) -> str:
 
 
 def _sample(pid: int) -> tuple[int, int, int] | None:
-    """The process's resident set, peak working set and peak private bytes, 0 where unknown."""
+    """The process's resident set, peak working set and peak private bytes, 0 where unknown.
+
+    ``None`` once the process is gone. The two peaks exist on Windows only.
+    """
     import psutil  # type: ignore[import-untyped]  # noqa: PLC0415  # no stubs; dev tools only
 
     try:
@@ -163,7 +156,11 @@ def _sample(pid: int) -> tuple[int, int, int] | None:
 
 
 def _reap(proc: subprocess.Popen[bytes]) -> tuple[int | None, int | None]:
-    """The exit code and ``wait4`` peak resident bytes once ``proc`` has exited, else Nones."""
+    """The exit code and peak resident bytes once ``proc`` has exited, else ``(None, None)``.
+
+    Reaps ``proc`` and sets its ``returncode`` when it has exited. The peak is ``wait4``'s
+    ``ru_maxrss``; on Windows, which has no ``wait4``, it is always ``None``.
+    """
     if sys.platform == "win32":
         code, maxrss = proc.poll(), None
     else:
@@ -196,22 +193,32 @@ class MemoryProbe:
         peak_wset = peak_private = 0
         start = time.monotonic()
         with self.log.open("wb") as sink:
+            # Its own session, so a timeout's kill_tree reaches anything it started.
             proc = subprocess.Popen(  # noqa: S603  # argv is the parity pipeline's own command
-                argv, cwd=REPO_ROOT, env=env, stdout=sink, stderr=subprocess.STDOUT
+                argv,
+                cwd=REPO_ROOT,
+                env=env,
+                stdout=sink,
+                stderr=subprocess.STDOUT,
+                start_new_session=sys.platform != "win32",
             )
-            while True:
-                if (sample := _sample(proc.pid)) is not None:
-                    samples.append((time.monotonic() - start, sample[0]))
-                    peak_wset = max(peak_wset, sample[1])
-                    peak_private = max(peak_private, sample[2])
-                code, maxrss = _reap(proc)
-                if code is not None:
-                    break
-                if timeout is not None and time.monotonic() - start > timeout:
-                    proc.kill()
+            try:
+                while True:
+                    # Reap before sampling: a sample of an exited, unreaped child reads 0.
+                    code, maxrss = _reap(proc)
+                    if code is not None:
+                        break
+                    if timeout is not None and time.monotonic() - start > timeout:
+                        return process_tree.TIMEOUT_EXIT, f"timeout after {timeout:g}s"
+                    if (sample := _sample(proc.pid)) is not None and sample[0] > 0:
+                        samples.append((time.monotonic() - start, sample[0]))
+                        peak_wset = max(peak_wset, sample[1])
+                        peak_private = max(peak_private, sample[2])
+                    time.sleep(self.interval)
+            finally:
+                if proc.returncode is None:
+                    process_tree.kill_tree(proc)
                     proc.wait()
-                    return process_tree.TIMEOUT_EXIT, f"timeout after {timeout:g}s"
-                time.sleep(self.interval)
         wall = time.monotonic() - start
         peak = maxrss or peak_wset or max((rss for _, rss in samples), default=0)
         self.memory = Memory(peak, peak_private or None, steady_bytes(samples, wall), wall)
@@ -264,7 +271,11 @@ def measure(
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--film", required=True, choices=references.reference_films(REPO_ROOT))
-    parser.add_argument("--ticks", default=None, help="A..=B (default: the captured ticks)")
+    parser.add_argument(
+        "--ticks",
+        default=None,
+        help="A..=B (default: every tick from the first captured to the last)",
+    )
     parser.add_argument(
         "--binary",
         action="append",

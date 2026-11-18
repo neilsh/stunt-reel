@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 import render_memory  # noqa: E402
 
 from render_helpers import reference_tree  # noqa: E402
-from stunt_reel import parity_pipeline  # noqa: E402
+from stunt_reel import parity_pipeline, process_tree  # noqa: E402
 
 MIB = 1 << 20
 
@@ -181,3 +182,12 @@ def test_the_probe_returns_a_failing_childs_code_and_output(tmp_path: Path) -> N
     code, tail = probe([sys.executable, "-c", "print('boom'); raise SystemExit(3)"], None, 30.0)
     assert code == 3
     assert "boom" in tail
+
+
+def test_the_probe_ends_a_child_that_outlives_its_timeout(tmp_path: Path) -> None:
+    probe = render_memory.MemoryProbe(tmp_path / "log.txt", interval=0.05)
+    started = time.monotonic()
+    code, tail = probe([sys.executable, "-c", "import time; time.sleep(30)"], None, 0.3)
+    assert code == process_tree.TIMEOUT_EXIT
+    assert tail == "timeout after 0.3s"
+    assert time.monotonic() - started < 10

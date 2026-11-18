@@ -21,7 +21,7 @@ The proxy answers GraphQL with 403, so `gh issue`, `gh pr`, `gh repo view` and `
 | State (Shutdown's merged or closed) | `gh api repos/{owner}/{repo}/pulls/<n> --jq '[.state, .merged] \| @tsv'` |
 | Comment | `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/<name>.md` |
 | Labels | the issue label routes in `issue-tracker.md`; a PR shares its issue number |
-| Squash-merge a green PR | `gh api -X PUT repos/{owner}/{repo}/pulls/<n>/merge -f merge_method=squash -f sha=<full head SHA> -f commit_title='<PR title> (#<n>)'`; `sha` refuses the merge if the head moved since it was checked (worked 2026-11-18, #706) |
+| Squash-merge a green PR | `gh api -X PUT repos/{owner}/{repo}/pulls/<n>/merge -f merge_method=squash -f sha=<head SHA> -f commit_title='<PR title> (#<n>)'`, with the full head SHA from `gh api repos/{owner}/{repo}/pulls/<n> --jq .head.sha`. `sha` refuses the merge if the head moved since it was checked; with no `commit_message`, GitHub's default squash body applies (worked 2026-11-18, #706) |
 | Arm or disarm auto-merge | the proxy's `repos/{owner}/{repo}/pulls/<n>/ccr/auto_merge` route, which it names in place of `gh pr merge --auto` ([`cloud-sessions.md`](../../../docs/cloud-sessions.md#what-a-cloud-session-cannot-do)); its method and body for arming and disarming are not yet recorded: record them in this row the first time they work |
 
 A stacked PR can be neither merged nor armed here: keep a dependent change unstacked, started once its parent merges.
