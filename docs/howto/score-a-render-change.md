@@ -178,4 +178,6 @@ A reviewer recomputing a quoted sweep verdict ([`AGENTS.md`](../../AGENTS.md#com
 **Two existing report trees.**
 `mise run judge -- <baseline report dir> <candidate report dir> [--target ...] [--track ...]` prints the same table and winner line for two `stuntreel parity` runs, the rows labelled `run=baseline` and `run=candidate`.
 A report dir holds each film's report as `<film>_report/report.json` (a sweep variant kept by `--keep-best`), `<film>_current/report.json` (`build/parity/report`) or `<film>/report.json`; a film without one counts as failed on that side.
+On stderr it also prints, per film, both reports' `mean_index_agreement_scored` and the counts of frames where the candidate's `index_agreement` is better, equal or worse than the baseline's, pairing frames by `ordinal` over those scored in both reports (every frame when a report predates fade scoring).
+These counts are information for a tie fix, whose SSIM may hide a few moved pixels; the verdict and `--recheck` ignore them.
 To judge two commits, copy `build/parity/report` aside after `mise run parity` on the first, then run it on the second.
