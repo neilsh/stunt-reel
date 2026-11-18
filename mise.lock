@@ -164,7 +164,7 @@ specifiers = ["0.85.1"]
 strip_components = "1"
 
 [tools."http:dosbox-automation"."platforms.linux-x64"]
-checksum = "blake3:0178b3175ed86f7519d6e910e25ceb3f4791195c0aff2d0f04700a0c6fb227b4"
+checksum = "sha256:d205021daf20435e9bee7c305af08ee30e74717aef6cc3db4144a1e6364207c9"
 url = "https://github.com/dosbox-automation/dosbox-automation/releases/download/v0.85.1/dosbox-automation-0.85.1-7567ec4-linux-x86_64.tar.xz"
 
 [tools."http:dosbox-automation"."platforms.linux-x64-baseline"]
