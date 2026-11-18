@@ -255,6 +255,7 @@ class DrawStep:
     x: int  # an object's placed position, or the slot's own, as high words
     y: int
     z: int
+    depth: float  # distance along the view axis of the exact position (see :func:`view_depth`)
 
 
 @dataclass(frozen=True)
@@ -415,16 +416,18 @@ def walk_slot(
                 if entry and slot is not None:
                     reached.append(node)
                     where = (math.floor(slot.x), math.floor(slot.y), math.floor(slot.z))
-                    slot_step = DrawStep("slot", node, obj, *where)
-                    before = depth(slot.x, slot.y, slot.z) > depth(x, y, z)
+                    slot_depth = depth(slot.x, slot.y, slot.z)
+                    object_depth = depth(x, y, z)
+                    slot_step = DrawStep("slot", node, obj, *where, slot_depth)
+                    before = slot_depth > object_depth
                     if obj and before:
                         order.append(slot_step)
                     if obj:
-                        order.append(DrawStep("object", node, obj, x, y, z))
+                        order.append(DrawStep("object", node, obj, x, y, z, object_depth))
                     if not obj or not before:
                         order.append(slot_step)
                 elif obj:
-                    order.append(DrawStep("object", node, obj, x, y, z))
+                    order.append(DrawStep("object", node, obj, x, y, z, depth(x, y, z)))
                 return
             elif kind in (SP_GROUND, SP_GLEAF):
                 return

@@ -79,10 +79,10 @@ The explosion is slot 11 (shape `0x0107`, [`sod-animate.md`](sod-animate.md)), a
 
 `mise run scene-walk -- corpus/stisldem/VAULT/CTRY.FLM --tick 871 --slot 11` reproduces this replay: it samples the film with `stuntreel film-slots`, reads the extent from the shapes' headers and walks the image's tree with `scene_tree.walk_slot`, which splits the entry as § 2's handlers do.
 It reports leaf `0x7BE0`, the five cutting planes above, each sent to the eye's side, and the five `SP_1NODE` nodes on the path, taken as near.
-It also reports five slope nodes (`0x0622`, `0x062C`, `0x5126`, `0x75DE`, `0x75E8`, each split by the slot's centre) and five plane nodes whose planes the extent clears (`0x77C4`, `0x77E4`, `0x7A4C`, `0x7A54`, `0x7BAE`) before the cutting ones.
+It also reports five slope nodes (`0x0622`, `0x062C`, `0x5126`, `0x75DE`, `0x75E8`, each split by the slot's centre) and five plane nodes whose planes the extent clears (`0x77C4`, `0x77E4`, `0x7A4C`, `0x7A54`, `0x7BAE`).
 Without `--slot` it prints each slot's DOS-axes position, shape and extent, and the eye and look target.
-The draw order it prints around the explosion is the `0x03DD` tower twice, shape `0x060A` at `(−3156, 0, 2482)` in leaf `0x7BF6`, the explosion, then the hill; `0x060A` lies 12.2 m behind the eye.
-Its view depths, taken along the eye-to-target axis at each shape's origin, are the ones above (22.5, 10.4, 21.7, 20.7 m).
+The draw order it prints around the explosion is the `0x03DD` tower twice, shape `0x060A` at `(−3156, 0, 2482)` in leaf `0x7BF6`, the explosion, then the hill; `0x060A` has depth −12.2 m, behind the eye.
+It prints each step's view depth, taken along the eye-to-target axis at the shape's origin without its ground offset: 22.5 m for the explosion, 10.4 m for the hill and 21.7 and 20.7 m for the two towers, as above.
 The handler compares a plane at the high word of the eye plus the high word of the negated eye plus the node's sum (`0x1F05..0x1F0D`, with the walk's start at `0x1E43..0x1E7E`), which is one metre below the sum for an eye with a fractional part; the command prints the sum (`x = −3188` for `0x7BBE`) and compares at the lower value.
 
 So the replay gives tower, explosion, hill, the order the capture shows (over the tower, under the hill).

@@ -150,9 +150,10 @@ def frame_lines(frame: Frame) -> list[str]:
 
 def _step_line(step: scene_tree.DrawStep) -> str:
     where = f"({step.x}, {step.y}, {step.z})"
+    tail = f"leaf 0x{step.node:04X}, view depth {step.depth:.1f} m"
     if step.kind == "slot":
-        return f"slot at {where}, leaf 0x{step.node:04X}"
-    return f"object 0x{step.obj:04X} at {where}, leaf 0x{step.node:04X}"
+        return f"slot at {where}, {tail}"
+    return f"object 0x{step.obj:04X} at {where}, {tail}"
 
 
 def walk_lines(result: scene_tree.SlotWalk, context: int) -> list[str]:
