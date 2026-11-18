@@ -22,7 +22,7 @@ use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW};
 use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource, ViewCamera};
 use stunt_core::sod::{
     DECAL_FLAG_BIT, DecodeMode, EPSILON_DISPLACEMENT, OP_COLOR, OP_ID, OP_LINECOL, OP_MOVETO,
-    OP_POLYZ, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
+    OP_PERFDISK, OP_POLYZ, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
 };
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
@@ -889,4 +889,38 @@ fn a_screen_line_exports_as_a_lines_primitive() {
         .cross(p(triangles[2]) - p(triangles[0]))
         .length();
     assert!(area > 1.0, "{area}");
+}
+
+/// One `OP_PERFDISK` of radius 40 about raw point 0, its normal along +z, at scale 1.0.
+fn disc() -> SodModelIr {
+    let mut words: Vec<u16> = vec![OP_ID, 100, 0, 0, 0, OP_VECTORS, 2, 0];
+    for c in [0i16, 0, 0, 0, 0, -20] {
+        words.push(c.cast_unsigned());
+    }
+    words.extend([OP_COLOR, 9, OP_PERFDISK, 0, 40, 12, OP_RETURN]);
+    let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    decode_sod(&bytes, "DISC", None, DecodeMode::Strict).expect("disc shape")
+}
+
+/// A disc's rim vertices keep the vector to its centre in the IR, but export the unit front
+/// normal of their face: one face looks along +z, the other along -z.
+#[test]
+fn a_disc_exports_its_faces_front_normals() {
+    let glb = parse_glb(&export_shape(&disc()).expect("export"));
+    let positions = glb.floats(glb.primitive_accessor(0, "POSITION"));
+    let normals = glb.floats(glb.primitive_accessor(0, "NORMAL"));
+    let at = |data: &[f32], i: u32| Vec3::from_slice(&data[i as usize * 3..i as usize * 3 + 3]);
+    let primitive = &glb.array("meshes")[0]["primitives"][0];
+    let triangles = glb.indices(primitive["indices"].as_u64().map(to_usize).unwrap());
+    assert_eq!(triangles.len(), 2 * 14 * 3, "two 16-gons");
+    let mut sides = [0usize; 2];
+    for tri in triangles.as_chunks::<3>().0 {
+        let [a, b, c] = tri.map(|i| at(&positions, i));
+        let front = (c - a).cross(b - a).normalize();
+        for &i in tri {
+            assert!((at(&normals, i) - front).length() < 1e-4, "vertex {i}");
+        }
+        sides[usize::from(front.z > 0.0)] += 1;
+    }
+    assert_eq!(sides, [14, 14], "one face for each side");
 }

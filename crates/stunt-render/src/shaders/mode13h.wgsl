@@ -9,13 +9,31 @@ struct CameraUniform {
     inv_rotation_proj: mat4x4<f32>,
     // Half a Mode 13h pixel of the view in NDC.
     line_half_ndc: vec2<f32>,
-    _pad1: vec2<f32>,
+    // The lens zoom over PLAYONE's default lens, the factor a disc is squeezed by along the
+    // view's depth (`squeeze_disc`).
+    disc_depth_scale: f32,
+    _pad1: f32,
 };
 
 // SodVertex::flags bits of a line corner (contracts/shape/mod.rs VERTEX_FLAG_LINE*).
 const FLAG_LINE: u32 = 0x08u;
 const FLAG_LINE_SIDE: u32 = 0x10u;
 const FLAG_LINE_END: u32 = 0x20u;
+// SodVertex::flags bit of an OP_PERFDISK rim vertex (contracts/shape/mod.rs VERTEX_FLAG_DISC).
+const FLAG_DISC: u32 = 0x40u;
+
+// Moves a disc's rim vertex at `clip`, whose disc centre is at `centre`, to where PLAYONE's
+// outline puts it: its offset from the centre scaled along the view's depth by
+// `camera.disc_depth_scale`, the lens zoom. PLAYONE builds the outline from the centre's depth
+// in the zoomed matrix's depth units (true depth over the zoom) and the normal rescaled to the
+// screen rows' units (0xA08E..0xA106), so the disc it outlines is the true one with every depth
+// offset from the centre times the zoom (research/playone-exe/sod-vm-generators.md section 8.8).
+// The projection is symmetric, so clip x and y hold no depth term: the depth offset lives in
+// clip z and w alone.
+fn squeeze_disc(clip: vec4<f32>, centre: vec4<f32>) -> vec4<f32> {
+    let offset = clip - centre;
+    return centre + vec4<f32>(offset.xy, offset.zw * camera.disc_depth_scale);
+}
 
 // Moves a line corner at `clip`, whose segment's other end is at `other`, to the corner of a
 // screen quad one pixel wide: half a pixel across the segment's minor screen axis (to the
@@ -117,6 +135,9 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     if ((in.attr.y & FLAG_LINE) != 0u) {
         let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
         out.clip_position = widen_line(out.clip_position, other, in.attr.y);
+    } else if ((in.attr.y & FLAG_DISC) != 0u) {
+        let centre = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+        out.clip_position = squeeze_disc(out.clip_position, centre);
     }
     out.palette_index = in.attr.x & 255u;
     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
