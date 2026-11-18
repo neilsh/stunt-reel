@@ -87,9 +87,12 @@ _Source: [the CTRY tick 871 explosion replayed](../../work/2026-11/721_ctry-871-
 
 ## 5. Which Shapes Carry Buckets
 
-`[Bounded Observation]`, one static census of the game's own shapes: the 2,516 shapes of the stock `RES` files (`SUPERSET.ALL`; FreeFlight's six `SCENERY*.RES` are byte-identical to the game's), their collision lists walked as the probe's object walk does (`0x2886..0x289E`, through the tables at `DGROUP:0x09FC` in [`memory-map.md`](memory-map.md)); nothing was run.
+`[Bounded Observation]`, one static census of the game's own shapes: the 2,516 shapes of the stock `RES` files (`SUPERSET.ALL`; FreeFlight's six `SCENERY*.RES` are byte-identical to the game's), every box their collision lists reach, nested lists included, read as the probe's object walk `0x2886..0x289E` reads them (record types and sizes: the tables at `DGROUP:0x09FC` in [`memory-map.md`](memory-map.md)); nothing was run.
 The list starts at the shape segment's word `+0xA`, the `.SOD` header's `collision_meta` ([`sod.md`](../formats/sod.md)), an offset that counts from two bytes before the file's first byte: read so, all 1,279 lists end at a type word `0xFFFF`; read as a file offset, none does.
 Types 0 and 4 (12 bytes) lead to a nested list at `+0xA` when that word is nonzero (`0x2922`, `0x295D`, `0x2AD3`, `0x2B0E`); type 2 (16 bytes) carries § 3's code word at `+0xE`.
+A code records only in the walk's first context, the table `0x09FC` (`0x2979`).
+The walk holds the actor's own collision list in `DI` (`0x285B`): when the actor's shape has none, every nested list is walked in that context (`0x2955`, `0x2A0C`, `0x2B06`); when it has one, a nested list is walked through the actor's records instead (tables `0x0A02`, `0x0A08`, `0x0A0E`), which skip an actor box coded 1 to 8 (`0x2B31`, `0x2D05`), every actor box met by an object record of type 4 (`0x2CFA`) and every actor record of type 4 (`0x2CF6`), and return to `0x09FC` on the object's nested list only after an actor record passes their overlap test (`0x2BD9`, `0x2CA2`, `0x2DAA`, `0x2E74`, `0x2F3A`).
+So the census counts the codes an actor with no collision list can reach; 68 of the 83 coded shapes have a coded box in the top list itself, and the other 15 only in nested lists.
 
 | Shapes | Count |
 |---|---|
