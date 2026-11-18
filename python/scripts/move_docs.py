@@ -30,8 +30,9 @@ are repo-relative POSIX paths, and each may end in ``#<anchor>``, a GitHub headi
 fragment keeps the section's anchor; a ``from`` without one names the whole-file destination
 for links to the note that carry no fragment, once per note. ``from`` names the note by its
 pre-move path; the note must be tracked and each anchor must be one of its headings. On either
-phase a link to a split note is written to the mapped file with its query kept, and an inbound
-link whose fragment names no mapped section is reported and makes the run exit non-zero without
+phase a link to a split note is written to the mapped file with its query kept; a link whose
+fragment is a heading the note keeps, when the plan does not move the note, is left alone, and
+an inbound link whose fragment names no mapped section and no kept heading is reported and makes the run exit non-zero without
 writing; the move phase checks the files that stay and the files about to move before any
 git mv runs. A self-link (a bare ``#<anchor>`` in the note) whose section a rule moved is
 printed as a warning under its own heading and does not change the exit status, since the note's
@@ -83,6 +84,8 @@ class Split:
     default: str | None = None
     #: Each section's GitHub anchor to (its new file, the anchor to write there or None).
     sections: dict[str, tuple[str, str | None]] = field(default_factory=dict)
+    #: Anchors of headings the note keeps at its own path, so a link to one needs no rule.
+    staying: set[str] = field(default_factory=set)
 
 
 _MOVE_KEYS = frozenset(("from", "to"))
@@ -330,6 +333,8 @@ def _check_splits(
         for key in split.sections:
             if key not in anchors:
                 raise MovesError(f"[[split]] {source}#{key} names no heading of {source}")
+        if _moved(source, mapping) is None:
+            split.staying = anchors - split.sections.keys()
 
 
 def _heading_anchors(text: str) -> set[str]:
@@ -690,8 +695,11 @@ def _split_section(
     query, hashmark, fragment = rest.partition("#")
     if not hashmark or not fragment:
         return (split.default, rest) if split.default is not None else None
-    section = split.sections.get(slug(fragment))
+    key = slug(fragment)
+    section = split.sections.get(key)
     if section is None:
+        if key in split.staying:
+            return None
         if unmapped is not None:
             unmapped.append(
                 f"{source_new}: {target} points at a section of {resolved} "
