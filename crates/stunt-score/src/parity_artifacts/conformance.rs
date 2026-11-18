@@ -1,6 +1,7 @@
 use super::*;
 use crate::render_store::{Palette, RenderStore};
 use std::collections::BTreeMap;
+use stunt_parity::AdapterClass;
 use stunt_parity::SCHEMA_VERSION;
 
 /// The shared corpus, resolved without the process working directory.

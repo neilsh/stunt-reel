@@ -7,17 +7,17 @@
 //! 0-based 50 Hz tick they show, so a capture is compared against the render at the
 //! same `film_tick`. Captures that predate film-clock tagging are rejected.
 //!
-//! Each matched pair is scored by [`score::score_frame`]. Scores follow Invariant `[I6]`:
+//! Each matched pair is scored by `score::score_frame`. Scores follow Invariant `[I6]`:
 //! both sides are reduced to Rec. 601 luminance, stretched from 320x200 to the 320x240
 //! physical 4:3 raster, and compared window by window with the shared
 //! `compute_window_scores` evaluator, whose windows the gate averages itself so the same
 //! windows also attribute the loss by class.
 //! `IoU` compares each side's non-sky mask, which measures framing agreement independently
 //! of shading. A capture's sky is every
-//! pixel in the sky bands ([`mask::CAPTURE_SKY_INDICES`]), not one modal index.
+//! pixel in the sky bands (`mask::CAPTURE_SKY_INDICES`), not one modal index.
 //!
 //! The original fades its palette with the film's brightness variable, and so does the
-//! render. Each capture's fade level (see [`fade::fade_level`]) is measured from its captured
+//! render. Each capture's fade level (see `fade::fade_level`) is measured from its captured
 //! palette; frames whose level falls below `--min-fade-level` are reported but not
 //! scored, because SSIM of near-black frames says little. The floor is applied to the film's
 //! authored brightness (var 14) from `render.json` instead, with the measured level kept in the
@@ -28,7 +28,7 @@
 //! (`crate::render_store`, ADR 0027).
 //!
 //! `--compare <report.json>` additionally matches the fresh scores against a previous
-//! run by `film_tick` (see [`report_diff::compare_reports`]), so a change is judged frame by frame
+//! run by `film_tick` (see `report_diff::compare_reports`), so a change is judged frame by frame
 //! rather than only by the means.
 
 mod args;
@@ -70,7 +70,7 @@ use stunt_parity::{CapturedFrame, FilmCheck, FilmField, FilmId, RenderAdapter};
 use crate::parity_artifacts;
 use crate::render_store::RenderStore;
 
-pub(crate) use args::usage;
+pub use args::usage;
 
 /// `[I6]` initial acceptance threshold on the scored mean SSIM.
 const I6_INITIAL_SSIM: f32 = 0.88;
@@ -357,7 +357,11 @@ fn print_summary(report: &Report, min_fade_level: f32) {
 }
 
 /// Runs the comparator and writes `report.json` plus contact sheets.
-pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
+///
+/// # Errors
+///
+/// A message for the terminal when the inputs cannot be read or an output cannot be written.
+pub fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
     fs::create_dir_all(&args.output)
         .map_err(|e| format!("create output directory {}: {e}", args.output.display()))?;

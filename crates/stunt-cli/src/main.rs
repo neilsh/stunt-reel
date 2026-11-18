@@ -44,7 +44,7 @@ fn main() {
     let mut subcommand_args = env::args().skip(1);
     match subcommand_args.next().as_deref() {
         Some("parity") => {
-            if let Err(e) = parity::run(subcommand_args) {
+            if let Err(e) = stunt_score::parity::run(subcommand_args) {
                 eprintln!("[stuntreel error] {e}");
                 std::process::exit(1);
             }

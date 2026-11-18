@@ -43,7 +43,7 @@ pub(crate) fn palette_rgb(palette: &Palette, index: u8) -> (u8, u8, u8) {
 
 /// A store that could not be written or read, naming the file.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum StoreError {
+pub enum StoreError {
     /// Reading or writing a file failed.
     #[error("{path}: {source}")]
     Io {

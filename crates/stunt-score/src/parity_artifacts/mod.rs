@@ -12,14 +12,12 @@ use serde_json::Value;
 use stunt_core::contracts::PaletteControls;
 use stunt_core::scene::ViewCamera;
 use stunt_parity::{
-    AdapterClass, ArtifactError as SchemaError, CameraPose, CaptureSet, FilmId, Geometry,
-    RENDER_SCHEMA_VERSION, RenderAdapter, RenderPalette, RenderRecord, RenderTick, Report,
-    VideoCapture,
+    ArtifactError as SchemaError, CameraPose, CaptureSet, FilmId, Geometry, RENDER_SCHEMA_VERSION,
+    RenderAdapter, RenderPalette, RenderRecord, RenderTick, Report, VideoCapture,
 };
-use stunt_render::{AdapterIdentity, RenderedPage};
 
-use crate::link::sha256;
 use crate::render_store::{StoreError, StoreWriter, check_derivable};
+use crate::sha256;
 
 /// Document written beside a render directory's frames, last.
 pub(crate) const RENDER_DOCUMENT: &str = "render.json";
@@ -28,7 +26,7 @@ pub(crate) const CAPTURE_META: &str = "meta.json";
 
 /// A broken artifact read or write, naming the file.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum AdapterError {
+pub enum AdapterError {
     /// Reading a file failed.
     #[error("read {path}: {source}")]
     Read {
@@ -118,7 +116,7 @@ fn schema(path: &Path, source: SchemaError) -> AdapterError {
 
 /// Film identity recorded beside a render: the name and bytes of the `.FLM` at `flm`, and the
 /// bytes of the archive, exactly as the scene loaded them; `None` for an input it did not read.
-pub(crate) fn film_identity(flm: Option<(&Path, &[u8])>, archive: Option<&[u8]>) -> FilmId {
+pub fn film_identity(flm: Option<(&Path, &[u8])>, archive: Option<&[u8]>) -> FilmId {
     FilmId {
         name: flm
             .and_then(|(path, _)| path.file_name())
@@ -146,21 +144,21 @@ fn camera_pose(camera: ViewCamera) -> CameraPose {
     }
 }
 
-/// The `render.json` entry for the adapter *identity* names: class `Cpu` for a CPU
-/// implementation, `Hardware` otherwise.
-pub(crate) fn render_adapter(identity: &AdapterIdentity) -> RenderAdapter {
-    RenderAdapter {
-        name: identity.name.clone(),
-        class: if identity.is_cpu {
-            AdapterClass::Cpu
-        } else {
-            AdapterClass::Hardware
-        },
-    }
+/// A drawn page as the journal reads it, row-major from the top row, one entry per pixel.
+#[derive(Debug, Clone, Copy)]
+pub struct PageView<'a> {
+    /// Page width in pixels.
+    pub width: u32,
+    /// Tightly packed RGBA8 pixels.
+    pub rgba: &'a [u8],
+    /// Unlit palette indices.
+    pub indices: &'a [u8],
+    /// Layer ids.
+    pub layers: &'a [u32],
 }
 
 /// Collects one render directory: its planes through the store, and its document, written last.
-pub(crate) struct RenderJournal {
+pub struct RenderJournal {
     dir: PathBuf,
     film: FilmId,
     geometry: Geometry,
@@ -168,12 +166,25 @@ pub(crate) struct RenderJournal {
     store: StoreWriter,
 }
 
+impl std::fmt::Debug for RenderJournal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RenderJournal")
+            .field("dir", &self.dir)
+            .field("ticks", &self.ticks.len())
+            .finish_non_exhaustive()
+    }
+}
+
 impl RenderJournal {
     /// Starts a journal for `dir`; the caller has already created the directory.
     ///
     /// Any `render.json` already in `dir` is removed first, so a run that fails or renders no
     /// whole tick never leaves the previous render readable as its own.
-    pub(crate) fn begin(dir: &Path, film: FilmId, geometry: Geometry) -> Result<Self, StoreError> {
+    ///
+    /// # Errors
+    ///
+    /// When an old `render.json` in `dir` cannot be removed.
+    pub fn begin(dir: &Path, film: FilmId, geometry: Geometry) -> Result<Self, StoreError> {
         let record = dir.join(RENDER_DOCUMENT);
         match fs::remove_file(&record) {
             Ok(()) => {}
@@ -199,24 +210,26 @@ impl RenderJournal {
     ///
     /// The page's picture is not kept: it must be `palette[index]` at every pixel for the
     /// film palette of `controls`, and a page that is not is refused.
-    pub(crate) fn write(
+    ///
+    /// # Errors
+    ///
+    /// When the page is not its palette over its index plane, or the store cannot be written.
+    pub fn write(
         &mut self,
         tick: u32,
         controls: PaletteControls,
         camera: ViewCamera,
         credits: bool,
-        page: &RenderedPage,
+        page: PageView<'_>,
     ) -> Result<(), StoreError> {
         let palette = controls.film_palette();
-        check_derivable(&palette, page.indices(), page.rgba(), page.width()).map_err(
-            |message| StoreError::Corrupt {
+        check_derivable(&palette, page.indices, page.rgba, page.width).map_err(|message| {
+            StoreError::Corrupt {
                 path: self.dir.clone(),
                 message: format!("tick {tick}: {message}"),
-            },
-        )?;
-        let palette_index = self
-            .store
-            .push(tick, &palette, page.indices(), page.layers())?;
+            }
+        })?;
+        let palette_index = self.store.push(tick, &palette, page.indices, page.layers)?;
         self.ticks.push(RenderTick {
             tick,
             palette: render_palette(controls),
@@ -229,7 +242,11 @@ impl RenderJournal {
 
     /// Closes the store and writes `render.json` last, naming *adapter* as the one that drew the
     /// frames; neither is written when no whole-tick frame was stored.
-    pub(crate) fn finish(self, adapter: RenderAdapter) -> Result<(), StoreError> {
+    ///
+    /// # Errors
+    ///
+    /// When the store or `render.json` cannot be written.
+    pub fn finish(self, adapter: RenderAdapter) -> Result<(), StoreError> {
         let Some(table) = self.store.finish()? else {
             return Ok(());
         };
@@ -247,7 +264,11 @@ impl RenderJournal {
 }
 
 /// Reads and validates a render directory's `render.json`.
-pub(crate) fn read_render_record(dir: &Path) -> Result<RenderRecord, AdapterError> {
+///
+/// # Errors
+///
+/// When `render.json` is missing, unreadable or invalid.
+pub fn read_render_record(dir: &Path) -> Result<RenderRecord, AdapterError> {
     let path = dir.join(RENDER_DOCUMENT);
     let value = read_json(&path)?;
     let version = value.get("schema_version").and_then(Value::as_u64);
@@ -274,7 +295,11 @@ pub(crate) fn read_render_record(dir: &Path) -> Result<RenderRecord, AdapterErro
 }
 
 /// Validates and writes a render directory's `render.json`.
-pub(crate) fn write_render_record(dir: &Path, record: &RenderRecord) -> Result<(), AdapterError> {
+///
+/// # Errors
+///
+/// When `render.json` cannot be serialised or written.
+pub fn write_render_record(dir: &Path, record: &RenderRecord) -> Result<(), AdapterError> {
     let path = dir.join(RENDER_DOCUMENT);
     record.validate().map_err(|error| schema(&path, error))?;
     write_json(&path, record, true)

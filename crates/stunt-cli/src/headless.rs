@@ -9,13 +9,13 @@ use stunt_core::credits::CreditLines;
 use stunt_core::contracts::PaletteControls;
 use stunt_core::flm::CAMERA_FORWARD;
 use stunt_core::scene::{FilmScene, SceneFrame, ViewCamera};
-use stunt_parity::{FilmId, Geometry, RenderAdapter};
+use stunt_parity::{AdapterClass, FilmId, Geometry, RenderAdapter};
 use stunt_render::{FfmpegVideoWriter, Offscreen, PageSink, RenderedPage, Renderer, SinkError};
 
 use crate::config::CliConfig;
 use crate::page_slot::PageSlot;
-use crate::parity_artifacts::{RenderJournal, render_adapter};
 use crate::playback::{Playback, SampleKey, capture_tick};
+use stunt_score::parity_artifacts::{PageView, RenderJournal};
 
 /// File name written under --out-dir for an evenly spaced sample; whole ticks go to the
 /// render store instead.
@@ -89,7 +89,18 @@ impl SampleSink {
                         .map_err(|_| format!("{key}: tick does not fit a u32"))?;
                     if let Some(journal) = self.journal.as_mut() {
                         journal
-                            .write(tick, facts.controls, facts.camera, facts.credits, page)
+                            .write(
+                                tick,
+                                facts.controls,
+                                facts.camera,
+                                facts.credits,
+                                PageView {
+                                    width: page.width(),
+                                    rgba: page.rgba(),
+                                    indices: page.indices(),
+                                    layers: page.layers(),
+                                },
+                            )
                             .map_err(|e| format!("{key}: {e}"))?;
                     }
                 }
@@ -302,6 +313,19 @@ pub(crate) fn run_headless(
     Ok(())
 }
 
+/// The `render.json` entry for the adapter *identity* names: class `Cpu` for a CPU
+/// implementation, `Hardware` otherwise.
+fn render_adapter(identity: &stunt_render::AdapterIdentity) -> RenderAdapter {
+    RenderAdapter {
+        name: identity.name.clone(),
+        class: if identity.is_cpu {
+            AdapterClass::Cpu
+        } else {
+            AdapterClass::Hardware
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,7 +333,7 @@ mod tests {
     use stunt_parity::{FilmId, Geometry};
     use stunt_render::PageSize;
 
-    use crate::parity_artifacts::read_render_record;
+    use stunt_score::parity_artifacts::read_render_record;
 
     #[test]
     fn evenly_spaced_samples_are_named_by_their_index() {
@@ -384,7 +408,7 @@ mod tests {
     fn adapter() -> RenderAdapter {
         RenderAdapter {
             name: "Test GPU".to_string(),
-            class: stunt_parity::AdapterClass::Hardware,
+            class: AdapterClass::Hardware,
         }
     }
 
@@ -445,5 +469,20 @@ mod tests {
             .unwrap_err();
         assert_eq!(error, format!("tick {tick}: tick does not fit a u32"));
         assert_eq!(sink.written_frames, 0);
+    }
+
+    #[test]
+    fn a_cpu_adapter_is_recorded_as_cpu_and_any_other_as_hardware() {
+        let identity = |is_cpu| stunt_render::AdapterIdentity {
+            name: "llvmpipe (LLVM 19.1.7, 256 bits)".to_string(),
+            is_cpu,
+        };
+        let cpu = render_adapter(&identity(true));
+        assert_eq!(cpu.name, "llvmpipe (LLVM 19.1.7, 256 bits)");
+        assert_eq!(cpu.class, AdapterClass::Cpu);
+        assert_eq!(
+            render_adapter(&identity(false)).class,
+            AdapterClass::Hardware
+        );
     }
 }
