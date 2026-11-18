@@ -39,7 +39,7 @@ A capture is a plan, a trace pass and a dump pass of Lua that Python checks agai
 
 ### 3. Worktrees and the shared data root
 
-Several agents can work at once, each in its own `git worktree` under `.claude/worktrees/` or `.agents/worktrees/`, gitignored directories inside the primary checkout, where `mise run reap` looks for merged worktrees; one candidate with modified or untracked files stops the whole batch unless `--stash-dirty` or `--discard-untracked` allows it.
+Several agents can work at once, each in its own `git worktree` under the primary checkout's gitignored `.claude/worktrees/` or `.agents/worktrees/`, where `mise run reap` looks for merged worktrees; one candidate with modified or untracked files stops the whole batch unless `--stash-dirty` or `--discard-untracked` allows it.
 The game files and the captures are gitignored, so they live once per machine instead of once per checkout:
 
 ```text
@@ -69,7 +69,7 @@ The corpus ships the unpatched 1992 executables; `mise run game-builds` makes an
 | --- | --- |
 | `crates/stunt-core/` | Seam contracts, `.RES`/`.ALL`/`.SOD`/`.FLM` parsers, and the `.SOD` bytecode VM |
 | `crates/stunt-render/` | `wgpu` pipelines, Mode 13h palette LUT, headless renderer |
-| `crates/stunt-parity/` | Parity artifact port: typed render, capture, video and report documents with a schema version and validation, and their committed JSON Schemas in `schema/`, which the Python adapter is tested against ([ADR 0048](adr/0048-the-python-parity-adapter-is-checked-against-a-generated-schema.md)); after a field change, regenerate them with `STUNT_UPDATE_SCHEMA=1 mise exec -- cargo test -p stunt-parity --test it schema` |
+| `crates/stunt-parity/` | Parity artifact port: typed, versioned, validated render, capture, video and report documents, and their committed JSON Schemas in `schema/`, which the Python adapter is tested against ([ADR 0048](adr/0048-the-python-parity-adapter-is-checked-against-a-generated-schema.md)); `STUNT_UPDATE_SCHEMA=1 mise exec -- cargo test -p stunt-parity --test it schema` regenerates them after a field change |
 | `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity` (SSIM/IoU comparator), `export-gltf`, `shape-views` and `sod-trace` subcommands |
 | `python/stunt_reel/tac/` | dosbox-automation harness: Lua generator, REST client, capture plans, staging, MAKEONE driver — [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
 | `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |
