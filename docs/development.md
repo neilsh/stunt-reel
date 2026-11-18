@@ -1,6 +1,7 @@
 # Development guide
 
-Setup, project layout and the quick task map for working on `stunt-reel`; the gate, CI and toolchain references are on their pages, and each task's commands are a [how-to guide](#how-to-guides). The project overview is in the [README](../README.md); contributor and agent rules are in [`AGENTS.md`](../AGENTS.md).
+Setup, project layout and the quick task map for working on `stunt-reel`; the gate, CI and toolchain references are on their pages, and each task's commands are a [how-to guide](#how-to-guides).
+The project overview is in the [README](../README.md); contributor and agent rules are in [`AGENTS.md`](../AGENTS.md).
 
 ## Requirements
 
@@ -23,26 +24,40 @@ mise install   # pinned toolchains, dosbox-automation, Kaitai compiler
 mise run init  # optional: seed target/, set the hooks path and uv sync now
 ```
 
-Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks. It also points git's `core.hooksPath` at the committed [`.githooks/`](../.githooks/), whose pre-commit hook runs `mise run pre-commit` (see [quality gate](quality-gate.md)).
+Pinned versions live in [`mise.toml`](../mise.toml); `mise run init` runs `uv sync`, which installs the `kaitaistruct==0.11` runtime for the schema checks.
+It also points git's `core.hooksPath` at the committed [`.githooks/`](../.githooks/), whose pre-commit hook runs `mise run pre-commit` (see [quality gate](quality-gate.md)).
 
 > [!NOTE]
-> The quality gate (`mise run check`) runs on Linux, macOS and Windows. Capture, parity and corpus workflows are Windows + dosbox-automation + local-corpus only; elsewhere you can still build, test and render from synthetic fixtures.
+> The quality gate (`mise run check`) runs on Linux, macOS and Windows.
+> Capture, parity and corpus workflows are Windows + dosbox-automation + local-corpus only; elsewhere you can still build, test and render from synthetic fixtures.
 
 ### 2. dosbox-automation
 
-`mise install` puts `dosbox` on the `mise` path; `capture-ref`, `make-all` and `play` find it through `mise exec` (or `DOSBOX_AUTOMATION_EXE`). Nothing is registered with an agent: each run stages a mount and a conf under the data root (`<data>/stage/<film>-<label>/`), starts the emulator on a free web-server port with a random bearer token passed in the environment, and talks to it over REST. A capture is a plan, a trace pass and a dump pass of Lua that Python checks against each other ([ADR 0025](adr/0025-capture-runs-are-plans-not-sessions.md)), so two runs never collide.
+`mise install` puts `dosbox` on the `mise` path; `capture-ref`, `make-all` and `play` find it through `mise exec` (or `DOSBOX_AUTOMATION_EXE`).
+Nothing is registered with an agent: each run stages a mount and a conf under the data root (`<data>/stage/<film>-<label>/`), starts the emulator on a free web-server port with a random bearer token passed in the environment, and talks to it over REST.
+A capture is a plan, a trace pass and a dump pass of Lua that Python checks against each other ([ADR 0025](adr/0025-capture-runs-are-plans-not-sessions.md)), so two runs never collide.
 
 ### 3. Worktrees and the shared data root
 
-Several agents can work at once, each in its own `git worktree` under `.claude/worktrees/` or `.agents/worktrees/`, gitignored directories inside the primary checkout, where `mise run reap` looks for merged worktrees; one candidate with modified or untracked files stops the whole batch unless `--stash-dirty` or `--discard-untracked` allows it. The game files and the captures are gitignored, so they live once per machine instead of once per checkout:
+Several agents can work at once, each in its own `git worktree` under `.claude/worktrees/` or `.agents/worktrees/`, gitignored directories inside the primary checkout, where `mise run reap` looks for merged worktrees; one candidate with modified or untracked files stops the whole batch unless `--stash-dirty` or `--discard-untracked` allows it.
+The game files and the captures are gitignored, so they live once per machine instead of once per checkout:
 
 ```text
 <parent-of-checkout>\stunt-reel.data\   corpus\{stisldem,siarchive,stuntisl,patches}, captures\<film>\{frames,video,archives}\
 ```
 
-Code reads them there through `stunt_reel.dataroot` (`data_root()`, `corpus_root()`, `resolve_data_path()`), so a worktree holds no link and needs no setup step; a `--film corpus/...` argument resolves against the data root too, and a clone that keeps its game files in its own `corpus/` is read there only when `STUNT_DATA_ROOT` is unset, the data root has no `corpus/` directory at all (an empty one still wins), and the primary checkout's `corpus/` holds a folder of game files ([ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md)). Build outputs, the Python tool caches and `.venv` stay per worktree (see [Shared tool cache](toolchain.md#shared-tool-cache)). `STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` first converts an old-layout data root (`stisldem`, `si_archive`, `oracle`, `target_bin`, `reference`) to the layout above, refusing a root that holds both old and new names, then moves an existing in-checkout `corpus/` into it. Worktrees an older `init` linked keep their junctions until reaped: `reap` finds them as reparse points and unlinks them, and `LINK_TARGETS` in `python/stunt_reel/dataroot.py` names the old paths for `init`'s report and `--migrate`.
+Code reads them there through `stunt_reel.dataroot` (`data_root()`, `corpus_root()`, `resolve_data_path()`), so a worktree holds no link and needs no setup step; a `--film corpus/...` argument resolves against the data root too, and a clone that keeps its game files in its own `corpus/` is read there only when `STUNT_DATA_ROOT` is unset, the data root has no `corpus/` directory at all (an empty one still wins), and the primary checkout's `corpus/` holds a folder of game files ([ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md)).
+Build outputs, the Python tool caches and `.venv` stay per worktree (see [Shared tool cache](toolchain.md#shared-tool-cache)).
+`STUNT_DATA_ROOT` names a different data root, and `mise run init -- --migrate` first converts an old-layout data root (`stisldem`, `si_archive`, `oracle`, `target_bin`, `reference`) to the layout above, refusing a root that holds both old and new names, then moves an existing in-checkout `corpus/` into it.
+Worktrees an older `init` linked keep their junctions until reaped: `reap` finds them as reparse points and unlinks them, and `LINK_TARGETS` in `python/stunt_reel/dataroot.py` names the old paths for `init`'s report and `--migrate`.
 
-A film needs an `.ALL` to be captured: one beside its `.FLM`, one rebuilt from the film's committed manifest under `manifests/all/`, or one that `make-all` stored under `captures/<film>/archives/` ([Make a film's archive](howto/make-a-films-archive.md)). The demo ships one for `INTRO` and `CTRY` only, and a film whose `references.toml` row pins `makeone = "patch3"` refuses the shipped unpatched one. Nothing writes `corpus/`. A film has one capture of each kind, and a successful `capture-ref` or `capture-video` replaces the old one by swap; `--out` writes anywhere else, replaces nothing and refuses a directory that already holds files. Parity scores a film against its frame capture only while the content hash [`research/parity/references.toml`](../research/parity/references.toml) pins still matches, so promoting a capture is a reviewed commit, and a machine without it, or with a replaced one, fails naming the film ([ADR 0022](adr/0022-captures-are-add-only-beside-a-read-only-corpus.md), [ADR 0028](adr/0028-a-film-has-one-capture-of-each-kind.md)). Retire a worktree the way its tool does, or an older linked one with `mise run reap -- --yes`, which unlinks the junctions before `git worktree remove` runs; `mise run clean -- --yes` only clears outputs of a checkout you are keeping. See [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) and [ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md).
+A film needs an `.ALL` to be captured: one beside its `.FLM`, one rebuilt from the film's committed manifest under `manifests/all/`, or one that `make-all` stored under `captures/<film>/archives/` ([Make a film's archive](howto/make-a-films-archive.md)).
+The demo ships one for `INTRO` and `CTRY` only, and a film whose `references.toml` row pins `makeone = "patch3"` refuses the shipped unpatched one.
+Nothing writes `corpus/`.
+A film has one capture of each kind, and a successful `capture-ref` or `capture-video` replaces the old one by swap; `--out` writes anywhere else, replaces nothing and refuses a directory that already holds files.
+Parity scores a film against its frame capture only while the content hash [`research/parity/references.toml`](../research/parity/references.toml) pins still matches, so promoting a capture is a reviewed commit, and a machine without it, or with a replaced one, fails naming the film ([ADR 0022](adr/0022-captures-are-add-only-beside-a-read-only-corpus.md), [ADR 0028](adr/0028-a-film-has-one-capture-of-each-kind.md)).
+Retire a worktree the way its tool does, or an older linked one with `mise run reap -- --yes`, which unlinks the junctions before `git worktree remove` runs; `mise run clean -- --yes` only clears outputs of a checkout you are keeping.
+See [ADR 0008](adr/0008-worktrees-share-one-read-only-data-root.md) and [ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md).
 
 The corpus ships the unpatched 1992 executables; `mise run game-builds` makes an unpatched and a Patch #3 tree under `<data>/builds/`, which `capture-ref` and `make-all` pick by default (the build the film's `references.toml` row names, else `patch3`) and `play` runs with `--game-root`, and a capture records which `PLAYONE.EXE` it ran in `meta.json` ([Build the game builds](howto/build-the-game-builds.md), [`research/playone-exe/patch3.md`](../research/playone-exe/patch3.md)).
 
@@ -132,9 +147,18 @@ The `stunt-core` spec, fuzz and props test kinds are in [quality gate § `stunt-
 
 ### Commit messages
 
-The subject is a Conventional Commit, e.g. `feat(core): add a parser`. Write a body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or journal entry that proves it, and what you rejected. One paragraph, then a bullet per file when several move together; never retell the diff. Renames, formatting and generated files need none. Longer reasoning belongs in the owning note or an ADR, cited from the body. The commit-msg hook (`mise run commit-msg-check`) checks the subject and, on a commit that changes a work `spec.md` or `plan.md`, the `Fresh-review:` trailer that [AGENTS.md § Committing](../AGENTS.md#committing) rule 5 asks for; a pull request's required checks, not the message, prove the full gate on the branch tip ([ADR 0044](adr/0044-commit-messages-carry-no-gate-line.md)), or only its docs half for a docs-only pull request ([ADR 0047](adr/0047-ci-scopes-a-docs-only-pull-request.md)). A commit from another session's branch keeps its author, which the pre-push hook rejects, so [re-commit it](howto/take-a-commit-from-another-session.md).
+The subject is a Conventional Commit, e.g. `feat(core): add a parser`.
+Write a body whenever a reviewer would have to ask "why this way?": what forced the change, the cause with the offset, measurement or journal entry that proves it, and what you rejected.
+One paragraph, then a bullet per file when several move together; never retell the diff.
+Renames, formatting and generated files need none.
+Longer reasoning belongs in the owning note or an ADR, cited from the body.
+The commit-msg hook (`mise run commit-msg-check`) checks the subject and, on a commit that changes a work `spec.md` or `plan.md`, the `Fresh-review:` trailer that [AGENTS.md § Committing](../AGENTS.md#committing) rule 5 asks for; a pull request's required checks, not the message, prove the full gate on the branch tip ([ADR 0044](adr/0044-commit-messages-carry-no-gate-line.md)), or only its docs half for a docs-only pull request ([ADR 0047](adr/0047-ci-scopes-a-docs-only-pull-request.md)).
+A commit from another session's branch keeps its author, which the pre-push hook rejects, so [re-commit it](howto/take-a-commit-from-another-session.md).
 
-A pull request's title becomes its squash commit's subject, so it is a Conventional Commit too, ending with the issue or issues it serves: `fix(parity): repin the reference films (#305)`, or `(#305, 2/2)` for one PR of a stack. GitHub appends the PR's own `(#N)` on merge, so leave it out of the title; a PR that serves no issue names none. The `PR title` workflow checks the title with the commit-msg hook's own subject rule and re-runs when the title is edited; CI no longer checks a pull request's individual commits, so only the local hook sees those. The repository owner turns off rebase merging and sets squash merges' title to "Pull request title", so the checked title is the one that lands ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md#amendment-2026-11-15-ci-checks-the-pull-request-title)).
+A pull request's title becomes its squash commit's subject, so it is a Conventional Commit too, ending with the issue or issues it serves: `fix(parity): repin the reference films (#305)`, or `(#305, 2/2)` for one PR of a stack.
+GitHub appends the PR's own `(#N)` on merge, so leave it out of the title; a PR that serves no issue names none.
+The `PR title` workflow checks the title with the commit-msg hook's own subject rule and re-runs when the title is edited; CI no longer checks a pull request's individual commits, so only the local hook sees those.
+The repository owner turns off rebase merging and sets squash merges' title to "Pull request title", so the checked title is the one that lands ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md#amendment-2026-11-15-ci-checks-the-pull-request-title)).
 
 ### Docstrings and doc comments
 
@@ -143,10 +167,12 @@ A Python docstring or Rust `///` comment states the contract a caller needs, in 
 - The first line says what the item returns or does, in one sentence.
 - Further lines carry only what the signature hides: units and coordinate frame, constraints on inputs, what is raised or returned on failure, side effects (files written, processes started, caches reused), and the anchor, ADR or research note that owns the reasoning.
 - Parameters are named inline (*flm*, `data`); their types live in the annotations.
-- The why, the history and the alternatives ruled out live in the owning research note or ADR. Code cites a document by its path or a registered anchor token (`[MEM-*]`, `[FMT-*]`, `[I*]`), never by a heading, so rewriting a note's headings breaks no citation.
+- The why, the history and the alternatives ruled out live in the owning research note or ADR.
+  Code cites a document by its path or a registered anchor token (`[MEM-*]`, `[FMT-*]`, `[I*]`), never by a heading, so rewriting a note's headings breaks no citation.
 - Rust keeps the `# Errors` and `# Panics` sections clippy's pedantic lints require, one line per case.
 
-Most land under 60 words. A longer one usually narrates the body; move the narration into a comment beside the code it explains, or drop it.
+Most land under 60 words.
+A longer one usually narrates the body; move the narration into a comment beside the code it explains, or drop it.
 
 The shared tool cache and target seeding are in [toolchain § Shared tool cache](toolchain.md#shared-tool-cache).
 

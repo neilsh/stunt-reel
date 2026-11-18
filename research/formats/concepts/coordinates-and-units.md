@@ -13,9 +13,11 @@ sidebar_label: "Coordinates, units & maths"
 
 ## 1. Overview & Mathematical / Hardware Principles
 
-The 1992 *Stunt Island* flight simulation and film playback engine executes spatial mathematics across multiple distinct coordinate frames. Designed for IBM PC-compatible systems featuring 16-bit x86 microprocessors (Intel 80286 / 80386SX) running MS-DOS in real mode without guaranteed floating-point hardware (80287/80387 FPUs), the engine relies extensively on signed and unsigned fixed-point integer arithmetic.
+The 1992 *Stunt Island* flight simulation and film playback engine executes spatial mathematics across multiple distinct coordinate frames.
+Designed for IBM PC-compatible systems featuring 16-bit x86 microprocessors (Intel 80286 / 80386SX) running MS-DOS in real mode without guaranteed floating-point hardware (80287/80387 FPUs), the engine relies extensively on signed and unsigned fixed-point integer arithmetic.
 
-Modern presentation engines and interchange formats (glTF 2.0, WebGPU) mandate IEEE 754 32-bit floating-point metrics and standard Cartesian coordinate conventions. To bridge legacy 16-bit DOS simulation records and modern GPUs without accumulated drift or matrix tearing, the StuntReel architecture establishes invariant **`[I1]`**: all spatial representations are ingested, transformed, and validated against a unified right-handed metric basis.
+Modern presentation engines and interchange formats (glTF 2.0, WebGPU) mandate IEEE 754 32-bit floating-point metrics and standard Cartesian coordinate conventions.
+To bridge legacy 16-bit DOS simulation records and modern GPUs without accumulated drift or matrix tearing, the StuntReel architecture establishes invariant **`[I1]`**: all spatial representations are ingested, transformed, and validated against a unified right-handed metric basis.
 
 ### 1.1 The Coordinate Hierarchy
 
@@ -71,13 +73,27 @@ Under invariant **`[I1]`**, world and model coordinates adhere strictly to the s
        [-Z is Forward / North / Into Screen]
 ```
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution).
+**Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs).
+Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
 
-**DOS axes `[Bounded Observation]`:** The raw frame of `.FLM` slots and anchor points (`GLOSSARY.md`) maps to `[I1]` by a $180^\circ$ rotation about $Z$. Positions: $(x, y, z) \rightarrow (-x, -y, z)$. The view slot's orientation: $\mathbf{q}' = \mathbf{q}_{z180} \cdot \mathbf{q}$ with $\mathbf{q}_{z180} = [0, 0, 1, 0]$ in $[x, y, z, w]$ order, so a zero raw view rotation evaluates to $\mathbf{q}_{z180}$, not the identity. Camera-local `roll_radians` is unchanged. A drawn slot's orientation is the conjugate $\mathbf{q}' = \mathbf{q}_{z180} \cdot \mathbf{q} \cdot \mathbf{q}_{z180}^{-1} = (-x, -y, z, w)$, because the shape it draws is decoded already in `[I1]` (`SodVertex` positions are the raw model words times the scale factor, +Y up), so the DOS rotation must be carried into `[I1]` on both sides; a zero raw actor rotation evaluates to the identity. The `.FLM` evaluator applies these to every slot, so evaluated `TrajectoryRecord`s are always `[I1]`. Evidence: the `CTRY.FLM` tick 1 view slot has raw $y = -14.0$ (negative altitude), terrain applies $(-x, -y, z)$ to `ANCHORPT.DAT` anchor points, and the tick 1 look-direction check below; the orientation rule is the same rigid rotation and has not been checked independently. The actor rule `[Bounded Observation]` (2026-11-01): `INTRO.FLM` triplane `0x7F04` decodes with its tyres lowest (y 0 to 0.16 m) and its wings at y 0.27 to 0.74 m, so model space is +Y up; with $\mathbf{q}_{z180} \cdot \mathbf{q}$ every actor drew rolled $180^\circ$, upside down and mirrored (at tick 1009 the triplane's stacked wings sank below the ground and its gear struts pointed up). With the conjugate it stands upright, and `CTRY.FLM` scores 0.7790 -> 0.7855 with actor overlap 0.122 -> 0.212 ([parity log](../../../work/2026-10/parity-log/log.md), [`hero-aircraft-orientation.md` § 1](../../parity/hero-aircraft-orientation.md#1-actor-orientation)).
+**DOS axes `[Bounded Observation]`:** The raw frame of `.FLM` slots and anchor points (`GLOSSARY.md`) maps to `[I1]` by a $180^\circ$ rotation about $Z$.
+Positions: $(x, y, z) \rightarrow (-x, -y, z)$.
+The view slot's orientation: $\mathbf{q}' = \mathbf{q}_{z180} \cdot \mathbf{q}$ with $\mathbf{q}_{z180} = [0, 0, 1, 0]$ in $[x, y, z, w]$ order, so a zero raw view rotation evaluates to $\mathbf{q}_{z180}$, not the identity.
+Camera-local `roll_radians` is unchanged.
+A drawn slot's orientation is the conjugate $\mathbf{q}' = \mathbf{q}_{z180} \cdot \mathbf{q} \cdot \mathbf{q}_{z180}^{-1} = (-x, -y, z, w)$, because the shape it draws is decoded already in `[I1]` (`SodVertex` positions are the raw model words times the scale factor, +Y up), so the DOS rotation must be carried into `[I1]` on both sides; a zero raw actor rotation evaluates to the identity.
+The `.FLM` evaluator applies these to every slot, so evaluated `TrajectoryRecord`s are always `[I1]`.
+Evidence: the `CTRY.FLM` tick 1 view slot has raw $y = -14.0$ (negative altitude), terrain applies $(-x, -y, z)$ to `ANCHORPT.DAT` anchor points, and the tick 1 look-direction check below; the orientation rule is the same rigid rotation and has not been checked independently.
+The actor rule `[Bounded Observation]` (2026-11-01): `INTRO.FLM` triplane `0x7F04` decodes with its tyres lowest (y 0 to 0.16 m) and its wings at y 0.27 to 0.74 m, so model space is +Y up; with $\mathbf{q}_{z180} \cdot \mathbf{q}$ every actor drew rolled $180^\circ$, upside down and mirrored (at tick 1009 the triplane's stacked wings sank below the ground and its gear struts pointed up).
+With the conjugate it stands upright, and `CTRY.FLM` scores 0.7790 -> 0.7855 with actor overlap 0.122 -> 0.212 ([parity log](../../../work/2026-10/parity-log/log.md), [`hero-aircraft-orientation.md` § 1](../../parity/hero-aircraft-orientation.md#1-actor-orientation)).
 
-**Eye and actor positions `[Bounded Observation]`:** on `CTRY.FLM` tick 1 the view slot sits at $(-3306.62, -14.0, 2614.11)$ m in DOS axes, 7.0 m from the drawn actor at $(-3313.4, -12.3, 2614.53)$ m, so the evaluated eye is $(3306.62, 14.0, 2614.11)$ m. The world origin is 4215 m away and behind the scene, so the view slot's BAM rotation defines the look direction: `target = eye + rotate_quat(rotation_quat, [0, 0, 1]) * 1000 m` (the stored rotation maps camera space to world space, `+Z` into the screen). With the pitch negation below, the tick 1 look direction lands 1.4 degrees off the bearing to the actor; every other axis-sign and pitch/yaw-sign combination tested lands 8 to 178 degrees off, and without the negation every frame is sky. _Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
+**Eye and actor positions `[Bounded Observation]`:** on `CTRY.FLM` tick 1 the view slot sits at $(-3306.62, -14.0, 2614.11)$ m in DOS axes, 7.0 m from the drawn actor at $(-3313.4, -12.3, 2614.53)$ m, so the evaluated eye is $(3306.62, 14.0, 2614.11)$ m.
+The world origin is 4215 m away and behind the scene, so the view slot's BAM rotation defines the look direction: `target = eye + rotate_quat(rotation_quat, [0, 0, 1]) * 1000 m` (the stored rotation maps camera space to world space, `+Z` into the screen).
+With the pitch negation below, the tick 1 look direction lands 1.4 degrees off the bearing to the actor; every other axis-sign and pitch/yaw-sign combination tested lands 8 to 178 degrees off, and without the negation every frame is sky.
+_Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
 
-**Pitch negation (resolved 2026-11-09):** the evaluator negates the stored pitch `rx` (`rot_bam[1]`) before `quat_from_euler`. This is not a handedness difference: `PLAYONE`'s builder turns about $X$ by $+$`rot_bam[1]` and `quat_from_euler` turns by $-$`pitch`, so with the negation the evaluator builds the same rotation, up to `PLAYONE`'s 12-bit angle lookup and Q15 rounding (§ 3.4, `[Established]`).
+**Pitch negation (resolved 2026-11-09):** the evaluator negates the stored pitch `rx` (`rot_bam[1]`) before `quat_from_euler`.
+This is not a handedness difference: `PLAYONE`'s builder turns about $X$ by $+$`rot_bam[1]` and `quat_from_euler` turns by $-$`pitch`, so with the negation the evaluator builds the same rotation, up to `PLAYONE`'s 12-bit angle lookup and Q15 rounding (§ 3.4, `[Established]`).
 
 ---
 
@@ -143,7 +159,8 @@ Each bit in a BAM word represents a binary subdivision of a complete $360^\circ$
 
 ### 3.1 The SOD Model Scale Factor Table
 
-In `.SOD` geometry files, raw 16-bit integer vertices are multiplied by a scalar selected via a 16-bit scale exponent index stored in the model header (Word offset `+0x06`). This scalar is defined in community analysis archives (`corpus/siarchive/Developer/SODParse/SOD.H`):
+In `.SOD` geometry files, raw 16-bit integer vertices are multiplied by a scalar selected via a 16-bit scale exponent index stored in the model header (Word offset `+0x06`).
+This scalar is defined in community analysis archives (`corpus/siarchive/Developer/SODParse/SOD.H`):
 
 ```c
 static float sod_scale_table[] = {
@@ -175,7 +192,9 @@ $$\text{ScaleFactor}(s) = \begin{cases} 10.0 & \text{if } s = 0 \\ 5.0 \times 2^
 Given a raw vertex $[x_{\text{raw}}, y_{\text{raw}}, z_{\text{raw}}] \in \mathbb{Z}^3$, the metric model coordinates $[x_{\text{m}}, y_{\text{m}}, z_{\text{m}}]$ are evaluated as:
 $$\mathbf{v}_{\text{m}} = \mathbf{v}_{\text{raw}} \times \frac{\text{ScaleFactor}(s)}{10}$$
 
-`SOD.H` counts in editor units (10 per metre, as in section 3.2), so the table is in tenths of a metre per raw unit: the decoder divides it by 10 (`compute_scale_factor` in [`vm.rs`](../../../crates/stunt-core/src/sod/vm.rs)) and `SodHeader.scale_factor` is metres per raw unit. Scale index 13 is 0.00122 in the table and 0.000122 m per raw unit, so the hero's `ground_y_offset` 2624 is 0.32 m, not 3.2 m The decoder's divide is `[Established]` (read from code); that `SOD.H`'s unit is the editor unit is `[Supported Inference]`, from the roughly 10 rows the lift moves the hero in [`hero-aircraft-placement.md`](../../parity/hero-aircraft-placement.md) agreeing with 0.32 m at the hero's 80 px wingspan, not from `SOD.H` itself. The table values are in tenths of a metre, hence the divide by 10 in the formula above.
+`SOD.H` counts in editor units (10 per metre, as in section 3.2), so the table is in tenths of a metre per raw unit: the decoder divides it by 10 (`compute_scale_factor` in [`vm.rs`](../../../crates/stunt-core/src/sod/vm.rs)) and `SodHeader.scale_factor` is metres per raw unit.
+Scale index 13 is 0.00122 in the table and 0.000122 m per raw unit, so the hero's `ground_y_offset` 2624 is 0.32 m, not 3.2 m The decoder's divide is `[Established]` (read from code); that `SOD.H`'s unit is the editor unit is `[Supported Inference]`, from the roughly 10 rows the lift moves the hero in [`hero-aircraft-placement.md`](../../parity/hero-aircraft-placement.md) agreeing with 0.32 m at the hero's 80 px wingspan, not from `SOD.H` itself.
+The table values are in tenths of a metre, hence the divide by 10 in the formula above.
 
 ### 3.2 World Space Conversion (.SET & .FLM)
 
@@ -225,17 +244,25 @@ The engine evaluates Euler rotations in **Yaw $(\psi)$, Pitch $(\theta)$, Roll $
 3. **Roll ($\phi$, Bank):** Rotation around the $-Z$ longitudinal forward axis.
 
 #### Slot angle words in `PLAYONE.EXE`
-`[Established]` for the composition, from a static read of the actor matrix builder `0824:04E5` (image `0x8725`), called at `0x1D23` on the actor path `0x1CFB`. `[Bounded Observation]` that slot words `+0x10`, `+0x12`, `+0x14` are `rot_bam[0..3]` in file order: the copy from the film record into the slot is not traced, but the camera match of § 1.2 and the exact agreement below both rest on it.
+`[Established]` for the composition, from a static read of the actor matrix builder `0824:04E5` (image `0x8725`), called at `0x1D23` on the actor path `0x1CFB`.
+`[Bounded Observation]` that slot words `+0x10`, `+0x12`, `+0x14` are `rot_bam[0..3]` in file order: the copy from the film record into the slot is not traced, but the camera match of § 1.2 and the exact agreement below both rest on it.
 
-The actor path loads `w0 = [+0x10]`, `w1 = [+0x12]`, `w2 = [+0x14]` and the builder looks each up as `word >> 4` in 4096-entry Q15 tables, sine at `work:0x19AA` and cosine at `work:0x21AA`. In raw DOS axes, with standard right-handed rotation matrices, it builds
+The actor path loads `w0 = [+0x10]`, `w1 = [+0x12]`, `w2 = [+0x14]` and the builder looks each up as `word >> 4` in 4096-entry Q15 tables, sine at `work:0x19AA` and cosine at `work:0x21AA`.
+In raw DOS axes, with standard right-handed rotation matrices, it builds
 
 $$R = R_y(-w_2)\,R_x(w_1)\,R_z(w_0)$$
 
-and vertices transform as column vectors, $\mathbf{p}_{view} = V R\,\mathbf{p}_{model}$: `0824:060A` forms $V R$ with the view matrix on the left, and the `OP_IPG` transform (image `0xB275`) takes each output from one stored row. A vertex is therefore rolled about $Z$ by `w0`, pitched about $X$ by `w1`, then turned about $Y$ by $-$`w2`. The camera's matrix comes from the same builder and words (view setup `0x1260..0x12DC`; the view-direction selector `DS:0x2285` would first turn the words, but playback leaves it 0, [`memory-map.md`](../../playone-exe/memory-map.md)) and is transposed into $V$ (`0824:0681`), so a view slot's angles mean the same rotation as an actor's.
+and vertices transform as column vectors, $\mathbf{p}_{view} = V R\,\mathbf{p}_{model}$: `0824:060A` forms $V R$ with the view matrix on the left, and the `OP_IPG` transform (image `0xB275`) takes each output from one stored row.
+A vertex is therefore rolled about $Z$ by `w0`, pitched about $X$ by `w1`, then turned about $Y$ by $-$`w2`.
+The camera's matrix comes from the same builder and words (view setup `0x1260..0x12DC`; the view-direction selector `DS:0x2285` would first turn the words, but playback leaves it 0, [`memory-map.md`](../../playone-exe/memory-map.md)) and is transposed into $V$ (`0824:0681`), so a view slot's angles mean the same rotation as an actor's.
 
-The list above describes the `[I1]` Seam 2 record; this subsection works in raw DOS axes, before the $180^\circ$ $Z$ conjugation of § 1.2, which flips the signs of the $X$ and $Y$ turns. `rotation_quat_dos` is this rotation, up to `PLAYONE`'s 12-bit angle lookup (`word >> 4`) and Q15 rounding: `quat_from_euler(w2, -w1, w0)` is $R_y(-w_2) R_x(w_1) R_z(w_0)$, so the negated pitch of § 1.2 compensates `quat_from_euler`'s pitch sign and is not a handedness difference. `test_dos_rotation_matches_playone_actor_matrix_builder` pins the two together. _Source: [the actor matrix builder 0x04E5 read statically](../../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._
+The list above describes the `[I1]` Seam 2 record; this subsection works in raw DOS axes, before the $180^\circ$ $Z$ conjugation of § 1.2, which flips the signs of the $X$ and $Y$ turns.
+`rotation_quat_dos` is this rotation, up to `PLAYONE`'s 12-bit angle lookup (`word >> 4`) and Q15 rounding: `quat_from_euler(w2, -w1, w0)` is $R_y(-w_2) R_x(w_1) R_z(w_0)$, so the negated pitch of § 1.2 compensates `quat_from_euler`'s pitch sign and is not a handedness difference.
+`test_dos_rotation_matches_playone_actor_matrix_builder` pins the two together.
+_Source: [the actor matrix builder 0x04E5 read statically](../../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._
 
-**Ruled out:** FreeFlight's reading (`sifilm.cpp`: words read as `rz, rx, ry`, drawn as `Rx(w1) · Ry(w0) · Rz(w2)`) turns `w0` about $Y$ and `w2` about $Z$, the reverse of the builder, under every sign choice; the eight sign variants scored in [`hero-aircraft-orientation.md`](../../parity/hero-aircraft-orientation.md#ruled-out) all used that axis assignment. _Source: [the actor matrix builder 0x04E5 read statically](../../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._
+**Ruled out:** FreeFlight's reading (`sifilm.cpp`: words read as `rz, rx, ry`, drawn as `Rx(w1) · Ry(w0) · Rz(w2)`) turns `w0` about $Y$ and `w2` about $Z$, the reverse of the builder, under every sign choice; the eight sign variants scored in [`hero-aircraft-orientation.md`](../../parity/hero-aircraft-orientation.md#ruled-out) all used that axis assignment.
+_Source: [the actor matrix builder 0x04E5 read statically](../../../work/2026-11/274_actor-matrix-axes/journal.md#2026-11-09-the-actor-matrix-builder-0x04e5-read-statically)._
 
 #### Column-Major World Matrix Generation
 Given position $\mathbf{t} = [t_x, t_y, t_z]$ and normalized quaternion $\mathbf{q} = [q_x, q_y, q_z, q_w]$, the $4 \times 4$ affine transform matrix is computed per `ActorTransform::compute_world_matrix`:
@@ -249,13 +276,18 @@ t_x & t_y & t_z & 1
 
 ### 3.5 Camera Focal Distance & Vertical Field of View ($\text{FOV}_y$)
 
-In *Stunt Island*'s DOS rasterizer, zoom is parameterized by an integer focal distance (`focal_dist` in `[MEM-CAMERA-RIG]`). Under invariant **`[I1]`**, this is converted to physical vertical field of view ($\text{FOV}_y$) in degrees.
+In *Stunt Island*'s DOS rasterizer, zoom is parameterized by an integer focal distance (`focal_dist` in `[MEM-CAMERA-RIG]`).
+Under invariant **`[I1]`**, this is converted to physical vertical field of view ($\text{FOV}_y$) in degrees.
 
-Mode 13h framebuffers render at $320 \times 200$, but are stretched vertically by $1.2$ on physical $4:3$ CRT displays to an effective height of $240$ lines. The half-height of this projection plane is $H_{\text{half}} = 120.0$.
+Mode 13h framebuffers render at $320 \times 200$, but are stretched vertically by $1.2$ on physical $4:3$ CRT displays to an effective height of $240$ lines.
+The half-height of this projection plane is $H_{\text{half}} = 120.0$.
 
 $$\text{FOV}_y = 2 \arctan\left(\frac{120.0}{\text{focal\_dist}}\right) \times \frac{180^\circ}{\pi}$$
 
-**What the capture shows** (2026-11-02, `[Supported Inference]`): `PLAYONE.EXE` does not project at 4:3. It projects with square pixels on the 320 x 200 raster with a focal length of 256 raster pixels at the default lens, so $\text{FOV}_y = 2\arctan(100/256) = 42.67^\circ$ at aspect $320/200$, and the CRT stretch comes after projection ([`../../parity/framing-and-actors.md`](../../parity/framing-and-actors.md) § 2). The renderer follows that. The `focal_dist` conversion above, and the table below, come from the unverified camera-rig mock (`[MEM-CAMERA-RIG]`); no film sets `focal_dist`.
+**What the capture shows** (2026-11-02, `[Supported Inference]`): `PLAYONE.EXE` does not project at 4:3.
+It projects with square pixels on the 320 x 200 raster with a focal length of 256 raster pixels at the default lens, so $\text{FOV}_y = 2\arctan(100/256) = 42.67^\circ$ at aspect $320/200$, and the CRT stretch comes after projection ([`../../parity/framing-and-actors.md`](../../parity/framing-and-actors.md) § 2).
+The renderer follows that.
+The `focal_dist` conversion above, and the table below, come from the unverified camera-rig mock (`[MEM-CAMERA-RIG]`); no film sets `focal_dist`.
 
 #### Sample Camera Focal Length Conversions
 
@@ -267,13 +299,17 @@ $$\text{FOV}_y = 2 \arctan\left(\frac{120.0}{\text{focal\_dist}}\right) \times \
 | `600` | $22.6^\circ$ | Telephoto lens | Tracking camera from control tower |
 | `1200` | $11.4^\circ$ | Extreme telephoto | Long-distance runway spotter |
 
-The authoring screen's zoom runs 0.2 to 7.99 with a default of 1.0 (*handbook* p.80). How that scalar maps to `focal_dist` is not established; a linear `focal_dist = 289 × zoom` reading would place the authored range near 58 to 2309, or $\text{FOV}_y$ between $5.9^\circ$ and $128.7^\circ$, bracketing every sample above. `[Hypothesis]`
+The authoring screen's zoom runs 0.2 to 7.99 with a default of 1.0 (*handbook* p.80).
+How that scalar maps to `focal_dist` is not established; a linear `focal_dist = 289 × zoom` reading would place the authored range near 58 to 2309, or $\text{FOV}_y$ between $5.9^\circ$ and $128.7^\circ$, bracketing every sample above.
+`[Hypothesis]`
 
 ### 3.6 Attribute-Preserving Vertex Welding
 
-Fixed-point calculations can introduce sub-millimeter precision mismatches at polygon junctions, causing T-junction raster cracks. Invariant **`[I1]`** requires vertex snapping within $\epsilon_{\text{weld}} = 10^{-4}\text{ m}$.
+Fixed-point calculations can introduce sub-millimeter precision mismatches at polygon junctions, causing T-junction raster cracks.
+Invariant **`[I1]`** requires vertex snapping within $\epsilon_{\text{weld}} = 10^{-4}\text{ m}$.
 
-However, to strictly preserve *Stunt Island*'s hard facet normals under flat shading and prevent color bleeding across adjacent facets, vertices cannot be welded by spatial position alone. Instead, vertex deduplication in `SodModelIr` keys on the full attribute tuple:
+However, to strictly preserve *Stunt Island*'s hard facet normals under flat shading and prevent color bleeding across adjacent facets, vertices cannot be welded by spatial position alone.
+Instead, vertex deduplication in `SodModelIr` keys on the full attribute tuple:
 
 $$\text{WeldKey} = \left(\text{quantize}(\mathbf{position}, 10^{-4}\text{ m}),\; \text{quantize}(\mathbf{normal}, 10^{-3}),\; \text{palette\_index},\; \text{flags}\right)$$
 
@@ -281,8 +317,10 @@ $$\text{WeldKey} = \left(\text{quantize}(\mathbf{position}, 10^{-4}\text{ m}),\;
 
 ## 4. Open Questions & Analysis Backlog
 
-1. **`[BK-COORD-01]` Collision Bounding Box Rounding** (`[Bounded Observation]`): In `STUNT.EXE`, spatial collision checks round prop coordinates to nearest 8-unit boundaries. Verification is required to determine whether `.FLM` choreography playback honors these bounding boxes or operates entirely unconstrained.
-2. **`[BK-COORD-02]` Spotter Plane Camera Offset** (`[Supported Inference]`): In `.SET` files, the spotter plane camera (View Mode 6) stores view pitch at offset `0xFF..0x100`. Evidence suggests the camera target is locked to the player aircraft with a trailing displacement of $150\text{ m}$.
+1. **`[BK-COORD-01]` Collision Bounding Box Rounding** (`[Bounded Observation]`): In `STUNT.EXE`, spatial collision checks round prop coordinates to nearest 8-unit boundaries.
+   Verification is required to determine whether `.FLM` choreography playback honors these bounding boxes or operates entirely unconstrained.
+2. **`[BK-COORD-02]` Spotter Plane Camera Offset** (`[Supported Inference]`): In `.SET` files, the spotter plane camera (View Mode 6) stores view pitch at offset `0xFF..0x100`.
+   Evidence suggests the camera target is locked to the player aircraft with a trailing displacement of $150\text{ m}$.
 3. **`[BK-COORD-03]` Single-Precision Floating Point Roundoff at Island Edges** (`[Established]`): World coordinates near extreme island borders ($X, Z \approx \pm 10{,}000\text{ m}$) maintain $\sim 7$ decimal digits of precision in IEEE 754 32-bit floats, providing sub-millimeter resolution ($< 0.5\text{ mm}$), confirming that 32-bit floats are fully sufficient for zero-loss reproduction of 16-bit DOS simulation data.
 4. **`[BK-COORD-04]` Coprocessor Auto-Detection & Trig Table Resolution** (`[Hypothesis]`): Hypothesis that the simulation executable detects an 80287/80387 FPU at runtime to bypass 16-bit integer BAM sine/cosine lookup tables in favor of `FSIN`/`FCOS` instructions during interactive flight.
 

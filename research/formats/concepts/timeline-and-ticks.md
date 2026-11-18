@@ -13,7 +13,9 @@ sidebar_label: "Timeline, ticks & interpolation"
 
 ## 1. Overview & Mathematical / Hardware Principles
 
-*Stunt Island*'s cinematic replay engine (`PLAYONE.EXE`, `MAKEONE.EXE`) executes deterministic choreography streams recorded in `.FLM` files. Unlike interactive game engines that integrate physics dynamically per frame with variable time deltas ($\Delta t$), Stunt Island films operate as discrete, pre-recorded animation timelines running at a fixed simulation clock frequency. **`PLAYONE.EXE` programs the 8254 PIT at 50 Hz for playback (`[Established]`); the earlier 20/30 Hz figures in this document were inferred from render-loop timing and are superseded by the disassembly evidence in § 1.1.**
+*Stunt Island*'s cinematic replay engine (`PLAYONE.EXE`, `MAKEONE.EXE`) executes deterministic choreography streams recorded in `.FLM` files.
+Unlike interactive game engines that integrate physics dynamically per frame with variable time deltas ($\Delta t$), Stunt Island films operate as discrete, pre-recorded animation timelines running at a fixed simulation clock frequency.
+**`PLAYONE.EXE` programs the 8254 PIT at 50 Hz for playback (`[Established]`); the earlier 20/30 Hz figures in this document were inferred from render-loop timing and are superseded by the disassembly evidence in § 1.1.**
 
 ```
 +-------------------------------------------------------------------------------+
@@ -42,23 +44,33 @@ sidebar_label: "Timeline, ticks & interpolation"
 ### 1.1 Hardware Timer Principles in MS-DOS
 In 1992 IBM PC-compatibles, fixed simulation timing was governed by the Intel 8253/8254 Programmable Interval Timer (PIT) driving hardware Interrupt Request 0 (`IRQ0` / `INT 08h`):
 - **Base Oscillator Frequency:** $1.193182\text{ MHz}$ ($1{,}193{,}182\text{ ticks/second}$).
-- **Standard DOS Tick:** Pit divisor `0x0000` (65,536) yields the default $\approx 18.2065\text{ Hz}$ timer tick. `PLAYONE.EXE` restores this divisor on exit (`0x0EB6`, `0x0EC5`).
+- **Standard DOS Tick:** Pit divisor `0x0000` (65,536) yields the default $\approx 18.2065\text{ Hz}$ timer tick.
+  `PLAYONE.EXE` restores this divisor on exit (`0x0EB6`, `0x0EC5`).
 - **Stunt Island Playback Divisor:** The installed INT 8 handler is programmed with divisor `0x5D38` = $23{,}864$ (`0x5189`, `0x51CC` load `cx = 0x5D38` and jump to the PIT setter at `0x36F7`):
   $$\frac{1{,}193{,}182}{23{,}864} = 49.9992\text{ Hz} \approx 50\text{ Hz} \qquad \Delta t = 20.0\text{ ms}$$
-  No `0xE90B` (20 Hz) or `0x9B5D` (30 Hz) divisor exists in the unpacked image. The earlier 20/30 Hz figures were inferred from the render loop's observed frame cadence, not from the programmed timer.
+  No `0xE90B` (20 Hz) or `0x9B5D` (30 Hz) divisor exists in the unpacked image.
+  The earlier 20/30 Hz figures were inferred from the render loop's observed frame cadence, not from the programmed timer.
 - **Interrupt Path and Film Clock:** the 50 Hz handler, the global tick `DGROUP:0x22B8`, and the active film clock `DGROUP:0x4896` are specified in [`memory-map-runtime.md` `# [MEM-FLM-TICK]`](../../playone-exe/memory-map-runtime.md#-mem-flm-tick); the disassembly and live-sampling evidence is in [`memory.md` § 3.2](../../playone-exe/memory.md#32-tick-counter-evidence).
-- **Film Advancement (`[Supported Inference]`):** when the film clock passes the current slice's interval, the next slice's `tick_duration` byte is read and added to the start tick; elapsed ticks divided by `tick_duration` give the sub-tick interpolation factor. Addresses: [`memory.md` § 3.2](../../playone-exe/memory.md#32-tick-counter-evidence).
-- **Display Retrace Decoupling:** The VGA cathode-ray tube raster beam refreshed at $70\text{ Hz}$ (vertical retrace every $14.28\text{ ms}$, monitored on I/O port `0x03DA`). Presentation and simulation are decoupled: the rendering loop polls `0x03DA` for vertical blanking, while simulation time advances in the 50 Hz PIT interrupt (`[MEM-VSYNC-03DA]`). When rendering cannot keep up, a frame advances several simulation ticks at once; this is why capture timing alone overestimates the tick interval.
+- **Film Advancement (`[Supported Inference]`):** when the film clock passes the current slice's interval, the next slice's `tick_duration` byte is read and added to the start tick; elapsed ticks divided by `tick_duration` give the sub-tick interpolation factor.
+  Addresses: [`memory.md` § 3.2](../../playone-exe/memory.md#32-tick-counter-evidence).
+- **Display Retrace Decoupling:** The VGA cathode-ray tube raster beam refreshed at $70\text{ Hz}$ (vertical retrace every $14.28\text{ ms}$, monitored on I/O port `0x03DA`).
+  Presentation and simulation are decoupled: the rendering loop polls `0x03DA` for vertical blanking, while simulation time advances in the 50 Hz PIT interrupt (`[MEM-VSYNC-03DA]`).
+  When rendering cannot keep up, a frame advances several simulation ticks at once; this is why capture timing alone overestimates the tick interval.
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I4]`](../../../docs/SPEC.md#i4-discrete-simulation-ticks--cut-aware-sub-tick-interpolation), [`[I7]`](../../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I4]`](../../../docs/SPEC.md#i4-discrete-simulation-ticks--cut-aware-sub-tick-interpolation), [`[I7]`](../../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies).
+**Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs).
+Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
 
 ---
 
 ## 2. Memory Layout & Bitfield Representations
 
-The `.FLM` byte-level structures are specified once, in [`flm.md`](../flm.md) and [`flm_slice.ksy`](../flm_slice.ksy); this concept document covers only how their fields drive playback timing (§ 3). It does not re-tabulate them:
+The `.FLM` byte-level structures are specified once, in [`flm.md`](../flm.md) and [`flm_slice.ksy`](../flm_slice.ksy); this concept document covers only how their fields drive playback timing (§ 3).
+It does not re-tabulate them:
 
-* **3-byte slice header** (`prev_slice_len: u16`, `tick_duration: u8`): [`flm.md` § 2.1](../flm.md#21-the-solved-3-byte-slice-header-format-breakthrough). `tick_duration` counts 50 Hz ticks since the previous slice, so slice $i$'s timestamp is the cumulative sum $\sum_{k \le i} \text{tick\_duration}_k$ (slice 0 at tick 0). Its semantics and corpus distribution: [`flm.md` § 2.1.1](../flm.md#211-tick_duration-semantics--corpus-distribution).
+* **3-byte slice header** (`prev_slice_len: u16`, `tick_duration: u8`): [`flm.md` § 2.1](../flm.md#21-the-solved-3-byte-slice-header-format-breakthrough).
+  `tick_duration` counts 50 Hz ticks since the previous slice, so slice $i$'s timestamp is the cumulative sum $\sum_{k \le i} \text{tick\_duration}_k$ (slice 0 at tick 0).
+  Its semantics and corpus distribution: [`flm.md` § 2.1.1](../flm.md#211-tick_duration-semantics--corpus-distribution).
 * **Object `type_flags` bitfield** (`SIF_*`): [`flm.md` § 3.2](../flm.md#32-object-type-flags-type_flags-u8).
 * **Opcode classes and dispatch** (`opcode >> 6`): [`flm.md` § 3.3](../flm.md#33-master-opcode-dispatch-table--fmt-flm-opcodes).
 
@@ -73,7 +85,8 @@ To render smooth 60+ FPS motion without stepping or jitter, the presentation eng
 Given continuous wall-clock presentation time $T_{\text{render}}$:
 $$\alpha = \frac{T_{\text{render}} - T_{\text{slice}}}{20\text{ ms} \times \text{tick\_duration}} \in [0.0, 1.0)$$
 
-`tick_duration` varies per slice, so the interval $T_{t+1} - T_t$ is not a constant; it is the slice's authored duration in 50 Hz ticks. A zero-duration slice has no interval to interpolate and must be applied at the same timestamp as its successor.
+`tick_duration` varies per slice, so the interval $T_{t+1} - T_t$ is not a constant; it is the slice's authored duration in 50 Hz ticks.
+A zero-duration slice has no interval to interpolate and must be applied at the same timestamp as its successor.
 
 #### 1. Position Linear Interpolation (Lerp)
 $$\mathbf{P}_{\text{render}}(\alpha) = (1.0 - \alpha)\mathbf{P}_t + \alpha \mathbf{P}_{t+1}$$
@@ -90,15 +103,25 @@ $$\mathbf{q}'_{t+1} = -\mathbf{q}_{t+1}$$
 This guarantees interpolation takes the shortest geodesic path on $S^3$, preventing unnatural $360^\circ$ spins across tick boundaries.
 
 #### Sampling Interface & Record Tick Semantics
-`FilmTimeline` (`crates/stunt-core/src/flm/timeline.rs`) is the single public interface for turning a `.FLM` film into `TrajectoryRecord`s: `from_bytes`, `sample(tick)`, `cues_between`, `total_ticks`, `duration_seconds`, `slices()`, `warnings`, and `stop_reason`. It places slice $i$ at the cumulative tick $\sum_{k \le i}\text{tick\_duration}_k$ and applies the lerp/slerp and cut suppression described here. The earlier ordinal-based path (`FlmPlayer::step_tick`, `evaluate_all`, `evaluate_film`, `evaluate_sub_tick`) is removed, and `FlmPlayer` and the interpolation helpers are crate-private.
+`FilmTimeline` (`crates/stunt-core/src/flm/timeline.rs`) is the single public interface for turning a `.FLM` film into `TrajectoryRecord`s: `from_bytes`, `sample(tick)`, `cues_between`, `total_ticks`, `duration_seconds`, `slices()`, `warnings`, and `stop_reason`.
+It places slice $i$ at the cumulative tick $\sum_{k \le i}\text{tick\_duration}_k$ and applies the lerp/slerp and cut suppression described here.
+The earlier ordinal-based path (`FlmPlayer::step_tick`, `evaluate_all`, `evaluate_film`, `evaluate_sub_tick`) is removed, and `FlmPlayer` and the interpolation helpers are crate-private.
 
-`TrajectoryRecord.tick` (and `AudioCue.tick`) is always the cumulative 50 Hz authored tick, never a slice ordinal; a slice's ordinal is only its index in the timeline. Zero-duration slices share a tick with their predecessor, so ordinals and ticks diverge for real films.
+`TrajectoryRecord.tick` (and `AudioCue.tick`) is always the cumulative 50 Hz authored tick, never a slice ordinal; a slice's ordinal is only its index in the timeline.
+Zero-duration slices share a tick with their predecessor, so ordinals and ticks diverge for real films.
 
 #### Camera Roll Crosses the 0 / 2π Wrap
-`[Established]` as a fact about the data: a view slot's `roll_radians` is an angle, and films move it across the wrap. `CTRY.FLM` goes from about 0 degrees at tick 20 to about 359.5 degrees at tick 43, with a near-level horizon in the capture throughout. Interpolating the roll as a plain scalar sweeps up to 294.5 degrees (tick 32) the long way; roll must interpolate along the shorter arc (`lerp_angle` in `crates/stunt-core/src/flm/interpolate/mod.rs`), which reads 0, then 360, then 359 degrees across ticks 20 to 44. Capture ordinal 3 (tick 32) went from SSIM 0.66 to 0.78 (`mean_ssim_scored` 0.769 to 0.770). _Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
+`[Established]` as a fact about the data: a view slot's `roll_radians` is an angle, and films move it across the wrap.
+`CTRY.FLM` goes from about 0 degrees at tick 20 to about 359.5 degrees at tick 43, with a near-level horizon in the capture throughout.
+Interpolating the roll as a plain scalar sweeps up to 294.5 degrees (tick 32) the long way; roll must interpolate along the shorter arc (`lerp_angle` in `crates/stunt-core/src/flm/interpolate/mod.rs`), which reads 0, then 360, then 359 degrees across ticks 20 to 44.
+Capture ordinal 3 (tick 32) went from SSIM 0.66 to 0.78 (`mean_ssim_scored` 0.769 to 0.770).
+_Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
 
 #### Partial Films
-A slice that fails to decode does not discard the film. The slices decoded before the failure are kept, and `stop_reason()` reports why decoding stopped, mirroring the Partial SOD convention (`GLOSSARY.md`). Only an invalid header is an error. Sampling operates over the decoded slices only.
+A slice that fails to decode does not discard the film.
+The slices decoded before the failure are kept, and `stop_reason()` reports why decoding stopped, mirroring the Partial SOD convention (`GLOSSARY.md`).
+Only an invalid header is an error.
+Sampling operates over the decoded slices only.
 
 ### 3.2 Director Cut Suppression
 
@@ -140,22 +163,34 @@ Opcode `0x9C` payload consists of 3 bytes: `[arg1: u8, arg2_lo: u8, arg2_hi: u8]
 
 ### 3.4 Fast-Cut Montages (`INTRO.FLM`)
 
-`[Bounded Observation]` The `INTRO.FLM` segment at ticks 2600 to 2900 changes `view_obj` almost every slice (11, 10, 0, 2, 7, 0, 4, 0, 5, 0, 10, 12, 12, 11, 10, 11, 10, 1, 0, 10), and the variable table resets at tick 2786 (var 1 `44236 -> 8192`, var 4 `20480 -> 8192`, var 12 `0 -> 16384`, with vars 10 and 11 ramping from 0). With a camera change nearly every slice, a one-tick timing error shows a different camera. `[Hypothesis]`: the poor match at ticks 2690 to 2850 is page timing on a fast-cut segment, not a wrong view slot.
+`[Bounded Observation]` The `INTRO.FLM` segment at ticks 2600 to 2900 changes `view_obj` almost every slice (11, 10, 0, 2, 7, 0, 4, 0, 5, 0, 10, 12, 12, 11, 10, 11, 10, 1, 0, 10), and the variable table resets at tick 2786 (var 1 `44236 -> 8192`, var 4 `20480 -> 8192`, var 12 `0 -> 16384`, with vars 10 and 11 ramping from 0).
+With a camera change nearly every slice, a one-tick timing error shows a different camera.
+`[Hypothesis]`: the poor match at ticks 2690 to 2850 is page timing on a fast-cut segment, not a wrong view slot.
 
-The earlier montage at ticks 1261 to 1485 alternates `view_obj` between a numbered slot and 0 every 3 to 8 ticks (`dur` 0 to 10) and ramps variable 10 about 50 per tick (11102 to 16437) with the other variables constant. Searching each capture against our renders over offsets 0 to -180 gives a best match that grows with the capture tick: -72 at 1297, -84 at 1352, -124 at 1407, -168 at 1440, -180 at 1462 (about 0.9 extra ticks of lag per clock tick), while all 22 captures are distinct (no frozen page). `[Hypothesis]`: the player's scene clock falls behind its film clock here (frame skipping under load, or a different montage rate), which no fixed page offset can match. The fixed one-tick page lag is a separate effect ([`capture.md`](../../playone-exe/capture.md)). _Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
+The earlier montage at ticks 1261 to 1485 alternates `view_obj` between a numbered slot and 0 every 3 to 8 ticks (`dur` 0 to 10) and ramps variable 10 about 50 per tick (11102 to 16437) with the other variables constant.
+Searching each capture against our renders over offsets 0 to -180 gives a best match that grows with the capture tick: -72 at 1297, -84 at 1352, -124 at 1407, -168 at 1440, -180 at 1462 (about 0.9 extra ticks of lag per clock tick), while all 22 captures are distinct (no frozen page).
+`[Hypothesis]`: the player's scene clock falls behind its film clock here (frame skipping under load, or a different montage rate), which no fixed page offset can match.
+The fixed one-tick page lag is a separate effect ([`capture.md`](../../playone-exe/capture.md)).
+_Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
 
-**Refuted 2026-11-05** (`[Bounded Observation]`): redone over -200..+10 on the current capture, the best-matching render tick follows the capture tick at slope 0.99 over the 18 determined frames, with a largest deviation of 7 ticks (frame 1495 is flat and determines no offset); the -72..-180 matches above were a search saturating at its limit. The film clock follows the global counter. See [`film-segments.md` § 2.3](../../parity/film-segments.md#23-montage-frames).
+**Refuted 2026-11-05** (`[Bounded Observation]`): redone over -200..+10 on the current capture, the best-matching render tick follows the capture tick at slope 0.99 over the 18 determined frames, with a largest deviation of 7 ticks (frame 1495 is flat and determines no offset); the -72..-180 matches above were a search saturating at its limit.
+The film clock follows the global counter.
+See [`film-segments.md` § 2.3](../../parity/film-segments.md#23-montage-frames).
 
 ---
 
 ## 4. Open Questions & Analysis Backlog
 
-1. **`[BK-TIME-01]` Opcode Class `0xF0` in Film File Tails** (`[Bounded Observation]`): Observed in corrupted trailing bytes of `CORSAIR.FLM`. Unclear whether this represents an unmapped extended opcode or an uninitialized write buffer artifact.
-2. **`[BK-TIME-02]` Variable Table Register Depth** (`[Supported Inference]`): Slices update `nextvar[0..15]` registers via opcodes `0x80`–`0x8F`. Whether more than 16 registers exist in `PLAYONE.EXE`'s runtime state table remains under investigation.
+1. **`[BK-TIME-01]` Opcode Class `0xF0` in Film File Tails** (`[Bounded Observation]`): Observed in corrupted trailing bytes of `CORSAIR.FLM`.
+   Unclear whether this represents an unmapped extended opcode or an uninitialized write buffer artifact.
+2. **`[BK-TIME-02]` Variable Table Register Depth** (`[Supported Inference]`): Slices update `nextvar[0..15]` registers via opcodes `0x80`–`0x8F`.
+   Whether more than 16 registers exist in `PLAYONE.EXE`'s runtime state table remains under investigation.
 3. **`[BK-TIME-03]` Propeller Subobject Blur Transition Threshold** (`[Established]`): Confirmed from Adrian Stephens' 1997 notes that parameter `9` controls propeller angular velocity, triggering visual substitution of 3D blades with a semi-transparent disc when speed exceeds threshold.
-4. **`[BK-TIME-04]` Render Frame Drops Do Not Slow Simulation** (`[Supported Inference]`): The 50 Hz PIT interrupt continues to advance the tick counters while the VGA-synchronized render loop draws; a slow renderer therefore advances several simulation ticks between frames rather than reducing the tick rate. Direct measurement of ticks-per-rendered-frame under emulated load remains open.
+4. **`[BK-TIME-04]` Render Frame Drops Do Not Slow Simulation** (`[Supported Inference]`): The 50 Hz PIT interrupt continues to advance the tick counters while the VGA-synchronized render loop draws; a slow renderer therefore advances several simulation ticks between frames rather than reducing the tick rate.
+   Direct measurement of ticks-per-rendered-frame under emulated load remains open.
 
-5. **`[BK-TIME-05]` Montage Scene Clock** (`[Bounded Observation]`): `[Superseded]` 2026-11-05: no tick-skipping rule is needed to explain this montage; single-tick skipping is not excluded by these captures. The montage's scene clock does not run behind the film clock (§ 3.4, refuted; [`film-segments.md` § 2.3](../../parity/film-segments.md#23-montage-frames)).
+5. **`[BK-TIME-05]` Montage Scene Clock** (`[Bounded Observation]`): `[Superseded]` 2026-11-05: no tick-skipping rule is needed to explain this montage; single-tick skipping is not excluded by these captures.
+   The montage's scene clock does not run behind the film clock (§ 3.4, refuted; [`film-segments.md` § 2.3](../../parity/film-segments.md#23-montage-frames)).
 
 ---
 

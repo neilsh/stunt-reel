@@ -9,7 +9,8 @@ sidebar_label: "Static-analysis tooling"
 * **Scope**: which tool answers which question, what Ghidra cannot see in this binary, the address coordinate systems, setup, and the next tooling step
 * **Evidence tier**: `[Established]` for the address arithmetic and the slot table; `[Bounded Observation]` for the tool behaviour, which was measured on one binary and one version of each tool
 
-The trial record (timings, the Windows refusal, the load-image attestation) is on branch `rea-eval`, `research/rea-evaluation.md`. This note keeps only what applies going forward.
+The trial record (timings, the Windows refusal, the load-image attestation) is on branch `rea-eval`, `research/rea-evaluation.md`.
+This note keeps only what applies going forward.
 
 ---
 
@@ -29,15 +30,23 @@ The trial record (timings, the Windows refusal, the load-image attestation) is o
 
 ## 2. What Ghidra Cannot See Here
 
-* **The display-list VM handlers.** Every handler is reached through a self-patching dispatch slot and a `jmp ax` on a value read from the stream ([`sod-vm.md`](sod-vm.md) section 1). Ghidra finds no function starting in image `0x9100..0xB85C` and reports no xrefs to `0x995C`, `0x9481`, `OP_IPG` (`0x965F`), `OP_FRACTAL` (`0xA56C`) or the slots.
-* **Indirect entries.** The light-setup entry `0x9100` has no direct caller, so it has no xref.
-* **Work-segment accesses through a pointer.** Accesses via `ES` or a pointer into the display-list work segment don't resolve to a fixed address, so they don't appear as data references.
-* **Function boundaries are heuristic.** The PSP parser at `0x0C7C` is inline in `entry`, not a separate function, and the function list is not exhaustive.
-* **The packed file.** Analysing `PLAYONE.EXE` itself finds only the LZEXE stub. Always load the `--mz` output.
+* **The display-list VM handlers.**
+  Every handler is reached through a self-patching dispatch slot and a `jmp ax` on a value read from the stream ([`sod-vm.md`](sod-vm.md) section 1).
+  Ghidra finds no function starting in image `0x9100..0xB85C` and reports no xrefs to `0x995C`, `0x9481`, `OP_IPG` (`0x965F`), `OP_FRACTAL` (`0xA56C`) or the slots.
+* **Indirect entries.**
+  The light-setup entry `0x9100` has no direct caller, so it has no xref.
+* **Work-segment accesses through a pointer.**
+  Accesses via `ES` or a pointer into the display-list work segment don't resolve to a fixed address, so they don't appear as data references.
+* **Function boundaries are heuristic.**
+  The PSP parser at `0x0C7C` is inline in `entry`, not a separate function, and the function list is not exhaustive.
+* **The packed file.**
+  Analysing `PLAYONE.EXE` itself finds only the LZEXE stub.
+  Always load the `--mz` output.
 
 ## 3. Address Coordinate Systems
 
-One instruction has several names. Convert to the image offset before comparing addresses from different sources; a breakpoint copied without converting lands on the wrong bytes ([`capture.md`](capture.md) section 2).
+One instruction has several names.
+Convert to the image offset before comparing addresses from different sources; a breakpoint copied without converting lands on the wrong bytes ([`capture.md`](capture.md) section 2).
 
 | Coordinate system | Image offset `0x995C` (`GVPOLY` handler) | Conversion from image offset | Where it's used |
 |---|---|---|---|
@@ -47,9 +56,14 @@ One instruction has several names. Convert to the image offset before comparing 
 | Ghidra / rea analysis address | `0x1995C` | `+ 0x10000` | Load segment `0x1000`; Ghidra shows `1824:171C` in `CODE_1` |
 | Runtime linear, `CTRY.FLM` session | `0x11B9C` | `+ 0x8240` | Image loaded at paragraph `0x0824` (`DS = 0x1575`); a VM address is `1048:off` |
 
-DGROUP is image paragraph `0x0D51` (offset `0xD510`). It runs at `DS = 0x1575` in the captured session and at segment `0x1D51` in Ghidra/rea. A `DS:` offset therefore maps to image `0xD510 + off`.
+DGROUP is image paragraph `0x0D51` (offset `0xD510`).
+It runs at `DS = 0x1575` in the captured session and at segment `0x1D51` in Ghidra/rea.
+A `DS:` offset therefore maps to image `0xD510 + off`.
 
-The display-list VM's **dispatch table** is image `0x8246` (notebook `CS:0x1316`, VM `0x0006`): opcode `op` jumps from the slot at `0x8246 + op` ([`sod-vm.md`](sod-vm.md) section 1). The VM's **work segment**, which is `DS` while the VM runs, is image paragraph `0x15D4` (offset `0x15D40`), so `work:off` maps to image `0x15D40 + off`, and the image holds the segment's initial values. `OP_IPG`'s subtype table `work:0x1954` is image `0x17694`. Patch #3 moves the VM segment to `0x0754` and the work segment to `0x14BF` ([`memory-map-patch3.md`](memory-map-patch3.md)); `mise run re-tool -- vm-handler` takes `--vm-seg` and `--work-seg` for it.
+The display-list VM's **dispatch table** is image `0x8246` (notebook `CS:0x1316`, VM `0x0006`): opcode `op` jumps from the slot at `0x8246 + op` ([`sod-vm.md`](sod-vm.md) section 1).
+The VM's **work segment**, which is `DS` while the VM runs, is image paragraph `0x15D4` (offset `0x15D40`), so `work:off` maps to image `0x15D40 + off`, and the image holds the segment's initial values.
+`OP_IPG`'s subtype table `work:0x1954` is image `0x17694`.
+Patch #3 moves the VM segment to `0x0754` and the work segment to `0x14BF` ([`memory-map-patch3.md`](memory-map-patch3.md)); `mise run re-tool -- vm-handler` takes `--vm-seg` and `--work-seg` for it.
 
 ## 4. Setup
 
@@ -62,20 +76,31 @@ These are local tools: they are not in `mise run check`, not in CI, and nothing 
 | Node.js | 24.22.1 | Only needed for rea. |
 | rea | `rea-agents` 6.7.0 | Install into a local prefix (`npm install --prefix <dir>`), not globally. Don't run `rea setup`, which writes global agent configuration. |
 
-* **Plain Ghidra runs on Windows.** Its `MzLoader` imports the MZ file directly with language `x86:LE:16:Real Mode`.
-* **rea needs Linux.** Its Windows Ghidra adapter refuses DOS MZ ("Windows Ghidra P0 accepts native PE and explicitly selected raw 6502 targets only"), so run rea under WSL2 with a Linux JDK and Node. The Ghidra zip is the same on both platforms.
-* **Keep outputs local.** Snapshots, projects and query output go under `build/` (for example `build/scratch/rea/`) or the WSL home directory.
-* **rea forgets annotations.** Renames and comments last only for one session. Notes in `research/` are the durable record.
+* **Plain Ghidra runs on Windows.**
+  Its `MzLoader` imports the MZ file directly with language `x86:LE:16:Real Mode`.
+* **rea needs Linux.**
+  Its Windows Ghidra adapter refuses DOS MZ ("Windows Ghidra P0 accepts native PE and explicitly selected raw 6502 targets only"), so run rea under WSL2 with a Linux JDK and Node.
+  The Ghidra zip is the same on both platforms.
+* **Keep outputs local.**
+  Snapshots, projects and query output go under `build/` (for example `build/scratch/rea/`) or the WSL home directory.
+* **rea forgets annotations.**
+  Renames and comments last only for one session.
+  Notes in `research/` are the durable record.
 
 ## 5. Turn The Slot Table Into Functions
 
-The slot table at image `0x8240` gives the address of every handler (`imm16` plus the slot run's image offset). `mise run ghidra-sod-table` reads it and runs a Ghidra headless post-script that:
+The slot table at image `0x8240` gives the address of every handler (`imm16` plus the slot run's image offset).
+`mise run ghidra-sod-table` reads it and runs a Ghidra headless post-script that:
 
 1. creates a function at each handler address,
 2. names it from the opcode table in [`research/formats/sod-opcodes.md`](../formats/sod-opcodes.md),
 3. saves the project under `build/re/ghidra/`.
 
-The run takes the slot count from the build instead of assuming one: 108 slots in the unpatched executable at `0x8240`, and 107 in Patch #3 at `0x7540` ([`patch3.md`](patch3.md) section 4.1, [#480](https://github.com/neilsh/stunt-reel/issues/480)). The names apply the table's rows by slot index in the loaded executable's slot order, with no shift. [`sod-opcodes.md`](../formats/sod-opcodes.md) numbers Patch #3, so its names are right there; on the unpatched build the slot-order names from `0x0345` up are one slot off, because its extra `0x033C` is unnamed ([`patch3.md`](patch3.md) section 4.1), as the run says in its summary and slot file. The unpatched build's 108th slot (opcode `0x03C3`) is past the table and is left unnamed. It needs Ghidra 12.1.x with a JDK ([section 4](#4-setup)), found as `analyzeHeadless` on `PATH` or under `GHIDRA_INSTALL_DIR`:
+The run takes the slot count from the build instead of assuming one: 108 slots in the unpatched executable at `0x8240`, and 107 in Patch #3 at `0x7540` ([`patch3.md`](patch3.md) section 4.1, [#480](https://github.com/neilsh/stunt-reel/issues/480)).
+The names apply the table's rows by slot index in the loaded executable's slot order, with no shift.
+[`sod-opcodes.md`](../formats/sod-opcodes.md) numbers Patch #3, so its names are right there; on the unpatched build the slot-order names from `0x0345` up are one slot off, because its extra `0x033C` is unnamed ([`patch3.md`](patch3.md) section 4.1), as the run says in its summary and slot file.
+The unpatched build's 108th slot (opcode `0x03C3`) is past the table and is left unnamed.
+It needs Ghidra 12.1.x with a JDK ([section 4](#4-setup)), found as `analyzeHeadless` on `PATH` or under `GHIDRA_INSTALL_DIR`:
 
 ```sh
 mise run ghidra-sod-table
@@ -83,13 +108,17 @@ mise run ghidra-sod-table -- --build patch3   # needs mise run game-builds first
 mise run ghidra-sod-table -- --parse-only     # read and print the run's summary; writes nothing
 ```
 
-The driver is [`python/scripts/ghidra_sod_dispatch.py`](../../python/scripts/ghidra_sod_dispatch.py); the post-script it runs is [`tools/ghidra/SodDispatchTable.java`](../../tools/ghidra/SodDispatchTable.java). `--parse-only` reads the table without Ghidra, and `tests/test_ghidra_sod_dispatch.py` checks that reading on a synthetic image. Ghidra saves the imported program and its new functions when the headless session ends, unless `-readOnly` or `-deleteProject` is passed.
+The driver is [`python/scripts/ghidra_sod_dispatch.py`](../../python/scripts/ghidra_sod_dispatch.py); the post-script it runs is [`tools/ghidra/SodDispatchTable.java`](../../tools/ghidra/SodDispatchTable.java).
+`--parse-only` reads the table without Ghidra, and `tests/test_ghidra_sod_dispatch.py` checks that reading on a synthetic image.
+Ghidra saves the imported program and its new functions when the headless session ends, unless `-readOnly` or `-deleteProject` is passed.
 
-Creating the functions would make the VM handlers decompilable and let Ghidra follow the helpers they call and the data they reference, bounded by what it can see: dispatch reaches every handler through a `jmp ax` on a stream word, not a call, so a handler's own callers stay invisible (section 2). That is the aim for the open static questions: the `OP_*` opcodes the census still stops on ([`sod-opcode-coverage.md`](../formats/sod-opcode-coverage.md) records 0 archive models blocked, 14 `TAP`-only stops and one loose `.BIN` on `OP_TEXTURE`), the viewport setter for `0x41C8/0x41CA`, and who sets `0x9100`'s inputs. rea can't do this itself, because it only edits existing functions and keeps nothing between sessions, so this is plain Ghidra work.
+Creating the functions would make the VM handlers decompilable and let Ghidra follow the helpers they call and the data they reference, bounded by what it can see: dispatch reaches every handler through a `jmp ax` on a stream word, not a call, so a handler's own callers stay invisible (section 2).
+That is the aim for the open static questions: the `OP_*` opcodes the census still stops on ([`sod-opcode-coverage.md`](../formats/sod-opcode-coverage.md) records 0 archive models blocked, 14 `TAP`-only stops and one loose `.BIN` on `OP_TEXTURE`), the viewport setter for `0x41C8/0x41CA`, and who sets `0x9100`'s inputs. rea can't do this itself, because it only edits existing functions and keeps nothing between sessions, so this is plain Ghidra work.
 
 ## 6. Evidence Rules For Tool Output
 
 * Decompiler pseudocode and auto-generated names (`FUN_1824_0e4e`) are `[Hypothesis]` until the instruction bytes at the address are checked in the image.
-* Record each finding by its image offset. Give a Ghidra/rea address alongside it only when it helps someone re-run the query.
+* Record each finding by its image offset.
+  Give a Ghidra/rea address alongside it only when it helps someone re-run the query.
 * Note the tool and version that found it (for example "Ghidra 12.1.4 via rea 6.7.0") and the target SHA-256 when a result depends on the loader.
 * Absence of an xref is a `[Bounded Observation]` about Ghidra's analysis, not proof that no reference exists (section 2).

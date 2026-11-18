@@ -1,6 +1,9 @@
 # System Architecture & 1-Hop Routing Table
 
-Code path to the documents that govern it. Every cell links to its single home: anchors resolve through the registry in [`python/stunt_reel/doc_anchors.py`](../python/stunt_reel/doc_anchors.py), byte layouts live in the `.ksy` schemas next to each format document, and the format catalog starts at [`research/formats/INDEX.md`][]. Nothing else is defined here, so a stale row is a broken link or a missing path and fails `mise run check`. This table routes the Rust crates and research directories, with the Python files that pair with them; the rest of the Python package and scripts route from [`architecture-python.md`](architecture-python.md).
+Code path to the documents that govern it.
+Every cell links to its single home: anchors resolve through the registry in [`python/stunt_reel/doc_anchors.py`](../python/stunt_reel/doc_anchors.py), byte layouts live in the `.ksy` schemas next to each format document, and the format catalog starts at [`research/formats/INDEX.md`][].
+Nothing else is defined here, so a stale row is a broken link or a missing path and fails `mise run check`.
+This table routes the Rust crates and research directories, with the Python files that pair with them; the rest of the Python package and scripts route from [`architecture-python.md`](architecture-python.md).
 
 ## 1. 1-Hop Module Routing Table
 
@@ -63,11 +66,15 @@ Code path to the documents that govern it. Every cell links to its single home: 
 
 ## Decoding Engine and Independent Oracle
 
-`crates/stunt-core` is the only hand-written decoder for `.RES`/`.ALL`/`.SOD`/`.FLM`, the Mode 13h palette, and decal resolution; `stunt-render`, `stunt-gltf` and `stunt-cli` consume its output. The Python package does not decode game formats. Its one remaining copy of Rust knowledge is `python/stunt_reel/tac/palette.py`, which `tests/fixtures/mode13h_palette.json` pins to the Rust table in both languages.
+`crates/stunt-core` is the only hand-written decoder for `.RES`/`.ALL`/`.SOD`/`.FLM`, the Mode 13h palette, and decal resolution; `stunt-render`, `stunt-gltf` and `stunt-cli` consume its output.
+The Python package does not decode game formats.
+Its one remaining copy of Rust knowledge is `python/stunt_reel/tac/palette.py`, which `tests/fixtures/mode13h_palette.json` pins to the Rust table in both languages.
 
-A decoded shape owns its provenance and its geometry: `stunt_core::sod::decode_sod` is the single entry point in strict, lenient or census mode, it attaches a `DecodeRecord` (header, first blocking opcode, census step-overs, first `OP_RETURN`) to the shape, and it enforces the shape invariants consumers rely on. The world builder, renderer and glTF exporter therefore read `meshes()` and `extent()` instead of re-validating ranges or re-measuring bounds; authored shapes carry no decode record.
+A decoded shape owns its provenance and its geometry: `stunt_core::sod::decode_sod` is the single entry point in strict, lenient or census mode, it attaches a `DecodeRecord` (header, first blocking opcode, census step-overs, first `OP_RETURN`) to the shape, and it enforces the shape invariants consumers rely on.
+The world builder, renderer and glTF exporter therefore read `meshes()` and `extent()` instead of re-validating ranges or re-measuring bounds; authored shapes carry no decode record.
 
-The one sanctioned second decoder is deliberate: the Kaitai `.ksy` schemas under `research/formats/` and `python/stunt_reel/flm_walk.py` are written from the format description, not from the Rust code, and `python/scripts/verify_*.py` compare them against the corpus. A disagreement there is evidence about the format, so these stay independent of the Rust parsers.
+The one sanctioned second decoder is deliberate: the Kaitai `.ksy` schemas under `research/formats/` and `python/stunt_reel/flm_walk.py` are written from the format description, not from the Rust code, and `python/scripts/verify_*.py` compare them against the corpus.
+A disagreement there is evidence about the format, so these stay independent of the Rust parsers.
 
 ## Direction and History
 

@@ -27,7 +27,8 @@ This document details the executable structure, command-line argument evaluation
 
 ## 2. Command-Line Argument Parsing
 
-`PLAYONE.EXE` does **not** accept film paths, file arguments, or standard DOS switches. Its command-line parser only inspects the first non-whitespace character in the Program Segment Prefix (PSP) command tail.
+`PLAYONE.EXE` does **not** accept film paths, file arguments, or standard DOS switches.
+Its command-line parser only inspects the first non-whitespace character in the Program Segment Prefix (PSP) command tail.
 
 ### Command Tail Processing Routine (`0x0C7C` – `0x0CBD`)
 
@@ -55,12 +56,12 @@ This document details the executable structure, command-line argument evaluation
 
 ### Argument Evaluation Behavior
 
-* **`playone.exe ?`**:
-  Matches literal ASCII `?` (`0x3F`). Executes `INSTALL.EXE` (the sound/hardware setup program) as a child process via `INT 21h, AH=4Bh`.
-* **`playone.exe /?`**:
-  The first non-space character is `'/'` (`0x2F`), which fails the `cmp al, 3Fh` check. It branches to `0x0CCC` and continues normal graphical startup.
-* **File paths and switches (e.g. `playone.exe CTRY.FLM`)**:
-  All additional parameters are completely ignored. The engine cannot be directly instructed via CLI arguments to open or play a specific film file.
+* **`playone.exe ?`**: Matches literal ASCII `?` (`0x3F`).
+  Executes `INSTALL.EXE` (the sound/hardware setup program) as a child process via `INT 21h, AH=4Bh`.
+* **`playone.exe /?`**: The first non-space character is `'/'` (`0x2F`), which fails the `cmp al, 3Fh` check.
+  It branches to `0x0CCC` and continues normal graphical startup.
+* **File paths and switches (e.g. `playone.exe CTRY.FLM`)**: All additional parameters are completely ignored.
+  The engine cannot be directly instructed via CLI arguments to open or play a specific film file.
 
 ---
 
@@ -92,7 +93,8 @@ flowchart TD
   ```text
   "Not enough memory.  Stunt Island requires 570,000 bytes free."
   ```
-* **Operational note:** the gate reads the free-memory size from `PSP:0002h`, so a DOS-box launch wrapper such as `loadfix -64` that lowers free conventional RAM below 570,000 bytes trips it. (Carried over from the former `SPEC.md` § 3.4.)
+* **Operational note:** the gate reads the free-memory size from `PSP:0002h`, so a DOS-box launch wrapper such as `loadfix -64` that lowers free conventional RAM below 570,000 bytes trips it.
+  (Carried over from the former `SPEC.md` § 3.4.)
 
 ### 3. Disk Space Check (`0x0D0D` – `0x0D34`)
 * Queries available storage using DOS function `INT 21h, AH=36h` (Get Disk Free Space).
@@ -122,10 +124,18 @@ During initialization, `PLAYONE.EXE` references several key data assets located 
 
 The disassembly in this directory comes from the unpacked load image, not from a runtime dump, so anyone with a local `PLAYONE.EXE` can check an address.
 
-1. Unpack: `python python/scripts/unlzexe.py corpus/stuntisl/PLAYONE.EXE build/re/playone.img`. The image has no MZ header and the entry `CS` is 0, so a code address `CS:off` is the image offset `off`, a far address `seg:off` is `seg * 16 + off`, and `DS:off` is `0xD510 + off` (the `0xD910` above counts the 1,024-byte header).
-2. Disassemble 16-bit code with Capstone (`capstone.Cs(CS_ARCH_X86, CS_MODE_16)`) over a slice of the image, with `skipdata` enabled when scanning across data. Scan the whole image, not only the first segment: far calls (`lcall 0x1DEA, 0x05B1`) land at higher offsets, and a search limited to `0x0000..0xD510` misses them.
-3. Find readers of a film variable by operand, not by name. Variable `n` is `DS:0x47C8 + 2n` or `[ptr + 0x7E + 2n]`, so var 10 is `+0x92`, var 11 `+0x94`, var 13 `+0x98` and var 14 `+0x9A`; an index-driven reader (`[bx + si + 0x7E]`) matches only the base offset. A near `call` has no byte pattern, so find callers by decoding every `E8`/`E9` target.
-4. Optional, for function recovery, decompilation and xrefs: write a full MZ file with `python python/scripts/unlzexe.py --mz corpus/stuntisl/PLAYONE.EXE build/re/playone_unpacked.exe`. Load it into Ghidra 12.1 (`x86:LE:16:Real Mode`, `MzLoader`), either directly or through [`rea`](https://github.com/morluto/rea) 6.7. rea's Ghidra adapter refuses DOS MZ on Windows, so run it under WSL or Linux. It loads at segment `0x1000`, so analysis address = `0x10000 + image offset`, and it splits segments at relocated paragraphs (`CODE_1` = `0x824`, the VM segment). Ghidra recovers 222 functions but none of the display-list handlers, which are reached only through the self-patching dispatch slots ([`sod-vm.md`](sod-vm.md) section 1). See [`static-tooling.md`](static-tooling.md) for when to use which tool, the address conversions and setup.
+1. Unpack: `python python/scripts/unlzexe.py corpus/stuntisl/PLAYONE.EXE build/re/playone.img`.
+   The image has no MZ header and the entry `CS` is 0, so a code address `CS:off` is the image offset `off`, a far address `seg:off` is `seg * 16 + off`, and `DS:off` is `0xD510 + off` (the `0xD910` above counts the 1,024-byte header).
+2. Disassemble 16-bit code with Capstone (`capstone.Cs(CS_ARCH_X86, CS_MODE_16)`) over a slice of the image, with `skipdata` enabled when scanning across data.
+   Scan the whole image, not only the first segment: far calls (`lcall 0x1DEA, 0x05B1`) land at higher offsets, and a search limited to `0x0000..0xD510` misses them.
+3. Find readers of a film variable by operand, not by name.
+   Variable `n` is `DS:0x47C8 + 2n` or `[ptr + 0x7E + 2n]`, so var 10 is `+0x92`, var 11 `+0x94`, var 13 `+0x98` and var 14 `+0x9A`; an index-driven reader (`[bx + si + 0x7E]`) matches only the base offset.
+   A near `call` has no byte pattern, so find callers by decoding every `E8`/`E9` target.
+4. Optional, for function recovery, decompilation and xrefs: write a full MZ file with `python python/scripts/unlzexe.py --mz corpus/stuntisl/PLAYONE.EXE build/re/playone_unpacked.exe`.
+   Load it into Ghidra 12.1 (`x86:LE:16:Real Mode`, `MzLoader`), either directly or through [`rea`](https://github.com/morluto/rea) 6.7. rea's Ghidra adapter refuses DOS MZ on Windows, so run it under WSL or Linux.
+   It loads at segment `0x1000`, so analysis address = `0x10000 + image offset`, and it splits segments at relocated paragraphs (`CODE_1` = `0x824`, the VM segment).
+   Ghidra recovers 222 functions but none of the display-list handlers, which are reached only through the self-patching dispatch slots ([`sod-vm.md`](sod-vm.md) section 1).
+   See [`static-tooling.md`](static-tooling.md) for when to use which tool, the address conversions and setup.
 5. Treat zeros in the image as runtime-initialised data (the head of segment `0x1DEA` is a zeroed state block) and a `cs:`-prefixed word store as possibly self-modifying or interrupt-side state before assuming it has a reader.
 
 The helpers used for this work were throwaway scripts and are not committed; the steps above are enough to rebuild them.

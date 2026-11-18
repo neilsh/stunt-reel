@@ -1,88 +1,69 @@
 # NOTICE
 
-This repository is an unofficial, non-commercial research and preservation project for
-*Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line). It is not
-affiliated with, authorised by, or endorsed by The Walt Disney Company or The Assembly
-Line. "Stunt Island" and related marks are trademarks of The Walt Disney Company.
+This repository is an unofficial, non-commercial research and preservation project for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line).
+It is not affiliated with, authorised by, or endorsed by The Walt Disney Company or The Assembly Line.
+"Stunt Island" and related marks are trademarks of The Walt Disney Company.
 
 ## No game assets
 
-No game executables, films, archives, artwork, audio, or manual scans are distributed
-here. `corpus/` is gitignored, and you must supply your own lawfully
-obtained copy of any retail files. Tests run offline against synthetic fixtures.
+No game executables, films, archives, artwork, audio, or manual scans are distributed here.
+`corpus/` is gitignored, and you must supply your own lawfully obtained copy of any retail files.
+Tests run offline against synthetic fixtures.
 
 ## Game-derived data
 
-Two small tables are committed because the renderer needs them for format fidelity. Both
-are game-derived and are not relicensed by this project:
+Two small tables are committed because the renderer needs them for format fidelity.
+Both are game-derived and are not relicensed by this project:
 
-- `MODE_13H_PALETTE` (768 bytes: 256 RGB triples), the Stunt Island master palette
-  (240 scene entries + 16 UI entries). It was transcribed from the community
-  `SODParse/pal.h` in the Stunt Island Central archive and re-encoded as 6-bit DAC
-  levels shifted left by two. It is committed in three places, kept identical so the Rust
-  and Python copies cannot drift: `crates/stunt-core/src/contracts/palette/mod.rs`,
-  `python/stunt_reel/tac/palette.py` and the test pin `tests/fixtures/mode13h_palette.json`.
-- `SOD_SCALE_TABLE` (18 floating-point entries), the scale table from the community
-  `SODParse/SOD.H` (Dave Palmowski), matching the historical `DECODE.C` implementation.
+- `MODE_13H_PALETTE` (768 bytes: 256 RGB triples), the Stunt Island master palette (240 scene entries + 16 UI entries).
+  It was transcribed from the community `SODParse/pal.h` in the Stunt Island Central archive and re-encoded as 6-bit DAC levels shifted left by two.
+  It is committed in three places, kept identical so the Rust and Python copies cannot drift: `crates/stunt-core/src/contracts/palette/mod.rs`, `python/stunt_reel/tac/palette.py` and the test pin `tests/fixtures/mode13h_palette.json`.
+- `SOD_SCALE_TABLE` (18 floating-point entries), the scale table from the community `SODParse/SOD.H` (Dave Palmowski), matching the historical `DECODE.C` implementation.
   It is committed once, in `crates/stunt-core/src/sod/vm.rs`.
 
 ## Archive manifests
 
-`manifests/all/*.toml` record, for a film, which items of which game files make up the `.ALL`
-archive that `MAKEONE.EXE` wrote for it: file names, item numbers and SHA-256 hashes of the game
-files and the archive. They hold no game bytes. `stuntreel link build` rebuilds the archive from
-the user's own copy of the game, and refuses when a file's hash differs
-([ADR 0032](docs/adr/0032-a-films-archive-is-committed-as-a-manifest.md)).
+`manifests/all/*.toml` record, for a film, which items of which game files make up the `.ALL` archive that `MAKEONE.EXE` wrote for it: file names, item numbers and SHA-256 hashes of the game files and the archive.
+They hold no game bytes.
+`stuntreel link build` rebuilds the archive from the user's own copy of the game, and refuses when a file's hash differs ([ADR 0032](docs/adr/0032-a-films-archive-is-committed-as-a-manifest.md)).
 
 ## Scores and metrics
 
-Scores and metrics measured against a capture (SSIM, IoU, index agreement, per film or per
-frame), such as the figures file a sweep writes into a work folder, are this project's own
-measurements, not game-derived content, and may be committed. An image of a captured frame
-follows the limits below.
+Scores and metrics measured against a capture (SSIM, IoU, index agreement, per film or per frame), such as the figures file a sweep writes into a work folder, are this project's own measurements, not game-derived content, and may be committed.
+An image of a captured frame follows the limits below.
 
 ## Illustrative comparison images
 
-Research notes may commit a few still images that set a frame captured from the game's own replay
-beside this project's render of the same moment, where a finding is easier to show than describe.
-The captured frames are game-derived and are not relicensed by this project. Every such image:
+Research notes may commit a few still images that set a frame captured from the game's own replay beside this project's render of the same moment, where a finding is easier to show than describe.
+The captured frames are game-derived and are not relicensed by this project.
+Every such image:
 
 - is a single 320x200 screen, or a crop or enlargement of one, never a run of frames or a video;
-- holds nothing extracted from game files (no shapes, textures, artwork or sound), only what the
-  screen showed;
-- shows a captured frame only inside a comparison, beside this project's render of the same
-  moment, never on its own;
-- may be a comparison sheet: one captured screen, or crops or enlargements of it, beside one or
-  more of our renders of the same moment, with optional difference images; the 320x200 limit
-  above applies to the captured content, not to the sheet;
-- lives under `research/` or `work/` and is cited by a note or index, so each one has a stated
-  purpose. New images go in `work/<YYYY-MM>/<folder>/images/`, where `<folder>` is the work
-  folder of the investigation that produced them ([`work/README.md`](work/README.md#images)).
+- holds nothing extracted from game files (no shapes, textures, artwork or sound), only what the screen showed;
+- shows a captured frame only inside a comparison, beside this project's render of the same moment, never on its own;
+- may be a comparison sheet: one captured screen, or crops or enlargements of it, beside one or more of our renders of the same moment, with optional difference images; the 320x200 limit above applies to the captured content, not to the sheet;
+- lives under `research/` or `work/` and is cited by a note or index, so each one has a stated purpose.
+  New images go in `work/<YYYY-MM>/<folder>/images/`, where `<folder>` is the work folder of the investigation that produced them ([`work/README.md`](work/README.md#images)).
 
-The project's research site, which GitHub Pages builds from this repository, may serve a
-committed image that a published page cites, under the same rules. It serves no image the
-repository could not hold.
+The project's research site, which GitHub Pages builds from this repository, may serve a committed image that a published page cites, under the same rules.
+It serves no image the repository could not hold.
 
-A pull request that changes rendered output attaches comparison images of the same kind to its
-description, under the same first two limits; GitHub hosts them, and they are not committed. A
-pull request made where `gh` cannot attach files, as in a cloud session, commits them instead,
-as comparison sheets in its issue's work folder, each cited by a journal entry there and under
-every limit above. All other captures stay in the external data root.
+A pull request that changes rendered output attaches comparison images of the same kind to its description, under the same first two limits; GitHub hosts them, and they are not committed.
+A pull request made where `gh` cannot attach files, as in a cloud session, commits them instead, as comparison sheets in its issue's work folder, each cited by a journal entry there and under every limit above.
+All other captures stay in the external data root.
 
 ## Third-party material and credits
 
-Quoted manual text, cited community research, and third-party tools remain under their
-original terms; citation does not relicense them. Key credits:
+Quoted manual text, cited community research, and third-party tools remain under their original terms; citation does not relicense them.
+Key credits:
 
 - **Chris Phillips** — SODParse (`RIPRES.C`, `DECODE.C`, `SOD.H`), SIRes, FreeFlight.
 - **Dave Palmowski** — SODParse `SOD.H` scale table, RESMaker, `SITools/`.
 - **Ángel Eduardo** — Stunt Island Extractor (2004–2005).
 - **Doug Armknecht** — Stunt Island Central developer archive.
 - **Alberto Marnetto** — `si-tools` and the `si-8x` patch (MIT), consulted and not vendored.
-- **Fabrice Bellard** — LZEXE; `python/scripts/unlzexe.py` is a minimal Python unpacker
-  written for analysis, not a copy of LZEXE.
+- **Fabrice Bellard** — LZEXE; `python/scripts/unlzexe.py` is a minimal Python unpacker written for analysis, not a copy of LZEXE.
 - **Adrian Stephens** — original Assembly Line engine developer.
 - **Neil Halelamien** — original `.SET` format notes (2004).
 
-Dependencies retain their own licences; `cargo deny` enforces the Rust allow-list and the
-Python tooling dependencies are dev-only. dosbox-automation, ffmpeg and Kaitai Struct are external prerequisites, not bundled here.
+Dependencies retain their own licences; `cargo deny` enforces the Rust allow-list and the Python tooling dependencies are dev-only. dosbox-automation, ffmpeg and Kaitai Struct are external prerequisites, not bundled here.

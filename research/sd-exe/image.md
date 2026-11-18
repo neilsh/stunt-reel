@@ -3,11 +3,13 @@ summary: "Reading the `SD.EXE` scenery designer image: MZ header and load-image 
 ---
 # SD.EXE: Image Layout and Routines
 
-**Scope:** `SITools/SD.EXE`, the developers' scenery designer: how to read its image, and where its routines and strings sit. What its files mean stays in the format notes: [`map.md`](../formats/auxiliary/map.md) for `MAP.BIN`, `REGIONS.BIN` and the tree build, [`anchorpt.md`](../formats/auxiliary/anchorpt.md) for `ANCHORPT.DAT`, and [`scenery.md`](../formats/auxiliary/scenery.md) for the tree.
+**Scope:** `SITools/SD.EXE`, the developers' scenery designer: how to read its image, and where its routines and strings sit.
+What its files mean stays in the format notes: [`map.md`](../formats/auxiliary/map.md) for `MAP.BIN`, `REGIONS.BIN` and the tree build, [`anchorpt.md`](../formats/auxiliary/anchorpt.md) for `ANCHORPT.DAT`, and [`scenery.md`](../formats/auxiliary/scenery.md) for the tree.
 
 ## 1. The file
 
-`corpus/siarchive/SITools/SD.EXE`, 210,846 bytes, MD5 `4de4edd7aaf223e9ecfeb42d06c5389b`. It is a plain MZ executable, not packed (`[Established]`, header read 2026-11-06):
+`corpus/siarchive/SITools/SD.EXE`, 210,846 bytes, MD5 `4de4edd7aaf223e9ecfeb42d06c5389b`.
+It is a plain MZ executable, not packed (`[Established]`, header read 2026-11-06):
 
 | Header field | Value |
 |---|---|
@@ -21,7 +23,8 @@ Every offset in the notes that cite `SD.EXE` is a load-image offset unless it sa
 
 ## 2. Segments
 
-The relocated words name eight segment values (`[Established]`, counted from the relocation table). The roles are `[Supported Inference]` from what each holds.
+The relocated words name eight segment values (`[Established]`, counted from the relocation table).
+The roles are `[Supported Inference]` from what each holds.
 
 | Segment | Relocations | Role |
 |---|---|---|
@@ -53,7 +56,8 @@ A `DS` offset in DGROUP is the load-image offset − `0x163D0`; `anchorpt.dat` i
 
 ## 4. Routines
 
-`[Established]`, load-image offsets. The evidence for each is in the note named.
+`[Established]`, load-image offsets.
+The evidence for each is in the note named.
 
 | Offset | Routine | Note |
 |---|---|---|
@@ -68,14 +72,18 @@ A `DS` offset in DGROUP is the load-image offset − `0x163D0`; `anchorpt.dat` i
 | `0xD43B` | Walk the `REGIONS.BIN` block tree | same |
 | `0xE9B6`–`0xED28` | Write `SCENERY.BIN` and `SQUISHED.BIN`; unread | [`map.md`](../formats/auxiliary/map.md) section 4.2 |
 
-To find the code behind another string, turn its file offset into a load-image offset (− `0x600`), take the segment from section 2 whose base (segment × 16) is the highest at or below it, subtract that base, and search the code segments for the result as a 16-bit immediate or displacement. The object table is in `0x14FE`; every other string above is in DGROUP.
+To find the code behind another string, turn its file offset into a load-image offset (− `0x600`), take the segment from section 2 whose base (segment × 16) is the highest at or below it, subtract that base, and search the code segments for the result as a 16-bit immediate or displacement.
+The object table is in `0x14FE`; every other string above is in DGROUP.
 
 ## Ruled out
 
-- **`SD.EXE` as the `.SIO` to `.SOD` compiler** (2026-11-06): the image names no `.sio` or `.sod` file and only reads compiled shapes from `shapes\*.bin`. `SLICE.exe` opens `.SIO` files itself. What compiles them is open ([`sio.md`](../formats/auxiliary/sio.md)).
+- **`SD.EXE` as the `.SIO` to `.SOD` compiler** (2026-11-06): the image names no `.sio` or `.sod` file and only reads compiled shapes from `shapes\*.bin`.
+  `SLICE.exe` opens `.SIO` files itself.
+  What compiles them is open ([`sio.md`](../formats/auxiliary/sio.md)).
 
 ## Open questions
 
 1. **What `SCENERY.BIN` and `SQUISHED.BIN` encode**: [`map.md`](../formats/auxiliary/map.md) section 4.2.
 2. **Whether `SD.EXE` run on the corpus files rebuilds the shipped tree**: [`map.md`](../formats/auxiliary/map.md) section 4.2.
-3. **The roles of segments `0x0F7F` and `0x259A`.** Section 2 has only counts.
+3. **The roles of segments `0x0F7F` and `0x259A`.**
+   Section 2 has only counts.

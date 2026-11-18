@@ -1,8 +1,14 @@
 # Research Notes: Where Each Finding Goes
 
-`research/` records what the original game does and how our render differs from it. What we build from it (goals, invariants, architecture, decisions) lives in [`docs/`](../docs/). Each finding has exactly one home, chosen by its **subject**, not by the activity that produced it.
+`research/` records what the original game does and how our render differs from it.
+What we build from it (goals, invariants, architecture, decisions) lives in [`docs/`](../docs/).
+Each finding has exactly one home, chosen by its **subject**, not by the activity that produced it.
 
-**Provenance and licensing.** These notes are original writing by Stunt Reel contributors and are licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (see [`README.md` § License](../README.md#license)). Quoted third-party material and cited community research remain under their own terms and are not relicensed by this project. The game-derived constants documented here — the Stunt Island master palette and the 18-entry `.SOD` scale table — are not relicensed either. No game assets are distributed; see [`NOTICE.md`](../NOTICE.md).
+**Provenance and licensing.**
+These notes are original writing by Stunt Reel contributors and are licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (see [`README.md` § License](../README.md#license)).
+Quoted third-party material and cited community research remain under their own terms and are not relicensed by this project.
+The game-derived constants documented here — the Stunt Island master palette and the 18-entry `.SOD` scale table — are not relicensed either.
+No game assets are distributed; see [`NOTICE.md`](../NOTICE.md).
 
 ## Layout
 
@@ -22,19 +28,31 @@ To find a note rather than place a finding, read [`MAP.md`](MAP.md): every note 
 
 ## Routing rule
 
-1. **A fact about the original goes to the note for its subject.** "The player Gouraud-shades a `GVPOLY` polygon's index" belongs in `playone-exe/terrain-shade.md`; "a `.ALL` chunk is a copy of a `RES` item" belongs in `formats/all.md`. It does not stay in the journal of the experiment that found it.
+1. **A fact about the original goes to the note for its subject.**
+   "The player Gouraud-shades a `GVPOLY` polygon's index" belongs in `playone-exe/terrain-shade.md`; "a `.ALL` chunk is a copy of a `RES` item" belongs in `formats/all.md`.
+   It does not stay in the journal of the experiment that found it.
 2. **A fact about our render's residual goes to `parity/`,** in the note for that residual (where the loss sits, framing and camera, the hero aircraft, mismatched film segments).
 3. **Every experiment leaves a journal entry in its work folder** ([`work/README.md`](../work/README.md#journal-entries)), and the finding's provenance line links that entry's heading.
-4. **Facts stay here; procedures go to `docs/howto/`.** A note holds reference and explanation: how the original works, where our render differs from it, and the quality of the evidence (DAC lag, torn pages, recapture noise), since that decides which captures count. A tool evaluation is such a fact and stays with what the tool studies, as `playone-exe/static-tooling.md` does for `PLAYONE.EXE`. Steps for running our tools are how-to: they go to `docs/howto/<task>.md`, one task per file, and a skill links them rather than repeating them. This governs new procedures, and existing ones as their notes are distilled.
-5. **A handoff lives in the work folder's README,** or on the issue when there is no folder. Open questions about a subject go under its note's `Open questions` heading.
-6. **Superseded content is replaced, not kept beside the new result.** Its history is the journal entry and git.
-7. **A finding that needs a code fix is recorded on the fix's branch,** cut from `main`, after checking the open PRs that touch the same note. A verification branch keeps only its journal entry, stacked on the fix branch when it links a note the fix adds.
+4. **Facts stay here; procedures go to `docs/howto/`.**
+   A note holds reference and explanation: how the original works, where our render differs from it, and the quality of the evidence (DAC lag, torn pages, recapture noise), since that decides which captures count.
+   A tool evaluation is such a fact and stays with what the tool studies, as `playone-exe/static-tooling.md` does for `PLAYONE.EXE`.
+   Steps for running our tools are how-to: they go to `docs/howto/<task>.md`, one task per file, and a skill links them rather than repeating them.
+   This governs new procedures, and existing ones as their notes are distilled.
+5. **A handoff lives in the work folder's README,** or on the issue when there is no folder.
+   Open questions about a subject go under its note's `Open questions` heading.
+6. **Superseded content is replaced, not kept beside the new result.**
+   Its history is the journal entry and git.
+7. **A finding that needs a code fix is recorded on the fix's branch,** cut from `main`, after checking the open PRs that touch the same note.
+   A verification branch keeps only its journal entry, stacked on the fix branch when it links a note the fix adds.
 
-New offsets also update the appropriate table in the memory-map files that [`memory-map.md`](playone-exe/memory-map.md) lists (`# [MEM-*]` anchors); new format facts follow [`formats/INDEX.md`](formats/INDEX.md). Evidentiary tiers are defined in [`docs/SPEC.md` § 2.4](../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
+New offsets also update the appropriate table in the memory-map files that [`memory-map.md`](playone-exe/memory-map.md) lists (`# [MEM-*]` anchors); new format facts follow [`formats/INDEX.md`](formats/INDEX.md).
+Evidentiary tiers are defined in [`docs/SPEC.md` § 2.4](../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
 
 ## Note shape
 
-Begin each note with a frontmatter block holding `summary:`, one sentence of at most 200 characters saying what the note establishes; [`MAP.md`](MAP.md) is built from it. Follow [`playone-exe/startup.md`](playone-exe/startup.md) for structure (addresses, register states, flowcharts, tables). End each finding with a provenance line that links the journal entry it came from, written inline:
+Begin each note with a frontmatter block holding `summary:`, one sentence of at most 200 characters saying what the note establishes; [`MAP.md`](MAP.md) is built from it.
+Follow [`playone-exe/startup.md`](playone-exe/startup.md) for structure (addresses, register states, flowcharts, tables).
+End each finding with a provenance line that links the journal entry it came from, written inline:
 
 ```markdown
 _Source: [2026-11-07: lens zoom](../../work/2026-11/123_lens-zoom/journal.md#2026-11-07-lens-zoom)._
@@ -45,12 +63,17 @@ End each subject note with two headings, since the link check finds a Ruled out 
 - **`Ruled out`:** hypotheses tested and rejected, one or two lines each: what was tried, the score or observation, the verdict, and its journal link.
 - **`Open questions`:** open work in priority order.
 
-The notes are published as the research site ([`site/`](../site/published.toml), built by `mise run site`). A note needs a `# ` heading, or front matter with `title:`, or the site build fails. Give it a file name in `[A-Za-z0-9-]`: the build fails when a published page links to a note named otherwise.
+The notes are published as the research site ([`site/`](../site/published.toml), built by `mise run site`).
+A note needs a `# ` heading, or front matter with `title:`, or the site build fails.
+Give it a file name in `[A-Za-z0-9-]`: the build fails when a published page links to a note named otherwise.
 
 Give a note whose title is longer than 40 characters a shorter `sidebar_label:` in its front matter for the sidebar; the page keeps its full title.
 
-Headings carry no evidentiary tier tag, so links survive a tier promotion; state the tier in the section's first line. Anchor tokens (`# [FMT-*]`, `# [MEM-*]`) stay in headings.
+Headings carry no evidentiary tier tag, so links survive a tier promotion; state the tier in the section's first line.
+Anchor tokens (`# [FMT-*]`, `# [MEM-*]`) stay in headings.
 
 ## Size
 
-Keep each note under about 32 KB so one read covers it; `mise run doc-health` lists the notes over it. When a note grows past that, distill it with the [`distilling-notes`](../.agents/skills/distilling-notes/SKILL.md) skill, and if it is still over, split it by subject (for example `sod.md` / `sod-opcodes.md`), not by date. Generated tables (`formats/sod-opcode-coverage.md`) are exempt.
+Keep each note under about 32 KB so one read covers it; `mise run doc-health` lists the notes over it.
+When a note grows past that, distill it with the [`distilling-notes`](../.agents/skills/distilling-notes/SKILL.md) skill, and if it is still over, split it by subject (for example `sod.md` / `sod-opcodes.md`), not by date.
+Generated tables (`formats/sod-opcode-coverage.md`) are exempt.

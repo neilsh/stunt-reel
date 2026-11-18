@@ -1,6 +1,7 @@
 # Take a commit from another session's branch
 
-A commit taken from another session's branch (a cloud session's) keeps that session's author, which the pre-push hook rejects. Re-commit it:
+A commit taken from another session's branch (a cloud session's) keeps that session's author, which the pre-push hook rejects.
+Re-commit it:
 
 1. Start from a clean checkout: `git status --porcelain` prints nothing, since the gate tests untracked and unstaged files too.
 2. `git cherry-pick --no-commit <sha>`.

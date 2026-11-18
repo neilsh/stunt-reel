@@ -5,19 +5,32 @@ summary: "`SCENERY.scn` ([FMT-MAP-SCENERY]) is `PLAYONE.EXE`'s stack-segment sce
 
 ## 1. Overview & File Identification
 
-`SCENERY.scn` is the island's scenery tree: a BSP of partition, level-of-detail, position and leaf nodes that places every permanent prop and carries the ground polygons. It is one of the three tables in a `SIDATA\` directory, beside [`ANCHORPT.DAT`](anchorpt.md) and [`MAP.BIN`](map.md). The renderer walks it in `world/scenery/mod.rs` for prop placements.
+`SCENERY.scn` is the island's scenery tree: a BSP of partition, level-of-detail, position and leaf nodes that places every permanent prop and carries the ground polygons.
+It is one of the three tables in a `SIDATA\` directory, beside [`ANCHORPT.DAT`](anchorpt.md) and [`MAP.BIN`](map.md).
+The renderer walks it in `world/scenery/mod.rs` for prop placements.
 
-- **Origin.** The game does not ship this file. `SITools/SD.EXE`, the developers' scenery compiler, writes the tree as assembler source (`\stunt\landscape.asm`) from `MAP.BIN` and `REGIONS.BIN`, and the game assembles it in ([`map.md`](map.md) section 3.2).
-- **Copy in `PLAYONE.EXE`** (`[Established]`, byte comparison of the unpacked load image, 2026-10-23). The tree is the start of the stack segment: MZ `SS = 0x2286`, image offset `0x22860`, running to the image's end (29,558 words). Patch #3 `PLAYONE.EXE` holds it too ([`world-scene.md`](../../playone-exe/world-scene.md) section 2), and both `STUNT.EXE` builds hold its ground polygons. Alberto Marnetto's `si-free-flight-2` reads the tree from this segment (see [`corpus/README.md`](../../../corpus/README.md#external-references-not-in-the-corpus)).
-- **The file is that copy, widened** (`[Established]`, 2026-11-06). Start with the image from `0x22860` to its end, then:
+- **Origin.**
+  The game does not ship this file.
+  `SITools/SD.EXE`, the developers' scenery compiler, writes the tree as assembler source (`\stunt\landscape.asm`) from `MAP.BIN` and `REGIONS.BIN`, and the game assembles it in ([`map.md`](map.md) section 3.2).
+- **Copy in `PLAYONE.EXE`** (`[Established]`, byte comparison of the unpacked load image, 2026-10-23).
+  The tree is the start of the stack segment: MZ `SS = 0x2286`, image offset `0x22860`, running to the image's end (29,558 words).
+  Patch #3 `PLAYONE.EXE` holds it too ([`world-scene.md`](../../playone-exe/world-scene.md) section 2), and both `STUNT.EXE` builds hold its ground polygons.
+  Alberto Marnetto's `si-free-flight-2` reads the tree from this segment (see [`corpus/README.md`](../../../corpus/README.md#external-references-not-in-the-corpus)).
+- **The file is that copy, widened** (`[Established]`, 2026-11-06).
+  Start with the image from `0x22860` to its end, then:
   1. Zero-extend every 16-bit word to 32 bits.
   2. Add 2 to every non-zero link field that `scene_tree.walk` reads.
   3. Put a `0` word in front.
 
-  The result is FreeFlight's 118,236-byte file exactly. Sign-extending instead leaves 3,654 words wrong. The links are 2 higher only because of that leading word.
-- **Corpus copies.** `Developer/FreeFlight/SIDATA/` and `Developer/SIRes/SiData/` hold byte-identical files.
+  The result is FreeFlight's 118,236-byte file exactly.
+  Sign-extending instead leaves 3,654 words wrong.
+  The links are 2 higher only because of that leading word.
+- **Corpus copies.**
+  `Developer/FreeFlight/SIDATA/` and `Developer/SIRes/SiData/` hold byte-identical files.
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/shape/mod.rs`](../../../crates/stunt-core/src/contracts/shape/mod.rs), [`world/scenery/mod.rs`](../../../crates/stunt-core/src/world/scenery/mod.rs) and [`scene_tree.py`](../../../python/stunt_reel/scene_tree.py). No synthetic terrain fixture exists yet.
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization).
+**Contract and code:** [`contracts/shape/mod.rs`](../../../crates/stunt-core/src/contracts/shape/mod.rs), [`world/scenery/mod.rs`](../../../crates/stunt-core/src/world/scenery/mod.rs) and [`scene_tree.py`](../../../python/stunt_reel/scene_tree.py).
+No synthetic terrain fixture exists yet.
 
 ---
 
@@ -32,7 +45,8 @@ summary: "`SCENERY.scn` ([FMT-MAP-SCENERY]) is `PLAYONE.EXE`'s stack-segment sce
 | Links | Byte offsets into the 16-bit tree, plus 2; word index `= link / 2` | `[Established]` |
 | Root | Word 1, the image's offset 0 | `[Established]` |
 
-Executable layout: [`scenery.scn.ksy`](scenery.scn.ksy). The schema encodes the 32-bit word array only, because nodes are addressed by word index instead of stored sequentially.
+Executable layout: [`scenery.scn.ksy`](scenery.scn.ksy).
+The schema encodes the 32-bit word array only, because nodes are addressed by word index instead of stored sequentially.
 
 ---
 
@@ -40,7 +54,8 @@ Executable layout: [`scenery.scn.ksy`](scenery.scn.ksy). The schema encodes the 
 
 ### 3.1 Node Opcode Table (`# [FMT-MAP-SCENERY]`)
 
-In the node structures, child pointers and continuation indices (`ptr`, `next`) are half-word offsets; divide by 2 to index the 32-bit word array (`ni = next / 2`). FreeFlight starts the walk at word 1 (`simap_render_node(1, &center_pt, &eye_pt)`).
+In the node structures, child pointers and continuation indices (`ptr`, `next`) are half-word offsets; divide by 2 to index the 32-bit word array (`ni = next / 2`).
+FreeFlight starts the walk at word 1 (`simap_render_node(1, &center_pt, &eye_pt)`).
 
 | Opcode Constant | Value | Struct Name | Payload Fields | Execution Semantics | Evidentiary Tier |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -71,15 +86,30 @@ This is FreeFlight's reading, not the original's: `PLAYONE.EXE` uses view-space 
 
 ### 3.3 Prop Height
 
-`[Established]` from the disassembly of the unpacked image. A placed shape's height is its ancestors' `SP_POS` `y` terms plus the shape header's `ground_y_offset` shifted by its `scale_index` ([`sod.md`](../sod.md) section 2.1). `PLAYONE` samples no terrain:
+`[Established]` from the disassembly of the unpacked image.
+A placed shape's height is its ancestors' `SP_POS` `y` terms plus the shape header's `ground_y_offset` shifted by its `scale_index` ([`sod.md`](../sod.md) section 2.1).
+`PLAYONE` samples no terrain:
 
-- The walk starts (`0x1E43`) with the accumulated position `DS:0x49F2..0x49FC` (16.16 per axis) set to the negated view eye `DS:0x2A68`. `SP_POSXZ` (`0x1EA8`) adds to `x` (`0x49F4`) and `z` (`0x49FC`) only. Among the handlers that descend the tree, only `SP_POS` (`0x1E93`) changes `y` (`0x49F8`); the others save and restore it around subtrees.
-- `SP_LEAF` (`0x2219..0x2235`) and the far `SP_1NODE` stand-in (`0x2160`) add the shape's lift, `−ground_y_offset >> scale_index`, to `y` for the draw, before projecting. The shape segment from `0x4C41` holds the header at `ES:2`, so these reads are `[es:6]` and `[es:8]`. Elevation is negated in `PLAYONE`'s axes, so a positive offset raises the shape. The collision walker (`0x2434`, jump table `DS:0x0584`) uses the same rule (`0x24A0`, `0x25A1`). Neither walker reads the terrain or the anchor table.
+- The walk starts (`0x1E43`) with the accumulated position `DS:0x49F2..0x49FC` (16.16 per axis) set to the negated view eye `DS:0x2A68`.
+  `SP_POSXZ` (`0x1EA8`) adds to `x` (`0x49F4`) and `z` (`0x49FC`) only.
+  Among the handlers that descend the tree, only `SP_POS` (`0x1E93`) changes `y` (`0x49F8`); the others save and restore it around subtrees.
+- `SP_LEAF` (`0x2219..0x2235`) and the far `SP_1NODE` stand-in (`0x2160`) add the shape's lift, `−ground_y_offset >> scale_index`, to `y` for the draw, before projecting.
+  The shape segment from `0x4C41` holds the header at `ES:2`, so these reads are `[es:6]` and `[es:8]`.
+  Elevation is negated in `PLAYONE`'s axes, so a positive offset raises the shape.
+  The collision walker (`0x2434`, jump table `DS:0x0584`) uses the same rule (`0x24A0`, `0x25A1`).
+  Neither walker reads the terrain or the anchor table.
 - `[Supported Inference]`, from one scan of the disassembly for `[es:6]` (journal): the actor draw (`0x1D5F`) reads `[es:2]`, `[es:4]` and `[es:8]` but not `[es:6]`, so film actors get no lift, and no instruction in the VM range `0x8240..0xB85C` reads `[es:6]`.
 
-`[Bounded Observation]` for what this does to the two reference films' props. In the image's tree, 140,174 of 140,922 distinct placements have no `SP_POS` `y` on their path, and nearly all of them stand at `y = 0` over sea-level Ground. For the shapes in `CTRY.ALL` and `INTRO.ALL`, with the lift applied, each such non-`OP_TAP` prop over a Ground polygon has its lowest vertex between 1.5 m below and 6.2 m above the polygon under it that is nearest in height. The exceptions are the `OP_TAP` hills (`0x0202`–`0x0208`, `0x0402`–`0x0408`), whose corners are anchor points and which sit lower at their origin, and shape `0x0401`: its 41.0 m lift stands a vertical face 300 m wide from sea level to 82 m at `(1685, 0, 2301)`, over polygons at both sea level and 41.0 m, and why is not explained. Outside those exceptions, none of the props measured here (non-`OP_TAP`, no `SP_POS` `y`, over a Ground polygon) is buried by this rule; props outside that set were not measured.
+`[Bounded Observation]` for what this does to the two reference films' props.
+In the image's tree, 140,174 of 140,922 distinct placements have no `SP_POS` `y` on their path, and nearly all of them stand at `y = 0` over sea-level Ground.
+For the shapes in `CTRY.ALL` and `INTRO.ALL`, with the lift applied, each such non-`OP_TAP` prop over a Ground polygon has its lowest vertex between 1.5 m below and 6.2 m above the polygon under it that is nearest in height.
+The exceptions are the `OP_TAP` hills (`0x0202`–`0x0208`, `0x0402`–`0x0408`), whose corners are anchor points and which sit lower at their origin, and shape `0x0401`: its 41.0 m lift stands a vertical face 300 m wide from sea level to 82 m at `(1685, 0, 2301)`, over polygons at both sea level and 41.0 m, and why is not explained.
+Outside those exceptions, none of the props measured here (non-`OP_TAP`, no `SP_POS` `y`, over a Ground polygon) is buried by this rule; props outside that set were not measured.
 
-In our code the two halves live apart. `world/scenery/mod.rs` walks the 29,559 words from word 1 and places 6,345 static props, keeping those whose shapes the film's `.ALL` bundle carries; each instance is the tree's position `(−x, −y, z)`, with no lift. The lift is applied by the shape decoder ([`sod/vm.rs`](../../../crates/stunt-core/src/sod/vm.rs) `metric_point`), which adds `ground_y_offset` to each vertex's model `y` before scaling. `scene/projection.rs` `lifted` takes it back out along an actor's own `+Y`.
+In our code the two halves live apart.
+`world/scenery/mod.rs` walks the 29,559 words from word 1 and places 6,345 static props, keeping those whose shapes the film's `.ALL` bundle carries; each instance is the tree's position `(−x, −y, z)`, with no lift.
+The lift is applied by the shape decoder ([`sod/vm.rs`](../../../crates/stunt-core/src/sod/vm.rs) `metric_point`), which adds `ground_y_offset` to each vertex's model `y` before scaling.
+`scene/projection.rs` `lifted` takes it back out along an actor's own `+Y`.
 
 _Source: [2026-11-11: how PLAYONE gives an SP_POSXZ prop its height](../../../work/2026-11/253_posxz-prop-height/journal.md#2026-11-11-how-playone-gives-an-sp_posxz-prop-its-height)._
 

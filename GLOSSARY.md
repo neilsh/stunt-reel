@@ -1,356 +1,331 @@
 # Stunt Reel
 
-Independent reconstruction of *Stunt Island* (1992) film playback: formats, evaluator, renderer, and parity tooling. This file is the canonical vocabulary. Implementation lives in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Independent reconstruction of *Stunt Island* (1992) film playback: formats, evaluator, renderer, and parity tooling.
+This file is the canonical vocabulary.
+Implementation lives in [`docs/SPEC.md`](docs/SPEC.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Film playback
 
-**Film**:
-A `.FLM` authored timeline driving camera, actor, and audio state. Paired one-to-one with an archive.
+**Film**: A `.FLM` authored timeline driving camera, actor, and audio state.
+Paired one-to-one with an archive.
 _Avoid_: movie, replay
 
-**Slice**:
-One authored timeline record: a duration plus the state changes applied over it. A film is a sequence of slices.
+**Slice**: One authored timeline record: a duration plus the state changes applied over it.
+A film is a sequence of slices.
 _Avoid_: frame, keyframe, tick
 
-**Tick**:
-One discrete simulation step on the film's 50 Hz playback clock (20 ms). A slice spans zero or more ticks.
+**Tick**: One discrete simulation step on the film's 50 Hz playback clock (20 ms).
+A slice spans zero or more ticks.
 _Avoid_: frame, slice
 
-**Tick duration**:
-The number of ticks elapsed since the previous slice; zero denotes a slice that changes state without advancing time. Cumulative tick duration gives a slice's timestamp.
+**Tick duration**: The number of ticks elapsed since the previous slice; zero denotes a slice that changes state without advancing time.
+Cumulative tick duration gives a slice's timestamp.
 _Avoid_: slice duration, frame count
 
-**Timeline**:
-A film's slices placed on the 50 Hz clock by cumulative tick duration. Playback and export sample the timeline at arbitrary ticks or wall-clock times, interpolating between slice keyframes.
+**Timeline**: A film's slices placed on the 50 Hz clock by cumulative tick duration.
+Playback and export sample the timeline at arbitrary ticks or wall-clock times, interpolating between slice keyframes.
 _Avoid_: track, sequence
 
-**Trajectory record**:
-The evaluated snapshot of camera, actors, audio cues, and palette controls at a slice timestamp or at an interpolated tick sampled from the timeline. It carries authored facts only, pose and base lens, and its timestamp is a 50 Hz tick, never a slice ordinal ([ADR 0020](docs/adr/0020-trajectory-records-carry-authored-facts.md)).
+**Trajectory record**: The evaluated snapshot of camera, actors, audio cues, and palette controls at a slice timestamp or at an interpolated tick sampled from the timeline.
+It carries authored facts only, pose and base lens, and its timestamp is a 50 Hz tick, never a slice ordinal ([ADR 0020](docs/adr/0020-trajectory-records-carry-authored-facts.md)).
 _Avoid_: trajectory tick, frame
 
-**Trajectory**:
-The ordered sequence of trajectory records for a film.
+**Trajectory**: The ordered sequence of trajectory records for a film.
 _Avoid_: animation
 
-**Epilogue**:
-The terminal film record marking end of stream. It carries the last slice's length and an end marker, and is not a slice.
+**Epilogue**: The terminal film record marking end of stream.
+It carries the last slice's length and an end marker, and is not a slice.
 _Avoid_: trailer, final slice
 
-**Camera cut**:
-An instantaneous camera reposition between consecutive trajectory records, exempt from interpolation.
+**Camera cut**: An instantaneous camera reposition between consecutive trajectory records, exempt from interpolation.
 
-**Slot re-creation**:
-A create on a slot that an earlier slice destroyed, starting a new actor rather than continuing the old one ([film segments](research/parity/film-segments.md) § 2.3).
+**Slot re-creation**: A create on a slot that an earlier slice destroyed, starting a new actor rather than continuing the old one ([film segments](research/parity/film-segments.md) § 2.3).
 _Avoid_: respawn, slot reuse
 
-**Palette controls**:
-Film variables 13 (night term), 14 (brightness) and 15 (saturation), from which `PLAYONE.EXE` rebuilds palette entries 0–239 every frame. Fades, desaturation and dusk are authored through them ([palette fade](research/playone-exe/palette-fade.md)).
+**Palette controls**: Film variables 13 (night term), 14 (brightness) and 15 (saturation), from which `PLAYONE.EXE` rebuilds palette entries 0–239 every frame.
+Fades, desaturation and dusk are authored through them ([palette fade](research/playone-exe/palette-fade.md)).
 _Avoid_: tone, palette fade (for the variables themselves)
 
-**Credits**:
-The two lines of text a film shows over its picture, set and cleared at authored ticks ([`pfont.md` § 3.2](research/formats/auxiliary/pfont.md#32-drawing-the-credits)). A title card is credits shown while the scene is faded to black.
+**Credits**: The two lines of text a film shows over its picture, set and cleared at authored ticks ([`pfont.md` § 3.2](research/formats/auxiliary/pfont.md#32-drawing-the-credits)).
+A title card is credits shown while the scene is faded to black.
 _Avoid_: caption, title text, subtitles
 
-**Animation input**:
-The raw 16-bit value a `.FLM` slot with `SIF_ANIMATES` carries, interpolated between keys, from which an `OP_ANIMATE` picks a frame of its image table.
+**Animation input**: The raw 16-bit value a `.FLM` slot with `SIF_ANIMATES` carries, interpolated between keys, from which an `OP_ANIMATE` picks a frame of its image table.
 _Avoid_: joint angle, frame counter
 
 ## Assets and models
 
-**Archive**:
-A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film: written from it by `MAKEONE.EXE`, or rebuilt from the game's resources when the film has an archive manifest. A film has at most one stored archive, and an archive is not a capture.
+**Archive**: A `.ALL` container of numbered model and auxiliary resource chunks, paired with a film: written from it by `MAKEONE.EXE`, or rebuilt from the game's resources when the film has an archive manifest.
+A film has at most one stored archive, and an archive is not a capture.
 _Avoid_: bundle, resource file
 
-**Archive manifest**:
-The committed record of which item of which game resource file makes each chunk of a film's archive, from which the archive is rebuilt byte for byte. A film whose archive holds content the game's resources lack has none.
+**Archive manifest**: The committed record of which item of which game resource file makes each chunk of a film's archive, from which the archive is rebuilt byte for byte.
+A film whose archive holds content the game's resources lack has none.
 _Avoid_: manifest (alone; the render record and capture set are not manifests)
 
-**Superset archive**:
-One archive holding every stock shape of one game build, standing in for a film's own archive when a film is rendered or played without it. It serves only films whose shapes all come from the stock game.
+**Superset archive**: One archive holding every stock shape of one game build, standing in for a film's own archive when a film is rendered or played without it.
+It serves only films whose shapes all come from the stock game.
 _Avoid_: universal archive, full archive, SUPERSET (the file, for the concept)
 
-**Shape**:
-A 3D `.SOD` model chunk in an archive, identified by `shape_id`. One shape may be bound to several slots.
+**Shape**: A 3D `.SOD` model chunk in an archive, identified by `shape_id`.
+One shape may be bound to several slots.
 _Avoid_: sprite, object
 
-**Mesh slice**:
-A contiguous run of one shape's or the world's polygons that the renderer draws and orders as one unit.
+**Mesh slice**: A contiguous run of one shape's or the world's polygons that the renderer draws and orders as one unit.
 _Avoid_: slice (alone; a **Slice** is a timeline record), draw range
 
-**Animation image resource**:
-A numbered `.ALL` image resource referenced by an `OP_ANIMATE` table and drawn at a projected screen position. It is distinct from a 3D shape.
+**Animation image resource**: A numbered `.ALL` image resource referenced by an `OP_ANIMATE` table and drawn at a projected screen position.
+It is distinct from a 3D shape.
 _Avoid_: shape, joint
 
-**Sprite**:
-One `OP_ANIMATE` draw of a shape: a frame of its animation image resources, drawn facing the screen at one of the shape's points.
+**Sprite**: One `OP_ANIMATE` draw of a shape: a frame of its animation image resources, drawn facing the screen at one of the shape's points.
 _Avoid_: billboard (for the original's draw), shape
 
-**Slot**:
-One of the 64 timeline entity channels in a film. A slot binds a shape and carries position, orientation, and an optional animation input. Distinct from **Prop slot** and **Sound slot**, the handbook's other two uses of the word.
+**Slot**: One of the 64 timeline entity channels in a film.
+A slot binds a shape and carries position, orientation, and an optional animation input.
+Distinct from **Prop slot** and **Sound slot**, the handbook's other two uses of the word.
 _Avoid_: actor
 
-**Actor**:
-An evaluated slot presented to the renderer, excluding the slot driving the camera.
+**Actor**: An evaluated slot presented to the renderer, excluding the slot driving the camera.
 _Avoid_: object, entity
 
-**DOS axes**:
-The raw coordinate frame of `.FLM` slots and anchor points in `PLAYONE.EXE`. It maps to `[I1]` by a 180° rotation about Z: `(x, y, z) → (−x, −y, z)`, applied to positions and orientations alike. Evaluated trajectory records are always `[I1]`.
+**DOS axes**: The raw coordinate frame of `.FLM` slots and anchor points in `PLAYONE.EXE`.
+It maps to `[I1]` by a 180° rotation about Z: `(x, y, z) → (−x, −y, z)`, applied to positions and orientations alike.
+Evaluated trajectory records are always `[I1]`.
 _Avoid_: legacy coordinates
 
-**World**:
-The static scenery of an island: ocean, terrain patches built from `MAP.BIN` over anchor points, and props placed by `SCENERY.scn`. It is drawn with an identity transform.
+**World**: The static scenery of an island: ocean, terrain patches built from `MAP.BIN` over anchor points, and props placed by `SCENERY.scn`.
+It is drawn with an identity transform.
 _Avoid_: level, map (for the whole)
 
-**Ground**:
-The island's surface, the handbook's "the ground". `MAP.BIN` terrain patches are one known source of it; what supplies the rest, such as the sand flats, is not established.
+**Ground**: The island's surface, the handbook's "the ground".
+`MAP.BIN` terrain patches are one known source of it; what supplies the rest, such as the sand flats, is not established.
 _Avoid_: terrain (for the whole surface), floor
 
-**Prop**:
-A shape placed in the world by a `SCENERY.scn` leaf. A prop has a position and no orientation; a rotated variant is a separate shape.
+**Prop**: A shape placed in the world by a `SCENERY.scn` leaf.
+A prop has a position and no orientation; a rotated variant is a separate shape.
 _Avoid_: asset, scenegraph node
 
-**Placement**:
-A prop's shape and position in the world, as the scenery walk, dedup and the sub-pixel cull leave it.
+**Placement**: A prop's shape and position in the world, as the scenery walk, dedup and the sub-pixel cull leave it.
 _Avoid_: instance
 
-**Scenery walk**:
-The traversal of `SCENERY.scn` from its root that produces placements, including its `SP_1NODE` level-of-detail gate between a subtree and its stand-in ([LOD](research/playone-exe/lod.md)).
+**Scenery walk**: The traversal of `SCENERY.scn` from its root that produces placements, including its `SP_1NODE` level-of-detail gate between a subtree and its stand-in ([LOD](research/playone-exe/lod.md)).
 _Avoid_: traversal, scene tree walk
 
-**Film scene**:
-A film's timeline bound to its archive's shapes and the world. Sampling it at a tick yields a scene frame.
+**Film scene**: A film's timeline bound to its archive's shapes and the world.
+Sampling it at a tick yields a scene frame.
 _Avoid_: scene bundle
 
-**Scene frame**:
-What to draw at one tick: the lens-zoomed view camera (`ViewCamera`), the world, and one draw per visible actor carrying its shape, world matrix, state mask, and distance to the camera. Two actors sharing a shape are two draws.
+**Scene frame**: What to draw at one tick: the lens-zoomed view camera (`ViewCamera`), the world, and one draw per visible actor carrying its shape, world matrix, state mask, and distance to the camera.
+Two actors sharing a shape are two draws.
 _Avoid_: frame (alone), draw list
 
-**glTF export**:
-A `.glb` written by `stunt-gltf` for viewing a shape, or one scene frame, in standard tools. It is a convenience format with no parity gate of its own.
+**glTF export**: A `.glb` written by `stunt-gltf` for viewing a shape, or one scene frame, in standard tools.
+It is a convenience format with no parity gate of its own.
 _Avoid_: glTF parity, Phase 1 export
 
-**Partial SOD**:
-A decoded shape whose decode record carries a `stop`: its bytecode reached an opcode the evaluator does not implement, or `OP_TAP` without an anchor table, and the geometry decoded before the stop is retained. Partiality is the shape's own provenance, not a parallel report list.
+**Partial SOD**: A decoded shape whose decode record carries a `stop`: its bytecode reached an opcode the evaluator does not implement, or `OP_TAP` without an anchor table, and the geometry decoded before the stop is retained.
+Partiality is the shape's own provenance, not a parallel report list.
 _Avoid_: corrupt model, truncated SOD
 
-**Decode record**:
-The provenance a shape's decode attaches to it: the stream's 10-byte `.SOD` header, the first blocking opcode (`stop`), the opcodes a census decode stepped over, and the byte offset of its first `OP_RETURN`. Authored shapes - the world IR and the synthetic aircraft - carry no record.
+**Decode record**: The provenance a shape's decode attaches to it: the stream's 10-byte `.SOD` header, the first blocking opcode (`stop`), the opcodes a census decode stepped over, and the byte offset of its first `OP_RETURN`.
+Authored shapes - the world IR and the synthetic aircraft - carry no record.
 _Avoid_: decode metadata, parse result
 
-**Blocking opcode**:
-The first opcode in a shape's bytecode that the evaluator does not implement; the point where a Partial SOD stops.
+**Blocking opcode**: The first opcode in a shape's bytecode that the evaluator does not implement; the point where a Partial SOD stops.
 _Avoid_: bad opcode, invalid opcode
 
-**Masked opcode**:
-An unimplemented opcode that sits after a shape's blocking opcode, so a lenient decode never reports it. Implementing the blocking opcode can expose it as the next one.
+**Masked opcode**: An unimplemented opcode that sits after a shape's blocking opcode, so a lenient decode never reports it.
+Implementing the blocking opcode can expose it as the next one.
 _Avoid_: hidden opcode (collides with face visibility, `OP_VOTEHID`)
 
-**Anchor point** (also **tap point**):
-A 28-byte terrain record shared by `MAP.BIN` patches and `OP_TAP`, carrying raw island coordinates and scratch fields for the display-list VM.
+**Anchor point** (also **tap point**): A 28-byte terrain record shared by `MAP.BIN` patches and `OP_TAP`, carrying raw island coordinates and scratch fields for the display-list VM.
 _Avoid_: debug marker, scratchpad touch
 
 ## Assets and provenance
 
-**Synthetic fixture**:
-A test file constructed byte-by-byte for this repository, not extracted from a retail game file. The test suite must pass without the corpus.
+**Synthetic fixture**: A test file constructed byte-by-byte for this repository, not extracted from a retail game file.
+The test suite must pass without the corpus.
 _Avoid_: mock asset, cleanroom asset
 
-**Game-derived constant**:
-A small table transcribed from published community documentation or observed behaviour because the renderer cannot work without it: the 256-entry master palette and the 18-entry SOD scale table. It is documented in [`NOTICE.md`](NOTICE.md) and is not relicensed by the project.
+**Game-derived constant**: A small table transcribed from published community documentation or observed behaviour because the renderer cannot work without it: the 256-entry master palette and the 18-entry SOD scale table.
+It is documented in [`NOTICE.md`](NOTICE.md) and is not relicensed by the project.
 _Avoid_: extracted asset, proprietary blob
 
-**Asset isolation**:
-The rule that retail executables and data files are never committed; the corpus is an external oracle only, and tests use synthetic fixtures. The game-derived constants above are the only documented exceptions.
+**Asset isolation**: The rule that retail executables and data files are never committed; the corpus is an external oracle only, and tests use synthetic fixtures.
+The game-derived constants above are the only documented exceptions.
 _Avoid_: cleanroom
 
 ## Production (authoring)
 
-Vocabulary the handbook uses for the authoring front end. These name data the player reads, not features StuntReel implements: see [`docs/SPEC.md` § 2.1](docs/SPEC.md#21-explicit-scope-boundaries--non-goals).
+Vocabulary the handbook uses for the authoring front end.
+These name data the player reads, not features StuntReel implements: see [`docs/SPEC.md` § 2.1](docs/SPEC.md#21-explicit-scope-boundaries--non-goals).
 
-**Set**:
-The authored stage stored in a `.SET` file: recording mode, numbered prop slots and their placement, camera rigs, and the event list.
+**Set**: The authored stage stored in a `.SET` file: recording mode, numbered prop slots and their placement, camera rigs, and the event list.
 _Avoid_: level, map, stage
 
-**Take**:
-One filmed attempt at a set's stunt, saved as a `.TKE` and numbered per set. A take is raw multi-camera footage; a film is its edit.
+**Take**: One filmed attempt at a set's stunt, saved as a `.TKE` and numbered per set.
+A take is raw multi-camera footage; a film is its edit.
 _Avoid_: shot, film
 
-**Event**:
-One numbered rule in a set's event list: an IF trigger, optional AND qualifiers, and THEN actions.
+**Event**: One numbered rule in a set's event list: an IF trigger, optional AND qualifiers, and THEN actions.
 _Avoid_: script, trigger (alone)
 
-**Flag**:
-An author-assigned integer in a set's event system, range -128 to 127, tested by `Flag =` and `Flag ?` and written by `Set Flag`. Whether flags are the film's variable registers is not established.
+**Flag**: An author-assigned integer in a set's event system, range -128 to 127, tested by `Flag =` and `Flag ?` and written by `Set Flag`.
+Whether flags are the film's variable registers is not established.
 _Avoid_: variable (for the event integers)
 
-**Authored limit**:
-A ceiling the authoring tools impose on a set (40 prop slots, 64 events, 655 seconds of event time), as opposed to a bound the file format enforces.
+**Authored limit**: A ceiling the authoring tools impose on a set (40 prop slots, 64 events, 655 seconds of event time), as opposed to a bound the file format enforces.
 _Avoid_: format limit, hard limit
 
-**Prop slot**:
-A numbered container for a placed prop in a set, 1 to 40. Slots 1 to 8 also record film; slots 9 to 40 hold props only.
+**Prop slot**: A numbered container for a placed prop in a set, 1 to 40.
+Slots 1 to 8 also record film; slots 9 to 40 hold props only.
 _Avoid_: slot (unqualified), film slot
 
-**Recording slot**:
-One of prop slots 1 to 8 in a set, each producing one camera angle. Slot 1 is the stunt aircraft and slot 2 the spotter.
+**Recording slot**: One of prop slots 1 to 8 in a set, each producing one camera angle.
+Slot 1 is the stunt aircraft and slot 2 the spotter.
 _Avoid_: camera (for the slot itself)
 
-**Camera angle**:
-The view produced by one recording slot, to which the editing room assigns a deck.
+**Camera angle**: The view produced by one recording slot, to which the editing room assigns a deck.
 _Avoid_: view, shot
 
-**Sound slot**:
-One numbered entry in a `Usersnd` bank; each of the five banks holds up to 253 sounds.
+**Sound slot**: One numbered entry in a `Usersnd` bank; each of the five banks holds up to 253 sounds.
 _Avoid_: slot (unqualified)
 
 ## Capture and emulation
 
-**Game build**:
-One of the two releases of the `PLAYONE.EXE`/`MAKEONE.EXE` pair: **unpatched**, the 1992 release that the retail game and the demo ship, or **patch3**, the Patch #3 release that replaced every executable. An archive belongs to the build whose `MAKEONE` wrote it, and a capture to the build whose `PLAYONE` played it.
+**Game build**: One of the two releases of the `PLAYONE.EXE`/`MAKEONE.EXE` pair: **unpatched**, the 1992 release that the retail game and the demo ship, or **patch3**, the Patch #3 release that replaced every executable.
+An archive belongs to the build whose `MAKEONE` wrote it, and a capture to the build whose `PLAYONE` played it.
 _Avoid_: version, patch level, base or retail build (for unpatched)
 
-**MAKEONE hang**:
-A `MAKEONE` run that writes its archive but never returns to DOS. Distinct from a capture stall, where `PLAYONE` never reaches its film.
+**MAKEONE hang**: A `MAKEONE` run that writes its archive but never returns to DOS.
+Distinct from a capture stall, where `PLAYONE` never reaches its film.
 _Avoid_: stall, timeout (for MAKEONE)
 
-**Control port**:
-The TCP port of the emulator's REST server, chosen afresh for each capture run ([ADR 0025](docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
+**Control port**: The TCP port of the emulator's REST server, chosen afresh for each capture run ([ADR 0025](docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
 _Avoid_: MCP port, debugger port, capture lock
 
-**Clock pass**:
-The first pass of a capture: one play of the film that only samples the film clock at a fixed frame interval, to learn where each tick falls.
+**Clock pass**: The first pass of a capture: one play of the film that only samples the film clock at a fixed frame interval, to learn where each tick falls.
 _Avoid_: trace (for this sparse sampling), pass 1
 
-**Window**:
-A short run of consecutive emulator frames, placed from the clock pass, from which a capture keeps at most one captured frame.
+**Window**: A short run of consecutive emulator frames, placed from the clock pass, from which a capture keeps at most one captured frame.
 _Avoid_: slice (a film's own unit), sample
 
 ## Artifacts
 
-**Film identity**:
-What a render record or a capture set says about the film it was made from: the `.FLM`'s name, size and hash, and the hash of the archive as made, not as staged for a capture. Archives that draw the same shapes are still different identities.
+**Film identity**: What a render record or a capture set says about the film it was made from: the `.FLM`'s name, size and hash, and the hash of the archive as made, not as staged for a capture.
+Archives that draw the same shapes are still different identities.
 _Avoid_: film tag, provenance (for the game build and sound samples a capture records)
 
-**Render record**:
-The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index, camera and credits flag of every whole-tick frame, and the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)).
+**Render record**: The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index, camera and credits flag of every whole-tick frame, and the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)).
 _Avoid_: sidecar (for the record), manifest
 
-**Capture set**:
-The typed view of a capture directory's `meta.json`: the film identity, the raster geometry, and one captured frame per capture ordinal, each tagged with its film clock.
+**Capture set**: The typed view of a capture directory's `meta.json`: the film identity, the raster geometry, and one captured frame per capture ordinal, each tagged with its film clock.
 _Avoid_: capture manifest
 
-**Parity artifact port**:
-The pure `crates/stunt-parity` crate that defines the render, capture and report documents and their schema version; `stunt-cli` and `stunt_reel` adapt it to files.
+**Parity artifact port**: The pure `crates/stunt-parity` crate that defines the render, capture and report documents and their schema version; `stunt-cli` and `stunt_reel` adapt it to files.
 _Avoid_: schema library
 
 ## Evidence
 
-**Corpus**:
-The local, gitignored set of original game files used as evidence: the demo, the full retail install, its patches and the community archive. Nothing this project runs ever changes it, and it is never committed.
+**Corpus**: The local, gitignored set of original game files used as evidence: the demo, the full retail install, its patches and the community archive.
+Nothing this project runs ever changes it, and it is never committed.
 _Avoid_: assets, data archive, target binaries
 
-**Parity**:
-Comparison of a reconstructed render against a captured frame, scored by SSIM and mask IoU. The render is sampled from the timeline at the captured frame's film clock.
+**Parity**: Comparison of a reconstructed render against a captured frame, scored by SSIM and mask IoU.
+The render is sampled from the timeline at the captured frame's film clock.
 _Avoid_: parity (for checking a trajectory against an oracle trajectory)
 
-**Oracle trajectory**:
-A trusted reference trajectory that an evaluated timeline is checked against for position error. It concerns trajectory records only, never rendered pixels.
+**Oracle trajectory**: A trusted reference trajectory that an evaluated timeline is checked against for position error.
+It concerns trajectory records only, never rendered pixels.
 _Avoid_: parity oracle, golden frames
 
-**Capture**:
-One run of `PLAYONE.EXE` under dosbox-automation that records a film's captured frames and palettes. A film has at most one capture of each kind, frames and video; a new capture replaces it.
+**Capture**: One run of `PLAYONE.EXE` under dosbox-automation that records a film's captured frames and palettes.
+A film has at most one capture of each kind, frames and video; a new capture replaces it.
 _Avoid_: recording (the game's own word for filming a take), recapture (for overwriting one)
 
-**Stubbed sound samples**:
-How a capture plays a film's archive by default: every chunk in the sound range `0xC000`–`0xCFFF` replaced by one byte ([ADR 0043](docs/adr/0043-captures-play-with-the-archives-sound-samples-stubbed.md)). A capture records in its metadata whether its samples were stubbed or kept.
+**Stubbed sound samples**: How a capture plays a film's archive by default: every chunk in the sound range `0xC000`–`0xCFFF` replaced by one byte ([ADR 0043](docs/adr/0043-captures-play-with-the-archives-sound-samples-stubbed.md)).
+A capture records in its metadata whether its samples were stubbed or kept.
 _Avoid_: muted, silent (the chunks stay in the archive; what PLAYONE plays for one is unknown)
 
-**Reference capture**:
-The capture that parity scores a film against, chosen by an explicit promotion that the repository records.
+**Reference capture**: The capture that parity scores a film against, chosen by an explicit promotion that the repository records.
 _Avoid_: golden frames, the reference (unqualified)
 
-**Reference film**:
-A film the parity loop scores against its reference capture and the adoption rule counts.
+**Reference film**: A film the parity loop scores against its reference capture and the adoption rule counts.
 _Avoid_: fidelity target, parity target, pinned film
 
-**Renderer class**:
-The kind of adapter a render ran on: `gpu` for hardware, `lavapipe` for any CPU adapter, WARP included. Expected scores are kept per class.
+**Renderer class**: The kind of adapter a render ran on: `gpu` for hardware, `lavapipe` for any CPU adapter, WARP included.
+Expected scores are kept per class.
 _Avoid_: backend (wgpu's term for Vulkan, DX12 and the rest)
 
-**Expected score**:
-A reference film's parity score recorded for one renderer class on one measured `crates/` tree; drift is judged against it.
+**Expected score**: A reference film's parity score recorded for one renderer class on one measured `crates/` tree; drift is judged against it.
 _Avoid_: baseline (unqualified), pinned score
 
-**Repin**:
-Rewriting every reference film's expected scores for one renderer class from reports rendered on the current `crates/` tree.
+**Repin**: Rewriting every reference film's expected scores for one renderer class from reports rendered on the current `crates/` tree.
 _Avoid_: rebaseline, hand-merging scores
 
-**Captured frame**:
-One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered by capture order and tagged with the film clock read when it was taken.
+**Captured frame**: One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered by capture order and tagged with the film clock read when it was taken.
 _Avoid_: tick (for the capture ordinal)
 
-**Matched frame**:
-A captured frame together with the render at its film clock. A captured frame is unmatched when its files are missing or the render holds no planes for its tick.
+**Matched frame**: A captured frame together with the render at its film clock.
+A captured frame is unmatched when its files are missing or the render holds no planes for its tick.
 _Avoid_: frame pair, joined frame
 
-**UI overlay**:
-What `PLAYONE.EXE` draws over the 3D scene in a captured frame that is not part of the film: the button bar and the mouse cursor. The renderer does not draw it, and parity leaves it out of scoring.
+**UI overlay**: What `PLAYONE.EXE` draws over the 3D scene in a captured frame that is not part of the film: the button bar and the mouse cursor.
+The renderer does not draw it, and parity leaves it out of scoring.
 _Avoid_: HUD, status bar
 
-**Index agreement**:
-The fraction of scored pixels whose palette index in the render equals the one in the captured frame. A diagnostic beside SSIM and mask IoU, not a gate.
+**Index agreement**: The fraction of scored pixels whose palette index in the render equals the one in the captured frame.
+A diagnostic beside SSIM and mask IoU, not a gate.
 _Avoid_: pixel accuracy, exact match
 
-**Film clock**:
-`PLAYONE.EXE`'s runtime count of 50 Hz ticks into the active film, read from DGROUP. It is the tick a captured frame shows.
+**Film clock**: `PLAYONE.EXE`'s runtime count of 50 Hz ticks into the active film, read from DGROUP.
+It is the tick a captured frame shows.
 _Avoid_: frame counter, global tick
 
-**Fade level**:
-The brightness of a captured frame relative to the static palette: about 1.0 when `PLAYONE` is not fading. The **authored fade level** is the same ratio taken from the film's own brightness palette control at that tick.
+**Fade level**: The brightness of a captured frame relative to the static palette: about 1.0 when `PLAYONE` is not fading.
+The **authored fade level** is the same ratio taken from the film's own brightness palette control at that tick.
 _Avoid_: brightness, exposure
 
-**Sky band**:
-One of the palette indices 227 to 238 that `PLAYONE.EXE` paints the sky with, in straight bands by view-ray elevation. Every captured pixel in a sky band is sky.
+**Sky band**: One of the palette indices 227 to 238 that `PLAYONE.EXE` paints the sky with, in straight bands by view-ray elevation.
+Every captured pixel in a sky band is sky.
 _Avoid_: sky index, clear colour (the render's framebuffer clear)
 
-**Scored frame**:
-A captured frame that enters a mean: matched to a render at its film clock, not excluded by the fade floor or the UI overlay.
+**Scored frame**: A captured frame that enters a mean: matched to a render at its film clock, not excluded by the fade floor or the UI overlay.
 _Avoid_: valid frame, sampled frame
 
-**Target frames**:
-The scored frames a round names, before its sweep, as showing the defect it addresses; any other frame the candidate changes is a side effect.
+**Target frames**: The scored frames a round names, before its sweep, as showing the defect it addresses; any other frame the candidate changes is a side effect.
 _Avoid_: bug frames, affected frames, segment (the editor's marked span for a palette effect)
 
-**Probe**:
-A measurement of one frame or region through `parity_probe.py`. An investigation that is still open is an open question, not a probe.
+**Probe**: A measurement of one frame or region through `parity_probe.py`.
+An investigation that is still open is an open question, not a probe.
 _Avoid_: probe (for a hypothesis still to be settled)
 
-**Round**:
-One hypothesis class closed by one batched sweep, its adoption decision and its journal entry.
+**Round**: One hypothesis class closed by one batched sweep, its adoption decision and its journal entry.
 _Avoid_: iteration, pass
 
-**Sweep**:
-One run of `mise run sweep` over the product of one hypothesis class's candidate values, scoring every variant on every chosen film. The round ends at its result.
+**Sweep**: One run of `mise run sweep` over the product of one hypothesis class's candidate values, scoring every variant on every chosen film.
+The round ends at its result.
 _Avoid_: batch run, grid search
 
-**Adoption**:
-Keeping a round's best candidate. The [adoption rule](.agents/skills/improving-render-parity/loop-rules.md#adoption-rule) judges an evidence-backed change (a rule read from `PLAYONE.EXE`, cited at an image offset) and a heuristic change on separate tracks.
+**Adoption**: Keeping a round's best candidate.
+The [adoption rule](.agents/skills/improving-render-parity/loop-rules.md#adoption-rule) judges an evidence-backed change (a rule read from `PLAYONE.EXE`, cited at an image offset) and a heuristic change on separate tracks.
 _Avoid_: acceptance, merge (for the parity decision)
 
 ## Records
 
-**Evergreen note**:
-A research note or `docs/` page that states what is true now and is rewritten in place when that changes. It keeps its history in the journal entries it cites and in git, not in dated sections.
+**Evergreen note**: A research note or `docs/` page that states what is true now and is rewritten in place when that changes.
+It keeps its history in the journal entries it cites and in git, not in dated sections.
 _Avoid_: living document, findings log
 
-**Work item**:
-A GitHub issue; its state is the work's status: open is active, closed as completed is landed, closed as not planned is abandoned. It gets a work folder only when it has a file to keep.
+**Work item**: A GitHub issue; its state is the work's status: open is active, closed as completed is landed, closed as not planned is abandoned.
+It gets a work folder only when it has a file to keep.
 _Avoid_: task, job
 
-**Work folder**:
-A folder under `work/<YYYY-MM>/` holding dated records, such as a spec, plan, journal and images, for one work item or for work with no issue. It is frozen once its work lands and is not a source of truth.
+**Work folder**: A folder under `work/<YYYY-MM>/` holding dated records, such as a spec, plan, journal and images, for one work item or for work with no issue.
+It is frozen once its work lands and is not a source of truth.
 _Avoid_: plan folder, process docs
 
-**Journal entry**:
-One dated `##` section of a work folder's `journal.md`: the question, the method, the result with its scores, the verdict, and the evergreen note or ADR that now holds the fact. An evergreen note's provenance line links its heading.
+**Journal entry**: One dated `##` section of a work folder's `journal.md`: the question, the method, the result with its scores, the verdict, and the evergreen note or ADR that now holds the fact.
+An evergreen note's provenance line links its heading.
 _Avoid_: log row, round (for the record)

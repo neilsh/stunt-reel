@@ -3,13 +3,24 @@ summary: "Patch #3 `PLAYONE.EXE` counterparts of memory-map rows, unmapped ones 
 ---
 # Memory Map: Patch #3 Build
 
-Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so. Section numbers run across the files.
+Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so.
+Section numbers run across the files.
 
 ## 1.1 Patch #3 build
 
-Every row of the other memory-map files is for the unpatched 1992 `PLAYONE.EXE` (102,703 bytes, sha256 `3c93493c…`). Patch #3's `PLAYONE.EXE` (97,790 bytes, `fc532c94…`) is relinked: `DGROUP` is paragraph `0x0C71` (`DS = 0x0E66` under dosbox-automation), the display-list VM segment `0x0754` (was `0x0824`) and the work segment `0x14BF` (was `0x15D4`), and the `DGROUP` data moved by 12 different shifts, so no single shift maps it. The tables below give Patch #3 counterparts for rows of [§ 1](memory-map.md#1-dgroup-memory-reference-table), [§ 3](memory-map-vm.md#3-sod-display-list-vm-work-segment--mem-sod-vm) and [`[MEM-PALETTE]`](memory-map-main.md#-mem-palette) on both builds; a § 1 or code row absent here has no counterpart recorded. They come from pairing the two images function by function with `mise run pair-builds`; the method, the counts and what did not pair are in [`patch3.md` § 4](patch3.md#4-function-pairing-the-whole-map). Patched offsets are `[Supported Inference]` (static) unless a row says otherwise. The unpatched row's own tier is unchanged.
+Every row of the other memory-map files is for the unpatched 1992 `PLAYONE.EXE` (102,703 bytes, sha256 `3c93493c…`).
+Patch #3's `PLAYONE.EXE` (97,790 bytes, `fc532c94…`) is relinked: `DGROUP` is paragraph `0x0C71` (`DS = 0x0E66` under dosbox-automation), the display-list VM segment `0x0754` (was `0x0824`) and the work segment `0x14BF` (was `0x15D4`), and the `DGROUP` data moved by 12 different shifts, so no single shift maps it.
+The tables below give Patch #3 counterparts for rows of [§ 1](memory-map.md#1-dgroup-memory-reference-table), [§ 3](memory-map-vm.md#3-sod-display-list-vm-work-segment--mem-sod-vm) and [`[MEM-PALETTE]`](memory-map-main.md#-mem-palette) on both builds; a § 1 or code row absent here has no counterpart recorded.
+They come from pairing the two images function by function with `mise run pair-builds`; the method, the counts and what did not pair are in [`patch3.md` § 4](patch3.md#4-function-pairing-the-whole-map).
+Patched offsets are `[Supported Inference]` (static) unless a row says otherwise.
+The unpatched row's own tier is unchanged.
 
-The **Evidence** column says how each patched offset was found. *N refs* means N memory operands name the offset in paired instructions and all N give this answer. *N disp* means N paired displacements off a base or index register (`[bx + 0x4F02]`, an array or table base) do. *N imm* means N paired immediates equal to the offset (a pointer loaded into a register) do. *Bracketed* means no instruction names it and the nearest named offsets on both sides share one shift. *Bytes* means the 16 initialised bytes at the two offsets are equal.
+The **Evidence** column says how each patched offset was found.
+*N refs* means N memory operands name the offset in paired instructions and all N give this answer.
+*N disp* means N paired displacements off a base or index register (`[bx + 0x4F02]`, an array or table base) do.
+*N imm* means N paired immediates equal to the offset (a pointer loaded into a register) do.
+*Bracketed* means no instruction names it and the nearest named offsets on both sides share one shift.
+*Bytes* means the 16 initialised bytes at the two offsets are equal.
 
 **`DGROUP` (`DS`) offsets.**
 
@@ -59,9 +70,19 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0x49EC`, `0x49EE`, `0x49F0` | `0x4372`, `0x4374`, `0x4376` | 4 refs each | Sun or moon direction from var 13 | `# [MEM-PALETTE]` |
 | `0x4F02` | `0x4888` | 6 disp | `PFONT.BIN` width table | |
 
-**Work-segment offsets are all unchanged.** The work segment is the same `0x8130` bytes in both images. Of the 165 offsets that the VM segment names through `DS`, 164 are work-segment offsets and pair with themselves; the other, `0x8042`, is read while `DS` is `DGROUP` and moved `-0x67A`. All 50 offsets the main program names through `ES` pair with themselves. The segment's initial bytes are identical except 12 at `0x1952..0x195D`. So the [§ 3](memory-map-vm.md#3-sod-display-list-vm-work-segment--mem-sod-vm) table holds on the patched build as written: `0x19A8`, `0x41B8`, `0x41C8`/`0x41CA`, `0x41D4..0x41DA`, `0x4450 + n*12`, `0x7468`, `0x806C..0x8070`, `0x8072`, `0x8078`, `0x8082..0x8088`, `0x80C0..0x80CA`, `0x8108..0x810C` and `0x8120..0x8128` each pair at least once. The anchor table (`0x0000`, `0x0004 + n*0x1C`) is reached through registers, so no operand names it; it is unchanged by the same identity. The segment's runtime paragraph is the load paragraph plus `0x14BF`. On the patched build, read it from `DS:0x05BE`; that is unpatched `DS:0x0542`, and unpatched `0x05BE` holds the `install.exe` string.
+**Work-segment offsets are all unchanged.**
+The work segment is the same `0x8130` bytes in both images.
+Of the 165 offsets that the VM segment names through `DS`, 164 are work-segment offsets and pair with themselves; the other, `0x8042`, is read while `DS` is `DGROUP` and moved `-0x67A`.
+All 50 offsets the main program names through `ES` pair with themselves.
+The segment's initial bytes are identical except 12 at `0x1952..0x195D`.
+So the [§ 3](memory-map-vm.md#3-sod-display-list-vm-work-segment--mem-sod-vm) table holds on the patched build as written: `0x19A8`, `0x41B8`, `0x41C8`/`0x41CA`, `0x41D4..0x41DA`, `0x4450 + n*12`, `0x7468`, `0x806C..0x8070`, `0x8072`, `0x8078`, `0x8082..0x8088`, `0x80C0..0x80CA`, `0x8108..0x810C` and `0x8120..0x8128` each pair at least once.
+The anchor table (`0x0000`, `0x0004 + n*0x1C`) is reached through registers, so no operand names it; it is unchanged by the same identity.
+The segment's runtime paragraph is the load paragraph plus `0x14BF`.
+On the patched build, read it from `DS:0x05BE`; that is unpatched `DS:0x0542`, and unpatched `0x05BE` holds the `install.exe` string.
 
-**Code addresses**, as load-image offsets. The notebook addresses of `[MEM-SOD-VM]` are image `- 0x6F30`; a VM `CS:IP` is image `- 0x8240` unpatched and `- 0x7540` patched. Each patched address is an aligned instruction of a paired function unless the row says otherwise.
+**Code addresses**, as load-image offsets.
+The notebook addresses of `[MEM-SOD-VM]` are image `- 0x6F30`; a VM `CS:IP` is image `- 0x8240` unpatched and `- 0x7540` patched.
+Each patched address is an aligned instruction of a paired function unless the row says otherwise.
 
 | Unpatched image | Patch #3 image | Row | Anchor |
 |---|---|---|---|
@@ -94,4 +115,5 @@ The **Evidence** column says how each patched offset was found. *N refs* means N
 | `0xB85D` (notebook `0x492D`) | `0xAA68` | Anchor-cache invalidation | `# [MEM-SOD-ANCHOR-TABLE]` |
 | `0x1DEA:0x05B1` (image `0x1E451`) | `0x1CD5:0x0B67` (image `0x1D8B7`), by its one paired far call, from `0x104B` (unpatched call site `0x0F3A`) | PCM mixer var-11 setter. The mixer segment was rewritten (2 of its 30 functions pair): the patched setter takes var 11 in `AX` and a channel in `BX` and stores it at `+0x12` of that channel's record in segment `0x1F57`, so `cs:[0x49]` and `cs:[0xD7]` have no patched counterpart | `# [MEM-PALETTE]` |
 
-The relocation rule of [§ 1](memory-map.md#1-dgroup-memory-reference-table) (`image + 0x8240` in the DOSBox-X session) adds the load paragraph times 16, which depends on the emulator, not the build. Its VM `CS:IP` term is the VM segment's image offset: `0x7540` (paragraph `0x0754`) on the patched build.
+The relocation rule of [§ 1](memory-map.md#1-dgroup-memory-reference-table) (`image + 0x8240` in the DOSBox-X session) adds the load paragraph times 16, which depends on the emulator, not the build.
+Its VM `CS:IP` term is the VM segment's image offset: `0x7540` (paragraph `0x0754`) on the patched build.

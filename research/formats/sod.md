@@ -6,7 +6,8 @@ sidebar_label: ".SOD geometry & bytecode"
 
 ## 1. Overview & File Identification
 
-The `.SOD` format is *Stunt Island*'s native procedural 3D model geometry representation. Rather than storing static vertex buffers and polygon index arrays (like modern OBJ or glTF files), a `.SOD` file is a compiled **procedural display list** executed by a dedicated 16-bit real-mode Virtual Machine embedded within `PLAYONE.EXE` and `STUNT.EXE`.
+The `.SOD` format is *Stunt Island*'s native procedural 3D model geometry representation.
+Rather than storing static vertex buffers and polygon index arrays (like modern OBJ or glTF files), a `.SOD` file is a compiled **procedural display list** executed by a dedicated 16-bit real-mode Virtual Machine embedded within `PLAYONE.EXE` and `STUNT.EXE`.
 
 The bytecode calculates parametric vertices, evaluates hierarchical transformation matrices (`pushrelmat`), branches on viewer distance and face visibility (`ifvis`, `sorton`), and emits flat-shaded or normal-lit polygons referencing authentic 8-bit VGA Mode 13h palette indices (`0..=255`).
 
@@ -20,7 +21,10 @@ The bytecode calculates parametric vertices, evaluates hierarchical transformati
 | **Engine Role** | Procedural geometry generation, articulated subobject hierarchies, and real-time BSP depth sorting | `[Established]` | `research/playone-exe/sod-vm.md`, `siobj.cpp:498` |
 | **Paired Contract** | `Seam 3: SodModelIr` (`crates/stunt-core/src/contracts/shape/mod.rs`) | `[Established]` | `# [FMT-SOD-OPCODES]`, `# [FMT-SOD-IFVIS]`, `docs/ARCHITECTURE.md` |
 
-**Governing invariants:** [`[I1]`](../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../docs/SPEC.md#i5-coplanar-decal-resolution). **Contract and code:** [`contracts/shape/mod.rs`](../../crates/stunt-core/src/contracts/shape/mod.rs), VM in [`sod/`](../../crates/stunt-core/src/sod/), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.sod` (76 bytes), described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md). The 393 compiled corpus models are `.BIN` files beginning with `0x000C` (the corpus `.SOD` files are assembler sources); [`sod.ksy`](sod.ksy) runs over those `.BIN` files in `mise run verify-corpus`.
+**Governing invariants:** [`[I1]`](../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I2]`](../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I3]`](../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../docs/SPEC.md#i5-coplanar-decal-resolution).
+**Contract and code:** [`contracts/shape/mod.rs`](../../crates/stunt-core/src/contracts/shape/mod.rs), VM in [`sod/`](../../crates/stunt-core/src/sod/), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/).
+**Fixtures:** `synthetic_minimal.sod` (76 bytes), described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+The 393 compiled corpus models are `.BIN` files beginning with `0x000C` (the corpus `.SOD` files are assembler sources); [`sod.ksy`](sod.ksy) runs over those `.BIN` files in `mise run verify-corpus`.
 
 ---
 
@@ -46,13 +50,18 @@ Every `.SOD` bytecode stream begins with an immutable **10-byte header**, follow
 +-------------------+-------------------+-----------------------------------------+
 ```
 
-The executable header layout is [`sod.ksy`](sod.ksy). `header_flags` bit 0 makes `PLAYONE` draw the shape through the view matrix built without the camera's yaw, so it turns with the camera's heading; the flat `OP_IPG` type 8 trees set it (`[Established]` for the instructions, `[Supported Inference]` for the byte they test, [`playone-exe/sod-vm-generators.md`](../playone-exe/sod-vm-generators.md) section 8.8). It stops at byte `0x000A`; operand widths for several opcodes remain undecoded.
+The executable header layout is [`sod.ksy`](sod.ksy).
+`header_flags` bit 0 makes `PLAYONE` draw the shape through the view matrix built without the camera's yaw, so it turns with the camera's heading; the flat `OP_IPG` type 8 trees set it (`[Established]` for the instructions, `[Supported Inference]` for the byte they test, [`playone-exe/sod-vm-generators.md`](../playone-exe/sod-vm-generators.md) section 8.8).
+It stops at byte `0x000A`; operand widths for several opcodes remain undecoded.
 
-`PLAYONE.EXE` applies `ground_y_offset` when it places a scene-tree shape: it adds `−ground_y_offset >> scale_index` to the shape's position (`[Established]`, [`auxiliary/scenery.md`](auxiliary/scenery.md) section 3.3). The collision walker tests props against the same lifted height. No instruction in the display-list VM reads it, and the actor draw does not (`[Supported Inference]`, from one scan, same section).
+`PLAYONE.EXE` applies `ground_y_offset` when it places a scene-tree shape: it adds `−ground_y_offset >> scale_index` to the shape's position (`[Established]`, [`auxiliary/scenery.md`](auxiliary/scenery.md) section 3.3).
+The collision walker tests props against the same lifted height.
+No instruction in the display-list VM reads it, and the actor draw does not (`[Supported Inference]`, from one scan, same section).
 
 ### 2.2 Power-of-2 Scale Table Multiplier Constants
 
-The scale factor converts 16-bit integer model units into metric meters per Invariant `[I1]`. The scale table constants from `SOD.H` and `siobj.cpp` are:
+The scale factor converts 16-bit integer model units into metric meters per Invariant `[I1]`.
+The scale table constants from `SOD.H` and `siobj.cpp` are:
 
 | Scale Index | Constant Multiplier | Metric Multiplier ($S_k = \text{const} / 10$) | Metric Equivalent | Representative Models |
 | :---: | :---: | :---: | :---: | :--- |
@@ -75,7 +84,9 @@ The scale factor converts 16-bit integer model units into metric meters per Inva
 | **16** | $5/32768$ | $1/65536\text{ m/unit}$ | 65536 units = 1 meter | Extended precision |
 | **17** | $5/65536$ | $1/131072\text{ m/unit}$ | 131072 units = 1 meter | Last entry in `SOD.H` |
 
-The table above ends at 17, but the corpus goes past it (`[Bounded Observation]`): of 102,633 `.SOD` chunks across every `.ALL` in `corpus/siarchive/`, 7 have `scale_index` 18 and 6 have 19 (for example shape `0x7E09` in `COL3-1`, `COL3-2`, `COL5-1`, `COL5-7` and `CREDITS.ALL`, and `0x7E1A` in `eGALLOC7.ALL`). `compute_scale_factor` in [`vm.rs`](../../crates/stunt-core/src/sod/vm.rs) extends the pattern past the table as $5 / 2^{k-1}$. Whether `PLAYONE`'s own table covers 18 and 19, or reads past its end, is `[Unknown]`.
+The table above ends at 17, but the corpus goes past it (`[Bounded Observation]`): of 102,633 `.SOD` chunks across every `.ALL` in `corpus/siarchive/`, 7 have `scale_index` 18 and 6 have 19 (for example shape `0x7E09` in `COL3-1`, `COL3-2`, `COL5-1`, `COL5-7` and `CREDITS.ALL`, and `0x7E1A` in `eGALLOC7.ALL`).
+`compute_scale_factor` in [`vm.rs`](../../crates/stunt-core/src/sod/vm.rs) extends the pattern past the table as $5 / 2^{k-1}$.
+Whether `PLAYONE`'s own table covers 18 and 19, or reads past its end, is `[Unknown]`.
 
 #### Mathematical Scaling Formula:
 $$S_k = \begin{cases} 1.0 & \text{if } k = 0 \\ \dfrac{1.0}{2^k} & \text{if } k \ge 1 \end{cases}$$
@@ -88,17 +99,22 @@ $$Z_{\text{metric}} = Z_{\text{raw}} \times S_k$$
 
 ## 3. Data Structures & Opcode Table
 
-A `.SOD` body is a display list for a stack-based, register-oriented VM: 1024 twelve-byte vertex registers, a vector accumulator, a rotation-centre stack and a relative-matrix stack, and `GOTO`/`GOSUB`/`SORTON`/`IFVIS` control flow. The model and its `PLAYONE.EXE` evidence are in [`playone-exe/sod-vm-execution.md`](../playone-exe/sod-vm-execution.md) section 8. Every opcode, its operands and the opcode-specific semantics (`OP_TAP`, `OP_ANIMATE`, `OP_IFVIS`, `OP_IPG`, `OP_VECTORS`) are in [`sod-opcodes.md`](sod-opcodes.md), whose 107-opcode table is `# [FMT-SOD-OPCODES]`. The unimplemented-opcode work queue is [`sod-opcode-coverage.md`](sod-opcode-coverage.md).
+A `.SOD` body is a display list for a stack-based, register-oriented VM: 1024 twelve-byte vertex registers, a vector accumulator, a rotation-centre stack and a relative-matrix stack, and `GOTO`/`GOSUB`/`SORTON`/`IFVIS` control flow.
+The model and its `PLAYONE.EXE` evidence are in [`playone-exe/sod-vm-execution.md`](../playone-exe/sod-vm-execution.md) section 8.
+Every opcode, its operands and the opcode-specific semantics (`OP_TAP`, `OP_ANIMATE`, `OP_IFVIS`, `OP_IPG`, `OP_VECTORS`) are in [`sod-opcodes.md`](sod-opcodes.md), whose 107-opcode table is `# [FMT-SOD-OPCODES]`.
+The unimplemented-opcode work queue is [`sod-opcode-coverage.md`](sod-opcode-coverage.md).
 
 ### 3.1 Coplanar Decal Detection (`[I5]`)
 
-In original DOS software rendering, decals (wing insignia, national roundels, lettering) were drawn over base facets via sequential framebuffer overwrites. In modern depth-buffered rendering, coplanar facets produce severe Z-fighting.
+In original DOS software rendering, decals (wing insignia, national roundels, lettering) were drawn over base facets via sequential framebuffer overwrites.
+In modern depth-buffered rendering, coplanar facets produce severe Z-fighting.
 - **Coplanar Detection Criteria:** a polygon $B$ is a decal when an earlier polygon $A$ of the same stream satisfies all three, on each polygon's **front normal** (the side `FrontFace::Cw` keeps, the negated edge cross product of its winding; a line or a polygon of fewer than three vertices has none), not on the stored shading normal (`crates/stunt-core/src/sod/decal.rs`):
   1. Unit normal parallelism: $\mathbf{n}_A \cdot \mathbf{n}_B \ge 1.0 - 10^{-4}$
   2. Plane constant equality: $|\mathbf{n}_A \cdot \mathbf{v}_{A0} - \mathbf{n}_B \cdot \mathbf{v}_{B0}| \le 10^{-4}\text{ m}$
   3. Bounding box spatial overlap in all three dimensions within $10^{-4}\text{ m}$.
 - **Lines:** a `MOVETO`/`ZLINETO` segment is a decal when both its ends lie within $10^{-4}\text{ m}$ of an earlier decal's front plane and their bounds meet (criterion 3), so it draws after that decal as `PLAYONE` draws it; a segment on a facet that is no decal stays in the base pass ([`render-model.md`](../parity/render-model.md) section 3).
-- **Resolution:** decal facets are flagged `flags |= 0x01` (`is_decal = true`) and keep their decoded positions. How they are drawn is the renderer's policy, in [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md) and [`render-model.md`](../parity/render-model.md) section 3.
+- **Resolution:** decal facets are flagged `flags |= 0x01` (`is_decal = true`) and keep their decoded positions.
+  How they are drawn is the renderer's policy, in [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md) and [`render-model.md`](../parity/render-model.md) section 3.
 
 ---
 
@@ -126,13 +142,16 @@ The `.SOD` virtual machine specification draws on extensive community analysis a
 ### 5.1 Community Researchers & Tool Authors
 
 - **Adrian Stephens**: Original Assembly Line Engine Developer; authored the original 8086/80286 macro-assembler display-list source files for Stunt Island aircraft (`objdef`, `ipg`, `sorton`, `pushcentre`, `pushrelmat`).
-- **Chris Phillips**: Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`siobj.cpp`). Decoded the 107 opcode jump table (multiples of 9), scale table constants, and OpenGL reconstruction.
+- **Chris Phillips**: Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`siobj.cpp`).
+  Decoded the 107 opcode jump table (multiples of 9), scale table constants, and OpenGL reconstruction.
 - **Dave Palmowski**: Documented `.SOD` bounding boxes, scaling factors, and object coordinates in `SITools/`.
 - **Doug Armknecht**: Curator of `corpus/siarchive/`, preserving developer notes and aircraft source models.
 - **Neil Halelamien**: Documented 16-bit object type IDs referencing `.SOD` models in `Developer/Notes_SETFile/`.
 - **Ángel Eduardo**: Analyzed subobject joint hierarchies, spheres, discs, and Set Designer models in `Developer/Notes_SIExtractor/`.
-- **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island). The same site in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
-- **Alberto Marnetto (2026)**: Author of [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder), an MIT-licensed C++ `.SOD` to Wavefront exporter derived from FreeFlight's `siobj.cpp`; it walks more aircraft parts than `SODParse`. Consulted for operand readings, not ported ([`sod-opcodes.md`](sod-opcodes.md) § 3).
+- **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island).
+  The same site in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
+- **Alberto Marnetto (2026)**: Author of [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder), an MIT-licensed C++ `.SOD` to Wavefront exporter derived from FreeFlight's `siobj.cpp`; it walks more aircraft parts than `SODParse`.
+  Consulted for operand readings, not ported ([`sod-opcodes.md`](sod-opcodes.md) § 3).
 
 ### 5.2 Primary Reference Paths in `corpus/siarchive/`
 

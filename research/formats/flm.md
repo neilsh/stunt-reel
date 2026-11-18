@@ -6,7 +6,8 @@ sidebar_label: ".FLM choreography & trajectory"
 
 ## 1. Overview & File Identification
 
-The `.FLM` file format is *Stunt Island*'s native cinematic film recording and flight choreography stream. It records deterministic, sample-accurate choreography timelines that drive 3D actor positions, orientations, articulated subobjects, camera tracking channels, Director event variables, on-screen credit banners, and synchronized digital audio triggers.
+The `.FLM` file format is *Stunt Island*'s native cinematic film recording and flight choreography stream.
+It records deterministic, sample-accurate choreography timelines that drive 3D actor positions, orientations, articulated subobjects, camera tracking channels, Director event variables, on-screen credit banners, and synchronized digital audio triggers.
 
 In the retail game, `.FLM` files reside in the `vault\` directory (e.g., `ACT1.FLM`, `INTRO.FLM`, `DESERT.FLM`) and are paired 1:1 with companion `<NAME>.ALL` scene packages selected through the modal film dialog (`0x0787` in `PLAYONE.EXE`).
 
@@ -22,7 +23,10 @@ In the retail game, `.FLM` files reside in the `vault\` directory (e.g., `ACT1.F
 | **Engine Role** | Deterministic playback stream driving camera channels, 6-DOF actor trajectories, subobject joints, and sound triggers | `[Established]` | `docs/SPEC.md § 1.1`, `crates/stunt-core/src/contracts/trajectory.rs` |
 | **Paired Contract** | `Seam 2: TrajectoryRecord` (`crates/stunt-core/src/contracts/trajectory.rs`) | `[Established]` | `# [FMT-FLM-OPCODES]`, `# [MEM-FLM-TICK]`, `docs/ARCHITECTURE.md` |
 
-**Governing invariants:** [`[I1]`](../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I4]`](../../docs/SPEC.md#i4-discrete-simulation-ticks--cut-aware-sub-tick-interpolation). **Contract and code:** [`contracts/trajectory.rs`](../../crates/stunt-core/src/contracts/trajectory.rs), evaluator in [`flm/`](../../crates/stunt-core/src/flm/) (`FilmTimeline` is the single sampling interface, see `[I4]`). **Fixtures:** `synthetic_minimal.flm` (17 bytes) and the 600-tick `oracle_intro_trajectory.json`, described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md); both fixture slices parse under [`flm_slice.ksy`](flm_slice.ksy) with the masks from [`flm_walk.py`](../../python/stunt_reel/flm_walk.py), which `verify_formats_docs.py` executes on every run. Memory-side structures: [`MEMORY_MAP.md`](../playone-exe/memory-map.md).
+**Governing invariants:** [`[I1]`](../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization), [`[I4]`](../../docs/SPEC.md#i4-discrete-simulation-ticks--cut-aware-sub-tick-interpolation).
+**Contract and code:** [`contracts/trajectory.rs`](../../crates/stunt-core/src/contracts/trajectory.rs), evaluator in [`flm/`](../../crates/stunt-core/src/flm/) (`FilmTimeline` is the single sampling interface, see `[I4]`).
+**Fixtures:** `synthetic_minimal.flm` (17 bytes) and the 600-tick `oracle_intro_trajectory.json`, described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md); both fixture slices parse under [`flm_slice.ksy`](flm_slice.ksy) with the masks from [`flm_walk.py`](../../python/stunt_reel/flm_walk.py), which `verify_formats_docs.py` executes on every run.
+Memory-side structures: [`MEMORY_MAP.md`](../playone-exe/memory-map.md).
 
 ---
 
@@ -48,7 +52,9 @@ A `.FLM` file consists of a 4-byte ASCII signature followed by a contiguous sequ
 +---------------------------------------------------------------------------------+
 ```
 
-A Kaitai schema covers one slice, not the stream: [`flm_slice.ksy`](flm_slice.ksy) parses a single slice given the three slot masks, threading `create`-driven flag changes through a recursive opcode chain. Slice-to-slice state cannot cross a Kaitai `repeat`, so [`python/stunt_reel/flm_walk.py`](../../python/stunt_reel/flm_walk.py) walks the slice chain and supplies those masks. Corpus measurements: 627,696 slices across 561 of 568 films, 2,278,626 `interp` opcodes that depend on a `create` earlier in the same slice, and 109,185 `create` opcodes that flip a slot's `SIF_MOVES`/`SIF_ROTATES`/`SIF_ANIMATES` bit.
+A Kaitai schema covers one slice, not the stream: [`flm_slice.ksy`](flm_slice.ksy) parses a single slice given the three slot masks, threading `create`-driven flag changes through a recursive opcode chain.
+Slice-to-slice state cannot cross a Kaitai `repeat`, so [`python/stunt_reel/flm_walk.py`](../../python/stunt_reel/flm_walk.py) walks the slice chain and supplies those masks.
+Corpus measurements: 627,696 slices across 561 of 568 films, 2,278,626 `interp` opcodes that depend on a `create` earlier in the same slice, and 109,185 `create` opcodes that flip a slot's `SIF_MOVES`/`SIF_ROTATES`/`SIF_ANIMATES` bit.
 
 ### 2.1 The Solved 3-Byte Slice Header (Format Breakthrough)
 
@@ -66,14 +72,19 @@ Together:
 $$\text{prev\_slice\_len} = \text{prev\_slice\_len\_lo} \mid (\text{prev\_slice\_len\_hi} \ll 8)$$
 
 #### Why the Back-Pointer Exists:
-- **Slice 0:** no preceding slice exists, and $\text{prev\_slice\_len}$ is usually $0\text{x}0000$, but not always (`[Bounded Observation]`): 565 of 568 corpus films have `0x0000`, while `ROD.FLM`, `TUTORIAL.FLM` and `UFO.FLM` (all in `Films/FLMOnly/`) have `0x8000` (bytes 4–6 `00 80 00`). Whether `0x8000` is a sentinel or authoring residue is `[Unknown]`; a reader must ignore slice 0's back-pointer rather than validate it.
+- **Slice 0:** no preceding slice exists, and $\text{prev\_slice\_len}$ is usually $0\text{x}0000$, but not always (`[Bounded Observation]`): 565 of 568 corpus films have `0x0000`, while `ROD.FLM`, `TUTORIAL.FLM` and `UFO.FLM` (all in `Films/FLMOnly/`) have `0x8000` (bytes 4–6 `00 80 00`).
+  Whether `0x8000` is a sentinel or authoring residue is `[Unknown]`; a reader must ignore slice 0's back-pointer rather than validate it.
 - **Slice $i \ge 1$:** $\text{prev\_slice\_len}$ equals the exact byte distance from the start of slice $i-1$ to the start of slice $i$.
 - **VCR Reverse Scrubbing:** This field is the **reverse-scrubbing back-pointer** used by the Stunt Island Editing Room VCR engine to execute frame-by-frame rewinding (`REVERSE STEP`) without requiring random-access disk index tables!
-- **Resolution of Historical Anomaly:** Because $98.5\%$ of slices are $< 256$ bytes in length, `prev_slice_len_hi` is $0$. When previous tools read Byte 0 (`prev_slice_len_lo`) and then read a 16-bit word at Bytes 1..2 (`prev_slice_len_hi | (tick_duration << 8)`), the word naturally evaluated to `tick_duration * 256`!
+- **Resolution of Historical Anomaly:** Because $98.5\%$ of slices are $< 256$ bytes in length, `prev_slice_len_hi` is $0$.
+  When previous tools read Byte 0 (`prev_slice_len_lo`) and then read a 16-bit word at Bytes 1..2 (`prev_slice_len_hi | (tick_duration << 8)`), the word naturally evaluated to `tick_duration * 256`!
 
 ### 2.1.1 `tick_duration` Semantics & Corpus Distribution
 
-`tick_duration` is the wall-clock interval elapsed since the previous slice, not a count of keyframes or a per-slice constant. `PLAYONE.EXE` advances its 50 Hz PIT tick counter (see [`concepts/timeline-and-ticks.md` § 1.1](concepts/timeline-and-ticks.md#11-hardware-timer-principles-in-ms-dos)); while loading a slice, it reads this byte and adds it to the running start tick (`0x3B8D` → `0x3B19`) before the slice pose is applied. The timestamp of slice $i$ is therefore $\sum_{k \le i}\text{tick\_duration}_k$, and the renderer interpolates from the previous pose to the current one across that interval. Slice 0 carries duration 0 and establishes the initial pose at tick 0.
+`tick_duration` is the wall-clock interval elapsed since the previous slice, not a count of keyframes or a per-slice constant.
+`PLAYONE.EXE` advances its 50 Hz PIT tick counter (see [`concepts/timeline-and-ticks.md` § 1.1](concepts/timeline-and-ticks.md#11-hardware-timer-principles-in-ms-dos)); while loading a slice, it reads this byte and adds it to the running start tick (`0x3B8D` → `0x3B19`) before the slice pose is applied.
+The timestamp of slice $i$ is therefore $\sum_{k \le i}\text{tick\_duration}_k$, and the renderer interpolates from the previous pose to the current one across that interval.
+Slice 0 carries duration 0 and establishes the initial pose at tick 0.
 
 Measured over all 561 walkable retail films (627,696 slices, 4,843,398 ticks):
 
@@ -87,16 +98,23 @@ Measured over all 561 walkable retail films (627,696 slices, 4,843,398 ticks):
 | `CTRY.FLM` | 140 slices, 1,342 ticks, $26.84\text{ s}$ |
 | `INTRO.FLM` | 538 slices, 3,822 ticks, $76.44\text{ s}$ |
 
-The dominant 10–11 tick modes are 200–220 ms keyframe intervals. Zero-duration slices carry event bursts (credits, sound cues, camera switches) that must be processed in file order without advancing time. A consumer that emits one record per slice (rather than expanding by `tick_duration`) compresses `CTRY.FLM` to 140 ticks ($2.8\text{ s}$ at 50 Hz) and loses all sub-tick motion. `FilmTimeline` avoids this by placing each slice at its cumulative tick; `TrajectoryRecord.tick` is therefore always a cumulative 50 Hz tick, never a slice ordinal.
+The dominant 10–11 tick modes are 200–220 ms keyframe intervals.
+Zero-duration slices carry event bursts (credits, sound cues, camera switches) that must be processed in file order without advancing time.
+A consumer that emits one record per slice (rather than expanding by `tick_duration`) compresses `CTRY.FLM` to 140 ticks ($2.8\text{ s}$ at 50 Hz) and loses all sub-tick motion.
+`FilmTimeline` avoids this by placing each slice at its cumulative tick; `TrajectoryRecord.tick` is therefore always a cumulative 50 Hz tick, never a slice ordinal.
 
 ### 2.2 End-of-Film Epilogue (`[Established]`)
 
-The final slice is followed by a 3-byte epilogue: the last slice's `prev_slice_len` plus an end-of-stream marker. In 554 of 561 walkable corpus films the marker is `0xFF`; `MAMMOTH.FLM` and `MAMMOTH2.FLM` use `0x00`, and five films append filler after the marker. The `prev_slice_len` field equals the preceding slice's length in all 556 epilogue-bearing films.
+The final slice is followed by a 3-byte epilogue: the last slice's `prev_slice_len` plus an end-of-stream marker.
+In 554 of 561 walkable corpus films the marker is `0xFF`; `MAMMOTH.FLM` and `MAMMOTH2.FLM` use `0x00`, and five films append filler after the marker.
+The `prev_slice_len` field equals the preceding slice's length in all 556 epilogue-bearing films.
 
-The epilogue is not a slice: it has no opcode payload and no terminator of its own. Detection rule:
+The epilogue is not a slice: it has no opcode payload and no terminator of its own.
+Detection rule:
 
 1. A slice header immediately followed by end-of-file is a header-only trailer and terminates the stream.
-2. A header whose `tick_duration` byte is `0xFF` terminates the stream; any trailing bytes are filler. No authored slice in the 627,696-slice corpus exceeds `tick_duration = 0x7F`, so the marker is unambiguous.
+2. A header whose `tick_duration` byte is `0xFF` terminates the stream; any trailing bytes are filler.
+   No authored slice in the 627,696-slice corpus exceeds `tick_duration = 0x7F`, so the marker is unambiguous.
 3. The back-pointer chain should be validated, but a mismatch is a warning rather than a fatal error.
 
 `python/stunt_reel/flm_walk.py` has implemented (1) and (2) since inception; the Rust player's slice walk (`FlmPlayer::decode_slice` in `crates/stunt-core/src/flm/player/mod.rs`) gained the same rule after it misread `CTRY.FLM`'s epilogue as a 141st slice.
@@ -107,7 +125,8 @@ The epilogue is not a slice: it has no opcode payload and no terminator of its o
 
 ### 3.1 The Film Timeline State Machine
 
-Each time slice contains a variable sequence of byte-tagged opcodes terminated by `0xFF`. The upper two bits (`opcode >> 6`) divide opcodes into four major functional classes:
+Each time slice contains a variable sequence of byte-tagged opcodes terminated by `0xFF`.
+The upper two bits (`opcode >> 6`) divide opcodes into four major functional classes:
 
 ```
  7   6   5   4   3   2   1   0
@@ -151,33 +170,35 @@ Encountered in Object Lifecycle opcodes (`0x00..0x3F`):
 
 ### 3.4 Coordinate, Angle & Rotation-Order Conversion (`[I1]`)
 
-- **Spatial Positions ($16.16$ Fixed-Point):**
-  Original positions are signed 32-bit integers in $16.16$ fixed-point format:
+- **Spatial Positions ($16.16$ Fixed-Point):** Original positions are signed 32-bit integers in $16.16$ fixed-point format:
   $$\mathbf{P}_{\text{raw}} = [x_{\text{raw}}, y_{\text{raw}}, z_{\text{raw}}]$$
   Dividing by $65536$ gives meters in **DOS axes** (the raw frame of slots and anchor points, see `GLOSSARY.md`), not yet `[I1]`:
   $$x_{\text{dos}} = \frac{x_{\text{raw}}}{65536.0}, \quad y_{\text{dos}} = \frac{y_{\text{raw}}}{65536.0}, \quad z_{\text{dos}} = \frac{z_{\text{raw}}}{65536.0}$$
   `[Bounded Observation]` DOS axes map to the metric right-handed basis ($+X$ Right, $+Y$ Up, $+Z$ Backward toward viewer, $-Z$ Forward) by a $180^\circ$ rotation about $Z$, applied by the evaluator to every slot, camera included:
   $$(x, y, z)_{\text{I1}} = (-x_{\text{dos}}, -y_{\text{dos}}, z_{\text{dos}}), \qquad \mathbf{q}_{\text{I1}} = \mathbf{q}_{z180} \cdot \mathbf{q}_{\text{dos}}, \quad \mathbf{q}_{z180} = [0, 0, 1, 0]$$
-  Evidence: the `CTRY.FLM` tick 1 view slot has raw $y = -14.0$ (a negative altitude), the same flip terrain applies to `ANCHORPT.DAT` anchor points, and research/formats/auxiliary/map.md. The orientation half of the rule follows from treating the map as one rigid rotation; no orientation has been checked against `PLAYONE.EXE` output beyond the `CTRY.FLM` look direction. `roll_radians` is camera-local and is not remapped.
-- **Binary Angular Measurement (BAM):**
-  Rotation angles are unsigned 16-bit integers ($0..65535$):
+  Evidence: the `CTRY.FLM` tick 1 view slot has raw $y = -14.0$ (a negative altitude), the same flip terrain applies to `ANCHORPT.DAT` anchor points, and research/formats/auxiliary/map.md.
+  The orientation half of the rule follows from treating the map as one rigid rotation; no orientation has been checked against `PLAYONE.EXE` output beyond the `CTRY.FLM` look direction.
+  `roll_radians` is camera-local and is not remapped.
+- **Binary Angular Measurement (BAM):** Rotation angles are unsigned 16-bit integers ($0..65535$):
   $$\theta_{\text{rad}} = \left(\frac{\text{raw\_u16}}{65536.0}\right) \times 2\pi, \quad \theta_{\text{deg}} = \left(\frac{\text{raw\_u16}}{65536.0}\right) \times 360.0$$
 - **Rotation Endianness Difference:**
   - In `create` (`0x00..0x3F`), static rotations are streamed in **`rz, rx, ry`** order.
   - In `interp` (`0x40..0x7F`), dynamic rotations are streamed in **`rx, ry, rz`** order.
   - Parsers must respect this field order difference to avoid pitch/roll axis inversion.
-- **Unit Quaternions:**
-  Euler rotations $(r_x, r_y, r_z)$ evaluate in yaw-pitch-roll order into normalized unit quaternions $\mathbf{q} = [q_x, q_y, q_z, q_w]$ satisfying:
+- **Unit Quaternions:** Euler rotations $(r_x, r_y, r_z)$ evaluate in yaw-pitch-roll order into normalized unit quaternions $\mathbf{q} = [q_x, q_y, q_z, q_w]$ satisfying:
   $$\left|\|\mathbf{q}\| - 1.0\right| < 10^{-4}$$
   Affine model-to-world transform matrices are emitted column-major without shear tearing.
 
 ### 3.5 Camera Channel Architecture & Director Cuts (`[I4]`)
 
 - **Camera Slot Allocation:** Slots 0 through 7 ($8$ slots) are reserved for recording-capable camera rigs and tracked vehicles.
-- **Invisible Camera Rigs:** Pure camera rigs are characterized by `type_flags` having `SIF_EXISTS`, `SIF_MOVES`, `SIF_ROTATES`, but **`SIF_DRAW == 0`**. These slots represent virtual cameras (Pan, Tilt, Crane, Tracking, Dolly) placed in the world.
-- **No camera mode in the film** (2026-11-01, `[Supported Inference]`). The Editing Room's camera behaviours (Face, Free, Seek, Spot, Follow, Attach N; *handbook* camera chapter) have no opcode or field: `view_obj` carries no payload and no other opcode names a mode or a target slot (FreeFlight `sifilm.cpp` likewise). The recorded rotation already holds the result: in `INTRO.FLM` and `CTRY.FLM` every view slot is an undrawn rig (flags `0x11` or `0x19`), and the tracking shots point within 0.2–0.4° (mean over the shot) of another slot. A player therefore reads the camera's aim from its `interp` rotation and needs no mode logic; whether `PLAYONE.EXE` recomputes a tracking aim at playback is not observed, and the 1.4° `CTRY.FLM` look-direction match (Q-FLM-08) argues against it.
-- **Instantaneous Director Cuts:**
-  When `view_obj` switches or when camera displacement between consecutive ticks exceeds the continuity threshold ($\|\mathbf{P}_{t+1} - \mathbf{P}_t\| > 50.0\text{ m}$):
+- **Invisible Camera Rigs:** Pure camera rigs are characterized by `type_flags` having `SIF_EXISTS`, `SIF_MOVES`, `SIF_ROTATES`, but **`SIF_DRAW == 0`**.
+  These slots represent virtual cameras (Pan, Tilt, Crane, Tracking, Dolly) placed in the world.
+- **No camera mode in the film** (2026-11-01, `[Supported Inference]`).
+  The Editing Room's camera behaviours (Face, Free, Seek, Spot, Follow, Attach N; *handbook* camera chapter) have no opcode or field: `view_obj` carries no payload and no other opcode names a mode or a target slot (FreeFlight `sifilm.cpp` likewise).
+  The recorded rotation already holds the result: in `INTRO.FLM` and `CTRY.FLM` every view slot is an undrawn rig (flags `0x11` or `0x19`), and the tracking shots point within 0.2–0.4° (mean over the shot) of another slot.
+  A player therefore reads the camera's aim from its `interp` rotation and needs no mode logic; whether `PLAYONE.EXE` recomputes a tracking aim at playback is not observed, and the 1.4° `CTRY.FLM` look-direction match (Q-FLM-08) argues against it.
+- **Instantaneous Director Cuts:** When `view_obj` switches or when camera displacement between consecutive ticks exceeds the continuity threshold ($\|\mathbf{P}_{t+1} - \mathbf{P}_t\| > 50.0\text{ m}$):
   $$\text{cut\_from\_previous} = \text{true}$$
   Sub-tick interpolation is suppressed ($\alpha_{\text{eff}} = 0.0$), holding position and rotation at tick $t$ until tick $t+1$ arrives, preventing unnatural camera swooping across the terrain.
 
@@ -216,7 +237,9 @@ Documentation of the `.FLM` format represents the culmination of deep community 
 
 ### 5.1 Community Researchers & Tool Authors
 
-- **Doug Armknecht**: Primary researcher of the `.FLM` binary stream. Authored `flm_extract.py`, `flm_compare.py`, `flm_corpus_analyze.py`, and `flm_trace_flags.py` in `corpus/siarchive/Developer/SI_FLM_Format/`. Decoded the 3-byte slice header and solved the reverse-scrubbing back-pointer across all 15,544 corpus slices.
+- **Doug Armknecht**: Primary researcher of the `.FLM` binary stream.
+  Authored `flm_extract.py`, `flm_compare.py`, `flm_corpus_analyze.py`, and `flm_trace_flags.py` in `corpus/siarchive/Developer/SI_FLM_Format/`.
+  Decoded the 3-byte slice header and solved the reverse-scrubbing back-pointer across all 15,544 corpus slices.
 - **FreeFlight Development Team**: Authors of `sifilm.h` and `sifilm.cpp` in `corpus/siarchive/Developer/FreeFlight/src/`, establishing initial opcode classifications (`create`, `interp`, `view_obj`, `sound`).
 - **Dave Palmowski & Dean Newbury**: Authors of technical documentation on the Stunt Island Editing Room timeline mechanics, subobject animations, and actor slot constraints in `corpus/siarchive/SITools/Docs/`.
 - **Adrian Stephens**: Original Assembly Line Developer; architected the choreography engine, fixed-point kinematics, and BAM angle system.

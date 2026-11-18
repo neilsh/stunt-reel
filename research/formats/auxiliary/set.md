@@ -6,10 +6,13 @@ sidebar_label: ".SET scenery & world layout"
 
 ## 1. Overview & File Identification
 
-The `.SET` format encapsulates complete world scenes, stage configurations, prop placements, environmental conditions, and scripted event triggers used throughout *Stunt Island*. It is the primary scene definition format, written and read only by the Set Designer subsystem in `STUNT.EXE`; the string evidence is in [`research/stunt-exe/sets.md`](../../stunt-exe/sets.md). Neither `makeone.img` nor `playone.img` contains the `.SET` string — both reference only `VAULT\*.TKE`, `VAULT\*.FLM`, `VAULT\SPOOL.$$$` and `VAULT\*.*` — so the film linker and the player reach a set through the `.ALL` archive rather than by opening the file.
+The `.SET` format encapsulates complete world scenes, stage configurations, prop placements, environmental conditions, and scripted event triggers used throughout *Stunt Island*.
+It is the primary scene definition format, written and read only by the Set Designer subsystem in `STUNT.EXE`; the string evidence is in [`research/stunt-exe/sets.md`](../../stunt-exe/sets.md).
+Neither `makeone.img` nor `playone.img` contains the `.SET` string — both reference only `VAULT\*.TKE`, `VAULT\*.FLM`, `VAULT\SPOOL.$$$` and `VAULT\*.*` — so the film linker and the player reach a set through the `.ALL` archive rather than by opening the file.
 
 - **File Extension:** `.SET`
-- **Magic Bytes:** None in the initial header word. Instead, `.SET` files begin with an ASCII stunt name string (`0x00`–`0x1D`) and contain a structural magic constant `0x08` at byte offset `0x52`.
+- **Magic Bytes:** None in the initial header word.
+  Instead, `.SET` files begin with an ASCII stunt name string (`0x00`–`0x1D`) and contain a structural magic constant `0x08` at byte offset `0x52`.
 - **Typical Container / Storage:** Loose files in `SETS\` or `VAULT\` directories, or packed as raw byte stream resources inside custom `.RES` archives (e.g. `SETS.RES`).
 - **Byte Endianness:** Little-endian (standard x86 16-bit real mode).
 - **Engine Lifecycle Role:**
@@ -17,13 +20,16 @@ The `.SET` format encapsulates complete world scenes, stage configurations, prop
   2. *Prop Entity Instantiation:* Allocates and positions both static scenery props (buildings, trees, runway lights) and dynamic actor entities (aircraft, ground vehicles, cameras) in world space.
   3. *Scripted Event Triggering:* Drives deterministic gameplay and cinematic triggers (timed explosions, dynamic camera cuts, audio cue playback, and vehicle autopilot takeover).
 
-**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization). **Contract and code:** [`contracts/shape/mod.rs`](../../../crates/stunt-core/src/contracts/shape/mod.rs) and [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs). A synthetic scene ([`synthetic_minimal.set`](../../../tests/fixtures/README.md)) exercises the schema offline through [`tests/test_set_schema.py`](../../../tests/test_set_schema.py).
+**Governing invariants:** [`[I1]`](../../../docs/SPEC.md#i1-metric-right-handed-coordinates-attribute-preserving-vertex-welding--anglefov-normalization).
+**Contract and code:** [`contracts/shape/mod.rs`](../../../crates/stunt-core/src/contracts/shape/mod.rs) and [`contracts/vfs.rs`](../../../crates/stunt-core/src/contracts/vfs.rs).
+A synthetic scene ([`synthetic_minimal.set`](../../../tests/fixtures/README.md)) exercises the schema offline through [`tests/test_set_schema.py`](../../../tests/test_set_schema.py).
 
 ---
 
 ## 2. Header & Memory Layout
 
-A `.SET` file begins with an 84-byte (`0x54`) global environment header containing mission metadata, vehicle configuration, and table count indicators. [`set.ksy`](set.ksy) is the executable layout for the header, the event records and the prop stride; this section gives their meaning.
+A `.SET` file begins with an 84-byte (`0x54`) global environment header containing mission metadata, vehicle configuration, and table count indicators.
+[`set.ksy`](set.ksy) is the executable layout for the header, the event records and the prop stride; this section gives their meaning.
 
 ### 2.1 Global Environment Header (`0x0000`–`0x0053`) (`# [FMT-SET-HEADER]`)
 
@@ -50,11 +56,15 @@ Offsets and widths live in [`set.ksy`](set.ksy); the table gives each field's me
 | `magic` | Structural validation constant `0x08` | `[Established]` |
 | `num_events` | Number of event records. Agrees with the printed event count of all six sets that have a dump (1, 1, 8, 2, 2, 10) | `[Bounded Observation]` |
 
-`num_events` is a single byte at `0x53`, so the encoding admits 255 events while the authoring tools expose 64: an **authored limit**, not a field bound ([`GLOSSARY.md`](../../../GLOSSARY.md)). The prop count is not stored in a dedicated header byte at all — the six dumped sets carry 4 to 39 props and no header byte matches them; [`set.ksy`](set.ksy) derives it from the remaining length.
+`num_events` is a single byte at `0x53`, so the encoding admits 255 events while the authoring tools expose 64: an **authored limit**, not a field bound ([`GLOSSARY.md`](../../../GLOSSARY.md)).
+The prop count is not stored in a dedicated header byte at all — the six dumped sets carry 4 to 39 props and no header byte matches them; [`set.ksy`](set.ksy) derives it from the remaining length.
 
-The header is 84 bytes, ending at `0x53`. The 12 bytes this table used to list at `0x54`–`0x5F` are the first event record's leading fields, not a table header; see § 3.5.
+The header is 84 bytes, ending at `0x53`.
+The 12 bytes this table used to list at `0x54`–`0x5F` are the first event record's leading fields, not a table header; see § 3.5.
 
-The recording byte is the authoring screen's Global-Rec setting: the handbook names the three values Off, Auto and On, and states that an event's `Start Rec` or `Stop Rec` overrides this byte and every other recording setting (*handbook* p.97). It records authored policy rather than per-frame data; whether `PLAYONE.EXE` reads it is not established. Two corpus sets that both print `Initial Recorder :On` store different bytes — `0x02` in `BOMBING.SET` and `0xFF` in `DRIVING.SET` — so `0xFF` is not reliably an unset sentinel and its meaning is open.
+The recording byte is the authoring screen's Global-Rec setting: the handbook names the three values Off, Auto and On, and states that an event's `Start Rec` or `Stop Rec` overrides this byte and every other recording setting (*handbook* p.97).
+It records authored policy rather than per-frame data; whether `PLAYONE.EXE` reads it is not established.
+Two corpus sets that both print `Initial Recorder :On` store different bytes — `0x02` in `BOMBING.SET` and `0xFF` in `DRIVING.SET` — so `0xFF` is not reliably an unset sentinel and its meaning is open.
 
 ### 2.2 Vehicle Mechanical State Bitmask (`vehicle_flags`, Offset `0x2C`)
 
@@ -87,17 +97,28 @@ The viewpoint mode selects the initial camera tracking perspective:
 
 ### 3.1 Prop Record Table (Exact 64-Byte Stride `0x40`)
 
-Prop records begin where the events end, at `0x54 + 67 × num_events`, and run to end of file in 64-byte strides (§ 3.5). [`set.ksy`](set.ksy) owns that stride and leaves each record's fields raw.
+Prop records begin where the events end, at `0x54 + 67 × num_events`, and run to end of file in 64-byte strides (§ 3.5).
+[`set.ksy`](set.ksy) owns that stride and leaves each record's fields raw.
 
-**A record is stored only for an occupied prop slot.** Its leading word is the slot number, 0-based, so the handbook's prop slot 1, the stunt aircraft, is word 0: the authoring tools offer 40 slots, of which slots 1 to 8 record film (*handbook* p.62; [`GLOSSARY.md`](../../../GLOSSARY.md)). On the 36 retail sets (715 records) the word strictly increases through each file, never exceeds 39 and starts at 0 in every set, matching `STUNT.EXE`'s `Prop 1 needs to be placed` ([`sets.md` § 2](../../stunt-exe/sets.md#2-stuntexe-alone-reads-and-writes-set)). Every one of the 36 skips at least one slot, so the word equals its record index only up to the first empty slot. This explains the retail share of the sweep's 427 words at or above the record count (137) and its 503 of the 715 retail words that differ from the index; the other 290 come from the 93 community sets, which no cloud archive holds. `[Supported Inference]`: the handbook names the 40 slots, and the bytes keep to them. `mise run verify-corpus -- --schema set` checks the order, the range and the trailing word below, and passes `--strict` on the retail sets (`mise run verify-corpus -- --corpus corpus/stuntisl/SETS --schema set`).
+**A record is stored only for an occupied prop slot.**
+Its leading word is the slot number, 0-based, so the handbook's prop slot 1, the stunt aircraft, is word 0: the authoring tools offer 40 slots, of which slots 1 to 8 record film (*handbook* p.62; [`GLOSSARY.md`](../../../GLOSSARY.md)).
+On the 36 retail sets (715 records) the word strictly increases through each file, never exceeds 39 and starts at 0 in every set, matching `STUNT.EXE`'s `Prop 1 needs to be placed` ([`sets.md` § 2](../../stunt-exe/sets.md#2-stuntexe-alone-reads-and-writes-set)).
+Every one of the 36 skips at least one slot, so the word equals its record index only up to the first empty slot.
+This explains the retail share of the sweep's 427 words at or above the record count (137) and its 503 of the 715 retail words that differ from the index; the other 290 come from the 93 community sets, which no cloud archive holds.
+`[Supported Inference]`: the handbook names the 40 slots, and the bytes keep to them.
+`mise run verify-corpus -- --schema set` checks the order, the range and the trailing word below, and passes `--strict` on the retail sets (`mise run verify-corpus -- --corpus corpus/stuntisl/SETS --schema set`).
 
-**The trailing word belongs to the next slot.** Bytes `+0x3E`–`+0x3F` equal bytes `+0x02`–`+0x03` of the record for the next slot number in 626 of 626 records whose next slot is present, which reads as the editor writing 62 bytes from a table of 60-byte entries. `[Supported Inference]` for the equality; the write itself has not been read in `STUNT.EXE`.
+**The trailing word belongs to the next slot.**
+Bytes `+0x3E`–`+0x3F` equal bytes `+0x02`–`+0x03` of the record for the next slot number in 626 of 626 records whose next slot is present, which reads as the editor writing 62 bytes from a table of 60-byte entries.
+`[Supported Inference]` for the equality; the write itself has not been read in `STUNT.EXE`.
 
 _Source: [prop slot words and per-offset columns on the retail sets](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-17-prop-slot-words-and-per-offset-columns-on-the-retail-sets)._
 
-> **Historical Stride Correction:** Early community analysis notes (Neil Halelamien, 2004) asserted that "Every prop takes (16*5=80 bytes)". Empirical analysis of record deltas ($0xD6 - 0x97 + 1 = 0x40 = 64\text{ bytes}$) disproves this typo: each record is strictly **64 bytes (0x40)**, perfectly aligning with four 16-byte paragraph blocks in real-mode x86 memory.
+> **Historical Stride Correction:** Early community analysis notes (Neil Halelamien, 2004) asserted that "Every prop takes (16*5=80 bytes)".
+> Empirical analysis of record deltas ($0xD6 - 0x97 + 1 = 0x40 = 64\text{ bytes}$) disproves this typo: each record is strictly **64 bytes (0x40)**, perfectly aligning with four 16-byte paragraph blocks in real-mode x86 memory.
 
-The *Observed* column counts the 715 retail records, split where it matters into slots 0–7 (214 records, the recording slots) and 8–39 (501). A field named *unknown* has no reading yet.
+The *Observed* column counts the 715 retail records, split where it matters into slots 0–7 (214 records, the recording slots) and 8–39 (501).
+A field named *unknown* has no reading yet.
 
 | Relative Offset | Size | Type | Field Name | Description | Observed | Evidentiary Tier |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -137,7 +158,8 @@ Bit:   7   6   5   4   3   2   1   0
            +---------------------- Visibility flag (legacy display enable)
 ```
 
-On the 715 retail records, bit 0, drawn here as unused, is set in every record, and bits 1 and 2 are set only in recording slots (§ 3.1). `[Bounded Observation]`
+On the 715 retail records, bit 0, drawn here as unused, is set in every record, and bits 1 and 2 are set only in recording slots (§ 3.1).
+`[Bounded Observation]`
 
 ### 3.3 Prop Placement Flags (`placement_flags`, `+0x03`)
 
@@ -150,11 +172,16 @@ Bit:   7   6   5   4   3   2   1   0
                        +---------- Cast real-time ground shadow (1 = shadow active)
 ```
 
-On the 715 retail records, bit 0 is set in every record. The drawing does not cover the rest, so this bit map is unconfirmed: bit 1 is set in 688, bit 2 in 51, bit 3 in 333 and bit 4 in 504, though the drawing leaves bits 3 to 7 reserved; bits 5 to 7 are never set. `[Bounded Observation]`
+On the 715 retail records, bit 0 is set in every record.
+The drawing does not cover the rest, so this bit map is unconfirmed: bit 1 is set in 688, bit 2 in 51, bit 3 in 333 and bit 4 in 504, though the drawing leaves bits 3 to 7 reserved; bits 5 to 7 are never set.
+`[Bounded Observation]`
 
 ### 3.4 Prop Override Flags (`override_flags`, `+0x34`)
 
-The meaning of this byte is unknown. On the 715 retail records it is `0x00`, `0x40`, `0x80` or `0xC0` in 712, so its variation sits in bits 6 and 7. The hidden and locked bits this section used to place at bits 2 and 3 are set in 2 records, both recording slots, and are withdrawn. `[Bounded Observation]`
+The meaning of this byte is unknown.
+On the 715 retail records it is `0x00`, `0x40`, `0x80` or `0xC0` in 712, so its variation sits in bits 6 and 7.
+The hidden and locked bits this section used to place at bits 2 and 3 are set in 2 records, both recording slots, and are withdrawn.
+`[Bounded Observation]`
 
 ### 3.5 File Layout: the Event Table at `0x54`
 
@@ -164,13 +191,21 @@ $$\text{size} = \texttt{0x54} + 67 \times \text{events} + 64 \times \text{props}
 
 [`set.ksy`](set.ksy) is the executable definition, including the header field names, the 67-byte record and its eight 7-byte THEN slots; this section does not repeat them.
 
-For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x97`, which is exactly the offset the 2004 notes found by deleting a prop. `[Supported Inference]`
+For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x97`, which is exactly the offset the 2004 notes found by deleting a prop.
+`[Supported Inference]`
 
-**Verification.** Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250. It closes on all 129 sets available locally — 93 under `corpus/` (35 loose, 30 `Maverick`, 21 `Christmas_2025`, 6 `MIC-SETS`, 1 `ClawIsle`) and 36 under `corpus/stuntisl/SETS/` — with no exception, and `0x54 + 67 × num_events` lands on the prop table for each. Reproduce it with `mise run verify-corpus -- --schema set` and `mise run verify-corpus -- --corpus corpus/stuntisl/SETS --schema set`; `tests/test_set_schema.py` covers the same shape offline. The sweep stays out of `mise run check`, which is corpus-free by design.
+**Verification.**
+Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250.
+It closes on all 129 sets available locally — 93 under `corpus/` (35 loose, 30 `Maverick`, 21 `Christmas_2025`, 6 `MIC-SETS`, 1 `ClawIsle`) and 36 under `corpus/stuntisl/SETS/` — with no exception, and `0x54 + 67 × num_events` lands on the prop table for each.
+Reproduce it with `mise run verify-corpus -- --schema set` and `mise run verify-corpus -- --corpus corpus/stuntisl/SETS --schema set`; `tests/test_set_schema.py` covers the same shape offline.
+The sweep stays out of `mise run check`, which is corpus-free by design.
 
-**How this was established.** `TYPESET.EXE` prints a set, so flipping one byte and re-printing maps a byte to the field it feeds ([§ 6 of the STUNT.EXE note](../../stunt-exe/sets.md)). Every offset of `BOMBING.SET` was flipped and re-printed.
+**How this was established.**
+`TYPESET.EXE` prints a set, so flipping one byte and re-printing maps a byte to the field it feeds ([§ 6 of the STUNT.EXE note](../../stunt-exe/sets.md)).
+Every offset of `BOMBING.SET` was flipped and re-printed.
 
-**Event fields, by flip.** Each row is a single-byte flip that changes exactly one printed value; the field names are the ones in [`set.ksy`](set.ksy):
+**Event fields, by flip.**
+Each row is a single-byte flip that changes exactly one printed value; the field names are the ones in [`set.ksy`](set.ksy):
 
 | Field | Flip changes |
 |---|---|
@@ -187,9 +222,11 @@ For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x9
 
 The slot operand columns were read by writing a value into each byte under a known action type.
 
-The `wait` operand (`operand` in a THEN slot) is in 50 Hz ticks, not seconds: 256 reads back as `5.12 seconds`, which is 256/50, and 5 reads back as `0.1 seconds`. So the authored timebase in the file is the same 50 Hz clock as `[I4]`.
+The `wait` operand (`operand` in a THEN slot) is in 50 Hz ticks, not seconds: 256 reads back as `5.12 seconds`, which is 256/50, and 5 reads back as `0.1 seconds`.
+So the authored timebase in the file is the same 50 Hz clock as `[I4]`.
 
-**The `change` operand is scaled by the property.** Writing `0x4000` — a quarter turn in BAM — into a `change` action's 16-bit operand prints differently for each property in that slot's `secondary_operand` byte:
+**The `change` operand is scaled by the property.**
+Writing `0x4000` — a quarter turn in BAM — into a `change` action's 16-bit operand prints differently for each property in that slot's `secondary_operand` byte:
 
 | Property | Printed for `0x4000` |
 |---|---|
@@ -202,16 +239,22 @@ The `wait` operand (`operand` in a THEN slot) is in 50 Hz ticks, not seconds: 25
 So the operand is a signed 16-bit whose unit belongs to the property, not to the record:
 
 - **Angles** (`roll`, `pitch`, `yaw` and the heading pair) are BAM at 65536 per turn, printed as degrees: `0x4000` is 90°.
-- **Anim properties** are that same BAM value read as a per-tick rate and printed in degrees per second at 50 Hz with the sign flipped: `printed = -angle × 50`. This holds on 11 of 11 samples from `0x0000` to `0xFFFE`; the single boundary case, `0x8000`, prints `-9000` rather than `+9000` because −180° is normalised to +180° before the sign flip.
-- **Scalar properties** carry their own scale, of which only `zoom` is pinned here (`0x4000` → 2.5). Enumerating the rest is property work, not event work.
+- **Anim properties** are that same BAM value read as a per-tick rate and printed in degrees per second at 50 Hz with the sign flipped: `printed = -angle × 50`.
+  This holds on 11 of 11 samples from `0x0000` to `0xFFFE`; the single boundary case, `0x8000`, prints `-9000` rather than `+9000` because −180° is normalised to +180° before the sign flip.
+- **Scalar properties** carry their own scale, of which only `zoom` is pinned here (`0x4000` → 2.5).
+  Enumerating the rest is property work, not event work.
 
-An 11-byte clause header plus eight 7-byte slots is 67 bytes, the record size, and the last slot ends where the prop table starts. The second AND qualifier's type printed no change when flipped, so `and_2_type` is inferred from the record's spacing rather than observed. `[Supported Inference]`
+An 11-byte clause header plus eight 7-byte slots is 67 bytes, the record size, and the last slot ends where the prop table starts.
+The second AND qualifier's type printed no change when flipped, so `and_2_type` is inferred from the record's spacing rather than observed.
+`[Supported Inference]`
 
 Reading the record as a 55-byte base plus 67 per further event, or as 12-byte blocks, or as a table after the props, is withdrawn: the prop-count arithmetic fits those splits equally, and only the flips distinguish them.
 
 ### 3.6 Event Operators
 
-`TYPESET.EXE` is the tool that prints a set (`SETINFO.BAT` runs `TYPESET %1.SET > %1.TXT`), so these are the operator names the retail build itself emits. It renders each rule through printf templates, which makes each operand's width part of the evidence: `\\1O` is an object index, `\\1b` a byte, `\\1w` a word, `\\3t` a time, `\\1m` miles per hour. `[Established]` as vocabulary; the numeric encodings are in the tables below.
+`TYPESET.EXE` is the tool that prints a set (`SETINFO.BAT` runs `TYPESET %1.SET > %1.TXT`), so these are the operator names the retail build itself emits.
+It renders each rule through printf templates, which makes each operand's width part of the evidence: `\\1O` is an object index, `\\1b` a byte, `\\1w` a word, `\\3t` a time, `\\1m` miles per hour.
+`[Established]` as vocabulary; the numeric encodings are in the tables below.
 
 **IF** — `\\1O hits \\2O`, `\\1O crashes`, `\\1p seconds have elapsed`, `weapon count = \\1w`, `never`.
 
@@ -225,19 +268,24 @@ The four `EVT_*` codes this section previously listed are withdrawn: no source i
 
 ### Encoding
 
-The numeric values were read off `BOMBING.SET` by writing each value into one type byte and re-printing (§ 3.5). `[Supported Inference]` for each table, since every entry was observed rather than inferred.
+The numeric values were read off `BOMBING.SET` by writing each value into one type byte and re-printing (§ 3.5).
+`[Supported Inference]` for each table, since every entry was observed rather than inferred.
 
 **IF condition type** (`if_type`): `0` —, `1` hits, `2` crashes, `3` seconds elapsed, `4` weapon count, `5` nothing, `6` it's before, `7` it's after.
 
-**AND qualifier type** (`and_1_type`, `and_2_type`): `0` nothing, `1` it's before, `2` it's after, `3` event happened, `4` event hasn't happened, `5` flag =, `6` flag <>, `7` speed <, `8` speed >. Values above `8` fall through into the action table below, which is how the two tables sit next to each other in the image.
+**AND qualifier type** (`and_1_type`, `and_2_type`): `0` nothing, `1` it's before, `2` it's after, `3` event happened, `4` event hasn't happened, `5` flag =, `6` flag <>, `7` speed <, `8` speed >.
+Values above `8` fall through into the action table below, which is how the two tables sit next to each other in the image.
 
-**THEN action type** (`action_type`, in every slot): `0` do nothing, `1` award $, `2` play sound, `3` cut to, `4` set time, `5` finish, `6` change, `7` wait, `8` start recording, `9` stop recording, `10` stop, `11` kill, `12` explode, `13` fade, `14` set flag, `15` modify flag, `16` stop recording if autoediting. Values `17` and above print the `change` property names (shape, WE position, altitude, …), again an out-of-range read into the adjacent table rather than a valid action.
+**THEN action type** (`action_type`, in every slot): `0` do nothing, `1` award $, `2` play sound, `3` cut to, `4` set time, `5` finish, `6` change, `7` wait, `8` start recording, `9` stop recording, `10` stop, `11` kill, `12` explode, `13` fade, `14` set flag, `15` modify flag, `16` stop recording if autoediting.
+Values `17` and above print the `change` property names (shape, WE position, altitude, …), again an out-of-range read into the adjacent table rather than a valid action.
 
-The handbook enumerates the authoring actions this table encodes: `CutTo`, `Change` (with roughly twenty sub-parameters — shape, position, altitude, roll/pitch/yaw, speed, acceleration, zoom, watch target, visibility, collideability, autozoom), `Explode`, `Kill`, `Fade`, `Finish`, `Set Flag`, `Set Time`, `Start Rec`, `Stop Rec`, `Start Sound`, `Wait` and `Award $` (*handbook* pp.92–95), behind the triggers `Collision`, `Crash`, `Time` (maximum 655 seconds), `Weapon Count` and the `Never` placeholder (pp.89–90). A `change` action carries its property in `secondary_operand` and its new value in the 16-bit `operand` (§ 3.5), so the record carries the sub-parameter directly.
+The handbook enumerates the authoring actions this table encodes: `CutTo`, `Change` (with roughly twenty sub-parameters — shape, position, altitude, roll/pitch/yaw, speed, acceleration, zoom, watch target, visibility, collideability, autozoom), `Explode`, `Kill`, `Fade`, `Finish`, `Set Flag`, `Set Time`, `Start Rec`, `Stop Rec`, `Start Sound`, `Wait` and `Award $` (*handbook* pp.92–95), behind the triggers `Collision`, `Crash`, `Time` (maximum 655 seconds), `Weapon Count` and the `Never` placeholder (pp.89–90).
+A `change` action carries its property in `secondary_operand` and its new value in the 16-bit `operand` (§ 3.5), so the record carries the sub-parameter directly.
 
 ### 3.7 Editor-to-World Coordinate Conversion (`[I1]`)
 
-All positions within `.SET` are authored in Set Designer editor coordinates ranging from $0$ to $200{,}000$ integer units, with the island center located at $(100000, 0, 100000)$. StuntReel transforms these coordinates into the metric right-handed basis ($+X$ Right/East, $+Y$ Up/Altitude, $+Z$ Backward/South, $-Z$ Forward/North) via:
+All positions within `.SET` are authored in Set Designer editor coordinates ranging from $0$ to $200{,}000$ integer units, with the island center located at $(100000, 0, 100000)$.
+StuntReel transforms these coordinates into the metric right-handed basis ($+X$ Right/East, $+Y$ Up/Altitude, $+Z$ Backward/South, $-Z$ Forward/North) via:
 
 $$X_{\text{world}} = \frac{X_{\text{editor}} - 100000}{10.0} \quad (\text{meters})$$
 
@@ -245,9 +293,11 @@ $$Y_{\text{world}} = \frac{Y_{\text{editor}}}{10.0} \quad (\text{meters})$$
 
 $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters})$$
 
-- **Fixed-Point Conversion:** In `.SET` binary storage, coordinates are stored as 32-bit $16.16$ signed fixed-point integers. To obtain floating-point meters:
+- **Fixed-Point Conversion:** In `.SET` binary storage, coordinates are stored as 32-bit $16.16$ signed fixed-point integers.
+  To obtain floating-point meters:
   $$\text{pos}_{\text{meters}} = \frac{\text{raw\_i32}}{65536.0}$$
-- **Scale Factor:** Exactly 10 Set Designer editor units equal 1.0 meter in world coordinates. An island width of 200,000 units spans 20,000 meters (20 kilometers).
+- **Scale Factor:** Exactly 10 Set Designer editor units equal 1.0 meter in world coordinates.
+  An island width of 200,000 units spans 20,000 meters (20 kilometers).
 
 ---
 

@@ -4,9 +4,12 @@ sidebar_label: "Parity probes"
 ---
 # Parity Probes: Diagnosing One Discrepancy
 
-Procedures for finding out *what* is wrong once [`method.md`](method.md) says *where* the loss is. Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md). Dated outcomes go in journal entries; earlier ones are rows of the [parity log](../../work/2026-10/parity-log/log.md) and the notes it links; the helpers are [`python/scripts/parity_probe.py`](../../python/scripts/parity_probe.py) and [`parity_sweep.py`](../../python/scripts/parity_sweep.py).
+Procedures for finding out *what* is wrong once [`method.md`](method.md) says *where* the loss is.
+Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md).
+Dated outcomes go in journal entries; earlier ones are rows of the [parity log](../../work/2026-10/parity-log/log.md) and the notes it links; the helpers are [`python/scripts/parity_probe.py`](../../python/scripts/parity_probe.py) and [`parity_sweep.py`](../../python/scripts/parity_sweep.py).
 
-All probes read a capture directory (`<data root>/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`). "Object pixels" are capture pixels outside the film's `background` bands and not index 0 or 255; `shift` and `iou` take the backdrop index bands from the `background` field of the `references.toml` row of the film the capture's `meta.json` names, and refuse a film whose row has none (every reference film's row records one; [section 3](#3-actor-window-iou-iou)).
+All probes read a capture directory (`<data root>/captures/<film>/<id>`, `tick_NNNN.idx` by ordinal) and a render store (index and layer planes by film tick, read through `RenderStore`).
+"Object pixels" are capture pixels outside the film's `background` bands and not index 0 or 255; `shift` and `iou` take the backdrop index bands from the `background` field of the `references.toml` row of the film the capture's `meta.json` names, and refuse a film whose row has none (every reference film's row records one; [section 3](#3-actor-window-iou-iou)).
 
 ## 1. Side-by-side crop (`crop`)
 
@@ -14,21 +17,33 @@ All probes read a capture directory (`<data root>/captures/<film>/<id>`, `tick_N
 python python/scripts/parity_probe.py crop --ours build/parity/ours/ctry 9 97 60 20 260 160 --out build/scratch/crop.png
 ```
 
-Capture on top, ours below, one frame region, nearest-neighbour scaled. Use it on any frame before trusting a score change: it is how the orientation sweep's best candidate was seen to be a plan view of the wrong aircraft.
+Capture on top, ours below, one frame region, nearest-neighbour scaled.
+Use it on any frame before trusting a score change: it is how the orientation sweep's best candidate was seen to be a plan view of the wrong aircraft.
 
 ## 2. Silhouette offset (`shift`)
 
-Slides our actor silhouette (layer id 16 and up) over the capture's object pixels and prints, per scored frame, `film_tick`, silhouette size, best `dx`, `dy` and the hit fraction. A consistent `dy` across frames with a stable silhouette size means a placement error rather than a shape error. It showed the CTRY hero aircraft 10 to 14 rows low ([`hero-aircraft-placement.md`](hero-aircraft-placement.md)).
+Slides our actor silhouette (layer id 16 and up) over the capture's object pixels and prints, per scored frame, `film_tick`, silhouette size, best `dx`, `dy` and the hit fraction.
+A consistent `dy` across frames with a stable silhouette size means a placement error rather than a shape error.
+It showed the CTRY hero aircraft 10 to 14 rows low ([`hero-aircraft-placement.md`](hero-aircraft-placement.md)).
 
-Each row also gives the world's own shift in the same frame: the whole-frame `dx`, `dy` (every even offset up to `--world-reach`, default 12, ties going to the smaller shift) that makes the most of our non-actor pixels equal the capture's index, with our actor left out and so is every capture object pixel within 8 px of our silhouette moved by the actor shift (the capture's aircraft, even where it is larger than ours, while scenery away from every actor stays in), and that fraction (`world_agree`). The closing line gives the medians of the actor shift, the world shift and actor minus world. Read the actor residual against that difference, not against a world baseline copied from an older note: the world's own shift moves whenever the camera or projection changes (it went from about -4 rows to 0 with the 256 px projection). `world_agree` compares raw palette indices, not colours, so it is low where the two pick different indices (terrain shading, dithering) and blind to a palette whose colours differ at the same index; the SSIM capture-shift scores in [`attribution.md`](attribution.md#ruled-out) remain the authority for the world's framing.
+Each row also gives the world's own shift in the same frame: the whole-frame `dx`, `dy` (every even offset up to `--world-reach`, default 12, ties going to the smaller shift) that makes the most of our non-actor pixels equal the capture's index, with our actor left out and so is every capture object pixel within 8 px of our silhouette moved by the actor shift (the capture's aircraft, even where it is larger than ours, while scenery away from every actor stays in), and that fraction (`world_agree`).
+The closing line gives the medians of the actor shift, the world shift and actor minus world.
+Read the actor residual against that difference, not against a world baseline copied from an older note: the world's own shift moves whenever the camera or projection changes (it went from about -4 rows to 0 with the 256 px projection).
+`world_agree` compares raw palette indices, not colours, so it is low where the two pick different indices (terrain shading, dithering) and blind to a palette whose colours differ at the same index; the SSIM capture-shift scores in [`attribution.md`](attribution.md#ruled-out) remain the authority for the world's framing.
 
 ## 3. Actor-window IoU (`iou`)
 
-IoU of our actor pixels against capture object pixels inside the actor's bounding box padded by 25 px, averaged over every second scored frame. Whole-film SSIM could not rank 48 model orientations (0.770 to 0.777); this can.
+IoU of our actor pixels against capture object pixels inside the actor's bounding box padded by 25 px, averaged over every second scored frame.
+Whole-film SSIM could not rank 48 model orientations (0.770 to 0.777); this can.
 
-**Trap (`[Bounded Observation]`).** IoU rewards silhouette coverage. The best of 48 orientations scored 0.247 against 0.109 for the current one, yet its crop was a monoplane seen from above while the capture is a biplane seen from behind at about 45 degrees. Treat an IoU gain as a lead, and confirm it with a crop (section 1).
+**Trap (`[Bounded Observation]`).**
+IoU rewards silhouette coverage.
+The best of 48 orientations scored 0.247 against 0.109 for the current one, yet its crop was a monoplane seen from above while the capture is a biplane seen from behind at about 45 degrees.
+Treat an IoU gain as a lead, and confirm it with a crop (section 1).
 
-**Backdrop bands** (`background` in each `references.toml` row). `[Bounded Observation]`, 2026-11-14, #490 and the #501 review, on `crates` tree `d2cd090` (`expected.gpu` was measured on `adbde141`; scores matched it to 1e-6), RTX 4070. The rule, one for all six films: an index is backdrop when
+**Backdrop bands** (`background` in each `references.toml` row).
+`[Bounded Observation]`, 2026-11-14, #490 and the #501 review, on `crates` tree `d2cd090` (`expected.gpu` was measured on `adbde141`; scores matched it to 1e-6), RTX 4070.
+The rule, one for all six films: an index is backdrop when
 
 * it has at least 0.05 % of the capture's rows 0..184 over capture frames 0, 4, 8, ... of the scored frames (`[0::4]`, 25 to 183 frames);
 * at least 85 % of those capture pixels lie where our layer plane is none (0), ocean (1) or terrain (2); an index our render draws mostly on the props layer (3) is scenery and stays out, however large and however well our index agrees;
@@ -84,7 +99,11 @@ for i in keep:
 print(film, bands, f"{100 * cap[keep].sum() / cap.sum():.0f}% of capture pixels")
 ```
 
-The `ctry` row is #485's. It meets the no-actor-pixel test since #505 dropped 237 (9 actor px in 3 frames), but not the other tests: rederived whole, the rule keeps `[162,164] [228,236] [238,238]` (25 % covered) and the probe stops working (IoU 0.0879, every shift in the shift test scores above it), because our `ctry` render draws ground 193, 194 and 196 (57 % of the capture) off layers 0 to 2 (at most 1 % of their pixels on them), so they fail the 85 % test. `ctry` keeps #485's ground ramp and shade greens for that reason. An earlier, looser rule put actor-painted indices in the bands; the strict one drops them. _Source: [per-film derivation and shift test](../../work/2026-11/490_background-bands/journal.md#2026-11-14-backdrop-bands-for-the-six-non-ctry-films), [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
+The `ctry` row is #485's.
+It meets the no-actor-pixel test since #505 dropped 237 (9 actor px in 3 frames), but not the other tests: rederived whole, the rule keeps `[162,164] [228,236] [238,238]` (25 % covered) and the probe stops working (IoU 0.0879, every shift in the shift test scores above it), because our `ctry` render draws ground 193, 194 and 196 (57 % of the capture) off layers 0 to 2 (at most 1 % of their pixels on them), so they fail the 85 % test.
+`ctry` keeps #485's ground ramp and shade greens for that reason.
+An earlier, looser rule put actor-painted indices in the bands; the strict one drops them.
+_Source: [per-film derivation and shift test](../../work/2026-11/490_background-bands/journal.md#2026-11-14-backdrop-bands-for-the-six-non-ctry-films), [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
 
 | Film | `background` | Capture pixels covered | `iou` (every 2nd scored frame) |
 |---|---|---|---|
@@ -96,16 +115,31 @@ The `ctry` row is #485's. It meets the no-actor-pixel test since #505 dropped 23
 | `bomb` | `[163,164] [208,208] [227,235] [238,238]` | 34 % | 0.2709 (129) |
 | `location` | `[164,164] [195,195] [208,208]` | 27 % | 0.1164 (86) |
 
-"Covered" is the share of all rows 0..184 capture pixels, 0 and 255 included in the denominator, over the sampled frames; an index below 0.05 % of them, or absent from the sampled frames, counts as object. The figures are leads only (`[Bounded Observation]`, [trap above](#3-actor-window-iou-iou)), for these reasons:
+"Covered" is the share of all rows 0..184 capture pixels, 0 and 255 included in the denominator, over the sampled frames; an index below 0.05 % of them, or absent from the sampled frames, counts as object.
+The figures are leads only (`[Bounded Observation]`, [trap above](#3-actor-window-iou-iou)), for these reasons:
 
-* **The strict test costs backdrop.** Every index our actors paint anywhere in the film counts as object pixels wherever it is backdrop. `land` has no sky band because actor paint covers 227 to 238 (5,605 px at 229 to 238); `intro` has none either (2,643 px, mostly 236 to 238); `bomb` loses terrain 195 (24 % of its capture) to 1 px in 1 scored frame (140 px in 14 frames on tree `7aeabce`, #505); `traintnl` 231 goes for 1 px in 1 frame while 233 stays. The test follows rasterizer edges.
-* **Props-layer scenery.** Tarmac, hills, tunnel and track props our render draws on layer 3 are object pixels, inside the actor's box on `traintnl` (crop of tick 628).
-* **Weak discrimination on `intro` and `location`.** Shifting our actor by (0,-15) or (0,+10) scores as well as or better than (0,0) on `intro`, and (+25,+25) costs `location` 4 % of its IoU, against about half on `land`, `traintnl`, `balloon` and `bomb` (tree `7aeabce`, window around the moved actor; #490's window gave `location` 12 %). Do not use the actor IoU of `intro` or `location` to rank a 15 to 25 px placement change. _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
-* **A render fault inflates `location`.** From tick 717 to 903 our render draws a black foreground quadrilateral, mostly growing, that the capture lacks ([#504](https://github.com/neilsh/stunt-reel/issues/504)). It overlaps capture index 76, which is no band, so it adds object pixels our actor "finds": per-frame IoU is 0.34 to 0.35 at ticks 805 to 892 against 0.05 to 0.12 at 717 to 760 (different actor content, so an inference). It does not lower the figure.
+* **The strict test costs backdrop.**
+  Every index our actors paint anywhere in the film counts as object pixels wherever it is backdrop.
+  `land` has no sky band because actor paint covers 227 to 238 (5,605 px at 229 to 238); `intro` has none either (2,643 px, mostly 236 to 238); `bomb` loses terrain 195 (24 % of its capture) to 1 px in 1 scored frame (140 px in 14 frames on tree `7aeabce`, #505); `traintnl` 231 goes for 1 px in 1 frame while 233 stays.
+  The test follows rasterizer edges.
+* **Props-layer scenery.**
+  Tarmac, hills, tunnel and track props our render draws on layer 3 are object pixels, inside the actor's box on `traintnl` (crop of tick 628).
+* **Weak discrimination on `intro` and `location`.**
+  Shifting our actor by (0,-15) or (0,+10) scores as well as or better than (0,0) on `intro`, and (+25,+25) costs `location` 4 % of its IoU, against about half on `land`, `traintnl`, `balloon` and `bomb` (tree `7aeabce`, window around the moved actor; #490's window gave `location` 12 %).
+  Do not use the actor IoU of `intro` or `location` to rank a 15 to 25 px placement change.
+  _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
+* **A render fault inflates `location`.**
+  From tick 717 to 903 our render draws a black foreground quadrilateral, mostly growing, that the capture lacks ([#504](https://github.com/neilsh/stunt-reel/issues/504)).
+  It overlaps capture index 76, which is no band, so it adds object pixels our actor "finds": per-frame IoU is 0.34 to 0.35 at ticks 805 to 892 against 0.05 to 0.12 at 717 to 760 (different actor content, so an inference).
+  It does not lower the figure.
 
 The final bands were not cropped by eye (the first round's were, journal).
 
-**Per-index tolerance (#505): strict rule kept.** `[Bounded Observation]`, 2026-11-16, `crates` tree `7aeabce`, RTX 4070. The actor test was relaxed to admit an index our actors paint at most N px over the scored frames (`n<=N`), or at most a share of that index's capture pixels over the same frames (`s<=x`); every other test was kept. The shift test moves our actor by (dx, dy) and puts the window around the moved silhouette, so its shifted figures differ from #490's by up to 0.015; compare within this table. "Actor px" is our actor pixels on admitted indices over all scored frames, with the most frames any one admitted index appears in; "ratio" is IoU at (+25,+25) over IoU at (0,0), lower separating better; "beaten" says a shift scored above (0,0).
+**Per-index tolerance (#505): strict rule kept.**
+`[Bounded Observation]`, 2026-11-16, `crates` tree `7aeabce`, RTX 4070.
+The actor test was relaxed to admit an index our actors paint at most N px over the scored frames (`n<=N`), or at most a share of that index's capture pixels over the same frames (`s<=x`); every other test was kept.
+The shift test moves our actor by (dx, dy) and puts the window around the moved silhouette, so its shifted figures differ from #490's by up to 0.015; compare within this table.
+"Actor px" is our actor pixels on admitted indices over all scored frames, with the most frames any one admitted index appears in; "ratio" is IoU at (+25,+25) over IoU at (0,0), lower separating better; "beaten" says a shift scored above (0,0).
 
 | Film | Rule | Indices added to strict | Covered | Actor px (frames) | IoU (0,0) | Ratio | Beaten |
 |---|---|---|---|---|---|---|---|
@@ -141,45 +175,78 @@ Each admitted index as its share of capture pixels (rows 0..184, frames `[0::4]`
 | `bomb` | 195: 24.4 %, 140 (14); 236: 1.1 %, 5 (1); 237: 0.8 %, 67 (2) |
 | `traintnl` | 163: 0.8 %, 7 (4); 229: 1.5 %, 10 (9); 230: 1.2 %, 8 (8); 231: 1.7 %, 1 (1) |
 
-* **An edge-sized tolerance changes little.** `n<=10` admits 5 to 26 px in at most 9 frames per index; `intro`'s ratio goes from 0.96 to 0.93 and a shift still beats (0,0), `land` and `location` gain nothing.
-* **The tolerances that fix `intro` and `location` admit actor paint, not edges.** `intro`'s `n<=100`, `s<=0.01%` and `s<=0.1%` and `location`'s `s<=0.01%` and `s<=0.1%` admit 93 to 2,607 px, the most-painted admitted index in 34 to 84 frames (`s<=1%`, not listed, admits 1,631 on `intro` and 10,389 on `location`). `location`'s `n<=100` admits 88 px (163, in 59 frames) and does not change its discrimination (ratio 0.96). `location`'s gain at `s<=0.01%` is index 76 alone, the index under the #504 foreground fault.
+* **An edge-sized tolerance changes little.**
+  `n<=10` admits 5 to 26 px in at most 9 frames per index; `intro`'s ratio goes from 0.96 to 0.93 and a shift still beats (0,0), `land` and `location` gain nothing.
+* **The tolerances that fix `intro` and `location` admit actor paint, not edges.**
+  `intro`'s `n<=100`, `s<=0.01%` and `s<=0.1%` and `location`'s `s<=0.01%` and `s<=0.1%` admit 93 to 2,607 px, the most-painted admitted index in 34 to 84 frames (`s<=1%`, not listed, admits 1,631 on `intro` and 10,389 on `location`).
+  `location`'s `n<=100` admits 88 px (163, in 59 frames) and does not change its discrimination (ratio 0.96).
+  `location`'s gain at `s<=0.01%` is index 76 alone, the index under the #504 foreground fault.
 * **`land`'s sky comes back only at `s<=1%`**, which admits 3,111 actor px with one index in 95 frames: our actors paint those sky indices through the film.
-* **The strict rule's output moves with the render.** On this tree `bomb` 195 has 140 actor px in 14 frames (1 px in 1 frame on `d2cd090`), and the strict rule now gives `traintnl` 164 (0 actor px), which its committed row lacks. Rederiving the other films' rows on the current tree is [#614](https://github.com/neilsh/stunt-reel/issues/614).
+* **The strict rule's output moves with the render.**
+  On this tree `bomb` 195 has 140 actor px in 14 frames (1 px in 1 frame on `d2cd090`), and the strict rule now gives `traintnl` 164 (0 actor px), which its committed row lacks.
+  Rederiving the other films' rows on the current tree is [#614](https://github.com/neilsh/stunt-reel/issues/614).
 
-Sky indices come back as follows: `n<=10` restores `intro` 229-230 (6 px in 5 frames), `s<=0.01%` `intro` 229-231 (most-painted index in 34 frames), `n<=100` `intro` 227-234 (47 frames), and `s<=1%` `land` 229-235 (95 frames). _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
+Sky indices come back as follows: `n<=10` restores `intro` 229-230 (6 px in 5 frames), `s<=0.01%` `intro` 229-231 (most-painted index in 34 frames), `n<=100` `intro` 227-234 (47 frames), and `s<=1%` `land` 229-235 (95 frames).
+_Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
 
 ## 4. Candidate sweeps
 
 For a hypothesis with a few dozen variants (axis permutations, Euler order and signs, camera or actor offsets):
 
-1. Add a temporary `DBG_<NAME>` environment switch at the one place the variant applies (read with `std::env::var`). The switch itself never lands in the code; step 5 keeps it as a patch.
+1. Add a temporary `DBG_<NAME>` environment switch at the one place the variant applies (read with `std::env::var`).
+   The switch itself never lands in the code; step 5 keeps it as a patch.
 2. Run [`python/scripts/parity_sweep.py`](../../python/scripts/parity_sweep.py), as one command (in the background if the product is large):
 
    ```bash
    mise run sweep -- --var DBG_PITCH=0,-2 --var DBG_DY=0,-0.3 [--films ctry,intro] [--probe film|iou] [--keep-best] [--jobs N]
    ```
 
-   It builds `stunt-cli` once, renders every combination of the `--var` values for each film with those variables in the environment (flags from [`method.md`](method.md) section 1; each film's capture and `.FLM` come from its [`references.toml`](references.toml) row and the corpus), scores each with `stuntreel parity`, and prints one line per variant sorted best first, then the winner. Every film `references.toml` pins is the default and the ranking is by mean SSIM over them, so a gain on one film that costs another shows up in the table. With `--track`, and the round's `--target` ranges, the sweep instead judges every variant against the first value's by the adoption rule, and its `--record` writes the figures behind the verdict into the work folder, for `mise run judge -- --recheck` ([`score-a-render-change.md`](../../docs/howto/score-a-render-change.md) § 8). `--jobs N` (default 8, capped by cores and pairs) runs N (variant, film) pairs at once, with the table in the same order as a sequential run ([`evidence-limits.md`](evidence-limits.md) section 3 has the cost per job). Render directories go under `build/scratch/sweep/` and are deleted after scoring.
-3. `--probe iou` adds the actor-window IoU of section 3 per film, for a hypothesis about an actor (it reads each film's `background` bands from its `references.toml` row; a film whose row has none shows `-` in the actor column and keeps its SSIM). `--keep-best` keeps the winner's render directory and writes `crop_<film>.png` there: section 1's crop of the frame with the largest actor. Look at it before trusting a score change.
-4. Re-run the winner against the other films if `--films` narrowed the sweep. Three CTRY-only gains (camera height, terrain base, hero lift) regressed `INTRO.FLM` and were not adopted.
-5. For a winner you adopt, keep the switch until its PR pictures and scores are made ([Evidence for a rendering PR](../../.agents/skills/improving-render-parity/pr-evidence.md)), since `mise run frame -- --var` needs it. Before removing any switch, adopted or not, save it as a patch from Git Bash: `git diff HEAD -- <paths> > work/<YYYY-MM>/<folder>/switches/DBG_<NAME>.diff` (`git add -N` a new file first), and cite that file in the journal entry. A later rule change can then rescore the case: `git apply --check`, then `git apply`, on the commit the entry's **Method** names. Then `git restore <paths>` to remove it. Record the outcome, including a negative one, as a journal entry in the work item's folder and in the note that owns the residual.
+   It builds `stunt-cli` once, renders every combination of the `--var` values for each film with those variables in the environment (flags from [`method.md`](method.md) section 1; each film's capture and `.FLM` come from its [`references.toml`](references.toml) row and the corpus), scores each with `stuntreel parity`, and prints one line per variant sorted best first, then the winner.
+   Every film `references.toml` pins is the default and the ranking is by mean SSIM over them, so a gain on one film that costs another shows up in the table.
+   With `--track`, and the round's `--target` ranges, the sweep instead judges every variant against the first value's by the adoption rule, and its `--record` writes the figures behind the verdict into the work folder, for `mise run judge -- --recheck` ([`score-a-render-change.md`](../../docs/howto/score-a-render-change.md) § 8).
+   `--jobs N` (default 8, capped by cores and pairs) runs N (variant, film) pairs at once, with the table in the same order as a sequential run ([`evidence-limits.md`](evidence-limits.md) section 3 has the cost per job).
+   Render directories go under `build/scratch/sweep/` and are deleted after scoring.
+3. `--probe iou` adds the actor-window IoU of section 3 per film, for a hypothesis about an actor (it reads each film's `background` bands from its `references.toml` row; a film whose row has none shows `-` in the actor column and keeps its SSIM).
+   `--keep-best` keeps the winner's render directory and writes `crop_<film>.png` there: section 1's crop of the frame with the largest actor.
+   Look at it before trusting a score change.
+4. Re-run the winner against the other films if `--films` narrowed the sweep.
+   Three CTRY-only gains (camera height, terrain base, hero lift) regressed `INTRO.FLM` and were not adopted.
+5. For a winner you adopt, keep the switch until its PR pictures and scores are made ([Evidence for a rendering PR](../../.agents/skills/improving-render-parity/pr-evidence.md)), since `mise run frame -- --var` needs it.
+   Before removing any switch, adopted or not, save it as a patch from Git Bash: `git diff HEAD -- <paths> > work/<YYYY-MM>/<folder>/switches/DBG_<NAME>.diff` (`git add -N` a new file first), and cite that file in the journal entry.
+   A later rule change can then rescore the case: `git apply --check`, then `git apply`, on the commit the entry's **Method** names.
+   Then `git restore <paths>` to remove it.
+   Record the outcome, including a negative one, as a journal entry in the work item's folder and in the note that owns the residual.
 
-`--data-root <dir>` points the tool at another copy of `corpus/` and the reference captures. A worktree normally needs neither: `capture-ref`, `parity` and `sweep` read the corpus and captures from the configured data root, with no link in the checkout ([ADR 0036](../../docs/adr/0036-worktrees-reach-shared-state-by-configuration.md)). The flag is for CI, for a machine that keeps its data elsewhere, and for scoring one checkout's captures from another. Smoke check: with an eye-height switch, `DBG_EYE_DY=0,-0.3` reproduces the eye-height sweep in [`framing-and-actors.md`](framing-and-actors.md) (CTRY 0.771 and 0.782, INTRO 0.676 and 0.669).
+`--data-root <dir>` points the tool at another copy of `corpus/` and the reference captures.
+A worktree normally needs neither: `capture-ref`, `parity` and `sweep` read the corpus and captures from the configured data root, with no link in the checkout ([ADR 0036](../../docs/adr/0036-worktrees-reach-shared-state-by-configuration.md)).
+The flag is for CI, for a machine that keeps its data elsewhere, and for scoring one checkout's captures from another.
+Smoke check: with an eye-height switch, `DBG_EYE_DY=0,-0.3` reproduces the eye-height sweep in [`framing-and-actors.md`](framing-and-actors.md) (CTRY 0.771 and 0.782, INTRO 0.676 and 0.669).
 
-   `--no-build` scores with the existing release binary (useful when another session holds it); `--reuse DIR` scores an existing `DIR/<film>` tree and renders nothing; `--retime N` relabels that tree by N ticks before scoring (section 6). Two variants whose per-film SSIM and IoU agree to four decimals print `warning: variants ... scored identically; the switch may not be wired` — that is the `is_ok()` trap of section 5 firing. A winner within 0.002 of the runner-up is marked `noise floor +/-0.002; winner is ~within noise`. Both entry points preflight before building: a missing capture is named with `mise run capture-ref`, and a held release binary fails with `release binary is in use; rerun with --no-build or wait`.
+   `--no-build` scores with the existing release binary (useful when another session holds it); `--reuse DIR` scores an existing `DIR/<film>` tree and renders nothing; `--retime N` relabels that tree by N ticks before scoring (section 6).
+   Two variants whose per-film SSIM and IoU agree to four decimals print `warning: variants ... scored identically; the switch may not be wired` — that is the `is_ok()` trap of section 5 firing.
+   A winner within 0.002 of the runner-up is marked `noise floor +/-0.002; winner is ~within noise`.
+   Both entry points preflight before building: a missing capture is named with `mise run capture-ref`, and a held release binary fails with `release binary is in use; rerun with --no-build or wait`.
 
 ## 5. Environment pitfalls
 
 * Python on Windows opens text as cp1252: pass `encoding="utf-8"` or read bytes, or a `§` is written as byte `0xA7` and `ruff` rejects the file.
-* wgpu's maximum buffer is 256 MiB. An 80-face sphere (700 MB on CTRY) and the 20-face INTRO world (312 MB) both exceeded it; spheres are 20-face and sub-pixel props are culled (see [`log.md`](../../work/2026-10/parity-log/log.md)).
+* wgpu's maximum buffer is 256 MiB.
+  An 80-face sphere (700 MB on CTRY) and the 20-face INTRO world (312 MB) both exceeded it; spheres are 20-face and sub-pixel props are culled (see [`log.md`](../../work/2026-10/parity-log/log.md)).
 * Capture indices are named by ordinal and renders by film tick; match them through `report.json`'s `per_frame` entries, not by number.
-* **Depth effects in `mode13h.wgsl`.** Use the affine view depth `(rotation_proj * eye_pos).w` (`eye_pos` is the eye-relative position the model matrix gives), never `length(eye_pos)`. Euclidean distance is not affine in world space, so perspective-correct interpolation across a kilometre-sized terrain triangle is invalid; the first depth cue built on it read about 4 km for every terrain fragment (`[Bounded Observation]`).
-* **Render determinism.** Two separate processes rendering ticks 589 and 590 wrote byte-identical `.idx` planes, and in 2026-10 three separately built binaries scored 0.7706, 0.7708 and 0.7718 on `CTRY.FLM`; on 2026-11-07, three builds of `740c608` rendered byte-identically on an RTX 4070 ([`evidence-limits.md`](evidence-limits.md) section 3).
-* **The release binary is shared.** Another session's build or benchmark holds `target/release/stuntreel.exe`, and `cargo build` then fails with "Access is denied". `--no-build` uses the binary as it stands; the preflight names the lock before any render starts.
+* **Depth effects in `mode13h.wgsl`.**
+  Use the affine view depth `(rotation_proj * eye_pos).w` (`eye_pos` is the eye-relative position the model matrix gives), never `length(eye_pos)`.
+  Euclidean distance is not affine in world space, so perspective-correct interpolation across a kilometre-sized terrain triangle is invalid; the first depth cue built on it read about 4 km for every terrain fragment (`[Bounded Observation]`).
+* **Render determinism.**
+  Two separate processes rendering ticks 589 and 590 wrote byte-identical `.idx` planes, and in 2026-10 three separately built binaries scored 0.7706, 0.7708 and 0.7718 on `CTRY.FLM`; on 2026-11-07, three builds of `740c608` rendered byte-identically on an RTX 4070 ([`evidence-limits.md`](evidence-limits.md) section 3).
+* **The release binary is shared.**
+  Another session's build or benchmark holds `target/release/stuntreel.exe`, and `cargo build` then fails with "Access is denied".
+  `--no-build` uses the binary as it stands; the preflight names the lock before any render starts.
 
 ## 6. Timing hypotheses (post-hoc retime)
 
-The page timing is modelled in the renderer: `--headless` samples the scene at `tick - 1` because the page captured for film clock `t` is the state at `t - 1` ([`capture.md`](../playone-exe/capture.md)). Timing questions must therefore not need a rebuild. `retime` relabels an existing render by N ticks and writes it as a new render store; `--reuse` and `--retime` carry that into a score in one command:
+The page timing is modelled in the renderer: `--headless` samples the scene at `tick - 1` because the page captured for film clock `t` is the state at `t - 1` ([`capture.md`](../playone-exe/capture.md)).
+Timing questions must therefore not need a rebuild.
+`retime` relabels an existing render by N ticks and writes it as a new render store; `--reuse` and `--retime` carry that into a score in one command:
 
 ```bash
 python python/scripts/parity_probe.py retime \
@@ -190,7 +257,10 @@ mise run sweep -- --reuse build/scratch/retime --films ctry,intro --no-build
 mise run parity -- --no-render --retime -1 --no-build
 ```
 
-Target tick `t` gets the planes, palette and `render.json` entry of source `t + N`, relabelled to `t`, written into a new store. The sign follows the renderer: offset 0 compares capture `t` with the state at `t - 1` (the accepted timing), and `-1` lands on state `t - 2`. A non-empty `--out` is refused unless `--force`; a source outside the rendered range is reported, and since ±1 always drops one end tick, pass `--allow-missing` (the `parity_run` wrapper does). Moving the palette entry with the planes matters: the hand-made shift that discovered the page lag kept the original tick's palette entry and under-reported INTRO (0.6793 against 0.6799 with the entry relabelled).
+Target tick `t` gets the planes, palette and `render.json` entry of source `t + N`, relabelled to `t`, written into a new store.
+The sign follows the renderer: offset 0 compares capture `t` with the state at `t - 1` (the accepted timing), and `-1` lands on state `t - 2`.
+A non-empty `--out` is refused unless `--force`; a source outside the rendered range is reported, and since ±1 always drops one end tick, pass `--allow-missing` (the `parity_run` wrapper does).
+Moving the palette entry with the planes matters: the hand-made shift that discovered the page lag kept the original tick's palette entry and under-reported INTRO (0.6793 against 0.6799 with the entry relabelled).
 
 Measured `mean_ssim_scored` (CTRY / INTRO, 2026-10-23, post-page-timing build):
 
@@ -199,21 +269,32 @@ Measured `mean_ssim_scored` (CTRY / INTRO, 2026-10-23, post-page-timing build):
 | 0 | 0.7732 | 0.6799 | 114/140, 209/213 |
 | -1 | 0.7723 | 0.6773 | 113/139, 208/212 |
 
-Offset 0 is the peak on both films and fractional phases around it are worse (§ 13), so the page phase is a whole tick and the renderer's `tick - 1` stays hardcoded. Use this path for timing hypotheses only: it says nothing about geometry, and it changes no committed render. The first version of this test copied every render one tick back by hand while another process held `target/release/stuntreel.exe`; the fix was then confirmed by a fresh release render once the binary freed.
+Offset 0 is the peak on both films and fractional phases around it are worse (§ 13), so the page phase is a whole tick and the renderer's `tick - 1` stays hardcoded.
+Use this path for timing hypotheses only: it says nothing about geometry, and it changes no committed render.
+The first version of this test copied every render one tick back by hand while another process held `target/release/stuntreel.exe`; the fix was then confirmed by a fresh release render once the binary freed.
 
 ## 7. No-rebuild experiments on the capture
 
 Two experiments change the capture instead of the render, so they need neither a rebuild nor a PNG edit, because the capture is scored from its index plane and palette (`[Bounded Observation]`, 2026-10-23, `213cb23`):
 
-* **Shift** the captured scene's rows or columns by a few pixels and re-score. This equals shifting the render by the opposite amount and measures how much of the residual is framing.
+* **Shift** the captured scene's rows or columns by a few pixels and re-score.
+  This equals shifting the render by the opposite amount and measures how much of the residual is framing.
 * **Recolour** the capture's flat-ground pixels to our render's index to measure how much of the loss they own (results in [`attribution.md`](attribution.md)).
 
-Neither has a subcommand; both were one-off scripts under `build/scratch/`. Prefer them to a render-side switch whenever the question is "how much would this be worth" rather than "what is the right value".
+Neither has a subcommand; both were one-off scripts under `build/scratch/`.
+Prefer them to a render-side switch whenever the question is "how much would this be worth" rather than "what is the right value".
 
 ## 8. Tool coverage
 
-Every repeated analysis has a home: baseline render and score is `mise run parity`; candidate products are `mise run sweep`; tick shifts are `parity_probe.py retime` or the `--reuse`/`--retime` flags (which move the palette entry with the planes to the shifted tick; the hand-made shift left it stale); the identical-variant warning catches `std::env::var(...).is_ok()` treating `"0"` as set, which once cost two sweeps. A decoder change across every stock shape is `stuntreel shape-views --archive X [--shapes IDS|FILE] [--views top,side,front] --out DIR`: orthographic views through the real renderer, back faces culled, and a `manifest.json` of each shape's geometry hash. `mise run shape-diff -- --var DBG_X=0,1 [--shapes IDS|FILE]` runs it once per value over `SUPERSET.ALL`, lists the shapes whose hash changed and draws a before|after sheet of only those. Before it, an export loop took over 10 minutes for the stock aircraft and PIL views drawn without culling misread a fix twice (issue #277). Still hand-rolled, with no subcommand yet: the 11x11 loss-window ranking (`windows`), the per-layer index histogram (`index-diff`) and the sand-coverage count (`coverage`).
+Every repeated analysis has a home: baseline render and score is `mise run parity`; candidate products are `mise run sweep`; tick shifts are `parity_probe.py retime` or the `--reuse`/`--retime` flags (which move the palette entry with the planes to the shifted tick; the hand-made shift left it stale); the identical-variant warning catches `std::env::var(...).is_ok()` treating `"0"` as set, which once cost two sweeps.
+A decoder change across every stock shape is `stuntreel shape-views --archive X [--shapes IDS|FILE] [--views top,side,front] --out DIR`: orthographic views through the real renderer, back faces culled, and a `manifest.json` of each shape's geometry hash.
+`mise run shape-diff -- --var DBG_X=0,1 [--shapes IDS|FILE]` runs it once per value over `SUPERSET.ALL`, lists the shapes whose hash changed and draws a before|after sheet of only those.
+Before it, an export loop took over 10 minutes for the stock aircraft and PIL views drawn without culling misread a fix twice (issue #277).
+Still hand-rolled, with no subcommand yet: the 11x11 loss-window ranking (`windows`), the per-layer index histogram (`index-diff`) and the sand-coverage count (`coverage`).
 
 ## 9. Origin markers (proposed, not built)
 
-Draw a small solid marker at each actor and prop origin in our render. A marker in the right place under a wrong shape is a decode error; a marker that is itself misplaced is a placement error. Alberto Marnetto used orange cubes above each scenery asset for this split ([*Vibe-exploring Stunt Island*](https://marnetto.net/2026/04/26/vibe-exploring-si)). Build it when `shift` and `iou` cannot tell the two apart.
+Draw a small solid marker at each actor and prop origin in our render.
+A marker in the right place under a wrong shape is a decode error; a marker that is itself misplaced is a placement error.
+Alberto Marnetto used orange cubes above each scenery asset for this split ([*Vibe-exploring Stunt Island*](https://marnetto.net/2026/04/26/vibe-exploring-si)).
+Build it when `shift` and `iou` cannot tell the two apart.

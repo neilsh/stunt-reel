@@ -3,13 +3,21 @@ summary: "The 107-opcode `.SOD` table ([FMT-SOD-OPCODES]) dispatched as multiple
 ---
 # `.SOD` Opcode Reference
 
-This is the opcode-level companion to [`sod.md`](sod.md): the 107-opcode table, the semantics established for individual opcodes, and the community readings of opcodes not yet traced in the binary. The general VM model (registers, accumulator, transform stack) is lab-notebook evidence in [`playone-exe/sod-vm-execution.md`](../playone-exe/sod-vm-execution.md), and dispatch in [`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md); the implementation queue for unhandled opcodes is [`sod-opcode-coverage.md`](sod-opcode-coverage.md). Byte layouts of the container are in [`sod.ksy`](sod.ksy).
+This is the opcode-level companion to [`sod.md`](sod.md): the 107-opcode table, the semantics established for individual opcodes, and the community readings of opcodes not yet traced in the binary.
+The general VM model (registers, accumulator, transform stack) is lab-notebook evidence in [`playone-exe/sod-vm-execution.md`](../playone-exe/sod-vm-execution.md), and dispatch in [`playone-exe/sod-vm.md`](../playone-exe/sod-vm.md); the implementation queue for unhandled opcodes is [`sod-opcode-coverage.md`](sod-opcode-coverage.md).
+Byte layouts of the container are in [`sod.ksy`](sod.ksy).
 
 ---
 
 ## 1. The Authoritative 107-Opcode Reference Table (`# [FMT-SOD-OPCODES]`)
 
-In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machine dispatched bytecode instructions through an internal jump table where every handler entry was spaced by **9 bytes**. Consequently, **every opcode `PLAYONE` dispatches is an exact multiple of 9** ($\text{Opcode} = \text{Index} \times 9$). Two constants in `SOD.H` and `vm.rs` are not: `0x000C` (`OP_ID`) is the header magic, which `vm.rs` also skips when it meets it mid-stream, and `0x004B` (`OP_VEC`, `SOD.H:35`) has no handler slot: in the unpacked image the table sits at `0x8246` (runtime `CS:0x1316`), and the bytes at `+0x0C` and `+0x4B` are gap filler (`26 C7 44`), not `E9` jumps (`[Bounded Observation]`, static). Neither is a dispatched opcode, so neither appears below. The two builds of `PLAYONE.EXE` agree on every opcode up to `0x0333`. The table numbers the Patch #3 build, whose handlers from `0x033C` up do what the names say; the unpatched build has one more slot, `0x033C`, which `SOD.H` does not name, and its opcode `n` from `0x0345` up is the table's `n - 9` (`[Established]`, static). No `.SOD` stream the census walks reaches an opcode above `0x0333`, and the patch changed none ([`patch3.md` § 4.1](../playone-exe/patch3.md#41-the-patched-build-has-one-dispatch-slot-fewer)):
+In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machine dispatched bytecode instructions through an internal jump table where every handler entry was spaced by **9 bytes**.
+Consequently, **every opcode `PLAYONE` dispatches is an exact multiple of 9** ($\text{Opcode} = \text{Index} \times 9$).
+Two constants in `SOD.H` and `vm.rs` are not: `0x000C` (`OP_ID`) is the header magic, which `vm.rs` also skips when it meets it mid-stream, and `0x004B` (`OP_VEC`, `SOD.H:35`) has no handler slot: in the unpacked image the table sits at `0x8246` (runtime `CS:0x1316`), and the bytes at `+0x0C` and `+0x4B` are gap filler (`26 C7 44`), not `E9` jumps (`[Bounded Observation]`, static).
+Neither is a dispatched opcode, so neither appears below.
+The two builds of `PLAYONE.EXE` agree on every opcode up to `0x0333`.
+The table numbers the Patch #3 build, whose handlers from `0x033C` up do what the names say; the unpatched build has one more slot, `0x033C`, which `SOD.H` does not name, and its opcode `n` from `0x0345` up is the table's `n - 9` (`[Established]`, static).
+No `.SOD` stream the census walks reaches an opcode above `0x0333`, and the patch changed none ([`patch3.md` § 4.1](../playone-exe/patch3.md#41-the-patched-build-has-one-dispatch-slot-fewer)):
 
 | Index | Opcode (Hex) | Opcode (Dec) | Mnemonic | Operands & Memory Signature | Semantic Description |
 | :---: | :---: | :---: | :--- | :--- | :--- |
@@ -132,17 +140,21 @@ In the original x86 16-bit real-mode Assembly Line engine, the SOD virtual machi
 `[Established]` — handlers `0x965F` and the subtype table at `work:0x1954`, read statically; corner orders and signs in [`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators).
 
 Writes vertices centred on the local origin:
-- **Type 0 (Cube / Cuboid):** Operands `dx: i16`, `dy: i16`, `dz: i16`, `start_reg: u16`. Emits 8 vertices spanning $[\pm dx, \pm dy, \pm dz]$ into `regs[start .. start + 7]`.
-- **Type 2 (Ground Quad):** Operands `dx: i16`, `dz: i16`, `start_reg: u16`. Emits 4 horizontal vertices at $y = 0$ into `regs[start .. start + 3]`.
+- **Type 0 (Cube / Cuboid):** Operands `dx: i16`, `dy: i16`, `dz: i16`, `start_reg: u16`.
+  Emits 8 vertices spanning $[\pm dx, \pm dy, \pm dz]$ into `regs[start .. start + 7]`.
+- **Type 2 (Ground Quad):** Operands `dx: i16`, `dz: i16`, `start_reg: u16`.
+  Emits 4 horizontal vertices at $y = 0$ into `regs[start .. start + 3]`.
 - **Type 4 (Object Bucket):** One operand, the offset of a pending-object list; writes no register.
 - **Type 6 (Streamer):** No operand; writes registers 4..10 from the global tick.
-- **Type 8 (Vertical Quad):** Operands `dx: i16`, `dy: i16`, `start_reg: u16`. Emits 4 vertical vertices at $z = 0$ into `regs[start .. start + 3]`.
+- **Type 8 (Vertical Quad):** Operands `dx: i16`, `dy: i16`, `start_reg: u16`.
+  Emits 4 vertical vertices at $z = 0$ into `regs[start .. start + 3]`.
 
 ### 2.2 Raw Vertex Array Upload (`OP_VECTORS`, 0x0075)
 
 `[Supported Inference]` — as for `OP_IPG`.
 
-Loads a batch of $N \times (x, y, z)$ 16-bit integer triplets from the bytecode stream into contiguous registers starting at `start_reg`. Each triplet is multiplied by `scale_factor` and offset by `ground_y_offset`.
+Loads a batch of $N \times (x, y, z)$ 16-bit integer triplets from the bytecode stream into contiguous registers starting at `start_reg`.
+Each triplet is multiplied by `scale_factor` and offset by `ground_y_offset`.
 
 ### 2.3 Terrain Anchor Load (`OP_TAP`, `0x022E`) (`# [FMT-SOD-TAP]`)
 
@@ -162,9 +174,11 @@ OP_TAP (0x022E)
 - Record layout: `x: i16` at `+0`, `y: i16` at `+2`, `z: i16` at `+4`, then runtime transform cache and projection fields through `+0x1B`.
 - `PLAYONE.EXE` transforms the record through the current 3×3 matrix, caches the 32-bit result per frame, shifts by `[0x806E]`, subtracts the view origin, and writes `x/y/z` into `regs[reg_off/12 + i]`.
 - The reconstruction applies the `[I1]` basis mapping `(-x, -y, z)` and treats sentinel elevations `|y| >= 32000` as zero; see [`research/playone-exe/sod-vm.md`](../playone-exe/sod-vm.md).
-- The anchor table is **external** to `.ALL`: it is the same 28-byte record array indexed by `ANCHORPT.DAT` / `MAP.BIN` terrain patches. A model that uses TAP cannot decode without it.
+- The anchor table is **external** to `.ALL`: it is the same 28-byte record array indexed by `ANCHORPT.DAT` / `MAP.BIN` terrain patches.
+  A model that uses TAP cannot decode without it.
 
-Corpus: 2,413 stop sites across 14 unique model payloads; every operand is a multiple of 28. CTRY chunks `0x0402`–`0x0408` reference anchors 141–193.
+Corpus: 2,413 stop sites across 14 unique model payloads; every operand is a multiple of 28.
+CTRY chunks `0x0402`–`0x0408` reference anchors 141–193.
 
 ### 2.4 Animation Resource Draw (`OP_ANIMATE`, `0x01F8`) (`# [FMT-SOD-ANIMATE]`)
 
@@ -179,7 +193,12 @@ OP_ANIMATE (0x01F8)
   resource_ids   : u16[resource_count]
 ```
 
-`vertex_reg_off` addresses the 12-byte vertex arena. `selector` is a byte offset into the word bank at `work:0x810E` that `ROTX`, `ROTY` and `ROTZ` also read; the frame is `resource_ids[(resource_count × word) >> 16]`. Selector `0x16` is the drawn slot's `.FLM` `animate` word, interpolated between keys; `0x10` is the film clock times 4,096. The chosen image is stretched to a square `size` units across at the register's depth (the screen size `OP_SPHERE` gives a sphere of radius `size`), centred on the projected register, with index 0 transparent and no depth test. In the shadow pass, or when the register's flag is set, the record is skipped whole. It emits a raster draw, not a polygon or a joint rotation.
+`vertex_reg_off` addresses the 12-byte vertex arena.
+`selector` is a byte offset into the word bank at `work:0x810E` that `ROTX`, `ROTY` and `ROTZ` also read; the frame is `resource_ids[(resource_count × word) >> 16]`.
+Selector `0x16` is the drawn slot's `.FLM` `animate` word, interpolated between keys; `0x10` is the film clock times 4,096.
+The chosen image is stretched to a square `size` units across at the register's depth (the screen size `OP_SPHERE` gives a sphere of radius `size`), centred on the projected register, with index 0 transparent and no depth test.
+In the shadow pass, or when the register's flag is set, the record is skipped whole.
+It emits a raster draw, not a polygon or a joint rotation.
 
 ### 2.5 BSP Sorting & Two-Sided Visibility Logic (`# [FMT-SOD-IFVIS]`)
 
@@ -187,14 +206,22 @@ OP_ANIMATE (0x01F8)
 
 Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `REJ` (`0x01B9`), `REJVEC` (`0x01B0`) and `REJ2D` (`0x01C2`) write one facing flag per face into `work:0x7C68`, starting at byte offset `first`: set when the face points at the eye.
-- `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>` (its flag byte). Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
-- `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the section when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`); otherwise skip `size` bytes counted from the size word ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)). The operand is a flag offset, not a condition code: there is no distance form.
-- `OP_BZLT <reg> <val>` (0x0318): the in-shape depth gate. It skips its section, `size` bytes from the size word, while the register's view depth is at most `val` scaled as the `SP_1NODE` gate scales depth, so the section is the far form.
-- The reconstruction decodes every one of these into `VisibilityCondition::FacesEye` or `VisibilityCondition::BeyondDepth`, evaluated per frame. No census walk of a stock shape reaches `REJVEC`, `REJ2D`, `BVIS` or `BZLT` (`sod-vm-execution.md` § 8.6).
+- `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>` (its flag byte).
+  Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
+- `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the section when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`); otherwise skip `size` bytes counted from the size word ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)).
+  The operand is a flag offset, not a condition code: there is no distance form.
+- `OP_BZLT <reg> <val>` (0x0318): the in-shape depth gate.
+  It skips its section, `size` bytes from the size word, while the register's view depth is at most `val` scaled as the `SP_1NODE` gate scales depth, so the section is the far form.
+- The reconstruction decodes every one of these into `VisibilityCondition::FacesEye` or `VisibilityCondition::BeyondDepth`, evaluated per frame.
+  No census walk of a stock shape reaches `REJVEC`, `REJ2D`, `BVIS` or `BZLT` (`sod-vm-execution.md` § 8.6).
 
 ### 2.6 `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction
 
-Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which only consumes one word and draws nothing, and by the VM walking whole chunks without desync). `MOVETO`, `ZLINETO` and `LINECOL` are read in `PLAYONE` ([`sod-vm-generators.md` § 8.10](../playone-exe/sod-vm-generators.md#810-lines-moveto-zlineto-and-linecol), `[Established]` static, unpatched image): `MOVETO reg_off` makes register `reg_off / 12` the pen, `ZLINETO reg_off` draws a one-pixel Bresenham line from the pen register to that register and makes it the pen, and `LINECOL color` sets the line colour. The VM takes the pen's point at `MOVETO` time and draws each segment as a line the renderer makes one pixel wide on screen, in the line colour (the fill colour until `LINECOL` is seen). `DOT reg_off` plots one point `[Hypothesis]`; the VM draws it as a 0.03 m octahedron. Whether `LINECOL` is reset per chunk is `[Unknown]`.
+Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which only consumes one word and draws nothing, and by the VM walking whole chunks without desync).
+`MOVETO`, `ZLINETO` and `LINECOL` are read in `PLAYONE` ([`sod-vm-generators.md` § 8.10](../playone-exe/sod-vm-generators.md#810-lines-moveto-zlineto-and-linecol), `[Established]` static, unpatched image): `MOVETO reg_off` makes register `reg_off / 12` the pen, `ZLINETO reg_off` draws a one-pixel Bresenham line from the pen register to that register and makes it the pen, and `LINECOL color` sets the line colour.
+The VM takes the pen's point at `MOVETO` time and draws each segment as a line the renderer makes one pixel wide on screen, in the line colour (the fill colour until `LINECOL` is seen).
+`DOT reg_off` plots one point `[Hypothesis]`; the VM draws it as a 0.03 m octahedron.
+Whether `LINECOL` is reset per chunk is `[Unknown]`.
 
 ---
 
@@ -202,9 +229,12 @@ Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which
 
 `[Hypothesis]`
 
-Alberto Marnetto's MIT-licensed [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder) (2026, a C++ rewrite of FreeFlight's `siobj.cpp`) decodes the opcodes whose geometry it exports and skips the rest by a one-word default. Its readings are leads only: confirm each one against the opcode's `PLAYONE.EXE` handler (reached through the dispatch slots in [`sod-vm.md`](../playone-exe/sod-vm.md) section 1) before `vm.rs` implements it. Where it disagrees with the operand reading assumed for the census skips ([`sod-opcode-coverage.md` § 1](sod-opcode-coverage.md#1-summary)), the disagreement is marked.
+Alberto Marnetto's MIT-licensed [`si-tools/sod-decoder`](https://github.com/AlbertoMarnetto/si-tools/tree/master/sod-decoder) (2026, a C++ rewrite of FreeFlight's `siobj.cpp`) decodes the opcodes whose geometry it exports and skips the rest by a one-word default.
+Its readings are leads only: confirm each one against the opcode's `PLAYONE.EXE` handler (reached through the dispatch slots in [`sod-vm.md`](../playone-exe/sod-vm.md) section 1) before `vm.rs` implements it.
+Where it disagrees with the operand reading assumed for the census skips ([`sod-opcode-coverage.md` § 1](sod-opcode-coverage.md#1-summary)), the disagreement is marked.
 
-Only **stream constraints** are recorded here — readings that must match the byte stream for any parse to succeed. A decoder that omits shading, culling or projection says nothing about the engine, and none of those omissions are kept (section 3.3).
+Only **stream constraints** are recorded here — readings that must match the byte stream for any parse to succeed.
+A decoder that omits shading, culling or projection says nothing about the engine, and none of those omissions are kept (section 3.3).
 
 | Opcode | si-tools reading | Against coverage § 1 |
 | :--- | :--- | :--- |
@@ -223,7 +253,9 @@ Only **stream constraints** are recorded here — readings that must match the b
 
 ### 3.1 Operand-Order Disagreements
 
-`[Hypothesis]` — three readings that contradict § 1 or § 2.5. None of the opcodes is reached by any of the corpus models in [`sod-opcode-coverage.md` § 3](sod-opcode-coverage.md#3-census), so no render depends on them: this is a note for whoever implements a handler, not a work item. `PERFDISK`, which the corpus does reach, has left the table (below).
+`[Hypothesis]` — three readings that contradict § 1 or § 2.5.
+None of the opcodes is reached by any of the corpus models in [`sod-opcode-coverage.md` § 3](sod-opcode-coverage.md#3-census), so no render depends on them: this is a note for whoever implements a handler, not a work item.
+`PERFDISK`, which the corpus does reach, has left the table (below).
 
 | Opcode | § 1 / § 2.5 says | si-tools reads | Source |
 | :--- | :--- | :--- | :--- |
@@ -239,18 +271,27 @@ Only **stream constraints** are recorded here — readings that must match the b
 
 `[Hypothesis]` — geometry si-tools generates, not observed in `PLAYONE`:
 
-* `SPHERE` is a 12-vertex, 20-triangle icosahedron at exactly `1.0 × radius`, radius used raw (not multiplied by the shape scale), vertices `centre + trunc(v · radius)`. `vm.rs` uses the same icosahedron at `0.92 ×` (`vm.rs:208`), tuned against `CTRY`; that factor is ours, not the format's.
-* si-tools' `DISC` is a 16-segment fan at parse-time `radius × scale`, and its `PERFDISK` reuses that builder. Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so its winding is a stand-in rather than a decode. `vm.rs` draws `PERFDISK` as a two-sided 16-gon of `radius` in register units perpendicular to `regs[centre] - regs[axis]`; the handler's conic disc is in [`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators).
+* `SPHERE` is a 12-vertex, 20-triangle icosahedron at exactly `1.0 × radius`, radius used raw (not multiplied by the shape scale), vertices `centre + trunc(v · radius)`.
+  `vm.rs` uses the same icosahedron at `0.92 ×` (`vm.rs:208`), tuned against `CTRY`; that factor is ours, not the format's.
+* si-tools' `DISC` is a 16-segment fan at parse-time `radius × scale`, and its `PERFDISK` reuses that builder.
+  Orientation snaps to the dominant axis of the normal register (`|nz| > 0.9` → XY plane, else `|ny| > 0.9` → XZ, else YZ) with the sign ignored, so its winding is a stand-in rather than a decode.
+  `vm.rs` draws `PERFDISK` as a two-sided 16-gon of `radius` in register units perpendicular to `regs[centre] - regs[axis]`; the handler's conic disc is in [`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators).
 * The disc radius is multiplied by scale at parse and again at export, so exported radii come out `scale²`; that is an exporter bug, not a format fact.
 
 ### 3.3 What A Decoder's Silences Are Worth
 
-si-tools is an OBJ exporter, not an emulator. It never shades, never culls, never projects, never writes the animation variables, and skips a dozen opcodes of known width with a single word. None of that is evidence about `PLAYONE.EXE`, and this note records none of it. What survives is the byte layout: the five-word shape header (magic `0x000C`, size, `y_offset`, scale/flags, collision), `GVPOLY`'s high-byte colour, `SHADES`' leading word, `IPG`'s per-type operand counts, `ANIMATE`'s field order, and the `0x000C` first word that identifies a `.SOD` chunk inside a `.RES`, which [`res.md`](res.md) already derives from the archive structure.
+si-tools is an OBJ exporter, not an emulator.
+It never shades, never culls, never projects, never writes the animation variables, and skips a dozen opcodes of known width with a single word.
+None of that is evidence about `PLAYONE.EXE`, and this note records none of it.
+What survives is the byte layout: the five-word shape header (magic `0x000C`, size, `y_offset`, scale/flags, collision), `GVPOLY`'s high-byte colour, `SHADES`' leading word, `IPG`'s per-type operand counts, `ANIMATE`'s field order, and the `0x000C` first word that identifies a `.SOD` chunk inside a `.RES`, which [`res.md`](res.md) already derives from the archive structure.
 
 ## Ruled out
 
-- **`OP_LETTER` as `char_code, reg`.** Its slot jumps to an `int3` in both builds, so `PLAYONE` gives it no operands; the census no longer steps over it with two words. _Source: [no census walk reaches the shifted opcodes](../../work/2026-11/480_patch3-opcode-numbering/journal.md#2026-11-17-no-census-walk-reaches-the-shifted-opcodes-and-sodh-numbers-the-patched-build)._
-- **The table numbering the unpatched build above `0x0333`.** The Patch #3 handlers match the names in order; the unpatched ones sit one slot later ([`patch3.md` § 4.1](../playone-exe/patch3.md#41-the-patched-build-has-one-dispatch-slot-fewer)).
+- **`OP_LETTER` as `char_code, reg`.**
+  Its slot jumps to an `int3` in both builds, so `PLAYONE` gives it no operands; the census no longer steps over it with two words.
+  _Source: [no census walk reaches the shifted opcodes](../../work/2026-11/480_patch3-opcode-numbering/journal.md#2026-11-17-no-census-walk-reaches-the-shifted-opcodes-and-sodh-numbers-the-patched-build)._
+- **The table numbering the unpatched build above `0x0333`.**
+  The Patch #3 handlers match the names in order; the unpatched ones sit one slot later ([`patch3.md` § 4.1](../playone-exe/patch3.md#41-the-patched-build-has-one-dispatch-slot-fewer)).
 
 ## Open questions
 

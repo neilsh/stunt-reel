@@ -10,7 +10,9 @@ This document details the graphical interface navigation, file selection dialog 
 
 ## 1. File Selection Dialog Architecture
 
-The film loading interface is a modal dialog. Rather than offering a freeform text input box, it presents a scrollable listbox populated from the `VAULT\` directory. `PLAYONE.EXE` runs the dialog as its **first screen at startup**: launching the executable with no command tail lands directly in `LOAD FILM`, with the listbox cursor on `[..]`.
+The film loading interface is a modal dialog.
+Rather than offering a freeform text input box, it presents a scrollable listbox populated from the `VAULT\` directory.
+`PLAYONE.EXE` runs the dialog as its **first screen at startup**: launching the executable with no command tail lands directly in `LOAD FILM`, with the listbox cursor on `[..]`.
 
 ### Dialog Invocation (`0x49C6` – `0x49D2`)
 
@@ -28,12 +30,10 @@ The dialog is set up and executed by passing pointers within the `DGROUP` data s
 
 The modal event loop polls the keyboard and evaluates incoming keystrokes:
 
-* **`Enter` (`0x0D`)**:
-  Branches to `0x0A1B` to confirm the selected entry. The routine copies the chosen filename into the destination buffer (`DS:0AABh`) and begins the playback pipeline.
-* **`Esc` (`0x1B`)**:
-  Branches to `0x0A14` to dismiss the dialog without taking action, returning to the main menu.
-* **All Other Keystrokes**:
-  Dispatched to the listbox navigation routine at `0x5EC6`.
+* **`Enter` (`0x0D`)**: Branches to `0x0A1B` to confirm the selected entry.
+  The routine copies the chosen filename into the destination buffer (`DS:0AABh`) and begins the playback pipeline.
+* **`Esc` (`0x1B`)**: Branches to `0x0A14` to dismiss the dialog without taking action, returning to the main menu.
+* **All Other Keystrokes**: Dispatched to the listbox navigation routine at `0x5EC6`.
 
 When the dialog opens it discards keystrokes that were already queued in the BIOS ring buffer, so a harness must inject its keys only after the dialog has been painted (see §4).
 
@@ -63,12 +63,11 @@ The file listbox implements single-character prefix jumping rather than multi-ch
 
 ### Key Navigation Behaviors
 
-* **Single-Character Initial Jump**:
-  Pressing an alphanumeric key scans the loaded directory entries and immediately jumps to the first entry whose filename starts with that letter (case-insensitive).
-* **No Multi-Character Typing**:
-  Each keystroke is evaluated independently as a new initial-character search. Typing `c`, `t`, `r`, `y` sequentially will first select a file starting with `C` (e.g., `CTRY.FLM`), then jump to a file starting with `T` if present, and so forth.
-* **Directional Scrolling**:
-  Up Arrow (`0x48`) and Down Arrow (`0x50`) move the selection cursor by one entry. Page Up (`0x49`) and Page Down (`0x51`) scroll the viewport by full pages.
+* **Single-Character Initial Jump**: Pressing an alphanumeric key scans the loaded directory entries and immediately jumps to the first entry whose filename starts with that letter (case-insensitive).
+* **No Multi-Character Typing**: Each keystroke is evaluated independently as a new initial-character search.
+  Typing `c`, `t`, `r`, `y` sequentially will first select a file starting with `C` (e.g., `CTRY.FLM`), then jump to a file starting with `T` if present, and so forth.
+* **Directional Scrolling**: Up Arrow (`0x48`) and Down Arrow (`0x50`) move the selection cursor by one entry.
+  Page Up (`0x49`) and Page Down (`0x51`) scroll the viewport by full pages.
 
 ---
 
@@ -84,7 +83,8 @@ Playable films located in the `VAULT\` directory require two companion files sha
 ### Loading Mechanics
 
 1. When a film is selected, `PLAYONE.EXE` reads the `.FLM` descriptor.
-2. It then looks for the corresponding `.ALL` file on disk. The `.ALL` file is read in large blocks (typically $\approx 64\text{ KB}$ reads via DOS function `INT 21h, AH=3Fh`).
+2. It then looks for the corresponding `.ALL` file on disk.
+   The `.ALL` file is read in large blocks (typically $\approx 64\text{ KB}$ reads via DOS function `INT 21h, AH=3Fh`).
 3. If the `.ALL` file is missing, playback is aborted and the player presents an alert:
    ```text
    "That film does not have a matching .ALL file."
@@ -122,7 +122,8 @@ Each keystroke in the BIOS buffer is stored as a 16-bit word (`[Scan Code : ASCI
 
 ### Automated Navigation Sequences
 
-Navigation is deterministic, and DOSBox-X's guest `INT 16h` does consume words written straight into the BIOS ring buffer. The ring buffer carries the keys the guest polls; the emulator must be **free-running** for that poll to happen, because a debugger that single-steps the CPU never lets the modal loop reach its `INT 16h` call.
+Navigation is deterministic, and DOSBox-X's guest `INT 16h` does consume words written straight into the BIOS ring buffer.
+The ring buffer carries the keys the guest polls; the emulator must be **free-running** for that poll to happen, because a debugger that single-steps the CPU never lets the modal loop reach its `INT 16h` call.
 
 Observed sequence for `CTRY.FLM` (listbox order `[..]`, `CTRY.ALL`, `CTRY.FLM`, …):
 
@@ -135,12 +136,16 @@ Observed sequence for `CTRY.FLM` (listbox order `[..]`, `CTRY.ALL`, `CTRY.FLM`, 
 3. **Advance Tail**: Set `0040:001C` to `0x001E + (2 * number_of_keys)`.
 4. When the application runs its input polling loop (`INT 16h`), it drains the buffer in FIFO order.
 
-Entering on `[..]` does not confirm or cancel: it re-lists the parent directory (`C:\`, showing `[VAULT]`, `driver1.bin`, …). Sequencing a `Down` before the confirming `Enter` is therefore required — an `Enter` alone lands on `[..]` and walks out of `VAULT`.
+Entering on `[..]` does not confirm or cancel: it re-lists the parent directory (`C:\`, showing `[VAULT]`, `driver1.bin`, …).
+Sequencing a `Down` before the confirming `Enter` is therefore required — an `Enter` alone lands on `[..]` and walks out of `VAULT`.
 
 ### Harness Constraints (`[Established]`)
 
-* **Superseded recipe:** the former `SPEC.md` § 3.3 offered DOSBox-X `autotype -w 2 -p 0.5 enter c enter` as a selection protocol. It is contradicted by [`capture.md` § 2](capture.md#2-emulator-constraints) (`[Bounded Observation]`: with several keys queued at boot, only the earliest survives, and the dialog discards keys queued before it opens), so the harness uses BIOS Data Area injection instead.
+* **Superseded recipe:** the former `SPEC.md` § 3.3 offered DOSBox-X `autotype -w 2 -p 0.5 enter c enter` as a selection protocol.
+  It is contradicted by [`capture.md` § 2](capture.md#2-emulator-constraints) (`[Bounded Observation]`: with several keys queued at boot, only the earliest survives, and the dialog discards keys queued before it opens), so the harness uses BIOS Data Area injection instead.
 
 * Keystroke injection into `0040:001E` works against the live emulator: the head pointer at `0040:001A` advances as the guest consumes the words.
-* Injection fails while the controller steps the guest; the modal loop never reaches `INT 16h`. This is why the dialog appeared frozen in earlier harness runs.
-* Patching the dialog call site (`0x49CF`) to force the confirm branch is not a viable shortcut: the patch requires reading and writing `DGROUP`, and any debugger command issued while `PLAYONE.EXE` is still unpacking kills the guest (see [`capture.md`](capture.md)). By the time such accesses are safe the four-instruction setup (`0x49C6`–`0x49D2`) has already executed, so the pre-written path buffer would never be read anyway.
+* Injection fails while the controller steps the guest; the modal loop never reaches `INT 16h`.
+  This is why the dialog appeared frozen in earlier harness runs.
+* Patching the dialog call site (`0x49CF`) to force the confirm branch is not a viable shortcut: the patch requires reading and writing `DGROUP`, and any debugger command issued while `PLAYONE.EXE` is still unpacking kills the guest (see [`capture.md`](capture.md)).
+  By the time such accesses are safe the four-instruction setup (`0x49C6`–`0x49D2`) has already executed, so the pre-written path buffer would never be read anyway.

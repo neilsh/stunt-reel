@@ -20,7 +20,8 @@ In the 1992 MS-DOS computing environment, game developers faced severe physical 
 
 To reconcile these competing demands, *Stunt Island* implemented a tiered storage strategy:
 - **Offline / Floppy Distribution:** Executable binaries were packed with dedicated executable packers (**LZEXE 0.91**), and installation scripts unpacked raw containers to the user's hard drive.
-- **Runtime Asset Archives (`.RES`, `.ALL`):** Container formats prioritized zero-CPU-overhead random-access streaming. Retail resource archives store **uncompressed raw byte payloads**, using flat offset tables for instant seek and memory-mapping.
+- **Runtime Asset Archives (`.RES`, `.ALL`):** Container formats prioritized zero-CPU-overhead random-access streaming.
+  Retail resource archives store **uncompressed raw byte payloads**, using flat offset tables for instant seek and memory-mapping.
 - **2D Asset Tooling:** Intermediate sprite creation pipelines utilized **PCX Run-Length Encoding (RLE)** before baking into uncompressed `.SPR` bitmaps.
 - **Filesystem Mapping (`[I8]`):** All virtual filesystem lookups, container directory tables, and asset hashes conform to MS-DOS 8.3 uppercase naming rules.
 
@@ -43,7 +44,9 @@ To reconcile these competing demands, *Stunt Island* implemented a tiered storag
 +-------------------------------------------------------------------------------+
 ```
 
-**Governing invariants:** [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I7]`](../../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+**Governing invariants:** [`[I2]`](../../../docs/SPEC.md#i2-flat-arena-allocation-no-recursive-pointers), [`[I7]`](../../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization).
+**Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs).
+Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
 
 ---
 
@@ -82,15 +85,18 @@ pub struct VfsEntry {
 }
 ```
 
-In authentic retail disk containers (`corpus/` archives), `was_compressed` is universally `false`: payloads are stored byte-exact as authored. The engine retains the `was_compressed` field to accommodate potential third-party mods, compressed `.VOC` audio chunks, or historical LZSS variants.
+In authentic retail disk containers (`corpus/` archives), `was_compressed` is universally `false`: payloads are stored byte-exact as authored.
+The engine retains the `was_compressed` field to accommodate potential third-party mods, compressed `.VOC` audio chunks, or historical LZSS variants.
 
 ### 2.3 LZEXE 0.91 Executable Header Structure
 
 Retail `PLAYONE.EXE` is packed with Fabrice Bellard's **LZEXE 0.91**:
 - **Packed Size:** $102{,}703\text{ bytes}$
 - **Unpacked Image Size:** $200{,}524\text{ bytes}$ of load image, or $201{,}548\text{ bytes}$ as an MZ-wrapped file with the 1,024-byte header [`unlzexe.py`](../../../python/scripts/unlzexe.py) writes
-- **Bitstream:** plain LZSS, no Huffman stage — a 16-bit little-endian flag word read LSB-first; `1` is a literal; `0`+`0` is a 2-bit length plus an 8-bit span; `0`+`1` is a 13-bit span plus a 3-bit length, with an extended length byte where `0` ends the stream and `1` skips a segment. [`unlzexe.py`](../../../python/scripts/unlzexe.py) implements exactly this and reproduces `build/re/playone.img` (`[Established]`)
-- **Loader layout:** the eight-word info block sits at `(CS + header_paragraphs) × 16`, and the relocations at `loader + 0x158`. A file whose entry was moved off the loader, like `corpus/stuntisl/STUNT.EXE` (138,318 bytes, a crack's stub at the entry), keeps the plain 0.91 loader; [`unlzexe.py`](../../../python/scripts/unlzexe.py) finds it by its code at `CS:000E` and unpacks it to the same image as `corpus/siarchive/Films/OldPLAY/STUNT.EXE` (`[Established]`; [`stunt-exe/sets.md` § 5](../../stunt-exe/sets.md#5-the-retail-install-and-typesetexe))
+- **Bitstream:** plain LZSS, no Huffman stage — a 16-bit little-endian flag word read LSB-first; `1` is a literal; `0`+`0` is a 2-bit length plus an 8-bit span; `0`+`1` is a 13-bit span plus a 3-bit length, with an extended length byte where `0` ends the stream and `1` skips a segment.
+  [`unlzexe.py`](../../../python/scripts/unlzexe.py) implements exactly this and reproduces `build/re/playone.img` (`[Established]`)
+- **Loader layout:** the eight-word info block sits at `(CS + header_paragraphs) × 16`, and the relocations at `loader + 0x158`.
+  A file whose entry was moved off the loader, like `corpus/stuntisl/STUNT.EXE` (138,318 bytes, a crack's stub at the entry), keeps the plain 0.91 loader; [`unlzexe.py`](../../../python/scripts/unlzexe.py) finds it by its code at `CS:000E` and unpacks it to the same image as `corpus/siarchive/Films/OldPLAY/STUNT.EXE` (`[Established]`; [`stunt-exe/sets.md` § 5](../../stunt-exe/sets.md#5-the-retail-install-and-typesetexe))
 - **Header Structure:** Standard MS-DOS `MZ` signature (`0x4D, 0x5A`) followed by a 28-byte MZ header and a small real-mode decompression stub located at segment `0x0000:0x0020`.
 - **Relocation Table:** The LZEXE stub reads a compressed relocation table appended to the compressed payload, relocates segment references in conventional memory, and jumps to the unpacked entry point at `0000:0C5Eh`.
 
@@ -132,7 +138,8 @@ Input Filename: "  models/fokker.sod  "
 
 #### Exact Normalization Rules
 1. **Whitespace Trimming:** Strip leading and trailing ASCII whitespace characters (`0x20`, `\t`, `\r`, `\n`).
-2. **Directory Separator Normalization:** Convert all forward slashes (`/`) and backward slashes (`\`) to canonical base filename extraction. (Containers store flat filenames without folder hierarchies).
+2. **Directory Separator Normalization:** Convert all forward slashes (`/`) and backward slashes (`\`) to canonical base filename extraction.
+   (Containers store flat filenames without folder hierarchies).
 3. **ASCII Uppercasing:** Transform all lowercase ASCII characters (`a`–`z`) to uppercase (`A`–`Z`) via `to_ascii_uppercase()`.
 4. **8.3 Length Validation:**
    - Base name: Maximum 8 ASCII characters.
@@ -211,11 +218,14 @@ pub fn decode_pcx_rle(encoded_bytes: &[u8], expected_pixel_count: usize) -> Vec<
 
 ## 4. Open Questions & Analysis Backlog
 
-1. **`[BK-COMP-01]` European Multilingual Release Sub-Chunk Compression** (`[Bounded Observation]`): Certain non-English release disks feature non-zero flags in `.ALL` chunk tables. Verification is needed to determine if an LZSS variant was used to fit multiple language subtitles onto floppy disks.
-2. **`[BK-COMP-02]` Trailing Space Padding in Authoring Tool Filenames** (`[Supported Inference]`): In `MAKERES.EXE`, filenames with fewer than 8 characters are occasionally padded with spaces (`0x20`) rather than null terminators (`0x00`). The VFS normalization pipeline cleanly strips these spaces.
+1. **`[BK-COMP-01]` European Multilingual Release Sub-Chunk Compression** (`[Bounded Observation]`): Certain non-English release disks feature non-zero flags in `.ALL` chunk tables.
+   Verification is needed to determine if an LZSS variant was used to fit multiple language subtitles onto floppy disks.
+2. **`[BK-COMP-02]` Trailing Space Padding in Authoring Tool Filenames** (`[Supported Inference]`): In `MAKERES.EXE`, filenames with fewer than 8 characters are occasionally padded with spaces (`0x20`) rather than null terminators (`0x00`).
+   The VFS normalization pipeline cleanly strips these spaces.
 3. **`[BK-COMP-03]` LZEXE 0.91 Relocation Table Fixups** (`[Established]`): Confirmed from static disassembly that `PLAYONE.EXE`'s relocation fixups occur prior to setting up `DGROUP` (`0x0D51`), allowing static analysis of unpacked binary offsets.
 4. **`[BK-COMP-04]` Undocumented RLE Huffman Chunk in Sound Stage** (`[Hypothesis]`): Hypothesis that high-sample-rate speech clips in sound stage scenes used adaptive ADPCM or Huffman compression rather than raw 8-bit PCM.
-5. ~~**`[BK-COMP-05]` `STUNT.EXE` Loader Variant**~~ Answered (`[Established]`): no variant. `corpus/stuntisl/STUNT.EXE` is the OldPLAY build with a crack's patch stub appended and the entry moved to it; the 0.91 loader is unchanged ([`stunt-exe/sets.md` § 5](../../stunt-exe/sets.md#5-the-retail-install-and-typesetexe)).
+5. ~~**`[BK-COMP-05]` `STUNT.EXE` Loader Variant**~~ Answered (`[Established]`): no variant.
+   `corpus/stuntisl/STUNT.EXE` is the OldPLAY build with a crack's patch stub appended and the entry moved to it; the 0.91 loader is unchanged ([`stunt-exe/sets.md` § 5](../../stunt-exe/sets.md#5-the-retail-install-and-typesetexe)).
 
 ---
 

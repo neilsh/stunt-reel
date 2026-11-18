@@ -4,13 +4,15 @@ sidebar_label: "Memory map: film state & draw code"
 ---
 # Memory Map: Film State, Palette and Draw Code
 
-Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so. Section numbers run across the files.
+Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so.
+Section numbers run across the files.
 
 ## # [MEM-FLM-VARS]
 
 ## # [MEM-PALETTE]
 
-Data and code of the unpatched build; a row's prefix names the address base of its first cell (`[Supported Inference]`: the segment layout of [`patch3.md` § 4](patch3.md#4-function-pairing-the-whole-map) plus the load paragraph `0x0824` of the captured DOSBox-X session, [`palette-fade.md`](palette-fade.md); the coordinate systems are converted in [`static-tooling.md` § 3](static-tooling.md#3-address-coordinate-systems)). Patch #3 offsets: [§ 1.1](memory-map-patch3.md#11-patch-3-build).
+Data and code of the unpatched build; a row's prefix names the address base of its first cell (`[Supported Inference]`: the segment layout of [`patch3.md` § 4](patch3.md#4-function-pairing-the-whole-map) plus the load paragraph `0x0824` of the captured DOSBox-X session, [`palette-fade.md`](palette-fade.md); the coordinate systems are converted in [`static-tooling.md` § 3](static-tooling.md#3-address-coordinate-systems)).
+Patch #3 offsets: [§ 1.1](memory-map-patch3.md#11-patch-3-build).
 
 | Prefix | Base | Runtime in that session |
 |---|---|---|
@@ -19,7 +21,10 @@ Data and code of the unpatched build; a row's prefix names the address base of i
 | `image 0x…` (`0824:off`) | The display-list VM code segment (image paragraph `0x0824`, image `0x8240..0xD50F`): `off` is image `- 0x8240` | `CS = 0x1048` |
 | `0x1DEA:0x…` | The resident PCM mixer segment (image paragraph `0x1DEA`): image is `0x1DEA0 +` offset | `0x260E`, by the same arithmetic |
 
-A `CS:` offset past `0x823F` would reach VM-segment bytes (image `0xBF23` is also `0:BF23`), so a VM-segment row leads with `image`. `0:off` in a Purpose cell is a segment-0 offset, `0824:off` a VM-segment one, `work:off` an offset in the VM's work segment (image paragraph `0x15D4`, [`memory-map-vm.md` § 3](memory-map-vm.md#3-sod-display-list-vm-work-segment--mem-sod-vm)). The code anchors of `memory-map-vm.md` count from the notebook `CS = 0x0F17` (image `- 0x6F30`), a base no prefix here uses. VM-segment routines that the main program calls by name, such as the matrix and ground-leaf routines, stay in this table under their image address, as [`memory-map.md`](memory-map.md) lists "matrix and draw routines" here.
+A `CS:` offset past `0x823F` would reach VM-segment bytes (image `0xBF23` is also `0:BF23`), so a VM-segment row leads with `image`.
+`0:off` in a Purpose cell is a segment-0 offset, `0824:off` a VM-segment one, `work:off` an offset in the VM's work segment (image paragraph `0x15D4`, [`memory-map-vm.md` § 3](memory-map-vm.md#3-sod-display-list-vm-work-segment--mem-sod-vm)).
+The code anchors of `memory-map-vm.md` count from the notebook `CS = 0x0F17` (image `- 0x6F30`), a base no prefix here uses.
+VM-segment routines that the main program calls by name, such as the matrix and ground-leaf routines, stay in this table under their image address, as [`memory-map.md`](memory-map.md) lists "matrix and draw routines" here.
 
 | Offset | Evidentiary Tier | Purpose |
 |---|---|---|
