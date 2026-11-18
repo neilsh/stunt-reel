@@ -34,11 +34,36 @@ const LINE_FLAGS: u8 = VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_SIDE | VERTEX_FLAG_LI
 /// leave the buffers, which [`SodModelIr::meshes`] already skips, is left empty.
 ///
 /// The lines are wound both ways, like every line, so a back-facing polygon's outline still
-/// draws where nothing in front of it hides it, which `PLAYONE` does not do.
+/// draws where nothing in front of it hides it, which `PLAYONE` does not do; [`outlined`]
+/// gives each line corner the data to cull it.
 #[must_use]
 pub(crate) fn with_outlines(ir: &SodModelIr) -> SodModelIr {
+    outlined(ir).ir
+}
+
+/// [`with_outlines`]' shape, with each vertex's apex: for a line corner the outline added,
+/// the position of the third vertex of the one filled triangle its edge bounds, so a shader
+/// can cull the corner with that triangle (#686); for any other vertex, its own position.
+pub(crate) struct Outlined {
+    /// The shape with its outlines, as [`with_outlines`] returns it.
+    pub ir: SodModelIr,
+    /// One apex per vertex of `ir`, in the same order.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the shader's cull reads it once #717's upload lands"
+        )
+    )]
+    pub apex: Vec<[f32; 3]>,
+}
+
+/// [`with_outlines`] with each vertex's apex ([`Outlined`]).
+#[must_use]
+pub(crate) fn outlined(ir: &SodModelIr) -> Outlined {
     let triangles: HashMap<_, &[u32]> = ir.meshes().map(|m| (m.node.id, m.indices)).collect();
     let mut out = ir.clone();
+    let mut apex: Vec<[f32; 3]> = out.vertices.iter().map(|v| v.position).collect();
     out.indices = Vec::with_capacity(ir.indices.len().saturating_mul(3));
     for node in &mut out.nodes {
         let NodeKind::Mesh {
@@ -56,50 +81,55 @@ pub(crate) fn with_outlines(ir: &SodModelIr) -> SodModelIr {
             *vertex_count = 0;
         }
         let start = arena_index(out.indices.len());
+        let mut sink = Sink {
+            vertices: &mut out.vertices,
+            indices: &mut out.indices,
+            apex: &mut apex,
+        };
         if *is_decal {
-            append_decal_fans(&mut out.vertices, &mut out.indices, &ir.vertices, source);
+            append_decal_fans(&mut sink, &ir.vertices, source);
         } else {
-            out.indices.extend_from_slice(source);
-            append_outline(&mut out.vertices, &mut out.indices, &ir.vertices, source);
+            sink.indices.extend_from_slice(source);
+            append_outline(&mut sink, &ir.vertices, source);
         }
         *index_offset = start;
         *index_count = arena_index(out.indices.len()).saturating_sub(start);
     }
-    out
+    Outlined { ir: out, apex }
+}
+
+/// The buffers an outline is appended to.
+struct Sink<'a> {
+    vertices: &'a mut Vec<SodVertex>,
+    indices: &'a mut Vec<u32>,
+    apex: &'a mut Vec<[f32; 3]>,
 }
 
 /// Appends a decal node's `triangles` (indices into `source`) fan by fan, each fan (a run of
 /// triangles sharing their first corner, one decoded polygon) followed by its share of the
 /// node's outline, so a later decal covers an earlier one's outline as it covers its fill:
 /// the decal pass writes no depth to hide it (`[I5]`).
-fn append_decal_fans(
-    vertices: &mut Vec<SodVertex>,
-    indices: &mut Vec<u32>,
-    source: &[SodVertex],
-    triangles: &[u32],
-) {
+fn append_decal_fans(sink: &mut Sink<'_>, source: &[SodVertex], triangles: &[u32]) {
     let filled = |i: u32| {
         source
             .get(i as usize)
             .is_some_and(|v| v.flags & VERTEX_FLAG_LINE == 0)
     };
-    let outline = boundary_edges(triangles, filled);
-    let mut pending: HashMap<(u32, u32), [u32; 2]> = outline
+    let outline = boundary_edges_with_apex(triangles, filled);
+    let mut pending: HashMap<(u32, u32), [u32; 3]> = outline
         .iter()
-        .map(|&[p, q]| ((p.min(q), p.max(q)), [p, q]))
+        .map(|&[p, q, r]| ((p.min(q), p.max(q)), [p, q, r]))
         .collect();
     for fan in triangles.as_chunks::<3>().0.chunk_by(|a, b| a[0] == b[0]) {
         for &[a, b, c] in fan {
-            indices.extend([a, b, c]);
+            sink.indices.extend([a, b, c]);
         }
         for &[a, b, c] in fan {
             for (p, q) in [(a, b), (b, c), (c, a)] {
-                let Some([p, q]) = pending.remove(&(p.min(q), p.max(q))) else {
+                let Some(edge) = pending.remove(&(p.min(q), p.max(q))) else {
                     continue;
                 };
-                if let (Some(a), Some(b)) = (source.get(p as usize), source.get(q as usize)) {
-                    push_segment(vertices, indices, a, b);
-                }
+                push_edge(sink, source, edge);
             }
         }
     }
@@ -107,21 +137,24 @@ fn append_decal_fans(
 
 /// Appends the outline of the filled triangles `triangles` (indices into `source`) to
 /// `vertices` and `indices`.
-fn append_outline(
-    vertices: &mut Vec<SodVertex>,
-    indices: &mut Vec<u32>,
-    source: &[SodVertex],
-    triangles: &[u32],
-) {
+fn append_outline(sink: &mut Sink<'_>, source: &[SodVertex], triangles: &[u32]) {
     let filled = |i: u32| {
         source
             .get(i as usize)
             .is_some_and(|v| v.flags & VERTEX_FLAG_LINE == 0)
     };
-    for [p, q] in boundary_edges(triangles, filled) {
-        if let (Some(a), Some(b)) = (source.get(p as usize), source.get(q as usize)) {
-            push_segment(vertices, indices, a, b);
-        }
+    for edge in boundary_edges_with_apex(triangles, filled) {
+        push_edge(sink, source, edge);
+    }
+}
+
+/// Appends the boundary edge `[p, q, apex]` (indices into `source`) as a line quad whose
+/// corners all take the apex's position.
+fn push_edge(sink: &mut Sink<'_>, source: &[SodVertex], [p, q, r]: [u32; 3]) {
+    let at = |i: u32| source.get(i as usize);
+    if let (Some(a), Some(b), Some(c)) = (at(p), at(q), at(r)) {
+        push_segment(sink.vertices, sink.indices, a, b);
+        sink.apex.resize(sink.vertices.len(), c.position);
     }
 }
 
@@ -130,23 +163,31 @@ fn append_outline(
 ///
 /// A triangle with a corner `outlined` rejects is skipped, neither counted nor outlined.
 pub(crate) fn boundary_edges(triangles: &[u32], outlined: impl Fn(u32) -> bool) -> Vec<[u32; 2]> {
+    boundary_edges_with_apex(triangles, outlined)
+        .into_iter()
+        .map(|[p, q, _]| [p, q])
+        .collect()
+}
+
+/// [`boundary_edges`], each edge followed by the third corner of the one triangle using it.
+fn boundary_edges_with_apex(triangles: &[u32], outlined: impl Fn(u32) -> bool) -> Vec<[u32; 3]> {
     // Each undirected edge's use count, keyed by its sorted ends, in first-use order.
     let mut uses: HashMap<(u32, u32), u32> = HashMap::new();
-    let mut order: Vec<[u32; 2]> = Vec::new();
+    let mut order: Vec<[u32; 3]> = Vec::new();
     for tri in triangles.as_chunks::<3>().0 {
         if !tri.iter().all(|&i| outlined(i)) {
             continue;
         }
         let [a, b, c] = *tri;
-        for (p, q) in [(a, b), (b, c), (c, a)] {
+        for (p, q, r) in [(a, b, c), (b, c, a), (c, a, b)] {
             let count = uses.entry((p.min(q), p.max(q))).or_insert(0);
             if *count == 0 {
-                order.push([p, q]);
+                order.push([p, q, r]);
             }
             *count = count.saturating_add(1);
         }
     }
-    order.retain(|&[p, q]| uses.get(&(p.min(q), p.max(q))) == Some(&1));
+    order.retain(|&[p, q, _]| uses.get(&(p.min(q), p.max(q))) == Some(&1));
     order
 }
 
@@ -275,6 +316,56 @@ mod tests {
         let edges = boundary_edges(&ir.indices, |i| i != 1);
         assert_eq!(edges, vec![[0, 2], [2, 3], [3, 0]]);
     }
+
+    /// Asserts that `ir`'s outline corners each carry the apex of the quad triangle their edge
+    /// bounds: triangle 0-1-2 owns edges 0-1 and 1-2, triangle 0-2-3 owns 2-3 and 3-0.
+    fn assert_quad_apexes(ir: &SodModelIr) {
+        let out = outlined(ir);
+        assert_eq!(out.apex.len(), out.ir.vertices.len());
+        let bits = |p: [f32; 3]| p.map(f32::to_bits);
+        // The triangles' own vertices keep their positions.
+        for (v, apex) in out.ir.vertices.iter().zip(&out.apex).take(4) {
+            assert_eq!(bits(v.position), bits(*apex));
+        }
+        let expected = [2, 0, 0, 2].map(|i: usize| bits(ir.vertices[i].position));
+        let (lines, rest) = out.apex[4..].as_chunks::<4>();
+        assert!(rest.is_empty());
+        assert_eq!(lines.len(), expected.len());
+        for (corners, want) in lines.iter().zip(expected) {
+            assert!(corners.iter().all(|&c| bits(c) == want));
+        }
+    }
+
+    #[test]
+    fn each_outline_corner_carries_its_triangles_third_vertex() {
+        assert_quad_apexes(&quad());
+    }
+
+    #[test]
+    fn a_decal_outline_carries_its_apex_too() {
+        let mut ir = quad();
+        if let Some(NodeKind::Mesh { is_decal, .. }) = ir.nodes.first_mut().map(|n| &mut n.kind) {
+            *is_decal = true;
+        }
+        assert_quad_apexes(&ir);
+    }
+
+    #[test]
+    fn a_two_sided_polygons_outline_keeps_its_two_sided_bit() {
+        let mut ir = quad();
+        for v in &mut ir.vertices {
+            v.flags |= TWO_SIDED;
+        }
+        let out = outlined(&ir);
+        assert!(
+            out.ir.vertices[4..]
+                .iter()
+                .all(|v| v.flags & TWO_SIDED != 0)
+        );
+    }
+
+    /// `SodVertex::flags` bit 1, a two-sided polygon (`SodVertex::flags`).
+    const TWO_SIDED: u8 = 0x02;
 
     #[test]
     fn lines_are_not_outlined_again() {
