@@ -4,12 +4,18 @@ Usage::
 
     mise run judge -- <baseline report dir> <candidate report dir>
         [--target <film>:<lo>-<hi> ...] [--track evidence|heuristic] [--data-root DIR]
+    mise run judge -- --recheck <work folder>/sweeps/<topic>.toml
 
 Each report dir holds one report per reference film, as ``<film>_report/report.json`` (a sweep
 variant kept with ``--keep-best``), ``<film>_current/report.json`` (``build/parity/report``) or
 ``<film>/report.json``. A film with no report counts as failed on that side. Prints the table
 and winner line ``mise run sweep`` prints for the same per-frame scores, with the baseline as
 ``run=baseline`` and the candidate as ``run=candidate``; the listed frames go to stderr.
+
+``--recheck`` reads a figures file ``mise run sweep -- --record`` wrote, judges its variants
+again by the bounds it records, and prints what the sweep printed, without ``--keep-best``'s
+``; kept`` note. It exits 1 when that winner line differs from the recorded one, and notes on
+stderr, without failing, when today's bounds would give another verdict.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from pathlib import Path
 
 from stunt_reel import dataroot, references
 from stunt_reel.parity_artifacts import read_report
+from stunt_reel.parity_figures import FiguresError, drift_note, parse_figures
 from stunt_reel.parity_judge import TRACKS, FilmRun, Target, Variant, decide, outcome_lines
 
 
@@ -81,12 +88,50 @@ def parse_targets(specs: list[str], track: str | None, films: list[str]) -> list
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("baseline", type=Path, help="the baseline's report dir")
-    parser.add_argument("candidate", type=Path, help="the candidate's report dir")
+    parser.add_argument("baseline", type=Path, nargs="?", help="the baseline's report dir")
+    parser.add_argument("candidate", type=Path, nargs="?", help="the candidate's report dir")
     parser.add_argument("--target", action="append", default=[], metavar="FILM:LO-HI")
     parser.add_argument("--track", choices=TRACKS, default=None)
     parser.add_argument("--data-root", type=Path, default=None, help="where references.toml is")
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--recheck",
+        type=Path,
+        default=None,
+        metavar="FIGURES",
+        help="judge a sweep's recorded figures again and compare its winner line",
+    )
+    args = parser.parse_args(argv)
+    given = [args.baseline, args.candidate, args.track, args.data_root]
+    if args.recheck is not None and (any(v is not None for v in given) or args.target):
+        parser.error("--recheck takes only the figures file")
+    if args.recheck is None and (args.baseline is None or args.candidate is None):
+        parser.error("give a baseline and a candidate report dir, or --recheck")
+    return args
+
+
+def recheck(path: Path) -> int:
+    """Prints what the recorded sweep printed; 1 when its winner line differs, 2 if unreadable."""
+    try:
+        figures = parse_figures(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, FiguresError) as err:
+        print(f"parity_judge: {path}: {err}", file=sys.stderr)
+        return 2
+    decision = figures.decision()
+    out, lines = outcome_lines(figures.names, figures.films, decision, figures.probe)
+    for line in lines:
+        print(f"[judge] {line}", file=sys.stderr)
+    print("\n".join(out))
+    note = drift_note(figures)
+    if note is not None:
+        print(f"[judge] note: {note}", file=sys.stderr)
+    if out[-1] != figures.winner:
+        print(
+            f"parity_judge: the figures give another winner line than the recorded one:\n"
+            f"  recorded: {figures.winner}",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,8 +139,11 @@ def main(argv: list[str] | None = None) -> int:
 
     A refused invocation is a bad ``--target`` or ``--track``; unreadable references are an
     unreadable ``references.toml`` or data root; a missing report is a missing report dir.
+    ``--recheck`` exits as :func:`recheck` does.
     """
     args = parse_args(argv)
+    if args.recheck is not None:
+        return recheck(args.recheck)
     try:
         films = list(references.reference_films(dataroot.data_root_flag(args.data_root)))
         targets = parse_targets(args.target, args.track, films)

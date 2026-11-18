@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import json
 import struct
+from datetime import date
 from typing import TYPE_CHECKING
 
-from stunt_reel import parity_layout, parity_pipeline, references
+from stunt_reel import parity_layout, parity_pipeline, references, work_items
 from stunt_reel.parity_artifacts import (
     PALETTE_BYTES,
     RENDER_SCHEMA_VERSION,
@@ -173,3 +174,12 @@ def write_report(
     }
     (directory / "report.json").write_text(json.dumps(document), encoding="utf-8")
     return parity_pipeline.Score(ssim, 0.8)
+
+
+def work_folder(root: Path, outcome: str = "") -> Path:
+    """An issue work folder under *root*, ``work/2026-11/696_sweep-figures``, frozen by *outcome*."""
+    folder = root / "work" / "2026-11" / "696_sweep-figures"
+    folder.mkdir(parents=True, exist_ok=True)
+    readme = work_items.readme_text("Sweep figures", date(2026, 11, 17), outcome, issue=696)
+    (folder / "README.md").write_text(readme, encoding="utf-8")
+    return folder

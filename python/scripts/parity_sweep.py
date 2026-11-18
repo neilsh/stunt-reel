@@ -10,8 +10,9 @@ Usage::
 
     mise run sweep -- --var DBG_PITCH=0,-0.5 --var DBG_DY=-0.2,-0.3 [--films ctry,intro]
         [--probe film|iou] [--keep-best] [--data-root DIR] [--no-build] [--retime N]
-        [--track evidence|heuristic [--target <film>:<lo>-<hi> ...
-            [--images DIR --topic WORDS [--crop x0,y0,x1,y1]]]]
+        [--record <work folder> --topic WORDS]
+        [--track evidence|heuristic --record <work folder> --topic WORDS
+            [--target <film>:<lo>-<hi> ... [--images DIR [--crop x0,y0,x1,y1]]]]
     mise run sweep -- --reuse <retime root> [--films ctry,intro] [--retime N]
 
 stdout carries only the ``--target`` echo, the table and the winner line; progress, the
@@ -22,6 +23,10 @@ baseline never wins; ``--track`` and ``--target`` refuse a ``--films`` subset, `
 a single variant, and a ``--target`` range holding no captured tick stops the sweep before it
 renders. Without ``--track`` variants are ranked by mean SSIM over the films (then mean mask
 IoU), so a CTRY-only gain that costs INTRO shows up, and there is no verdict.
+``--record <work folder> --topic WORDS`` (both; ``--track`` needs them) writes the figures behind
+the verdict to ``<work folder>/sweeps/<topic>.toml`` (``stunt_reel.parity_figures``), which
+``mise run judge -- --recheck`` judges again; it refuses, before rendering, a folder that is not
+an open work folder and a file that exists.
 ``--images DIR --topic WORDS`` (both, and only with ``--target``) then draws, for the winner (else
 the best variant that is not the baseline), one PNG per chosen tick into ``DIR`` as
 ``<film>-<tick>-<topic>.png``: the capture, the baseline and the winner, left to right
@@ -52,7 +57,7 @@ from pathlib import Path
 import parity_probe
 from cli import add_parity_options, parity_options, resolve_jobs
 
-from stunt_reel import parity_layout, references
+from stunt_reel import parity_layout, references, work_items
 from stunt_reel.matched_frames import Reference
 from stunt_reel.parity_artifacts import (
     Geometry,
@@ -60,6 +65,7 @@ from stunt_reel.parity_artifacts import (
     read_capture,
     read_report,
 )
+from stunt_reel.parity_figures import figures_text
 from stunt_reel.parity_judge import (
     BASELINE,
     TRACKS,
@@ -241,17 +247,25 @@ class PictureOptions:
 
 
 def validate_pictures(
-    images: Path | None, topic: str | None, crop: str | None, targets: list[Target]
+    images: Path | None,
+    topic: str | None,
+    crop: str | None,
+    targets: list[Target],
+    *,
+    recorded: bool = False,
 ) -> PictureOptions | None:
     """The picture options, or ``None`` when none is given; raises ``ValueError`` when unusable.
 
-    ``--images`` and ``--topic`` go together, ``--images`` needs ``--target``, ``--crop`` needs
-    ``--images``, and a picture of that topic already in the directory refuses the sweep.
+    ``--images`` needs ``--topic`` and ``--target``, ``--topic`` needs ``--images`` unless the
+    sweep is *recorded*, ``--crop`` needs ``--images``, and a picture of that topic already in
+    the directory refuses the sweep.
     """
-    if images is None and topic is None and crop is None:
+    if images is None and crop is None and (topic is None or recorded):
         return None
     if images is None:
-        raise ValueError("--topic needs --images" if topic is not None else "--crop needs --images")
+        raise ValueError(
+            "--topic needs --images or --record" if topic is not None else "--crop needs --images"
+        )
     if topic is None:
         raise ValueError("--images needs --topic")
     if not targets:
@@ -267,6 +281,55 @@ def validate_pictures(
             "so name another --topic"
         )
     return PictureOptions(images, slug, box)
+
+
+def validate_record(
+    record: Path | None, topic: str | None, track: Track | None, reuse: Path | None
+) -> Path | None:
+    """The figures file ``--record`` writes, or ``None`` without it; raises ``ValueError``.
+
+    ``--track`` needs ``--record``, which needs ``--topic`` and refuses ``--reuse``, a folder
+    that is not a work folder, a frozen one (its README has an ``outcome``), and a figures file
+    of that topic that exists, since one is never replaced.
+    """
+    if record is None:
+        if track is not None:
+            raise ValueError(
+                "--track needs --record <work folder> --topic WORDS: a verdict's figures are "
+                "committed with its journal entry"
+            )
+        return None
+    if reuse is not None:
+        raise ValueError("--record cannot be combined with --reuse, which judges nothing")
+    if topic is None:
+        raise ValueError("--record needs --topic, which names its figures file")
+    try:
+        folder = work_items.parse_folder(record)
+    except (work_items.WorkFolderError, OSError) as err:
+        raise ValueError(f"--record {record} is not a work folder ({err})") from err
+    if folder.outcome:
+        raise ValueError(
+            f"--record {record} has an outcome, so it is frozen; record in an open work folder"
+        )
+    path = record / "sweeps" / f"{topic_slug(topic)}.toml"
+    if path.exists():
+        raise ValueError(
+            f"{path} already exists; a figures file is never replaced, so name another --topic"
+        )
+    return path
+
+
+def write_figures(path: Path, text: str) -> int:
+    """Writes the figures file at *path*, never over one; the exit code."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("x", encoding="utf-8", newline="\n") as out:
+            out.write(text)
+    except OSError as err:
+        print(f"parity_sweep: figures not written: {_first_line(err, 200)}", file=sys.stderr)
+        return 1
+    print(f"[sweep] figures {path}", file=sys.stderr)
+    return 0
 
 
 def uncaptured_ranges(root: Path, targets: list[Target]) -> list[str]:
@@ -485,7 +548,16 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         metavar="DIR",
         help="draw the winner's capture | baseline | winner pictures here; needs --target, --topic",
     )
-    parser.add_argument("--topic", default=None, help="a few words naming what the pictures show")
+    parser.add_argument(
+        "--topic", default=None, help="a few words naming the round's figures file and pictures"
+    )
+    parser.add_argument(
+        "--record",
+        type=Path,
+        default=None,
+        metavar="WORK_FOLDER",
+        help="write the verdict's figures to WORK_FOLDER/sweeps/<topic>.toml; --track needs it",
+    )
     parser.add_argument(
         "--crop", default=None, metavar="x0,y0,x1,y1", help="crop every picture, enlarged 3 times"
     )
@@ -496,7 +568,8 @@ def main(argv: list[str] | None = None) -> int:
     """Renders and scores every variant on every chosen film, then judges and ranks them.
 
     Exits 2 on a refused invocation, a failed preflight or a ``--target`` range holding no
-    captured tick, and 1 when the pictures of ``--images`` fail after the verdict printed.
+    captured tick, and 1 when the figures of ``--record`` or the pictures of ``--images`` fail
+    after the verdict printed.
     Every variant's work directory is removed on the way out, interrupted or not, except the
     best one's under ``--keep-best``; with ``--track`` that is never the baseline.
     """
@@ -517,7 +590,10 @@ def main(argv: list[str] | None = None) -> int:
             reuse=options.reuse,
             variants=len(combos),
         )
-        pictures = validate_pictures(args.images, args.topic, args.crop, targets)
+        pictures = validate_pictures(
+            args.images, args.topic, args.crop, targets, recorded=args.record is not None
+        )
+        figures = validate_record(args.record, args.topic, track, options.reuse)
     except ValueError as err:
         print(f"parity_sweep: {err}", file=sys.stderr)
         return 2
@@ -672,11 +748,15 @@ def main(argv: list[str] | None = None) -> int:
             f", crops {len(crops)}" if crops else ""
         )
     print(line)
+    code = 0
+    if figures is not None:
+        code = write_figures(figures, figures_text(names, films, decision, args.probe, out[-1]))
     if pictures is not None:
-        return write_pictures(
+        drawn = write_pictures(
             decision, plans, pictures, root=root, retime=options.retime, scratch=scratch
         )
-    return 0
+        code = max(code, drawn)
+    return code
 
 
 if __name__ == "__main__":

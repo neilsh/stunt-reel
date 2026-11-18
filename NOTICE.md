@@ -62,6 +62,10 @@ pull request made where `gh` cannot attach files, as in a cloud session, commits
 as comparison sheets in its issue's work folder, each cited by a journal entry there and under
 every limit above. All other captures stay in the external data root.
 
+Scores and metrics measured against a capture (SSIM, IoU, index agreement, per film or per
+frame), such as the figures file a sweep writes into a work folder, are this project's own
+measurements, not game-derived content, and may be committed; images keep the limits above.
+
 ## Third-party material and credits
 
 Quoted manual text, cited community research, and third-party tools remain under their

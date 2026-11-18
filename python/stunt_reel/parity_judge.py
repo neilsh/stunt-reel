@@ -5,8 +5,9 @@ The adoption rule and its figures are ``.agents/skills/improving-render-parity/l
 --compare`` does (first frame per tick; frames scored in both, or every frame when a report
 predates fade scoring). :func:`judge` applies the guards and branches to one candidate,
 :func:`decide` ranks a sweep's variants, and :func:`outcome_lines` words the table, the winner
-line and the stderr lines ``mise run sweep`` and ``mise run judge`` print. Nothing here renders,
-reads files, prints or chooses an exit code.
+line and the stderr lines ``mise run sweep`` and ``mise run judge`` print. :class:`Bounds` holds
+the rule's figures, today's by default, so a recorded sweep can be judged by the ones it applied.
+Nothing here renders, reads files, prints or chooses an exit code.
 """
 
 from __future__ import annotations
@@ -31,7 +32,9 @@ __all__ = [
     "MIN_TARGET_FRAMES",
     "NOISE_FLOOR",
     "TARGET_BAR",
+    "TODAY",
     "TRACKS",
+    "Bounds",
     "Decision",
     "Delta",
     "FilmJoin",
@@ -76,6 +79,27 @@ MIN_TARGET_FRAMES = 3
 NOISE_FLOOR = 0.002
 
 _TARGET = re.compile(r"([a-z0-9_-]+):(\d+)-(\d+)")
+
+
+@dataclass(frozen=True)
+class Bounds:
+    """The adoption rule's figures, each as the module constant of its name describes it.
+
+    The defaults are today's; a sweep's figures file records the ones its verdict applied.
+    """
+
+    film_bar: float = FILM_BAR
+    film_one_bar: float = FILM_ONE_BAR
+    target_bar: float = TARGET_BAR
+    frame_bound: float = FRAME_BOUND
+    listed: float = LISTED
+    edge_flag: float = EDGE_FLAG
+    min_target_frames: int = MIN_TARGET_FRAMES
+    noise_floor: float = NOISE_FLOOR
+
+
+#: Today's bounds, the default wherever a verdict is given.
+TODAY = Bounds()
 
 
 @dataclass(frozen=True)
@@ -216,6 +240,7 @@ class Judgement:
     targets: tuple[Target, ...]
     adopts: bool | None = None
     reason: str = ""
+    bounds: Bounds = TODAY
 
     def frames(self) -> list[Delta]:
         return [d for join in self.joins.values() for d in join.deltas]
@@ -246,16 +271,18 @@ class Judgement:
         return min(self.frames(), key=lambda d: d.ssim, default=None)
 
     def down(self) -> list[Delta]:
-        """Every frame falling by more than :data:`LISTED` in SSIM, worst first."""
-        return sorted((d for d in self.frames() if d.ssim < -LISTED), key=lambda d: d.ssim)
+        """Every frame falling by more than the ``listed`` bound in SSIM, worst first."""
+        listed = self.bounds.listed
+        return sorted((d for d in self.frames() if d.ssim < -listed), key=lambda d: d.ssim)
 
     def side_effects(self) -> dict[str, int]:
-        """Per film, the frames outside every target that moved by more than :data:`LISTED`."""
+        """Per film, the frames outside every target that moved by more than ``listed``."""
+        listed = self.bounds.listed
         return {
             film: sum(
                 1
                 for d in join.deltas
-                if abs(d.ssim) > LISTED and not any(t.holds(film, d.tick) for t in self.targets)
+                if abs(d.ssim) > listed and not any(t.holds(film, d.tick) for t in self.targets)
             )
             for film, join in self.joins.items()
         }
@@ -264,7 +291,7 @@ class Judgement:
         """Each range's flagged edge frames, a report and not a guard.
 
         An edge frame is the baseline's nearest scored tick before or after the range; it is
-        flagged when it fell by more than :data:`EDGE_FLAG` in SSIM.
+        flagged when it fell by more than the ``edge_flag`` bound in SSIM.
         """
         flagged = []
         for target in self.targets:
@@ -276,7 +303,7 @@ class Judgement:
             after = [t for t in join.baseline_ticks if t > target.hi]
             for tick in ([before[-1]] if before else []) + ([after[0]] if after else []):
                 delta = by_tick.get(tick)
-                if delta is not None and delta.ssim < -EDGE_FLAG:
+                if delta is not None and delta.ssim < -self.bounds.edge_flag:
                     flagged.append((target, delta))
         return flagged
 
@@ -300,8 +327,9 @@ def judge(
     candidate: Mapping[str, FilmRun | None],
     targets: Sequence[Target] = (),
     track: Track | None = None,
+    bounds: Bounds = TODAY,
 ) -> Judgement:
-    """Joins *candidate* to *baseline* on every film the baseline ran, and gives the verdict."""
+    """Joins *candidate* to *baseline* on every film the baseline ran; the verdict by *bounds*."""
     joins = {
         film: join_film(film, base, run)
         for film, base in baseline.items()
@@ -310,18 +338,19 @@ def judge(
     failed = tuple(
         film for film, base in baseline.items() if base is not None and candidate.get(film) is None
     )
-    judgement = Judgement(joins, failed, tuple(targets))
+    judgement = Judgement(joins, failed, tuple(targets), bounds=bounds)
     if track is None:
         return judgement
     problem = baseline_problem(baseline, targets)
     if problem is not None:
-        return Judgement(joins, failed, tuple(targets), None, problem)
+        return Judgement(joins, failed, tuple(targets), None, problem, bounds)
     adopts, reason = _verdict(judgement, track)
-    return Judgement(joins, failed, tuple(targets), adopts, reason)
+    return Judgement(joins, failed, tuple(targets), adopts, reason, bounds)
 
 
 def _verdict(judgement: Judgement, track: Track) -> tuple[bool, str]:
     """The guards in order, then the branches the track allows."""
+    bounds = judgement.bounds
     if judgement.failed:
         return False, f"film {judgement.failed[0]} failed"
     lost = [f"{film}:{tick}" for film, join in judgement.joins.items() for tick in join.lost]
@@ -329,22 +358,23 @@ def _verdict(judgement: Judgement, track: Track) -> tuple[bool, str]:
         more = f" and {len(lost) - 3} more" if len(lost) > 3 else ""
         return False, f"lost ticks {', '.join(lost[:3])}{more}"
     worst = judgement.worst_target()
-    if worst is not None and worst.ssim < -FRAME_BOUND:
+    if worst is not None and worst.ssim < -bounds.frame_bound:
         return False, f"target-frame guard {worst.where()} {worst.ssim:+.4f}"
     means = {film: m for film, join in judgement.joins.items() if (m := join.mean_ssim) is not None}
     if means:
         film, fall = min(means.items(), key=lambda item: item[1])
-        if fall < -FILM_BAR or (track == "heuristic" and fall <= -FILM_BAR):
+        if fall < -bounds.film_bar or (track == "heuristic" and fall <= -bounds.film_bar):
             return False, f"film-mean guard {film} {fall:+.4f}"
     if track == "evidence":
         if any(m > 0 for m in means.values()):
             return True, "evidence, film means"
         return False, "no film rises"
     if means and (
-        all(m > FILM_BAR for m in means.values()) or any(m > FILM_ONE_BAR for m in means.values())
+        all(m > bounds.film_bar for m in means.values())
+        or any(m > bounds.film_one_bar for m in means.values())
     ):
         return True, "heuristic, film means"
-    short = "film means short of +0.002 each or +0.004 on one"
+    short = f"film means short of +{bounds.film_bar:.3f} each or +{bounds.film_one_bar:.3f} on one"
     if not judgement.targets:
         return False, short
     passed, why = _target_branch(judgement)
@@ -353,17 +383,16 @@ def _verdict(judgement: Judgement, track: Track) -> tuple[bool, str]:
 
 def _target_branch(judgement: Judgement) -> tuple[bool, str]:
     """The heuristic target branch's three conditions, or the first that fails."""
+    bounds = judgement.bounds
     frames = judgement.target_frames()
-    if len(frames) < MIN_TARGET_FRAMES:
-        return (
-            False,
-            f"target branch needs {MIN_TARGET_FRAMES} scored target frames, has {len(frames)}",
-        )
+    needed = bounds.min_target_frames
+    if len(frames) < needed:
+        return False, f"target branch needs {needed} scored target frames, has {len(frames)}"
     _, pooled = judgement.target_mean()
     if pooled is None:
         return False, "no index agreement on the target frames"
-    if pooled <= TARGET_BAR:
-        return False, f"target idx {pooled:+.4f}, not above +{TARGET_BAR:.3f}"
+    if pooled <= bounds.target_bar:
+        return False, f"target idx {pooled:+.4f}, not above +{bounds.target_bar:.3f}"
     for target in judgement.targets:
         mean = _mean([d.index for d in judgement.range_frames(target) if d.index is not None])
         if mean is None or mean <= 0:
@@ -457,12 +486,16 @@ class Decision:
     #: The top-ranked variant that is not the baseline, which the stderr lines describe.
     best: Variant | None
     no_verdict: str | None
+    bounds: Bounds = TODAY
 
 
 def decide(
-    variants: Sequence[Variant], targets: Sequence[Target] = (), track: Track | None = None
+    variants: Sequence[Variant],
+    targets: Sequence[Target] = (),
+    track: Track | None = None,
+    bounds: Bounds = TODAY,
 ) -> Decision:
-    """Judges every variant against the baseline (variant 1) and ranks them.
+    """Judges every variant against the baseline (variant 1) by *bounds* and ranks them.
 
     With a track the baseline never wins; without one the ranking is by mean SSIM and the
     baseline may, and there is no verdict.
@@ -472,7 +505,9 @@ def decide(
     if base is not None and len(variants) > 1:
         for variant in variants:
             if variant is not base:
-                judgements[variant.index] = judge(base.frames, variant.frames, targets, track)
+                judgements[variant.index] = judge(
+                    base.frames, variant.frames, targets, track, bounds
+                )
     ordered = rank(variants, judgements, track)
     others = [v for v in ordered if v is not base]
     best = others[0] if others else None
@@ -484,7 +519,7 @@ def decide(
         no_verdict = baseline_problem(base.frames, targets) if base is not None else "no baseline"
         if no_verdict is None:
             winner = next((v for v in others if judgements[v.index].adopts), None)
-    return Decision(ordered, judgements, tuple(targets), track, winner, best, no_verdict)
+    return Decision(ordered, judgements, tuple(targets), track, winner, best, no_verdict, bounds)
 
 
 def label(names: Sequence[str], values: Sequence[str]) -> str:
@@ -510,7 +545,8 @@ def format_table(
 
     With a *decision* that judged anything, each row gains its change against the baseline:
     the pooled target mean in SSIM and index agreement and the worst target frame (with
-    targets), the worst frame of every film, and the count of frames down by more than 0.005.
+    targets), the worst frame of every film, and the count of frames down by more than the
+    decision's ``listed`` bound.
     """
     judged = decision is not None and bool(decision.judgements)
     targeted = judged and decision is not None and bool(decision.targets)
@@ -523,8 +559,8 @@ def format_table(
         header.append("mean SSIM")
     if targeted:
         header += ["target dSSIM", "target dIdx", "worst target"]
-    if judged:
-        header += ["worst frame", "down>0.005"]
+    if judged and decision is not None:
+        header += ["worst frame", f"down>{decision.bounds.listed}"]
     rows = [header]
     for v in variants:
         row = list(v.values)
@@ -554,10 +590,10 @@ def format_table(
     )
 
 
-def noise_note(margin: float) -> str:
-    """Appended to a winner line when the lead over the runner-up is inside the noise floor."""
-    if margin < NOISE_FLOOR:
-        return " (noise floor +/-0.002; winner is ~within noise)"
+def noise_note(margin: float, floor: float = NOISE_FLOOR) -> str:
+    """Appended to a winner line when the lead over the runner-up is inside the noise *floor*."""
+    if margin < floor:
+        return f" (noise floor +/-{floor:.3f}; winner is ~within noise)"
     return ""
 
 
@@ -586,12 +622,13 @@ def winner_line(names: Sequence[str], decision: Decision) -> str:
     if following:
         first, second = winner.mean_ssim(), following[0].mean_ssim()
         if first is not None and second is not None:
-            line += noise_note(first - second)
+            line += noise_note(first - second, decision.bounds.noise_floor)
     return line
 
 
 def _adoption_parts(judgement: Judgement, track: Track) -> list[str]:
     """The winner line's account of an adopting variant."""
+    bounds = judgement.bounds
     parts = [judgement.reason]
     if judgement.targets:
         n = len(judgement.target_frames())
@@ -601,13 +638,13 @@ def _adoption_parts(judgement: Judgement, track: Track) -> list[str]:
         worst = judgement.worst_target()
         if worst is not None:
             parts.append(f"worst target frame {worst.ssim:+.4f} {worst.where()}")
-        if n == MIN_TARGET_FRAMES and judgement.reason.startswith("heuristic target"):
+        if n == bounds.min_target_frames and judgement.reason.startswith("heuristic target"):
             parts.append(f"thin evidence: {n} target frames")
-        elif n < MIN_TARGET_FRAMES and track == "heuristic":
+        elif n < bounds.min_target_frames and track == "heuristic":
             parts.append(f"target branch not run: {n} scored target frames")
     down = len(judgement.down())
     if down:
-        parts.append(f"{down} frames down >{LISTED}, listed")
+        parts.append(f"{down} frames down >{bounds.listed}, listed")
     return parts
 
 
@@ -617,8 +654,8 @@ def outcome_lines(
     """The stdout lines (target echo, table, winner line) and the stderr lines of a decision.
 
     The stderr lines describe the winner, else the best variant that is not the baseline: every
-    frame down by more than 0.005, the per-film count of frames outside the target that moved
-    by more than 0.005, and each flagged edge frame.
+    frame down by more than the ``listed`` bound, the per-film count of frames outside the
+    target that moved by more than it, and each flagged edge frame.
     """
     out = []
     if decision.targets:
@@ -633,9 +670,10 @@ def outcome_lines(
         who = label(names, described.values)
         down = judgement.down()
         listed = ", ".join(f"{d.where()} {d.ssim:+.4f}" for d in down) or "none"
-        err.append(f"{who}: {len(down)} frame(s) down >{LISTED}: {listed}")
+        bar = judgement.bounds.listed
+        err.append(f"{who}: {len(down)} frame(s) down >{bar}: {listed}")
         moved = ", ".join(f"{film} {n}" for film, n in judgement.side_effects().items())
-        err.append(f"{who}: frames outside the target moved >{LISTED}: {moved}")
+        err.append(f"{who}: frames outside the target moved >{bar}: {moved}")
         for target, delta in judgement.edge_frames():
             side = "before" if delta.tick < target.lo else "after"
             err.append(

@@ -50,6 +50,7 @@ It needs at least 3 scored target frames over every range together; with fewer, 
 - The **target mean** is the mean difference in index agreement over the target frames; the **pooled** figure covers every range's frames together. Whole-frame SSIM is printed beside it.
 - A tick captured more than once counts once, by its first frame, as `stuntreel parity --compare` does.
 - Comparisons use unrounded values.
+- A sweep's figures file records the bounds its verdict applied; `mise run judge -- --recheck` judges it by those, and notes when today's would give another verdict.
 
 0.002 is a policy bound ([`method.md`](../../../research/parity/method.md) section 3). A margin under 0.002 is unattributable; the sweep marks it on the winner line. The +0.010 target bar, the 0.025 per-frame bound and the 3-frame minimum are policy bounds too, chosen by rescoring known cases ([`evidence-limits.md`](../../../research/parity/evidence-limits.md) section 3).
 

@@ -6,6 +6,7 @@ import itertools
 import json
 import os
 import re
+import shutil
 import struct
 import sys
 import zlib
@@ -21,6 +22,7 @@ from render_helpers import (
     reference_tree,
     rewrite_store,
     tick_entry,
+    work_folder,
     write_report,
     write_store,
 )
@@ -32,6 +34,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+import parity_judge as judge_cli  # noqa: E402
 import parity_probe  # noqa: E402
 import parity_sweep  # noqa: E402
 
@@ -230,6 +233,15 @@ def _sweep_env(
     return root
 
 
+def _recorded(tmp_path: Path, topic: str = "lake edge") -> list[str]:
+    """``--record`` and ``--topic`` flags naming a work folder under *tmp_path*."""
+    return ["--record", str(work_folder(tmp_path)), "--topic", topic]
+
+
+def _figures(tmp_path: Path, slug: str = "lake-edge") -> Path:
+    return work_folder(tmp_path) / "sweeps" / f"{slug}.toml"
+
+
 @pytest.mark.parametrize("jobs", ["1", "4"])
 def test_sweep_keeps_the_same_best_at_any_jobs(
     jobs: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -303,7 +315,8 @@ def test_keep_best_keeps_the_judged_best_never_the_baseline(
         "v001"
     ]  # no track: e has the best SSIM
     capsys.readouterr()
-    assert parity_sweep.main([*argv, "--jobs", "1", "--track", "heuristic"]) == 0
+    tracked = [*argv, "--jobs", "1", "--track", "heuristic", *_recorded(tmp_path)]
+    assert parity_sweep.main(tracked) == 0
     assert sorted(path.name for path in sweep.iterdir()) == ["v002"]
     line = capsys.readouterr().out.splitlines()[-1]
     assert line.startswith("winner: none adopts (best DBG_X=d: film-mean guard ctry -0.0900)")
@@ -317,11 +330,13 @@ def test_judged_sweep_does_not_depend_on_completion_order(
     root = _sweep_env(tmp_path, monkeypatch)
     argv = ["--var", "DBG_X=a,c,d,b", "--track", "heuristic", "--target", "ctry:7-7"]
     argv += ["--no-build", "--data-root", str(root), "--jobs", jobs, "--keep-best"]
-    assert parity_sweep.main(argv) == 0
+    assert parity_sweep.main([*argv, *_recorded(tmp_path, "forward")]) == 0
     forward = capsys.readouterr().out
     monkeypatch.setattr(parity_sweep, "run_matrix", _reversed_matrix)
-    assert parity_sweep.main(argv) == 0
+    assert parity_sweep.main([*argv, *_recorded(tmp_path, "reversed")]) == 0
     assert capsys.readouterr().out == forward
+    figures = _figures(tmp_path, "forward").read_text(encoding="utf-8")
+    assert _figures(tmp_path, "reversed").read_text(encoding="utf-8") == figures
     assert forward.splitlines()[0] == "targets: --target ctry:7-7"
     assert forward.splitlines()[-1].startswith("winner: DBG_X=d adopts (heuristic, film means;")
 
@@ -350,7 +365,8 @@ def test_judging_flags_refuse_before_rendering(
 ) -> None:
     root = _sweep_env(tmp_path, monkeypatch)
     monkeypatch.setattr(parity_sweep, "run_film", None)  # rendering would raise
-    assert parity_sweep.main([*flags, "--no-build", "--data-root", str(root)]) == 2
+    argv = [*flags, *_recorded(tmp_path), "--no-build", "--data-root", str(root)]
+    assert parity_sweep.main(argv) == 2
     assert message in capsys.readouterr().err
 
 
@@ -359,7 +375,7 @@ def test_judging_accepts_retime(
 ) -> None:
     root = _sweep_env(tmp_path, monkeypatch)
     argv = ["--var", "DBG_X=a,d", "--track", "heuristic", "--retime", "1", "--no-build"]
-    assert parity_sweep.main([*argv, "--data-root", str(root)]) == 0
+    assert parity_sweep.main([*argv, *_recorded(tmp_path), "--data-root", str(root)]) == 0
     assert capsys.readouterr().out.splitlines()[-1].startswith("winner: DBG_X=d adopts")
 
 
@@ -368,10 +384,76 @@ def test_range_with_no_scored_baseline_tick_gives_no_verdict(
 ) -> None:
     root = _sweep_env(tmp_path, monkeypatch)
     argv = ["--var", "DBG_X=u,d", "--track", "heuristic", "--target", "ctry:7-7", "--no-build"]
-    assert parity_sweep.main([*argv, "--data-root", str(root)]) == 0
+    assert parity_sweep.main([*argv, *_recorded(tmp_path), "--data-root", str(root)]) == 0
     assert capsys.readouterr().out.splitlines()[-1] == (
         "winner: no verdict (target ctry:7-7 holds no tick the baseline scores)"
     )
+
+
+# --- figures (--record) ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("flags", "message"),
+    [
+        (["--track", "heuristic"], "--track needs --record"),
+        (["--record", "{folder}"], "--record needs --topic"),
+        (["--record", "{data}", "--topic", "x"], "is not a work folder"),
+        (["--record", "{frozen}", "--topic", "x"], "has an outcome, so it is frozen"),
+        (["--record", "{folder}", "--topic", "Lake edge"], "lake-edge.toml already exists"),
+        (["--topic", "x"], "--topic needs --images or --record"),
+    ],
+)
+def test_record_refuses_before_rendering(
+    flags: list[str],
+    message: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(parity_sweep, "run_film", None)  # rendering would raise
+    folder = work_folder(tmp_path)
+    (folder / "sweeps").mkdir()
+    (folder / "sweeps" / "lake-edge.toml").write_text("first", encoding="utf-8")
+    places = {"{folder}": folder, "{data}": root, "{frozen}": work_folder(tmp_path / "f", "done")}
+    argv = ["--var", "DBG_X=a,d", "--no-build", "--data-root", str(root)]
+    argv += [str(places.get(flag, flag)) for flag in flags]
+    assert parity_sweep.main(argv) == 2
+    assert message in capsys.readouterr().err
+    assert (folder / "sweeps" / "lake-edge.toml").read_text(encoding="utf-8") == "first"
+
+
+def test_record_refuses_reuse(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    argv = ["--reuse", str(tmp_path), *_recorded(tmp_path), "--no-build"]
+    assert parity_sweep.main(argv) == 2
+    assert "--record cannot be combined with --reuse" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--var", "DBG_X=a,d,c", "--track", "heuristic", "--target", "ctry:7-7", "--keep-best"],
+        ["--var", "DBG_X=c,a,e"],
+    ],
+)
+def test_recheck_reproduces_the_sweep_from_its_figures_alone(
+    flags: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    argv = [*flags, *_recorded(tmp_path), "--no-build", "--jobs", "1", "--data-root", str(root)]
+    assert parity_sweep.main(argv) == 0
+    swept = capsys.readouterr()
+    figures = _figures(tmp_path)
+    assert f"[sweep] figures {figures}" in swept.err
+    shutil.rmtree(tmp_path / "data")  # the recheck reads the figures file and nothing else
+    assert judge_cli.main(["--recheck", str(figures)]) == 0
+    printed = swept.out.splitlines()
+    printed[-1] = printed[-1].split("; kept ")[0]  # --keep-best's note is not the verdict
+    assert capsys.readouterr().out.splitlines() == printed
 
 
 # --- pictures (spec § 4) ---------------------------------------------------------------------
@@ -565,6 +647,8 @@ def _images_argv(root: Path, images: Path, *extra: str) -> list[str]:
     argv = ["--var", "DBG_X=a,d", "--track", "heuristic", "--target", "ctry:7-7", "--no-build"]
     return [
         *argv,
+        "--record",
+        str(work_folder(root.parent)),
         "--images",
         str(images),
         "--topic",
