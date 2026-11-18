@@ -25,7 +25,7 @@
     | 2,529 chunks, 4,092,524 bytes, `0xF001` (#348's padding) | 2,676 | 8,210 | 179 | 3,581,826 | 437,834 | ? |
     | 2,529 chunks, 4,092,524 bytes, `0x5B01` | 2,676 | 8,210 | 179 | 3,581,826 | 21 | 8 or more |
 
-    The 4 MB arms must also evict for want of heap, least recently loaded first (the padding in `0xF001` arms, the own chunks from `0x7F37` up in the `0x5B01` arm), which the model leaves out, so their cells are `?` or a lower bound.
+    The 4 MB arms likely also evict for want of heap (its size was not read), least recently loaded first (the padding in `0xF001` arms, the own chunks from `0x7F37` up in the `0x5B01` arm), which the model leaves out, so their cells are `?` or a lower bound.
     The `0x5B01` arm's own chunks evicted by the node pool are `0x7F37`, `0x801E`, `0x8042` and the sound ids `0xC010`, `0xC302`, `0xC319`, `0xC31E`, `0xC56A`.
     The 60,000-byte arm has the 1-chunk arm's counts.
   - The dialog path `0x49C6..0x49ED` runs the loader, resets the film clock (`0x3A11`), sets the speed `DS:0x489C` to `0x100`, and calls `0x0E42`, which zeroes `0x22B8` and `0x22BE` and sets the playback flag `0x2272`; the second path `0x4ACE..0x4AFD` clears `0x2272` (`0x4AD1`) before its dialog and load, does the same steps without `0x0E42`, and sets `0x2272` at `0x4AFD`.

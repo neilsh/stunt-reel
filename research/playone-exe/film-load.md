@@ -67,7 +67,7 @@ The counts below follow from sections 1 and 2 for the own `CTRY.ALL` (147 chunks
 * **Scan words**: `n (n + 1) / 2` for `n` chunks, since the preload's miss for the chunk at position `k` scans `k` words.
 * **MRU steps**: for each id from `0x8000` up, in preload order, the list length then, `min(chunks already loaded, nodes)`.
 * **Own chunks evicted by the node pool**: own chunks outside the first `nodes` ids in table order, the ones the preload loads last.
-  Evictions for want of heap are not modelled: an arm adding megabytes must also evict at load, least recently loaded first, which is the padding in the `0xF001` arms and the own chunks from `0x7F37` up in the `0x5B01` arm; so the cells of the three 4 MB arms are `?` or a lower bound.
+  Evictions for want of heap are not modelled: an arm adding megabytes likely also evicts at load, the heap's size being unread, least recently loaded first, which is the padding in the `0xF001` arms and the own chunks from `0x7F37` up in the `0x5B01` arm; so the cells of the three 4 MB arms are `?` or a lower bound.
 
 | Added to own `CTRY.ALL` | Chunks | Index bytes | Nodes | Scan words | MRU steps | Own chunks evicted (node pool; heap not modelled) | Last page frame (§ 7.2) |
 |---|---|---|---|---|---|---|---|
@@ -97,7 +97,8 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 * **After the load.**
   The dialog path `0x49C6..0x49ED` calls `0x3A11`, which zeroes the film clock `DS:0x4896`, its fraction `0x4898` and the slice state, sets the speed `DS:0x489C` to `0x100` (one tick per tick, 8.8), and calls `0x0E42`, which zeroes `0x22B8` and `0x22BE` and sets the playback flag `0x2272`; then the main loop's per-frame call `[0x0D7A]` (`0x54B8`) becomes the film step `0x49F9`.
   The path `0x4ACE..0x4AFD` clears the playback flag `0x2272` (`0x4AD1`) before its dialog and load, then runs the loader, `0x3A11` and the speed as above and sets the flag at `0x4AFD`, without zeroing `0x22B8`.
-  On both paths no tick is counted during the load.
+  On the `0x4ACE` path no tick is counted during the load.
+  The dialog path does not clear `0x2272` first, so whether ticks count during its load was not read; it zeroes the clock and `0x22B8` after the load either way.
   Neither waits on a timer tick or the retrace.
 * **The clock.**
   On each timer interrupt (`0x43A5`), while `0x2272` is set, `0x22B8` gains 1 and the film clock gains the speed (`0x43D8..0x43E6`), so the film's tick 1 is the first interrupt after the load returns.
