@@ -32,6 +32,10 @@ _BLOCKQUOTE = re.compile(r"^(?: {0,3}> ?)+")
 _DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:")
 _TABLE_DELIMITER = re.compile(r"^ *\|? *:?-+:? *(?:\| *:?-+:? *)*\|? *$")
 _HARD_BREAK = re.compile(r"(?:  |\\)$")
+#: A GitHub alert's marker line, which GitHub renders only while it stands alone on its line.
+_ALERT = re.compile(r"^ *\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\] *$", re.IGNORECASE)
+#: A line that already ends at a sentence end, whatever starts the next.
+_ENDS_SENTENCE = re.compile(r"[.?!][)\"*_]*$")
 
 #: A sentence end: `.`, `?` or `!`, its closers, the spaces after, and what may start the next.
 _SENTENCE_END = re.compile(r"[.?!][)\"*_]*( +)(?=[A-Z`\[(\"*_])")
@@ -73,6 +77,8 @@ CASES = [
     ("```\nOne. Two.\n```\n", "```\nOne. Two.\n```\n"),
     ("---\nsummary: One. Two.\n---\nA. B.\n", "---\nsummary: One. Two.\n---\nA. B.\n"),
     ("One. Two\n---\n", "One. Two\n---\n"),  # setext heading untouched
+    ("> [!NOTE]\n> One. Two.\n", "> [!NOTE]\n> One.\n> Two.\n"),  # GitHub alert marker kept
+    ("One two.\n12 of them. Go.\n", "One two.\n12 of them.\nGo.\n"),  # a break at a sentence end stays
 ]
 
 
@@ -117,20 +123,30 @@ def _is_abbreviation(text: str, period: int) -> bool:
     return word in _ABBREVIATIONS or re.fullmatch(r"[A-Z]\.", word) is not None
 
 
-def split_sentences(text: str) -> list[str]:
-    """*text*, one paragraph line, cut after each sentence end that is safe to break at."""
+def split_sentences(text: str, kept: frozenset[int] = frozenset()) -> list[str]:
+    """*text*, one paragraph line, cut after each sentence end that is safe to break at.
+
+    *kept* holds the offsets of spaces that joined a source line ending at a sentence end: those
+    are cut too, whatever letter follows, so a sentence an author put on its own line stays there.
+    """
     mask = _protected(text)
+    cuts: dict[int, int] = {}  # the space run's start -> its end
+    for match in _SENTENCE_END.finditer(text):
+        cuts[match.start(1)] = match.end()
+    for space in kept:
+        cuts.setdefault(space, space + 1)
     pieces: list[str] = []
     start = 0
-    for match in _SENTENCE_END.finditer(text):
-        if mask[match.start()] or mask[match.start(1)]:
+    for space, after in sorted(cuts.items()):
+        punctuation = re.search(r"[.?!][)\"*_]*\Z", text[:space])
+        if punctuation is None or mask[punctuation.start()] or mask[space]:
             continue
-        if text[match.start()] == "." and _is_abbreviation(text, match.start()):
+        if text[punctuation.start()] == "." and _is_abbreviation(text, punctuation.start()):
             continue
-        if _BLOCK_START.match(text[match.end() :]):
+        if _BLOCK_START.match(text[after:]):
             continue
-        pieces.append(text[start : match.start(1)])
-        start = match.end()
+        pieces.append(text[start:space])
+        start = after
     pieces.append(text[start:])
     return pieces
 
@@ -148,20 +164,25 @@ class _Paragraph:
     def render(self, split: bool) -> list[str]:
         if self.verbatim:
             return self.raw
-        segments: list[str] = []
-        current: list[str] = []
+        segments: list[tuple[str, frozenset[int]]] = []
+        current = ""
+        kept: set[int] = set()
         for line in self.lines:
+            if current:
+                if _ENDS_SENTENCE.search(current):
+                    kept.add(len(current))
+                current += " "
             if _HARD_BREAK.search(line):
-                current.append(line.strip(" ") if line.endswith("\\") else line.lstrip(" "))
-                segments.append(" ".join(current))
-                current = []
+                current += line.strip(" ") if line.endswith("\\") else line.lstrip(" ")
+                segments.append((current, frozenset(kept)))
+                current, kept = "", set()
             else:
-                current.append(line.strip(" "))
+                current += line.strip(" ")
         if current:
-            segments.append(" ".join(current))
+            segments.append((current, frozenset(kept)))
         out: list[str] = []
-        for segment in segments:
-            for piece in split_sentences(segment) if split else [segment]:
+        for segment, breaks in segments:
+            for piece in split_sentences(segment, breaks) if split else [segment]:
                 out.append((self.later_prefix if out else self.first_prefix) + piece)
         return out
 
@@ -236,6 +257,9 @@ def _transform(text: str, split: bool) -> str:
             else:
                 block_end = ""
         elif _ATX.match(rest) or _THEMATIC.match(rest) or _DEFINITION.match(rest):
+            flush()
+            out.append(line)
+        elif _ALERT.match(rest):
             flush()
             out.append(line)
         elif item := _LIST_ITEM.match(rest):
@@ -336,7 +360,7 @@ def verify(base: str, paths: list[str]) -> int:
     if failed:
         print(f"{failed} of {len(paths)} files failed")
         return 1
-    print(f"{len(paths)} files: HTML, links and code spans unchanged")
+    print(f"{len(paths)} files: same CommonMark HTML, no link or code span lost")
     return 0
 
 
