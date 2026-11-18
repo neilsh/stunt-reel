@@ -49,6 +49,6 @@
   - The image's tree places 72 of the 83 at an `SP_LEAF`, `0x024A`, `0x02DE` and `0x03FD` among them: 846 of its 68,035 distinct leaf placements.
   - FreeFlight's six `SCENERY*.RES` are byte-identical to the game's, so they add no shapes.
 - **Verdict**: buckets are common in the stock shapes that carry coded boxes. 75 of 83 trace a bucket for every code, and none traces a bucket without its code. Three tree shapes and five others have a code whose bucket their display list never runs.
-  For an actor with a collision list of its own, a nested list's codes count only once one of its records overlaps; 15 of the 83 shapes have coded boxes only there.
+  For an actor with a collision list of its own, a nested list's codes count only once an actor record overlaps; 15 of the 83 shapes have coded boxes only there.
   Not checked: the display-list branches `sod-trace` does not take; the shapes of `corpus/siarchive` beyond FreeFlight (`local-windows`); whether a probe ever records the missing `w`.
 - **Lives in**: [`scene-walk-actors.md` § 5](../../../research/playone-exe/scene-walk-actors.md#5-which-shapes-carry-buckets).
