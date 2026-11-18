@@ -9,7 +9,16 @@ lazy from pathlib import Path
 import pytest
 
 from stunt_reel import dataroot, parity_layout
-from stunt_reel.expected_scores import changed_since, clean_crates_tree, comparison_line
+from stunt_reel.expected_scores import (
+    RENDER_TREE_FILE,
+    SCORER_DIR,
+    changed_since,
+    clean_crates_tree,
+    comparison_line,
+    read_render_tree,
+    scorer_only_change,
+    write_render_tree,
+)
 from stunt_reel.parity_artifacts import RenderAdapter, Report, read_report, write_report
 from stunt_reel.references import read_reference
 
@@ -87,6 +96,10 @@ class Repo:
         path = self.root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8", newline="\n")
+
+    def scorer_only(self, old: str, new: str) -> bool:
+        """:func:`scorer_only_change` on this scratch repository."""
+        return scorer_only_change(old, new, self.root)
 
     @property
     def references(self) -> Path:
@@ -270,20 +283,111 @@ def test_a_report_round_trips_its_crates_tree_and_pins(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("no_build", "no_render", "rescored", "recorded"),
-    [
-        (False, False, False, "tree"),
-        (True, False, False, None),
-        (False, True, False, None),
-        (False, False, True, None),
-    ],
+    ("no_build", "rescored", "recorded"),
+    [(False, False, "tree"), (True, False, None), (False, True, None)],
 )
-def test_a_parity_run_records_its_tree_only_for_a_fresh_build_and_render(
-    no_build: bool, no_render: bool, rescored: bool, recorded: str | None
+def test_a_parity_run_offers_its_tree_only_when_it_built_the_binary_now(
+    no_build: bool, rescored: bool, recorded: str | None
 ) -> None:
     import parity_run  # noqa: PLC0415 - a script, on the path set above
 
-    found = parity_run.recorded_crates(
-        no_build=no_build, no_render=no_render, rescored=rescored, tree=lambda: "tree"
-    )
+    found = parity_run.recorded_crates(no_build=no_build, rescored=rescored, tree=lambda: "tree")
     assert found == recorded
+
+
+def _render_built_from(path: Path, tree: str | None) -> Path:
+    """A render directory recording *tree* as the build that made it."""
+    path.mkdir(parents=True)
+    write_render_tree(path, tree)
+    return path
+
+
+def _scored_tree(
+    tmp_path: Path, built: str | None, *, no_render: bool = True, scorer_only: bool = True
+) -> str | None:
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    render = _render_built_from(tmp_path / "render", built)
+    return parity_run.scored_render_tree(
+        "head", render, no_render=no_render, scorer_only=lambda _old, _new: scorer_only
+    )
+
+
+def test_a_fresh_render_records_the_candidate_tree(tmp_path: Path) -> None:
+    assert _scored_tree(tmp_path, None, no_render=False) == "head"
+
+
+def test_a_no_render_run_after_a_scorer_only_change_records_the_tree(tmp_path: Path) -> None:
+    assert _scored_tree(tmp_path, "1" * 40) == "head"
+
+
+def test_a_no_render_run_after_a_renderer_change_records_nothing(tmp_path: Path) -> None:
+    assert _scored_tree(tmp_path, "1" * 40, scorer_only=False) is None
+
+
+def test_a_render_without_a_recorded_build_records_nothing(tmp_path: Path) -> None:
+    """A render from a dirty ``crates/``, a ``--no-build``, ``--reuse`` or ``--retime`` run, or an
+    older run has no record, so a ``--no-render`` run cannot vouch for it."""
+    assert _scored_tree(tmp_path, None) is None
+
+
+def test_no_render_on_a_dirty_crates_records_nothing(tmp_path: Path) -> None:
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    render = _render_built_from(tmp_path / "render", "1" * 40)
+    assert parity_run.scored_render_tree(None, render, no_render=True) is None
+
+
+def test_an_unreadable_record_is_no_record(tmp_path: Path) -> None:
+    render = _render_built_from(tmp_path / "render", "1" * 40)
+    assert read_render_tree(render) == "1" * 40
+    (render / RENDER_TREE_FILE).write_text("not a tree\n", encoding="ascii")
+    assert read_render_tree(render) is None
+    (render / RENDER_TREE_FILE).write_bytes(b"\xff\xfe")
+    assert read_render_tree(render) is None
+    write_render_tree(render, None)
+    assert read_render_tree(render) is None
+    write_render_tree(render, None)  # nothing left to remove
+
+
+def test_a_scorer_only_commit_lets_a_no_render_report_be_repinned(repo: Repo) -> None:
+    """End to end: a render built on the old tree, rescored after a scorer-only commit."""
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    renders = {
+        film: _render_built_from(repo.root / "build" / "renders" / film, repo.tree)
+        for film in ("ctry", "intro")
+    }
+    repo.report("ctry", 0.812345678, 0.98765432)
+    repo.report("intro", 0.7, 0.9)
+    repo.write(f"crates/{SCORER_DIR}score.rs", "fn score() {}\n")
+    repo.git("add", "-A")
+    repo.git("commit", "-qm", "scorer")
+    new_tree = clean_crates_tree(repo.root)
+    assert new_tree not in (None, repo.tree)
+
+    # The report still records the old tree: the repin refuses it.
+    with pytest.raises(parity_repin.RepinRefusedError):
+        parity_repin.repin(repo.root, "gpu")
+
+    for film, render in renders.items():
+        crates = parity_run.scored_render_tree(
+            new_tree, render, no_render=True, scorer_only=repo.scorer_only
+        )
+        assert crates == new_tree
+        repo.report(film, 0.8, 0.9, crates=crates)
+    assert [t.film for t in parity_repin.repin(repo.root, "gpu")] == ["ctry", "intro"]
+
+
+def test_a_renderer_commit_still_needs_a_re_render(repo: Repo) -> None:
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    render = _render_built_from(repo.root / "build" / "render", repo.tree)
+    repo.write(f"crates/{SCORER_DIR}score.rs", "fn score() {}\n")
+    repo.write("crates/a.rs", "fn a() { 1; }\n")
+    repo.git("add", "-A")
+    repo.git("commit", "-qm", "renderer")
+    found = parity_run.scored_render_tree(
+        clean_crates_tree(repo.root), render, no_render=True, scorer_only=repo.scorer_only
+    )
+    assert found is None
