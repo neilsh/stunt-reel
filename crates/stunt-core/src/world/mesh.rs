@@ -5,8 +5,8 @@ use std::ops::Range;
 
 use crate::anchor::AnchorPoint;
 use crate::contracts::{
-    NodeId, NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeMesh, SodModelIr,
-    SodVertex, VERTEX_FLAG_LINE, VisibilityCondition, arena_index,
+    MAX_PROP_SLOT, NodeId, NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeMesh,
+    SodModelIr, SodVertex, VERTEX_FLAG_LINE, VisibilityCondition, arena_index,
 };
 
 use super::map_bin::MapArea;
@@ -62,6 +62,32 @@ pub(super) const UP: [f32; 3] = [0.0, 1.0, 0.0];
 /// patches and props (`research/playone-exe/world-scene-residuals.md` section 6.6).
 pub const GROUND_NODE: &str = "WORLD_GROUND";
 
+/// The most distinct prop shapes the world numbers; a prop of any later shape has slot 0.
+const MAX_PROP_SLOTS: usize = MAX_PROP_SLOT as usize;
+
+/// The [`MAX_PROP_SLOTS`] most placed distinct shapes of `instances`, most placed first and
+/// the earlier placed first among equals: shape `shapes[n]` is prop slot `n + 1` of the
+/// world's vertices (`SodVertex::prop_slot`). A shape the cap leaves out has no slot.
+pub(super) fn prop_shape_slots(instances: &[Placement]) -> Vec<u16> {
+    let mut counts: Vec<(u16, usize)> = Vec::new();
+    for placement in instances {
+        match counts
+            .iter_mut()
+            .find(|(shape, _)| *shape == placement.shape)
+        {
+            Some((_, count)) => *count = count.saturating_add(1),
+            None => counts.push((placement.shape, 1)),
+        }
+    }
+    // A stable sort keeps first-placed order among equal counts.
+    counts.sort_by_key(|&(_, count)| std::cmp::Reverse(count));
+    counts
+        .into_iter()
+        .take(MAX_PROP_SLOTS)
+        .map(|(shape, _)| shape)
+        .collect()
+}
+
 /// Builds the consolidated static world scenery and terrain intermediate representation.
 ///
 /// The root `WORLD_BASE` holds raised terrain and props; under it come the [`GROUND_NODE`]
@@ -81,6 +107,7 @@ pub(super) fn build_world_ir(
     base_y: f32,
 ) -> SodModelIr {
     let mut ir = SodModelIr::new("WORLD_SCENERY");
+    let slots = prop_shape_slots(instances);
     let overlays = terrain_overlays(anchors, map_areas);
     let terrain = |ir: &mut SodModelIr, patches: Patches| {
         push_terrain(ir, anchors, map_areas, &overlays, patches, base_y);
@@ -115,12 +142,16 @@ pub(super) fn build_world_ir(
         }
     };
     terrain(&mut ir, Patches::Raised { overlay: false });
-    push_props(&mut ir, instances, &grounded, ir_models, base_y, false);
+    push_props(
+        &mut ir, instances, &grounded, ir_models, &slots, base_y, false,
+    );
 
     let base_indices = arena_index(ir.indices.len());
     let base_vertices = arena_index(ir.vertices.len());
     terrain(&mut ir, Patches::Raised { overlay: true });
-    push_props(&mut ir, instances, &grounded, ir_models, base_y, true);
+    push_props(
+        &mut ir, instances, &grounded, ir_models, &slots, base_y, true,
+    );
     let decal_indices = arena_index(ir.indices.len()) - base_indices;
     let decal_vertices = arena_index(ir.vertices.len()) - base_vertices;
 
@@ -155,7 +186,9 @@ pub(super) fn build_world_ir(
             },
         );
     }
-    push_gated_props(&mut ir, root_base, instances, &grounded, ir_models, base_y);
+    push_gated_props(
+        &mut ir, root_base, instances, &grounded, ir_models, &slots, base_y,
+    );
     ir
 }
 
@@ -209,7 +242,7 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
             palette_index: color,
             flags: FLAGS_UNSHADED,
             scenery_class,
-            _padding: 0,
+            prop_slot_low: 0,
         });
     }
     ir.indices
@@ -227,6 +260,7 @@ fn push_props(
     instances: &[Placement],
     grounded: &[Option<Vec<[f32; 3]>>],
     ir_models: &PropModels<'_>,
+    slots: &[u16],
     base_y: f32,
     decals: bool,
 ) {
@@ -260,6 +294,7 @@ fn push_props(
                 pos,
                 ground: ground.as_deref(),
                 base_y,
+                slot: slot_of(slots, shape_id),
             };
             push_prop_mesh(ir, &mesh, placed, false);
         }
@@ -281,6 +316,7 @@ fn push_gated_props(
     instances: &[Placement],
     grounded: &[Option<Vec<[f32; 3]>>],
     ir_models: &PropModels<'_>,
+    slots: &[u16],
     base_y: f32,
 ) {
     let root = parent;
@@ -308,6 +344,7 @@ fn push_gated_props(
             pos,
             ground: ground.as_deref(),
             base_y,
+            slot: slot_of(slots, shape_id),
         };
         for mesh in model.meshes() {
             if mesh.indices.is_empty() {
@@ -409,12 +446,22 @@ pub(super) fn lod_condition(gate: LodGate, base_y: f32) -> VisibilityCondition {
 }
 
 /// Where one placement of a prop lies: its position, its ground-snapped vertices if it has
-/// them ([`ground_decal_vertices`]), and the ground height `base_y`.
+/// them ([`ground_decal_vertices`]), the ground height `base_y`, and its shape's prop slot.
 #[derive(Clone, Copy)]
 struct Placed<'a> {
     pos: [f32; 3],
     ground: Option<&'a [[f32; 3]]>,
     base_y: f32,
+    slot: u16,
+}
+
+/// The prop slot of `shape_id` in `slots` ([`prop_shape_slots`]); 0 for a shape past the cap.
+fn slot_of(slots: &[u16], shape_id: u16) -> u16 {
+    slots
+        .iter()
+        .position(|&shape| shape == shape_id)
+        .and_then(|at| u16::try_from(at.saturating_add(1)).ok())
+        .unwrap_or(0)
 }
 
 impl Placed<'_> {
@@ -474,18 +521,21 @@ fn push_prop_mesh(
                 continue;
             };
             let index = *slot.get_or_insert_with(|| {
-                ir.vertices.push(SodVertex {
-                    position: if on_ground {
-                        [p[0], placed.base_y, p[2]]
-                    } else {
-                        p
-                    },
-                    normal: v.normal,
-                    palette_index: v.palette_index,
-                    flags: v.flags,
-                    scenery_class: SCENERY_PROP,
-                    _padding: 0,
-                });
+                ir.vertices.push(
+                    SodVertex {
+                        position: if on_ground {
+                            [p[0], placed.base_y, p[2]]
+                        } else {
+                            p
+                        },
+                        normal: v.normal,
+                        palette_index: v.palette_index,
+                        flags: v.flags,
+                        scenery_class: SCENERY_PROP,
+                        prop_slot_low: 0,
+                    }
+                    .with_prop_slot(placed.slot),
+                );
                 arena_index(ir.vertices.len() - 1)
             });
             ir.indices.push(index);
@@ -573,7 +623,7 @@ mod tests {
                 palette_index: 10,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                prop_slot_low: 0,
             },
         );
         prop_ir.indices = vec![0, 1, 2, 0, 1, 2];
@@ -597,6 +647,22 @@ mod tests {
         // Should contain ocean quad (4 verts), terrain triangle (3 verts), and prop base + decal
         assert!(world_ir.vertices.len() >= 7);
         assert!(world_ir.indices.len() >= 9);
+
+        // The prop's vertices carry its slot; the ocean and terrain carry none.
+        let slotted: Vec<u16> = world_ir
+            .vertices
+            .iter()
+            .filter(|v| v.scenery_class == SCENERY_PROP)
+            .map(SodVertex::prop_slot)
+            .collect();
+        assert!(!slotted.is_empty() && slotted.iter().all(|&slot| slot == 1));
+        assert!(
+            world_ir
+                .vertices
+                .iter()
+                .filter(|v| v.scenery_class != SCENERY_PROP)
+                .all(|v| v.prop_slot() == 0)
+        );
 
         // Check node separation: WORLD_BASE and WORLD_DECAL
         let base_node = world_ir.nodes.iter().find(|n| n.name == "WORLD_BASE");
@@ -646,6 +712,37 @@ mod tests {
     }
 
     /// Without `MAP.BIN` the world is the ocean quad, then a flat ground quad.
+    #[test]
+    fn prop_slots_number_the_distinct_shapes_by_placement_count_up_to_the_cap() {
+        let at = |shape: u16| Placement {
+            shape,
+            position: [0.0; 3],
+            chain: 0,
+        };
+        // Shape 7 is placed twice, 30 and 9 once each; 30 was placed first.
+        let placements = [at(30), at(7), at(9), at(7)];
+        let slots = prop_shape_slots(&placements);
+        assert_eq!(slots, [7, 30, 9]);
+        assert_eq!(slot_of(&slots, 7), 1);
+        assert_eq!(slot_of(&slots, 9), 3);
+        assert_eq!(slot_of(&slots, 99), 0);
+
+        // 1100 distinct shapes, the last of them placed three times: it takes slot 1, and the
+        // cap leaves out the shapes placed last among the single placements.
+        let mut many: Vec<Placement> = (0..1100).map(at).collect();
+        many.extend([at(1099), at(1099)]);
+        let capped = prop_shape_slots(&many);
+        assert_eq!(capped.len(), MAX_PROP_SLOTS);
+        assert_eq!(slot_of(&capped, 1099), 1);
+        assert_eq!(slot_of(&capped, 0), 2);
+        assert_eq!(slot_of(&capped, 1021), MAX_PROP_SLOT);
+        assert_eq!(
+            slot_of(&capped, 1022),
+            0,
+            "a shape past the cap has no slot"
+        );
+    }
+
     #[test]
     fn test_build_world_ir_without_map_lays_ocean_then_ground() {
         let world_ir = build_world_ir(
@@ -772,7 +869,7 @@ mod tests {
             palette_index: 40,
             flags: VERTEX_FLAG_LINE | flags,
             scenery_class: 0,
-            _padding: 0,
+            prop_slot_low: 0,
         };
         prop.vertices.extend([
             line(-2.0, 0),

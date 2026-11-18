@@ -52,7 +52,7 @@ stuntreel --headless <film>.FLM --all <film>.ALL --tick-range 0..=1342 --sidata 
   The earlier `--frames A..B` is an error.
 * `--width 320 --height 200`: the parity command rejects 320x240 input.
   `--viewport-rows 185` because the 3D view fills 185 rows.
-* `--headless --out-dir` writes the render store ([ADR 0027](../adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)): `frames.zst`, `layers.zst`, `palettes.zst` (the distinct palettes in one zstd frame; `frames.zst` and `layers.zst` hold one zstd frame per film second), `render.json` (written last: film identity, raster geometry, each tick's palette variables, palette index and camera, and the chunk table) and one `preview/sec_NNNN.png` per film second.
+* `--headless --out-dir` writes the render store ([ADR 0027](../adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)): `frames.zst`, `layers.zst`, `palettes.zst` (the distinct palettes in one zstd frame; `frames.zst` and `layers.zst` hold one zstd frame per film second), `shapes.zst` (the shape plane the props-loss split reads, one record per film second; only the Rust store reads it, and a render without it scores without the split), `render.json` (written last: film identity, raster geometry, each tick's palette variables, palette index and camera, and the chunk table) and one `preview/sec_NNNN.png` per film second.
   A directory without one, or with a `render.json` older than schema 3, is refused: re-render it.
 * `--frame-step N` samples every N ticks, which keeps long films from filling the disk.
 * `--sample-count` or `--video` samples off whole ticks, written as `sample_%04d.png` (1-based); these are not parity inputs.

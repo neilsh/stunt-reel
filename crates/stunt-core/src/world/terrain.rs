@@ -235,7 +235,7 @@ pub(super) fn push_terrain(
                 palette_index: area.color,
                 flags: FLAGS_UNSHADED,
                 scenery_class: SCENERY_TERRAIN,
-                _padding: 0,
+                prop_slot_low: 0,
             });
         }
         for k in 1..(arena_index(area.verts.len()) - 1) {

@@ -34,7 +34,7 @@ fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
         palette_index: 40,
         flags: 4,
         scenery_class: 0,
-        _padding: 0,
+        prop_slot_low: 0,
     };
     let mut ir = SodModelIr::new(name);
     ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
@@ -337,6 +337,7 @@ fn world_is_drawn_when_present() {
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
             view_facing: Vec::new(),
+            prop_shapes: Vec::new(),
         };
         let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
         let Some((w, h, drawn)) = render(&scene) else {
@@ -361,7 +362,43 @@ fn world_of(ir: SodModelIr) -> World {
         terrain: TerrainSurface::default(),
         tap_failures: Vec::new(),
         view_facing: Vec::new(),
+        prop_shapes: Vec::new(),
     }
+}
+
+/// A world prop vertex's slot reaches the page's shape words, and nothing else carries one: a
+/// terrain triangle and the sky have no shape word.
+#[test]
+fn a_world_props_slot_reaches_the_shape_plane() {
+    common::gpu_test(|| {
+        let shapes_of = |class: u8, slot: u16| {
+            let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
+            for vertex in &mut ir.vertices {
+                vertex.scenery_class = class;
+                *vertex = vertex.with_prop_slot(slot);
+            }
+            let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world_of(ir)));
+            let mut test = common::gpu_or_skip(&scene)?;
+            let page = test.draw(&scene.frame(0.0));
+            let slots: Vec<u32> = page
+                .layers()
+                .iter()
+                .zip(page.shapes())
+                .filter(|&(&layer, _)| layer != LAYER_NONE)
+                .map(|(_, &word)| word)
+                .collect();
+            Some((slots, page.shapes().to_vec()))
+        };
+        let Some((drawn, all)) = shapes_of(SCENERY_PROP, 700) else {
+            return;
+        };
+        assert!(drawn.len() > 100);
+        assert!(drawn.iter().all(|&word| word == 700 << 16), "{drawn:?}");
+        // Every pixel the triangle leaves uncovered has no shape word.
+        assert_eq!(all.iter().filter(|&&word| word != 0).count(), drawn.len());
+        let (terrain, _) = shapes_of(SCENERY_TERRAIN, 0).expect("adapter");
+        assert!(terrain.iter().all(|&word| word == 0));
+    });
 }
 
 /// Rows a world sliver of scenery class `class` draws, and the view's rows: a 2 m tall
@@ -461,7 +498,7 @@ fn ground_gradient(half: f32, west: u8, east: u8) -> SodModelIr {
         palette_index: index,
         flags: 4,
         scenery_class: 0,
-        _padding: 0,
+        prop_slot_low: 0,
     };
     let mut ir = SodModelIr::new("GROUND");
     ir.vertices = vec![
@@ -735,7 +772,7 @@ fn ground_vertex(x: f32, z: f32, palette_index: u8, flags: u8, class: u8) -> Sod
         palette_index,
         flags,
         scenery_class: class,
-        _padding: 0,
+        prop_slot_low: 0,
     }
 }
 
@@ -844,7 +881,7 @@ fn a_ground_outline_does_not_cover_the_line_after_it() {
             palette_index: RAIL,
             flags: flags | UNSHADED,
             scenery_class: SCENERY_PROP,
-            _padding: 0,
+            prop_slot_low: 0,
         })
         .to_vec();
         let rail_indices = vec![0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2];

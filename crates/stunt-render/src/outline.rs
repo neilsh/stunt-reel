@@ -194,7 +194,7 @@ mod tests {
             palette_index,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            prop_slot_low: 0,
         }
     }
 

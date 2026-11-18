@@ -685,6 +685,7 @@ mod tests {
                     }],
                 },
             ],
+            prop_shapes: Vec::new(),
         };
         let scene = FilmScene::new(timeline, HashMap::from([(9, tree)]), Some(world));
         let frame = scene.frame(0.0);
@@ -770,7 +771,7 @@ mod tests {
             palette_index: 7,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            prop_slot_low: 0,
         };
         mesh.vertices = vec![corner; 3];
         mesh.indices = vec![0, 1, 2];
@@ -791,6 +792,7 @@ mod tests {
                 position: [-2.0, 1.0, 5.0],
                 gates: Vec::new(),
             }],
+            prop_shapes: Vec::new(),
         };
         let mut scene = FilmScene::new(timeline, HashMap::from([(9, tree)]), Some(world));
         let before = scene.frame(0.0);
@@ -976,6 +978,7 @@ mod tests {
                     near: true,
                 }],
             }],
+            prop_shapes: Vec::new(),
         };
         let shapes = (1..=4).map(|id| (id, SodModelIr::new("SHAPE"))).collect();
         let scene = FilmScene::new(timeline, shapes, Some(world));

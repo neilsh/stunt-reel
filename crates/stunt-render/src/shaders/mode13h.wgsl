@@ -45,7 +45,7 @@ fn widen_line(clip: vec4<f32>, other: vec4<f32>, flags: u32) -> vec4<f32> {
 
 struct ModelUniform {
     model_matrix: mat4x4<f32>,
-    layer: vec4<u32>, // x: layer id written to the plane target, y: nonzero for a shadow
+    layer: vec4<u32>, // x: layer id written to the plane target, y: nonzero for a shadow, z: shape word (shape id + 1, 0 for none)
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
@@ -55,7 +55,7 @@ struct ModelUniform {
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: padding
+    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: low 8 bits of the prop slot
 };
 
 struct VertexOutput {
@@ -71,6 +71,7 @@ struct VertexOutput {
     // the screen-space linear interpolation of `shade` (`fragment_index`).
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
+    @location(6) @interpolate(flat) shape: u32,
 };
 
 // Whether `x` is NaN or infinite: all exponent bits set. WGSL has no isNan, and `x != x`
@@ -103,8 +104,8 @@ fn fragment_index(in: VertexOutput) -> u32 {
 
 struct PlaneOutput {
     @location(0) color: vec4<f32>,
-    // Layer id in bits 8.., unlit palette index in bits 0..8.
-    @location(1) plane: u32,
+    // x: layer id in bits 8.., unlit palette index in bits 0..8; y: the shape word (`ModelUniform` shape word, prop slot << 16).
+    @location(1) plane: vec2<u32>,
 };
 
 @vertex
@@ -131,6 +132,10 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.shade_w = out.shade * w;
     out.w = w;
     out.layer = model.layer.x + in.attr.z;
+    // The draw's shape word in bits 0..16 and, for a world prop vertex, its 10-bit prop slot
+    // above: `prop_slot_low` and the top two bits of the flags (`SodVertex::prop_slot`).
+    let prop_slot = in.attr.w | ((in.attr.y >> 6u) << 8u);
+    out.shape = model.layer.z | (prop_slot << 16u);
 
     // Polygons are drawn at their palette index with no directional lighting: against
     // PLAYONE captures of CTRY.FLM the unlit colour scores higher than any sun/ambient ramp
@@ -154,7 +159,7 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
     let index = fragment_index(in);
     let coords = vec2<i32>(i32(index), i32(in.light_level & 31u));
     out.color = textureLoad(palette_lut, coords, 0);
-    out.plane = (in.layer << 8u) | index;
+    out.plane = vec2<u32>((in.layer << 8u) | index, in.shape);
     return out;
 }
 
@@ -208,6 +213,6 @@ fn fs_sky_plane(in: SkyVertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
     let index = sky_index(in.ndc);
     out.color = textureLoad(palette_lut, vec2<i32>(i32(index), 31), 0);
-    out.plane = index;
+    out.plane = vec2<u32>(index, 0u);
     return out;
 }

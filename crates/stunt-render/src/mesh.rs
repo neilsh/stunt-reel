@@ -930,7 +930,7 @@ mod tests {
             palette_index: 7,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            prop_slot_low: 0,
         };
         let mut ir = SodModelIr::new("QUAD");
         ir.vertices = vec![
@@ -963,7 +963,7 @@ mod tests {
                 palette_index: i,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                prop_slot_low: 0,
             })
             .collect();
         ir.indices = indices.to_vec();
@@ -1332,7 +1332,7 @@ mod tests {
             palette_index: 7,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            prop_slot_low: 0,
         };
         let mut ir = SodModelIr::new("TWO");
         ir.vertices = vec![

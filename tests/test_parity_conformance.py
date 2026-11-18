@@ -179,6 +179,7 @@ def test_report_fixture_round_trips_through_the_adapter(tmp_path: Path) -> None:
     _assert_close_optional(back.mean_iou_scored, report.mean_iou_scored)
     _assert_close_optional(back.mean_index_agreement_scored, report.mean_index_agreement_scored)
     _assert_close_map(back.mean_loss_by_class_scored, report.mean_loss_by_class_scored)
+    _assert_close_map(back.mean_loss_by_shape_scored, report.mean_loss_by_shape_scored)
 
     assert len(back.per_frame) == len(report.per_frame)
     for back_frame, frame in zip(back.per_frame, report.per_frame, strict=True):

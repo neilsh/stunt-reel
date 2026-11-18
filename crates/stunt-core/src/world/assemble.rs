@@ -8,7 +8,7 @@ use crate::contracts::{ShapeExtent, SodModelIr, VisibilityCondition};
 use crate::sod::{ShadeLight, faces_view};
 
 use super::map_bin::parse_map_bin;
-use super::mesh::{PropModels, build_world_ir, lod_condition};
+use super::mesh::{PropModels, build_world_ir, lod_condition, prop_shape_slots};
 use super::scenery::{LodGate, Placement, ScnStop, place_props, reaches_a_pixel};
 use super::tap_props::{TapFailure, anchored_models};
 use super::terrain::{GroundPlane, TerrainSurface};
@@ -73,6 +73,10 @@ pub struct World {
     /// [`Self::ir`] because their rotation follows the camera; each frame draws them
     /// (`FilmScene::frame`).
     pub view_facing: Vec<FacingProp>,
+    /// The shape ids of [`Self::ir`]'s props by prop slot: the vertices of a prop of shape
+    /// `prop_shapes[n]` carry `SodVertex::prop_slot` `n + 1`. At most 1023 distinct shapes, the most placed first; a prop
+    /// of a later one has slot 0.
+    pub prop_shapes: Vec<u16>,
 }
 
 /// A prop drawn turned with the camera's heading rather than baked into the world mesh.
@@ -181,6 +185,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
 
     let terrain = TerrainSurface::new(pts, &map_areas, base_y);
     let ir = build_world_ir(pts, &map_areas, &terrain, &fixed, &models, base_y);
+    let prop_shapes = prop_shape_slots(&fixed);
     // `build_world_ir` always emits the ocean quad, so the extent exists.
     let bounds = ir.extent()?;
     Some(World {
@@ -192,6 +197,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         terrain,
         tap_failures,
         view_facing,
+        prop_shapes,
     })
 }
 

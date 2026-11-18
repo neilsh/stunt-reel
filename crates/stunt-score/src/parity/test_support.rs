@@ -138,6 +138,7 @@ pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
             }
         })
         .collect();
+    let no_shapes = vec![0u32; indices.len()];
     let grey: Palette = std::array::from_fn(|i| {
         let v = u8::try_from(i * 53 % 256).unwrap();
         (v, v, v)
@@ -150,7 +151,9 @@ pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
             Picture::Grey => &grey,
             Picture::Matching => &matching,
         };
-        let palette_index = writer.push(tick, palette, &indices, &layers).unwrap();
+        let palette_index = writer
+            .push(tick, palette, &indices, &layers, &no_shapes)
+            .unwrap();
         entries.push(RenderTick {
             tick,
             palette: RenderPalette {

@@ -85,7 +85,7 @@ fn sod_vertex_size_alignment_and_field_offsets() {
         palette_index: 42,
         flags: 1,
         scenery_class: 0,
-        _padding: 0,
+        prop_slot_low: 0,
     };
 
     let base_ptr = &raw const dummy as usize;
@@ -94,14 +94,14 @@ fn sod_vertex_size_alignment_and_field_offsets() {
     let pal_ptr = &raw const dummy.palette_index as usize;
     let flags_ptr = &raw const dummy.flags as usize;
     let class_ptr = &raw const dummy.scenery_class as usize;
-    let pad_ptr = &raw const dummy._padding as usize;
+    let slot_ptr = &raw const dummy.prop_slot_low as usize;
 
     assert_eq!(pos_ptr - base_ptr, 0, "position offset must be 0");
     assert_eq!(norm_ptr - base_ptr, 12, "normal offset must be 12");
     assert_eq!(pal_ptr - base_ptr, 24, "palette_index offset must be 24");
     assert_eq!(flags_ptr - base_ptr, 25, "flags offset must be 25");
     assert_eq!(class_ptr - base_ptr, 26, "scenery_class offset must be 26");
-    assert_eq!(pad_ptr - base_ptr, 27, "padding offset must be 27");
+    assert_eq!(slot_ptr - base_ptr, 27, "prop_slot_low offset must be 27");
 }
 
 /// Gate G03: `SodVertex` roundtrips through its raw 28 bytes.
@@ -117,7 +117,7 @@ fn sod_vertex_pod_roundtrip() {
         palette_index: 215,
         flags: 0x03,
         scenery_class: 0,
-        _padding: 0,
+        prop_slot_low: 0,
     };
 
     // Treat as raw 28 bytes
@@ -133,7 +133,7 @@ fn sod_vertex_pod_roundtrip() {
     assert_eq!(recovered.palette_index, original.palette_index);
     assert_eq!(recovered.flags, original.flags);
     assert_eq!(recovered.scenery_class, original.scenery_class);
-    assert_eq!(recovered._padding, 0);
+    assert_eq!(recovered.prop_slot_low, 0);
 }
 
 // =============================================================================

@@ -171,7 +171,7 @@ fn process_polygon_batch(
                     palette_index,
                     flags: poly.flags,
                     scenery_class: 0,
-                    _padding: 0,
+                    prop_slot_low: 0,
                 });
                 weld_map.insert(weld_key, new_idx);
                 poly_indices.push(new_idx);
@@ -235,7 +235,7 @@ fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<Weld
                 palette_index: poly.palette_index,
                 flags,
                 scenery_class: 0,
-                _padding: 0,
+                prop_slot_low: 0,
             });
             index
         });

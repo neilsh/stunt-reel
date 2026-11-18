@@ -36,6 +36,11 @@ fn planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
     (indices, layers)
 }
 
+/// The shape plane for `tick`, differing per tick and per pixel.
+fn shapes(tick: u32) -> Vec<u32> {
+    (0..12).map(|pixel| tick * 7 + pixel).collect()
+}
+
 /// Writes ticks 7, 9 and 40 (second 0), none in second 1, and 101 and 120 (second 2),
 /// alternating two palettes, then the record.
 fn write_store(dir: &Path) -> Vec<u32> {
@@ -46,7 +51,7 @@ fn write_store(dir: &Path) -> Vec<u32> {
         let (indices, layers) = planes(tick);
         let palette = grey(if row % 2 == 0 { 0 } else { 10 });
         let palette_index = writer
-            .push(tick, &palette, &indices, &layers)
+            .push(tick, &palette, &indices, &layers, &shapes(tick))
             .expect("push");
         entries.push(RenderTick {
             credits: false,
@@ -104,6 +109,15 @@ fn every_tick_round_trips_across_seconds_and_an_empty_second() {
                 .map(|&l| u16::try_from(l).unwrap())
                 .collect::<Vec<_>>()
         );
+        assert_eq!(
+            frame.shapes,
+            Some(
+                shapes(tick)
+                    .iter()
+                    .map(|&s| u16::try_from(s).unwrap())
+                    .collect()
+            )
+        );
         let row = ticks.iter().position(|&t| t == tick).unwrap();
         assert_eq!(frame.palette, grey(if row % 2 == 0 { 0 } else { 10 }));
     }
@@ -133,20 +147,37 @@ fn the_writer_refuses_bad_planes_and_unordered_ticks() {
     let mut writer = StoreWriter::new(&dir, &geometry());
     let (indices, layers) = planes(3);
     let error = writer
-        .push(3, &grey(0), &indices[..11], &layers)
+        .push(3, &grey(0), &indices[..11], &layers, &shapes(3))
         .unwrap_err();
     assert!(error.to_string().contains("expected 12 for 4x3"), "{error}");
     let mut wide = layers.clone();
     wide[5] = 65_536;
-    let error = writer.push(3, &grey(0), &indices, &wide).unwrap_err();
+    let error = writer
+        .push(3, &grey(0), &indices, &wide, &shapes(3))
+        .unwrap_err();
     assert!(
         error
             .to_string()
             .contains("pixel 5 layer 65536 does not fit"),
         "{error}"
     );
-    writer.push(3, &grey(0), &indices, &layers).expect("push");
-    let error = writer.push(3, &grey(0), &indices, &layers).unwrap_err();
+    let mut wide_shapes = shapes(3);
+    wide_shapes[2] = 65_536;
+    let error = writer
+        .push(3, &grey(0), &indices, &layers, &wide_shapes)
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("pixel 2 shape word 65536 does not fit"),
+        "{error}"
+    );
+    writer
+        .push(3, &grey(0), &indices, &layers, &shapes(3))
+        .expect("push");
+    let error = writer
+        .push(3, &grey(0), &indices, &layers, &shapes(3))
+        .unwrap_err();
     assert!(
         error.to_string().contains("does not follow tick Some(3)"),
         "{error}"
@@ -255,6 +286,39 @@ fn a_picture_that_is_not_palette_lookup_is_refused() {
     let error = check_derivable(&palette, &indices, &rgba, 3).unwrap_err();
     assert!(
         error.contains("pixel (1, 0) is (9, 2, 2) but palette[2] is (2, 2, 2)"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_render_without_shapes_zst_has_no_shape_plane() {
+    let dir = temp_dir("no-shapes");
+    write_store(&dir);
+    fs::remove_file(dir.join(SHAPE_FILE)).unwrap();
+    let mut store = RenderStore::open(&dir).expect("open");
+    let frame = store.frame(9).expect("frame");
+    assert_eq!(frame.shapes, None);
+    assert_eq!(frame.layers.len(), 12);
+}
+
+#[test]
+fn a_shape_file_that_does_not_match_the_chunk_table_is_refused() {
+    let dir = temp_dir("bad-shapes");
+    write_store(&dir);
+    let path = dir.join(SHAPE_FILE);
+    let bytes = fs::read(&path).unwrap();
+
+    // A truncated record runs past the file's end.
+    fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
+    let error = RenderStore::open(&dir).err().expect("refused").to_string();
+    assert!(error.contains("runs past the file"), "{error}");
+
+    // A whole record missing leaves fewer records than chunks.
+    let first = usize::try_from(u64::from_le_bytes(bytes[..8].try_into().unwrap())).unwrap();
+    fs::write(&path, &bytes[..8 + first]).unwrap();
+    let error = RenderStore::open(&dir).err().expect("refused").to_string();
+    assert!(
+        error.contains("holds 1 records but render.json has 2 chunks"),
         "{error}"
     );
 }

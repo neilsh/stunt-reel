@@ -155,6 +155,8 @@ pub struct PageView<'a> {
     pub indices: &'a [u8],
     /// Layer ids.
     pub layers: &'a [u32],
+    /// Shape words: `shape id + 1` of the prop drawing each pixel, 0 for none.
+    pub shapes: &'a [u32],
 }
 
 /// Collects one render directory: its planes through the store, and its document, written last.
@@ -229,7 +231,9 @@ impl RenderJournal {
                 message: format!("tick {tick}: {message}"),
             }
         })?;
-        let palette_index = self.store.push(tick, &palette, page.indices, page.layers)?;
+        let palette_index =
+            self.store
+                .push(tick, &palette, page.indices, page.layers, page.shapes)?;
         self.ticks.push(RenderTick {
             tick,
             palette: render_palette(controls),
