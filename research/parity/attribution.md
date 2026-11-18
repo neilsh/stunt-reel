@@ -195,6 +195,9 @@ The 18 blank frames average 0.4803 SSIM against 0.8856 for the other 89; the fil
 
 Of the seven references' `render.json` cameras, only `balloon`'s and `intro`'s point straight down, and no other film scores such a frame: `intro`'s camera points down on ticks 12 to 760, 1520 to 2055 and 3642 to 3818, all faded to black and unscored.
 Widening the capture sky to 224..=238 is not free: it raises `bomb` 0.9118 -> 0.9540 but lowers `traintnl` 0.9659 -> 0.9608, whose 19,850 capture pixels at 224 to 226 all fall on geometry we draw.
+Where looked at, those pixels are shape paint, not our geometry drawn over sky: on `traintnl` a blue rectangle on a dark red wall under a red roof holds 18,144 of them and the rear car's windows are 224 too, and on `bomb`, of the 105,219 pixels at 224 (as many as lie on our geometry), 104,958 are an emblem on a building wall, while its 59,520 at 226 are zenith sky in the top five rows.
+So the scorer keeps 227..=238 and `balloon`'s zenith frames still score as geometry ([`method.md`](method.md) section 2.0).
+_Source: [who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
 Follow-ups: the camera [#615](https://github.com/neilsh/stunt-reel/issues/615), the scorer's sky band [#616](https://github.com/neilsh/stunt-reel/issues/616), the zenith bands and the sun [#617](https://github.com/neilsh/stunt-reel/issues/617).
 
 _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)._

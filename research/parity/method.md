@@ -82,6 +82,15 @@ The mask before it counted only the capture's single most common sky index as sk
 IoU figures recorded before that change are on the old scale and are not comparable with it.
 _Source: [2026-10-23: the sky mask becomes the 227 to 238 band](../../work/2026-11/distill-method/journal.md#2026-10-23-the-sky-mask-becomes-the-227-to-238-band)._
 
+The band leaves out 224 to 226, though `PLAYONE` writes entries 224 to 238 as one sky gradient from zenith to horizon ([`palette-fade.md`](../playone-exe/palette-fade.md) section 3.1), because shapes paint those indices too.
+On `traintnl` all 19,850 capture pixels at 224 to 226 are index 224 and lie on our geometry on the `76872e89` render; 18,144 of them are a blue rectangle on a dark red wall under a red roof, 2,016 on each of 9 frames, and the train's red rear car has windows of 224.
+On `bomb` 104,958 of the 105,219 pixels at 224 are an emblem on a building wall, while the 59,520 at 226 are the zenith sky in the top five rows.
+`location`'s helicopter windows are 225 and 226.
+So an index band cannot tell the zenith sky from that paint: widening it to 224..=238 would count the rectangle and the emblem as sky, and was not adopted.
+`balloon`'s zenith sky at 224 to 226 still counts as geometry ([`attribution.md`](attribution.md) section 7).
+A test that counts a 224 to 226 pixel as sky when its run of such pixels reaches row 0 or touches the 227 to 238 band separates `bomb`'s two kinds exactly, but fails where the balloon cuts the sky off from both (`balloon` tick 243, 16,995 pixels); nothing is adopted yet ([#718](https://github.com/neilsh/stunt-reel/issues/718)).
+_Source: [2026-11-18: who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
+
 ### 2.1 Fade floor
 
 `PLAYONE.EXE` fades its palette linearly to black near the end of `CTRY.FLM`, from about tick 990 to 1337.
@@ -170,8 +179,9 @@ How to read the rows of the [parity log](../../work/2026-10/parity-log/log.md), 
 
 ## Ruled out
 
-None recorded here.
-Rejected measurement approaches are in [`metric-bench.md`](metric-bench.md#ruled-out) and [`evidence-limits.md`](evidence-limits.md#ruled-out).
+* **Capture sky by index alone at 224 to 226** (2026-11-18): shapes paint those indices on `traintnl`, `bomb` and `location`, so widening the band to 224..=238 counts their paint as sky (section 2.0; [who paints 224 to 226](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)).
+
+Other rejected measurement approaches are in [`metric-bench.md`](metric-bench.md#ruled-out) and [`evidence-limits.md`](evidence-limits.md#ruled-out).
 
 ## Open questions
 
