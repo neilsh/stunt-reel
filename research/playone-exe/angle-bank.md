@@ -100,8 +100,7 @@ _Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_
 ## Ruled out
 
 * **A per-actor value for operands `0x10`..`0x14`, `0x18`, `0x1A`.**
-  One caller per frame, before the object loop; `BX = 0x4888` on every stop; no writer but `0x1D96` in the bank watch.
-  [Journal](../../work/2026-11/456_film-vars-10-12/journal.md#2026-11-13-the-bank-writer-read-and-broken-on).
+  One caller per frame, before the object loop; `BX = 0x4888` on every stop; no writer but `0x1D96` in the bank watch. [Journal](../../work/2026-11/456_film-vars-10-12/journal.md#2026-11-13-the-bank-writer-read-and-broken-on).
 * **`0x8120` as the sign of var 10's change** ([`palette-fade.md`](palette-fade.md) § 3.2 before this note): it is the change itself, saturated at 255; the live stops show `0x7F00`, `0xA000`, `0x4800` and others.
 * **`0x8122` as `(var 10 & 0xFF) << 8` of the current frame** ([`sod-vm-execution.md`](sod-vm-execution.md) § 8.7 before this note): it is the previous call's var 10; at tick 1342 var 10 is 12928 (`0x3280`) and the word is `0x0100`, from 12801 (`0x3201`) one frame earlier.
 

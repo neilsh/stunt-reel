@@ -139,11 +139,11 @@ Under the black, `PLAYONE` still writes index 193 where the render writes sky in
 
 ## Open questions
 
-1. Find the INTRO ticks 2690-2850 view: slot selection, aim-at target or Euler composition (section 2.1).
-   ([#70](https://github.com/neilsh/stunt-reel/issues/70)) Answered 2026-11-06: `PLAYONE`'s live view slot, eye and angles match ours; the sand is `SCENERY` tiles, drawn since the ground-decal change.
+1. Find the INTRO ticks 2690-2850 view: slot selection, aim-at target or Euler composition (section 2.1). ([#70](https://github.com/neilsh/stunt-reel/issues/70))
+   Answered 2026-11-06: `PLAYONE`'s live view slot, eye and angles match ours; the sand is `SCENERY` tiles, drawn since the ground-decal change.
    Still open there: the fireball at ticks 1506 and 2731-2742 ([#222](https://github.com/neilsh/stunt-reel/issues/222)), and why the old capture held a sand frame through 2850.
-2. Find which path places the parked aircraft in the INTRO montage (section 2.3).
-   ([#72](https://github.com/neilsh/stunt-reel/issues/72)) Answered 2026-11-04: the ordinary slot path; they draw where the capture does at ticks 1350 and 1383.
+2. Find which path places the parked aircraft in the INTRO montage (section 2.3). ([#72](https://github.com/neilsh/stunt-reel/issues/72))
+   Answered 2026-11-04: the ordinary slot path; they draw where the capture does at ticks 1350 and 1383.
    Still open there: the sand ground (section 2.2) and the hit flash of slot 15, shape `0x105`.
 3. Draw the credits overlay (`0x99` lines, cleared by `0x98`) for the INTRO title cards (section 2.4).
    Answered 2026-11-01: drawn from `PFONT.BIN` by the rule at `0x0F7B`, pixel-exact on the capture ([`pfont.md`](../formats/auxiliary/pfont.md)). ([#75](https://github.com/neilsh/stunt-reel/issues/75))

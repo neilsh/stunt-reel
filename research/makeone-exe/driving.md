@@ -156,8 +156,8 @@ Twelve stale `dosbox-x.exe` processes from earlier sessions were running through
    Which other films differ is open.
 9. `MAKEONE` sometimes writes the archive and never leaves graphics mode (`COUNT` on both builds, `EXIT` and `EXIT2` on the patched one), so `make-all` timed out on a good archive.
    A **MAKEONE hang** is now handled by policy: when the timeout passes and the `.ALL` is non-empty and its size and mtime have stayed unchanged for 60 s, `make-all` accepts it on either build, kills MAKEONE, logs a warning, runs `check_archive` and records `returned_to_dos: false` in `meta.json`; an archive still changing, or empty, is refused.
-   What MAKEONE waits for is still unknown ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3).
-   ([#76](https://github.com/neilsh/stunt-reel/issues/76)) `TOD.FLM` on Patch 3 stalled once more, on 2026-11-09 (two 600 s attempts, no `.ALL` written, the log never shows the switch back to mode 03h); 4 of 4 reruns the same evening finished in 24 to 28 s with one identical `TOD.ALL`, so the stall did not recur in those 4 reruns (it is not a deterministic hang on TOD plus Patch 3), and no guest screenshot of a stall exists.
+   What MAKEONE waits for is still unknown ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). ([#76](https://github.com/neilsh/stunt-reel/issues/76))
+   `TOD.FLM` on Patch 3 stalled once more, on 2026-11-09 (two 600 s attempts, no `.ALL` written, the log never shows the switch back to mode 03h); 4 of 4 reruns the same evening finished in 24 to 28 s with one identical `TOD.ALL`, so the stall did not recur in those 4 reruns (it is not a deterministic hang on TOD plus Patch 3), and no guest screenshot of a stall exists.
    Cause open: an early stall (no archive was written, so neither attempt was a MAKEONE hang as defined above), or contention with other emulators running then (not recorded).
    If it recurs, record the screenshot and what else was running. ([#355](https://github.com/neilsh/stunt-reel/issues/355))
 

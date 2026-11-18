@@ -300,8 +300,7 @@ The `focal_dist` conversion above, and the table below, come from the unverified
 | `1200` | $11.4^\circ$ | Extreme telephoto | Long-distance runway spotter |
 
 The authoring screen's zoom runs 0.2 to 7.99 with a default of 1.0 (*handbook* p.80).
-How that scalar maps to `focal_dist` is not established; a linear `focal_dist = 289 × zoom` reading would place the authored range near 58 to 2309, or $\text{FOV}_y$ between $5.9^\circ$ and $128.7^\circ$, bracketing every sample above.
-`[Hypothesis]`
+How that scalar maps to `focal_dist` is not established; a linear `focal_dist = 289 × zoom` reading would place the authored range near 58 to 2309, or $\text{FOV}_y$ between $5.9^\circ$ and $128.7^\circ$, bracketing every sample above. `[Hypothesis]`
 
 ### 3.6 Attribute-Preserving Vertex Welding
 

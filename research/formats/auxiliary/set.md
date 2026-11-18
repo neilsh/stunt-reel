@@ -158,8 +158,7 @@ Bit:   7   6   5   4   3   2   1   0
            +---------------------- Visibility flag (legacy display enable)
 ```
 
-On the 715 retail records, bit 0, drawn here as unused, is set in every record, and bits 1 and 2 are set only in recording slots (§ 3.1).
-`[Bounded Observation]`
+On the 715 retail records, bit 0, drawn here as unused, is set in every record, and bits 1 and 2 are set only in recording slots (§ 3.1). `[Bounded Observation]`
 
 ### 3.3 Prop Placement Flags (`placement_flags`, `+0x03`)
 
@@ -173,15 +172,13 @@ Bit:   7   6   5   4   3   2   1   0
 ```
 
 On the 715 retail records, bit 0 is set in every record.
-The drawing does not cover the rest, so this bit map is unconfirmed: bit 1 is set in 688, bit 2 in 51, bit 3 in 333 and bit 4 in 504, though the drawing leaves bits 3 to 7 reserved; bits 5 to 7 are never set.
-`[Bounded Observation]`
+The drawing does not cover the rest, so this bit map is unconfirmed: bit 1 is set in 688, bit 2 in 51, bit 3 in 333 and bit 4 in 504, though the drawing leaves bits 3 to 7 reserved; bits 5 to 7 are never set. `[Bounded Observation]`
 
 ### 3.4 Prop Override Flags (`override_flags`, `+0x34`)
 
 The meaning of this byte is unknown.
 On the 715 retail records it is `0x00`, `0x40`, `0x80` or `0xC0` in 712, so its variation sits in bits 6 and 7.
-The hidden and locked bits this section used to place at bits 2 and 3 are set in 2 records, both recording slots, and are withdrawn.
-`[Bounded Observation]`
+The hidden and locked bits this section used to place at bits 2 and 3 are set in 2 records, both recording slots, and are withdrawn. `[Bounded Observation]`
 
 ### 3.5 File Layout: the Event Table at `0x54`
 
@@ -191,8 +188,7 @@ $$\text{size} = \texttt{0x54} + 67 \times \text{events} + 64 \times \text{props}
 
 [`set.ksy`](set.ksy) is the executable definition, including the header field names, the 67-byte record and its eight 7-byte THEN slots; this section does not repeat them.
 
-For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x97`, which is exactly the offset the 2004 notes found by deleting a prop.
-`[Supported Inference]`
+For `BOMBING.SET` the event table is `0x54`–`0x96` and the props begin at `0x97`, which is exactly the offset the 2004 notes found by deleting a prop. `[Supported Inference]`
 
 **Verification.**
 Every set with a printed dump reproduces its own size from its printed counts: BOMBING 8/1 → 663, BOMBING2 7/1 → 599, DRIVING 15/8 → 1580, FIND&HIT 4/2 → 474, FIND&HT2 4/2 → 474, REALISM 39/10 → 3250.
@@ -245,8 +241,7 @@ So the operand is a signed 16-bit whose unit belongs to the property, not to the
   Enumerating the rest is property work, not event work.
 
 An 11-byte clause header plus eight 7-byte slots is 67 bytes, the record size, and the last slot ends where the prop table starts.
-The second AND qualifier's type printed no change when flipped, so `and_2_type` is inferred from the record's spacing rather than observed.
-`[Supported Inference]`
+The second AND qualifier's type printed no change when flipped, so `and_2_type` is inferred from the record's spacing rather than observed. `[Supported Inference]`
 
 Reading the record as a 55-byte base plus 67 per further event, or as 12-byte blocks, or as a table after the props, is withdrawn: the prop-count arithmetic fits those splits equally, and only the flips distinguish them.
 

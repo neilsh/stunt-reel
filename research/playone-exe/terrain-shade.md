@@ -173,8 +173,7 @@ vertex = (idx << 8) | lowbyte(s >> 1)
 ```
 
 Opcode `0x02BE` (`GVPOLY16`, handler `0x9A24`; Patch #3 `0x8C2F`) runs the same per-vertex loop with `sar ax, 2` (`c1 f8 02` at `0x9AB8`, Patch #3 `0x8CC3`) in place of `sar ax, 1`, so `idx = max(0, highbyte(s >> 2) + G) + base`, one ramp step per 1,024 units of `s`.
-Its flat variant at `0x9A58` (used when `work:[0x806B] == 0`) does `sar ax, 2` (`0x9A5C`, Patch #3 `0x8C67`), clamps at 0, then `shr ax, 1`, so `idx = base + (s >> 11)` for `s >= 0`.
-`[Established]`, static, both builds.
+Its flat variant at `0x9A58` (used when `work:[0x806B] == 0`) does `sar ax, 2` (`0x9A5C`, Patch #3 `0x8C67`), clamps at 0, then `shr ax, 1`, so `idx = base + (s >> 11)` for `s >= 0`. `[Established]`, static, both builds.
 _Source: [GVPOLY16 shifts its shade by two](../../work/2026-11/472_research-contradictions/journal.md#2026-11-14-gvpoly16-shifts-its-shade-by-two-and-reads-its-ramp-after-the-registers)._
 
 **The global offset `G` is 0 in the shipped build.**

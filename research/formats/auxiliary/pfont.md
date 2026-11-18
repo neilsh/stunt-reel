@@ -62,14 +62,11 @@ Two checks against the capture: every frame of `vault-intro/frames/006` that sho
 ## 4. Open Questions & Analysis Backlog
 
 1. **Odd widths.**
-   Every string on the captured title cards has an even width, so the capture cannot tell `right = 319` from `318`; the inclusive 184 bottom row (the film view's 185 rows) suggests 319.
-   `[Hypothesis]`.
+   Every string on the captured title cards has an even width, so the capture cannot tell `right = 319` from `318`; the inclusive 184 bottom row (the film view's 185 rows) suggests 319. `[Hypothesis]`.
 2. **Codes past 127.**
    `0x58D0` indexes the width table by the full byte, so a code at or above `0x80` would read past it.
-   No film text has one; the parser gives such codes no width and no glyph.
-   `[Unknown]`.
-3. **Where the glyph rows are loaded** and which routine draws UI dialog text with them.
-   `[Unknown]`.
+   No film text has one; the parser gives such codes no width and no glyph. `[Unknown]`.
+3. **Where the glyph rows are loaded** and which routine draws UI dialog text with them. `[Unknown]`.
 4. **Clipping.**
    Whether the text driver `[0x225A]` clips to the clip rectangle is `[Unknown]`; the renderer clips only to the page, which no film text reaches past.
 5. **Credits ink and the cursor share index 255.**

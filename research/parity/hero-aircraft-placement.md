@@ -29,8 +29,7 @@ Method: [`method.md`](method.md); score history: journal entries, and before the
 * **Position, re-measured after #132** (2026-11-02 at `793895e`, square raster pixels and a 256 px focal length, [`framing-and-actors.md` § 2](framing-and-actors.md#2-projection-square-raster-pixels-focal-length-256-adopted); [log row](../../work/2026-10/parity-log/log.md)).
   Same probes and frames: best `dy` -2 to +12, mostly +8 to +10 (27 and 21 of 74 frames; +4 on 15, +6 on 9), best `dx` -8 to +6, centred on -2 to +2 (44 frames), mean hit fraction 0.77.
   World optimum, same resampling: CTRY rows -10..+10 0.7353, 0.7464, 0.7638, 0.7871, 0.8082, **0.8291** (0), 0.8018, 0.7763, 0.7607, 0.7527, 0.7470; columns -8, -4, +4, +8 0.7862, 0.8056, 0.8090, 0.7877.
-  INTRO rows 0.6549 ..
-  **0.7154** (0) .. 0.6638 (-2 0.7035, +2 0.7003), columns 0.6922, 0.7057, 0.7042, 0.6887.
+  INTRO rows 0.6549 .. **0.7154** (0) .. 0.6638 (-2 0.7035, +2 0.7003), columns 0.6922, 0.7057, 0.7042, 0.6887.
   The projection fix removed the world's 2-row offset and sharpened both peaks (CTRY ±2 rows now cost 0.021 and 0.027), so the hero's 8 to 10 rows high is now the whole residual and wholly actor-specific.
   Actor-window IoU 0.221 / 0.097.
 * **Body.**

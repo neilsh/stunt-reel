@@ -155,12 +155,10 @@ The detail scale matches the article: `0xFFFF` is 100%, and the in-game slider w
 * **The view matrix is zoomed.**
   After `0x11FC` normalises the lens, `0x1260..0x12D2` builds the camera rotation at `work:0x80D2` (`lcall 0x0824:0x04E5`) and transposes it into `0x80AE` (`lcall 0x0824:0x0681`), then builds it again with the yaw word zeroed (`xor si,si` at `0x12C2`) and transposes that into `0x809C`, the matrix of shapes that face the view ([`sod-vm-generators.md`](sod-vm-generators.md) section 8.8).
   `0x12DC` then rescales the copy in the work segment: the first six words (`0x12E3..0x12F3`) are multiplied by `work:0x8108 = 0x229C` as a Q15 factor (`imul bx; shl ax,1; rcl ax,1`, so `w × m / 0x8000`), and the last three (`0x12F5..0x1303`) are shifted right arithmetically by `work:0x810C = 0x229E` (`sar ax, cl`).
-  The first call writes `0x80C0` from `0x80AE`; the second rescales `0x809C` in place.
-  `[Established]`.
+  The first call writes `0x80C0` from `0x80AE`; the second rescales `0x809C` in place. `[Established]`.
 * **Rows 0 and 1 are the screen axes, row 2 is depth.**
   The matrix-vector routine `lcall 0x0824:0x06B0` (image `0x88F0`, body `0x88FB`) is row-major: row 0 gives `DX:AX`, row 1 `BP:BX`, row 2 `DI:CX`.
-  The frustum test at `0x20BF` treats `DI` as depth (in front when `ext + DI ≥ 0`) and `DX`, `BX` as the two screen axes.
-  `[Established]`.
+  The frustum test at `0x20BF` treats `DI` as depth (in front when `ext + DI ≥ 0`) and `DX`, `BX` as the two screen axes. `[Established]`.
 * **Focal length.**
   Screen position is `x / depth` times a fixed pixel scale, so with screen rows scaled by `m / 0x8000` and depth by `2^-c` the focal length is multiplied by `zoom = (0x229C / 0x8000) × 2^0x229E`.
   The normalisation always does `s` shifts with `s + c = 3`, so `0x229C ≈ lens × 0x7FFF × 2^s / 0x10000` and **`zoom ≈ lens / 8192`** to Q15 rounding.

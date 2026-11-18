@@ -50,8 +50,7 @@ _Source: [2026-11-11: what the 14 TAP shapes are](../../work/2026-11/254_tap-anc
 In `CTRY`'s airfield shot no fin shows through the hill patches in front of it, in the capture or in ours, at the captured ticks checked.
 Our walk places all seven fins `0x0402`–`0x0408` there and the gate keeps them, but at ticks 287, 298 and 309 drawing them changes no pixel of our render.
 At tick 287 `0x0408` projects into the hills at the frame's right edge, and there, by eye, the capture shows the same hill faces and ridges as ours, as it does in the same crop at tick 309.
-A fin shares the hill patches' colour range, so one drawn over a patch of its own shade would not show in either picture.
-`[Bounded Observation]`, three ticks of one shot.
+A fin shares the hill patches' colour range, so one drawn over a patch of its own shade would not show in either picture. `[Bounded Observation]`, three ticks of one shot.
 _Source: [2026-11-11: do the CTRY hill fins show through the hills](../../work/2026-11/403_intro-cam1-lod/journal.md#2026-11-11-do-the-ctry-hill-fins-show-through-the-hills)._
 
 ### 6.3 Candidates

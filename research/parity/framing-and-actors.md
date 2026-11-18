@@ -59,8 +59,7 @@ All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named.
 Baselines moved between rounds (0.771 / 0.676 on 2026-10-22, 0.7708 / 0.6762 at `d90a047`, 0.7732 / 0.6799 after page timing); each sweep is read against its own baseline.
 Nothing below was adopted.
 
-* **Wrong geometry for the `location` trapezoid** (2026-11-16, [#504](https://github.com/neilsh/stunt-reel/issues/504)): the other `BVGT` arm of the same shape draws the capture's line blades; see § 3.
-  [Journal](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest).
+* **Wrong geometry for the `location` trapezoid** (2026-11-16, [#504](https://github.com/neilsh/stunt-reel/issues/504)): the other `BVGT` arm of the same shape draws the capture's line blades; see § 3. [Journal](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest).
 * **A montage tick-skipping rule** (2026-11-05, `[Bounded Observation]`, [#73](https://github.com/neilsh/stunt-reel/issues/73)).
   Offset search over -200..+10 on `captures/vault-intro`: the best-matching render tick follows the capture tick at slope 0.99 (largest deviation 7 ticks), so the 0.9-lag reading was a search saturating at -180.
   See [`film-segments.md`](film-segments.md#23-montage-frames).

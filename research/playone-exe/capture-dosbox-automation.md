@@ -28,30 +28,23 @@ _Source: [first evaluation](../../work/2026-11/distill-capture-dosbox-automation
 A script starts capture and presses the dialog keys at fixed emulated frames (`dosbox.frame()` counts from boot), then reads guest memory per frame.
 
 * **`DGROUP` is `DS = 0x0F46`** for `CTRY.FLM` and `INTRO.FLM` on the unpatched build, with DOSBox-X's offsets.
-  `cpu/state` reports the running code's `DS` (`0x17C9` while `CS` is `0x0A19`, § 4.3), so scripts read `0x0F46:offset`.
-  `[Bounded Observation]`
+  `cpu/state` reports the running code's `DS` (`0x17C9` while `CS` is `0x0A19`, § 4.3), so scripts read `0x0F46:offset`. `[Bounded Observation]`
 * **`CTRY.FLM` replays bit for bit with the demo's `.ALL`.**
   Nine runs at 8,000 cycles and 12, 16 and 24 runs started together gave identical video and tick logs, no dropped frames; three `INTRO.FLM` runs gave identical video (unpatched build, demo `.ALL`).
-  Not every film replays: with a Patch 3 `MAKEONE` archive, which carries in full the sound samples the demo's `.ALL` shortens (§ 4.4), two captures one after the other differed on 27 of 104 paired `CTRY.FLM` pages and 78 of 172 `INTRO.FLM` pages (2026-11-08, [`../parity/metric-bench.md`](../parity/metric-bench.md#221-recapture-noise-of-the-reference-films) § 2.2.1).
-  `[Bounded Observation]`
+  Not every film replays: with a Patch 3 `MAKEONE` archive, which carries in full the sound samples the demo's `.ALL` shortens (§ 4.4), two captures one after the other differed on 27 of 104 paired `CTRY.FLM` pages and 78 of 172 `INTRO.FLM` pages (2026-11-08, [`../parity/metric-bench.md`](../parity/metric-bench.md#221-recapture-noise-of-the-reference-films) § 2.2.1). `[Bounded Observation]`
 * **Video frame *j* is emulated frame `capture_start_frame + j`**, at 70.087 Hz.
-  The HUD timer (`film_tick / 50`, redrawn per render loop) trails the live tick by 0 to 3 ticks between render loops.
-  `[Bounded Observation]`
+  The HUD timer (`film_tick / 50`, redrawn per render loop) trails the live tick by 0 to 3 ticks between render loops. `[Bounded Observation]`
 * **Recorded RGB is the DAC**, each 6-bit component expanded as `round(x * 255 / 63)`, zero error on the indices checked.
-  Two indices can share an RGB, so video does not always give the index plane: index scoring uses the page (§ 4.1).
-  `[Bounded Observation]`
+  Two indices can share an RGB, so video does not always give the index plane: index scoring uses the page (§ 4.1). `[Bounded Observation]`
 
 _Source: [first evaluation](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-first-evaluation), [follow-up](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-follow-up), [second round](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-second-round)._
 
 ## 3. DOSBox-X Video for Comparison
 
 * **The guest runs at another speed.**
-  At 8,000 cycles dosbox-automation completes 424 render loops of `CTRY.FLM` to DOSBox-X's 369; at 7,000 the counts agree (370), yet none of 58 timer-aligned frames is byte-identical.
-  `[Bounded Observation]`
-* **DOSBox-X expands the DAC as `(v << 2) | (v >> 4)`**, one away from `round(v * 255 / 63)` at levels 11 to 15 and 48 to 52, read from its source, not measured.
-  `[Supported Inference]`
-* **Wider differences are mostly another instant** of `vault-ctry/frames/001`: index differences before the fade, another fade phase in it (96%); the page lags the clock by different ticks in each emulator.
-  `[Bounded Observation]`
+  At 8,000 cycles dosbox-automation completes 424 render loops of `CTRY.FLM` to DOSBox-X's 369; at 7,000 the counts agree (370), yet none of 58 timer-aligned frames is byte-identical. `[Bounded Observation]`
+* **DOSBox-X expands the DAC as `(v << 2) | (v >> 4)`**, one away from `round(v * 255 / 63)` at levels 11 to 15 and 48 to 52, read from its source, not measured. `[Supported Inference]`
+* **Wider differences are mostly another instant** of `vault-ctry/frames/001`: index differences before the fade, another fade phase in it (96%); the page lags the clock by different ticks in each emulator. `[Bounded Observation]`
 
 _Source: [first evaluation](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-first-evaluation), [second round](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-second-round), [third round](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-third-round), [fourth round](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-fourth-round)._
 
@@ -59,16 +52,12 @@ _Source: [first evaluation](../../work/2026-11/distill-capture-dosbox-automation
 
 ### 4.1 Guest Speed, Cores and Page Reads
 
-* **Render loops scale with `cpu_cycles`** (`CTRY.FLM`, normal core): 318 at 6,000, 370 at 7,000, 424 at 8,000, 631 at 12,000, 827 at 16,000.
-  `[Bounded Observation]`
-* **At 8,000 cycles the dynamic core does not replay the normal core**: 417 loops, clocks a tick or two apart from frame 2067, pictures different from frame 1280.
-  `[Bounded Observation]`
+* **Render loops scale with `cpu_cycles`** (`CTRY.FLM`, normal core): 318 at 6,000, 370 at 7,000, 424 at 8,000, 631 at 12,000, 827 at 16,000. `[Bounded Observation]`
+* **At 8,000 cycles the dynamic core does not replay the normal core**: 417 loops, clocks a tick or two apart from frame 2067, pictures different from frame 1280. `[Bounded Observation]`
 * **A page and working palette read in one Lua step see one instant**, since Lua blocks the emulation: `mem_read(0xA000, 0, 64000)` and `mem_read(0x0F46, 0x2768, 768)` (6-bit).
   The game draws straight into `A000`.
-  The Lua heap limits a pass: 90 pages (about 11.5 MB of hex) failed with `not enough memory`, 40 work (`MAX_DUMPS`).
-  `[Bounded Observation]`
-* **A page can match no video frame**: of 97 `INTRO.FLM` pages, four palette races, ten mid-render reads (§ 4.5).
-  `[Bounded Observation]`
+  The Lua heap limits a pass: 90 pages (about 11.5 MB of hex) failed with `not enough memory`, 40 work (`MAX_DUMPS`). `[Bounded Observation]`
+* **A page can match no video frame**: of 97 `INTRO.FLM` pages, four palette races, ten mid-render reads (§ 4.5). `[Bounded Observation]`
 
 _Source: [follow-up](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-follow-up), [second round](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-second-round), [third round](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-third-round), [fourth round](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-fourth-round), [production harness](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-production-harness)._
 
@@ -93,15 +82,12 @@ _Source: [fourth round](../../work/2026-11/distill-capture-dosbox-automation/jou
 
 ### 4.4 The Capture Profile and Replays
 
-* **The render rate saturates near 45,000 cycles** (`CTRY.FLM`, normal core): new pages on 46% of frames at 7,000, 98% at 30,000, 99% from 35,000 to about 100,000, fewer above (`max`: 80% to 95%); wall time is constant.
-  `[Bounded Observation]`
+* **The render rate saturates near 45,000 cycles** (`CTRY.FLM`, normal core): new pages on 46% of frames at 7,000, 98% at 30,000, 99% from 35,000 to about 100,000, fewer above (`max`: 80% to 95%); wall time is constant. `[Bounded Observation]`
 * **The `capture` profile, shared by `play`, is the dynamic core at 45,000 cycles**: the normal core's rate within about 1%, 0.22 to 0.24 of a host core against 0.39, own traces byte-identical.
-  Dump passes run up to eight at once, each with its own `dosbox-<port>.conf`.
-  `[Bounded Observation]`
+  Dump passes run up to eight at once, each with its own `dosbox-<port>.conf`. `[Bounded Observation]`
 * **Replays are not always identical.**
   Five `COUNT.FLM` traces gave four variants, a tick apart in 10 to 18 of 157 frames; `nosound` kept it, `sbtype = none` stopped the film.
-  Each page carries its own pass's tick (§ 4.8).
-  `[Bounded Observation]`
+  Each page carries its own pass's tick (§ 4.8). `[Bounded Observation]`
 * **`COUNT.FLM`'s sound sample (`0xC31E`, 12 bytes) is what makes runs vary** (`[Bounded Observation]`, 2026-11-13).
   Ten `capture-ref` traces of its archive (unpatched build) with the sample stubbed were identical; ten with it kept gave five variants (a 1-pixel page, a 300-pixel page, an `emu_frame` 1354 for 1355; `torn_frames` 1 in 7 runs, 0 in all ten stubbed), never a different `film_tick`.
   A trace keeps 10 pages, one per window (one window pass), too few for `capture-compare`: pages were hashed.
@@ -120,14 +106,11 @@ _Source: [fourth round](../../work/2026-11/distill-capture-dosbox-automation/jou
   - Staging replaces each payload in `0xC000`–`0xCFFF` with the one byte `0x04`, the stub the demo's `CTRY.ALL` holds in `0xC302`.
     `--sound-samples kept` plays the archive as is, and `meta.json` records which was used.
   - The range holds two kinds of chunk: sample-like chunks, whose first byte is `0x00` or `0x02` (the source of those under `0xC4` and `0xC5` is unchecked), and music, chunks that begin `03 'FORM'` under `0xC0` and `0xC1` ([`linking.md`](../makeone-exe/linking.md) § 5).
-    The demo's `CTRY.ALL` shortens its samples, keeps music `0xC010` whole; the stub replaces both.
-    `[Bounded Observation]`
+    The demo's `CTRY.ALL` shortens its samples, keeps music `0xC010` whole; the stub replaces both. `[Bounded Observation]`
   - Known: with the stub, one pair of captures of each of the seven reference films replayed page for page ([`../parity/metric-bench.md`](../parity/metric-bench.md#221-recapture-noise-of-the-reference-films) § 2.2.1).
   - What is not known: what it does with the byte, whether it skips the sample or plays a click.
-    A zero-length payload and a minimal well-formed sample were not tried.
-    `[Bounded Observation]`
-* **The mouse cursor is parked** below the 3D view by `dosbox.mouse_move(-2000, 2000)`, lighting no button; captures before 2026-10-31 show it at screen centre.
-  `[Bounded Observation]`
+    A zero-length payload and a minimal well-formed sample were not tried. `[Bounded Observation]`
+* **The mouse cursor is parked** below the 3D view by `dosbox.mouse_move(-2000, 2000)`, lighting no button; captures before 2026-10-31 show it at screen centre. `[Bounded Observation]`
 
 _Source: [production harness](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-production-harness)._
 
@@ -142,8 +125,7 @@ _Source: [production harness](../../work/2026-11/distill-capture-dosbox-automati
 * **The harness** skips torn frames and each palette step's two frames ([`plan.py`](../../python/stunt_reel/tac/plan.py)).
   `meta.json` counts `composed_matches`; zero, which `capture-ref` warns about, means wrong `composed_pages` offsets.
 * **Skipping torn pages did not raise the score:** `vault-ctry/frames/005` SSIM 0.7800 against `004`'s 0.7808, `vault-intro/frames/005` 0.5444 against 0.5488.
-  Why `INTRO.FLM` falls is open question 9.
-  `[Bounded Observation]`
+  Why `INTRO.FLM` falls is open question 9. `[Bounded Observation]`
 
 _Source: [torn pages](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-31-torn-pages), [fourth round](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-fourth-round)._
 
