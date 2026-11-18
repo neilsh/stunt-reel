@@ -2226,10 +2226,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stunt-painter-proto"
-version = "0.1.0"
-
-[[package]]
 name = "stunt-parity"
 version = "0.1.0"
 dependencies = [
