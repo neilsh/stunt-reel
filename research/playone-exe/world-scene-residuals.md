@@ -128,7 +128,7 @@ The ocean-coloured props at the eye include the town-block tiles `0x03E4` to `0x
   At `LOCATION` tick 2124 the snapped `0x06D5` roads and `0x068F` lawns now draw where the capture shows them (SSIM 0.6185 to 0.6641).
   _Source: [2026-11-13: A WORLD_GROUND painter pass whose outlines stay off line runs](../../work/2026-11/446_world-ground-pass/journal.md#2026-11-13-a-world_ground-painter-pass-whose-outlines-stay-off-line-runs)._ _Source: [2026-11-13: Snapped decals lost their lift twice and missed the ground pass](../../work/2026-11/446_world-ground-pass/journal.md#2026-11-13-snapped-decals-lost-their-lift-twice-and-missed-the-ground-pass)._
 * **Adopted: a line on a decal is a decal ([#448](https://github.com/neilsh/stunt-reel/issues/448)).**
-  `PLAYONE` draws a `ZLINETO` segment when it runs, with no depth test ([`sod-vm-generators.md`](sod-vm-generators.md) section 8.10), so a line after the decal it lies on covers it.
+  `PLAYONE` draws a `ZLINETO` segment when it runs, with no depth test ([`sod-vm-lines-spans.md`](sod-vm-lines-spans.md) section 8.10), so a line after the decal it lies on covers it.
   `identify_coplanar_decals` (`sod/decal.rs`) now flags a `MOVETO`/`ZLINETO` segment as a decal when both its ends lie within 0.1 mm of an earlier decal's plane and their bounds meet, and the ordered decal pass and the ground pass draw it after that decal in stream order.
   At `LOCATION` tick 4665, after the ground pass had landed, `0x037C`'s yard lines were still missing: the line's classification, not the ground pass, buried them.
   With the rule they draw (SSIM 0.7977 to 0.8094), as do `TRAINTNL`'s rails on their `132` ties (tick 12: 0.8210 to 0.8348).

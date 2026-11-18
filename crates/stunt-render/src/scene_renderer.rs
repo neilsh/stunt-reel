@@ -284,7 +284,7 @@ impl SceneRenderer {
         // Shapes drawn per frame (actors and view-facing props such as the flat trees) take
         // their polygon outlines as line quads; the world mesh takes its props' outlines as a
         // line list over its own vertices, which quads would multiply about five times
-        // (research/playone-exe/sod-vm-generators.md section 8.11).
+        // (research/playone-exe/sod-vm-lines-spans.md section 8.11).
         let shapes = scene
             .shapes()
             .map(|(id, ir)| (id, GpuModel::from_ir(device, queue, &with_outlines(ir))))

@@ -218,7 +218,7 @@ Because 1992 DOS real-mode software lacked hardware depth buffers:
 ### 2.6 `OP_MOVETO` / `OP_ZLINETO` / `OP_LINECOL` / `OP_DOT` in the reconstruction
 
 Each takes a single operand word (confirmed by `FreeFlight/src/siobj.cpp`, which only consumes one word and draws nothing, and by the VM walking whole chunks without desync).
-`MOVETO`, `ZLINETO` and `LINECOL` are read in `PLAYONE` ([`sod-vm-generators.md` § 8.10](../playone-exe/sod-vm-generators.md#810-lines-moveto-zlineto-and-linecol), `[Established]` static, unpatched image): `MOVETO reg_off` makes register `reg_off / 12` the pen, `ZLINETO reg_off` draws a one-pixel Bresenham line from the pen register to that register and makes it the pen, and `LINECOL color` sets the line colour.
+`MOVETO`, `ZLINETO` and `LINECOL` are read in `PLAYONE` ([`sod-vm-lines-spans.md` § 8.10](../playone-exe/sod-vm-lines-spans.md#810-lines-moveto-zlineto-and-linecol), `[Established]` static, unpatched image): `MOVETO reg_off` makes register `reg_off / 12` the pen, `ZLINETO reg_off` draws a one-pixel Bresenham line from the pen register to that register and makes it the pen, and `LINECOL color` sets the line colour.
 The VM takes the pen's point at `MOVETO` time and draws each segment as a line the renderer makes one pixel wide on screen, in the line colour (the fill colour until `LINECOL` is seen).
 `DOT reg_off` plots one point `[Hypothesis]`; the VM draws it as a 0.03 m octahedron.
 Whether `LINECOL` is reset per chunk is `[Unknown]`.
