@@ -83,7 +83,7 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
 ## 6. Look at the worst movers
 
 Open `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref-before| | |ref-after|`), one each for the single biggest mover each way by the verdict's Δ (when `--compare-test` is not a readable render store, the verdict and both sheets are skipped: re-render it), before trusting the mean; a mean can hide a regression or an improvement.
-Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, candidate sweeps).
+Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, where one palette index lies, candidate sweeps).
 
 For a side-by-side of one tick, read the capture with `read_capture` in `stunt_reel.parity_artifacts` and take the frame whose `film_tick` is that tick: `tick_NNNN.idx` is numbered by capture order, not by tick, and `read_capture` supplies the capture-order file names when an older `meta.json` omits `frame_file` and `palette_file`.
 Decode its frame (64000 bytes, 320x200) with its palette (`read_capture_palette`).
