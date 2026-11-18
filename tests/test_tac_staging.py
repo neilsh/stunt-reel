@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -10,10 +11,9 @@ from archive_helpers import archive_of
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.all_archive import ArchiveError, stub_sound_samples
 from stunt_reel.tac import staging
+from stunt_reel.tac.emulator import LaunchFailed
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from tac_mock import StagedRepo
 
 from tac_mock import FAKE_ALL
@@ -266,3 +266,30 @@ def test_a_malformed_archive_leaves_no_stage(staged_repo: StagedRepo, tmp_path: 
     with pytest.raises(ArchiveError):
         staging.stage_play(staged_repo.film, archive)
     assert _no_stage_left()
+
+
+def test_a_stage_under_root_is_refused_before_anything_is_copied(
+    staged_repo: StagedRepo, game_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """dosbox-automation refuses a mount under /root and the capture would hang at DOS."""
+    monkeypatch.setenv(dataroot.DATA_ENV, "/root/stunt-reel.data")
+    dataroot.data_root.cache_clear()
+
+    with pytest.raises(LaunchFailed, match=r"mount policy.*STUNT_DATA_ROOT"):
+        staging.stage_film(staged_repo.film)
+    with pytest.raises(LaunchFailed, match=r"mount policy.*STUNT_DATA_ROOT"):
+        staging.stage_makeone(staged_repo.film, game_root)
+
+    assert not Path("/root/stunt-reel.data").exists()
+    dataroot.data_root.cache_clear()
+
+
+def test_mount_refusal_names_the_base_and_spares_other_paths() -> None:
+    refusal = staging.mount_refusal(Path("/root/stunt-reel.data/stage/ctry-1-1/mount"))
+
+    assert refusal is not None
+    assert "/root" in refusal
+    assert "STUNT_DATA_ROOT" in refusal
+    assert staging.mount_refusal(Path("/home/user/stunt-reel.data/stage/x/mount")) is None
+    assert staging.mount_refusal(Path("/rooted/stage")) is None
+    assert staging.mount_refusal(Path("/var/stage")) is None

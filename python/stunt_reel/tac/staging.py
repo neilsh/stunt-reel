@@ -12,14 +12,15 @@ from __future__ import annotations
 import itertools
 import os
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from stunt_reel import dataroot, parity_layout
 from stunt_reel.all_archive import stub_sound_samples
+from stunt_reel.tac.emulator import LaunchFailed
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from pathlib import Path
 
 #: ``capture`` (also used by ``play``) is the dynamic core at 45,000 cycles, the middle of the
 #: plateau where PLAYONE draws a new page on about 99% of emulated frames (7,000: 46%; more than
@@ -41,6 +42,7 @@ __all__ = [
     "MAKEONE_FILES",
     "CpuProfile",
     "StagedMount",
+    "mount_refusal",
     "render_conf",
     "stage_film",
     "stage_makeone",
@@ -129,14 +131,38 @@ def _engine_root(film: Path) -> Path:
     return dataroot.corpus_root() / "stisldem"
 
 
+#: Paths dosbox-automation's mount policy refuses as "system path": it logs the refusal and
+#: leaves the guest at the DOS prompt, so a capture would wait for a film that never starts
+#: (docs/cloud-sessions.md § Running the emulator). Only ``/root`` is observed; extend with evidence.
+_REFUSED_MOUNT_BASES: tuple[Path, ...] = (Path("/root"),)
+
+
+def mount_refusal(mount: Path) -> str | None:
+    """Why dosbox-automation would refuse to mount *mount*, or None when nothing says it would."""
+    for base in _REFUSED_MOUNT_BASES:
+        if mount.is_relative_to(base):
+            return (
+                f"dosbox-automation's mount policy refuses {mount} as a system path "
+                f"(it is under {base}); set {dataroot.DATA_ENV} to a directory outside {base}, "
+                "such as /home/user/stunt-reel.data"
+            )
+    return None
+
+
 def _stage(film: Path, populate: Callable[[Path], None]) -> StagedMount:
     """Build one run's mount with *populate*, cleaning up on any failure.
 
     The stage is labelled per call, so two runs in one process cannot share one, and the
     caller removes it with :func:`unstage` once its emulator has stopped. The conf is written
     at launch ([`StagedMount.write_conf`]) because the port is only known then.
+
+    Raises LaunchFailed, before anything is copied, when :func:`mount_refusal` says the emulator
+    would refuse the mount: it would otherwise leave the guest at the DOS prompt, unreported.
     """
     label = _stage_label()
+    refusal = mount_refusal(dataroot.data_root() / parity_layout.stage_mount(film.stem, label))
+    if refusal is not None:
+        raise LaunchFailed(refusal)
     root = dataroot.data_root() / parity_layout.stage_dir(film.stem, label)
     mount_dir = dataroot.data_root() / parity_layout.stage_mount(film.stem, label)
     staged_conf = dataroot.data_root() / parity_layout.stage_conf(film.stem, label)
