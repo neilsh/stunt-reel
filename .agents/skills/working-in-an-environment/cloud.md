@@ -38,7 +38,8 @@ Work whose result turns on single pixels of our render, rather than on a score (
 
 ## Handing work to local-windows
 
-The session lacks DOSBox and DOSBox-X, GPU timing, Orca, dsh and Antigravity, the owner's `wrangler login`, and the data-root files no cloud archive holds: the full game's music, `corpus/siarchive` beyond FreeFlight, and captures added since the `captures` archive was last packed ([`manifests/cloud-assets.toml`](../../../manifests/cloud-assets.toml)).
+The session runs dosbox-automation, so `capture-ref` and `make-all` run here as working output ([`cloud-sessions.md` § Running the emulator](../../../docs/cloud-sessions.md#running-the-emulator)), when the environment's data root lies outside `/root`.
+It lacks DOSBox-X (`debug-x`), a window for `play`, GPU timing, Orca, dsh and Antigravity, the owner's `wrangler login`, and the data-root files no cloud archive holds: the full game's music, `corpus/siarchive` beyond FreeFlight, and captures added since the `captures` archive was last packed ([`manifests/cloud-assets.toml`](../../../manifests/cloud-assets.toml)).
 Work that needs one goes to [`local-windows`](local-windows.md):
 
 - **An issue** gains `local-only` and swaps its state label (`in-progress` once claimed) for `ready-for-agent` when its body says exactly what to run there, otherwise `needs-triage`; the body names the resource.
