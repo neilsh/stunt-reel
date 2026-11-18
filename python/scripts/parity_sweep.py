@@ -53,8 +53,10 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import parity_probe
+import tomli_w
 from cli import add_parity_options, parity_options, resolve_jobs
 
 from stunt_reel import parity_layout, references, work_items
@@ -65,7 +67,7 @@ from stunt_reel.parity_artifacts import (
     read_capture,
     read_report,
 )
-from stunt_reel.parity_figures import figures_text
+from stunt_reel.parity_figures import HEADER, figures_document
 from stunt_reel.parity_judge import (
     BASELINE,
     TRACKS,
@@ -317,6 +319,11 @@ def validate_record(
             f"{path} already exists; a figures file is never replaced, so name another --topic"
         )
     return path
+
+
+def figures_toml(document: dict[str, Any]) -> str:
+    """A figures file's text: :data:`HEADER`, then *document* as ``tomli_w`` writes it."""
+    return HEADER + tomli_w.dumps(document)
 
 
 def write_figures(path: Path, text: str) -> int:
@@ -750,7 +757,8 @@ def main(argv: list[str] | None = None) -> int:
     print(line)
     code = 0
     if figures is not None:
-        code = write_figures(figures, figures_text(names, films, decision, args.probe, out[-1]))
+        document = figures_document(names, films, decision, args.probe, out[-1])
+        code = write_figures(figures, figures_toml(document))
     if pictures is not None:
         drawn = write_pictures(
             decision, plans, pictures, root=root, retime=options.retime, scratch=scratch

@@ -2,22 +2,19 @@
 
 ``mise run sweep -- --record`` writes one per sweep as ``<work folder>/sweeps/<topic>.toml``, and
 ``mise run judge -- --recheck`` reads it back, judges it again by :mod:`stunt_reel.parity_judge`
-and compares the winner line. :func:`figures_text` words a file, :func:`parse_figures` reads one
-and :func:`drift_note` says when today's bounds would give another verdict. Nothing here reads
-or writes files.
+and compares the winner line. :func:`figures_document` gives a file's tables, which the sweep
+writes after :data:`HEADER` with ``tomli_w`` (ADR 0049; this package keeps no runtime
+dependency), :func:`parse_figures` reads one with ``tomllib``, and :func:`drift_note` says when
+today's bounds would give another verdict. Nothing here reads or writes files.
 
 Per variant and film the file holds the headline scores the table and ranking read, and each
 frame the judge keeps from ``report.json``'s ``per_frame`` (the first per ``film_tick``) as
-``[film_tick, ssim, index_agreement, scored]``: ``nan`` stands for a missing index agreement,
-and a frame without ``scored`` has three elements. Floats are written in full, so a recheck
-computes on the very values the sweep did.
+``{ tick, ssim, index, scored }``, leaving out ``index`` or ``scored`` where the report gave
+none. Floats are written in full, so a recheck computes on the very values the sweep did.
 """
 
 from __future__ import annotations
 
-import json
-import math
-import re
 import tomllib
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any, TypeIs, cast
@@ -40,22 +37,28 @@ from stunt_reel.parity_judge import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Sequence
 
 __all__ = [
+    "HEADER",
     "SCHEMA",
     "Figures",
     "FiguresError",
     "RecordedScore",
     "drift_note",
-    "figures_text",
+    "figures_document",
     "parse_figures",
 ]
 
 #: The layout version a figures file states; :func:`parse_figures` reads only this one.
 SCHEMA = 1
-
-_BARE_KEY = re.compile(r"[A-Za-z0-9_-]+")
+#: The comment lines a figures file opens with, before its tables.
+HEADER = (
+    "# The figures behind one `mise run sweep` verdict, written by its --record.\n"
+    "# `mise run judge -- --recheck <this file>` judges them again and compares the winner line.\n"
+    "# A frame leaves out `index` or `scored` where its report gave none.\n\n"
+)
+_ROW_KEYS = frozenset(("tick", "ssim", "index", "scored"))
 
 
 class FiguresError(ValueError):
@@ -96,81 +99,63 @@ class Figures:
         )
 
 
-def figures_text(
+def figures_document(
     names: Sequence[str], films: Sequence[str], decision: Decision, probe: str, winner: str
-) -> str:
-    """The figures file of a sweep that printed *winner* for *decision*."""
-    lines = [
-        "# The figures behind one `mise run sweep` verdict, written by its --record.",
-        "# `mise run judge -- --recheck <this file>` judges them again and compares the winner.",
-        "# A frame is [film_tick, ssim, index_agreement, scored]: index_agreement is nan and",
-        "# scored absent where the report gave none.",
-        f"schema = {SCHEMA}",
-        f"names = {_strings(names)}",
-        f"films = {_strings(films)}",
-        f"probe = {_string(probe)}",
-    ]
+) -> dict[str, Any]:
+    """The figures of a sweep that printed *winner* for *decision*, as a TOML document's tables.
+
+    Written after :data:`HEADER` by a TOML writer; :func:`parse_figures` reads it back.
+    """
+    document: dict[str, Any] = {
+        "schema": SCHEMA,
+        "names": list(names),
+        "films": list(films),
+        "probe": probe,
+    }
     if decision.track is not None:
-        lines.append(f"track = {_string(decision.track)}")
-    lines.append(f"targets = {_strings(t.spec() for t in decision.targets)}")
+        document["track"] = decision.track
+    document["targets"] = [t.spec() for t in decision.targets]
     base = next((v for v in decision.ordered if v.index == BASELINE), None)
     if base is not None:
-        lines.append(f"baseline = {_string(label(names, base.values))}")
-    lines.append(f"winner = {_string(winner)}")
-    lines += ["", "[bounds]"]
-    lines += [f"{f.name} = {getattr(decision.bounds, f.name)!r}" for f in fields(Bounds)]
-    for variant in sorted(decision.ordered, key=lambda v: v.index):
-        lines += ["", "[[variant]]", f"index = {variant.index}"]
-        lines.append(f"values = {_strings(variant.values)}")
-        for film in dict.fromkeys([*variant.scores, *variant.frames]):
-            lines += ["", f"[variant.film.{_key(film)}]"]
-            lines += _film_lines(variant.scores.get(film), variant.frames.get(film))
-    return "\n".join(lines) + "\n"
+        document["baseline"] = label(names, base.values)
+    document["winner"] = winner
+    document["bounds"] = {f.name: getattr(decision.bounds, f.name) for f in fields(Bounds)}
+    document["variant"] = [
+        {
+            "index": variant.index,
+            "values": list(variant.values),
+            "film": {
+                film: _film(variant.scores.get(film), variant.frames.get(film))
+                for film in dict.fromkeys([*variant.scores, *variant.frames])
+            },
+        }
+        for variant in sorted(decision.ordered, key=lambda v: v.index)
+    ]
+    return document
 
 
-def _film_lines(score: Headline | None, run: FilmRun | None) -> list[str]:
+def _film(score: Headline | None, run: FilmRun | None) -> dict[str, Any]:
+    """One film of one variant: its headline and its frames, or ``failed`` with neither."""
     if score is None and run is None:
-        return ["failed = true"]
-    lines = []
+        return {"failed": True}
+    table: dict[str, Any] = {}
     if score is not None:
-        lines += [f"ssim = {_number(score.ssim)}", f"iou = {_number(score.iou)}"]
+        table |= {"ssim": float(score.ssim), "iou": float(score.iou)}
         if score.actor_iou is not None:
-            lines.append(f"actor_iou = {_number(score.actor_iou)}")
+            table["actor_iou"] = float(score.actor_iou)
     if run is not None:
-        lines.append(f"fade_aware = {_bool(run.fade_aware)}")
-        lines.append("frames = [")
-        lines += [f"  {_row(tick, frame)}," for tick, frame in run.frames.items()]
-        lines.append("]")
-    return lines
+        table["fade_aware"] = run.fade_aware
+        table["frames"] = [_row(tick, frame) for tick, frame in run.frames.items()]
+    return table
 
 
-def _row(tick: int, frame: Frame) -> str:
-    cells = [str(tick), _number(frame.ssim), "nan" if frame.index is None else _number(frame.index)]
+def _row(tick: int, frame: Frame) -> dict[str, Any]:
+    row: dict[str, Any] = {"tick": tick, "ssim": float(frame.ssim)}
+    if frame.index is not None:
+        row["index"] = float(frame.index)
     if frame.scored is not None:
-        cells.append(_bool(frame.scored))
-    return "[" + ", ".join(cells) + "]"
-
-
-def _number(value: float) -> str:
-    """*value* as a TOML float that reads back as the same float (``repr``: ``nan``, ``inf``)."""
-    return repr(float(value))
-
-
-def _bool(value: bool) -> str:
-    return "true" if value else "false"
-
-
-def _string(text: str) -> str:
-    """*text* as a TOML basic string; JSON's escapes are a subset of TOML's."""
-    return json.dumps(text)
-
-
-def _strings(texts: Iterable[str]) -> str:
-    return "[" + ", ".join(_string(t) for t in texts) + "]"
-
-
-def _key(name: str) -> str:
-    return name if _BARE_KEY.fullmatch(name) else _string(name)
+        row["scored"] = frame.scored
+    return row
 
 
 def parse_figures(text: str) -> Figures:
@@ -281,19 +266,19 @@ def _run(entry: dict[str, Any]) -> FilmRun | None:
 
 
 def _frame(row: object) -> tuple[int, Frame]:
-    if not isinstance(row, list) or len(row) not in (3, 4):
-        raise FiguresError(f"frame {row!r} is not [film_tick, ssim, index_agreement, scored]")
-    tick, ssim, index, *rest = row
-    scored = rest[0] if rest else None
+    """One ``{ tick, ssim, index, scored }`` row; ``index`` and ``scored`` may be left out."""
+    shape = "{ tick, ssim, index, scored }"
+    if not isinstance(row, dict) or not {"tick", "ssim"} <= row.keys() <= _ROW_KEYS:
+        raise FiguresError(f"frame {row!r} is not {shape}")
+    tick, ssim, index, scored = (row.get(key) for key in ("tick", "ssim", "index", "scored"))
     if not (
         _is_int(tick)
         and _is_number(ssim)
-        and _is_number(index)
+        and (index is None or _is_number(index))
         and (scored is None or isinstance(scored, bool))
     ):
-        raise FiguresError(f"frame {row!r} is not [film_tick, ssim, index_agreement, scored]")
-    agreement = None if math.isnan(index) else float(index)
-    return tick, Frame(float(ssim), agreement, scored)
+        raise FiguresError(f"frame {row!r} is not {shape}")
+    return tick, Frame(float(ssim), None if index is None else float(index), scored)
 
 
 def _bounds(table: object) -> Bounds:

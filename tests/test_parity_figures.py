@@ -12,11 +12,12 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import parity_judge as judge_cli  # noqa: E402
+import parity_sweep  # noqa: E402
 
 from stunt_reel.parity_figures import (  # noqa: E402
     FiguresError,
     drift_note,
-    figures_text,
+    figures_document,
     parse_figures,
 )
 from stunt_reel.parity_judge import (  # noqa: E402
@@ -59,7 +60,8 @@ def sweep(bounds: Bounds = TODAY, track: Track | None = "evidence") -> Decision:
 
 
 def text_of(decision: Decision, probe: str = "film") -> str:
-    return figures_text(NAMES, FILMS, decision, probe, winner_line(NAMES, decision))
+    document = figures_document(NAMES, FILMS, decision, probe, winner_line(NAMES, decision))
+    return parity_sweep.figures_toml(document)
 
 
 def test_a_file_reads_back_as_the_very_figures_written() -> None:
@@ -129,10 +131,20 @@ def test_no_drift_note_while_the_verdict_holds() -> None:
         ("noise_floor = 0.002\n", "", "bounds lacks noise_floor"),
         ("noise_floor = 0.002\n", "noise_floor = 0.002\nslack = 1\n", "unknown slack"),
         ("min_target_frames = 3", "min_target_frames = 3.0", "bound min_target_frames"),
-        ("[10, 0.8, 0.5, true]", "[10, 0.8]", "variant 1 film ctry: frame [10, 0.8]"),
-        ("[20, 0.8, 0.5, true]", "[10, 0.8, 0.5, true]", "tick 10 is listed twice"),
+        (
+            "{ tick = 10, ssim = 0.8,",
+            "{ tick = 10,",
+            "variant 1 film ctry: frame {'tick': 10, 'index'",
+        ),
+        ("{ tick = 20,", "{ tick = 10,", "tick 10 is listed twice"),
+        (
+            "{ tick = 10,",
+            "{ tick = 10, slack = 1,",
+            "variant 1 film ctry: frame {'tick': 10, 'slack'",
+        ),
+        ("index = 0.5, scored = true }", "index = 0.5, scored = 1 }", "frame {'tick': 10"),
         ('baseline = "DBG_X=1"', 'baseline = "DBG_X=0"', "baseline 'DBG_X=0'"),
-        ('values = ["2"]', 'values = ["2", "3"]', "variant 2 has 2 values for 1 names"),
+        ('    "2",\n]', '    "2",\n    "3",\n]', "variant 2 has 2 values for 1 names"),
         ("schema = 1", "schema = [", "not TOML"),
     ],
 )

@@ -33,6 +33,7 @@ dev = [
     "pytest-cov>=6.0.0",
     "pytest-xdist>=3.8",
     "ruff>=0.17.1",  # TC001-TC003 write `lazy` imports at py315 (extend-safe-fixes below)
+    "tomli-w>=1.2.0",  # writes a sweep's figures file in parity_sweep.py (ADR 0049)
     "types-jsonschema>=4.26",  # typeshed stubs: jsonschema ships no py.typed marker (ADR 0048)
 ]
 
