@@ -20,6 +20,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -40,6 +41,7 @@ __all__ = [
     "ScriptRunner",
     "dosbox_executable",
     "free_port",
+    "headless_env",
     "launched",
 ]
 
@@ -77,6 +79,18 @@ def dosbox_executable() -> str:
             f"or set {EXE_ENV})"
         )
     return exe
+
+
+#: SDL drivers for a Linux host with no display (a cloud session): the offscreen video driver
+#: needs no X server, and dummy audio no sound device (docs/cloud-sessions.md).
+_HEADLESS_SDL: dict[str, str] = {"SDL_VIDEODRIVER": "offscreen", "SDL_AUDIODRIVER": "dummy"}
+
+
+def headless_env(env: dict[str, str], *, platform: str = sys.platform) -> dict[str, str]:
+    """*env* with SDL's headless drivers on a Linux host that has no display; a set one wins."""
+    if not platform.startswith("linux") or env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
+        return env
+    return {**_HEADLESS_SDL, **env}
 
 
 def free_port() -> int:
@@ -196,7 +210,7 @@ class DosboxAutomation:
             port = self._pick_port()
             token = secrets.token_hex(32)
             conf = self._write_conf(port)
-            env = dict(os.environ, DOSBOX_API_TOKEN=token)
+            env = headless_env(dict(os.environ, DOSBOX_API_TOKEN=token))
             self._process = self._spawn([exe, "-conf", str(conf)], env)
             client = AutomationClient(port, token)
             if self._wait_ready(client):

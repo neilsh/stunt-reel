@@ -155,6 +155,38 @@ checksum = "sha256:ff89389d9dc9e770d78a24af328763cb1f8e7b31ce7766c9edf10669a060f
 url = "https://github.com/kaitai-io/kaitai_struct_compiler/releases/download/0.11/kaitai-struct-compiler-0.11.zip"
 url_api = "https://api.github.com/repos/kaitai-io/kaitai_struct_compiler/releases/assets/290698973"
 
+[[tools."http:dosbox-automation"]]
+version = "0.85.1"
+backend = "http:dosbox-automation"
+specifiers = ["0.85.1"]
+
+[tools."http:dosbox-automation".options]
+strip_components = "1"
+
+[tools."http:dosbox-automation"."platforms.linux-x64"]
+checksum = "blake3:0178b3175ed86f7519d6e910e25ceb3f4791195c0aff2d0f04700a0c6fb227b4"
+url = "https://github.com/dosbox-automation/dosbox-automation/releases/download/v0.85.1/dosbox-automation-0.85.1-7567ec4-linux-x86_64.tar.xz"
+
+[tools."http:dosbox-automation"."platforms.linux-x64-baseline"]
+checksum = "sha256:d205021daf20435e9bee7c305af08ee30e74717aef6cc3db4144a1e6364207c9"
+url = "https://github.com/dosbox-automation/dosbox-automation/releases/download/v0.85.1/dosbox-automation-0.85.1-7567ec4-linux-x86_64.tar.xz"
+
+[tools."http:dosbox-automation"."platforms.linux-x64-musl"]
+checksum = "sha256:d205021daf20435e9bee7c305af08ee30e74717aef6cc3db4144a1e6364207c9"
+url = "https://github.com/dosbox-automation/dosbox-automation/releases/download/v0.85.1/dosbox-automation-0.85.1-7567ec4-linux-x86_64.tar.xz"
+
+[tools."http:dosbox-automation"."platforms.linux-x64-musl-baseline"]
+checksum = "sha256:d205021daf20435e9bee7c305af08ee30e74717aef6cc3db4144a1e6364207c9"
+url = "https://github.com/dosbox-automation/dosbox-automation/releases/download/v0.85.1/dosbox-automation-0.85.1-7567ec4-linux-x86_64.tar.xz"
+
+[tools."http:dosbox-automation"."platforms.windows-x64"]
+checksum = "sha256:d205021daf20435e9bee7c305af08ee30e74717aef6cc3db4144a1e6364207c9"
+url = "https://github.com/dosbox-automation/dosbox-automation/releases/download/v0.85.1/dosbox-automation-0.85.1-7567ec4-linux-x86_64.tar.xz"
+
+[tools."http:dosbox-automation"."platforms.windows-x64-baseline"]
+checksum = "sha256:d205021daf20435e9bee7c305af08ee30e74717aef6cc3db4144a1e6364207c9"
+url = "https://github.com/dosbox-automation/dosbox-automation/releases/download/v0.85.1/dosbox-automation-0.85.1-7567ec4-linux-x86_64.tar.xz"
+
 [[tools.java]]
 version = "temurin-21.0.12+101.0.LTS"
 backend = "core:java"
