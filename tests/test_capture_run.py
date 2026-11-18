@@ -24,7 +24,7 @@ from archive_helpers import archive_of, build_all
 from pytest_helpers import build_avi
 from stunt_reel import capture_run, capture_store, dataroot, parity_layout, references
 from stunt_reel.all_archive import ArchiveMeta, publish_archive, stub_sound_samples
-from stunt_reel.tac import automation, makeone, plan, playone
+from stunt_reel.tac import automation, makeone, plan, playone, staging
 from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout, LaunchFailed
 from tac_mock import FAKE_ALL, FakeFilm, StagedRepo, load_script, makeone_launcher
 
@@ -194,6 +194,27 @@ def test_the_stage_is_removed_on_every_failure_path(
     assert emulator.launches == 1
     assert _stage_is_empty()
     assert not _store(_kind(script)).exists()
+
+
+@BOTH
+def test_a_refused_mount_fails_at_once_without_a_retry_or_a_launch(
+    script: str,
+    staged_repo: StagedRepo,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A stage under a path the mount policy refuses is a one-line failure, not a hang (#753)."""
+    monkeypatch.setattr(staging, "_REFUSED_MOUNT_BASES", (dataroot.data_root(),))
+    emulator = Emulator(script)
+
+    assert _run(script, staged_repo, monkeypatch, emulator) == 1
+
+    err = capsys.readouterr().err
+    assert "mount policy" in err
+    assert "STUNT_DATA_ROOT" in err
+    assert "retrying" not in err
+    assert emulator.launches == 0
+    assert _stage_is_empty()
 
 
 @BOTH

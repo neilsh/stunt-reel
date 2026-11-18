@@ -137,7 +137,8 @@ Its output is working output only: a cloud capture or archive is never promoted 
   dosbox-automation's mount policy refuses a mount under `/root` as a system path: on 2026-11-18 a guest `echo hi > c:\out.txt` wrote nothing when C: was a directory under `/root/stunt-reel.data`, and wrote `OUT.TXT` when it was under `/tmp` or `/home/user`.
   The refusal suggests `mount_allowed_bases` in the primary config; `mount_allowed_bases = /root/stunt-reel.data` in the `-conf` file's `[webserver]` section still wrote nothing, and in `[dosbox]` was reported as no such setting.
   Whether another config file lifts it is untested.
-  With `STUNT_DATA_ROOT=/root/stunt-reel.data` a capture launches, logs `MOUNT: ... refused by the mount policy: system path`, and hangs at the DOS prompt.
+  With `STUNT_DATA_ROOT=/root/stunt-reel.data` the emulator logged `MOUNT: ... refused by the mount policy: system path` and sat at the DOS prompt, and `capture-ref` waited over 10 minutes (2026-11-18).
+  Staging refuses a stage under `/root` before it copies anything (`mount_refusal` in `python/stunt_reel/tac/staging.py`), so `capture-ref` and `make-all` fail at once with an error that names the mount policy and `STUNT_DATA_ROOT`; `/root` is the only refused base observed.
   So the environment's `STUNT_DATA_ROOT` names a path such as `/home/user/stunt-reel.data`.
 - **Music files.**
   The corpus archive leaves out `RES/MUSIC?.ESS`, `.XMI`, `.XMM` and `.XMP` and holds `MUSIC1.XMA` and `MUSIC2.XMA` (`manifests/cloud-assets.toml`); the Patch 3 tree also holds `MUSIC1.ESS` and `MUSIC2.ESS` (2026-11-18).
