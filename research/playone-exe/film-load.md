@@ -66,25 +66,26 @@ The counts below follow from sections 1 and 2 for the own `CTRY.ALL` (147 chunks
 * **Nodes**: `(10,000 - index bytes) / 10`, rounded down.
 * **Scan words**: `n (n + 1) / 2` for `n` chunks, since the preload's miss for the chunk at position `k` scans `k` words.
 * **MRU steps**: for each id from `0x8000` up, in preload order, the list length then, `min(chunks already loaded, nodes)`.
-* **Own chunks evicted**: own chunks outside the first `nodes` ids in table order, the ones the preload loads last; the heap's limit is not modelled.
+* **Own chunks evicted by the node pool**: own chunks outside the first `nodes` ids in table order, the ones the preload loads last.
+  Evictions for want of heap are not modelled: an arm adding megabytes must also evict at load, least recently loaded first, which is the padding in the `0xF001` arms and the own chunks from `0x7F37` up in the `0x5B01` arm; so the cells of the three 4 MB arms are `?` or a lower bound.
 
-| Added to own `CTRY.ALL` | Chunks | Index bytes | Nodes | Scan words | MRU steps | Own chunks evicted | Last page frame (§ 7.2) |
+| Added to own `CTRY.ALL` | Chunks | Index bytes | Nodes | Scan words | MRU steps | Own chunks evicted (node pool; heap not modelled) | Last page frame (§ 7.2) |
 |---|---|---|---|---|---|---|---|
 | Nothing | 147 | 3,132 | 686 | 10,878 | 21 | 0 | 3,139 |
 | 1 chunk, `0xF001` (1 or 60,000 bytes) | 148 | 3,136 | 686 | 11,026 | 28 | 0 | 3,139 |
 | 1 chunk, `0x5B01` | 148 | 3,136 | 686 | 11,026 | 21 | 0 | 3,139 |
 | 300 chunks of 1 byte | 447 | 3,736 | 626 | 100,128 | 46,971 | 0 | 3,139 |
-| 63 chunks, 4,092,524 bytes | 210 | 3,260 | 674 | 22,155 | 2,415 | 0 | 3,144 |
+| 63 chunks, 4,092,524 bytes | 210 | 3,260 | 674 | 22,155 | 2,415 | ? | 3,144 |
 | 2,529 chunks of 1 byte, `0xF001` | 2,676 | 8,210 | 179 | 3,581,826 | 437,834 | 0 | 3,149 |
-| 2,529 chunks, 4,092,524 bytes, `0xF001` (#348's padding) | 2,676 | 8,210 | 179 | 3,581,826 | 437,834 | 0 | 3,173 |
-| 2,529 chunks, 4,092,524 bytes, `0x5B01` | 2,676 | 8,210 | 179 | 3,581,826 | 21 | 8 | 3,169 |
+| 2,529 chunks, 4,092,524 bytes, `0xF001` (#348's padding) | 2,676 | 8,210 | 179 | 3,581,826 | 437,834 | ? | 3,173 |
+| 2,529 chunks, 4,092,524 bytes, `0x5B01` | 2,676 | 8,210 | 179 | 3,581,826 | 21 | 8 or more | 3,169 |
 
 * **A chunk costs a directory scan, a DOS open and close, and, for an id from `0x8000` up, a walk of the MRU list.**
-  The scan grows with the square of the chunk count, which fits a chunk weighing more than its bytes in § 7.2; on 2,529 chunks the preload also evicts 2,497 times, since only 179 nodes are left.
+  The scan grows with the square of the chunk count, which fits a chunk weighing more than its bytes in § 7.2; on 2,529 chunks the preload also evicts at least 2,497 times, since 179 nodes are left.
 * **`0xF0` ids cost an MRU walk that `0x5B` ids do not**: 437,834 steps against 21.
-  This fits the `0x5B01` arm ending 4 frames earlier, but that arm also leaves 8 own chunks evicted at load (`0x7F37`, `0x801E`, `0x8042` and five sound ids), and `0x8042` is reread at once (`0x48BF`), so the 4 frames are not attributed `[Hypothesis]`.
+  This fits the `0x5B01` arm ending 4 frames earlier, but the two arms also differ in node-pool evictions (the `0x5B01` arm evicts 8 own chunks at load, `0x7F37`, `0x801E`, `0x8042` and five sound ids, and `0x8042` is reread at once by `0x48BF`) and, unmodelled, in heap evictions, so the 4 frames are not attributed `[Hypothesis]`.
 * **CPU work does not account for the bytes arm.**
-  The 63-chunk 4 MB arm scans 22,155 words and walks 2,415 steps, about the 1-chunk arm's, yet its last page fell 5 frames later; its 63 reads of about 65,000 bytes and the allocator's evictions are what it adds.
+  The 63-chunk 4 MB arm scans fewer words and walks fewer steps (22,155 and 2,415) than the 300-chunk arm (100,128 and 46,971), which started on time (last page 3,139), yet its last page fell 5 frames later; its 63 reads of about 65,000 bytes and the allocator's evictions are what it adds.
   How the capture's emulator charges time for a DOS read, or for one `repne scasw` word on the capture profile's dynamic core at 45,000 cycles ([`staging.py`](../../python/stunt_reel/tac/staging.py)), was not read, so no count here is converted to frames.
 
 _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-start/journal.md#2026-11-18-the-loader-preloads-every-chunk-and-the-film-clock-starts-on-the-next-timer-tick)._
@@ -95,7 +96,8 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 
 * **After the load.**
   The dialog path `0x49C6..0x49ED` calls `0x3A11`, which zeroes the film clock `DS:0x4896`, its fraction `0x4898` and the slice state, sets the speed `DS:0x489C` to `0x100` (one tick per tick, 8.8), and calls `0x0E42`, which zeroes `0x22B8` and `0x22BE` and sets the playback flag `0x2272`; then the main loop's per-frame call `[0x0D7A]` (`0x54B8`) becomes the film step `0x49F9`.
-  The path `0x4ACE..0x4AFD` does the same without zeroing `0x22B8`.
+  The path `0x4ACE..0x4AFD` clears the playback flag `0x2272` (`0x4AD1`) before its dialog and load, then runs the loader, `0x3A11` and the speed as above and sets the flag at `0x4AFD`, without zeroing `0x22B8`.
+  On both paths no tick is counted during the load.
   Neither waits on a timer tick or the retrace.
 * **The clock.**
   On each timer interrupt (`0x43A5`), while `0x2272` is set, `0x22B8` gains 1 and the film clock gains the speed (`0x43D8..0x43E6`), so the film's tick 1 is the first interrupt after the load returns.
@@ -122,5 +124,6 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 2. Does the film clock start on the same emulated instant for archives that draw alike, and later by whole timer ticks for those that do not?
    A live log of `0x22B8`, `0x2272` and the emulator frame from the end of `0x4B04` to the first drawn page, on the own and a padded `CTRY.ALL`, would settle the quantum; it needs DOSBox ([#722](https://github.com/neilsh/stunt-reel/issues/722)).
 3. What does the 63-chunk 4 MB arm's later start come from, given its small scan and walk counts: the emulator's charge for DOS reads, the allocator's evictions, or the heap's limit?
-4. Do the 8 own chunks the `0x5B01` arm evicts at load change its pages beyond its start?
-5. What happens when the index fills the region: an archive whose index needs more than 10,000 bytes leaves no node and writes past `0x7FEB` into the count word `0x7FEC`; untested.
+4. Do the own chunks the `0x5B01` arm evicts at load, 8 by the node pool and any more for want of heap, change its pages beyond its start?
+5. What happens when the index fills the region?
+   As read, an index of more than 10,000 bytes is written past `0x7FEB` into the count word `0x7FEC`, and `0x4C0F`'s node count, `(0x7FEC - [0x0BD8]) / 10` unsigned, wraps (an index of exactly 10,000 bytes gives 0, which `loop` runs 65,536 times), so the free-list build writes far past the region; untested.
