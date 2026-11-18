@@ -94,7 +94,7 @@ fn v3_palette(tick: u32) -> Palette {
 }
 
 /// Regenerates the v3 render fixture. Run it by hand after a format change:
-/// `cargo test -p stunt-cli write_v3_render_fixture -- --ignored`.
+/// `cargo test -p stunt-score write_v3_render_fixture -- --ignored`.
 #[test]
 #[ignore = "writes the committed fixture"]
 fn write_v3_render_fixture() {

@@ -2185,11 +2185,8 @@ name = "stunt-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "flate2",
  "glam",
  "image",
- "image-compare",
- "png",
  "serde",
  "serde_json",
  "sha2",
@@ -2201,7 +2198,6 @@ dependencies = [
  "thiserror 2.0.21",
  "toml",
  "winit",
- "zstd",
 ]
 
 [[package]]

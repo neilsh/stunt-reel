@@ -7,7 +7,7 @@
 //! - `[I3]` VGA Mode 13h 256-color palette lookup texture with `@interpolate(flat)`.
 //! - `[I4]` Discrete simulation ticks (50 Hz) with sub-tick interpolation.
 //! - `[I5]` Dual-pipeline hardware depth bias pass for coplanar decals.
-//! - `[I6]` 4:3 physical aspect ratio (320x240); the SSIM scoring itself lives in `stunt-cli`'s parity module.
+//! - `[I6]` 4:3 physical aspect ratio (320x240); the SSIM scoring itself lives in `stunt-score`'s parity module.
 //!
 //! Renderer is the entry point for both destinations: offscreen readback into a `PageSink` and a
 //! presented window surface. Everything behind it - the pipelines, palette LUT, camera resources,

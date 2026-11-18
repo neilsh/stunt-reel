@@ -28,11 +28,5 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 clap = { version = "4.6", features = ["derive", "env"] }
-flate2 = "1.1"
-png = "0.18"
-zstd = "0.14"
 toml = "1.1"
 sha2 = "0.11"
-
-[dev-dependencies]
-image-compare = { version = "0.5.0", default-features = false }

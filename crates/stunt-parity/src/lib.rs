@@ -2,7 +2,7 @@
 //! the comparator and the Python tooling.
 //!
 //! This crate is the schema and nothing else: no filesystem, no image decoding,
-//! no GPU. The Rust adapter lives in `stunt-cli` (`parity_artifacts`)
+//! no GPU. The Rust adapter lives in `stunt-score` (`parity_artifacts`)
 //! and the Python adapter in `python/stunt_reel/parity_artifacts/`; both
 //! speak the types defined here.
 //!
