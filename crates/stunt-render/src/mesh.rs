@@ -575,7 +575,7 @@ impl GpuChunk {
     }
 
     /// Writes `vertices`' windows of this chunk into its vertex buffer with one write, since
-    /// each write allocates a staging buffer (`research/parity/lavapipe.md`).
+    /// each write allocates a staging buffer (`research/parity/lavapipe-render-time.md`).
     fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex]) {
         // An unsplit chunk is one window: write it straight from the source.
         if let [range] = self.vertex_ranges.as_slice() {

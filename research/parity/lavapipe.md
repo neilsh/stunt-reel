@@ -1,12 +1,12 @@
 ---
-summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. Eye-relative transforms, which take the eye's translation off each draw's matrix on the CPU, cut the per-tick difference by 46% to 84% on each film and shrink the four near-coplanar depth-tie residues to 17 pixels or fewer each; other ties remain. The screen-linear ratio `shade·w / w` makes the Gouraud polygons the clipper breaks draw the GPU's gradient (BALLOON 145 on `3a7afb76`: all 4,044 broken pixels match the GPU, 1,097 differing pixels in the frame become 7). One matrix upload per frame nearly halved its LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe. A LOCATION frame encodes 127,910 `draw_indexed` calls, nearly three quarters of them world base fills and outlines, none of which coalescing contiguous base slices in walk order removes on LOCATION; culling world nodes outside the view frustum cuts the median frame to 6,791 calls and LOCATION ticks 12-300's lavapipe render time by 83% (one run), with the stores byte-identical over every film's captured ticks."
+summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. Eye-relative transforms, which take the eye's translation off each draw's matrix on the CPU, cut the per-tick difference by 46% to 84% on each film and shrink the four near-coplanar depth-tie residues to 17 pixels or fewer each; other ties remain. The screen-linear ratio `shade·w / w` makes the Gouraud polygons the clipper breaks draw the GPU's gradient (BALLOON 145 on `3a7afb76`: all 4,044 broken pixels match the GPU, 1,097 differing pixels in the frame become 7). Render time is in its own note."
 ---
 # Parity: Rendering on Lavapipe
 
-* **Scope**: how Mesa's software Vulkan driver, lavapipe, renders our frames differently from a GPU, and what the renderer does about it, and how long a lavapipe render takes.
+* **Scope**: how Mesa's software Vulkan driver, lavapipe, renders our frames differently from a GPU, and what the renderer does about it; how long a lavapipe render takes is in [`lavapipe-render-time.md`](lavapipe-render-time.md).
   Cloud sessions ([ADR 0039](../../docs/adr/0039-cloud-sessions-fetch-pinned-game-archives.md)) and CI ([ADR 0006](../../docs/adr/0006-ci-renders-on-lavapipe.md)) both render on it.
   The findings name the Mesa build they come from; three builds were measured: Ubuntu's `mesa-vulkan-drivers` 25.2.8 (`llvmpipe (LLVM 20.1.2, 256 bits)`, cloud), and mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and 26.2.6 (`llvmpipe (LLVM 23.1.4, 256 bits)`) on the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md).
-* **Sources**: Mesa source (`src/gallium/auxiliary/draw/draw_pipe_clip.c` at `mesa-25.2.8`, `mesa-26.2.6` and `main`; `src/gallium/drivers/llvmpipe/lp_context.c`), `cdb` stack samples and timed renders from #596, parity runs logged in [`log.md`](../../work/2026-10/parity-log/log.md) on 2026-11-07 and 2026-11-15, the #265 journal, and #635's parity and residue runs of 2026-11-16.
+* **Sources**: Mesa source (`src/gallium/auxiliary/draw/draw_pipe_clip.c` at `mesa-25.2.8`, `mesa-26.2.6` and `main`; `src/gallium/drivers/llvmpipe/lp_context.c`), parity runs logged in [`log.md`](../../work/2026-10/parity-log/log.md) on 2026-11-07 and 2026-11-15, the #265 journal, and #635's parity and residue runs of 2026-11-16.
 * **Evidence tier**: stated at the start of each section.
 
 ## 1. Near ground polygons drew palette index 0
@@ -152,47 +152,6 @@ _Source: [The vertex stage at the four residue ticks](../../work/2026-11/distill
 A near-zero but finite divisor would give a Gouraud polygon a wrong but finite weight that the guard cannot catch; the sentinel found no `shade` below -0.5 or above 255.5 on lavapipe at any tick rendered, and no case is known.
 _Source: [Lavapipe beside the GPU on one crates tree](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree)._
 
-## 6. Render time
-
-`[Bounded Observation]`, 2026-11-15 to 2026-11-16, mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and the RTX 4070 on the same laptop, LOCATION ticks 12-300, headless at 320×200.
-Each change left the render stores (`frames.zst`, `layers.zst`, `palettes.zst`) byte-identical, on lavapipe over LOCATION ticks 12-300 and on the GPU over every reference film's captured ticks.
-Each row's before is its own tree, so the rows do not chain (this machine took 88.7 s on lavapipe for `5844b4b8`, #602's before, against 81.8 s for `80a3ad5`, #596's after):
-
-| Change | Lavapipe before, after | GPU before, after |
-|---|---|---|
-| One matrix upload per frame (#596, after on `80a3ad5`, one run each) | 150.5 s, 81.8 s | 20.9 s, 16.0 s |
-| Two frames in flight (#602, `5844b4b8` before, two runs each) | 88.7 s and 89.9 s, 76.3 s and 78.2 s | 16.7 s and 16.6 s, 12.4 s and 12.6 s |
-| Frustum cull (#644, `857f80a8` before, PR #652 at `3e956d1a` after, one run each) | 81.7 s, 13.7 s | 14.6 s, 4.7 s |
-
-#596 also cut the GPU's full captures, LOCATION's (ticks 12-8262) from 301.2 s to 229.6 s and INTRO's (12-3818) from 96.8 s to 67.8 s.
-_Source: [One model-matrix upload per frame](../../work/2026-11/distill-lavapipe/journal.md#2026-11-15-one-model-matrix-upload-per-frame), [Two frames in flight](../../work/2026-11/distill-lavapipe/journal.md#2026-11-15-two-frames-in-flight), [culling world nodes outside the view frustum](../../work/2026-11/644_frustum-cull/journal.md#2026-11-16-culling-world-nodes-outside-the-view-frustum)._
-
-**One matrix upload per frame (#596).**
-`SceneRenderer::prepare` wrote each draw's model matrix with its own `write_buffer`, and wgpu allocates a staging buffer per call; on lavapipe that allocation held about half of the main-thread samples, with the process at 1.00 core whatever `LP_NUM_THREADS` was (why it costs more there than on the NVIDIA driver is not measured). #596 packs a frame's matrices into one uniform buffer at dynamic offsets, uploaded with one `write_buffer`.
-Afterwards 16 of 20 main-thread samples sit in `wait_for_fence`, inside `vulkan_lvp`, and none in staging allocation, and all-thread samples put lavapipe's work on the one `vulkan_lvp` thread that executes command buffers (busy in 52 of 65 all-thread samples), known by offset only since mesa-dist-win ships no PDBs ([#600](https://github.com/neilsh/stunt-reel/issues/600)); on the GPU only the main thread is busy, 8 of its 42 samples in `GpuModel::collect_world_meshes`.
-_Source: [2026-11-15: where a frame's time goes after the change](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-where-a-frames-time-goes-after-the-change), [One model-matrix upload per frame](../../work/2026-11/distill-lavapipe/journal.md#2026-11-15-one-model-matrix-upload-per-frame)._
-
-**Two frames in flight (#602).**
-The offscreen target waited for each frame's readback, so the main thread and lavapipe's command-buffer thread did not overlap.
-The headless loop now submits tick N+1 before it maps tick N's readback buffers, and waits only for tick N's own submission; pages still reach the sink in tick order.
-The seven `mise run parity` score lines do not move.
-_Source: [Two frames in flight in headless capture](../../work/2026-11/602_headless-capture-two-frames/journal.md#2026-11-15-two-frames-in-flight-in-headless-capture)._
-
-**Draws per frame (#603, #644).**
-Before the cull, the median LOCATION frame (ticks 12-300, `b0f6c120`, the same 289 per-frame counts on both backends) encoded 127,910 `draw_indexed` calls: 8,963 world ground fills and 6,269 ground outlines, 49,257 world base fills and 45,560 base outlines (94,817, 74.1%), 5,550 world decal fills and 5,549 decal outlines, and 6,762 prop, actor and sprite fills.
-The world uploads as one chunk of 6,702,496 vertices and 7,488,138 indices, so every base slice draws with base vertex 0 from its own index range, and the base walk emits a parent's child slices in the reverse of their index order; in none of the 289 frames did an adjacent pair of base slices continue the previous one's index range, so coalescing them removes no call (#603's decision: no-go against its 25% bar).
-_Source: [Draws per frame](../../work/2026-11/distill-lavapipe/journal.md#2026-11-16-draws-per-frame)._
-
-**Frustum cull (#644).**
-`[Bounded Observation]`, 2026-11-16, PR #652 at `3e956d1a` against `857f80a8`, mesa-dist-win 25.2.8 and the RTX 4070 laptop, LOCATION ticks 12-300, one run each.
-The world walk skips a node whose box around its own and its descendants' vertices lies wholly outside one plane of the view frustum.
-Over #603's 289 frames the median frame's `draw_indexed` calls fall from 127,910 to 6,791: the six world categories' medians from 121,148 in sum to 29 (the world's per-frame total at most 133), as these frames look at an aircraft against sea and sky; the 6,762 prop, actor and sprite fills are not culled.
-
-Render times are in the table above.
-On top of #636's eye-relative transforms (`e6fb29c`), on `origin/main` `734d3a8`, Ubuntu's Mesa 25.2.8 rendered all seven films' captured ticks byte-identical with and without the cull, 2026-11-17; the GPU was not re-checked there.
-`852db54`, which stops moving each box by the node's `local_matrix`, was not re-run; every world node's `local_matrix` is the identity (`stunt_core::world::mesh`), so no box changes.
-_Source: [culling world nodes outside the view frustum](../../work/2026-11/644_frustum-cull/journal.md#2026-11-16-culling-world-nodes-outside-the-view-frustum), [the cull on top of eye-relative transforms](../../work/2026-11/644_frustum-cull/journal.md#2026-11-17-the-cull-on-top-of-eye-relative-transforms)._
-
 ## Ruled out
 
 * **The actor shadow draw** (CTRY 422): with it off, the ground stays black.
@@ -206,13 +165,10 @@ _Source: [culling world nodes outside the view frustum](../../work/2026-11/644_f
 * **A LOCATION fault the guard misses** (mesa-dist-win 25.2.8): a first local LOCATION run scored 0.6344817 because its binary was a guard-removed build reused with `--no-build`, and rendered again with the guard it scores 0.8292054 (index agreement 0.8405, as the GPU's); [journal](../../work/2026-11/distill-lavapipe/journal.md#2026-11-15-a-first-local-location-run-on-a-guard-removed-binary).
 * **A finite out-of-range `shade` on lavapipe, at the ticks rendered**: the sentinel drew no `shade` below -0.5 or above 255.5 at CTRY 400 and 422, LOCATION 3994, 4005, 4445 and 4467, BALLOON 145, LAND 227, BOMB 1910 or LOCATION 2599 and 2859, on 25.2.8, nor at the first six on 26.2.6 (section 5); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
 * **The GPU polygon's shade at BOMB 1910 and LOCATION 2599 and 2859**: all-flat polygons still differ there (section 5); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
-* **LLVM shader compilation, or `LP_NUM_THREADS`, as the cost of a lavapipe render** (mesa-dist-win 25.2.8): `GALLIVM_PERF=nopt` (47.5 s against 48.4 s over LOCATION ticks 12-100) and 1, 4 or unset threads left the time and the frames unchanged; [journal](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-one-model-matrix-upload-per-frame).
 * **LAND 227 as a Gouraud polygon drawn flat**: lavapipe draws a flat ground polygon over the GPU's prop there (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **A different depth format on the two backends**: both take `X8_D24_UNORM_PACK32` for `Depth24Plus` (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **The clipper as the sole cause of the depth residues** (mesa-dist-win 25.2.8): polygons the side planes do not clip differ in depth too, and provoking vertices differ out of the vertex stage (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **An upstream fix by Mesa 26.2.6**: its clipper still makes the NaN, and `interp()` is unchanged through `main` (section 2); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
-* **Coalescing contiguous world base slices as a speed-up** (LOCATION): no adjacent pair of the base list in walk order continues the previous one's index range, so it removes 0 of a frame's 127,910 `draw_indexed` calls on the 289 frames measured (section 6); [journal](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices).
-* **A cloud session as the place to measure #629's relit-vertex rewrite cost** (Ubuntu's Mesa 25.2.8, 4 vCPUs): a whole INTRO render took 147.4 s and 129.5 s with the rewrite and 133.7 s without it, so mesa-dist-win's 11.4 s cost (one run each way, #474) is smaller than the spread between identical runs there, `[Bounded Observation]`; [journal](../../work/2026-11/629_relight-cost/journal.md#2026-11-18-the-rewrites-cost-on-the-clouds-lavapipe).
 
 ## Open questions
 
@@ -221,7 +177,4 @@ _Source: [culling world nodes outside the view frustum](../../work/2026-11/644_f
 2. Whether a broken polygon's depth moves more than the vertex-stage difference explains (LOCATION 2859, section 5).
    Not filed upstream either: a report to Mesa would cite `t_nopersp`'s zero divisor (section 2).
 3. Whether Mesa 26.2.6 scores as 25.2.8 does: it was rendered at six ticks only, with no parity run; and CI's lavapipe has not been compared with these rows.
-4. Which lavapipe functions hold its command-buffer thread, busy in 52 of 65 samples of a 0.28 s LOCATION tick after #596, and whether fewer draws ([#603](https://github.com/neilsh/stunt-reel/issues/603)) shorten it (section 6, [#600](https://github.com/neilsh/stunt-reel/issues/600)); #602 overlapped the readback with the next tick's work, which section 6 measures.
-5. Whether caching the world's visible mesh slices while the camera holds still is worth it now that readback overlaps the next tick (#602, section 6): `GpuModel::collect_world_meshes` depends only on the world, the eye, and the authored view's eye, target and lens, and took 8 of 42 GPU main-thread samples in #596's profile.
-   The overlap took the GPU run from 16.7 s to 12.4 s, so what remains is the main-thread work plus the part of the wait the pipeline cannot hide; whether a cache shortens that enough to pay is unmeasured.
-6. Whether replacing `@interpolate(linear) shade` everywhere with the ratio `shade·w / w` (so no render relies on Mesa's `noperspective` path) flips GPU pixels at `.5` rounding boundaries: #635 proposed counting the differing index-plane pixels against `main` over the seven films and did not run it (it was the issue's optional experiment; section 3 (e) adopts the ratio only where `shade` is not finite).
+4. Whether replacing `@interpolate(linear) shade` everywhere with the ratio `shade·w / w` (so no render relies on Mesa's `noperspective` path) flips GPU pixels at `.5` rounding boundaries: #635 proposed counting the differing index-plane pixels against `main` over the seven films and did not run it (it was the issue's optional experiment; section 3 (e) adopts the ratio only where `shade` is not finite).
