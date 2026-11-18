@@ -734,3 +734,18 @@ def test_judge_prints_each_films_class_losses_against_the_pin_of_the_candidates_
         "terrain +0.0020 (+0.0020), props -0.0015 (-0.0005)"
     ) in captured.err
     assert "loss by class" not in captured.out
+
+
+def test_judge_keeps_its_verdict_when_a_loss_pin_is_unreadable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = reference_tree(tmp_path / "data", [5], films=("ctry",))
+    _pin_losses(root, "lavapipe", _loss() | {"ground": 0.1})  # a class no report has
+    _write_losses(tmp_path / "baseline" / "ctry_report", _loss())
+    _write_losses(tmp_path / "candidate" / "ctry_report", _loss(props=0.02))
+    argv = [str(tmp_path / "baseline"), str(tmp_path / "candidate"), "--data-root", str(root)]
+    assert judge_cli.main(argv) == 0
+    captured = capsys.readouterr()
+    assert "[judge] ctry loss pin unreadable:" in captured.err
+    assert "expected.lavapipe.loss.ground" in captured.err
+    assert "candidate" in captured.out, "the verdict table still prints"

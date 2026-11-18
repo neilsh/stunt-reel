@@ -202,8 +202,8 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 pin = loss_pin(cand_reports[film], film, root)
             except references.ReferenceCaptureError as err:
-                print(f"parity_judge: {err}", file=sys.stderr)
-                return 2
+                print(f"[judge] {film} loss pin unreadable: {err}", file=sys.stderr)
+                pin = None
             for line in class_loss_lines(
                 film,
                 base_reports[film].mean_loss_by_class_scored,
