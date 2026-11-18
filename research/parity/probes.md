@@ -48,7 +48,7 @@ The rule, one for all six films: an index is backdrop when
 * it has at least 0.05 % of the capture's rows 0..184 over capture frames 0, 4, 8, ... of the scored frames (`[0::4]`, 25 to 183 frames);
 * at least 85 % of those capture pixels lie where our layer plane is none (0), ocean (1) or terrain (2); an index our render draws mostly on the props layer (3) is scenery and stays out, however large and however well our index agrees;
 * **no actor pixel of ours carries it in any scored frame** (layer 16 and up, every scored frame, not the sample): a missing backdrop index only lowers IoU, one an actor paints hides the actor;
-* where the index is not mostly sky, our index equals the capture's on at least 90 % of those pixels; where it is mostly none (sky), it lies in 227-238, the sky of `CAPTURE_SKY_INDICES` (`crates/stunt-score/src/parity/mask.rs`; 224 to 226 and 239 are `[Unknown]` in [`palette-and-shading.md`](../formats/concepts/palette-and-shading.md)).
+* where the index is not mostly sky, our index equals the capture's on at least 90 % of those pixels; where it is mostly none (sky), it lies in 227-238, the sky of `CAPTURE_SKY_INDICES` (`crates/stunt-score/src/parity/mask.rs`; 224 to 226 and 239 are `[Unknown]` in [`palette-and-shading.md`](../formats/concepts/palette-and-shading.md); why 224 to 226 stay out is [`method.md`](method.md) section 2.0).
 
 Reproduce one film's bands after `mise run parity`, from the repo root:
 

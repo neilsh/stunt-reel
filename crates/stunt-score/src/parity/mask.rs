@@ -14,10 +14,11 @@ const UI_BAR_FIRST_ROW: usize = 185;
 /// Palette index of the mouse cursor in captured frames.
 const CURSOR_INDEX: u8 = 255;
 
-/// Palette indices `PLAYONE.EXE` paints the sky with: elevation bands from 227 at the top
-/// of the view to 238 at the horizon (research/formats/concepts/palette-and-shading.md). This describes
-/// captures only; the renderer's band table in `mode13h.wgsl` is a separate model and is
-/// deliberately not shared.
+/// Palette indices a captured pixel counts as sky by: elevation bands 227 to 238, down to the
+/// horizon (research/formats/concepts/palette-and-shading.md). `PLAYONE.EXE`'s gradient starts at
+/// 224, but shapes paint 224 to 226 too, so the zenith bands are left out
+/// (research/parity/method.md section 2.0). This describes captures only; the renderer's band
+/// table in `mode13h.wgsl` is a separate model and is deliberately not shared.
 pub(super) const CAPTURE_SKY_INDICES: RangeInclusive<u8> = 227..=238;
 
 /// Whether a captured pixel shows sky rather than geometry.
@@ -165,7 +166,7 @@ mod tests {
                 "{index}"
             );
         }
-        // The rare 224-226 shades sit below the horizon, never in the top rows.
+        // The zenith bands 224-226 stay out: shapes paint them too (method.md section 2.0).
         assert!(!is_capture_sky(224) && !is_capture_sky(226));
     }
 
