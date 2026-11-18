@@ -93,16 +93,17 @@ The gate script, its step list, the pre-commit hook, its lanes and CI are in [qu
 
 | Task | Runs |
 | --- | --- |
-| `check` / `check-rust` / `check-py` / `check-docs` | `gate.py` over the steps the branch touches (`check`; `-- --full` for every step) or one half (format, lint, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
+| `check` / `check-rust` / `check-py` / `check-docs` | `gate.py` over the steps the branch touches (`check`; `-- --full` for every step) or one half (format, lint, module layers, strict typing, rustdoc, both test suites, the no-default-features matrix), one line per step, log in `target/check.log` |
 | `pre-commit` | what the committed pre-commit hook runs: `prek run --quiet --config prek.toml` over the staged content, printing only the hooks that fail ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md)). A fast subset, not the gate |
 | `check-work-frozen` | [check_work_frozen.py](../python/scripts/check_work_frozen.py): a staged file added to a frozen work folder (its README has an `outcome` at the merge base of `HEAD` and the gate's base, `HEAD` when no base resolves), or a staged change to that README's `outcome` line ([work/README.md, Lifecycle](../work/README.md#lifecycle)); edits to existing files pass; a pre-commit hook on every commit. `-- --branch` checks the branch since the gate's base instead, which `tests/test_work_frozen.py` runs in the gate |
 | `test-py-docs` | every test module marked `docs` (`pytest -m docs`: the documentation invariants, the formats catalog, the schema contract); the docs half of the gate, run by `check-docs` and by a scoped `check` without the Python half |
 | `test-docs` | `tests/test_doc_invariants.py` alone: anchors, Markdown links, cited paths, links into dated records only where [`work/README.md`](../work/README.md#links) allows; a pre-commit hook on every commit |
-| `check-windows` | the non-GPU half of the gate used by the Windows job on `main` (`fmt-check` + `lint` + `typecheck` + `test`)
-| `check-windows-smoke` | the Windows-only slice of the pytest suite, every module marked `windows` (junctions, reparse points, the pytest basetemp workaround, the target seed's build locks), used by the pull-request Windows job; `tests/test_windows_marker.py` fails a module that checks the platform without the marker
+| `check-windows` | the non-GPU half of the gate used by the Windows job on `main` (`fmt-check` + `lint` + `check-layers` + `typecheck` + `test`)
+| `check-windows-smoke` | the Windows-only slice of the pytest suite, every module marked `windows` (junctions, reparse points, the pytest basetemp workaround, the target seed's build locks, and tach's module layers), used by the pull-request Windows job; `tests/test_windows_marker.py` fails a module that checks the platform without the marker
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
 | `fix` | every automatic fix the gate's lint and format steps can apply: `ruff check --fix`, `ruff format`, `cargo fmt`. The gate names it when `lint-py`, `fmt-check-py` or `fmt-check-rust` fails; it changes nothing on a clean tree |
 | `lint` | `cargo clippy -- -D warnings` and `ruff check .` |
+| `check-layers` | `uv run tach check`: the module layers of `python/stunt_reel/` and the scripts above them, as [`tach.toml`](../tach.toml) states them ([ADR 0050](adr/0050-the-python-packages-module-layers-are-checked-by-tach.md)); a step of `check-py` |
 | `typecheck` | `uv run mypy` (strict), once with `--platform win32` and once with `--platform linux` |
 | `doc` | rustdoc with `RUSTDOCFLAGS=-D warnings` |
 | `check-rust-matrix` | `stunt-core` without the `serde`/`bytemuck` features |

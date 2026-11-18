@@ -2,6 +2,12 @@
 
 Python package and script paths to the documents that govern them. The Rust crates, the research directories and the rules every cell follows are in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
+## Module layers
+
+[`tach.toml`](../tach.toml) sorts every module of [`python/stunt_reel/`](../python/stunt_reel/) into one of four groups and states which may import which; `mise run check-layers` checks it in the gate's Python half ([ADR 0050](adr/0050-the-python-packages-module-layers-are-checked-by-tach.md)). Shared helpers are open to every group, capture builds on shared, and parity on capture; tooling (worktrees, work folders, docs, cloud assets) uses the tooling modules it names and shared, and one capture module allowed by name. [`python/scripts/`](../python/scripts/) may import the package, and the package, its `__init__` included, never imports a script. A module added to the package joins a group there; until then tach checks it as capture.
+
+## Routing table
+
 | Subsystem / Code Path | Seam Contract | Governing Anchors | Specification / Research Notes |
 |---|---|---|---|
 | [`python/stunt_reel/tac/playone.py`](../python/stunt_reel/tac/playone.py) | Seam 4 (`VisualParityGate`) | [`[MEM-VSYNC-03DA]`][MEM-VSYNC-03DA], [`[MEM-FLM-TICK]`][MEM-FLM-TICK] | [`research/playone-exe/capture.md`][], [`research/playone-exe/navigation.md`][] |

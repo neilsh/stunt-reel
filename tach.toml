@@ -1,0 +1,112 @@
+# The module layers of python/stunt_reel, checked by `tach check` in `mise run check-py`
+# (ADR 0050). docs/architecture-python.md routes here; this file is the one statement of them.
+#
+# Four groups. `shared` is used by everything; capture builds on shared; parity builds on capture.
+# Tooling (worktrees, work folders, docs, cloud assets) uses the tooling modules it names and
+# shared, and one capture module allowed by name. python/scripts/ sits above them all: a script may import the package,
+# and the package never imports a script.
+#
+# tach's layers are one stack, so tooling sits on top of it and `layers_explicit_depends_on`
+# takes away the free use of lower layers that a layer would otherwise give it: a module must
+# declare each layer it uses, except a `utility` module, which every module may use. Capture and
+# parity declare no `depends_on`, so they may use anything their layer lets them; shared is the
+# utility layer. The package itself, `stunt_reel` (its __init__, which imports tac), is capture, so
+# a module added to the package without a group is checked as capture until it joins one;
+# tests/test_module_layers.py fails until it does.
+
+source_roots = ["python", "python/scripts"]
+exclude = ["**/__pycache__"]
+# A type-only import is a dependency too: tach skips imports under `TYPE_CHECKING` by default.
+ignore_type_checking_imports = false
+layers_explicit_depends_on = true
+layers = ["scripts", "tooling", "parity", "capture", "shared"]
+# Code under a source root that is in no module below is <root>: the scripts. It may import
+# anything, and no module may import it.
+root_module = "dependenciesonly"
+
+[[modules]]
+path = "<root>"
+layer = "scripts"
+
+# Helpers every group uses: where the data root and the parity artifacts live and what they hold,
+# hashing, git and uv environments, process trees, and the game-format readers.
+[[modules]]
+paths = [
+    "stunt_reel.dataroot",
+    "stunt_reel.flm_walk",
+    "stunt_reel.git_env",
+    "stunt_reel.gvpoly_stream",
+    "stunt_reel.hashing",
+    "stunt_reel.kaitai",
+    "stunt_reel.link",
+    "stunt_reel.parity_artifacts",
+    "stunt_reel.parity_layout",
+    "stunt_reel.process_tree",
+    "stunt_reel.scene_tree",
+    "stunt_reel.scratch",
+    "stunt_reel.uv",
+]
+layer = "shared"
+utility = true
+
+# The capture harness: driving the game, the captures it files, and which capture is a film's
+# reference, built with which game build.
+[[modules]]
+paths = [
+    "stunt_reel",
+    "stunt_reel.all_archive",
+    "stunt_reel.avi",
+    "stunt_reel.capture_run",
+    "stunt_reel.capture_store",
+    "stunt_reel.game_builds",
+    "stunt_reel.references",
+    "stunt_reel.tac",
+]
+layer = "capture"
+
+# The parity loop: render, score, judge and record against the captures.
+[[modules]]
+paths = [
+    "stunt_reel.batch_films",
+    "stunt_reel.batch_ledger",
+    "stunt_reel.batch_stages",
+    "stunt_reel.bench",
+    "stunt_reel.expected_scores",
+    "stunt_reel.matched_frames",
+    "stunt_reel.parity_figures",
+    "stunt_reel.parity_judge",
+    "stunt_reel.parity_pictures",
+    "stunt_reel.parity_pipeline",
+]
+layer = "parity"
+
+# Repository tooling. Each may use the tooling modules named in `depends_on`, and shared.
+[[modules]]
+paths = [
+    "stunt_reel.doc_anchors",
+    "stunt_reel.frontmatter",
+    "stunt_reel.markdown_links",
+    "stunt_reel.research_notes",
+    "stunt_reel.site_pages",
+    "stunt_reel.target_seed",
+    "stunt_reel.work_items",
+    "stunt_reel.worktree_clean",
+    "stunt_reel.worktree_ensure",
+    "stunt_reel.worktree_git",
+    "stunt_reel.worktree_provision",
+    "stunt_reel.worktree_reap",
+]
+layer = "tooling"
+depends_on = [
+    "stunt_reel.frontmatter",
+    "stunt_reel.markdown_links",
+    "stunt_reel.target_seed",
+    "stunt_reel.worktree_*",
+]
+
+# Allowed: the captures archive is pinned to each reference's capture digest, which only
+# `references` computes, and the archive must agree with the rows that `references` reads.
+[[modules]]
+path = "stunt_reel.cloud_assets"
+layer = "tooling"
+depends_on = ["stunt_reel.references"]

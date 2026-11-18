@@ -387,6 +387,12 @@ env = { CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/
 description = "Run Ruff linter on Python codebase"
 run = "uv run ruff check ."
 
+# The module layers of python/stunt_reel and the scripts above them, as tach.toml states them
+# (ADR 0050); a step of the gate's Python half.
+[tasks.check-layers]
+description = "Check python/stunt_reel's module layers against tach.toml (tach check, ADR 0050)"
+run = "uv run tach check"
+
 [tasks.lint]
 description = "Run all Rust and Python linters"
 depends = ["lint-rust", "lint-py"]
@@ -505,7 +511,7 @@ run = "python python/scripts/gate.py rust"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.check-py]
-description = "Python half of the gate (fmt, lint, mypy, pytest), one line per step"
+description = "Python half of the gate (fmt, lint, module layers, mypy, pytest), one line per step"
 run = "python python/scripts/gate.py py"
 
 [tasks.check-docs]
@@ -539,16 +545,17 @@ description = "What the pre-commit hook runs: prek over prek.toml (ADR 0026)"
 run = "prek run --quiet --config prek.toml"
 
 [tasks.check-windows]
-description = "Windows non-GPU half of the gate (fmt, lint, typecheck, Rust and Python tests; GPU tests skip without a driver)"
-depends = ["fmt-check", "lint", "typecheck", "test"]
+description = "Windows non-GPU half of the gate (fmt, lint, module layers, typecheck, Rust and Python tests; GPU tests skip without a driver)"
+depends = ["fmt-check", "lint", "check-layers", "typecheck", "test"]
 
 # The Windows-only behaviour is all in the Python tree — junctions, reparse points, the
 # .cache link, the pytest basetemp workaround, Cargo's build locks and robocopy in the target
 # seed — so the pull-request job runs this instead of the whole check-windows; the full task
 # stays on main. A module carries the `windows` marker to run here, and
-# tests/test_windows_marker.py fails one that checks the platform without it.
+# tests/test_windows_marker.py fails one that checks the platform without it. The module-layers
+# test carries it too, so a pull request proves tach runs on Windows (ADR 0050).
 [tasks.check-windows-smoke]
-description = "Windows-only smoke: the tests marked `windows` (junctions, reparse points, .cache links, build locks)"
+description = "Windows-only smoke: the tests marked `windows` (junctions, reparse points, .cache links, build locks, tach's module layers)"
 run = "uv run pytest -m windows"
 
 [tasks.verify-corpus]
