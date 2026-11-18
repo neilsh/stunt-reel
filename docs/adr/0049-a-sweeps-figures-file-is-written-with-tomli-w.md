@@ -54,6 +54,14 @@ ADR 0010's checks:
 - **tomlkit**, a style-preserving TOML editor that also writes comments. Rejected: the job is one
   write of a document built in memory, which is `tomli-w`'s whole API, `dumps`; nothing here edits
   a file in place or keeps its style.
+- **A zstd-compressed file**, as nothing edits a figures file once written (`compression.zstd`
+  is in the standard library). Rejected: it was 70 KiB at four variants against Git's own 96 KiB,
+  while a binary file cannot be read in a review or searched, and leaves `check-toml` nothing to
+  parse, so nothing would show that it holds only scores
+  ([`NOTICE.md`](../../NOTICE.md#scores-and-metrics)).
+- **One row per film tick**, a CSV table with two columns per variant inside the TOML: 177 KiB
+  at four variants, under the hook's limit up to about 12 variants. Rejected: history would
+  shrink by about 25 KiB per sweep, for a second format parsed by hand inside the first.
 
 ## Consequences
 
@@ -62,8 +70,9 @@ ADR 0010's checks:
 - A figures file takes a line per frame per variant. On synthetic scores written as `report.json`
   writes an `f32` (its shortest decimal form), with as many frames per film as each reference
   film's capture holds (1,875 over the seven), a four-variant sweep's file was 540 KiB, 96 KiB
-  compressed by zlib: about 135 KiB per variant. The hand-written rows took 282 KiB for the same
-  frames.
+  compressed by zlib: about 135 KiB per variant in a checkout. Git stores it compressed, 96 KiB
+  once packed, so history grows by about 24 KiB per variant. The hand-written rows took 282 KiB
+  for the same frames.
 - `check-added-large-files` refuses a file over 500 KiB, which a sweep of four variants or more
   passes, and a tracked sweep's file must be committed, so [`prek.toml`](../../prek.toml) excludes
   `work/*/*/sweeps/*.toml` from that hook. That hook guards asset isolation
