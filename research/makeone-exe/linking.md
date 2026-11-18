@@ -254,7 +254,7 @@ The last column is the `emu_frame` of the page at film tick 1,333, the emulator 
 - Over 13 CTRY captures, these and #301's and #348's, two archives drew identical pages on every shared tick exactly when their last page fell on the same emulator frame, and every archive that changed pages drew its last page later than the own archive (props 3,167, padding 3,173).
   So the pages track how late the film runs, which grows with the chunks and bytes an archive adds.
 
-That the archive's load time sets when the film starts against the emulator's frame clock, and so which ticks get drawn and what is drawn at them, is a `[Hypothesis]`: it rests on one film's captures, and no capture timed the load or the film clock's start.
+That the archive's load time sets when the film starts against the emulator's frame clock, and so which ticks get drawn and what is drawn at them, is a `[Hypothesis]`: it rests on one film's captures; the start itself is timed below.
 
 _Source: [2026-11-16: content does not count; chunk count, bytes and ids do once the film runs later](../../work/2026-11/482_archive-property-pages/journal.md#2026-11-16-content-does-not-count-chunk-count-bytes-and-ids-do-once-the-film-runs-later)._
 
@@ -262,6 +262,12 @@ The code fits it in part: `PLAYONE` passes every chunk of the archive through it
 The CPU work it counts does not account for the 63-chunk 4 MB arm, and why a later start changes what is drawn at a tick is still open there.
 
 _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-start/journal.md#2026-11-18-the-loader-preloads-every-chunk-and-the-film-clock-starts-on-the-next-timer-tick)._
+
+**The start moves by whole timer ticks.**
+`[Bounded Observation]`, `CTRY.FLM`, unpatched build, the own archive and nine padded arms (those above and #348's padding), logged per emulator frame on dosbox-automation, 2026-11-18.
+The arms that draw the own archive's pages start the film clock on the same timer interrupt; each that draws differently starts 3 to 24 interrupts later, and its last page falls as many ticks later, to within one frame ([`film-load.md`](../playone-exe/film-load.md) § 6).
+
+_Source: [archives that draw alike start the film clock on the same timer interrupt](../../work/2026-11/722_playone-start-timer-tick/journal.md#2026-11-18-archives-that-draw-alike-start-the-film-clock-on-the-same-timer-interrupt)._
 
 ---
 
