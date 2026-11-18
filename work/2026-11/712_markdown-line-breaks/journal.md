@@ -63,3 +63,26 @@
 - **Verdict**: adopted: PR 2 runs the script at `1027e31` or later.
   One split the reviewer flagged, inside a parenthetical in `research/formats/auxiliary/spr.md`, is left to PR 2's spot-check.
 - **Lives in**: this journal; ADR 0051 states the alert rule.
+
+## 2026-11-18: Blame across the merged reflow
+
+- **Question**: with the reflow's squash commit (`edd2621`, #714) in `.git-blame-ignore-revs`, does `git blame` still credit the reflowed lines to the commits before it?
+- **Method**: git 2.43.0 in this session's 52-commit shallow clone, `git blame -s --ignore-revs-file .git-blame-ignore-revs` with `blame.markIgnoredLines` and `blame.markUnblamableLines`, on `AGENTS.md` (one-line paragraphs before the reflow), `docs/harness.md` (hard-wrapped) and `research/parity/attribution.md` (one-line, with hand-moved breaks), compared with plain `git blame`.
+- **Result**: without the ignore file, the reflow owned 22 of `AGENTS.md`'s 92 lines, 143 of `docs/harness.md`'s 260 and 139 of `attribution.md`'s 256.
+  With it, the reflow owned none of `AGENTS.md`'s lines; 22 were passed to earlier commits and marked `?`.
+  In `docs/harness.md` 141 were passed on and marked `?`, and 2 blank lines stayed on the reflow, marked `*` as unblamable; in `attribution.md` 138 were passed on and 1 blank line stayed.
+  The clone's history starts at `2c60728` (2026-11-16), so most passed-on lines landed on that boundary commit; which earlier author each guessed line reaches was not checked, and the first entry's experiment says a hard-wrapped paragraph's guess can be wrong.
+- **Verdict**: adopted: the ignore entry does what ADR 0051 says, apart from the guessing it already states.
+- **Lives in**: ADR 0051's Consequences.
+
+## 2026-11-18: The reflow's hand fixes
+
+- **Question**: which line breaks did people move by hand after the script ran, and why, so the script's limits are on record?
+- **Method**: two fresh reviewers read the reflowed diff of #714, the first 27 paragraphs, the second about 60 more in files the first had not read, each with mechanical scans of every added line; each bad split was fixed by moving a line break only, and `reflow.py verify` and the word diff were rerun after each round.
+- **Result**: 60 breaks were moved; line numbers are at the commit each fixed.
+  - At `58fe08a` (first review): a split inside a parenthetical (`research/formats/auxiliary/spr.md:77`), a split inside a quotation (`research/formats/res.md:170`), and 18 issue or picture links `([#N](…))` left alone on a line, in `terrain-shade.md`, `driving.md`, `attribution.md` (6), `col3-2-studio.md`, `film-segments.md`, `framing-and-actors.md` (3), `hero-aircraft-placement.md` (2) and `patch3.md` (3).
+  - In `26c295f` (second review): 33 evidence-tier tags left on the line after their claim, joined back because [`distilling-notes`](../../../.agents/skills/distilling-notes/SKILL.md) keeps each tag on the claim it qualifies; 3 more lone citations; 3 issue citations that had landed at the start of the next sentence; and one split inside a score range written `0.6549 .. 0.7154`.
+  - The first reviewer had judged the lone tier tags acceptable; the second, citing the skill, did not.
+- **Verdict**: control: the script splits after any sentence end, so it cannot tell a trailing citation, tier tag or `..` range from a sentence.
+  Authors placing breaks by hand under the guidance avoid all four.
+- **Lives in**: this journal only.

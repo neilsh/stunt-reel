@@ -13,3 +13,6 @@
 # 2026-11-08 docs: link targets inside the records #310 moved into work/ (#312),
 # and the one test constant that turns their link check back on
 cb246d0d4f70053fc25cacd94e452cc596c0845b
+
+# 2026-11-18 style(docs): one sentence per line (#712, #714)
+edd26217acd286982fd03d8d4743881138553989
