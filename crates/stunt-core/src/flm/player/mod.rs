@@ -583,10 +583,14 @@ impl<'a> FlmPlayer<'a> {
             lens,
         };
 
-        // Active actors evaluation (all active slots except the view_obj camera slot)
+        // Every active slot, and the view slot only for its shadow: PLAYONE's scene walk
+        // skips the view slot's actor draw (image `0x1E26`) but still queues the shadow of a
+        // drawn, shadowed slot (`0x1E35`; research/playone-exe/sod-vm-frame.md section 9.1).
         let mut actors = Vec::new();
         for (actor_id, (idx, slot)) in (0u32..).zip(self.slots.iter().enumerate()) {
-            if !slot.active || idx == view_idx {
+            let view = idx == view_idx;
+            let view_shadow = SIF_DRAW | SIF_SHADOW;
+            if !slot.active || (view && slot.type_flags & view_shadow != view_shadow) {
                 continue;
             }
 
@@ -624,6 +628,7 @@ impl<'a> FlmPlayer<'a> {
                 position_meters,
                 state_mask,
                 casts_shadow: (slot.type_flags & SIF_SHADOW) != 0,
+                view,
                 joint_angles_bam,
             });
         }

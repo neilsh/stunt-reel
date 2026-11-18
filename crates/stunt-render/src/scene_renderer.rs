@@ -440,6 +440,9 @@ impl SceneRenderer {
                 let shadow = base.iter().chain(&decals).copied().collect();
                 self.push_draw(target, &uniform, (Vec::new(), shadow));
             }
+            if actor.shadow_only {
+                continue;
+            }
             let uniform = ModelUniform::new(eye_relative_matrix(eye, &actor.world_matrix), layer);
             self.push_draw(target, &uniform, (base, decals));
         }
