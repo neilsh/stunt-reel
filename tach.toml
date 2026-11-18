@@ -2,8 +2,8 @@
 # (ADR 0050). docs/architecture-python.md routes here; this file is the one statement of them.
 #
 # Four groups. `shared` is used by everything; capture builds on shared; parity builds on capture.
-# Tooling (worktrees, work folders, docs, cloud assets) uses tooling and shared, and one capture
-# module allowed by name. python/scripts/ sits above them all: a script may import the package,
+# Tooling (worktrees, work folders, docs, cloud assets) uses the tooling modules it names and
+# shared, and one capture module allowed by name. python/scripts/ sits above them all: a script may import the package,
 # and the package never imports a script.
 #
 # tach's layers are one stack, so tooling sits on top of it and `layers_explicit_depends_on`
