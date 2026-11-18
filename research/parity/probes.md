@@ -1,5 +1,5 @@
 ---
-summary: "Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou and retime, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls."
+summary: "Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou, retime and index, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls."
 sidebar_label: "Parity probes"
 ---
 # Parity Probes: Diagnosing One Discrepancy
@@ -290,6 +290,7 @@ Every repeated analysis has a home: baseline render and score is `mise run parit
 A decoder change across every stock shape is `stuntreel shape-views --archive X [--shapes IDS|FILE] [--views top,side,front] --out DIR`: orthographic views through the real renderer, back faces culled, and a `manifest.json` of each shape's geometry hash.
 `mise run shape-diff -- --var DBG_X=0,1 [--shapes IDS|FILE]` runs it once per value over `SUPERSET.ALL`, lists the shapes whose hash changed and draws a before|after sheet of only those.
 Before it, an export loop took over 10 minutes for the stock aircraft and PIL views drawn without culling misread a fix twice (issue #277).
+Where one palette index lies in the capture and in our render is `parity_probe.py index` ([section 10](#10-one-palette-index-index)).
 Still hand-rolled, with no subcommand yet: the 11x11 loss-window ranking (`windows`), the per-layer index histogram (`index-diff`) and the sand-coverage count (`coverage`).
 
 ## 9. Origin markers (proposed, not built)
@@ -298,3 +299,20 @@ Draw a small solid marker at each actor and prop origin in our render.
 A marker in the right place under a wrong shape is a decode error; a marker that is itself misplaced is a placement error.
 Alberto Marnetto used orange cubes above each scenery asset for this split ([*Vibe-exploring Stunt Island*](https://marnetto.net/2026/04/26/vibe-exploring-si)).
 Build it when `shift` and `iou` cannot tell the two apart.
+
+## 10. One palette index (`index`)
+
+```bash
+mise run parity-probe -- index --film balloon --ticks 155,200 --index 239
+mise run parity-probe -- index --film balloon --ticks 155,200 --index 228-238 --ours build/scratch/frame/balloon/store
+```
+
+For each film tick it prints, for the capture and for our render, the pixel count of one palette index (or an inclusive range such as `228-238`), its bounding box `x0,y0,x1,y1` and its centroid `x,y`, then the centroid offset `dx dy`, ours minus the capture's.
+It counts index-plane pixels in the viewport rows (the same plane the other probes read), so the answer does not depend on how a PNG or the palette colours it.
+An absent index prints a count of 0 with `-` for its box and centroid, and the offset is `-` when either side is empty; a tick the capture lacks prints its nearest captured ticks, as `mise run frame` does.
+
+With `--film` alone it renders the ticks once (`--no-build` reuses the release binary, `--software-only` forces the software adapter) into `build/scratch/index/<film>`, replacing that folder, and reads the capture through the verified snapshot `mise run frame` uses.
+With `--ours <render directory>` it reads that store and renders nothing, so a retimed render or a `DBG_` variant from `mise run frame` is measured as is.
+
+`[Bounded Observation]`, 2026-11-18, `15a615e`, lavapipe: index 239 holds 1,746 capture pixels at both `vault-balloon` ticks 155 and 200, in a 47 x 46 box whose centroid is (221.00, 157.50) at tick 155 and (224.00, 154.50) at tick 200, and our default render holds none at either tick (#755).
+Which feature that index is, and why ours lacks it, is #617's question, not this probe's: it reports where, not why.
