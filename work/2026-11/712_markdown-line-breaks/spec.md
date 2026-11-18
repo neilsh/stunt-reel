@@ -17,7 +17,7 @@ Either way, parallel branches that touch the same paragraph conflict; separate l
 1. **One sentence per line.**
    A long sentence may also break after a clause.
    No line breaks inside a link, a code span or inline math, and a `_Source:` line keeps its links.
-   Tables, headings, front matter and fenced blocks are left as they are.
+   Tables, headings, front matter and fenced blocks are left as they are, and a GitHub alert's marker (`> [!NOTE]`) keeps its own line.
 2. **Guidance, not a check.**
    The rule lives in [`docs/development.md`](../../../docs/development.md), with a one-line pointer in `AGENTS.md` and the reasoning in a new ADR.
    No lint task enforces it.
@@ -29,8 +29,9 @@ Either way, parallel branches that touch the same paragraph conflict; separate l
    The existing evergreen files are reflowed once by a script that is run once and not kept as a task, in a pull request that holds nothing else.
    Its squash commit goes in [`.git-blame-ignore-revs`](../../../.git-blame-ignore-revs).
 5. **The reflow is checked mechanically and read by a reviewer.**
-   Every reflowed file must render to the same HTML as before, apart from whitespace.
-   The link and code-span regexes, which stop at a line end, must find as many matches as in the old text with each paragraph joined onto one line: the old text undercounts where a hard wrap already split a span.
+   Every reflowed file must render to the same CommonMark HTML as before, apart from whitespace.
+   The link and code-span regexes, which stop at a line end, must find no fewer matches than in the old text with each paragraph joined onto one line: the old text undercounts where a hard wrap already split a span.
+   CommonMark does not render GitHub's alerts, so the script keeps their marker lines by rule.
    A fresh reviewer also spot-checks the source for splits that render the same but read badly.
    The commit body records both in its `Fresh-review:` trailer.
 6. **Sequenced after other docs work.**

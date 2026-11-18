@@ -47,5 +47,19 @@
   - In the full gate, `tests/test_prek_hooks.py::test_check_mode_leaves_the_file_alone` timed out waiting for prek while the Rust tests ran beside it.
     It runs in a temporary repository and reads none of the reflowed files; it passed alone, and `mise run test-py` on the reflowed tree then passed all 2,596 tests.
     Every Rust step passed.
-- **Verdict**: adopted: the reflow is ready to run once PR 1 merges; no reader beyond `evidence_tiers` needed a fix.
+- **Verdict**: adopted, with the fixes in the next entry: `verify` passed and the gate's readers held, but `verify` renders CommonMark and cannot see GitHub's alerts.
 - **Lives in**: this journal; the ADR's Consequences name the tier fix.
+
+## 2026-11-18: Fresh review of PR 1, and the dry run again
+
+- **Question**: what does a fresh reviewer find in PR 1's branch (`d4e01df..6879987`), and does the reflow still verify once its findings are fixed?
+- **Method**: a fresh reviewer read the diff and the code it cites, reran the dry run in a separate worktree, tried about 50 adversarial `reflow_text` inputs, and recomputed the quoted figures.
+  After the fixes, the dry run was repeated at `50f3b74` as in the previous entry, followed by `mise run test-py`.
+- **Result**: the reviewer's figures matched every quoted one it could recompute; the 158/103/12 wrap counts were not recomputed, their method being unrecorded.
+  It found the reflow joining a GitHub alert's marker (`> [!WARNING]`) onto the next line in five files, `README.md`'s banner among them; GitHub renders an alert only while its marker stands alone, and CommonMark, which `verify` renders, shows no difference.
+  It also found the join undoing a break an author had put before a sentence starting with a digit or a lower-case letter, as in this PR's ADR and journal.
+  Both are fixed in `1027e31`, with a selftest case each; the ADR, `docs/development.md` and the spec were narrowed to what the checks show (`50f3b74`).
+  The repeated dry run: 129 files, 6,477 lines added and 2,818 removed, `verify` passing (`pr-and-filing.md` still finds 14 links where the joined old text found 13), the five alert markers on their own lines, `AGENTS.md` at 8,103 bytes, and 2,596 Python tests passing.
+- **Verdict**: adopted: PR 2 runs the script at `1027e31` or later.
+  One split the reviewer flagged, inside a parenthetical in `research/formats/auxiliary/spr.md`, is left to PR 2's spot-check.
+- **Lives in**: this journal; ADR 0051 states the alert rule.
