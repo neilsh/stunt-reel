@@ -104,7 +104,7 @@ STEP_TIMEOUT_S = 1800.0
 # needs a STEP_LANES entry, and _lane_plan refuses to run without one.
 STEPS: dict[str, list[str]] = {
     "rust": ["fmt-check-rust", "lint-rust", "test-rust", "doc", "check-rust-matrix"],
-    "py": ["fmt-check-py", "lint-py", "typecheck", "test-py"],
+    "py": ["fmt-check-py", "lint-py", "check-layers", "typecheck", "test-py"],
     "docs": ["test-py-docs"],
 }
 
@@ -121,6 +121,7 @@ STEP_LANES: dict[str, str] = {
     "check-rust-matrix": "rust-matrix",
     "fmt-check-py": "py-fmt",
     "lint-py": "py-lint",
+    "check-layers": "py-layers",
     "typecheck": "py-typecheck",
     "test-py": "py-test",
     "test-py-docs": "py-docs",
@@ -147,7 +148,7 @@ Category = Literal["rust", "python", "docs", "other"]
 # The full gate's halves; every other run is a subset of these plus ``docs``.
 _FULL = ("rust", "py")
 _RUST_FILES = frozenset({"Cargo.toml", "Cargo.lock", "deny.toml"})
-_PYTHON_FILES = frozenset({"pyproject.toml", "uv.lock"})
+_PYTHON_FILES = frozenset({"pyproject.toml", "uv.lock", "tach.toml"})
 # Documents a Rust test reads from outside crates/ (report_doc.rs checks the parity report's
 # field tables). tests/test_gate_plan.py finds every such read, so this set cannot fall behind.
 _RUST_READS = frozenset({"research/parity/report-fields.md"})

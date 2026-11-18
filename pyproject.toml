@@ -33,6 +33,7 @@ dev = [
     "pytest-cov>=6.0.0",
     "pytest-xdist>=3.8",
     "ruff>=0.17.1",  # TC001-TC003 write `lazy` imports at py315 (extend-safe-fixes below)
+    "tach>=0.35.3",  # checks the package's module layers in tach.toml (ADR 0050)
     "tomli-w>=1.2.0",  # writes a sweep's figures file in parity_sweep.py (ADR 0049)
     "types-jsonschema>=4.26",  # typeshed stubs: jsonschema ships no py.typed marker (ADR 0048)
 ]
@@ -210,7 +211,9 @@ exclude = ["corpus"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --strict-markers --strict-config"
+# `-p no:tach`: tach's pytest plugin diffs against the base branch on every run once tach.toml
+# exists, for a test-skipping mode the gate never uses (ADR 0050).
+addopts = "-ra -q --strict-markers --strict-config -p no:tach"
 filterwarnings = ["error"]
 testpaths = ["tests"]
 pythonpath = ["python", "python/scripts"]
@@ -230,3 +233,6 @@ required-version = ">=0.13.1"
 # so under `mise run`/`mise exec` uv runs the pinned one;
 # tests/test_toolchain_pins.py fails when it does not.
 python-preference = "system"
+# tach declares pyyaml, which ships no cp315 wheel, so locking it would build it from source
+# (ADR 0010); tach imports it only to migrate a deprecated tach.yml, which this repo has none of.
+exclude-dependencies = ["pyyaml"]

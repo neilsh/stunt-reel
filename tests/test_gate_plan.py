@@ -67,7 +67,7 @@ def _verdict(failed: list[str], half: str) -> str:
 
 def test_a_passing_run_names_no_next_command() -> None:
     line = _verdict([], "all")
-    assert line.startswith("[gate] PASS 9/9 steps")
+    assert line.startswith("[gate] PASS 10/10 steps")
     assert "re-run" not in line
     assert "fix:" not in line
 
@@ -176,6 +176,7 @@ def test_cargo_steps_share_a_lane_exactly_when_they_share_a_target_dir() -> None
         ("python/scripts/gate.py", "python"),
         ("uv.lock", "python"),
         ("pyproject.toml", "python"),
+        ("tach.toml", "python"),
         ("research/formats/x.ksy", "docs"),
         ("AGENTS.md", "docs"),
         ("ä/ä.md", "docs"),
