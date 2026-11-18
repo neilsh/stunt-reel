@@ -35,15 +35,16 @@ The flag needs a headless render (`--headless`, `-o`, `--out-dir` or `--video`) 
 * **frames rendered** (or **frame drawn**, for a single PNG) is after the last page lands, before the renderer is dropped.
 * **peak** is the process's high-water mark at the end: `VmHWM` from `/proc/self/status` on Linux.
 
-The lines above are LOCATION ticks 12-120 on a cloud session's lavapipe (Ubuntu's Mesa 25.2.8), built from `75b9106` plus this flag, one run (`[Bounded Observation]`): the scene at about 301 MiB and the peak at about 749 MiB match [#733](https://github.com/neilsh/stunt-reel/pull/733)'s figures, and the steady RSS of 556 MiB is near its 563.
-A resident set varies a little from run to run, so compare figures to a few MiB, not to the digit.
+The lines above are LOCATION ticks 12-120 on a cloud session's lavapipe (Ubuntu's Mesa 25.2.8), one run built from `75b9106` plus this flag and one from the same change on `4153a85` (`[Bounded Observation]`): the scene at about 301 MiB and the peak at about 749 MiB match [#733](https://github.com/neilsh/stunt-reel/pull/733)'s figures.
+The frames-rendered reading was 556 and 549 MiB, against #733's steady median of 558 to 563 MiB.
+The other stage readings repeated to under 1 MiB between the two runs, and the frames-rendered reading varied by 7 MiB, so compare stages to a MiB or two and the frames-rendered reading to about 10 MiB, not to the digit.
 
 ## 3. Windows
 
 Windows has no `/proc`, and `GetProcessMemoryInfo` needs `unsafe` FFI, which the workspace denies (`unsafe_code`).
-The flag therefore asks PowerShell for the process's `WorkingSet64` and `PeakWorkingSet64`, which are the working set and `PeakWorkingSetSize` that [#645](https://github.com/neilsh/stunt-reel/issues/645) quotes.
+The flag therefore asks PowerShell for the process's `WorkingSet64` and `PeakWorkingSet64`, which are the working set and the peak working set (`PeakWorkingSetSize`, as [#769](https://github.com/neilsh/stunt-reel/issues/769) names it) that [#645](https://github.com/neilsh/stunt-reel/issues/645) quotes in MB.
 Each reading starts a PowerShell, which takes a moment but adds nothing to the render's own process.
-That path is not yet run on Windows: the parsing is unit-tested on Linux and the command is the one above, but the first run on a Windows machine is the check.
+That path is not yet run on Windows: the parsing is unit-tested on Linux and the query is `Get-Process -Id <pid>` read for `WorkingSet64` and `PeakWorkingSet64` (`read_windows` in [`memory_report.rs`](../../crates/stunt-cli/src/memory_report.rs)), but the first run on a Windows machine is the check.
 If `powershell` is missing or fails, the stage prints `unavailable: <reason>` on stderr and the render goes on.
 
 ## 4. Check that it changes nothing

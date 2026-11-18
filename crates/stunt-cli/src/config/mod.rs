@@ -98,8 +98,8 @@ struct Options {
     /// Run offscreen without opening a window
     #[arg(long)]
     headless: bool,
-    /// Headless only: print the resident memory after the scene is built, the renderer opened
-    /// and the world mesh freed, and the process peak at the end
+    /// Headless only: print the resident memory after the scene is built, the renderer opened,
+    /// the world mesh freed and the frames rendered, and the process peak at the end
     #[arg(long)]
     report_memory: bool,
     /// Save the offscreen rendered frame to a PNG file
