@@ -173,6 +173,7 @@ _Source: [culling world nodes outside the view frustum](../../work/2026-11/644_f
 * **The clipper as the sole cause of the depth residues** (mesa-dist-win 25.2.8): polygons the side planes do not clip differ in depth too, and provoking vertices differ out of the vertex stage (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **An upstream fix by Mesa 26.2.6**: its clipper still makes the NaN, and `interp()` is unchanged through `main` (section 2); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
 * **Coalescing contiguous world base slices as a speed-up** (LOCATION): no adjacent pair of the base list in walk order continues the previous one's index range, so it removes 0 of a frame's 127,910 `draw_indexed` calls on the 289 frames measured (section 6); [journal](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices).
+* **A cloud session as the place to measure #629's relit-vertex rewrite cost** (Ubuntu's Mesa 25.2.8, 4 vCPUs): a whole INTRO render took 147.4 s and 129.5 s with the rewrite and 133.7 s without it, so mesa-dist-win's 11.4 s cost (one run each way, #474) is smaller than the spread between identical runs there, `[Bounded Observation]`; [journal](../../work/2026-11/629_relight-cost/journal.md#2026-11-18-the-rewrites-cost-on-the-clouds-lavapipe).
 
 ## Open questions
 
@@ -187,4 +188,3 @@ _Source: [culling world nodes outside the view frustum](../../work/2026-11/644_f
    12.4 s, so what remains is the main-thread work plus the part of the wait the pipeline cannot
    hide; whether a cache shortens that enough to pay is unmeasured.
 6. Whether replacing `@interpolate(linear) shade` everywhere with the ratio `shade·w / w` (so no render relies on Mesa's `noperspective` path) flips GPU pixels at `.5` rounding boundaries: #635 proposed counting the differing index-plane pixels against `main` over the seven films and did not run it (it was the issue's optional experiment; section 3 (e) adopts the ratio only where `shade` is not finite).
-7. Whether a cloud session can reach `gitlab.freedesktop.org`: [`cloud-sessions.md`](../../docs/cloud-sessions.md) lists it in the environment's network access, but no cloud session is recorded reaching it; the reads in section 2 were made from the RTX 4070 laptop. Unchecked.

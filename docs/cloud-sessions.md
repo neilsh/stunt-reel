@@ -26,9 +26,8 @@ In claude.ai, the cloud environment for this repo is `stunt-reel-cloud`:
   ones from source.
 - **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`,
   and `gitlab.freedesktop.org` for reading Mesa's source and issues when a render differs on
-  lavapipe ([#265](https://github.com/neilsh/stunt-reel/issues/265)); no cloud session is yet
-  recorded reaching it, so that host is unchecked
-  ([`lavapipe.md`](../research/parity/lavapipe.md#open-questions)).
+  lavapipe ([#265](https://github.com/neilsh/stunt-reel/issues/265)); a cloud session reached
+  it on 2026-11-18 (HTTP 200 for a raw file on Mesa's `main`).
   The cloud setup downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu
   mirror, all on the list.
 - **Network secrets:** none on the R2 host. The proxy's AWS SigV4 secret signs for hosts under
