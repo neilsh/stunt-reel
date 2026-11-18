@@ -51,7 +51,8 @@
   byte-identical?
 - **Method**:
   - `FilmScene::release_world_mesh`, called by `run_headless` after each `Renderer::offscreen`
-    (`342cc7a`, which is `main` `56a530d` plus this change), built in release beside `main`. Same cloud session and flags
+    (`342cc7a`, which is `main` `56a530d` plus this change), built in release beside
+    `main`. Same cloud session and flags
     as the entry above.
   - LOCATION ticks 12-120 twice each, alternating `main` and the change; LOCATION ticks 12-300
     once each; CTRY's captured ticks (14-1333, from `tick_range_for_captured_ticks`) twice each,
@@ -88,6 +89,7 @@
 - **Result**: at `48f5d49` LOCATION's world is 158 terrain patches, 6,463 static props, 795,172
   vertices and 912,750 indices; the render peaks at 258 MiB, steady 252 MiB, 2.9 s. At `56a530d` it
   is 158 patches, 56,395 props, 6,702,496 vertices and 7,488,138 indices, peaking at 1,004 MiB.
-- **Verdict**: control. LOCATION's world has grown about eightfold since `48f5d49`, which accounts
-  for its render no longer costing what CTRY's does.
+- **Verdict**: control. LOCATION's world has grown about eightfold since `48f5d49` (vertices 8.4x,
+  props 8.7x) and its lavapipe render's peak 3.9x, which is consistent with the world mesh being
+  why its render no longer costs what CTRY's does; no breakdown was taken at `48f5d49`.
 - **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
