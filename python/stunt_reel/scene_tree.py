@@ -13,9 +13,11 @@ Pure functions over bytes; nothing here reads a file or holds game data.
 
 from __future__ import annotations
 
+import math
 import struct
 from collections import Counter
 from dataclasses import dataclass, field
+lazy from collections.abc import Callable
 
 #: Image offset of the scene tree (MZ ``SS = 0x2286``).
 TREE_IMAGE_OFFSET: int = 0x22860
@@ -212,6 +214,231 @@ def placements(seg: bytes, root: int = 0, max_steps: int = PLACEMENT_STEPS) -> s
             else:
                 raise ValueError(f"unknown node type {kind} at 0x{node:04X}")
     return found
+
+
+@dataclass(frozen=True)
+class SlotEntry:
+    """One actor's pending-list entry as the draw walk splits it.
+
+    ``x``, ``y`` and ``z`` are the slot's position in DOS axes, metres (the walk compares
+    their high words, so a position ``p`` counts as ``floor(p)``); ``extent`` is
+    ``(bounding_size >> scale_index) + 1`` of the slot's shape
+    (``research/playone-exe/scene-walk-actors.md`` section 1).
+    """
+
+    x: float
+    y: float
+    z: float
+    extent: int
+
+
+@dataclass(frozen=True)
+class PlaneStep:
+    """One partition node the slot passed: the plane, and which child the slot went to."""
+
+    node: int
+    kind: int  # SP_XPLANE, SP_ZPLANE, SP_HSLOPE or SP_VSLOPE
+    side: str  # "greater" (child +2) or "lesser" (child +4)
+    why: str  # "whole" (extent clear of the plane), "eye" (cut: the eye's side) or "centre"
+    coord: int | None = (
+        None  # a plane's accumulated position plus its sortvalue; ``None`` for a slope
+    )
+
+
+@dataclass(frozen=True)
+class DrawStep:
+    """One draw in the walk: a leaf's object, or the slot where it is drawn."""
+
+    kind: str  # "object" or "slot"
+    node: int  # the SP_LEAF
+    obj: int  # the leaf's shape id (0 for none)
+    x: int  # an object's placed position, or the slot's own, as high words
+    y: int
+    z: int
+
+
+@dataclass(frozen=True)
+class SlotWalk:
+    """The draw order of one frame's scenery with one slot's entry placed in it."""
+
+    order: tuple[DrawStep, ...]
+    leaf: int | None  # the SP_LEAF the entry reached; ``None`` when a node dropped it
+    planes: tuple[PlaneStep, ...]
+    gates: tuple[tuple[int, int, int, int, int], ...]  # SP_1NODE passed: node, obj, x, y, z
+
+    @property
+    def slot_index(self) -> int | None:
+        """Where the slot is in :attr:`order`; ``None`` when the entry was dropped."""
+        return next((i for i, step in enumerate(self.order) if step.kind == "slot"), None)
+
+
+Vec3 = tuple[float, float, float]
+
+
+def _s16(value: int) -> int:
+    """``value`` as a signed 16-bit word."""
+    return ((value + 0x8000) & 0xFFFF) - 0x8000
+
+
+def view_depth(eye: Vec3, target: Vec3) -> Callable[[float, float, float], float]:
+    """A function giving a point's distance along the view axis from ``eye`` to ``target``.
+
+    The scene walk compares a slot with a leaf's object by the depth word of the view-space
+    point (image ``0x22C0``); this is that depth for a camera without roll, taken at the shape's
+    origin, so it leaves out the shape's ground offset.
+    """
+    axis = [t - e for e, t in zip(eye, target, strict=True)]
+    length = math.sqrt(sum(a * a for a in axis))
+    if length == 0:
+        raise ValueError("the eye and the look target coincide")
+    unit = [a / length for a in axis]
+
+    def depth(x: float, y: float, z: float) -> float:
+        return sum(u * (p - e) for u, p, e in zip(unit, (x, y, z), eye, strict=True))
+
+    return depth
+
+
+def _slope_line(coord: int, slope: int, offset: int) -> int:
+    """``(coord * slope * 2 >> 16) + offset`` as a word, as ``0x2021..0x2028`` compute it."""
+    return _s16(((coord * slope * 2) >> 16) + offset)
+
+
+def _plane_side(world: int, eye_rel: int, slot: SlotEntry, axis: int) -> tuple[str, str]:
+    """The side of a plane at ``world`` a slot goes to, and why (``0x1F14..0x1F4F``).
+
+    ``eye_rel`` is the walk's eye-relative plane position, negative when the eye is on the
+    greater side. A slot the plane cuts goes to the eye's side.
+    """
+    centre = math.floor((slot.x, slot.y, slot.z)[axis])
+    if world > centre:
+        if world - centre >= slot.extent:
+            return "lesser", "whole"
+    elif world - centre + slot.extent <= 0:
+        return "greater", "whole"
+    return ("greater" if eye_rel < 0 else "lesser"), "eye"
+
+
+def walk_slot(
+    seg: bytes,
+    eye: Vec3,
+    target: Vec3,
+    slot: SlotEntry | None,
+    root: int = 0,
+    max_steps: int = PLACEMENT_STEPS,
+) -> SlotWalk:
+    """Walk the tree from ``eye`` toward ``target`` as ``PLAYONE``'s scenery walk does, with one slot.
+
+    Positions are DOS axes, metres. The slot enters at the root as the pending list's only entry
+    and each node passes it on as ``research/playone-exe/scene-walk-actors.md`` section 2
+    says; ``slot=None`` walks the scenery alone. The walk visits the far side of a plane or
+    slope first, then the eye's side, and records each ``SP_LEAF``'s object in that order, with
+    the slot just before the leaf's object when its view depth is the larger and after it
+    otherwise.
+
+    A plane's coordinate is what the handler sums, ``[2A6A + bx] + [49F4 + bx] + [bp+6]``: the high
+    word of the eye plus the high word of the negated eye (the walk's start, ``0x1E43..0x1E7E``)
+    plus the accumulated position and the plane's sortvalue. For an eye with a fractional part
+    the two high words sum to -1, so the plane compares one metre below its nominal coordinate
+    (``PlaneStep.coord``).
+
+    Assumes what section 4 assumes: the slot recorded no collision-box bucket (its word
+    ``+0x1C`` is 0), every ``SP_1NODE`` is near so the list goes on to ``next`` (``gates`` lists
+    them with their positions so a caller can check each against its distance gate), and no leaf's
+    object is culled. A node that drops the list (``SP_GROUND``, ``SP_GLEAF``, ``SP_LIST``) leaves
+    ``leaf`` as ``None``. A cycle raises ``ValueError`` after ``max_steps`` node visits.
+    """
+    eye_hi = tuple(math.floor(c) for c in eye)
+    eye_neg = tuple(math.floor(-c) for c in eye)  # the high word of the negated 32-bit eye
+    depth = view_depth(eye, target)
+    order: list[DrawStep] = []
+    planes: list[PlaneStep] = []
+    gates: list[tuple[int, int, int, int, int]] = []
+    reached: list[int] = []
+    steps = 0
+
+    def walk(node: int, pos: tuple[int, int, int], entry: bool) -> None:
+        nonlocal steps
+        x, y, z = pos
+        while True:
+            steps += 1
+            if steps > max_steps:
+                raise ValueError("slot walk did not end; the tree has a cycle")
+            kind = _word(seg, node)
+            if kind == SP_POS:
+                x += _signed(seg, node + 2)
+                y += _signed(seg, node + 4)
+                z += _signed(seg, node + 6)
+                node = _word(seg, node + 8)
+            elif kind == SP_POSXZ:
+                x += _signed(seg, node + 2)
+                z += _signed(seg, node + 4)
+                node = _word(seg, node + 6)
+            elif kind == SP_1NODE:
+                if entry:
+                    gates.append((node, _word(seg, node + 2), x, y, z))
+                node = _word(seg, node + 8)
+            elif kind == SP_2NODE:
+                walk(_word(seg, node + 2), (x, y, z), False)
+                node = _word(seg, node + 4)
+            elif kind in (SP_XPLANE, SP_ZPLANE, SP_HSLOPE, SP_VSLOPE):
+                greater = _word(seg, node + 2)
+                lesser = _word(seg, node + 4)
+                entry_greater = False
+                if kind in (SP_XPLANE, SP_ZPLANE):
+                    axis = 0 if kind == SP_XPLANE else 2
+                    plane = _signed(seg, node + 6)
+                    rel = _s16(eye_neg[axis] + (x, y, z)[axis])  # [49F4 + bx]
+                    world = _s16(eye_hi[axis] + rel + plane)  # [2A6A + bx] + [49F4 + bx] + [bp+6]
+                    eye_rel = _s16(rel + plane)
+                    eye_greater = eye_rel < 0
+                    if entry and slot is not None:
+                        side, why = _plane_side(world, eye_rel, slot, axis)
+                        planes.append(PlaneStep(node, kind, side, why, (x, y, z)[axis] + plane))
+                        entry_greater = side == "greater"
+                else:
+                    slope, coord = _signed(seg, node + 6), _signed(seg, node + 8)
+                    key, other = (0, 2) if kind == SP_HSLOPE else (2, 0)
+                    eye_greater = _slope_line(eye_hi[key], slope, coord) >= eye_hi[other]
+                    if entry and slot is not None:
+                        centre = [math.floor(c) for c in (slot.x, slot.y, slot.z)]
+                        entry_greater = _slope_line(centre[key], slope, coord) >= centre[other]
+                        side = "greater" if entry_greater else "lesser"
+                        planes.append(PlaneStep(node, kind, side, "centre"))
+                # The far side first, with its list, then the eye's side with its own.
+                near_child, far_child = (greater, lesser) if eye_greater else (lesser, greater)
+                far_has = entry and entry_greater != eye_greater
+                walk(far_child, (x, y, z), far_has)
+                node, entry = near_child, entry and not far_has
+            elif kind == SP_LEAF:
+                obj = _word(seg, node + 2)
+                if entry and slot is not None:
+                    reached.append(node)
+                    where = (math.floor(slot.x), math.floor(slot.y), math.floor(slot.z))
+                    slot_step = DrawStep("slot", node, obj, *where)
+                    before = depth(slot.x, slot.y, slot.z) > depth(x, y, z)
+                    if obj and before:
+                        order.append(slot_step)
+                    if obj:
+                        order.append(DrawStep("object", node, obj, x, y, z))
+                    if not obj or not before:
+                        order.append(slot_step)
+                elif obj:
+                    order.append(DrawStep("object", node, obj, x, y, z))
+                return
+            elif kind in (SP_GROUND, SP_GLEAF):
+                return
+            elif kind == SP_LIST:
+                cursor = node + 2
+                while child := _word(seg, cursor):
+                    walk(child, (x, y, z), False)
+                    cursor += 2
+                return
+            else:
+                raise ValueError(f"unknown node type {kind} at 0x{node:04X}")
+
+    walk(root, (0, 0, 0), slot is not None)
+    return SlotWalk(tuple(order), reached[0] if reached else None, tuple(planes), tuple(gates))
 
 
 def _signed(seg: bytes, off: int) -> int:

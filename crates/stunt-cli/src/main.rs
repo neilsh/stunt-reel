@@ -22,6 +22,7 @@
 
 mod config;
 mod export;
+mod film_slots;
 mod headless;
 mod link;
 mod page_slot;
@@ -52,6 +53,13 @@ fn main() {
         }
         Some("sod-census") => {
             if let Err(e) = sod_census::run(subcommand_args) {
+                eprintln!("[stuntreel error] {e}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        Some("film-slots") => {
+            if let Err(e) = film_slots::run(subcommand_args) {
                 eprintln!("[stuntreel error] {e}");
                 std::process::exit(1);
             }
