@@ -6,7 +6,8 @@ sidebar_label: ".RES container format"
 
 ## 1. Overview & File Identification
 
-The `.RES` file format is the foundational static resource container for *Stunt Island*. The game engine relies on `.RES` packages located in the `res\` directory (`DS:05DB` in `PLAYONE.EXE`) to store all primary game assets: 3D geometry display lists (`.SOD`), 2D software bitmaps and sprites (`.SPR`), frame animations (`.ANM`), sound stage dialogue recordings (`DIALOG.RES`), UI definitions (`GAME.RES`), and world scenery models (`SCENERY1.RES`–`SCENERY6.RES`).
+The `.RES` file format is the foundational static resource container for *Stunt Island*.
+The game engine relies on `.RES` packages located in the `res\` directory (`DS:05DB` in `PLAYONE.EXE`) to store all primary game assets: 3D geometry display lists (`.SOD`), 2D software bitmaps and sprites (`.SPR`), frame animations (`.ANM`), sound stage dialogue recordings (`DIALOG.RES`), UI definitions (`GAME.RES`), and world scenery models (`SCENERY1.RES`–`SCENERY6.RES`).
 
 ### Key File Attributes
 
@@ -18,7 +19,9 @@ The `.RES` file format is the foundational static resource container for *Stunt 
 | **Engine Role** | Static archive container providing $O(1)$ direct indexed access to geometry, sprites, and dialogue assets without runtime disk seeks or string hashing | `[Established]` | `research/playone-exe/startup.md`, `indices.txt` |
 | **Paired Contract** | `Seam 1: VfsArchive` (`crates/stunt-core/src/contracts/vfs.rs`) | `[Established]` | `# [FMT-RES-HEADER]`, `docs/ARCHITECTURE.md` |
 
-**Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization). **Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/). **Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+**Governing invariants:** [`[I7]`](../../docs/SPEC.md#i7-asset-isolation--small-pure-rust-core-dependencies), [`[I8]`](../../docs/SPEC.md#i8-dos-83-uppercase-path-normalization).
+**Contract and code:** [`contracts/vfs.rs`](../../crates/stunt-core/src/contracts/vfs.rs), [`vfs/res.rs`](../../crates/stunt-core/src/vfs/res.rs), tests in [`crates/stunt-core/tests/`](../../crates/stunt-core/tests/).
+**Fixtures:** `synthetic_minimal.res` (72 bytes), laid out in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
 
 ---
 
@@ -28,9 +31,12 @@ Cross-corpus analysis of all 20 authentic retail `.RES` archives in `corpus/siar
 
 ### 2.1 On-Disk Physical Header & Offset Table Layout (`# [FMT-RES-HEADER]`)
 
-The executable byte layout for this section is [`res.ksy`](res.ksy). It declares the `b"RS"` (`0x52, 0x53`) magic, the archive slot index `res_index` at byte `0x0002`, the directory entry count `item_count` at byte `0x0003`, the little-endian `ofs[0]` at `0x0004`, the remaining offset table entries, and one raw `segments` region per directory entry. The schema is the single source for field widths, offsets, byte order, and the offset-count calculation; the profile, evidence, and parser-policy discussion remains below.
+The executable byte layout for this section is [`res.ksy`](res.ksy).
+It declares the `b"RS"` (`0x52, 0x53`) magic, the archive slot index `res_index` at byte `0x0002`, the directory entry count `item_count` at byte `0x0003`, the little-endian `ofs[0]` at `0x0004`, the remaining offset table entries, and one raw `segments` region per directory entry.
+The schema is the single source for field widths, offsets, byte order, and the offset-count calculation; the profile, evidence, and parser-policy discussion remains below.
 
-Byte `0x0002` is `res_index` and byte `0x0003` is `item_count`; the 20 corpus archives satisfy `item_count == (ofs_data / 4) - 2`, and every retail archive's `res_index` matches its slot in §3.3. Bytes `0x0002`–`0x0003` are still read by `parse_res` as a single little-endian 16-bit word and ignored, because the Rust parser derives its counts from the offset table.
+Byte `0x0002` is `res_index` and byte `0x0003` is `item_count`; the 20 corpus archives satisfy `item_count == (ofs_data / 4) - 2`, and every retail archive's `res_index` matches its slot in §3.3.
+Bytes `0x0002`–`0x0003` are still read by `parse_res` as a single little-endian 16-bit word and ignored, because the Rust parser derives its counts from the offset table.
 
 #### Payload Slicing Rules
 1. In archives with an ASCII Name Table (Prop archives):
@@ -40,8 +46,7 @@ Byte `0x0002` is `res_index` and byte `0x0003` is `item_count`; the 20 corpus ar
 2. In archives without an ASCII Name Table (Scenery archives):
    - $\text{offsets}[0]$ points directly to the first raw payload (`.SOD` bytecode).
    - Payload $i$ begins at $\text{offsets}[i]$ and ends at $\text{offsets}[i+1]$.
-3. Strict Monotonicity:
-   The offset sequence must be strictly non-decreasing:
+3. Strict Monotonicity: The offset sequence must be strictly non-decreasing:
    $$\text{offsets}[i+1] \ge \text{offsets}[i] \quad \forall i \in [0, N-2]$$
    An offset satisfying $\text{offsets}[i+1] < \text{offsets}[i]$ indicates corruption or negative entry sizes, causing the parser to abort with `VfsError::InvalidOffsetTable`.
 
@@ -49,9 +54,11 @@ Byte `0x0002` is `res_index` and byte `0x0003` is `item_count`; the 20 corpus ar
 
 A long-standing debate in the Stunt Island developer community concerned whether `.RES` containers feature an 8-byte or a 16-byte header:
 
-- **On-Disk Reality (`[Established]`):** Every physical file on the retail floppy and CD-ROM distributions begins with the 8-byte structure (`b"RS"`, `res_index: u8` at byte `0x0002` and `item_count: u8` at byte `0x0003`, `ofs[0]: u32` at byte 4). Corpus measurement confirms the historical reading on both bytes; `parse_res` still ignores them because the parser derives its counts from the offset table. There is no 16-byte file header on disk.
-- **In-Memory DOS Descriptor (`[Hypothesis]` / `[Supported Inference]`):**
-  In MS-DOS 16-bit real-mode conventional memory (`DGROUP`), `PLAYONE.EXE` maintains an internal table of loaded resource containers. Each active `.RES` handle is managed by a 16-byte Memory Control Block (MCB) descriptor structure:
+- **On-Disk Reality (`[Established]`):** Every physical file on the retail floppy and CD-ROM distributions begins with the 8-byte structure (`b"RS"`, `res_index: u8` at byte `0x0002` and `item_count: u8` at byte `0x0003`, `ofs[0]: u32` at byte 4).
+  Corpus measurement confirms the historical reading on both bytes; `parse_res` still ignores them because the parser derives its counts from the offset table.
+  There is no 16-byte file header on disk.
+- **In-Memory DOS Descriptor (`[Hypothesis]` / `[Supported Inference]`):** In MS-DOS 16-bit real-mode conventional memory (`DGROUP`), `PLAYONE.EXE` maintains an internal table of loaded resource containers.
+  Each active `.RES` handle is managed by a 16-byte Memory Control Block (MCB) descriptor structure:
   ```c
   struct DosResDescriptor {
       uint16_t dos_file_handle;     // +0x00: Active DOS file handle (INT 21h)
@@ -100,13 +107,16 @@ The engine distinguishes two primary `.RES` operational profiles based on the Re
 
 #### 2. Scenery Resource Archives (`res_index <= 0x0F` / `idBase <= 0x0F00`)
 - **Containers:** `SCENERY1.RES` (`0x02`) through `SCENERY6.RES` (`0x07`), and `GAME.RES` (`0x01`), whose region 0 is also a shape (§ 3.3).
-- **Absence of Names:** Scenery models are never selected through the interactive Set Designer GUI. They are placed automatically across the island landscape by `MAP.BIN` using global scenery object IDs.
-- **Data Layout:** The ASCII string table is omitted. The first offset $\text{ofs}[0]$ points directly to the first raw `.SOD` geometry model (starting with the 2-byte magic word `0x000C`).
+- **Absence of Names:** Scenery models are never selected through the interactive Set Designer GUI.
+  They are placed automatically across the island landscape by `MAP.BIN` using global scenery object IDs.
+- **Data Layout:** The ASCII string table is omitted.
+  The first offset $\text{ofs}[0]$ points directly to the first raw `.SOD` geometry model (starting with the 2-byte magic word `0x000C`).
 - **Parser Fallback:** When a parser encounters a scenery file, it detects that `data[ofs[0]..ofs[1]]` starts with `0x000C` (or contains non-ASCII graphics bytes) and automatically generates synthetic 8.3 entry names: `0000.BIN`, `0001.BIN`, etc.
 
 ### 3.2 Direct 16-Bit Compound Key Resource Addressing
 
-*Stunt Island* does not use string hashing, linear filename scans, or B-trees at runtime to resolve assets. Instead, it employs **direct 16-bit compound keys**:
+*Stunt Island* does not use string hashing, linear filename scans, or B-trees at runtime to resolve assets.
+Instead, it employs **direct 16-bit compound keys**:
 
 $$\text{Resource ID} = (\text{res\_index} \ll 8) \mid \text{item\_index}$$
 
@@ -125,7 +135,9 @@ When `PLAYONE.EXE`, a `.FLM` choreography stream, or a `.SET` scenery file refer
 
 ### 3.3 Master Resource Index Enumeration Table
 
-The catalog of `.RES` indices, recovered from `SITools/ResMaker/indices.txt` and checked against the retail CD-ROM file set. The last column follows the § 3.1 rule; for `GAME.RES` it is `[Bounded Observation]`: region 0 of the retail and Patch #3 copies begins with the SOD magic `0x000C`, not a name. _Source: [GAME.RES has no name table](../../work/2026-11/472_research-contradictions/journal.md#2026-11-13-gameres-has-no-name-table)._
+The catalog of `.RES` indices, recovered from `SITools/ResMaker/indices.txt` and checked against the retail CD-ROM file set.
+The last column follows the § 3.1 rule; for `GAME.RES` it is `[Bounded Observation]`: region 0 of the retail and Patch #3 copies begins with the SOD magic `0x000C`, not a name.
+_Source: [GAME.RES has no name table](../../work/2026-11/472_research-contradictions/journal.md#2026-11-13-gameres-has-no-name-table)._
 
 | Index (Dec) | Index (Hex) | Archive Filename | Contents & Engine Role | String Table Present? |
 | :---: | :---: | :--- | :--- | :---: |
@@ -153,11 +165,10 @@ The catalog of `.RES` indices, recovered from `SITools/ResMaker/indices.txt` and
 
 ### 3.4 Compression Flags & Payload Encodings
 
-- **Container-Level Compression (`[Established]`):**
-  All 20 authentic `.RES` archives in the reference corpus store **raw uncompressed entries** (`was_compressed = false`). Dave Palmowski documented in `RESMaker 1.0`:
+- **Container-Level Compression (`[Established]`):** All 20 authentic `.RES` archives in the reference corpus store **raw uncompressed entries** (`was_compressed = false`).
+  Dave Palmowski documented in `RESMaker 1.0`:
   > *"‘compressed’ is quoted because technically, in a RES file, nothing is compressed any further than it already is. Everything is just kinda clumped."*
-- **Payload-Specific Encodings:**
-  While `.RES` acts as an uncompressed packfile, payloads embedded within it utilize internal compression or bytecode schemes:
+- **Payload-Specific Encodings:** While `.RES` acts as an uncompressed packfile, payloads embedded within it utilize internal compression or bytecode schemes:
   - `.SOD`: Procedural bytecode display lists (self-contained VM execution streams).
   - `.SPR`: Run-Length Encoded (RLE) 8-bit paletted scanlines with transparency keying (`0x00`).
   - `.VOC`: 8-bit unsigned PCM audio blocks with Creative Voice File headers.
@@ -195,12 +206,16 @@ Documentation of the `.RES` container format draws on decades of dedicated commu
 ### 5.1 Community Researchers & Tool Authors
 
 - **Adrian Stephens**: Original Assembly Line Engine Developer; designed the memory clump layout and 16-bit resource ID addressing architecture for the 8086/80286 DOS engine.
-- **Chris Phillips**: Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`sires.cpp`). Decoded the 8-byte header, offset table slicing, and string table extraction logic.
-- **Dave Palmowski**: Author of `RESMaker 1.0` (August 15, 2000). Compiled `indices.txt`, documented index categories 0–255, and proved that `.RES` files store uncompressed asset clumps.
-- **Doug Armknecht**: Curator of the Stunt Island Community Developer Archive (`corpus/siarchive/`, February 2026). Preserved original source files, utilities, and documentation.
+- **Chris Phillips**: Author of `SODParse` (`ripres.c`, `DECODE.C`, `SOD.H`), `SIRes` (`SIResFile.cpp`, `Sod.h`), and `FreeFlight` (`sires.cpp`).
+  Decoded the 8-byte header, offset table slicing, and string table extraction logic.
+- **Dave Palmowski**: Author of `RESMaker 1.0` (August 15, 2000).
+  Compiled `indices.txt`, documented index categories 0–255, and proved that `.RES` files store uncompressed asset clumps.
+- **Doug Armknecht**: Curator of the Stunt Island Community Developer Archive (`corpus/siarchive/`, February 2026).
+  Preserved original source files, utilities, and documentation.
 - **Neil Halelamien**: Author of `.SET` scenery format research (2004); documented 16-bit compound keys `(res_index << 8) | item_index` in `Stunt_Island_SET_fileformat_notes.txt`.
 - **Ángel Eduardo**: Author of Stunt Island Extractor (2004–2005); analyzed binary models, prop clumps, and subobject hierarchies.
-- **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island). It doesn't involve `.RES` resources; the same check in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
+- **Alberto Marnetto**: Author of the `SI-8x` patch (2024), which raises the renderer's level-of-detail distance threshold eightfold by replacing the `mul` by the detail word with `mov dx, ax; shl dx, 3`, described in [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island).
+  It doesn't involve `.RES` resources; the same check in `PLAYONE.EXE` is traced in [`lod.md`](../playone-exe/lod.md).
 
 ### 5.2 Primary Reference Paths in `corpus/siarchive/`
 

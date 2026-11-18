@@ -3,11 +3,15 @@ summary: "Offsets in the work segment of `PLAYONE.EXE`'s SOD display-list VM: an
 ---
 # Memory Map: SOD VM Work Segment
 
-Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so. Section numbers run across the files.
+Part of the `PLAYONE.EXE` memory map: [`memory-map.md`](memory-map.md) lists its files and states the default conventions (target binary, image base, linear address); a section that differs says so.
+Section numbers run across the files.
 
 ## 3. SOD Display-List VM Work Segment (`# [MEM-SOD-VM]`)
 
-The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the captured `CTRY.FLM` session). Offsets are stable; the segment base is runtime-selected. `ES:SI` addresses the bytecode, `DS` the work segment. The Patch #3 build keeps every offset in this section; its code addresses are in [§ 1.1](memory-map-patch3.md#11-patch-3-build).
+The display-list VM runs against a dedicated 64 KB work segment (`0x1DF8` in the captured `CTRY.FLM` session).
+Offsets are stable; the segment base is runtime-selected.
+`ES:SI` addresses the bytecode, `DS` the work segment.
+The Patch #3 build keeps every offset in this section; its code addresses are in [§ 1.1](memory-map-patch3.md#11-patch-3-build).
 
 | Offset in work segment | Evidentiary Tier | Data Type | Purpose / Value | Anchor |
 |---|---|---|---|---|
@@ -62,6 +66,7 @@ Code anchors (segment-relative; `CS = 0x0F17` in the captured session):
 
 ### 3.1 Anchor Table Cache (`# [MEM-SOD-ANCHOR-TABLE]`)
 
-The anchor table is the `0x0000` header and `0x0004 + n*0x1C` records in the work-segment table above, invalidated per frame by `CS:0x492D` over 231 records; `OP_TAP` copies records from it into the vertex register arena. The fields are not restated here: see that table and the cache walk-through in [`sod-vm.md`](sod-vm.md).
+The anchor table is the `0x0000` header and `0x0004 + n*0x1C` records in the work-segment table above, invalidated per frame by `CS:0x492D` over 231 records; `OP_TAP` copies records from it into the vertex register arena.
+The fields are not restated here: see that table and the cache walk-through in [`sod-vm.md`](sod-vm.md).
 
 See [`research/playone-exe/sod-vm.md`](sod-vm.md) for `OP_TAP` and [`research/playone-exe/sod-animate.md`](sod-animate.md) for `OP_ANIMATE` disassembly and operand evidence.

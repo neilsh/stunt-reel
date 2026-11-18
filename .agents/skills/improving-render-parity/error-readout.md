@@ -2,7 +2,9 @@
 
 Part of the [`improving-render-parity`](SKILL.md) skill.
 
-Run it on every film after adopting a render change. It says which kinds of error the render makes and on how many frames; it cannot see misregistration, which the metrics cover. The categories are `research/parity/error-categories.toml`.
+Run it on every film after adopting a render change.
+It says which kinds of error the render makes and on how many frames; it cannot see misregistration, which the metrics cover.
+The categories are `research/parity/error-categories.toml`.
 
 ```
 - [ ] 1. Copy build/parity/bench/<film>/errors/readout.json to build/scratch/<film>-readout.json (the previous readout)
@@ -19,4 +21,5 @@ For batch films, print the `batch.md` readout table with `mise run parity-bench 
 
 Skip step 1 and `--against` when there is no previous readout or the previous run was a calibration: a calibration grades only ticks the recapture holds, so `compare` refuses it.
 
-Calibrate (`errors-make --calibrate`, 42 sheets, then `errors-score`) only when the categories, the sheet layout or the grading model change; it must print `calibration PASS`. When `other` names the same new kind of error on two or more frames, add a `[[category]]` block, give it an example with `errors-example --film <film> --tick <tick> --category <id>`, and calibrate.
+Calibrate (`errors-make --calibrate`, 42 sheets, then `errors-score`) only when the categories, the sheet layout or the grading model change; it must print `calibration PASS`.
+When `other` names the same new kind of error on two or more frames, add a `[[category]]` block, give it an example with `errors-example --film <film> --tick <tick> --category <id>`, and calibrate.

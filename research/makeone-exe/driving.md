@@ -4,9 +4,13 @@ sidebar_label: "Driving the film linker"
 ---
 # `MAKEONE.EXE`: Driving the Film Linker Under DOSBox-X
 
-`MAKEONE.EXE` is the retail film linker: it turns a film's `.FLM` into the `.ALL` archive that `PLAYONE.EXE` plays ([`all.md`](../formats/all.md)). The retail manual describes it as a DOS program that opens a Load File requester, prepares the chosen film and returns to DOS. This note records what it does when the capture harness drives it, so a film without an `.ALL` can be given one. The harness itself is in [`capture.md`](../playone-exe/capture.md); the design is in [`work/2026-10/make-all/spec.md`](../../work/2026-10/make-all/spec.md) and [ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md).
+`MAKEONE.EXE` is the retail film linker: it turns a film's `.FLM` into the `.ALL` archive that `PLAYONE.EXE` plays ([`all.md`](../formats/all.md)).
+The retail manual describes it as a DOS program that opens a Load File requester, prepares the chosen film and returns to DOS.
+This note records what it does when the capture harness drives it, so a film without an `.ALL` can be given one.
+The harness itself is in [`capture.md`](../playone-exe/capture.md); the design is in [`work/2026-10/make-all/spec.md`](../../work/2026-10/make-all/spec.md) and [ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md).
 
-Every observation below is `[Bounded Observation]`: `BALLOON.FLM` from the full game in a spike on 2026-10-29 (and `TRAINTNL.FLM` in section 7), `dosbox-x-v2026.10.01`, the parity profile (`core = normal`, `output = surface`). The tier of a statement is repeated in its section's first line.
+Every observation below is `[Bounded Observation]`: `BALLOON.FLM` from the full game in a spike on 2026-10-29 (and `TRAINTNL.FLM` in section 7), `dosbox-x-v2026.10.01`, the parity profile (`core = normal`, `output = surface`).
+The tier of a statement is repeated in its section's first line.
 
 ---
 
@@ -32,15 +36,23 @@ flowchart LR
 
 ## 2. Keys
 
-`[Bounded Observation]`. The prefix jump fills the Filename field, so the keys are the film's first letter and Enter, with no Down (unlike `PLAYONE`'s list box, which needs a Down; [`playone.py`](../../python/stunt_reel/tac/playone.py)). In the spike's mount `VAULT` held `balloon.flm` and `balloon.tke`, and `b` selected `balloon.flm`; the committed command stages the `.FLM` alone, where the list shows only that film. The spike pressed `b` about 10 s after the controller connected, 0.7 s before Enter; the harness's own dialog settle also works on these screens (section 7).
+`[Bounded Observation]`.
+The prefix jump fills the Filename field, so the keys are the film's first letter and Enter, with no Down (unlike `PLAYONE`'s list box, which needs a Down; [`playone.py`](../../python/stunt_reel/tac/playone.py)).
+In the spike's mount `VAULT` held `balloon.flm` and `balloon.tke`, and `b` selected `balloon.flm`; the committed command stages the `.FLM` alone, where the list shows only that film.
+The spike pressed `b` about 10 s after the controller connected, 0.7 s before Enter; the harness's own dialog settle also works on these screens (section 7).
 
 ## 3. Completion
 
-`[Bounded Observation]`. The only sign that `MAKEONE` has finished is the video mode returning to text. A framebuffer dump cannot see it (`MEMDUMPBIN A000:0000` reads the graphics page, which does not change in text mode), so the harness reads `VGA MODE`; a reply is a line such as `VGA mode info: | mode=M_VGA vref=70.087Hz href=31468.750Hz chrclk=3146875.000Hz dotclk=25175000.000Hz`. No file appears before the end, and no `SPOOL.$$$` was left behind. Text mode alone is not a signal, because the guest sits at a prompt before the program starts; a graphics mode must have been seen first.
+`[Bounded Observation]`.
+The only sign that `MAKEONE` has finished is the video mode returning to text.
+A framebuffer dump cannot see it (`MEMDUMPBIN A000:0000` reads the graphics page, which does not change in text mode), so the harness reads `VGA MODE`; a reply is a line such as `VGA mode info: | mode=M_VGA vref=70.087Hz href=31468.750Hz chrclk=3146875.000Hz dotclk=25175000.000Hz`.
+No file appears before the end, and no `SPOOL.$$$` was left behind.
+Text mode alone is not a signal, because the guest sits at a prompt before the program starts; a graphics mode must have been seen first.
 
 ## 4. Minimal Mount
 
-`[Bounded Observation]`. Tested on `BALLOON.FLM`:
+`[Bounded Observation]`.
+Tested on `BALLOON.FLM`:
 
 | Needed | Not needed |
 |---|---|
@@ -48,11 +60,16 @@ flowchart LR
 | `RES\` (about 9.8 MB) | `SETS\`, `SS\`, `PILOTS\`, `GAME.VAR` (tested absent), `SPOOL.$$$` |
 | `VAULT\BALLOON.FLM` | |
 
-The engine files were not dropped one at a time. A mount that already held an `.ALL` (copied from an earlier run) made the output ambiguous, so each run uses a fresh copy.
+The engine files were not dropped one at a time.
+A mount that already held an `.ALL` (copied from an earlier run) made the output ambiguous, so each run uses a fresh copy.
 
 ## 5. Output
 
-`[Bounded Observation]`. `BALLOON.ALL` appears in the mount's `VAULT\`, beside the `.FLM`: 46,702 bytes, md5 `1db59e1edd4d3debaca5e6188ead38df`, identical in all five harness runs and the run with no controller. It parses as [`all.ksy`](../formats/all.ksy): 62 chunk ids, a 378-byte header, the first offset 378, offsets increasing, the last offset equal to the file size. `PLAYONE` plays it: `capture-ref` captured 30 frames (film ticks about 10 to 345, 43 to 72 distinct indices each) in 12.6 s. Whether `PLAYONE` insists that the archive's stem equals the film's was not tested; every pair in the corpus matches.
+`[Bounded Observation]`.
+`BALLOON.ALL` appears in the mount's `VAULT\`, beside the `.FLM`: 46,702 bytes, md5 `1db59e1edd4d3debaca5e6188ead38df`, identical in all five harness runs and the run with no controller.
+It parses as [`all.ksy`](../formats/all.ksy): 62 chunk ids, a 378-byte header, the first offset 378, offsets increasing, the last offset equal to the file size.
+`PLAYONE` plays it: `capture-ref` captured 30 frames (film ticks about 10 to 345, 43 to 72 distinct indices each) in 12.6 s.
+Whether `PLAYONE` insists that the archive's stem equals the film's was not tested; every pair in the corpus matches.
 
 ## 6. Routes
 
@@ -67,13 +84,18 @@ A stale `dosbox-x.exe` from an earlier killed run holds the control port; kill i
 
 ## 7. Through `mise run make-all`
 
-`[Bounded Observation]`, 2026-10-29, the committed command rather than the spike scripts. The dialog settle that `PLAYONE` uses (five identical dumps after at least three changes) fired on `MAKEONE`'s screens with 4 distinct indices, so no fixed delay is needed before the keys. `BALLOON.FLM`: 46,702 bytes, md5 `1db59e1edd4d3debaca5e6188ead38df` again, 81.1 s, and `capture-ref` then captured 30 frames from the stored archive. `TRAINTNL.FLM` (28,517 bytes, longer): 107,816 bytes in 134.3 s, 30 frames captured (film ticks to about 322, 52 distinct indices on the last). Run time grows with the film's length.
+`[Bounded Observation]`, 2026-10-29, the committed command rather than the spike scripts.
+The dialog settle that `PLAYONE` uses (five identical dumps after at least three changes) fired on `MAKEONE`'s screens with 4 distinct indices, so no fixed delay is needed before the keys.
+`BALLOON.FLM`: 46,702 bytes, md5 `1db59e1edd4d3debaca5e6188ead38df` again, 81.1 s, and `capture-ref` then captured 30 frames from the stored archive.
+`TRAINTNL.FLM` (28,517 bytes, longer): 107,816 bytes in 134.3 s, 30 frames captured (film ticks to about 322, 52 distinct indices on the last).
+Run time grows with the film's length.
 
 ---
 
 ## 8. Run Time Under Different CPU Settings
 
-`[Bounded Observation]`, 2026-10-30, `flmonly-747land` unless named; the batch survey was loading the machine (about 19% CPU idle load, 16 logical cores), so seconds are indicative. Every run below wrote the same 146,215-byte `.ALL` (sha256 `998ec65c…`), checked with `cmp`.
+`[Bounded Observation]`, 2026-10-30, `flmonly-747land` unless named; the batch survey was loading the machine (about 19% CPU idle load, 16 logical cores), so seconds are indicative.
+Every run below wrote the same 146,215-byte `.ALL` (sha256 `998ec65c…`), checked with `cmp`.
 
 | `[cpu]` setting | Seconds |
 |---|---|
@@ -82,38 +104,61 @@ A stale `dosbox-x.exe` from an earlier killed run holds the control port; kill i
 | `core = dynamic`, `cycles = max` | 13 to 17 |
 | `core = dynamic`, `cycles = max 50%` | 16 (30 to 34 under survey load) |
 
-`MAKEONE` is not single-stepped by the debugger, so the `cacheblocks` crash that rules out the dynamic core for captures does not apply here. The same `dynamic` plus `max` setting also produced byte-identical archives for `flmonly-747` (852 s down to 27 s), `flmonly-battle` (346 s to 19 s) and `flmonly-bigfoot` (44 s to 7 s). DOSBox-X took no more than 0.94 of one core (about 5% of total CPU) at `cycles = max`, so a percentage cap bought nothing. `tools/dosbox/dosbox-archive.conf` was the parity conf with only these two lines changed (retired with DOSBox-X; § 9 has the dosbox-automation profiles); captures kept the parity conf ([ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md)).
+`MAKEONE` is not single-stepped by the debugger, so the `cacheblocks` crash that rules out the dynamic core for captures does not apply here.
+The same `dynamic` plus `max` setting also produced byte-identical archives for `flmonly-747` (852 s down to 27 s), `flmonly-battle` (346 s to 19 s) and `flmonly-bigfoot` (44 s to 7 s).
+DOSBox-X took no more than 0.94 of one core (about 5% of total CPU) at `cycles = max`, so a percentage cap bought nothing.
+`tools/dosbox/dosbox-archive.conf` was the parity conf with only these two lines changed (retired with DOSBox-X; § 9 has the dosbox-automation profiles); captures kept the parity conf ([ADR 0023](../../docs/adr/0023-make-all-generates-archives-with-makeone.md)).
 
-Where the remaining time goes (from existing logs, nothing re-run): launch to dialog settled is 3 to 4 s, `wait_for_text` polls `VGA MODE` every 2 s ([`makeone.py`](../../python/stunt_reel/tac/makeone.py) `POLL_SECONDS`), so a run overshoots by 0 to 2 s, and the stage copies 35 files (10,137,583 bytes) of `RES\` per run ([`staging.py`](../../python/stunt_reel/tac/staging.py)). The `autotype -w 12` route of § 6 is not on the live path. Untested cheap options: `POLL_SECONDS` 0.25, `[dosbox] fastbioslogo = true` with `startbanner = false`, and a directory junction for `RES\` (unsafe if `MAKEONE` writes into it).
+Where the remaining time goes (from existing logs, nothing re-run): launch to dialog settled is 3 to 4 s, `wait_for_text` polls `VGA MODE` every 2 s ([`makeone.py`](../../python/stunt_reel/tac/makeone.py) `POLL_SECONDS`), so a run overshoots by 0 to 2 s, and the stage copies 35 files (10,137,583 bytes) of `RES\` per run ([`staging.py`](../../python/stunt_reel/tac/staging.py)).
+The `autotype -w 12` route of § 6 is not on the live path.
+Untested cheap options: `POLL_SECONDS` 0.25, `[dosbox] fastbioslogo = true` with `startbanner = false`, and a directory junction for `RES\` (unsafe if `MAKEONE` writes into it).
 
 ## 9. On dosbox-automation
 
-`[Bounded Observation]`, 2026-10-30, `flmonly-747land`, the committed `mise run make-all` path ([ADR 0025](../../docs/adr/0025-capture-runs-are-plans-not-sessions.md)). A Lua script presses `KBD_<letter>` and `KBD_enter` from emulated frame 1200 (20-frame gap, 5 held), then Python polls `GET /api/v1/video/text` every 2 s until it has seen a graphics mode and then a text mode. No dialog-settle wait was needed: frame 1200 is past the requester on both CPU profiles.
+`[Bounded Observation]`, 2026-10-30, `flmonly-747land`, the committed `mise run make-all` path ([ADR 0025](../../docs/adr/0025-capture-runs-are-plans-not-sessions.md)).
+A Lua script presses `KBD_<letter>` and `KBD_enter` from emulated frame 1200 (20-frame gap, 5 held), then Python polls `GET /api/v1/video/text` every 2 s until it has seen a graphics mode and then a text mode.
+No dialog-settle wait was needed: frame 1200 is past the requester on both CPU profiles.
 
 | Profile ([`staging.py`](../../python/stunt_reel/tac/staging.py) `CpuProfile`) | `[cpu]` | Seconds | `.ALL` sha256 |
 |---|---|---|---|
 | `capture` | `core = normal`, `cpu_cycles = 7000` | 226.5 | `998ec65c…` (146,215 bytes) |
 | `archive` (what `make-all` uses) | `core = dynamic`, `cpu_cycles = max` | 41.3 | `998ec65c…` |
 
-Both match the DOSBox-X archive `captures/flmonly-747land/archives/001` byte for byte, so the emulator change does not change the archive. The `archive` run is about 3 times slower than DOSBox-X's 13 to 17 s at the same setting; the boot to frame 1200 alone is 17 s of emulated time, which the key script waits through on either profile. Twelve stale `dosbox-x.exe` processes from earlier sessions were running throughout, so the seconds are indicative.
+Both match the DOSBox-X archive `captures/flmonly-747land/archives/001` byte for byte, so the emulator change does not change the archive.
+The `archive` run is about 3 times slower than DOSBox-X's 13 to 17 s at the same setting; the boot to frame 1200 alone is 17 s of emulated time, which the key script waits through on either profile.
+Twelve stale `dosbox-x.exe` processes from earlier sessions were running throughout, so the seconds are indicative.
 
 ## Ruled out
 
-- **Running without `RES\`.** The run never left the caching box in 25 s.
-- **A capped `cycles = max 50%`.** It was 1.7 times slower than `max` (30 to 34 s against 18 s) and saved about 2 points of total CPU; plain `max` is used.
-- **Needing the `.TKE`.** `BALLOON` converted without its take file.
-- **`autotype` at boot as the primary route.** It works only with a long wait and cannot tell completion from a stall; it is the fallback if a film breaks the controller.
+- **Running without `RES\`.**
+  The run never left the caching box in 25 s.
+- **A capped `cycles = max 50%`.**
+  It was 1.7 times slower than `max` (30 to 34 s against 18 s) and saved about 2 points of total CPU; plain `max` is used.
+- **Needing the `.TKE`.**
+  `BALLOON` converted without its take file.
+- **`autotype` at boot as the primary route.**
+  It works only with a long wait and cannot tell completion from a stall; it is the fallback if a film breaks the controller.
 
 ## Open questions
 
 1. ~~Films over 300 KB that timed out at 900 s are not yet re-run at the new speed.~~ Answered on dosbox-automation: `make-all` runs on the `archive` profile (section 9), and `BIGMAN` (900 KB of `.FLM`) archives in 476 to 514 s ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3).
-2. Is a `.ALL` made from one `.FLM` byte-stable across runs for films other than `BALLOON`? Only that one was repeated.
+2. Is a `.ALL` made from one `.FLM` byte-stable across runs for films other than `BALLOON`?
+   Only that one was repeated.
 3. Films that need more than the shipped `RES\` (community films with custom sounds) and films whose `.FLM` references takes: untested.
-4. Does a `.ALL` made under DOSBox-X carry the sound set-up of the machine that ran `MAKEONE` (`corpus/siarchive/Films/Playing_Films.txt`)? Frames are unaffected.
-5. A film whose name starts with a digit: `KBD_7` passes [`luagen.py`](../../python/stunt_reel/tac/luagen.py)'s `KBD_[a-z0-9_]+` check, but whether dosbox-automation maps it is untested. A first character outside that set is refused before the run.
+4. Does a `.ALL` made under DOSBox-X carry the sound set-up of the machine that ran `MAKEONE` (`corpus/siarchive/Films/Playing_Films.txt`)?
+   Frames are unaffected.
+5. A film whose name starts with a digit: `KBD_7` passes [`luagen.py`](../../python/stunt_reel/tac/luagen.py)'s `KBD_[a-z0-9_]+` check, but whether dosbox-automation maps it is untested.
+   A first character outside that set is refused before the run.
 6. Does `PLAYONE` require the archive's stem to equal the film's?
-7. Can the key script start earlier than frame 1200 on the `archive` profile? Every run pays about 17 s of emulated boot; the requester's first frame was not measured on dosbox-automation.
-8. Patch #3's `MAKEONE.EXE` writes the same `.ALL` as the unpatched one for `COUNT`, `EXIT` and `EXIT2`, and a different one for `BIGMAN` (1,429,089 bytes against 1,425,743), which only the patched `PLAYONE` plays ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). Which other films differ is open.
-9. `MAKEONE` sometimes writes the archive and never leaves graphics mode (`COUNT` on both builds, `EXIT` and `EXIT2` on the patched one), so `make-all` timed out on a good archive. A **MAKEONE hang** is now handled by policy: when the timeout passes and the `.ALL` is non-empty and its size and mtime have stayed unchanged for 60 s, `make-all` accepts it on either build, kills MAKEONE, logs a warning, runs `check_archive` and records `returned_to_dos: false` in `meta.json`; an archive still changing, or empty, is refused. What MAKEONE waits for is still unknown ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). ([#76](https://github.com/neilsh/stunt-reel/issues/76)) `TOD.FLM` on Patch 3 stalled once more, on 2026-11-09 (two 600 s attempts, no `.ALL` written, the log never shows the switch back to mode 03h); 4 of 4 reruns the same evening finished in 24 to 28 s with one identical `TOD.ALL`, so the stall did not recur in those 4 reruns (it is not a deterministic hang on TOD plus Patch 3), and no guest screenshot of a stall exists. Cause open: an early stall (no archive was written, so neither attempt was a MAKEONE hang as defined above), or contention with other emulators running then (not recorded). If it recurs, record the screenshot and what else was running. ([#355](https://github.com/neilsh/stunt-reel/issues/355))
+7. Can the key script start earlier than frame 1200 on the `archive` profile?
+   Every run pays about 17 s of emulated boot; the requester's first frame was not measured on dosbox-automation.
+8. Patch #3's `MAKEONE.EXE` writes the same `.ALL` as the unpatched one for `COUNT`, `EXIT` and `EXIT2`, and a different one for `BIGMAN` (1,429,089 bytes against 1,425,743), which only the patched `PLAYONE` plays ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3).
+   Which other films differ is open.
+9. `MAKEONE` sometimes writes the archive and never leaves graphics mode (`COUNT` on both builds, `EXIT` and `EXIT2` on the patched one), so `make-all` timed out on a good archive.
+   A **MAKEONE hang** is now handled by policy: when the timeout passes and the `.ALL` is non-empty and its size and mtime have stayed unchanged for 60 s, `make-all` accepts it on either build, kills MAKEONE, logs a warning, runs `check_archive` and records `returned_to_dos: false` in `meta.json`; an archive still changing, or empty, is refused.
+   What MAKEONE waits for is still unknown ([`../playone-exe/patch3.md`](../playone-exe/patch3.md) § 3). ([#76](https://github.com/neilsh/stunt-reel/issues/76))
+   `TOD.FLM` on Patch 3 stalled once more, on 2026-11-09 (two 600 s attempts, no `.ALL` written, the log never shows the switch back to mode 03h); 4 of 4 reruns the same evening finished in 24 to 28 s with one identical `TOD.ALL`, so the stall did not recur in those 4 reruns (it is not a deterministic hang on TOD plus Patch 3), and no guest screenshot of a stall exists.
+   Cause open: an early stall (no archive was written, so neither attempt was a MAKEONE hang as defined above), or contention with other emulators running then (not recorded).
+   If it recurs, record the screenshot and what else was running. ([#355](https://github.com/neilsh/stunt-reel/issues/355))
 
 _Found 2026-10-29; see the [parity log](../../work/2026-10/parity-log/log.md)._

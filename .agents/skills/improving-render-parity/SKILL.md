@@ -5,15 +5,20 @@ description: Runs stunt-reel's render-vs-PLAYONE parity loop (capture, render, s
 
 # Improving render parity
 
-The loop's commands are [`docs/howto/score-a-render-change.md`](../../../docs/howto/score-a-render-change.md); the probes still live in `probes.md` until they move to `docs/howto/`. A lavapipe (software) render sets `VK_DRIVER_FILES` to the lavapipe ICD alone and passes `--software-only` ([`render-on-lavapipe.md`](../../../docs/howto/render-on-lavapipe.md)); confirm the `adapter` in the report or `render.json` is llvmpipe, not WARP or a GPU. This skill says which to read and how to run the loop cheaply. Read only the section you need:
+The loop's commands are [`docs/howto/score-a-render-change.md`](../../../docs/howto/score-a-render-change.md); the probes still live in `probes.md` until they move to `docs/howto/`.
+A lavapipe (software) render sets `VK_DRIVER_FILES` to the lavapipe ICD alone and passes `--software-only` ([`render-on-lavapipe.md`](../../../docs/howto/render-on-lavapipe.md)); confirm the `adapter` in the report or `render.json` is llvmpipe, not WARP or a GPU.
+This skill says which to read and how to run the loop cheaply.
+Read only the section you need:
 
 - **Where the loss is** (capture, render, score, compare): [`research/parity/method.md`](../../../research/parity/method.md) section 1.
 - **What is wrong** (crop, shift, actor IoU, candidate sweeps, timing retime, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
-- **What was already tried**, dead ends included: read the **Ruled out** section of the note for the residual ([`attribution.md`](../../../research/parity/attribution.md), [`framing-and-actors.md`](../../../research/parity/framing-and-actors.md) or [`film-segments.md`](../../../research/parity/film-segments.md)), then search the journal entries with `rg <term> work/`. Do this before starting a hypothesis.
+- **What was already tried**, dead ends included: read the **Ruled out** section of the note for the residual ([`attribution.md`](../../../research/parity/attribution.md), [`framing-and-actors.md`](../../../research/parity/framing-and-actors.md) or [`film-segments.md`](../../../research/parity/film-segments.md)), then search the journal entries with `rg <term> work/`.
+  Do this before starting a hypothesis.
 
 ## Workflow
 
-Read [`loop-rules.md`](loop-rules.md) first: one goal, at most four rounds, and the adoption rule step 6 applies. Copy this checklist into your task list and tick items off:
+Read [`loop-rules.md`](loop-rules.md) first: one goal, at most four rounds, and the adoption rule step 6 applies.
+Copy this checklist into your task list and tick items off:
 
 ```
 - [ ] 1. Baseline: mise run parity (per film, its score line and its expected line)
@@ -39,4 +44,6 @@ Read each at its step:
 
 ## Finishing an item
 
-Write a [journal entry](../../../work/README.md#journal-entries) for every attempt, adopted or not, in the item's work folder (`mise run work -- new <slug> --issue N`, or its existing folder), and put the finding in the note that owns the residual. Adopting a change updates each reference film's expected table in `research/parity/references.toml` for the class it measured ([`loop-rules.md`](loop-rules.md)). End the session after the handoff; start the next hypothesis in a fresh session.
+Write a [journal entry](../../../work/README.md#journal-entries) for every attempt, adopted or not, in the item's work folder (`mise run work -- new <slug> --issue N`, or its existing folder), and put the finding in the note that owns the residual.
+Adopting a change updates each reference film's expected table in `research/parity/references.toml` for the class it measured ([`loop-rules.md`](loop-rules.md)).
+End the session after the handoff; start the next hypothesis in a fresh session.

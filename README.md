@@ -5,9 +5,13 @@
 Format analysis, documentation, and modern reconstruction for *Stunt Island* (1992, Walt Disney Computer Software / The Assembly Line): offline-tested Rust and Python parsers for its file formats, a native `wgpu` renderer (`stuntreel`) that plays the standalone film reels, and a dosbox-automation harness that captures frames from the original `PLAYONE.EXE` to check the renderer against.
 
 > [!WARNING]
-> **Work in progress (pre-alpha).** This is an active reverse-engineering project, not a finished product or a game you can install and play. Formats, APIs, command lines and documentation change without notice, and parts of the rendering are known to differ from the original. It is developed in collaboration with AI coding agents; [`AGENTS.md`](AGENTS.md) is the contributor guide.
+> **Work in progress (pre-alpha).**
+> This is an active reverse-engineering project, not a finished product or a game you can install and play.
+> Formats, APIs, command lines and documentation change without notice, and parts of the rendering are known to differ from the original.
+> It is developed in collaboration with AI coding agents; [`AGENTS.md`](AGENTS.md) is the contributor guide.
 
-No game assets or executables are distributed. You need your own lawfully obtained copy of the files you want to analyse or play — see [Legal & assets](#legal--assets).
+No game assets or executables are distributed.
+You need your own lawfully obtained copy of the files you want to analyse or play — see [Legal & assets](#legal--assets).
 
 ---
 
@@ -41,7 +45,8 @@ To render a film you need the *Stunt Island* demo (`stisldem`) in the shared dat
 cargo run -p stunt-cli -- "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL"
 ```
 
-Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits. Headless rendering, video and glTF export, reference capture and the parity loop are in the [development guide](docs/development.md).
+Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc exits.
+Headless rendering, video and glTF export, reference capture and the parity loop are in the [development guide](docs/development.md).
 
 ---
 
@@ -67,9 +72,13 @@ Space pauses, C toggles authored/free camera, WASD/QE fly the free camera, Esc e
 
 ## Legal & assets
 
-*Stunt Island* and related marks are trademarks of The Walt Disney Company. This is an unofficial, non-commercial research and preservation project: it is not affiliated with, authorised by, or endorsed by The Walt Disney Company or The Assembly Line.
+*Stunt Island* and related marks are trademarks of The Walt Disney Company.
+This is an unofficial, non-commercial research and preservation project: it is not affiliated with, authorised by, or endorsed by The Walt Disney Company or The Assembly Line.
 
-No game assets, executables, or original data files are distributed. `corpus/` is gitignored and every test runs offline against synthetic fixtures; you must supply your own lawfully obtained copy of any retail files. Two small game-derived tables are committed as documented exceptions because the renderer needs them for format fidelity — the 256-entry master palette (768 bytes) and an 18-entry SOD scale table — and they are credited and described in [`NOTICE.md`](NOTICE.md). Quoted manual text and cited community research remain under their original terms.
+No game assets, executables, or original data files are distributed.
+`corpus/` is gitignored and every test runs offline against synthetic fixtures; you must supply your own lawfully obtained copy of any retail files.
+Two small game-derived tables are committed as documented exceptions because the renderer needs them for format fidelity — the 256-entry master palette (768 bytes) and an 18-entry SOD scale table — and they are credited and described in [`NOTICE.md`](NOTICE.md).
+Quoted manual text and cited community research remain under their original terms.
 
 See [`NOTICE.md`](NOTICE.md) for provenance and third-party credits, and [License](#license) for the licence split.
 
@@ -77,7 +86,11 @@ See [`NOTICE.md`](NOTICE.md) for provenance and third-party credits, and [Licens
 
 ## Contributing
 
-Issues are welcome. For anything larger than a small fix, please open an issue before a pull request so we can agree on the approach. This is a small project with no promised response times. Before opening a pull request, run `mise run check` and read [`AGENTS.md`](AGENTS.md). Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
+Issues are welcome.
+For anything larger than a small fix, please open an issue before a pull request so we can agree on the approach.
+This is a small project with no promised response times.
+Before opening a pull request, run `mise run check` and read [`AGENTS.md`](AGENTS.md).
+Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
 
 ## License
 

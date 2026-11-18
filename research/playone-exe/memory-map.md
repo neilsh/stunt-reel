@@ -3,7 +3,10 @@ summary: "Index of the `PLAYONE.EXE` memory-map files and the conventions they s
 ---
 # Runtime Memory Map & Real-Mode Offsets
 
-**The memory map is split across five files; this file lists its files, states the conventions below, and holds the `DGROUP` table (§ 1).** Other notes keep subject tables of their own, such as the file-name strings in [`startup.md` § 4](startup.md#4-primary-asset-dependencies). The evidence behind a row (disassembly, live samples, provenance) lives in [`research/playone-exe/`](./) and is linked from the row; it is not restated here. Tier names come from the list `EVIDENTIARY_TIERS` in [`python/scripts/formats_docs/catalog.py`](../../python/scripts/formats_docs/catalog.py) and defined in [`SPEC.md` § 2.4](../../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
+**The memory map is split across five files; this file lists its files, states the conventions below, and holds the `DGROUP` table (§ 1).**
+Other notes keep subject tables of their own, such as the file-name strings in [`startup.md` § 4](startup.md#4-primary-asset-dependencies).
+The evidence behind a row (disassembly, live samples, provenance) lives in [`research/playone-exe/`](./) and is linked from the row; it is not restated here.
+Tier names come from the list `EVIDENTIARY_TIERS` in [`python/scripts/formats_docs/catalog.py`](../../python/scripts/formats_docs/catalog.py) and defined in [`SPEC.md` § 2.4](../../docs/SPEC.md#24-evidentiary-tiers--contract-anchor-system).
 
 | File | Holds | Anchors defined |
 |---|---|---|
@@ -16,7 +19,10 @@ summary: "Index of the `PLAYONE.EXE` memory-map files and the conventions they s
 `[MEM-UNPACK-LOCKOUT]` is defined in [`memory.md` § 3.4](memory.md#34-lzexe-unpack-lockout--mem-unpack-lockout); [`doc_anchors.py`](../../python/stunt_reel/doc_anchors.py) names each anchor's home.
 
 * **Target Binary**: `PLAYONE.EXE` (Unpacked LZEXE 0.91 image)
-* **Image Dump Base**: paragraph `0x0D51` (file offset `0xD910` in the unpacked image). This is the snapshot base used by earlier dumps, **not** the runtime `DS`. In the captured session `CS = 0x0F17` and `DS = 0x1575` (DOSBox-X; `DS = 0x0F46` under dosbox-automation); table offsets are `DS`-relative. See [`memory.md` § 1](memory.md#1-segment-architecture--dgroup-map).
+* **Image Dump Base**: paragraph `0x0D51` (file offset `0xD910` in the unpacked image).
+  This is the snapshot base used by earlier dumps, **not** the runtime `DS`.
+  In the captured session `CS = 0x0F17` and `DS = 0x1575` (DOSBox-X; `DS = 0x0F46` under dosbox-automation); table offsets are `DS`-relative.
+  See [`memory.md` § 1](memory.md#1-segment-architecture--dgroup-map).
 * **Linear Address Formula**:
   $$\text{Address}_{\text{linear}} = (\text{Segment} \ll 4) + \text{Offset} = (\text{Segment} \times 16) + \text{Offset}$$
 
@@ -66,4 +72,8 @@ summary: "Index of the `PLAYONE.EXE` memory-map files and the conventions they s
 | `0x4F02` | `[Established]` | `u8[128]` | `PFONT.BIN` width table, indexed by character code at `0x58D0` ([`pfont.md`](../formats/auxiliary/pfont.md)) | |
 | image offset + `0x8240` | `[Bounded Observation]` | Rule | Relocation: `runtime_linear = image_offset + 0x8240` (`DGROUP` image `0xD510` -> segment `0x1575`); VM `CS:IP` = image - `0x8240`; see [`memory.md` § 4](memory.md#4-image-to-memory-relocation-and-a-candidate-embedded-data-region) | |
 
-Rows `0x22C4`, `0x22CE` and `0x22D0` were promoted from `[Supported Inference]` to `[Established]` on 2026-10-23. A Capstone 16-bit decode of the whole unpacked image found exactly those instructions referencing them, all inside the entry routine `0x0C5E`, and raw word matches elsewhere are not instruction operands. Offsets are load-image offsets (see [`startup.md` § 5](startup.md#5-reproducing-the-static-analysis)). The EXEC runs when the command line starts with `?` (`0x0C90`) or when opening `game.cfg` (`DS:0x05AC`, call at `0x0CD2`) fails. The `entry` listing in rea/Ghidra matches the same instructions at analysis address `0x10000 +` image offset.
+Rows `0x22C4`, `0x22CE` and `0x22D0` were promoted from `[Supported Inference]` to `[Established]` on 2026-10-23.
+A Capstone 16-bit decode of the whole unpacked image found exactly those instructions referencing them, all inside the entry routine `0x0C5E`, and raw word matches elsewhere are not instruction operands.
+Offsets are load-image offsets (see [`startup.md` § 5](startup.md#5-reproducing-the-static-analysis)).
+The EXEC runs when the command line starts with `?` (`0x0C90`) or when opening `game.cfg` (`DS:0x05AC`, call at `0x0CD2`) fails.
+The `entry` listing in rea/Ghidra matches the same instructions at analysis address `0x10000 +` image offset.

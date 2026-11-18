@@ -4,7 +4,8 @@
 mise run test-gpu
 ```
 
-A driver that wedges would leave a plain `cargo test` of stunt-render's `gpu` binary waiting forever ([why](../quality-gate.md#gpu-tests)). Every test in it runs under a deadline instead: a test still running after `STUNT_GPU_TEST_DEADLINE_S` seconds (a positive whole number; default 60) prints `HANG: <test> still running after <N>s` to stderr and aborts the process.
+A driver that wedges would leave a plain `cargo test` of stunt-render's `gpu` binary waiting forever ([why](../quality-gate.md#gpu-tests)).
+Every test in it runs under a deadline instead: a test still running after `STUNT_GPU_TEST_DEADLINE_S` seconds (a positive whole number; default 60) prints `HANG: <test> still running after <N>s` to stderr and aborts the process.
 
 To measure the hang rate, run the task in a loop that stops at the first failure.
 

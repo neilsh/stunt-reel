@@ -2,7 +2,9 @@
 title: "Stunt Island research notes"
 ---
 
-*Stunt Island* (1992) is a game for staging and filming stunts. Stunt Reel is a new film player, written from scratch, that plays the game's films at modern resolutions. To build it, we study how the original player behaves and check our frames against its own.
+*Stunt Island* (1992) is a game for staging and filming stunts.
+Stunt Reel is a new film player, written from scratch, that plays the game's films at modern resolutions.
+To build it, we study how the original player behaves and check our frames against its own.
 
 Stunt Reel is pre-alpha: it is still being built, and parts of its rendering are known to differ from the original.
 

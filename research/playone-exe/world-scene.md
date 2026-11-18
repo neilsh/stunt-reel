@@ -6,30 +6,40 @@ sidebar_label: "How the ground is drawn"
 
 * **Binary**: `PLAYONE.EXE`, unpacked load image, unpatched and Patch #3 builds; film `CTRY.FLM` (and `INTRO.FLM` for the renderer check)
 * **Method**: DOSBox-X breakpoint plans in `tools/dosbox-x/plans/` (`ground-colours`, `ground-writer`, `ground-tiles`, `ground-filler`, `terrain-records`, `terrain-tree`, `ground-objects`, `ground-driver`; tool in [`debugger-plans.md`](debugger-plans.md)), iced-x86 disassembly of the unpacked image, byte comparison of the image with `MAP.BIN` and the `RES` shapes, and renderer probes (`DBG_NO_TERRAIN`, `DBG_TERRAIN_DROP`, a biased terrain pass; none committed) and the ground-decal prototype
-* **Scope**: the code that draws the ground, where each ground colour is stored, how the airfield's scenery tiles reach the screen, and the dispatch slots of the display-list VM. How SOD polygons are *shaded* is in [`terrain-shade.md`](terrain-shade.md)
+* **Scope**: the code that draws the ground, where each ground colour is stored, how the airfield's scenery tiles reach the screen, and the dispatch slots of the display-list VM.
+  How SOD polygons are *shaded* is in [`terrain-shade.md`](terrain-shade.md)
 * **Anchors**: none new; the slot table is summarised in [`sod-vm.md`](sod-vm.md) section 1, the anchor table in [`memory-map-vm.md`](memory-map-vm.md) section 3
 
 * **Evidence tier**: `[Established]` for the instruction sequences, the tree's place in the image and its identity with `MAP.BIN` and `SCENERY.scn`; `[Supported Inference]` that `PLAYONE` never draws `MAP.BIN` patches 52 to 55 and 62 to 65; `[Bounded Observation]` for what the live runs drew (one emulator, `CTRY.FLM`, unpatched; each run's ticks are in its journal entry)
 * **Reproducing**: [`docs/howto/check-the-ground-against-playone.md`](../../docs/howto/check-the-ground-against-playone.md)
-* **Renderer residuals**: the renderer's ground findings, leaf ordering and decal pass are in
-  [`world-scene-residuals.md`](world-scene-residuals.md), which keeps its own `Ruled out` and
-  `Open questions` for those sections.
+* **Renderer residuals**: the renderer's ground findings, leaf ordering and decal pass are in [`world-scene-residuals.md`](world-scene-residuals.md), which keeps its own `Ruled out` and `Open questions` for those sections.
 
 ---
 
 ## 1. Summary
 
-The ground is not a display-list stream. `PLAYONE` walks a BSP scenery tree that is static data in its own image (on the unpatched build paragraph `0x2286`, image `0x22860`; on the patched build its leaves start at image `0x20736`, section 2), and each ground leaf (node type 14) carries one flat polygon inline: a colour word, a vertex count and anchor-table references. Those 146 leaves are `MAP.BIN`'s polygons, the same vertices and the same colour, on both builds (section 2). The leaf routine draws them flat, with no shade. `MAP.BIN`'s sand patches 52 to 55 and 62 to 65 are in neither this tree nor FreeFlight's `SCENERY.scn`, which is the same tree, and `PLAYONE` draws them by no other route found (section 2.1).
+The ground is not a display-list stream.
+`PLAYONE` walks a BSP scenery tree that is static data in its own image (on the unpatched build paragraph `0x2286`, image `0x22860`; on the patched build its leaves start at image `0x20736`, section 2), and each ground leaf (node type 14) carries one flat polygon inline: a colour word, a vertex count and anchor-table references.
+Those 146 leaves are `MAP.BIN`'s polygons, the same vertices and the same colour, on both builds (section 2).
+The leaf routine draws them flat, with no shade.
+`MAP.BIN`'s sand patches 52 to 55 and 62 to 65 are in neither this tree nor FreeFlight's `SCENERY.scn`, which is the same tree, and `PLAYONE` draws them by no other route found (section 2.1).
 
-The airfield's other colours, 193, 194 and 196 where `MAP.BIN` says 195, and the sand 91 of `INTRO.FLM`, are scenery shapes, among them the `SCENERY2.RES` tiles of section 3. The tree places them on top of the ground, and `OP_COLOR` sets their colour from the shape's own bytecode (section 3). The player paints in walk order, with no depth buffer, so a tile always covers the leaf under it. Our renderer places the same tiles, but its depth test hid them under the coplanar `MAP.BIN` polygons: they lie on the terrain plane to a millimetre and tie it in depth. It now snaps flat props that lie on the terrain onto it and draws them in the decal pass (those flat on the ground plane `y = base_y` in the walk-order ground pass of section 6.6 of [`world-scene-residuals.md`](world-scene-residuals.md)), which raises `CTRY.FLM` from 0.8298 to 0.8645 and `INTRO.FLM` from 0.7745 to 0.7973 SSIM (section 6 of [`world-scene-residuals.md`](world-scene-residuals.md)).
+The airfield's other colours, 193, 194 and 196 where `MAP.BIN` says 195, and the sand 91 of `INTRO.FLM`, are scenery shapes, among them the `SCENERY2.RES` tiles of section 3.
+The tree places them on top of the ground, and `OP_COLOR` sets their colour from the shape's own bytecode (section 3).
+The player paints in walk order, with no depth buffer, so a tile always covers the leaf under it.
+Our renderer places the same tiles, but its depth test hid them under the coplanar `MAP.BIN` polygons: they lie on the terrain plane to a millimetre and tie it in depth.
+It now snaps flat props that lie on the terrain onto it and draws them in the decal pass (those flat on the ground plane `y = base_y` in the walk-order ground pass of section 6.6 of [`world-scene-residuals.md`](world-scene-residuals.md)), which raises `CTRY.FLM` from 0.8298 to 0.8645 and `INTRO.FLM` from 0.7745 to 0.7973 SSIM (section 6 of [`world-scene-residuals.md`](world-scene-residuals.md)).
 
-The ops `0x0168` and `0x02BE`, which this note used to call the ground handlers, are the Gouraud polygons `GVPOLY`/`GVPOLY16`. In the airfield shot only the hero aircraft's object draws with them (section 4.1).
+The ops `0x0168` and `0x02BE`, which this note used to call the ground handlers, are the Gouraud polygons `GVPOLY`/`GVPOLY16`.
+In the airfield shot only the hero aircraft's object draws with them (section 4.1).
 
 ## 2. The ground leaves and their colour
 
 `[Established]` for the code; `[Bounded Observation]` for the live calls (`terrain-records`, `terrain-tree`, 2026-11-04).
 
-The scenery walker dispatches on a node's first word through the DGROUP table at `0x554` (`jmp word [bx+0x554]` at image `0x2406`). Type 12 (`SP_GROUND` in [`scenery.md`](../formats/auxiliary/scenery.md)) is `0x2360`, type 14 (`SP_GLEAF`) `0x23BF`. A leaf is:
+The scenery walker dispatches on a node's first word through the DGROUP table at `0x554` (`jmp word [bx+0x554]` at image `0x2406`).
+Type 12 (`SP_GROUND` in [`scenery.md`](../formats/auxiliary/scenery.md)) is `0x2360`, type 14 (`SP_GLEAF`) `0x23BF`.
+A leaf is:
 
 | Offset | Content |
 |---|---|
@@ -41,23 +51,43 @@ The scenery walker dispatches on a node's first word through the DGROUP table at
 | `+0x10` | vertex count |
 | `+0x12...` | per vertex `0x1C * n`, which points at anchor `n` (4 bytes before record `n` of the anchor table, `work:0x0004 + n*0x1C`) |
 
-`0x23C5..0x23EC` dots the normal with the eye `[0x2A6A..0x2A72]` and subtracts the distance; a leaf facing the eye is drawn by `lcall 0824:3CE3` (image `0xBF23`) at `0x23F6` with `ES = SS` and `SI` on the colour word. `0xBF23` pushes the colour word and takes the count. For each vertex it re-transforms the anchor through VM `0x2C27` (image `0xAE67`) when the anchor's frame stamp `[si+0x1F]` differs from `work:0x19A8`, and copies it into the vertex arena at `0x4450`. It then calls VM `0x3D42` (image `0xBF82`, at `0xBF6C`), which returns carry to skip the polygon; otherwise `0xBF71` pops the colour into `CX` and `0xBF76` calls the raw gateway `lcall 0:8069` (return `0xBF7B`), which calls the driver through `DGROUP:[0x2246]` (`0x7175` live). The colour arrives as stored: every colour the gateway drew from this routine is a leaf colour. A ground leaf is one flat palette index.
+`0x23C5..0x23EC` dots the normal with the eye `[0x2A6A..0x2A72]` and subtracts the distance; a leaf facing the eye is drawn by `lcall 0824:3CE3` (image `0xBF23`) at `0x23F6` with `ES = SS` and `SI` on the colour word.
+`0xBF23` pushes the colour word and takes the count.
+For each vertex it re-transforms the anchor through VM `0x2C27` (image `0xAE67`) when the anchor's frame stamp `[si+0x1F]` differs from `work:0x19A8`, and copies it into the vertex arena at `0x4450`.
+It then calls VM `0x3D42` (image `0xBF82`, at `0xBF6C`), which returns carry to skip the polygon; otherwise `0xBF71` pops the colour into `CX` and `0xBF76` calls the raw gateway `lcall 0:8069` (return `0xBF7B`), which calls the driver through `DGROUP:[0x2246]` (`0x7175` live).
+The colour arrives as stored: every colour the gateway drew from this routine is a leaf colour.
+A ground leaf is one flat palette index.
 
-The tree segment is the stack segment while it is walked (`SS = 0x2AAA` under DOSBox-X: load paragraph `0x0824` plus image paragraph `0x2286`), and in a live dump of it 118 of 128 sampled 32-byte windows, one every `0x200` bytes, match the image at `0x22860`; the other 10 hold the stack and other mutable words. Nothing builds or loads the tree: it is part of `PLAYONE.EXE`. _Source: [2026-11-04: the live ground tree](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-the-live-ground-tree)._
+The tree segment is the stack segment while it is walked (`SS = 0x2AAA` under DOSBox-X: load paragraph `0x0824` plus image paragraph `0x2286`), and in a live dump of it 118 of 128 sampled 32-byte windows, one every `0x200` bytes, match the image at `0x22860`; the other 10 hold the stack and other mutable words.
+Nothing builds or loads the tree: it is part of `PLAYONE.EXE`.
+_Source: [2026-11-04: the live ground tree](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-the-live-ground-tree)._
 
-**Against `MAP.BIN`.** A scan for type-14 nodes whose polygon has a byte colour, 3 to 12 vertices and vertex words that are multiples of `0x1C` (anchor 0 included) finds 146 leaves in the unpatched image (`0x22866..0x30760`), 146 in the patched one (`0x20736..0x2E630`) and 146 in the live tree. Every one has the vertex set of a `MAP.BIN` record (FreeFlight's `SIDATA`) and that record's colour byte, and together they reach 146 of its 179 records: records 99 and 100 share one vertex set and colour, and two leaves carry it. One leaf has 8 vertices: record 131, whose eighth anchor `50` is the record's own eighth slot ([`map.md`](../formats/auxiliary/map.md) section 2.3). The 33 records with no leaf are the 13 inactive ones (`pos & 0xFF == 0`, anchor indices past 1023) and 20 active ones (section 2.1). The colours are `205` (28 leaves), `162` to `165` (53), `195` (12), `193`, `194` (8 each), `161` (6), `197` (5), `192`, `204` (4 each), and a few others. In the live run every colour the gateway drew from the leaf routine was a leaf colour. _Source: [2026-11-04: the live ground tree](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-the-live-ground-tree)._
+**Against `MAP.BIN`.**
+A scan for type-14 nodes whose polygon has a byte colour, 3 to 12 vertices and vertex words that are multiples of `0x1C` (anchor 0 included) finds 146 leaves in the unpatched image (`0x22866..0x30760`), 146 in the patched one (`0x20736..0x2E630`) and 146 in the live tree.
+Every one has the vertex set of a `MAP.BIN` record (FreeFlight's `SIDATA`) and that record's colour byte, and together they reach 146 of its 179 records: records 99 and 100 share one vertex set and colour, and two leaves carry it.
+One leaf has 8 vertices: record 131, whose eighth anchor `50` is the record's own eighth slot ([`map.md`](../formats/auxiliary/map.md) section 2.3).
+The 33 records with no leaf are the 13 inactive ones (`pos & 0xFF == 0`, anchor indices past 1023) and 20 active ones (section 2.1).
+The colours are `205` (28 leaves), `162` to `165` (53), `195` (12), `193`, `194` (8 each), `161` (6), `197` (5), `192`, `204` (4 each), and a few others.
+In the live run every colour the gateway drew from the leaf routine was a leaf colour.
+_Source: [2026-11-04: the live ground tree](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-the-live-ground-tree)._
 
-So `MAP.BIN`'s colours are the player's ground colours. What a per-polygon colour does not explain is the subject of section 3.
+So `MAP.BIN`'s colours are the player's ground colours.
+What a per-polygon colour does not explain is the subject of section 3.
 
 ### 2.1 Walking the tree statically
 
 `[Bounded Observation]` (the unpacked image of the unpatched build and FreeFlight's `MAP.BIN`; `mise run scene-ground`).
 
-The tree can be walked from the image alone. `python/stunt_reel/scene_tree.py` starts at `SS:0000` and follows the node types of [`scenery.md`](../formats/auxiliary/scenery.md), and `mise run scene-ground` prints the result ([how-to](../../docs/howto/check-the-ground-against-playone.md#walk-the-tree-and-compare-it-with-mapbin)). It visits 7,009 nodes, with no node of an unknown type, and finds 158 Ground polygons: 146 `SP_GLEAF` leaves and 12 coarse `SP_GROUND` polygons. A type-12 node jumps into the leaf code at `0x23BC`, three bytes before the type-14 entry at `0x23BF`, so it draws through the same routine.
+The tree can be walked from the image alone.
+`python/stunt_reel/scene_tree.py` starts at `SS:0000` and follows the node types of [`scenery.md`](../formats/auxiliary/scenery.md), and `mise run scene-ground` prints the result ([how-to](../../docs/howto/check-the-ground-against-playone.md#walk-the-tree-and-compare-it-with-mapbin)).
+It visits 7,009 nodes, with no node of an unknown type, and finds 158 Ground polygons: 146 `SP_GLEAF` leaves and 12 coarse `SP_GROUND` polygons.
+A type-12 node jumps into the leaf code at `0x23BC`, three bytes before the type-14 entry at `0x23BF`, so it draws through the same routine.
 
-All 158 match a `MAP.BIN` record's vertices and colour once the records are read as the engine reads them: the leaf at tree offset `0x060E` is record 131, whose eighth vertex is anchor `50` (section 2). `MAP.BIN` records 52 to 55 and 62 to 65, eight sand patches, have no polygon in the tree.
+All 158 match a `MAP.BIN` record's vertices and colour once the records are read as the engine reads them: the leaf at tree offset `0x060E` is record 131, whose eighth vertex is anchor `50` (section 2).
+`MAP.BIN` records 52 to 55 and 62 to 65, eight sand patches, have no polygon in the tree.
 
-That accounts for the 20 active records with no leaf that section 2 counted: the 12 coarse `SP_GROUND` polygons, which that scan did not look for, and these 8 patches. `mise run scene-ground` lists the 12 as record and tree offset of the polygon, each with the record's colour:
+That accounts for the 20 active records with no leaf that section 2 counted: the 12 coarse `SP_GROUND` polygons, which that scan did not look for, and these 8 patches.
+`mise run scene-ground` lists the 12 as record and tree offset of the polygon, each with the record's colour:
 
 | Records | Colour | Tree offsets (in record order) |
 |---|---|---|
@@ -66,12 +96,24 @@ That accounts for the 20 active records with no leaf that section 2 counted: the
 | 157, 158, 159 | 163, 162, 161 | `0x18E6`, `0x18C0`, `0x190A` |
 | 160, 163 | 204 | `0x1948`, `0x196E` |
 
-**The 8 patches: `PLAYONE` draws none of them** ([#175](https://github.com/neilsh/stunt-reel/issues/175)). `[Established]` for each comparison below; `[Supported Inference]` for the conclusion that no route draws them (unpatched image). _Source: [2026-11-05: walking the tree for the eight sand patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-walking-the-tree-for-the-eight-sand-patches)._
+**The 8 patches: `PLAYONE` draws none of them** ([#175](https://github.com/neilsh/stunt-reel/issues/175)).
+`[Established]` for each comparison below; `[Supported Inference]` for the conclusion that no route draws them (unpatched image).
+_Source: [2026-11-05: walking the tree for the eight sand patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-walking-the-tree-for-the-eight-sand-patches)._
 
-* **FreeFlight's tree is `PLAYONE`'s.** Both copies of `SCENERY.scn` are byte-identical, and read as 16-bit words without the leading `0` their 29,558 words equal the image's tree except at 8,979 of the 9,033 link fields the walk reads, each exactly 2 higher (the other 54 are equal in both); no word outside a link field differs, and walked with that bias they give the same 158 Ground polygons at the same offsets. FreeFlight shows the patches only because `sisland.cpp` draws every `MAP.BIN` record and never reads the leaves' polygons.
-* **Their polygon is in no file but `MAP.BIN`.** A byte search for each patch's polygon in the tree's form (`[count][28 * k ...]`) and in `MAP.BIN`'s (`[count][k ...]`), in every vertex order, finds none in the unpacked image, while it finds all 158 drawn records there. It finds none in the 1,047 files under `corpus/stuntisl`, `corpus/stisldem`, `corpus/siarchive/Films` and FreeFlight's `SIDATA` (every `RES` and `.ALL` among them) either, outside `MAP.BIN` itself. The image names no `MAP.BIN` file ([`terrain-shade.md`](terrain-shade.md) section 2).
-* **No shape taps their anchors.** A display-list shape reaches the anchor table only through `OP_TAP` ([`sod-vm.md`](sod-vm.md) section 2). The same files hold 4,739 `OP_TAP`-shaped anchor operands (anchors 14 to 201), and none names 19, 20, 21, 22, 69, 72, 73 or 92, the only anchors the patches use.
-* **What `PLAYONE` draws there instead.** Under the centroid of every patch but 64 lies the leaf at tree offset `0x00DA`, `MAP.BIN` record 7, colour 195, a quad about 4 km across, crossed by colour-205 leaves (`0x0420` and others). The centroid of 64 has no Ground polygon over it. No shape the tree places inside a patch has the patch's outline: the four large patches each contain hundreds of placements, and 54 and 55 hold only rows of `0x056D`..`0x0572` 4 m apart, a few of `0x03A1`..`0x03A8` and `0x05CB`..`0x05D1`.
+* **FreeFlight's tree is `PLAYONE`'s.**
+  Both copies of `SCENERY.scn` are byte-identical, and read as 16-bit words without the leading `0` their 29,558 words equal the image's tree except at 8,979 of the 9,033 link fields the walk reads, each exactly 2 higher (the other 54 are equal in both); no word outside a link field differs, and walked with that bias they give the same 158 Ground polygons at the same offsets.
+  FreeFlight shows the patches only because `sisland.cpp` draws every `MAP.BIN` record and never reads the leaves' polygons.
+* **Their polygon is in no file but `MAP.BIN`.**
+  A byte search for each patch's polygon in the tree's form (`[count][28 * k ...]`) and in `MAP.BIN`'s (`[count][k ...]`), in every vertex order, finds none in the unpacked image, while it finds all 158 drawn records there.
+  It finds none in the 1,047 files under `corpus/stuntisl`, `corpus/stisldem`, `corpus/siarchive/Films` and FreeFlight's `SIDATA` (every `RES` and `.ALL` among them) either, outside `MAP.BIN` itself.
+  The image names no `MAP.BIN` file ([`terrain-shade.md`](terrain-shade.md) section 2).
+* **No shape taps their anchors.**
+  A display-list shape reaches the anchor table only through `OP_TAP` ([`sod-vm.md`](sod-vm.md) section 2).
+  The same files hold 4,739 `OP_TAP`-shaped anchor operands (anchors 14 to 201), and none names 19, 20, 21, 22, 69, 72, 73 or 92, the only anchors the patches use.
+* **What `PLAYONE` draws there instead.**
+  Under the centroid of every patch but 64 lies the leaf at tree offset `0x00DA`, `MAP.BIN` record 7, colour 195, a quad about 4 km across, crossed by colour-205 leaves (`0x0420` and others).
+  The centroid of 64 has no Ground polygon over it.
+  No shape the tree places inside a patch has the patch's outline: the four large patches each contain hundreds of placements, and 54 and 55 hold only rows of `0x056D`..`0x0572` 4 m apart, a few of `0x03A1`..`0x03A8` and `0x05CB`..`0x05D1`.
 
 | Patch | Colour | Anchors | Under its centroid in `PLAYONE` | Note | Verdict |
 |---|---|---|---|---|---|
@@ -84,38 +126,67 @@ That accounts for the 20 active records with no leaf that section 2 counted: the
 | 64 | 79 | 69, 72, 19 | none | 19 as for 62 | ruled out |
 | 65 | 82 | 69, 19, 20 | `0x00DA` | 19 as for 62 | ruled out |
 
-The colours, 64 to 91, are steps of the palette's sand ramp; the live Ground calls of section 2.2 carried none of them, but that shot looks away from the patches. They are sand-coloured triangles cut from four quads that are free records 133 to 136 of `MAP.BIN` ([`map.md`](../formats/auxiliary/map.md) section 2.3). _Source: [2026-11-05: walking the tree for the eight sand patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-walking-the-tree-for-the-eight-sand-patches)._
+The colours, 64 to 91, are steps of the palette's sand ramp; the live Ground calls of section 2.2 carried none of them, but that shot looks away from the patches.
+They are sand-coloured triangles cut from four quads that are free records 133 to 136 of `MAP.BIN` ([`map.md`](../formats/auxiliary/map.md) section 2.3).
+_Source: [2026-11-05: walking the tree for the eight sand patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-walking-the-tree-for-the-eight-sand-patches)._
 
-**Why the tree lacks them.** `[Established]`, `SITools/SD.EXE`, the scenery compiler that turns `MAP.BIN` into this tree ([`map.md`](../formats/auxiliary/map.md) section 3.2): every build route starts at the file's list head, and these two chains (52 to 55 and 62 to 65, through their `a` words, `+0x04`, [`map.md`](../formats/auxiliary/map.md) `[BK-MAP-03]`) are linked from no record (`d` = `-1`, block 0), so they were never compiled. Drawn records 83 to 85, 87 to 89 then 86, and 166 to 164 chain the same way but hang from a parent through `b`. No field of the patches' own marks them: all 8 have `pos = 0x00FF`, as do 26 drawn records (Ruled out). _Source: [2026-11-05: walking the tree for the eight sand patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-walking-the-tree-for-the-eight-sand-patches)._
+**Why the tree lacks them.**
+`[Established]`, `SITools/SD.EXE`, the scenery compiler that turns `MAP.BIN` into this tree ([`map.md`](../formats/auxiliary/map.md) section 3.2): every build route starts at the file's list head, and these two chains (52 to 55 and 62 to 65, through their `a` words, `+0x04`, [`map.md`](../formats/auxiliary/map.md) `[BK-MAP-03]`) are linked from no record (`d` = `-1`, block 0), so they were never compiled.
+Drawn records 83 to 85, 87 to 89 then 86, and 166 to 164 chain the same way but hang from a parent through `b`.
+No field of the patches' own marks them: all 8 have `pos = 0x00FF`, as do 26 drawn records (Ruled out).
+_Source: [2026-11-05: walking the tree for the eight sand patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-walking-the-tree-for-the-eight-sand-patches)._
 
-`OP_FRACTAL` (image `0xA56C`) is dead code: it pushes 14 words against a `ret 0x1A`, which leaves `ES` at `0x50`, so a stream cannot have run it. The 110-word "ramp directory" at `CTRY.ALL` offset `0x79` ([`all.md`](../formats/all.md) section 3.6) is the archive's chunk-id table at `0x7A` read one byte off. _Source: [2026-11-05: walking the tree for the eight sand patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-walking-the-tree-for-the-eight-sand-patches)._
+`OP_FRACTAL` (image `0xA56C`) is dead code: it pushes 14 words against a `ret 0x1A`, which leaves `ES` at `0x50`, so a stream cannot have run it.
+The 110-word "ramp directory" at `CTRY.ALL` offset `0x79` ([`all.md`](../formats/all.md) section 3.6) is the archive's chunk-id table at `0x7A` read one byte off.
+_Source: [2026-11-05: walking the tree for the eight sand patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-walking-the-tree-for-the-eight-sand-patches)._
 
 ### 2.2 The driver slot, live
 
-`[Bounded Observation]` (`ground-driver`, `CTRY.FLM`, unpatched, ticks 280-293; Patch #3 not run). _Source: [2026-11-05: the driver slot, live](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-the-driver-slot-live)._
+`[Bounded Observation]` (`ground-driver`, `CTRY.FLM`, unpatched, ticks 280-293; Patch #3 not run).
+_Source: [2026-11-05: the driver slot, live](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-the-driver-slot-live)._
 
 * **The slot holds the flat span filler `0x7571` at every hit**, after `driver1..3.bin` have loaded, so the static reading of section 2 stands at runtime.
-* **The Ground's calls are the leaf routine's.** A hit through the gateway `0:8069` returns to `0x8072`; one through `0:8010`, the VM polygon path, to `0x802B`. All 91 Ground hits carry the far return `0x3D3B`:`0x1048`, image `0xBF7B`, just after the `lcall 0:8069` at `0xBF76` in the leaf routine `0xBF23`; none of the 209 VM hits does. A byte scan of the image finds one direct `lcall 0:8069`, that one at `0xBF76`, and no near `call`/`jmp rel16` onto `0x8069` in the first `0x9000` bytes; an indirect call is not excluded. `[Established]` for the instruction at `0xBF76`, `[Bounded Observation]` for the exclusivity.
-* **Ground colours.** The 91 Ground hits carry `CL` = `161`..`164`, `192`, `193`, `194`, `195`, `205` and `231`, each a colour the static walk finds on a Ground polygon (161-165, 192-198, 204, 205, 231). A uniform shade offset of +/-1 would move `231` to `230` or `205` to `206`, which no leaf carries. This is consistent with the static reading of `0xBF23`; the run does not pair each hit with its leaf. The VM path carries 29 distinct values, 25 outside the Ground set.
-* **The airfield's 193, 194 and 196.** Leaves carry `196` (3 of them), and the leaf routine drew it once in the `ground-colours` run (section 2), but none of the four whole Ground passes of this run did; its `196` calls came from the VM path, and `193` and `194` from both. That is consistent with the tiles of section 3 but attributes no pixel: hit counts are polygon calls, not pixels.
+* **The Ground's calls are the leaf routine's.**
+  A hit through the gateway `0:8069` returns to `0x8072`; one through `0:8010`, the VM polygon path, to `0x802B`.
+  All 91 Ground hits carry the far return `0x3D3B`:`0x1048`, image `0xBF7B`, just after the `lcall 0:8069` at `0xBF76` in the leaf routine `0xBF23`; none of the 209 VM hits does.
+  A byte scan of the image finds one direct `lcall 0:8069`, that one at `0xBF76`, and no near `call`/`jmp rel16` onto `0x8069` in the first `0x9000` bytes; an indirect call is not excluded.
+  `[Established]` for the instruction at `0xBF76`, `[Bounded Observation]` for the exclusivity.
+* **Ground colours.**
+  The 91 Ground hits carry `CL` = `161`..`164`, `192`, `193`, `194`, `195`, `205` and `231`, each a colour the static walk finds on a Ground polygon (161-165, 192-198, 204, 205, 231).
+  A uniform shade offset of +/-1 would move `231` to `230` or `205` to `206`, which no leaf carries.
+  This is consistent with the static reading of `0xBF23`; the run does not pair each hit with its leaf.
+  The VM path carries 29 distinct values, 25 outside the Ground set.
+* **The airfield's 193, 194 and 196.**
+  Leaves carry `196` (3 of them), and the leaf routine drew it once in the `ground-colours` run (section 2), but none of the four whole Ground passes of this run did; its `196` calls came from the VM path, and `193` and `194` from both.
+  That is consistent with the tiles of section 3 but attributes no pixel: hit counts are polygon calls, not pixels.
 
 Not shown: one frame in full, a join of a call to a capture pixel, or Patch #3 (the plan holds unpatched offsets, and the build pairing maps `0x7571` only if it is in a function of similarity 1.0).
 
 ### 2.3 The change this licenses
 
-`[Bounded Observation]` for the measured outcome (`mise run parity`, both films). _Source: [2026-11-05: dropping the eight patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-dropping-the-eight-patches-predicted-and-measured)._
+`[Bounded Observation]` for the measured outcome (`mise run parity`, both films).
+_Source: [2026-11-05: dropping the eight patches](../../work/2026-11/distill-world-scene/journal.md#2026-11-05-dropping-the-eight-patches-predicted-and-measured)._
 
-* **`MAP.BIN` patches 52 to 55 and 62 to 65 are dropped** ([#212](https://github.com/neilsh/stunt-reel/issues/212)): `parse_map_bin` (`crates/stunt-core/src/world/map_bin.rs`) skips the records in `PATCHES_PLAYONE_NEVER_DRAWS`, and the world holds 158 terrain patches, the tree's 158 Ground polygons. Every per-frame SSIM stayed identical (121 `CTRY`, 346 `INTRO` frames; `CTRY` 0.8645, `INTRO` 0.7973), and `CTRY` tick 400, the nearest view of the patches among the captured ticks, is byte-identical. Equal SSIM does not prove equal pixels elsewhere. Under the two patches we drew (54 and 55), `PLAYONE` draws record 7 (colour 195), which our renderer also draws, so the drop leaves no hole, and the ground-decal snap of section 6 of [`world-scene-residuals.md`](world-scene-residuals.md) is unchanged: record 7 is a flat quad at height 0 that contains both patches whole, and their corners are at height 0 too.
+* **`MAP.BIN` patches 52 to 55 and 62 to 65 are dropped** ([#212](https://github.com/neilsh/stunt-reel/issues/212)): `parse_map_bin` (`crates/stunt-core/src/world/map_bin.rs`) skips the records in `PATCHES_PLAYONE_NEVER_DRAWS`, and the world holds 158 terrain patches, the tree's 158 Ground polygons.
+  Every per-frame SSIM stayed identical (121 `CTRY`, 346 `INTRO` frames; `CTRY` 0.8645, `INTRO` 0.7973), and `CTRY` tick 400, the nearest view of the patches among the captured ticks, is byte-identical.
+  Equal SSIM does not prove equal pixels elsewhere.
+  Under the two patches we drew (54 and 55), `PLAYONE` draws record 7 (colour 195), which our renderer also draws, so the drop leaves no hole, and the ground-decal snap of section 6 of [`world-scene-residuals.md`](world-scene-residuals.md) is unchanged: record 7 is a flat quad at height 0 that contains both patches whole, and their corners are at height 0 too.
 * **Patch 131 keeps its eighth vertex** (`8b36b79`; no frame of either film changes).
-* **Colours stay as stored.** The 158 Ground polygons already agree with `MAP.BIN`; no re-baking or shade is licensed (Ruled out).
+* **Colours stay as stored.**
+  The 158 Ground polygons already agree with `MAP.BIN`; no re-baking or shade is licensed (Ruled out).
 
 ## 3. Scenery shapes drawn over the ground
 
 `[Bounded Observation]`, `ground-colours`, `ground-writer`, `ground-tiles` (2026-11-04).
 
-Every other flat polygon goes through the gateway `lcall 0:8010`, which reads `CX = work:0x41E8` (colour in the low byte). On the airfield shot nearly all of them come from `OP_POLYZ` (op `0x00F3`, handler `0x9B78`: `call [0x8080]`, then `lcall 0:8010` on no carry). A memory watch on `work:0x41E8` names its writer: `0x975C`, inside `OP_COLOR` (op `0x0129`, `0x975A`), 246 of 300 changing writes. In 225 of those 246 the stream after the stop is the patched `OP_POLYZ` word `0x1938` and its vertex count; 2 show the still unpatched `0x00F3` and 19 show `0x1E00`. The rest are the sky gradient (`0x8E86`, `DGROUP`) and the shade op `0xA549`.
+Every other flat polygon goes through the gateway `lcall 0:8010`, which reads `CX = work:0x41E8` (colour in the low byte).
+On the airfield shot nearly all of them come from `OP_POLYZ` (op `0x00F3`, handler `0x9B78`: `call [0x8080]`, then `lcall 0:8010` on no carry).
+A memory watch on `work:0x41E8` names its writer: `0x975C`, inside `OP_COLOR` (op `0x0129`, `0x975A`), 246 of 300 changing writes.
+In 225 of those 246 the stream after the stop is the patched `OP_POLYZ` word `0x1938` and its vertex count; 2 show the still unpatched `0x00F3` and 19 show `0x1E00`.
+The rest are the sky gradient (`0x8E86`, `DGROUP`) and the shade op `0xA549`.
 
-The objects drawing `0xC1..0xC6`, tiles and hill fins, are each a byte-for-byte copy of a `RES` shape. The only differences are opcode words the dispatch slots had already patched into handler IPs:
+The objects drawing `0xC1..0xC6`, tiles and hill fins, are each a byte-for-byte copy of a `RES` shape.
+The only differences are opcode words the dispatch slots had already patched into handler IPs:
 
 | Object segment (live) | Shape (`.ALL` id) | `OP_COLOR` operands |
 |---|---|---|
@@ -124,11 +195,20 @@ The objects drawing `0xC1..0xC6`, tiles and hill fins, are each a byte-for-byte 
 | `6A97`, `6A9F`, `6AB5`, `6ABC` | `SCENERY3.RES` #6, 5, 2, 1 (hill fins, not tiles) | `0xC5 0xC4`, `0xC6 0xC5`, `0xC1 0xC0`, `0xC2 0xC1` |
 | `67EA` | `SCENERY4.RES` #105 | `0x27` |
 
-An `.ALL` id is `(res_index << 8) | (entry + 1)` ([`all.md`](../formats/all.md) section 3.7); `CTRY.ALL` carries every one of these, and FreeFlight's `SCENERY.scn` places them as `SP_LEAF` nodes. So the colour of a tile is an operand of its own shape. The four `SCENERY3.RES` rows are not tiles, though. They are `OP_TAP` shapes, vertical fins standing in hills, coloured like the hill patches they stand in ([`sod-vm.md`](sod-vm.md) section 5). The run shows only that they were drawn in that shot, not where. The shape is drawn after the ground leaf it lies on, because the walk paints in order. In the capture at ticks 290 and 301, `0xC4`, the colour of `SCENERY2` #157, is 52-57% of the 3D view.
+An `.ALL` id is `(res_index << 8) | (entry + 1)` ([`all.md`](../formats/all.md) section 3.7); `CTRY.ALL` carries every one of these, and FreeFlight's `SCENERY.scn` places them as `SP_LEAF` nodes.
+So the colour of a tile is an operand of its own shape.
+The four `SCENERY3.RES` rows are not tiles, though.
+They are `OP_TAP` shapes, vertical fins standing in hills, coloured like the hill patches they stand in ([`sod-vm.md`](sod-vm.md) section 5).
+The run shows only that they were drawn in that shot, not where.
+The shape is drawn after the ground leaf it lies on, because the walk paints in order.
+In the capture at ticks 290 and 301, `0xC4`, the colour of `SCENERY2` #157, is 52-57% of the 3D view.
 
 ## 4. The dispatch slots patch the stream themselves
 
-A search for `26 C7 44 FE` finds 108 consecutive 9-byte slots at image `0x8240..0x860B` (paragraph `0x824`), plus two handler-side patches at `0x92CD` (op `0x15F`, writes `0x1241`) and `0x93DD`. Each slot is `mov word es:[si-2], imm16; jmp rel16`, and for all 108, `imm16 + 0x8240` is the jump target. An opcode word is the offset of its own slot; on first execution the slot overwrites that word with the handler IP. There is no first-pass dispatcher to find.
+A search for `26 C7 44 FE` finds 108 consecutive 9-byte slots at image `0x8240..0x860B` (paragraph `0x824`), plus two handler-side patches at `0x92CD` (op `0x15F`, writes `0x1241`) and `0x93DD`.
+Each slot is `mov word es:[si-2], imm16; jmp rel16`, and for all 108, `imm16 + 0x8240` is the jump target.
+An opcode word is the offset of its own slot; on first execution the slot overwrites that word with the handler IP.
+There is no first-pass dispatcher to find.
 
 | Op | Slot (`0x8246 + op`) | Handler | Patched word in the stream |
 |---|---|---|---|
@@ -138,32 +218,59 @@ A search for `26 C7 44 FE` finds 108 consecutive 9-byte slots at image `0x8240..
 | `0x0129` `OP_COLOR` | `0x836F` | `0x975A` | `0x151A` |
 | `0x00F3` `OP_POLYZ` | `0x8339` | `0x9B78` | `0x1938` |
 
-The `26 C7 44 FE imm16` tail seen after a slot's jump is a per-op module-A thunk (`0x1072`, `0x18B4`, `0x231D`), not a handler IP. Coordinates matter: IPs quoted in notebook `CS = 0x0F17` terms (`0x2551`, `0x2A2C`, `0x146C`, `0x147E`, `0x15D4`) differ from the VM's `CS = 0x824` terms by `0x1310` (notebook = image - `0x6F30`, VM = image - `0x8240`). Ghidra (12.1.4 via `rea` 6.7.0) recovers 222 functions, none in image `0x9100..0xB85C` where the handlers live, since every handler is reached through a slot; it reports no xrefs to the handlers, slots, the light-setup entry `0x9100`, `OP_IPG` or `OP_FRACTAL`, and cannot follow `jmp ax`. Its `search-bytes` is what exposed the slot run.
+The `26 C7 44 FE imm16` tail seen after a slot's jump is a per-op module-A thunk (`0x1072`, `0x18B4`, `0x231D`), not a handler IP.
+Coordinates matter: IPs quoted in notebook `CS = 0x0F17` terms (`0x2551`, `0x2A2C`, `0x146C`, `0x147E`, `0x15D4`) differ from the VM's `CS = 0x824` terms by `0x1310` (notebook = image - `0x6F30`, VM = image - `0x8240`).
+Ghidra (12.1.4 via `rea` 6.7.0) recovers 222 functions, none in image `0x9100..0xB85C` where the handlers live, since every handler is reached through a slot; it reports no xrefs to the handlers, slots, the light-setup entry `0x9100`, `OP_IPG` or `OP_FRACTAL`, and cannot follow `jmp ax`.
+Its `search-bytes` is what exposed the slot run.
 
 _Source: found 2026-10-23 at `6ae7b31`; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
 ### 4.1 The Gouraud records (ops `0x0168`, `0x02BE`)
 
-`[Established]` for the layout. `0x995C` tests `work:0x806C/0x806B`, then runs the flat route at `0x9982` (`[0x806B]` clear) or the Gouraud route at `0x99A6` (set); `0x9A24` does the same at `0x9A43`. The shared tail at `0x996E` is `lodsw; and ax, 0xF; shl ax, 1; add si, ax; lodsw; jmp ax`. After the count and register offsets, which the edge builder consumes ([`sod-vm-execution.md` § 8.5](sod-vm-execution.md#85-polygon-colour-at-shade-time)), a record is `w0 = (ramp base << 8) | count` (the Gouraud loop counts the whole low byte with `dec cl`; the skip tail masks it to `& 0x0F`), then `count` indexes into the per-vertex shades `work:0x7468` written by `SHADES`, then the next code address. The flat routes read the base as `mov ch, es:[si+1]` at `0x9988` (or `0x9A50`) after `call [0x8080]`; the Gouraud routes read the whole word with `es lodsw; mov cx, ax` at `0x99C9` (or `0x9A98`); and `0x99E9..0x99F5` builds each vertex's 8.8 index as `base + max(0, (s >> 1) + G)`; `0x9A24` shifts by 2 at `0x9AB8` ([`terrain-shade.md`](terrain-shade.md) section 5). The filler is the Gouraud span routine `lcall 0:75DB`, called directly at `0x9A15` and `0x9AE5`, not through the gateway. The flat route (`[0x806C]` and `[0x806B]` both clear) also stores the colour at `work:0x41E8` (`0x999C`) and calls `lcall 0:8010` (2026-10-23 static reading, not observed live).
+`[Established]` for the layout.
+`0x995C` tests `work:0x806C/0x806B`, then runs the flat route at `0x9982` (`[0x806B]` clear) or the Gouraud route at `0x99A6` (set); `0x9A24` does the same at `0x9A43`.
+The shared tail at `0x996E` is `lodsw; and ax, 0xF; shl ax, 1; add si, ax; lodsw; jmp ax`.
+After the count and register offsets, which the edge builder consumes ([`sod-vm-execution.md` § 8.5](sod-vm-execution.md#85-polygon-colour-at-shade-time)), a record is `w0 = (ramp base << 8) | count` (the Gouraud loop counts the whole low byte with `dec cl`; the skip tail masks it to `& 0x0F`), then `count` indexes into the per-vertex shades `work:0x7468` written by `SHADES`, then the next code address.
+The flat routes read the base as `mov ch, es:[si+1]` at `0x9988` (or `0x9A50`) after `call [0x8080]`; the Gouraud routes read the whole word with `es lodsw; mov cx, ax` at `0x99C9` (or `0x9A98`); and `0x99E9..0x99F5` builds each vertex's 8.8 index as `base + max(0, (s >> 1) + G)`; `0x9A24` shifts by 2 at `0x9AB8` ([`terrain-shade.md`](terrain-shade.md) section 5).
+The filler is the Gouraud span routine `lcall 0:75DB`, called directly at `0x9A15` and `0x9AE5`, not through the gateway.
+The flat route (`[0x806C]` and `[0x806B]` both clear) also stores the colour at `work:0x41E8` (`0x999C`) and calls `lcall 0:8010` (2026-10-23 static reading, not observed live).
 
-`[Bounded Observation]` (`ground-objects`, `ground-filler`, `CTRY.FLM`). `ground-objects` armed both handlers at tick 270; the `0x9A24` probe spent its 300 hits by tick 313, the `0x995C` probe stayed armed to tick 900, and the filler probe covered ticks 301-354. In those spans only object `608A`, the hero aircraft (`PLANES.RES` #54, byte for byte with opcode words masked), reached these handlers: 32 distinct records. The probe broke at the handlers' entry, where `ES:SI` is on the `count` word (3 to 6 in every hit), so the `0x00` first read as each record's base was `count`'s high byte; decoded as `count`, registers, then the ramp word ([`sod-vm-execution.md` § 8.5](sod-vm-execution.md#85-polygon-colour-at-shade-time)), the bases are `0x30` (13 records), `0xE0` (10), `0x00` (4), `0x20` (2), `0x29` (2) and `0x40` (1), and each ramp word's low byte equals its `count`, and op `0x0168` fired 4 times, at ticks 695 and 698. All 300 calls of `0:75DB` from tick 301 came from `0x9AEA` on the same object. _Source: [GVPOLY16 reads its ramp after the registers](../../work/2026-11/472_research-contradictions/journal.md#2026-11-14-gvpoly16-shifts-its-shade-by-two-and-reads-its-ramp-after-the-registers)._
+`[Bounded Observation]` (`ground-objects`, `ground-filler`, `CTRY.FLM`).
+`ground-objects` armed both handlers at tick 270; the `0x9A24` probe spent its 300 hits by tick 313, the `0x995C` probe stayed armed to tick 900, and the filler probe covered ticks 301-354.
+In those spans only object `608A`, the hero aircraft (`PLANES.RES` #54, byte for byte with opcode words masked), reached these handlers: 32 distinct records.
+The probe broke at the handlers' entry, where `ES:SI` is on the `count` word (3 to 6 in every hit), so the `0x00` first read as each record's base was `count`'s high byte; decoded as `count`, registers, then the ramp word ([`sod-vm-execution.md` § 8.5](sod-vm-execution.md#85-polygon-colour-at-shade-time)), the bases are `0x30` (13 records), `0xE0` (10), `0x00` (4), `0x20` (2), `0x29` (2) and `0x40` (1), and each ramp word's low byte equals its `count`, and op `0x0168` fired 4 times, at ticks 695 and 698.
+All 300 calls of `0:75DB` from tick 301 came from `0x9AEA` on the same object.
+_Source: [GVPOLY16 reads its ramp after the registers](../../work/2026-11/472_research-contradictions/journal.md#2026-11-14-gvpoly16-shifts-its-shade-by-two-and-reads-its-ramp-after-the-registers)._
 
 ## 5. The ground ops are in `CTRY.ALL`
 
-Superseded by sections 2 and 4.1. The op `0x0168` and `0x02BE` records at `CTRY.ALL` offsets `0x13FC` and `0xEFE4` are `GVPOLY` records of the film's `RES` shapes, not ground, and `CTRY.FLM` holds no ground either: the ground is in `PLAYONE.EXE`. _Source: [2026-10-23: the ground ops in CTRY.ALL](../../work/2026-11/distill-world-scene/journal.md#2026-10-23-the-ground-ops-in-ctryall-superseded)._
+Superseded by sections 2 and 4.1.
+The op `0x0168` and `0x02BE` records at `CTRY.ALL` offsets `0x13FC` and `0xEFE4` are `GVPOLY` records of the film's `RES` shapes, not ground, and `CTRY.FLM` holds no ground either: the ground is in `PLAYONE.EXE`.
+_Source: [2026-10-23: the ground ops in CTRY.ALL](../../work/2026-11/distill-world-scene/journal.md#2026-10-23-the-ground-ops-in-ctryall-superseded)._
 
 ## Ruled out
 
 * **Re-baking `MAP.BIN`'s colours** (section 2): all 146 leaves in the image carry `MAP.BIN`'s colour byte, on both builds.
-* **A shaded or Gouraud ground** (section 2): the leaf routine `0xBF23` hands its stored colour word to `0:8069` unchanged. On unpatched `CTRY.FLM`, a break on the driver filler `0x7571` at ticks 280-293 saw only leaf-set colours from the Ground caller (section 2.2, `[Bounded Observation]`; Patch #3 not observed). The Gouraud filler `0:75DB` was called only for the aircraft in the airfield shot, on the same build (section 4.1).
+* **A shaded or Gouraud ground** (section 2): the leaf routine `0xBF23` hands its stored colour word to `0:8069` unchanged.
+  On unpatched `CTRY.FLM`, a break on the driver filler `0x7571` at ticks 280-293 saw only leaf-set colours from the Ground caller (section 2.2, `[Bounded Observation]`; Patch #3 not observed).
+  The Gouraud filler `0:75DB` was called only for the aircraft in the airfield shot, on the same build (section 4.1).
 * **Ops `0x0168`/`0x02BE` as the ground** (section 4.1): they are `GVPOLY`/`GVPOLY16`, used there only by object `608A`.
 * **The ground in `CTRY.ALL` or `VDATA.BIN`** (sections 2, 5): the tree is in the image; no 8-byte window of a live leaf polygon occurs in `VDATA.BIN` or any other file of the install (`PLAYONE.EXE` itself is LZEXE-packed on disk; the tree is in its unpacked image).
 * **A leaf for patches 52 to 55 and 62 to 65 in FreeFlight's tree** (section 2.1): both copies of `SCENERY.scn` are the image's tree, links aside, with the same 158 Ground polygons.
 * **Another node, table or shape that draws those patches** (section 2.1): their polygon occurs in no file but `MAP.BIN`, the image included, while the same search finds all 158 drawn records there; no `OP_TAP` operand in the image, the `RES` files or any `.ALL` names one of their anchors.
-* **A field of the record that marks those patches** (section 2.1): their `pos` is `0x00FF`, as it is for 26 drawn records. What sets them apart is that nothing links to their chains, not a field of their own.
+* **A field of the record that marks those patches** (section 2.1): their `pos` is `0x00FF`, as it is for 26 drawn records.
+  What sets them apart is that nothing links to their chains, not a field of their own.
 * **A leaf of `PLAYONE`'s tree that `MAP.BIN` lacks** (section 2.1, open question 1): `mise run scene-ground` finds no tree-only polygon; all 158 are `MAP.BIN` records.
-* **The earlier memory scans** (2026-10-23/24): they looked for a display-list stream of `0x995C`/`0x9A24` words in conventional memory. The ground was never in that form, so "no resident list" was true but beside the point. `[Bounded Observation]` for the searches, one emulator (DOSBox-X) and the dumps under `build/re/mem` and `build/scratch`: a search on 2026-10-23 (`728b9ab`) over 72 dumps (rounds 5 and 6 and `build/re/mem`), the first for handler IPs and slot aliases, found none; the second (`87b284a`) found the relocated ground stream absent from all 96, `0x995C` at no hit and `0x9A24` at two, which the log does not explain. The notebook concluded the list lies outside the 16 dumped segments, in the EMS page frame or the 4 KiB segment tail the `0xF000`-byte dump skips (log: "item 1 needs the EMS page frame or the 4 KiB tail"). The image region `0x23200-0x24E80` they flagged as "a serialised scenery program" is the tree. Their remarks on two other regions were static readings with no recorded measurement: `0x2D500-0x2F000` as "10-12-byte nodes with forward links that are not image addresses, consistent with a template relocated by the loader" (the source of the "loader-relocated" wording `memory.md` section 4 once carried), and `0x25xxx` as a template, "not a colour map". Both lie inside the tree copy, image `0x22860` to its end `0x30F4C` (`[Established]`, [`scenery.md`](../formats/auxiliary/scenery.md) section 1: 29,558 words from `0x22860`), so they are tree data, not a loader template; what the `0x2E380` tables are within the tree is undecoded. _Found 2026-10-23/24; see the [parity log](../../work/2026-10/parity-log/log.md) rows of those dates._
+* **The earlier memory scans** (2026-10-23/24): they looked for a display-list stream of `0x995C`/`0x9A24` words in conventional memory.
+  The ground was never in that form, so "no resident list" was true but beside the point.
+  `[Bounded Observation]` for the searches, one emulator (DOSBox-X) and the dumps under `build/re/mem` and `build/scratch`: a search on 2026-10-23 (`728b9ab`) over 72 dumps (rounds 5 and 6 and `build/re/mem`), the first for handler IPs and slot aliases, found none; the second (`87b284a`) found the relocated ground stream absent from all 96, `0x995C` at no hit and `0x9A24` at two, which the log does not explain.
+  The notebook concluded the list lies outside the 16 dumped segments, in the EMS page frame or the 4 KiB segment tail the `0xF000`-byte dump skips (log: "item 1 needs the EMS page frame or the 4 KiB tail").
+  The image region `0x23200-0x24E80` they flagged as "a serialised scenery program" is the tree.
+  Their remarks on two other regions were static readings with no recorded measurement: `0x2D500-0x2F000` as "10-12-byte nodes with forward links that are not image addresses, consistent with a template relocated by the loader" (the source of the "loader-relocated" wording `memory.md` section 4 once carried), and `0x25xxx` as a template, "not a colour map".
+  Both lie inside the tree copy, image `0x22860` to its end `0x30F4C` (`[Established]`, [`scenery.md`](../formats/auxiliary/scenery.md) section 1: 29,558 words from `0x22860`), so they are tree data, not a loader template; what the `0x2E380` tables are within the tree is undecoded.
+  _Found 2026-10-23/24; see the [parity log](../../work/2026-10/parity-log/log.md) rows of those dates._
 
 ## Open questions
 
-1. **The four floating quads** `0x04A9..0x04AC` (colour 193, `y = 75.03`) have no `MAP.BIN` polygon under them in our parse. The tree of `PLAYONE` has no leaf that `MAP.BIN` lacks (section 2.1, Ruled out), so either the polygon under them is among the records our parse drops, or nothing is.
+1. **The four floating quads** `0x04A9..0x04AC` (colour 193, `y = 75.03`) have no `MAP.BIN` polygon under them in our parse.
+   The tree of `PLAYONE` has no leaf that `MAP.BIN` lacks (section 2.1, Ruled out), so either the polygon under them is among the records our parse drops, or nothing is.

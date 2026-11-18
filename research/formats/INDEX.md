@@ -3,7 +3,9 @@ summary: "Router to the format specs, concept notes and `.ksy` schemas: catalog 
 ---
 # Stunt Island Format Index
 
-Router to the format specifications, shared concept notes and Kaitai schemas for *Stunt Island* (1992). Byte layouts live only in the `.ksy` schemas; the specifications give meaning, evidence and parser policy. Invariants `[I1]`-`[I8]` are defined in [`docs/SPEC.md`](../../docs/SPEC.md#2-system-architectural-invariants--guardrails); [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) routes code paths to documents; fixtures are described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
+Router to the format specifications, shared concept notes and Kaitai schemas for *Stunt Island* (1992).
+Byte layouts live only in the `.ksy` schemas; the specifications give meaning, evidence and parser policy.
+Invariants `[I1]`-`[I8]` are defined in [`docs/SPEC.md`](../../docs/SPEC.md#2-system-architectural-invariants--guardrails); [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) routes code paths to documents; fixtures are described in [`tests/fixtures/README.md`](../../tests/fixtures/README.md).
 
 ---
 
@@ -24,13 +26,16 @@ Router to the format specifications, shared concept notes and Kaitai schemas for
 | `SCENERY.scn` | none (leading `0` word) | BSP scenery tree: props and ground, widened from `PLAYONE.EXE`'s copy | `[Established]` | [`auxiliary/scenery.md`](auxiliary/scenery.md) | [`scenery.scn.ksy`](auxiliary/scenery.scn.ksy) |
 | `PFONT.BIN` | none (exactly 1,152 bytes) | Proportional bitmap font: credits text and UI dialogs | `[Established]` | [`auxiliary/pfont.md`](auxiliary/pfont.md) | [`pfont.bin.ksy`](auxiliary/pfont.bin.ksy) |
 
-Byte layouts kept in Markdown because no schema covers them: the `.SOD` operand tables ([`sod-opcodes.md`](sod-opcodes.md)), the `.FLM` slice header and epilogue ([`flm.md` § 2](flm.md#2-header--memory-layout)), and the `.SET` prop field map, whose schema owns only the 64-byte stride ([`auxiliary/set.md` § 3.1](auxiliary/set.md#31-prop-record-table-exact-64-byte-stride-0x40)), and `REGIONS.BIN` ([`auxiliary/map.md` § 2.4](auxiliary/map.md#24-regionsbin-memory-layout)). Every specification follows the five-section template checked by `python/scripts/verify_formats_docs.py`, which also compiles the schemas against the synthetic fixtures; `mise run verify-corpus` runs them over the retail corpus. Evidentiary tiers are defined in [`docs/SPEC.md`](../../docs/SPEC.md); open questions sit in section 4 of each specification.
+Byte layouts kept in Markdown because no schema covers them: the `.SOD` operand tables ([`sod-opcodes.md`](sod-opcodes.md)), the `.FLM` slice header and epilogue ([`flm.md` § 2](flm.md#2-header--memory-layout)), and the `.SET` prop field map, whose schema owns only the 64-byte stride ([`auxiliary/set.md` § 3.1](auxiliary/set.md#31-prop-record-table-exact-64-byte-stride-0x40)), and `REGIONS.BIN` ([`auxiliary/map.md` § 2.4](auxiliary/map.md#24-regionsbin-memory-layout)).
+Every specification follows the five-section template checked by `python/scripts/verify_formats_docs.py`, which also compiles the schemas against the synthetic fixtures; `mise run verify-corpus` runs them over the retail corpus.
+Evidentiary tiers are defined in [`docs/SPEC.md`](../../docs/SPEC.md); open questions sit in section 4 of each specification.
 
 ---
 
 ## 2. Runtime Asset Graph
 
-Which format feeds which subsystem. Resolution is by 16-bit compound key `(res_index << 8) | item_index` ([`res.md` § 3.2](res.md#32-direct-16-bit-compound-key-resource-addressing), [`all.md` § 3.1](all.md#31-resource-id-partitioning)).
+Which format feeds which subsystem.
+Resolution is by 16-bit compound key `(res_index << 8) | item_index` ([`res.md` § 3.2](res.md#32-direct-16-bit-compound-key-resource-addressing), [`all.md` § 3.1](all.md#31-resource-id-partitioning)).
 
 ```mermaid
 flowchart TD
@@ -71,4 +76,5 @@ Runtime memory offsets are in [`research/playone-exe/memory-map.md`](../playone-
 
 ## 4. Provenance
 
-Community sources: Adrian Stephens (original engine), Chris Phillips (`.RES`, `.SOD` and terrain decoding), Dave Palmowski (SpriteMaker, SLICE, ResMaker), Doug Armknecht (`.FLM` corpus analysis), Neil Halelamien (`.SET` notes). The archive they come from is `corpus/siarchive/` ([`corpus/README.md`](../../corpus/README.md)); each specification's section 5 carries its own attribution and reference paths.
+Community sources: Adrian Stephens (original engine), Chris Phillips (`.RES`, `.SOD` and terrain decoding), Dave Palmowski (SpriteMaker, SLICE, ResMaker), Doug Armknecht (`.FLM` corpus analysis), Neil Halelamien (`.SET` notes).
+The archive they come from is `corpus/siarchive/` ([`corpus/README.md`](../../corpus/README.md)); each specification's section 5 carries its own attribution and reference paths.

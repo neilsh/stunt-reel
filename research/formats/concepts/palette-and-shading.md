@@ -15,7 +15,8 @@ sidebar_label: "Palette, shading ramps & VGA"
 
 *Stunt Island* (1992) targets the IBM Video Graphics Array (VGA) hardware running in standard Mode 13h ($320 \times 200$ pixels, 8 bits per pixel, 256 simultaneous colors chosen from an 18-bit hardware palette of $262{,}144$ colors).
 
-In standard 1992 PC hardware, per-pixel floating-point lighting calculations (such as Phong or Blinn-Phong shading) and Gouraud interpolation were computationally prohibitive for complex 3D flight scenes at interactive framerates. To achieve rich surface illumination, atmospheric depth, and material distinctions across aircraft fuselages, terrain, and cockpits, The Assembly Line designed an authentic table-driven lighting architecture:
+In standard 1992 PC hardware, per-pixel floating-point lighting calculations (such as Phong or Blinn-Phong shading) and Gouraud interpolation were computationally prohibitive for complex 3D flight scenes at interactive framerates.
+To achieve rich surface illumination, atmospheric depth, and material distinctions across aircraft fuselages, terrain, and cockpits, The Assembly Line designed an authentic table-driven lighting architecture:
 
 ```
 +-------------------------------------------------------------------------------+
@@ -42,12 +43,14 @@ In standard 1992 PC hardware, per-pixel floating-point lighting calculations (su
 ```
 
 ### 1.1 VGA Hardware DAC Principles
-The VGA Digital-to-Analog Converter (DAC, typically an Inmos INMOS G171 or compatible chip) features $256$ color registers. Each register comprises three 6-bit digital intensity channels: Red, Green, and Blue ($R, G, B \in [0, 63]$):
+The VGA Digital-to-Analog Converter (DAC, typically an Inmos INMOS G171 or compatible chip) features $256$ color registers.
+Each register comprises three 6-bit digital intensity channels: Red, Green, and Blue ($R, G, B \in [0, 63]$):
 - **Hardware Precision:** $6\text{ bits per channel} \implies 64\text{ discrete levels per primary} \implies 64^3 = 262{,}144\text{ total colors}$.
 - **I/O Ports:**
   - `0x03C8` (PEL Address Write Mode Register): Sets starting palette index ($0..255$).
   - `0x03C9` (PEL Data Register): Three consecutive byte writes stream Red, Green, and Blue intensities (auto-incrementing to next palette index).
-- **Modern 8-Bit Normalization (the single definition; other documents link here):** three 6-bit to 8-bit scalings appear in this project. They agree at `0` and `63` only by construction, so the code that uses each is named:
+- **Modern 8-Bit Normalization (the single definition; other documents link here):** three 6-bit to 8-bit scalings appear in this project.
+  They agree at `0` and `63` only by construction, so the code that uses each is named:
 
   | Name | Formula ($c \in [0, 63]$) | White ($c = 63$) | Used by |
   | :--- | :--- | :--- | :--- |
@@ -55,9 +58,15 @@ The VGA Digital-to-Analog Converter (DAC, typically an Inmos INMOS G171 or compa
   | Bit replication | $(c \ll 2) \mid (c \gg 4)$ | `255` | none; an approximation of the capture scaling that differs by 1 at $c \in \{11..15, 48..52\}$ |
   | **Authored table** | $c \ll 2$ | `252` | `MODE_13H_PALETTE` in `crates/stunt-core/src/contracts/palette/mod.rs` (every stored channel is a multiple of 4; the test pins index 255 to `(252, 252, 252)`) and, through it, the `stunt-render` LUT |
 
-  Normalized division $c / 63.0$ is the same quantity as the capture scaling before rounding. Consequence: the native renderer's palette tops out at `252` while the captured reference reaches `255`, a $\le 3/255$ channel offset. Its effect on the `[I6]` SSIM scores has not been measured; treat it as a known discrepancy, not an equivalence. Whether the authored table should store capture-scaled values is an open decision `[Hypothesis]`; the table's literals are the Stunt Island master palette (240 scene entries plus 16 UI entries), transcribed from the community SODParse `pal.h` in the Stunt Island Central archive. They are game-derived, not the IBM VGA default and not a synthetic construction, and were not re-derived from a DAC read.
+  Normalized division $c / 63.0$ is the same quantity as the capture scaling before rounding.
+  Consequence: the native renderer's palette tops out at `252` while the captured reference reaches `255`, a $\le 3/255$ channel offset.
+  Its effect on the `[I6]` SSIM scores has not been measured; treat it as a known discrepancy, not an equivalence.
+  Whether the authored table should store capture-scaled values is an open decision `[Hypothesis]`; the table's literals are the Stunt Island master palette (240 scene entries plus 16 UI entries), transcribed from the community SODParse `pal.h` in the Stunt Island Central archive.
+  They are game-derived, not the IBM VGA default and not a synthetic construction, and were not re-derived from a DAC read.
 
-**Governing invariants:** [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution), [`[I6]`](../../../docs/SPEC.md#i6-visual-parity-acceptance-thresholds--vga-112-aspect-ratio-correction). **Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs). Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
+**Governing invariants:** [`[I3]`](../../../docs/SPEC.md#i3-authentic-vga-mode-13h-palette-indexing--flat-shading), [`[I5]`](../../../docs/SPEC.md#i5-coplanar-decal-resolution), [`[I6]`](../../../docs/SPEC.md#i6-visual-parity-acceptance-thresholds--vga-112-aspect-ratio-correction).
+**Contract and code:** [`contracts/`](../../../crates/stunt-core/src/contracts/mod.rs).
+Fixtures: [`tests/fixtures/README.md`](../../../tests/fixtures/README.md).
 
 ---
 
@@ -101,14 +110,16 @@ pub struct SodVertex {
 ```
 
 #### Vertex Flag Bitfield (`flags: u8`)
-- **Bit 0 (`0x01`) — Coplanar Decal (`is_decal`):** Identifies coplanar surface markings (runway stripes, aircraft insignias, wing stars). Drawn in `wgpu`'s ordered decal pass (depth bias, no depth write), and moved $\epsilon = 0.001\text{ m}$ toward its front only by the glTF exporter (`[I5]`).
+- **Bit 0 (`0x01`) — Coplanar Decal (`is_decal`):** Identifies coplanar surface markings (runway stripes, aircraft insignias, wing stars).
+  Drawn in `wgpu`'s ordered decal pass (depth bias, no depth write), and moved $\epsilon = 0.001\text{ m}$ toward its front only by the glTF exporter (`[I5]`).
 - **Bit 1 (`0x02`) — Two-Sided Facet:** Disables back-face culling for this polygon.
 - **Bit 2 (`0x04`) — Emissive / Unshaded:** Bypasses directional lighting table; renders at full unshaded diffuse brightness (used for landing lights and muzzle flares).
 - **Bits 3..7 (`0xF8`):** Reserved (must be zero).
 
 ### 2.3 Transparency Keys
 
-1. **Color Index `0x00` (`#000000`):** Transparent key for `.SPR` sprite bitmaps, 2D UI decals, font characters, and billboard smoke particles. During rasterization, pixels with index `0` write neither color nor depth.
+1. **Color Index `0x00` (`#000000`):** Transparent key for `.SPR` sprite bitmaps, 2D UI decals, font characters, and billboard smoke particles.
+   During rasterization, pixels with index `0` write neither color nor depth.
 2. **Color Index `0xF0` / `240` (`#00FF00`, Pure Green):** Transparent key marker in authoring tools (PCX import) and chroma-key matte plates in the Film Editor.
 3. **Color Index `0xFF` / `255` (`#FFFFFF`, Pure White):** Full-bright emissive overlay indicator, reserved for heads-up display (HUD) reticles and text banners.
 
@@ -158,18 +169,35 @@ Color: [  Deep Shadow  ] -------- [ Diffuse Base ] -------- [ High Glare ]
 ```
 
 #### What the Capture Shows About Lighting
-`[Bounded Observation]` Unlit palette colours match the original. In `CTRY.FLM` capture ordinal 41 (tick 448) the airfield ground is index 196, $(69, 121, 45)$, over 43k of the 59k viewport pixels. A sun-vector shader (`ambient + (1 - ambient) * max(n . sun, 0)`, ambient 0.25) drew it at 41% brightness. `mean_ssim_scored` on `CTRY` (114 frames): lit 0.689, two-sided lit 0.764, constant lighting row 31 (palette colour as is) **0.766**, row 26 0.760, row 22 0.745, row 16 0.700; across four capture sets row 31 scores 0.766, 0.767, 0.767, 0.766. Full brightness is best and dimming is worse, so the ground takes no sun-derived level: 162 and 163 beside 196 are themselves ground-leaf colours ([`world-scene.md` § 2](../../playone-exe/world-scene.md#2-the-ground-leaves-and-their-colour)), and `OP_SHADES` lights the shapes that use it (`[BK-PAL-03]`, § 4). `mode13h.wgsl` draws every fragment at row 31; the `sun_direction` and `ambient_intensity` uniforms are uploaded but unused. _Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
+`[Bounded Observation]` Unlit palette colours match the original.
+In `CTRY.FLM` capture ordinal 41 (tick 448) the airfield ground is index 196, $(69, 121, 45)$, over 43k of the 59k viewport pixels.
+A sun-vector shader (`ambient + (1 - ambient) * max(n . sun, 0)`, ambient 0.25) drew it at 41% brightness.
+`mean_ssim_scored` on `CTRY` (114 frames): lit 0.689, two-sided lit 0.764, constant lighting row 31 (palette colour as is) **0.766**, row 26 0.760, row 22 0.745, row 16 0.700; across four capture sets row 31 scores 0.766, 0.767, 0.767, 0.766.
+Full brightness is best and dimming is worse, so the ground takes no sun-derived level: 162 and 163 beside 196 are themselves ground-leaf colours ([`world-scene.md` § 2](../../playone-exe/world-scene.md#2-the-ground-leaves-and-their-colour)), and `OP_SHADES` lights the shapes that use it (`[BK-PAL-03]`, § 4).
+`mode13h.wgsl` draws every fragment at row 31; the `sun_direction` and `ambient_intensity` uniforms are uploaded but unused.
+_Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
 
 #### Sky Bands
-`[Bounded Observation]` The sky is not one colour: it is straight, parallel bands of palette indices, tilted with the camera roll, 238 at the horizon through 228 high up (11 bands), each at a stable view-ray elevation. Median elevation of the band transitions (1,200 to 1,600 per edge, interquartile range about 0.5 to 1.3 degrees): 2.14, 2.77, 3.59, 4.61, 5.82, 7.27, 9.23, 11.79, 15.75, 20.23 degrees. Successive edges grow by about 1.28 (1.25 to 1.34), so the bands are roughly geometric in elevation. Index 228 holds to the highest elevation seen (23.4 degrees); below the first edge, including below the horizon, index 238.
+`[Bounded Observation]` The sky is not one colour: it is straight, parallel bands of palette indices, tilted with the camera roll, 238 at the horizon through 228 high up (11 bands), each at a stable view-ray elevation.
+Median elevation of the band transitions (1,200 to 1,600 per edge, interquartile range about 0.5 to 1.3 degrees): 2.14, 2.77, 3.59, 4.61, 5.82, 7.27, 9.23, 11.79, 15.75, 20.23 degrees.
+Successive edges grow by about 1.28 (1.25 to 1.34), so the bands are roughly geometric in elevation.
+Index 228 holds to the highest elevation seen (23.4 degrees); below the first edge, including below the horizon, index 238.
 
-**Index 227 is a band too.** `CTRY.FLM` never uses 227, but 27 of 213 `INTRO.FLM` frames (32,194 pixels) and 4 of 30 `COL3-2.FLM` frames (1,284 pixels) do, above 228. Parity treats 227 to 238 as sky (`CAPTURE_SKY_INDICES` in `crates/stunt-cli/src/parity/mask.rs`). Whether 227 is the top band of the same law is `[Unknown]`, as is behaviour above 23.4 degrees and for 224 to 226. The horizon sky index is film-specific (first-frame sky is 229 in `INTRO.FLM`, 233 in `CTRY.FLM`).
+**Index 227 is a band too.**
+`CTRY.FLM` never uses 227, but 27 of 213 `INTRO.FLM` frames (32,194 pixels) and 4 of 30 `COL3-2.FLM` frames (1,284 pixels) do, above 228.
+Parity treats 227 to 238 as sky (`CAPTURE_SKY_INDICES` in `crates/stunt-cli/src/parity/mask.rs`).
+Whether 227 is the top band of the same law is `[Unknown]`, as is behaviour above 23.4 degrees and for 224 to 226.
+The horizon sky index is film-specific (first-frame sky is 229 in `INTRO.FLM`, 233 in `CTRY.FLM`).
 
-A pixel-exact classifier with a fixed geometric law reaches only 65 to 75% per frame, and per-frame pitch shifts of up to 1.4 degrees (mean 0.05, sd 0.95) help little, so the residual is our camera's per-tick error and the transition medians are an empirical table, not an exact rule. The renderer paints the sky first in each pass (`vs_sky`, `fs_sky`, `fs_sky_plane` in `mode13h.wgsl`): a fullscreen triangle turns each pixel into a view ray from the eye through `CameraUniform::inv_rotation_proj` (the view's rotation and projection, no translation: the ray is eye-relative), takes the sine of its elevation and picks the band index. Effect: `mean_ssim_scored` 0.766 to 0.769, index agreement 0.390 to 0.470, mask IoU unchanged at 0.853. _Found 2026-10-22 (227 on 2026-10-23); see the [parity log](../../../work/2026-10/parity-log/log.md)._
+A pixel-exact classifier with a fixed geometric law reaches only 65 to 75% per frame, and per-frame pitch shifts of up to 1.4 degrees (mean 0.05, sd 0.95) help little, so the residual is our camera's per-tick error and the transition medians are an empirical table, not an exact rule.
+The renderer paints the sky first in each pass (`vs_sky`, `fs_sky`, `fs_sky_plane` in `mode13h.wgsl`): a fullscreen triangle turns each pixel into a view ray from the eye through `CameraUniform::inv_rotation_proj` (the view's rotation and projection, no translation: the ray is eye-relative), takes the sine of its elevation and picks the band index.
+Effect: `mean_ssim_scored` 0.766 to 0.769, index agreement 0.390 to 0.470, mask IoU unchanged at 0.853.
+_Found 2026-10-22 (227 on 2026-10-23); see the [parity log](../../../work/2026-10/parity-log/log.md)._
 
 ### 3.3 The Modern GPU Palette Lookup Texture (LUT)
 
-Modern GPU pipelines (`crates/stunt-render/`) cannot emulate VGA DAC registers directly. Under invariant **`[I3]`**, authentic visual reproduction is achieved via an uncompressed **$256 \times 32$ 2D Palette Lookup Texture (LUT)**:
+Modern GPU pipelines (`crates/stunt-render/`) cannot emulate VGA DAC registers directly.
+Under invariant **`[I3]`**, authentic visual reproduction is achieved via an uncompressed **$256 \times 32$ 2D Palette Lookup Texture (LUT)**:
 
 ```
                   256 Base Palette Indices (X axis: 0..255)
@@ -211,9 +239,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ## 4. Open Questions & Analysis Backlog
 
-1. **`[BK-PAL-01]` Dynamic Palette Rotation in Night Scenes** (`[Bounded Observation]`): Disassembly of `PLAYONE.EXE` indicates timer-driven palette cycling for runway approach lights and lightning flashes. Precise register cycling ranges remain to be verified.
-2. **`[BK-PAL-02]` CRT Phosphor Gamma vs sRGB Transfer** (`[Supported Inference]`): Vintage 1990s cathode-ray tube (CRT) monitors exhibited a native gamma curve of $\gamma \approx 2.4$. The current $256 \times 32$ LUT outputs linear sRGB values; an optional post-processing toggle is reserved for future milestones.
-3. **`[BK-PAL-03]` Opcode `0x0156` `OP_SHADES` Bytecode Behavior**: `[Established]`, static: it stores `-clamp((N . L) >> 16, ±0x3FFF)` per normal for the shade opcodes ([`terrain-shade.md` § 3](../../playone-exe/terrain-shade.md#3-per-vertex-shade-shades-opcode-0x0156)). `L` is the world light at `DS:0x49EC`, written by the film-variable-13 handler `0x196C` (`[Bounded Observation]`: the one writer found; indirect stores unchecked), turned for a rotated object ([§ 4.2](../../playone-exe/terrain-shade.md#42-who-hands-it-the-light)); no reading so far ties it to the `.SET` `time_of_day`. _Source: [SHADES lights from film variable 13](../../../work/2026-11/472_research-contradictions/journal.md#2026-11-13-shades-lights-from-film-variable-13-not-from-the-set-time-of-day)._
+1. **`[BK-PAL-01]` Dynamic Palette Rotation in Night Scenes** (`[Bounded Observation]`): Disassembly of `PLAYONE.EXE` indicates timer-driven palette cycling for runway approach lights and lightning flashes.
+   Precise register cycling ranges remain to be verified.
+2. **`[BK-PAL-02]` CRT Phosphor Gamma vs sRGB Transfer** (`[Supported Inference]`): Vintage 1990s cathode-ray tube (CRT) monitors exhibited a native gamma curve of $\gamma \approx 2.4$.
+   The current $256 \times 32$ LUT outputs linear sRGB values; an optional post-processing toggle is reserved for future milestones.
+3. **`[BK-PAL-03]` Opcode `0x0156` `OP_SHADES` Bytecode Behavior**: `[Established]`, static: it stores `-clamp((N . L) >> 16, ±0x3FFF)` per normal for the shade opcodes ([`terrain-shade.md` § 3](../../playone-exe/terrain-shade.md#3-per-vertex-shade-shades-opcode-0x0156)).
+   `L` is the world light at `DS:0x49EC`, written by the film-variable-13 handler `0x196C` (`[Bounded Observation]`: the one writer found; indirect stores unchecked), turned for a rotated object ([§ 4.2](../../playone-exe/terrain-shade.md#42-who-hands-it-the-light)); no reading so far ties it to the `.SET` `time_of_day`.
+   _Source: [SHADES lights from film variable 13](../../../work/2026-11/472_research-contradictions/journal.md#2026-11-13-shades-lights-from-film-variable-13-not-from-the-set-time-of-day)._
 4. **`[BK-PAL-04]` Undocumented DAC Shimmer in 70 Hz Vertical Blank** (`[Hypothesis]`): Hypothesis that high-frequency palette register modification during active scan lines produced intentional horizontal gradient banding on authentic CRT monitors.
 
 ---

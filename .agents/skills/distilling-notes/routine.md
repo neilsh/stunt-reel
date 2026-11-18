@@ -1,6 +1,8 @@
 # Gardening routine
 
-Part of the [`distilling-notes`](SKILL.md) skill. The gardening routine is a cloud scheduled task, run daily at 06:00 Pacific on the repo's cloud environment, whose prompt tells it to carry out the block below. A change to the block reaches the next run once it is on `main`.
+Part of the [`distilling-notes`](SKILL.md) skill.
+The gardening routine is a cloud scheduled task, run daily at 06:00 Pacific on the repo's cloud environment, whose prompt tells it to carry out the block below.
+A change to the block reaches the next run once it is on `main`.
 
 ## Prompt
 
