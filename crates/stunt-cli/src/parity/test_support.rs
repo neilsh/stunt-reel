@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use stunt_core::contracts::get_palette_rgb;
+use stunt_core::frame::{LAYER_NONE, LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH};
 use stunt_parity::{
     CameraPose, FilmId, Geometry, RENDER_SCHEMA_VERSION, RenderPalette, RenderRecord, RenderTick,
 };
-use stunt_render::{LAYER_NONE, LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH};
 
 use super::mask::is_capture_sky;
 use super::run;

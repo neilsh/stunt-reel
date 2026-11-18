@@ -6,7 +6,7 @@
 //!
 //! Pure CPU math over `f32` planes. The parity scorer is its only consumer, which is why it sits
 //! here and not in the renderer crate; the raster dimensions it is called with come from
-//! `stunt_render` (`MODE13H_WIDTH`, `MODE13H_HEIGHT`, `ASPECT_CORRECTED_HEIGHT`).
+//! `stunt_core::frame` (`MODE13H_WIDTH`, `MODE13H_HEIGHT`, `ASPECT_CORRECTED_HEIGHT`).
 
 /// SSIM stability constant C1 for dynamic range [0, 255]: (0.01 * 255)^2 = 6.5025.
 pub(super) const C1_CONSTANT: f32 = 6.5025;
@@ -246,7 +246,7 @@ pub(super) fn compute_frame_ssim_masked(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stunt_render::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
+    use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
     #[test]
     fn degenerate_windows_yield_no_scores_instead_of_panicking_or_hanging() {

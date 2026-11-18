@@ -127,6 +127,21 @@ All of it is static analysis, not a capture; offsets are linear into the unpacke
 | 10 | `0x1DA9` | Compared with its previous frame's value in `DS:0x22BC`; the change, saturated at 255 and shifted left 8, goes to `0x15D4:0x8120` and the previous value's `(var 10 & 0xFF) << 8` to `0x15D4:0x8122`, beside the film clock `<< 12` at `0x811E`: angle-bank operands `0x12`, `0x14` and `0x10` ([`angle-bank.md`](angle-bank.md)). | `[Established]` |
 | 0-7 | `0x1200` | No instruction addresses these variables by fixed offset. `0x11FC` reads `[0x4888 + 0x7E + 2 × view_obj]`, the variable of the current view camera, and scales it into the projection and level-of-detail words `0x229C` and `0x22A4` ([`lod.md`](lod.md) section 2.1). The rest of the code that touches them is generic over all 16: the checkpoint copy at `0x39D0`, the film recorder's change loop at `0x42F9`, the interpolation at `0x136F` and the start-of-film reset. | `[Established]` for the read, `[Supported Inference]` that each is a camera's zoom |
 
+**The sun disc** is drawn by `0x908E..0x90FF` (`0824:0E4E`), read instruction by instruction (`mise run re-tool -- disasm 0x908E 0x9100`):
+
+- It loads the var-13 vector from `work:0x8078..0x807C` and calls `0x88FB` with `SI = 0x80C0`, which multiplies it by the camera matrix's rows with no translation term, so the disc sits at a fixed direction, infinitely far, like the sky bands.
+  The result comes back as two screen numerators in `DX` and `BP` and a depth in `DI` (register roles read from their use at `0x90A2..0x90EA`).
+- It culls the disc when `DI + 0x600` is negative or either numerator lies outside `±(DI + 0x600)`, a frustum test widened by the radius.
+- Centre: `x = (DX << 8) / DI + DS:0x41C8`, `y = (BP << 8) / DI + DS:0x41CA`.
+  Radius: `((0x600 · work:0x8108) >> 8) / DI`, so it scales with the lens zoom.
+- Colour: it stores `0xEF` (index 239) in `work:0x41E8`, then fills a circle through `0xCF39` and the flat-polygon gateway `0:8010`, the path `OP_SPHERE` takes ([`sod-vm-generators.md`](sod-vm-generators.md)).
+  The disc is one flat index, unshaded.
+
+`[Established]` for the colour, the cull and the centre and radius arithmetic; `[Supported Inference]` that `DX`, `BP` and `DI` are screen x, y and depth, and that `0xCF39` builds a filled circle.
+It agrees with the `vault-balloon` capture's disc of index 239 ([`attribution.md` § 7](../parity/attribution.md#7-balloons-mask-iou-two-runs-of-frames)).
+The renderer does not draw it yet, and where in the frame's draw order `0824:0E4E` is called is not yet read: no near call reaches `0x908E` (`mise run re-tool -- xref 0x908E`).
+Drawing it needs the var-13 vector for each film: the renderer's `CameraUniform::sun_direction` is a fixed default (`crates/stunt-render/src/camera.rs`), not read from the film, and how `0x196C` turns variable 13 into a vector is open beyond the one observed value ([`terrain-shade.md`](terrain-shade.md), open question 1, which `BALLOON.FLM`'s `0xF02D` would test).
+
 The palette and sun readers above run on the snapshot struct at `DS:0x4888`, not on `0x474A` directly.
 The caller at `0x4A35` enters the frame routine at `0x0EE9` with `BX = 0x4888`, and `0x39B0` has copied the 16 live variables from `0x47C8` to `0x4906` (`0x4888 + 0x7E`) beforehand.
 No static caller of the `0x0EE6` entry (`BX = 0x474A`) was found, so the offsets in the table are the same either way but the live path reads the snapshot.
