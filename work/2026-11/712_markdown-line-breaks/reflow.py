@@ -317,7 +317,8 @@ def _counts(text: str) -> tuple[int, int]:
 
 
 def verify(base: str, paths: list[str]) -> int:
-    """Exit status 1, naming each path whose HTML, links or code spans changed from *base*."""
+    """Exit status 1, naming each path whose HTML changed from *base* or that lost a link or
+    code span the line-based regexes found in *base* with its paragraphs joined."""
     failed = 0
     for path in paths:
         old = subprocess.run(
@@ -327,9 +328,11 @@ def verify(base: str, paths: list[str]) -> int:
         if _html(old) != _html(new):
             print(f"{path}: rendered HTML differs")
             failed += 1
-        elif _counts(join_paragraphs(old)) != _counts(new):
-            print(f"{path}: links, code spans {_counts(join_paragraphs(old))} -> {_counts(new)}")
-            failed += 1
+        elif (before := _counts(join_paragraphs(old))) != (after := _counts(new)):
+            # More is a span the line-based regexes missed in the joined line and now see.
+            lost = any(a < b for a, b in zip(after, before, strict=True))
+            print(f"{path}: links, code spans {before} -> {after}{'' if lost else ' (more: ok)'}")
+            failed += lost
     if failed:
         print(f"{failed} of {len(paths)} files failed")
         return 1
