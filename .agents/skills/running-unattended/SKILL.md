@@ -22,8 +22,8 @@ Orca, dsh, Antigravity, PowerShell and the disk checks are `local-windows` resou
 - **Reviews:** the Sonnet [`reviewer`](../../../.claude/agents/reviewer.md) agent.
   The first review of a Sonnet- or dsh-built PR goes to Opus or Antigravity, because on #160 a Sonnet review missed four bugs: a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>`, not a `reviewer` model override.
   A re-review prefers Antigravity when Gemini quota allows, covers what changed since the last review, and a wording-only fix gets none, except on a rule 5 PR ([`pr-and-filing.md`](pr-and-filing.md) step 2).
-- **Cloud:** subagents for reviews and edits, at most two Rust builds at once ([`cloud-sessions.md`](../../../docs/cloud-sessions.md#container-limits)); child sessions (`create_session`) for builds and renders, briefed per [`worker-brief.md`](worker-brief.md#child-session-brief).
-  Give each writer `isolation: "worktree"`, and run one at a time if it fails there.
+- **Cloud:** subagents for reviews and edits, at most about two Rust builds at once ([`cloud-sessions.md`](../../../docs/cloud-sessions.md#container-limits)); child sessions (`create_session`) for builds and renders, briefed per [`worker-brief.md`](worker-brief.md#child-session-brief).
+  Give each writer `isolation: "worktree"`; if that isolation fails, run one at a time.
   Never stack: start a dependent item once its parent merges.
 - **Elsewhere:** worker lifetime, prototype bounds, the pre-review diff scan and optional `ccusage` measuring are in [`loop-and-bounds.md`](loop-and-bounds.md) and [`pr-and-filing.md`](pr-and-filing.md).
 

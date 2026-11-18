@@ -19,7 +19,7 @@ Then copy in this checklist:
    The PR title ends with the issue it serves, as in `fix(site): ... (#589)`, also when the PR only partly fixes it; the CI title check does not enforce the suffix.
 7. Report in about 10 lines, because the coordinator keeps the report in its context: what changed, the gate's result, each acceptance item met or not, `Fixes` or `Part of`, whether the item needs an ADR, a human choice or another machine, and anything left undone.
    An Orca worker sends it with `orca orchestration send` ([`coordinator.md`](coordinator.md#orca-orchestration-flags), § DSH), a subagent in its final reply.
-   On a PR whose diff touches a rule 5 path (step 5), commit but do not push, for a first commit and for every later fix or rebase: the coordinator pushes after the fresh review and opens the PR, so also write the PR body (step 6) to `build/scratch/<name>.md` and report the commit SHA, the PR title (the commit subject for a single commit, ending `(#N)`) and the body file's absolute path, since the coordinator opens the PR from another checkout ([`pr-and-filing.md`](pr-and-filing.md) step 1).
+   On a PR whose diff touches a rule 5 path (step 5), commit but do not push, for a first commit and for every later fix, rebase or merge: the coordinator pushes after the fresh review and opens the PR, so also write the PR body (step 6) to `build/scratch/<name>.md` and report the commit SHA, the PR title (the commit subject for a single commit, ending `(#N)`) and the body file's absolute path, since the coordinator opens the PR from another checkout ([`pr-and-filing.md`](pr-and-filing.md) step 1).
    Otherwise push before you report.
 
 ## Child-session brief
@@ -27,5 +27,6 @@ Then copy in this checklist:
 A cloud child session (`create_session`) gets the brief above and these changes:
 
 1. Read [`cloud.md`](../working-in-an-environment/cloud.md) first, and work on `outcome_branch`.
-2. Self-review with a `reviewer` subagent ([`pr-and-filing.md`](pr-and-filing.md) step 2), push, and open the PR.
-3. Report the PR number and head SHA with `send_message`; the coordinator alone arms or merges.
+2. Self-review with a `reviewer` subagent ([`pr-and-filing.md`](pr-and-filing.md) step 2), push, and open the PR, even on a rule 5 path: this replaces step 7's "do not push" paragraph.
+   Post the reviewer's verdict comment once the PR is open.
+3. Report the PR number, head SHA and that comment's URL with `send_message`; the coordinator alone arms or merges.
