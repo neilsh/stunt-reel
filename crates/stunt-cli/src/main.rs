@@ -103,7 +103,7 @@ fn main() {
 
     let config = CliConfig::parse().unwrap_or_else(|e| e.exit());
 
-    let (scene, film) = match build_identified_scene(&SceneSources {
+    let (mut scene, film) = match build_identified_scene(&SceneSources {
         flm: config.flm_path.as_deref(),
         all: config.all_path.as_deref(),
         game: config.game_dir.as_deref(),
@@ -120,7 +120,7 @@ fn main() {
     };
 
     if config.headless {
-        if let Err(e) = headless::run_headless(&config, &scene, film) {
+        if let Err(e) = headless::run_headless(&config, &mut scene, film) {
             eprintln!("[stuntreel error] {e}");
             std::process::exit(1);
         }
