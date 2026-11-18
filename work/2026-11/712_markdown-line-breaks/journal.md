@@ -30,3 +30,22 @@
 - **Verdict**: control.
   The reflow waits for that branch or for the owner's go-ahead (spec decision 6), and the survey is rerun just before it.
 - **Lives in**: this journal only; it is a snapshot.
+
+## 2026-11-18: Reflow dry run
+
+- **Question**: does the reflow of every scope path keep each file's rendered HTML, links and code spans, and does the full gate pass on the result?
+- **Method**: on a throwaway branch at `e51d232` (the guidance, ADR 0051 and the tier fix committed), `reflow.py write` on the 129 paths `scope` printed, then `reflow.py verify --base HEAD` on them, then `mise run check -- --full`.
+  The branch was deleted afterwards.
+- **Result**: 129 files changed, 6,477 lines added and 2,823 removed; the scope's lines went from 12,040 to 15,694.
+  `AGENTS.md` went from 8,064 to 8,103 bytes, under its 8,192-byte cap.
+  No file went over its doc-health budget that was not over already: `docs/development.md` (over by this work's guidance section) grew from 20,502 to 20,504 bytes and `docs/SPEC.md` from 20,495 to 20,578.
+  Two failures:
+  - `verify` failed `.agents/skills/running-unattended/pr-and-filing.md` on links, 13 before and 14 after.
+    On the joined line, a ``` `` ` `` ``` span made the line-based code-span regex pair the wrong backticks and blank the `docs/harness.md` link; on its own line the sentence pairs them right, and the link checker sees the link.
+    The HTML was identical.
+    Fixed by failing `verify` only on a lost link or code span (`e51d232`).
+  - In the full gate, `tests/test_prek_hooks.py::test_check_mode_leaves_the_file_alone` timed out waiting for prek while the Rust tests ran beside it.
+    It runs in a temporary repository and reads none of the reflowed files; it passed alone, and `mise run test-py` on the reflowed tree then passed all 2,596 tests.
+    Every Rust step passed.
+- **Verdict**: adopted: the reflow is ready to run once PR 1 merges; no reader beyond `evidence_tiers` needed a fix.
+- **Lives in**: this journal; the ADR's Consequences name the tier fix.
