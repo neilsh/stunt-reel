@@ -182,7 +182,7 @@ The 41 fall in two runs:
 
 * **Ticks 12 to 254 (23 frames): the zenith sky is outside the scorer's sky band.**
   The camera looks up at the balloon, and the capture paints the sky 224, then 225 and 226 as the view comes down; our render paints it 228.
-  The mask counts only 227 to 238 as capture sky (`CAPTURE_SKY_INDICES`, section 2.0 of [`method.md`](method.md)), so the capture's whole sky counts as geometry: IoU 0.134 on average while SSIM stays 0.889.
+  The mask then counted only 227 to 238 as capture sky (`CAPTURE_SKY_INDICES`, section 2.0 of [`method.md`](method.md)), so the capture's whole sky counted as geometry: IoU 0.134 on average while SSIM stays 0.889.
   `PLAYONE` writes entries 224 to 238 as one sky gradient, zenith to horizon ([`palette-fade.md`](../playone-exe/palette-fade.md) section 3.1, a static reading matched against `CTRY` captures at entries 224, 233 and 238).
   The same frames show the sun disc, 1,746 pixels of index 239, which our render does not draw; `0x908E` projects it from the variable-13 vector (same note, section 3.2). ([picture](../../work/2026-11/477_vault-attribution/images/balloon-155-zenith-sky-and-sun.png))
 * **Ticks 606 to 793 (18 frames): our render draws nothing.**
@@ -196,8 +196,9 @@ The 18 blank frames average 0.4803 SSIM against 0.8856 for the other 89; the fil
 Of the seven references' `render.json` cameras, only `balloon`'s and `intro`'s point straight down, and no other film scores such a frame: `intro`'s camera points down on ticks 12 to 760, 1520 to 2055 and 3642 to 3818, all faded to black and unscored.
 Widening the capture sky to 224..=238 is not free: it raises `bomb` 0.9118 -> 0.9540 but lowers `traintnl` 0.9659 -> 0.9608, whose 19,850 capture pixels at 224 to 226 all fall on geometry we draw.
 Where looked at, those pixels are shape paint, not our geometry drawn over sky: on `traintnl` a blue rectangle on a dark red wall under a red roof holds 18,144 of them and the rear car's windows are 224 too, and on `bomb`, of the 105,219 pixels at 224 (as many as lie on our geometry), 104,958 are an emblem on a building wall, while its 59,520 at 226 are zenith sky in the top five rows.
-So the scorer keeps 227..=238 and `balloon`'s zenith frames still score as geometry ([`method.md`](method.md) section 2.0).
+So the scorer keeps 227..=238 as its index band ([`method.md`](method.md) section 2.0).
 _Source: [who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
+Since 2026-11-18 a run of 224 to 226 that reaches row 0 and both side columns counts as sky by position, which raises `balloon` to 0.7186 on lavapipe; the figures above are on the scale before it, and the sky the balloon cuts off from row 0 or a side still counts as geometry ([`method.md`](method.md) section 2.0).
 Follow-ups: the camera [#615](https://github.com/neilsh/stunt-reel/issues/615), a positional capture-sky rule [#718](https://github.com/neilsh/stunt-reel/issues/718), the zenith bands and the sun [#617](https://github.com/neilsh/stunt-reel/issues/617).
 
 _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)._
