@@ -95,7 +95,8 @@ pub(crate) fn is_coplanar_facet(
 
 /// Unit normal of the side of `poly` that survives back-face culling (`FrontFace::Cw`): the
 /// side from which its vertices wind clockwise, opposite their edge cross product. A line or
-/// a polygon of fewer than three vertices has no side and yields zero, so it is never a decal.
+/// a polygon of fewer than three vertices has no side and yields zero, so it is never the
+/// facet a decal lies on, and a line is a decal only by lying on one.
 #[must_use]
 pub(crate) fn front_normal(poly: &RawPolygon) -> [f32; 3] {
     if poly.vertices.len() < 3 || poly.flags & VERTEX_FLAG_LINE != 0 {
@@ -117,26 +118,52 @@ pub(crate) fn mark_decal(poly: &RawPolygon) -> RawPolygon {
 /// Scans the polygon stream in draw order, flagging coplanar decals per `[I5]`.
 ///
 /// A polygon is a decal when it is coplanar with an earlier polygon in the stream and their
-/// bounds meet. No polygon moves: the renderer's decal pass draws decals in stream order.
+/// bounds meet. A [`VERTEX_FLAG_LINE`] segment is a decal when it lies on an earlier decal, so
+/// it draws after that decal as `PLAYONE` draws it (`research/parity/render-model.md` section
+/// 3). No polygon moves: the renderer's decal pass draws decals in stream order.
 #[must_use]
 pub(crate) fn identify_coplanar_decals(
     polygons: &[RawPolygon],
     normal_tol: f32,
     plane_tol: f32,
 ) -> Vec<RawPolygon> {
-    polygons
-        .iter()
-        .enumerate()
-        .map(|(i, curr)| {
-            if polygons
-                .iter()
-                .take(i)
+    let mut out: Vec<RawPolygon> = Vec::with_capacity(polygons.len());
+    for curr in polygons {
+        let is_decal = if curr.flags & VERTEX_FLAG_LINE != 0 {
+            out.iter()
+                .any(|prev| prev.is_decal && line_lies_on_facet(curr, prev, plane_tol))
+        } else {
+            out.iter()
                 .any(|prev| is_coplanar_facet(curr, prev, normal_tol, plane_tol))
-            {
-                mark_decal(curr)
-            } else {
-                curr.clone()
-            }
-        })
-        .collect()
+        };
+        out.push(if is_decal {
+            mark_decal(curr)
+        } else {
+            curr.clone()
+        });
+    }
+    out
+}
+
+/// Whether every end of `line` lies within `plane_tol` of `facet`'s front plane and their
+/// bounds meet. A facet without a front side (a line, or fewer than three vertices) has none.
+fn line_lies_on_facet(line: &RawPolygon, facet: &RawPolygon, plane_tol: f32) -> bool {
+    let Some(f0) = facet.vertices.first() else {
+        return false;
+    };
+    let n = front_normal(facet);
+    if n[0] * n[0] + n[1] * n[1] + n[2] * n[2] < 0.5 {
+        return false;
+    }
+    let d = n[0] * f0[0] + n[1] * f0[1] + n[2] * f0[2];
+    if !line
+        .vertices
+        .iter()
+        .all(|v| (n[0] * v[0] + n[1] * v[1] + n[2] * v[2] - d).abs() <= plane_tol)
+    {
+        return false;
+    }
+    let (min_a, max_a) = polygon_bounds(line);
+    let (min_b, max_b) = polygon_bounds(facet);
+    bounds_overlap(&min_a, &max_a, &min_b, &max_b, plane_tol)
 }

@@ -93,10 +93,11 @@ A `.SOD` body is a display list for a stack-based, register-oriented VM: 1024 tw
 ### 3.1 Coplanar Decal Detection (`[I5]`)
 
 In original DOS software rendering, decals (wing insignia, national roundels, lettering) were drawn over base facets via sequential framebuffer overwrites. In modern depth-buffered rendering, coplanar facets produce severe Z-fighting.
-- **Coplanar Detection Criteria:** a polygon $B$ is a decal when an earlier polygon $A$ of the same stream satisfies all three, on each polygon's **front normal** (the side `FrontFace::Cw` keeps, the negated edge cross product of its winding; a line or a polygon of fewer than three vertices has none and is never a decal), not on the stored shading normal (`crates/stunt-core/src/sod/decal.rs`):
+- **Coplanar Detection Criteria:** a polygon $B$ is a decal when an earlier polygon $A$ of the same stream satisfies all three, on each polygon's **front normal** (the side `FrontFace::Cw` keeps, the negated edge cross product of its winding; a line or a polygon of fewer than three vertices has none), not on the stored shading normal (`crates/stunt-core/src/sod/decal.rs`):
   1. Unit normal parallelism: $\mathbf{n}_A \cdot \mathbf{n}_B \ge 1.0 - 10^{-4}$
   2. Plane constant equality: $|\mathbf{n}_A \cdot \mathbf{v}_{A0} - \mathbf{n}_B \cdot \mathbf{v}_{B0}| \le 10^{-4}\text{ m}$
   3. Bounding box spatial overlap in all three dimensions within $10^{-4}\text{ m}$.
+- **Lines:** a `MOVETO`/`ZLINETO` segment is a decal when both its ends lie within $10^{-4}\text{ m}$ of an earlier decal's front plane and their bounds meet (criterion 3), so it draws after that decal as `PLAYONE` draws it; a segment on a facet that is no decal stays in the base pass ([`render-model.md`](../parity/render-model.md) section 3).
 - **Resolution:** decal facets are flagged `flags |= 0x01` (`is_decal = true`) and keep their decoded positions. How they are drawn is the renderer's policy, in [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md) and [`render-model.md`](../parity/render-model.md) section 3.
 
 ---
