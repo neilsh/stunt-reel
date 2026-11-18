@@ -8,7 +8,7 @@ accepted; implemented
 
 Parity scores a frame's brightness against the film's fade. Today the fade can come from two places. The first is the authored brightness the film sets in palette control 14, read from a palette sidecar written next to the render. The second is the fade measured from the captured palette. The scorer uses `authored.unwrap_or(measured)`, so a render directory without a sidecar silently falls back to the measurement, and the score changes meaning without any warning.
 
-The sidecar is currently named `palette_controls.json` ([`headless.rs`](../../crates/stunt-cli/src/headless.rs)). Its loader returns an empty map when the file is absent ([`parity/frames.rs`](../../crates/stunt-cli/src/parity/frames.rs)). The probe script also hard-codes the render size.
+The sidecar is currently named `palette_controls.json` ([`headless.rs`](../../crates/stunt-cli/src/headless.rs)). Its loader returns an empty map when the file is absent ([`parity/frames.rs`](../../crates/stunt-score/src/parity/frames.rs)). The probe script also hard-codes the render size.
 
 ## Decision
 

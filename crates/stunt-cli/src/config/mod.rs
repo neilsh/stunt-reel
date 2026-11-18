@@ -8,7 +8,7 @@ use clap::{CommandFactory as _, FromArgMatches as _, Parser};
 
 use stunt_render::RenderOptions;
 
-use crate::{export, link, parity, shape_views, sod_census, sod_trace};
+use crate::{export, link, shape_views, sod_census, sod_trace};
 
 /// Options as clap parses them, before cross-option rules and companion discovery.
 #[derive(Debug, Parser)]
@@ -373,7 +373,7 @@ fn after_help() -> String {
          A / D   Free-Cam: Strafe Left / Right\n  \
          Q / E   Free-Cam: Move Down / Up\n  \
          Esc     Exit presentation",
-        indent(&parity::usage()),
+        indent(&stunt_score::parity::usage()),
         indent(&export::usage()),
         indent(&shape_views::usage()),
         indent(&sod_census::usage()),

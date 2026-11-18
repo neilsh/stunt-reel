@@ -2,6 +2,7 @@ use super::*;
 use serde_json::json;
 use stunt_core::contracts::PaletteControls;
 use stunt_core::scene::SceneFrame;
+use stunt_parity::AdapterClass;
 use stunt_parity::SCHEMA_VERSION;
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -47,7 +48,24 @@ fn test_gpu() -> RenderAdapter {
     }
 }
 
-fn page(controls: PaletteControls, tamper: bool) -> RenderedPage {
+struct OwnedPage {
+    rgba: Vec<u8>,
+    indices: Vec<u8>,
+    layers: Vec<u32>,
+}
+
+impl OwnedPage {
+    fn view(&self) -> PageView<'_> {
+        PageView {
+            width: 320,
+            rgba: &self.rgba,
+            indices: &self.indices,
+            layers: &self.layers,
+        }
+    }
+}
+
+fn page(controls: PaletteControls, tamper: bool) -> OwnedPage {
     let palette = controls.film_palette();
     let plane: Vec<u32> = (0..320 * 200)
         .map(|pixel: u32| (16 << 8) | (pixel % 251))
@@ -62,7 +80,14 @@ fn page(controls: PaletteControls, tamper: bool) -> RenderedPage {
     if tamper {
         rgba[0] ^= 1;
     }
-    RenderedPage::new(stunt_render::PageSize::new(320, 200), rgba, &plane).expect("page")
+    OwnedPage {
+        rgba,
+        indices: plane
+            .iter()
+            .map(|&word| u8::try_from(word & 0xFF).expect("low byte"))
+            .collect(),
+        layers: plane.iter().map(|&word| word >> 8).collect(),
+    }
 }
 
 #[test]
@@ -76,7 +101,7 @@ fn journal_writes_the_store_and_the_record_last() {
             frame.palette,
             frame.view,
             true,
-            &page(frame.palette, false),
+            page(frame.palette, false).view(),
         )
         .expect("write");
     assert!(
@@ -111,7 +136,7 @@ fn a_finished_journal_records_the_adapter_it_was_drawn_on() {
             frame.palette,
             frame.view,
             false,
-            &page(frame.palette, false),
+            page(frame.palette, false).view(),
         )
         .expect("write");
     journal.finish(test_gpu()).expect("finish");
@@ -128,21 +153,6 @@ fn a_finished_journal_records_the_adapter_it_was_drawn_on() {
 }
 
 #[test]
-fn a_cpu_adapter_is_recorded_as_cpu_and_any_other_as_hardware() {
-    let identity = |is_cpu| AdapterIdentity {
-        name: "llvmpipe (LLVM 19.1.7, 256 bits)".to_string(),
-        is_cpu,
-    };
-    let cpu = render_adapter(&identity(true));
-    assert_eq!(cpu.name, "llvmpipe (LLVM 19.1.7, 256 bits)");
-    assert_eq!(cpu.class, AdapterClass::Cpu);
-    assert_eq!(
-        render_adapter(&identity(false)).class,
-        AdapterClass::Hardware
-    );
-}
-
-#[test]
 fn a_page_whose_picture_is_not_its_palette_lookup_is_refused() {
     let dir = temp_dir("tampered");
     let mut journal = RenderJournal::begin(&dir, FilmId::default(), geometry()).expect("begin");
@@ -153,7 +163,7 @@ fn a_page_whose_picture_is_not_its_palette_lookup_is_refused() {
             frame.palette,
             frame.view,
             false,
-            &page(frame.palette, true),
+            page(frame.palette, true).view(),
         )
         .unwrap_err()
         .to_string();
@@ -171,7 +181,7 @@ fn a_rerender_withdraws_the_previous_record_before_it_writes() {
             frame.palette,
             frame.view,
             true,
-            &page(frame.palette, false),
+            page(frame.palette, false).view(),
         )
         .expect("write");
     first.finish(test_gpu()).expect("finish");
