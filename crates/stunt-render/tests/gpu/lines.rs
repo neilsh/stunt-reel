@@ -6,7 +6,9 @@
 
 use crate::common;
 
-use stunt_core::contracts::{CameraTransform, DecodeMode, SodModelIr};
+use stunt_core::contracts::{
+    CameraTransform, DecodeMode, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
+};
 use stunt_core::scene::FilmScene;
 use stunt_core::sod::{
     OP_ID, OP_LINECOL, OP_MOVETO, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
@@ -114,6 +116,65 @@ fn a_steep_line_covers_one_pixel_per_row_near_and_far() {
             assert!(
                 rows.iter().all(|&n| n == 1),
                 "{distance} m: one pixel in every row the line crosses, got {rows:?}"
+            );
+        }
+    });
+}
+
+/// A shape of one flat triangle 40 m across in the z = 0 plane, wound clockwise as seen from
+/// +z (front-facing toward the test camera) when `front`, else anticlockwise.
+fn triangle_shape(front: bool) -> SodModelIr {
+    let vertex = |x: f32, y: f32| SodVertex {
+        position: [x, y, 0.0],
+        normal: [0.0, 0.0, 1.0],
+        palette_index: LINE_INDEX,
+        flags: 0,
+        scenery_class: 0,
+        _padding: 0,
+    };
+    let mut ir = SodModelIr::new("TRI");
+    ir.vertices = vec![vertex(0.0, 20.0), vertex(20.0, -20.0), vertex(-20.0, -20.0)];
+    ir.indices = if front { vec![0, 1, 2] } else { vec![0, 2, 1] };
+    let id = ir.allocate_node(
+        "BASE",
+        None,
+        [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ],
+        VisibilityCondition::Always,
+        NodeKind::Mesh {
+            vertex_offset: 0,
+            vertex_count: 3,
+            index_offset: 0,
+            index_count: 3,
+            is_decal: false,
+        },
+    );
+    if ir.root_nodes.is_empty() {
+        ir.root_nodes = vec![id];
+    }
+    ir
+}
+
+/// A back-facing polygon's outline is culled with the polygon, as `PLAYONE` culls it, while a
+/// front-facing one's is drawn (#686), however far away.
+#[test]
+fn only_a_front_facing_polygon_draws_its_outline() {
+    common::gpu_test(|| {
+        for distance in [200.0, 5000.0] {
+            let Some(front) = covered(triangle_shape(true), distance) else {
+                return;
+            };
+            assert!(
+                !front.is_empty(),
+                "{distance} m: the front-facing triangle draws"
+            );
+            let Some(back) = covered(triangle_shape(false), distance) else {
+                return;
+            };
+            assert!(
+                back.is_empty(),
+                "{distance} m: the back-facing triangle and its outline draw nothing, got {back:?}"
             );
         }
     });

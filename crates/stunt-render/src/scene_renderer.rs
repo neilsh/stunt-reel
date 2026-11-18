@@ -41,7 +41,7 @@ use stunt_core::sprite::SpriteImage;
 
 use crate::camera::{CameraController, CameraGpuResources, eye_relative_matrix};
 use crate::mesh::{GpuMeshSlice, GpuModel};
-use crate::outline::with_outlines;
+use crate::outline::{Outlined, outlined};
 use crate::palette::PaletteLut;
 use crate::pipeline::{LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, RenderPipelines};
 use stunt_core::contracts::{SodNode, arena_index};
@@ -238,18 +238,18 @@ struct LitShape {
 }
 
 impl LitShape {
-    /// Uploads `ir`, shape `shape_id` decoded under `pose`, as a model of its own.
+    /// Uploads `shape`, shape `shape_id` decoded under `pose` and outlined, as a model of its own.
     fn upload(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         shape_id: u16,
         pose: Pose,
-        ir: &SodModelIr,
+        shape: &Outlined,
     ) -> Self {
         Self {
             pose,
-            layout: LitLayout::of(shape_id, ir),
-            model: GpuModel::from_ir(device, queue, ir),
+            layout: LitLayout::of(shape_id, &shape.ir),
+            model: GpuModel::from_outlined(device, queue, shape),
         }
     }
 }
@@ -287,7 +287,7 @@ impl SceneRenderer {
         // (research/playone-exe/sod-vm-generators.md section 8.11).
         let shapes = scene
             .shapes()
-            .map(|(id, ir)| (id, GpuModel::from_ir(device, queue, &with_outlines(ir))))
+            .map(|(id, ir)| (id, GpuModel::from_outlined(device, queue, &outlined(ir))))
             .collect();
         let images = scene
             .images()
@@ -494,22 +494,22 @@ impl SceneRenderer {
             *entry = None;
             return false;
         };
-        let ir = with_outlines(&ir);
+        let shape = outlined(&ir);
         if let Some(lit) = entry.as_mut() {
-            match lit.layout.refresh(shape_id, &ir) {
+            match lit.layout.refresh(shape_id, &shape.ir) {
                 Refresh::Keep => {
                     lit.pose = pose;
                     return true;
                 }
-                Refresh::Rewrite if lit.model.rewrite_vertices(queue, &ir) => {
+                Refresh::Rewrite if lit.model.rewrite_vertices(queue, &shape) => {
                     lit.pose = pose;
-                    lit.layout.vertices = ir.vertices;
+                    lit.layout.vertices = shape.ir.vertices;
                     return true;
                 }
                 Refresh::Rewrite | Refresh::Upload => {}
             }
         }
-        *entry = Some(LitShape::upload(device, queue, shape_id, pose, &ir));
+        *entry = Some(LitShape::upload(device, queue, shape_id, pose, &shape));
         true
     }
 

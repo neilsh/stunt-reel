@@ -16,6 +16,15 @@ struct CameraUniform {
 const FLAG_LINE: u32 = 0x08u;
 const FLAG_LINE_SIDE: u32 = 0x10u;
 const FLAG_LINE_END: u32 = 0x20u;
+// SodVertex::flags bit 1, a two-sided polygon.
+const FLAG_TWO_SIDED: u32 = 0x02u;
+
+// Whether the triangle `p`, `q`, `r` (clip space) winds back-facing on screen, as the
+// rasteriser culls it (pipeline.rs: `FrontFace::Cw`, `cull_mode: Some(Face::Back)`): the
+// determinant of their homogeneous screen coordinates is positive.
+fn is_back_facing(p: vec4<f32>, q: vec4<f32>, r: vec4<f32>) -> bool {
+    return determinant(mat3x3<f32>(p.xyw, q.xyw, r.xyw)) > 0.0;
+}
 
 // Moves a line corner at `clip`, whose segment's other end is at `other`, to the corner of a
 // screen quad one pixel wide: half a pixel across the segment's minor screen axis (to the
@@ -56,6 +65,9 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: padding
+    // The second vertex stream: for an outline corner, the third vertex of the triangle its
+    // edge bounds (outline.rs `Outlined`); for any other vertex, its own position.
+    @location(3) apex: vec3<f32>,
 };
 
 struct VertexOutput {
@@ -116,7 +128,22 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.clip_position = camera.rotation_proj * eye_pos;
     if ((in.attr.y & FLAG_LINE) != 0u) {
         let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
-        out.clip_position = widen_line(out.clip_position, other, in.attr.y);
+        // An outline corner culls with the triangle its edge bounds, which winds from the
+        // edge's first endpoint to its second and on to the apex; a two-sided polygon's stays.
+        let apex = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.apex, 1.0));
+        let at_end = (in.attr.y & FLAG_LINE_END) != 0u;
+        let first = select(out.clip_position, other, at_end);
+        let second = select(other, out.clip_position, at_end);
+        // A corner whose apex is its own position (a ZLINETO's) bounds no triangle; it is
+        // tested by position, since a determinant with two equal rows can round off zero.
+        let bounds_triangle = any(in.apex != in.position);
+        let two_sided = (in.attr.y & FLAG_TWO_SIDED) != 0u;
+        if (bounds_triangle && !two_sided && is_back_facing(first, second, apex)) {
+            // Every corner of the quad collapses to one point, so it covers no pixel.
+            out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        } else {
+            out.clip_position = widen_line(out.clip_position, other, in.attr.y);
+        }
     }
     out.palette_index = in.attr.x & 255u;
     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included

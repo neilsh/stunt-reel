@@ -851,12 +851,14 @@ fn a_ground_outline_does_not_cover_the_line_after_it() {
 
 /// A one-triangle shape stream whose colour `OP_SHADES` and `OP_SHADE1` take from the light:
 /// its one normal points down, so a light from above shades it brightest.
+/// Its corners run clockwise toward the test camera, so it faces it: a back-facing one draws
+/// nothing, outline included.
 fn shaded_triangle_stream() -> Vec<u8> {
     use stunt_core::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, OP_SHADE1, OP_SHADES};
     let down = 0x8001; // -32767
     let words = [
         OP_ID, 100, 0, 0, 0, OP_IPG, 8, 100, 50, 0, OP_SHADES, 0, 1, 0, down, 0, OP_SHADE1, 0,
-        0x40, OP_POLYZ, 3, 0, 12, 24, OP_RETURN,
+        0x40, OP_POLYZ, 3, 0, 24, 12, OP_RETURN,
     ];
     words.iter().flat_map(|w| w.to_le_bytes()).collect()
 }

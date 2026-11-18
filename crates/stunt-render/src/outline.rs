@@ -5,7 +5,7 @@
 //! polygon draws at least a pixel on every row it crosses, however thin it is. A rasteriser
 //! that samples pixel centres can cover a pixel less per row and per column, and drops a
 //! sliver under a pixel wide altogether: in `INTRO.FLM` the light half of each distant pine
-//! (`research/playone-exe/sod-vm-generators.md` section 8.11). [`with_outlines`] gives the renderer those
+//! (`research/playone-exe/sod-vm-generators.md` section 8.11). [`outlined`] gives the renderer those
 //! pixels back by drawing each polygon's outline as one-pixel screen lines, the same lines
 //! a `ZLINETO` draws (section 8.10). An outline costs four vertices and twelve indices an
 //! edge, so it is drawn this way on the shapes the renderer places per frame; the world mesh
@@ -22,7 +22,18 @@ use stunt_core::contracts::{
 /// Every line-corner bit of `SodVertex::flags`.
 const LINE_FLAGS: u8 = VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_SIDE | VERTEX_FLAG_LINE_END;
 
-/// `ir` with each mesh node's outline drawn after its triangles, in the same node.
+/// A shape with its outlines, and each vertex's apex.
+pub(crate) struct Outlined {
+    /// The shape with each mesh node's outline drawn after its triangles ([`outlined`]).
+    pub ir: SodModelIr,
+    /// One apex per vertex of `ir`, in the same order: for a line corner the outline added,
+    /// the position of the third vertex of the one filled triangle its edge bounds, so the
+    /// shader culls the corner with that triangle; for any other vertex, its own position.
+    pub apex: Vec<[f32; 3]>,
+}
+
+/// `ir` with each mesh node's outline drawn after its triangles, in the same node, and
+/// each vertex's apex ([`Outlined`]).
 ///
 /// The outline is every edge exactly one of the node's filled triangles uses, as a
 /// one-pixel screen line whose ends take the colours of the edge's vertices. A polygon's
@@ -33,32 +44,9 @@ const LINE_FLAGS: u8 = VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_SIDE | VERTEX_FLAG_LI
 /// `ir`'s, whose vertices and vertex windows stay as they were; a mesh node whose windows
 /// leave the buffers, which [`SodModelIr::meshes`] already skips, is left empty.
 ///
-/// The lines are wound both ways, like every line, so a back-facing polygon's outline still
-/// draws where nothing in front of it hides it, which `PLAYONE` does not do; [`outlined`]
-/// gives each line corner the data to cull it.
-#[must_use]
-pub(crate) fn with_outlines(ir: &SodModelIr) -> SodModelIr {
-    outlined(ir).ir
-}
-
-/// [`with_outlines`]' shape, with each vertex's apex: for a line corner the outline added,
-/// the position of the third vertex of the one filled triangle its edge bounds, so a shader
-/// can cull the corner with that triangle (#686); for any other vertex, its own position.
-pub(crate) struct Outlined {
-    /// The shape with its outlines, as [`with_outlines`] returns it.
-    pub ir: SodModelIr,
-    /// One apex per vertex of `ir`, in the same order.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the shader's cull reads it once #717's upload lands"
-        )
-    )]
-    pub apex: Vec<[f32; 3]>,
-}
-
-/// [`with_outlines`] with each vertex's apex ([`Outlined`]).
+/// The lines are wound both ways, like every line; the shader collapses a corner whose
+/// apex's triangle faces away, unless the polygon is two-sided, so a back-facing polygon's
+/// outline is culled with it as `PLAYONE` culls it.
 #[must_use]
 pub(crate) fn outlined(ir: &SodModelIr) -> Outlined {
     let triangles: HashMap<_, &[u32]> = ir.meshes().map(|m| (m.node.id, m.indices)).collect();
@@ -268,7 +256,7 @@ mod tests {
     #[test]
     fn a_quad_gets_its_four_edges_not_its_diagonal() {
         let ir = quad();
-        let out = with_outlines(&ir);
+        let out = outlined(&ir).ir;
         // The two triangles, then four line quads of four corners and twelve indices.
         assert_eq!(out.vertices.len(), 4 + 4 * 4);
         assert_eq!(out.indices.len(), 6 + 4 * 12);
@@ -369,8 +357,8 @@ mod tests {
 
     #[test]
     fn lines_are_not_outlined_again() {
-        let ir = with_outlines(&quad());
-        let twice = with_outlines(&ir);
+        let ir = outlined(&quad()).ir;
+        let twice = outlined(&ir).ir;
         assert_eq!(twice.vertices.len(), ir.vertices.len() + 4 * 4);
     }
 }
