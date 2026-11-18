@@ -10,7 +10,9 @@ Usage:
 * ``mise run re-tool -- callers <offset> [--code-end 0xN]``: every near ``call``, ``jmp`` and
   conditional jump whose target is ``offset``, decoded straight on from image 0 as ``disasm`` does.
   It does not find a call through a register or a word table, a far call, or a pointer built at
-  run time.
+  run time, nor a branch in a stretch the straight-on decode reads out of step after data in the
+  code (image ``0x45B1..0x45BB``); a branch decoded from data can be listed. ``--code-end`` is at
+  most ``0x10000``: offsets above 64K need their own segment's coordinates.
 * ``mise run re-tool -- vm-handler <opcode>``: the display-list VM handler for ``opcode``, read
   from its dispatch slot at image ``0x8246 + opcode``. A handler that calls through a word table
   at ``[bx + disp16]`` (``OP_IPG``'s subtype table at ``work:0x1954``) has the table's entries
@@ -210,8 +212,11 @@ _NEAR_FLOWS = (
 def find_callers(data: bytes, target: int, code_end: int, context: int) -> list[Caller]:
     """Every near call, jump or conditional jump below ``code_end`` whose target is ``target``.
 
-    Decoded straight on from image 0, so the targets are those ``disasm`` prints. A branch
-    through a register, a word table or a far pointer is not found.
+    Decoded straight on from image 0, so the targets are those ``disasm`` prints and a branch
+    in a stretch read out of step after data in the code is missed (image ``0x45B1..0x45BB``),
+    while one decoded from data can be listed. A branch through a register, a word table or a
+    far pointer is not found. ``code_end`` must be at most ``0x10000``, where ``near_branch16``
+    still names an image offset.
     """
     code_end = min(code_end, len(data))
     decoded = disassemble(data, 0, code_end)
@@ -344,17 +349,23 @@ def callers_main(argv: list[str]) -> int:
     parser = _parser(
         "callers",
         "List the near call, jmp and jcc instructions whose target is an image offset. A call "
-        "through a register or word table, a far call and a pointer built at run time are not "
-        "found.",
+        "through a register or word table, a far call, a pointer built at run time and a "
+        "branch in a stretch the straight-on decode reads out of step after data in the code "
+        "(image 0x45B1..0x45BB) are not found; a branch decoded from data can be listed.",
     )
     parser.add_argument("offset", type=_int, help="16-bit target image offset")
     parser.add_argument(
-        "--code-end", type=_int, default=DGROUP, help="search image offsets below this"
+        "--code-end",
+        type=_int,
+        default=DGROUP,
+        help="search image offsets below this (at most 0x10000)",
     )
     parser.add_argument("--context", type=int, default=4, help="instructions shown each side")
     args = parser.parse_args(argv)
     if not 0 <= args.offset <= 0xFFFF:
         parser.error("the offset must fit in 16 bits")
+    if args.code_end > 0x10000:
+        parser.error("--code-end must be at most 0x10000: higher offsets need segment coordinates")
     if args.context < 0:
         parser.error("--context must be zero or more")
     data = _load(args.image)

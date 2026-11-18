@@ -138,7 +138,7 @@ def test_xref_passes_a_file_and_its_options_to_the_string_search(
 
 
 def _callers_image() -> bytes:
-    """Near call, jmp and jcc to 0x0060, plus a call and a jmp elsewhere and a far call."""
+    """Near call, jmp and jcc to 0x0060, plus a call elsewhere, a far call and a call through a register."""
     image = bytearray(0x200)
     at = 0x40
     for opcode, target in ((0xE8, 0x60), (0xE9, 0x60), (0x74, 0x60), (0xE8, 0x70)):
@@ -146,19 +146,30 @@ def _callers_image() -> bytes:
         rel = (target - (at + size)) & (0xFF if size == 2 else 0xFFFF)
         image[at : at + size] = bytes([opcode]) + rel.to_bytes(size - 1, "little")
         at += size
-    # far call 0060h:0060h and a call through a register: neither is a near branch to 0x60
+    # far call 0100h:0060h and a call through a register: neither is a near branch to 0x60
     image[at : at + 5] = bytes.fromhex("9a60000001")
     image[at + 5 : at + 7] = bytes.fromhex("ffd3")  # call bx
-    image[0x60] = 0xC3
+    image[0x60:0x62] = b"\xc3\x90"  # ret; nop, so the zero padding decodes in step
+    image[0x80:0x82] = bytes([0x75, (0x60 - 0x82) & 0xFF])  # backward rel8 jne
+    image[0x90:0x93] = b"\xe8" + ((0x60 - 0x93) & 0xFFFF).to_bytes(2, "little")  # backward call
+    image[0x93] = 0x90
+    image[0xA0:0xA4] = b"\x0f\x84" + ((0x60 - 0xA4) & 0xFFFF).to_bytes(2, "little")  # 386 je
     return bytes(image)
 
 
 def test_callers_lists_near_calls_jumps_and_conditional_jumps_to_the_offset() -> None:
     tool = _load()
     found = tool.find_callers(_callers_image(), 0x60, 0x200, 0)
-    assert [c.instruction.ip for c in found] == [0x40, 0x43, 0x46]
+    assert [c.instruction.ip for c in found] == [0x40, 0x43, 0x46, 0x80, 0x90, 0xA0]
     texts = [tool._formatter().format(c.instruction) for c in found]
-    assert texts == ["call 0060h", "jmp 0060h", "je short 0060h"]
+    assert texts == [
+        "call 0060h",
+        "jmp 0060h",
+        "je short 0060h",
+        "jne short 0060h",
+        "call 0060h",
+        "je near 0060h",
+    ]
 
 
 def test_callers_stops_at_code_end() -> None:
@@ -175,7 +186,7 @@ def test_callers_prints_the_count_and_neighbours(
     argv = ["callers", "0x60", "--image", str(img), "--context", "1", "--code-end", "0x200"]
     assert _load().main(argv) == 0
     out = capsys.readouterr().out
-    assert "0x0060: 3 near call/jump(s) below image 0x200" in out
+    assert "0x0060: 6 near call/jump(s) below image 0x200" in out
     assert "  > 00040  call 0060h" in out
     assert "  > 00043  jmp 0060h" in out
     assert "    00043  jmp 0060h" in out  # the first caller's following neighbour
@@ -187,4 +198,22 @@ def test_callers_clamps_code_end_to_the_image(
     img = tmp_path / "playone.img"
     img.write_bytes(_callers_image())
     assert _load().main(["callers", "0x60", "--image", str(img), "--context", "0"]) == 0
-    assert "3 near call/jump(s) below image 0x200" in capsys.readouterr().out
+    assert "6 near call/jump(s) below image 0x200" in capsys.readouterr().out
+
+
+def test_callers_resolves_a_target_that_wraps_within_sixteen_bits() -> None:
+    tool = _load()
+    image = bytearray(0x10000)
+    image[0xFFF0:0xFFF3] = b"\xe8" + ((0x60 - 0xFFF3) & 0xFFFF).to_bytes(2, "little")
+    found = tool.find_callers(bytes(image), 0x60, 0x10000, 0)
+    assert [c.instruction.ip for c in found] == [0xFFF0]
+
+
+def test_callers_refuses_a_code_end_past_the_sixteen_bit_offsets(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    img = tmp_path / "playone.img"
+    img.write_bytes(_callers_image())
+    with pytest.raises(SystemExit):
+        _load().main(["callers", "0x60", "--image", str(img), "--code-end", "0x10001"])
+    assert "--code-end must be at most 0x10000" in capsys.readouterr().err
