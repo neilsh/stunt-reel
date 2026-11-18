@@ -347,7 +347,7 @@ fn world_is_drawn_when_present() {
 }
 
 /// A world holding `ir` alone.
-fn world_of(ir: SodModelIr) -> World {
+pub(crate) fn world_of(ir: SodModelIr) -> World {
     World {
         ir,
         terrain_patches: 0,
