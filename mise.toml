@@ -234,6 +234,12 @@ description = "Diagnostic probes on one capture/render pair (mise run parity-pro
 run = "uv run python python/scripts/parity_probe.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
+[tasks.render-memory]
+depends = ["ensure"]
+description = "Render a reference film headless and print each run's peak and steady memory and store digests, alternating binaries to compare builds (mise run render-memory -- --film location [--ticks 12..=120] [--binary [LABEL=]PATH ...] [--runs N] [--software-only] [--no-build])"
+run = "uv run python python/scripts/render_memory.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
+
 [tasks.frame]
 depends = ["ensure"]
 description = "Render film ticks in one process and write each beside its reference capture frame (mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build] [--software-only] [--var DBG_X=0,1]; --var draws one panel per value after the capture)"

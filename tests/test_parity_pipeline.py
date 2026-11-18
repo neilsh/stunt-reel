@@ -146,6 +146,15 @@ def test_render_film_puts_software_only_on_the_command_line(tmp_path: Path) -> N
     assert fake.calls[0].count("--software-only") == 1
 
 
+def test_render_film_runs_the_binary_it_is_given(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7, 9])
+    other = tmp_path / "builds" / "stuntreel-before"
+    fake = FakeRun()
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_pipeline.render_film(job, tmp_path / "out", binary=other, run=fake)
+    assert fake.calls[0][0] == str(other)
+
+
 def test_render_film_passes_the_environment_and_timeout_to_the_adapter(tmp_path: Path) -> None:
     root = reference_tree(tmp_path, [7, 9])
     fake = FakeRun()

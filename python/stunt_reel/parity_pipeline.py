@@ -375,6 +375,7 @@ def render_film(
     *,
     ticks: Sequence[int] | None = None,
     software_only: bool = False,
+    binary: Path | None = None,
     run: Run = run_command,
     timeout: float | None = None,
 ) -> None:
@@ -382,8 +383,9 @@ def render_film(
 
     By default the ticks the job's capture holds; with ``ticks`` exactly those film ticks, in
     one process. The film plays its archive from :func:`all_archive.resolve_all`, linked with
-    the release binary as it is: the caller builds it, or was told not to. ``software_only``
-    renders on the software adapter even beside a GPU.
+    the release binary as it is: the caller builds it, or was told not to; ``binary`` renders
+    with another build instead. ``software_only`` renders on the software adapter even beside
+    a GPU.
     """
     link_build = all_archive.link_build_in(REPO_ROOT, build=False)
     archive = all_archive.resolve_all(
@@ -400,7 +402,7 @@ def render_film(
         )
     )
     argv = [
-        str(binary_path()),
+        str(binary or binary_path()),
         "--headless",
         str(job.flm),
         "--all",
