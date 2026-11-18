@@ -268,20 +268,21 @@ def test_a_malformed_archive_leaves_no_stage(staged_repo: StagedRepo, tmp_path: 
     assert _no_stage_left()
 
 
-def test_a_stage_under_root_is_refused_before_anything_is_copied(
+def test_a_refused_stage_is_refused_before_anything_is_copied(
     staged_repo: StagedRepo, game_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """dosbox-automation refuses a mount under /root and the capture would hang at DOS."""
-    monkeypatch.setenv(dataroot.DATA_ENV, "/root/stunt-reel.data")
-    dataroot.data_root.cache_clear()
+    """dosbox-automation refuses a mount under /root and the capture would hang at DOS.
+
+    The refused base stands in as the data root, so the test writes nothing under the real /root.
+    """
+    monkeypatch.setattr(staging, "_REFUSED_MOUNT_BASES", (dataroot.data_root(),))
 
     with pytest.raises(LaunchFailed, match=r"mount policy.*STUNT_DATA_ROOT"):
         staging.stage_film(staged_repo.film)
     with pytest.raises(LaunchFailed, match=r"mount policy.*STUNT_DATA_ROOT"):
         staging.stage_makeone(staged_repo.film, game_root)
 
-    assert not Path("/root/stunt-reel.data").exists()
-    dataroot.data_root.cache_clear()
+    assert not (dataroot.data_root() / parity_layout.stage_root()).exists()
 
 
 def test_mount_refusal_names_the_base_and_spares_other_paths() -> None:
