@@ -187,6 +187,7 @@ Index 228 holds to the highest elevation seen (23.4 degrees); below the first ed
 `CTRY.FLM` never uses 227, but 27 of 213 `INTRO.FLM` frames (32,194 pixels) and 4 of 30 `COL3-2.FLM` frames (1,284 pixels) do, above 228.
 Parity treats 227 to 238 as sky (`CAPTURE_SKY_INDICES` in `crates/stunt-cli/src/parity/mask.rs`).
 Whether 227 is the top band of the same law is `[Unknown]`, as is behaviour above 23.4 degrees and for 224 to 226.
+Captures show 224 to 226 as zenith sky and as shape paint, so parity leaves them out of the sky band ([`method.md`](../../parity/method.md) section 2.0).
 The horizon sky index is film-specific (first-frame sky is 229 in `INTRO.FLM`, 233 in `CTRY.FLM`).
 
 A pixel-exact classifier with a fixed geometric law reaches only 65 to 75% per frame, and per-frame pitch shifts of up to 1.4 degrees (mean 0.05, sd 0.95) help little, so the residual is our camera's per-tick error and the transition medians are an empirical table, not an exact rule.

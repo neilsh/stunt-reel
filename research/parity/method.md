@@ -86,7 +86,7 @@ The band leaves out 224 to 226, though `PLAYONE` writes entries 224 to 238 as on
 On `traintnl` all 19,850 capture pixels at 224 to 226 are index 224 and lie on our geometry on the `76872e89` render; 18,144 of them are a blue rectangle on a dark red wall under a red roof, 2,016 on each of 9 frames, and the train's red rear car has windows of 224.
 On `bomb` 104,958 of the 105,219 pixels at 224 are an emblem on a building wall, while the 59,520 at 226 are the zenith sky in the top five rows.
 `location`'s helicopter windows are 225 and 226.
-So an index band cannot tell the zenith sky from that paint: widening it to 224..=238 would count the rectangle and the emblem as sky, and was not adopted.
+So an index band that reaches 224, as `balloon`'s zenith requires, cannot tell the zenith sky from that paint: widening it to 224..=238 would count the rectangle and the emblem as sky, and was not adopted.
 `balloon`'s zenith sky at 224 to 226 still counts as geometry ([`attribution.md`](attribution.md) section 7).
 A test that counts a 224 to 226 pixel as sky when its run of such pixels reaches row 0 or touches the 227 to 238 band separates `bomb`'s two kinds exactly, but fails where the balloon cuts the sky off from both (`balloon` tick 243, 16,995 pixels); nothing is adopted yet ([#718](https://github.com/neilsh/stunt-reel/issues/718)).
 _Source: [2026-11-18: who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
