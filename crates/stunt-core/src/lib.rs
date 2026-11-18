@@ -14,6 +14,7 @@ pub mod contracts;
 pub mod credits;
 pub mod flm;
 pub mod font;
+pub mod frame;
 pub mod link;
 #[cfg(test)]
 mod props;

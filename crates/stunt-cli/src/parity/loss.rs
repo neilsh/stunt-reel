@@ -1,6 +1,6 @@
 //! Per-class SSIM loss attribution.
 
-use stunt_render::{
+use stunt_core::frame::{
     LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN, MODE13H_WIDTH,
 };
 
@@ -79,7 +79,7 @@ pub(super) fn attribute_loss(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stunt_render::ASPECT_CORRECTED_HEIGHT;
+    use stunt_core::frame::ASPECT_CORRECTED_HEIGHT;
 
     #[test]
     fn loss_classes_follow_the_render_layer_and_the_capture() {

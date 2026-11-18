@@ -2,7 +2,7 @@
 
 use std::ops::RangeInclusive;
 
-use stunt_render::{
+use stunt_core::frame::{
     ASPECT_CORRECTED_HEIGHT, LAYER_NONE, LAYER_OVERLAY, MODE13H_HEIGHT, MODE13H_WIDTH,
 };
 
@@ -85,7 +85,7 @@ pub(super) fn index_agreement(reference: &[u8], render: &[u8], overlay: &[bool])
 
 /// Intersection-over-union of the non-sky masks of a capture and a render, skipping
 /// `overlay` pixels. The capture's sky is [`CAPTURE_SKY_INDICES`]; the render is filled
-/// where its layer plane is not [`stunt_render::LAYER_NONE`].
+/// where its layer plane is not [`stunt_core::frame::LAYER_NONE`].
 pub(super) fn mask_iou_planes(
     reference_indices: &[u8],
     render_layers: &[u16],

@@ -1,7 +1,7 @@
 use super::*;
 use crate::parity::test_support::plane_index;
 use stunt_core::contracts::get_palette_rgb;
-use stunt_render::LAYER_TERRAIN;
+use stunt_core::frame::LAYER_TERRAIN;
 
 const PIXELS: usize = MODE13H_WIDTH * MODE13H_HEIGHT;
 

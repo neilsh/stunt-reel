@@ -140,6 +140,7 @@ All of it is static analysis, not a capture; offsets are linear into the unpacke
 `[Established]` for the colour, the cull and the centre and radius arithmetic; `[Supported Inference]` that `DX`, `BP` and `DI` are screen x, y and depth, and that `0xCF39` builds a filled circle.
 It agrees with the `vault-balloon` capture's disc of index 239 ([`attribution.md` § 7](../parity/attribution.md#7-balloons-mask-iou-two-runs-of-frames)).
 The renderer does not draw it yet, and where in the frame's draw order `0824:0E4E` is called is not yet read: no near call reaches `0x908E` (`mise run re-tool -- xref 0x908E`).
+Drawing it needs the var-13 vector for each film: the renderer's `CameraUniform::sun_direction` is a fixed default (`crates/stunt-render/src/camera.rs`), not read from the film, and how `0x196C` turns variable 13 into a vector is open beyond the one observed value ([`terrain-shade.md`](terrain-shade.md), open question 1, which `BALLOON.FLM`'s `0xF02D` would test).
 
 The palette and sun readers above run on the snapshot struct at `DS:0x4888`, not on `0x474A` directly.
 The caller at `0x4A35` enters the frame routine at `0x0EE9` with `BX = 0x4888`, and `0x39B0` has copied the 16 live variables from `0x47C8` to `0x4906` (`0x4888 + 0x7E`) beforehand.

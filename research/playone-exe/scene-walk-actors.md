@@ -95,7 +95,7 @@ _Source: [the CTRY tick 871 explosion replayed](../../work/2026-11/721_ctry-871-
   § 4 assumes no bucket; whether slot 11 is probed and records one at `0x0262`'s leaf, which would send it to leaf `0x7C14`, is not read.
 * **Which shapes carry buckets** ([#721](https://github.com/neilsh/stunt-reel/issues/721) step 2).
   Count the corpus shapes with collision boxes coded 1 to 7, and whether each one's display list runs `OP_IPG` type 4 with the matching `w` on every path; 152 walk steps reach type 4 ([`sod-vm-generators.md`](sod-vm-generators.md)).
-* **The renderer** ([#741](https://github.com/neilsh/stunt-reel/issues/741)).
+* **The renderer** ([#737](https://github.com/neilsh/stunt-reel/issues/737)).
   `stunt-render` draws the world in one depth-tested pass; drawing each actor at its leaf's place in the partition order needs the scenery's planes at draw time.
 * **Live check.**
   No breakpoint has confirmed a pending list, a split or a bucket push at run time.
