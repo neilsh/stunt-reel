@@ -6,7 +6,7 @@ sidebar_label: "Film load & chunk cache"
 
 * **Binary**: unpatched `PLAYONE.EXE`, image offsets ([`static-tooling.md`](static-tooling.md) § 3); `DS:` offsets are `DGROUP`.
 * **Method**: static reading with `mise run re-tool -- disasm` and `xref`, 2026-11-18.
-* **Scope**: where the `.ALL` is loaded, the chunk cache it fills, what an added chunk costs, and how the film clock starts; why a later start changes the pages a capture keeps ([`linking.md`](../makeone-exe/linking.md) § 7.2) is open.
+* **Scope**: where the `.ALL` is loaded, the chunk cache it fills, what an added chunk costs, how the film clock starts, and which state the per-frame call reads from the timer rather than the film clock (section 5); why a later start changes the pages a capture keeps ([`linking.md`](../makeone-exe/linking.md) § 7.2) is open.
 * **Evidentiary tier**: `[Established]` for what the code does, read statically; `[Hypothesis]` where a capture's frames are tied to it.
 
 ---
@@ -111,6 +111,33 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 
 _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-start/journal.md#2026-11-18-the-loader-preloads-every-chunk-and-the-film-clock-starts-on-the-next-timer-tick)._
 
+## 5. What a Drawn Frame Steps
+
+`[Established]` for the code, read statically ([#723](https://github.com/neilsh/stunt-reel/issues/723)); `[Hypothesis]` where noted.
+
+* **No frame counter in the film step.**
+  The per-frame call `0x49F9` calls `0x62E7`, the film step `0x3A72`, `0x4FCD` when the speed `0x489C` is 0, `0x13EA` with `SI = 0x4888`, the clip setup `0x1151` (`0`, `0`, `0x140`, `0xB9`), `0x11F8`, the render step `0x0EE9`, `0x33C3` with the film clock, `[0x225A]` and `0x31C0` (`0x49F9..0x4A52`); none of its instructions increments a word in memory.
+  `0x13EA` runs `0x136F` (the delta store and interpolation), the slot update `0x1463`, then the deferred-call queue: `DS:0x2366` entries of a handler and an `SI` at `DS:0x2368`, at most 64, pushed by `0x144A` and counted down to 0 as each runs (`0x1405..0x1416`), so the queue is empty at the end of each frame and carries nothing to the next.
+* **`0x22DC` has no reader by address.**
+  `mise run re-tool -- xref 0x22DC --code-end 0xFFFF` finds the two stores (`0x137B`, `0x371F`) and nothing else, and no instruction uses `0x22DA` as an operand; the one `0x22D8` operand (`0x837B`) is in a stretch the linear disassembly misdecodes.
+  A reader through a pointer computed at run time is not excluded.
+* **`0x22BE` and `0x3712` may be dead.**
+  `0x22BE` is zeroed at `0x0E4E` and otherwise used at `0x3712..0x371B`; a scan of `disasm 0x0 0xD510` finds no call, jump or operand naming `0x3712`, so whether its store of the `0x22B8` delta runs was not settled.
+* **`0x22BA` feeds input timing, not the film.**
+  The INT 8 path counts it on every interrupt, playback or not (`0x43A5`).
+  Its readers are `0x5552`, which sets `DS:0x0D98` when 10 or fewer ticks passed since `DS:0x0D90` was last set and then sets it, and `0x5B4A`/`0x5B66`, a timer at `DS:0x0D90` that calls `[si + 8]` 20 ticks after it is armed, then every 3; `[Hypothesis]` that both are the menu's click and key repeat.
+* **A timer-tick phase read from another segment.**
+  `0xB58D` sets `ES = 0x0D51` (`DGROUP`) and reads `0x22B8` (`0xB5A6`): the low six bits, shifted left by 10 as an angle, index the word table at `0x19AA` of its own data segment, and half that word goes to `0x41B6`, whose other users are at `0x8A23..0x9341`; a loop of 7 then steps the angle by `0x1000`.
+  No near call names `0xB58D`, and what it draws was not read.
+  The phase has a period of 64 timer ticks and follows `0x22B8`, which `0x0E42` zeroes at the start and the INT 8 path advances once per tick while `0x2272` is set (section 4), so it is not stepped per drawn frame; at speed `0x100` with no pause it equals the film tick, and whether a pause or a slower speed lets the two part was not traced.
+* **A second clock.**
+  The INT 8 path also adds the speed `DS:0x475E` to `0x4758:0x475A` (`0x43B4..0x43D2`); `0x0E48` copies `0x4758` to `0x475C`, which nothing else uses as an operand, and `0x3B33`/`0x3BB8` save and restore it around the two other calls of `0x136F` (`0x3B6E`, `0x3BAD`).
+  It is a timer-driven clock, like the film clock.
+* **Left in the slot update.**
+  `0x1463` calls `0x14D5` (into `DS:0x22F4`) and the ground and collision probe `0x240A` ([`memory-map-main.md`](memory-map-main.md)) for each moving slot, and `0x1588` for pairs of slots when `DS:0x2282` is set; whether any of these keeps state from the previous frame, such as a starting leaf for the scenery walk, was not read.
+
+_Source: [the per-frame call steps no frame counter](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter)._
+
 ## Ruled out
 
 - **A sort of the directory at load.**
@@ -118,10 +145,13 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 - **The interpolation fraction `0x22E0` as the carrier of the start's phase, at speed `0x100`.**
   At speed `0x100` it is a function of the film tick and the film's slices (section 4; [journal](../../work/2026-11/609_archive-load-start/journal.md#2026-11-18-the-loader-preloads-every-chunk-and-the-film-clock-starts-on-the-next-timer-tick)).
 
+- **A frame counter or a reader of the per-frame deltas, by address, as the carrier of the start's phase.**
+  The film step increments no word, `0x22DC` has no reader by address, `0x22BA` feeds input timing, and the deferred-call queue empties every frame (section 5; [journal](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter)).
+
 ## Open questions
 
 1. What state is stepped per drawn frame rather than per film tick, so that a later start changes what is drawn at a tick?
-   Readers of the per-frame deltas (`0x22DC`, `0x22BE`) not found by `xref`, and anything else counting frames, are where to look ([#723](https://github.com/neilsh/stunt-reel/issues/723)).
+   Section 5 rules out a frame counter and readers by address; left are `0x14D5`, `0x240A` and `0x1588` in the slot update, a reader of `0x22DC` through a computed pointer, the callers of `0x3712` and `0xB58D`, and `0x62E7`, `0x4FCD`, `0x0EE9`, `0x33C3`, `[0x225A]` and `0x31C0` in the film step ([#723](https://github.com/neilsh/stunt-reel/issues/723)).
 2. Does the film clock start on the same emulated instant for archives that draw alike, and later by whole timer ticks for those that do not?
    A live log of `0x22B8`, `0x2272` and the emulator frame from the end of `0x4B04` to the first drawn page, on the own and a padded `CTRY.ALL`, would settle the quantum; it needs DOSBox ([#722](https://github.com/neilsh/stunt-reel/issues/722)).
 3. What does the 63-chunk 4 MB arm's later start come from, given its small scan and walk counts: the emulator's charge for DOS reads, the allocator's evictions, or the heap's limit?
