@@ -430,6 +430,26 @@ def test_record_refuses_reuse(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert "--record cannot be combined with --reuse" in capsys.readouterr().err
 
 
+def test_a_figures_file_written_meanwhile_is_kept_and_fails_the_sweep(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _sweep_env(tmp_path, monkeypatch)
+    figures = _figures(tmp_path)
+
+    def another_sweep_records_meanwhile(*_args: object, **_kwargs: object) -> list[str]:
+        figures.parent.mkdir(exist_ok=True)
+        figures.write_text("other", encoding="utf-8")
+        return []
+
+    monkeypatch.setattr(parity_sweep, "preflight", another_sweep_records_meanwhile)
+    argv = ["--var", "DBG_X=a,d", *_recorded(tmp_path), "--no-build", "--jobs", "1"]
+    assert parity_sweep.main([*argv, "--data-root", str(root)]) == 1
+    printed = capsys.readouterr()
+    assert printed.out.splitlines()[-1].startswith("winner: ")  # the verdict still prints
+    assert "parity_sweep: figures not written" in printed.err
+    assert figures.read_text(encoding="utf-8") == "other"
+
+
 @pytest.mark.parametrize(
     "flags",
     [

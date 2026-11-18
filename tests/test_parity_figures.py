@@ -30,6 +30,7 @@ from stunt_reel.parity_judge import (  # noqa: E402
     Track,
     Variant,
     decide,
+    noise_note,
     outcome_lines,
     winner_line,
 )
@@ -60,8 +61,7 @@ def sweep(bounds: Bounds = TODAY, track: Track | None = "evidence") -> Decision:
 
 
 def text_of(decision: Decision, probe: str = "film") -> str:
-    document = figures_document(NAMES, FILMS, decision, probe, winner_line(NAMES, decision))
-    return parity_sweep.figures_toml(document)
+    return parity_sweep.figures_toml(figures_document(NAMES, FILMS, decision, probe))
 
 
 def test_a_file_reads_back_as_the_very_figures_written() -> None:
@@ -117,6 +117,12 @@ def test_drift_note_names_the_changed_bound_and_todays_verdict() -> None:
     )
 
 
+def test_a_bound_three_decimals_would_round_prints_in_full() -> None:
+    # Today's bounds print as they always have; 0.0015 is not rounded to 0.002.
+    assert noise_note(0.0, TODAY.noise_floor) == " (noise floor +/-0.002; winner is ~within noise)"
+    assert noise_note(0.0, 0.0015) == " (noise floor +/-0.0015; winner is ~within noise)"
+
+
 def test_no_drift_note_while_the_verdict_holds() -> None:
     assert drift_note(parse_figures(text_of(sweep()))) is None
     # A changed bound that does not move the verdict says nothing.
@@ -146,6 +152,10 @@ def test_no_drift_note_while_the_verdict_holds() -> None:
         ('baseline = "DBG_X=1"', 'baseline = "DBG_X=0"', "baseline 'DBG_X=0'"),
         ('    "2",\n]', '    "2",\n    "3",\n]', "variant 2 has 2 values for 1 names"),
         ("schema = 1", "schema = [", "not TOML"),
+        ("schema = 1", "schema = true", "schema is True"),
+        ("index = 2\n", "index = 1\n", "variant index 1 is listed twice"),
+        ("fade_aware = true", "fade_aware = true\nssmi = 0.8", "film ctry has an unknown ssmi"),
+        ("fade_aware = true", "fade_aware = true\nfailed = true", "failed is not `true` alone"),
     ],
 )
 def test_a_damaged_file_is_refused(old: str, new: str, message: str) -> None:

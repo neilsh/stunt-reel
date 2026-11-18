@@ -42,7 +42,11 @@ EXEMPT = "^(tests/fixtures|work)/"
 #: The prek built-ins ADR 0026 adopts, each with every key beyond `id`. The whitespace fixers run
 #: with `--check`, so none of them rewrites a file.
 BUILTINS: dict[str, dict[str, Any]] = {
-    "check-added-large-files": {"args": ["--enforce-all"]},
+    # A sweep's figures file may pass 500 KB (ADR 0049); check-toml still parses it.
+    "check-added-large-files": {
+        "args": ["--enforce-all"],
+        "exclude": r"^work/[^/]+/[^/]+/sweeps/[^/]+\.toml$",
+    },
     "check-illegal-windows-names": {},
     "check-case-conflict": {},
     "check-merge-conflict": {"args": ["--assume-in-merge"]},

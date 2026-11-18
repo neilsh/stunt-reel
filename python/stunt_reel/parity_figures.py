@@ -59,6 +59,7 @@ HEADER = (
     "# A frame leaves out `index` or `scored` where its report gave none.\n\n"
 )
 _ROW_KEYS = frozenset(("tick", "ssim", "index", "scored"))
+_FILM_KEYS = frozenset(("ssim", "iou", "actor_iou", "fade_aware", "frames", "failed"))
 
 
 class FiguresError(ValueError):
@@ -100,9 +101,9 @@ class Figures:
 
 
 def figures_document(
-    names: Sequence[str], films: Sequence[str], decision: Decision, probe: str, winner: str
+    names: Sequence[str], films: Sequence[str], decision: Decision, probe: str
 ) -> dict[str, Any]:
-    """The figures of a sweep that printed *winner* for *decision*, as a TOML document's tables.
+    """The figures of a sweep that judged *decision*, as a TOML document's tables.
 
     Written after :data:`HEADER` by a TOML writer; :func:`parse_figures` reads it back.
     """
@@ -118,7 +119,7 @@ def figures_document(
     base = next((v for v in decision.ordered if v.index == BASELINE), None)
     if base is not None:
         document["baseline"] = label(names, base.values)
-    document["winner"] = winner
+    document["winner"] = winner_line(names, decision)
     document["bounds"] = {f.name: getattr(decision.bounds, f.name) for f in fields(Bounds)}
     document["variant"] = [
         {
@@ -164,7 +165,8 @@ def parse_figures(text: str) -> Figures:
         document = tomllib.loads(text)
     except tomllib.TOMLDecodeError as err:
         raise FiguresError(f"not TOML: {err}") from err
-    if document.get("schema") != SCHEMA:
+    schema = document.get("schema")
+    if not _is_int(schema) or schema != SCHEMA:
         raise FiguresError(f"schema is {document.get('schema')!r}, not {SCHEMA}")
     names = _texts(document, "names")
     track = document.get("track")
@@ -177,6 +179,10 @@ def parse_figures(text: str) -> Figures:
     variants = tuple(
         _variant(table, len(names)) for table in _tables(document.get("variant", []), "variant")
     )
+    indices = [v.index for v in variants]
+    twice = next((i for i in indices if indices.count(i) > 1), None)
+    if twice is not None:
+        raise FiguresError(f"variant index {twice} is listed twice")
     base = next((v for v in variants if v.index == BASELINE), None)
     recorded = document.get("baseline")
     if base is not None and recorded is not None and recorded != label(names, base.values):
@@ -229,6 +235,11 @@ def _variant(table: dict[str, Any], names: int) -> Variant:
     for film, entry in films.items():
         if not isinstance(entry, dict):
             raise FiguresError(f"variant {index} film {film} is not a table")
+        odd = sorted(entry.keys() - _FILM_KEYS)
+        if odd:
+            raise FiguresError(f"variant {index} film {film} has an unknown {odd[0]}")
+        if "failed" in entry and entry != {"failed": True}:
+            raise FiguresError(f"variant {index} film {film}: failed is not `true` alone")
         try:
             variant.scores[film], variant.frames[film] = _score(entry), _run(entry)
         except FiguresError as err:

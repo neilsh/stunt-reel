@@ -63,4 +63,13 @@ ADR 0010's checks:
   many frames per film as each reference film's capture holds (1,875 over the seven), a four-variant
   sweep's file was 563 KiB, 113 KiB compressed by zlib. Its frame lines took 560 KiB, where the
   hand-written rows took 303 KiB for the same frames.
+- That is over the 500 KB limit of `check-added-large-files`, and a tracked sweep's file must be
+  committed, so [`prek.toml`](../../prek.toml) excludes `work/*/*/sweeps/*.toml` from that hook.
+  That hook guards asset isolation ([ADR 0026](0026-commit-hooks-run-the-gates-own-tasks.md));
+  `check-toml` still parses every file the exclusion lets through, so no binary passes as one.
+  The repository grows by about 140 KiB per variant of each recorded sweep. A recheck cannot do
+  with fewer frames: the judge's listed frames, side effects and worst frame read every frame.
+  Parallel arrays per film (`ticks`, `ssim`, `index`, `scored`) measured 25% smaller, still over
+  the limit at four variants, and would put a frame's values on four lines and need a stand-in
+  for a missing index again, so they were not taken.
 - A change to the file's layout raises `SCHEMA` in `parity_figures.py`, which reads only its own.

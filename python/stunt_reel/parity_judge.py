@@ -374,7 +374,10 @@ def _verdict(judgement: Judgement, track: Track) -> tuple[bool, str]:
         or any(m > bounds.film_one_bar for m in means.values())
     ):
         return True, "heuristic, film means"
-    short = f"film means short of +{bounds.film_bar:.3f} each or +{bounds.film_one_bar:.3f} on one"
+    short = (
+        f"film means short of +{_bound(bounds.film_bar)} each"
+        f" or +{_bound(bounds.film_one_bar)} on one"
+    )
     if not judgement.targets:
         return False, short
     passed, why = _target_branch(judgement)
@@ -392,7 +395,7 @@ def _target_branch(judgement: Judgement) -> tuple[bool, str]:
     if pooled is None:
         return False, "no index agreement on the target frames"
     if pooled <= bounds.target_bar:
-        return False, f"target idx {pooled:+.4f}, not above +{bounds.target_bar:.3f}"
+        return False, f"target idx {pooled:+.4f}, not above +{_bound(bounds.target_bar)}"
     for target in judgement.targets:
         mean = _mean([d.index for d in judgement.range_frames(target) if d.index is not None])
         if mean is None or mean <= 0:
@@ -593,8 +596,14 @@ def format_table(
 def noise_note(margin: float, floor: float = NOISE_FLOOR) -> str:
     """Appended to a winner line when the lead over the runner-up is inside the noise *floor*."""
     if margin < floor:
-        return f" (noise floor +/-{floor:.3f}; winner is ~within noise)"
+        return f" (noise floor +/-{_bound(floor)}; winner is ~within noise)"
     return ""
+
+
+def _bound(value: float) -> str:
+    """*value* to three decimals, or in full when three would round it."""
+    text = f"{value:.3f}"
+    return text if float(text) == value else repr(value)
 
 
 def winner_line(names: Sequence[str], decision: Decision) -> str:

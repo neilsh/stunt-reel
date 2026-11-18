@@ -757,7 +757,7 @@ def main(argv: list[str] | None = None) -> int:
     print(line)
     code = 0
     if figures is not None:
-        document = figures_document(names, films, decision, args.probe, out[-1])
+        document = figures_document(names, films, decision, args.probe)
         code = write_figures(figures, figures_toml(document))
     if pictures is not None:
         drawn = write_pictures(
