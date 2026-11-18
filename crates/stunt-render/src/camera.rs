@@ -235,6 +235,8 @@ const VERTICAL_SIN2: f32 = 1e-6;
 ///
 /// `+Z` is the orientation of the `vault-balloon` capture at tick 606 (gondola right of the
 /// envelope, tree upper left); a straight-up view has no capture, so it takes the same vector.
+/// A view within about 0.057 degrees of vertical (`VERTICAL_SIN2`) snaps to `+Z` too, so the
+/// picture's turn jumps at that threshold; other views are unchanged.
 fn authored_up(forward: Vec3) -> Vec3 {
     if forward.cross(Vec3::Y).length_squared() < VERTICAL_SIN2 && forward.length_squared() > 0.5 {
         Vec3::Z
