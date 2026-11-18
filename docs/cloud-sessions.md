@@ -163,12 +163,22 @@ Its output is working output only: a cloud capture or archive is never promoted 
 - **Page with `gh api --paginate`.**
   GitHub's next-page links name the repository by id (`repositories/<id>/...`), and the proxy refuses those with 403 ("Numeric-ID repository paths ... are not supported"), so a list longer than one page fails on its second page (2026-11-09: the issue list doc-health reads, past 100 issues).
   Ask for each page by number instead (`...?per_page=100&page=2`), as `work_items.issue_list` does.
+- **Force-push or delete a remote ref.**
+  The auto mode's permission classifier refused `git push --force-with-lease` to #739's branch after a rebase, so a pushed branch takes a merge of `origin/main` instead (2026-11-18).
+  The proxy refuses ref deletes: the probe branch `ccr-785727a5-kue4ei-probe` could not be deleted (2026-11-18).
+- **Arm auto-merge on every PR.**
+  The MCP `enable_pr_auto_merge` armed PRs whose checks were pending, but refused one whose merge state was `clean` ("merge directly") and one that was `unstable` from a stale cancelled `PR title` check run (#744, 2026-11-18).
 - **Merge a stacked pull request.**
   GitHub's REST merge endpoint answers a stacked PR with 403 (`Merging stacked PRs via this endpoint is not supported`), it refuses auto-merge on one, and `gh stack` needs GraphQL.
   The owner runs `gh stack merge` (2026-11-08, #302 and #303).
 - **Install a newer `gh`.**
   The image's `gh` is 2.89.0; Ubuntu's apt package is 2.45.0, older, and the proxy refuses `cli.github.com` and GitHub's release downloads (2026-11-08).
   A newer `gh` would still meet the GraphQL refusal above.
+
+## Container limits
+
+A cloud session's container has 4 CPUs and 15 GB RAM; it had about 28 GB of free disk at session start (11:02 UTC, 2026-11-18), 22 GB at 11:13 and 11 GB at 12:13 (`df /`: 29 GB used).
+Each worktree builds its own `target/`: about six Rust-building subagents plus a Mesa build in one container reached load 18, so run at most about two Rust builds at once there and give anything heavier a child session of its own ([`running-unattended`](../.agents/skills/running-unattended/SKILL.md)).
 
 ## Rotating the token
 
