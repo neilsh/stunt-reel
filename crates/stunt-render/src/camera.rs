@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn straight_down_and_straight_up_authored_views_are_finite() {
-        for dy in [-1000.0_f32, 1000.0] {
+        for dy in [-1000.0f32, 1000.0] {
             for roll_radians in [0.0, 0.3] {
                 let mut camera = CameraController::default();
                 camera.set_authored_transform(ViewCamera {
