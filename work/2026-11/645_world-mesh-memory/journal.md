@@ -93,3 +93,23 @@
   props 8.7x) and its lavapipe render's peak 3.9x, which is consistent with the world mesh being
   why its render no longer costs what CTRY's does; no breakdown was taken at `48f5d49`.
 - **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+
+## 2026-11-18: where a CTRY render's memory goes on lavapipe
+
+- **Question**: The entries above break down LOCATION's peak; where does CTRY's go, whose world is
+  20,044 vertices?
+- **Method**: the same cloud session's lavapipe and flags as the entries above, `main` `9c9c6a5`
+  (after the mesh is freed), release build. A temporary probe, not committed, printed `VmRSS` and
+  `VmHWM` from `/proc/self/status` on entering `run_headless` (scene built), after
+  `Renderer::offscreen` and after `release_world_mesh`; a shell loop sampled `VmHWM` every 0.2 s.
+  CTRY's captured ticks 14-1333 once, with `CTRY.ALL` from the `vault-ctry` capture; LOCATION
+  ticks 12-120 once, as a control.
+- **Result**: CTRY, in KiB: scene built 9,400; renderer open 108,872 (+99,472, the device opened
+  and the shapes, sprites and world uploaded); after the release 108,076; peak 147,396, so the
+  frames add 38,524 over the renderer's open. LOCATION: scene built 308,008 RSS; renderer open
+  703,048 RSS with `VmHWM` 766,252; after the release 444,440; peak 766,252, all of it reached by
+  the time the renderer is open.
+- **Verdict**: control. CTRY's peak is about 144 MiB: 9 MiB the scene, 97 MiB opening the device and
+  uploading to it, 38 MiB the frames that follow; its world adds nothing a release could free.
+  LOCATION's 748 MiB peak matches the freed figure above.
+- **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
