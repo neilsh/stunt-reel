@@ -2,7 +2,7 @@
 title: "A LOCATION render peaks at 1.1 GB and nothing says where it goes"
 started: 2026-11-18
 issue: 645
-outcome: ""
+outcome: "A headless render frees the world mesh's CPU copy once it has uploaded it (FilmScene::release_world_mesh, #706), lowering LOCATION's lavapipe peak; the lavapipe breakdown so far is in research/parity/evidence-limits.md section 3, its remainder is #708, and the GPU's memory and byte-identity are #707."
 ---
 
 # A LOCATION render peaks at 1.1 GB and nothing says where it goes
