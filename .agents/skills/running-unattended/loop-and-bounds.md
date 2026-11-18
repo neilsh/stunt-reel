@@ -73,7 +73,7 @@ The quality guard is that no merged PR needs a fix or revert afterwards.
 ## Shutdown
 
 1. In a cloud session, a Shutdown at the context limit first waits until no worker is in flight, or until every in-flight item has a pushed branch (a rule 5 item only after its review and push), and releases any other item (`Released claim: <why>.`, `in-progress` back to `ready-for-agent`), listing it under **Needs you**, since its unpushed commit and body file are lost with the container.
-   Then confirm no subagent or background task is still running, except a worker whose item has a pushed branch, and run `mise run queue` once for the PRs you armed.
+   Then confirm no subagent or background task is still running (in a cloud session, except a worker whose item has a pushed branch; on local-windows, wait until none is, because step 2 reaps worktrees), and run `mise run queue` once for the PRs you armed.
    One no longer listed has merged or been closed (`gh pr view <n> --json state` says which: **Merged**, or **Needs you**); `armed, checks pending` goes under **Opened** as "auto-merge armed"; and any other PR you armed that is still listed goes under **Needs you**.
 2. On local-windows, run `mise run reap -- --yes` from the primary checkout.
 3. End with a summary grouped as: **Merged**, **Draft / WIP**, **Opened**, **Filed** (with labels), **Needs you** (item, reason, decision), and **Skipped**, plus the environment, start/end free disk space on local-windows, and any environment friction.
