@@ -51,17 +51,20 @@ A failed setup script should also keep that environment out of the cache (unveri
 
 ## Building Mesa in a cloud session
 
-A session fetched Mesa's source and built lavapipe from it on 2026-11-18 ([#702](https://github.com/neilsh/stunt-reel/issues/702), PR [#749](https://github.com/neilsh/stunt-reel/pull/749)); the commands and counts are in its journal, `work/2026-11/702_mesa-interp-fix-build/journal.md`.
+A session fetched Mesa's source and built lavapipe from it on 2026-11-18 ([#702](https://github.com/neilsh/stunt-reel/issues/702), PR [#749](https://github.com/neilsh/stunt-reel/pull/749)).
 Whether a session may build a downloaded source tree is [#767](https://github.com/neilsh/stunt-reel/issues/767)'s question, not settled here.
 
-- **Source:** the tag's archive from the trusted `gitlab.freedesktop.org`, `/mesa/mesa/-/archive/<tag>/mesa-<tag>.tar.gz` with the tag repeated in the file name, so `mesa-25.2.8` unpacks as `mesa-mesa-25.2.8` (HTTP 200, 67,863,192 bytes).
-  The release tarball hosts did not answer: `archive.mesa3d.org` returned HTTP 403, `mesa.freedesktop.org` a 403 on the proxy's CONNECT, and GitHub's `mesa3d/mesa` archive a 403.
-- **`meson`:** from PyPI in a venv, with `mako` and `pyyaml`, because Ubuntu's `meson` is older than the `mesa-25.2.8` tag needs.
+- **Source:** the tag's archive from the allowed `gitlab.freedesktop.org`, `/mesa/mesa/-/archive/<tag>/mesa-<tag>.tar.gz` with the tag repeated in the file name, so `mesa-25.2.8` unpacks as `mesa-mesa-25.2.8` (HTTP 200, 67,863,192 bytes).
+  The proxy refused CONNECT to the release tarball hosts `archive.mesa3d.org` and `mesa.freedesktop.org` (403; neither is on the list), and GitHub's `mesa3d/mesa` archive also returned 403.
+- **`meson`:** from PyPI in a venv, with `mako` and `pyyaml`, because the `mesa-25.2.8` tag's `meson.build` asks for `meson_version >= 1.4.0` and Ubuntu 24.04's `meson` is 1.3.2.
   Put the venv first on `PATH`: with the system `python3` first, setup stops at "Python (3.x) mako module >= 0.8.0 required".
-- **apt:** `flex` and `glslang-tools` were missing; `bison`, `ninja`, `libexpat1-dev` and `zlib1g-dev` were already installed.
-- **Configure and build:** the options and the one `ninja` target that builds lavapipe alone (`src/gallium/targets/lavapipe/libvulkan_lvp.so`) are in that journal's second entry; the build took about 5 minutes on 3 of the 4 shared cores.
-  To run it, point `VK_DRIVER_FILES` and `VK_ICD_FILENAMES` at an ICD JSON naming that library, and check the driver info reads the built version, not Ubuntu's package.
+- **apt:** the session installed `llvm-20-dev`, `libdrm-dev`, `flex` and `glslang-tools`, and in the same command `libclang-20-dev` and `libclang-cpp20-dev` (the session's apt history; whether lavapipe needs those two is unverified); `bison`, `pkg-config`, `ninja-build`, `libexpat1-dev` and `zlib1g-dev` were already installed.
+  Meson has to find `llvm-config-20` (LLVM 20.1.2, as Ubuntu's `mesa-vulkan-drivers` 25.2.8 uses); the image's own LLVM 18 is not what the build linked.
+- **Configure and build:** the options and the one `ninja` target that builds lavapipe alone (`src/gallium/targets/lavapipe/libvulkan_lvp.so`) are in the journal entry below; the build took about 5 minutes on 3 of the 4 shared cores.
+  To run it, point `VK_DRIVER_FILES` and `VK_ICD_FILENAMES` at an ICD JSON naming that library, and check that the driver info reads `Mesa 25.2.8 (LLVM 20.1.2)`, not the package's `Mesa 25.2.8-0ubuntu0.24.04.5`.
 - **Keep it out of the checkout:** the source and build directories lived under `/tmp`; commit nothing from them.
+
+_Source: [stock and patched builds](../work/2026-11/702_mesa-interp-fix-build/journal.md#2026-11-18-stock-and-patched-lavapipe-builds-of-mesa-2528)._
 
 ## The SessionStart hook
 
