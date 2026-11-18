@@ -107,6 +107,7 @@ Use it to check a new or resumed cloud environment.
 
 A cloud session runs dosbox-automation, so `capture-ref` and `make-all` work there (#293).
 Its output is working output only: a cloud capture or archive is never promoted to a parity reference.
+`capture-video` and `probe-light` launch the emulator through the same code but are untested in a cloud session.
 
 - **Pin.**
   `mise.toml` pins the release's `linux-x86_64` tarball through mise's `http` backend, by URL and checksum, beside the Windows zip's `github` pin.
@@ -116,7 +117,9 @@ Its output is working output only: a cloud capture or archive is never promoted 
   On Linux with neither `DISPLAY` nor `WAYLAND_DISPLAY` set, the launcher sets `SDL_VIDEODRIVER=offscreen` and `SDL_AUDIODRIVER=dummy` unless they are already set (`headless_env` in `python/stunt_reel/tac/automation.py`).
   That boots PLAYONE and MAKEONE to Mode 13h with no Xvfb (2026-11-18).
 - **The data root must lie outside `/root`.**
-  dosbox-automation's mount policy refuses any mount under `/root` as a system path, and `mount_allowed_bases` does not lift it: on 2026-11-18 a guest `echo hi > c:\out.txt` wrote nothing when C: was a directory under `/root/stunt-reel.data`, and wrote `OUT.TXT` when it was under `/tmp` or `/home/user`.
+  dosbox-automation's mount policy refuses a mount under `/root` as a system path: on 2026-11-18 a guest `echo hi > c:\out.txt` wrote nothing when C: was a directory under `/root/stunt-reel.data`, and wrote `OUT.TXT` when it was under `/tmp` or `/home/user`.
+  The refusal suggests `mount_allowed_bases` in the primary config; `mount_allowed_bases = /root/stunt-reel.data` in the `-conf` file's `[webserver]` section still wrote nothing, and in `[dosbox]` was reported as no such setting.
+  Whether another config file lifts it is untested.
   With `STUNT_DATA_ROOT=/root/stunt-reel.data` a capture launches, logs `MOUNT: ... refused by the mount policy: system path`, and hangs at the DOS prompt.
   So the environment's `STUNT_DATA_ROOT` names a path such as `/home/user/stunt-reel.data`.
 - **Music files.**
@@ -124,7 +127,8 @@ Its output is working output only: a cloud capture or archive is never promoted 
   PLAYONE and MAKEONE ran CTRY on the Patch 3 tree, the build its `references.toml` row names; whether the unpatched tree, which lacks the `.ESS` files, boots is untested.
 - **Checked on CTRY (2026-11-18).**
   `mise run make-all -- --film corpus/stisldem/VAULT/CTRY.FLM --out <dir>` wrote a `CTRY.ALL` byte-identical to the pinned one (sha256 `cb58d95b…`, the `all_sha256` in `references.toml`) in 24 s.
-  `mise run capture-ref -- --film corpus/stisldem/VAULT/CTRY.FLM --out <dir> --max-frames 40` captured 40 frames in 57 s; that session's `captures/vault-ctry/` held no `frames/`, so they were not compared with a pinned capture.
+  `mise run capture-ref -- --film corpus/stisldem/VAULT/CTRY.FLM --out <dir> --max-frames 40` captured 40 frames in 57 s; its 40 `tick_*.idx` and 40 `palettes_*.json` files are byte-identical (`cmp`) to the same-named files of the pinned capture in `captures/vault-ctry/frames/frames/`.
+  Only those first 40 kept frames were compared.
 
 ## What a cloud session cannot do
 

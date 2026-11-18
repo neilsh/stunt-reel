@@ -6,7 +6,7 @@ DOSBox-X (`debug-x`) does not: its pinned `dosbox-x-v2026.10.01` release ships n
 
 ## Why this is out of scope
 
-Breakpoint sessions are rare, and the primary machine runs them.
+No cloud task has asked for `debug-x` so far, and the primary machine runs it.
 
 ## Reconsider when
 
