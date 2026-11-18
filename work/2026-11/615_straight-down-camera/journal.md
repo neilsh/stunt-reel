@@ -4,7 +4,7 @@
 
 **Question**: which up vector gives `BALLOON` ticks 601 to 796, where the authored camera looks straight down, the capture's orientation (#615)?
 
-**Method**: `mise run frame -- --film balloon --ticks 606 --software-only` on lavapipe (llvmpipe) with a temporary `TMP_UP` override of the up vector when the view direction is parallel to `+Y`, once each for `(0,0,-1)`, `(0,0,1)`, `(1,0,0)` and `(-1,0,0)`; then `mise run parity -- --software-only` on a clean `crates/` (tree `f9b5b77`) and `mise run parity-repin -- --class lavapipe`.
+**Method**: `mise run frame -- --film balloon --ticks 606 --software-only` on lavapipe (llvmpipe) with a temporary `TMP_UP` override of the up vector when the view direction is parallel to `+Y`, once each for `(0,0,-1)`, `(0,0,1)`, `(1,0,0)` and `(-1,0,0)`; then `mise run parity -- --software-only` on a clean `crates/` (tree `16fa249`) and `mise run parity-repin -- --class lavapipe`.
 The override was removed before the commit.
 
 **Result**: `+Z` matches the capture's turn at tick 606 (gondola right of the envelope, tree upper left); `-Z` is the same picture turned half a turn, `+X` and `-X` a quarter turn either way. [picture](images/balloon-606-after-vertical-up.png), [tick 694](images/balloon-694-after-vertical-up.png).
