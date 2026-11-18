@@ -1,0 +1,18 @@
+# Journal
+
+## 2026-11-18: Who paints 224 to 226 in the captures
+
+**Question**: on `traintnl` and `bomb`, the capture pixels at 224 to 226 that lie on our geometry (all 19,850 on `traintnl`, 105,219 of 164,739 on `bomb`; [#616](https://github.com/neilsh/stunt-reel/issues/616)): a shape that paints those indices, or our geometry drawn where the capture shows sky? And does that support widening the scorer's capture sky from 227..=238 to 224..=238?
+
+**Method**: capture planes only, no render. For each frame of the seven pinned references (`<data root>/captures/vault-<film>/frames`), rows 0 to 184, every pixel at 224 to 226, with its tick, row and column ranges. Pictures of `traintnl` ticks 199 and 727, `bomb` ticks 1915 and 2190, `balloon` tick 243 and `location` tick 1134 drawn through each frame's own palette, with 224 to 226 marked, looked at (not committed). Then a positional test: a 224 to 226 pixel counts as sky-connected when its 4-connected run of 224 to 226 pixels reaches row 0 or touches a 227 to 238 pixel. Counts are over every captured frame, as the issue's are. Scripts in the session scratchpad (not committed).
+
+**Result**:
+
+* *`traintnl`: a shape paints 224.* All 19,850 pixels are index 224; 225 and 226 never occur. Ticks 727 to 815 (9 frames) hold 18,144 of them, 2,016 per frame at rows 141 to 172, columns 129 to 191: a blue rectangle on a dark red wall under a red roof, in a shot whose highest sky band is 228, not 224. The other 1,706 sit on 64 frames in patches of 1 to 199 pixels; the largest, at tick 199, are the windows of the train's red rear car. Palette entry 224 is `(12, 162, 255)` there, the zenith blue.
+* *`bomb`: a shape paints 224, and the zenith sky is 226.* The 105,219 pixels at 224 lie on 55 frames, ticks 1497 to 3444, largest at tick 1915 (12,244 pixels, rows 44 to 171): a round blue emblem lettered "SIPD" on a building wall, shrinking as the camera pulls away. Ticks 1915 to 2256 (32 frames) hold 104,958 of the 105,219; the other 261 sit on 23 frames in patches of 1 to 66 pixels, not looked at. The 59,520 at 226 are the top five rows (1,600 pixels a frame) of 37 frames at ticks 606 to 1002, and row 0 at tick 1013, above 227: zenith sky. The 105,219 at 224 equal the issue's count on our geometry, which fits the 226 sky falling on our sky (not checked pixel by pixel).
+* *Other films.* `location`'s helicopter windows are 225 and 226 (5,686 pixels away from the sky, for example tick 1134); `ctry` holds 473 such pixels and `intro` 204; `land`'s 76 all reach the sky.
+* *The positional test.* Sky-connected / not: `balloon` 1,104,344 / 19,143; `bomb` 59,520 / 105,219 (the split above, exactly); `traintnl` 132 / 19,718; `location` 1,469 / 5,686; `intro` 1,023 / 204; `ctry` 0 / 473; `land` 76 / 0. It fails on `balloon` tick 243, which holds 16,995 of that film's 19,143: the balloon cuts the lower sky (225 and 226) off from row 0 and no 227 to 238 pixel borders it, yet it is sky.
+
+**Verdict**: control (attribution; scorer unchanged). The pixels on our geometry that were looked at are shape paint, not our geometry drawn over sky: `traintnl`'s rectangle and rear-car windows (18,343 of its 19,850; the other 1,507 were not looked at) and `bomb`'s emblem (104,958 of its 105,219 at 224). An index band that reaches 224, as `balloon`'s zenith requires, cannot tell the zenith sky from that paint, so widening `CAPTURE_SKY_INDICES` to 224..=238 would count a wall rectangle and an emblem as sky; it stays 227..=238 and no expected `iou` changes. A positional sky rule is a follow-up, [#718](https://github.com/neilsh/stunt-reel/issues/718).
+
+**Lives in**: [`method.md`](../../../research/parity/method.md) section 2.0 and [`attribution.md`](../../../research/parity/attribution.md) section 7.

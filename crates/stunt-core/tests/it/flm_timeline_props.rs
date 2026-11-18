@@ -50,6 +50,7 @@ fn actor(actor_id: u32) -> impl Strategy<Value = ActorTransform> {
             position_meters,
             state_mask,
             casts_shadow: false,
+            view: false,
             joint_angles_bam: Vec::new(),
         },
     )

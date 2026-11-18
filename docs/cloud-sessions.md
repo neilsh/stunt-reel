@@ -12,7 +12,7 @@ In the Cloudflare dashboard, R2, Manage API tokens, create an API token with **O
 
 In claude.ai, the cloud environment for this repo is `stunt-reel-cloud`:
 
-- **Environment variables:** `R2_ACCOUNT_ID`, not a secret; `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`, the token's key pair; and `STUNT_DATA_ROOT`, an absolute path outside the checkout, such as `/root/stunt-reel.data`.
+- **Environment variables:** `R2_ACCOUNT_ID`, not a secret; `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`, the token's key pair; and `STUNT_DATA_ROOT`, an absolute path outside the checkout and outside `/root`, such as `/home/user/stunt-reel.data` ([Running the emulator](#running-the-emulator)).
   Anyone who uses the environment, and anything in a session, can read the key pair; it reads only the one bucket.
   Also `MISE_AUTO_INSTALL=false` and `MISE_USE_VERSIONS_HOST=false`, as CI sets them: otherwise the first `mise run` in a session installs every tool `mise.toml` declares, compiling the cargo ones from source.
 - **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`, and `gitlab.freedesktop.org` for reading Mesa's source and issues when a render differs on lavapipe ([#265](https://github.com/neilsh/stunt-reel/issues/265)); a cloud session reached it on 2026-11-18 (HTTP 200 for a raw file on Mesa's `main`).
@@ -25,7 +25,7 @@ In claude.ai, the cloud environment for this repo is `stunt-reel-cloud`:
 
 The setup script is the claude.ai field; the *cloud setup* is [`.claude/cloud-setup.sh`](../.claude/cloud-setup.sh), the checkout's script that does the work.
 The field holds only a bootstrap, so a change to the setup is reviewed and versioned with the repo, and no copy here can drift from it.
-The cloud setup installs mise at a pinned, checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs (not the DOSBox tool) and the Python environment, then lavapipe as CI does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)).
+The cloud setup installs mise at a pinned, checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs, dosbox-automation's Linux build and the Python environment, then lavapipe as CI does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)).
 It fetches no game archives: the setup script runs before the environment variables are set, so the hook fetches them.
 Each step skips work already done, and it needs root only to replace mise or install the apt packages.
 It refuses to run without `--cloud`, which only the bootstrap and the hook pass, or on anything but Linux x86_64 with `dpkg`; it does not detect a container, so `--cloud` on a developer machine would replace that machine's mise.
@@ -102,6 +102,33 @@ Use it to check a new or resumed cloud environment.
    A PR that promotes a reference in `research/parity/references.toml` repacks `captures`; a test fails until it does.
 3. Commit `manifests/cloud-assets.toml`, then `mise run cloud-assets -- upload [ARCHIVE...]`.
    A key names its content, so old commits keep fetching theirs; never delete an object.
+
+## Running the emulator
+
+A cloud session runs dosbox-automation, so `capture-ref` and `make-all` work there (#293).
+Its output is working output only: a cloud capture or archive is never promoted to a parity reference.
+`capture-video` and `probe-light` launch the emulator through the same code but are untested in a cloud session.
+
+- **Pin.**
+  `mise.toml` pins the release's `linux-x86_64` tarball through mise's `http` backend, by URL and checksum, beside the Windows zip's `github` pin.
+  The proxy passes GitHub release downloads but answers the releases API, which the `github` backend calls, with 403 (2026-11-18).
+  The tarball's `ldd` lists no missing library on the cloud image.
+- **Headless.**
+  On Linux with neither `DISPLAY` nor `WAYLAND_DISPLAY` set, the launcher sets `SDL_VIDEODRIVER=offscreen` and `SDL_AUDIODRIVER=dummy` unless they are already set (`headless_env` in `python/stunt_reel/tac/automation.py`).
+  That boots PLAYONE and MAKEONE to Mode 13h with no Xvfb (2026-11-18).
+- **The data root must lie outside `/root`.**
+  dosbox-automation's mount policy refuses a mount under `/root` as a system path: on 2026-11-18 a guest `echo hi > c:\out.txt` wrote nothing when C: was a directory under `/root/stunt-reel.data`, and wrote `OUT.TXT` when it was under `/tmp` or `/home/user`.
+  The refusal suggests `mount_allowed_bases` in the primary config; `mount_allowed_bases = /root/stunt-reel.data` in the `-conf` file's `[webserver]` section still wrote nothing, and in `[dosbox]` was reported as no such setting.
+  Whether another config file lifts it is untested.
+  With `STUNT_DATA_ROOT=/root/stunt-reel.data` a capture launches, logs `MOUNT: ... refused by the mount policy: system path`, and hangs at the DOS prompt.
+  So the environment's `STUNT_DATA_ROOT` names a path such as `/home/user/stunt-reel.data`.
+- **Music files.**
+  The corpus archive leaves out `RES/MUSIC?.ESS`, `.XMI`, `.XMM` and `.XMP` and holds `MUSIC1.XMA` and `MUSIC2.XMA` (`manifests/cloud-assets.toml`); the Patch 3 tree also holds `MUSIC1.ESS` and `MUSIC2.ESS` (2026-11-18).
+  PLAYONE and MAKEONE ran CTRY on the Patch 3 tree, the build its `references.toml` row names; whether the unpatched tree, which lacks the `.ESS` files, boots is untested.
+- **Checked on CTRY (2026-11-18).**
+  `mise run make-all -- --film corpus/stisldem/VAULT/CTRY.FLM --out <dir>` wrote a `CTRY.ALL` byte-identical to the pinned one (sha256 `cb58d95b…`, the `all_sha256` in `references.toml`) in 24 s.
+  `mise run capture-ref -- --film corpus/stisldem/VAULT/CTRY.FLM --out <dir> --max-frames 40` captured 40 frames in 57 s; its 40 `tick_*.idx` and 40 `palettes_*.json` files are byte-identical (`cmp`) to the same-named files of the pinned capture in `captures/vault-ctry/frames/frames/`.
+  Only those first 40 kept frames were compared.
 
 ## What a cloud session cannot do
 

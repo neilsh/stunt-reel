@@ -90,6 +90,8 @@ fn test_oracle_intro_trajectory_fixture() {
     assert_eq!(records[0].actors[0].position_meters, [0.0, 10.0, 0.0]);
     // The fixture predates `casts_shadow`, so its serde default must fill it (changing-seam-contracts skill).
     assert!(!records[0].actors[0].casts_shadow);
+    // Nor `view`, so its one actor is not the view slot.
+    assert!(!records[0].actors[0].view);
     assert_eq!(records[0].audio_cues.len(), 1);
     assert_eq!(records[0].audio_cues[0].sample_name, "ENGINE.VOC");
 
