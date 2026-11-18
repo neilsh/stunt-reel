@@ -49,7 +49,11 @@ _SIDEBAR_LABELS = {"INDEX": "Index", "README": "About this folder"}
 _ADR_STEM = re.compile(r"(\d{4})-")
 _MATH_FENCE = "$$"
 _TIERS_SECTION = re.compile(r"^### 2\.4 .*?(?=^#{1,3} |\Z)", re.DOTALL | re.MULTILINE)
-_TIER_BULLET = re.compile(r"^\s*[*-]\s+\*\*`\[([^\]\n]+)\]`\*\*:\s*(.+?)\s*$", re.MULTILINE)
+#: A tier's bullet: group 1 its indent, 2 its name, 3 its meaning with the continuation lines, those
+#: indented deeper than the bullet that start no bullet of their own.
+_TIER_BULLET = re.compile(
+    r"^( *)[*-] +\*\*`\[([^\]\n]+)\]`\*\*: *(.+(?:\n\1 +(?![*-] ).+)*)", re.MULTILINE
+)
 
 
 @dataclass(frozen=True)
@@ -85,7 +89,10 @@ def evidence_tiers(spec: str) -> list[dict[str, str]]:
     section = _TIERS_SECTION.search(spec)
     if not section:
         return []
-    return [{"name": m[1], "meaning": _plain(m[2])} for m in _TIER_BULLET.finditer(section[0])]
+    return [
+        {"name": m[2], "meaning": _plain(" ".join(m[3].split()))}
+        for m in _TIER_BULLET.finditer(section[0])
+    ]
 
 
 def link_target(target: str, source: str, site: Site, images: set[str]) -> str:
