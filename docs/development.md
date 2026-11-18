@@ -155,3 +155,9 @@ Running a tool outside a task is in [toolchain § Running individual commands](t
 The Python dependency bar is in [toolchain § Python dependencies](toolchain.md#python-dependencies).
 
 Renovate and the pin, floor and target conventions are in [toolchain § Dependency updates](toolchain.md#dependency-updates).
+
+### Markdown line breaks
+
+Start each sentence on its own line.
+Never break inside inline math, or inside a link or code span: the link checker reads those only to a line end.
+Exceptions and why: [ADR 0051](adr/0051-markdown-breaks-lines-at-sentences.md).

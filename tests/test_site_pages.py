@@ -302,6 +302,26 @@ def test_evidence_tiers_of_the_real_spec_match_the_shared_vocabulary() -> None:
     assert all(t["meaning"] for t in evidence_tiers(spec))
 
 
+def test_evidence_tiers_joins_a_meaning_split_across_lines() -> None:
+    spec = (
+        "### 2.4 Evidentiary Tiers\n\n"
+        "* **Tiers:**\n"
+        "  * **`[Hypothesis]`**: Proposed from reasoning.\n"
+        "    Never cite as fact.\n"
+        "  * **`[Established]`**: Seen in the binary.\n"
+    )
+    assert [t["meaning"] for t in evidence_tiers(spec)] == [
+        "Proposed from reasoning. Never cite as fact.",
+        "Seen in the binary.",
+    ]
+
+
+def test_evidence_tiers_of_the_real_spec_keep_every_sentence() -> None:
+    spec = (Path(__file__).resolve().parent.parent / "docs" / "SPEC.md").read_text(encoding="utf-8")
+    meanings = {t["name"]: t["meaning"] for t in evidence_tiers(spec)}
+    assert meanings["Hypothesis"].endswith("Never cite as fact.")
+
+
 _MATH_CASES = [
     ("$$x = 1$$\n", "$$\nx = 1\n$$\n"),
     ("$$M = \\begin{b}\na\n\\end{b}$$\n", "$$\nM = \\begin{b}\na\n\\end{b}\n$$\n"),
