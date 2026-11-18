@@ -255,9 +255,13 @@ The last column is the `emu_frame` of the page at film tick 1,333, the emulator 
   So the pages track how late the film runs, which grows with the chunks and bytes an archive adds.
 
 That the archive's load time sets when the film starts against the emulator's frame clock, and so which ticks get drawn and what is drawn at them, is a `[Hypothesis]`: it rests on one film's captures, and no capture timed the load or the film clock's start.
-Where `PLAYONE` loads the archive, and why its start's phase changes the drawing, is [#609](https://github.com/neilsh/stunt-reel/issues/609).
 
 _Source: [2026-11-16: content does not count; chunk count, bytes and ids do once the film runs later](../../work/2026-11/482_archive-property-pages/journal.md#2026-11-16-content-does-not-count-chunk-count-bytes-and-ids-do-once-the-film-runs-later)._
+
+The code fits it in part: `PLAYONE` passes every chunk of the archive through its chunk cache before the film starts, each chunk costing a scan of the id table that grows with the chunk count, and the film clock counts from the first timer tick after the load ([`film-load.md`](../playone-exe/film-load.md) sections 1 to 4, read statically).
+The CPU work it counts does not account for the 63-chunk 4 MB arm, and why a later start changes what is drawn at a tick is still open there.
+
+_Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-start/journal.md#2026-11-18-the-loader-preloads-every-chunk-and-the-film-clock-starts-on-the-next-timer-tick)._
 
 ---
 
@@ -301,6 +305,7 @@ _Source: [2026-11-16: content does not count; chunk count, bytes and ids do once
    Open: what the changed sound files and the dropped item hold, and whether the selection differs for any film.
 5. Up to what size does `PLAYONE` play an archive padded with unused chunks?
    It played own archives padded to about 4.2 MB with some 2,500 to 2,600 inert chunks in ids `0xF001` or `0x5B01` upward (section 7.2), drawing some pages differently; larger archives are untested.
+   The id index shares 10,000 bytes with the cache nodes, so an archive whose index needs more than that overruns it ([`film-load.md`](../playone-exe/film-load.md) section 2).
 6. Do the 205 archives with add-on chunks rebuild once their add-on `.RES` files are found?
 7. What is left of `--game`'s extra cost now that only drawn shapes are uploaded (section 7.1)?
    Median one-tick renders still take about 0.3 s (CTRY) and 1.0 s (INTRO) longer than from an archive timed on the earlier commit, possibly from decoding all 2,516 shapes, untested.
@@ -308,6 +313,7 @@ _Source: [2026-11-16: content does not count; chunk count, bytes and ids do once
    A per-frame cost needs whole-film timings on an unloaded machine.
 8. Why does a larger archive change what `PLAYONE` draws at a film tick (section 7.2)?
    Narrowed by [#482](https://github.com/neilsh/stunt-reel/issues/482): no single property decides it and content does not count; in 13 CTRY captures pages changed exactly when the film's frames fell later, which more chunks, more bytes or other ids bring about once they add enough (between 300 and 2,529 one-byte chunks; bisecting the thresholds is [#611](https://github.com/neilsh/stunt-reel/issues/611)).
-   Open ([#609](https://github.com/neilsh/stunt-reel/issues/609)): what the loader does per chunk, what quantises the film's start, and why the start's phase changes the drawing; a live log of the global tick `DS:0x22B8` and the emulator frame at the film clock's start would test the load-time inference.
+   [#609](https://github.com/neilsh/stunt-reel/issues/609) read the loader: every chunk is preloaded, at a per-chunk cost, and the film clock starts on the first timer tick after the load ([`film-load.md`](../playone-exe/film-load.md)).
+   Open there: whether that tick is the quantum, what is stepped per drawn frame, and why the 63-chunk 4 MB arm starts later; a live log of the global tick `DS:0x22B8` and the emulator frame at the film clock's start would test the load-time inference.
 
 _Found 2026-11-03; see the [parity log](../../work/2026-10/parity-log/log.md)._
