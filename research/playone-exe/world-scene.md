@@ -203,6 +203,21 @@ The run shows only that they were drawn in that shot, not where.
 The shape is drawn after the ground leaf it lies on, because the walk paints in order.
 In the capture at ticks 290 and 301, `0xC4`, the colour of `SCENERY2` #157, is 52-57% of the 3D view.
 
+### 3.1 `LOCATION`'s stadium: ground, then plaza, then infield
+
+`[Established]` for the tree paths, the shapes' bytes and the lift's instructions (unpatched image, the `vault-location` `LOCATION.ALL`); the infield's heights are read through our VM's decode of `0x0265`.
+_Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
+
+The stadium `0x0265` (`SP_LEAF` `0x6F54`, tree `(-7128, 0, 2560)`) opens with its infield, an 8-gon in colour 169.
+In plan it lies inside the plaza `0x064A` (`SP_LEAF` `0x6C02`, tree `(-7040, 0, 2624)`), a flat 10-gon in colour 14 about 384 m across, which lies inside `MAP.BIN` record 1 (colour 195, height 0, leaf `0x036C`).
+`SP_LEAF`'s lift (`0x2219..0x2235`, and `0x2160` for a stand-in) forms `-ground_y_offset << (16 - scale_index)` as one 16.16 value, so it is exact ([`scenery.md`](../formats/auxiliary/scenery.md) section 3.3).
+With it the infield lies at `(2993 - 2995) / 256 = -0.0078125` m and the plaza at `(158 - 159) / 32 = -0.03125` m: neither is coplanar with the ground, and the infield is 23.4375 mm above the plaza.
+
+Heights do not decide the order.
+The two props' paths part at `SP_2NODE` `0x6BFC`, the plaza in its `ptr` and the stadium (with its stand-ins `0x026A`, `0x026B`) in its `next` chain, and record 1 is in the root `SP_2NODE`'s `ptr` subtree, both props in its `next`.
+`SP_2NODE` visits `ptr` then `next` with no eye test (`0x1EC0`, [`world-scene-residuals.md`](world-scene-residuals.md) section 6.6), so the order does not depend on the eye: `PLAYONE` paints the ground, then the plaza, then the infield over both.
+Our render's handling of the three is section 6.8 of [`world-scene-residuals.md`](world-scene-residuals.md).
+
 ## 4. The dispatch slots patch the stream themselves
 
 A search for `26 C7 44 FE` finds 108 consecutive 9-byte slots at image `0x8240..0x860B` (paragraph `0x824`), plus two handler-side patches at `0x92CD` (op `0x15F`, writes `0x1241`) and `0x93DD`.
@@ -260,6 +275,10 @@ _Source: [2026-10-23: the ground ops in CTRY.ALL](../../work/2026-11/distill-wor
 * **Another node, table or shape that draws those patches** (section 2.1): their polygon occurs in no file but `MAP.BIN`, the image included, while the same search finds all 158 drawn records there; no `OP_TAP` operand in the image, the `RES` files or any `.ALL` names one of their anchors.
 * **A field of the record that marks those patches** (section 2.1): their `pos` is `0x00FF`, as it is for 26 drawn records.
   What sets them apart is that nothing links to their chains, not a field of their own.
+* **`LOCATION`'s infield coplanar with the ground, or index 14 under it a ground leaf** (section 3.1): it lies 7.8125 mm below height 0, and the 14 is the plaza prop `0x064A`; the `MAP.BIN` polygon there is record 1, colour 195.
+* **An eye-dependent order between the plaza and the stadium** (section 3.1): they part at an `SP_2NODE`, not an `SP_XPLANE` or `SP_ZPLANE`.
+* **A lift truncated to whole metres** (section 3.1): `SP_LEAF` keeps the fraction in the low word.
+  _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
 * **A leaf of `PLAYONE`'s tree that `MAP.BIN` lacks** (section 2.1, open question 1): `mise run scene-ground` finds no tree-only polygon; all 158 are `MAP.BIN` records.
 * **The earlier memory scans** (2026-10-23/24): they looked for a display-list stream of `0x995C`/`0x9A24` words in conventional memory.
   The ground was never in that form, so "no resident list" was true but beside the point.
