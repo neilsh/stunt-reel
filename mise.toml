@@ -292,7 +292,7 @@ description = "Pair two builds' functions with an iced-x86 decode and map offset
 run = "uv run python python/scripts/pair_builds.py"
 
 [tasks.re-tool]
-description = "Static reading of PLAYONE.EXE: disasm <start> <end> | xref <imm16> [--code-end 0xD510] | xref <exe> --string TEXT | --offset 0x22C2 --ds 0x163D | vm-handler <opcode> [--vm-seg 0x824] [--work-seg 0x15D4]; disasm, vm-handler and xref <imm16> take --image F (mise run re-tool -- disasm 0x7571 0x75DB)"
+description = "Static reading of PLAYONE.EXE: disasm <start> <end> | xref <imm16> [--code-end 0xD510] | xref <exe> --string TEXT | --offset 0x22C2 --ds 0x163D | callers <offset> [--code-end 0xD510] (near call/jmp/jcc only) | vm-handler <opcode> [--vm-seg 0x824] [--work-seg 0x15D4]; disasm, callers, vm-handler and xref <imm16> take --image F (mise run re-tool -- disasm 0x7571 0x75DB)"
 run = "uv run python python/scripts/re_tool.py"
 
 [tasks.scene-ground]

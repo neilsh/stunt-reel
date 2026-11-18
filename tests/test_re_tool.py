@@ -135,3 +135,56 @@ def test_xref_passes_a_file_and_its_options_to_the_string_search(
     argv = ["xref", str(img), "--offset", "0x8124", "--ds", "0x100", "--context", "0"]
     assert _load().main(argv) == 0
     assert "DS 0x0100 (--ds): offset 0x8124, 1 reference(s)" in capsys.readouterr().out
+
+
+def _callers_image() -> bytes:
+    """Near call, jmp and jcc to 0x0060, plus a call and a jmp elsewhere and a far call."""
+    image = bytearray(0x200)
+    at = 0x40
+    for opcode, target in ((0xE8, 0x60), (0xE9, 0x60), (0x74, 0x60), (0xE8, 0x70)):
+        size = 2 if opcode == 0x74 else 3
+        rel = (target - (at + size)) & (0xFF if size == 2 else 0xFFFF)
+        image[at : at + size] = bytes([opcode]) + rel.to_bytes(size - 1, "little")
+        at += size
+    # far call 0060h:0060h and a call through a register: neither is a near branch to 0x60
+    image[at : at + 5] = bytes.fromhex("9a60000001")
+    image[at + 5 : at + 7] = bytes.fromhex("ffd3")  # call bx
+    image[0x60] = 0xC3
+    return bytes(image)
+
+
+def test_callers_lists_near_calls_jumps_and_conditional_jumps_to_the_offset() -> None:
+    tool = _load()
+    found = tool.find_callers(_callers_image(), 0x60, 0x200, 0)
+    assert [c.instruction.ip for c in found] == [0x40, 0x43, 0x46]
+    texts = [tool._formatter().format(c.instruction) for c in found]
+    assert texts == ["call 0060h", "jmp 0060h", "je short 0060h"]
+
+
+def test_callers_stops_at_code_end() -> None:
+    tool = _load()
+    found = tool.find_callers(_callers_image(), 0x60, 0x43, 0)
+    assert [c.instruction.ip for c in found] == [0x40]
+
+
+def test_callers_prints_the_count_and_neighbours(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    img = tmp_path / "playone.img"
+    img.write_bytes(_callers_image())
+    argv = ["callers", "0x60", "--image", str(img), "--context", "1", "--code-end", "0x200"]
+    assert _load().main(argv) == 0
+    out = capsys.readouterr().out
+    assert "0x0060: 3 near call/jump(s) below image 0x200" in out
+    assert "  > 00040  call 0060h" in out
+    assert "  > 00043  jmp 0060h" in out
+    assert "    00043  jmp 0060h" in out  # the first caller's following neighbour
+
+
+def test_callers_clamps_code_end_to_the_image(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    img = tmp_path / "playone.img"
+    img.write_bytes(_callers_image())
+    assert _load().main(["callers", "0x60", "--image", str(img), "--context", "0"]) == 0
+    assert "3 near call/jump(s) below image 0x200" in capsys.readouterr().out

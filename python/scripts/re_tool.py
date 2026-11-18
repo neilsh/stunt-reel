@@ -7,6 +7,10 @@ Usage:
 * ``mise run re-tool -- xref <imm16> [--code-end 0xN]``: every instruction whose 16-bit immediate
   or displacement is ``imm16``. ``mise run re-tool -- xref <exe> --string TEXT | --offset 0xN
   --ds 0xSEG`` is ``xref.py``'s file mode, passed through unchanged.
+* ``mise run re-tool -- callers <offset> [--code-end 0xN]``: every near ``call``, ``jmp`` and
+  conditional jump whose target is ``offset``, decoded straight on from image 0 as ``disasm`` does.
+  It does not find a call through a register or a word table, a far call, or a pointer built at
+  run time.
 * ``mise run re-tool -- vm-handler <opcode>``: the display-list VM handler for ``opcode``, read
   from its dispatch slot at image ``0x8246 + opcode``. A handler that calls through a word table
   at ``[bx + disp16]`` (``OP_IPG``'s subtype table at ``work:0x1954``) has the table's entries
@@ -31,7 +35,15 @@ lazy from collections.abc import Callable
 
 import unlzexe
 import xref
-from iced_x86 import Decoder, FlowControl, Formatter, FormatterSyntax, Instruction, OpKind, Register
+from iced_x86 import (
+    Decoder,
+    FlowControl,
+    Formatter,
+    FormatterSyntax,
+    Instruction,
+    OpKind,
+    Register,
+)
 
 from stunt_reel.dataroot import read_data_file_or_report
 
@@ -179,6 +191,47 @@ def disassemble(data: bytes, start: int, end: int) -> list[Instruction]:
     return found
 
 
+@dataclass(frozen=True)
+class Caller:
+    """A near branch to a target, with the instructions either side of it."""
+
+    instruction: Instruction
+    before: list[Instruction]
+    after: list[Instruction]
+
+
+_NEAR_FLOWS = (
+    int(FlowControl.CALL),
+    int(FlowControl.UNCONDITIONAL_BRANCH),
+    int(FlowControl.CONDITIONAL_BRANCH),
+)
+
+
+def find_callers(data: bytes, target: int, code_end: int, context: int) -> list[Caller]:
+    """Every near call, jump or conditional jump below ``code_end`` whose target is ``target``.
+
+    Decoded straight on from image 0, so the targets are those ``disasm`` prints. A branch
+    through a register, a word table or a far pointer is not found.
+    """
+    code_end = min(code_end, len(data))
+    decoded = disassemble(data, 0, code_end)
+    found: list[Caller] = []
+    for at, instruction in enumerate(decoded):
+        if (
+            int(instruction.flow_control) in _NEAR_FLOWS
+            and int(instruction.op0_kind) == int(OpKind.NEAR_BRANCH16)
+            and instruction.near_branch16 == target
+        ):
+            found.append(
+                Caller(
+                    instruction,
+                    decoded[max(0, at - context) : at],
+                    decoded[at + 1 : at + 1 + context],
+                )
+            )
+    return found
+
+
 def _formatter() -> Formatter:
     return Formatter(FormatterSyntax.NASM)
 
@@ -287,6 +340,38 @@ def xref_main(argv: list[str]) -> int:
     return 0
 
 
+def callers_main(argv: list[str]) -> int:
+    parser = _parser(
+        "callers",
+        "List the near call, jmp and jcc instructions whose target is an image offset. A call "
+        "through a register or word table, a far call and a pointer built at run time are not "
+        "found.",
+    )
+    parser.add_argument("offset", type=_int, help="16-bit target image offset")
+    parser.add_argument(
+        "--code-end", type=_int, default=DGROUP, help="search image offsets below this"
+    )
+    parser.add_argument("--context", type=int, default=4, help="instructions shown each side")
+    args = parser.parse_args(argv)
+    if not 0 <= args.offset <= 0xFFFF:
+        parser.error("the offset must fit in 16 bits")
+    if args.context < 0:
+        parser.error("--context must be zero or more")
+    data = _load(args.image)
+    if data is None:
+        return 2
+    found = find_callers(data, args.offset, args.code_end, args.context)
+    end = min(args.code_end, len(data))
+    print(f"0x{args.offset:04X}: {len(found)} near call/jump(s) below image 0x{end:X}")
+    formatter = _formatter()
+    for caller in found:
+        lines = [_line(formatter, i, " ") for i in caller.before]
+        lines.append(_line(formatter, caller.instruction, ">"))
+        lines.extend(_line(formatter, i, " ") for i in caller.after)
+        print("\n".join(lines) + "\n")
+    return 0
+
+
 def vm_handler_main(argv: list[str]) -> int:
     parser = _parser("vm-handler", "Follow an opcode's VM dispatch slot to its handler")
     parser.add_argument("opcode", type=_int)
@@ -308,6 +393,7 @@ def vm_handler_main(argv: list[str]) -> int:
 COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "disasm": disasm_main,
     "xref": xref_main,
+    "callers": callers_main,
     "vm-handler": vm_handler_main,
 }
 
