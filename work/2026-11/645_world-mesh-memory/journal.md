@@ -110,6 +110,8 @@
   703,048 RSS with `VmHWM` 766,252; after the release 444,440; peak 766,252, all of it reached by
   the time the renderer is open.
 - **Verdict**: control. CTRY's peak is about 144 MiB: 9 MiB the scene, 97 MiB opening the device and
-  uploading to it, 38 MiB the frames that follow; its world adds nothing a release could free.
+  uploading to it, 38 MiB the frames that follow; releasing its world mesh frees under 1 MiB (796 KiB).
+  The one probed run's 144 MiB is 4 to 5 MiB above the unprobed runs' 139-140 MiB in the entry
+  above, at another commit and with the probe's reads; that gap is not explained.
   LOCATION's 748 MiB peak matches the freed figure above.
 - **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
