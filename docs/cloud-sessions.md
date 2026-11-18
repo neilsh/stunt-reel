@@ -15,7 +15,7 @@ In claude.ai, the cloud environment for this repo is `stunt-reel-cloud`:
 - **Environment variables:** `R2_ACCOUNT_ID`, not a secret; `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`, the token's key pair; and `STUNT_DATA_ROOT`, an absolute path outside the checkout and outside `/root`, such as `/home/user/stunt-reel.data` ([Running the emulator](#running-the-emulator)).
   Anyone who uses the environment, and anything in a session, can read the key pair; it reads only the one bucket.
   Also `MISE_AUTO_INSTALL=false` and `MISE_USE_VERSIONS_HOST=false`, as CI sets them: otherwise the first `mise run` in a session installs every tool `mise.toml` declares, compiling the cargo ones from source.
-- **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`, and `gitlab.freedesktop.org` for reading Mesa's source and issues when a render differs on lavapipe ([#265](https://github.com/neilsh/stunt-reel/issues/265)); a cloud session reached it on 2026-11-18 (HTTP 200 for a raw file on Mesa's `main`).
+- **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`, and `gitlab.freedesktop.org` for reading Mesa's source and issues when a render differs on lavapipe ([#265](https://github.com/neilsh/stunt-reel/issues/265)); a cloud session reached it on 2026-11-18 (HTTP 200 for a raw file on Mesa's `main`; the source archive's URL is in [Building Mesa](#building-mesa-in-a-cloud-session)).
   The cloud setup downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu mirror, all on the list.
 - **Network secrets:** none on the R2 host.
   The proxy's AWS SigV4 secret signs for hosts under `amazonaws.com` alone, and while one is set it answers every request to the R2 host with a 502 (`injection failed (...): the hostname is not under amazonaws.com`, 2026-11-07).
@@ -48,6 +48,20 @@ bash "$setup" --cloud
 
 A branch older than the cloud setup fails the setup script rather than starting without mise: the hook below runs through `mise`, so a session without it would fail every hook and tell Claude nothing.
 A failed setup script should also keep that environment out of the cache (unverified).
+
+## Building Mesa in a cloud session
+
+A session fetched Mesa's source and built lavapipe from it on 2026-11-18 ([#702](https://github.com/neilsh/stunt-reel/issues/702), PR [#749](https://github.com/neilsh/stunt-reel/pull/749)); the commands and counts are in its journal, `work/2026-11/702_mesa-interp-fix-build/journal.md`.
+Whether a session may build a downloaded source tree is [#767](https://github.com/neilsh/stunt-reel/issues/767)'s question, not settled here.
+
+- **Source:** the tag's archive from the trusted `gitlab.freedesktop.org`, `/mesa/mesa/-/archive/<tag>/mesa-<tag>.tar.gz` with the tag repeated in the file name, so `mesa-25.2.8` unpacks as `mesa-mesa-25.2.8` (HTTP 200, 67,863,192 bytes).
+  The release tarball hosts did not answer: `archive.mesa3d.org` returned HTTP 403, `mesa.freedesktop.org` a 403 on the proxy's CONNECT, and GitHub's `mesa3d/mesa` archive a 403.
+- **`meson`:** from PyPI in a venv, with `mako` and `pyyaml`, because Ubuntu's `meson` is older than the `mesa-25.2.8` tag needs.
+  Put the venv first on `PATH`: with the system `python3` first, setup stops at "Python (3.x) mako module >= 0.8.0 required".
+- **apt:** `flex` and `glslang-tools` were missing; `bison`, `ninja`, `libexpat1-dev` and `zlib1g-dev` were already installed.
+- **Configure and build:** the options and the one `ninja` target that builds lavapipe alone (`src/gallium/targets/lavapipe/libvulkan_lvp.so`) are in that journal's second entry; the build took about 5 minutes on 3 of the 4 shared cores.
+  To run it, point `VK_DRIVER_FILES` and `VK_ICD_FILENAMES` at an ICD JSON naming that library, and check the driver info reads the built version, not Ubuntu's package.
+- **Keep it out of the checkout:** the source and build directories lived under `/tmp`; commit nothing from them.
 
 ## The SessionStart hook
 
