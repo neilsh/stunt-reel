@@ -919,3 +919,36 @@ def test_a_partial_split_leaves_links_to_sections_that_stay_alone(
     (root / NOTE).write_text(f"[gone](../{SPLIT}#nowhere)\n", encoding="utf-8")
     assert _apply(root, "move", "--dry-run", moves="plan.toml") == 1
     assert "no [[split]] mapping" in capsys.readouterr().err
+
+
+@needs_git
+def test_a_partial_split_still_reports_headings_the_cut_removes_or_renumbers(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A sub-heading of a moved section, a renumbered duplicate and a moved note stay reported."""
+    cases = {
+        "sub-heading": ("# X\n\n## Goals\n\n## Decisions\n\n### Log\n", "log", PARTIAL_SPLIT),
+        "renumbered": (
+            "# X\n\n## Decisions\n\n### Notes\n\n## Goals\n\n### Notes\n",
+            "notes-1",
+            PARTIAL_SPLIT,
+        ),
+        "moved note": (
+            "# X\n\n## Goals\n\n## Decisions\n",
+            "goals",
+            PARTIAL_SPLIT + f'\n[[move]]\nfrom = "{SPLIT}"\nto = "{RENAMED}"\n',
+        ),
+        "dissolved note": (
+            "# X\n\n## Goals\n\n## Decisions\n",
+            "goals",
+            PARTIAL_SPLIT + f'\n[[split]]\nfrom = "{SPLIT}"\nto = "{SPLIT_INDEX}"\n',
+        ),
+    }
+    for name, (note, fragment, plan) in cases.items():
+        (tmp_path / name.replace(" ", "-")).mkdir()
+        root = _repo(
+            tmp_path / name.replace(" ", "-"),
+            {NOTE: f"[l](../{SPLIT}#{fragment})\n", SPLIT: note, "plan.toml": plan},
+        )
+        assert _apply(root, "move", "--dry-run", moves="plan.toml") == 1, name
+        assert "no [[split]] mapping" in capsys.readouterr().err, name
