@@ -79,6 +79,7 @@ The explosion is slot 11 (shape `0x0107`, [`sod-animate.md`](sod-animate.md)), a
 
 So the replay gives tower, explosion, hill, the order the capture shows (over the tower, under the hill).
 The plane `x = −3188` separates the tower from the explosion; the hill is ordered against it by the depth compare of the leaf both reach, not by a plane.
+The hill's place rests on § 2's reading that a larger depth word is farther (`[Supported Inference]`).
 The two shapes are named the tower and the hill by their place in the picture.
 The replay assumes slot 11 recorded no bucket: with one, a plane its extent crosses sends it to its centre's side (§ 2), and it reaches leaf `0x7C14` instead.
 `MODEL_0262.SOD` has a collision-box list and `MODEL_03DD.SOD` none.

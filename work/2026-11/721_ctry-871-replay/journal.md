@@ -7,7 +7,7 @@
   The slot and eye positions came from `FilmTimeline::sample(871.0)` on `corpus/stisldem/VAULT/CTRY.FLM` (a scratch example, not committed): slot 11, shape `0x0107`, at DOS `(−3192.69, −1.88, 2489.42)` m; eye at `(−3170.51, −2.89, 2493.34)`, looking at `(−4154.64, 41.88, 2322.00)`.
   A scratch walker (not committed) followed the draw walk from `SS:0` with `scene_tree.tree_segment`, splitting the one-entry list as the handlers do: `SP_XPLANE`/`SP_ZPLANE` (`0x1EF2`) compare the plane's world coordinate (`[0x2A6A+bx] + [0x49F4+bx] + [bp+6]`) with the slot's high word, child `+2` taking the greater side and `+4` the lesser, the eye's side walked last; a cut slot with no bucket goes to the eye's side (`0x1F46`).
   `SP_HSLOPE`/`SP_VSLOPE` (`0x200B`, `0x2059`) put a point on `+2` when `(a × slope × 2 >> 16) + coord ≥ b`.
-  The `SP_1NODE` gate was taken as near when the view depth is under `2 × splitdist` (default lens, [`lod.md` § 2.2](../../../research/playone-exe/lod.md#22-how-the-lens-scales-the-projection)); the five on the list's path were each at most 13% of that.
+  The `SP_1NODE` gate was taken as near when the view depth is under `2 × splitdist` (default lens, [`lod.md` § 2.2](../../../research/playone-exe/lod.md#22-how-the-lens-scales-the-projection)); the five on the list's path were each at most 13% of that gate (2 × splitdist), by absolute depth.
   The entry's extent is `([es:4] >> [es:8]) + 1` (`0x1AF3..0x1AFE`); the loaded segment is the `.SOD` file two bytes on, so for `MODEL_0107.SOD` (`bounding_size` `0x4000`, `scale_index` `0x0A`) it is 17.
   The shapes' headers came from `CTRY.ALL` and `SUPERSET.ALL`; the picture is [#407's `ctry_871.png`](../407_sprite-draw-order/images/ctry_871.png).
   Nothing was run in DOSBox.
