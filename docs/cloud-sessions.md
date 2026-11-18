@@ -27,8 +27,8 @@ The setup script is the claude.ai field; the *cloud setup* is [`.claude/cloud-se
 The field holds only a bootstrap, so a change to the setup is reviewed and versioned with the repo, and no copy here can drift from it.
 The cloud setup installs mise at a pinned, checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs, dosbox-automation's Linux build and the Python environment, then lavapipe as CI does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)).
 It fetches no game archives: the setup script runs before the environment variables are set, so the hook fetches them.
-Each step skips work already done, and it needs root only to replace mise or install the apt packages.
-It refuses to run without `--cloud`, which only the bootstrap and the hook pass, or on anything but Linux x86_64 with `dpkg`; it does not detect a container, so `--cloud` on a developer machine would replace that machine's mise.
+Each step skips work already done, and it needs root only under `--cloud` to replace `/usr/local/bin/mise` or install system apt packages.
+It refuses to run without `--cloud` or `--antigravity`, or on anything but Linux x86_64 with `dpkg`; it does not detect a container, so `--cloud` on a developer machine would replace that machine's mise.
 CI's `install_args` is a separate list: CI also installs Java.
 
 The lockfile is what makes the install work: it holds each tool's download URL and checksum, so mise reads no GitHub API.
@@ -179,6 +179,11 @@ Its output is working output only: a cloud capture or archive is never promoted 
 
 A cloud session's container has 4 CPUs and 15 GB RAM; it had about 28 GB of free disk at session start (11:02 UTC, 2026-11-18), 22 GB at 11:13 and 11 GB at 12:13 (`df /`: 29 GB used).
 Each worktree builds its own `target/`: about six Rust-building subagents plus a Mesa build in one container reached load 18, so run at most about two Rust builds at once there and give anything heavier a child session of its own ([`running-unattended`](../.agents/skills/running-unattended/SKILL.md)).
+
+## Antigravity cloud
+
+An Antigravity VM runs `.claude/cloud-setup.sh --antigravity` via [`.agents/environment.json`](../.agents/environment.json), putting `mise`, `RUSTUP_HOME` and lavapipe in `~/.local` and env in `~/.bashrc`.
+`/home/antigravity/env-setup.sh` fetches archives via `gdrive` and runs `game-builds` and `superset-all` ([`cloud-antigravity.md`](../.agents/skills/working-in-an-environment/cloud-antigravity.md), [`harness.md`](harness.md#antigravity)).
 
 ## Rotating the token
 
