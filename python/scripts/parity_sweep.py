@@ -309,7 +309,7 @@ def validate_record(
         folder = work_items.parse_folder(record)
     except (work_items.WorkFolderError, OSError) as err:
         raise ValueError(f"--record {record} is not a work folder ({err})") from err
-    if folder.outcome:
+    if folder.outcome.strip():
         raise ValueError(
             f"--record {record} has an outcome, so it is frozen; record in an open work folder"
         )

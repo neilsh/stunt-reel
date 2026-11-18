@@ -34,9 +34,10 @@ Its layout sets the file's: every array is written one element per line, except 
 that each fit a 100-column line with its indent, which is written one inline table per line. A
 frame is therefore a table, one line each,
 `{ tick = 871, ssim = 0.7732145, index = 0.5123456, scored = true }`, with `index` or `scored` left
-out where the report gave none, which also removes the hand-written draft's `nan` sentinel. A film
-with a longer row, which takes a six-digit tick and scores written in exponent form, would get
-`[[variant.film.<film>.frames]]` tables instead; they read back the same.
+out where the report gave none, which also removes the hand-written draft's `nan` sentinel. A row
+with a six-digit tick and both scores negative in nine-digit exponent form is 87 columns; only a
+tick of 20 digits passes the width, and its film would get `[[variant.film.<film>.frames]]` tables
+instead, which read back the same.
 
 ADR 0010's checks:
 

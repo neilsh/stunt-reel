@@ -155,6 +155,21 @@ def test_no_drift_note_while_the_verdict_holds() -> None:
         ("schema = 1", "schema = true", "schema is True"),
         ("index = 2\n", "index = 1\n", "variant index 1 is listed twice"),
         ("fade_aware = true", "fade_aware = true\nssmi = 0.8", "film ctry has an unknown ssmi"),
+        ('probe = "film"', 'probe = "IoU"', "probe 'IoU' is none of film, iou"),
+        ('track = "evidence"', 'trak = "evidence"', "the file has an unknown trak"),
+        ("index = 2\n", "index = 2\nfilms = {}\n", "variant 2 has an unknown films"),
+        # A misspelt or partial film is refused, never read as a failed one.
+        ("[variant.film.ctry]\nssim = 0.8\n", "[variant.film.ctry]\n", "ssim is None"),
+        (
+            "[variant.film.ctry]\nssim = 0.8\niou = 0.8\nfade_aware = true\nframes",
+            "[variant.film.ctry]\nfade_aware = true\n[variant.film.ctryx]\nframes",
+            "variant 1 film ctry: frames is not an array",
+        ),
+        (
+            "[variant.film.ctry]\nssim = 0.8\niou = 0.8\nfade_aware = true\nframes",
+            "[variant.film.ctry]\n[variant.film.ctryx]\nfade_aware = true\nframes",
+            "variant 1 film ctry is empty",
+        ),
         ("fade_aware = true", "fade_aware = true\nfailed = true", "failed is not `true` alone"),
         (
             "[variant.film.ctry]\nssim = 0.8\niou = 0.8\nfade_aware = true\nframes",

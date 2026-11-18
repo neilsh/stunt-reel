@@ -58,8 +58,26 @@ HEADER = (
     "# `mise run judge -- --recheck <this file>` judges them again and compares the winner line.\n"
     "# A frame leaves out `index` or `scored` where its report gave none.\n\n"
 )
+_KEYS = frozenset(
+    [
+        "schema",
+        "names",
+        "films",
+        "probe",
+        "track",
+        "targets",
+        "baseline",
+        "winner",
+        "bounds",
+        "variant",
+    ]
+)
+_VARIANT_KEYS = frozenset(("index", "values", "film"))
 _ROW_KEYS = frozenset(("tick", "ssim", "index", "scored"))
-_FILM_KEYS = frozenset(("ssim", "iou", "actor_iou", "fade_aware", "frames", "failed"))
+_SCORE_KEYS = frozenset(("ssim", "iou", "actor_iou"))
+_RUN_KEYS = frozenset(("fade_aware", "frames"))
+_FILM_KEYS = _SCORE_KEYS | _RUN_KEYS | {"failed"}
+_PROBES = ("film", "iou")
 
 
 class FiguresError(ValueError):
@@ -167,8 +185,12 @@ def parse_figures(text: str) -> Figures:
         raise FiguresError(f"not TOML: {err}") from err
     schema = document.get("schema")
     if not _is_int(schema) or schema != SCHEMA:
-        raise FiguresError(f"schema is {document.get('schema')!r}, not {SCHEMA}")
+        raise FiguresError(f"schema is {schema!r}, not {SCHEMA}")
+    _no_unknown(document, _KEYS, "the file")
     names = _texts(document, "names")
+    probe = _text(document, "probe")
+    if probe not in _PROBES:
+        raise FiguresError(f"probe {probe!r} is none of {', '.join(_PROBES)}")
     track = document.get("track")
     if track is not None and track not in TRACKS:
         raise FiguresError(f"track {track!r} is none of {', '.join(TRACKS)}")
@@ -190,7 +212,7 @@ def parse_figures(text: str) -> Figures:
     return Figures(
         names=names,
         films=_texts(document, "films"),
-        probe=_text(document, "probe"),
+        probe=probe,
         track=cast("Track | None", track),
         targets=targets,
         bounds=_bounds(document.get("bounds")),
@@ -225,6 +247,7 @@ def _variant(table: dict[str, Any], names: int) -> Variant:
     index = table.get("index")
     if not _is_int(index) or index < 1:
         raise FiguresError(f"variant index {index!r} is not a whole number from 1")
+    _no_unknown(table, _VARIANT_KEYS, f"variant {index}")
     values = _texts(table, "values")
     if len(values) != names:
         raise FiguresError(f"variant {index} has {len(values)} values for {names} names")
@@ -235,9 +258,9 @@ def _variant(table: dict[str, Any], names: int) -> Variant:
     for film, entry in films.items():
         if not isinstance(entry, dict):
             raise FiguresError(f"variant {index} film {film} is not a table")
-        odd = sorted(entry.keys() - _FILM_KEYS)
-        if odd:
-            raise FiguresError(f"variant {index} film {film} has an unknown {odd[0]}")
+        _no_unknown(entry, _FILM_KEYS, f"variant {index} film {film}")
+        if not entry:
+            raise FiguresError(f"variant {index} film {film} is empty, not `failed = true`")
         if "failed" in entry and (entry.keys() != {"failed"} or entry["failed"] is not True):
             raise FiguresError(f"variant {index} film {film}: failed is not `true` alone")
         try:
@@ -248,7 +271,7 @@ def _variant(table: dict[str, Any], names: int) -> Variant:
 
 
 def _score(entry: dict[str, Any]) -> RecordedScore | None:
-    if "ssim" not in entry:
+    if not entry.keys() & _SCORE_KEYS:
         return None
     actor = entry.get("actor_iou")
     return RecordedScore(
@@ -259,12 +282,12 @@ def _score(entry: dict[str, Any]) -> RecordedScore | None:
 
 
 def _run(entry: dict[str, Any]) -> FilmRun | None:
-    if "frames" not in entry:
+    if not entry.keys() & _RUN_KEYS:
         return None
     fade_aware = entry.get("fade_aware")
     if not isinstance(fade_aware, bool):
         raise FiguresError("fade_aware is not true or false")
-    rows = entry["frames"]
+    rows = entry.get("frames")
     if not isinstance(rows, list):
         raise FiguresError("frames is not an array")
     frames: dict[int, Frame] = {}
@@ -308,6 +331,12 @@ def _bounds(table: object) -> Bounds:
             raise FiguresError(f"bound {name} is {value!r}")
         values[name] = value if whole else float(value)
     return Bounds(**values)
+
+
+def _no_unknown(table: dict[str, Any], known: frozenset[str], where: str) -> None:
+    odd = sorted(table.keys() - known)
+    if odd:
+        raise FiguresError(f"{where} has an unknown {odd[0]}")
 
 
 def _tables(value: object, key: str) -> list[dict[str, Any]]:

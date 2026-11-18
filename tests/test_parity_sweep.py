@@ -424,6 +424,17 @@ def test_record_refuses_before_rendering(
     assert (folder / "sweeps" / "lake-edge.toml").read_text(encoding="utf-8") == "first"
 
 
+def test_a_blank_outcome_leaves_a_work_folder_open_to_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # As the frozen-folder hook reads it (work_items._frozen), a blank outcome is no outcome.
+    root = _sweep_env(tmp_path, monkeypatch)
+    folder = work_folder(tmp_path / "blank", " ")
+    argv = ["--var", "DBG_X=a,d", "--record", str(folder), "--topic", "x", "--no-build"]
+    assert parity_sweep.main([*argv, "--data-root", str(root)]) == 0
+    assert (folder / "sweeps" / "x.toml").is_file()
+
+
 def test_record_refuses_reuse(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     argv = ["--reuse", str(tmp_path), *_recorded(tmp_path), "--no-build"]
     assert parity_sweep.main(argv) == 2
