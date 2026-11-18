@@ -218,7 +218,7 @@ filterwarnings = ["error"]
 testpaths = ["tests"]
 pythonpath = ["python", "python/scripts"]
 markers = [
-    "windows: behaves differently on Windows; the pull-request Windows job runs only these (check-windows-smoke)",
+    "windows: behaves differently on Windows, or proves a gate tool runs there; the pull-request Windows job runs only these (check-windows-smoke)",
     "docs: documentation tests; the gate's docs step runs them (test-py-docs)",
 ]
 

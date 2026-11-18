@@ -2,22 +2,26 @@
 # (ADR 0050). docs/architecture-python.md routes here; this file is the one statement of them.
 #
 # Four groups. `shared` is used by everything; capture builds on shared; parity builds on capture.
-# Tooling (worktrees, work folders, docs, cloud assets) uses shared only. python/scripts/ sits
-# above them all: a script may import the package, and the package never imports a script.
+# Tooling (worktrees, work folders, docs, cloud assets) uses tooling and shared, and one capture
+# module allowed by name. python/scripts/ sits above them all: a script may import the package,
+# and the package never imports a script.
 #
 # tach's layers are one stack, so tooling sits on top of it and `layers_explicit_depends_on`
 # takes away the free use of lower layers that a layer would otherwise give it: a module must
 # declare each layer it uses, except a `utility` module, which every module may use. Capture and
 # parity declare no `depends_on`, so they may use anything their layer lets them; shared is the
-# utility layer. A module added to the package needs a group here: tests/test_module_layers.py
-# fails until it has one.
+# utility layer. The package itself, `stunt_reel` (its __init__, which imports tac), is capture, so
+# a module added to the package without a group is checked as capture until it joins one;
+# tests/test_module_layers.py fails until it does.
 
 source_roots = ["python", "python/scripts"]
 exclude = ["**/__pycache__"]
+# A type-only import is a dependency too: tach skips imports under `TYPE_CHECKING` by default.
+ignore_type_checking_imports = false
 layers_explicit_depends_on = true
 layers = ["scripts", "tooling", "parity", "capture", "shared"]
-# Code under a source root that is in no module below is <root>: the scripts, and the package's
-# __init__. It may import anything, and no module may import it.
+# Code under a source root that is in no module below is <root>: the scripts. It may import
+# anything, and no module may import it.
 root_module = "dependenciesonly"
 
 [[modules]]
@@ -49,6 +53,7 @@ utility = true
 # reference, built with which game build.
 [[modules]]
 paths = [
+    "stunt_reel",
     "stunt_reel.all_archive",
     "stunt_reel.avi",
     "stunt_reel.capture_run",

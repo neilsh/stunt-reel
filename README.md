@@ -32,7 +32,7 @@ You can build and test everything without any game files:
 ```powershell
 mise trust && mise install   # pinned toolchains (Rust, Python, uv, Java, dosbox-automation, Kaitai)
 mise run init                # optional: seed target/ and sync .venv now; exits 1 until the game files are in place
-mise run check               # format, lint, typecheck and tests, Rust and Python
+mise run check               # format, lint, module layers, typecheck and tests, Rust and Python
 ```
 
 To render a film you need the *Stunt Island* demo (`stisldem`) in the shared data root, `<data root>/corpus/stisldem/` (`<data root>` is `STUNT_DATA_ROOT`, or `stunt-reel.data` beside the primary checkout), described in [`corpus/README.md`](corpus/README.md):

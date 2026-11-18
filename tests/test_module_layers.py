@@ -72,8 +72,25 @@ def _tach_check(tree: Path) -> subprocess.CompletedProcess[str]:
             "import gate",
             "Layer 'shared' ('stunt_reel.dataroot') is lower than layer 'scripts'",
         ),
+        (
+            "stunt_reel/__init__.py",
+            "import gate",
+            "Layer 'capture' ('stunt_reel') is lower than layer 'scripts'",
+        ),
+        (
+            "stunt_reel/capture_store.py",
+            "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from stunt_reel import parity_judge",
+            "Layer 'capture' ('stunt_reel.capture_store') is lower than layer 'parity'",
+        ),
     ],
-    ids=["clean", "capture-to-parity", "tooling-to-capture", "package-to-script"],
+    ids=[
+        "clean",
+        "capture-to-parity",
+        "tooling-to-capture",
+        "package-to-script",
+        "init-to-script",
+        "type-only-import",
+    ],
 )
 def test_tach_fails_a_planted_violation(
     tmp_path: Path, module: str | None, planted: str, message: str

@@ -99,7 +99,7 @@ The gate script, its step list, the pre-commit hook, its lanes and CI are in [qu
 | `test-py-docs` | every test module marked `docs` (`pytest -m docs`: the documentation invariants, the formats catalog, the schema contract); the docs half of the gate, run by `check-docs` and by a scoped `check` without the Python half |
 | `test-docs` | `tests/test_doc_invariants.py` alone: anchors, Markdown links, cited paths, links into dated records only where [`work/README.md`](../work/README.md#links) allows; a pre-commit hook on every commit |
 | `check-windows` | the non-GPU half of the gate used by the Windows job on `main` (`fmt-check` + `lint` + `check-layers` + `typecheck` + `test`)
-| `check-windows-smoke` | the Windows-only slice of the pytest suite, every module marked `windows` (junctions, reparse points, the pytest basetemp workaround, the target seed's build locks), used by the pull-request Windows job; `tests/test_windows_marker.py` fails a module that checks the platform without the marker
+| `check-windows-smoke` | the Windows-only slice of the pytest suite, every module marked `windows` (junctions, reparse points, the pytest basetemp workaround, the target seed's build locks, and tach's module layers), used by the pull-request Windows job; `tests/test_windows_marker.py` fails a module that checks the platform without the marker
 | `fmt-check` / `fmt` | `cargo fmt` and `ruff format` check/apply |
 | `fix` | every automatic fix the gate's lint and format steps can apply: `ruff check --fix`, `ruff format`, `cargo fmt`. The gate names it when `lint-py`, `fmt-check-py` or `fmt-check-rust` fails; it changes nothing on a clean tree |
 | `lint` | `cargo clippy -- -D warnings` and `ruff check .` |

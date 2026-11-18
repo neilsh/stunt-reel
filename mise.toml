@@ -552,9 +552,10 @@ depends = ["fmt-check", "lint", "check-layers", "typecheck", "test"]
 # .cache link, the pytest basetemp workaround, Cargo's build locks and robocopy in the target
 # seed — so the pull-request job runs this instead of the whole check-windows; the full task
 # stays on main. A module carries the `windows` marker to run here, and
-# tests/test_windows_marker.py fails one that checks the platform without it.
+# tests/test_windows_marker.py fails one that checks the platform without it. The module-layers
+# test carries it too, so a pull request proves tach runs on Windows (ADR 0050).
 [tasks.check-windows-smoke]
-description = "Windows-only smoke: the tests marked `windows` (junctions, reparse points, .cache links, build locks)"
+description = "Windows-only smoke: the tests marked `windows` (junctions, reparse points, .cache links, build locks, tach's module layers)"
 run = "uv run pytest -m windows"
 
 [tasks.verify-corpus]
