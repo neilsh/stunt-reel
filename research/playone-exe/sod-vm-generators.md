@@ -80,7 +80,7 @@ _Source: [the handler read and the scores](../../work/2026-11/392_perfdisk/journ
 
 **A ground disc, read on lavapipe** ([#709](https://github.com/neilsh/stunt-reel/issues/709); `[Bounded Observation]`, two ticks, one shape, lavapipe, widths read off index `0x4A`, the disc's flat colour, in both panels; the GPU re-read is [#689](https://github.com/neilsh/stunt-reel/issues/689)).
 `LOCATION.ALL` shape `0x07C6` is one `OP_PERFDISK` of radius `0x2400` in colour `0x4A`, its normal along y: the stone circle's ground disc in `LOCATION.FLM`, lying flat and seen at a glancing angle across most of the screen, where `BOMB`'s wheel stands upright.
-At ticks 6062 and 6161 (`mise run frame -- --film location --ticks 6062,6161 --software-only`, `crates/` tree `9c9c6a5`) the camera matches: the stones line up and the disc's far rim is row 76 in the capture, 77 in ours.
+At ticks 6062 and 6161 (`mise run frame -- --film location --ticks 6062,6161 --software-only`, commit `9c9c6a5` (`crates/` tree `a00c4e7`)) the camera appears to match: the stones line up and the disc's far rim is row 76 in the capture, 77 in ours.
 Stones stand on the rim, so only the ends a stone does not cover are read: at 6062 the right end of rows 106, 112 and 118 is at x 298, 300 and 299 in the capture and 299, 305 and 309 in ours; at 6161 the left end of rows 106, 112, 118 and 124 is at x 22, 19, 20 and 23 in the capture and 17, 14, 11 and 8 in ours.
 The near rim is row 151 in the capture and 166 in ours.
 So on this shape ours is the larger: it agrees at the far rim, reaches 1 to 15 px further at the sides and 15 rows nearer the camera, where on `BOMB` the 16-gon was 4 to 6 % narrow.
