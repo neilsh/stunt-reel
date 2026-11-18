@@ -13,6 +13,7 @@ What each figure is, and how to compare two builds: ``docs/howto/measure-a-rende
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import os
 import shutil
@@ -218,7 +219,8 @@ class MemoryProbe:
             finally:
                 if proc.returncode is None:
                     process_tree.kill_tree(proc)
-                    proc.wait()
+                    with contextlib.suppress(subprocess.TimeoutExpired):
+                        proc.wait(timeout=process_tree.REAP_SECONDS)
         wall = time.monotonic() - start
         peak = maxrss or peak_wset or max((rss for _, rss in samples), default=0)
         self.memory = Memory(peak, peak_private or None, steady_bytes(samples, wall), wall)
