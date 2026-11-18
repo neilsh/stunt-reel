@@ -53,8 +53,29 @@ _Source: [the bank writer read and broken on](../../work/2026-11/456_film-vars-1
   Under DOSBox-X at the harness's default cycles, successive frames in `INTRO` ticks 1337–1452 and 2804–2840 were 2 to 5 ticks apart (`[Bounded Observation]`, one film, one emulator setting); real hardware is unmeasured.
   In `INTRO.FLM`'s montage the stops show `0x12` between `0x0600` and `0xD400` (a change of 6 to 212), and `0xFF00` once, at the first stop of the tick-2800 window (tick 2804, var 10 = 363, previous frame not observed), so it is not a constant.
   `CTRY.FLM`'s keys climb about 24 a tick, which at 2 to 5 ticks a frame is 48 to 120.
-* The renderer fills the bank this way per actor and tick ([`angle_bank`](../../crates/stunt-core/src/scene/bank.rs)), taking `p10` as var 10 at [`PREVIOUS_FRAME_TICKS`](../../crates/stunt-core/src/scene/bank.rs) = 3 ticks earlier: a guess within the 2 to 5 observed above, and that it matches the capture harness's spacing is a `[Hypothesis]`, and the propeller phase it gives at a captured tick is off by the difference times var 10's rate.
+* **Under the capture harness frames are 0 or 1 tick apart** (`[Bounded Observation]`, two films, the `capture` profile: dosbox-automation 0.85.1, `core = dynamic`, `cpu_cycles = 45000`, Patch #3 `PLAYONE.EXE`, each reference capture's own archive with its sound samples stubbed).
+  `PLAYONE` draws more than one frame per film tick there, so var 10 often has not moved since the previous drawn frame.
+  Read from bank word `0x12` after every emulated frame, over the frames where var 10 moves:
+
+  | Window | Measured | 0 ticks | 1 tick | 2 ticks |
+  |---|---|---|---|---|
+  | `LOCATION` 836–901 | 91 | 81.3% | 18.7% | 0 |
+  | `LOCATION` 1–1000 | 1,189 | 70.3% | 27.0% | 2.7% |
+  | `INTRO` 1337–1452 | 96 | 58.3% | 31.2% | 10.4% |
+  | `INTRO` 2804–2840 | 44 | 40.9% | 59.1% | 0 |
+  | `INTRO` 1–3822 | 1,531 | 37.6% | 43.5% | 18.9% |
+
+  None was 3 ticks or more.
+  The spacing varies frame to frame and its mix varies by film and scene, so no constant reproduces every frame.
+  A tick is mapped from each var-10 value, which can be one tick off where a sample reads var 10 before the bank call after it.
+  The run was headless in a cloud session, while the reference captures were made locally before cloud sessions ran the emulator (2026-11-09); its film clock matched theirs at all 431 kept pages it covered (84 `vault-location`, 347 `vault-intro`), and at a fixed `cpu_cycles` the emulated machine, not the host, paces the guest (`[Supported Inference]`).
+  The bank a sample reads may not be the one the page at that frame was drawn with: `vault-location`'s page at tick 881 shows what #504 read as the solid arm (`[Hypothesis]`), while the bank at that frame holds a frame drawn at clock 881 with word `0x12` = `0x1C00`, the line arm; the frame before it, drawn at clock 880, had `0x12` = 0.
+* The renderer fills the bank this way per actor and tick ([`angle_bank`](../../crates/stunt-core/src/scene/bank.rs)), taking `p10` as var 10 [`PREVIOUS_FRAME_TICKS`](../../crates/stunt-core/src/scene/bank.rs) = 0 ticks earlier, so word `0x12` is 0 and `0x14` takes this frame's var 10.
+  Of 0, 1 and 3, 0 gave the best mean over the reference films; 1 scored above 0 on `intro` alone, the film with the larger share of 1-tick frames above.
+  A frame the original drew 1 tick after the one before has its propeller phase off by var 10's rate in a tick, and once `BVGT` reads the bank (#624) a constant 0 would always draw a rotor's solid arm, while the measured mix says the original sometimes draws the line arm.
 * `[Supported Inference]` that var 10's low byte is a propeller phase in 1/256 turns: [`sod-vm-execution.md`](sod-vm-execution.md) § 8.7 has stock propellers turning by `ROTZ` on operand `0x14`, and `(p10 & 0xFF) << 8` sweeps the 16-bit angle once every 256 units of var 10.
+
+_Source: [drawn frames are 0 or 1 tick apart under the capture profile](../../work/2026-11/693_frame-spacing/journal.md#2026-11-18-drawn-frames-are-0-or-1-tick-apart-under-the-capture-profile), [`PREVIOUS_FRAME_TICKS` swept at 3, 0 and 1](../../work/2026-11/693_frame-spacing/journal.md#2026-11-18-previous_frame_ticks-swept-at-3-0-and-1)._
 
 ---
 
@@ -107,6 +128,8 @@ _Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_
 ## Open questions
 
 1. Whether any stock shape reads operand `0x12` with a `ROT*` (no `OP_ANIMATE` does, [`sod-animate.md`](sod-animate.md) § 2).
-   `BVGT` reads it (section 4), so which arm a rotor draws already depends on `PLAYONE`'s frame spacing, which section 2 bounds only under DOSBox-X; the spacing under dosbox-automation, where the reference captures are made, is unmeasured.
+   `BVGT` reads it (section 4), so which arm a rotor draws depends on `PLAYONE`'s frame spacing, 0 or 1 tick under the capture harness (section 2).
 2. The watch on `work:0x811E..0x8129` never named the `0x811E` store at `0x1DD0`, though the break stops show the word following the clock; why the watch misses it is not known.
 3. Why `0x136F` writes var 10 in the `DS:0x4888` struct during playback while the `DS:0x474A` copy stays still, given [`palette-fade.md`](palette-fade.md) § 3.2's copy from `0x47C8` to `0x4906`.
+4. Which drawn frame a captured page shows, relative to the bank a sample at the same emulated frame reads (section 2, tick 881).
+   Reading the bank and the composed-page words at more than one point per emulated frame, or a DOSBox-X break at the end of the `A000` copy, would tell.

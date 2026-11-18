@@ -48,7 +48,9 @@ The capture agrees: rows 100 to 184 hold 63 to 69 index-0 pixels at ticks 826, 8
 `[Hypothesis]` that they are the solid blades at two angles other than our rest pose.
 Not wrong geometry: with `BVGT` forced to branch, our render draws short lines and no trapezoid.
 
-`[Hypothesis]` that 837 and 881 are frames in which var 10 moved by less than 16 since the previous one: under DOSBox-X every frame from 836 to 901 took the line arm, and the capture harness's frame spacing is unmeasured.
+`[Hypothesis]` that 837 and 881 are frames in which var 10 moved by less than 16 since the previous one.
+Under DOSBox-X every frame from 836 to 901 took the line arm, but under the capture harness drawn frames there are 0 ticks apart in 81% of the frames measured and 1 tick in the rest ([`angle-bank.md`](../playone-exe/angle-bank.md) § 2), so most frames see no change of var 10.
+Since #693 our render takes word `0x14` from this frame's var 10 (`PREVIOUS_FRAME_TICKS` = 0), which turned the blades at 881 near the capture's shape.
 The fix is [#624](https://github.com/neilsh/stunt-reel/issues/624): `BVGT` reading the bank word that the `ROT*` already read.
 
 _Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest)._

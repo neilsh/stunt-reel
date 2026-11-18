@@ -912,13 +912,13 @@ mod tests {
         };
         let timeline = FilmTimeline::new(vec![slice(0, 0x0100), slice(10, 0x0200)], Vec::new());
         let scene = FilmScene::new(timeline, HashMap::from([(1, plain), (2, turning)]), None);
-        // Var 10 climbs 25.6 a tick, so 3 ticks before tick 8 it is 0x0100 + 128.
+        // Var 10 climbs 25.6 a tick; with no lag word 0x14 takes it at tick 8, 0x0100 + 204.
         let frame = scene.frame(8.0);
         let [still, turned] = frame.actors.as_slice() else {
             panic!("two actor draws, got {}", frame.actors.len());
         };
         assert_eq!(still.bank, AngleBank::REST);
-        assert_eq!(turned.bank, AngleBank::new([0, 0, 0x8000, 0, 0, 0]));
+        assert_eq!(turned.bank, AngleBank::new([0, 0, 0xCC00, 0, 0, 0]));
     }
 
     /// A drawn-only scene keeps every actor shape of every slice and every view-facing prop,
