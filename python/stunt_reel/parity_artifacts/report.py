@@ -36,6 +36,23 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+#: The keys of ``loss_by_class`` and ``mean_loss_by_class_scored``, in the scorer's order
+#: (``LOSS_CLASSES`` of ``crates/stunt-score/src/parity/loss.rs``; ``report-fields.md`` documents
+#: them). A report always carries all of them.
+LOSS_CLASSES: tuple[str, ...] = (
+    "sky",
+    "reference_only",
+    "ocean",
+    "terrain",
+    "props",
+    "actors",
+    "ocean_render_only",
+    "terrain_render_only",
+    "props_and_actors_render_only",
+    "overlay",
+)
+
+
 @dataclass(frozen=True)
 class I6Gate:
     """Whether the scored mean SSIM reaches each I6 threshold."""
