@@ -50,7 +50,7 @@ ADR 0010's checks:
 
 - **The hand-written writer** of #696's first draft, with a frame as `[tick, ssim, index, scored]`.
   Rejected: escaping, key quoting and table nesting are a writer library's job, and the rows needed
-  `nan` for a missing value. It wrote fewer bytes (below).
+  `nan` for a missing value. It wrote about half the bytes (below).
 - **tomlkit**, a style-preserving TOML editor that also writes comments. Rejected: the job is one
   write of a document built in memory, which is `tomli-w`'s whole API, `dumps`; nothing here edits
   a file in place or keeps its style.
@@ -59,17 +59,20 @@ ADR 0010's checks:
 
 - `tomli-w` stays in the dev group and only `python/scripts/` imports it, so only a development
   checkout installs it.
-- A figures file takes a line per frame per variant. On synthetic scores of `f32` precision, with as
-  many frames per film as each reference film's capture holds (1,875 over the seven), a four-variant
-  sweep's file was 563 KiB, 113 KiB compressed by zlib. Its frame lines took 560 KiB, where the
-  hand-written rows took 303 KiB for the same frames.
-- That is over the 500 KB limit of `check-added-large-files`, and a tracked sweep's file must be
-  committed, so [`prek.toml`](../../prek.toml) excludes `work/*/*/sweeps/*.toml` from that hook.
-  That hook guards asset isolation ([ADR 0026](0026-commit-hooks-run-the-gates-own-tasks.md));
-  `check-toml` still parses every file the exclusion lets through, so no binary passes as one.
-  The repository grows by about 140 KiB per variant of each recorded sweep. A recheck cannot do
-  with fewer frames: the judge's listed frames, side effects and worst frame read every frame.
-  Parallel arrays per film (`ticks`, `ssim`, `index`, `scored`) measured 25% smaller, still over
-  the limit at four variants, and would put a frame's values on four lines and need a stand-in
-  for a missing index again, so they were not taken.
+- A figures file takes a line per frame per variant. On synthetic scores written as `report.json`
+  writes an `f32` (its shortest decimal form), with as many frames per film as each reference
+  film's capture holds (1,875 over the seven), a four-variant sweep's file was 540 KiB, 96 KiB
+  compressed by zlib: about 135 KiB per variant. The hand-written rows took 282 KiB for the same
+  frames.
+- `check-added-large-files` refuses a file over 500 KiB, which a sweep of four variants or more
+  passes, and a tracked sweep's file must be committed, so [`prek.toml`](../../prek.toml) excludes
+  `work/*/*/sweeps/*.toml` from that hook. That hook guards asset isolation
+  ([ADR 0026](0026-commit-hooks-run-the-gates-own-tasks.md)); `check-toml` still parses every
+  file the exclusion lets through, so no binary passes as one, though a valid TOML file can hold
+  any data. A recheck cannot do with fewer frames: the verdict's lost-tick and film-mean tests,
+  the listed frames, side effects and worst frame read every frame the join counts.
+- Parallel arrays per film (`ticks`, `ssim`, `index`, `scored`) measured 31% smaller on the same
+  basis (373 KiB at four variants), which fits sweeps of up to five variants under the limit. They
+  were not taken: a frame's values would sit on four lines, a missing index would need a stand-in
+  again, and a larger sweep would still need the exclusion.
 - A change to the file's layout raises `SCHEMA` in `parity_figures.py`, which reads only its own.

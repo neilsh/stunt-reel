@@ -156,6 +156,11 @@ def test_no_drift_note_while_the_verdict_holds() -> None:
         ("index = 2\n", "index = 1\n", "variant index 1 is listed twice"),
         ("fade_aware = true", "fade_aware = true\nssmi = 0.8", "film ctry has an unknown ssmi"),
         ("fade_aware = true", "fade_aware = true\nfailed = true", "failed is not `true` alone"),
+        (
+            "[variant.film.ctry]\nssim = 0.8\niou = 0.8\nfade_aware = true\nframes",
+            "[variant.film.ctry]\nfailed = 1\n[variant.film.ctryx]\nfade_aware = true\nframes",
+            "failed is not `true` alone",
+        ),
     ],
 )
 def test_a_damaged_file_is_refused(old: str, new: str, message: str) -> None:

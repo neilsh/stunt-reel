@@ -238,7 +238,7 @@ def _variant(table: dict[str, Any], names: int) -> Variant:
         odd = sorted(entry.keys() - _FILM_KEYS)
         if odd:
             raise FiguresError(f"variant {index} film {film} has an unknown {odd[0]}")
-        if "failed" in entry and entry != {"failed": True}:
+        if "failed" in entry and (entry.keys() != {"failed"} or entry["failed"] is not True):
             raise FiguresError(f"variant {index} film {film}: failed is not `true` alone")
         try:
             variant.scores[film], variant.frames[film] = _score(entry), _run(entry)
