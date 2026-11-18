@@ -98,6 +98,10 @@ struct Options {
     /// Run offscreen without opening a window
     #[arg(long)]
     headless: bool,
+    /// Headless only: print the resident memory after the scene is built, the renderer opened,
+    /// the world mesh freed and the frames rendered, and the process peak at the end
+    #[arg(long)]
+    report_memory: bool,
     /// Save the offscreen rendered frame to a PNG file
     #[arg(short = 'o', long = "output", value_name = "FILE")]
     output: Option<PathBuf>,
@@ -133,6 +137,8 @@ pub(crate) struct CliConfig {
     /// Render on the software adapter even when a GPU is available (`--software-only`).
     pub software_only: bool,
     pub headless: bool,
+    /// Print the resident memory at each stage of a headless render (`--report-memory`).
+    pub report_memory: bool,
     pub output_png: Option<PathBuf>,
     pub max_ticks: Option<usize>,
     pub video_path: Option<PathBuf>,
@@ -185,6 +191,7 @@ impl CliConfig {
             clear_index,
             software_only,
             headless,
+            report_memory,
             output: output_png,
             max_ticks,
         } = options;
@@ -218,6 +225,13 @@ impl CliConfig {
         if viewport_rows.is_some() && !headless {
             return Err(
                 "--viewport-rows applies to offscreen renders only; add --headless, -o, --out-dir or --video"
+                    .to_string(),
+            );
+        }
+
+        if report_memory && !headless {
+            return Err(
+                "--report-memory applies to offscreen renders only; add --headless, -o, --out-dir or --video"
                     .to_string(),
             );
         }
@@ -261,6 +275,7 @@ impl CliConfig {
             clear_index,
             software_only,
             headless,
+            report_memory,
             output_png,
             max_ticks,
             video_path,

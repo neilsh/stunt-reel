@@ -99,6 +99,7 @@ One task per file in [`docs/howto/`](howto/):
 - [Validate the format catalog against the corpus](howto/validate-formats-against-the-corpus.md)
 - [Run the GPU tests](howto/run-the-gpu-tests.md) under the per-test hang deadline
 - [Render on lavapipe beside a GPU](howto/render-on-lavapipe.md): name the mesa-dist-win ICD and pass `--software-only`
+- [Measure a headless render's memory](howto/measure-a-renders-memory.md): `--report-memory` prints the stage and peak resident set
 - [Take a commit from another session's branch](howto/take-a-commit-from-another-session.md)
 
 ---

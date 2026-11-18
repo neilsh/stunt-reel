@@ -24,6 +24,7 @@ mod config;
 mod export;
 mod headless;
 mod link;
+mod memory_report;
 mod page_slot;
 mod playback;
 mod scene;
