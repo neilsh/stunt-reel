@@ -397,7 +397,7 @@ fn credits_frames(
     credits_in_render: bool,
 ) -> (super::score::ReferenceFrame, super::score::RenderFrame) {
     use stunt_core::contracts::get_palette_rgb;
-    use stunt_render::{LAYER_NONE, LAYER_OVERLAY, MODE13H_HEIGHT, MODE13H_WIDTH};
+    use stunt_core::frame::{LAYER_NONE, LAYER_OVERLAY, MODE13H_HEIGHT, MODE13H_WIDTH};
 
     let ink = 255u8;
     let background = (0..ink)
@@ -461,7 +461,7 @@ fn a_verdict_keeps_the_ink_when_only_the_previous_render_drew_credits() {
         if index == 255 {
             before.luminance[i] = ink_luminance;
             before.indices[i] = 255;
-            before.layers[i] = u16::try_from(stunt_render::LAYER_OVERLAY).unwrap();
+            before.layers[i] = u16::try_from(stunt_core::frame::LAYER_OVERLAY).unwrap();
         }
     }
     let (_, after) = credits_frames(false);
