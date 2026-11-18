@@ -158,5 +158,6 @@ Renovate and the pin, floor and target conventions are in [toolchain § Dependen
 
 ### Markdown line breaks
 
-Start each sentence on its own line, and never break inside a link, code span or inline math: the link checker's regexes stop at a line end.
+Start each sentence on its own line.
+Never break inside inline math, or inside a link or code span: the link checker reads those only to a line end.
 Exceptions and why: [ADR 0051](adr/0051-markdown-breaks-lines-at-sentences.md).

@@ -14,16 +14,18 @@ Separate lines make that rarer, though git still conflicts on edits to adjacent 
 
 Some of the repository's checks read Markdown one line at a time.
 The link checker's link and code-span regexes in [`markdown_links.py`](../../python/stunt_reel/markdown_links.py) stop at a line end.
-`tests/test_doc_invariants.py` allows a link to a dated record only after a `_Source:` or `_Found` marker on the same line.
+`tests/test_doc_invariants.py` lets an evergreen note link to a dated record when a `_Source:` or `_Found` marker comes before the link on its line, or in a Ruled out section.
 
 ## Decision
 
 - **One sentence per line.**
   Each sentence starts on a new line.
   A long sentence may also break after a clause; nothing requires it.
-- **No break inside a link, a code span or inline math**, which the line-based regexes would then miss.
+- **No break inside a link, a code span or inline math.**
+  The line-based regexes would miss a link or code span split across lines.
 - **A `_Source:` or `_Found` span stays on one line with its links.**
 - **Left as they are:** tables, headings, front matter, and fenced, `$$` and HTML blocks.
+  A GitHub alert's marker (`> [!NOTE]`) keeps its own line, since GitHub renders the alert only then.
 - **Scope.**
   The rule covers evergreen Markdown, `work/` folders created after this ADR, and new ADRs.
   It does not cover existing `work/` folders, which are dated records, or accepted ADRs, which are immutable.
@@ -32,7 +34,8 @@ The link checker's link and code-span regexes in [`markdown_links.py`](../../pyt
   [`docs/development.md`](../development.md#markdown-line-breaks) states the rule, `AGENTS.md` points to it, and no task enforces it.
 - **One reflow.**
   The existing evergreen files are reflowed once, by the one-off [`reflow.py`](../../work/2026-11/712_markdown-line-breaks/reflow.py), in a pull request that changes nothing else.
-  The script checks that every file renders to the same HTML apart from whitespace, and that the link checker finds as many links and code spans as in the old text with each paragraph joined onto one line.
+  The script checks that every file renders to the same CommonMark HTML apart from whitespace, and that the link checker loses none of the links and code spans it finds in the old text with each paragraph joined onto one line.
+  CommonMark does not render GitHub's alerts, so the script keeps their marker lines by rule.
   A fresh reviewer also reads a sample of the reflowed paragraphs.
   The reflow's squash commit is listed in [`.git-blame-ignore-revs`](../../.git-blame-ignore-revs).
 
