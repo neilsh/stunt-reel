@@ -61,6 +61,8 @@ Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): 
 
 A docstring or `///` comment states the caller's contract in the fewest words: [Docstrings and doc comments](docs/development.md#docstrings-and-doc-comments).
 
+Markdown starts each sentence on its own line: [Markdown line breaks](docs/development.md#markdown-line-breaks).
+
 ### Skills
 
 Before work one covers, read its skill:
