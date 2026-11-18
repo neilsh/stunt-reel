@@ -1,13 +1,13 @@
 # Journal: #693, frame spacing under the capture harness
 
-## 2026-11-18: drawn frames are 0 or 1 tick apart under the capture profile
+## 2026-11-18: drawn frames are mostly 0 or 1 tick apart under the capture profile
 
 - **Question**: under the capture harness's own settings, how many film ticks separate a drawn `PLAYONE` frame from the one before it, in `INTRO` and in `LOCATION` ticks 836–901, so that `PREVIOUS_FRAME_TICKS` and #624's rotor arm rest on a measurement?
 - **Method**: on `75b9106a` (main), in a cloud session, dosbox-automation 0.85.1 headless (`SDL_VIDEODRIVER=offscreen`), the `capture` profile (`core = dynamic`, `cpu_cycles = 45000`), the Patch #3 `PLAYONE.EXE` both reference captures name, each reference capture's own archive (`captures/vault-location/archives/LOCATION.ALL`, `captures/vault-intro/archives/INTRO.ALL`) staged with its sound samples stubbed as `capture-ref` stages it, and the dialog keys and boot frames of `luagen` (the trace starts at frame 1276, the first after the keys).
   A one-off Lua script (`mise exec -- uv run python <scratch driver>`, built on `luagen._prelude`, `capture_run.staged_play` and `automation.launched`, not committed) read after every emulated frame (`dosbox.wait_frames(1)`): the film clock `DS:0x421C`, the global tick `DS:0x1C3E` (unpatched `0x22B8`), the previous bank call's var 10 `DS:0x1C42` (unpatched `0x22BC`), var 10 in the snapshot struct `DS:0x42A0` (`0x420E + 0x92`), and bank words `0x10`, `0x12` and `0x14` at `work:0x811E..0x8122`, the work segment read from `DS:0x05BE`; `DS = 0x0E66` ([`memory-map-patch3.md`](../../../research/playone-exe/memory-map-patch3.md)).
   `LOCATION` ran to tick 1000 (1,399 frames, 47 s); `INTRO` to its end (5,653 frames, tick 3822, then the 300-frame hold, 101 s).
   A drawn frame's spacing is read from bank word `0x12`, `d << 8` with `d` the change of var 10 since the previous drawn frame: the drawn frame's var 10 is `DS:0x1C42` after the bank call, the previous one's is that minus `d`, and each value maps back to the film tick at which the trace saw var 10 take it (values var 10 held for more than two ticks, or never showed in the struct, are skipped).
-  Only frames where var 10 moves count, since `d` is 0 otherwise whatever the spacing.
+  A frame counts only where var 10 moves, since `d` is 0 otherwise whatever the spacing: the var-10 value it was drawn with (`DS:0x1C42`) must show in the trace at no more than two consecutive film ticks. A counted frame whose `d` is 0 is 0 ticks; any other needs both values mapped, and one that maps to no tick is left out as unmapped.
 - **Result**:
   - **The trace keeps the reference captures' timing.**
     At each kept page's `emu_frame` in the reference `meta.json`, the trace's film clock equals the page's `film_tick` on all 84 `vault-location` pages up to tick 1000 and all 347 `vault-intro` pages.
@@ -23,7 +23,7 @@
     | `INTRO` 2804–2840 | 44 | 18 (40.9%) | 26 (59.1%) | 0 |
     | `INTRO` 1–3822 | 1,531 | 575 (37.6%) | 666 (43.5%) | 290 (18.9%) |
 
-    No window measured 3 or more ticks; `INTRO` also had 10 frames with word `0x12` saturated at `0xFF00` (a fall or a change of 255 or more, at cuts) and 665 it could not map, and `LOCATION` 1–1000 had 38 unmapped.
+    No counted frame measured 3 or more ticks, but the unmapped and saturated frames below are left out, so larger gaps are not excluded; `INTRO` also had 10 frames with word `0x12` saturated at `0xFF00` (a fall or a change of 255 or more, at cuts) and 665 it could not map, and `LOCATION` 1–1000 had 38 unmapped.
     In `INTRO` ticks 2806–2822 every sample shows `d` of 0 or 23 to 26, var 10 moving 23 to 26 a tick, so the frames there are 0 or 1 tick apart; the mapping by tick can be off by one where a sample reads var 10 before the bank call that follows it.
   - **More than one drawn frame per emulated frame.**
     Between consecutive samples `DS:0x1C42` often moved by one tick's worth of var 10 while the later sample's word `0x12` read 0 (`INTRO` frame 5209, tick 2809: `0x1C42` 508 then 534, `d` 0), so at least two bank calls ran between them: one that moved var 10 and one that did not.
@@ -31,7 +31,7 @@
     At `vault-location`'s page at tick 837 (frame 2445) the bank holds a frame drawn at clock 836 with word `0x12` = 0, the solid arm; at the page at tick 881 (frame 2507) it holds a frame drawn at clock 881 with `0x1C00`, the line arm.
     [#504's journal](../504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest) counts large index-0 and index-23 shapes, read there as `[Hypothesis]` solid blades, on both pages.
     If they are, the 881 page shows the frame before the one whose bank the sample read (drawn at clock 880, whose own sample at frame 2506 reads `d` 0): `[Hypothesis]` that a sample can land after a frame's bank call and before its page reaches `A000`, which would also fit the one-tick page lag ([`capture.md`](../../../research/playone-exe/capture.md) § 4).
-- **Verdict**: control, a measurement. Under the capture profile `PLAYONE` draws several frames per film tick, so consecutive drawn frames are 0 or 1 tick apart in most measured frames and 2 at most, not the 2 to 5 DOSBox-X showed at its default cycles; the share at 0 differs by film and scene (81% in `LOCATION` 836–901, 41% in `INTRO` 2804–2840), so no one constant reproduces every frame.
+- **Verdict**: control, a measurement. Under the capture profile `PLAYONE` draws several frames per film tick, so consecutive drawn frames are 0 or 1 tick apart in most counted frames, 2 in up to 19% of them (`INTRO` 1–3822), not the 2 to 5 DOSBox-X showed at its default cycles; the share at 0 differs by film and scene (81% in `LOCATION` 836–901, 41% in `INTRO` 2804–2840), so no one constant reproduces every frame.
   The trace ran headless in a cloud session; the reference captures, made locally on 2026-11-09, were not rerun there, but the trace's clocks matched theirs at every kept page above, and the emulated machine, not the host, sets the guest's frame rate at a fixed `cpu_cycles` (`[Supported Inference]`).
 - **Lives in**: [`angle-bank.md`](../../../research/playone-exe/angle-bank.md) § 2.
 
