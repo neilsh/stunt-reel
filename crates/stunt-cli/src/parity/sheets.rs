@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use stunt_render::{ASPECT_CORRECTED_HEIGHT, MODE13H_WIDTH};
+use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_WIDTH};
 
 /// Frame ordinals always rendered as contact sheets, plus the last captured frame.
 const CONTACT_SHEET_ORDINALS: [usize; 5] = [1, 20, 40, 70, 100];

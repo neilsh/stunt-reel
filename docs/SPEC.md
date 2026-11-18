@@ -159,7 +159,7 @@ _Source: the Milestone 1 and 2 sign-offs (Phases 0–2) in the frozen [`TEAM_SHE
 ## 3. Format & Behaviour Reference
 
 The specification does not carry binary-analysis findings.
-They live in `research/`, each with its own evidence and tier, and [`research/MAP.md`](../research/MAP.md) summarizes every note: `PLAYONE.EXE` startup, the `LOAD FILM` dialog and its `.FLM` + `.ALL` pairing, the capture harness and the display-list VM under [`research/playone-exe/`](../research/playone-exe/); `DGROUP` and work-segment offsets and the `# [MEM-*]` anchors in [`memory-map.md`](../research/playone-exe/memory-map.md) and the files it lists; file formats in [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas; parity findings in [`research/parity/`](../research/parity/).
+They live in `research/`, each with its own evidence and tier, and [`research/MAP.md`](../research/MAP.md) summarizes every note: `PLAYONE.EXE` behaviour under [`research/playone-exe/`](../research/playone-exe/); `DGROUP` and work-segment offsets and the `# [MEM-*]` anchors in [`memory-map.md`](../research/playone-exe/memory-map.md) and the files it lists; file formats in [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas; parity findings in [`research/parity/`](../research/parity/).
 
 ---
 

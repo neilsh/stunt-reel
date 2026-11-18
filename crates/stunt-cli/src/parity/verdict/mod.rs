@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use serde_json::{Value, json};
-use stunt_render::{
+use stunt_core::frame::{
     ASPECT_CORRECTED_HEIGHT, LAYER_FIRST_ACTOR, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP,
     LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH,
 };
