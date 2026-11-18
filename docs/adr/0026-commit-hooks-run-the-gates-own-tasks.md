@@ -9,6 +9,8 @@ checks the subject only, with no gate line. Amended 2026-11-13: two shebang buil
 Amended 2026-11-15: `crlf-check` is removed, and CI checks the pull request title, not every
 commit (below). Amended 2026-11-16: the whitespace built-ins replace
 `diff-check`, and six more built-ins join (below).
+Amended 2026-11-18 by [ADR 0049](0049-a-sweeps-figures-file-is-written-with-tomli-w.md):
+`check-added-large-files` skips a sweep's figures file, `work/*/*/sweeps/*.toml`.
 Supersedes
 the `staged` plan that
 [#32](https://github.com/neilsh/stunt-reel/pull/32) added to

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from render_helpers import reference_tree, write_report
+from render_helpers import reference_tree, work_folder, write_report
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -529,7 +529,8 @@ def test_judge_prints_what_the_sweep_prints(
     monkeypatch.setattr(parity_sweep, "preflight", lambda *_a, **_k: [])
     flags = ["--target", "ctry:5-7", "--track", "heuristic", "--data-root", str(root)]
     argv = ["--var", "DBG_RUN=baseline,candidate", "--no-build", "--jobs", "1", *flags]
-    assert parity_sweep.main(argv) == 0
+    record = ["--record", str(work_folder(tmp_path)), "--topic", "lake"]
+    assert parity_sweep.main([*argv, *record]) == 0
     swept = capsys.readouterr().out
     for value, films in REPORTS.items():
         for film, frames in films.items():

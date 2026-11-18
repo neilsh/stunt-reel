@@ -59,6 +59,9 @@ repo = "builtin"
 [[repos.hooks]]
 id = "check-added-large-files"
 args = ["--enforce-all"]
+# A sweep's figures file holds every frame its recheck judges and may pass 500 KiB; check-toml
+# still parses it, so no binary passes as one (ADR 0049).
+exclude = '^work/[^/]+/[^/]+/sweeps/[^/]+\.toml$'
 
 [[repos.hooks]]
 id = "check-illegal-windows-names"

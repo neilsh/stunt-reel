@@ -22,11 +22,12 @@ work/
       journal.md
       images/
       switches/            DBG_<NAME>.diff: a sweep's switch, kept as a patch
+      sweeps/              <topic>.toml: a sweep's figures, written by its --record
     distill-method/        <slug>: a folder with no issue
 ```
 
 - **Path.** `work/<YYYY-MM>/<issue>_<slug>/`: the month the work started, the bare issue number, and a lowercase kebab-case slug (`^[a-z0-9]+(-[a-z0-9]+)*$`). A folder with no issue is `work/<YYYY-MM>/<slug>/`. A folder never moves. The month directories are the only index.
-- **Files.** `spec.md` and `plan.md` (`spec-<topic>.md` for a second spec), `journal.md`, `images/` and `switches/` ([`probes.md`](../research/parity/probes.md) § 4). Other files keep their basename.
+- **Files.** `spec.md` and `plan.md` (`spec-<topic>.md` for a second spec), `journal.md`, `images/`, `switches/` ([`probes.md`](../research/parity/probes.md) § 4) and `sweeps/` ([`score-a-render-change.md`](../docs/howto/score-a-render-change.md) § 8). Other files keep their basename.
 - **README frontmatter.** A `---` block of `key: value` lines: `title`, `started` (ISO date, in the folder's month), `outcome` (one line, `""` until the work lands), and, in an issue folder, `issue` (the number in its name), whose status is its issue's. A folder with no issue is a landed record unless it carries `status: abandoned`, for dropped work. No other key or `status` value is allowed.
 
 ## Tools

@@ -34,6 +34,13 @@ files and the archive. They hold no game bytes. `stuntreel link build` rebuilds 
 the user's own copy of the game, and refuses when a file's hash differs
 ([ADR 0032](docs/adr/0032-a-films-archive-is-committed-as-a-manifest.md)).
 
+## Scores and metrics
+
+Scores and metrics measured against a capture (SSIM, IoU, index agreement, per film or per
+frame), such as the figures file a sweep writes into a work folder, are this project's own
+measurements, not game-derived content, and may be committed. An image of a captured frame
+follows the limits below.
+
 ## Illustrative comparison images
 
 Research notes may commit a few still images that set a frame captured from the game's own replay
