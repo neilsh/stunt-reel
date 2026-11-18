@@ -407,6 +407,16 @@ impl FilmScene {
         self
     }
 
+    /// Frees the world's mesh ([`World::ir`]), keeping everything [`Self::frame`] reads.
+    ///
+    /// For a caller that has uploaded the mesh and goes on sampling frames. [`Self::world`] then
+    /// returns the world with an empty mesh, which an upload after this draws as nothing.
+    pub fn release_world_mesh(&mut self) {
+        if let Some(world) = &mut self.world {
+            world.ir = SodModelIr::new(&world.ir.name);
+        }
+    }
+
     /// The static world, drawn with an identity transform.
     #[must_use]
     pub fn world(&self) -> Option<&World> {
@@ -690,6 +700,97 @@ mod tests {
         // A view-facing draw keeps the world light whatever the slot's rotation.
         assert_eq!(drawn.light, ShadeLight::WORLD_0X2D);
         assert_eq!(prop.light, ShadeLight::WORLD_0X2D);
+    }
+
+    /// Releasing the world mesh empties it and leaves the frame as it was: the world is still
+    /// drawn, the actor keeps its shadow and the view-facing prop its draw.
+    #[test]
+    fn releasing_the_world_mesh_leaves_frames_unchanged() {
+        use crate::contracts::{ActorTransform, SodVertex, TrajectoryRecord};
+        use crate::flm::SliceKeyframe;
+        use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, decode_sod};
+        use crate::world::{FacingProp, TerrainSurface};
+
+        let words = [
+            OP_ID, 100, 0, 0x0100, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24,
+        ];
+        let bytes: Vec<u8> = words
+            .iter()
+            .chain(&[OP_RETURN])
+            .flat_map(|w| w.to_le_bytes())
+            .collect();
+        let tree = decode_sod(&bytes, "TREE", None, DecodeMode::Strict).expect("decode tree");
+        let record = TrajectoryRecord {
+            tick: 0,
+            camera: CameraTransform {
+                eye: [0.0, 0.0, 8.0],
+                target: [0.0, 0.0, 0.0],
+                ..CameraTransform::default()
+            },
+            actors: vec![ActorTransform {
+                actor_id: 0,
+                model_name: "TREE".to_string(),
+                shape_id: 9,
+                rotation_quat: [0.0, 0.0, 0.0, 1.0],
+                position_meters: [4.0, 0.0, 0.0],
+                state_mask: 0,
+                casts_shadow: true,
+                joint_angles_bam: Vec::new(),
+            }],
+            audio_cues: Vec::new(),
+            palette: PaletteControls::default(),
+            bank: BankVariables::default(),
+        };
+        let timeline = FilmTimeline::new(
+            vec![SliceKeyframe {
+                record,
+                tick: 0,
+                tick_duration: 1,
+            }],
+            Vec::new(),
+        );
+        let mut mesh = SodModelIr::new("WORLD");
+        let corner = SodVertex {
+            position: [0.0; 3],
+            normal: [0.0, 1.0, 0.0],
+            palette_index: 7,
+            flags: 0,
+            scenery_class: 0,
+            _padding: 0,
+        };
+        mesh.vertices = vec![corner; 3];
+        mesh.indices = vec![0, 1, 2];
+        let world = World {
+            ir: mesh,
+            terrain_patches: 0,
+            props_placed: 1,
+            bounds: ShapeExtent {
+                min: [0.0; 3],
+                max: [0.0; 3],
+                radius: 0.0,
+            },
+            scenery_stop: None,
+            terrain: TerrainSurface::default(),
+            tap_failures: Vec::new(),
+            view_facing: vec![FacingProp {
+                shape: 9,
+                position: [-2.0, 1.0, 5.0],
+                gates: Vec::new(),
+            }],
+        };
+        let mut scene = FilmScene::new(timeline, HashMap::from([(9, tree)]), Some(world));
+        let before = scene.frame(0.0);
+        assert!(before.world, "the scene draws its world");
+        assert_eq!(before.actors.len(), 1);
+        assert!(before.actors.iter().all(|a| a.shadow_matrix.is_some()));
+        assert_eq!(before.view_facing.len(), 1);
+
+        scene.release_world_mesh();
+
+        let world = scene.world().expect("the world itself stays");
+        assert!(world.ir.vertices.is_empty() && world.ir.indices.is_empty());
+        assert_eq!(world.ir.name, "WORLD");
+        assert_eq!(scene.frame(0.0), before);
     }
 
     /// A rotated actor is lit by its rotation times the world light, an unrotated one by the

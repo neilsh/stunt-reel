@@ -49,7 +49,8 @@ pub struct WorldInputs<'a> {
 #[derive(Clone, Debug)]
 pub struct World {
     /// Ocean, terrain, and props other than [`Self::view_facing`] as one identity-transformed
-    /// model (`WORLD_BASE` with an optional `WORLD_DECAL` child).
+    /// model (`WORLD_BASE` with an optional `WORLD_DECAL` child); empty once
+    /// [`crate::scene::FilmScene::release_world_mesh`] has freed it.
     pub ir: SodModelIr,
     /// Terrain patches parsed from `MAP.BIN` whose vertices all index the anchor table, less
     /// the records `PLAYONE` never draws.
@@ -57,7 +58,7 @@ pub struct World {
     /// Placements the world holds: distinct `(shape, position)` pairs that are not sub-pixel,
     /// [`Self::view_facing`] included.
     pub props_placed: usize,
-    /// Extent of every vertex in [`Self::ir`].
+    /// Extent of every vertex in [`Self::ir`] as built.
     pub bounds: ShapeExtent,
     /// Why the `SCENERY.scn` walk ended before it reached the end of the tree, if it did.
     /// `None` for a tree that was walked in full or when no scenery was supplied; a stop

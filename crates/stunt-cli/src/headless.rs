@@ -146,10 +146,11 @@ fn write_landed_pages(
 }
 
 /// Executes headless rendering without window creation; a render store records `film`, the
-/// identity of the bytes `scene` was built from.
+/// identity of the bytes `scene` was built from. Frees `scene`'s world mesh once it is
+/// uploaded ([`FilmScene::release_world_mesh`]).
 pub(crate) fn run_headless(
     config: &CliConfig,
-    scene: &FilmScene,
+    scene: &mut FilmScene,
     film: FilmId,
 ) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
@@ -208,6 +209,7 @@ pub(crate) fn run_headless(
             options,
         )
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
+        scene.release_world_mesh();
         println!(
             "[stuntreel] tick {start_tick} camera: eye={:?}, target={:?}, fov={}; {} actor draws",
             cam.eye,
@@ -249,6 +251,10 @@ pub(crate) fn run_headless(
     let slot = PageSlot::default();
     let mut renderer = Renderer::offscreen(scene, offscreen, Box::new(slot.clone()), options)
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
+    // The world mesh is on the device now. Freeing it before the first submit keeps it from
+    // overlapping the upload's staging copies and the device buffers they fill
+    // (research/parity/evidence-limits.md).
+    scene.release_world_mesh();
     println!(
         "[stuntreel] camera forward: {}",
         if CAMERA_FORWARD[2] < 0.0 { "-Z" } else { "+Z" }
