@@ -10,7 +10,10 @@ Each report dir holds one report per reference film, as ``<film>_report/report.j
 variant kept with ``--keep-best``), ``<film>_current/report.json`` (``build/parity/report``) or
 ``<film>/report.json``. A film with no report counts as failed on that side. Prints the table
 and winner line ``mise run sweep`` prints for the same per-frame scores, with the baseline as
-``run=baseline`` and the candidate as ``run=candidate``; the listed frames go to stderr.
+``run=baseline`` and the candidate as ``run=candidate``; the listed frames go to stderr, then
+one line per film with both reports' mean index agreement and the counts of scored frames,
+paired by ``ordinal``, where the candidate's index agreement is better, equal or worse
+(information only: the verdict ignores it).
 
 ``--recheck`` reads a figures file ``mise run sweep -- --record`` wrote, judges its variants
 again by the bounds it records, and prints what the sweep printed, without ``--keep-best``'s
@@ -26,9 +29,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from stunt_reel import dataroot, references
-from stunt_reel.parity_artifacts import read_report
+from stunt_reel.parity_artifacts import Report, read_report
 from stunt_reel.parity_figures import FiguresError, drift_note, parse_figures
-from stunt_reel.parity_judge import TRACKS, FilmRun, Target, Variant, decide, outcome_lines
+from stunt_reel.parity_judge import (
+    TRACKS,
+    FilmRun,
+    Target,
+    Variant,
+    compare_index_agreement,
+    decide,
+    index_agreement_line,
+    outcome_lines,
+)
 
 
 @dataclass(frozen=True)
@@ -53,10 +65,13 @@ def report_json(tree: Path, film: str) -> Path | None:
     return None
 
 
-def read_tree(tree: Path, films: list[str], index: int, value: str) -> tuple[Variant, list[str]]:
-    """The variant *tree*'s reports make, and a note per film it could not read."""
+def read_tree(
+    tree: Path, films: list[str], index: int, value: str
+) -> tuple[Variant, list[str], dict[str, Report]]:
+    """The variant *tree*'s reports make, a note per film it could not read, and the reports read."""
     variant = Variant(index, (value,), {})
     notes = []
+    reports: dict[str, Report] = {}
     for film in films:
         path = report_json(tree, film)
         if path is None:
@@ -69,10 +84,11 @@ def read_tree(tree: Path, films: list[str], index: int, value: str) -> tuple[Var
             notes.append(f"{value} {film}: {err}")
             variant.scores[film] = variant.frames[film] = None
             continue
+        reports[film] = report
         ssim, iou = report.headline()
         variant.scores[film] = ReportScore(ssim, iou)
         variant.frames[film] = FilmRun.of(report)
-    return variant, notes
+    return variant, notes, reports
 
 
 def parse_targets(specs: list[str], track: str | None, films: list[str]) -> list[Target]:
@@ -154,13 +170,17 @@ def main(argv: list[str] | None = None) -> int:
         if not tree.is_dir():
             print(f"parity_judge: report dir not found: {tree}", file=sys.stderr)
             return 2
-    baseline, base_notes = read_tree(args.baseline, films, 1, "baseline")
-    candidate, notes = read_tree(args.candidate, films, 2, "candidate")
+    baseline, base_notes, base_reports = read_tree(args.baseline, films, 1, "baseline")
+    candidate, notes, cand_reports = read_tree(args.candidate, films, 2, "candidate")
     for note in base_notes + notes:
         print(f"[judge] {note}", file=sys.stderr)
     out, lines = outcome_lines(NAMES, films, decide([baseline, candidate], targets, args.track))
     for line in lines:
         print(f"[judge] {line}", file=sys.stderr)
+    for film in films:
+        if film in base_reports and film in cand_reports:
+            agreement = compare_index_agreement(base_reports[film], cand_reports[film])
+            print(f"[judge] {index_agreement_line(film, agreement)}", file=sys.stderr)
     print("\n".join(out))
     return 0
 

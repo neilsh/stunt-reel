@@ -41,13 +41,16 @@ __all__ = [
     "FilmRun",
     "Frame",
     "Headline",
+    "IndexAgreement",
     "Judgement",
     "Target",
     "Track",
     "Variant",
     "baseline_problem",
+    "compare_index_agreement",
     "decide",
     "format_table",
+    "index_agreement_line",
     "join_film",
     "judge",
     "label",
@@ -219,6 +222,60 @@ def join_film(film: str, baseline: FilmRun, candidate: FilmRun) -> FilmJoin:
         lost=tuple(tick for tick in sorted(before) if tick not in after),
         after_only=sum(1 for tick in after if tick not in before),
         baseline_ticks=tuple(sorted(before)),
+    )
+
+
+@dataclass(frozen=True)
+class IndexAgreement:
+    """One film's index agreement, candidate beside baseline, as information beside the verdict."""
+
+    #: Each report's ``mean_index_agreement_scored``; ``None`` when it records none.
+    baseline_mean: float | None
+    candidate_mean: float | None
+    #: Frames paired by ``ordinal`` where the candidate's ``index_agreement`` is higher, equal, lower.
+    better: int
+    equal: int
+    worse: int
+
+
+def compare_index_agreement(baseline: Report, candidate: Report) -> IndexAgreement:
+    """Both reports' mean index agreement and the per-frame wins of *candidate* over *baseline*.
+
+    Frames pair by ``ordinal`` (the first entry per ordinal), over frames scored in both
+    reports, or over every frame when a report predates fade scoring, as :func:`join_film`
+    counts. A frame scored in one report only, or without an ``index_agreement``, is left out.
+    """
+    every = any(e.scored is None for r in (baseline, candidate) for e in r.per_frame)
+
+    def agreements(report: Report) -> dict[int, float]:
+        found: dict[int, float | None] = {}
+        for entry in report.per_frame:
+            found.setdefault(
+                entry.ordinal, entry.index_agreement if every or entry.scored else None
+            )
+        return {n: v for n, v in found.items() if v is not None}
+
+    before, after = agreements(baseline), agreements(candidate)
+    pairs = [(before[n], after[n]) for n in sorted(before) if n in after]
+    return IndexAgreement(
+        baseline.mean_index_agreement_scored,
+        candidate.mean_index_agreement_scored,
+        better=sum(new > old for old, new in pairs),
+        equal=sum(new == old for old, new in pairs),
+        worse=sum(new < old for old, new in pairs),
+    )
+
+
+def index_agreement_line(film: str, agreement: IndexAgreement) -> str:
+    """One stderr line: *film*'s two mean index agreements and the better/equal/worse counts."""
+
+    def mean(value: float | None) -> str:
+        return "n/a" if value is None else f"{value:.4f}"
+
+    return (
+        f"{film} index agreement: baseline {mean(agreement.baseline_mean)}, "
+        f"candidate {mean(agreement.candidate_mean)}; frames candidate better/equal/worse "
+        f"{agreement.better}/{agreement.equal}/{agreement.worse}"
     )
 
 
