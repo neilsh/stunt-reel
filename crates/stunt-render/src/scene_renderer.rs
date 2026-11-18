@@ -11,7 +11,7 @@
 //! poses within one render pass. Its matrix is eye-relative ([`eye_relative_matrix`]): the
 //! camera uniform carries no translation. [`SceneRenderer::prepare`] uploads every per-draw
 //! uniform of a frame with one `Queue::write_buffer` before the pass is submitted, never one per
-//! draw (`research/parity/lavapipe.md`).
+//! draw (`research/parity/lavapipe-render-time.md`).
 //!
 //! Frame use is two-phase because a render pass borrows its bind groups: call
 //! [`SceneRenderer::prepare`] (uploads camera and matrices, may grow the uniform buffer), then
