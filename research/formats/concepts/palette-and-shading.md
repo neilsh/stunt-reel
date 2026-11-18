@@ -188,7 +188,7 @@ Index 228 holds to the highest elevation seen (23.4 degrees); below the first ed
 Parity treats 227 to 238 as sky (`CAPTURE_SKY_INDICES` in `crates/stunt-cli/src/parity/mask.rs`).
 Whether 227 is the top band of the same law is `[Unknown]`, as is behaviour above 23.4 degrees and for 224 to 226.
 Captures show 224 to 226 as zenith sky and as shape paint, so parity counts them as sky only by position ([`method.md`](../../parity/method.md) section 2.0).
-Index 239 is not a band: it is the sun disc, one flat index drawn at the var-13 direction ([`palette-fade.md` § 3.2](../../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)), which the renderer does not draw yet.
+Index 239 is not a band: it is the sun disc, one flat index drawn at the var-13 direction ([`palette-fade.md` § 3.2](../../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)), which the renderer does not draw.
 The horizon sky index is film-specific (first-frame sky is 229 in `INTRO.FLM`, 233 in `CTRY.FLM`).
 
 A pixel-exact classifier with a fixed geometric law reaches only 65 to 75% per frame, and per-frame pitch shifts of up to 1.4 degrees (mean 0.05, sd 0.95) help little, so the residual is our camera's per-tick error and the transition medians are an empirical table, not an exact rule.

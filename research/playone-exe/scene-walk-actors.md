@@ -1,5 +1,5 @@
 ---
-summary: "How the scenery walk places actors among world objects: the actor queue pushes one list at `DGROUP:0x4F00`, the plane nodes split it by the slot's position, and each entry is drawn just before or after the object of the `SP_LEAF` it reaches, or inside that object's display list at `OP_IPG` type 4 when its probe recorded a bucket there (`w` = twice a collision-box code)."
+summary: "How the scenery walk places actors among world objects: the actor queue pushes one list at `DGROUP:0x4F00`, the plane nodes split it by the slot's position, and each entry is drawn just before or after the object of the `SP_LEAF` it reaches, or inside that object's display list at `OP_IPG` type 4 when its probe recorded a bucket there (`w` = twice a collision-box code); replayed for `CTRY` tick 871, it draws the explosion after the tower and before the foreground hill, as the capture does."
 sidebar_label: "Actors in the scenery walk"
 ---
 # `PLAYONE.EXE`: Actors in the Scenery Walk
@@ -66,17 +66,36 @@ So an actor with a bucket is painted among that object's own polygons, at the pl
 A linear disassembly of `0x0000..0xD510` finds four references to `0x2346`: the two pushes (`0x22A8`, `0x22B8`), the test at `0xB557` and the take at `0x1B7F`; none clears the heads at the frame start, so an entry pushed to a head that the object's display list does not reach stays there.
 _Source: [the actor queue's entries, read statically](../../work/2026-11/680_actor-buckets/journal.md#2026-11-18-where-the-actor-queues-entries-go-read-statically)._
 
+## 4. `CTRY` Tick 871
+
+`[Bounded Observation]`, one frame of one film, replayed statically: the slot and eye positions from `CTRY.FLM` at tick 871 walked through the image's tree as § 2's handlers split the list (`0x1EF2`, `0x200B`, `0x2059`); nothing was run.
+The explosion is slot 11 (shape `0x0107`, [`sod-animate.md`](sod-animate.md)), and its entry's extent is `([es:4] >> [es:8]) + 1` (`0x1AF3..0x1AFE`), 17 for `MODEL_0107.SOD`, since the loaded segment is the `.SOD` file two bytes on.
+
+| Object | Leaf | Place in the walk |
+|---|---|---|
+| Tower, shape `0x03DD` at `(−3191, 0, 2485)` and `(−3191, 0, 2491)` | `0x7C14` | far side (`x < −3188`) of the `SP_XPLANE` at `0x7BBE`, walked before the eye's side |
+| Explosion, slot 11 at `(−3192.7, −1.9, 2489.4)` | `0x7BE0` | its centre is on the far side of `0x7BBE`, but its extent crosses that plane and four others on its path, so with no bucket it goes to each one's eye's side; it reaches `0x7BE0` with the larger depth (22.5 m against 10.4 m) and is drawn before the object |
+| Foreground hill, shape `0x0262` at `(−3180, 0, 2488)` | `0x7BE0` | drawn after the explosion |
+
+So the replay gives tower, explosion, hill, the order the capture shows (over the tower, under the hill).
+The plane `x = −3188` separates the tower from the explosion; the hill is ordered against it by the depth compare of the leaf both reach, not by a plane.
+The hill's place rests on § 2's reading that a larger depth word is farther (`[Supported Inference]`).
+The two shapes are named the tower and the hill by their place in the picture.
+The replay assumes slot 11 recorded no bucket: with one, a plane its extent crosses sends it to its centre's side (§ 2), and it reaches leaf `0x7C14` instead.
+`MODEL_0262.SOD` has a collision-box list and `MODEL_03DD.SOD` none.
+_Source: [the CTRY tick 871 explosion replayed](../../work/2026-11/721_ctry-871-replay/journal.md#2026-11-18-the-ctry-tick-871-explosion-replayed-through-the-images-tree)._
+
 ## Ruled out
 
 * **The actor queue inserts into a `DGROUP:0x2346` head** (the lead of [`sod-animate.md` § Open questions](sod-animate.md#open-questions)): it pushes onto `0x4F00`; an entry reaches a head only at the `SP_LEAF` its probe recorded (§ 1, § 3) ([the static read](../../work/2026-11/680_actor-buckets/journal.md#2026-11-18-where-the-actor-queues-entries-go-read-statically)).
 
 ## Open questions
 
-* **The `CTRY` tick 871 order** ([#721](https://github.com/neilsh/stunt-reel/issues/721)).
-  Replay the explosion's slot through the image's tree (§ 2) to find the leaf it reaches and the planes between it and the tower and the hill, and check that the capture's order follows.
-* **Which shapes carry buckets.**
+* **Slot 11's bucket at tick 871.**
+  § 4 assumes no bucket; whether slot 11 is probed and records one at `0x0262`'s leaf, which would send it to leaf `0x7C14`, is not read.
+* **Which shapes carry buckets** ([#721](https://github.com/neilsh/stunt-reel/issues/721) step 2).
   Count the corpus shapes with collision boxes coded 1 to 7, and whether each one's display list runs `OP_IPG` type 4 with the matching `w` on every path; 152 walk steps reach type 4 ([`sod-vm-generators.md`](sod-vm-generators.md)).
-* **The renderer.**
+* **The renderer** ([#737](https://github.com/neilsh/stunt-reel/issues/737)).
   `stunt-render` draws the world in one depth-tested pass; drawing each actor at its leaf's place in the partition order needs the scenery's planes at draw time.
 * **Live check.**
   No breakpoint has confirmed a pending list, a split or a bucket push at run time.

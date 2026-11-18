@@ -139,8 +139,12 @@ All of it is static analysis, not a capture; offsets are linear into the unpacke
 
 `[Established]` for the colour, the cull and the centre and radius arithmetic; `[Supported Inference]` that `DX`, `BP` and `DI` are screen x, y and depth, and that `0xCF39` builds a filled circle.
 It agrees with the `vault-balloon` capture's disc of index 239 ([`attribution.md` § 7](../parity/attribution.md#7-balloons-mask-iou-two-runs-of-frames)).
-The renderer does not draw it yet, and where in the frame's draw order `0824:0E4E` is called is not yet read: no near call reaches `0x908E` (`mise run re-tool -- xref 0x908E`).
-Drawing it needs the var-13 vector for each film: the renderer's `CameraUniform::sun_direction` is a fixed default (`crates/stunt-render/src/camera.rs`), not read from the film, and how `0x196C` turns variable 13 into a vector is open beyond the one observed value ([`terrain-shade.md`](terrain-shade.md), open question 1, which `BALLOON.FLM`'s `0xF02D` would test).
+Where in the frame's draw order `0824:0E4E` is called is not yet read: no near call reaches `0x908E` (`mise run re-tool -- xref 0x908E`).
+The renderer does not draw it.
+`[Supported Inference]` A probe drew it (`sky_index` in `mode13h.wgsl`) at variable 13 read as a 16-bit angle `a` from the zenith, `(sin a, cos a, 0)` in `[I1]`, with an angular radius of 0.048 rad fitted to the capture's disc.
+On `vault-balloon` (variable 13 = `0xF02D`, 22.25 degrees toward `-x`) the disc landed about 31 px left of and 8 to 10 px below the capture's at ticks 155 and 200 (centre `(189.7, 165.8)` against `(221.0, 157.5)`, and `(192.9, 164.7)` against `(224.0, 154.5)`), with 1,617 and 1,670 pixels against 1,746.
+The offset barely changes between the two ticks, so it looks like a fixed error of the direction or of our camera, which these two frames cannot tell apart; the `0x196C` trig is still unread ([`terrain-shade.md`](terrain-shade.md), open question 1).
+Scored on lavapipe over the seven reference films, the probe lowered `balloon`'s SSIM from 0.8172 to 0.8143 (-0.0030, past the 0.002 noise floor), left its IoU at 0.6409 and moved no other film, so it was not adopted: a disc 31 px off costs `balloon` more than no disc (see Ruled out in [`attribution.md`](../parity/attribution.md#7-balloons-mask-iou-two-runs-of-frames)).
 
 The palette and sun readers above run on the snapshot struct at `DS:0x4888`, not on `0x474A` directly.
 The caller at `0x4A35` enters the frame routine at `0x0EE9` with `BX = 0x4888`, and `0x39B0` has copied the 16 live variables from `0x47C8` to `0x4906` (`0x4888 + 0x7E`) beforehand.

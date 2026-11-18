@@ -71,6 +71,10 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
 
     let mut shared: HashMap<u16, ShapeAssets> = HashMap::new();
     for (index, actor) in frame.actors.iter().enumerate() {
+        // The view slot's draw is a shadow alone, which the export does not carry.
+        if actor.shadow_only {
+            continue;
+        }
         let model = scene
             .shape(actor.shape_id)
             .ok_or(GltfError::MissingShape(actor.shape_id))?;

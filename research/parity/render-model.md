@@ -61,7 +61,7 @@ They differ in three ways:
 The depth buffer gets one case visibly wrong: a later polygon that ties an earlier one.
 Each place we imitate `PLAYONE`'s order is a rule that says which surface is "later":
 
-* **Within a shape** (`[I5]`): a coplanar polygon later in the display list is a decal of the one under it, and a `MOVETO`/`ZLINETO` line later in it that lies on a decal is a decal too, since `PLAYONE` draws a line when it runs, with no depth test ([`sod-vm-generators.md`](../playone-exe/sod-vm-generators.md) section 8.10).
+* **Within a shape** (`[I5]`): a coplanar polygon later in the display list is a decal of the one under it, and a `MOVETO`/`ZLINETO` line later in it that lies on a decal is a decal too, since `PLAYONE` draws a line when it runs, with no depth test ([`sod-vm-lines-spans.md`](../playone-exe/sod-vm-lines-spans.md) section 8.10).
   A line on a facet that is no decal stays in the base pass: flagging it too drew lines over a near wall in `BOMB` that the capture does not show ([`world-scene-residuals.md`](../playone-exe/world-scene-residuals.md) section 6.6).
   _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
 * **Between a prop and the terrain** (ADR 0035): a flat prop lying within 10 cm of the terrain is a decal of it.

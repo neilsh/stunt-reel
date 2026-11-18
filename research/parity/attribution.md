@@ -214,6 +214,8 @@ _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attributi
   See [`framing-and-actors.md`](framing-and-actors.md).
 * **`BZLT`, `BVIS`, `REJVEC` or `REJ2D` on the walked paths** (2026-11-12): no census walk reaches them (`BVLT` branches and unreached code are not walked), and the corrected section end moves no score ([which stock shapes reach the gates](../../work/2026-11/235_sod-gates/journal.md#2026-11-12-which-stock-shapes-reach-the-gates)).
 * **`balloon`'s low IoU as a placement or framing error** (2026-11-16): outside the zenith-sky and straight-down runs every scored frame scores 0.965 or more, so neither the balloon's placement nor the framing sets the film's 0.6409 ([what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)).
+* **Drawing the sun disc at variable 13 read as a zenith angle** (2026-11-18): a probe drew index 239 at `(sin a, cos a, 0)` with radius 0.048 rad; on `balloon` the disc sat about 31 px left of and 8 to 10 px below the capture's at ticks 155 and 200, SSIM fell from 0.8172 to 0.8143 on lavapipe, IoU stayed 0.6409 and no other film moved.
+  Not adopted; the vector needs the `0x196C` trig read live ([`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
 * **Terrain distance cull** (not attempted): the land/sea boundary is already nearly right (section 5).
 
 ## Open questions

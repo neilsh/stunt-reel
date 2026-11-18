@@ -5,7 +5,7 @@
 //! polygon draws at least a pixel on every row it crosses, however thin it is. A rasteriser
 //! that samples pixel centres can cover a pixel less per row and per column, and drops a
 //! sliver under a pixel wide altogether: in `INTRO.FLM` the light half of each distant pine
-//! (`research/playone-exe/sod-vm-generators.md` section 8.11). [`with_outlines`] gives the renderer those
+//! (`research/playone-exe/sod-vm-lines-spans.md` section 8.11). [`with_outlines`] gives the renderer those
 //! pixels back by drawing each polygon's outline as one-pixel screen lines, the same lines
 //! a `ZLINETO` draws (section 8.10). An outline costs four vertices and twelve indices an
 //! edge, so it is drawn this way on the shapes the renderer places per frame; the world mesh

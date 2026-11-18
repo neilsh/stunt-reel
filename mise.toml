@@ -48,6 +48,17 @@ os = ["windows"]
 asset_pattern = "dosbox-automation-*-windows-x64.zip"
 checksum = "sha256:6835621f4731235651a886ef67c4fc40693454a6386f0e5ab5c0570965a186ee"
 
+# The same release's Linux tarball, for cloud sessions, which run it headless (#293,
+# docs/cloud-sessions.md). The http backend fetches the asset URL directly: the cloud proxy
+# passes release downloads but refuses the releases API the github backend calls.
+[tools."http:dosbox-automation"]
+version = "0.85.1"
+os = ["linux"]
+url = "https://github.com/dosbox-automation/dosbox-automation/releases/download/v{{version}}/dosbox-automation-{{version}}-7567ec4-linux-x86_64.tar.xz"
+checksum = "sha256:d205021daf20435e9bee7c305af08ee30e74717aef6cc3db4144a1e6364207c9"
+strip_components = 1
+bin_path = "bin"
+
 # DOSBox-X, for its built-in debugger link only: `mise run debug-x` runs breakpoint plans on it
 # (ADR 0034); capture stays on dosbox-automation. The SDL1 build is the one the 2026-11-04 spike
 # ran; the old pin chose SDL2 for OpenGL output, which this tool never uses.

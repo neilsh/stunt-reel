@@ -67,6 +67,7 @@ fn actor_at(x: f32, state_mask: u16) -> ActorTransform {
         position_meters: [x, 0.0, 0.0],
         state_mask,
         casts_shadow: false,
+        view: false,
         joint_angles_bam: Vec::new(),
     }
 }
@@ -232,7 +233,8 @@ fn state_mask_that_hides_geometry_draws_nothing() {
 }
 
 /// A `SIF_SHADOW` actor 3 m up draws its shape again on `y = 0` in palette index 0, with its
-/// own layer, whichever way its face is wound; an actor without the flag draws no shadow.
+/// own layer, whichever way its face is wound; an actor without the flag draws no shadow, and
+/// the view slot draws the same shadow without its shape.
 #[test]
 fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
     common::gpu_test(|| {
@@ -250,10 +252,12 @@ fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
             ir.indices = indices;
             ir
         };
-        let shadow_pixels = |indices: Vec<u32>, casts_shadow: bool| {
+        // The actor's layer's pixels in index 0 (its shadow) and in any other index.
+        let pixels = |indices: Vec<u32>, casts_shadow: bool, view: bool| {
             let actor = ActorTransform {
                 position_meters: [0.0, 3.0, 0.0],
                 casts_shadow,
+                view,
                 ..actor_at(0.0, 0)
             };
             // Looking down at 45 degrees, so the actor and its shadow land on different rows.
@@ -282,20 +286,31 @@ fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
             let scene = FilmScene::new(timeline, shapes, None);
             let mut test = common::gpu_or_skip(&scene)?;
             let page = test.draw(&scene.frame(0.0));
-            Some(
-                page.indices()
-                    .iter()
-                    .zip(page.layers())
-                    .filter(|&(&index, &layer)| index == 0 && layer == LAYER_FIRST_ACTOR)
-                    .count(),
-            )
+            let mut counts = (0, 0);
+            for (&index, &layer) in page.indices().iter().zip(page.layers()) {
+                if layer != LAYER_FIRST_ACTOR {
+                    continue;
+                }
+                if index == 0 {
+                    counts.0 += 1;
+                } else {
+                    counts.1 += 1;
+                }
+            }
+            Some(counts)
         };
         for indices in [vec![0, 1, 2], vec![0, 2, 1]] {
-            let Some(shadow) = shadow_pixels(indices.clone(), true) else {
+            let Some((shadow, _)) = pixels(indices.clone(), true, false) else {
                 return;
             };
             assert!(shadow > 100, "winding {indices:?}: shadow {shadow}");
-            assert_eq!(shadow_pixels(indices, false), Some(0));
+            assert_eq!(pixels(indices.clone(), false, false).map(|p| p.0), Some(0));
+            // With no body over it, the view slot's shadow shows at least as many pixels.
+            let (view_shadow, view_body) = pixels(indices, true, true).expect("adapter");
+            assert!(
+                view_shadow >= shadow && view_body == 0,
+                "{view_shadow} {view_body}"
+            );
         }
     });
 }

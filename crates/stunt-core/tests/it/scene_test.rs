@@ -171,6 +171,75 @@ fn a_shadow_slot_gets_its_matrix_flattened_onto_the_ground() {
     }
 }
 
+/// A one-slice film whose view slot 0 is created with `view_flags` (and shape 7 when they
+/// carry `SIF_DRAW`) at `eye`, beside one shadowed actor of shape 7 at `(3, 2, 0)`.
+fn film_with_view_flags(eye: [f32; 3], view_flags: u8) -> Vec<u8> {
+    let mut body = vec![0x9B, 2, 0x00, view_flags];
+    if view_flags & SIF_DRAW != 0 {
+        body.extend_from_slice(&7u16.to_le_bytes());
+    }
+    body.extend_from_slice(&[0x90, 0x01, ACTOR_FLAGS | SIF_SHADOW]);
+    body.extend_from_slice(&7u16.to_le_bytes());
+    push_interp(&mut body, 0x40, eye, 0);
+    push_interp(&mut body, 0x41, [3.0, 2.0, 0.0], ACTOR_RZ_BAM);
+    body.push(0xFF);
+    let mut bytes = b"FILM".to_vec();
+    bytes.extend_from_slice(&0u16.to_le_bytes());
+    bytes.push(0);
+    bytes.extend_from_slice(&body);
+    bytes
+}
+
+/// A drawn, shadowed view slot gets a draw of its shadow alone, under the eye on `y = 0`
+/// lifted the `[I5]` 1 mm (`sod-vm-frame.md` section 9.1); without `SIF_SHADOW` or a shape
+/// it gets no draw, as before.
+#[test]
+fn a_shadowed_view_slot_draws_its_shadow_alone() {
+    let all = archive(&[(7, &fixture("synthetic_minimal.sod"))]);
+    let eye = [1.0, 0.15, 10.0];
+    let frame = |view_flags: u8| {
+        let film = film_with_view_flags(eye, view_flags);
+        let timeline = FilmTimeline::from_bytes(&film).expect("timeline");
+        let views: Vec<bool> = timeline.slices()[0]
+            .record
+            .actors
+            .iter()
+            .map(|a| a.view)
+            .collect();
+        let (scene, _) = FilmScene::load(&SceneInputs {
+            shapes: Some(ShapeSource::Archive(&all)),
+            ..scene_inputs(&film)
+        })
+        .expect("load");
+        (views, scene.frame(0.0))
+    };
+
+    let (views, shadowed) = frame(ACTOR_FLAGS | SIF_SHADOW);
+    assert_eq!(views, [true, false]);
+    let [view, actor] = shadowed.actors.as_slice() else {
+        panic!("two draws, got {}", shadowed.actors.len());
+    };
+    assert!(view.shadow_only && !actor.shadow_only);
+    assert!(actor.shadow_matrix.is_some());
+    let shadow = view.shadow_matrix.expect("the view slot's shadow");
+    let [x, _, z] = shadowed.view.eye;
+    assert_eq!([shadow[12], shadow[14]], [x, z]);
+    assert!(
+        (shadow[13] - EPSILON_DISPLACEMENT).abs() < 1e-7,
+        "{}",
+        shadow[13]
+    );
+
+    for flags in [
+        ACTOR_FLAGS,
+        SIF_EXISTS | SIF_MOVES | SIF_ROTATES | SIF_SHADOW,
+    ] {
+        let (views, plain) = frame(flags);
+        assert_eq!(views, [false], "view flags {flags:#04x}");
+        assert!(plain.actors.iter().all(|a| !a.shadow_only));
+    }
+}
+
 #[test]
 fn actor_is_drawn_without_its_shapes_ground_offset() {
     // The decoder lifts every vertex by `ground_y_offset`; an actor's film position is
@@ -562,6 +631,29 @@ fn an_animated_shape_draws_its_sprite_at_the_actor() {
         }]
     );
     assert_eq!(frame.actors[0].shape_id, 7);
+}
+
+/// The view slot's shadow-only draw draws no sprite of its animated shape; the other actor
+/// of that shape still does.
+#[test]
+fn a_shadowed_view_slot_draws_no_sprite() {
+    let film = film_with_view_flags([0.0, 0.15, 10.0], ACTOR_FLAGS | SIF_SHADOW);
+    let sprite = fixture("synthetic_sprite.bin");
+    let all = archive(&[
+        (7, &fixture("synthetic_animate.sod")),
+        (0x1F01, &sprite),
+        (0x1F02, &sprite),
+    ]);
+    let (scene, _) = FilmScene::load(&SceneInputs {
+        shapes: Some(ShapeSource::Archive(&all)),
+        ..scene_inputs(&film)
+    })
+    .expect("load");
+
+    let frame = scene.frame(0.0);
+    assert!(frame.actors[0].shadow_only);
+    let actors: Vec<usize> = frame.sprites.iter().map(|s| s.actor).collect();
+    assert_eq!(actors, [1]);
 }
 
 #[test]
