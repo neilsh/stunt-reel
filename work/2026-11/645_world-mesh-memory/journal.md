@@ -36,11 +36,12 @@
     when the copy runs, while the staging copies are still held. On `main` that happens in the
     first frames, with the CPU mesh still held too, hence the peak.
   - `MALLOC_ARENA_MAX=2` leaves peak and steady RSS unchanged (749 and ~550 MiB).
-- **Verdict**: control. The CPU copy of the world mesh is the one copy nothing reads after upload
+- **Verdict**: control. The CPU copy of the world mesh is the only large copy nothing reads after upload
   (`FilmScene::frame` reads only `World::terrain` and `World::view_facing`; the start-up report
   and `export-gltf` read the mesh, before and without a renderer). Freeing it is the next entry.
   Ruled out: glibc arenas as a share of the plateau, and trimming the `Vec`s' spare capacity,
-  which is address space never written, not resident memory.
+  which reallocation grows and nothing writes, so it should be address space, not resident memory;
+  the 252.6 MiB released cannot tell that apart from the full capacity.
 - **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
 
 ## 2026-11-18: freeing the world mesh after upload
@@ -49,8 +50,8 @@
   before the first submit, lower peak and steady RSS on lavapipe and leave the render stores
   byte-identical?
 - **Method**:
-  - `FilmScene::release_world_mesh`, called by `run_headless` after each `Renderer::offscreen`,
-    built in release on the session branch, beside `main` `56a530d`. Same cloud session and flags
+  - `FilmScene::release_world_mesh`, called by `run_headless` after each `Renderer::offscreen`
+    (`342cc7a`, which is `main` `56a530d` plus this change), built in release beside `main`. Same cloud session and flags
     as the entry above.
   - LOCATION ticks 12-120 twice each, alternating `main` and the change; LOCATION ticks 12-300
     once each; CTRY's captured ticks (14-1333, from `tick_range_for_captured_ticks`) twice each,
@@ -70,8 +71,23 @@
     films: LOCATION 12-300 `1906dff0…`, `508783b9…`, `2537dc85…`; CTRY 14-1333 `cabd0799…`,
     `987b39b0…`, `da5bfabf…`.
 - **Verdict**: adopted. The stores are identical and LOCATION's lavapipe peak falls from 1,004 to
-  749 MiB. LOCATION's wall time is 0.2 to 0.3 s (1% to 3%) longer in each pair, smaller than
-  the 17.9 s (12%) between two identical INTRO renders of 129.5 and 147.4 s in a cloud session ([#629](https://github.com/neilsh/stunt-reel/issues/629#issuecomment-6968969446)),
-  so two runs each cannot tell it from noise. The GPU's figures and its byte check over every
-  reference film's captured ticks are #645's `local-only` follow-up.
+  749 MiB. LOCATION's wall time is 0.2 to 0.3 s (1% to 3%) longer in all three pairs; with one
+  or two runs each, and 0.2 s between identical runs here, that does not establish a cost. The
+  GPU's figures and its byte check over every reference film's captured ticks are #645's
+  `local-only` follow-up.
+- **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+
+## 2026-11-18: LOCATION's world at `48f5d49`
+
+- **Question**: The 2026-11-06 entry measured LOCATION's render at about 300 MiB on the RTX 4070
+  at `48f5d49`, as much as CTRY's. Was LOCATION's world smaller then, or does the 1,004 MiB peak
+  above come from elsewhere?
+- **Method**: `mise run build-at -- 48f5d49`, then LOCATION ticks 12-120 with the same flags and
+  inputs as the entries above, less `--software-only`, which `48f5d49` lacks (the cloud session has
+  no GPU, so it renders on the same lavapipe). The world's size from the start-up report line.
+- **Result**: at `48f5d49` LOCATION's world is 158 terrain patches, 6,463 static props, 795,172
+  vertices and 912,750 indices; the render peaks at 258 MiB, steady 252 MiB, 2.9 s. At `56a530d` it
+  is 158 patches, 56,395 props, 6,702,496 vertices and 7,488,138 indices, peaking at 1,004 MiB.
+- **Verdict**: control. LOCATION's world has grown about eightfold since `48f5d49`, which accounts
+  for its render no longer costing what CTRY's does.
 - **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).

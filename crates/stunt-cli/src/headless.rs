@@ -253,7 +253,7 @@ pub(crate) fn run_headless(
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
     // The world mesh is on the device now. Freeing it before the first submit keeps it from
     // overlapping the upload's staging copies and the device buffers they fill
-    // (research/parity/evidence-limits.md section 3).
+    // (research/parity/evidence-limits.md).
     scene.release_world_mesh();
     println!(
         "[stuntreel] camera forward: {}",

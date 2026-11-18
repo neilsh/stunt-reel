@@ -409,9 +409,8 @@ impl FilmScene {
 
     /// Frees the world's mesh ([`World::ir`]), keeping everything [`Self::frame`] reads.
     ///
-    /// For a caller that has uploaded the mesh and goes on sampling frames: LOCATION's mesh
-    /// is about 250 MiB. [`Self::world`] then returns the world with an empty mesh, which an
-    /// upload after this draws as nothing.
+    /// For a caller that has uploaded the mesh and goes on sampling frames. [`Self::world`] then
+    /// returns the world with an empty mesh, which an upload after this draws as nothing.
     pub fn release_world_mesh(&mut self) {
         if let Some(world) = &mut self.world {
             world.ir = SodModelIr::new(&world.ir.name);
@@ -703,8 +702,8 @@ mod tests {
         assert_eq!(prop.light, ShadeLight::WORLD_0X2D);
     }
 
-    /// Releasing the world mesh empties it and leaves every frame as it was: the world is
-    /// still drawn, actors keep their shadows and view-facing props their draws.
+    /// Releasing the world mesh empties it and leaves the frame as it was: the world is still
+    /// drawn, the actor keeps its shadow and the view-facing prop its draw.
     #[test]
     fn releasing_the_world_mesh_leaves_frames_unchanged() {
         use crate::contracts::{ActorTransform, SodVertex, TrajectoryRecord};
