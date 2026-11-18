@@ -210,7 +210,7 @@ _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE pain
 
 The stadium `0x0265` (`SP_LEAF` `0x6F54`, tree `(-7128, 0, 2560)`) opens with its infield, an 8-gon in colour 169.
 In plan it lies inside the plaza `0x064A` (`SP_LEAF` `0x6C02`, tree `(-7040, 0, 2624)`), a flat 10-gon in colour 14 about 384 m across, which lies inside `MAP.BIN` record 1 (colour 195, height 0, leaf `0x036C`).
-`SP_LEAF`'s lift (`0x2219..0x2235`, and `0x2160` for a stand-in) forms `-ground_y_offset << (16 - scale_index)` as one 16.16 value, so it is exact ([`scenery.md`](../formats/auxiliary/scenery.md) section 3.3).
+`SP_LEAF`'s lift (`0x2219..0x2235`, and `0x2160` for a stand-in) forms `-ground_y_offset << (16 - scale_index)` as one 16.16 value, the high word by `sar`, the low word by `shl`, so it is exact.
 With it the infield lies at `(2993 - 2995) / 256 = -0.0078125` m and the plaza at `(158 - 159) / 32 = -0.03125` m: neither is coplanar with the ground, and the infield is 23.4375 mm above the plaza.
 
 Heights do not decide the order.

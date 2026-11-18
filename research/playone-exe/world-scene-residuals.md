@@ -170,10 +170,11 @@ _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE pain
 `PLAYONE` paints `MAP.BIN` record 1, the plaza `0x064A` (14) and the stadium `0x0265`'s infield (169) in that order, which no eye test changes ([`world-scene.md`](world-scene.md) section 3.1).
 In the source the plaza lies 31.25 mm below height 0 and the infield 7.8125 mm below it.
 Our IR moves only the plaza: it is flat, within 0.1 m of record 1, so `ground_decal_vertices` snaps it to `y = 0` and it joins the `WORLD_GROUND` pass (`Always`, depth write).
-`0x0265` is not flat (it rises to 9.5 m), so its infield keeps `y = -0.0078125`, outside the ground pass's 1e-4 m, and as a base polygon must pass `Less` against a plaza now 7.8125 mm above it.
-An exact depth test draws the plaza there, as both backends have since #636; before, rounding flipped it (#595's gaps of 3.2e-6 and 2.9e-6, of opposite sign, near depth 0.994).
+`0x0265` is not flat (it rises to 9.5 m), so its infield keeps `y = -0.0078125`, outside the ground pass's 1e-4 m (`GROUND_PLANE_TOLERANCE`), and as a base polygon must pass `Less` against a plaza now 7.8125 mm above it.
+An exact depth test draws the plaza there, as both backends have since #636 at the ticks it measured (2586, 2599, 2840, 2859, 2862).
+Before, the tie flipped (`[Supported Inference]`: a 7.8125 mm offset seen from about 85 m (near plane 0.5 m) is a depth gap of at most `0.5 / 85² × 0.0078125 = 5.4e-7`, while #595 read 3.2e-6 and 2.9e-6, of opposite sign, near depth 0.994; so the f32 vertex-stage error that #636 removed flipped it, not depth precision).
 
-The fix this points to is the ground pass: the infield's face lies within the snap tolerance of the ground plane, and drawn in the `WORLD_GROUND` walk-order pass after the plaza it paints over it, as `PLAYONE` does.
+The fix this points to is the ground pass: the infield's face lies within 0.1 m (`GROUND_LIE_TOLERANCE`, the snap's tolerance) of the ground plane, and drawn in the `WORLD_GROUND` walk-order pass after the plaza it paints over it, as `PLAYONE` does.
 That holds only if our walk keeps the tree's order of the two props (`SP_2NODE` `0x6BFC`), which is not checked.
 A depth rule cannot fix it: in our IR the plaza is the nearer surface, under any depth format.
 The decal pass cannot either: it holds faces coplanar with an earlier face of their own shape's stream ([ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)), and the infield is the first face of `0x0265`, 23.4375 mm above the plaza in the source.
@@ -200,7 +201,7 @@ The decal pass cannot either: it holds faces coplanar with an earlier face of th
   _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
 * **`ZLINETO` decals as the cause of `INTRO` tick 848's loss** (section 6.6): with either rule tick 848 scores 0.7411, as on `main`; the issue's 0.7509 to 0.7409 came from a renderer that still lifted decals off their facet, and the capture's road sits lower than ours under every variant.
   _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
-* **`LOCATION`'s infield in the ground's plane, so a tie any depth format keeps** (section 6.8): it lies 7.8125 mm below the snapped plaza in our IR, so an exact depth test hides it; the flips fit rounding.
+* **`LOCATION`'s infield in the ground's plane, so a tie any depth format keeps** (section 6.8): it lies 7.8125 mm below the snapped plaza in our IR, so an exact depth test hides it; the flips were the f32 vertex-stage error #636 removed (`[Supported Inference]`: a depth gap of at most 5.4e-7 against #595's 3e-6).
   _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
 * **A depth rule or the decal pass as #651's fix** (section 6.8): the first draws the plaza, the nearer surface in our IR; the second takes a face coplanar with an earlier face of its own shape, and the infield is `0x0265`'s first.
   _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
@@ -228,4 +229,4 @@ The decal pass cannot either: it holds faces coplanar with an earlier face of th
    Which shapes the wall and the outline belong to, and why the wall does not hide them, was not traced.
    _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
 6. **`LOCATION`'s infield in the ground pass** ([#651](https://github.com/neilsh/stunt-reel/issues/651), section 6.8).
-   Whether drawing a non-flat prop's faces that lie within the snap tolerance of the ground plane in the `WORLD_GROUND` pass, after the plaza, restores the infield at 2586 to 2872 without costing other films; it changes draw order, so it needs the GPU judge.
+   Whether drawing a non-flat prop's faces that lie within 0.1 m (`GROUND_LIE_TOLERANCE`) of the ground plane in the `WORLD_GROUND` pass, after the plaza, restores the infield at 2586 to 2872 without costing other films; it changes draw order, so it needs the GPU judge.

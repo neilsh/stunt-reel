@@ -20,16 +20,16 @@
     `0x0265`: `ground_y_offset` 2993, `scale_index` 8 (2^-8 m per unit), `IPG 0000 1FF3 0BB3 1FF3 1800`: every infield vertex is a midpoint of the cube's bottom corners, raw `y = +2995` down, so `-2995/256 + 2993/256 = -2/256 = -0.0078125` m in our axes.
     `0x064A`: `ground_y_offset` 158, `scale_index` 5 (2^-5 m), cube `dy` 159: `(-159 + 158)/32 = -0.03125` m.
     Both shapes' placements have `y = 0` on their path.
-    `export-gltf` gives the same: every 169 vertex of `0x0265` at `y = -0.0078125`, `0x064A` at `-0.03125` (1 mm higher at some vertices); `0x0265` reaches up to `9.497` m, so it is no flat prop.
+    `export-gltf` gives the same: every 169 vertex of `0x0265` at `y = -0.0078125`, `0x064A` at `-0.03125` (at some vertices 1 mm higher, the exporter's decal lift `EPSILON_DISPLACEMENT`, which the IR does not carry); `0x0265` reaches up to `9.497` m, so it is no flat prop.
   - **`PLAYONE`'s lift is exact.**
     `0x2219 mov bx,[es:6]; neg bx; mov cl,[es:8]; mov dx,bx; sar dx,cl; sub cl,0x10; neg cl; shl bx,cl; add bx,[0x49F6]; adc dx,[0x49F8]`: `DX:BX` is `-ground_y_offset << (16 - scale_index)` as one 32-bit 16.16 value (`DX` its high word, `BX` its low), so the lift is `-ground_y_offset / 2^scale_index` m with no truncation for `scale_index <= 16`.
     `0x2160` (`SP_1NODE`) computes the same into `BP:BX`.
     So the source heights are the ones above: the infield lies 7.8125 mm below the ground plane and 23.4375 mm above the plaza.
   - **Our world IR.**
-    `0x064A` is flat (all heights within 1 mm) and lies within 0.1 m of record 1, so `ground_decal_vertices` snaps it to `y = 0`, and `push_prop_mesh` puts it in the `WORLD_GROUND` pass (`Always`, depth write).
+    `0x064A` is flat (one height in the IR) and lies within 0.1 m of record 1, so `ground_decal_vertices` snaps it to `y = 0`, and `push_prop_mesh` puts it in the `WORLD_GROUND` pass (`Always`, depth write).
     `0x0265` is not flat, so it is not snapped; its infield, 7.8125 mm off `y = 0` (the ground pass takes only triangles within 1e-4 m), stays in the base pass and must pass `Less` against the plaza drawn 7.8125 mm above it.
     The snap that lets the plaza beat record 1 thus moves the plaza above the infield, which in the source lies 23.4375 mm above it.
-    An exact depth test draws the plaza; #595's depth gaps (3.2e-6 and 2.9e-6, opposite signs, near 0.994) fit rounding of a gap that small, and after #636 both backends draw the plaza, as the IR says.
+    An exact depth test draws the plaza; #595's depth gaps (3.2e-6 and 2.9e-6, opposite signs, near 0.994) are about six times the at most `0.5 / 85² × 0.0078125 = 5.4e-7` this offset gives at 85 m (near plane 0.5 m), so the f32 vertex-stage error #636 removed flipped the tie, not depth precision (inferred); after #636 both backends draw the plaza at the ticks it measured, as the IR says.
   - **The paint order.**
     The two leaves' paths from the root share every node down to `SP_2NODE` `0x6BFC` (under the `SP_1NODE` `0x6BF2`, `obj` 0, `ext` 303, `splitdist` 2500): its `ptr` is the `SP_LEAF` `0x6C02` of `0x064A`, and `0x0265`, with both stand-ins, is in its `next` chain (through `XPLANE` `0x6C06`, `0x6D36`, `0x6E7C` and the stand-in nodes).
     `SP_2NODE` (`0x1EC0`) visits `ptr`, then `next`, with no eye test, so `PLAYONE` paints the plaza, then whichever of `0x0265`, `0x026A` and `0x026B` it draws, wherever the eye is.
