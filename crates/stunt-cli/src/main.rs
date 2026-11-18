@@ -20,20 +20,12 @@
 //! - `[I5]` Dual-pipeline hardware depth bias pass for coplanar decals.
 //! - `[I6]` Strict 4:3 physical aspect ratio letterbox presentation.
 
-#[expect(
-    dead_code,
-    reason = "only tests read video captures until a video scorer is merged (method.md § 4.4)"
-)]
-mod avi;
 mod config;
 mod export;
 mod headless;
 mod link;
 mod page_slot;
-mod parity;
-mod parity_artifacts;
 mod playback;
-mod render_store;
 mod scene;
 mod shape_views;
 mod sod_census;
@@ -41,11 +33,6 @@ mod sod_trace;
 #[cfg(test)]
 mod test_support;
 mod window;
-#[expect(
-    dead_code,
-    reason = "only tests read video captures until a video scorer is merged (method.md § 4.4)"
-)]
-mod zmbv;
 
 use std::env;
 

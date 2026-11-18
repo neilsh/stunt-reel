@@ -12,7 +12,7 @@ The thresholds were previously spread across render tests and the spec. They bel
 
 ## Decision
 
-The thresholds are constants in the stunt-cli parity module: `I6_INITIAL_SSIM` and `I6_SIGN_OFF_SSIM` in [`parity/mod.rs`](../../crates/stunt-cli/src/parity/mod.rs). The report carries `"i6_gate": {"initial": bool, "sign_off": bool}`, computed from the scored mean SSIM by `i6_gate()`. Neither a failed threshold nor a missing score changes the exit code. A run with no comparable frames still fails, but for the separate reason that it has nothing to score.
+The thresholds are constants in the stunt-cli parity module: `I6_INITIAL_SSIM` and `I6_SIGN_OFF_SSIM` in [`parity/mod.rs`](../../crates/stunt-score/src/parity/mod.rs). The report carries `"i6_gate": {"initial": bool, "sign_off": bool}`, computed from the scored mean SSIM by `i6_gate()`. Neither a failed threshold nor a missing score changes the exit code. A run with no comparable frames still fails, but for the separate reason that it has nothing to score.
 
 ## Considered Options
 

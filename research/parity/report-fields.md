@@ -12,7 +12,7 @@ A count and a list often differ by one word: in `report.json`, `frames` is a **n
 Types are JSON types: `number`, `string`, `bool`, `list`, `object`; `or null` means the value can be `null` (a mean over no frame, a field a legacy report lacks), and `, optional` means the key can be absent.
 A measured value is never missing without being `null`, so test for `null` rather than for the key.
 
-The tables are checked: `report_doc.rs` in `crates/stunt-cli/src/parity/` runs `stuntreel parity` over the synthetic fixtures, parses the tables below (the rows between the `fields` markers, key and type columns) and fails when the output has a key the note does not list, lacks one it lists, or holds a value of another type.
+The tables are checked: `report_doc.rs` in `crates/stunt-score/src/parity/` runs `stuntreel parity` over the synthetic fixtures, parses the tables below (the rows between the `fields` markers, key and type columns) and fails when the output has a key the note does not list, lacks one it lists, or holds a value of another type.
 Change a serializer and this note in the same commit.
 The structs are `Report` and `FrameReport` in [`crates/stunt-parity/src/report.rs`](../../crates/stunt-parity/src/report.rs) (`report.json`), `Comparison::to_json` in `report_diff/mod.rs` (`compare.json`) and `Verdict::to_json` in `verdict/mod.rs` (its `verdict` object).
 
