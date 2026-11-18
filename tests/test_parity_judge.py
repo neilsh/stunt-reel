@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import sys
 from pathlib import Path
@@ -28,7 +29,9 @@ from stunt_reel.parity_judge import (  # noqa: E402
     Target,
     Track,
     Variant,
+    compare_index_agreement,
     decide,
+    index_agreement_line,
     join_film,
     judge,
     outcome_lines,
@@ -542,6 +545,92 @@ def test_judge_prints_what_the_sweep_prints(
         "winner: run=candidate adopts (heuristic target idx +0.0133, 2/3 frames up; films ok; "
         "worst target frame -0.0040 ctry:6; thin evidence: 3 target frames)"
     )
+
+
+def _write_indexed(directory: Path, frames: list[tuple[int, float, bool]], mean: float) -> None:
+    """A ``report.json`` of ``(ordinal, index_agreement, scored)`` frames, one tick per ordinal."""
+    directory.mkdir(parents=True)
+    document = {
+        "per_frame": [
+            {
+                "film_tick": 10 + n,
+                "ordinal": n,
+                "ssim": 0.8,
+                "iou": 0.8,
+                "index_agreement": i,
+                "scored": scored,
+            }
+            for n, i, scored in frames
+        ],
+        "mean_ssim_scored": 0.8,
+        "mean_iou_scored": 0.8,
+        "mean_index_agreement_scored": mean,
+        "scored_frames": sum(f[2] for f in frames),
+    }
+    (directory / "report.json").write_text(json.dumps(document), encoding="utf-8")
+
+
+def test_judge_reports_index_agreement_beside_the_verdict(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = reference_tree(tmp_path / "data", [5])
+    # Ordinals 0 and 1 are better, 2 equal, 3 worse; 4 is scored in the baseline only and 5 in
+    # the candidate only, so both are left out.
+    _write_indexed(
+        tmp_path / "baseline" / "ctry_report",
+        [
+            (0, 0.50, True),
+            (1, 0.60, True),
+            (2, 0.70, True),
+            (3, 0.80, True),
+            (4, 0.9, True),
+            (5, 0.1, False),
+        ],
+        mean=0.6,
+    )
+    _write_indexed(
+        tmp_path / "candidate" / "ctry_report",
+        [
+            (0, 0.55, True),
+            (1, 0.65, True),
+            (2, 0.70, True),
+            (3, 0.75, True),
+            (4, 0.9, False),
+            (5, 0.2, True),
+        ],
+        mean=0.7,
+    )
+    argv = [str(tmp_path / "baseline"), str(tmp_path / "candidate"), "--data-root", str(root)]
+    assert judge_cli.main(argv) == 0
+    captured = capsys.readouterr()
+    assert (
+        "[judge] ctry index agreement: baseline 0.6000, candidate 0.7000; "
+        "frames candidate better/equal/worse 2/1/1"
+    ) in captured.err
+    assert "index agreement" not in captured.out
+
+
+def test_index_agreement_pairs_by_ordinal_and_counts_every_frame_of_an_old_report() -> None:
+    def report(frames: list[FrameReport], mean: float | None) -> Report:
+        return Report(per_frame=tuple(frames), mean_index_agreement_scored=mean)
+
+    def frame(ordinal: int, index: float | None, scored: bool | None = None) -> FrameReport:
+        return FrameReport(
+            film_tick=ordinal * 2,
+            ssim=0.5,
+            iou=0.5,
+            ordinal=ordinal,
+            index_agreement=index,
+            scored=scored,
+        )
+
+    old = report([frame(0, 0.5), frame(1, None), frame(2, 0.4)], None)
+    new = report([frame(2, 0.4, True), frame(0, 0.6, False), frame(1, 0.9, True)], 0.5)
+    got = compare_index_agreement(old, new)
+    # One report predates fade scoring, so every frame counts: ordinal 1 has no baseline value.
+    assert (got.better, got.equal, got.worse) == (1, 1, 0)
+    assert (got.baseline_mean, got.candidate_mean) == (None, 0.5)
+    assert "baseline n/a, candidate 0.5000" in index_agreement_line("ctry", got)
 
 
 def test_judge_refuses_target_without_track_and_unknown_film(

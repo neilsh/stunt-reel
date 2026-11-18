@@ -23,3 +23,32 @@
   The tower is separated from the explosion by the plane `x = −3188` (node `0x7BBE`), and the hill is ordered against it by the depth compare of the leaf both reach (`0x7BE0`), not by a plane.
   Not checked: whether slot 11 is probed (`SIF_MOVES`) and recorded a bucket at `0x0262` (with one bucket a cut plane sends the entry to its centre's side, the extent-1 path); the exact `SP_1NODE` gate; that `0x03DD` and `0x0262` are the tower and the hill beyond position; a run.
 - **Lives in**: [`scene-walk-actors.md` § 4](../../../research/playone-exe/scene-walk-actors.md#4-ctry-tick-871).
+
+## 2026-11-18: which stock shapes carry buckets, counted statically
+
+- **Question**: Which of the game's shapes have a collision box coded 1 to 7, and does each one's display list run `OP_IPG` type 4 with the matching `w = 2 × code`?
+- **Method**: static.
+  `mise run re-tool -- xref 0x09FC` and `-- disasm 0x28A0 0x2F40` on the unpatched load image.
+  The DGROUP tables were read at image `0xD510`, where the draw walk's table `0x554` holds its handlers (`0x1E89`, `0x20A7`, …); an earlier read at `0x163D0` found zeros, which was the wrong base.
+  `DS:0x09FC` gives types 0, 2 and 4 to `0x28DB`, `0x2979` and `0x2A96`, which advance `SI` by `0xC`, `0x10` and `0xC`, as the [`memory-map.md`](../../../research/playone-exe/memory-map.md) row for `0x09FC..0x0A13` already said.
+  A scratch script (not committed) walked every shape of `SUPERSET.ALL` (`mise run superset-all`; `all_archive.archive_chunks`, first word `0x000C`) from the word at file offset 8, as `0x2886` walks the segment word `+0xA`.
+  - Types 0 and 4 lead to a nested list at `+0xA` (`0x2922`, `0x295D`, `0x2AD3`, `0x2B0E`); type 2 carries the code word at `+0xE`, which leads to a nested list when above 8.
+  - Every nested list was walked as if in the first context `0x09FC`, the walk an actor with no collision list of its own makes (`DI = 0`, set at `0x285B`). With an actor list, the nested lists go through the actor's records (`0x0A02`, `0x0A08`, `0x0A0E`) and come back to `0x09FC` only after an actor record overlaps (`0x2BD9`, `0x2CA2`, `0x2DAA`, `0x2E74`, `0x2F3A`); a second pass counted the coded boxes in each top list alone.
+  - The script took the pointer as file offset 2 lower, then 0, then 2 higher. Only 2 lower ends every list at `0xFFFF`.
+  For each shape with a code 1 to 7, `./target/release/stuntreel sod-trace --archive target/linked/superset/SUPERSET.ALL --shape <id>` listed the `IPG 0004 w` steps of its traced path, and a scan of the shape's words from byte `0xA` listed every `0x0063, 0x0004, w` triple.
+  `scene_tree.placements(scene_tree.tree_segment(image))` on the load image gave the shapes placed at an `SP_LEAF`.
+  FreeFlight's `SIDATA/SCENERY1..6.RES` were compared with the game's `RES/` by SHA-256.
+  Nothing was run in DOSBox.
+- **Result**:
+  - 2,516 shapes, 1,279 with a collision-list pointer. Every list ends at `0xFFFF` when the pointer is read as file offset 2 lower; none does at the file offset itself or 2 higher. The lists hold 333 records of type 0, 3,781 of type 2 and 173 of type 4, nested lists included.
+  - 83 shapes have a box coded 1 to 7. All 83 have a code-1 box, and codes 2 to 7 appear in 32, 21, 12, 8, 4 and 2 shapes.
+  - In the top lists alone: 68 of the 83 shapes have a coded box, 51 have a code-1 box, and codes 2 to 6 appear in 18, 7, 4, 4 and 2 shapes. The other 15 have coded boxes only in nested lists.
+  - 75 of the 83: the traced path runs `OP_IPG` type 4 with `w` for each of the shape's codes, and with no other `w`.
+  - The other 8 have a code whose `w` no type-4 triple in their bytes carries: `0x024A` (`w` 2 and 4), `0x02DE` (6 and 8), and `0x03FD`, `MISCELLA.RES`'s `0x3F08`, `0x3F18`, `0x3F1E` and `0x3F24`, and `STRUCTUR.RES`'s `0x4059` (2).
+  - 77 shapes hold a type-4 triple, all among the 83, so no shape has a bucket without a coded box.
+  - The image's tree places 72 of the 83 at an `SP_LEAF`, `0x024A`, `0x02DE` and `0x03FD` among them: 846 of its 68,035 distinct leaf placements.
+  - FreeFlight's six `SCENERY*.RES` are byte-identical to the game's, so they add no shapes.
+- **Verdict**: buckets are common in the stock shapes that carry coded boxes. 75 of 83 trace a bucket for every code, and none traces a bucket without its code. Three tree shapes and five others have a code whose bucket their display list never runs.
+  For an actor with a collision list of its own, a nested list's codes count only once an actor record overlaps; 15 of the 83 shapes have coded boxes only there.
+  Not checked: the display-list branches `sod-trace` does not take; the shapes of `corpus/siarchive` beyond FreeFlight (`local-windows`); whether a probe ever records the missing `w`.
+- **Lives in**: [`scene-walk-actors.md` § 5](../../../research/playone-exe/scene-walk-actors.md#5-which-shapes-carry-buckets).

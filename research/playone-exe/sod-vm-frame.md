@@ -58,6 +58,7 @@ The only writer of slot `+0x1E` and `+0x20/+0x22` is the probe `0x240A`, which `
 It zeroes `+0x1C`, `+0x1E` and `+0x22`, then walks the scenery tree through a second dispatch table, `DGROUP:0x584`.
 At a ground leaf (`0x2631`) it counts edge crossings of the leaf polygon (anchor `x` and `z`) against the slot's integer `x` and `z` and on an odd count stores the leaf's plane address (leaf `+4`) at `+0x1E` (`0x26BE`); later leaves in walk order overwrite it, and a slot over no leaf keeps 0, a shadow on `y = 0`.
 At an object node (`0x257A`) it walks the shape's collision boxes (header word `+0xA`; box words `+2/+4`, `+6/+8`, `+0xA/+0xC` are the `x`, `y` and `z` ranges, `0x3047`); a box with code 8 at `+0xE` stores the object's `y` plus the box's least `y`, its top in the `y`-down axes, at `+0x20/+0x22` (`0x2A5B..0x2A8F`), so the shadow lies on that box, still tilted by the `+0x1E` plane.
+The probe's sphere and box walk span the slot's motion since the previous drawn frame (`+0x24..+0x2F`, copied by `0x1423`), and a carry from the box walk ends the probe (`0x25D2..0x25D7`), so both fields can depend on the frame before as well as the tick ([`film-load.md`](film-load.md) § 5).
 A slot without `SIF_MOVES` is never probed: its fields keep what they held, zero in the load image's records (`DS:0x2B2A`, 2 × 40 of `0x5A` bytes), since allocation clears only bytes `+0` and `+1`.
 
 **Straight down** (`[Established]`, static).

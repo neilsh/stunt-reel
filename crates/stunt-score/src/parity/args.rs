@@ -68,7 +68,8 @@ pub(super) struct Args {
 }
 
 /// Help text for `stuntreel parity`, also listed under the main `--help`.
-pub(crate) fn usage() -> String {
+#[must_use]
+pub fn usage() -> String {
     Args::command().render_help().to_string()
 }
 
