@@ -601,6 +601,7 @@ mod tests {
     use super::*;
     use crate::contracts::VisibilityCondition;
     use crate::sod::DecodeMode;
+    use crate::world::PlacementRecords;
 
     /// A view-facing actor drops its own rotation for the camera's heading, while its
     /// shadow keeps the slot's rotation; the world's view-facing props are drawn the same
@@ -666,6 +667,7 @@ mod tests {
             scenery_stop: None,
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
+            placements: PlacementRecords::default(),
             view_facing: vec![
                 FacingProp {
                     shape: 9,
@@ -786,6 +788,7 @@ mod tests {
             scenery_stop: None,
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
+            placements: PlacementRecords::default(),
             view_facing: vec![FacingProp {
                 shape: 9,
                 position: [-2.0, 1.0, 5.0],
@@ -965,6 +968,7 @@ mod tests {
             scenery_stop: None,
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
+            placements: PlacementRecords::default(),
             // A tree standing only behind the near branch of a level-of-detail node.
             view_facing: vec![FacingProp {
                 shape: 3,

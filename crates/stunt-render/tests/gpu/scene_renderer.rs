@@ -16,7 +16,7 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::{FilmScene, ViewCamera};
-use stunt_core::world::{GROUND_NODE, TerrainSurface, World};
+use stunt_core::world::{GROUND_NODE, PlacementRecords, TerrainSurface, World};
 use stunt_render::{CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
@@ -362,6 +362,7 @@ fn world_is_drawn_when_present() {
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
             view_facing: Vec::new(),
+            placements: PlacementRecords::default(),
         };
         let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
         let Some((w, h, drawn)) = render(&scene) else {
@@ -386,6 +387,7 @@ fn world_of(ir: SodModelIr) -> World {
         terrain: TerrainSurface::default(),
         tap_failures: Vec::new(),
         view_facing: Vec::new(),
+        placements: PlacementRecords::default(),
     }
 }
 

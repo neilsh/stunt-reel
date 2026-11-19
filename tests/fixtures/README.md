@@ -193,3 +193,12 @@ A made-up scene-tree segment of 16-bit little-endian words, for `scene_tree.walk
 - **`0x12`**: `SP_HSLOPE` (`16`) with slope 0 and coord 50, so the line is `z = 50`; child `+2` is the leaf `0x1C` (object `0x0C01`), child `+4` the leaf `0x22` (object `0x0C02`).
 - **`0x40`**: `SP_1NODE` (`2`) for object `0x0D00`, next `0x4C`: an `SP_2NODE` (`4`) whose first child is the leaf `0x58` (object `0x0D01`) and whose second is the leaf `0x5C` (object `0x0D02`).
 - Used by `tests/test_scene_tree.py` (the `walk_slot` tests: the far side first, the split by extent and by slope, the eye's side for a cut slot, the `SP_1NODE` gate, the depth order at a leaf) and `tests/test_scene_walk.py`.
+
+### 25. `synthetic_collision.sod` (122 bytes)
+A made-up shape with a collision list of every record type and box code, for the seam 3 collision decode. Words are 16-bit little-endian; a list pointer is a shape-segment offset, the file offset plus 2 ([`sod.md`](../../research/formats/sod.md) § 2.3). No byte is the game's.
+
+- **Header**: `OP_ID`, `bounding_size = 100`, `yoff = 0`, `scale_index = 1` (0.5 m a unit), `collision_meta = 0x000E` (file offset 12); then `OP_RETURN` at file offset 10.
+- **Top list, file offset 12 (segment `0x0E`)**: a cube (type 0) centred at `(0, -8, 0)` with half-size 16 and nested list `0x48`; a box (type 2) over `x` −20..20, `y` −10..−2, `z` −20..20 coded 8 (its top); a box over `x` −4..4, `y` −8..0, `z` −4..4 coded 3; a plane (type 4) with normal `(32767, 0, 0)`, distance 4 and no nested list; then `0xFFFF`.
+- **List at file offset 70 (segment `0x48`)**: a box over −16..16, −16..0, −16..16 coded 0; a box over −8..8, −8..0, −8..8 whose code `0x006A` is the next list; then `0xFFFF`.
+- **List at file offset 104 (segment `0x6A`)**: a box over −2..2, −2..0, −2..2 coded 1; then `0xFFFF`.
+- Used by `collision_fixture_decodes_every_record_type` in `crates/stunt-core/tests/it/contracts_shape_test.rs`, the world's placement-record test in `crates/stunt-core/tests/it/world_test.rs`, and `tests/test_sod_schema.py`, which parses it with `sod.ksy`.
