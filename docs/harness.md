@@ -131,7 +131,7 @@ Evidence and sources: [the research note](../work/2026-11/windows-sandbox-integr
 
 ## Antigravity
 
-Observed on this host, 2026-11-13:
+Observed on `local-windows`, 2026-11-13:
 
 * **What it confines:** File tools write inside the active workspace and the conversation's artifact directory under `~/.gemini/antigravity/brain/<conversation-id>` (reads can also reach installed skills under `~/.gemini/`).
   When `Orchestrator (Argon)` is selected, planning and `[plan review]` turns run on Argon with editing tools (`edit_file`, `write_file`) refused until `exit_plan_mode` hands the plan to the Hydrogen execution turn.
@@ -139,6 +139,13 @@ Observed on this host, 2026-11-13:
   Commands that run past `WaitMsBeforeAsync` continue as background tasks and wake the turn on completion; `schedule` sets one-shot timers without shell polling.
 * **Approvals and settings:** Project skills under [`.agents/skills/`](../.agents/skills/) and [`AGENTS.md`](../AGENTS.md) ship with the checkout.
   Model selection, sandbox mode, and command allowlists live in `~/.gemini/antigravity` on the host and cannot be committed.
+
+Observed on a Debian 12 cloud VM, 2026-11-18 ([`cloud-antigravity.md`](../.agents/skills/working-in-an-environment/cloud-antigravity.md)):
+
+* **What it confines:** Runs as non-root `antigravity` (`uid=1000`) with `/` read-only (`RUSTUP_HOME=/usr/local/rustup`, `/usr/local/bin/uv` `0.13.8`); writable storage includes `/home/antigravity` (19 GB XFS, persists across sleep/wake) and `/tmp` (overlay, resets on sleep/wake).
+* **The shell and setup:** Each `run_command` starts a fresh non-interactive `bash` sourcing `~/.bashrc` via `BASH_ENV`.
+  [`.agents/environment.json`](../.agents/environment.json) runs `bash .claude/cloud-setup.sh --antigravity`, and project-local `/home/antigravity/env-setup.sh` fetches archives and builds the game trees; `.claude/settings.json` `SessionStart` hooks do not run.
+* **Proxy and plugins:** Outbound HTTPS goes through `agy-plugin-proxy` (`gh` GraphQL commands work; `gdrive` reads Drive resources).
 
 ## Windows PowerShell 5.1
 
@@ -178,6 +185,6 @@ Give a harness its own `docs/harness/<tool>.md`, as DeepSeek Harness has, when i
 | --- | --- | --- |
 | DeepSeek Harness | `~/.dsh` on this host | no — host-local |
 | Claude Code | [.claude/settings.json](../.claude/settings.json), `.claude/skills` (link to `.agents/skills/`) plus `~/.claude/settings.json` | repo files yes, user file no |
-| Antigravity | [.agents/skills/](../.agents/skills/) plus `~/.gemini/antigravity` | skills yes, user settings no |
+| Antigravity | [`.agents/environment.json`](../.agents/environment.json), [`.agents/skills/`](../.agents/skills/) plus `~/.gemini/antigravity` and cloud `/home/antigravity/env-setup.sh` | repo files yes, user files no |
 
 A checkout cannot ship the DeepSeek Harness policy, so [`harness/deepseek.md`](harness/deepseek.md) and this page are the repository's record of what it should be.
