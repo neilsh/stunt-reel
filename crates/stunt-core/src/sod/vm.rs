@@ -651,10 +651,7 @@ pub(crate) struct VmRun {
     pub returned_at: Option<usize>,
     /// Images `OP_ANIMATE` drew before the stream ended, in stream order.
     pub sprites: Vec<ShapeSprite>,
-    /// The bank operands the walk's `ROT*` read, ascending and without repeats.
-    ///
-    /// Recorded from the rest-pose walk, so complete only while nothing branches on the bank
-    /// (`BVGT` still reads 0, #624); revisit when `BVGT` reads the bank.
+    /// The bank operands the walk's `ROT*` and `BVGT` read, ascending and without repeats.
     pub bank_operands: Vec<u16>,
     /// Distinct `(opcode, operand)` pairs reached by `ROT*`, ascending and without repeats.
     pub rot_uses: Vec<RotUse>,
@@ -1440,12 +1437,9 @@ impl<'a> Vm<'a> {
         Ok(())
     }
 
-    /// `OP_BVGT`: a branch on an animation variable.
+    /// `OP_BVGT`: branch by `rel` when `bank[var] >= val` (unsigned; `PLAYONE` `0x9C23`).
     fn bvgt(&mut self) -> Result<(), SodError> {
-        // `variable >= val` branches by `rel` bytes from the third operand word
-        // (si-tools); the animation variable reads zero, so only `val == 0` takes it unless
-        // `walk_all_bvgt` queues both arms for a rotation census.
-        let _var = self.r.read_u16_le()?;
+        let var = self.r.read_u16_le()?;
         let val = self.r.read_u16_le()?;
         let operand_at = self.r.pos();
         let rel = self.r.read_u16_le()?;
@@ -1469,8 +1463,10 @@ impl<'a> Vm<'a> {
             }
             return Ok(());
         }
-        let taken = val == 0;
-        if taken {
+        if let Err(at) = self.bank_operands.binary_search(&var) {
+            self.bank_operands.insert(at, var);
+        }
+        if self.bank.word(var) >= val {
             match target {
                 Some(target) => self.flow.jump = Some(target),
                 None => self.flow.malformed = Some(SodStopReason::MalformedBranch),

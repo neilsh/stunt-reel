@@ -1782,3 +1782,47 @@ fn test_census_rotations_walks_both_bvgt_arms_and_records_unique_pairs() {
             .is_some_and(|s| s.reason == SodStopReason::MalformedBranch)
     );
 }
+
+/// `OP_BVGT` compares `bank.word(var) >= val` unsigned (`PLAYONE` `0x9C23`) and records `var`
+/// in `DecodeRecord::bank_operands` so draw-time `AngleBank::only` keeps it.
+#[test]
+fn test_bvgt_branches_when_bank_word_is_at_or_above_threshold() {
+    use crate::sod::{AngleBank, OP_BVGT};
+
+    let mut stream = make_sod_header(100, 0, 0, 0);
+    // OP_VECTORS: count=4, start_reg=0, 4*3=12 i16s -> 2 + 2 + 2 + 24 = 30 bytes (ends at 40).
+    push_words(
+        &mut stream,
+        &[OP_VECTORS, 4, 0, 100, 0, 0, 0, 100, 0, 0, 0, 100, 200, 0, 0],
+    );
+    assert_eq!(stream.len(), 40);
+    // BVGT at 40: op (2) + var (2) + val (2) + rel (2) = 8 bytes. operand_at = 46.
+    // Fallthrough at 48: POLYZ(3, 0, 12, 24) [10 bytes] + RETURN [2] = 12 bytes -> ends at 60.
+    // rel = 60 - 46 = 14.
+    push_words(&mut stream, &[OP_BVGT, 0x12, 0x0FA0, 14]);
+    push_words(&mut stream, &[OP_POLYZ, 3, 0, 12, 24, OP_RETURN]);
+    assert_eq!(stream.len(), 60);
+    // Taken arm at 60: POLYZ(3, 36, 12, 24) + RETURN.
+    push_words(&mut stream, &[OP_POLYZ, 3, 36, 12, 24, OP_RETURN]);
+
+    let rest = decode(&stream, "POSED").expect("rest");
+    assert_eq!(rest.decode().expect("record").bank_operands, [0x12]);
+    assert_eq!(
+        positions_mm(&rest),
+        [[-100_000, 0, 0], [0, -100_000, 0], [0, 0, 100_000]]
+    );
+    assert_eq!(decode_posed(&stream, AngleBank::REST), rest);
+    assert_eq!(decode_posed(&stream, bank_with(0x12, 0x0F9F)), rest);
+
+    let at_threshold = decode_posed(&stream, bank_with(0x12, 0x0FA0));
+    assert_eq!(
+        positions_mm(&at_threshold),
+        [[-200_000, 0, 0], [0, -100_000, 0], [0, 0, 100_000]]
+    );
+    // Unsigned comparison: 0xFFFF >= 0x0FA0 is true.
+    let high = decode_posed(&stream, bank_with(0x12, 0xFFFF));
+    assert_eq!(high, at_threshold);
+    // `AngleBank::only` with `bank_operands` preserves word 0x12.
+    let kept = bank_with(0x12, 0x0FA0).only(&rest.decode().expect("record").bank_operands);
+    assert_eq!(decode_posed(&stream, kept), at_threshold);
+}

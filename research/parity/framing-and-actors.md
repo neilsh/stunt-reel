@@ -40,7 +40,7 @@ This is why the eye-height sweeps below found no consistent answer: a height off
 
 `[Established]` that the black trapezoid over `location`'s foreground at ticks 717 to 903 is the solid-blade arm of shape `0x3E57`'s main rotor in its rest pose, by the shape's stream and a render that takes the other arm; the live bank read behind the `PLAYONE` rule below is `[Bounded Observation]`, one film, run with a `.ALL` that differs from the reference capture's ([#504](https://github.com/neilsh/stunt-reel/issues/504)).
 The rotor's angle (`ROTY` on bank `0x14`) and its arm (`BVGT` on bank `0x12`) both come from the angle bank ([`angle-bank.md`](../playone-exe/angle-bank.md) § 4), whose words our VM read as 0 for both until [#271](https://github.com/neilsh/stunt-reel/issues/271): the angle stayed at 0, the blades pointing at the camera.
-The rotor now turns by bank `0x14` ([`sod-vm-execution.md`](../playone-exe/sod-vm-execution.md) § 8.7), but `BVGT` still reads 0 and never branches, so the solid blades are drawn on every tick.
+The rotor now turns by bank `0x14` ([`sod-vm-execution.md`](../playone-exe/sod-vm-execution.md) § 8.7), and `BVGT` reads the bank word and records its operand in `DecodeRecord::bank_operands` ([#624](https://github.com/neilsh/stunt-reel/issues/624)), while `PREVIOUS_FRAME_TICKS = 0` keeps word `0x12` at 0 so the solid blades still draw on every tick.
 `PLAYONE` spins the rotor and draws line blades whenever var 10 moved by 16 or more since its previous frame.
 The trapezoid persists after #495 (`location` at its expected score).
 
@@ -51,9 +51,9 @@ Not wrong geometry: with `BVGT` forced to branch, our render draws short lines a
 `[Hypothesis]` that 837 and 881 are frames in which var 10 moved by less than 16 since the previous one.
 Under DOSBox-X every frame from 836 to 901 took the line arm, but under the capture harness drawn frames there are 0 ticks apart in 81% of the measured frames with var 10 moving and 1 tick in the rest ([`angle-bank.md`](../playone-exe/angle-bank.md) § 2), so most frames see no change of var 10.
 Since #693 our render takes word `0x14` from this frame's var 10 (`PREVIOUS_FRAME_TICKS` = 0), which turned the blades at 881 near the capture's shape.
-The fix is [#624](https://github.com/neilsh/stunt-reel/issues/624): `BVGT` reading the bank word that the `ROT*` already read.
+Choosing the line arm on spun frames now awaits a non-constant frame-spacing rule for word `0x12`.
 
-_Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest)._
+_Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest); [OP_BVGT reads the angle bank](../../work/2026-11/624_sod-bvgt-angle-bank/journal.md#2026-11-19-op_bvgt-reads-bankwordvar-at-draw-time-and-location-rescores-unchanged)._
 
 ## Ruled out
 
