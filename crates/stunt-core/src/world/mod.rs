@@ -29,7 +29,7 @@ mod terrain;
 
 pub use assemble::{FacingProp, World, WorldInputs, build_world};
 pub use mesh::GROUND_NODE;
-pub use scenery::{ScnStop, ScnStopReason};
+pub use scenery::{SceneryShapes, ScnStop, ScnStopReason, scenery_shape_ids};
 pub use tap_props::{TapFailure, TapFailureReason};
 pub use terrain::{GroundPlane, TerrainSurface};
 

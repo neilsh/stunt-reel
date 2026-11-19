@@ -287,11 +287,11 @@ pub fn decode_sod_lit(
     decode_sod_posed(data, name, anchors, mode, light, AngleBank::REST)
 }
 
-/// [`decode_sod_lit`] with the angle bank the shape's `OP_ROTX`, `OP_ROTY` and `OP_ROTZ` read,
-/// which turns its articulated parts (propellers, rotors, control surfaces) into that pose.
+/// [`decode_sod_lit`] with the angle bank the shape's `ROT*` and `OP_BVGT` read.
 ///
-/// [`AngleBank::REST`] skips every rotation, as [`decode_sod_lit`] does. The operands the
-/// walk's rotations read are in [`DecodeRecord::bank_operands`].
+/// Turns articulated parts (propellers, rotors, control surfaces) into that pose and selects
+/// `BVGT` arms. [`AngleBank::REST`] skips every rotation, as [`decode_sod_lit`] does; the
+/// operands the walk's rotations and `BVGT` branches read are in [`DecodeRecord::bank_operands`].
 ///
 /// # Errors
 ///

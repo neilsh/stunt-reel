@@ -617,3 +617,17 @@ fn the_walk_keeps_a_sub_pixel_prop_for_the_caller_to_cull() {
     let placements = place_props(&scn(&words), &tiny, &[[0.0; 3]], 1, CORNER_DEPTH_FLOOR);
     assert_eq!(placements.props, [at(LEAF, [1000.0, -0.0, 0.0])]);
 }
+
+#[test]
+fn scenery_shape_ids_keeps_both_lod_branches_and_skips_zero() {
+    let audit = scenery_shape_ids(&scn(&one_node(STAND_IN, 10, 105)));
+    assert_eq!(audit.shapes, BTreeSet::from([LEAF, STAND_IN]));
+    assert_eq!(audit.stop, None);
+
+    // Stand-in 0 is skipped while the near leaf is kept, and leaf 0 is skipped.
+    let zero_stand_in = scenery_shape_ids(&scn(&one_node(0, 10, 105)));
+    assert_eq!(zero_stand_in.shapes, BTreeSet::from([LEAF]));
+
+    let zero_leaf = scenery_shape_ids(&scn(&leaves_at(&[(0, -5), (LEAF, -6)])));
+    assert_eq!(zero_leaf.shapes, BTreeSet::from([LEAF]));
+}

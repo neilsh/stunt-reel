@@ -16,7 +16,7 @@ Nothing here is a fact about Stunt Island.
 * **Review:** dispatch the Sonnet [reviewer agent](../.claude/agents/reviewer.md) by default, for first reviews and re-reviews.
   The first review of a Sonnet- or dsh-built PR is the exception: Opus or Antigravity, as a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>` in the brief, or as an Antigravity worker; not the `reviewer` agent with a model override, which names `Sonnet`.
   On #160 a Sonnet review missed four real bugs that an Opus review then found, among them a preflight that built despite `--no-build`.
-  Re-reviews prefer Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what changed since the last reviewed commit, run once after every finding is fixed, and are skipped for a wording-only fix (reply with the new text), except on a PR whose diff touches a path rule 5 names: any fix or rebase there is committed locally and re-reviewed at its SHA before the push, and a rebase needs a fresh `clean` comment at the new head.
+  Re-reviews prefer Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what changed since the last reviewed commit, run once after every finding is fixed, and are skipped for a wording-only fix (reply with the new text), except on a PR whose diff touches a path rule 5 names: any fix, rebase or merge there is committed locally and re-reviewed at its SHA before the push, and a rebase or merge needs a fresh `clean` comment at the new head.
 * **An unattended run has a coordinator and workers.**
   The coordinator runs on Sonnet from the start, reads no diffs or issue bodies (workers read them and report), keeps `build/scratch/run-state.md` rewritten at every item transition, and hands off, when its context passes about 150k tokens, instead of compacting: it starts a fresh coordinator from that file's content (a cloud session's new container cannot read the gitignored file, so the content goes in the new session's prompt), or runs Shutdown where it cannot start one.
   In a cloud session either waits until no worker is in flight, or until every in-flight item has a pushed branch (a rule 5 item only after its review and push), since an unpushed commit is lost with the container; any other item is released and listed under Needs you.
@@ -131,7 +131,7 @@ Evidence and sources: [the research note](../work/2026-11/windows-sandbox-integr
 
 ## Antigravity
 
-Observed on this host, 2026-11-13:
+Observed on `local-windows`, 2026-11-13:
 
 * **What it confines:** File tools write inside the active workspace and the conversation's artifact directory under `~/.gemini/antigravity/brain/<conversation-id>` (reads can also reach installed skills under `~/.gemini/`).
   When `Orchestrator (Argon)` is selected, planning and `[plan review]` turns run on Argon with editing tools (`edit_file`, `write_file`) refused until `exit_plan_mode` hands the plan to the Hydrogen execution turn.
@@ -139,6 +139,13 @@ Observed on this host, 2026-11-13:
   Commands that run past `WaitMsBeforeAsync` continue as background tasks and wake the turn on completion; `schedule` sets one-shot timers without shell polling.
 * **Approvals and settings:** Project skills under [`.agents/skills/`](../.agents/skills/) and [`AGENTS.md`](../AGENTS.md) ship with the checkout.
   Model selection, sandbox mode, and command allowlists live in `~/.gemini/antigravity` on the host and cannot be committed.
+
+Observed on a Debian 12 cloud VM, 2026-11-18 ([`cloud-antigravity.md`](../.agents/skills/working-in-an-environment/cloud-antigravity.md)):
+
+* **What it confines:** Runs as non-root `antigravity` (`uid=1000`) with `/` read-only (`RUSTUP_HOME=/usr/local/rustup`, `/usr/local/bin/uv` `0.13.8`); writable storage includes `/home/antigravity` (19 GB XFS, persists across sleep/wake) and `/tmp` (overlay, resets on sleep/wake).
+* **The shell and setup:** Each `run_command` starts a fresh non-interactive `bash` sourcing `~/.bashrc` via `BASH_ENV`.
+  [`.agents/environment.json`](../.agents/environment.json) runs `bash .claude/cloud-setup.sh --antigravity`, and project-local `/home/antigravity/env-setup.sh` fetches archives and builds the game trees; `.claude/settings.json` `SessionStart` hooks do not run.
+* **Proxy and plugins:** Outbound HTTPS goes through `agy-plugin-proxy` (`gh` GraphQL commands work; `gdrive` reads Drive resources).
 
 ## Windows PowerShell 5.1
 
@@ -178,6 +185,6 @@ Give a harness its own `docs/harness/<tool>.md`, as DeepSeek Harness has, when i
 | --- | --- | --- |
 | DeepSeek Harness | `~/.dsh` on this host | no — host-local |
 | Claude Code | [.claude/settings.json](../.claude/settings.json), `.claude/skills` (link to `.agents/skills/`) plus `~/.claude/settings.json` | repo files yes, user file no |
-| Antigravity | [.agents/skills/](../.agents/skills/) plus `~/.gemini/antigravity` | skills yes, user settings no |
+| Antigravity | [`.agents/environment.json`](../.agents/environment.json), [`.agents/skills/`](../.agents/skills/) plus `~/.gemini/antigravity` and cloud `/home/antigravity/env-setup.sh` | repo files yes, user files no |
 
 A checkout cannot ship the DeepSeek Harness policy, so [`harness/deepseek.md`](harness/deepseek.md) and this page are the repository's record of what it should be.

@@ -9,6 +9,7 @@ What each step measures, and how to read its output, is [`research/parity/method
 
 * `--no-build` reuses the release binary (a parallel session may hold it); the drift check then assumes the binary came from the checkout.
 * `--no-render` re-scores the existing `_current` trees.
+  On a clean `crates/`, when the render records the tree that built it (a render `mise run parity` built and rendered on a clean `crates/` does) and `crates/` differs from that tree only under `crates/stunt-score/src/parity/` (the scorer), it records `crates` in the report, so `parity-repin` accepts it; any other change, or an older render, needs a render.
 * `--retime N` scores the render relabelled by N ticks ([`probes.md`](../../research/parity/probes.md) section 6) and writes a `_retime<N>` report instead of overwriting the baseline report.
   On its own it renders first, which moves `_current` into `previous`; to retime the existing render, add `--no-render --no-build`.
 * `--reuse build/parity/previous` scores the previous render without re-rendering.
@@ -83,7 +84,7 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
 ## 6. Look at the worst movers
 
 Open `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref-before| | |ref-after|`), one each for the single biggest mover each way by the verdict's Δ (when `--compare-test` is not a readable render store, the verdict and both sheets are skipped: re-render it), before trusting the mean; a mean can hide a regression or an improvement.
-Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, candidate sweeps).
+Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, where one palette index lies, candidate sweeps).
 
 For a side-by-side of one tick, read the capture with `read_capture` in `stunt_reel.parity_artifacts` and take the frame whose `film_tick` is that tick: `tick_NNNN.idx` is numbered by capture order, not by tick, and `read_capture` supplies the capture-order file names when an older `meta.json` omits `frame_file` and `palette_file`.
 Decode its frame (64000 bytes, 320x200) with its palette (`read_capture_palette`).
@@ -95,7 +96,7 @@ A second's `preview/` PNG shows only that second's first tick, so use it only wh
 Write a journal entry in the work item's `journal.md` ([`work/README.md`](../../work/README.md#journal-entries)): commit hash, matched frames, means, the reason for any movement, and the verdict, linking the sweep's figures file when a sweep gave it (§ 8).
 `mise run parity-probe -- summary --report build/parity/report/ctry_current/report.json` prints the scores and worst frames the entry quotes, so nothing is retyped by hand.
 A PR that adopts a change updates the expected table of each reference film for the renderer class it measured (`ssim`, `iou`, `adapter`, the row's `sha256` and `all_sha256`, and `crates` from `git rev-parse <commit>:crates`, rendered with `crates/` clean; [method § 1](../../research/parity/method.md#1-the-loop) step 0); the other class keeps its older entry until someone measures it.
-Commit `crates/`, run `mise run parity` without `--no-build`, `--no-render`, `--reuse` or `--retime`, then `mise run parity-repin -- [--class gpu|lavapipe]`: it writes every film's table from its report, or writes nothing and says which film's report is missing, was rendered on another tree or another class, was scored against another capture or archive or without recorded pins, or that `crates/` is dirty.
+Commit `crates/`, run `mise run parity` without `--no-build`, `--reuse` or `--retime` (and without `--no-render`, unless `mise run parity` built and rendered it on a clean `crates/` and the commits since changed only `crates/stunt-score/src/parity/`), then `mise run parity-repin -- [--class gpu|lavapipe]`: it writes every film's table from its report, or writes nothing and says which film's report is missing, was rendered on another tree or another class, was scored against another capture or archive or without recorded pins, or that `crates/` is dirty.
 
 ## 8. Judge a candidate against a baseline
 

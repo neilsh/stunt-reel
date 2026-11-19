@@ -1,5 +1,5 @@
 ---
-summary: "Bank words `0x10`..`0x14`, `0x18` and `0x1A` (`work:0x811E`..`0x8128`) are written once per frame for the whole film from the clock and film variables 10 and 12; only `0x16` is per actor. `BVGT` reads the bank too, and a rotor picks solid or line blades by word `0x12`."
+summary: "Bank words `0x10`..`0x14`, `0x18` and `0x1A` (`work:0x811E`..`0x8128`) are written once per frame for the whole film from the clock and film variables 10 and 12; only `0x16` is per actor. `BVGT` reads the bank too, and a rotor picks solid or line blades by word `0x12`; across the 31 retail/demo/FreeFlight archives no stock `ROT*` reads `0x10`, `0x12` or `0x16`, and no scenery or view-facing shape runs `ROT*`."
 sidebar_label: "Angle bank & film variables"
 ---
 # `PLAYONE.EXE`: the Angle Bank and Film Variables 10 and 12
@@ -53,8 +53,30 @@ _Source: [the bank writer read and broken on](../../work/2026-11/456_film-vars-1
   Under DOSBox-X at the harness's default cycles, successive frames in `INTRO` ticks 1337–1452 and 2804–2840 were 2 to 5 ticks apart (`[Bounded Observation]`, one film, one emulator setting); real hardware is unmeasured.
   In `INTRO.FLM`'s montage the stops show `0x12` between `0x0600` and `0xD400` (a change of 6 to 212), and `0xFF00` once, at the first stop of the tick-2800 window (tick 2804, var 10 = 363, previous frame not observed), so it is not a constant.
   `CTRY.FLM`'s keys climb about 24 a tick, which at 2 to 5 ticks a frame is 48 to 120.
-* The renderer fills the bank this way per actor and tick ([`angle_bank`](../../crates/stunt-core/src/scene/bank.rs)), taking `p10` as var 10 at [`PREVIOUS_FRAME_TICKS`](../../crates/stunt-core/src/scene/bank.rs) = 3 ticks earlier: a guess within the 2 to 5 observed above, and that it matches the capture harness's spacing is a `[Hypothesis]`, and the propeller phase it gives at a captured tick is off by the difference times var 10's rate.
+* **Under the capture harness frames are mostly 0 or 1 tick apart** (`[Bounded Observation]`, two films, the `capture` profile: dosbox-automation 0.85.1, `core = dynamic`, `cpu_cycles = 45000`, Patch #3 `PLAYONE.EXE`, each reference capture's own archive with its sound samples stubbed).
+  `PLAYONE` draws more than one frame per film tick there, so var 10 often has not moved since the previous drawn frame.
+  Read from bank word `0x12` after every emulated frame.
+  A frame counts when the var-10 value it was drawn with shows in the trace at no more than two consecutive film ticks, so var 10 was moving there; one whose word `0x12` is 0 counts as 0 ticks, and any other is placed by mapping both its var-10 value and the previous frame's to the ticks that showed them:
+
+  | Window | Measured | 0 ticks | 1 tick | 2 ticks |
+  |---|---|---|---|---|
+  | `LOCATION` 836–901 | 91 | 81.3% | 18.7% | 0 |
+  | `LOCATION` 1–1000 | 1,189 | 70.3% | 27.0% | 2.7% |
+  | `INTRO` 1337–1452 | 96 | 58.3% | 31.2% | 10.4% |
+  | `INTRO` 2804–2840 | 44 | 40.9% | 59.1% | 0 |
+  | `INTRO` 1–3822 | 1,531 | 37.6% | 43.5% | 18.9% |
+
+  No counted frame was 3 ticks or more, but the table leaves out frames whose change of var 10 maps to no tick (665 in `INTRO` 1–3822, 38 in `LOCATION` 1–1000) or is saturated at `0xFF00` (10 in `INTRO`), so larger gaps, at cuts or elsewhere, are not excluded.
+  The spacing varies frame to frame and its mix varies by film and scene, so no constant reproduces every frame.
+  A tick is mapped from each var-10 value, which can be one tick off where a sample reads var 10 before the bank call after it.
+  The run was headless in a cloud session, while the reference captures were made locally before cloud sessions ran the emulator (2026-11-09); its film clock matched theirs at all 431 kept pages it covered (84 `vault-location`, 347 `vault-intro`), and at a fixed `cpu_cycles` the emulated machine, not the host, paces the guest (`[Supported Inference]`).
+  The bank a sample reads may not be the one the page at that frame was drawn with: `vault-location`'s page at tick 881 shows what #504 read as the solid arm (`[Hypothesis]`), while the bank at that frame holds a frame drawn at clock 881 with word `0x12` = `0x1C00`, the line arm; the frame before it, drawn at clock 880, had `0x12` = 0.
+* The renderer fills the bank this way per actor and tick ([`angle_bank`](../../crates/stunt-core/src/scene/bank.rs)), taking `p10` as var 10 [`PREVIOUS_FRAME_TICKS`](../../crates/stunt-core/src/scene/bank.rs) = 0 ticks earlier, so word `0x12` is 0 and `0x14` takes this frame's var 10.
+  Of 0, 1 and 3, 0 gave the best mean over the reference films; 1 scored above 0 on `intro` alone, the film with the larger share of 1-tick frames above.
+  A frame the original drew 1 tick after the one before has its propeller phase off by var 10's rate in a tick, and once `BVGT` reads the bank (#624) a constant 0 would always draw a rotor's solid arm, while the measured mix says the original sometimes draws the line arm.
 * `[Supported Inference]` that var 10's low byte is a propeller phase in 1/256 turns: [`sod-vm-execution.md`](sod-vm-execution.md) § 8.7 has stock propellers turning by `ROTZ` on operand `0x14`, and `(p10 & 0xFF) << 8` sweeps the 16-bit angle once every 256 units of var 10.
+
+_Source: [drawn frames are mostly 0 or 1 tick apart under the capture profile](../../work/2026-11/693_frame-spacing/journal.md#2026-11-18-drawn-frames-are-mostly-0-or-1-tick-apart-under-the-capture-profile), [`PREVIOUS_FRAME_TICKS` swept at 3, 0 and 1](../../work/2026-11/693_frame-spacing/journal.md#2026-11-18-previous_frame_ticks-swept-at-3-0-and-1)._
 
 ---
 
@@ -87,7 +109,7 @@ _Source: [the bank writer read and broken on](../../work/2026-11/456_film-vars-1
   The helicopter shape `0x3E57` (in `LOCATION.ALL`) turns its main rotor by `ROTY` on operand `0x14` inside `PUSHRELMAT`/`POPRELMAT` (stream `0x0D7E..0x0D98`), then runs `BVGT 0x12, 0x0FA0`: below the threshold it calls `0x13E2`, the hub and two solid blades (colours 0 and `0x17`); at or above it, `0x18A0`, the hub with the blades as `ZLINETO` lines.
   The tail rotor (`0x0E76`) repeats the pattern with `ROTX`.
   So the solid blades are drawn when var 10 moved by less than 16 since the previous frame, and the line blades otherwise.
-  This answers open question 1 for `BVGT`, not for `ROT*`.
+  No stock `ROT*` reads `0x12` (section 5).
 * **Live, `LOCATION.FLM`.**
   On Patch #3 under DOSBox-X at 8000 cycles, 30 stops at the bank writer over ticks 836 to 901 had frames 2 or 3 ticks apart and word `0x12` between `0x1D00` and `0x9000`, so every frame took the line arm.
 
@@ -97,16 +119,47 @@ _Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_
 
 ---
 
+## 5. Corpus `ROT*` Census: Operands and Scenery
+
+`[Bounded Observation]`, 31 archives (`21` in `stuntisl/RES/`, `6` in `siarchive/Developer/FreeFlight/SIDATA/`, `4` `.ALL` archives) and `0` loose `.BIN` files in `corpus/`, walked with `stuntreel sod-census --rot` (`census_rotations`, which walks `OP_GOTO`, `OP_GOSUB`, `OP_SORT` and both arms of `OP_BVGT`).
+
+* **Roles (`0` scenery, `0` view-facing).**
+  Of `2,473` unique models audited across `.ALL` chunks and all `.RES` `0x000C` regions (region 0 included), `54` execute `ROT*`: `46` `actor`, `0` `scenery`, `0` `actor+scenery` and `8` `unplaced` across the 22 corpus `.FLM`/`.TKE` films (`4` paired `.ALL`, `18` unpaired resolved through `.RES`) and FreeFlight's `SCENERY.scn` (`0` `faces_view` shapes in any role; `0` unresolved placements, `0` stops).
+  Of the `54`, `52` are `PLANES.RES` aircraft (`0x7F02`..`0x7F38`, `45` placed in those 22 films, `7` unplaced there: `7F0C`, `7F2A`, `7F32`–`7F34`, `7F36`, `7F38`) and `2` are `MILITARY.RES` models (`0x3E57` in `LOCATION.FLM`, `ROTY 0x14` + `ROTX 0x14`; and unplaced `0x3E39`, `ROTX 0x18`).
+* **Operands (`0x14`, `0x18` and `0x1A` only).**
+
+  | Opcode | Operand | Unique `ROT*` models |
+  | :--- | :--- | :---: |
+  | `ROTY` | `0x14` | 1 |
+  | `ROTX` | `0x14` | 1 |
+  | `ROTX` | `0x18` | 22 |
+  | `ROTX` | `0x1A` | 20 |
+  | `ROTZ` | `0x14` | 24 |
+  | `ROTZ` | `0x18` | 22 |
+  | `ROTZ` | `0x1A` | 22 |
+
+  Operand `0x12` (`BVGT`, section 4), `0x16` (`OP_ANIMATE`, [`sod-animate.md`](sod-animate.md) § 2) and `0x10` (`clock << 12`) appear in `0` `ROT*` uses.
+* **Walk limit and raw byte check.**
+  `OP_BVLT` (`0x02F4`) stays in `CENSUS_SKIPS`, and unreachable code is not walked (plain `sod-census`, with `walk_all_bvgt = false`, steps over `0` unimplemented opcodes across the `2,425` non-region-0 models, so none of its walked paths reaches `OP_BVLT`).
+  A raw byte scan finds `0` aligned `0x01DD`/`0x02E2`/`0x02EB` words in all `1,504` `.SOD` regions of `SCENERY1`..`SCENERY6.RES`, `0` at any offset in the `64` `HEADER_FACES_VIEW` shapes in `.RES`, and `0` 4-byte `ROT*` patterns paired with `0x10`, `0x12` or `0x16` across `.RES` or the four `.ALL` archives.
+  Community packages outside these 31 archives were not in this run.
+
+_Source: [corpus `ROT*` census finds no scenery or view-facing reader and no `0x12` rotation](../../work/2026-11/681_sod-rot-census/journal.md#2026-11-19-corpus-rot-census-finds-no-scenery-or-view-facing-reader-and-no-0x12-rotation)._
+
+---
+
 ## Ruled out
 
 * **A per-actor value for operands `0x10`..`0x14`, `0x18`, `0x1A`.**
   One caller per frame, before the object loop; `BX = 0x4888` on every stop; no writer but `0x1D96` in the bank watch. [Journal](../../work/2026-11/456_film-vars-10-12/journal.md#2026-11-13-the-bank-writer-read-and-broken-on).
 * **`0x8120` as the sign of var 10's change** ([`palette-fade.md`](palette-fade.md) § 3.2 before this note): it is the change itself, saturated at 255; the live stops show `0x7F00`, `0xA000`, `0x4800` and others.
 * **`0x8122` as `(var 10 & 0xFF) << 8` of the current frame** ([`sod-vm-execution.md`](sod-vm-execution.md) § 8.7 before this note): it is the previous call's var 10; at tick 1342 var 10 is 12928 (`0x3280`) and the word is `0x0100`, from 12801 (`0x3201`) one frame earlier.
+* **Any `ROT*` reading `0x12`, `0x16` or `0x10`, or any scenery or view-facing shape executing `ROT*`, in the 31 retail, demo and FreeFlight archives** (`[Bounded Observation]`, section 5): all `54` `ROT*` models are aircraft (`0x7Fxx`, `0x3E57`) or military vehicles (`0x3E39`), none has `HEADER_FACES_VIEW`, and none of `SCENERY1`..`SCENERY6.RES` or `SCENERY.scn` runs `ROT*`.
+  [Journal](../../work/2026-11/681_sod-rot-census/journal.md#2026-11-19-corpus-rot-census-finds-no-scenery-or-view-facing-reader-and-no-0x12-rotation).
 
 ## Open questions
 
-1. Whether any stock shape reads operand `0x12` with a `ROT*` (no `OP_ANIMATE` does, [`sod-animate.md`](sod-animate.md) § 2).
-   `BVGT` reads it (section 4), so which arm a rotor draws already depends on `PLAYONE`'s frame spacing, which section 2 bounds only under DOSBox-X; the spacing under dosbox-automation, where the reference captures are made, is unmeasured.
-2. The watch on `work:0x811E..0x8129` never named the `0x811E` store at `0x1DD0`, though the break stops show the word following the clock; why the watch misses it is not known.
-3. Why `0x136F` writes var 10 in the `DS:0x4888` struct during playback while the `DS:0x474A` copy stays still, given [`palette-fade.md`](palette-fade.md) § 3.2's copy from `0x47C8` to `0x4906`.
+1. The watch on `work:0x811E..0x8129` never named the `0x811E` store at `0x1DD0`, though the break stops show the word following the clock; why the watch misses it is not known.
+2. Why `0x136F` writes var 10 in the `DS:0x4888` struct during playback while the `DS:0x474A` copy stays still, given [`palette-fade.md`](palette-fade.md) § 3.2's copy from `0x47C8` to `0x4906`.
+3. Which drawn frame a captured page shows, relative to the bank a sample at the same emulated frame reads (section 2, tick 881).
+   Reading the bank and the composed-page words at more than one point per emulated frame, or a DOSBox-X break at the end of the `A000` copy, would tell.

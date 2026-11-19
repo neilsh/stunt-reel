@@ -1,5 +1,5 @@
 ---
-summary: "A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives in our renderer; on `PLAYONE` a superset with the palette items keeps the palettes, but some pages differ, as they do when the own archive is padded with inert chunks: not by content, nor by count, bytes or ids alone, but, in 13 CTRY captures, exactly when the padding made the film run later in emulator frames."
+summary: "A film's `.ALL` copies stock items verbatim, id-ordered by `(res_index << 8) | (segment + 1)`, music and common sounds by sound setting; stock shapes draw CTRY, INTRO and BALLOON like their archives in our renderer; on `PLAYONE` a superset with the palette items keeps the palettes, but some pages differ, as they do when the own archive is padded with inert chunks: not by content, nor by count, bytes or ids alone, but, on CTRY, once the padding makes the film's pages fall a whole film tick later (the smallest arms tried that change them: 368 one-byte chunks, 137,500 bytes in 63 chunks), and, in 34 captures, exactly when the pages fall on other emulator frames."
 sidebar_label: "What the linker puts in a .ALL"
 ---
 # `MAKEONE.EXE`: What the Film Linker Puts in a `.ALL`
@@ -250,18 +250,55 @@ The last column is the `emu_frame` of the page at film tick 1,333, the emulator 
 - Content did not count: zero and `0xFF` fill drew alike on both films.
   Ids, varied alone, change pages; so do 2,529 chunks adding only 2.5 KB and 63 chunks adding 4 MB, each adding little of the other.
   So none of them is the property by itself; here a chunk weighs more than its bytes (2.5 KB in 2,529 chunks changed 67 pages, 4 MB in 63 chunks 49).
-- How little is enough: 300 one-byte chunks and one 60,000-byte chunk change nothing, 2,529 and 63 chunks of 4 MB do; the thresholds between were not bisected ([#611](https://github.com/neilsh/stunt-reel/issues/611)).
-- Over 13 CTRY captures, these and #301's and #348's, two archives drew identical pages on every shared tick exactly when their last page fell on the same emulator frame, and every archive that changed pages drew its last page later than the own archive (props 3,167, padding 3,173).
+- How little is enough: 300 one-byte chunks and one 60,000-byte chunk change nothing, 2,529 and 63 chunks of 4 MB do; the thresholds between are bisected below.
+- In these and #301's and #348's captures, every archive that changed pages drew its last page later than the own archive (props 3,167, padding 3,173).
   So the pages track how late the film runs, which grows with the chunks and bytes an archive adds.
 
-That the archive's load time sets when the film starts against the emulator's frame clock, and so which ticks get drawn and what is drawn at them, is a `[Hypothesis]`: it rests on one film's captures, and no capture timed the load or the film clock's start.
+That the archive's load time sets when the film starts against the emulator's frame clock, and so which ticks get drawn and what is drawn at them, is a `[Hypothesis]`: it rests on one film's captures; the start itself is timed below.
 
 _Source: [2026-11-16: content does not count; chunk count, bytes and ids do once the film runs later](../../work/2026-11/482_archive-property-pages/journal.md#2026-11-16-content-does-not-count-chunk-count-bytes-and-ids-do-once-the-film-runs-later)._
+
+**Where pages start to change: a whole film tick late.**
+`[Bounded Observation]`, `CTRY.FLM`, unpatched build, 34 captures in a cloud session, run 2026-11-18.
+The own `CTRY.ALL` plus `pad-all --inert` on two axes, ids from `0xF001`: 16 counts of one-byte chunks (300, 350, 362, 368, 375, 400, 450, 500, 550, 600, 900, 1,200, 1,500, 1,800, 2,100, 2,529) and 16 totals in 63 chunks (60,000, 100,000, 125,000, 131,250, 137,500, 150,000, 200,000, 275,000, 350,000, 425,000, 500,000, 750,000, 1,000,000, 2,000,000, 3,000,000 and 4,092,524 bytes); one capture each and two of the own archive, which matched each other on every page.
+The four arms #482 also ran (300 and 2,529 chunks, 63 chunks of 60,000 and 4,092,524 bytes), rerun here, gave its identical-page counts and last-page frames; their pages were not compared with #482's local captures byte for byte.
+The delay is the mean `emu_frame` offset of each capture's kept pages from the own capture's on shared ticks, in film ticks (70.086 emulator frames to 50 ticks).
+
+| Delay | Arms | Last page drawn on frame | Identical pages with own |
+|---|---|---|---|
+| 0 | 300, 350, 362 one-byte chunks; 63 chunks of 60,000 to 131,250 bytes (4 totals) | 3,139 | 121 of 121 |
+| 1 | 368 chunks; 63 chunks of 137,500 and 150,000 bytes | 3,141 | 39 of 103 |
+| 1 | 375 to 600 chunks (6 counts); 63 chunks of 200,000 to 500,000 bytes (5 totals) | 3,141 | 36 of 104 |
+| 2 | 900 chunks | 3,142 | 39 of 106 |
+| 3 | 63 chunks of 750,000 to 4,092,524 bytes (5 totals) | 3,144 | 61 of 110 |
+| 4 | 1,200 and 1,500 chunks | 3,145 | 37 of 106 |
+| 5 | 1,800 chunks | 3,146 | 109 of 118 |
+| 6 | 2,100 chunks | 3,148 | 36 of 107 |
+| 7 | 2,529 chunks | 3,149 | 39 of 106 |
+
+- Pages change between 362 and 368 one-byte chunks, and between 131,250 and 137,500 bytes in 63 chunks: the largest arms tried that leave them and the smallest that change them.
+  Every capture's delay is within 0.04 of a whole number of film ticks, and every arm that changed pages is at least one tick late.
+  In 63 chunks, 750,000 bytes and 4,092,524 bytes are both 3 ticks late, as are the three sizes tried between.
+- The steps are film ticks of 20 ms, 1.40 frames, not frames: the last page moves 2, 3, 5, 6, 7, 9 and 10 frames for delays of 1 to 7 ticks.
+- Two captures drew identical pages on every shared tick exactly when every kept page fell on the same emulator frame: the 105 pairs within the table's 9 rows do, none of the 456 pairs across rows does.
+  The last page's frame alone does not decide it: the two 1-tick rows share it and differ in 29 of 113 pages.
+- Those two rows draw 111 of their 113 shared ticks on the same frame, and 27 of the 29 differing pages are drawn at the same tick on the same frame; where they differ is which ticks were drawn, 8 of them one tick apart (12, 89, 145 … against 13, 90, 144 …).
+  So what is drawn at a tick is not fixed by the tick and the frame it is drawn on; that it carries state from the frames drawn before is a `[Hypothesis]` ([`film-load.md`](../playone-exe/film-load.md) open question 1).
+- Rows 5 ticks apart, 7.009 frames, share 79 to 110 pages of 111 to 118; other pairs of rows share 36 to 61 of 100 to 111, except the two 1-tick rows, 84 of 113.
+  That what is drawn follows the film clock's phase against the 70 Hz frame, and that the clock starts whole timer ticks later as the load grows ([`film-load.md`](../playone-exe/film-load.md) section 4), are `[Hypothesis]`: the delays are read from kept pages, not from a log of the clock's start.
+
+_Source: [2026-11-18: pages change once the film runs a whole film tick late](../../work/2026-11/611_padding-threshold/journal.md#2026-11-18-pages-change-once-the-film-runs-a-whole-film-tick-late)._
 
 The code fits it in part: `PLAYONE` passes every chunk of the archive through its chunk cache before the film starts, each chunk costing a scan of the id table that grows with the chunk count, and the film clock counts from the first timer tick after the load ([`film-load.md`](../playone-exe/film-load.md) sections 1 to 4, read statically).
 The CPU work it counts does not account for the 63-chunk 4 MB arm, and why a later start changes what is drawn at a tick is still open there.
 
 _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-start/journal.md#2026-11-18-the-loader-preloads-every-chunk-and-the-film-clock-starts-on-the-next-timer-tick)._
+
+**The start moves by whole timer ticks.**
+`[Bounded Observation]`, `CTRY.FLM`, unpatched build, the own archive and nine padded arms (those above and #348's padding), logged per emulator frame on dosbox-automation, 2026-11-18.
+The arms that draw the own archive's pages start the film clock on the same timer interrupt; each that draws differently starts 3 to 24 interrupts later, and its last page falls as many ticks later, to within one frame ([`film-load.md`](../playone-exe/film-load.md) § 6).
+
+_Source: [archives that draw alike start the film clock on the same timer interrupt](../../work/2026-11/722_playone-start-timer-tick/journal.md#2026-11-18-archives-that-draw-alike-start-the-film-clock-on-the-same-timer-interrupt)._
 
 ---
 
@@ -287,7 +324,13 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 - **A single archive property (chunk count, bytes or ids) deciding the pages.**
   Ids change pages varied alone, and many tiny chunks or a few large ones each do while adding little of the other; what tracks the pages is how late the film's frames fall (section 7.2; [journal](../../work/2026-11/482_archive-property-pages/journal.md#2026-11-16-content-does-not-count-chunk-count-bytes-and-ids-do-once-the-film-runs-later)).
 - **Any extra chunk changing `PLAYONE`'s pages.**
-  One chunk of 1 or 60,000 bytes, or 300 one-byte chunks, leave every CTRY page as it was; these three arms are the only small ones tried (section 7.2; [journal](../../work/2026-11/482_archive-property-pages/journal.md#2026-11-16-content-does-not-count-chunk-count-bytes-and-ids-do-once-the-film-runs-later)).
+  One chunk of 1 or 60,000 bytes, 300, 350 or 362 one-byte chunks, or 63 chunks of 60,000, 100,000, 125,000 or 131,250 bytes leave every CTRY page as it was; these are the only small arms tried (section 7.2; [#482's journal](../../work/2026-11/482_archive-property-pages/journal.md#2026-11-16-content-does-not-count-chunk-count-bytes-and-ids-do-once-the-film-runs-later), [#611's](../../work/2026-11/611_padding-threshold/journal.md#2026-11-18-pages-change-once-the-film-runs-a-whole-film-tick-late)).
+- **The last page's emulator frame as what decides whether two archives draw alike.**
+  Two CTRY archives whose last page falls on the same frame, both a film tick late, differ in 29 of 113 pages; what matched in 34 captures is the frame of every kept page (section 7.2; [journal](../../work/2026-11/611_padding-threshold/journal.md#2026-11-18-pages-change-once-the-film-runs-a-whole-film-tick-late)).
+- **One-frame steps in how late the film runs.**
+  CTRY's pages fall late by whole film ticks, 1.40 frames each, and the last page never moved by 1 frame (section 7.2; [journal](../../work/2026-11/611_padding-threshold/journal.md#2026-11-18-pages-change-once-the-film-runs-a-whole-film-tick-late)).
+- **The film tick and the frame it is drawn on fixing what `PLAYONE` draws.**
+  27 CTRY pages differ between two archives that draw them at the same tick on the same frame (section 7.2; [journal](../../work/2026-11/611_padding-threshold/journal.md#2026-11-18-pages-change-once-the-film-runs-a-whole-film-tick-late)).
 - **Patch #3 changing a shape file.**
   Of `RES\`, Patch #3 changes only `SPRITES.RES` and four sound files, and both builds' supersets are byte-identical (open question 4).
 
@@ -312,7 +355,7 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
    Decoding only the ids a film references is harder, since the scenery walk decides its props from the whole set.
    A per-frame cost needs whole-film timings on an unloaded machine.
 8. Why does a larger archive change what `PLAYONE` draws at a film tick (section 7.2)?
-   Narrowed by [#482](https://github.com/neilsh/stunt-reel/issues/482): no single property decides it and content does not count; in 13 CTRY captures pages changed exactly when the film's frames fell later, which more chunks, more bytes or other ids bring about once they add enough (between 300 and 2,529 one-byte chunks; bisecting the thresholds is [#611](https://github.com/neilsh/stunt-reel/issues/611)).
+   Narrowed by [#482](https://github.com/neilsh/stunt-reel/issues/482): no single property decides it and content does not count; pages changed when the film's frames fell later, which more chunks, more bytes or other ids bring about once they add enough; [#611](https://github.com/neilsh/stunt-reel/issues/611) found the smallest arms tried that do it on CTRY, 368 one-byte chunks and 137,500 bytes in 63 chunks, each a whole film tick late, and pages that differ at the same tick on the same frame.
    [#609](https://github.com/neilsh/stunt-reel/issues/609) read the loader: every chunk is preloaded, at a per-chunk cost, and the film clock starts on the first timer tick after the load ([`film-load.md`](../playone-exe/film-load.md)).
    Open there: whether that tick is the quantum, what is stepped per drawn frame, and why the 63-chunk 4 MB arm starts later; a live log of the global tick `DS:0x22B8` and the emulator frame at the film clock's start would test the load-time inference.
 

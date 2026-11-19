@@ -8,7 +8,7 @@ judgement:
   open PR, which waits for its base to merge; or one whose auto-merge is armed and whose checks are pending. An armed PR with a
   failed check, a conflict, or passed checks yet still open is ``ready``, since it needs work;
 - an issue labelled ``in-progress``, or ``local-only`` in a cloud session
-  (``CLAUDE_CODE_REMOTE=true``; ``docs/agents/triage-labels.md`` § Environment roles);
+  (``CLAUDE_CODE_REMOTE=true`` or ``/home/antigravity``; ``docs/agents/triage-labels.md`` § Environment roles);
 - an issue with an open blocker or open sub-issue (``docs/agents/issue-tracker.md``, "Count open
   blockers"): a native dependency, a ``Blocked by: #<n>`` line naming an open issue, or an open
   issue whose body starts a line with ``Part of #<n>``;
@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 #: Seconds before a ``gh`` call counts as failed.
@@ -257,13 +258,22 @@ def fetch() -> tuple[list[dict[str, Any]], dict[int, str], list[dict[str, Any]]]
     return prs, checks, issues
 
 
+#: Present on Antigravity cloud VMs (``working-in-an-environment`` skill).
+ANTIGRAVITY_HOME = Path("/home/antigravity")
+
+
+def is_cloud_session() -> bool:
+    """True on Claude Code cloud or Antigravity cloud VMs."""
+    return os.environ.get("CLAUDE_CODE_REMOTE", "").lower() == "true" or ANTIGRAVITY_HOME.is_dir()
+
+
 def main() -> int:
     try:
         prs, checks, issues = fetch()
     except GhError as err:
         print(f"queue: {err}", file=sys.stderr)
         return 2
-    cloud = os.environ.get("CLAUDE_CODE_REMOTE", "").lower() == "true"
+    cloud = is_cloud_session()
     for item in pr_items(prs, checks, cloud=cloud) + issue_items(issues, prs, cloud=cloud):
         print(item.line())
     return 0

@@ -26,7 +26,25 @@ if TYPE_CHECKING:
     from stunt_reel.parity_artifacts import Report
     from stunt_reel.references import Expected, Reference
 
-__all__ = ["CLASS_KEYS", "changed_since", "clean_crates_tree", "comparison_line", "crates_tree"]
+__all__ = [
+    "CLASS_KEYS",
+    "RENDER_TREE_FILE",
+    "SCORER_DIR",
+    "changed_since",
+    "clean_crates_tree",
+    "comparison_line",
+    "crates_tree",
+    "read_render_tree",
+    "scorer_only_change",
+    "write_render_tree",
+]
+
+#: The directory, relative to ``crates/``, holding the parity scorer: code that moves ``iou`` and
+#: ``ssim`` but no pixel of a render (``stunt-score``'s ``parity`` module, not its render store
+#: or artifact readers, which the renderer's output passes through).
+SCORER_DIR = "stunt-score/src/parity/"
+#: The file inside a render directory that names the ``crates/`` tree the render was built from.
+RENDER_TREE_FILE = "crates-tree.txt"
 
 #: The renderer class (``references.RENDERER_CLASSES``) of each adapter class a report names.
 CLASS_KEYS: Mapping[str, str] = {"hardware": "gpu", "cpu": "lavapipe"}
@@ -97,6 +115,43 @@ def clean_crates_tree(repo: Path = REPO_ROOT) -> str | None:
     if found is None or head is None or head.returncode != 0 or _text(head) != found:
         return None
     return found
+
+
+def write_render_tree(render: Path, tree: str | None) -> None:
+    """Records in *render* the ``crates/`` tree it was built from; ``None`` removes any record.
+
+    The record travels with the directory when the rotation renames it, so it always names the
+    build that made the frames beside it.
+    """
+    path = render / RENDER_TREE_FILE
+    if tree is None:
+        path.unlink(missing_ok=True)
+    else:
+        path.write_text(tree + "\n", encoding="ascii")
+
+
+def read_render_tree(render: Path) -> str | None:
+    """The tree :func:`write_render_tree` recorded in *render*; ``None`` if absent or unreadable."""
+    try:
+        text = (render / RENDER_TREE_FILE).read_text(encoding="ascii").strip()
+    except OSError, ValueError:
+        return None
+    return text if len(text) == 40 and all(c in "0123456789abcdef" for c in text) else None
+
+
+def scorer_only_change(old: str, new: str, repo: Path = REPO_ROOT) -> bool:
+    """Whether ``crates/`` tree *new* differs from tree *old* only under :data:`SCORER_DIR`.
+
+    Equal trees count.  ``False`` when git cannot compare them, as when *old* is not in *repo*'s
+    object store, so a tree it cannot read never passes for a scorer-only change.
+    """
+    if old == new:
+        return True
+    done = _git(repo, "diff-tree", "-r", "--no-renames", "--name-only", "-z", old, new)
+    if done is None or done.returncode != 0:
+        return False
+    paths = done.stdout.decode("utf-8", "surrogateescape").split("\0")
+    return all(path.startswith(SCORER_DIR) for path in paths if path)
 
 
 def _text(done: subprocess.CompletedProcess[bytes]) -> str:

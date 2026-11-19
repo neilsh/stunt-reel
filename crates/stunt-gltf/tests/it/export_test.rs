@@ -18,7 +18,7 @@ use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::{
     NodeKind, SodModelIr, SodVertex, VisibilityCondition, get_palette_rgb_float,
 };
-use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
+use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW};
 use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource, ViewCamera};
 use stunt_core::sod::{
     DECAL_FLAG_BIT, DecodeMode, EPSILON_DISPLACEMENT, OP_COLOR, OP_ID, OP_LINECOL, OP_MOVETO,
@@ -795,6 +795,39 @@ fn world_is_exported_as_an_identity_node() {
     // Scene order: camera, WORLD, actors.
     assert_eq!(glb.json["scenes"][0]["nodes"][1], world_index);
     assert_actors_match(&glb, &scene, 0.0);
+}
+
+/// The view slot draws only its shadow, which the export does not carry: its draw is in the
+/// frame but has no node, while the actor beside it keeps its own.
+#[test]
+fn a_view_slots_shadow_only_draw_is_not_exported() {
+    let moving = SIF_EXISTS | SIF_MOVES | SIF_ROTATES;
+    let mut body = vec![0x9B, 2];
+    // Slot 0 is the camera and carries a shape and a shadow; slot 1 is an ordinary actor.
+    body.extend_from_slice(&[0x00, moving | SIF_DRAW | SIF_SHADOW]);
+    body.extend_from_slice(&7u16.to_le_bytes());
+    body.push(0x90);
+    body.extend_from_slice(&[0x01, moving | SIF_DRAW]);
+    body.extend_from_slice(&7u16.to_le_bytes());
+    push_interp(&mut body, 0x40, [0.0, 0.0, 10.0], 0);
+    push_interp(&mut body, 0x41, [3.0, 0.0, 0.0], 0x8000);
+    body.push(0xFF);
+    let mut film = b"FILM".to_vec();
+    film.extend_from_slice(&0u16.to_le_bytes());
+    film.push(0);
+    film.extend_from_slice(&body);
+
+    let sod = fixture("synthetic_minimal.sod");
+    let scene = load(&film, &archive(&[(7, &sod)]));
+    let frame = scene.frame(0.0);
+    let flags: Vec<bool> = frame.actors.iter().map(|a| a.shadow_only).collect();
+    assert_eq!(flags, [true, false], "the view slot's draw is shadow-only");
+
+    let glb = parse_glb(&export_scene_frame(&scene, 0.0).expect("export"));
+    assert!(glb.node_named("actor_0_shape_7").is_none());
+    assert!(glb.node_named("actor_1_shape_7").is_some());
+    // The camera and the one actor are the scene's roots.
+    assert_eq!(glb.json["scenes"][0]["nodes"].as_array().unwrap().len(), 2);
 }
 
 #[test]

@@ -184,3 +184,12 @@ A made-up `OP_ANIMATE` shape and the image both of its frames name. No byte is t
 - **`synthetic_animate.sod`**: header (`OP_ID`, `bounding_size = 100`, `yoff = 0`, `scale_index = 1`, 0.5 m a unit, `collision = 0`), then `CLRV`, `PUTV` register 0, `OP_ANIMATE` (`0x01F8`) with register offset 0, size 4 (2 m), selector `0x16` (the slot's animate word), a count of 2 and the ids `0x1F01`, `0x1F02`, then `OP_RETURN`.
 - **`synthetic_sprite.bin`**: width 2, height 2, a zero word, then the pixels `05 00` / `00 07`, read from byte 6 as `PLAYONE`'s blitter reads them.
 - Used by `scene_test.rs`: an actor bound to the shape draws one 2 m sprite of frame `0x1F01` at its position, and none when the archive lacks the frame's chunk.
+
+### 24. `synthetic_walk_tree.bin` (96 bytes)
+A made-up scene-tree segment of 16-bit little-endian words, for `scene_tree.walk_slot`. Pointers are byte offsets in the file. No byte is the game's.
+
+- **`0x00`**: `SP_POS` (`0`) adding `(10, 0, 20)`, then `0x0A`.
+- **`0x0A`**: `SP_XPLANE` (`6`) with the sortvalue 90, so the plane is at `x = 100`; child `+2` (greater) is `0x40`, child `+4` (lesser) is `0x12`.
+- **`0x12`**: `SP_HSLOPE` (`16`) with slope 0 and coord 50, so the line is `z = 50`; child `+2` is the leaf `0x1C` (object `0x0C01`), child `+4` the leaf `0x22` (object `0x0C02`).
+- **`0x40`**: `SP_1NODE` (`2`) for object `0x0D00`, next `0x4C`: an `SP_2NODE` (`4`) whose first child is the leaf `0x58` (object `0x0D01`) and whose second is the leaf `0x5C` (object `0x0D02`).
+- Used by `tests/test_scene_tree.py` (the `walk_slot` tests: the far side first, the split by extent and by slope, the eye's side for a cut slot, the `SP_1NODE` gate, the depth order at a leaf) and `tests/test_scene_walk.py`.

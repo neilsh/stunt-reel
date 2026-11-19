@@ -13,6 +13,7 @@ use stunt_parity::{AdapterClass, FilmId, Geometry, RenderAdapter};
 use stunt_render::{FfmpegVideoWriter, Offscreen, PageSink, RenderedPage, Renderer, SinkError};
 
 use crate::config::CliConfig;
+use crate::memory_report::MemoryReport;
 use crate::page_slot::PageSlot;
 use crate::playback::{Playback, SampleKey, capture_tick};
 use stunt_score::parity_artifacts::{PageView, RenderJournal};
@@ -169,6 +170,8 @@ pub(crate) fn run_headless(
     film: FilmId,
 ) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
+    let memory = MemoryReport::new(config.report_memory);
+    memory.stage("scene built");
 
     if let Some(out_dir) = &config.out_dir {
         fs::create_dir_all(out_dir)
@@ -224,7 +227,9 @@ pub(crate) fn run_headless(
             options,
         )
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
+        memory.stage("renderer opened");
         scene.release_world_mesh();
+        memory.stage("world mesh released");
         println!(
             "[stuntreel] tick {start_tick} camera: eye={:?}, target={:?}, fov={}; {} actor draws",
             cam.eye,
@@ -236,10 +241,12 @@ pub(crate) fn run_headless(
             .draw(&frame, None)
             .map_err(|e| format!("Offscreen render to PNG failed: {e}"))?;
 
+        memory.stage("frame drawn");
         println!(
             "[stuntreel] Headless frame successfully saved to {}",
             output_path.display()
         );
+        memory.finish();
         return Ok(());
     }
 
@@ -269,10 +276,12 @@ pub(crate) fn run_headless(
     let slot = PageSlot::default();
     let mut renderer = Renderer::offscreen(scene, offscreen, Box::new(slot.clone()), options)
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
+    memory.stage("renderer opened");
     // The world mesh is on the device now. Freeing it before the first submit keeps it from
     // overlapping the upload's staging copies and the device buffers they fill
     // (research/parity/evidence-limits.md).
     scene.release_world_mesh();
+    memory.stage("world mesh released");
     println!(
         "[stuntreel] camera forward: {}",
         if CAMERA_FORWARD[2] < 0.0 { "-Z" } else { "+Z" }
@@ -296,6 +305,7 @@ pub(crate) fn run_headless(
     if !pending.is_empty() {
         return Err("the renderer did not hand back every submitted frame".to_string());
     }
+    memory.stage("frames rendered");
     let adapter = render_adapter(renderer.adapter());
     drop(renderer);
 
@@ -317,6 +327,7 @@ pub(crate) fn run_headless(
         );
     }
 
+    memory.finish();
     Ok(())
 }
 
