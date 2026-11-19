@@ -214,7 +214,9 @@ Each post-multiplies the draw matrix, `M ← M · R`, so a vertex loaded after i
 All three look the angle up as `angle >> 4` in the 4,096-entry sine table, so a bank word is a 16-bit angle, 65,536 to a turn.
 `vm.rs` follows this: a decode takes an angle bank ([`AngleBank`](../../crates/stunt-core/src/sod/bank.rs)), and the renderer decodes an actor's shape again in the pose its bank words give at each tick, from film variables 10 and 12 as [`angle-bank.md`](angle-bank.md) § 2 describes.
 Scenery and view-facing shapes draw at rest.
-_Source: [the `ROT*` handlers read and the bank driven](../../work/2026-11/271_rot-angles/journal.md#2026-11-17-the-rot-handlers-read-and-the-bank-driven)._
+In a `sod-census --rot` audit of the 31 retail, demo and FreeFlight archives (`2,473` unique `.SOD` models, `0` stops, `[Bounded Observation]`), `54` shapes execute `ROT*` (`52` in `PLANES.RES`, `0x3E57` and `0x3E39` in `MILITARY.RES`; `46` placed as film actors, `8` unplaced across the 22 corpus films), `0` are `SCENERY.scn` props or `HEADER_FACES_VIEW` shapes, and only operands `0x14`, `0x18` and `0x1A` appear (`0` uses of `0x10`, `0x12` or `0x16`).
+`OP_BVLT` (`CENSUS_SKIPS`) and unwalked branches are excluded by the walk, though a raw byte scan finds `0` aligned `ROT*` words across all `1,504` models in `SCENERY1`..`SCENERY6.RES`, `0` in all `64` `HEADER_FACES_VIEW` `.RES` shapes and `0` `ROT*` patterns paired with `0x10`, `0x12` or `0x16` across `.RES` or the four `.ALL` archives, so leaving scenery and view-facing draws at rest leaves no stock `ROT*` unposed in those archives ([`angle-bank.md`](angle-bank.md) § 5).
+_Source: [the `ROT*` handlers read and the bank driven](../../work/2026-11/271_rot-angles/journal.md#2026-11-17-the-rot-handlers-read-and-the-bank-driven), [corpus `ROT*` census finds no scenery or view-facing reader and no `0x12` rotation](../../work/2026-11/681_sod-rot-census/journal.md#2026-11-19-corpus-rot-census-finds-no-scenery-or-view-facing-reader-and-no-0x12-rotation)._
 
 _Found 2026-11-06; see the [parity log](../../work/2026-10/parity-log/log.md)._
 

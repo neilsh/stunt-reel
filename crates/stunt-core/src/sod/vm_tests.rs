@@ -1715,3 +1715,70 @@ fn test_rotz_turns_the_shading_light_and_rotx_does_not() {
     assert_eq!(shaded_under(OP_ROTZ), 0x3F);
     assert_eq!(shaded_under(OP_ROTX), 0x30);
 }
+
+/// `census_rotations` walks both arms of `OP_BVGT` regardless of the threshold, steps over
+/// `OP_TAP` without anchors, and keeps distinct `(opcode, operand)` pairs.
+#[test]
+fn test_census_rotations_walks_both_bvgt_arms_and_records_unique_pairs() {
+    use crate::sod::{OP_BVGT, OP_GOSUB, OP_ROTX, OP_ROTY, OP_ROTZ, RotUse, census_rotations};
+
+    // Header flags bit 0 marks view-facing.
+    let mut bytes = make_sod_header(100, 0, 0, 0x01);
+    // BVGT 0x12 >= 0x0FA0 -> target (subroutine with ROTY 0x10 and ROTZ 0x14).
+    // Fallthrough taps 1 anchor, runs ROTX 0x18 twice and ROTZ 0x14, then RETURN.
+    // Offset after header = 10; BVGT op (2) + var (2) + val (2) + rel (2) = 18.
+    // Fallthrough block: TAP(reg=0, count=1, anchor=0) [8 bytes]
+    //   + ROTX 0x18 [4] + ROTX 0x18 [4] + ROTZ 0x14 [4] + RETURN [2] = 22 bytes.
+    // rel from operand_at (byte 16) to target (byte 40) is 24.
+    push_words(&mut bytes, &[OP_BVGT, 0x12, 0x0FA0, 24]);
+    push_words(&mut bytes, &[OP_TAP, 0, 1, 0]);
+    push_words(
+        &mut bytes,
+        &[OP_ROTX, 0x18, OP_ROTX, 0x18, OP_ROTZ, 0x14, OP_RETURN],
+    );
+    assert_eq!(bytes.len(), 40);
+    // Taken arm at byte 40: GOSUB +8 (operand_at=42 -> target byte 50), ROTZ 0x14, RETURN; subroutine at 50: ROTY 0x10, RETURN.
+    push_words(&mut bytes, &[OP_GOSUB, 8, OP_ROTZ, 0x14, OP_RETURN]);
+    push_words(&mut bytes, &[OP_ROTY, 0x10, OP_RETURN]);
+
+    let audit = census_rotations(&bytes).expect("census rotations");
+    assert!(audit.faces_view());
+    assert_eq!(audit.stop, None);
+    assert!(audit.returned_at.is_some());
+    assert_eq!(
+        audit.rot_uses,
+        vec![
+            RotUse {
+                opcode: OP_ROTY,
+                operand: 0x10
+            },
+            RotUse {
+                opcode: OP_ROTX,
+                operand: 0x18
+            },
+            RotUse {
+                opcode: OP_ROTZ,
+                operand: 0x14
+            },
+        ]
+    );
+    // Lenient decode still takes only the val == 0 rule (not taken here) and stops on TAP.
+    let lenient = decode_sod(&bytes, "BVGT_CHECK", None, DecodeMode::Lenient).expect("lenient");
+    assert!(
+        lenient
+            .decode()
+            .expect("record")
+            .stop
+            .is_some_and(|s| s.reason == SodStopReason::MissingAnchors)
+    );
+
+    // Out-of-range OP_BVGT target flags MalformedBranch even when val != 0.
+    let mut bad_bvgt = make_sod_header(100, 0, 0, 0);
+    push_words(&mut bad_bvgt, &[OP_BVGT, 0x12, 0x0FA0, 0x1000, OP_RETURN]);
+    let bad_audit = census_rotations(&bad_bvgt).expect("malformed bvgt");
+    assert!(
+        bad_audit
+            .stop
+            .is_some_and(|s| s.reason == SodStopReason::MalformedBranch)
+    );
+}
