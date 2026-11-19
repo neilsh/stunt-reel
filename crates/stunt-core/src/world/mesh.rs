@@ -727,20 +727,16 @@ mod tests {
         assert_eq!(slot_of(&slots, 9), 3);
         assert_eq!(slot_of(&slots, 99), 0);
 
-        // 1100 distinct shapes, the last of them placed three times: it takes slot 1, and the
+        // 600 distinct shapes, the last of them placed three times: it takes slot 1, and the
         // cap leaves out the shapes placed last among the single placements.
-        let mut many: Vec<Placement> = (0..1100).map(at).collect();
-        many.extend([at(1099), at(1099)]);
+        let mut many: Vec<Placement> = (0..600).map(at).collect();
+        many.extend([at(599), at(599)]);
         let capped = prop_shape_slots(&many);
         assert_eq!(capped.len(), MAX_PROP_SLOTS);
-        assert_eq!(slot_of(&capped, 1099), 1);
+        assert_eq!(slot_of(&capped, 599), 1);
         assert_eq!(slot_of(&capped, 0), 2);
-        assert_eq!(slot_of(&capped, 1021), MAX_PROP_SLOT);
-        assert_eq!(
-            slot_of(&capped, 1022),
-            0,
-            "a shape past the cap has no slot"
-        );
+        assert_eq!(slot_of(&capped, 509), MAX_PROP_SLOT);
+        assert_eq!(slot_of(&capped, 510), 0, "a shape past the cap has no slot");
     }
 
     #[test]

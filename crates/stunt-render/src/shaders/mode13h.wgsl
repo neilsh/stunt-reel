@@ -132,9 +132,9 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.shade_w = out.shade * w;
     out.w = w;
     out.layer = model.layer.x + in.attr.z;
-    // The draw's shape word in bits 0..16 and, for a world prop vertex, its 10-bit prop slot
-    // above: `prop_slot_low` and the top two bits of the flags (`SodVertex::prop_slot`).
-    let prop_slot = in.attr.w | ((in.attr.y >> 6u) << 8u);
+    // The draw's shape word in bits 0..16 and, for a world prop vertex, its 9-bit prop slot
+    // above: `prop_slot_low` and bit 7 of the flags, never bit 6 (`SodVertex::prop_slot`).
+    let prop_slot = in.attr.w | (((in.attr.y >> 7u) & 1u) << 8u);
     out.shape = model.layer.z | (prop_slot << 16u);
 
     // Polygons are drawn at their palette index with no directional lighting: against

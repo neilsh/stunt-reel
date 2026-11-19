@@ -275,7 +275,7 @@ impl RenderedPage {
     }
 
     /// One raw shape word per pixel, top row first. Bits 0..16 are `shape id + 1` of a
-    /// view-facing prop that drew the pixel; bits 16..26 are the prop slot of a world prop
+    /// view-facing prop that drew the pixel; bits 16..25 are the prop slot of a world prop
     /// vertex that did (`SodVertex::prop_slot`). Both are zero where no prop drew (sky,
     /// terrain, ocean, actors, sprites). [`RenderedPage::resolved_shapes`] turns a word into
     /// a shape id.
@@ -290,7 +290,7 @@ impl RenderedPage {
     /// One `shape id + 1` per pixel (zero where no prop drew), top row first: the low 16 bits
     /// of each [`RenderedPage::shapes`] word when set, else the world prop slot looked up in
     /// `prop_shapes` (the world's shape ids by slot, `World::prop_shapes`). A slot past the
-    /// table, such as the 0 of a prop beyond the 1023rd distinct shape, resolves to zero.
+    /// table, such as the 0 of a prop beyond the 511th distinct shape, resolves to zero.
     #[must_use]
     pub fn resolved_shapes(&self, prop_shapes: &[u16]) -> Vec<u32> {
         self.shapes

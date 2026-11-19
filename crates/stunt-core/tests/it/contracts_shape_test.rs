@@ -251,7 +251,7 @@ fn test_sod_vertex_bytemuck() {
 }
 
 #[test]
-fn a_prop_slot_spans_the_padding_byte_and_the_top_flag_bits() {
+fn a_prop_slot_spans_the_padding_byte_and_flag_bit_7() {
     use stunt_core::contracts::{MAX_PROP_SLOT, SodVertex};
 
     let vertex = SodVertex {
@@ -262,15 +262,48 @@ fn a_prop_slot_spans_the_padding_byte_and_the_top_flag_bits() {
         scenery_class: 3,
         prop_slot_low: 0,
     };
+    assert_eq!(MAX_PROP_SLOT, 511);
     assert_eq!(vertex.prop_slot(), 0);
-    for slot in [0, 1, 255, 256, 700, MAX_PROP_SLOT] {
+    for slot in [0, 1, 255, 256, 400, MAX_PROP_SLOT] {
         let slotted = vertex.with_prop_slot(slot);
         assert_eq!(slotted.prop_slot(), slot);
         // The vertex's own flag bits and its other fields are untouched.
-        assert_eq!(slotted.flags & 0x3F, 0x0D);
+        assert_eq!(slotted.flags & 0x7F, 0x0D);
         assert_eq!((slotted.palette_index, slotted.scenery_class), (7, 3));
     }
     // A slot past the cap is no slot, and replaces the one before it.
-    let past = vertex.with_prop_slot(700).with_prop_slot(MAX_PROP_SLOT + 1);
+    let past = vertex.with_prop_slot(400).with_prop_slot(MAX_PROP_SLOT + 1);
     assert_eq!((past.prop_slot(), past.flags), (0, 0x0D));
+}
+
+/// Bit 6 of `flags` belongs to another flag: no slot sets, clears or reads it.
+#[test]
+fn a_prop_slot_never_touches_flag_bit_6() {
+    use stunt_core::contracts::{MAX_PROP_SLOT, SodVertex};
+
+    for flags in [0x00, 0x40, 0x4D, 0xC0] {
+        let vertex = SodVertex {
+            position: [0.0; 3],
+            normal: [0.0; 3],
+            palette_index: 7,
+            flags,
+            scenery_class: 3,
+            prop_slot_low: 0,
+        };
+        // A set bit 6 does not read as part of the slot.
+        assert_eq!(vertex.prop_slot(), u16::from(flags >> 7) << 8);
+        for slot in 0..=MAX_PROP_SLOT + 1 {
+            let slotted = vertex.with_prop_slot(slot);
+            assert_eq!(
+                slotted.flags & 0x40,
+                flags & 0x40,
+                "slot {slot}, flags {flags:#x}"
+            );
+            assert_eq!(
+                slotted.flags & 0x3F,
+                flags & 0x3F,
+                "slot {slot}, flags {flags:#x}"
+            );
+        }
+    }
 }

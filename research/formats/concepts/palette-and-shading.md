@@ -116,8 +116,9 @@ pub struct SodVertex {
 - **Bit 1 (`0x02`) — Two-Sided Facet:** Disables back-face culling for this polygon.
 - **Bit 2 (`0x04`) — Emissive / Unshaded:** Bypasses directional lighting table; renders at full unshaded diffuse brightness (used for landing lights and muzzle flares).
 - **Bits 3..5 (`0x08`, `0x10`, `0x20`) — Screen-space line corner:** a one-pixel line's corner, its side and its end; the vertex's `normal` is then the vector to the segment's other endpoint (`VERTEX_FLAG_LINE`, `VERTEX_FLAG_LINE_SIDE`, `VERTEX_FLAG_LINE_END`).
-- **Bits 6..7 (`0xC0`) — Prop slot, high bits:** bits 8 and 9 of a world prop vertex's slot, zero on every other vertex.
-  The slot is these two bits over `prop_slot_low`, so it runs 1 to 1023, and 0 means no slot; `World::prop_shapes` maps it to the shape that placement draws, and the renderer writes it to the plane target's shape word (`SodVertex::prop_slot`).
+- **Bit 6 (`0x40`):** unused by the prop slot, which never sets or clears it, so another flag can take it.
+- **Bit 7 (`0x80`) — Prop slot, high bit:** bit 8 of a world prop vertex's slot, zero on every other vertex.
+  The slot is this bit over `prop_slot_low`, so it runs 1 to 511, and 0 means no slot; `World::prop_shapes` maps it to the shape that placement draws, and the renderer writes it to the plane target's shape word (`SodVertex::prop_slot`).
 
 ### 2.3 Transparency Keys
 

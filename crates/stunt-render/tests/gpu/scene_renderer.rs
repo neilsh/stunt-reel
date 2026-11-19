@@ -414,11 +414,11 @@ fn a_world_props_slot_reaches_the_shape_plane() {
                 .collect();
             Some((slots, page.shapes().to_vec()))
         };
-        let Some((drawn, all)) = shapes_of(SCENERY_PROP, 700) else {
+        let Some((drawn, all)) = shapes_of(SCENERY_PROP, 400) else {
             return;
         };
         assert!(drawn.len() > 100);
-        assert!(drawn.iter().all(|&word| word == 700 << 16), "{drawn:?}");
+        assert!(drawn.iter().all(|&word| word == 400 << 16), "{drawn:?}");
         // Every pixel the triangle leaves uncovered has no shape word.
         assert_eq!(all.iter().filter(|&&word| word != 0).count(), drawn.len());
         let (terrain, _) = shapes_of(SCENERY_TERRAIN, 0).expect("adapter");

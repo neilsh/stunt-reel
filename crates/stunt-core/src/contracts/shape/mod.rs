@@ -48,8 +48,9 @@ pub struct SodVertex {
     /// - Bit 2: Emissive / unshaded indicator
     /// - Bits 3..=5: Screen-space line corner ([`VERTEX_FLAG_LINE`], [`VERTEX_FLAG_LINE_SIDE`],
     ///   [`VERTEX_FLAG_LINE_END`])
-    /// - Bits 6..=7: bits 8 and 9 of a world prop vertex's slot ([`SodVertex::prop_slot`]),
-    ///   zero for every other vertex
+    /// - Bit 6: never touched by a prop slot, so another flag can take it
+    /// - Bit 7: bit 8 of a world prop vertex's slot ([`SodVertex::prop_slot`]), zero for every
+    ///   other vertex
     pub flags: u8,
     /// Scenery class of a world vertex (`SCENERY_OCEAN`, `SCENERY_TERRAIN`, `SCENERY_PROP`),
     /// zero for every other vertex. The renderer adds it to the draw's base layer id.
@@ -59,17 +60,17 @@ pub struct SodVertex {
     pub prop_slot_low: u8,
 }
 
-/// The most distinct shapes a world numbers: a prop slot has ten bits, and slot 0 means none.
-pub const MAX_PROP_SLOT: u16 = 1023;
+/// The most distinct shapes a world numbers: a prop slot has nine bits, and slot 0 means none.
+pub const MAX_PROP_SLOT: u16 = 511;
 
 impl SodVertex {
     /// The slot of a world prop vertex: one plus the index in `World::prop_shapes` of the shape
     /// its placement draws, zero for every other vertex and for a prop of a shape past
-    /// [`MAX_PROP_SLOT`]. It is ten bits: [`SodVertex::prop_slot_low`] and the top two bits
-    /// of [`SodVertex::flags`]. The renderer writes it to the plane target's shape word.
+    /// [`MAX_PROP_SLOT`]. It is nine bits: [`SodVertex::prop_slot_low`] and bit 7 of
+    /// [`SodVertex::flags`]; bit 6 is never part of it. The renderer writes it to the plane target's shape word.
     #[must_use]
     pub fn prop_slot(&self) -> u16 {
-        u16::from(self.prop_slot_low) | (u16::from(self.flags >> 6) << 8)
+        u16::from(self.prop_slot_low) | (u16::from(self.flags >> 7) << 8)
     }
 
     /// This vertex in prop slot `slot`; a `slot` above [`MAX_PROP_SLOT`] gives slot 0.
@@ -77,7 +78,7 @@ impl SodVertex {
     pub fn with_prop_slot(mut self, slot: u16) -> Self {
         let slot = if slot > MAX_PROP_SLOT { 0 } else { slot };
         self.prop_slot_low = (slot & 0xFF) as u8;
-        self.flags = (self.flags & 0x3F) | (((slot >> 8) as u8) << 6);
+        self.flags = (self.flags & 0x7F) | (((slot >> 8) as u8) << 7);
         self
     }
 }
