@@ -10,7 +10,7 @@
 - [`formats/res.md`](formats/res.md): `.RES` archive ([FMT-RES-HEADER]): RS magic, `res_index` and `item_count` bytes, u32 offset table; prop archives carry a name table, scenery archives do not; compound keys and the index catalog.
 - [`formats/sod-opcode-coverage.md`](formats/sod-opcode-coverage.md): Census work queue for Partial SOD shapes: `OP_ANIMATE` is drawn as sprites since #222 (the census no longer stops on it); two-vertex polygons, which stopped 7 more, are now drawn as lines; the films placing them, why seven side-view items export no whole model, and regeneration.
 - [`formats/sod-opcodes.md`](formats/sod-opcodes.md): The 107-opcode `.SOD` table ([FMT-SOD-OPCODES]) dispatched as multiples of 9, numbered as Patch #3 numbers them (the unpatched build adds `0x033C`), the `OP_TAP`, `OP_ANIMATE` and `IFVIS`/`BVIS` facing-flag semantics, and si-tools readings kept as hypotheses.
-- [`formats/sod.md`](formats/sod.md): `.SOD` model bytecode ([FMT-SOD-HEADER]): 0x000C magic, 10-byte header, power-of-two scale table (indices 18 and 19 seen in corpus), VM overview, coplanar decal rule, `OP_IFVIS` as a facing gate.
+- [`formats/sod.md`](formats/sod.md): `.SOD` model bytecode ([FMT-SOD-HEADER]): 0x000C magic, 10-byte header, power-of-two scale table (indices 18 and 19 seen in corpus), the collision list the header word at byte 8 points to (cubes, boxes and planes the ground and collision probe walks; 1,279 of the 2,516 stock shapes have one), VM overview, coplanar decal rule, `OP_IFVIS` as a facing gate.
 
 ## formats/auxiliary
 

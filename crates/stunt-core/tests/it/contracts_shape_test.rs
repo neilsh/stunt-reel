@@ -249,3 +249,73 @@ fn test_sod_vertex_bytemuck() {
     let recovered: SodVertex = *bytemuck::from_bytes(bytes);
     assert_eq!(recovered, vertex);
 }
+
+/// `synthetic_collision.sod` decodes to its three lists: the header's, the cube's nested list
+/// and the list a box's code names, each record as the fixture README lists it.
+#[test]
+fn collision_fixture_decodes_every_record_type() {
+    use stunt_core::sod::{DecodeMode, decode_sod};
+    let path = crate::test_support::workspace_root()
+        .join("tests")
+        .join("fixtures")
+        .join("synthetic_collision.sod");
+    let data = std::fs::read(&path).expect("read synthetic_collision.sod");
+    let ir = decode_sod(&data, "COLLISION", None, DecodeMode::Strict).expect("strict decode");
+    let collision = ir
+        .collision()
+        .expect("a decoded shape has a collision record");
+    assert_eq!(collision.stop, None);
+    let offsets: Vec<u16> = collision.lists.iter().map(|list| list.offset).collect();
+    assert_eq!(offsets, [0x0E, 0x48, 0x6A]);
+    let top = collision.top().expect("the header's list");
+    assert_eq!(
+        top.records,
+        [
+            CollisionRecord::Cube(CollisionCube {
+                centre: [0, -8, 0],
+                half_size: 16,
+                nested: Some(CollisionListId(1)),
+            }),
+            CollisionRecord::Box(CollisionBox {
+                min: [-20, -10, -20],
+                max: [20, -2, 20],
+                code: BoxCode::Top,
+            }),
+            CollisionRecord::Box(CollisionBox {
+                min: [-4, -8, -4],
+                max: [4, 0, 4],
+                code: BoxCode::Bucket(3),
+            }),
+            CollisionRecord::Plane(CollisionPlane {
+                normal: [32767, 0, 0],
+                distance: 4,
+                nested: None,
+            }),
+        ]
+    );
+    let codes: Vec<BoxCode> = collision
+        .lists
+        .iter()
+        .skip(1)
+        .flat_map(|list| &list.records)
+        .filter_map(|record| match record {
+            CollisionRecord::Box(collision_box) => Some(collision_box.code),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            BoxCode::Plain,
+            BoxCode::Nested(CollisionListId(2)),
+            BoxCode::Bucket(1)
+        ]
+    );
+    // The code-8 box's top is its least DOS `y`, 5 m above the origin at 0.5 m a unit.
+    let header = ir.decode().expect("record").header;
+    let CollisionRecord::Box(top_box) = top.records[1] else {
+        panic!("the second record is the code-8 box");
+    };
+    let (_, max) = top_box.bounds(header.scale_factor);
+    assert!((max[1] - 5.0).abs() < 1e-6, "box top at {} m", max[1]);
+}

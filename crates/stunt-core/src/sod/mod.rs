@@ -4,6 +4,7 @@
 //! instances adhering to Seam 3 and Invariants `[I1]`, `[I2]`, `[I3]`, `[I5]`.
 
 mod bank;
+mod collision;
 mod decal;
 mod light;
 mod tessellate;
@@ -18,6 +19,7 @@ mod vm_tests;
 
 pub use crate::contracts::shape::{DecodeMode, DecodeRecord, SodHeader, SodStop, SodStopReason};
 pub use bank::AngleBank;
+pub use collision::{COLLISION_POINTER_BIAS, decode_collision};
 pub use decal::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
 pub use light::ShadeLight;
 pub use tessellate::{IDENTITY_MATRIX, decode_sod, decode_sod_lit, decode_sod_posed};
