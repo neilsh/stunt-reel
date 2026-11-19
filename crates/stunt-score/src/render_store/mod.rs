@@ -4,13 +4,13 @@
 //! little-endian u16 layer per pixel) and `palettes.zst` (768-byte palettes). Each plane file is
 //! a run of independent zstd frames, one per film second, holding that second's ticks back to
 //! back; `render.json`, written last, is their table of contents. `preview/sec_NNNN.png` shows
-//! each second's first tick for people. A render of a prop-drawing scene also holds `shapes.zst`
+//! each second's first tick for people. A render the Rust store writes also holds `shapes.zst`
 //! beside them: a run of `[u64 LE packed length][zstd frame]` records, one per chunk in the
 //! chunk table's order, each frame that second's ticks back to back with a little-endian u16
 //! per pixel, the shape word of `stunt_render::RenderedPage::shapes`. Only the Rust store
 //! reads and writes it; `render.json` does not list it, and a render without the file (the
-//! Python writer's, or one older than the file) has no shape plane. The Python mirror is `RenderStore` in
-//! `python/stunt_reel/parity_artifacts/`.
+//! Python writer's, which removes a stale one, or one older than the file) has no shape plane.
+//! The Python mirror is `RenderStore` in `python/stunt_reel/parity_artifacts/`.
 
 use std::collections::HashMap;
 use std::fs::{self, File};

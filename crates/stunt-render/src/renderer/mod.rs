@@ -290,7 +290,7 @@ impl RenderedPage {
     /// One `shape id + 1` per pixel (zero where no prop drew), top row first: the low 16 bits
     /// of each [`RenderedPage::shapes`] word when set, else the world prop slot looked up in
     /// `prop_shapes` (the world's shape ids by slot, `World::prop_shapes`). A slot past the
-    /// table, such as the 0 of a prop beyond the 255th distinct shape, resolves to zero.
+    /// table, such as the 0 of a prop beyond the 1023rd distinct shape, resolves to zero.
     #[must_use]
     pub fn resolved_shapes(&self, prop_shapes: &[u16]) -> Vec<u32> {
         self.shapes
