@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and `PLAYONE` culls scenery by position, not size."
+summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and `PLAYONE` drops far scenery by distance against its `scale_index`."
 ---
 # `PLAYONE.EXE`: Ground Renderer Residuals
 
@@ -78,9 +78,12 @@ Without it, `INTRO.FLM`'s world is the same 819,169 vertices, and of the 13 corp
 The props `build_world` leaves out are those `place_props`' walk does not reach (the `SP_1NODE` reach) and repeats; the props loss is not far props this cull removes.
 _Source: [how many placements the sub-pixel cull drops](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-how-many-placements-the-sub-pixel-cull-drops)._
 
-**`PLAYONE` culls a scenery object by position, not size** (`[Established]` for the instructions, static; `[Supported Inference]` that no polygon routine inside the stream drops a polygon under a pixel, since those were not read).
-`SP_LEAF` (`0x220B`) and the `SP_1NODE` stand-in (`0x2152`) normalise the object's view position at `0x31CF` and skip the object when the cull `0x1B0C` sets carry (`0x226A`, `0x21A0`).
-`0x1B0C` sets it for an exponent gap that only narrows as the object recedes, an object behind the eye, and one outside the frustum widened by its radius; it never divides the radius by the depth, so it draws a scenery object whose centre is in view however small it is, and the flat filler's inclusive spans paint at least a pixel on each row its polygons cross ([`memory-map-main.md`](memory-map-main.md) `CS:0x1B0C`, `CS:0x31CF`).
+**`PLAYONE` culls far scenery by distance against its scale** (`[Established]` for the instructions, static; `[Supported Inference]` for the distance in metres, which takes the walk position as 16.16 metres from the eye, and for the pixel bound).
+`SP_LEAF` (`0x220B`) and the `SP_1NODE` stand-in (`0x2152`) normalise the object's eye-relative position at `0x31CF` and skip the object when the cull `0x1B0C` sets carry (`0x226A`, `0x21A0`).
+Besides an object behind the eye and one outside the radius-widened frustum, `0x1B0C` drops one whose largest eye-relative coordinate reaches `2^(22 + [0x229E] - k)` metres, `k` its `scale_index` (`0x1B28`).
+It never divides the radius word `R` by the depth, but a shape's radius is under `2^(16 - k)` metres, so at the default lens the cut comes where the shape spans at most about `R / 2^15` pixels in radius: under 0.68 pixels for every shape of six reference archives and up to 1.22 in `location`'s.
+So `PLAYONE` drops far props whole at about the size our half-pixel cull drops, by a coarser test: it can drop a large shape a little above half a pixel that ours keeps, and keeps a small one far below it that ours drops.
+Inside the 25 km far plane the cut falls only for `scale_index` 9 and above ([`memory-map-main.md`](memory-map-main.md) `CS:0x1B0C`, `CS:0x31CF`).
 _Source: [whether PLAYONE culls a whole scenery object by screen size](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-whether-playone-culls-a-whole-scenery-object-by-screen-size)._
 
 The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terrain with a tile built by hand at terrain height, as the snap would place it (they do not call `build_world_ir`).

@@ -217,9 +217,9 @@ const FOCAL_PIXELS: f32 = 256.0;
 const CORNER_DEPTH_FLOOR: f32 = 0.804;
 
 /// A prop whose bounding radius never covers more than this many pixels along the camera
-/// path is dropped from the world. A guard on the world's size, not `PLAYONE`'s rule, which
-/// culls a scenery object by position alone; on the reference films it drops only shapes with
-/// no vertices (research/playone-exe/world-scene-residuals.md section 6.4).
+/// path is dropped from the world. `PLAYONE` drops far scenery at about this size by a coarser
+/// test, distance against the shape's `scale_index`; on the seven reference films this cull
+/// drops nothing they draw (research/playone-exe/world-scene-residuals.md section 6.4).
 const MIN_PROP_PIXELS: f32 = 0.5;
 
 /// How far the camera path may pass from an `SP_1NODE` with extent `ext` and split distance
