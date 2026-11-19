@@ -95,7 +95,7 @@ So only the centre's depth is the true depth over the zoom (`0x8108 / 0x8000 · 
 With the projector's `256 · x / z` (`0x9CF1`, [section 8.6](sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)), the outline is then the true disc's with every point's depth offset from the centre multiplied by the zoom: shallower than the true disc under a wide lens, deeper under a telephoto, and unchanged to 1 part in 32,768 at the default lens, whose zoom is `0x7FFF / 0x8000`.
 At `LOCATION` ticks 6062 and 6161 the lens draws at 50.95° against the default 42.67°, a zoom of 0.820.
 The renderer draws it so: a rim vertex carries the vector to its disc's centre (`VERTEX_FLAG_DISC`), and the vertex shader scales its clip-space depth offset from the centre (clip `z` and `w`, which alone hold depth on the symmetric projection) by `tan(42.67° / 2) / tan(fov / 2)`.
-On lavapipe the near rim then reads row 153 at both ticks (capture 151, before 166), the far rim 75 and 76 (capture 76, before 77), and the free ends of the rows quoted above 295, 299, 298 at 6062 and 21 on each row at 6161.
+On lavapipe the near rim then reads row 153 at both ticks (capture 151, before 166), the far rim 75 and 76 (capture 76, before 77: still within 1 row of it, though 2 rows nearer the top at 6062), and the free ends of the rows quoted above 295, 299, 298 at 6062 and 21 on each row at 6161.
 Adopted, evidence-backed: `LOCATION` rose by 0.0011 and the target frames' index agreement by 0.042; `CTRY`, `BALLOON` and `BOMB`, at the default lens, changed no frame, so `BOMB`'s wheel is as before; the other films moved by less than 0.00003.
 The scores and pictures are in the journal; the GPU re-read is [#689](https://github.com/neilsh/stunt-reel/issues/689).
 _Source: [the disc squeezed along depth by the lens zoom](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-18-the-disc-squeezed-along-depth-by-the-lens-zoom)._
@@ -186,7 +186,7 @@ Lines and polygon spans (sections 8.10 and 8.11) are in [`sod-vm-lines-spans.md`
 
 ## Ruled out
 
-* **`0xD11D`'s stepped ellipse or the disc's placement as the cause of `LOCATION`'s 15-row near rim** (section 8.8): the lens squeeze alone brings the rims within 2 rows and the free ends within 3 px ([the disc squeezed along depth](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-18-the-disc-squeezed-along-depth-by-the-lens-zoom)).
+* **`0xD11D`'s stepped ellipse or the disc's placement as the cause of `LOCATION`'s 15-row near rim** (section 8.8): not needed, since at ticks 6062 and 6161 the lens squeeze alone brings the near rim within 2 rows of the capture, keeps the far rim within 1 row and the free ends within 3 px ([the disc squeezed along depth](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-18-the-disc-squeezed-along-depth-by-the-lens-zoom)); the ellipse is not ruled out for smaller residues, such as `BOMB`'s 4 to 6 % narrow 16-gon.
 * **`OP_SPHERE` faces wound counter-clockwise from outside** (section 8.8), the winding before #272.
   It draws only each sphere's far half; restoring it dropped 10 `LOCATION` frames by more than 0.005 and drew near tree crowns hollow where the capture fills them ([the sphere winding scored](../../work/2026-11/479_perfdisk-sliced-streamer/journal.md#2026-11-17-the-sphere-winding-scored-and-seen-beside-the-capture)).
 
