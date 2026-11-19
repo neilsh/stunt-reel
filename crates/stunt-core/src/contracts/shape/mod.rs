@@ -67,7 +67,8 @@ impl SodVertex {
     /// The slot of a world prop vertex: one plus the index in `World::prop_shapes` of the shape
     /// its placement draws, zero for every other vertex and for a prop of a shape past
     /// [`MAX_PROP_SLOT`]. It is nine bits: [`SodVertex::prop_slot_low`] and bit 7 of
-    /// [`SodVertex::flags`]; bit 6 is never part of it. The renderer writes it to the plane target's shape word.
+    /// [`SodVertex::flags`]; bit 6 is never part of it. The renderer writes it to the plane
+    /// target's shape word.
     #[must_use]
     pub fn prop_slot(&self) -> u16 {
         u16::from(self.prop_slot_low) | (u16::from(self.flags >> 7) << 8)

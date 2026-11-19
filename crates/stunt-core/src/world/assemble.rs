@@ -74,8 +74,8 @@ pub struct World {
     /// (`FilmScene::frame`).
     pub view_facing: Vec<FacingProp>,
     /// The shape ids of [`Self::ir`]'s props by prop slot: the vertices of a prop of shape
-    /// `prop_shapes[n]` carry `SodVertex::prop_slot` `n + 1`. At most 511 distinct shapes, the most placed first; a prop of a
-    /// later one has slot 0.
+    /// `prop_shapes[n]` carry `SodVertex::prop_slot` `n + 1`. At most 511 distinct shapes, the
+    /// most placed first; a prop of a later one has slot 0.
     pub prop_shapes: Vec<u16>,
 }
 
