@@ -17,7 +17,8 @@ Then copy in this checklist:
    A work `spec.md` or `plan.md` gets its fresh review of the uncommitted diff before you commit, in your own worktree, by a subagent you dispatch there, and the commit carries the `Fresh-review:` trailer ([`development.md`](../../../docs/development.md#commit-messages)).
 6. The PR body says `Fixes #N` only when the diff meets every acceptance item of the issue or [`loop-and-bounds.md`](loop-and-bounds.md) item 4 applies (the rest filed as follow-up issues); otherwise it says `Part of #N` and lists what remains.
    The PR title ends with the issue it serves, as in `fix(site): ... (#589)`, also when the PR only partly fixes it; the CI title check does not enforce the suffix.
-7. Report in about 10 lines, because the coordinator keeps the report in its context: what changed, the gate's result, each acceptance item met or not, `Fixes` or `Part of`, whether the item needs an ADR, a human choice or another machine, and anything left undone.
+7. A third-party source build the permission prompt refuses is recorded on the issue, which gets `ready-for-human` naming the build; move on ([`cloud-sessions.md`](../../../docs/cloud-sessions.md#building-mesa-in-a-cloud-session)).
+8. Report in about 10 lines, because the coordinator keeps the report in its context: what changed, the gate's result, each acceptance item met or not, `Fixes` or `Part of`, whether the item needs an ADR, a human choice or another machine, and anything left undone.
    An Orca worker sends it with `orca orchestration send` ([`coordinator.md`](coordinator.md#orca-orchestration-flags), § DSH), a subagent in its final reply.
    On a PR whose diff touches a rule 5 path (step 5), commit but do not push, for a first commit and for every later fix, rebase or merge: the coordinator pushes after the fresh review and opens the PR, so also write the PR body (step 6) to `build/scratch/<name>.md` and report the commit SHA, the PR title (the commit subject for a single commit, ending `(#N)`) and the body file's absolute path, since the coordinator opens the PR from another checkout ([`pr-and-filing.md`](pr-and-filing.md) step 1).
    Otherwise push before you report.
@@ -27,6 +28,6 @@ Then copy in this checklist:
 A cloud child session (`create_session`) gets the brief above and these changes:
 
 1. Read [`cloud.md`](../working-in-an-environment/cloud.md) first, and work on `outcome_branch`.
-2. Self-review with a `reviewer` subagent ([`pr-and-filing.md`](pr-and-filing.md) step 2), push, and open the PR, even on a rule 5 path: this replaces step 7's "do not push" paragraph.
+2. Self-review with a `reviewer` subagent ([`pr-and-filing.md`](pr-and-filing.md) step 2), push, and open the PR, even on a rule 5 path: this replaces step 8's "do not push" paragraph.
    Post the reviewer's verdict comment once the PR is open.
 3. Report the PR number, head SHA and that comment's URL with `send_message`; the coordinator alone arms or merges.
