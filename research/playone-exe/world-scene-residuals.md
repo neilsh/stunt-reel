@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, and a line on a decal now draws after it."
+summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and `PLAYONE` culls scenery by position, not size."
 ---
 # `PLAYONE.EXE`: Ground Renderer Residuals
 
@@ -69,8 +69,19 @@ _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026
 `[Bounded Observation]` for the measured and tested behaviour.
 `build_world_ir` snaps each ground decal onto the terrain at its `x, z` and puts every mesh of it in the `WORLD_DECAL` batch, which `[I5]` draws after the base pass with `LessEqual` and a negative bias ([ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md)); its triangles on the ground plane `y = base_y` go to the ground pass instead (section 6.6, [ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)).
 It moves no terrain, so it does not touch a mountain leaf.
-The subpixel cull in `build_world` still drops a far prop before `build_world_ir` sees it, ground decal or not.
 _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-candidates-and-the-ground-decal-prototype)._
+
+**The sub-pixel cull drops nothing drawn on the references** (`[Bounded Observation]`, the seven reference films and 13 corpus films, lavapipe).
+`build_world` drops a placement whose bounding radius never covers half a pixel along the camera path (`reaches_a_pixel`, `MIN_PROP_PIXELS`), before `build_world_ir` sees it, ground decal or not.
+It drops no placement of `ctry`, `intro`, `land`, `balloon`, `traintnl` or `bomb`; of `location` it drops 190, all inside the raster on some scored tick and 34 behind gates that hold there, but every one a shape that decodes to no vertices (`0x0797`, `0x03F4`, `0x0729`, `0x0451`, `0x0453`).
+Without it, `INTRO.FLM`'s world is the same 819,169 vertices, and of the 13 corpus films only `BALLOON` played with `SUPERSET.ALL` gains geometry: 258 vertices in 35 placements.
+The props `build_world` leaves out are those `place_props`' walk does not reach (the `SP_1NODE` reach) and repeats; the props loss is not far props this cull removes.
+_Source: [how many placements the sub-pixel cull drops](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-how-many-placements-the-sub-pixel-cull-drops)._
+
+**`PLAYONE` culls a scenery object by position, not size** (`[Established]` for the instructions, static; `[Supported Inference]` that no polygon routine inside the stream drops a polygon under a pixel, since those were not read).
+`SP_LEAF` (`0x220B`) and the `SP_1NODE` stand-in (`0x2152`) normalise the object's view position at `0x31CF` and skip the object when the cull `0x1B0C` sets carry (`0x226A`, `0x21A0`).
+`0x1B0C` sets it for an exponent gap that only narrows as the object recedes, an object behind the eye, and one outside the frustum widened by its radius; it never divides the radius by the depth, so it draws a scenery object whose centre is in view however small it is, and the flat filler's inclusive spans paint at least a pixel on each row its polygons cross ([`memory-map-main.md`](memory-map-main.md) `CS:0x1B0C`, `CS:0x31CF`).
+_Source: [whether PLAYONE culls a whole scenery object by screen size](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-whether-playone-culls-a-whole-scenery-object-by-screen-size)._
 
 The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terrain with a tile built by hand at terrain height, as the snap would place it (they do not call `build_world_ir`).
 The tile shows over the terrain 80 m away, keeps at least 90% of the pixels it shows alone at 1, 1.5, 2, 4 and 8 km at a grazing angle of 5.7 degrees, and a wall of terrain in front of it hides it completely.
@@ -205,6 +216,8 @@ The decal pass cannot either: it holds faces coplanar with an earlier face of th
   _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
 * **A depth rule or the decal pass as #651's fix** (section 6.8): the first draws the plaza, the nearer surface in our IR; the second takes a face coplanar with an earlier face of its own shape, and the infield is `0x0265`'s first.
   _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
+* **Lowering or removing the sub-pixel prop cull** (section 6.4): with no size test the seven references score the same to four decimals and no frame moves by more than 0.005, since the cull drops nothing they draw.
+  _Source: [removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull)._
 
 ## Open questions
 
