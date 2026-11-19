@@ -16,7 +16,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
    The first review of a PR built by Sonnet or dsh is the exception: dispatch it to Opus or Antigravity, as a general-purpose subagent with `model: opus`, given the reviewer instruction below with `Opus` as `<Reviewer>`, or as an Antigravity worker; do not run the `reviewer` agent with a model override, because it names `Sonnet` in the verdict.
    On #160 a Sonnet review missed four bugs.
    Have the reviewer review the diff against the merge base for `AGENTS.md` standards and `docs/SPEC.md` compliance (plus `AGENTS.md` Committing rule 5 when the diff touches a path it names).
-   Each review gets its own detached worktree, `.claude/worktrees/review-<PR or SHA>` in the primary checkout, made with `git worktree add --detach <path> origin/<branch>`, or, for a commit not yet pushed, `<SHA>` of the commit the implementer reported; settings deny `git worktree remove` and `mise run reap` skips detached worktrees, so it outlives the run and the owner removes it.
+   Each review gets its own detached worktree, `.claude/worktrees/review-<PR or SHA>` in the primary checkout, made with `git worktree add --detach <path> origin/<branch>` (on a single-branch clone where `origin/<branch>` is absent, `git fetch origin <branch> && git worktree add --detach <path> FETCH_HEAD`), or, for a commit not yet pushed, `<SHA>` of the commit the implementer reported; settings deny `git worktree remove` and `mise run reap` skips detached worktrees, so it outlives the run and the owner removes it.
    Never run `git checkout` or `git switch` in the implementer's checkout; if your working directory is not a `review-*` worktree, create one first.
    In a cloud session every reviewer brief starts by telling the reviewer to read [`cloud.md`](../working-in-an-environment/cloud.md).
    Before asking, the implementer scans its own diff for rule 5's over-broad words and checks every quoted figure against its source.
@@ -83,7 +83,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
        p=$((p+1))
      done | tail -n 1 | grep -q ': clean$' && echo true || echo false
      ```
-   - The worker's report says each acceptance item is met, and the PR body carries `Fixes #N` (or `Part of #N`), read as a boolean (`gh api repos/{owner}/{repo}/pulls/<n> --jq '.body | test("(Fixes|Part of) #<N>\\b")'`), not by opening the body.
+   - The worker's report says each acceptance item is met, and the PR body carries `Fixes #N`, `Closes #N`, or `Part of #N`, read as a boolean (`gh api repos/{owner}/{repo}/pulls/<n> --jq '.body | test("(Fixes|Closes|Part of) #<N>\\b")'`), not by opening the body.
    - **Environment:** in a cloud session, a rendering PR that [`cloud.md` § Rendering](../working-in-an-environment/cloud.md#rendering) sends to the GPU takes `local-only` and stays unarmed.
      A local-windows run takes such a PR from the queue, runs `mise run judge` on the GPU as the PR body asks, and, when the GPU's verdict matches lavapipe's, removes `local-only` and arms it under this bar; otherwise it fixes the PR as for a failed check.
    - **Allowed vs blocked changes:** the coordinator lists the PR's changed file names (`gh api "repos/{owner}/{repo}/pulls/<n>/files?per_page=100&page=1" --jq '.[].filename'`, next page by number), never the diff; a path under `docs/adr/`, `crates/stunt-core/Cargo.toml` or `research/parity/references.toml` sends a worker or the reviewer to say whether it is a blocked change before arming.
