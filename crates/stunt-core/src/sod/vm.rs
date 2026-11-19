@@ -12,9 +12,9 @@ use crate::contracts::shape::{
     ShapeSprite, SodHeader, SodStop, SodStopReason, VERTEX_FLAG_LINE, VisibilityCondition,
 };
 use crate::reader::ByteReader;
-use crate::sod::SodError;
 use crate::sod::bank::{AngleBank, Mat3, RotAxis, apply3, mul3, rotation, rotz_light};
 use crate::sod::light::ShadeLight;
+use crate::sod::{HEADER_FACES_VIEW, SodError};
 use std::collections::HashMap;
 
 // Standard .SOD Opcodes per historical SOD.H and specification
@@ -607,6 +607,36 @@ fn blocked(
     }
 }
 
+/// One `ROT*` instruction's opcode and bank operand (`work:0x810E + operand`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RotUse {
+    /// `OP_ROTX`, `OP_ROTY` or `OP_ROTZ`.
+    pub opcode: u16,
+    /// Byte offset into the angle bank.
+    pub operand: u16,
+}
+
+/// What [`census_rotations`] found across a `.SOD` stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RotAudit {
+    /// `SodHeader::header_flags` (bit 0 marks a view-facing shape).
+    pub header_flags: u8,
+    /// Distinct `(opcode, operand)` pairs reached, ascending by `(opcode, operand)`.
+    pub rot_uses: Vec<RotUse>,
+    /// First blocking opcode the walk stopped on, if any.
+    pub stop: Option<SodStop>,
+    /// Byte offset of the first `OP_RETURN`, or `None` if none ran.
+    pub returned_at: Option<usize>,
+}
+
+impl RotAudit {
+    /// Whether the shape header sets [`HEADER_FACES_VIEW`].
+    #[must_use]
+    pub const fn faces_view(&self) -> bool {
+        self.header_flags & HEADER_FACES_VIEW != 0
+    }
+}
+
 /// Everything one VM pass produced.
 pub(crate) struct VmRun {
     /// The parsed 10-byte header.
@@ -626,6 +656,8 @@ pub(crate) struct VmRun {
     /// Recorded from the rest-pose walk, so complete only while nothing branches on the bank
     /// (`BVGT` still reads 0, #624); revisit when `BVGT` reads the bank.
     pub bank_operands: Vec<u16>,
+    /// Distinct `(opcode, operand)` pairs reached by `ROT*`, ascending and without repeats.
+    pub rot_uses: Vec<RotUse>,
 }
 
 /// One instruction a traced VM walk executed.
@@ -693,6 +725,8 @@ struct Vm<'a> {
     // `PUSHRELMAT` saves the matrix and the light, which `ROTZ` also turns.
     rel_stack: Vec<(Option<Mat3>, [i64; 3])>,
     bank_operands: Vec<u16>,
+    rot_uses: Vec<RotUse>,
+    walk_all_bvgt: bool,
     header: SodHeader,
     // 1024 3D vector registers per specification
     regs: WrapTable<[f32; 3], 1024>,
@@ -736,6 +770,7 @@ impl<'a> Vm<'a> {
         anchors: Option<&'a [AnchorPoint]>,
         light: ShadeLight,
         bank: AngleBank,
+        walk_all_bvgt: bool,
     ) -> Result<Self, SodError> {
         let light = light.0.map(i64::from);
         if data.len() < 10 {
@@ -782,6 +817,8 @@ impl<'a> Vm<'a> {
             rel: None,
             rel_stack: Vec::new(),
             bank_operands: Vec::new(),
+            rot_uses: Vec::new(),
+            walk_all_bvgt,
             header,
             regs: WrapTable([[0.0f32; 3]; 1024]),
             cur_vert: [0.0f32; 3],
@@ -815,6 +852,7 @@ impl<'a> Vm<'a> {
             returned_at: self.returned_at,
             sprites: self.sprites,
             bank_operands: self.bank_operands,
+            rot_uses: self.rot_uses,
         }
     }
 
@@ -1130,6 +1168,10 @@ impl<'a> Vm<'a> {
         if let Err(at) = self.bank_operands.binary_search(&operand) {
             self.bank_operands.insert(at, operand);
         }
+        let use_ = RotUse { opcode, operand };
+        if let Err(at) = self.rot_uses.binary_search(&use_) {
+            self.rot_uses.insert(at, use_);
+        }
         let angle = self.bank.word(operand);
         if angle == 0 {
             return Ok(());
@@ -1401,17 +1443,35 @@ impl<'a> Vm<'a> {
     /// `OP_BVGT`: a branch on an animation variable.
     fn bvgt(&mut self) -> Result<(), SodError> {
         // `variable >= val` branches by `rel` bytes from the third operand word
-        // (si-tools); the animation variable reads zero, so only `val == 0` takes it.
+        // (si-tools); the animation variable reads zero, so only `val == 0` takes it unless
+        // `walk_all_bvgt` queues both arms for a rotation census.
         let _var = self.r.read_u16_le()?;
         let val = self.r.read_u16_le()?;
         let operand_at = self.r.pos();
         let rel = self.r.read_u16_le()?;
+        let target = operand_at
+            .checked_add(usize::from(rel))
+            .filter(|&target| target < self.data.len());
+        if self.walk_all_bvgt {
+            if let Some(target) = target {
+                self.subs_run = self.subs_run.saturating_add(1);
+                if self.subs_run > MAX_BRANCHES {
+                    self.flow.malformed = Some(SodStopReason::MalformedBranch);
+                } else {
+                    self.branch_resume.push((
+                        target,
+                        self.current_visibility,
+                        self.visibility_scope_end,
+                    ));
+                }
+            } else {
+                self.flow.malformed = Some(SodStopReason::MalformedBranch);
+            }
+            return Ok(());
+        }
         let taken = val == 0;
         if taken {
-            match operand_at
-                .checked_add(usize::from(rel))
-                .filter(|&target| target < self.data.len())
-            {
+            match target {
                 Some(target) => self.flow.jump = Some(target),
                 None => self.flow.malformed = Some(SodStopReason::MalformedBranch),
             }
@@ -1768,7 +1828,31 @@ pub(crate) fn run_vm(
     bank: AngleBank,
     trace: Option<&mut Vec<TraceStep>>,
 ) -> Result<VmRun, SodError> {
-    Vm::new(data, policy, anchors, light, bank)?.run(trace)
+    Vm::new(data, policy, anchors, light, bank, false)?.run(trace)
+}
+
+/// Audits which `ROT*` opcodes and angle-bank operands `data` can reach, walking both arms
+/// of every `OP_BVGT` (`#681`).
+///
+/// # Errors
+/// Returns [`SodError`] when the 10-byte header is invalid or truncated, or when a read fails
+/// before the walk reaches [`OP_RETURN`] or a stopping opcode.
+pub fn census_rotations(data: &[u8]) -> Result<RotAudit, SodError> {
+    let run = Vm::new(
+        data,
+        Policy::Census,
+        None,
+        ShadeLight::WORLD_0X2D,
+        AngleBank::REST,
+        true,
+    )?
+    .run(None)?;
+    Ok(RotAudit {
+        header_flags: run.header.header_flags,
+        rot_uses: run.rot_uses,
+        stop: run.stop,
+        returned_at: run.returned_at,
+    })
 }
 
 /// A lenient VM walk of one shape, instruction by instruction.
