@@ -13,7 +13,7 @@
   `0x1B3E`: when the depth plus `([es:4] >> g) >> ([0x229E] + 1)` is negative, an object behind the eye; `[es:4] >> g` is the radius word `R` in the view point's units.
   `0x1B55..0x1B67`: when either screen coordinate lies outside the frustum widened by that radius (`0x22A0`, `0x22A2`, `0x229C`).
   So the cull has no test of `R` over depth, but the `0x1B28` distance is keyed to the shape's scale: a shape's units are `2^-k` m, so its radius is under `2^(16 - k)` m, and at the cut, at the default lens (`[0x229E]` = 1, distance `2^(23 - k)` m), it spans at most about `R / 2^15` pixels.
-  Over the seven reference archives' shapes (`scale_index` 3 to 16), `R / 2^15` is at most 0.68 pixels in six of them and 1.22 in `location`'s; the cut falls inside our 25 km far plane for `scale_index` 9 and above.
+  A scratch scan of every `.SOD` chunk with magic `0x000C` in the seven reference archives (`k` its byte 6, `R` its word at `+2`, the cut at `2^(23 - k)` m with `[0x229E]` = 1) bounds the effect: over those shapes (`scale_index` 3 to 16), `R / 2^15` is at most 0.68 pixels in six of them and 1.22 in `location`'s; the cut falls inside our 25 km far plane for `scale_index` 9 and above.
   Past the cull, the display-list run `0x9100` compares the point and the radius only to choose between two polygon-routine sets that both run the stream ([`sod-vm-frame.md` § 9.1](../../../research/playone-exe/sod-vm-frame.md#91-the-actor-shadow-draw)).
 - **Verdict**: control (a reading, no score).
   `PLAYONE` does drop far scenery whole, by distance against `scale_index` rather than by projected radius; at the default lens the props it drops are under about a pixel, about the size our half-pixel cull drops.
@@ -43,7 +43,7 @@
   The sweep warns that the two variants scored identically and the switch may not be wired; it is wired (the count above shows `location` keeping its 190 extra placements at 0), but they draw nothing.
   Figures: [`sweeps/size-cull.toml`](sweeps/size-cull.toml).
   Winner line: `winner: none adopts (best DBG_MIN_PROP_PIXELS=0: no film rises)`.
-  On the corrected reading the change has no `PLAYONE` rule behind it, so its track is heuristic: the recorded figures judged with `track = "heuristic"` (a scratch copy of the figures file, `mise run judge -- --recheck`) give `winner: none adopts (best DBG_MIN_PROP_PIXELS=0: film means short of +0.002 each or +0.004 on one)`.
+  On the corrected reading the change has no `PLAYONE` rule behind it, so its track is heuristic: the committed figures, `sweeps/size-cull.toml`, judged with `track = "heuristic"` (an uncommitted copy with only that line changed, through `mise run judge -- --recheck`) give `winner: none adopts (best DBG_MIN_PROP_PIXELS=0: film means short of +0.002 each or +0.004 on one)`.
 - **Verdict**: rejected on either track, since no film moves; the cull stays at 0.5, and only its comment, which still cited the 11 million vertices, is corrected.
   No one-pixel stand-in was built: `INTRO.FLM` never nears the buffer limit, and there is no culled prop to stand in for.
 - **Lives in**: [`world-scene-residuals.md` § Ruled out](../../../research/playone-exe/world-scene-residuals.md#ruled-out), [`attribution.md` § Ruled out](../../../research/parity/attribution.md#ruled-out).
