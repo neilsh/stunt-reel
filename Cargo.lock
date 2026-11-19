@@ -2185,11 +2185,8 @@ name = "stunt-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
- "flate2",
  "glam",
  "image",
- "image-compare",
- "png",
  "serde",
  "serde_json",
  "sha2",
@@ -2197,10 +2194,10 @@ dependencies = [
  "stunt-gltf",
  "stunt-parity",
  "stunt-render",
+ "stunt-score",
  "thiserror 2.0.21",
  "toml",
  "winit",
- "zstd",
 ]
 
 [[package]]
@@ -2247,6 +2244,24 @@ dependencies = [
  "stunt-core",
  "thiserror 2.0.21",
  "wgpu",
+]
+
+[[package]]
+name = "stunt-score"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "flate2",
+ "image",
+ "image-compare",
+ "png",
+ "serde",
+ "serde_json",
+ "sha2",
+ "stunt-core",
+ "stunt-parity",
+ "thiserror 2.0.21",
+ "zstd",
 ]
 
 [[package]]

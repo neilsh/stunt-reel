@@ -223,7 +223,7 @@ _Avoid_: sidecar (for the record), manifest
 **Capture set**: The typed view of a capture directory's `meta.json`: the film identity, the raster geometry, and one captured frame per capture ordinal, each tagged with its film clock.
 _Avoid_: capture manifest
 
-**Parity artifact port**: The pure `crates/stunt-parity` crate that defines the render, capture and report documents and their schema version; `stunt-cli` and `stunt_reel` adapt it to files.
+**Parity artifact port**: The pure `crates/stunt-parity` crate that defines the render, capture and report documents and their schema version; `stunt-score` and `stunt_reel` adapt it to files.
 _Avoid_: schema library
 
 ## Evidence

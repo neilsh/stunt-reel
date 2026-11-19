@@ -7,18 +7,9 @@
 
 use stunt_core::contracts::SodVertex;
 
-/// Layer id of pixels no geometry covers (the clear colour).
-pub const LAYER_NONE: u32 = 0;
-/// Layer id of the world's ocean.
-pub const LAYER_OCEAN: u32 = 1;
-/// Layer id of the world's terrain.
-pub const LAYER_TERRAIN: u32 = 2;
-/// Layer id of the world's props.
-pub const LAYER_PROP: u32 = 3;
-/// Layer id of the 2D credits text drawn over the scene.
-pub const LAYER_OVERLAY: u32 = 4;
-/// Layer id of the first actor draw; actor draw `n` of a frame is `LAYER_FIRST_ACTOR + n`.
-pub const LAYER_FIRST_ACTOR: u32 = 16;
+pub use stunt_core::frame::{
+    LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN,
+};
 
 /// Format of the optional plane target: `layer << 8 | unlit palette index` per pixel.
 pub(crate) const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;

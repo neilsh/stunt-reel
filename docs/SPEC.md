@@ -159,7 +159,7 @@ _Source: the Milestone 1 and 2 sign-offs (Phases 0–2) in the frozen [`TEAM_SHE
 ## 3. Format & Behaviour Reference
 
 The specification does not carry binary-analysis findings.
-They live in `research/`, each with its own evidence and tier, and [`research/MAP.md`](../research/MAP.md) summarizes every note: `PLAYONE.EXE` startup, the `LOAD FILM` dialog and its `.FLM` + `.ALL` pairing, the capture harness and the display-list VM under [`research/playone-exe/`](../research/playone-exe/); `DGROUP` and work-segment offsets and the `# [MEM-*]` anchors in [`memory-map.md`](../research/playone-exe/memory-map.md) and the files it lists; file formats in [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas; parity findings in [`research/parity/`](../research/parity/).
+They live in `research/`, each with its own evidence and tier, and [`research/MAP.md`](../research/MAP.md) summarizes every note: `PLAYONE.EXE` behaviour under [`research/playone-exe/`](../research/playone-exe/); `DGROUP` and work-segment offsets and the `# [MEM-*]` anchors in [`memory-map.md`](../research/playone-exe/memory-map.md) and the files it lists; file formats in [`research/formats/INDEX.md`](../research/formats/INDEX.md) and the `.ksy` schemas; parity findings in [`research/parity/`](../research/parity/).
 
 ---
 
@@ -170,7 +170,7 @@ The system integrates across four seams, defined by the types in `crates/stunt-c
 * **Seam 1 (`VfsArchive`)**: `.RES` and `.ALL` extraction ([`vfs.rs`](../crates/stunt-core/src/contracts/vfs.rs)); layouts in [`res.md`](../research/formats/res.md) and [`all.md`](../research/formats/all.md).
 * **Seam 2 (`TrajectoryRecord`, `FilmCapture`)**: per-tick film state on the cumulative 50 Hz clock, sampled through `FilmTimeline` ([`trajectory.rs`](../crates/stunt-core/src/contracts/trajectory.rs)); see `[I4]`.
 * **Seam 3 (`SodModelIr`)**: the Shape IR, a flat-arena node graph of one shape, produced by the single `decode_sod` entry point in strict, lenient or census mode; a decoded shape carries its `DecodeRecord`, an authored shape none, and the shape owns its mesh slices and extent ([`shape/mod.rs`](../crates/stunt-core/src/contracts/shape/mod.rs)); see `[I2]`.
-* **Seam 4 (`VisualParityGate`)**: capture-vs-render SSIM and the `[I6]` gate, reported by `stuntreel parity` ([`parity/`](../crates/stunt-cli/src/parity/)); the seam has no core types ([`contracts/mod.rs`](../crates/stunt-core/src/contracts/mod.rs)).
+* **Seam 4 (`VisualParityGate`)**: capture-vs-render SSIM and the `[I6]` gate, reported by `stuntreel parity` ([`parity/`](../crates/stunt-score/src/parity/)); the seam has no core types ([`contracts/mod.rs`](../crates/stunt-core/src/contracts/mod.rs)).
   Its render, capture and report documents are typed by the pure [`stunt-parity`](../crates/stunt-parity/) port, one adapter per language ([ADR 0011](adr/0011-parity-artifacts-are-a-versioned-port.md)); see `[I6]`.
 
 Which code path is governed by which seam, anchor and note: [`ARCHITECTURE.md`](ARCHITECTURE.md), and [`architecture-python.md`](architecture-python.md) for Python paths.

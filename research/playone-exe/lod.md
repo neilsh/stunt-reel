@@ -8,7 +8,7 @@ sidebar_label: "Level-of-detail distance gate"
 * **Method**: Capstone 16-bit disassembly of the load image, located from the patch signature in Alberto Marnetto's article [*Tweaking Stunt Island*](https://marnetto.net/2024/11/20/tweaking-stunt-island) (2024-11-20).
   The article analyses `STUNT.EXE` and states that `MAKEONE` and `PLAYONE` share the rendering code.
 * **Scope**: where the detail setting enters the renderer, the distance comparison it scales, and what that means for parity captures
-* **Evidence tier**: `[Established]` for the instruction sequences, the data flow and the walker being the `SP_1NODE` handler (section 1.1); `[Established]` for `0x229C` coming from film variable `view_obj` (section 2.1) and for how `0x229C`/`0x229E` zoom the view matrix (section 2.2); `[Established]` for `CX` being the high word of the view matrix's depth row (section 2.2); `[Supported Inference]` for that variable being the camera's zoom, for the accumulated position being relative to the eye, and for the rows being Q15, so that `CX` is half the view-space depth shifted by `0x229E`; `[Unknown]` for the walker's outer caller
+* **Evidence tier**: `[Established]` for the instruction sequences, the data flow and the walker being the `SP_1NODE` handler (section 1.1); `[Established]` for `0x229C` coming from film variable `view_obj` (section 2.1) and for how `0x229C`/`0x229E` zoom the view matrix (section 2.2); `[Established]` for `CX` being the high word of the view matrix's depth row (section 2.2); `[Supported Inference]` for that variable being the camera's zoom, for the accumulated position being relative to the eye, and for the rows being Q15, so that `CX` is half the view-space depth shifted by `0x229E`; the walker's outer caller is the scene walk `0x1DD5`, which starts it at `SS:0` with the pending actor list ([`scene-walk-actors.md`](scene-walk-actors.md))
 
 Offsets are load-image offsets, and `DS:` offsets are DGROUP-relative (image `0xD510 + off`; see [`static-tooling.md`](static-tooling.md) section 3).
 
@@ -41,7 +41,7 @@ In `PLAYONE.EXE` that sequence occurs exactly once, at image `0x2131`, and the `
 
 The far branch (`0x2152`) takes the node's object word `[bp+2]`, stores it at `DS:0x22EC` and calls `0x4C41`.
 Before this, `0x20F2..0x211C` tests the node's extent against three more scale words, `0x229C`, `0x22A0` and `0x22A2`.
-If the test fails, it branches to `0x2149`, which returns or continues at `0x1B8C`.
+If the test fails, it branches to `0x2149`, which returns or draws the pending actor list at `0x1B8C`.
 
 `[Established]` for the instructions.
 
@@ -72,7 +72,7 @@ With `half = ext >> 1`:
 * the threshold is `half + ((splitdist - half) × [0x22A4] >> 16)`, or `splitdist` itself when `splitdist < half` (`0x2141`);
 * **near** (`CX <= threshold`, `0x2137`): descend to `next` (`[bp+8]`); `obj` is not drawn;
 * **far** (`CX > threshold`, `0x2152`): if `obj` (`[bp+2]`) is non-zero, store it at `DS:0x22EC` and draw it at the accumulated position through the same sequence as `SP_LEAF` (`0x220B`: `call 0x4C41`, the projection at `0x31CF`, `lcall 0x0824:0x0EC0`).
-  Either way the walker then pops its pending-node stack (`0x2202`/`0x214A` → `0x1B8C`).
+  Either way the walker then draws the pending actor list it carries (`0x2202`/`0x214A` → `0x1B8C`, [`scene-walk-actors.md`](scene-walk-actors.md)).
   `next` is never walked.
 
 So `obj` is a coarse stand-in drawn **instead of** the subtree beyond the threshold, never in addition to it.
@@ -296,7 +296,3 @@ _Source: [2026-11-11: what camera 1 loses](../../work/2026-11/403_intro-cam1-lod
 * **An 8x reference stage.**
   `PLAYONE1.EXE` can be produced from the corpus copy by XOR with the `si-8x` v0 diff (section 1.2) and staged for DOSBox-X.
   One film captured at 800% detail would test the gate's reading of `CX` directly; not run.
-* **The walker's outer caller.**
-  The pending-node stack popped at `0x1B8C` and its feeder `0x1B75` (`xchg di, [bx+0x2346]`) are known; the routine that seeds the root hasn't been traced.
-  One caller is now known: `0xB568` copies the 0x17-word per-frame block at `work:0x806E` to the stack, calls `0x1B75`, and copies it back, so `0x1B75` consumes that block ([`terrain-shade.md`](terrain-shade.md) section 4.1).
-  It is also a static route to the code that hands ground objects to the display-list VM ([`world-scene-residuals.md` § Open questions](world-scene-residuals.md#open-questions)).

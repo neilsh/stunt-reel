@@ -48,6 +48,17 @@ os = ["windows"]
 asset_pattern = "dosbox-automation-*-windows-x64.zip"
 checksum = "sha256:6835621f4731235651a886ef67c4fc40693454a6386f0e5ab5c0570965a186ee"
 
+# The same release's Linux tarball, for cloud sessions, which run it headless (#293,
+# docs/cloud-sessions.md). The http backend fetches the asset URL directly: the cloud proxy
+# passes release downloads but refuses the releases API the github backend calls.
+[tools."http:dosbox-automation"]
+version = "0.85.1"
+os = ["linux"]
+url = "https://github.com/dosbox-automation/dosbox-automation/releases/download/v{{version}}/dosbox-automation-{{version}}-7567ec4-linux-x86_64.tar.xz"
+checksum = "sha256:d205021daf20435e9bee7c305af08ee30e74717aef6cc3db4144a1e6364207c9"
+strip_components = 1
+bin_path = "bin"
+
 # DOSBox-X, for its built-in debugger link only: `mise run debug-x` runs breakpoint plans on it
 # (ADR 0034); capture stays on dosbox-automation. The SDL1 build is the one the 2026-11-04 spike
 # ran; the old pin chose SDL2 for OpenGL output, which this tool never uses.
@@ -230,7 +241,7 @@ run = "uv run python python/scripts/parity_residue.py"
 
 [tasks.parity-probe]
 depends = ["ensure"]
-description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the scores a journal entry quotes)"
+description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime|index ... ; index prints where one palette index lies in the capture and in our render; summary prints the scores a journal entry quotes)"
 run = "uv run python python/scripts/parity_probe.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
@@ -281,7 +292,7 @@ description = "Pair two builds' functions with an iced-x86 decode and map offset
 run = "uv run python python/scripts/pair_builds.py"
 
 [tasks.re-tool]
-description = "Static reading of PLAYONE.EXE: disasm <start> <end> | xref <imm16> [--code-end 0xD510] | xref <exe> --string TEXT | --offset 0x22C2 --ds 0x163D | vm-handler <opcode> [--vm-seg 0x824] [--work-seg 0x15D4]; disasm, vm-handler and xref <imm16> take --image F (mise run re-tool -- disasm 0x7571 0x75DB)"
+description = "Static reading of PLAYONE.EXE: disasm <start> <end> | xref <imm16> [--code-end 0xD510] | xref <exe> --string TEXT | --offset 0x22C2 --ds 0x163D | callers <offset> [--code-end 0xD510] (near call/jmp/jcc only) | vm-handler <opcode> [--vm-seg 0x824] [--work-seg 0x15D4]; disasm, callers, vm-handler and xref <imm16> take --image F (mise run re-tool -- disasm 0x7571 0x75DB)"
 run = "uv run python python/scripts/re_tool.py"
 
 [tasks.scene-ground]
@@ -291,6 +302,12 @@ run = "uv run python python/scripts/scene_ground.py"
 [tasks.scene-patches]
 description = "For each MAP.BIN patch with no polygon in PLAYONE's scene tree, check SCENERY.scn, byte scans, OP_TAP operands and the polygons under it (mise run scene-patches -- build/re/playone.img <MAP.BIN> --scn <SCENERY.scn> --scan <dir>)"
 run = "uv run python python/scripts/scene_patches.py"
+
+[tasks.scene-walk]
+description = "Print a film's slot and eye positions at a tick, and with --slot N replay that slot through PLAYONE's scenery draw walk (mise run scene-walk -- corpus/stisldem/VAULT/CTRY.FLM --tick 871 [--slot 11])"
+depends = ["ensure"]
+run = "uv run python python/scripts/scene_walk.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.flm-events]
 description = "Dump the film-level events of one .FLM film (mise run flm-events -- corpus/.../CTRY.FLM [--sounds])"

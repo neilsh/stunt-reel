@@ -12,10 +12,10 @@ In the Cloudflare dashboard, R2, Manage API tokens, create an API token with **O
 
 In claude.ai, the cloud environment for this repo is `stunt-reel-cloud`:
 
-- **Environment variables:** `R2_ACCOUNT_ID`, not a secret; `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`, the token's key pair; and `STUNT_DATA_ROOT`, an absolute path outside the checkout, such as `/root/stunt-reel.data`.
+- **Environment variables:** `R2_ACCOUNT_ID`, not a secret; `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`, the token's key pair; and `STUNT_DATA_ROOT`, an absolute path outside the checkout and outside `/root`, such as `/home/user/stunt-reel.data` ([Running the emulator](#running-the-emulator)).
   Anyone who uses the environment, and anything in a session, can read the key pair; it reads only the one bucket.
   Also `MISE_AUTO_INSTALL=false` and `MISE_USE_VERSIONS_HOST=false`, as CI sets them: otherwise the first `mise run` in a session installs every tool `mise.toml` declares, compiling the cargo ones from source.
-- **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`, and `gitlab.freedesktop.org` for reading Mesa's source and issues when a render differs on lavapipe ([#265](https://github.com/neilsh/stunt-reel/issues/265)); a cloud session reached it on 2026-11-18 (HTTP 200 for a raw file on Mesa's `main`).
+- **Network access:** the default trusted list, plus `<account_id>.r2.cloudflarestorage.com`, and `gitlab.freedesktop.org` for reading Mesa's source and issues when a render differs on lavapipe ([#265](https://github.com/neilsh/stunt-reel/issues/265)); a cloud session reached it on 2026-11-18 (HTTP 200 for a raw file on Mesa's `main`; the source archive's URL is in [Building Mesa](#building-mesa-in-a-cloud-session)).
   The cloud setup downloads from GitHub releases, `static.rust-lang.org`, PyPI and the Ubuntu mirror, all on the list.
 - **Network secrets:** none on the R2 host.
   The proxy's AWS SigV4 secret signs for hosts under `amazonaws.com` alone, and while one is set it answers every request to the R2 host with a 502 (`injection failed (...): the hostname is not under amazonaws.com`, 2026-11-07).
@@ -25,10 +25,10 @@ In claude.ai, the cloud environment for this repo is `stunt-reel-cloud`:
 
 The setup script is the claude.ai field; the *cloud setup* is [`.claude/cloud-setup.sh`](../.claude/cloud-setup.sh), the checkout's script that does the work.
 The field holds only a bootstrap, so a change to the setup is reviewed and versioned with the repo, and no copy here can drift from it.
-The cloud setup installs mise at a pinned, checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs (not the DOSBox tool) and the Python environment, then lavapipe as CI does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)).
+The cloud setup installs mise at a pinned, checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs, dosbox-automation's Linux build and the Python environment, then lavapipe as CI does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)).
 It fetches no game archives: the setup script runs before the environment variables are set, so the hook fetches them.
-Each step skips work already done, and it needs root only to replace mise or install the apt packages.
-It refuses to run without `--cloud`, which only the bootstrap and the hook pass, or on anything but Linux x86_64 with `dpkg`; it does not detect a container, so `--cloud` on a developer machine would replace that machine's mise.
+Each step skips work already done, and it needs root only under `--cloud` to replace `/usr/local/bin/mise` or install system apt packages.
+It refuses to run without `--cloud` or `--antigravity`, or on anything but Linux x86_64 with `dpkg`; it does not detect a container, so `--cloud` on a developer machine would replace that machine's mise.
 CI's `install_args` is a separate list: CI also installs Java.
 
 The lockfile is what makes the install work: it holds each tool's download URL and checksum, so mise reads no GitHub API.
@@ -48,6 +48,23 @@ bash "$setup" --cloud
 
 A branch older than the cloud setup fails the setup script rather than starting without mise: the hook below runs through `mise`, so a session without it would fail every hook and tell Claude nothing.
 A failed setup script should also keep that environment out of the cache (unverified).
+
+## Building Mesa in a cloud session
+
+A session fetched Mesa's source and built lavapipe from it on 2026-11-18 ([#702](https://github.com/neilsh/stunt-reel/issues/702), PR [#749](https://github.com/neilsh/stunt-reel/pull/749)).
+Whether a session may build a downloaded source tree is [#767](https://github.com/neilsh/stunt-reel/issues/767)'s question, not settled here.
+
+- **Source:** the tag's archive from the allowed `gitlab.freedesktop.org`, `/mesa/mesa/-/archive/<tag>/mesa-<tag>.tar.gz` with the tag repeated in the file name, so `mesa-25.2.8` unpacks as `mesa-mesa-25.2.8` (HTTP 200, 67,863,192 bytes).
+  The proxy refused CONNECT to the release tarball hosts `archive.mesa3d.org` and `mesa.freedesktop.org` (403; neither is on the list), and GitHub's `mesa3d/mesa` archive also returned 403.
+- **`meson`:** from PyPI in a venv, with `mako` and `pyyaml`, because the `mesa-25.2.8` tag's `meson.build` asks for `meson_version >= 1.4.0` and Ubuntu 24.04's `meson` is 1.3.2.
+  Put the venv first on `PATH`: with the system `python3` first, setup stops at "Python (3.x) mako module >= 0.8.0 required".
+- **apt:** the session installed `llvm-20-dev`, `libdrm-dev`, `flex` and `glslang-tools`, and in the same command `libclang-20-dev` and `libclang-cpp20-dev` (the session's apt history; whether lavapipe needs those two is unverified); `bison`, `pkg-config`, `ninja-build`, `libexpat1-dev` and `zlib1g-dev` were already installed.
+  Meson has to find `llvm-config-20` (LLVM 20.1.2, as Ubuntu's `mesa-vulkan-drivers` 25.2.8 uses); the image's own LLVM 18 is not what the build linked.
+- **Configure and build:** the options and the one `ninja` target that builds lavapipe alone (`src/gallium/targets/lavapipe/libvulkan_lvp.so`) are in the journal entry below; the build took about 5 minutes on 3 of the 4 shared cores.
+  To run it, point `VK_DRIVER_FILES` and `VK_ICD_FILENAMES` at an ICD JSON naming that library, and check that the driver info reads `Mesa 25.2.8 (LLVM 20.1.2)`, not the package's `Mesa 25.2.8-0ubuntu0.24.04.5`.
+- **Keep it out of the checkout:** the source and build directories lived under `/tmp`; commit nothing from them.
+
+_Source: [stock and patched builds](../work/2026-11/702_mesa-interp-fix-build/journal.md#2026-11-18-stock-and-patched-lavapipe-builds-of-mesa-2528)._
 
 ## The SessionStart hook
 
@@ -103,6 +120,34 @@ Use it to check a new or resumed cloud environment.
 3. Commit `manifests/cloud-assets.toml`, then `mise run cloud-assets -- upload [ARCHIVE...]`.
    A key names its content, so old commits keep fetching theirs; never delete an object.
 
+## Running the emulator
+
+A cloud session runs dosbox-automation, so `capture-ref` and `make-all` work there (#293).
+Its output is working output only: a cloud capture or archive is never promoted to a parity reference.
+`capture-video` and `probe-light` launch the emulator through the same code but are untested in a cloud session.
+
+- **Pin.**
+  `mise.toml` pins the release's `linux-x86_64` tarball through mise's `http` backend, by URL and checksum, beside the Windows zip's `github` pin.
+  The proxy passes GitHub release downloads but answers the releases API, which the `github` backend calls, with 403 (2026-11-18).
+  The tarball's `ldd` lists no missing library on the cloud image.
+- **Headless.**
+  On Linux with neither `DISPLAY` nor `WAYLAND_DISPLAY` set, the launcher sets `SDL_VIDEODRIVER=offscreen` and `SDL_AUDIODRIVER=dummy` unless they are already set (`headless_env` in `python/stunt_reel/tac/automation.py`).
+  That boots PLAYONE and MAKEONE to Mode 13h with no Xvfb (2026-11-18).
+- **The data root must lie outside `/root`.**
+  dosbox-automation's mount policy refuses a mount under `/root` as a system path: on 2026-11-18 a guest `echo hi > c:\out.txt` wrote nothing when C: was a directory under `/root/stunt-reel.data`, and wrote `OUT.TXT` when it was under `/tmp` or `/home/user`.
+  The refusal suggests `mount_allowed_bases` in the primary config; `mount_allowed_bases = /root/stunt-reel.data` in the `-conf` file's `[webserver]` section still wrote nothing, and in `[dosbox]` was reported as no such setting.
+  Whether another config file lifts it is untested.
+  With `STUNT_DATA_ROOT=/root/stunt-reel.data` the emulator logged `MOUNT: ... refused by the mount policy: system path` and sat at the DOS prompt, and `capture-ref` waited over 10 minutes (2026-11-18).
+  Staging refuses a stage under `/root` before it copies anything (`mount_refusal` in `python/stunt_reel/tac/staging.py`), so `capture-ref` and `make-all` fail at once with an error that names the mount policy and `STUNT_DATA_ROOT`; `/root` is the only refused base observed.
+  So the environment's `STUNT_DATA_ROOT` names a path such as `/home/user/stunt-reel.data`.
+- **Music files.**
+  The corpus archive leaves out `RES/MUSIC?.ESS`, `.XMI`, `.XMM` and `.XMP` and holds `MUSIC1.XMA` and `MUSIC2.XMA` (`manifests/cloud-assets.toml`); the Patch 3 tree also holds `MUSIC1.ESS` and `MUSIC2.ESS` (2026-11-18).
+  PLAYONE and MAKEONE ran CTRY on the Patch 3 tree, the build its `references.toml` row names; whether the unpatched tree, which lacks the `.ESS` files, boots is untested.
+- **Checked on CTRY (2026-11-18).**
+  `mise run make-all -- --film corpus/stisldem/VAULT/CTRY.FLM --out <dir>` wrote a `CTRY.ALL` byte-identical to the pinned one (sha256 `cb58d95b…`, the `all_sha256` in `references.toml`) in 24 s.
+  `mise run capture-ref -- --film corpus/stisldem/VAULT/CTRY.FLM --out <dir> --max-frames 40` captured 40 frames in 57 s; its 40 `tick_*.idx` and 40 `palettes_*.json` files are byte-identical (`cmp`) to the same-named files of the pinned capture in `captures/vault-ctry/frames/frames/`.
+  Only those first 40 kept frames were compared.
+
 ## What a cloud session cannot do
 
 - **Attach a picture to a pull request.**
@@ -118,12 +163,27 @@ Use it to check a new or resumed cloud environment.
 - **Page with `gh api --paginate`.**
   GitHub's next-page links name the repository by id (`repositories/<id>/...`), and the proxy refuses those with 403 ("Numeric-ID repository paths ... are not supported"), so a list longer than one page fails on its second page (2026-11-09: the issue list doc-health reads, past 100 issues).
   Ask for each page by number instead (`...?per_page=100&page=2`), as `work_items.issue_list` does.
+- **Force-push or delete a remote ref.**
+  The auto mode's permission classifier refused `git push --force-with-lease` to #739's branch after a rebase, so a pushed branch takes a merge of `origin/main` instead (2026-11-18).
+  The proxy refuses ref deletes: the probe branch `ccr-785727a5-kue4ei-probe` could not be deleted (2026-11-18).
+- **Arm auto-merge on every PR.**
+  The MCP `enable_pr_auto_merge` armed PRs whose checks were pending, but refused one whose merge state was `clean` ("merge directly") and one that was `unstable` from a stale cancelled `PR title` check run (#744, 2026-11-18).
 - **Merge a stacked pull request.**
   GitHub's REST merge endpoint answers a stacked PR with 403 (`Merging stacked PRs via this endpoint is not supported`), it refuses auto-merge on one, and `gh stack` needs GraphQL.
   The owner runs `gh stack merge` (2026-11-08, #302 and #303).
 - **Install a newer `gh`.**
   The image's `gh` is 2.89.0; Ubuntu's apt package is 2.45.0, older, and the proxy refuses `cli.github.com` and GitHub's release downloads (2026-11-08).
   A newer `gh` would still meet the GraphQL refusal above.
+
+## Container limits
+
+A cloud session's container has 4 CPUs and 15 GB RAM; it had about 28 GB of free disk at session start (11:02 UTC, 2026-11-18), 22 GB at 11:13 and 11 GB at 12:13 (`df /`: 29 GB used).
+Each worktree builds its own `target/`: about six Rust-building subagents plus a Mesa build in one container reached load 18, so run at most about two Rust builds at once there and give anything heavier a child session of its own ([`running-unattended`](../.agents/skills/running-unattended/SKILL.md)).
+
+## Antigravity cloud
+
+An Antigravity VM runs `.claude/cloud-setup.sh --antigravity` via [`.agents/environment.json`](../.agents/environment.json), putting `mise`, `RUSTUP_HOME` and lavapipe in `~/.local` and env in `~/.bashrc`.
+`/home/antigravity/env-setup.sh` fetches archives via `gdrive` and runs `game-builds` and `superset-all` ([`cloud-antigravity.md`](../.agents/skills/working-in-an-environment/cloud-antigravity.md), [`harness.md`](harness.md#antigravity)).
 
 ## Rotating the token
 

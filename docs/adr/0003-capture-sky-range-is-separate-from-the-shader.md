@@ -12,7 +12,7 @@ Parity scoring masks the sky out of both frames, so the range it uses decides wh
 
 ## Decision
 
-The parity scorer uses a parity-local constant, `CAPTURE_SKY_INDICES: RangeInclusive<u8> = 227..=238`, in [`parity/mask.rs`](../../crates/stunt-cli/src/parity/mask.rs). It describes the capture and is deliberately not shared with `mode13h.wgsl`. Its doc comment points at the research note. The report records the range as `sky_indices` in `report.json` ([`parity/mod.rs`](../../crates/stunt-cli/src/parity/mod.rs)).
+The parity scorer uses a parity-local constant, `CAPTURE_SKY_INDICES: RangeInclusive<u8> = 227..=238`, in [`parity/mask.rs`](../../crates/stunt-score/src/parity/mask.rs). It describes the capture and is deliberately not shared with `mode13h.wgsl`. Its doc comment points at the research note. The report records the range as `sky_indices` in `report.json` ([`parity/mod.rs`](../../crates/stunt-score/src/parity/mod.rs)).
 
 ## Considered Options
 

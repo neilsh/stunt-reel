@@ -13,7 +13,8 @@ adapter of another class, or a report's recorded reference pins are missing or a
 current ones. It never repins a subset of the films.
 
 Usage: ``mise run parity-repin -- [--class gpu|lavapipe]`` after ``mise run parity`` on a clean
-``crates/``.
+``crates/``; ``mise run parity -- --no-render`` also qualifies after a commit that changes only the
+scorer (``crates/stunt-score/src/parity/``), which moves no pixel of the render it scores.
 """
 
 from __future__ import annotations
@@ -85,7 +86,8 @@ def _measure(repo: Path, film: str, renderer: str, tree: str) -> tuple[Measured 
     if report.crates is None:
         return None, (
             f"{film}: the report records no crates/ tree; re-render with mise run parity "
-            "on a clean crates/ (not --reuse, --retime or --no-render)"
+            "on a clean crates/ (not --reuse or --retime; --no-render only after a change under "
+            "crates/stunt-score/src/parity/ alone)"
         )
     if report.crates != tree:
         return None, f"{film}: the report measured crates/ {report.crates[:7]}, now {tree[:7]}"

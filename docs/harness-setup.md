@@ -98,7 +98,7 @@ A Claude Code cloud session's setup, its game archives and what it cannot do are
 
 DSH's `workspace-write` sandbox admits writes only inside the session workspace, and the shared caches, the data root and mise's trust records are outside a worktree.
 Run `mise run` tasks in a DSH session under `danger-full-access`.
-The OS temp directory is denied too: a gate run under `workspace-write` panicked in `test-rust` with `create temp dir: Os { code: 5, ... "Access is denied." }`, and `pytest` hit `PermissionError: [WinError 5]` under DSH's own per-session temp path ([harness.md](harness.md#temporary-directories)).
+The OS temp directory is denied too: a gate run under `workspace-write` panicked in `test-rust` with `create temp dir: Os { code: 5, ... "Access is denied." }`, and `pytest` hit `PermissionError: [WinError 5]` under DSH's own per-session temp path ([`harness/deepseek.md`](harness/deepseek.md#temporary-directories)).
 Approval settings should pre-approve `mise run *` and use a short timeout, so a blocked command returns a decision rather than a deadline.
 
 DSH's `run_code` traps, each hit several times by workers on 2026-11-14:

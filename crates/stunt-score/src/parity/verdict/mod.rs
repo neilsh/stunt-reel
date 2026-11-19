@@ -1,0 +1,345 @@
+//! The regression verdict: did a render change get closer to the capture on the windows it touched.
+//!
+//! The scored mean SSIM moves by a few thousandths when a change touches one prop, which is
+//! lost against run-to-run noise. The verdict instead finds the pixels that differ between
+//! the previous render and the fresh one, takes the SSIM windows that hold any of them, and
+//! compares the two renders' SSIM against the capture on those windows alone. The numpy copy
+//! is `differential` in `python/stunt_reel/bench/metrics.py`; `tests.rs` pins this port to it.
+//!
+//! "Luminance differs" is `f32` inequality, as the numpy copy compares its `float32` planes.
+
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+
+use serde_json::{Value, json};
+use stunt_core::frame::{
+    ASPECT_CORRECTED_HEIGHT, LAYER_FIRST_ACTOR, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP,
+    LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH,
+};
+
+use super::frames::reference_luminance;
+use super::mask::{rescale_mask, ui_overlay_mask};
+use super::score::{ReferenceFrame, RenderFrame, SSIM_STRIDE, SSIM_WINDOW};
+use super::ssim::{compute_frame_ssim, compute_window_scores, rescale_mode13h_frame};
+
+/// Layer keys of [`FrameVerdict::changed_by_layer`].
+const LAYER_KEYS: [&str; 6] = ["ocean", "terrain", "props", "overlay", "actors", "none"];
+
+/// How a render change moved one frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum VerdictClass {
+    /// No pixel changed, or every change sits under the overlay.
+    Unchanged,
+    /// At most `--build-floor` pixels changed.
+    BuildNoise,
+    /// The change on the touched windows is smaller than `--noise-sigma` (or exactly zero).
+    WithinNoise,
+    /// The touched windows moved closer to the capture.
+    Closer,
+    /// The touched windows moved away from the capture.
+    Further,
+    /// The previous render has no such tick.
+    Missing,
+}
+
+/// One frame's regression verdict.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct FrameVerdict {
+    pub(super) film_tick: u64,
+    /// Fraction of the 320x200 frame whose palette index changed.
+    pub(super) changed_idx: f32,
+    /// Fraction whose luminance changed.
+    pub(super) changed_luma: f32,
+    /// Changed fraction (index or luminance) by the fresh render's layer.
+    pub(super) changed_by_layer: BTreeMap<&'static str, f32>,
+    /// SSIM of the previous render against the fresh one, stretched, unmasked.
+    pub(super) before_after_ssim: f32,
+    /// Mean window SSIM after minus before, over the touched windows; `None` when none.
+    pub(super) delta: Option<f32>,
+    pub(super) class: VerdictClass,
+}
+
+impl FrameVerdict {
+    /// The verdict of a tick whose previous render is absent.
+    pub(super) fn missing(film_tick: u64) -> Self {
+        Self {
+            film_tick,
+            changed_idx: 0.0,
+            changed_luma: 0.0,
+            changed_by_layer: LAYER_KEYS.iter().map(|k| (*k, 0.0)).collect(),
+            before_after_ssim: f32::NAN,
+            delta: None,
+            class: VerdictClass::Missing,
+        }
+    }
+
+    fn to_json(&self) -> Value {
+        json!({
+            "film_tick": self.film_tick,
+            "changed_idx": self.changed_idx,
+            "changed_luma": self.changed_luma,
+            "changed_by_layer": self.changed_by_layer,
+            "before_after_ssim": self.before_after_ssim,
+            "delta": self.delta,
+            "class": class_name(self.class),
+        })
+    }
+}
+
+fn class_name(class: VerdictClass) -> &'static str {
+    match class {
+        VerdictClass::Unchanged => "unchanged",
+        VerdictClass::BuildNoise => "build_noise",
+        VerdictClass::WithinNoise => "within_noise",
+        VerdictClass::Closer => "closer",
+        VerdictClass::Further => "further",
+        VerdictClass::Missing => "missing",
+    }
+}
+
+fn layer_key(layer: u16) -> &'static str {
+    match u32::from(layer) {
+        LAYER_OCEAN => "ocean",
+        LAYER_TERRAIN => "terrain",
+        LAYER_PROP => "props",
+        LAYER_OVERLAY => "overlay",
+        l if l >= LAYER_FIRST_ACTOR => "actors",
+        _ => "none",
+    }
+}
+
+/// Judges `after` against `before` on the pixels and windows the change touched.
+pub(super) fn frame_verdict(
+    film_tick: u64,
+    reference: &ReferenceFrame,
+    before: &RenderFrame,
+    after: &RenderFrame,
+    sigma: Option<f32>,
+    build_floor: usize,
+) -> FrameVerdict {
+    let pixels = MODE13H_WIDTH * MODE13H_HEIGHT;
+    let mut idx_changed = 0usize;
+    let mut luma_changed = 0usize;
+    let mut changed = vec![false; pixels];
+    let mut by_layer: BTreeMap<&'static str, usize> = LAYER_KEYS.iter().map(|k| (*k, 0)).collect();
+    for plane in [
+        before.indices.len(),
+        after.indices.len(),
+        before.luminance.len(),
+        after.luminance.len(),
+        after.layers.len(),
+    ] {
+        assert_eq!(
+            plane, pixels,
+            "both renders' planes cover the Mode 13h raster"
+        );
+    }
+    let pairs = (before.indices.iter().zip(&after.indices))
+        .zip(before.luminance.iter().zip(&after.luminance))
+        .zip(&after.layers);
+    for (flag, (((b_idx, a_idx), (b_luma, a_luma)), &layer)) in changed.iter_mut().zip(pairs) {
+        let idx = b_idx != a_idx;
+        // Exact inequality on purpose: the numpy copy compares its float32 planes with `!=`.
+        #[expect(
+            clippy::float_cmp,
+            reason = "bit-for-bit parity with the numpy float32 compare"
+        )]
+        let luma = b_luma != a_luma;
+        idx_changed += usize::from(idx);
+        luma_changed += usize::from(luma);
+        if idx || luma {
+            *flag = true;
+            *by_layer.entry(layer_key(layer)).or_default() += 1;
+        }
+    }
+    let total = pixels as f32;
+    let changed_pixels = changed.iter().filter(|&&c| c).count();
+
+    let stretch = |plane: &[f32]| {
+        rescale_mode13h_frame(
+            plane,
+            MODE13H_WIDTH,
+            MODE13H_HEIGHT,
+            ASPECT_CORRECTED_HEIGHT,
+        )
+    };
+    let reference_rescaled = reference_luminance(&reference.indices, &reference.palette);
+    let before_rescaled = stretch(&before.luminance);
+    let after_rescaled = stretch(&after.luminance);
+    // Both renders are of one film, so their records agree; either keeps the ink in play.
+    let overlay = rescale_mask(&ui_overlay_mask(
+        &reference.indices,
+        before.credits || after.credits,
+    ));
+    let changed_plane = rescale_mask(&changed);
+
+    let scores = |render: &[f32]| {
+        compute_window_scores(
+            &reference_rescaled,
+            render,
+            MODE13H_WIDTH,
+            ASPECT_CORRECTED_HEIGHT,
+            SSIM_WINDOW,
+            SSIM_STRIDE,
+            Some(&overlay),
+        )
+    };
+    let (before_windows, after_windows) = (scores(&before_rescaled), scores(&after_rescaled));
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "windows were scored over the same 320x240 plane `changed_plane` covers"
+    )]
+    let touched = |x: usize, y: usize| {
+        (y..y + SSIM_WINDOW).any(|row| {
+            let start = row * MODE13H_WIDTH + x;
+            changed_plane[start..start + SSIM_WINDOW].iter().any(|&c| c)
+        })
+    };
+    let (mut before_sum, mut after_sum, mut count) = (0.0f64, 0.0f64, 0usize);
+    for (b, a) in before_windows.iter().zip(&after_windows) {
+        if touched(a.x, a.y) {
+            before_sum += f64::from(b.score);
+            after_sum += f64::from(a.score);
+            count += 1;
+        }
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "summed in f64, reported in the f32 the scores use"
+    )]
+    let delta = (count > 0).then(|| ((after_sum - before_sum) / count as f64) as f32);
+
+    let class = match delta {
+        _ if changed_pixels == 0 => VerdictClass::Unchanged,
+        None => VerdictClass::Unchanged,
+        Some(_) if changed_pixels <= build_floor => VerdictClass::BuildNoise,
+        Some(delta) => classify(delta, sigma),
+    };
+    FrameVerdict {
+        film_tick,
+        changed_idx: idx_changed as f32 / total,
+        changed_luma: luma_changed as f32 / total,
+        changed_by_layer: by_layer
+            .into_iter()
+            .map(|(k, n)| (k, n as f32 / total))
+            .collect(),
+        before_after_ssim: compute_frame_ssim(
+            &before_rescaled,
+            &after_rescaled,
+            MODE13H_WIDTH,
+            ASPECT_CORRECTED_HEIGHT,
+            SSIM_WINDOW,
+            SSIM_STRIDE,
+        ),
+        delta,
+        class,
+    }
+}
+
+/// The class of a changed frame from its delta.
+fn classify(delta: f32, sigma: Option<f32>) -> VerdictClass {
+    match sigma {
+        Some(sigma) if delta.abs() < sigma => VerdictClass::WithinNoise,
+        _ if delta > 0.0 => VerdictClass::Closer,
+        _ if delta < 0.0 => VerdictClass::Further,
+        _ => VerdictClass::WithinNoise,
+    }
+}
+
+/// The verdicts of every frame of a comparison.
+pub(super) struct Verdict {
+    pub(super) frames: Vec<FrameVerdict>,
+    /// Whether `--noise-sigma` was given.
+    pub(super) has_sigma: bool,
+}
+
+impl Verdict {
+    fn count(&self, class: VerdictClass) -> usize {
+        self.frames.iter().filter(|f| f.class == class).count()
+    }
+
+    /// The (tick, delta) of the frames the verdict judged; build noise is left out.
+    fn judged_deltas(&self) -> impl Iterator<Item = (u64, f32)> + '_ {
+        self.frames
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.class,
+                    VerdictClass::Closer | VerdictClass::Further | VerdictClass::WithinNoise
+                )
+            })
+            .filter_map(|f| Some((f.film_tick, f.delta?)))
+    }
+
+    /// Mean delta over the judged frames (not build noise).
+    pub(super) fn mean_delta(&self) -> Option<f32> {
+        let deltas: Vec<f32> = self.judged_deltas().map(|(_, d)| d).collect();
+        (!deltas.is_empty()).then(|| deltas.iter().sum::<f32>() / deltas.len() as f32)
+    }
+
+    /// The film ticks of the most negative delta (only if below zero) and the most positive
+    /// (only if above zero), among the judged frames.
+    pub(super) fn worst_and_best(&self) -> (Option<u64>, Option<u64>) {
+        let worst = self
+            .judged_deltas()
+            .filter(|p| p.1 < 0.0)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|p| p.0);
+        let best = self
+            .judged_deltas()
+            .filter(|p| p.1 > 0.0)
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|p| p.0);
+        (worst, best)
+    }
+
+    /// The summary line printed after the SSIM comparison.
+    pub(super) fn summary(&self) -> String {
+        let (build, missing) = (
+            self.count(VerdictClass::BuildNoise),
+            self.count(VerdictClass::Missing),
+        );
+        // Build noise is labelled, not counted as changed (spec section 2).
+        let changed = self.frames.len() - self.count(VerdictClass::Unchanged) - build - missing;
+        let mean = self
+            .mean_delta()
+            .map_or_else(|| "n/a".to_string(), |m| format!("{m:+.3}"));
+        let mut line = format!(
+            "[verdict] changed {changed}/{} frames: {} closer, {} further, {} within noise; mean \u{394} {mean} on changed windows",
+            self.frames.len(),
+            self.count(VerdictClass::Closer),
+            self.count(VerdictClass::Further),
+            self.count(VerdictClass::WithinNoise),
+        );
+        if build > 0 || missing > 0 {
+            let _ = write!(line, " ({build} build noise, {missing} missing)");
+        }
+        if !self.has_sigma {
+            line.push_str(" (no noise sigma: \u{394} by sign only)");
+        }
+        line
+    }
+
+    /// The `verdict` object of `compare.json`.
+    pub(super) fn to_json(&self) -> Value {
+        let counts: BTreeMap<&str, usize> = [
+            VerdictClass::Unchanged,
+            VerdictClass::BuildNoise,
+            VerdictClass::WithinNoise,
+            VerdictClass::Closer,
+            VerdictClass::Further,
+            VerdictClass::Missing,
+        ]
+        .into_iter()
+        .map(|c| (class_name(c), self.count(c)))
+        .collect();
+        json!({
+            "frames": self.frames.iter().map(FrameVerdict::to_json).collect::<Vec<_>>(),
+            "counts": counts,
+            "mean_delta": self.mean_delta(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests;

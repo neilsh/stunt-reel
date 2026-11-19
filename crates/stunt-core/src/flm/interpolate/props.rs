@@ -49,6 +49,7 @@ proptest! {
             position_meters: [0.0; 3],
             state_mask: 0,
             casts_shadow: false,
+            view: false,
             joint_angles_bam: Vec::new(),
         };
         let m = actor.compute_world_matrix();

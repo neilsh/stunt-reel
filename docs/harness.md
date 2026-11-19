@@ -16,7 +16,7 @@ Nothing here is a fact about Stunt Island.
 * **Review:** dispatch the Sonnet [reviewer agent](../.claude/agents/reviewer.md) by default, for first reviews and re-reviews.
   The first review of a Sonnet- or dsh-built PR is the exception: Opus or Antigravity, as a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>` in the brief, or as an Antigravity worker; not the `reviewer` agent with a model override, which names `Sonnet`.
   On #160 a Sonnet review missed four real bugs that an Opus review then found, among them a preflight that built despite `--no-build`.
-  Re-reviews prefer Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what changed since the last reviewed commit, run once after every finding is fixed, and are skipped for a wording-only fix (reply with the new text), except on a PR whose diff touches a path rule 5 names: any fix or rebase there is committed locally and re-reviewed at its SHA before the push, and a rebase needs a fresh `clean` comment at the new head.
+  Re-reviews prefer Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what changed since the last reviewed commit, run once after every finding is fixed, and are skipped for a wording-only fix (reply with the new text), except on a PR whose diff touches a path rule 5 names: any fix, rebase or merge there is committed locally and re-reviewed at its SHA before the push, and a rebase or merge needs a fresh `clean` comment at the new head.
 * **An unattended run has a coordinator and workers.**
   The coordinator runs on Sonnet from the start, reads no diffs or issue bodies (workers read them and report), keeps `build/scratch/run-state.md` rewritten at every item transition, and hands off, when its context passes about 150k tokens, instead of compacting: it starts a fresh coordinator from that file's content (a cloud session's new container cannot read the gitignored file, so the content goes in the new session's prompt), or runs Shutdown where it cannot start one.
   In a cloud session either waits until no worker is in flight, or until every in-flight item has a pushed branch (a rule 5 item only after its review and push), since an unpushed commit is lost with the container; any other item is released and listed under Needs you.
@@ -40,90 +40,13 @@ Nothing here is a fact about Stunt Island.
   Pass `path`, or `ls` the root.
 * No harness enforces any of this for you: `mise.toml` and `gate.py` enforce the gate, and the rest is reviewed.
 
-## DeepSeek Harness (this host)
+## DeepSeek Harness
 
-Observed on this host 2026-10-25.
-
-| Mode | Read | Write | Typical use |
-| --- | --- | --- | --- |
-| `read-only` | yes | no | inspecting a worktree you do not own |
-| `workspace-write` | yes | inside the workspace only | the default for a normal session |
-| `danger-full-access` | yes | anywhere the user can write | builds and tool installs that live outside the checkout |
-
-The mode is visible in every `run_code` result footer as `File sandbox: <mode>`, and `enforcement: partial` means the host could not confine every operation.
-A mode change mid-program aborts that program; re-run it rather than assuming it half-completed.
-
-### What `workspace-write` cannot do here
-
-Confirmed by failure on 2026-10-25, not by reading the packaged sources:
-
-* `mise run` used to repair its pinned Rust toolchain under `%LOCALAPPDATA%\mise` on every invocation, because `components = "llvm-tools-preview"` does not match the component rustup reports (`llvm-tools-x86_64-pc-windows-msvc`), and `workspace-write` denied that write (`failed create_dir_all: ...\mise\downloads\rust\1.99.1: Access is denied (os error 5)`).
-  The pin is now `llvm-tools`, which verifies clean, so a plain `mise run` no longer attempts the install.
-  If it returns, run `mise install` once outside the sandbox; `MISE_DISABLE_TOOLS=rust` with the installed toolchain's `bin` on `PATH` remains a fallback.
-* Directory ACLs are only partially enforced: a directory created under the sandbox can refuse a later nested creation inside it, and a stale one can refuse removal.
-* A directory created with `mkdir(mode=0o700)` cannot be listed or removed by the process that created it, although Windows ignores the mode. pytest creates every temporary root that way; [`tests/conftest.py`](../tests/conftest.py) installs a Windows-only `os.mkdir` shim that drops the mode, so the gate's Python half runs under `workspace-write`.
-* `cargo` writes `target/` inside the checkout, so a warm build is fine once the toolchain resolves.
-  `uv`'s cache is the primary checkout's `.cache/uv` by absolute path (ADR 0013, ADR 0036), which is outside a worktree's workspace.
-
-A denied gate is an environment symptom before it is a code symptom.
-
-### Temporary directories
-
-The sandbox also denies the OS temp directory to the processes the tests spawn: a gate run whose `TMP` and `TEMP` pointed at the user's temp directory panicked in the `test-rust` step with `create temp dir: Os { code: 5, kind: PermissionDenied, message: "Access is denied." }`, and `pytest` hit `PermissionError: [WinError 5]` under DSH's own per-session temp path — so that directory is not a dependable exception either.
-
-`mise.toml` used to point `TMP` and `TEMP` into the shared cache for this; since [ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md) tasks use the OS temp directory, and a DSH session runs `mise run` tasks under `danger-full-access` ([harness-setup.md](harness-setup.md#dsh)).
-A `workspace-write` run that cannot avoid it can still set the variables in the same call, because each `pwsh` call is a fresh process:
-
-```powershell
-New-Item -ItemType Directory -Force target\tmp | Out-Null; $env:TMP = "$PWD\target\tmp"; $env:TEMP = $env:TMP; cargo test --workspace --all-features
-```
-
-### Approvals
-
-Each operation the policy does not pre-approve stops and waits, and a wait that outlives the program's deadline returns as `deadline reached` — which names the symptom and not the cause.
-Cancelling is not free either: the operation is abandoned and the next step usually retries it.
-
-* **Pre-approve `mise run *`.**
-  That is why every agent-facing script has a task.
-* **Keep the timeout short** (about 90 s) so a blocked command returns as a decision.
-* **Surface the reason.**
-  `blocked: awaiting approval — <reason>` is actionable; `deadline reached` is not.
-
-### Timeouts
-
-`run_code` defaults to a 120 s deadline and accepts `timeoutMs` up to a hard cap of 600 s.
-Pass `timeoutMs` for a step known to be slow but bounded — a cold build, a sweep, a capture — rather than let it die at 120 s.
-For anything not known to finish inside about 60 s, start it as a background job (`run_in_background`) and collect it with `job_output`: no deadline applies to a job, and it outlives the program that started it.
-Start a command that might hang in the background from the first call — a `git filter-branch` once consumed the full 600 s and left the repository untouched.
-
-### The shell it gives you
-
-Commands run through Windows PowerShell 5.1 (`5.1.26100`), one fresh `pwsh -Command` per call: `$env:` assignments, functions, variables and `Push-Location` do not survive into the next call, so a setup step and the command that needs it belong in the same call.
-Its 5.1 pitfalls are in [Windows PowerShell 5.1](#windows-powershell-51), because every harness that shells out through it meets them.
-
-### Delegation
-
-A `subagent` is spawned with an id and reports back when it finishes; `send_message` addressed to that id failed with `active teammate "<id>" not found` (`TEAM_MEMBER_NOT_FOUND`), so nothing can be added to its instructions after it starts.
-Treat the brief as the whole instruction — goal, paths it may read, output shape and stopping condition — because there is no second one.
-
-### Teammates
-
-Agent Teams share the Lead's checkout.
-The policy above still applies: only one member writes at a time, and the Lead is the default writer.
-Teammates may read, design, review and return patches.
-If the Lead assigns independent tickets, it creates one worktree per writer from its current `HEAD`; each writer commits only on that branch and the Lead integrates it, never the teammate.
-A shared file (`AGENTS.md`, `docs/harness.md`, `mise.toml`, `tests/conftest.py`) folds the tickets into one writer regardless of file scope.
-
-### Reading and editing
-
-* A file must be read in the session before it can be edited, and the read is per checkout path: reading a file in the primary checkout does not authorise the same path in a worktree.
-* `edit` returns the affected region, and a large edit returns both the old and new text, so editing a 13 KB file can add ~27 KB to the conversation.
-  Prefer several small edits.
-* `grep` over temp paths can fail on non-UTF-8 paths; that is a ripgrep input error, not a policy denial.
+What it confines, asks and gives you on this host is on its own page, [`harness/deepseek.md`](harness/deepseek.md).
 
 ## Claude Code
 
-[.claude/settings.json](../.claude/settings.json) is committed, so this harness's settings *can* ship with the checkout and be reviewed in a PR — unlike the harness above.
+[.claude/settings.json](../.claude/settings.json) is committed, so this harness's settings *can* ship with the checkout and be reviewed in a PR, unlike DeepSeek Harness's.
 Its `permissions.allow` block covers `mise run *`, the git and `gh` commands a [`running-unattended`](../.agents/skills/running-unattended/SKILL.md) run uses (branch, commit, push to a branch, open a PR, arm or disarm squash auto-merge, file and edit issues) and the `orca orchestration` commands, so a worker in a fresh checkout or Orca workspace runs most of the loop without a permission prompt.
 The git and `gh` rules are written for the Bash tool; the same commands through the PowerShell tool, a cloud session's REST auto-merge route and a rebase onto a stack parent still ask.
 Its `permissions.deny` block is a best-effort backstop for what that skill forbids, matched on common spellings: a push to `main`, a force push, skipping hooks, `gh pr merge --admin`, staging everything or `corpus/`, `mise run reap -- --force` and `git worktree remove`.
@@ -208,7 +131,7 @@ Evidence and sources: [the research note](../work/2026-11/windows-sandbox-integr
 
 ## Antigravity
 
-Observed on this host, 2026-11-13:
+Observed on `local-windows`, 2026-11-13:
 
 * **What it confines:** File tools write inside the active workspace and the conversation's artifact directory under `~/.gemini/antigravity/brain/<conversation-id>` (reads can also reach installed skills under `~/.gemini/`).
   When `Orchestrator (Argon)` is selected, planning and `[plan review]` turns run on Argon with editing tools (`edit_file`, `write_file`) refused until `exit_plan_mode` hands the plan to the Hydrogen execution turn.
@@ -216,6 +139,13 @@ Observed on this host, 2026-11-13:
   Commands that run past `WaitMsBeforeAsync` continue as background tasks and wake the turn on completion; `schedule` sets one-shot timers without shell polling.
 * **Approvals and settings:** Project skills under [`.agents/skills/`](../.agents/skills/) and [`AGENTS.md`](../AGENTS.md) ship with the checkout.
   Model selection, sandbox mode, and command allowlists live in `~/.gemini/antigravity` on the host and cannot be committed.
+
+Observed on a Debian 12 cloud VM, 2026-11-18 ([`cloud-antigravity.md`](../.agents/skills/working-in-an-environment/cloud-antigravity.md)):
+
+* **What it confines:** Runs as non-root `antigravity` (`uid=1000`) with `/` read-only (`RUSTUP_HOME=/usr/local/rustup`, `/usr/local/bin/uv` `0.13.8`); writable storage includes `/home/antigravity` (19 GB XFS, persists across sleep/wake) and `/tmp` (overlay, resets on sleep/wake).
+* **The shell and setup:** Each `run_command` starts a fresh non-interactive `bash` sourcing `~/.bashrc` via `BASH_ENV`.
+  [`.agents/environment.json`](../.agents/environment.json) runs `bash .claude/cloud-setup.sh --antigravity`, and project-local `/home/antigravity/env-setup.sh` fetches archives and builds the game trees; `.claude/settings.json` `SessionStart` hooks do not run.
+* **Proxy and plugins:** Outbound HTTPS goes through `agy-plugin-proxy` (`gh` GraphQL commands work; `gdrive` reads Drive resources).
 
 ## Windows PowerShell 5.1
 
@@ -247,7 +177,7 @@ They are the shell of the `local-windows` environment ([`working-in-an-environme
 
 Add a section when you have used the harness here, and state what it confines, what shell it gives you, what it asks before running a command, where its settings live, and whether those settings can be committed.
 Do not assume a behaviour because a different harness has it.
-Split this page into `docs/harness/<tool>.md` when a second section outgrows a screen.
+Give a harness its own `docs/harness/<tool>.md`, as DeepSeek Harness has, when its section outgrows a screen.
 
 ## Where the settings live
 
@@ -255,6 +185,6 @@ Split this page into `docs/harness/<tool>.md` when a second section outgrows a s
 | --- | --- | --- |
 | DeepSeek Harness | `~/.dsh` on this host | no — host-local |
 | Claude Code | [.claude/settings.json](../.claude/settings.json), `.claude/skills` (link to `.agents/skills/`) plus `~/.claude/settings.json` | repo files yes, user file no |
-| Antigravity | [.agents/skills/](../.agents/skills/) plus `~/.gemini/antigravity` | skills yes, user settings no |
+| Antigravity | [`.agents/environment.json`](../.agents/environment.json), [`.agents/skills/`](../.agents/skills/) plus `~/.gemini/antigravity` and cloud `/home/antigravity/env-setup.sh` | repo files yes, user files no |
 
-A checkout cannot ship the DeepSeek Harness policy, so this page is the repository's record of what it should be.
+A checkout cannot ship the DeepSeek Harness policy, so [`harness/deepseek.md`](harness/deepseek.md) and this page are the repository's record of what it should be.

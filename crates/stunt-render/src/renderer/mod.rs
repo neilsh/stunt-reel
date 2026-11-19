@@ -41,14 +41,7 @@ use credits::paint_credits;
 use offscreen::OffscreenTarget;
 use surface::SurfaceTarget;
 
-/// Base Mode 13h framebuffer width in pixels.
-pub const MODE13H_WIDTH: usize = 320;
-
-/// Original Mode 13h framebuffer height in pixels.
-pub const MODE13H_HEIGHT: usize = 200;
-
-/// Aspect-corrected 4:3 presentation height in pixels ($200 \times 1.2$).
-pub const ASPECT_CORRECTED_HEIGHT: usize = 240;
+pub use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
 /// Default offscreen page width in pixels (Mode 13h).
 pub const DEFAULT_PAGE_WIDTH: u32 = 320;

@@ -9,7 +9,7 @@
 //! `(-x, -y, z)`. Why the walk reads the tree this way: `research/formats/auxiliary/scenery.md`
 //! and `research/playone-exe/lod.md`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::contracts::SodModelIr;
 
@@ -105,6 +105,15 @@ pub struct ScnStop {
     pub reason: ScnStopReason,
 }
 
+/// Distinct non-zero shape IDs referenced across `SCENERY.scn`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SceneryShapes {
+    /// Distinct non-zero shape IDs from `SP_LEAF` and far `SP_1NODE` stand-ins.
+    pub shapes: BTreeSet<u16>,
+    /// Why the walk ended early, if it did; shapes visited before the stop are kept.
+    pub stop: Option<ScnStop>,
+}
+
 /// The placements of `scenery` (`SCENERY.scn` bytes) seen from a camera that passes through
 /// `view_eyes`.
 ///
@@ -143,6 +152,7 @@ pub(crate) fn place_props(
     let mut walk = ScnWalk {
         words: &words,
         models: &models,
+        record_shapes: None,
         near: &near,
         found: Vec::new(),
         chain: Vec::new(),
@@ -168,6 +178,35 @@ pub(crate) fn place_props(
     }
 }
 
+/// Every distinct non-zero shape ID referenced by `scenery` (`SCENERY.scn` bytes), taking both
+/// branches of every `SP_1NODE` so far stand-ins and near subtrees are both visited.
+#[must_use]
+pub fn scenery_shape_ids(scenery: &[u8]) -> SceneryShapes {
+    let (chunks, _) = scenery.as_chunks::<4>();
+    let words: Vec<i32> = chunks.iter().map(|c| i32::from_le_bytes(*c)).collect();
+    let models = HashSet::new();
+    let mut shapes = BTreeSet::new();
+    let near = |_: [f32; 3], _: i32, _: i32| LodChoice::Both;
+    let mut walk = ScnWalk {
+        words: &words,
+        models: &models,
+        record_shapes: Some(&mut shapes),
+        near: &near,
+        found: Vec::new(),
+        chain: Vec::new(),
+        chain_ids: HashMap::new(),
+        chains: Vec::new(),
+        on_path: HashSet::new(),
+        visits: 0,
+        budget: words.len().saturating_mul(SCN_VISITS_PER_WORD),
+        stop: None,
+        halted: false,
+    };
+    walk.walk_scn(1, (0, 0, 0), 0);
+    let stop = walk.stop;
+    SceneryShapes { shapes, stop }
+}
+
 /// PLAYONE's focal length in raster pixels at the default lens, equal on both axes
 /// (square raster pixels; see `PLAYONE_FOV_Y_DEGREES` in `contracts::trajectory`).
 const FOCAL_PIXELS: f32 = 256.0;
@@ -178,8 +217,9 @@ const FOCAL_PIXELS: f32 = 256.0;
 const CORNER_DEPTH_FLOOR: f32 = 0.804;
 
 /// A prop whose bounding radius never covers more than this many pixels along the camera
-/// path is dropped from the world. Without the cut `INTRO.FLM` carries 11 million vertices,
-/// past wgpu's 256 MiB buffer limit, and the dropped props cannot reach a pixel.
+/// path is dropped from the world. `PLAYONE` drops far scenery at about this size by a coarser
+/// test, distance against the shape's `scale_index`; on the seven reference films this cull
+/// drops nothing they draw (research/playone-exe/world-scene-residuals.md section 6.4).
 const MIN_PROP_PIXELS: f32 = 0.5;
 
 /// How far the camera path may pass from an `SP_1NODE` with extent `ext` and split distance
@@ -290,6 +330,8 @@ struct ScnWalk<'a> {
     words: &'a [i32],
     /// Shapes that can be placed.
     models: &'a HashSet<u16>,
+    /// When `Some`, collects every distinct non-zero shape ID without building placements.
+    record_shapes: Option<&'a mut BTreeSet<u16>>,
     /// The LOD gate: which branches of an `SP_1NODE` at `pos` with `ext` and `splitdist` to keep.
     near: &'a dyn Fn([f32; 3], i32, i32) -> LodChoice,
     /// Placements in walk order, repeats included.
@@ -362,6 +404,12 @@ impl ScnWalk<'_> {
     /// so a long run of `SP_1NODE`s, whose chains grow by one gate a node, halts on the budget
     /// rather than storing gates in the square of its length.
     fn place(&mut self, ni: usize, obj: u16, (cx, cy, cz): (i32, i32, i32)) {
+        if let Some(shapes) = self.record_shapes.as_deref_mut() {
+            if obj != 0 {
+                shapes.insert(obj);
+            }
+            return;
+        }
         if self.models.contains(&obj) {
             if !self.chain_ids.contains_key(&self.chain) {
                 self.visits = self.visits.saturating_add(self.chain.len());

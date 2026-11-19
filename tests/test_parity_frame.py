@@ -55,14 +55,14 @@ def _capture_set(ticks: list[int]) -> CaptureSet:
 
 
 def test_parse_ticks_sorts_dedups_and_accepts_one_tick() -> None:
-    assert parity_frame.parse_ticks("92, 48,92,1009") == [48, 92, 1009]
-    assert parity_frame.parse_ticks("1009") == [1009]
+    assert parity_probe.parse_ticks("92, 48,92,1009") == [48, 92, 1009]
+    assert parity_probe.parse_ticks("1009") == [1009]
 
 
 @pytest.mark.parametrize("text", ["", "4x", "-3", "1,,2"])
 def test_parse_ticks_refuses_junk(text: str) -> None:
     with pytest.raises(ValueError, match="tick"):
-        parity_frame.parse_ticks(text)
+        parity_probe.parse_ticks(text)
 
 
 def test_parse_box_reads_four_edges() -> None:
@@ -73,7 +73,7 @@ def test_parse_box_reads_four_edges() -> None:
 
 def test_locate_maps_ticks_to_ordinals_and_names_neighbours_of_the_rest() -> None:
     capture = _capture_set([10, 12, 20])
-    found, missing = parity_frame.locate(capture, [12, 15, 3, 99])
+    found, missing = parity_probe.locate(capture, [12, 15, 3, 99])
     assert found == {12: 2}
     assert missing == {15: (12, 20), 3: (None, 10), 99: (20, None)}
 
