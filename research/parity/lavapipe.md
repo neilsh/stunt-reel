@@ -169,6 +169,7 @@ _Source: [Lavapipe beside the GPU on one crates tree](../../work/2026-11/265_lav
 * **A different depth format on the two backends**: both take `X8_D24_UNORM_PACK32` for `Depth24Plus` (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **The clipper as the sole cause of the depth residues** (mesa-dist-win 25.2.8): polygons the side planes do not clip differ in depth too, and provoking vertices differ out of the vertex stage (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **An upstream fix by Mesa 26.2.6**: its clipper still makes the NaN, and `interp()` is unchanged through `main` (section 2); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
+* **Ubuntu's LLVM 20.1.2 lavapipe unpacked on cloud-antigravity's Debian 12** (#806), to match `expected.lavapipe`'s adapter name there: Ubuntu 24.04's `libvulkan_lvp.so` (`mesa-vulkan-drivers` 25.2.8) and `libLLVM.so.20.1` import `GLIBC_2.38` symbols (`__isoc23_strtol` and kin in both, `fmod` and `fmodf` in `libLLVM`), which Debian 12's glibc 2.36 lacks, and `libLLVM` needs `GLIBCXX_3.4.32` too; running the renderer under a separate, newer glibc was not tried; [journal](../../work/2026-11/806_antigravity-lavapipe/journal.md#2026-11-19-whether-ubuntus-llvm-2012-lavapipe-can-run-on-debian-12).
 
 ## Open questions
 

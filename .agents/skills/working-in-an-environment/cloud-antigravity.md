@@ -21,6 +21,7 @@ Image uploads with `gh --attach` through `agy-plugin-proxy` are untested here; c
 
 Renders run on user-space `bookworm-backports` lavapipe (`25.0.7-2~bpo12+1` with `libllvm15`).
 `mise run test-gpu` passes (39 passed, 1 ignored on #799, 2026-11-18) and `mise run sweep` works for relative comparisons, while `mise run parity` reports `not comparable: other adapter` against `expected.lavapipe`'s `"llvmpipe (LLVM 20.1.2, 256 bits)"` (`ctry` scored `0.9188` SSIM / `0.9910` IoU, `+0.0000001` from the pinned row).
+Ubuntu 24.04's LLVM 20.1.2 build does not load under Debian 12's glibc 2.36: its libraries need `GLIBC_2.38` symbols, and running the renderer under a separate, newer glibc was not tried ([`lavapipe.md` § Ruled out](../../../research/parity/lavapipe.md#ruled-out)); whether LLVM 15's scores may stand in for the pinned rows is #806's open decision.
 Follow [`cloud.md` § Rendering](cloud.md#rendering) when a change needs the GPU or `expected.lavapipe` verification, marking such PRs `local-only`.
 
 ## Handing work to local-windows
