@@ -698,7 +698,8 @@ impl SceneRenderer {
     ///
     /// A sprite the walk draws earlier has more props after it, of two with as many the one
     /// whose centre is farther first; a prop goes after as many sprites as place it after
-    /// them. When there is
+    /// them. That keeps the walk's order when the sprites' sets of props after them nest, as
+    /// they do for sprites of one slot; for sprites of different slots it approximates it. When there is
     /// no world draw or its slices cannot be cut, the sprites are drawn as unplaced ones.
     #[expect(
         clippy::type_complexity,
@@ -746,6 +747,8 @@ impl SceneRenderer {
             return;
         };
         let Some(world) = self.prepared.get_mut(at) else {
+            self.prepared
+                .extend(placed.into_iter().map(|(_, _, _, draw)| draw));
             return;
         };
         world.base = base;

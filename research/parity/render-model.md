@@ -108,8 +108,8 @@ Reversed-Z with `Depth32Float` is the fallback if a non-coplanar case shows far 
 ## Open questions
 
 1. **Painter errors in the films.**
-   No frame has been traced where `PLAYONE`'s walk order covers a nearer object.
-   If one exists, the depth buffer draws that frame "better" than the capture.
+   `CTRY` tick 871 is one: the walk draws the explosion, whose slot lies 22.5 m along the view axis, over the towers at 20.7 and 21.7 m, as the capture shows ([`scene-walk-actors.md`](../playone-exe/scene-walk-actors.md) § 4); we copy that order for `OP_ANIMATE` sprites (item 6).
+   No frame has been traced where the walk order puts a scenery object or a 3D actor over a nearer one; where one exists, the depth buffer draws that frame "better" than the capture.
 2. **Actors in the walk.**
    How an actor's entry passes the scenery walk is traced statically: the partition planes split it, and at the leaf it reaches it is ordered against that leaf's object by depth ([`scene-walk-actors.md`](../playone-exe/scene-walk-actors.md) § 2); we draw `OP_ANIMATE` sprites so (item 6) and keep 3D actors depth-tested.
    Whether an actor on the ground ties the terrain like a tile is not traced.
