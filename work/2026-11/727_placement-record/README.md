@@ -2,7 +2,7 @@
 title: "Shadow height from a code-8 collision box the slot overlaps (#710 item 3)"
 started: 2026-11-19
 issue: 727
-outcome: ""
+outcome: "The probe, the shadow height and its tests landed: a shadowed slot over a code-8 collision box casts its shadow at the box top; no reference film moves on lavapipe (none shows the case)."
 ---
 
 # Shadow height from a code-8 collision box the slot overlaps (#710 item 3)

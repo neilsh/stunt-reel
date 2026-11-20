@@ -117,6 +117,9 @@ They hold 3,781 boxes, 333 cubes and 173 planes; 535 boxes in 207 shapes are cod
 `sod.ksy` reads the same counts from the same shapes.
 _Source: [the collision records' fields](../../work/2026-11/727_placement-record/journal.md#2026-11-19-the-collision-records-fields-read-statically-and-decoded-over-the-stock-shapes)._
 
+The Rust probe over these lists is `PlacementRecords::shadow_top` in [`world/probe.rs`](../../crates/stunt-core/src/world/probe.rs); it leaves out the `+1` of an extent and a cube's half-size, the `SIF_MOVES` gate, the object node's range test, the nested lists of a slot with a list of its own and the probe's own tree walk (`0x584`): its order versus the records' eye-based pruning and dedup.
+_Source: [the box-top rule](../../work/2026-11/727_placement-record/journal.md#2026-11-20-the-box-top-rule-read-statically-and-the-probe-over-the-reference-films)._
+
 The Rust decode is `decode_collision` in [`sod/collision.rs`](../../crates/stunt-core/src/sod/collision.rs), which every `decode_sod` runs into the decode record's `collision`; the world keeps each placed shape's lists in its placement records ([`world/placed.rs`](../../crates/stunt-core/src/world/placed.rs)).
 
 ---

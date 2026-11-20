@@ -14,7 +14,7 @@ use crate::link::LinkError;
 use crate::sod::{AngleBank, ShadeLight, faces_view};
 use crate::sprite::SpriteImage;
 use crate::vfs::VfsError;
-use crate::world::{ScnStop, SlotEntry, TapFailure, World, WorldInputs, build_world};
+use crate::world::{ProbeActor, ScnStop, SlotEntry, TapFailure, World, WorldInputs, build_world};
 
 use super::bank::{PREVIOUS_FRAME_TICKS, angle_bank};
 use super::projection::{
@@ -466,6 +466,10 @@ impl FilmScene {
         let eye = record.camera.eye;
         let heading = camera_heading(&record.camera);
         let previous = self.previous_bank(tick, record.bank);
+        let previous_actors = self
+            .timeline
+            .sample((tick - PREVIOUS_FRAME_TICKS).max(0.0))
+            .map(|record| record.actors);
         let mut actors: Vec<ActorDraw> = record
             .actors
             .iter()
@@ -490,9 +494,15 @@ impl FilmScene {
                     distance: distance(eye, a.position_meters),
                     // The shadow entry `0x1C0D` builds its matrix from the slot's own angles
                     // whatever the header says (research/playone-exe/sod-vm-frame.md section 9.1).
-                    shadow_matrix: a
-                        .casts_shadow
-                        .then(|| self.shadow_matrix(a.position_meters, &lifted(own, shape))),
+                    shadow_matrix: a.casts_shadow.then(|| {
+                        let before = previous_actors
+                            .iter()
+                            .flatten()
+                            .find(|p| p.actor_id == a.actor_id)
+                            .map_or(a.position_meters, |p| p.position_meters);
+                        let top = self.shadow_top(shape, before, a.position_meters);
+                        self.shadow_matrix(a.position_meters, top, &lifted(own, shape))
+                    }),
                     shadow_only: a.view,
                     light,
                     bank: shape.decode().map_or(AngleBank::REST, |decode| {
@@ -642,9 +652,27 @@ impl FilmScene {
             .map_or(now, |record| record.bank)
     }
 
-    /// `ground_shadow` against this scene's world.
-    fn shadow_matrix(&self, position: [f32; 3], world_matrix: &[f32; 16]) -> [f32; 16] {
-        ground_shadow(self.world.as_ref(), position, world_matrix)
+    /// `ground_shadow` against this scene's world, at `top` when a collision box set one.
+    fn shadow_matrix(
+        &self,
+        position: [f32; 3],
+        top: Option<f32>,
+        world_matrix: &[f32; 16],
+    ) -> [f32; 16] {
+        ground_shadow(self.world.as_ref(), position, top, world_matrix)
+    }
+
+    /// The height of the code-8 collision box `shape`'s slot overlaps between `previous` and
+    /// `current`, if any ([`PlacementRecords::shadow_top`]).
+    fn shadow_top(&self, shape: &SodModelIr, previous: [f32; 3], current: [f32; 3]) -> Option<f32> {
+        let world = self.world.as_ref()?;
+        let decode = shape.decode()?;
+        world.placements.shadow_top(&ProbeActor {
+            previous,
+            current,
+            extent: f32::from(decode.header.bounding_size) * decode.header.scale_factor,
+            has_own_list: !decode.collision.lists.is_empty(),
+        })
     }
 }
 
@@ -654,6 +682,117 @@ mod tests {
     use crate::contracts::VisibilityCondition;
     use crate::sod::DecodeMode;
     use crate::world::PlacementRecords;
+
+    /// A shadowed actor over a placed object's code-8 collision box casts its shadow at the
+    /// box top; one beside the box keeps the ground (`research/playone-exe/sod-vm-frame.md`
+    /// section 9.1).
+    #[test]
+    fn a_shadow_over_a_code_8_box_lies_at_its_top() {
+        use crate::contracts::{
+            ActorTransform, BoxCode, CollisionBox, CollisionList, CollisionRecord, ShapeCollision,
+            TrajectoryRecord,
+        };
+        use crate::flm::SliceKeyframe;
+        use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, decode_sod};
+        use crate::world::{PlacementRecord, ScnNode, TerrainSurface};
+
+        // Bounding size 2 at one metre a unit: an extent of 2 m.
+        let words = [
+            OP_ID, 2, 0, 0x0000, 0, OP_IPG, 8, 2, 1, 0, OP_POLYZ, 3, 0, 12, 24,
+        ];
+        let bytes: Vec<u8> = words
+            .iter()
+            .chain(&[OP_RETURN])
+            .flat_map(|w| w.to_le_bytes())
+            .collect();
+        let tree = decode_sod(&bytes, "TREE", None, DecodeMode::Strict).expect("decode");
+        let slice = |x: f32| {
+            let record = TrajectoryRecord {
+                tick: 0,
+                camera: CameraTransform::default(),
+                actors: vec![ActorTransform {
+                    actor_id: 0,
+                    model_name: "TREE".to_string(),
+                    shape_id: 9,
+                    rotation_quat: [0.0, 0.0, 0.0, 1.0],
+                    position_meters: [x, 6.5, 5.0],
+                    state_mask: 0,
+                    casts_shadow: true,
+                    view: false,
+                    joint_angles_bam: Vec::new(),
+                }],
+                audio_cues: Vec::new(),
+                palette: PaletteControls::default(),
+                bank: BankVariables::default(),
+            };
+            FilmTimeline::new(
+                vec![SliceKeyframe {
+                    record,
+                    tick: 0,
+                    tick_duration: 1,
+                }],
+                Vec::new(),
+            )
+        };
+        // DOS x and z 0 to 10 and y -6 to -2: `[I1]` x -10 to 0 and y 2 to 6, top 6.
+        let top = CollisionRecord::Box(CollisionBox {
+            min: [0, -6, 0],
+            max: [10, -2, 10],
+            code: BoxCode::Top,
+        });
+        let world = World {
+            ir: SodModelIr::new("WORLD"),
+            terrain_patches: 0,
+            props_placed: 1,
+            bounds: ShapeExtent {
+                min: [0.0; 3],
+                max: [0.0; 3],
+                radius: 0.0,
+            },
+            scenery_stop: None,
+            terrain: TerrainSurface::default(),
+            tap_failures: Vec::new(),
+            placements: PlacementRecords {
+                records: vec![PlacementRecord {
+                    shape: 5,
+                    position: [0.0; 3],
+                    raw: [0; 3],
+                    node: ScnNode(1),
+                    stand_in: false,
+                    path: None,
+                    collision: Some(0),
+                    drawn: true,
+                    mesh: None,
+                }],
+                steps: Vec::new(),
+                collisions: vec![ShapeCollision {
+                    lists: vec![CollisionList {
+                        offset: 0,
+                        records: vec![top],
+                    }],
+                    stop: None,
+                }],
+                collision_scales: vec![1.0],
+            },
+            view_facing: Vec::new(),
+            prop_runs: Vec::new(),
+        };
+        let shadow_y = |x: f32| {
+            let scene = FilmScene::new(
+                slice(x),
+                HashMap::from([(9, tree.clone())]),
+                Some(world.clone()),
+            );
+            let frame = scene.frame(0.0);
+            let [drawn] = frame.actors.as_slice() else {
+                panic!("one actor draw");
+            };
+            drawn.shadow_matrix.expect("the actor casts a shadow")[13]
+        };
+        let lift = crate::sod::EPSILON_DISPLACEMENT;
+        assert!((shadow_y(-5.0) - (6.0 + lift)).abs() < 1e-5, "over the box");
+        assert!((shadow_y(-30.0) - lift).abs() < 1e-5, "beside the box");
+    }
 
     /// A view-facing actor drops its own rotation for the camera's heading, while its
     /// shadow keeps the slot's rotation; the world's view-facing props are drawn the same
@@ -758,7 +897,10 @@ mod tests {
         assert!(near(&drawn.world_matrix, &turned(4.0, 0.0, 0.0)));
         let own = actor.compute_world_matrix();
         let shadow = drawn.shadow_matrix.expect("the actor casts a shadow");
-        assert!(near(&shadow, &scene.shadow_matrix([4.0, 0.0, 0.0], &own)));
+        assert!(near(
+            &shadow,
+            &scene.shadow_matrix([4.0, 0.0, 0.0], None, &own)
+        ));
         let [prop] = frame.view_facing.as_slice() else {
             panic!("one view-facing draw, got {}", frame.view_facing.len());
         };
