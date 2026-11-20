@@ -17,12 +17,11 @@ files included, so a worker runs this before the rule 5 commit.
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 import gate
@@ -37,7 +36,7 @@ _ITEM = re.compile(r"^(\d+)\. ")
 _WORDS = re.compile(r"broader than its evidence \(([^)]*)\)")
 _PATHS = re.compile(r"Before a push that changes (.+?), (?:a fresh reviewer|or before committing)")
 _TICKED = re.compile(r"\x60([^\x60]+)\x60")
-_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+_HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 class Rule5Error(ValueError):
@@ -113,17 +112,14 @@ def _committing_item(text: str, number: int = RULE_NUMBER) -> str:
 def is_rule_5_path(path: str, patterns: Sequence[str]) -> bool:
     """Whether repository-relative path is one of the rule 5 patterns.
 
-    A pattern ending in / covers that directory; one with a glob character is matched against
-    the whole path as git matches a pathspec, so docs/*.md covers a page below docs/ too.
+    A pattern ending in / covers that directory; another is matched with PurePosixPath.full_match,
+    as doc_health.py reads these paths, so docs/*.md stays within docs/ and covers no subdirectory.
     """
     for pattern in patterns:
         if pattern.endswith("/"):
             if path.startswith(pattern):
                 return True
-        elif any(char in pattern for char in "*?["):
-            if fnmatch.fnmatchcase(path, pattern):
-                return True
-        elif path == pattern:
+        elif PurePosixPath(path).full_match(pattern):
             return True
     return False
 
@@ -196,31 +192,52 @@ def _file_lines(repo: Path, path: str) -> list[str]:
         return []
 
 
-def _diff_added(repo: Path, base: str, path: str) -> list[AddedLine]:
-    """The lines path adds between base and the working tree."""
+def _diff_added(repo: Path, base: str, paths: Sequence[str]) -> list[AddedLine]:
+    """The lines the tracked paths add between base and the working tree, renames followed.
+
+    One diff over every path, so rename detection keeps a moved note's unchanged lines out of the
+    result. A hunk is consumed by its line counts, so added content that looks like a header is
+    still content.
+    """
     output = _git(
         repo,
         "diff",
+        "-M",
         "--unified=0",
-        "--no-renames",
         "--no-color",
         "--no-ext-diff",
         base,
         "--",
-        path,
+        *paths,
     )
     added: list[AddedLine] = []
-    number: int | None = None
+    path: str | None = None
+    number = 0
+    old_left = 0
+    new_left = 0
     for line in output.splitlines():
-        hunk = _HUNK.match(line)
-        if hunk is not None:
-            number = int(hunk.group(1))
-        elif number is not None:
+        if old_left > 0 or new_left > 0:
             if line.startswith("+"):
-                added.append(AddedLine(path, number, line[1:]))
+                if path is not None:
+                    added.append(AddedLine(path, number, line[1:]))
                 number += 1
+                new_left -= 1
+            elif line.startswith("-"):
+                old_left -= 1
             elif line.startswith(" "):
                 number += 1
+                old_left -= 1
+                new_left -= 1
+            continue
+        if line.startswith("+++ b/"):
+            path = line[6:]
+        elif line.startswith(("+++ ", "diff --git ")):
+            path = None
+        hunk = _HUNK.match(line)
+        if hunk is not None:
+            number = int(hunk.group(3))
+            old_left = int(hunk.group(2) or 1)
+            new_left = int(hunk.group(4) or 1)
     return added
 
 
@@ -231,17 +248,16 @@ def added_lines(repo: Path, base: str | None, patterns: Sequence[str]) -> list[A
     if not merge_base:
         raise gate.ChangedPathsError(f"no merge base between HEAD and {base}")
     untracked = _untracked(repo)
-    found: list[AddedLine] = []
-    for path in gate.changed_paths(repo, base):
-        if not is_rule_5_path(path, patterns):
-            continue
+    covered = [path for path in gate.changed_paths(repo, base) if is_rule_5_path(path, patterns)]
+    tracked = [path for path in covered if path not in untracked]
+    found = _diff_added(repo, merge_base, tracked) if tracked else []
+    for path in covered:
         if path in untracked:
             found.extend(
                 AddedLine(path, number, text)
                 for number, text in enumerate(_file_lines(repo, path), start=1)
             )
-        else:
-            found.extend(_diff_added(repo, merge_base, path))
+    found.sort(key=lambda line: (line.path, line.number))
     return found
 
 

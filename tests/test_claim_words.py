@@ -12,6 +12,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "python" / "scripts" / "claim_words.py"
+# The rename fixture builds its paths from this part, so this file names no document path of its
+# own for test_code_cited_docs_exist to look up.
+RESEARCH = "research"
 TICK = "\x60"
 TIERS = ("[Unknown]", "[Hypothesis]", "[Established]")
 
@@ -71,6 +74,7 @@ def _claim(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+@pytest.mark.docs
 def test_agents_md_rule_5_lists_the_words_and_paths() -> None:
     words, paths = claim_words.rule_5(REPO_ROOT / "AGENTS.md")
     assert words == ("only", "all", "noise", "within", "equivalent")
@@ -91,7 +95,8 @@ def test_agents_md_rule_5_lists_the_words_and_paths() -> None:
         ("NOTICE.md", True),
         ("docs/howto/render-a-film.md", True),
         ("docs/development.md", True),
-        ("docs/adr/0001-sod-tap-anchor-table.md", True),
+        ("docs/adr/0001-sod-tap-anchor-table.md", False),
+        ("docs/agents/domain.md", False),
         ("site/guides/index.md", True),
         ("site/reading.md", True),
         ("README.md", False),
@@ -155,6 +160,40 @@ def test_reads_an_untracked_file(tmp_path: Path) -> None:
     done = _claim(repo)
     assert done.returncode == 0
     assert "research/formats/res.md:1: only" in done.stdout
+
+
+def test_a_renamed_file_keeps_its_unchanged_lines_out(tmp_path: Path) -> None:
+    repo = _base(tmp_path)
+    old = repo / RESEARCH / "old.md"
+    old.parent.mkdir()
+    old.write_text("An old all line.\n", encoding="utf-8")
+    _git(repo, "add", f"{RESEARCH}/old.md")
+    _git(repo, "commit", "-m", "test: note")
+    _git(repo, "switch", "-c", "feature")
+    _git(repo, "mv", f"{RESEARCH}/old.md", f"{RESEARCH}/new.md")
+    done = _claim(repo)
+    assert done.returncode == 0
+    assert "all" not in done.stdout
+    assert "new.md" not in done.stdout
+
+
+def test_a_modified_file_skips_deleted_lines_and_numbers_inserted_ones(tmp_path: Path) -> None:
+    repo = _base(tmp_path)
+    note = repo / "research" / "formats" / "res.md"
+    note.parent.mkdir(parents=True)
+    note.write_text(
+        "First line.\nA deleted all line.\nThird line.\nFourth line.\n", encoding="utf-8"
+    )
+    _git(repo, "add", "research/formats/res.md")
+    _git(repo, "commit", "-m", "test: note")
+    _git(repo, "switch", "-c", "feature")
+    note.write_text(
+        "First line.\nThird line.\nInserted only line.\nFourth line.\n", encoding="utf-8"
+    )
+    done = _claim(repo)
+    assert done.returncode == 0
+    assert "research/formats/res.md:3: only" in done.stdout
+    assert "all" not in done.stdout
 
 
 def test_a_named_base_is_counted_from_its_merge_base(tmp_path: Path) -> None:
