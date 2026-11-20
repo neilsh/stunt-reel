@@ -88,6 +88,7 @@ from stunt_reel.parity_artifacts.render import (
     _film_fields as _film_fields,
 )
 from stunt_reel.parity_artifacts.report import (
+    LOSS_CLASSES,
     FrameReport,
     I6Gate,
     Report,
@@ -127,6 +128,7 @@ __all__ = [
     "CAPTURE_WIDTH",
     "FILM_FIELDS",
     "LAYER_FIRST_ACTOR",
+    "LOSS_CLASSES",
     "PALETTE_BYTES",
     "PALETTE_ENTRIES",
     "RENDER_CHUNK_TICKS",

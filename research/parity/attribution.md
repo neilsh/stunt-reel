@@ -28,6 +28,10 @@ _Found 2026-10-22; see the [loss attribution row](../../work/2026-10/parity-log/
 
 ## 2. Current breakdown
 
+The current loss by class is pinned, not copied here: each `[<film>.expected.<class>.loss]` table of [`references.toml`](references.toml) holds a report's `mean_loss_by_class_scored` for one renderer class, written by `mise run parity-repin` and read back by `mise run judge`, which prints a candidate's change in each class from the baseline's and from the pin ([`method.md`](method.md) step 0).
+Both the `lavapipe` and `gpu` tables hold the split on the `crates` tree their `crates` line names.
+Read a film's classes there; the table below is a dated record and does not follow the pins.
+
 `[Bounded Observation]`, one render per film on the RTX 4070, `main` at `76872e89` (2026-11-16), each film scored against the capture `references.toml` pins.
 Loss by class, with its share of `1 - mean_ssim_scored`; classes under 0.001 left out:
 
