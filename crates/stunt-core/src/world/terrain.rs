@@ -172,6 +172,14 @@ pub(super) fn on_ground_plane(mut ys: impl Iterator<Item = f32>) -> bool {
     ys.all(|y| y.abs() <= GROUND_PLANE_TOLERANCE)
 }
 
+/// Whether every corner height of a prop face, each relative to `base_y`, lies within
+/// [`GROUND_LIE_TOLERANCE`] of the ground plane, so the ground pass paints the face in walk
+/// order rather than letting depth rounding settle it against ground painted earlier. Why:
+/// `research/playone-exe/world-scene-residuals.md` section 6.8.
+pub(super) fn lies_on_ground_plane(mut ys: impl Iterator<Item = f32>) -> bool {
+    ys.all(|y| y.abs() <= GROUND_LIE_TOLERANCE)
+}
+
 /// Which `MAP.BIN` patches [`push_terrain`] appends.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Patches {
