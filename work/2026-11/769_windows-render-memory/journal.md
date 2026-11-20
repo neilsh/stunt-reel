@@ -18,9 +18,9 @@
   | frames rendered | 268.8 | 232.5-233.3 | 513.6, 512.2 |
   | peak | 638.3 | 603.1-604.3 | 715.2, 714.6 |
 
-  The GPU's first run took 15.5 s and read 35-36 MiB more than the next three from the renderer opening on; the cause is not identified.
+  The GPU's first run took 15.5 s and read 34-36 MiB more than the next three from the renderer opening on; the cause is not identified.
   The peak so far at "scene built" was 342-344 MiB on both backends, against 303 MiB on Linux lavapipe.
   `diff -r` printed nothing for either backend, and the GPU's first and third runs' stores were also identical.
-  Lavapipe took 10.6 and 8.1 s with the flag and 7.2 s without; each reading starts a PowerShell.
+  With the flag, GPU run 2 took 5.9 s and the lavapipe runs 10.6 and 8.1 s, against 6.5 and 7.2 s without; with one flag-off run per backend, the readings' cost cannot be told from run-to-run variation.
 - **Verdict**: control. The Windows path works unchanged, so no code fix; the existing read-back test now runs on Windows too.
 - **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence), the LOCATION item; [`measure-a-renders-memory.md`](../../../docs/howto/measure-a-renders-memory.md).

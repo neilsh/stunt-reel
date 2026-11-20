@@ -44,7 +44,7 @@ The other stage readings repeated to under 1 MiB between the two runs, and the f
 Windows has no `/proc`, and `GetProcessMemoryInfo` needs `unsafe` FFI, which the workspace denies (`unsafe_code`).
 The flag therefore asks PowerShell for the process's `WorkingSet64` and `PeakWorkingSet64`, which are the working set and the peak working set (`PeakWorkingSetSize`, as [#769](https://github.com/neilsh/stunt-reel/issues/769) names it) that [#645](https://github.com/neilsh/stunt-reel/issues/645) quotes in MB.
 The query is `Get-Process -Id <pid>` (`read_windows` in [`memory_report.rs`](../../crates/stunt-cli/src/memory_report.rs)).
-Each reading starts a PowerShell, which adds nothing to the render's own process but takes time: the lavapipe runs below took 8.1 and 10.6 s with the flag against 7.2 s without.
+Each reading starts a PowerShell, which adds nothing to the render's own process; its cost in time is not separated from run-to-run variation (the journal entry cited below).
 If `powershell` is missing or fails, the stage prints `unavailable: <reason>` on stderr and the render goes on.
 
 The same command, run from Git Bash on an RTX 4070 laptop at `77a9a49` (2026-11-19, `[Bounded Observation]`), printed every stage; in MiB:
@@ -58,8 +58,10 @@ The same command, run from Git Bash on an RTX 4070 laptop at `77a9a49` (2026-11-
 | peak | 603.1 | 715.2 |
 
 For the GPU, leave `VK_DRIVER_FILES` unset and drop `--software-only`; for lavapipe, set both as in [Render on lavapipe beside a GPU](render-on-lavapipe.md).
-Of four GPU runs, the last three repeated each reading to under 2 MiB, as did the two lavapipe runs; the first, the first after the build, read 35 to 36 MiB higher from "renderer opened" on (peak 638.3 MiB), for a reason not identified, so compare a later run, as the table does.
-From "renderer opened" on, the GPU's readings sit 179 to 280 MiB below lavapipe's; lavapipe's device buffers are host memory ([`evidence-limits.md` § 3](../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence)), a GPU's are video memory.
+Of four GPU runs, the last three repeated each reading to under 2 MiB, as did the two lavapipe runs; the first, the first after the build, read 34 to 36 MiB higher from "renderer opened" on (peak 638.3 MiB), for a reason not identified, so compare a later run, as the table does.
+From "renderer opened" to "frames rendered" the GPU's readings sit 179 to 280 MiB below lavapipe's, and its peak 112 MiB below.
+That lavapipe's device buffers count in the process's working set and a GPU's sit in video memory is a `[Hypothesis]` for the gap, not measured.
+_Source: [`--report-memory` on Windows](../../work/2026-11/769_windows-render-memory/journal.md#2026-11-19---report-memory-on-windows-gpu-and-lavapipe)._
 
 ## 4. Check that it changes nothing
 
