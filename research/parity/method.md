@@ -90,7 +90,7 @@ On `bomb` 104,958 of the 105,219 pixels at 224 are an emblem on a building wall,
 So an index band that reaches 224, as `balloon`'s zenith requires, cannot tell the zenith sky from that paint: widening it to 224..=238 would count the rectangle and the emblem as sky, and was not adopted.
 _Source: [2026-11-18: who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
 
-A 224 to 226 capture pixel counts as sky by position instead (`capture_sky_mask` in `crates/stunt-cli/src/parity/mask.rs`, 2026-11-18): when its 4-connected run of 224 to 226 pixels reaches row 0 and touches both column 0 and column 319.
+A 224 to 226 capture pixel counts as sky by position instead (`capture_sky_mask` in `crates/stunt-score/src/parity/mask.rs`, 2026-11-18): when its 4-connected run of 224 to 226 pixels reaches row 0 and touches both column 0 and column 319.
 Three rules were counted on the capture planes of all seven references and scored on one lavapipe render; each cell is the film's `mean_iou_scored`, and in brackets the 224 to 226 pixels the rule counts as sky over every captured frame:
 
 | Film (224 to 226 pixels) | 227..=238 only | run reaches row 0 or touches 227 to 238 | run reaches row 0 | run reaches row 0, column 0 and column 319 (adopted) |

@@ -11,6 +11,6 @@ Scored three positional rules for the capture's zenith sky at 224 to 226 on the 
 
 ## Handoff
 
-- `capture_sky_mask` in `crates/stunt-cli/src/parity/mask.rs` holds the adopted rule; the lavapipe `iou` of every film in `research/parity/references.toml` is repinned.
+- `capture_sky_mask` in `crates/stunt-score/src/parity/mask.rs` holds the adopted rule; the lavapipe `iou` of every film in `research/parity/references.toml` is repinned.
 - Left for local-windows: `mise run parity` on the GPU and `mise run parity-repin -- --class gpu`.
 - Follow-up: count the sky the balloon cuts off by its overlap with the previous frame's sky (rule G in the journal), [#745](https://github.com/neilsh/stunt-reel/issues/745).
