@@ -59,7 +59,7 @@ use compare::run_compare;
 use fade::fade_reference_set;
 use frames::{load_render_frame, read_index_plane};
 use loss::LOSS_CLASSES;
-use mask::{CAPTURE_SKY_INDICES, overlay_drawn};
+use mask::{CAPTURE_SKY_INDICES, capture_sky_mask, overlay_drawn};
 use matched::{Matching, ReportFrames};
 use report::{FrameReport, I6Gate, Report};
 use score::{FrameMetrics, RenderFrame, ScorePolicy, score_frame};
@@ -309,7 +309,9 @@ fn build_report(
 }
 
 /// Scores each matched frame against the render at its film clock, offering every scored
-/// pair to the contact sheets; rows come back in capture order.
+/// pair to the contact sheets; rows come back in capture order. Each frame's counted
+/// zenith pixels are carried to the next matched frame, so a zenith run the previous
+/// frame counted as sky counts here too.
 fn score_matched(
     reference_dir: &Path,
     store: &mut RenderStore,
@@ -324,8 +326,10 @@ fn score_matched(
         .map(|tick| (tick.tick, parity_artifacts::core_palette(tick.palette)))
         .collect();
     let mut rows = Vec::with_capacity(matched.len());
+    let mut previous_zenith: Option<Vec<bool>> = None;
     for frame in matched {
         let reference = matched::load_captured(reference_dir, frame)?;
+        let capture_sky = capture_sky_mask(&reference.indices, previous_zenith.as_deref());
         let render = load_render_frame(store, frame.film_tick)?;
         let credits_missing = render.credits && !overlay_drawn(&render.layers);
         let score = score_frame(
@@ -334,8 +338,10 @@ fn score_matched(
                 controls: render_palettes.get(&frame.film_tick).copied(),
                 ..render
             },
+            &capture_sky.sky,
             policy,
         );
+        previous_zenith = Some(capture_sky.zenith);
         let ordinal = frame.ordinal as usize;
         rows.push(FrameRow {
             ordinal,

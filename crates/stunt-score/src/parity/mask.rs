@@ -31,24 +31,37 @@ pub(super) fn is_capture_sky(index: u8) -> bool {
     CAPTURE_SKY_INDICES.contains(&index)
 }
 
+/// A captured frame's sky: the mask the render is scored against, and the 224 to 226
+/// pixels the positional rule counted, which the next frame's runs may overlap.
+pub(super) struct CaptureSky {
+    /// Every [`CAPTURE_SKY_INDICES`] pixel and every [`CAPTURE_ZENITH_INDICES`] pixel
+    /// `zenith` marks.
+    pub(super) sky: Vec<bool>,
+    /// The 224 to 226 pixels the full-width or overlapping rule counted.
+    pub(super) zenith: Vec<bool>,
+}
+
 /// Sky pixels of a captured plane, rows of [`MODE13H_WIDTH`]: every
-/// [`CAPTURE_SKY_INDICES`] pixel, and every [`CAPTURE_ZENITH_INDICES`] pixel whose
-/// 4-connected run of zenith pixels reaches row 0 and both side columns.
-pub(super) fn capture_sky_mask(indices: &[u8]) -> Vec<bool> {
-    let zenith = |position: usize| {
+/// [`CAPTURE_SKY_INDICES`] pixel, and every [`CAPTURE_ZENITH_INDICES`] run that is the
+/// full-width rule (it reaches row 0 and both side columns) or overlaps `previous_zenith`,
+/// a 224 to 226 pixel the previous captured frame counted by this rule
+/// (research/parity/method.md section 2.0).
+pub(super) fn capture_sky_mask(indices: &[u8], previous_zenith: Option<&[bool]>) -> CaptureSky {
+    let is_zenith = |position: usize| {
         indices
             .get(position)
             .is_some_and(|index| CAPTURE_ZENITH_INDICES.contains(index))
     };
     let mut sky: Vec<bool> = indices.iter().map(|&index| is_capture_sky(index)).collect();
+    let mut zenith = vec![false; indices.len()];
     let mut seen = vec![false; indices.len()];
     let visit = |seen: &mut [bool], position: usize| {
-        zenith(position)
+        is_zenith(position)
             && seen
                 .get_mut(position)
                 .is_some_and(|cell| !std::mem::replace(cell, true))
     };
-    for seed in 0..MODE13H_WIDTH {
+    for seed in 0..indices.len() {
         if !visit(&mut seen, seed) {
             continue;
         }
@@ -70,15 +83,24 @@ pub(super) fn capture_sky_mask(indices: &[u8]) -> Vec<bool> {
             }
         }
         let touches = |column: usize| run.iter().any(|&p| p % MODE13H_WIDTH == column);
-        if touches(0) && touches(MODE13H_WIDTH - 1) {
+        let full_width =
+            run.iter().any(|&p| p < MODE13H_WIDTH) && touches(0) && touches(MODE13H_WIDTH - 1);
+        let overlaps = previous_zenith.is_some_and(|previous| {
+            run.iter()
+                .any(|&p| previous.get(p).is_some_and(|&is_sky| is_sky))
+        });
+        if full_width || overlaps {
             for position in run {
                 if let Some(cell) = sky.get_mut(position) {
+                    *cell = true;
+                }
+                if let Some(cell) = zenith.get_mut(position) {
                     *cell = true;
                 }
             }
         }
     }
-    sky
+    CaptureSky { sky, zenith }
 }
 
 /// Pixels of a captured frame covered by the UI overlay: the button bar rows and the
@@ -140,15 +162,10 @@ pub(super) fn index_agreement(reference: &[u8], render: &[u8], overlay: &[bool])
 }
 
 /// Intersection-over-union of the non-sky masks of a capture and a render, skipping
-/// `overlay` pixels. The capture's sky is [`capture_sky_mask`]; the render is filled
+/// `overlay` pixels. `sky` is the capture's [`capture_sky_mask`]; the render is filled
 /// where its layer plane is not [`stunt_core::frame::LAYER_NONE`].
-pub(super) fn mask_iou_planes(
-    reference_indices: &[u8],
-    render_layers: &[u16],
-    overlay: &[bool],
-) -> f32 {
+pub(super) fn mask_iou_planes(sky: &[bool], render_layers: &[u16], overlay: &[bool]) -> f32 {
     let (mut intersection, mut union) = (0usize, 0usize);
-    let sky = capture_sky_mask(reference_indices);
     for ((&is_sky, layer), &masked) in sky.iter().zip(render_layers).zip(overlay) {
         if masked {
             continue;
@@ -238,7 +255,7 @@ mod tests {
         let mut indices = plane(6, 40);
         indices[..2 * MODE13H_WIDTH].fill(226);
         indices[2 * MODE13H_WIDTH..3 * MODE13H_WIDTH].fill(227);
-        let sky = capture_sky_mask(&indices);
+        let sky = capture_sky_mask(&indices, None).sky;
         assert!(sky[..3 * MODE13H_WIDTH].iter().all(|&s| s));
         assert!(!sky[3 * MODE13H_WIDTH..].iter().any(|&s| s));
     }
@@ -251,7 +268,7 @@ mod tests {
         indices[MODE13H_WIDTH] = 224;
         indices[2 * MODE13H_WIDTH] = 226;
         indices[2 * MODE13H_WIDTH + 50] = 226;
-        let sky = capture_sky_mask(&indices);
+        let sky = capture_sky_mask(&indices, None).sky;
         assert!(sky[MODE13H_WIDTH] && sky[2 * MODE13H_WIDTH]);
         // An isolated 226 below is not part of the run.
         assert!(!sky[2 * MODE13H_WIDTH + 50]);
@@ -264,7 +281,7 @@ mod tests {
         for row in 0..3 {
             indices[row * MODE13H_WIDTH + 30..row * MODE13H_WIDTH + 42].fill(224);
         }
-        assert!(!capture_sky_mask(&indices).iter().any(|&s| s));
+        assert!(!capture_sky_mask(&indices, None).sky.iter().any(|&s| s));
     }
 
     #[test]
@@ -277,7 +294,7 @@ mod tests {
         for row in 3..5 {
             indices[row * MODE13H_WIDTH + 100..row * MODE13H_WIDTH + 104].fill(224);
         }
-        let sky = capture_sky_mask(&indices);
+        let sky = capture_sky_mask(&indices, None).sky;
         assert!(sky[2 * MODE13H_WIDTH + 10]);
         assert_eq!(sky.iter().filter(|&&s| s).count(), 1);
     }
@@ -290,7 +307,61 @@ mod tests {
         indices[..MODE13H_WIDTH - 1].fill(224);
         indices[MODE13H_WIDTH] = 224;
         indices[2 * MODE13H_WIDTH - 1] = 224;
-        assert!(!capture_sky_mask(&indices).iter().any(|&s| s));
+        assert!(!capture_sky_mask(&indices, None).sky.iter().any(|&s| s));
+    }
+
+    #[test]
+    fn zenith_sky_cut_off_from_row_0_is_sky_when_it_overlaps_the_previous_frame() {
+        // balloon: the balloon cuts the zenith off from row 0, and the run it leaves
+        // overlaps the sky the previous captured frame counted there.
+        let mut indices = plane(6, 40);
+        for row in 1..3 {
+            indices[row * MODE13H_WIDTH + 100..row * MODE13H_WIDTH + 120].fill(225);
+        }
+        assert!(!capture_sky_mask(&indices, None).sky.iter().any(|&s| s));
+        let mut previous = vec![false; indices.len()];
+        // The previous frame counted sky where this frame paints a zenith 225.
+        previous[2 * MODE13H_WIDTH + 110] = true;
+        let sky = capture_sky_mask(&indices, Some(&previous)).zenith;
+        for row in 1..3 {
+            assert!(
+                sky[row * MODE13H_WIDTH + 100..row * MODE13H_WIDTH + 120]
+                    .iter()
+                    .all(|&s| s)
+            );
+        }
+        assert_eq!(sky.iter().filter(|&&s| s).count(), 40);
+    }
+
+    #[test]
+    fn zenith_sky_cut_off_from_a_side_is_sky_when_it_overlaps_the_previous_frame() {
+        // A run reaching row 0 but not both sides is shape paint until the previous
+        // frame counted sky on one of its pixels.
+        let mut indices = plane(4, 40);
+        for row in 0..2 {
+            indices[row * MODE13H_WIDTH..row * MODE13H_WIDTH + 8].fill(224);
+        }
+        assert!(!capture_sky_mask(&indices, None).sky.iter().any(|&s| s));
+        let mut previous = vec![false; indices.len()];
+        previous[5] = true;
+        let sky = capture_sky_mask(&indices, Some(&previous)).zenith;
+        assert_eq!(sky.iter().filter(|&&s| s).count(), 16);
+    }
+
+    #[test]
+    fn zenith_paint_the_previous_frame_did_not_count_stays_geometry() {
+        let mut indices = plane(4, 40);
+        for row in 0..2 {
+            indices[row * MODE13H_WIDTH..row * MODE13H_WIDTH + 8].fill(224);
+        }
+        let mut previous = vec![false; indices.len()];
+        previous[2 * MODE13H_WIDTH + 50] = true;
+        assert!(
+            !capture_sky_mask(&indices, Some(&previous))
+                .zenith
+                .iter()
+                .any(|&s| s)
+        );
     }
 
     #[test]
@@ -299,7 +370,8 @@ mod tests {
         let layers = [0u16, 1, 1, 0];
         // Reference fills pixels 2 and 3 (227 and 238 are sky bands); the render fills
         // pixels 1 and 2.
-        let iou = mask_iou_planes(&reference, &layers, &[false; 4]);
+        let sky = capture_sky_mask(&reference, None).sky;
+        let iou = mask_iou_planes(&sky, &layers, &[false; 4]);
         assert!((iou - 1.0 / 3.0).abs() < 1e-6);
     }
 
@@ -308,11 +380,12 @@ mod tests {
         // A capture whose sky spans several bands, with no render geometry: before the
         // band rule only the modal band counted as sky and the rest scored as misses.
         let reference = [227u8, 230, 233, 238, 40];
+        let sky = capture_sky_mask(&reference, None).sky;
         let layers = [0u16; 5];
-        let iou = mask_iou_planes(&reference, &layers, &[false; 5]);
+        let iou = mask_iou_planes(&sky, &layers, &[false; 5]);
         // Only pixel 4 is filled (reference only), so the union is 1 and IoU is 0.
         assert_eq!(iou, 0.0);
         let layers = [0u16, 0, 0, 0, 1];
-        assert_eq!(mask_iou_planes(&reference, &layers, &[false; 5]), 1.0);
+        assert_eq!(mask_iou_planes(&sky, &layers, &[false; 5]), 1.0);
     }
 }
