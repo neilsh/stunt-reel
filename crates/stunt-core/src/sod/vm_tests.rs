@@ -7,8 +7,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::contracts::shape::{
-    NodeId, NodeKind, SodModelIr, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE,
-    VisibilityCondition,
+    NodeId, NodeKind, SodModelIr, VERTEX_FLAG_DISC, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END,
+    VERTEX_FLAG_LINE_SIDE, VisibilityCondition,
 };
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
@@ -1491,7 +1491,8 @@ fn perfdisk_model(centre: [i16; 3], axis: [i16; 3], radius: u16) -> Vec<u8> {
 }
 
 /// A disc lies in the plane perpendicular to `centre - axis`, every vertex `radius` from the
-/// centre, and draws from both sides: one clockwise face per side, each normal facing its side.
+/// centre, and draws from both sides: one face per side. Each vertex is a
+/// [`VERTEX_FLAG_DISC`] rim vertex whose `normal` reaches the centre.
 #[test]
 fn test_perfdisk_is_a_two_sided_disc_about_the_normal() {
     // Stream (x, y, z) turns to (-x, -y, z): centre (10, 20, 30), axis (10, 20, 10), so the
@@ -1508,9 +1509,23 @@ fn test_perfdisk_is_a_two_sided_disc_about_the_normal() {
     );
     for v in &ir.vertices {
         assert_eq!(v.palette_index, 45);
+        assert_eq!(
+            v.flags & VERTEX_FLAG_DISC,
+            VERTEX_FLAG_DISC,
+            "not a disc vertex"
+        );
         assert!((v.position[2] - 30.0).abs() < 1e-3, "off the disc plane");
         let d = ((v.position[0] - 10.0).powi(2) + (v.position[1] - 20.0).powi(2)).sqrt();
         assert!((d - 40.0).abs() < 1e-3, "vertex {d} from the centre");
+        let centre: Vec<f32> = v
+            .position
+            .iter()
+            .zip(v.normal)
+            .map(|(p, n)| p + n)
+            .collect();
+        for (got, want) in centre.iter().zip([10.0, 20.0, 30.0]) {
+            assert!((got - want).abs() < 1e-3, "centre {centre:?}");
+        }
     }
     let mut sides = [0usize; 2];
     for tri in ir.indices.chunks(3) {
@@ -1518,14 +1533,7 @@ fn test_perfdisk_is_a_two_sided_disc_about_the_normal() {
             .iter()
             .map(|&i| ir.vertices[i as usize].position)
             .collect();
-        let edge_normal = compute_polygon_normal(&p);
-        let looks = ir.vertices[tri[0] as usize].normal;
-        // Clockwise seen from the side it looks toward: the edge cross points away from it.
-        assert!(
-            edge_normal[2] * looks[2] < 0.0,
-            "wrong winding for {looks:?}"
-        );
-        sides[usize::from(looks[2] > 0.0)] += 1;
+        sides[usize::from(compute_polygon_normal(&p)[2] > 0.0)] += 1;
     }
     assert_eq!(sides[0], sides[1], "one face for each side");
 }

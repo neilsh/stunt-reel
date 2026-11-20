@@ -9,7 +9,8 @@
 
 use crate::anchor::AnchorPoint;
 use crate::contracts::shape::{
-    ShapeSprite, SodHeader, SodStop, SodStopReason, VERTEX_FLAG_LINE, VisibilityCondition,
+    ShapeSprite, SodHeader, SodStop, SodStopReason, VERTEX_FLAG_DISC, VERTEX_FLAG_LINE,
+    VisibilityCondition,
 };
 use crate::reader::ByteReader;
 use crate::sod::bank::{AngleBank, Mat3, RotAxis, apply3, mul3, rotation, rotz_light};
@@ -349,8 +350,9 @@ const DISC_SEGMENTS: usize = 16;
 
 /// Builds an `OP_PERFDISK` disc: `DISC_SEGMENTS` vertices on a circle of `radius` about
 /// `centre`, in the plane perpendicular to `normal`, emitted with both windings because
-/// `PLAYONE` tests no facing (`0xA040`). `centre`, `normal` and `radius` are raw register
-/// units; the result is in metres. A zero `normal` has no plane and yields nothing.
+/// `PLAYONE` tests no facing (`0xA040`), and flagged [`VERTEX_FLAG_DISC`] for the renderer's
+/// lens squeeze. `centre`, `normal` and `radius` are raw register units; the result is in
+/// metres. A zero `normal` has no plane and yields nothing.
 fn disc_polygons(
     centre: [f32; 3],
     normal: [f32; 3],
@@ -411,7 +413,7 @@ fn disc_polygons(
             vertices,
             palette_index,
             normal,
-            flags: 0,
+            flags: VERTEX_FLAG_DISC,
             is_decal: false,
             visibility,
         })
