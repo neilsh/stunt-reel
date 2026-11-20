@@ -28,7 +28,7 @@ Fields:
 | Run | start time, environment, deadline and cutoff, "stop after N" limit, PRs armed so far, coordinator number |
 | Queue | the `mise run queue` lines verbatim, when refreshed, items skipped and why |
 | Each item | issue or PR number, state (`claimed`, `implementing`, `in review`, `fixing`, `armed`, `merged`, `handed off`), worker (agent or terminal handle, model, task id), branch, worktree path, time of last event |
-| Each PR's merge bar ([`pr-and-filing.md`](pr-and-filing.md#bringing-a-pr-to-mergeable-and-merge-bar) step 5) | head SHA (7 characters), CI at that SHA, local gate at that SHA, review comment URL and its verdict at that SHA, review-body findings answered, CodeRabbit (`not requested`, `check due <time>`, `checked`), acceptance items and `Fixes` or `Part of` as the worker reported them, changed paths that need a human cleared, `local-only`, armed |
+| Each PR's merge bar ([`pr-and-filing.md`](pr-and-filing.md#bringing-a-pr-to-mergeable-and-merge-bar) step 5; `mise run merge-bar -- <n>` reads the head, base, CI, review verdict, `Fixes` or `Part of` line, threads and draft state in one report) | head SHA (7 characters), CI at that SHA, local gate at that SHA, review comment URL and its verdict at that SHA, review-body findings answered, CodeRabbit (`not requested`, `check due <time>`, `checked`), acceptance items and `Fixes` or `Part of` as the worker reported them, changed paths that need a human cleared, `local-only`, armed |
 | Shutdown report | Merged, Draft / WIP, Opened, Filed (labels), Needs you (item, reason, decision), Skipped |
 | Next action | the one step a fresh coordinator takes first |
 

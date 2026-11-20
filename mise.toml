@@ -128,6 +128,10 @@ run = "uv run python python/scripts/worktree_init.py reap"
 description = "A pull request's unresolved review threads, one line each with the comment id to reply to, then its review-body findings; or reply in and resolve a thread. Uses GraphQL, or in a cloud session the proxy's REST thread routes (mise run pr-threads -- <number> [--all] | [--reply <id> --body <text>|--body-file <path>] [--resolve <id>])"
 run = "uv run python python/scripts/pr_threads.py"
 
+[tasks.merge-bar]
+description = "Whether a pull request meets the unattended merge bar, one line per condition then PASS or FAIL: <reasons>: base, CI at the head, the clean review comment at the head, the Fixes/Part of line, open threads and review-body findings, draft; never arms or merges. Uses GraphQL, or in a cloud session REST (mise run merge-bar -- <number>)"
+run = "uv run python python/scripts/merge_bar.py"
+
 [tasks.project-sync]
 description = "Set the owner's Issue Radar project's Status from each issue's labels and state, as the project-sync workflow does; needs gh with project scope (mise run project-sync -- <issue>... | --all)"
 run = "uv run python python/scripts/project_sync.py --repo neilsh/stunt-reel --owner neilsh --project 1"

@@ -12,6 +12,7 @@ Reach GitHub through `gh api` REST routes:
 
 - **Issues, labels, comments, search:** the `(cloud: …)` form beside each operation in [`issue-tracker.md`](../../../docs/agents/issue-tracker.md).
 - **Review threads:** `mise run pr-threads`, which uses the proxy's `ccr/review_threads` routes.
+- **Merge bar:** `mise run merge-bar -- <n>`, which reads the PR, its check runs and its comments through REST here.
 - **Pages:** ask for `per_page=100&page=<n>` until a page comes back short; `gh api --paginate` fails on its second page.
 - **Pull requests:**
 

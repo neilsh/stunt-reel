@@ -22,6 +22,8 @@ _RUNNERS = frozenset(("gh", "_gh"))
 LOCAL_ONLY = {
     # GitHub's REST API neither lists a pull request's review threads nor resolves one.
     "scripts/pr_threads.py",
+    # Reads the PR with `gh pr view` only when `CLAUDE_CODE_REMOTE` is not `true`; a cloud session takes its REST path.
+    "scripts/merge_bar.py",
     # Only `reap`, run from the owner's primary checkout, lists merged PRs with `gh pr list`.
     "stunt_reel/worktree_reap.py",
 }
