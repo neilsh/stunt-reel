@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from stunt_reel import dataroot, worktree_ensure, worktree_provision, worktree_reap
 from stunt_reel.dataroot import cache_root
 from stunt_reel.target_seed import SeedOutcome
@@ -20,13 +22,18 @@ from stunt_reel.worktree_git import Line
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-    import pytest
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import worktree_init  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_merge_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keeps ``ensure`` from registering the merge driver in whatever checkout a test names."""
+    monkeypatch.setattr(worktree_ensure, "ensure_merge_driver", lambda _repo: [])
 
 
 def _text(lines: list[Line]) -> str:
@@ -454,6 +461,26 @@ def test_ensure_checks_the_hooks_path_once_per_target(
     assert calls == [tmp_path]
     worktree_ensure._ensure(report=True)
     assert calls == [tmp_path, tmp_path]
+
+
+def test_a_target_stamped_before_the_driver_checks_git_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A target/ that holds only the older stamp has never registered the merge driver."""
+    (tmp_path / "target" / "debug").mkdir(parents=True)
+    (tmp_path / "target" / ".git-config-checked").touch()
+    monkeypatch.setattr(worktree_ensure, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(worktree_ensure, "ensure_hooks_path", lambda _repo: [])
+    calls: list[Path] = []
+
+    def driver(repo: Path) -> list[Line]:
+        calls.append(repo)
+        return [Line("+", "merge.expected-pins.driver set", news=True)]
+
+    monkeypatch.setattr(worktree_ensure, "ensure_merge_driver", driver)
+    worktree_ensure._ensure()
+    worktree_ensure._ensure()
+    assert calls == [tmp_path]
 
 
 def test_ensure_checks_again_after_a_hooks_failure(

@@ -15,7 +15,13 @@ from stunt_reel import parity_layout
 from stunt_reel.dataroot import REPO_ROOT, SharedDataError, cache_root, primary_checkout
 from stunt_reel.target_seed import SeedOutcome, exclusive, needs_seed, seed
 from stunt_reel.uv import check_uv
-from stunt_reel.worktree_git import Line, _worktrees, ensure_blame_ignore, ensure_hooks_path
+from stunt_reel.worktree_git import (
+    Line,
+    _worktrees,
+    ensure_blame_ignore,
+    ensure_hooks_path,
+    ensure_merge_driver,
+)
 
 
 def _rustc_vv() -> str | None:
@@ -81,11 +87,12 @@ def _seed_target() -> list[Line]:
 #: copies it.
 ENSURE_LOCK = ".ensure.lock"
 
-#: The file under target/ saying ``ensure`` has checked ``core.hooksPath`` and
-#: ``blame.ignoreRevsFile`` for this target/, so a later run costs a few stats and no git;
+#: The file under target/ saying ``ensure`` has checked ``core.hooksPath``,
+#: ``blame.ignoreRevsFile`` and the ``expected-pins`` merge driver for this target/, so a later
+#: run costs a few stats and no git;
 #: ``cargo clean`` or ``clean`` removes it with target/. Renamed when a check is added, so a
 #: target/ stamped before it runs the new one.
-HOOKS_CHECKED = ".git-config-checked"
+HOOKS_CHECKED = ".git-config-checked-2"
 
 #: The tag that tells backup and indexing tools a directory is a cache (bford.info/cachedir).
 #: Cargo writes it only into a target/ it creates, and ``ensure`` creates target/ first, so
@@ -155,7 +162,9 @@ def _tag_cache(target: Path) -> None:
 
 
 def _hooks(target: Path, *, report: bool) -> list[Line]:
-    """``ensure_hooks_path`` and ``ensure_blame_ignore``'s lines worth printing; none outside git.
+    """The lines worth printing of the shared git settings ``ensure`` sets; none outside git.
+
+    They are ``ensure_hooks_path``, ``ensure_blame_ignore`` and ``ensure_merge_driver``.
 
     The shared setting rarely changes, so a quiet run checks it once per *target*: the stamp
     :data:`HOOKS_CHECKED` there skips git until target/ goes. A failed check leaves no stamp.
@@ -164,7 +173,11 @@ def _hooks(target: Path, *, report: bool) -> list[Line]:
     if (not report and stamp.exists()) or primary_checkout() is None:
         return []
     try:
-        hooks = ensure_hooks_path(REPO_ROOT) + ensure_blame_ignore(REPO_ROOT)
+        hooks = (
+            ensure_hooks_path(REPO_ROOT)
+            + ensure_blame_ignore(REPO_ROOT)
+            + ensure_merge_driver(REPO_ROOT)
+        )
     except (SharedDataError, OSError) as err:
         return [Line("!", f"hooks: {err}", news=True)]
     if not any(line.news and line.mark == "!" for line in hooks):

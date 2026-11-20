@@ -42,7 +42,9 @@ def main(argv: list[str] | None = None) -> int:
         help="convert an old-layout shared root, then move existing in-checkout data into it",
     )
     commands.add_parser("seed", help="clone another checkout's built target/ into an empty one")
-    commands.add_parser("ensure", help="seed an empty target/ and set core.hooksPath, quietly")
+    commands.add_parser(
+        "ensure", help="seed an empty target/ and set core.hooksPath and the merge driver, quietly"
+    )
     clean = commands.add_parser("clean", help="report or remove per-worktree build outputs")
     clean.add_argument("--yes", action="store_true", help="actually remove them")
     clean.add_argument(
