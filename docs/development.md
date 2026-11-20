@@ -126,8 +126,9 @@ The gate script, its step list, the pre-commit hook, its lanes and CI are in [qu
 | `check-rust-matrix` | `stunt-core` without the `serde`/`bytemuck` features |
 | `test` | `cargo test --workspace --all-features` and `uv run pytest` |
 | `fmt-rust`, `fmt-py`, `fmt-check-rust`, `fmt-check-py`, `lint-rust`, `lint-py`, `test-rust`, `test-py` | single-language halves of the tasks above. Arguments after `--` reach the tool, so `mise run test-py -- tests/test_target_seed.py` runs one file |
-| `cov-rust` | `cargo llvm-cov` line-coverage summary for `stunt-core` and `stunt-gltf` (not part of `check`) |
-| `cov-py` | `pytest` with `--cov=stunt_reel` term-missing report (no fail-under) |
+| `cov-rust` | `cargo llvm-cov` test coverage (line and region) of the whole Rust workspace, GPU tests included; prints a summary and writes `target/coverage/lcov.info`; not part of `check`, run by the CI `coverage` job |
+| `cov-py` | `pytest` with coverage.py over `python/stunt_reel` and `python/scripts` (lines and branches, subprocesses included, [`[tool.coverage]`](../pyproject.toml)); prints a term-missing report and writes `target/coverage/coverage.xml` and `coverage.json`; no fail-under; run by the CI `coverage` job |
+| `cov-summary` | The per-crate and per-package tables from the files `cov-rust` and `cov-py` wrote, as Markdown (the CI job's summary) |
 | `deny` | `cargo deny check` — advisories, license allow-list, wildcard bans, and registry sources |
 | `capture-digest` | a capture's `sha256` as `references.toml` pins it, and the entry that would promote it (`mise run capture-digest -- vault-ctry`) |
 | `capture-compare` | two frame captures of one film compared page by page, paired by exact `film_tick`: identical pages, median and p90 differing pixels, equal palettes (`mise run capture-compare -- A B`) |
