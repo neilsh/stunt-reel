@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import struct
 from compression import zstd
 from dataclasses import replace
@@ -26,6 +27,7 @@ from stunt_reel.parity_artifacts import (
     RENDER_SHAPE_FILE,
     ArtifactError,
     FilmId,
+    PlaneListing,
     RenderRecord,
     RenderStore,
     RenderStoreWriter,
@@ -230,8 +232,8 @@ def test_a_version_1_render_is_refused_with_the_re_render_action(tmp_path: Path)
     assert refusal.value.kind == "unsupported_version"
 
 
-def test_the_rust_v3_fixture_reads_the_same_planes() -> None:
-    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v3" / "render"
+def test_the_rust_v4_fixture_reads_the_same_planes() -> None:
+    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v4" / "render"
     store = RenderStore(fixture)
     assert store.ticks() == [7, 9, 30, 100, 149]
     assert [(chunk.second, chunk.ticks) for chunk in store.record.chunks] == [(0, 3), (2, 2)]
@@ -251,3 +253,115 @@ def test_the_rust_v3_fixture_reads_the_same_planes() -> None:
         grey,
         second,
     ]
+
+
+_V4_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "parity" / "v4" / "render"
+
+
+def _listing(record: RenderRecord) -> PlaneListing:
+    """A plane listing pairing ten bytes with each of *record*'s chunks."""
+    return PlaneListing(
+        sha256="0f" * 32,
+        chunks=tuple(StoreSpan(offset=10 * at, length=10) for at in range(len(record.chunks))),
+    )
+
+
+def test_a_plane_listing_must_pair_with_the_chunk_table() -> None:
+    record = store_record((0, 50))
+    listing = _listing(record)
+    assert listing.end() == 20
+    replace(record, planes={RENDER_SHAPE_FILE: listing}).validate()
+    short = replace(listing, chunks=listing.chunks[:1])
+    assert "lists 1 chunks but the chunk table has 2" in _store_refusal(
+        replace(record, planes={RENDER_SHAPE_FILE: short})
+    )
+    gap = replace(listing, chunks=(listing.chunks[0], StoreSpan(offset=11, length=10)))
+    assert "chunks[1] offset 11 does not continue" in _store_refusal(
+        replace(record, planes={RENDER_SHAPE_FILE: gap})
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["../shapes.zst", "shapes.bin", ".zst", "sub/shapes.zst", "layers.zst"]
+)
+def test_a_plane_listing_needs_a_bare_name(name: str) -> None:
+    record = store_record((0,))
+    assert repr(name) in _store_refusal(replace(record, planes={name: _listing(record)}))
+
+
+def test_a_plane_listing_needs_a_lowercase_digest() -> None:
+    record = store_record((0,))
+    upper = replace(_listing(record), sha256="0F" * 32)
+    assert "is not 64 lowercase hex digits" in _store_refusal(
+        replace(record, planes={RENDER_SHAPE_FILE: upper})
+    )
+
+
+def test_a_listed_plane_round_trips_through_render_json(tmp_path: Path) -> None:
+    record = store_record((0, 50))
+    listed = replace(record, planes={RENDER_SHAPE_FILE: _listing(record)})
+    path = tmp_path / RENDER_DOCUMENT
+    write_render(path, listed)
+    assert read_render(path) == listed
+    write_render(path, record)
+    assert '"planes": {}' in path.read_text(encoding="utf-8")
+
+
+def test_the_v4_fixture_checks_its_listed_shape_plane() -> None:
+    store = RenderStore(_V4_FIXTURE)
+    assert list(store.record.planes) == [RENDER_SHAPE_FILE]
+    assert store.record.planes[RENDER_SHAPE_FILE].end() == (
+        (_V4_FIXTURE / RENDER_SHAPE_FILE).stat().st_size
+    )
+
+
+def test_a_shape_plane_planted_from_another_render_is_refused(tmp_path: Path) -> None:
+    own = tmp_path / "own"
+    shutil.copytree(_V4_FIXTURE, own)
+    listing = RenderStore(own).record.planes[RENDER_SHAPE_FILE]
+    # A plane of the same ticks, chunks and chunk lengths whose words differ, as another
+    # render's can: only the digest tells it apart. (This store writes no shape plane, so the
+    # Rust store's tests plant one from a second render.)
+    planted = bytearray((own / RENDER_SHAPE_FILE).read_bytes())
+    planted[-5] ^= 0xFF
+    assert len(planted) == listing.end()
+    (own / RENDER_SHAPE_FILE).write_bytes(bytes(planted))
+    with pytest.raises(ArtifactError, match=r"not this render's shapes\.zst; re-render") as refusal:
+        RenderStore(own)
+    assert refusal.value.kind == "store"
+    assert "SHA-256" in str(refusal.value)
+
+
+def test_a_listed_plane_that_is_missing_or_cut_short_is_refused(tmp_path: Path) -> None:
+    own = tmp_path / "own"
+    shutil.copytree(_V4_FIXTURE, own)
+    shapes = own / RENDER_SHAPE_FILE
+    shapes.write_bytes(shapes.read_bytes()[:-1])
+    with pytest.raises(ArtifactError, match="spans for it end at"):
+        RenderStore(own)
+    shapes.unlink()
+    with pytest.raises(ArtifactError, match=r"the file is missing.*re-render"):
+        RenderStore(own)
+
+
+def test_a_render_that_lists_no_plane_reads_without_one(tmp_path: Path) -> None:
+    own = tmp_path / "own"
+    shutil.copytree(_V4_FIXTURE, own)
+    record = RenderStore(own).record
+    write_render(own / RENDER_DOCUMENT, replace(record, planes={}))
+    # The unlisted file beside it is not the render's, so it is neither checked nor read.
+    (own / RENDER_SHAPE_FILE).write_bytes(b"left by another render")
+    store = RenderStore(own)
+    assert store.record.planes == {}
+    assert store.frame(7).indices == RenderStore(_V4_FIXTURE).frame(7).indices
+    (own / RENDER_SHAPE_FILE).unlink()
+    RenderStore(own)
+
+
+def test_a_version_3_render_is_refused_with_the_re_render_action(tmp_path: Path) -> None:
+    document = raw_record(3)
+    del document["planes"]
+    write_json(tmp_path / RENDER_DOCUMENT, document)
+    with pytest.raises(ArtifactError, match="expected 4; re-render") as refusal:
+        RenderStore(tmp_path)
+    assert refusal.value.kind == "unsupported_version"
