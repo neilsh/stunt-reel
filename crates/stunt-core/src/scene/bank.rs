@@ -6,9 +6,10 @@ use crate::sod::AngleBank;
 /// Film ticks between the frame drawn and the `PLAYONE` frame before it, whose var 10 words
 /// `0x12` and `0x14` read (`research/playone-exe/angle-bank.md` section 2).
 ///
-/// `[Hypothesis]`: frames were 2 to 5 ticks apart under DOSBox-X in `INTRO.FLM`; the spacing
-/// under the capture harness is unmeasured, so this guesses 3, within that range.
-pub const PREVIOUS_FRAME_TICKS: f32 = 3.0;
+/// Under the capture harness consecutive frames are mostly 0 or 1 tick apart
+/// (`[Bounded Observation]`); of 0, 1 and 3, 0 gave the best mean over the reference films, so
+/// word `0x12` is 0 and `0x14` takes this frame's var 10.
+pub const PREVIOUS_FRAME_TICKS: f32 = 0.0;
 
 /// The angle bank at film tick `tick` for an actor whose `.FLM` animate value is `animate`,
 /// with `now` film variables 10 and 12 at this frame and `previous` at the frame before.

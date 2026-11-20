@@ -61,13 +61,18 @@ fn placed_shapes(placements: &Placements) -> Vec<u16> {
     placements.props.iter().map(|p| p.shape).collect()
 }
 
-/// The placement of `shape` at `position`.
-fn at(shape: u16, position: [f32; 3]) -> Placement {
-    Placement {
-        shape,
-        position,
-        chain: 0,
-    }
+/// The shape, position and gate chain of each placement, in order.
+fn placed(placements: &Placements) -> Vec<(u16, [f32; 3], u32)> {
+    placements
+        .props
+        .iter()
+        .map(|p| (p.shape, p.position, p.chain))
+        .collect()
+}
+
+/// The placement of `shape` at `position`, behind no gate, as [`placed`] lists it.
+fn at(shape: u16, position: [f32; 3]) -> (u16, [f32; 3], u32) {
+    (shape, position, 0)
 }
 
 #[test]
@@ -98,7 +103,7 @@ fn a_chain_of_moves_places_its_leaf_at_the_mirrored_position() {
         i32::from(LEAF),
     ];
     let placements = place(&words, &[LEAF]);
-    assert_eq!(placements.props, [at(LEAF, [-11.0, -20.0, 32.0])]);
+    assert_eq!(placed(&placements), [at(LEAF, [-11.0, -20.0, 32.0])]);
     assert_eq!(placements.stop, None);
 }
 
@@ -111,7 +116,19 @@ fn a_shape_the_archive_lacks_is_not_placed() {
 
 #[test]
 fn every_opcode_cut_off_before_its_last_operand_places_nothing() {
-    for (op, operands) in [(0, 4), (22, 3), (2, 4), (4, 2), (10, 1), (12, 7), (14, 1)] {
+    for (op, operands) in [
+        (0, 4),
+        (22, 3),
+        (2, 4),
+        (4, 2),
+        (6, 3),
+        (8, 3),
+        (10, 1),
+        (12, 7),
+        (14, 1),
+        (16, 4),
+        (18, 4),
+    ] {
         for kept in 0..operands {
             let mut words = vec![0i32, op];
             words.extend(std::iter::repeat_n(i32::from(LEAF), kept));
@@ -216,7 +233,7 @@ fn a_too_deep_subtree_is_skipped_and_the_walk_goes_on() {
     let placements = place(&deep_chain_then(false), &[LEAF]);
     // The leaf is reached as a list child and again as the list's continuation, at the same
     // position, so dedup keeps one.
-    assert_eq!(placements.props, [at(LEAF, [-0.0, -0.0, 0.0])]);
+    assert_eq!(placed(&placements), [at(LEAF, [-0.0, -0.0, 0.0])]);
     assert_eq!(
         placements.stop.map(|s| s.reason),
         Some(ScnStopReason::Depth)
@@ -529,13 +546,18 @@ fn the_stand_in_stands_where_the_one_node_is() {
         1,
         CORNER_DEPTH_FLOOR,
     );
-    assert_eq!(placements.props, [at(STAND_IN, [300.0, -0.0, 0.0])]);
+    assert_eq!(placed(&placements), [at(STAND_IN, [300.0, -0.0, 0.0])]);
+    let stand_in = placements.props[0];
+    assert_eq!((stand_in.node, stand_in.stand_in), (ScnNode(6), true));
+    assert_eq!(stand_in.raw, [-300, 0, 0]);
 }
 
 #[test]
 fn a_one_node_with_no_camera_path_keeps_its_subtree() {
     let placements = place(&one_node(STAND_IN, 10, 105), &[LEAF, STAND_IN]);
     assert_eq!(placed_shapes(&placements), [LEAF]);
+    let leaf = placements.props[0];
+    assert_eq!((leaf.node, leaf.stand_in), (ScnNode(11), false));
 }
 
 #[test]
@@ -581,7 +603,7 @@ fn a_repeated_placement_is_kept_once() {
     let words = leaves_at(&[(LEAF, -5), (LEAF, -5), (STAND_IN, -5), (LEAF, -6)]);
     let placements = place(&words, &[LEAF, STAND_IN]);
     assert_eq!(
-        placements.props,
+        placed(&placements),
         [
             at(LEAF, [5.0, -0.0, 0.0]),
             at(STAND_IN, [5.0, -0.0, 0.0]),
@@ -615,5 +637,165 @@ fn the_walk_keeps_a_sub_pixel_prop_for_the_caller_to_cull() {
     let words = leaves_at(&[(LEAF, -1000)]);
     let tiny = HashMap::from([(LEAF, shape(0.01))]);
     let placements = place_props(&scn(&words), &tiny, &[[0.0; 3]], 1, CORNER_DEPTH_FLOOR);
-    assert_eq!(placements.props, [at(LEAF, [1000.0, -0.0, 0.0])]);
+    assert_eq!(placed(&placements), [at(LEAF, [1000.0, -0.0, 0.0])]);
+}
+
+#[test]
+fn scenery_shape_ids_keeps_both_lod_branches_and_skips_zero() {
+    let audit = scenery_shape_ids(&scn(&one_node(STAND_IN, 10, 105)));
+    assert_eq!(audit.shapes, BTreeSet::from([LEAF, STAND_IN]));
+    assert_eq!(audit.stop, None);
+
+    // Stand-in 0 is skipped while the near leaf is kept, and leaf 0 is skipped.
+    let zero_stand_in = scenery_shape_ids(&scn(&one_node(0, 10, 105)));
+    assert_eq!(zero_stand_in.shapes, BTreeSet::from([LEAF]));
+
+    let zero_leaf = scenery_shape_ids(&scn(&leaves_at(&[(0, -5), (LEAF, -6)])));
+    assert_eq!(zero_leaf.shapes, BTreeSet::from([LEAF]));
+}
+
+/// Each placement's partition steps, root first, as `(node, split, child)`.
+fn path_of(placements: &Placements, placement: &Placement) -> Vec<(u32, Split, u16)> {
+    let mut path = Vec::new();
+    let mut next = placement.path;
+    while let Some(step) = next.and_then(|i| placements.steps.get(i as usize)) {
+        path.push((step.node.0, step.split, step.child));
+        next = step.parent;
+    }
+    path.reverse();
+    path
+}
+
+/// Shapes of the partition fixture's three deeper leaves.
+const DEEPER: u16 = 0x0301;
+const PAIR_FIRST: u16 = 0x0302;
+const PAIR_SECOND: u16 = 0x0303;
+
+#[test]
+fn each_placement_keeps_its_leaf_and_the_partition_steps_above_it() {
+    // SP_POS (10, 0, 20), then an SP_XPLANE with sortvalue 90: its child +1 is LEAF, its
+    // child +2 an SP_HSLOPE (slope 3, coord -7) whose child +1 is DEEPER and whose child +2 is
+    // an SP_2NODE of PAIR_FIRST and PAIR_SECOND.
+    let words = [
+        0,
+        0,
+        10,
+        0,
+        20,
+        ptr(6),
+        6,
+        ptr(10),
+        ptr(12),
+        90,
+        10,
+        i32::from(LEAF),
+        16,
+        ptr(17),
+        ptr(19),
+        3,
+        -7,
+        10,
+        i32::from(DEEPER),
+        4,
+        ptr(22),
+        ptr(24),
+        10,
+        i32::from(PAIR_FIRST),
+        10,
+        i32::from(PAIR_SECOND),
+    ];
+    let placements = place(&words, &[LEAF, DEEPER, PAIR_FIRST, PAIR_SECOND]);
+    assert_eq!(placements.stop, None);
+    assert_eq!(
+        placed_shapes(&placements),
+        [LEAF, DEEPER, PAIR_FIRST, PAIR_SECOND]
+    );
+    let nodes: Vec<u32> = placements.props.iter().map(|p| p.node.0).collect();
+    assert_eq!(nodes, [10, 17, 22, 24]);
+    assert!(
+        placements
+            .props
+            .iter()
+            .all(|p| !p.stand_in && p.raw == [10, 0, 20])
+    );
+    let plane = Split::XPlane {
+        origin: 10,
+        sortvalue: 90,
+    };
+    let slope = Split::HSlope {
+        slope: 3,
+        coord: -7,
+    };
+    let paths: Vec<_> = placements
+        .props
+        .iter()
+        .map(|p| path_of(&placements, p))
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            vec![(6, plane, 0)],
+            vec![(6, plane, 1), (12, slope, 0)],
+            vec![(6, plane, 1), (12, slope, 1), (19, Split::Pair, 0)],
+            vec![(6, plane, 1), (12, slope, 1), (19, Split::Pair, 1)],
+        ]
+    );
+    // The shared prefixes are stored once: two plane steps, two slope steps, two pair steps.
+    assert_eq!(placements.steps.len(), 6);
+    assert!(
+        placements
+            .steps
+            .iter()
+            .enumerate()
+            .all(|(i, step)| step.parent.is_none_or(|parent| (parent as usize) < i)),
+        "a parent comes before its child"
+    );
+}
+
+#[test]
+fn a_list_child_and_a_ground_subtree_are_steps_of_the_path() {
+    // An SP_LIST of LEAF and an SP_GROUND whose finer patches hold DEEPER; the chain after
+    // the list's terminator is an SP_GLEAF that ends it.
+    let words = [
+        0,
+        20,
+        ptr(7),
+        ptr(9),
+        0,
+        14,
+        0,
+        10,
+        i32::from(LEAF),
+        12,
+        0,
+        0,
+        0,
+        0,
+        0,
+        ptr(17),
+        0,
+        10,
+        i32::from(DEEPER),
+    ];
+    let placements = place(&words, &[LEAF, DEEPER]);
+    assert_eq!(placements.stop, None);
+    let paths: Vec<_> = placements
+        .props
+        .iter()
+        .map(|p| path_of(&placements, p))
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            vec![(1, Split::List, 0)],
+            vec![(1, Split::List, 1), (9, Split::Ground, 0)],
+        ]
+    );
+}
+
+#[test]
+fn a_node_names_its_offsets_in_the_file_and_in_playones_tree() {
+    assert_eq!(ScnNode(10).scn_offset(), 40);
+    assert_eq!(ScnNode(10).tree_offset(), Some(18));
+    assert_eq!(ScnNode(0).tree_offset(), None);
 }

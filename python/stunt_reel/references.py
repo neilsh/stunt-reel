@@ -21,7 +21,8 @@ read it, and refuse a film whose row has none.
 
 A row may also record the film's recapture noise, ``noise_sigma``, and in
 ``[<film>.expected.<class>]`` the scores the film is expected to reach on each renderer class,
-with the ``crates/`` tree and pins they were measured on; :func:`read_reference` checks both.
+with the ``crates/`` tree and pins they were measured on and, in ``[<film>.expected.<class>.loss]``,
+the mean SSIM loss of each layer class; :func:`read_reference` checks all three.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from typing import TYPE_CHECKING
 
 from stunt_reel import capture_store, parity_layout
 from stunt_reel.dataroot import REPO_ROOT, corpus_root
+from stunt_reel.parity_artifacts import LOSS_CLASSES
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -88,8 +90,8 @@ _COMMIT = re.compile(r"[0-9a-f]{7,40}")
 #: A measured ``crates/`` tree: a whole git object name, SHA-1 or SHA-256, in lowercase hex.
 _TREE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
-#: The fields of one ``[<film>.expected.<class>]`` table.
-_EXPECTED_FIELDS = ("ssim", "iou", "crates", "sha256", "all_sha256", "commit", "adapter")
+#: The fields of one ``[<film>.expected.<class>]`` table; ``loss`` is its sub-table.
+_EXPECTED_FIELDS = ("ssim", "iou", "crates", "sha256", "all_sha256", "commit", "adapter", "loss")
 
 #: The hash fields of an expected table: the form each takes and how an error words it.
 _HASH_FIELDS: Mapping[str, tuple[re.Pattern[str], str]] = {
@@ -119,9 +121,10 @@ class Expected:
 
     ``ssim`` and ``iou`` are a report's ``mean_ssim_scored`` and ``mean_iou_scored``; ``crates``
     is the git tree hash of the ``crates/`` measured, ``sha256`` and ``all_sha256`` the row's pins
-    then, and ``adapter`` the name of the adapter it rendered on. ``commit``, when recorded, says
-    where the measurement was made and is never compared: it may be a branch commit that a
-    squash merge kept off ``main``.
+    then, and ``adapter`` the name of the adapter it rendered on. ``loss`` is the report's
+    ``mean_loss_by_class_scored``, by class name, and ``None`` in a table written before it was
+    pinned. ``commit``, when recorded, says where the measurement was made and is never
+    compared: it may be a branch commit that a squash merge kept off ``main``.
     """
 
     ssim: float
@@ -131,6 +134,7 @@ class Expected:
     adapter: str
     all_sha256: str | None = None
     commit: str | None = None
+    loss: Mapping[str, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -361,6 +365,7 @@ def _expected_entry(path: Path, name: str, key: str, table: dict[str, object]) -
         return value
 
     crates, sha256 = hashed("crates"), hashed("sha256")
+    loss = _expected_loss(path, name, key, table.get("loss"))
     if crates is None or sha256 is None:
         field = "crates" if crates is None else "sha256"
         raise _invalid(path, name, f"{key}.{field}", None, _HASH_FIELDS[field][1])
@@ -372,7 +377,32 @@ def _expected_entry(path: Path, name: str, key: str, table: dict[str, object]) -
         adapter,
         all_sha256=hashed("all_sha256"),
         commit=hashed("commit"),
+        loss=loss,
     )
+
+
+def _expected_loss(path: Path, name: str, key: str, value: object) -> Mapping[str, float] | None:
+    """The ``loss`` sub-table *value* of expected table *key*: class name to loss, or ``None``."""
+    if value is None:
+        return None
+    wanted = f"a table of loss classes ({', '.join(LOSS_CLASSES)}) to numbers from 0 to 1"
+    if not isinstance(value, dict):
+        raise _invalid(path, name, f"{key}.loss", value, wanted)
+    unknown = sorted(value.keys() - set(LOSS_CLASSES))
+    if unknown:
+        raise ReferenceCaptureError(
+            f"{path}: the row [{name}] names {key}.loss.{unknown[0]}, but the loss classes are "
+            f"{', '.join(LOSS_CLASSES)}"
+        )
+    found: dict[str, float] = {}
+    for cls in LOSS_CLASSES:
+        if cls not in value:
+            continue
+        number = _number(value[cls])
+        if number is None or not 0 <= number <= 1:
+            raise _invalid(path, name, f"{key}.loss.{cls}", value[cls], "a number from 0 to 1")
+        found[cls] = number
+    return MappingProxyType(found)
 
 
 def read_pin(root: Path, slug: str) -> str | None:

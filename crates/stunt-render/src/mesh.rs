@@ -15,7 +15,10 @@ use glam::{Mat4, Vec3};
 use stunt_core::contracts::{
     CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
 };
-use stunt_core::world::GROUND_NODE;
+use stunt_core::world::{GROUND_NODE, PropRun};
+use wgpu::util::DeviceExt as _;
+
+use crate::pipeline::PROP_RUNS_GROUP;
 
 /// Cached node data inside GPU model representation.
 #[derive(Debug, Clone)]
@@ -370,6 +373,21 @@ impl GpuModel {
         .collect_world()
     }
 
+    /// Gives each chunk `runs`, the source model's prop runs in its vertex order, in the
+    /// chunk's own vertex numbering ([`chunk_prop_runs`]), as a bind group of `layout` that
+    /// [`Self::draw_slices`] and [`Self::draw_edges`] bind with the chunk.
+    pub fn attach_prop_runs(
+        &mut self,
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        runs: &[PropRun],
+    ) {
+        for chunk in &mut self.chunks {
+            let table = chunk_prop_runs(runs, &chunk.vertex_ranges);
+            chunk.prop_runs = Some(prop_runs_group(device, layout, &table));
+        }
+    }
+
     /// Encodes `meshes` into `rpass`, binding each slice's chunk buffers when it changes.
     ///
     /// The pipeline and bind groups must already be set.
@@ -384,6 +402,9 @@ impl GpuModel {
             if bound != Some(mesh.chunk) {
                 rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
                 rpass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                if let Some(runs) = &chunk.prop_runs {
+                    rpass.set_bind_group(PROP_RUNS_GROUP, runs, &[]);
+                }
                 bound = Some(mesh.chunk);
             }
             rpass.draw_indexed(
@@ -409,6 +430,9 @@ impl GpuModel {
             if bound != Some(mesh.chunk) {
                 rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
                 rpass.set_index_buffer(chunk.edges.slice(..), wgpu::IndexFormat::Uint32);
+                if let Some(runs) = &chunk.prop_runs {
+                    rpass.set_bind_group(PROP_RUNS_GROUP, runs, &[]);
+                }
                 bound = Some(mesh.chunk);
             }
             rpass.draw_indexed(
@@ -508,6 +532,9 @@ pub struct GpuChunk {
     pub edges: wgpu::Buffer,
     /// The source vertex ranges copied back to back into `vertex_buffer`.
     pub vertex_ranges: Vec<Range<usize>>,
+    /// The model's prop runs in this chunk's vertex numbering, bound at [`PROP_RUNS_GROUP`]
+    /// with the chunk's buffers; `None` unless [`GpuModel::attach_prop_runs`] gave them.
+    pub prop_runs: Option<wgpu::BindGroup>,
 }
 
 impl GpuChunk {
@@ -571,11 +598,12 @@ impl GpuChunk {
             index_buffer,
             edges: edge_buffer,
             vertex_ranges: plan.vertex_ranges.clone(),
+            prop_runs: None,
         }
     }
 
     /// Writes `vertices`' windows of this chunk into its vertex buffer with one write, since
-    /// each write allocates a staging buffer (`research/parity/lavapipe.md`).
+    /// each write allocates a staging buffer (`research/parity/lavapipe-render-time.md`).
     fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex]) {
         // An unsplit chunk is one window: write it straight from the source.
         if let [range] = self.vertex_ranges.as_slice() {
@@ -729,6 +757,57 @@ pub(crate) fn plan_upload(
         slices.push(out);
     }
     UploadPlan { chunks, slices }
+}
+
+/// `runs`, in source vertex order, as `[first, end, shape id + 1]` in the vertex numbering of
+/// a chunk that holds the source vertices `ranges` back to back: each run is cut to every
+/// range it meets and moved to where that range lies in the chunk. A run that meets no range
+/// is left out.
+pub(crate) fn chunk_prop_runs(runs: &[PropRun], ranges: &[Range<usize>]) -> Vec<[u32; 3]> {
+    let mut table = Vec::new();
+    let mut at = 0usize;
+    for range in ranges {
+        let from = runs.partition_point(|run| run.end as usize <= range.start);
+        for run in runs
+            .iter()
+            .skip(from)
+            .take_while(|run| (run.first as usize) < range.end)
+        {
+            // Both ends lie in `range`, so neither subtraction can wrap.
+            let first = (run.first as usize).max(range.start) - range.start;
+            let end = (run.end as usize).min(range.end) - range.start;
+            table.push([
+                arena_index(at.saturating_add(first)),
+                arena_index(at.saturating_add(end)),
+                u32::from(run.shape).saturating_add(1),
+            ]);
+        }
+        at = at.saturating_add(range.len());
+    }
+    table
+}
+
+/// A bind group of `layout` holding `table` ([`chunk_prop_runs`]) as its storage buffer; an
+/// empty table holds one run that covers no vertex, as a binding cannot be empty.
+pub(crate) fn prop_runs_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    table: &[[u32; 3]],
+) -> wgpu::BindGroup {
+    let contents: &[[u32; 3]] = if table.is_empty() { &[[0; 3]] } else { table };
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("stunt_prop_runs"),
+        contents: bytemuck::cast_slice(contents),
+        usage: wgpu::BufferUsages::STORAGE,
+    });
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("stunt_prop_runs"),
+        layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: buffer.as_entire_binding(),
+        }],
+    })
 }
 
 /// A chunk's vertex count as the `i32` base vertex `draw_indexed` takes.
@@ -893,6 +972,36 @@ impl VisibleWalk<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An unsplit chunk keeps the runs' vertex numbers; a split one cuts each run to the
+    /// windows it copied and renumbers it from where its window lies in the chunk.
+    #[test]
+    fn chunk_prop_runs_follow_the_chunks_vertex_windows() {
+        let runs = [
+            PropRun {
+                first: 2,
+                end: 5,
+                shape: 7,
+            },
+            PropRun {
+                first: 5,
+                end: 8,
+                shape: 9,
+            },
+            PropRun {
+                first: 12,
+                end: 14,
+                shape: 3,
+            },
+        ];
+        let whole = chunk_prop_runs(&runs, std::slice::from_ref(&(0..14)));
+        assert_eq!(whole, [[2, 5, 8], [5, 8, 10], [12, 14, 4]]);
+        // Source vertices 6..10 then 0..4: chunk vertices 0..4 then 4..8; run 12..14 lies
+        // in neither.
+        let split = chunk_prop_runs(&runs, &[6..10, 0..4]);
+        assert_eq!(split, [[0, 2, 10], [6, 8, 8]]);
+        assert!(chunk_prop_runs(&[], std::slice::from_ref(&(0..14))).is_empty());
+    }
 
     fn source(index_offset: u32, index_count: u32) -> SourceSlice {
         SourceSlice {

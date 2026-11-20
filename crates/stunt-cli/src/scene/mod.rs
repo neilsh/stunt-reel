@@ -34,7 +34,7 @@ use stunt_core::vfs::{ResRegions, res_regions};
 use stunt_parity::FilmId;
 
 use crate::link::find_ci;
-use crate::parity_artifacts::film_identity;
+use stunt_score::parity_artifacts::film_identity;
 
 /// Locates the scenery data file `filename` (see the module docs for the search order).
 ///

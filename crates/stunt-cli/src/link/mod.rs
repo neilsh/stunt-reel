@@ -10,12 +10,11 @@
 //! archive holds content the game's `RES\` lacks).
 
 use std::collections::BTreeMap;
-use std::fmt::{self, Write as _};
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{CommandFactory as _, Parser, Subcommand};
-use sha2::{Digest as _, Sha256};
 use stunt_core::link::{LinkError, Manifest, build, extract};
 use stunt_core::vfs::{ResRegions, res_regions};
 
@@ -295,15 +294,7 @@ fn read(path: &Path) -> Result<Vec<u8>, LinkFailure> {
     fs::read(path).map_err(|e| LinkFailure::Error(format!("cannot read {}: {e}", path.display())))
 }
 
-/// Lowercase hex SHA-256.
-pub(crate) fn sha256(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .fold(String::with_capacity(64), |mut hex, b| {
-            let _ = write!(hex, "{b:02x}");
-            hex
-        })
-}
+pub(crate) use stunt_score::sha256;
 
 /// Writes `bytes` to `<out>.<pid>.tmp` beside `out`, then renames it over `out`, so a reader
 /// never sees a half-written file. The temporary file is removed on every failure.

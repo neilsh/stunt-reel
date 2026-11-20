@@ -73,7 +73,7 @@ def test_a_document_written_by_the_rust_side_loads_and_extra_keys_are_ignored(
 
 
 def test_a_render_records_its_adapter(tmp_path: Path) -> None:
-    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v3" / "render"
+    fixture = Path(__file__).resolve().parent / "fixtures" / "parity" / "v4" / "render"
     record = read_render(fixture / "render.json")
     assert record.adapter == RenderAdapter("Test GPU", "hardware")
     path = tmp_path / "render.json"

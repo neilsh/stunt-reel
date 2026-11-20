@@ -9,6 +9,7 @@ on:
       - "docs/ARCHITECTURE.md"
       - "docs/development.md"
       - "docs/harness.md"
+      - "docs/harness/**"
       - "docs/howto/**"
       - "docs/adr/**"
       - "site/**"

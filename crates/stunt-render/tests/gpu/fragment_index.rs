@@ -23,12 +23,13 @@ fn check_indices(cases: &[(u32, u32, u32, u32, u32)]) {
     };
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
     // Keep the complete production shader, adding only an entry point that supplies its input.
+    // Its inputs sit beside `prop_runs`, which holds `@group(3) @binding(0)`.
     let source = format!(
         "{}\n{}",
         include_str!("../../src/shaders/mode13h.wgsl"),
         "
-@group(3) @binding(0) var<storage, read> inputs: array<vec4<u32>>;
-@group(3) @binding(1) var<storage, read_write> results: array<u32>;
+@group(3) @binding(1) var<storage, read> inputs: array<vec4<u32>>;
+@group(3) @binding(2) var<storage, read_write> results: array<u32>;
 
 @compute @workgroup_size(1)
 fn test_fragment_index(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -80,11 +81,11 @@ fn test_fragment_index(@builtin(global_invocation_id) id: vec3<u32>) {
         layout: &pipeline.get_bind_group_layout(3),
         entries: &[
             wgpu::BindGroupEntry {
-                binding: 0,
+                binding: 1,
                 resource: input.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
-                binding: 1,
+                binding: 2,
                 resource: output.as_entire_binding(),
             },
         ],

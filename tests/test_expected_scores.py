@@ -10,7 +10,14 @@ from typing import TYPE_CHECKING, get_args
 import pytest
 
 from stunt_reel import parity_layout
-from stunt_reel.expected_scores import CLASS_KEYS, changed_since, comparison_line, crates_tree
+from stunt_reel.expected_scores import (
+    CLASS_KEYS,
+    SCORER_DIR,
+    changed_since,
+    comparison_line,
+    crates_tree,
+    scorer_only_change,
+)
 from stunt_reel.parity_artifacts import AdapterClass, RenderAdapter, Report
 from stunt_reel.references import (
     RENDERER_CLASSES,
@@ -284,6 +291,55 @@ class Repo:
 @pytest.fixture
 def repo(tmp_path: Path) -> Repo:
     return Repo(tmp_path / "repo")
+
+
+def _commit_tree(repo: Repo, files: dict[str, str]) -> str:
+    """The ``crates/`` tree of a new commit that writes each *files* path, relative to the repo."""
+    for name, text in files.items():
+        repo.write(name, text)
+    repo.commit()
+    return repo.git("rev-parse", "HEAD:crates")
+
+
+def test_a_change_only_under_the_scorer_is_scorer_only(repo: Repo) -> None:
+    new = _commit_tree(
+        repo,
+        {
+            f"crates/{SCORER_DIR}score.rs": "fn score() {}\n",
+            f"crates/{SCORER_DIR}deep/more.rs": "fn more() {}\n",
+        },
+    )
+    assert scorer_only_change(repo.tree, new, repo.root)
+
+
+def test_equal_trees_are_scorer_only(repo: Repo) -> None:
+    assert scorer_only_change(repo.tree, repo.tree, repo.root)
+
+
+def test_a_renderer_change_beside_a_scorer_change_is_not_scorer_only(repo: Repo) -> None:
+    new = _commit_tree(
+        repo,
+        {f"crates/{SCORER_DIR}score.rs": "fn score() {}\n", "crates/a.rs": "fn a() { 1; }\n"},
+    )
+    assert not scorer_only_change(repo.tree, new, repo.root)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "crates/stunt-score/src/parity.rs",
+        "crates/stunt-score/src/parity_artifacts/render.rs",
+        "crates/stunt-score/src/render_store/mod.rs",
+        "crates/stunt-cli/src/main.rs",
+    ],
+)
+def test_a_neighbour_of_the_scorer_directory_is_not_scorer_only(repo: Repo, path: str) -> None:
+    new = _commit_tree(repo, {path: "x"})
+    assert not scorer_only_change(repo.tree, new, repo.root)
+
+
+def test_a_tree_git_cannot_read_is_not_scorer_only(repo: Repo) -> None:
+    assert not scorer_only_change("0" * 40, repo.tree, repo.root)
 
 
 def test_the_tree_of_a_clean_checkout_is_heads(repo: Repo) -> None:

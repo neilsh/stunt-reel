@@ -24,10 +24,13 @@ from archive_helpers import build_all  # noqa: E402
 from render_helpers import reference_tree  # noqa: E402
 from stunt_reel import dataroot, parity_layout, parity_pipeline, references  # noqa: E402
 from stunt_reel.all_archive import ArchiveMeta, publish_archive  # noqa: E402
+from stunt_reel.expected_scores import read_render_tree  # noqa: E402
 from stunt_reel.parity_artifacts import Report, write_report  # noqa: E402
 
 #: The films of the stand-in references.toml, which is what the parity loop covers.
 FILMS = ("ctry", "intro")
+#: A ``crates/`` tree hash the render tests say a render was built from.
+TREE = "6" * 40
 
 
 @pytest.fixture(autouse=True)
@@ -95,6 +98,37 @@ def test_software_only_reaches_the_render_command(
     with parity_pipeline.reference_job(root, "ctry") as job:
         parity_run.prepare_source(job, options, no_render=False, software_only=True)
     assert renders == [{"software_only": True}]
+
+
+def test_a_render_records_the_tree_it_was_built_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The record travels with the render, and a later render without one clears it."""
+    root = reference_tree(tmp_path / "data", [7], films=("ctry",))
+    repo = tmp_path / "repo"
+    monkeypatch.setattr(parity_run, "REPO_ROOT", repo)
+    monkeypatch.setattr(
+        parity_run, "render_film", lambda _job, out, *_a, **_k: out.mkdir(parents=True)
+    )
+    monkeypatch.setattr(parity_run, "check_film", lambda *_a: None)
+    options = _options(parity_run, ["--films", "ctry", "--data-root", str(root)])
+    current = repo / parity_layout.render_dir("ctry")
+    previous = repo / parity_layout.previous_dir("ctry")
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_run.prepare_source(
+            job, options, no_render=False, software_only=False, built_from=TREE
+        )
+        assert read_render_tree(current) == TREE
+        # A render from a dirty crates/, or a --retime run, built from no known tree.
+        parity_run.prepare_source(job, options, no_render=False, software_only=False)
+        assert read_render_tree(current) is None
+        assert read_render_tree(previous) == TREE
+        # --no-render scores what is there and leaves the record alone.
+        parity_run.prepare_source(
+            job, options, no_render=False, software_only=False, built_from=TREE
+        )
+        parity_run.prepare_source(job, options, no_render=True, software_only=False)
+        assert read_render_tree(current) == TREE
 
 
 def test_script_specific_flags_stay_local() -> None:

@@ -30,9 +30,11 @@ are repo-relative POSIX paths, and each may end in ``#<anchor>``, a GitHub headi
 fragment keeps the section's anchor; a ``from`` without one names the whole-file destination
 for links to the note that carry no fragment, once per note. ``from`` names the note by its
 pre-move path; the note must be tracked and each anchor must be one of its headings. On either
-phase a link to a split note is written to the mapped file with its query kept, and an inbound
-link whose fragment names no mapped section is reported and makes the run exit non-zero without
-writing; the move phase checks the files that stay and the files about to move before any
+phase a link to a split note is written to the mapped file with its query kept. A link to a
+heading the note keeps once the mapped sections are cut (each with its sub-headings) is left
+alone, unless the plan moves the note or sends its fragment-less links elsewhere. An inbound
+link whose fragment names no mapped section and no kept heading is reported and makes the run
+exit non-zero without writing; the move phase checks the files that stay and the files about to move before any
 git mv runs. A self-link (a bare ``#<anchor>`` in the note) whose section a rule moved is
 printed as a warning under its own heading and does not change the exit status, since the note's
 text is not cut; a link in a destination file to its own section is written as
@@ -83,6 +85,8 @@ class Split:
     default: str | None = None
     #: Each section's GitHub anchor to (its new file, the anchor to write there or None).
     sections: dict[str, tuple[str, str | None]] = field(default_factory=dict)
+    #: Anchors of headings the note keeps at its own path, so a link to one needs no rule.
+    staying: set[str] = field(default_factory=set)
 
 
 _MOVE_KEYS = frozenset(("from", "to"))
@@ -326,10 +330,37 @@ def _check_splits(
         note = root / current
         if not note.is_file():
             raise MovesError(f"[[split]] {source} does not exist")
-        anchors = _heading_anchors(note.read_text(encoding="utf-8"))
+        text = note.read_text(encoding="utf-8")
+        anchors = _heading_anchors(text)
         for key in split.sections:
             if key not in anchors:
                 raise MovesError(f"[[split]] {source}#{key} names no heading of {source}")
+        if _moved(source, mapping) is None and split.default in (None, source):
+            split.staying = _heading_anchors(_without_sections(text, set(split.sections)))
+
+
+def _without_sections(text: str, anchors: set[str]) -> str:
+    """*text* with each section whose heading anchor is in *anchors* cut out.
+
+    A section runs from its heading to the next heading of the same or a shallower level, so a
+    sub-heading goes with it and later duplicate anchors renumber as they will after the cut.
+    """
+    seen: dict[str, int] = {}
+    kept: list[str] = []
+    cutting: int | None = None
+    for blanked, line in zip(prose(text).splitlines(), text.splitlines(), strict=True):
+        heading = HEADING_REGEX.match(line) if HEADING_REGEX.match(blanked) else None
+        if heading is not None:
+            base = slug(heading[2])
+            count = seen.get(base, 0)
+            seen[base] = count + 1
+            if cutting is not None and len(heading[1]) <= cutting:
+                cutting = None
+            if cutting is None and (base if count == 0 else f"{base}-{count}") in anchors:
+                cutting = len(heading[1])
+        if cutting is None:
+            kept.append(line)
+    return "\n".join(kept)
 
 
 def _heading_anchors(text: str) -> set[str]:
@@ -690,8 +721,11 @@ def _split_section(
     query, hashmark, fragment = rest.partition("#")
     if not hashmark or not fragment:
         return (split.default, rest) if split.default is not None else None
-    section = split.sections.get(slug(fragment))
+    key = slug(fragment)
+    section = split.sections.get(key)
     if section is None:
+        if key in split.staying:
+            return None
         if unmapped is not None:
             unmapped.append(
                 f"{source_new}: {target} points at a section of {resolved} "

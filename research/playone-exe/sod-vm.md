@@ -243,7 +243,8 @@ Open items:
 - HUGETAP semantics `[Unknown]`.
 
 The execution model (section 8.1 to 8.7) is in [`sod-vm-execution.md`](sod-vm-execution.md#8-execution-model).
-The model frames, two-vertex polygons, lines and spans (section 8.8 to 8.11) are in [`sod-vm-generators.md`](sod-vm-generators.md#88-model-frame-the-other-generators).
+The model frames and two-vertex polygons (sections 8.8 and 8.9) are in [`sod-vm-generators.md`](sod-vm-generators.md#88-model-frame-the-other-generators).
+Lines and polygon spans (sections 8.10 and 8.11) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md#810-lines-moveto-zlineto-and-linecol).
 The per-frame routine and scene composition (section 9) is in [`sod-vm-frame.md`](sod-vm-frame.md#9-per-frame-routine-and-scene-composition).
 
 ---

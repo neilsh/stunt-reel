@@ -48,6 +48,7 @@ fn record(ticks: Vec<u32>) -> RenderRecord {
         ticks: ticks.into_iter().map(tick).collect(),
         palette_count: 1,
         chunks,
+        planes: std::collections::BTreeMap::new(),
         adapter: None,
     }
 }
@@ -76,7 +77,7 @@ fn version_ordering_and_geometry_are_checked() {
         wrong.validate(),
         Err(ArtifactError::UnsupportedVersion {
             found: 2,
-            expected: 3
+            expected: 4
         })
     ));
 
@@ -181,8 +182,8 @@ fn locate_finds_a_tick_by_chunk_and_position() {
 
 #[test]
 fn a_render_without_an_adapter_parses() {
-    let text = r#"{"schema_version": 3, "film": {}, "geometry": {"width": 320, "height": 200},
-        "ticks": [], "palette_count": 0, "chunks": []}"#;
+    let text = r#"{"schema_version": 4, "film": {}, "geometry": {"width": 320, "height": 200},
+        "ticks": [], "palette_count": 0, "chunks": [], "planes": {}}"#;
     let record: RenderRecord = serde_json::from_str(text).expect("a render without adapter");
     assert_eq!(record.adapter, None);
     record.validate().expect("valid");
@@ -219,4 +220,90 @@ fn viewport_rows_may_be_absent() {
     assert_eq!(geometry.pixel_count(), 76_800);
     let value = serde_json::to_value(geometry).expect("serialize");
     assert!(value.get("viewport_rows").is_none());
+}
+
+/// A listing for `record` whose spans are ten bytes per chunk.
+fn listing(record: &RenderRecord) -> PlaneListing {
+    PlaneListing {
+        sha256: "0f".repeat(32),
+        chunks: (0..record.chunks.len() as u64)
+            .map(|chunk| StoreSpan {
+                offset: 10 * chunk,
+                length: 10,
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn a_listed_plane_round_trips_and_ends_after_its_spans() {
+    let mut listed = record(vec![0, 1, 120]);
+    let shapes = listing(&listed);
+    assert_eq!(shapes.end(), Some(20));
+    listed.planes.insert("shapes.zst".to_string(), shapes);
+    listed.validate().expect("valid");
+    let value = serde_json::to_value(&listed).expect("serialize");
+    assert_eq!(value["planes"]["shapes.zst"]["chunks"][1]["offset"], 10);
+    let back: RenderRecord = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back, listed);
+    let bare = serde_json::to_value(record(vec![0])).expect("serialize");
+    assert_eq!(
+        bare["planes"],
+        serde_json::json!({}),
+        "no plane is an empty listing"
+    );
+}
+
+#[test]
+fn a_plane_listing_must_pair_with_the_chunk_table() {
+    let mut listed = record(vec![0, 120]);
+    let mut shapes = listing(&listed);
+    shapes.chunks.pop();
+    listed.planes.insert("shapes.zst".to_string(), shapes);
+    assert!(store_error(&listed).contains("lists 1 chunks but the chunk table has 2"));
+
+    let mut shapes = listing(&listed);
+    shapes.chunks[1].offset = 11;
+    listed.planes.insert("shapes.zst".to_string(), shapes);
+    assert!(store_error(&listed).contains("chunks[1] offset 11 does not continue"));
+
+    let mut shapes = listing(&listed);
+    shapes.chunks[1].length = u64::MAX;
+    listed.planes.insert("shapes.zst".to_string(), shapes);
+    assert!(store_error(&listed).contains("runs past the largest file offset"));
+}
+
+#[test]
+fn a_plane_listing_needs_a_bare_name_and_a_digest() {
+    let base = record(vec![0]);
+    for name in [
+        "../shapes.zst",
+        "shapes.bin",
+        ".zst",
+        "sub/shapes.zst",
+        "layers.zst",
+    ] {
+        let mut listed = base.clone();
+        listed.planes.insert(name.to_string(), listing(&base));
+        let reason = store_error(&listed);
+        assert!(reason.contains(&format!("{name:?}")), "{name}: {reason}");
+    }
+    let mut listed = base.clone();
+    let mut shapes = listing(&base);
+    shapes.sha256 = "0F".repeat(32);
+    listed.planes.insert("shapes.zst".to_string(), shapes);
+    assert!(store_error(&listed).contains("is not 64 lowercase hex digits"));
+}
+
+#[test]
+fn a_version_3_record_is_refused() {
+    let mut old = record(vec![0]);
+    old.schema_version = 3;
+    assert!(matches!(
+        old.validate(),
+        Err(ArtifactError::UnsupportedVersion {
+            found: 3,
+            expected: 4
+        })
+    ));
 }

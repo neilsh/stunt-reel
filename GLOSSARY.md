@@ -109,6 +109,12 @@ _Avoid_: asset, scenegraph node
 **Placement**: A prop's shape and position in the world, as the scenery walk, dedup and the sub-pixel cull leave it.
 _Avoid_: instance
 
+**Placement record**: What the world keeps of each placement the scenery walk and dedup leave, sub-pixel ones included: its shape and position, the `SCENERY.scn` node that places it, the partition nodes above that node with their plane words, its shape's collision list, and whether the world draws it.
+_Avoid_: placed object, instance record
+
+**Collision list**: The records a shape's header word at byte 8 points to, cubes, boxes and planes with nested lists, which `PLAYONE`'s ground and collision probe tests an actor against ([`sod.md` § 2.3](research/formats/sod.md#23-collision-list)).
+_Avoid_: collision boxes (for the whole list), collision meta
+
 **Scenery walk**: The traversal of `SCENERY.scn` from its root that produces placements, including its `SP_1NODE` level-of-detail gate between a subtree and its stand-in ([LOD](research/playone-exe/lod.md)).
 _Avoid_: traversal, scene tree walk
 
@@ -217,13 +223,13 @@ _Avoid_: slice (a film's own unit), sample
 Archives that draw the same shapes are still different identities.
 _Avoid_: film tag, provenance (for the game build and sound samples a capture records)
 
-**Render record**: The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index, camera and credits flag of every whole-tick frame, and the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)).
+**Render record**: The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index, camera and credits flag of every whole-tick frame, the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)), and each optional plane file the store holds, with its SHA-256 and chunk spans ([ADR 0052](docs/adr/0052-a-render-store-may-hold-optional-extra-planes.md)).
 _Avoid_: sidecar (for the record), manifest
 
 **Capture set**: The typed view of a capture directory's `meta.json`: the film identity, the raster geometry, and one captured frame per capture ordinal, each tagged with its film clock.
 _Avoid_: capture manifest
 
-**Parity artifact port**: The pure `crates/stunt-parity` crate that defines the render, capture and report documents and their schema version; `stunt-cli` and `stunt_reel` adapt it to files.
+**Parity artifact port**: The pure `crates/stunt-parity` crate that defines the render, capture and report documents and their schema version; `stunt-score` and `stunt_reel` adapt it to files.
 _Avoid_: schema library
 
 ## Evidence

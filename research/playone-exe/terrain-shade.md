@@ -307,6 +307,10 @@ The data-side and renderer-side explanations for the ground shade, all negative 
 
 1. The trig at `0824:05D2`: `(99, 32766, -17)` has a horizontal part of about 100, where `32767 cos(var 13 - 0x4000)` would give about 141.
    Whether the table, a scale or the second angle accounts for it decides whether a renderer computes `L` from variable 13 or tabulates it; a film with another variable-13 value would test the formula.
+   `BALLOON.FLM` is such a film: it sets variable 13 to `0xF02D` (61485) at tick 0 (`mise run flm-events -- corpus/stuntisl/VAULT/BALLOON.FLM`), which is `0x002D - 0x1000`: a sixteenth of a turn (22.5 degrees) from the observed value, if variable 13 is a 16-bit angle as `var 13 - 0x4000` suggests.
+   Its `vault-balloon` capture shows the sun disc this light places ([`palette-fade.md` § 3.2](palette-fade.md#32-other-readers-of-the-live-variables)), so a live break on `0x196C` in that film, or the disc's position in its frames, would test the formula.
+   Read as a 16-bit angle from the zenith, `0xF02D` puts a probe disc about 31 px from the capture's, nearly the same offset at ticks 155 and 200 (`[Supported Inference]`, same section), too far to adopt; a break on `0x196C` in `BALLOON.FLM` that logs `AX` and `DS:0x49EC..0x49F0` would give the vector exactly.
+   The renderer lights it with the `0x002D` light all the same (`ShadeLight::world` in `crates/stunt-core/src/sod/light.rs`).
 2. The renderer round for the ground is the terrain-under-props change of [`world-scene-residuals.md`](world-scene-residuals.md) section 6. ([#69](https://github.com/neilsh/stunt-reel/issues/69))
 3. The light the `0x1CFB` path hands on when the stored-matrix flag `[si+0x0F] & 1` skips `071D`, since it then leaves `AX`, `BX`, `DX` as it found them.
    (Which way a sub-model's `ROT*` turns `L` is answered: `ROTZ` turns it by `Rz(a)ᵀ`, the inverse of the vertices' turn, and `ROTX` and `ROTY` leave it, [`sod-vm-execution.md`](sod-vm-execution.md) § 8.7.)

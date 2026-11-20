@@ -280,3 +280,27 @@ def test_mise_pins_dosbox_automation_with_a_checksum() -> None:
     pin = mise["tools"]["github:dosbox-automation/dosbox-automation"]
     assert pin["version"] == "0.85.1"
     assert pin["checksum"].startswith("sha256:")
+    linux = mise["tools"]["http:dosbox-automation"]
+    assert linux["version"] == pin["version"]
+    assert linux["os"] == ["linux"]
+    assert linux["checksum"].startswith("sha256:")
+
+
+def test_a_linux_host_without_a_display_gets_the_headless_sdl_drivers() -> None:
+    env = automation.headless_env({"PATH": "/bin"}, platform="linux")
+    assert env["SDL_VIDEODRIVER"] == "offscreen"
+    assert env["SDL_AUDIODRIVER"] == "dummy"
+
+
+@pytest.mark.parametrize(
+    ("env", "platform"),
+    [({"DISPLAY": ":0"}, "linux"), ({"WAYLAND_DISPLAY": "wayland-0"}, "linux"), ({}, "win32")],
+)
+def test_a_display_or_windows_keeps_the_environment(env: dict[str, str], platform: str) -> None:
+    assert automation.headless_env(env, platform=platform) == env
+
+
+def test_a_driver_already_set_wins_over_the_headless_default() -> None:
+    env = automation.headless_env({"SDL_VIDEODRIVER": "x11"}, platform="linux")
+    assert env["SDL_VIDEODRIVER"] == "x11"
+    assert env["SDL_AUDIODRIVER"] == "dummy"

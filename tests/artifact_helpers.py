@@ -87,6 +87,9 @@ def raw_record(schema_version: int = RENDER_SCHEMA_VERSION) -> dict[str, Any]:
                 "layer": {"offset": 0, "length": 10},
             }
         ],
+        "planes": {
+            "shapes.zst": {"sha256": "0f" * 32, "chunks": [{"offset": 0, "length": 10}]},
+        },
     }
 
 
@@ -153,6 +156,7 @@ def sample_report() -> Report:
         mean_iou_scored=0.9,
         mean_index_agreement_scored=0.5,
         mean_loss_by_class_scored={"sky": 0.1},
+        mean_loss_by_shape_scored={"4": 0.02, "unattributed": 0.01},
         scored_frames=1,
         excluded_frames=1,
     )

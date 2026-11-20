@@ -415,6 +415,7 @@ fn draw_shapes(
                         state_mask: 0,
                         distance: 0.0,
                         shadow_matrix: None,
+                        shadow_only: false,
                         light: ShadeLight::default(),
                         bank: AngleBank::REST,
                     }],
