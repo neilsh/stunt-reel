@@ -12,6 +12,9 @@ Framing: [`framing-and-actors.md`](framing-and-actors.md); hero aircraft: [`hero
 
 `stuntreel parity` splits each SSIM window's loss (`1 - ssim`) among the render layers of its pixels in proportion to pixel count (`mean_loss_by_class_scored` in `report.json`); the classes sum to `1 - mean_ssim_scored`.
 Layer ids in the layer plane: 1 ocean, 2 terrain (`MAP.BIN` patches), 3 props (`SCENERY.scn` placements), 16+n actor draw n of the frame (draw order, not film slot).
+A shape plane beside it names the prop shape that drew each props pixel, and `mean_loss_by_shape_scored` splits the props class by shape id the same way; its values sum to `mean_loss_by_class_scored.props` ([`report-fields.md`](report-fields.md)).
+A world prop's shape is not carried in its vertices: each placed prop mesh appends its own run of world vertices, the world lists those runs with their shapes (`World::prop_runs`), and the plane's fragment shader finds a world prop fragment's run from its flat `vertex_index` by binary search, so every placed shape is attributed.
+_Source: [can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)._
 Extra classes are reference-only (capture non-sky, render sky) and render-only (the reverse).
 Windows touching the UI overlay are excluded.
 
@@ -43,6 +46,31 @@ Loss by class, with its share of `1 - mean_ssim_scored`; classes under 0.001 lef
 * **`balloon` is the exception**: more than half its loss is reference-only, capture geometry where our render draws sky, and 98% of it sits on two runs of frames: 86% on the straight-down run and 12% on the zenith-sky run (section 7).
 * **Against the 2026-11-04 run below**, `ctry` props fell 0.0793 -> 0.0402 and terrain 0.0186 -> 0.0117; `intro` props 0.0808 -> 0.0503, terrain 0.0439 -> 0.0303 and actors 0.0439 -> 0.0350.
   The changes between are many (the PRs behind the `crates` trees the expected tables record), so the split does not attribute the fall to any one of them.
+
+**Worst prop shapes** (`mean_loss_by_shape_scored`).
+`[Bounded Observation]`, one render per film on lavapipe (`mise run parity -- --software-only`, `crates/` tree `b228018`, #809's change (PR #821) on top of `main` at `581d811`), so its figures differ from the RTX 4070 table above: the code under them is newer and the renderer is lavapipe.
+Each row is a shape's mean loss over the scored frames and its share of that film's `props` loss (`location` 0.0839, `bomb` 0.0740, `ctry` 0.0401); the ten worst shapes, then what they hold together.
+Every placed shape is attributed (section 1), so no reference film has an `unattributed` share; the `props` loss falls on 1,014 shapes on `location`, 127 on `bomb` and 91 on `ctry`.
+
+| Rank | `location` shape | Loss (share) | `bomb` shape | Loss (share) | `ctry` shape | Loss (share) |
+|---|---|---|---|---|---|---|
+| 1 | 1610 | 0.0035 (4.2%) | 1756 | 0.0161 (21.7%) | 926 | 0.0129 (32.1%) |
+| 2 | 1145 | 0.0017 (2.0%) | 1650 | 0.0078 (10.5%) | 917 | 0.0054 (13.5%) |
+| 3 | 1745 | 0.0016 (1.9%) | 1737 | 0.0078 (10.5%) | 880 | 0.0024 (5.9%) |
+| 4 | 1150 | 0.0016 (1.9%) | 545 | 0.0044 (5.9%) | 610 | 0.0020 (5.0%) |
+| 5 | 613 | 0.0014 (1.7%) | 1648 | 0.0038 (5.1%) | 928 | 0.0017 (4.3%) |
+| 6 | 996 | 0.0014 (1.6%) | 1754 | 0.0037 (5.0%) | 927 | 0.0016 (3.9%) |
+| 7 | 1164 | 0.0013 (1.6%) | 542 | 0.0023 (3.1%) | 915 | 0.0014 (3.6%) |
+| 8 | 1179 | 0.0013 (1.5%) | 1654 | 0.0023 (3.1%) | 914 | 0.0010 (2.5%) |
+| 9 | 1984 | 0.0012 (1.4%) | 1637 | 0.0018 (2.4%) | 920 | 0.0010 (2.4%) |
+| 10 | 1162 | 0.0012 (1.4%) | 1716 | 0.0016 (2.2%) | 913 | 0.0009 (2.3%) |
+| Ten worst | | 0.0161 (19.2%) | | 0.0514 (69.4%) | | 0.0303 (75.6%) |
+
+* **`bomb` and `ctry` concentrate** their props loss: three shapes hold 43% of `bomb`'s (1756, 1650, 1737) and two hold 46% of `ctry`'s (926, 917).
+  `location` spreads its `props` loss over 1,014 shapes, the worst (1610) holding 4.2% of it and the ten worst 19.2%, so a fix aimed at one of them moves `location` little.
+* The split says which shapes carry the loss, not why; a shape's pixels share SSIM windows with its neighbours, so its figure includes loss its surroundings cause, as the class split does (section 1).
+
+_Source: [every prop shape attributed on the seven references](../../work/2026-11/809_prop-runs/journal.md#2026-11-20-every-prop-shape-attributed-on-the-seven-references)._
 
 _Source: [loss by render layer on the seven VAULT references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-loss-by-render-layer-on-the-seven-vault-references)._
 
@@ -215,7 +243,9 @@ _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attributi
 * **`balloon`'s low IoU as a placement or framing error** (2026-11-16): outside the zenith-sky and straight-down runs every scored frame scores 0.965 or more, so neither the balloon's placement nor the framing sets the film's 0.6409 ([what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)).
 * **Drawing the sun disc at variable 13 read as a zenith angle** (2026-11-18): a probe drew index 239 at `(sin a, cos a, 0)` with radius 0.048 rad; on `balloon` the disc sat about 31 px left of and 8 to 10 px below the capture's at ticks 155 and 200, SSIM fell from 0.8172 to 0.8143 on lavapipe, IoU stayed 0.6409 and no other film moved.
   Not adopted; the vector needs the `0x196C` trig read live ([`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
+* **Far props the sub-pixel cull drops, as props loss** (2026-11-18): the half-pixel cull in `build_world` drops no placement on six references and on `location` only 190 placements of shapes with no vertices, and removing it scored the seven films the same to four decimals on lavapipe ([removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull); [`world-scene-residuals.md` § 6.4](../playone-exe/world-scene-residuals.md#64-the-ground-decal-pass)).
 * **Terrain distance cull** (not attempted): the land/sea boundary is already nearly right (section 5).
+* **A primitive-index table for the world props' shape word** (2026-11-19): `@builtin(primitive_index)` works on lavapipe, but it restarts at 0 for every draw call and numbers an outline draw's edges, not its triangles, so each world draw would have to pass its first triangle and outlines would need a second table; the vertex-keyed runs of section 1 need neither ([can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)).
 
 ## Open questions
 

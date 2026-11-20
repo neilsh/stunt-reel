@@ -1,11 +1,11 @@
 ---
-summary: "`PLAYONE.EXE` loading a film: the `.ALL` directory read, every chunk preloaded into an LRU cache whose node pool shrinks as the id index grows, what each chunk costs, the film clock starting on the first timer tick after the load, and the per-frame probe that sweeps from each slot's position at the previous drawn frame."
+summary: "`PLAYONE.EXE` loading a film: the `.ALL` directory read, every chunk preloaded into an LRU cache whose node pool shrinks as the id index grows, what each chunk costs, the film clock starting on the first timer tick after the load, so archives that draw alike start on the same interrupt and later ones whole ticks later, and the per-frame probe that sweeps from each slot's position at the previous drawn frame."
 sidebar_label: "Film load & chunk cache"
 ---
 # `PLAYONE.EXE`: Loading a Film and Its Archive
 
 * **Binary**: unpatched `PLAYONE.EXE`, image offsets ([`static-tooling.md`](static-tooling.md) § 3); `DS:` offsets are `DGROUP`.
-* **Method**: static reading with `mise run re-tool -- disasm` and `xref`, 2026-11-18.
+* **Method**: static reading with `mise run re-tool -- disasm` and `xref`, 2026-11-18; section 6 is a per-frame memory log on dosbox-automation.
 * **Scope**: where the `.ALL` is loaded, the chunk cache it fills, what an added chunk costs, how the film clock starts, and what the per-frame call steps per drawn frame rather than per film tick (section 5); whether that is why a later start changes the pages a capture keeps ([`linking.md`](../makeone-exe/linking.md) § 7.2) is open.
 * **Evidentiary tier**: `[Established]` for what the code does, read statically; `[Hypothesis]` where a capture's frames are tied to it.
 
@@ -92,17 +92,19 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 
 ## 4. The Film Clock's Start
 
-`[Established]` for the code; `[Hypothesis]` for the quantum.
+`[Established]` for the code; section 6 times the start live.
 
 * **After the load.**
   The dialog path `0x49C6..0x49ED` calls `0x3A11`, which zeroes the film clock `DS:0x4896`, its fraction `0x4898` and the slice state, sets the speed `DS:0x489C` to `0x100` (one tick per tick, 8.8), and calls `0x0E42`, which zeroes `0x22B8` and `0x22BE` and sets the playback flag `0x2272`; then the main loop's per-frame call `[0x0D7A]` (`0x54B8`) becomes the film step `0x49F9`.
   The path `0x4ACE..0x4AFD` clears the playback flag `0x2272` (`0x4AD1`) before its dialog and load, then runs the loader, `0x3A11` and the speed as above and sets the flag at `0x4AFD`, without zeroing `0x22B8`.
   On the `0x4ACE` path no tick is counted during the load.
-  The dialog path does not clear `0x2272` first, so whether ticks count during its load was not read; it zeroes the clock and `0x22B8` after the load either way.
+  The dialog path does not clear `0x2272` first, so whether ticks count during its load was not read statically; it zeroes the clock and `0x22B8` after the load either way.
+  On a capture's first film the flag reads 0 through the whole load (section 6).
   Neither waits on a timer tick or the retrace.
 * **The clock.**
   On each timer interrupt (`0x43A5`), while `0x2272` is set, `0x22B8` gains 1 and the film clock gains the speed (`0x43D8..0x43E6`), so the film's tick 1 is the first interrupt after the load returns.
-  If the timer keeps its phase across the load, loads that end within one 20 ms timer period start the film clock at the same emulated instant, which would explain why small additions moved nothing (`[Hypothesis]`: no capture timed the start, and whether the timer is reprogrammed during the load was not read; `0x36F7`, which installs the handler and programs the timer, is called from `0x06E8`, `0x5189` and `0x51CC`).
+  The timer keeps its phase across the load, so loads that end between the same two interrupts start the film clock at the same emulated instant (section 6).
+  The code that installs the handler and programs the timer, `0x36F7`, is called from `0x06E8`, `0x5189` and `0x51CC`; which of them runs during a load was not read.
 * **The interpolation fraction does not carry the phase.**
   `DS:0x22E0` (`0x3AE4..0x3AF7`) is the film clock's ticks and fraction into the current slice over the slice's length, after the film step `0x3A72` has moved the slice to the one holding the clock (forward from `0x3AFC`, back through `0x3ACF`).
   At speed `0x100` the fraction word stays 0, so `0x22E0`, which drives the interpolations `0x136F` and `0x3E6C`, is the same for the same film tick.
@@ -149,6 +151,35 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 
 _Source: [the slot pass keeps each slot's previous position](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it); [the per-frame call steps no frame counter](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter)._
 
+## 6. The Start Against the Emulator Frame
+
+`[Bounded Observation]`: `CTRY.FLM`, unpatched build, the own `CTRY.ALL` and the nine arms of [`linking.md`](../makeone-exe/linking.md) § 7.2, one run each on dosbox-automation in a cloud session, 2026-11-18 ([#722](https://github.com/neilsh/stunt-reel/issues/722)).
+
+A Lua script read `DS:0x22B8`, `0x2272`, `0x4896`, `0x22BA` and `0x7FEC` on every emulator frame, pressing the dialog keys on the frames a capture does.
+`0x22BA` counts every timer interrupt, so `0x22BA - 0x22B8 + 1` on a playing frame is the interrupt that was the film's tick 1.
+
+| Added to own `CTRY.ALL` | `0x2272` first set (frame) | Film tick 1 on interrupt | Ticks after own | Last page frame |
+|---|---|---|---|---|
+| Nothing; 1 chunk (`0xF001` or `0x5B01`, 1 byte; 60,000 bytes) | 1,271 | 904 | 0 | 3,139 |
+| 300 chunks of 1 byte | 1,272 | 904 | 0 | 3,139 |
+| 63 chunks, 4,092,524 bytes | 1,276 | 907 | 3 | 3,144 |
+| 2,529 chunks of 1 byte, `0xF001` | 1,281 | 911 | 7 | 3,149 |
+| 2,529 chunks, 4,092,524 bytes, `0xF001` (#348's padding, zero or `0xFF` fill) | 1,304 | 928 | 24 | 3,173 |
+| 2,529 chunks, 4,092,524 bytes, `0x5B01` | 1,301 | 925 | 21 | 3,169 |
+
+* **Every load starts on the same frame.**
+  The chunk count is in `0x7FEC` on frame 1,271 in every arm, one frame after Enter goes down; until the load ends `0x2272`, `0x22B8` and the film clock read 0, so no tick is counted during it.
+* **The timer keeps its phase through the load.**
+  `0x22BA` reads the same on every frame in all ten runs, load and film, except 3 frames of one arm (2,529 one-byte chunks) where it reads one less; so an interrupt falls on the same emulated instant, to a frame, whatever the archive.
+* **Archives that draw alike start on the same interrupt; the others start whole ticks later.**
+  The arms that draw the own archive's pages ([`linking.md`](../makeone-exe/linking.md) § 7.2) start on interrupt 904, the 300-chunk arm though its flag is set a frame later; each arm that draws differently starts 3 to 24 interrupts later, and #348's padding and its `0xFF` refill, which draw alike, start on the same one.
+  So the timer tick is the quantum of the start.
+* **The start accounts for the last page's frame.**
+  Each arm's last page is as many frames later as its start, converted at 70.087 / 50 frames per tick, to within one frame (3 ticks, 4.2 frames, against 5; 24 ticks, 33.6, against 34), and each equals the last-page frame of § 7.2's captures.
+  Why a start whole ticks later changes what is drawn at a film tick is open question 1.
+
+_Source: [archives that draw alike start the film clock on the same timer interrupt](../../work/2026-11/722_playone-start-timer-tick/journal.md#2026-11-18-archives-that-draw-alike-start-the-film-clock-on-the-same-timer-interrupt)._
+
 ## Ruled out
 
 - **A sort of the directory at load.**
@@ -157,6 +188,8 @@ _Source: [the slot pass keeps each slot's previous position](../../work/2026-11/
   At speed `0x100` it is a function of the film tick and the film's slices (section 4; [journal](../../work/2026-11/609_archive-load-start/journal.md#2026-11-18-the-loader-preloads-every-chunk-and-the-film-clock-starts-on-the-next-timer-tick)).
 - **A frame counter or a reader of the per-frame deltas, by address, as the carrier of the start's phase.**
   The film step increments no word, `0x22DC` has no reader by address, `0x22BA` feeds input timing, and the deferred-call queue empties every frame (section 5; [journal](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter)).
+- **A film clock that starts at the same instant for every archive, or that counts during the load.**
+  Archives that draw differently start whole timer ticks later, and no tick counts until the load ends (section 6; [journal](../../work/2026-11/722_playone-start-timer-tick/journal.md#2026-11-18-archives-that-draw-alike-start-the-film-clock-on-the-same-timer-interrupt)).
 - **The pair test `0x1588` as per-frame state.**
   It runs only while `DS:0x2282` is set, but the load image holds 0 there and the one instruction that writes it stores 0; its hit path is a bare `ret` (section 5; [journal](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it)).
 
@@ -165,9 +198,8 @@ _Source: [the slot pass keeps each slot's previous position](../../work/2026-11/
 1. Is the probe's sweep from each slot's previous position (section 5) what draws CTRY's pages differently when the film starts later?
    A log per drawn frame of each slot's `+0x04`, `+0x24`, `+0x1E` and `+0x20/+0x22` on the own and a padded `CTRY.ALL`, paired with the differing pages, would settle it; it needs DOSBox ([#779](https://github.com/neilsh/stunt-reel/issues/779)).
    The film step's other calls (`0x62E7`, `0x4FCD`, `0x0EE9`, `0x33C3`, `[0x225A]`, `0x31C0`) were read only for counters, so other per-frame state there is not excluded.
-2. Does the film clock start on the same emulated instant for archives that draw alike, and later by whole timer ticks for those that do not?
-   A live log of `0x22B8`, `0x2272` and the emulator frame from the end of `0x4B04` to the first drawn page, on the own and a padded `CTRY.ALL`, would settle the quantum; it needs DOSBox ([#722](https://github.com/neilsh/stunt-reel/issues/722)).
-3. What does the 63-chunk 4 MB arm's later start come from, given its small scan and walk counts: the emulator's charge for DOS reads, the allocator's evictions, or the heap's limit?
-4. Do the own chunks the `0x5B01` arm evicts at load, 8 by the node pool and any more for want of heap, change its pages beyond its start?
-5. What happens when the index fills the region?
+2. What does the 63-chunk 4 MB arm's later start come from, given its small scan and walk counts: the emulator's charge for DOS reads, the allocator's evictions, or the heap's limit?
+   Its load ends 5 frames after the own archive's and starts the film 3 ticks later (section 6).
+3. Do the own chunks the `0x5B01` arm evicts at load, 8 by the node pool and any more for want of heap, change its pages beyond its start?
+4. What happens when the index fills the region?
    As read, an index of more than 10,000 bytes is written past `0x7FEB` into the count word `0x7FEC`, and `0x4C0F`'s node count, `(0x7FEC - [0x0BD8]) / 10` unsigned, wraps (an index of exactly 10,000 bytes gives 0, which `loop` runs 65,536 times), so the free-list build writes far past the region; untested.

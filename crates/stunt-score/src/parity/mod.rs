@@ -31,13 +31,13 @@
 //! run by `film_tick` (see `report_diff::compare_reports`), so a change is judged frame by frame
 //! rather than only by the means.
 
-mod args;
 mod compare;
 mod fade;
 mod frames;
 mod loss;
 mod mask;
 mod matched;
+mod options;
 mod report;
 mod report_diff;
 #[cfg(test)]
@@ -55,7 +55,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use args::Args;
 use compare::run_compare;
 use fade::fade_reference_set;
 use frames::{load_render_frame, read_index_plane};
@@ -70,7 +69,7 @@ use stunt_parity::{CapturedFrame, FilmCheck, FilmField, FilmId, RenderAdapter};
 use crate::parity_artifacts;
 use crate::render_store::RenderStore;
 
-pub use args::usage;
+pub use options::{DEFAULT_MIN_FADE_LEVEL, Options};
 
 /// `[I6]` initial acceptance threshold on the scored mean SSIM.
 const I6_INITIAL_SSIM: f32 = 0.88;
@@ -180,14 +179,46 @@ fn loss_by_class(values: [f32; LOSS_CLASSES.len()]) -> BTreeMap<String, f32> {
         .collect()
 }
 
+/// The mean over `scored` frames of each shape's share of the `props` loss, keyed by shape id
+/// (`"unattributed"` for props pixels that carry no shape); `None` when no frame is scored or
+/// any scored frame came from a render with no shape plane.
+fn mean_loss_by_shape(scored: &[&FrameRow]) -> Option<BTreeMap<String, f32>> {
+    if scored.is_empty() {
+        return None;
+    }
+    let mut mean: BTreeMap<u16, f64> = BTreeMap::new();
+    for row in scored {
+        for (&word, &loss) in row.shape_loss.as_ref()? {
+            *mean.entry(word).or_insert(0.0) += loss / scored.len() as f64;
+        }
+    }
+    Some(
+        mean.into_iter()
+            .map(|(word, loss)| {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "the report stores losses as f32, like the class means"
+                )]
+                let loss = loss as f32;
+                let key = word
+                    .checked_sub(1)
+                    .map_or_else(|| "unattributed".to_string(), |id| id.to_string());
+                (key, loss)
+            })
+            .collect(),
+    )
+}
+
 /// One matched frame's place in the capture and its measurements.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct FrameRow {
     /// 1-based capture order.
     ordinal: usize,
     /// Film clock the frame was captured at; selects the stored render tick.
     film_tick: usize,
     metrics: FrameMetrics,
+    /// The frame's `props` loss by shape word; `None` without a shape plane.
+    shape_loss: Option<BTreeMap<u16, f64>>,
     /// The record expects credits here but the render drew no overlay pixel.
     credits_missing: bool,
 }
@@ -235,6 +266,7 @@ fn build_report(
         loss_by_class(mean)
     });
     let mean_index_agreement_scored = scored_mean(|s| s.metrics.index_agreement);
+    let mean_loss_by_shape = mean_loss_by_shape(&scored_frames);
 
     Report {
         reference_frames,
@@ -250,6 +282,7 @@ fn build_report(
         mean_iou_scored,
         mean_index_agreement_scored,
         mean_loss_by_class_scored: mean_loss_by_class,
+        mean_loss_by_shape_scored: mean_loss_by_shape,
         scored_frames: scored_frames.len(),
         excluded_frames,
         credits_missing_frames: scores.iter().filter(|s| s.credits_missing).count(),
@@ -308,6 +341,7 @@ fn score_matched(
             ordinal,
             film_tick: frame.film_tick as usize,
             metrics: score.metrics,
+            shape_loss: score.shape_loss,
             credits_missing,
         });
         sheets.offer(
@@ -345,6 +379,21 @@ fn print_summary(report: &Report, min_fade_level: f32) {
             .join(", ");
         println!("[parity] SSIM loss by class (sums to 1 - mean SSIM over scored frames): {line}");
     }
+    if let Some(shapes) = &report.mean_loss_by_shape_scored {
+        let mut ranked: Vec<_> = shapes.iter().collect();
+        ranked.sort_by(|a, b| b.1.total_cmp(a.1));
+        let line = ranked
+            .iter()
+            .take(5)
+            .map(|(id, loss)| format!("{id} {loss:.4}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!(
+            "[parity] props loss by shape id, worst {} of {}: {line}",
+            ranked.len().min(5),
+            ranked.len()
+        );
+    }
     if let Some(agreement) = report.mean_index_agreement_scored {
         println!("[parity] mean index agreement {agreement:.3} over the scored frames with planes");
     }
@@ -361,8 +410,7 @@ fn print_summary(report: &Report, min_fade_level: f32) {
 /// # Errors
 ///
 /// A message for the terminal when the inputs cannot be read or an output cannot be written.
-pub fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
-    let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
+pub fn run(args: &Options) -> Result<(), String> {
     fs::create_dir_all(&args.output)
         .map_err(|e| format!("create output directory {}: {e}", args.output.display()))?;
 
@@ -434,7 +482,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     print_summary(&report, args.min_fade_level);
 
     if let Some(previous_path) = &args.compare {
-        run_compare(&args, previous_path, &report, &ReportFrames::new(frames))?;
+        run_compare(args, previous_path, &report, &ReportFrames::new(frames))?;
     }
     Ok(())
 }

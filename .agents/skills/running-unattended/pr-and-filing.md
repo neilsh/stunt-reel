@@ -4,23 +4,27 @@ Part of the [`running-unattended`](SKILL.md) skill.
 
 ## Bringing a PR to mergeable and Merge bar
 
-1. **Rebase** onto `origin/main` (or onto the stack parent) and resolve conflicts: a worker does it, since the coordinator reads no diff.
+1. **Rebase** an unpushed branch onto `origin/main` (or onto the stack parent) and resolve conflicts; for a branch already pushed, merge `origin/main` into its head instead, since a force-push may be refused in auto mode and the squash merge keeps `main` linear anyway: a worker does it, since the coordinator reads no diff.
    The worker makes a design choice only when it is cheap or one option is clearly better, and records it in the PR body; otherwise it reports, and the coordinator hands the PR to a human (`ready-for-human`).
    Then push, with one exception.
    A *rule 5 PR* is one whose diff touches a path [`AGENTS.md` § Committing](../../../AGENTS.md#committing) rule 5 names.
-   Its first commit and every later fix or rebase is committed locally and not pushed until step 2 has reviewed it at its local SHA; you then push it unchanged and, for the first push, open the PR.
-   A rebase changes the SHA, so it needs a fresh `clean` comment at the new head.
+   Its first commit and every later fix, rebase or merge is committed locally and not pushed until step 2 has reviewed it at its local SHA; you then push it unchanged and, for the first push, open the PR.
+   A rebase or merge changes the SHA, so it needs a fresh `clean` comment at the new head; for a merge commit whose tree equals an already-reviewed tree, the re-review only confirms that identity (`git diff <reviewed> <merge>` is empty).
+   Bring the branch up to date with `origin/main` (rebase or merge, as above) just before dispatching step 2's review, and push as soon as it is `clean`.
+   A conflict only in `research/MAP.md` takes either side, then `mise run knowledge-map -- --write`; the re-review at the new head then only confirms that `mise run knowledge-map -- --check` passes and that the diff against the reviewed commit shows only `main`'s files, and posts its `clean` comment (an owner-approved relaxation of rule 5 for that generated file alone).
    Any other PR pushes now: confirm local `HEAD` matches `origin/<branch>` before starting step 2.
    A work `spec.md` or `plan.md` is different: its fresh review reads the uncommitted diff, in the implementer's own worktree, by a subagent the implementer dispatches there; the commit carries the `Fresh-review:` trailer ([`development.md`](../../../docs/development.md#commit-messages)), and rule 5 does not hold it back from a push.
 2. **Fresh-context review:** dispatch the Sonnet [`reviewer`](../../../.claude/agents/reviewer.md) agent by default, for the first review and re-reviews.
    The first review of a PR built by Sonnet or dsh is the exception: dispatch it to Opus or Antigravity, as a general-purpose subagent with `model: opus`, given the reviewer instruction below with `Opus` as `<Reviewer>`, or as an Antigravity worker; do not run the `reviewer` agent with a model override, because it names `Sonnet` in the verdict.
    On #160 a Sonnet review missed four bugs.
    Have the reviewer review the diff against the merge base for `AGENTS.md` standards and `docs/SPEC.md` compliance (plus `AGENTS.md` Committing rule 5 when the diff touches a path it names).
-   Reviewers share one detached worktree, `.claude/worktrees/review` in the primary checkout, switched per PR with `git checkout --detach origin/<branch>`, or, for a commit not yet pushed, with `git checkout --detach <SHA>` of the commit the implementer reported; settings deny `git worktree remove`, so a worktree per review outlives the run.
+   Each review gets its own detached worktree, `.claude/worktrees/review-<PR or SHA>` in the primary checkout, made with `git worktree add --detach <path> origin/<branch>` (on a single-branch clone where `origin/<branch>` is absent, `git fetch origin <branch> && git worktree add --detach <path> FETCH_HEAD`), or, for a commit not yet pushed, `<SHA>` of the commit the implementer reported; settings deny `git worktree remove` and `mise run reap` skips detached worktrees, so it outlives the run and the owner removes it.
+   Never run `git checkout` or `git switch` in the implementer's checkout; if your working directory is not a `review-*` worktree, create one first.
+   In a cloud session every reviewer brief starts by telling the reviewer to read [`cloud.md`](../working-in-an-environment/cloud.md).
    Before asking, the implementer scans its own diff for rule 5's over-broad words and checks every quoted figure against its source.
    Every reviewer brief, whatever the reviewer (Claude subagent, Orca worker or Antigravity), ends with this instruction, copied into the brief word for word:
 
-   > Post your verdict as a PR comment with `gh pr comment <n> --body-file build/scratch/review-<n>.md` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/review-<n>.md`), clean included; if the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix or rebase), post nothing and reply with the comment text, first line included.
+   > Post your verdict as a PR comment with `gh pr comment <n> --body-file build/scratch/review-<n>.md` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/review-<n>.md`), clean included; if the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), post nothing and reply with the comment text, first line included.
    > Its first line is exactly `<Reviewer> review at <7-char head SHA>: clean` or `<Reviewer> review at <7-char head SHA>: needs changes`, with no `:` in `<Reviewer>`; then your findings (`file:line — problem — fix`, marked `blocking` or `nit`), or "no findings" plus what you checked (files read, gates and commands run) and what you could not verify.
    > The verdict is `needs changes` when any finding is `blocking` or a `nit` that must be fixed before merge, else `clean`.
    > Reply with the comment's URL.
@@ -30,7 +34,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
    - `<Reviewer>` is the reviewer's own name, with no `:` in it: `Sonnet`, `Opus`, `Antigravity`, or the worker's agent name.
    - `<head SHA>` is the 7-character short SHA printed by `gh pr view <n> --json headRefOid --jq '.headRefOid[0:7]'` (cloud: `gh api repos/{owner}/{repo}/pulls/<n> --jq '.head.sha[0:7]'`), read when you start reviewing and again before you post; confirm local `HEAD` matches it and review the diff of that commit against `origin/main` (or the stack parent).
      If it changed, review the new head.
-     When the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix or rebase), there is no head to match: it is the reviewed commit's `git rev-parse --short=7 HEAD`.
+     When the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), there is no head to match: it is the reviewed commit's `git rev-parse --short=7 HEAD`.
    - `<verdict>` is `clean` or `needs changes`, by the verdict rule in the instruction above.
    - **Body lines:** each finding gives `file:line — problem — fix` with severity (`blocking` or `nit`); a `clean` verdict states `No findings`, what was checked (files, gates, commands), and anything you could not verify.
 
@@ -44,7 +48,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
    No findings. Checked diff against origin/main and `mise run check` (4/4); could not verify capture offsets (no data root).
    ```
 
-   A reviewer that cannot post (the reviewed commit is not the PR's head: no PR yet, or an unpushed rule 5 fix or rebase) returns this text as its reply.
+   A reviewer that cannot post (the reviewed commit is not the PR's head: no PR yet, or an unpushed rule 5 fix, rebase or merge) returns this text as its reply.
    Push the commit as reviewed (step 1), with no amend and no rebase (if one is needed, review again), open the PR if it is the first push, then post the text unchanged: the pushed head is the reviewed SHA, so the comment's first line stays true.
    A re-review covers only what changed since the last reviewed commit, runs once after every finding is fixed, and prefers Antigravity when Gemini quota allows, otherwise the Sonnet [`reviewer`](../../../.claude/agents/reviewer.md) agent; a wording-only fix gets no re-review, so reply to the finding with the new text, except on a rule 5 PR, where it is re-reviewed like any other fix.
    A fix to any other PR is pushed first and its re-review posts a comment at the new head; the merge bar reads only comments at the current head.
@@ -62,10 +66,9 @@ Part of the [`running-unattended`](SKILL.md) skill.
    Leave out `--delete-branch`: on a PR that merges at once it also deletes the local worktree holding the branch, and the repo deletes the remote branch on merge anyway.
    GitHub then merges once the `main` ruleset's required checks pass and every review thread is resolved, but it reads neither the review comment nor review-body findings, so arm last, and disarm (`gh pr merge <n> --disable-auto`) before pushing a fix.
    A stacked PR's base has no ruleset, so arming it would merge it into its parent without CI: arm it only once its parent has merged and GitHub has retargeted it to `main`.
-   `gh pr merge --auto` uses GraphQL, which a cloud session's proxy refuses: there, arm and disarm through the REST route in [`cloud.md`](../working-in-an-environment/cloud.md#github-rest-only).
-   Until that row records the route's method and body, a cloud run leaves a PR that meets this bar unarmed, says so in a PR comment, and lists it under **Needs you**.
+   `gh pr merge --auto` uses GraphQL, which a cloud session's proxy refuses: there, arm with the MCP tool `enable_pr_auto_merge` while checks are pending, and when the PR's merge state is `clean`, merge it with `merge_pull_request`, as [`cloud.md`](../working-in-an-environment/cloud.md#github-rest-only) says.
    - No check has failed on `HEAD`, `mise run check` passed locally on that same commit, and any CodeRabbit review a person requested since the latest push has completed or had its step 4 check.
-   - Every review-body finding is answered (the ruleset enforces resolved threads), and the dispatched review's comment at `HEAD` says `clean` (for a rule 5 PR, the comment you posted from its pre-push review): confirm its URL came from the review you dispatched at `HEAD` and run the local (GraphQL) or cloud (REST) command below, whichever your shell can run (both accept only `OWNER`/`MEMBER`/`COLLABORATOR` comments).
+   - Every review-body finding is answered (the ruleset enforces resolved threads), and the dispatched review's comment at `HEAD` (a child session's self-review included) says `clean` (for a rule 5 PR, the comment you posted from its pre-push review): confirm its URL came from the review you dispatched at `HEAD` and run the local (GraphQL) or cloud (REST) command below, whichever your shell can run (both accept only `OWNER`/`MEMBER`/`COLLABORATOR` comments).
      The bar is met only when it prints `true`.
      On `false` (no comment at `HEAD`, a comment only at an older SHA, or the newest comment at `HEAD` says `needs changes`), dispatch a re-review at `HEAD` (step 2).
 
@@ -82,13 +85,13 @@ Part of the [`running-unattended`](SKILL.md) skill.
        p=$((p+1))
      done | tail -n 1 | grep -q ': clean$' && echo true || echo false
      ```
-   - The worker's report says each acceptance item is met, and the PR body carries `Fixes #N` (or `Part of #N`), read as a boolean (`gh api repos/{owner}/{repo}/pulls/<n> --jq '.body | test("(Fixes|Part of) #<N>\\b")'`), not by opening the body.
+   - The worker's report says each acceptance item is met, and the PR body carries `Fixes #N`, `Closes #N`, or `Part of #N`, read as a boolean (`gh api repos/{owner}/{repo}/pulls/<n> --jq '.body | test("(Fixes|Closes|Part of) #<N>\\b")'`), not by opening the body.
    - **Environment:** in a cloud session, a rendering PR that [`cloud.md` § Rendering](../working-in-an-environment/cloud.md#rendering) sends to the GPU takes `local-only` and stays unarmed.
      A local-windows run takes such a PR from the queue, runs `mise run judge` on the GPU as the PR body asks, and, when the GPU's verdict matches lavapipe's, removes `local-only` and arms it under this bar; otherwise it fixes the PR as for a failed check.
    - **Allowed vs blocked changes:** the coordinator lists the PR's changed file names (`gh api "repos/{owner}/{repo}/pulls/<n>/files?per_page=100&page=1" --jq '.[].filename'`, next page by number), never the diff; a path under `docs/adr/`, `crates/stunt-core/Cargo.toml` or `research/parity/references.toml` sends a worker or the reviewer to say whether it is a blocked change before arming.
      A draft (`gh api repos/{owner}/{repo}/pulls/<n> --jq .draft` prints `true`) goes to a human without a worker, per the **Never** rule that follows.
      Updating `[film.expected.<class>]` in `research/parity/references.toml` for an adopted parity change is **allowed** to merge (`crates` must be `git rev-parse HEAD:crates` with `crates/` clean).
-     **Never** arm or merge draft PRs, PRs that repin a film's capture hash (`sha256` or `all_sha256` in `references.toml`), PRs that add a dependency to `stunt-core` (`[I7]`), or PRs that add or modify an ADR (unless an accepted ADR is already approved by the user) — hand those to a human (`ready-for-human`).
+     **Never** arm or merge draft PRs, PRs that repin a film's capture hash (`sha256` or `all_sha256` in `references.toml`), PRs that add a dependency to `stunt-core` (`[I7]`), or PRs that add or modify an ADR (unless an accepted ADR is already approved by the user, or its ADR changes only retarget links to follow a move, which the reviewer confirms; link text that spells the old path counts as prose, and prose naming an old path goes to a human) — hand those to a human (`ready-for-human`).
 6. **After arming:** Fast-forward the `main` ref without switching any checkout (`git fetch origin main:main`; skip it when git refuses because a checkout has `main` checked out), on local-windows run the disk check and tidy ([`loop-and-bounds.md`](loop-and-bounds.md#clock-and-disk-space)), and refresh the queue.
 
 ## Filing issues and PowerShell safety

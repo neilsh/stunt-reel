@@ -77,6 +77,10 @@ class Report:
     mean_iou_scored: float | None = None
     mean_index_agreement_scored: float | None = None
     mean_loss_by_class_scored: dict[str, float] | None = None
+    #: The ``props`` loss split by prop shape id (``"unattributed"`` for props pixels with no
+    #: shape); sums to ``mean_loss_by_class_scored["props"]``. ``None`` when the render has no
+    #: shape plane.
+    mean_loss_by_shape_scored: dict[str, float] | None = None
     scored_frames: int = 0
     excluded_frames: int = 0
     credits_missing_frames: int = 0
@@ -208,6 +212,9 @@ def _report_object(document: Any, path: Path | None) -> Report:
         mean_loss_by_class_scored=_number_map(
             raw.get("mean_loss_by_class_scored"), path, "mean_loss_by_class_scored"
         ),
+        mean_loss_by_shape_scored=_number_map(
+            raw.get("mean_loss_by_shape_scored"), path, "mean_loss_by_shape_scored"
+        ),
         scored_frames=_as_int(raw.get("scored_frames", 0), path, "scored_frames"),
         excluded_frames=_as_int(raw.get("excluded_frames", 0), path, "excluded_frames"),
         credits_missing_frames=_as_int(
@@ -251,6 +258,7 @@ def _report_document(report: Report) -> dict[str, Any]:
         "mean_iou_scored": report.mean_iou_scored,
         "mean_index_agreement_scored": report.mean_index_agreement_scored,
         "mean_loss_by_class_scored": report.mean_loss_by_class_scored,
+        "mean_loss_by_shape_scored": report.mean_loss_by_shape_scored,
         "scored_frames": report.scored_frames,
         "excluded_frames": report.excluded_frames,
         "credits_missing_frames": report.credits_missing_frames,

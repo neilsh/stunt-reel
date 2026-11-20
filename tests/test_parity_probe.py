@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+lazy from collections.abc import Iterator
 
 import pytest
 
@@ -19,6 +21,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 import parity_probe  # noqa: E402
 
 from stunt_reel import (  # noqa: E402
+    dataroot,
     matched_frames,
     parity_artifacts,
     parity_layout,
@@ -377,3 +380,128 @@ def test_main_refuses_a_film_with_no_background_row_with_exit_1(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err.startswith("parity_probe: LAND.FLM: cannot read the [land] row")
+
+
+def _plane(width: int, rows: int, *dots: tuple[int, int, int]) -> bytes:
+    """A ``width`` x ``rows`` plane of 0 with each ``(x, y, index)`` dot set."""
+    plane = bytearray(width * rows)
+    for x, y, index in dots:
+        plane[y * width + x] = index
+    return bytes(plane)
+
+
+def test_index_stats_counts_boxes_and_centres_the_pixels_of_one_index() -> None:
+    plane = _plane(8, 6, (1, 2, 9), (4, 2, 9), (1, 5, 9), (3, 3, 7))
+    stats = parity_probe.index_stats(plane, 8, 6, 9, 9)
+    assert stats.count == 3
+    assert stats.box == (1, 2, 4, 5)
+    assert stats.centroid == (2.0, 3.0)
+
+
+def test_index_stats_takes_an_inclusive_range() -> None:
+    plane = _plane(8, 6, (0, 0, 9), (2, 2, 10), (4, 4, 11), (6, 5, 12))
+    stats = parity_probe.index_stats(plane, 8, 6, 9, 11)
+    assert (stats.count, stats.box, stats.centroid) == (3, (0, 0, 4, 4), (2.0, 2.0))
+
+
+def test_index_stats_of_an_absent_index_has_no_box_or_centroid() -> None:
+    stats = parity_probe.index_stats(_plane(4, 4, (1, 1, 5)), 4, 4, 239, 239)
+    assert stats == parity_probe.IndexStats(0, None, None)
+
+
+def test_index_stats_leaves_out_rows_below_the_viewport() -> None:
+    plane = _plane(4, 4, (1, 1, 5), (2, 3, 5))
+    assert parity_probe.index_stats(plane, 4, 3, 5, 5).count == 1
+
+
+def test_centroid_offset_is_ours_minus_theirs_and_none_when_a_side_is_empty() -> None:
+    ours = parity_probe.IndexStats(1, (3, 4, 3, 4), (3.0, 4.0))
+    theirs = parity_probe.IndexStats(2, (0, 0, 1, 1), (0.5, 1.0))
+    none = parity_probe.IndexStats(0, None, None)
+    assert parity_probe.centroid_offset(ours, theirs) == (2.5, 3.0)
+    assert parity_probe.centroid_offset(none, theirs) is None
+    assert parity_probe.centroid_offset(ours, none) is None
+
+
+@pytest.mark.parametrize(("text", "expected"), [("239", (239, 239)), ("236-239", (236, 239))])
+def test_parse_index_range_reads_an_index_or_a_range(text: str, expected: tuple[int, int]) -> None:
+    assert parity_probe.parse_index_range(text) == expected
+
+
+@pytest.mark.parametrize("text", ["", "x", "256", "9-3", "1-2-3", "-4"])
+def test_parse_index_range_refuses_junk(text: str) -> None:
+    with pytest.raises(ValueError, match="--index"):
+        parity_probe.parse_index_range(text)
+
+
+def test_index_rows_reports_both_sides_and_the_offset_per_tick(tmp_path: Path) -> None:
+    geometry = Geometry(width=8, height=6, viewport_rows=5)
+    ours = tmp_path / "ours"
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    frames = [
+        StoredFrame(
+            indices=_plane(8, 6, *dots),
+            layers=bytes(2 * 8 * 6),
+            palette=bytes(768),
+        )
+        for dots in ([(6, 4, 9)], [])
+    ]
+    parity_artifacts.write_render_store(
+        ours,
+        FilmId(),
+        geometry,
+        [(tick_entry(7), frames[0]), (tick_entry(8), frames[1])],
+        adapter=None,
+    )
+    (reference / "tick_0001.idx").write_bytes(_plane(8, 5, (2, 1, 9), (4, 1, 9)))
+    (reference / "tick_0002.idx").write_bytes(_plane(8, 5, (2, 1, 9)))
+    (reference / "meta.json").write_text(
+        json.dumps({"film": "X.FLM", "frames": [{"film_tick": 7}, {"film_tick": 8}]}),
+        encoding="utf-8",
+    )
+    lines = parity_probe.index_rows(reference, ours, [7, 8, 9], 9, 9)
+    assert lines[1:] == [
+        "7 2 2,1,4,1 3.00,1.00 1 6,4,6,4 6.00,4.00 +3.00 +3.00",
+        "8 1 2,1,2,1 2.00,1.00 0 - - - -",
+        "9 not in the capture (nearest captured: 8, None)",
+    ]
+
+
+def test_index_rows_says_not_in_the_render_for_a_captured_tick_the_store_lacks(
+    tmp_path: Path,
+) -> None:
+    geometry = Geometry(width=8, height=6, viewport_rows=5)
+    ours, reference = tmp_path / "ours", tmp_path / "reference"
+    reference.mkdir()
+    frame = StoredFrame(indices=bytes(8 * 6), layers=bytes(2 * 8 * 6), palette=bytes(768))
+    parity_artifacts.write_render_store(
+        ours, FilmId(), geometry, [(tick_entry(7), frame)], adapter=None
+    )
+    (reference / "tick_0001.idx").write_bytes(bytes(8 * 5))
+    (reference / "tick_0002.idx").write_bytes(bytes(8 * 5))
+    (reference / "meta.json").write_text(
+        json.dumps({"film": "X.FLM", "frames": [{"film_tick": 7}, {"film_tick": 9}]}),
+        encoding="utf-8",
+    )
+    assert parity_probe.index_rows(reference, ours, [9], 9, 9)[1:] == ["9 not in the render"]
+
+
+def test_cmd_index_refuses_a_missing_render_directory_with_exit_2(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(dataroot.DATA_ENV, str(tmp_path))
+    dataroot.data_root.cache_clear()
+
+    @contextlib.contextmanager
+    def held(_root: Path, _film: str) -> Iterator[Path]:
+        yield tmp_path
+
+    monkeypatch.setattr(references, "open_reference", held)
+    args = argparse.Namespace(
+        film="ctry", ticks="1", index="9", ours=tmp_path / "absent", no_build=True
+    )
+    assert parity_probe.cmd_index(args) == 2
+    assert "parity_probe:" in capsys.readouterr().err

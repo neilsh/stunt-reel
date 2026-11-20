@@ -2,7 +2,7 @@
 
 Part of the [`working-in-an-environment`](SKILL.md) skill.
 
-A Claude Code cloud session: a Linux container with its own disk (30 GB, per the owner, 2026-11-16), set up and given the game archives by the SessionStart hook ([`cloud-sessions.md`](../../../docs/cloud-sessions.md)).
+A Claude Code cloud session: a Linux container with its own disk (30 GB, per the owner, 2026-11-16; `df /` read 29 GB used and 11 GB available at 12:13 UTC on 2026-11-18), set up and given the game archives by the SessionStart hook ([`cloud-sessions.md`](../../../docs/cloud-sessions.md)).
 The evidence for each limit below is in [`cloud-sessions.md` § What a cloud session cannot do](../../../docs/cloud-sessions.md#what-a-cloud-session-cannot-do).
 
 ## GitHub: REST only
@@ -23,9 +23,16 @@ Reach GitHub through `gh api` REST routes:
 | State (Shutdown's merged or closed) | `gh api repos/{owner}/{repo}/pulls/<n> --jq '[.state, .merged] \| @tsv'` |
 | Comment | `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/<name>.md` |
 | Labels | the issue label routes in `issue-tracker.md`; a PR shares its issue number |
-| Arm or disarm auto-merge | the proxy's `repos/{owner}/{repo}/pulls/<n>/ccr/auto_merge` route, which it names in place of `gh pr merge --auto` ([`cloud-sessions.md`](../../../docs/cloud-sessions.md#what-a-cloud-session-cannot-do)); its method and body for arming and disarming are not yet recorded: record them in this row the first time they work |
+| Arm auto-merge | the GitHub MCP tool `enable_pr_auto_merge` (`mergeMethod: SQUASH`) while checks are pending |
+| Merge directly | `merge_pull_request` (squash, `expectedHeadSha` = the reviewed head) when the merge state is `clean`, which `enable_pr_auto_merge` refuses |
+| Disarm | the MCP tool `disable_pr_auto_merge`, untested: record it the first time it works |
+
+`enable_pr_auto_merge` also refuses a PR that is `unstable` because of a stale cancelled `PR title` check run, or while `build` is still running: re-run that check, or wait for the running one, then retry; `merge_pull_request` merged such PRs once their checks finished.
 
 A stacked PR can be neither merged nor armed here: keep a dependent change unstacked, started once its parent merges.
+
+The auto mode's permission classifier may refuse a force-push, so merge `origin/main` into a pushed PR branch instead of rebasing it ([`pr-and-filing.md`](../running-unattended/pr-and-filing.md) step 1).
+The proxy refuses ref deletes, so a session cannot delete a remote branch: create no throwaway branch on the remote, and leave a stray one to the owner.
 
 ## Rendering
 
