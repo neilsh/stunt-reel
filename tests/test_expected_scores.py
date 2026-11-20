@@ -385,7 +385,10 @@ def test_a_differing_tree_is_named(repo: Repo, edit: Callable[[Repo], object]) -
     found = crates_tree(repo.root)
     assert found is not None
     assert found != repo.tree
-    assert repo.changed() == f"crates/ changed: tree {found[:7]}, measured on {repo.tree[:7]}"
+    assert (
+        repo.changed()
+        == f"crates/ tree {found[:7]}, measured on {repo.tree[:7]}: awaiting a repin or catch-up repin of this class"
+    )
 
 
 def test_a_crates_with_no_file_left_is_the_empty_tree(repo: Repo) -> None:

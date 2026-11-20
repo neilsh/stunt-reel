@@ -183,7 +183,7 @@ def changed_since(
     if found is None:
         return "git cannot hash crates/ in this checkout"
     if found != expected.crates:
-        return f"crates/ changed: tree {found[:7]}, measured on {expected.crates[:7]}"
+        return f"crates/ tree {found[:7]}, measured on {expected.crates[:7]}: awaiting a repin or catch-up repin of this class"
     if (expected.sha256, expected.all_sha256) != (reference.sha256, reference.all_sha256):
         return "reference pin changed since the measurement"
     return None
