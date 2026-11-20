@@ -14,9 +14,7 @@ use crate::render_store::Palette;
 use super::fade::fade_level;
 use super::frames::reference_luminance;
 use super::loss::{LOSS_CLASSES, attribute_loss, attribute_shape_loss, loss_class};
-use super::mask::{
-    capture_sky_mask, index_agreement, mask_iou_planes, rescale_mask, ui_overlay_mask,
-};
+use super::mask::{index_agreement, mask_iou_planes, rescale_mask, ui_overlay_mask};
 use super::ssim::{compute_window_scores, rescale_mode13h_frame};
 
 /// SSIM window edge, in pixels.
@@ -88,10 +86,12 @@ pub(super) struct FrameScore {
     pub(super) shape_loss: Option<BTreeMap<u16, f64>>,
 }
 
-/// Scores one render against one capture.
+/// Scores one render against one capture, given the capture's sky mask
+/// ([`super::mask::capture_sky_mask`]).
 pub(super) fn score_frame(
     reference: &ReferenceFrame,
     render: &RenderFrame,
+    capture_sky: &[bool],
     policy: &ScorePolicy<'_>,
 ) -> FrameScore {
     let reference_rescaled = reference_luminance(&reference.indices, &reference.palette);
@@ -116,7 +116,7 @@ pub(super) fn score_frame(
     } else {
         windows.iter().map(|w| w.score).sum::<f32>() / windows.len() as f32
     };
-    let codes: Vec<f32> = capture_sky_mask(&reference.indices)
+    let codes: Vec<f32> = capture_sky
         .iter()
         .zip(&render.layers)
         .map(|(&sky, &layer)| f32::from(loss_class(layer, !sky)))
@@ -164,7 +164,7 @@ pub(super) fn score_frame(
             fade_level: fade,
             authored_fade_level: authored_fade,
             scored: authored_fade.is_none_or(|level| level >= policy.min_fade_level),
-            iou: mask_iou_planes(&reference.indices, &render.layers, &overlay),
+            iou: mask_iou_planes(capture_sky, &render.layers, &overlay),
             index_agreement: index_agreement(&reference.indices, &render.indices, &overlay),
             loss_by_class: attribute_loss(&windows, &classes, SSIM_WINDOW),
         },
@@ -181,10 +181,15 @@ mod tests {
 
     use super::*;
     use crate::parity::fade::fade_reference_set;
-    use crate::parity::mask::is_capture_sky;
+    use crate::parity::mask::{capture_sky_mask, is_capture_sky};
     use crate::parity::test_support::{plane_index, scaled_palette};
 
     const PIXELS: usize = MODE13H_WIDTH * MODE13H_HEIGHT;
+
+    /// A capture's sky mask, with no previous frame to carry from.
+    fn sky(reference: &ReferenceFrame) -> Vec<bool> {
+        capture_sky_mask(&reference.indices, None).sky
+    }
 
     fn capture(scale: f32) -> ReferenceFrame {
         ReferenceFrame {
@@ -230,7 +235,7 @@ mod tests {
             fade_set: &fade_set,
             min_fade_level: 0.25,
         };
-        score_frame(reference, render, &policy).metrics
+        score_frame(reference, render, &sky(reference), &policy).metrics
     }
 
     #[test]
@@ -311,7 +316,8 @@ mod tests {
             fade_set: &fade_set,
             min_fade_level: 0.0,
         };
-        let scored = score_frame(&capture(1.0), &render, &policy);
+        let reference = capture(1.0);
+        let scored = score_frame(&reference, &render, &sky(&reference), &policy);
         let by_shape = scored.shape_loss.expect("a shape plane was given");
         let props_loss = f64::from(scored.metrics.loss_by_class[4]);
         assert!(props_loss > 0.01, "the disturbed render loses on props");
@@ -319,11 +325,12 @@ mod tests {
         let total: f64 = by_shape.values().sum();
         assert!((total - props_loss).abs() < 1e-6, "{total} != {props_loss}");
         let without = score_frame(
-            &capture(1.0),
+            &reference,
             &RenderFrame {
                 shapes: None,
                 ..render
             },
+            &sky(&reference),
             &policy,
         );
         assert!(without.shape_loss.is_none());

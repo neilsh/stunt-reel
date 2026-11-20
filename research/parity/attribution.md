@@ -1,5 +1,5 @@
 ---
-summary: "Splits the SSIM loss of the seven VAULT reference films by render layer: props lead on four and terrain on two, BALLOON's low mask IoU comes from a straight-down camera we draw blank and a zenith sky outside the scorer's band, and a pre-decal CTRY window study puts most loss at edges, not flat colour."
+summary: "Splits the SSIM loss of the seven VAULT reference films by render layer: props lead on four and terrain on two, BALLOON's low mask IoU came from a straight-down camera we drew blank and a zenith sky outside the scorer's band, both since fixed, and a pre-decal CTRY window study puts most loss at edges, not flat colour."
 sidebar_label: "Attribution: where our loss sits"
 ---
 # Parity Attribution: Where Our Render's Loss Sits
@@ -230,8 +230,8 @@ Widening the capture sky to 224..=238 is not free: it raises `bomb` 0.9118 -> 0.
 Where looked at, those pixels are shape paint, not our geometry drawn over sky: on `traintnl` a blue rectangle on a dark red wall under a red roof holds 18,144 of them and the rear car's windows are 224 too, and on `bomb`, of the 105,219 pixels at 224 (as many as lie on our geometry), 104,958 are an emblem on a building wall, while its 59,520 at 226 are zenith sky in the top five rows.
 So the scorer keeps 227..=238 as its index band ([`method.md`](method.md) section 2.0).
 _Source: [who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
-Since 2026-11-18 a run of 224 to 226 that reaches row 0 and both side columns counts as sky by position, which raises `balloon` to 0.7186 on lavapipe; the figures above are on the scale before it, and the sky the balloon cuts off from row 0 or a side still counts as geometry ([`method.md`](method.md) section 2.0).
-Follow-ups: the camera [#615](https://github.com/neilsh/stunt-reel/issues/615), the sky the balloon cuts off [#745](https://github.com/neilsh/stunt-reel/issues/745), the zenith bands and the sun [#617](https://github.com/neilsh/stunt-reel/issues/617).
+Since 2026-11-18 a run of 224 to 226 that reaches row 0 and both side columns counts as sky by position, and since 2026-11-20 a run overlapping a pixel the previous captured frame counted by that rule counts too, which counts the sky the balloon cuts off; the figures above are on the scale before both rules ([`method.md`](method.md) section 2.0).
+Follow-up: the zenith bands and the sun [#617](https://github.com/neilsh/stunt-reel/issues/617).
 
 _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)._
 
