@@ -123,7 +123,7 @@ The flat trees are single-sided in `PLAYONE` as in the renderer, but they are dr
 * **One face, drawn from one side.**
   The pines `0x03A3` and `0x03A7` (`INTRO.ALL`) are an `OP_IPG` type 8 quad and two `POLYZ` triangles wound the same way; no second, reversed face exists.
   `POLYZ` (`0x9B78`) draws through the edge builder `0xC9D4`, which takes its left edge by walking backward from the topmost vertex, and the flat filler `0x7571` skips a row whose right end is left of its left (`sub ax,cx; jl` at `0x75A1`, section 8.9).
-  So a `POLYZ` face draws only where its vertices run clockwise on screen, the side the renderer's `FrontFace::Cw` cull keeps (`[Supported Inference]`: the clipping variant `0xC50E` was not read).
+  So a `POLYZ` face fills only where its vertices run clockwise on screen, the side the renderer's `FrontFace::Cw` cull keeps, clipped or not; [section 8.12](sod-vm-lines-spans.md#812-back-faces-the-span-test) gives the rows a back face still draws.
 * **Two view matrices.**
   The view setup builds the camera's rotation with `0824:04E5` from the view slot's words `+0x10`, `+0x12`, `+0x14` (roll, pitch, yaw, [`memory-map-main.md`](memory-map-main.md)) and transposes it into `0x80C0` (`0x12A7..0x12BD`).
   It then zeroes `SI`, the yaw (`xor si,si` at `0x12C2`), and builds `0x809C` the same way from roll and pitch alone (`0x12C4..0x12DA`; with the view selector `DS:0x2285` at 0, as in film playback, the words go in unchanged, and its other values swap or negate roll and pitch but still zero the yaw).
@@ -164,29 +164,32 @@ The slot `0x2246` is the fourth word of the vector table copied from `DS:0x10A4`
   No shipped shape does (the census finds none), so `vm.rs` still stops on a count below 2.
 * **Two edges.**
   It finds the topmost vertex, then fills a left and a right edge table by one walk each from it.
-  The `GVPOLY` entry (`[0x812D] = 0xFF`, `sub si,4` from `0xCAE7`, `add si,4` from `0xCBA9`) measures the same `dx` and `dy` in both walks with the same arithmetic, so left equals right on every row.
+  The `GVPOLY` entry (`[0x812D] = 0xFF`, the Gouraud route) walks its left edge from `0xCAE7`; its right edge uses the same arithmetic from `0xCBA9` only when its top row is clipped, and otherwise jumps to the `POLYZ` forward walk (`jmp 0xCDE6` at `0xCBA6`).
+  So left equals right on every row only for a top-clipped `GVPOLY`; unclipped, its right end is that of the `POLYZ` walk below (read, not traced).
   The `POLYZ` entry (`[0x812D] = 0`, walks from `0xCC53` and `0xCDAE`) is symmetric only for steep edges (`|dx| <= dy`, the integer stepper at `0xCCF5` and `0xCE4E`).
-  For shallower ones the left and right walks start or end half a step off the vertex on opposite sides, so a `POLYZ` of two vertices is a connected run about `|dx/dy|` pixels wide per row there (read from the instructions, not traced).
+  For shallower ones the left walk takes the leftmost pixel of each row's run and the right walk the rightmost, each half a step from the edge's line ([section 8.12](sod-vm-lines-spans.md#812-back-faces-the-span-test)), so a `POLYZ` of two vertices is a connected run about `|dx/dy|` pixels wide per row there, in either vertex order (read from the instructions, not traced).
   When both vertices share a row (`[0x41D0] == [0x41D2]`) `0xCAB4` writes a single row spanning the smaller to the larger column.
 * **The flat filler draws it.**
   The driver routine `0x7571` skips the table's first two words, reads the top and bottom row (the count is their difference) and, per row, `right - left`, skips a negative span, and `inc ax` before `rep stosw`: spans are inclusive, so left equal to right is one pixel.
   Clipping against `[0x2294]` and `[0x2296]` is applied first.
-* **`GVPOLY16`** (`0x9A24`; `OP_GVPOLY`'s handler `0x995C` was not traced for two vertices) runs the same edge builder.
+* **`GVPOLY16`** (`0x9A24`) runs the same edge builder, as does `OP_GVPOLY`'s handler `0x995C`, which differs only in shifting the shade by 1 where `0x9A24` shifts by 2.
   With `[0x806C]` nonzero it takes the flat route (`call [0x8080]`, gateway, colour 0, shade words skipped).
   Otherwise `[0x806B]` clear means the flat route with a colour from the first vertex's shade, and set means Gouraud: `0xC9D4` is called directly.
   The Gouraud route stores one shade per vertex (its loop counts down `CL`, right for two), and calls the Gouraud filler `0x75DB`, which tests `right - left + 1 > 0` per row: a thin line of interpolated shade.
+  A vertex with its clip flag set sends the Gouraud route back through the flat route (`0x99BB`, `0x9A8A`).
 
-So the reading is that `PLAYONE` draws a two-vertex polygon as a thin line on the paths read (`POLYZ` through `0xC9D4` and `GVPOLY16`'s Gouraud route); the vertex-rejection path, the clipping variant `0xC50E` and `OP_GVPOLY`'s handler were not traced for this case, so whether a rejected or clipped one draws stays open.
-On the paths read: one pixel per row for steep lines and `GVPOLY` (a shaded one), a connected run for shallow `POLYZ` lines, one row wide when horizontal.
+So the reading is that `PLAYONE` draws a two-vertex polygon as a thin line, with no facing test: its two walks follow the same edge, whatever the vertex order ([section 8.12](sod-vm-lines-spans.md#812-back-faces-the-span-test)).
+The clipping variant `0xC50E` keeps the order and runs the same builder; the vertex-rejection exit `0xC9CB` (a clip flag set) draws nothing for `POLYZ`.
+One pixel per row for steep lines and a top-clipped `GVPOLY` (a shaded one), a connected run for shallow `POLYZ` lines, one row wide when horizontal; whether an unclipped `GVPOLY`'s two steppers agree on a steep line's rows was not worked out.
 It is neither skipped nor an error.
 `vm.rs` emits it as a line, which the renderer draws one Mode 13h pixel wide at any distance, as it draws `ZLINETO` (section 8.10): one pixel per row when `|dy| > |dx|` and per column otherwise, both ends included.
-For steep lines and `GVPOLY` that is the reading above; for a shallow `POLYZ` it is one pixel per column where the reading gives a run about `|dx/dy|` wide per row, which covers about the same pixels (not compared pixel for pixel).
+For steep lines and a top-clipped `GVPOLY` that is the reading above; for a shallow `POLYZ` it is one pixel per column where the reading gives a run about `|dx/dy|` wide per row, which covers about the same pixels (not compared pixel for pixel).
 Two coincident vertices draw nothing where `PLAYONE` draws a pixel, and a `GVPOLY` line takes the mean shade level, not a gradient.
 No parity reference film is known to place a shape with a two-vertex polygon ([`sod-opcode-coverage.md` § 2.1](../formats/sod-opcode-coverage.md#21-the-side-view-census-shapes-that-do-not-decode-whole)), so the score changes in section 8.10 are taken to come from `ZLINETO` lines.
 
-_Source: [two-vertex polygons read](../../work/2026-11/393_two-vertex-polygons/journal.md#2026-11-11-the-two-vertex-polygon-read-statically)._
+_Source: [two-vertex polygons read](../../work/2026-11/393_two-vertex-polygons/journal.md#2026-11-11-the-two-vertex-polygon-read-statically)._ _Source: [the polygon span builder read for a facing test](../../work/2026-11/850_playone-back-face-cull/journal.md#2026-11-20-the-polygon-span-builder-read-for-a-facing-test)._
 
-Lines and polygon spans (sections 8.10 and 8.11) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md).
+Lines, polygon spans and the back-face span test (sections 8.10 to 8.12) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md).
 
 ## Ruled out
 

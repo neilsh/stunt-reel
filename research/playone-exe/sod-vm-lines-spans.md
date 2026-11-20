@@ -1,5 +1,5 @@
 ---
-summary: "The SOD VM's lines and polygon spans: `MOVETO`/`ZLINETO`/`LINECOL` lines, and polygon spans that include both ends."
+summary: "The SOD VM's lines and polygon spans: `MOVETO`/`ZLINETO`/`LINECOL` lines, polygon spans that include both ends, and the span test that culls an anticlockwise polygon with its outline."
 sidebar_label: "SOD VM lines & spans"
 ---
 
@@ -49,7 +49,7 @@ The flat filler `0x7571`, which `POLYZ` reaches through the gateway (section 8.9
   Per row it reads the left and right ends, clips them to `[0x2294]` and `[0x2296]`, skips a row whose right end is left of its left (`sub ax,cx; jl` at `0x75A1`), and fills `right − left + 1` pixels (`inc ax` at `0x75A5`).
 
 So every row from top to bottom whose right end is not left of its left is drawn, a row with left equal to right as one pixel, however narrow the polygon.
-How the edge builder `0xC9D4` rounds each row's ends was not read, so the pixel-for-pixel extent of a wide polygon is not known.
+Which end of an edge's run of pixels each row takes is in section 8.12; the pixel-for-pixel extent of a wide polygon was not compared with ours.
 
 **What it does to thin polygons** (`[Bounded Observation]`, `INTRO.FLM` tick 3301, [#426](https://github.com/neilsh/stunt-reel/issues/426)).
 The pines `0x03A3` and `0x03A7` are a type-8 quad (section 8.8) whose `INTV` midpoints make two `POLYZ` triangles: the whole tree, and a sliver outside its right edge at most a sixth of its half-width across.
@@ -61,7 +61,8 @@ The renderer follows it in part.
 `stunt-render` draws every edge that exactly one filled triangle of a mesh node uses as a one-pixel screen line (section 8.10), in its end vertices' colours, after the node's triangles, or in a decal node after each fan's triangles ([`outline.rs`](../../crates/stunt-render/src/outline.rs)), so a polygon also covers the pixels its outline crosses.
 It does this as line quads for the shapes drawn per frame (actors and view-facing props such as these pines), and as a line list for the world mesh's props (below).
 With it the pine's sliver draws 23 pixels and the crop's tree colours 1,188.
-The outline lines are wound both ways, like every line here, so a back-facing polygon's outline still draws where nothing hides it, which `PLAYONE` does not do.
+The outline lines are wound both ways, like every line here, so a back-facing polygon's outline still draws where nothing hides it.
+`PLAYONE` has no outline apart from the spans, so a back-facing polygon's ends go with its fill, except on the rows section 8.12 names.
 
 **The world mesh.**
 Line quads cost four vertices and twelve indices an edge, and outlining `LOCATION`'s world that way grew it from 6.7 million vertices and 7.5 million indices to 32.4 million and 84.7 million and made its render, with terrain excluded, fail with a wgpu out-of-memory error.
@@ -74,6 +75,44 @@ With line quads on the per-frame shapes every reference film's score rose but `L
 _Source: [thin polygons measured and outlines drawn](../../work/2026-11/distill-sod-vm/journal.md#2026-11-12-thin-polygons-measured-and-outlines-drawn)._
 
 _Source: [what thins the INTRO conifer field](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-what-thins-the-intro-conifer-field)._ _Source: [polygon outlines scored](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-polygon-outlines-scored-on-the-seven-reference-films)._ _Source: [world-mesh slivers](../../work/2026-11/430_world-mesh-slivers/journal.md#2026-11-12-world-mesh-slivers-by-conservative-rasterization-and-by-a-line-list-outline)._
+
+### 8.12 Back Faces: the Span Test
+
+`[Established]`, static, in the unpatched image (`mise run re-tool -- disasm 0xC50E 0xD000`, `0x995C 0x9B78` and `0x7571 0x7700`; the Patch #3 image not read, nothing traced live).
+Of the routines a shape polygon passes through, none computes a normal, a cross product or a signed area: not the handlers `POLYZ` (`0x9B78`), `OP_GVPOLY` (`0x995C`) and `GVPOLY16` (`0x9A24`), the vertex copiers `0xC9D4` and `0xC50E`, the gateway `0x8010`, nor the fillers.
+The cull is the fillers' row test, applied to a table whose two columns come from walking the vertex list in opposite directions.
+
+* **The span table.**
+  `0xC9D4` and the clipper `0xC50E` copy the polygon's screen points, in stream order, into `work:0x4250` (row word, then column word), and both run on into the span-table builder `0xCA5D`.
+  From the first topmost vertex it walks the list backward (`sub si,4`) into each row's left word (`[work:0x1952] + 0x0A`, stride 4) and forward (`add si,4`) into its right word (`+0x0C`), skipping horizontal edges, until each walk reaches the bottom row.
+* **The test.**
+  The flat filler `0x7571` skips a row whose right word is less than its left (`sub ax,cx; jl` at `0x75A1`, section 8.11); the Gouraud filler `0x75DB` does the same with `inc ax; jg` (`0x7612`, and `0x76DC` on its other route).
+  So a polygon fills where its vertices run clockwise on the screen (rows counting down), and a polygon whose vertices run anticlockwise has its left walk on its right-hand edge and skips every row where its two edges are apart.
+* **Which end of a run.**
+  In the `POLYZ` walks (`0xCC53`, `0xCDAE`, which flat `GVPOLY` routes use too) the backward walker writes the leftmost pixel of each row's run along a shallow edge and the forward walker the rightmost, each half a step from the edge's line (`sar bx,1` at `0xCCBB`, `0xCD40`, `0xCE17`, `0xCEA2`); steep edges step by a midpoint error term (`0xCCF5`, `0xCD76`, `0xCE4E`, `0xCEE4`).
+  A Gouraud `GVPOLY` walks its left edge with its own stepper (`0xCB18`), and its right edge with the `POLYZ` forward walk (`jmp 0xCDE6` at `0xCBA6`) unless its top row is clipped.
+
+What this does, read from the instructions above (not traced live or in a capture):
+
+* **Fill and outline go together.**
+  The spans' ends are the only edge pixels `PLAYONE` draws for a polygon, so a back face loses its "outline" with its fill.
+  A row still draws where the right-end walker's column reaches the left-end walker's: the row of a lone top or bottom vertex (the left walk's column there is at most the vertex's and the right walk's at least, so at least that pixel draws) and any row where the face is narrower than the runs of its two edges.
+* **Zero area.**
+  A polygon on one screen row (`[0x41D0] == [0x41D2]`) is drawn by `0xCAB4` as one span from its least to its greatest column, whatever its order.
+  A polygon whose points lie on one slanted line is drawn along it by both walks, so it has no facing; whether two walks over different edges of the line round a row a column apart was not worked out.
+* **Two vertices** (section 8.9).
+  Both walks follow the same edge, the left walker taking each row's left end and the right walker its right end, so the line draws whatever its vertex order: a two-vertex polygon has no facing test.
+* **Clipping.**
+  `0xC50E` keeps the stream's order and joins the builder at `0xCA5E`, so a clipped polygon is tested the same way.
+  The screen corners it inserts where a polygon leaves one side and enters another run only clockwise (`0xC65A` steps the side index up); for a back face clipped across a corner the result was not worked out.
+  A polygon it finds covering the whole view (`0xC88E`, reached at `0xC5E1` once the vertices' clip flags OR to at least `0x1E`) becomes the four screen corners in clockwise order, so it fills the view whatever its own order.
+* **Vertex rejection.**
+  `0xC9D4` gives up on a polygon with any vertex whose clip-flag byte (register `+0x0A`, `work:0x445A`) is set (`0xC9CB`, carry): `POLYZ` draws nothing, and the Gouraud route of `GVPOLY` and `GVPOLY16` retries it through the flat route (`0x99BB`, `0x9A8A`).
+  It is a clip test, not a facing test.
+
+The renderer culls whole triangles by their clip-space winding (`FrontFace::Cw`, [`attribution.md` § 6](../parity/attribution.md#6-back-faces)), the same side.
+It draws a back face's outline (section 8.11) and none of its rows.
+_Source: [the polygon span builder read for a facing test](../../work/2026-11/850_playone-back-face-cull/journal.md#2026-11-20-the-polygon-span-builder-read-for-a-facing-test)._
 
 ## Ruled out
 
@@ -90,7 +129,13 @@ _Source: [what thins the INTRO conifer field](../../work/2026-11/426_intro-conif
   In a 60 × 60 crop of that tick the pines match the capture's in position, judged by eye at 8×; the slivers explain part of the gap (the crop's tree pixels go from 815 to 1,188 of the capture's 1,471).
   Tick 3290, whose camera sits a few pixels off the capture's, was not compared ([what thins the INTRO conifer field](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-what-thins-the-intro-conifer-field)).
 
+* **A per-polygon facing test in `PLAYONE`** (section 8.12).
+  None of `0x9B78`, `0x995C`, `0x9A24`, `0xC9D4` with its rejection exit `0xC9CB`, `0xC50E` with `0xC6AF`, `0xC65A` and `0xC88E`, `0xCA5D`, `0x8010`, `0x7571` or `0x75DB` computes a normal or a signed area; the authored facing flags `REJ`, `REJVEC` and `REJ2D` (section 8.6) gate sections, and the scenery walker's ground-leaf test `CS:0x23BF` gates a ground leaf, not a shape polygon ([the span builder read](../../work/2026-11/850_playone-back-face-cull/journal.md#2026-11-20-the-polygon-span-builder-read-for-a-facing-test)).
+
 ## 10. Open questions
+
+* **Back faces** (section 8.12).
+  Open: how many pixels a back face draws at its apexes and along thin parts, and whether that is seen in a capture; what a back face clipped across a screen corner draws; whether a collinear polygon of three or more points draws with gaps.
 
 * **Polygon outlines** (section 8.11).
   Open: how `0xC9D4` rounds a row's ends, so whether the outline matches the inclusive spans pixel for pixel; whether `PLAYONE` fills terrain through `0x7571` as well, since outlining terrain scored below the base on `LAND` and `BALLOON`; and whether the world's line-list outline drops end pixels a line quad draws.
