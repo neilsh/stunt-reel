@@ -1,5 +1,5 @@
 ---
-summary: "How the scenery walk places actors among world objects: the actor queue pushes one list at `DGROUP:0x4F00`, the plane nodes split it by the slot's position, and each entry is drawn just before or after the object of the `SP_LEAF` it reaches, or inside that object's display list at `OP_IPG` type 4 when its probe recorded a bucket there (`w` = twice a collision-box code); replayed for `CTRY` tick 871, it draws the explosion after the tower and before the foreground hill, as the capture does."
+summary: "How the scenery walk places actors among world objects: the actor queue pushes one list at `DGROUP:0x4F00`, the plane nodes split it by the slot's position, and each entry is drawn just before or after the object of the `SP_LEAF` it reaches, or inside that object's display list at `OP_IPG` type 4 when its probe recorded a bucket there (`w` = twice a collision-box code); replayed for `CTRY` tick 871, it draws the explosion after the tower and before the foreground hill, as the capture does; 83 of the 2,516 stock shapes carry a box coded 1 to 7, and 75 of them a matching bucket on their traced path."
 sidebar_label: "Actors in the scenery walk"
 ---
 # `PLAYONE.EXE`: Actors in the Scenery Walk
@@ -68,7 +68,7 @@ _Source: [the actor queue's entries, read statically](../../work/2026-11/680_act
 
 ## 4. `CTRY` Tick 871
 
-`[Bounded Observation]`, one frame of one film, replayed statically: the slot and eye positions from `CTRY.FLM` at tick 871 walked through the image's tree as § 2's handlers split the list (`0x1EF2`, `0x200B`, `0x2059`); nothing was run.
+`[Bounded Observation]`, one frame of one film, replayed statically: the slot and eye positions from `CTRY.FLM` at tick 871 walked through the image's tree as § 2's handlers split the list (`0x1EF2`, `0x200B`, `0x2059`); nothing was run in the game.
 The explosion is slot 11 (shape `0x0107`, [`sod-animate.md`](sod-animate.md)), and its entry's extent is `([es:4] >> [es:8]) + 1` (`0x1AF3..0x1AFE`), 17 for `MODEL_0107.SOD`, since the loaded segment is the `.SOD` file two bytes on.
 
 | Object | Leaf | Place in the walk |
@@ -76,6 +76,14 @@ The explosion is slot 11 (shape `0x0107`, [`sod-animate.md`](sod-animate.md)), a
 | Tower, shape `0x03DD` at `(−3191, 0, 2485)` and `(−3191, 0, 2491)` | `0x7C14` | far side (`x < −3188`) of the `SP_XPLANE` at `0x7BBE`, walked before the eye's side |
 | Explosion, slot 11 at `(−3192.7, −1.9, 2489.4)` | `0x7BE0` | its centre is on the far side of `0x7BBE`, but its extent crosses that plane and four others on its path, so with no bucket it goes to each one's eye's side; it reaches `0x7BE0` with the larger depth (22.5 m against 10.4 m) and is drawn before the object |
 | Foreground hill, shape `0x0262` at `(−3180, 0, 2488)` | `0x7BE0` | drawn after the explosion |
+
+`mise run scene-walk -- corpus/stisldem/VAULT/CTRY.FLM --tick 871 --slot 11` reproduces this replay: it samples the film with `stuntreel film-slots`, reads the extent from the shapes' headers and walks the image's tree with `scene_tree.walk_slot`, which splits the entry as § 2's handlers do.
+It reports leaf `0x7BE0`, the five cutting planes above, each sent to the eye's side, and the five `SP_1NODE` nodes on the path, taken as near.
+It also reports five slope nodes (`0x0622`, `0x062C`, `0x5126`, `0x75DE`, `0x75E8`, each split by the slot's centre) and five plane nodes whose planes the extent clears (`0x77C4`, `0x77E4`, `0x7A4C`, `0x7A54`, `0x7BAE`).
+Without `--slot` it prints each slot's DOS-axes position, shape and extent, and the eye and look target.
+The draw order it prints around the explosion is the `0x03DD` tower twice, shape `0x060A` at `(−3156, 0, 2482)` in leaf `0x7BF6`, the explosion, then the hill; `0x060A` has depth −12.2 m, behind the eye.
+It prints each step's view depth, taken along the eye-to-target axis at the shape's origin without its ground offset: 22.5 m for the explosion, 10.4 m for the hill and 21.7 and 20.7 m for the two towers.
+The handler compares a plane at the high word of the eye plus the high word of the negated eye plus the node's sum (`0x1F05..0x1F0D`, with the walk's start at `0x1E43..0x1E7E`), which is one metre below the sum for an eye with a fractional part; the command prints the sum (`x = −3188` for `0x7BBE`) and compares at the lower value.
 
 So the replay gives tower, explosion, hill, the order the capture shows (over the tower, under the hill).
 The plane `x = −3188` separates the tower from the explosion; the hill is ordered against it by the depth compare of the leaf both reach, not by a plane.
@@ -85,6 +93,28 @@ The replay assumes slot 11 recorded no bucket: with one, a plane its extent cros
 `MODEL_0262.SOD` has a collision-box list and `MODEL_03DD.SOD` none.
 _Source: [the CTRY tick 871 explosion replayed](../../work/2026-11/721_ctry-871-replay/journal.md#2026-11-18-the-ctry-tick-871-explosion-replayed-through-the-images-tree)._
 
+## 5. Which Shapes Carry Buckets
+
+`[Bounded Observation]`, one static census of the game's own shapes: the 2,516 shapes of the stock `RES` files (`SUPERSET.ALL`; FreeFlight's six `SCENERY*.RES` are byte-identical to the game's), every box their collision lists reach, nested lists included, read as the probe's object walk `0x2886..0x289E` reads them (record types and sizes: the tables at `DGROUP:0x09FC` in [`memory-map.md`](memory-map.md); each record's words: [`sod.md` § 2.3](../formats/sod.md#23-collision-list)); nothing was run.
+The list starts at the shape segment's word `+0xA`, the `.SOD` header's `collision_meta` ([`sod.md`](../formats/sod.md)), an offset that counts from two bytes before the file's first byte: read so, all 1,279 lists end at a type word `0xFFFF`; read as a file offset, none does.
+Types 0 and 4 (12 bytes) lead to a nested list at `+0xA` when that word is nonzero (`0x2922`, `0x295D`, `0x2AD3`, `0x2B0E`); type 2 (16 bytes) carries § 3's code word at `+0xE`.
+A code records only in the walk's first context, the table `0x09FC` (`0x2979`).
+The walk holds the actor's own collision list in `DI` (`0x285B`): when the actor's shape has none, a nested list is walked in that context once its object record overlaps the actor's extent (`0x290A`, `0x29B6`, `0x2ABB`; then `0x2955`, `0x2A0C`, `0x2B06`); when it has one, a nested list is walked through the actor's records instead (tables `0x0A02`, `0x0A08`, `0x0A0E`), which skip an actor box coded 1 to 8 (`0x2B31`, `0x2D05`), every actor box met by an object record of type 4 (`0x2CFA`) and every actor record of type 4 (`0x2CF6`), and return to `0x09FC` on the object's nested list only after an actor record passes the overlap test (`0x2BD9`, `0x2CA2`, `0x2DAA`, `0x2E74`, `0x2F3A`).
+So the census counts the codes an actor with no collision list can reach; 68 of the 83 coded shapes have a coded box in the top list itself, and the other 15 only in nested lists.
+
+| Shapes | Count |
+|---|---|
+| With a collision list | 1,279 |
+| With a box coded 1 to 7 | 83, every one with a code-1 box; codes 2 to 7 in 32, 21, 12, 8, 4 and 2 |
+| Whose traced display list runs `OP_IPG` type 4 with `w` for each of its codes, and with no other `w` | 75 |
+| With a code whose `w` no `OP_IPG` type 4 in the shape's bytes carries | 8: `0x024A` (`w` 2 and 4), `0x02DE` (6 and 8), and `0x03FD`, `0x3F08`, `0x3F18`, `0x3F1E`, `0x3F24` and `0x4059` (2) |
+| With an `OP_IPG` type 4 and no box coded 1 to 7 | 0 |
+
+The traced display list is the path `stuntreel sod-trace` walks; a branch it does not take is not checked.
+The image's scenery tree places 72 of the 83 at an `SP_LEAF`, `0x024A`, `0x02DE` and `0x03FD` among them (846 of its 68,035 distinct leaf placements).
+An actor whose probe records one of those three shapes' missing `w` goes onto a head that shape's display list does not take (§ 3).
+_Source: [the collision-code census](../../work/2026-11/721_ctry-871-replay/journal.md#2026-11-18-which-stock-shapes-carry-buckets-counted-statically)._
+
 ## Ruled out
 
 * **The actor queue inserts into a `DGROUP:0x2346` head** (the lead of [`sod-animate.md` § Open questions](sod-animate.md#open-questions)): it pushes onto `0x4F00`; an entry reaches a head only at the `SP_LEAF` its probe recorded (§ 1, § 3) ([the static read](../../work/2026-11/680_actor-buckets/journal.md#2026-11-18-where-the-actor-queues-entries-go-read-statically)).
@@ -93,9 +123,12 @@ _Source: [the CTRY tick 871 explosion replayed](../../work/2026-11/721_ctry-871-
 
 * **Slot 11's bucket at tick 871.**
   § 4 assumes no bucket; whether slot 11 is probed and records one at `0x0262`'s leaf, which would send it to leaf `0x7C14`, is not read.
-* **Which shapes carry buckets** ([#721](https://github.com/neilsh/stunt-reel/issues/721) step 2).
-  Count the corpus shapes with collision boxes coded 1 to 7, and whether each one's display list runs `OP_IPG` type 4 with the matching `w` on every path; 152 walk steps reach type 4 ([`sod-vm-generators.md`](sod-vm-generators.md)).
+* **The three tree shapes without a matching bucket.**
+  Whether an actor's probe ever records `0x024A`'s, `0x02DE`'s or `0x03FD`'s missing `w` (§ 5), and which object's display list then takes that head, is not read.
+* **Buckets beyond the stock shapes and the traced path.**
+  § 5 leaves out the shapes of `corpus/siarchive` beyond FreeFlight, which only `local-windows` holds, and the display-list branches `sod-trace` does not take.
 * **The renderer** ([#737](https://github.com/neilsh/stunt-reel/issues/737)).
   `stunt-render` draws the world in one depth-tested pass; drawing each actor at its leaf's place in the partition order needs the scenery's planes at draw time.
+  The world's placement records keep each prop's node and the partition steps above it with their plane words ([`world/placed.rs`](../../crates/stunt-core/src/world/placed.rs)); the actor's own walk and the split of the props around it are not built.
 * **Live check.**
   No breakpoint has confirmed a pending list, a split or a bucket push at run time.

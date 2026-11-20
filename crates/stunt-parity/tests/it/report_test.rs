@@ -29,6 +29,7 @@ fn report() -> Report {
         mean_iou_scored: Some(0.9),
         mean_index_agreement_scored: Some(0.5),
         mean_loss_by_class_scored: None,
+        mean_loss_by_shape_scored: None,
         scored_frames: 2,
         excluded_frames: 0,
         credits_missing_frames: 0,

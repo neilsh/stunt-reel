@@ -487,3 +487,71 @@ fn well_formed_scenery_reports_no_stop() {
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert!(world.scenery_stop.is_none());
 }
+
+/// The world keeps a record of each placement, culled ones included: its node and the
+/// partition step above it, and its shape's collision lists from the seam 3 decode.
+#[test]
+fn each_placement_keeps_a_record_of_its_node_path_and_collision_lists() {
+    use stunt_core::world::Split;
+    let collider =
+        std::fs::read(fixtures_dir().join("synthetic_collision.sod")).expect("read fixture");
+    let mut shapes = fixture_shapes(0x0105);
+    shapes.insert(
+        0x0107,
+        decode_sod(&collider, "MODEL_0107", None, DecodeMode::Strict).expect("decode"),
+    );
+    // Word 1: SP_POS x=10 y=20 z=30, next -> word 6. Word 6: SP_ZPLANE with sortvalue 5,
+    // child +1 the leaf at word 10 (the collider, which has no vertices, so the cull drops
+    // it), child +2 the leaf at word 12 (the minimal shape).
+    let words = [0, 0, 10, 20, 30, 12, 8, 20, 24, 5, 10, 0x0107, 10, 0x0105];
+    let scenery = words_to_bytes(&words);
+    let inputs = WorldInputs {
+        anchors: &[],
+        map: None,
+        scenery: Some(&scenery),
+        view_eyes: &[[-10.0, -20.0, 40.0]],
+        max_zoom: 1.0,
+        max_lod_shift: 1,
+        min_corner_depth: 0.804,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
+    };
+    let world = build_world(&inputs, &shapes).expect("world");
+    assert_eq!(world.props_placed, 1);
+    let placed = &world.placements;
+    let summary: Vec<(u16, u32, bool, bool)> = placed
+        .records
+        .iter()
+        .map(|r| (r.shape, r.node.0, r.drawn, r.collision.is_some()))
+        .collect();
+    assert_eq!(
+        summary,
+        [(0x0107, 10, false, true), (0x0105, 12, true, false)]
+    );
+    let plane = Split::ZPlane {
+        origin: 30,
+        sortvalue: 5,
+    };
+    for (record, child) in placed.records.iter().zip([0, 1]) {
+        assert_eq!(record.raw, [10, 20, 30]);
+        assert_eq!(record.position, [-10.0, -20.0, 30.0]);
+        assert!(!record.stand_in);
+        let path: Vec<_> = placed
+            .path(record)
+            .iter()
+            .map(|step| (step.node.0, step.split, step.child))
+            .collect();
+        assert_eq!(path, [(6, plane, child)]);
+    }
+    let lists = placed
+        .collision(&placed.records[0])
+        .expect("collision lists");
+    assert_eq!(Some(lists), shapes[&0x0107].collision());
+    assert_eq!(lists.lists.len(), 3);
+    assert_eq!(
+        placed.collisions.len(),
+        1,
+        "one entry per shape with a list"
+    );
+    assert_eq!(placed.collision(&placed.records[1]), None);
+}

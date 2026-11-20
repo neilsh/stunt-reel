@@ -890,3 +890,65 @@ def test_a_split_keyed_by_a_moved_directorys_new_path_is_refused(
     assert "key it by its pre-move path" in err
     assert f"{SPLIT_DIR_NEW}/x.md" in err
     assert _snapshot(root) == before
+
+
+PARTIAL_SPLIT = f"""\
+[[split]]
+from = "{SPLIT}#decisions"
+to = "{SPLIT_DECISIONS}"
+"""
+
+
+@needs_git
+def test_a_partial_split_leaves_links_to_sections_that_stay_alone(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Issue #758: only the sections that move need a rule; a heading that stays needs none."""
+    tree: dict[str, str | bytes] = {
+        NOTE: f"See [goals](../{SPLIT}#goals), [d](../{SPLIT}#decisions) and [x](../{SPLIT}).\n",
+        SPLIT: "# X\n\n## Goals\n\n## Decisions\n",
+        "plan.toml": PARTIAL_SPLIT,
+    }
+    root = _repo(tmp_path, tree)
+    assert _apply(root, "move", moves="plan.toml") == 0
+    assert (root / NOTE).read_text(encoding="utf-8") == (
+        f"See [goals](../{SPLIT}#goals), [d](../{SPLIT_DECISIONS}#decisions) and [x](../{SPLIT}).\n"
+    )
+    assert _apply(root, "inside", "--dry-run", moves="plan.toml") == 0
+
+    (root / NOTE).write_text(f"[gone](../{SPLIT}#nowhere)\n", encoding="utf-8")
+    assert _apply(root, "move", "--dry-run", moves="plan.toml") == 1
+    assert "no [[split]] mapping" in capsys.readouterr().err
+
+
+@needs_git
+def test_a_partial_split_still_reports_headings_the_cut_removes_or_renumbers(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A sub-heading of a moved section, a renumbered duplicate and a moved note stay reported."""
+    cases = {
+        "sub-heading": ("# X\n\n## Goals\n\n## Decisions\n\n### Log\n", "log", PARTIAL_SPLIT),
+        "renumbered": (
+            "# X\n\n## Decisions\n\n### Notes\n\n## Goals\n\n### Notes\n",
+            "notes-1",
+            PARTIAL_SPLIT,
+        ),
+        "moved note": (
+            "# X\n\n## Goals\n\n## Decisions\n",
+            "goals",
+            PARTIAL_SPLIT + f'\n[[move]]\nfrom = "{SPLIT}"\nto = "{RENAMED}"\n',
+        ),
+        "dissolved note": (
+            "# X\n\n## Goals\n\n## Decisions\n",
+            "goals",
+            PARTIAL_SPLIT + f'\n[[split]]\nfrom = "{SPLIT}"\nto = "{SPLIT_INDEX}"\n',
+        ),
+    }
+    for name, (note, fragment, plan) in cases.items():
+        (tmp_path / name.replace(" ", "-")).mkdir()
+        root = _repo(
+            tmp_path / name.replace(" ", "-"),
+            {NOTE: f"[l](../{SPLIT}#{fragment})\n", SPLIT: note, "plan.toml": plan},
+        )
+        assert _apply(root, "move", "--dry-run", moves="plan.toml") == 1, name
+        assert "no [[split]] mapping" in capsys.readouterr().err, name

@@ -3,7 +3,10 @@
 //! A render directory holds its planes in per-film-second zstd chunks: `frames.zst` (one palette
 //! index byte per pixel), `layers.zst` (one little-endian u16 layer per pixel) and `palettes.zst`
 //! (768-byte palettes). This record is the table of contents of those files; the adapters own the
-//! bytes.
+//! bytes. It also lists each optional per-pixel plane the directory holds beside them (ADR 0052),
+//! such as `shapes.zst`: a plane file it does not list is not part of the render.
+
+use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -119,6 +122,31 @@ pub struct RenderChunk {
     pub layer: StoreSpan,
 }
 
+/// The `.zst` files every render holds, whose names no optional plane may take.
+pub const CORE_FILES: [&str; 3] = ["frames.zst", "layers.zst", "palettes.zst"];
+
+/// One optional plane file of a render, listed in its record so a reader can tell the file is
+/// this render's own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct PlaneListing {
+    /// Lowercase hex SHA-256 of the whole file.
+    pub sha256: String,
+    /// The file's chunk for each entry of [`RenderRecord::chunks`], in the same order, tiling
+    /// the file from offset 0.
+    pub chunks: Vec<StoreSpan>,
+}
+
+impl PlaneListing {
+    /// Bytes the listed chunks cover, which is the file's length; `None` when they overflow a
+    /// u64.
+    #[must_use]
+    pub fn end(&self) -> Option<u64> {
+        self.chunks
+            .iter()
+            .try_fold(0u64, |end, span| end.checked_add(span.length))
+    }
+}
+
 /// Where a tick's planes are: its chunk, and its position within that chunk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TickSlot {
@@ -162,6 +190,9 @@ pub struct RenderRecord {
     pub palette_count: u32,
     /// One entry per film second that holds a tick, ascending.
     pub chunks: Vec<RenderChunk>,
+    /// Each optional plane file the render holds, keyed by file name (`shapes.zst`); empty when
+    /// it holds none.
+    pub planes: BTreeMap<String, PlaneListing>,
     /// Adapter the frames were drawn on; absent in renders written before it was recorded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adapter: Option<RenderAdapter>,
@@ -178,8 +209,10 @@ impl RenderRecord {
     ///   ticks carry the same film clock or descend.
     /// - [`ArtifactError::RenderStore`] if a tick's `palette_index` is not below `palette_count`,
     ///   or the chunk table does not cover the ticks second by second with contiguous spans of
-    ///   both plane files. The plane files are not read; checking their lengths against the last
-    ///   span is the caller's.
+    ///   both plane files, or a plane listing has a name that is not a bare `.zst` file name or
+    ///   is one of [`CORE_FILES`], a digest that is not 64 lowercase hex digits, or chunks that
+    ///   do not pair one to one with the chunk table and tile its file from offset 0. The plane
+    ///   files are not read; checking their lengths and digests is the caller's.
     pub fn validate(&self) -> Result<(), ArtifactError> {
         if self.schema_version != crate::RENDER_SCHEMA_VERSION {
             return Err(ArtifactError::UnsupportedVersion {
@@ -208,7 +241,64 @@ impl RenderRecord {
                 )));
             }
         }
-        self.validate_chunks()
+        self.validate_chunks()?;
+        self.validate_planes()
+    }
+
+    /// Checks each plane listing's name, digest and chunk spans.
+    fn validate_planes(&self) -> Result<(), ArtifactError> {
+        for (name, listing) in &self.planes {
+            let at = |reason: String| ArtifactError::store(format!("planes[{name:?}]: {reason}"));
+            let bare = name.strip_suffix(".zst").is_some_and(|stem| {
+                !stem.is_empty()
+                    && stem
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+            });
+            if !bare {
+                return Err(at(
+                    "is not a bare file name of letters, digits, `_` and `-` ending `.zst`"
+                        .to_string(),
+                ));
+            }
+            if CORE_FILES.contains(&name.as_str()) {
+                return Err(at("names a file every render holds".to_string()));
+            }
+            if listing.sha256.len() != 64
+                || !listing
+                    .sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            {
+                return Err(at(format!(
+                    "sha256 {:?} is not 64 lowercase hex digits",
+                    listing.sha256
+                )));
+            }
+            if listing.chunks.len() != self.chunks.len() {
+                return Err(at(format!(
+                    "lists {} chunks but the chunk table has {}",
+                    listing.chunks.len(),
+                    self.chunks.len()
+                )));
+            }
+            let mut end = 0u64;
+            for (number, span) in listing.chunks.iter().enumerate() {
+                if span.offset != end {
+                    return Err(at(format!(
+                        "chunks[{number}] offset {} does not continue the previous chunk \
+                         (expected {end})",
+                        span.offset
+                    )));
+                }
+                end = end.checked_add(span.length).ok_or_else(|| {
+                    at(format!(
+                        "chunks[{number}] runs past the largest file offset"
+                    ))
+                })?;
+            }
+        }
+        Ok(())
     }
 
     /// Checks that the chunks cover the ticks second by second and tile both files.

@@ -62,12 +62,40 @@ pub(super) const UP: [f32; 3] = [0.0, 1.0, 0.0];
 /// patches and props (`research/playone-exe/world-scene-residuals.md` section 6.6).
 pub const GROUND_NODE: &str = "WORLD_GROUND";
 
+/// A run of a world's vertices that placements of one prop shape appended, one after another.
+///
+/// Each placed prop mesh appends its own vertices, so every prop vertex of the world mesh lies
+/// in exactly one run and no other vertex lies in any (`World::prop_runs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PropRun {
+    /// The run's first vertex in the world mesh.
+    pub first: u32,
+    /// One past the run's last vertex.
+    pub end: u32,
+    /// Resource ID of the shape those placements draw.
+    pub shape: u16,
+}
+
+/// Appends vertices `first..end` of shape `shape` to `runs`, which are in vertex order,
+/// extending the last run when it ends at `first` with the same shape; an empty range adds
+/// nothing.
+fn record_prop_run(runs: &mut Vec<PropRun>, first: u32, end: u32, shape: u16) {
+    if end <= first {
+        return;
+    }
+    match runs.last_mut() {
+        Some(last) if last.end == first && last.shape == shape => last.end = end,
+        _ => runs.push(PropRun { first, end, shape }),
+    }
+}
+
 /// Builds the consolidated static world scenery and terrain intermediate representation.
 ///
 /// The root `WORLD_BASE` holds raised terrain and props; under it come the [`GROUND_NODE`]
 /// nodes of the ocean and the flat terrain, the props' coplanar decals in `WORLD_DECAL`
 /// (`[I5]`), then each prop's own flat-ground and gated nodes in placement order. Every
-/// vertex is tagged with its scenery class.
+/// vertex is tagged with its scenery class, and the runs of prop vertices come back with the
+/// shape of each, in vertex order ([`PropRun`]).
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; the decal counts are growth since the base counts"
@@ -79,8 +107,9 @@ pub(super) fn build_world_ir(
     instances: &[Placement],
     ir_models: &PropModels<'_>,
     base_y: f32,
-) -> SodModelIr {
+) -> (SodModelIr, Vec<PropRun>) {
     let mut ir = SodModelIr::new("WORLD_SCENERY");
+    let mut prop_runs = Vec::new();
     let overlays = terrain_overlays(anchors, map_areas);
     let terrain = |ir: &mut SodModelIr, patches: Patches| {
         push_terrain(ir, anchors, map_areas, &overlays, patches, base_y);
@@ -115,12 +144,28 @@ pub(super) fn build_world_ir(
         }
     };
     terrain(&mut ir, Patches::Raised { overlay: false });
-    push_props(&mut ir, instances, &grounded, ir_models, base_y, false);
+    push_props(
+        &mut ir,
+        &mut prop_runs,
+        instances,
+        &grounded,
+        ir_models,
+        base_y,
+        false,
+    );
 
     let base_indices = arena_index(ir.indices.len());
     let base_vertices = arena_index(ir.vertices.len());
     terrain(&mut ir, Patches::Raised { overlay: true });
-    push_props(&mut ir, instances, &grounded, ir_models, base_y, true);
+    push_props(
+        &mut ir,
+        &mut prop_runs,
+        instances,
+        &grounded,
+        ir_models,
+        base_y,
+        true,
+    );
     let decal_indices = arena_index(ir.indices.len()) - base_indices;
     let decal_vertices = arena_index(ir.vertices.len()) - base_vertices;
 
@@ -155,8 +200,16 @@ pub(super) fn build_world_ir(
             },
         );
     }
-    push_gated_props(&mut ir, root_base, instances, &grounded, ir_models, base_y);
-    ir
+    push_gated_props(
+        &mut ir,
+        &mut prop_runs,
+        root_base,
+        instances,
+        &grounded,
+        ir_models,
+        base_y,
+    );
+    (ir, prop_runs)
 }
 
 /// Appends the geometry `push` adds as a mesh node named `name` under `parent`, or nothing
@@ -224,6 +277,7 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
 /// placement behind an `SP_1NODE` gate.
 fn push_props(
     ir: &mut SodModelIr,
+    prop_runs: &mut Vec<PropRun>,
     instances: &[Placement],
     grounded: &[Option<Vec<[f32; 3]>>],
     ir_models: &PropModels<'_>,
@@ -260,8 +314,9 @@ fn push_props(
                 pos,
                 ground: ground.as_deref(),
                 base_y,
+                shape: shape_id,
             };
-            push_prop_mesh(ir, &mesh, placed, false);
+            push_prop_mesh(ir, prop_runs, &mesh, placed, false);
         }
     }
 }
@@ -277,6 +332,7 @@ fn push_props(
 )]
 fn push_gated_props(
     ir: &mut SodModelIr,
+    prop_runs: &mut Vec<PropRun>,
     parent: NodeId,
     instances: &[Placement],
     grounded: &[Option<Vec<[f32; 3]>>],
@@ -308,6 +364,7 @@ fn push_gated_props(
             pos,
             ground: ground.as_deref(),
             base_y,
+            shape: shape_id,
         };
         for mesh in model.meshes() {
             if mesh.indices.is_empty() {
@@ -338,7 +395,7 @@ fn push_gated_props(
             // One node per run, all over the mesh's appended vertices, so a run's outline
             // is drawn before the run after it.
             let vertex_offset = arena_index(ir.vertices.len());
-            let runs = push_prop_mesh(ir, &mesh, placed, true);
+            let runs = push_prop_mesh(ir, prop_runs, &mesh, placed, true);
             let vertex_count = arena_index(ir.vertices.len()) - vertex_offset;
             for run in runs {
                 ir.allocate_node(
@@ -361,7 +418,7 @@ fn push_gated_props(
             }
             let is_decal = ground.is_some() || mesh.is_decal();
             push_mesh_node(ir, "WORLD_GATED", parent, visibility, is_decal, |ir| {
-                push_prop_mesh(ir, &mesh, placed, false);
+                push_prop_mesh(ir, prop_runs, &mesh, placed, false);
             });
         }
     }
@@ -409,12 +466,13 @@ pub(super) fn lod_condition(gate: LodGate, base_y: f32) -> VisibilityCondition {
 }
 
 /// Where one placement of a prop lies: its position, its ground-snapped vertices if it has
-/// them ([`ground_decal_vertices`]), and the ground height `base_y`.
+/// them ([`ground_decal_vertices`]), the ground height `base_y`, and its shape.
 #[derive(Clone, Copy)]
 struct Placed<'a> {
     pos: [f32; 3],
     ground: Option<&'a [[f32; 3]]>,
     base_y: f32,
+    shape: u16,
 }
 
 impl Placed<'_> {
@@ -433,6 +491,7 @@ impl Placed<'_> {
 
 /// Appends the triangles of one prop mesh at its placement that lie on the ground plane
 /// `y = base_y` when `on_ground`, or the others otherwise, and returns their index ranges.
+/// The vertices it appends go to `prop_runs` under the placement's shape.
 ///
 /// A triangle is on the ground plane when its three corners are; its corners are then put
 /// exactly on it. Each range is a run of line triangles or of filled
@@ -444,10 +503,12 @@ impl Placed<'_> {
 )]
 fn push_prop_mesh(
     ir: &mut SodModelIr,
+    prop_runs: &mut Vec<PropRun>,
     mesh: &ShapeMesh<'_>,
     placed: Placed<'_>,
     on_ground: bool,
 ) -> Vec<Range<u32>> {
+    let first_vertex = arena_index(ir.vertices.len());
     let mut runs: Vec<(bool, Range<u32>)> = Vec::new();
     let mut remap: Vec<Option<u32>> = vec![None; mesh.vertices.len()];
     for tri in mesh.indices.as_chunks::<3>().0 {
@@ -494,6 +555,8 @@ fn push_prop_mesh(
             run.end = arena_index(ir.indices.len());
         }
     }
+    let end_vertex = arena_index(ir.vertices.len());
+    record_prop_run(prop_runs, first_vertex, end_vertex, placed.shape);
     runs.into_iter().map(|(_, run)| run).collect()
 }
 
@@ -579,13 +642,9 @@ mod tests {
         prop_ir.indices = vec![0, 1, 2, 0, 1, 2];
         ir_models.insert(0x0100, prop_ir);
 
-        let instances = [Placement {
-            shape: 0x0100,
-            position: [100.0, 50.0, 200.0],
-            chain: 0,
-        }];
+        let instances = [Placement::bare(0x0100, [100.0, 50.0, 200.0], 0)];
         let surface = TerrainSurface::new(&pts, &map_areas, 0.0);
-        let world_ir = build_world_ir(
+        let (world_ir, runs) = build_world_ir(
             &pts,
             &map_areas,
             &surface,
@@ -597,6 +656,10 @@ mod tests {
         // Should contain ocean quad (4 verts), terrain triangle (3 verts), and prop base + decal
         assert!(world_ir.vertices.len() >= 7);
         assert!(world_ir.indices.len() >= 9);
+
+        // The prop's vertices lie in runs of its shape; the ocean and terrain in none.
+        assert_runs_tile_the_props(&world_ir, &runs);
+        assert!(runs.iter().all(|run| run.shape == 0x0100));
 
         // Check node separation: WORLD_BASE and WORLD_DECAL
         let base_node = world_ir.nodes.iter().find(|n| n.name == "WORLD_BASE");
@@ -622,7 +685,8 @@ mod tests {
             chain: 1,
             ..instances[0]
         }];
-        let world_ir = build_world_ir(&pts, &map_areas, &surface, &gated, &models, 0.0);
+        let (world_ir, runs) = build_world_ir(&pts, &map_areas, &surface, &gated, &models, 0.0);
+        assert_runs_tile_the_props(&world_ir, &runs);
         let lod: Vec<_> = world_ir
             .nodes
             .iter()
@@ -645,10 +709,62 @@ mod tests {
         );
     }
 
+    /// Asserts that `runs` are in vertex order, apart, and hold every prop vertex of `ir`
+    /// and no other vertex.
+    fn assert_runs_tile_the_props(ir: &SodModelIr, runs: &[PropRun]) {
+        assert!(runs.iter().all(|run| run.first < run.end), "{runs:?}");
+        assert!(
+            runs.iter()
+                .zip(runs.iter().skip(1))
+                .all(|(a, b)| a.end <= b.first),
+            "{runs:?}"
+        );
+        for (n, vertex) in ir.vertices.iter().enumerate() {
+            let n = arena_index(n);
+            let holding = runs.iter().filter(|run| (run.first..run.end).contains(&n));
+            let expected = usize::from(vertex.scenery_class == SCENERY_PROP);
+            assert_eq!(holding.count(), expected, "vertex {n}: {vertex:?}");
+        }
+    }
+
+    /// Each placement's vertices go to a run of its shape; a placement that follows one of
+    /// the same shape extends its run, one of another shape starts a new one. The raised
+    /// triangles come first, then, past the ocean and ground quads, the ground ones.
+    #[test]
+    fn prop_runs_name_the_shape_of_each_placements_vertices() {
+        let peaked = || square_prop(Some(5.0));
+        let models = HashMap::from([(7, peaked()), (9, peaked())]);
+        let placements = [
+            Placement::bare(7, [0.0; 3], 0),
+            Placement::bare(7, [20.0, 0.0, 0.0], 0),
+            Placement::bare(9, [40.0, 0.0, 0.0], 0),
+            Placement::bare(7, [60.0, 0.0, 0.0], 0),
+        ];
+        let (ir, runs) = build_world_ir(
+            &[],
+            &[],
+            &TerrainSurface::default(),
+            &placements,
+            &PropModels::shared(&models),
+            0.0,
+        );
+        assert_runs_tile_the_props(&ir, &runs);
+        let shapes: Vec<u16> = runs.iter().map(|run| run.shape).collect();
+        assert_eq!(shapes, [7, 9, 7, 7, 9, 7]);
+        // A peak triangle has three vertices and a ground square four.
+        let lengths: Vec<u32> = runs.iter().map(|run| run.end - run.first).collect();
+        assert_eq!(lengths, [6, 3, 3, 8, 4, 4]);
+
+        // A run that ends where an empty range starts is left alone.
+        let mut kept = runs.clone();
+        record_prop_run(&mut kept, runs[2].end, runs[2].end, 7);
+        assert_eq!(kept, runs);
+    }
+
     /// Without `MAP.BIN` the world is the ocean quad, then a flat ground quad.
     #[test]
     fn test_build_world_ir_without_map_lays_ocean_then_ground() {
-        let world_ir = build_world_ir(
+        let (world_ir, _) = build_world_ir(
             &[],
             &[],
             &TerrainSurface::default(),
@@ -701,14 +817,11 @@ mod tests {
             &pts,
             &areas,
             &surface,
-            &[Placement {
-                shape: 0x0391,
-                position: at,
-                chain: 0,
-            }],
+            &[Placement::bare(0x0391, at, 0)],
             &PropModels::shared(&models),
             0.0,
         )
+        .0
     }
 
     #[test]
@@ -809,15 +922,11 @@ mod tests {
         let (pts, areas) = level_terrain();
         let models = HashMap::from([(0x0391, prop)]);
         let surface = TerrainSurface::new(&pts, &areas, 0.0);
-        let ir = build_world_ir(
+        let (ir, _) = build_world_ir(
             &pts,
             &areas,
             &surface,
-            &[Placement {
-                shape: 0x0391,
-                position: [60.0, 0.0, 20.0],
-                chain: 0,
-            }],
+            &[Placement::bare(0x0391, [60.0, 0.0, 20.0], 0)],
             &PropModels::shared(&models),
             0.0,
         );

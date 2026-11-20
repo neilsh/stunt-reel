@@ -162,11 +162,7 @@ mod tests {
         };
         let placements: Vec<Placement> = instances
             .iter()
-            .map(|&(shape, position)| Placement {
-                shape,
-                position,
-                chain: 0,
-            })
+            .map(|&(shape, position)| Placement::bare(shape, position, 0))
             .collect();
         let (own, failures) = anchored_models(&inputs, &placements);
         let corners = instances

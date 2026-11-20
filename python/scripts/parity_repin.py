@@ -4,16 +4,20 @@ Rewrites each ``[<film>.expected.<class>]`` table of ``research/parity/reference
 that film's ``build/parity/report/<film>_current/report.json``: ``ssim`` and ``iou`` from the
 report's ``mean_ssim_scored`` and ``mean_iou_scored`` to 7 decimals, ``adapter`` from the
 report, ``crates`` from the current ``crates/`` tree, and ``sha256`` and ``all_sha256`` from
-the film's row. Comments, row order and every other line stay as they are; a ``commit`` line in
-a rewritten table is dropped, since it named an older measurement.
+the film's row; the sub-table ``[<film>.expected.<class>.loss]`` takes the report's
+``mean_loss_by_class_scored``, one key per loss class to 7 decimals. Comments, row order and
+every other line stay as they are; a ``commit`` line in a rewritten table is dropped, since it
+named an older measurement.
 
 It writes nothing, and says why, when ``crates/`` has uncommitted changes, a reference film has
 no report, a report's ``crates`` is missing or is not the current tree, a report was drawn on an
-adapter of another class, or a report's recorded reference pins are missing or are not the film's
+adapter of another class, a report's class losses are missing or name other classes than
+``LOSS_CLASSES``, or a report's recorded reference pins are missing or are not the film's
 current ones. It never repins a subset of the films.
 
 Usage: ``mise run parity-repin -- [--class gpu|lavapipe]`` after ``mise run parity`` on a clean
-``crates/``.
+``crates/``; ``mise run parity -- --no-render`` also qualifies after a commit that changes only the
+scorer (``crates/stunt-score/src/parity/``), which moves no pixel of the render it scores.
 """
 
 from __future__ import annotations
@@ -28,7 +32,7 @@ lazy from pathlib import Path
 from stunt_reel import parity_layout
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.expected_scores import CLASS_KEYS, clean_crates_tree
-from stunt_reel.parity_artifacts import ArtifactError, read_report
+from stunt_reel.parity_artifacts import LOSS_CLASSES, ArtifactError, read_report
 from stunt_reel.references import (
     RENDERER_CLASSES,
     ReferenceCaptureError,
@@ -42,6 +46,8 @@ if TYPE_CHECKING:
 
 #: The keys a repin writes, in the order a new table lists them.
 _KEYS = ("ssim", "iou", "crates", "sha256", "all_sha256", "adapter")
+#: The sub-table of an expected table that holds the class losses.
+_LOSS = "loss"
 _HEADER = re.compile(r"^\s*\[\s*([^\]]+?)\s*\]\s*(#.*)?$")
 _KEY = re.compile(r"^\s*([A-Za-z0-9_-]+)\s*=")
 
@@ -60,6 +66,8 @@ class Measured:
 
     film: str
     values: dict[str, str]
+    #: The class losses of :data:`LOSS_CLASSES`, formatted for the ``loss`` sub-table.
+    loss: dict[str, str]
     old: tuple[float, float] | None
 
 
@@ -85,7 +93,8 @@ def _measure(repo: Path, film: str, renderer: str, tree: str) -> tuple[Measured 
     if report.crates is None:
         return None, (
             f"{film}: the report records no crates/ tree; re-render with mise run parity "
-            "on a clean crates/ (not --reuse, --retime or --no-render)"
+            "on a clean crates/ (not --reuse or --retime; --no-render only after a change under "
+            "crates/stunt-score/src/parity/ alone)"
         )
     if report.crates != tree:
         return None, f"{film}: the report measured crates/ {report.crates[:7]}, now {tree[:7]}"
@@ -115,6 +124,18 @@ def _measure(repo: Path, film: str, renderer: str, tree: str) -> tuple[Measured 
             f"{_pin(report.all_sha256)}, now {_pin(reference.sha256)}/"
             f"{_pin(reference.all_sha256)}"
         )
+    losses = report.mean_loss_by_class_scored
+    if losses is None:
+        return None, (
+            f"{film}: the report records no class losses (mean_loss_by_class_scored); "
+            "re-score it with mise run parity"
+        )
+    if set(losses) != set(LOSS_CLASSES):
+        return None, (
+            f"{film}: the report's loss classes differ from the pinned ones "
+            f"(report only: {', '.join(sorted(set(losses) - set(LOSS_CLASSES))) or '-'}; "
+            f"pin only: {', '.join(sorted(set(LOSS_CLASSES) - set(losses))) or '-'})"
+        )
     values = {
         "ssim": f"{report.mean_ssim_scored:.7f}",
         "iou": f"{report.mean_iou_scored:.7f}",
@@ -125,13 +146,25 @@ def _measure(repo: Path, film: str, renderer: str, tree: str) -> tuple[Measured 
     if reference.all_sha256 is not None:
         values["all_sha256"] = _toml_string(reference.all_sha256)
     old = reference.expected.get(renderer)
-    return Measured(film, values, None if old is None else (old.ssim, old.iou)), None
+    loss = {name: f"{losses[name]:.7f}" for name in LOSS_CLASSES}
+    return Measured(film, values, loss, None if old is None else (old.ssim, old.iou)), None
 
 
-def _table_lines(film: str, renderer: str, values: dict[str, str]) -> list[str]:
-    """A new ``[<film>.expected.<renderer>]`` table, keys in :data:`_KEYS` order."""
-    return [f"[{film}.expected.{renderer}]"] + [
-        f"{key} = {values[key]}" for key in _KEYS if key in values
+def _table_lines(film: str, renderer: str, measured: Measured) -> list[str]:
+    """A new ``[<film>.expected.<renderer>]`` table and its loss sub-table."""
+    return [
+        f"[{film}.expected.{renderer}]",
+        *(f"{key} = {measured.values[key]}" for key in _KEYS if key in measured.values),
+        "",
+        *_loss_lines(film, renderer, measured),
+    ]
+
+
+def _loss_lines(film: str, renderer: str, measured: Measured) -> list[str]:
+    """The ``[<film>.expected.<renderer>.loss]`` table, one key per loss class."""
+    return [
+        f"[{film}.expected.{renderer}.{_LOSS}]",
+        *(f"{key} = {measured.loss[key]}" for key in LOSS_CLASSES),
     ]
 
 
@@ -145,52 +178,72 @@ def _headers(lines: list[str]) -> list[tuple[int, str]]:
     return found
 
 
+def _spans(lines: list[str]) -> dict[str, tuple[int, int]]:
+    """Each table's header line and the line after its last, by dotted name."""
+    headers = _headers(lines)
+    ends = [number for number, _ in headers[1:]] + [len(lines)]
+    return {head: (start, end) for (start, head), end in zip(headers, ends, strict=True)}
+
+
+def _replace_body(
+    lines: list[str], span: tuple[int, int], order: Sequence[str], values: dict[str, str]
+) -> None:
+    """Rewrites one table's keys of *order* to *values*, in place; other lines stay.
+
+    A key of *order* with no value, and a ``commit`` line, is dropped; a key of *order* that is
+    missing is added after the table's last key line.
+    """
+    start, end = span
+    written: set[str] = set()
+    kept: list[str] = []
+    last_key = -1
+    for line in lines[start + 1 : end]:
+        match = _KEY.match(line)
+        if match is None:
+            kept.append(line)
+            continue
+        key = match.group(1)
+        if key in values:
+            kept.append(f"{key} = {values[key]}")
+            written.add(key)
+        elif key not in order and key != "commit":
+            kept.append(line)
+        else:
+            continue
+        last_key = len(kept) - 1
+    missing = [f"{key} = {values[key]}" for key in order if key in values and key not in written]
+    kept[last_key + 1 : last_key + 1] = missing
+    lines[start + 1 : end] = kept
+
+
 def _rewrite(text: str, renderer: str, tables: Sequence[Measured]) -> str:
-    """*text* with each film's expected table for *renderer* replaced or added."""
+    """*text* with each film's expected table for *renderer*, and its loss table, replaced or added."""
     lines = text.split("\n")
     for measured in tables:
         name = f"{measured.film}.expected.{renderer}"
-        headers = _headers(lines)
-        ends = [number for number, _ in headers[1:]] + [len(lines)]
-        spans = {head: (start, end) for (start, head), end in zip(headers, ends, strict=True)}
-        if name in spans:
-            start, end = spans[name]
-            body = lines[start + 1 : end]
-            written: set[str] = set()
-            kept: list[str] = []
-            last_key = -1
-            for line in body:
-                match = _KEY.match(line)
-                if match is None:
-                    kept.append(line)
-                    continue
-                key = match.group(1)
-                if key in measured.values:
-                    kept.append(f"{key} = {measured.values[key]}")
-                    written.add(key)
-                elif key not in _KEYS and key != "commit":
-                    kept.append(line)
-                else:
-                    continue
-                last_key = len(kept) - 1
-            missing = [
-                f"{key} = {measured.values[key]}"
-                for key in _KEYS
-                if key in measured.values and key not in written
+        spans = _spans(lines)
+        if name not in spans:
+            # No table yet: add it after the last key line of the film's own tables.
+            own = [
+                span
+                for head, span in spans.items()
+                if head == measured.film or head.startswith(f"{measured.film}.")
             ]
-            kept[last_key + 1 : last_key + 1] = missing
-            lines[start + 1 : end] = kept
+            last = max(end for _, end in own)
+            while last > 0 and _KEY.match(lines[last - 1]) is None:
+                last -= 1
+            lines[last:last] = ["", *_table_lines(measured.film, renderer, measured)]
             continue
-        # No table yet: add it after the last key line of the film's own tables.
-        own = [
-            span
-            for head, span in spans.items()
-            if head == measured.film or head.startswith(f"{measured.film}.")
-        ]
-        last = max(end for _, end in own)
-        while last > 0 and _KEY.match(lines[last - 1]) is None:
-            last -= 1
-        lines[last:last] = ["", *_table_lines(measured.film, renderer, measured.values)]
+        _replace_body(lines, spans[name], _KEYS, measured.values)
+        spans = _spans(lines)
+        if f"{name}.{_LOSS}" in spans:
+            _replace_body(lines, spans[f"{name}.{_LOSS}"], LOSS_CLASSES, measured.loss)
+        else:
+            start, end = spans[name]
+            last = end
+            while last > start and _KEY.match(lines[last - 1]) is None:
+                last -= 1
+            lines[last:last] = ["", *_loss_lines(measured.film, renderer, measured)]
     return "\n".join(lines)
 
 
@@ -236,7 +289,8 @@ def _check(repo: Path, renderer: str, tables: Sequence[Measured], films: Sequenc
         raise RuntimeError("the repin changed the reference films")
     for measured in tables:
         expected = read_reference(repo, measured.film).expected.get(renderer)
-        found = None
+        found: dict[str, str] | None = None
+        loss: dict[str, str] | None = None
         if expected is not None:
             found = {
                 "ssim": f"{expected.ssim:.7f}",
@@ -247,7 +301,9 @@ def _check(repo: Path, renderer: str, tables: Sequence[Measured], films: Sequenc
             }
             if expected.all_sha256 is not None:
                 found["all_sha256"] = _toml_string(expected.all_sha256)
-        if found != measured.values:
+            if expected.loss is not None:
+                loss = {name: f"{value:.7f}" for name, value in expected.loss.items()}
+        if found != measured.values or loss != measured.loss:
             raise RuntimeError(f"{measured.film}: the written table does not read back")
 
 

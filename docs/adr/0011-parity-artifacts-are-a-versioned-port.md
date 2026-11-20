@@ -24,7 +24,7 @@ carry `schema_version: 1`; during migration a capture without the field is read 
 version 1. `report.json` keeps optional fields under `serde(default)` and is
 versioned by its required-field set only if a required change is ever needed.
 
-File access lives in adapters: [`crates/stunt-cli/src/parity_artifacts/mod.rs`](../../crates/stunt-cli/src/parity_artifacts/mod.rs)
+File access lives in adapters: [`crates/stunt-score/src/parity_artifacts/mod.rs`](../../crates/stunt-score/src/parity_artifacts/mod.rs)
 for Rust (journal writer, readers, report I/O, plane and PNG handling) and
 [`python/stunt_reel/parity_artifacts/`](../../python/stunt_reel/parity_artifacts/)
 for Python (standard library only). Shared fixtures pin both adapters to the same

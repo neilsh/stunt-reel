@@ -271,3 +271,38 @@ fn test_dos_to_i1_helpers() {
     assert!((norm - 1.0).abs() < 1e-6);
     assert!(out[3] >= 0.0);
 }
+
+/// The view slot's actor draw is skipped, but `PLAYONE` queues its shadow (`0x1E35`) only
+/// for a slot with draw, exists and shadow flags and a nonzero shape.
+#[test]
+fn the_view_slot_is_listed_only_when_its_shadow_is_queued() {
+    let listed = |type_flags: u8, shape_id: u16, active: bool| {
+        let mut player = FlmPlayer::new(b"FILM").unwrap();
+        player.view_obj = 2;
+        // A second, ordinary actor, so that an empty list means the view slot was dropped.
+        player.slots[3] = SlotState {
+            active: true,
+            type_flags: SIF_EXISTS | SIF_DRAW,
+            shape_id: 5,
+            ..SlotState::default()
+        };
+        player.slots[2] = SlotState {
+            active,
+            type_flags,
+            shape_id,
+            ..SlotState::default()
+        };
+        let record = player.evaluate_slice(Vec::new());
+        let view: Vec<_> = record.actors.iter().filter(|a| a.view).collect();
+        assert_eq!(record.actors.len(), 1 + view.len());
+        view.first().map(|a| (a.shape_id, a.casts_shadow))
+    };
+    let all = SIF_EXISTS | SIF_DRAW | SIF_SHADOW;
+    assert_eq!(listed(all, 7, true), Some((7, true)));
+    // Shape 0 never reaches the shadow call, whatever the flags.
+    assert_eq!(listed(all, 0, true), None);
+    // Each flag is needed, and so is a live slot.
+    assert_eq!(listed(SIF_EXISTS | SIF_DRAW, 7, true), None);
+    assert_eq!(listed(SIF_EXISTS | SIF_SHADOW, 7, true), None);
+    assert_eq!(listed(all, 7, false), None);
+}

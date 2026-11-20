@@ -28,24 +28,14 @@ from pathlib import Path
 
 import parity_probe
 import parity_sweep
+from parity_probe import locate, parse_ticks
 
 from stunt_reel import dataroot, parity_pipeline, references
 from stunt_reel.dataroot import REPO_ROOT
-from stunt_reel.parity_artifacts import CaptureSet, RenderStore, read_capture
+from stunt_reel.parity_artifacts import RenderStore, read_capture
 
 #: Where renders and their side-by-side PNGs go, relative to the checkout.
 FRAME_DIR = Path("build") / "scratch" / "frame"
-
-
-def parse_ticks(text: str) -> list[int]:
-    """Ascending distinct film ticks from ``48,92,1009``."""
-    try:
-        ticks = [int(part) for part in text.split(",")]
-    except ValueError:
-        raise ValueError(f"--ticks wants comma-separated film ticks, got {text!r}") from None
-    if any(tick < 0 for tick in ticks):
-        raise ValueError(f"--ticks wants non-negative film ticks, got {text!r}")
-    return sorted(set(ticks))
 
 
 def parse_box(text: str) -> tuple[int, int, int, int]:
@@ -55,21 +45,6 @@ def parse_box(text: str) -> tuple[int, int, int, int]:
     except ValueError:
         raise ValueError(f"--crop wants x0,y0,x1,y1, got {text!r}") from None
     return x0, y0, x1, y1
-
-
-def locate(
-    capture: CaptureSet, ticks: list[int]
-) -> tuple[dict[int, int], dict[int, tuple[int | None, int | None]]]:
-    """Split ``ticks`` into capture ordinals and, for the rest, the neighbouring captured ticks."""
-    held = {frame.film_tick: frame.ordinal for frame in capture.frames}
-    found = {tick: held[tick] for tick in ticks if tick in held}
-    missing: dict[int, tuple[int | None, int | None]] = {}
-    for tick in ticks:
-        if tick not in held:
-            before = [t for t in held if t < tick]
-            after = [t for t in held if t > tick]
-            missing[tick] = (max(before, default=None), min(after, default=None))
-    return found, missing
 
 
 def check_crop(box: tuple[int, int, int, int], scale: int, *, width: int, height: int) -> None:

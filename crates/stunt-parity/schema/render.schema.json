@@ -36,6 +36,13 @@
       "format": "uint32",
       "minimum": 0
     },
+    "planes": {
+      "description": "Each optional plane file the render holds, keyed by file name (`shapes.zst`); empty when\nit holds none.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/PlaneListing"
+      }
+    },
     "schema_version": {
       "description": "Schema version; see [`crate::RENDER_SCHEMA_VERSION`].",
       "type": "integer",
@@ -56,7 +63,8 @@
     "geometry",
     "ticks",
     "palette_count",
-    "chunks"
+    "chunks",
+    "planes"
   ],
   "$defs": {
     "AdapterClass": {
@@ -181,6 +189,27 @@
       "required": [
         "width",
         "height"
+      ]
+    },
+    "PlaneListing": {
+      "description": "One optional plane file of a render, listed in its record so a reader can tell the file is\nthis render's own.",
+      "type": "object",
+      "properties": {
+        "chunks": {
+          "description": "The file's chunk for each entry of [`RenderRecord::chunks`], in the same order, tiling\nthe file from offset 0.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StoreSpan"
+          }
+        },
+        "sha256": {
+          "description": "Lowercase hex SHA-256 of the whole file.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sha256",
+        "chunks"
       ]
     },
     "RenderAdapter": {

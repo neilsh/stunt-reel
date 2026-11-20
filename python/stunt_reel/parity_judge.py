@@ -16,6 +16,8 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from stunt_reel.parity_artifacts import LOSS_CLASSES
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
     from pathlib import Path
@@ -41,13 +43,18 @@ __all__ = [
     "FilmRun",
     "Frame",
     "Headline",
+    "IndexAgreement",
     "Judgement",
+    "LossPin",
     "Target",
     "Track",
     "Variant",
     "baseline_problem",
+    "class_loss_lines",
+    "compare_index_agreement",
     "decide",
     "format_table",
+    "index_agreement_line",
     "join_film",
     "judge",
     "label",
@@ -220,6 +227,121 @@ def join_film(film: str, baseline: FilmRun, candidate: FilmRun) -> FilmJoin:
         after_only=sum(1 for tick in after if tick not in before),
         baseline_ticks=tuple(sorted(before)),
     )
+
+
+@dataclass(frozen=True)
+class IndexAgreement:
+    """One film's index agreement, candidate beside baseline, as information beside the verdict."""
+
+    #: Each report's ``mean_index_agreement_scored``; ``None`` when it records none.
+    baseline_mean: float | None
+    candidate_mean: float | None
+    #: Frames paired by ``ordinal`` where the candidate's ``index_agreement`` is higher, equal, lower.
+    better: int
+    equal: int
+    worse: int
+
+
+def compare_index_agreement(baseline: Report, candidate: Report) -> IndexAgreement:
+    """Both reports' mean index agreement and the per-frame wins of *candidate* over *baseline*.
+
+    Frames pair by ``ordinal`` (the first entry per ordinal), over frames scored in both
+    reports, or over every frame when a report predates fade scoring, as :func:`join_film`
+    counts. A frame scored in one report only, or without an ``index_agreement``, is left out.
+    """
+    every = any(e.scored is None for r in (baseline, candidate) for e in r.per_frame)
+
+    def agreements(report: Report) -> dict[int, float]:
+        found: dict[int, float | None] = {}
+        for entry in report.per_frame:
+            found.setdefault(
+                entry.ordinal, entry.index_agreement if every or entry.scored else None
+            )
+        return {n: v for n, v in found.items() if v is not None}
+
+    before, after = agreements(baseline), agreements(candidate)
+    pairs = [(before[n], after[n]) for n in sorted(before) if n in after]
+    return IndexAgreement(
+        baseline.mean_index_agreement_scored,
+        candidate.mean_index_agreement_scored,
+        better=sum(new > old for old, new in pairs),
+        equal=sum(new == old for old, new in pairs),
+        worse=sum(new < old for old, new in pairs),
+    )
+
+
+def index_agreement_line(film: str, agreement: IndexAgreement) -> str:
+    """One stderr line: *film*'s two mean index agreements and the better/equal/worse counts."""
+
+    def mean(value: float | None) -> str:
+        return "n/a" if value is None else f"{value:.4f}"
+
+    return (
+        f"{film} index agreement: baseline {mean(agreement.baseline_mean)}, "
+        f"candidate {mean(agreement.candidate_mean)}; frames candidate better/equal/worse "
+        f"{agreement.better}/{agreement.equal}/{agreement.worse}"
+    )
+
+
+#: A class loss whose change under this (half a unit of the printed fourth decimal) is not shown.
+CLASS_SHOWN = 0.00005
+
+
+@dataclass(frozen=True)
+class LossPin:
+    """A film's pinned class losses (``references.toml``) for one renderer class."""
+
+    #: The renderer class (``gpu`` or ``lavapipe``) the pin is filed under.
+    renderer: str
+    #: The class losses by name; ``None`` when the table predates class losses.
+    loss: Mapping[str, float] | None
+
+
+def class_loss_lines(
+    film: str,
+    baseline: Mapping[str, float] | None,
+    candidate: Mapping[str, float] | None,
+    pin: LossPin | None,
+) -> list[str]:
+    """The stderr lines for *film*'s loss by class, the candidate beside the baseline and the pin.
+
+    One row lists, for each class whose loss moved by at least :data:`CLASS_SHOWN` on either
+    comparison, the candidate's change from the baseline and, in parentheses, from the pin. A
+    side that records no class losses (a report written before the scorer split them) or a pin
+    with none gets a line saying so, and classes named on one side only get a second line: the
+    row then covers the classes all the sides name. Information only: the verdict ignores it.
+    """
+    if baseline is None or candidate is None:
+        return [f"{film} loss by class: n/a (a report records no class losses)"]
+    pinned = None if pin is None else pin.loss
+    sides = [baseline, candidate] + ([] if pinned is None else [pinned])
+    names = set.intersection(*(set(side) for side in sides))
+    lines = []
+    split = {n for side in sides for n in side} - names
+    if split:
+        lines.append(
+            f"{film} loss classes disagree: {', '.join(sorted(split))} "
+            "not named by every side (baseline, candidate, pin)"
+        )
+    cells = []
+    for name in [*LOSS_CLASSES, *sorted(names - set(LOSS_CLASSES))]:
+        if name not in names:
+            continue
+        move = candidate[name] - baseline[name]
+        from_pin = None if pinned is None else candidate[name] - pinned[name]
+        if abs(move) < CLASS_SHOWN and (from_pin is None or abs(from_pin) < CLASS_SHOWN):
+            continue
+        cell = f"{name} {move:+.4f}"
+        cells.append(cell if from_pin is None else f"{cell} ({from_pin:+.4f})")
+    moved = ", ".join(cells) if cells else "no class moved"
+    if pin is None:
+        against = "no pin for the candidate's adapter class"
+    elif pinned is None:
+        against = f"the {pin.renderer} pin records no class losses"
+    else:
+        against = f"parentheses: candidate - {pin.renderer} pin"
+    lines.append(f"{film} loss by class, candidate - baseline ({against}): {moved}")
+    return lines
 
 
 def _mean(values: Sequence[float]) -> float | None:

@@ -241,7 +241,7 @@ run = "uv run python python/scripts/parity_residue.py"
 
 [tasks.parity-probe]
 depends = ["ensure"]
-description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime ... ; summary prints the scores a journal entry quotes)"
+description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime|index ... ; index prints where one palette index lies in the capture and in our render; summary prints the scores a journal entry quotes)"
 run = "uv run python python/scripts/parity_probe.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
@@ -292,7 +292,7 @@ description = "Pair two builds' functions with an iced-x86 decode and map offset
 run = "uv run python python/scripts/pair_builds.py"
 
 [tasks.re-tool]
-description = "Static reading of PLAYONE.EXE: disasm <start> <end> | xref <imm16> [--code-end 0xD510] | xref <exe> --string TEXT | --offset 0x22C2 --ds 0x163D | vm-handler <opcode> [--vm-seg 0x824] [--work-seg 0x15D4]; disasm, vm-handler and xref <imm16> take --image F (mise run re-tool -- disasm 0x7571 0x75DB)"
+description = "Static reading of PLAYONE.EXE: disasm <start> <end> | xref <imm16> [--code-end 0xD510] | xref <exe> --string TEXT | --offset 0x22C2 --ds 0x163D | callers <offset> [--code-end 0xD510] (near call/jmp/jcc only) | vm-handler <opcode> [--vm-seg 0x824] [--work-seg 0x15D4]; disasm, callers, vm-handler and xref <imm16> take --image F (mise run re-tool -- disasm 0x7571 0x75DB)"
 run = "uv run python python/scripts/re_tool.py"
 
 [tasks.scene-ground]
@@ -302,6 +302,12 @@ run = "uv run python python/scripts/scene_ground.py"
 [tasks.scene-patches]
 description = "For each MAP.BIN patch with no polygon in PLAYONE's scene tree, check SCENERY.scn, byte scans, OP_TAP operands and the polygons under it (mise run scene-patches -- build/re/playone.img <MAP.BIN> --scn <SCENERY.scn> --scan <dir>)"
 run = "uv run python python/scripts/scene_patches.py"
+
+[tasks.scene-walk]
+description = "Print a film's slot and eye positions at a tick, and with --slot N replay that slot through PLAYONE's scenery draw walk (mise run scene-walk -- corpus/stisldem/VAULT/CTRY.FLM --tick 871 [--slot 11])"
+depends = ["ensure"]
+run = "uv run python python/scripts/scene_walk.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.flm-events]
 description = "Dump the film-level events of one .FLM film (mise run flm-events -- corpus/.../CTRY.FLM [--sounds])"

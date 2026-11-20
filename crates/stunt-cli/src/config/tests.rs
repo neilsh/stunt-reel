@@ -204,3 +204,22 @@ fn test_game_plays_like_an_archive_without_looking_for_one() {
     assert_eq!(cfg.clear_index, 7);
     assert_eq!(parse(&[]).expect("default").clear_index, 180);
 }
+
+#[test]
+fn test_report_memory_needs_an_offscreen_render() {
+    let Err(err) = parse(&["--report-memory"]) else {
+        panic!("a window run must reject --report-memory");
+    };
+    assert!(err.to_string().contains("--report-memory"), "{err}");
+    assert!(!parse(&["--headless"]).unwrap().report_memory);
+    assert!(
+        parse(&["--headless", "--report-memory"])
+            .unwrap()
+            .report_memory
+    );
+    assert!(
+        parse(&["--out-dir", "o", "--report-memory"])
+            .unwrap()
+            .report_memory
+    );
+}

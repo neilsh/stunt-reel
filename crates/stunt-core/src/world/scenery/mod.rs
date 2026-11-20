@@ -9,7 +9,7 @@
 //! `(-x, -y, z)`. Why the walk reads the tree this way: `research/formats/auxiliary/scenery.md`
 //! and `research/playone-exe/lod.md`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::contracts::SodModelIr;
 
@@ -23,6 +23,108 @@ pub(crate) struct Placement {
     /// Index into [`Placements::chains`] of the `SP_1NODE` branches the prop stands behind;
     /// 0 is the empty chain, a prop drawn on every frame.
     pub(crate) chain: u32,
+    /// The position as the walk accumulates it: raw island units, DOS axes.
+    pub(crate) raw: [i32; 3],
+    /// The node that places the shape: an `SP_LEAF`, or the `SP_1NODE` of a stand-in.
+    pub(crate) node: ScnNode,
+    /// True when [`Self::node`] is an `SP_1NODE`.
+    pub(crate) stand_in: bool,
+    /// Index into [`Placements::steps`] of the last partition node on the way to
+    /// [`Self::node`]; `None` when no partition node lies above it.
+    pub(crate) path: Option<u32>,
+}
+
+#[cfg(test)]
+impl Placement {
+    /// A placement behind gate chain `chain`, under no partition node, as tests build one.
+    pub(crate) fn bare(shape: u16, position: [f32; 3], chain: u32) -> Self {
+        Self {
+            shape,
+            position,
+            chain,
+            raw: [0; 3],
+            node: ScnNode(1),
+            stand_in: false,
+            path: None,
+        }
+    }
+}
+
+/// A node of `SCENERY.scn`, by its word index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ScnNode(pub u32);
+
+impl ScnNode {
+    /// The node's byte offset in `SCENERY.scn`, four bytes a word, as [`ScnStop::offset`]
+    /// counts.
+    #[must_use]
+    pub fn scn_offset(self) -> usize {
+        (self.0 as usize).saturating_mul(4)
+    }
+
+    /// The node's byte offset in `PLAYONE`'s tree segment, which keeps the file's words as
+    /// 16 bits without its leading word: the offsets the research notes name nodes by
+    /// (`research/playone-exe/scene-walk-actors.md`). `None` for word 0, which is no node.
+    #[must_use]
+    pub fn tree_offset(self) -> Option<usize> {
+        (self.0 as usize)
+            .checked_sub(1)
+            .map(|w| w.saturating_mul(2))
+    }
+}
+
+/// What a partition node splits on, with its words as the tree stores them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Split {
+    /// `SP_2NODE`: the draw walk sends actors only to the second child.
+    Pair,
+    /// `SP_XPLANE`: the plane `x = origin + sortvalue`, raw island units in DOS axes.
+    XPlane {
+        /// The `x` the walk has accumulated at the node.
+        origin: i32,
+        /// The node's `sortvalue` word.
+        sortvalue: i16,
+    },
+    /// `SP_ZPLANE`: the plane `z = origin + sortvalue`.
+    ZPlane {
+        /// The `z` the walk has accumulated at the node.
+        origin: i32,
+        /// The node's `sortvalue` word.
+        sortvalue: i16,
+    },
+    /// `SP_HSLOPE`: a line in `x`, `z` from its two words.
+    HSlope {
+        /// The node's `slope` word.
+        slope: i16,
+        /// The node's `coord` word.
+        coord: i16,
+    },
+    /// `SP_VSLOPE`: a line in `z`, `x` from its two words.
+    VSlope {
+        /// The node's `slope` word.
+        slope: i16,
+        /// The node's `coord` word.
+        coord: i16,
+    },
+    /// `SP_GROUND`: its finer patches, then the chain after it.
+    Ground,
+    /// `SP_LIST`: its children, each walked in turn.
+    List,
+}
+
+/// One partition node on the way from the tree's root to a placement, and the child the
+/// placement lies under.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PartitionStep {
+    /// The node.
+    pub node: ScnNode,
+    /// What it splits on.
+    pub split: Split,
+    /// The child: 0 is the pointer at word `+1` (`SP_GROUND`: `+6`), 1 the one at `+2`
+    /// (`+7`), and an `SP_LIST`'s children count from 0.
+    pub child: u16,
+    /// The step above it, an index into the same steps; `None` at the root.
+    pub parent: Option<u32>,
 }
 
 /// One `SP_1NODE` branch a placement stands behind, which the renderer tests per frame as a
@@ -57,6 +159,8 @@ pub(crate) struct Placements {
     pub(crate) props: Vec<Placement>,
     /// Gate chains the placements index; entry 0 is empty.
     pub(crate) chains: Vec<Vec<LodGate>>,
+    /// The partition steps the placements' paths are made of, each shared prefix once.
+    pub(crate) steps: Vec<PartitionStep>,
     /// Why the walk ended before the end of the tree, if it did; the props gathered before
     /// the stop are kept.
     pub(crate) stop: Option<ScnStop>,
@@ -105,6 +209,15 @@ pub struct ScnStop {
     pub reason: ScnStopReason,
 }
 
+/// Distinct non-zero shape IDs referenced across `SCENERY.scn`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SceneryShapes {
+    /// Distinct non-zero shape IDs from `SP_LEAF` and far `SP_1NODE` stand-ins.
+    pub shapes: BTreeSet<u16>,
+    /// Why the walk ended early, if it did; shapes visited before the stop are kept.
+    pub stop: Option<ScnStop>,
+}
+
 /// The placements of `scenery` (`SCENERY.scn` bytes) seen from a camera that passes through
 /// `view_eyes`.
 ///
@@ -143,6 +256,7 @@ pub(crate) fn place_props(
     let mut walk = ScnWalk {
         words: &words,
         models: &models,
+        record_shapes: None,
         near: &near,
         found: Vec::new(),
         chain: Vec::new(),
@@ -153,19 +267,54 @@ pub(crate) fn place_props(
         budget: words.len().saturating_mul(SCN_VISITS_PER_WORD),
         stop: None,
         halted: false,
+        path: Vec::new(),
+        steps: Vec::new(),
     };
     walk.walk_scn(1, (0, 0, 0), 0);
     let ScnWalk {
         found,
         stop,
         chains,
+        steps,
         ..
     } = walk;
     Placements {
         props: dedup(found),
         chains,
+        steps,
         stop,
     }
+}
+
+/// Every distinct non-zero shape ID referenced by `scenery` (`SCENERY.scn` bytes), taking both
+/// branches of every `SP_1NODE` so far stand-ins and near subtrees are both visited.
+#[must_use]
+pub fn scenery_shape_ids(scenery: &[u8]) -> SceneryShapes {
+    let (chunks, _) = scenery.as_chunks::<4>();
+    let words: Vec<i32> = chunks.iter().map(|c| i32::from_le_bytes(*c)).collect();
+    let models = HashSet::new();
+    let mut shapes = BTreeSet::new();
+    let near = |_: [f32; 3], _: i32, _: i32| LodChoice::Both;
+    let mut walk = ScnWalk {
+        words: &words,
+        models: &models,
+        record_shapes: Some(&mut shapes),
+        near: &near,
+        found: Vec::new(),
+        chain: Vec::new(),
+        chain_ids: HashMap::new(),
+        chains: Vec::new(),
+        on_path: HashSet::new(),
+        visits: 0,
+        budget: words.len().saturating_mul(SCN_VISITS_PER_WORD),
+        stop: None,
+        halted: false,
+        path: Vec::new(),
+        steps: Vec::new(),
+    };
+    walk.walk_scn(1, (0, 0, 0), 0);
+    let stop = walk.stop;
+    SceneryShapes { shapes, stop }
 }
 
 /// PLAYONE's focal length in raster pixels at the default lens, equal on both axes
@@ -178,8 +327,9 @@ const FOCAL_PIXELS: f32 = 256.0;
 const CORNER_DEPTH_FLOOR: f32 = 0.804;
 
 /// A prop whose bounding radius never covers more than this many pixels along the camera
-/// path is dropped from the world. Without the cut `INTRO.FLM` carries 11 million vertices,
-/// past wgpu's 256 MiB buffer limit, and the dropped props cannot reach a pixel.
+/// path is dropped from the world. `PLAYONE` drops far scenery at about this size by a coarser
+/// test, distance against the shape's `scale_index`; on the seven reference films this cull
+/// drops nothing they draw (research/playone-exe/world-scene-residuals.md section 6.4).
 const MIN_PROP_PIXELS: f32 = 0.5;
 
 /// How far the camera path may pass from an `SP_1NODE` with extent `ext` and split distance
@@ -216,7 +366,8 @@ const SCN_VISITS_PER_WORD: usize = 64;
 /// Deepest nesting of subtrees the walk follows.
 const SCN_MAX_DEPTH: usize = 128;
 
-/// Drops repeated `(shape, position)` placements, keeping first occurrences in order.
+/// Drops repeated `(shape, position)` placements, keeping first occurrences in order, each
+/// with the node and path it was first reached by.
 ///
 /// `-0.0` and `0.0` compare equal so a mirrored zero coordinate cannot duplicate a prop.
 fn dedup(placements: Vec<Placement>) -> Vec<Placement> {
@@ -290,6 +441,8 @@ struct ScnWalk<'a> {
     words: &'a [i32],
     /// Shapes that can be placed.
     models: &'a HashSet<u16>,
+    /// When `Some`, collects every distinct non-zero shape ID without building placements.
+    record_shapes: Option<&'a mut BTreeSet<u16>>,
     /// The LOD gate: which branches of an `SP_1NODE` at `pos` with `ext` and `splitdist` to keep.
     near: &'a dyn Fn([f32; 3], i32, i32) -> LodChoice,
     /// Placements in walk order, repeats included.
@@ -312,6 +465,11 @@ struct ScnWalk<'a> {
     stop: Option<ScnStop>,
     /// Set by a stop that ends the walk; a skipped subtree leaves it clear.
     halted: bool,
+    /// The partition steps above the node being walked, root first, each with its index in
+    /// `steps` once a placement has needed it.
+    path: Vec<(PartitionStep, Option<u32>)>,
+    /// The steps placements' paths use, each prefix once.
+    steps: Vec<PartitionStep>,
 }
 
 impl ScnWalk<'_> {
@@ -362,6 +520,12 @@ impl ScnWalk<'_> {
     /// so a long run of `SP_1NODE`s, whose chains grow by one gate a node, halts on the budget
     /// rather than storing gates in the square of its length.
     fn place(&mut self, ni: usize, obj: u16, (cx, cy, cz): (i32, i32, i32)) {
+        if let Some(shapes) = self.record_shapes.as_deref_mut() {
+            if obj != 0 {
+                shapes.insert(obj);
+            }
+            return;
+        }
         if self.models.contains(&obj) {
             if !self.chain_ids.contains_key(&self.chain) {
                 self.visits = self.visits.saturating_add(self.chain.len());
@@ -375,12 +539,46 @@ impl ScnWalk<'_> {
             if chain == next_id {
                 self.chains.push(self.chain.clone());
             }
+            let path = self.intern_path();
             self.found.push(Placement {
                 shape: obj,
                 position: [-(cx as f32), -(cy as f32), cz as f32],
                 chain,
+                raw: [cx, cy, cz],
+                node: ScnNode(u32::try_from(ni).unwrap_or(u32::MAX)),
+                // Only `SP_1NODE` (opcode 2) and `SP_LEAF` place a shape.
+                stand_in: self.words.get(ni) == Some(&2),
+                path,
             });
         }
+    }
+
+    /// The index in `steps` of the last step on the current path, storing the steps not yet
+    /// stored; `None` for an empty path.
+    fn intern_path(&mut self) -> Option<u32> {
+        let mut parent = None;
+        for (step, id) in &mut self.path {
+            let index = *id.get_or_insert_with(|| {
+                let index = u32::try_from(self.steps.len()).unwrap_or(u32::MAX);
+                self.steps.push(PartitionStep { parent, ..*step });
+                index
+            });
+            parent = Some(index);
+        }
+        parent
+    }
+
+    /// Enters child `child` of the partition node at `ni`.
+    fn push_step(&mut self, ni: usize, split: Split, child: u16) {
+        self.path.push((
+            PartitionStep {
+                node: ScnNode(u32::try_from(ni).unwrap_or(u32::MAX)),
+                split,
+                child,
+                parent: None,
+            },
+            None,
+        ));
     }
 
     /// One frame of the walk: follows the chain starting at `ni` from position `pos`,
@@ -397,8 +595,10 @@ impl ScnWalk<'_> {
         }
         let mut entered = Vec::new();
         let gates = self.chain.len();
+        let steps = self.path.len();
         self.walk_chain(ni, pos, depth, &mut entered);
         self.chain.truncate(gates);
+        self.path.truncate(steps);
         // This frame is done, so its nodes stop being ancestors of whatever is walked next.
         for node in entered {
             self.on_path.remove(&node);
@@ -499,13 +699,43 @@ impl ScnWalk<'_> {
                     }
                 }
                 4 | 6 | 8 | 16 | 18 => {
-                    // SP_2NODE, SP_XPLANE, SP_ZPLANE, SP_HSLOPE, SP_VSLOPE
-                    let Some([ptr, next]) = scn_operands(words, ni) else {
+                    // SP_2NODE, SP_XPLANE, SP_ZPLANE, SP_HSLOPE, SP_VSLOPE: ptr, next, then
+                    // a plane's sortvalue or a slope's slope and coord.
+                    let split = match op {
+                        6 | 8 => scn_operands(words, ni).map(|[_, _, sortvalue]| {
+                            let sortvalue = scn_u16(sortvalue).cast_signed();
+                            if op == 6 {
+                                Split::XPlane {
+                                    origin: cx,
+                                    sortvalue,
+                                }
+                            } else {
+                                Split::ZPlane {
+                                    origin: cz,
+                                    sortvalue,
+                                }
+                            }
+                        }),
+                        16 | 18 => scn_operands(words, ni).map(|[_, _, slope, coord]| {
+                            let (slope, coord) =
+                                (scn_u16(slope).cast_signed(), scn_u16(coord).cast_signed());
+                            if op == 16 {
+                                Split::HSlope { slope, coord }
+                            } else {
+                                Split::VSlope { slope, coord }
+                            }
+                        }),
+                        _ => Some(Split::Pair),
+                    };
+                    let (Some(split), Some([ptr, next])) = (split, scn_operands(words, ni)) else {
                         self.note(ni, ScnStopReason::Malformed);
                         break;
                     };
                     self.note_dangling(ni, scn_pointer(ptr));
+                    self.push_step(ni, split, 0);
                     self.walk_scn(scn_pointer(ptr), (cx, cy, cz), deeper);
+                    self.path.pop();
+                    self.push_step(ni, split, 1);
                     ni = scn_pointer(next);
                 }
                 10 => {
@@ -524,7 +754,10 @@ impl ScnWalk<'_> {
                         break;
                     };
                     self.note_dangling(ni, scn_pointer(ptr));
+                    self.push_step(ni, Split::Ground, 0);
                     self.walk_scn(scn_pointer(ptr), (cx, cy, cz), deeper);
+                    self.path.pop();
+                    self.push_step(ni, Split::Ground, 1);
                     ni = scn_pointer(next);
                 }
                 14 => {
@@ -541,11 +774,15 @@ impl ScnWalk<'_> {
                         self.note(ni, ScnStopReason::Malformed);
                         break;
                     };
+                    let mut index = 0u16;
                     while let Some(&child) = words.get(curr)
                         && child != 0
                     {
                         self.note_dangling(ni, scn_pointer(child));
+                        self.push_step(ni, Split::List, index);
                         self.walk_scn(scn_pointer(child), (cx, cy, cz), deeper);
+                        self.path.pop();
+                        index = index.saturating_add(1);
                         if self.halted {
                             return;
                         }
