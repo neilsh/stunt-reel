@@ -67,25 +67,13 @@ Part of the [`running-unattended`](SKILL.md) skill.
    GitHub then merges once the `main` ruleset's required checks pass and every review thread is resolved, but it reads neither the review comment nor review-body findings, so arm last, and disarm (`gh pr merge <n> --disable-auto`) before pushing a fix.
    A stacked PR's base has no ruleset, so arming it would merge it into its parent without CI: arm it only once its parent has merged and GitHub has retargeted it to `main`.
    `gh pr merge --auto` uses GraphQL, which a cloud session's proxy refuses: there, arm with the MCP tool `enable_pr_auto_merge` while checks are pending, and when the PR's merge state is `clean`, merge it with `merge_pull_request`, as [`cloud.md`](../working-in-an-environment/cloud.md#github-rest-only) says.
-   - No check has failed on `HEAD`, `mise run check` passed locally on that same commit, and any CodeRabbit review a person requested since the latest push has completed or had its step 4 check.
-   - Every review-body finding is answered (the ruleset enforces resolved threads), and the dispatched review's comment at `HEAD` (a child session's self-review included) says `clean` (for a rule 5 PR, the comment you posted from its pre-push review): confirm its URL came from the review you dispatched at `HEAD` and run the local (GraphQL) or cloud (REST) command below, whichever your shell can run (both accept only `OWNER`/`MEMBER`/`COLLABORATOR` comments).
-     The bar is met only when it prints `true`.
-     On `false` (no comment at `HEAD`, a comment only at an older SHA, or the newest comment at `HEAD` says `needs changes`), dispatch a re-review at `HEAD` (step 2).
-
-     ```
-     # local (GraphQL):
-     gh pr view <n> --json headRefOid,comments --jq '.headRefOid[0:7] as $h | [.comments[] | select(.authorAssociation | IN("OWNER","MEMBER","COLLABORATOR")) | .body | split("\n")[0] | rtrimstr("\r") | select(test("^[^:]+ review at " + $h + ": "))] | last | (. // "") | test(": clean$")'
-
-     # cloud (REST), the same boolean; pages go by number, since the proxy refuses --paginate's next links:
-     H=$(gh api repos/{owner}/{repo}/pulls/<n> --jq '.head.sha[0:7]')
-     F=".[] | select(.author_association | IN(\"OWNER\",\"MEMBER\",\"COLLABORATOR\")) | .body | split(\"\n\")[0] | rtrimstr(\"\r\") | select(test(\"^[^:]+ review at $H: \"))"
-     p=1; while :; do
-       gh api "repos/{owner}/{repo}/issues/<n>/comments?per_page=100&page=$p" --jq "$F"
-       [ "$(gh api "repos/{owner}/{repo}/issues/<n>/comments?per_page=100&page=$p" --jq length)" -lt 100 ] && break
-       p=$((p+1))
-     done | tail -n 1 | grep -q ': clean$' && echo true || echo false
-     ```
-   - The worker's report says each acceptance item is met, and the PR body carries `Fixes #N`, `Closes #N`, or `Part of #N`, read as a boolean (`gh api repos/{owner}/{repo}/pulls/<n> --jq '.body | test("(Fixes|Closes|Part of) #<N>([^0-9]|$)")'`, with no backslash, which Git Bash would mangle), not by opening the body.
+   - No check has failed on `HEAD` (`mise run merge-bar`'s `ci` line), `mise run check` passed locally on that same commit, and any CodeRabbit review a person requested since the latest push has completed or had its step 4 check.
+   - Every review-body finding is answered (the ruleset enforces resolved threads), and the dispatched review's comment at `HEAD` (a child session's self-review included) says `clean` (for a rule 5 PR, the comment you posted from its pre-push review): confirm its URL came from the review you dispatched at `HEAD`.
+     `mise run merge-bar -- <n> --issue <N>`, with `<N>` the item's issue, reads that comment (the newest `OWNER`/`MEMBER`/`COLLABORATOR` comment whose first line is `<reviewer> review at <HEAD, 7 characters>: <verdict>`) and, in one report that arms and merges nothing: the base, CI at `HEAD` (the newest run of each check), a `Fixes`, `Closes` or `Part of #<N>` line in the body (every such line is printed), open review threads, review-body findings (listed, not failed: it cannot see your answer) and draft state.
+     It uses GraphQL locally and REST in a cloud session.
+     The bar's machine-checkable part is met only when it prints `PASS`; on `FAIL` it names each reason.
+     On a missing, stale or `needs changes` review comment, dispatch a re-review at `HEAD` (step 2).
+   - The worker's report says each acceptance item is met; the `body` line of `mise run merge-bar --issue <N>` covers the `Fixes`, `Closes` or `Part of #<N>` line, so do not open the body.
    - **Environment:** in a cloud session, a rendering PR that [`cloud.md` § Rendering](../working-in-an-environment/cloud.md#rendering) sends to the GPU takes `local-only` and stays unarmed.
      A local-windows run takes such a PR from the queue, runs `mise run judge` on the GPU as the PR body asks, and, when the GPU's verdict matches lavapipe's, removes `local-only` and arms it under this bar; otherwise it fixes the PR as for a failed check.
    - **Allowed vs blocked changes:** the coordinator lists the PR's changed file names (`gh api "repos/{owner}/{repo}/pulls/<n>/files?per_page=100&page=1" --jq '.[].filename'`, next page by number), never the diff; a path under `docs/adr/`, `crates/stunt-core/Cargo.toml` or `research/parity/references.toml` sends a worker or the reviewer to say whether it is a blocked change before arming.
