@@ -7,7 +7,8 @@ accepted 2026-11-13 for [#446](https://github.com/neilsh/stunt-reel/issues/446).
 on the ground plane; ADR 0035's **Rule** and **Snap** stand, and its **Route** still applies to a
 ground-lying prop off that plane, such as a tile on a hill. The `[I5]` lift that **What is flat
 ground** subtracts is gone under [ADR 0046](0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)
-(accepted 2026-11-14).
+(accepted 2026-11-14). Amended 2026-11-20 for [#651](https://github.com/neilsh/stunt-reel/issues/651):
+a prop triangle is flat ground when its corners lie within 0.1 m of the plane, not 0.1 mm (below).
 
 ## Context
 
@@ -32,9 +33,12 @@ outline could cover the one-pixel rail drawn after the tie; the tie's own fill, 
 ## Decision
 
 * **What is flat ground.** The ocean, every `MAP.BIN` patch whose corners all lie on the plane
-  `y = base_y` (within 0.1 mm), and every prop triangle whose three corners lie on it, less any
-  `[I5]` lift the decoder gave a decal. Raised terrain and the rest of each prop stay in the base and
-  decal passes, so a nearer mountain still hides what lies behind it.
+  `y = base_y` (within 0.1 mm), and every prop triangle whose three corners lie within 0.1 m of
+  it (`GROUND_LIE_TOLERANCE`, the snap's own), less any `[I5]` lift the decoder gave a decal; its
+  corners are put on the plane. The wider band is #651's: `LOCATION`'s infield lies 7.8 mm below
+  the plane, under the plaza snapped onto it, which `PLAYONE` paints before it
+  ([`world-scene-residuals.md`](../../research/playone-exe/world-scene-residuals.md) section 6.8).
+  Raised terrain and the rest of each prop stay in the base and decal passes, so a nearer mountain still hides what lies behind it.
 * **Where it goes.** `build_world_ir` puts that geometry in `WORLD_GROUND` nodes
   (`stunt_core::world::GROUND_NODE`): the ocean, the flat patches in `MAP.BIN` order, then each
   placement's flat triangles in placement order, under the placement's `SP_1NODE` groups and with

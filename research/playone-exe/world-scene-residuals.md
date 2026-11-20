@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and `PLAYONE` drops far scenery by distance against its `scale_index`."
+summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, as is any prop face within 10 cm of the ground plane, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and `PLAYONE` drops far scenery by distance against its `scale_index`."
 ---
 # `PLAYONE.EXE`: Ground Renderer Residuals
 
@@ -176,22 +176,28 @@ Bed 11 rules out `0x06CF`; it does not tell `0x06CE` from the finer `0x06CD` and
 Our render on `main` before the ground pass (`ba11061e`) picks the same stand-ins, with the same switch row, but holds no index-40 pixel in rows 100 to 184.
 Its rails are missing, not single, which fits the tie-over-rail grouping that [#448](https://github.com/neilsh/stunt-reel/issues/448) fixed (section 6.6), so no level-of-detail change follows.
 
-### 6.8 `LOCATION`'s infield sinks under the snapped plaza
+### 6.8 `LOCATION`'s infield and the plaza under it
 
-`[Established]` for the heights in our world IR, read from the code and `export-gltf --shape`; `[Bounded Observation]` that this is the tie of [#651](https://github.com/neilsh/stunt-reel/issues/651) at `LOCATION` 2586 to 2872 (the eye 30 m up, 86 m from the stadium, at 2586).
+`[Established]` for the heights in our world IR, read from the code and `export-gltf --shape`; `[Bounded Observation]` that this was the tie of [#651](https://github.com/neilsh/stunt-reel/issues/651) at `LOCATION` 2586 to 2872 (the eye 30 m up, 86 m from the stadium, at 2586).
 _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
 
 `PLAYONE` paints `MAP.BIN` record 1, the plaza `0x064A` (14) and the stadium `0x0265`'s infield (169) in that order, which no eye test changes ([`world-scene.md`](world-scene.md) section 3.1).
 In the source the plaza lies 31.25 mm below height 0 and the infield 7.8125 mm below it.
 Our IR moves only the plaza: it is flat, within 0.1 m of record 1, so `ground_decal_vertices` snaps it to `y = 0` and it joins the `WORLD_GROUND` pass (`Always`, depth write).
-`0x0265` is not flat (it rises to 9.5 m), so its infield keeps `y = -0.0078125`, outside the ground pass's 1e-4 m (`GROUND_PLANE_TOLERANCE`), and as a base polygon must pass `Less` against a plaza now 7.8125 mm above it.
-An exact depth test draws the plaza there, as both backends have since #636 at the ticks it measured (2586, 2599, 2840, 2859, 2862).
-Before, the tie flipped (`[Supported Inference]`: a 7.8125 mm offset seen from about 85 m (near plane 0.5 m) is a depth gap of at most `0.5 / 85² × 0.0078125 = 5.4e-7`, while #595 read 3.2e-6 and 2.9e-6, of opposite sign, near depth 0.994; so the f32 vertex-stage error that #636 removed flipped it, not depth precision).
+`0x0265` is not flat (it rises to 9.5 m), so its infield keeps `y = -0.0078125`.
+While the ground pass took only prop triangles within 1e-4 m of the plane (`GROUND_PLANE_TOLERANCE`), the infield stayed a base polygon that had to pass `Less` against the plaza 7.8125 mm above it, and an exact depth test drew the plaza, as both backends did after #636 at the ticks it measured (2586, 2599, 2840, 2859, 2862).
+Before #636 the tie flipped (`[Supported Inference]`: a 7.8125 mm offset seen from about 85 m (near plane 0.5 m) is a depth gap of at most `0.5 / 85² × 0.0078125 = 5.4e-7`, while #595 read 3.2e-6 and 2.9e-6, of opposite sign, near depth 0.994; so the f32 vertex-stage error that #636 removed flipped it, not depth precision).
 
-The fix this points to is the ground pass: the infield's face lies within 0.1 m (`GROUND_LIE_TOLERANCE`, the snap's tolerance) of the ground plane, and drawn in the `WORLD_GROUND` walk-order pass after the plaza it paints over it, as `PLAYONE` does.
-That holds only if our walk keeps the tree's order of the two props (`SP_2NODE` `0x6BFC`), which is not checked.
-A depth rule cannot fix it: in our IR the plaza is the nearer surface, under any depth format.
-The decal pass cannot either: it holds faces coplanar with an earlier face of their own shape's stream ([ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)), and the infield is the first face of `0x0265`, 23.4375 mm above the plaza in the source.
+**Adopted: a prop face near the ground plane is ground.**
+The ground pass now takes every prop triangle whose three corners lie within 0.1 m (`GROUND_LIE_TOLERANCE`, the snap's tolerance) of `y = base_y` and puts its corners on the plane (`lies_on_ground_plane`, `crates/stunt-core/src/world/terrain.rs`), so the infield is painted after the plaza in placement order.
+Our walk keeps the tree's order of the two: on `LOCATION` the plaza is placement 13821 and the stadium 13899, after its stand-ins `0x026B` (13891) and `0x026A` (13892).
+`[Bounded Observation]`, seven reference films on the RTX 4070: `LOCATION` rises by 0.0039, `LAND` by 0.0022 and `BOMB` by 0.0005, all 27 scored frames from 2586 to 2872 rise (2586 from 0.7711 to 0.8537), and no frame of any film falls by more than 0.005.
+The rule also takes the `OP_DOT` octahedra lying on the ground (radius 3 cm), now flattened onto the plane, `LAND`'s colour-218 faces of `0x073B` and `0x073C`, their corners from 4.6 cm below it to 1.4 cm above, and line runs 1 to 7.8 mm below it on `BOMB` and `LOCATION`.
+At `LAND` 221 the runway now shows where the baseline drew grass; which of those faces it is was not traced.
+_Source: [2026-11-20: a non-flat prop's faces near the ground plane in the ground pass](../../work/2026-11/651_infield-ground-pass/journal.md#2026-11-20-a-non-flat-props-faces-near-the-ground-plane-in-the-ground-pass)._
+
+A depth rule could not have fixed it: in our IR the plaza is the nearer surface, under any depth format.
+The decal pass could not either: it holds faces coplanar with an earlier face of their own shape's stream ([ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)), and the infield is the first face of `0x0265`, 23.4375 mm above the plaza in the source.
 
 ## Ruled out
 
@@ -244,5 +250,6 @@ The decal pass cannot either: it holds faces coplanar with an earlier face of th
    On `main` a grey roof outline shows over it where the capture shows bare wall, and flagging every line on a facet as a decal adds red segments there (Ruled out).
    Which shapes the wall and the outline belong to, and why the wall does not hide them, was not traced.
    _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
-6. **`LOCATION`'s infield in the ground pass** ([#651](https://github.com/neilsh/stunt-reel/issues/651), section 6.8).
-   Whether drawing a non-flat prop's faces that lie within 0.1 m (`GROUND_LIE_TOLERANCE`) of the ground plane in the `WORLD_GROUND` pass, after the plaza, restores the infield at 2586 to 2872 without costing other films; it changes draw order, so it needs the GPU judge.
+6. **What the ground pass's 0.1 m rule moves beyond the infield** (section 6.8).
+   At `LAND` 221 it draws the runway the capture shows; which shape's faces make that runway, and what costs `LOCATION` 3268 its 0.0044 at the foot of a tower, were not traced.
+   _Source: [2026-11-20: a non-flat prop's faces near the ground plane in the ground pass](../../work/2026-11/651_infield-ground-pass/journal.md#2026-11-20-a-non-flat-props-faces-near-the-ground-plane-in-the-ground-pass)._
