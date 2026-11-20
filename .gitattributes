@@ -13,3 +13,6 @@
 *.jpg binary
 *.zip binary
 *.glb binary
+# The generated expected-scores files take main's side on a merge or rebase (ADR 0053); the
+# driver is registered by `mise run init` and `ensure`, and without it a conflict is plain.
+research/parity/expected/*.toml merge=expected-pins

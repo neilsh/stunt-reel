@@ -1,7 +1,8 @@
 """The git settings and calls the worktree commands share.
 
-``init`` and ``ensure`` set ``core.hooksPath`` and ``blame.ignoreRevsFile`` here (ADR 0036), and the
-:class:`Line` a caller prints is the same report line ``init`` shows. ``_worktrees`` reads what git knows.
+``init`` and ``ensure`` set ``core.hooksPath`` and ``blame.ignoreRevsFile`` here (ADR 0036) and
+register the ``expected-pins`` merge driver (ADR 0053), and the :class:`Line` a caller prints is the
+same report line ``init`` shows. ``_worktrees`` reads what git knows.
 """
 
 from __future__ import annotations
@@ -115,6 +116,39 @@ def ensure_blame_ignore(repo: Path) -> list[Line]:
             Line("!", f"could not set blame.ignoreRevsFile: {result.stderr.strip()}", news=True)
         ]
     return [Line("+", f"blame.ignoreRevsFile -> {BLAME_IGNORE_VALUE}", news=True)]
+
+
+#: The merge driver ``.gitattributes`` attaches to the generated expected-scores files.
+MERGE_DRIVER = "expected-pins"
+
+#: ``merge.expected-pins.driver``'s value: absolute through the shell, so the driver's working
+#: directory does not matter.
+MERGE_DRIVER_COMMAND = 'sh "$(git rev-parse --show-toplevel)/.githooks/merge-take-main.sh" %O %A %B'
+
+#: ``merge.expected-pins.name``'s value.
+MERGE_DRIVER_NAME = "take main's side of a generated expected-scores file"
+
+
+def ensure_merge_driver(repo: Path) -> list[Line]:
+    """Register the ``expected-pins`` merge driver in *repo*'s shared config; the lines ``init`` prints.
+
+    Shared like ``core.hooksPath``. A different driver value someone chose is left alone and
+    reported; a clone without the driver gets git's plain conflict.
+    """
+    key = f"merge.{MERGE_DRIVER}.driver"
+    current = _git(repo, "config", "--get", key).stdout.strip()
+    if current == MERGE_DRIVER_COMMAND:
+        return [Line("=", f"{key} set")]
+    if current:
+        return [Line("!", f"{key} is {current!r}; left alone, so conflicts in expected/ stay")]
+    for name, value in (
+        (key, MERGE_DRIVER_COMMAND),
+        (f"merge.{MERGE_DRIVER}.name", MERGE_DRIVER_NAME),
+    ):
+        result = _git(repo, "config", name, value)
+        if result.returncode != 0:
+            return [Line("!", f"could not set {name}: {result.stderr.strip()}", news=True)]
+    return [Line("+", f"{key} set", news=True)]
 
 
 @dataclass(frozen=True)

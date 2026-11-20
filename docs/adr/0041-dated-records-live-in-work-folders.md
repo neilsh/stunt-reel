@@ -66,7 +66,7 @@ Each use of it has a new home:
 | "Was this already tried?" before a parity attempt | The residual's Ruled out section, then `rg <term> work/` |
 | Grep for a term | Journal entries |
 | Provenance | A provenance line linking a journal entry's heading |
-| The current baseline | Each film's expected tables in `research/parity/references.toml`, which `mise run parity` reads ([#308](https://github.com/neilsh/stunt-reel/pull/308)) |
+| The current baseline | Each film's expected tables in `research/parity/expected/<class>.toml` (they sat in `references.toml` until [ADR 0053](0053-expected-scores-live-in-a-generated-file-per-class.md)), which `mise run parity` reads ([#308](https://github.com/neilsh/stunt-reel/pull/308)) |
 | Appending a row per attempt | A journal entry in the attempt's own work folder; no shared file |
 
 **Links into dated records, as built.** The spec states the rule more narrowly (sections 4.2 and

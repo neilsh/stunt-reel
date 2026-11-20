@@ -95,7 +95,7 @@ IoU agrees to 0.00002 or better on every film.
 No SSIM is identical at the tables' seven decimals.
 By #265's criterion (every film within the 0.002 margin), rows from mesa-dist-win 25.2.8 stand in for GPU rows on these seven films on this tree, and the cloud's Ubuntu 25.2.8 rows agree with them; this is not shown for CI's lavapipe or for 26.2.6, and a change to Gouraud polygons or to depth order can score differently on lavapipe (section 5).
 Because the adapter names differ (LLVM 21.1.7 against 20.1.2), `mise run parity` reports a local run against those rows as `not comparable: other adapter`, so local renders are not drift-checked against them.
-The owner decided on 2026-11-16 that local runs do not repin the `lavapipe` class: `mise run parity-repin -- --class lavapipe` here rewrites all seven rows from a local run and swaps every row's adapter to LLVM 21.1.7, after which cloud and CI runs read `not comparable: other adapter` and lose their drift check; #649 measures how far builds differ pixel by pixel.
+The owner decided on 2026-11-16 that local runs do not repin the `lavapipe` class: `mise run parity-repin -- --class lavapipe` here regenerates `expected/lavapipe.toml` from a local run and swaps every film's adapter to LLVM 21.1.7, after which cloud and CI runs read `not comparable: other adapter` and lose their drift check; #649 measures how far builds differ pixel by pixel.
 _Source: [Lavapipe beside the GPU on one crates tree](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree)._
 
 ## 5. What still differs

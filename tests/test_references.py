@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from stunt_reel import capture_store, dataroot, parity_layout, references
+from stunt_reel import capture_store, dataroot, expected_file, parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import LOSS_CLASSES
 
@@ -314,8 +314,8 @@ TREE = "641cffd3bfc895719f6078b33d7a0232e5f1750c"
 CAPTURE = "9869444de53c653214144b83c2bdbce4a686a16f5189a1f5a94f6eb19605ed49"
 
 
-def _expected(renderer: str = "gpu", **changes: str | None) -> list[str]:
-    """A ``[ctry.expected.<renderer>]`` table with *changes* to its fields; ``None`` drops one."""
+def _expected(**changes: str | None) -> list[str]:
+    """A ``[ctry]`` table of a class file with *changes* to its fields; ``None`` drops one."""
     fields = {
         "ssim": "0.8725",
         "iou": "0.9897",
@@ -325,11 +325,20 @@ def _expected(renderer: str = "gpu", **changes: str | None) -> list[str]:
         "adapter": '"NVIDIA GeForce RTX 4070"',
     } | changes
     lines = (f"{key} = {value}" for key, value in fields.items() if value is not None)
-    return [f"[ctry.expected.{renderer}]", *lines]
+    return ["[ctry]", *lines]
 
 
-def test_a_row_reads_its_expected_scores_and_noise_sigma(tmp_path: Path) -> None:
-    _row(tmp_path, PATCH3, "noise_sigma = 0.000303", *_expected())
+def _class_file(root: Path, renderer: str, *lines: str) -> Path:
+    """Writes ``expected/<renderer>.toml`` beside *root*'s references file."""
+    path = expected_file.path(root / parity_layout.REFERENCES_FILE, renderer)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def test_expected_scores_are_read_from_the_class_files(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, "noise_sigma = 0.000303")
+    _class_file(tmp_path, "gpu", *_expected())
     reference = references.read_reference(tmp_path, "ctry")
     assert dict(reference.expected) == {
         "gpu": references.Expected(
@@ -340,15 +349,60 @@ def test_a_row_reads_its_expected_scores_and_noise_sigma(tmp_path: Path) -> None
     assert reference.noise_sigma == 0.000303
 
 
+def test_each_class_reads_its_own_file(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3)
+    _class_file(tmp_path, "gpu", *_expected())
+    _class_file(tmp_path, "lavapipe", *_expected(ssim="0.5", adapter='"llvmpipe"'))
+    expected = references.read_reference(tmp_path, "ctry").expected
+    assert (expected["gpu"].ssim, expected["lavapipe"].ssim) == (0.8725, 0.5)
+
+
+def test_a_row_holding_expected_tables_is_refused(tmp_path: Path) -> None:
+    """A branch made before the move still has them after merging main (ADR 0053)."""
+    _row(tmp_path, PATCH3, "[ctry.expected.gpu]", "ssim = 0.8", "iou = 0.8")
+    with pytest.raises(references.ReferenceCaptureError) as refused:
+        references.read_reference(tmp_path, "ctry")
+    assert "research/parity/expected/" in str(refused.value)
+
+
+def test_a_film_missing_from_a_class_file_has_no_expected_entry(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3)
+    _class_file(tmp_path, "gpu", *_expected())
+    assert references.read_reference(tmp_path, "ctry").expected.keys() == {"gpu"}
+    _class_file(tmp_path, "gpu", "[intro]", *_expected()[1:])
+    assert dict(references.read_reference(tmp_path, "ctry").expected) == {}
+
+
+def test_a_class_file_film_without_a_row_is_ignored(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3)
+    _class_file(tmp_path, "gpu", *_expected(), "", "[gone]", *_expected()[1:])
+    assert references.reference_films(tmp_path) == ("ctry",)
+    assert references.read_reference(tmp_path, "ctry").expected.keys() == {"gpu"}
+
+
+def test_a_malformed_class_file_names_that_file(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3)
+    _class_file(tmp_path, "gpu", *_expected(), "colour = 1")
+    with pytest.raises(references.ReferenceCaptureError) as refused:
+        references.read_reference(tmp_path, "ctry")
+    assert "gpu.toml" in str(refused.value)
+    assert "expected.gpu.colour" in str(refused.value)
+    _class_file(tmp_path, "gpu", "[ctry")
+    with pytest.raises(references.ReferenceCaptureError, match=r"gpu\.toml is not valid TOML"):
+        references.read_reference(tmp_path, "ctry")
+
+
 def test_an_expected_table_without_a_commit_reads_its_tree_and_pins(tmp_path: Path) -> None:
-    _row(tmp_path, PATCH3, *_expected(commit=None, all_sha256=f'"{PIN}"'))
+    _row(tmp_path, PATCH3)
+    _class_file(tmp_path, "gpu", *_expected(commit=None, all_sha256=f'"{PIN}"'))
     expected = references.read_reference(tmp_path, "ctry").expected["gpu"]
     assert (expected.crates, expected.sha256, expected.all_sha256) == (TREE, CAPTURE, PIN)
     assert expected.commit is None
 
 
 def test_an_expected_table_may_name_a_sha256_tree(tmp_path: Path) -> None:
-    _row(tmp_path, PATCH3, *_expected(crates=f'"{CAPTURE}"'))
+    _row(tmp_path, PATCH3)
+    _class_file(tmp_path, "gpu", *_expected(crates=f'"{CAPTURE}"'))
     assert references.read_reference(tmp_path, "ctry").expected["gpu"].crates == CAPTURE
 
 
@@ -360,7 +414,8 @@ def test_a_row_without_expected_scores_reads_empty(tmp_path: Path) -> None:
 
 
 def test_the_expected_scores_are_read_only(tmp_path: Path) -> None:
-    _row(tmp_path, PATCH3, *_expected())
+    _row(tmp_path, PATCH3)
+    _class_file(tmp_path, "gpu", *_expected())
     expected = references.read_reference(tmp_path, "ctry").expected
     with pytest.raises(TypeError):
         expected["lavapipe"] = expected["gpu"]  # type: ignore[index]
@@ -368,7 +423,8 @@ def test_the_expected_scores_are_read_only(tmp_path: Path) -> None:
 
 def test_an_integer_score_reads_as_a_float(tmp_path: Path) -> None:
     """TOML writes a whole number without a point; ``1`` is a score as ``1.0`` is, a bool is not."""
-    _row(tmp_path, PATCH3, "noise_sigma = 1", *_expected(ssim="1", iou="0"))
+    _row(tmp_path, PATCH3, "noise_sigma = 1")
+    _class_file(tmp_path, "gpu", *_expected(ssim="1", iou="0"))
     reference = references.read_reference(tmp_path, "ctry")
     scores = reference.expected["gpu"]
     assert (scores.ssim, scores.iou, reference.noise_sigma) == (1.0, 0.0, 1.0)
@@ -378,7 +434,6 @@ def test_an_integer_score_reads_as_a_float(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("lines", "field"),
     [
-        (_expected("warp"), "expected.warp"),
         (_expected(ssim=None), "expected.gpu.ssim"),
         (_expected(ssim='"0.8725"'), "expected.gpu.ssim"),
         (_expected(ssim="1.5"), "expected.gpu.ssim"),
@@ -394,32 +449,38 @@ def test_an_integer_score_reads_as_a_float(tmp_path: Path) -> None:
         (_expected(all_sha256="1"), "expected.gpu.all_sha256"),
         (_expected(adapter='""'), "expected.gpu.adapter"),
         (_expected(noise_sigma="0.1"), "expected.gpu.noise_sigma"),
-        (["[ctry.expected]", 'gpu = "x"'], "expected.gpu"),
-        (["expected = 3"], "expected"),
-        ([*_expected(), "[ctry.expected.gpu.loss]", "ground = 0.1"], "expected.gpu.loss.ground"),
-        ([*_expected(), "[ctry.expected.gpu.loss]", "props = 1.5"], "expected.gpu.loss.props"),
-        ([*_expected(), "[ctry.expected.gpu.loss]", 'props = "0.1"'], "expected.gpu.loss.props"),
+        (["ctry = 3"], "expected.gpu"),
+        ([*_expected(), "[ctry.loss]", "ground = 0.1"], "expected.gpu.loss.ground"),
+        ([*_expected(), "[ctry.loss]", "props = 1.5"], "expected.gpu.loss.props"),
+        ([*_expected(), "[ctry.loss]", 'props = "0.1"'], "expected.gpu.loss.props"),
         (_expected(loss="3"), "expected.gpu.loss"),
-        (["noise_sigma = 0"], "noise_sigma"),
-        (["noise_sigma = -1"], "noise_sigma"),
     ],
 )
 def test_a_malformed_expected_entry_is_named(tmp_path: Path, lines: list[str], field: str) -> None:
-    _row(tmp_path, PATCH3, *lines)
+    _row(tmp_path, PATCH3)
+    path = _class_file(tmp_path, "gpu", *lines)
     with pytest.raises(references.ReferenceCaptureError) as refused:
         references.read_reference(tmp_path, "ctry")
     message = str(refused.value)
-    assert str(tmp_path / parity_layout.REFERENCES_FILE) in message
+    assert str(path) in message
     assert "[ctry]" in message
     assert field in message
 
 
+@pytest.mark.parametrize("line", ["noise_sigma = 0", "noise_sigma = -1"])
+def test_a_malformed_noise_sigma_is_named(tmp_path: Path, line: str) -> None:
+    _row(tmp_path, PATCH3, line)
+    with pytest.raises(references.ReferenceCaptureError, match=r"\[ctry\].*noise_sigma"):
+        references.read_reference(tmp_path, "ctry")
+
+
 def test_an_expected_table_reads_its_class_losses_in_class_order(tmp_path: Path) -> None:
-    _row(
+    _row(tmp_path, PATCH3)
+    _class_file(
         tmp_path,
-        PATCH3,
+        "gpu",
         *_expected(),
-        "[ctry.expected.gpu.loss]",
+        "[ctry.loss]",
         "props = 0.04",
         "sky = 0.015",
         "terrain = 0",
@@ -430,7 +491,8 @@ def test_an_expected_table_reads_its_class_losses_in_class_order(tmp_path: Path)
 
 
 def test_an_expected_table_without_class_losses_reads_none(tmp_path: Path) -> None:
-    _row(tmp_path, PATCH3, *_expected())
+    _row(tmp_path, PATCH3)
+    _class_file(tmp_path, "gpu", *_expected())
     assert references.read_reference(tmp_path, "ctry").expected["gpu"].loss is None
 
 
