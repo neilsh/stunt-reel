@@ -8,6 +8,10 @@
 
 use std::fmt;
 
+mod collision;
+
+pub use collision::*;
+
 /// Scenery class of an ocean vertex, stored in `SodVertex::scenery_class`.
 pub const SCENERY_OCEAN: u8 = 1;
 /// Scenery class of a terrain vertex, stored in `SodVertex::scenery_class`.
@@ -56,6 +60,7 @@ pub struct SodVertex {
     /// - Bits 3..=5: Screen-space line corner ([`VERTEX_FLAG_LINE`], [`VERTEX_FLAG_LINE_SIDE`],
     ///   [`VERTEX_FLAG_LINE_END`])
     /// - Bit 6: `OP_PERFDISK` rim vertex ([`VERTEX_FLAG_DISC`])
+    /// - Bit 7: Reserved (must be zero)
     pub flags: u8,
     /// Scenery class of a world vertex (`SCENERY_OCEAN`, `SCENERY_TERRAIN`, `SCENERY_PROP`),
     /// zero for every other vertex. The renderer adds it to the draw's base layer id.
@@ -221,7 +226,8 @@ pub struct SodHeader {
     pub header_flags: u8,
     /// Metric multiplier (meters per integer unit) derived from `scale_index`.
     pub scale_factor: f32,
-    /// Engine collision metadata word copied verbatim from the header.
+    /// The shape-segment offset of the collision list, copied verbatim from the header; 0 for
+    /// none. [`DecodeRecord::collision`] holds the decoded lists.
     pub collision_meta: u16,
 }
 
@@ -293,6 +299,9 @@ pub struct DecodeRecord {
     /// ascending and without repeats; empty for a shape with no articulated parts. A draw
     /// whose bank agrees with the decode's at these operands draws the same pose.
     pub bank_operands: Vec<u16>,
+    /// The collision lists the header's word `+8` (`collision_meta`) reaches, decoded in
+    /// every mode; empty when it is 0.
+    pub collision: ShapeCollision,
 }
 
 /// Axis-aligned extent of a shape's vertices in `[I1]` metres, plus its bounding radius.
@@ -422,6 +431,12 @@ impl SodModelIr {
     #[must_use]
     pub fn decode(&self) -> Option<&DecodeRecord> {
         self.decode.as_ref()
+    }
+
+    /// The collision lists of the decoded stream; `None` for an authored shape.
+    #[must_use]
+    pub fn collision(&self) -> Option<&ShapeCollision> {
+        self.decode.as_ref().map(|record| &record.collision)
     }
 
     /// Attaches the record of the decode that produced this shape.

@@ -100,6 +100,7 @@ impl SampleSink {
                                     rgba: page.rgba(),
                                     indices: page.indices(),
                                     layers: page.layers(),
+                                    shapes: page.shapes(),
                                 },
                             )
                             .map_err(|e| format!("{key}: {e}"))?;
@@ -397,7 +398,8 @@ mod tests {
                 [r, g, b, 255]
             })
             .collect();
-        RenderedPage::new(PageSize::new(320, 200), rgba, &plane).expect("page")
+        let shapes = vec![0; plane.len()];
+        RenderedPage::new(PageSize::new(320, 200), rgba, &plane, &shapes).expect("page")
     }
 
     /// A sink writing into `dir` with a render store, as a whole-tick `--out-dir` run has.

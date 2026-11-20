@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "film": {
     "name": "SYNTH.FLM",
     "flm_bytes": 17
@@ -158,6 +158,21 @@
       }
     }
   ],
+  "planes": {
+    "shapes.zst": {
+      "sha256": "510e1e9e46a9f5ecc1a5496331bd7419fe087c749aee3d076778fc75f4d3d61e",
+      "chunks": [
+        {
+          "offset": 0,
+          "length": 29
+        },
+        {
+          "offset": 29,
+          "length": 30
+        }
+      ]
+    }
+  },
   "adapter": {
     "name": "Test GPU",
     "class": "hardware"

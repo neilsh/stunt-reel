@@ -52,6 +52,7 @@ struct OwnedPage {
     rgba: Vec<u8>,
     indices: Vec<u8>,
     layers: Vec<u32>,
+    shapes: Vec<u32>,
 }
 
 impl OwnedPage {
@@ -61,6 +62,7 @@ impl OwnedPage {
             rgba: &self.rgba,
             indices: &self.indices,
             layers: &self.layers,
+            shapes: &self.shapes,
         }
     }
 }
@@ -87,6 +89,7 @@ fn page(controls: PaletteControls, tamper: bool) -> OwnedPage {
             .map(|&word| u8::try_from(word & 0xFF).expect("low byte"))
             .collect(),
         layers: plane.iter().map(|&word| word >> 8).collect(),
+        shapes: vec![0; plane.len()],
     }
 }
 
@@ -273,7 +276,7 @@ fn an_unusable_schema_version_is_named_not_read_as_zero() {
         ),
         (
             json!({"schema_version": huge}),
-            "schema version 4294967295; expected 3",
+            "schema version 4294967295; expected 4",
         ),
     ] {
         write_json(&dir.join(RENDER_DOCUMENT), &document, true).expect("write record");
@@ -285,7 +288,7 @@ fn an_unusable_schema_version_is_named_not_read_as_zero() {
 #[test]
 fn a_wrong_schema_version_is_rejected_before_its_fields() {
     let dir = temp_dir("version");
-    for version in [2, 9] {
+    for version in [3, 9] {
         write_json(
             &dir.join(RENDER_DOCUMENT),
             &json!({
@@ -301,7 +304,7 @@ fn a_wrong_schema_version_is_rejected_before_its_fields() {
         assert!(
             error
                 .to_string()
-                .contains(&format!("schema version {version}; expected 3")),
+                .contains(&format!("schema version {version}; expected 4")),
             "{error}"
         );
     }

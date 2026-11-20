@@ -1,9 +1,16 @@
 """The render store: the plane files beside ``render.json`` (ADR 0027), read and written in
 per-second zstd chunks.
+
+A render may also hold optional planes (ADR 0052) that ``render.json`` lists by file name with
+their SHA-256 and chunk spans. This store checks each listed plane's file against its listing
+but never decodes one, and writes none; a plane file the record does not list is not part of
+the render. The Rust store's module docs (``crates/stunt-score/src/render_store/``) describe
+``shapes.zst``.
 """
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import struct
 import zlib
@@ -12,7 +19,7 @@ from compression import zstd
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
-from stunt_reel.parity_artifacts._fields import _error
+from stunt_reel.parity_artifacts._fields import ArtifactError, _error
 from stunt_reel.parity_artifacts.render import (
     RENDER_CHUNK_TICKS,
     RENDER_DOCUMENT,
@@ -20,6 +27,7 @@ from stunt_reel.parity_artifacts.render import (
     FilmId,
     Geometry,
     Page,
+    PlaneListing,
     RenderAdapter,
     RenderChunk,
     RenderRecord,
@@ -38,6 +46,10 @@ if TYPE_CHECKING:
 RENDER_INDEX_FILE = "frames.zst"
 #: A render's layer planes, one little-endian u16 per pixel, chunked like the index planes.
 RENDER_LAYER_FILE = "layers.zst"
+#: The shape plane, an optional plane only the Rust store writes and decodes; this store
+#: checks it when ``render.json`` lists it, never writes it, and removes a stale one from a
+#: directory it rewrites.
+RENDER_SHAPE_FILE = "shapes.zst"
 #: A render's distinct palettes, :data:`PALETTE_BYTES` each, as one zstd frame.
 RENDER_PALETTE_FILE = "palettes.zst"
 #: One indexed PNG per film second of a render, for people.
@@ -86,7 +98,9 @@ class RenderStore:
     """Reads a render directory's store (ADR 0027), keeping the last two decoded chunks.
 
     Opening reads and validates ``render.json``, checks the two plane files against its
-    chunk table and reads the palettes, so a later :meth:`frame` only decodes.
+    chunk table and each listed optional plane against its listing (present, as long as its
+    spans and with its SHA-256, or the open fails with the re-render action), and reads the
+    palettes, so a later :meth:`frame` only decodes.
     """
 
     def __init__(self, directory: Path) -> None:
@@ -107,6 +121,8 @@ class RenderStore:
                     raise _error(
                         "store", f"holds {size} bytes but render.json's chunks end at {end}", path
                     )
+        for name, listing in self.record.planes.items():
+            _check_plane(directory, name, listing)
         self._palettes = _read_palettes(directory / RENDER_PALETTE_FILE, self.record.palette_count)
         self._rows = {entry.tick: row for row, entry in enumerate(self.record.ticks)}
         self._cache: OrderedDict[int, tuple[bytes, bytes]] = OrderedDict()
@@ -176,6 +192,32 @@ class RenderStore:
         return raw
 
 
+def _check_plane(directory: Path, name: str, listing: PlaneListing) -> None:
+    """Refuse a listed optional plane whose file is not the one *listing* describes."""
+    path = directory / name
+
+    def refuse(what: str) -> ArtifactError:
+        return _error(
+            "store",
+            f"{what}, so it is not this render's {name}; re-render {directory} with the current "
+            "stuntreel --headless --out-dir",
+            path,
+        )
+
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError as err:
+        raise refuse("render.json lists the plane but the file is missing") from err
+    except OSError as err:
+        raise _error("missing", f"the file must be readable ({err})", path) from err
+    end = listing.end()
+    if len(data) != end:
+        raise refuse(f"it holds {len(data)} bytes but render.json's spans for it end at {end}")
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != listing.sha256:
+        raise refuse(f"its SHA-256 is {digest} but render.json lists {listing.sha256}")
+
+
 def _read_palettes(path: Path, count: int) -> tuple[bytes, ...]:
     """``palettes.zst``, which must hold exactly *count* palettes."""
     if count == 0 and not path.exists():
@@ -200,7 +242,9 @@ class RenderStoreWriter:
     """Writes a render's planes in tick order, a zstd chunk per film second (ADR 0027).
 
     Nothing is created until the first tick. The writer replaces its own files and
-    ``preview/`` and leaves anything else in the directory.
+    ``preview/`` and leaves anything else in the directory, except ``shapes.zst``: it writes and
+    lists no shape plane, so it deletes one a Rust render left there, which its record would not
+    list (the Rust store's module docs describe the file).
     """
 
     def __init__(self, directory: Path, geometry: Geometry) -> None:
@@ -268,6 +312,8 @@ class RenderStoreWriter:
         preview.mkdir(parents=True)
         for name in (RENDER_INDEX_FILE, RENDER_LAYER_FILE):
             (self.directory / name).write_bytes(b"")
+        # A shape plane left by an earlier Rust render is not this render's; tidy it away.
+        (self.directory / RENDER_SHAPE_FILE).unlink(missing_ok=True)
         self._started = True
 
     def _close_chunk(self) -> None:

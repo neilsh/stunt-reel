@@ -16,7 +16,7 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::{FilmScene, ViewCamera};
-use stunt_core::world::{GROUND_NODE, TerrainSurface, World};
+use stunt_core::world::{GROUND_NODE, PlacementRecords, PropRun, TerrainSurface, World};
 use stunt_render::{CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
@@ -362,6 +362,8 @@ fn world_is_drawn_when_present() {
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
             view_facing: Vec::new(),
+            prop_runs: Vec::new(),
+            placements: PlacementRecords::default(),
         };
         let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
         let Some((w, h, drawn)) = render(&scene) else {
@@ -386,7 +388,73 @@ fn world_of(ir: SodModelIr) -> World {
         terrain: TerrainSurface::default(),
         tap_failures: Vec::new(),
         view_facing: Vec::new(),
+        prop_runs: Vec::new(),
+        placements: PlacementRecords::default(),
     }
+}
+
+/// A world prop's pixels carry the shape word of the prop run holding its vertices, and
+/// nothing else carries one: a prop whose vertices no run holds, a terrain triangle and the
+/// sky have no shape word.
+#[test]
+fn a_world_props_run_reaches_the_shape_plane() {
+    common::gpu_test(|| {
+        // Two triangles of scenery class `class` side by side; a run of shape 40 holds the
+        // left one's vertices.
+        let shapes_of = |class: u8| {
+            let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
+            let one = ir.vertices.clone();
+            let shifted = |dx: f32| {
+                one.iter().map(move |v| SodVertex {
+                    position: [v.position[0] + dx, v.position[1], v.position[2]],
+                    scenery_class: class,
+                    ..*v
+                })
+            };
+            ir.vertices = shifted(-1.1).chain(shifted(1.1)).collect();
+            ir.indices = vec![0, 2, 1, 3, 5, 4];
+            ir.nodes[0].kind = NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: 6,
+                index_offset: 0,
+                index_count: 6,
+                is_decal: false,
+            };
+            let mut world = world_of(ir);
+            world.prop_runs = vec![PropRun {
+                first: 0,
+                end: 3,
+                shape: 40,
+            }];
+            let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
+            let mut test = common::gpu_or_skip(&scene)?;
+            let page = test.draw(&scene.frame(0.0));
+            let w = page.width() as usize;
+            // The shape words of the drawn pixels left and right of the middle, and all words.
+            let (mut left, mut right) = (Vec::new(), Vec::new());
+            for (n, (&layer, &word)) in page.layers().iter().zip(page.shapes()).enumerate() {
+                if layer != LAYER_NONE {
+                    if n % w < w / 2 { &mut left } else { &mut right }.push(word);
+                }
+            }
+            Some((left, right, page.shapes().to_vec()))
+        };
+        let Some((left, right, all)) = shapes_of(SCENERY_PROP) else {
+            return;
+        };
+        assert!(
+            left.len() > 50 && right.len() > 50,
+            "{} {}",
+            left.len(),
+            right.len()
+        );
+        assert!(left.iter().all(|&word| word == 41), "{left:?}");
+        assert!(right.iter().all(|&word| word == 0), "{right:?}");
+        // Every pixel the left triangle leaves uncovered has no shape word.
+        assert_eq!(all.iter().filter(|&&word| word != 0).count(), left.len());
+        let (left, right, _) = shapes_of(SCENERY_TERRAIN).expect("adapter");
+        assert!(left.iter().chain(&right).all(|&word| word == 0));
+    });
 }
 
 /// Rows a world sliver of scenery class `class` draws, and the view's rows: a 2 m tall

@@ -1,7 +1,7 @@
 //! The parity engine: scores a render store against a capture (`[I6]`).
 //!
 //! Moved out of `stunt-cli` (#699) so the scorer is callable as a library; it depends on no
-//! GPU crate. `stuntreel parity` parses its arguments and calls [`parity::run`].
+//! GPU crate. `stuntreel parity` parses its arguments into [`parity::Options`] and calls [`parity::run`].
 
 #![allow(
     clippy::print_stdout,

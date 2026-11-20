@@ -1,0 +1,71 @@
+diff --git a/crates/stunt-render/src/lib.rs b/crates/stunt-render/src/lib.rs
+index 05804cc..b3ad4aa 100644
+--- a/crates/stunt-render/src/lib.rs
++++ b/crates/stunt-render/src/lib.rs
+@@ -31,6 +31,12 @@ mod palette;
+ mod pipeline;
+ mod scene_renderer;
+ 
++/// Whether `DBG_PAINTER` is `1` or `2`: the #698 painter experiment, which draws base geometry with no
++/// depth test, nodes back to front. Not a supported mode.
++fn painter_mode() -> bool {
++    std::env::var("DBG_PAINTER").is_ok_and(|v| v == "1" || v == "2")
++}
++
+ pub use camera::{
+     ASPECT_4_3, CameraController, CameraMode, CameraUniform, FreeCamState,
+     MODE13H_PROJECTION_ASPECT, Projection,
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index ad7996e..44129ef 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -813,11 +813,32 @@ impl VisibleWalk<'_> {
+         let mut ground_meshes = Vec::new();
+         let mut base_meshes = Vec::new();
+         let mut decal_meshes = Vec::new();
++        let mut keyed = Vec::new();
+         self.walk(false, |node, mesh| {
+             if !is_ground(node) && !mesh.is_decal {
+                 base_meshes.push(mesh);
++                let far = node.bounds.map_or(0.0, |b| {
++                    ((b.min + b.max) * 0.5).distance_squared(self.eye)
++                });
++                keyed.push(far);
+             }
+         });
++        if crate::painter_mode() && std::env::var("DBG_PAINTER").is_ok_and(|v| v == "2") {
++            base_meshes.clear();
++            self.walk(true, |node, mesh| {
++                if !is_ground(node) && !mesh.is_decal {
++                    base_meshes.push(mesh);
++                }
++            });
++        } else if crate::painter_mode() {
++            // Back to front by node box centre; the walk's order breaks ties.
++            let mut order: Vec<usize> = (0..base_meshes.len()).collect();
++            order.sort_by(|&a, &b| {
++                let (ka, kb) = (keyed.get(a), keyed.get(b));
++                kb.partial_cmp(&ka).unwrap_or(std::cmp::Ordering::Equal).then(b.cmp(&a))
++            });
++            base_meshes = order.into_iter().filter_map(|i| base_meshes.get(i).copied()).collect();
++        }
+         self.walk(true, |node, mesh| {
+             if is_ground(node) {
+                 ground_meshes.push(mesh);
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 6860a23..501df51 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -225,7 +225,11 @@ impl RenderPipelines {
+         let base_depth_stencil = depth_stencil(
+             depth_format,
+             true,
+-            wgpu::CompareFunction::Less,
++            if crate::painter_mode() {
++                wgpu::CompareFunction::Always
++            } else {
++                wgpu::CompareFunction::Less
++            },
+             wgpu::DepthBiasState::default(),
+         );
+ 

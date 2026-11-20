@@ -1,8 +1,9 @@
-//! `stuntreel parity` command-line arguments.
+//! `stuntreel parity`: parses its flags into [`stunt_score::parity::Options`] and runs the scorer.
 
 use std::path::PathBuf;
 
 use clap::{CommandFactory as _, Parser};
+use stunt_score::parity::{DEFAULT_MIN_FADE_LEVEL, Options};
 
 /// Parsed `stuntreel parity` arguments.
 #[derive(Debug, Parser)]
@@ -10,66 +11,66 @@ use clap::{CommandFactory as _, Parser};
     bin_name = "stuntreel parity",
     about = "Score rendered frames against a PLAYONE capture"
 )]
-pub(super) struct Args {
+struct Args {
     /// Capture directory holding meta.json and the captured frames
     #[arg(long, value_name = "DIR")]
-    pub(super) reference: PathBuf,
+    reference: PathBuf,
     /// Render directory written by `stuntreel --out-dir`
     #[arg(long, value_name = "DIR")]
-    pub(super) test: PathBuf,
+    test: PathBuf,
     /// Directory for report.json and the contact sheets
     #[arg(long, value_name = "DIR")]
-    pub(super) output: PathBuf,
+    output: PathBuf,
     /// Frames whose measured palette fade level is below F are reported but left out of the
     /// scored means
     #[arg(
         long,
         value_name = "F",
-        default_value_t = 0.25,
+        default_value_t = DEFAULT_MIN_FADE_LEVEL,
         value_parser = parse_non_negative,
         allow_negative_numbers = true
     )]
-    pub(super) min_fade_level: f32,
+    min_fade_level: f32,
     /// Score a render that read another archive than the capture played (a deliberate
     /// stand-in, such as a superset archive), marking the report; any other film conflict
     /// still refuses
     #[arg(long)]
-    pub(super) waive_archive_conflict: bool,
+    waive_archive_conflict: bool,
     /// The `crates/` git tree the render was built from, written to the report as `crates`;
     /// leave it out when that tree is unknown or had uncommitted changes
     #[arg(long, value_name = "TREE")]
-    pub(super) crates: Option<String>,
+    crates: Option<String>,
     /// The reference capture's content hash the score is made against, written to the report as
     /// `sha256`; leave it out when it is unknown
     #[arg(long, value_name = "SHA256")]
-    pub(super) sha256: Option<String>,
+    sha256: Option<String>,
     /// The reference film's archive pin, written to the report as `all_sha256`; leave it out
     /// when the row pins no archive
     #[arg(long, value_name = "SHA256")]
-    pub(super) all_sha256: Option<String>,
+    all_sha256: Option<String>,
     /// Match frames by `film_tick` against a previous report and print mean SSIM/IoU deltas,
     /// the 5 most improved/regressed frames and the counts changed by more than 0.005;
     /// writes compare.json
     #[arg(long, value_name = "REPORT.JSON")]
-    pub(super) compare: Option<PathBuf>,
+    compare: Option<PathBuf>,
     /// The previous run's render directory; with --compare, writes before/after contact
     /// sheets for the most regressed and most improved frame (skipped, with a note, when
     /// absent)
     #[arg(long, value_name = "DIR", requires = "compare")]
-    pub(super) compare_test: Option<PathBuf>,
+    compare_test: Option<PathBuf>,
     /// Recapture noise of the whole-frame SSIM (the film's `noise_sigma` in references.toml, when its row has one),
     /// a lower bound for the noise of Δ on a few touched windows; a frame whose |Δ| is below
     /// it is "within noise". Without it the verdict goes by the sign of Δ alone
     #[arg(long, value_name = "F", requires = "compare_test", value_parser = parse_non_negative)]
-    pub(super) noise_sigma: Option<f32>,
+    noise_sigma: Option<f32>,
     /// Frames with at most N changed pixels are build noise, not judged
     #[arg(long, value_name = "N", default_value_t = 0, requires = "compare_test")]
-    pub(super) build_floor: usize,
+    build_floor: usize,
 }
 
 /// Help text for `stuntreel parity`, also listed under the main `--help`.
 #[must_use]
-pub fn usage() -> String {
+pub(crate) fn usage() -> String {
     Args::command().render_help().to_string()
 }
 
@@ -83,11 +84,39 @@ fn parse_non_negative(text: &str) -> Result<f32, String> {
 
 impl Args {
     /// Parses `args` (without `stuntreel parity`).
-    pub(super) fn try_parse_args(
-        args: impl IntoIterator<Item = String>,
-    ) -> Result<Self, clap::Error> {
+    fn try_parse_args(args: impl IntoIterator<Item = String>) -> Result<Self, clap::Error> {
         Self::try_parse_from(std::iter::once("stuntreel parity".to_string()).chain(args))
     }
+}
+
+impl From<Args> for Options {
+    fn from(args: Args) -> Self {
+        Self {
+            reference: args.reference,
+            test: args.test,
+            output: args.output,
+            min_fade_level: args.min_fade_level,
+            waive_archive_conflict: args.waive_archive_conflict,
+            crates: args.crates,
+            sha256: args.sha256,
+            all_sha256: args.all_sha256,
+            compare: args.compare,
+            compare_test: args.compare_test,
+            noise_sigma: args.noise_sigma,
+            build_floor: args.build_floor,
+        }
+    }
+}
+
+/// Runs `stuntreel parity` on `args` (without `stuntreel parity`); a flag error exits the
+/// process with clap's message.
+///
+/// # Errors
+///
+/// A message for the terminal when the inputs cannot be read or an output cannot be written.
+pub(crate) fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
+    let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
+    stunt_score::parity::run(&Options::from(args))
 }
 
 #[cfg(test)]
@@ -182,5 +211,51 @@ mod tests {
             text.contains("--sha256") && text.contains("--all-sha256"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn every_flag_reaches_the_scorer_options() {
+        let args = parse(&[
+            "--min-fade-level",
+            "0.5",
+            "--waive-archive-conflict",
+            "--crates",
+            "tree",
+            "--sha256",
+            "aa",
+            "--all-sha256",
+            "bb",
+            "--compare",
+            "p/report.json",
+            "--compare-test",
+            "p/ours",
+            "--noise-sigma",
+            "0.002",
+            "--build-floor",
+            "30",
+        ])
+        .unwrap();
+        let options = Options::from(args);
+        assert_eq!(
+            options,
+            Options {
+                min_fade_level: 0.5,
+                waive_archive_conflict: true,
+                crates: Some("tree".to_string()),
+                sha256: Some("aa".to_string()),
+                all_sha256: Some("bb".to_string()),
+                compare: Some("p/report.json".into()),
+                compare_test: Some("p/ours".into()),
+                noise_sigma: Some(0.002),
+                build_floor: 30,
+                ..Options::new("r".into(), "t".into(), "o".into())
+            }
+        );
+    }
+
+    #[test]
+    fn no_flags_give_the_scorer_defaults() {
+        let options = Options::from(parse(&[]).unwrap());
+        assert_eq!(options, Options::new("r".into(), "t".into(), "o".into()));
     }
 }

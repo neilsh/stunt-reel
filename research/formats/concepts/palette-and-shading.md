@@ -105,7 +105,8 @@ pub struct SodVertex {
     pub normal: [f32; 3],    // Offset +0x0C (12 bytes)
     pub palette_index: u8,   // Offset +0x18 (1 byte: 0..=255)
     pub flags: u8,           // Offset +0x19 (1 byte: bitflags)
-    pub _padding: [u8; 2],   // Offset +0x1A (2 bytes: alignment padding)
+    pub scenery_class: u8,   // Offset +0x1A (1 byte: 1 ocean, 2 terrain, 3 prop; 0 elsewhere)
+    pub _padding: u8,        // Offset +0x1B (1 byte: alignment padding, zero)
 }
 ```
 
@@ -114,7 +115,11 @@ pub struct SodVertex {
   Drawn in `wgpu`'s ordered decal pass (depth bias, no depth write), and moved $\epsilon = 0.001\text{ m}$ toward its front only by the glTF exporter (`[I5]`).
 - **Bit 1 (`0x02`) — Two-Sided Facet:** Disables back-face culling for this polygon.
 - **Bit 2 (`0x04`) — Emissive / Unshaded:** Bypasses directional lighting table; renders at full unshaded diffuse brightness (used for landing lights and muzzle flares).
-- **Bits 3..7 (`0xF8`):** Reserved (must be zero).
+- **Bits 3..5 (`0x08`, `0x10`, `0x20`) — Screen-space line corner:** a one-pixel line's corner, its side and its end; the vertex's `normal` is then the vector to the segment's other endpoint (`VERTEX_FLAG_LINE`, `VERTEX_FLAG_LINE_SIDE`, `VERTEX_FLAG_LINE_END`).
+- **Bit 6 (`0x40`) — Disc rim vertex:** a vertex of an `OP_PERFDISK` disc's outline; its `normal` is then the vector to the disc's centre, about which the renderer squeezes the disc along the view's depth by the lens zoom (`VERTEX_FLAG_DISC`, [`sod-vm-generators.md` § 8.8](../../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)).
+- **Bit 7 (`0x80`):** Reserved (must be zero).
+
+A world prop vertex carries no record of its shape: the world lists its prop vertices as runs with each run's shape (`World::prop_runs`), and the renderer looks a vertex up there for the parity plane's shape word ([`attribution.md`](../../parity/attribution.md) § 1).
 
 ### 2.3 Transparency Keys
 

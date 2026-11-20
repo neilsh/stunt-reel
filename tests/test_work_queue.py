@@ -243,9 +243,28 @@ def test_a_gh_failure_exits_2(
 
 
 def test_main_reads_the_cloud_flag(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[_issue(1, "local-only")]]})
+    monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path / "missing")
     monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
     assert q.main() == 0
     assert "skip: local-only" in capsys.readouterr().out
+
+
+def test_main_detects_cloud_antigravity_home(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[_issue(1, "local-only")]]})
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+    monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path)
+    assert q.main() == 0
+    assert "skip: local-only" in capsys.readouterr().out
+
+
+def test_is_cloud_session_is_false_when_neither_marker_is_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+    monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path / "missing")
+    assert q.is_cloud_session() is False

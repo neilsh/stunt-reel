@@ -46,12 +46,12 @@ fn assert_close_map(
     }
 }
 
-/// The version-3 render under `tests/fixtures/parity/v3/render`.
-fn v3_render() -> PathBuf {
-    crate::test_support::workspace_root().join("tests/fixtures/parity/v3/render")
+/// The version-4 render under `tests/fixtures/parity/v4/render`.
+fn v4_render() -> PathBuf {
+    crate::test_support::workspace_root().join("tests/fixtures/parity/v4/render")
 }
 
-/// The adapter the v3 render and the v1 report name.
+/// The adapter the v4 render and the v1 report name.
 fn fixture_adapter() -> RenderAdapter {
     RenderAdapter {
         name: "Test GPU".to_string(),
@@ -67,12 +67,12 @@ const TICK_7_ROWS: [([u8; 4], [u16; 4]); 3] = [
 ];
 
 /// The fixture's ticks: three in second 0, none in second 1, two in second 2.
-const V3_TICKS: [u32; 5] = [7, 9, 30, 100, 149];
+const V4_TICKS: [u32; 5] = [7, 9, 30, 100, 149];
 /// The one fixture tick whose record expects credits.
-const V3_CREDITS_TICK: u32 = 9;
+const V4_CREDITS_TICK: u32 = 9;
 
 /// Every other tick is tick 7 with its indices raised by `tick - 7`.
-fn v3_planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
+fn v4_planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
     let shift = u8::try_from(tick - 7).unwrap();
     TICK_7_ROWS
         .iter()
@@ -81,8 +81,16 @@ fn v3_planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
         .unzip()
 }
 
+/// The shape plane of every tick: shape word 5 on each layer-16 pixel, 0 elsewhere.
+fn v4_shapes(layers: &[u32]) -> Vec<u32> {
+    layers
+        .iter()
+        .map(|&layer| if layer == 16 { 5 } else { 0 })
+        .collect()
+}
+
 /// Ticks 30 and 149 use the second palette, entry i = (255 - i, i, 0); the rest a grey ramp.
-fn v3_palette(tick: u32) -> Palette {
+fn v4_palette(tick: u32) -> Palette {
     std::array::from_fn(|i| {
         let i = u8::try_from(i).unwrap();
         if tick == 30 || tick == 149 {
@@ -93,12 +101,12 @@ fn v3_palette(tick: u32) -> Palette {
     })
 }
 
-/// Regenerates the v3 render fixture. Run it by hand after a format change:
-/// `cargo test -p stunt-score write_v3_render_fixture -- --ignored`.
+/// Regenerates the v4 render fixture. Run it by hand after a format change:
+/// `cargo test -p stunt-score write_v4_render_fixture -- --ignored`.
 #[test]
 #[ignore = "writes the committed fixture"]
-fn write_v3_render_fixture() {
-    let dir = v3_render();
+fn write_v4_render_fixture() {
+    let dir = v4_render();
     fs::create_dir_all(&dir).expect("create fixture dir");
     let geometry = Geometry {
         width: 4,
@@ -107,10 +115,16 @@ fn write_v3_render_fixture() {
     };
     let mut writer = StoreWriter::new(&dir, &geometry);
     let mut ticks = Vec::new();
-    for tick in V3_TICKS {
-        let (indices, layers) = v3_planes(tick);
+    for tick in V4_TICKS {
+        let (indices, layers) = v4_planes(tick);
         let palette_index = writer
-            .push(tick, &v3_palette(tick), &indices, &layers)
+            .push(
+                tick,
+                &v4_palette(tick),
+                &indices,
+                &layers,
+                &v4_shapes(&layers),
+            )
             .expect("push");
         let half = tick == 30 || tick == 149;
         ticks.push(RenderTick {
@@ -127,7 +141,7 @@ fn write_v3_render_fixture() {
                 roll_radians: 0.0,
             },
             palette_index,
-            credits: tick == V3_CREDITS_TICK,
+            credits: tick == V4_CREDITS_TICK,
         });
     }
     let table = writer.finish().expect("finish").expect("a store");
@@ -143,6 +157,7 @@ fn write_v3_render_fixture() {
         ticks,
         palette_count: table.palette_count,
         chunks: table.chunks,
+        planes: table.planes,
         adapter: Some(fixture_adapter()),
     };
     write_render_record(&dir, &record).expect("write record");
@@ -150,7 +165,7 @@ fn write_v3_render_fixture() {
 
 #[test]
 fn render_fixture_pins_identity_geometry_chunks_and_controls() {
-    let store = RenderStore::open(&v3_render()).expect("open the v3 render");
+    let store = RenderStore::open(&v4_render()).expect("open the v4 render");
     let record = store.record();
     assert_eq!(record.film.name.as_deref(), Some("SYNTH.FLM"));
     assert_eq!(record.film.flm_bytes, Some(17));
@@ -163,7 +178,7 @@ fn render_fixture_pins_identity_geometry_chunks_and_controls() {
         }
     );
     let ticks: Vec<u32> = record.ticks.iter().map(|tick| tick.tick).collect();
-    assert_eq!(ticks, V3_TICKS);
+    assert_eq!(ticks, V4_TICKS);
     let seconds: Vec<(u32, u32)> = record
         .chunks
         .iter()
@@ -181,16 +196,16 @@ fn render_fixture_pins_identity_geometry_chunks_and_controls() {
         .filter(|t| t.credits)
         .map(|t| t.tick)
         .collect();
-    assert_eq!(credits, vec![V3_CREDITS_TICK]);
+    assert_eq!(credits, vec![V4_CREDITS_TICK]);
     assert_eq!(record.adapter, Some(fixture_adapter()));
 }
 
 #[test]
 fn render_fixture_pins_every_tick_planes_and_palette() {
-    let mut store = RenderStore::open(&v3_render()).expect("open the v3 render");
-    for tick in V3_TICKS {
+    let mut store = RenderStore::open(&v4_render()).expect("open the v4 render");
+    for tick in V4_TICKS {
         let frame = store.frame(tick).expect("frame");
-        let (indices, layers) = v3_planes(tick);
+        let (indices, layers) = v4_planes(tick);
         assert_eq!(frame.indices, indices, "tick {tick} indices");
         let layers: Vec<u16> = layers
             .iter()
@@ -198,9 +213,15 @@ fn render_fixture_pins_every_tick_planes_and_palette() {
             .collect();
         // Row 2 lies outside the 2-row viewport but the reader still returns it.
         assert_eq!(frame.layers, layers, "tick {tick} layers");
-        assert_eq!(frame.palette, v3_palette(tick), "tick {tick} palette");
+        let shapes: Vec<u16> = frame
+            .layers
+            .iter()
+            .map(|&layer| if layer == 16 { 5 } else { 0 })
+            .collect();
+        assert_eq!(frame.shapes, Some(shapes), "tick {tick} shapes");
+        assert_eq!(frame.palette, v4_palette(tick), "tick {tick} palette");
     }
-    let (indices, _) = v3_planes(7);
+    let (indices, _) = v4_planes(7);
     assert_eq!(&indices[4..8], &[0, 40, 40, 0]);
 }
 
@@ -314,6 +335,11 @@ fn report_fixture_round_trips_typed_and_satisfies_its_identities() {
         back.mean_loss_by_class_scored.as_ref(),
         report.mean_loss_by_class_scored.as_ref(),
         "mean_loss_by_class_scored",
+    );
+    assert_close_map(
+        back.mean_loss_by_shape_scored.as_ref(),
+        report.mean_loss_by_shape_scored.as_ref(),
+        "mean_loss_by_shape_scored",
     );
 
     assert_eq!(back.per_frame.len(), report.per_frame.len());
