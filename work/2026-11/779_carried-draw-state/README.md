@@ -2,7 +2,7 @@
 title: "research: does PLAYONE's per-frame probe sweep explain CTRY's padded-archive pages"
 started: 2026-11-19
 issue: 779
-outcome: "Live and from #348's captures: in CTRY.FLM the probe's results never change, so its sweep from the previous frame does not explain the padded-archive pages, which differ at the propeller (the angle bank's previous-frame var 10) and the viewpoint; the viewpoint is film-load.md open question 1."
+outcome: "Live and from #348's captures: in CTRY.FLM the probe's results did not change at any probed frame of two live runs, so its sweep from the previous frame does not explain the padded-archive pages, which differ at the propeller (likely the angle bank's previous-frame var 10) and the viewpoint; the viewpoint is film-load.md open question 1."
 ---
 
 # research: does PLAYONE's per-frame probe sweep explain CTRY's padded-archive pages

@@ -1,6 +1,6 @@
 # Journal: does the probe's sweep change CTRY's padded-archive pages
 
-## 2026-11-19: the probe's results never change, and the differing pages differ at the propeller and the viewpoint
+## 2026-11-19: the probe's results held at every probed frame; pages differ at the propeller and the viewpoint
 
 - **Question**: do the pages that differ between the own and a padded `CTRY.ALL` differ where the probe `0x240A`'s results (slot `+0x1E`, `+0x20/+0x22`) differ, given that the probe sweeps from the slot's position at the previous drawn frame (`film-load.md` § 5)?
 - **Method**: two parts, at `77a9a49`.
@@ -19,7 +19,7 @@
     `+0x1C`, `+0x1E`, `+0x20` and `+0x22` read 0, `0x033C`, 0 and 0 on every hit in both arms but the padding's first, at tick 0, which read 0 in all four before any probe had run: one ground leaf's plane, no box code, no code-8 box top.
     These are DOSBox-X's frames, not the captures' (hits mostly 3 ticks apart, up to 24), so they cannot be paired with a capture's pages; the results are constant, so pairing would not change the answer.
 - **Verdict**: control; the hypothesis is rejected for these pages.
-  The probe's results, the only inputs the sweep changes, stayed the same from tick 5 to 850 in both arms, and no differing page differs at the shadow alone, so the sweep does not explain CTRY's padded-archive pages.
-  The propeller pages fit the angle bank's word `0x14`, the previous drawn frame's var 10 ([`angle-bank.md`](../../../research/playone-exe/angle-bank.md)), which is per-frame state too.
+  The probe's results, the only inputs the sweep changes, stayed the same at every probed frame of both runs (own: ticks 52 to 849; padded: 5 to 850, its tick-0 hit before any probe excluded), and no differing page differs at the shadow alone, so the sweep does not explain CTRY's padded-archive pages.
+  The propeller pages fit the angle bank's word `0x14`, the previous drawn frame's var 10 ([`angle-bank.md`](../../../research/playone-exe/angle-bank.md)), which is per-frame state too, if the biplane's propeller is a stock `ROTZ` on operand `0x14` (not checked).
   Why the viewpoint differs on 23 pages, 15 of them at an equal HUD clock, is open.
 - **Lives in**: [`film-load.md`](../../../research/playone-exe/film-load.md) § 5 and its Ruled out and Open questions; [`sod-vm-frame.md`](../../../research/playone-exe/sod-vm-frame.md) § 9.1.
