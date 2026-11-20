@@ -13,8 +13,9 @@
 //!
 //! `render.json` carries [`RENDER_SCHEMA_VERSION`] and a capture's `meta.json`
 //! [`SCHEMA_VERSION`]; the render moved to version 2 alone when its planes moved
-//! into per-second zstd chunks (ADR 0027), and to version 3 when each tick gained
-//! its `credits` flag. A capture
+//! into per-second zstd chunks (ADR 0027), to version 3 when each tick gained
+//! its `credits` flag, and to version 4 when it began listing each optional plane
+//! file with its chunk spans and digest (ADR 0052, #813). A capture
 //! written before the field existed reads as the current version, and a legacy
 //! capture's ordinals, file names and 320x200 geometry are defaulted here rather
 //! than in either adapter. Reports stay readable across versions through
@@ -33,8 +34,9 @@ pub use capture::{CaptureSet, CapturedFrame};
 pub use error::ArtifactError;
 pub use film::{FilmCheck, FilmField, FilmId};
 pub use render::{
-    AdapterClass, CameraPose, Geometry, PALETTE_BYTES, RENDER_CHUNK_TICKS, RenderAdapter,
-    RenderChunk, RenderPalette, RenderRecord, RenderTick, StoreSpan, TickSlot,
+    AdapterClass, CORE_FILES, CameraPose, Geometry, PALETTE_BYTES, PlaneListing,
+    RENDER_CHUNK_TICKS, RenderAdapter, RenderChunk, RenderPalette, RenderRecord, RenderTick,
+    StoreSpan, TickSlot,
 };
 pub use report::{FrameReport, I6Gate, Report};
 pub use video::{CaptureEnd, PaletteChange, PaletteLog, TickLog, VIDEO_FILE, VideoCapture};
@@ -43,4 +45,4 @@ pub use video::{CaptureEnd, PaletteChange, PaletteLog, TickLog, VIDEO_FILE, Vide
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// Version carried by `render.json`.
-pub const RENDER_SCHEMA_VERSION: u32 = 3;
+pub const RENDER_SCHEMA_VERSION: u32 = 4;

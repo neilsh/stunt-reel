@@ -1,8 +1,8 @@
-"""Conformance tests for the shared parity corpus (`tests/fixtures/parity/v1/` and `v3/`).
+"""Conformance tests for the shared parity corpus (`tests/fixtures/parity/v1/` and `v4/`).
 
 The corpus pins the wire contract this adapter shares with the Rust port. These tests read the
 committed bytes and write only into `tmp_path`; a fixture is never rewritten, so `git status`
-stays clean after a run. `v3/render/` (a render store) and `v1/report.json` are authored by the
+stays clean after a run. `v4/render/` (a render store) and `v1/report.json` are authored by the
 Rust side, while `v1/meta.json` and `v1/meta_legacy.json` are authored through `write_capture`.
 
 The adapter is also checked against the JSON Schemas generated from the `stunt-parity` types
@@ -45,7 +45,7 @@ from stunt_reel.parity_artifacts import (
 )
 
 CORPUS = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "parity" / "v1"
-RENDER = CORPUS.parent / "v3" / "render"
+RENDER = CORPUS.parent / "v4" / "render"
 SCHEMAS = Path(__file__).resolve().parents[1] / "crates" / "stunt-parity" / "schema"
 APPROX_REL = 1e-6
 APPROX_ABS = 1e-9

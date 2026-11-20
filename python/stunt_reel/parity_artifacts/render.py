@@ -7,7 +7,8 @@ carry them in the same shape.
 from __future__ import annotations
 
 import bisect
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from itertools import accumulate
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -34,13 +35,19 @@ if TYPE_CHECKING:
 
 
 #: Version carried by ``render.json`` (port constant).
-RENDER_SCHEMA_VERSION = 3
+RENDER_SCHEMA_VERSION = 4
 #: Document written beside a render directory's frames, last.
 RENDER_DOCUMENT = "render.json"
 #: Film ticks per render chunk: one film second of the authored 50 Hz clock [I4].
 RENDER_CHUNK_TICKS = 50
 #: Largest byte offset a render's chunk table may reach: a u64, as in the Rust record.
 _MAX_OFFSET = 2**64 - 1
+#: The ``.zst`` files every render holds, whose names no optional plane may take (``CORE_FILES``).
+RENDER_CORE_FILES = ("frames.zst", "layers.zst", "palettes.zst")
+#: An optional plane's file name: letters, digits, ``_`` and ``-``, ending ``.zst``.
+_PLANE_NAME = re.compile(r"[A-Za-z0-9_-]+\.zst")
+#: A lowercase hex SHA-256.
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 #: First layer id an actor draw writes (mirrors ``stunt_render::LAYER_FIRST_ACTOR``).
 LAYER_FIRST_ACTOR = 16
 
@@ -204,6 +211,24 @@ class RenderChunk:
 
 
 @dataclass(frozen=True)
+class PlaneListing:
+    """One optional plane file of a render (ADR 0052), listed so a reader can tell it is the
+    render's own.
+
+    ``chunks`` holds the file's span for each entry of the record's chunk table, in the same
+    order, tiling the file from offset 0.
+    """
+
+    #: Lowercase hex SHA-256 of the whole file.
+    sha256: str
+    chunks: tuple[StoreSpan, ...]
+
+    def end(self) -> int:
+        """Bytes the listed chunks cover, which is the file's length."""
+        return sum(span.length for span in self.chunks)
+
+
+@dataclass(frozen=True)
 class RenderAdapter:
     """The graphics adapter a render was drawn on."""
 
@@ -225,9 +250,13 @@ class RenderRecord:
     chunks: tuple[RenderChunk, ...]
     #: Adapter the frames were drawn on; ``None`` in renders written before it was recorded.
     adapter: RenderAdapter | None = None
+    #: Each optional plane file the render holds, keyed by file name (``shapes.zst``).
+    planes: Mapping[str, PlaneListing] = field(default_factory=dict)
 
     def validate(self, path: Path | None = None) -> None:
-        """Check the version, geometry, tick ordering, palette indices and chunk table."""
+        """Check the version, geometry, tick ordering, palette indices, chunk table and plane
+        listings; the plane files themselves are the store's to check.
+        """
         if self.schema_version != RENDER_SCHEMA_VERSION:
             raise _error(
                 "unsupported_version",
@@ -252,6 +281,34 @@ class RenderRecord:
                     path,
                 )
         self._validate_chunks(path)
+        self._validate_planes(path)
+
+    def _validate_planes(self, path: Path | None) -> None:
+        for name, listing in self.planes.items():
+
+            def at(reason: str, name: str = name) -> ArtifactError:
+                return _error("store", f"render store: planes[{name!r}]: {reason}", path)
+
+            if not _PLANE_NAME.fullmatch(name):
+                raise at("is not a bare file name of letters, digits, `_` and `-` ending `.zst`")
+            if name in RENDER_CORE_FILES:
+                raise at("names a file every render holds")
+            if not _SHA256.fullmatch(listing.sha256):
+                raise at(f"sha256 {listing.sha256!r} is not 64 lowercase hex digits")
+            if len(listing.chunks) != len(self.chunks):
+                raise at(
+                    f"lists {len(listing.chunks)} chunks but the chunk table has {len(self.chunks)}"
+                )
+            end = 0
+            for number, span in enumerate(listing.chunks):
+                if span.offset != end:
+                    raise at(
+                        f"chunks[{number}] offset {span.offset} does not continue the previous "
+                        f"chunk (expected {end})"
+                    )
+                end += span.length
+                if end > _MAX_OFFSET:
+                    raise at(f"chunks[{number}] runs past the largest file offset")
 
     def _validate_chunks(self, path: Path | None) -> None:
         next_tick = 0
@@ -424,6 +481,23 @@ def _render_record(document: Any, path: Path | None) -> RenderRecord:
             for index, entry in enumerate(_as_array(raw.get("chunks"), path, "chunks"))
         ),
         adapter=_adapter_object(raw.get("adapter"), path),
+        planes={
+            name: _plane_listing(listing, path, f"planes[{name!r}]")
+            for name, listing in _as_object(raw.get("planes"), path, "planes").items()
+        },
+    )
+
+
+def _plane_listing(value: Any, path: Path | None, field_name: str) -> PlaneListing:
+    raw = _as_object(value, path, field_name)
+    return PlaneListing(
+        sha256=_as_string(raw.get("sha256"), path, f"{field_name}.sha256"),
+        chunks=tuple(
+            _store_span(entry, path, f"{field_name}.chunks[{index}]")
+            for index, entry in enumerate(
+                _as_array(raw.get("chunks"), path, f"{field_name}.chunks")
+            )
+        ),
     )
 
 
@@ -474,6 +548,15 @@ def _render_document(record: RenderRecord) -> dict[str, Any]:
         "ticks": ticks,
         "palette_count": record.palette_count,
         "chunks": chunks,
+        "planes": {
+            name: {
+                "sha256": listing.sha256,
+                "chunks": [
+                    {"offset": span.offset, "length": span.length} for span in listing.chunks
+                ],
+            }
+            for name, listing in sorted(record.planes.items())
+        },
     }
     if record.adapter is not None:
         document["adapter"] = _adapter_document(record.adapter)

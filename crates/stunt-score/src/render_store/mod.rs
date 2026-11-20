@@ -4,37 +4,38 @@
 //! little-endian u16 layer per pixel) and `palettes.zst` (768-byte palettes). Each plane file is
 //! a run of independent zstd frames, one per film second, holding that second's ticks back to
 //! back; `render.json`, written last, is their table of contents. `preview/sec_NNNN.png` shows
-//! each second's first tick for people. A render the Rust store writes also holds `shapes.zst`
-//! beside them: a run of `[u64 LE packed length][zstd frame]` records, one per chunk in the
-//! chunk table's order, each frame that second's ticks back to back with a little-endian u16
-//! per pixel, the shape word of `stunt_render::RenderedPage::shapes`. Only the Rust store
-//! reads and writes it; `render.json` does not list it, and a render without the file (the
-//! Python writer's, which removes a stale one, or one older than the file) has no shape plane.
-//! The Python mirror is `RenderStore` in `python/stunt_reel/parity_artifacts/`.
+//! each second's first tick for people. The Python mirror is `RenderStore` in
+//! `python/stunt_reel/parity_artifacts/`.
 //!
-//! # `shapes.zst` across writers and readers
+//! # Optional planes
+//!
+//! A render may also hold optional per-pixel planes (ADR 0052), each listed in `render.json`'s
+//! `planes` by file name with the file's SHA-256 and one span per chunk-table entry, tiling the
+//! file from offset 0 like the chunk table's spans tile `layers.zst`. `shapes.zst` is the one
+//! there is: a run of zstd frames, one per chunk, each that second's ticks back to back with a
+//! little-endian u16 per pixel, the shape word of `stunt_render::RenderedPage::shapes`.
 //!
 //! - **Rust writer:** nothing is created until the first tick; that tick truncates (creates
-//!   anew) `frames.zst`, `layers.zst` and `shapes.zst` together, so no run leaves an earlier
-//!   render's plane beside new ones. `push` writes one `shapes.zst` record per chunk, in the
-//!   order it writes the chunk-table entries, and refuses a shape word that does not fit a
-//!   u16.
-//! - **Python writer:** `RenderStoreWriter` empties `frames.zst` and `layers.zst` on its first
-//!   tick, writes no shape plane, and deletes a `shapes.zst` it finds, so a render it writes
-//!   over a Rust render never pairs the old shape words with new layers.
-//! - **Reader:** `RenderStore::open` takes a missing `shapes.zst` as a render without a
-//!   shape plane. A present one must be a whole run of records, each header and packed length
-//!   inside the file and none left over, and must hold exactly as many records as
-//!   `render.json` has chunks, or the open fails and says to re-render. A record that does not
-//!   decompress to its chunk's `ticks * pixels` u16 words fails when its chunk is read.
+//!   anew) `frames.zst`, `layers.zst` and `shapes.zst` together. `push` refuses a shape word
+//!   that does not fit a u16, and `finish` lists `shapes.zst` with the digest of the bytes it
+//!   wrote.
+//! - **Python writer:** `RenderStoreWriter` writes no shape plane, lists none, and deletes a
+//!   `shapes.zst` it finds.
+//! - **Readers:** a plane `render.json` does not list is absent, whatever file lies beside it,
+//!   so a stale `shapes.zst` is never read as the render's own. `RenderStore::open` (and the
+//!   Python store's open) refuses a listed plane whose file is missing, whose length is not
+//!   where its spans end, or whose SHA-256 differs, saying to re-render. Only this store decodes
+//!   `shapes.zst`: a chunk that does not decompress to `ticks * pixels` u16 words fails when it
+//!   is read.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};
 use std::io::{BufWriter, Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 
 use stunt_parity::{
-    Geometry, PALETTE_BYTES, RENDER_CHUNK_TICKS, RenderChunk, RenderRecord, RenderTick, StoreSpan,
+    Geometry, PALETTE_BYTES, PlaneListing, RENDER_CHUNK_TICKS, RenderChunk, RenderRecord,
+    RenderTick, StoreSpan,
 };
 
 use crate::parity_artifacts::{self, AdapterError};
@@ -43,7 +44,8 @@ use crate::parity_artifacts::{self, AdapterError};
 pub(crate) const INDEX_FILE: &str = "frames.zst";
 /// Layer planes, one little-endian u16 per pixel.
 pub(crate) const LAYER_FILE: &str = "layers.zst";
-/// Shape planes, one little-endian u16 per pixel, each chunk behind its u64 packed length.
+/// Shape planes, one little-endian u16 per pixel, chunked like the layer planes; an optional
+/// plane `render.json` lists.
 pub(crate) const SHAPE_FILE: &str = "shapes.zst";
 /// The distinct palettes, [`PALETTE_BYTES`] each, as one zstd frame.
 pub(crate) const PALETTE_FILE: &str = "palettes.zst";
@@ -193,6 +195,8 @@ pub(crate) struct StoreTable {
     pub(crate) palette_count: u32,
     /// One entry per film second written.
     pub(crate) chunks: Vec<RenderChunk>,
+    /// The optional planes written, keyed by file name.
+    pub(crate) planes: BTreeMap<String, PlaneListing>,
 }
 
 /// Writes a render's planes in tick order, a chunk per film second.
@@ -205,6 +209,8 @@ pub(crate) struct StoreWriter {
     files: Option<PlaneFiles>,
     index_end: u64,
     layer_end: u64,
+    shape_spans: Vec<StoreSpan>,
+    shape_end: u64,
     last_tick: Option<u32>,
     palettes: Vec<Palette>,
     palette_ids: HashMap<Palette, u32>,
@@ -221,6 +227,8 @@ impl StoreWriter {
             files: None,
             index_end: 0,
             layer_end: 0,
+            shape_spans: Vec::new(),
+            shape_end: 0,
             last_tick: None,
             palettes: Vec::new(),
             palette_ids: HashMap::new(),
@@ -312,10 +320,18 @@ impl StoreWriter {
         }
         let packed = zstd::bulk::compress(&raw, ZSTD_LEVEL).map_err(io(&path))?;
         fs::write(&path, packed).map_err(io(&path))?;
+        let palette_count = u32::try_from(self.palettes.len())
+            .map_err(|_| corrupt(&path, "more than u32::MAX palettes"))?;
+        // The digest is of the bytes on disk, which is what a reader checks.
+        let shape_path = self.dir.join(SHAPE_FILE);
+        let shape = PlaneListing {
+            sha256: crate::sha256(&fs::read(&shape_path).map_err(io(&shape_path))?),
+            chunks: self.shape_spans,
+        };
         Ok(Some(StoreTable {
-            palette_count: u32::try_from(self.palettes.len())
-                .map_err(|_| corrupt(&path, "more than u32::MAX palettes"))?,
+            palette_count,
             chunks: self.chunks,
+            planes: BTreeMap::from([(SHAPE_FILE.to_string(), shape)]),
         }))
     }
 
@@ -354,7 +370,7 @@ impl StoreWriter {
         let mut spans = [StoreSpan {
             offset: 0,
             length: 0,
-        }; 2];
+        }; 3];
         for (span, (raw, file, end, name)) in spans.iter_mut().zip([
             (
                 &open.indices,
@@ -368,6 +384,12 @@ impl StoreWriter {
                 &mut self.layer_end,
                 LAYER_FILE,
             ),
+            (
+                &open.shapes,
+                &mut files.shape,
+                &mut self.shape_end,
+                SHAPE_FILE,
+            ),
         ]) {
             let path = self.dir.join(name);
             let packed = zstd::bulk::compress(raw, ZSTD_LEVEL).map_err(io(&path))?;
@@ -378,12 +400,7 @@ impl StoreWriter {
             };
             *end += packed.len() as u64;
         }
-        // The shape file's records follow the chunk table's order and carry their own length.
-        let path = self.dir.join(SHAPE_FILE);
-        let packed = zstd::bulk::compress(&open.shapes, ZSTD_LEVEL).map_err(io(&path))?;
-        for part in [&(packed.len() as u64).to_le_bytes()[..], &packed] {
-            files.shape.write_all(part).map_err(io(&path))?;
-        }
+        self.shape_spans.push(spans[2]);
         self.chunks.push(RenderChunk {
             second: open.second,
             ticks: open.ticks,
@@ -432,7 +449,7 @@ pub(crate) struct StoredFrame {
     /// One layer id per pixel.
     pub(crate) layers: Vec<u16>,
     /// One shape word per pixel (`shape id + 1` of the prop drawing it, 0 for none); `None` when
-    /// the render has no `shapes.zst`.
+    /// `render.json` lists no `shapes.zst`.
     pub(crate) shapes: Option<Vec<u16>>,
     /// The colours of the frame: its picture is `palette[index]`.
     pub(crate) palette: Palette,
@@ -464,14 +481,14 @@ pub(crate) struct RenderStore {
     dir: PathBuf,
     record: RenderRecord,
     palettes: Vec<Palette>,
-    /// The packed span of each chunk's record in `shapes.zst`; `None` without the file.
+    /// Each chunk's span in `shapes.zst`; `None` when `render.json` does not list the plane.
     shape_spans: Option<Vec<StoreSpan>>,
     cached: Option<DecodedChunk>,
 }
 
 impl RenderStore {
     /// Opens `dir`: reads and validates `render.json`, checks the plane files against its chunk
-    /// table and reads the palettes.
+    /// table and each listed optional plane against its listing, and reads the palettes.
     pub(crate) fn open(dir: &Path) -> Result<Self, StoreError> {
         let record =
             parity_artifacts::read_render_record(dir).map_err(|source| StoreError::Document {
@@ -496,8 +513,14 @@ impl RenderStore {
                 }
             }
         }
+        for (name, listing) in &record.planes {
+            check_plane(dir, name, listing)?;
+        }
         let palettes = read_palettes(&dir.join(PALETTE_FILE), record.palette_count)?;
-        let shape_spans = read_shape_spans(&dir.join(SHAPE_FILE), record.chunks.len())?;
+        let shape_spans = record
+            .planes
+            .get(SHAPE_FILE)
+            .map(|listing| listing.chunks.clone());
         Ok(Self {
             dir: dir.to_path_buf(),
             record,
@@ -659,50 +682,46 @@ impl RenderStore {
     }
 }
 
-/// The packed span of each record in `shapes.zst`, which must hold exactly `chunks` of them
-/// and nothing else; `None` when the render has no such file.
-fn read_shape_spans(path: &Path, chunks: usize) -> Result<Option<Vec<StoreSpan>>, StoreError> {
-    let mut file = match File::open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(source) => return Err(io(path)(source)),
-    };
-    let size = file.metadata().map_err(io(path))?.len();
-    let mut spans = Vec::with_capacity(chunks);
-    let mut at = 0u64;
-    while at < size {
-        let mut header = [0u8; 8];
-        file.read_exact(&mut header).map_err(|_| {
-            corrupt(
-                path,
-                format!("a record header at offset {at} runs past the file's {size} bytes"),
-            )
-        })?;
-        let length = u64::from_le_bytes(header);
-        let offset = at + 8;
-        let end = offset.checked_add(length).filter(|&end| end <= size);
-        let Some(end) = end else {
-            return Err(corrupt(
-                path,
-                format!(
-                    "a record of {length} bytes at offset {offset} runs past the file's {size} bytes"
-                ),
-            ));
-        };
-        spans.push(StoreSpan { offset, length });
-        file.seek(SeekFrom::Start(end)).map_err(io(path))?;
-        at = end;
-    }
-    if spans.len() != chunks {
-        return Err(corrupt(
-            path,
+/// Checks that the optional plane `name` listed in `dir`'s `render.json` is the file the
+/// listing describes: present, as long as its spans, and with the listed SHA-256.
+fn check_plane(dir: &Path, name: &str, listing: &PlaneListing) -> Result<(), StoreError> {
+    let path = dir.join(name);
+    let refuse = |what: String| {
+        corrupt(
+            &path,
             format!(
-                "holds {} records but render.json has {chunks} chunks; re-render",
-                spans.len()
+                "{what}, so it is not this render's {name}; re-render {} with the current \
+                 `stuntreel --headless --out-dir`",
+                dir.display()
             ),
-        ));
+        )
+    };
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(refuse(
+                "render.json lists the plane but the file is missing".to_string(),
+            ));
+        }
+        Err(source) => return Err(io(&path)(source)),
+    };
+    let end = listing
+        .end()
+        .ok_or_else(|| refuse("its spans overflow a u64".to_string()))?;
+    if bytes.len() as u64 != end {
+        return Err(refuse(format!(
+            "it holds {} bytes but render.json's spans for it end at {end}",
+            bytes.len()
+        )));
     }
-    Ok(Some(spans))
+    let digest = crate::sha256(&bytes);
+    if digest != listing.sha256 {
+        return Err(refuse(format!(
+            "its SHA-256 is {digest} but render.json lists {}",
+            listing.sha256
+        )));
+    }
+    Ok(())
 }
 
 /// Reads `palettes.zst`, which must hold exactly `count` palettes.
