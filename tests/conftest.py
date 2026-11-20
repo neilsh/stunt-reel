@@ -10,8 +10,10 @@ pytest never resets it.  On Windows the mkdir mode shim keeps pytest's own
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -55,6 +57,42 @@ def _no_caller_repository(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for name in _git_local_env_vars():
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _git_core_longpaths(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Give git in every child of the session ``core.longpaths`` on Windows.
+
+    ``GIT_CONFIG_GLOBAL`` points at a basetemp file that includes the global config files git
+    would otherwise read and adds ``core.longpaths = true``, so the setting joins them instead
+    of replacing them.
+    """
+    # ``GIT_CONFIG_COUNT`` is not enough: a local fetch's ``upload-pack`` child drops the
+    # command-scope variables (``connect.c``'s ``local_repo_env``), so it cannot read its long
+    # objects.
+    # The work sits in the platform branch, never after an early return, so mypy analysing for
+    # either platform finds no unreachable statement.
+    if sys.platform == "win32":
+        inherited = os.environ.get("GIT_CONFIG_GLOBAL")
+        if inherited:
+            caller_configs = [Path(inherited).resolve()]
+        else:
+            # git finds ``~`` through HOME, which on Windows may not be Path.home()'s USERPROFILE.
+            home = Path(os.environ.get("HOME") or os.environ.get("USERPROFILE") or Path.home())
+            xdg = os.environ.get("XDG_CONFIG_HOME")
+            # Git reads the XDG file first and ``~/.gitconfig`` second, so later includes win.
+            caller_configs = [
+                Path(xdg) / "git" / "config" if xdg else home / ".config" / "git" / "config",
+                home / ".gitconfig",
+            ]
+        included = [
+            f'[include]\n\tpath = "{path.as_posix()}"' for path in caller_configs if path.is_file()
+        ]
+        config = tmp_path_factory.getbasetemp() / "gitconfig"
+        config.write_text(
+            "\n".join([*included, "[core]", "\tlongpaths = true"]) + "\n", encoding="utf-8"
+        )
+        os.environ["GIT_CONFIG_GLOBAL"] = config.as_posix()
 
 
 @pytest.fixture(autouse=True)
