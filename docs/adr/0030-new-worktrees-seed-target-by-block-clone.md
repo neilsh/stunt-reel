@@ -2,6 +2,8 @@
 
 ## Status
 
+re-measured 2026-11-19 with kache 2.2.0, decision unchanged: kache alone took a median 35.9 s for a new worktree's first Rust lanes against the seed's 29.6 s, and beside the seed 28.1 s, within the seed's spread (Context).
+
 amended 2026-11-14 for [#486](https://github.com/neilsh/stunt-reel/issues/486): Rust tests
 read `CARGO_MANIFEST_DIR` at run time, and the seed keeps a workspace crate's unit only where
 every file it was built from is byte-identical to the donor's and Cargo records none of them by
@@ -74,6 +76,35 @@ are silent. No upstream issue covers it; the nearest is
 [kunobi-ninja/kache#1792](https://github.com/kunobi-ninja/kache/issues/1792) (Windows daemon
 reachability and slow cache keys), whose errors these logs do not show.
 
+### kache 2.2.0, re-measured 2026-11-19
+
+kunobi-ninja/kache#1792 was closed as fixed in 2.1.1 on 2026-11-15, and 2.1.1 and 2.2.0 had shipped since 2.0.0, so the deferred option was measured again.
+Each run made a new worktree at `900ae751` on `E:` and timed its first `mise run check-rust`.
+The seed came from the repo's own `seed()` with one named donor: a checkout built twice without kache for the first arm, and one built twice through kache for the third.
+kache 2.2.0 ran as `RUSTC_WRAPPER` with its store on `E:` (`cache.local_store`), default settings otherwise, and no `kache init`.
+Three runs per arm (n = 3, and the two seeded arms had different donors), interleaved, with no other cargo or rustc process running at the start of any run:
+
+| measure | seed, no kache | kache, no seed | seed and kache |
+| --- | --- | --- | --- |
+| first Rust lanes | 33.2, 25.8, 29.6 s | 35.8, 47.5, 35.9 s | 27.5, 28.1, 28.4 s |
+| `Compiling`, `Checking`, `Documenting` lines in `check.log` | 15 | 130–305 | 15 |
+| kache's hit rate | none | 89–93% | 0% (3 compiled, none cacheable) |
+| `target/` size (`du -sm`, MiB) | 2103 | 1780–2607 | 1913 |
+
+Own disk (clusters with a reference count of 1) was not measured.
+Four alternating warm gates were alike: 20 s and 16 s without kache, 18 s and 16 s through it.
+Two warm runs through kache earlier the same day took 131 s (nothing compiled) and 46 s.
+In the first the fmt step, which never calls rustc, took 36 s; in the second the GPU tests, identical binaries by hash, took 20 s against 11 s without kache.
+That points to load elsewhere on the machine rather than kache, but it was not isolated.
+
+kache's worktree seeding ran on Windows in these runs: in each of the three seed-and-kache runs, `kache stats --last-build` reported 3 of 3 units seeded from another checkout's `target/debug`.
+kache seeded those three units and still compiled them (they are executables, which `cache_executables = false` keeps out of the store), and Cargo ran the same 15 units as with our seed alone.
+Seeding appeared only in the seed-and-kache arm's stats; without our seed, Cargo logged 130–305 units, most restored from the store.
+
+The verdict stands.
+kache alone was slower than the seed (median 35.9 s against 29.6 s, with no overlap in range), and beside the seed its 28.1 s median fell within the seed's own 25.8–33.2 s spread.
+kache 2.2.0's notes also say its file-hash memo, which cuts Windows key time, cannot work off NTFS, ReFS included, and the checkouts are on ReFS; key time was not measured here.
+
 ## Decision
 
 `mise run init` seeds an empty `target/` by cloning a donor checkout's build output, and every
@@ -95,7 +126,10 @@ and the measurement.
   seeded one, edits are no faster, and it adds a pinned two-binary tool, a daemon, a store and a
   config. Deferred, not rejected: reopen when its new-target seeding works on Windows,
   kunobi-ninja/kache#1792 is resolved, and a few releases have passed since 2.0.0. Its seeding
-  would need the same care for workspace units as ours. It keeps one
+  would need the same care for workspace units as ours.
+  Re-measured with 2.2.0 on 2026-11-19 (Context): #1792 is fixed and its worktree seeding runs, but alone it is slower than our seed and beside it no faster beyond noise, at three runs per arm.
+  Reopen if kache seeds whole units so that Cargo skips them, or a measurement beside the seed shows a gain larger than the seed's run-to-run spread.
+  It keeps one
   advantage seeding lacks: after a `Cargo.lock` or toolchain change each crate compiles once for
   every worktree, where a seeded worktree rebuilds the changed units itself until its donor does.
 - **One `target/` for every worktree.** Rejected again for ADR 0013's reason: Cargo locks it for a
