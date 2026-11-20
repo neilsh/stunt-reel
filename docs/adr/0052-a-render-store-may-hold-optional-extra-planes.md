@@ -47,6 +47,6 @@ It adds `shapes.zst` beside `layers.zst`, which ADR 0027 does not list.
 
 - Version 4's listing ties `shapes.zst` to its render by SHA-256, so a stale `shapes.zst` is never read as the render's own.
   Before #813 nothing did.
-- The version 4 re-render of #813 rewrote every render store once, judge baselines included.
+- Version 4 makes every render store written before it unreadable until it is re-rendered once, judge baselines included.
 - A plane that a score would need does not qualify under this record.
 - [#809](https://github.com/neilsh/stunt-reel/issues/809), moving the prop-shape attribution slot out of `SodVertex`, may become a user of this record; this record decides nothing about it.
