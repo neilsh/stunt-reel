@@ -173,10 +173,10 @@ mod tests {
     }
 
     #[test]
-    fn this_process_reads_back_on_linux() {
-        if cfg!(target_os = "linux") {
-            let reading = read_process().expect("linux has /proc/self/status");
-            assert!(reading.rss_kib > 0 && reading.peak_kib > 0);
+    fn this_process_reads_back_on_linux_and_windows() {
+        if cfg!(any(target_os = "linux", windows)) {
+            let reading = read_process().expect("/proc/self/status, or powershell on Windows");
+            assert!(reading.rss_kib > 0 && reading.peak_kib >= reading.rss_kib);
         }
     }
 }
