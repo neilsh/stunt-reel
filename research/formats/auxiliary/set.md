@@ -1,5 +1,5 @@
 ---
-summary: "`.SET` stage ([FMT-SET-HEADER]): 84-byte header, 67-byte event records from 0x54, 64-byte prop records; `TYPESET.EXE` event operator codes; size formula closes on 129 sets; props stored per occupied slot (0-39), several prop bytes still unknown."
+summary: "`.SET` stage ([FMT-SET-HEADER]): 84-byte header, 67-byte events from 0x54, one 64-byte record per occupied prop slot (0-39); `TYPESET.EXE` operators and printed prop fields; 129 sets close."
 sidebar_label: ".SET scenery & world layout"
 ---
 # Specification: .SET Scenery & World Layout Format
@@ -54,10 +54,10 @@ Offsets and widths live in [`set.ksy`](set.ksy); the table gives each field's me
 | `initial_view_mode` | Initial viewpoint mode index (see § 2.3) | `[Established]` |
 | `reserved4` | Reserved alignment and internal runtime pointers | `[Bounded Observation]` |
 | `magic` | Structural validation constant `0x08` | `[Established]` |
-| `num_events` | Number of event records. Agrees with the printed event count of all six sets that have a dump (1, 1, 8, 2, 2, 10) | `[Bounded Observation]` |
+| `num_events` | Number of event records. Agrees with the printed event count of six of the seven sets that have a dump (1, 1, 8, 2, 2, 10); `REMOTE.SET` stores 1, an all-zero record, and its dump prints no event | `[Bounded Observation]` |
 
 `num_events` is a single byte at `0x53`, so the encoding admits 255 events while the authoring tools expose 64: an **authored limit**, not a field bound ([`GLOSSARY.md`](../../../GLOSSARY.md)).
-The prop count is not stored in a dedicated header byte at all — the six dumped sets carry 4 to 39 props and no header byte matches them; [`set.ksy`](set.ksy) derives it from the remaining length.
+The prop count is not stored in a dedicated header byte at all — the seven dumped sets carry 3 to 39 props and no header byte matches them; [`set.ksy`](set.ksy) derives it from the remaining length.
 
 The header is 84 bytes, ending at `0x53`.
 The 12 bytes this table used to list at `0x54`–`0x5F` are the first event record's leading fields, not a table header; see § 3.5.
@@ -102,82 +102,98 @@ Prop records begin where the events end, at `0x54 + 67 × num_events`, and run t
 
 **A record is stored only for an occupied prop slot.**
 Its leading word is the slot number, 0-based, so the handbook's prop slot 1, the stunt aircraft, is word 0: the authoring tools offer 40 slots, of which slots 1 to 8 record film (*handbook* p.62; [`GLOSSARY.md`](../../../GLOSSARY.md)).
-On the 36 retail sets (715 records) the word strictly increases through each file, never exceeds 39 and starts at 0 in every set, matching `STUNT.EXE`'s `Prop 1 needs to be placed` ([`sets.md` § 2](../../stunt-exe/sets.md#2-stuntexe-alone-reads-and-writes-set)).
-Every one of the 36 skips at least one slot, so the word equals its record index only up to the first empty slot.
-This explains the retail share of the sweep's 427 words at or above the record count (137) and its 503 of the 715 retail words that differ from the index; the other 290 come from the 93 community sets, which no cloud archive holds.
-`[Supported Inference]`: the handbook names the 40 slots, and the bytes keep to them.
-`mise run verify-corpus -- --schema set` checks the order, the range and the trailing word below, and passes `--strict` on the retail sets (`mise run verify-corpus -- --corpus corpus/stuntisl/SETS --schema set`).
+On all 129 corpus sets (2,032 records) the word strictly increases through each file, never exceeds 39 and starts at 0, matching `STUNT.EXE`'s `Prop 1 needs to be placed` ([`sets.md` § 2](../../stunt-exe/sets.md#2-stuntexe-alone-reads-and-writes-set)).
+`TYPESET` prints a set's props as `Prop #N` for exactly the stored words `N − 1`, in the 80 props of the 7 printed sets the corpus holds.
+114 of the 129 sets skip at least one slot, so the word equals its record index only up to the first empty slot.
+This explains the sweep's 427 words at or above their set's record count and its 1,262 words that differ from their index.
+`[Supported Inference]`: the handbook names the 40 slots, the printed dumps number them, and the bytes keep to them in every set.
+`mise run verify-corpus -- --schema set --strict` checks the start, the order, the range and the trailing word below, and passes on all 129 sets.
 
 **The trailing word belongs to the next slot.**
-Bytes `+0x3E`–`+0x3F` equal bytes `+0x02`–`+0x03` of the record for the next slot number in 626 of 626 records whose next slot is present, which reads as the editor writing 62 bytes from a table of 60-byte entries.
+Bytes `+0x3E`–`+0x3F` equal bytes `+0x02`–`+0x03` of the record for the next slot number in 1,725 of 1,725 records whose next slot is present, which reads as the editor writing 62 bytes from a table of 60-byte entries.
 `[Supported Inference]` for the equality; the write itself has not been read in `STUNT.EXE`.
 
 _Source: [prop slot words and per-offset columns on the retail sets](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-17-prop-slot-words-and-per-offset-columns-on-the-retail-sets)._
+_Source: [prop slot rules and columns on all 129 sets](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-20-prop-slot-rules-and-columns-on-all-129-sets)._
 
 > **Historical Stride Correction:** Early community analysis notes (Neil Halelamien, 2004) asserted that "Every prop takes (16*5=80 bytes)".
 > Empirical analysis of record deltas ($0xD6 - 0x97 + 1 = 0x40 = 64\text{ bytes}$) disproves this typo: each record is strictly **64 bytes (0x40)**, perfectly aligning with four 16-byte paragraph blocks in real-mode x86 memory.
 
-The *Observed* column counts the 715 retail records, split where it matters into slots 0–7 (214 records, the recording slots) and 8–39 (501).
+**The printed dumps name most fields.**
+`TYPESET` prints each prop's settings by name, and a field below that cites a printed name matches it in every dumped prop that prints it, over the 7 printed sets the corpus holds; the counts are in the journal entry.
+The method decides what some fields hold: a Seek, Spot, Follow or Attach prop acts on its method object, and Spot, Follow and Attach props store a distance and an offset from it where Face, Free and Seek props store a speed and a heading (*handbook* p.68).
+`TYPESET` prints an angle at `+0x16` or `+0x2A` as the negated BAM value: a stored `0xC000` (−90°) prints as yaw 90.
+
+_Source: [printed set dumps against the prop bytes](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-20-printed-set-dumps-against-the-prop-bytes)._
+
+The *Observed* column counts the 2,032 records of the 129 sets, split where it matters into slots 0–7 (642 records, the recording slots) and 8–39 (1,390).
 A field named *unknown* has no reading yet.
 
 | Relative Offset | Size | Type | Field Name | Description | Observed | Evidentiary Tier |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `+0x00` | 2 | `u16` (LE) | `prop_slot_id` | Prop slot, 0-based (handbook slot − 1); stored slots only, ascending | 0–39, ascending in 36 of 36 sets; high byte 0 in 715 | `[Supported Inference]` |
-| `+0x02` | 1 | `u8` | `behavior_flags` | Behavior and interaction bitfield (see § 3.2) | bit 0 set in 715; bits 1–2 set in 127, all in slots 0–7 | `[Established]` |
-| `+0x03` | 1 | `u8` | `placement_flags` | World placement and shadow bitfield (see § 3.3) | bit 0 set in 715 | `[Bounded Observation]` |
+| `+0x00` | 2 | `u16` (LE) | `prop_slot_id` | Prop slot, 0-based (handbook slot − 1, printed `Prop #`); stored slots only, ascending | 0–39, ascending from 0 in 129 of 129 sets; high byte 0 in 2,032 | `[Supported Inference]` |
+| `+0x02` | 1 | `u8` | `behavior_flags` | Behavior and interaction bitfield (see § 3.2) | bit 0 set in 2,028; bits 1–2 set in 362, 40 of them in slots 8–39 | `[Supported Inference]` |
+| `+0x03` | 1 | `u8` | `placement_flags` | World placement and shadow bitfield (see § 3.3) | bit 0 set in 2,030 | `[Bounded Observation]` |
 | `+0x04` | 2 | `u16` (LE) | `object_model_id` | Catalog ID mapping `.SOD` geometry: `(res_index << 8) \| item_index` | varies | `[Established]` |
-| `+0x06` | 4 | `i32` (LE) | `coord_x_fixed` | East/West position in 16.16 fixed point: $X = (x_{\text{editor}} - 100000) / 10$ | −9135.5 to 7738.0 | `[Established]` |
-| `+0x0A` | 4 | `i32` (LE) | `coord_y_fixed` | Altitude position in 16.16 fixed point: $Y = y_{\text{editor}} / 10$ (§ 3.7); the sign convention is unconfirmed | ≤ 0 in all 715 (maximum 0.0) | `[Supported Inference]` |
-| `+0x0E` | 4 | `i32` (LE) | `coord_z_fixed` | North/South position in 16.16 fixed point: $Z = (z_{\text{editor}} - 100000) / 10$ | −6779.5 to 7645.7 | `[Established]` |
+| `+0x06` | 4 | `i32` (LE) | `coord_x_fixed` | East/West position in 16.16 fixed point: $X = (x_{\text{editor}} - 100000) / 10$; printed E/W | −10030.0 to 10000.0 | `[Established]` |
+| `+0x0A` | 4 | `i32` (LE) | `coord_y_fixed` | Altitude in 16.16 fixed point, negated: $y = -\text{altitude}_{\text{editor}} / 10$, so up is negative | −4107.3 to 0.0 | `[Supported Inference]` |
+| `+0x0E` | 4 | `i32` (LE) | `coord_z_fixed` | North/South position in 16.16 fixed point: $Z = (z_{\text{editor}} - 100000) / 10$; printed N/S | −10030.0 to 10000.0 | `[Established]` |
 | `+0x12` | 2 | `i16` (LE) | `roll_bam` | Roll orientation angle in 16-bit BAM ($0..65535 \equiv 0..2\pi$) | varies | `[Established]` |
 | `+0x14` | 2 | `i16` (LE) | `pitch_bam` | Pitch orientation angle in 16-bit BAM | varies | `[Established]` |
-| `+0x16` | 2 | `i16` (LE) | `yaw_bam` | Yaw (heading) orientation angle in 16-bit BAM | varies | `[Established]` |
-| `+0x18` | 2 | `u16` (LE) | `unknown_18` | Unknown; never nonzero | 0 in 715 | `[Bounded Observation]` |
-| `+0x1A` | 2 | `i16` (LE) | `slot_ref_1a` | A slot reference, −1 for none; which property it holds is unknown | −1, 0, or a slot present in the same set (37 of 38 positive values); no positive value is its own slot, and 0 may be "none" or slot 0 | `[Bounded Observation]` |
-| `+0x1C` | 2 | `i16` (LE) | `slot_ref_1c` | A second slot reference, −1 for none; property unknown | −1, 0, or a slot present in the same set (129 of 129 positive values); no positive value is its own slot, and 0 may be "none" or slot 0 | `[Bounded Observation]` |
-| `+0x1E` | 2 | `u16` (LE) | `speed` | Scalar speed magnitude in knots or internal simulation units | varies | `[Established]` |
-| `+0x20`–`+0x25` | 6 | `u8[6]` | `unknown_20` | Unknown; set only for recording slots | `00 20 00 00 00 00` in 501 of 501 in slots 8–39 | `[Bounded Observation]` |
-| `+0x26`–`+0x2F` | 10 | `u8[10]` | `unknown_26` | Unknown; `+0x2E`–`+0x2F` set only for recording slots | nonzero in 295; `+0x2E`–`+0x2F` 0 in 501 of 501 in slots 8–39 | `[Bounded Observation]` |
-| `+0x30` | 1 | `u8` | `unknown_30` | Unknown small enumeration | 0–5 in 715 | `[Bounded Observation]` |
-| `+0x31`–`+0x33` | 3 | `u8[3]` | `unknown_31` | Unknown; almost always zero | `+0x31` 0 in 715; `+0x32`–`+0x33` 0 in 713 | `[Bounded Observation]` |
-| `+0x34` | 1 | `u8` | `override_flags` | Bitfield whose meaning is unknown; § 3.4's bits are withdrawn | `0x00`, `0x40`, `0x80` or `0xC0` in 712 of 715 | `[Bounded Observation]` |
-| `+0x35`–`+0x3D` | 9 | `u8[9]` | `unknown_35` | Unknown; not padding | nonzero in 202 | `[Bounded Observation]` |
-| `+0x3E`–`+0x3F` | 2 | `u8[2]` | `next_slot_flags` | Copy of the next slot's `+0x02`–`+0x03` | equal in 626 of 626 where that slot is present | `[Supported Inference]` |
+| `+0x16` | 2 | `i16` (LE) | `yaw_bam` | Yaw (heading) orientation angle in 16-bit BAM; printed Yaw is its negation | varies | `[Established]` |
+| `+0x18` | 2 | `u16` (LE) | `unknown_18` | Unknown; never nonzero | 0 in 2,032 | `[Bounded Observation]` |
+| `+0x1A` | 2 | `i16` (LE) | `watch_object` | Slot the prop watches (printed Watch Object − 1); the watch switch is § 3.2's bit 1 | −1 in 306, all with watch off; positive values name a slot present in the same set in 126 of 130, never the prop's own | `[Supported Inference]` |
+| `+0x1C` | 2 | `i16` (LE) | `method_object` | Slot a Seek, Spot, Follow or Attach prop acts on (printed Method Object − 1) | −1 in 27; positive values name a slot present in the same set in 313 of 319, never the prop's own | `[Supported Inference]` |
+| `+0x1E` | 2 | `u16` (LE) | `speed` | Face, Free and Seek props: speed, about 12.01 per printed unit (§ 3.5's `change speed` scale). Spot, Follow and Attach: printed Distance × 51.2 | varies | `[Supported Inference]` |
+| `+0x20` | 2 | `u16` (LE) | `zoom` | Camera zoom × 8192, so `0x2000` is 1.0; printed for slots 0–7 only | `0x2000` in 1,390 of 1,390 in slots 8–39; 0.20 to 7.99 | `[Bounded Observation]` |
+| `+0x22`–`+0x27` | 6 | `u8[6]` | `unknown_22` | Unknown | nonzero in 103 (50 in slots 0–7) | `[Bounded Observation]` |
+| `+0x28` | 2 | `i16` (LE) | `heading_pitch_bam` | Heading pitch, or for Spot, Follow and Attach the offset pitch, in BAM | nonzero in 406 | `[Supported Inference]` |
+| `+0x2A` | 2 | `i16` (LE) | `heading_yaw_bam` | Heading yaw, or for Spot, Follow and Attach the offset yaw, in BAM; printed as its negation | nonzero in 485 | `[Supported Inference]` |
+| `+0x2C`–`+0x2F` | 4 | `u8[4]` | `unknown_2c` | Unknown | nonzero in 50 (14 in slots 0–7) | `[Bounded Observation]` |
+| `+0x30` | 1 | `u8` | `method` | Prop method: `0` Face, `1` Free, `2` Seek, `3` Spot, `4` Follow, `5` Attach, the handbook's order (*handbook* p.68) | 0–5 in 2,032 | `[Supported Inference]` |
+| `+0x31`–`+0x33` | 3 | `u8[3]` | `unknown_31` | Unknown; almost always zero | `+0x31` 0 in 2,032; `+0x32`–`+0x33` 0 in 2,009 | `[Bounded Observation]` |
+| `+0x34` | 1 | `u8` | `display_flags` | Bitfield; bit 6 set hides the prop (see § 3.4) | `0x00`, `0x40`, `0x80` or `0xC0` in 2,029 of 2,032 | `[Bounded Observation]` |
+| `+0x35`–`+0x3D` | 9 | `u8[9]` | `unknown_35` | Unknown; not padding | nonzero in 607 | `[Bounded Observation]` |
+| `+0x3E`–`+0x3F` | 2 | `u8[2]` | `next_slot_flags` | Copy of the next slot's `+0x02`–`+0x03` | equal in 1,725 of 1,725 where that slot is present | `[Supported Inference]` |
+
+The dumps print every Anim value, Acceleration and Distance Anim as 0 in the 7 sets the corpus holds, so they cannot name the unknown bytes; those printed fields are the first candidates for them.
 
 ### 3.2 Prop Behavior Flags (`behavior_flags`, `+0x02`)
 
 ```
 Bit:   7   6   5   4   3   2   1   0
      +---+---+---+---+---+---+---+---+
-     | - | V | E | - | C | A | W | - |
+     | - | - | E | - | C | A | W | ? |
      +---+---+---+---+---+---+---+---+
-           |   |       |   |   +-- Watch target by cameras
-           |   |       |   +------ Autozoom camera tracking
-           |   |       +---------- Collision detection enabled (0x08)
-           |   +------------------ Explodable on projectile / terrain impact
-           +---------------------- Visibility flag (legacy display enable)
+               |       |   |   |   +-- Unknown; set in 2,028 of 2,032 records
+               |       |   |   +------ Watch: track the watch object (+0x1A)
+               |       |   +---------- Autozoom
+               |       +-------------- Collision
+               +---------------------- Explosion: the prop can be blown up
 ```
 
-On the 715 retail records, bit 0, drawn here as unused, is set in every record, and bits 1 and 2 are set only in recording slots (§ 3.1). `[Bounded Observation]`
+Bits 1, 2, 3 and 5 each match one printed switch, Watch, Autozoom, Collision and Explosion, in every printed prop of the 7 dumped sets the corpus holds. `[Supported Inference]`
+Bits 4, 6 and 7 are never set in the 2,032 records. `[Bounded Observation]`
 
 ### 3.3 Prop Placement Flags (`placement_flags`, `+0x03`)
 
 ```
 Bit:   7   6   5   4   3   2   1   0
      +---+---+---+---+---+---+---+---+
-     | Reserved (0)  | S | - | P |
+     | - | - | - | ? | ? | S | ? | P |
      +---+---+---+---+---+---+---+---+
-                       |       +-- Placed in world (1 = active entity, 0 = empty)
-                       +---------- Cast real-time ground shadow (1 = shadow active)
+                           |       +-- Placed in world (1 = active entity, 0 = empty)
+                           +---------- Shadow: cast a ground shadow
 ```
 
-On the 715 retail records, bit 0 is set in every record.
-The drawing does not cover the rest, so this bit map is unconfirmed: bit 1 is set in 688, bit 2 in 51, bit 3 in 333 and bit 4 in 504, though the drawing leaves bits 3 to 7 reserved; bits 5 to 7 are never set. `[Bounded Observation]`
+Bit 2 matches the printed Shadow switch in every dumped prop. `[Supported Inference]`
+Bit 0 is set in 2,030 of the 2,032 records and every dumped prop prints `Placed :On`, so the Placed reading is untested. `[Bounded Observation]`
+Bit 1 is set in 1,991 records, bit 3 in 882 and bit 4 in 1,810; bits 5 to 7 are never set. `[Bounded Observation]`
 
-### 3.4 Prop Override Flags (`override_flags`, `+0x34`)
+### 3.4 Prop Display Flags (`display_flags`, `+0x34`)
 
-The meaning of this byte is unknown.
-On the 715 retail records it is `0x00`, `0x40`, `0x80` or `0xC0` in 712, so its variation sits in bits 6 and 7.
+Bit 6 set hides the prop: it is set exactly where the dump prints `Visible :Off`, in 80 of 80 printed props. `[Supported Inference]`
+On the 2,032 records the byte is `0x00`, `0x40`, `0x80` or `0xC0` in 2,029, so its other variation sits in bit 7, set in 103 records; no dumped prop sets bit 7, and every one prints `Locked :Off`, so bit 7 as Locked is untested.
 The hidden and locked bits this section used to place at bits 2 and 3 are set in 2 records, both recording slots, and are withdrawn. `[Bounded Observation]`
 
 ### 3.5 File Layout: the Event Table at `0x54`
@@ -291,6 +307,7 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
 - **Fixed-Point Conversion:** In `.SET` binary storage, coordinates are stored as 32-bit $16.16$ signed fixed-point integers.
   To obtain floating-point meters:
   $$\text{pos}_{\text{meters}} = \frac{\text{raw\_i32}}{65536.0}$$
+- **Sign:** a prop record stores its altitude negated, $y = -\text{altitude}_{\text{editor}} / 10$ (§ 3.1), so $Y_{\text{world}} = -y$.
 - **Scale Factor:** Exactly 10 Set Designer editor units equal 1.0 meter in world coordinates.
   An island width of 200,000 units spans 20,000 meters (20 kilometers).
 
@@ -301,9 +318,9 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
 | `[BK-SET-01]` | Vehicle Tuning Bytes (`reserved_settings`) | Precise aerodynamic scalar mappings governing flight control sensitivity and elevator response in Set Designer. | `[Unknown]` |
-| `[BK-SET-02]` | Prop Bytes `+0x20`–`+0x33` | Name the fields of the bytes § 3.1 calls `unknown_20` to `unknown_31`; `+0x20`–`+0x25` and `+0x2E`–`+0x2F` vary only in recording slots, so camera settings are the first candidate. The 20-byte trajectory-state reading is withdrawn (§ 3.1). | `[Bounded Observation]` |
-| `[BK-SET-03]` | `change` Operand Scales | The 16-bit `change` operand is BAM for angles and ×50 for anim properties (§ 3.5); only `zoom` is pinned among the scalar properties. | `[Bounded Observation]` |
-| `[BK-SET-04]` | Prop Record Field Map | The leading word is the 0-based prop slot, stored only for occupied slots, and the trailing word copies the next slot's flags (§ 3.1); every byte is now named or marked unknown. Open: the `set` probe of `mise run verify-corpus` has run on the 36 retail sets only, so the rules are unconfirmed on the 93 community sets that hold 290 of the 427 slot words at or above their set's record count; and the meanings of `+0x1A`, `+0x1C`, `+0x34` and the `unknown_*` bytes. | `[Supported Inference]` |
+| `[BK-SET-02]` | Unknown Prop Bytes | Name the bytes § 3.1 still calls unknown: `+0x18`, `+0x22`–`+0x27`, `+0x2C`–`+0x2F`, `+0x31`–`+0x33` and `+0x35`–`+0x3D`, and bit 0 of `+0x02`, bits 1, 3 and 4 of `+0x03` and bit 7 of `+0x34`. The first candidates are the settings the dumps print only as 0 or one value: the Anim rates, Acceleration, Distance Anim, Locked and Placed. Flipping each byte under `TYPESET`, as § 3.5 did for events, would name them. | `[Bounded Observation]` |
+| `[BK-SET-03]` | `change` Operand Scales | The 16-bit `change` operand is BAM for angles and ×50 for anim properties (§ 3.5); only `zoom` is pinned among the scalar properties, and `speed`'s 1364 for `0x4000` matches the prop record's 12.01 per printed unit (§ 3.1), while `zoom`'s 2.5 differs from the record's 8192 per unit. | `[Bounded Observation]` |
+| `[BK-SET-04]` | Prop Record Field Map | Closed: the leading word is the 0-based prop slot, stored only for occupied slots, and the trailing word copies the next slot's flags, on all 129 sets and 2,032 records; the printed dumps name most other fields, and every byte is named or marked unknown with a count (§ 3.1). The unknown bytes are `[BK-SET-02]`. | `[Supported Inference]` |
 | `[BK-SET-05]` | Event Action-Code Catalogue | Map the handbook's THEN actions (*handbook* pp.92–95) onto `action_type` values. Progress: `num_events` at `0x53` enumerates a set's rules, § 3.6 fixes codes `0`–`16`, and the record is 67 bytes; open is whether every handbook action has exactly one code. | `[Hypothesis]` |
 
 ---
@@ -317,7 +334,7 @@ The technical specifications for the `.SET` format are synthesized from the foll
 - **Dean Newbury (2004):** SIFA correspondence and prop slot constraint analysis.
 - **Doug Armknecht (2000–2002):** World coordinate space and island center offset documentation in film trajectory analyses (`corpus/siarchive/Developer/SI_FLM_Format/FLM_NOTES.md`).
 - **The Assembly Line / Disney (1992):** The retail handbook (`corpus/siarchive/Docs/Manual/`), read as a primary source for authoring semantics; see [`research/handbook.md`](../../handbook.md).
-- **Disney tutorial sets (1993):** The 92 `.SET` files and 22 printed field dumps under `corpus/siarchive/Misc/Sets/`, emitted by the authoring tools (`Printed at :Thu Jan 21 15:56:19 1993`), which decode every header and prop field in prose.
+- **Disney tutorial sets (1993):** Six sets printed by `TYPESET` in four `.TXT` files under `corpus/siarchive/Misc/Sets/` (`BOMBING`, `BOMBING2`, `DRIVING`, `FIND&HIT`, `FIND&HT2`, `REALISM`; `Printed at :Thu Jan 21 15:56:19 1993`), printed again with `REMOTE` in the revised handbook `corpus/siarchive/Docs/Disney_Support/SIUPDATE.TXT`; each dump names every header and prop setting.
 - **Stunt Reel contributors (2026):** Resolution of the 80-byte stride historical error to exact 64-byte (`0x40`) stride, validation of 16.16 fixed-point math, and contract alignment.
 
 ---
@@ -327,7 +344,12 @@ The technical specifications for the `.SET` format are synthesized from the foll
 - *`prop_slot_id` as the record index*: it is the slot number, and every retail set skips at least one slot ([journal](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-17-prop-slot-words-and-per-offset-columns-on-the-retail-sets)).
 - *`+0x18`–`+0x1D` as a velocity vector*: `+0x18` is always zero, and `+0x1A` and `+0x1C` hold −1, 0 or a slot number ([journal](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-17-prop-slot-words-and-per-offset-columns-on-the-retail-sets)).
 - *`+0x20`–`+0x33` as a 20-byte trajectory state, `+0x35`–`+0x3F` as padding, and the hidden and locked bits of § 3.4*: the column counts in § 3.1 and § 3.4 contradict each ([journal](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-17-prop-slot-words-and-per-offset-columns-on-the-retail-sets)).
+- *`+0x20`–`+0x25`, `+0x2E`–`+0x2F` and bits 1–2 of `+0x02` as set only for recording slots*: true of the retail sets, but community sets break them in slots 8–39 in 36, 32 and 40 records ([journal](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-20-prop-slot-rules-and-columns-on-all-129-sets)).
+- *Visibility as bit 6 of `+0x02`*: that bit is never set in 2,032 records, and the printed Visible switch follows bit 6 of `+0x34` ([journal](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-20-printed-set-dumps-against-the-prop-bytes)).
+- *0 at `+0x1A` or `+0x1C` as "no slot"*: the dumps print it as object 1, slot 0 ([journal](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-20-printed-set-dumps-against-the-prop-bytes)).
 
 ## Open questions
 
-The backlog in § 4 is this note's open work, in its order there; `[BK-SET-04]` first needs a run of `mise run verify-corpus -- --schema set --strict` on a machine holding the full `corpus/siarchive`, and the 22 printed dumps under `corpus/siarchive/Misc/Sets/` are the nearest source for the unknown prop bytes' meanings.
+The backlog in § 4 is this note's open work, in its order there; `[BK-SET-04]` is closed.
+The printed dumps cannot name `[BK-SET-02]`'s bytes, since the settings they might hold print with one value in every dump; a `TYPESET` byte-flip run on a prop record would vary them one at a time.
+Ten slot references, in 9 records of 6 sets, name a slot the set does not store; whether the player ignores them is open.
