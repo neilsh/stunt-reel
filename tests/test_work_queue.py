@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -268,3 +271,77 @@ def test_is_cloud_session_is_false_when_neither_marker_is_present(
     monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
     monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path / "missing")
     assert q.is_cloud_session() is False
+
+
+def _disk(monkeypatch: pytest.MonkeyPatch, free_gb: float) -> None:
+    """Stub the free space ``shutil.disk_usage`` reports."""
+    monkeypatch.setattr(
+        shutil, "disk_usage", lambda _path: SimpleNamespace(free=int(free_gb * q.GIB))
+    )
+
+
+@pytest.mark.parametrize(
+    ("free_gb", "advice"),
+    [
+        (30, ""),
+        (8, " (under 10 GB free: create no new worktrees; run mise run clean)"),
+        (
+            4,
+            (
+                " (under 10 GB free: create no new worktrees; run mise run clean;"
+                " under 5 GB free: run Shutdown)"
+            ),
+        ),
+    ],
+)
+def test_the_disk_line_names_the_drive_and_the_action_its_threshold_asks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, free_gb: int, advice: str
+) -> None:
+    _disk(monkeypatch, free_gb)
+    drive = tmp_path.drive or tmp_path.anchor
+    assert q.disk_line(tmp_path) == f"free disk: {free_gb}.0 GB on {drive}{advice}"
+
+
+def test_primary_checkout_is_the_directory_holding_the_git_common_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def git(*_args: object, **_kwargs: object) -> Any:
+        return SimpleNamespace(returncode=0, stdout="E:/git/stunt-reel/.git\n")
+
+    monkeypatch.setattr(subprocess, "run", git)
+    assert q.primary_checkout() == Path("E:/git/stunt-reel")
+
+
+def test_a_local_queue_ends_with_the_disk_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[_issue(1)]]})
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+    monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path / "missing")
+    monkeypatch.setattr(q, "primary_checkout", lambda: tmp_path)
+    _disk(monkeypatch, 30)
+    assert q.main() == 0
+    assert capsys.readouterr().out.splitlines()[-1] == q.disk_line(tmp_path)
+
+
+def test_a_cloud_queue_prints_no_disk_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[]]})
+    monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
+    monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path / "missing")
+    monkeypatch.setattr(q, "primary_checkout", lambda: pytest.fail("a cloud session reads no disk"))
+    assert q.main() == 0
+    assert "free disk" not in capsys.readouterr().out
+
+
+def test_a_queue_that_cannot_find_the_primary_checkout_says_so(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[]]})
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+    monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path / "missing")
+    monkeypatch.setattr(q, "primary_checkout", lambda: None)
+    assert q.main() == 0
+    err = capsys.readouterr().err
+    assert err == "queue: free disk unknown: git did not name the primary checkout\n"
