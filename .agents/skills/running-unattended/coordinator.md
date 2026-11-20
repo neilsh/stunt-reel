@@ -8,7 +8,7 @@ The run is one **coordinator** and its **workers**; the coordinator runs longest
 | | Coordinator | Worker (implementer or reviewer) |
 |---|---|---|
 | Model | Sonnet from the start; never Opus | By fit ([`SKILL.md`](SKILL.md#concurrency-and-models)) |
-| Does | Builds the queue, claims, dispatches, checks the merge bar, arms, files an issue for a reviewer's out-of-scope finding, rewrites `run-state.md` | Reads the issue or PR and its comments, implements or reviews in its own worktree, files the follow-up issues its item produces and reports their numbers |
+| Does | Builds the queue, claims, dispatches, checks the merge bar, arms, files an issue for a reviewer's out-of-scope finding, appends to `run-state.md` | Reads the issue or PR and its comments, implements or reviews in its own worktree, files the follow-up issues its item produces and reports their numbers |
 | Reads | `mise run queue` lines, worker reports, the first line of a review comment, CI state, the lines `mise run pr-threads` prints, a PR's changed file names | The bodies, diffs and code the coordinator does not |
 | Never | Opens a diff, an issue body or a thread's text; writes no code and no PR or doc content; `sleep`s or polls; loads `--help` or the orchestration guide | Arms or merges |
 
@@ -19,29 +19,54 @@ Its claim check reads claim comments by first line, not whole comments ([`loop-a
 ## `run-state.md`
 
 `build/scratch/run-state.md`, ignored through `build/` (`git check-ignore -v build/scratch/run-state.md` shows the rule); no tracked file is written there.
-Rewrite it whole, with the file-write tool, at every transition: claimed, dispatched, worker reported, review verdict, armed, merged, handed off.
-Record only what a fresh container can re-derive from GitHub (branch, PR number, head SHA, label state), plus what the coordinator holds locally: a worker's unpushed rule 5 commit with its reviewed local SHA and PR-body path, and a due time.
+Its per-item and per-PR state is an append-only log: each transition appends one line, and no earlier line is rewritten.
+The Run header, the Queue lines, the Filed list and the Next action are edited in place, outside the log.
+Record only what a fresh container can re-derive from GitHub (branch, PR number, head SHA, label state), plus what the coordinator holds locally: a worker's worktree path, an unpushed rule 5 commit with its reviewed local SHA and PR-body path, a `local-only` clearance, and a due time.
 Fields:
 
 | Group | Fields |
 |---|---|
 | Run | start time, environment, deadline and cutoff, "stop after N" limit, PRs armed so far, coordinator number |
 | Queue | the `mise run queue` lines verbatim, when refreshed, items skipped and why |
-| Each item | issue or PR number, state (`claimed`, `implementing`, `in review`, `fixing`, `armed`, `merged`, `handed off`), worker (agent or terminal handle, model, task id), branch, worktree path, time of last event |
-| Each PR's merge bar ([`pr-and-filing.md`](pr-and-filing.md#bringing-a-pr-to-mergeable-and-merge-bar) step 5; `mise run merge-bar -- <n> --issue <N>`, with the item's issue, reads the head, base, CI, review verdict, `Fixes` or `Part of` line, threads and draft state in one report) | head SHA (7 characters), CI at that SHA, local gate at that SHA, review comment URL and its verdict at that SHA, review-body findings answered, CodeRabbit (`not requested`, `check due <time>`, `checked`), acceptance items and `Fixes` or `Part of` as the worker reported them, changed paths that need a human cleared, `local-only`, armed |
-| Shutdown report | Merged, Draft / WIP, Opened, Filed (labels), Needs you (item, reason, decision), Skipped |
+| Log | one line per transition, oldest first, in the format below |
+| Filed | issues the run filed, one line each with its labels |
 | Next action | the one step a fresh coordinator takes first |
+
+A filed issue has no transition of its own, so the Filed list records each one with its labels for Shutdown.
+
+Each log line is:
+
+```text
+- <HH:MMZ> #<item> <state> | <agent/model> <task id> | <branch> | <head sha7 or -> | <note>
+```
+
+`<item>` is one key per tracked work item and `<state>` is one of `claimed`, `implementing`, `in review`, `fixing`, `armed`, `merged` and `handed off`.
+Key an issue's work by its issue number, with `PR #<n>` in the note once one opens, and a PR taken from the queue by its PR number; never switch an item's key mid-item.
+`<agent/model>` names the worker's agent and model, or its terminal handle, and `<task id>` is the task id its brief gave it.
+The remaining fields are the branch, the head SHA at 7 characters or `-` when there is none, and the note.
+The note carries what the merge bar needs: the worktree path (for `worker-start --worktree "path:<workspace path>"`), the review comment URL and its verdict at the head, CodeRabbit (`not requested`, `check due <time>`, `checked`), the rule 5 reviewed SHA and PR-body path, a due time, the local gate at the head, the acceptance items as the worker reported them, review-body findings answered, changed paths that need a human cleared, and `local-only` (cleared or pending).
+The newest line for an item is self-contained: each new line repeats every still-active local fact from that item's earlier lines (worktree path, local gate at the head, acceptance report, review-body findings answered, human-path and `local-only` clearance, an unpushed rule 5 SHA and PR-body path, a pending CodeRabbit due time), since `mise run merge-bar` cannot re-derive them.
+Run `mise run merge-bar -- <n> --issue <N>` and put its `PASS` or `FAIL` in the note rather than repeating the CI, base, thread or body-line fields that report already reads.
+For example:
+
+```text
+- 14:32Z #852 armed | dsh/deepseek-flash task_03e76ef44c0c | neilsh/852-git-longpaths-tests | 4a1c2d3 | worktree E:/orca/workspaces/stunt-reel/852-git-longpaths-tests; PR #859; merge-bar PASS; Antigravity review at 4a1c2d3 clean, https://github.com/neilsh/stunt-reel/pull/859#issuecomment-2520000000
+```
+
+An item's current state is its newest line, read alongside `mise run queue`.
 
 ## Restart instead of compacting
 
-Check the context size at each rewrite: the harness's context indicator or `/context` where there is one, else an estimate from the turn count.
-Once it passes about 150k tokens, stop dispatching, rewrite the file and hand off; never compact.
+Check the context size after each append: the harness's context indicator or `/context` where there is one, else an estimate from the turn count.
+Once it passes about 150k tokens, stop dispatching, update the Run header and Next action, and hand off; never compact.
 In a cloud session a successor's new container cannot see the predecessor's worktrees, subagents or unpushed commits, so wait until no worker is in flight, or until every in-flight item has a pushed branch (a rule 5 item only after its review and push), before handing off.
 Release any other item (`Released claim: <why>.`, swap `in-progress` back to `ready-for-agent`) and list it under **Needs you**; an item left `in-progress` with no remote branch is a dropped claim ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)).
+A successor rebuilds current state from the log: for each item, read its newest line, then check it against `mise run queue` and, for a PR, one `mise run merge-bar -- <n> --issue <N>` run before acting.
+An item whose newest line predates GitHub's state gets a new line recording the checked state; an older line is never edited.
 The outgoing coordinator starts its successor:
 
 - **Cloud:** a new session has a new container, so it cannot read the predecessor's gitignored file.
-  With `create_session` (when the session has that tool), put the full content of `run-state.md` in the `prompt`, which the file's small size allows, with the brief "read the `running-unattended` skill, rewrite this state into `build/scratch/run-state.md` in your own checkout, resume at Next action, and re-check each in-flight item's head SHA and state with one call before acting".
+  With `create_session` (when the session has that tool), put the full content of `run-state.md` in the `prompt`, which the file's small size allows, with the brief "read the `running-unattended` skill, write this state into `build/scratch/run-state.md` in your own checkout, resume at Next action, and re-check each in-flight item's head SHA and state with one call before acting".
   A session with no way to start one runs Shutdown instead of handing off, under the same wait and release rule ([`loop-and-bounds.md`](loop-and-bounds.md#shutdown)).
 - **local-windows:** the repo records no command for starting a Sonnet coordinator.
   The coordinator runs Shutdown at the context limit unless a person has said how to hand off.
@@ -49,9 +74,9 @@ The outgoing coordinator starts its successor:
 ## CodeRabbit: one scheduled check
 
 CodeRabbit reviews when a person asks ([`pr-and-filing.md`](pr-and-filing.md#bringing-a-pr-to-mergeable-and-merge-bar) step 4).
-When a request follows the latest push, write `check due <request time + 20 min>` in the PR's row and set one timer for that time (`send_later` in a cloud session, when the session has that tool; on local-windows the repo records a timer for Antigravity (`schedule`, [`harness.md`](../../../docs/harness.md#antigravity)) and none for Claude Code, so there the coordinator looks once at the timeout in a later turn, and when no other event is expected it runs that look and notes the outcome before ending the run, or runs Shutdown with the PR under **Needs you**), then work on other items or end the turn.
+When a request follows the latest push, append a line for the PR with its current state and a note that carries its still-active facts and `check due <request time + 20 min>`, and set one timer for that time (`send_later` in a cloud session, when the session has that tool; on local-windows the repo records a timer for Antigravity (`schedule`, [`harness.md`](../../../docs/harness.md#antigravity)) and none for Claude Code, so there the coordinator looks once at the timeout in a later turn, and when no other event is expected it runs that look and notes the outcome before ending the run, or runs Shutdown with the PR under **Needs you**), then work on other items or end the turn.
 At the timer, look once: a completed review goes to step 3, anything else gets a PR comment and the run proceeds.
-A successor re-sets a timer from the file's due time.
+A successor re-sets a timer from the newest line's due time.
 The 20-minute wait stays in the merge bar.
 
 ## `orca orchestration` flags

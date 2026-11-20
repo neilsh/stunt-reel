@@ -34,7 +34,7 @@ Copy this checklist to your task list:
 
 ```
 - [ ] 1. Check clock cutoff; on local-windows, also free disk space, tidying with reap/clean (loop-and-bounds.md)
-- [ ] 2. Build or refresh the queue with mise run queue, and rewrite run-state.md at every item transition (loop-and-bounds.md, coordinator.md)
+- [ ] 2. Build or refresh the queue with mise run queue, and append item transitions to run-state.md (loop-and-bounds.md, coordinator.md)
 - [ ] 3. Claim up to two items (one per writer worktree), cap at 3 hypothesis rounds each, and ship any clean gate-passing slice while filing blocked pieces as needs-triage (loop-and-bounds.md)
 - [ ] 4. Run the reviews at HEAD (the `reviewer` by default; a Sonnet/dsh-built first review goes to Opus or Antigravity; a re-review to Antigravity when Gemini quota allows, otherwise the `reviewer`), triage CI and any review threads, and arm squash auto-merge under the merge bar (pr-and-filing.md)
 - [ ] 5. File out-of-scope or split issues via build/scratch/*.md and --body-file (pr-and-filing.md)
