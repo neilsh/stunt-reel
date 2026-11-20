@@ -1475,6 +1475,7 @@ def _ps_row(
     terminals: int = 0,
     agents: tuple[str, ...] = ("done",),
     unverifiable: int = 0,
+    created: bool = True,
 ) -> dict[str, object]:
     """One workspace of ``orca worktree ps --json``, with only the fields reap reads."""
     return {
@@ -1482,6 +1483,7 @@ def _ps_row(
         "path": path.as_posix(),
         "liveTerminalCount": terminals,
         "unverifiableTerminalCount": unverifiable,
+        "creatorProvenance": {"kind": "host"} if created else None,
         "agents": [{"state": state} for state in agents],
     }
 
@@ -1518,8 +1520,8 @@ class _FakeOrca:
 def _orca_repo(tmp_path: Path) -> tuple[Path, Path, worktree_reap._MergedPrs]:
     """A repo, an Orca workspace outside its pool that main squash-merged, and gh's view of it."""
     repo = _init_repo(tmp_path)
-    workspace = tmp_path / "orca" / "feat"
-    workspace.parent.mkdir()
+    workspace = tmp_path / "orca" / "workspaces" / "feat"
+    workspace.parent.mkdir(parents=True)
     _run_git(repo, "worktree", "add", "-q", str(workspace), "-b", "feat")
     _commit(workspace, "one.txt")
     tip = _commit(workspace, "two.txt")
@@ -1651,6 +1653,66 @@ def test_an_orca_workspace_holding_nested_worktrees_is_skipped_and_names_them(
     assert any("(detached): outside this checkout's worktree pool" in line for line in skipped)
     assert workspace.is_dir()
     assert nested.is_dir()
+
+
+def test_a_worktree_orca_lists_without_a_creator_stays_outside_the_pool(tmp_path: Path) -> None:
+    """``ps`` lists every worktree of the repo; only a row Orca created is a workspace."""
+    repo, workspace, merged_prs = _orca_repo(tmp_path)
+    fake = _FakeOrca(repo, [_ps_row(workspace, created=False)])
+
+    candidates, skipped = _classify(repo, merged_prs, worktree_reap._OrcaWorkspaces(repo, fake))
+
+    assert candidates == []
+    assert skipped == ["feat: outside this checkout's worktree pool"]
+
+
+def test_entries_sharing_a_path_never_mask_a_live_one(tmp_path: Path) -> None:
+    repo, workspace, merged_prs = _orca_repo(tmp_path)
+    rows = [_ps_row(workspace, agents=("working",)), _ps_row(workspace)]
+    fake = _FakeOrca(repo, rows)
+
+    candidates, skipped = _classify(repo, merged_prs, worktree_reap._OrcaWorkspaces(repo, fake))
+
+    assert candidates == []
+    assert "agent working" in skipped[0]
+
+
+def test_entries_sharing_a_path_are_never_removed_blind(tmp_path: Path) -> None:
+    repo, workspace, _prs = _orca_repo(tmp_path)
+    orca = worktree_reap._OrcaWorkspaces(repo, _FakeOrca(repo, [_ps_row(workspace)] * 2))
+
+    found = orca.find(workspace)
+
+    assert found is not None
+    assert found.live == "several Orca entries share this path"
+
+
+def test_the_orca_base_guess_wants_an_orca_workspaces_folder() -> None:
+    assert worktree_reap._in_orca_base(Path("C:/Users/me/orca/workspaces/repo/name"))
+    assert worktree_reap._in_orca_base(Path("E:/Orca/Workspaces/repo/name"))
+    assert not worktree_reap._in_orca_base(Path("E:/git/orca/repo/workspaces"))
+    assert not worktree_reap._in_orca_base(Path("D:/elsewhere/feat"))
+
+
+def test_without_orca_only_a_worktree_under_an_orca_base_is_presumed_a_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo, workspace, merged_prs = _orca_repo(tmp_path)
+    # tmp_path itself sits under this checkout's own Orca base, so name the base explicitly.
+    monkeypatch.setattr(worktree_reap, "_in_orca_base", lambda path: path == workspace)
+    elsewhere = tmp_path / "elsewhere" / "feat2"
+    elsewhere.parent.mkdir()
+    _run_git(repo, "worktree", "add", "-q", str(elsewhere), "-b", "feat2")
+
+    def no_orca(_repo: Path, *_args: str) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("orca is not on PATH")
+
+    orca = worktree_reap._OrcaWorkspaces(repo, no_orca)
+    candidates, skipped = _classify(repo, merged_prs, orca)
+
+    assert [candidate.worktree.path for candidate in candidates] == [workspace]
+    assert skipped == ["feat2: outside this checkout's worktree pool"]
 
 
 def test_a_worktree_orca_does_not_manage_stays_outside_the_pool(tmp_path: Path) -> None:

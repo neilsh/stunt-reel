@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -198,10 +199,15 @@ def _orca(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 @dataclass(frozen=True)
 class _OrcaWorkspace:
-    """What Orca knows of one workspace: how to select it, and why it is live (if it is)."""
+    """What Orca knows of one workspace: how to select it, why it is live (if it is), who made it.
+
+    *created* is true when Orca made the row itself (it records a creator); ``ps`` also lists
+    every other worktree of the repository, the primary and pool worktrees included.
+    """
 
     selector: str
     live: str | None
+    created: bool = True
 
 
 def _live_reason(row: dict[str, object]) -> str | None:
@@ -265,9 +271,22 @@ class _OrcaWorkspaces:
                 self.unavailable = f"more than {ORCA_LIMIT} workspaces"
                 return
             for row in payload["worktrees"]:
-                self._rows[os.path.normcase(str(Path(row["path"])))] = _OrcaWorkspace(
-                    selector=f"id:{row['worktreeId']}", live=_live_reason(row)
+                key = os.path.normcase(str(Path(row["path"])))
+                entry = _OrcaWorkspace(
+                    selector=f"id:{row['worktreeId']}",
+                    live=_live_reason(row),
+                    created=bool(row.get("creatorProvenance")),
                 )
+                earlier = self._rows.get(key)
+                if earlier is not None:
+                    # Several entries can share a path (folder workspaces): none may mask a live one.
+                    reasons = [r for r in (earlier.live, entry.live) if r]
+                    entry = _OrcaWorkspace(
+                        selector=earlier.selector,
+                        live="; ".join(reasons) or "several Orca entries share this path",
+                        created=earlier.created and entry.created,
+                    )
+                self._rows[key] = entry
         except (ValueError, KeyError, TypeError, AttributeError) as err:
             self._rows = {}
             self.unavailable = f"unreadable orca output ({err})"
@@ -397,6 +416,15 @@ def _unlink_reparse_points(root: Path, *, tracked: frozenset[str] = frozenset())
     return _unlink_links(_links_reap_may_unlink(root, tracked))
 
 
+def _in_orca_base(path: Path) -> bool:
+    """Whether *path* sits under an ``orca/workspaces`` folder, Orca's default workspace base.
+
+    The guess ``reap`` falls back on only when Orca cannot say which worktrees it created.
+    """
+    parts = [part.lower() for part in path.parts]
+    return any(a == "orca" and b == "workspaces" for a, b in pairwise(parts))
+
+
 def _outside_pool(
     worktree: _Worktree,
     entries: list[_Worktree],
@@ -405,8 +433,9 @@ def _outside_pool(
     """Judge a worktree outside the pool: ``(Orca selector, "")`` to classify it, else ``(None, why)``.
 
     Only an Orca workspace may be reaped from outside the pool: one that no other worktree
-    encloses, that Orca manages (when Orca cannot be read it is presumed one, and ``reap`` only
-    prints its removal line), that holds no nested worktree and that Orca does not call live.
+    encloses, that Orca created (when Orca cannot be read, one under ``orca/workspaces`` is
+    presumed one, and ``reap`` only prints its removal line), that holds no nested worktree and
+    that Orca does not call live.
     """
     label = worktree.branch or "(detached)"
     outside = f"{label}: outside this checkout's worktree pool"
@@ -414,7 +443,9 @@ def _outside_pool(
     if orca is None or any(entry.path in worktree.path.parents for entry in others):
         return None, outside
     found = orca.find(worktree.path)
-    if found is None and orca.unavailable is None:
+    if found is None and (orca.unavailable is None or not _in_orca_base(worktree.path)):
+        return None, outside
+    if found is not None and not found.created:
         return None, outside
     nested = sorted(entry.path.name for entry in others if worktree.path in entry.path.parents)
     if nested:
