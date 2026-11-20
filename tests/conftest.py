@@ -80,9 +80,10 @@ def _git_core_longpaths(tmp_path_factory: pytest.TempPathFactory) -> None:
             # git finds ``~`` through HOME, which on Windows may not be Path.home()'s USERPROFILE.
             home = Path(os.environ.get("HOME") or os.environ.get("USERPROFILE") or Path.home())
             xdg = os.environ.get("XDG_CONFIG_HOME")
+            # Git reads the XDG file first and ``~/.gitconfig`` second, so later includes win.
             caller_configs = [
-                home / ".gitconfig",
                 Path(xdg) / "git" / "config" if xdg else home / ".config" / "git" / "config",
+                home / ".gitconfig",
             ]
         included = [
             f'[include]\n\tpath = "{path.as_posix()}"' for path in caller_configs if path.is_file()
