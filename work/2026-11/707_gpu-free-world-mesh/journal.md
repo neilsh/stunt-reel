@@ -29,9 +29,11 @@
     (LOCATION) and `build/scratch/707/vram3-ctry.csv` (CTRY).
     The base binary's first run after its build peaked at 640 MiB of working set, 41 MiB above
     its later runs (as #769 found), so the table quotes later runs.
-    `build/scratch/707/memory.csv` is an earlier batch, not quoted in these ranges; its head
-    peak private readings are 1,288.0 and 1,288.9 MiB (about 1 MiB under the lowest quoted) and
-    its base readings 1,318.9 MiB (the first run after the build) and 1,302.6 MiB.
+    `memory.csv` is an earlier batch, not quoted in these ranges; its LOCATION head peak
+    private readings are 1,288.0 MiB (about 1 MiB under the lowest quoted) and 1,288.9 MiB
+    (0.1 MiB under), and its LOCATION base readings 1,318.9 MiB (the first run after the
+    build) and 1,302.6 MiB. It also holds CTRY rows and a one-tick warm-up row, which the
+    ranges leave out.
 - **Result**:
   - **Byte-identity**: all 21 store files are identical at the two commits, and the seven
     scores and every report's adapter are too.
