@@ -48,7 +48,7 @@ def test_the_upload_pack_child_of_a_local_transport_sees_core_longpaths(tmp_path
         encoding="utf-8",
         newline="\n",
     )
-    done = _git("ls-remote", f"--upload-pack={probe.as_posix()}", str(source), cwd=tmp_path)
+    done = _git("ls-remote", f'--upload-pack="{probe.as_posix()}"', str(source), cwd=tmp_path)
     assert done.returncode != 0
     assert report.is_file(), done.stderr
     assert report.read_text(encoding="utf-8").strip() == "true"

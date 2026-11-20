@@ -61,23 +61,32 @@ def _no_caller_repository(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def _git_core_longpaths(tmp_path_factory: pytest.TempPathFactory) -> None:
-    """Let git in any child of the session read a repository past ``MAX_PATH`` on Windows.
+    """Give git in every child of the session ``core.longpaths`` on Windows.
 
-    Windows git defaults ``core.longpaths`` off, so the suite's nested repositories fail at
-    ``git init`` or ``git add`` (issue #852).  The setting goes through ``GIT_CONFIG_GLOBAL``,
-    not ``GIT_CONFIG_COUNT``: a local fetch's ``upload-pack`` child drops the command-scope
-    variables (``connect.c``'s ``local_repo_env``) and then cannot read its long objects.  A
-    caller's own global config, or a ``GIT_CONFIG_GLOBAL`` it already set, is included, so the
-    setting joins it instead of replacing it.
+    ``GIT_CONFIG_GLOBAL`` points at a basetemp file that includes the global config files git
+    would otherwise read and adds ``core.longpaths = true``, so the setting joins them instead
+    of replacing them.
     """
+    # ``GIT_CONFIG_COUNT`` is not enough: a local fetch's ``upload-pack`` child drops the
+    # command-scope variables (``connect.c``'s ``local_repo_env``), so it cannot read its long
+    # objects.
     # The work sits in the platform branch, never after an early return, so mypy analysing for
     # either platform finds no unreachable statement.
     if sys.platform == "win32":
         inherited = os.environ.get("GIT_CONFIG_GLOBAL")
-        global_config = Path(inherited) if inherited else Path.home() / ".gitconfig"
-        included = (
-            [f'[include]\n\tpath = "{global_config.as_posix()}"'] if global_config.is_file() else []
-        )
+        if inherited:
+            caller_configs = [Path(inherited).resolve()]
+        else:
+            # git finds ``~`` through HOME, which on Windows may not be Path.home()'s USERPROFILE.
+            home = Path(os.environ.get("HOME") or os.environ.get("USERPROFILE") or Path.home())
+            xdg = os.environ.get("XDG_CONFIG_HOME")
+            caller_configs = [
+                home / ".gitconfig",
+                Path(xdg) / "git" / "config" if xdg else home / ".config" / "git" / "config",
+            ]
+        included = [
+            f'[include]\n\tpath = "{path.as_posix()}"' for path in caller_configs if path.is_file()
+        ]
         config = tmp_path_factory.getbasetemp() / "gitconfig"
         config.write_text(
             "\n".join([*included, "[core]", "\tlongpaths = true"]) + "\n", encoding="utf-8"
