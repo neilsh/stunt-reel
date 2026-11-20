@@ -196,7 +196,8 @@ _Found 2026-10-23 at `d90a047`; see the [parity log](../../work/2026-10/parity-l
 
 ## 6. Back faces
 
-The player culls back faces (`[Established]`, static): nothing on a shape polygon's path computes its facing, but its polygon fillers skip a row whose right end is left of its left, so a polygon wound anticlockwise on screen loses its fill and its inclusive ends together, apart from the rows of a lone top or bottom vertex, rows narrower than its edges' runs, and edge-on polygons, which draw as lines ([`sod-vm-lines-spans.md` § 8.12](../playone-exe/sod-vm-lines-spans.md#812-back-faces-the-span-test)).
+The player culls back faces: its polygon fillers skip a row whose right end is left of its left, and the span builder takes the left end from the vertex list walked backward and the right end from it walked forward (`[Established]`, static; none of the polygon routines read computes a facing, [`sod-vm-lines-spans.md` § 8.12](../playone-exe/sod-vm-lines-spans.md#812-back-faces-the-span-test)).
+So a polygon wound anticlockwise on screen loses its fill and its inclusive ends together, apart from the rows of a lone top or bottom vertex, rows narrower than its edges' runs, and edge-on polygons, which draw as lines (`[Hypothesis]`, read from the instructions, not traced).
 `stuntreel` did not cull until 2026-10-24; the sweep below is `[Bounded Observation]`.
 Our models wind clockwise for their outward faces, so the pipeline's `FrontFace::Ccw` default classified every interior wall as front-facing, and flying through a prop or the hero aircraft drew its inside.
 A sweep over the culling mode (`DBG_CULL` 0, 1, 2) scored 0.7733 / 0.7175, 0.6112 / 0.5799 and **0.7808 / 0.7224** (CTRY / INTRO); `FrontFace::Cw` with `Face::Back` reproduces the third.

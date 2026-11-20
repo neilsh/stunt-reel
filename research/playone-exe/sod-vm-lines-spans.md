@@ -78,8 +78,9 @@ _Source: [what thins the INTRO conifer field](../../work/2026-11/426_intro-conif
 
 ### 8.12 Back Faces: the Span Test
 
-`[Established]`, static, in the unpatched image (`mise run re-tool -- disasm 0xC50E 0xD000`, `0x995C 0x9B78` and `0x7571 0x7700`; the Patch #3 image not read, nothing traced live).
-Of the routines a shape polygon passes through, none computes a normal, a cross product or a signed area: not the handlers `POLYZ` (`0x9B78`), `OP_GVPOLY` (`0x995C`) and `GVPOLY16` (`0x9A24`), the vertex copiers `0xC9D4` and `0xC50E`, the gateway `0x8010`, nor the fillers.
+`[Established]`, static, for the row test, the walk order and the instructions the three bullets below cite, in the unpatched image (`mise run re-tool -- disasm 0xC50E 0xD000`, `0x995C 0x9B78` and `0x7571 0x7700`; the Patch #3 image not read, nothing traced live).
+Of the routines read, none computes a normal, a cross product or a signed area: the handlers `POLYZ` (`0x9B78`), `OP_GVPOLY` (`0x995C`) and `GVPOLY16` (`0x9A24`), the vertex copiers `0xC9D4` and `0xC50E`, the span-table builder `0xCA5D`, the gateway `0x8010` and the fillers.
+The vertex transform and projection that fill the registers' screen words were not read for this.
 The cull is the fillers' row test, applied to a table whose two columns come from walking the vertex list in opposite directions.
 
 * **The span table.**
@@ -92,7 +93,7 @@ The cull is the fillers' row test, applied to a table whose two columns come fro
   In the `POLYZ` walks (`0xCC53`, `0xCDAE`, which flat `GVPOLY` routes use too) the backward walker writes the leftmost pixel of each row's run along a shallow edge and the forward walker the rightmost, each half a step from the edge's line (`sar bx,1` at `0xCCBB`, `0xCD40`, `0xCE17`, `0xCEA2`); steep edges step by a midpoint error term (`0xCCF5`, `0xCD76`, `0xCE4E`, `0xCEE4`).
   A Gouraud `GVPOLY` walks its left edge with its own stepper (`0xCB18`), and its right edge with the `POLYZ` forward walk (`jmp 0xCDE6` at `0xCBA6`) unless its top row is clipped.
 
-What this does, read from the instructions above (not traced live or in a capture):
+What this does is `[Hypothesis]`: a static reading of the instructions above, not traced live or seen in a capture.
 
 * **Fill and outline go together.**
   The spans' ends are the only edge pixels `PLAYONE` draws for a polygon, so a back face loses its "outline" with its fill.
