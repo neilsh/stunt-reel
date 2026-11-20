@@ -5,13 +5,14 @@
 //! `STUNT_REQUIRE_GPU=1` (ADR 0006).
 
 use crate::common;
+use crate::draw_order::{RANGES, Shot, assert_winners, film, push_mesh, shoot, vertex};
 use crate::scene_renderer::world_of;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use stunt_core::contracts::{
-    CameraTransform, DecodeMode, NodeKind, SCENERY_TERRAIN, SodModelIr, SodVertex,
-    VisibilityCondition,
+    ActorTransform, CameraTransform, DecodeMode, NodeKind, SCENERY_PROP, SCENERY_TERRAIN,
+    SodModelIr, SodVertex, VisibilityCondition,
 };
 use stunt_core::scene::FilmScene;
 use stunt_core::sod::{
@@ -241,7 +242,7 @@ fn an_edge_on_polygon_draws_its_outline_unbroken() {
     });
 }
 
-/// A triangle lying on the ground 10 m below an eye 100 m up +Z, whose third corner is 50 m
+/// A triangle lying on the ground 10 m below an eye 100 m along +Z, whose third corner is 50 m
 /// behind the eye, so the plane crosses the near plane. Drawn as an actor it is outlined; drawn
 /// as terrain in the world mesh it is not, so the world render is the same triangle's fill
 /// alone.
@@ -261,7 +262,7 @@ fn fill_and_outlined(corners: [[f32; 3]; 3], indices: [u32; 3]) -> Option<(Pixel
     }
     let fill = covered_by(&FilmScene::new(
         timeline(),
-        std::collections::HashMap::new(),
+        HashMap::new(),
         Some(world_of(ground)),
     ))?;
     let outlined = covered(triangle(corners, indices), 100.0)?;
@@ -304,5 +305,88 @@ fn a_polygon_across_the_near_plane_culls_its_outline_with_its_fill() {
             front_facing, 1,
             "exactly one winding of the triangle is front-facing"
         );
+    });
+}
+
+const OUTLINED: u8 = LINE_INDEX;
+const BACKDROP: u8 = 77;
+const OUTLINED_SHAPE: u16 = 7;
+
+/// A backdrop quad of index `BACKDROP`, `d` metres across each way from its centre, `0.2 d`
+/// behind the plane z = 0 and facing the eye, as a scenery polygon of the world.
+fn backdrop_world(d: f32) -> stunt_core::world::World {
+    let z = -0.2 * d;
+    let at = |x: f32, y: f32| vertex([x, y, z], [0.0, 0.0, 1.0], BACKDROP, SCENERY_PROP);
+    let mut ir = SodModelIr::new("WORLD_SCENERY");
+    ir.vertices = vec![at(-d, -d), at(-d, d), at(d, d), at(d, -d)];
+    push_mesh(&mut ir, "WORLD_PROP", 4, &[0, 1, 2, 0, 2, 3], false);
+    world_of(ir)
+}
+
+/// A triangle of half-width `a` in the plane z = 0 facing +Z, wound front-facing when `front`,
+/// outlined as an actor over `backdrop_world`, seen from `d` metres.
+fn outlined_over_backdrop(d: f32, a: f32, front: bool) -> FilmScene {
+    let corners = [[0.0, a, 0.0], [a, -a, 0.0], [-a, -a, 0.0]];
+    let actor = ActorTransform {
+        actor_id: 0,
+        model_name: "TRI".to_string(),
+        shape_id: OUTLINED_SHAPE,
+        rotation_quat: [0.0, 0.0, 0.0, 1.0],
+        position_meters: [0.0, 0.0, 0.0],
+        state_mask: 0,
+        casts_shadow: false,
+        view: false,
+        joint_angles_bam: Vec::new(),
+    };
+    let shapes = HashMap::from([(
+        OUTLINED_SHAPE,
+        triangle(corners, if front { [0, 1, 2] } else { [0, 2, 1] }),
+    )]);
+    FilmScene::new(
+        film([0.0, 0.0, d], vec![actor]),
+        shapes,
+        Some(backdrop_world(d)),
+    )
+}
+
+/// The half-width near `0.1 d` at which the triangle's bottom edge, `a` below its centre,
+/// projects a little way into a pixel row of `shot`'s page: the row's centre then lies outside
+/// the triangle, so only its outline can draw there.
+fn half_width_with_outline_only_edge_row(shot: &Shot, d: f32) -> f32 {
+    (0..60u8)
+        .map(|k| 0.1 * d * (1.0 + 0.003 * f32::from(k)))
+        .find(|&a| {
+            let row = shot.screen([0.0, -a, 0.0]).1;
+            (0.1..0.4).contains(&row.fract())
+        })
+        .expect("some half-width puts the edge a little way into a row")
+}
+
+/// An outlined triangle wins its pixels over a backdrop of another index when it faces the eye
+/// and none when it faces away, outline included, at 10 m and 2 km (#756, #776): the bottom
+/// edge's row has no filled pixel centre, so the outline alone draws there.
+#[test]
+fn an_outlined_triangle_wins_over_its_backdrop_only_when_front_facing_near_and_far() {
+    common::gpu_test(|| {
+        for (label, d) in RANGES {
+            let Some(probe) = shoot(&outlined_over_backdrop(d, 0.1 * d, true)) else {
+                return;
+            };
+            let a = half_width_with_outline_only_edge_row(&probe, d);
+            for (front, want) in [(true, OUTLINED), (false, BACKDROP)] {
+                let Some(shot) = shoot(&outlined_over_backdrop(d, a, front)) else {
+                    return;
+                };
+                assert_winners(
+                    &format!("{label}, front {front}"),
+                    &shot,
+                    &[
+                        // Inside the triangle, then on its bottom edge.
+                        ([0.0, -a / 2.0, 0.0], want),
+                        ([0.0, -a, 0.0], want),
+                    ],
+                );
+            }
+        }
     });
 }

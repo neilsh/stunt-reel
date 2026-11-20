@@ -9,7 +9,9 @@
 //! tilt their plane against the camera: a tie that rounds the same at every pixel would pass
 //! with no bias at all.
 //!
-//! The back-face outline class is pinned in `lines.rs` (#756).
+//! The back-face outline class is pinned in `lines.rs` (#756): near and far over a backdrop in
+//! `an_outlined_triangle_wins_over_its_backdrop_only_when_front_facing_near_and_far`, and across
+//! the near plane in `a_polygon_across_the_near_plane_culls_its_outline_with_its_fill`.
 //!
 //! Skips when no GPU adapter is available (see common); fails instead of skipping under
 //! `STUNT_REQUIRE_GPU=1` (ADR 0006).
@@ -35,13 +37,13 @@ use stunt_core::world::{WorldInputs, build_world};
 use stunt_render::{CameraController, LAYER_NONE};
 
 /// Distances (metres) the eye stands from the probed surface: about 10 m, and about 2 km.
-const RANGES: [(&str, f32); 2] = [("near", 10.0), ("far", 2000.0)];
+pub(crate) const RANGES: [(&str, f32); 2] = [("near", 10.0), ("far", 2000.0)];
 
 /// `SodVertex::flags` of a flat-coloured face, so no shade changes its index.
 const UNSHADED: u8 = 4;
 
 /// What a render of tick 0 shows, with the camera that drew it.
-struct Shot {
+pub(crate) struct Shot {
     view_proj: glam::Mat4,
     width: usize,
     height: usize,
@@ -50,6 +52,20 @@ struct Shot {
 }
 
 impl Shot {
+    /// Where `point` (world metres) projects on the page, in pixels from the top left.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a page is far smaller than 2^24 pixels across"
+    )]
+    pub(crate) fn screen(&self, point: [f32; 3]) -> (f32, f32) {
+        let clip = self.view_proj * Vec4::new(point[0], point[1], point[2], 1.0);
+        let (x, y) = (clip.x / clip.w, clip.y / clip.w);
+        (
+            f32::midpoint(x, 1.0) * self.width as f32,
+            f32::midpoint(1.0, -y) * self.height as f32,
+        )
+    }
+
     /// The pixel `point` (world metres) projects to.
     #[expect(
         clippy::cast_possible_truncation,
@@ -58,10 +74,7 @@ impl Shot {
         reason = "a probe point projects to a pixel inside the page"
     )]
     fn pixel(&self, point: [f32; 3]) -> (usize, usize) {
-        let clip = self.view_proj * Vec4::new(point[0], point[1], point[2], 1.0);
-        let (x, y) = (clip.x / clip.w, clip.y / clip.w);
-        let col = f32::midpoint(x, 1.0) * self.width as f32;
-        let row = f32::midpoint(1.0, -y) * self.height as f32;
+        let (col, row) = self.screen(point);
         assert!(
             col >= 0.0 && row >= 0.0,
             "{point:?} projects off the page at ({col}, {row})"
@@ -74,19 +87,19 @@ impl Shot {
         clippy::indexing_slicing,
         reason = "test helper: an out-of-page pixel is the assertion failure"
     )]
-    fn at(&self, (col, row): (usize, usize)) -> Option<u8> {
+    pub(crate) fn at(&self, (col, row): (usize, usize)) -> Option<u8> {
         let at = row * self.width + col;
         (self.layers[at] != LAYER_NONE).then(|| self.indices[at])
     }
 
     /// The winning index where `point` projects.
-    fn winner(&self, point: [f32; 3]) -> Option<u8> {
+    pub(crate) fn winner(&self, point: [f32; 3]) -> Option<u8> {
         self.at(self.pixel(point))
     }
 }
 
 /// Renders tick 0 of `scene`, or `None` without a GPU adapter.
-fn shoot(scene: &FilmScene) -> Option<Shot> {
+pub(crate) fn shoot(scene: &FilmScene) -> Option<Shot> {
     let mut test = common::gpu_or_skip(scene)?;
     let frame = scene.frame(0.0);
     let mut controller = CameraController::default();
@@ -102,7 +115,7 @@ fn shoot(scene: &FilmScene) -> Option<Shot> {
 }
 
 /// Asserts every `(point, winner)` of `expected` wins its pixel in `shot`.
-fn assert_winners(label: &str, shot: &Shot, expected: &[([f32; 3], u8)]) {
+pub(crate) fn assert_winners(label: &str, shot: &Shot, expected: &[([f32; 3], u8)]) {
     for &(point, want) in expected {
         let got = shot.winner(point);
         assert_eq!(
@@ -115,7 +128,7 @@ fn assert_winners(label: &str, shot: &Shot, expected: &[([f32; 3], u8)]) {
 }
 
 /// A one-slice film seen from `eye` towards the origin, with `actors` in it.
-fn film(eye: [f32; 3], actors: Vec<ActorTransform>) -> FilmTimeline {
+pub(crate) fn film(eye: [f32; 3], actors: Vec<ActorTransform>) -> FilmTimeline {
     let record = TrajectoryRecord {
         tick: 0,
         camera: CameraTransform {
@@ -141,7 +154,12 @@ fn film(eye: [f32; 3], actors: Vec<ActorTransform>) -> FilmTimeline {
     )
 }
 
-fn vertex(position: [f32; 3], normal: [f32; 3], palette_index: u8, class: u8) -> SodVertex {
+pub(crate) fn vertex(
+    position: [f32; 3],
+    normal: [f32; 3],
+    palette_index: u8,
+    class: u8,
+) -> SodVertex {
     SodVertex {
         position,
         normal,
@@ -154,7 +172,7 @@ fn vertex(position: [f32; 3], normal: [f32; 3], palette_index: u8, class: u8) ->
 
 /// Appends a mesh node over the last `vertex_count` vertices of `ir`, drawn by `indices`
 /// (absolute positions in `ir.vertices`).
-fn push_mesh(
+pub(crate) fn push_mesh(
     ir: &mut SodModelIr,
     name: &str,
     vertex_count: usize,
