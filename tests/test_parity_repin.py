@@ -459,14 +459,14 @@ def test_a_renderer_commit_still_needs_a_re_render(repo: Repo) -> None:
     repo.write("crates/a.rs", "fn a() { 1; }\n")
     repo.git("add", "-A")
     repo.git("commit", "-qm", "renderer")
+    head = clean_crates_tree(repo.root)
+    assert head is not None
     found = parity_run.scored_render_tree(
-        clean_crates_tree(repo.root), render, no_render=True, scorer_only=repo.scorer_only
+        head, render, no_render=True, scorer_only=repo.scorer_only
     )
     assert found is None
     reason = parity_run.unrecorded_reason(
-        clean_crates_tree(repo.root),
-        render,
-        changes=lambda old, new: renderer_changes(old, new, repo.root),
+        head, render, changes=lambda old, new: renderer_changes(old, new, repo.root)
     )
     assert reason == "crates/a.rs changed outside the scorer since the render"
 
