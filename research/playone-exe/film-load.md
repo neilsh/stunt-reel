@@ -157,7 +157,7 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
   The INT 8 path also adds the speed `DS:0x475E` to `0x4758:0x475A` (`0x43B4..0x43D2`); `0x0E48` copies `0x4758` to `0x475C`, which nothing else uses as an operand, and `0x3B33`/`0x3BB8` save and restore it around the two other calls of `0x136F`.
   It is a timer-driven clock, like the film clock.
 
-_Source: [the slot pass keeps each slot's previous position](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it); [the per-frame call steps no frame counter](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter); [the probe's results never change](../../work/2026-11/779_carried-draw-state/journal.md#2026-11-19-the-probes-results-held-at-every-probed-frame-pages-differ-at-the-propeller-and-the-viewpoint)._
+_Source: [the slot pass keeps each slot's previous position](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it); [the per-frame call steps no frame counter](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter); [the probe's results held at every probed frame](../../work/2026-11/779_carried-draw-state/journal.md#2026-11-19-the-probes-results-held-at-every-probed-frame-pages-differ-at-the-propeller-and-the-viewpoint)._
 
 ## 6. The Start Against the Emulator Frame
 
