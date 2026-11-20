@@ -30,14 +30,14 @@
 - **Result**:
   - **Verdict**: `winner: run=candidate adopts (evidence, film means; target idx +0.0004 attribution; worst target frame -0.0004 location:4643; 27 frames down >0.005, listed)`, with pooled target SSIM +0.0066.
   - **Film means**, unrounded (`mean_ssim_scored`, base → candidate): `CTRY` 0.9183158 → 0.9183958 (+0.0000800), `INTRO` 0.8612320 → 0.8616349 (+0.0004029), `LAND` 0.8942192 → 0.8943275 (+0.0001083), `BALLOON` 0.8176808 → 0.8177085 (+0.0000277), `TRAINTNL` 0.8596963 → 0.8626928 (+0.0029966), `BOMB` 0.8463945 → 0.8461117 (−0.0002828), `LOCATION` 0.8314366 → 0.8320937 (+0.0006571).
-    Every one is within 0.00001 of the lavapipe figure the issue quotes, and no film falls by more than 0.002.
+    Every delta is within 0.00001 of the lavapipe delta the issue quotes, and no film falls by more than 0.002.
   - **Target frames**: `LOCATION` 4665 0.7992805 → 0.8109950 (+0.0117145) and 4676 0.8121955 → 0.8256600 (+0.0134646); `TRAINTNL` 12 0.8209061 → 0.8349450 (+0.0140389) and 34 0.8123974 → 0.8374232 (+0.0250258); `INTRO` 848 0.7411448 → 0.7411483 (+0.0000035), unchanged as on lavapipe.
     The worst target frame is `LOCATION` 4643, −0.0004186, inside the 0.025 bound.
-  - **27 frames fall by more than 0.005** (28 on lavapipe), worst `TRAINTNL` 309 and `LOCATION` 4852 at −0.0098.
+  - **27 frames fall by more than 0.005** (27 on lavapipe for the same pair, as the issue quotes; 28 in the 2026-11-17 run on `ce9fe79`), worst `TRAINTNL` 309 and `LOCATION` 4852 at −0.0098.
     The lavapipe entry's three inspected frames explain them: rails and `SIPD` lettering now draw where the capture draws them.
   - **The `gpu` tables need no commit.**
     #831 generated `research/parity/expected/gpu.toml` on `crates` tree `1490c820`, the tree main has, and this run's `mise run parity-repin -- --class gpu` reproduced every value and wrote nothing.
-- **Verdict**: adopted on the GPU by the evidence track's film-mean branch, as on lavapipe, with the same target frames moving by the same amounts.
+- **Verdict**: adopted on the GPU by the evidence track's film-mean branch, as on lavapipe, with the same target frames moving by the same amounts to within 0.0003.
   Every film is inside the 0.002 guard (worst `BOMB` −0.0003).
   No repin commit: main's `gpu.toml` already measures the tree that contains the rule.
-- **Lives in**: [`world-scene-residuals.md`](../../../research/playone-exe/world-scene-residuals.md) section 6.4.
+- **Lives in**: [`world-scene-residuals.md`](../../../research/playone-exe/world-scene-residuals.md) section 6.6.
