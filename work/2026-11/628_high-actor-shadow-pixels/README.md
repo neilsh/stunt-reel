@@ -2,7 +2,7 @@
 title: "research: do THE.FLM's high-actor shadows show in a captured frame (#512 pixels)"
 started: 2026-11-20
 issue: 628
-outcome: "THE.FLM's capture shows slots 3 to 16's shadows, actors 181 to 270 m up, as an index-0 mark on a hillside at ticks 837 to 892, removed by a one-byte no-shadow control; the 2026-11-16 capture was slow and silent, not looping (#846)."
+outcome: "THE.FLM's capture shows a shadow mark on a hillside at ticks 837 to 892, removed by a one-byte no-shadow control and given to slots 3 to 16 by position, with their actors' 181 to 270 m read at ticks 884 and 885; by inference the 2026-11-16 capture lacked per-pass progress lines rather than looping (#846)."
 ---
 
 # research: do THE.FLM's high-actor shadows show in a captured frame (#512 pixels)
