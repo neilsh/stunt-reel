@@ -70,6 +70,7 @@ pub(super) fn load_render_frame(store: &mut RenderStore, tick: u32) -> Result<Re
         luminance: rgb_to_luminance(&frame.rgb()),
         indices: frame.indices,
         layers: frame.layers,
+        shapes: frame.shapes,
         controls: None,
         credits,
     })

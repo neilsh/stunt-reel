@@ -109,8 +109,9 @@ fn write_v3_render_fixture() {
     let mut ticks = Vec::new();
     for tick in V3_TICKS {
         let (indices, layers) = v3_planes(tick);
+        let no_shapes = vec![0; indices.len()];
         let palette_index = writer
-            .push(tick, &v3_palette(tick), &indices, &layers)
+            .push(tick, &v3_palette(tick), &indices, &layers, &no_shapes)
             .expect("push");
         let half = tick == 30 || tick == 149;
         ticks.push(RenderTick {
@@ -131,6 +132,8 @@ fn write_v3_render_fixture() {
         });
     }
     let table = writer.finish().expect("finish").expect("a store");
+    // The committed fixture predates the shape plane, which only the Rust store reads.
+    fs::remove_file(dir.join(crate::render_store::SHAPE_FILE)).expect("remove shapes");
     let record = RenderRecord {
         schema_version: RENDER_SCHEMA_VERSION,
         film: FilmId {
@@ -314,6 +317,11 @@ fn report_fixture_round_trips_typed_and_satisfies_its_identities() {
         back.mean_loss_by_class_scored.as_ref(),
         report.mean_loss_by_class_scored.as_ref(),
         "mean_loss_by_class_scored",
+    );
+    assert_close_map(
+        back.mean_loss_by_shape_scored.as_ref(),
+        report.mean_loss_by_shape_scored.as_ref(),
+        "mean_loss_by_shape_scored",
     );
 
     assert_eq!(back.per_frame.len(), report.per_frame.len());

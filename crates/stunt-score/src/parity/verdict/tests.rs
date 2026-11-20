@@ -25,6 +25,7 @@ fn render() -> RenderFrame {
             .collect(),
         indices: reference.indices,
         layers: vec![u16::try_from(LAYER_TERRAIN).unwrap(); PIXELS],
+        shapes: None,
         controls: None,
         credits: false,
     }

@@ -38,6 +38,9 @@ if TYPE_CHECKING:
 RENDER_INDEX_FILE = "frames.zst"
 #: A render's layer planes, one little-endian u16 per pixel, chunked like the index planes.
 RENDER_LAYER_FILE = "layers.zst"
+#: The shape plane only the Rust store writes and reads; this store never writes it and
+#: removes a stale one from a directory it rewrites.
+RENDER_SHAPE_FILE = "shapes.zst"
 #: A render's distinct palettes, :data:`PALETTE_BYTES` each, as one zstd frame.
 RENDER_PALETTE_FILE = "palettes.zst"
 #: One indexed PNG per film second of a render, for people.
@@ -200,7 +203,9 @@ class RenderStoreWriter:
     """Writes a render's planes in tick order, a zstd chunk per film second (ADR 0027).
 
     Nothing is created until the first tick. The writer replaces its own files and
-    ``preview/`` and leaves anything else in the directory.
+    ``preview/`` and leaves anything else in the directory, except ``shapes.zst``: it writes no
+    shape plane, so it deletes one a Rust render left there, which would otherwise pair its old
+    shape words with these layers (the Rust store's module docs describe the file).
     """
 
     def __init__(self, directory: Path, geometry: Geometry) -> None:
@@ -268,6 +273,8 @@ class RenderStoreWriter:
         preview.mkdir(parents=True)
         for name in (RENDER_INDEX_FILE, RENDER_LAYER_FILE):
             (self.directory / name).write_bytes(b"")
+        # A shape plane left by an earlier Rust render would pair with these layers.
+        (self.directory / RENDER_SHAPE_FILE).unlink(missing_ok=True)
         self._started = True
 
     def _close_chunk(self) -> None:

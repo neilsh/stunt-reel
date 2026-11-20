@@ -88,6 +88,12 @@ pub struct Report {
     /// Mean SSIM loss per class over scored frames.
     #[serde(default)]
     pub mean_loss_by_class_scored: Option<BTreeMap<String, f32>>,
+    /// Mean SSIM loss of the `props` class per prop shape over scored frames, keyed by shape id
+    /// (`unattributed` for props pixels with no shape); the values sum to
+    /// `mean_loss_by_class_scored.props`. Null when the render stored no shape plane or no
+    /// frame is scored; a report older than the field reads as null.
+    #[serde(default)]
+    pub mean_loss_by_shape_scored: Option<BTreeMap<String, f32>>,
     /// Scored frames.
     #[serde(default)]
     pub scored_frames: usize,

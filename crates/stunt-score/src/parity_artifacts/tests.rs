@@ -52,6 +52,7 @@ struct OwnedPage {
     rgba: Vec<u8>,
     indices: Vec<u8>,
     layers: Vec<u32>,
+    shapes: Vec<u32>,
 }
 
 impl OwnedPage {
@@ -61,6 +62,7 @@ impl OwnedPage {
             rgba: &self.rgba,
             indices: &self.indices,
             layers: &self.layers,
+            shapes: &self.shapes,
         }
     }
 }
@@ -87,6 +89,7 @@ fn page(controls: PaletteControls, tamper: bool) -> OwnedPage {
             .map(|&word| u8::try_from(word & 0xFF).expect("low byte"))
             .collect(),
         layers: plane.iter().map(|&word| word >> 8).collect(),
+        shapes: vec![0; plane.len()],
     }
 }
 

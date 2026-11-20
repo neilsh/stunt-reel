@@ -12,6 +12,8 @@ Framing: [`framing-and-actors.md`](framing-and-actors.md); hero aircraft: [`hero
 
 `stuntreel parity` splits each SSIM window's loss (`1 - ssim`) among the render layers of its pixels in proportion to pixel count (`mean_loss_by_class_scored` in `report.json`); the classes sum to `1 - mean_ssim_scored`.
 Layer ids in the layer plane: 1 ocean, 2 terrain (`MAP.BIN` patches), 3 props (`SCENERY.scn` placements), 16+n actor draw n of the frame (draw order, not film slot).
+A shape plane beside it names the prop shape that drew each props pixel, and `mean_loss_by_shape_scored` splits the props class by shape id the same way; its values sum to `mean_loss_by_class_scored.props` ([`report-fields.md`](report-fields.md)).
+A world prop's shape is carried per vertex as a 9-bit slot (`SodVertex::prop_slot`, `World::prop_shapes`), which numbers the 511 most placed shapes of a world; a prop of a shape past that lands under `unattributed`.
 Extra classes are reference-only (capture non-sky, render sky) and render-only (the reverse).
 Windows touching the UI overlay are excluded.
 
@@ -43,6 +45,31 @@ Loss by class, with its share of `1 - mean_ssim_scored`; classes under 0.001 lef
 * **`balloon` is the exception**: more than half its loss is reference-only, capture geometry where our render draws sky, and 98% of it sits on two runs of frames: 86% on the straight-down run and 12% on the zenith-sky run (section 7).
 * **Against the 2026-11-04 run below**, `ctry` props fell 0.0793 -> 0.0402 and terrain 0.0186 -> 0.0117; `intro` props 0.0808 -> 0.0503, terrain 0.0439 -> 0.0303 and actors 0.0439 -> 0.0350.
   The changes between are many (the PRs behind the `crates` trees the expected tables record), so the split does not attribute the fall to any one of them.
+
+**Worst prop shapes** (`mean_loss_by_shape_scored`).
+`[Bounded Observation]`, one render per film on lavapipe (`mise run parity -- --software-only`, `crates/` tree `eb53c1a`, #774's change on `main` at `601954c` before two doc comments were rewrapped), so its figures differ from the RTX 4070 table above: the code under them is newer and the renderer is lavapipe.
+Each row is a shape's mean loss over the scored frames and its share of that film's `props` loss (`location` 0.0839, `bomb` 0.0740, `ctry` 0.0401); the ten worst shapes, then what they hold together.
+A world numbers its 511 most placed shapes (`SodVertex::prop_slot`), and the props of the rest are `unattributed`.
+`bomb` and `ctry` place fewer shapes than that, so their tables hold every shape.
+`location` places about 1,060, so 0.0477 (56.8%) of its `props` loss is `unattributed` and its ten worst are the worst of the shapes it attributes (the 511 most placed and the view-facing ones), not of all its shapes.
+
+| Rank | `location` shape | Loss (share) | `bomb` shape | Loss (share) | `ctry` shape | Loss (share) |
+|---|---|---|---|---|---|---|
+| 1 | 1745 | 0.0016 (1.9%) | 1756 | 0.0161 (21.7%) | 926 | 0.0129 (32.1%) |
+| 2 | 1984 | 0.0012 (1.4%) | 1650 | 0.0078 (10.5%) | 917 | 0.0054 (13.5%) |
+| 3 | 1985 | 0.0009 (1.1%) | 1737 | 0.0078 (10.5%) | 880 | 0.0024 (5.9%) |
+| 4 | 1835 | 0.0009 (1.1%) | 545 | 0.0044 (5.9%) | 610 | 0.0020 (5.0%) |
+| 5 | 1400 | 0.0009 (1.1%) | 1648 | 0.0038 (5.1%) | 928 | 0.0017 (4.3%) |
+| 6 | 1936 | 0.0009 (1.0%) | 1754 | 0.0037 (5.0%) | 927 | 0.0016 (3.9%) |
+| 7 | 960 | 0.0007 (0.9%) | 542 | 0.0023 (3.1%) | 915 | 0.0014 (3.6%) |
+| 8 | 795 | 0.0007 (0.8%) | 1654 | 0.0023 (3.1%) | 914 | 0.0010 (2.5%) |
+| 9 | 1616 | 0.0006 (0.8%) | 1637 | 0.0018 (2.4%) | 920 | 0.0010 (2.4%) |
+| 10 | 1466 | 0.0006 (0.7%) | 1716 | 0.0016 (2.2%) | 913 | 0.0009 (2.3%) |
+| Ten worst | | 0.0090 (10.7%) | | 0.0514 (69.4%) | | 0.0303 (75.6%) |
+
+* **`bomb` and `ctry` concentrate** their props loss: three shapes hold 43% of `bomb`'s (1756, 1650, 1737) and two hold 46% of `ctry`'s (926, 917).
+  `location` spreads what it attributes over 532 shapes, the worst holding 1.9% of its `props` loss, so a fix aimed at one of them moves `location` little; whether the unattributed half hides a larger shape needs the slot out of the vertex ([#809](https://github.com/neilsh/stunt-reel/issues/809)).
+* The split says which shapes carry the loss, not why; a shape's pixels share SSIM windows with its neighbours, so its figure includes loss its surroundings cause, as the class split does (section 1).
 
 _Source: [loss by render layer on the seven VAULT references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-loss-by-render-layer-on-the-seven-vault-references)._
 

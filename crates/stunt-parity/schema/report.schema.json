@@ -101,6 +101,18 @@
       },
       "default": null
     },
+    "mean_loss_by_shape_scored": {
+      "description": "Mean SSIM loss of the `props` class per prop shape over scored frames, keyed by shape id\n(`unattributed` for props pixels with no shape); the values sum to\n`mean_loss_by_class_scored.props`. Null when the render stored no shape plane or no\nframe is scored; a report older than the field reads as null.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "number",
+        "format": "float"
+      },
+      "default": null
+    },
     "mean_ssim": {
       "description": "Mean SSIM over every matched frame.",
       "type": "number",

@@ -23,6 +23,7 @@ from stunt_reel.parity_artifacts import (
     RENDER_LAYER_FILE,
     RENDER_PALETTE_FILE,
     RENDER_PREVIEW_DIR,
+    RENDER_SHAPE_FILE,
     ArtifactError,
     FilmId,
     RenderRecord,
@@ -145,6 +146,14 @@ def test_rewriting_a_store_withdraws_its_record_first(tmp_path: Path) -> None:
     assert not (tmp_path / RENDER_DOCUMENT).exists()
     with pytest.raises(ArtifactError, match="re-render"):
         RenderStore(tmp_path)
+
+
+def test_rewriting_a_store_removes_a_rust_renders_shape_plane(tmp_path: Path) -> None:
+    shapes = tmp_path / RENDER_SHAPE_FILE
+    shapes.write_bytes(b"left by an earlier Rust render")
+    write_store(tmp_path, _STORE_TICKS)
+    assert not shapes.exists()
+    RenderStore(tmp_path)
 
 
 def test_a_render_without_ticks_writes_no_store(tmp_path: Path) -> None:

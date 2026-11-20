@@ -153,6 +153,7 @@ def sample_report() -> Report:
         mean_iou_scored=0.9,
         mean_index_agreement_scored=0.5,
         mean_loss_by_class_scored={"sky": 0.1},
+        mean_loss_by_shape_scored={"4": 0.02, "unattributed": 0.01},
         scored_frames=1,
         excluded_frames=1,
     )

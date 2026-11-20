@@ -375,9 +375,10 @@ impl SceneRenderer {
             if meshes.0.is_empty() && meshes.1.is_empty() {
                 continue;
             }
-            let uniform =
-                ModelUniform::new(eye_relative_matrix(eye, &prop.world_matrix), LAYER_PROP);
             let shape_id = prop.shape_id;
+            let uniform =
+                ModelUniform::new(eye_relative_matrix(eye, &prop.world_matrix), LAYER_PROP)
+                    .with_shape(shape_id);
             self.push_draw(
                 |uniform| Target::Shape { shape_id, uniform },
                 &uniform,
@@ -718,7 +719,7 @@ fn sprite_ir(image: &SpriteImage) -> SodModelIr {
                 palette_index: run.index,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                prop_slot_low: 0,
             });
         }
         ir.indices
@@ -770,7 +771,7 @@ mod tests {
             palette_index: colour,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            prop_slot_low: 0,
         };
         let mut ir = SodModelIr::new("QUAD");
         ir.vertices = vec![
