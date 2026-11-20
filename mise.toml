@@ -129,7 +129,7 @@ description = "A pull request's unresolved review threads, one line each with th
 run = "uv run python python/scripts/pr_threads.py"
 
 [tasks.merge-bar]
-description = "Whether a pull request meets the unattended merge bar, one line per condition then PASS or FAIL: <reasons>: base, CI at the head, the clean review comment at the head, the Fixes/Part of line, open threads and review-body findings, draft; never arms or merges. Uses GraphQL, or in a cloud session REST (mise run merge-bar -- <number>)"
+description = "Whether a pull request meets the unattended merge bar, one line per condition then PASS or FAIL: <reasons>: base, CI at the head, the clean review comment at the head, the Fixes/Part of line (naming --issue, when given), open threads and review-body findings, draft; never arms or merges. Uses GraphQL, or in a cloud session REST (mise run merge-bar -- <number> [--issue N])"
 run = "uv run python python/scripts/merge_bar.py"
 
 [tasks.project-sync]

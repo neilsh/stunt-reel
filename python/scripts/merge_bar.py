@@ -13,7 +13,8 @@ Locally it reads the pull request through ``gh pr view`` (GraphQL); in a cloud s
 (``CLAUDE_CODE_REMOTE=true``), whose proxy refuses GraphQL, through REST. Threads and
 review-body findings come from ``pr_threads.py``.
 
-Usage: ``mise run merge-bar -- <number>``. Exit status: ``0`` for ``PASS``, ``1`` for
+Usage: ``mise run merge-bar -- <number> [--issue N]``; with ``--issue`` the body must link
+that issue, not just any. Exit status: ``0`` for ``PASS``, ``1`` for
 ``FAIL``, ``2`` when ``gh`` fails or the pull request is absent.
 """
 
@@ -43,7 +44,7 @@ PENDING_STATES = frozenset({"PENDING", "EXPECTED"})
 #: A review comment's first line: ``<reviewer> review at <sha>: <verdict>``.
 _REVIEW_LINE = re.compile(r"^[^:]+ review at ([0-9a-f]+): (.*)$")
 #: A body's closing keyword and issue number.
-_LINKED = re.compile(r"(?:Fixes|Closes|Part of) #\d+(?!\d)")
+_LINKED = re.compile(r"(?:Fixes|Closes|Part of) #(\d+)(?!\d)")
 #: Items per page of a REST list; a shorter page is the last.
 REST_PAGE = 100
 
@@ -77,6 +78,20 @@ def _context_state(state: str) -> str:
     return "pending" if state.upper() in PENDING_STATES else "ok"
 
 
+def _newest_runs(runs: Sequence[tuple[str, str, tuple[str, int]]]) -> list[tuple[str, str]]:
+    """``(name, state)`` of the newest run of each check name, in order of first appearance.
+
+    A concurrency group cancels a superseded run, so a name often has a ``CANCELLED`` run
+    followed by its passing rerun; only the newest counts, as in ``gh pr checks``. Each run
+    carries ``(name, state, (start time, id))``, and the larger key is newer.
+    """
+    newest: dict[str, tuple[str, tuple[str, int]]] = {}
+    for name, state, key in runs:
+        if name not in newest or key > newest[name][1]:
+            newest[name] = (state, key)
+    return [(name, state) for name, (state, _) in newest.items()]
+
+
 def graphql_pull(number: int) -> Pull | None:
     """Pull request *number* through ``gh pr view``; ``None`` when it does not exist."""
     fields = "headRefOid,baseRefName,isDraft,state,body,comments,statusCheckRollup"
@@ -86,15 +101,18 @@ def graphql_pull(number: int) -> Pull | None:
         if "Could not resolve to a PullRequest" in str(err):
             return None
         raise
-    checks = [
-        (
-            str(c.get("name") or c.get("context") or "?"),
-            _context_state(c.get("state") or "")
-            if c.get("__typename") == "StatusContext"
-            else _check_state(c.get("status") or "", c.get("conclusion") or ""),
-        )
-        for c in raw["statusCheckRollup"] or []
-    ]
+    checks = _newest_runs(
+        [
+            (
+                str(c.get("name") or c.get("context") or "?"),
+                _context_state(c.get("state") or "")
+                if c.get("__typename") == "StatusContext"
+                else _check_state(c.get("status") or "", c.get("conclusion") or ""),
+                (c.get("startedAt") or "", index),
+            )
+            for index, c in enumerate(raw["statusCheckRollup"] or [])
+        ]
+    )
     return Pull(
         head=raw["headRefOid"],
         base=raw["baseRefName"],
@@ -133,12 +151,23 @@ def rest_pull(owner: str, name: str, number: int) -> Pull | None:
             return None
         raise
     head = raw["head"]["sha"]
-    checks = [
-        (r["name"], _check_state(r.get("status") or "", r.get("conclusion") or ""))
+    runs = [
+        (
+            r["name"],
+            _check_state(r.get("status") or "", r.get("conclusion") or ""),
+            (r.get("started_at") or "", int(r.get("id") or 0)),
+        )
         for r in _rest_pages(f"{repo}/commits/{head}/check-runs", "check_runs")
     ]
-    status = pr_threads._gh("api", f"{repo}/commits/{head}/status")
-    checks += [(s["context"], _context_state(s["state"])) for s in status.get("statuses") or []]
+    runs += [
+        (
+            c["context"],
+            _context_state(c["state"]),
+            (c.get("updated_at") or "", int(c.get("id") or 0)),
+        )
+        for c in _rest_pages(f"{repo}/commits/{head}/status", "statuses")
+    ]
+    checks = _newest_runs(runs)
     return Pull(
         head=head,
         base=raw["base"]["ref"],
@@ -154,20 +183,25 @@ def rest_pull(owner: str, name: str, number: int) -> Pull | None:
 
 
 def review_verdict(pull: Pull) -> tuple[str, str] | None:
-    """The newest trusted review comment's ``(sha, verdict)``, or ``None`` when there is none.
+    """The review comment's ``(sha, verdict)``, or ``None`` when no trusted comment is one.
 
-    Only the first line of a comment counts, as in the step 5 command this replaces. A
-    comment whose SHA is not the head's is returned too, so the caller can say it is stale.
+    Among trusted comments whose first line names the head's SHA it is the newest, as in the
+    step 5 command this replaces, whatever later comments say of older SHAs. With none at the
+    head it is the newest at any other SHA, so the caller can say the review is stale.
     """
-    found: tuple[str, str] | None = None
+    head = pull.head[:7]
+    newest: tuple[str, str] | None = None
+    at_head: tuple[str, str] | None = None
     for association, body in pull.comments:
         if association not in TRUSTED:
             continue
         line = body.split("\n", 1)[0].rstrip("\r")
         match = _REVIEW_LINE.match(line)
         if match:
-            found = (match.group(1), match.group(2))
-    return found
+            newest = (match.group(1), match.group(2))
+            if match.group(1) == head:
+                at_head = newest
+    return at_head or newest
 
 
 def _list(names: Sequence[str]) -> str:
@@ -175,12 +209,12 @@ def _list(names: Sequence[str]) -> str:
 
 
 def evaluate(
-    pull: Pull, *, threads: Sequence[str], findings: Sequence[str]
+    pull: Pull, *, threads: Sequence[str], findings: Sequence[str], issue: int | None = None
 ) -> tuple[list[str], list[str]]:
     """The report lines and the failure reasons for *pull*.
 
     *threads* and *findings* are ``pr_threads``' lines for the open review threads and the
-    review-body findings since the head commit.
+    review-body findings since the head commit. With *issue*, the body must link that issue.
     """
     head = pull.head[:7]
     lines: list[str] = []
@@ -225,13 +259,17 @@ def evaluate(
     )
     record(clean, "review", review, f"no clean review comment at {head}")
 
-    link = _LINKED.search(pull.body)
-    record(
-        link is not None,
-        "body",
-        f"has `{link.group(0)}`" if link else "no `Fixes`, `Closes` or `Part of #N` line",
-        "the body has no Fixes, Closes or Part of #N line",
-    )
+    links = list(_LINKED.finditer(pull.body))
+    numbers = [int(m.group(1)) for m in links]
+    if not links:
+        link_detail = "no `Fixes`, `Closes` or `Part of #N` line"
+        link_reason = "the body has no Fixes, Closes or Part of #N line"
+    else:
+        link_detail = "has " + ", ".join(f"`{m.group(0)}`" for m in links)
+        link_reason = f"the body links {', '.join(f'#{n}' for n in numbers)}, not #{issue}"
+    if issue is not None:
+        link_detail += f" (wanted #{issue})"
+    record(bool(links) if issue is None else issue in numbers, "body", link_detail, link_reason)
 
     record(
         not threads,
@@ -258,6 +296,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Print the merge-bar report for the pull request on the command line."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("number", type=int, help="pull request number")
+    parser.add_argument(
+        "--issue",
+        type=int,
+        metavar="N",
+        help="the issue the work is for: the body's Fixes, Closes or Part of line must name it",
+    )
     args = parser.parse_args(argv)
     try:
         # REST, not `gh repo view`, which goes through GraphQL.
@@ -274,7 +318,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     threads = pr_threads.thread_lines(nodes, include_resolved=False)
     findings = pr_threads.outside_lines(reviews[1], reviews[0], include_all=False)
-    lines, reasons = evaluate(pull, threads=threads, findings=findings)
+    lines, reasons = evaluate(pull, threads=threads, findings=findings, issue=args.issue)
     print(f"{repo}#{args.number}")
     print(*lines, sep="\n")
     if reasons:

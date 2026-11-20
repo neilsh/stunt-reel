@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import sys
 from pathlib import Path
 from typing import Any
@@ -358,3 +359,167 @@ def test_main_reports_a_gh_failure_as_exit_2(
     monkeypatch.setattr(pr_threads, "_gh", gh)
     assert merge_bar.main(["9"]) == 2
     assert "merge-bar: no network" in capsys.readouterr().err
+
+
+def _title_runs(first: str, second: str) -> list[dict[str, Any]]:
+    """`PR title` as #867 recorded it: a superseded run, then the rerun that replaced it."""
+    return [
+        {
+            "__typename": "CheckRun",
+            "name": "PR title",
+            "status": "COMPLETED",
+            "conclusion": first,
+            "startedAt": "2026-11-20T20:52:55Z",
+        },
+        {
+            "__typename": "CheckRun",
+            "name": "PR title",
+            "status": "COMPLETED",
+            "conclusion": second,
+            "startedAt": "2026-11-20T20:52:57Z",
+        },
+    ]
+
+
+def test_graphql_keeps_only_the_newest_run_of_a_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    runs = _title_runs("CANCELLED", "SUCCESS")
+    for ordered in (runs, runs[::-1]):
+        monkeypatch.setattr(
+            pr_threads,
+            "_gh",
+            lambda *_a, ordered=ordered, **_k: _graphql_view(statusCheckRollup=ordered),
+        )
+        pull = merge_bar.graphql_pull(9)
+        assert pull is not None
+        assert pull.checks == [("PR title", "ok")]
+        assert _reasons(pull) == []
+
+
+def test_graphql_a_newer_failure_still_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    runs = _title_runs("SUCCESS", "FAILURE")
+    monkeypatch.setattr(pr_threads, "_gh", lambda *_a, **_k: _graphql_view(statusCheckRollup=runs))
+    pull = merge_bar.graphql_pull(9)
+    assert pull is not None
+    assert _reasons(pull) == ["CI failed: PR title"]
+
+
+def test_rest_keeps_only_the_newest_run_of_a_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    cancelled = {
+        "id": 20,
+        "name": "PR title",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "started_at": "2026-11-20T20:52:55Z",
+    }
+    passed = {**cancelled, "id": 10, "conclusion": "success", "started_at": "2026-11-20T20:52:57Z"}
+    for runs in ([cancelled, passed], [passed, cancelled]):
+        _install_rest(
+            monkeypatch,
+            _rest_answers(**{f"repos/o/r/commits/{HEAD}/check-runs": {"check_runs": runs}}),
+        )
+        pull = merge_bar.rest_pull("o", "r", 9)
+        assert pull is not None
+        assert ("PR title", "ok") in pull.checks
+        assert [name for name, _ in pull.checks].count("PR title") == 1
+        assert _reasons(pull) == []
+
+
+def test_rest_runs_with_one_start_time_go_by_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    run = {"name": "x", "status": "completed", "started_at": "t"}
+    runs = [{**run, "id": 2, "conclusion": "success"}, {**run, "id": 1, "conclusion": "failure"}]
+    _install_rest(
+        monkeypatch,
+        _rest_answers(**{f"repos/o/r/commits/{HEAD}/check-runs": {"check_runs": runs}}),
+    )
+    pull = merge_bar.rest_pull("o", "r", 9)
+    assert pull is not None
+    assert ("x", "ok") in pull.checks
+
+
+def test_every_page_of_status_contexts_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages = {
+        1: [{"context": f"c{i}", "state": "success", "id": i} for i in range(merge_bar.REST_PAGE)],
+        2: [{"context": "late", "state": "failure", "id": 999}],
+    }
+    answers = _rest_answers()
+
+    def gh(*args: str, **_k: Any) -> Any:
+        route, _, query = args[1].partition("?")
+        if route.endswith("/status"):
+            return {"statuses": pages[int(query.rsplit("page=", 1)[1])]}
+        return answers[route]
+
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    pull = merge_bar.rest_pull("o", "r", 9)
+    assert pull is not None
+    assert ("late", "failed") in pull.checks
+    assert _reasons(pull) == ["CI failed: late"]
+
+
+def test_a_clean_comment_at_the_head_stands_over_a_later_older_one() -> None:
+    older = "Sonnet reviewer review at 1234567: needs changes"
+    pull = _pull(comments=[("OWNER", CLEAN), ("OWNER", older)])
+    assert merge_bar.review_verdict(pull) == ("8fe16b8", "clean")
+    assert _reasons(pull) == []
+
+
+def test_without_a_comment_at_the_head_the_newest_older_one_is_reported() -> None:
+    pull = _pull(
+        comments=[("OWNER", "a review at 1111111: clean"), ("OWNER", "a review at 2222222: clean")]
+    )
+    assert merge_bar.review_verdict(pull) == ("2222222", "clean")
+
+
+def test_a_body_naming_another_issue_fails() -> None:
+    lines, reasons = merge_bar.evaluate(_pull(body="Fixes #12"), threads=[], findings=[], issue=863)
+    assert reasons == ["the body links #12, not #863"]
+    assert any("has `Fixes #12` (wanted #863)" in line for line in lines)
+
+
+def test_a_body_naming_the_issue_passes_and_every_link_is_printed() -> None:
+    lines, reasons = merge_bar.evaluate(
+        _pull(body="Part of #12\n\nFixes #863"), threads=[], findings=[], issue=863
+    )
+    assert reasons == []
+    assert any("`Part of #12`, `Fixes #863` (wanted #863)" in line for line in lines)
+
+
+def test_an_issue_number_is_not_a_prefix_match() -> None:
+    assert merge_bar.evaluate(_pull(body="Fixes #8630"), threads=[], findings=[], issue=863)[1]
+
+
+def test_main_passes_the_issue_to_the_body_check(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+
+    def gh(*args: str, **_k: Any) -> Any:
+        return _graphql_view() if args[0] == "pr" else {"full_name": "o/r"}
+
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])
+    monkeypatch.setattr(pr_threads, "read_reviews", lambda *_a: (None, []))
+    assert merge_bar.main(["9", "--issue", "863"]) == 0
+    assert merge_bar.main(["9", "--issue", "12"]) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == "FAIL: the body links #863, not #12"
+
+
+def test_only_graphql_pull_runs_a_graphql_gh_command() -> None:
+    """`LOCAL_ONLY` exempts the whole file, so pin where its one GraphQL call may be."""
+    from test_gh_rest_only import graphql_calls  # noqa: PLC0415
+
+    source = Path(merge_bar.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    func = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "graphql_pull"
+    )
+    inside = range(func.lineno, (func.end_lineno or func.lineno) + 1)
+    lines = [int(call.split(":", 1)[0]) for call in graphql_calls(source)]
+    assert lines
+    assert all(line in inside for line in lines), graphql_calls(source)
+
+
+def test_the_graphql_gh_finder_sees_a_pr_view_outside_graphql_pull() -> None:
+    from test_gh_rest_only import graphql_calls  # noqa: PLC0415
+
+    assert graphql_calls('def rest_pull():\n    _gh("pr", "view", "1")\n') == ["2: gh pr view"]

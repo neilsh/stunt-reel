@@ -18,11 +18,14 @@ PYTHON = Path(__file__).resolve().parent.parent / "python"
 #: Subcommand prefixes that reach GitHub through GraphQL.
 GRAPHQL = (("issue",), ("pr",), ("repo", "view"), ("api", "graphql"))
 _RUNNERS = frozenset(("gh", "_gh"))
-#: Files that may use GraphQL because no cloud session runs them, each with why it needs to.
+#: Files that may use GraphQL, each with why it needs to. A file a cloud session runs must skip
+#: its GraphQL calls there and take a REST path; its own test says where the calls may be.
 LOCAL_ONLY = {
-    # GitHub's REST API neither lists a pull request's review threads nor resolves one.
+    # GitHub's REST API neither lists a pull request's review threads nor resolves one; a cloud
+    # session reads and resolves them through the proxy's `ccr` routes instead.
     "scripts/pr_threads.py",
-    # Reads the PR with `gh pr view` only when `CLAUDE_CODE_REMOTE` is not `true`; a cloud session takes its REST path.
+    # Runs in cloud sessions too: only `graphql_pull`, which a cloud session skips for `rest_pull`,
+    # runs `gh pr view` (tests/test_merge_bar.py pins that).
     "scripts/merge_bar.py",
     # Only `reap`, run from the owner's primary checkout, lists merged PRs with `gh pr list`.
     "stunt_reel/worktree_reap.py",
