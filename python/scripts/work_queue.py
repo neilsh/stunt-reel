@@ -17,6 +17,8 @@ judgement:
 PRs come in stack order (a PR whose base is ``main`` before the PRs stacked on it), with ``draft``
 and a non-``main`` base noted; issues come in number order. Everything is read over REST, which a
 cloud session's proxy allows. Bodies are read here and never printed.
+A local run ends with the free-disk line for the primary checkout's drive, naming the action
+``loop-and-bounds.md`` asks at the threshold it crosses; a cloud session prints none.
 
 Usage: ``mise run queue``. Exit status: ``0`` on success, ``2`` when ``gh`` fails.
 """
@@ -35,6 +37,9 @@ from typing import Any
 
 #: Seconds before a ``gh`` call counts as failed.
 GH_TIMEOUT = 60
+
+#: Seconds before the ``git`` call naming the primary checkout counts as failed.
+GIT_TIMEOUT = 60
 
 #: Entries requested per REST page; a shorter page is the last.
 PER_PAGE = 100
@@ -267,6 +272,58 @@ def is_cloud_session() -> bool:
     return os.environ.get("CLAUDE_CODE_REMOTE", "").lower() == "true" or ANTIGRAVITY_HOME.is_dir()
 
 
+#: GiB in a byte count, so free space and the thresholds read in GB as ``loop-and-bounds.md`` does.
+GIB = 1 << 30
+
+#: Under this many GB free the run creates no new worktrees and cleans an idle kept one.
+LOW_FREE_GB = 10
+
+#: Under this many GB free the run shuts down.
+SHUTDOWN_FREE_GB = 5
+
+
+def primary_checkout() -> Path | None:
+    """The primary checkout, whose ``.git`` is the repository's git common dir, or None.
+
+    The common dir is what a linked worktree and the primary checkout share, so the drive found
+    is the primary checkout's from any worktree.
+    """
+    try:
+        done = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],  # noqa: S607 - git from PATH
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=GIT_TIMEOUT,
+            cwd=Path(__file__).resolve().parents[2],
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return None
+    common = done.stdout.strip()
+    if done.returncode != 0 or not common:
+        return None
+    return Path(common).parent
+
+
+def disk_line(primary: Path) -> str:
+    """The free-disk line for the volume holding *primary*, ending the queue's output.
+
+    Under 10 GB free it adds create no new worktrees and run ``mise run clean``, and under 5 GB
+    free run Shutdown, wording the thresholds as ``loop-and-bounds.md`` § Clock and disk space
+    does.
+    """
+    free = shutil.disk_usage(primary).free
+    drive = primary.drive or primary.anchor
+    line = f"free disk: {free / GIB:.1f} GB on {drive}"
+    advice: list[str] = []
+    if free < LOW_FREE_GB * GIB:
+        advice.append(f"under {LOW_FREE_GB} GB free: create no new worktrees; run mise run clean")
+    if free < SHUTDOWN_FREE_GB * GIB:
+        advice.append(f"under {SHUTDOWN_FREE_GB} GB free: run Shutdown")
+    return f"{line} ({'; '.join(advice)})" if advice else line
+
+
 def main() -> int:
     try:
         prs, checks, issues = fetch()
@@ -276,6 +333,14 @@ def main() -> int:
     cloud = is_cloud_session()
     for item in pr_items(prs, checks, cloud=cloud) + issue_items(issues, prs, cloud=cloud):
         print(item.line())
+    if not cloud:
+        primary = primary_checkout()
+        if primary is None:
+            print(
+                "queue: free disk unknown: git did not name the primary checkout", file=sys.stderr
+            )
+        else:
+            print(disk_line(primary))
     return 0
 
 
