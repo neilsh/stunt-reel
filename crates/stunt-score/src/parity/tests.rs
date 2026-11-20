@@ -5,6 +5,7 @@ use std::fs;
 use serde_json::json;
 use stunt_parity::{AdapterClass, FilmId, RenderAdapter};
 
+use super::Options;
 use super::loss::LOSS_CLASSES;
 use super::score::FrameMetrics;
 use super::test_support::{
@@ -194,6 +195,7 @@ fn row(ordinal: usize, ssim: f32, iou: f32, scored: bool) -> super::FrameRow {
     let loss_by_class = LOSS_SPLIT.map(|share| share * (1.0 - ssim));
     super::FrameRow {
         ordinal,
+        shape_loss: None,
         film_tick: ordinal * 10,
         credits_missing: false,
         metrics: FrameMetrics {
@@ -249,6 +251,40 @@ fn build_report_over_all_scored_frames_has_equal_overall_and_scored_means() {
     assert_eq!(report.per_frame[1].ordinal, 2);
     assert_eq!(report.per_frame[1].film_tick, 20);
     assert_eq!(report.per_frame[1].scored, Some(true));
+}
+
+#[test]
+fn build_report_averages_each_shapes_props_loss_over_the_scored_frames() {
+    let with_shapes = |mut row: super::FrameRow, losses: &[(u16, f64)]| {
+        row.shape_loss = Some(losses.iter().copied().collect());
+        row
+    };
+    let rows = [
+        with_shapes(row(1, 0.9, 0.8, true), &[(0, 0.01), (5, 0.03)]),
+        with_shapes(row(2, 0.7, 0.6, true), &[(5, 0.05), (9, 0.02)]),
+        // Below the fade floor: left out of the scored mean.
+        with_shapes(row(3, 0.1, 0.2, false), &[(77, 0.9)]),
+    ];
+    let report = super::build_report(3, &rows, 0, 0.25, None);
+    let by_shape = report.mean_loss_by_shape_scored.expect("shape losses");
+    assert_eq!(
+        by_shape.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["4", "8", "unattributed"]
+    );
+    assert!((by_shape["4"] - 0.04).abs() < 1e-6);
+    assert!((by_shape["8"] - 0.01).abs() < 1e-6);
+    assert!((by_shape["unattributed"] - 0.005).abs() < 1e-6);
+
+    // One scored frame from a render with no shape plane drops the field.
+    let mixed = [
+        with_shapes(row(1, 0.9, 0.8, true), &[(5, 0.03)]),
+        row(2, 0.7, 0.6, true),
+    ];
+    assert!(
+        super::build_report(2, &mixed, 0, 0.25, None)
+            .mean_loss_by_shape_scored
+            .is_none()
+    );
 }
 
 #[test]
@@ -424,6 +460,7 @@ fn credits_frames(
         luminance: vec![luminance; pixels],
         indices: vec![background; pixels],
         layers,
+        shapes: None,
         controls: None,
         credits: credits_in_render,
     };
@@ -573,7 +610,7 @@ fn run_identified(
     render: &FilmId,
     waive: bool,
 ) -> (TempDir, Result<(), String>) {
-    run_identified_with(name, capture, render, waive, &[])
+    run_identified_with(name, capture, render, waive, |_| {})
 }
 
 fn run_identified_with(
@@ -581,25 +618,16 @@ fn run_identified_with(
     capture: &FilmId,
     render: &FilmId,
     waive: bool,
-    extra: &[&str],
+    extra: impl FnOnce(&mut Options),
 ) -> (TempDir, Result<(), String>) {
     let tmp = TempDir::new(name);
     write_reference(&tmp.join("ref"), &[7], true);
     write_render(&tmp.join("test"), &[7]);
     identify(&tmp.join("ref"), &tmp.join("test"), capture, render);
-    let mut args = vec![
-        "--reference".to_string(),
-        tmp.join("ref").display().to_string(),
-        "--test".to_string(),
-        tmp.join("test").display().to_string(),
-        "--output".to_string(),
-        tmp.join("out").display().to_string(),
-    ];
-    if waive {
-        args.push("--waive-archive-conflict".to_string());
-    }
-    args.extend(extra.iter().map(|a| (*a).to_string()));
-    let result = super::run(args.into_iter());
+    let mut options = Options::new(tmp.join("ref"), tmp.join("test"), tmp.join("out"));
+    options.waive_archive_conflict = waive;
+    extra(&mut options);
+    let result = super::run(&options);
     (tmp, result)
 }
 
@@ -679,8 +707,9 @@ fn a_capture_without_an_archive_hash_scores_and_says_the_archive_was_not_checked
 fn the_report_records_the_crates_tree_it_was_given() {
     let both = film("CTRY.FLM", 100, "aa", Some("a1a1"));
     let tree = "9fefa9ea41d4db760901118fcd0fab22d8b946ea";
-    let (tmp, result) =
-        run_identified_with("crates_given", &both, &both, false, &["--crates", tree]);
+    let (tmp, result) = run_identified_with("crates_given", &both, &both, false, |options| {
+        options.crates = Some(tree.to_string());
+    });
     result.expect("parity runs");
     assert_eq!(read_report(&tmp.join("out"))["crates"], tree);
 }
@@ -699,13 +728,10 @@ fn the_report_records_the_reference_pins_it_was_given() {
     let both = film("CTRY.FLM", 100, "aa", Some("a1a1"));
     let sha = "1".repeat(64);
     let all = "2".repeat(64);
-    let (tmp, result) = run_identified_with(
-        "pins_given",
-        &both,
-        &both,
-        false,
-        &["--sha256", sha.as_str(), "--all-sha256", all.as_str()],
-    );
+    let (tmp, result) = run_identified_with("pins_given", &both, &both, false, |options| {
+        options.sha256 = Some(sha.clone());
+        options.all_sha256 = Some(all.clone());
+    });
     result.expect("parity runs");
     let report = read_report(&tmp.join("out"));
     assert_eq!(report["sha256"], sha);

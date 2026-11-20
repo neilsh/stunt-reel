@@ -12,6 +12,8 @@ the per-tick `credits` flag and refuses older renders
 ([`research/parity/method.md`](../../research/parity/method.md) § 2.1;
 `RENDER_SCHEMA_VERSION` in `crates/stunt-parity/src/lib.rs`).
 
+Amended 2026-11-19 by [ADR 0052](0052-a-render-store-may-hold-optional-extra-planes.md): a render directory may also hold optional per-pixel planes beside `layers.zst`, `shapes.zst` first.
+
 ## Context
 
 `stuntreel --headless --out-dir` wrote three files per tick: `tick_NNNNN.png`, a 64,000-byte

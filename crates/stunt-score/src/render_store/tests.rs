@@ -36,6 +36,11 @@ fn planes(tick: u32) -> (Vec<u8>, Vec<u32>) {
     (indices, layers)
 }
 
+/// The shape plane for `tick`, differing per tick and per pixel.
+fn shapes(tick: u32) -> Vec<u32> {
+    (0..12).map(|pixel| tick * 7 + pixel).collect()
+}
+
 /// Writes ticks 7, 9 and 40 (second 0), none in second 1, and 101 and 120 (second 2),
 /// alternating two palettes, then the record.
 fn write_store(dir: &Path) -> Vec<u32> {
@@ -46,7 +51,7 @@ fn write_store(dir: &Path) -> Vec<u32> {
         let (indices, layers) = planes(tick);
         let palette = grey(if row % 2 == 0 { 0 } else { 10 });
         let palette_index = writer
-            .push(tick, &palette, &indices, &layers)
+            .push(tick, &palette, &indices, &layers, &shapes(tick))
             .expect("push");
         entries.push(RenderTick {
             credits: false,
@@ -73,6 +78,7 @@ fn write_store(dir: &Path) -> Vec<u32> {
         ticks: entries,
         palette_count: table.palette_count,
         chunks: table.chunks,
+        planes: table.planes,
         adapter: None,
     };
     parity_artifacts::write_render_record(dir, &record).expect("write record");
@@ -104,6 +110,15 @@ fn every_tick_round_trips_across_seconds_and_an_empty_second() {
                 .map(|&l| u16::try_from(l).unwrap())
                 .collect::<Vec<_>>()
         );
+        assert_eq!(
+            frame.shapes,
+            Some(
+                shapes(tick)
+                    .iter()
+                    .map(|&s| u16::try_from(s).unwrap())
+                    .collect()
+            )
+        );
         let row = ticks.iter().position(|&t| t == tick).unwrap();
         assert_eq!(frame.palette, grey(if row % 2 == 0 { 0 } else { 10 }));
     }
@@ -133,20 +148,37 @@ fn the_writer_refuses_bad_planes_and_unordered_ticks() {
     let mut writer = StoreWriter::new(&dir, &geometry());
     let (indices, layers) = planes(3);
     let error = writer
-        .push(3, &grey(0), &indices[..11], &layers)
+        .push(3, &grey(0), &indices[..11], &layers, &shapes(3))
         .unwrap_err();
     assert!(error.to_string().contains("expected 12 for 4x3"), "{error}");
     let mut wide = layers.clone();
     wide[5] = 65_536;
-    let error = writer.push(3, &grey(0), &indices, &wide).unwrap_err();
+    let error = writer
+        .push(3, &grey(0), &indices, &wide, &shapes(3))
+        .unwrap_err();
     assert!(
         error
             .to_string()
             .contains("pixel 5 layer 65536 does not fit"),
         "{error}"
     );
-    writer.push(3, &grey(0), &indices, &layers).expect("push");
-    let error = writer.push(3, &grey(0), &indices, &layers).unwrap_err();
+    let mut wide_shapes = shapes(3);
+    wide_shapes[2] = 65_536;
+    let error = writer
+        .push(3, &grey(0), &indices, &layers, &wide_shapes)
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("pixel 2 shape word 65536 does not fit"),
+        "{error}"
+    );
+    writer
+        .push(3, &grey(0), &indices, &layers, &shapes(3))
+        .expect("push");
+    let error = writer
+        .push(3, &grey(0), &indices, &layers, &shapes(3))
+        .unwrap_err();
     assert!(
         error.to_string().contains("does not follow tick Some(3)"),
         "{error}"
@@ -257,4 +289,142 @@ fn a_picture_that_is_not_palette_lookup_is_refused() {
         error.contains("pixel (1, 0) is (9, 2, 2) but palette[2] is (2, 2, 2)"),
         "{error}"
     );
+}
+
+/// Writes `ticks` as a store and record whose shape words are `shapes(tick) + bias`, so two
+/// renders of the same ticks share their chunk table's shape but not their shape planes.
+fn write_store_with_shape_bias(dir: &Path, ticks: &[u32], bias: u32) {
+    let mut writer = StoreWriter::new(dir, &geometry());
+    let mut entries = Vec::new();
+    for &tick in ticks {
+        let (indices, layers) = planes(tick);
+        let words: Vec<u32> = shapes(tick).iter().map(|&word| word + bias).collect();
+        let palette_index = writer
+            .push(tick, &grey(0), &indices, &layers, &words)
+            .expect("push");
+        entries.push(RenderTick {
+            credits: false,
+            tick,
+            palette: RenderPalette {
+                sky: 0,
+                brightness: 0x8000,
+                saturation: 0x8000,
+            },
+            camera: CameraPose {
+                eye: [0.0; 3],
+                target: [0.0; 3],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+            },
+            palette_index,
+        });
+    }
+    let table = writer.finish().expect("finish").expect("a store");
+    let record = RenderRecord {
+        schema_version: RENDER_SCHEMA_VERSION,
+        film: FilmId::default(),
+        geometry: geometry(),
+        ticks: entries,
+        palette_count: table.palette_count,
+        chunks: table.chunks,
+        planes: table.planes,
+        adapter: None,
+    };
+    parity_artifacts::write_render_record(dir, &record).expect("write record");
+}
+
+#[test]
+fn the_writer_lists_its_shape_plane_with_spans_and_digest() {
+    let dir = temp_dir("listed-shapes");
+    write_store(&dir);
+    let record = RenderStore::open(&dir).expect("open").record().clone();
+    let listing = record.planes.get(SHAPE_FILE).expect("shapes.zst is listed");
+    let bytes = fs::read(dir.join(SHAPE_FILE)).unwrap();
+    assert_eq!(listing.sha256, crate::sha256(&bytes));
+    assert_eq!(listing.chunks.len(), record.chunks.len());
+    assert_eq!(listing.end(), Some(bytes.len() as u64));
+}
+
+#[test]
+fn a_shape_plane_planted_from_another_render_is_refused() {
+    let ticks = [7, 9, 40, 101, 120];
+    let own = temp_dir("planted-own");
+    let other = temp_dir("planted-other");
+    write_store_with_shape_bias(&own, &ticks, 0);
+    write_store_with_shape_bias(&other, &ticks, 1);
+    let own_record = RenderStore::open(&own).expect("open").record().clone();
+    let other_record = RenderStore::open(&other).expect("open").record().clone();
+    // The two renders agree on every chunk and tick count, so only the listing can tell.
+    let counts = |record: &RenderRecord| -> Vec<(u32, u32)> {
+        record.chunks.iter().map(|c| (c.second, c.ticks)).collect()
+    };
+    assert_eq!(counts(&own_record), counts(&other_record));
+    fs::copy(other.join(SHAPE_FILE), own.join(SHAPE_FILE)).unwrap();
+    let error = RenderStore::open(&own).err().expect("refused").to_string();
+    assert!(error.contains("shapes.zst"), "{error}");
+    assert!(error.contains("not this render's shapes.zst"), "{error}");
+    assert!(error.contains("re-render"), "{error}");
+
+    // A plane whose chunks keep their lengths is told apart by its digest alone.
+    write_store_with_shape_bias(&own, &ticks, 0);
+    let mut bytes = fs::read(own.join(SHAPE_FILE)).unwrap();
+    let last = bytes.len() - 5;
+    bytes[last] ^= 0xFF;
+    fs::write(own.join(SHAPE_FILE), &bytes).unwrap();
+    let error = RenderStore::open(&own).err().expect("refused").to_string();
+    assert!(error.contains("its SHA-256 is"), "{error}");
+}
+
+#[test]
+fn a_render_that_lists_no_shape_plane_reads_without_one() {
+    let dir = temp_dir("no-shapes");
+    write_store(&dir);
+    let mut record = RenderStore::open(&dir).expect("open").record().clone();
+    record.planes.clear();
+    parity_artifacts::write_render_record(&dir, &record).expect("write record");
+    // The unlisted file beside it is not the render's, so it is never read.
+    assert!(dir.join(SHAPE_FILE).is_file());
+    let mut store = RenderStore::open(&dir).expect("open");
+    let frame = store.frame(9).expect("frame");
+    assert_eq!(frame.shapes, None);
+    assert_eq!(frame.layers.len(), 12);
+    fs::remove_file(dir.join(SHAPE_FILE)).unwrap();
+    let mut store = RenderStore::open(&dir).expect("open without the file");
+    assert_eq!(store.frame(9).expect("frame").shapes, None);
+}
+
+#[test]
+fn a_listed_shape_plane_that_is_missing_or_cut_short_is_refused() {
+    let dir = temp_dir("bad-shapes");
+    write_store(&dir);
+    let path = dir.join(SHAPE_FILE);
+    let bytes = fs::read(&path).unwrap();
+
+    fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
+    let error = RenderStore::open(&dir).err().expect("refused").to_string();
+    assert!(error.contains("spans for it end at"), "{error}");
+
+    fs::remove_file(&path).unwrap();
+    let error = RenderStore::open(&dir).err().expect("refused").to_string();
+    assert!(error.contains("the file is missing"), "{error}");
+    assert!(error.contains("re-render"), "{error}");
+}
+
+#[test]
+fn a_version_3_render_is_refused_with_the_re_render_action() {
+    let dir = temp_dir("v3");
+    write_store(&dir);
+    let path = dir.join("render.json");
+    let mut document: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    document["schema_version"] = 3.into();
+    document.as_object_mut().unwrap().remove("planes");
+    fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+    let error = RenderStore::open(&dir).err().expect("refused").to_string();
+    assert!(
+        error.contains("unsupported schema version 3; expected 4"),
+        "{error}"
+    );
+    assert!(error.contains("re-render"), "{error}");
+    assert!(error.contains("stuntreel --headless"), "{error}");
 }

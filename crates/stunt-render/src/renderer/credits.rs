@@ -100,6 +100,7 @@ mod tests {
             PageSize::new(320, 200),
             vec![9; 320 * 200 * 4],
             &vec![0; 320 * 200],
+            &vec![0; 320 * 200],
         )
         .expect("page");
         paint_credits(&mut page, &font, &lines, Some(185), &palette);
@@ -116,6 +117,7 @@ mod tests {
         let mut page = RenderedPage::new(
             PageSize::new(320, 240),
             vec![0; 320 * 240 * 4],
+            &vec![0; 320 * 240],
             &vec![0; 320 * 240],
         )
         .expect("page");

@@ -11,7 +11,7 @@ use stunt_parity::{
 };
 
 use super::mask::is_capture_sky;
-use super::run;
+use super::{Options, run};
 use crate::parity_artifacts::write_render_record;
 use crate::render_store::{INDEX_FILE, LAYER_FILE, PALETTE_FILE, Palette, StoreWriter};
 
@@ -138,6 +138,7 @@ pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
             }
         })
         .collect();
+    let no_shapes = vec![0u32; indices.len()];
     let grey: Palette = std::array::from_fn(|i| {
         let v = u8::try_from(i * 53 % 256).unwrap();
         (v, v, v)
@@ -150,7 +151,9 @@ pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
             Picture::Grey => &grey,
             Picture::Matching => &matching,
         };
-        let palette_index = writer.push(tick, palette, &indices, &layers).unwrap();
+        let palette_index = writer
+            .push(tick, palette, &indices, &layers, &no_shapes)
+            .unwrap();
         entries.push(RenderTick {
             tick,
             palette: RenderPalette {
@@ -176,6 +179,7 @@ pub(super) fn write_render_store(dir: &Path, ticks: &[(u32, u16, Picture)]) {
         ticks: entries,
         palette_count: table.palette_count,
         chunks: table.chunks,
+        planes: table.planes,
         adapter: None,
     };
     write_render_record(dir, &record).unwrap();
@@ -219,15 +223,11 @@ pub(super) fn write_version_1_render(dir: &Path) {
 }
 
 pub(super) fn run_parity(reference: &Path, test: &Path, output: &Path) -> Result<(), String> {
-    run(vec![
-        "--reference".to_string(),
-        reference.display().to_string(),
-        "--test".to_string(),
-        test.display().to_string(),
-        "--output".to_string(),
-        output.display().to_string(),
-    ]
-    .into_iter())
+    run(&Options::new(
+        reference.to_path_buf(),
+        test.to_path_buf(),
+        output.to_path_buf(),
+    ))
 }
 
 pub(super) fn read_report(output: &Path) -> Value {

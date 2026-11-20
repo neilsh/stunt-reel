@@ -24,8 +24,8 @@ impl<F: FnOnce()> Drop for RunOnDrop<F> {
     }
 }
 
-/// Maps a buffer once `submission` has executed, copies its rows out without the pitch padding,
-/// and unmaps it.
+/// Maps a buffer once `submission` has executed, copies its rows of `width` texels of
+/// `bytes_per_texel` bytes out without the pitch padding, and unmaps it.
 ///
 /// The wait names `submission` rather than the latest one, so a later frame keeps rendering
 /// while this page is mapped.
@@ -33,6 +33,7 @@ pub(super) fn read_back(
     device: &wgpu::Device,
     buffer: &wgpu::Buffer,
     width: u32,
+    bytes_per_texel: u32,
     padded_row_bytes: u32,
     submission: &wgpu::SubmissionIndex,
 ) -> Result<Vec<u8>, RenderError> {
@@ -62,7 +63,7 @@ pub(super) fn read_back(
     let mapped = buffer_slice
         .get_mapped_range()
         .map_err(|error| RenderError::Readback(error.to_string()))?;
-    let row_bytes = width as usize * 4;
+    let row_bytes = width as usize * bytes_per_texel as usize;
     let bytes = mapped
         .chunks_exact(padded_row_bytes as usize)
         .flat_map(|row| row.iter().take(row_bytes))

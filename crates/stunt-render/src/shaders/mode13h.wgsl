@@ -45,12 +45,28 @@ fn widen_line(clip: vec4<f32>, other: vec4<f32>, flags: u32) -> vec4<f32> {
 
 struct ModelUniform {
     model_matrix: mat4x4<f32>,
-    layer: vec4<u32>, // x: layer id written to the plane target, y: nonzero for a shadow
+    layer: vec4<u32>, // x: layer id written to the plane target, y: nonzero for a shadow, z: shape word (shape id + 1, 0 for none)
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(1) @binding(0) var palette_lut: texture_2d<f32>;
 @group(2) @binding(0) var<uniform> model: ModelUniform;
+
+// A run of the world mesh's prop vertices, `first..end` in its vertex buffer, and the shape
+// word of the shape they draw (stunt_core::world::PropRun, `shape id + 1`).
+struct PropRun {
+    first: u32,
+    end: u32,
+    shape: u32,
+};
+
+// The world's prop runs in vertex order. Only the plane pipelines bind it (`fs_main_plane`).
+@group(3) @binding(0) var<storage, read> prop_runs: array<PropRun>;
+
+// Scenery class of a world prop vertex (contracts/shape/mod.rs SCENERY_PROP).
+const SCENERY_PROP: u32 = 3u;
+// `VertexOutput::prop_vertex` of a vertex that is not a world prop's.
+const NO_PROP_VERTEX: u32 = 0xffffffffu;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -71,6 +87,12 @@ struct VertexOutput {
     // the screen-space linear interpolation of `shade` (`fragment_index`).
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
+    // The draw's shape word (`ModelUniform` `layer.z`).
+    @location(6) @interpolate(flat) shape: u32,
+    // A world prop vertex's number in its vertex buffer, `NO_PROP_VERTEX` for any other
+    // vertex: `prop_runs` gives its shape. Every vertex of a triangle or line lies in the
+    // same run, so whichever vertex provokes names it.
+    @location(7) @interpolate(flat) prop_vertex: u32,
 };
 
 // Whether `x` is NaN or infinite: all exponent bits set. WGSL has no isNan, and `x != x`
@@ -103,12 +125,31 @@ fn fragment_index(in: VertexOutput) -> u32 {
 
 struct PlaneOutput {
     @location(0) color: vec4<f32>,
-    // Layer id in bits 8.., unlit palette index in bits 0..8.
-    @location(1) plane: u32,
+    // x: layer id in bits 8.., unlit palette index in bits 0..8; y: the shape word, `shape id
+    // + 1` of the prop that drew the pixel, 0 for none.
+    @location(1) plane: vec2<u32>,
 };
 
+// The shape word of the prop run holding world vertex `vertex`, 0 when none does.
+fn prop_shape(vertex: u32) -> u32 {
+    var lo = 0u;
+    var hi = arrayLength(&prop_runs);
+    while (lo < hi) {
+        let mid = (lo + hi) / 2u;
+        let run = prop_runs[mid];
+        if (vertex < run.first) {
+            hi = mid;
+        } else if (vertex >= run.end) {
+            lo = mid + 1u;
+        } else {
+            return run.shape;
+        }
+    }
+    return 0u;
+}
+
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
+fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
 
     // Model space to eye-relative space to clip space.
@@ -131,6 +172,8 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.shade_w = out.shade * w;
     out.w = w;
     out.layer = model.layer.x + in.attr.z;
+    out.shape = model.layer.z;
+    out.prop_vertex = select(NO_PROP_VERTEX, vertex_index, in.attr.z == SCENERY_PROP);
 
     // Polygons are drawn at their palette index with no directional lighting: against
     // PLAYONE captures of CTRY.FLM the unlit colour scores higher than any sun/ambient ramp
@@ -154,7 +197,11 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
     let index = fragment_index(in);
     let coords = vec2<i32>(i32(index), i32(in.light_level & 31u));
     out.color = textureLoad(palette_lut, coords, 0);
-    out.plane = (in.layer << 8u) | index;
+    var shape = in.shape;
+    if (in.prop_vertex != NO_PROP_VERTEX) {
+        shape = prop_shape(in.prop_vertex);
+    }
+    out.plane = vec2<u32>((in.layer << 8u) | index, shape);
     return out;
 }
 
@@ -208,6 +255,6 @@ fn fs_sky_plane(in: SkyVertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
     let index = sky_index(in.ndc);
     out.color = textureLoad(palette_lut, vec2<i32>(i32(index), 31), 0);
-    out.plane = index;
+    out.plane = vec2<u32>(index, 0u);
     return out;
 }

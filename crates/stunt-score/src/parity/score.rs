@@ -4,6 +4,8 @@
 //! attribution and the fade floor), so `run` only loads files, matches frames by film tick
 //! and writes the report.
 
+use std::collections::BTreeMap;
+
 use stunt_core::contracts::{PALETTE_CONTROL_FULL, PaletteControls};
 use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
@@ -11,7 +13,7 @@ use crate::render_store::Palette;
 
 use super::fade::fade_level;
 use super::frames::reference_luminance;
-use super::loss::{LOSS_CLASSES, attribute_loss, loss_class};
+use super::loss::{LOSS_CLASSES, attribute_loss, attribute_shape_loss, loss_class};
 use super::mask::{
     index_agreement, is_capture_sky, mask_iou_planes, rescale_mask, ui_overlay_mask,
 };
@@ -37,6 +39,9 @@ pub(super) struct RenderFrame {
     pub(super) indices: Vec<u8>,
     /// 320x200 layer-id plane; `LAYER_NONE` is sky.
     pub(super) layers: Vec<u16>,
+    /// 320x200 shape-word plane (`shape id + 1` of the prop drawing each pixel, 0 for none);
+    /// `None` when the render stored no shape plane.
+    pub(super) shapes: Option<Vec<u16>>,
     /// The palette controls the film authors at this tick, from the render's `render.json`.
     pub(super) controls: Option<PaletteControls>,
     /// The film shows credits at this tick, from the render's `render.json`.
@@ -78,6 +83,9 @@ pub(super) struct FrameScore {
     pub(super) metrics: FrameMetrics,
     pub(super) reference_luminance: Vec<f32>,
     pub(super) render_luminance: Vec<f32>,
+    /// The `props` loss of this frame by shape word ([`attribute_shape_loss`]); `None` when
+    /// the render has no shape plane.
+    pub(super) shape_loss: Option<BTreeMap<u16, f64>>,
 }
 
 /// Scores one render against one capture.
@@ -128,6 +136,24 @@ pub(super) fn score_frame(
     .into_iter()
     .map(|code| code as u8)
     .collect();
+    let shape_loss = render.shapes.as_ref().map(|shapes| {
+        let words: Vec<f32> = shapes.iter().map(|&word| f32::from(word)).collect();
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "rescaling picks among the source words, which are u16 values"
+        )]
+        let rescaled: Vec<u16> = rescale_mode13h_frame(
+            &words,
+            MODE13H_WIDTH,
+            MODE13H_HEIGHT,
+            ASPECT_CORRECTED_HEIGHT,
+        )
+        .into_iter()
+        .map(|word| word as u16)
+        .collect();
+        attribute_shape_loss(&windows, &classes, &rescaled, SSIM_WINDOW)
+    });
     let fade = fade_level(policy.fade_set, &reference.palette);
     let authored_fade = render
         .controls
@@ -145,13 +171,14 @@ pub(super) fn score_frame(
         },
         reference_luminance: reference_rescaled,
         render_luminance: render_rescaled,
+        shape_loss,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use stunt_core::contracts::get_palette_rgb;
-    use stunt_core::frame::{LAYER_NONE, LAYER_TERRAIN};
+    use stunt_core::frame::{LAYER_NONE, LAYER_PROP, LAYER_TERRAIN};
 
     use super::*;
     use crate::parity::fade::fade_reference_set;
@@ -191,6 +218,7 @@ mod tests {
             luminance: crate::parity::ssim::rgb_to_luminance(&rgb),
             indices,
             layers,
+            shapes: None,
             controls: None,
             credits: false,
         }
@@ -252,6 +280,53 @@ mod tests {
         let mut filled = matching_render();
         filled.layers[..MODE13H_WIDTH * 2].fill(u16::try_from(LAYER_TERRAIN).unwrap());
         assert!(score(&capture(1.0), &filled).iou < 1.0);
+    }
+
+    /// A faded capture against a render whose non-sky pixels are props of three shapes, split
+    /// by column band, scores a props loss that its shape split reproduces.
+    #[test]
+    fn the_shape_split_of_a_frame_sums_to_its_props_loss() {
+        let mut render = matching_render();
+        let props = u16::try_from(LAYER_PROP).unwrap();
+        let shapes: Vec<u16> = (0..PIXELS)
+            .map(|i| match (i % MODE13H_WIDTH) / 107 {
+                0 => 4,
+                1 => 9,
+                _ => 0,
+            })
+            .collect();
+        for layer in &mut render.layers {
+            if *layer != 0 {
+                *layer = props;
+            }
+        }
+        render.shapes = Some(shapes);
+        render
+            .luminance
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, l)| *l += (i % 13) as f32 * 3.0);
+        let fade_set = fade_reference_set(&capture(1.0).indices);
+        let policy = ScorePolicy {
+            fade_set: &fade_set,
+            min_fade_level: 0.0,
+        };
+        let scored = score_frame(&capture(1.0), &render, &policy);
+        let by_shape = scored.shape_loss.expect("a shape plane was given");
+        let props_loss = f64::from(scored.metrics.loss_by_class[4]);
+        assert!(props_loss > 0.01, "the disturbed render loses on props");
+        assert_eq!(by_shape.keys().copied().collect::<Vec<_>>(), [0, 4, 9]);
+        let total: f64 = by_shape.values().sum();
+        assert!((total - props_loss).abs() < 1e-6, "{total} != {props_loss}");
+        let without = score_frame(
+            &capture(1.0),
+            &RenderFrame {
+                shapes: None,
+                ..render
+            },
+            &policy,
+        );
+        assert!(without.shape_loss.is_none());
     }
 
     #[test]

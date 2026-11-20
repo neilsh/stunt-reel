@@ -8,7 +8,7 @@ use clap::{CommandFactory as _, FromArgMatches as _, Parser};
 
 use stunt_render::RenderOptions;
 
-use crate::{export, link, shape_views, sod_census, sod_trace};
+use crate::{export, film_slots, link, shape_views, sod_census, sod_trace};
 
 /// Options as clap parses them, before cross-option rules and companion discovery.
 #[derive(Debug, Parser)]
@@ -380,7 +380,7 @@ fn parse_fps(text: &str) -> Result<f32, String> {
 fn after_help() -> String {
     let indent = |usage: &str| format!("  {}", usage.replace('\n', "\n  "));
     format!(
-        "Subcommands:\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n\
+        "Subcommands:\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n\
          Interactive Keyboard Controls:\n  \
          Space   Pause / Resume timeline playback\n  \
          C       Toggle between Authored Camera and Free-Cam\n  \
@@ -388,11 +388,12 @@ fn after_help() -> String {
          A / D   Free-Cam: Strafe Left / Right\n  \
          Q / E   Free-Cam: Move Down / Up\n  \
          Esc     Exit presentation",
-        indent(&stunt_score::parity::usage()),
+        indent(&crate::parity::usage()),
         indent(&export::usage()),
         indent(&shape_views::usage()),
         indent(&sod_census::usage()),
         indent(&sod_trace::usage()),
+        indent(&film_slots::usage()),
         indent(&link::usage()),
     )
 }

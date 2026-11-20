@@ -111,8 +111,11 @@ That keeps night frames scored: the night is var 13 ([`palette-fade.md` § 3.1](
 
 The comparator reads var 14 from the palette controls `render.json` records for every tick.
 Each tick also records `credits`, whether the film shows credits there (`0x99` until `0x98`); on such a tick the UI-overlay mask keeps capture index 255 as credits ink instead of masking it as the cursor, so a render that drops its credits scores the loss.
-The field is required from `render.json` schema 3; an older render is refused with the re-render message.
-The render also records the `adapter` its frames were drawn on (`name` as its driver reports it, `class` `hardware` or `cpu`), which `report.json` copies; the field is optional, so a schema-3 render without it still scores, with a null `adapter`.
+The field is required from `render.json` schema 3.
+Schema 4, the current one, also lists each optional plane file the render holds beside its planes (`shapes.zst`, which the props split of `report.json` reads; [ADR 0052](../../docs/adr/0052-a-render-store-may-hold-optional-extra-planes.md)) under `planes`, with its SHA-256 and one span per chunk-table entry.
+A plane file `render.json` does not list is absent, whatever lies beside it; a listed one whose file is missing, ends elsewhere than its spans or has another SHA-256 fails the open, so a stale `shapes.zst` is never scored as the render's own.
+A render older than schema 4 is refused with the re-render message, as is a listed plane that does not match.
+The render also records the `adapter` its frames were drawn on (`name` as its driver reports it, `class` `hardware` or `cpu`), which `report.json` copies; the field is optional, so a render without it still scores, with a null `adapter`.
 `--compare` reads reports of the retired fade-compensated scoring (§ 4.1) for their raw `ssim`.
 
 ## 4. Dead ends

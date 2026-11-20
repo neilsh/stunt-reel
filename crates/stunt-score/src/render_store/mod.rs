@@ -6,14 +6,36 @@
 //! back; `render.json`, written last, is their table of contents. `preview/sec_NNNN.png` shows
 //! each second's first tick for people. The Python mirror is `RenderStore` in
 //! `python/stunt_reel/parity_artifacts/`.
+//!
+//! # Optional planes
+//!
+//! A render may also hold optional per-pixel planes (ADR 0052), each listed in `render.json`'s
+//! `planes` by file name with the file's SHA-256 and one span per chunk-table entry, tiling the
+//! file from offset 0 like the chunk table's spans tile `layers.zst`. `shapes.zst` is the one
+//! there is: a run of zstd frames, one per chunk, each that second's ticks back to back with a
+//! little-endian u16 per pixel, the shape word of `stunt_render::RenderedPage::shapes`.
+//!
+//! - **Rust writer:** nothing is created until the first tick; that tick truncates (creates
+//!   anew) `frames.zst`, `layers.zst` and `shapes.zst` together. `push` refuses a shape word
+//!   that does not fit a u16, and `finish` lists `shapes.zst` with the digest of the bytes it
+//!   wrote.
+//! - **Python writer:** `RenderStoreWriter` writes no shape plane, lists none, and deletes a
+//!   `shapes.zst` it finds.
+//! - **Readers:** a plane `render.json` does not list is absent, whatever file lies beside it,
+//!   so a stale `shapes.zst` is never read as the render's own. `RenderStore::open` (and the
+//!   Python store's open) refuses a listed plane whose file is missing, whose length is not
+//!   where its spans end, or whose SHA-256 differs, saying to re-render. Only this store decodes
+//!   `shapes.zst`: a chunk that does not decompress to `ticks * pixels` u16 words fails when it
+//!   is read.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};
 use std::io::{BufWriter, Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 
 use stunt_parity::{
-    Geometry, PALETTE_BYTES, RENDER_CHUNK_TICKS, RenderChunk, RenderRecord, RenderTick, StoreSpan,
+    Geometry, PALETTE_BYTES, PlaneListing, RENDER_CHUNK_TICKS, RenderChunk, RenderRecord,
+    RenderTick, StoreSpan,
 };
 
 use crate::parity_artifacts::{self, AdapterError};
@@ -22,6 +44,9 @@ use crate::parity_artifacts::{self, AdapterError};
 pub(crate) const INDEX_FILE: &str = "frames.zst";
 /// Layer planes, one little-endian u16 per pixel.
 pub(crate) const LAYER_FILE: &str = "layers.zst";
+/// Shape planes, one little-endian u16 per pixel, chunked like the layer planes; an optional
+/// plane `render.json` lists.
+pub(crate) const SHAPE_FILE: &str = "shapes.zst";
 /// The distinct palettes, [`PALETTE_BYTES`] each, as one zstd frame.
 pub(crate) const PALETTE_FILE: &str = "palettes.zst";
 /// One indexed PNG per film second, for people.
@@ -95,6 +120,22 @@ fn corrupt(path: &Path, message: impl Into<String>) -> StoreError {
     }
 }
 
+/// `words` as little-endian u16s, or the first word that does not fit, named as `what` of
+/// `tick` in `path`.
+fn u16_bytes(words: &[u32], path: &Path, tick: u32, what: &str) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = Vec::with_capacity(words.len() * 2);
+    for (pixel, &word) in words.iter().enumerate() {
+        let word = u16::try_from(word).map_err(|_| {
+            corrupt(
+                path,
+                format!("tick {tick} pixel {pixel} {what} {word} does not fit a u16"),
+            )
+        })?;
+        bytes.extend_from_slice(&word.to_le_bytes());
+    }
+    Ok(bytes)
+}
+
 /// The film second a tick's planes are stored in.
 fn second_of(tick: u32) -> u32 {
     tick / RENDER_CHUNK_TICKS
@@ -137,12 +178,14 @@ struct OpenChunk {
     ticks: u32,
     indices: Vec<u8>,
     layers: Vec<u8>,
+    shapes: Vec<u8>,
 }
 
-/// The two plane files, opened on the first tick.
+/// The plane files, opened on the first tick.
 struct PlaneFiles {
     index: BufWriter<File>,
     layer: BufWriter<File>,
+    shape: BufWriter<File>,
 }
 
 /// What a finished store adds to its `render.json`.
@@ -152,6 +195,8 @@ pub(crate) struct StoreTable {
     pub(crate) palette_count: u32,
     /// One entry per film second written.
     pub(crate) chunks: Vec<RenderChunk>,
+    /// The optional planes written, keyed by file name.
+    pub(crate) planes: BTreeMap<String, PlaneListing>,
 }
 
 /// Writes a render's planes in tick order, a chunk per film second.
@@ -164,6 +209,8 @@ pub(crate) struct StoreWriter {
     files: Option<PlaneFiles>,
     index_end: u64,
     layer_end: u64,
+    shape_spans: Vec<StoreSpan>,
+    shape_end: u64,
     last_tick: Option<u32>,
     palettes: Vec<Palette>,
     palette_ids: HashMap<Palette, u32>,
@@ -180,6 +227,8 @@ impl StoreWriter {
             files: None,
             index_end: 0,
             layer_end: 0,
+            shape_spans: Vec::new(),
+            shape_end: 0,
             last_tick: None,
             palettes: Vec::new(),
             palette_ids: HashMap::new(),
@@ -190,24 +239,27 @@ impl StoreWriter {
 
     /// Appends one tick's planes and returns the index of its palette in the store.
     ///
-    /// Ticks must be strictly ascending. The layer file holds a u16 per pixel, so a layer that
-    /// does not fit is an error rather than a silent truncation.
+    /// Ticks must be strictly ascending. The layer and shape files hold a u16 per pixel, so a
+    /// layer or shape word that does not fit is an error rather than a silent truncation.
     pub(crate) fn push(
         &mut self,
         tick: u32,
         palette: &Palette,
         indices: &[u8],
         layers: &[u32],
+        shapes: &[u32],
     ) -> Result<u32, StoreError> {
         let expected = self.geometry.pixel_count();
         let at = self.dir.join(INDEX_FILE);
-        if indices.len() != expected || layers.len() != expected {
+        if indices.len() != expected || layers.len() != expected || shapes.len() != expected {
             return Err(corrupt(
                 &at,
                 format!(
-                    "tick {tick} has {} indices and {} layers, expected {expected} for {}x{}",
+                    "tick {tick} has {} indices, {} layers and {} shapes, expected {expected} \
+                     for {}x{}",
                     indices.len(),
                     layers.len(),
+                    shapes.len(),
                     self.geometry.width,
                     self.geometry.height
                 ),
@@ -219,16 +271,8 @@ impl StoreWriter {
                 format!("tick {tick} does not follow tick {:?}", self.last_tick),
             ));
         }
-        let mut layer_bytes = Vec::with_capacity(expected * 2);
-        for (pixel, &layer) in layers.iter().enumerate() {
-            let layer = u16::try_from(layer).map_err(|_| {
-                corrupt(
-                    &self.dir.join(LAYER_FILE),
-                    format!("tick {tick} pixel {pixel} layer {layer} does not fit a u16"),
-                )
-            })?;
-            layer_bytes.extend_from_slice(&layer.to_le_bytes());
-        }
+        let layer_bytes = u16_bytes(layers, &self.dir.join(LAYER_FILE), tick, "layer")?;
+        let shape_bytes = u16_bytes(shapes, &self.dir.join(SHAPE_FILE), tick, "shape word")?;
         if self.files.is_none() {
             self.files = Some(self.create_files()?);
         }
@@ -244,10 +288,12 @@ impl StoreWriter {
             ticks: 0,
             indices: Vec::with_capacity(expected * RENDER_CHUNK_TICKS as usize),
             layers: Vec::with_capacity(expected * 2 * RENDER_CHUNK_TICKS as usize),
+            shapes: Vec::with_capacity(expected * 2 * RENDER_CHUNK_TICKS as usize),
         });
         open.ticks += 1;
         open.indices.extend_from_slice(indices);
         open.layers.extend_from_slice(&layer_bytes);
+        open.shapes.extend_from_slice(&shape_bytes);
         self.last_tick = Some(tick);
         self.palette_id(palette)
     }
@@ -258,7 +304,11 @@ impl StoreWriter {
         let Some(files) = self.files.take() else {
             return Ok(None);
         };
-        for (mut file, name) in [(files.index, INDEX_FILE), (files.layer, LAYER_FILE)] {
+        for (mut file, name) in [
+            (files.index, INDEX_FILE),
+            (files.layer, LAYER_FILE),
+            (files.shape, SHAPE_FILE),
+        ] {
             file.flush().map_err(io(&self.dir.join(name)))?;
         }
         let path = self.dir.join(PALETTE_FILE);
@@ -270,10 +320,18 @@ impl StoreWriter {
         }
         let packed = zstd::bulk::compress(&raw, ZSTD_LEVEL).map_err(io(&path))?;
         fs::write(&path, packed).map_err(io(&path))?;
+        let palette_count = u32::try_from(self.palettes.len())
+            .map_err(|_| corrupt(&path, "more than u32::MAX palettes"))?;
+        // The digest is of the bytes on disk, which is what a reader checks.
+        let shape_path = self.dir.join(SHAPE_FILE);
+        let shape = PlaneListing {
+            sha256: crate::sha256(&fs::read(&shape_path).map_err(io(&shape_path))?),
+            chunks: self.shape_spans,
+        };
         Ok(Some(StoreTable {
-            palette_count: u32::try_from(self.palettes.len())
-                .map_err(|_| corrupt(&path, "more than u32::MAX palettes"))?,
+            palette_count,
             chunks: self.chunks,
+            planes: BTreeMap::from([(SHAPE_FILE.to_string(), shape)]),
         }))
     }
 
@@ -290,6 +348,7 @@ impl StoreWriter {
         Ok(PlaneFiles {
             index: create(INDEX_FILE)?,
             layer: create(LAYER_FILE)?,
+            shape: create(SHAPE_FILE)?,
         })
     }
 
@@ -311,7 +370,7 @@ impl StoreWriter {
         let mut spans = [StoreSpan {
             offset: 0,
             length: 0,
-        }; 2];
+        }; 3];
         for (span, (raw, file, end, name)) in spans.iter_mut().zip([
             (
                 &open.indices,
@@ -325,6 +384,12 @@ impl StoreWriter {
                 &mut self.layer_end,
                 LAYER_FILE,
             ),
+            (
+                &open.shapes,
+                &mut files.shape,
+                &mut self.shape_end,
+                SHAPE_FILE,
+            ),
         ]) {
             let path = self.dir.join(name);
             let packed = zstd::bulk::compress(raw, ZSTD_LEVEL).map_err(io(&path))?;
@@ -335,6 +400,7 @@ impl StoreWriter {
             };
             *end += packed.len() as u64;
         }
+        self.shape_spans.push(spans[2]);
         self.chunks.push(RenderChunk {
             second: open.second,
             ticks: open.ticks,
@@ -382,6 +448,9 @@ pub(crate) struct StoredFrame {
     pub(crate) indices: Vec<u8>,
     /// One layer id per pixel.
     pub(crate) layers: Vec<u16>,
+    /// One shape word per pixel (`shape id + 1` of the prop drawing it, 0 for none); `None` when
+    /// `render.json` lists no `shapes.zst`.
+    pub(crate) shapes: Option<Vec<u16>>,
     /// The colours of the frame: its picture is `palette[index]`.
     pub(crate) palette: Palette,
 }
@@ -404,6 +473,7 @@ struct DecodedChunk {
     chunk: usize,
     indices: Vec<u8>,
     layers: Vec<u8>,
+    shapes: Option<Vec<u8>>,
 }
 
 /// Reads a render directory's store, keeping the last decoded chunk.
@@ -411,12 +481,14 @@ pub(crate) struct RenderStore {
     dir: PathBuf,
     record: RenderRecord,
     palettes: Vec<Palette>,
+    /// Each chunk's span in `shapes.zst`; `None` when `render.json` does not list the plane.
+    shape_spans: Option<Vec<StoreSpan>>,
     cached: Option<DecodedChunk>,
 }
 
 impl RenderStore {
     /// Opens `dir`: reads and validates `render.json`, checks the plane files against its chunk
-    /// table and reads the palettes.
+    /// table and each listed optional plane against its listing, and reads the palettes.
     pub(crate) fn open(dir: &Path) -> Result<Self, StoreError> {
         let record =
             parity_artifacts::read_render_record(dir).map_err(|source| StoreError::Document {
@@ -441,11 +513,19 @@ impl RenderStore {
                 }
             }
         }
+        for (name, listing) in &record.planes {
+            check_plane(dir, name, listing)?;
+        }
         let palettes = read_palettes(&dir.join(PALETTE_FILE), record.palette_count)?;
+        let shape_spans = record
+            .planes
+            .get(SHAPE_FILE)
+            .map(|listing| listing.chunks.clone());
         Ok(Self {
             dir: dir.to_path_buf(),
             record,
             palettes,
+            shape_spans,
             cached: None,
         })
     }
@@ -496,6 +576,22 @@ impl RenderStore {
             .iter()
             .map(|pair| u16::from_le_bytes(*pair))
             .collect();
+        let shapes = cached
+            .shapes
+            .as_ref()
+            .map(|bytes| {
+                Ok::<_, StoreError>(
+                    bytes
+                        .get(slot.position * pixels * 2..(slot.position + 1) * pixels * 2)
+                        .ok_or_else(|| outside(SHAPE_FILE))?
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|pair| u16::from_le_bytes(*pair))
+                        .collect(),
+                )
+            })
+            .transpose()?;
         let entry: &RenderTick = self
             .record
             .ticks
@@ -519,6 +615,7 @@ impl RenderStore {
         Ok(StoredFrame {
             indices,
             layers,
+            shapes,
             palette,
         })
     }
@@ -568,12 +665,63 @@ impl RenderStore {
             }
             Ok(raw)
         };
+        let shapes = match self
+            .shape_spans
+            .as_deref()
+            .and_then(|spans| spans.get(chunk))
+        {
+            Some(&span) => Some(read(SHAPE_FILE, span, pixels * 2)?),
+            None => None,
+        };
         Ok(DecodedChunk {
             chunk,
             indices: read(INDEX_FILE, entry.index, pixels)?,
             layers: read(LAYER_FILE, entry.layer, pixels * 2)?,
+            shapes,
         })
     }
+}
+
+/// Checks that the optional plane `name` listed in `dir`'s `render.json` is the file the
+/// listing describes: present, as long as its spans, and with the listed SHA-256.
+fn check_plane(dir: &Path, name: &str, listing: &PlaneListing) -> Result<(), StoreError> {
+    let path = dir.join(name);
+    let refuse = |what: String| {
+        corrupt(
+            &path,
+            format!(
+                "{what}, so it is not this render's {name}; re-render {} with the current \
+                 `stuntreel --headless --out-dir`",
+                dir.display()
+            ),
+        )
+    };
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(refuse(
+                "render.json lists the plane but the file is missing".to_string(),
+            ));
+        }
+        Err(source) => return Err(io(&path)(source)),
+    };
+    let end = listing
+        .end()
+        .ok_or_else(|| refuse("its spans overflow a u64".to_string()))?;
+    if bytes.len() as u64 != end {
+        return Err(refuse(format!(
+            "it holds {} bytes but render.json's spans for it end at {end}",
+            bytes.len()
+        )));
+    }
+    let digest = crate::sha256(&bytes);
+    if digest != listing.sha256 {
+        return Err(refuse(format!(
+            "its SHA-256 is {digest} but render.json lists {}",
+            listing.sha256
+        )));
+    }
+    Ok(())
 }
 
 /// Reads `palettes.zst`, which must hold exactly `count` palettes.

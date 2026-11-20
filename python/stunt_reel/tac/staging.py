@@ -143,7 +143,8 @@ def mount_refusal(mount: Path) -> str | None:
         if mount.is_relative_to(base):
             return (
                 f"dosbox-automation's mount policy refuses {mount} as a system path "
-                f"(it is under {base}); set {dataroot.DATA_ENV} to a directory outside {base}, "
+                f"(it is under {base.as_posix()}); set {dataroot.DATA_ENV} to a directory outside "
+                f"{base.as_posix()}, "
                 "such as /home/user/stunt-reel.data"
             )
     return None

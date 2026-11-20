@@ -68,7 +68,7 @@ _Source: [the actor queue's entries, read statically](../../work/2026-11/680_act
 
 ## 4. `CTRY` Tick 871
 
-`[Bounded Observation]`, one frame of one film, replayed statically: the slot and eye positions from `CTRY.FLM` at tick 871 walked through the image's tree as § 2's handlers split the list (`0x1EF2`, `0x200B`, `0x2059`); nothing was run.
+`[Bounded Observation]`, one frame of one film, replayed statically: the slot and eye positions from `CTRY.FLM` at tick 871 walked through the image's tree as § 2's handlers split the list (`0x1EF2`, `0x200B`, `0x2059`); nothing was run in the game.
 The explosion is slot 11 (shape `0x0107`, [`sod-animate.md`](sod-animate.md)), and its entry's extent is `([es:4] >> [es:8]) + 1` (`0x1AF3..0x1AFE`), 17 for `MODEL_0107.SOD`, since the loaded segment is the `.SOD` file two bytes on.
 
 | Object | Leaf | Place in the walk |
@@ -76,6 +76,14 @@ The explosion is slot 11 (shape `0x0107`, [`sod-animate.md`](sod-animate.md)), a
 | Tower, shape `0x03DD` at `(−3191, 0, 2485)` and `(−3191, 0, 2491)` | `0x7C14` | far side (`x < −3188`) of the `SP_XPLANE` at `0x7BBE`, walked before the eye's side |
 | Explosion, slot 11 at `(−3192.7, −1.9, 2489.4)` | `0x7BE0` | its centre is on the far side of `0x7BBE`, but its extent crosses that plane and four others on its path, so with no bucket it goes to each one's eye's side; it reaches `0x7BE0` with the larger depth (22.5 m against 10.4 m) and is drawn before the object |
 | Foreground hill, shape `0x0262` at `(−3180, 0, 2488)` | `0x7BE0` | drawn after the explosion |
+
+`mise run scene-walk -- corpus/stisldem/VAULT/CTRY.FLM --tick 871 --slot 11` reproduces this replay: it samples the film with `stuntreel film-slots`, reads the extent from the shapes' headers and walks the image's tree with `scene_tree.walk_slot`, which splits the entry as § 2's handlers do.
+It reports leaf `0x7BE0`, the five cutting planes above, each sent to the eye's side, and the five `SP_1NODE` nodes on the path, taken as near.
+It also reports five slope nodes (`0x0622`, `0x062C`, `0x5126`, `0x75DE`, `0x75E8`, each split by the slot's centre) and five plane nodes whose planes the extent clears (`0x77C4`, `0x77E4`, `0x7A4C`, `0x7A54`, `0x7BAE`).
+Without `--slot` it prints each slot's DOS-axes position, shape and extent, and the eye and look target.
+The draw order it prints around the explosion is the `0x03DD` tower twice, shape `0x060A` at `(−3156, 0, 2482)` in leaf `0x7BF6`, the explosion, then the hill; `0x060A` has depth −12.2 m, behind the eye.
+It prints each step's view depth, taken along the eye-to-target axis at the shape's origin without its ground offset: 22.5 m for the explosion, 10.4 m for the hill and 21.7 and 20.7 m for the two towers.
+The handler compares a plane at the high word of the eye plus the high word of the negated eye plus the node's sum (`0x1F05..0x1F0D`, with the walk's start at `0x1E43..0x1E7E`), which is one metre below the sum for an eye with a fractional part; the command prints the sum (`x = −3188` for `0x7BBE`) and compares at the lower value.
 
 So the replay gives tower, explosion, hill, the order the capture shows (over the tower, under the hill).
 The plane `x = −3188` separates the tower from the explosion; the hill is ordered against it by the depth compare of the leaf both reach, not by a plane.
@@ -87,7 +95,7 @@ _Source: [the CTRY tick 871 explosion replayed](../../work/2026-11/721_ctry-871-
 
 ## 5. Which Shapes Carry Buckets
 
-`[Bounded Observation]`, one static census of the game's own shapes: the 2,516 shapes of the stock `RES` files (`SUPERSET.ALL`; FreeFlight's six `SCENERY*.RES` are byte-identical to the game's), every box their collision lists reach, nested lists included, read as the probe's object walk `0x2886..0x289E` reads them (record types and sizes: the tables at `DGROUP:0x09FC` in [`memory-map.md`](memory-map.md)); nothing was run.
+`[Bounded Observation]`, one static census of the game's own shapes: the 2,516 shapes of the stock `RES` files (`SUPERSET.ALL`; FreeFlight's six `SCENERY*.RES` are byte-identical to the game's), every box their collision lists reach, nested lists included, read as the probe's object walk `0x2886..0x289E` reads them (record types and sizes: the tables at `DGROUP:0x09FC` in [`memory-map.md`](memory-map.md); each record's words: [`sod.md` § 2.3](../formats/sod.md#23-collision-list)); nothing was run.
 The list starts at the shape segment's word `+0xA`, the `.SOD` header's `collision_meta` ([`sod.md`](../formats/sod.md)), an offset that counts from two bytes before the file's first byte: read so, all 1,279 lists end at a type word `0xFFFF`; read as a file offset, none does.
 Types 0 and 4 (12 bytes) lead to a nested list at `+0xA` when that word is nonzero (`0x2922`, `0x295D`, `0x2AD3`, `0x2B0E`); type 2 (16 bytes) carries § 3's code word at `+0xE`.
 A code records only in the walk's first context, the table `0x09FC` (`0x2979`).
@@ -121,5 +129,6 @@ _Source: [the collision-code census](../../work/2026-11/721_ctry-871-replay/jour
   § 5 leaves out the shapes of `corpus/siarchive` beyond FreeFlight, which only `local-windows` holds, and the display-list branches `sod-trace` does not take.
 * **The renderer** ([#737](https://github.com/neilsh/stunt-reel/issues/737)).
   `stunt-render` draws the world in one depth-tested pass; drawing each actor at its leaf's place in the partition order needs the scenery's planes at draw time.
+  The world's placement records keep each prop's node and the partition steps above it with their plane words ([`world/placed.rs`](../../crates/stunt-core/src/world/placed.rs)); the actor's own walk and the split of the props around it are not built.
 * **Live check.**
   No breakpoint has confirmed a pending list, a split or a bucket push at run time.

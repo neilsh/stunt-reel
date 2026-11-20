@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import struct
-lazy from pathlib import Path
+from pathlib import Path
 
 import pytest
 import scene_ground
@@ -342,3 +342,190 @@ def test_matched_records_and_scene_ground_report() -> None:
     assert sorted((p.colour, r) for p, r in pairs) == [(14, [1]), (195, [0])]
     text = scene_ground.report(walked, scene_tree.compare(walked.polygons, patches), patches)
     assert "coarse SP_GROUND polygons (1): record 1 at 0x007A colour 14" in text
+
+
+# --- walk_slot: the draw walk with one slot (research/playone-exe/scene-walk-actors.md section 2)
+
+WALK_TREE = (Path(__file__).parent / "fixtures" / "synthetic_walk_tree.bin").read_bytes()
+LOOK_Z = (0.0, 0.0, 100.0)
+
+
+def _walk(
+    slot: scene_tree.SlotEntry | None,
+    eye: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    target: tuple[float, float, float] = LOOK_Z,
+) -> scene_tree.SlotWalk:
+    return scene_tree.walk_slot(WALK_TREE, eye, target, slot)
+
+
+def _objects(result: scene_tree.SlotWalk) -> list[str]:
+    return [f"0x{s.obj:04X}" if s.kind == "object" else "slot" for s in result.order]
+
+
+def test_walk_without_a_slot_visits_the_far_side_then_the_eye_side() -> None:
+    result = _walk(None)
+    # The eye (x = 0) is below the plane at 100, so the greater side is walked first; the
+    # SP_2NODE walks its first child with an empty list, and the near SP_1NODE draws nothing.
+    # On the eye's side the slope's greater child is the eye's (eye z 0 <= 50).
+    assert _objects(result) == ["0x0D01", "0x0D02", "0x0C02", "0x0C01"]
+    assert result.leaf is None
+    assert result.slot_index is None
+    assert result.planes == ()
+
+
+def test_slot_wholly_below_the_plane_goes_to_the_lesser_child_and_the_slope_splits_it() -> None:
+    result = _walk(scene_tree.SlotEntry(50, 0, 70, 5))
+    assert result.leaf == 0x22
+    assert [(p.kind, p.side, p.why) for p in result.planes] == [
+        (scene_tree.SP_XPLANE, "lesser", "whole"),
+        (scene_tree.SP_HSLOPE, "lesser", "centre"),
+    ]
+    assert result.planes[0].coord == 100  # SP_POS x 10 plus the sortvalue 90
+    # The slope's far side (the lesser child) is walked first; the slot (depth 70) is deeper
+    # than the leaf's object at z = 20, so it is drawn before it.
+    assert _objects(result) == ["0x0D01", "0x0D02", "slot", "0x0C02", "0x0C01"]
+
+
+def test_slot_shallower_than_the_leaf_object_is_drawn_after_it() -> None:
+    # z = 5 is on the slope's greater side (50 >= 5), the eye's, so it reaches the other leaf.
+    shallow = _walk(scene_tree.SlotEntry(50, 0, 5, 5))  # depth 5 against the object's 20
+    assert shallow.leaf == 0x1C
+    assert _objects(shallow) == ["0x0D01", "0x0D02", "0x0C02", "0x0C01", "slot"]
+    # Looking toward -z the same slot (z = 70) is the shallower of the two.
+    behind = _walk(scene_tree.SlotEntry(50, 0, 70, 5), target=(0.0, 0.0, -100.0))
+    assert _objects(behind)[-3:] == ["0x0C02", "slot", "0x0C01"]
+
+
+def test_slot_on_the_greater_side_reaches_the_second_child_of_the_two_node() -> None:
+    result = _walk(scene_tree.SlotEntry(150, 0, 0, 5))
+    assert result.leaf == 0x5C
+    assert [(p.kind, p.side, p.why) for p in result.planes] == [
+        (scene_tree.SP_XPLANE, "greater", "whole")
+    ]
+    # The SP_1NODE it passes is taken as near and reported with its position.
+    assert result.gates == ((0x40, 0x0D00, 10, 0, 20),)
+    # The slot (depth 0) is shallower than the leaf's object at z = 20, so it follows it.
+    assert _objects(result) == ["0x0D01", "0x0D02", "slot", "0x0C02", "0x0C01"]
+
+
+def test_cut_slot_goes_to_the_eye_side_not_its_centre_side() -> None:
+    cut = scene_tree.SlotEntry(98, 0, 0, 5)  # the plane at 100 lies inside 98 +- 5
+    below = _walk(cut)  # the eye (x = 0) is on the lesser side
+    assert [(p.side, p.why) for p in below.planes[:1]] == [("lesser", "eye")]
+    above = _walk(cut, eye=(200.0, 0.0, 0.0))
+    assert [(p.side, p.why) for p in above.planes[:1]] == [("greater", "eye")]
+    assert above.leaf == 0x5C
+
+
+def test_a_fractional_eye_moves_the_plane_down_one_metre() -> None:
+    # A slot whose extent just reaches the plane at 100: clear with an integer eye, but the
+    # high words of the eye and of the negated eye sum to -1, so the plane is at 99 and cuts it.
+    slot = scene_tree.SlotEntry(99, 0, 0, 1)
+    assert _walk(slot).planes[0].why == "whole"
+    assert _walk(slot, eye=(0.5, 0.0, 0.0)).planes[0].why == "eye"
+
+
+def test_slot_exactly_on_a_plane_with_no_extent_goes_to_the_greater_side() -> None:
+    result = _walk(scene_tree.SlotEntry(100, 0, 0, 0))
+    assert [(p.side, p.why) for p in result.planes[:1]] == [("greater", "whole")]
+
+
+def test_slope_line_is_the_scaled_coordinate_plus_the_offset() -> None:
+    assert scene_tree._slope_line(100, 0x4000, 5) == 55  # 100 * 0x4000 * 2 >> 16, plus 5
+    assert scene_tree._slope_line(-3, 0x4000, 0) == -2  # floors toward minus infinity
+    assert scene_tree._slope_line(1000, 0x7FFF, 0x7FFF) == 999 + 0x7FFF - 0x10000  # the word wraps
+
+
+def test_a_ground_node_drops_the_entry() -> None:
+    seg = _segment({0x00: [14, 0, 0, 0, 0, 0, 0, 0]})
+    result = scene_tree.walk_slot(seg, (0, 0, 0), LOOK_Z, scene_tree.SlotEntry(0, 0, 0, 1))
+    assert result.leaf is None
+    assert result.order == ()
+
+
+def test_a_list_walks_each_child_with_an_empty_list() -> None:
+    seg = _segment({0x00: [20, 0x10, 0x20, 0], 0x10: [10, 0x0A01], 0x20: [10, 0x0A02]})
+    result = scene_tree.walk_slot(seg, (0, 0, 0), LOOK_Z, scene_tree.SlotEntry(0, 0, 0, 1))
+    assert [s.obj for s in result.order] == [0x0A01, 0x0A02]
+    assert result.leaf is None
+
+
+def test_a_cycle_stops_the_slot_walk() -> None:
+    seg = _segment({0x00: [4, 0x00, 0x00]})
+    with pytest.raises(ValueError, match="cycle"):
+        scene_tree.walk_slot(seg, (0, 0, 0), LOOK_Z, None, max_steps=50)
+
+
+def test_an_unknown_node_type_is_reported() -> None:
+    seg = _segment({0x00: [99]})
+    with pytest.raises(ValueError, match="unknown node type 99"):
+        scene_tree.walk_slot(seg, (0, 0, 0), LOOK_Z, None)
+
+
+def test_view_depth_is_the_distance_along_the_view_axis() -> None:
+    depth = scene_tree.view_depth((0, 0, 0), (0, 0, 10))
+    assert depth(3, 4, 7) == pytest.approx(7)
+    with pytest.raises(ValueError, match="coincide"):
+        scene_tree.view_depth((1, 1, 1), (1, 1, 1))
+
+
+def _pair(kind: int, *fields: int) -> bytes:
+    """A partition node at 0 with leaves 0x0A01 (child +2, greater) and 0x0A02 (child +4)."""
+    return _segment(
+        {0x00: [kind, 0x20, 0x30, *fields], 0x20: [10, 0x0A01], 0x30: [10, 0x0A02]},
+        size=0x40,
+    )
+
+
+def _split(
+    seg: bytes, slot: scene_tree.SlotEntry, eye: scene_tree.Vec3 = (0, 0, 0)
+) -> scene_tree.SlotWalk:
+    return scene_tree.walk_slot(seg, eye, (0.0, 0.0, 100.0), slot)
+
+
+def test_zplane_splits_on_z_and_reads_the_slots_z_word() -> None:
+    zplane = _pair(scene_tree.SP_ZPLANE, 100)
+    # x is far from the plane, z is clear of it on the greater side.
+    greater = _split(zplane, scene_tree.SlotEntry(-999, 0, 150, 5))
+    assert [(p.side, p.why, p.coord) for p in greater.planes] == [("greater", "whole", 100)]
+    assert greater.leaf == 0x20
+    lesser = _split(zplane, scene_tree.SlotEntry(999, 0, 50, 5))
+    assert [(p.side, p.why) for p in lesser.planes] == [("lesser", "whole")]
+    assert lesser.leaf == 0x30
+    # Cut: the eye's z decides, not the eye's x.
+    cut = scene_tree.SlotEntry(999, 0, 98, 5)
+    assert _split(zplane, cut, eye=(999, 0, 0)).leaf == 0x30
+    assert _split(zplane, cut, eye=(-999, 0, 200)).leaf == 0x20
+    # The eye's side is walked last, so the far side's leaf comes first.
+    assert [o for o in _objects(_split(zplane, cut, eye=(0, 0, 200))) if o != "slot"] == [
+        "0x0A02",
+        "0x0A01",
+    ]
+
+
+def test_vslope_compares_the_lines_z_against_x_and_hslope_the_reverse() -> None:
+    # line = (coord * 0x4000 * 2 >> 16) + 10 = coord / 2 + 10, taken on z for a VSLOPE.
+    vslope = _pair(scene_tree.SP_VSLOPE, 0x4000, 10)
+    on_the_line = _split(vslope, scene_tree.SlotEntry(60, 0, 100, 1))  # 100/2 + 10 = 60 >= 60
+    assert [(p.side, p.why) for p in on_the_line.planes] == [("greater", "centre")]
+    off_the_line = _split(vslope, scene_tree.SlotEntry(61, 0, 100, 1))
+    assert off_the_line.planes[0].side == "lesser"
+    assert off_the_line.leaf == 0x30
+    # The eye: line(0) = 10 >= x = 0 puts it on the greater side, x = 500 on the lesser.
+    lesser = scene_tree.SlotEntry(61, 0, 100, 1)
+    eye_greater = _objects(_split(vslope, lesser))
+    assert [o for o in eye_greater if o != "slot"] == ["0x0A02", "0x0A01"]  # far side first
+    eye_lesser = _objects(_split(vslope, lesser, eye=(500, 0, 0)))
+    assert [o for o in eye_lesser if o != "slot"] == ["0x0A01", "0x0A02"]
+    # The same numbers on an HSLOPE take x as the line's coordinate and compare it with z.
+    hslope = _pair(scene_tree.SP_HSLOPE, 0x4000, 10)
+    assert _split(hslope, scene_tree.SlotEntry(60, 0, 100, 1)).planes[0].side == "lesser"
+    assert _split(hslope, scene_tree.SlotEntry(100, 0, 60, 1)).planes[0].side == "greater"
+
+
+def test_draw_steps_carry_their_view_depth() -> None:
+    result = _walk(scene_tree.SlotEntry(50, 0, 70, 5))
+    depths = {(s.kind, s.obj): s.depth for s in result.order}
+    assert depths[("slot", 0x0C02)] == pytest.approx(70)
+    assert depths[("object", 0x0C02)] == pytest.approx(20)
+    assert depths[("object", 0x0D01)] == pytest.approx(20)
