@@ -24,13 +24,14 @@
     `Get-Process` every 20 ms or so and recorded `PeakWorkingSet64` (peak working set),
     `PeakPagedMemorySize64` (peak private bytes), `WorkingSet64` and `PrivateMemorySize64`,
     plus `nvidia-smi`'s whole-GPU `memory.used`.
-    Three runs each at each commit, the third on an idle GPU; their sampler lines are in
-    `build/scratch/707/memory2.csv`, `vram2.csv` and `vram3-ctry.csv` under the worktree.
+    Three runs each at each commit, the third on an idle GPU; the first two runs of each cell
+    are in `build/scratch/707/memory2.csv` and the third in `build/scratch/707/vram2.csv`
+    (LOCATION) and `build/scratch/707/vram3-ctry.csv` (CTRY).
     The base binary's first run after its build peaked at 640 MiB of working set, 41 MiB above
     its later runs (as #769 found), so the table quotes later runs.
-    An 8,251-tick LOCATION render, the capture's whole span, also peaked at 598 MiB, so the
-    film's length does not enter the peak; that run's sampler line was not saved, though its
-    per-sample working set is under `build/scratch/707/mem-logs/fullspan-base-location/`.
+    `build/scratch/707/memory.csv` is an earlier batch, not quoted in these ranges; its head
+    peak private readings are 1,288.0 and 1,288.9 MiB, consistent with the quoted 1,289-1,291
+    MiB within the run-to-run spread.
 - **Result**:
   - **Byte-identity**: all 21 store files are identical at the two commits, and the seven
     scores and every report's adapter are too.
@@ -60,17 +61,19 @@
     traintnl  palettes.zst  8693c7227b8eee0d4b00710ea14781bb5c1526e27533fc9336e04d84a54e5cbb
     ```
 
-  - **Memory**, in MiB; the two values of each cell are in
-    `build/scratch/707/memory2.csv`, and a third, idle-GPU pass is in
-    `build/scratch/707/vram2.csv` (LOCATION) and `build/scratch/707/vram3-ctry.csv` (CTRY):
+  - **Memory**, in MiB, three runs each:
 
     | Film, ticks | Peak working set, `4c43baa` | Peak working set, `2ecbad1` | Peak private, `4c43baa` | Peak private, `2ecbad1` |
     |---|---|---|---|---|
-    | LOCATION 12-120 | 598.3, 598.7 | 597.7, 598.1 | 1,301.3, 1,297.1 | 1,289.0, 1,290.7 |
-    | CTRY 14-1333 | 161.5, 161.3 | 160.4, 160.6 | 343.0, 342.7 | 341.4, 341.6 |
+    | LOCATION 12-120 | 598.3, 598.7, 597.5 | 597.7, 598.1, 598.7 | 1,301.3, 1,297.1, 1,303.2 | 1,289.0, 1,290.7, 1,289.6 |
+    | CTRY 14-1333 | 161.5, 161.3, 161.2 | 160.4, 160.6, 160.0 | 343.0, 342.7, 343.0 | 341.4, 341.6, 341.2 |
+
+    The first two values of each cell are in `build/scratch/707/memory2.csv`; the third is
+    `vram4-base-location` and `vram4-head-location` in `build/scratch/707/vram2.csv`, and
+    `vram3-base-ctry` and `vram3-head-ctry` in `build/scratch/707/vram3-ctry.csv`.
 
   - Equal peaks at both commits put the peak before the release: LOCATION's peak working set is
-    about 598 MiB at both, and its peak private falls about 10 MiB, from 1,297-1,301 to
+    about 598 MiB at both, and its peak private falls about 10 MiB, from 1,297-1,303 to
     1,289-1,291 MiB, about 0.7 GiB above the working set on both.
     After the upload LOCATION's working set is 483.1 and 482.3 MiB at `4c43baa` and 227.5 and
     226.2 MiB at `2ecbad1` (the median of the samples between the upload peak and the teardown
