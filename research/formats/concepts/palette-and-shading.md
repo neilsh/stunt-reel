@@ -202,7 +202,7 @@ Their edges are 15 points it projects straight ahead in heading: edge `j` (0 to 
 * **The sun** is drawn after the bands, or before the `0xD0` fill when the walk reached edge 14, which covers it; never in a view looking down with no edge on screen ([`palette-fade.md` § 3.2](../../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
 
 `[Bounded Observation]` for the live match: on `BALLOON.FLM`, Patch #3, DOSBox-X 2026.10.01, a model of this walk fed the view matrix logged at the loop start `0x8D36` reproduced the edge rows (`0x8D64`) and fill colours (`0x8E86`) of all 17 frames logged in full, ticks 223 to 267, to the pixel.
-It also accounts for the `vault-balloon` capture: ticks 12 to 200 are all 224 because the view (76.6 degrees up, zoom 1.9) has the zenith edge above the screen and edge 1 below it, and ticks 276 to 298 are all 208 because the view looks down with no edge on screen.
+It also accounts for the `vault-balloon` capture: the sky of ticks 12 to 200 is all 224 because the view (76.6 degrees up, zoom 1.9) has the zenith edge above the screen and edge 1 below it, and that of ticks 276 to 298 is all 208 because the view looks down with no edge on screen.
 The edge medians measured earlier on `CTRY.FLM` captures through our camera (2.14 to 20.23 degrees, 238 at the horizon to 228) are edges 13 to 4.
 Captures show 224 to 226 as shape paint too, so parity counts them as sky only by position ([`method.md`](../../parity/method.md) section 2.0).
 _Source: [the sky drawer, the sun disc and the var-13 light read live on BALLOON](../../../work/2026-11/617_zenith-bands-sun-disc/journal.md#2026-11-20-the-sky-drawer-the-sun-disc-and-the-var-13-light-read-live-on-balloon)._
