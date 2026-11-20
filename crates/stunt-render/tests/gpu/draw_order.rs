@@ -9,7 +9,7 @@
 //! tilt their plane against the camera: a tie that rounds the same at every pixel would pass
 //! with no bias at all.
 //!
-//! The back-face outline class waits for the cull of #717 (#756).
+//! The back-face outline class is pinned in `lines.rs` (#756).
 //!
 //! Skips when no GPU adapter is available (see common); fails instead of skipping under
 //! `STUNT_REQUIRE_GPU=1` (ADR 0006).
