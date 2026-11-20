@@ -17,6 +17,7 @@ from stunt_reel.expected_scores import (
     clean_crates_tree,
     comparison_line,
     read_render_tree,
+    renderer_changes,
     scorer_only_change,
     write_render_tree,
 )
@@ -462,3 +463,21 @@ def test_a_renderer_commit_still_needs_a_re_render(repo: Repo) -> None:
         clean_crates_tree(repo.root), render, no_render=True, scorer_only=repo.scorer_only
     )
     assert found is None
+    reason = parity_run.unrecorded_reason(
+        clean_crates_tree(repo.root),
+        render,
+        changes=lambda old, new: renderer_changes(old, new, repo.root),
+    )
+    assert reason == "crates/a.rs changed outside the scorer since the render"
+
+
+def test_the_unrecorded_reason_names_a_missing_or_unreadable_record(tmp_path: Path) -> None:
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    unrecorded = _render_built_from(tmp_path / "old", None)
+    assert parity_run.unrecorded_reason("head", unrecorded) == "the render records no build tree"
+    render = _render_built_from(tmp_path / "render", "1" * 40)
+    reason = parity_run.unrecorded_reason("head", render, changes=lambda _old, _new: None)
+    assert reason == "git cannot compare the render's tree 1111111 with crates/"
+    reason = parity_run.unrecorded_reason("head", render, changes=lambda _old, _new: ["a", "b"])
+    assert reason == "crates/a and 1 more changed outside the scorer since the render"
