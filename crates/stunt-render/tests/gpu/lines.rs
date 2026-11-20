@@ -5,9 +5,14 @@
 //! `STUNT_REQUIRE_GPU=1` (ADR 0006).
 
 use crate::common;
+use crate::draw_order::{RANGES, Shot, assert_winners, film, push_mesh, shoot, vertex};
+use crate::scene_renderer::world_of;
+
+use std::collections::{BTreeSet, HashMap};
 
 use stunt_core::contracts::{
-    CameraTransform, DecodeMode, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
+    ActorTransform, CameraTransform, DecodeMode, NodeKind, SCENERY_PROP, SCENERY_TERRAIN,
+    SodModelIr, SodVertex, VisibilityCondition,
 };
 use stunt_core::scene::FilmScene;
 use stunt_core::sod::{
@@ -37,20 +42,31 @@ fn line_shape(from: [i16; 3], to: [i16; 3]) -> SodModelIr {
 /// Renders the shape from `distance` metres down -Z on PLAYONE's 320x200 page with its
 /// 185-row view, and returns the pixels the line covers as (column, row).
 fn covered(ir: SodModelIr, distance: f32) -> Option<Vec<(usize, usize)>> {
-    let camera = CameraTransform {
+    covered_by(&FilmScene::with_single_model(
+        common::still_timeline(camera_at(distance)),
+        ir,
+    ))
+}
+
+/// The camera `distance` metres down +Z of the origin, looking at it.
+fn camera_at(distance: f32) -> CameraTransform {
+    CameraTransform {
         eye: [0.0, 0.0, distance],
         target: [0.0, 0.0, 0.0],
         fov_degrees: 45.0,
         roll_radians: 0.0,
         cut_from_previous: false,
         ..Default::default()
-    };
-    let scene = FilmScene::with_single_model(common::still_timeline(camera), ir);
+    }
+}
+
+/// [`covered`] for a whole scene.
+fn covered_by(scene: &FilmScene) -> Option<Vec<(usize, usize)>> {
     let target = Offscreen {
         size: PageSize::new(320, 200),
         viewport_rows: Some(185),
     };
-    let mut test = common::gpu_or_skip_offscreen(&scene, target, RenderOptions::default())?;
+    let mut test = common::gpu_or_skip_offscreen(scene, target, RenderOptions::default())?;
     let page = test.draw(&scene.frame(0.0));
     let width = page.width() as usize;
     Some(
@@ -220,6 +236,155 @@ fn an_edge_on_polygon_draws_its_outline_unbroken() {
                 assert!(
                     columns.len() >= 48 && columns.iter().all(|&n| n >= 1),
                     "{height} m, {indices:?}: the outline is unbroken, got {columns:?}"
+                );
+            }
+        }
+    });
+}
+
+/// A triangle lying on the ground 10 m below an eye 100 m along +Z, whose third corner is 50 m
+/// behind the eye, so the plane crosses the near plane. Drawn as an actor it is outlined; drawn
+/// as terrain in the world mesh it is not, so the world render is the same triangle's fill
+/// alone.
+const NEAR_PLANE_CORNERS: [[f32; 3]; 3] =
+    [[-30.0, -10.0, 0.0], [30.0, -10.0, 0.0], [0.0, -10.0, 150.0]];
+
+/// A set of covered pixels as (column, row).
+type Pixels = BTreeSet<(usize, usize)>;
+
+/// The pixels `corners` wound as `indices` cover as the fill of a terrain triangle, which has
+/// no outline, and as an actor's outlined polygon, in that order.
+fn fill_and_outlined(corners: [[f32; 3]; 3], indices: [u32; 3]) -> Option<(Pixels, Pixels)> {
+    let timeline = || common::still_timeline(camera_at(100.0));
+    let mut ground = triangle(corners, indices);
+    for vertex in &mut ground.vertices {
+        vertex.scenery_class = SCENERY_TERRAIN;
+    }
+    let fill = covered_by(&FilmScene::new(
+        timeline(),
+        HashMap::new(),
+        Some(world_of(ground)),
+    ))?;
+    let outlined = covered(triangle(corners, indices), 100.0)?;
+    Some((fill.into_iter().collect(), outlined.into_iter().collect()))
+}
+
+/// A polygon that reaches behind the eye keeps its outline when it faces the eye and loses it
+/// with the fill when it does not (#756): the cull's homogeneous determinant gives the
+/// rasteriser's facing for the part in front of the eye, as it does for a polygon wholly in
+/// front. A wrong sign would drop the outline beside a drawn polygon or draw it over a culled
+/// one.
+#[test]
+fn a_polygon_across_the_near_plane_culls_its_outline_with_its_fill() {
+    common::gpu_test(|| {
+        let mut front_facing = 0;
+        for indices in [[0, 1, 2], [0, 2, 1]] {
+            let Some((fill, outlined)) = fill_and_outlined(NEAR_PLANE_CORNERS, indices) else {
+                return;
+            };
+            if fill.is_empty() {
+                assert!(
+                    outlined.is_empty(),
+                    "{indices:?}: back-facing, so its outline is culled with it, got {outlined:?}"
+                );
+                continue;
+            }
+            front_facing += 1;
+            assert!(
+                fill.is_subset(&outlined),
+                "{indices:?}: the outline leaves the filled pixels as they are, missing {:?}",
+                fill.difference(&outlined).collect::<Vec<_>>()
+            );
+            assert!(
+                outlined.len() > fill.len(),
+                "{indices:?}: front-facing, so its outline adds pixels to its {} filled ones",
+                fill.len()
+            );
+        }
+        assert_eq!(
+            front_facing, 1,
+            "exactly one winding of the triangle is front-facing"
+        );
+    });
+}
+
+const OUTLINED: u8 = LINE_INDEX;
+const BACKDROP: u8 = 77;
+const OUTLINED_SHAPE: u16 = 7;
+
+/// A backdrop quad of index `BACKDROP`, `d` metres across each way from its centre, `0.2 d`
+/// behind the plane z = 0 and facing the eye, as a scenery polygon of the world.
+fn backdrop_world(d: f32) -> stunt_core::world::World {
+    let z = -0.2 * d;
+    let at = |x: f32, y: f32| vertex([x, y, z], [0.0, 0.0, 1.0], BACKDROP, SCENERY_PROP);
+    let mut ir = SodModelIr::new("WORLD_SCENERY");
+    ir.vertices = vec![at(-d, -d), at(-d, d), at(d, d), at(d, -d)];
+    push_mesh(&mut ir, "WORLD_PROP", 4, &[0, 1, 2, 0, 2, 3], false);
+    world_of(ir)
+}
+
+/// A triangle of half-width `a` in the plane z = 0 facing +Z, wound front-facing when `front`,
+/// outlined as an actor over `backdrop_world`, seen from `d` metres.
+fn outlined_over_backdrop(d: f32, a: f32, front: bool) -> FilmScene {
+    let corners = [[0.0, a, 0.0], [a, -a, 0.0], [-a, -a, 0.0]];
+    let actor = ActorTransform {
+        actor_id: 0,
+        model_name: "TRI".to_string(),
+        shape_id: OUTLINED_SHAPE,
+        rotation_quat: [0.0, 0.0, 0.0, 1.0],
+        position_meters: [0.0, 0.0, 0.0],
+        state_mask: 0,
+        casts_shadow: false,
+        view: false,
+        joint_angles_bam: Vec::new(),
+    };
+    let shapes = HashMap::from([(
+        OUTLINED_SHAPE,
+        triangle(corners, if front { [0, 1, 2] } else { [0, 2, 1] }),
+    )]);
+    FilmScene::new(
+        film([0.0, 0.0, d], vec![actor]),
+        shapes,
+        Some(backdrop_world(d)),
+    )
+}
+
+/// The half-width near `0.1 d` at which the triangle's bottom edge, `a` below its centre,
+/// projects a little way into a pixel row of `shot`'s page: the row's centre then lies outside
+/// the triangle, so only its outline can draw there.
+fn half_width_with_outline_only_edge_row(shot: &Shot, d: f32) -> f32 {
+    (0..60u8)
+        .map(|k| 0.1 * d * (1.0 + 0.003 * f32::from(k)))
+        .find(|&a| {
+            let row = shot.screen([0.0, -a, 0.0]).1;
+            (0.1..0.4).contains(&row.fract())
+        })
+        .expect("some half-width puts the edge a little way into a row")
+}
+
+/// An outlined triangle wins its pixels over a backdrop of another index when it faces the eye
+/// and none when it faces away, outline included, at 10 m and 2 km (#756, #776): the bottom
+/// edge's row has no filled pixel centre, so the outline alone draws there.
+#[test]
+fn an_outlined_triangle_wins_over_its_backdrop_only_when_front_facing_near_and_far() {
+    common::gpu_test(|| {
+        for (label, d) in RANGES {
+            let Some(probe) = shoot(&outlined_over_backdrop(d, 0.1 * d, true)) else {
+                return;
+            };
+            let a = half_width_with_outline_only_edge_row(&probe, d);
+            for (front, want) in [(true, OUTLINED), (false, BACKDROP)] {
+                let Some(shot) = shoot(&outlined_over_backdrop(d, a, front)) else {
+                    return;
+                };
+                assert_winners(
+                    &format!("{label}, front {front}"),
+                    &shot,
+                    &[
+                        // Inside the triangle, then on its bottom edge.
+                        ([0.0, -a / 2.0, 0.0], want),
+                        ([0.0, -a, 0.0], want),
+                    ],
                 );
             }
         }

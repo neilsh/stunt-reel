@@ -27,7 +27,7 @@ Machine setup is in [`docs/harness-setup.md`](../../../docs/harness-setup.md), w
    Done when the first `mise run` task works.
 5. **Remove one.**
    A worktree made since ADR 0036 goes with the tool that made it.
-   One an older `init` linked goes through `mise run reap` from the primary checkout: dry run first, then `--yes`.
+   One an older `init` linked, or an Orca workspace, goes through `mise run reap` from the primary checkout: dry run first, then `--yes`.
    A branch with patches `main` lacks and no merged PR is never a candidate, `--force` included.
    `--yes` removes every candidate it finds, not only the one you meant.
    When the drive is short of space (reap's bar), you may run it unasked and report what it removed; otherwise, and always with `--force`, ask first.

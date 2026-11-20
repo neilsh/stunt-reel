@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -51,6 +52,8 @@ class _Candidate:
     size: int
     #: The merged pull request that squash-landed this branch, when that is why it may go.
     pr: int | None = None
+    #: The ``--worktree`` selector ``orca worktree rm`` takes, for an Orca workspace.
+    orca: str | None = None
 
 
 def _is_ancestor(repo: Path, branch: str) -> bool:
@@ -173,6 +176,128 @@ class _MergedPrs:
         return max(numbers) if numbers else None
 
 
+#: Seconds to wait for ``orca`` before treating it as unavailable.
+ORCA_TIMEOUT = 60
+#: Rows asked of ``orca worktree ps`` in one call.
+ORCA_LIMIT = 1000
+
+
+def _orca(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run one ``orca`` command in *repo*; tests replace this, so the gate never starts Orca."""
+    orca = shutil.which("orca")
+    if orca is None:
+        raise FileNotFoundError("orca is not on PATH")
+    return subprocess.run(  # noqa: S603
+        [orca, *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=ORCA_TIMEOUT,
+    )
+
+
+@dataclass(frozen=True)
+class _OrcaWorkspace:
+    """What Orca knows of one workspace: how to select it, why it is live (if it is), who made it.
+
+    *created* is true when Orca made the row itself (it records a creator); ``ps`` also lists
+    every other worktree of the repository, the primary and pool worktrees included.
+    """
+
+    selector: str
+    live: str | None
+    created: bool = True
+
+
+def _live_reason(row: dict[str, object]) -> str | None:
+    """Why *row* (one ``orca worktree ps`` workspace) is not safe to remove, or None.
+
+    A workspace is live while it holds a terminal, a terminal Orca cannot verify, or an agent
+    that has not reported ``done``: a dispatched worker, or one blocked waiting for an answer.
+    """
+    reasons: list[str] = []
+    terminals = row.get("liveTerminalCount")
+    if not isinstance(terminals, int) or terminals > 0:
+        reasons.append(f"{terminals} live terminal(s)" if terminals else "terminals unknown")
+    if row.get("unverifiableTerminalCount"):
+        reasons.append("a terminal Orca cannot verify")
+    agents = row.get("agents")
+    for agent in agents if isinstance(agents, list) else []:
+        state = agent.get("state") if isinstance(agent, dict) else None
+        if state != "done":
+            reasons.append(f"agent {state or 'in an unknown state'}")
+    return "; ".join(reasons) or None
+
+
+class _OrcaWorkspaces:
+    """The workspaces Orca manages, read once with ``orca worktree ps`` and only when needed.
+
+    :attr:`unavailable` says why Orca could not be read (not installed, failed, unreadable or
+    truncated output); :meth:`find` then matches nothing, and ``reap`` removes nothing from Orca.
+    """
+
+    def __init__(self, repo: Path, orca: Callable[..., subprocess.CompletedProcess[str]] = _orca):
+        self._repo = repo
+        self._orca = orca
+        self._loaded = False
+        self._rows: dict[str, _OrcaWorkspace] = {}
+        self.unavailable: str | None = None
+
+    def run(self, *args: str) -> subprocess.CompletedProcess[str]:
+        """Run one ``orca`` command; raises ``OSError`` or ``subprocess.SubprocessError``."""
+        return self._orca(self._repo, *args)
+
+    def refresh(self) -> None:
+        """Forget what was read, so the next :meth:`find` asks Orca again."""
+        self._loaded = False
+
+    def _load(self) -> None:
+        self._loaded = True
+        self._rows = {}
+        self.unavailable = None
+        try:
+            result = self.run("worktree", "ps", "--json", "--limit", str(ORCA_LIMIT))
+        except (OSError, subprocess.SubprocessError) as err:
+            self.unavailable = str(err) or type(err).__name__
+            return
+        if result.returncode != 0:
+            lines = (result.stderr or result.stdout).strip().splitlines()
+            self.unavailable = lines[0] if lines else f"orca exited {result.returncode}"
+            return
+        try:
+            payload = json.loads(result.stdout)["result"]
+            if payload.get("truncated"):
+                self.unavailable = f"more than {ORCA_LIMIT} workspaces"
+                return
+            for row in payload["worktrees"]:
+                key = os.path.normcase(str(Path(row["path"])))
+                entry = _OrcaWorkspace(
+                    selector=f"id:{row['worktreeId']}",
+                    live=_live_reason(row),
+                    created=bool(row.get("creatorProvenance")),
+                )
+                earlier = self._rows.get(key)
+                if earlier is not None:
+                    # Several entries can share a path (folder workspaces): none may mask a live one.
+                    reasons = [r for r in (earlier.live, entry.live) if r]
+                    entry = _OrcaWorkspace(
+                        selector=earlier.selector,
+                        live="; ".join(reasons) or "several Orca entries share this path",
+                        created=earlier.created and entry.created,
+                    )
+                self._rows[key] = entry
+        except (ValueError, KeyError, TypeError, AttributeError) as err:
+            self._rows = {}
+            self.unavailable = f"unreadable orca output ({err})"
+
+    def find(self, path: Path) -> _OrcaWorkspace | None:
+        """The workspace at *path*, or None when Orca does not manage one there."""
+        if not self._loaded:
+            self._load()
+        return self._rows.get(os.path.normcase(str(path)))
+
+
 def _changed(path: Path, *, untracked: bool) -> list[str]:
     """Modified tracked files, or untracked ones, of one checkout."""
     flag = "--untracked-files=normal" if untracked else "--untracked-files=no"
@@ -291,22 +416,73 @@ def _unlink_reparse_points(root: Path, *, tracked: frozenset[str] = frozenset())
     return _unlink_links(_links_reap_may_unlink(root, tracked))
 
 
+def _in_orca_base(path: Path) -> bool:
+    """Whether *path* sits under an ``orca/workspaces`` folder, Orca's default workspace base.
+
+    The guess ``reap`` falls back on only when Orca cannot say which worktrees it created.
+    """
+    parts = [part.lower() for part in path.parts]
+    return any(a == "orca" and b == "workspaces" for a, b in pairwise(parts))
+
+
+def _outside_pool(
+    worktree: _Worktree,
+    entries: list[_Worktree],
+    orca: _OrcaWorkspaces | None,
+) -> tuple[str | None, str]:
+    """Judge a worktree outside the pool: ``(Orca selector, "")`` to classify it, else ``(None, why)``.
+
+    Only an Orca workspace may be reaped from outside the pool: one that no other worktree
+    encloses, that Orca created (when Orca cannot be read, one under ``orca/workspaces`` is
+    presumed one, and ``reap`` only prints its removal line), that holds no nested worktree and
+    that Orca does not call live.
+    """
+    label = worktree.branch or "(detached)"
+    outside = f"{label}: outside this checkout's worktree pool"
+    others = [entry for entry in entries[1:] if entry.path != worktree.path]
+    if orca is None or any(entry.path in worktree.path.parents for entry in others):
+        return None, outside
+    found = orca.find(worktree.path)
+    if found is None and (orca.unavailable is None or not _in_orca_base(worktree.path)):
+        return None, outside
+    if found is not None and not found.created:
+        return None, outside
+    nested = sorted(entry.path.name for entry in others if worktree.path in entry.path.parents)
+    if nested:
+        names = ", ".join(nested)
+        return None, f"{label}: holds nested worktrees ({names}); remove them first"
+    if found is not None and found.live is not None:
+        return None, f"{label}: Orca workspace is live ({found.live})"
+    selector = found.selector if found is not None else f"path:{worktree.path.as_posix()}"
+    return selector, ""
+
+
 def _candidates(
     repo: Path,
     entries: list[_Worktree],
     *,
     include_cherry: bool,
     merged_prs: _MergedPrs | None = None,
+    orca: _OrcaWorkspaces | None = None,
+    stash_dirty: bool = False,
+    discard_untracked: bool = False,
 ) -> tuple[list[_Candidate], list[str]]:
-    """Classify worktrees under *repo*; return what may go and what will not."""
+    """Classify worktrees under *repo*; return what may go and what will not.
+
+    An Orca workspace is judged as a pool worktree is, but one with files *stash_dirty* or
+    *discard_untracked* does not allow is skipped, not a reason to refuse every other removal.
+    """
     primary = entries[0].path
     candidates: list[_Candidate] = []
     skipped: list[str] = []
     for worktree in entries[1:]:
         label = worktree.branch or "(detached)"
+        selector: str | None = None
         if primary not in worktree.path.parents:
-            skipped.append(f"{label}: outside this checkout's worktree pool")
-            continue
+            selector, why = _outside_pool(worktree, entries, orca)
+            if selector is None:
+                skipped.append(why)
+                continue
         if worktree.path == repo or worktree.path in repo.parents:
             skipped.append(f"{label}: contains this checkout")
             continue
@@ -338,15 +514,27 @@ def _candidates(
                 if not (include_cherry and patches == 0):
                     skipped.append(f"{label}: {reason}")
                     continue
+        dirty = _changed(worktree.path, untracked=False)
+        untracked = _changed(worktree.path, untracked=True)
+        if selector is not None:
+            reasons = _blocked(
+                _Candidate(worktree, merged, dirty, untracked, [], 0),
+                stash_dirty=stash_dirty,
+                discard_untracked=discard_untracked,
+            )
+            if reasons:
+                skipped.append(f"{label}: Orca workspace has {'; '.join(reasons)}")
+                continue
         candidates.append(
             _Candidate(
                 worktree=worktree,
                 merged=merged,
-                dirty=_changed(worktree.path, untracked=False),
-                untracked=_changed(worktree.path, untracked=True),
+                dirty=dirty,
+                untracked=untracked,
                 links=_reparse_points(worktree.path),
                 size=_size(worktree.path),
                 pr=pr,
+                orca=selector,
             )
         )
     return candidates, skipped
@@ -365,6 +553,8 @@ def _describe(candidate: _Candidate) -> str:
         flags.append(f"{len(candidate.untracked)} untracked")
     if candidate.links:
         flags.append(f"{len(candidate.links)} link(s)")
+    if candidate.orca:
+        flags.append("orca workspace")
     detail = ", ".join(flags) if flags else "clean"
     branch = worktree.branch or "(detached)"
     return (
@@ -389,8 +579,13 @@ def _reap_one(
     *,
     stash_dirty: bool,
     discard_untracked: bool,
+    orca: _OrcaWorkspaces | None = None,
 ) -> str | None:
-    """Remove one candidate; return a failure message, or None on success."""
+    """Remove one candidate; return a failure message, or None on success.
+
+    An Orca workspace goes through *orca* (``orca worktree rm``) after the same unlinking, and
+    only while Orca, asked again now, still calls it idle.
+    """
     worktree = candidate.worktree
     branch = worktree.branch
     path = worktree.path
@@ -405,6 +600,13 @@ def _reap_one(
             f"{branch}: tip moved since it was classified "
             f"({worktree.head[:10]} -> {current.head[:10]}); left alone"
         )
+    if candidate.orca is not None:
+        if orca is None:
+            return f"{branch}: Orca workspace with no way to remove it; left alone"
+        orca.refresh()
+        found = orca.find(path)
+        if found is None or found.live is not None:
+            return f"{branch}: Orca workspace is live or gone since it was classified; left alone"
     # Cleanliness is read now, not taken from classification: a forced remove must not drop
     # an edit made after reap listed the worktree.
     dirty = _changed(path, untracked=False)
@@ -438,12 +640,24 @@ def _reap_one(
         return f"{branch}: links remain: {', '.join(str(item) for item in remaining)}"
     if _changed(path, untracked=False):
         return f"{branch}: modified files appeared before removal; left alone"
-    remove_args = ["worktree", "remove"]
-    if untracked:
-        remove_args.append("--force")
-    remove = _git(repo, *remove_args, str(path))
-    if remove.returncode != 0:
-        return f"{branch}: git worktree remove failed: {remove.stderr.strip()}"
+    if candidate.orca is not None and orca is not None:
+        orca_args = ["worktree", "rm", "--worktree", candidate.orca]
+        if untracked:
+            orca_args.append("--force")
+        try:
+            gone = orca.run(*orca_args)
+        except (OSError, subprocess.SubprocessError) as err:
+            return f"{branch}: orca worktree rm failed: {err}"
+        if gone.returncode != 0:
+            detail = (gone.stderr or gone.stdout).strip()
+            return f"{branch}: orca worktree rm failed: {detail}"
+    else:
+        remove_args = ["worktree", "remove"]
+        if untracked:
+            remove_args.append("--force")
+        remove = _git(repo, *remove_args, str(path))
+        if remove.returncode != 0:
+            return f"{branch}: git worktree remove failed: {remove.stderr.strip()}"
     if branch is not None:
         if candidate.merged:
             delete = _git(repo, "branch", "-d", branch)
@@ -704,8 +918,15 @@ def _reap(
         print("\nrefusing to reap with a stale script; --allow-stale-script reaps anyway")
         return 1
     merged_prs = _MergedPrs(repo, _gh)
+    orca = _OrcaWorkspaces(repo, _orca)
     candidates, skipped = _candidates(
-        repo, entries, include_cherry=include_cherry, merged_prs=merged_prs
+        repo,
+        entries,
+        include_cherry=include_cherry,
+        merged_prs=merged_prs,
+        orca=orca,
+        stash_dirty=stash_dirty,
+        discard_untracked=discard_untracked,
     )
     print(f"worktree   {repo}")
     try:
@@ -725,6 +946,11 @@ def _reap(
         print(
             f"  ! gh unavailable ({merged_prs.unavailable}); squash-merged branches are not"
             " recognised, using the ancestry and --cherry checks only"
+        )
+    if orca.unavailable is not None:
+        print(
+            f"  ! orca unavailable ({orca.unavailable}); Orca workspaces are not removed,"
+            " and whether one is live is unknown"
         )
     print("candidates:")
     for candidate in candidates:
@@ -760,20 +986,28 @@ def _reap(
         return 0
     failed = 0
     reclaimed = 0
+    reaped = 0
     for candidate in candidates:
+        if candidate.orca is not None and orca.unavailable is not None:
+            print(
+                f'  orca worktree rm --worktree "{candidate.orca}"  # {candidate.worktree.branch}'
+            )
+            continue
         error = _reap_one(
             repo,
             candidate,
             stash_dirty=stash_dirty,
             discard_untracked=discard_untracked,
+            orca=orca,
         )
         if error is not None:
             print(f"  ! {error}")
             failed += 1
             continue
+        reaped += 1
         reclaimed += candidate.size
         print(f"  removed  {candidate.worktree.branch}")
-    print(f"\nreaped {len(candidates) - failed} worktree(s), {reclaimed / 1_048_576:.1f} MiB")
+    print(f"\nreaped {reaped} worktree(s), {reclaimed / 1_048_576:.1f} MiB")
     if prune:
         print("\npruning pool leftovers and branches without a worktree:")
         fresh = _worktrees(repo)
