@@ -1,4 +1,4 @@
-"""``parity_repin``: rewriting the expected tables from current reports, or refusing to."""
+"""``parity_repin``: regenerating the expected files from current reports, or refusing to."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ lazy from pathlib import Path
 
 import pytest
 
-from stunt_reel import dataroot, parity_layout
+from stunt_reel import dataroot, expected_file, parity_layout
 from stunt_reel.expected_scores import (
     RENDER_TREE_FILE,
     SCORER_DIR,
@@ -46,8 +46,7 @@ OLD_TREE = "1" * 40
 #: alone.
 ROW_PINS = {"ctry": (SHA_CTRY, ALL_CTRY), "intro": (SHA_INTRO, None)}
 
-#: Two rows: ctry with an archive pin, a comment and an old gpu table carrying `commit`; intro
-#: with neither an archive pin nor a table.
+#: Two rows: ctry with an archive pin and a comment; intro without an archive pin.
 DOCUMENT = f"""# Header comment, kept.
 
 [ctry]
@@ -56,7 +55,16 @@ sha256 = "{SHA_CTRY}"
 # The archive the film plays, kept.
 all_sha256 = "{ALL_CTRY}"
 
-[ctry.expected.gpu]
+[intro]
+film = "vault-intro"
+sha256 = "{SHA_INTRO}"
+"""
+
+#: The committed gpu file: a hand-added comment, an old ctry table carrying `commit`, and a table
+#: for a film no row names; a repin drops all three.
+GPU_FILE = f"""# A hand-added comment, dropped.
+
+[ctry]
 ssim = 0.5000000
 iou = 0.6000000
 crates = "{OLD_TREE}"
@@ -65,13 +73,16 @@ all_sha256 = "{ALL_CTRY}"
 commit = "abcdef1"
 adapter = "{GPU.name}"
 
-[ctry.expected.gpu.loss]
+[ctry.loss]
 props = 0.0100000
 sky = 0.0200000
 
-[intro]
-film = "vault-intro"
+[gone]
+ssim = 0.1000000
+iou = 0.1000000
+crates = "{OLD_TREE}"
 sha256 = "{SHA_INTRO}"
+adapter = "{GPU.name}"
 """
 
 
@@ -81,7 +92,7 @@ def losses(total: float = 0.1) -> dict[str, float]:
 
 
 class Repo:
-    """A scratch repository holding ``crates/a.rs`` and :data:`DOCUMENT`."""
+    """A scratch repository holding ``crates/a.rs``, :data:`DOCUMENT` and :data:`GPU_FILE`."""
 
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -96,6 +107,7 @@ class Repo:
         self.write("crates/a.rs", "fn a() {}\n")
         self.write(".gitignore", "build/\n")
         self.write(parity_layout.REFERENCES_FILE.as_posix(), DOCUMENT)
+        self.write(expected_file.path(parity_layout.REFERENCES_FILE, "gpu").as_posix(), GPU_FILE)
         self.git("add", "-A")
         self.git("commit", "-qm", "start")
         self.tree = self.git("rev-parse", "HEAD:crates")
@@ -121,6 +133,10 @@ class Repo:
     @property
     def references(self) -> Path:
         return self.root / parity_layout.REFERENCES_FILE
+
+    def class_file(self, renderer: str) -> Path:
+        """The generated expected file of *renderer*."""
+        return expected_file.path(self.references, renderer)
 
     def report(
         self,
@@ -196,40 +212,45 @@ def test_a_repin_writes_the_class_losses_in_class_order(repo: Repo) -> None:
         assert pinned is not None
         assert tuple(pinned) == LOSS_CLASSES
         assert pinned == pytest.approx(expected, abs=1e-7)
-    text = repo.references.read_text(encoding="utf-8")
-    assert text.count("[ctry.expected.gpu.loss]") == 1, "the old loss table is replaced"
-    assert "sky = 0.0200000" not in text
-    assert text.index("[ctry.expected.gpu.loss]") < text.index("[intro]")
-    assert text.index("[intro.expected.gpu]") < text.index("[intro.expected.gpu.loss]")
 
 
-def test_a_repin_adds_the_loss_table_to_a_table_without_one(repo: Repo) -> None:
-    text = repo.references.read_text(encoding="utf-8")
-    repo.write(
-        parity_layout.REFERENCES_FILE.as_posix(),
-        text.replace("[ctry.expected.gpu.loss]\nprops = 0.0100000\nsky = 0.0200000\n\n", ""),
-    )
-    assert read_reference(repo.root, "ctry").expected["gpu"].loss is None
+def _expected_of(repo: Repo, films: tuple[str, ...] = ("ctry", "intro")) -> str:
+    """What a repin of the scratch repo's gpu reports must write."""
+    tables = []
+    for film in films:
+        values, loss = expected_file.format_values(read_reference(repo.root, film).expected["gpu"])
+        tables.append((film, values, loss))
+    return expected_file.render(tables)
+
+
+def test_a_repin_regenerates_the_class_file_whole(repo: Repo) -> None:
     repo.report("ctry", 0.8, 0.9)
     repo.report("intro", 0.7, 0.9)
+    references = repo.references.read_bytes()
 
     parity_repin.repin(repo.root, "gpu")
 
-    assert read_reference(repo.root, "ctry").expected["gpu"].loss == pytest.approx(losses())
+    text = repo.class_file("gpu").read_text(encoding="utf-8")
+    assert text.startswith(expected_file.HEADER)
+    assert "hand-added" not in text
+    assert "[gone]" not in text
+    assert "abcdef1" not in text, "a commit line names an older measurement"
+    assert text == _expected_of(repo)
+    assert text.index("[ctry]") < text.index("[intro]")
+    assert repo.references.read_bytes() == references, "references.toml is left alone"
 
 
-def test_a_repin_keeps_comments_and_row_order(repo: Repo) -> None:
-    repo.report("ctry", 0.8, 0.9)
-    repo.report("intro", 0.7, 0.9)
+def test_a_repin_of_lavapipe_leaves_the_gpu_file_alone(repo: Repo) -> None:
+    repo.report("ctry", 0.8, 0.9, adapter=LAVAPIPE)
+    repo.report("intro", 0.7, 0.9, adapter=LAVAPIPE)
+    gpu = repo.class_file("gpu").read_bytes()
 
-    parity_repin.repin(repo.root, "gpu")
+    parity_repin.repin(repo.root, "lavapipe")
 
-    text = repo.references.read_text(encoding="utf-8")
-    assert text.startswith("# Header comment, kept.\n")
-    assert "# The archive the film plays, kept.\n" in text
-    order = [text.index(h) for h in ("[ctry]", "[ctry.expected.gpu]", "[intro]")]
-    assert order == sorted(order)
-    assert text.index("[intro.expected.gpu]") > text.index("[intro]")
+    assert repo.class_file("gpu").read_bytes() == gpu, "the other class keeps its file"
+    ctry = read_reference(repo.root, "ctry")
+    assert ctry.expected["gpu"].ssim == 0.5
+    assert ctry.expected["lavapipe"].adapter == LAVAPIPE.name
 
 
 def test_after_a_repin_the_same_reports_show_no_drift(repo: Repo) -> None:
@@ -249,22 +270,12 @@ def test_after_a_repin_the_same_reports_show_no_drift(repo: Repo) -> None:
         assert line.endswith("no drift"), line
 
 
-def test_a_repin_of_lavapipe_adds_tables_beside_gpu(repo: Repo) -> None:
-    repo.report("ctry", 0.8, 0.9, adapter=LAVAPIPE)
-    repo.report("intro", 0.7, 0.9, adapter=LAVAPIPE)
-
-    parity_repin.repin(repo.root, "lavapipe")
-
-    ctry = read_reference(repo.root, "ctry")
-    assert ctry.expected["gpu"].ssim == 0.5, "the other class keeps its table"
-    assert ctry.expected["lavapipe"].adapter == LAVAPIPE.name
-
-
 def _refused(repo: Repo, renderer: str = "gpu") -> str:
-    before = repo.references.read_bytes()
+    before = repo.class_file(renderer).read_bytes() if repo.class_file(renderer).exists() else None
     with pytest.raises(parity_repin.RepinRefusedError) as caught:
         parity_repin.repin(repo.root, renderer)
-    assert repo.references.read_bytes() == before, "a refusal writes nothing"
+    after = repo.class_file(renderer).read_bytes() if repo.class_file(renderer).exists() else None
+    assert after == before, "a refusal writes nothing"
     return "\n".join(caught.value.reasons)
 
 

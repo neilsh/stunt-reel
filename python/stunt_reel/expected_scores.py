@@ -1,7 +1,7 @@
 """A film's parity score beside its committed expected score, and whether it drifted.
 
-``references.toml`` records, for each film and renderer class, the scores reached on a measured
-``crates/`` tree (``[<film>.expected.<class>]``, read by :mod:`stunt_reel.references`).
+``research/parity/expected/<class>.toml`` records, for each film and renderer class, the scores
+reached on a measured ``crates/`` tree (read by :mod:`stunt_reel.references`).
 :func:`comparison_line` words one report against the entry for its adapter's class: the
 expected SSIM and IoU, the SSIM delta, and a drift verdict or the reason there is none.  Drift
 is judged on SSIM alone, and only when the two scores compare: the report scored frames on the
