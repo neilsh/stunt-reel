@@ -34,3 +34,17 @@
   The primitive-index table is rejected not by score but by cost: it needs a wgpu feature and a second shader module, every world draw would have to pass its first triangle, and outlines would need a second, edge-keyed table.
   The local-windows GPU was not tested; the vertex-keyed table uses only core WGSL.
 - **Lives in**: [`attribution.md`](../../../research/parity/attribution.md) § 1 and its Ruled out list.
+
+## 2026-11-20: Every prop shape attributed on the seven references
+
+- **Question**: does looking a world prop's shape up in its vertex run leave the index plane and the scores unchanged, and how does the shape split change once no shape is capped?
+- **Method**: `mise run parity -- --software-only` on lavapipe (`llvmpipe`, Mesa 25.2.8): the branch at `2e18ca0` (`crates/` tree `b228018`), and `main` at `581d811` from its own worktree and release binary.
+  `mise run parity-residue` between the two render trees, and the two runs' `report.json` compared field by field.
+- **Result**: the index plane is unchanged: 0 differing ticks of 1320 (`ctry`), 3807 (`intro`), 1123 (`land`), 1179 (`balloon`), 1222 (`traintnl`), 3719 (`bomb`) and 8251 (`location`).
+  Every film's `mean_ssim_scored`, `mean_iou_scored` and `mean_loss_by_class_scored` equal `main`'s exactly (`ctry` 0.9188, `intro` 0.8621, `land` 0.8944, `balloon` 0.8172, `traintnl` 0.8635, `bomb` 0.8461, `location` 0.8383).
+  On the six films that place fewer than 511 shapes, `mean_loss_by_shape_scored` equals `main`'s exactly.
+  On `location`, the 532 shapes `main` attributed keep their figures, and 482 more carry the 0.0476714 that `main` left `unattributed` (56.8% of its `props` loss 0.0839), within 6e-10; no film has an `unattributed` key.
+  Each split sums to its `props` loss within 2e-7 (largest difference 1.03e-7, `ctry`).
+  `location`'s worst shape is now 1610 at 0.0035 (4.2%), and its ten worst hold 0.0161 (19.2%), against 0.0090 (10.7%) of the shapes `main` attributed; eight of the ten (1610, 1145, 1150, 613, 996, 1164, 1179, 1162) were among those `main` left out.
+- **Verdict**: adopted: the attribution changes and no pixel or score does.
+- **Lives in**: [`attribution.md`](../../../research/parity/attribution.md) § 2.
