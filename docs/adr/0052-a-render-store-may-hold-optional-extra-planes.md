@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed 2026-11-19 for [#774](https://github.com/neilsh/stunt-reel/issues/774), revised 2026-11-20 after the owner's review; awaits the owner's acceptance.
+accepted 2026-11-20 for [#774](https://github.com/neilsh/stunt-reel/issues/774) (proposed 2026-11-19, revised 2026-11-20 after the owner's review).
 Amends [ADR 0027](0027-renders-store-planes-in-per-second-zstd-chunks.md) and does not supersede it: the files ADR 0027 lists stay as it says, and a render directory may also hold the planes this record admits.
 
 ## Context
