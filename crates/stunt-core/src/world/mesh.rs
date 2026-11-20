@@ -523,9 +523,9 @@ impl Placed<'_> {
 /// The vertices it appends go to `prop_runs` under the placement's shape.
 ///
 /// A triangle is on the ground plane when its three corners lie on it
-/// ([`lies_on_ground_plane`]); its corners are then put exactly on it. Each range is a run of line triangles or of filled
-/// ones, in the mesh's order. A corner shared by the triangles appended stays shared, so
-/// outlines skip the edges inside.
+/// ([`lies_on_ground_plane`]); its corners are then put exactly on it.
+/// Each range is a run of line triangles or of filled ones, in the mesh's order.
+/// A corner shared by the triangles appended stays shared, so outlines skip the edges inside.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"

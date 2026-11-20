@@ -65,7 +65,7 @@ Each place we imitate `PLAYONE`'s order is a rule that says which surface is "la
   A line on a facet that is no decal stays in the base pass: flagging it too drew lines over a near wall in `BOMB` that the capture does not show ([`world-scene-residuals.md`](../playone-exe/world-scene-residuals.md) section 6.6).
   _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
 * **Between a prop and the terrain** (ADR 0035): a flat prop lying within 10 cm of the terrain is a decal of it.
-* **On the ground plane** (ADR 0045): the ocean, flat `MAP.BIN` patches and prop triangles on `y = base_y` are not depth-tested at all; they are painted first, in walk order, each over the last.
+* **On the ground plane** (ADR 0045): the ocean, flat `MAP.BIN` patches and prop triangles within 0.1 m of `y = base_y`, put on it, are not depth-tested at all; they are painted first, in walk order, each over the last.
 
 The first two draw the decal after its base with `LessEqual`, a bias toward the viewer and no depth write.
 A decal therefore wins any near-tie, not only the one against its own base, while still losing to anything clearly in front, as in the painter.
