@@ -21,15 +21,42 @@ impl ShadeLight {
     /// (`[Bounded Observation]`, `research/playone-exe/terrain-shade.md` section 4.2).
     pub const WORLD_0X2D: Self = Self([99, 32766, -17]);
 
-    /// The world light `PLAYONE` derives from film variable 13.
+    /// The world light `PLAYONE` derives from film variable 13, as the handler `0x196C`
+    /// computes it.
     ///
-    /// Only `0x002D` has been observed, and both `CTRY.FLM` and `INTRO.FLM` set it at tick 0.
-    /// How `0x196C`'s trig turns other values into a vector is open
-    /// (`research/playone-exe/terrain-shade.md`, open question 1), so every other value gets the
-    /// observed light.
+    /// With `a = variable_13 - 0x4000` and the fixed `b = 0x71C`, both looked up in
+    /// `PLAYONE`'s 4096-step sine table (`work:0x19AA`), it is `(cos a cos b, -sin a, -cos a sin b)` in Q15, each
+    /// product floored as `imul; shl ax, 1; rcl dx, 1` does: variable 13 is the sun's angle
+    /// from the zenith, turned about 10 degrees out of the `x`-`y` plane. A live break matched
+    /// it on `CTRY.FLM` (`0x002D`) and `BALLOON.FLM` (`0xF02D`)
+    /// (`research/playone-exe/terrain-shade.md` section 4.2).
     #[must_use]
-    pub const fn world(_variable_13: u16) -> Self {
-        Self::WORLD_0X2D
+    pub fn world(variable_13: u16) -> Self {
+        const SECOND_ANGLE: u16 = 0x71C;
+        let a = variable_13.wrapping_sub(0x4000) >> 4;
+        let b = SECOND_ANGLE >> 4;
+        let cos = |i: u16| i32::from(sin_q15(i.wrapping_add(1024)));
+        let sin = |i: u16| i32::from(sin_q15(i));
+        let q15 = |x: i32, y: i32| x.wrapping_mul(y) >> 15;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a Q15 product of two table words, and a negated table word, fit in i16"
+        )]
+        Self([
+            q15(cos(a), cos(b)) as i16,
+            sin(a).wrapping_neg() as i16,
+            q15(sin(b), cos(a)).wrapping_neg() as i16,
+        ])
+    }
+
+    /// The direction of the sun disc, `-L`, in `[I1]` axes and unit length: `0x908E` draws the
+    /// disc at the negated world light (`work:0x8078`), and DOS axes map to `[I1]` as
+    /// `(x, y, z) -> (-x, -y, z)`.
+    #[must_use]
+    pub fn sun_direction(self) -> [f32; 3] {
+        let [x, y, z] = self.0.map(f32::from);
+        let length = (x * x + y * y + z * z).sqrt().max(1.0);
+        [x / length, y / length, -z / length]
     }
 
     /// The light `PLAYONE` hands an actor drawn with the `[I1]` rotation `rotation_quat`, this
@@ -50,6 +77,25 @@ impl ShadeLight {
             reason = "clamped to the i16 range before the cast"
         )]
         Self(turned.map(|c| c.round().clamp(-32768.0, 32767.0) as i16))
+    }
+}
+
+/// `PLAYONE`'s sine table at `work:0x19AA`, 4096 steps to the turn, `1.0 = 32767`: the
+/// first half (`0..=2048`) is `32767 sin` rounded, the second half one more than the
+/// first's negation, read from the image (`research/playone-exe/terrain-shade.md` section 4.2).
+/// The cosine is the table a quarter turn on (`work:0x21AA`). `index` wraps at 4096.
+#[must_use]
+fn sin_q15(index: u16) -> i16 {
+    let index = index % 4096;
+    let half = |i: u16| (32767.0 * (f64::from(i) * std::f64::consts::TAU / 4096.0).sin()).round();
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "32767 times a sine, rounded, fits in i16"
+    )]
+    if index <= 2048 {
+        half(index) as i16
+    } else {
+        (1.0 - half(index.wrapping_sub(2048))) as i16
     }
 }
 
@@ -81,6 +127,31 @@ mod tests {
                 "{light:?}"
             );
         }
+    }
+
+    /// The light the handler `0x196C` stored on a live break: `CTRY.FLM` at variable 13 =
+    /// `0x002D`, `BALLOON.FLM` at `0xF02D` (`DS:0x49EC`, DOSBox-X, 2026-11-20).
+    #[test]
+    fn the_world_light_is_the_handlers_trig() {
+        assert_eq!(ShadeLight::world(0x002D), ShadeLight::WORLD_0X2D);
+        assert_eq!(ShadeLight::world(0xF02D), ShadeLight([-12259, 30310, 2147]));
+    }
+
+    /// Table words read from the image: the first half rounds `32767 sin`, the second is one
+    /// more than its negation.
+    #[test]
+    fn the_sine_table_matches_the_image() {
+        assert_eq!(
+            [1, 2, 1024, 2049, 2054, 3072, 4095, 4096].map(sin_q15),
+            [50, 101, 32767, -49, -301, -32766, -49, 0]
+        );
+    }
+
+    /// The sun disc sits at the negated light: near the zenith on `CTRY.FLM`.
+    #[test]
+    fn the_sun_is_up_when_the_light_is() {
+        let [_, y, _] = ShadeLight::WORLD_0X2D.sun_direction();
+        assert!(y > 0.9999);
     }
 
     /// An unrotated actor keeps the world light.

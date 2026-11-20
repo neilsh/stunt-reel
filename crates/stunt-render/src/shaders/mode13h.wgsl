@@ -13,6 +13,16 @@ struct CameraUniform {
     // view's depth (`squeeze_disc`).
     disc_depth_scale: f32,
     _pad1: f32,
+    // PLAYONE's sky for this view (sky.rs `SkyLayout`): band i + 1 lies where
+    // `dot(sky_normal, pixel) >= sky_thresholds[i]`.
+    sky_normal: vec2<f32>,
+    sky_edge_count: u32,
+    // Bit 0: the sun disc is drawn; bit 1: the last band fill covers it.
+    sky_flags: u32,
+    sky_thresholds: array<vec4<f32>, 4>,
+    sky_colours: array<vec4<u32>, 4>,
+    // The sun disc's centre pixel and radius.
+    sun_disc: vec4<i32>,
 };
 
 // SodVertex::flags bits of a line corner (contracts/shape/mod.rs VERTEX_FLAG_LINE*).
@@ -226,13 +236,11 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
     return out;
 }
 
-// Sky: PLAYONE paints the sky as bands of palette indices 238 (at the horizon) down to
-// 228 (high), selected by the sine of the view ray's elevation. The edges are the medians of
-// the band transitions measured in CTRY.FLM captures: 2.14, 2.77, 3.59, 4.61, 5.82, 7.27,
-// 9.23, 11.79, 15.75 and 20.23 degrees (research/formats/concepts/palette-and-shading.md).
-const SKY_EDGE_SIN = array<f32, 10>(
-    0.03734, 0.04833, 0.06262, 0.08037, 0.1014, 0.12655, 0.1604, 0.20433, 0.27144, 0.34579,
-);
+// Sky: PLAYONE paints the sky as band polygons of palette indices 224 to 238 and 0xD0, each
+// edge a straight screen line parallel to the horizon, and the sun as a flat disc of index 239
+// (crates/stunt-render/src/sky.rs, research/formats/concepts/palette-and-shading.md Sky Bands).
+// The CPU lays them out per view; the pass picks a pixel's band and tests the disc.
+const SUN_INDEX: u32 = 239u;
 
 struct SkyVertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -252,16 +260,39 @@ fn vs_sky(@builtin(vertex_index) vertex_index: u32) -> SkyVertexOutput {
     return out;
 }
 
+// Whether raster pixel `pixel` is in the sun disc: PLAYONE's rows run from `cy - r` to
+// `cy + r - 1`, row `i` from the centre spanning `round(sqrt(r^2 - i^2))` either side of `cx`
+// (0xCF39's span generator).
+fn in_sun_disc(pixel: vec2<i32>) -> bool {
+    let centre = camera.sun_disc.xy;
+    let r = camera.sun_disc.z;
+    let dy = pixel.y - centre.y;
+    let i = select(-1 - dy, dy, dy >= 0);
+    if (i >= r) {
+        return false;
+    }
+    let half = i32(floor(sqrt(f32(r * r - i * i)) + 0.5));
+    return abs(pixel.x - centre.x) <= half;
+}
+
 fn sky_index(ndc: vec2<f32>) -> u32 {
-    // The far-plane point under the pixel, eye-relative, is the view ray from the eye.
-    let far = camera.inv_rotation_proj * vec4<f32>(ndc, 1.0, 1.0);
-    let ray = far.xyz / far.w;
-    let sin_elevation = ray.y / length(ray);
-    var index = 238u;
-    for (var k = 0u; k < 10u; k = k + 1u) {
-        if (sin_elevation > SKY_EDGE_SIN[k]) {
-            index = 237u - k;
+    // The Mode 13h pixel under the fragment: line_half_ndc is half a pixel in NDC.
+    let raster = vec2<f32>(
+        (ndc.x + 1.0) * 0.5 / camera.line_half_ndc.x,
+        (1.0 - ndc.y) * 0.5 / camera.line_half_ndc.y,
+    );
+    let pixel = floor(raster);
+    let side = dot(camera.sky_normal, pixel);
+    var band = 0u;
+    for (var i = 0u; i < camera.sky_edge_count; i = i + 1u) {
+        if (side >= camera.sky_thresholds[i / 4u][i % 4u]) {
+            band = i + 1u;
         }
+    }
+    var index = camera.sky_colours[band / 4u][band % 4u];
+    let covered = (camera.sky_flags & 2u) != 0u && band == camera.sky_edge_count;
+    if ((camera.sky_flags & 1u) != 0u && !covered && in_sun_disc(vec2<i32>(pixel))) {
+        index = SUN_INDEX;
     }
     return index;
 }

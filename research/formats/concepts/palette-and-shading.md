@@ -1,5 +1,5 @@
 ---
-summary: "[I3] palette model: DAC scalings, palettes 0x8042 and 0x801E, colour groups and 32-level ramps, an unlit ground, `SHADES` lit by film variable 13's light, sky bands 227-238, 256x32 LUT."
+summary: "[I3] palette model: DAC scalings, palettes 0x8042 and 0x801E, colour groups and 32-level ramps, an unlit ground, `SHADES` lit by film variable 13's light, the sky drawer's bands 224-238, 256x32 LUT."
 sidebar_label: "Palette, shading ramps & VGA"
 ---
 # Stunt Island Technical Reference: Palette Architecture, Shading Ramps & VGA Color Management
@@ -183,23 +183,31 @@ Full brightness is best and dimming is worse, so the ground takes no sun-derived
 _Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
 
 #### Sky Bands
-`[Bounded Observation]` The sky is not one colour: it is straight, parallel bands of palette indices, tilted with the camera roll, 238 at the horizon through 228 high up (11 bands), each at a stable view-ray elevation.
-Median elevation of the band transitions (1,200 to 1,600 per edge, interquartile range about 0.5 to 1.3 degrees): 2.14, 2.77, 3.59, 4.61, 5.82, 7.27, 9.23, 11.79, 15.75, 20.23 degrees.
-Successive edges grow by about 1.28 (1.25 to 1.34), so the bands are roughly geometric in elevation.
-Index 228 holds to the highest elevation seen (23.4 degrees); below the first edge, including below the horizon, index 238.
+`[Established]` for the law, read from the sky drawer `0x8C45` (`0824:0A05`) and its helpers, and matched live on `BALLOON.FLM` (below).
+Before the scene, `PLAYONE` paints the view with up to 16 flat polygons: sky bands of indices 224 to 238 and, below the last, `0xD0` (208).
+Their edges are 15 points it projects straight ahead in heading: edge `j` (0 to 14) passes through `j · 1024` along the unit horizontal of the view's depth row and `2048 - 128 j` up (`0x8E02`, accumulators `work:0x41B0..0x41B4` stepped by `0x41B6`, `0x80`, `0x41BA`), so its elevation is `atan((16 - j) / 8j)`:
 
-**Index 227 is a band too.**
-`CTRY.FLM` never uses 227, but 27 of 213 `INTRO.FLM` frames (32,194 pixels) and 4 of 30 `COL3-2.FLM` frames (1,284 pixels) do, above 228.
-Parity treats 227 to 238 as sky (`CAPTURE_SKY_INDICES` in `crates/stunt-score/src/parity/mask.rs`).
-Whether 227 is the top band of the same law is `[Unknown]`, as is behaviour above 23.4 degrees and for 224 to 226.
-Captures show 224 to 226 as zenith sky and as shape paint, so parity counts them as sky only by position ([`method.md`](../../parity/method.md) section 2.0).
-Index 239 is not a band: it is the sun disc, one flat index drawn at the var-13 direction ([`palette-fade.md` § 3.2](../../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)), which the renderer does not draw.
-The horizon sky index is film-specific (first-frame sky is 229 in `INTRO.FLM`, 233 in `CTRY.FLM`).
+| Edge `j` | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Elevation (degrees) | 90 | 61.9 | 41.2 | 28.4 | 20.6 | 15.4 | 11.8 | 9.1 | 7.1 | 5.6 | 4.3 | 3.3 | 2.4 | 1.7 | 1.0 |
 
-A pixel-exact classifier with a fixed geometric law reaches only 65 to 75% per frame, and per-frame pitch shifts of up to 1.4 degrees (mean 0.05, sd 0.95) help little, so the residual is our camera's per-tick error and the transition medians are an empirical table, not an exact rule.
-The renderer paints the sky first in each pass (`vs_sky`, `fs_sky`, `fs_sky_plane` in `mode13h.wgsl`): a fullscreen triangle turns each pixel into a view ray from the eye through `CameraUniform::inv_rotation_proj` (the view's rotation and projection, no translation: the ray is eye-relative), takes the sine of its elevation and picks the band index.
-Effect: `mean_ssim_scored` 0.766 to 0.769, index agreement 0.390 to 0.470, mask IoU unchanged at 0.853.
-_Found 2026-10-22 (227 on 2026-10-23); see the [parity log](../../../work/2026-10/parity-log/log.md)._
+* **Each edge is a straight screen line parallel to the horizon**, through the edge point's projection, perpendicular to the screen direction of world vertical (the two screen rows' vertical components `work:0x80C2`, `0x80C8`, halved until the larger is at most `0x200`, give the segment's half-length).
+  It is not the curve of constant elevation, so off the heading a band edge sits at a lower elevation than its table value, and the curvature our old per-pixel elevation rule drew never appears.
+* **The walk** goes from the zenith down.
+  It skips edges until one is on screen: an edge is off when its depth word is under `0x100` (the depth row is shifted right by the lens shift `work:0x810C`) or its segment misses the view (`0xBBF3`).
+  The screen beyond the first edge on screen takes colour `224 + j` of that edge; each later edge starts colour `224 + j + 1`; the first edge off screen after that ends the walk, its own colour `224 + j` filling the rest; a walk that draws edge 14 fills below it with `0xD0` (`0x8E6C`, colour `0xEF - k` with `k = 15 - j`, and `0xD0` at `k = 0`).
+  So 224 is the sky beyond the zenith, 225 to 227 the bands from 90 down to 28.4 degrees, 228 to 238 the rest, and `0xD0` the strip below 1.0 degree.
+* **With no edge on screen** the view is one fill: 224 when the view looks up (the depth row's vertical component points up, `0x8DF2`), `0xD0` when it looks down; a view whose screen rows have no vertical component at all takes the same fill (`0x8DCC`).
+* **Rows**: an edge's row belongs to the band below it, since each fill spans the rows from the previous edge to one above this edge (`0x8EB2`).
+* **The sun** is drawn after the bands, or before the `0xD0` fill when the walk reached edge 14, which covers it; never in a view looking down with no edge on screen ([`palette-fade.md` § 3.2](../../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
+
+`[Bounded Observation]` for the live match: on `BALLOON.FLM`, Patch #3, DOSBox-X 2026.10.01, a model of this walk fed the view matrix logged at the loop start `0x8D36` reproduced the edge rows (`0x8D64`) and fill colours (`0x8E86`) of all 17 frames logged in full, ticks 223 to 267, to the pixel.
+It also accounts for the `vault-balloon` capture: ticks 12 to 200 are all 224 because the view (76.6 degrees up, zoom 1.9) has the zenith edge above the screen and edge 1 below it, and ticks 276 to 298 are all 208 because the view looks down with no edge on screen.
+The edge medians measured earlier on `CTRY.FLM` captures through our camera (2.14 to 20.23 degrees, 238 at the horizon to 228) are edges 13 to 4.
+Captures show 224 to 226 as shape paint too, so parity counts them as sky only by position ([`method.md`](../../parity/method.md) section 2.0).
+_Source: [the sky drawer, the sun disc and the var-13 light read live on BALLOON](../../../work/2026-11/617_zenith-bands-sun-disc/journal.md#2026-11-20-the-sky-drawer-the-sun-disc-and-the-var-13-light-read-live-on-balloon)._
+
+The renderer lays the walk out per view on the CPU from its own camera (`crates/stunt-render/src/sky.rs`) and the sky pass picks each pixel's band and tests the disc (`sky_index` in `mode13h.wgsl`), at the same pixel rules.
 
 ### 3.3 The Modern GPU Palette Lookup Texture (LUT)
 

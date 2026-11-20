@@ -30,6 +30,7 @@ mod outline;
 mod palette;
 mod pipeline;
 mod scene_renderer;
+mod sky;
 
 pub use camera::{
     ASPECT_4_3, CameraController, CameraMode, CameraUniform, FreeCamState,
