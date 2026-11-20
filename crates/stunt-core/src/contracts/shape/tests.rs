@@ -21,6 +21,7 @@ fn decode_record_keeps_stream_provenance() {
         stepped_over: vec![stop],
         returned_at: Some(52),
         bank_operands: vec![0x14, 0x18],
+        collision: ShapeCollision::default(),
     };
     let mut ir = SodModelIr::new("DECODED");
     ir.set_decode(record);
@@ -30,4 +31,6 @@ fn decode_record_keeps_stream_provenance() {
     assert_eq!(attached.stepped_over, vec![stop]);
     assert_eq!(attached.returned_at, Some(52));
     assert_eq!(attached.bank_operands, [0x14, 0x18]);
+    assert_eq!(ir.collision(), Some(&ShapeCollision::default()));
+    assert_eq!(SodModelIr::new("AUTHORED").collision(), None);
 }

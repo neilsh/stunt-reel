@@ -1,5 +1,5 @@
 ---
-summary: "`.SOD` model bytecode ([FMT-SOD-HEADER]): 0x000C magic, 10-byte header, power-of-two scale table (indices 18 and 19 seen in corpus), VM overview, coplanar decal rule, `OP_IFVIS` as a facing gate."
+summary: "`.SOD` model bytecode ([FMT-SOD-HEADER]): 0x000C magic, 10-byte header, power-of-two scale table (indices 18 and 19 seen in corpus), the collision list the header word at byte 8 points to (cubes, boxes and planes the ground and collision probe walks; 1,279 of the 2,516 stock shapes have one), VM overview, coplanar decal rule, `OP_IFVIS` as a facing gate."
 sidebar_label: ".SOD geometry & bytecode"
 ---
 # Technical Reference Specification: Stunt Island `.SOD` 3D Geometry & Bytecode Format
@@ -45,7 +45,7 @@ Every `.SOD` bytecode stream begins with an immutable **10-byte header**, follow
 | 0x0004 - 0x0005   | int16 (LE)        | ground_y_offset: Vertical placement adj |
 | 0x0006            | uint8             | scale_index: Power-of-2 scale (0..19 in corpus) |
 | 0x0007            | uint8             | header_flags: Bit 0 = faces the view    |
-| 0x0008 - 0x0009   | uint16 (LE)       | collision_meta: Collision & type flags  |
+| 0x0008 - 0x0009   | uint16 (LE)       | collision_meta: collision-list offset   |
 | 0x000A - EOF      | uint8[]           | Bytecode Instruction Stream             |
 +-------------------+-------------------+-----------------------------------------+
 ```
@@ -94,6 +94,30 @@ The metric coordinate conversion per Invariant `[I1]` is:
 $$X_{\text{metric}} = X_{\text{raw}} \times S_k$$
 $$Y_{\text{metric}} = (Y_{\text{raw}} + \text{ground\_y\_offset}) \times S_k$$
 $$Z_{\text{metric}} = Z_{\text{raw}} \times S_k$$
+
+### 2.3 Collision List
+
+`[Established]` for what the probe's walk reads, static, from the unpatched load image; nothing here has been run.
+`collision_meta` is the offset of the shape's collision list, 0 for none, which `PLAYONE`'s ground and collision probe `0x240A` walks at each object node it reaches (`0x257A`; [`playone-exe/scene-walk-actors.md`](../playone-exe/scene-walk-actors.md) § 3 and § 5, [`playone-exe/sod-vm-frame.md`](../playone-exe/sod-vm-frame.md) section 9.1).
+`PLAYONE` loads the file two bytes into the shape's segment, so this offset, and every list offset inside the list, is two more than the file offset.
+A list is a run of records, each a type word and its words, ended by the type word `0xFFFF`; the byte layout is [`sod.ksy`](sod.ksy).
+Position words are in the shape's units and DOS axes (`y` down), and the handlers shift them right by the shape's scale less the probe's own shift (`DS:0x2290`):
+
+* **Type 0, a cube** (12 bytes): its centre in `+2`, `+4`, `+6` and its half-size in `+8`, to which the handler adds 1.
+  The test `0x2F8E` widens it by the actor's extent and misses it only when the actor's previous and current positions both lie beyond the same face.
+* **Type 2, a box** (16 bytes): its least and greatest `x`, `y` and `z` in `+2..+0xC`, tested by `0x3047` at the same two positions, and a code in `+0xE`: 0 plain, 1 to 7 a bucket, 8 the top that sets the shadow's height, and above 8 the offset of a nested list.
+* **Type 4, a plane** (12 bytes): its normal in `+2`, `+4`, `+6`, not shifted, and its offset in `+8`; the test `0x3104` reads the actor's current position alone.
+
+A cube or a plane leads to a nested list at `+0xA` when that word is nonzero.
+A cube or plane with none, or a box coded 0, that the actor overlaps ends the walk with a carry when the actor's shape has no list of its own.
+_Source: [the collision records' fields](../../work/2026-11/727_placement-record/journal.md#2026-11-19-the-collision-records-fields-read-statically-and-decoded-over-the-stock-shapes)._
+
+`[Bounded Observation]`, one static decode of the 2,516 stock shapes (`SUPERSET.ALL`): the 1,279 shapes with a list hold 1,978 lists, 699 of them nested, each named by one record and none leading back to itself, and every list ends at its `0xFFFF` word.
+They hold 3,781 boxes, 333 cubes and 173 planes; 535 boxes in 207 shapes are coded 8, and every plane's normal has a length within 2 of 32,768.
+`sod.ksy` reads the same counts from the same shapes.
+_Source: [the collision records' fields](../../work/2026-11/727_placement-record/journal.md#2026-11-19-the-collision-records-fields-read-statically-and-decoded-over-the-stock-shapes)._
+
+The Rust decode is `decode_collision` in [`sod/collision.rs`](../../crates/stunt-core/src/sod/collision.rs), which every `decode_sod` runs into the decode record's `collision`; the world keeps each placed shape's lists in its placement records ([`world/placed.rs`](../../crates/stunt-core/src/world/placed.rs)).
 
 ---
 

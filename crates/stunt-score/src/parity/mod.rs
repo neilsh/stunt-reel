@@ -31,13 +31,13 @@
 //! run by `film_tick` (see `report_diff::compare_reports`), so a change is judged frame by frame
 //! rather than only by the means.
 
-mod args;
 mod compare;
 mod fade;
 mod frames;
 mod loss;
 mod mask;
 mod matched;
+mod options;
 mod report;
 mod report_diff;
 #[cfg(test)]
@@ -55,7 +55,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use args::Args;
 use compare::run_compare;
 use fade::fade_reference_set;
 use frames::{load_render_frame, read_index_plane};
@@ -70,7 +69,7 @@ use stunt_parity::{CapturedFrame, FilmCheck, FilmField, FilmId, RenderAdapter};
 use crate::parity_artifacts;
 use crate::render_store::RenderStore;
 
-pub use args::usage;
+pub use options::{DEFAULT_MIN_FADE_LEVEL, Options};
 
 /// `[I6]` initial acceptance threshold on the scored mean SSIM.
 const I6_INITIAL_SSIM: f32 = 0.88;
@@ -411,8 +410,7 @@ fn print_summary(report: &Report, min_fade_level: f32) {
 /// # Errors
 ///
 /// A message for the terminal when the inputs cannot be read or an output cannot be written.
-pub fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
-    let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
+pub fn run(args: &Options) -> Result<(), String> {
     fs::create_dir_all(&args.output)
         .map_err(|e| format!("create output directory {}: {e}", args.output.display()))?;
 
@@ -484,7 +482,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
     print_summary(&report, args.min_fade_level);
 
     if let Some(previous_path) = &args.compare {
-        run_compare(&args, previous_path, &report, &ReportFrames::new(frames))?;
+        run_compare(args, previous_path, &report, &ReportFrames::new(frames))?;
     }
     Ok(())
 }

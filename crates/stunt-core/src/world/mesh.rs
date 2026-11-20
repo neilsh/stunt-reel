@@ -629,11 +629,7 @@ mod tests {
         prop_ir.indices = vec![0, 1, 2, 0, 1, 2];
         ir_models.insert(0x0100, prop_ir);
 
-        let instances = [Placement {
-            shape: 0x0100,
-            position: [100.0, 50.0, 200.0],
-            chain: 0,
-        }];
+        let instances = [Placement::bare(0x0100, [100.0, 50.0, 200.0], 0)];
         let surface = TerrainSurface::new(&pts, &map_areas, 0.0);
         let world_ir = build_world_ir(
             &pts,
@@ -714,11 +710,7 @@ mod tests {
     /// Without `MAP.BIN` the world is the ocean quad, then a flat ground quad.
     #[test]
     fn prop_slots_number_the_distinct_shapes_by_placement_count_up_to_the_cap() {
-        let at = |shape: u16| Placement {
-            shape,
-            position: [0.0; 3],
-            chain: 0,
-        };
+        let at = |shape: u16| Placement::bare(shape, [0.0; 3], 0);
         // Shape 7 is placed twice, 30 and 9 once each; 30 was placed first.
         let placements = [at(30), at(7), at(9), at(7)];
         let slots = prop_shape_slots(&placements);
@@ -794,11 +786,7 @@ mod tests {
             &pts,
             &areas,
             &surface,
-            &[Placement {
-                shape: 0x0391,
-                position: at,
-                chain: 0,
-            }],
+            &[Placement::bare(0x0391, at, 0)],
             &PropModels::shared(&models),
             0.0,
         )
@@ -906,11 +894,7 @@ mod tests {
             &pts,
             &areas,
             &surface,
-            &[Placement {
-                shape: 0x0391,
-                position: [60.0, 0.0, 20.0],
-                chain: 0,
-            }],
+            &[Placement::bare(0x0391, [60.0, 0.0, 20.0], 0)],
             &PropModels::shared(&models),
             0.0,
         );

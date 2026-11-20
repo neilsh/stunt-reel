@@ -95,7 +95,7 @@ _Source: [the CTRY tick 871 explosion replayed](../../work/2026-11/721_ctry-871-
 
 ## 5. Which Shapes Carry Buckets
 
-`[Bounded Observation]`, one static census of the game's own shapes: the 2,516 shapes of the stock `RES` files (`SUPERSET.ALL`; FreeFlight's six `SCENERY*.RES` are byte-identical to the game's), every box their collision lists reach, nested lists included, read as the probe's object walk `0x2886..0x289E` reads them (record types and sizes: the tables at `DGROUP:0x09FC` in [`memory-map.md`](memory-map.md)); nothing was run.
+`[Bounded Observation]`, one static census of the game's own shapes: the 2,516 shapes of the stock `RES` files (`SUPERSET.ALL`; FreeFlight's six `SCENERY*.RES` are byte-identical to the game's), every box their collision lists reach, nested lists included, read as the probe's object walk `0x2886..0x289E` reads them (record types and sizes: the tables at `DGROUP:0x09FC` in [`memory-map.md`](memory-map.md); each record's words: [`sod.md` § 2.3](../formats/sod.md#23-collision-list)); nothing was run.
 The list starts at the shape segment's word `+0xA`, the `.SOD` header's `collision_meta` ([`sod.md`](../formats/sod.md)), an offset that counts from two bytes before the file's first byte: read so, all 1,279 lists end at a type word `0xFFFF`; read as a file offset, none does.
 Types 0 and 4 (12 bytes) lead to a nested list at `+0xA` when that word is nonzero (`0x2922`, `0x295D`, `0x2AD3`, `0x2B0E`); type 2 (16 bytes) carries § 3's code word at `+0xE`.
 A code records only in the walk's first context, the table `0x09FC` (`0x2979`).
@@ -129,5 +129,6 @@ _Source: [the collision-code census](../../work/2026-11/721_ctry-871-replay/jour
   § 5 leaves out the shapes of `corpus/siarchive` beyond FreeFlight, which only `local-windows` holds, and the display-list branches `sod-trace` does not take.
 * **The renderer** ([#737](https://github.com/neilsh/stunt-reel/issues/737)).
   `stunt-render` draws the world in one depth-tested pass; drawing each actor at its leaf's place in the partition order needs the scenery's planes at draw time.
+  The world's placement records keep each prop's node and the partition steps above it with their plane words ([`world/placed.rs`](../../crates/stunt-core/src/world/placed.rs)); the actor's own walk and the split of the props around it are not built.
 * **Live check.**
   No breakpoint has confirmed a pending list, a split or a bucket push at run time.

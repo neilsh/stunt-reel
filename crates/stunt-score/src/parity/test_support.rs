@@ -11,7 +11,7 @@ use stunt_parity::{
 };
 
 use super::mask::is_capture_sky;
-use super::run;
+use super::{Options, run};
 use crate::parity_artifacts::write_render_record;
 use crate::render_store::{INDEX_FILE, LAYER_FILE, PALETTE_FILE, Palette, StoreWriter};
 
@@ -222,15 +222,11 @@ pub(super) fn write_version_1_render(dir: &Path) {
 }
 
 pub(super) fn run_parity(reference: &Path, test: &Path, output: &Path) -> Result<(), String> {
-    run(vec![
-        "--reference".to_string(),
-        reference.display().to_string(),
-        "--test".to_string(),
-        test.display().to_string(),
-        "--output".to_string(),
-        output.display().to_string(),
-    ]
-    .into_iter())
+    run(&Options::new(
+        reference.to_path_buf(),
+        test.to_path_buf(),
+        output.to_path_buf(),
+    ))
 }
 
 pub(super) fn read_report(output: &Path) -> Value {

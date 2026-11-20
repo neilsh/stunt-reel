@@ -9,6 +9,7 @@ use crate::sod::{ShadeLight, faces_view};
 
 use super::map_bin::parse_map_bin;
 use super::mesh::{PropModels, build_world_ir, lod_condition, prop_shape_slots};
+use super::placed::PlacementRecords;
 use super::scenery::{LodGate, Placement, ScnStop, place_props, reaches_a_pixel};
 use super::tap_props::{TapFailure, anchored_models};
 use super::terrain::{GroundPlane, TerrainSurface};
@@ -77,6 +78,9 @@ pub struct World {
     /// `prop_shapes[n]` carry `SodVertex::prop_slot` `n + 1`. At most 511 distinct shapes, the
     /// most placed first; a prop of a later one has slot 0.
     pub prop_shapes: Vec<u16>,
+    /// A record of each placement the scenery walk and dedup leave, culled ones included,
+    /// in walk order: its node and partition path in the tree and its shape's collision lists.
+    pub placements: PlacementRecords,
 }
 
 /// A prop drawn turned with the camera's heading rather than baked into the world mesh.
@@ -125,7 +129,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         return None;
     }
 
-    let placements = inputs.scenery.map_or_default(|bytes| {
+    let mut placements = inputs.scenery.map_or_default(|bytes| {
         place_props(
             bytes,
             shapes,
@@ -157,12 +161,14 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
     };
     let mut kept = Vec::with_capacity(fixed.len());
     let mut kept_own = HashMap::new();
+    let mut fixed_drawn = Vec::with_capacity(fixed.len());
     for (index, p) in fixed.into_iter().enumerate() {
         let anchored = own.remove(&index);
         let shows = match &anchored {
             Some(model) => visible(model.as_ref(), false, &p),
             None => visible(shapes.get(&p.shape), true, &p),
         };
+        fixed_drawn.push(shows);
         if shows {
             if let Some(model) = anchored {
                 kept_own.insert(kept.len(), model);
@@ -170,10 +176,22 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
             kept.push(p);
         }
     }
+    let facing_drawn: Vec<bool> = facing
+        .iter()
+        .map(|p| visible(shapes.get(&p.shape), true, p))
+        .collect();
     let facing: Vec<Placement> = facing
         .into_iter()
-        .filter(|p| visible(shapes.get(&p.shape), true, p))
+        .zip(&facing_drawn)
+        .filter_map(|(p, &shows)| shows.then_some(p))
         .collect();
+    let drawn = interleave_drawn(&placements.props, shapes, &fixed_drawn, &facing_drawn);
+    let records = PlacementRecords::new(
+        &placements.props,
+        std::mem::take(&mut placements.steps),
+        shapes,
+        &drawn,
+    );
     let props_placed = kept.len().saturating_add(facing.len());
     let view_facing = facing_props(&facing, &placements.chains, base_y);
     let fixed = kept;
@@ -198,7 +216,31 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         tap_failures,
         view_facing,
         prop_shapes,
+        placements: records,
     })
+}
+
+/// Whether each of `props` is drawn, in their order, from the flags of the props that do not
+/// face the view (`fixed`) and of those that do (`facing`), each in walk order as
+/// [`split_view_facing`] parts them.
+fn interleave_drawn(
+    props: &[Placement],
+    shapes: &HashMap<u16, SodModelIr>,
+    fixed: &[bool],
+    facing: &[bool],
+) -> Vec<bool> {
+    let (mut fixed, mut facing) = (fixed.iter(), facing.iter());
+    props
+        .iter()
+        .map(|p| {
+            let flags = if shapes.get(&p.shape).is_some_and(faces_view) {
+                &mut facing
+            } else {
+                &mut fixed
+            };
+            flags.next().copied().unwrap_or(false)
+        })
+        .collect()
 }
 
 /// `props` split into those whose shape faces the view and the rest, each in walk order.
@@ -322,11 +364,7 @@ mod tests {
             .collect();
         let tree = decode_sod(&bytes, "TREE", None, DecodeMode::Strict).expect("decode tree");
         let shapes = HashMap::from([(0x3A3, tree), (0x100, square_prop(None))]);
-        let at = |shape, x, chain| Placement {
-            shape,
-            position: [x, 0.0, 0.0],
-            chain,
-        };
+        let at = |shape, x, chain| Placement::bare(shape, [x, 0.0, 0.0], chain);
         let gate = LodGate {
             raw: [10, -20, 30],
             ext: 400,

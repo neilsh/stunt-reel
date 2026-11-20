@@ -5,6 +5,7 @@ use std::fs;
 use serde_json::json;
 use stunt_parity::{AdapterClass, FilmId, RenderAdapter};
 
+use super::Options;
 use super::loss::LOSS_CLASSES;
 use super::score::FrameMetrics;
 use super::test_support::{
@@ -609,7 +610,7 @@ fn run_identified(
     render: &FilmId,
     waive: bool,
 ) -> (TempDir, Result<(), String>) {
-    run_identified_with(name, capture, render, waive, &[])
+    run_identified_with(name, capture, render, waive, |_| {})
 }
 
 fn run_identified_with(
@@ -617,25 +618,16 @@ fn run_identified_with(
     capture: &FilmId,
     render: &FilmId,
     waive: bool,
-    extra: &[&str],
+    extra: impl FnOnce(&mut Options),
 ) -> (TempDir, Result<(), String>) {
     let tmp = TempDir::new(name);
     write_reference(&tmp.join("ref"), &[7], true);
     write_render(&tmp.join("test"), &[7]);
     identify(&tmp.join("ref"), &tmp.join("test"), capture, render);
-    let mut args = vec![
-        "--reference".to_string(),
-        tmp.join("ref").display().to_string(),
-        "--test".to_string(),
-        tmp.join("test").display().to_string(),
-        "--output".to_string(),
-        tmp.join("out").display().to_string(),
-    ];
-    if waive {
-        args.push("--waive-archive-conflict".to_string());
-    }
-    args.extend(extra.iter().map(|a| (*a).to_string()));
-    let result = super::run(args.into_iter());
+    let mut options = Options::new(tmp.join("ref"), tmp.join("test"), tmp.join("out"));
+    options.waive_archive_conflict = waive;
+    extra(&mut options);
+    let result = super::run(&options);
     (tmp, result)
 }
 
@@ -715,8 +707,9 @@ fn a_capture_without_an_archive_hash_scores_and_says_the_archive_was_not_checked
 fn the_report_records_the_crates_tree_it_was_given() {
     let both = film("CTRY.FLM", 100, "aa", Some("a1a1"));
     let tree = "9fefa9ea41d4db760901118fcd0fab22d8b946ea";
-    let (tmp, result) =
-        run_identified_with("crates_given", &both, &both, false, &["--crates", tree]);
+    let (tmp, result) = run_identified_with("crates_given", &both, &both, false, |options| {
+        options.crates = Some(tree.to_string());
+    });
     result.expect("parity runs");
     assert_eq!(read_report(&tmp.join("out"))["crates"], tree);
 }
@@ -735,13 +728,10 @@ fn the_report_records_the_reference_pins_it_was_given() {
     let both = film("CTRY.FLM", 100, "aa", Some("a1a1"));
     let sha = "1".repeat(64);
     let all = "2".repeat(64);
-    let (tmp, result) = run_identified_with(
-        "pins_given",
-        &both,
-        &both,
-        false,
-        &["--sha256", sha.as_str(), "--all-sha256", all.as_str()],
-    );
+    let (tmp, result) = run_identified_with("pins_given", &both, &both, false, |options| {
+        options.sha256 = Some(sha.clone());
+        options.all_sha256 = Some(all.clone());
+    });
     result.expect("parity runs");
     let report = read_report(&tmp.join("out"));
     assert_eq!(report["sha256"], sha);

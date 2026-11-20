@@ -13,10 +13,10 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::run;
 use super::test_support::{
     Picture, TempDir, run_parity, write_reference, write_render, write_render_store,
 };
+use super::{Options, run};
 
 /// One documented key: its type word, whether null is allowed, whether it may be absent.
 #[derive(Debug)]
@@ -140,31 +140,18 @@ fn generate(tmp: &TempDir) -> (Value, Value, Value) {
         &[(7, 0x8000, Picture::Grey), (12, 0x8000, Picture::Matching)],
     );
     run_parity(&tmp.join("ref"), &previous, &tmp.join("base")).expect("baseline");
-    let base_report = tmp.join("base").join("report.json").display().to_string();
-    let compare = |out: &str, extra: &[String]| {
-        let mut argv = vec![
-            "--reference".to_string(),
-            tmp.join("ref").display().to_string(),
-            "--test".to_string(),
-            current.display().to_string(),
-            "--output".to_string(),
-            tmp.join(out).display().to_string(),
-            "--compare".to_string(),
-            base_report.clone(),
-        ];
-        argv.extend_from_slice(extra);
-        run(argv.into_iter()).expect("parity --compare runs");
+    let base_report = tmp.join("base").join("report.json");
+    let compare = |out: &str, previous_render: Option<&Path>, noise_sigma: Option<f32>| {
+        let options = Options {
+            compare: Some(base_report.clone()),
+            compare_test: previous_render.map(Path::to_path_buf),
+            noise_sigma,
+            ..Options::new(tmp.join("ref"), current.clone(), tmp.join(out))
+        };
+        run(&options).expect("parity --compare runs");
     };
-    compare("plain", &[]);
-    compare(
-        "judged",
-        &[
-            "--compare-test".to_string(),
-            previous.display().to_string(),
-            "--noise-sigma".to_string(),
-            "0.002".to_string(),
-        ],
-    );
+    compare("plain", None, None);
+    compare("judged", Some(&previous), Some(0.002));
     (
         read_json(&tmp.join("judged").join("report.json")),
         read_json(&tmp.join("plain").join("compare.json")),
