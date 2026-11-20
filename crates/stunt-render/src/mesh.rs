@@ -11,6 +11,7 @@
 
 use std::ops::Range;
 
+use crate::outline::Outlined;
 use glam::{Mat4, Vec3};
 use stunt_core::contracts::{
     CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
@@ -207,8 +208,20 @@ pub struct GpuModel {
 
 impl GpuModel {
     /// Uploads a `SodModelIr` into GPU buffers.
+    ///
+    /// Each vertex's apex ([`Outlined`]) is its own position, so no line corner is culled.
     pub fn from_ir(device: &wgpu::Device, queue: &wgpu::Queue, ir: &SodModelIr) -> Self {
-        Self::upload(device, queue, ir, None)
+        Self::upload(device, queue, ir, &own_positions(ir), None)
+    }
+
+    /// Uploads an outlined shape with its apexes, so its outline corners cull with the
+    /// triangles their edges bound.
+    pub(crate) fn from_outlined(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        shape: &Outlined,
+    ) -> Self {
+        Self::upload(device, queue, &shape.ir, &shape.apex, None)
     }
 
     /// Like [`Self::from_ir`], and gives each mesh slice its outline for [`Self::draw_edges`]:
@@ -226,7 +239,13 @@ impl GpuModel {
         outlined: fn(&SodVertex) -> bool,
         marks: &[u32],
     ) -> Self {
-        Self::upload(device, queue, ir, Some((outlined, marks)))
+        Self::upload(
+            device,
+            queue,
+            ir,
+            &own_positions(ir),
+            Some((outlined, marks)),
+        )
     }
 
     /// Uploads `ir`; `outlined` is [`Self::from_ir_outlined`]'s filter and marks.
@@ -234,6 +253,7 @@ impl GpuModel {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ir: &SodModelIr,
+        apex: &[[f32; 3]],
         outlined: Option<Outlines<'_>>,
     ) -> Self {
         let limit = device.limits().max_buffer_size;
@@ -275,7 +295,7 @@ impl GpuModel {
             .iter()
             .zip(&edges)
             .enumerate()
-            .map(|(n, (chunk, edges))| GpuChunk::upload(device, queue, ir, n, chunk, edges))
+            .map(|(n, (chunk, edges))| GpuChunk::upload(device, queue, ir, apex, n, chunk, edges))
             .collect();
 
         // Translate nodes into GpuNode flat arena
@@ -313,23 +333,24 @@ impl GpuModel {
         }
     }
 
-    /// Overwrites the vertices with `ir`'s, keeping the indices, nodes and slices, and returns
-    /// true; returns false, writing nothing, when `ir`'s vertex or index count differs from
+    /// Overwrites the vertices and apexes with `shape`'s, keeping the indices, nodes and slices, and returns
+    /// true; returns false, writing nothing, when `shape`'s vertex or index count differs from
     /// the uploaded model's.
     ///
-    /// `ir` must have the indices and nodes the model was uploaded from: only the counts are
+    /// `shape` must have the indices and nodes the model was uploaded from: only the counts are
     /// checked here, and other indices at equal counts would bind triangles to the wrong
     /// vertices. For a model whose geometry stays and whose vertex attributes change, such as
     /// an actor's shape decoded under another light: it costs one buffer write per chunk
     /// instead of a new model's buffers.
-    pub fn rewrite_vertices(&self, queue: &wgpu::Queue, ir: &SodModelIr) -> bool {
+    pub(crate) fn rewrite_vertices(&self, queue: &wgpu::Queue, shape: &Outlined) -> bool {
+        let ir = &shape.ir;
         if arena_index(ir.vertices.len()) != self.vertex_count
             || arena_index(ir.indices.len()) != self.index_count
         {
             return false;
         }
         for chunk in &self.chunks {
-            chunk.rewrite_vertices(queue, &ir.vertices);
+            chunk.rewrite_vertices(queue, &ir.vertices, &shape.apex);
         }
         true
     }
@@ -455,6 +476,7 @@ impl GpuModel {
             let chunk = &self.chunks[mesh.chunk as usize];
             if bound != Some(mesh.chunk) {
                 rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                rpass.set_vertex_buffer(1, chunk.apex_buffer.slice(..));
                 rpass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 if let Some(runs) = &chunk.prop_runs {
                     rpass.set_bind_group(PROP_RUNS_GROUP, runs, &[]);
@@ -483,6 +505,7 @@ impl GpuModel {
             let chunk = &self.chunks[mesh.chunk as usize];
             if bound != Some(mesh.chunk) {
                 rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                rpass.set_vertex_buffer(1, chunk.apex_buffer.slice(..));
                 rpass.set_index_buffer(chunk.edges.slice(..), wgpu::IndexFormat::Uint32);
                 if let Some(runs) = &chunk.prop_runs {
                     rpass.set_bind_group(PROP_RUNS_GROUP, runs, &[]);
@@ -603,6 +626,8 @@ fn plan_edges(
 pub struct GpuChunk {
     /// Vertex buffer of the chunk.
     pub vertex_buffer: wgpu::Buffer,
+    /// Each vertex's apex ([`Outlined`]), the second vertex stream, in `vertex_buffer`'s order.
+    pub apex_buffer: wgpu::Buffer,
     /// 32-bit index buffer of the chunk.
     pub index_buffer: wgpu::Buffer,
     /// 32-bit line-list index buffer of the chunk's outlines, into the same vertices.
@@ -619,6 +644,7 @@ impl GpuChunk {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ir: &SodModelIr,
+        apex: &[[f32; 3]],
         n: usize,
         plan: &ChunkPlan,
         edges: &[u32],
@@ -648,6 +674,13 @@ impl GpuChunk {
             }
             offset += bytes.len() as u64;
         }
+        let apex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some(&format!("{}_apex_buffer{suffix}", ir.name)),
+            size: (plan.vertex_count.max(1) * size_of::<[f32; 3]>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        write_windows(queue, &apex_buffer, apex, &plan.vertex_ranges);
 
         let indices = plan.indices.as_deref().unwrap_or(&ir.indices);
         let index_bytes: &[u8] = bytemuck::cast_slice(indices);
@@ -672,6 +705,7 @@ impl GpuChunk {
         }
         Self {
             vertex_buffer,
+            apex_buffer,
             index_buffer,
             edges: edge_buffer,
             vertex_ranges: plan.vertex_ranges.clone(),
@@ -681,7 +715,8 @@ impl GpuChunk {
 
     /// Writes `vertices`' windows of this chunk into its vertex buffer with one write, since
     /// each write allocates a staging buffer (`research/parity/lavapipe-render-time.md`).
-    fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex]) {
+    fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex], apex: &[[f32; 3]]) {
+        write_windows(queue, &self.apex_buffer, apex, &self.vertex_ranges);
         // An unsplit chunk is one window: write it straight from the source.
         if let [range] = self.vertex_ranges.as_slice() {
             if let Some(window) = vertices.get(range.clone()).filter(|w| !w.is_empty()) {
@@ -700,6 +735,34 @@ impl GpuChunk {
             queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&packed));
         }
     }
+}
+
+/// Each of `ir`'s vertices' own position, the apex that culls no line corner.
+fn own_positions(ir: &SodModelIr) -> Vec<[f32; 3]> {
+    ir.vertices.iter().map(|v| v.position).collect()
+}
+
+/// Writes `source`'s `ranges` back to back into `buffer` with one write; writes nothing when
+/// a range leaves `source`.
+fn write_windows<T: bytemuck::Pod>(
+    queue: &wgpu::Queue,
+    buffer: &wgpu::Buffer,
+    source: &[T],
+    ranges: &[Range<usize>],
+) {
+    let packed = packed_windows(source, ranges);
+    if let Some(packed) = packed.filter(|p| !p.is_empty()) {
+        queue.write_buffer(buffer, 0, bytemuck::cast_slice(&packed));
+    }
+}
+
+/// `source`'s `ranges` back to back, or `None` when a range leaves `source`.
+fn packed_windows<T: Copy>(source: &[T], ranges: &[Range<usize>]) -> Option<Vec<T>> {
+    let mut packed = Vec::new();
+    for range in ranges {
+        packed.extend_from_slice(source.get(range.clone())?);
+    }
+    Some(packed)
 }
 
 /// A mesh node's slice as the IR stores it: its indices address the whole vertex buffer.
@@ -1293,6 +1356,36 @@ mod tests {
         assert_eq!(want.len(), 7);
         assert!(!want.contains(&(7, 8)));
         assert_eq!(edge_set(&split, &cut, &ir, 0), want);
+    }
+
+    #[test]
+    fn a_chunks_apexes_are_packed_in_its_vertex_windows_order() {
+        // An outlined quad's apex stream, split into two windows as a chunk copies them.
+        let mut ir = quad_ir();
+        ir.allocate_node(
+            "BASE",
+            None,
+            [0.0; 16],
+            VisibilityCondition::Always,
+            stunt_core::contracts::NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: 4,
+                index_offset: 0,
+                index_count: 6,
+                is_decal: false,
+            },
+        );
+        let shape = crate::outline::outlined(&ir);
+        let ranges = [4..8, 0..2];
+        let packed = packed_windows(&shape.apex, &ranges).expect("windows inside the shape");
+        assert_eq!(packed.len(), 6);
+        let bits = |p: &[f32; 3]| p.map(f32::to_bits);
+        let expected = shape.apex[4..8].iter().chain(&shape.apex[..2]);
+        assert!(packed.iter().zip(expected).all(|(a, b)| bits(a) == bits(b)));
+        // An outline corner's apex is not its own position; a filled vertex's is.
+        assert_ne!(bits(&packed[0]), bits(&shape.ir.vertices[4].position));
+        assert_eq!(bits(&packed[4]), bits(&shape.ir.vertices[0].position));
+        assert!(packed_windows(&shape.apex, &[0..1000, 0..1]).is_none());
     }
 
     #[test]

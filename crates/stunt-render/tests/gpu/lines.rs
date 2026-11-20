@@ -6,7 +6,9 @@
 
 use crate::common;
 
-use stunt_core::contracts::{CameraTransform, DecodeMode, SodModelIr};
+use stunt_core::contracts::{
+    CameraTransform, DecodeMode, NodeKind, SodModelIr, SodVertex, VisibilityCondition,
+};
 use stunt_core::scene::FilmScene;
 use stunt_core::sod::{
     OP_ID, OP_LINECOL, OP_MOVETO, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
@@ -115,6 +117,111 @@ fn a_steep_line_covers_one_pixel_per_row_near_and_far() {
                 rows.iter().all(|&n| n == 1),
                 "{distance} m: one pixel in every row the line crosses, got {rows:?}"
             );
+        }
+    });
+}
+
+/// A shape of one flat triangle 40 m across in the z = 0 plane, wound clockwise as seen from
+/// +z (front-facing toward the test camera) when `front`, else anticlockwise.
+fn triangle_shape(front: bool) -> SodModelIr {
+    let corners = [[0.0, 20.0, 0.0], [20.0, -20.0, 0.0], [-20.0, -20.0, 0.0]];
+    triangle(corners, if front { [0, 1, 2] } else { [0, 2, 1] })
+}
+
+/// A shape of one triangle with `corners`, wound in the order `indices`.
+fn triangle(corners: [[f32; 3]; 3], indices: [u32; 3]) -> SodModelIr {
+    let vertex = |position: [f32; 3]| SodVertex {
+        position,
+        normal: [0.0, 0.0, 1.0],
+        palette_index: LINE_INDEX,
+        flags: 0,
+        scenery_class: 0,
+        _padding: 0,
+    };
+    let mut ir = SodModelIr::new("TRI");
+    ir.vertices = corners.map(vertex).to_vec();
+    ir.indices = indices.to_vec();
+    let id = ir.allocate_node(
+        "BASE",
+        None,
+        [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ],
+        VisibilityCondition::Always,
+        NodeKind::Mesh {
+            vertex_offset: 0,
+            vertex_count: 3,
+            index_offset: 0,
+            index_count: 3,
+            is_decal: false,
+        },
+    );
+    if ir.root_nodes.is_empty() {
+        ir.root_nodes = vec![id];
+    }
+    ir
+}
+
+/// A back-facing polygon's outline is culled with the polygon, as `PLAYONE` culls it, while a
+/// front-facing one's is drawn (#686), however far away.
+#[test]
+fn only_a_front_facing_polygon_draws_its_outline() {
+    common::gpu_test(|| {
+        for distance in [200.0, 5000.0] {
+            let Some(front) = covered(triangle_shape(true), distance) else {
+                return;
+            };
+            assert!(
+                !front.is_empty(),
+                "{distance} m: the front-facing triangle draws"
+            );
+            let Some(back) = covered(triangle_shape(false), distance) else {
+                return;
+            };
+            assert!(
+                back.is_empty(),
+                "{distance} m: the back-facing triangle and its outline draw nothing, got {back:?}"
+            );
+        }
+    });
+}
+
+/// A triangle seen edge-on, its plane through the eye, draws its outline as one unbroken line
+/// whichever way it winds: its screen winding is rounding noise, so it is not culled (#717).
+/// Without the exemption its corners disagree on the cull, breaking the line into dashes and
+/// dragging slivers to the screen centre.
+#[test]
+fn an_edge_on_polygon_draws_its_outline_unbroken() {
+    common::gpu_test(|| {
+        let distance = 200.0;
+        for height in [-30.0f32, -7.0, 11.0, 23.0] {
+            // Two corners 40 m (50 columns) apart across the view, and the third halfway to
+            // the eye on the ray through their midpoint: the plane holds the eye.
+            let corners = [
+                [-20.0, height, 0.0],
+                [20.0, height, 0.0],
+                [0.0, height / 2.0, distance / 2.0],
+            ];
+            for indices in [[0, 1, 2], [0, 2, 1]] {
+                let Some(pixels) = covered(triangle(corners, indices), distance) else {
+                    return;
+                };
+                assert!(
+                    !pixels.is_empty(),
+                    "{height} m, {indices:?}: the outline draws"
+                );
+                let rows = pixels.iter().map(|p| p.1);
+                let (top, bottom) = (rows.clone().min().unwrap(), rows.max().unwrap());
+                assert!(
+                    bottom - top <= 1,
+                    "{height} m, {indices:?}: the outline stays on its row, got rows {top}..={bottom}"
+                );
+                let columns = per_line(&pixels, |p| p.0);
+                assert!(
+                    columns.len() >= 48 && columns.iter().all(|&n| n >= 1),
+                    "{height} m, {indices:?}: the outline is unbroken, got {columns:?}"
+                );
+            }
         }
     });
 }

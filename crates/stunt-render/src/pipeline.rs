@@ -154,6 +154,21 @@ impl RenderPipelines {
         }
     }
 
+    /// Returns the layout of the second vertex stream: each vertex's apex
+    /// (`outline::Outlined`) at location 3.
+    pub(crate) fn apex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
+        const ATTRIBUTES: [wgpu::VertexAttribute; 1] = [wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x3,
+            offset: 0,
+            shader_location: 3,
+        }];
+        wgpu::VertexBufferLayout {
+            array_stride: size_of::<[f32; 3]>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &ATTRIBUTES,
+        }
+    }
+
     /// Creates the bind group layout for [`PROP_RUNS_GROUP`]: the world's prop runs as one
     /// read-only storage buffer of `[first, end, shape word]` `u32` triples, which the
     /// fragment stage searches.
@@ -265,7 +280,10 @@ impl RenderPipelines {
 
         let shader_module =
             device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
-        let vertex_buffers = [Some(Self::vertex_buffer_layout())];
+        let vertex_buffers = [
+            Some(Self::vertex_buffer_layout()),
+            Some(Self::apex_buffer_layout()),
+        ];
         let targets = color_targets(color_format, plane_format);
 
         let base_depth_stencil = depth_stencil(
