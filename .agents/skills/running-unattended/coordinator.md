@@ -65,8 +65,15 @@ This is for Orca workers; a cloud session's workers are subagents that report in
 | Check | `orca orchestration check --terminal <handle>`; there is no `--from` | same |
 | Worker done | the `worker_done` event; a send to a busy worker returns a `messageId` and is usually not acted on, so send the next brief after `worker_done`, in full | [`loop-and-bounds.md`](loop-and-bounds.md#implementing-an-issue-and-bounding-rounds) |
 | Confirm a worker started | `worker-read`, once, within about 2 minutes of the dispatch | same |
+| Start a worker in a new workspace | `orca orchestration worker-start --spec-file <brief> --worktree new-top-level --repo id:<repo id> --name <issue>-<slug> --base-branch origin/main --agent <claude\|dsh\|antigravity> --model <id> --task-title "<title>" --json`; dsh ran without `--model` | run `run_b217992041c6`, 2026-11-20 |
+| Name the workspace | `--name` takes a bare slug such as `852-git-longpaths-tests`, and Orca makes the branch `neilsh/<slug>`; a name starting `neilsh-` or `neilsh/` became `neilsh/neilsh-…` or `neilsh/neilsh/…` | same |
+| Pick an Antigravity model | `--agent antigravity --model gemini-4-neon`, two flags; `--agent "antigravity --model …"` fails with `agent_unconfigured` | same |
+| Start a worker in an existing workspace | `worker-start --spec-file <brief> --worktree "path:<workspace path>" --agent <agent> --model <id> --task-title "<title>" --json`, without `--repo`, `--name` or `--base-branch` | same |
+| Send to an idle worker | `orca orchestration send --to dispatch:<dispatch id> --subject "<subject>" --body "<body>" --json` | same |
+| Send to every worker in a run | `orca orchestration send --to run:<run id> --run <run id> --subject … --body …`; `send --chat <id>` fails with `run_required` when no run resolves | same |
+| Answer a worker's question | `orca orchestration reply --id <message id> --body "<answer>"` | same |
+| Read a worker | `orca orchestration worker-read --dispatch <dispatch id> --limit 15` | same |
+| List workers | `orca orchestration worker-list --json` | same |
 | Retire a workspace | `orca worktree rm --worktree <selector>` | [`harness-setup.md` § Orca](../../../docs/harness-setup.md#orca) |
 
-**Flags not verified.**
-The repo records no flags for starting or dispatching a worker (`worker-start`), for `worker-read`, for the recipient of `send`, or for listing worker handles, and the cloud session this was written in has no `orca`.
-The worker that first uses one successfully adds the exact line to this table in its PR; a lookup runs in a throwaway subagent that returns the command line and nothing else, never in the coordinator's context.
+For any other flag, a throwaway subagent looks it up and returns the command line and nothing else, never in the coordinator's context; whoever first uses a new line successfully adds it to this table in their PR.
