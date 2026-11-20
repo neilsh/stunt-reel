@@ -52,7 +52,11 @@ struct Probe<'a> {
 impl PlacementRecords {
     /// The height, in `[I1]` metres, `PLAYONE`'s probe leaves in the slot's `+0x20/+0x22` for
     /// `actor`: the object's `y` plus the top of the last code-8 box the actor overlaps in
-    /// walk order, up to a carry that ends the probe (`0x25D2`); `None` when it stores none.
+    /// placement-record order, up to a carry that ends the probe (`0x25D2`); `None` when it
+    /// stores none. `PLAYONE` walks the scenery tree from the slot's position through
+    /// `DGROUP:0x584`; the records are in the order the scenery walk left them, which drops
+    /// placements under a pruned `SP_1NODE` and dedups, and the two orders are not shown to
+    /// agree.
     ///
     /// `0x19FC` takes the stored height only when its high word is nonzero, so a box top
     /// whose `y`-down height lies in `[0, 1)` m gives `None`, the plane's height instead.
