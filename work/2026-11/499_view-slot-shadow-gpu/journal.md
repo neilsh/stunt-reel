@@ -2,7 +2,7 @@
 
 ## 2026-11-20: the GPU judge, and the view slot's shadow against `BRETT.FLM`'s capture
 
-**Question**: [#499](https://github.com/neilsh/stunt-reel/issues/499)'s local half after [#750](https://github.com/neilsh/stunt-reel/issues/710) (the view slot's shadow) and [#727](https://github.com/neilsh/stunt-reel/issues/727) (the code-8 box height) merged: does `mise run judge` on the GPU hold the seven reference films, and does the view slot's shadow reproduce the black band in `BRETT.FLM`'s capture?
+**Question**: [#499](https://github.com/neilsh/stunt-reel/issues/499)'s local half after [#750](https://github.com/neilsh/stunt-reel/pull/750) (the view slot's shadow) and [#727](https://github.com/neilsh/stunt-reel/issues/727) (the code-8 box height) merged: does `mise run judge` on the GPU hold the seven reference films, and does the view slot's shadow reproduce the black band in `BRETT.FLM`'s capture?
 
 **Method**: on `3ef1de54` (`crates/` tree `be47270`), local-windows, NVIDIA GeForce RTX 4070 Laptop GPU.
 The baseline is the same tree with the view slot's shadow matrix dropped (`shadow_matrix: (a.casts_shadow && !a.view).then(...)` in `scene/film.rs`, a scratch edit not committed), which draws what the renderer drew before #750.
@@ -22,8 +22,8 @@ None of the scratch edits is committed.
   The capture's black band is 4,856 index-0 pixels in rows 150 to 184 on each of its 20 view-slot frames (ticks 409 to 452 and 606 to 761); ours is 0 pixels on 19 of them and 257 on tick 716.
   The pictures: [tick 639](images/brett-639-view-shadow.png) (no band in ours) and [tick 716](images/brett-716-view-shadow.png) (a thin black line along the bottom), each the capture, the baseline and the candidate left to right.
   So the view slot's shadow is drawn and moves the score the right way where it shows, but it reproduces about 5 % of the band on one frame and none on the rest.
-- **Round 2, near clip 0.05 m.** Our rows 170 to 184 are the clear index (233, blue) on every view-slot frame, which `[Supported Inference]` is the ground nearer than the 0.5 m near plane, not drawn, where the capture has road under (or black over) it.
-  With 0.05 m the road fills those rows, the index-0 count is 22 on 19 frames and 3,327 on tick 716, `mean_ssim_scored` falls to 0.8492168 (index agreement rises to 0.8708134), tick 716 gains a further 0.0266 and 19 frames move by more than 0.005, the worst down 0.0074 (tick 738).
+- **Round 2, near clip 0.05 m.** Our rows 170 to 184 are the ocean (layer 1, index 208, RGB 16, 72, 120) on every view-slot frame, which `[Supported Inference]` is the ground nearer than the 0.5 m near plane, clipped, where the capture has road under (or black over) it.
+  With 0.05 m the road (layer 3, index 14) fills those rows, the index-0 count is 22 on 19 frames and 3,327 on tick 716, `mean_ssim_scored` falls to 0.8492168 (index agreement rises to 0.8708134), tick 716 gains a further 0.0266 and 19 frames move by more than 0.005, the worst down 0.0074 (tick 738).
   The band does not appear on the other 19 frames, so the near plane alone does not explain it.
 - **Round 3, the view actor.** At ticks 430, 638 and 715 the camera eye equals the view slot's position (`y` 0.1509 m, the car's shape `0x415C`), the box-top probe returns none, and the slot's yaw is 90.00 degrees at 430, 89.94 at 638 and 88.24 at 715.
   Why the shadow's footprint vanishes on 19 frames while it reaches the bottom rows on tick 716 is not found.
