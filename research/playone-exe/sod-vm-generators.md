@@ -96,8 +96,10 @@ With the projector's `256 · x / z` (`0x9CF1`, [section 8.6](sod-vm-execution.md
 At `LOCATION` ticks 6062 and 6161 the lens draws at 50.95° against the default 42.67°, a zoom of 0.820.
 The renderer draws it so: a rim vertex carries the vector to its disc's centre (`VERTEX_FLAG_DISC`), and the vertex shader scales its clip-space depth offset from the centre (clip `z` and `w`, which alone hold depth on the symmetric projection) by `tan(42.67° / 2) / tan(fov / 2)`.
 On lavapipe the near rim then reads row 153 at both ticks (capture 151, before 166), the far rim 75 and 76 (capture 76, before 77: still within 1 row of it, though 2 rows nearer the top at 6062), and the free ends of the rows quoted above 295, 299, 298 at 6062 and 21 on each row at 6161.
+On the GPU (RTX 4070) the same rows and ends read identically.
+_Source: [the GPU judge and rim re-read](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-19-gpu-judge-and-rim-re-read)._
 Adopted, evidence-backed: `LOCATION` rose by 0.0011 and the target frames' index agreement by 0.042; `CTRY`, `BALLOON` and `BOMB`, at the default lens, changed no frame, so `BOMB`'s wheel is as before; the other films moved by less than 0.00003.
-The scores and pictures are in the journal; the GPU re-read is [#689](https://github.com/neilsh/stunt-reel/issues/689).
+The scores and pictures are in the journal; the GPU re-read of the widths before the squeeze, and of other shapes, is [#689](https://github.com/neilsh/stunt-reel/issues/689).
 _Source: [the disc squeezed along depth by the lens zoom](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-18-the-disc-squeezed-along-depth-by-the-lens-zoom)._
 
 **Sphere faces.**
@@ -196,5 +198,5 @@ Lines and polygon spans (sections 8.10 and 8.11) are in [`sod-vm-lines-spans.md`
   Closed: `OP_IPG` types 0, 2, 4 and 8 and `OP_SPHERE` read against their handlers, and type 6's operand width; `OP_VEC` has no handler.
   Closed by [#479](https://github.com/neilsh/stunt-reel/issues/479): type 6's registers (`BX` = 6, `DX` and `BP` as the previous handler left them; no model searched reaches it), the sphere faces against the captures, and `OP_PERFDISCSL` (no model searched uses a sliced op, so no disc is perforated).
   Closed by [#754](https://github.com/neilsh/stunt-reel/issues/754): the lens squeeze, the cause of `LOCATION`'s near rim.
-  Open: the normal's depth scale and the squeeze, read but not verified live ([#425](https://github.com/neilsh/stunt-reel/issues/425)), and the radius and squeeze on the GPU and on shapes other than `BOMB`'s wheel and `LOCATION`'s ground disc ([#689](https://github.com/neilsh/stunt-reel/issues/689)); the centre-depth, eye-plane and shadow-mode skips, which our renderer does not apply ([#690](https://github.com/neilsh/stunt-reel/issues/690)); what `0xA1AB`'s term measures; and whether the archives outside this data root (the full `siarchive`) hold a sliced op or type 6.
+  Open: the normal's depth scale and the squeeze, read but not verified live ([#425](https://github.com/neilsh/stunt-reel/issues/425)), and the radius and squeeze on shapes other than `BOMB`'s wheel and `LOCATION`'s ground disc, and the radius on the GPU before the squeeze ([#689](https://github.com/neilsh/stunt-reel/issues/689)); the centre-depth, eye-plane and shadow-mode skips, which our renderer does not apply ([#690](https://github.com/neilsh/stunt-reel/issues/690)); what `0xA1AB`'s term measures; and whether the archives outside this data root (the full `siarchive`) hold a sliced op or type 6.
   The type-8 trees are checked against `INTRO.FLM` ticks 2080 and 3301 and turn with the camera's heading (section 8.8, [#399](https://github.com/neilsh/stunt-reel/issues/399)).
