@@ -41,14 +41,7 @@ use credits::paint_credits;
 use offscreen::OffscreenTarget;
 use surface::SurfaceTarget;
 
-/// Base Mode 13h framebuffer width in pixels.
-pub const MODE13H_WIDTH: usize = 320;
-
-/// Original Mode 13h framebuffer height in pixels.
-pub const MODE13H_HEIGHT: usize = 200;
-
-/// Aspect-corrected 4:3 presentation height in pixels ($200 \times 1.2$).
-pub const ASPECT_CORRECTED_HEIGHT: usize = 240;
+pub use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
 /// Default offscreen page width in pixels (Mode 13h).
 pub const DEFAULT_PAGE_WIDTH: u32 = 320;
@@ -181,15 +174,17 @@ impl SinkError {
 
 /// One rendered page: tightly packed RGBA8 pixels and its two plane views.
 ///
-/// The GPU writes one `layer << 8 | palette index` word per pixel. The page splits that word
-/// once, so a sink reads [`RenderedPage::indices`] and [`RenderedPage::layers`] instead of
-/// repacking it.
+/// The GPU writes one `layer << 8 | palette index` word per pixel and a shape word beside it.
+/// The page splits the first word once, so a sink reads [`RenderedPage::indices`] and
+/// [`RenderedPage::layers`] instead of repacking it, and keeps the second as
+/// [`RenderedPage::shapes`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenderedPage {
     size: PageSize,
     rgba: Vec<u8>,
     indices: Vec<u8>,
     layers: Vec<u32>,
+    shapes: Vec<u32>,
 }
 
 impl RenderedPage {
@@ -198,12 +193,18 @@ impl RenderedPage {
     /// `rgba` is `size.pixel_count() * 4` bytes; `plane` is one `layer << 8 | unlit palette index`
     /// word per pixel (uncovered pixels: the clear index on `LAYER_NONE`), split here into
     /// [`RenderedPage::indices`] and [`RenderedPage::layers`]. Layers stay u32; the render
-    /// store's writer checks the narrowing to u16.
+    /// store's writer checks the narrowing to u16. `shapes` is one shape word per pixel
+    /// ([`RenderedPage::shapes`]).
     ///
     /// # Errors
     /// Returns [`RenderError::Readback`] if `rgba` is not `size.pixel_count() * 4` bytes or
-    /// `plane` is not `size.pixel_count()` words.
-    pub fn new(size: PageSize, rgba: Vec<u8>, plane: &[u32]) -> Result<Self, RenderError> {
+    /// `plane` or `shapes` is not `size.pixel_count()` words.
+    pub fn new(
+        size: PageSize,
+        rgba: Vec<u8>,
+        plane: &[u32],
+        shapes: &[u32],
+    ) -> Result<Self, RenderError> {
         let pixels = size.pixel_count();
         if rgba.len() != pixels * 4 {
             return Err(RenderError::Readback(format!(
@@ -217,6 +218,12 @@ impl RenderedPage {
                 plane.len()
             )));
         }
+        if shapes.len() != pixels {
+            return Err(RenderError::Readback(format!(
+                "page is {pixels} pixels but {} shape words were read back",
+                shapes.len()
+            )));
+        }
         let indices = plane.iter().map(|word| (*word & 0xFF) as u8).collect();
         let layers = plane.iter().map(|word| *word >> 8).collect();
         Ok(Self {
@@ -224,6 +231,7 @@ impl RenderedPage {
             rgba,
             indices,
             layers,
+            shapes: shapes.to_vec(),
         })
     }
 
@@ -264,6 +272,17 @@ impl RenderedPage {
     #[must_use]
     pub fn layers(&self) -> &[u32] {
         &self.layers
+    }
+
+    /// One shape word per pixel, top row first: `shape id + 1` of the prop that drew the
+    /// pixel, a view-facing one's or a world prop's (`World::prop_runs`), and zero where no
+    /// prop drew (sky, terrain, ocean, actors, sprites).
+    ///
+    /// Only the prop that wins the depth test writes its word, as the layer does; the credits
+    /// overlay leaves the word of the pixel it covers.
+    #[must_use]
+    pub fn shapes(&self) -> &[u32] {
+        &self.shapes
     }
 }
 
@@ -769,18 +788,20 @@ mod tests {
     #[test]
     fn rendered_page_rejects_mismatched_buffer_lengths() {
         let size = PageSize::new(2, 2);
-        let page = RenderedPage::new(size, vec![7; 16], &[0x1000; 4]).expect("page");
+        let page = RenderedPage::new(size, vec![7; 16], &[0x1000; 4], &[0, 1, 2, 3]).expect("page");
         assert_eq!(page.width(), 2);
         assert_eq!(page.height(), 2);
         assert_eq!(page.size(), size);
         assert_eq!(page.rgba().len(), 16);
         assert_eq!(page.indices(), [0; 4].as_slice());
         assert_eq!(page.layers(), [0x10; 4].as_slice());
+        assert_eq!(page.shapes(), [0, 1, 2, 3].as_slice());
         let word = (0x10 << 8) | 0x28;
-        let split = RenderedPage::new(size, vec![7; 16], &[word; 4]).expect("page");
+        let split = RenderedPage::new(size, vec![7; 16], &[word; 4], &[0; 4]).expect("page");
         assert_eq!(split.indices(), [40; 4].as_slice());
         assert_eq!(split.layers(), [0x10; 4].as_slice());
-        RenderedPage::new(size, vec![0; 15], &[0; 4]).unwrap_err();
-        RenderedPage::new(size, vec![0; 16], &[0; 3]).unwrap_err();
+        RenderedPage::new(size, vec![0; 15], &[0; 4], &[0; 4]).unwrap_err();
+        RenderedPage::new(size, vec![0; 16], &[0; 3], &[0; 4]).unwrap_err();
+        RenderedPage::new(size, vec![0; 16], &[0; 4], &[0; 3]).unwrap_err();
     }
 }

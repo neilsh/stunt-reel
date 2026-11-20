@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import sys
 from pathlib import Path
@@ -17,18 +18,22 @@ if str(SCRIPTS_DIR) not in sys.path:
 import parity_judge as judge_cli  # noqa: E402
 import parity_sweep  # noqa: E402
 
-from stunt_reel import parity_pipeline  # noqa: E402
-from stunt_reel.parity_artifacts import FrameReport, Report  # noqa: E402
+from stunt_reel import parity_layout, parity_pipeline  # noqa: E402
+from stunt_reel.parity_artifacts import LOSS_CLASSES, FrameReport, Report  # noqa: E402
 from stunt_reel.parity_judge import (  # noqa: E402
     Decision,
     FilmRun,
     Frame,
     Headline,
     Judgement,
+    LossPin,
     Target,
     Track,
     Variant,
+    class_loss_lines,
+    compare_index_agreement,
     decide,
+    index_agreement_line,
     join_film,
     judge,
     outcome_lines,
@@ -544,6 +549,92 @@ def test_judge_prints_what_the_sweep_prints(
     )
 
 
+def _write_indexed(directory: Path, frames: list[tuple[int, float, bool]], mean: float) -> None:
+    """A ``report.json`` of ``(ordinal, index_agreement, scored)`` frames, one tick per ordinal."""
+    directory.mkdir(parents=True)
+    document = {
+        "per_frame": [
+            {
+                "film_tick": 10 + n,
+                "ordinal": n,
+                "ssim": 0.8,
+                "iou": 0.8,
+                "index_agreement": i,
+                "scored": scored,
+            }
+            for n, i, scored in frames
+        ],
+        "mean_ssim_scored": 0.8,
+        "mean_iou_scored": 0.8,
+        "mean_index_agreement_scored": mean,
+        "scored_frames": sum(f[2] for f in frames),
+    }
+    (directory / "report.json").write_text(json.dumps(document), encoding="utf-8")
+
+
+def test_judge_reports_index_agreement_beside_the_verdict(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = reference_tree(tmp_path / "data", [5])
+    # Ordinals 0 and 1 are better, 2 equal, 3 worse; 4 is scored in the baseline only and 5 in
+    # the candidate only, so both are left out.
+    _write_indexed(
+        tmp_path / "baseline" / "ctry_report",
+        [
+            (0, 0.50, True),
+            (1, 0.60, True),
+            (2, 0.70, True),
+            (3, 0.80, True),
+            (4, 0.9, True),
+            (5, 0.1, False),
+        ],
+        mean=0.6,
+    )
+    _write_indexed(
+        tmp_path / "candidate" / "ctry_report",
+        [
+            (0, 0.55, True),
+            (1, 0.65, True),
+            (2, 0.70, True),
+            (3, 0.75, True),
+            (4, 0.9, False),
+            (5, 0.2, True),
+        ],
+        mean=0.7,
+    )
+    argv = [str(tmp_path / "baseline"), str(tmp_path / "candidate"), "--data-root", str(root)]
+    assert judge_cli.main(argv) == 0
+    captured = capsys.readouterr()
+    assert (
+        "[judge] ctry index agreement: baseline 0.6000, candidate 0.7000; "
+        "frames candidate better/equal/worse 2/1/1"
+    ) in captured.err
+    assert "index agreement" not in captured.out
+
+
+def test_index_agreement_pairs_by_ordinal_and_counts_every_frame_of_an_old_report() -> None:
+    def report(frames: list[FrameReport], mean: float | None) -> Report:
+        return Report(per_frame=tuple(frames), mean_index_agreement_scored=mean)
+
+    def frame(ordinal: int, index: float | None, scored: bool | None = None) -> FrameReport:
+        return FrameReport(
+            film_tick=ordinal * 2,
+            ssim=0.5,
+            iou=0.5,
+            ordinal=ordinal,
+            index_agreement=index,
+            scored=scored,
+        )
+
+    old = report([frame(0, 0.5), frame(1, None), frame(2, 0.4)], None)
+    new = report([frame(2, 0.4, True), frame(0, 0.6, False), frame(1, 0.9, True)], 0.5)
+    got = compare_index_agreement(old, new)
+    # One report predates fade scoring, so every frame counts: ordinal 1 has no baseline value.
+    assert (got.better, got.equal, got.worse) == (1, 1, 0)
+    assert (got.baseline_mean, got.candidate_mean) == (None, 0.5)
+    assert "baseline n/a, candidate 0.5000" in index_agreement_line("ctry", got)
+
+
 def test_judge_refuses_target_without_track_and_unknown_film(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -554,3 +645,107 @@ def test_judge_refuses_target_without_track_and_unknown_film(
     argv = [*trees, "--target", "land:5-7", "--track", "evidence", "--data-root", str(root)]
     assert judge_cli.main(argv) == 2
     assert "land:5-7" in capsys.readouterr().err
+
+
+def _loss(**changes: float) -> dict[str, float]:
+    """Every loss class at 0.01, with *changes*."""
+    return dict.fromkeys(LOSS_CLASSES, 0.01) | changes
+
+
+def test_class_loss_row_lists_moved_classes_in_class_order_against_baseline_and_pin() -> None:
+    baseline = _loss(props=0.0400, terrain=0.0300)
+    candidate = _loss(props=0.0380, terrain=0.0312, sky=0.01001)
+    pin = LossPin("lavapipe", _loss(props=0.0390, terrain=0.0300))
+    head = "ctry loss by class, candidate - baseline (parentheses: candidate - lavapipe pin)"
+    assert class_loss_lines("ctry", baseline, candidate, pin) == [
+        f"{head}: terrain +0.0012 (+0.0012), props -0.0020 (-0.0010)"
+    ]
+
+
+def test_class_loss_row_says_when_no_class_moved_or_a_pin_is_missing() -> None:
+    same = _loss()
+    pinned = class_loss_lines("intro", same, same, LossPin("gpu", same))
+    assert pinned == [
+        "intro loss by class, candidate - baseline (parentheses: candidate - gpu pin): no class moved"
+    ]
+    moved = _loss(actors=0.02)
+    head = "intro loss by class, candidate - baseline"
+    assert class_loss_lines("intro", same, moved, None) == [
+        f"{head} (no pin for the candidate's adapter class): actors +0.0100"
+    ]
+    assert class_loss_lines("intro", same, moved, LossPin("gpu", None)) == [
+        f"{head} (the gpu pin records no class losses): actors +0.0100"
+    ]
+    assert class_loss_lines("intro", None, moved, None) == [
+        "intro loss by class: n/a (a report records no class losses)"
+    ]
+
+
+def test_class_loss_row_flags_classes_the_sides_do_not_all_name() -> None:
+    baseline = _loss()
+    candidate = _loss() | {"ground": 0.01}
+    pin = LossPin("gpu", {n: v for n, v in _loss().items() if n != "props"})
+    lines = class_loss_lines("ctry", baseline, candidate, pin)
+    assert lines[0] == (
+        "ctry loss classes disagree: ground, props not named by every side (baseline, candidate, pin)"
+    )
+    assert lines[1].endswith("no class moved")
+
+
+def _write_losses(directory: Path, loss: dict[str, float], adapter_class: str = "cpu") -> None:
+    directory.mkdir(parents=True)
+    document = {
+        "per_frame": [{"film_tick": 5, "ordinal": 0, "ssim": 0.8, "iou": 0.8, "scored": True}],
+        "mean_ssim_scored": 0.8,
+        "mean_iou_scored": 0.8,
+        "mean_loss_by_class_scored": loss,
+        "scored_frames": 1,
+        "adapter": {"name": "llvmpipe", "class": adapter_class},
+    }
+    (directory / "report.json").write_text(json.dumps(document), encoding="utf-8")
+
+
+def _pin_losses(root: Path, renderer: str, loss: dict[str, float]) -> None:
+    table = "\n".join(f"{name} = {value}" for name, value in loss.items())
+    pins = root / parity_layout.REFERENCES_FILE
+    pins.write_text(
+        pins.read_text(encoding="utf-8")
+        + f'\n[ctry.expected.{renderer}]\nssim = 0.8\niou = 0.8\ncrates = "{"1" * 40}"\n'
+        + f'sha256 = "{"2" * 64}"\nadapter = "llvmpipe"\n\n[ctry.expected.{renderer}.loss]\n'
+        + table
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_judge_prints_each_films_class_losses_against_the_pin_of_the_candidates_class(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = reference_tree(tmp_path / "data", [5], films=("ctry",))
+    _pin_losses(root, "lavapipe", _loss(props=0.0400))
+    _pin_losses(root, "gpu", _loss(props=0.0900))  # the lavapipe report must not read this one
+    _write_losses(tmp_path / "baseline" / "ctry_report", _loss(props=0.0410))
+    _write_losses(tmp_path / "candidate" / "ctry_report", _loss(props=0.0395, terrain=0.012))
+    argv = [str(tmp_path / "baseline"), str(tmp_path / "candidate"), "--data-root", str(root)]
+    assert judge_cli.main(argv) == 0
+    captured = capsys.readouterr()
+    assert (
+        "[judge] ctry loss by class, candidate - baseline (parentheses: candidate - lavapipe pin): "
+        "terrain +0.0020 (+0.0020), props -0.0015 (-0.0005)"
+    ) in captured.err
+    assert "loss by class" not in captured.out
+
+
+def test_judge_keeps_its_verdict_when_a_loss_pin_is_unreadable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = reference_tree(tmp_path / "data", [5], films=("ctry",))
+    _pin_losses(root, "lavapipe", _loss() | {"ground": 0.1})  # a class no report has
+    _write_losses(tmp_path / "baseline" / "ctry_report", _loss())
+    _write_losses(tmp_path / "candidate" / "ctry_report", _loss(props=0.02))
+    argv = [str(tmp_path / "baseline"), str(tmp_path / "candidate"), "--data-root", str(root)]
+    assert judge_cli.main(argv) == 0
+    captured = capsys.readouterr()
+    assert "[judge] ctry loss pin unreadable:" in captured.err
+    assert "expected.lavapipe.loss.ground" in captured.err
+    assert "candidate" in captured.out, "the verdict table still prints"

@@ -4,6 +4,7 @@
 //! instances adhering to Seam 3 and Invariants `[I1]`, `[I2]`, `[I3]`, `[I5]`.
 
 mod bank;
+mod collision;
 mod decal;
 mod light;
 mod tessellate;
@@ -18,6 +19,7 @@ mod vm_tests;
 
 pub use crate::contracts::shape::{DecodeMode, DecodeRecord, SodHeader, SodStop, SodStopReason};
 pub use bank::AngleBank;
+pub use collision::{COLLISION_POINTER_BIAS, decode_collision};
 pub use decal::{DECAL_FLAG_BIT, EPSILON_DISPLACEMENT};
 pub use light::ShadeLight;
 pub use tessellate::{IDENTITY_MATRIX, decode_sod, decode_sod_lit, decode_sod_posed};
@@ -28,8 +30,8 @@ pub use vm::{
     OP_POPCENTRE, OP_POPRELMAT, OP_PUSHCENTRE, OP_PUSHRELMAT, OP_PUTV, OP_REJ, OP_REJ2D, OP_REJVEC,
     OP_RETURN, OP_ROTX, OP_ROTY, OP_ROTZ, OP_SHADE1, OP_SHADE2, OP_SHADE16, OP_SHADE216, OP_SHADES,
     OP_SHLV, OP_SHRV, OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VEC, OP_VECTORS, OP_ZLINETO,
-    SOD_SCALE_TABLE, SodTrace, TraceStep, census_skip, compute_scale_factor, opcode_mnemonic,
-    trace_sod,
+    RotAudit, RotUse, SOD_SCALE_TABLE, SodTrace, TraceStep, census_rotations, census_skip,
+    compute_scale_factor, opcode_mnemonic, trace_sod,
 };
 
 /// Bit of [`SodHeader::header_flags`] that turns the shape with the camera's heading.

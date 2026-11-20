@@ -5,7 +5,7 @@
 //! polygon draws at least a pixel on every row it crosses, however thin it is. A rasteriser
 //! that samples pixel centres can cover a pixel less per row and per column, and drops a
 //! sliver under a pixel wide altogether: in `INTRO.FLM` the light half of each distant pine
-//! (`research/playone-exe/sod-vm-generators.md` section 8.11). [`outlined`] gives the renderer those
+//! (`research/playone-exe/sod-vm-lines-spans.md` section 8.11). [`outlined`] gives the renderer those
 //! pixels back by drawing each polygon's outline as one-pixel screen lines, the same lines
 //! a `ZLINETO` draws (section 8.10). An outline costs four vertices and twelve indices an
 //! edge, so it is drawn this way on the shapes the renderer places per frame; the world mesh
@@ -151,18 +151,41 @@ fn push_edge(sink: &mut Sink<'_>, source: &[SodVertex], [p, q, r]: [u32; 3]) {
 ///
 /// A triangle with a corner `outlined` rejects is skipped, neither counted nor outlined.
 pub(crate) fn boundary_edges(triangles: &[u32], outlined: impl Fn(u32) -> bool) -> Vec<[u32; 2]> {
-    boundary_edges_with_apex(triangles, outlined)
+    numbered_boundary_edges(triangles, outlined)
         .into_iter()
-        .map(|[p, q, _]| [p, q])
+        .map(|(edge, _)| edge)
+        .collect()
+}
+
+/// [`boundary_edges`], each edge with the number of the triangle that uses it, counted from
+/// 0 in `triangles`, so the numbers never decrease.
+pub(crate) fn numbered_boundary_edges(
+    triangles: &[u32],
+    outlined: impl Fn(u32) -> bool,
+) -> Vec<([u32; 2], usize)> {
+    numbered_boundary_edges_with_apex(triangles, outlined)
+        .into_iter()
+        .map(|([p, q, _], number)| ([p, q], number))
         .collect()
 }
 
 /// [`boundary_edges`], each edge followed by the third corner of the one triangle using it.
 fn boundary_edges_with_apex(triangles: &[u32], outlined: impl Fn(u32) -> bool) -> Vec<[u32; 3]> {
+    numbered_boundary_edges_with_apex(triangles, outlined)
+        .into_iter()
+        .map(|(edge, _)| edge)
+        .collect()
+}
+
+/// [`boundary_edges_with_apex`], each edge with [`numbered_boundary_edges`]' triangle number.
+fn numbered_boundary_edges_with_apex(
+    triangles: &[u32],
+    outlined: impl Fn(u32) -> bool,
+) -> Vec<([u32; 3], usize)> {
     // Each undirected edge's use count, keyed by its sorted ends, in first-use order.
     let mut uses: HashMap<(u32, u32), u32> = HashMap::new();
-    let mut order: Vec<[u32; 3]> = Vec::new();
-    for tri in triangles.as_chunks::<3>().0 {
+    let mut order: Vec<([u32; 3], usize)> = Vec::new();
+    for (number, tri) in triangles.as_chunks::<3>().0.iter().enumerate() {
         if !tri.iter().all(|&i| outlined(i)) {
             continue;
         }
@@ -170,12 +193,12 @@ fn boundary_edges_with_apex(triangles: &[u32], outlined: impl Fn(u32) -> bool) -
         for (p, q, r) in [(a, b, c), (b, c, a), (c, a, b)] {
             let count = uses.entry((p.min(q), p.max(q))).or_insert(0);
             if *count == 0 {
-                order.push([p, q, r]);
+                order.push(([p, q, r], number));
             }
             *count = count.saturating_add(1);
         }
     }
-    order.retain(|&[p, q, _]| uses.get(&(p.min(q), p.max(q))) == Some(&1));
+    order.retain(|&([p, q, _], _)| uses.get(&(p.min(q), p.max(q))) == Some(&1));
     order
 }
 

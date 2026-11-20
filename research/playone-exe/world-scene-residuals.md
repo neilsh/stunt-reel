@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, and a line on a decal now draws after it."
+summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and `PLAYONE` drops far scenery by distance against its `scale_index`."
 ---
 # `PLAYONE.EXE`: Ground Renderer Residuals
 
@@ -69,8 +69,22 @@ _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026
 `[Bounded Observation]` for the measured and tested behaviour.
 `build_world_ir` snaps each ground decal onto the terrain at its `x, z` and puts every mesh of it in the `WORLD_DECAL` batch, which `[I5]` draws after the base pass with `LessEqual` and a negative bias ([ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md)); its triangles on the ground plane `y = base_y` go to the ground pass instead (section 6.6, [ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)).
 It moves no terrain, so it does not touch a mountain leaf.
-The subpixel cull in `build_world` still drops a far prop before `build_world_ir` sees it, ground decal or not.
 _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-candidates-and-the-ground-decal-prototype)._
+
+**The sub-pixel cull drops nothing drawn on the references** (`[Bounded Observation]`, the seven reference films and 13 corpus films, lavapipe).
+`build_world` drops a placement whose bounding radius never covers half a pixel along the camera path (`reaches_a_pixel`, `MIN_PROP_PIXELS`), before `build_world_ir` sees it, ground decal or not.
+It drops no placement of `ctry`, `intro`, `land`, `balloon`, `traintnl` or `bomb`; of `location` it drops 190, all inside the raster on some scored tick and 34 behind gates that hold there, but every one a shape that decodes to no vertices (`0x0797`, `0x03F4`, `0x0729`, `0x0451`, `0x0453`).
+Without it, `INTRO.FLM`'s world is the same 819,169 vertices, and of the 13 corpus films only `BALLOON` played with `SUPERSET.ALL` gains geometry: 258 vertices in 35 placements.
+The props `build_world` leaves out are those `place_props`' walk does not reach (the `SP_1NODE` reach) and repeats; the props loss is not far props this cull removes.
+_Source: [how many placements the sub-pixel cull drops](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-how-many-placements-the-sub-pixel-cull-drops)._
+
+**`PLAYONE` culls far scenery by distance against its scale** (`[Established]` for the instructions, static; `[Supported Inference]` for the distance in metres, which takes the walk position as 16.16 metres from the eye, and for the pixel bound).
+`SP_LEAF` (`0x220B`) and the `SP_1NODE` stand-in (`0x2152`) normalise the object's eye-relative position at `0x31CF` and skip the object when the cull `0x1B0C` sets carry (`0x226A`, `0x21A0`).
+Besides an object behind the eye and one outside the radius-widened frustum, `0x1B0C` drops one whose largest eye-relative coordinate reaches `2^(22 + [0x229E] - k)` metres, `k` its `scale_index` (`0x1B28`).
+It never divides the radius word `R` by the depth, but a shape's radius is under `2^(16 - k)` metres, so at the default lens the cut comes where the shape spans at most about `R / 2^15` pixels in radius: at most 0.68 pixels for every shape of six reference archives and up to 1.22 in `location`'s.
+So `PLAYONE` drops far props whole at about the size our half-pixel cull drops, by a coarser test: it can drop a large shape a little above half a pixel that ours keeps, and keeps a small one far below it that ours drops.
+Inside the 25 km far plane the cut falls only for `scale_index` 9 and above ([`memory-map-main.md`](memory-map-main.md) `CS:0x1B0C`, `CS:0x31CF`).
+_Source: [whether PLAYONE culls a whole scenery object by screen size](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-whether-playone-culls-a-whole-scenery-object-by-screen-size)._
 
 The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terrain with a tile built by hand at terrain height, as the snap would place it (they do not call `build_world_ir`).
 The tile shows over the terrain 80 m away, keeps at least 90% of the pixels it shows alone at 1, 1.5, 2, 4 and 8 km at a grazing angle of 5.7 degrees, and a wall of terrain in front of it hides it completely.
@@ -128,7 +142,7 @@ The ocean-coloured props at the eye include the town-block tiles `0x03E4` to `0x
   At `LOCATION` tick 2124 the snapped `0x06D5` roads and `0x068F` lawns now draw where the capture shows them (SSIM 0.6185 to 0.6641).
   _Source: [2026-11-13: A WORLD_GROUND painter pass whose outlines stay off line runs](../../work/2026-11/446_world-ground-pass/journal.md#2026-11-13-a-world_ground-painter-pass-whose-outlines-stay-off-line-runs)._ _Source: [2026-11-13: Snapped decals lost their lift twice and missed the ground pass](../../work/2026-11/446_world-ground-pass/journal.md#2026-11-13-snapped-decals-lost-their-lift-twice-and-missed-the-ground-pass)._
 * **Adopted: a line on a decal is a decal ([#448](https://github.com/neilsh/stunt-reel/issues/448)).**
-  `PLAYONE` draws a `ZLINETO` segment when it runs, with no depth test ([`sod-vm-generators.md`](sod-vm-generators.md) section 8.10), so a line after the decal it lies on covers it.
+  `PLAYONE` draws a `ZLINETO` segment when it runs, with no depth test ([`sod-vm-lines-spans.md`](sod-vm-lines-spans.md) section 8.10), so a line after the decal it lies on covers it.
   `identify_coplanar_decals` (`sod/decal.rs`) now flags a `MOVETO`/`ZLINETO` segment as a decal when both its ends lie within 0.1 mm of an earlier decal's plane and their bounds meet, and the ordered decal pass and the ground pass draw it after that decal in stream order.
   At `LOCATION` tick 4665, after the ground pass had landed, `0x037C`'s yard lines were still missing: the line's classification, not the ground pass, buried them.
   With the rule they draw (SSIM 0.7977 to 0.8094), as do `TRAINTNL`'s rails on their `132` ties (tick 12: 0.8210 to 0.8348).
@@ -162,6 +176,23 @@ Bed 11 rules out `0x06CF`; it does not tell `0x06CE` from the finer `0x06CD` and
 Our render on `main` before the ground pass (`ba11061e`) picks the same stand-ins, with the same switch row, but holds no index-40 pixel in rows 100 to 184.
 Its rails are missing, not single, which fits the tie-over-rail grouping that [#448](https://github.com/neilsh/stunt-reel/issues/448) fixed (section 6.6), so no level-of-detail change follows.
 
+### 6.8 `LOCATION`'s infield sinks under the snapped plaza
+
+`[Established]` for the heights in our world IR, read from the code and `export-gltf --shape`; `[Bounded Observation]` that this is the tie of [#651](https://github.com/neilsh/stunt-reel/issues/651) at `LOCATION` 2586 to 2872 (the eye 30 m up, 86 m from the stadium, at 2586).
+_Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
+
+`PLAYONE` paints `MAP.BIN` record 1, the plaza `0x064A` (14) and the stadium `0x0265`'s infield (169) in that order, which no eye test changes ([`world-scene.md`](world-scene.md) section 3.1).
+In the source the plaza lies 31.25 mm below height 0 and the infield 7.8125 mm below it.
+Our IR moves only the plaza: it is flat, within 0.1 m of record 1, so `ground_decal_vertices` snaps it to `y = 0` and it joins the `WORLD_GROUND` pass (`Always`, depth write).
+`0x0265` is not flat (it rises to 9.5 m), so its infield keeps `y = -0.0078125`, outside the ground pass's 1e-4 m (`GROUND_PLANE_TOLERANCE`), and as a base polygon must pass `Less` against a plaza now 7.8125 mm above it.
+An exact depth test draws the plaza there, as both backends have since #636 at the ticks it measured (2586, 2599, 2840, 2859, 2862).
+Before, the tie flipped (`[Supported Inference]`: a 7.8125 mm offset seen from about 85 m (near plane 0.5 m) is a depth gap of at most `0.5 / 85² × 0.0078125 = 5.4e-7`, while #595 read 3.2e-6 and 2.9e-6, of opposite sign, near depth 0.994; so the f32 vertex-stage error that #636 removed flipped it, not depth precision).
+
+The fix this points to is the ground pass: the infield's face lies within 0.1 m (`GROUND_LIE_TOLERANCE`, the snap's tolerance) of the ground plane, and drawn in the `WORLD_GROUND` walk-order pass after the plaza it paints over it, as `PLAYONE` does.
+That holds only if our walk keeps the tree's order of the two props (`SP_2NODE` `0x6BFC`), which is not checked.
+A depth rule cannot fix it: in our IR the plaza is the nearer surface, under any depth format.
+The decal pass cannot either: it holds faces coplanar with an earlier face of their own shape's stream ([ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)), and the infield is the first face of `0x0265`, 23.4375 mm above the plaza in the source.
+
 ## Ruled out
 
 * **The tiles sit below the terrain** (section 6.1): they are on its plane to a millimetre; the 5 cm drop removes a depth tie.
@@ -184,6 +215,12 @@ Its rails are missing, not single, which fits the tie-over-rail grouping that [#
   _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
 * **`ZLINETO` decals as the cause of `INTRO` tick 848's loss** (section 6.6): with either rule tick 848 scores 0.7411, as on `main`; the issue's 0.7509 to 0.7409 came from a renderer that still lifted decals off their facet, and the capture's road sits lower than ours under every variant.
   _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
+* **`LOCATION`'s infield in the ground's plane, so a tie any depth format keeps** (section 6.8): it lies 7.8125 mm below the snapped plaza in our IR, so an exact depth test hides it; the flips were the f32 vertex-stage error #636 removed (`[Supported Inference]`: a depth gap of at most 5.4e-7 against #595's 3e-6).
+  _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
+* **A depth rule or the decal pass as #651's fix** (section 6.8): the first draws the plaza, the nearer surface in our IR; the second takes a face coplanar with an earlier face of its own shape, and the infield is `0x0265`'s first.
+  _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
+* **Lowering or removing the sub-pixel prop cull** (section 6.4): with no size test the seven references score the same to four decimals and no frame moves by more than 0.005, since the cull drops nothing they draw.
+  _Source: [removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull)._
 
 ## Open questions
 
@@ -207,3 +244,5 @@ Its rails are missing, not single, which fits the tie-over-rail grouping that [#
    On `main` a grey roof outline shows over it where the capture shows bare wall, and flagging every line on a facet as a decal adds red segments there (Ruled out).
    Which shapes the wall and the outline belong to, and why the wall does not hide them, was not traced.
    _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
+6. **`LOCATION`'s infield in the ground pass** ([#651](https://github.com/neilsh/stunt-reel/issues/651), section 6.8).
+   Whether drawing a non-flat prop's faces that lie within 0.1 m (`GROUND_LIE_TOLERANCE`) of the ground plane in the `WORLD_GROUND` pass, after the plaza, restores the infield at 2586 to 2872 without costing other films; it changes draw order, so it needs the GPU judge.

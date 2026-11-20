@@ -37,6 +37,12 @@ label = "Agents"
 group = "Project docs"
 
 [[section]]
+source = "docs/harness"
+dest = "docs/harness"
+label = "Harness notes"
+group = "Project docs"
+
+[[section]]
 source = "docs/howto"
 dest = "docs/howto"
 label = "How-to"

@@ -16,7 +16,7 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::{FilmScene, ViewCamera};
-use stunt_core::world::{GROUND_NODE, TerrainSurface, World};
+use stunt_core::world::{GROUND_NODE, PlacementRecords, PropRun, TerrainSurface, World};
 use stunt_render::{CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
@@ -67,6 +67,7 @@ fn actor_at(x: f32, state_mask: u16) -> ActorTransform {
         position_meters: [x, 0.0, 0.0],
         state_mask,
         casts_shadow: false,
+        view: false,
         joint_angles_bam: Vec::new(),
     }
 }
@@ -232,7 +233,8 @@ fn state_mask_that_hides_geometry_draws_nothing() {
 }
 
 /// A `SIF_SHADOW` actor 3 m up draws its shape again on `y = 0` in palette index 0, with its
-/// own layer, whichever way its face is wound; an actor without the flag draws no shadow.
+/// own layer, whichever way its face is wound; an actor without the flag draws no shadow, and
+/// the view slot draws the same shadow without its shape.
 #[test]
 fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
     common::gpu_test(|| {
@@ -250,52 +252,90 @@ fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
             ir.indices = indices;
             ir
         };
-        let shadow_pixels = |indices: Vec<u32>, casts_shadow: bool| {
-            let actor = ActorTransform {
-                position_meters: [0.0, 3.0, 0.0],
-                casts_shadow,
-                ..actor_at(0.0, 0)
-            };
-            // Looking down at 45 degrees, so the actor and its shadow land on different rows.
-            let record = TrajectoryRecord {
-                tick: 0,
-                camera: CameraTransform {
-                    eye: [0.0, 10.0, 10.0],
-                    target: [0.0, 0.0, 0.0],
-                    fov_degrees: 45.0,
-                    ..Default::default()
-                },
-                actors: vec![actor],
-                audio_cues: Vec::new(),
-                palette: PaletteControls::default(),
-                bank: Default::default(),
-            };
-            let timeline = FilmTimeline::new(
-                vec![SliceKeyframe {
-                    record,
+        // The actor's layer's pixels in index 0 (its shadow) and in any other index.
+        let pixels_from =
+            |eye: [f32; 3], target: [f32; 3], indices: Vec<u32>, casts_shadow: bool, view: bool| {
+                let actor = ActorTransform {
+                    position_meters: [0.0, 3.0, 0.0],
+                    casts_shadow,
+                    view,
+                    ..actor_at(0.0, 0)
+                };
+                // Looking down at 45 degrees, so the actor and its shadow land on different rows.
+                let record = TrajectoryRecord {
                     tick: 0,
-                    tick_duration: 1,
-                }],
-                Vec::new(),
-            );
-            let shapes = HashMap::from([(SHAPE_ID, floor(indices))]);
-            let scene = FilmScene::new(timeline, shapes, None);
-            let mut test = common::gpu_or_skip(&scene)?;
-            let page = test.draw(&scene.frame(0.0));
-            Some(
-                page.indices()
-                    .iter()
-                    .zip(page.layers())
-                    .filter(|&(&index, &layer)| index == 0 && layer == LAYER_FIRST_ACTOR)
-                    .count(),
+                    camera: CameraTransform {
+                        eye,
+                        target,
+                        fov_degrees: 45.0,
+                        ..Default::default()
+                    },
+                    actors: vec![actor],
+                    audio_cues: Vec::new(),
+                    palette: PaletteControls::default(),
+                    bank: Default::default(),
+                };
+                let timeline = FilmTimeline::new(
+                    vec![SliceKeyframe {
+                        record,
+                        tick: 0,
+                        tick_duration: 1,
+                    }],
+                    Vec::new(),
+                );
+                let shapes = HashMap::from([(SHAPE_ID, floor(indices))]);
+                let scene = FilmScene::new(timeline, shapes, None);
+                let mut test = common::gpu_or_skip(&scene)?;
+                let page = test.draw(&scene.frame(0.0));
+                let mut counts = (0, 0);
+                for (&index, &layer) in page.indices().iter().zip(page.layers()) {
+                    if layer != LAYER_FIRST_ACTOR {
+                        continue;
+                    }
+                    if index == 0 {
+                        counts.0 += 1;
+                    } else {
+                        counts.1 += 1;
+                    }
+                }
+                Some(counts)
+            };
+        let pixels = |indices: Vec<u32>, casts_shadow: bool, view: bool| {
+            pixels_from(
+                [0.0, 10.0, 10.0],
+                [0.0, 0.0, 0.0],
+                indices,
+                casts_shadow,
+                view,
             )
         };
+        // The view slot is the camera: the eye sits at the actor, inside its model, looking
+        // steeply down so that the ground point straight below stays in view. Its distance is
+        // about 0, so the shape's LOD and view gates run there; the shadow still shows.
+        let eye = [0.0, 3.0, 0.0];
         for indices in [vec![0, 1, 2], vec![0, 2, 1]] {
-            let Some(shadow) = shadow_pixels(indices.clone(), true) else {
+            let Some((shadow, body)) =
+                pixels_from(eye, [0.0, 0.0, -0.5], indices.clone(), true, true)
+            else {
+                return;
+            };
+            assert!(
+                shadow > 100 && body == 0,
+                "eye at slot {indices:?}: {shadow} {body}"
+            );
+        }
+        for indices in [vec![0, 1, 2], vec![0, 2, 1]] {
+            let Some((shadow, _)) = pixels(indices.clone(), true, false) else {
                 return;
             };
             assert!(shadow > 100, "winding {indices:?}: shadow {shadow}");
-            assert_eq!(shadow_pixels(indices, false), Some(0));
+            assert_eq!(pixels(indices.clone(), false, false).map(|p| p.0), Some(0));
+            // With no body over it, the view slot's shadow shows at least as many pixels.
+            let (view_shadow, view_body) = pixels(indices, true, true).expect("adapter");
+            assert!(
+                view_shadow >= shadow && view_body == 0,
+                "{view_shadow} {view_body}"
+            );
         }
     });
 }
@@ -322,6 +362,8 @@ fn world_is_drawn_when_present() {
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
             view_facing: Vec::new(),
+            prop_runs: Vec::new(),
+            placements: PlacementRecords::default(),
         };
         let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
         let Some((w, h, drawn)) = render(&scene) else {
@@ -332,7 +374,7 @@ fn world_is_drawn_when_present() {
 }
 
 /// A world holding `ir` alone.
-fn world_of(ir: SodModelIr) -> World {
+pub(crate) fn world_of(ir: SodModelIr) -> World {
     World {
         ir,
         terrain_patches: 0,
@@ -346,7 +388,73 @@ fn world_of(ir: SodModelIr) -> World {
         terrain: TerrainSurface::default(),
         tap_failures: Vec::new(),
         view_facing: Vec::new(),
+        prop_runs: Vec::new(),
+        placements: PlacementRecords::default(),
     }
+}
+
+/// A world prop's pixels carry the shape word of the prop run holding its vertices, and
+/// nothing else carries one: a prop whose vertices no run holds, a terrain triangle and the
+/// sky have no shape word.
+#[test]
+fn a_world_props_run_reaches_the_shape_plane() {
+    common::gpu_test(|| {
+        // Two triangles of scenery class `class` side by side; a run of shape 40 holds the
+        // left one's vertices.
+        let shapes_of = |class: u8| {
+            let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
+            let one = ir.vertices.clone();
+            let shifted = |dx: f32| {
+                one.iter().map(move |v| SodVertex {
+                    position: [v.position[0] + dx, v.position[1], v.position[2]],
+                    scenery_class: class,
+                    ..*v
+                })
+            };
+            ir.vertices = shifted(-1.1).chain(shifted(1.1)).collect();
+            ir.indices = vec![0, 2, 1, 3, 5, 4];
+            ir.nodes[0].kind = NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: 6,
+                index_offset: 0,
+                index_count: 6,
+                is_decal: false,
+            };
+            let mut world = world_of(ir);
+            world.prop_runs = vec![PropRun {
+                first: 0,
+                end: 3,
+                shape: 40,
+            }];
+            let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
+            let mut test = common::gpu_or_skip(&scene)?;
+            let page = test.draw(&scene.frame(0.0));
+            let w = page.width() as usize;
+            // The shape words of the drawn pixels left and right of the middle, and all words.
+            let (mut left, mut right) = (Vec::new(), Vec::new());
+            for (n, (&layer, &word)) in page.layers().iter().zip(page.shapes()).enumerate() {
+                if layer != LAYER_NONE {
+                    if n % w < w / 2 { &mut left } else { &mut right }.push(word);
+                }
+            }
+            Some((left, right, page.shapes().to_vec()))
+        };
+        let Some((left, right, all)) = shapes_of(SCENERY_PROP) else {
+            return;
+        };
+        assert!(
+            left.len() > 50 && right.len() > 50,
+            "{} {}",
+            left.len(),
+            right.len()
+        );
+        assert!(left.iter().all(|&word| word == 41), "{left:?}");
+        assert!(right.iter().all(|&word| word == 0), "{right:?}");
+        // Every pixel the left triangle leaves uncovered has no shape word.
+        assert_eq!(all.iter().filter(|&&word| word != 0).count(), left.len());
+        let (left, right, _) = shapes_of(SCENERY_TERRAIN).expect("adapter");
+        assert!(left.iter().chain(&right).all(|&word| word == 0));
+    });
 }
 
 /// Rows a world sliver of scenery class `class` draws, and the view's rows: a 2 m tall

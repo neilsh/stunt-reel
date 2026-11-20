@@ -11,6 +11,7 @@
 )]
 
 mod common;
+mod draw_order;
 mod fragment_index;
 mod lines;
 mod renderer;

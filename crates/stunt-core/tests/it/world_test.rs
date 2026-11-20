@@ -487,3 +487,163 @@ fn well_formed_scenery_reports_no_stop() {
     let world = build_world(&inputs, &HashMap::new()).expect("world");
     assert!(world.scenery_stop.is_none());
 }
+
+/// The world keeps a record of each placement, culled ones included: its node and the
+/// partition step above it, and its shape's collision lists from the seam 3 decode.
+#[test]
+fn each_placement_keeps_a_record_of_its_node_path_and_collision_lists() {
+    use stunt_core::world::Split;
+    let collider =
+        std::fs::read(fixtures_dir().join("synthetic_collision.sod")).expect("read fixture");
+    let mut shapes = fixture_shapes(0x0105);
+    shapes.insert(
+        0x0107,
+        decode_sod(&collider, "MODEL_0107", None, DecodeMode::Strict).expect("decode"),
+    );
+    // Word 1: SP_POS x=10 y=20 z=30, next -> word 6. Word 6: SP_ZPLANE with sortvalue 5,
+    // child +1 the leaf at word 10 (the collider, which has no vertices, so the cull drops
+    // it), child +2 the leaf at word 12 (the minimal shape).
+    let words = [0, 0, 10, 20, 30, 12, 8, 20, 24, 5, 10, 0x0107, 10, 0x0105];
+    let scenery = words_to_bytes(&words);
+    let inputs = WorldInputs {
+        anchors: &[],
+        map: None,
+        scenery: Some(&scenery),
+        view_eyes: &[[-10.0, -20.0, 40.0]],
+        max_zoom: 1.0,
+        max_lod_shift: 1,
+        min_corner_depth: 0.804,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
+    };
+    let world = build_world(&inputs, &shapes).expect("world");
+    assert_eq!(world.props_placed, 1);
+    let placed = &world.placements;
+    let summary: Vec<(u16, u32, bool, bool)> = placed
+        .records
+        .iter()
+        .map(|r| (r.shape, r.node.0, r.drawn, r.collision.is_some()))
+        .collect();
+    assert_eq!(
+        summary,
+        [(0x0107, 10, false, true), (0x0105, 12, true, false)]
+    );
+    let plane = Split::ZPlane {
+        origin: 30,
+        sortvalue: 5,
+    };
+    for (record, child) in placed.records.iter().zip([0, 1]) {
+        assert_eq!(record.raw, [10, 20, 30]);
+        assert_eq!(record.position, [-10.0, -20.0, 30.0]);
+        assert!(!record.stand_in);
+        let path: Vec<_> = placed
+            .path(record)
+            .iter()
+            .map(|step| (step.node.0, step.split, step.child))
+            .collect();
+        assert_eq!(path, [(6, plane, child)]);
+    }
+    let lists = placed
+        .collision(&placed.records[0])
+        .expect("collision lists");
+    assert_eq!(Some(lists), shapes[&0x0107].collision());
+    assert_eq!(lists.lists.len(), 3);
+    assert_eq!(
+        placed.collisions.len(),
+        1,
+        "one entry per shape with a list"
+    );
+    assert_eq!(placed.collision(&placed.records[1]), None);
+    assert_eq!(
+        placed.records[0].mesh, None,
+        "the cull drops it from the mesh"
+    );
+    let mesh = placed.records[1]
+        .mesh
+        .expect("the drawn prop is in the mesh");
+    assert!(!mesh.base.is_empty() || !mesh.decal.is_empty());
+}
+
+/// `tests/fixtures/synthetic_walk_tree.bin`, the image-tree segment `scene_tree.walk_slot`'s
+/// tests walk, as `SCENERY.scn`: a leading 0 word, every 16-bit word widened to 32 bits, and
+/// each link 2 higher, since the file's links count its leading word.
+fn walk_tree_scenery() -> Vec<u8> {
+    /// Byte offsets of the segment's link words (fixtures README, item 24).
+    const LINKS: [usize; 8] = [0x08, 0x0C, 0x0E, 0x14, 0x16, 0x48, 0x4E, 0x50];
+    let seg = std::fs::read(fixtures_dir().join("synthetic_walk_tree.bin")).expect("read tree");
+    let mut words = vec![0i32];
+    for (index, pair) in seg.as_chunks::<2>().0.iter().enumerate() {
+        let word = i32::from(u16::from_le_bytes(*pair));
+        words.push(if LINKS.contains(&(2 * index)) {
+            word + 2
+        } else {
+            word
+        });
+    }
+    words_to_bytes(&words)
+}
+
+/// The shapes of the records `walk_slot` would draw after `entry`, from `eye` toward
+/// `target`, in DOS axes, over the walk-tree fixture.
+fn after_entry(eye: [f32; 3], target: [f32; 3], position: [f32; 3], extent: i32) -> Vec<u16> {
+    use stunt_core::world::SlotEntry;
+    let mut shapes = HashMap::new();
+    for id in [0x0C01, 0x0C02, 0x0D01, 0x0D02] {
+        shapes.extend(fixture_shapes(id));
+    }
+    let scenery = walk_tree_scenery();
+    let inputs = WorldInputs {
+        anchors: &[],
+        map: None,
+        scenery: Some(&scenery),
+        view_eyes: &[],
+        max_zoom: 1.0,
+        max_lod_shift: 1,
+        min_corner_depth: 0.804,
+        anchored_shapes: &HashMap::new(),
+        light: ShadeLight::default(),
+    };
+    let world = build_world(&inputs, &shapes).expect("world");
+    let records = &world.placements;
+    let walked: Vec<u16> = records.records.iter().map(|r| r.shape).collect();
+    assert_eq!(
+        walked,
+        [0x0D01, 0x0D02, 0x0C01, 0x0C02],
+        "the placement walk takes each node's first child first"
+    );
+    let slot = SlotEntry { position, extent };
+    let after = records.slot_order(eye, target, slot).expect("a place");
+    let mut shapes: Vec<u16> = records
+        .records
+        .iter()
+        .zip(after)
+        .filter_map(|(r, after)| after.then_some(r.shape))
+        .collect();
+    shapes.sort_unstable();
+    shapes
+}
+
+/// The draw orders `tests/test_scene_tree.py` asserts for `walk_slot` on the same tree, read
+/// from the placement records instead: what follows the slot in each.
+#[test]
+fn the_records_order_a_slot_as_the_python_walk_does() {
+    let eye = [0.0; 3];
+    let look_z = [0.0, 0.0, 100.0];
+    // 0x0D01, 0x0D02, slot, 0x0C02, 0x0C01: below the plane, the slope's far side.
+    assert_eq!(
+        after_entry(eye, look_z, [50.0, 0.0, 70.0], 5),
+        [0x0C01, 0x0C02]
+    );
+    // ..., 0x0C02, 0x0C01, slot: shallower than its leaf's object.
+    assert!(after_entry(eye, look_z, [50.0, 0.0, 5.0], 5).is_empty());
+    // ..., 0x0C02, slot, 0x0C01: looking toward -z the same slot is the shallower.
+    assert_eq!(
+        after_entry(eye, [0.0, 0.0, -100.0], [50.0, 0.0, 70.0], 5),
+        [0x0C01]
+    );
+    // 0x0D01, 0x0D02, slot, ...: on the plane's far side, after the pair's second leaf.
+    assert_eq!(
+        after_entry(eye, look_z, [150.0, 0.0, 0.0], 5),
+        [0x0C01, 0x0C02]
+    );
+}

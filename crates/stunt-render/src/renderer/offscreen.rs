@@ -10,6 +10,12 @@ use super::{
     create_depth_view,
 };
 
+/// Bytes per texel of the colour target.
+const COLOR_TEXEL_BYTES: u32 = 4;
+
+/// Bytes per texel of the plane target: the layer and index word, then the shape word.
+const PLANE_TEXEL_BYTES: u32 = 8;
+
 /// Frames whose pages may be outstanding: one is read back while the next draws.
 const FRAMES_IN_FLIGHT: usize = 2;
 
@@ -30,6 +36,7 @@ pub(super) struct OffscreenTarget {
     in_flight: VecDeque<InFlight>,
     pub(super) size: PageSize,
     padded_row_bytes: u32,
+    plane_padded_row_bytes: u32,
     pub(super) viewport_rows: Option<u32>,
     sink: Box<dyn PageSink>,
 }
@@ -85,10 +92,14 @@ impl OffscreenTarget {
 
         let depth_view = create_depth_view(device, size.width, size.height);
 
-        // Texture-to-buffer copies need a 256-byte row pitch; 320 * 4 = 1280 already is one.
+        // Texture-to-buffer copies need a 256-byte row pitch; 320 * 4 = 1280 and 320 * 8 = 2560
+        // already are one.
         let padded_row_bytes =
-            (size.width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+            (size.width * COLOR_TEXEL_BYTES).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let plane_padded_row_bytes =
+            (size.width * PLANE_TEXEL_BYTES).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
         let buffer_size = u64::from(padded_row_bytes) * u64::from(size.height);
+        let plane_buffer_size = u64::from(plane_padded_row_bytes) * u64::from(size.height);
         let readback_usage = wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ;
         let readbacks = std::array::from_fn(|_| Readback {
             color: device.create_buffer(&wgpu::BufferDescriptor {
@@ -99,7 +110,7 @@ impl OffscreenTarget {
             }),
             plane: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("stunt_renderer_plane_readback_buffer"),
-                size: buffer_size,
+                size: plane_buffer_size,
                 usage: readback_usage,
                 mapped_at_creation: false,
             }),
@@ -116,6 +127,7 @@ impl OffscreenTarget {
             in_flight: VecDeque::new(),
             size,
             padded_row_bytes,
+            plane_padded_row_bytes,
             viewport_rows: target.viewport_rows,
             sink,
         }
@@ -197,9 +209,13 @@ impl OffscreenTarget {
             reason = "readback counts from zero to FRAMES_IN_FLIGHT in steps of one"
         )]
         let buffers = &self.readbacks[readback];
-        for (texture, buffer) in [
-            (&self.color_texture, &buffers.color),
-            (&self.plane_texture, &buffers.plane),
+        for (texture, buffer, padded_row_bytes) in [
+            (&self.color_texture, &buffers.color, self.padded_row_bytes),
+            (
+                &self.plane_texture,
+                &buffers.plane,
+                self.plane_padded_row_bytes,
+            ),
         ] {
             encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
@@ -212,7 +228,7 @@ impl OffscreenTarget {
                     buffer,
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: 0,
-                        bytes_per_row: Some(self.padded_row_bytes),
+                        bytes_per_row: Some(padded_row_bytes),
                         rows_per_image: Some(self.size.height),
                     },
                 },
@@ -254,14 +270,16 @@ impl OffscreenTarget {
             device,
             &readback.color,
             self.size.width,
+            COLOR_TEXEL_BYTES,
             self.padded_row_bytes,
             &frame.submission,
         )?;
-        let plane: Vec<u32> = read_back(
+        let words: Vec<u32> = read_back(
             device,
             &readback.plane,
             self.size.width,
-            self.padded_row_bytes,
+            PLANE_TEXEL_BYTES,
+            self.plane_padded_row_bytes,
             &frame.submission,
         )?
         .as_chunks::<4>()
@@ -269,8 +287,15 @@ impl OffscreenTarget {
         .iter()
         .map(|word| u32::from_le_bytes(*word))
         .collect();
+        // Each texel is two words: the layer and index word, then the shape word.
+        let (plane, shapes): (Vec<u32>, Vec<u32>) = words
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&[plane, shape]| (plane, shape))
+            .unzip();
 
-        let mut page = RenderedPage::new(self.size, rgba, &plane)?;
+        let mut page = RenderedPage::new(self.size, rgba, &plane, &shapes)?;
         if let Some(overlay) = frame.overlay {
             overlay(&mut page);
         }

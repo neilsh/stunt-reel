@@ -14,7 +14,7 @@ use crate::link::LinkError;
 use crate::sod::{AngleBank, ShadeLight, faces_view};
 use crate::sprite::SpriteImage;
 use crate::vfs::VfsError;
-use crate::world::{ScnStop, TapFailure, World, WorldInputs, build_world};
+use crate::world::{ScnStop, SlotEntry, TapFailure, World, WorldInputs, build_world};
 
 use super::bank::{PREVIOUS_FRAME_TICKS, angle_bank};
 use super::projection::{
@@ -86,6 +86,12 @@ pub struct SceneReport {
     pub tap_failures: Vec<TapFailure>,
 }
 
+/// `[I1]` metres in the DOS axes the scenery tree and `PLAYONE`'s walks use; the map is its
+/// own inverse.
+fn dos_axes(p: [f32; 3]) -> [f32; 3] {
+    [-p[0], -p[1], p[2]]
+}
+
 /// One drawable actor in a [`SceneFrame`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ActorDraw {
@@ -103,6 +109,9 @@ pub struct ActorDraw {
     /// drawn again through this matrix in palette index 0 (`research/playone-exe/sod-vm-frame.md`
     /// section 9.1).
     pub shadow_matrix: Option<[f32; 16]>,
+    /// True for the view slot's draw: PLAYONE draws its shadow but not the actor (image
+    /// `0x1E26`), so a renderer draws only [`Self::shadow_matrix`] and no sprite.
+    pub shadow_only: bool,
     /// The light `OP_SHADES` shades the shape's normals against for this draw: the world
     /// light turned by the actor's rotation ([`ShadeLight::for_actor`]), the world light for
     /// a view-facing draw. A renderer decodes the shape again under it
@@ -118,8 +127,9 @@ pub struct ActorDraw {
 /// One image an actor's shape draws in screen space (`OP_ANIMATE`) in a [`SceneFrame`].
 ///
 /// `PLAYONE` blits it as a square `size` across at the anchor's projected point, palette
-/// index 0 transparent, with no depth test of its own (`research/playone-exe/sod-animate.md`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// index 0 transparent, with no depth test of its own (`research/playone-exe/sod-animate.md`),
+/// at its slot's place in the scenery walk ([`Self::after`]).
+#[derive(Debug, Clone, PartialEq)]
 pub struct SpriteDraw {
     /// Image resource of the frame, a key of [`FilmScene::image`].
     pub image_id: u16,
@@ -129,6 +139,12 @@ pub struct SpriteDraw {
     pub size: f32,
     /// Index into [`SceneFrame::actors`] of the actor whose shape draws it.
     pub actor: usize,
+    /// The world's placements the scenery walk draws after this sprite's slot, as ascending
+    /// indices into [`World::placements`]' records, only those the world draws
+    /// ([`crate::world::PlacementRecords::slot_order`]; `research/playone-exe/scene-walk-actors.md`).
+    /// `None` when the walk gives the slot no place: no world, no decoded header for the
+    /// slot's extent, or a node on its path that drops it.
+    pub after: Option<Vec<u32>>,
 }
 
 /// Everything to draw at one tick.
@@ -143,8 +159,9 @@ pub struct SceneFrame {
     pub lens: u16,
     /// True when [`FilmScene::world`] should be drawn with an identity transform.
     pub world: bool,
-    /// One draw per actor whose shape is in the table. Actors sharing a shape each get
-    /// their own draw; there is no de-duplication.
+    /// One draw per actor whose shape is in the table, the view slot's a shadow alone
+    /// ([`ActorDraw::shadow_only`]). Actors sharing a shape each get their own draw; there is
+    /// no de-duplication.
     pub actors: Vec<ActorDraw>,
     /// The images the actors' shapes draw at this tick, in actor order.
     pub sprites: Vec<SpriteDraw>,
@@ -240,19 +257,21 @@ impl FilmScene {
 
     /// Builds a scene around one loose model that has no archive.
     ///
-    /// The model is keyed under the first actor with a nonzero `shape_id` at the first
-    /// keyframe, falling back to the first actor. A film with no actors there gets a single
-    /// draw at the origin with an identity matrix whenever a frame has no actors.
+    /// The model is keyed under the first actor other than the view slot with a nonzero
+    /// `shape_id` at the first keyframe, falling back to the first such actor. A film with no
+    /// such actor there gets a single draw at the origin with an identity matrix whenever a
+    /// frame has none.
     #[must_use]
     pub fn with_single_model(timeline: FilmTimeline, model: SodModelIr) -> Self {
         let actors = timeline
             .slices()
             .first()
             .map_or(&[][..], |slice| slice.record.actors.as_slice());
-        let bound = actors
-            .iter()
+        let mut drawn = actors.iter().filter(|a| !a.view);
+        let bound = drawn
+            .clone()
             .find(|a| a.shape_id != 0)
-            .or_else(|| actors.first())
+            .or_else(|| drawn.next())
             .map(|a| a.shape_id);
         let key = bound.unwrap_or(0);
         let mut scene = Self::new(timeline, HashMap::from([(key, model)]), None);
@@ -407,13 +426,15 @@ impl FilmScene {
         self
     }
 
-    /// Frees the world's mesh ([`World::ir`]), keeping everything [`Self::frame`] reads.
+    /// Frees the world's mesh ([`World::ir`]) and its [`World::prop_runs`], keeping everything
+    /// [`Self::frame`] reads.
     ///
     /// For a caller that has uploaded the mesh and goes on sampling frames. [`Self::world`] then
     /// returns the world with an empty mesh, which an upload after this draws as nothing.
     pub fn release_world_mesh(&mut self) {
         if let Some(world) = &mut self.world {
             world.ir = SodModelIr::new(&world.ir.name);
+            world.prop_runs = Vec::new();
         }
     }
 
@@ -472,6 +493,7 @@ impl FilmScene {
                     shadow_matrix: a
                         .casts_shadow
                         .then(|| self.shadow_matrix(a.position_meters, &lifted(own, shape))),
+                    shadow_only: a.view,
                     light,
                     bank: shape.decode().map_or(AngleBank::REST, |decode| {
                         angle_bank(tick, a.animate(), record.bank, previous)
@@ -496,22 +518,33 @@ impl FilmScene {
                 state_mask: 0,
                 distance: distance(eye, p.position),
                 shadow_matrix: None,
+                shadow_only: false,
                 light: self.relit.light(),
                 bank: AngleBank::REST,
             })
             .collect();
-        if let Some(shape_id) = self.origin_shape.filter(|_| record.actors.is_empty()) {
+        if let Some(shape_id) = self
+            .origin_shape
+            .filter(|_| record.actors.iter().all(|a| a.view))
+        {
             actors.push(ActorDraw {
                 shape_id,
                 world_matrix: IDENTITY_MATRIX,
                 state_mask: 0,
                 distance: distance(eye, [0.0; 3]),
                 shadow_matrix: None,
+                shadow_only: false,
                 light: self.relit.light(),
                 bank: AngleBank::REST,
             });
         }
-        let sprites = self.sprite_draws(tick, &record.actors, &actors, (record.bank, previous));
+        let sprites = self.sprite_draws(
+            tick,
+            &record.camera,
+            &record.actors,
+            &actors,
+            (record.bank, previous),
+        );
         SceneFrame {
             tick,
             view: ViewCamera::from_authored(&record.camera),
@@ -526,7 +559,7 @@ impl FilmScene {
     }
 
     /// The sprite draws of `draws`, the actor draws [`Self::frame`] made from `actors` in
-    /// order, at `tick`.
+    /// order, at `tick`, seen by `camera`.
     ///
     /// Each sprite's frame comes from its bank word ([`angle_bank`], with film variables 10
     /// and 12 at this frame and at the previous one). Only an `Always` or a
@@ -535,6 +568,7 @@ impl FilmScene {
     fn sprite_draws(
         &self,
         tick: f32,
+        camera: &CameraTransform,
         actors: &[ActorTransform],
         draws: &[ActorDraw],
         (now, previous): (BankVariables, BankVariables),
@@ -547,8 +581,9 @@ impl FilmScene {
             let Some(shape) = self.shapes.get(&draw.shape_id) else {
                 continue;
             };
+            let mut after = None;
             for sprite in &shape.sprites {
-                if !sprite_gate_open(sprite, draw.state_mask) {
+                if draw.shadow_only || !sprite_gate_open(sprite, draw.state_mask) {
                     continue;
                 }
                 let phase = angle_bank(tick, actor.animate(), now, previous).word(sprite.selector);
@@ -558,15 +593,44 @@ impl FilmScene {
                 else {
                     continue;
                 };
+                // Every sprite of a slot shares its one entry in the walk.
+                let after = after
+                    .get_or_insert_with(|| self.drawn_after(camera, actor, shape))
+                    .clone();
                 out.push(SpriteDraw {
                     image_id,
                     centre: transform_point(&draw.world_matrix, sprite.anchor),
                     size: sprite.size,
                     actor: index,
+                    after,
                 });
             }
         }
         out
+    }
+
+    /// The drawn world placements the scenery walk from `camera` draws after `actor`'s
+    /// entry, whose shape is `shape` ([`SpriteDraw::after`]).
+    fn drawn_after(
+        &self,
+        camera: &CameraTransform,
+        actor: &ActorTransform,
+        shape: &SodModelIr,
+    ) -> Option<Vec<u32>> {
+        let records = &self.world.as_ref()?.placements;
+        let header = shape.decode()?.header;
+        let entry = SlotEntry {
+            position: dos_axes(actor.position_meters),
+            extent: SlotEntry::extent_of(header.bounding_size, header.scale_index),
+        };
+        let after = records.slot_order(dos_axes(camera.eye), dos_axes(camera.target), entry)?;
+        Some(
+            (0u32..)
+                .zip(after.iter().zip(&records.records))
+                .filter(|&(_, (&after, record))| after && record.drawn)
+                .map(|(index, _)| index)
+                .collect(),
+        )
     }
 
     /// Film variables 10 and 12 at the `PLAYONE` frame before the one at `tick`
@@ -589,6 +653,7 @@ mod tests {
     use super::*;
     use crate::contracts::VisibilityCondition;
     use crate::sod::DecodeMode;
+    use crate::world::PlacementRecords;
 
     /// A view-facing actor drops its own rotation for the camera's heading, while its
     /// shadow keeps the slot's rotation; the world's view-facing props are drawn the same
@@ -619,6 +684,7 @@ mod tests {
             position_meters: [4.0, 0.0, 0.0],
             state_mask: 0,
             casts_shadow: true,
+            view: false,
             joint_angles_bam: Vec::new(),
         };
         let record = TrajectoryRecord {
@@ -653,6 +719,7 @@ mod tests {
             scenery_stop: None,
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
+            placements: PlacementRecords::default(),
             view_facing: vec![
                 FacingProp {
                     shape: 9,
@@ -672,6 +739,7 @@ mod tests {
                     }],
                 },
             ],
+            prop_runs: Vec::new(),
         };
         let scene = FilmScene::new(timeline, HashMap::from([(9, tree)]), Some(world));
         let frame = scene.frame(0.0);
@@ -735,6 +803,7 @@ mod tests {
                 position_meters: [4.0, 0.0, 0.0],
                 state_mask: 0,
                 casts_shadow: true,
+                view: false,
                 joint_angles_bam: Vec::new(),
             }],
             audio_cues: Vec::new(),
@@ -772,11 +841,13 @@ mod tests {
             scenery_stop: None,
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
+            placements: PlacementRecords::default(),
             view_facing: vec![FacingProp {
                 shape: 9,
                 position: [-2.0, 1.0, 5.0],
                 gates: Vec::new(),
             }],
+            prop_runs: Vec::new(),
         };
         let mut scene = FilmScene::new(timeline, HashMap::from([(9, tree)]), Some(world));
         let before = scene.frame(0.0);
@@ -816,6 +887,7 @@ mod tests {
             position_meters: [0.0; 3],
             state_mask: 0,
             casts_shadow: false,
+            view: false,
             joint_angles_bam: Vec::new(),
         };
         let pitched = [half, 0.0, 0.0, half];
@@ -880,6 +952,7 @@ mod tests {
             position_meters: [0.0; 3],
             state_mask: 0,
             casts_shadow: false,
+            view: false,
             joint_angles_bam: Vec::new(),
         };
         let slice = |tick: u32, var10: u16| SliceKeyframe {
@@ -896,13 +969,13 @@ mod tests {
         };
         let timeline = FilmTimeline::new(vec![slice(0, 0x0100), slice(10, 0x0200)], Vec::new());
         let scene = FilmScene::new(timeline, HashMap::from([(1, plain), (2, turning)]), None);
-        // Var 10 climbs 25.6 a tick, so 3 ticks before tick 8 it is 0x0100 + 128.
+        // Var 10 climbs 25.6 a tick; with no lag word 0x14 takes it at tick 8, 0x0100 + 204.
         let frame = scene.frame(8.0);
         let [still, turned] = frame.actors.as_slice() else {
             panic!("two actor draws, got {}", frame.actors.len());
         };
         assert_eq!(still.bank, AngleBank::REST);
-        assert_eq!(turned.bank, AngleBank::new([0, 0, 0x8000, 0, 0, 0]));
+        assert_eq!(turned.bank, AngleBank::new([0, 0, 0xCC00, 0, 0, 0]));
     }
 
     /// A drawn-only scene keeps every actor shape of every slice and every view-facing prop,
@@ -925,6 +998,7 @@ mod tests {
                     position_meters: [0.0; 3],
                     state_mask: 0,
                     casts_shadow: false,
+                    view: false,
                     joint_angles_bam: Vec::new(),
                 }],
                 audio_cues: Vec::new(),
@@ -948,6 +1022,7 @@ mod tests {
             scenery_stop: None,
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
+            placements: PlacementRecords::default(),
             // A tree standing only behind the near branch of a level-of-detail node.
             view_facing: vec![FacingProp {
                 shape: 3,
@@ -959,6 +1034,7 @@ mod tests {
                     near: true,
                 }],
             }],
+            prop_runs: Vec::new(),
         };
         let shapes = (1..=4).map(|id| (id, SodModelIr::new("SHAPE"))).collect();
         let scene = FilmScene::new(timeline, shapes, Some(world));

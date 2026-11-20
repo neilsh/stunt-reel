@@ -1,9 +1,9 @@
 ---
-summary: "The SOD VM raw-coordinate generators: `PERFDISK`, the model frames, two-vertex polygons, `MOVETO`/`ZLINETO`/`LINECOL` lines, and polygon spans that include both ends."
-sidebar_label: "SOD VM frames, lines & spans"
+summary: "The SOD VM raw-coordinate generators: `PERFDISK`, the model frames and two-vertex polygons; lines and polygon spans are in their own note."
+sidebar_label: "SOD VM model frames"
 ---
 
-# `PLAYONE.EXE`: SOD VM Model Frames, Lines and Spans
+# `PLAYONE.EXE`: SOD VM Model Frames and Two-Vertex Polygons
 
 Part of the SOD VM notes: [`sod-vm.md`](sod-vm.md) lists the files and states the binary and method; section numbers run across the files.
 
@@ -18,10 +18,10 @@ Each quad handler reads `a, b, reg`, computes two corners as `M · v` ([section 
 |---|---|---|---|---|
 | `OP_IPG` type 2, ground quad | `0xB41E` (VM `0x31DE`) | `a, b, reg` | `reg + 0..3` = `(+a, 0, −b)`, `(+a, 0, +b)`, `(−a, 0, +b)`, `(−a, 0, −b)`: the order of the cube's corners 0..3 | matches |
 | `OP_IPG` type 8, vertical quad | `0xB4B5` (VM `0x3275`) | `a, b, reg` | `reg + 0..3` = `(+a, +b, 0)`, `(−a, +b, 0)`, `(−a, −b, 0)`, `(+a, −b, 0)` | fixed: corners 1 and 3 were swapped, the reverse winding |
-| `OP_IPG` type 4, object bucket | `0xB54C` (VM `0x330C`) | `w` | No register. When the head `DGROUP:0x2346 + w` is nonzero it saves the 23-word block at `work:0x806E` (shift, translation, matrix), hands that pending-object list to the walker `0x1B75` ([`lod.md`](lod.md)) and restores the block. | matches (one word, no effect) |
+| `OP_IPG` type 4, object bucket | `0xB54C` (VM `0x330C`) | `w` | No register. When the head `DGROUP:0x2346 + w` is nonzero it saves the 23-word block at `work:0x806E` (shift, translation, matrix), hands that pending-object list to `0x1B75`, which takes the head and sorts and draws its actors, and restores the block; the scenery walk's `SP_LEAF` fills the head with the actors whose probe recorded bucket `w` at that object ([`scene-walk-actors.md` § 3](scene-walk-actors.md#3-buckets)). | matches (one word, no effect) |
 | `OP_IPG` type 6, streamer | `0xB58D` (VM `0x334D`) | none | Registers 4..10, whatever the stream says: point `i` (0..6) is `(M · (x_i, 0, 2(i + 1)) >> work:0x806F) + (BX, DX, BP)`, the CPU registers it was entered with, saved at `work:0x41B0..0x41B4`: `BX` = 6, the type word the dispatcher `0x965F` loads, and `DX`, `BP` as the previous opcode's handler left them, since `0x965F` sets no other register. `x_i = (sin(p + (i + 1) · 0x1000) / 2 − sin(p) / 2) / 2` from the table at `work:0x19AA`, phase `p = (DGROUP:0x22B8 & 0x3F) << 10`, one turn per 64 ticks. | fixed: it read two words; the registers are not written, and no model searched reaches type 6 (below) |
 | `OP_SPHERE` | `0x9DB5` | `reg, radius` | No register. Unless the register's flag byte (`+0x0A`) is set, it passes the register's projected point and the screen radius `((radius · work:0x8070) >> 8) / (z + work:0x8088)` to `0xCF39`, then to the flat filler `0x8010`, or plots one pixel (`0x7FFB`) when the radius is 0. No facing test. That `0xCF39` builds a filled circle is `[Supported Inference]` from its inputs. | frame matches (centre from the register); faces fixed, below |
-| `OP_PERFDISK` | `0xA040`, operands read by `0xA08E` | `centre_reg, radius, axis_reg` | No register. It skips while the shadow mode `work:0x806C` is set or the centre's depth `z + work:0x8088` is below `0x80` (signed), else builds, from the centre, `(radius · work:0x8070) >> 16` and the normal `regs[centre] − regs[axis]`, a quadratic form that it hands to the flat filler `0x8010`: the screen outline of a disc, `[Supported Inference]`. The normal enters the outline's quadratic form only through products of its components, and no branch tests its sign, so the disc draws from both sides (`[Supported Inference]`). | fixed: a 16-gon of `radius` about the centre, perpendicular to the raw normal, one face for each side ([#392](https://github.com/neilsh/stunt-reel/issues/392)); radius scale checked on one `BOMB` disc at ticks 2058 and 2070, below |
+| `OP_PERFDISK` | `0xA040`, operands read by `0xA08E` | `centre_reg, radius, axis_reg` | No register. It skips while the shadow mode `work:0x806C` is set or the centre's depth `z + work:0x8088` is below `0x80` (signed), else builds, from the centre, `(radius · work:0x8070) >> 16` and the normal `regs[centre] − regs[axis]`, a quadratic form that it hands to the flat filler `0x8010`: the screen outline of a disc, `[Supported Inference]`. The normal enters the outline's quadratic form only through products of its components, and no branch tests its sign, so the disc draws from both sides (`[Supported Inference]`). | fixed: a 16-gon of `radius` about the centre, perpendicular to the raw normal, one face for each side ([#392](https://github.com/neilsh/stunt-reel/issues/392)), which the renderer squeezes along the view's depth by the lens zoom ([#754](https://github.com/neilsh/stunt-reel/issues/754)); radius scale checked on one `BOMB` disc at ticks 2058 and 2070 and, on lavapipe, on `LOCATION`'s ground disc, below |
 | `OP_VEC` (`0x004B`) | none | none | Not a dispatched opcode ([`sod-opcodes.md`](../formats/sod-opcodes.md) § 1): `CS:0x004B` is image `0x828B`, two bytes into slot `0x0048`'s patch store, where the bytes `FE F4` begin no defined instruction. | moot: three words, no effect |
 
 Walking the 2,425 unique models in the data root's corpus reaches type 0 in 2,192 steps, type 2 in 320, type 4 in 152, type 8 in 57, `SPHERE` in 1,584 and `PERFDISK` in 2,531, and type 6 and `OP_VEC` in none (`[Bounded Observation]`, `trace_sod` over every `0x000C`-magic entry).
@@ -69,14 +69,38 @@ _Source: [sliced discs and the disc skips read](../../work/2026-11/479_perfdisk-
 `vm.rs` draws the disc as a 16-gon (16 is a guess at roundness; the radius is checked, below) in the plane perpendicular to the raw register difference `regs[centre] − regs[axis]`, one face for each side, in the current colour, with `radius` in register units.
 **Scale checked against a same-camera capture** ([#425](https://github.com/neilsh/stunt-reel/issues/425)).
 `OP_SPHERE` shifts the radius product by 8 and divides by depth; this handler shifts by 16 (`0xA0A2..0xA0A6`: `imul [0x8070]`, high word) and leaves the perspective to the conic it builds, so the two shifts do not by themselves say the disc is 256 times smaller.
-`BOMB` tick 2058 has a capture and a render from the same camera (the car body's left edge and the disc's centre column agree to 2 px), and the wheel disc's width agrees with `radius` in register units to about 2 px (one shape, ticks 2058 and 2070; other shapes and depths unchecked): at the rows 172 and 184 the capture is 77 and 91 px wide, the 16-gon 72 and 87 px, and a 64-gon 1 to 2 px under the capture; at tick 2070 the capture and the 64-gon differ by 1 to 2 px over four rows (`[Bounded Observation]`: two ticks, one shape, widths read off the palette index of the disc's flat colour).
+`BOMB` tick 2058 has a capture and a render from the same camera (the car body's left edge and the disc's centre column agree to 2 px), and the wheel disc's width agrees with `radius` in register units to about 2 px (one shape, ticks 2058 and 2070; a second shape is read below): at the rows 172 and 184 the capture is 77 and 91 px wide, the 16-gon 72 and 87 px, and a 64-gon 1 to 2 px under the capture; at tick 2070 the capture and the 64-gon differ by 1 to 2 px over four rows (`[Bounded Observation]`: two ticks, one shape, widths read off the palette index of the disc's flat colour).
 The 16-gon is 4 to 6 % narrow and the 64-gon closes most of that gap; the remainder is unexplained, perhaps the stepped ellipse of `0xD11D`.
 A 32-gon moved no film by more than 0.00015 SSIM and BOMB, LOCATION, LAND and INTRO fell (BOMB -0.00014), so it is not adopted and 16 stays.
-The `work:0x8108` rescale of the normal's depth difference (`0xA0DB..0xA0E8`) is `dz · 0x8108 · 2^(0x810C+1) >> 16`; with the view matrix's two screen rows scaled by `0x8108` in Q15 and the depth row shifted right by `0x810C` ([`memory-map-vm.md`](memory-map-vm.md)), that makes the normal's three components share one scale, which `vm.rs` already has because it keeps the normal in the model frame, so no rescale is added (`[Supported Inference]`: read from the two sites, not verified live; the tilt looks similar, and a 2 px height gap at tick 2058 is unexplained).
+The `work:0x8108` rescale of the normal's depth difference (`0xA0DB..0xA0E8`) is `dz · 0x8108 · 2^(0x810C+1) >> 16`; with the view matrix's two screen rows scaled by `0x8108` in Q15 and the depth row shifted right by `0x810C` ([`memory-map-vm.md`](memory-map-vm.md)), that makes the normal's three components share one scale, which `vm.rs` already has because it keeps the normal in the model frame, so no rescale is added (`[Supported Inference]`: read from the two sites, not verified live; a 2 px height gap at tick 2058 is unexplained).
+The centre's depth is not rescaled: that is the lens squeeze below.
 Of the skips, `vm.rs` reproduces only the zero normal.
 The centre-depth and eye-plane skips depend on the camera, which a decode does not have, and the shadow draw reuses the actor's whole mesh, discs included, where `0xA040` skips in shadow mode ([#690](https://github.com/neilsh/stunt-reel/issues/690)).
 Scored against the seven reference films with `mise run parity` (RTX 4070).
 _Source: [the handler read and the scores](../../work/2026-11/392_perfdisk/journal.md#2026-11-12-the-handler-read-to-its-end-and-drawn)._
+
+**A ground disc, read on lavapipe** ([#709](https://github.com/neilsh/stunt-reel/issues/709); `[Bounded Observation]`, two ticks, one shape, lavapipe, widths read off index `0x4A`, the disc's flat colour, in both panels; the GPU re-read is [#689](https://github.com/neilsh/stunt-reel/issues/689)).
+`LOCATION.ALL` shape `0x07C6` is one `OP_PERFDISK` of radius `0x2400` in colour `0x4A`, its normal along y: the stone circle's ground disc in `LOCATION.FLM`, lying flat and seen at a glancing angle across most of the screen, where `BOMB`'s wheel stands upright.
+At ticks 6062 and 6161 (`mise run frame -- --film location --ticks 6062,6161 --software-only`, commit `9c9c6a5` (`crates/` tree `a00c4e7`)) the camera appears to match: the stones line up and the disc's far rim is row 76 in the capture, 77 in ours.
+Stones stand on the rim, so only the ends a stone does not cover are read: at 6062 the right end of rows 106, 112 and 118 is at x 298, 300 and 299 in the capture and 299, 305 and 309 in ours; at 6161 the left end of rows 106, 112, 118 and 124 is at x 22, 19, 20 and 23 in the capture and 17, 14, 11 and 8 in ours.
+The near rim is row 151 in the capture and 166 in ours.
+So on this shape ours is the larger: it agrees at the far rim, reaches 1 to 15 px further at the sides and 15 rows nearer the camera, where on `BOMB` the 16-gon was 4 to 6 % narrow.
+_Source: [the ground disc read on lavapipe](../../work/2026-11/425_perfdisk-radius/journal.md#2026-11-18-a-location-ground-disc-read-on-lavapipe)._
+
+**The lens squeeze** ([#754](https://github.com/neilsh/stunt-reel/issues/754); `[Established]` for the instruction sequences, static, from the unpatched image with `mise run re-tool -- disasm`; `[Supported Inference]` that the outline is the projection of the circle its inputs describe; `[Bounded Observation]` for the fit, two `LOCATION` ticks on lavapipe).
+The builder takes its inputs in two scales.
+The centre (`0xA092..0xA0C6`) is the register plus the object origin: `x` and `y` in the screen rows' units (rows 0 and 1 of the view matrix, times `work:0x8108` in Q15) and `z` in the depth row's (shifted right by `work:0x810C`).
+The radius, `(radius · work:0x8070) >> 16` with `0x8070 = 0x8108 >> work:0x806F` (`0x911A..0x9121`), is in the `x` and `y` units, and so is the normal once `0xA0D3..0xA0E8` rescales its depth difference.
+So only the centre's depth is the true depth over the zoom (`0x8108 / 0x8000 · 2^0x810C`, [`lod.md` § 2.2](lod.md#22-how-the-lens-scales-the-projection)).
+With the projector's `256 · x / z` (`0x9CF1`, [section 8.6](sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)), the outline is then the true disc's with every point's depth offset from the centre multiplied by the zoom: shallower than the true disc under a wide lens, deeper under a telephoto, and unchanged to 1 part in 32,768 at the default lens, whose zoom is `0x7FFF / 0x8000`.
+At `LOCATION` ticks 6062 and 6161 the lens draws at 50.95° against the default 42.67°, a zoom of 0.820.
+The renderer draws it so: a rim vertex carries the vector to its disc's centre (`VERTEX_FLAG_DISC`), and the vertex shader scales its clip-space depth offset from the centre (clip `z` and `w`, which alone hold depth on the symmetric projection) by `tan(42.67° / 2) / tan(fov / 2)`.
+On lavapipe the near rim then reads row 153 at both ticks (capture 151, before 166), the far rim 75 and 76 (capture 76, before 77: still within 1 row of it, though 2 rows nearer the top at 6062), and the free ends of the rows quoted above 295, 299, 298 at 6062 and 21 on each row at 6161.
+On the GPU (RTX 4070) the same rows and ends read identically.
+_Source: [the GPU judge and rim re-read](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-19-gpu-judge-and-rim-re-read)._
+Adopted, evidence-backed: `LOCATION` rose by 0.0011 and the target frames' index agreement by 0.042; `CTRY`, `BALLOON` and `BOMB`, at the default lens, changed no frame, so `BOMB`'s wheel is as before; the other films moved by less than 0.00003.
+The scores and pictures are in the journal; the GPU re-read of the widths before the squeeze, and of other shapes, is [#689](https://github.com/neilsh/stunt-reel/issues/689).
+_Source: [the disc squeezed along depth by the lens zoom](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-18-the-disc-squeezed-along-depth-by-the-lens-zoom)._
 
 **Sphere faces.**
 `PLAYONE`'s sphere is a disc on screen, so it has no winding to match.
@@ -160,101 +184,19 @@ No parity reference film is known to place a shape with a two-vertex polygon ([`
 
 _Source: [two-vertex polygons read](../../work/2026-11/393_two-vertex-polygons/journal.md#2026-11-11-the-two-vertex-polygon-read-statically)._
 
-### 8.10 Lines: `MOVETO`, `ZLINETO` and `LINECOL`
-
-`[Established]` for the instructions, static, in the unpatched image (not run; the Patch #3 image not read).
-The dispatch slots ([section 1](sod-vm.md#1-dispatch)) send `MOVETO` (`0x00A2`) to `0x968D`, `ZLINETO` (`0x00BD`) to `0x9696` and `LINECOL` (`0x00B4`) to `0x9BAA`.
-
-| Image offset | Role |
-|---|---|
-| `0x968D` | `MOVETO`: stores its operand, a register's byte offset, at `work:0x41EC` (the pen). |
-| `0x9696` | `ZLINETO`: `BX` = the pen, the pen = its operand, then `call [0x807E]`. |
-| `0x9BAA` | `LINECOL`: stores its word at `work:0x41EA`, the line colour. |
-| `0xBBD4`, `0xBB83` | Line routines that `0x9100` puts in `work:0x807E` (at `0x914F` and `0x9167`, beside `work:0x8080`'s polygon routines). `0xBBD4` reads both registers' screen words (`+6`, `+8`), clips the segment to the rectangle at `work:0x41C0..0x41C6` and calls `0:7FD2`. `0xBB83`, the clipping variant, was not read line by line. |
-| `0x7FD2` | Line gateway: `DI` = `work:0x41EA`, or 0 when `work:0x806C` is set (the shadow draw, [section 9.1](sod-vm-frame.md#91-the-actor-shadow-draw)), then the driver slot `DS:[0x2244]`. |
-| `0x7511` | The driver's line (third word of the table at `DS:0x10A4`): a Bresenham line over the 320-byte page rows, endpoints ordered by column. When `\|dx\| >= \|dy\|` it stores `\|dx\| + 1` pixels, one per column; otherwise `\|dy\| + 1`, one per row. Both ends are drawn, in the low byte of `DI`, with no depth test. |
-
-So a `ZLINETO` line is one pixel wide at any distance, from the pen register's screen point to the operand's, in the `LINECOL` colour.
-The pen is a register, so the line uses that register's value when `ZLINETO` runs.
-`0x7511` draws one pixel for coincident endpoints; whether the clipper `0xBBF3` passes such a segment was not read.
-
-The renderer follows it.
-`vm.rs` emits each line, and each two-vertex polygon (section 8.9), as one polygon of its two endpoints.
-Tessellation turns it into a quad of zero world width whose corners are flagged as line vertices (`SodVertex::flags` bits 3 to 5) and carry the vector to the other endpoint, and the vertex shader moves each corner half a pixel across the line's minor screen axis and half a pixel past its endpoint along the major one.
-The quad is meant to cover one pixel per column when `|dx| >= |dy|` and one per row otherwise, both ends included (a GPU test checks this for a steep and a shallow line at 200 m and 1000 m; it is not compared with `0x7511` pixel for pixel), at the endpoints' depth, so lines are depth-tested like every other polygon here.
-A shadow draw puts lines in index 0, as `0x7FD2` does.
-`vm.rs` still takes the pen's point at `MOVETO` time, draws nothing for a zero-length line, and leaves the colour at `OP_COLOR`'s until a `LINECOL` (whether `PLAYONE` resets `work:0x41EA` is not read).
-
-The change was adopted, every reference film's score rising, measured against main's ribbons restored by a temporary switch on the same commit; the journal entry cited below has each film's scores.
-Each of `INTRO` camera 1's scored ticks gains 0.0034 to 0.0060: its power line about 437 m away, drawn by `ZLINETO` spans, is two continuous one-pixel cables, as the capture shows, where the 0.03 m ribbons came to scattered dots.
-
-_Source: [the ZLINETO draw path read statically](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-the-zlineto-draw-path-read-statically)._ _Source: [one-pixel screen lines scored](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-one-pixel-screen-lines-scored-on-the-seven-reference-films)._
-
-### 8.11 Polygon Spans Include Both Ends
-
-`[Established]` for the instructions, static, in the unpatched image (`mise run re-tool -- disasm 0x7571 0x75DB`; the Patch #3 image not read).
-The flat filler `0x7571`, which `POLYZ` reaches through the gateway (section 8.9), fills both ends of a polygon on both axes:
-
-* **Rows.**
-  It takes the bottom row minus the top row as a count, stores it at `DS:0x10C6`, and after each row runs `dec word [0x10C6]; jns` (`0x75BE`), so it fills the top row, the bottom row and every row between.
-* **Spans.**
-  Per row it reads the left and right ends, clips them to `[0x2294]` and `[0x2296]`, skips a row whose right end is left of its left (`sub ax,cx; jl` at `0x75A1`), and fills `right − left + 1` pixels (`inc ax` at `0x75A5`).
-
-So every row from top to bottom whose right end is not left of its left is drawn, a row with left equal to right as one pixel, however narrow the polygon.
-How the edge builder `0xC9D4` rounds each row's ends was not read, so the pixel-for-pixel extent of a wide polygon is not known.
-
-**What it does to thin polygons** (`[Bounded Observation]`, `INTRO.FLM` tick 3301, [#426](https://github.com/neilsh/stunt-reel/issues/426)).
-The pines `0x03A3` and `0x03A7` are a type-8 quad (section 8.8) whose `INTV` midpoints make two `POLYZ` triangles: the whole tree, and a sliver outside its right edge at most a sixth of its half-width across.
-The capture draws a six-pixel-wide pine's sliver as a strip of light green one to two pixels wide down 14 rows (21 pixels); our renderer, whose rasteriser fills only pixels whose centres a triangle covers, drew 2 pixels of it.
-Across the top-left 100 × 100 pixels the four tree colours covered 1,471 pixels in the capture and 815 in ours, with every tree checked in a 60 × 60 part of the crop at the same place in both.
-`[Supported Inference]` that the inclusive spans are why the sliver measured is drawn.
-
-The renderer follows it in part.
-`stunt-render` draws every edge that exactly one filled triangle of a mesh node uses as a one-pixel screen line (section 8.10), in its end vertices' colours, after the node's triangles, or in a decal node after each fan's triangles ([`outline.rs`](../../crates/stunt-render/src/outline.rs)), so a polygon also covers the pixels its outline crosses.
-It does this as line quads for the shapes drawn per frame (actors and view-facing props such as these pines), and as a line list for the world mesh's props (below).
-With it the pine's sliver draws 23 pixels and the crop's tree colours 1,188.
-The outline lines are wound both ways, like every line here, so a back-facing polygon's outline still draws where nothing hides it, which `PLAYONE` does not do.
-
-**The world mesh.**
-Line quads cost four vertices and twelve indices an edge, and outlining `LOCATION`'s world that way grew it from 6.7 million vertices and 7.5 million indices to 32.4 million and 84.7 million and made its render, with terrain excluded, fail with a wgpu out-of-memory error.
-The world instead draws the same edges, those exactly one filled triangle of a mesh slice uses, as a `LineList` index buffer over its own vertices, two indices an edge, after the world draw's triangles (a decal slice's outline right after that slice's triangles, [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)) and with their depth test (a decal slice's outline compares `LessEqual` without the `[I5]` bias, which wgpu allows only on triangles; [`mesh.rs`](../../crates/stunt-render/src/mesh.rs) `GpuModel::from_ir_outlined`).
-Terrain and ocean triangles are not outlined.
-The line list is drawn one pixel wide by the backend's line rules, which need not draw the end pixels a line quad does (not measured).
-A slice split over chunks (a world over `max_buffer_size`; `LOCATION`'s is one chunk) gets the outline of the unsplit slice, its edges counted over all its runs, each run drawing its share ([#475](https://github.com/neilsh/stunt-reel/issues/475)).
-On `LOCATION` the outline is 6.4 million edges, 51.5 MB of indices, and a whole-film render took about 16 % longer (two runs each).
-With line quads on the per-frame shapes every reference film's score rose but `LOCATION`'s, which fell; with the world's line list added every film's rose, and at `LOCATION` tick 4170 the derrick's legs draw a pixel wider, as in the capture (judged by eye).
-_Source: [thin polygons measured and outlines drawn](../../work/2026-11/distill-sod-vm/journal.md#2026-11-12-thin-polygons-measured-and-outlines-drawn)._
-
-_Source: [what thins the INTRO conifer field](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-what-thins-the-intro-conifer-field)._ _Source: [polygon outlines scored](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-polygon-outlines-scored-on-the-seven-reference-films)._ _Source: [world-mesh slivers](../../work/2026-11/430_world-mesh-slivers/journal.md#2026-11-12-world-mesh-slivers-by-conservative-rasterization-and-by-a-line-list-outline)._
+Lines and polygon spans (sections 8.10 and 8.11) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md).
 
 ## Ruled out
 
+* **`0xD11D`'s stepped ellipse or the disc's placement as the cause of `LOCATION`'s 15-row near rim** (section 8.8): not needed, since at ticks 6062 and 6161 the lens squeeze alone brings the near rim within 2 rows of the capture, keeps the far rim within 1 row and the free ends within 3 px ([the disc squeezed along depth](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-18-the-disc-squeezed-along-depth-by-the-lens-zoom)); the ellipse is not ruled out for smaller residues, such as `BOMB`'s 4 to 6 % narrow 16-gon.
 * **`OP_SPHERE` faces wound counter-clockwise from outside** (section 8.8), the winding before #272.
   It draws only each sphere's far half; restoring it dropped 10 `LOCATION` frames by more than 0.005 and drew near tree crowns hollow where the capture fills them ([the sphere winding scored](../../work/2026-11/479_perfdisk-sliced-streamer/journal.md#2026-11-17-the-sphere-winding-scored-and-seen-beside-the-capture)).
-
-* **Conservative rasterization for the world mesh's slivers** (section 8.11).
-  It likely over-covers, taking every pixel a triangle touches (inferred): with the world drawn that way `CTRY` fell 0.006 and `LOCATION` 0.0023 (`INTRO` and `BOMB` rose), and every film fell with the per-frame shapes drawn that way too ([world-mesh slivers](../../work/2026-11/430_world-mesh-slivers/journal.md#2026-11-12-world-mesh-slivers-by-conservative-rasterization-and-by-a-line-list-outline)).
-
-* **Outlining the world's terrain and ocean** (section 8.11).
-  With the line-list outline, adding them moved `LAND` and `BALLOON` below the base without world outlines (−0.0008 and −0.0013), where props alone raised both; `LOCATION` and `INTRO` still rose ([world-mesh slivers](../../work/2026-11/430_world-mesh-slivers/journal.md#2026-11-12-world-mesh-slivers-by-conservative-rasterization-and-by-a-line-list-outline)).
-
-* **SOD lines as 0.03 m world ribbons** (section 8.10).
-  They vanish far away and swell up close; one-pixel screen lines score higher on all seven reference films ([one-pixel screen lines scored](../../work/2026-11/415_screen-space-lines/journal.md#2026-11-11-one-pixel-screen-lines-scored-on-the-seven-reference-films)).
-
-* **Missing placements as the cause of `INTRO`'s faint conifer field at tick 3301** (section 8.11).
-  In a 60 × 60 crop of that tick the pines match the capture's in position, judged by eye at 8×; the slivers explain part of the gap (the crop's tree pixels go from 815 to 1,188 of the capture's 1,471).
-  Tick 3290, whose camera sits a few pixels off the capture's, was not compared ([what thins the INTRO conifer field](../../work/2026-11/426_intro-conifers/journal.md#2026-11-12-what-thins-the-intro-conifer-field)).
 
 ## 10. Open questions
 
 * **The other generators** (section 8.8, [#272](https://github.com/neilsh/stunt-reel/issues/272)).
   Closed: `OP_IPG` types 0, 2, 4 and 8 and `OP_SPHERE` read against their handlers, and type 6's operand width; `OP_VEC` has no handler.
   Closed by [#479](https://github.com/neilsh/stunt-reel/issues/479): type 6's registers (`BX` = 6, `DX` and `BP` as the previous handler left them; no model searched reaches it), the sphere faces against the captures, and `OP_PERFDISCSL` (no model searched uses a sliced op, so no disc is perforated).
-  Open: the normal's depth scale (read, not verified live; [#425](https://github.com/neilsh/stunt-reel/issues/425)) and the radius on shapes other than `BOMB`'s wheel ([#689](https://github.com/neilsh/stunt-reel/issues/689)); the centre-depth, eye-plane and shadow-mode skips, which our renderer does not apply ([#690](https://github.com/neilsh/stunt-reel/issues/690)); what `0xA1AB`'s term measures; and whether the archives outside this data root (the full `siarchive`) hold a sliced op or type 6.
+  Closed by [#754](https://github.com/neilsh/stunt-reel/issues/754): the lens squeeze, the cause of `LOCATION`'s near rim.
+  Open: the normal's depth scale and the squeeze, read but not verified live ([#425](https://github.com/neilsh/stunt-reel/issues/425)), and the radius and squeeze on shapes other than `BOMB`'s wheel and `LOCATION`'s ground disc, and the radius on the GPU before the squeeze ([#689](https://github.com/neilsh/stunt-reel/issues/689)); the centre-depth, eye-plane and shadow-mode skips, which our renderer does not apply ([#690](https://github.com/neilsh/stunt-reel/issues/690)); what `0xA1AB`'s term measures; and whether the archives outside this data root (the full `siarchive`) hold a sliced op or type 6.
   The type-8 trees are checked against `INTRO.FLM` ticks 2080 and 3301 and turn with the camera's heading (section 8.8, [#399](https://github.com/neilsh/stunt-reel/issues/399)).
-
-* **Polygon outlines** (section 8.11).
-  Open: how `0xC9D4` rounds a row's ends, so whether the outline matches the inclusive spans pixel for pixel; whether `PLAYONE` fills terrain through `0x7571` as well, since outlining terrain scored below the base on `LAND` and `BALLOON`; and whether the world's line-list outline drops end pixels a line quad draws.
-
-* **Lines** (section 8.10).
-  Open: a zero-length `ZLINETO` or two-vertex polygon, one pixel in `PLAYONE`, draws nothing here; `vm.rs` keeps the pen's point at `MOVETO` rather than reading the register at `ZLINETO`; whether anything resets `work:0x41EA`; whether the pen persists across `RETURN` and subobjects (`work:0x41EC` is global, `vm.rs` keeps one pen per decode); the clipping variant `0xBB83` and the Patch #3 image's line path.

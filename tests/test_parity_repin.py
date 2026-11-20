@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 import sys
 lazy from pathlib import Path
@@ -9,8 +10,24 @@ lazy from pathlib import Path
 import pytest
 
 from stunt_reel import dataroot, parity_layout
-from stunt_reel.expected_scores import changed_since, clean_crates_tree, comparison_line
-from stunt_reel.parity_artifacts import RenderAdapter, Report, read_report, write_report
+from stunt_reel.expected_scores import (
+    RENDER_TREE_FILE,
+    SCORER_DIR,
+    changed_since,
+    clean_crates_tree,
+    comparison_line,
+    read_render_tree,
+    renderer_changes,
+    scorer_only_change,
+    write_render_tree,
+)
+from stunt_reel.parity_artifacts import (
+    LOSS_CLASSES,
+    RenderAdapter,
+    Report,
+    read_report,
+    write_report,
+)
 from stunt_reel.references import read_reference
 
 SCRIPTS_DIR = dataroot.REPO_ROOT / "python" / "scripts"
@@ -48,10 +65,19 @@ all_sha256 = "{ALL_CTRY}"
 commit = "abcdef1"
 adapter = "{GPU.name}"
 
+[ctry.expected.gpu.loss]
+props = 0.0100000
+sky = 0.0200000
+
 [intro]
 film = "vault-intro"
 sha256 = "{SHA_INTRO}"
 """
+
+
+def losses(total: float = 0.1) -> dict[str, float]:
+    """A report's class losses: *total* split evenly over :data:`LOSS_CLASSES`."""
+    return {name: total / len(LOSS_CLASSES) for name in LOSS_CLASSES}
 
 
 class Repo:
@@ -88,6 +114,10 @@ class Repo:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8", newline="\n")
 
+    def scorer_only(self, old: str, new: str) -> bool:
+        """:func:`scorer_only_change` on this scratch repository."""
+        return scorer_only_change(old, new, self.root)
+
     @property
     def references(self) -> Path:
         return self.root / parity_layout.REFERENCES_FILE
@@ -101,17 +131,20 @@ class Repo:
         crates: str | None = "tree",
         adapter: RenderAdapter = GPU,
         pins: tuple[str | None, str | None] | None = None,
+        loss: dict[str, float] | None = None,
     ) -> Report:
         """Writes *film*'s current report; *crates* ``"tree"`` stands for :attr:`tree`.
 
         *pins* are the ``sha256`` and ``all_sha256`` it records; ``None`` records the film's
-        own row, as a run against that row's capture does.
+        own row, as a run against that row's capture does; *loss* is the report's
+        ``mean_loss_by_class_scored``, :func:`losses` when not given.
         """
         sha256, all_sha256 = ROW_PINS[film] if pins is None else pins
         report = Report(
             per_frame=(),
             mean_ssim_scored=ssim,
             mean_iou_scored=iou,
+            mean_loss_by_class_scored=losses() if loss is None else loss,
             scored_frames=1,
             frames=1,
             reference_frames=1,
@@ -149,6 +182,40 @@ def test_a_repin_writes_every_table_that_reads_back(repo: Repo) -> None:
         SHA_INTRO,
         None,
     )
+
+
+def test_a_repin_writes_the_class_losses_in_class_order(repo: Repo) -> None:
+    ctry = {**losses(), "props": 0.04, "terrain": 0.0117}
+    repo.report("ctry", 0.8, 0.9, loss=ctry)
+    repo.report("intro", 0.7, 0.9)
+
+    parity_repin.repin(repo.root, "gpu")
+
+    for film, expected in (("ctry", ctry), ("intro", losses())):
+        pinned = read_reference(repo.root, film).expected["gpu"].loss
+        assert pinned is not None
+        assert tuple(pinned) == LOSS_CLASSES
+        assert pinned == pytest.approx(expected, abs=1e-7)
+    text = repo.references.read_text(encoding="utf-8")
+    assert text.count("[ctry.expected.gpu.loss]") == 1, "the old loss table is replaced"
+    assert "sky = 0.0200000" not in text
+    assert text.index("[ctry.expected.gpu.loss]") < text.index("[intro]")
+    assert text.index("[intro.expected.gpu]") < text.index("[intro.expected.gpu.loss]")
+
+
+def test_a_repin_adds_the_loss_table_to_a_table_without_one(repo: Repo) -> None:
+    text = repo.references.read_text(encoding="utf-8")
+    repo.write(
+        parity_layout.REFERENCES_FILE.as_posix(),
+        text.replace("[ctry.expected.gpu.loss]\nprops = 0.0100000\nsky = 0.0200000\n\n", ""),
+    )
+    assert read_reference(repo.root, "ctry").expected["gpu"].loss is None
+    repo.report("ctry", 0.8, 0.9)
+    repo.report("intro", 0.7, 0.9)
+
+    parity_repin.repin(repo.root, "gpu")
+
+    assert read_reference(repo.root, "ctry").expected["gpu"].loss == pytest.approx(losses())
 
 
 def test_a_repin_keeps_comments_and_row_order(repo: Repo) -> None:
@@ -253,6 +320,24 @@ def test_a_report_of_another_class_is_refused(repo: Repo) -> None:
     assert "ctry: the report was drawn on lavapipe" in _refused(repo)
 
 
+def test_a_report_without_class_losses_is_refused(repo: Repo) -> None:
+    repo.report("ctry", 0.8, 0.9)
+    repo.report("intro", 0.7, 0.9)
+    path = repo.root / parity_layout.report_dir("intro") / "report.json"
+    write_report(path, dataclasses.replace(read_report(path), mean_loss_by_class_scored=None))
+    assert "intro: the report records no class losses" in _refused(repo)
+
+
+def test_a_report_whose_class_names_differ_from_the_pinned_ones_is_refused(repo: Repo) -> None:
+    other = {name: v for name, v in losses().items() if name != "props"} | {"ground": 0.01}
+    repo.report("ctry", 0.8, 0.9, loss=other)
+    repo.report("intro", 0.7, 0.9)
+    says = _refused(repo)
+    assert "ctry: the report's loss classes differ" in says
+    assert "report only: ground" in says
+    assert "pin only: props" in says
+
+
 def test_clean_crates_tree_is_head_crates_only_when_clean(repo: Repo) -> None:
     assert clean_crates_tree(repo.root) == repo.tree
     repo.write("crates/new.rs", "\n")
@@ -270,20 +355,129 @@ def test_a_report_round_trips_its_crates_tree_and_pins(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("no_build", "no_render", "rescored", "recorded"),
-    [
-        (False, False, False, "tree"),
-        (True, False, False, None),
-        (False, True, False, None),
-        (False, False, True, None),
-    ],
+    ("no_build", "rescored", "recorded"),
+    [(False, False, "tree"), (True, False, None), (False, True, None)],
 )
-def test_a_parity_run_records_its_tree_only_for_a_fresh_build_and_render(
-    no_build: bool, no_render: bool, rescored: bool, recorded: str | None
+def test_a_parity_run_offers_its_tree_only_when_it_built_the_binary_now(
+    no_build: bool, rescored: bool, recorded: str | None
 ) -> None:
     import parity_run  # noqa: PLC0415 - a script, on the path set above
 
-    found = parity_run.recorded_crates(
-        no_build=no_build, no_render=no_render, rescored=rescored, tree=lambda: "tree"
-    )
+    found = parity_run.recorded_crates(no_build=no_build, rescored=rescored, tree=lambda: "tree")
     assert found == recorded
+
+
+def _render_built_from(path: Path, tree: str | None) -> Path:
+    """A render directory recording *tree* as the build that made it."""
+    path.mkdir(parents=True)
+    write_render_tree(path, tree)
+    return path
+
+
+def _scored_tree(
+    tmp_path: Path, built: str | None, *, no_render: bool = True, scorer_only: bool = True
+) -> str | None:
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    render = _render_built_from(tmp_path / "render", built)
+    return parity_run.scored_render_tree(
+        "head", render, no_render=no_render, scorer_only=lambda _old, _new: scorer_only
+    )
+
+
+def test_a_fresh_render_records_the_candidate_tree(tmp_path: Path) -> None:
+    assert _scored_tree(tmp_path, None, no_render=False) == "head"
+
+
+def test_a_no_render_run_after_a_scorer_only_change_records_the_tree(tmp_path: Path) -> None:
+    assert _scored_tree(tmp_path, "1" * 40) == "head"
+
+
+def test_a_no_render_run_after_a_renderer_change_records_nothing(tmp_path: Path) -> None:
+    assert _scored_tree(tmp_path, "1" * 40, scorer_only=False) is None
+
+
+def test_a_render_without_a_recorded_build_records_nothing(tmp_path: Path) -> None:
+    """A render from a dirty ``crates/``, a ``--no-build``, ``--reuse`` or ``--retime`` run, or an
+    older run has no record, so a ``--no-render`` run cannot vouch for it."""
+    assert _scored_tree(tmp_path, None) is None
+
+
+def test_no_render_on_a_dirty_crates_records_nothing(tmp_path: Path) -> None:
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    render = _render_built_from(tmp_path / "render", "1" * 40)
+    assert parity_run.scored_render_tree(None, render, no_render=True) is None
+
+
+def test_an_unreadable_record_is_no_record(tmp_path: Path) -> None:
+    render = _render_built_from(tmp_path / "render", "1" * 40)
+    assert read_render_tree(render) == "1" * 40
+    (render / RENDER_TREE_FILE).write_text("not a tree\n", encoding="ascii")
+    assert read_render_tree(render) is None
+    (render / RENDER_TREE_FILE).write_bytes(b"\xff\xfe")
+    assert read_render_tree(render) is None
+    write_render_tree(render, None)
+    assert read_render_tree(render) is None
+    write_render_tree(render, None)  # nothing left to remove
+
+
+def test_a_scorer_only_commit_lets_a_no_render_report_be_repinned(repo: Repo) -> None:
+    """End to end: a render built on the old tree, rescored after a scorer-only commit."""
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    renders = {
+        film: _render_built_from(repo.root / "build" / "renders" / film, repo.tree)
+        for film in ("ctry", "intro")
+    }
+    repo.report("ctry", 0.812345678, 0.98765432)
+    repo.report("intro", 0.7, 0.9)
+    repo.write(f"crates/{SCORER_DIR}score.rs", "fn score() {}\n")
+    repo.git("add", "-A")
+    repo.git("commit", "-qm", "scorer")
+    new_tree = clean_crates_tree(repo.root)
+    assert new_tree not in (None, repo.tree)
+
+    # The report still records the old tree: the repin refuses it.
+    with pytest.raises(parity_repin.RepinRefusedError):
+        parity_repin.repin(repo.root, "gpu")
+
+    for film, render in renders.items():
+        crates = parity_run.scored_render_tree(
+            new_tree, render, no_render=True, scorer_only=repo.scorer_only
+        )
+        assert crates == new_tree
+        repo.report(film, 0.8, 0.9, crates=crates)
+    assert [t.film for t in parity_repin.repin(repo.root, "gpu")] == ["ctry", "intro"]
+
+
+def test_a_renderer_commit_still_needs_a_re_render(repo: Repo) -> None:
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    render = _render_built_from(repo.root / "build" / "render", repo.tree)
+    repo.write(f"crates/{SCORER_DIR}score.rs", "fn score() {}\n")
+    repo.write("crates/a.rs", "fn a() { 1; }\n")
+    repo.git("add", "-A")
+    repo.git("commit", "-qm", "renderer")
+    head = clean_crates_tree(repo.root)
+    assert head is not None
+    found = parity_run.scored_render_tree(
+        head, render, no_render=True, scorer_only=repo.scorer_only
+    )
+    assert found is None
+    reason = parity_run.unrecorded_reason(
+        head, render, changes=lambda old, new: renderer_changes(old, new, repo.root)
+    )
+    assert reason == "crates/a.rs changed outside the scorer since the render"
+
+
+def test_the_unrecorded_reason_names_a_missing_or_unreadable_record(tmp_path: Path) -> None:
+    import parity_run  # noqa: PLC0415 - a script, on the path set above
+
+    unrecorded = _render_built_from(tmp_path / "old", None)
+    assert parity_run.unrecorded_reason("head", unrecorded) == "the render records no build tree"
+    render = _render_built_from(tmp_path / "render", "1" * 40)
+    reason = parity_run.unrecorded_reason("head", render, changes=lambda _old, _new: None)
+    assert reason == "git cannot compare the render's tree 1111111 with crates/"
+    reason = parity_run.unrecorded_reason("head", render, changes=lambda _old, _new: ["a", "b"])
+    assert reason == "crates/a and 1 more changed outside the scorer since the render"

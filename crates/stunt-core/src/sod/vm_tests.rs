@@ -7,8 +7,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::contracts::shape::{
-    NodeId, NodeKind, SodModelIr, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE,
-    VisibilityCondition,
+    NodeId, NodeKind, SodModelIr, VERTEX_FLAG_DISC, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END,
+    VERTEX_FLAG_LINE_SIDE, VisibilityCondition,
 };
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
@@ -1491,7 +1491,8 @@ fn perfdisk_model(centre: [i16; 3], axis: [i16; 3], radius: u16) -> Vec<u8> {
 }
 
 /// A disc lies in the plane perpendicular to `centre - axis`, every vertex `radius` from the
-/// centre, and draws from both sides: one clockwise face per side, each normal facing its side.
+/// centre, and draws from both sides: one face per side. Each vertex is a
+/// [`VERTEX_FLAG_DISC`] rim vertex whose `normal` reaches the centre.
 #[test]
 fn test_perfdisk_is_a_two_sided_disc_about_the_normal() {
     // Stream (x, y, z) turns to (-x, -y, z): centre (10, 20, 30), axis (10, 20, 10), so the
@@ -1508,9 +1509,23 @@ fn test_perfdisk_is_a_two_sided_disc_about_the_normal() {
     );
     for v in &ir.vertices {
         assert_eq!(v.palette_index, 45);
+        assert_eq!(
+            v.flags & VERTEX_FLAG_DISC,
+            VERTEX_FLAG_DISC,
+            "not a disc vertex"
+        );
         assert!((v.position[2] - 30.0).abs() < 1e-3, "off the disc plane");
         let d = ((v.position[0] - 10.0).powi(2) + (v.position[1] - 20.0).powi(2)).sqrt();
         assert!((d - 40.0).abs() < 1e-3, "vertex {d} from the centre");
+        let centre: Vec<f32> = v
+            .position
+            .iter()
+            .zip(v.normal)
+            .map(|(p, n)| p + n)
+            .collect();
+        for (got, want) in centre.iter().zip([10.0, 20.0, 30.0]) {
+            assert!((got - want).abs() < 1e-3, "centre {centre:?}");
+        }
     }
     let mut sides = [0usize; 2];
     for tri in ir.indices.chunks(3) {
@@ -1518,14 +1533,7 @@ fn test_perfdisk_is_a_two_sided_disc_about_the_normal() {
             .iter()
             .map(|&i| ir.vertices[i as usize].position)
             .collect();
-        let edge_normal = compute_polygon_normal(&p);
-        let looks = ir.vertices[tri[0] as usize].normal;
-        // Clockwise seen from the side it looks toward: the edge cross points away from it.
-        assert!(
-            edge_normal[2] * looks[2] < 0.0,
-            "wrong winding for {looks:?}"
-        );
-        sides[usize::from(looks[2] > 0.0)] += 1;
+        sides[usize::from(compute_polygon_normal(&p)[2] > 0.0)] += 1;
     }
     assert_eq!(sides[0], sides[1], "one face for each side");
 }
@@ -1714,4 +1722,115 @@ fn test_rotz_turns_the_shading_light_and_rotx_does_not() {
     // `test_shades_dots_the_normal_with_the_light_it_is_given`.
     assert_eq!(shaded_under(OP_ROTZ), 0x3F);
     assert_eq!(shaded_under(OP_ROTX), 0x30);
+}
+
+/// `census_rotations` walks both arms of `OP_BVGT` regardless of the threshold, steps over
+/// `OP_TAP` without anchors, and keeps distinct `(opcode, operand)` pairs.
+#[test]
+fn test_census_rotations_walks_both_bvgt_arms_and_records_unique_pairs() {
+    use crate::sod::{OP_BVGT, OP_GOSUB, OP_ROTX, OP_ROTY, OP_ROTZ, RotUse, census_rotations};
+
+    // Header flags bit 0 marks view-facing.
+    let mut bytes = make_sod_header(100, 0, 0, 0x01);
+    // BVGT 0x12 >= 0x0FA0 -> target (subroutine with ROTY 0x10 and ROTZ 0x14).
+    // Fallthrough taps 1 anchor, runs ROTX 0x18 twice and ROTZ 0x14, then RETURN.
+    // Offset after header = 10; BVGT op (2) + var (2) + val (2) + rel (2) = 18.
+    // Fallthrough block: TAP(reg=0, count=1, anchor=0) [8 bytes]
+    //   + ROTX 0x18 [4] + ROTX 0x18 [4] + ROTZ 0x14 [4] + RETURN [2] = 22 bytes.
+    // rel from operand_at (byte 16) to target (byte 40) is 24.
+    push_words(&mut bytes, &[OP_BVGT, 0x12, 0x0FA0, 24]);
+    push_words(&mut bytes, &[OP_TAP, 0, 1, 0]);
+    push_words(
+        &mut bytes,
+        &[OP_ROTX, 0x18, OP_ROTX, 0x18, OP_ROTZ, 0x14, OP_RETURN],
+    );
+    assert_eq!(bytes.len(), 40);
+    // Taken arm at byte 40: GOSUB +8 (operand_at=42 -> target byte 50), ROTZ 0x14, RETURN; subroutine at 50: ROTY 0x10, RETURN.
+    push_words(&mut bytes, &[OP_GOSUB, 8, OP_ROTZ, 0x14, OP_RETURN]);
+    push_words(&mut bytes, &[OP_ROTY, 0x10, OP_RETURN]);
+
+    let audit = census_rotations(&bytes).expect("census rotations");
+    assert!(audit.faces_view());
+    assert_eq!(audit.stop, None);
+    assert!(audit.returned_at.is_some());
+    assert_eq!(
+        audit.rot_uses,
+        vec![
+            RotUse {
+                opcode: OP_ROTY,
+                operand: 0x10
+            },
+            RotUse {
+                opcode: OP_ROTX,
+                operand: 0x18
+            },
+            RotUse {
+                opcode: OP_ROTZ,
+                operand: 0x14
+            },
+        ]
+    );
+    // Lenient decode still takes only the val == 0 rule (not taken here) and stops on TAP.
+    let lenient = decode_sod(&bytes, "BVGT_CHECK", None, DecodeMode::Lenient).expect("lenient");
+    assert!(
+        lenient
+            .decode()
+            .expect("record")
+            .stop
+            .is_some_and(|s| s.reason == SodStopReason::MissingAnchors)
+    );
+
+    // Out-of-range OP_BVGT target flags MalformedBranch even when val != 0.
+    let mut bad_bvgt = make_sod_header(100, 0, 0, 0);
+    push_words(&mut bad_bvgt, &[OP_BVGT, 0x12, 0x0FA0, 0x1000, OP_RETURN]);
+    let bad_audit = census_rotations(&bad_bvgt).expect("malformed bvgt");
+    assert!(
+        bad_audit
+            .stop
+            .is_some_and(|s| s.reason == SodStopReason::MalformedBranch)
+    );
+}
+
+/// `OP_BVGT` compares `bank.word(var) >= val` unsigned (`PLAYONE` `0x9C23`) and records `var`
+/// in `DecodeRecord::bank_operands` so draw-time `AngleBank::only` keeps it.
+#[test]
+fn test_bvgt_branches_when_bank_word_is_at_or_above_threshold() {
+    use crate::sod::{AngleBank, OP_BVGT};
+
+    let mut stream = make_sod_header(100, 0, 0, 0);
+    // OP_VECTORS: count=4, start_reg=0, 4*3=12 i16s -> 2 + 2 + 2 + 24 = 30 bytes (ends at 40).
+    push_words(
+        &mut stream,
+        &[OP_VECTORS, 4, 0, 100, 0, 0, 0, 100, 0, 0, 0, 100, 200, 0, 0],
+    );
+    assert_eq!(stream.len(), 40);
+    // BVGT at 40: op (2) + var (2) + val (2) + rel (2) = 8 bytes. operand_at = 46.
+    // Fallthrough at 48: POLYZ(3, 0, 12, 24) [10 bytes] + RETURN [2] = 12 bytes -> ends at 60.
+    // rel = 60 - 46 = 14.
+    push_words(&mut stream, &[OP_BVGT, 0x12, 0x0FA0, 14]);
+    push_words(&mut stream, &[OP_POLYZ, 3, 0, 12, 24, OP_RETURN]);
+    assert_eq!(stream.len(), 60);
+    // Taken arm at 60: POLYZ(3, 36, 12, 24) + RETURN.
+    push_words(&mut stream, &[OP_POLYZ, 3, 36, 12, 24, OP_RETURN]);
+
+    let rest = decode(&stream, "POSED").expect("rest");
+    assert_eq!(rest.decode().expect("record").bank_operands, [0x12]);
+    assert_eq!(
+        positions_mm(&rest),
+        [[-100_000, 0, 0], [0, -100_000, 0], [0, 0, 100_000]]
+    );
+    assert_eq!(decode_posed(&stream, AngleBank::REST), rest);
+    assert_eq!(decode_posed(&stream, bank_with(0x12, 0x0F9F)), rest);
+
+    let at_threshold = decode_posed(&stream, bank_with(0x12, 0x0FA0));
+    assert_eq!(
+        positions_mm(&at_threshold),
+        [[-200_000, 0, 0], [0, -100_000, 0], [0, 0, 100_000]]
+    );
+    // Unsigned comparison: 0xFFFF >= 0x0FA0 is true.
+    let high = decode_posed(&stream, bank_with(0x12, 0xFFFF));
+    assert_eq!(high, at_threshold);
+    // `AngleBank::only` with `bank_operands` preserves word 0x12.
+    let kept = bank_with(0x12, 0x0FA0).only(&rest.decode().expect("record").bank_operands);
+    assert_eq!(decode_posed(&stream, kept), at_threshold);
 }

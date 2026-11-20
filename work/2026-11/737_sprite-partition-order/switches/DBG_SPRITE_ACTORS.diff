@@ -1,0 +1,16 @@
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -670,6 +670,13 @@
+                 _ => self.prepared.push(draw),
+             }
+         }
++        if std::env::var("DBG_SPRITE_ACTORS")
++            .ok()
++            .and_then(|v| v.parse::<u8>().ok())
++            == Some(0)
++        {
++            actor_draws.clear();
++        }
+         self.place_sprites(placed, world_slices, &actor_draws);
+         self.uniforms.upload(device, queue, &self.model_layout);
+     }

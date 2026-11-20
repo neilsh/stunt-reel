@@ -21,7 +21,10 @@ stdout carries only each film's summary line, under it the comparison with the f
 score for the renderer class it rendered on (``stunt_reel.expected_scores``: the delta, and
 drift only when the scores compare), and the noise note. A run that builds and renders on a
 clean ``crates/`` records that tree in each report (``crates``), which ``mise run parity-repin``
-requires; any other run records null. Every report also records the reference pins it was scored
+requires. So does a ``--no-render`` run on a clean ``crates/`` whose render records, beside its
+frames (``crates-tree.txt``), a build tree that differs from this one only under the scorer
+(``stunt_reel.expected_scores.SCORER_DIR``), since no pixel of the render it scores has moved;
+any other run records null, and a render made without a clean build records none. Every report also records the reference pins it was scored
 against (``sha256``, ``all_sha256``), which ``parity-repin`` checks against the film's row.
 """
 
@@ -36,7 +39,14 @@ lazy from collections.abc import Callable
 from cli import ParityOptions, UsageError, add_parity_options, parity_options, resolve_jobs
 
 from stunt_reel import parity_layout
-from stunt_reel.expected_scores import clean_crates_tree, comparison_line
+from stunt_reel.expected_scores import (
+    clean_crates_tree,
+    comparison_line,
+    read_render_tree,
+    renderer_changes,
+    scorer_only_change,
+    write_render_tree,
+)
 from stunt_reel.parity_artifacts import read_report
 from stunt_reel.parity_pipeline import (
     REPO_ROOT,
@@ -59,9 +69,18 @@ NOISE_NOTE = "noise floor +/-0.002 SSIM; margin below 0.002 is not an adoption"
 
 
 def prepare_source(
-    job: FilmJob, options: ParityOptions, *, no_render: bool, software_only: bool
+    job: FilmJob,
+    options: ParityOptions,
+    *,
+    no_render: bool,
+    software_only: bool,
+    built_from: str | None = None,
 ) -> Path:
-    """The render directory to score: reused, existing, or freshly rendered ``_current``."""
+    """The render directory to score: reused, existing, or freshly rendered ``_current``.
+
+    A fresh render records *built_from*, the ``crates/`` tree its binary was built from (``None``
+    when unknown), inside the directory, replacing any record of the render it displaces.
+    """
     film = job.name
     current = REPO_ROOT / parity_layout.render_dir(film)
     if options.reuse is not None:
@@ -77,6 +96,7 @@ def prepare_source(
     shutil.rmtree(scratch, ignore_errors=True)
     render_film(job, scratch, software_only=software_only)
     check_film(job, scratch)
+    write_render_tree(scratch, built_from)
     current.parent.mkdir(parents=True, exist_ok=True)
     # Rename rather than copy: the previous tree stays scoreable with --reuse and the
     # render directories are hundreds of megabytes, so a copy per run is not affordable.
@@ -106,18 +126,61 @@ def rescored_with(options: ParityOptions) -> str | None:
 def recorded_crates(
     *,
     no_build: bool,
-    no_render: bool,
     rescored: bool,
     tree: Callable[[], str | None] = clean_crates_tree,
 ) -> str | None:
-    """The ``crates/`` tree the run's reports record: *tree*'s, only for a fresh build and render.
+    """The ``crates/`` tree a run may record: *tree*'s, only when the binary was built now.
 
-    ``None`` when the binary was not built now (``--no-build``), the render was not made now
-    (``--no-render``), another tree is scored (``--reuse``, ``--retime``), or ``crates/`` is dirty.
+    For a fresh render it is the tree the reports record.  For ``--no-render`` it is only a
+    candidate, which :func:`scored_render_tree` confirms film by film.  ``None`` when the binary
+    was not built now (``--no-build``), another tree is scored (``--reuse``, ``--retime``), or
+    ``crates/`` is dirty.
     """
-    if no_build or no_render or rescored:
+    if no_build or rescored:
         return None
     return tree()
+
+
+def scored_render_tree(
+    candidate: str | None,
+    render: Path,
+    *,
+    no_render: bool,
+    scorer_only: Callable[[str, str], bool] = scorer_only_change,
+) -> str | None:
+    """The ``crates/`` tree one film's report records, given :func:`recorded_crates`'s *candidate*.
+
+    A fresh render records *candidate*.  A ``--no-render`` run records it only when the tree
+    recorded inside *render* (:func:`stunt_reel.expected_scores.read_render_tree`), the one that
+    made its frames, is known and differs from *candidate* only under the scorer, so a renderer
+    change still needs a re-render.
+    """
+    if not no_render or candidate is None:
+        return candidate
+    built = read_render_tree(render)
+    if built is None or not scorer_only(built, candidate):
+        return None
+    return candidate
+
+
+def unrecorded_reason(
+    candidate: str,
+    render: Path,
+    *,
+    changes: Callable[[str, str], list[str] | None] = renderer_changes,
+) -> str:
+    """Why a ``--no-render`` run records no tree for *render* although *candidate* is clean.
+
+    Call it only when :func:`scored_render_tree` returned ``None`` for *candidate*.
+    """
+    built = read_render_tree(render)
+    if built is None:
+        return "the render records no build tree"
+    paths = changes(built, candidate)
+    if not paths:
+        return f"git cannot compare the render's tree {built[:7]} with crates/"
+    more = f" and {len(paths) - 1} more" if len(paths) > 1 else ""
+    return f"crates/{paths[0]}{more} changed outside the scorer since the render"
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -151,7 +214,6 @@ def main(argv: list[str] | None = None) -> int:
     # Sampled before the build, and kept only if the build left it unchanged.
     built_from = recorded_crates(
         no_build=options.no_build,
-        no_render=args.no_render,
         rescored=rescored_with(options) is not None,
     )
     if not options.no_build:
@@ -167,7 +229,11 @@ def main(argv: list[str] | None = None) -> int:
     def work(job: FilmJob, _variant: None) -> FilmScore:
         """Renders (or reuses) *job*'s film and scores it, printing nothing."""
         source = prepare_source(
-            job, options, no_render=args.no_render, software_only=args.software_only
+            job,
+            options,
+            no_render=args.no_render,
+            software_only=args.software_only,
+            built_from=crates,
         )
         suffix = ""
         request = None
@@ -175,7 +241,14 @@ def main(argv: list[str] | None = None) -> int:
             suffix = f"_retime{options.retime:+d}"
             request = Retime(options.retime, REPO_ROOT / parity_layout.retime_dir(job.name, suffix))
         report = REPO_ROOT / parity_layout.report_dir(job.name, suffix)
-        result = score_film(job, source, report, retime=request, crates=crates)
+        film_crates = scored_render_tree(crates, source, no_render=args.no_render)
+        if crates is not None and film_crates is None:
+            print(
+                f"[parity] {job.name}: report records no crates/ tree, so parity-repin refuses it: "
+                f"{unrecorded_reason(crates, source)}; run without --no-render to repin",
+                file=sys.stderr,
+            )
+        result = score_film(job, source, report, retime=request, crates=film_crates)
         if result.retime is not None:
             print(
                 f"[parity] {job.name}: copied {result.retime.copied} frames; "

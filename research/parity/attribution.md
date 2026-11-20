@@ -12,6 +12,9 @@ Framing: [`framing-and-actors.md`](framing-and-actors.md); hero aircraft: [`hero
 
 `stuntreel parity` splits each SSIM window's loss (`1 - ssim`) among the render layers of its pixels in proportion to pixel count (`mean_loss_by_class_scored` in `report.json`); the classes sum to `1 - mean_ssim_scored`.
 Layer ids in the layer plane: 1 ocean, 2 terrain (`MAP.BIN` patches), 3 props (`SCENERY.scn` placements), 16+n actor draw n of the frame (draw order, not film slot).
+A shape plane beside it names the prop shape that drew each props pixel, and `mean_loss_by_shape_scored` splits the props class by shape id the same way; its values sum to `mean_loss_by_class_scored.props` ([`report-fields.md`](report-fields.md)).
+A world prop's shape is not carried in its vertices: each placed prop mesh appends its own run of world vertices, the world lists those runs with their shapes (`World::prop_runs`), and the plane's fragment shader finds a world prop fragment's run from its flat `vertex_index` by binary search, so every placed shape is attributed.
+_Source: [can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)._
 Extra classes are reference-only (capture non-sky, render sky) and render-only (the reverse).
 Windows touching the UI overlay are excluded.
 
@@ -24,6 +27,10 @@ Windows touching the UI overlay are excluded.
 _Found 2026-10-22; see the [loss attribution row](../../work/2026-10/parity-log/log.md)._
 
 ## 2. Current breakdown
+
+The current loss by class is pinned, not copied here: each `[<film>.expected.<class>.loss]` table of [`references.toml`](references.toml) holds a report's `mean_loss_by_class_scored` for one renderer class, written by `mise run parity-repin` and read back by `mise run judge`, which prints a candidate's change in each class from the baseline's and from the pin ([`method.md`](method.md) step 0).
+Both the `lavapipe` and `gpu` tables hold the split on the `crates` tree their `crates` line names.
+Read a film's classes there; the table below is a dated record and does not follow the pins.
 
 `[Bounded Observation]`, one render per film on the RTX 4070, `main` at `76872e89` (2026-11-16), each film scored against the capture `references.toml` pins.
 Loss by class, with its share of `1 - mean_ssim_scored`; classes under 0.001 left out:
@@ -43,6 +50,31 @@ Loss by class, with its share of `1 - mean_ssim_scored`; classes under 0.001 lef
 * **`balloon` is the exception**: more than half its loss is reference-only, capture geometry where our render draws sky, and 98% of it sits on two runs of frames: 86% on the straight-down run and 12% on the zenith-sky run (section 7).
 * **Against the 2026-11-04 run below**, `ctry` props fell 0.0793 -> 0.0402 and terrain 0.0186 -> 0.0117; `intro` props 0.0808 -> 0.0503, terrain 0.0439 -> 0.0303 and actors 0.0439 -> 0.0350.
   The changes between are many (the PRs behind the `crates` trees the expected tables record), so the split does not attribute the fall to any one of them.
+
+**Worst prop shapes** (`mean_loss_by_shape_scored`).
+`[Bounded Observation]`, one render per film on lavapipe (`mise run parity -- --software-only`, `crates/` tree `b228018`, #809's change (PR #821) on top of `main` at `581d811`), so its figures differ from the RTX 4070 table above: the code under them is newer and the renderer is lavapipe.
+Each row is a shape's mean loss over the scored frames and its share of that film's `props` loss (`location` 0.0839, `bomb` 0.0740, `ctry` 0.0401); the ten worst shapes, then what they hold together.
+Every placed shape is attributed (section 1), so no reference film has an `unattributed` share; the `props` loss falls on 1,014 shapes on `location`, 127 on `bomb` and 91 on `ctry`.
+
+| Rank | `location` shape | Loss (share) | `bomb` shape | Loss (share) | `ctry` shape | Loss (share) |
+|---|---|---|---|---|---|---|
+| 1 | 1610 | 0.0035 (4.2%) | 1756 | 0.0161 (21.7%) | 926 | 0.0129 (32.1%) |
+| 2 | 1145 | 0.0017 (2.0%) | 1650 | 0.0078 (10.5%) | 917 | 0.0054 (13.5%) |
+| 3 | 1745 | 0.0016 (1.9%) | 1737 | 0.0078 (10.5%) | 880 | 0.0024 (5.9%) |
+| 4 | 1150 | 0.0016 (1.9%) | 545 | 0.0044 (5.9%) | 610 | 0.0020 (5.0%) |
+| 5 | 613 | 0.0014 (1.7%) | 1648 | 0.0038 (5.1%) | 928 | 0.0017 (4.3%) |
+| 6 | 996 | 0.0014 (1.6%) | 1754 | 0.0037 (5.0%) | 927 | 0.0016 (3.9%) |
+| 7 | 1164 | 0.0013 (1.6%) | 542 | 0.0023 (3.1%) | 915 | 0.0014 (3.6%) |
+| 8 | 1179 | 0.0013 (1.5%) | 1654 | 0.0023 (3.1%) | 914 | 0.0010 (2.5%) |
+| 9 | 1984 | 0.0012 (1.4%) | 1637 | 0.0018 (2.4%) | 920 | 0.0010 (2.4%) |
+| 10 | 1162 | 0.0012 (1.4%) | 1716 | 0.0016 (2.2%) | 913 | 0.0009 (2.3%) |
+| Ten worst | | 0.0161 (19.2%) | | 0.0514 (69.4%) | | 0.0303 (75.6%) |
+
+* **`bomb` and `ctry` concentrate** their props loss: three shapes hold 43% of `bomb`'s (1756, 1650, 1737) and two hold 46% of `ctry`'s (926, 917).
+  `location` spreads its `props` loss over 1,014 shapes, the worst (1610) holding 4.2% of it and the ten worst 19.2%, so a fix aimed at one of them moves `location` little.
+* The split says which shapes carry the loss, not why; a shape's pixels share SSIM windows with its neighbours, so its figure includes loss its surroundings cause, as the class split does (section 1).
+
+_Source: [every prop shape attributed on the seven references](../../work/2026-11/809_prop-runs/journal.md#2026-11-20-every-prop-shape-attributed-on-the-seven-references)._
 
 _Source: [loss by render layer on the seven VAULT references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-loss-by-render-layer-on-the-seven-vault-references)._
 
@@ -176,26 +208,30 @@ The two-sided flag (`SodVertex::flags` bit 1) is not decoded, so the culling can
 ## 7. BALLOON's mask IoU: two runs of frames
 
 `[Bounded Observation]` for the runs and their figures, one render on the RTX 4070 at `76872e89`.
-`balloon`'s `mean_iou_scored` is 0.6409 while the other six references score 0.91 to 0.99.
+Before 2026-11-18 (the positional sky rule below), `balloon`'s `mean_iou_scored` was 0.6409 while the other six references scored 0.91 to 0.99.
 Of its 107 scored frames, 41 score IoU under 0.5 and every other frame scores 0.965 or more (median 0.980).
 The 41 fall in two runs:
 
 * **Ticks 12 to 254 (23 frames): the zenith sky is outside the scorer's sky band.**
   The camera looks up at the balloon, and the capture paints the sky 224, then 225 and 226 as the view comes down; our render paints it 228.
-  The mask counts only 227 to 238 as capture sky (`CAPTURE_SKY_INDICES`, section 2.0 of [`method.md`](method.md)), so the capture's whole sky counts as geometry: IoU 0.134 on average while SSIM stays 0.889.
+  The mask then counted only 227 to 238 as capture sky (`CAPTURE_SKY_INDICES`, section 2.0 of [`method.md`](method.md)), so the capture's whole sky counted as geometry: IoU 0.134 on average while SSIM stays 0.889.
   `PLAYONE` writes entries 224 to 238 as one sky gradient, zenith to horizon ([`palette-fade.md`](../playone-exe/palette-fade.md) section 3.1, a static reading matched against `CTRY` captures at entries 224, 233 and 238).
   The same frames show the sun disc, 1,746 pixels of index 239, which our render does not draw; `0x908E` projects it from the variable-13 vector (same note, section 3.2). ([picture](../../work/2026-11/477_vault-attribution/images/balloon-155-zenith-sky-and-sun.png))
 * **Ticks 606 to 793 (18 frames): our render draws nothing.**
   The authored camera looks straight down (eye and target share x and z; `render.json` holds that camera from tick 601 to 796, field of view 8.3 degrees).
   The capture shows the balloon from above over grass; our layer plane is empty and every pixel is sky index 238, so IoU is 0 and SSIM 0.480 on average.
-  `Camera::compute_view_matrix` (`crates/stunt-render/src/camera.rs`) builds the authored view with `look_at_mat4` and up `Vec3::Y`, which is undefined for a view direction parallel to up; that this is the cause is `[Hypothesis]`, read from the code and one film's empty plane, until [#615](https://github.com/neilsh/stunt-reel/issues/615) measures the matrix. ([picture](../../work/2026-11/477_vault-attribution/images/balloon-606-straight-down-camera.png))
+  `CameraController::compute_view_matrix` (`crates/stunt-render/src/camera.rs`) built the authored view with `look_at_mat4` and up `Vec3::Y`, which is undefined for a view direction parallel to up; since #615 a view along ±Y takes up `+Z`; that this was the cause is a `[Bounded Observation]` (`balloon` only, [#615](https://github.com/neilsh/stunt-reel/issues/615)): with up `+Z` for a vertical view the frames draw and the picture is turned as the capture's is; the figures in this section are from before that fix. ([picture](../../work/2026-11/477_vault-attribution/images/balloon-606-straight-down-camera.png))
 
-Mean IoU over the 107 frames: 0.6409 as scored; 0.7705 without the 18 blank frames; 0.7303 with the capture sky widened to 224..=238; 0.8780 with both; 0.9418 with both and the sun counted as sky.
+Mean IoU over the 107 frames, before 2026-11-18: 0.6409 as scored; 0.7705 without the 18 blank frames; 0.7303 with the capture sky widened to 224..=238; 0.8780 with both; 0.9418 with both and the sun counted as sky.
 The 18 blank frames average 0.4803 SSIM against 0.8856 for the other 89; the film mean would be 0.8856 if they scored like the rest, a bound on what a camera fix could recover, not a prediction.
 
 Of the seven references' `render.json` cameras, only `balloon`'s and `intro`'s point straight down, and no other film scores such a frame: `intro`'s camera points down on ticks 12 to 760, 1520 to 2055 and 3642 to 3818, all faded to black and unscored.
 Widening the capture sky to 224..=238 is not free: it raises `bomb` 0.9118 -> 0.9540 but lowers `traintnl` 0.9659 -> 0.9608, whose 19,850 capture pixels at 224 to 226 all fall on geometry we draw.
-Follow-ups: the camera [#615](https://github.com/neilsh/stunt-reel/issues/615), the scorer's sky band [#616](https://github.com/neilsh/stunt-reel/issues/616), the zenith bands and the sun [#617](https://github.com/neilsh/stunt-reel/issues/617).
+Where looked at, those pixels are shape paint, not our geometry drawn over sky: on `traintnl` a blue rectangle on a dark red wall under a red roof holds 18,144 of them and the rear car's windows are 224 too, and on `bomb`, of the 105,219 pixels at 224 (as many as lie on our geometry), 104,958 are an emblem on a building wall, while its 59,520 at 226 are zenith sky in the top five rows.
+So the scorer keeps 227..=238 as its index band ([`method.md`](method.md) section 2.0).
+_Source: [who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
+Since 2026-11-18 a run of 224 to 226 that reaches row 0 and both side columns counts as sky by position, which raises `balloon` to 0.7186 on lavapipe; the figures above are on the scale before it, and the sky the balloon cuts off from row 0 or a side still counts as geometry ([`method.md`](method.md) section 2.0).
+Follow-ups: the camera [#615](https://github.com/neilsh/stunt-reel/issues/615), the sky the balloon cuts off [#745](https://github.com/neilsh/stunt-reel/issues/745), the zenith bands and the sun [#617](https://github.com/neilsh/stunt-reel/issues/617).
 
 _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)._
 
@@ -210,7 +246,11 @@ _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attributi
   See [`framing-and-actors.md`](framing-and-actors.md).
 * **`BZLT`, `BVIS`, `REJVEC` or `REJ2D` on the walked paths** (2026-11-12): no census walk reaches them (`BVLT` branches and unreached code are not walked), and the corrected section end moves no score ([which stock shapes reach the gates](../../work/2026-11/235_sod-gates/journal.md#2026-11-12-which-stock-shapes-reach-the-gates)).
 * **`balloon`'s low IoU as a placement or framing error** (2026-11-16): outside the zenith-sky and straight-down runs every scored frame scores 0.965 or more, so neither the balloon's placement nor the framing sets the film's 0.6409 ([what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)).
+* **Drawing the sun disc at variable 13 read as a zenith angle** (2026-11-18): a probe drew index 239 at `(sin a, cos a, 0)` with radius 0.048 rad; on `balloon` the disc sat about 31 px left of and 8 to 10 px below the capture's at ticks 155 and 200, SSIM fell from 0.8172 to 0.8143 on lavapipe, IoU stayed 0.6409 and no other film moved.
+  Not adopted; the vector needs the `0x196C` trig read live ([`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
+* **Far props the sub-pixel cull drops, as props loss** (2026-11-18): the half-pixel cull in `build_world` drops no placement on six references and on `location` only 190 placements of shapes with no vertices, and removing it scored the seven films the same to four decimals on lavapipe ([removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull); [`world-scene-residuals.md` § 6.4](../playone-exe/world-scene-residuals.md#64-the-ground-decal-pass)).
 * **Terrain distance cull** (not attempted): the land/sea boundary is already nearly right (section 5).
+* **A primitive-index table for the world props' shape word** (2026-11-19): `@builtin(primitive_index)` works on lavapipe, but it restarts at 0 for every draw call and numbers an outline draw's edges, not its triangles, so each world draw would have to pass its first triangle and outlines would need a second table; the vertex-keyed runs of section 1 need neither ([can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)).
 
 ## Open questions
 
@@ -235,7 +275,7 @@ Priority is by measured loss, not by which item reads easiest.
    It is the one lever left that needs no decode. ([#74](https://github.com/neilsh/stunt-reel/issues/74))
 5. **`balloon`'s straight-down camera** — 18 scored frames drawn blank (section 7), costing `balloon` 0.130 of IoU, more than any other reference's whole IoU shortfall (the largest, `bomb`'s, is 0.088).
    It is an exception to the rule above: the fault is in our view matrix, and only the up vector to use needs `PLAYONE`'s rule. ([#615](https://github.com/neilsh/stunt-reel/issues/615))
-6. **The zenith sky and the sun disc** — the scorer's sky band omits 224 to 226 ([#616](https://github.com/neilsh/stunt-reel/issues/616)), and our sky stops at 228 and draws no sun ([#617](https://github.com/neilsh/stunt-reel/issues/617)); section 7.
+6. **The zenith sky and the sun disc** — the scorer's sky band omits 224 to 226 because shapes paint them too ([#616](https://github.com/neilsh/stunt-reel/issues/616)), so the zenith sky counts by position instead ([#718](https://github.com/neilsh/stunt-reel/issues/718); the sky the balloon cuts off is [#745](https://github.com/neilsh/stunt-reel/issues/745)), and our sky stops at 228 and draws no sun ([#617](https://github.com/neilsh/stunt-reel/issues/617)); section 7.
 
 ### Where the ground-and-light goal stopped
 

@@ -9,7 +9,10 @@ struct CameraUniform {
     inv_rotation_proj: mat4x4<f32>,
     // Half a Mode 13h pixel of the view in NDC.
     line_half_ndc: vec2<f32>,
-    _pad1: vec2<f32>,
+    // The lens zoom over PLAYONE's default lens, the factor a disc is squeezed by along the
+    // view's depth (`squeeze_disc`).
+    disc_depth_scale: f32,
+    _pad1: f32,
 };
 
 // SodVertex::flags bits of a line corner (contracts/shape/mod.rs VERTEX_FLAG_LINE*).
@@ -24,6 +27,22 @@ const FLAG_TWO_SIDED: u32 = 0x02u;
 // determinant of their homogeneous screen coordinates is positive.
 fn is_back_facing(p: vec4<f32>, q: vec4<f32>, r: vec4<f32>) -> bool {
     return determinant(mat3x3<f32>(p.xyw, q.xyw, r.xyw)) > 0.0;
+}
+
+// SodVertex::flags bit of an OP_PERFDISK rim vertex (contracts/shape/mod.rs VERTEX_FLAG_DISC).
+const FLAG_DISC: u32 = 0x40u;
+
+// Moves a disc's rim vertex at `clip`, whose disc centre is at `centre`, to where PLAYONE's
+// outline puts it: its offset from the centre scaled along the view's depth by
+// `camera.disc_depth_scale`, the lens zoom. PLAYONE builds the outline from the centre's depth
+// in the zoomed matrix's depth units (true depth over the zoom) and the normal rescaled to the
+// screen rows' units (0xA08E..0xA106), so the disc it outlines is the true one with every depth
+// offset from the centre times the zoom (research/playone-exe/sod-vm-generators.md section 8.8).
+// The projection is symmetric, so clip x and y hold no depth term: the depth offset lives in
+// clip z and w alone.
+fn squeeze_disc(clip: vec4<f32>, centre: vec4<f32>) -> vec4<f32> {
+    let offset = clip - centre;
+    return centre + vec4<f32>(offset.xy, offset.zw * camera.disc_depth_scale);
 }
 
 // Moves a line corner at `clip`, whose segment's other end is at `other`, to the corner of a
@@ -54,12 +73,28 @@ fn widen_line(clip: vec4<f32>, other: vec4<f32>, flags: u32) -> vec4<f32> {
 
 struct ModelUniform {
     model_matrix: mat4x4<f32>,
-    layer: vec4<u32>, // x: layer id written to the plane target, y: nonzero for a shadow
+    layer: vec4<u32>, // x: layer id written to the plane target, y: nonzero for a shadow, z: shape word (shape id + 1, 0 for none)
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(1) @binding(0) var palette_lut: texture_2d<f32>;
 @group(2) @binding(0) var<uniform> model: ModelUniform;
+
+// A run of the world mesh's prop vertices, `first..end` in its vertex buffer, and the shape
+// word of the shape they draw (stunt_core::world::PropRun, `shape id + 1`).
+struct PropRun {
+    first: u32,
+    end: u32,
+    shape: u32,
+};
+
+// The world's prop runs in vertex order. Only the plane pipelines bind it (`fs_main_plane`).
+@group(3) @binding(0) var<storage, read> prop_runs: array<PropRun>;
+
+// Scenery class of a world prop vertex (contracts/shape/mod.rs SCENERY_PROP).
+const SCENERY_PROP: u32 = 3u;
+// `VertexOutput::prop_vertex` of a vertex that is not a world prop's.
+const NO_PROP_VERTEX: u32 = 0xffffffffu;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -83,6 +118,12 @@ struct VertexOutput {
     // the screen-space linear interpolation of `shade` (`fragment_index`).
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
+    // The draw's shape word (`ModelUniform` `layer.z`).
+    @location(6) @interpolate(flat) shape: u32,
+    // A world prop vertex's number in its vertex buffer, `NO_PROP_VERTEX` for any other
+    // vertex: `prop_runs` gives its shape. Every vertex of a triangle or line lies in the
+    // same run, so whichever vertex provokes names it.
+    @location(7) @interpolate(flat) prop_vertex: u32,
 };
 
 // Whether `x` is NaN or infinite: all exponent bits set. WGSL has no isNan, and `x != x`
@@ -115,12 +156,31 @@ fn fragment_index(in: VertexOutput) -> u32 {
 
 struct PlaneOutput {
     @location(0) color: vec4<f32>,
-    // Layer id in bits 8.., unlit palette index in bits 0..8.
-    @location(1) plane: u32,
+    // x: layer id in bits 8.., unlit palette index in bits 0..8; y: the shape word, `shape id
+    // + 1` of the prop that drew the pixel, 0 for none.
+    @location(1) plane: vec2<u32>,
 };
 
+// The shape word of the prop run holding world vertex `vertex`, 0 when none does.
+fn prop_shape(vertex: u32) -> u32 {
+    var lo = 0u;
+    var hi = arrayLength(&prop_runs);
+    while (lo < hi) {
+        let mid = (lo + hi) / 2u;
+        let run = prop_runs[mid];
+        if (vertex < run.first) {
+            hi = mid;
+        } else if (vertex >= run.end) {
+            lo = mid + 1u;
+        } else {
+            return run.shape;
+        }
+    }
+    return 0u;
+}
+
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
+fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
 
     // Model space to eye-relative space to clip space.
@@ -144,6 +204,9 @@ fn vs_main(in: VertexInput) -> VertexOutput {
         } else {
             out.clip_position = widen_line(out.clip_position, other, in.attr.y);
         }
+    } else if ((in.attr.y & FLAG_DISC) != 0u) {
+        let centre = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+        out.clip_position = squeeze_disc(out.clip_position, centre);
     }
     out.palette_index = in.attr.x & 255u;
     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
@@ -158,6 +221,8 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.shade_w = out.shade * w;
     out.w = w;
     out.layer = model.layer.x + in.attr.z;
+    out.shape = model.layer.z;
+    out.prop_vertex = select(NO_PROP_VERTEX, vertex_index, in.attr.z == SCENERY_PROP);
 
     // Polygons are drawn at their palette index with no directional lighting: against
     // PLAYONE captures of CTRY.FLM the unlit colour scores higher than any sun/ambient ramp
@@ -181,7 +246,11 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
     let index = fragment_index(in);
     let coords = vec2<i32>(i32(index), i32(in.light_level & 31u));
     out.color = textureLoad(palette_lut, coords, 0);
-    out.plane = (in.layer << 8u) | index;
+    var shape = in.shape;
+    if (in.prop_vertex != NO_PROP_VERTEX) {
+        shape = prop_shape(in.prop_vertex);
+    }
+    out.plane = vec2<u32>((in.layer << 8u) | index, shape);
     return out;
 }
 
@@ -235,6 +304,6 @@ fn fs_sky_plane(in: SkyVertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
     let index = sky_index(in.ndc);
     out.color = textureLoad(palette_lut, vec2<i32>(i32(index), 31), 0);
-    out.plane = index;
+    out.plane = vec2<u32>(index, 0u);
     return out;
 }

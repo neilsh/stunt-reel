@@ -9,6 +9,9 @@
 //!
 //! A slice's screen-space lines (`VERTEX_FLAG_LINE` quads, which have no world width) become
 //! a second primitive in `LINES` mode, one segment per quad, and leave the triangle primitive.
+//! A disc's rim vertex (`VERTEX_FLAG_DISC`) carries the vector to its centre in `normal`; it
+//! is exported with its triangle's front normal instead, and the renderer's lens squeeze is
+//! not applied.
 //!
 //! `[I5]`: decal slices own their vertices (a fresh weld map per batch) and lie in their
 //! base's plane. glTF has no depth bias or draw order, so the exporter alone lifts each decal
@@ -17,8 +20,9 @@
 
 use serde_json::{Value, json};
 use stunt_core::contracts::{
-    NodeId, NodeKind, ShapeMesh, SodModelIr, SodNode, SodVertex, VERTEX_FLAG_LINE,
-    VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VisibilityCondition, get_palette_rgb_float,
+    NodeId, NodeKind, ShapeMesh, SodModelIr, SodNode, SodVertex, VERTEX_FLAG_DISC,
+    VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VisibilityCondition,
+    get_palette_rgb_float,
 };
 use stunt_core::sod::EPSILON_DISPLACEMENT;
 
@@ -70,6 +74,7 @@ pub(crate) fn add_shape_assets(
     }
     let vertex_count = model.vertices.len();
     let lifted = lifted_positions(model);
+    let normals_out = exported_normals(model);
     let mut lo = [f32::INFINITY; 3];
     let mut hi = [f32::NEG_INFINITY; 3];
     for p in &lifted {
@@ -82,8 +87,8 @@ pub(crate) fn add_shape_assets(
     let mut positions = Vec::with_capacity(vertex_count * 12);
     let mut normals = Vec::with_capacity(vertex_count * 12);
     let mut colors = Vec::with_capacity(vertex_count * 16);
-    for (v, lifted) in model.vertices.iter().zip(&lifted) {
-        for (p, n) in lifted.iter().zip(&v.normal) {
+    for ((v, lifted), normal) in model.vertices.iter().zip(&lifted).zip(&normals_out) {
+        for (p, n) in lifted.iter().zip(normal) {
             positions.extend_from_slice(&p.to_le_bytes());
             normals.extend_from_slice(&n.to_le_bytes());
         }
@@ -171,6 +176,53 @@ pub(crate) fn add_shape_assets(
 const MODE_LINES: u32 = 1;
 /// glTF primitive mode `TRIANGLES`.
 const MODE_TRIANGLES: u32 = 4;
+
+/// Each vertex's `NORMAL`: its own, except that a [`VERTEX_FLAG_DISC`] vertex, whose `normal`
+/// is the vector to its disc's centre, takes the front normal of the first triangle using it
+/// (the side that winds clockwise, opposite the edge cross product). The tessellator keeps a
+/// disc's two faces on vertices of their own, so each vertex has one front.
+fn exported_normals(model: &SodModelIr) -> Vec<[f32; 3]> {
+    let mut out: Vec<[f32; 3]> = model.vertices.iter().map(|v| v.normal).collect();
+    let mut done: Vec<bool> = model
+        .vertices
+        .iter()
+        .map(|v| v.flags & VERTEX_FLAG_DISC == 0)
+        .collect();
+    for tri in model.indices.as_chunks::<3>().0 {
+        if tri
+            .iter()
+            .all(|&i| done.get(i as usize).copied().unwrap_or(true))
+        {
+            continue;
+        }
+        let [Some(a), Some(b), Some(c)] =
+            tri.map(|i| model.vertices.get(i as usize).map(|v| v.position))
+        else {
+            continue;
+        };
+        let (u, w) = (sub(b, a), sub(c, a));
+        // Front = -(u x w) = w x u.
+        let n = [
+            w[1] * u[2] - w[2] * u[1],
+            w[2] * u[0] - w[0] * u[2],
+            w[0] * u[1] - w[1] * u[0],
+        ];
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if len < 1e-12 {
+            continue;
+        }
+        for &i in tri {
+            let i = i as usize;
+            if let (Some(normal), Some(seen)) = (out.get_mut(i), done.get_mut(i))
+                && !*seen
+            {
+                *seen = true;
+                *normal = n.map(|c| c / len);
+            }
+        }
+    }
+    out
+}
 
 /// Each vertex's exported position: a vertex of a decal slice's filled triangle lifted
 /// [`EPSILON_DISPLACEMENT`] toward the front of the first such triangle that uses it, every

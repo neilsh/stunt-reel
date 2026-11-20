@@ -8,9 +8,11 @@ version 1 under [ADR 0011](0011-parity-artifacts-are-a-versioned-port.md). Ends 
 sidecar has no store. Design and measurements: the render half of
 [`work/2026-10/capture-frame-storage/spec.md`](../../work/2026-10/capture-frame-storage/spec.md).
 The version it names is superseded: `render.json` is at schema version 3 since #118, which adds
-the per-tick `credits` flag and refuses older renders
+the per-tick `credits` flag and refuses older renders, and at version 4 since #813 (PR #820), which lists the optional planes
 ([`research/parity/method.md`](../../research/parity/method.md) § 2.1;
 `RENDER_SCHEMA_VERSION` in `crates/stunt-parity/src/lib.rs`).
+
+Amended 2026-11-19 by [ADR 0052](0052-a-render-store-may-hold-optional-extra-planes.md): a render directory may also hold optional per-pixel planes beside `layers.zst`, `shapes.zst` first.
 
 ## Context
 
@@ -46,7 +48,7 @@ was handed with `palette[index]` and refuses the tick on a mismatch, so the stor
 drop a picture that is not derivable. `--sample-count` and `--video` runs, keyed by sample index
 rather than tick, keep their PNGs and write no planes.
 
-One module per language knows the layout: `stunt-cli/src/render_store/mod.rs` (the `zstd` and `png`
+One module per language knows the layout: `stunt-score/src/render_store/mod.rs` (the `zstd` and `png`
 crates; `stunt-cli` is not bound by [I7]'s pure-Rust clause, which covers `stunt-core`) and
 `RenderStore`/`RenderStoreWriter` in `python/stunt_reel/parity_artifacts/`, on the standard
 library's `compression.zstd` (Python 3.14+; the project requires 3.15). `stunt_reel` keeps

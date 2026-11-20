@@ -102,7 +102,11 @@ _Source: [what picks the OP_ANIMATE frame](../../work/2026-11/222_op-animate/jou
 * `flm/interpolate/mod.rs` interpolates the animate word, joint slot 0 of `ActorTransform::joint_angles_bam`, as `0x3EFE` does, but without its `SIF_ANIMATES` (`0x20`) test: a record without slot 0 reads as 0.
 * `scene/film.rs` picks each sprite's frame from the word `angle_bank(..).word(selector)` reads (`scene/bank.rs`; the words are in [`angle-bank.md`](angle-bank.md)) and `scene/sprite.rs` places it at its anchor taken through the actor's world matrix; a frame the archive lacks is not drawn.
   Images are read from the `.ALL` chunks or `RES` items the tables name (`sprite.rs`); `sprite.rs` decodes a span-coded image, which `0x7DE6` would read as raw rows, but no frame the corpus's tables name that its archives hold is span-coded (§ 3).
-* `stunt-render` draws each sprite as a camera-facing square `size` metres across at its centre, so its screen size comes from the perspective divide rather than `PLAYONE`'s fixed-point formula; one quad per run of equal pixels, depth-tested in its actor's layer, with no shadow draw.
+* `stunt-render` draws each sprite as a camera-facing square `size` metres across at its centre, so its screen size comes from the perspective divide rather than `PLAYONE`'s fixed-point formula; one quad per run of equal pixels, in its actor's layer, with no shadow draw.
+* `scene/film.rs` gives each sprite the drawn props the scenery walk puts after its slot's entry (`SpriteDraw::after`, from `PlacementRecords::slot_order`, [`scene-walk-actors.md`](scene-walk-actors.md) § 4).
+  `stunt-render` draws such a sprite after the depth-tested world, with no depth test or write, then those props again from their own runs of the world mesh (`MeshSpans`), depth-tested, and the actors whose origins lie nearer the eye along the view axis than its own actor's; the world's main draw leaves those props out, and the world stays depth-tested otherwise.
+  Two placed sprites go in walk order, the one with more props after it first, then the one whose centre is farther from the eye, and a prop goes after as many of them as the walk puts it after; that is the walk's order when the sprites' sets of props after them nest, as for sprites of one slot, and an approximation of it for sprites of different slots, which the sweeps did not test.
+  A sprite the walk gives no place, or one in a world uploaded in several chunks, is depth-tested as before.
 * `vm.rs` does not read the register flag (`+0x0A`), so a flagged register still yields a sprite.
   A trial that skipped a sprite whose centre fails the § 1 clip test, taken against the authored camera, left all seven reference films' `expected.gpu` scores unchanged to 0.0000001, so no scored frame changes (a sprite more than 256 pixels off-centre can exist and be off-screen anyway); it was not adopted.
   _Source: [which bank words and tests OP_ANIMATE needs](../../work/2026-11/408_animate-selectors/journal.md#2026-11-11-which-bank-words-and-tests-op_animate-needs)._. It would also drop sprites a free camera sees.
@@ -113,6 +117,11 @@ Drawing it raised `INTRO` from 0.8344 to 0.8357 and `CTRY` from 0.8973 to 0.8974
 _Source: [2026-11-11: drawing the OP_ANIMATE sprite](../../work/2026-11/222_op-animate/journal.md#2026-11-11-drawing-the-op_animate-sprite)._
 
 _Source: [drawing the OP_ANIMATE sprite](../../work/2026-11/222_op-animate/journal.md#2026-11-11-drawing-the-op_animate-sprite)._
+
+Drawing it at its place in the walk raised `CTRY`, `INTRO` and `BOMB` and put the `CTRY` tick 871 explosion over the tower and under the foreground hill, as in the capture (evidence-backed, adopted; one run on lavapipe; the other four reference films did not move).
+_Source: [sprites drawn at their place in the partition order](../../work/2026-11/737_sprite-partition-order/journal.md#2026-11-20-sprites-drawn-at-their-place-in-the-partition-order)._
+Drawing the nearer actors after it raised `INTRO` again, by less, with frames each way (evidence-backed, adopted; one run on lavapipe).
+_Source: [actors nearer than a placed sprite, measured again](../../work/2026-11/737_sprite-partition-order/journal.md#2026-11-20-actors-nearer-than-a-placed-sprite-measured-again)._
 
 ---
 
@@ -129,15 +138,20 @@ _Source: [drawing the OP_ANIMATE sprite](../../work/2026-11/222_op-animate/journ
 * **A sprite masked by stencil against the world, drawn last over the actors that sort no nearer than its own** (heuristic): over world pixels it keeps the depth test, so it changed nothing at `CTRY` tick 871, where the tower and the foreground hill are both props (plane layer 3), not actors; marking every world prop as farthest put the explosion over the hill too (`CTRY` 0.9186 to 0.9174, worst target frame −0.0644); ranking each LOD group (`WORLD_LOD`, one per gate) by the distance from the eye to its box centre changed nothing there, because the two groups beside the explosion (20.3 m and 21.8 m, their meshes 19.3 to 21.9 m) rank nearer than its actor (22.3 m); how ungated base-batch props were ranked was not recorded.
   No variant adopts; lavapipe, one run ([the stencil mask](../../work/2026-11/407_sprite-stencil-mask/journal.md#2026-11-17-sprite-masked-by-stencil-against-the-world-over-farther-actors)).
 
+* **Ordering two placed sprites with as many props after them by their slot's view depth**, which ties two sprites of one slot and keeps them in the shape's stream order, instead of farther centre first: it lowered `intro:2718` by 0.0143 and moved no other scored frame (lavapipe, one run, measured as the unplanned difference between two sweeps' baselines; [the first actors sweep](../../work/2026-11/737_sprite-partition-order/journal.md#2026-11-20-actors-nearer-than-a-placed-sprite-drawn-after-it)).
+
 ## Open questions
 
 * **Draw order.**
-  `PLAYONE` blits the sprite with no depth test, in the painter's order (§ 3); that this is its actor's place in the entry sort of [`sod-vm-frame.md`](sod-vm-frame.md) § 9.1 is `[Supported Inference]`, not traced through `0x1C00`; our depth test cuts it where an object stands inside its square (`CTRY` tick 871: the capture draws the explosion over the tower beside it, we draw it behind).
-  Sorting the sprite among the actors by eye distance, or drawing it last, did not match the capture at tick 871: both draw the explosion over the foreground hill, which the capture appears to keep in front of it.
-  Both the hill and the tower are props the world draw holds in our render (the `WORLD_LOD` nodes of the stencil sweep), and a sort of world nodes by Euclidean eye distance to their box centres puts the tower in front of the explosion, which the capture does not (§ Ruled out), so `PLAYONE`'s order between an actor and the world's objects appears not to be that distance (`[Bounded Observation]`, one frame of one film; the sort's own depth value is not read, so this does not rule out depth sorting in general).
-  The lead (`[Hypothesis]`, not traced): the scenery's display list draws pending-object lists at its object buckets (`OP_IPG` type 4, image `0xB54C`, heads at `DGROUP:0x2346`, handed to `0x1B75`; [`lod.md`](lod.md)'s pending-node pop `0x1B8C` falls inside the range [`sod-vm-frame.md`](sod-vm-frame.md) § 9.1 calls the entry sort, `0x1B88..0x1BFF`, and which reading holds is not traced; [`sod-vm-generators.md`](sod-vm-generators.md)), so an actor may be painted at its bucket's place in the world's painter order.
-  Reading whether the actor queue `0x1A90` feeds those heads, and which bucket an entry joins, comes before any further renderer change; the world is one depth-tested draw here.
-  _Source: [the sprite in the sort](../../work/2026-11/407_sprite-draw-order/journal.md#2026-11-12-sprite-with-no-depth-test-in-the-actors-place-in-the-sort); [the stencil mask](../../work/2026-11/407_sprite-stencil-mask/journal.md#2026-11-17-sprite-masked-by-stencil-against-the-world-over-farther-actors)._
+  `PLAYONE` blits the sprite with no depth test, in the painter's order (§ 3); that this is its actor's place in the entry sort of [`sod-vm-frame.md`](sod-vm-frame.md) § 9.1 is `[Supported Inference]`, not traced through `0x1C00`.
+  Against the world's props our render now takes the scenery walk's order (§ 4); what it still leaves out:
+  * 3D actors are ordered against a placed sprite by view depth, which the entry sort does only within one pending list; at `intro:1398` an actor nearer than the explosion's slot is drawn over it, and the capture draws the explosion over that actor ([#819](https://github.com/neilsh/stunt-reel/issues/819)).
+  * Props that face the view (the world's flat trees) and props' flat-ground runs stay in the world's main draw, under the sprite, wherever the walk puts them.
+  * A placement the tree reaches by several paths keeps the first one's steps, and `PLAYONE` draws it once per path.
+  * Whether slot 11 records a bucket at tick 871 ([`scene-walk-actors.md`](scene-walk-actors.md), Open questions).
+
+  A sort of world nodes by Euclidean eye distance to their box centres puts the tower in front of the explosion at tick 871, which the capture does not (§ Ruled out), so `PLAYONE`'s order between an actor and the world's objects appears not to be that distance (`[Bounded Observation]`, one frame of one film; the sort's own depth value is not read, so this does not rule out depth sorting in general).
+  _Source: [the sprite in the sort](../../work/2026-11/407_sprite-draw-order/journal.md#2026-11-12-sprite-with-no-depth-test-in-the-actors-place-in-the-sort); [the stencil mask](../../work/2026-11/407_sprite-stencil-mask/journal.md#2026-11-17-sprite-masked-by-stencil-against-the-world-over-farther-actors); [actors nearer than a placed sprite, measured again](../../work/2026-11/737_sprite-partition-order/journal.md#2026-11-20-actors-nearer-than-a-placed-sprite-measured-again)._
 * **Bank words other than `0x10` and `0x16`.**
   The scene reads them as 0.
   No corpus table uses `0x12`..`0x1A`, and the tables using selector `0` have one frame, so deferred: nothing would draw differently (`[Bounded Observation]`, one census).

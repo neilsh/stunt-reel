@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "film": {
     "name": "BENCH.FLM",
     "flm_bytes": 1
@@ -72,5 +72,6 @@
         "length": 251
       }
     }
-  ]
+  ],
+  "planes": {}
 }

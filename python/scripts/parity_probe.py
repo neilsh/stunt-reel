@@ -1,10 +1,14 @@
 """Diagnostic probes for parity work (see research/parity/probes.md).
 
-Four subcommands read a capture directory through the artifact adapter (its
+Five subcommands read a capture directory through the artifact adapter (its
 ``meta.json`` names each frame's planes and palettes) and a render directory
-(its ``render.json`` and render store), and a fifth reads one ``report.json``
+(its ``render.json`` and render store), and a sixth reads one ``report.json``
 through the same adapter:
 
+* ``index``  - where one palette index (or a range) lands in the capture and in our
+  render at the same film ticks: pixel count, bounding box and centroid in each, and the
+  centroid offset. ``--film`` renders the ticks once, as ``mise run frame`` does; ``--ours``
+  reads an existing render store instead.
 * ``crop``   - capture over ours, one frame region, as a PNG.
 * ``shift``  - best (dx, dy) that slides our actor silhouette onto the
   capture's object pixels, per scored frame.
@@ -28,19 +32,28 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import re
+import shutil
 import statistics
 import struct
 import sys
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
 lazy from collections.abc import Sequence
 
 import numpy as np
 
-from stunt_reel import dataroot, parity_layout, references
+from stunt_reel import dataroot, parity_layout, parity_pipeline, references
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.matched_frames import Reference
-from stunt_reel.parity_artifacts import RenderStore, read_capture, read_report
+from stunt_reel.parity_artifacts import (
+    ArtifactError,
+    CaptureSet,
+    RenderStore,
+    read_capture,
+    read_report,
+)
 from stunt_reel.parity_pipeline import RetimeError, retime_render
 
 #: Cursor (255) and shadow/black (0) are never object pixels.
@@ -97,6 +110,152 @@ def background_for(reference: Path, root: Path | None = None) -> tuple[tuple[int
             "`background` (inclusive [lo, hi] palette-index bands of sky and ground); record it"
         )
     return row.background
+
+
+#: Where ``index`` puts the render it makes, relative to the checkout (``mise run frame``'s tree).
+INDEX_DIR = Path("build") / "scratch" / "index"
+
+
+@dataclass(frozen=True)
+class IndexStats:
+    """Where an index range lies in one plane: pixel ``count``, inclusive ``box``, ``centroid``.
+
+    ``box`` is ``(x0, y0, x1, y1)`` and ``centroid`` is ``(x, y)`` in pixels; both are ``None``
+    when ``count`` is 0.
+    """
+
+    count: int
+    box: tuple[int, int, int, int] | None
+    centroid: tuple[float, float] | None
+
+
+def index_stats(plane: bytes, width: int, rows: int, lo: int, hi: int) -> IndexStats:
+    """The pixels of the first ``rows`` rows of *plane* whose index is in ``lo..hi`` inclusive."""
+    pixels = np.frombuffer(plane, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    ys, xs = np.nonzero((pixels >= lo) & (pixels <= hi))
+    if not len(xs):
+        return IndexStats(0, None, None)
+    box = (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))
+    return IndexStats(len(xs), box, (float(xs.mean()), float(ys.mean())))
+
+
+def centroid_offset(ours: IndexStats, theirs: IndexStats) -> tuple[float, float] | None:
+    """Our centroid minus the capture's, or ``None`` when either side has no pixel."""
+    if ours.centroid is None or theirs.centroid is None:
+        return None
+    return ours.centroid[0] - theirs.centroid[0], ours.centroid[1] - theirs.centroid[1]
+
+
+def parse_index_range(text: str) -> tuple[int, int]:
+    """The inclusive ``(lo, hi)`` palette indices of ``239`` or ``236-239``."""
+    match = re.fullmatch(r"(\d+)(?:-(\d+))?", text.strip())
+    if match is None:
+        raise ValueError(f"--index wants an index or a range such as 236-239, got {text!r}")
+    lo = int(match[1])
+    hi = int(match[2]) if match[2] is not None else lo
+    if not 0 <= lo <= hi <= 255:
+        raise ValueError(f"--index wants 0 <= lo <= hi <= 255, got {text!r}")
+    return lo, hi
+
+
+def parse_ticks(text: str) -> list[int]:
+    """Ascending distinct film ticks from ``48,92,1009``."""
+    try:
+        ticks = [int(part) for part in text.split(",")]
+    except ValueError:
+        raise ValueError(f"--ticks wants comma-separated film ticks, got {text!r}") from None
+    if any(tick < 0 for tick in ticks):
+        raise ValueError(f"--ticks wants non-negative film ticks, got {text!r}")
+    return sorted(set(ticks))
+
+
+def locate(
+    capture: CaptureSet, ticks: list[int]
+) -> tuple[dict[int, int], dict[int, tuple[int | None, int | None]]]:
+    """Split ``ticks`` into capture ordinals and, for the rest, the neighbouring captured ticks."""
+    held = {frame.film_tick: frame.ordinal for frame in capture.frames}
+    found = {tick: held[tick] for tick in ticks if tick in held}
+    missing: dict[int, tuple[int | None, int | None]] = {}
+    for tick in ticks:
+        if tick not in held:
+            before = [t for t in held if t < tick]
+            after = [t for t in held if t > tick]
+            missing[tick] = (max(before, default=None), min(after, default=None))
+    return found, missing
+
+
+def _describe(stats: IndexStats) -> str:
+    if stats.box is None or stats.centroid is None:
+        return f"{stats.count} - -"
+    x0, y0, x1, y1 = stats.box
+    return f"{stats.count} {x0},{y0},{x1},{y1} {stats.centroid[0]:.2f},{stats.centroid[1]:.2f}"
+
+
+def index_rows(reference: Path, ours: Path, ticks: list[int], lo: int, hi: int) -> list[str]:
+    """One line per tick: the index range in the capture and in our render, and the offset.
+
+    Each line reads ``tick`` then, for the capture and for ours, ``count box centroid`` (``-``
+    for the box and centroid of an empty side), then ``dx dy``, our centroid minus the capture's
+    (``-`` when either side is empty). A tick the capture lacks, or the render holds no page
+    for, gets a line saying so.
+    """
+    store = RenderStore(ours)
+    geometry = store.record.geometry
+    width, rows = geometry.width, geometry.plane_rows()
+    held = Reference(reference, store)
+    found, missing = locate(held.capture, ticks)
+    lines = ["tick capture(count box centroid) ours(count box centroid) dx dy"]
+    for tick in ticks:
+        if tick not in found:
+            before, after = missing[tick]
+            lines.append(f"{tick} not in the capture (nearest captured: {before}, {after})")
+        elif not store.holds(tick):
+            lines.append(f"{tick} not in the render")
+        else:
+            matched = held.match(found[tick], tick)
+            theirs = index_stats(matched.capture_indices(), width, rows, lo, hi)
+            mine = index_stats(matched.page.indices, width, rows, lo, hi)
+            offset = centroid_offset(mine, theirs)
+            shown = "- -" if offset is None else f"{offset[0]:+.2f} {offset[1]:+.2f}"
+            lines.append(f"{tick} {_describe(theirs)} {_describe(mine)} {shown}")
+    return lines
+
+
+def cmd_index(args: argparse.Namespace) -> int:
+    """Print where an index range lies in the capture and in our render, per film tick."""
+    try:
+        ticks = parse_ticks(args.ticks)
+        lo, hi = parse_index_range(args.index)
+    except ValueError as err:
+        print(f"parity_probe: {err}", file=sys.stderr)
+        return 2
+    root = dataroot.data_root()
+    if args.ours is not None:
+        try:
+            with references.open_reference(root, args.film) as reference:
+                lines = index_rows(reference, args.ours, ticks, lo, hi)
+        except ArtifactError as err:
+            print(f"parity_probe: {err}", file=sys.stderr)
+            return 2
+    else:
+        problems = parity_pipeline.preflight(root, [args.film], build_required=not args.no_build)
+        if problems:
+            print("parity_probe: " + "\n  ".join(problems), file=sys.stderr)
+            return 2
+        if not args.no_build:
+            parity_pipeline.build_release()
+        out = REPO_ROOT / INDEX_DIR / args.film
+        with parity_pipeline.reference_job(root, args.film) as job:
+            shutil.rmtree(out, ignore_errors=True)
+            parity_pipeline.render_film(job, out, ticks=ticks, software_only=args.software_only)
+            if not (out / "render.json").exists():
+                print("parity_probe: every tick is past the film's end, nothing rendered")
+                return 1
+            lines = index_rows(job.capture, out, ticks, lo, hi)
+    print(f"[index] {args.film} index {lo if lo == hi else f'{lo}-{hi}'}")
+    for line in lines:
+        print(line)
+    return 0
 
 
 def cmd_retime(args: argparse.Namespace) -> int:
@@ -454,6 +613,23 @@ def build_parser() -> argparse.ArgumentParser:
         ("retime", cmd_retime),
         ("summary", cmd_summary),
     )
+    index = sub.add_parser("index", help=cmd_index.__doc__)
+    index.set_defaults(func=cmd_index)
+    index.add_argument("--film", required=True, choices=references.reference_films(REPO_ROOT))
+    index.add_argument("--ticks", required=True, help="comma list of 0-based film ticks")
+    index.add_argument("--index", required=True, help="a palette index, or a range such as 236-239")
+    index.add_argument(
+        "--ours",
+        type=Path,
+        default=None,
+        help="an existing render directory to read, instead of rendering --ticks now",
+    )
+    index.add_argument("--no-build", action="store_true", help="reuse the release binary")
+    index.add_argument(
+        "--software-only",
+        action="store_true",
+        help="render on the software adapter (lavapipe, WARP), even when a GPU is available",
+    )
     for name, fn in commands:
         p = sub.add_parser(name)
         p.set_defaults(func=fn)
@@ -507,7 +683,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     with contextlib.ExitStack() as stack:
-        if args.reference is None and args.func is not cmd_summary:
+        if args.func is not cmd_summary and args.func is not cmd_index and args.reference is None:
             try:
                 args.reference = stack.enter_context(
                     references.open_reference(dataroot.data_root(), "ctry")

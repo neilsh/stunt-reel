@@ -12,10 +12,12 @@ use crate::anchor::AnchorPoint;
 use std::collections::HashMap;
 
 use crate::contracts::shape::{
-    DecodeMode, DecodeRecord, NodeId, NodeKind, SodModelIr, SodVertex, VERTEX_FLAG_LINE,
-    VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VisibilityCondition, arena_index,
+    DecodeMode, DecodeRecord, NodeId, NodeKind, SodModelIr, SodVertex, VERTEX_FLAG_DISC,
+    VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VisibilityCondition,
+    arena_index,
 };
 use crate::sod::SodError;
+use crate::sod::collision::decode_collision;
 use crate::sod::decal::identify_coplanar_decals;
 use crate::sod::vm::{Policy, RawPolygon, run_vm};
 use crate::sod::{AngleBank, ShadeLight};
@@ -153,6 +155,7 @@ fn process_polygon_batch(
             continue;
         }
 
+        let disc_centre = (poly.flags & VERTEX_FLAG_DISC != 0).then(|| polygon_centroid(poly));
         let mut poly_indices = Vec::with_capacity(num_v);
         for (corner, v_pos) in poly.vertices.iter().enumerate() {
             let palette_index = poly
@@ -167,7 +170,9 @@ fn process_polygon_batch(
                 let new_idx = arena_index(ir.vertices.len());
                 ir.vertices.push(SodVertex {
                     position: *v_pos,
-                    normal: poly.normal,
+                    normal: disc_centre.map_or(poly.normal, |c| {
+                        [c[0] - v_pos[0], c[1] - v_pos[1], c[2] - v_pos[2]]
+                    }),
                     palette_index,
                     flags: poly.flags,
                     scenery_class: 0,
@@ -205,6 +210,19 @@ fn process_polygon_batch(
             },
         );
     }
+}
+
+/// The mean of `poly`'s vertices: the centre of a regular polygon such as a disc's outline.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a polygon has far fewer than 2^24 vertices"
+)]
+fn polygon_centroid(poly: &RawPolygon) -> [f32; 3] {
+    let n = poly.vertices.len().max(1) as f32;
+    let sum = poly.vertices.iter().fold([0.0f32; 3], |acc, v| {
+        [acc[0] + v[0], acc[1] + v[1], acc[2] + v[2]]
+    });
+    sum.map(|c| c / n)
 }
 
 /// Appends a [`VERTEX_FLAG_LINE`] polygon's segment as a quad of four line vertices, two at
@@ -287,11 +305,11 @@ pub fn decode_sod_lit(
     decode_sod_posed(data, name, anchors, mode, light, AngleBank::REST)
 }
 
-/// [`decode_sod_lit`] with the angle bank the shape's `OP_ROTX`, `OP_ROTY` and `OP_ROTZ` read,
-/// which turns its articulated parts (propellers, rotors, control surfaces) into that pose.
+/// [`decode_sod_lit`] with the angle bank the shape's `ROT*` and `OP_BVGT` read.
 ///
-/// [`AngleBank::REST`] skips every rotation, as [`decode_sod_lit`] does. The operands the
-/// walk's rotations read are in [`DecodeRecord::bank_operands`].
+/// Turns articulated parts (propellers, rotors, control surfaces) into that pose and selects
+/// `BVGT` arms. [`AngleBank::REST`] skips every rotation, as [`decode_sod_lit`] does; the
+/// operands the walk's rotations and `BVGT` branches read are in [`DecodeRecord::bank_operands`].
 ///
 /// # Errors
 ///
@@ -325,6 +343,7 @@ pub fn decode_sod_posed(
         stepped_over: run.stepped_over,
         returned_at: run.returned_at,
         bank_operands: run.bank_operands,
+        collision: decode_collision(data, run.header.collision_meta),
     });
     check_shape_invariants(&ir)?;
     Ok(ir)

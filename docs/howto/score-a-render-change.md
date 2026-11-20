@@ -9,6 +9,7 @@ What each step measures, and how to read its output, is [`research/parity/method
 
 * `--no-build` reuses the release binary (a parallel session may hold it); the drift check then assumes the binary came from the checkout.
 * `--no-render` re-scores the existing `_current` trees.
+  On a clean `crates/`, when the render records the tree that built it (a render `mise run parity` built and rendered on a clean `crates/` does) and `crates/` differs from that tree only under `crates/stunt-score/src/parity/` (the scorer), it records `crates` in the report, so `parity-repin` accepts it; any other change, or an older render, needs a render.
 * `--retime N` scores the render relabelled by N ticks ([`probes.md`](../../research/parity/probes.md) section 6) and writes a `_retime<N>` report instead of overwriting the baseline report.
   On its own it renders first, which moves `_current` into `previous`; to retime the existing render, add `--no-render --no-build`.
 * `--reuse build/parity/previous` scores the previous render without re-rendering.
@@ -52,8 +53,8 @@ stuntreel --headless <film>.FLM --all <film>.ALL --tick-range 0..=1342 --sidata 
   The earlier `--frames A..B` is an error.
 * `--width 320 --height 200`: the parity command rejects 320x240 input.
   `--viewport-rows 185` because the 3D view fills 185 rows.
-* `--headless --out-dir` writes the render store ([ADR 0027](../adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)): `frames.zst`, `layers.zst`, `palettes.zst` (the distinct palettes in one zstd frame; `frames.zst` and `layers.zst` hold one zstd frame per film second), `render.json` (written last: film identity, raster geometry, each tick's palette variables, palette index and camera, and the chunk table) and one `preview/sec_NNNN.png` per film second.
-  A directory without one, or with a `render.json` older than schema 3, is refused: re-render it.
+* `--headless --out-dir` writes the render store ([ADR 0027](../adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)): `frames.zst`, `layers.zst`, `palettes.zst` (the distinct palettes in one zstd frame; `frames.zst` and `layers.zst` hold one zstd frame per film second), `shapes.zst` (the shape plane the props-loss split reads, one zstd frame per film second; only the Rust store decodes it, and a render whose `render.json` does not list it scores without the split), `render.json` (written last: film identity, raster geometry, each tick's palette variables, palette index and camera, the chunk table, and each optional plane it holds with that file's SHA-256 and chunk spans) and one `preview/sec_NNNN.png` per film second.
+  A directory without one, with a `render.json` older than schema 4, or with a listed plane whose file is missing or differs from its listing, is refused: re-render it.
 * `--frame-step N` samples every N ticks, which keeps long films from filling the disk.
 * `--sample-count` or `--video` samples off whole ticks, written as `sample_%04d.png` (1-based); these are not parity inputs.
 * `--video <path>` (`.mp4`, `.webm`, `.mkv`, `.avi`) pipes frames to `ffmpeg` at `--fps` (default 30) from the 50 Hz timeline with 4:3 correction (320x240, `[I6]`), interpolating between slice keyframes, and trims the container to the authored span with `-t`.
@@ -83,7 +84,7 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
 ## 6. Look at the worst movers
 
 Open `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref-before| | |ref-after|`), one each for the single biggest mover each way by the verdict's Δ (when `--compare-test` is not a readable render store, the verdict and both sheets are skipped: re-render it), before trusting the mean; a mean can hide a regression or an improvement.
-Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, candidate sweeps).
+Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, where one palette index lies, candidate sweeps).
 
 For a side-by-side of one tick, read the capture with `read_capture` in `stunt_reel.parity_artifacts` and take the frame whose `film_tick` is that tick: `tick_NNNN.idx` is numbered by capture order, not by tick, and `read_capture` supplies the capture-order file names when an older `meta.json` omits `frame_file` and `palette_file`.
 Decode its frame (64000 bytes, 320x200) with its palette (`read_capture_palette`).
@@ -95,7 +96,7 @@ A second's `preview/` PNG shows only that second's first tick, so use it only wh
 Write a journal entry in the work item's `journal.md` ([`work/README.md`](../../work/README.md#journal-entries)): commit hash, matched frames, means, the reason for any movement, and the verdict, linking the sweep's figures file when a sweep gave it (§ 8).
 `mise run parity-probe -- summary --report build/parity/report/ctry_current/report.json` prints the scores and worst frames the entry quotes, so nothing is retyped by hand.
 A PR that adopts a change updates the expected table of each reference film for the renderer class it measured (`ssim`, `iou`, `adapter`, the row's `sha256` and `all_sha256`, and `crates` from `git rev-parse <commit>:crates`, rendered with `crates/` clean; [method § 1](../../research/parity/method.md#1-the-loop) step 0); the other class keeps its older entry until someone measures it.
-Commit `crates/`, run `mise run parity` without `--no-build`, `--no-render`, `--reuse` or `--retime`, then `mise run parity-repin -- [--class gpu|lavapipe]`: it writes every film's table from its report, or writes nothing and says which film's report is missing, was rendered on another tree or another class, was scored against another capture or archive or without recorded pins, or that `crates/` is dirty.
+Commit `crates/`, run `mise run parity` without `--no-build`, `--reuse` or `--retime` (and without `--no-render`, unless `mise run parity` built and rendered it on a clean `crates/` and the commits since changed only `crates/stunt-score/src/parity/`), then `mise run parity-repin -- [--class gpu|lavapipe]`: it writes every film's table from its report, or writes nothing and says which film's report is missing, was rendered on another tree or another class, was scored against another capture or archive or without recorded pins, or that `crates/` is dirty.
 
 ## 8. Judge a candidate against a baseline
 
@@ -178,4 +179,9 @@ A reviewer recomputing a quoted sweep verdict ([`AGENTS.md`](../../AGENTS.md#com
 **Two existing report trees.**
 `mise run judge -- <baseline report dir> <candidate report dir> [--target ...] [--track ...]` prints the same table and winner line for two `stuntreel parity` runs, the rows labelled `run=baseline` and `run=candidate`.
 A report dir holds each film's report as `<film>_report/report.json` (a sweep variant kept by `--keep-best`), `<film>_current/report.json` (`build/parity/report`) or `<film>/report.json`; a film without one counts as failed on that side.
+On stderr it also prints, per film, both reports' `mean_index_agreement_scored` and the counts of frames where the candidate's `index_agreement` is better, equal or worse than the baseline's, pairing frames by `ordinal` over those scored in both reports (every frame when a report predates fade scoring).
+These counts are information for a tie fix, whose SSIM may hide a few moved pixels; the verdict and `--recheck` ignore them.
+It then prints one line per film with the candidate's change in each class's `mean_loss_by_class_scored` from the baseline's and, in parentheses, from the class losses pinned in `[<film>.expected.<class>.loss]` of `references.toml` for the renderer class of the candidate's adapter.
+A class moving less than 0.00005 on both comparisons is left out; a report or pin with no class losses, or one naming other classes than the rest, gets a line saying so.
+This shows where an adoption moved the loss when the film mean nets out, and it is information too.
 To judge two commits, copy `build/parity/report` aside after `mise run parity` on the first, then run it on the second.

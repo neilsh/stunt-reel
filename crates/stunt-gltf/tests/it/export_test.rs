@@ -18,11 +18,11 @@ use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::{
     NodeKind, SodModelIr, SodVertex, VisibilityCondition, get_palette_rgb_float,
 };
-use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES};
+use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW};
 use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource, ViewCamera};
 use stunt_core::sod::{
     DECAL_FLAG_BIT, DecodeMode, EPSILON_DISPLACEMENT, OP_COLOR, OP_ID, OP_LINECOL, OP_MOVETO,
-    OP_POLYZ, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
+    OP_PERFDISK, OP_POLYZ, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
 };
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
@@ -797,6 +797,39 @@ fn world_is_exported_as_an_identity_node() {
     assert_actors_match(&glb, &scene, 0.0);
 }
 
+/// The view slot draws only its shadow, which the export does not carry: its draw is in the
+/// frame but has no node, while the actor beside it keeps its own.
+#[test]
+fn a_view_slots_shadow_only_draw_is_not_exported() {
+    let moving = SIF_EXISTS | SIF_MOVES | SIF_ROTATES;
+    let mut body = vec![0x9B, 2];
+    // Slot 0 is the camera and carries a shape and a shadow; slot 1 is an ordinary actor.
+    body.extend_from_slice(&[0x00, moving | SIF_DRAW | SIF_SHADOW]);
+    body.extend_from_slice(&7u16.to_le_bytes());
+    body.push(0x90);
+    body.extend_from_slice(&[0x01, moving | SIF_DRAW]);
+    body.extend_from_slice(&7u16.to_le_bytes());
+    push_interp(&mut body, 0x40, [0.0, 0.0, 10.0], 0);
+    push_interp(&mut body, 0x41, [3.0, 0.0, 0.0], 0x8000);
+    body.push(0xFF);
+    let mut film = b"FILM".to_vec();
+    film.extend_from_slice(&0u16.to_le_bytes());
+    film.push(0);
+    film.extend_from_slice(&body);
+
+    let sod = fixture("synthetic_minimal.sod");
+    let scene = load(&film, &archive(&[(7, &sod)]));
+    let frame = scene.frame(0.0);
+    let flags: Vec<bool> = frame.actors.iter().map(|a| a.shadow_only).collect();
+    assert_eq!(flags, [true, false], "the view slot's draw is shadow-only");
+
+    let glb = parse_glb(&export_scene_frame(&scene, 0.0).expect("export"));
+    assert!(glb.node_named("actor_0_shape_7").is_none());
+    assert!(glb.node_named("actor_1_shape_7").is_some());
+    // The camera and the one actor are the scene's roots.
+    assert_eq!(glb.json["scenes"][0]["nodes"].as_array().unwrap().len(), 2);
+}
+
 #[test]
 fn frame_without_actors_still_has_a_camera() {
     let film = film([0.0, 0.0, 10.0], &[]);
@@ -856,4 +889,38 @@ fn a_screen_line_exports_as_a_lines_primitive() {
         .cross(p(triangles[2]) - p(triangles[0]))
         .length();
     assert!(area > 1.0, "{area}");
+}
+
+/// One `OP_PERFDISK` of radius 40 about raw point 0, its normal along +z, at scale 1.0.
+fn disc() -> SodModelIr {
+    let mut words: Vec<u16> = vec![OP_ID, 100, 0, 0, 0, OP_VECTORS, 2, 0];
+    for c in [0i16, 0, 0, 0, 0, -20] {
+        words.push(c.cast_unsigned());
+    }
+    words.extend([OP_COLOR, 9, OP_PERFDISK, 0, 40, 12, OP_RETURN]);
+    let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    decode_sod(&bytes, "DISC", None, DecodeMode::Strict).expect("disc shape")
+}
+
+/// A disc's rim vertices keep the vector to its centre in the IR, but export the unit front
+/// normal of their face: one face looks along +z, the other along -z.
+#[test]
+fn a_disc_exports_its_faces_front_normals() {
+    let glb = parse_glb(&export_shape(&disc()).expect("export"));
+    let positions = glb.floats(glb.primitive_accessor(0, "POSITION"));
+    let normals = glb.floats(glb.primitive_accessor(0, "NORMAL"));
+    let at = |data: &[f32], i: u32| Vec3::from_slice(&data[i as usize * 3..i as usize * 3 + 3]);
+    let primitive = &glb.array("meshes")[0]["primitives"][0];
+    let triangles = glb.indices(primitive["indices"].as_u64().map(to_usize).unwrap());
+    assert_eq!(triangles.len(), 2 * 14 * 3, "two 16-gons");
+    let mut sides = [0usize; 2];
+    for tri in triangles.as_chunks::<3>().0 {
+        let [a, b, c] = tri.map(|i| at(&positions, i));
+        let front = (c - a).cross(b - a).normalize();
+        for &i in tri {
+            assert!((at(&normals, i) - front).length() < 1e-4, "vertex {i}");
+        }
+        sides[usize::from(front.z > 0.0)] += 1;
+    }
+    assert_eq!(sides, [14, 14], "one face for each side");
 }

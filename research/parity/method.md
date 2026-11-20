@@ -14,10 +14,11 @@ Metric behaviour and recapture noise are in [`metric-bench.md`](metric-bench.md)
    `references.toml` names, by film slug and content hash, the capture under `<data root>/captures/<slug>/frames` each film is scored against.
    `mise run parity` prints, under each film's summary line, its expected line: the expected score of the film's table for the renderer class the render was drawn on (`[<film>.expected.gpu]` or `.lavapipe`) with the SSIM delta, or what is missing (no adapter in the report, or no table for the class yet); the adoption noise note comes last.
    The line judges drift, a delta beyond the film's `noise_sigma` or, on a row without one, beyond `1e-7`, only when the report names an adapter whose name matches the table's, a frame scored, the run scored its own render (not `--retime` or `--reuse`), the git tree hash of the checkout's `crates/` (tracked files as they are on disk and untracked ones git does not ignore) is the table's `crates`, the film's pins (`sha256`, `all_sha256`) are the ones the table records; otherwise it says why.
-   The check reads the checkout, not the binary (with `--no-build` or `--no-render` it assumes the render came from the checkout), and assumes builds of the same `crates/` render identically; `noise_sigma` is the recapture noise borrowed as a tolerance, not a measured bound on build-to-build variation ([section 3](evidence-limits.md#3-what-is-not-yet-evidence), adoption floor).
+   The check reads the checkout, not the binary (with `--no-build` it assumes the binary came from the checkout, and with `--no-render` the render did, except that its recorded build tree may differ from the checkout's under `crates/stunt-score/src/parity/`, the scorer, alone), and assumes builds of the same `crates/` render identically; `noise_sigma` is the recapture noise borrowed as a tolerance, not a measured bound on build-to-build variation ([section 3](evidence-limits.md#3-what-is-not-yet-evidence), adoption floor).
    The table pins a tree, not a commit, because PRs land as new commits (squash or rebase): a branch commit never reaches `main`, but its `crates/` tree does when no other `crates/` change lands first, so a clone without the branch commit still compares (#308's branch commit `d01a3c4f` and its squash `fa8b9a0` share the `crates/` tree `641cffd`).
    `commit`, the commit measured, is optional and only says where; nothing compares it.
-   The tables are written by `mise run parity-repin`, from reports a clean `crates/` rendered (`report.json`'s `crates`), and change only when the measured `crates/` tree or a film's `sha256` or `all_sha256` pin changes.
+   A table that `parity-repin` has written since #775 also has a `[<film>.expected.<class>.loss]` sub-table, the report's `mean_loss_by_class_scored` with a key for each class of [`report-fields.md`](report-fields.md), so `mise run judge` can print each class's change against the pin ([`score-a-render-change.md`](../../docs/howto/score-a-render-change.md)); nothing judges drift on it.
+   The tables are written by `mise run parity-repin`, from reports whose `report.json` `crates` is the current clean tree: the tree a clean `crates/` rendered or, for a `--no-render` run, one that differs from the render's recorded build tree only under `crates/stunt-score/src/parity/` ([`report-fields.md`](report-fields.md)), and change only when the measured `crates/` tree or a film's `sha256` or `all_sha256` pin changes, or when a table first gains its class losses.
    A conflict in them is resolved by taking `main`'s expected tables, keeping the branch's other edits to `references.toml` (a new row or pin), rerunning `mise run parity` on the merged tree and repinning, never by hand-merging numbers.
    A catch-up repin, for tables whose `crates` lags `main`, is its own commit.
    Notes cite the journal entry for before-and-after scores rather than copy the expected scores ([`loop-rules.md`](../../.agents/skills/improving-render-parity/loop-rules.md#adoption-rule)).
@@ -82,6 +83,34 @@ The mask before it counted only the capture's single most common sky index as sk
 IoU figures recorded before that change are on the old scale and are not comparable with it.
 _Source: [2026-10-23: the sky mask becomes the 227 to 238 band](../../work/2026-11/distill-method/journal.md#2026-10-23-the-sky-mask-becomes-the-227-to-238-band)._
 
+The band leaves out 224 to 226, though `PLAYONE` writes entries 224 to 238 as one sky gradient from zenith to horizon ([`palette-fade.md`](../playone-exe/palette-fade.md) section 3.1), because shapes paint those indices too.
+On `traintnl` all 19,850 capture pixels at 224 to 226 are index 224 and lie on our geometry on the `76872e89` render; 18,144 of them are a blue rectangle on a dark red wall under a red roof, 2,016 on each of 9 frames, and the train's red rear car has windows of 224.
+On `bomb` 104,958 of the 105,219 pixels at 224 are an emblem on a building wall, while the 59,520 at 226 are the zenith sky in the top five rows.
+`location`'s helicopter windows are 225 and 226.
+So an index band that reaches 224, as `balloon`'s zenith requires, cannot tell the zenith sky from that paint: widening it to 224..=238 would count the rectangle and the emblem as sky, and was not adopted.
+_Source: [2026-11-18: who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
+
+A 224 to 226 capture pixel counts as sky by position instead (`capture_sky_mask` in `crates/stunt-score/src/parity/mask.rs`, 2026-11-18): when its 4-connected run of 224 to 226 pixels reaches row 0 and touches both column 0 and column 319.
+Three rules were counted on the capture planes of all seven references and scored on one lavapipe render; each cell is the film's `mean_iou_scored`, and in brackets the 224 to 226 pixels the rule counts as sky over every captured frame:
+
+| Film (224 to 226 pixels) | 227..=238 only | run reaches row 0 or touches 227 to 238 | run reaches row 0 | run reaches row 0, column 0 and column 319 (adopted) |
+|---|---|---|---|---|
+| `balloon` (1,123,487) | 0.6409 | 0.7276 (1,104,344) | 0.7275 (1,102,475) | 0.7186 (1,039,844) |
+| `bomb` (164,739) | 0.9129 | 0.9626 (59,520) | 0.9626 (59,520) | 0.9626 (59,520) |
+| `traintnl` (19,850) | 0.9659 | 0.9659 (132) | 0.9659 (79) | 0.9659 (0) |
+| `location` (7,155) | 0.9786 | 0.9785 (1,469) | 0.9786 (0) | 0.9786 (0) |
+| `intro` (1,227) | 0.9865 | 0.9864 (1,023) | 0.9865 (0) | 0.9865 (0) |
+| `ctry` (473) | 0.9910 | 0.9910 (0) | 0.9910 (0) | 0.9910 (0) |
+| `land` (76) | 0.9852 | 0.9852 (76) | 0.9852 (0) | 0.9852 (0) |
+
+The first two rules count shape paint as sky.
+On `location` the 226 edge of a helicopter window borders the window's own 227 to 238 gradient (tick 1090, 38 pixels at rows 123 to 130), so touching the band is no sign of sky.
+On `traintnl` tick 265, 79 pixels of 224 are a window of the red rear car that the top edge clips, so reaching row 0 is not enough either.
+The adopted rule counts `bomb`'s zenith rows and most of `balloon`'s zenith sky, and none of the paint above.
+It raises `balloon`'s IoU by 0.0777 and `bomb`'s by 0.0497 and moves no other film's; IoU figures recorded before it are on the old scale for those two films.
+It still misses sky the balloon cuts off from row 0 or from a side (`balloon` 83,643 pixels, 16,983 and 15,119 of them on tick 243; [#745](https://github.com/neilsh/stunt-reel/issues/745)).
+_Source: [2026-11-18: a positional rule for the zenith sky](../../work/2026-11/718_positional-zenith-sky/journal.md#2026-11-18-a-positional-rule-for-the-zenith-sky)._
+
 ### 2.1 Fade floor
 
 `PLAYONE.EXE` fades its palette linearly to black near the end of `CTRY.FLM`, from about tick 990 to 1337.
@@ -101,8 +130,11 @@ That keeps night frames scored: the night is var 13 ([`palette-fade.md` § 3.1](
 
 The comparator reads var 14 from the palette controls `render.json` records for every tick.
 Each tick also records `credits`, whether the film shows credits there (`0x99` until `0x98`); on such a tick the UI-overlay mask keeps capture index 255 as credits ink instead of masking it as the cursor, so a render that drops its credits scores the loss.
-The field is required from `render.json` schema 3; an older render is refused with the re-render message.
-The render also records the `adapter` its frames were drawn on (`name` as its driver reports it, `class` `hardware` or `cpu`), which `report.json` copies; the field is optional, so a schema-3 render without it still scores, with a null `adapter`.
+The field is required from `render.json` schema 3.
+Schema 4, the current one, also lists each optional plane file the render holds beside its planes (`shapes.zst`, which the props split of `report.json` reads; [ADR 0052](../../docs/adr/0052-a-render-store-may-hold-optional-extra-planes.md)) under `planes`, with its SHA-256 and one span per chunk-table entry.
+A plane file `render.json` does not list is absent, whatever lies beside it; a listed one whose file is missing, ends elsewhere than its spans or has another SHA-256 fails the open, so a stale `shapes.zst` is never scored as the render's own.
+A render older than schema 4 is refused with the re-render message, as is a listed plane that does not match.
+The render also records the `adapter` its frames were drawn on (`name` as its driver reports it, `class` `hardware` or `cpu`), which `report.json` copies; the field is optional, so a render without it still scores, with a null `adapter`.
 `--compare` reads reports of the retired fade-compensated scoring (§ 4.1) for their raw `ssim`.
 
 ## 4. Dead ends
@@ -170,8 +202,10 @@ How to read the rows of the [parity log](../../work/2026-10/parity-log/log.md), 
 
 ## Ruled out
 
-None recorded here.
-Rejected measurement approaches are in [`metric-bench.md`](metric-bench.md#ruled-out) and [`evidence-limits.md`](evidence-limits.md#ruled-out).
+* **Capture sky by index alone at 224 to 226** (2026-11-18): shapes paint those indices on `traintnl`, `bomb` and `location`, so widening the band to 224..=238 counts their paint as sky (section 2.0; [who paints 224 to 226](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)).
+* **Capture zenith sky by a 224 to 226 run touching the 227 to 238 band, or by a run reaching row 0 alone** (2026-11-18): the first counts a `location` helicopter window's edge, the second a `traintnl` rear-car window clipped by the top edge (section 2.0; [a positional rule](../../work/2026-11/718_positional-zenith-sky/journal.md#2026-11-18-a-positional-rule-for-the-zenith-sky)).
+
+Other rejected measurement approaches are in [`metric-bench.md`](metric-bench.md#ruled-out) and [`evidence-limits.md`](evidence-limits.md#ruled-out).
 
 ## Open questions
 

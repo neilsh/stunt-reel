@@ -7,21 +7,20 @@
 
 use stunt_core::contracts::SodVertex;
 
-/// Layer id of pixels no geometry covers (the clear colour).
-pub const LAYER_NONE: u32 = 0;
-/// Layer id of the world's ocean.
-pub const LAYER_OCEAN: u32 = 1;
-/// Layer id of the world's terrain.
-pub const LAYER_TERRAIN: u32 = 2;
-/// Layer id of the world's props.
-pub const LAYER_PROP: u32 = 3;
-/// Layer id of the 2D credits text drawn over the scene.
-pub const LAYER_OVERLAY: u32 = 4;
-/// Layer id of the first actor draw; actor draw `n` of a frame is `LAYER_FIRST_ACTOR + n`.
-pub const LAYER_FIRST_ACTOR: u32 = 16;
+pub use stunt_core::frame::{
+    LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN,
+};
 
-/// Format of the optional plane target: `layer << 8 | unlit palette index` per pixel.
-pub(crate) const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Uint;
+/// Format of the optional plane target: two words per pixel, `layer << 8 | unlit palette index`
+/// then the pixel's shape word (`RenderedPage::shapes`).
+pub(crate) const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg32Uint;
+
+/// Bind group index of the world's prop runs in the plane pipelines (`prop_runs` in
+/// `mode13h.wgsl`).
+pub(crate) const PROP_RUNS_GROUP: u32 = 3;
+
+/// Bytes of one prop run in the [`PROP_RUNS_GROUP`] buffer: `first`, `end` and the shape word.
+pub(crate) const PROP_RUN_SIZE: u64 = 12;
 
 /// GPU uniform buffer structure for per-model transformation matrix matching WGSL `@group(2) @binding(0)`.
 #[repr(C)]
@@ -32,7 +31,8 @@ pub(crate) struct ModelUniform {
     pub(crate) model_matrix: [f32; 16],
     /// Base layer id (first word) written to the plane target, added to the vertex's scenery
     /// class (zero except for world vertices); the second word is nonzero for a shadow draw,
-    /// which fills every polygon with palette index 0; the rest is padding.
+    /// which fills every polygon with palette index 0; the third is the shape word the plane
+    /// target keeps (`shape id + 1`, zero for no shape); the last is padding.
     pub(crate) layer: [u32; 4],
 }
 
@@ -41,13 +41,20 @@ impl ModelUniform {
     pub(crate) const BINDING_SIZE: Option<wgpu::BufferSize> =
         wgpu::BufferSize::new(size_of::<Self>() as u64);
 
-    /// A uniform drawing with `model_matrix` into `layer`.
+    /// A uniform drawing with `model_matrix` into `layer`, in no shape's pixels.
     #[must_use]
     pub(crate) fn new(model_matrix: [f32; 16], layer: u32) -> Self {
         Self {
             model_matrix,
             layer: [layer, 0, 0, 0],
         }
+    }
+
+    /// This uniform marking its pixels in the plane target as shape `shape_id`'s.
+    #[must_use]
+    pub(crate) fn with_shape(mut self, shape_id: u16) -> Self {
+        self.layer[2] = u32::from(shape_id) + 1;
+        self
     }
 
     /// A uniform drawing a ground shadow with `model_matrix` into `layer`: every polygon
@@ -79,6 +86,10 @@ pub(crate) struct RenderPipelines {
     pub(crate) ground_edge_pipeline: wgpu::RenderPipeline,
     /// Base mesh pipeline with zero depth bias and `Less` depth compare.
     pub(crate) base_pipeline: wgpu::RenderPipeline,
+    /// The base pipeline with neither depth test nor depth write, for an `OP_ANIMATE` sprite
+    /// drawn at its place in the scenery walk: over everything drawn before it, under
+    /// whatever is drawn after (`research/playone-exe/scene-walk-actors.md`).
+    pub(crate) sprite_pipeline: wgpu::RenderPipeline,
     /// Decal mesh pipeline conforming to `[I5]`: hardware depth bias, `LessEqual` compare and
     /// no depth write, so decals drawn in stream order cover the earlier ones on their base.
     pub(crate) decal_pipeline: wgpu::RenderPipeline,
@@ -100,6 +111,9 @@ pub(crate) struct RenderPipelines {
     pub(crate) bar_pipeline: wgpu::RenderPipeline,
     /// Bind group layout for `@group(2) @binding(0)` (`ModelUniform`).
     pub(crate) model_bind_group_layout: wgpu::BindGroupLayout,
+    /// Bind group layout for [`PROP_RUNS_GROUP`] (the world's prop runs, `fs_main_plane`), which
+    /// only pipelines with a plane target carry; `None` without one.
+    pub(crate) prop_runs_layout: Option<wgpu::BindGroupLayout>,
 }
 
 impl RenderPipelines {
@@ -155,6 +169,25 @@ impl RenderPipelines {
         }
     }
 
+    /// Creates the bind group layout for [`PROP_RUNS_GROUP`]: the world's prop runs as one
+    /// read-only storage buffer of `[first, end, shape word]` `u32` triples, which the
+    /// fragment stage searches.
+    pub(crate) fn create_prop_runs_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("stunt_prop_runs_layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(PROP_RUN_SIZE),
+                },
+                count: None,
+            }],
+        })
+    }
+
     /// Creates the bind group layout for the per-model uniform (`@group(2)`): one
     /// [`ModelUniform`] at a dynamic offset, so every bind passes one offset (`&[0]` for a
     /// buffer that holds a single uniform).
@@ -193,7 +226,7 @@ impl RenderPipelines {
     }
 
     /// Like [`Self::new`], but every pass using these pipelines must carry a second colour
-    /// attachment of `PLANE_FORMAT` that receives `layer << 8 | palette index` per pixel.
+    /// attachment of `PLANE_FORMAT` that receives `layer << 8 | palette index` and the shape word per pixel.
     pub(crate) fn new_with_plane(
         device: &wgpu::Device,
         color_format: wgpu::TextureFormat,
@@ -230,6 +263,9 @@ impl RenderPipelines {
             "fs_sky"
         };
         let model_bind_group_layout = Self::create_model_bind_group_layout(device);
+        // The plane's shape word looks world props up in their runs; without a plane nothing
+        // reads them.
+        let prop_runs_layout = plane_format.map(|_| Self::create_prop_runs_layout(device));
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("stunt_mode13h_pipeline_layout"),
@@ -237,6 +273,7 @@ impl RenderPipelines {
                 Some(camera_layout),
                 Some(palette_layout),
                 Some(&model_bind_group_layout),
+                prop_runs_layout.as_ref(),
             ],
             immediate_size: 0,
         });
@@ -328,6 +365,15 @@ impl RenderPipelines {
             model_primitive,
             base_depth_stencil.clone(),
         );
+        let sprite_pipeline = scene_pipeline(
+            "stunt_mode13h_sprite_pipeline",
+            model_primitive,
+            wgpu::DepthStencilState {
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                ..base_depth_stencil.clone()
+            },
+        );
         let decal_pipeline = scene_pipeline(
             "stunt_mode13h_decal_pipeline",
             model_primitive,
@@ -386,6 +432,7 @@ impl RenderPipelines {
             ground_pipeline,
             ground_edge_pipeline,
             base_pipeline,
+            sprite_pipeline,
             decal_pipeline,
             shadow_pipeline,
             edge_pipeline,
@@ -393,6 +440,7 @@ impl RenderPipelines {
             sky_pipeline,
             bar_pipeline,
             model_bind_group_layout,
+            prop_runs_layout,
         }
     }
 }

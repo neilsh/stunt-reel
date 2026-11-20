@@ -118,6 +118,7 @@ fn test_compute_world_matrix_identity() {
         position_meters: [10.0, 20.0, 30.0],
         state_mask: 0,
         casts_shadow: false,
+        view: false,
         joint_angles_bam: Vec::new(),
     };
 
@@ -165,6 +166,7 @@ fn test_contracts_serde_roundtrip() {
             position_meters: [10.0, 20.0, 30.0],
             state_mask: 0x0001,
             casts_shadow: false,
+            view: true,
             joint_angles_bam: vec![(0, 0x4000)],
         }],
         audio_cues: vec![AudioCue {
@@ -195,8 +197,14 @@ fn test_contracts_serde_roundtrip() {
         .as_object_mut()
         .expect("record object")
         .remove("bank");
+    // ... and an actor written before `view` existed is not the view slot.
+    legacy["actors"][0]
+        .as_object_mut()
+        .expect("actor object")
+        .remove("view");
     let legacy: TrajectoryRecord = serde_json::from_value(legacy).expect("legacy record loads");
     assert_eq!(legacy.bank, BankVariables::default());
+    assert!(!legacy.actors[0].view);
 
     // Test FilmCapture roundtrip
     let capture = FilmCapture {
@@ -252,6 +260,7 @@ fn compute_world_matrix_matches_shared_goldens() {
             position_meters: [pos[0], pos[1], pos[2]],
             state_mask: 0,
             casts_shadow: false,
+            view: false,
             joint_angles_bam: Vec::new(),
         };
         let actual = actor.compute_world_matrix();
