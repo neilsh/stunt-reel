@@ -222,6 +222,20 @@ markers = [
     "docs: documentation tests; the gate's docs step runs them (test-py-docs)",
 ]
 
+# Test coverage (mise run cov-py; the CI `coverage` job, #860): lines and branches of the
+# package and the scripts the suite exercises. `parallel` gives each process its own data file
+# and `patch = ["subprocess"]` starts measurement in the interpreters that nine test files
+# spawn (pytest-cov 7 no longer follows them), so cov-py combines the files before reporting.
+[tool.coverage.run]
+branch = true
+parallel = true
+patch = ["subprocess"]
+source = ["python/stunt_reel", "python/scripts"]
+data_file = "target/coverage/.coverage"
+
+[tool.coverage.report]
+skip_empty = true
+
 [tool.uv]
 # A floor, not an exact pin. `mise.toml` pins the exact uv for local and CI runs; this
 # refuses an older standalone uv. Renovate's `pep621` manager runs its own uv and stops

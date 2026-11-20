@@ -174,6 +174,85 @@ jobs:
           fi
           mise exec -- prek run --config prek.toml "$@"
 
+  coverage:
+    name: Test coverage (ubuntu)
+    # Issue #860. Reported, not enforced: no floor, no patch rule, and not a required check,
+    # since `quality` decides whether the tests pass. The job prints a table per crate and per
+    # Python package into the job summary and keeps the lcov, XML and JSON files as an
+    # artifact. No Codecov or Coveralls (an outside service, and an action the allowlist does
+    # not admit) and no pull-request comment bot (it needs `pull-requests: write`). A test that
+    # fails under instrumentation fails this job, visibly. Skips under the skip condition only
+    # (ADR 0047), like the Rust and Python jobs it measures; the mise tasks do the work, so a
+    # local `mise run cov-rust` / `cov-py` measures what this does.
+    needs: scope
+    if: ${{ !cancelled() && !(needs.scope.result == 'success' && needs.scope.outputs.docs_only == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # As in `quality`: install exactly the toolchain the tasks use.
+      MISE_AUTO_INSTALL: "false"
+      # As in `quality`: a missing adapter fails the GPU tests instead of skipping them, and
+      # the Kaitai compiler and prek are required, so the measured tests are the gate's.
+      STUNT_REQUIRE_GPU: "1"
+      STUNT_REQUIRE_KSC: "1"
+      STUNT_REQUIRE_PREK: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install lavapipe (software Vulkan)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          # rust brings the llvm-tools component mise.toml names; cargo-llvm-cov itself comes
+          # from the prebuilt binary below, as cargo-deny does in `deny`, not from mise's
+          # source build.
+          install_args: rust python uv java github:kaitai-io/kaitai_struct_compiler prek
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-llvm-cov@0.9.1
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .cache/cargo/registry
+            .cache/cargo/git
+            target
+          # Its own key: the instrumented build (target/llvm-cov-target) is several times the
+          # size of the gate's target/, and sharing `quality`'s key would make each job's save
+          # evict the other's.
+          key: ${{ runner.os }}-cargo-cov-v1-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-cov-v1-
+      - name: Install Python environment
+        run: uv sync --locked --all-groups
+      - name: Rust test coverage
+        run: mise run cov-rust
+      - name: Python test coverage
+        # Also after a failed Rust step: one failure should not hide the other language.
+        if: ${{ !cancelled() }}
+        env:
+          PYTEST_ADDOPTS: "-n auto"
+        run: mise run cov-py
+      - name: Coverage summary
+        # Runs after a failed test step too, so a partial table still shows; the step fails
+        # itself when a coverage file is missing.
+        if: ${{ !cancelled() }}
+        run: mise run cov-summary >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the coverage files
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: |
+            target/coverage/lcov.info
+            target/coverage/coverage.xml
+            target/coverage/coverage.json
+          if-no-files-found: warn
+          retention-days: 30
+
   windows-smoke:
     name: Windows smoke
     # The tests that can behave differently on Windows — junctions, reparse points, the
