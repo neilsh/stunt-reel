@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use super::args::Args;
 use super::frames::{load_render_frame, load_render_rescaled, reference_luminance};
 use super::matched::{ReportFrames, load_captured};
+use super::options::Options;
 use super::report::Report;
 use super::report_diff::compare_reports;
 use super::score::RenderFrame;
@@ -20,7 +20,7 @@ use crate::render_store::RenderStore;
 /// summary, writes `compare.json`, and renders before/after sheets when the previous
 /// render directory was given.
 pub(super) fn run_compare(
-    args: &Args,
+    args: &Options,
     previous_path: &Path,
     report: &Report,
     frames: &ReportFrames<'_>,
@@ -135,7 +135,7 @@ fn skipped_note(previous_render: &Path) -> String {
 /// previous render is not a readable store (one made before it, for instance), which the
 /// verdict cannot do without.
 fn judge(
-    args: &Args,
+    args: &Options,
     previous_render: &Path,
     report: &Report,
     frames: &ReportFrames<'_>,
@@ -195,25 +195,13 @@ mod tests {
         );
 
         run_parity(&tmp.join("ref"), &previous, &tmp.join("base")).expect("baseline");
-        let argv = |compare_test: bool| {
-            let mut v = vec![
-                "--reference".to_string(),
-                tmp.join("ref").display().to_string(),
-                "--test".to_string(),
-                current.display().to_string(),
-                "--output".to_string(),
-                tmp.join("out").display().to_string(),
-                "--compare".to_string(),
-                tmp.join("base").join("report.json").display().to_string(),
-            ];
-            if compare_test {
-                v.push("--compare-test".to_string());
-                v.push(previous.display().to_string());
-            }
-            v
+        let options = |compare_test: bool| Options {
+            compare: Some(tmp.join("base").join("report.json")),
+            compare_test: compare_test.then(|| previous.clone()),
+            ..Options::new(tmp.join("ref"), current.clone(), tmp.join("out"))
         };
 
-        run(argv(false).into_iter()).expect("compare without sheets");
+        run(&options(false)).expect("compare without sheets");
         assert!(tmp.join("out").join("compare.json").is_file());
         assert!(
             !tmp.join("out")
@@ -221,7 +209,7 @@ mod tests {
                 .exists()
         );
 
-        run(argv(true).into_iter()).expect("compare with sheets");
+        run(&options(true)).expect("compare with sheets");
         let doc: Value = serde_json::from_str(
             &fs::read_to_string(tmp.join("out").join("compare.json")).unwrap(),
         )
@@ -251,20 +239,12 @@ mod tests {
         run_parity(&tmp.join("ref"), &previous, &tmp.join("base")).expect("baseline");
         // A render made before the store: its record is version 1 and its planes are gone.
         write_version_1_render(&previous);
-        let argv = [
-            "--reference",
-            &tmp.join("ref").display().to_string(),
-            "--test",
-            &current.display().to_string(),
-            "--output",
-            &tmp.join("out").display().to_string(),
-            "--compare",
-            &tmp.join("base").join("report.json").display().to_string(),
-            "--compare-test",
-            &previous.display().to_string(),
-        ]
-        .map(String::from);
-        run(argv.into_iter()).expect("an unreadable before render is not an error");
+        let options = Options {
+            compare: Some(tmp.join("base").join("report.json")),
+            compare_test: Some(previous.clone()),
+            ..Options::new(tmp.join("ref"), current, tmp.join("out"))
+        };
+        run(&options).expect("an unreadable before render is not an error");
 
         let doc: Value = serde_json::from_str(
             &fs::read_to_string(tmp.join("out").join("compare.json")).unwrap(),
@@ -297,20 +277,12 @@ mod tests {
         write_render(&current, &[7, 12]);
         write_render(&previous, &[7]);
         run_parity(&tmp.join("ref"), &current, &tmp.join("base")).expect("baseline");
-        let argv = [
-            "--reference",
-            &tmp.join("ref").display().to_string(),
-            "--test",
-            &current.display().to_string(),
-            "--output",
-            &tmp.join("out").display().to_string(),
-            "--compare",
-            &tmp.join("base").join("report.json").display().to_string(),
-            "--compare-test",
-            &previous.display().to_string(),
-        ]
-        .map(String::from);
-        run(argv.into_iter()).expect("a missing before tick is not an error");
+        let options = Options {
+            compare: Some(tmp.join("base").join("report.json")),
+            compare_test: Some(previous),
+            ..Options::new(tmp.join("ref"), current, tmp.join("out"))
+        };
+        run(&options).expect("a missing before tick is not an error");
         let doc: Value = serde_json::from_str(
             &fs::read_to_string(tmp.join("out").join("compare.json")).unwrap(),
         )
