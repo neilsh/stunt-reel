@@ -103,6 +103,19 @@ pub(super) fn capture_sky_mask(indices: &[u8], previous_zenith: Option<&[bool]>)
     CaptureSky { sky, zenith }
 }
 
+/// The sky of each captured plane in order, carrying each plane's counted 224 to 226
+/// pixels to the next (see [`capture_sky_mask`]).
+pub(super) fn capture_skies(planes: &[Vec<u8>]) -> Vec<CaptureSky> {
+    let mut skies = Vec::with_capacity(planes.len());
+    let mut previous_zenith: Option<Vec<bool>> = None;
+    for indices in planes {
+        let sky = capture_sky_mask(indices, previous_zenith.as_deref());
+        previous_zenith = Some(sky.zenith.clone());
+        skies.push(sky);
+    }
+    skies
+}
+
 /// Pixels of a captured frame covered by the UI overlay: the button bar rows and the
 /// cursor. Scoring leaves them out because the renderer does not draw them.
 ///
@@ -362,6 +375,58 @@ mod tests {
                 .iter()
                 .any(|&s| s)
         );
+    }
+
+    #[test]
+    fn the_capture_sky_carry_runs_through_consecutive_frames() {
+        // Frame 1: a full-width row 0 with a column at 50 down to row 3, so the
+        // full-width rule counts the column and it can seed the next frame.
+        let mut first = plane(4, 40);
+        first[..MODE13H_WIDTH].fill(225);
+        for row in 1..4 {
+            first[row * MODE13H_WIDTH + 50] = 226;
+        }
+        // Frame 2: a run cut off from row 0 that overlaps frame 1's counted column.
+        let mut second = plane(4, 40);
+        second[3 * MODE13H_WIDTH + 50..3 * MODE13H_WIDTH + 61].fill(225);
+        assert!(!capture_sky_mask(&second, None).sky.iter().any(|&s| s));
+        // Frame 3: a run overlapping only frame 2's overlap-counted run.
+        let mut third = plane(4, 40);
+        third[3 * MODE13H_WIDTH + 60..3 * MODE13H_WIDTH + 70].fill(224);
+        let skies = capture_skies(&[first, second, third]);
+        assert!(skies[0].zenith[3 * MODE13H_WIDTH + 50]);
+        assert!(
+            skies[1].zenith[3 * MODE13H_WIDTH + 50..3 * MODE13H_WIDTH + 61]
+                .iter()
+                .all(|&s| s)
+        );
+        assert!(
+            skies[2].zenith[3 * MODE13H_WIDTH + 60..3 * MODE13H_WIDTH + 70]
+                .iter()
+                .all(|&s| s)
+        );
+    }
+
+    #[test]
+    fn the_first_captured_frame_has_no_previous_frame_to_carry_from() {
+        let mut indices = plane(4, 40);
+        indices[2 * MODE13H_WIDTH + 100..2 * MODE13H_WIDTH + 120].fill(225);
+        let skies = capture_skies(std::slice::from_ref(&indices));
+        assert!(!skies[0].sky.iter().any(|&s| s));
+    }
+
+    #[test]
+    fn a_previous_frame_band_pixel_does_not_seed_the_carry() {
+        // Frame 1's band 230 is where frame 2 paints a run cut off from row 0; the
+        // carry holds only the counted 224 to 226 pixels, so the run stays geometry.
+        let mut first = plane(4, 40);
+        first[2 * MODE13H_WIDTH + 110] = 230;
+        let mut second = plane(4, 40);
+        second[2 * MODE13H_WIDTH + 100..2 * MODE13H_WIDTH + 120].fill(225);
+        let skies = capture_skies(&[first, second]);
+        assert!(skies[0].sky[2 * MODE13H_WIDTH + 110]);
+        assert!(!skies[0].zenith.iter().any(|&s| s));
+        assert!(!skies[1].sky.iter().any(|&s| s));
     }
 
     #[test]

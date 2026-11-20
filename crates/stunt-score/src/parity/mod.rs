@@ -59,7 +59,7 @@ use compare::run_compare;
 use fade::fade_reference_set;
 use frames::{load_render_frame, read_index_plane};
 use loss::LOSS_CLASSES;
-use mask::{CAPTURE_SKY_INDICES, capture_sky_mask, overlay_drawn};
+use mask::{CAPTURE_SKY_INDICES, capture_skies, overlay_drawn};
 use matched::{Matching, ReportFrames};
 use report::{FrameReport, I6Gate, Report};
 use score::{FrameMetrics, RenderFrame, ScorePolicy, score_frame};
@@ -309,13 +309,15 @@ fn build_report(
 }
 
 /// Scores each matched frame against the render at its film clock, offering every scored
-/// pair to the contact sheets; rows come back in capture order. Each frame's counted
-/// zenith pixels are carried to the next matched frame, so a zenith run the previous
-/// frame counted as sky counts here too.
+/// pair to the contact sheets; rows come back in capture order. The capture's sky is built
+/// over every captured frame whose index plane is present, in capture order, and carries
+/// each frame's counted zenith pixels to the next, so which ticks the render holds does
+/// not change a frame's mask.
 fn score_matched(
     reference_dir: &Path,
     store: &mut RenderStore,
     matched: &[&CapturedFrame],
+    carry_frames: &[&CapturedFrame],
     policy: &ScorePolicy<'_>,
     sheets: &mut ContactSheets<'_>,
 ) -> Result<Vec<FrameRow>, String> {
@@ -325,11 +327,21 @@ fn score_matched(
         .iter()
         .map(|tick| (tick.tick, parity_artifacts::core_palette(tick.palette)))
         .collect();
+    let planes = carry_frames
+        .iter()
+        .map(|frame| read_index_plane(&reference_dir.join(&frame.frame_file)))
+        .collect::<Result<Vec<_>, _>>()?;
+    let skies: BTreeMap<u32, _> = carry_frames
+        .iter()
+        .map(|frame| frame.ordinal)
+        .zip(capture_skies(&planes))
+        .collect();
     let mut rows = Vec::with_capacity(matched.len());
-    let mut previous_zenith: Option<Vec<bool>> = None;
     for frame in matched {
+        let capture_sky = skies
+            .get(&frame.ordinal)
+            .ok_or_else(|| format!("captured frame {} has no sky mask", frame.ordinal))?;
         let reference = matched::load_captured(reference_dir, frame)?;
-        let capture_sky = capture_sky_mask(&reference.indices, previous_zenith.as_deref());
         let render = load_render_frame(store, frame.film_tick)?;
         let credits_missing = render.credits && !overlay_drawn(&render.layers);
         let score = score_frame(
@@ -341,7 +353,6 @@ fn score_matched(
             &capture_sky.sky,
             policy,
         );
-        previous_zenith = Some(capture_sky.zenith);
         let ordinal = frame.ordinal as usize;
         rows.push(FrameRow {
             ordinal,
@@ -443,13 +454,24 @@ pub fn run(args: &Options) -> Result<(), String> {
         min_fade_level: args.min_fade_level,
     };
 
-    let Matching { matched, unmatched } = matched::pair(
-        frames,
-        |name| args.reference.join(name).is_file(),
-        |tick| store.holds(tick),
-    );
+    let has_file = |name: &str| args.reference.join(name).is_file();
+    let Matching { matched, unmatched } =
+        matched::pair(frames, &has_file, |tick| store.holds(tick));
+    // The carry spans every captured frame whose index plane is present, not only the
+    // frames the render holds, so a missing render tick does not change a later mask.
+    let carry_frames: Vec<&CapturedFrame> = frames
+        .iter()
+        .filter(|frame| has_file(&frame.frame_file))
+        .collect();
     let mut sheets = ContactSheets::new(&args.output, frames.len());
-    let scores = score_matched(&args.reference, &mut store, &matched, &policy, &mut sheets)?;
+    let scores = score_matched(
+        &args.reference,
+        &mut store,
+        &matched,
+        &carry_frames,
+        &policy,
+        &mut sheets,
+    )?;
     sheets.finish()?;
 
     if scores.is_empty() {

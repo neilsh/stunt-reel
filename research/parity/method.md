@@ -111,8 +111,9 @@ It raises `balloon`'s IoU by 0.0777 and `bomb`'s by 0.0497 and moves no other fi
 It still misses sky the balloon cuts off from row 0 or from a side (`balloon` 83,643 pixels, 16,983 and 15,119 of them on tick 243).
 _Source: [2026-11-18: a positional rule for the zenith sky](../../work/2026-11/718_positional-zenith-sky/journal.md#2026-11-18-a-positional-rule-for-the-zenith-sky)._
 
-Since 2026-11-20 a 224 to 226 run also counts as sky when it overlaps a 224 to 226 pixel the previous captured frame counted by the same rule, which `score_matched` carries from one matched frame to the next in capture order.
-The carried mask holds those counted 224 to 226 pixels, not the 227 to 238 band: the band is sky in every frame, and a shape's 225 or 226 edge borders its own band gradient on `location`, so carrying the band would count the paint above.
+Since 2026-11-20 a 224 to 226 run also counts as sky when it overlaps a 224 to 226 pixel the previous captured frame counted by the same rule; `score_matched` builds the mask over every captured frame whose index plane is present, in capture order, so which ticks the render holds does not change a frame's mask.
+The carried mask holds those counted 224 to 226 pixels, not the 227 to 238 band, which is sky in every frame; carrying the band would add 617 `location`, 310 `intro`, 41 `land` and 1 `traintnl` 224 to 226 pixels the rule otherwise leaves as geometry.
+A camera cut can carry a frame's sky onto the next frame's paint where the counted pixels coincide, and the only check against that is the empirical one on the seven references.
 On the capture planes of the seven references the rule adds 77,063 `balloon` pixels and none on the other six films.
 It was scored on one render of the seven references, `llvmpipe (LLVM 21.1.7, 256 bits)`, with the same render scored before and after the rule; each cell is the film's `mean_iou_scored`:
 
