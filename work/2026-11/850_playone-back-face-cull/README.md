@@ -2,7 +2,7 @@
 title: "Trace PLAYONE's back-face cull of shape polygons and their outlines"
 started: 2026-11-20
 issue: 850
-outcome: "[Established] static: none of the polygon routines read computes a facing; the fillers skip a row whose right end (forward walk from the top vertex) is left of its left (backward walk), so an anticlockwise polygon loses fill and outline together except the rows of a lone apex vertex and rows narrower than its edges' runs. One-row, collinear and two-vertex polygons draw as lines whatever their order. No renderer change."
+outcome: "[Established] static: the fillers skip a row whose right end (forward walk from the top vertex) is left of its left (backward walk), and none of the polygon routines read computes a facing. [Hypothesis] from that reading: an anticlockwise polygon loses fill and outline together except the rows of a lone apex vertex and rows narrower than its edges' runs, and one-row and two-vertex polygons draw as lines whatever their order. No renderer change."
 ---
 
 # Trace PLAYONE's back-face cull of shape polygons and their outlines
