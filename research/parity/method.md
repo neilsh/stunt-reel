@@ -106,10 +106,31 @@ Three rules were counted on the capture planes of all seven references and score
 The first two rules count shape paint as sky.
 On `location` the 226 edge of a helicopter window borders the window's own 227 to 238 gradient (tick 1090, 38 pixels at rows 123 to 130), so touching the band is no sign of sky.
 On `traintnl` tick 265, 79 pixels of 224 are a window of the red rear car that the top edge clips, so reaching row 0 is not enough either.
-The adopted rule counts `bomb`'s zenith rows and most of `balloon`'s zenith sky, and none of the paint above.
+The full-width rule counts `bomb`'s zenith rows and most of `balloon`'s zenith sky, and none of the paint above.
 It raises `balloon`'s IoU by 0.0777 and `bomb`'s by 0.0497 and moves no other film's; IoU figures recorded before it are on the old scale for those two films.
-It still misses sky the balloon cuts off from row 0 or from a side (`balloon` 83,643 pixels, 16,983 and 15,119 of them on tick 243; [#745](https://github.com/neilsh/stunt-reel/issues/745)).
+It still misses sky the balloon cuts off from row 0 or from a side (`balloon` 83,643 pixels, 16,983 and 15,119 of them on tick 243).
 _Source: [2026-11-18: a positional rule for the zenith sky](../../work/2026-11/718_positional-zenith-sky/journal.md#2026-11-18-a-positional-rule-for-the-zenith-sky)._
+
+Since 2026-11-20 a 224 to 226 run also counts as sky when it overlaps a 224 to 226 pixel the previous captured frame counted by the same rule, which `score_matched` carries from one matched frame to the next in capture order.
+The carried mask holds those counted 224 to 226 pixels, not the 227 to 238 band: the band is sky in every frame, and a shape's 225 or 226 edge borders its own band gradient on `location`, so carrying the band would count the paint above.
+On the capture planes of the seven references the rule adds 77,063 `balloon` pixels and none on the other six films.
+It was scored on one render of the seven references, `llvmpipe (LLVM 21.1.7, 256 bits)`, with the same render scored before and after the rule; each cell is the film's `mean_iou_scored`:
+
+| Film | reaches row 0 and both columns | or overlaps the previous frame's counted sky |
+|---|---|---|
+| `balloon` | 0.8868 | 0.8978 |
+| `bomb` | 0.9626 | 0.9626 |
+| `traintnl` | 0.9659 | 0.9659 |
+| `location` | 0.9796 | 0.9796 |
+| `intro` | 0.9865 | 0.9865 |
+| `ctry` | 0.9910 | 0.9910 |
+| `land` | 0.9852 | 0.9852 |
+
+Only `balloon` rises, by 0.0110: 13 of its 107 scored frames change, tick 144 from 0.2762 to 0.8978 and tick 243 from 0.4403 to 0.8916.
+The rule counts none of the paint above, so it is adopted.
+These figures are on the current render, not the `#718` table's: the renderer changed since (the straight-down `balloon` run, which scored IoU 0 there, now scores 1.0 after the camera fix [#615](https://github.com/neilsh/stunt-reel/issues/615)), and the pinned lavapipe table's catch-up repin is on [#830](https://github.com/neilsh/stunt-reel/issues/830).
+It still misses 6,580 `balloon` pixels that neither rule reaches.
+_Source: [2026-11-20: counting the sky the balloon cuts off](../../work/2026-11/745_count-zenith-sky-overlap/journal.md#2026-11-20-counting-the-sky-the-balloon-cuts-off)._
 
 ### 2.1 Fade floor
 
