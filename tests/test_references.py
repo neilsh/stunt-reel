@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import tomllib
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,7 @@ import pytest
 
 from stunt_reel import capture_store, dataroot, parity_layout, references
 from stunt_reel.dataroot import REPO_ROOT
+from stunt_reel.parity_artifacts import LOSS_CLASSES
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -394,6 +396,10 @@ def test_an_integer_score_reads_as_a_float(tmp_path: Path) -> None:
         (_expected(noise_sigma="0.1"), "expected.gpu.noise_sigma"),
         (["[ctry.expected]", 'gpu = "x"'], "expected.gpu"),
         (["expected = 3"], "expected"),
+        ([*_expected(), "[ctry.expected.gpu.loss]", "ground = 0.1"], "expected.gpu.loss.ground"),
+        ([*_expected(), "[ctry.expected.gpu.loss]", "props = 1.5"], "expected.gpu.loss.props"),
+        ([*_expected(), "[ctry.expected.gpu.loss]", 'props = "0.1"'], "expected.gpu.loss.props"),
+        (_expected(loss="3"), "expected.gpu.loss"),
         (["noise_sigma = 0"], "noise_sigma"),
         (["noise_sigma = -1"], "noise_sigma"),
     ],
@@ -406,6 +412,50 @@ def test_a_malformed_expected_entry_is_named(tmp_path: Path, lines: list[str], f
     assert str(tmp_path / parity_layout.REFERENCES_FILE) in message
     assert "[ctry]" in message
     assert field in message
+
+
+def test_an_expected_table_reads_its_class_losses_in_class_order(tmp_path: Path) -> None:
+    _row(
+        tmp_path,
+        PATCH3,
+        *_expected(),
+        "[ctry.expected.gpu.loss]",
+        "props = 0.04",
+        "sky = 0.015",
+        "terrain = 0",
+    )
+    expected = references.read_reference(tmp_path, "ctry").expected["gpu"]
+    assert expected.loss == {"sky": 0.015, "terrain": 0.0, "props": 0.04}
+    assert list(expected.loss or {}) == ["sky", "terrain", "props"]
+
+
+def test_an_expected_table_without_class_losses_reads_none(tmp_path: Path) -> None:
+    _row(tmp_path, PATCH3, *_expected())
+    assert references.read_reference(tmp_path, "ctry").expected["gpu"].loss is None
+
+
+def _documented_loss_classes() -> tuple[str, ...]:
+    """The keys of ``report-fields.md``'s ``report.loss_classes`` table."""
+    text = (REPO_ROOT / "research" / "parity" / "report-fields.md").read_text(encoding="utf-8")
+    block = text.split("<!-- fields: report.loss_classes -->")[1].split("<!-- /fields -->")[0]
+    return tuple(
+        match.group(1) for match in re.finditer(r"^\| `(\w+)` \|", block, flags=re.MULTILINE)
+    )
+
+
+def test_the_loss_classes_are_the_ones_the_report_documents() -> None:
+    assert _documented_loss_classes() == LOSS_CLASSES
+
+
+def test_committed_class_losses_name_the_reports_classes() -> None:
+    """A pin's class names and a report's agree, so a renamed class cannot go unpinned."""
+    pinned = 0
+    for film in references.reference_films(REPO_ROOT):
+        for renderer, expected in references.read_reference(REPO_ROOT, film).expected.items():
+            if expected.loss is not None:
+                pinned += 1
+                assert tuple(expected.loss) == LOSS_CLASSES, f"{film} {renderer}"
+    assert pinned > 0, "no committed table pins its class losses"
 
 
 def test_a_row_reads_its_background_index_bands(tmp_path: Path) -> None:

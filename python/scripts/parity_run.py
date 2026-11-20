@@ -43,6 +43,7 @@ from stunt_reel.expected_scores import (
     clean_crates_tree,
     comparison_line,
     read_render_tree,
+    renderer_changes,
     scorer_only_change,
     write_render_tree,
 )
@@ -162,6 +163,26 @@ def scored_render_tree(
     return candidate
 
 
+def unrecorded_reason(
+    candidate: str,
+    render: Path,
+    *,
+    changes: Callable[[str, str], list[str] | None] = renderer_changes,
+) -> str:
+    """Why a ``--no-render`` run records no tree for *render* although *candidate* is clean.
+
+    Call it only when :func:`scored_render_tree` returned ``None`` for *candidate*.
+    """
+    built = read_render_tree(render)
+    if built is None:
+        return "the render records no build tree"
+    paths = changes(built, candidate)
+    if not paths:
+        return f"git cannot compare the render's tree {built[:7]} with crates/"
+    more = f" and {len(paths) - 1} more" if len(paths) > 1 else ""
+    return f"crates/{paths[0]}{more} changed outside the scorer since the render"
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_parity_options(parser)
@@ -221,6 +242,12 @@ def main(argv: list[str] | None = None) -> int:
             request = Retime(options.retime, REPO_ROOT / parity_layout.retime_dir(job.name, suffix))
         report = REPO_ROOT / parity_layout.report_dir(job.name, suffix)
         film_crates = scored_render_tree(crates, source, no_render=args.no_render)
+        if crates is not None and film_crates is None:
+            print(
+                f"[parity] {job.name}: report records no crates/ tree, so parity-repin refuses it: "
+                f"{unrecorded_reason(crates, source)}; run without --no-render to repin",
+                file=sys.stderr,
+            )
         result = score_film(job, source, report, retime=request, crates=film_crates)
         if result.retime is not None:
             print(

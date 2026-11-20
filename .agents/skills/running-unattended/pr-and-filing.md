@@ -85,7 +85,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
        p=$((p+1))
      done | tail -n 1 | grep -q ': clean$' && echo true || echo false
      ```
-   - The worker's report says each acceptance item is met, and the PR body carries `Fixes #N`, `Closes #N`, or `Part of #N`, read as a boolean (`gh api repos/{owner}/{repo}/pulls/<n> --jq '.body | test("(Fixes|Closes|Part of) #<N>\\b")'`), not by opening the body.
+   - The worker's report says each acceptance item is met, and the PR body carries `Fixes #N`, `Closes #N`, or `Part of #N`, read as a boolean (`gh api repos/{owner}/{repo}/pulls/<n> --jq '.body | test("(Fixes|Closes|Part of) #<N>([^0-9]|$)")'`, with no backslash, which Git Bash would mangle), not by opening the body.
    - **Environment:** in a cloud session, a rendering PR that [`cloud.md` § Rendering](../working-in-an-environment/cloud.md#rendering) sends to the GPU takes `local-only` and stays unarmed.
      A local-windows run takes such a PR from the queue, runs `mise run judge` on the GPU as the PR body asks, and, when the GPU's verdict matches lavapipe's, removes `local-only` and arms it under this bar; otherwise it fixes the PR as for a failed check.
    - **Allowed vs blocked changes:** the coordinator lists the PR's changed file names (`gh api "repos/{owner}/{repo}/pulls/<n>/files?per_page=100&page=1" --jq '.[].filename'`, next page by number), never the diff; a path under `docs/adr/`, `crates/stunt-core/Cargo.toml` or `research/parity/references.toml` sends a worker or the reviewer to say whether it is a blocked change before arming.

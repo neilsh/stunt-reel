@@ -47,8 +47,11 @@ pub struct CameraUniform {
     /// Half a Mode 13h pixel of the view in NDC, `[x, y]`: the offset that widens a line
     /// vertex (`SodVertex::flags` bit 3) to a one-pixel line.
     pub line_half_ndc: [f32; 2],
+    /// The lens zoom over `PLAYONE`'s default lens: the factor a disc's rim vertex
+    /// (`SodVertex::flags` bit 6) has its depth offset from the disc's centre scaled by.
+    pub disc_depth_scale: f32,
     /// Alignment padding to the 16-byte uniform stride.
-    pub _pad1: [f32; 2],
+    pub _pad1: f32,
 }
 
 /// Half a Mode 13h pixel in NDC, `[x, y]`, for a view `MODE13H_WIDTH` pixels wide whose
@@ -67,7 +70,8 @@ impl Default for CameraUniform {
             ambient_intensity: 0.25,
             inv_rotation_proj: Mat4::IDENTITY.to_cols_array(),
             line_half_ndc: line_half_ndc(1.0),
-            _pad1: [0.0; 2],
+            disc_depth_scale: 1.0,
+            _pad1: 0.0,
         }
     }
 }
@@ -226,6 +230,25 @@ impl Default for CameraController {
     }
 }
 
+/// Squared sine of the angle between the view direction and `+Y` below which `+Y` cannot be
+/// the up vector: `look_at` normalises their cross product, which is not finite there.
+const VERTICAL_SIN2: f32 = 1e-6;
+
+/// The up vector of an authored camera before roll: `+Y`, or `+Z` when `forward` runs along
+/// `+Y` or `-Y`, where `+Y` leaves the view's side axis undefined.
+///
+/// `+Z` is the orientation of the `vault-balloon` capture at tick 606 (gondola right of the
+/// envelope, tree upper left); a straight-up view has no capture, so it takes the same vector.
+/// A view within about 0.057 degrees of vertical (`VERTICAL_SIN2`) snaps to `+Z` too, so the
+/// picture's turn jumps at that threshold; other views are unchanged.
+fn authored_up(forward: Vec3) -> Vec3 {
+    if forward.cross(Vec3::Y).length_squared() < VERTICAL_SIN2 && forward.length_squared() > 0.5 {
+        Vec3::Z
+    } else {
+        Vec3::Y
+    }
+}
+
 impl CameraController {
     /// Toggles between authored trajectory playback and interactive Free-Cam.
     pub fn toggle_mode(&mut self) {
@@ -257,7 +280,7 @@ impl CameraController {
                 let target = Vec3::from(self.authored.target);
                 let forward = (target - eye).normalize_or_zero();
 
-                let mut up = Vec3::Y;
+                let mut up = authored_up(forward);
                 if self.authored.roll_radians.abs() > 1e-4 && forward.length_squared() > 1e-4 {
                     // Apply roll rotation around look axis
                     let roll_rot = glam::Quat::from_axis_angle(forward, self.authored.roll_radians);
@@ -330,6 +353,25 @@ impl CameraController {
         self.compute_proj_matrix() * self.compute_view_matrix()
     }
 
+    /// The lens zoom over `PLAYONE`'s default lens, `tan(base / 2) / tan(fov / 2)` of the
+    /// perspective's field of view: 1 for the free camera and for an orthographic view.
+    #[must_use]
+    pub fn disc_depth_scale(&self) -> f32 {
+        let fov_deg = match (self.projection, self.mode) {
+            (Projection::Perspective, CameraMode::Authored) => {
+                self.authored.fov_degrees.clamp(1.0, 160.0)
+            }
+            _ => return 1.0,
+        };
+        let zoom =
+            (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan() / (fov_deg.to_radians() / 2.0).tan();
+        if zoom.is_finite() && zoom > 0.0 {
+            zoom
+        } else {
+            1.0
+        }
+    }
+
     /// Builds the `CameraUniform` data ready for GPU buffer upload.
     #[must_use]
     pub fn build_uniform(&self) -> CameraUniform {
@@ -342,7 +384,8 @@ impl CameraController {
             ambient_intensity: self.ambient_intensity,
             inv_rotation_proj: rotation_proj.inverse().to_cols_array(),
             line_half_ndc: line_half_ndc(self.projection_y_scale),
-            _pad1: [0.0; 2],
+            disc_depth_scale: self.disc_depth_scale(),
+            _pad1: 0.0,
         }
     }
 }
@@ -434,6 +477,54 @@ mod tests {
         assert!((squeezed.y_axis.y / base.y_axis.y - 200.0 / 185.0).abs() < 1e-6);
     }
 
+    /// The default lens draws a disc unsqueezed; a wider lens squeezes it by its zoom, and the
+    /// free camera and an orthographic view never do.
+    #[test]
+    fn disc_depth_scale_is_the_lens_zoom_of_an_authored_perspective() {
+        let at = |fov_degrees: f32| CameraController {
+            authored: ViewCamera {
+                fov_degrees,
+                ..ViewCamera::default()
+            },
+            ..CameraController::default()
+        };
+        assert!((at(PLAYONE_FOV_Y_DEGREES).disc_depth_scale() - 1.0).abs() < 1e-6);
+        let wide = at(50.946_854).disc_depth_scale();
+        assert!((wide - 0.82).abs() < 0.005, "{wide}");
+        let free = CameraController {
+            mode: CameraMode::FreeCam,
+            ..at(50.946_854)
+        };
+        assert!((free.disc_depth_scale() - 1.0).abs() < f32::EPSILON);
+        let ortho = CameraController {
+            projection: Projection::Orthographic { half_height: 2.0 },
+            ..at(50.946_854)
+        };
+        assert!((ortho.disc_depth_scale() - 1.0).abs() < f32::EPSILON);
+    }
+
+    /// The shader's `squeeze_disc` scales clip `z` and `w` of a rim vertex's offset from the
+    /// centre: on this symmetric projection, the point whose view depth offset is scaled.
+    #[test]
+    fn squeezing_clip_depth_scales_the_view_depth_offset() {
+        let camera = CameraController {
+            projection_y_scale: 200.0 / 185.0,
+            ..CameraController::default()
+        };
+        let proj = camera.compute_proj_matrix();
+        let k = 0.82;
+        let centre = Vec3::new(3.0, -8.0, -60.0);
+        let rim = Vec3::new(-5.0, -8.5, -48.0);
+        let clip = |p: Vec3| proj * p.extend(1.0);
+        let offset = clip(rim) - clip(centre);
+        let squeezed = clip(centre) + offset * glam::Vec4::new(1.0, 1.0, k, k);
+        let moved = clip(centre + (rim - centre) * Vec3::new(1.0, 1.0, k));
+        assert!(
+            (squeezed - moved).abs().max_element() < 1e-4,
+            "{squeezed} {moved}"
+        );
+    }
+
     #[test]
     fn orthographic_projection_keeps_size_at_any_depth() {
         let camera = CameraController {
@@ -462,6 +553,58 @@ mod tests {
             roll_radians: 0.1,
         });
         camera
+    }
+
+    #[test]
+    fn straight_down_and_straight_up_authored_views_are_finite() {
+        for dy in [-1000.0f32, 1000.0] {
+            for roll_radians in [0.0, 0.3] {
+                let mut camera = CameraController::default();
+                camera.set_authored_transform(ViewCamera {
+                    eye: [-2211.7, 159.9, 2073.1],
+                    target: [-2211.7, 159.9 + dy, 2073.1],
+                    fov_degrees: PLAYONE_FOV_Y_DEGREES,
+                    roll_radians,
+                });
+                let view = camera.compute_view_matrix();
+                assert!(view.is_finite(), "dy {dy} roll {roll_radians}: {view}");
+                // The target lies on the view axis, `-Z` in view space.
+                let at = view.transform_point3(Vec3::new(-2211.7, 159.9 + dy, 2073.1));
+                assert!(at.x.abs() < 0.01 && at.y.abs() < 0.01, "{at}");
+                assert!((at.z + dy.abs()).abs() < 0.01, "{at}");
+            }
+        }
+    }
+
+    #[test]
+    fn straight_down_view_puts_world_plus_z_up_the_picture() {
+        let mut camera = CameraController::default();
+        camera.set_authored_transform(ViewCamera {
+            eye: [0.0, 100.0, 0.0],
+            target: [0.0, 0.0, 0.0],
+            fov_degrees: PLAYONE_FOV_Y_DEGREES,
+            roll_radians: 0.0,
+        });
+        let view = camera.compute_view_matrix();
+        let north = view.transform_point3(Vec3::new(0.0, 0.0, 10.0));
+        assert!(north.y > 9.99 && north.x.abs() < 1e-3, "{north}");
+        // Seen from above with `+Z` up, `+X` falls on the left.
+        let east = view.transform_point3(Vec3::new(10.0, 0.0, 0.0));
+        assert!(east.x < -9.99 && east.y.abs() < 1e-3, "{east}");
+    }
+
+    #[test]
+    fn tilted_authored_view_keeps_world_y_up() {
+        let mut camera = CameraController::default();
+        camera.set_authored_transform(ViewCamera {
+            eye: [0.0, 100.0, 0.0],
+            target: [0.0, 0.0, -50.0],
+            fov_degrees: PLAYONE_FOV_Y_DEGREES,
+            roll_radians: 0.0,
+        });
+        let view = camera.compute_view_matrix();
+        let up = view.transform_vector3(Vec3::Y);
+        assert!(up.y > 0.0 && up.x.abs() < 1e-5, "{up}");
     }
 
     #[test]

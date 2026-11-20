@@ -28,6 +28,10 @@ _Found 2026-10-22; see the [loss attribution row](../../work/2026-10/parity-log/
 
 ## 2. Current breakdown
 
+The current loss by class is pinned, not copied here: each `[<film>.expected.<class>.loss]` table of [`references.toml`](references.toml) holds a report's `mean_loss_by_class_scored` for one renderer class, written by `mise run parity-repin` and read back by `mise run judge`, which prints a candidate's change in each class from the baseline's and from the pin ([`method.md`](method.md) step 0).
+Both the `lavapipe` and `gpu` tables hold the split on the `crates` tree their `crates` line names.
+Read a film's classes there; the table below is a dated record and does not follow the pins.
+
 `[Bounded Observation]`, one render per film on the RTX 4070, `main` at `76872e89` (2026-11-16), each film scored against the capture `references.toml` pins.
 Loss by class, with its share of `1 - mean_ssim_scored`; classes under 0.001 left out:
 
@@ -204,29 +208,30 @@ The two-sided flag (`SodVertex::flags` bit 1) is not decoded, so the culling can
 ## 7. BALLOON's mask IoU: two runs of frames
 
 `[Bounded Observation]` for the runs and their figures, one render on the RTX 4070 at `76872e89`.
-`balloon`'s `mean_iou_scored` is 0.6409 while the other six references score 0.91 to 0.99.
+Before 2026-11-18 (the positional sky rule below), `balloon`'s `mean_iou_scored` was 0.6409 while the other six references scored 0.91 to 0.99.
 Of its 107 scored frames, 41 score IoU under 0.5 and every other frame scores 0.965 or more (median 0.980).
 The 41 fall in two runs:
 
 * **Ticks 12 to 254 (23 frames): the zenith sky is outside the scorer's sky band.**
   The camera looks up at the balloon, and the capture paints the sky 224, then 225 and 226 as the view comes down; our render paints it 228.
-  The mask counts only 227 to 238 as capture sky (`CAPTURE_SKY_INDICES`, section 2.0 of [`method.md`](method.md)), so the capture's whole sky counts as geometry: IoU 0.134 on average while SSIM stays 0.889.
+  The mask then counted only 227 to 238 as capture sky (`CAPTURE_SKY_INDICES`, section 2.0 of [`method.md`](method.md)), so the capture's whole sky counted as geometry: IoU 0.134 on average while SSIM stays 0.889.
   `PLAYONE` writes entries 224 to 238 as one sky gradient, zenith to horizon ([`palette-fade.md`](../playone-exe/palette-fade.md) section 3.1, a static reading matched against `CTRY` captures at entries 224, 233 and 238).
   The same frames show the sun disc, 1,746 pixels of index 239, which our render does not draw; `0x908E` projects it from the variable-13 vector (same note, section 3.2). ([picture](../../work/2026-11/477_vault-attribution/images/balloon-155-zenith-sky-and-sun.png))
 * **Ticks 606 to 793 (18 frames): our render draws nothing.**
   The authored camera looks straight down (eye and target share x and z; `render.json` holds that camera from tick 601 to 796, field of view 8.3 degrees).
   The capture shows the balloon from above over grass; our layer plane is empty and every pixel is sky index 238, so IoU is 0 and SSIM 0.480 on average.
-  `Camera::compute_view_matrix` (`crates/stunt-render/src/camera.rs`) builds the authored view with `look_at_mat4` and up `Vec3::Y`, which is undefined for a view direction parallel to up; that this is the cause is `[Hypothesis]`, read from the code and one film's empty plane, until [#615](https://github.com/neilsh/stunt-reel/issues/615) measures the matrix. ([picture](../../work/2026-11/477_vault-attribution/images/balloon-606-straight-down-camera.png))
+  `CameraController::compute_view_matrix` (`crates/stunt-render/src/camera.rs`) built the authored view with `look_at_mat4` and up `Vec3::Y`, which is undefined for a view direction parallel to up; since #615 a view along ±Y takes up `+Z`; that this was the cause is a `[Bounded Observation]` (`balloon` only, [#615](https://github.com/neilsh/stunt-reel/issues/615)): with up `+Z` for a vertical view the frames draw and the picture is turned as the capture's is; the figures in this section are from before that fix. ([picture](../../work/2026-11/477_vault-attribution/images/balloon-606-straight-down-camera.png))
 
-Mean IoU over the 107 frames: 0.6409 as scored; 0.7705 without the 18 blank frames; 0.7303 with the capture sky widened to 224..=238; 0.8780 with both; 0.9418 with both and the sun counted as sky.
+Mean IoU over the 107 frames, before 2026-11-18: 0.6409 as scored; 0.7705 without the 18 blank frames; 0.7303 with the capture sky widened to 224..=238; 0.8780 with both; 0.9418 with both and the sun counted as sky.
 The 18 blank frames average 0.4803 SSIM against 0.8856 for the other 89; the film mean would be 0.8856 if they scored like the rest, a bound on what a camera fix could recover, not a prediction.
 
 Of the seven references' `render.json` cameras, only `balloon`'s and `intro`'s point straight down, and no other film scores such a frame: `intro`'s camera points down on ticks 12 to 760, 1520 to 2055 and 3642 to 3818, all faded to black and unscored.
 Widening the capture sky to 224..=238 is not free: it raises `bomb` 0.9118 -> 0.9540 but lowers `traintnl` 0.9659 -> 0.9608, whose 19,850 capture pixels at 224 to 226 all fall on geometry we draw.
 Where looked at, those pixels are shape paint, not our geometry drawn over sky: on `traintnl` a blue rectangle on a dark red wall under a red roof holds 18,144 of them and the rear car's windows are 224 too, and on `bomb`, of the 105,219 pixels at 224 (as many as lie on our geometry), 104,958 are an emblem on a building wall, while its 59,520 at 226 are zenith sky in the top five rows.
-So the scorer keeps 227..=238 and `balloon`'s zenith frames still score as geometry ([`method.md`](method.md) section 2.0).
+So the scorer keeps 227..=238 as its index band ([`method.md`](method.md) section 2.0).
 _Source: [who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
-Follow-ups: the camera [#615](https://github.com/neilsh/stunt-reel/issues/615), a positional capture-sky rule [#718](https://github.com/neilsh/stunt-reel/issues/718), the zenith bands and the sun [#617](https://github.com/neilsh/stunt-reel/issues/617).
+Since 2026-11-18 a run of 224 to 226 that reaches row 0 and both side columns counts as sky by position, which raises `balloon` to 0.7186 on lavapipe; the figures above are on the scale before it, and the sky the balloon cuts off from row 0 or a side still counts as geometry ([`method.md`](method.md) section 2.0).
+Follow-ups: the camera [#615](https://github.com/neilsh/stunt-reel/issues/615), the sky the balloon cuts off [#745](https://github.com/neilsh/stunt-reel/issues/745), the zenith bands and the sun [#617](https://github.com/neilsh/stunt-reel/issues/617).
 
 _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)._
 
@@ -270,7 +275,7 @@ Priority is by measured loss, not by which item reads easiest.
    It is the one lever left that needs no decode. ([#74](https://github.com/neilsh/stunt-reel/issues/74))
 5. **`balloon`'s straight-down camera** — 18 scored frames drawn blank (section 7), costing `balloon` 0.130 of IoU, more than any other reference's whole IoU shortfall (the largest, `bomb`'s, is 0.088).
    It is an exception to the rule above: the fault is in our view matrix, and only the up vector to use needs `PLAYONE`'s rule. ([#615](https://github.com/neilsh/stunt-reel/issues/615))
-6. **The zenith sky and the sun disc** — the scorer's sky band omits 224 to 226 because shapes paint them too ([#616](https://github.com/neilsh/stunt-reel/issues/616)), so counting the zenith sky needs a positional rule ([#718](https://github.com/neilsh/stunt-reel/issues/718)), and our sky stops at 228 and draws no sun ([#617](https://github.com/neilsh/stunt-reel/issues/617)); section 7.
+6. **The zenith sky and the sun disc** — the scorer's sky band omits 224 to 226 because shapes paint them too ([#616](https://github.com/neilsh/stunt-reel/issues/616)), so the zenith sky counts by position instead ([#718](https://github.com/neilsh/stunt-reel/issues/718); the sky the balloon cuts off is [#745](https://github.com/neilsh/stunt-reel/issues/745)), and our sky stops at 228 and draws no sun ([#617](https://github.com/neilsh/stunt-reel/issues/617)); section 7.
 
 ### Where the ground-and-light goal stopped
 

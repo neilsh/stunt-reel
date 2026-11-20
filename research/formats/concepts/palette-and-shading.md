@@ -116,7 +116,8 @@ pub struct SodVertex {
 - **Bit 1 (`0x02`) — Two-Sided Facet:** Disables back-face culling for this polygon.
 - **Bit 2 (`0x04`) — Emissive / Unshaded:** Bypasses directional lighting table; renders at full unshaded diffuse brightness (used for landing lights and muzzle flares).
 - **Bits 3..5 (`0x08`, `0x10`, `0x20`) — Screen-space line corner:** a one-pixel line's corner, its side and its end; the vertex's `normal` is then the vector to the segment's other endpoint (`VERTEX_FLAG_LINE`, `VERTEX_FLAG_LINE_SIDE`, `VERTEX_FLAG_LINE_END`).
-- **Bits 6..7 (`0x40`, `0x80`):** Reserved (must be zero).
+- **Bit 6 (`0x40`) — Disc rim vertex:** a vertex of an `OP_PERFDISK` disc's outline; its `normal` is then the vector to the disc's centre, about which the renderer squeezes the disc along the view's depth by the lens zoom (`VERTEX_FLAG_DISC`, [`sod-vm-generators.md` § 8.8](../../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)).
+- **Bit 7 (`0x80`):** Reserved (must be zero).
 
 A world prop vertex carries no record of its shape: the world lists its prop vertices as runs with each run's shape (`World::prop_runs`), and the renderer looks a vertex up there for the parity plane's shape word ([`attribution.md`](../../parity/attribution.md) § 1).
 
@@ -191,7 +192,7 @@ Index 228 holds to the highest elevation seen (23.4 degrees); below the first ed
 `CTRY.FLM` never uses 227, but 27 of 213 `INTRO.FLM` frames (32,194 pixels) and 4 of 30 `COL3-2.FLM` frames (1,284 pixels) do, above 228.
 Parity treats 227 to 238 as sky (`CAPTURE_SKY_INDICES` in `crates/stunt-score/src/parity/mask.rs`).
 Whether 227 is the top band of the same law is `[Unknown]`, as is behaviour above 23.4 degrees and for 224 to 226.
-Captures show 224 to 226 as zenith sky and as shape paint, so parity leaves them out of the sky band ([`method.md`](../../parity/method.md) section 2.0).
+Captures show 224 to 226 as zenith sky and as shape paint, so parity counts them as sky only by position ([`method.md`](../../parity/method.md) section 2.0).
 Index 239 is not a band: it is the sun disc, one flat index drawn at the var-13 direction ([`palette-fade.md` § 3.2](../../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)), which the renderer does not draw.
 The horizon sky index is film-specific (first-frame sky is 229 in `INTRO.FLM`, 233 in `CTRY.FLM`).
 
