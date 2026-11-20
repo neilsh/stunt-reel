@@ -492,7 +492,7 @@ description = "Test coverage of the whole Rust workspace (GPU tests included; th
 # platforms. The build lands in target/llvm-cov-target, apart from the gate's, so this task
 # never invalidates it.
 run = [
-  "python -c \"from pathlib import Path; Path('target/coverage').mkdir(parents=True, exist_ok=True)\"",
+  "python -c \"from pathlib import Path; d = Path('target/coverage'); d.mkdir(parents=True, exist_ok=True); (d / 'lcov.info').unlink(missing_ok=True)\"",
   "cargo llvm-cov --locked --workspace --all-features --no-report",
   "cargo llvm-cov report --ignore-filename-regex \"crates.[a-z-]+.tests.|.registry.src.\" --summary-only",
   "cargo llvm-cov report --ignore-filename-regex \"crates.[a-z-]+.tests.|.registry.src.\" --lcov --output-path target/coverage/lcov.info",
@@ -535,7 +535,11 @@ env = { CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/
 description = "Test coverage of python/stunt_reel and python/scripts (lines and branches, subprocesses included); prints the report and writes target/coverage/coverage.xml and coverage.json (the CI `coverage` job)"
 # [tool.coverage] in pyproject.toml holds the scope and the parallel data files; pytest-cov
 # combines them, the nine subprocess-starting test files' interpreters included.
-run = "uv run pytest --cov --cov-report=term-missing:skip-covered --cov-report=xml:target/coverage/coverage.xml --cov-report=json:target/coverage/coverage.json"
+# The first command removes the last run's files, so a failed run leaves none for cov-summary.
+run = [
+  "python -c \"from pathlib import Path; Path('target/coverage/coverage.xml').unlink(missing_ok=True); Path('target/coverage/coverage.json').unlink(missing_ok=True)\"",
+  "uv run pytest --cov --cov-report=term-missing:skip-covered --cov-report=xml:target/coverage/coverage.xml --cov-report=json:target/coverage/coverage.json",
+]
 
 [tasks.cov-summary]
 description = "The coverage tables (per crate, per package) from the files cov-rust and cov-py wrote, as Markdown for a job summary (python/scripts/cov_summary.py)"

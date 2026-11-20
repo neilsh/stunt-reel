@@ -28,7 +28,7 @@ A pull request that is not docs-only (below) runs the full `mise run check` gate
 Windows gets a smoke test rather than the whole gate on pull requests because every Windows-only behaviour in this repository lives in the Python tree — `crates/` has no `cfg(windows)` — while a warm Windows Rust build costs about nine minutes.
 Pushes to `main` run the full `check-windows` too (format, lint, module layers, typecheck and both test suites; GPU tests skip without a driver), and `workflow_dispatch` runs the jobs a push to `main` runs, on any branch.
 A separate job checks the declared MSRV (`1.100`), and a `cargo deny` job enforces the dependency policy.
-A `coverage` job on Ubuntu, beside `quality`, runs `mise run cov-rust` and `cov-py` with lavapipe and `STUNT_REQUIRE_GPU=1`, appends a table per crate and per Python package to the job summary and keeps the lcov, XML and JSON files as an artifact ([issue #860](https://github.com/neilsh/stunt-reel/issues/860)).
+A `coverage` job on Ubuntu, beside `quality`, runs `mise run cov-rust` and `cov-py` with lavapipe and `STUNT_REQUIRE_GPU=1`, appends a Rust table with a row per crate and a Python table with a row per package to the job summary and keeps the lcov, XML and JSON files as an artifact ([issue #860](https://github.com/neilsh/stunt-reel/issues/860)).
 It reports absolute figures only: no floor, no outside service, and it is not a required check, since `quality` decides whether the tests pass.
 Its instrumented build has a cargo cache key of its own.
 The cargo cache falls back to the newest previous lockfile through `restore-keys`, so a dependency bump rebuilds a delta instead of the whole workspace — a cold gate run measured 10m40 against 4m19 warm.

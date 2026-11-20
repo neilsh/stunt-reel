@@ -177,13 +177,14 @@ jobs:
   coverage:
     name: Test coverage (ubuntu)
     # Issue #860. Reported, not enforced: no floor, no patch rule, and not a required check,
-    # since `quality` decides whether the tests pass. The job prints a table per crate and per
-    # Python package into the job summary and keeps the lcov, XML and JSON files as an
-    # artifact. No Codecov or Coveralls (an outside service, and an action the allowlist does
-    # not admit) and no pull-request comment bot (it needs `pull-requests: write`). A test that
-    # fails under instrumentation fails this job, visibly. Skips under the skip condition only
-    # (ADR 0047), like the Rust and Python jobs it measures; the mise tasks do the work, so a
-    # local `mise run cov-rust` / `cov-py` measures what this does.
+    # since `quality` decides whether the tests pass. The job prints a Rust table with a row
+    # per crate and a Python table with a row per package into the job summary and keeps the
+    # lcov, XML and JSON files as an artifact. No Codecov or Coveralls (an outside service,
+    # and an action the allowlist does not admit) and no pull-request comment bot (it needs
+    # `pull-requests: write`). A test that fails under instrumentation fails this job,
+    # visibly. Skips under the skip condition only (ADR 0047), like the Rust and Python jobs
+    # it measures; the mise tasks do the work, so a local `mise run cov-rust` / `cov-py`
+    # measures what this does.
     needs: scope
     if: ${{ !cancelled() && !(needs.scope.result == 'success' && needs.scope.outputs.docs_only == 'true') }}
     runs-on: ubuntu-latest
@@ -220,9 +221,14 @@ jobs:
             .cache/cargo/registry
             .cache/cargo/git
             target
-          # Its own key: the instrumented build (target/llvm-cov-target) is several times the
-          # size of the gate's target/, and sharing `quality`'s key would make each job's save
-          # evict the other's.
+            !target/coverage
+          # `!target/coverage`: the files a run measured must not come back from a cache, or a
+          # run whose cov-rust fails before its report would summarize and upload the lcov.info
+          # of the run that saved the cache.
+          # Its own key: the entry holds the instrumented build (target/llvm-cov-target), not
+          # the gate's check and matrix lanes. An entry is saved once per key, so with
+          # `quality`'s key whichever job saved first would own it, and the other would
+          # restore a `target/` without its own build and rebuild on every run.
           key: ${{ runner.os }}-cargo-cov-v1-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-cov-v1-

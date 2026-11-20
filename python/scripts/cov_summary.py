@@ -4,8 +4,8 @@
 ``target/coverage/coverage.json``: this reads both, groups each file under its crate
 (``crates/<name>/``) or its Python package directory (``python/stunt_reel``, ``python/scripts``),
 and prints one table per language with absolute figures, for ``$GITHUB_STEP_SUMMARY``.
-A missing or unreadable file prints a line saying so; the exit status is ``1`` when either is
-missing, so the job step shows red while the other table still prints.
+A missing file, or one that does not parse, prints a line saying so; the exit status is ``1``
+when either is, so the job step shows red while the other table still prints.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
 DEFAULT_DIR = Path("target/coverage")
 
@@ -130,35 +130,38 @@ def _row(label: str, counts: Counts) -> str:
     )
 
 
+def _section(label: str, path: Path, build: Callable[[str], list[str]]) -> tuple[list[str], bool]:
+    """*build*'s lines for the text of *path*, or one line saying why there are none."""
+    if not path.is_file():
+        return [f"{label}: `{path}` was not written.", ""], False
+    try:
+        return build(path.read_text(encoding="utf-8")), True
+    except (OSError, ValueError, LookupError, TypeError) as err:
+        return [f"{label}: `{path}` could not be read ({type(err).__name__}: {err}).", ""], False
+
+
 def render(directory: Path) -> tuple[str, bool]:
     """The summary text for the files in *directory*, and whether both were readable."""
-    out = ["## Test coverage", ""]
-    ok = True
-    lcov = directory / "lcov.info"
-    if lcov.is_file():
-        out += table(
-            "Rust (`cargo llvm-cov`: lines, functions)",
-            "Functions",
-            lcov_groups(lcov.read_text(encoding="utf-8")),
-        )
-    else:
-        ok = False
-        out += [f"Rust: `{lcov}` was not written.", ""]
-    coverage_json = directory / "coverage.json"
-    if coverage_json.is_file():
-        out += table(
-            "Python (`coverage.py`: lines, branches)",
-            "Branches",
-            json_groups(json.loads(coverage_json.read_text(encoding="utf-8"))),
-        )
-    else:
-        ok = False
-        out += [f"Python: `{coverage_json}` was not written.", ""]
-    return "\n".join(out), ok
+    rust, rust_ok = _section(
+        "Rust",
+        directory / "lcov.info",
+        lambda text: table(
+            "Rust (`cargo llvm-cov`: lines, functions)", "Functions", lcov_groups(text)
+        ),
+    )
+    python, python_ok = _section(
+        "Python",
+        directory / "coverage.json",
+        lambda text: table(
+            "Python (`coverage.py`: lines, branches)", "Branches", json_groups(json.loads(text))
+        ),
+    )
+    lines = ["## Test coverage", "", *rust, *python]
+    return "\n".join(lines), rust_ok and python_ok
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Print the summary; ``1`` when a coverage file is missing."""
+    """Print the summary; ``1`` when a coverage file is missing or does not parse."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dir", type=Path, default=DEFAULT_DIR, help="where the files are")
     args = parser.parse_args(argv)

@@ -10,7 +10,7 @@ import cov_summary
 if TYPE_CHECKING:
     from pathlib import Path
 
-LCOV = r"""\
+LCOV = r"""
 SF:E:\work\crates\stunt-core\src\lib.rs
 FNF:4
 FNH:3
@@ -96,3 +96,24 @@ def test_a_missing_file_is_named_and_fails_the_exit_status(tmp_path: Path) -> No
     assert "coverage.json" in text
     assert "`crates/stunt-core`" in text
     assert cov_summary.main(["--dir", str(tmp_path)]) == 1
+
+
+def test_an_unparseable_file_is_named_and_the_other_table_still_prints(tmp_path: Path) -> None:
+    (tmp_path / "lcov.info").write_text(LCOV, encoding="utf-8")
+    (tmp_path / "coverage.json").write_text(
+        '{"files": {"python/scripts/gate.py": ', encoding="utf-8"
+    )
+    text, ok = cov_summary.render(tmp_path)
+    assert not ok
+    assert "coverage.json" in text
+    assert "could not be read" in text
+    assert "| `crates/stunt-core` | 13 / 15 |" in text
+    assert cov_summary.main(["--dir", str(tmp_path)]) == 1
+
+
+def test_a_report_of_the_wrong_shape_is_named_not_raised(tmp_path: Path) -> None:
+    (tmp_path / "lcov.info").write_text(LCOV, encoding="utf-8")
+    (tmp_path / "coverage.json").write_text("{}", encoding="utf-8")
+    text, ok = cov_summary.render(tmp_path)
+    assert not ok
+    assert "could not be read" in text
