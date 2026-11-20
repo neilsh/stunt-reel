@@ -15,7 +15,7 @@ use super::fade::fade_level;
 use super::frames::reference_luminance;
 use super::loss::{LOSS_CLASSES, attribute_loss, attribute_shape_loss, loss_class};
 use super::mask::{
-    index_agreement, is_capture_sky, mask_iou_planes, rescale_mask, ui_overlay_mask,
+    capture_sky_mask, index_agreement, mask_iou_planes, rescale_mask, ui_overlay_mask,
 };
 use super::ssim::{compute_window_scores, rescale_mode13h_frame};
 
@@ -116,11 +116,10 @@ pub(super) fn score_frame(
     } else {
         windows.iter().map(|w| w.score).sum::<f32>() / windows.len() as f32
     };
-    let codes: Vec<f32> = reference
-        .indices
+    let codes: Vec<f32> = capture_sky_mask(&reference.indices)
         .iter()
         .zip(&render.layers)
-        .map(|(&index, &layer)| f32::from(loss_class(layer, !is_capture_sky(index))))
+        .map(|(&sky, &layer)| f32::from(loss_class(layer, !sky)))
         .collect();
     #[expect(
         clippy::cast_possible_truncation,
@@ -182,6 +181,7 @@ mod tests {
 
     use super::*;
     use crate::parity::fade::fade_reference_set;
+    use crate::parity::mask::is_capture_sky;
     use crate::parity::test_support::{plane_index, scaled_palette};
 
     const PIXELS: usize = MODE13H_WIDTH * MODE13H_HEIGHT;

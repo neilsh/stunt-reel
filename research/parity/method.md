@@ -88,9 +88,28 @@ On `traintnl` all 19,850 capture pixels at 224 to 226 are index 224 and lie on o
 On `bomb` 104,958 of the 105,219 pixels at 224 are an emblem on a building wall, while the 59,520 at 226 are the zenith sky in the top five rows.
 `location`'s helicopter windows are 225 and 226.
 So an index band that reaches 224, as `balloon`'s zenith requires, cannot tell the zenith sky from that paint: widening it to 224..=238 would count the rectangle and the emblem as sky, and was not adopted.
-`balloon`'s zenith sky at 224 to 226 still counts as geometry ([`attribution.md`](attribution.md) section 7).
-A test that counts a 224 to 226 pixel as sky when its run of such pixels reaches row 0 or touches the 227 to 238 band separates `bomb`'s two kinds exactly, but fails where the balloon cuts the sky off from both (`balloon` tick 243, 16,995 pixels); nothing is adopted yet ([#718](https://github.com/neilsh/stunt-reel/issues/718)).
 _Source: [2026-11-18: who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
+
+A 224 to 226 capture pixel counts as sky by position instead (`capture_sky_mask` in `crates/stunt-score/src/parity/mask.rs`, 2026-11-18): when its 4-connected run of 224 to 226 pixels reaches row 0 and touches both column 0 and column 319.
+Three rules were counted on the capture planes of all seven references and scored on one lavapipe render; each cell is the film's `mean_iou_scored`, and in brackets the 224 to 226 pixels the rule counts as sky over every captured frame:
+
+| Film (224 to 226 pixels) | 227..=238 only | run reaches row 0 or touches 227 to 238 | run reaches row 0 | run reaches row 0, column 0 and column 319 (adopted) |
+|---|---|---|---|---|
+| `balloon` (1,123,487) | 0.6409 | 0.7276 (1,104,344) | 0.7275 (1,102,475) | 0.7186 (1,039,844) |
+| `bomb` (164,739) | 0.9129 | 0.9626 (59,520) | 0.9626 (59,520) | 0.9626 (59,520) |
+| `traintnl` (19,850) | 0.9659 | 0.9659 (132) | 0.9659 (79) | 0.9659 (0) |
+| `location` (7,155) | 0.9786 | 0.9785 (1,469) | 0.9786 (0) | 0.9786 (0) |
+| `intro` (1,227) | 0.9865 | 0.9864 (1,023) | 0.9865 (0) | 0.9865 (0) |
+| `ctry` (473) | 0.9910 | 0.9910 (0) | 0.9910 (0) | 0.9910 (0) |
+| `land` (76) | 0.9852 | 0.9852 (76) | 0.9852 (0) | 0.9852 (0) |
+
+The first two rules count shape paint as sky.
+On `location` the 226 edge of a helicopter window borders the window's own 227 to 238 gradient (tick 1090, 38 pixels at rows 123 to 130), so touching the band is no sign of sky.
+On `traintnl` tick 265, 79 pixels of 224 are a window of the red rear car that the top edge clips, so reaching row 0 is not enough either.
+The adopted rule counts `bomb`'s zenith rows and most of `balloon`'s zenith sky, and none of the paint above.
+It raises `balloon`'s IoU by 0.0777 and `bomb`'s by 0.0497 and moves no other film's; IoU figures recorded before it are on the old scale for those two films.
+It still misses sky the balloon cuts off from row 0 or from a side (`balloon` 83,643 pixels, 16,983 and 15,119 of them on tick 243; [#745](https://github.com/neilsh/stunt-reel/issues/745)).
+_Source: [2026-11-18: a positional rule for the zenith sky](../../work/2026-11/718_positional-zenith-sky/journal.md#2026-11-18-a-positional-rule-for-the-zenith-sky)._
 
 ### 2.1 Fade floor
 
@@ -184,6 +203,7 @@ How to read the rows of the [parity log](../../work/2026-10/parity-log/log.md), 
 ## Ruled out
 
 * **Capture sky by index alone at 224 to 226** (2026-11-18): shapes paint those indices on `traintnl`, `bomb` and `location`, so widening the band to 224..=238 counts their paint as sky (section 2.0; [who paints 224 to 226](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)).
+* **Capture zenith sky by a 224 to 226 run touching the 227 to 238 band, or by a run reaching row 0 alone** (2026-11-18): the first counts a `location` helicopter window's edge, the second a `traintnl` rear-car window clipped by the top edge (section 2.0; [a positional rule](../../work/2026-11/718_positional-zenith-sky/journal.md#2026-11-18-a-positional-rule-for-the-zenith-sky)).
 
 Other rejected measurement approaches are in [`metric-bench.md`](metric-bench.md#ruled-out) and [`evidence-limits.md`](evidence-limits.md#ruled-out).
 
