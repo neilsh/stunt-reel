@@ -230,6 +230,25 @@ impl Default for CameraController {
     }
 }
 
+/// Squared sine of the angle between the view direction and `+Y` below which `+Y` cannot be
+/// the up vector: `look_at` normalises their cross product, which is not finite there.
+const VERTICAL_SIN2: f32 = 1e-6;
+
+/// The up vector of an authored camera before roll: `+Y`, or `+Z` when `forward` runs along
+/// `+Y` or `-Y`, where `+Y` leaves the view's side axis undefined.
+///
+/// `+Z` is the orientation of the `vault-balloon` capture at tick 606 (gondola right of the
+/// envelope, tree upper left); a straight-up view has no capture, so it takes the same vector.
+/// A view within about 0.057 degrees of vertical (`VERTICAL_SIN2`) snaps to `+Z` too, so the
+/// picture's turn jumps at that threshold; other views are unchanged.
+fn authored_up(forward: Vec3) -> Vec3 {
+    if forward.cross(Vec3::Y).length_squared() < VERTICAL_SIN2 && forward.length_squared() > 0.5 {
+        Vec3::Z
+    } else {
+        Vec3::Y
+    }
+}
+
 impl CameraController {
     /// Toggles between authored trajectory playback and interactive Free-Cam.
     pub fn toggle_mode(&mut self) {
@@ -261,7 +280,7 @@ impl CameraController {
                 let target = Vec3::from(self.authored.target);
                 let forward = (target - eye).normalize_or_zero();
 
-                let mut up = Vec3::Y;
+                let mut up = authored_up(forward);
                 if self.authored.roll_radians.abs() > 1e-4 && forward.length_squared() > 1e-4 {
                     // Apply roll rotation around look axis
                     let roll_rot = glam::Quat::from_axis_angle(forward, self.authored.roll_radians);
@@ -534,6 +553,58 @@ mod tests {
             roll_radians: 0.1,
         });
         camera
+    }
+
+    #[test]
+    fn straight_down_and_straight_up_authored_views_are_finite() {
+        for dy in [-1000.0f32, 1000.0] {
+            for roll_radians in [0.0, 0.3] {
+                let mut camera = CameraController::default();
+                camera.set_authored_transform(ViewCamera {
+                    eye: [-2211.7, 159.9, 2073.1],
+                    target: [-2211.7, 159.9 + dy, 2073.1],
+                    fov_degrees: PLAYONE_FOV_Y_DEGREES,
+                    roll_radians,
+                });
+                let view = camera.compute_view_matrix();
+                assert!(view.is_finite(), "dy {dy} roll {roll_radians}: {view}");
+                // The target lies on the view axis, `-Z` in view space.
+                let at = view.transform_point3(Vec3::new(-2211.7, 159.9 + dy, 2073.1));
+                assert!(at.x.abs() < 0.01 && at.y.abs() < 0.01, "{at}");
+                assert!((at.z + dy.abs()).abs() < 0.01, "{at}");
+            }
+        }
+    }
+
+    #[test]
+    fn straight_down_view_puts_world_plus_z_up_the_picture() {
+        let mut camera = CameraController::default();
+        camera.set_authored_transform(ViewCamera {
+            eye: [0.0, 100.0, 0.0],
+            target: [0.0, 0.0, 0.0],
+            fov_degrees: PLAYONE_FOV_Y_DEGREES,
+            roll_radians: 0.0,
+        });
+        let view = camera.compute_view_matrix();
+        let north = view.transform_point3(Vec3::new(0.0, 0.0, 10.0));
+        assert!(north.y > 9.99 && north.x.abs() < 1e-3, "{north}");
+        // Seen from above with `+Z` up, `+X` falls on the left.
+        let east = view.transform_point3(Vec3::new(10.0, 0.0, 0.0));
+        assert!(east.x < -9.99 && east.y.abs() < 1e-3, "{east}");
+    }
+
+    #[test]
+    fn tilted_authored_view_keeps_world_y_up() {
+        let mut camera = CameraController::default();
+        camera.set_authored_transform(ViewCamera {
+            eye: [0.0, 100.0, 0.0],
+            target: [0.0, 0.0, -50.0],
+            fov_degrees: PLAYONE_FOV_Y_DEGREES,
+            roll_radians: 0.0,
+        });
+        let view = camera.compute_view_matrix();
+        let up = view.transform_vector3(Vec3::Y);
+        assert!(up.y > 0.0 && up.x.abs() < 1e-5, "{up}");
     }
 
     #[test]

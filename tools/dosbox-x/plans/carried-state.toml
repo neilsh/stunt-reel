@@ -1,0 +1,16 @@
+# #779: the per-frame slot state the probe sweeps from. 0x1463 calls the probe 0x240A once per
+# moving slot each drawn frame; at 0x1492, just before that call, SI is the slot and DI the probe
+# sphere DS:0x22F4. A hit captures the film clock DS:0x4896, the slot's +0x04..+0x0F (where 0x1423
+# just moved it), +0x24..+0x2F (where it was at the previous pass) and +0x1E, +0x20/+0x22, which
+# hold the previous frame's probe results (the next hit of the same slot holds this frame's).
+# Run on CTRY.FLM with the own and a padded CTRY.ALL beside it (work/2026-11/779_carried-draw-state).
+[run]
+stop_tick = 1340
+
+[[probe]]
+name = "probe-slot"
+kind = "break"
+at = 0x1492
+arm = "dialog"
+hits = 4000
+capture = ["mem:DS:0x4896:2", "mem:DS:SI:0x30"]

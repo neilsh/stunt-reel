@@ -16,14 +16,69 @@ const CURSOR_INDEX: u8 = 255;
 
 /// Palette indices a captured pixel counts as sky by: elevation bands 227 to 238, down to the
 /// horizon (research/formats/concepts/palette-and-shading.md). `PLAYONE.EXE`'s gradient starts at
-/// 224, but shapes paint 224 to 226 too, so the zenith bands are left out
-/// (research/parity/method.md section 2.0). This describes captures only; the renderer's band
-/// table in `mode13h.wgsl` is a separate model and is deliberately not shared.
+/// 224, but shapes paint 224 to 226 too, so those count as sky only by position
+/// ([`CAPTURE_ZENITH_INDICES`]). This describes captures only; the renderer's band table in
+/// `mode13h.wgsl` is a separate model and is deliberately not shared.
 pub(super) const CAPTURE_SKY_INDICES: RangeInclusive<u8> = 227..=238;
 
-/// Whether a captured pixel shows sky rather than geometry.
+/// Palette indices of `PLAYONE.EXE`'s zenith sky above the 227 band, which shapes also
+/// paint (research/parity/method.md section 2.0), so they count as sky only by position:
+/// see [`capture_sky_mask`].
+pub(super) const CAPTURE_ZENITH_INDICES: RangeInclusive<u8> = 224..=226;
+
+/// Whether a captured pixel's index is a sky band, whatever its position.
 pub(super) fn is_capture_sky(index: u8) -> bool {
     CAPTURE_SKY_INDICES.contains(&index)
+}
+
+/// Sky pixels of a captured plane, rows of [`MODE13H_WIDTH`]: every
+/// [`CAPTURE_SKY_INDICES`] pixel, and every [`CAPTURE_ZENITH_INDICES`] pixel whose
+/// 4-connected run of zenith pixels reaches row 0 and both side columns.
+pub(super) fn capture_sky_mask(indices: &[u8]) -> Vec<bool> {
+    let zenith = |position: usize| {
+        indices
+            .get(position)
+            .is_some_and(|index| CAPTURE_ZENITH_INDICES.contains(index))
+    };
+    let mut sky: Vec<bool> = indices.iter().map(|&index| is_capture_sky(index)).collect();
+    let mut seen = vec![false; indices.len()];
+    let visit = |seen: &mut [bool], position: usize| {
+        zenith(position)
+            && seen
+                .get_mut(position)
+                .is_some_and(|cell| !std::mem::replace(cell, true))
+    };
+    for seed in 0..MODE13H_WIDTH {
+        if !visit(&mut seen, seed) {
+            continue;
+        }
+        let mut run = vec![seed];
+        let mut stack = vec![seed];
+        while let Some(position) = stack.pop() {
+            let column = position % MODE13H_WIDTH;
+            let next = [
+                position.checked_sub(MODE13H_WIDTH),
+                Some(position + MODE13H_WIDTH),
+                (column > 0).then(|| position - 1),
+                (column + 1 < MODE13H_WIDTH).then_some(position + 1),
+            ];
+            for next in next.into_iter().flatten() {
+                if visit(&mut seen, next) {
+                    run.push(next);
+                    stack.push(next);
+                }
+            }
+        }
+        let touches = |column: usize| run.iter().any(|&p| p % MODE13H_WIDTH == column);
+        if touches(0) && touches(MODE13H_WIDTH - 1) {
+            for position in run {
+                if let Some(cell) = sky.get_mut(position) {
+                    *cell = true;
+                }
+            }
+        }
+    }
+    sky
 }
 
 /// Pixels of a captured frame covered by the UI overlay: the button bar rows and the
@@ -85,7 +140,7 @@ pub(super) fn index_agreement(reference: &[u8], render: &[u8], overlay: &[bool])
 }
 
 /// Intersection-over-union of the non-sky masks of a capture and a render, skipping
-/// `overlay` pixels. The capture's sky is [`CAPTURE_SKY_INDICES`]; the render is filled
+/// `overlay` pixels. The capture's sky is [`capture_sky_mask`]; the render is filled
 /// where its layer plane is not [`stunt_core::frame::LAYER_NONE`].
 pub(super) fn mask_iou_planes(
     reference_indices: &[u8],
@@ -93,11 +148,12 @@ pub(super) fn mask_iou_planes(
     overlay: &[bool],
 ) -> f32 {
     let (mut intersection, mut union) = (0usize, 0usize);
-    for ((index, layer), &masked) in reference_indices.iter().zip(render_layers).zip(overlay) {
+    let sky = capture_sky_mask(reference_indices);
+    for ((&is_sky, layer), &masked) in sky.iter().zip(render_layers).zip(overlay) {
         if masked {
             continue;
         }
-        let reference_filled = !is_capture_sky(*index);
+        let reference_filled = !is_sky;
         let test_filled = u32::from(*layer) != LAYER_NONE;
         intersection += usize::from(reference_filled && test_filled);
         union += usize::from(reference_filled || test_filled);
@@ -166,8 +222,75 @@ mod tests {
                 "{index}"
             );
         }
-        // The zenith bands 224-226 stay out: shapes paint them too (method.md section 2.0).
+        // The zenith bands 224-226 count as sky only by position: shapes paint them too
+        // (capture_sky_mask, method.md section 2.0).
         assert!(!is_capture_sky(224) && !is_capture_sky(226));
+    }
+
+    /// A plane of `rows` full rows of `fill`.
+    fn plane(rows: usize, fill: u8) -> Vec<u8> {
+        vec![fill; rows * MODE13H_WIDTH]
+    }
+
+    #[test]
+    fn full_width_zenith_rows_from_row_0_are_sky() {
+        // bomb ticks 606-1002: the top rows are 226 across the frame, above 227.
+        let mut indices = plane(6, 40);
+        indices[..2 * MODE13H_WIDTH].fill(226);
+        indices[2 * MODE13H_WIDTH..3 * MODE13H_WIDTH].fill(227);
+        let sky = capture_sky_mask(&indices);
+        assert!(sky[..3 * MODE13H_WIDTH].iter().all(|&s| s));
+        assert!(!sky[3 * MODE13H_WIDTH..].iter().any(|&s| s));
+    }
+
+    #[test]
+    fn a_zenith_run_bending_round_an_actor_is_sky_where_it_connects() {
+        // Row 0 is zenith from side to side; below it the run steps down column 0.
+        let mut indices = plane(4, 40);
+        indices[..MODE13H_WIDTH].fill(225);
+        indices[MODE13H_WIDTH] = 224;
+        indices[2 * MODE13H_WIDTH] = 226;
+        indices[2 * MODE13H_WIDTH + 50] = 226;
+        let sky = capture_sky_mask(&indices);
+        assert!(sky[MODE13H_WIDTH] && sky[2 * MODE13H_WIDTH]);
+        // An isolated 226 below is not part of the run.
+        assert!(!sky[2 * MODE13H_WIDTH + 50]);
+    }
+
+    #[test]
+    fn zenith_paint_clipped_by_row_0_stays_geometry() {
+        // traintnl tick 265: a window at 224 cut off by the top edge, not full width.
+        let mut indices = plane(4, 40);
+        for row in 0..3 {
+            indices[row * MODE13H_WIDTH + 30..row * MODE13H_WIDTH + 42].fill(224);
+        }
+        assert!(!capture_sky_mask(&indices).iter().any(|&s| s));
+    }
+
+    #[test]
+    fn zenith_paint_beside_a_sky_band_stays_geometry() {
+        // location tick 1090: a helicopter window's 226 edge borders its 227-238
+        // gradient; and bomb's 224 emblem on a wall, away from row 0.
+        let mut indices = plane(6, 40);
+        indices[2 * MODE13H_WIDTH + 10] = 230;
+        indices[2 * MODE13H_WIDTH + 11] = 226;
+        for row in 3..5 {
+            indices[row * MODE13H_WIDTH + 100..row * MODE13H_WIDTH + 104].fill(224);
+        }
+        let sky = capture_sky_mask(&indices);
+        assert!(sky[2 * MODE13H_WIDTH + 10]);
+        assert_eq!(sky.iter().filter(|&&s| s).count(), 1);
+    }
+
+    #[test]
+    fn zenith_runs_do_not_wrap_across_rows() {
+        // Row 0 is zenith except its last pixel, which wrapping would reach from
+        // row 1's first pixel; the run reaches column 0 only, so it stays geometry.
+        let mut indices = plane(3, 40);
+        indices[..MODE13H_WIDTH - 1].fill(224);
+        indices[MODE13H_WIDTH] = 224;
+        indices[2 * MODE13H_WIDTH - 1] = 224;
+        assert!(!capture_sky_mask(&indices).iter().any(|&s| s));
     }
 
     #[test]

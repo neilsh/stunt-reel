@@ -181,4 +181,7 @@ A reviewer recomputing a quoted sweep verdict ([`AGENTS.md`](../../AGENTS.md#com
 A report dir holds each film's report as `<film>_report/report.json` (a sweep variant kept by `--keep-best`), `<film>_current/report.json` (`build/parity/report`) or `<film>/report.json`; a film without one counts as failed on that side.
 On stderr it also prints, per film, both reports' `mean_index_agreement_scored` and the counts of frames where the candidate's `index_agreement` is better, equal or worse than the baseline's, pairing frames by `ordinal` over those scored in both reports (every frame when a report predates fade scoring).
 These counts are information for a tie fix, whose SSIM may hide a few moved pixels; the verdict and `--recheck` ignore them.
+It then prints one line per film with the candidate's change in each class's `mean_loss_by_class_scored` from the baseline's and, in parentheses, from the class losses pinned in `[<film>.expected.<class>.loss]` of `references.toml` for the renderer class of the candidate's adapter.
+A class moving less than 0.00005 on both comparisons is left out; a report or pin with no class losses, or one naming other classes than the rest, gets a line saying so.
+This shows where an adoption moved the loss when the film mean nets out, and it is information too.
 To judge two commits, copy `build/parity/report` aside after `mise run parity` on the first, then run it on the second.

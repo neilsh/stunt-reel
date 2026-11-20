@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE.EXE` loading a film: the `.ALL` directory read, every chunk preloaded into an LRU cache whose node pool shrinks as the id index grows, what each chunk costs, the film clock starting on the first timer tick after the load, so archives that draw alike start on the same interrupt and later ones whole ticks later, and the per-frame probe that sweeps from each slot's position at the previous drawn frame."
+summary: "`PLAYONE.EXE` loading a film: the `.ALL` directory read, every chunk preloaded into an LRU cache whose node pool shrinks as the id index grows, what each chunk costs, the film clock starting on the first timer tick after the load, so archives that draw alike start on the same interrupt and later ones whole ticks later, and the per-frame probe that sweeps from each slot's position at the previous drawn frame, whose results in `CTRY.FLM` did not change at any probed frame of two live runs, while its padded-archive pages differ at the propeller and the viewpoint."
 sidebar_label: "Film load & chunk cache"
 ---
 # `PLAYONE.EXE`: Loading a Film and Its Archive
@@ -115,7 +115,7 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 
 ## 5. What a Drawn Frame Steps
 
-`[Established]` for the code, read statically ([#723](https://github.com/neilsh/stunt-reel/issues/723)); `[Hypothesis]` where noted.
+`[Established]` for the code, read statically ([#723](https://github.com/neilsh/stunt-reel/issues/723)); `[Bounded Observation]` for the live run and the captures, where noted ([#779](https://github.com/neilsh/stunt-reel/issues/779)).
 
 * **Each slot keeps its position at the previous pass.**
   `0x136F` clears bit 0 of byte `+0` of every slot of the struct in `SI` (`0x13B4..0x13C2`), then calls `0x1423` for each slot whose bit is still clear (`0x13C5..0x13DC`).
@@ -127,7 +127,15 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
   The probe `0x240A` tests that sphere at the splits `0x24B8` and `0x24C2`, the cubes `0x2547` and the object nodes `0x257A`, and the box walk entered at `0x26D0` takes both the current and the `+0x24` position relative to the object (`0x2762..0x2808`).
   When the box walk returns carry (`0x25D2`), `0x25D7` reloads `SP` from `DS:0x2340`, saved at the probe's entry, so the probe returns without visiting the rest of the scenery tree, and a ground leaf later in walk order does not store its plane at `+0x1E`.
   So the ground plane `+0x1E` and the box top `+0x20/+0x22`, which the shadow draw reads ([`sod-vm-frame.md` § 9.1](sod-vm-frame.md#91-the-actor-shadow-draw)), depend on where the slot was at the previous drawn frame as well as on the film tick.
-  `[Hypothesis]` that this is what changes CTRY's pages when the film starts later ([`linking.md`](../makeone-exe/linking.md) § 7.2): no capture has been compared where the probe's results differ ([#779](https://github.com/neilsh/stunt-reel/issues/779)).
+* **In `CTRY.FLM` the sweep changes nothing (`[Bounded Observation]`, DOSBox-X's debugger, unpatched build, the own and #348's padded `CTRY.ALL`, one run each, 2026-11-19).**
+  A break at `0x1492`, just before `0x1463` calls the probe, saw one probed slot (`DS:0x393A`) up to tick 850 and none after; on 141 of 182 (own) and 164 of 207 (padded) consecutive hits its `+0x24..+0x2F` was the previous hit's `+0x04..+0x0F`, and every other pair was 4 or more ticks apart, a frame unhit between.
+  Its `+0x1C`, `+0x1E`, `+0x20` and `+0x22` read 0, `0x033C`, 0 and 0 at every hit (own: ticks 52 to 849; padded: 5 to 850, its tick-0 hit, before any probe, reading 0 in all four): one ground leaf's plane and no box, whatever the previous frame.
+  These are DOSBox-X's frames, not the captures' (hits mostly 3 ticks apart, up to 24), so they cannot be paired with the captures' pages; the conclusion below rests on the results being constant and on the pages' classification.
+* **What differs on CTRY's padded-archive pages (`[Bounded Observation]`, #348's own and padded captures, 111 paired ticks).**
+  Outside the HUD clock 52 pages differ, classified by eye: 28 at the propeller, on the aircraft and in its shadow; 23 along edges across the whole view, a viewpoint a pixel or so apart; one by 14 pixels near an object's tip.
+  None differs at the shadow alone, so the sweep is not what changes these pages ([`linking.md`](../makeone-exe/linking.md) § 7.2).
+  If the biplane's propeller is a stock `ROTZ` on operand `0x14` (not checked), its angle is the angle bank's word `0x14`, the previous drawn frame's var 10 ([`angle-bank.md`](angle-bank.md)), so a frame drawn after another schedule draws it at another angle (`[Hypothesis]`).
+  On 15 of the 23 viewpoint pages the HUD clock reads the same in both captures; what moves the viewpoint is open question 1.
 * **The pair test does not run.**
   `0x1463` calls `0x1588` for pairs of slots when `DS:0x2282` is set (`0x149A`), but `0x2282` is 0 in the load image (image `0xF792`) and the one instruction that writes it stores 0 (`0x49C1`).
   Its hit path (`0x16C2`) and the probe's (`0x25EE`) both go to `0x4B03`, a bare `ret`.
@@ -149,7 +157,7 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
   The INT 8 path also adds the speed `DS:0x475E` to `0x4758:0x475A` (`0x43B4..0x43D2`); `0x0E48` copies `0x4758` to `0x475C`, which nothing else uses as an operand, and `0x3B33`/`0x3BB8` save and restore it around the two other calls of `0x136F`.
   It is a timer-driven clock, like the film clock.
 
-_Source: [the slot pass keeps each slot's previous position](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it); [the per-frame call steps no frame counter](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter)._
+_Source: [the slot pass keeps each slot's previous position](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it); [the per-frame call steps no frame counter](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter); [the probe's results held at every probed frame](../../work/2026-11/779_carried-draw-state/journal.md#2026-11-19-the-probes-results-held-at-every-probed-frame-pages-differ-at-the-propeller-and-the-viewpoint)._
 
 ## 6. The Start Against the Emulator Frame
 
@@ -190,14 +198,15 @@ _Source: [archives that draw alike start the film clock on the same timer interr
   The film step increments no word, `0x22DC` has no reader by address, `0x22BA` feeds input timing, and the deferred-call queue empties every frame (section 5; [journal](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter)).
 - **A film clock that starts at the same instant for every archive, or that counts during the load.**
   Archives that draw differently start whole timer ticks later, and no tick counts until the load ends (section 6; [journal](../../work/2026-11/722_playone-start-timer-tick/journal.md#2026-11-18-archives-that-draw-alike-start-the-film-clock-on-the-same-timer-interrupt)).
+- **The probe's sweep from the previous frame as what changes CTRY's padded-archive pages.**
+  Its results stayed the same at every probed frame of both arms, and no differing page differs at the shadow alone (section 5; [journal](../../work/2026-11/779_carried-draw-state/journal.md#2026-11-19-the-probes-results-held-at-every-probed-frame-pages-differ-at-the-propeller-and-the-viewpoint)).
 - **The pair test `0x1588` as per-frame state.**
   It runs only while `DS:0x2282` is set, but the load image holds 0 there and the one instruction that writes it stores 0; its hit path is a bare `ret` (section 5; [journal](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it)).
 
 ## Open questions
 
-1. Is the probe's sweep from each slot's previous position (section 5) what draws CTRY's pages differently when the film starts later?
-   A log per drawn frame of each slot's `+0x04`, `+0x24`, `+0x1E` and `+0x20/+0x22` on the own and a padded `CTRY.ALL`, paired with the differing pages, would settle it; it needs DOSBox ([#779](https://github.com/neilsh/stunt-reel/issues/779)).
-   The film step's other calls (`0x62E7`, `0x4FCD`, `0x0EE9`, `0x33C3`, `[0x225A]`, `0x31C0`) were read only for counters, so other per-frame state there is not excluded.
+1. What moves the viewpoint on 23 of CTRY's padded-archive pages, 15 of them at an equal HUD clock (section 5)?
+   The HUD clock trails the live tick by 0 to 3 ticks ([`capture-dosbox-automation.md`](capture-dosbox-automation.md) § 2), so the scene may be another tick's, or the view may carry per-frame state; the film step's other calls (`0x62E7`, `0x4FCD`, `0x0EE9`, `0x33C3`, `[0x225A]`, `0x31C0`) were read only for counters.
 2. What does the 63-chunk 4 MB arm's later start come from, given its small scan and walk counts: the emulator's charge for DOS reads, the allocator's evictions, or the heap's limit?
    Its load ends 5 frames after the own archive's and starts the film 3 ticks later (section 6).
 3. Do the own chunks the `0x5B01` arm evicts at load, 8 by the node pool and any more for want of heap, change its pages beyond its start?

@@ -192,7 +192,7 @@ Index 228 holds to the highest elevation seen (23.4 degrees); below the first ed
 `CTRY.FLM` never uses 227, but 27 of 213 `INTRO.FLM` frames (32,194 pixels) and 4 of 30 `COL3-2.FLM` frames (1,284 pixels) do, above 228.
 Parity treats 227 to 238 as sky (`CAPTURE_SKY_INDICES` in `crates/stunt-score/src/parity/mask.rs`).
 Whether 227 is the top band of the same law is `[Unknown]`, as is behaviour above 23.4 degrees and for 224 to 226.
-Captures show 224 to 226 as zenith sky and as shape paint, so parity leaves them out of the sky band ([`method.md`](../../parity/method.md) section 2.0).
+Captures show 224 to 226 as zenith sky and as shape paint, so parity counts them as sky only by position ([`method.md`](../../parity/method.md) section 2.0).
 Index 239 is not a band: it is the sun disc, one flat index drawn at the var-13 direction ([`palette-fade.md` § 3.2](../../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)), which the renderer does not draw.
 The horizon sky index is film-specific (first-frame sky is 229 in `INTRO.FLM`, 233 in `CTRY.FLM`).
 

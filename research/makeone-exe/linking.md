@@ -283,7 +283,7 @@ The delay is the mean `emu_frame` offset of each capture's kept pages from the o
 - Two captures drew identical pages on every shared tick exactly when every kept page fell on the same emulator frame: the 105 pairs within the table's 9 rows do, none of the 456 pairs across rows does.
   The last page's frame alone does not decide it: the two 1-tick rows share it and differ in 29 of 113 pages.
 - Those two rows draw 111 of their 113 shared ticks on the same frame, and 27 of the 29 differing pages are drawn at the same tick on the same frame; where they differ is which ticks were drawn, 8 of them one tick apart (12, 89, 145 … against 13, 90, 144 …).
-  So what is drawn at a tick is not fixed by the tick and the frame it is drawn on; that it carries state from the frames drawn before is a `[Hypothesis]` ([`film-load.md`](../playone-exe/film-load.md) open question 1).
+  So what is drawn at a tick is not fixed by the tick and the frame it is drawn on; that it carries state from the frames drawn before is a `[Hypothesis]`: the probe's sweep from the previous frame is ruled out, and the propeller and the viewpoint remain ([`film-load.md`](../playone-exe/film-load.md) section 5 and open question 1).
 - Rows 5 ticks apart, 7.009 frames, share 79 to 110 pages of 111 to 118; other pairs of rows share 36 to 61 of 100 to 111, except the two 1-tick rows, 84 of 113.
   That what is drawn follows the film clock's phase against the 70 Hz frame, and that the clock starts whole timer ticks later as the load grows ([`film-load.md`](../playone-exe/film-load.md) section 4), are `[Hypothesis]`: the delays are read from kept pages, not from a log of the clock's start.
 
