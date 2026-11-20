@@ -70,7 +70,6 @@ impl Shot {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        clippy::cast_precision_loss,
         reason = "a probe point projects to a pixel inside the page"
     )]
     fn pixel(&self, point: [f32; 3]) -> (usize, usize) {
