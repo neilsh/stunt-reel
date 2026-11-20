@@ -23,10 +23,16 @@ const FLAG_LINE_END: u32 = 0x20u;
 const FLAG_TWO_SIDED: u32 = 0x02u;
 
 // Whether the triangle `p`, `q`, `r` (clip space) winds back-facing on screen, as the
-// rasteriser culls it (pipeline.rs: `FrontFace::Cw`, `cull_mode: Some(Face::Back)`): the
-// determinant of their homogeneous screen coordinates is positive.
+// rasteriser culls it (pipeline.rs: `FrontFace::Cw`, `cull_mode: Some(Face::Back)`), and
+// covers at least one Mode 13h pixel. The determinant of their homogeneous screen coordinates
+// is positive when it winds back; over `|p.w q.w r.w|` it is twice its area in NDC, and a
+// pixel is `4 * line_half_ndc.x * line_half_ndc.y` of NDC. A thinner triangle (an edge-on
+// polygon) winds by rounding noise, which differs between the corners of one outline quad
+// and between its edges, so its outline is kept whole.
 fn is_back_facing(p: vec4<f32>, q: vec4<f32>, r: vec4<f32>) -> bool {
-    return determinant(mat3x3<f32>(p.xyw, q.xyw, r.xyw)) > 0.0;
+    let det = determinant(mat3x3<f32>(p.xyw, q.xyw, r.xyw));
+    let pixel = 8.0 * camera.line_half_ndc.x * camera.line_half_ndc.y;
+    return det > pixel * abs(p.w * q.w * r.w);
 }
 
 // SodVertex::flags bit of an OP_PERFDISK rim vertex (contracts/shape/mod.rs VERTEX_FLAG_DISC).
@@ -189,7 +195,8 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
     if ((in.attr.y & FLAG_LINE) != 0u) {
         let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
         // An outline corner culls with the triangle its edge bounds, which winds from the
-        // edge's first endpoint to its second and on to the apex; a two-sided polygon's stays.
+        // edge's first endpoint to its second and on to the apex; a two-sided polygon's and a
+        // shadow's stay.
         let apex = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.apex, 1.0));
         let at_end = (in.attr.y & FLAG_LINE_END) != 0u;
         let first = select(out.clip_position, other, at_end);
@@ -198,7 +205,9 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
         // tested by position, since a determinant with two equal rows can round off zero.
         let bounds_triangle = any(in.apex != in.position);
         let two_sided = (in.attr.y & FLAG_TWO_SIDED) != 0u;
-        if (bounds_triangle && !two_sided && is_back_facing(first, second, apex)) {
+        // A shadow draws through a pipeline that culls no face, so its outline culls nothing.
+        let shadow = model.layer.y != 0u;
+        if (bounds_triangle && !two_sided && !shadow && is_back_facing(first, second, apex)) {
             // Every corner of the quad collapses to one point, so it covers no pixel.
             out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         } else {

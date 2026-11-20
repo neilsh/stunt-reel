@@ -124,8 +124,14 @@ fn a_steep_line_covers_one_pixel_per_row_near_and_far() {
 /// A shape of one flat triangle 40 m across in the z = 0 plane, wound clockwise as seen from
 /// +z (front-facing toward the test camera) when `front`, else anticlockwise.
 fn triangle_shape(front: bool) -> SodModelIr {
-    let vertex = |x: f32, y: f32| SodVertex {
-        position: [x, y, 0.0],
+    let corners = [[0.0, 20.0, 0.0], [20.0, -20.0, 0.0], [-20.0, -20.0, 0.0]];
+    triangle(corners, if front { [0, 1, 2] } else { [0, 2, 1] })
+}
+
+/// A shape of one triangle with `corners`, wound in the order `indices`.
+fn triangle(corners: [[f32; 3]; 3], indices: [u32; 3]) -> SodModelIr {
+    let vertex = |position: [f32; 3]| SodVertex {
+        position,
         normal: [0.0, 0.0, 1.0],
         palette_index: LINE_INDEX,
         flags: 0,
@@ -133,8 +139,8 @@ fn triangle_shape(front: bool) -> SodModelIr {
         _padding: 0,
     };
     let mut ir = SodModelIr::new("TRI");
-    ir.vertices = vec![vertex(0.0, 20.0), vertex(20.0, -20.0), vertex(-20.0, -20.0)];
-    ir.indices = if front { vec![0, 1, 2] } else { vec![0, 2, 1] };
+    ir.vertices = corners.map(vertex).to_vec();
+    ir.indices = indices.to_vec();
     let id = ir.allocate_node(
         "BASE",
         None,
@@ -176,6 +182,46 @@ fn only_a_front_facing_polygon_draws_its_outline() {
                 back.is_empty(),
                 "{distance} m: the back-facing triangle and its outline draw nothing, got {back:?}"
             );
+        }
+    });
+}
+
+/// A triangle seen edge-on, its plane through the eye, draws its outline as one unbroken line
+/// whichever way it winds: its screen winding is rounding noise, so it is not culled (#717).
+/// Without the exemption its corners disagree on the cull, breaking the line into dashes and
+/// dragging slivers to the screen centre.
+#[test]
+fn an_edge_on_polygon_draws_its_outline_unbroken() {
+    common::gpu_test(|| {
+        let distance = 200.0;
+        for height in [-30.0_f32, -7.0, 11.0, 23.0] {
+            // Two corners 40 m (50 columns) apart across the view, and the third halfway to
+            // the eye on the ray through their midpoint: the plane holds the eye.
+            let corners = [
+                [-20.0, height, 0.0],
+                [20.0, height, 0.0],
+                [0.0, height / 2.0, distance / 2.0],
+            ];
+            for indices in [[0, 1, 2], [0, 2, 1]] {
+                let Some(pixels) = covered(triangle(corners, indices), distance) else {
+                    return;
+                };
+                assert!(
+                    !pixels.is_empty(),
+                    "{height} m, {indices:?}: the outline draws"
+                );
+                let rows = pixels.iter().map(|p| p.1);
+                let (top, bottom) = (rows.clone().min().unwrap(), rows.max().unwrap());
+                assert!(
+                    bottom - top <= 1,
+                    "{height} m, {indices:?}: the outline stays on its row, got rows {top}..={bottom}"
+                );
+                let columns = per_line(&pixels, |p| p.0);
+                assert!(
+                    columns.len() >= 48 && columns.iter().all(|&n| n >= 1),
+                    "{height} m, {indices:?}: the outline is unbroken, got {columns:?}"
+                );
+            }
         }
     });
 }

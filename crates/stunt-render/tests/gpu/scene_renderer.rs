@@ -233,8 +233,8 @@ fn state_mask_that_hides_geometry_draws_nothing() {
 }
 
 /// A `SIF_SHADOW` actor 3 m up draws its shape again on `y = 0` in palette index 0, with its
-/// own layer, whichever way its face is wound; an actor without the flag draws no shadow, and
-/// the view slot draws the same shadow without its shape.
+/// own layer, outline included, whichever way its face is wound; an actor without the flag
+/// draws no shadow, and the view slot draws the same shadow without its shape.
 #[test]
 fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
     common::gpu_test(|| {
@@ -324,11 +324,13 @@ fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
                 "eye at slot {indices:?}: {shadow} {body}"
             );
         }
+        let mut shadows = Vec::new();
         for indices in [vec![0, 1, 2], vec![0, 2, 1]] {
             let Some((shadow, _)) = pixels(indices.clone(), true, false) else {
                 return;
             };
             assert!(shadow > 100, "winding {indices:?}: shadow {shadow}");
+            shadows.push(shadow);
             assert_eq!(pixels(indices.clone(), false, false).map(|p| p.0), Some(0));
             // With no body over it, the view slot's shadow shows at least as many pixels.
             let (view_shadow, view_body) = pixels(indices, true, true).expect("adapter");
@@ -337,6 +339,11 @@ fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
                 "{view_shadow} {view_body}"
             );
         }
+        // The shadow pipeline culls no face, so neither winding's outline is culled (#717).
+        assert_eq!(
+            shadows[0], shadows[1],
+            "both windings' shadows, outlines included"
+        );
     });
 }
 
