@@ -455,14 +455,13 @@ pub fn run(args: &Options) -> Result<(), String> {
     };
 
     let has_file = |name: &str| args.reference.join(name).is_file();
-    let Matching { matched, unmatched } =
-        matched::pair(frames, &has_file, |tick| store.holds(tick));
     // The carry spans every captured frame whose index plane is present, not only the
     // frames the render holds, so a missing render tick does not change a later mask.
     let carry_frames: Vec<&CapturedFrame> = frames
         .iter()
         .filter(|frame| has_file(&frame.frame_file))
         .collect();
+    let Matching { matched, unmatched } = matched::pair(frames, has_file, |tick| store.holds(tick));
     let mut sheets = ContactSheets::new(&args.output, frames.len());
     let scores = score_matched(
         &args.reference,
