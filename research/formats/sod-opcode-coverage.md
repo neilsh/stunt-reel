@@ -73,7 +73,7 @@ This paragraph is the earlier analysis; `PLAYONE`'s two-vertex behaviour was rea
 _Source: [2026-11-11: each shape traced, and the two-vertex stop tested by skipping it](../../work/2026-11/273_sod-partial-shapes/journal.md#2026-11-11-each-shape-traced-and-the-two-vertex-stop-tested-by-skipping-it)._
 
 **The two-vertex stop is fixed** ([#393](https://github.com/neilsh/stunt-reel/issues/393)).
-`[Supported Inference]`, from the code read in [`sod-vm-generators.md` § 8.9](../playone-exe/sod-vm-generators.md#89-polygons-of-two-vertices): `PLAYONE`'s `POLYZ` and `GVPOLY16` handlers have no count test (the clipping variant `0xC50E` was not read), and for two vertices its edge builder and span filler draw a thin line.
+`[Supported Inference]`, from the code read in [`sod-vm-generators.md` § 8.9](../playone-exe/sod-vm-generators.md#89-polygons-of-two-vertices): `PLAYONE`'s `POLYZ` and `GVPOLY16` handlers have no count test, nor has the clipping variant `0xC50E` before its vertex loop (`0xC523..0xC53E`), and for two vertices its edge builder and span filler draw a thin line.
 `vm.rs` now emits `line_polygons` for a count of 2 and keeps stopping below 2.
 The census (§ 3) drops all seven models of old groups B to D, not only `0x7F24` and `0x7F34`, and the walk of every one reaches `RETURN`.
 `[Bounded Observation]`: the films that place the seven shapes (by the 2026-11-01 join: `DPLANES`, `DRUGLORD`, `JURASSIC`, `PITTJET1`, `PLANES`, `SPLANES`, `COWS`, `END3`, `FLAGDAY1`, `ID5`, `SFAPROMO`, `AWACS747`, `REXBRUCE`, `YODA`, `TALISD`, `AFTERBRN`, `REDB`) include none of the seven parity references (`CTRY`, `INTRO`, `LAND`, `BALLOON`, `TRAINTNL`, `BOMB`, `LOCATION`), though films without a paired `.ALL` are not joined (§ 4).
