@@ -206,6 +206,13 @@ The gain is almost all actors, whose class loss falls 0.0083 -> 0.0035 on CTRY a
 One frame regresses: CTRY tick 832, 0.710 -> 0.681, where removing the interior exposes an actor surface the capture does not show; the actor placement residual explains that.
 The two-sided flag (`SodVertex::flags` bit 1) is not decoded, so the culling cannot yet exempt a two-sided polygon.
 
+Per-frame shapes' outlines are culled with their polygon, by the winding of the triangle each outline corner belongs to (in the GPU vertex shader), with two exemptions.
+A triangle under 1 px² of screen area keeps its outline: seen edge-on (a rotor blade, a strut) its winding is rounding error that differs between the corners of one outline quad and between its three edges, so without the exemption the outline broke into dashes and slivers running to the screen centre (`[Bounded Observation]`: `location:1112`, GPU and lavapipe).
+This area test is not `PLAYONE`'s: its fillers keep a back face's row where its edges' runs cross (section 8.12 of the note above, `[Hypothesis]`), so the area test is an approximation of that rule that is not traced against `PLAYONE`, and a follow-up covers the mismatch.
+A shadow's outline is not culled: the shadow pipeline culls no face, so its fill shows both windings and a culled outline thinned the rim (`[Bounded Observation]`: `intro:1090`).
+The cull is adopted on the evidence-backed track, citing the fillers' row test at `0x75A1`, `0x7612` and `0x76DC` (`[Established]`, static, [`sod-vm-lines-spans.md` § 8.12](../playone-exe/sod-vm-lines-spans.md#812-back-faces-the-span-test)); it moves no film's mean SSIM by more than 0.000014 on the GPU, so the score does not measure it.
+_Source: [the outline cull judged on the evidence track](../../work/2026-11/717_outline-cull/journal.md#2026-11-20-the-outline-cull-judged-on-the-evidence-track) and [the two exemptions the fix round added](../../work/2026-11/717_outline-cull/journal.md#2026-11-20-the-two-exemptions-the-fix-round-added)._
+
 ## 7. BALLOON's mask IoU: two runs of frames
 
 `[Bounded Observation]` for the runs and their figures, one render on the RTX 4070 at `76872e89`.
