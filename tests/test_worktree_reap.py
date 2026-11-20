@@ -1464,3 +1464,280 @@ def test_a_bounded_run_returns_the_exit_code_and_stderr(tmp_path: Path) -> None:
     code = "import sys; sys.stderr.write('fatal: nope\\n'); sys.exit(3)"
     returncode, stderr = worktree_reap._run_bounded([sys.executable, "-c", code], tmp_path, 30)
     assert (returncode, stderr.strip()) == (3, "fatal: nope")
+
+
+# --- Orca workspaces (issue #861) ---------------------------------------------------------------
+
+
+def _ps_row(
+    path: Path,
+    *,
+    terminals: int = 0,
+    agents: tuple[str, ...] = ("done",),
+    unverifiable: int = 0,
+) -> dict[str, object]:
+    """One workspace of ``orca worktree ps --json``, with only the fields reap reads."""
+    return {
+        "worktreeId": f"repo-id::{path.as_posix()}",
+        "path": path.as_posix(),
+        "liveTerminalCount": terminals,
+        "unverifiableTerminalCount": unverifiable,
+        "agents": [{"state": state} for state in agents],
+    }
+
+
+class _FakeOrca:
+    """A stand-in for the ``orca`` executable: ``ps`` lists *rows*, ``rm`` removes the worktree.
+
+    Like Orca, ``rm`` fails (exit 1, "Failed to delete worktree") when a tracked file is
+    modified, which is what an unlinked tracked symlink looks like, and it records the
+    reparse points still in the workspace when it runs.
+    """
+
+    def __init__(self, repo: Path, rows: list[dict[str, object]]) -> None:
+        self.repo = repo
+        self.rows = rows
+        self.calls: list[tuple[str, ...]] = []
+        self.links_at_rm: list[list[Path]] = []
+
+    def __call__(self, _repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        self.calls.append(args)
+        if args[:2] == ("worktree", "ps"):
+            payload = {"ok": True, "result": {"worktrees": self.rows, "truncated": False}}
+            return subprocess.CompletedProcess(args, 0, json.dumps(payload), "")
+        assert args[:3] == ("worktree", "rm", "--worktree"), args
+        row = next(row for row in self.rows if f"id:{row['worktreeId']}" == args[3])
+        path = Path(str(row["path"]))
+        self.links_at_rm.append(worktree_reap._reparse_points(path))
+        if _run_git(path, "status", "--porcelain", "--untracked-files=no").strip():
+            return subprocess.CompletedProcess(args, 1, "", "Failed to delete worktree: D skills")
+        _run_git(self.repo, "worktree", "remove", "--force", str(path))
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+
+def _orca_repo(tmp_path: Path) -> tuple[Path, Path, worktree_reap._MergedPrs]:
+    """A repo, an Orca workspace outside its pool that main squash-merged, and gh's view of it."""
+    repo = _init_repo(tmp_path)
+    workspace = tmp_path / "orca" / "feat"
+    workspace.parent.mkdir()
+    _run_git(repo, "worktree", "add", "-q", str(workspace), "-b", "feat")
+    _commit(workspace, "one.txt")
+    tip = _commit(workspace, "two.txt")
+    (repo / "squashed.txt").write_text("one two", encoding="utf-8")
+    _commit(repo, "squashed.txt")
+    prs = [{"number": 89, "headRefName": "feat", "headRefOid": tip}]
+    return repo, workspace, worktree_reap._MergedPrs(repo, _gh_stub(prs))  # type: ignore[arg-type]
+
+
+def _classify(
+    repo: Path,
+    merged_prs: worktree_reap._MergedPrs,
+    orca: worktree_reap._OrcaWorkspaces,
+    **kwargs: bool,
+) -> tuple[list[worktree_reap._Candidate], list[str]]:
+    return worktree_reap._candidates(
+        repo,
+        worktree_git._worktrees(repo),
+        include_cherry=False,
+        merged_prs=merged_prs,
+        orca=orca,
+        **kwargs,
+    )
+
+
+def _reap_env_for_orca(
+    monkeypatch: pytest.MonkeyPatch, repo: Path, workspace: Path, orca: object
+) -> None:
+    """Point ``_reap`` at *repo*, with *orca* for Orca and a gh that knows ``feat`` merged."""
+    tip = _head(workspace)
+    monkeypatch.setattr(worktree_reap, "REPO_ROOT", repo)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", repo)
+    monkeypatch.setattr(worktree_reap, "_orca", orca)
+    monkeypatch.setattr(
+        worktree_reap, "_gh", _gh_stub([{"number": 89, "headRefName": "feat", "headRefOid": tip}])
+    )
+    monkeypatch.setattr(worktree_reap, "_script_is_stale", lambda _repo: (False, []))
+
+
+def test_a_merged_clean_orca_workspace_is_removed_with_orca_worktree_rm(tmp_path: Path) -> None:
+    repo, workspace, merged_prs = _orca_repo(tmp_path)
+    fake = _FakeOrca(repo, [_ps_row(workspace)])
+    orca = worktree_reap._OrcaWorkspaces(repo, fake)
+
+    candidates, skipped = _classify(repo, merged_prs, orca)
+    assert skipped == []
+    assert [candidate.orca for candidate in candidates] == [f"id:repo-id::{workspace.as_posix()}"]
+    assert "orca workspace" in worktree_reap._describe(candidates[0])
+
+    error = worktree_reap._reap_one(
+        repo, candidates[0], stash_dirty=False, discard_untracked=False, orca=orca
+    )
+
+    assert error is None
+    assert fake.calls[-1] == ("worktree", "rm", "--worktree", candidates[0].orca)
+    assert not workspace.exists()
+    assert _run_git(repo, "branch", "--list", "feat").strip() == ""
+
+
+@pytest.mark.parametrize(
+    ("row_kwargs", "reason"),
+    [
+        ({"terminals": 1}, "1 live terminal(s)"),
+        ({"agents": ("done", "working")}, "agent working"),
+        ({"agents": ("blocked",)}, "agent blocked"),
+        ({"unverifiable": 1}, "cannot verify"),
+    ],
+)
+def test_a_live_orca_workspace_is_skipped_and_says_why(
+    tmp_path: Path, row_kwargs: dict[str, object], reason: str
+) -> None:
+    repo, workspace, merged_prs = _orca_repo(tmp_path)
+    fake = _FakeOrca(repo, [_ps_row(workspace, **row_kwargs)])  # type: ignore[arg-type]
+
+    candidates, skipped = _classify(repo, merged_prs, worktree_reap._OrcaWorkspaces(repo, fake))
+
+    assert candidates == []
+    assert len(skipped) == 1
+    assert "Orca workspace is live" in skipped[0]
+    assert reason in skipped[0]
+    assert workspace.is_dir()
+
+
+def test_a_worker_that_goes_live_after_classification_keeps_the_workspace(tmp_path: Path) -> None:
+    repo, workspace, merged_prs = _orca_repo(tmp_path)
+    fake = _FakeOrca(repo, [_ps_row(workspace)])
+    orca = worktree_reap._OrcaWorkspaces(repo, fake)
+    candidates, _ = _classify(repo, merged_prs, orca)
+    fake.rows = [_ps_row(workspace, agents=("working",))]
+
+    error = worktree_reap._reap_one(
+        repo, candidates[0], stash_dirty=False, discard_untracked=False, orca=orca
+    )
+
+    assert error is not None
+    assert "left alone" in error
+    assert workspace.is_dir()
+    assert not any(call[1] == "rm" for call in fake.calls)
+
+
+def test_a_dirty_orca_workspace_is_skipped_not_a_reason_to_refuse_the_rest(
+    tmp_path: Path,
+) -> None:
+    repo, workspace, merged_prs = _orca_repo(tmp_path)
+    (workspace / "one.txt").write_text("edited", encoding="utf-8")
+    orca = worktree_reap._OrcaWorkspaces(repo, _FakeOrca(repo, [_ps_row(workspace)]))
+
+    candidates, skipped = _classify(repo, merged_prs, orca)
+
+    assert candidates == []
+    assert any("Orca workspace has modified files" in line for line in skipped)
+    allowed, _ = _classify(repo, merged_prs, orca, stash_dirty=True)
+    assert [candidate.worktree.path for candidate in allowed] == [workspace]
+
+
+def test_an_orca_workspace_holding_nested_worktrees_is_skipped_and_names_them(
+    tmp_path: Path,
+) -> None:
+    repo, workspace, merged_prs = _orca_repo(tmp_path)
+    nested = workspace / "build" / "tmp" / "base"
+    _run_git(repo, "worktree", "add", "-q", "--detach", str(nested))
+    rows = [_ps_row(workspace), _ps_row(nested)]
+    orca = worktree_reap._OrcaWorkspaces(repo, _FakeOrca(repo, rows))
+
+    candidates, skipped = _classify(repo, merged_prs, orca)
+
+    assert candidates == []
+    assert any("holds nested worktrees (base)" in line for line in skipped)
+    assert any("(detached): outside this checkout's worktree pool" in line for line in skipped)
+    assert workspace.is_dir()
+    assert nested.is_dir()
+
+
+def test_a_worktree_orca_does_not_manage_stays_outside_the_pool(tmp_path: Path) -> None:
+    repo, _workspace, merged_prs = _orca_repo(tmp_path)
+    orca = worktree_reap._OrcaWorkspaces(repo, _FakeOrca(repo, []))
+
+    candidates, skipped = _classify(repo, merged_prs, orca)
+
+    assert candidates == []
+    assert skipped == ["feat: outside this checkout's worktree pool"]
+
+
+def test_an_orca_workspace_keeps_its_tracked_symlink_and_loses_its_untracked_links(
+    tmp_path: Path,
+) -> None:
+    """Orca's removal fails on a modified tree, so only untracked links may be unlinked (#541)."""
+    repo, worktree, target = _tracked_symlink_repo(tmp_path)
+    cache = tmp_path / "pytest-links-target"
+    cache.mkdir()
+    (cache / "keep.txt").write_text("keep", encoding="utf-8")
+    # Gitignored, as pytest's cache is: the link must not read as an untracked file.
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.write_bytes(exclude.read_bytes() + b"current\n")
+    _junction(worktree / "current", cache)
+    fake = _FakeOrca(repo, [_ps_row(worktree)])
+    orca = worktree_reap._OrcaWorkspaces(repo, fake)
+    candidate = _candidate(worktree)
+    candidate.orca = f"id:repo-id::{worktree.as_posix()}"
+
+    error = worktree_reap._reap_one(
+        repo, candidate, stash_dirty=False, discard_untracked=False, orca=orca
+    )
+
+    assert error is None
+    assert [[path.name for path in links] for links in fake.links_at_rm] == [["skills"]]
+    assert not worktree.exists()
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "keep"
+    assert (cache / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [FileNotFoundError("orca is not on PATH"), subprocess.TimeoutExpired("orca", 60)],
+)
+def test_without_orca_reap_prints_the_removal_line_and_removes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    failure: Exception,
+) -> None:
+    repo, workspace, _prs = _orca_repo(tmp_path)
+
+    def no_orca(_repo: Path, *_args: str) -> subprocess.CompletedProcess[str]:
+        raise failure
+
+    _reap_env_for_orca(monkeypatch, repo, workspace, no_orca)
+
+    assert worktree_reap._reap(True, force=True) == 0
+
+    out = capsys.readouterr().out
+    assert "orca unavailable" in out
+    assert f'orca worktree rm --worktree "path:{workspace.as_posix()}"' in out
+    assert "reaped 0 worktree(s)" in out
+    assert workspace.is_dir()
+    assert _run_git(repo, "branch", "--list", "feat").strip() != ""
+
+
+def test_reap_removes_an_orca_workspace_through_orca_and_counts_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, workspace, _prs = _orca_repo(tmp_path)
+    _reap_env_for_orca(monkeypatch, repo, workspace, _FakeOrca(repo, [_ps_row(workspace)]))
+
+    assert worktree_reap._reap(True, force=True) == 0
+
+    assert "reaped 1 worktree(s)" in capsys.readouterr().out
+    assert not workspace.exists()
+
+
+def test_orca_output_that_cannot_be_read_marks_orca_unavailable(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+
+    def garbage(_repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args, 0, "not json", "")
+
+    orca = worktree_reap._OrcaWorkspaces(repo, garbage)
+
+    assert orca.find(tmp_path) is None
+    assert orca.unavailable is not None
+    assert orca.unavailable.startswith("unreadable orca output")

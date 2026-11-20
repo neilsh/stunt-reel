@@ -59,7 +59,7 @@ Run these in a normal terminal, outside an agent sandbox.
 ## A new worktree
 
 Nothing to do.
-Create it with any tool, under `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, where `mise run reap` can reap it, except an Orca workspace, whose path Orca chooses (see [Orca](#orca)):
+Create it with any tool, under `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, where `mise run reap` can reap it; an Orca workspace's path is Orca's choice, and `reap` covers it too (see [Orca](#orca)):
 
 - Python tasks find the corpus and captures through the data root and build `.venv` on the first `uv run`, hardlinked out of the shared uv cache on the same volume.
 - The first task that builds Rust runs the hidden `ensure` task first, which seeds an empty `target/` by block clone from another checkout on a ReFS volume ([ADR 0030](adr/0030-new-worktrees-seed-target-by-block-clone.md)) and sets `core.hooksPath`, `blame.ignoreRevsFile` and the `expected-pins` merge driver (`.githooks/merge-take-main.sh`, [ADR 0053](adr/0053-expected-scores-live-in-a-generated-file-per-class.md)) in the shared repository config.
@@ -117,21 +117,30 @@ DSH's `run_code` traps, each hit several times by workers on 2026-11-14:
 
 Orca workspaces are the one exception to the in-checkout rule in AGENTS.md, Worktrees.
 Orca chooses their path, `~/orca/workspaces/stunt-reel/<name>` on this machine; `orca --help` shows the base as a project host setting (`orca project setup-update --setup <id> --worktree-base-path <path>`).
-They sit outside the primary checkout, as do the worktrees nested in a workspace's own `.agents/worktrees/`, so `mise run reap` skips them all: retire a workspace with `orca worktree rm --worktree <selector>`.
+They sit outside the primary checkout, as do the worktrees nested in a workspace's own `.agents/worktrees/`.
 
-A workspace made before ADR 0036 may still hold junctions an older `init` made, and nothing shows that Orca's removal unlinks them first (see [Removing a worktree](#removing-a-worktree)).
-No task unlinks one worktree in place; `reap` does it only for the worktrees it removes.
-Before `orca worktree rm`, from the workspace root (read-only listing, whatever the workspace's own `init`):
+`mise run reap` retires a merged Orca workspace as it does its own worktrees: same `--yes`, same 20 GB bar, same merged-and-clean tests ([Removing a worktree](#removing-a-worktree)), and then `orca worktree rm --worktree id:<id>`, never `git worktree remove`.
+It reads `orca worktree ps --json` and skips, saying why, a workspace that:
+
+- holds a live terminal, a terminal Orca cannot verify, or an agent whose state is not `done` (a dispatched worker that has not reported, or one blocked on an answer); it asks Orca again just before removing;
+- holds nested worktrees, such as `build/tmp/<name>` or `.claude/worktrees/<name>`, which it names; remove those first;
+- has modified or untracked files, unless `--stash-dirty` or `--discard-untracked` allows them; unlike a pool worktree, such a workspace does not stop the rest from being reaped.
+
+Before `orca worktree rm` it unlinks every link git does not track, so Orca's removal meets no junction, and leaves a tracked symlink (`.claude/skills`) in place: unlinking that modifies the tree and `orca worktree rm` then fails with `Failed to delete worktree ... D .claude/skills`.
+When `orca` is not on PATH, or its output cannot be read, `reap` removes no Orca workspace and prints the `orca worktree rm --worktree "path:<path>"` line for each one it would have removed; it cannot then tell whether a worker is live, so check that first.
+
+A workspace made before ADR 0036 may still hold junctions an older `init` made, and Orca's own removal does not show that it unlinks them.
+To unlink one by hand, for a workspace `reap` skipped (read-only listing, from the workspace root, whatever the workspace's own `init`):
 
 1. `cmd /c dir /AL /S /B` lists every reparse point.
    It follows junctions, so a listed path below another listed path lies inside that junction's target: leave it alone.
 2. `cmd /c rmdir "<path>"` each remaining one, pasting the path exactly as `dir /B` printed it inside the quotes; it removes the junction and leaves its target alone.
    Never add `/s`.
    `cmd` expands `%NAME%` even inside quotes, so for a path containing `%` run `[System.IO.Directory]::Delete('<path>')` in PowerShell instead, doubling any single quote in the path: single quotes stop expansion, and the call is non-recursive and removes only the junction.
-3. `cmd /c dir /AL /S /B` again must print `File Not Found`; only then run `orca worktree rm`.
+3. `cmd /c dir /AL /S /B` again must print `File Not Found`, leaving a tracked symlink; only then run `orca worktree rm`.
 
-Orca workspaces live on `C:`, another volume from the shared uv cache, so uv copies each `.venv` (about 68 MB, 3 s) instead of hardlinking it, and `target/` is not seeded, because `C:` does not clone blocks.
-Both are slower, not wrong.
+This machine's workspace base is `E:/orca/workspaces`, the Dev Drive that holds the primary checkout and the shared uv cache, so a workspace's `.venv` is hardlinked from that cache and its `target/` is seeded by block clone like any worktree's.
+A base on another volume (it was `C:`) copies each `.venv` (about 68 MB, 3 s) and does not seed `target/`; both are slower, not wrong.
 
 ## Toolchain drift
 

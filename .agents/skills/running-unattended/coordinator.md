@@ -74,6 +74,6 @@ This is for Orca workers; a cloud session's workers are subagents that report in
 | Answer a worker's question | `orca orchestration reply --id <message id> --body "<answer>"` | same |
 | Read a worker | `orca orchestration worker-read --dispatch <dispatch id> --limit 15` | same |
 | List workers | `orca orchestration worker-list --json` | same |
-| Retire a workspace | `orca worktree rm --worktree <selector>` | [`harness-setup.md` § Orca](../../../docs/harness-setup.md#orca) |
+| Retire merged workspaces | `mise run reap -- --yes` from the primary checkout; by hand, one workspace: `orca worktree rm --worktree <selector>` | [`harness-setup.md` § Orca](../../../docs/harness-setup.md#orca) |
 
 For any other flag, a throwaway subagent looks it up and returns the command line and nothing else, never in the coordinator's context; whoever first uses a new line successfully adds it to this table in their PR.
