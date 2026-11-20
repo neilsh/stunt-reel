@@ -10,8 +10,10 @@ pytest never resets it.  On Windows the mkdir mode shim keeps pytest's own
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import sys
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -55,6 +57,32 @@ def _no_caller_repository(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for name in _git_local_env_vars():
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _git_core_longpaths(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Let git in any child of the session read a repository past ``MAX_PATH`` on Windows.
+
+    Windows git defaults ``core.longpaths`` off, so the suite's nested repositories fail at
+    ``git init`` or ``git add`` (issue #852).  The setting goes through ``GIT_CONFIG_GLOBAL``,
+    not ``GIT_CONFIG_COUNT``: a local fetch's ``upload-pack`` child drops the command-scope
+    variables (``connect.c``'s ``local_repo_env``) and then cannot read its long objects.  A
+    caller's own global config, or a ``GIT_CONFIG_GLOBAL`` it already set, is included, so the
+    setting joins it instead of replacing it.
+    """
+    # The work sits in the platform branch, never after an early return, so mypy analysing for
+    # either platform finds no unreachable statement.
+    if sys.platform == "win32":
+        inherited = os.environ.get("GIT_CONFIG_GLOBAL")
+        global_config = Path(inherited) if inherited else Path.home() / ".gitconfig"
+        included = (
+            [f'[include]\n\tpath = "{global_config.as_posix()}"'] if global_config.is_file() else []
+        )
+        config = tmp_path_factory.getbasetemp() / "gitconfig"
+        config.write_text(
+            "\n".join([*included, "[core]", "\tlongpaths = true"]) + "\n", encoding="utf-8"
+        )
+        os.environ["GIT_CONFIG_GLOBAL"] = config.as_posix()
 
 
 @pytest.fixture(autouse=True)
