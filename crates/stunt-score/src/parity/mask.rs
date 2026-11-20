@@ -17,8 +17,8 @@ const CURSOR_INDEX: u8 = 255;
 /// Palette indices a captured pixel counts as sky by: elevation bands 227 to 238, down to the
 /// horizon (research/formats/concepts/palette-and-shading.md). `PLAYONE.EXE`'s gradient starts at
 /// 224, but shapes paint 224 to 226 too, so those count as sky only by position
-/// ([`CAPTURE_ZENITH_INDICES`]). This describes captures only; the renderer's band table in
-/// `mode13h.wgsl` is a separate model and is deliberately not shared.
+/// ([`CAPTURE_ZENITH_INDICES`]). This describes captures only; the renderer's sky layout in
+/// `stunt-render`'s `sky.rs` is a separate model and is deliberately not shared.
 pub(super) const CAPTURE_SKY_INDICES: RangeInclusive<u8> = 227..=238;
 
 /// Palette indices of `PLAYONE.EXE`'s zenith sky above the 227 band, which shapes also

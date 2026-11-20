@@ -59,8 +59,8 @@ The colour is picked from the palette table, not blended.
 
 Not every surface is lit this way.
 The ground pieces are drawn flat, without light, as the [island guide](island.md) explains.
-In the captures we checked, the sky appears as bands of palette colours that tilt with the camera.
-The palette note records the sky as an observation, not a settled rule.
+The sky is drawn as bands of palette colours that tilt with the camera, each edge a straight line parallel to the horizon, and the sun is a filled disc drawn over them.
+The palette note records the rule as read from the player's sky drawer, and our renderer draws it the same way.
 
 ## Read next
 

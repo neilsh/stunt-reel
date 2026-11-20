@@ -1,0 +1,49 @@
+# #617: the sun disc and the sky bands on BALLOON.FLM (var 13 = 0xF02D). The var-13 handler
+# 0x196C (AX = var 13) and its ret 0x199D (AX BX CX = the stored light negated, DS:0x49EC the
+# light); the disc drawer after its transform (0x909C: SI = 0x80C0 and DS the work segment, so
+# DS:SI:0x50 reads the view matrix and the lens words 0x8108/0x810C; AX BX CX = -light) and before
+# its fill (0x90EF: AX BX = centre, CX = radius, DI = depth); and each sky band edge (0x8D64:
+# AX BX and CX DX = the edge's two screen endpoints) with the band fill's colour (0x8E86: AX).
+[run]
+stop_tick = 260
+
+[[probe]]
+name = "var13-entry"
+kind = "break"
+at = 0x196C
+hits = 40
+capture = ["stack:2", "mem:DS:0x49EC:6"]
+
+[[probe]]
+name = "var13-ret"
+kind = "break"
+at = 0x199D
+hits = 40
+capture = ["mem:DS:0x49EC:6"]
+
+[[probe]]
+name = "disc-matrix"
+kind = "break"
+at = 0x909C
+hits = 60
+capture = ["stack:2", "mem:DS:SI:0x50"]
+
+[[probe]]
+name = "disc-fill"
+kind = "break"
+at = 0x90EF
+hits = 60
+
+[[probe]]
+name = "band-edge"
+kind = "break"
+at = 0x8D64
+arm = { tick = 205 }
+hits = 120
+
+[[probe]]
+name = "band-colour"
+kind = "break"
+at = 0x8E86
+arm = { tick = 205 }
+hits = 120

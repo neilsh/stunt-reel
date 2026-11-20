@@ -104,7 +104,12 @@ _Source: [the actor matrix builder 0x04E5 read statically](../../work/2026-11/27
 
 `DS:0x49EC..0x49F0` is the world light.
 The variable-13 handler `0x196C` is the one writer found (`[Bounded Observation]`: four direct references per word, [`memory-map-patch3.md`](memory-map-patch3.md), which a static count cannot extend to indirect stores, and the memory watch `light-writers`, described next).
-The handler (Patch #3 `0x1A7F`) computes `angle = var 13 - 0x4000`, a fixed second angle `0x71C` (about 10 degrees), trig at `0824:05D2`, stored at `DS:0x49EC` and negated at `work:0x8078` for the sun disc.
+The handler (Patch #3 `0x1A7F`) takes `a = var 13 - 0x4000` and a fixed second angle `b = 0x71C` (about 10 degrees) to the trig `0824:05D2` (image `0x8812`), which looks both up at `angle >> 4` in the 4096-step table at `work:0x19AA` and returns three Q15 products floored by `imul; shl ax, 1; rcl dx, 1`; the handler stores them as
+`L = (cos a cos b, -sin a, -cos a sin b)` at `DS:0x49EC` and negated at `work:0x8078` for the sun disc ([`palette-fade.md` § 3.2](palette-fade.md#32-other-readers-of-the-live-variables)).
+Variable 13 is so the sun's angle from the zenith, turned `b` out of the DOS `x`-`y` plane.
+`[Established]` for the formula, static; it reproduces both lights observed live, `(99, 32766, -17)` at variable 13 = `0x002D` (below) and `(-12259, 30310, 2147)` at `0xF02D`, which a break on `0x196C` and its `ret` logged on `BALLOON.FLM` (Patch #3, ticks 53 on, every entry); the table is `round(32767 sin)` over its first half and one more than that half's negation over its second, checked word for word against the image.
+The renderer computes `L` this way (`ShadeLight::world` in `crates/stunt-core/src/sod/light.rs`).
+_Source: [the sky drawer, the sun disc and the var-13 light read live on BALLOON](../../work/2026-11/617_zenith-bands-sun-disc/journal.md#2026-11-20-the-sky-drawer-the-sun-disc-and-the-var-13-light-read-live-on-balloon)._
 Its caller `0x0F50`, in the frame step `0x0EE9`, passes `[0x4888 + 0x98]`, variable 13's copy in the film-state snapshot.
 It is entered with `var 13 = 0x002D` on `CTRY.FLM` on both builds (first at tick 74 unpatched in the earlier plans, which armed late; 51 in the series below, and 53 patched) and on `INTRO.FLM` unpatched (ticks 48, 159 and 204; no patched `INTRO` run), and the world light it stores is `(99, 32766, -17)`.
 `DS:0x49EC` held that value at every sample: ticks 59, 160-587 (`light-work`), 204 and 462.
@@ -113,8 +118,7 @@ The memory watch `light-writers` saw no changing write, but both of its runs end
 So every object set up through `0x9100` without a rotation is lit by the world light, a function of variable 13 alone, and a rotated object by that light in its own frame.
 The ground takes no light: its leaves are drawn flat and never pass through `0x9100` ([`world-scene.md`](world-scene.md) section 2).
 The per-shot tilts of section 8 are the light of rotated objects and sub-models, sampled at `work:0x8072` after the last object of the frame was set up.
-At every sampled tick of both films the world light was `(99, 32766, -17) / 32767` with variable 13 at `0x002D`.
-Whether a renderer computes `L` from variable 13 or tabulates it is still open (Open questions).
+At every sampled tick of both films the world light was `(99, 32766, -17) / 32767` with variable 13 at `0x002D`, the handler's formula above at that value.
 
 `[Bounded Observation]` for the series over the whole of `CTRY.FLM` (plan `light-world-series`: a break on `0x196C`, Patch #3 `0x1A7F`, to `stop_tick = 1342`, logging the registers (`AX` is variable 13) and `DS:0x49EC..0x49F0` on every entry; one film, DOSBox-X 2026.10.01, 2026-11-05, both runs on the committed plan).
 The handler was entered 161 times unpatched (film clock 51 to 1340) and 156 times on Patch #3 (53 to 1340), and every entry carried the same values:
@@ -300,17 +304,13 @@ The data-side and renderer-side explanations for the ground shade, all negative 
   The ground is drawn flat and takes no light ([`world-scene.md`](world-scene.md) section 2); the world light `DS:0x49EC` held one value at every sample (section 4.2), and the tilted values in section 8 belong to rotated objects.
 * **`Rᵀ · L` (the object-frame light) for a rotated actor**, and a `SHADES` or `0xA8BC` step that turns `R · L` back into it for the actor's body: the light handed on and the light `SHADES` dots the body's normals with are both `R · L` (section 4.3).
   _Source: [the actor light observed live](../../work/2026-11/474_actor-light/journal.md#2026-11-16-the-actor-light-is-r--l-live)._
+* **A world light tabulated at `(99, 32766, -17)` for every value of variable 13**, which the renderer drew until 2026-11-20: `BALLOON.FLM`'s `0xF02D` stores `(-12259, 30310, 2147)` (section 4.2).
+  _Source: [the sky drawer, the sun disc and the var-13 light read live on BALLOON](../../work/2026-11/617_zenith-bands-sun-disc/journal.md#2026-11-20-the-sky-drawer-the-sun-disc-and-the-var-13-light-read-live-on-balloon)._
 * **"The ground shade is world-fixed, not Gouraud."**
   An earlier reading was wrong: the player interpolates the index per vertex in screen space (sections 3-6).
 
 ## Open questions
 
-1. The trig at `0824:05D2`: `(99, 32766, -17)` has a horizontal part of about 100, where `32767 cos(var 13 - 0x4000)` would give about 141.
-   Whether the table, a scale or the second angle accounts for it decides whether a renderer computes `L` from variable 13 or tabulates it; a film with another variable-13 value would test the formula.
-   `BALLOON.FLM` is such a film: it sets variable 13 to `0xF02D` (61485) at tick 0 (`mise run flm-events -- corpus/stuntisl/VAULT/BALLOON.FLM`), which is `0x002D - 0x1000`: a sixteenth of a turn (22.5 degrees) from the observed value, if variable 13 is a 16-bit angle as `var 13 - 0x4000` suggests.
-   Its `vault-balloon` capture shows the sun disc this light places ([`palette-fade.md` § 3.2](palette-fade.md#32-other-readers-of-the-live-variables)), so a live break on `0x196C` in that film, or the disc's position in its frames, would test the formula.
-   Read as a 16-bit angle from the zenith, `0xF02D` puts a probe disc about 31 px from the capture's, nearly the same offset at ticks 155 and 200 (`[Supported Inference]`, same section), too far to adopt; a break on `0x196C` in `BALLOON.FLM` that logs `AX` and `DS:0x49EC..0x49F0` would give the vector exactly.
-   The renderer lights it with the `0x002D` light all the same (`ShadeLight::world` in `crates/stunt-core/src/sod/light.rs`).
-2. The renderer round for the ground is the terrain-under-props change of [`world-scene-residuals.md`](world-scene-residuals.md) section 6. ([#69](https://github.com/neilsh/stunt-reel/issues/69))
-3. The light the `0x1CFB` path hands on when the stored-matrix flag `[si+0x0F] & 1` skips `071D`, since it then leaves `AX`, `BX`, `DX` as it found them.
+1. The renderer round for the ground is the terrain-under-props change of [`world-scene-residuals.md`](world-scene-residuals.md) section 6. ([#69](https://github.com/neilsh/stunt-reel/issues/69))
+2. The light the `0x1CFB` path hands on when the stored-matrix flag `[si+0x0F] & 1` skips `071D`, since it then leaves `AX`, `BX`, `DX` as it found them.
    (Which way a sub-model's `ROT*` turns `L` is answered: `ROTZ` turns it by `Rz(a)ᵀ`, the inverse of the vertices' turn, and `ROTX` and `ROTY` leave it, [`sod-vm-execution.md`](sod-vm-execution.md) § 8.7.)
