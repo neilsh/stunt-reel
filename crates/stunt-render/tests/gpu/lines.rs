@@ -194,7 +194,7 @@ fn only_a_front_facing_polygon_draws_its_outline() {
 fn an_edge_on_polygon_draws_its_outline_unbroken() {
     common::gpu_test(|| {
         let distance = 200.0;
-        for height in [-30.0_f32, -7.0, 11.0, 23.0] {
+        for height in [-30.0f32, -7.0, 11.0, 23.0] {
             // Two corners 40 m (50 columns) apart across the view, and the third halfway to
             // the eye on the ray through their midpoint: the plane holds the eye.
             let corners = [
