@@ -105,13 +105,19 @@ def test_sweep_accepts_sparse_slots_whose_trailing_word_is_the_next_flags(set_pa
 
 
 def test_sweep_flags_slot_order_range_and_spill(set_parser: Any) -> None:
-    props = [_prop(1, b"\x03\x1b", b"\x09\x13"), _prop(1, b"\x09\x13", b"\x00\x00")]
+    props = [_prop(0, b"\x03\x1b", b"\x09\x13"), _prop(0, b"\x09\x13", b"\x00\x00")]
     assert _probe(set_parser, props) == ["prop slot words do not strictly increase"]
-    props = [_prop(39, b"\x09\x13", b"\x00\x00"), _prop(40, b"\x09\x13", b"\x00\x00")]
+    props = [_prop(0, b"\x09\x1f", b"\x00\x00"), _prop(39, b"\x09\x13", b"\x00\x00")]
+    props.append(_prop(40, b"\x09\x13", b"\x00\x00"))
     assert _probe(set_parser, props) == [
         "prop slot word outside 0..39",
         "trailing word differs from the next slot's flags at slot 39",
     ]
+
+
+def test_sweep_flags_a_set_without_prop_slot_0(set_parser: Any) -> None:
+    props = [_prop(1, b"\x03\x1b", b"\x00\x00")]
+    assert _probe(set_parser, props) == ["first prop slot word is not 0"]
 
 
 def test_truncated_byte_is_rejected(set_parser: Any) -> None:

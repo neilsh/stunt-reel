@@ -18,7 +18,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 import parity_judge as judge_cli  # noqa: E402
 import parity_sweep  # noqa: E402
 
-from stunt_reel import parity_layout, parity_pipeline  # noqa: E402
+from stunt_reel import expected_file, parity_layout, parity_pipeline  # noqa: E402
 from stunt_reel.parity_artifacts import LOSS_CLASSES, FrameReport, Report  # noqa: E402
 from stunt_reel.parity_judge import (  # noqa: E402
     Decision,
@@ -707,13 +707,11 @@ def _write_losses(directory: Path, loss: dict[str, float], adapter_class: str = 
 
 def _pin_losses(root: Path, renderer: str, loss: dict[str, float]) -> None:
     table = "\n".join(f"{name} = {value}" for name, value in loss.items())
-    pins = root / parity_layout.REFERENCES_FILE
+    pins = expected_file.path(root / parity_layout.REFERENCES_FILE, renderer)
+    pins.parent.mkdir(parents=True, exist_ok=True)
     pins.write_text(
-        pins.read_text(encoding="utf-8")
-        + f'\n[ctry.expected.{renderer}]\nssim = 0.8\niou = 0.8\ncrates = "{"1" * 40}"\n'
-        + f'sha256 = "{"2" * 64}"\nadapter = "llvmpipe"\n\n[ctry.expected.{renderer}.loss]\n'
-        + table
-        + "\n",
+        f'[ctry]\nssim = 0.8\niou = 0.8\ncrates = "{"1" * 40}"\n'
+        f'sha256 = "{"2" * 64}"\nadapter = "llvmpipe"\n\n[ctry.loss]\n' + table + "\n",
         encoding="utf-8",
     )
 

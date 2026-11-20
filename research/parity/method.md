@@ -5,22 +5,22 @@ summary: "Defines the parity loop that judges a render change against PLAYONE.EX
 # Parity Method: the Fidelity Loop
 
 How a rendering change is judged against `PLAYONE.EXE`.
-Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md) (parity, captured frame, film clock); capture mechanics are in [`../playone-exe/capture.md`](../playone-exe/capture.md); the commands are [`docs/howto/score-a-render-change.md`](../../docs/howto/score-a-render-change.md); each film's expected scores are its expected tables in [`references.toml`](references.toml); dated results are journal entries (step 7) or, before them, rows of the parity log (section 5).
+Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md) (parity, captured frame, film clock); capture mechanics are in [`../playone-exe/capture.md`](../playone-exe/capture.md); the commands are [`docs/howto/score-a-render-change.md`](../../docs/howto/score-a-render-change.md); each film's expected scores are its tables in [`expected/<class>.toml`](expected/); dated results are journal entries (step 7) or, before them, rows of the parity log (section 5).
 Metric behaviour and recapture noise are in [`metric-bench.md`](metric-bench.md); what a score cannot yet prove is in [`evidence-limits.md`](evidence-limits.md).
 
 ## 1. The loop
 
 0. **Baseline and expected scores.**
    `references.toml` names, by film slug and content hash, the capture under `<data root>/captures/<slug>/frames` each film is scored against.
-   `mise run parity` prints, under each film's summary line, its expected line: the expected score of the film's table for the renderer class the render was drawn on (`[<film>.expected.gpu]` or `.lavapipe`) with the SSIM delta, or what is missing (no adapter in the report, or no table for the class yet); the adoption noise note comes last.
+   `mise run parity` prints, under each film's summary line, its expected line: the expected score of the film's table for the renderer class the render was drawn on (`[<film>]` of [`expected/gpu.toml`](expected/gpu.toml) or [`expected/lavapipe.toml`](expected/lavapipe.toml), [ADR 0053](../../docs/adr/0053-expected-scores-live-in-a-generated-file-per-class.md)) with the SSIM delta, or what is missing (no adapter in the report, or no table for the class yet); the adoption noise note comes last.
    The line judges drift, a delta beyond the film's `noise_sigma` or, on a row without one, beyond `1e-7`, only when the report names an adapter whose name matches the table's, a frame scored, the run scored its own render (not `--retime` or `--reuse`), the git tree hash of the checkout's `crates/` (tracked files as they are on disk and untracked ones git does not ignore) is the table's `crates`, the film's pins (`sha256`, `all_sha256`) are the ones the table records; otherwise it says why.
    The check reads the checkout, not the binary (with `--no-build` it assumes the binary came from the checkout, and with `--no-render` the render did, except that its recorded build tree may differ from the checkout's under `crates/stunt-score/src/parity/`, the scorer, alone), and assumes builds of the same `crates/` render identically; `noise_sigma` is the recapture noise borrowed as a tolerance, not a measured bound on build-to-build variation ([section 3](evidence-limits.md#3-what-is-not-yet-evidence), adoption floor).
    The table pins a tree, not a commit, because PRs land as new commits (squash or rebase): a branch commit never reaches `main`, but its `crates/` tree does when no other `crates/` change lands first, so a clone without the branch commit still compares (#308's branch commit `d01a3c4f` and its squash `fa8b9a0` share the `crates/` tree `641cffd`).
    `commit`, the commit measured, is optional and only says where; nothing compares it.
-   A table that `parity-repin` has written since #775 also has a `[<film>.expected.<class>.loss]` sub-table, the report's `mean_loss_by_class_scored` with a key for each class of [`report-fields.md`](report-fields.md), so `mise run judge` can print each class's change against the pin ([`score-a-render-change.md`](../../docs/howto/score-a-render-change.md)); nothing judges drift on it.
-   The tables are written by `mise run parity-repin`, from reports whose `report.json` `crates` is the current clean tree: the tree a clean `crates/` rendered or, for a `--no-render` run, one that differs from the render's recorded build tree only under `crates/stunt-score/src/parity/` ([`report-fields.md`](report-fields.md)), and change only when the measured `crates/` tree or a film's `sha256` or `all_sha256` pin changes, or when a table first gains its class losses.
-   A conflict in them is resolved by taking `main`'s expected tables, keeping the branch's other edits to `references.toml` (a new row or pin), rerunning `mise run parity` on the merged tree and repinning, never by hand-merging numbers.
-   A catch-up repin, for tables whose `crates` lags `main`, is its own commit.
+   A table also has a `[<film>.loss]` sub-table, the report's `mean_loss_by_class_scored` with a key for each class of [`report-fields.md`](report-fields.md), so `mise run judge` can print each class's change against the pin ([`score-a-render-change.md`](../../docs/howto/score-a-render-change.md)); nothing judges drift on it.
+   The files are generated by `mise run parity-repin`, one class whole per run, from reports whose `report.json` `crates` is the current clean tree: the tree a clean `crates/` rendered or, for a `--no-render` run, one that differs from the render's recorded build tree only under `crates/stunt-score/src/parity/` ([`report-fields.md`](report-fields.md)), and change when the measured `crates/` tree or a film's `sha256` or `all_sha256` pin changes, when a row is added or removed, or when the generated header or format changes.
+   The `expected-pins` merge driver keeps `main`'s files when `main` is merged into a branch or the branch is rebased onto it; the branch then reruns `mise run parity` on the merged tree and repins its class, and without the driver takes `main`'s `expected/` files by hand, never hand-merging numbers.
+   A PR repins only the class it measured, so the other class's `crates` lags until a catch-up repin, its own commit: `lavapipe` from a cloud session whose llvmpipe matches the pinned `adapter` (tracked on #830), `gpu` from local-windows.
    Notes cite the journal entry for before-and-after scores rather than copy the expected scores ([`loop-rules.md`](../../.agents/skills/improving-render-parity/loop-rules.md#adoption-rule)).
 1. **Capture on the film clock.**
    Each captured frame is tagged in `meta.json` with `film_tick` (the film clock: the tick the frame shows) and `global_tick`.
@@ -106,10 +106,32 @@ Three rules were counted on the capture planes of all seven references and score
 The first two rules count shape paint as sky.
 On `location` the 226 edge of a helicopter window borders the window's own 227 to 238 gradient (tick 1090, 38 pixels at rows 123 to 130), so touching the band is no sign of sky.
 On `traintnl` tick 265, 79 pixels of 224 are a window of the red rear car that the top edge clips, so reaching row 0 is not enough either.
-The adopted rule counts `bomb`'s zenith rows and most of `balloon`'s zenith sky, and none of the paint above.
+The full-width rule counts `bomb`'s zenith rows and most of `balloon`'s zenith sky, and none of the paint above.
 It raises `balloon`'s IoU by 0.0777 and `bomb`'s by 0.0497 and moves no other film's; IoU figures recorded before it are on the old scale for those two films.
-It still misses sky the balloon cuts off from row 0 or from a side (`balloon` 83,643 pixels, 16,983 and 15,119 of them on tick 243; [#745](https://github.com/neilsh/stunt-reel/issues/745)).
+It still misses sky the balloon cuts off from row 0 or from a side (`balloon` 83,643 pixels, 16,983 and 15,119 of them on tick 243).
 _Source: [2026-11-18: a positional rule for the zenith sky](../../work/2026-11/718_positional-zenith-sky/journal.md#2026-11-18-a-positional-rule-for-the-zenith-sky)._
+
+Since 2026-11-20 a 224 to 226 run also counts as sky when it overlaps a 224 to 226 pixel the previous captured frame counted by the same rule; `score_matched` builds the mask over every captured frame whose index plane is present, in capture order, so which ticks the render holds does not change a frame's mask.
+The carried mask holds those counted 224 to 226 pixels, not the 227 to 238 band, which is sky in every frame; carrying the band would add 617 `location`, 310 `intro`, 41 `land` and 1 `traintnl` 224 to 226 pixels the rule otherwise leaves as geometry.
+A camera cut can carry a frame's sky onto the next frame's paint where the counted pixels coincide, and the only check against that is the empirical one on the seven references.
+On the capture planes of the seven references the rule adds 77,063 `balloon` pixels and none on the other six films.
+It was scored on one render of the seven references, `llvmpipe (LLVM 21.1.7, 256 bits)`, with the same render scored before and after the rule; each cell is the film's `mean_iou_scored`:
+
+| Film | reaches row 0 and both columns | or overlaps the previous frame's counted sky |
+|---|---|---|
+| `balloon` | 0.8868 | 0.8978 |
+| `bomb` | 0.9626 | 0.9626 |
+| `traintnl` | 0.9659 | 0.9659 |
+| `location` | 0.9796 | 0.9796 |
+| `intro` | 0.9865 | 0.9865 |
+| `ctry` | 0.9910 | 0.9910 |
+| `land` | 0.9852 | 0.9852 |
+
+Only `balloon` rises, by 0.0110: 13 of its 107 scored frames change, tick 144 from 0.2762 to 0.8978 and tick 243 from 0.4403 to 0.8916.
+The rule counts none of the paint above, so it is adopted.
+These figures are on the current render, not the `#718` table's: the renderer changed since (the straight-down `balloon` run, which scored IoU 0 there, now scores 1.0 after the camera fix [#615](https://github.com/neilsh/stunt-reel/issues/615)), and the pinned lavapipe table's catch-up repin is on [#830](https://github.com/neilsh/stunt-reel/issues/830).
+It still misses 6,580 `balloon` pixels that neither rule reaches.
+_Source: [2026-11-20: counting the sky the balloon cuts off](../../work/2026-11/745_count-zenith-sky-overlap/journal.md#2026-11-20-counting-the-sky-the-balloon-cuts-off)._
 
 ### 2.1 Fade floor
 

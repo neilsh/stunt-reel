@@ -22,3 +22,8 @@ The parity scorer uses a parity-local constant, `CAPTURE_SKY_INDICES: RangeInclu
 ## Consequences
 
 There are two sources of truth for sky indices: the capture constant and the shader's band table. Changing either one is a deliberate act that should be re-scored, and the `report.json` field lets a reader see which range a score used. The shader and the capture may still disagree; that disagreement is what parity measures.
+
+## Amendment 2026-11-20: the renderer's sky follows the sky drawer
+
+The shader's band table is gone: `crates/stunt-render/src/sky.rs` now lays out the bands, their colours 224 to 238 and `0xD0`, and the sun disc each frame from `PLAYONE`'s sky drawer `0x8C45` ([`palette-and-shading.md`](../../research/formats/concepts/palette-and-shading.md#sky-bands), [#617](https://github.com/neilsh/stunt-reel/issues/617)), and `mode13h.wgsl` draws that layout.
+Read "the shader's band table" above as that layout; the decision stands, and the scorer's ranges still describe the capture alone.

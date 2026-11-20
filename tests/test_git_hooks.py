@@ -172,6 +172,38 @@ def test_init_leaves_a_hooks_path_someone_chose(tmp_path: Path) -> None:
     assert _git(repo, "config", "--get", "core.hooksPath").stdout.strip() == ".husky"
 
 
+@needs_git
+def test_ensure_merge_driver_sets_then_reports_it(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    assert list(map(str, worktree_git.ensure_merge_driver(repo))) == [
+        "  + merge.expected-pins.driver set"
+    ]
+    driver = _git(repo, "config", "--get", "merge.expected-pins.driver").stdout.strip()
+    assert driver == worktree_git.MERGE_DRIVER_COMMAND
+    name = _git(repo, "config", "--get", "merge.expected-pins.name").stdout.strip()
+    assert name == worktree_git.MERGE_DRIVER_NAME
+    assert list(map(str, worktree_git.ensure_merge_driver(repo))) == [
+        "  = merge.expected-pins.driver set"
+    ]
+
+
+@needs_git
+def test_ensure_merge_driver_leaves_another_driver_alone(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "config", "merge.expected-pins.driver", "true")
+    lines = worktree_git.ensure_merge_driver(repo)
+    assert len(lines) == 1
+    assert lines[0].mark == "!"
+    assert not lines[0].news
+    assert _git(repo, "config", "--get", "merge.expected-pins.driver").stdout.strip() == "true"
+
+
+@needs_git
+def test_the_merge_driver_script_is_executable_in_the_index() -> None:
+    listed = _git(REPO_ROOT, "ls-files", "-s", ".githooks/merge-take-main.sh").stdout.split()
+    assert listed[:1] == ["100755"]
+
+
 _OPTIONAL_IGNORE = ":(optional).git-blame-ignore-revs"
 
 

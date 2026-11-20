@@ -58,6 +58,7 @@ paths = [
     "stunt_reel.avi",
     "stunt_reel.capture_run",
     "stunt_reel.capture_store",
+    "stunt_reel.expected_file",
     "stunt_reel.game_builds",
     "stunt_reel.references",
     "stunt_reel.tac",

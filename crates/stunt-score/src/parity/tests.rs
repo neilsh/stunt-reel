@@ -426,6 +426,16 @@ fn verdict_matches_the_numpy_golden() {
     close(verdict.delta.expect("a delta"), &expected["delta"], 1e-4);
 }
 
+/// Scores the reference with its own capture sky mask, with no previous frame to carry from.
+fn score_frame(
+    reference: &super::score::ReferenceFrame,
+    render: &super::score::RenderFrame,
+    policy: &super::score::ScorePolicy<'_>,
+) -> super::score::FrameScore {
+    let sky = super::mask::capture_sky_mask(&reference.indices, None).sky;
+    super::score::score_frame(reference, render, &sky, policy)
+}
+
 /// A uniform capture with a block of credits ink (index 255), and a render of the same
 /// background that leaves the ink out. `credits_in_render` marks the tick as one where the
 /// film shows credits, as its render record says, and puts credits elsewhere on its page.
@@ -477,10 +487,10 @@ fn score_frame_scores_credits_ink_only_on_a_tick_with_credits() {
         min_fade_level: 0.0,
     };
     let (reference, render) = credits_frames(false);
-    let masked = super::score::score_frame(&reference, &render, &policy).metrics;
+    let masked = score_frame(&reference, &render, &policy).metrics;
     assert!((masked.ssim - 1.0).abs() < 1e-4, "{}", masked.ssim);
     let (reference, render) = credits_frames(true);
-    let scored = super::score::score_frame(&reference, &render, &policy).metrics;
+    let scored = score_frame(&reference, &render, &policy).metrics;
     assert!(scored.ssim < 0.99, "{}", scored.ssim);
     assert!(scored.index_agreement < masked.index_agreement);
 }
@@ -526,7 +536,7 @@ fn the_record_credits_flag_overrides_what_the_render_drew() {
         credits: true,
         ..render
     };
-    let scored = super::score::score_frame(&reference, &dropped, &policy).metrics;
+    let scored = score_frame(&reference, &dropped, &policy).metrics;
     assert!(scored.ssim < 0.99, "{}", scored.ssim);
 
     let (reference, render) = credits_frames(true);
@@ -534,7 +544,7 @@ fn the_record_credits_flag_overrides_what_the_render_drew() {
         credits: false,
         ..render
     };
-    let masked = super::score::score_frame(&reference, &stray, &policy).metrics;
+    let masked = score_frame(&reference, &stray, &policy).metrics;
     assert!((masked.ssim - 1.0).abs() < 1e-4, "{}", masked.ssim);
 }
 
@@ -562,8 +572,8 @@ fn a_render_that_loses_its_credits_scores_lower_on_a_credits_tick() {
         credits: true,
         ..lost
     };
-    let with = super::score::score_frame(&reference, &drawn, &policy).metrics;
-    let without = super::score::score_frame(&reference, &lost, &policy).metrics;
+    let with = score_frame(&reference, &drawn, &policy).metrics;
+    let without = score_frame(&reference, &lost, &policy).metrics;
     assert!(
         with.ssim > without.ssim + 0.01,
         "{} vs {}",

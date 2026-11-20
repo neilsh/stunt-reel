@@ -12,7 +12,7 @@ To decide whether to promote one, score the candidate and the current reference 
 - [ ] 4. Copy build/scratch/references.toml back over research/parity/references.toml
 - [ ] 5. mise run parity -- --films <film> --no-build   (renders and scores the current reference)
 - [ ] 6. Compare the two scored lines; promote only in a commit of its own, with the journal entry
-- [ ] 7. The new sha256 makes the film's expected entries read "reference pin changed": re-measure on the promoting commit and update [<film>.expected.<class>] (scores, its sha256 and all_sha256, and crates from git rev-parse HEAD:crates, with crates/ clean and HEAD the commit you rendered)
+- [ ] 7. The new sha256 makes the film's expected entries read "reference pin changed": re-measure on the promoting commit and repin `research/parity/expected/<class>.toml` (scores, its sha256 and all_sha256, and crates from git rev-parse HEAD:crates, with crates/ clean and HEAD the commit you rendered)
 ```
 
 Restore from the copy rather than with `git checkout`, which would also discard any edit to the file that was there before step 2.

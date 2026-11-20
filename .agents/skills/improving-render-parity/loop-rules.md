@@ -84,13 +84,16 @@ The +0.010 target bar, the 0.025 per-frame bound and the 3-frame minimum are pol
 
 ### After adopting
 
-An adopted change updates the expected table in [`references.toml`](../../../research/parity/references.toml) for the renderer class it measured (`ssim`, `iou`, `adapter` from that run; `crates` from `git rev-parse <commit>:crates` on the commit it rendered, with `crates/` clean (no uncommitted or untracked files under it), not the commit itself, which a squash merge keeps off `main`; `sha256` and `all_sha256` copied from the film's row); the other class keeps its older entry, if any, until someone measures it.
+An adopted change repins the expected tables in [`expected/<class>.toml`](../../../research/parity/expected/) for the renderer class it measured (`ssim`, `iou`, `adapter` from that run; `crates` from `git rev-parse <commit>:crates` on the commit it rendered, with `crates/` clean (no uncommitted or untracked files under it), not the commit itself, which a squash merge keeps off `main`; `sha256` and `all_sha256` copied from the film's row); the other class's file keeps its older entry, if any, until its catch-up repin (below).
 
 **Repin, never hand-merge.**
-`mise run parity-repin -- [--class gpu|lavapipe]` writes every film's table from its current report after `mise run parity` on a clean `crates/`, and writes nothing when a film lacks a report measured on that tree, was scored against another capture or archive, or has no recorded pins.
+`mise run parity-repin -- [--class gpu|lavapipe]` regenerates the class's whole file from every film's current report after `mise run parity` on a clean `crates/` (the class defaults to the one the reports were drawn on), and writes nothing when a film lacks a report measured on that tree, was scored against another capture or archive, or has no recorded pins.
 
 - Expected tables change only when the measured `crates/` tree or a film's `sha256` or `all_sha256` pin changes.
-- On a conflict in an expected table, take `main`'s expected tables while keeping the branch's other edits to `references.toml` (a new row or pin), rerun `mise run parity` on the merged tree, run `mise run parity-repin` and commit.
+- The `expected-pins` merge driver ([ADR 0053](../../../docs/adr/0053-expected-scores-live-in-a-generated-file-per-class.md), registered by `mise run init` and `ensure`) keeps `main`'s `expected/` files when you merge `main` into a branch or rebase it onto `main`.
+  Then rerun `mise run parity` on the merged tree, run `mise run parity-repin` and commit.
+  Without the driver, take `main`'s `expected/` files by hand, then the same.
   Never hand-merge the numbers: a merged number was measured on no tree.
-- A catch-up repin (the tables' `crates` lags `main`) is allowed in any PR, but only as its own commit, such as `chore(parity): repin expected scores`.
+- A catch-up repin (a class's `crates` lags `main`, as the other class's does after each PR) is allowed in any PR, but only as its own commit, such as `chore(parity): repin expected scores`.
+  A cloud session whose llvmpipe matches the pinned `adapter` does the `lavapipe` catch-ups, tracked on [#830](https://github.com/neilsh/stunt-reel/issues/830); local-windows does `gpu`.
 - A research note cites the journal entry for before-and-after scores and never copies the expected scores.

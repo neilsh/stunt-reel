@@ -48,6 +48,20 @@ def _spawned(monkeypatch: pytest.MonkeyPatch) -> list[subprocess.Popen[str]]:
     return procs
 
 
+#: procfs states in which a process no longer runs: ``Z`` awaits its reaper, ``X``/``x`` is one
+#: being reaped (issue #851).
+_DEAD_STATES = frozenset({"Z", "X", "x"})
+
+
+def _alive_in_stat(stat: str) -> bool:
+    """Whether the procfs *stat* line says its process still runs.
+
+    The state is the field after the last ``)``: the command name before it may hold spaces
+    and parentheses of its own.
+    """
+    return stat.rsplit(")", 1)[1].split(maxsplit=1)[0] not in _DEAD_STATES
+
+
 def _alive(pid: int) -> bool:
     """Whether process *pid* still runs; a zombie awaiting its reaper does not."""
     if os.name == "nt":
@@ -59,7 +73,7 @@ def _alive(pid: int) -> bool:
     except OSError:
         return False
     try:
-        return ") Z " not in Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        return _alive_in_stat(Path(f"/proc/{pid}/stat").read_text(encoding="utf-8"))
     except OSError:
         # A zombie passes the kill above and its reaper can run before this read, so a missing
         # entry means reaped, not running. Only without procfs (macOS) is the kill all we know.
@@ -158,6 +172,20 @@ def test_a_zombie_reaped_during_the_check_is_not_alive(monkeypatch: pytest.Monke
     assert not _alive(zombie.pid)
 
 
+@pytest.mark.parametrize(
+    ("state", "alive"),
+    [("Z", False), ("X", False), ("x", False), ("R", True), ("S", True)],
+)
+def test_a_stat_line_state_says_whether_the_process_runs(state: str, alive: bool) -> None:
+    """``Z``, ``X`` and ``x`` are all dead, the last two racing the reaper as ``Z`` does (#851).
+
+    The line is synthetic, with spaces and a ``)`` in its command name, so this parse is tested
+    off Linux too.
+    """
+    stat = f"1234 (python ) 3) {state} 1 1234 1234 0 -1 4194304 0 0 0 0 0 0 0 0 20 0 1 0"
+    assert _alive_in_stat(stat) is alive
+
+
 def test_a_finished_command_keeps_its_exit_code_and_output() -> None:
     # Under concurrent gates the child's start alone outlasted 30 s (issue #571); 600 s still
     # fails a hung child rather than hanging the run.
@@ -185,9 +213,13 @@ def test_timeout_kills_the_grandchild_too() -> None:
             grandchild = _grandchild(proc.stdout.readline())
             code, _output = process_tree.wait(proc, 0.5)
             deadline = time.monotonic() + _GONE_WITHIN
-            while _alive(grandchild) and time.monotonic() < deadline:
+            while time.monotonic() < deadline:
+                if not _alive(grandchild):
+                    break
                 time.sleep(0.1)
-            if _alive(grandchild):
+            else:
+                # The ``else`` runs only on timeout, so a second ``_alive()`` call cannot catch
+                # ``X`` after the loop saw ``Z`` and describe a process already reaped (issue #851).
                 survivor = _describe(grandchild, since)
         finally:
             if grandchild and _alive(grandchild):

@@ -515,7 +515,7 @@ impl SceneRenderer {
         let mut authored = CameraController::default();
         authored.set_authored_transform(frame.view);
         let controller = camera.unwrap_or(&authored);
-        let camera_uniform = controller.build_uniform();
+        let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
         camera_resources.upload(queue, &camera_uniform);
 
         self.prepared.clear();

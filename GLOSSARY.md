@@ -264,10 +264,11 @@ _Avoid_: fidelity target, parity target, pinned film
 Expected scores are kept per class.
 _Avoid_: backend (wgpu's term for Vulkan, DX12 and the rest)
 
-**Expected score**: A reference film's parity score recorded for one renderer class on one measured `crates/` tree; drift is judged against it.
+**Expected score**: A reference film's parity score recorded for one renderer class on one measured `crates/` tree, in `research/parity/expected/<class>.toml`; drift is judged against it.
 _Avoid_: baseline (unqualified), pinned score
 
-**Repin**: Rewriting every reference film's expected scores for one renderer class from reports rendered on the current `crates/` tree.
+**Repin**: Regenerating one renderer class's expected-scores file, `research/parity/expected/<class>.toml`, from reports rendered on the current `crates/` tree.
+A *catch-up repin* does the same for the class a PR did not measure.
 _Avoid_: rebaseline, hand-merging scores
 
 **Captured frame**: One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered by capture order and tagged with the film clock read when it was taken.
@@ -293,8 +294,8 @@ _Avoid_: frame counter, global tick
 The **authored fade level** is the same ratio taken from the film's own brightness palette control at that tick.
 _Avoid_: brightness, exposure
 
-**Sky band**: One of the palette indices 227 to 238 that `PLAYONE.EXE` paints the sky with, in straight bands by view-ray elevation.
-Every captured pixel in a sky band is sky.
+**Sky band**: One of the palette indices 224 to 238, and `0xD0` below the last, that `PLAYONE.EXE`'s sky drawer paints the sky with, each band bounded by straight screen lines parallel to the horizon.
+Every captured pixel in 227 to 238 is sky; shapes paint 224 to 226 too, so those count as sky only by position, and the scorer counts `0xD0` as geometry.
 _Avoid_: sky index, clear colour (the render's framebuffer clear)
 
 **Scored frame**: A captured frame that enters a mean: matched to a render at its film clock, not excluded by the fade floor or the UI overlay.

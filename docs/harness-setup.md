@@ -62,7 +62,7 @@ Nothing to do.
 Create it with any tool, under `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, where `mise run reap` can reap it, except an Orca workspace, whose path Orca chooses (see [Orca](#orca)):
 
 - Python tasks find the corpus and captures through the data root and build `.venv` on the first `uv run`, hardlinked out of the shared uv cache on the same volume.
-- The first task that builds Rust runs the hidden `ensure` task first, which seeds an empty `target/` by block clone from another checkout on a ReFS volume ([ADR 0030](adr/0030-new-worktrees-seed-target-by-block-clone.md)) and sets `core.hooksPath`.
+- The first task that builds Rust runs the hidden `ensure` task first, which seeds an empty `target/` by block clone from another checkout on a ReFS volume ([ADR 0030](adr/0030-new-worktrees-seed-target-by-block-clone.md)) and sets `core.hooksPath`, `blame.ignoreRevsFile` and the `expected-pins` merge driver (`.githooks/merge-take-main.sh`, [ADR 0053](adr/0053-expected-scores-live-in-a-generated-file-per-class.md)) in the shared repository config.
   Concurrent tasks wait on one lock, so the gate seeds once.
 - `mise run init` does both now instead of at the first task, runs `uv sync`, and names any link an older `init` left in the checkout.
 

@@ -102,7 +102,7 @@ _Source: the Milestone 1 and 2 sign-offs (Phases 0–2) in the frozen [`TEAM_SHE
     The world's decal outlines are a line list, which wgpu cannot bias, so they compare `LessEqual` unbiased and can lose pixels to a base in their plane.
     An actor's ground shadow goes through the same pass, flattened 1 mm above the ground.
   * *glTF 2.0 export:* Core glTF 2.0 has no depth bias or draw order, so `stunt-gltf` alone moves decal vertices $\epsilon = 0.001\text{ m}$ toward their front normal: $\mathbf{v}' = \mathbf{v} + 0.001\hat{\mathbf{n}}$.
-  * *Flat ground (`wgpu` Engine):* The ocean quad below the ground plane `y = base_y`, and the `MAP.BIN` patches and prop triangles flat on that plane, are drawn outside the depth-bias pass, first and in walk order (which follows `PLAYONE`'s painter order only in part), each slice replacing what is under it while writing depth ([ADR 0045](adr/0045-flat-ground-is-painted-in-walk-order.md)).
+  * *Flat ground (`wgpu` Engine):* The ocean quad below the ground plane `y = base_y`, the `MAP.BIN` patches flat on that plane, and the prop triangles within 0.1 m of it, are drawn outside the depth-bias pass, first and in walk order (which follows `PLAYONE`'s painter order only in part), each slice replacing what is under it while writing depth ([ADR 0045](adr/0045-flat-ground-is-painted-in-walk-order.md)).
 
 #### [I6] Visual Parity Acceptance Thresholds & VGA 1:1.2 Aspect Ratio Correction
 

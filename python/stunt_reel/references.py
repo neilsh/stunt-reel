@@ -19,10 +19,11 @@ A row may name ``background``, the capture palette-index bands that are backdrop
 rather than a model, as ``[[lo, hi], ...]`` inclusive pairs; ``parity_probe.py shift`` and ``iou``
 read it, and refuse a film whose row has none.
 
-A row may also record the film's recapture noise, ``noise_sigma``, and in
-``[<film>.expected.<class>]`` the scores the film is expected to reach on each renderer class,
-with the ``crates/`` tree and pins they were measured on and, in ``[<film>.expected.<class>.loss]``,
-the mean SSIM loss of each layer class; :func:`read_reference` checks all three.
+A row may also record the film's recapture noise, ``noise_sigma``.  The scores the film is
+expected to reach on each renderer class live apart, in the generated
+``research/parity/expected/<class>.toml`` beside the pointer file (ADR 0053): a ``[<film>]`` table
+with the ``crates/`` tree and pins they were measured on and a ``[<film>.loss]`` table with the
+mean SSIM loss of each layer class.  :func:`read_reference` checks all three.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from stunt_reel import capture_store, parity_layout
+from stunt_reel import capture_store, expected_file, parity_layout
 from stunt_reel.dataroot import REPO_ROOT, corpus_root
 from stunt_reel.parity_artifacts import LOSS_CLASSES
 
@@ -90,7 +91,7 @@ _COMMIT = re.compile(r"[0-9a-f]{7,40}")
 #: A measured ``crates/`` tree: a whole git object name, SHA-1 or SHA-256, in lowercase hex.
 _TREE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
-#: The fields of one ``[<film>.expected.<class>]`` table; ``loss`` is its sub-table.
+#: The fields of one ``[<film>]`` table of a class file; ``loss`` is its sub-table.
 _EXPECTED_FIELDS = ("ssim", "iou", "crates", "sha256", "all_sha256", "commit", "adapter", "loss")
 
 #: The hash fields of an expected table: the form each takes and how an error words it.
@@ -142,10 +143,11 @@ class Reference:
     """One ``references.toml`` entry: the film's slug, the hash its capture must have, builds.
 
     ``all_sha256`` pins the archive the film plays, when the row names one (ADR 0037): parity
-    renders and captures with the archive of exactly those bytes. ``expected`` holds the row's
-    expected scores by renderer class, read-only and empty without any; ``noise_sigma`` is the
-    recapture noise of the whole-frame SSIM, when the row names it. ``background`` is the row's
-    inclusive ``(lo, hi)`` palette-index bands of backdrop and ground, ``None`` when it names none.
+    renders and captures with the archive of exactly those bytes. ``expected`` holds the film's
+    expected scores by renderer class (``research/parity/expected/``), read-only and empty
+    without any; ``noise_sigma`` is the recapture noise of the whole-frame SSIM, when the row
+    names it. ``background`` is the row's inclusive ``(lo, hi)`` palette-index bands of backdrop
+    and ground, ``None`` when it names none.
     """
 
     film: str
@@ -242,13 +244,19 @@ def read_reference(root: Path, film: str) -> Reference:
         raise ReferenceCaptureError(
             f"{path}: the film entry of {name} is not a slug: {err}"
         ) from err
+    if "expected" in entry:
+        raise ReferenceCaptureError(
+            f"{path}: the row [{name}] holds expected tables, which live in "
+            "research/parity/expected/<class>.toml now (ADR 0053); take main's copy of both "
+            "files, drop the row's tables, and repin with mise run parity-repin"
+        )
     return Reference(
         name,
         slug,
         entry["sha256"],
         _builds(path, name, entry),
         _pin(path, name, entry),
-        expected=_expected(path, name, entry),
+        expected=_expected(name, _class_files(path)),
         noise_sigma=_noise_sigma(path, name, entry),
         background=_background(path, name, entry),
     )
@@ -317,19 +325,32 @@ def _noise_sigma(path: Path, name: str, entry: dict[str, object]) -> float | Non
     return number
 
 
-def _expected(path: Path, name: str, entry: dict[str, object]) -> Mapping[str, Expected]:
-    """The expected scores row *name* of *path* names, by renderer class; empty without any."""
-    tables = entry.get("expected", {})
-    if not isinstance(tables, dict):
-        raise _invalid(path, name, "expected", tables, "a table of renderer classes")
+def _class_files(references: Path) -> dict[str, tuple[Path, dict[str, object]]]:
+    """Each class file beside *references* that exists, by renderer class, with its parsed table."""
+    found: dict[str, tuple[Path, dict[str, object]]] = {}
+    for renderer in RENDERER_CLASSES:
+        path = expected_file.path(references, renderer)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            continue
+        try:
+            found[renderer] = (path, tomllib.loads(text))
+        except tomllib.TOMLDecodeError as err:
+            raise ReferenceCaptureError(f"{path} is not valid TOML: {err}") from err
+    return found
+
+
+def _expected(
+    name: str, files: Mapping[str, tuple[Path, dict[str, object]]]
+) -> Mapping[str, Expected]:
+    """The expected scores of film *name* in the class *files*, by renderer class."""
     found: dict[str, Expected] = {}
-    for renderer, table in tables.items():
+    for renderer, (path, document) in files.items():
+        table = document.get(name)
+        if table is None:
+            continue
         key = f"expected.{renderer}"
-        if renderer not in RENDERER_CLASSES:
-            raise ReferenceCaptureError(
-                f"{path}: the row [{name}] names {key}, but the renderer classes are "
-                f"{', '.join(RENDERER_CLASSES)}"
-            )
         if not isinstance(table, dict):
             raise _invalid(path, name, key, table, f"a table of {', '.join(_EXPECTED_FIELDS)}")
         found[renderer] = _expected_entry(path, name, key, table)
@@ -337,7 +358,7 @@ def _expected(path: Path, name: str, entry: dict[str, object]) -> Mapping[str, E
 
 
 def _expected_entry(path: Path, name: str, key: str, table: dict[str, object]) -> Expected:
-    """The ``[<film>.expected.<class>]`` table *key* of row *name* of *path*, checked."""
+    """The ``[<film>]`` table of class file *path* for film *name*, checked; *key* names it in an error."""
     unknown = sorted(table.keys() - set(_EXPECTED_FIELDS))
     if unknown:
         raise ReferenceCaptureError(

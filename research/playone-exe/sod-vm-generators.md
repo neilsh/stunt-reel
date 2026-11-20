@@ -21,7 +21,7 @@ Each quad handler reads `a, b, reg`, computes two corners as `M · v` ([section 
 | `OP_IPG` type 4, object bucket | `0xB54C` (VM `0x330C`) | `w` | No register. When the head `DGROUP:0x2346 + w` is nonzero it saves the 23-word block at `work:0x806E` (shift, translation, matrix), hands that pending-object list to `0x1B75`, which takes the head and sorts and draws its actors, and restores the block; the scenery walk's `SP_LEAF` fills the head with the actors whose probe recorded bucket `w` at that object ([`scene-walk-actors.md` § 3](scene-walk-actors.md#3-buckets)). | matches (one word, no effect) |
 | `OP_IPG` type 6, streamer | `0xB58D` (VM `0x334D`) | none | Registers 4..10, whatever the stream says: point `i` (0..6) is `(M · (x_i, 0, 2(i + 1)) >> work:0x806F) + (BX, DX, BP)`, the CPU registers it was entered with, saved at `work:0x41B0..0x41B4`: `BX` = 6, the type word the dispatcher `0x965F` loads, and `DX`, `BP` as the previous opcode's handler left them, since `0x965F` sets no other register. `x_i = (sin(p + (i + 1) · 0x1000) / 2 − sin(p) / 2) / 2` from the table at `work:0x19AA`, phase `p = (DGROUP:0x22B8 & 0x3F) << 10`, one turn per 64 ticks. | fixed: it read two words; the registers are not written, and no model searched reaches type 6 (below) |
 | `OP_SPHERE` | `0x9DB5` | `reg, radius` | No register. Unless the register's flag byte (`+0x0A`) is set, it passes the register's projected point and the screen radius `((radius · work:0x8070) >> 8) / (z + work:0x8088)` to `0xCF39`, then to the flat filler `0x8010`, or plots one pixel (`0x7FFB`) when the radius is 0. No facing test. That `0xCF39` builds a filled circle is `[Supported Inference]` from its inputs. | frame matches (centre from the register); faces fixed, below |
-| `OP_PERFDISK` | `0xA040`, operands read by `0xA08E` | `centre_reg, radius, axis_reg` | No register. It skips while the shadow mode `work:0x806C` is set or the centre's depth `z + work:0x8088` is below `0x80` (signed), else builds, from the centre, `(radius · work:0x8070) >> 16` and the normal `regs[centre] − regs[axis]`, a quadratic form that it hands to the flat filler `0x8010`: the screen outline of a disc, `[Supported Inference]`. The normal enters the outline's quadratic form only through products of its components, and no branch tests its sign, so the disc draws from both sides (`[Supported Inference]`). | fixed: a 16-gon of `radius` about the centre, perpendicular to the raw normal, one face for each side ([#392](https://github.com/neilsh/stunt-reel/issues/392)), which the renderer squeezes along the view's depth by the lens zoom ([#754](https://github.com/neilsh/stunt-reel/issues/754)); radius scale checked on one `BOMB` disc at ticks 2058 and 2070 and, on lavapipe, on `LOCATION`'s ground disc, below |
+| `OP_PERFDISK` | `0xA040`, operands read by `0xA08E` | `centre_reg, radius, axis_reg` | No register. It skips while the shadow mode `work:0x806C` is set or the centre's depth `z + work:0x8088` is below `0x80` (signed), else builds, from the centre, `(radius · work:0x8070) >> 16` and the normal `regs[centre] − regs[axis]`, a quadratic form that it hands to the flat filler `0x8010`: the screen outline of a disc, `[Supported Inference]`. The normal enters the outline's quadratic form only through products of its components, and no branch tests its sign, so the disc draws from both sides (`[Supported Inference]`). | fixed: a 16-gon of `radius` about the centre, perpendicular to the raw normal, one face for each side ([#392](https://github.com/neilsh/stunt-reel/issues/392)), which the renderer squeezes along the view's depth by the lens zoom ([#754](https://github.com/neilsh/stunt-reel/issues/754)); radius scale checked on one `BOMB` disc at ticks 2058 and 2070 and, on lavapipe and the GPU, on `LOCATION`'s ground disc, below |
 | `OP_VEC` (`0x004B`) | none | none | Not a dispatched opcode ([`sod-opcodes.md`](../formats/sod-opcodes.md) § 1): `CS:0x004B` is image `0x828B`, two bytes into slot `0x0048`'s patch store, where the bytes `FE F4` begin no defined instruction. | moot: three words, no effect |
 
 Walking the 2,425 unique models in the data root's corpus reaches type 0 in 2,192 steps, type 2 in 320, type 4 in 152, type 8 in 57, `SPHERE` in 1,584 and `PERFDISK` in 2,531, and type 6 and `OP_VEC` in none (`[Bounded Observation]`, `trace_sod` over every `0x000C`-magic entry).
@@ -79,13 +79,15 @@ The centre-depth and eye-plane skips depend on the camera, which a decode does n
 Scored against the seven reference films with `mise run parity` (RTX 4070).
 _Source: [the handler read and the scores](../../work/2026-11/392_perfdisk/journal.md#2026-11-12-the-handler-read-to-its-end-and-drawn)._
 
-**A ground disc, read on lavapipe** ([#709](https://github.com/neilsh/stunt-reel/issues/709); `[Bounded Observation]`, two ticks, one shape, lavapipe, widths read off index `0x4A`, the disc's flat colour, in both panels; the GPU re-read is [#689](https://github.com/neilsh/stunt-reel/issues/689)).
+**A ground disc, read on lavapipe and the GPU** ([#709](https://github.com/neilsh/stunt-reel/issues/709), [#689](https://github.com/neilsh/stunt-reel/issues/689); `[Bounded Observation]`, two ticks, one shape, widths read off index `0x4A`, the disc's flat colour, in both panels).
 `LOCATION.ALL` shape `0x07C6` is one `OP_PERFDISK` of radius `0x2400` in colour `0x4A`, its normal along y: the stone circle's ground disc in `LOCATION.FLM`, lying flat and seen at a glancing angle across most of the screen, where `BOMB`'s wheel stands upright.
 At ticks 6062 and 6161 (`mise run frame -- --film location --ticks 6062,6161 --software-only`, commit `9c9c6a5` (`crates/` tree `a00c4e7`)) the camera appears to match: the stones line up and the disc's far rim is row 76 in the capture, 77 in ours.
 Stones stand on the rim, so only the ends a stone does not cover are read: at 6062 the right end of rows 106, 112 and 118 is at x 298, 300 and 299 in the capture and 299, 305 and 309 in ours; at 6161 the left end of rows 106, 112, 118 and 124 is at x 22, 19, 20 and 23 in the capture and 17, 14, 11 and 8 in ours.
 The near rim is row 151 in the capture and 166 in ours.
 So on this shape ours is the larger: it agrees at the far rim, reaches 1 to 15 px further at the sides and 15 rows nearer the camera, where on `BOMB` the 16-gon was 4 to 6 % narrow.
 _Source: [the ground disc read on lavapipe](../../work/2026-11/425_perfdisk-radius/journal.md#2026-11-18-a-location-ground-disc-read-on-lavapipe)._
+On the GPU (RTX 4070), at the same commit and ticks, every rim row and free end above reads the same as on lavapipe.
+_Source: [the ground disc's widths re-read on the GPU](../../work/2026-11/689_perfdisk-depth-scale/journal.md#2026-11-20-the-ground-discs-widths-re-read-on-the-gpu)._
 
 **The lens squeeze** ([#754](https://github.com/neilsh/stunt-reel/issues/754); `[Established]` for the instruction sequences, static, from the unpatched image with `mise run re-tool -- disasm`; `[Supported Inference]` that the outline is the projection of the circle its inputs describe; `[Bounded Observation]` for the fit, two `LOCATION` ticks on lavapipe).
 The builder takes its inputs in two scales.
@@ -99,7 +101,7 @@ On lavapipe the near rim then reads row 153 at both ticks (capture 151, before 1
 On the GPU (RTX 4070) the same rows and ends read identically.
 _Source: [the GPU judge and rim re-read](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-19-gpu-judge-and-rim-re-read)._
 Adopted, evidence-backed: `LOCATION` rose by 0.0011 and the target frames' index agreement by 0.042; `CTRY`, `BALLOON` and `BOMB`, at the default lens, changed no frame, so `BOMB`'s wheel is as before; the other films moved by less than 0.00003.
-The scores and pictures are in the journal; the GPU re-read of the widths before the squeeze, and of other shapes, is [#689](https://github.com/neilsh/stunt-reel/issues/689).
+The scores and pictures are in the journal; other shapes and lenses are [#841](https://github.com/neilsh/stunt-reel/issues/841).
 _Source: [the disc squeezed along depth by the lens zoom](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-18-the-disc-squeezed-along-depth-by-the-lens-zoom)._
 
 **Sphere faces.**
@@ -121,7 +123,7 @@ The flat trees are single-sided in `PLAYONE` as in the renderer, but they are dr
 * **One face, drawn from one side.**
   The pines `0x03A3` and `0x03A7` (`INTRO.ALL`) are an `OP_IPG` type 8 quad and two `POLYZ` triangles wound the same way; no second, reversed face exists.
   `POLYZ` (`0x9B78`) draws through the edge builder `0xC9D4`, which takes its left edge by walking backward from the topmost vertex, and the flat filler `0x7571` skips a row whose right end is left of its left (`sub ax,cx; jl` at `0x75A1`, section 8.9).
-  So a `POLYZ` face draws only where its vertices run clockwise on screen, the side the renderer's `FrontFace::Cw` cull keeps (`[Supported Inference]`: the clipping variant `0xC50E` was not read).
+  So a `POLYZ` face fills only where its vertices run clockwise on screen, the side the renderer's `FrontFace::Cw` cull keeps, clipped or not; [section 8.12](sod-vm-lines-spans.md#812-back-faces-the-span-test) gives the rows a back face still draws.
 * **Two view matrices.**
   The view setup builds the camera's rotation with `0824:04E5` from the view slot's words `+0x10`, `+0x12`, `+0x14` (roll, pitch, yaw, [`memory-map-main.md`](memory-map-main.md)) and transposes it into `0x80C0` (`0x12A7..0x12BD`).
   It then zeroes `SI`, the yaw (`xor si,si` at `0x12C2`), and builds `0x809C` the same way from roll and pitch alone (`0x12C4..0x12DA`; with the view selector `DS:0x2285` at 0, as in film playback, the words go in unchanged, and its other values swap or negate roll and pitch but still zero the yaw).
@@ -162,29 +164,34 @@ The slot `0x2246` is the fourth word of the vector table copied from `DS:0x10A4`
   No shipped shape does (the census finds none), so `vm.rs` still stops on a count below 2.
 * **Two edges.**
   It finds the topmost vertex, then fills a left and a right edge table by one walk each from it.
-  The `GVPOLY` entry (`[0x812D] = 0xFF`, `sub si,4` from `0xCAE7`, `add si,4` from `0xCBA9`) measures the same `dx` and `dy` in both walks with the same arithmetic, so left equals right on every row.
+  The `GVPOLY` entry (`[0x812D] = 0xFF`, the Gouraud route) walks its left edge from `0xCAE7`; its right edge uses the same arithmetic from `0xCBA9` only when its top row is clipped, and otherwise jumps to the `POLYZ` forward walk (`jmp 0xCDE6` at `0xCBA6`).
+  So left equals right on every row only for a top-clipped `GVPOLY`; unclipped, its right end is that of the `POLYZ` walk below (read, not traced).
   The `POLYZ` entry (`[0x812D] = 0`, walks from `0xCC53` and `0xCDAE`) is symmetric only for steep edges (`|dx| <= dy`, the integer stepper at `0xCCF5` and `0xCE4E`).
-  For shallower ones the left and right walks start or end half a step off the vertex on opposite sides, so a `POLYZ` of two vertices is a connected run about `|dx/dy|` pixels wide per row there (read from the instructions, not traced).
+  For shallower ones the left walk takes the leftmost pixel of each row's run and the right walk the rightmost, each half a step from the edge's line ([section 8.12](sod-vm-lines-spans.md#812-back-faces-the-span-test)), so a `POLYZ` of two vertices is a connected run about `|dx/dy|` pixels wide per row there, in either vertex order (read from the instructions, not traced).
   When both vertices share a row (`[0x41D0] == [0x41D2]`) `0xCAB4` writes a single row spanning the smaller to the larger column.
 * **The flat filler draws it.**
   The driver routine `0x7571` skips the table's first two words, reads the top and bottom row (the count is their difference) and, per row, `right - left`, skips a negative span, and `inc ax` before `rep stosw`: spans are inclusive, so left equal to right is one pixel.
   Clipping against `[0x2294]` and `[0x2296]` is applied first.
-* **`GVPOLY16`** (`0x9A24`; `OP_GVPOLY`'s handler `0x995C` was not traced for two vertices) runs the same edge builder.
+* **`GVPOLY16`** (`0x9A24`) runs the same edge builder, as does `OP_GVPOLY`'s handler `0x995C`, which differs only in shifting the shade by 1 where `0x9A24` shifts by 2.
   With `[0x806C]` nonzero it takes the flat route (`call [0x8080]`, gateway, colour 0, shade words skipped).
   Otherwise `[0x806B]` clear means the flat route with a colour from the first vertex's shade, and set means Gouraud: `0xC9D4` is called directly.
   The Gouraud route stores one shade per vertex (its loop counts down `CL`, right for two), and calls the Gouraud filler `0x75DB`, which tests `right - left + 1 > 0` per row: a thin line of interpolated shade.
+  A vertex with its clip flag set sends the Gouraud route back through the flat route (`0x99BB`, `0x9A8A`).
 
-So the reading is that `PLAYONE` draws a two-vertex polygon as a thin line on the paths read (`POLYZ` through `0xC9D4` and `GVPOLY16`'s Gouraud route); the vertex-rejection path, the clipping variant `0xC50E` and `OP_GVPOLY`'s handler were not traced for this case, so whether a rejected or clipped one draws stays open.
-On the paths read: one pixel per row for steep lines and `GVPOLY` (a shaded one), a connected run for shallow `POLYZ` lines, one row wide when horizontal.
+So the reading is that `PLAYONE` draws a two-vertex polygon as a thin line, with no facing test: its two walks follow the same edge, whatever the vertex order ([section 8.12](sod-vm-lines-spans.md#812-back-faces-the-span-test)).
+The clipping variant `0xC50E` keeps the order and runs the same builder; the vertex-rejection exit `0xC9CB` (a clip flag set) draws nothing for `POLYZ`.
+One pixel per row for steep lines and a top-clipped `GVPOLY` (a shaded one), a connected run for shallow `POLYZ` lines, one row wide when horizontal; whether an unclipped `GVPOLY`'s two steppers agree on a steep line's rows was not worked out.
 It is neither skipped nor an error.
 `vm.rs` emits it as a line, which the renderer draws one Mode 13h pixel wide at any distance, as it draws `ZLINETO` (section 8.10): one pixel per row when `|dy| > |dx|` and per column otherwise, both ends included.
-For steep lines and `GVPOLY` that is the reading above; for a shallow `POLYZ` it is one pixel per column where the reading gives a run about `|dx/dy|` wide per row, which covers about the same pixels (not compared pixel for pixel).
+For steep lines and a top-clipped `GVPOLY` that is the reading above; for a shallow `POLYZ` it is one pixel per column where the reading gives a run about `|dx/dy|` wide per row, which covers about the same pixels (not compared pixel for pixel).
 Two coincident vertices draw nothing where `PLAYONE` draws a pixel, and a `GVPOLY` line takes the mean shade level, not a gradient.
 No parity reference film is known to place a shape with a two-vertex polygon ([`sod-opcode-coverage.md` § 2.1](../formats/sod-opcode-coverage.md#21-the-side-view-census-shapes-that-do-not-decode-whole)), so the score changes in section 8.10 are taken to come from `ZLINETO` lines.
 
 _Source: [two-vertex polygons read](../../work/2026-11/393_two-vertex-polygons/journal.md#2026-11-11-the-two-vertex-polygon-read-statically)._
 
-Lines and polygon spans (sections 8.10 and 8.11) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md).
+_Source: [the polygon span builder read for a facing test](../../work/2026-11/850_playone-back-face-cull/journal.md#2026-11-20-the-polygon-span-builder-read-for-a-facing-test)._
+
+Lines, polygon spans and the back-face span test (sections 8.10 to 8.12) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md).
 
 ## Ruled out
 
@@ -198,5 +205,5 @@ Lines and polygon spans (sections 8.10 and 8.11) are in [`sod-vm-lines-spans.md`
   Closed: `OP_IPG` types 0, 2, 4 and 8 and `OP_SPHERE` read against their handlers, and type 6's operand width; `OP_VEC` has no handler.
   Closed by [#479](https://github.com/neilsh/stunt-reel/issues/479): type 6's registers (`BX` = 6, `DX` and `BP` as the previous handler left them; no model searched reaches it), the sphere faces against the captures, and `OP_PERFDISCSL` (no model searched uses a sliced op, so no disc is perforated).
   Closed by [#754](https://github.com/neilsh/stunt-reel/issues/754): the lens squeeze, the cause of `LOCATION`'s near rim.
-  Open: the normal's depth scale and the squeeze, read but not verified live ([#425](https://github.com/neilsh/stunt-reel/issues/425)), and the radius and squeeze on shapes other than `BOMB`'s wheel and `LOCATION`'s ground disc, and the radius on the GPU before the squeeze ([#689](https://github.com/neilsh/stunt-reel/issues/689)); the centre-depth, eye-plane and shadow-mode skips, which our renderer does not apply ([#690](https://github.com/neilsh/stunt-reel/issues/690)); what `0xA1AB`'s term measures; and whether the archives outside this data root (the full `siarchive`) hold a sliced op or type 6.
+  Open: the normal's depth scale and the squeeze, read but not verified live ([#425](https://github.com/neilsh/stunt-reel/issues/425)), and the radius and squeeze on shapes other than `BOMB`'s wheel and `LOCATION`'s ground disc, and at a lens other than the default and 50.95° ([#841](https://github.com/neilsh/stunt-reel/issues/841)); the centre-depth, eye-plane and shadow-mode skips, which our renderer does not apply ([#690](https://github.com/neilsh/stunt-reel/issues/690)); what `0xA1AB`'s term measures; and whether the archives outside this data root (the full `siarchive`) hold a sliced op or type 6.
   The type-8 trees are checked against `INTRO.FLM` ticks 2080 and 3301 and turn with the camera's heading (section 8.8, [#399](https://github.com/neilsh/stunt-reel/issues/399)).

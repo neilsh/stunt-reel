@@ -1,5 +1,5 @@
 ---
-summary: "Splits the SSIM loss of the seven VAULT reference films by render layer: props lead on four and terrain on two, BALLOON's low mask IoU comes from a straight-down camera we draw blank and a zenith sky outside the scorer's band, and a pre-decal CTRY window study puts most loss at edges, not flat colour."
+summary: "Splits the SSIM loss of the seven VAULT reference films by render layer: props lead on four and terrain on two, BALLOON's low mask IoU came from a straight-down camera we drew blank and a zenith sky outside the scorer's band, both since fixed, and a pre-decal CTRY window study puts most loss at edges, not flat colour."
 sidebar_label: "Attribution: where our loss sits"
 ---
 # Parity Attribution: Where Our Render's Loss Sits
@@ -28,7 +28,7 @@ _Found 2026-10-22; see the [loss attribution row](../../work/2026-10/parity-log/
 
 ## 2. Current breakdown
 
-The current loss by class is pinned, not copied here: each `[<film>.expected.<class>.loss]` table of [`references.toml`](references.toml) holds a report's `mean_loss_by_class_scored` for one renderer class, written by `mise run parity-repin` and read back by `mise run judge`, which prints a candidate's change in each class from the baseline's and from the pin ([`method.md`](method.md) step 0).
+The current loss by class is pinned, not copied here: each `[<film>.loss]` table of [`expected/<class>.toml`](expected/) holds a report's `mean_loss_by_class_scored` for one renderer class, written by `mise run parity-repin` and read back by `mise run judge`, which prints a candidate's change in each class from the baseline's and from the pin ([`method.md`](method.md) step 0).
 Both the `lavapipe` and `gpu` tables hold the split on the `crates` tree their `crates` line names.
 Read a film's classes there; the table below is a dated record and does not follow the pins.
 
@@ -196,8 +196,9 @@ _Found 2026-10-23 at `d90a047`; see the [parity log](../../work/2026-10/parity-l
 
 ## 6. Back faces
 
-`[Bounded Observation]`.
-The player culls back faces; `stuntreel` did not until 2026-10-24.
+The player culls back faces: its polygon fillers skip a row whose right end is left of its left, and the span builder takes the left end from the vertex list walked backward and the right end from it walked forward (`[Established]`, static; none of the polygon routines read computes a facing, [`sod-vm-lines-spans.md` § 8.12](../playone-exe/sod-vm-lines-spans.md#812-back-faces-the-span-test)).
+So a polygon wound anticlockwise on screen loses its fill and its inclusive ends together, apart from the rows of a lone top or bottom vertex, rows narrower than its edges' runs, and edge-on polygons, which draw as lines (`[Hypothesis]`, read from the instructions, not traced).
+`stuntreel` did not cull until 2026-10-24; the sweep below is `[Bounded Observation]`.
 Our models wind clockwise for their outward faces, so the pipeline's `FrontFace::Ccw` default classified every interior wall as front-facing, and flying through a prop or the hero aircraft drew its inside.
 A sweep over the culling mode (`DBG_CULL` 0, 1, 2) scored 0.7733 / 0.7175, 0.6112 / 0.5799 and **0.7808 / 0.7224** (CTRY / INTRO); `FrontFace::Cw` with `Face::Back` reproduces the third.
 IoU is unchanged (0.9780 / 0.9501); index agreement rises 0.504 -> 0.507 and 0.636 -> 0.637.
@@ -230,8 +231,10 @@ Widening the capture sky to 224..=238 is not free: it raises `bomb` 0.9118 -> 0.
 Where looked at, those pixels are shape paint, not our geometry drawn over sky: on `traintnl` a blue rectangle on a dark red wall under a red roof holds 18,144 of them and the rear car's windows are 224 too, and on `bomb`, of the 105,219 pixels at 224 (as many as lie on our geometry), 104,958 are an emblem on a building wall, while its 59,520 at 226 are zenith sky in the top five rows.
 So the scorer keeps 227..=238 as its index band ([`method.md`](method.md) section 2.0).
 _Source: [who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
-Since 2026-11-18 a run of 224 to 226 that reaches row 0 and both side columns counts as sky by position, which raises `balloon` to 0.7186 on lavapipe; the figures above are on the scale before it, and the sky the balloon cuts off from row 0 or a side still counts as geometry ([`method.md`](method.md) section 2.0).
-Follow-ups: the camera [#615](https://github.com/neilsh/stunt-reel/issues/615), the sky the balloon cuts off [#745](https://github.com/neilsh/stunt-reel/issues/745), the zenith bands and the sun [#617](https://github.com/neilsh/stunt-reel/issues/617).
+Since 2026-11-18 a run of 224 to 226 that reaches row 0 and both side columns counts as sky by position, and since 2026-11-20 a run overlapping a pixel the previous captured frame counted by that rule counts too, which counts the sky the balloon cuts off; the figures above are on the scale before both rules ([`method.md`](method.md) section 2.0).
+Since 2026-11-20 the renderer draws the sky as the sky drawer `0x8C45` does, with the sun disc and the variable-13 light ([`palette-and-shading.md`](../formats/concepts/palette-and-shading.md#sky-bands), Sky Bands; [`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
+On the RTX 4070, `balloon`'s SSIM rose from 0.8842 to 0.9057 (bands alone 0.8924, with the disc 0.8972) and its IoU stayed 0.8978: the scorer still counts the capture's disc as geometry and ours as sky ([#844](https://github.com/neilsh/stunt-reel/issues/844)).
+_Source: [draw the read sky, disc and light, scored on the GPU](../../work/2026-11/617_zenith-bands-sun-disc/journal.md#2026-11-20-draw-the-read-sky-disc-and-light-scored-on-the-gpu)._
 
 _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)._
 
@@ -247,7 +250,7 @@ _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attributi
 * **`BZLT`, `BVIS`, `REJVEC` or `REJ2D` on the walked paths** (2026-11-12): no census walk reaches them (`BVLT` branches and unreached code are not walked), and the corrected section end moves no score ([which stock shapes reach the gates](../../work/2026-11/235_sod-gates/journal.md#2026-11-12-which-stock-shapes-reach-the-gates)).
 * **`balloon`'s low IoU as a placement or framing error** (2026-11-16): outside the zenith-sky and straight-down runs every scored frame scores 0.965 or more, so neither the balloon's placement nor the framing sets the film's 0.6409 ([what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-what-drives-balloons-mask-iou)).
 * **Drawing the sun disc at variable 13 read as a zenith angle** (2026-11-18): a probe drew index 239 at `(sin a, cos a, 0)` with radius 0.048 rad; on `balloon` the disc sat about 31 px left of and 8 to 10 px below the capture's at ticks 155 and 200, SSIM fell from 0.8172 to 0.8143 on lavapipe, IoU stayed 0.6409 and no other film moved.
-  Not adopted; the vector needs the `0x196C` trig read live ([`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
+  Not adopted; the trig read since turns the light by a second angle of about 10 degrees out of that plane, 3.75 degrees off the probe's direction, and the disc drawn from it is adopted (section 7, [`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
 * **Far props the sub-pixel cull drops, as props loss** (2026-11-18): the half-pixel cull in `build_world` drops no placement on six references and on `location` only 190 placements of shapes with no vertices, and removing it scored the seven films the same to four decimals on lavapipe ([removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull); [`world-scene-residuals.md` § 6.4](../playone-exe/world-scene-residuals.md#64-the-ground-decal-pass)).
 * **Terrain distance cull** (not attempted): the land/sea boundary is already nearly right (section 5).
 * **A primitive-index table for the world props' shape word** (2026-11-19): `@builtin(primitive_index)` works on lavapipe, but it restarts at 0 for every draw call and numbers an outline draw's edges, not its triangles, so each world draw would have to pass its first triangle and outlines would need a second table; the vertex-keyed runs of section 1 need neither ([can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)).

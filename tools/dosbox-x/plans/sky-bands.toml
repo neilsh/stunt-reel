@@ -1,0 +1,29 @@
+# #617: the sky drawer's state on BALLOON.FLM, Patch #3 (work segment 0x1CE3). At the band loop's
+# start (0x8D36) the view matrix and lens (work:0x80C0, linear 0x24EF0) and the band state and view
+# rect (work:0x41B0..0x41CB, linear 0x20FE0); each band edge (0x8D64: AX BX and CX DX = the edge's two
+# screen endpoints) and each band fill's colour (0x8E86: AX). The linear addresses hold for Patch #3
+# loaded as the vault-balloon capture ran it.
+[run]
+stop_tick = 270
+
+[[probe]]
+name = "band-start"
+kind = "break"
+at = 0x8D36
+arm = { tick = 200 }
+hits = 40
+capture = ["lin:0x24EF0:0x50", "lin:0x20FE0:0x1C"]
+
+[[probe]]
+name = "band-edge"
+kind = "break"
+at = 0x8D64
+arm = { tick = 200 }
+hits = 200
+
+[[probe]]
+name = "band-colour"
+kind = "break"
+at = 0x8E86
+arm = { tick = 200 }
+hits = 250

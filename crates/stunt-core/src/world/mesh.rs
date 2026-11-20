@@ -13,7 +13,8 @@ use super::map_bin::MapArea;
 use super::placed::{ArenaSpan, MeshSpans};
 use super::scenery::{LodGate, Placement};
 use super::terrain::{
-    Patches, TerrainSurface, ground_decal_vertices, on_ground_plane, push_terrain, terrain_overlays,
+    Patches, TerrainSurface, ground_decal_vertices, lies_on_ground_plane, push_terrain,
+    terrain_overlays,
 };
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
@@ -521,10 +522,10 @@ impl Placed<'_> {
 /// `y = base_y` when `on_ground`, or the others otherwise, and returns their index ranges.
 /// The vertices it appends go to `prop_runs` under the placement's shape.
 ///
-/// A triangle is on the ground plane when its three corners are; its corners are then put
-/// exactly on it. Each range is a run of line triangles or of filled
-/// ones, in the mesh's order. A corner shared by the triangles appended stays shared, so
-/// outlines skip the edges inside.
+/// A triangle is on the ground plane when its three corners lie on it
+/// ([`lies_on_ground_plane`]); its corners are then put exactly on it.
+/// Each range is a run of line triangles or of filled ones, in the mesh's order.
+/// A corner shared by the triangles appended stays shared, so outlines skip the edges inside.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
@@ -549,7 +550,7 @@ fn push_prop_mesh(
             continue;
         };
         let corners = [a, b, c];
-        let flat = on_ground_plane(corners.iter().map(|&(_, _, p)| p[1] - placed.base_y));
+        let flat = lies_on_ground_plane(corners.iter().map(|&(_, _, p)| p[1] - placed.base_y));
         if flat != on_ground {
             continue;
         }
@@ -993,6 +994,35 @@ mod tests {
         let ir = world_with(square_prop(Some(5.0)), [500.0, 0.0, 20.0]);
         assert_eq!(ground_runs(&ir), [6]);
         assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 3);
+    }
+
+    /// A standing prop's face 7.8125 mm below the ground plane, as `LOCATION`'s infield lies,
+    /// is ground put exactly on the plane, so it paints over ground painted before it.
+    #[test]
+    fn a_standing_prop_face_just_below_the_ground_plane_is_ground() {
+        let ir = world_with(square_prop(Some(5.0)), [500.0, -0.007_812_5, 20.0]);
+        assert_eq!(ground_runs(&ir), [6]);
+        let ground_heights: Vec<f32> = ir
+            .meshes()
+            .filter(|m| m.node.name == GROUND_NODE)
+            .flat_map(|m| m.indices.iter().map(|&i| &ir.vertices[i as usize]))
+            .filter(|v| v.scenery_class == SCENERY_PROP)
+            .map(|v| v.position[1])
+            .collect();
+        assert_eq!(ground_heights.len(), 6);
+        assert!(ground_heights.iter().all(|&y| y == 0.0));
+        assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 3);
+    }
+
+    /// A standing prop's face more than `GROUND_LIE_TOLERANCE` off the plane stays in the base
+    /// batch at its height.
+    #[test]
+    fn a_standing_prop_face_off_the_ground_plane_stays_in_the_base_batch() {
+        let ir = world_with(square_prop(Some(5.0)), [500.0, 0.2, 20.0]);
+        assert!(ground_runs(&ir).is_empty());
+        let base = prop_vertices(&ir, "WORLD_BASE");
+        assert_eq!(base.len(), 5);
+        assert_eq!(base.iter().filter(|p| (p[1] - 0.2).abs() < 1e-6).count(), 4);
     }
 
     /// A gated prop section leaves the base batch for a `WORLD_GATED` node whose gate is

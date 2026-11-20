@@ -8,6 +8,9 @@
 use glam::{DMat4, DVec3, Mat4, Vec3, camera::rh};
 use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use stunt_core::scene::ViewCamera;
+use stunt_core::sod::ShadeLight;
+
+use crate::sky::{SkyCamera, SkyLayout};
 
 /// Standard 4:3 physical aspect ratio for VGA Mode 13h ($320 \times 240$): the window's
 /// letterbox, not the projection (see [`MODE13H_PROJECTION_ASPECT`]).
@@ -52,6 +55,18 @@ pub struct CameraUniform {
     pub disc_depth_scale: f32,
     /// Alignment padding to the 16-byte uniform stride.
     pub _pad1: f32,
+    /// The screen direction of world down that orders the sky bands (`sky.rs`).
+    pub sky_normal: [f32; 2],
+    /// How many sky band edges are drawn.
+    pub sky_edge_count: u32,
+    /// Bit 0: the sun disc is drawn; bit 1: the last band fill covers it.
+    pub sky_flags: u32,
+    /// Each drawn band edge's `sky_normal · pixel` threshold, nearest the zenith first.
+    pub sky_thresholds: [f32; 16],
+    /// The sky index above the first edge, then below each drawn edge.
+    pub sky_colours: [u32; 16],
+    /// The sun disc's centre pixel `[x, y]` and radius, then padding.
+    pub sun_disc: [i32; 4],
 }
 
 /// Half a Mode 13h pixel in NDC, `[x, y]`, for a view `MODE13H_WIDTH` pixels wide whose
@@ -72,6 +87,12 @@ impl Default for CameraUniform {
             line_half_ndc: line_half_ndc(1.0),
             disc_depth_scale: 1.0,
             _pad1: 0.0,
+            sky_normal: [0.0; 2],
+            sky_edge_count: 0,
+            sky_flags: 0,
+            sky_thresholds: [0.0; 16],
+            sky_colours: [238; 16],
+            sun_disc: [0; 4],
         }
     }
 }
@@ -372,11 +393,65 @@ impl CameraController {
         }
     }
 
-    /// Builds the `CameraUniform` data ready for GPU buffer upload.
+    /// The view as `PLAYONE`'s sky code sees it, on the Mode 13h raster: 320 pixels wide and
+    /// `200 / projection_y_scale` rows. An orthographic view has none.
+    fn sky_camera(&self) -> Option<SkyCamera> {
+        if !matches!(self.projection, Projection::Perspective) {
+            return None;
+        }
+        let view = self.compute_view_rotation().as_dmat4();
+        let rows = 200.0 / f64::from(self.projection_y_scale);
+        let proj = self.compute_proj_matrix();
+        Some(SkyCamera {
+            right: view.row(0).truncate(),
+            up: view.row(1).truncate(),
+            forward: -view.row(2).truncate(),
+            focal: [
+                f64::from(proj.x_axis.x) * 160.0,
+                f64::from(proj.y_axis.y) * rows / 2.0,
+            ],
+            centre: [160.0, rows / 2.0],
+            size: [320.0, rows],
+            zoom: f64::from(self.disc_depth_scale()),
+        })
+    }
+
+    /// Builds the `CameraUniform` data ready for GPU buffer upload, the sun at film variable
+    /// 13 = `0x002D` (the observed films' value).
     #[must_use]
     pub fn build_uniform(&self) -> CameraUniform {
+        self.build_uniform_with_sky(0x002D)
+    }
+
+    /// Builds the `CameraUniform` for a film frame whose variable 13 is `variable_13`: the
+    /// sky bands and sun disc `PLAYONE` draws for this view (`sky.rs`).
+    #[must_use]
+    pub fn build_uniform_with_sky(&self, variable_13: u16) -> CameraUniform {
         let rotation_proj = self.compute_proj_matrix() * self.compute_view_rotation();
         let sun = self.sun_direction.normalize();
+        let disc_direction = DVec3::from(
+            ShadeLight::world(variable_13)
+                .sun_direction()
+                .map(f64::from),
+        );
+        // A parallel projection (the shape views) has no horizon: one fill of the horizon index.
+        let sky = self.sky_camera().map_or(SkyLayout::fill(238), |camera| {
+            camera.layout(Some(disc_direction))
+        });
+        let mut sky_thresholds = [0.0; 16];
+        for (slot, threshold) in sky_thresholds.iter_mut().zip(sky.thresholds) {
+            *slot = threshold;
+        }
+        let mut sky_colours = [0; 16];
+        for (slot, colour) in sky_colours.iter_mut().zip(sky.colours) {
+            *slot = colour;
+        }
+        let (sky_flags, sun_disc) = sky.disc.map_or((0, [0; 4]), |disc| {
+            (
+                1 | (u32::from(disc.under_last_band) << 1),
+                [disc.centre[0], disc.centre[1], disc.radius, 0],
+            )
+        });
 
         CameraUniform {
             rotation_proj: rotation_proj.to_cols_array(),
@@ -386,6 +461,12 @@ impl CameraController {
             line_half_ndc: line_half_ndc(self.projection_y_scale),
             disc_depth_scale: self.disc_depth_scale(),
             _pad1: 0.0,
+            sky_normal: sky.normal,
+            sky_edge_count: sky.edge_count,
+            sky_flags,
+            sky_thresholds,
+            sky_colours,
+            sun_disc,
         }
     }
 }
@@ -677,7 +758,7 @@ mod tests {
 
     #[test]
     fn test_camera_uniform_size_and_alignment() {
-        assert_eq!(size_of::<CameraUniform>(), 160);
+        assert_eq!(size_of::<CameraUniform>(), 320);
         assert_eq!(size_of::<CameraUniform>() % 16, 0);
     }
 
