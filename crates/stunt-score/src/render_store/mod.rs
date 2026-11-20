@@ -11,6 +11,22 @@
 //! reads and writes it; `render.json` does not list it, and a render without the file (the
 //! Python writer's, which removes a stale one, or one older than the file) has no shape plane.
 //! The Python mirror is `RenderStore` in `python/stunt_reel/parity_artifacts/`.
+//!
+//! # `shapes.zst` across writers and readers
+//!
+//! - **Rust writer:** nothing is created until the first tick; that tick truncates (creates
+//!   anew) `frames.zst`, `layers.zst` and `shapes.zst` together, so no run leaves an earlier
+//!   render's plane beside new ones. `push` writes one `shapes.zst` record per chunk, in the
+//!   order it writes the chunk-table entries, and refuses a shape word that does not fit a
+//!   u16.
+//! - **Python writer:** `RenderStoreWriter` empties `frames.zst` and `layers.zst` on its first
+//!   tick, writes no shape plane, and deletes a `shapes.zst` it finds, so a render it writes
+//!   over a Rust render never pairs the old shape words with new layers.
+//! - **Reader:** `RenderStore::open` takes a missing `shapes.zst` as a render without a
+//!   shape plane. A present one must be a whole run of records, each header and packed length
+//!   inside the file and none left over, and must hold exactly as many records as
+//!   `render.json` has chunks, or the open fails and says to re-render. A record that does not
+//!   decompress to its chunk's `ticks * pixels` u16 words fails when its chunk is read.
 
 use std::collections::HashMap;
 use std::fs::{self, File};

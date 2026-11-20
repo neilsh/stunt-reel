@@ -203,7 +203,9 @@ class RenderStoreWriter:
     """Writes a render's planes in tick order, a zstd chunk per film second (ADR 0027).
 
     Nothing is created until the first tick. The writer replaces its own files and
-    ``preview/`` and leaves anything else in the directory.
+    ``preview/`` and leaves anything else in the directory, except ``shapes.zst``: it writes no
+    shape plane, so it deletes one a Rust render left there, which would otherwise pair its old
+    shape words with these layers (the Rust store's module docs describe the file).
     """
 
     def __init__(self, directory: Path, geometry: Geometry) -> None:
