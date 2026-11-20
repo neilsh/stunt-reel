@@ -8,7 +8,7 @@ use crate::contracts::{ShapeExtent, SodModelIr, VisibilityCondition};
 use crate::sod::{ShadeLight, faces_view};
 
 use super::map_bin::parse_map_bin;
-use super::mesh::{PropModels, build_world_ir, lod_condition, prop_shape_slots};
+use super::mesh::{PropModels, PropRun, build_world_ir, lod_condition};
 use super::placed::PlacementRecords;
 use super::scenery::{LodGate, Placement, ScnStop, place_props, reaches_a_pixel};
 use super::tap_props::{TapFailure, anchored_models};
@@ -74,10 +74,10 @@ pub struct World {
     /// [`Self::ir`] because their rotation follows the camera; each frame draws them
     /// (`FilmScene::frame`).
     pub view_facing: Vec<FacingProp>,
-    /// The shape ids of [`Self::ir`]'s props by prop slot: the vertices of a prop of shape
-    /// `prop_shapes[n]` carry `SodVertex::prop_slot` `n + 1`. At most 511 distinct shapes, the
-    /// most placed first; a prop of a later one has slot 0.
-    pub prop_shapes: Vec<u16>,
+    /// The runs of [`Self::ir`]'s vertices that its props appended, in vertex order, each with
+    /// the shape it draws: every prop vertex lies in exactly one run and no other vertex in
+    /// any. Emptied with the mesh by [`crate::scene::FilmScene::release_world_mesh`].
+    pub prop_runs: Vec<PropRun>,
     /// A record of each placement the scenery walk and dedup leave, culled ones included,
     /// in walk order: its node and partition path in the tree and its shape's collision lists.
     pub placements: PlacementRecords,
@@ -202,8 +202,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
     };
 
     let terrain = TerrainSurface::new(pts, &map_areas, base_y);
-    let ir = build_world_ir(pts, &map_areas, &terrain, &fixed, &models, base_y);
-    let prop_shapes = prop_shape_slots(&fixed);
+    let (ir, prop_runs) = build_world_ir(pts, &map_areas, &terrain, &fixed, &models, base_y);
     // `build_world_ir` always emits the ocean quad, so the extent exists.
     let bounds = ir.extent()?;
     Some(World {
@@ -215,7 +214,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         terrain,
         tap_failures,
         view_facing,
-        prop_shapes,
+        prop_runs,
         placements: records,
     })
 }

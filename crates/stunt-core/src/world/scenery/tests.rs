@@ -28,7 +28,7 @@ fn shape(radius: f32) -> SodModelIr {
         palette_index: 1,
         flags: 0,
         scenery_class: 0,
-        prop_slot_low: 0,
+        _padding: 0,
     });
     ir.allocate_node(
         "BASE",

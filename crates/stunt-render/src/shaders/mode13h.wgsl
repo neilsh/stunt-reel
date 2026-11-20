@@ -52,10 +52,26 @@ struct ModelUniform {
 @group(1) @binding(0) var palette_lut: texture_2d<f32>;
 @group(2) @binding(0) var<uniform> model: ModelUniform;
 
+// A run of the world mesh's prop vertices, `first..end` in its vertex buffer, and the shape
+// word of the shape they draw (stunt_core::world::PropRun, `shape id + 1`).
+struct PropRun {
+    first: u32,
+    end: u32,
+    shape: u32,
+};
+
+// The world's prop runs in vertex order. Only the plane pipelines bind it (`fs_main_plane`).
+@group(3) @binding(0) var<storage, read> prop_runs: array<PropRun>;
+
+// Scenery class of a world prop vertex (contracts/shape/mod.rs SCENERY_PROP).
+const SCENERY_PROP: u32 = 3u;
+// `VertexOutput::prop_vertex` of a vertex that is not a world prop's.
+const NO_PROP_VERTEX: u32 = 0xffffffffu;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: low 8 bits of the prop slot
+    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: padding
 };
 
 struct VertexOutput {
@@ -71,7 +87,12 @@ struct VertexOutput {
     // the screen-space linear interpolation of `shade` (`fragment_index`).
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
+    // The draw's shape word (`ModelUniform` `layer.z`).
     @location(6) @interpolate(flat) shape: u32,
+    // A world prop vertex's number in its vertex buffer, `NO_PROP_VERTEX` for any other
+    // vertex: `prop_runs` gives its shape. Every vertex of a triangle or line lies in the
+    // same run, so whichever vertex provokes names it.
+    @location(7) @interpolate(flat) prop_vertex: u32,
 };
 
 // Whether `x` is NaN or infinite: all exponent bits set. WGSL has no isNan, and `x != x`
@@ -104,12 +125,31 @@ fn fragment_index(in: VertexOutput) -> u32 {
 
 struct PlaneOutput {
     @location(0) color: vec4<f32>,
-    // x: layer id in bits 8.., unlit palette index in bits 0..8; y: the shape word (`ModelUniform` shape word, prop slot << 16).
+    // x: layer id in bits 8.., unlit palette index in bits 0..8; y: the shape word, `shape id
+    // + 1` of the prop that drew the pixel, 0 for none.
     @location(1) plane: vec2<u32>,
 };
 
+// The shape word of the prop run holding world vertex `vertex`, 0 when none does.
+fn prop_shape(vertex: u32) -> u32 {
+    var lo = 0u;
+    var hi = arrayLength(&prop_runs);
+    while (lo < hi) {
+        let mid = (lo + hi) / 2u;
+        let run = prop_runs[mid];
+        if (vertex < run.first) {
+            hi = mid;
+        } else if (vertex >= run.end) {
+            lo = mid + 1u;
+        } else {
+            return run.shape;
+        }
+    }
+    return 0u;
+}
+
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
+fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
 
     // Model space to eye-relative space to clip space.
@@ -132,10 +172,8 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.shade_w = out.shade * w;
     out.w = w;
     out.layer = model.layer.x + in.attr.z;
-    // The draw's shape word in bits 0..16 and, for a world prop vertex, its 9-bit prop slot
-    // above: `prop_slot_low` and bit 7 of the flags, never bit 6 (`SodVertex::prop_slot`).
-    let prop_slot = in.attr.w | (((in.attr.y >> 7u) & 1u) << 8u);
-    out.shape = model.layer.z | (prop_slot << 16u);
+    out.shape = model.layer.z;
+    out.prop_vertex = select(NO_PROP_VERTEX, vertex_index, in.attr.z == SCENERY_PROP);
 
     // Polygons are drawn at their palette index with no directional lighting: against
     // PLAYONE captures of CTRY.FLM the unlit colour scores higher than any sun/ambient ramp
@@ -159,7 +197,11 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
     let index = fragment_index(in);
     let coords = vec2<i32>(i32(index), i32(in.light_level & 31u));
     out.color = textureLoad(palette_lut, coords, 0);
-    out.plane = vec2<u32>((in.layer << 8u) | index, in.shape);
+    var shape = in.shape;
+    if (in.prop_vertex != NO_PROP_VERTEX) {
+        shape = prop_shape(in.prop_vertex);
+    }
+    out.plane = vec2<u32>((in.layer << 8u) | index, shape);
     return out;
 }
 

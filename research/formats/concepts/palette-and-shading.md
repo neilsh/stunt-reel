@@ -106,7 +106,7 @@ pub struct SodVertex {
     pub palette_index: u8,   // Offset +0x18 (1 byte: 0..=255)
     pub flags: u8,           // Offset +0x19 (1 byte: bitflags)
     pub scenery_class: u8,   // Offset +0x1A (1 byte: 1 ocean, 2 terrain, 3 prop; 0 elsewhere)
-    pub prop_slot_low: u8,   // Offset +0x1B (1 byte: low 8 bits of a world prop's slot)
+    pub _padding: u8,        // Offset +0x1B (1 byte: alignment padding, zero)
 }
 ```
 
@@ -116,9 +116,9 @@ pub struct SodVertex {
 - **Bit 1 (`0x02`) — Two-Sided Facet:** Disables back-face culling for this polygon.
 - **Bit 2 (`0x04`) — Emissive / Unshaded:** Bypasses directional lighting table; renders at full unshaded diffuse brightness (used for landing lights and muzzle flares).
 - **Bits 3..5 (`0x08`, `0x10`, `0x20`) — Screen-space line corner:** a one-pixel line's corner, its side and its end; the vertex's `normal` is then the vector to the segment's other endpoint (`VERTEX_FLAG_LINE`, `VERTEX_FLAG_LINE_SIDE`, `VERTEX_FLAG_LINE_END`).
-- **Bit 6 (`0x40`):** unused by the prop slot, which never sets or clears it, so another flag can take it.
-- **Bit 7 (`0x80`) — Prop slot, high bit:** bit 8 of a world prop vertex's slot, zero on every other vertex.
-  The slot is this bit over `prop_slot_low`, so it runs 1 to 511, and 0 means no slot; `World::prop_shapes` maps it to the shape that placement draws, and the renderer writes it to the plane target's shape word (`SodVertex::prop_slot`).
+- **Bits 6..7 (`0x40`, `0x80`):** Reserved (must be zero).
+
+A world prop vertex carries no record of its shape: the world lists its prop vertices as runs with each run's shape (`World::prop_runs`), and the renderer looks a vertex up there for the parity plane's shape word ([`attribution.md`](../../parity/attribution.md) § 1).
 
 ### 2.3 Transparency Keys
 

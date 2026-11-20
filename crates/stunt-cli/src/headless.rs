@@ -70,8 +70,6 @@ struct SampleSink {
     out_dir: Option<PathBuf>,
     video: Option<FfmpegVideoWriter>,
     journal: Option<RenderJournal>,
-    /// The scene's world prop shapes by slot, to resolve each page's shape words.
-    prop_shapes: Vec<u16>,
     written_frames: usize,
     written_video_frames: usize,
 }
@@ -91,7 +89,6 @@ impl SampleSink {
                     let tick = u32::try_from(tick)
                         .map_err(|_| format!("{key}: tick does not fit a u32"))?;
                     if let Some(journal) = self.journal.as_mut() {
-                        let shapes = page.resolved_shapes(&self.prop_shapes);
                         journal
                             .write(
                                 tick,
@@ -103,7 +100,7 @@ impl SampleSink {
                                     rgba: page.rgba(),
                                     indices: page.indices(),
                                     layers: page.layers(),
-                                    shapes: &shapes,
+                                    shapes: page.shapes(),
                                 },
                             )
                             .map_err(|e| format!("{key}: {e}"))?;
@@ -267,9 +264,6 @@ pub(crate) fn run_headless(
         out_dir: config.out_dir.clone(),
         video: video_writer.take(),
         journal,
-        prop_shapes: scene
-            .world()
-            .map_or_else(Vec::new, |w| w.prop_shapes.clone()),
         written_frames: 0,
         written_video_frames: 0,
     };
@@ -419,7 +413,6 @@ mod tests {
             out_dir: Some(dir.to_path_buf()),
             video: None,
             journal: Some(RenderJournal::begin(dir, FilmId::default(), geometry).expect("begin")),
-            prop_shapes: Vec::new(),
             written_frames: 0,
             written_video_frames: 0,
         }

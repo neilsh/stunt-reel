@@ -324,7 +324,7 @@ fn internal_defects_are_refused_loudly() {
             palette_index: 1,
             flags: 0,
             scenery_class: 0,
-            prop_slot_low: 0,
+            _padding: 0,
         },
     );
     ir.indices = vec![0, 1, 2];

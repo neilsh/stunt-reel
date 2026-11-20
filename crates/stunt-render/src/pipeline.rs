@@ -15,6 +15,13 @@ pub use stunt_core::frame::{
 /// then the pixel's shape word (`RenderedPage::shapes`).
 pub(crate) const PLANE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg32Uint;
 
+/// Bind group index of the world's prop runs in the plane pipelines (`prop_runs` in
+/// `mode13h.wgsl`).
+pub(crate) const PROP_RUNS_GROUP: u32 = 3;
+
+/// Bytes of one prop run in the [`PROP_RUNS_GROUP`] buffer: `first`, `end` and the shape word.
+pub(crate) const PROP_RUN_SIZE: u64 = 12;
+
 /// GPU uniform buffer structure for per-model transformation matrix matching WGSL `@group(2) @binding(0)`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -100,6 +107,9 @@ pub(crate) struct RenderPipelines {
     pub(crate) bar_pipeline: wgpu::RenderPipeline,
     /// Bind group layout for `@group(2) @binding(0)` (`ModelUniform`).
     pub(crate) model_bind_group_layout: wgpu::BindGroupLayout,
+    /// Bind group layout for [`PROP_RUNS_GROUP`] (the world's prop runs, `fs_main_plane`), which
+    /// only pipelines with a plane target carry; `None` without one.
+    pub(crate) prop_runs_layout: Option<wgpu::BindGroupLayout>,
 }
 
 impl RenderPipelines {
@@ -138,6 +148,25 @@ impl RenderPipelines {
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &ATTRIBUTES,
         }
+    }
+
+    /// Creates the bind group layout for [`PROP_RUNS_GROUP`]: the world's prop runs as one
+    /// read-only storage buffer of `[first, end, shape word]` `u32` triples, which the
+    /// fragment stage searches.
+    pub(crate) fn create_prop_runs_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("stunt_prop_runs_layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(PROP_RUN_SIZE),
+                },
+                count: None,
+            }],
+        })
     }
 
     /// Creates the bind group layout for the per-model uniform (`@group(2)`): one
@@ -215,6 +244,9 @@ impl RenderPipelines {
             "fs_sky"
         };
         let model_bind_group_layout = Self::create_model_bind_group_layout(device);
+        // The plane's shape word looks world props up in their runs; without a plane nothing
+        // reads them.
+        let prop_runs_layout = plane_format.map(|_| Self::create_prop_runs_layout(device));
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("stunt_mode13h_pipeline_layout"),
@@ -222,6 +254,7 @@ impl RenderPipelines {
                 Some(camera_layout),
                 Some(palette_layout),
                 Some(&model_bind_group_layout),
+                prop_runs_layout.as_ref(),
             ],
             immediate_size: 0,
         });
@@ -375,6 +408,7 @@ impl RenderPipelines {
             sky_pipeline,
             bar_pipeline,
             model_bind_group_layout,
+            prop_runs_layout,
         }
     }
 }

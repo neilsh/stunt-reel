@@ -13,7 +13,8 @@ Framing: [`framing-and-actors.md`](framing-and-actors.md); hero aircraft: [`hero
 `stuntreel parity` splits each SSIM window's loss (`1 - ssim`) among the render layers of its pixels in proportion to pixel count (`mean_loss_by_class_scored` in `report.json`); the classes sum to `1 - mean_ssim_scored`.
 Layer ids in the layer plane: 1 ocean, 2 terrain (`MAP.BIN` patches), 3 props (`SCENERY.scn` placements), 16+n actor draw n of the frame (draw order, not film slot).
 A shape plane beside it names the prop shape that drew each props pixel, and `mean_loss_by_shape_scored` splits the props class by shape id the same way; its values sum to `mean_loss_by_class_scored.props` ([`report-fields.md`](report-fields.md)).
-A world prop's shape is carried per vertex as a 9-bit slot (`SodVertex::prop_slot`, `World::prop_shapes`), which numbers the 511 most placed shapes of a world; a prop of a shape past that lands under `unattributed`.
+A world prop's shape is not carried in its vertices: each placed prop mesh appends its own run of world vertices, the world lists those runs with their shapes (`World::prop_runs`), and the plane's fragment shader finds a world prop fragment's run from its flat `vertex_index` by binary search, so every placed shape is attributed.
+_Source: [can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)._
 Extra classes are reference-only (capture non-sky, render sky) and render-only (the reverse).
 Windows touching the UI overlay are excluded.
 
@@ -244,6 +245,7 @@ _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attributi
   Not adopted; the vector needs the `0x196C` trig read live ([`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
 * **Far props the sub-pixel cull drops, as props loss** (2026-11-18): the half-pixel cull in `build_world` drops no placement on six references and on `location` only 190 placements of shapes with no vertices, and removing it scored the seven films the same to four decimals on lavapipe ([removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull); [`world-scene-residuals.md` § 6.4](../playone-exe/world-scene-residuals.md#64-the-ground-decal-pass)).
 * **Terrain distance cull** (not attempted): the land/sea boundary is already nearly right (section 5).
+* **A primitive-index table for the world props' shape word** (2026-11-19): `@builtin(primitive_index)` works on lavapipe, but it restarts at 0 for every draw call and numbers an outline draw's edges, not its triangles, so each world draw would have to pass its first triangle and outlines would need a second table; the vertex-keyed runs of section 1 need neither ([can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)).
 
 ## Open questions
 
