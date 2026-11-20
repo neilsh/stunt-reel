@@ -35,6 +35,7 @@ __all__ = [
     "comparison_line",
     "crates_tree",
     "read_render_tree",
+    "renderer_changes",
     "scorer_only_change",
     "write_render_tree",
 ]
@@ -139,19 +140,28 @@ def read_render_tree(render: Path) -> str | None:
     return text if len(text) == 40 and all(c in "0123456789abcdef" for c in text) else None
 
 
+def renderer_changes(old: str, new: str, repo: Path = REPO_ROOT) -> list[str] | None:
+    """The paths, relative to ``crates/``, where trees *old* and *new* differ outside :data:`SCORER_DIR`.
+
+    Empty for equal trees.  ``None`` when git cannot compare them, as when *old* is not in
+    *repo*'s object store.
+    """
+    if old == new:
+        return []
+    done = _git(repo, "diff-tree", "-r", "--no-renames", "--name-only", "-z", old, new)
+    if done is None or done.returncode != 0:
+        return None
+    paths = done.stdout.decode("utf-8", "surrogateescape").split("\0")
+    return [path for path in paths if path and not path.startswith(SCORER_DIR)]
+
+
 def scorer_only_change(old: str, new: str, repo: Path = REPO_ROOT) -> bool:
     """Whether ``crates/`` tree *new* differs from tree *old* only under :data:`SCORER_DIR`.
 
-    Equal trees count.  ``False`` when git cannot compare them, as when *old* is not in *repo*'s
-    object store, so a tree it cannot read never passes for a scorer-only change.
+    Equal trees count.  ``False`` when git cannot compare them, so a tree it cannot read never
+    passes for a scorer-only change.
     """
-    if old == new:
-        return True
-    done = _git(repo, "diff-tree", "-r", "--no-renames", "--name-only", "-z", old, new)
-    if done is None or done.returncode != 0:
-        return False
-    paths = done.stdout.decode("utf-8", "surrogateescape").split("\0")
-    return all(path.startswith(SCORER_DIR) for path in paths if path)
+    return renderer_changes(old, new, repo) == []
 
 
 def _text(done: subprocess.CompletedProcess[bytes]) -> str:
