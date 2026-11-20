@@ -131,6 +131,7 @@ All of it is static analysis, not a capture; offsets are linear into the unpacke
 
 - It loads `-L` from `work:0x8078..0x807C` and calls `0x88FB` with `SI = 0x80C0`, which multiplies it by the view matrix's rows with no translation term: row 0 gives `DX`, row 1 `BP`, row 2 the depth `DI`, each the high word of a Q15 product, so the disc sits at a fixed direction, infinitely far, like the sky bands.
 - It culls the disc when `DI + 0x600` is negative or either of `DX`, `BP` lies outside `±(DI + 0x600)`.
+  For a unit light that passes a sun at or behind the eye's plane (`DI <= 0`) only at a zoom above 8, almost straight behind, or below about 0.14, in the eye's plane, and the divides by `DI` follow; the renderer culls every such sun instead (a search over zooms 0.05 to 32 with the light's components split evenly across the screen, the case nearest passing).
 - Centre: `x = (DX << 8) / DI + work:0x41C8`, `y = (BP << 8) / DI + work:0x41CA`.
   Radius: `((0x600 · work:0x8108) >> 8) / DI`, which is `12 · zoom / cos θ` pixels, `θ` the angle off the view axis: 3/64 of the focal length.
 - Colour: it stores `0xEF` (index 239) in `work:0x41E8` and fills a circle through `0xCF39` and the flat-polygon gateway `0:8010`.

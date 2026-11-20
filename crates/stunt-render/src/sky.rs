@@ -208,6 +208,12 @@ impl SkyCamera {
     }
 
     /// The sun disc at `sun` (`0x908E`), unless culled.
+    ///
+    /// `0x908E` culls when `depth + 0x600 < 0` or a screen numerator is beyond
+    /// `±(depth + 0x600)`; this also culls any sun at or behind the eye's plane. For a unit
+    /// light the two differ only at a zoom above 8, for a sun almost straight behind, or below
+    /// about 0.14, for a sun in the eye's plane, where `PLAYONE` divides by a depth word at or
+    /// below 0, which is not modelled.
     fn disc(&self, sun: DVec3, scale: f64, under_last_band: bool) -> Option<SunDisc> {
         // The light is 32767 long; the rows are Q15, so each product's high word is half.
         let words = 32767.0 * 32767.0 / 65536.0;
@@ -379,6 +385,52 @@ mod tests {
         let layout = view.layout(Some(sun()));
         assert_eq!((layout.edge_count, layout.colours[0]), (0, 0xD0));
         assert_eq!(layout.disc, None);
+    }
+
+    /// The tick-257 view rolled 90 degrees (rows `-r1`, `r0`, `r2`), so screen right is world
+    /// up: `0x8C6D`'s half-vector is `(-31761 >> 6, 0) = (-497, 0)` and each edge is the column
+    /// `160 + trunc(-256 (r1 . P) / (r2 . P))`, the row the unrolled view put it on mirrored
+    /// about 92 and moved to 160. Edge 0 is too near the eye (depth word 252) and edge 1 is
+    /// at column 441, so the walk starts at edge 2, column 290, which the unrolled view put
+    /// above the screen at row -38.
+    #[test]
+    fn a_rolled_view_draws_the_edges_as_columns() {
+        let view = live(
+            [7728, -31758, -2278, 9269, 0, 31426, -30461, -8059, 8985],
+            32767.0,
+            0,
+        );
+        let layout = view.layout(None);
+        let n = layout.edge_count as usize;
+        assert_eq!(layout.normal, [-497.0, 0.0]);
+        assert_eq!(
+            layout.thresholds[..n]
+                .iter()
+                .map(|t| t / layout.normal[0])
+                .collect::<Vec<_>>(),
+            [
+                290.0, 224.0, 188.0, 165.0, 149.0, 138.0, 129.0, 121.0, 116.0, 111.0, 107.0, 103.0,
+                100.0
+            ]
+        );
+        assert_eq!(
+            layout.colours[..=n],
+            [
+                226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 0xD0
+            ]
+        );
+    }
+
+    /// A sun straight behind the eye is culled: its depth word plus `0x600` is negative.
+    #[test]
+    fn a_sun_behind_the_view_is_not_drawn() {
+        let view = live(
+            [4801, 0, -30753, 29909, 7237, 4669, 3764, -15935, 587],
+            31127.0,
+            1,
+        );
+        assert_eq!(view.layout(Some(-view.forward)).disc, None);
+        assert!(view.layout(Some(view.forward)).disc.is_some());
     }
 
     /// The span generator's half widths for radius 23, as `0xCF39` builds them.

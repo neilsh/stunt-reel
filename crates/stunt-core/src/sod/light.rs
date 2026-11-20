@@ -147,6 +147,22 @@ mod tests {
         );
     }
 
+    /// All 4096 words, little-endian, hash (FNV-1a, 64-bit) to the image's table at
+    /// `work:0x19AA` (word sum 2047), so a libm whose `sin` rounds one entry differently fails.
+    #[test]
+    fn every_sine_word_matches_the_image() {
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut sum: i32 = 0;
+        for index in 0..4096 {
+            let word = sin_q15(index);
+            sum = sum.wrapping_add(i32::from(word));
+            for byte in word.to_le_bytes() {
+                hash = (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+        assert_eq!((hash, sum), (0xb597_c299_e786_d115, 2047));
+    }
+
     /// The sun disc sits at the negated light: near the zenith on `CTRY.FLM`.
     #[test]
     fn the_sun_is_up_when_the_light_is() {
