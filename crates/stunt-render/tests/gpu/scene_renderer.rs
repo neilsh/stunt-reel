@@ -16,7 +16,7 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::{FilmScene, ViewCamera};
-use stunt_core::world::{GROUND_NODE, PlacementRecords, TerrainSurface, World};
+use stunt_core::world::{GROUND_NODE, PlacementRecords, PropRun, TerrainSurface, World};
 use stunt_render::{CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
@@ -34,7 +34,7 @@ fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
         palette_index: 40,
         flags: 4,
         scenery_class: 0,
-        prop_slot_low: 0,
+        _padding: 0,
     };
     let mut ir = SodModelIr::new(name);
     ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
@@ -362,7 +362,7 @@ fn world_is_drawn_when_present() {
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
             view_facing: Vec::new(),
-            prop_shapes: Vec::new(),
+            prop_runs: Vec::new(),
             placements: PlacementRecords::default(),
         };
         let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
@@ -388,43 +388,72 @@ fn world_of(ir: SodModelIr) -> World {
         terrain: TerrainSurface::default(),
         tap_failures: Vec::new(),
         view_facing: Vec::new(),
-        prop_shapes: Vec::new(),
+        prop_runs: Vec::new(),
         placements: PlacementRecords::default(),
     }
 }
 
-/// A world prop vertex's slot reaches the page's shape words, and nothing else carries one: a
-/// terrain triangle and the sky have no shape word.
+/// A world prop's pixels carry the shape word of the prop run holding its vertices, and
+/// nothing else carries one: a prop whose vertices no run holds, a terrain triangle and the
+/// sky have no shape word.
 #[test]
-fn a_world_props_slot_reaches_the_shape_plane() {
+fn a_world_props_run_reaches_the_shape_plane() {
     common::gpu_test(|| {
-        let shapes_of = |class: u8, slot: u16| {
+        // Two triangles of scenery class `class` side by side; a run of shape 40 holds the
+        // left one's vertices.
+        let shapes_of = |class: u8| {
             let mut ir = triangle("WORLD_BASE", VisibilityCondition::Always);
-            for vertex in &mut ir.vertices {
-                vertex.scenery_class = class;
-                *vertex = vertex.with_prop_slot(slot);
-            }
-            let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world_of(ir)));
+            let one = ir.vertices.clone();
+            let shifted = |dx: f32| {
+                one.iter().map(move |v| SodVertex {
+                    position: [v.position[0] + dx, v.position[1], v.position[2]],
+                    scenery_class: class,
+                    ..*v
+                })
+            };
+            ir.vertices = shifted(-1.1).chain(shifted(1.1)).collect();
+            ir.indices = vec![0, 2, 1, 3, 5, 4];
+            ir.nodes[0].kind = NodeKind::Mesh {
+                vertex_offset: 0,
+                vertex_count: 6,
+                index_offset: 0,
+                index_count: 6,
+                is_decal: false,
+            };
+            let mut world = world_of(ir);
+            world.prop_runs = vec![PropRun {
+                first: 0,
+                end: 3,
+                shape: 40,
+            }];
+            let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world));
             let mut test = common::gpu_or_skip(&scene)?;
             let page = test.draw(&scene.frame(0.0));
-            let slots: Vec<u32> = page
-                .layers()
-                .iter()
-                .zip(page.shapes())
-                .filter(|&(&layer, _)| layer != LAYER_NONE)
-                .map(|(_, &word)| word)
-                .collect();
-            Some((slots, page.shapes().to_vec()))
+            let w = page.width() as usize;
+            // The shape words of the drawn pixels left and right of the middle, and all words.
+            let (mut left, mut right) = (Vec::new(), Vec::new());
+            for (n, (&layer, &word)) in page.layers().iter().zip(page.shapes()).enumerate() {
+                if layer != LAYER_NONE {
+                    if n % w < w / 2 { &mut left } else { &mut right }.push(word);
+                }
+            }
+            Some((left, right, page.shapes().to_vec()))
         };
-        let Some((drawn, all)) = shapes_of(SCENERY_PROP, 400) else {
+        let Some((left, right, all)) = shapes_of(SCENERY_PROP) else {
             return;
         };
-        assert!(drawn.len() > 100);
-        assert!(drawn.iter().all(|&word| word == 400 << 16), "{drawn:?}");
-        // Every pixel the triangle leaves uncovered has no shape word.
-        assert_eq!(all.iter().filter(|&&word| word != 0).count(), drawn.len());
-        let (terrain, _) = shapes_of(SCENERY_TERRAIN, 0).expect("adapter");
-        assert!(terrain.iter().all(|&word| word == 0));
+        assert!(
+            left.len() > 50 && right.len() > 50,
+            "{} {}",
+            left.len(),
+            right.len()
+        );
+        assert!(left.iter().all(|&word| word == 41), "{left:?}");
+        assert!(right.iter().all(|&word| word == 0), "{right:?}");
+        // Every pixel the left triangle leaves uncovered has no shape word.
+        assert_eq!(all.iter().filter(|&&word| word != 0).count(), left.len());
+        let (left, right, _) = shapes_of(SCENERY_TERRAIN).expect("adapter");
+        assert!(left.iter().chain(&right).all(|&word| word == 0));
     });
 }
 
@@ -525,7 +554,7 @@ fn ground_gradient(half: f32, west: u8, east: u8) -> SodModelIr {
         palette_index: index,
         flags: 4,
         scenery_class: 0,
-        prop_slot_low: 0,
+        _padding: 0,
     };
     let mut ir = SodModelIr::new("GROUND");
     ir.vertices = vec![
@@ -799,7 +828,7 @@ fn ground_vertex(x: f32, z: f32, palette_index: u8, flags: u8, class: u8) -> Sod
         palette_index,
         flags,
         scenery_class: class,
-        prop_slot_low: 0,
+        _padding: 0,
     }
 }
 
@@ -908,7 +937,7 @@ fn a_ground_outline_does_not_cover_the_line_after_it() {
             palette_index: RAIL,
             flags: flags | UNSHADED,
             scenery_class: SCENERY_PROP,
-            prop_slot_low: 0,
+            _padding: 0,
         })
         .to_vec();
         let rail_indices = vec![0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2];

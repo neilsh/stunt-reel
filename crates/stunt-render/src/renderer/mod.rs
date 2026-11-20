@@ -274,37 +274,15 @@ impl RenderedPage {
         &self.layers
     }
 
-    /// One raw shape word per pixel, top row first. Bits 0..16 are `shape id + 1` of a
-    /// view-facing prop that drew the pixel; bits 16..25 are the prop slot of a world prop
-    /// vertex that did (`SodVertex::prop_slot`). Both are zero where no prop drew (sky,
-    /// terrain, ocean, actors, sprites). [`RenderedPage::resolved_shapes`] turns a word into
-    /// a shape id.
+    /// One shape word per pixel, top row first: `shape id + 1` of the prop that drew the
+    /// pixel, a view-facing one's or a world prop's (`World::prop_runs`), and zero where no
+    /// prop drew (sky, terrain, ocean, actors, sprites).
     ///
     /// Only the prop that wins the depth test writes its word, as the layer does; the credits
     /// overlay leaves the word of the pixel it covers.
     #[must_use]
     pub fn shapes(&self) -> &[u32] {
         &self.shapes
-    }
-
-    /// One `shape id + 1` per pixel (zero where no prop drew), top row first: the low 16 bits
-    /// of each [`RenderedPage::shapes`] word when set, else the world prop slot looked up in
-    /// `prop_shapes` (the world's shape ids by slot, `World::prop_shapes`). A slot past the
-    /// table, such as the 0 of a prop beyond the 511th distinct shape, resolves to zero.
-    #[must_use]
-    pub fn resolved_shapes(&self, prop_shapes: &[u16]) -> Vec<u32> {
-        self.shapes
-            .iter()
-            .map(|&word| {
-                if word & 0xFFFF != 0 {
-                    return word & 0xFFFF;
-                }
-                let slot = (word >> 16) as usize;
-                slot.checked_sub(1)
-                    .and_then(|at| prop_shapes.get(at))
-                    .map_or(0, |&id| u32::from(id) + 1)
-            })
-            .collect()
     }
 }
 
@@ -825,14 +803,5 @@ mod tests {
         RenderedPage::new(size, vec![0; 15], &[0; 4], &[0; 4]).unwrap_err();
         RenderedPage::new(size, vec![0; 16], &[0; 3], &[0; 4]).unwrap_err();
         RenderedPage::new(size, vec![0; 16], &[0; 4], &[0; 3]).unwrap_err();
-    }
-
-    #[test]
-    fn resolved_shapes_prefer_the_draws_shape_and_look_up_world_slots() {
-        let size = PageSize::new(2, 2);
-        // A facing prop (shape 7), a world prop in slot 2, slot 3 past the table, no prop.
-        let words = [8, 2 << 16, 3 << 16, 0];
-        let page = RenderedPage::new(size, vec![0; 16], &[0; 4], &words).expect("page");
-        assert_eq!(page.resolved_shapes(&[40, 41]), [8, 42, 0, 0]);
     }
 }

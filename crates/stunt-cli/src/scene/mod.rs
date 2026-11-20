@@ -541,7 +541,7 @@ fn create_default_aircraft_ir() -> SodModelIr {
         palette_index,
         flags,
         scenery_class: 0,
-        prop_slot_low: 0,
+        _padding: 0,
     };
     ir.vertices = vec![
         vertex([0.0, 0.5, 4.0], 40, 0),   // nose
