@@ -90,7 +90,10 @@ The patched branch is presumably the copy-protection check; that rests on the re
 
 **It holds `TYPESET.EXE`, the tool that produced every printed set dump.**
 The install ships the wrapper: `SETINFO.BAT` is `TYPESET %1.SET > %1.TXT` and `PRINTSET.BAT` is `TYPESET %1.SET > PRN:`.
-Every `.TXT` in `Misc/Sets/` is therefore TYPESET's output, and its wording ("Event#1 One Shot", "If … And … Then …") is that program's, not the handbook's.
+Four of the 22 `.TXT` files in `Misc/Sets/` (`BOMBING`, `DRIVING`, `FIND&HIT` and `REALISM`) hold its output, six set dumps inside tutorial prose; the rest print no set.
+The dumps' wording ("Event#1 One Shot", "If … And … Then …") is that program's, not the handbook's.
+
+_Source: [printed set dumps against the prop bytes](../../work/2026-11/483_set-prop-slots/journal.md#2026-11-20-printed-set-dumps-against-the-prop-bytes)._
 
 TYPESET is LZEXE-packed (28,411 to 39,786 bytes, `build/re/typeset.img`) and is a Microsoft C program.
 Its string table carries the same operator templates as `STUNT.EXE` plus one `STUNT.EXE` builds at run time: `flag #\1b <> \2b`, the not-equal qualifier.

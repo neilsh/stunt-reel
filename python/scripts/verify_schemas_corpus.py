@@ -232,6 +232,8 @@ def _probe_set(root: Any, size: int) -> list[str]:
     problems = _probe_consumed(root, size)
     props = [bytes(prop) for prop in root.props]
     slots = [int.from_bytes(prop[:2], "little") for prop in props]
+    if slots and slots[0] != 0:
+        problems.append("first prop slot word is not 0")
     if any(later <= earlier for earlier, later in itertools.pairwise(slots)):
         problems.append("prop slot words do not strictly increase")
     if any(slot >= SET_PROP_SLOTS for slot in slots):
