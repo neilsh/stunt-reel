@@ -20,10 +20,10 @@ Image uploads with `gh --attach` through `agy-plugin-proxy` are untested here; c
 ## Rendering
 
 Renders run on user-space `bookworm-backports` lavapipe (`25.0.7-2~bpo12+1` with `libllvm15`).
-`mise run test-gpu` passes (39 passed, 1 ignored on #799, 2026-11-18) and `mise run sweep` works for relative comparisons, while `mise run parity` reports `not comparable: other adapter` against `expected.lavapipe`'s `"llvmpipe (LLVM 20.1.2, 256 bits)"` (`ctry` scored `0.9188` SSIM / `0.9910` IoU, `+0.0000001` from the pinned row).
-Follow [`cloud.md` § Rendering](cloud.md#rendering) when a change needs the GPU or `expected.lavapipe` verification, marking such PRs `local-only`.
+`mise run test-gpu` passes (39 passed, 1 ignored on #799, 2026-11-18) and `mise run sweep` works for relative comparisons, while `mise run parity` reports `not comparable: other adapter` against `expected/lavapipe.toml`'s `"llvmpipe (LLVM 20.1.2, 256 bits)"` (`ctry` scored `0.9188` SSIM / `0.9910` IoU, `+0.0000001` from the pinned row).
+Follow [`cloud.md` § Rendering](cloud.md#rendering) when a change needs the GPU or `expected/lavapipe.toml` verification, marking such PRs `local-only`.
 
 ## Handing work to local-windows
 
 This VM runs `dosbox-automation`, so `capture-ref` and `make-all` are available when `$STUNT_DATA_ROOT` is outside `/root`.
-Work that needs an RTX 4070 GPU, `expected.gpu` or `expected.lavapipe` repinning, DOSBox-X (`debug-x`), interactive `play`, Orca, dsh, `wrangler login`, or unarchived corpus files goes to [`local-windows`](local-windows.md) with the `local-only` label.
+Work that needs an RTX 4070 GPU, `expected/gpu.toml` or `expected/lavapipe.toml` repinning, DOSBox-X (`debug-x`), interactive `play`, Orca, dsh, `wrangler login`, or unarchived corpus files goes to [`local-windows`](local-windows.md) with the `local-only` label.

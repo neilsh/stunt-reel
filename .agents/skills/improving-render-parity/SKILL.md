@@ -45,5 +45,5 @@ Read each at its step:
 ## Finishing an item
 
 Write a [journal entry](../../../work/README.md#journal-entries) for every attempt, adopted or not, in the item's work folder (`mise run work -- new <slug> --issue N`, or its existing folder), and put the finding in the note that owns the residual.
-Adopting a change updates each reference film's expected table in `research/parity/references.toml` for the class it measured ([`loop-rules.md`](loop-rules.md)).
+Adopting a change repins each reference film's expected table in `research/parity/expected/<class>.toml` for the class it measured ([`loop-rules.md`](loop-rules.md)).
 End the session after the handoff; start the next hypothesis in a fresh session.
