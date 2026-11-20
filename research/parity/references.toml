@@ -25,7 +25,7 @@ all_sha256 = "cb58d95b72f02819d15c5e6dad0973e72af8026455dbf5e13e41933711bb12ce"
 # required while either is unpatched.
 makeone = "patch3"
 playone = "patch3"
-background = [[192, 199], [228, 236], [238, 238], [161, 165]]
+background = [[192, 199], [228, 235], [238, 238], [161, 165]]
 
 [intro]
 film = "vault-intro"
@@ -49,7 +49,7 @@ sha256 = "911e95c499b03d164c27c069480388b05beeee915d7b0918cae968d693195287"
 all_sha256 = "e8d852fa8f77ff9b708b8066ddb26457a0498cb94060f1976741355ff510a415"
 makeone = "patch3"
 playone = "patch3"
-background = [[162, 164], [194, 195], [197, 198], [208, 208], [228, 238]]
+background = [[162, 164], [194, 195], [197, 198], [208, 208], [229, 238]]
 
 [traintnl]
 film = "vault-traintnl"
