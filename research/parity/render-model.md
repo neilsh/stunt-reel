@@ -53,7 +53,7 @@ They differ in three ways:
 | Decals inside a shape | A coplanar polygon later in the stream covers the earlier one | `identify_coplanar_decals` flags it in place (`sod/decal.rs`); the `[I5]` pass draws decals in stream order with no depth write | Measured 2026-11-13 (section 3) | [SPEC](../../docs/SPEC.md) `[I5]`, [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md) |
 | Flat shading (`SHADE*`) | `base + shade`, the shade from `N . L` with the world light from var 13, rotated into a rotated object's frame | The world light `(99, 32766, -17)` from var 13 in the raw model frame for every shape, actors unrotated (`ShadeLight`, `sod/light.rs`) | Measured 2026-11-05: CTRY 0.8646 -> 0.8641, INTRO 0.7986 -> 0.8128, all of it on the aircraft; an actor's rotated light is not modelled | [`terrain-shade.md`](../playone-exe/terrain-shade.md) section 4.2, [`sod-vm-execution.md`](../playone-exe/sod-vm-execution.md) section 8.5 |
 | Gouraud polygons (`GVPOLY`, `GVPOLY16`) | A per-vertex ramp on the palette index, 8.8 fixed point, hard bands along screen-linear iso-lines | The ramp base plus each vertex's level, interpolated in screen space and rounded per fragment; the vertex fraction is dropped | Measured 2026-11-05: CTRY 0.8641 -> 0.8642, INTRO 0.8128 -> 0.8166 | [`terrain-shade.md`](../playone-exe/terrain-shade.md) sections 1, 6, 7 |
-| Raster blits (`OP_ANIMATE`) | A screen-space blit of an image resource, zero bytes transparent, in the painter's order | A camera-facing square of the frame, depth-tested in its actor's layer: cut where an object stands inside it | `INTRO` +0.0013, `CTRY` +0.0001 when added (one run, one GPU) | [`sod-animate.md`](../playone-exe/sod-animate.md) |
+| Raster blits (`OP_ANIMATE`) | A screen-space blit of an image resource, zero bytes transparent, in the painter's order | A camera-facing square of the frame in its actor's layer, drawn at its slot's place in the scenery walk: over the depth-tested world, under the props the walk draws after it and the actors nearer than its slot | `INTRO` +0.0013, `CTRY` +0.0001 when added (one run, one GPU); `CTRY`, `INTRO` and `BOMB` up when placed (one run, lavapipe); actors ordered by depth, not by their walk | [`sod-animate.md`](../playone-exe/sod-animate.md) |
 | Rasterisation | Software span filling in 320 × 200, its own clipping | GPU rasterisation at 320 × 200, 4:3 presentation | Edge and sub-pixel coverage differ; mask IoU 0.9897 CTRY, 0.9856 INTRO | [`attribution.md`](attribution.md), [`method.md`](method.md) |
 
 ## 3. Where we imitate the painter
@@ -108,10 +108,11 @@ Reversed-Z with `Depth32Float` is the fallback if a non-coplanar case shows far 
 ## Open questions
 
 1. **Painter errors in the films.**
-   No frame has been traced where `PLAYONE`'s walk order covers a nearer object.
-   If one exists, the depth buffer draws that frame "better" than the capture.
+   `CTRY` tick 871 is one: the walk draws the explosion, whose slot lies 22.5 m along the view axis, over the towers at 20.7 and 21.7 m, as the capture shows ([`scene-walk-actors.md`](../playone-exe/scene-walk-actors.md) § 4); we copy that order for `OP_ANIMATE` sprites (item 6).
+   No frame has been traced where the walk order puts a scenery object or a 3D actor over a nearer one; where one exists, the depth buffer draws that frame "better" than the capture.
 2. **Actors in the walk.**
-   Where film actors enter `PLAYONE`'s back-to-front order relative to the scenery, and whether an actor on the ground ties the terrain like a tile, is not traced.
+   How an actor's entry passes the scenery walk is traced statically: the partition planes split it, and at the leaf it reaches it is ordered against that leaf's object by depth ([`scene-walk-actors.md`](../playone-exe/scene-walk-actors.md) § 2); we draw `OP_ANIMATE` sprites so (item 6) and keep 3D actors depth-tested.
+   Whether an actor on the ground ties the terrain like a tile is not traced.
 3. **`SHADE*` light per actor.**
    The world light is in ([#221](https://github.com/neilsh/stunt-reel/issues/221), [`sod-vm-execution.md`](../playone-exe/sod-vm-execution.md) section 8.5); an actor's own light, turned by its rotation and the view each frame, would need shading after decode.
 4. **`GVPOLY` ramp fraction.**
@@ -119,4 +120,4 @@ Reversed-Z with `Depth32Float` is the fallback if a non-coplanar case shows far 
 5. **Edge pixels between coplanar decals.**
    Attribute `LOCATION` 3202's edge pixels to the outline order inside or between world decal slices, then decide whether per-fan outlines in the world mesh (per-polygon draws, or the edge buffer split per fan) bring them to the capture or away from it.
 6. **`OP_ANIMATE` draw order.**
-   The blit is drawn; it still loses to the depth test where `PLAYONE`'s painter's order puts it in front ([`sod-animate.md`](../playone-exe/sod-animate.md), Open questions).
+   The blit takes its slot's place in the scenery walk against the world's props; against 3D actors it is ordered by view depth, not by their walk ([#819](https://github.com/neilsh/stunt-reel/issues/819); [`sod-animate.md`](../playone-exe/sod-animate.md), Open questions).

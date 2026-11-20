@@ -41,6 +41,10 @@ pub struct GpuNode {
     /// Box around this node's slices and every descendant's, in the model's space; `None` when
     /// neither holds a vertex.
     pub bounds: Option<NodeBounds>,
+    /// The offsets in the model's index arena [`GpuModel::cut`] may cut this node's slice at,
+    /// ascending, each with where its outline is cut in the chunk's edge buffer; empty unless
+    /// the upload was asked for them and kept the model in one chunk.
+    pub marks: Vec<(u32, u32)>,
 }
 
 /// An axis-aligned box in a model's space, the unit of the world's view-frustum cull.
@@ -180,6 +184,10 @@ pub struct GpuMeshSlice {
     pub edge_count: u32,
 }
 
+/// Which vertices' triangles a model's outline takes, and the index offsets a slice may be
+/// cut at ([`GpuModel::from_ir_outlined`]).
+type Outlines<'a> = (fn(&SodVertex) -> bool, &'a [u32]);
+
 /// GPU-resident representation of a transpiled `SodModelIr`.
 #[derive(Debug)]
 pub struct GpuModel {
@@ -208,20 +216,25 @@ impl GpuModel {
     /// vertices, so it costs eight bytes an edge. Triangles with a corner `outlined` rejects
     /// are left out. A slice split over chunks gets the outline of the unsplit slice: each run
     /// draws its share of it.
+    ///
+    /// `marks` are offsets in `ir.indices`, ascending, where [`Self::cut`] may cut a slice; a
+    /// cut keeps the outline whole only where no edge is shared across it.
     pub fn from_ir_outlined(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ir: &SodModelIr,
         outlined: fn(&SodVertex) -> bool,
+        marks: &[u32],
     ) -> Self {
-        Self::upload(device, queue, ir, Some(outlined))
+        Self::upload(device, queue, ir, Some((outlined, marks)))
     }
 
+    /// Uploads `ir`; `outlined` is [`Self::from_ir_outlined`]'s filter and marks.
     fn upload(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ir: &SodModelIr,
-        outlined: Option<fn(&SodVertex) -> bool>,
+        outlined: Option<Outlines<'_>>,
     ) -> Self {
         let limit = device.limits().max_buffer_size;
         // A buffer larger than the address space is capped at what it can address.
@@ -253,9 +266,9 @@ impl GpuModel {
             max_vertices,
             max_indices,
         );
-        let edges = match outlined {
-            Some(keep) => plan_edges(&mut plan, ir, keep),
-            None => vec![Vec::new(); plan.chunks.len()],
+        let (edges, mut marks) = match outlined {
+            Some((keep, marks)) => plan_edges(&mut plan, ir, keep, marks),
+            None => (vec![Vec::new(); plan.chunks.len()], Vec::new()),
         };
         let chunks = plan
             .chunks
@@ -266,22 +279,27 @@ impl GpuModel {
             .collect();
 
         // Translate nodes into GpuNode flat arena
-        let mut planned = plan.slices.into_iter();
+        marks.resize_with(plan.slices.len(), Vec::new);
+        let mut planned = plan.slices.into_iter().zip(marks);
         let bounds = node_bounds(ir);
         let nodes = ir
             .nodes
             .iter()
             .zip(&sources)
             .enumerate()
-            .map(|(n, (node, source))| GpuNode {
-                id: node.id,
-                name: node.name.clone(),
-                parent: node.parent,
-                children: node.children.clone(),
-                local_matrix: Mat4::from_cols_array(&node.local_matrix),
-                visibility: node.visibility,
-                meshes: source.and_then(|_| planned.next()).unwrap_or_default(),
-                bounds: bounds.get(n).copied().flatten(),
+            .map(|(n, (node, source))| {
+                let (meshes, marks) = source.and_then(|_| planned.next()).unwrap_or_default();
+                GpuNode {
+                    id: node.id,
+                    name: node.name.clone(),
+                    parent: node.parent,
+                    children: node.children.clone(),
+                    local_matrix: Mat4::from_cols_array(&node.local_matrix),
+                    visibility: node.visibility,
+                    meshes,
+                    bounds: bounds.get(n).copied().flatten(),
+                    marks,
+                }
             })
             .collect();
 
@@ -355,12 +373,22 @@ impl GpuModel {
     /// with the world's eye-relative model matrix ([`crate::camera::eye_relative_matrix`]). A node whose box it cannot
     /// see is skipped with its subtree (`frustum_keeps`), which draws no fewer pixels because
     /// an off-screen slice covers none, and keeps the order of the slices that survive.
+    ///
+    /// Each base and decal slice comes with its node, so a caller can draw some apart.
+    #[expect(
+        clippy::type_complexity,
+        reason = "the three slice lists of one walk, the last two with their nodes"
+    )]
     pub fn collect_world_meshes(
         &self,
         eye: Vec3,
         view: Option<&CameraTransform>,
         view_proj: Mat4,
-    ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
+    ) -> (
+        Vec<GpuMeshSlice>,
+        Vec<(NodeId, GpuMeshSlice)>,
+        Vec<(NodeId, GpuMeshSlice)>,
+    ) {
         VisibleWalk {
             nodes: &self.nodes,
             roots: &self.root_nodes,
@@ -386,6 +414,32 @@ impl GpuModel {
             let table = chunk_prop_runs(runs, &chunk.vertex_ranges);
             chunk.prop_runs = Some(prop_runs_group(device, layout, &table));
         }
+    }
+
+    /// The part `start..end` of the index arena of node `node`'s one slice, with its share
+    /// of the slice's outline; `None` unless both ends are among the node's marks
+    /// ([`Self::from_ir_outlined`]) and `start <= end`.
+    #[must_use]
+    pub fn cut(&self, node: NodeId, start: u32, end: u32) -> Option<GpuMeshSlice> {
+        let node = self.nodes.get(node.0 as usize)?;
+        let [whole] = node.meshes.as_slice() else {
+            return None;
+        };
+        let edge_at = |at: u32| {
+            let found = node.marks.binary_search_by_key(&at, |&(index, _)| index);
+            found
+                .ok()
+                .and_then(|i| node.marks.get(i))
+                .map(|&(_, edge)| edge)
+        };
+        let (from, to) = (edge_at(start)?, edge_at(end)?);
+        (start <= end).then_some(GpuMeshSlice {
+            index_offset: start,
+            index_count: end - start,
+            edge_offset: from,
+            edge_count: to.checked_sub(from)?,
+            ..*whole
+        })
     }
 
     /// Encodes `meshes` into `rpass`, binding each slice's chunk buffers when it changes.
@@ -444,12 +498,21 @@ impl GpuModel {
     }
 }
 
-/// Fills in each planned slice's outline and returns each chunk's edge indices.
+/// Fills in each planned slice's outline and returns each chunk's edge indices, then each
+/// slice's `marks` (offsets in `ir.indices`, ascending) that lie within it, each with its
+/// edge offset: none when the plan splits the model, whose slices' indices are rebased.
+#[expect(
+    clippy::type_complexity,
+    reason = "the edges and the marks are planned in one pass over the same runs"
+)]
 fn plan_edges(
     plan: &mut UploadPlan,
     ir: &SodModelIr,
     keep: fn(&SodVertex) -> bool,
-) -> Vec<Vec<u32>> {
+    marks: &[u32],
+) -> (Vec<Vec<u32>>, Vec<Vec<(u32, u32)>>) {
+    let unsplit = matches!(plan.chunks.as_slice(), [only] if only.indices.is_none());
+    let mut slice_marks = Vec::with_capacity(plan.slices.len());
     // A split chunk's vertices, in buffer order, as source vertex numbers.
     let local: Vec<Option<Vec<usize>>> = plan
         .chunks
@@ -499,6 +562,7 @@ fn plan_edges(
                 .map(|[p, q]| (p.min(q), p.max(q)))
                 .collect()
         });
+        let mut found_marks = Vec::new();
         for run in runs.iter_mut() {
             let (Some(triangles), Some(out)) =
                 (triangles_of(run), edges.get_mut(run.chunk as usize))
@@ -506,19 +570,32 @@ fn plan_edges(
                 continue;
             };
             let mut found =
-                crate::outline::boundary_edges(triangles, |i| outlined(source_of(run, i)));
+                crate::outline::numbered_boundary_edges(triangles, |i| outlined(source_of(run, i)));
             if let Some(boundary) = &boundary {
-                found.retain(|&[p, q]| match (source_of(run, p), source_of(run, q)) {
-                    (Some(p), Some(q)) => boundary.contains(&(p.min(q), p.max(q))),
-                    _ => false,
-                });
+                found.retain(
+                    |&([p, q], _)| match (source_of(run, p), source_of(run, q)) {
+                        (Some(p), Some(q)) => boundary.contains(&(p.min(q), p.max(q))),
+                        _ => false,
+                    },
+                );
             }
             run.edge_offset = arena_index(out.len());
             run.edge_count = arena_index(2 * found.len());
-            out.extend(found.into_iter().flatten());
+            if unsplit && boundary.is_none() {
+                // Edges come in first-use order, so the ones before a mark are a prefix.
+                let (start, end) = (run.index_offset, run.index_offset + run.index_count);
+                let first = marks.partition_point(|&m| m < start);
+                for &mark in marks.iter().skip(first).take_while(|&&m| m <= end) {
+                    let triangle = ((mark - start) / 3) as usize;
+                    let before = found.partition_point(|&(_, number)| number < triangle);
+                    found_marks.push((mark, run.edge_offset + arena_index(2 * before)));
+                }
+            }
+            out.extend(found.into_iter().flat_map(|(edge, _)| edge));
         }
+        slice_marks.push(found_marks);
     }
-    edges
+    (edges, slice_marks)
 }
 
 /// One vertex/index buffer pair of a [`GpuModel`].
@@ -874,34 +951,53 @@ impl VisibleWalk<'_> {
     /// The visible base slices, last sibling first, and decal slices, in draw order.
     fn collect(&self) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
         let (_, base, decals) = self.split(|_| false);
-        (base, decals)
+        let untag = |tagged: Vec<(NodeId, GpuMeshSlice)>| tagged.into_iter().map(|(_, m)| m);
+        (untag(base).collect(), untag(decals).collect())
     }
 
     /// The visible ground slices in draw order, then [`Self::collect`]'s base and decal
-    /// slices of the other nodes.
-    fn collect_world(&self) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
+    /// slices of the other nodes, each with its node.
+    #[expect(
+        clippy::type_complexity,
+        reason = "the three slice lists of one walk, the last two with their nodes"
+    )]
+    fn collect_world(
+        &self,
+    ) -> (
+        Vec<GpuMeshSlice>,
+        Vec<(NodeId, GpuMeshSlice)>,
+        Vec<(NodeId, GpuMeshSlice)>,
+    ) {
         self.split(|node| node.name == GROUND_NODE)
     }
 
     /// The visible slices of the nodes `is_ground` picks, in draw order, then the others'
-    /// base slices, last sibling first, and decal slices, in draw order.
+    /// base slices, last sibling first, and decal slices, in draw order, each with its node.
+    #[expect(
+        clippy::type_complexity,
+        reason = "the three slice lists of one walk, the last two with their nodes"
+    )]
     fn split(
         &self,
         is_ground: impl Fn(&GpuNode) -> bool,
-    ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
+    ) -> (
+        Vec<GpuMeshSlice>,
+        Vec<(NodeId, GpuMeshSlice)>,
+        Vec<(NodeId, GpuMeshSlice)>,
+    ) {
         let mut ground_meshes = Vec::new();
         let mut base_meshes = Vec::new();
         let mut decal_meshes = Vec::new();
         self.walk(false, |node, mesh| {
             if !is_ground(node) && !mesh.is_decal {
-                base_meshes.push(mesh);
+                base_meshes.push((node.id, mesh));
             }
         });
         self.walk(true, |node, mesh| {
             if is_ground(node) {
                 ground_meshes.push(mesh);
             } else if mesh.is_decal {
-                decal_meshes.push(mesh);
+                decal_meshes.push((node.id, mesh));
             }
         });
         (ground_meshes, base_meshes, decal_meshes)
@@ -1056,10 +1152,25 @@ mod tests {
     fn an_unsplit_slice_is_outlined_without_its_diagonal() {
         let ir = quad_ir();
         let mut plan = plan_upload(4, &ir.indices, &[source(0, 6)], 4, 6);
-        let edges = plan_edges(&mut plan, &ir, |_| true);
+        let edges = plan_edges(&mut plan, &ir, |_| true, &[]).0;
         assert_eq!(edges, vec![vec![0, 1, 1, 2, 2, 3, 3, 0]]);
         let slice = plan.slices[0][0];
         assert_eq!((slice.edge_offset, slice.edge_count), (0, 8));
+    }
+
+    /// Two quads on their own vertices: a mark between them cuts the outline between them
+    /// too, and each end of the slice is a mark of its own.
+    #[test]
+    fn a_mark_cuts_the_outline_where_it_cuts_the_triangles() {
+        let ir = numbered_ir(8, &[0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+        let mut plan = plan_upload(8, &ir.indices, &[source(0, 12)], 8, 12);
+        let (edges, marks) = plan_edges(&mut plan, &ir, |_| true, &[0, 6, 12, 18]);
+        assert_eq!(edges[0].len(), 16, "four edges a quad");
+        assert_eq!(marks, vec![vec![(0, 0), (6, 8), (12, 16)]]);
+        // A split plan rebases its indices, so it takes no marks.
+        let mut split = plan_upload(8, &ir.indices, &[source(0, 12)], 4, 12);
+        let (_, marks) = plan_edges(&mut split, &ir, |_| true, &[0, 6, 12]);
+        assert!(marks.iter().all(Vec::is_empty));
     }
 
     /// A model of `n` vertices, each with its number as palette index, over `indices`.
@@ -1133,7 +1244,7 @@ mod tests {
         // Three vertices a chunk: each triangle is its own run; the cut (the diagonal) is no
         // boundary of the slice, so each run draws its two outer edges.
         let mut plan = plan_upload(4, &ir.indices, &[source(0, 6)], 3, 6);
-        let edges = plan_edges(&mut plan, &ir, |_| true);
+        let edges = plan_edges(&mut plan, &ir, |_| true, &[]).0;
         assert_eq!(edges.len(), 2);
         assert!(edges.iter().all(|e| e.len() == 4));
         for slice in &plan.slices[0] {
@@ -1144,7 +1255,7 @@ mod tests {
             vec![vec![0, 1, 1, 2], vec![2, 3, 3, 0]]
         );
         // Rejecting every vertex leaves no outline.
-        let edges = plan_edges(&mut plan, &ir, |_| false);
+        let edges = plan_edges(&mut plan, &ir, |_| false, &[]).0;
         assert!(edges.iter().all(Vec::is_empty));
         assert!(plan.slices[0].iter().all(|s| s.edge_count == 0));
     }
@@ -1156,9 +1267,9 @@ mod tests {
         let ir = numbered_ir(4, &[0, 1, 2, 0, 2, 3]);
         let keep: fn(&SodVertex) -> bool = |v| v.palette_index != 1;
         let mut unsplit = plan_upload(4, &ir.indices, &[source(0, 6)], 4, 6);
-        let whole = plan_edges(&mut unsplit, &ir, keep);
+        let whole = plan_edges(&mut unsplit, &ir, keep, &[]).0;
         let mut split = plan_upload(4, &ir.indices, &[source(0, 6)], 3, 6);
-        let cut = plan_edges(&mut split, &ir, keep);
+        let cut = plan_edges(&mut split, &ir, keep, &[]).0;
         let want = edge_set(&unsplit, &whole, &ir, 0);
         assert_eq!(want, [(0, 2), (0, 3), (2, 3)].into_iter().collect());
         assert_eq!(edge_set(&split, &cut, &ir, 0), want);
@@ -1171,9 +1282,9 @@ mod tests {
         // opens chunk 1.
         let ir = numbered_ir(12, &[0, 1, 2, 6, 7, 8, 7, 8, 11]);
         let mut unsplit = plan_upload(12, &ir.indices, &[source(0, 9)], 12, 9);
-        let whole = plan_edges(&mut unsplit, &ir, |_| true);
+        let whole = plan_edges(&mut unsplit, &ir, |_| true, &[]).0;
         let mut split = plan_upload(12, &ir.indices, &[source(0, 9)], 8, 9);
-        let cut = plan_edges(&mut split, &ir, |_| true);
+        let cut = plan_edges(&mut split, &ir, |_| true, &[]).0;
         assert_eq!(split.slices[0].len(), 3);
         let chunks: Vec<u32> = split.slices[0].iter().map(|r| r.chunk).collect();
         assert_eq!(chunks, vec![0, 0, 1]);
@@ -1288,6 +1399,7 @@ mod tests {
                 edge_count: 0,
             }],
             bounds: None,
+            marks: Vec::new(),
         }
     }
 

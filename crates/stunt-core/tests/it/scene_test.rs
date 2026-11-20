@@ -628,9 +628,44 @@ fn an_animated_shape_draws_its_sprite_at_the_actor() {
             centre: [3.0, 0.0, 0.0],
             size: 2.0,
             actor: 0,
+            after: None,
         }]
     );
     assert_eq!(frame.actors[0].shape_id, 7);
+}
+
+/// With a world, a sprite lists the drawn placements the scenery walk draws after its slot.
+#[test]
+fn a_sprite_lists_the_placements_the_walk_draws_after_it() {
+    // The explosion's slot stands at DOS x = 200, wholly on the greater side of the plane
+    // x = 50, extent 51 (`synthetic_animate.sod`: bounding size 100, scale index 1); the eye,
+    // at x = 0, is on the lesser side, walked last.
+    let film = film([0.0, 0.0, 10.0], &[(7, [-200.0, 0.0, 0.0])]);
+    let sprite = fixture("synthetic_sprite.bin");
+    let minimal = fixture("synthetic_minimal.sod");
+    let all = archive(&[
+        (7, &fixture("synthetic_animate.sod")),
+        (0x1F01, &sprite),
+        (0x0105, &minimal),
+        (0x0106, &minimal),
+    ]);
+    // Word 1: SP_XPLANE with sortvalue 50, its greater child an SP_2NODE (word 5) whose first
+    // child is the leaf of 0x0105 (word 8), its lesser child the leaf of 0x0106 (word 10).
+    let words: [i32; 12] = [0, 6, 10, 20, 50, 4, 16, 0, 10, 0x0105, 10, 0x0106];
+    let scenery: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let (scene, _) = FilmScene::load(&SceneInputs {
+        shapes: Some(ShapeSource::Archive(&all)),
+        scenery: Some(&scenery),
+        ..scene_inputs(&film)
+    })
+    .expect("load");
+    let records = &scene.world().expect("a world").placements.records;
+    let shapes: Vec<u16> = records.iter().map(|r| r.shape).collect();
+    assert_eq!(shapes, [0x0105, 0x0106], "the placements in walk order");
+    let frame = scene.frame(0.0);
+    let after: Vec<_> = frame.sprites.iter().map(|s| s.after.clone()).collect();
+    // The first child of the pair is walked with an empty list; the lesser side follows.
+    assert_eq!(after, [Some(vec![1])]);
 }
 
 /// The view slot's shadow-only draw draws no sprite of its animated shape; the other actor

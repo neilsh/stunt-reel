@@ -31,6 +31,40 @@ pub struct PlacementRecord {
     pub collision: Option<u32>,
     /// Whether the world draws it: false when the sub-pixel cull drops it.
     pub drawn: bool,
+    /// Where the world mesh ([`super::World::ir`]) holds its geometry; `None` for a
+    /// placement the mesh leaves out, culled or facing the view.
+    pub mesh: Option<MeshSpans>,
+}
+
+/// The run `start..end` of one of a model's arenas (`[I2]`): indices or nodes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ArenaSpan {
+    /// The first entry of the run.
+    pub start: u32,
+    /// One past its last entry; equal to `start` for an empty run.
+    pub end: u32,
+}
+
+impl ArenaSpan {
+    /// True when the run holds nothing.
+    #[must_use]
+    pub fn is_empty(self) -> bool {
+        self.end <= self.start
+    }
+}
+
+/// Where one placement's geometry lies in the world mesh, for a renderer that draws a
+/// placement apart from the rest.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MeshSpans {
+    /// Its triangles in the `WORLD_BASE` node's mesh, as a run of the model's indices.
+    pub base: ArenaSpan,
+    /// Its triangles in the `WORLD_DECAL` node's mesh (`[I5]`), as a run of indices.
+    pub decal: ArenaSpan,
+    /// The nodes made for it alone, as a run of node ids: its flat-ground runs
+    /// ([`super::GROUND_NODE`]) and its gated meshes. The `SP_1NODE` groups it hangs under
+    /// are shared, so they lie outside the run.
+    pub nodes: ArenaSpan,
 }
 
 /// Every [`PlacementRecord`] of a world in walk order, with the arenas they index (`[I2]`).
@@ -49,20 +83,23 @@ pub struct PlacementRecords {
 
 impl PlacementRecords {
     /// Records for `props`, the scenery walk's placements with its `steps`, whose `drawn[i]`
-    /// says whether the world draws `props[i]`. A shape missing from `shapes`, or one with no
-    /// decode record or an empty collision list, gets no collision index.
+    /// says whether the world draws `props[i]` and `mesh[i]` where the world mesh holds it. A
+    /// shape missing from `shapes`, or one with no decode record or an empty collision list,
+    /// gets no collision index.
     pub(crate) fn new(
         props: &[Placement],
         steps: Vec<PartitionStep>,
         shapes: &HashMap<u16, SodModelIr>,
         drawn: &[bool],
+        mesh: &[Option<MeshSpans>],
     ) -> Self {
         let mut collisions = Vec::new();
         let mut indices: HashMap<u16, Option<u32>> = HashMap::new();
         let records = props
             .iter()
             .zip(drawn)
-            .map(|(p, &drawn)| {
+            .zip(mesh.iter().copied().chain(std::iter::repeat(None)))
+            .map(|((p, &drawn), mesh)| {
                 let collision = *indices.entry(p.shape).or_insert_with(|| {
                     let lists = shapes
                         .get(&p.shape)
@@ -80,6 +117,7 @@ impl PlacementRecords {
                     path: p.path,
                     collision,
                     drawn,
+                    mesh,
                 }
             })
             .collect();

@@ -109,7 +109,7 @@ _Avoid_: asset, scenegraph node
 **Placement**: A prop's shape and position in the world, as the scenery walk, dedup and the sub-pixel cull leave it.
 _Avoid_: instance
 
-**Placement record**: What the world keeps of each placement the scenery walk and dedup leave, sub-pixel ones included: its shape and position, the `SCENERY.scn` node that places it, the partition nodes above that node with their plane words, its shape's collision list, and whether the world draws it.
+**Placement record**: What the world keeps of each placement the scenery walk and dedup leave, sub-pixel ones included: its shape and position, the `SCENERY.scn` node that places it, the partition nodes above that node with their plane words, its shape's collision list, whether the world draws it, and where the world mesh holds its geometry.
 _Avoid_: placed object, instance record
 
 **Collision list**: The records a shape's header word at byte 8 points to, cubes, boxes and planes with nested lists, which `PLAYONE`'s ground and collision probe tests an actor against ([`sod.md` § 2.3](research/formats/sod.md#23-collision-list)).

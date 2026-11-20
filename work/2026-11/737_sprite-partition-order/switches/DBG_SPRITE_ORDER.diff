@@ -1,0 +1,31 @@
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -429,6 +429,8 @@
+     /// The frame's sprites the scenery walk places, in walk order, drawn after
+     /// [`Self::prepared`].
+     steps: Vec<WalkStep>,
++    /// Whether sprites are drawn at their place in the scenery walk (`DBG_SPRITE_ORDER`).
++    order_sprites: bool,
+ }
+ 
+ impl SceneRenderer {
+@@ -468,6 +470,10 @@
+             prepared: Vec::new(),
+             placements,
+             steps: Vec::new(),
++            order_sprites: std::env::var("DBG_SPRITE_ORDER")
++                .ok()
++                .and_then(|v| v.parse::<u8>().ok())
++                .is_none_or(|v| v != 0),
+         }
+     }
+ 
+@@ -633,7 +639,7 @@
+                 &uniform,
+                 (base, decals),
+             );
+-            match &sprite.after {
++            match sprite.after.as_ref().filter(|_| self.order_sprites) {
+                 Some(after) => {
+                     let depth = (Vec3::from_array(sprite.centre) - eye).length();
+                     placed.push((after.as_slice(), depth, draw));

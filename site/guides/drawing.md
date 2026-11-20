@@ -41,7 +41,8 @@ A modern graphics card does it differently, and Stunt Reel's renderer uses the c
 The two agree wherever the nearer surface is also painted later, which is most of the frame.
 They part ways in three places.
 On ties, a depth buffer keeps whichever surface rounds nearer, so for markings, flat ground tiles and the ground itself we add rules that copy the painter's later-wins order.
-Where the painter's order could put a far surface over a near one, we do not copy it, though the notes have not yet traced such a frame.
+Where the painter's order puts a far surface over a near one, we copy it in one case: an explosion or other flat image that a model stamps on the screen goes where the original's walk of the scenery puts it, so in one frame the notes traced it covers a tower that stands nearer than it, as the original does.
+Everywhere else the nearer surface wins.
 And a couple of choices the original makes every frame, which flat props count as ground tiles and which surfaces are the flat ground itself, we make once per film.
 The [render model note](../../research/parity/render-model.md) lists each stage and where our picture differs.
 
