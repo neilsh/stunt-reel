@@ -18,3 +18,26 @@
   - **Keeping bytecode order across base and decal faces** was not tried: base faces are depth-tested, so their order in the base pass decides only exact ties, and the case the issue named is the line's pass, which flagging it settles.
 - **Verdict**: adopted `2` on the evidence track by the film-mean branch (`TRAINTNL` +0.0030, `LOCATION` +0.0007, `INTRO` +0.0004; no film falls by more than 0.002). `1` rejected: it adopts by the same branch, but it draws lines over `BOMB`'s near wall at 2652 to 2740 that the capture does not show. `2` changes draw order (a line moves from the base pass to the decal pass), so it needs `mise run judge` on the GPU ([`cloud.md`](../../../.agents/skills/working-in-an-environment/cloud.md) § Rendering). Lavapipe tables repinned.
 - **Lives in**: [`render-model.md`](../../../research/parity/render-model.md) section 3, [`world-scene-residuals.md`](../../../research/playone-exe/world-scene-residuals.md) section 6.6 and Ruled out, [`sod.md`](../../../research/formats/sod.md) section 3.1.
+
+## 2026-11-20: the line rule adopts on the GPU
+
+- **Question**: #685 moves a `MOVETO`/`ZLINETO` line that lies on an earlier decal from the base pass to the decal pass, a draw-order change, and merged on lavapipe scores alone.
+  Does the rule adopt by `mise run judge` on the GPU, and do the `gpu` expected tables measure a `crates` tree that contains it?
+- **Method**: track **evidence**.
+  `mise run parity` on `bf688ffb` (base, #685's parent, `crates` tree `9163b37`), with its reports copied to `build/scratch/gpu-448-base`, then on `56a530d2` (#685's squash merge, `crates` tree `71486d7`), both on the RTX 4070 Laptop GPU (`adapter` class `hardware` in every report).
+  Then `mise run judge -- build/scratch/gpu-448-base build/parity/report --track evidence --target location:4600-4730 --target intro:837-859 --target traintnl:12-133`.
+  Then `mise run parity` on `fd3f84aa` (main, `crates` tree `1490c820`) and `mise run parity-repin -- --class gpu`.
+- **Result**:
+  - **Verdict**: `winner: run=candidate adopts (evidence, film means; target idx +0.0004 attribution; worst target frame -0.0004 location:4643; 27 frames down >0.005, listed)`, with pooled target SSIM +0.0066.
+  - **Film means**, unrounded (`mean_ssim_scored`, base → candidate): `CTRY` 0.9183158 → 0.9183958 (+0.0000800), `INTRO` 0.8612320 → 0.8616349 (+0.0004029), `LAND` 0.8942192 → 0.8943275 (+0.0001083), `BALLOON` 0.8176808 → 0.8177085 (+0.0000277), `TRAINTNL` 0.8596963 → 0.8626928 (+0.0029966), `BOMB` 0.8463945 → 0.8461117 (−0.0002828), `LOCATION` 0.8314366 → 0.8320937 (+0.0006571).
+    Every delta is within 0.00001 of the lavapipe delta the issue quotes, and no film falls by more than 0.002.
+  - **Target frames**: `LOCATION` 4665 0.7992805 → 0.8109950 (+0.0117145) and 4676 0.8121955 → 0.8256600 (+0.0134646); `TRAINTNL` 12 0.8209061 → 0.8349450 (+0.0140389) and 34 0.8123974 → 0.8374232 (+0.0250258); `INTRO` 848 0.7411448 → 0.7411483 (+0.0000035), unchanged as on lavapipe.
+    The worst target frame is `LOCATION` 4643, −0.0004186, inside the 0.025 bound.
+  - **27 frames fall by more than 0.005** (27 on lavapipe for the same pair, as the issue quotes; 28 in the 2026-11-17 run on `ce9fe79`), worst `TRAINTNL` 309 and `LOCATION` 4852 at −0.0098.
+    The lavapipe entry's three inspected frames explain them: rails and `SIPD` lettering now draw where the capture draws them.
+  - **The `gpu` tables need no commit.**
+    #831 generated `research/parity/expected/gpu.toml` on `crates` tree `1490c820`, the tree main has, and this run's `mise run parity-repin -- --class gpu` reproduced every value and wrote nothing.
+- **Verdict**: adopted on the GPU by the evidence track's film-mean branch, as on lavapipe, with the same target frames moving by the same amounts to within 0.0003.
+  Every film is inside the 0.002 guard (worst `BOMB` −0.0003).
+  No repin commit: main's `gpu.toml` already measures the tree that contains the rule.
+- **Lives in**: [`world-scene-residuals.md`](../../../research/playone-exe/world-scene-residuals.md) section 6.6.

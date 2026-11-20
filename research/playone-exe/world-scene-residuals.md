@@ -146,9 +146,9 @@ The ocean-coloured props at the eye include the town-block tiles `0x03E4` to `0x
   `identify_coplanar_decals` (`sod/decal.rs`) now flags a `MOVETO`/`ZLINETO` segment as a decal when both its ends lie within 0.1 mm of an earlier decal's plane and their bounds meet, and the ordered decal pass and the ground pass draw it after that decal in stream order.
   At `LOCATION` tick 4665, after the ground pass had landed, `0x037C`'s yard lines were still missing: the line's classification, not the ground pass, buried them.
   With the rule they draw (SSIM 0.7977 to 0.8094), as do `TRAINTNL`'s rails on their `132` ties (tick 12: 0.8210 to 0.8348).
-  On lavapipe all seven films pass the evidence-backed guards; `TRAINTNL` rises by 0.0030 and `BOMB` falls by 0.0003.
-  `[Bounded Observation]`: two films' target frames and seven films' scores, on lavapipe.
-  _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._
+  All seven films pass the evidence-backed guards on lavapipe and on the GPU; `TRAINTNL` rises by 0.0030 and `BOMB` falls by 0.0003 on both.
+  `[Bounded Observation]`: two films' target frames and seven films' scores, on lavapipe and the GPU.
+  _Source: [2026-11-17: lines lying on an earlier facet are decals of it](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-17-lines-lying-on-an-earlier-facet-are-decals-of-it)._ _Source: [2026-11-20: the line rule adopts on the GPU](../../work/2026-11/448_zlineto-under-facet/journal.md#2026-11-20-the-line-rule-adopts-on-the-gpu)._
 * **Earlier candidate, not adopted.**
   Dropping, from a ground-snapped prop, each triangle whose three vertices are palette 208 and lie over a terrain triangle draws the capture's green at tick 2124.
   Scores: `BOMB` 0.8202 to 0.8216, `LOCATION` 0.8144 to 0.8151, the other five films unchanged to four decimals; on `LOCATION`, 33 of 745 frames change, 27 closer, none falling by more than 0.005 and 20 rising by more than 0.005.
