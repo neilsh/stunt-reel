@@ -42,7 +42,7 @@ The best of 48 orientations scored 0.247 against 0.109 for the current one, yet 
 Treat an IoU gain as a lead, and confirm it with a crop (section 1).
 
 **Backdrop bands** (`background` in each `references.toml` row).
-`[Bounded Observation]`, 2026-11-14, #490 and the #501 review, on `crates` tree `d2cd090` (`expected.gpu` was measured on `adbde141`; scores matched it to 1e-6), RTX 4070.
+`[Bounded Observation]`, 2026-11-14, #490 and the #501 review, on `crates` tree `d2cd090` (`expected.gpu` was measured on `adbde141`; scores matched it to 1e-6), RTX 4070; rechecked 2026-11-20 (#614) on `crates` tree `5ad0346`, which draws the sky drawer's bands (#617).
 The rule, one for all six films: an index is backdrop when
 
 * it has at least 0.05 % of the capture's rows 0..184 over capture frames 0, 4, 8, ... of the scored frames (`[0::4]`, 25 to 183 frames);
@@ -100,34 +100,40 @@ print(film, bands, f"{100 * cap[keep].sum() / cap.sum():.0f}% of capture pixels"
 ```
 
 The `ctry` row is #485's.
-It meets the no-actor-pixel test since #505 dropped 237 (9 actor px in 3 frames), but not the other tests: rederived whole, the rule keeps `[162,164] [228,236] [238,238]` (25 % covered) and the probe stops working (IoU 0.0879, every shift in the shift test scores above it), because our `ctry` render draws ground 193, 194 and 196 (57 % of the capture) off layers 0 to 2 (at most 1 % of their pixels on them), so they fail the 85 % test.
+It meets the no-actor-pixel test since #505 dropped 237 (9 actor px in 3 frames) and #614 dropped 236 (6 px in 2 frames on tree `5ad0346`), but not the other tests: rederived whole, the rule keeps `[162,164] [228,235] [238,238]` (24 % covered) and the probe stops working (IoU 0.0892, every shift in the shift test scores above it), because our `ctry` render draws ground 193, 194 and 196 (57 % of the capture) off layers 0 to 2 (at most 1 % of their pixels on them), so they fail the 85 % test.
 `ctry` keeps #485's ground ramp and shade greens for that reason.
 An earlier, looser rule put actor-painted indices in the bands; the strict one drops them.
-_Source: [per-film derivation and shift test](../../work/2026-11/490_background-bands/journal.md#2026-11-14-backdrop-bands-for-the-six-non-ctry-films), [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
+On tree `5ad0346` the rule gives the other five rows unchanged and drops 228 from `balloon`'s (4 actor px in 3 frames).
+_Source: [per-film derivation and shift test](../../work/2026-11/490_background-bands/journal.md#2026-11-14-backdrop-bands-for-the-six-non-ctry-films), [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances), [recheck after the sky drawer](../../work/2026-11/614_background-bands-drift/journal.md#2026-11-20-strict-rule-on-every-reference-film-after-the-sky-drawer)._
 
-| Film | `background` | Capture pixels covered | `iou` (every 2nd scored frame) |
+| Film | `background` | Capture pixels covered | `iou` (every 2nd scored frame), tree `5ad0346` |
 |---|---|---|---|
-| `ctry` | `[192,199] [228,236] [238,238] [161,165]` (#485, 237 dropped by #505) | 85 % | 0.5369 (38), 0.5402 with 237 (tree `7aeabce`) |
-| `intro` | `[164,164] [195,195]` | 10 % | 0.1487 (89) |
-| `land` | `[164,164] [195,195]` | 34 % | 0.1879 (47) |
-| `balloon` | `[162,164] [194,195] [197,198] [208,208] [228,238]` | 57 % | 0.6796 (43) |
-| `traintnl` | `[195,195] [228,228] [232,238]` | 62 % | 0.3397 (44) |
-| `bomb` | `[163,164] [208,208] [227,235] [238,238]` | 34 % | 0.2709 (129) |
-| `location` | `[164,164] [195,195] [208,208]` | 27 % | 0.1164 (86) |
+| `ctry` | `[192,199] [228,235] [238,238] [161,165]` (#485; 237 dropped by #505, 236 by #614) | 85 % | 0.5391 (38), 0.5417 with 236 |
+| `intro` | `[164,164] [195,195]` | 10 % | 0.1503 (89) |
+| `land` | `[164,164] [195,195]` | 34 % | 0.1886 (47) |
+| `balloon` | `[162,164] [194,195] [197,198] [208,208] [229,238]` (228 dropped by #614) | 57 % | 0.7143 (52), 0.7237 with 228 |
+| `traintnl` | `[195,195] [228,228] [232,238]` | 62 % | 0.3424 (44) |
+| `bomb` | `[163,164] [208,208] [227,235] [238,238]` | 34 % | 0.2823 (129) |
+| `location` | `[164,164] [195,195] [208,208]` | 27 % | 0.0967 (78) |
 
 "Covered" is the share of all rows 0..184 capture pixels, 0 and 255 included in the denominator, over the sampled frames; an index below 0.05 % of them, or absent from the sampled frames, counts as object.
 The figures are leads only (`[Bounded Observation]`, [trap above](#3-actor-window-iou-iou)), for these reasons:
 
 * **The strict test costs backdrop.**
   Every index our actors paint anywhere in the film counts as object pixels wherever it is backdrop.
-  `land` has no sky band because actor paint covers 227 to 238 (5,605 px at 229 to 238); `intro` has none either (2,643 px, mostly 236 to 238); `bomb` loses terrain 195 (24 % of its capture) to 1 px in 1 scored frame (140 px in 14 frames on tree `7aeabce`, #505); `traintnl` 231 goes for 1 px in 1 frame while 233 stays.
+  `land` has no sky band because actor paint covers 227 to 238 (5,621 px at 229 to 238 on tree `5ad0346`); `intro` has none either (1,982 px at 227 to 238, 784 of them at 237); `bomb` lost terrain 195 (24 % of its capture) to 1 px in 1 scored frame on `d2cd090` (145 px in 14 frames on `5ad0346`); `traintnl` 231 went for 1 px in 1 frame while 233 stayed (231 has 4 px in 4 frames on `5ad0346`, 233 none).
   The test follows rasterizer edges.
 * **Props-layer scenery.**
   Tarmac, hills, tunnel and track props our render draws on layer 3 are object pixels, inside the actor's box on `traintnl` (crop of tick 628).
 * **Weak discrimination on `intro` and `location`.**
   Shifting our actor by (0,-15) or (0,+10) scores as well as or better than (0,0) on `intro`, and (+25,+25) costs `location` 4 % of its IoU, against about half on `land`, `traintnl`, `balloon` and `bomb` (tree `7aeabce`, window around the moved actor; #490's window gave `location` 12 %).
+  On tree `5ad0346` (+25,+25) scores above (0,0) on `location` (0.1002 against 0.0967), while `land`, `traintnl`, `balloon` and `bomb` keep 0.44 to 0.55 of theirs.
   Do not use the actor IoU of `intro` or `location` to rank a 15 to 25 px placement change.
-  _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
+  _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances), [recheck after the sky drawer](../../work/2026-11/614_background-bands-drift/journal.md#2026-11-20-strict-rule-on-every-reference-film-after-the-sky-drawer)._
+* **Index 208 sits near the sky test.**
+  Since #617 our render draws 208 as sky below the sky drawer's lowest band edge ([`palette-and-shading.md`](../formats/concepts/palette-and-shading.md#sky-bands)), and on tree `5ad0346` 46 % of `bomb`'s capture 208 falls on our sky layer (11 % on `balloon`, 7 % on `location`).
+  Past half, the rule's sky test, which admits 227 to 238 alone, would drop 208 from those bands, though `PLAYONE`'s sky drawer paints it.
+  _Source: [recheck after the sky drawer](../../work/2026-11/614_background-bands-drift/journal.md#2026-11-20-strict-rule-on-every-reference-film-after-the-sky-drawer)._
 * **A render fault inflates `location`.**
   From tick 717 to 903 our render draws a black foreground quadrilateral, mostly growing, that the capture lacks ([#504](https://github.com/neilsh/stunt-reel/issues/504)).
   It overlaps capture index 76, which is no band, so it adds object pixels our actor "finds": per-frame IoU is 0.34 to 0.35 at ticks 805 to 892 against 0.05 to 0.12 at 717 to 760 (different actor content, so an inference).
@@ -183,8 +189,9 @@ Each admitted index as its share of capture pixels (rows 0..184, frames `[0::4]`
   `location`'s gain at `s<=0.01%` is index 76 alone, the index under the #504 foreground fault.
 * **`land`'s sky comes back only at `s<=1%`**, which admits 3,111 actor px with one index in 95 frames: our actors paint those sky indices through the film.
 * **The strict rule's output moves with the render.**
-  On this tree `bomb` 195 has 140 actor px in 14 frames (1 px in 1 frame on `d2cd090`), and the strict rule now gives `traintnl` 164 (0 actor px), which its committed row lacks.
-  Rederiving the other films' rows on the current tree is [#614](https://github.com/neilsh/stunt-reel/issues/614).
+  On this tree `bomb` 195 has 140 actor px in 14 frames (1 px in 1 frame on `d2cd090`), and the strict rule gives `traintnl` 164 (0 actor px), which its committed row lacks.
+  On tree `5ad0346` `traintnl` 164 carries 1,376 actor px in 50 frames and the rule leaves it out again, while `balloon` 228 and `ctry` 236 gain 4 and 6 actor px and #614 dropped them.
+  _Source: [recheck after the sky drawer](../../work/2026-11/614_background-bands-drift/journal.md#2026-11-20-strict-rule-on-every-reference-film-after-the-sky-drawer)._
 
 Sky indices come back as follows: `n<=10` restores `intro` 229-230 (6 px in 5 frames), `s<=0.01%` `intro` 229-231 (most-painted index in 34 frames), `n<=100` `intro` 227-234 (47 frames), and `s<=1%` `land` 229-235 (95 frames).
 _Source: [ctry and tolerances](../../work/2026-11/505_ctry-band-tolerance/journal.md#2026-11-16-strict-rule-on-ctry-and-per-index-tolerances)._
