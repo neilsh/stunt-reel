@@ -15,3 +15,16 @@ The bound [`attribution.md`](../../../research/parity/attribution.md) section 7 
 **Verdict**: adopted (heuristic track, film-mean branch: `balloon` +0.0664; no other film moves; the `+Z` choice is read off one capture, not off `PLAYONE.EXE`; the yaw word it keeps for a vertical view is not in the trajectory data we parse).
 
 **Lives in**: [`attribution.md`](../../../research/parity/attribution.md) section 7.
+
+## 2026-11-19: GPU judge
+
+**Question**: does the GPU agree with lavapipe's adoption?
+
+**Method**: on local-windows (RTX 4070 Laptop GPU), `origin/main` 3ebd5ca (#773's positional zenith sky included) merged into the branch, `mise run parity` on the clean merged `crates/` (tree `01e980c`), then `mise run judge -- <main's GPU reports, tree be54d86> <these> --track heuristic`, then `mise run parity-repin -- --class gpu`.
+
+**Result**: `winner: run=candidate adopts (heuristic, film means)`.
+`balloon` SSIM 0.8177 -> 0.8842, IoU 0.7186 -> 0.8868 (on #773's scorer, so the IoU is not comparable with lavapipe's 0.8091 above), index agreement 0.4991 -> 0.6085, 18 frames better, none worse; the other six films do not move; no frame falls by more than 0.005.
+`balloon` loss by class: reference_only -0.0874, terrain +0.0036, props +0.0018, actors +0.0155.
+
+**Verdict**: adopted on the GPU; the `gpu` tables are repinned.
+The `lavapipe` tables keep `main`'s figures: the merge conflicted in `references.toml` and took `main`'s tables, and local-windows' llvmpipe (LLVM 21.1.7) is not the pinned LLVM 20.1.2, so their repin is left for a cloud run.
