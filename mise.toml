@@ -228,7 +228,7 @@ run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.parity-repin]
-description = "Rewrite every reference film's [<film>.expected.<class>] table in references.toml from its current parity report, measured on this clean crates/ tree; writes nothing and says why otherwise (mise run parity-repin -- [--class gpu|lavapipe])"
+description = "Regenerate research/parity/expected/<class>.toml from every reference film's current parity report, measured on this clean crates/ tree; the class defaults to the reports' adapter class; writes nothing and says why otherwise (mise run parity-repin -- [--class gpu|lavapipe])"
 run = "uv run python python/scripts/parity_repin.py"
 
 [tasks.parity-bench]

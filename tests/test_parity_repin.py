@@ -331,6 +331,60 @@ def test_a_report_of_another_class_is_refused(repo: Repo) -> None:
     assert "ctry: the report was drawn on lavapipe" in _refused(repo)
 
 
+def _main(repo: Repo, monkeypatch: pytest.MonkeyPatch, *argv: str) -> int:
+    monkeypatch.setattr(parity_repin, "REPO_ROOT", repo.root)
+    return parity_repin.main(list(argv))
+
+
+def test_the_class_defaults_to_the_reports_class(
+    repo: Repo, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.report("ctry", 0.8, 0.9, adapter=LAVAPIPE)
+    repo.report("intro", 0.7, 0.9, adapter=LAVAPIPE)
+    gpu = repo.class_file("gpu").read_bytes()
+
+    assert _main(repo, monkeypatch) == 0
+
+    assert repo.class_file("lavapipe").is_file()
+    assert repo.class_file("gpu").read_bytes() == gpu
+    assert "class lavapipe, from the reports' adapters" in capsys.readouterr().out
+
+
+def test_reports_of_both_classes_are_refused(
+    repo: Repo, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.report("ctry", 0.8, 0.9)
+    repo.report("intro", 0.7, 0.9, adapter=LAVAPIPE)
+    gpu = repo.class_file("gpu").read_bytes()
+
+    assert _main(repo, monkeypatch) == 1
+
+    err = capsys.readouterr().err
+    assert "more than one class" in err
+    assert "ctry gpu" in err
+    assert "intro lavapipe" in err
+    assert repo.class_file("gpu").read_bytes() == gpu
+    assert not repo.class_file("lavapipe").exists()
+
+
+def test_no_report_is_refused_by_detection(
+    repo: Repo, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert _main(repo, monkeypatch) == 1
+    assert "no report names an adapter" in capsys.readouterr().err
+
+
+def test_an_explicit_class_overrides_detection(
+    repo: Repo, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.report("ctry", 0.8, 0.9, adapter=LAVAPIPE)
+    repo.report("intro", 0.7, 0.9, adapter=LAVAPIPE)
+
+    assert _main(repo, monkeypatch, "--class", "gpu") == 1
+
+    assert "ctry: the report was drawn on lavapipe" in capsys.readouterr().err
+
+
 def test_a_report_without_class_losses_is_refused(repo: Repo) -> None:
     repo.report("ctry", 0.8, 0.9)
     repo.report("intro", 0.7, 0.9)

@@ -193,6 +193,29 @@ def _check(repo: Path, renderer: str, tables: Sequence[Measured], films: Sequenc
             raise RuntimeError(f"{measured.film}: the written table does not read back")
 
 
+def detect_class(repo: Path, films: Sequence[str]) -> str:
+    """The renderer class every readable report of *films* was drawn on.
+
+    Raises :class:`RepinRefusedError` when no report names an adapter or the reports disagree;
+    a film with no readable report or no adapter is skipped here, and :func:`repin` refuses it.
+    """
+    drawn: dict[str, str] = {}
+    for film in films:
+        try:
+            report = read_report(repo / parity_layout.report_dir(film) / "report.json")
+        except ArtifactError, OSError, ValueError:
+            continue
+        if report.adapter is not None:
+            drawn[film] = CLASS_KEYS[report.adapter.adapter_class]
+    classes = set(drawn.values())
+    if not classes:
+        raise RepinRefusedError(["no report names an adapter; run mise run parity"])
+    if len(classes) > 1:
+        names = ", ".join(f"{film} {cls}" for film, cls in drawn.items())
+        raise RepinRefusedError([f"the reports were drawn on more than one class: {names}"])
+    return classes.pop()
+
+
 def main(argv: list[str] | None = None) -> int:
     """Repins and prints each film's old and new scores; 1 when refused."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -200,12 +223,16 @@ def main(argv: list[str] | None = None) -> int:
         "--class",
         dest="renderer",
         choices=RENDERER_CLASSES,
-        default="gpu",
-        help="the renderer class to repin (default gpu)",
+        default=None,
+        help="the renderer class to repin (default: the class the reports were drawn on)",
     )
     args = parser.parse_args(argv)
     try:
-        tables = repin(REPO_ROOT, args.renderer)
+        renderer = args.renderer
+        if renderer is None:
+            renderer = detect_class(REPO_ROOT, reference_films(REPO_ROOT))
+            print(f"[parity-repin] class {renderer}, from the reports' adapters")
+        tables = repin(REPO_ROOT, renderer)
     except RepinRefusedError as err:
         print("parity-repin: wrote nothing:", file=sys.stderr)
         for reason in err.reasons:
@@ -225,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     if tables:
         tree = tables[0].values["crates"].strip('"')
-        print(f"[parity-repin] {args.renderer} tables now measure crates/ {tree}")
+        print(f"[parity-repin] {renderer} tables now measure crates/ {tree}")
     return 0
 
 
