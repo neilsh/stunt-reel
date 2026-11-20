@@ -79,6 +79,9 @@ pub struct PlacementRecords {
     pub steps: Vec<PartitionStep>,
     /// The collision lists of each shape placed that has any, once a shape.
     pub collisions: Vec<ShapeCollision>,
+    /// `[I1]` metres a model unit of each entry of [`Self::collisions`], which the lists'
+    /// words are in.
+    pub collision_scales: Vec<f32>,
 }
 
 impl PlacementRecords {
@@ -94,6 +97,7 @@ impl PlacementRecords {
         mesh: &[Option<MeshSpans>],
     ) -> Self {
         let mut collisions = Vec::new();
+        let mut collision_scales = Vec::new();
         let mut indices: HashMap<u16, Option<u32>> = HashMap::new();
         let records = props
             .iter()
@@ -106,6 +110,11 @@ impl PlacementRecords {
                         .and_then(SodModelIr::collision)
                         .filter(|c| !c.lists.is_empty())?;
                     collisions.push(lists.clone());
+                    let scale = shapes
+                        .get(&p.shape)
+                        .and_then(SodModelIr::decode)
+                        .map_or(1.0, |d| d.header.scale_factor);
+                    collision_scales.push(scale);
                     u32::try_from(collisions.len().saturating_sub(1)).ok()
                 });
                 PlacementRecord {
@@ -125,6 +134,7 @@ impl PlacementRecords {
             records,
             steps,
             collisions,
+            collision_scales,
         }
     }
 

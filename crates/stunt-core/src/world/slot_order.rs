@@ -290,6 +290,7 @@ mod tests {
             ],
             steps: vec![step(plane, 0, None), step(plane, 1, None)],
             collisions: Vec::new(),
+            collision_scales: Vec::new(),
         }
     }
 
@@ -350,6 +351,7 @@ mod tests {
             ],
             steps: vec![step(Split::Pair, 0, None), step(Split::Pair, 1, None)],
             collisions: Vec::new(),
+            collision_scales: Vec::new(),
         };
         // Deeper than the second leaf's object: drawn before it.
         assert_eq!(
@@ -369,6 +371,7 @@ mod tests {
             records: vec![record([0, 0, 5], None, true)],
             steps: Vec::new(),
             collisions: Vec::new(),
+            collision_scales: Vec::new(),
         };
         assert_eq!(
             records.slot_order([0.0; 3], LOOK_Z, entry(0.0, 80.0, 1)),
@@ -394,6 +397,7 @@ mod tests {
                 step(Split::Pair, 1, Some(0)),
             ],
             collisions: Vec::new(),
+            collision_scales: Vec::new(),
         };
         assert_eq!(
             records.slot_order([0.0; 3], LOOK_Z, entry(50.0, 0.0, 1)),
@@ -408,6 +412,7 @@ mod tests {
                 records: vec![record([0; 3], Some(0), false)],
                 steps: vec![step(split, 0, None)],
                 collisions: Vec::new(),
+                collision_scales: Vec::new(),
             };
             assert_eq!(
                 records.slot_order([0.0; 3], LOOK_Z, entry(0.0, 0.0, 1)),
@@ -430,6 +435,7 @@ mod tests {
             ],
             steps: vec![step(vslope, 0, None), step(vslope, 1, None)],
             collisions: Vec::new(),
+            collision_scales: Vec::new(),
         };
         // The eye (line(0) = 10 >= 0) is on the greater side. On the line, the entry is on
         // the greater side too: the lesser record is walked first.

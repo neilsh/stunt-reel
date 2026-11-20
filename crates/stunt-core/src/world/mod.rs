@@ -24,6 +24,7 @@ mod assemble;
 mod map_bin;
 mod mesh;
 mod placed;
+mod probe;
 mod scenery;
 mod slot_order;
 mod tap_props;
@@ -32,6 +33,7 @@ mod terrain;
 pub use assemble::{FacingProp, World, WorldInputs, build_world};
 pub use mesh::{GROUND_NODE, PropRun};
 pub use placed::{ArenaSpan, MeshSpans, PlacementRecord, PlacementRecords};
+pub use probe::ProbeActor;
 pub use scenery::{
     PartitionStep, SceneryShapes, ScnNode, ScnStop, ScnStopReason, Split, scenery_shape_ids,
 };
