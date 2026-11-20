@@ -69,3 +69,17 @@
   The entry sort orders by depth only the entries of one pending list; an actor and a sprite whose entries reach different leaves are ordered by the planes, which this does not model, and `intro:1398` is a frame where the depth order is not the capture's.
   Ordering each actor by its own walk is the follow-up.
 - **Lives in**: [`sod-animate.md`](../../../research/playone-exe/sod-animate.md) § 4 and Open questions.
+
+## 2026-11-20: both rounds judged on the GPU
+
+- **Question**: Does the GPU adopt both rounds together, as lavapipe adopted each?
+- **Method**: local-windows, RTX 4070 Laptop GPU, `origin/main` `7bd49f4` merged into the branch; `mise run parity` on the clean merged `crates/` (tree `1490c82`), then `mise run judge -- <main's GPU reports, tree a4e746e> <these> --track evidence --target ctry:851-885 --target intro:1387-1508 --target intro:2696-2740`, the two rounds' targets together, then `mise run parity-repin -- --class gpu`.
+- **Result**: `winner: run=candidate adopts (evidence, film means; target idx +0.0070 attribution; worst target frame -0.0115 intro:1398; 2 frames down >0.005, listed)`.
+  `mean_ssim_scored`: `ctry` 0.918871 to 0.919021 (+0.000150), `intro` 0.862510 to 0.862938 (+0.000428), `bomb` 0.846112 to 0.846265 (+0.000153); `land`, `balloon`, `traintnl` and `location` did not move a scored frame.
+  Target frames that moved, in SSIM: `ctry:859` +0.0061, `ctry:871` +0.0047, `ctry:881` +0.0064; `intro:1508` +0.0262, `intro:1497` +0.0156, `intro:1409` +0.0021, `intro:1387` −0.0007, `intro:1398` −0.0115; `intro:2729` +0.0498, `intro:2707` +0.0086, `intro:2718` +0.0063, `intro:2696` +0.0002, `intro:2740` −0.0073.
+  Outside the targets `bomb:3466` +0.0295 and `bomb:3455` +0.0166 rose.
+  Loss by class: `ctry` props −0.0003, actors +0.0001; `intro` props −0.0015, actors +0.0011; `bomb` props −0.0002, actors +0.0001.
+  These deltas span both rounds against `main`; the lavapipe entries above judged each round against its own baseline, so their frames are not compared one for one here.
+- **Verdict**: adopted on the GPU, by the evidence-backed film-mean branch; the `gpu` tables are repinned.
+  The `lavapipe` tables keep `main`'s figures: the merge conflicted in `references.toml` and took `main`'s tables, and local-windows' llvmpipe (LLVM 21.1.7) is not the pinned LLVM 20.1.2, so their repin is left for a cloud run.
+- **Lives in**: [`sod-animate.md`](../../../research/playone-exe/sod-animate.md) § 4.

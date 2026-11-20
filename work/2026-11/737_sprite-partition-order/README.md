@@ -2,7 +2,7 @@
 title: "Explosion sprites cannot take their place in the scenery partition order: the world walk drops the planes"
 started: 2026-11-20
 issue: 737
-outcome: "Adopted on lavapipe (evidence track): each OP_ANIMATE sprite is drawn at its slot's place in the scenery walk, over the depth-tested world and under the props the walk draws after it, so the CTRY tick 871 explosion covers the tower and stays under the hill; actors nearer than its slot are drawn after it; ordering 3D actors by their own walk is #819."
+outcome: "Adopted on lavapipe and on the GPU (evidence track; gpu tables repinned, the lavapipe repin left for a cloud run): each OP_ANIMATE sprite is drawn at its slot's place in the scenery walk, over the depth-tested world and under the props the walk draws after it, so the CTRY tick 871 explosion covers the tower and stays under the hill; actors nearer than its slot are drawn after it; ordering 3D actors by their own walk is #819."
 ---
 
 # Explosion sprites cannot take their place in the scenery partition order: the world walk drops the planes
