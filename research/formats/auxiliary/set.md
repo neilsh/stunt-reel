@@ -57,7 +57,7 @@ Offsets and widths live in [`set.ksy`](set.ksy); the table gives each field's me
 | `num_events` | Number of event records. Agrees with the printed event count of six of the seven sets that have a dump (1, 1, 8, 2, 2, 10); `REMOTE.SET` stores 1, an all-zero record, and its dump prints no event | `[Bounded Observation]` |
 
 `num_events` is a single byte at `0x53`, so the encoding admits 255 events while the authoring tools expose 64: an **authored limit**, not a field bound ([`GLOSSARY.md`](../../../GLOSSARY.md)).
-The prop count is not stored in a dedicated header byte at all — the six dumped sets carry 4 to 39 props and no header byte matches them; [`set.ksy`](set.ksy) derives it from the remaining length.
+The prop count is not stored in a dedicated header byte at all — the seven dumped sets carry 3 to 39 props and no header byte matches them; [`set.ksy`](set.ksy) derives it from the remaining length.
 
 The header is 84 bytes, ending at `0x53`.
 The 12 bytes this table used to list at `0x54`–`0x5F` are the first event record's leading fields, not a table header; see § 3.5.
@@ -132,7 +132,7 @@ A field named *unknown* has no reading yet.
 | Relative Offset | Size | Type | Field Name | Description | Observed | Evidentiary Tier |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `+0x00` | 2 | `u16` (LE) | `prop_slot_id` | Prop slot, 0-based (handbook slot − 1, printed `Prop #`); stored slots only, ascending | 0–39, ascending from 0 in 129 of 129 sets; high byte 0 in 2,032 | `[Supported Inference]` |
-| `+0x02` | 1 | `u8` | `behavior_flags` | Behavior and interaction bitfield (see § 3.2) | bit 0 set in 2,028; bits 1–2 set in 362, 40 of them in slots 8–39 | `[Established]` |
+| `+0x02` | 1 | `u8` | `behavior_flags` | Behavior and interaction bitfield (see § 3.2) | bit 0 set in 2,028; bits 1–2 set in 362, 40 of them in slots 8–39 | `[Supported Inference]` |
 | `+0x03` | 1 | `u8` | `placement_flags` | World placement and shadow bitfield (see § 3.3) | bit 0 set in 2,030 | `[Bounded Observation]` |
 | `+0x04` | 2 | `u16` (LE) | `object_model_id` | Catalog ID mapping `.SOD` geometry: `(res_index << 8) \| item_index` | varies | `[Established]` |
 | `+0x06` | 4 | `i32` (LE) | `coord_x_fixed` | East/West position in 16.16 fixed point: $X = (x_{\text{editor}} - 100000) / 10$; printed E/W | −10030.0 to 10000.0 | `[Established]` |
@@ -307,7 +307,7 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
 - **Fixed-Point Conversion:** In `.SET` binary storage, coordinates are stored as 32-bit $16.16$ signed fixed-point integers.
   To obtain floating-point meters:
   $$\text{pos}_{\text{meters}} = \frac{\text{raw\_i32}}{65536.0}$$
-- **Sign:** a prop record stores its altitude negated, $y = -	ext{altitude}_{	ext{editor}} / 10$ (§ 3.1), so $Y_{	ext{world}} = -y$.
+- **Sign:** a prop record stores its altitude negated, $y = -\text{altitude}_{\text{editor}} / 10$ (§ 3.1), so $Y_{\text{world}} = -y$.
 - **Scale Factor:** Exactly 10 Set Designer editor units equal 1.0 meter in world coordinates.
   An island width of 200,000 units spans 20,000 meters (20 kilometers).
 
