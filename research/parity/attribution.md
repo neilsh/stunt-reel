@@ -48,7 +48,7 @@ Loss by class, with its share of `1 - mean_ssim_scored`; classes under 0.001 lef
   The changes between are many (the PRs behind the `crates` trees the expected tables record), so the split does not attribute the fall to any one of them.
 
 **Worst prop shapes** (`mean_loss_by_shape_scored`).
-`[Bounded Observation]`, one render per film on lavapipe (`mise run parity -- --software-only`, `crates/` tree `b228018`, #809's change on `main` at `581d811`), so its figures differ from the RTX 4070 table above: the code under them is newer and the renderer is lavapipe.
+`[Bounded Observation]`, one render per film on lavapipe (`mise run parity -- --software-only`, `crates/` tree `b228018`, #809's change (PR #821) on top of `main` at `581d811`), so its figures differ from the RTX 4070 table above: the code under them is newer and the renderer is lavapipe.
 Each row is a shape's mean loss over the scored frames and its share of that film's `props` loss (`location` 0.0839, `bomb` 0.0740, `ctry` 0.0401); the ten worst shapes, then what they hold together.
 Every placed shape is attributed (section 1), so no reference film has an `unattributed` share; the `props` loss falls on 1,014 shapes on `location`, 127 on `bomb` and 91 on `ctry`.
 
