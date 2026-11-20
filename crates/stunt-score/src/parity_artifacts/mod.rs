@@ -261,6 +261,7 @@ impl RenderJournal {
             ticks: self.ticks,
             palette_count: table.palette_count,
             chunks: table.chunks,
+            planes: table.planes,
             adapter: Some(adapter),
         };
         write_render_record(&self.dir, &record).map_err(StoreError::Record)
@@ -379,7 +380,7 @@ pub(crate) fn read_report(path: &Path) -> Result<Report, AdapterError> {
 }
 
 /// The committed corpus under `tests/fixtures/parity/v1` (captures and reports) and
-/// `tests/fixtures/parity/v3` (renders), read through this adapter.
+/// `tests/fixtures/parity/v4` (renders), read through this adapter.
 #[cfg(test)]
 mod conformance;
 

@@ -87,6 +87,9 @@ def raw_record(schema_version: int = RENDER_SCHEMA_VERSION) -> dict[str, Any]:
                 "layer": {"offset": 0, "length": 10},
             }
         ],
+        "planes": {
+            "shapes.zst": {"sha256": "0f" * 32, "chunks": [{"offset": 0, "length": 10}]},
+        },
     }
 
 

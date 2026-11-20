@@ -223,7 +223,7 @@ _Avoid_: slice (a film's own unit), sample
 Archives that draw the same shapes are still different identities.
 _Avoid_: film tag, provenance (for the game build and sound samples a capture records)
 
-**Render record**: The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index, camera and credits flag of every whole-tick frame, and the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)).
+**Render record**: The `render.json` document describing one render directory: the film identity, the raster geometry, the palette controls, palette index, camera and credits flag of every whole-tick frame, the table of per-second chunks that locates each tick's planes in the render store ([ADR 0027](docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)), and each optional plane file the store holds, with its SHA-256 and chunk spans ([ADR 0052](docs/adr/0052-a-render-store-may-hold-optional-extra-planes.md)).
 _Avoid_: sidecar (for the record), manifest
 
 **Capture set**: The typed view of a capture directory's `meta.json`: the film identity, the raster geometry, and one captured frame per capture ordinal, each tagged with its film clock.
