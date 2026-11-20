@@ -488,6 +488,7 @@ description = "Test coverage of the whole Rust workspace (GPU tests included; th
 # platforms. The build lands in target/llvm-cov-target, apart from the gate's, so this task
 # never invalidates it.
 run = [
+  "python -c \"from pathlib import Path; Path('target/coverage').mkdir(parents=True, exist_ok=True)\"",
   "cargo llvm-cov --locked --workspace --all-features --no-report",
   "cargo llvm-cov report --ignore-filename-regex \"crates.[a-z-]+.tests.|.registry.src.\" --summary-only",
   "cargo llvm-cov report --ignore-filename-regex \"crates.[a-z-]+.tests.|.registry.src.\" --lcov --output-path target/coverage/lcov.info",
