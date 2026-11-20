@@ -49,7 +49,7 @@ The resolution was mechanical, but git still stopped on it every time: in the GP
 
 - Two PRs that repinned different or the same class merge without a conflict, taking `main`'s file; the one that merges second re-measures and repins.
 - `references.toml` keeps only hand-edited facts, so a stale expected table can no longer hide in a conflict marker.
-- The driver keeps `main`'s numbers over the branch's own repin, so a branch always re-measures after an update.
+- The driver keeps `main`'s numbers over the branch's own repin, so a branch re-measures after an update that conflicted.
   A lavapipe repin cannot be redone locally, which makes the catch-up on #830 the only way a cloud-only class gets current after a local-windows PR.
 - A reader of a generated file for a film no row names ignores it, and a film missing from it has no expected entry; the next repin rewrites the file to the rows.
 

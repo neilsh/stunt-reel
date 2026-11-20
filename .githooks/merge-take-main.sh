@@ -7,7 +7,8 @@
 # Which side is main's depends on how the branch is updated:
 #   rebase onto main   %A, "ours", is the upstream (main's) side: leave it as it is;
 #   merge main in      %B, "theirs", is main's side: copy it over %A.
-# A merge of any other branch takes %B too, and so does a cherry-pick, which git runs through
+# `git am -3` creates rebase-apply, so it keeps %A and drops the patch's side. A merge of any
+# other branch takes %B too, and so do a revert and a cherry-pick, which git runs through
 # this driver exactly as it runs a merge: while a driver runs, neither MERGE_HEAD nor
 # CHERRY_PICK_HEAD exists yet and git sets no reflog action for a pick, so the two cannot be told
 # apart (tests/test_merge_driver.py). Only a merge or rebase of main is the driver's contract.
