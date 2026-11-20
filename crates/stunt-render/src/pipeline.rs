@@ -86,6 +86,10 @@ pub(crate) struct RenderPipelines {
     pub(crate) ground_edge_pipeline: wgpu::RenderPipeline,
     /// Base mesh pipeline with zero depth bias and `Less` depth compare.
     pub(crate) base_pipeline: wgpu::RenderPipeline,
+    /// The base pipeline with neither depth test nor depth write, for an `OP_ANIMATE` sprite
+    /// drawn at its place in the scenery walk: over everything drawn before it, under
+    /// whatever is drawn after (`research/playone-exe/scene-walk-actors.md`).
+    pub(crate) sprite_pipeline: wgpu::RenderPipeline,
     /// Decal mesh pipeline conforming to `[I5]`: hardware depth bias, `LessEqual` compare and
     /// no depth write, so decals drawn in stream order cover the earlier ones on their base.
     pub(crate) decal_pipeline: wgpu::RenderPipeline,
@@ -343,6 +347,15 @@ impl RenderPipelines {
             model_primitive,
             base_depth_stencil.clone(),
         );
+        let sprite_pipeline = scene_pipeline(
+            "stunt_mode13h_sprite_pipeline",
+            model_primitive,
+            wgpu::DepthStencilState {
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                ..base_depth_stencil.clone()
+            },
+        );
         let decal_pipeline = scene_pipeline(
             "stunt_mode13h_decal_pipeline",
             model_primitive,
@@ -401,6 +414,7 @@ impl RenderPipelines {
             ground_pipeline,
             ground_edge_pipeline,
             base_pipeline,
+            sprite_pipeline,
             decal_pipeline,
             shadow_pipeline,
             edge_pipeline,

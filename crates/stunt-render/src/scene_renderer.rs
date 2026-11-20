@@ -24,6 +24,10 @@
 //! A sprite (`OP_ANIMATE`, [`SpriteDraw`]) is its image uploaded once as a unit square of
 //! one quad per run of equal pixels, index 0 left out, drawn through a per-draw uniform whose matrix
 //! turns the square to face the camera at the sprite's centre and size, in its actor's layer.
+//! A sprite the scenery walk gives a place ([`SpriteDraw::after`]) is drawn after every other
+//! draw, with no depth test, then the world's props the walk draws after it are drawn again
+//! from their own runs of the world mesh, so they cover it; the world's main draw leaves them
+//! out. The world stays depth-tested throughout (`research/parity/painter-order.md`).
 //!
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
@@ -38,6 +42,7 @@ use stunt_core::contracts::{
 use stunt_core::scene::{FilmScene, RelitShapes, SceneFrame, SpriteDraw};
 use stunt_core::sod::{AngleBank, ShadeLight};
 use stunt_core::sprite::SpriteImage;
+use stunt_core::world::{ArenaSpan, MeshSpans, World};
 
 use crate::camera::{CameraController, CameraGpuResources, eye_relative_matrix};
 use crate::mesh::{GpuMeshSlice, GpuModel, prop_runs_group};
@@ -46,7 +51,7 @@ use crate::palette::PaletteLut;
 use crate::pipeline::{
     LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, PROP_RUNS_GROUP, RenderPipelines,
 };
-use stunt_core::contracts::{SodNode, arena_index};
+use stunt_core::contracts::{NodeId, SodNode, arena_index};
 
 /// Which uploaded model a prepared draw uses.
 #[derive(Clone, Copy, Debug)]
@@ -60,6 +65,169 @@ enum Target {
     Lit { actor: usize, uniform: usize },
     /// A sprite's image drawn through the per-draw uniform with this index.
     Image { image_id: u16, uniform: usize },
+}
+
+/// Sprites at one place in the scenery walk, then the world's props the walk draws after
+/// them and before the next place, and the actors nearer the eye than the sprites.
+#[derive(Debug)]
+struct WalkStep {
+    /// The sprites, drawn with no depth test.
+    sprites: Vec<PreparedDraw>,
+    /// The props, through the world's uniform.
+    props: PreparedDraw,
+    /// The actors whose view depth is less than the sprites' slot's and not less than the
+    /// next step's (`PLAYONE`'s entry sort draws the larger depth first).
+    actors: Vec<PreparedDraw>,
+}
+
+/// Where the world mesh holds each placement, for drawing some apart from the rest.
+#[derive(Debug, Default)]
+struct WorldPlacements {
+    /// The `WORLD_BASE` node, whose one slice holds the ungated props' base triangles, and
+    /// its index run (`stunt_core::world` builds both).
+    base: Option<(NodeId, ArenaSpan)>,
+    /// The `WORLD_DECAL` node, which holds their decals, and its index run.
+    decal: Option<(NodeId, ArenaSpan)>,
+    /// Each placement record's spans, in record order.
+    spans: Vec<Option<MeshSpans>>,
+    /// The record each node was made for alone, by node id.
+    owner: Vec<Option<u32>>,
+}
+
+impl WorldPlacements {
+    fn new(world: &World) -> Self {
+        let mesh_node = |name: &str| {
+            world
+                .ir
+                .nodes
+                .iter()
+                .find(|n| n.name == name)
+                .and_then(|n| {
+                    let NodeKind::Mesh {
+                        index_offset,
+                        index_count,
+                        ..
+                    } = n.kind
+                    else {
+                        return None;
+                    };
+                    let end = index_offset.checked_add(index_count)?;
+                    Some((
+                        n.id,
+                        ArenaSpan {
+                            start: index_offset,
+                            end,
+                        },
+                    ))
+                })
+        };
+        let spans: Vec<Option<MeshSpans>> =
+            world.placements.records.iter().map(|r| r.mesh).collect();
+        let mut owner = vec![None; world.ir.nodes.len()];
+        for (record, span) in (0u32..).zip(&spans) {
+            for node in span.iter().flat_map(|s| s.nodes.start..s.nodes.end) {
+                if let Some(slot) = owner.get_mut(node as usize) {
+                    *slot = Some(record);
+                }
+            }
+        }
+        Self {
+            base: mesh_node("WORLD_BASE"),
+            decal: mesh_node("WORLD_DECAL"),
+            spans,
+            owner,
+        }
+    }
+
+    /// Where the world's base and decal slices may be cut, ascending: their ends and every
+    /// placement's span ends in them.
+    fn marks(&self) -> Vec<u32> {
+        let nodes = [self.base, self.decal].into_iter().flatten();
+        let mut marks: Vec<u32> = nodes
+            .flat_map(|(_, run)| [run.start, run.end])
+            .chain(
+                self.spans
+                    .iter()
+                    .flatten()
+                    .flat_map(|s| [s.base.start, s.base.end, s.decal.start, s.decal.end]),
+            )
+            .collect();
+        marks.sort_unstable();
+        marks.dedup();
+        marks
+    }
+
+    /// The world draw's base or decal slices (`decals`), each with its node, less the props
+    /// `rank` puts after a sprite, which go to `steps` by rank (rank 1 to the first); `None`
+    /// when `cut` (a node, then the start and end of the run of indices to keep) cannot cut a
+    /// slice there.
+    fn split(
+        &self,
+        slices: Vec<(NodeId, GpuMeshSlice)>,
+        rank: &[usize],
+        decals: bool,
+        steps: &mut [Vec<GpuMeshSlice>],
+        cut: impl Fn(NodeId, u32, u32) -> Option<GpuMeshSlice>,
+    ) -> Option<Vec<GpuMeshSlice>> {
+        let batch = if decals { self.decal } else { self.base };
+        let mut kept = Vec::with_capacity(slices.len());
+        for (node, slice) in slices {
+            if batch.is_some_and(|(id, _)| id == node) {
+                let moved = (0..).zip(&self.spans).filter_map(|(record, spans)| {
+                    let span = spans.map(|s| if decals { s.decal } else { s.base })?;
+                    let rank = rank.get(record).copied().unwrap_or(0);
+                    (rank > 0 && !span.is_empty()).then_some((span, rank))
+                });
+                kept.extend(cut_out(slice, moved, steps, |start, end| {
+                    cut(node, start, end)
+                })?);
+                continue;
+            }
+            let owner = self.owner.get(node.0 as usize).copied().flatten();
+            let rank = owner
+                .and_then(|r| rank.get(r as usize))
+                .copied()
+                .unwrap_or(0);
+            match rank.checked_sub(1).and_then(|step| steps.get_mut(step)) {
+                Some(step) => step.push(slice),
+                None => kept.push(slice),
+            }
+        }
+        Some(kept)
+    }
+}
+
+/// `whole` less the `moved` spans (ascending, each with its rank), which go to `steps` by
+/// rank; `whole` itself when none moves. `None` when `cut` cannot cut `whole` at a span's
+/// ends.
+fn cut_out(
+    whole: GpuMeshSlice,
+    moved: impl Iterator<Item = (ArenaSpan, usize)>,
+    steps: &mut [Vec<GpuMeshSlice>],
+    cut: impl Fn(u32, u32) -> Option<GpuMeshSlice>,
+) -> Option<Vec<GpuMeshSlice>> {
+    let end = whole.index_offset.checked_add(whole.index_count)?;
+    let mut at = whole.index_offset;
+    let mut kept = Vec::new();
+    for (span, rank) in moved {
+        if span.start < at || span.end > end {
+            return None;
+        }
+        if span.start > at {
+            kept.push(cut(at, span.start)?);
+        }
+        steps
+            .get_mut(rank.checked_sub(1)?)?
+            .push(cut(span.start, span.end)?);
+        at = span.end;
+    }
+    if at == whole.index_offset {
+        return Some(vec![whole]);
+    }
+    if at < end {
+        kept.push(cut(at, end)?);
+    }
+    Some(kept)
 }
 
 /// One draw ready to encode: visible ground, base and decal slices of a target.
@@ -274,6 +442,11 @@ pub(crate) struct SceneRenderer {
     /// draw of the plane pipelines before the world's has its group; `None` without a plane.
     no_prop_runs: Option<wgpu::BindGroup>,
     prepared: Vec<PreparedDraw>,
+    /// Where the world mesh holds each placement.
+    placements: WorldPlacements,
+    /// The frame's sprites the scenery walk places, in walk order, drawn after
+    /// [`Self::prepared`].
+    steps: Vec<WalkStep>,
 }
 
 impl SceneRenderer {
@@ -298,9 +471,10 @@ impl SceneRenderer {
             .images()
             .map(|(id, image)| (id, GpuModel::from_ir(device, queue, &sprite_ir(image))))
             .collect();
-        let mut world = scene
-            .world()
-            .map(|w| GpuModel::from_ir_outlined(device, queue, &w.ir, outlines_in_world));
+        let placements = scene.world().map_or_default(WorldPlacements::new);
+        let mut world = scene.world().map(|w| {
+            GpuModel::from_ir_outlined(device, queue, &w.ir, outlines_in_world, &placements.marks())
+        });
         // The plane's shape word finds a world prop's shape in the world's prop runs.
         let no_prop_runs = pipelines.prop_runs_layout.as_ref().map(|layout| {
             if let Some((model, w)) = world.as_mut().zip(scene.world()) {
@@ -318,6 +492,8 @@ impl SceneRenderer {
             model_layout: layout.clone(),
             no_prop_runs,
             prepared: Vec::new(),
+            placements,
+            steps: Vec::new(),
         }
     }
 
@@ -343,8 +519,10 @@ impl SceneRenderer {
         camera_resources.upload(queue, &camera_uniform);
 
         self.prepared.clear();
+        self.steps.clear();
         self.uniforms.clear();
         let eye = controller.eye_position();
+        let mut world_slices = None;
         if frame.world
             && let Some(world) = &self.world
         {
@@ -363,13 +541,16 @@ impl SceneRenderer {
                 world.collect_world_meshes(eye, Some(&lod_view), view_proj)
             };
             let uniform = self.uniforms.push(&ModelUniform::new(world_matrix, 0));
+            let untag =
+                |tagged: &[(NodeId, GpuMeshSlice)]| tagged.iter().map(|&(_, m)| m).collect();
             self.prepared.push(PreparedDraw {
                 target: Target::World { uniform },
                 ground,
-                base,
-                decals,
+                base: untag(&base),
+                decals: untag(&decals),
                 shadow: false,
             });
+            world_slices = Some((self.prepared.len() - 1, base, decals));
         }
 
         for prop in &frame.view_facing {
@@ -398,6 +579,18 @@ impl SceneRenderer {
                 meshes,
             );
         }
+        // A point's depth along the view axis, as `PLAYONE`'s entry sort compares actors.
+        let back = controller.compute_view_matrix().row(2).truncate();
+        let view_depth = |m: &[f32; 16]| {
+            let at = Mat4::from_cols_array(m).w_axis.truncate();
+            (eye - at).dot(back)
+        };
+        let actor_depths: Vec<f32> = frame
+            .actors
+            .iter()
+            .map(|a| view_depth(&a.world_matrix))
+            .collect();
+        let mut actor_draws = Vec::new();
         self.lit.resize_with(frame.actors.len(), || None);
         for ((actor_index, actor), slot) in (0u32..).zip(&frame.actors).zip(0usize..) {
             // A slot drawn under the scene's light at rest keeps its model for the actor's next
@@ -459,10 +652,14 @@ impl SceneRenderer {
             }
             let uniform = ModelUniform::new(eye_relative_matrix(eye, &actor.world_matrix), layer);
             self.push_draw(target, &uniform, (base, decals));
+            if let Some(&depth) = actor_depths.get(slot) {
+                actor_draws.push((self.prepared.len() - 1, depth));
+            }
         }
 
         // Sprites have no shadow: `PLAYONE` skips `OP_ANIMATE` in the shadow pass.
         let view = controller.compute_view_matrix();
+        let mut placed = Vec::new();
         for sprite in &frame.sprites {
             let Some(model) = self.images.get(&sprite.image_id) else {
                 continue;
@@ -474,13 +671,120 @@ impl SceneRenderer {
                 layer,
             );
             let image_id = sprite.image_id;
-            self.push_draw(
+            let draw = self.stage(
                 |uniform| Target::Image { image_id, uniform },
                 &uniform,
                 (base, decals),
             );
+            match (&sprite.after, actor_depths.get(sprite.actor)) {
+                (Some(after), Some(&depth)) => {
+                    let distance = (Vec3::from_array(sprite.centre) - eye).length();
+                    placed.push((after.as_slice(), depth, distance, draw));
+                }
+                _ => self.prepared.push(draw),
+            }
         }
+        self.place_sprites(placed, world_slices, &actor_draws);
         self.uniforms.upload(device, queue, &self.model_layout);
+    }
+
+    /// Puts `placed`, the sprites the scenery walk places (each with the placements it draws
+    /// after the sprite, its slot's view depth and its centre's distance from the eye), in
+    /// [`Self::steps`] in walk order with the
+    /// props drawn after each, and takes those props out of the world's draw, whose base and
+    /// decal slices `world` gives with their nodes. Each of `actors` (an index into
+    /// [`Self::prepared`] and the actor's view depth) nearer than a placed sprite's slot
+    /// leaves [`Self::prepared`] for the step of the last such sprite.
+    ///
+    /// A sprite the walk draws earlier has more props after it, of two with as many the one
+    /// whose centre is farther first; a prop goes after as many sprites as place it after
+    /// them. When there is
+    /// no world draw or its slices cannot be cut, the sprites are drawn as unplaced ones.
+    #[expect(
+        clippy::type_complexity,
+        reason = "the world draw's index and its two tagged slice lists, as prepare collects them"
+    )]
+    fn place_sprites(
+        &mut self,
+        mut placed: Vec<(&[u32], f32, f32, PreparedDraw)>,
+        world: Option<(
+            usize,
+            Vec<(NodeId, GpuMeshSlice)>,
+            Vec<(NodeId, GpuMeshSlice)>,
+        )>,
+        actors: &[(usize, f32)],
+    ) {
+        if placed.is_empty() {
+            return;
+        }
+        placed.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(b.2.total_cmp(&a.2)));
+        let mut rank = vec![0usize; self.placements.spans.len()];
+        for (after, _, _, _) in &placed {
+            for &record in *after {
+                if let Some(r) = rank.get_mut(record as usize) {
+                    *r += 1;
+                }
+            }
+        }
+        let cut = world
+            .zip(self.world.as_ref())
+            .and_then(|((at, base, decals), model)| {
+                let mut base_steps = vec![Vec::new(); placed.len()];
+                let mut decal_steps = vec![Vec::new(); placed.len()];
+                let cut = |node, start, end| model.cut(node, start, end);
+                let base = self
+                    .placements
+                    .split(base, &rank, false, &mut base_steps, cut)?;
+                let decals = self
+                    .placements
+                    .split(decals, &rank, true, &mut decal_steps, cut)?;
+                Some((at, base, decals, base_steps.into_iter().zip(decal_steps)))
+            });
+        let Some((at, base, decals, props)) = cut else {
+            self.prepared
+                .extend(placed.into_iter().map(|(_, _, _, draw)| draw));
+            return;
+        };
+        let Some(world) = self.prepared.get_mut(at) else {
+            return;
+        };
+        world.base = base;
+        world.decals = decals;
+        let target = world.target;
+        // Each actor goes after the last sprite in walk order whose slot is deeper than it.
+        let depths: Vec<f32> = placed.iter().map(|&(_, depth, _, _)| depth).collect();
+        let mut step_of: Vec<Option<usize>> = vec![None; self.prepared.len()];
+        for &(index, depth) in actors {
+            if let Some(slot) = step_of.get_mut(index) {
+                *slot = depths.iter().rposition(|&sprite| depth < sprite);
+            }
+        }
+        let mut moved: Vec<Vec<PreparedDraw>> = std::iter::repeat_with(Vec::new)
+            .take(placed.len())
+            .collect();
+        let mut kept = Vec::with_capacity(self.prepared.len());
+        for (draw, step) in self.prepared.drain(..).zip(step_of) {
+            match step.and_then(|s| moved.get_mut(s)) {
+                Some(step) => step.push(draw),
+                None => kept.push(draw),
+            }
+        }
+        self.prepared = kept;
+        for (((_, _, _, sprite), (base, decals)), actors) in
+            placed.into_iter().zip(props).zip(moved)
+        {
+            self.steps.push(WalkStep {
+                sprites: vec![sprite],
+                props: PreparedDraw {
+                    target,
+                    ground: Vec::new(),
+                    base,
+                    decals,
+                    shadow: false,
+                },
+                actors,
+            });
+        }
     }
 
     /// Whether actor `slot`'s shape `shape_id` decoded under `pose` is in `self.lit`,
@@ -536,17 +840,28 @@ impl SceneRenderer {
         &mut self,
         target: impl FnOnce(usize) -> Target,
         uniform: &ModelUniform,
-        (base, decals): (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>),
+        meshes: (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>),
     ) {
+        let draw = self.stage(target, uniform, meshes);
+        self.prepared.push(draw);
+    }
+
+    /// [`Self::push_draw`]'s draw, its uniform staged, without queueing it.
+    fn stage(
+        &mut self,
+        target: impl FnOnce(usize) -> Target,
+        uniform: &ModelUniform,
+        (base, decals): (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>),
+    ) -> PreparedDraw {
         let index = self.uniforms.push(uniform);
         let [_, shadow, ..] = uniform.layer;
-        self.prepared.push(PreparedDraw {
+        PreparedDraw {
             target: target(index),
             ground: Vec::new(),
             base,
             decals,
             shadow: shadow != 0,
-        });
+        }
     }
 
     /// Encodes the draws chosen by the last [`Self::prepare`] into `rpass`.
@@ -590,96 +905,89 @@ impl SceneRenderer {
             }
         }
 
+        rpass.set_bind_group(0, &camera_resources.bind_group, &[]);
+        rpass.set_bind_group(1, &palette.bind_group, &[]);
         for decal_pass in [false, true] {
-            rpass.set_pipeline(if decal_pass {
-                &pipelines.decal_pipeline
-            } else {
-                &pipelines.base_pipeline
-            });
-            rpass.set_bind_group(0, &camera_resources.bind_group, &[]);
-            rpass.set_bind_group(1, &palette.bind_group, &[]);
             for draw in &self.prepared {
-                let meshes = if decal_pass { &draw.decals } else { &draw.base };
-                if meshes.is_empty() {
-                    continue;
-                }
-                // A shadow is all decal, so only the decal pass switches pipelines.
-                if decal_pass {
-                    rpass.set_pipeline(if draw.shadow {
-                        &pipelines.shadow_pipeline
-                    } else {
-                        &pipelines.decal_pipeline
-                    });
-                }
-                let (model, bind_group, offset) = match draw.target {
-                    Target::World { uniform } => {
-                        match self.world.as_ref().zip(self.uniforms.binding(uniform)) {
-                            Some((w, (bind_group, offset))) => (w, bind_group, offset),
-                            None => continue,
-                        }
-                    }
-                    Target::Shape { shape_id, uniform } => {
-                        match self
-                            .shapes
-                            .get(&shape_id)
-                            .zip(self.uniforms.binding(uniform))
-                        {
-                            Some((m, (bind_group, offset))) => (m, bind_group, offset),
-                            None => continue,
-                        }
-                    }
-                    Target::Lit { actor, uniform } => {
-                        match self
-                            .lit
-                            .get(actor)
-                            .and_then(Option::as_ref)
-                            .zip(self.uniforms.binding(uniform))
-                        {
-                            Some((lit, (bind_group, offset))) => (&lit.model, bind_group, offset),
-                            None => continue,
-                        }
-                    }
-                    Target::Image { image_id, uniform } => {
-                        match self
-                            .images
-                            .get(&image_id)
-                            .zip(self.uniforms.binding(uniform))
-                        {
-                            Some((m, (bind_group, offset))) => (m, bind_group, offset),
-                            None => continue,
-                        }
-                    }
-                };
-                rpass.set_bind_group(2, bind_group, &[offset]);
-                // A world decal slice's outline follows its own fill, so a later slice covers
-                // it as it covers the fill: the decal pass writes no depth to hide it ([I5]).
-                if decal_pass && matches!(draw.target, Target::World { .. }) {
-                    for slice in meshes {
-                        let slices = std::slice::from_ref(slice);
-                        rpass.set_pipeline(&pipelines.decal_pipeline);
-                        model.draw_slices(rpass, slices);
-                        if slice.edge_count > 0 {
-                            rpass.set_pipeline(&pipelines.edge_decal_pipeline);
-                            model.draw_edges(rpass, slices);
-                        }
-                    }
-                    continue;
-                }
-                model.draw_slices(rpass, meshes);
-                // Only the world carries edge buffers; the next draw sets its own pipeline
-                // back, as the decal pass does per draw and the base pass needs only here.
-                if matches!(draw.target, Target::World { .. }) {
-                    rpass.set_pipeline(if decal_pass {
-                        &pipelines.edge_decal_pipeline
-                    } else {
-                        &pipelines.edge_pipeline
-                    });
-                    model.draw_edges(rpass, meshes);
-                    if !decal_pass {
-                        rpass.set_pipeline(&pipelines.base_pipeline);
-                    }
+                self.encode(rpass, pipelines, draw, decal_pass, &pipelines.base_pipeline);
+            }
+        }
+        // Each placed sprite over everything drawn so far, then the props the scenery walk
+        // draws after it and the actors nearer than it, depth-tested against the world.
+        for step in &self.steps {
+            for sprite in &step.sprites {
+                self.encode(rpass, pipelines, sprite, false, &pipelines.sprite_pipeline);
+            }
+            for decal_pass in [false, true] {
+                for draw in std::iter::once(&step.props).chain(&step.actors) {
+                    self.encode(rpass, pipelines, draw, decal_pass, &pipelines.base_pipeline);
                 }
             }
+        }
+    }
+
+    /// The model, bind group and dynamic offset `target` draws through; `None` when the
+    /// model or the uniform is missing.
+    fn resolve(&self, target: Target) -> Option<(&GpuModel, &wgpu::BindGroup, u32)> {
+        let (model, uniform) = match target {
+            Target::World { uniform } => (self.world.as_ref()?, uniform),
+            Target::Shape { shape_id, uniform } => (self.shapes.get(&shape_id)?, uniform),
+            Target::Lit { actor, uniform } => (&self.lit.get(actor)?.as_ref()?.model, uniform),
+            Target::Image { image_id, uniform } => (self.images.get(&image_id)?, uniform),
+        };
+        let (bind_group, offset) = self.uniforms.binding(uniform)?;
+        Some((model, bind_group, offset))
+    }
+
+    /// Encodes `draw`'s decal slices when `decal_pass`, else its base slices through `base`,
+    /// with the world's outlines after its slices.
+    fn encode(
+        &self,
+        rpass: &mut wgpu::RenderPass<'_>,
+        pipelines: &RenderPipelines,
+        draw: &PreparedDraw,
+        decal_pass: bool,
+        base: &wgpu::RenderPipeline,
+    ) {
+        let meshes = if decal_pass { &draw.decals } else { &draw.base };
+        if meshes.is_empty() {
+            return;
+        }
+        let Some((model, bind_group, offset)) = self.resolve(draw.target) else {
+            return;
+        };
+        rpass.set_bind_group(2, bind_group, &[offset]);
+        let world = matches!(draw.target, Target::World { .. });
+        if decal_pass {
+            // A world decal slice's outline follows its own fill, so a later slice covers
+            // it as it covers the fill: the decal pass writes no depth to hide it ([I5]).
+            if world {
+                for slice in meshes {
+                    let slices = std::slice::from_ref(slice);
+                    rpass.set_pipeline(&pipelines.decal_pipeline);
+                    model.draw_slices(rpass, slices);
+                    if slice.edge_count > 0 {
+                        rpass.set_pipeline(&pipelines.edge_decal_pipeline);
+                        model.draw_edges(rpass, slices);
+                    }
+                }
+                return;
+            }
+            // A shadow is all decal, drawn through a pipeline that culls no faces.
+            rpass.set_pipeline(if draw.shadow {
+                &pipelines.shadow_pipeline
+            } else {
+                &pipelines.decal_pipeline
+            });
+            model.draw_slices(rpass, meshes);
+            return;
+        }
+        rpass.set_pipeline(base);
+        model.draw_slices(rpass, meshes);
+        // Only the world carries edge buffers.
+        if world {
+            rpass.set_pipeline(&pipelines.edge_pipeline);
+            model.draw_edges(rpass, meshes);
         }
     }
 }
@@ -857,6 +1165,86 @@ mod tests {
 
     use super::*;
 
+    /// A slice of indices `start..end`, as an unsplit model's cut gives it.
+    fn run(start: u32, end: u32) -> GpuMeshSlice {
+        GpuMeshSlice {
+            chunk: 0,
+            vertex_offset: 0,
+            index_offset: start,
+            index_count: end - start,
+            is_decal: false,
+            edge_offset: 0,
+            edge_count: 0,
+        }
+    }
+
+    fn span(start: u32, end: u32) -> ArenaSpan {
+        ArenaSpan { start, end }
+    }
+
+    /// A world whose base slice `0..30` holds three props, at `6..12`, `12..18` and
+    /// `24..30`, and whose node 5 was made for the third alone.
+    fn three_props() -> WorldPlacements {
+        let spans = |base: ArenaSpan, nodes: ArenaSpan| MeshSpans {
+            base,
+            decal: ArenaSpan::default(),
+            nodes,
+        };
+        WorldPlacements {
+            base: Some((NodeId(0), span(0, 30))),
+            decal: None,
+            spans: vec![
+                Some(spans(span(6, 12), ArenaSpan::default())),
+                Some(spans(span(12, 18), ArenaSpan::default())),
+                Some(spans(span(24, 30), span(5, 6))),
+                None,
+            ],
+            owner: vec![None, None, None, None, None, Some(2)],
+        }
+    }
+
+    #[test]
+    fn props_after_a_sprite_leave_the_world_draw_for_its_step() {
+        let world = three_props();
+        let slices = vec![(NodeId(0), run(0, 30)), (NodeId(5), run(40, 43))];
+        let mut steps = vec![Vec::new(), Vec::new()];
+        // The second prop follows one sprite, the third both.
+        let kept = world.split(slices, &[0, 1, 2, 0], false, &mut steps, |_, a, b| {
+            Some(run(a, b))
+        });
+        assert_eq!(kept, Some(vec![run(0, 12), run(18, 24)]));
+        assert_eq!(steps, [vec![run(12, 18)], vec![run(24, 30), run(40, 43)]]);
+    }
+
+    #[test]
+    fn a_slice_no_prop_leaves_is_kept_whole_and_uncut() {
+        let world = three_props();
+        let mut steps = vec![Vec::new()];
+        let kept = world.split(
+            vec![(NodeId(0), run(0, 30))],
+            &[0, 0, 0, 0],
+            false,
+            &mut steps,
+            |_, _, _| None,
+        );
+        assert_eq!(kept, Some(vec![run(0, 30)]));
+        assert!(steps[0].is_empty());
+    }
+
+    #[test]
+    fn a_slice_the_model_cannot_cut_gives_no_split() {
+        let world = three_props();
+        let mut steps = vec![Vec::new()];
+        let kept = world.split(
+            vec![(NodeId(0), run(0, 30))],
+            &[1, 0, 0, 0],
+            false,
+            &mut steps,
+            |_, _, _| None,
+        );
+        assert_eq!(kept, None);
+    }
+
     #[test]
     fn sprite_square_has_one_clockwise_quad_per_run() {
         // Row 0: two 5s then a 0; row 1: a 7 then two 0s.
@@ -899,6 +1287,7 @@ mod tests {
             centre: [1.0, 2.0, 3.0],
             size: 4.0,
             actor: 0,
+            after: None,
         };
         let m = Mat4::from_cols_array(&billboard_matrix(&view, &sprite));
         let top_right = m.transform_point3(Vec3::new(0.5, 0.5, 0.0));

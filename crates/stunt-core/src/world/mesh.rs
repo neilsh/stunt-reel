@@ -10,6 +10,7 @@ use crate::contracts::{
 };
 
 use super::map_bin::MapArea;
+use super::placed::{ArenaSpan, MeshSpans};
 use super::scenery::{LodGate, Placement};
 use super::terrain::{
     Patches, TerrainSurface, ground_decal_vertices, on_ground_plane, push_terrain, terrain_overlays,
@@ -95,7 +96,8 @@ fn record_prop_run(runs: &mut Vec<PropRun>, first: u32, end: u32, shape: u16) {
 /// nodes of the ocean and the flat terrain, the props' coplanar decals in `WORLD_DECAL`
 /// (`[I5]`), then each prop's own flat-ground and gated nodes in placement order. Every
 /// vertex is tagged with its scenery class, and the runs of prop vertices come back with the
-/// shape of each, in vertex order ([`PropRun`]).
+/// shape of each, in vertex order ([`PropRun`]), then where it put each of `instances`
+/// ([`MeshSpans`], in their order).
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX; the decal counts are growth since the base counts"
@@ -107,7 +109,7 @@ pub(super) fn build_world_ir(
     instances: &[Placement],
     ir_models: &PropModels<'_>,
     base_y: f32,
-) -> (SodModelIr, Vec<PropRun>) {
+) -> (SodModelIr, Vec<PropRun>, Vec<MeshSpans>) {
     let mut ir = SodModelIr::new("WORLD_SCENERY");
     let mut prop_runs = Vec::new();
     let overlays = terrain_overlays(anchors, map_areas);
@@ -144,7 +146,7 @@ pub(super) fn build_world_ir(
         }
     };
     terrain(&mut ir, Patches::Raised { overlay: false });
-    push_props(
+    let base_runs = push_props(
         &mut ir,
         &mut prop_runs,
         instances,
@@ -157,7 +159,7 @@ pub(super) fn build_world_ir(
     let base_indices = arena_index(ir.indices.len());
     let base_vertices = arena_index(ir.vertices.len());
     terrain(&mut ir, Patches::Raised { overlay: true });
-    push_props(
+    let decal_runs = push_props(
         &mut ir,
         &mut prop_runs,
         instances,
@@ -200,7 +202,7 @@ pub(super) fn build_world_ir(
             },
         );
     }
-    push_gated_props(
+    let node_runs = push_gated_props(
         &mut ir,
         &mut prop_runs,
         root_base,
@@ -209,7 +211,13 @@ pub(super) fn build_world_ir(
         ir_models,
         base_y,
     );
-    (ir, prop_runs)
+    let spans = base_runs
+        .into_iter()
+        .zip(decal_runs)
+        .zip(node_runs)
+        .map(|((base, decal), nodes)| MeshSpans { base, decal, nodes })
+        .collect();
+    (ir, prop_runs, spans)
 }
 
 /// Appends the geometry `push` adds as a mesh node named `name` under `parent`, or nothing
@@ -274,7 +282,8 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
 /// decal (`grounded` holds its snapped vertices, parallel to `instances`) goes in the decal
 /// batch. Triangles on the ground plane are left to [`push_gated_props`], which makes them
 /// [`GROUND_NODE`] nodes, as are slices behind a visibility gate and every slice of a
-/// placement behind an `SP_1NODE` gate.
+/// placement behind an `SP_1NODE` gate. Returns each placement's run of indices, in their
+/// order, empty for one that adds none.
 fn push_props(
     ir: &mut SodModelIr,
     prop_runs: &mut Vec<PropRun>,
@@ -283,7 +292,8 @@ fn push_props(
     ir_models: &PropModels<'_>,
     base_y: f32,
     decals: bool,
-) {
+) -> Vec<ArenaSpan> {
+    let mut runs = vec![ArenaSpan::default(); instances.len()];
     for (
         index,
         (
@@ -302,6 +312,7 @@ fn push_props(
         if instances.get(index).is_some_and(|p| p.chain != 0) {
             continue;
         }
+        let start = arena_index(ir.indices.len());
         for mesh in model.meshes() {
             let in_decal_batch = ground.is_some() || mesh.is_decal();
             if in_decal_batch != decals
@@ -318,14 +329,22 @@ fn push_props(
             };
             push_prop_mesh(ir, prop_runs, &mesh, placed, false);
         }
+        if let Some(run) = runs.get_mut(index) {
+            *run = ArenaSpan {
+                start,
+                end: arena_index(ir.indices.len()),
+            };
+        }
     }
+    runs
 }
 
 /// Appends, per placement and mesh, the prop's flat-ground triangles as [`GROUND_NODE`]
 /// nodes, then its gated triangles off the ground plane as a node of its own, each under
 /// `parent` with the gate moved into world space, so the renderer evaluates it per frame
 /// against the eye like an actor's. A placement behind `SP_1NODE` gates hangs every node
-/// under the groups [`lod_parent`] makes for its chain, and counts as gated.
+/// under the groups [`lod_parent`] makes for its chain, and counts as gated. Returns the run
+/// of nodes each placement adds, in their order.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
@@ -338,7 +357,8 @@ fn push_gated_props(
     grounded: &[Option<Vec<[f32; 3]>>],
     ir_models: &PropModels<'_>,
     base_y: f32,
-) {
+) -> Vec<ArenaSpan> {
+    let mut runs_of = vec![ArenaSpan::default(); instances.len()];
     let root = parent;
     let mut groups: HashMap<(NodeId, LodGate), NodeId> = HashMap::new();
     for (
@@ -366,6 +386,7 @@ fn push_gated_props(
             base_y,
             shape: shape_id,
         };
+        let first_node = arena_index(ir.nodes.len());
         for mesh in model.meshes() {
             if mesh.indices.is_empty() {
                 continue;
@@ -421,7 +442,14 @@ fn push_gated_props(
                 push_prop_mesh(ir, prop_runs, &mesh, placed, false);
             });
         }
+        if let Some(run) = runs_of.get_mut(index) {
+            *run = ArenaSpan {
+                start: first_node,
+                end: arena_index(ir.nodes.len()),
+            };
+        }
     }
+    runs_of
 }
 
 /// The node a placement behind gate chain `chain` hangs under: `root` for the empty chain,
@@ -644,7 +672,7 @@ mod tests {
 
         let instances = [Placement::bare(0x0100, [100.0, 50.0, 200.0], 0)];
         let surface = TerrainSurface::new(&pts, &map_areas, 0.0);
-        let (world_ir, runs) = build_world_ir(
+        let (world_ir, runs, spans) = build_world_ir(
             &pts,
             &map_areas,
             &surface,
@@ -666,6 +694,24 @@ mod tests {
         assert!(base_node.is_some());
         let decal_node = world_ir.nodes.iter().find(|n| n.name == "WORLD_DECAL");
         assert!(decal_node.is_some());
+        // The prop's spans: one triangle in each batch, inside that batch's own mesh, and no
+        // node of its own.
+        let mesh_of = |node: Option<&crate::contracts::SodNode>| match node.map(|n| &n.kind) {
+            Some(&NodeKind::Mesh {
+                index_offset,
+                index_count,
+                ..
+            }) => index_offset..index_offset + index_count,
+            _ => 0..0,
+        };
+        let [span] = spans.as_slice() else {
+            panic!("one span per instance");
+        };
+        assert_eq!(span.base.end - span.base.start, 3);
+        assert_eq!(span.decal.end - span.decal.start, 3);
+        assert!(mesh_of(base_node).contains(&span.base.start));
+        assert_eq!(mesh_of(decal_node).end, span.decal.end);
+        assert!(span.nodes.is_empty());
 
         // Behind an `SP_1NODE` gate the same prop leaves both batches for a mesh node per
         // slice under one `LodBranch` group, which carries the gate in `[I1]`.
@@ -685,7 +731,8 @@ mod tests {
             chain: 1,
             ..instances[0]
         }];
-        let (world_ir, runs) = build_world_ir(&pts, &map_areas, &surface, &gated, &models, 0.0);
+        let (world_ir, runs, gated_spans) =
+            build_world_ir(&pts, &map_areas, &surface, &gated, &models, 0.0);
         assert_runs_tile_the_props(&world_ir, &runs);
         let lod: Vec<_> = world_ir
             .nodes
@@ -703,6 +750,12 @@ mod tests {
             }
         );
         assert_eq!(lod[0].children.len(), 2, "the base and decal slices");
+        let [span] = gated_spans.as_slice() else {
+            panic!("one span per instance");
+        };
+        assert!(span.base.is_empty() && span.decal.is_empty());
+        let own: Vec<NodeId> = (span.nodes.start..span.nodes.end).map(NodeId).collect();
+        assert_eq!(own, lod[0].children, "its two nodes, not the shared group");
         assert!(
             world_ir.nodes.iter().all(|n| n.name != "WORLD_DECAL"),
             "nothing is left for the ungated decal batch"
@@ -740,7 +793,7 @@ mod tests {
             Placement::bare(9, [40.0, 0.0, 0.0], 0),
             Placement::bare(7, [60.0, 0.0, 0.0], 0),
         ];
-        let (ir, runs) = build_world_ir(
+        let (ir, runs, _) = build_world_ir(
             &[],
             &[],
             &TerrainSurface::default(),
@@ -764,7 +817,7 @@ mod tests {
     /// Without `MAP.BIN` the world is the ocean quad, then a flat ground quad.
     #[test]
     fn test_build_world_ir_without_map_lays_ocean_then_ground() {
-        let (world_ir, _) = build_world_ir(
+        let (world_ir, _, _) = build_world_ir(
             &[],
             &[],
             &TerrainSurface::default(),
@@ -922,7 +975,7 @@ mod tests {
         let (pts, areas) = level_terrain();
         let models = HashMap::from([(0x0391, prop)]);
         let surface = TerrainSurface::new(&pts, &areas, 0.0);
-        let (ir, _) = build_world_ir(
+        let (ir, _, _) = build_world_ir(
             &pts,
             &areas,
             &surface,

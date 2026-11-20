@@ -1,5 +1,5 @@
 ---
-summary: "How the scenery walk places actors among world objects: the actor queue pushes one list at `DGROUP:0x4F00`, the plane nodes split it by the slot's position, and each entry is drawn just before or after the object of the `SP_LEAF` it reaches, or inside that object's display list at `OP_IPG` type 4 when its probe recorded a bucket there (`w` = twice a collision-box code); replayed for `CTRY` tick 871, it draws the explosion after the tower and before the foreground hill, as the capture does; 83 of the 2,516 stock shapes carry a box coded 1 to 7, and 75 of them a matching bucket on their traced path."
+summary: "How the scenery walk places actors among world objects: the actor queue pushes one list at `DGROUP:0x4F00`, the plane nodes split it by the slot's position, and each entry is drawn just before or after the object of the `SP_LEAF` it reaches, or inside that object's display list at `OP_IPG` type 4 when its probe recorded a bucket there (`w` = twice a collision-box code); replayed for `CTRY` tick 871, from the image's tree or from the world's placement records, it draws the explosion after the tower and before the foreground hill, as the capture does; 83 of the 2,516 stock shapes carry a box coded 1 to 7, and 75 of them a matching bucket on their traced path."
 sidebar_label: "Actors in the scenery walk"
 ---
 # `PLAYONE.EXE`: Actors in the Scenery Walk
@@ -93,6 +93,10 @@ The replay assumes slot 11 recorded no bucket: with one, a plane its extent cros
 `MODEL_0262.SOD` has a collision-box list and `MODEL_03DD.SOD` none.
 _Source: [the CTRY tick 871 explosion replayed](../../work/2026-11/721_ctry-871-replay/journal.md#2026-11-18-the-ctry-tick-871-explosion-replayed-through-the-images-tree)._
 
+`PlacementRecords::slot_order` ([`world/slot_order.rs`](../../crates/stunt-core/src/world/slot_order.rs)) orders an entry against the world's placement records by their partition steps, without walking the tree: a record's path agrees with the entry's down to the node where they part, whose walk order decides, and a record at the end of the entry's path is its leaf, ordered by depth, or a stand-in, drawn before it.
+From `SCENERY.scn` at tick 871 it gives the same order: the towers and `0x060A` before the explosion, the hill after (`[Bounded Observation]`, one frame).
+_Source: [the Rust walk at CTRY tick 871](../../work/2026-11/737_sprite-partition-order/journal.md#2026-11-20-the-rust-walk-at-ctry-tick-871)._
+
 ## 5. Which Shapes Carry Buckets
 
 `[Bounded Observation]`, one static census of the game's own shapes: the 2,516 shapes of the stock `RES` files (`SUPERSET.ALL`; FreeFlight's six `SCENERY*.RES` are byte-identical to the game's), every box their collision lists reach, nested lists included, read as the probe's object walk `0x2886..0x289E` reads them (record types and sizes: the tables at `DGROUP:0x09FC` in [`memory-map.md`](memory-map.md); each record's words: [`sod.md` § 2.3](../formats/sod.md#23-collision-list)); nothing was run.
@@ -127,8 +131,7 @@ _Source: [the collision-code census](../../work/2026-11/721_ctry-871-replay/jour
   Whether an actor's probe ever records `0x024A`'s, `0x02DE`'s or `0x03FD`'s missing `w` (§ 5), and which object's display list then takes that head, is not read.
 * **Buckets beyond the stock shapes and the traced path.**
   § 5 leaves out the shapes of `corpus/siarchive` beyond FreeFlight, which only `local-windows` holds, and the display-list branches `sod-trace` does not take.
-* **The renderer** ([#737](https://github.com/neilsh/stunt-reel/issues/737)).
-  `stunt-render` draws the world in one depth-tested pass; drawing each actor at its leaf's place in the partition order needs the scenery's planes at draw time.
-  The world's placement records keep each prop's node and the partition steps above it with their plane words ([`world/placed.rs`](../../crates/stunt-core/src/world/placed.rs)); the actor's own walk and the split of the props around it are not built.
+* **Actors other than `OP_ANIMATE` sprites in the renderer.**
+  `stunt-render` draws an `OP_ANIMATE` sprite at its slot's place in the walk, by the records' order of § 4 ([`sod-animate.md`](sod-animate.md) § 4); 3D actors stay depth-tested against props and are ordered against a placed sprite by view depth, not by their own walk ([#819](https://github.com/neilsh/stunt-reel/issues/819)).
 * **Live check.**
   No breakpoint has confirmed a pending list, a split or a bucket push at run time.

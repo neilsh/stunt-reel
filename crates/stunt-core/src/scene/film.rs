@@ -14,7 +14,7 @@ use crate::link::LinkError;
 use crate::sod::{AngleBank, ShadeLight, faces_view};
 use crate::sprite::SpriteImage;
 use crate::vfs::VfsError;
-use crate::world::{ScnStop, TapFailure, World, WorldInputs, build_world};
+use crate::world::{ScnStop, SlotEntry, TapFailure, World, WorldInputs, build_world};
 
 use super::bank::{PREVIOUS_FRAME_TICKS, angle_bank};
 use super::projection::{
@@ -86,6 +86,12 @@ pub struct SceneReport {
     pub tap_failures: Vec<TapFailure>,
 }
 
+/// `[I1]` metres in the DOS axes the scenery tree and `PLAYONE`'s walks use; the map is its
+/// own inverse.
+fn dos_axes(p: [f32; 3]) -> [f32; 3] {
+    [-p[0], -p[1], p[2]]
+}
+
 /// One drawable actor in a [`SceneFrame`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ActorDraw {
@@ -121,8 +127,9 @@ pub struct ActorDraw {
 /// One image an actor's shape draws in screen space (`OP_ANIMATE`) in a [`SceneFrame`].
 ///
 /// `PLAYONE` blits it as a square `size` across at the anchor's projected point, palette
-/// index 0 transparent, with no depth test of its own (`research/playone-exe/sod-animate.md`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// index 0 transparent, with no depth test of its own (`research/playone-exe/sod-animate.md`),
+/// at its slot's place in the scenery walk ([`Self::after`]).
+#[derive(Debug, Clone, PartialEq)]
 pub struct SpriteDraw {
     /// Image resource of the frame, a key of [`FilmScene::image`].
     pub image_id: u16,
@@ -132,6 +139,12 @@ pub struct SpriteDraw {
     pub size: f32,
     /// Index into [`SceneFrame::actors`] of the actor whose shape draws it.
     pub actor: usize,
+    /// The world's placements the scenery walk draws after this sprite's slot, as ascending
+    /// indices into [`World::placements`]' records, only those the world draws
+    /// ([`crate::world::PlacementRecords::slot_order`]; `research/playone-exe/scene-walk-actors.md`).
+    /// `None` when the walk gives the slot no place: no world, no decoded header for the
+    /// slot's extent, or a node on its path that drops it.
+    pub after: Option<Vec<u32>>,
 }
 
 /// Everything to draw at one tick.
@@ -525,7 +538,13 @@ impl FilmScene {
                 bank: AngleBank::REST,
             });
         }
-        let sprites = self.sprite_draws(tick, &record.actors, &actors, (record.bank, previous));
+        let sprites = self.sprite_draws(
+            tick,
+            &record.camera,
+            &record.actors,
+            &actors,
+            (record.bank, previous),
+        );
         SceneFrame {
             tick,
             view: ViewCamera::from_authored(&record.camera),
@@ -540,7 +559,7 @@ impl FilmScene {
     }
 
     /// The sprite draws of `draws`, the actor draws [`Self::frame`] made from `actors` in
-    /// order, at `tick`.
+    /// order, at `tick`, seen by `camera`.
     ///
     /// Each sprite's frame comes from its bank word ([`angle_bank`], with film variables 10
     /// and 12 at this frame and at the previous one). Only an `Always` or a
@@ -549,6 +568,7 @@ impl FilmScene {
     fn sprite_draws(
         &self,
         tick: f32,
+        camera: &CameraTransform,
         actors: &[ActorTransform],
         draws: &[ActorDraw],
         (now, previous): (BankVariables, BankVariables),
@@ -561,6 +581,7 @@ impl FilmScene {
             let Some(shape) = self.shapes.get(&draw.shape_id) else {
                 continue;
             };
+            let mut after = None;
             for sprite in &shape.sprites {
                 if draw.shadow_only || !sprite_gate_open(sprite, draw.state_mask) {
                     continue;
@@ -572,15 +593,44 @@ impl FilmScene {
                 else {
                     continue;
                 };
+                // Every sprite of a slot shares its one entry in the walk.
+                let after = after
+                    .get_or_insert_with(|| self.drawn_after(camera, actor, shape))
+                    .clone();
                 out.push(SpriteDraw {
                     image_id,
                     centre: transform_point(&draw.world_matrix, sprite.anchor),
                     size: sprite.size,
                     actor: index,
+                    after,
                 });
             }
         }
         out
+    }
+
+    /// The drawn world placements the scenery walk from `camera` draws after `actor`'s
+    /// entry, whose shape is `shape` ([`SpriteDraw::after`]).
+    fn drawn_after(
+        &self,
+        camera: &CameraTransform,
+        actor: &ActorTransform,
+        shape: &SodModelIr,
+    ) -> Option<Vec<u32>> {
+        let records = &self.world.as_ref()?.placements;
+        let header = shape.decode()?.header;
+        let entry = SlotEntry {
+            position: dos_axes(actor.position_meters),
+            extent: SlotEntry::extent_of(header.bounding_size, header.scale_index),
+        };
+        let after = records.slot_order(dos_axes(camera.eye), dos_axes(camera.target), entry)?;
+        Some(
+            (0u32..)
+                .zip(after.iter().zip(&records.records))
+                .filter(|&(_, (&after, record))| after && record.drawn)
+                .map(|(index, _)| index)
+                .collect(),
+        )
     }
 
     /// Film variables 10 and 12 at the `PLAYONE` frame before the one at `tick`

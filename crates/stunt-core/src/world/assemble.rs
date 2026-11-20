@@ -186,12 +186,6 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         .filter_map(|(p, &shows)| shows.then_some(p))
         .collect();
     let drawn = interleave_drawn(&placements.props, shapes, &fixed_drawn, &facing_drawn);
-    let records = PlacementRecords::new(
-        &placements.props,
-        std::mem::take(&mut placements.steps),
-        shapes,
-        &drawn,
-    );
     let props_placed = kept.len().saturating_add(facing.len());
     let view_facing = facing_props(&facing, &placements.chains, base_y);
     let fixed = kept;
@@ -202,7 +196,26 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
     };
 
     let terrain = TerrainSurface::new(pts, &map_areas, base_y);
-    let (ir, prop_runs) = build_world_ir(pts, &map_areas, &terrain, &fixed, &models, base_y);
+    let (ir, prop_runs, spans) = build_world_ir(pts, &map_areas, &terrain, &fixed, &models, base_y);
+    // The mesh holds the drawn props that do not face the view, in walk order.
+    let mut spans = spans.into_iter();
+    let mesh: Vec<_> = placements
+        .props
+        .iter()
+        .zip(&drawn)
+        .map(|(p, &shows)| {
+            (shows && !shapes.get(&p.shape).is_some_and(faces_view))
+                .then(|| spans.next())
+                .flatten()
+        })
+        .collect();
+    let records = PlacementRecords::new(
+        &placements.props,
+        std::mem::take(&mut placements.steps),
+        shapes,
+        &drawn,
+        &mesh,
+    );
     // `build_world_ir` always emits the ocean quad, so the extent exists.
     let bounds = ir.extent()?;
     Some(World {

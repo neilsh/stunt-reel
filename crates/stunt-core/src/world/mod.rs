@@ -25,15 +25,17 @@ mod map_bin;
 mod mesh;
 mod placed;
 mod scenery;
+mod slot_order;
 mod tap_props;
 mod terrain;
 
 pub use assemble::{FacingProp, World, WorldInputs, build_world};
 pub use mesh::{GROUND_NODE, PropRun};
-pub use placed::{PlacementRecord, PlacementRecords};
+pub use placed::{ArenaSpan, MeshSpans, PlacementRecord, PlacementRecords};
 pub use scenery::{
     PartitionStep, SceneryShapes, ScnNode, ScnStop, ScnStopReason, Split, scenery_shape_ids,
 };
+pub use slot_order::SlotEntry;
 pub use tap_props::{TapFailure, TapFailureReason};
 pub use terrain::{GroundPlane, TerrainSurface};
 

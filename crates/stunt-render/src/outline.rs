@@ -130,10 +130,22 @@ fn append_outline(
 ///
 /// A triangle with a corner `outlined` rejects is skipped, neither counted nor outlined.
 pub(crate) fn boundary_edges(triangles: &[u32], outlined: impl Fn(u32) -> bool) -> Vec<[u32; 2]> {
+    numbered_boundary_edges(triangles, outlined)
+        .into_iter()
+        .map(|(edge, _)| edge)
+        .collect()
+}
+
+/// [`boundary_edges`], each edge with the number of the triangle that uses it, counted from
+/// 0 in `triangles`, so the numbers never decrease.
+pub(crate) fn numbered_boundary_edges(
+    triangles: &[u32],
+    outlined: impl Fn(u32) -> bool,
+) -> Vec<([u32; 2], usize)> {
     // Each undirected edge's use count, keyed by its sorted ends, in first-use order.
     let mut uses: HashMap<(u32, u32), u32> = HashMap::new();
-    let mut order: Vec<[u32; 2]> = Vec::new();
-    for tri in triangles.as_chunks::<3>().0 {
+    let mut order: Vec<([u32; 2], usize)> = Vec::new();
+    for (number, tri) in triangles.as_chunks::<3>().0.iter().enumerate() {
         if !tri.iter().all(|&i| outlined(i)) {
             continue;
         }
@@ -141,12 +153,12 @@ pub(crate) fn boundary_edges(triangles: &[u32], outlined: impl Fn(u32) -> bool) 
         for (p, q) in [(a, b), (b, c), (c, a)] {
             let count = uses.entry((p.min(q), p.max(q))).or_insert(0);
             if *count == 0 {
-                order.push([p, q]);
+                order.push(([p, q], number));
             }
             *count = count.saturating_add(1);
         }
     }
-    order.retain(|&[p, q]| uses.get(&(p.min(q), p.max(q))) == Some(&1));
+    order.retain(|&([p, q], _)| uses.get(&(p.min(q), p.max(q))) == Some(&1));
     order
 }
 
