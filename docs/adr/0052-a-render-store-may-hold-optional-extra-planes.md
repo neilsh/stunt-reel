@@ -18,15 +18,15 @@ It adds `shapes.zst` beside `layers.zst`, which ADR 0027 does not list.
   A render directory's store may hold per-pixel planes beside `layers.zst`, in addition to the files ADR 0027 lists.
 - **What qualifies.**
   An extra plane holds one value per pixel per tick, in the same per-second chunks as `layers.zst`.
-  It is listed in `render.json` once [#813](https://github.com/neilsh/stunt-reel/issues/813)'s schema version 4 lands.
+  `render.json` schema version 4 ([#813](https://github.com/neilsh/stunt-reel/issues/813)) lists each such plane with its SHA-256 and one span per chunk-table entry.
   It is never needed to score a render: a render's scores are the same with or without it, and only the report fields that describe the plane itself depend on it.
 - **Optional.**
   Each plane is written only when its producer runs, and read only by the tools that need it.
 - **Missing or unlisted means absent.**
-  Until #813 lands, a reader treats a missing plane file as absent, not as an error.
-  After #813, a plane that `render.json` does not list is absent, and a listed plane that is missing or does not match its listing is an error.
+  A plane that `render.json` does not list is absent, whatever file lies beside it.
+  A listed plane that is missing or does not match its listing is an error.
 - **The Python store.**
-  Once #813 lands, the Python store reads and validates the version 4 `render.json`, its plane listing included, but never decodes a plane's contents.
+  The Python store reads and validates the version 4 `render.json`, its plane listing included, but never decodes a plane's contents.
 - **`shapes.zst` is the first.**
   It holds one little-endian u16 per pixel, the shape word (`shape id + 1` of the prop drawing the pixel, 0 for none), chunked like `layers.zst`.
   The Rust store writes it and only the Rust store reads it, so only the Rust store yields the per-shape loss split.
@@ -38,15 +38,15 @@ It adds `shapes.zst` beside `layers.zst`, which ADR 0027 does not list.
 - **Supersede ADR 0027** with a record of the whole layout: the owner chose to amend it instead.
 - **Leave the plane unrecorded:** the owner chose to record it.
 - **List the plane in `render.json`:** chosen, as [#813](https://github.com/neilsh/stunt-reel/issues/813).
-  #813 will move `render.json` to schema version 4, which lists every optional plane with its offsets or digest, validated like the chunk table.
+  #813 moved `render.json` to schema version 4, which lists every optional plane with its SHA-256 and per-chunk spans, validated like the chunk table.
   Under ADR 0027's version rule, readers refuse any other version, so every existing render store, judge baselines included, is re-rendered once.
   The owner accepted that cost on 2026-11-20 ([#813 comment](https://github.com/neilsh/stunt-reel/issues/813#issuecomment-7026508652)).
-  #813 starts once #805 and this record merge, so #805 lands with the plane unlisted.
+  #813 started once #805 and this record merged, so #805 landed with the plane unlisted.
 
 ## Consequences
 
-- Until #813 lands, nothing in `render.json` ties `shapes.zst` to its render, so a stale `shapes.zst` that matches the chunk table could be read as the render's own.
-  #813's version 4 listing is the fix.
-- The version 4 re-render of #813 rewrites every render store once, judge baselines included.
+- Version 4's listing ties `shapes.zst` to its render by SHA-256, so a stale `shapes.zst` is never read as the render's own.
+  Before #813 nothing did.
+- The version 4 re-render of #813 rewrote every render store once, judge baselines included.
 - A plane that a score would need does not qualify under this record.
 - [#809](https://github.com/neilsh/stunt-reel/issues/809), moving the prop-shape attribution slot out of `SodVertex`, may become a user of this record; this record decides nothing about it.
