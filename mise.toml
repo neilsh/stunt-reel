@@ -22,7 +22,7 @@ uv = "0.13.1"
 # Supply-chain auditing for Cargo manifests (advisories, licenses, sources)
 "cargo:cargo-deny" = "0.20.2"
 
-# Line coverage for the Rust crates (`mise run cov-rust`); not part of `check`.
+# Test coverage of the Rust workspace (`mise run cov-rust`, the CI `coverage` job); not part of `check`.
 "cargo:cargo-llvm-cov" = "0.9.1"
 
 # Runs the commit hooks (`mise run pre-commit`); they call mise tasks, never their own tools (ADR 0026).
@@ -487,8 +487,20 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.cov-rust]
 depends = ["ensure"]
-description = "Line coverage for the Rust format crates (stunt-core, stunt-gltf)"
-run = "cargo llvm-cov --locked -p stunt-core -p stunt-gltf --all-features --summary-only"
+description = "Test coverage of the whole Rust workspace (GPU tests included; they skip without an adapter, and STUNT_REQUIRE_GPU=1 fails instead); prints the summary and writes target/coverage/lcov.info (the CI `coverage` job)"
+# Stable toolchain: line and region coverage, no --branch or doctests (nightly). The regex drops
+# the integration test files (crates/*/tests/) and the registry sources (CARGO_HOME sits inside
+# the checkout, where llvm-cov does not take them for dependencies) from the denominator;
+# inline #[cfg(test)] modules stay, since leaving them out needs nightly's #[coverage(off)].
+# Each `.` in the regex is a path separator of either kind, so one pattern serves both
+# platforms. The build lands in target/llvm-cov-target, apart from the gate's, so this task
+# never invalidates it.
+run = [
+  "python -c \"from pathlib import Path; d = Path('target/coverage'); d.mkdir(parents=True, exist_ok=True); (d / 'lcov.info').unlink(missing_ok=True)\"",
+  "cargo llvm-cov --locked --workspace --all-features --no-report",
+  "cargo llvm-cov report --ignore-filename-regex \"crates.[a-z-]+.tests.|.registry.src.\" --summary-only",
+  "cargo llvm-cov report --ignore-filename-regex \"crates.[a-z-]+.tests.|.registry.src.\" --lcov --output-path target/coverage/lcov.info",
+]
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.test-py]
@@ -524,8 +536,18 @@ run = "cargo test -p stunt-core --no-default-features"
 env = { CARGO_HOME = "{{vars.cargo_home}}", CARGO_TARGET_DIR = "{{config_root}}/target/matrix", CARGO_INCREMENTAL = "0" }
 
 [tasks.cov-py]
-description = "Run Python test suite with coverage reporting"
-run = "uv run pytest --cov=stunt_reel --cov-report=term-missing"
+description = "Test coverage of python/stunt_reel and python/scripts (lines and branches, subprocesses included); prints the report and writes target/coverage/coverage.xml and coverage.json (the CI `coverage` job)"
+# [tool.coverage] in pyproject.toml holds the scope and the parallel data files; pytest-cov
+# combines them, the nine subprocess-starting test files' interpreters included.
+# The first command removes the last run's files, so a failed run leaves none for cov-summary.
+run = [
+  "python -c \"from pathlib import Path; Path('target/coverage/coverage.xml').unlink(missing_ok=True); Path('target/coverage/coverage.json').unlink(missing_ok=True)\"",
+  "uv run pytest --cov --cov-report=term-missing:skip-covered --cov-report=xml:target/coverage/coverage.xml --cov-report=json:target/coverage/coverage.json",
+]
+
+[tasks.cov-summary]
+description = "The coverage tables (per crate, per package) from the files cov-rust and cov-py wrote, as Markdown for a job summary (python/scripts/cov_summary.py)"
+run = "python python/scripts/cov_summary.py"
 
 # The three gate tasks dispatch one script (ADR 0014; lanes: ADR 0016). The step list is the
 # leaf tasks in python/scripts/gate.py, so the halves cannot run a shorter gate than the whole,
