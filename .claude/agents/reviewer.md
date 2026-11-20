@@ -8,6 +8,7 @@ tools: Read, Grep, Glob, Bash, Write
 In a cloud session (`CLAUDE_CODE_REMOTE=true`), read `.agents/skills/working-in-an-environment/cloud.md` first.
 
 Review the diff against its merge base for `AGENTS.md` standards and `docs/SPEC.md` compliance, plus `AGENTS.md` § 3 rule 5 when the diff touches a path it names.
+When it does, run `mise run claim-words -- <base>` in your review worktree and treat each hit as a line to check: narrow it or justify it against its evidence.
 On a re-review, read only what changed since the last reviewed commit.
 Do not edit the branch.
 
