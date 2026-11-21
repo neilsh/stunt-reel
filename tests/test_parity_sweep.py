@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import itertools
 import json
 import os
@@ -39,6 +40,7 @@ import parity_probe  # noqa: E402
 import parity_sweep  # noqa: E402
 
 from stunt_reel import (  # noqa: E402
+    class_agreement,
     parity_artifacts,
     parity_judge,
     parity_layout,
@@ -935,3 +937,28 @@ def test_probe_iou_is_not_refused_when_a_selected_film_has_bands(
     argv = ["--var", "DBG_X=a", "--probe", "iou", "--no-build", "--data-root", str(root)]
     assert parity_sweep.main([*argv, "--films", "intro"]) == 2
     assert parity_sweep.main([*argv, "--films", "ctry"]) == 0
+
+
+def _agreement_file(tmp_path: Path) -> Path:
+    films = {"ctry": class_agreement.FilmAgreement("ctry", 3, 1, 300.0, 900, 2, {2: 900})}
+    agreement = class_agreement.Agreement(
+        "9" * 40, dt.date(2026, 11, 21), "GPU", "1", "llvmpipe", "2", films
+    )
+    path = tmp_path / "agreement.toml"
+    path.write_text(class_agreement.format_agreement(agreement, ["ctry"]), encoding="utf-8")
+    return path
+
+
+def test_sweep_prints_hot_line_over_half(tmp_path: Path) -> None:
+    path = _agreement_file(tmp_path)
+    deltas = {"ctry": {1: 0.01, 2: 0.03, 3: -0.02}, "intro": {2: 0.05}}
+    lines = parity_sweep.hot_lines("DBG_X=1", deltas, path)
+    assert len(lines) == 1
+    assert lines[0].startswith("DBG_X=1: ctry: 75% of its SSIM gain")
+    assert lines[0].endswith("check it on the GPU")
+    assert parity_sweep.hot_lines("DBG_X=1", {"ctry": {1: 0.03, 2: 0.01}}, path) == []
+
+
+def test_sweep_without_agreement_file_prints_no_hot_line(tmp_path: Path) -> None:
+    deltas = {"ctry": {2: 0.03}}
+    assert parity_sweep.hot_lines("DBG_X=1", deltas, tmp_path / "absent.toml") == []

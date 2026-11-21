@@ -17,6 +17,8 @@ judgement:
 PRs come in stack order (a PR whose base is ``main`` before the PRs stacked on it), with ``draft``
 and a non-``main`` base noted; issues come in number order. Everything is read over REST, which a
 cloud session's proxy allows. Bodies are read here and never printed.
+When a class agreement batch is due (``stunt_reel.class_agreement.due``), a line says why, in
+both environments.
 A local run ends with the free-disk line for the primary checkout's drive, naming the action
 ``loop-and-bounds.md`` asks at the threshold it crosses; a cloud session prints none.
 
@@ -25,6 +27,7 @@ Usage: ``mise run queue``. Exit status: ``0`` on success, ``2`` when ``gh`` fail
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import re
@@ -36,6 +39,9 @@ from pathlib import Path
 from typing import Any
 
 import merge_bar
+
+from stunt_reel.class_agreement import AGREEMENT_FILE, due, read_agreement, renderer_commits_since
+from stunt_reel.dataroot import REPO_ROOT
 
 #: Seconds before a ``gh`` call counts as failed.
 GH_TIMEOUT = 60
@@ -349,6 +355,14 @@ def disk_line(primary: Path) -> str:
     return f"{line} ({'; '.join(advice)})" if advice else line
 
 
+def agreement_line(repo: Path = REPO_ROOT, today: dt.date | None = None) -> str | None:
+    """``agreement batch due: <reason>`` for *repo*'s pinned agreement against ``origin/main``; ``None`` when not due."""
+    pinned = read_agreement(repo / AGREEMENT_FILE)
+    commits = None if pinned is None else renderer_commits_since(pinned.crates, repo=repo)
+    reason = due(pinned, commits, today or dt.datetime.now(dt.UTC).date())
+    return None if reason is None else f"agreement batch due: {reason}"
+
+
 def main() -> int:
     try:
         prs, checks, issues = fetch()
@@ -358,6 +372,9 @@ def main() -> int:
     cloud = is_cloud_session()
     for item in pr_items(prs, checks, cloud=cloud) + issue_items(issues, prs, cloud=cloud):
         print(item.line())
+    batch = agreement_line()
+    if batch is not None:
+        print(batch)
     if not cloud:
         primary = primary_checkout()
         if primary is None:

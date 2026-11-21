@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from stunt_reel.class_agreement import (
+    AGREEMENT_FILE,
     Agreement,
     FilmAgreement,
     Flag,
@@ -67,12 +68,8 @@ if TYPE_CHECKING:
 
     from stunt_reel.parity_artifacts import Report
 
-#: The expected-scores directory, relative to a checkout.
-EXPECTED_DIR = Path("research/parity/expected")
-#: The pinned agreement; the first ``pin`` creates it.
-AGREEMENT_FILE = EXPECTED_DIR / "agreement.toml"
-#: The GPU's pinned expected scores, which ``pin`` repins beside it.
-GPU_FILE = EXPECTED_DIR / "gpu.toml"
+#: The GPU's pinned expected scores, which ``pin`` repins beside the agreement.
+GPU_FILE = AGREEMENT_FILE.parent / "gpu.toml"
 #: Where ``mise run parity`` leaves its renders and reports, relative to a checkout.
 PARITY_DIR = Path("build/parity")
 #: Where a measurement and the lavapipe arm's copy are kept, relative to a checkout.

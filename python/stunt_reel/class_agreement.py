@@ -12,6 +12,7 @@ from __future__ import annotations
 import subprocess
 import tomllib
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 lazy import datetime as dt
 
@@ -21,11 +22,11 @@ from stunt_reel.git_env import isolated_env
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from pathlib import Path
 
     from stunt_reel.parity_artifacts import RenderStore
 
 __all__ = [
+    "AGREEMENT_FILE",
     "CURRENT_SUFFIX",
     "DUE_COMMITS",
     "DUE_DAYS",
@@ -51,6 +52,8 @@ __all__ = [
     "renderer_commits_since",
 ]
 
+#: The pinned agreement, relative to a checkout; the first ``mise run agreement -- pin`` writes it.
+AGREEMENT_FILE = Path("research/parity/expected") / "agreement.toml"
 #: Suffix of a film's render store directory under a render root.
 CURRENT_SUFFIX = "_current"
 #: Maps a byte to 1 when it is not zero, so one ``translate`` counts the set bytes of a XOR.

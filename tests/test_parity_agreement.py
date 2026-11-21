@@ -143,7 +143,7 @@ def pin_baseline(repo: Path) -> None:
     """Writes a pinned agreement with no residue on either film."""
     films = {film: ca.FilmAgreement(film, len(TICKS), 0, 0.0, 0, TICKS[0], {}) for film in FILMS}
     pinned = ca.Agreement(TREE, DAY, GPU.name, DRIVERS[0], LAVAPIPE.name, DRIVERS[1], films)
-    path = repo / cli.AGREEMENT_FILE
+    path = repo / ca.AGREEMENT_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(ca.format_agreement(pinned, FILMS), encoding="utf-8")
 
@@ -205,25 +205,25 @@ def test_pin_refuses_flags_without_accept(
     fake: Fake, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     pin_baseline(fake.repo)
-    before = (fake.repo / cli.AGREEMENT_FILE).read_text()
+    before = (fake.repo / ca.AGREEMENT_FILE).read_text()
     measured(fake, tmp_path, flips={20: [0, 1, 2, 3]})
     assert cli.run_pin(fake.repo, None, fake.tools()) == 1
     assert "--accept" in capsys.readouterr().err
-    assert (fake.repo / cli.AGREEMENT_FILE).read_text() == before
+    assert (fake.repo / ca.AGREEMENT_FILE).read_text() == before
     assert fake.calls == []
 
 
 def test_pin_refuses_a_first_baseline_without_accept(fake: Fake, tmp_path: Path) -> None:
     measured(fake, tmp_path)
     assert cli.run_pin(fake.repo, None, fake.tools()) == 1
-    assert not (fake.repo / cli.AGREEMENT_FILE).exists()
+    assert not (fake.repo / ca.AGREEMENT_FILE).exists()
 
 
 def test_pin_with_accept_records_reason_and_repins_gpu(fake: Fake, tmp_path: Path) -> None:
     pin_baseline(fake.repo)
     measured(fake, tmp_path, flips={20: [0, 1, 2, 3]})
     assert cli.run_pin(fake.repo, "new driver", fake.tools()) == 0
-    pinned = ca.read_agreement(fake.repo / cli.AGREEMENT_FILE)
+    pinned = ca.read_agreement(fake.repo / ca.AGREEMENT_FILE)
     assert pinned is not None
     assert pinned.accepted == "new driver"
     assert pinned.films["ctry"].differing_ticks == 1
@@ -247,11 +247,11 @@ def test_pin_refuses_another_crates_tree(fake: Fake, tmp_path: Path) -> None:
 
 def test_pin_writes_nothing_when_the_repin_fails(fake: Fake, tmp_path: Path) -> None:
     pin_baseline(fake.repo)
-    before = (fake.repo / cli.AGREEMENT_FILE).read_text()
+    before = (fake.repo / ca.AGREEMENT_FILE).read_text()
     measured(fake, tmp_path, flips={20: [0, 1, 2, 3]})
     fake.exits["mise run parity-repin -- --class gpu"] = 1
     assert cli.run_pin(fake.repo, "x", fake.tools()) == 1
-    assert (fake.repo / cli.AGREEMENT_FILE).read_text() == before
+    assert (fake.repo / ca.AGREEMENT_FILE).read_text() == before
 
 
 def batch(fake: Fake, *, if_due: bool = False, post: bool = False) -> int:
