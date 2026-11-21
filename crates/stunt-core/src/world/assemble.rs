@@ -378,6 +378,57 @@ mod tests {
         assert_eq!(tap_props_placed(&anchors, 1000, [-1000.0, 0.0, 2000.0]), 0);
     }
 
+    /// A baked prop of `scale_index` 14, whose cut falls at 256 m at the default lens, gets a
+    /// `ScaleReach` group only when some eye puts its largest coordinate there or beyond.
+    #[test]
+    fn a_prop_carries_the_distance_cut_only_where_an_eye_reaches_it() {
+        use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, decode_sod};
+        let words = [
+            OP_ID, 100, 0, 14, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24, OP_RETURN,
+        ];
+        let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let shape = decode_sod(&bytes, "SMALL", None, DecodeMode::Strict).expect("decode");
+        assert_eq!(shape.decode().map(|d| d.header.scale_index), Some(14));
+        let shapes = HashMap::from([(0x0300, shape)]);
+        // One `SP_POS` at the origin, then an `SP_LEAF` of shape `0x0300`.
+        let scenery: Vec<u8> = [0, 0, 0, 0, 0, 12, 10, 0x0300]
+            .iter()
+            .flat_map(|w: &i32| w.to_le_bytes())
+            .collect();
+        // The near eye keeps the millimetre shape above the sub-pixel cull.
+        let reach_groups = |far: f32| -> Vec<VisibilityCondition> {
+            let eyes = [[0.0, 0.0, 2.0], [0.0, 0.0, far]];
+            let inputs = WorldInputs {
+                anchors: &[],
+                map: None,
+                scenery: Some(&scenery),
+                view_eyes: &eyes,
+                max_zoom: 1.0,
+                max_lod_shift: 0,
+                min_corner_depth: 0.804,
+                anchored_shapes: &HashMap::new(),
+                light: ShadeLight::default(),
+            };
+            let world = build_world(&inputs, &shapes).expect("a world");
+            assert_eq!(world.props_placed, 1);
+            world
+                .ir
+                .nodes
+                .iter()
+                .filter(|n| n.name == "WORLD_REACH")
+                .map(|n| n.visibility)
+                .collect()
+        };
+        assert!(reach_groups(255.0).is_empty());
+        let [gate] = reach_groups(256.0)[..] else {
+            panic!("one reach group past the cut");
+        };
+        let VisibilityCondition::ScaleReach { scale_index, .. } = gate else {
+            panic!("a ScaleReach gate, not {gate:?}");
+        };
+        assert_eq!(scale_index, 14);
+    }
+
     /// A placement of a shape with header flag bit 0 leaves the world mesh for the
     /// per-frame view-facing list; the others stay, each list in walk order.
     #[test]

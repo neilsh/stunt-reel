@@ -52,7 +52,7 @@ fn scale_reach_cuts_at_the_largest_coordinate_against_scale_and_lens() {
     assert!(!default.scale_reach_keeps(at(0.0, -8192.0), 9));
     // It measures the largest coordinate, not the distance: 11,314 m away is kept.
     assert!(default.scale_reach_keeps(at(8000.0, 8000.0), 9));
-    // Below 9 the cut lies at or beyond the 25 km far plane: 8 at 16,384 m, 7 at 32,768 m.
+    // 8 is cut at 16,384 m, inside the 25 km far plane at `0x229E` 0; 7 at 32,768 m, beyond it.
     assert!(default.scale_reach_keeps(at(16_383.0, 0.0), 8));
     assert!(!default.scale_reach_keeps(at(16_384.0, 0.0), 8));
     assert!(default.scale_reach_keeps(at(30_000.0, 0.0), 7));

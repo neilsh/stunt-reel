@@ -439,7 +439,7 @@ fn seen_from(words: &[i32], eye_x: f32) -> Vec<u16> {
 
 #[test]
 fn a_one_node_keeps_both_branches_within_reach_and_only_its_stand_in_past_it() {
-    // At the default lens's shift of 1 the gate keeps a depth below 2^2 times one more
+    // At a lens with shift 1 the gate keeps a depth below 2^2 times one more
     // than the larger of splitdist and half ext, 4 * 106 = 424 m; off axis that is up to
     // 424 / 0.804 + 5 = 532.4 m away.
     let words = one_node(STAND_IN, 10, 105);

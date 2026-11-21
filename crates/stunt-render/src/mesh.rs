@@ -1530,6 +1530,39 @@ mod tests {
         assert_eq!(order(&decal), vec![4, 5]);
     }
 
+    /// A node behind a `ScaleReach` gate draws while the frame camera keeps it inside its
+    /// cut and not past it; with no camera it draws.
+    #[test]
+    fn a_scale_reach_node_draws_only_inside_its_cut() {
+        let camera = CameraTransform {
+            eye: [0.0, 0.0, 0.0],
+            target: [0.0, 0.0, -1.0],
+            ..CameraTransform::default()
+        };
+        let drawn = |z: f32, view: Option<&CameraTransform>| -> Vec<u32> {
+            let mut gated = node(1, Some(0), &[], false);
+            // `scale_index` 14 is cut at 256 m at the default lens.
+            gated.visibility = VisibilityCondition::ScaleReach {
+                point: [0.0, 0.0, z],
+                scale_index: 14,
+            };
+            let nodes = [node(0, None, &[1], false), gated];
+            let walk = VisibleWalk {
+                nodes: &nodes,
+                roots: &[NodeId(0)],
+                state_mask: 0,
+                dist_sq: 0.0,
+                eye: Vec3::ZERO,
+                view,
+                view_proj: None,
+            };
+            walk.collect().0.iter().map(|m| m.index_offset).collect()
+        };
+        assert_eq!(drawn(-255.0, Some(&camera)), vec![0, 1]);
+        assert_eq!(drawn(-256.0, Some(&camera)), vec![0]);
+        assert_eq!(drawn(-256.0, None), vec![0, 1]);
+    }
+
     /// The view-projection matrix the vertex shader multiplies by, from the same
     /// `CameraController` the renderer builds: the eye at the origin looking down -Z through a
     /// 45-degree lens, so at 10 m the frustum is 4.14 m tall and 6.63 m wide either side.

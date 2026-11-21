@@ -283,8 +283,8 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
 /// decal (`grounded` holds its snapped vertices, parallel to `instances`) goes in the decal
 /// batch. Triangles on the ground plane are left to [`push_gated_props`], which makes them
 /// [`GROUND_NODE`] nodes, as are slices behind a visibility gate and every slice of a
-/// placement behind an `SP_1NODE` gate or the distance cut (`Placement::reach`). Returns each placement's run of indices, in their
-/// order, empty for one that adds none.
+/// placement behind an `SP_1NODE` gate or the distance cut (`Placement::reach`). Returns
+/// each placement's run of indices, in their order, empty for one that adds none.
 fn push_props(
     ir: &mut SodModelIr,
     prop_runs: &mut Vec<PropRun>,
