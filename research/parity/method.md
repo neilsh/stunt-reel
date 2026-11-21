@@ -133,6 +133,28 @@ These figures are on the current render, not the `#718` table's: the renderer ch
 It still misses 6,580 `balloon` pixels that neither rule reaches.
 _Source: [2026-11-20: counting the sky the balloon cuts off](../../work/2026-11/745_count-zenith-sky-overlap/journal.md#2026-11-20-counting-the-sky-the-balloon-cuts-off)._
 
+The sun disc, index 239, and the sky drawer's `0xD0` fill, index 208, count as sky by position since 2026-11-20 too ([#844](https://github.com/neilsh/stunt-reel/issues/844)).
+`PLAYONE` paints both in the sky ([Sky Bands](../formats/concepts/palette-and-shading.md#sky-bands)), but shapes paint those indices too, so neither counts as sky by index alone.
+A 239 run counts as sky when it borders counted sky, a sky band or counted zenith; a 208 run counts when it lies directly below counted sky, since the fill is drawn under the last band, and a frame whose whole viewport is 208 is that one fill.
+A 239 or 208 run touching no counted sky stays geometry.
+A 208 run is judged against the sky counted before the fill pass, so a counted run does not make the run below it sky: with that cascade the fill walked down a connected 208 region into the ocean and the ground, and `intro` fell from 0.9865 to 0.9715 and `location` from 0.9796 to 0.9297.
+On one RTX 4070 render of the seven references, the same render scored before and after the two rules, each cell is the film's `mean_iou_scored`:
+
+| Film | 227 to 238, and the positional 224 to 226 | and 239 | and 208 (adopted) |
+|---|---|---|---|
+| `balloon` | 0.8978 | 0.9497 | 0.9500 |
+| `bomb` | 0.9626 | 0.9626 | 0.9648 |
+| `traintnl` | 0.9659 | 0.9659 | 0.9690 |
+| `location` | 0.9796 | 0.9796 | 0.9818 |
+| `intro` | 0.9865 | 0.9865 | 0.9873 |
+| `ctry` | 0.9910 | 0.9910 | 0.9955 |
+| `land` | 0.9852 | 0.9851 | 0.9869 |
+
+The disc moves `balloon` alone: its 18 captured ticks 12 to 200 rise from 0.4777 to 0.7719, with the 1,746-pixel disc no longer geometry.
+[#617](https://github.com/neilsh/stunt-reel/issues/617) estimated 0.9418 for the film with the 18 blank frames left out, the sky widened to 224 to 238 and the disc counted; the adopted rule scores 0.9500 over the 107 scored frames, because the overlap rule above also counts the zenith the balloon cuts off.
+The 208 rule moves every other film by 0.0008 to 0.0045 and `balloon` by 0.0003; the sun rule costs `intro` 0.000008 and `location` 0.00006, where a 239 run borders sky on our geometry.
+No film falls, so both rules are adopted and the `gpu` class is repinned.
+
 ### 2.1 Fade floor
 
 `PLAYONE.EXE` fades its palette linearly to black near the end of `CTRY.FLM`, from about tick 990 to 1337.

@@ -26,6 +26,14 @@ pub(super) const CAPTURE_SKY_INDICES: RangeInclusive<u8> = 227..=238;
 /// see [`capture_sky_mask`].
 pub(super) const CAPTURE_ZENITH_INDICES: RangeInclusive<u8> = 224..=226;
 
+/// Palette index of the sun disc `PLAYONE.EXE` draws over the sky, which shapes also paint,
+/// so it counts as sky only by position: see [`capture_sky_mask`].
+pub(super) const CAPTURE_SUN_INDEX: u8 = 239;
+
+/// Palette index of the sky drawer's `0xD0` fill below its lowest band, which shapes also
+/// paint, so it counts as sky only by position: see [`capture_sky_mask`].
+pub(super) const CAPTURE_SKY_FILL_INDEX: u8 = 208;
+
 /// Whether a captured pixel's index is a sky band, whatever its position.
 pub(super) fn is_capture_sky(index: u8) -> bool {
     CAPTURE_SKY_INDICES.contains(&index)
@@ -34,18 +42,128 @@ pub(super) fn is_capture_sky(index: u8) -> bool {
 /// A captured frame's sky: the mask the render is scored against, and the 224 to 226
 /// pixels the positional rule counted, which the next frame's runs may overlap.
 pub(super) struct CaptureSky {
-    /// Every [`CAPTURE_SKY_INDICES`] pixel and every [`CAPTURE_ZENITH_INDICES`] pixel
-    /// `zenith` marks.
+    /// Every [`CAPTURE_SKY_INDICES`] pixel, every [`CAPTURE_ZENITH_INDICES`] pixel
+    /// `zenith` marks, and the [`CAPTURE_SUN_INDEX`] and [`CAPTURE_SKY_FILL_INDEX`] runs
+    /// the positional rules count.
     pub(super) sky: Vec<bool>,
     /// The 224 to 226 pixels the full-width or overlapping rule counted.
     pub(super) zenith: Vec<bool>,
 }
 
+/// The 4-connected neighbours of `position` in a plane of [`MODE13H_WIDTH`] columns.
+fn neighbours(position: usize) -> impl Iterator<Item = usize> {
+    let column = position % MODE13H_WIDTH;
+    [
+        position.checked_sub(MODE13H_WIDTH),
+        Some(position + MODE13H_WIDTH),
+        (column > 0).then(|| position - 1),
+        (column + 1 < MODE13H_WIDTH).then_some(position + 1),
+    ]
+    .into_iter()
+    .flatten()
+}
+
+/// Marks every 4-connected run of `index` in `sky` that borders a sky pixel, so a run
+/// touching no counted sky stays geometry (research/parity/method.md section 2.0).
+fn mark_runs_bordering_sky(indices: &[u8], index: u8, sky: &mut [bool]) {
+    let is_index = |position: usize| indices.get(position) == Some(&index);
+    let mut seen = vec![false; indices.len()];
+    for seed in 0..indices.len() {
+        if !is_index(seed) || seen.get(seed).copied().unwrap_or(true) {
+            continue;
+        }
+        if let Some(cell) = seen.get_mut(seed) {
+            *cell = true;
+        }
+        let mut run = vec![seed];
+        let mut stack = vec![seed];
+        while let Some(position) = stack.pop() {
+            for next in neighbours(position) {
+                let next_seen = seen.get(next).copied().unwrap_or(true);
+                if next_seen || !is_index(next) {
+                    continue;
+                }
+                if let Some(cell) = seen.get_mut(next) {
+                    *cell = true;
+                }
+                run.push(next);
+                stack.push(next);
+            }
+        }
+        let borders_sky = run
+            .iter()
+            .any(|&position| neighbours(position).any(|next| sky.get(next).is_some_and(|&s| s)));
+        if borders_sky {
+            for position in run {
+                if let Some(cell) = sky.get_mut(position) {
+                    *cell = true;
+                }
+            }
+        }
+    }
+}
+
+/// Marks every run of [`CAPTURE_SKY_FILL_INDEX`] that touches counted sky from below: the
+/// sky drawer's `0xD0` fill lies below the last band, so a run below no sky is shape paint.
+/// The fill of a frame with no band at all, when it fills the whole viewport, counts too
+/// (research/parity/method.md section 2.0).
+fn mark_sky_fill_runs(indices: &[u8], sky: &mut [bool]) {
+    let has_band = indices
+        .iter()
+        .any(|&index| CAPTURE_ZENITH_INDICES.contains(&index) || is_capture_sky(index));
+    let viewport = indices.len().min(UI_BAR_FIRST_ROW * MODE13H_WIDTH);
+    let fills_frame = indices
+        .get(..viewport)
+        .is_some_and(|viewport| viewport.iter().all(|&i| i == CAPTURE_SKY_FILL_INDEX));
+    if !has_band && fills_frame {
+        for (position, &index) in indices.iter().enumerate() {
+            if index == CAPTURE_SKY_FILL_INDEX
+                && let Some(cell) = sky.get_mut(position)
+            {
+                *cell = true;
+            }
+        }
+        return;
+    }
+    // The runs are judged against the sky counted before this pass, so a marked run does
+    // not make the run below it sky.
+    let counted = sky.to_vec();
+    let is_fill = |position: usize| indices.get(position) == Some(&CAPTURE_SKY_FILL_INDEX);
+    for row_start in (0..indices.len()).step_by(MODE13H_WIDTH) {
+        let mut column = 0;
+        while column < MODE13H_WIDTH {
+            let position = row_start + column;
+            if !is_fill(position) {
+                column += 1;
+                continue;
+            }
+            let first = column;
+            while column < MODE13H_WIDTH && is_fill(row_start + column) {
+                column += 1;
+            }
+            let touches = row_start >= MODE13H_WIDTH
+                && (first..column).any(|c| {
+                    counted
+                        .get(row_start - MODE13H_WIDTH + c)
+                        .is_some_and(|&s| s)
+                });
+            if touches {
+                for c in first..column {
+                    if let Some(cell) = sky.get_mut(row_start + c) {
+                        *cell = true;
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Sky pixels of a captured plane, rows of [`MODE13H_WIDTH`]: every
 /// [`CAPTURE_SKY_INDICES`] pixel, and every [`CAPTURE_ZENITH_INDICES`] run that is the
 /// full-width rule (it reaches row 0 and both side columns) or overlaps `previous_zenith`,
-/// a 224 to 226 pixel the previous captured frame counted by this rule
-/// (research/parity/method.md section 2.0).
+/// a 224 to 226 pixel the previous captured frame counted by this rule; then every
+/// [`CAPTURE_SUN_INDEX`] run bordering that sky, and every [`CAPTURE_SKY_FILL_INDEX`] run
+/// below it (research/parity/method.md section 2.0).
 pub(super) fn capture_sky_mask(indices: &[u8], previous_zenith: Option<&[bool]>) -> CaptureSky {
     let is_zenith = |position: usize| {
         indices
@@ -68,14 +186,7 @@ pub(super) fn capture_sky_mask(indices: &[u8], previous_zenith: Option<&[bool]>)
         let mut run = vec![seed];
         let mut stack = vec![seed];
         while let Some(position) = stack.pop() {
-            let column = position % MODE13H_WIDTH;
-            let next = [
-                position.checked_sub(MODE13H_WIDTH),
-                Some(position + MODE13H_WIDTH),
-                (column > 0).then(|| position - 1),
-                (column + 1 < MODE13H_WIDTH).then_some(position + 1),
-            ];
-            for next in next.into_iter().flatten() {
+            for next in neighbours(position) {
                 if visit(&mut seen, next) {
                     run.push(next);
                     stack.push(next);
@@ -100,6 +211,8 @@ pub(super) fn capture_sky_mask(indices: &[u8], previous_zenith: Option<&[bool]>)
             }
         }
     }
+    mark_runs_bordering_sky(indices, CAPTURE_SUN_INDEX, &mut sky);
+    mark_sky_fill_runs(indices, &mut sky);
     CaptureSky { sky, zenith }
 }
 
@@ -252,9 +365,10 @@ mod tests {
                 "{index}"
             );
         }
-        // The zenith bands 224-226 count as sky only by position: shapes paint them too
-        // (capture_sky_mask, method.md section 2.0).
+        // The zenith bands 224-226, the sun disc 239 and the sky fill 208 count as sky
+        // only by position: shapes paint them too (capture_sky_mask, method.md 2.0).
         assert!(!is_capture_sky(224) && !is_capture_sky(226));
+        assert!(!is_capture_sky(CAPTURE_SUN_INDEX) && !is_capture_sky(CAPTURE_SKY_FILL_INDEX));
     }
 
     /// A plane of `rows` full rows of `fill`.
@@ -375,6 +489,73 @@ mod tests {
                 .iter()
                 .any(|&s| s)
         );
+    }
+
+    #[test]
+    fn a_sun_disc_beside_a_sky_band_is_sky_and_one_in_geometry_is_not() {
+        let mut indices = plane(6, 40);
+        // A band across row 0; the disc hangs from it in rows 1 and 2.
+        indices[..MODE13H_WIDTH].fill(230);
+        for row in 1..3 {
+            indices[row * MODE13H_WIDTH + 100..row * MODE13H_WIDTH + 106].fill(CAPTURE_SUN_INDEX);
+        }
+        // The same index on the ground, touching no counted sky.
+        for row in 4..6 {
+            indices[row * MODE13H_WIDTH + 200..row * MODE13H_WIDTH + 204].fill(CAPTURE_SUN_INDEX);
+        }
+        let sky = capture_sky_mask(&indices, None).sky;
+        for row in 1..3 {
+            assert!(
+                sky[row * MODE13H_WIDTH + 100..row * MODE13H_WIDTH + 106]
+                    .iter()
+                    .all(|&s| s)
+            );
+        }
+        assert!(!sky[4 * MODE13H_WIDTH + 200]);
+        assert!(!is_capture_sky(CAPTURE_SUN_INDEX));
+    }
+
+    #[test]
+    fn a_sun_disc_inside_the_counted_zenith_is_sky() {
+        // balloon ticks 12 to 200: the whole sky is 224, the full-width rule counts it,
+        // and the disc hangs in it.
+        let mut indices = plane(4, 40);
+        indices[..MODE13H_WIDTH].fill(224);
+        for row in 1..3 {
+            indices[row * MODE13H_WIDTH + 100..row * MODE13H_WIDTH + 106].fill(CAPTURE_SUN_INDEX);
+        }
+        let sky = capture_sky_mask(&indices, None).sky;
+        for row in 1..3 {
+            assert!(
+                sky[row * MODE13H_WIDTH + 100..row * MODE13H_WIDTH + 106]
+                    .iter()
+                    .all(|&s| s)
+            );
+        }
+    }
+
+    #[test]
+    fn a_sky_fill_run_below_the_last_band_is_sky_and_fill_in_geometry_is_not() {
+        let mut indices = plane(5, 40);
+        indices[..MODE13H_WIDTH].fill(238);
+        indices[MODE13H_WIDTH..2 * MODE13H_WIDTH].fill(CAPTURE_SKY_FILL_INDEX);
+        // The same index inside the ground, touching no counted sky.
+        for row in 3..5 {
+            indices[row * MODE13H_WIDTH + 100..row * MODE13H_WIDTH + 104]
+                .fill(CAPTURE_SKY_FILL_INDEX);
+        }
+        let sky = capture_sky_mask(&indices, None).sky;
+        assert!(sky[MODE13H_WIDTH..2 * MODE13H_WIDTH].iter().all(|&s| s));
+        assert!(!sky[3 * MODE13H_WIDTH + 100]);
+        assert!(!sky[4 * MODE13H_WIDTH + 100]);
+        assert!(!is_capture_sky(CAPTURE_SKY_FILL_INDEX));
+    }
+
+    #[test]
+    fn a_frame_that_is_only_the_sky_fill_is_sky() {
+        // A view looking down with no edge on screen is one 0xD0 fill.
+        let indices = plane(4, CAPTURE_SKY_FILL_INDEX);
+        assert!(capture_sky_mask(&indices, None).sky.iter().all(|&s| s));
     }
 
     #[test]
