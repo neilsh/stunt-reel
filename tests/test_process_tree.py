@@ -284,6 +284,10 @@ def test_stuntreel_running_sees_a_live_process(tmp_path: Path) -> None:
     binary.chmod(0o755)
     child = subprocess.Popen([str(binary), "30"])  # noqa: S603 - a copied sleep
     try:
+        # The child is named for its binary only once its exec lands, a moment after Popen.
+        deadline = time.monotonic() + 10
+        while not process_tree.stuntreel_running() and time.monotonic() < deadline:
+            time.sleep(0.05)
         assert process_tree.stuntreel_running()
     finally:
         child.kill()
