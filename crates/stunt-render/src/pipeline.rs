@@ -3,7 +3,7 @@
 //! Complies with Architectural Invariants:
 //! - `[I3]` VGA Mode 13h palette index color mapping and flat shading.
 //! - `[I5]` Ordered decal pass: `GreaterEqual` under reversed depth, no depth write, hardware
-//!   depth bias toward the viewer (`constant: 32, slope_scale: 2.0, clamp: 0.0`).
+//!   depth bias toward the viewer (`constant: 2, slope_scale: 2.0, clamp: 0.0`).
 
 use stunt_core::contracts::SodVertex;
 
@@ -76,12 +76,10 @@ impl Default for ModelUniform {
     }
 }
 
-/// The `[I5]` decal pass's constant depth bias, toward the viewer, in units of `2^(e - 23)`
-/// for `Depth32Float`, `e` the exponent of the triangle's largest depth: more than
-/// `32 × 2^-24` of the depth at each of its pixels, and so of the distance there. That covers
-/// the worst-case rounding by which two coplanar triangles' depths can disagree, about
-/// `20 × 2^-24` of their depth (`docs/adr/0054-depth-is-reversed-and-infinite-in-float.md`).
-const DECAL_DEPTH_BIAS_CONSTANT: i32 = 32;
+/// The `[I5]` decal pass's constant depth bias, toward the viewer: two steps of the
+/// `Depth24Plus` buffer (ADR 0046's magnitude, its sign flipped by reversed depth;
+/// `docs/adr/0054-depth-is-reversed-and-infinite.md`).
+const DECAL_DEPTH_BIAS_CONSTANT: i32 = 2;
 /// The `[I5]` decal pass's slope-scaled depth bias, toward the viewer: two pixels of the decal
 /// triangle's own depth gradient.
 const DECAL_DEPTH_BIAS_SLOPE_SCALE: f32 = 2.0;
@@ -312,7 +310,7 @@ impl RenderPipelines {
         // viewer hid decals (work/2026-10/parity-log/log.md, 2026-10-23). Decals write no depth,
         // so each is tested against the base geometry's depth, not other decals', and a later
         // coplanar decal covers an earlier one, as PLAYONE's painter does. The values are
-        // derived in docs/adr/0054-depth-is-reversed-and-infinite-in-float.md.
+        // in docs/adr/0054-depth-is-reversed-and-infinite.md.
         let decal_depth_stencil = depth_stencil(
             depth_format,
             false,

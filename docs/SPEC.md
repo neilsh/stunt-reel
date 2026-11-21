@@ -55,7 +55,7 @@ _Source: the Milestone 1 and 2 sign-offs (Phases 0–2) in the frozen [`TEAM_SHE
   The engine evaluates pre-recorded keyframe trajectories and discrete timeline events only.
 * **No Authoring GUI Systems & Timeline Scrubbing:** The Set Designer, Prop Placement, Sound Stage and Editing Room 16-bit DOS interfaces are excluded.
   In Milestone 2, immediate-mode GUI chrome and timeline scrubbing are deferred; playback launches by CLI argument with basic keyboard controls (Space=Pause/Resume, Esc=Quit).
-* **No CPU Software Rasterizer:** Mode 13h span filling, Sutherland-Hodgman CPU clipping and Painter's Algorithm / BSP sorting give way to GPU rasterization and depth buffering (`Depth24Plus`).
+* **No CPU Software Rasterizer:** Mode 13h span filling, Sutherland-Hodgman CPU clipping and Painter's Algorithm / BSP sorting give way to GPU rasterization and depth buffering (reversed, infinite depth in `Depth24Plus`, [ADR 0054](adr/0054-depth-is-reversed-and-infinite.md)).
   Where the two orders disagree, and the rules that imitate the painter at coplanar ties: [`render-model.md`](../research/parity/render-model.md).
 * **No Direct Audio Hardware Output (Milestone 2 Deferral):** Sound output through audio devices (WASAPI/CPAL/rodio) is deferred; `AudioCue` events are parsed and evaluated as data-only metadata in `TrajectoryRecord` (Seam 2).
 * **No Analog CRT Post-Processing Shaders (Milestone 2 Deferral):** Scanlines, phosphor bloom, barrel curvature and temporal dithering are deferred; visual reproduction uses the $256 \times 32$ palette LUT and `@interpolate(flat)`.
@@ -97,9 +97,9 @@ _Source: the Milestone 1 and 2 sign-offs (Phases 0–2) in the frozen [`TEAM_SHE
 
   * *Decoder:* A polygon coplanar with an earlier polygon of a shape's stream (runway markings, aircraft insignias, wing roundels) is a decal: matched by its front normal (the side `FrontFace::Cw` keeps) against the earlier polygons of the stream as decoded, flagged, and left where it lies.
     `SodModelIr` carries no decal offset ([ADR 0046](adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)).
-  * *Phase 2 (`wgpu` Engine):* Decals draw after all base geometry, in stream order, with `LessEqual`, depth bias (`DepthBiasState { constant: -2, slope_scale: -2.0, clamp: 0.0 }`) and no depth write, so a later coplanar decal covers an earlier one.
+  * *Phase 2 (`wgpu` Engine):* Decals draw after all base geometry, in stream order, with `GreaterEqual` (depth is reversed: nearer is larger), depth bias toward the viewer (`DepthBiasState { constant: 2, slope_scale: 2.0, clamp: 0.0 }`, [ADR 0054](adr/0054-depth-is-reversed-and-infinite.md)) and no depth write, so a later coplanar decal covers an earlier one.
     Outlines follow their fills per fan in a shape and per slice in the world; ungated world decals share one `WORLD_DECAL` node, whose outlines follow all the fills of each of its draw slices.
-    The world's decal outlines are a line list, which wgpu cannot bias, so they compare `LessEqual` unbiased and can lose pixels to a base in their plane.
+    The world's decal outlines are a line list, which wgpu cannot bias, so they compare `GreaterEqual` unbiased and can lose pixels to a base in their plane.
     An actor's ground shadow goes through the same pass, flattened 1 mm above the ground.
   * *glTF 2.0 export:* Core glTF 2.0 has no depth bias or draw order, so `stunt-gltf` alone moves decal vertices $\epsilon = 0.001\text{ m}$ toward their front normal: $\mathbf{v}' = \mathbf{v} + 0.001\hat{\mathbf{n}}$.
   * *Flat ground (`wgpu` Engine):* The ocean quad below the ground plane `y = base_y`, the `MAP.BIN` patches flat on that plane, and the prop triangles within 0.1 m of it, are drawn outside the depth-bias pass, first and in walk order (which follows `PLAYONE`'s painter order only in part), each slice replacing what is under it while writing depth ([ADR 0045](adr/0045-flat-ground-is-painted-in-walk-order.md)).

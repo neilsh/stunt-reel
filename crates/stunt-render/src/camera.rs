@@ -322,7 +322,7 @@ impl CameraController {
 
     /// Computes the 4x4 projection matrix of [`Self::projection`] at [`Self::aspect_ratio`],
     /// with reversed depth: the near plane maps to depth 1 and the far one to 0
-    /// (`docs/adr/0054-depth-is-reversed-and-infinite-in-float.md`). The perspective projection
+    /// (`docs/adr/0054-depth-is-reversed-and-infinite.md`). The perspective projection
     /// has no far plane: its clip z is `near_clip`, so depth is `near_clip / w`.
     #[must_use]
     pub fn compute_proj_matrix(&self) -> Mat4 {

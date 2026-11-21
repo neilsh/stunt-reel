@@ -129,7 +129,7 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
 /// shader multiplies by: left `w + x`, right `w - x`, bottom `w + y`, top `w - y`, far `z` and
 /// near `w - z`, depth being reversed. Under the infinite perspective clip z is the constant
 /// near distance, so the far plane keeps every box in front of the eye
-/// (`docs/adr/0054-depth-is-reversed-and-infinite-in-float.md`).
+/// (`docs/adr/0054-depth-is-reversed-and-infinite.md`).
 ///
 /// The test has no margin: `view_proj` is an `f32` product the GPU does not form, so a box
 /// within rounding of a plane can fall either way; such a box covers no more than a

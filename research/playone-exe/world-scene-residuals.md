@@ -67,7 +67,7 @@ _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026
 ### 6.4 The ground-decal pass
 
 `[Bounded Observation]` for the measured and tested behaviour.
-`build_world_ir` snaps each ground decal onto the terrain at its `x, z` and puts every mesh of it in the `WORLD_DECAL` batch, which `[I5]` draws after the base pass with `LessEqual` and a negative bias ([ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md)); its triangles on the ground plane `y = base_y` go to the ground pass instead (section 6.6, [ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)).
+`build_world_ir` snaps each ground decal onto the terrain at its `x, z` and puts every mesh of it in the `WORLD_DECAL` batch, which `[I5]` draws after the base pass with `GreaterEqual` and a bias toward the viewer ([ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md)); its triangles on the ground plane `y = base_y` go to the ground pass instead (section 6.6, [ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)).
 It moves no terrain, so it does not touch a mountain leaf.
 _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-candidates-and-the-ground-decal-prototype)._
 
@@ -88,8 +88,8 @@ _Source: [whether PLAYONE culls a whole scenery object by screen size](../../wor
 
 The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terrain with a tile built by hand at terrain height, as the snap would place it (they do not call `build_world_ir`).
 The tile shows over the terrain 80 m away, keeps at least 90% of the pixels it shows alone at 1, 1.5, 2, 4 and 8 km at a grazing angle of 5.7 degrees, and a wall of terrain in front of it hides it completely.
-`Depth24Plus` is enough for tiles snapped this way, so reversed-Z with `Depth32Float` was not built; it stays an option if a tile not exactly on the plane of its patch is found to flicker far away.
-No such tile is in these films.
+`Depth24Plus` is enough for tiles snapped this way, and the same tests pass with depth reversed ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md)).
+Reversing depth in `Depth32Float` was measured and rejected for another reason: the GPU and lavapipe disagreed on more pixels (same ADR).
 
 ### 6.5 A later leaf lies over an earlier one on the same plane
 
@@ -124,7 +124,7 @@ The ocean-coloured props at the eye include the town-block tiles `0x03E4` to `0x
 `0x03E4`, read in full, opens behind one `IFVIS` with `COLOR 0x00D0` (208) over its whole square (`0x00E0`), then paints smaller `COLOR 0x00C3` (195) polygons (`0x00F6`) and a trailing `COLOR 0x00D0` inlet (`0x012C`); `0x03E5`, `0x03E6` and `0x03E9` similarly emit `COLOR 0x00D0` then `COLOR 0x00C3`, and all lie flat at height 0 on the ground.
 
 * **Adopted partial fix (forward `decal_meshes` in `collect_visible_meshes`).**
-  `base_pipeline` uses `CompareFunction::Less` (first writer wins an exact tie, requiring LIFO order so later nodes draw first), whereas `decal_pipeline` uses `CompareFunction::LessEqual` (last writer wins an exact tie).
+  `base_pipeline` uses `CompareFunction::Less` (first writer wins an exact tie, requiring LIFO order so later nodes draw first), whereas `decal_pipeline` uses `CompareFunction::LessEqual` (last writer wins an exact tie); under reversed depth (ADR 0054) they are `Greater` and `GreaterEqual`, with the same tie rules.
   Walking `decal_meshes` in LIFO order (`mesh.rs`) inverted `0x03E4..0x03E9`'s `208 -> 195 -> 208` stream so the initial `208` base square painted last over `195`.
   Walking `decal_meshes` forward (`VisibleWalk::walk(true, ...)` in `crates/stunt-render/src/mesh.rs`) while keeping `base_meshes` LIFO restores `PLAYONE`'s intra-shape decal order (`195` over `208`, keeping `0x03E4`'s `0x012C` inlet last).
 * **`SP_2NODE` (`0x1EC0`) does not reverse on eye side.**
