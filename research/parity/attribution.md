@@ -74,6 +74,20 @@ Every placed shape is attributed (section 1), so no reference film has an `unatt
   `location` spreads its `props` loss over 1,014 shapes, the worst (1610) holding 4.2% of it and the ten worst 19.2%, so a fix aimed at one of them moves `location` little.
 * The split says which shapes carry the loss, not why; a shape's pixels share SSIM windows with its neighbours, so its figure includes loss its surroundings cause, as the class split does (section 1).
 
+**Why the two worst shapes lose.**
+`[Bounded Observation]`, GPU, `main` at `581453ed` (2026-11-21), from each frame's per-shape loss and the shapes' pixels against the capture's indices.
+
+* **`ctry` 926 is a host, not a defect.**
+  It is the airfield grass tile `SCENERY2.RES` #157 (`0x039E`, colour 196; [`world-scene.md` § 3](../playone-exe/world-scene.md#3-scenery-shapes-drawn-over-the-ground)), up to 43,000 of the view's 59,200 pixels, and its loss is spread evenly over its 94 frames.
+  Its own pixels match the capture's index on 99%, and 88 to 91% of the rest lie within 3 px of its edge with the hero aircraft and the shadows.
+  Pasting our pixels into the capture within 4 px of our actors and of either side's shadow (4.7% of the frame) removes 72% of its loss (0.0127 -> 0.0035), so its loss belongs to the hero's placement and outline ([`hero-aircraft-placement.md`](hero-aircraft-placement.md), [`hero-shadow.md`](hero-shadow.md)).
+* **`bomb` 1756 is the street under a missing car.**
+  47% of its loss lies on ticks 1915 to 2048, where the camera rides within half a metre of the police car: our 0.5 m near plane cuts the car's door away, so our render shows the street behind it where the capture shows the door.
+  A near plane of 0.1 m draws the door as the capture does and adopts on the heuristic track (`bomb` +0.0170, `traintnl` +0.0037, where it also restores the tunnel wall at ticks 1013 to 1101; no frame falls by more than 0.005); it is not yet the renderer's default.
+  Another 3% of the shape's loss is tick 3302, where our camera has already cut to the next shot and the capture still shows the previous one.
+
+_Source: [what CTRY shape 926 and BOMB shape 1756 are](../../work/2026-11/904_near-clip-host-shapes/journal.md#2026-11-21-what-ctry-shape-926-and-bomb-shape-1756-are-and-where-their-loss-sits), [how much of shape 926's loss lies around the actors](../../work/2026-11/904_near-clip-host-shapes/journal.md#2026-11-21-how-much-of-shape-926s-loss-lies-around-the-actors), [the near clip plane at 0.5 m](../../work/2026-11/904_near-clip-host-shapes/journal.md#2026-11-21-the-near-clip-plane-at-05-m-against-the-police-car)._
+
 _Source: [every prop shape attributed on the seven references](../../work/2026-11/809_prop-runs/journal.md#2026-11-20-every-prop-shape-attributed-on-the-seven-references)._
 
 _Source: [loss by render layer on the seven VAULT references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-loss-by-render-layer-on-the-seven-vault-references)._
@@ -262,6 +276,8 @@ _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attributi
 * **Drawing the sun disc at variable 13 read as a zenith angle** (2026-11-18): a probe drew index 239 at `(sin a, cos a, 0)` with radius 0.048 rad; on `balloon` the disc sat about 31 px left of and 8 to 10 px below the capture's at ticks 155 and 200, SSIM fell from 0.8172 to 0.8143 on lavapipe, IoU stayed 0.6409 and no other film moved.
   Not adopted; the trig read since turns the light by a second angle of about 10 degrees out of that plane, 3.75 degrees off the probe's direction, and the disc drawn from it is adopted (section 7, [`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
 * **Far props the sub-pixel cull drops, as props loss** (2026-11-18): the half-pixel cull in `build_world` drops no placement on six references and on `location` only 190 placements of shapes with no vertices, and removing it scored the seven films the same to four decimals on lavapipe ([removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull); [`world-scene-residuals.md` § 6.4](../playone-exe/world-scene-residuals.md#64-the-ground-decal-pass)).
+* **`ctry` shape 926's loss as an error of the grass tile** (2026-11-21): its pixels match the capture's index on 99%, and an oracle that corrects only the 4.7% of the frame around the actors and shadows removes 72% of its loss ([how much of shape 926's loss lies around the actors](../../work/2026-11/904_near-clip-host-shapes/journal.md#2026-11-21-how-much-of-shape-926s-loss-lies-around-the-actors)).
+* **A near plane nearer than 0.1 m** (2026-11-21): 0.05 m ties 0.1 m on `bomb`'s car frames and 0.02 m loses 0.0007 on `location` ([the near clip plane at 0.5 m](../../work/2026-11/904_near-clip-host-shapes/journal.md#2026-11-21-the-near-clip-plane-at-05-m-against-the-police-car)).
 * **Terrain distance cull** (not attempted): the land/sea boundary is already nearly right (section 5).
 * **A primitive-index table for the world props' shape word** (2026-11-19): `@builtin(primitive_index)` works on lavapipe, but it restarts at 0 for every draw call and numbers an outline draw's edges, not its triangles, so each world draw would have to pass its first triangle and outlines would need a second table; the vertex-keyed runs of section 1 need neither ([can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)).
 
@@ -289,6 +305,8 @@ Priority is by measured loss, not by which item reads easiest.
 5. **`balloon`'s straight-down camera** — 18 scored frames drawn blank (section 7), costing `balloon` 0.130 of IoU, more than any other reference's whole IoU shortfall (the largest, `bomb`'s, is 0.088).
    It is an exception to the rule above: the fault is in our view matrix, and only the up vector to use needs `PLAYONE`'s rule. ([#615](https://github.com/neilsh/stunt-reel/issues/615))
 6. **The zenith sky and the sun disc** — the scorer's sky band omits 224 to 226 because shapes paint them too ([#616](https://github.com/neilsh/stunt-reel/issues/616)), so the zenith sky counts by position instead ([#718](https://github.com/neilsh/stunt-reel/issues/718); the sky the balloon cuts off is [#745](https://github.com/neilsh/stunt-reel/issues/745)), and our sky stops at 228 and draws no sun ([#617](https://github.com/neilsh/stunt-reel/issues/617)); section 7.
+7. **The near plane** — 0.1 m adopts on the heuristic track (section 2) but is not the default yet; reading where `PLAYONE`'s polygon clipper cuts (its clipping projector flags depth `z + work:0x8088` at most 0, image `0x9D3A`, [`sod-animate.md`](../playone-exe/sod-animate.md)) would make the value evidence-backed. ([#904](https://github.com/neilsh/stunt-reel/issues/904))
+8. **`bomb`'s camera cut at tick 3302** — our camera cuts one captured frame before the capture's; whether `PLAYONE` applies a `view_obj` switch a tick later than our sampler is not read.
 
 ### Where the ground-and-light goal stopped
 
