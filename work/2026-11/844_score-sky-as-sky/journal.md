@@ -1,6 +1,6 @@
 # Journal
 
-## 2026-11-21: Scoring the sun disc and the sky fill as sky
+## 2026-11-20: Scoring the sun disc and the sky fill as sky
 
 **Question**: What does counting a captured sun disc (239) and the sky drawer's `0xD0` fill (208) as sky by position do to each reference film's `mean_iou_scored`, rule by rule, and how far does the fill rule reach?
 
@@ -40,11 +40,11 @@ Every run scores the same render: each film's `mean_ssim_scored`, `sha256` and `
 **Verdict**: Adopted (both rules): with both, every film's `mean_iou_scored` rises.
 Both cascades are rejected by `location`'s and `intro`'s falls; the row cascade's `intro` 0.9715539 matches the 0.9715 that `dff90fb`'s note quoted for its cascade, but neither reproduces that note's `location` 0.9297.
 The viewport-band test is dropped, changing no score; a looking-down frame whose viewport holds any non-208 pixel still counts none of its fill.
-The `gpu` table is repinned from the final run in [the roll-independent entry](#2026-11-21-a-roll-independent-fill-rule).
+The `gpu` table is repinned from the final run in [the roll-independent entry](#2026-11-20-a-roll-independent-fill-rule).
 
 **Lives in**: [`method.md`](../../../research/parity/method.md) section 2.0; [`attribution.md`](../../../research/parity/attribution.md) section 7.
 
-## 2026-11-21: A roll-independent fill rule
+## 2026-11-20: A roll-independent fill rule
 
 **Question**: Does a fill rule that reads each column alone, so its reach does not depend on the horizon's roll, score at least as well as the adopted row-run rule on every film?
 

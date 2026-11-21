@@ -146,9 +146,9 @@ On one RTX 4070 render of the seven references, re-scored under each rule, the s
 The fill rule then raises every film, by 0.0003 (`balloon`) to 0.0044 (`ctry`).
 With both rules no film falls, so both are adopted.
 [#617](https://github.com/neilsh/stunt-reel/issues/617) estimated 0.9418 for `balloon` with the 18 blank frames left out, the sky widened to 224 to 238 and the disc counted; the adopted rules score higher over the 107 scored frames, because the overlap rule above also counts the zenith the balloon cuts off.
-_Source: [2026-11-21: scoring the sun disc and the sky fill as sky](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-21-scoring-the-sun-disc-and-the-sky-fill-as-sky)._
+_Source: [2026-11-20: scoring the sun disc and the sky fill as sky](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-scoring-the-sun-disc-and-the-sky-fill-as-sky)._
 A fill rule read per column, one pixel under counted sky or the column's run below it, does not depend on roll but lowers some film against the row-run rule; telling the strip from the ocean is [#893](https://github.com/neilsh/stunt-reel/issues/893).
-_Source: [2026-11-21: a roll-independent fill rule](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-21-a-roll-independent-fill-rule)._
+_Source: [2026-11-20: a roll-independent fill rule](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-a-roll-independent-fill-rule)._
 
 ### 2.1 Fade floor
 
@@ -243,8 +243,8 @@ How to read the rows of the [parity log](../../work/2026-10/parity-log/log.md), 
 
 * **Capture sky by index alone at 224 to 226** (2026-11-18): shapes paint those indices on `traintnl`, `bomb` and `location`, so widening the band to 224..=238 counts their paint as sky (section 2.0; [who paints 224 to 226](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)).
 * **Capture zenith sky by a 224 to 226 run touching the 227 to 238 band, or by a run reaching row 0 alone** (2026-11-18): the first counts a `location` helicopter window's edge, the second a `traintnl` rear-car window clipped by the top edge (section 2.0; [a positional rule](../../work/2026-11/718_positional-zenith-sky/journal.md#2026-11-18-a-positional-rule-for-the-zenith-sky)).
-* **Capture sky fill by a cascade** (2026-11-21): judging each 208 run against the fill already counted, by row or by 4-connected region, walks into the 208 ocean and lowers `location` and `intro` (section 2.0; [scoring the sun disc and the sky fill](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-21-scoring-the-sun-disc-and-the-sky-fill-as-sky)).
-* **Capture sky fill read per column** (2026-11-21): one 208 pixel under counted sky lowers five films against the row-run rule, and the column's whole 208 run below it lowers `location` by 0.028 (section 2.0; [a roll-independent fill rule](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-21-a-roll-independent-fill-rule)).
+* **Capture sky fill by a cascade** (2026-11-20): judging each 208 run against the fill already counted, by row or by 4-connected region, walks into the 208 ocean and lowers `location` and `intro` (section 2.0; [scoring the sun disc and the sky fill](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-scoring-the-sun-disc-and-the-sky-fill-as-sky)).
+* **Capture sky fill read per column** (2026-11-20): one 208 pixel under counted sky lowers five films against the row-run rule, and the column's whole 208 run below it lowers `location` by 0.028 (section 2.0; [a roll-independent fill rule](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-a-roll-independent-fill-rule)).
 
 Other rejected measurement approaches are in [`metric-bench.md`](metric-bench.md#ruled-out) and [`evidence-limits.md`](evidence-limits.md#ruled-out).
 
