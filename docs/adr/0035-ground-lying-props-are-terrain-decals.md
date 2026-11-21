@@ -48,7 +48,9 @@ terrain:
   (the triangle nearest in height where patches overlap in plan). The tile then ties its patch in
   plane and depth instead of rounding either way.
 * **Route.** Every mesh of a ground-lying prop goes to the `WORLD_DECAL` node, which the renderer
-  draws after the base pass under `[I5]` (`LessEqual`, negative bias). The terrain is not moved.
+  draws after the base pass under `[I5]` (`LessEqual`, negative bias; under reversed depth since
+  [ADR 0054](0054-depth-is-reversed-and-infinite.md), `GreaterEqual`, positive bias). The terrain
+  is not moved.
   Terrain nearer the camera still hides a decal, because the decal pass keeps the depth test.
 
 ## Consequences
@@ -68,7 +70,8 @@ terrain:
 * Depth precision: `Depth24Plus` with the existing bias held at 1, 1.5, 2, 4 and 8 km at a grazing
   angle in the renderer tests, for tiles snapped as above. Reversed-Z with `Depth32Float` was not
   adopted because nothing needed it; revisit it if a tile on a patch whose corners are not coplanar
-  flickers far away.
+  flickers far away. [ADR 0054](0054-depth-is-reversed-and-infinite.md) has since reversed depth,
+  kept in `Depth24Plus`, for lavapipe and GPU agreement (#637).
 * Open: `SCENERY3.RES` #1, 2, 5, 6 are not flat in our decode and are not covered (then an open question; now
   [`world-scene-residuals.md` § Ruled out](../../research/playone-exe/world-scene-residuals.md#ruled-out)).
   Closed 2026-11-11: they are hill fins, not tiles (see Status).

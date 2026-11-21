@@ -67,7 +67,7 @@ _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026
 ### 6.4 The ground-decal pass
 
 `[Bounded Observation]` for the measured and tested behaviour.
-`build_world_ir` snaps each ground decal onto the terrain at its `x, z` and puts every mesh of it in the `WORLD_DECAL` batch, which `[I5]` draws after the base pass with `LessEqual` and a negative bias ([ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md)); its triangles on the ground plane `y = base_y` go to the ground pass instead (section 6.6, [ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)).
+`build_world_ir` snaps each ground decal onto the terrain at its `x, z` and puts every mesh of it in the `WORLD_DECAL` batch, which `[I5]` draws after the base pass with `GreaterEqual` and a bias toward the viewer ([ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md)); its triangles on the ground plane `y = base_y` go to the ground pass instead (section 6.6, [ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)).
 It moves no terrain, so it does not touch a mountain leaf.
 _Source: [2026-11-04: candidates and the ground-decal prototype](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-candidates-and-the-ground-decal-prototype)._
 
@@ -84,7 +84,7 @@ Besides an object behind the eye and one outside the radius-widened frustum, `0x
 `[0x229E]` is 0 at the default lens 8192 ([`lod.md`](lod.md) section 2.2), so the cut falls there at `2^(22 - k)` metres.
 It never divides the radius word `R` by the depth, but a shape's radius is under `2^(16 - k)` metres, so at the default lens the cut comes where the shape spans at most about `R / 2^14` pixels in radius: at most 1.36 pixels for every shape of six reference archives and up to 2.44 in `location`'s, twice the figures the #777 scan gave with `[0x229E]` taken as 1.
 So `PLAYONE` drops far props whole by a test of distance against scale, not of size: it can drop a shape a pixel or two across that our half-pixel cull keeps, and keeps a small one far below half a pixel that ours drops.
-The cut lies inside the 25 km far plane for `scale_index` 8 and above at `[0x229E]` 0, and 9 and above at 1 ([`memory-map-main.md`](memory-map-main.md) `CS:0x1B0C`, `CS:0x31CF`).
+Our perspective has no far plane ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md)), so the projection clips no scenery by distance; the cut falls within 25 km for `scale_index` 8 and above at `[0x229E]` 0, and 9 and above at 1 ([`memory-map-main.md`](memory-map-main.md) `CS:0x1B0C`, `CS:0x31CF`).
 _Source: [whether PLAYONE culls a whole scenery object by screen size](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-whether-playone-culls-a-whole-scenery-object-by-screen-size); [how many drawn placements lie past their 0x1B28 cut](../../work/2026-11/811_scale-index-cut/journal.md#2026-11-20-how-many-drawn-placements-lie-past-their-0x1b28-cut)._
 
 **The renderer drops the same far props per frame** (`[Bounded Observation]` for the count and the score, the seven reference films rendered on the RTX 4070).
@@ -97,8 +97,8 @@ _Source: [how many drawn placements lie past their 0x1B28 cut](../../work/2026-1
 
 The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terrain with a tile built by hand at terrain height, as the snap would place it (they do not call `build_world_ir`).
 The tile shows over the terrain 80 m away, keeps at least 90% of the pixels it shows alone at 1, 1.5, 2, 4 and 8 km at a grazing angle of 5.7 degrees, and a wall of terrain in front of it hides it completely.
-`Depth24Plus` is enough for tiles snapped this way, so reversed-Z with `Depth32Float` was not built; it stays an option if a tile not exactly on the plane of its patch is found to flicker far away.
-No such tile is in these films.
+`Depth24Plus` is enough for tiles snapped this way, and the same tests pass with depth reversed ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md)).
+Reversing depth in `Depth32Float` was measured and rejected for another reason: the GPU and lavapipe disagreed on more pixels (same ADR).
 
 ### 6.5 A later leaf lies over an earlier one on the same plane
 
@@ -107,7 +107,7 @@ _Source: [2026-11-12: INTRO's lake](../../work/2026-11/428_intro-lake/journal.md
 
 At `INTRO` tick 3301 the capture's bottom-left corner (pixels 0-40 x 140-180) is all index 205, and ours was 195 there.
 The camera hangs 51 m over `MAP.BIN` records 126 and 127 (colour 205, about 100 m across, flat at height 0), which lie in the plane of record 7, the colour-195 quad 4 km across.
-Dropping record 7 (`DBG_SKIP`, not committed) draws the lake in ours, so the patches were built and projected: they lost the depth tie to record 7, which our terrain draws first (`Less`).
+Dropping record 7 (`DBG_SKIP`, not committed) draws the lake in ours, so the patches were built and projected: they lost the depth tie to record 7, which our terrain draws first (`Less`, standard depth).
 Switching the whole base pass to `LessEqual` changed no pixel, consistent with the two triangulations rounding their depths differently.
 
 In a depth-first walk of the tree, record 7 is the leaf at `0x00DA` and records 127 and 126 are the leaves at `0x0274` and `0x028E`, later in the same list.
@@ -133,7 +133,7 @@ The ocean-coloured props at the eye include the town-block tiles `0x03E4` to `0x
 `0x03E4`, read in full, opens behind one `IFVIS` with `COLOR 0x00D0` (208) over its whole square (`0x00E0`), then paints smaller `COLOR 0x00C3` (195) polygons (`0x00F6`) and a trailing `COLOR 0x00D0` inlet (`0x012C`); `0x03E5`, `0x03E6` and `0x03E9` similarly emit `COLOR 0x00D0` then `COLOR 0x00C3`, and all lie flat at height 0 on the ground.
 
 * **Adopted partial fix (forward `decal_meshes` in `collect_visible_meshes`).**
-  `base_pipeline` uses `CompareFunction::Less` (first writer wins an exact tie, requiring LIFO order so later nodes draw first), whereas `decal_pipeline` uses `CompareFunction::LessEqual` (last writer wins an exact tie).
+  `base_pipeline` uses `CompareFunction::Less` (first writer wins an exact tie, requiring LIFO order so later nodes draw first), whereas `decal_pipeline` uses `CompareFunction::LessEqual` (last writer wins an exact tie); under reversed depth (ADR 0054) they are `Greater` and `GreaterEqual`, with the same tie rules.
   Walking `decal_meshes` in LIFO order (`mesh.rs`) inverted `0x03E4..0x03E9`'s `208 -> 195 -> 208` stream so the initial `208` base square painted last over `195`.
   Walking `decal_meshes` forward (`VisibleWalk::walk(true, ...)` in `crates/stunt-render/src/mesh.rs`) while keeping `base_meshes` LIFO restores `PLAYONE`'s intra-shape decal order (`195` over `208`, keeping `0x03E4`'s `0x012C` inlet last).
 * **`SP_2NODE` (`0x1EC0`) does not reverse on eye side.**
@@ -194,7 +194,7 @@ _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE pain
 In the source the plaza lies 31.25 mm below height 0 and the infield 7.8125 mm below it.
 Our IR moves only the plaza: it is flat, within 0.1 m of record 1, so `ground_decal_vertices` snaps it to `y = 0` and it joins the `WORLD_GROUND` pass (`Always`, depth write).
 `0x0265` is not flat (it rises to 9.5 m), so its infield keeps `y = -0.0078125`.
-While the ground pass took only prop triangles within 1e-4 m of the plane (`GROUND_PLANE_TOLERANCE`), the infield stayed a base polygon that had to pass `Less` against the plaza 7.8125 mm above it, and an exact depth test drew the plaza, as both backends did after #636 at the ticks it measured (2586, 2599, 2840, 2859, 2862).
+While the ground pass took only prop triangles within 1e-4 m of the plane (`GROUND_PLANE_TOLERANCE`), the infield stayed a base polygon that had to pass `Less` (standard depth) against the plaza 7.8125 mm above it, and an exact depth test drew the plaza, as both backends did after #636 at the ticks it measured (2586, 2599, 2840, 2859, 2862).
 Before #636 the tie flipped (`[Supported Inference]`: a 7.8125 mm offset seen from about 85 m (near plane 0.5 m) is a depth gap of at most `0.5 / 85² × 0.0078125 = 5.4e-7`, while #595 read 3.2e-6 and 2.9e-6, of opposite sign, near depth 0.994; so the f32 vertex-stage error that #636 removed flipped it, not depth precision).
 
 **Adopted: a prop face near the ground plane is ground.**

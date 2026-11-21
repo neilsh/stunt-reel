@@ -7,6 +7,11 @@ accepted 2026-11-14 for [#489](https://github.com/neilsh/stunt-reel/issues/489).
 it removes "any `[I5]` lift the decoder gave a decal": decals have no lift left to remove. ADR
 0045's other decisions stand.
 
+amended 2026-11-20 by [ADR 0054](0054-depth-is-reversed-and-infinite.md): depth is
+reversed, so the decal pass compares `GreaterEqual` with a bias of `constant: 2,
+slope_scale: 2.0` toward the viewer, and the decal outlines compare `GreaterEqual` unbiased.
+The compare functions and signs below are those of standard depth.
+
 ## Context
 
 `PLAYONE.EXE` paints with no depth buffer, so a polygon later in a shape's stream covers an

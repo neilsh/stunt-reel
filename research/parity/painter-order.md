@@ -15,7 +15,7 @@ sidebar_label: "Painter order vs depth buffer"
 Three renders of CTRY, scored against its pinned capture:
 
 * **Depth buffer**: the shipped renderer.
-* **Sorted painter**: the base pipeline compares `Always` instead of `Less` (it still writes depth, so the `[I5]` decal pass tests against the surface painted last), and each model's base slices are drawn back to front by the distance from the eye to their node's box centre, in a fixed order on ties.
+* **Sorted painter**: the base pipeline compares `Always` instead of `Less` (standard depth; it still writes depth, so the `[I5]` decal pass tests against the surface painted last), and each model's base slices are drawn back to front by the distance from the eye to their node's box centre, in a fixed order on ties.
 * **Walk-order painter**: the same `Always` base pipeline, each model's base slices in its node walk's forward order, depth first, so a later sibling is drawn over an earlier one.
 
 Shortcuts common to both painters, each a way they differ from `PLAYONE`:
