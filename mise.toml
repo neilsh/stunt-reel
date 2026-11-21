@@ -140,6 +140,10 @@ run = "uv run python python/scripts/merge_bar.py"
 description = "Set the owner's Issue Radar project's Status from each issue's labels and state, as the project-sync workflow does; needs gh with project scope (mise run project-sync -- <issue>... | --all)"
 run = "uv run python python/scripts/project_sync.py --repo neilsh/stunt-reel --owner neilsh --project 1"
 
+[tasks.now]
+description = "The UTC time to the minute and the local day, for a stop time or a dated record; the same command in Bash and PowerShell"
+run = '''python -c "import datetime as d; print(d.datetime.now(d.UTC).isoformat(timespec='minutes'), 'local day', d.date.today())"'''
+
 [tasks.queue]
 description = "The unattended queue: open PRs in stack order, then open ready-for-agent issues, one line each with ready or the mechanical reason to skip it; prints no bodies"
 run = "uv run python python/scripts/work_queue.py"

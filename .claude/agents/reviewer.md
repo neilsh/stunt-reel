@@ -21,7 +21,7 @@ After a move or split, search for every old path, symbol and section number in p
 
 Post the verdict as a PR comment with `gh pr comment <n> --body-file build/scratch/review-<n>.md` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/review-<n>.md`).
 Its first line is exactly `<Reviewer> review at <7-char head SHA>: clean` or `<Reviewer> review at <7-char head SHA>: needs changes`; use `Sonnet` as `<Reviewer>`.
-Then give each finding as `file:line — problem — fix`, marked `blocking` or `nit`; a clean verdict says `No findings`, what was checked (files, gates, commands), and what could not be verified.
+Then give each finding as `file:line — problem — fix`, marked `blocking` or `nit`, and name its defect class with every instance of that class in the diff, the PR body, the journal and the work README's `outcome`, an unchanged line the diff makes false included, so one fix round clears the class; a clean verdict says `No findings`, what was checked (files, gates, commands), and what could not be verified.
 The verdict rule, a must-fix `nit` included, is in `.agents/skills/running-unattended/pr-and-filing.md` § Review-comment template.
 Reply with the comment's URL.
 When the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), post nothing: use that commit's `git rev-parse --short=7 HEAD` as the SHA and reply with the comment text for the coordinator to post.
