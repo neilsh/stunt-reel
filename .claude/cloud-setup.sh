@@ -2,9 +2,10 @@
 # The cloud setup: the tools a cloud session needs, run by the Claude Code cloud environment's
 # setup script and SessionStart hook (--cloud, docs/cloud-sessions.md) or by Antigravity's
 # .agents/environment.json and /home/antigravity/env-setup.sh (--antigravity).
-# Every step skips work already done, so a rerun is cheap and needs root only under --cloud to
-# change /usr/local/bin/mise or system apt packages. It fetches no game archives: the setup
-# script runs before the R2_* variables are set, so the hook or env-setup.sh fetches them.
+# Every step skips work already done, so a rerun is cheap. It needs root on every --cloud run
+# (cloud sessions run as root): to replace /usr/local/bin/mise or install system apt packages,
+# and to install kache and write /etc/kache. It fetches no game archives: the setup script runs
+# before the R2_* variables are set, so the hook or env-setup.sh fetches them.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -65,12 +66,27 @@ fi
 KACHE_VERSION=2.2.0
 KACHE_SHA256=eeb6e72b9f55d0e9d61cae0789ffa8f3ab8c33bef166b7af655cc0806447ebac
 KACHE_BIN=/opt/kache/bin/kache
+KACHE_ENGINE=/opt/kache/bin/kache-engine
 KACHE_STORE=/opt/kache/store
 KACHE_CONFIG=/etc/kache/config.toml
 if [ "$MODE" = --cloud ]; then
     need_root "install kache"
-    if [[ " $("$KACHE_BIN" --version 2>/dev/null) " != *" $KACHE_VERSION "* ]]; then
+    # A stamp beside the binaries records the pinned version, the tarball's sha256 and each
+    # installed binary's sha256, written after a verified install. A rerun compares it instead of
+    # parsing `kache --version`, whose output format is unverified.
+    KACHE_STAMP=/opt/kache/bin/.install-stamp
+    kache_installed() {
+        local version sha kache_sha engine_sha
+        [ -f "$KACHE_STAMP" ] || return 1
+        read -r version sha kache_sha engine_sha <"$KACHE_STAMP" || return 1
+        [ "$version" = "$KACHE_VERSION" ] && [ "$sha" = "$KACHE_SHA256" ] || return 1
+        [ -x "$KACHE_BIN" ] && [ -x "$KACHE_ENGINE" ] || return 1
+        [ "$(sha256sum "$KACHE_BIN" | cut -d' ' -f1)" = "$kache_sha" ] &&
+            [ "$(sha256sum "$KACHE_ENGINE" | cut -d' ' -f1)" = "$engine_sha" ]
+    }
+    if ! kache_installed; then
         kache_tmp=$(mktemp -d)
+        trap 'rm -rf "${tmp:-}" "${kache_tmp:-}"' EXIT
         curl -fsSL -o "$kache_tmp/kache.tar.gz" \
             "https://github.com/kunobi-ninja/kache/releases/download/v${KACHE_VERSION}/kache-x86_64-unknown-linux-musl.tar.gz"
         echo "${KACHE_SHA256}  $kache_tmp/kache.tar.gz" | sha256sum -c -
@@ -78,21 +94,27 @@ if [ "$MODE" = --cloud ]; then
         # kache starts its daemon from kache-engine beside it, so install the pair together.
         install -d -m 0755 /opt/kache/bin
         install -m 0755 "$kache_tmp/kache" "$kache_tmp/kache-engine" /opt/kache/bin/
+        printf '%s %s %s %s\n' "$KACHE_VERSION" "$KACHE_SHA256" \
+            "$(sha256sum "$KACHE_BIN" | cut -d' ' -f1)" \
+            "$(sha256sum "$KACHE_ENGINE" | cut -d' ' -f1)" >"$KACHE_STAMP"
         rm -rf "$kache_tmp"
     fi
     # The host config names the store, and KACHE_CONFIG names the host config, so a build started
     # from any directory (a dependency's source, say) resolves the same store as the daemon.
     install -d -m 0755 /etc/kache
     [ -f "$KACHE_CONFIG" ] || printf '[cache]\nlocal_store = "%s"\n' "$KACHE_STORE" >"$KACHE_CONFIG"
-    # A session may run as another user; a store it cannot write would fall back to compiling.
-    mkdir -p "$KACHE_STORE"
-    chmod 0777 "$KACHE_STORE"
+    # The setup and the sessions it snapshots run as root, so the store stays root-owned, 0755.
+    install -d -m 0755 "$KACHE_STORE"
     # Warm the store inside the setup's time budget, so the snapshot a session starts from has the
     # units this repository builds. The timeout caps the step, not the cache: a half-warm store is
-    # still a store, and the next build fills the rest.
+    # still a store, and the next build fills the rest. The SessionStart hook reruns this script on
+    # every start and resume, after the snapshot exists, and sets CLAUDE_CODE_REMOTE, which the
+    # setup run did not have: skip the warm there so the hook's 600 s budget holds no 200 s build.
     export RUSTC_WRAPPER="$KACHE_BIN" CARGO_INCREMENTAL=0 \
         KACHE_CACHE_DIR="$KACHE_STORE" KACHE_CONFIG
-    timeout 200 "$MISE_BIN" exec -- cargo build --locked || true
+    if [ "${CLAUDE_CODE_REMOTE:-}" != true ]; then
+        timeout 200 "$MISE_BIN" exec -- cargo build --locked || true
+    fi
     "$KACHE_BIN" daemon stop || true
 fi
 
