@@ -26,8 +26,9 @@ pub const MODE13H_PROJECTION_ASPECT: f32 = 320.0 / 200.0;
 /// Free-Cam vertical field of view in degrees: PLAYONE's default lens, as authored cameras.
 pub const DEFAULT_FOV_DEGREES: f32 = PLAYONE_FOV_Y_DEGREES;
 
-/// Near clipping plane distance in meters.
-pub const DEFAULT_NEAR_CLIP: f32 = 0.5;
+/// Near clipping plane distance in meters: a sweep pick that keeps a car beside the camera
+/// drawn, not a value read from PLAYONE (`research/parity/attribution.md`).
+pub const DEFAULT_NEAR_CLIP: f32 = 0.1;
 
 /// Far clipping plane distance in meters, for the orthographic projection only: the perspective
 /// projection has no far plane.
