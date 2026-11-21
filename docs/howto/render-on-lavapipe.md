@@ -78,3 +78,25 @@ Copy-Item build/parity/report/ctry_current build/parity/report/ctry_lavapipe -Re
 Without a `[ctry]` table in [`expected/lavapipe.toml`](../../research/parity/expected/lavapipe.toml), the run's comparison line says `no expected score for lavapipe yet: add it`; #455 adds those rows.
 Once a row exists, `comparison_line` in [`expected_scores.py`](../../python/stunt_reel/expected_scores.py) checks the adapter name before `changed_since`: a row measured on an adapter with another name gives `not comparable: other adapter (expected on {expected.adapter})`, and only a row on the same adapter name, where the checkout's `crates/` tree differs from the row's recorded one, gives `crates/ tree {found[:7]}, measured on {expected.crates[:7]}: awaiting a repin or catch-up repin of this class`.
 The first is the likely case here, since #455's cloud rows come from Ubuntu's Mesa build and its llvmpipe need not carry the same LLVM version; neither line is a verdict on the delta.
+
+## 5. Render the canonical lavapipe under WSL
+
+The lavapipe `expected/lavapipe.toml` is pinned on is Ubuntu 24.04's `mesa-vulkan-drivers` at the version `.claude/cloud-setup.sh` and CI pin, which draws the same pixels under WSL 2 on this machine as in the cloud ([`lavapipe.md` § 6](../../research/parity/lavapipe.md#6-one-build-on-two-machines)); mesa-dist-win does not, so its runs judge verdicts between local runs but never repin `lavapipe`.
+Install the distro without the first-launch user prompt, and work in it as root:
+
+```powershell
+wsl --install -d Ubuntu-24.04 --no-launch
+wsl -d Ubuntu-24.04 -u root
+```
+
+In the distro, clone the repository onto the Linux filesystem and run the cloud setup, which installs mise, the gate's tools and the pinned lavapipe (`LAVAPIPE_VERSION` and `LAVAPIPE_LLVM_VERSION` in `.claude/cloud-setup.sh`):
+
+```bash
+git clone /mnt/e/git/stunt-reel /root/stunt-reel
+cd /root/stunt-reel && bash .claude/cloud-setup.sh --cloud
+```
+
+Give it a data root on the Linux filesystem too: reading `/mnt/e` made a CTRY run take 36 s against 4.4 s.
+Copy what the cloud archives hold, by [`manifests/cloud-assets.toml`](../../manifests/cloud-assets.toml)'s include and exclude rules, from the Windows data root (or run `mise run cloud-assets -- fetch` where R2 credentials are set), then run `mise run game-builds` and `mise run superset-all`, as a cloud session does.
+`mise run parity -- --software-only` there reports `llvmpipe (LLVM 20.1.2, 256 bits)` and compares against `expected/lavapipe.toml`.
+`wsl --unregister Ubuntu-24.04` removes the distro and everything in it.

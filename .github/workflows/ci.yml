@@ -68,7 +68,7 @@ jobs:
     # It runs whatever scope did, unless the run was cancelled; its steps read DOCS_ONLY.
     needs: scope
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # the lavapipe pin is a 24.04 package
     timeout-minutes: 30
     permissions:
       contents: read
@@ -107,7 +107,15 @@ jobs:
           [ "$status" -eq 1 ] || exit "$status"
       - name: Install lavapipe (software Vulkan)
         if: env.DOCS_ONLY != 'true'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+        # The canonical lavapipe (research/parity/lavapipe.md section 6), pinned with the LLVM it
+        # links so an Ubuntu update cannot move it silently; cloud-setup.sh pins the same
+        # versions. Install fails once Ubuntu supersedes them: then repin the versions and the
+        # expected scores together.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends --allow-downgrades \
+            mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.5 libllvm20=1:20.1.2-0ubuntu1~24.04.3 libvulkan1
+          dpkg-query -W mesa-vulkan-drivers libllvm20 libvulkan1
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # java and the Kaitai compiler are not optional: the gate's `test-py` step sets
@@ -187,7 +195,7 @@ jobs:
     # measures what this does.
     needs: scope
     if: ${{ !cancelled() && !(needs.scope.result == 'success' && needs.scope.outputs.docs_only == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # the lavapipe pin is a 24.04 package
     timeout-minutes: 30
     permissions:
       contents: read
@@ -202,7 +210,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install lavapipe (software Vulkan)
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+        # The canonical lavapipe (research/parity/lavapipe.md section 6), pinned with the LLVM it
+        # links so an Ubuntu update cannot move it silently; cloud-setup.sh pins the same
+        # versions. Install fails once Ubuntu supersedes them: then repin the versions and the
+        # expected scores together.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends --allow-downgrades \
+            mesa-vulkan-drivers=25.2.8-0ubuntu0.24.04.5 libllvm20=1:20.1.2-0ubuntu1~24.04.3 libvulkan1
+          dpkg-query -W mesa-vulkan-drivers libllvm20 libvulkan1
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # rust brings the llvm-tools component mise.toml names; cargo-llvm-cov itself comes
