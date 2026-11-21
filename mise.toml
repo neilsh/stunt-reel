@@ -96,6 +96,10 @@ data_root = "{{vars.primary}}.data"
 description = "Play a film in PLAYONE.EXE on dosbox-automation (mise run play -- --film corpus/stisldem/VAULT/INTRO.FLM)"
 run = "uv run python python/scripts/play.py"
 
+# init, ensure and seed run bare `python`, so they work before this checkout has a virtualenv;
+# the script re-runs itself on mise's pinned Python when the `python` PATH finds is older than
+# pyproject.toml's requires-python floor, and otherwise reports the interpreter it found and the
+# version needed (#854). "uv run" would sync .venv before the first task, which ensure must not.
 [tasks.init]
 description = "Seed target/, set core.hooksPath and sync .venv now, rather than at the first task; links nothing (mise run init -- --migrate moves an in-checkout corpus into the data root)"
 # Plain python, not "uv run": init runs uv sync itself, and works before any environment

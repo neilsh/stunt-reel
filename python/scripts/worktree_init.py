@@ -16,21 +16,34 @@ into the data root, proves none remain, and only then lets git delete the checko
 because git's worktree removal has recursed through Windows junctions on some builds.
 The seed clones another checkout's built ``target/`` into an empty one on a ReFS volume, so
 the first build compiles only the workspace crates (ADR 0030).
+The script runs on the pinned Python, never whichever ``python`` PATH finds first: an interpreter
+older than ``pyproject.toml``'s ``requires-python`` floor cannot parse the package's ``lazy from``
+imports, so ``python_pin.guard`` runs the script again on the one ``mise which python`` names, or
+reports the interpreter it found (issue #854).
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
-from stunt_reel.worktree_clean import _clean
-from stunt_reel.worktree_ensure import _ensure, _seed_command
-from stunt_reel.worktree_provision import _init
-from stunt_reel.worktree_reap import DEFAULT_MIN_FREE_GB, _reap
+import python_pin
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run ``init``, ``seed``, ``ensure``, ``clean`` or ``reap``."""
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    status = python_pin.guard(Path(__file__).resolve(), arguments)
+    if status is not None:
+        return status
+    # Below the guard: these modules use `lazy from` (Python 3.15), so importing one above it
+    # raises SyntaxError on an older `python` before the guard can report anything (issue #854).
+    from stunt_reel.worktree_clean import _clean  # noqa: PLC0415
+    from stunt_reel.worktree_ensure import _ensure, _seed_command  # noqa: PLC0415
+    from stunt_reel.worktree_provision import _init  # noqa: PLC0415
+    from stunt_reel.worktree_reap import DEFAULT_MIN_FREE_GB, _reap  # noqa: PLC0415
+
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser(
@@ -90,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_MIN_FREE_GB,
         help="reap only when the drive has under this many GB free (default %(default)g)",
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
     if args.command == "init":
         return _init(bool(args.migrate))
     if args.command == "ensure":
