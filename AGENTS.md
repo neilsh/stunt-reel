@@ -49,7 +49,7 @@ Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): 
 
 ### Committing
 
-1. Run `git status` before staging: stage the paths you changed by name, never `git add -A` or `git commit -a`, and never any file from `corpus/`.
+1. Run `git status` before staging: stage the paths you changed by name, never `git add -A` or `git commit -a`, and from `corpus/` only `README.md` and `siarchive.md`, never force-added.
    If the index holds another session's work, stop and ask.
 2. Run `mise run check`; it must pass with no warnings.
 3. Commit with a Conventional Commit subject and, when a reviewer would ask "why this way?", a body that says why: [Commit messages](docs/development.md#commit-messages).

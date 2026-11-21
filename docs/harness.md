@@ -49,7 +49,7 @@ What it confines, asks and gives you on this host is on its own page, [`harness/
 [.claude/settings.json](../.claude/settings.json) is committed, so this harness's settings *can* ship with the checkout and be reviewed in a PR, unlike DeepSeek Harness's.
 Its `permissions.allow` block covers `mise run *`, the git and `gh` commands a [`running-unattended`](../.agents/skills/running-unattended/SKILL.md) run uses (branch, commit, push to a branch, open a PR, arm or disarm squash auto-merge, file and edit issues) and the `orca orchestration` commands, so a worker in a fresh checkout or Orca workspace runs most of the loop without a permission prompt.
 The git and `gh` rules are written for the Bash tool; the same commands through the PowerShell tool, a cloud session's REST auto-merge route and a rebase onto a stack parent still ask.
-Its `permissions.deny` block is a best-effort backstop for what that skill forbids, matched on common spellings: a push to `main`, a force push, skipping hooks, `gh pr merge --admin`, staging everything or `corpus/`, `mise run reap -- --force` and `git worktree remove`.
+Its `permissions.deny` block is a best-effort backstop for what that skill forbids, matched on common spellings: a push to `main`, a force push, skipping hooks, `gh pr merge --admin`, staging everything, `mise run reap -- --force` and `git worktree remove`.
 The server-side guard is the `main` ruleset on GitHub (required status checks and linear history; no force push or deletion), not this list.
 A rule matches the whole command, commit message included, so a message containing ` -a `, ` -n `, `--all` or `--no-verify` is refused too: reword it.
 Anything else still asks per command unless `.claude/settings.local.json` allows it.
