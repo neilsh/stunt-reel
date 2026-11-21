@@ -202,7 +202,11 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
     // Model space to eye-relative space to clip space.
     let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
     out.clip_position = camera.rotation_proj * eye_pos;
-    if ((in.attr.y & FLAG_LINE) != 0u) {
+    // OP_PERFDISK skips when shadow mode (work:0x806C) is set
+    // (research/playone-exe/sod-vm-generators.md section 8.8).
+    if (model.layer.y != 0u && (in.attr.y & FLAG_DISC) != 0u) {
+        out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    } else if ((in.attr.y & FLAG_LINE) != 0u) {
         let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
         // An outline corner culls with the triangle its edge bounds, which winds from the
         // edge's first endpoint to its second and on to the apex; a two-sided polygon's and a

@@ -1,0 +1,155 @@
+diff --git a/crates/stunt-render/src/camera.rs b/crates/stunt-render/src/camera.rs
+index c3f479cc..a4cb3e3c 100644
+--- a/crates/stunt-render/src/camera.rs
++++ b/crates/stunt-render/src/camera.rs
+@@ -453,6 +453,18 @@ impl CameraController {
+             )
+         });
+ 
++        let skip_eye_plane = std::env::var("DBG_PERFDISK_EYEPLANE")
++            .ok()
++            .and_then(|v| v.parse::<u32>().ok())
++            .unwrap_or(0)
++            != 0;
++        let eye_plane_flag = if skip_eye_plane && matches!(self.projection, Projection::Perspective)
++        {
++            1.0
++        } else {
++            0.0
++        };
++
+         CameraUniform {
+             rotation_proj: rotation_proj.to_cols_array(),
+             sun_direction: [sun.x, sun.y, sun.z],
+@@ -460,7 +472,7 @@ impl CameraController {
+             inv_rotation_proj: rotation_proj.inverse().to_cols_array(),
+             line_half_ndc: line_half_ndc(self.projection_y_scale),
+             disc_depth_scale: self.disc_depth_scale(),
+-            _pad1: 0.0,
++            _pad1: eye_plane_flag,
+             sky_normal: sky.normal,
+             sky_edge_count: sky.edge_count,
+             sky_flags,
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 0acbf74e..24587261 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -14,7 +14,8 @@ use std::ops::Range;
+ use crate::outline::Outlined;
+ use glam::{Mat4, Vec3};
+ use stunt_core::contracts::{
+-    CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
++    CameraTransform, NodeId, SodModelIr, SodVertex, VERTEX_FLAG_DISC, VERTEX_FLAG_LINE,
++    VisibilityCondition, arena_index,
+ };
+ use stunt_core::world::{GROUND_NODE, PropRun};
+ use wgpu::util::DeviceExt as _;
+@@ -290,12 +291,15 @@ impl GpuModel {
+             Some((keep, marks)) => plan_edges(&mut plan, ir, keep, marks),
+             None => (vec![Vec::new(); plan.chunks.len()], Vec::new()),
+         };
++        let disc_apex = with_disc_normals(ir, apex);
+         let chunks = plan
+             .chunks
+             .iter()
+             .zip(&edges)
+             .enumerate()
+-            .map(|(n, (chunk, edges))| GpuChunk::upload(device, queue, ir, apex, n, chunk, edges))
++            .map(|(n, (chunk, edges))| {
++                GpuChunk::upload(device, queue, ir, &disc_apex, n, chunk, edges)
++            })
+             .collect();
+ 
+         // Translate nodes into GpuNode flat arena
+@@ -349,8 +353,9 @@ impl GpuModel {
+         {
+             return false;
+         }
++        let disc_apex = with_disc_normals(ir, &shape.apex);
+         for chunk in &self.chunks {
+-            chunk.rewrite_vertices(queue, &ir.vertices, &shape.apex);
++            chunk.rewrite_vertices(queue, &ir.vertices, &disc_apex);
+         }
+         true
+     }
+@@ -742,6 +747,38 @@ fn own_positions(ir: &SodModelIr) -> Vec<[f32; 3]> {
+     ir.vertices.iter().map(|v| v.position).collect()
+ }
+ 
++/// Replaces `apex` at each filled disc rim vertex with the disc's unit normal so the vertex
++/// shader can compute the disc's minimum rim depth against the eye plane.
++fn with_disc_normals(ir: &SodModelIr, apex: &[[f32; 3]]) -> Vec<[f32; 3]> {
++    let mut out = apex.to_vec();
++    for tri in ir.indices.as_chunks::<3>().0 {
++        let [a, b, c] = tri.map(|i| i as usize);
++        let (Some(va), Some(vb), Some(vc)) =
++            (ir.vertices.get(a), ir.vertices.get(b), ir.vertices.get(c))
++        else {
++            continue;
++        };
++        let disc =
++            |v: &SodVertex| (v.flags & (VERTEX_FLAG_DISC | VERTEX_FLAG_LINE)) == VERTEX_FLAG_DISC;
++        if !(disc(va) && disc(vb) && disc(vc)) {
++            continue;
++        }
++        let p0 = Vec3::from_array(va.position);
++        let p1 = Vec3::from_array(vb.position);
++        let p2 = Vec3::from_array(vc.position);
++        let normal = (p1 - p0).cross(p2 - p0).normalize_or_zero();
++        if normal.length_squared() > 0.0 {
++            let arr = normal.to_array();
++            for idx in [a, b, c] {
++                if let Some(slot) = out.get_mut(idx) {
++                    *slot = arr;
++                }
++            }
++        }
++    }
++    out
++}
++
+ /// Writes `source`'s `ranges` back to back into `buffer` with one write; writes nothing when
+ /// a range leaves `source`.
+ fn write_windows<T: bytemuck::Pod>(
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 244b8205..c86f22a2 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -202,7 +202,11 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
+     // Model space to eye-relative space to clip space.
+     let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
+     out.clip_position = camera.rotation_proj * eye_pos;
+-    if ((in.attr.y & FLAG_LINE) != 0u) {
++    // OP_PERFDISK skips when shadow mode (work:0x806C) is set
++    // (research/playone-exe/sod-vm-generators.md section 8.8).
++    if (model.layer.y != 0u && (in.attr.y & FLAG_DISC) != 0u) {
++        out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
++    } else if ((in.attr.y & FLAG_LINE) != 0u) {
+         let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+         // An outline corner culls with the triangle its edge bounds, which winds from the
+         // edge's first endpoint to its second and on to the apex; a two-sided polygon's and a
+@@ -225,7 +229,23 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
+         }
+     } else if ((in.attr.y & FLAG_DISC) != 0u) {
+         let centre = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+-        out.clip_position = squeeze_disc(out.clip_position, centre);
++        if (camera._pad1 > 0.0) {
++            let n_eye = (model.model_matrix * vec4<f32>(in.apex, 0.0)).xyz;
++            let n_len = length(n_eye);
++            let r = length((model.model_matrix * vec4<f32>(in.normal, 0.0)).xyz);
++            var sin_tilt = 1.0;
++            if (n_len > 1e-6) {
++                let nz = (camera.rotation_proj * vec4<f32>(n_eye / n_len, 0.0)).w;
++                sin_tilt = sqrt(max(0.0, 1.0 - nz * nz));
++            }
++            if (centre.w <= camera.disc_depth_scale * r * sin_tilt) {
++                out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
++            } else {
++                out.clip_position = squeeze_disc(out.clip_position, centre);
++            }
++        } else {
++            out.clip_position = squeeze_disc(out.clip_position, centre);
++        }
+     }
+     out.palette_index = in.attr.x & 255u;
+     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included

@@ -347,6 +347,148 @@ fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
     });
 }
 
+/// An `OP_PERFDISK` disc draws on the actor's body and is skipped in its ground shadow,
+/// outline included, while non-disc triangles on the same shape still cast their shadow
+/// (`0xA045`, `research/playone-exe/sod-vm-generators.md` section 8.8).
+#[test]
+fn a_shadow_casting_actor_skips_its_perfdisk_discs_in_the_shadow() {
+    use stunt_core::sod::{
+        DecodeMode, OP_COLOR, OP_ID, OP_PERFDISK, OP_RETURN, OP_VECTORS, decode_sod,
+    };
+
+    common::gpu_test(|| {
+        // Horizontal 2 m disc at y = 0 in palette index 45, scale 1.0 (centre reg 1, axis reg 2).
+        let words = [
+            OP_ID,
+            100,
+            0,
+            0,
+            0,
+            OP_VECTORS,
+            2,
+            12,
+            0,
+            0,
+            0,
+            0,
+            10,
+            0,
+            OP_COLOR,
+            45,
+            OP_PERFDISK,
+            12,
+            2,
+            24,
+            OP_RETURN,
+        ];
+        let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let disc = decode_sod(&bytes, "DISC", None, DecodeMode::Strict).expect("decode disc");
+        let mut floor = triangle("FLOOR", VisibilityCondition::Always);
+        for (vertex, [x, z]) in
+            floor
+                .vertices
+                .iter_mut()
+                .zip([[-1.0, 1.0], [1.0, 1.0], [0.0, -1.0]])
+        {
+            vertex.position = [x, 0.0, z];
+            vertex.normal = [0.0, 1.0, 0.0];
+        }
+        // Combined shape: the floor triangle at y = 0 plus the disc lifted slightly above y = 0
+        // so both draw on the body while only the floor casts a shadow.
+        let mut combined = floor.clone();
+        let base_verts = u32::try_from(combined.vertices.len()).expect("small vertex count");
+        let base_indices = u32::try_from(combined.indices.len()).expect("small index count");
+        combined
+            .vertices
+            .extend(disc.vertices.iter().map(|v| SodVertex {
+                position: [v.position[0], v.position[1] + 0.2, v.position[2]],
+                ..*v
+            }));
+        combined
+            .indices
+            .extend(disc.indices.iter().map(|&i| i + base_verts));
+        combined.allocate_node(
+            "DISC",
+            None,
+            glam::Mat4::IDENTITY.to_cols_array(),
+            VisibilityCondition::Always,
+            NodeKind::Mesh {
+                vertex_offset: base_verts,
+                vertex_count: u32::try_from(disc.vertices.len()).expect("small vertex count"),
+                index_offset: base_indices,
+                index_count: u32::try_from(disc.indices.len()).expect("small index count"),
+                is_decal: false,
+            },
+        );
+        let disc_node = combined.nodes.last().expect("disc node").id;
+        combined.root_nodes.push(disc_node);
+
+        let counts_for = |shape: SodModelIr| {
+            let actor = ActorTransform {
+                position_meters: [0.0, 3.0, 0.0],
+                casts_shadow: true,
+                ..actor_at(0.0, 0)
+            };
+            let record = TrajectoryRecord {
+                tick: 0,
+                camera: CameraTransform {
+                    eye: [0.0, 10.0, 10.0],
+                    target: [0.0, 0.0, 0.0],
+                    fov_degrees: 45.0,
+                    ..Default::default()
+                },
+                actors: vec![actor],
+                audio_cues: Vec::new(),
+                palette: PaletteControls::default(),
+                bank: Default::default(),
+            };
+            let timeline = FilmTimeline::new(
+                vec![SliceKeyframe {
+                    record,
+                    tick: 0,
+                    tick_duration: 1,
+                }],
+                Vec::new(),
+            );
+            let shapes = HashMap::from([(SHAPE_ID, shape)]);
+            let scene = FilmScene::new(timeline, shapes, None);
+            let mut test = common::gpu_or_skip(&scene)?;
+            let page = test.draw(&scene.frame(0.0));
+            let (mut shadow, mut body, mut disc_body) = (0usize, 0usize, 0usize);
+            for (&index, &layer) in page.indices().iter().zip(page.layers()) {
+                if layer != LAYER_FIRST_ACTOR {
+                    continue;
+                }
+                if index == 0 {
+                    shadow += 1;
+                } else {
+                    body += 1;
+                    if index == 45 {
+                        disc_body += 1;
+                    }
+                }
+            }
+            Some((shadow, body, disc_body))
+        };
+
+        let Some((disc_shadow, disc_only_body, _)) = counts_for(disc) else {
+            return;
+        };
+        assert!(disc_only_body > 100, "disc draws on body: {disc_only_body}");
+        assert_eq!(disc_shadow, 0, "disc alone casts no shadow: {disc_shadow}");
+
+        let (floor_shadow, floor_body, _) = counts_for(floor).expect("adapter");
+        let (combined_shadow, combined_body, combined_disc_body) =
+            counts_for(combined).expect("adapter");
+        assert!(floor_shadow > 100);
+        assert!(combined_disc_body > 100 && combined_body > floor_body);
+        assert_eq!(
+            combined_shadow, floor_shadow,
+            "adding a disc leaves the triangle's shadow pixel count unchanged"
+        );
+    });
+}
+
 /// A scene with a world draws it even with no actors.
 #[test]
 fn world_is_drawn_when_present() {
