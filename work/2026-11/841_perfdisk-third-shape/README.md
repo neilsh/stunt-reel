@@ -2,7 +2,7 @@
 title: "Read OP_PERFDISK disc widths on a third shape, at another lens"
 started: 2026-11-20
 issue: 841
-outcome: "INTRO's triplane wheels (0x7F04) at 42.67° and 17.76° match the capture's widths to 2 px at their widest rows (ticks 1101, 2399, 1244, 2553, GPU); ours reaches 1 to 2 rows lower (#898); no large squeeze-sensitive disc at another lens found in the captured ticks of five films (CTRY, LAND, INTRO, LOCATION, TRAINTNL: discs at most 356 px at those lenses; the squeeze moved at most 31 px on the ticks tested); BOMB and BALLOON not searched, and the 3,487 px positive control was measured at 50.95° alone"
+outcome: "INTRO's triplane wheels (0x7F04) at 42.67° and 17.76° match the capture's widths to 2 px at their widest rows (ticks 1101, 2399, 1244, 2553, GPU); ours reaches 1 to 2 rows lower (#898); no large squeeze-sensitive disc at another lens found in the captured ticks of five films (CTRY, LAND, INTRO, LOCATION, TRAINTNL: discs at most 356 px at those lenses; the squeeze moved at most 31 px on the ticks tested); BOMB and BALLOON not searched, and the 3,487 px positive control was measured at 50.95° alone; the squeeze and normal rescale at other lenses are #899"
 ---
 
 # Read OP_PERFDISK disc widths on a third shape, at another lens
