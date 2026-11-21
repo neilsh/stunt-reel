@@ -846,6 +846,65 @@ fn a_drawn_only_scene_keeps_the_actor_and_the_view_facing_lod_child() {
     );
 }
 
+/// A film whose camera stands at each of `eyes` in turn, one tick apart, with no actors.
+fn moving_camera_film(eyes: &[[f32; 3]]) -> Vec<u8> {
+    let mut bytes = b"FILM".to_vec();
+    let mut prev_slice_len = 0u16;
+    for (tick, &eye) in eyes.iter().enumerate() {
+        let mut body = Vec::new();
+        if tick == 0 {
+            body.extend_from_slice(&[0x9B, 1, 0x00, SIF_EXISTS | SIF_MOVES | SIF_ROTATES, 0x90]);
+        }
+        push_interp(&mut body, 0x40, eye, 0);
+        body.push(0xFF);
+        bytes.extend_from_slice(&prev_slice_len.to_le_bytes());
+        bytes.push(u8::from(tick > 0));
+        bytes.extend_from_slice(&body);
+        prev_slice_len = u16::try_from(3 + body.len()).expect("a short slice");
+    }
+    bytes
+}
+
+/// A view-facing prop of `scale_index` 14, whose cut falls at 256 m at the default lens, is
+/// drawn while the camera stands inside its cut and dropped on the frame it stands past it.
+#[test]
+fn a_view_facing_prop_is_dropped_on_a_frame_past_its_distance_cut() {
+    use stunt_core::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN};
+
+    const TREE: u16 = 0x0102;
+    // Header flag 0x0100 faces the camera; the low byte is the `scale_index`.
+    let tree: Vec<u8> = [
+        OP_ID, 100, 0, 0x010E, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24, OP_RETURN,
+    ]
+    .iter()
+    .flat_map(|w| w.to_le_bytes())
+    .collect();
+    let all = archive(&[(TREE, &tree)]);
+    // One `SP_POS` at the origin, then an `SP_LEAF` of the tree.
+    let scenery = scenery(&[0, 0, 0, 0, 0, 12, 10, i32::from(TREE)]);
+    // The near eye keeps the millimetre tree above the sub-pixel cull.
+    let film = moving_camera_film(&[[0.0, 0.0, 2.0], [0.0, 0.0, 300.0]]);
+
+    let (scene, _) = FilmScene::load(&SceneInputs {
+        shapes: Some(ShapeSource::Archive(&all)),
+        scenery: Some(&scenery),
+        ..scene_inputs(&film)
+    })
+    .expect("load");
+    let world = scene.world().expect("a world");
+    assert_eq!(world.view_facing.len(), 1, "the tree is placed");
+    let drawn = |tick: f32| -> Vec<u16> {
+        scene
+            .frame(tick)
+            .view_facing
+            .iter()
+            .map(|a| a.shape_id)
+            .collect()
+    };
+    assert_eq!(drawn(0.0), [TREE], "2 m away, inside the cut");
+    assert!(drawn(1.0).is_empty(), "300 m away, past the cut");
+}
+
 #[test]
 fn a_drawn_only_scene_keeps_its_origin_shape() {
     let film = film([0.0, 0.0, 10.0], &[]);

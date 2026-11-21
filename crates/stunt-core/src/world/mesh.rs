@@ -283,8 +283,8 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
 /// decal (`grounded` holds its snapped vertices, parallel to `instances`) goes in the decal
 /// batch. Triangles on the ground plane are left to [`push_gated_props`], which makes them
 /// [`GROUND_NODE`] nodes, as are slices behind a visibility gate and every slice of a
-/// placement behind an `SP_1NODE` gate. Returns each placement's run of indices, in their
-/// order, empty for one that adds none.
+/// placement behind an `SP_1NODE` gate or the distance cut (`Placement::reach`). Returns
+/// each placement's run of indices, in their order, empty for one that adds none.
 fn push_props(
     ir: &mut SodModelIr,
     prop_runs: &mut Vec<PropRun>,
@@ -310,7 +310,10 @@ fn push_props(
         let Some(model) = ir_models.get(index, shape_id) else {
             continue;
         };
-        if instances.get(index).is_some_and(|p| p.chain != 0) {
+        if instances
+            .get(index)
+            .is_some_and(|p| p.chain != 0 || p.reach.is_some())
+        {
             continue;
         }
         let start = arena_index(ir.indices.len());
@@ -344,8 +347,10 @@ fn push_props(
 /// nodes, then its gated triangles off the ground plane as a node of its own, each under
 /// `parent` with the gate moved into world space, so the renderer evaluates it per frame
 /// against the eye like an actor's. A placement behind `SP_1NODE` gates hangs every node
-/// under the groups [`lod_parent`] makes for its chain, and counts as gated. Returns the run
-/// of nodes each placement adds, in their order.
+/// under the groups [`lod_parent`] makes for its chain, and one the distance cut may drop
+/// (`Placement::reach`) under a group of its own below them with a
+/// [`VisibilityCondition::ScaleReach`] at its position; either counts as gated. Returns the
+/// run of nodes each placement adds, in their order.
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
@@ -379,7 +384,19 @@ fn push_gated_props(
         };
         let offset = [pos[0], pos[1] + base_y, pos[2]];
         let chain = instances.get(index).map_or(0, |p| p.chain);
-        let parent = lod_parent(ir, parent, ir_models, chain, base_y, &mut groups);
+        let mut parent = lod_parent(ir, parent, ir_models, chain, base_y, &mut groups);
+        if let Some(scale_index) = instances.get(index).and_then(|p| p.reach) {
+            parent = ir.allocate_node(
+                "WORLD_REACH",
+                Some(parent),
+                IDENTITY_MATRIX,
+                VisibilityCondition::ScaleReach {
+                    point: offset,
+                    scale_index,
+                },
+                NodeKind::TransformGroup,
+            );
+        }
         let gated_by_lod = parent != root;
         let placed = Placed {
             pos,
@@ -1048,6 +1065,50 @@ mod tests {
                 normal: [0.0, 0.0, 1.0],
             })
         );
+    }
+
+    /// A prop the distance cut may drop leaves the base batch for its own group, which carries
+    /// the cut at its position, and its meshes hang under that group.
+    #[test]
+    fn a_prop_the_distance_cut_may_drop_hangs_under_its_own_reach_group() {
+        let (pts, areas) = sloped_terrain();
+        let models = HashMap::from([(0x0391, square_prop(Some(5.0)))]);
+        let surface = TerrainSurface::new(&pts, &areas, 0.0);
+        let placement = Placement {
+            reach: Some(14),
+            ..Placement::bare(0x0391, [60.0, 12.6, 20.0], 0)
+        };
+        let (ir, _, spans) = build_world_ir(
+            &pts,
+            &areas,
+            &surface,
+            &[placement],
+            &PropModels::shared(&models),
+            0.0,
+        );
+        assert!(prop_vertices(&ir, "WORLD_BASE").is_empty());
+        assert_eq!(prop_vertices(&ir, "WORLD_GATED").len(), 5);
+        let reach: Vec<_> = ir
+            .nodes
+            .iter()
+            .filter(|n| n.name == "WORLD_REACH")
+            .collect();
+        let [group] = reach.as_slice() else {
+            panic!("one reach group, not {}", reach.len());
+        };
+        assert_eq!(
+            group.visibility,
+            VisibilityCondition::ScaleReach {
+                point: [60.0, 12.6, 20.0],
+                scale_index: 14,
+            }
+        );
+        let gated = ir.nodes.iter().find(|n| n.name == "WORLD_GATED");
+        assert_eq!(gated.and_then(|n| n.parent), Some(group.id));
+        let [span] = spans.as_slice() else {
+            panic!("one span per placement");
+        };
+        assert!(span.base.is_empty() && !span.nodes.is_empty());
     }
 
     /// A `BZLT` far section of a prop moves with the placement like a facing gate.

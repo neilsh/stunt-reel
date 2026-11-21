@@ -439,7 +439,7 @@ fn seen_from(words: &[i32], eye_x: f32) -> Vec<u16> {
 
 #[test]
 fn a_one_node_keeps_both_branches_within_reach_and_only_its_stand_in_past_it() {
-    // At the default lens's shift of 1 the gate keeps a depth below 2^2 times one more
+    // At a lens with shift 1 the gate keeps a depth below 2^2 times one more
     // than the larger of splitdist and half ext, 4 * 106 = 424 m; off axis that is up to
     // 424 / 0.804 + 5 = 532.4 m away.
     let words = one_node(STAND_IN, 10, 105);
@@ -623,6 +623,18 @@ fn a_prop_that_stays_sub_pixel_along_the_camera_path_does_not_reach_a_pixel() {
     assert!(reaches_a_pixel(0.01, [1000.0, 0.0, 0.0], &eyes, 200.0));
     // With no camera path every prop does.
     assert!(reaches_a_pixel(0.01, [1000.0, 0.0, 0.0], &[], 1.0));
+}
+
+#[test]
+fn the_distance_cut_may_drop_a_prop_only_where_an_eye_puts_it_past_its_scale() {
+    // `scale_index` 9 is cut at 8192 m at the smallest lens shift; the path's far eye puts
+    // the prop there, the near one alone does not.
+    let path = [[0.0, 0.0, 0.0], [-9000.0, 0.0, 0.0]];
+    assert!(scale_reach_may_drop(9, [0.0, 0.0, 100.0], &path));
+    assert!(!scale_reach_may_drop(9, [0.0, 0.0, 100.0], &path[..1]));
+    // `scale_index` 8 is cut at 16,384 m, past every eye here.
+    assert!(!scale_reach_may_drop(8, [0.0, 0.0, 100.0], &path));
+    assert!(!scale_reach_may_drop(9, [0.0, 0.0, 100.0], &[]));
 }
 
 #[test]

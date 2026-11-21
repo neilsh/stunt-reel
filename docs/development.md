@@ -69,7 +69,7 @@ The corpus ships the unpatched 1992 executables; `mise run game-builds` makes an
 | --- | --- |
 | `crates/stunt-core/` | Seam contracts, `.RES`/`.ALL`/`.SOD`/`.FLM` parsers, and the `.SOD` bytecode VM |
 | `crates/stunt-render/` | `wgpu` pipelines, Mode 13h palette LUT, headless renderer |
-| `crates/stunt-parity/` | Parity artifact port: typed, versioned, validated render, capture, video and report documents, and their committed JSON Schemas in `schema/`, which the Python adapter is tested against ([ADR 0048](adr/0048-the-python-parity-adapter-is-checked-against-a-generated-schema.md)); `STUNT_UPDATE_SCHEMA=1 mise exec -- cargo test -p stunt-parity --test it schema` regenerates them after a field change |
+| `crates/stunt-parity/` | Parity artifact port: typed, versioned, validated render, capture, video and report documents, and their committed JSON Schemas in `schema/`, which the Python adapter is tested against ([ADR 0048](adr/0048-the-python-parity-adapter-is-checked-against-a-generated-schema.md)); the [crate docs](../crates/stunt-parity/src/lib.rs) say how to regenerate them |
 | `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity`, `export-gltf`, `shape-views`, `sod-trace` and `film-slots` subcommands |
 | `crates/stunt-score/` | The parity engine as a library, with no GPU dependency: SSIM/IoU scoring, the render store, the render and capture documents' reader and writer, and the ZMBV/AVI video reader; `stuntreel parity` calls it |
 | `python/stunt_reel/tac/` | dosbox-automation harness: Lua generator, REST client, capture plans, staging, MAKEONE driver — [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
@@ -106,7 +106,7 @@ One task per file in [`docs/howto/`](howto/):
 
 ## Development & Quality Assurance
 
-The gate script, its step list, the pre-commit hook, its lanes and CI are in [quality gate](quality-gate.md); the quick task map stays here.
+The gate script, its step list, the pre-commit hook, its lanes and CI are in [quality gate](quality-gate.md).
 
 | Task | Runs |
 | --- | --- |
@@ -141,13 +141,10 @@ The gate script, its step list, the pre-commit hook, its lanes and CI are in [qu
 | `frame` | render a list of film ticks in one process and write each beside its reference capture frame ([Render a film](howto/render-a-film.md#render-chosen-ticks-beside-their-capture)) |
 | `shape-diff` | list the shapes whose geometry hash or decode failure changes with a `DBG_*` switch, and draw only those ([Inspect a shape](howto/inspect-a-shape.md#find-the-shapes-a-switch-changes)) |
 | `parity-residue` | differing index-plane pixels between two render-store trees of `<film>_current` stores, film by film: ticks compared and differing, mean differing pixels per tick, the largest and its tick, and with `--ticks` the count at each named tick under the film that holds it, a tick no store holds going to stderr instead (`mise run parity-residue -- <render root A> <render root B> [--films f1,f2] [--ticks t1,t2]`) |
-| `parity-probe`, `verify-docs`, `unlzexe`, `pair-builds`, `re-tool`, `flm-events`, `adversarial` | analysis and diagnostic scripts that previously had to be called by file path |
+| `parity-probe`, `verify-docs`, `unlzexe`, `pair-builds`, `re-tool`, `flm-events`, `adversarial` | analysis and diagnostic scripts |
 
-The GPU tests' hang rationale is in [quality gate § GPU tests](quality-gate.md#gpu-tests).
-
-The Windows `PermissionError` investigation, with its ruled-out causes, is in [quality gate § A PermissionError on Windows](quality-gate.md#a-permissionerror-on-windows).
-
-The `stunt-core` spec, fuzz and props test kinds are in [quality gate § `stunt-core` test kinds](quality-gate.md#stunt-core-test-kinds).
+The quality gate page also holds [the GPU tests' hang rationale](quality-gate.md#gpu-tests), [the Windows `PermissionError` investigation](quality-gate.md#a-permissionerror-on-windows) with its ruled-out causes, and [the `stunt-core` spec, fuzz and props test kinds](quality-gate.md#stunt-core-test-kinds).
+The toolchain page holds [the shared tool cache and target seeding](toolchain.md#shared-tool-cache), [running a tool outside a task](toolchain.md#running-individual-commands), [the Python dependency bar](toolchain.md#python-dependencies), and [Renovate with the pin, floor and target conventions](toolchain.md#dependency-updates).
 
 ### Commit messages
 
@@ -161,7 +158,7 @@ A commit from another session's branch keeps its author, which the pre-push hook
 
 A pull request's title becomes its squash commit's subject, so it is a Conventional Commit too, ending with the issue or issues it serves: `fix(parity): repin the reference films (#305)`, or `(#305, 2/2)` for one PR of a stack.
 GitHub appends the PR's own `(#N)` on merge, so leave it out of the title; a PR that serves no issue names none.
-The `PR title` workflow checks the title with the commit-msg hook's own subject rule and re-runs when the title is edited; CI no longer checks a pull request's individual commits, so only the local hook sees those.
+The `PR title` workflow checks the title with the commit-msg hook's own subject rule and re-runs when the title is edited; CI checks no pull request's individual commit messages, so only the local hook sees those.
 The repository owner turns off rebase merging and sets squash merges' title to "Pull request title", so the checked title is the one that lands ([ADR 0026](adr/0026-commit-hooks-run-the-gates-own-tasks.md#amendment-2026-11-15-ci-checks-the-pull-request-title)).
 
 ### Docstrings and doc comments
@@ -177,14 +174,6 @@ A Python docstring or Rust `///` comment states the contract a caller needs, in 
 
 Most land under 60 words.
 A longer one usually narrates the body; move the narration into a comment beside the code it explains, or drop it.
-
-The shared tool cache and target seeding are in [toolchain § Shared tool cache](toolchain.md#shared-tool-cache).
-
-Running a tool outside a task is in [toolchain § Running individual commands](toolchain.md#running-individual-commands).
-
-The Python dependency bar is in [toolchain § Python dependencies](toolchain.md#python-dependencies).
-
-Renovate and the pin, floor and target conventions are in [toolchain § Dependency updates](toolchain.md#dependency-updates).
 
 ### Markdown line breaks
 
