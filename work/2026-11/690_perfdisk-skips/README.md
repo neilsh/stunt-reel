@@ -2,7 +2,7 @@
 title: "Renderer: apply OP_PERFDISK's shadow-mode, centre-depth and eye-plane skips"
 started: 2026-11-20
 issue: 690
-outcome: "adopted: OP_PERFDISK shadow-mode skip (0xA045); centre-depth (0xA09A) and eye-plane (0xA156) skips moved zero frames on the seven reference films and remain unimplemented; gpu tables repinned, lavapipe repin left for a cloud run"
+outcome: "adopted: OP_PERFDISK shadow-mode skip (0xA045); centre-depth (0xA09A) and eye-plane (0xA156) filled-disc skips moved zero frames on the seven reference films (verified by positive controls) and remain unimplemented; gpu tables repinned, lavapipe repin left for a cloud run"
 ---
 
 # Renderer: apply OP_PERFDISK's shadow-mode, centre-depth and eye-plane skips
