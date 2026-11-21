@@ -10,7 +10,9 @@ use crate::sod::{ShadeLight, faces_view};
 use super::map_bin::parse_map_bin;
 use super::mesh::{PropModels, PropRun, build_world_ir, lod_condition};
 use super::placed::PlacementRecords;
-use super::scenery::{LodGate, Placement, ScnStop, place_props, reaches_a_pixel};
+use super::scenery::{
+    LodGate, Placement, ScnStop, place_props, reaches_a_pixel, scale_reach_may_drop,
+};
 use super::tap_props::{TapFailure, anchored_models};
 use super::terrain::{GroundPlane, TerrainSurface};
 
@@ -25,14 +27,15 @@ pub struct WorldInputs<'a> {
     pub scenery: Option<&'a [u8]>,
     /// Camera eye positions in time order, in `[I1]` metres. Props that stay sub-pixel along
     /// the polyline through them are not built; empty keeps every prop. They also choose each
-    /// `SP_1NODE`'s level of detail (both in the `scenery` module).
+    /// `SP_1NODE`'s level of detail (both in the `scenery` module), and which props carry
+    /// `PLAYONE`'s per-frame distance cut ([`VisibilityCondition::ScaleReach`]).
     pub view_eyes: &'a [[f32; 3]],
     /// Largest magnification any camera reaches over PLAYONE's default lens, from the field
     /// of view it draws (base and lens). It scales the focal length of the sub-pixel cull
     /// (`FOCAL_PIXELS` in the `scenery` module) so a zoomed camera never misses a prop.
     pub max_zoom: f32,
     /// Largest depth shift `0x229E` any camera's lens gives
-    /// ([`crate::contracts::trajectory::CameraTransform::lod_lens_words`]); 1 at the default
+    /// ([`crate::contracts::trajectory::CameraTransform::lod_lens_words`]); 0 at the default
     /// lens. It bounds how far from the camera path an `SP_1NODE` can still keep its subtree.
     pub max_lod_shift: u8,
     /// Smallest view-space depth over distance inside the widest frame any camera draws,
@@ -91,8 +94,9 @@ pub struct FacingProp {
     /// Where the shape's origin stands, in `[I1]` metres.
     pub position: [f32; 3],
     /// The `SP_1NODE` branches it stands behind, outermost first, each a
-    /// [`VisibilityCondition::LodBranch`] in `[I1]`; the prop is drawn on a frame only
-    /// while every one holds (`FilmScene::frame`).
+    /// [`VisibilityCondition::LodBranch`] in `[I1]`, then a
+    /// [`VisibilityCondition::ScaleReach`] when `PLAYONE`'s distance cut may drop it; the prop
+    /// is drawn on a frame only while every one holds (`FilmScene::frame`).
     pub gates: Vec<VisibilityCondition>,
 }
 
@@ -138,6 +142,15 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
             inputs.min_corner_depth,
         )
     });
+    // `PLAYONE` drops a far prop on a frame by distance against its scale; only a prop that
+    // some eye puts past that cut carries the per-frame test.
+    for p in &mut placements.props {
+        p.reach = shapes
+            .get(&p.shape)
+            .and_then(SodModelIr::decode)
+            .map(|decode| decode.header.scale_index)
+            .filter(|&scale| scale_reach_may_drop(scale, p.position, inputs.view_eyes));
+    }
     let base_y = 0.0;
     let (facing, fixed) = split_view_facing(&placements.props, shapes);
 
@@ -282,6 +295,10 @@ fn facing_props(props: &[Placement], chains: &[Vec<LodGate>], base_y: f32) -> Ve
                 .map_or(&[][..], Vec::as_slice)
                 .iter()
                 .map(|&gate| lod_condition(gate, base_y))
+                .chain(p.reach.map(|scale_index| VisibilityCondition::ScaleReach {
+                    point: [p.position[0], p.position[1] + base_y, p.position[2]],
+                    scale_index,
+                }))
                 .collect(),
         })
         .collect()

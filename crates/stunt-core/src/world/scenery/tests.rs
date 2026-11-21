@@ -626,6 +626,18 @@ fn a_prop_that_stays_sub_pixel_along_the_camera_path_does_not_reach_a_pixel() {
 }
 
 #[test]
+fn the_distance_cut_may_drop_a_prop_only_where_an_eye_puts_it_past_its_scale() {
+    // `scale_index` 9 is cut at 8192 m at the smallest lens shift; the path's far eye puts
+    // the prop there, the near one alone does not.
+    let path = [[0.0, 0.0, 0.0], [-9000.0, 0.0, 0.0]];
+    assert!(scale_reach_may_drop(9, [0.0, 0.0, 100.0], &path));
+    assert!(!scale_reach_may_drop(9, [0.0, 0.0, 100.0], &path[..1]));
+    // `scale_index` 8 is cut at 16,384 m, past every eye here.
+    assert!(!scale_reach_may_drop(8, [0.0, 0.0, 100.0], &path));
+    assert!(!scale_reach_may_drop(9, [0.0, 0.0, 100.0], &[]));
+}
+
+#[test]
 fn a_zoom_below_one_counts_as_one() {
     // A 1 m prop 500 m away needs 201 px: it reaches them at 256 px unzoomed, and would
     // not at 128 px were a zoom of 0.5 applied.

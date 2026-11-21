@@ -139,6 +139,34 @@ impl CameraTransform {
         depth <= threshold as f32
     }
 
+    /// Whether PLAYONE's scenery cull keeps an object of `scale_index` at `point` (`[I1]`
+    /// metres) by its distance cut (image `0x1B28`), seen from this camera.
+    ///
+    /// `0x31CF` shifts the eye-relative position right by `s`, one more than the bit length
+    /// of the whole metres of its largest absolute coordinate, and the cull `0x1B0C` drops the
+    /// object when `scale_index + s - 16` exceeds `0x229E + 7`: once that coordinate reaches
+    /// `2^(22 + 0x229E - scale_index)` metres
+    /// (research/playone-exe/world-scene-residuals.md section 6.4).
+    #[must_use]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the coordinate is clamped to 0..=65535 first, PLAYONE's 16-bit high word"
+    )]
+    pub fn scale_reach_keeps(&self, point: [f32; 3], scale_index: u8) -> bool {
+        let (_, shift) = self.lod_lens_words();
+        let largest = point
+            .iter()
+            .zip(&self.eye)
+            .map(|(p, e)| (p - e).abs())
+            .fold(0.0f32, f32::max);
+        let high = largest.clamp(0.0, 65535.0) as u16;
+        // One more than the bit length of `high`, from `0x31CF`'s table at `0x323A`.
+        let s = 17u32.saturating_sub(high.leading_zeros());
+        let gap = (u32::from(scale_index).saturating_add(s)).saturating_sub(16);
+        gap <= u32::from(shift).saturating_add(7)
+    }
+
     /// Whether `point`'s depth along this camera's view axis exceeds `depth` as PLAYONE's
     /// `OP_BZLT` compares it, i.e. whether the section after a `BZLT` runs.
     ///

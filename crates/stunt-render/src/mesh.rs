@@ -359,9 +359,10 @@ impl GpuModel {
     ///
     /// `eye` is the camera position in this model's space, for
     /// [`VisibilityCondition::FacesEye`]. `view` is the camera that tests
-    /// [`VisibilityCondition::LodBranch`] and [`VisibilityCondition::BeyondDepth`] gates,
-    /// whose points must then be in its space; without one every subtree branch and every
-    /// far section is drawn and no stand-in is.
+    /// [`VisibilityCondition::LodBranch`], [`VisibilityCondition::BeyondDepth`] and
+    /// [`VisibilityCondition::ScaleReach`] gates, whose points must then be in its space;
+    /// without one every subtree branch, every far section and every far object is drawn
+    /// and no stand-in is.
     ///
     /// Base slices come last sibling first, decal slices in the nodes' own order: the base
     /// pipeline's `Less` keeps the first draw of an exact depth tie and the decal pipeline's
@@ -1124,6 +1125,9 @@ impl VisibleWalk<'_> {
             VisibilityCondition::BeyondDepth { point, depth } => {
                 self.view.is_none_or(|v| v.view_depth_exceeds(point, depth))
             }
+            VisibilityCondition::ScaleReach { point, scale_index } => self
+                .view
+                .is_none_or(|v| v.scale_reach_keeps(point, scale_index)),
         }
     }
 }

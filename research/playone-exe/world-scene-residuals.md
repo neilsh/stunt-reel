@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, as is any prop face within 10 cm of the ground plane, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and `PLAYONE` drops far scenery by distance against its `scale_index`."
+summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, as is any prop face within 10 cm of the ground plane, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and the renderer drops far scenery per frame by distance against its `scale_index`, as `PLAYONE`'s cull `0x1B28` does."
 ---
 # `PLAYONE.EXE`: Ground Renderer Residuals
 
@@ -80,11 +80,20 @@ _Source: [how many placements the sub-pixel cull drops](../../work/2026-11/777_f
 
 **`PLAYONE` culls far scenery by distance against its scale** (`[Established]` for the instructions, static; `[Supported Inference]` for the distance in metres, which takes the walk position as 16.16 metres from the eye, and for the pixel bound).
 `SP_LEAF` (`0x220B`) and the `SP_1NODE` stand-in (`0x2152`) normalise the object's eye-relative position at `0x31CF` and skip the object when the cull `0x1B0C` sets carry (`0x226A`, `0x21A0`).
-Besides an object behind the eye and one outside the radius-widened frustum, `0x1B0C` drops one whose largest eye-relative coordinate reaches `2^(22 + [0x229E] - k)` metres, `k` its `scale_index` (`0x1B28`).
-It never divides the radius word `R` by the depth, but a shape's radius is under `2^(16 - k)` metres, so at the default lens the cut comes where the shape spans at most about `R / 2^15` pixels in radius: at most 0.68 pixels for every shape of six reference archives and up to 1.22 in `location`'s.
-So `PLAYONE` drops far props whole at about the size our half-pixel cull drops, by a coarser test: it can drop a large shape a little above half a pixel that ours keeps, and keeps a small one far below it that ours drops.
-Inside the 25 km far plane the cut falls only for `scale_index` 9 and above ([`memory-map-main.md`](memory-map-main.md) `CS:0x1B0C`, `CS:0x31CF`).
-_Source: [whether PLAYONE culls a whole scenery object by screen size](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-whether-playone-culls-a-whole-scenery-object-by-screen-size)._
+Besides an object behind the eye and one outside the radius-widened frustum, `0x1B0C` drops one the whole metres of whose largest absolute eye-relative coordinate reach `2^(22 + [0x229E] - k)`, `k` its `scale_index` (`0x1B28`, an unsigned `ja` on `k + s - 16 > [0x229E] + 7`, `s` one more than the bit length of those metres from the table at `0x323A`).
+`[0x229E]` is 0 at the default lens 8192 ([`lod.md`](lod.md) section 2.2), so the cut falls there at `2^(22 - k)` metres.
+It never divides the radius word `R` by the depth, but a shape's radius is under `2^(16 - k)` metres, so at the default lens the cut comes where the shape spans at most about `R / 2^14` pixels in radius: at most 1.36 pixels for every shape of six reference archives and up to 2.44 in `location`'s, twice the figures the #777 scan gave with `[0x229E]` taken as 1.
+So `PLAYONE` drops far props whole by a test of distance against scale, not of size: it can drop a shape a pixel or two across that our half-pixel cull keeps, and keeps a small one far below half a pixel that ours drops.
+The cut lies inside the 25 km far plane for `scale_index` 8 and above at `[0x229E]` 0, and 9 and above at 1 ([`memory-map-main.md`](memory-map-main.md) `CS:0x1B0C`, `CS:0x31CF`).
+_Source: [whether PLAYONE culls a whole scenery object by screen size](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-whether-playone-culls-a-whole-scenery-object-by-screen-size); [how many drawn placements lie past their 0x1B28 cut](../../work/2026-11/811_scale-index-cut/journal.md#2026-11-20-how-many-drawn-placements-lie-past-their-0x1b28-cut)._
+
+**The renderer drops the same far props per frame** (`[Bounded Observation]` for the count and the score, the seven reference films rendered on the RTX 4070).
+`build_world` gives each placement that some camera eye puts past its cut at `[0x229E]` 0 a `VisibilityCondition::ScaleReach` gate (`Placement::reach`), which `CameraTransform::scale_reach_keeps` tests per frame with the frame camera's own `[0x229E]`: the renderer for baked props, `FilmScene::frame` for view-facing ones.
+Before the gate, the placements drawn past their cut on a scored tick numbered 12,750 on `intro`, 48 on `land` and 46,987 on `location`, and none on `ctry`, `balloon`, `traintnl` or `bomb`.
+Of those, the ones in front of the eye and inside the frame's half-diagonal widened by their radius (a superset of the frame) numbered 0 on `intro` and `land` and 14 on `location`: `SP_1NODE` stand-ins of `scale_index` 14, 300 to 470 m away against a cut of 256 m, on 9 scored ticks.
+The count takes the walk position as 16.16 metres from the eye, as the distance above does.
+Dropping them changes three `location` frames, each to a higher score, and no frame of the other six films; the evidence-track sweep adopts it, though `location`'s rise is under the 0.002 policy bound that attributes a score.
+_Source: [how many drawn placements lie past their 0x1B28 cut](../../work/2026-11/811_scale-index-cut/journal.md#2026-11-20-how-many-drawn-placements-lie-past-their-0x1b28-cut); [applying the 0x1B28 cut per frame](../../work/2026-11/811_scale-index-cut/journal.md#2026-11-20-applying-the-0x1b28-cut-per-frame)._
 
 The renderer tests (`crates/stunt-render/tests/gpu/renderer.rs`) draw flat terrain with a tile built by hand at terrain height, as the snap would place it (they do not call `build_world_ir`).
 The tile shows over the terrain 80 m away, keeps at least 90% of the pixels it shows alone at 1, 1.5, 2, 4 and 8 km at a grazing angle of 5.7 degrees, and a wall of terrain in front of it hides it completely.
@@ -227,6 +236,8 @@ The decal pass could not either: it holds faces coplanar with an earlier face of
   _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
 * **Lowering or removing the sub-pixel prop cull** (section 6.4): with no size test the seven references score the same to four decimals and no frame moves by more than 0.005, since the cull drops nothing they draw.
   _Source: [removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull)._
+* **`[0x229E]` as 1 at the default lens** (section 6.4): `CameraTransform::lod_lens_words` gives 0 there, as [`lod.md`](lod.md) section 2.2 reads it, so the #777 reading put the cut at twice its distance and its pixel bound at half its size.
+  _Source: [how many drawn placements lie past their 0x1B28 cut](../../work/2026-11/811_scale-index-cut/journal.md#2026-11-20-how-many-drawn-placements-lie-past-their-0x1b28-cut)._
 
 ## Open questions
 

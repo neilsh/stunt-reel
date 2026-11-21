@@ -37,6 +37,33 @@ fn lod_lens_words_follow_playone_normalisation() {
 }
 
 #[test]
+fn scale_reach_cuts_at_the_largest_coordinate_against_scale_and_lens() {
+    let camera = |lens| CameraTransform {
+        eye: [100.0, 50.0, -100.0],
+        target: [100.0, 50.0, -101.0],
+        lens,
+        ..CameraTransform::default()
+    };
+    let at = |dx: f32, dz: f32| [100.0 + dx, 50.0, -100.0 + dz];
+    let default = camera(DEFAULT_CAMERA_LENS);
+    // `scale_index` 9 at `0x229E` 0: the cut is at 2^13 = 8192 m, in whole metres.
+    assert!(default.scale_reach_keeps(at(8191.9, 0.0), 9));
+    assert!(!default.scale_reach_keeps(at(8192.0, 0.0), 9));
+    assert!(!default.scale_reach_keeps(at(0.0, -8192.0), 9));
+    // It measures the largest coordinate, not the distance: 11,314 m away is kept.
+    assert!(default.scale_reach_keeps(at(8000.0, 8000.0), 9));
+    // Below 9 the cut lies at or beyond the 25 km far plane: 8 at 16,384 m, 7 at 32,768 m.
+    assert!(default.scale_reach_keeps(at(16_383.0, 0.0), 8));
+    assert!(!default.scale_reach_keeps(at(16_384.0, 0.0), 8));
+    assert!(default.scale_reach_keeps(at(30_000.0, 0.0), 7));
+    // `scale_index` 14 at 256 m; a lens with `0x229E` 2 pushes it to 1024 m.
+    assert!(!default.scale_reach_keeps(at(256.0, 0.0), 14));
+    let zoomed = camera(20480);
+    assert!(zoomed.scale_reach_keeps(at(1023.0, 0.0), 14));
+    assert!(!zoomed.scale_reach_keeps(at(1024.0, 0.0), 14));
+}
+
+#[test]
 fn lod_keeps_subtree_compares_halved_shifted_depth() {
     // Looking down -z from the origin; node 1000 m ahead, ext 400 (half 200), split 600:
     // the threshold is 200 + (400 * 0xFFFD >> 16) = 599.

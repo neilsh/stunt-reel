@@ -154,6 +154,17 @@ pub enum VisibilityCondition {
         /// The threshold in metres at the default lens, before PLAYONE's halving.
         depth: f32,
     },
+    /// The distance cut of PLAYONE's scenery cull (image `0x1B28`): visible while a scenery
+    /// object of `scale_index` at `point` stays near enough for its scale, as tested by
+    /// [`crate::contracts::CameraTransform::scale_reach_keeps`].
+    ///
+    /// `point` is in the space of the model that owns the node.
+    ScaleReach {
+        /// The object's origin.
+        point: [f32; 3],
+        /// The `scale_index` of the object's shape.
+        scale_index: u8,
+    },
     /// Viewing angle cone threshold (used for prop disc blurs or landing lights).
     AngleCone {
         /// Cone axis in world space; must be a unit vector.

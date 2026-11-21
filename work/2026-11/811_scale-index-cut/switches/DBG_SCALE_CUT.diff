@@ -1,0 +1,256 @@
+diff --git a/crates/stunt-core/src/contracts/shape/mod.rs b/crates/stunt-core/src/contracts/shape/mod.rs
+index a6ac89ab..f0f5f2e8 100644
+--- a/crates/stunt-core/src/contracts/shape/mod.rs
++++ b/crates/stunt-core/src/contracts/shape/mod.rs
+@@ -154,6 +154,13 @@ pub enum VisibilityCondition {
+         /// The threshold in metres at the default lens, before PLAYONE's halving.
+         depth: f32,
+     },
++    /// DEBUG prototype (#811): visible while PLAYONE's `0x1B28` distance cut keeps it.
++    ScaleCut {
++        /// The object's position.
++        point: [f32; 3],
++        /// The shape's `scale_index`.
++        scale_index: u8,
++    },
+     /// Viewing angle cone threshold (used for prop disc blurs or landing lights).
+     AngleCone {
+         /// Cone axis in world space; must be a unit vector.
+diff --git a/crates/stunt-core/src/contracts/trajectory.rs b/crates/stunt-core/src/contracts/trajectory.rs
+index b28c656e..96a21e69 100644
+--- a/crates/stunt-core/src/contracts/trajectory.rs
++++ b/crates/stunt-core/src/contracts/trajectory.rs
+@@ -139,6 +139,18 @@ impl CameraTransform {
+         depth <= threshold as f32
+     }
+ 
++    /// DEBUG prototype (#811): whether `0x1B0C`'s distance cut at `0x1B28` keeps an object of
++    /// `scale_index` at `point`.
++    #[must_use]
++    pub fn scale_cut_keeps(&self, point: [f32; 3], scale_index: u8) -> bool {
++        let (_, shift) = self.lod_lens_words();
++        let largest = (0..3).fold(0.0f32, |a, i| a.max((point[i] - self.eye[i]).abs()));
++        let high = largest.floor().clamp(0.0, 65535.0) as u32;
++        let s = (32 - high.leading_zeros()) as i32 + 1;
++        let gap = (i32::from(scale_index) + s - 16).max(0);
++        gap <= i32::from(shift) + 7
++    }
++
+     /// Whether `point`'s depth along this camera's view axis exceeds `depth` as PLAYONE's
+     /// `OP_BZLT` compares it, i.e. whether the section after a `BZLT` runs.
+     ///
+diff --git a/crates/stunt-core/src/scene/film.rs b/crates/stunt-core/src/scene/film.rs
+index b69c860e..9fb0a095 100644
+--- a/crates/stunt-core/src/scene/film.rs
++++ b/crates/stunt-core/src/scene/film.rs
+@@ -464,6 +464,9 @@ impl FilmScene {
+             };
+         };
+         let eye = record.camera.eye;
++        if let Ok(path) = std::env::var("DBG_SCALE_CUT_DUMP") {
++            self.dbg_scale_cut_dump(&path, tick, &record.camera);
++        }
+         let heading = camera_heading(&record.camera);
+         let previous = self.previous_bank(tick, record.bank);
+         let previous_actors = self
+@@ -568,6 +571,64 @@ impl FilmScene {
+         }
+     }
+ 
++    /// DEBUG (not committed): appends one line per drawn placement past PLAYONE's `0x1B28` cut.
++    fn dbg_scale_cut_dump(&self, path: &str, tick: f32, camera: &CameraTransform) {
++        use std::io::Write as _;
++        let Some(world) = &self.world else { return };
++        let gates = crate::world::DBG_REC_GATES.lock().map(|g| g.clone()).unwrap_or_default();
++        let (_, lens_shift) = camera.lod_lens_words();
++        let zoom = camera.lens_zoom();
++        let eye = camera.eye;
++        let fwd = {
++            let f = [camera.target[0] - eye[0], camera.target[1] - eye[1], camera.target[2] - eye[2]];
++            let l = (f[0] * f[0] + f[1] * f[1] + f[2] * f[2]).sqrt().max(1e-9);
++            [f[0] / l, f[1] / l, f[2] / l]
++        };
++        let mut out = String::new();
++        let mut drawn = 0usize;
++        for (i, r) in world.placements.records.iter().enumerate() {
++            if !r.drawn {
++                continue;
++            }
++            let Some((g, k, radius)) = gates.get(i) else { continue };
++            let (k, radius) = (*k, *radius);
++            if k < 0 {
++                continue;
++            }
++            let gates_hold = g.iter().all(|gate| lod_gate_holds(camera, gate));
++            if !gates_hold {
++                continue;
++            }
++            drawn += 1;
++            let rel = [r.position[0] - eye[0], r.position[1] - eye[1], r.position[2] - eye[2]];
++            let m = rel.iter().fold(0.0f32, |a, v| a.max(v.abs()));
++            let exp = 22 + i32::from(lens_shift) - k;
++            let cut_m = 2f64.powi(exp);
++            let past = f64::from(m.floor()) >= cut_m;
++            let depth = rel[0] * fwd[0] + rel[1] * fwd[1] + rel[2] * fwd[2];
++            let dist = (rel[0] * rel[0] + rel[1] * rel[1] + rel[2] * rel[2]).sqrt();
++            let lateral = (dist * dist - depth * depth).max(0.0).sqrt();
++            let f = 256.0 * zoom;
++            let rpx = if depth > 0.0 { radius * f / depth } else { f32::INFINITY };
++            // In front and within the 320x185 view's half-diagonal widened by the radius, roll ignored.
++            let in_frame = depth > 0.5
++                && depth < 25_000.0
++                && lateral * f / depth <= (160.0f32).hypot(92.5) + rpx;
++            if past {
++                out.push_str(&format!(
++                    "PAST {tick} {i} {:#06x} k={k} L={lens_shift} m={m:.1} cut={cut_m} depth={depth:.1} r={radius:.3} rpx={rpx:.3} in_frame={in_frame} stand_in={}
++",
++                    r.shape, r.stand_in
++                ));
++            }
++        }
++        out.push_str(&format!("TICK {tick} drawn={drawn} L={lens_shift}
++"));
++        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
++            let _ = f.write_all(out.as_bytes());
++        }
++    }
++
+     /// The sprite draws of `draws`, the actor draws [`Self::frame`] made from `actors` in
+     /// order, at `tick`, seen by `camera`.
+     ///
+diff --git a/crates/stunt-core/src/scene/projection.rs b/crates/stunt-core/src/scene/projection.rs
+index 6c9ec71b..e32c95dc 100644
+--- a/crates/stunt-core/src/scene/projection.rs
++++ b/crates/stunt-core/src/scene/projection.rs
+@@ -80,6 +80,9 @@ pub(super) fn lod_gate_holds(camera: &CameraTransform, gate: &VisibilityConditio
+             splitdist,
+             near,
+         } => camera.lod_keeps_subtree(point, ext, splitdist) == near,
++        VisibilityCondition::ScaleCut { point, scale_index } => {
++            camera.scale_cut_keeps(point, scale_index)
++        }
+         _ => true,
+     }
+ }
+diff --git a/crates/stunt-core/src/world/assemble.rs b/crates/stunt-core/src/world/assemble.rs
+index 062301c7..cd7fe248 100644
+--- a/crates/stunt-core/src/world/assemble.rs
++++ b/crates/stunt-core/src/world/assemble.rs
+@@ -14,6 +14,10 @@ use super::scenery::{LodGate, Placement, ScnStop, place_props, reaches_a_pixel};
+ use super::tap_props::{TapFailure, anchored_models};
+ use super::terrain::{GroundPlane, TerrainSurface};
+ 
++/// DEBUG (not committed): each placement record's gates, in record order.
++pub static DBG_REC_GATES: std::sync::Mutex<Vec<(Vec<VisibilityCondition>, i32, f32)>> =
++    std::sync::Mutex::new(Vec::new());
++
+ /// Byte inputs for [`build_world`]; the caller supplies whatever it found on disk.
+ #[derive(Clone, Copy, Debug)]
+ pub struct WorldInputs<'a> {
+@@ -139,6 +143,62 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>)
+         )
+     });
+     let base_y = 0.0;
++    if std::env::var("DBG_SCALE_CUT").ok().and_then(|v| v.parse::<u8>().ok()) == Some(1) {
++        let mut flagged = 0usize;
++        for p in &mut placements.props {
++            let Some(k) = shapes
++                .get(&p.shape)
++                .and_then(SodModelIr::decode)
++                .map(|d| d.header.scale_index)
++            else {
++                continue;
++            };
++            let exp = 22 - i32::from(k);
++            if exp >= 16 {
++                continue;
++            }
++            let reach = 2f32.powi(exp.max(0));
++            let prone = inputs.view_eyes.iter().any(|e| {
++                (0..3).fold(0.0f32, |a, i| a.max((p.position[i] - e[i]).abs())) >= reach
++            });
++            if !prone {
++                continue;
++            }
++            let mut chain = placements
++                .chains
++                .get(p.chain as usize)
++                .cloned()
++                .unwrap_or_default();
++            chain.push(LodGate {
++                raw: p.position.map(|v| v.to_bits() as i32),
++                ext: i32::MIN,
++                splitdist: i32::from(k),
++                near: true,
++            });
++            p.chain = placements.chains.len() as u32;
++            placements.chains.push(chain);
++            flagged += 1;
++        }
++        eprintln!("DBG_SCALE_CUT flagged {flagged} placements");
++    }
++    if let Ok(mut g) = DBG_REC_GATES.lock() {
++        *g = placements
++            .props
++            .iter()
++            .map(|p| {
++                let g = placements
++                    .chains
++                    .get(p.chain as usize)
++                    .map_or_default(|c| c.iter().map(|&gate| lod_condition(gate, base_y)).collect());
++                let shape = shapes.get(&p.shape);
++                let k = shape
++                    .and_then(SodModelIr::decode)
++                    .map_or(-1, |d| i32::from(d.header.scale_index));
++                let r = shape.and_then(SodModelIr::extent).map_or(0.0, |e| e.radius);
++                (g, k, r)
++            })
++            .collect();
++    }
+     let (facing, fixed) = split_view_facing(&placements.props, shapes);
+ 
+     // The cull sizes each prop by the model it draws, so an `OP_TAP` placement is decoded
+diff --git a/crates/stunt-core/src/world/mesh.rs b/crates/stunt-core/src/world/mesh.rs
+index 8aba3a2d..ca78ef32 100644
+--- a/crates/stunt-core/src/world/mesh.rs
++++ b/crates/stunt-core/src/world/mesh.rs
+@@ -485,6 +485,12 @@ fn lod_parent(
+ 
+ /// `gate` as the visibility condition the renderer tests, its node position in `[I1]`.
+ pub(super) fn lod_condition(gate: LodGate, base_y: f32) -> VisibilityCondition {
++    if gate.ext == i32::MIN {
++        return VisibilityCondition::ScaleCut {
++            point: gate.raw.map(|b| f32::from_bits(b as u32)),
++            scale_index: gate.splitdist as u8,
++        };
++    }
+     let [x, y, z] = gate.raw;
+     VisibilityCondition::LodBranch {
+         point: [-(x as f32), -(y as f32) + base_y, z as f32],
+diff --git a/crates/stunt-core/src/world/mod.rs b/crates/stunt-core/src/world/mod.rs
+index b469d88e..e59f9015 100644
+--- a/crates/stunt-core/src/world/mod.rs
++++ b/crates/stunt-core/src/world/mod.rs
+@@ -30,7 +30,7 @@ mod slot_order;
+ mod tap_props;
+ mod terrain;
+ 
+-pub use assemble::{FacingProp, World, WorldInputs, build_world};
++pub use assemble::{DBG_REC_GATES, FacingProp, World, WorldInputs, build_world};
+ pub use mesh::{GROUND_NODE, PropRun};
+ pub use placed::{ArenaSpan, MeshSpans, PlacementRecord, PlacementRecords};
+ pub use probe::ProbeActor;
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 0acbf74e..a40be9be 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -1124,6 +1124,9 @@ impl VisibleWalk<'_> {
+             VisibilityCondition::BeyondDepth { point, depth } => {
+                 self.view.is_none_or(|v| v.view_depth_exceeds(point, depth))
+             }
++            VisibilityCondition::ScaleCut { point, scale_index } => {
++                self.view.is_none_or(|v| v.scale_cut_keeps(point, scale_index))
++            }
+         }
+     }
+ }

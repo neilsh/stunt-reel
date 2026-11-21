@@ -32,6 +32,10 @@ pub(crate) struct Placement {
     /// Index into [`Placements::steps`] of the last partition node on the way to
     /// [`Self::node`]; `None` when no partition node lies above it.
     pub(crate) path: Option<u32>,
+    /// The shape's `scale_index` when `PLAYONE`'s distance cut (image `0x1B28`) may drop the
+    /// prop on some frame, which the renderer then tests per frame
+    /// ([`crate::contracts::VisibilityCondition::ScaleReach`]); `None` when it never can.
+    pub(crate) reach: Option<u8>,
 }
 
 #[cfg(test)]
@@ -46,6 +50,7 @@ impl Placement {
             node: ScnNode(1),
             stand_in: false,
             path: None,
+            reach: None,
         }
     }
 }
@@ -327,9 +332,10 @@ const FOCAL_PIXELS: f32 = 256.0;
 const CORNER_DEPTH_FLOOR: f32 = 0.804;
 
 /// A prop whose bounding radius never covers more than this many pixels along the camera
-/// path is dropped from the world. `PLAYONE` drops far scenery at about this size by a coarser
-/// test, distance against the shape's `scale_index`; on the seven reference films this cull
-/// drops nothing they draw (research/playone-exe/world-scene-residuals.md section 6.4).
+/// path is dropped from the world. `PLAYONE` drops far scenery by another test, distance
+/// against the shape's `scale_index`, which the renderer applies per frame
+/// ([`scale_reach_may_drop`]); on the seven reference films this cull drops nothing they draw
+/// (research/playone-exe/world-scene-residuals.md section 6.4).
 const MIN_PROP_PIXELS: f32 = 0.5;
 
 /// How far the camera path may pass from an `SP_1NODE` with extent `ext` and split distance
@@ -433,6 +439,24 @@ pub(crate) fn reaches_a_pixel(
     }
     let depth = CORNER_DEPTH_FLOOR * path_distance(position, eyes);
     radius * FOCAL_PIXELS * zoom.max(1.0) >= MIN_PROP_PIXELS * depth.max(1.0)
+}
+
+/// Whether `PLAYONE`'s distance cut (image `0x1B28`) may drop a shape of `scale_index` at
+/// `position` somewhere along the camera path through `eyes`: whether some eye puts the
+/// largest of its coordinates relative to `position` at `2^(22 - scale_index)` metres or more,
+/// where the cut falls at the smallest lens shift `0x229E`, 0. False with no eyes.
+///
+/// The largest coordinate is convex along each segment between eyes, so the eyes bound it.
+pub(crate) fn scale_reach_may_drop(scale_index: u8, position: [f32; 3], eyes: &[[f32; 3]]) -> bool {
+    let reach = 2f32.powi(22i32.saturating_sub(i32::from(scale_index)));
+    eyes.iter().any(|eye| {
+        position
+            .iter()
+            .zip(eye)
+            .map(|(p, e)| (p - e).abs())
+            .fold(0.0f32, f32::max)
+            >= reach
+    })
 }
 
 /// One scenery walk: its inputs, what it has placed, and the state shared by every frame.
@@ -549,6 +573,7 @@ impl ScnWalk<'_> {
                 // Only `SP_1NODE` (opcode 2) and `SP_LEAF` place a shape.
                 stand_in: self.words.get(ni) == Some(&2),
                 path,
+                reach: None,
             });
         }
     }

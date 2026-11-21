@@ -70,8 +70,8 @@ pub(super) fn mat4_mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
     out
 }
 
-/// Whether `camera` draws what stands behind `gate`: a `LodBranch` holds as the world's
-/// gate nodes do in the renderer; any other condition holds.
+/// Whether `camera` draws what stands behind `gate`: a `LodBranch` or `ScaleReach` holds as
+/// the world's gate nodes do in the renderer; any other condition holds.
 pub(super) fn lod_gate_holds(camera: &CameraTransform, gate: &VisibilityCondition) -> bool {
     match *gate {
         VisibilityCondition::LodBranch {
@@ -80,6 +80,9 @@ pub(super) fn lod_gate_holds(camera: &CameraTransform, gate: &VisibilityConditio
             splitdist,
             near,
         } => camera.lod_keeps_subtree(point, ext, splitdist) == near,
+        VisibilityCondition::ScaleReach { point, scale_index } => {
+            camera.scale_reach_keeps(point, scale_index)
+        }
         _ => true,
     }
 }
