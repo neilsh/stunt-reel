@@ -499,3 +499,140 @@ def test_run_stride_plan_rejects_a_clock_sparser_than_a_window() -> None:
             layout=playone.UNPATCHED,
             every=luagen.WINDOW_SPAN + 1,
         )
+
+
+def _stride_clock() -> tuple[tuple[int, int], ...]:
+    """Clock samples every CLOCK_EVERY frames, two film ticks per frame."""
+    return tuple((FIRST + luagen.CLOCK_EVERY * n, 12 * n) for n in range(20))
+
+
+class _StrideScripts:
+    """A stride plan's fake film: answers its clock and window scripts and logs each pass."""
+
+    def __init__(
+        self,
+        clock: Sequence[tuple[int, int]],
+        *,
+        empty: Sequence[int] = (),
+        skew_at: int | None = None,
+        block_start: int | None = None,
+    ) -> None:
+        self.clock = clock
+        self.empty = set(empty)
+        self.skew_at = skew_at
+        self.block_start = block_start
+        #: ("run"|"return", window start) per pass and ("done", pass number) per reported pass.
+        self.events: list[tuple[str, int]] = []
+        self.release = threading.Event()
+
+    def run_script(self, text: str, *, timeout: float) -> dict[str, Any]:  # noqa: ARG002
+        if "out.clock" in text:
+            return {"clock": "x" + ",".join(str(tick) for _, tick in self.clock)}
+        listed = re.search(r"local starts, goals = \{([^}]*)\}, \{[^}]*\}", text)
+        assert listed is not None
+        starts = [int(value) for value in listed.group(1).split(", ")]
+        first_frame = self.clock[0][0]
+        self.events.append(("run", starts[0]))
+        if starts[0] == self.block_start:
+            # Held until a later pass reports: the output must show completion order.
+            assert self.release.wait(5), "the delayed pass never saw another finish"
+        out: dict[str, Any] = {}
+        entries: list[str] = []
+        for start in starts:
+            for frame in range(start, start + luagen.WINDOW_SPAN):
+                tick = 2 * (frame - first_frame)
+                if start == self.skew_at:
+                    tick += plan.MAX_WINDOW_SKEW_TICKS + 1
+                mask = luagen.TRACE_CHANGED | luagen.TRACE_COMPOSED
+                entries.append(f"{frame}:{tick}:{tick + 100}:{mask}")
+            if start not in self.empty:
+                dumped = start + luagen.CLOCK_EVERY
+                out[f"p{dumped}"] = "x" + PAGE.hex()
+                out[f"c{dumped}"] = "x" + (bytes(range(64)) * 12).hex()
+        out["trace"] = "x" + ",".join(entries)
+        self.events.append(("return", starts[0]))
+        return out
+
+
+def _stride_opener(scripts: _StrideScripts) -> Callable[[], Any]:
+    @contextmanager
+    def opener() -> Iterator[_StrideScripts]:
+        yield scripts
+
+    return opener
+
+
+def test_run_stride_plan_reports_each_window_pass_from_its_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pass that finishes first reports first; collecting in submit order would lag it."""
+    clock = _stride_clock()
+    windows = plan.choose_windows(clock, stride=10, limit=3, floor=FIRST + luagen.WINDOW_LEAD)
+    assert len(windows) == 3
+    # One window per pass, so a "done" line's pass number names one runner call.
+    monkeypatch.setattr(plan, "chunk", lambda frames: [[window] for window in frames])
+    scripts = _StrideScripts(clock, empty=[windows[2].start], block_start=windows[0].start)
+    lines: list[str] = []
+
+    def report(line: str) -> None:
+        lines.append(line)
+        done = re.fullmatch(r"window pass (\d+)/(\d+) done: (\d+) frames", line)
+        if done is not None:
+            scripts.events.append(("done", int(done.group(1))))
+            if int(done.group(1)) == 2:
+                scripts.release.set()
+
+    result = plan.run_stride_plan(
+        _stride_opener(scripts),
+        keys=KEYS,
+        first=FIRST,
+        last=FIRST + 400,
+        stride=10,
+        limit=3,
+        end_hold=10,
+        layout=playone.UNPATCHED,
+        progress=report,
+        parallel=3,
+    )
+
+    assert result.clock == clock  # the clock pass is unchanged
+    assert sorted(result.dumps) == [window.start + luagen.CLOCK_EVERY for window in windows[:2]]
+    done = [line for line in lines if " done: " in line]
+    assert len(done) == 3
+    assert set(done) == {
+        "window pass 1/3 done: 1 frames",
+        "window pass 2/3 done: 1 frames",
+        "window pass 3/3 done: 0 frames",
+    }
+    # The first pass was held until the second reported, so it cannot have been said at submit.
+    assert scripts.events.index(("done", 2)) < scripts.events.index(("done", 1))
+    for number, window in enumerate(windows, start=1):
+        assert scripts.events.index(("return", window.start)) < scripts.events.index(
+            ("done", number)
+        )
+
+
+def test_a_window_pass_that_diverges_reports_no_done_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = _stride_clock()
+    windows = plan.choose_windows(clock, stride=10, limit=2, floor=FIRST + luagen.WINDOW_LEAD)
+    monkeypatch.setattr(plan, "chunk", lambda frames: [[window] for window in frames])
+    scripts = _StrideScripts(clock, skew_at=windows[1].start)
+    lines: list[str] = []
+
+    with pytest.raises(plan.PlanDivergence, match="window pass disagrees"):
+        plan.run_stride_plan(
+            _stride_opener(scripts),
+            keys=KEYS,
+            first=FIRST,
+            last=FIRST + 400,
+            stride=10,
+            limit=2,
+            end_hold=10,
+            layout=playone.UNPATCHED,
+            progress=lines.append,
+            parallel=2,
+        )
+
+    assert [line for line in lines if " done: " in line] == ["window pass 1/2 done: 1 frames"]
