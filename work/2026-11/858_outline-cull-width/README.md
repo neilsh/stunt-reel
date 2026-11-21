@@ -2,7 +2,7 @@
 title: "Outline cull: spare back-face slivers by width, as PLAYONE's row test does, not by area"
 started: 2026-11-20
 issue: 858
-outcome: "Not built: no reference capture tells the width test from the area test, so the issue moved to .out-of-scope/outline-cull-width.md."
+outcome: "Not built: none of the 13 frames searched consistently tells the width test from the area test, so the issue moved to .out-of-scope/outline-cull-width.md."
 ---
 
 # Outline cull: spare back-face slivers by width, as PLAYONE's row test does, not by area
