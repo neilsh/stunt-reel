@@ -16,50 +16,22 @@ from pathlib import Path
 
 import pytest
 
+from git_helpers import run_git
 from stunt_reel import worktree_git
-from stunt_reel.git_env import isolated_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 GIT = shutil.which("git")
 needs_git = pytest.mark.skipif(GIT is None, reason="git is not on PATH")
 
-#: Every git call carries its identity, and needs no key for a commit. ``core.longpaths``
-#: because the fixtures sit under the checkout's per-run basetemp, whose paths run long.
-_GIT_ENV = {
-    "GIT_AUTHOR_NAME": "t",
-    "GIT_AUTHOR_EMAIL": "t@example.invalid",
-    "GIT_COMMITTER_NAME": "t",
-    "GIT_COMMITTER_EMAIL": "t@example.invalid",
-    "GIT_CONFIG_COUNT": "2",
-    "GIT_CONFIG_KEY_0": "commit.gpgSign",
-    "GIT_CONFIG_VALUE_0": "false",
-    "GIT_CONFIG_KEY_1": "core.longpaths",
-    "GIT_CONFIG_VALUE_1": "true",
-}
-
 
 def _git(repo: Path, *args: str, check: bool = False) -> subprocess.CompletedProcess[str]:
-    assert GIT is not None
-    return subprocess.run(  # noqa: S603 - fixed test arguments
-        [GIT, *args],
-        cwd=repo,
-        # A hook's GIT_DIR would otherwise send git to the caller's repository (issue #520).
-        env={
-            **isolated_env(keep_index=False),
-            # Stop discovery at the fixture's parent, so a failed init cannot walk up into the
-            # checkout that holds the tests (issue #520).
-            "GIT_CEILING_DIRECTORIES": str(repo.parent),
-            **_GIT_ENV,
-        },
-        capture_output=True,
-        text=True,
-        check=check,
-    )
+    """Run git in the fixture repository at *repo*, never the caller's (issues #520, #868)."""
+    return run_git(repo, *args, check=check)
 
 
 def _repo(path: Path) -> Path:
-    """A scratch repository at *path*; the identity rides in ``_GIT_ENV``, never its config."""
+    """A scratch repository at *path*; the identity rides in the environment, never its config."""
     _git(path, "init", "-q", check=True)
     return path
 

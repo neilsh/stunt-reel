@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from git_helpers import run_git
 from stunt_reel import dataroot, worktree_git, worktree_reap
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
@@ -47,33 +48,9 @@ detached
 """
 
 
-#: Every git call that can create a commit (rebase, merge) needs an identity; CI has no global one.
-#: ``core.longpaths`` because the repos sit under the checkout's per-run basetemp: in a worktree
-#: under ``.claude/worktrees/<slug>`` with xdist's ``popen-gwN`` level, ``git rebase`` stats an
-#: 81-character ``<sha>...<sha>`` range past Windows' 260-character limit ("Filename too long").
-_GIT_ENV = {
-    "GIT_AUTHOR_NAME": "t",
-    "GIT_AUTHOR_EMAIL": "t@example.invalid",
-    "GIT_COMMITTER_NAME": "t",
-    "GIT_COMMITTER_EMAIL": "t@example.invalid",
-    "GIT_CONFIG_COUNT": "1",
-    "GIT_CONFIG_KEY_0": "core.longpaths",
-    "GIT_CONFIG_VALUE_0": "true",
-}
-
-
 def _run_git(cwd: Path, *args: str) -> str:
-    git = shutil.which("git")
-    assert git is not None, "git is not on PATH"
-    result = subprocess.run(  # noqa: S603
-        [git, *args],
-        cwd=cwd,
-        env={**os.environ, **_GIT_ENV},
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout
+    """Run git in the fixture repository at *cwd*, pinned to its own git directory (issue #868)."""
+    return run_git(cwd, *args, check=True).stdout
 
 
 def _init_repo(tmp_path: Path) -> Path:
@@ -84,10 +61,6 @@ def _init_repo(tmp_path: Path) -> Path:
     _run_git(repo, "add", "a.txt")
     _run_git(
         repo,
-        "-c",
-        "user.email=t@example.invalid",
-        "-c",
-        "user.name=t",
         "commit",
         "-qm",
         "init",
@@ -360,10 +333,6 @@ def test_reap_one_keeps_a_tracked_symlink_and_reaps(tmp_path: Path) -> None:
     _run_git(repo, "add", "skills")
     _run_git(
         repo,
-        "-c",
-        "user.email=t@example.invalid",
-        "-c",
-        "user.name=t",
         "commit",
         "-qm",
         "tracked symlink",
@@ -401,10 +370,6 @@ def _tracked_symlink_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     _run_git(repo, "add", "skills")
     _run_git(
         repo,
-        "-c",
-        "user.email=t@example.invalid",
-        "-c",
-        "user.name=t",
         "commit",
         "-qm",
         "tracked symlink",
@@ -461,10 +426,6 @@ def test_reap_one_unlinks_a_junction_over_a_tracked_directory_before_stashing(
     _run_git(repo, "add", "skills")
     _run_git(
         repo,
-        "-c",
-        "user.email=t@example.invalid",
-        "-c",
-        "user.name=t",
         "commit",
         "-qm",
         "tracked directory",
@@ -560,10 +521,6 @@ def test_reap_one_refuses_when_the_tracked_links_cannot_be_listed(
     _run_git(repo, "add", "skills")
     _run_git(
         repo,
-        "-c",
-        "user.email=t@example.invalid",
-        "-c",
-        "user.name=t",
         "commit",
         "-qm",
         "tracked symlink",
@@ -641,10 +598,6 @@ def test_candidates_keep_unmerged_and_outside_pool(tmp_path: Path) -> None:
     _run_git(pool / "unmerged", "add", "b.txt")
     _run_git(
         pool / "unmerged",
-        "-c",
-        "user.email=t@example.invalid",
-        "-c",
-        "user.name=t",
         "commit",
         "-qm",
         "work",
@@ -791,10 +744,6 @@ def _commit(cwd: Path, name: str) -> str:
     _run_git(cwd, "add", name)
     _run_git(
         cwd,
-        "-c",
-        "user.email=t@example.invalid",
-        "-c",
-        "user.name=t",
         "commit",
         "-qm",
         name,
@@ -979,10 +928,6 @@ def test_cherry_does_not_take_a_branch_that_moved_on_after_its_merge(tmp_path: P
         _run_git(repo, "add", name)
         _run_git(
             repo,
-            "-c",
-            "user.email=t@example.invalid",
-            "-c",
-            "user.name=t",
             "commit",
             "-qm",
             f"main: {name}",
