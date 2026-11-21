@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import merge_bar  # noqa: E402
 import work_queue as q  # noqa: E402
+
+from stunt_reel import class_agreement  # noqa: E402
 
 
 def _pr(number: int, head: str, base: str = "main", **extra: Any) -> dict[str, Any]:
@@ -416,3 +419,43 @@ def test_a_queue_that_cannot_find_the_primary_checkout_says_so(
     assert q.main() == 0
     err = capsys.readouterr().err
     assert err == "queue: free disk unknown: git did not name the primary checkout\n"
+
+
+@pytest.fixture(autouse=True)
+def _no_agreement_line(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    """Keeps the real checkout's agreement file out of every test but the ones on it."""
+    if "agreement" not in request.node.name:
+        monkeypatch.setattr(q, "agreement_line", lambda: None)
+
+
+def _pin(repo: Path, crates: str, date: dt.date) -> None:
+    films = {"ctry": class_agreement.FilmAgreement("ctry", 1, 0, 0.0, 0, 0, {})}
+    agreement = class_agreement.Agreement(crates, date, "GPU", "1", "llvmpipe", "2", films)
+    path = repo / class_agreement.AGREEMENT_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(class_agreement.format_agreement(agreement, ["ctry"]), encoding="utf-8")
+
+
+def test_queue_prints_agreement_due_line(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _pin(tmp_path, "9" * 40, dt.date(2026, 11, 1))
+    monkeypatch.setattr(q, "renderer_commits_since", lambda *_, **__: ["c"] * 5)
+    line = q.agreement_line(tmp_path)
+    assert line == "agreement batch due: 5 renderer commits since 9999999"
+    monkeypatch.setattr(q, "agreement_line", lambda: line)
+    _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[]]})
+    monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
+    monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path / "missing")
+    assert q.main() == 0
+    assert "agreement batch due: 5 renderer commits" in capsys.readouterr().out
+
+
+def test_queue_prints_nothing_when_agreement_not_due(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _pin(tmp_path, "9" * 40, dt.date(2026, 11, 20))
+    monkeypatch.setattr(q, "renderer_commits_since", lambda *_, **__: [])
+    assert q.agreement_line(tmp_path, dt.date(2026, 12, 31)) is None
+    monkeypatch.setattr(q, "renderer_commits_since", lambda *_, **__: ["c"])
+    assert q.agreement_line(tmp_path, dt.date(2026, 11, 21)) is None

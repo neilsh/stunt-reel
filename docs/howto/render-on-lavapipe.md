@@ -77,6 +77,7 @@ Copy-Item build/parity/report/ctry_current build/parity/report/ctry_lavapipe -Re
 
 Without a `[ctry]` table in [`expected/lavapipe.toml`](../../research/parity/expected/lavapipe.toml), the run's comparison line says `no expected score for lavapipe yet: add it`; #455 adds those rows.
 Once a row exists, `comparison_line` in [`expected_scores.py`](../../python/stunt_reel/expected_scores.py) checks the adapter name before `changed_since`: a row measured on an adapter with another name gives `not comparable: other adapter (expected on {expected.adapter})`, and only a row on the same adapter name, where the checkout's `crates/` tree differs from the row's recorded one, gives `crates/ tree {found[:7]}, measured on {expected.crates[:7]}: awaiting a repin or catch-up repin of this class`.
+A `gpu` row ends `awaiting the next agreement batch` instead (#908).
 The first is the likely case here, since #455's cloud rows come from Ubuntu's Mesa build and its llvmpipe need not carry the same LLVM version; neither line is a verdict on the delta.
 
 ## 5. Render the canonical lavapipe under WSL

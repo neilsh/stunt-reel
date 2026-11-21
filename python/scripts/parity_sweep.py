@@ -16,7 +16,10 @@ Usage::
     mise run sweep -- --reuse <retime root> [--films ctry,intro] [--retime N]
 
 stdout carries only the ``--target`` echo, the table and the winner line; progress, the
-listed frames and the picture paths go to stderr. The baseline is the variant of each
+listed frames and the picture paths go to stderr.
+So does a line for each film whose gain lies mostly on ticks the pinned class agreement lists as
+hot, since that gain may not carry over to the GPU.
+ The baseline is the variant of each
 ``--var``'s first value, and every other variant is judged against it once all have finished (``stunt_reel.parity_judge``).
 With ``--track`` the winner line gives the adoption rule's verdict (loop-rules.md) and the
 baseline never wins; ``--track`` and ``--target`` refuse a ``--films`` subset, ``--reuse`` and
@@ -60,6 +63,13 @@ import tomli_w
 from cli import add_parity_options, parity_options, resolve_jobs
 
 from stunt_reel import parity_layout, references, work_items
+from stunt_reel.class_agreement import (
+    AGREEMENT_FILE,
+    HOT_SHARE_LIMIT,
+    HOT_TICK_PIXELS,
+    hot_share,
+    read_agreement,
+)
 from stunt_reel.matched_frames import Reference
 from stunt_reel.parity_artifacts import (
     Geometry,
@@ -472,6 +482,34 @@ def draw_film(
     return written
 
 
+def hot_lines(
+    who: str, deltas: dict[str, dict[int, float]], agreement_file: Path | None = None
+) -> list[str]:
+    """A line for each film whose SSIM gain (*deltas*, by film, then tick) lies mostly on hot ticks.
+
+    A hot tick is one the pinned class agreement lists for the film: lavapipe and the GPU draw it
+    over :data:`HOT_TICK_PIXELS` pixels apart, so a gain there may not carry over to the GPU.
+    No line without the agreement file or for a film it does not hold; one saying so for a file
+    that cannot be read.
+    """
+    try:
+        agreement = read_agreement(agreement_file or REPO_ROOT / AGREEMENT_FILE)
+    except (OSError, ValueError) as err:
+        return [f"no hot-tick check: {err}"]
+    if agreement is None:
+        return []
+    lines = []
+    for film, by_tick in deltas.items():
+        pinned = agreement.films.get(film)
+        share = None if pinned is None else hot_share(by_tick, pinned.hot)
+        if share is not None and share > HOT_SHARE_LIMIT:
+            lines.append(
+                f"{who}: {film}: {share:.0%} of its SSIM gain lies on ticks where lavapipe and "
+                f"the GPU differ by over {HOT_TICK_PIXELS} pixels; check it on the GPU"
+            )
+    return lines
+
+
 def write_pictures(
     decision: Decision,
     plans: list[SweepPlan],
@@ -747,6 +785,15 @@ def main(argv: list[str] | None = None) -> int:
         )
     for note in notes:
         print(f"[sweep] {note}", file=sys.stderr)
+    described = decision.winner if decision.track is not None and decision.winner else decision.best
+    judgement = decision.judgements.get(described.index) if described is not None else None
+    if described is not None and judgement is not None:
+        deltas = {
+            film: {delta.tick: delta.ssim for delta in join.deltas}
+            for film, join in judgement.joins.items()
+        }
+        for note in hot_lines(label(names, described.values), deltas):
+            print(f"[sweep] {note}", file=sys.stderr)
     line = out[-1]
     if best is not None:
         workdir = scratch / f"v{best.index:03d}"

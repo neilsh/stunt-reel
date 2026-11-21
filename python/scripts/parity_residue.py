@@ -26,67 +26,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
+from stunt_reel.class_agreement import CURRENT_SUFFIX, Residue, compare, film_stores
 from stunt_reel.parity_artifacts import RenderStore
-
-#: Suffix of a film's render store directory under a render root.
-CURRENT_SUFFIX = "_current"
-#: Maps a byte to 1 when it is not zero, so one ``translate`` counts the set bytes of a XOR.
-_NONZERO = bytes(bool(value) for value in range(256))
-
-
-@dataclass(frozen=True)
-class Residue:
-    """One film's differing-pixel count at each tick its two stores hold."""
-
-    film: str
-    ticks: list[int]
-    counts: list[int]
-
-    def differing(self) -> int:
-        """How many ticks differ at all."""
-        return sum(1 for count in self.counts if count)
-
-    def mean(self) -> float:
-        """The mean differing pixels per tick compared."""
-        return sum(self.counts) / len(self.counts) if self.counts else 0.0
-
-    def largest(self) -> tuple[int, int] | None:
-        """The largest count and its tick, or ``None`` when no tick was compared."""
-        if not self.counts:
-            return None
-        at = self.counts.index(max(self.counts))
-        return max(self.counts), self.ticks[at]
-
-    def at(self, tick: int) -> int | None:
-        """The count at *tick*, or ``None`` when the stores do not hold it."""
-        return self.counts[self.ticks.index(tick)] if tick in self.ticks else None
-
-
-def differing_pixels(left: bytes, right: bytes) -> int:
-    """How many pixels' index bytes differ between two planes of one raster."""
-    if len(left) != len(right):
-        raise ValueError(f"planes of {len(left)} and {len(right)} bytes")
-    if left == right:
-        return 0
-    xor = int.from_bytes(left, "little") ^ int.from_bytes(right, "little")
-    return xor.to_bytes(len(left), "little").translate(_NONZERO).count(1)
-
-
-def film_stores(root: Path) -> dict[str, Path]:
-    """Each ``<film>_current`` render store under *root*, keyed by film name."""
-    return {
-        child.name.removesuffix(CURRENT_SUFFIX): child
-        for child in sorted(root.iterdir())
-        if child.is_dir() and child.name.endswith(CURRENT_SUFFIX)
-    }
-
-
-def compare(left: RenderStore, right: RenderStore, ticks: list[int]) -> list[int]:
-    """The differing-pixel count at each of *ticks*, read from both stores' index planes."""
-    return [differing_pixels(left.frame(tick).indices, right.frame(tick).indices) for tick in ticks]
 
 
 def describe_missing(name: str, left: list[int], right: list[int]) -> str:
