@@ -243,6 +243,12 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 description = "Regenerate research/parity/expected/<class>.toml from every reference film's current parity report, measured on this clean crates/ tree; the class defaults to the reports' adapter class; writes nothing and says why otherwise (mise run parity-repin -- [--class gpu|lavapipe])"
 run = "uv run python python/scripts/parity_repin.py"
 
+[tasks.agreement]
+depends = ["ensure"]
+description = "Class agreement between lavapipe and the GPU (#908): measure two render roots, pin the last measurement with the gpu repin, or run the unattended batch (mise run agreement -- measure --gpu ROOT --lavapipe ROOT | pin [--accept REASON] | batch [--if-due] [--post] [--lavapipe-command CMD] [--lavapipe-driver-command CMD])"
+run = "uv run python python/scripts/parity_agreement.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
+
 [tasks.parity-bench]
 description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry --recapture DIR [--render DIR] | run --films ctry,land (recapture-noise table) | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] [--batch] | errors-disputes --film ctry | errors-score --film ctry [--against FILE] [--batch] | errors-example --film ctry --tick T --category ID | errors-table --films vault-ctry,vault-land)"
 run = "uv run python python/scripts/parity_bench.py"
