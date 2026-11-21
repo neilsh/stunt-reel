@@ -41,3 +41,15 @@
   - The `stunt-render` GPU tests (`STUNT_REQUIRE_GPU=1 mise run test-gpu`) pass on the RTX 4070, the ground-decal tests at 1 to 8 km included.
 - **Verdict**: adopted on #637's criterion, backend agreement, with every guard passing; the score branch does not adopt. LAND 415 and 416 barely move, so the terrain against prop tie there is not depth rounding of this kind.
 - **Lives in**: [ADR 0054](../../../docs/adr/0054-depth-is-reversed-and-infinite.md); [`lavapipe.md`](../../../research/parity/lavapipe.md) section 5.
+
+## 2026-11-21: The committed code on main after #690, both backends
+
+- **Question**: whether the committed `Depth24Plus` change, rebased onto `main` `b028f7d3` (#690's `OP_PERFDISK` skip in actor shadows, which `5fbfe844` lacked), still lowers the residue on every film and keeps GPU parity.
+- **Method**: as the first entry of this date, with `main`'s binary from `mise run build-at -- origin/main` and the branch at `crates` `97c0f90`. Residue: `mise run parity-residue` on each tree; totals of differing pixels by a one-off script over the four stores of each film, these and the earlier pair. Scores: `mise run judge -- <main gpu reports> <branch gpu reports> --track heuristic`.
+- **Result**:
+  - Mean differing pixels per tick, `main` then branch, are those of the entry above to one decimal on every film: CTRY 12.2 → 6.3, INTRO 12.8 → 8.9, LAND 35.7 → 26.2, BALLOON 19.9 → 8.9, TRAINTNL 20.7 → 5.2, BOMB 14.7 → 11.6, LOCATION 62.0 → 29.8. Each film's total moved by at most 8 pixels against the pair on `5fbfe844` (BOMB 43,078 → 43,086 after).
+  - #690 moved each backend's index plane from its own on `5fbfe844` on 744 to 747 INTRO ticks, by at most 17 pixels a tick, and on at most 287 ticks of each other film, without changing the residue beyond the totals above.
+  - The ties of `lavapipe.md` section 5 have the counts of the entry above at every tick.
+  - GPU judge: the same as the entry above, worst frame −0.0049 (LOCATION 3895), 7 frames up by more than 0.005 (LAND 628, LOCATION 6), winner line `none adopts (best run=candidate: film means short of +0.002 each or +0.004 on one)`; every film's `mise run parity` line matches the earlier run.
+- **Verdict**: adopted as before; `expected/gpu.toml` repinned on `crates` `97c0f90`.
+- **Lives in**: [ADR 0054](../../../docs/adr/0054-depth-is-reversed-and-infinite.md); [`lavapipe.md`](../../../research/parity/lavapipe.md) section 5.

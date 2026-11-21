@@ -105,7 +105,7 @@ With eye-relative transforms (#636), lavapipe differs from the GPU by 12.31 to 6
 _Source: [Eye-relative transforms on both backends](../../work/2026-11/636_eye-relative-transforms/journal.md#2026-11-16-eye-relative-transforms-on-both-backends)._
 
 **Reversed, infinite depth (#637).**
-`[Bounded Observation]`, 2026-11-21, mesa-dist-win 25.2.8 against the RTX 4070, on `main` `5fbfe844` before and that tree plus the change after.
+`[Bounded Observation]`, 2026-11-21, mesa-dist-win 25.2.8 against the RTX 4070, on `main` `5fbfe844` before and that tree plus the change after; re-measured on `main` `b028f7d3` (#690) with the same figures to one decimal.
 Depth is now `0.5 m / w`, reversed, in `Depth24Plus` ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md)): clip z is the constant near distance, so no rounded projection term reaches it.
 Mean index-plane pixels differing per tick, GPU against lavapipe, over every tick of each film, with the same projection in `Depth32Float` beside it:
 
@@ -123,7 +123,7 @@ The largest ties left move less: LOCATION 3815 3,131 to 1,490 pixels and 3830 2,
 In `Depth32Float`, on the four films tallied (BALLOON, BOMB, LAND, TRAINTNL), most of the extra pixels were lavapipe's own plane moving, between polygons of one layer (on BALLOON the balloon's actor layer, 14.8 to 40.1 pixels per tick), and at 13 sampled ticks no decal bias constant from 0 to 1,024 or slope from 2 to 8 changed that by more than 7 pixels a tick.
 `[Supported Inference]`: rounding the interpolated depth to a 24-bit step absorbs the small differences between the two rasterizers' depth interpolation that f32 keeps, so coplanar ties resolve by the compare function alike on both.
 GPU parity moves inside every guard (no film down by 0.002, no frame by 0.005).
-_Source: [Reversed depth in Depth24Plus over every tick](../../work/2026-11/637_reversed-z/journal.md#2026-11-21-reversed-depth-in-depth24plus-over-every-tick-both-backends); [in Depth32Float](../../work/2026-11/637_reversed-z/journal.md#2026-11-21-reversed-depth-in-depth32float-over-every-tick-both-backends); [bias or format at 13 ticks](../../work/2026-11/637_reversed-z/journal.md#2026-11-21-bias-or-format-at-13-ticks)._
+_Source: [Reversed depth in Depth24Plus over every tick](../../work/2026-11/637_reversed-z/journal.md#2026-11-21-reversed-depth-in-depth24plus-over-every-tick-both-backends); [on main after #690](../../work/2026-11/637_reversed-z/journal.md#2026-11-21-the-committed-code-on-main-after-690-both-backends); [in Depth32Float](../../work/2026-11/637_reversed-z/journal.md#2026-11-21-reversed-depth-in-depth32float-over-every-tick-both-backends); [bias or format at 13 ticks](../../work/2026-11/637_reversed-z/journal.md#2026-11-21-bias-or-format-at-13-ticks)._
 
 **Eye-relative transforms (#636).**
 `[Bounded Observation]`, 2026-11-16, mesa-dist-win 25.2.8 against the RTX 4070, on `origin/main` `3a7afb76` before and that tree plus the change after.

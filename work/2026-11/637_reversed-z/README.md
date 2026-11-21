@@ -13,3 +13,4 @@ outcome: ""
 
 - 2026-11-16: implemented in `Depth32Float`; single-tick checks in [journal.md](journal.md).
 - 2026-11-21: measured over every tick against `main` `5fbfe844`: `Depth32Float` raised the GPU-lavapipe residue on five films; the same projection in `Depth24Plus` lowered it on all seven, with GPU parity inside every guard ([ADR 0054](../../../docs/adr/0054-depth-is-reversed-and-infinite.md); [journal.md](journal.md)).
+- 2026-11-21: rebased onto `main` `b028f7d3` (#690) and re-measured: the same residue and GPU scores to the figures quoted; `expected/gpu.toml` repinned on `crates` `97c0f90` ([journal.md](journal.md)).
