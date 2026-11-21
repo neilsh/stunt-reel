@@ -310,6 +310,16 @@ def test_the_git_repository_variables_are_the_ones_git_lists() -> None:
     } <= gate._git_local_env_vars()
 
 
+def test_the_gate_keeps_an_xdist_group_on_one_worker() -> None:
+    """``loadgroup`` shares a marked group; a scoped run stays serial in its own process."""
+    assert gate.STEP_ENV["test-py"]["PYTEST_ADDOPTS"].split() == [
+        "-n",
+        "auto",
+        "--dist",
+        "loadgroup",
+    ]
+
+
 def test_docs_step_requires_the_kaitai_compiler() -> None:
     assert gate.STEP_ENV["test-py-docs"]["STUNT_REQUIRE_KSC"] == "1"
     assert (

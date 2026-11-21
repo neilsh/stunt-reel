@@ -44,8 +44,8 @@ def ksc_command() -> list[str] | None:
 def compiler_version() -> str | None:
     """Return the compiler version banner, or None when the compiler is unavailable.
 
-    Cached for the process: every call starts the compiler's JVM, and the banner cannot
-    change while ``PATH`` does not. A test that fakes the compiler, or a caller that
+    Cached for the process, because reading the banner starts the compiler's JVM; the banner
+    cannot change while ``PATH`` does not. A test that fakes the compiler, or a caller that
     installs one, calls ``compiler_version.cache_clear()`` first.
     """
     ksc = ksc_command()

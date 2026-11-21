@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +25,10 @@ pytestmark = pytest.mark.docs
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# Every test that consumes the shared verification carries this group, which the gate's
+# `--dist loadgroup` keeps on one worker.
+CATALOG_GROUP = "kaitai-catalog"
+
 
 def _counting_ksc_command(starts: list[list[str] | None]) -> Callable[[], list[str] | None]:
     """Return the compiler launcher resolver wrapped to record each start it resolves."""
@@ -35,6 +40,43 @@ def _counting_ksc_command(starts: list[list[str] | None]) -> Callable[[], list[s
         return command
 
     return counting_command
+
+
+def _xdist_groups(task: Callable[..., object]) -> set[str]:
+    """The xdist group names the decorator marked one test with."""
+    groups: set[str] = set()
+    for mark in getattr(task, "pytestmark", []):
+        if mark.name == "xdist_group" and mark.args and isinstance(mark.args[0], str):
+            groups.add(mark.args[0])
+    return groups
+
+
+def _compiler_is_unavailable(starts: list[list[str] | None]) -> bool:
+    """True when the verification recorded no start, or its first found no compiler."""
+    return not starts or starts[0] is None
+
+
+# A child interpreter's sitecustomize: record each compiler start it makes, for the CLI test.
+_CHILD_START_COUNTER = r'''"""Count this child interpreter's compiler starts for the parent test."""
+import os
+import sys
+
+_log = os.environ.get("STUNT_KSC_START_LOG")
+_root = os.environ.get("STUNT_KSC_PYTHON_ROOT")
+if _log and _root:
+    sys.path.insert(0, _root)
+    from stunt_reel import kaitai
+
+    _resolved = kaitai.ksc_command
+
+    def _counting_ksc_command():
+        command = _resolved()
+        with open(_log, "a", encoding="utf-8") as stream:
+            print("start" if command is not None else "none", file=stream)
+        return command
+
+    kaitai.ksc_command = _counting_ksc_command
+'''
 
 
 @pytest.fixture(scope="session")
@@ -122,6 +164,7 @@ def test_formats_catalog_link_integrity() -> None:
     assert result.passed, f"Link integrity check failed: {result.errors}"
 
 
+@pytest.mark.xdist_group(CATALOG_GROUP)
 def test_formats_catalog_synthetic_fixture_consistency(
     synthetic_fixture_result: verify_formats_docs.VerificationResult,
 ) -> None:
@@ -131,6 +174,7 @@ def test_formats_catalog_synthetic_fixture_consistency(
     )
 
 
+@pytest.mark.xdist_group(CATALOG_GROUP)
 def test_formats_catalog_full_run(
     monkeypatch: pytest.MonkeyPatch,
     synthetic_fixture_result: verify_formats_docs.VerificationResult,
@@ -147,15 +191,32 @@ def test_formats_catalog_full_run(
     assert results[-1] is synthetic_fixture_result
 
 
-def test_formats_catalog_cli_execution() -> None:
-    """Verify CLI execution of verify_formats_docs.py returns exit code 0."""
+def test_formats_catalog_cli_execution(tmp_path: Path) -> None:
+    """Run the CLI and count the three compiler starts its child makes."""
     script_path = SCRIPTS_DIR / "verify_formats_docs.py"
+    (tmp_path / "sitecustomize.py").write_text(_CHILD_START_COUNTER, encoding="utf-8")
+    start_log = tmp_path / "compiler-starts.log"
+    pythonpath = [str(tmp_path)]
+    if inherited := os.environ.get("PYTHONPATH"):
+        pythonpath.append(inherited)
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join(pythonpath),
+        "STUNT_KSC_START_LOG": str(start_log),
+        "STUNT_KSC_PYTHON_ROOT": str(REPO_ROOT / "python"),
+    }
     cmd = [sys.executable, str(script_path), "--root", str(REPO_ROOT)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
+    proc = subprocess.run(  # noqa: S603
+        cmd, capture_output=True, text=True, check=False, env=env
+    )
     assert proc.returncode == 0, (
         f"CLI execution failed with code {proc.returncode}:\n{proc.stdout}\n{proc.stderr}"
     )
     assert "ALL 7 VERIFICATION SUITES PASSED" in proc.stdout
+    starts = start_log.read_text(encoding="utf-8").splitlines() if start_log.exists() else []
+    if starts == ["none"]:
+        pytest.skip("Kaitai compiler not on PATH")
+    assert starts == ["start"] * 3, starts
 
 
 def test_kaitai_cross_checks_reject_a_compiler_of_the_wrong_version(
@@ -236,17 +297,33 @@ def test_version_matches_ignores_jvm_notices_around_the_banner() -> None:
     assert not kaitai.version_matches(notice)
 
 
-def test_the_catalog_tests_start_at_most_four_kaitai_compilers(
+@pytest.mark.xdist_group(CATALOG_GROUP)
+def test_the_catalog_tests_start_three_kaitai_compilers_in_the_test_process(
     synthetic_fixture_result: verify_formats_docs.VerificationResult,
     compiler_starts: list[list[str] | None],
 ) -> None:
-    """The module's in-process verification starts at most four compilers.
+    """The run's test process starts the compiler three times, all on this worker.
 
-    The banner is read once and cached, and each of the two schemas compiles in one JVM;
-    before the shared result the module ran the verification in two tests, six starts.
-    The CLI test runs its entry point in a child process, whose starts this cannot count.
+    One verification reads the banner once (cached) and compiles each of the two schemas in
+    one JVM, so three starts; on main two verifications read the banner twice each and started
+    eight in all. Every consumer of the shared result carries ``CATALOG_GROUP``, and the gate
+    passes ``--dist loadgroup``, so they share one worker and this count is the whole run's.
+    The CLI test counts its child's three, so a gate run starts six (measured on ``-n auto``).
     """
     assert synthetic_fixture_result.passed, synthetic_fixture_result.errors
-    if compiler_starts and compiler_starts[0] is None:
+    if _compiler_is_unavailable(compiler_starts):
         pytest.skip("Kaitai compiler not on PATH")
-    assert 2 <= len(compiler_starts) <= 4
+    assert len(compiler_starts) == 3, compiler_starts
+    for consumer in (
+        test_formats_catalog_synthetic_fixture_consistency,
+        test_formats_catalog_full_run,
+        test_the_catalog_tests_start_three_kaitai_compilers_in_the_test_process,
+    ):
+        assert CATALOG_GROUP in _xdist_groups(consumer), consumer.__name__
+
+
+def test_the_budget_skips_when_no_compiler_was_started() -> None:
+    """A compiler cached as unavailable leaves no start, and the skip must still follow."""
+    assert _compiler_is_unavailable([])
+    assert _compiler_is_unavailable([None])
+    assert not _compiler_is_unavailable([["kaitai-struct-compiler"]])
