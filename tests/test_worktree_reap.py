@@ -1205,7 +1205,8 @@ def test_reap_cli_defaults_and_flags(monkeypatch: pytest.MonkeyPatch) -> None:
         calls.append(kwargs)
         return 0
 
-    monkeypatch.setattr(worktree_init, "_reap", spy)
+    # The entrypoint imports the command it runs inside main(), after the interpreter guard.
+    monkeypatch.setattr(worktree_reap, "_reap", spy)
 
     worktree_init.main(["reap"])
     worktree_init.main(["reap", "--force", "--min-free-gb", "5"])
