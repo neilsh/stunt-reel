@@ -136,7 +136,8 @@ _Source: [the polygon span builder read for a facing test](../../work/2026-11/85
 ## 10. Open questions
 
 * **Back faces** (section 8.12).
-  Open: how many pixels a back face draws at its apexes and along thin parts, and whether that is seen in a capture; what a back face clipped across a screen corner draws; whether a collinear polygon of three or more points draws with gaps.
+  Open: how many pixels a back face draws at its apexes and along thin parts; what a back face clipped across a screen corner draws; whether a collinear polygon of three or more points draws with gaps.
+  The 13 frames searched, in `intro`, `balloon` and `bomb`, show a thin part drawn by neither test consistently; the apexes and the other four films' frames were not searched pixel by pixel ([`attribution.md` § 6](../parity/attribution.md#6-back-faces)), so telling the tests apart needs a trace or a capture made for it.
 
 * **Polygon outlines** (section 8.11).
   Open: how `0xC9D4` rounds a row's ends, so whether the outline matches the inclusive spans pixel for pixel; whether `PLAYONE` fills terrain through `0x7571` as well, since outlining terrain scored below the base on `LAND` and `BALLOON`; and whether the world's line-list outline drops end pixels a line quad draws.
