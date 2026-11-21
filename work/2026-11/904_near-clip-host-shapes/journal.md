@@ -41,10 +41,21 @@
 - **Result**: the figures are [`sweeps/near-clip.toml`](sweeps/near-clip.toml); `mise run judge -- --recheck` on it prints the same winner line.
   Against 0.5 m, 0.1 m scores `bomb` 0.8775 -> 0.8945 (+0.0170) and `traintnl` 0.9066 -> 0.9103 (+0.0037); `balloon` +0.0002, `land` and `location` +0.0001, `ctry` and `intro` unchanged; `bomb` IoU 0.9648 -> 0.9660, `traintnl` 0.9690 -> 0.9716.
   The 13 target frames rise by 0.317 to 0.465 in SSIM (target index agreement +0.7349); no frame falls by more than 0.005 (the worst, -0.0023).
-  Outside the target, `traintnl` 1013 to 1101 rise by 0.037 to 0.065: the camera passes close to the tunnel wall there, and at 0.5 m our render drew a tan wall and the sky through it where the capture shows the green wall (the error readout's note at 1013); `location` 837 and 3829 to 3906 rise by 0.007 to 0.018; `bomb` 2058 and 2762 to 2905 by 0.005 to 0.014.
-  0.05 m ties 0.1 m on the target and is 0.0001 lower on four films; 0.02 m loses 0.0007 on `location` (`worst frame` -0.0078, 6 frames down by more than 0.005), so a nearer plane is not better.
+  Outside the target, `traintnl` 1013 to 1101 rise by 0.037 to 0.065: the camera passes close to the tunnel wall there, and at 0.5 m our render drew a tan wall and the sky through it where the capture shows the green wall (the error readout's note at 1013); `location` 837, 881 and 3829 to 3906 rise by 0.007 to 0.018; `bomb` 2058 and 2762 to 2905 by 0.005 to 0.014.
+  0.05 m ties 0.1 m on the target and is 0.0001 lower on four films; 0.02 m scores `location` 0.0003 below 0.1 m and 0.5 m (`worst frame` -0.0078, 6 frames down by more than 0.005), so a nearer plane is not better.
   Pictures: [`bomb-1937-near-clip.png`](images/bomb-1937-near-clip.png), [`bomb-1992-near-clip.png`](images/bomb-1992-near-clip.png), [`bomb-2048-near-clip.png`](images/bomb-2048-near-clip.png) (capture, 0.5 m, 0.1 m; render panels from `581453ed` with the switch).
 - **Verdict**: `DBG_NEAR=0.1` adopts on the heuristic track ("winner: DBG_NEAR=0.1 adopts (heuristic, film means; target idx +0.7349; worst target frame +0.3168 bomb:1992)"; its lead over 0.05 m is within the noise floor).
   Not landed in this entry: the switch stays a patch until a PR sets `DEFAULT_NEAR_CLIP` and repins `expected/gpu.toml`.
   The value is a heuristic pick between 0.05 and 0.1; reading the plane PLAYONE's polygon clipper cuts at would make it evidence-backed.
 - **Lives in**: [`attribution.md` § 2](../../../research/parity/attribution.md#2-current-breakdown).
+
+## 2026-11-21: the 0.1 m near plane as the default
+
+- **Question**: does `DEFAULT_NEAR_CLIP = 0.1` on a committed tree reproduce the sweep's 0.1 m row?
+- **Method**: `a0476c9b` (`crates/` tree `81b0b41`), `mise run parity` on the RTX 4070, then `mise run parity-repin` for `gpu`.
+  The `lavapipe` pins measure the cloud's llvmpipe (LLVM 20.1.2), which this machine does not have; they stay on their older tree until the catch-up repin of [#830](https://github.com/neilsh/stunt-reel/issues/830).
+- **Result**: `ctry` 0.9376, `intro` 0.8824, `land` 0.9237, `balloon` 0.9059, `traintnl` 0.9103, `bomb` 0.8945, `location` 0.8721, each the sweep's 0.1 m figure to four decimals; IoU `traintnl` 0.9716, `bomb` 0.9660, the rest unchanged to four decimals.
+  `bomb` shape 1756 falls 0.01587 -> 0.00836.
+  Depth resolution at 1 km coarsens from about 12 cm to 60 cm (`z² / (near × 2²⁴)`); no film fell by more than 0.0001 (`ctry` 0.9376329 -> 0.9375648, `intro` 0.8824304 -> 0.8823589).
+- **Verdict**: adopted (the sweep's verdict above); 0.1 m is a heuristic pick, not a value read from `PLAYONE`.
+- **Lives in**: [`attribution.md` § 2](../../../research/parity/attribution.md#2-current-breakdown), [`render-model.md`](../../../research/parity/render-model.md).
