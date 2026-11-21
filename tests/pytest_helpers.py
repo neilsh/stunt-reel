@@ -15,7 +15,7 @@ import shutil
 import stat
 import struct
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 CACHE_DIRNAME = ".pytest_cache"
 BASETEMP_PREFIX = "basetemp-"
 KEEP_BASETEMPS = 3
+BASETEMP_FRESH_FOR = timedelta(minutes=10)
 
 _SHIM_INSTALLED = False
 
@@ -83,8 +84,12 @@ def per_run_basetemp(
 
 
 def prunes_basetemps(config: pytest.Config) -> bool:
-    """Whether this process prunes old runs: the controller does, an xdist worker does not."""
-    return not hasattr(config, "workerinput")
+    """Whether this process prunes the cache's old runs.
+
+    The controller does, an xdist worker does not, and neither does a run given an explicit
+    ``--basetemp``: that directory may belong to another run still going.
+    """
+    return not hasattr(config, "workerinput") and config.option.basetemp is None
 
 
 def _clear_read_only(func: Callable[[str], object], path: str, _exc: BaseException) -> None:
@@ -100,11 +105,29 @@ def _clear_read_only(func: Callable[[str], object], path: str, _exc: BaseExcepti
         return
 
 
-def prune_old_basetemps(cache: Path, *, keep: int = KEEP_BASETEMPS) -> None:
+def _recently_modified(path: Path, now: datetime, fresh_for: timedelta) -> bool:
+    """Whether *path*'s own mtime is inside *fresh_for*; deeper writes leave it unchanged."""
+    try:
+        modified = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+    except OSError:
+        return True
+    return now - modified < fresh_for
+
+
+def prune_old_basetemps(
+    cache: Path,
+    *,
+    keep: int = KEEP_BASETEMPS,
+    now: datetime | None = None,
+    fresh_for: timedelta = BASETEMP_FRESH_FOR,
+) -> None:
     """Remove the older per-run basetemps, read-only files included; best effort.
 
-    The sandbox may refuse, and a file another process holds stays until the next run.
+    A basetemp whose top-level directory changed within *fresh_for* (under xdist, a run that
+    started then) is left alone, so a live run younger than that is not pruned.  The sandbox
+    may refuse, and a file another process holds stays until the next run.
     """
+    now = datetime.now(UTC) if now is None else now
     try:
         runs = sorted(
             path
@@ -114,6 +137,8 @@ def prune_old_basetemps(cache: Path, *, keep: int = KEEP_BASETEMPS) -> None:
     except OSError:
         return
     for path in runs[: max(0, len(runs) - keep)]:
+        if _recently_modified(path, now, fresh_for):
+            continue
         shutil.rmtree(path, onexc=_clear_read_only)
 
 

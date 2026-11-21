@@ -5,14 +5,24 @@ from __future__ import annotations
 import os
 import stat
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 import pytest_helpers
 
 pytestmark = pytest.mark.windows
+
+
+def _config(*, basetemp: str | None, worker: bool = False) -> pytest.Config:
+    """A stand-in for the config pytest hands the configure hook."""
+    config = SimpleNamespace(option=SimpleNamespace(basetemp=basetemp))
+    if worker:
+        config = SimpleNamespace(**vars(config), workerinput={})
+    return cast("pytest.Config", config)
 
 
 def test_per_run_basetemp_differs_per_run() -> None:
@@ -43,10 +53,27 @@ def test_session_basetemp_is_per_run_and_under_the_cache(pytestconfig: pytest.Co
 def test_prune_keeps_the_newest_runs(tmp_path: Path) -> None:
     for index in range(5):
         (tmp_path / f"{pytest_helpers.BASETEMP_PREFIX}20261025T20000{index}-aaaa").mkdir()
-    pytest_helpers.prune_old_basetemps(tmp_path, keep=2)
+    pytest_helpers.prune_old_basetemps(tmp_path, keep=2, fresh_for=timedelta(0))
     assert sorted(path.name for path in tmp_path.iterdir()) == [
         "basetemp-20261025T200003-aaaa",
         "basetemp-20261025T200004-aaaa",
+    ]
+
+
+def test_prune_keeps_a_run_modified_within_the_fresh_window(tmp_path: Path) -> None:
+    """A recent basetemp may belong to a run still going, so the age guard spares it."""
+    now = datetime(2026, 10, 25, 20, 10, tzinfo=UTC)
+    stale = now - pytest_helpers.BASETEMP_FRESH_FOR - timedelta(minutes=1)
+    fresh = now - timedelta(minutes=1)
+    for index in range(4):
+        path = tmp_path / f"{pytest_helpers.BASETEMP_PREFIX}20261025T20000{index}-aaaa"
+        path.mkdir()
+        modified = fresh if index == 2 else stale
+        os.utime(path, (modified.timestamp(), modified.timestamp()))
+    pytest_helpers.prune_old_basetemps(tmp_path, keep=1, now=now)
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "basetemp-20261025T200002-aaaa",
+        "basetemp-20261025T200003-aaaa",
     ]
 
 
@@ -58,14 +85,19 @@ def test_prune_removes_a_run_that_holds_read_only_files(tmp_path: Path) -> None:
         (objects / "blob").write_bytes(b"x")
         (objects / "blob").chmod(stat.S_IREAD)
         objects.chmod(stat.S_IREAD | stat.S_IEXEC)
-    pytest_helpers.prune_old_basetemps(tmp_path, keep=1)
+    pytest_helpers.prune_old_basetemps(tmp_path, keep=1, fresh_for=timedelta(0))
     assert [path.name for path in tmp_path.iterdir()] == ["basetemp-20261025T200002-aaaa"]
 
 
-def test_only_the_controller_prunes(pytestconfig: pytest.Config) -> None:
+def test_only_the_controller_prunes() -> None:
     """Each xdist worker configuring itself would otherwise walk every old run again."""
-    worker = os.environ.get("PYTEST_XDIST_WORKER") is not None
-    assert pytest_helpers.prunes_basetemps(pytestconfig) is not worker
+    assert pytest_helpers.prunes_basetemps(_config(basetemp=None)) is True
+    assert pytest_helpers.prunes_basetemps(_config(basetemp=None, worker=True)) is False
+
+
+def test_an_explicit_basetemp_prunes_nothing() -> None:
+    """That directory may belong to a concurrent run, so it is not ours to prune."""
+    assert pytest_helpers.prunes_basetemps(_config(basetemp="C:/given/basetemp")) is False
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows sandbox workaround")
