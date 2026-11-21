@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+from functools import cache
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -39,8 +40,14 @@ def ksc_command() -> list[str] | None:
     return [launcher]
 
 
+@cache
 def compiler_version() -> str | None:
-    """Return the compiler version banner, or None when the compiler is unavailable."""
+    """Return the compiler version banner, or None when the compiler is unavailable.
+
+    Cached for the process, because reading the banner starts the compiler's JVM; the banner
+    cannot change while ``PATH`` does not. A test that fakes the compiler, or a caller that
+    installs one, calls ``compiler_version.cache_clear()`` first.
+    """
     ksc = ksc_command()
     if ksc is None:
         return None

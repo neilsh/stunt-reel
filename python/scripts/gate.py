@@ -24,7 +24,8 @@ the halves a run needs, or the full gate with a reason. See the scoped-gate plan
 ``STEP_ENV`` holds the environment a step runs with only inside the gate. The Python test step
 sets ``STUNT_REQUIRE_KSC=1``, so a missing Kaitai compiler fails the gate instead of skipping the
 schema contract test, and ``STUNT_REQUIRE_PREK=1`` does the same for the commit hooks' prek test.
-It also runs pytest across every core (``-n auto``), the gate's longest lane; a scoped
+It also runs pytest across every core (``-n auto --dist loadgroup``, which still spreads
+ungrouped tests but keeps a marked group on one worker), the gate's longest lane; a scoped
 ``mise run test-py -- <file>`` stays in one process, where starting workers would cost more than
 it saves.
 
@@ -136,10 +137,12 @@ SCOPED_TASKS: dict[str, str] = {"rust": "check-rust", "py": "check-py", "docs": 
 FIX_TASK = "fix"
 FIXABLE_STEPS = frozenset({"fmt-check-rust", "fmt-check-py", "lint-py"})
 
+# `loadgroup` keeps a test group marked `xdist_group` on one worker; ungrouped tests spread as
+# `load` spreads them.
 _PYTEST_ENV = {
     "STUNT_REQUIRE_KSC": "1",
     "STUNT_REQUIRE_PREK": "1",
-    "PYTEST_ADDOPTS": "-n auto",
+    "PYTEST_ADDOPTS": "-n auto --dist loadgroup",
 }
 STEP_ENV: dict[str, dict[str, str]] = {"test-py": _PYTEST_ENV, "test-py-docs": dict(_PYTEST_ENV)}
 
