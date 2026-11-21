@@ -1592,7 +1592,7 @@ mod tests {
 
     #[test]
     fn a_box_beyond_the_old_far_plane_is_kept() {
-        // The perspective is infinite: 100 km ahead is past the orthographic 25 km far clip.
+        // The perspective is infinite: 100 km ahead is past the old 25 km far plane.
         assert!(frustum_keeps(
             test_view_proj(),
             boxed([0.0, 0.0, -100_000.0], 1.0)
