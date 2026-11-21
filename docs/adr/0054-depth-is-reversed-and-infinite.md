@@ -2,7 +2,8 @@
 
 ## Status
 
-accepted 2026-11-21 for [#637](https://github.com/neilsh/stunt-reel/issues/637).
+accepted 2026-11-20 for [#637](https://github.com/neilsh/stunt-reel/issues/637).
+#637 proposed reversed depth in `Depth32Float`; this ADR departs from that proposal and keeps `Depth24Plus` (Considered Options), and the owner has not yet signed off on the departure.
 Amends the compare functions and the sign of the depth bias of [ADR 0046](0046-coplanar-decals-are-drawn-in-an-ordered-pass.md) (`LessEqual`, `constant: -2, slope_scale: -2.0`); its other decisions stand.
 
 ## Context
@@ -30,6 +31,16 @@ Under a reversed, infinite perspective clip z is the constant `near`, so depth i
 * **Sky.**
   The sky pass draws its bands and sun disc from the pixel's raster position (#617), so it unprojects nothing, and depth 0 lying at infinity (`w = 0`) does not reach it.
 
+## Considered Options
+
+* **`Depth32Float`, which #637 proposed.**
+  In f32, `near / w` keeps 24 significant bits at every distance.
+  Measured on the same films against `main` `5fbfe844` (the Backend agreement figures under Consequences hold on `b028f7d3` too), it made the backends disagree on more pixels than standard depth did (LOCATION 62.0 to 92.7 per tick, BALLOON 19.9 to 44.6, TRAINTNL 20.7 to 30.9; CTRY and INTRO 0.2 and 0.7 lower), and at 13 sampled ticks of five films the decal bias did not explain it: a constant of 0 or 1,024 in place of the draft's 32 moved the disagreement by at most 2 pixels a tick, a slope of 8 in place of 2 by at most 7, and a slope of 0 raised it.
+  The same projection in `Depth24Plus` lowered it at 12 of those 13 ticks, by up to 18 times (LOCATION 3820 2,856 to 182, BALLOON 1130 191 to 37).
+  `[Supported Inference]`: rounding the interpolated depth to a 24-bit step absorbs differences between the two rasterizers' depth interpolation that f32 keeps, so a tie between coplanar polygons resolves by the compare function alike on both.
+* **A reversed, finite far plane at 25 km.**
+  Not measured: the infinite form was chosen because its clip z is exactly `near`.
+
 ## Consequences
 
 * **Backend agreement.**
@@ -48,13 +59,3 @@ Under a reversed, infinite perspective clip z is the constant `near`, so depth i
   `CameraController::world_view_proj()`, which CPU-side tests use for world points, is reversed: the near plane is `z = w` and there is no far plane.
   The world's view-frustum cull (`frustum_keeps` in `mesh.rs`) keeps its six planes: depth still runs over `[0, w]`, so `z ≥ 0` and `w - z ≥ 0` bound it, now as the far and near planes.
   Under the perspective, clip z is the constant `near`, so the far plane keeps every box in front of the eye.
-
-## Considered Options
-
-* **`Depth32Float`, which #637 proposed.**
-  In f32, `near / w` keeps 24 significant bits at every distance.
-  Measured on the same films it made the backends disagree on more pixels than standard depth did (LOCATION 62.0 to 92.7 per tick, BALLOON 19.9 to 44.6, TRAINTNL 20.7 to 30.9; CTRY and INTRO 0.2 and 0.7 lower), and at 13 sampled ticks of five films the decal bias did not explain it: a constant of 0 or 1,024 in place of 32 moved the disagreement by at most 2 pixels a tick, a slope of 8 in place of 2 by at most 7, and a slope of 0 raised it.
-  The same projection in `Depth24Plus` lowered it at 12 of those 13 ticks, by up to 18 times (LOCATION 3820 2,856 to 182, BALLOON 1130 191 to 37).
-  `[Supported Inference]`: rounding the interpolated depth to a 24-bit step absorbs differences between the two rasterizers' depth interpolation that f32 keeps, so a tie between coplanar polygons resolves by the compare function alike on both.
-* **A reversed, finite far plane at 25 km.**
-  Not measured: the infinite form was chosen because its clip z is exactly `near`.

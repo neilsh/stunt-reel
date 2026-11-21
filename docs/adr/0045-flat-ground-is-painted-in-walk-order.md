@@ -18,7 +18,8 @@ testing which side the eye is on
 ([`world-scene-residuals.md` section 6.6](../../research/playone-exe/world-scene-residuals.md#66-ocean-coloured-tile-polygons-over-land)).
 
 Our renderer resolved the flat ground by depth. ADR 0035 routed ground-lying props to the
-`WORLD_DECAL` node, drawn under `[I5]`'s biased `LessEqual` pass. Every polygon in the plane
+`WORLD_DECAL` node, drawn under `[I5]`'s biased `LessEqual` pass (`GreaterEqual` under reversed
+depth since [ADR 0054](0054-depth-is-reversed-and-infinite.md)). Every polygon in the plane
 `y = base_y` (the `MAP.BIN` patches, the tiles, roads and lawns on them, stacked decals) then ties
 every other one, and which wins depends on how each triangulation rounds its depth, or on which
 pass it landed in, not on `PLAYONE`'s order. Unbiased flat props such as `LOCATION`'s lawns lost to

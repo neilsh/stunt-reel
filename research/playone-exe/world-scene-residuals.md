@@ -98,7 +98,7 @@ _Source: [2026-11-12: INTRO's lake](../../work/2026-11/428_intro-lake/journal.md
 
 At `INTRO` tick 3301 the capture's bottom-left corner (pixels 0-40 x 140-180) is all index 205, and ours was 195 there.
 The camera hangs 51 m over `MAP.BIN` records 126 and 127 (colour 205, about 100 m across, flat at height 0), which lie in the plane of record 7, the colour-195 quad 4 km across.
-Dropping record 7 (`DBG_SKIP`, not committed) draws the lake in ours, so the patches were built and projected: they lost the depth tie to record 7, which our terrain draws first (`Less`).
+Dropping record 7 (`DBG_SKIP`, not committed) draws the lake in ours, so the patches were built and projected: they lost the depth tie to record 7, which our terrain draws first (`Less`, standard depth).
 Switching the whole base pass to `LessEqual` changed no pixel, consistent with the two triangulations rounding their depths differently.
 
 In a depth-first walk of the tree, record 7 is the leaf at `0x00DA` and records 127 and 126 are the leaves at `0x0274` and `0x028E`, later in the same list.
@@ -185,7 +185,7 @@ _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE pain
 In the source the plaza lies 31.25 mm below height 0 and the infield 7.8125 mm below it.
 Our IR moves only the plaza: it is flat, within 0.1 m of record 1, so `ground_decal_vertices` snaps it to `y = 0` and it joins the `WORLD_GROUND` pass (`Always`, depth write).
 `0x0265` is not flat (it rises to 9.5 m), so its infield keeps `y = -0.0078125`.
-While the ground pass took only prop triangles within 1e-4 m of the plane (`GROUND_PLANE_TOLERANCE`), the infield stayed a base polygon that had to pass `Less` against the plaza 7.8125 mm above it, and an exact depth test drew the plaza, as both backends did after #636 at the ticks it measured (2586, 2599, 2840, 2859, 2862).
+While the ground pass took only prop triangles within 1e-4 m of the plane (`GROUND_PLANE_TOLERANCE`), the infield stayed a base polygon that had to pass `Less` (standard depth) against the plaza 7.8125 mm above it, and an exact depth test drew the plaza, as both backends did after #636 at the ticks it measured (2586, 2599, 2840, 2859, 2862).
 Before #636 the tie flipped (`[Supported Inference]`: a 7.8125 mm offset seen from about 85 m (near plane 0.5 m) is a depth gap of at most `0.5 / 85² × 0.0078125 = 5.4e-7`, while #595 read 3.2e-6 and 2.9e-6, of opposite sign, near depth 0.994; so the f32 vertex-stage error that #636 removed flipped it, not depth precision).
 
 **Adopted: a prop face near the ground plane is ground.**
