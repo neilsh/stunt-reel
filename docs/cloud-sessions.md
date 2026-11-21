@@ -25,7 +25,7 @@ In claude.ai, the cloud environment for this repo is `stunt-reel-cloud`:
 
 The setup script is the claude.ai field; the *cloud setup* is [`.claude/cloud-setup.sh`](../.claude/cloud-setup.sh), the checkout's script that does the work.
 The field holds only a bootstrap, so a change to the setup is reviewed and versioned with the repo, and no copy here can drift from it.
-The cloud setup installs mise at a pinned, checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs, dosbox-automation's Linux build and the Python environment, then lavapipe as CI does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)).
+The cloud setup installs mise at a pinned, checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs, dosbox-automation's Linux build and the Python environment, then lavapipe as CI does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)), and kache for the Rust build ([The Rust build cache](#the-rust-build-cache)).
 It fetches no game archives: the setup script runs before the environment variables are set, so the hook fetches them.
 Each step skips work already done, and it needs root only under `--cloud` to replace `/usr/local/bin/mise` or install system apt packages.
 It refuses to run without `--cloud` or `--antigravity`, or on anything but Linux x86_64 with `dpkg`; it does not detect a container, so `--cloud` on a developer machine would replace that machine's mise.
@@ -48,6 +48,17 @@ bash "$setup" --cloud
 
 A branch older than the cloud setup fails the setup script rather than starting without mise: the hook below runs through `mise`, so a session without it would fail every hook and tell Claude nothing.
 A failed setup script should also keep that environment out of the cache (unverified).
+
+## The Rust build cache
+
+A Claude cloud session builds Rust from a warm cache ([#814](https://github.com/neilsh/stunt-reel/issues/814)); the gate and local worktrees keep none ([ADR 0017](adr/0017-the-gate-keeps-no-compiler-cache.md), [ADR 0030](adr/0030-new-worktrees-seed-target-by-block-clone.md)).
+The cloud setup installs kache 2.2.0 into `/opt/kache/bin` from the musl release tarball whose sha256 it pins in the script: kache changes its cache keys between versions, so the pin moves with a re-measurement, never with `latest`.
+The `kache` and `kache-engine` binaries stay together, because the first starts its daemon from the second.
+It writes `/etc/kache/config.toml` naming the store `/opt/kache/store`, and `KACHE_CONFIG` names that file, so a build started from any directory resolves the same store.
+It then warms the store with `timeout 200 cargo build --locked` and stops the daemon, so the environment snapshot holds this repository's units; 200 s caps the step so the setup stays inside the snapshot's five-minute budget, and the part of the store a capped build filled still hits.
+The SessionStart hook exports `RUSTC_WRAPPER=/opt/kache/bin/kache`, `CARGO_INCREMENTAL=0`, `KACHE_CACHE_DIR=/opt/kache/store` and `KACHE_CONFIG=/etc/kache/config.toml` to the session's later commands, and it does that when the wrapper is installed: a setup that failed leaves cargo to build uncached rather than failing every compile.
+kache's hits survive a different checkout path and `CARGO_HOME`, the cloud case the issue's benchmark measured at 98–99% of units on other projects; whether this repository reaches the 90% its decision requires is not measured yet, so the amendment to [ADR 0017](adr/0017-the-gate-keeps-no-compiler-cache.md) waits for that measurement.
+Phase 2, an R2 store shared with Jules, is [#878](https://github.com/neilsh/stunt-reel/issues/878).
 
 ## Building Mesa in a cloud session
 

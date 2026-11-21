@@ -58,6 +58,44 @@ fi
 "$MISE_BIN" install rust python uv prek lychee github:kaitai-io/kaitai_struct_compiler http:dosbox-automation
 "$MISE_BIN" exec -- uv sync --locked --all-groups
 
+# Cloud sessions only: a Rust build cache, kache 2.2.0 (#814). The gate, mise's tasks and local
+# worktrees keep none (ADR 0017, ADR 0030); the R2 remote that would share it with Jules is #878.
+# The environment snapshot keeps this store, so a session starts warm whatever checkout path it
+# gets. kache changes its cache keys between versions, so pin it rather than track latest.
+KACHE_VERSION=2.2.0
+KACHE_SHA256=eeb6e72b9f55d0e9d61cae0789ffa8f3ab8c33bef166b7af655cc0806447ebac
+KACHE_BIN=/opt/kache/bin/kache
+KACHE_STORE=/opt/kache/store
+KACHE_CONFIG=/etc/kache/config.toml
+if [ "$MODE" = --cloud ]; then
+    need_root "install kache"
+    if [[ " $("$KACHE_BIN" --version 2>/dev/null) " != *" $KACHE_VERSION "* ]]; then
+        kache_tmp=$(mktemp -d)
+        curl -fsSL -o "$kache_tmp/kache.tar.gz" \
+            "https://github.com/kunobi-ninja/kache/releases/download/v${KACHE_VERSION}/kache-x86_64-unknown-linux-musl.tar.gz"
+        echo "${KACHE_SHA256}  $kache_tmp/kache.tar.gz" | sha256sum -c -
+        tar -xzf "$kache_tmp/kache.tar.gz" -C "$kache_tmp"
+        # kache starts its daemon from kache-engine beside it, so install the pair together.
+        install -d -m 0755 /opt/kache/bin
+        install -m 0755 "$kache_tmp/kache" "$kache_tmp/kache-engine" /opt/kache/bin/
+        rm -rf "$kache_tmp"
+    fi
+    # The host config names the store, and KACHE_CONFIG names the host config, so a build started
+    # from any directory (a dependency's source, say) resolves the same store as the daemon.
+    install -d -m 0755 /etc/kache
+    [ -f "$KACHE_CONFIG" ] || printf '[cache]\nlocal_store = "%s"\n' "$KACHE_STORE" >"$KACHE_CONFIG"
+    # A session may run as another user; a store it cannot write would fall back to compiling.
+    mkdir -p "$KACHE_STORE"
+    chmod 0777 "$KACHE_STORE"
+    # Warm the store inside the setup's time budget, so the snapshot a session starts from has the
+    # units this repository builds. The timeout caps the step, not the cache: a half-warm store is
+    # still a store, and the next build fills the rest.
+    export RUSTC_WRAPPER="$KACHE_BIN" CARGO_INCREMENTAL=0 \
+        KACHE_CACHE_DIR="$KACHE_STORE" KACHE_CONFIG
+    timeout 200 "$MISE_BIN" exec -- cargo build --locked || true
+    "$KACHE_BIN" daemon stop || true
+fi
+
 if [ "$MODE" = --antigravity ]; then
     # Antigravity runs as a non-root user with a read-only /, so unpack Debian's lavapipe driver
     # from bookworm-backports into ~/.local/share/lavapipe and point the Vulkan loader at its ICD.
