@@ -225,3 +225,26 @@ def test_a_right_root_and_against_hashes_are_refused(
     left = root(tmp_path / "a")
     assert residue_cli.main([str(left), str(left), "--against-hashes", "x"]) == 2
     assert "either" in capsys.readouterr().err
+
+
+def test_write_hashes_writes_nothing_when_a_film_is_missing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    hashes = tmp_path / "hashes.txt"
+    left = str(root(tmp_path / "a"))
+    assert residue_cli.main([left, "--write-hashes", str(hashes), "--films", "ctry,intro"]) == 1
+    assert "intro: no intro" in capsys.readouterr().err
+    assert not hashes.exists()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert residue_cli.main([str(empty), "--write-hashes", str(hashes)]) == 1
+    assert "no *" in capsys.readouterr().err
+    assert not hashes.exists()
+
+
+def test_ticks_without_root_b_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    left = str(root(tmp_path / "a"))
+    assert residue_cli.main([left, "--write-hashes", "x", "--ticks", "10"]) == 2
+    assert "--ticks needs root B" in capsys.readouterr().err

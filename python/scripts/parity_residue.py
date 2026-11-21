@@ -169,20 +169,23 @@ def row(residue: Residue, width: int) -> str:
 
 
 def write_hashes(left: dict[str, Path], films: list[str], out: Path) -> int:
-    """Writes *films*' tick hashes to *out*; 1 when a film has no store."""
+    """Writes *films*' tick hashes to *out*; 1, writing nothing, when there is no film or one has no store."""
+    if not films:
+        print(f"parity_residue: no *{CURRENT_SUFFIX} store to hash", file=sys.stderr)
+        return 1
+    missing = [film for film in films if film not in left]
+    for film in missing:
+        print(f"parity_residue: {film}: no {film}{CURRENT_SUFFIX} store", file=sys.stderr)
+    if missing:
+        return 1
     lines: list[str] = []
-    failed = False
     for film in films:
-        if film not in left:
-            print(f"parity_residue: {film}: no {film}{CURRENT_SUFFIX} store", file=sys.stderr)
-            failed = True
-            continue
         store = RenderStore(left[film])
         lines += [
             f"{film} {tick} {digest}" for tick, digest in tick_hashes(store, store.ticks()).items()
         ]
     out.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8", newline="\n")
-    return 1 if failed else 0
+    return 0
 
 
 def against_hashes(
@@ -230,6 +233,9 @@ def main(argv: list[str] | None = None) -> int:
             "parity_residue: give either root B, --write-hashes or --against-hashes",
             file=sys.stderr,
         )
+        return 2
+    if args.right is None and args.ticks is not None:
+        print("parity_residue: --ticks needs root B", file=sys.stderr)
         return 2
     if not args.left.is_dir():
         print(f"parity_residue: render root not found: {args.left}", file=sys.stderr)

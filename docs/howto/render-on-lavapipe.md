@@ -92,11 +92,11 @@ wsl -d Ubuntu-24.04 -u root
 In the distro, clone the repository onto the Linux filesystem and run the cloud setup, which installs mise, the gate's tools and the pinned lavapipe (`LAVAPIPE_VERSION` and `LAVAPIPE_LLVM_VERSION` in `.claude/cloud-setup.sh`):
 
 ```bash
-git clone /mnt/e/git/stunt-reel /root/stunt-reel
-cd /root/stunt-reel && bash .claude/cloud-setup.sh --cloud
+git clone /mnt/<drive>/<path-to>/stunt-reel ~/stunt-reel  # or clone from GitHub
+cd ~/stunt-reel && bash .claude/cloud-setup.sh --cloud
 ```
 
-Give it a data root on the Linux filesystem too: reading `/mnt/e` made a CTRY run take 36 s against 4.4 s.
+Give it a data root on the Linux filesystem too: reading the data root from a Windows drive (`/mnt/<drive>`) made a CTRY run take 36 s against 4.4 s.
 Copy what the cloud archives hold, by [`manifests/cloud-assets.toml`](../../manifests/cloud-assets.toml)'s include and exclude rules, from the Windows data root (or run `mise run cloud-assets -- fetch` where R2 credentials are set), then run `mise run game-builds` and `mise run superset-all`, as a cloud session does.
 `mise run parity -- --software-only` there reports `llvmpipe (LLVM 20.1.2, 256 bits)` and compares against `expected/lavapipe.toml`.
 `wsl --unregister Ubuntu-24.04` removes the distro and everything in it.

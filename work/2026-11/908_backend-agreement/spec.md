@@ -27,7 +27,7 @@ So parity work queues behind one machine, and its question (does our render matc
 - **No PR waits for the GPU.**
   The `local-only` hold of `cloud.md` § Rendering goes, and so does the `local-only` routing of pixel-level work such as a `background` band: both are done on lavapipe.
 - **The canonical lavapipe build** is chosen by a spike (Task 1 of the plan) from those both local-windows and the cloud can run, by byte-identical index planes across machines first and render time second.
-  Until it decides, the canonical build stays the cloud's Ubuntu 24.04 `mesa-vulkan-drivers` (`llvmpipe (LLVM 20.1.2, 256 bits)`) and #830 keeps doing the catch-ups.
+  The spike decided on 2026-11-21 (the journal's Verdict): the canonical build is the cloud's Ubuntu 24.04 `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` (`llvmpipe (LLVM 20.1.2, 256 bits)`), which local-windows renders under WSL 2; #830 keeps doing the catch-ups.
 - **The canonical package is pinned** in CI and the cloud setup to the exact version the spike names, so an Ubuntu update cannot change the adapter silently.
 
 ## Class agreement
