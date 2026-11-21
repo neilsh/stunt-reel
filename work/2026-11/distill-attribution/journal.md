@@ -1,0 +1,237 @@
+# Journal: distilling `attribution.md`
+
+The dated runs of [`attribution.md`](../../../research/parity/attribution.md) as of commit `f95ec4a`, moved here verbatim when the note was distilled to current truth.
+Only relative link paths changed, and the `###` heading of the moved text is dropped; a section number in the moved text names a section of the note as it stood at `f95ec4a` (`git show f95ec4a:research/parity/attribution.md`), and "the breakdown above" or "below" names a run in the note's order then, newest first.
+
+## 2026-10-22: the early CTRY and INTRO breakdowns, superseded
+
+From section 2 of the note, as it stood at `f95ec4a`:
+
+Earlier breakdowns, superseded: CTRY on 2026-10-24 (`main`, after back-face culling) 0.7808 over 114 scored frames (index agreement 0.507, IoU 0.9780): terrain 0.1032, props 0.0779, sky 0.0183, reference-only 0.0144, actors 0.0035; INTRO 0.7224 over 209 (0.637, 0.9501): terrain 0.1382, props 0.0727, reference-only 0.0189, sky 0.0227, ocean 0.0120, actors 0.0081, terrain_render_only 0.0042.
+CTRY after the lighting change (2026-10-22) terrain 0.116, props 0.072, reference-only 0.035, actors 0.008, sky and ocean 0.003 (total 0.234).
+The INTRO baseline of 2026-10-22 (0.676, IoU 0.802, index agreement 0.482) had terrain 0.175, props 0.071, reference-only 0.051, actors 0.013, ocean 0.012, sky 0.002.
+
+* **The CTRY-derived fixes transfer to INTRO**: index agreement was 0.482 on INTRO against 0.472 on CTRY, so the unlit colours and the 185-row viewport are not CTRY artefacts.
+* INTRO is worse than CTRY, with terrain the largest class.
+  Its capture covers ticks 769 to 3,640 and ends before tick 3,822, so it is not a full-film score.
+* `INTRO.FLM` uses the partial SOD `0x7F09` (opcode `0x02FD`, `[Unknown]`) and CTRY the partial `0x0107` (`OP_ANIMATE`, `0x01F8`); their cost is not isolated by this split.
+  `0x0107` has since been drawn ([`sod-animate.md`](../../../research/playone-exe/sod-animate.md) § 4).
+* Worst terrain frames in the early CTRY run: ordinals 52, 55 and 35 (ticks 568, 601, 382), 0.22 to 0.25 each; not inspected.
+
+_Found 2026-10-22 and 2026-10-23 at `d90a047`; re-measured 2026-11-02 at `794daa5` and again after #132 at `793895e` ([#98](https://github.com/neilsh/stunt-reel/issues/98)); see the [parity log](../../2026-10/parity-log/log.md)._
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 2, What earlier runs established.
+
+## 2026-10-23: the coastline sand band
+
+From section 5 of the note, as it stood at `f95ec4a` (_Found 2026-10-23 at `d90a047`_):
+
+* **The worst windows are the coastline and the sand band is misplaced.**
+  The 20 highest-loss windows in sampled CTRY frames all sit at rows 40 to 64 (horizon band) and are beach or shoreline: the capture shows sand index 88 (210,178,113) against our props or terrain, capture sd 40 to 60.
+  Over the 114 scored frames the capture has 106,774 sand pixels; we draw 40,480 (24,324 at 88, 16,156 at 91), every one from a prop (layer 3); the terrain layer holds one sand pixel. 74,333 capture sand pixels fall on our terrain layer (73,823 on the colour-195 airfield) at a median ray distance of 29 m: a near-field surface the capture paints sand and we paint green.
+  At tick 590 the bands are adjacent rather than absent: 1,711 capture sand pixels against our 1,720, overlap 875, our band a few rows low.
+  `[Unknown]`: which prop owns the band and whether its placement or scale is wrong; `SCENERY.scn` places 6,345 instances, of which `build_world` keeps 286 on CTRY after de-duplication and the sub-pixel cull.
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 5.
+
+## 2026-10-23: the off-ramp capture indices
+
+From section 4 of the note, as it stood at `f95ec4a`:
+
+The off-ramp capture indices on our CTRY flat ground are sand 88 (66,288 px), black 0 (28,328), the aircraft's dark blue 136 (24,058), sand 91 (11,653), then 63, the beach colours 161/163, 174 and 47, over 96 of the 114 scored frames: the missing beach surface plus the aircraft and its shadow, not colour.
+On INTRO it is dominated by the montage's sand flats (1.39 million pixels).
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 4.
+
+## 2026-10-23: the global framing offset sweep
+
+From Ruled out of the note, as it stood at `f95ec4a`:
+
+* **Global framing offset** (2026-10-23): capture rows 0-184 shifted by `dy`, columns by `dx`, scored against unchanged renders (`mean_ssim_scored`).
+  Rows -6..+6: CTRY 0.7694, **0.7776** (-4), 0.7761, 0.7732 (0), 0.7631, 0.7477, 0.7400; INTRO 0.6665, 0.6723, 0.6747, **0.6799** (0), 0.6737, 0.6655, 0.6596.
+  Columns -8..+8 in steps of 2: CTRY 0.7615, 0.7643, 0.7687, 0.7730, 0.7732 (0), 0.7730, 0.7734, **0.7738** (+6), 0.7714; INTRO 0.6768, 0.6773, 0.6792, **0.6806** (-2), 0.6799 (0), 0.6792, 0.6798, 0.6794, 0.6768.
+  Both films are flat horizontally (CTRY within 0.0006 over -4..+6, INTRO's best +0.0007).
+  CTRY peaks 4 rows up (+0.0044) where INTRO loses 0.0052, so no rigid offset serves both films.
+  Nothing adopted.
+  See [`framing-and-actors.md`](../../../research/parity/framing-and-actors.md).
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md), Ruled out.
+
+## 2026-10-23: the flat-ground levers as first read
+
+From section 4 of the note, as it stood at `f95ec4a`:
+
+Reading: the two large levers are the per-shot, depth-cued ground shade (+0.0105 CTRY / +0.0029 INTRO if a law reproduced it exactly; see [`terrain-shade.md`](../../../research/playone-exe/terrain-shade.md)) and the surfaces the capture draws where we draw airfield green (sand, aircraft, shadow on CTRY; the montage view on INTRO).
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 4.
+
+## 2026-10-24: where the ground-and-light goal stopped
+
+From Open questions of the note, as it stood at `f95ec4a`:
+
+The 2026-10-24 ground-and-light goal ran two rounds and adopted nothing, which is its own stop rule.
+Both rounds went at the ground question from opposite ends and both were stopped by missing evidence rather than by a negative result:
+
+* **The stream is absent from the 96 memory dumps.**
+  The runner at `0x9161` calls the display list's first word as code, so a relocated record carries the handler's offset; `0x995C` occurs in none of the 96 dumps and `0x9A24` twice, and the notebook concludes the list is outside the 16 dumped segments, in the EMS page frame or the 4 KiB tail the `0xF000`-byte dump skips; the log row says item 1 "needs" them ([world-scene.md § Ruled out](../../../research/playone-exe/world-scene.md#ruled-out), [parity log](../../2026-10/parity-log/log.md)).
+* **The light is handed in, not computed.**
+  `0x9100` writes `L` from AX/BX/DX and fills the rest of its block from DGROUP; the caller is the binary's one genuinely unreferenced entry ([terrain-shade.md](../../../research/playone-exe/terrain-shade.md#41-the-entry-decodes-but-it-is-handed-its-light)).
+
+So the next goal cannot open on item 1 or on the model-origin half of item 2 without evidence this one could not obtain.
+The two routes that would produce it are an EMS page-frame dump during playback, and the loader's relocation rule from the unpacked image — the first is a harness job, the second static work this notebook has the addresses for.
+Item 3 (the flat-sand frames) is untouched and does not depend on either.
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md), Open questions.
+
+## 2026-10-24: the back-face culling sweep
+
+From section 6 of the note, as it stood at `f95ec4a`:
+
+`stuntreel` did not cull until 2026-10-24; the sweep below is `[Bounded Observation]`.
+Our models wind clockwise for their outward faces, so the pipeline's `FrontFace::Ccw` default classified every interior wall as front-facing, and flying through a prop or the hero aircraft drew its inside.
+A sweep over the culling mode (`DBG_CULL` 0, 1, 2) scored 0.7733 / 0.7175, 0.6112 / 0.5799 and **0.7808 / 0.7224** (CTRY / INTRO); `FrontFace::Cw` with `Face::Back` reproduces the third.
+IoU is unchanged (0.9780 / 0.9501); index agreement rises 0.504 -> 0.507 and 0.636 -> 0.637.
+The gain is almost all actors, whose class loss falls 0.0083 -> 0.0035 on CTRY and 0.0140 -> 0.0081 on INTRO.
+One frame regresses: CTRY tick 832, 0.710 -> 0.681, where removing the interior exposes an actor surface the capture does not show; the actor placement residual explains that.
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 6.
+
+## 2026-10-24: open question 3 as first written
+
+From Open questions item 3 of the note, as it stood at `f95ec4a`, then the history line of item 4 (prop shading and detail):
+
+   As first written: 11 frames lose more than 0.30 to terrain at IoU 0.97 to 1.0 and index agreement 0.00 to 0.33 (ticks 1088, 1098, 1308-1374, 1505 and 2690-2778), where the capture is 54 to 97% sand index 91 and we draw 195 or 208.
+   Coverage is right and content is absent, so a colour rule alone cannot fix it; at tick 1505 the capture also carries about 17.8% of indices 216 to 218, which we never emit.
+   This is not the montage tick rule: the montage window (ticks 1290 to 1500) scored 0.7807 on 2026-10-24, above that run's film mean of 0.7224 (both before #47; the window has not been re-scored since). ([#70](https://github.com/neilsh/stunt-reel/issues/70))
+
+They were 0.0568 / 0.0654 on 2026-11-02 after #132 and 0.0779 / 0.0727 on 2026-10-24 (`ctry` / `intro`).
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md), Open questions.
+
+## 2026-10-24: the two-sided flag moved out of the open questions
+
+From Open questions of the note, as it stood at `f95ec4a`:
+
+Moved out of this list: the two-sided flag.
+`SodVertex::flags` bit 1 has no known writer, and the tick-832 regression it was meant to repair is one frame worth about 0.0003 of the film mean.
+It is tracked as an open question in [sod-vm.md](../../../research/playone-exe/sod-vm.md).
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 6.
+
+## 2026-11-02: loss by class after #47, #48 and #132
+
+From section 2 of the note, as it stood at `f95ec4a`:
+
+The run before that (2026-11-02, `main` at `793895e`: the whole-body, upright aircraft of [#47](https://github.com/neilsh/stunt-reel/pull/47), the `GVPOLY` ramp colour of [#48](https://github.com/neilsh/stunt-reel/pull/48) and the square-pixel, 256 px projection of [#132](https://github.com/neilsh/stunt-reel/pull/132)): CTRY 0.8291 over 114 scored frames (index agreement 0.587, IoU 0.9897): terrain 0.0783, props 0.0568, sky 0.0158, actors 0.0114, reference-only 0.0078, ocean 0.0008.
+INTRO 0.7154 over 209 (0.622, 0.9712): terrain 0.1281, props 0.0654, actors 0.0363, sky 0.0260, reference-only 0.0121, ocean 0.0109, props_and_actors_render_only 0.0058.
+Terrain is 46% of the loss on CTRY and 45% on INTRO.
+Against the 2026-10-24 breakdown below, with the same measure at `794daa5` (after #47 and #48, before #132) between them:
+
+| Class | CTRY 10-24 | CTRY `794daa5` | CTRY `793895e` | INTRO 10-24 | INTRO `794daa5` | INTRO `793895e` |
+|---|---|---|---|---|---|---|
+| props | 0.0779 | 0.0680 | **0.0568** | 0.0727 | 0.0698 | **0.0654** |
+| actors | 0.0035 | 0.0122 | **0.0114** | 0.0081 | 0.0381 | **0.0363** |
+| props and actors, render only | — | 0.0010 | 0.0000 | — | 0.0062 | 0.0058 |
+| actor-window IoU (`parity-probe iou`) | 0.091 | 0.227 | 0.221 | 0.062 | 0.093 | 0.097 |
+
+The actors class grew with #47 because the aircraft are now drawn whole: loss is attributed by what our render draws (section 1), so a missing body cost the terrain class before and a drawn but miscoloured or misplaced one costs the actors class now. #132 left it nearly where #47 and #48 put it, while props and terrain fell with the corrected projection.
+Props remain the second class on both films.
+The INTRO total is not comparable with the 2026-10-24 row: since 2026-11-01 its title-card frames are below the fade floor, and the 0.7224 row predates the aircraft changes that cost INTRO.
+
+Error readout on the same renders (the same 12 ticks per film, seed 1; two Haiku passes and a Sonnet tie-break on the disputed sheets: 10 / 9 at `794daa5`, 7 / 6 now; frames graded 2 or more of 12), against the readout taken when #47 was adopted (2026-11-01, before the orientation fix and #48):
+
+| Category | CTRY at #47 | CTRY `794daa5` | CTRY now | INTRO at #47 | INTRO `794daa5` | INTRO now |
+|---|---|---|---|---|---|---|
+| `aircraft-absent` | — | 0 | 0 | 0 (from 9) | 0 | 0 |
+| `aircraft-parts-missing` | — | 10 | 7 | 11 | 8 | 5 |
+| `aircraft-shape-broken` | 3 (from 10) | 7 | 5 | 9 | 6 | 5 |
+| `aircraft-misplaced` | — | 0 | 0 | — | 5 | 6 |
+| `shadow-missing` | — | 6 | 6 | — | 5 | 5 |
+| `scenery-missing` | — | 3 | 1 | — | 6 | 4 |
+
+(— : not quoted in the #47 row; no earlier `readout.json` survives.)
+A count must move by 4 to clear grader noise ([`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.3), so no change in the table clears it except INTRO `aircraft-parts-missing` 11 -> 5 across the three runs, and two `aircraft-shape-broken` moves that sit at the limit: CTRY 3 -> 7 -> 5 and INTRO 9 -> 6 -> 5.
+Graders' notes: at `794daa5` CTRY tick 4 "wing/gear drawn wrongly, no fuselage detail", tick 268 "aircraft orientation wrong", INTRO tick 2764 "main aircraft at left edge largely undrawn"; now INTRO tick 3295 "conifers drawn as round bushes".
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 2, What earlier runs established.
+
+## 2026-11-04: loss by class after the ground decals
+
+From section 2 of the note, as it stood at `f95ec4a`:
+
+The paragraphs and tables below are the earlier runs, kept for the history of each class.
+
+Loss by class on 2026-11-04 (the ground decals of [ADR 0035](../../../docs/adr/0035-ground-lying-props-are-terrain-decals.md) for [#69](https://github.com/neilsh/stunt-reel/issues/69), against `8b36b79` just before them): CTRY 0.8298 -> **0.8645** over 114 scored frames (index agreement 0.587 -> 0.884, IoU 0.9897): terrain 0.0772 -> **0.0186**, props 0.0553 -> **0.0793**, sky 0.0158, actors 0.0133, reference-only 0.0078 -> 0.0076, ocean 0.0008 -> 0.0007.
+INTRO 0.7745 -> **0.7973** over 209 (0.663 -> 0.812, IoU 0.9856): terrain 0.0941 -> **0.0439**, props 0.0530 -> **0.0808**, actors 0.0441 -> 0.0439, sky 0.0199, reference-only 0.0072, ocean 0.0068, props_and_actors_render_only 0.0004.
+Terrain falls from 45% of the loss to 14% on CTRY and from 42% to 22% on INTRO, and props are now the largest class on both.
+The props class rises because the airfield and sand tiles that the terrain hid are now drawn, so their remaining error is attributed to props (section 1); the total loss still falls.
+The tile pixels were most of section 4's off-ramp ground.
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 2, What earlier runs established.
+
+## 2026-11-05: the IFVIS facing gate and the props class
+
+From section 2 of the note, as it stood at `f95ec4a`:
+
+The `IFVIS` facing gate of [#74](https://github.com/neilsh/stunt-reel/issues/74) (2026-11-05, [log row](../../2026-10/parity-log/log.md)) leaves the props class where the breakdown above has it, CTRY 0.0793 -> 0.0793 and INTRO 0.0808 -> 0.0806; its INTRO gain is on the aircraft (actors 0.0439 -> 0.0431).
+Props loss is therefore not the in-shape `IFVIS` branch.
+On the paths the census walks, it is not `BZLT`, `BVIS`, `REJVEC` or `REJ2D` either: no census walk reaches them, and correcting where sections end left the seven reference films' scores unchanged to four decimals.
+A gate behind a `BVLT` branch, which the census does not follow, or in code no branch reaches is not ruled out ([`sod-vm-execution.md`](../../../research/playone-exe/sod-vm-execution.md) section 8.6, [#235](https://github.com/neilsh/stunt-reel/issues/235)).
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 2, What earlier runs established, and Ruled out.
+
+## 2026-11-05: the world light and GVPOLY interpolation
+
+From section 2 of the note, as it stood at `f95ec4a`:
+
+The world light and per-vertex `GVPOLY` interpolation of [#221](https://github.com/neilsh/stunt-reel/issues/221) (2026-11-05, [log rows](../../2026-10/parity-log/log.md)) move props CTRY 0.0793 -> 0.0794 and INTRO 0.0806 -> 0.0770, actors 0.0133 -> 0.0135 and 0.0431 -> 0.0308.
+Shading scenery alone with the world light scores the same as the old stand-in to four decimals, so the INTRO props drop is most likely SSIM windows shared with the aircraft (`[Supported Inference]`).
+Props loss is therefore not the `SHADES` light either.
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 2, What earlier runs established.
+
+## 2026-11-16: lighting actors by R · L
+
+From section 2 of the note, as it stood at `f95ec4a`:
+
+Actors were then still shaded with the unturned world light.
+Lighting each actor by `R · L`, its rotation times the world light ([`terrain-shade.md`](../../../research/playone-exe/terrain-shade.md) section 4.3), raises `INTRO` and moves no other film by more than 0.0002; the object-frame `Rᵀ · L` gains about half as much on `INTRO`.
+Its largest per-frame fall, `LOCATION` 7756, sits on a frame where our helicopter already misses the capture's; 7734 shows the same helicopter mismatch, and the other falls in `LOCATION` 7723 to 7800 were not inspected.
+At `BALLOON` 254 the parachutist's lower body turns lighter than the capture's; whether it is a sub-model with its own `ROT*` turn was not checked.
+_Source: [lighting actors by R · L](../474_actor-light/journal.md#2026-11-16-lighting-actors-by-r--l), [the frames R · L lowers](../474_actor-light/journal.md#2026-11-16-the-frames-r--l-lowers)._
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 2, What earlier runs established.
+
+## 2026-11-16: BALLOON's mask IoU without its two runs
+
+From section 7 of the note, as it stood at `f95ec4a`; the figures are from before the camera fix and the positional sky rules:
+
+Mean IoU over the 107 frames, before 2026-11-18: 0.6409 as scored; 0.7705 without the 18 blank frames; 0.7303 with the capture sky widened to 224..=238; 0.8780 with both; 0.9418 with both and the sun counted as sky.
+The 18 blank frames average 0.4803 SSIM against 0.8856 for the other 89; the film mean would be 0.8856 if they scored like the rest, a bound on what a camera fix could recover, not a prediction.
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 7.
+
+## 2026-11-16: the fall since the decal run
+
+From section 2 of the note, as it stood at `f95ec4a`, a bullet under the RTX 4070 table of [loss by render layer on the seven VAULT references](../477_vault-attribution/journal.md#2026-11-16-loss-by-render-layer-on-the-seven-vault-references):
+
+* **Against the 2026-11-04 run below**, `ctry` props fell 0.0793 -> 0.0402 and terrain 0.0186 -> 0.0117; `intro` props 0.0808 -> 0.0503, terrain 0.0439 -> 0.0303 and actors 0.0439 -> 0.0350.
+  The changes between are many (the PRs behind the `crates` trees the expected tables record), so the split does not attribute the fall to any one of them.
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md) § 2.
+
+## 2026-11-20: open questions 1, 5 and 6 as they stood
+
+From Open questions of the note, as it stood at `f95ec4a`; items 2 to 4 stay in the note:
+
+1. **The player's ground polygons and light caller** — *answered 2026-11-04*: the ground leaves are `MAP.BIN`'s polygons and colours, and the 193/194/196 (and `INTRO`'s sand 91) are scenery tiles our depth test hides under coplanar terrain; a 5 cm terrain drop measures +0.035 / +0.023 SSIM ([world-scene-residuals.md](../../../research/playone-exe/world-scene-residuals.md) section 6).
+   The light is one world light per film ([terrain-shade.md](../../../research/playone-exe/terrain-shade.md) section 4.2).
+   As first written: terrain is the largest class on both films (0.0783 on `CTRY`, 0.1281 on `INTRO` on 2026-11-02 after #132; 46% and 45% of the loss).
+   On `CTRY` the error is systemic: median terrain loss 0.088, no frame above 0.30, the worst 40 frames holding 57% of it — a shading law, not a misplaced surface.
+   The sand band, the airfield's 193/194/196 base colours and the per-shot light caller are the three parts; `MAP.BIN`'s patches are not the player's records ([world-scene-residuals.md](../../../research/playone-exe/world-scene-residuals.md) section 6; [terrain-shade.md](../../../research/playone-exe/terrain-shade.md) next probe 1). ([#65](https://github.com/neilsh/stunt-reel/issues/65), [#66](https://github.com/neilsh/stunt-reel/issues/66), [#69](https://github.com/neilsh/stunt-reel/issues/69))
+
+5. **`balloon`'s straight-down camera** — 18 scored frames drawn blank (section 7), costing `balloon` 0.130 of IoU, more than any other reference's whole IoU shortfall (the largest, `bomb`'s, is 0.088).
+   It is an exception to the rule above: the fault is in our view matrix, and only the up vector to use needs `PLAYONE`'s rule. ([#615](https://github.com/neilsh/stunt-reel/issues/615))
+6. **The zenith sky and the sun disc** — the scorer's sky band omits 224 to 226 because shapes paint them too ([#616](https://github.com/neilsh/stunt-reel/issues/616)), so the zenith sky counts by position instead ([#718](https://github.com/neilsh/stunt-reel/issues/718); the sky the balloon cuts off is [#745](https://github.com/neilsh/stunt-reel/issues/745)), and our sky stops at 228 and draws no sun ([#617](https://github.com/neilsh/stunt-reel/issues/617)); section 7.
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md), Open questions and section 7.
