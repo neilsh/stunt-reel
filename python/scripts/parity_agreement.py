@@ -541,11 +541,15 @@ def wsl_path(path: Path) -> str:
     return f"/mnt/{drive[0].lower()}{rest}"
 
 
-def wsl_commands(distro: str, worktree: Path) -> tuple[list[str], list[str]]:
+def wsl_commands(
+    distro: str, primary: Path, worktree: Path, commit: str
+) -> tuple[list[str], list[str]]:
     """The lavapipe arm and driver commands that render in *distro*'s clone ``~/stunt-reel``.
 
-    The clone (``render-on-lavapipe.md`` § 5) is a render-only copy: it checks out *worktree*'s
-    ``HEAD`` by force, dropping a ``mise.lock`` mise rewrote, finds mise in ``~/.local/bin`` or
+    The clone (``render-on-lavapipe.md`` § 5) is a render-only copy: it fetches ``origin/main``
+    from the primary checkout *primary* (a worktree's ``.git`` names its gitdir by a Windows path
+    WSL git cannot read), refuses it unless it is *commit*, the worktree's ``HEAD``, checks it out
+    by force, dropping a ``mise.lock`` mise rewrote, finds mise in ``~/.local/bin`` or
     ``/usr/local/bin``, renders with its own data root on the Linux filesystem, and copies
     ``build/parity/ours`` and ``report`` into *worktree*'s ``build/parity``.
     """
@@ -555,7 +559,8 @@ def wsl_commands(distro: str, worktree: Path) -> tuple[list[str], list[str]]:
             "set -e",
             'export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"',
             "cd ~/stunt-reel",
-            f"git fetch -q {shlex.quote(wsl_path(worktree))} HEAD",
+            f"git fetch -q {shlex.quote(wsl_path(primary))} refs/remotes/origin/main",
+            f'test "$(git rev-parse FETCH_HEAD)" = {shlex.quote(commit)}',
             "git checkout -q --force --detach FETCH_HEAD",
             LAVAPIPE_COMMAND,
             f"rm -rf {target}/ours {target}/report",
@@ -597,7 +602,11 @@ def run_batch(
     if tools.run(update, primary) != 0:
         return 1
     if wsl is not None:
-        lavapipe_command, lavapipe_driver_command = wsl_commands(wsl, worktree)
+        commit = tools.output(["git", "rev-parse", "HEAD"], worktree)
+        if commit is None:
+            print("agreement: git cannot name the worktree's HEAD", file=sys.stderr)
+            return 1
+        lavapipe_command, lavapipe_driver_command = wsl_commands(wsl, primary, worktree, commit)
     if if_due:
         tree = tools.output(["git", "rev-parse", "HEAD:crates"], worktree)
         held = _load(worktree / STATE_DIR)

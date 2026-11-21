@@ -111,6 +111,8 @@ class Fake:
         command = " ".join(argv)
         if command in self.outputs:
             return self.outputs[command]
+        if command == "git rev-parse HEAD":
+            return "c" * 40
         if command == "git rev-parse HEAD:crates":
             return TREE
         if command.startswith("git status"):
@@ -511,10 +513,12 @@ def test_wsl_path_mounts_a_windows_drive(path: Path, mounted: str) -> None:
 
 def test_wsl_commands_render_in_the_clone_and_copy_back() -> None:
     worktree = PureWindowsPath(r"E:\\git\\stunt-reel\\.agents\\worktrees\\agreement")
-    arm, driver = cli.wsl_commands("Ubuntu-24.04", worktree)  # type: ignore[arg-type]
+    primary = PureWindowsPath(r"E:\\git\\stunt-reel")
+    arm, driver = cli.wsl_commands("Ubuntu-24.04", primary, worktree, "c" * 40)  # type: ignore[arg-type]
     assert arm[:8] == ["wsl", "-d", "Ubuntu-24.04", "-u", "root", "-e", "bash", "-lc"]
     script = arm[8]
-    assert "git fetch -q /mnt/e/git/stunt-reel/.agents/worktrees/agreement HEAD" in script
+    assert "git fetch -q /mnt/e/git/stunt-reel refs/remotes/origin/main" in script
+    assert f'test "$(git rev-parse FETCH_HEAD)" = {"c" * 40}' in script
     assert script.index("$HOME/.local/bin") < script.index(cli.LAVAPIPE_COMMAND)
     assert script.index(cli.LAVAPIPE_COMMAND) < script.index("cp -r build/parity/ours")
     assert script.endswith("/mnt/e/git/stunt-reel/.agents/worktrees/agreement/build/parity/")
