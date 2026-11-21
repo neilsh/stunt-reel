@@ -2,8 +2,8 @@
 //!
 //! Complies with Architectural Invariants:
 //! - `[I3]` VGA Mode 13h palette index color mapping and flat shading.
-//! - `[I5]` Ordered decal pass: `LessEqual`, no depth write, hardware depth bias
-//!   (`constant: -2, slope_scale: -2.0, clamp: 0.0`).
+//! - `[I5]` Ordered decal pass: `GreaterEqual` under reversed depth, no depth write, hardware
+//!   depth bias toward the viewer (`constant: 2, slope_scale: 2.0, clamp: 0.0`).
 
 use stunt_core::contracts::SodVertex;
 
@@ -76,6 +76,14 @@ impl Default for ModelUniform {
     }
 }
 
+/// The `[I5]` decal pass's constant depth bias, toward the viewer: two steps of the
+/// `Depth24Plus` buffer (ADR 0046's magnitude, its sign flipped by reversed depth;
+/// `docs/adr/0054-depth-is-reversed-and-infinite.md`).
+const DECAL_DEPTH_BIAS_CONSTANT: i32 = 2;
+/// The `[I5]` decal pass's slope-scaled depth bias, toward the viewer: two pixels of the decal
+/// triangle's own depth gradient.
+const DECAL_DEPTH_BIAS_SLOPE_SCALE: f32 = 2.0;
+
 /// Dual presentation pipelines separating base solid geometry from coplanar decals.
 #[derive(Debug)]
 pub(crate) struct RenderPipelines {
@@ -85,13 +93,14 @@ pub(crate) struct RenderPipelines {
     /// Line-list pipeline for the outlines of the world's flat-ground slices, compared like
     /// [`Self::ground_pipeline`].
     pub(crate) ground_edge_pipeline: wgpu::RenderPipeline,
-    /// Base mesh pipeline with zero depth bias and `Less` depth compare.
+    /// Base mesh pipeline with zero depth bias and `Greater` depth compare (depth is reversed:
+    /// nearer is larger).
     pub(crate) base_pipeline: wgpu::RenderPipeline,
     /// The base pipeline with neither depth test nor depth write, for an `OP_ANIMATE` sprite
     /// drawn at its place in the scenery walk: over everything drawn before it, under
     /// whatever is drawn after (`research/playone-exe/scene-walk-actors.md`).
     pub(crate) sprite_pipeline: wgpu::RenderPipeline,
-    /// Decal mesh pipeline conforming to `[I5]`: hardware depth bias, `LessEqual` compare and
+    /// Decal mesh pipeline conforming to `[I5]`: hardware depth bias, `GreaterEqual` compare and
     /// no depth write, so decals drawn in stream order cover the earlier ones on their base.
     pub(crate) decal_pipeline: wgpu::RenderPipeline,
     /// The decal pipeline without back-face culling, for an actor's ground shadow: its
@@ -103,7 +112,7 @@ pub(crate) struct RenderPipelines {
     /// with the base depth test. Lines are not culled, since they have no winding.
     pub(crate) edge_pipeline: wgpu::RenderPipeline,
     /// The edge pipeline with the decal depth test, for the outlines of decal slices. wgpu
-    /// allows depth bias only on triangles, so it compares `LessEqual` without the `[I5]`
+    /// allows depth bias only on triangles, so it compares `GreaterEqual` without the `[I5]`
     /// bias.
     pub(crate) edge_decal_pipeline: wgpu::RenderPipeline,
     /// Fullscreen pipeline that paints the sky bands behind all geometry.
@@ -290,25 +299,25 @@ impl RenderPipelines {
         let base_depth_stencil = depth_stencil(
             depth_format,
             true,
-            wgpu::CompareFunction::Less,
+            wgpu::CompareFunction::Greater,
             wgpu::DepthBiasState::default(),
         );
 
         // Decal geometry depth stencil state: Invariant [I5] hardware depth bias.
         // A decal is coplanar with the surface it sits on, so it has to be nudged toward the
-        // viewer to win that tie; a positive bias would push it behind and hide it. Flipping
-        // the sign (it was positive until 2026-10-23) makes decals win the tie, as the capture
-        // does: CTRY 0.7708 -> 0.7713, INTRO 0.6762 -> 0.6775
-        // (work/2026-10/parity-log/log.md, 2026-10-23). Decals write no depth, so each is
-        // tested against the base geometry's depth, not other decals', and a later coplanar
-        // decal covers an earlier one, as PLAYONE's painter does.
+        // viewer to win that tie. Depth is reversed (nearer is larger), so the bias toward the
+        // viewer is positive; under the standard depth it was negative, and a bias away from the
+        // viewer hid decals (work/2026-10/parity-log/log.md, 2026-10-23). Decals write no depth,
+        // so each is tested against the base geometry's depth, not other decals', and a later
+        // coplanar decal covers an earlier one, as PLAYONE's painter does. The values are
+        // in docs/adr/0054-depth-is-reversed-and-infinite.md.
         let decal_depth_stencil = depth_stencil(
             depth_format,
             false,
-            wgpu::CompareFunction::LessEqual,
+            wgpu::CompareFunction::GreaterEqual,
             wgpu::DepthBiasState {
-                constant: -2,
-                slope_scale: -2.0,
+                constant: DECAL_DEPTH_BIAS_CONSTANT,
+                slope_scale: DECAL_DEPTH_BIAS_SLOPE_SCALE,
                 clamp: 0.0,
             },
         );
