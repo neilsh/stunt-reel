@@ -105,13 +105,14 @@ The scores and pictures are in the journal.
 _Source: [the disc squeezed along depth by the lens zoom](../../work/2026-11/754_perfdisk-lens-squeeze/journal.md#2026-11-18-the-disc-squeezed-along-depth-by-the-lens-zoom)._
 
 **A third shape, at 17.76°** ([#841](https://github.com/neilsh/stunt-reel/issues/841); `[Bounded Observation]`, four ticks of one shape on the GPU, widths read off the discs' flat colours in both panels).
-Of every captured tick of `CTRY`, `LAND`, `INTRO`, `LOCATION` and `TRAINTNL`, the frame with the most disc pixels at a lens other than 42.67° and 50.95° whose camera matches the capture's shows `INTRO`'s triplane wheel at 17.76° (lens zoom 2.50); `LAND`'s discs at 11.16° are at most 14 px across, and at `TRAINTNL`'s 14.84° ticks 232, 243 and 254 our train is not where the capture's is.
+Of every captured tick of `CTRY`, `LAND`, `INTRO`, `LOCATION` and `TRAINTNL`, the frame with the most disc pixels at a lens other than 42.67° and 50.95° whose camera matches the capture's shows `INTRO`'s triplane wheel at 17.76° (lens zoom 2.50); `LAND`'s at 11.16° hold 101 px of disc in the frame (tick 540, jet wheels 5 to 10 px across), and at `TRAINTNL`'s 14.84° ticks 232, 243 and 254 our train is not where the capture's is.
 `INTRO.ALL` shape `0x7F04`, on the `IFVIS` branches these frames draw, draws a wheel as a tyre `OP_PERFDISK` of radius `0x0580` (colour `0x06`) and a hub of radius `0x0400` over it (`0x15` or `0x17`); other branches draw a lone disc of radius `0x0580` in colour `0x03`.
 The discs' normal runs along the axle, so the wheel stands upright as `BOMB`'s does.
 At 17.76° (ticks 1244 and 2553, `origin/main` `111970f`) the tyre's widest row is 16 px in the capture and 17 in ours, the hub's 9 and 11; at 42.67° (ticks 1101 and 2399) the near tyre's is 27 and 27 to 28, the hub's 19 and 20 at 1101 and 21 in both at 2399.
-So the radius holds on this shape at both lenses to 2 px at those rows, ours never the narrower there.
-The top rims agree to a row, but ours reaches 1 to 2 rows lower at the bottom of each disc whose bottom rim was read ([#898](https://github.com/neilsh/stunt-reel/issues/898)), where on `BOMB` the capture's disc was the taller.
-These nearly face-on wheels barely feel the squeeze: forcing it to 1 changes 3 px of the frame at tick 1244, against 3,487 px at `LOCATION` tick 6062, so they test the radius at a telephoto lens but not the squeeze or the normal's depth rescale.
+So the radius holds on this shape at both lenses to 2 px at those rows, ours never the narrower there: at 17.76° ours is 2 px (22 %) wider on the 9 px hub and 1 px (about 6 %) on the 16 px tyre, at 42.67° at most 1 px (about 5 %).
+The top rims agree to a row, but ours reaches 1 to 2 rows lower at the bottom of each disc whose bottom rim was read and is 1 to 3 rows taller in all (the 17.76° hub 9 × 8 px in the capture, 11 × 10 in ours), so the width excess has the sign of the height excess: the disc is larger across as well as down, not only lower at its bottom rim ([#898](https://github.com/neilsh/stunt-reel/issues/898)).
+On `BOMB`'s wheel the 16-gon was instead 4 to 6 % narrower, so the sign differs between shapes, and the span rounding or coverage rule is left open as a cause alongside the radius scale.
+These nearly face-on wheels barely feel the squeeze: forcing it to 1 changes 3 px of the frame at tick 1244, against 3,487 px at `LOCATION` tick 6062 (both measured for #841), so they test the radius at a telephoto lens but not the squeeze or the normal's depth rescale.
 _Source: [INTRO's triplane wheels](../../work/2026-11/841_perfdisk-third-shape/journal.md#2026-11-20-intros-triplane-wheels-at-the-default-lens-and-at-1776)._
 
 **Sphere faces.**
