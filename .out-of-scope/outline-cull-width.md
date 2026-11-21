@@ -6,7 +6,8 @@ Culling by the triangle's width over its longest edge instead of its area, to ma
 
 ## Why this is out of scope
 
-The 13 frames searched, in `intro`, `balloon` and `bomb`, do not tell the two tests apart: where they draw differently, the capture matches each on some pixels and neither on others, and one edge sides with each eleven ticks apart ([`attribution.md` § 6](../research/parity/attribution.md#6-back-faces)). The other four films' frames and the apexes were not searched pixel by pixel.
+The 13 frames searched, in `intro`, `balloon` and `bomb`, do not tell the two tests apart: where they draw differently, the capture matches each on some pixels and neither on others, and one edge sides with each eleven ticks apart ([`attribution.md` § 6](../research/parity/attribution.md#6-back-faces)).
+The other four films' frames and the apexes were not searched pixel by pixel.
 No film's mean SSIM moves by more than 0.000013, and what `PLAYONE` draws for a back face's thin parts is `[Hypothesis]`, read from the instructions and not traced.
 
 ## Reconsider when
