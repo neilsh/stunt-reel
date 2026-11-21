@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, as is any prop face within 10 cm of the ground plane, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and the renderer drops far scenery per frame by distance against its `scale_index`, as `PLAYONE`'s cull `0x1B28` does."
+summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, as is any prop face within 10 cm of the ground plane, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and the renderer drops far scenery per frame by distance against its `scale_index`, following `PLAYONE`'s cull `0x1B28` (`[Supported Inference]` for the distance in metres)."
 ---
 # `PLAYONE.EXE`: Ground Renderer Residuals
 
