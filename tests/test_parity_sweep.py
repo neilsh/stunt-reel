@@ -962,3 +962,10 @@ def test_sweep_prints_hot_line_over_half(tmp_path: Path) -> None:
 def test_sweep_without_agreement_file_prints_no_hot_line(tmp_path: Path) -> None:
     deltas = {"ctry": {2: 0.03}}
     assert parity_sweep.hot_lines("DBG_X=1", deltas, tmp_path / "absent.toml") == []
+
+
+def test_sweep_with_a_malformed_agreement_file_says_so(tmp_path: Path) -> None:
+    path = tmp_path / "agreement.toml"
+    path.write_text("[ctry]\n", encoding="utf-8")
+    (line,) = parity_sweep.hot_lines("DBG_X=1", {"ctry": {2: 0.03}}, path)
+    assert line.startswith("no hot-tick check:")

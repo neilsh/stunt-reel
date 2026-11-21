@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from functools import reduce
@@ -229,7 +230,7 @@ def test_pin_with_accept_records_reason_and_repins_gpu(fake: Fake, tmp_path: Pat
     assert pinned.films["ctry"].differing_ticks == 1
     commands = [" ".join(call) for call in fake.calls]
     assert commands[0] == "mise run parity-repin -- --class gpu"
-    assert "git switch -C chore/agreement-2026-11-21" in commands
+    assert "git switch -C chore/agreement-9999999" in commands
     assert any(
         command.startswith("git add -- research/parity/expected/agreement.toml")
         for command in commands
@@ -399,3 +400,98 @@ def test_covered_mean_and_gap_need_the_same_title() -> None:
     flag = ca.Flag("ctry", "mean: 1 to 3")
     assert cli.covered(flag, [{"title": "Agreement: ctry mean"}])
     assert not cli.covered(flag, [{"title": "Agreement: ctry ssim gap"}])
+
+
+def test_a_failed_push_keeps_the_commit_and_opens_no_pull(fake: Fake, tmp_path: Path) -> None:
+    pin_baseline(fake.repo)
+    measured(fake, tmp_path, flips={20: [0, 1, 2, 3]})
+    fake.exits["git push -u origin chore/agreement-9999999"] = 1
+    assert cli.run_pin(fake.repo, "x", fake.tools()) == 1
+    assert fake.calls[-1][:2] == ["git", "push"]
+    assert not any(call[0] == "-X" for call in fake.gh_calls)
+
+
+def _git(repo: Path, *args: str) -> str:
+    done = subprocess.run(  # noqa: S603 - fixed git arguments
+        ["git", "-C", str(repo), "-c", "user.name=T", "-c", "user.email=t@example.com",  # noqa: S607
+         "-c", "commit.gpgsign=false", "-c", f"core.hooksPath={repo / 'no-hooks'}", *args],
+        capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    return done.stdout.strip()
+
+
+def test_a_failed_first_commit_restores_the_files_in_real_git(fake: Fake, tmp_path: Path) -> None:
+    repo = fake.repo
+    _git(repo, "init", "-q")
+    (repo / "crates").mkdir()
+    (repo / "crates" / "a.rs").write_text("fn a() {}\n")
+    gpu = repo / cli.GPU_FILE
+    gpu.parent.mkdir(parents=True)
+    gpu.write_text("before\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    tree = _git(repo, "rev-parse", "HEAD:crates")
+    gpu_arm = write_arm(tmp_path / "gpu", GPU, crates=tree)
+    lav_arm = write_arm(tmp_path / "lav", LAVAPIPE, crates=tree)
+    assert cli.run_measure(repo, gpu_arm, lav_arm, DRIVERS, fake.tools())[0] == 0
+
+    def run(argv: Sequence[str], cwd: Path) -> int:
+        if argv[0] == "mise":
+            gpu.write_text("after\n")
+            return 0
+        if argv[:2] == ["git", "commit"]:
+            return 1
+        return cli._run([*argv[:1], "-c", f"core.hooksPath={repo / 'no-hooks'}", *argv[1:]], cwd)
+
+    tools = cli.Tools(run=run, gh=fake.gh, today=lambda: DAY, films=lambda _repo: FILMS)
+    assert cli.run_pin(repo, "first baseline", tools) == 1
+    assert gpu.read_text() == "before\n"
+    assert not (repo / ca.AGREEMENT_FILE).exists()
+    assert _git(repo, "status", "--porcelain", "--", "research") == ""
+
+
+def test_batch_if_due_skips_a_tree_already_measured(
+    fake: Fake, capsys: pytest.CaptureFixture[str]
+) -> None:
+    worktree(fake).mkdir(parents=True)
+    pin_baseline(worktree(fake))
+    fake.lavapipe_flips = {20: [0, 1, 2, 3]}
+    fake.commits = ["c"] * 5
+    assert batch(fake, if_due=True) == 0
+    fake.calls.clear()
+    assert batch(fake, if_due=True) == 0
+    assert "already measured" in capsys.readouterr().out
+    assert cli.LAVAPIPE_COMMAND not in [" ".join(c) for c in fake.calls]
+
+
+def test_batch_if_due_skips_a_tree_whose_pin_awaits_merge(
+    fake: Fake, capsys: pytest.CaptureFixture[str]
+) -> None:
+    worktree(fake).mkdir(parents=True)
+    pin_baseline(worktree(fake))
+    fake.commits = ["c"] * 5
+    fake.outputs["git ls-remote --heads origin chore/agreement-9999999"] = "abc refs/heads/x"
+    assert batch(fake, if_due=True) == 0
+    assert "awaits its merge" in capsys.readouterr().out
+
+
+def test_a_failed_measurement_is_posted(fake: Fake) -> None:
+    worktree(fake).mkdir(parents=True)
+    fake.lavapipe_ticks = (10, 20)
+    fake.gh_pages[ISSUES] = [{"number": 7, "title": cli.STANDING_TITLE}]
+    assert batch(fake, post=True) == 1
+    (comment,) = posts(fake)
+    assert comment[2] == f"{ISSUES}/7/comments"
+    assert "tick sets differ" in comment[-1]
+
+
+def test_a_malformed_agreement_file_exits_2(
+    fake: Fake, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "REPO_ROOT", fake.repo)
+    measured_dir = fake.repo / cli.STATE_DIR
+    measured_dir.mkdir(parents=True)
+    (measured_dir / "measured.toml").write_text("[ctry]\nticks = 1\n", encoding="utf-8")
+    (measured_dir / "gaps.json").write_text("{}", encoding="utf-8")
+    assert cli.main(["pin"], fake.tools()) == 2
+    assert "not an agreement file" in capsys.readouterr().err

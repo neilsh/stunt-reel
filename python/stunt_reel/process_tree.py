@@ -153,7 +153,10 @@ def _proc_names(proc: Path) -> list[str]:
 
 
 def process_names() -> list[str]:
-    """The image name of every process this user can see; empty when they cannot be listed."""
+    """The image name of every process this user can see.
+
+    Empty when they cannot be listed, so :func:`stuntreel_running` then answers ``False``.
+    """
     if sys.platform == "win32":
         rows = _listing(["tasklist", "/FO", "CSV", "/NH"])
         names = [row.split(",", 1)[0].strip('"') for row in rows]

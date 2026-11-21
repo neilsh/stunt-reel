@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import subprocess
+import tomllib
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -122,6 +123,16 @@ def test_format_puts_unordered_films_last_by_name() -> None:
 def test_format_escapes_quotes() -> None:
     text = ca.format_agreement(agreement(accepted='new "driver"'), [])
     assert 'accepted = "new \\"driver\\""' in text
+
+
+def test_read_agreement_malformed_raises_value_error(tmp_path: Path) -> None:
+    path = tmp_path / "agreement.toml"
+    path.write_text("[ctry]\nticks = 1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="not an agreement file"):
+        ca.read_agreement(path)
+    path.write_text("[measured\n", encoding="utf-8")
+    with pytest.raises(tomllib.TOMLDecodeError):
+        ca.read_agreement(path)
 
 
 def test_read_agreement_absent_is_none(tmp_path: Path) -> None:

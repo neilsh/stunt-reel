@@ -26,8 +26,13 @@ both. Otherwise it updates the worktree ``.agents/worktrees/agreement`` to ``ori
 with ``--lavapipe-command`` (default ``mise run parity -- --software-only``; it must leave its
 renders and reports in the worktree's ``build/parity``), keeps them as ``build/agreement/lavapipe``,
 renders on the GPU with ``mise run parity``, then measures, and pins when nothing flags.
-``--post`` comments the result on the open ``Class agreement batch`` issue, once per tree, and
-files an issue per flag that no open ``class-agreement`` issue covers.
+With ``--if-due`` it also skips a tree it has already measured, or whose pin branch
+(``chore/agreement-<tree>``) is on ``origin``, so a flagged or unmerged tree is rendered once;
+a pin branch left behind by a closed pull request holds its tree until the next renderer commit.
+``--post`` comments the result on the open ``Class agreement batch`` issue, once per tree, files
+an issue per flag that no open ``class-agreement`` issue covers, and comments a failed
+measurement. The defaults suit Linux; on local-windows the canonical lavapipe runs under WSL, so
+the job passes ``wsl``-wrapped ``--lavapipe-command`` and ``--lavapipe-driver-command`` (#908).
 """
 
 from __future__ import annotations
@@ -316,6 +321,23 @@ def run_measure(
     return 0, result
 
 
+def _restore(repo: Path, files: Sequence[str], tools: Tools) -> None:
+    """Returns *files* to ``HEAD``, index and worktree: a file ``HEAD`` lacks is unstaged and deleted."""
+    for name in files:
+        if tools.output(["git", "rev-parse", "--verify", "--quiet", f"HEAD:{name}"], repo):
+            tools.run(
+                ["git", "restore", "--source=HEAD", "--staged", "--worktree", "--", name], repo
+            )
+        else:
+            tools.run(["git", "rm", "-q", "--cached", "--ignore-unmatch", "--", name], repo)
+            (repo / name).unlink(missing_ok=True)
+
+
+def pin_branch(crates: str) -> str:
+    """The branch a pin of *crates* is pushed to: one per tree, so a tree is pinned once."""
+    return f"chore/agreement-{crates[:7]}"
+
+
 def run_pin(repo: Path, accept: str | None, tools: Tools) -> int:
     """``pin`` in checkout *repo*: the exit code."""
     loaded = _load(repo / STATE_DIR)
@@ -350,7 +372,7 @@ def run_pin(repo: Path, accept: str | None, tools: Tools) -> int:
     if not tools.output(["git", "status", "--porcelain", "--", *files], repo):
         print("agreement: the pinned figures are unchanged; nothing to commit")
         return 0
-    branch = f"chore/agreement-{measured.date.isoformat()}"
+    branch = pin_branch(measured.crates)
     subject = "chore(parity): repin class agreement (#908)"
     body = f"Measured on crates {measured.crates[:7]} on {measured.date.isoformat()}."
     if accept is not None:
@@ -359,10 +381,16 @@ def run_pin(repo: Path, accept: str | None, tools: Tools) -> int:
         ["git", "switch", "-C", branch],
         ["git", "add", "--", *files],
         ["git", "commit", "-m", subject, "-m", body],
-        ["git", "push", "-u", "origin", branch],
     ):
         if tools.run(argv, repo) != 0:
+            _restore(repo, files, tools)
+            print(
+                f"agreement: git {argv[1]} failed; the pinned files are restored", file=sys.stderr
+            )
             return 1
+    if tools.run(["git", "push", "-u", "origin", branch], repo) != 0:
+        print(f"agreement: the pin is committed on {branch} but not pushed", file=sys.stderr)
+        return 1
     try:
         pull = tools.gh(
             "-X", "POST", "repos/{owner}/{repo}/pulls",
@@ -386,6 +414,26 @@ def _pages(tools: Tools, path: str) -> list[dict[str, Any]]:
         if len(batch) < PER_PAGE:
             return entries
         page += 1
+
+
+def _open_issues(tools: Tools) -> list[dict[str, Any]]:
+    """The open issues labelled :data:`LABEL`, pull requests left out."""
+    path = f"repos/{{owner}}/{{repo}}/issues?state=open&labels={LABEL}"
+    return [issue for issue in _pages(tools, path) if "pull_request" not in issue]
+
+
+def _standing(tools: Tools, issues: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """The open standing issue among *issues*, opened when there is none."""
+    found = next((issue for issue in issues if issue["title"] == STANDING_TITLE), None)
+    if found is not None:
+        return found
+    body = "Each class agreement batch comments here once per measured `crates` tree (#908)."
+    return dict(
+        tools.gh(
+            "-X", "POST", "repos/{owner}/{repo}/issues", "-f", f"title={STANDING_TITLE}",
+            "-f", "labels[]=" + LABEL, "-f", f"body={body}{FOOTER}",
+        )
+    )  # fmt: skip
 
 
 def covered(flag: Flag, issues: Sequence[dict[str, Any]]) -> bool:
@@ -423,19 +471,8 @@ def post(
 ) -> int:
     """Comments on the standing issue once per tree and files the uncovered flags; the exit code."""
     try:
-        issues = [
-            issue
-            for issue in _pages(tools, f"repos/{{owner}}/{{repo}}/issues?state=open&labels={LABEL}")
-            if "pull_request" not in issue
-        ]
-        standing = next((issue for issue in issues if issue["title"] == STANDING_TITLE), None)
-        if standing is None:
-            standing = tools.gh(
-                "-X", "POST", "repos/{owner}/{repo}/issues", "-f", f"title={STANDING_TITLE}",
-                "-f", "labels[]=" + LABEL,
-                "-f", "body=Each class agreement batch comments here once per measured `crates` tree (#908)." + FOOTER,
-            )  # fmt: skip
-        number = standing["number"]
+        issues = _open_issues(tools)
+        number = _standing(tools, issues)["number"]
         comments = _pages(tools, f"repos/{{owner}}/{{repo}}/issues/{number}/comments")
         if any(measured.crates in str(comment.get("body", "")) for comment in comments):
             print(f"agreement: #{number} already holds crates {measured.crates[:7]}; no comment")
@@ -467,6 +504,25 @@ def post(
         print(f"agreement: posting failed: {err}", file=sys.stderr)
         return 1
     return 0
+
+
+def post_failure(errors: Sequence[str], tools: Tools) -> None:
+    """Comments a batch's failed measurement on the standing issue, so an unattended night is seen."""
+    try:
+        standing = _standing(tools, _open_issues(tools))
+        body = "The class agreement batch measured nothing:\n\n" + "\n".join(
+            f"- {error}" for error in errors
+        )
+        comments = _pages(tools, f"repos/{{owner}}/{{repo}}/issues/{standing['number']}/comments")
+        if comments and comments[-1].get("body") == f"{body}{FOOTER}":
+            print(f"agreement: #{standing['number']} already reports this failure; no comment")
+            return
+        tools.gh(
+            "-X", "POST", f"repos/{{owner}}/{{repo}}/issues/{standing['number']}/comments",
+            "-f", f"body={body}{FOOTER}",
+        )  # fmt: skip
+    except GhError as err:
+        print(f"agreement: posting failed: {err}", file=sys.stderr)
 
 
 def driver_versions(
@@ -501,6 +557,18 @@ def run_batch(
     if tools.run(update, primary) != 0:
         return 1
     if if_due:
+        tree = tools.output(["git", "rev-parse", "HEAD:crates"], worktree)
+        held = _load(worktree / STATE_DIR)
+        if tree is not None and held is not None and held[0].crates == tree:
+            print(
+                f"agreement batch skipped: crates {tree[:7]} is already measured; "
+                "pin it with --accept or wait for the next renderer commit"
+            )
+            return 0
+        remote = ["git", "ls-remote", "--heads", "origin", pin_branch(tree or "")]
+        if tree is not None and tools.output(remote, worktree):
+            print(f"agreement batch skipped: the pin of crates {tree[:7]} awaits its merge")
+            return 0
         pinned = read_agreement(worktree / AGREEMENT_FILE)
         commits = tools.commits(pinned.crates, worktree) if pinned is not None else None
         reason = due(pinned, commits, tools.today())
@@ -530,6 +598,8 @@ def run_batch(
         worktree, worktree / PARITY_DIR, lavapipe, (gpu_driver, lav_driver), tools
     )
     if code != 0 or result.agreement is None:
+        if post_result:
+            post_failure(result.errors, tools)
         return code or 1
     found = flags(read_agreement(worktree / AGREEMENT_FILE), result.agreement, result.gaps)
     if isinstance(found, list) and not found:
@@ -569,7 +639,14 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None, tools: Tools | None = None) -> int:
     """Runs one subcommand; its exit code."""
     args = parse_args(argv)
-    tools = tools or Tools()
+    try:
+        return _main(args, tools or Tools())
+    except ValueError as err:
+        print(f"agreement: {err}", file=sys.stderr)
+        return 2
+
+
+def _main(args: argparse.Namespace, tools: Tools) -> int:
     if args.command == "pin":
         return run_pin(REPO_ROOT, args.accept, tools)
     if args.command == "batch":

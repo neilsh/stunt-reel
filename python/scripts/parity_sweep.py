@@ -16,8 +16,10 @@ Usage::
     mise run sweep -- --reuse <retime root> [--films ctry,intro] [--retime N]
 
 stdout carries only the ``--target`` echo, the table and the winner line; progress, the
-listed frames and the picture paths go to stderr, with a line for each film whose gain lies
-mostly on ticks the pinned class agreement lists as hot, since it may not carry over to the GPU. The baseline is the variant of each
+listed frames and the picture paths go to stderr.
+So does a line for each film whose gain lies mostly on ticks the pinned class agreement lists as
+hot, since that gain may not carry over to the GPU.
+ The baseline is the variant of each
 ``--var``'s first value, and every other variant is judged against it once all have finished (``stunt_reel.parity_judge``).
 With ``--track`` the winner line gives the adoption rule's verdict (loop-rules.md) and the
 baseline never wins; ``--track`` and ``--target`` refuse a ``--films`` subset, ``--reuse`` and
@@ -487,9 +489,13 @@ def hot_lines(
 
     A hot tick is one the pinned class agreement lists for the film: lavapipe and the GPU draw it
     over :data:`HOT_TICK_PIXELS` pixels apart, so a gain there may not carry over to the GPU.
-    No line without the agreement file or for a film it does not hold.
+    No line without the agreement file or for a film it does not hold; one saying so for a file
+    that cannot be read.
     """
-    agreement = read_agreement(agreement_file or REPO_ROOT / AGREEMENT_FILE)
+    try:
+        agreement = read_agreement(agreement_file or REPO_ROOT / AGREEMENT_FILE)
+    except (OSError, ValueError) as err:
+        return [f"no hot-tick check: {err}"]
     if agreement is None:
         return []
     lines = []

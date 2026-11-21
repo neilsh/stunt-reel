@@ -236,33 +236,39 @@ def format_agreement(agreement: Agreement, order: Sequence[str]) -> str:
 
 
 def read_agreement(path: Path) -> Agreement | None:
-    """The agreement *path* holds; ``None`` when there is no such file."""
+    """The agreement *path* holds; ``None`` when there is no such file.
+
+    Raises ``ValueError`` when the file is not an agreement file.
+    """
     if not path.is_file():
         return None
-    data = tomllib.loads(path.read_text(encoding="utf-8"))
-    measured = data.pop("measured")
-    films = {
-        name: FilmAgreement(
-            film=name,
-            ticks=table["ticks"],
-            differing_ticks=table["differing_ticks"],
-            mean=table["mean"],
-            largest=table["largest"],
-            largest_tick=table["largest_tick"],
-            hot={int(tick): count for tick, count in table.get("hot", {}).items()},
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        measured = data.pop("measured")
+        films = {
+            name: FilmAgreement(
+                film=name,
+                ticks=table["ticks"],
+                differing_ticks=table["differing_ticks"],
+                mean=table["mean"],
+                largest=table["largest"],
+                largest_tick=table["largest_tick"],
+                hot={int(tick): count for tick, count in table.get("hot", {}).items()},
+            )
+            for name, table in data.items()
+        }
+        return Agreement(
+            crates=measured["crates"],
+            date=measured["date"],
+            gpu_adapter=measured["gpu_adapter"],
+            gpu_driver=measured["gpu_driver"],
+            lavapipe_adapter=measured["lavapipe_adapter"],
+            lavapipe_driver=measured["lavapipe_driver"],
+            films=films,
+            accepted=measured.get("accepted"),
         )
-        for name, table in data.items()
-    }
-    return Agreement(
-        crates=measured["crates"],
-        date=measured["date"],
-        gpu_adapter=measured["gpu_adapter"],
-        gpu_driver=measured["gpu_driver"],
-        lavapipe_adapter=measured["lavapipe_adapter"],
-        lavapipe_driver=measured["lavapipe_driver"],
-        films=films,
-        accepted=measured.get("accepted"),
-    )
+    except (KeyError, TypeError, AttributeError) as err:
+        raise ValueError(f"{path}: not an agreement file: {err!r}") from err
 
 
 @dataclass(frozen=True)

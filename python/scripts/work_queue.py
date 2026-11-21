@@ -357,7 +357,10 @@ def disk_line(primary: Path) -> str:
 
 def agreement_line(repo: Path = REPO_ROOT, today: dt.date | None = None) -> str | None:
     """``agreement batch due: <reason>`` for *repo*'s pinned agreement against ``origin/main``; ``None`` when not due."""
-    pinned = read_agreement(repo / AGREEMENT_FILE)
+    try:
+        pinned = read_agreement(repo / AGREEMENT_FILE)
+    except (OSError, ValueError) as err:
+        return f"agreement batch due: unknown: {err}"
     commits = None if pinned is None else renderer_commits_since(pinned.crates, repo=repo)
     reason = due(pinned, commits, today or dt.datetime.now(dt.UTC).date())
     return None if reason is None else f"agreement batch due: {reason}"
