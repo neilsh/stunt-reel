@@ -106,7 +106,7 @@ def _clear_read_only(func: Callable[[str], object], path: str, _exc: BaseExcepti
 
 
 def _recently_modified(path: Path, now: datetime, fresh_for: timedelta) -> bool:
-    """Whether *path* changed within *fresh_for*, so a live run may still be using it."""
+    """Whether *path*'s own mtime is inside *fresh_for*; deeper writes leave it unchanged."""
     try:
         modified = datetime.fromtimestamp(path.stat().st_mtime, UTC)
     except OSError:
@@ -123,9 +123,9 @@ def prune_old_basetemps(
 ) -> None:
     """Remove the older per-run basetemps, read-only files included; best effort.
 
-    A basetemp modified within *fresh_for* may belong to a run still going, so it is left
-    alone however many runs overlap.  The sandbox may refuse, and a file another process
-    holds stays until the next run.
+    A basetemp whose top-level directory changed within *fresh_for* (under xdist, a run that
+    started then) is left alone, so a live run younger than that is not pruned.  The sandbox
+    may refuse, and a file another process holds stays until the next run.
     """
     now = datetime.now(UTC) if now is None else now
     try:
