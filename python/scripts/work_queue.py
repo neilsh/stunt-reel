@@ -35,6 +35,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import merge_bar
+
 #: Seconds before a ``gh`` call counts as failed.
 GH_TIMEOUT = 60
 
@@ -123,11 +125,34 @@ def blocked_by_line(body: str | None) -> set[int]:
     return {int(n) for line in _BLOCKED_BY_LINE.findall(body or "") for n in _NUMBER.findall(line)}
 
 
-def checks_state(runs: list[dict[str, Any]]) -> str:
-    """``failed``, ``pending`` or ``passed`` for a commit's check runs; none yet is pending."""
-    if any(run.get("conclusion") in _FAILED for run in runs):
+def _check_state(run: dict[str, Any]) -> str:
+    """A REST check run's ``failed``, ``pending`` or ``passed``, from its status and conclusion."""
+    if run.get("conclusion") in _FAILED:
         return "failed"
-    if not runs or any(run.get("status") != "completed" for run in runs):
+    return "pending" if run.get("status") != "completed" else "passed"
+
+
+def checks_state(runs: list[dict[str, Any]]) -> str:
+    """``failed``, ``pending`` or ``passed`` for a commit's check runs; none yet is pending.
+
+    Only the newest run of each check name counts, as in ``gh pr checks``: a concurrency group
+    cancels the run a newer one supersedes, so a cancelled run beside its passing rerun is not a
+    failure (:func:`merge_bar._newest_runs`).
+    """
+    newest = merge_bar._newest_runs(
+        [
+            (
+                str(run.get("name") or "?"),
+                _check_state(run),
+                (run.get("started_at") or "", int(run.get("id") or 0)),
+            )
+            for run in runs
+        ]
+    )
+    states = [state for _, state in newest]
+    if "failed" in states:
+        return "failed"
+    if not states or "pending" in states:
         return "pending"
     return "passed"
 

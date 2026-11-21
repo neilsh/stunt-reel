@@ -15,6 +15,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+import merge_bar  # noqa: E402
 import work_queue as q  # noqa: E402
 
 
@@ -89,12 +90,82 @@ def test_an_armed_pr_needs_work_only_when_a_check_failed(
     assert (item.skip, item.notes) == (skip, notes)
 
 
+def _run(
+    name: str,
+    conclusion: str | None = "success",
+    status: str = "completed",
+    started_at: str = "2026-11-20T20:00:00Z",
+    run_id: int = 1,
+) -> dict[str, Any]:
+    """One REST check run as ``.../check-runs`` returns it."""
+    return {
+        "name": name,
+        "status": status,
+        "conclusion": conclusion,
+        "started_at": started_at,
+        "id": run_id,
+    }
+
+
 def test_check_runs_reduce_to_one_state() -> None:
-    done = {"status": "completed", "conclusion": "success"}
-    assert q.checks_state([done, {"status": "completed", "conclusion": "skipped"}]) == "passed"
-    assert q.checks_state([done, {"status": "in_progress", "conclusion": None}]) == "pending"
-    assert q.checks_state([{"status": "in_progress"}, {"conclusion": "failure"}]) == "failed"
+    assert q.checks_state([_run("a"), _run("b", conclusion="skipped")]) == "passed"
+    assert (
+        q.checks_state([_run("a"), _run("b", status="in_progress", conclusion=None)]) == "pending"
+    )
+    assert q.checks_state([_run("a", conclusion="failure")]) == "failed"
+    assert q.checks_state([_run("a", conclusion="cancelled")]) == "failed"
     assert q.checks_state([]) == "pending"
+
+
+def test_a_superseded_cancelled_run_is_not_a_failure() -> None:
+    cancelled = _run(
+        "PR title", conclusion="cancelled", started_at="2026-11-20T20:52:55Z", run_id=20
+    )
+    passed = _run("PR title", started_at="2026-11-20T20:52:57Z", run_id=10)
+    assert q.checks_state([cancelled, passed]) == "passed"
+    assert q.checks_state([passed, cancelled]) == "passed"
+
+
+def test_the_newest_run_of_a_check_still_fails() -> None:
+    passed = _run("PR title", started_at="2026-11-20T20:52:55Z", run_id=10)
+    failed = _run("PR title", conclusion="failure", started_at="2026-11-20T20:52:57Z", run_id=11)
+    assert q.checks_state([passed, failed]) == "failed"
+
+
+def test_the_queue_selects_through_merge_bars_newest_run_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[list[tuple[str, str, tuple[str, int]]]] = []
+    real = merge_bar._newest_runs
+
+    def spy(runs: list[tuple[str, str, tuple[str, int]]]) -> list[tuple[str, str]]:
+        seen.append(runs)
+        return real(runs)
+
+    monkeypatch.setattr(merge_bar, "_newest_runs", spy)
+    assert q.checks_state([_run("PR title")]) == "passed"
+    assert seen
+    assert seen[0][0][0] == "PR title"
+
+
+def test_an_armed_pr_whose_cancelled_run_was_superseded_is_not_a_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cancelled = _run(
+        "PR title", conclusion="cancelled", started_at="2026-11-20T20:52:55Z", run_id=20
+    )
+    passed = _run("PR title", started_at="2026-11-20T20:52:57Z", run_id=10)
+
+    def gh(*args: str) -> Any:
+        if "check-runs" in args[-1]:
+            return {"check_runs": [cancelled, passed]}
+        return {"mergeable_state": "blocked"}
+
+    monkeypatch.setattr(q, "gh_json", gh)
+    pr = _pr(1, "a", auto_merge={"merge_method": "squash"})
+    (item,) = q.pr_items([pr], {1: q.armed_state(pr)})
+    assert item.skip == []
+    assert item.notes == ["auto-merge armed, checks passed but not merged"]
 
 
 def test_a_blocked_by_line_never_reads_the_next_line() -> None:
