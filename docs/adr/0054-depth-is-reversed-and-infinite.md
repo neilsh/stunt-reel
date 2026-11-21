@@ -16,7 +16,7 @@ Under a reversed, infinite perspective clip z is the constant `near`, so depth i
 ## Decision
 
 * **Reversed, infinite perspective.**
-  `compute_proj_matrix` builds glam's `perspective_infinite_reverse`: clip z is the constant `near` (0.5 m) and clip w the distance along the view axis, so depth is `near / w`, 1 at the near plane and falling toward 0 at infinity.
+  `compute_proj_matrix` builds glam's `perspective_infinite_reverse`: clip z is the constant `near` (0.5 m when accepted, 0.1 m since [#904](https://github.com/neilsh/stunt-reel/issues/904)) and clip w the distance along the view axis, so depth is `near / w`, 1 at the near plane and falling toward 0 at infinity.
   Nothing is clipped far away; `far_clip` is used by the orthographic projection only.
 * **Reversed orthographic.**
   The orthographic projection swaps its near and far planes, so it too maps near to 1 and far to 0, and every pipeline uses one compare direction.
@@ -48,7 +48,7 @@ Under a reversed, infinite perspective clip z is the constant `near`, so depth i
 * **GPU parity.**
   No reference film's score falls by the adoption rule's 0.002 and no frame by more than 0.005; no film rises enough to adopt on score (same journal entry).
 * **Precision.**
-  Reversed depth in a fixed-point buffer resolves what standard depth did: a step of `2^-24` in `near / w` is `w² × 2^-24 / near` in distance, about 12 cm at 1 km.
+  Reversed depth in a fixed-point buffer resolves what standard depth did: a step of `2^-24` in `near / w` is `w² × 2^-24 / near` in distance, about 12 cm at 1 km with the 0.5 m near plane this ADR was accepted with, 60 cm at 0.1 m ([#904](https://github.com/neilsh/stunt-reel/issues/904)).
 * **Actor shadows.**
   The actor shadow, flattened 1 mm above the ground, keeps going through the decal pass.
 * **Decal outlines.**

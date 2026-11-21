@@ -106,7 +106,7 @@ _Source: [Eye-relative transforms on both backends](../../work/2026-11/636_eye-r
 
 **Reversed, infinite depth (#637).**
 `[Bounded Observation]`, 2026-11-20, mesa-dist-win 25.2.8 against the RTX 4070, on `main` `5fbfe844` before and that tree plus the change after; re-measured on `main` `b028f7d3` (#690) with the same figures to one decimal.
-Depth is now `0.5 m / w`, reversed, in `Depth24Plus` ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md)): clip z is the constant near distance, so no rounded projection term reaches it.
+Depth was then `0.5 m / w` (`0.1 m / w` since [#904](https://github.com/neilsh/stunt-reel/issues/904), not re-measured here), reversed, in `Depth24Plus` ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md)): clip z is the constant near distance, so no rounded projection term reaches it.
 Mean index-plane pixels differing per tick, GPU against lavapipe, over every tick of each film, with the same projection in `Depth32Float` beside it:
 
 | Film | Before | `Depth32Float` | After (`Depth24Plus`) |
