@@ -24,6 +24,7 @@ Then copy in this checklist:
 8. Report in about 10 lines, because the coordinator keeps the report in its context: what changed, the gate's result, each acceptance item met or not, `Fixes` or `Part of`, whether the item needs an ADR, a human choice or another machine, and anything left undone.
    An Orca worker sends it with `orca orchestration send` ([`coordinator.md`](coordinator.md#orca-orchestration-flags), § DSH), a subagent in its final reply.
    On a PR whose diff touches a rule 5 path (step 5), commit but do not push, for a first commit and for every later fix, rebase or merge: the coordinator pushes after the fresh review and opens the PR, so also write the PR body (step 6) to `build/scratch/<name>.md` and report the commit SHA, the PR title (the commit subject for a single commit, ending `(#N)`) and the body file's absolute path, since the coordinator opens the PR from another checkout ([`pr-and-filing.md`](pr-and-filing.md) step 1).
+   At a run's deadline or disk stop, the `chore: wip` push is the exception: push it unreviewed and open or update the **draft** PR, whose handoff comment starts `unreviewed: rule 5 review pending` ([`loop-and-bounds.md`](loop-and-bounds.md#clock-and-disk-space)).
    Otherwise push before you report.
 
 ## Child-session brief

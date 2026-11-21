@@ -9,6 +9,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
    Then push, with one exception.
    A *rule 5 PR* is one whose diff touches a path [`AGENTS.md` § Committing](../../../AGENTS.md#committing) rule 5 names.
    Its first commit and every later fix, rebase or merge is committed locally and not pushed until step 2 has reviewed it at its local SHA; you then push it unchanged and, for the first push, open the PR.
+   At a run's deadline or local disk stop, a `chore: wip` commit is the exception: it is pushed unreviewed as a **draft** PR, whose handoff comment starts `unreviewed: rule 5 review pending` ([`loop-and-bounds.md`](loop-and-bounds.md#clock-and-disk-space)), and the merge bar's `clean` review at `HEAD` still keeps it from merging.
    A rebase or merge changes the SHA, so it needs a fresh `clean` comment at the new head; for a merge commit whose tree equals an already-reviewed tree, the re-review only confirms that identity (`git diff <reviewed> <merge>` is empty).
    Bring the branch up to date with `origin/main` (rebase or merge, as above) just before dispatching step 2's review, and push as soon as it is `clean`.
    A conflict only in `research/MAP.md` takes either side, then `mise run knowledge-map -- --write`; the re-review at the new head then only confirms that `mise run knowledge-map -- --check` passes and that the diff against the reviewed commit shows only `main`'s files, and posts its `clean` comment (an owner-approved relaxation of rule 5 for that generated file alone).
