@@ -5,7 +5,7 @@ Usage::
     mise run agreement -- measure --gpu ROOT --lavapipe ROOT [--gpu-driver V] [--lavapipe-driver V]
     mise run agreement -- pin [--accept REASON]
     mise run agreement -- batch [--if-due] [--post] [--lavapipe-command CMD]
-                                [--lavapipe-driver-command CMD]
+                                [--lavapipe-driver-command CMD] [--wsl DISTRO]
 
 ``measure`` reads two roots laid out as ``build/parity`` is, ``ours/<film>_current`` render stores
 beside ``report/<film>_current/report.json``, one drawn on the GPU and one on lavapipe, from one
@@ -32,7 +32,7 @@ a pin branch left behind by a closed pull request holds its tree until the next 
 ``--post`` comments the result on the open ``Class agreement batch`` issue, once per tree, files
 an issue per flag that no open ``class-agreement`` issue covers, and comments a failed
 measurement. The defaults suit Linux; on local-windows the canonical lavapipe runs under WSL, so
-the job passes ``wsl``-wrapped ``--lavapipe-command`` and ``--lavapipe-driver-command`` (#908).
+the job passes ``--wsl DISTRO`` (``wsl_commands``), which replaces both lavapipe commands (#908).
 """
 
 from __future__ import annotations
@@ -533,6 +533,39 @@ def driver_versions(
     return (gpu.splitlines()[0].strip() if gpu else None), tools.output(lavapipe_command, cwd)
 
 
+def wsl_path(path: Path) -> str:
+    """*path* on a Windows drive as WSL mounts it: ``E:\\git\\x`` is ``/mnt/e/git/x``."""
+    drive, rest = path.drive, path.as_posix()[len(path.drive) :]
+    if len(drive) != 2 or drive[1] != ":":
+        return path.as_posix()
+    return f"/mnt/{drive[0].lower()}{rest}"
+
+
+def wsl_commands(distro: str, worktree: Path) -> tuple[list[str], list[str]]:
+    """The lavapipe arm and driver commands that render in *distro*'s clone ``~/stunt-reel``.
+
+    The clone (``render-on-lavapipe.md`` § 5) checks out *worktree*'s ``HEAD``, renders with its
+    own data root on the Linux filesystem, and copies ``build/parity/ours`` and ``report`` into
+    *worktree*'s ``build/parity``, where the batch reads them.
+    """
+    target = shlex.quote(f"{wsl_path(worktree)}/{PARITY_DIR.as_posix()}")
+    script = "; ".join(
+        [
+            "set -e",
+            "cd ~/stunt-reel",
+            f"git fetch -q {shlex.quote(wsl_path(worktree))} HEAD",
+            "git checkout -q --detach FETCH_HEAD",
+            LAVAPIPE_COMMAND,
+            f"rm -rf {target}/ours {target}/report",
+            f"mkdir -p {target}",
+            f"cp -r build/parity/ours build/parity/report {target}/",
+        ]
+    )
+    arm = ["wsl", "-d", distro, "-u", "root", "-e", "bash", "-lc", script]
+    driver = ["wsl", "-d", distro, "-u", "root", "-e", *shlex.split(LAVAPIPE_DRIVER_COMMAND)]
+    return arm, driver
+
+
 def run_batch(
     primary: Path,
     *,
@@ -541,8 +574,13 @@ def run_batch(
     lavapipe_command: Sequence[str],
     lavapipe_driver_command: Sequence[str],
     tools: Tools,
+    wsl: str | None = None,
 ) -> int:
-    """``batch`` from the primary checkout *primary*: the exit code."""
+    """``batch`` from the primary checkout *primary*: the exit code.
+
+    *wsl* names a WSL distro whose clone renders the lavapipe arm (:func:`wsl_commands`), in place
+    of the two lavapipe commands.
+    """
     if tools.running():
         print("agreement batch skipped: a stuntreel process is running")
         return 0
@@ -556,6 +594,8 @@ def run_batch(
     )
     if tools.run(update, primary) != 0:
         return 1
+    if wsl is not None:
+        lavapipe_command, lavapipe_driver_command = wsl_commands(wsl, worktree)
     if if_due:
         tree = tools.output(["git", "rev-parse", "HEAD:crates"], worktree)
         held = _load(worktree / STATE_DIR)
@@ -633,6 +673,9 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     batch_cmd.add_argument("--post", action="store_true")
     batch_cmd.add_argument("--lavapipe-command", default=LAVAPIPE_COMMAND)
     batch_cmd.add_argument("--lavapipe-driver-command", default=LAVAPIPE_DRIVER_COMMAND)
+    batch_cmd.add_argument(
+        "--wsl", default=None, metavar="DISTRO", help="render the lavapipe arm in this WSL distro"
+    )
     return parser.parse_args(argv)
 
 
@@ -657,6 +700,7 @@ def _main(args: argparse.Namespace, tools: Tools) -> int:
             lavapipe_command=shlex.split(args.lavapipe_command),
             lavapipe_driver_command=shlex.split(args.lavapipe_driver_command),
             tools=tools,
+            wsl=args.wsl,
         )
     drivers = (args.gpu_driver, args.lavapipe_driver)
     if None in drivers:

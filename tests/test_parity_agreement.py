@@ -8,7 +8,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from functools import reduce
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -495,3 +495,50 @@ def test_a_malformed_agreement_file_exits_2(
     (measured_dir / "gaps.json").write_text("{}", encoding="utf-8")
     assert cli.main(["pin"], fake.tools()) == 2
     assert "not an agreement file" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("path", "mounted"),
+    [
+        (PureWindowsPath(r"E:\\git\\stunt-reel\\.agents\\worktrees\\agreement"),
+         "/mnt/e/git/stunt-reel/.agents/worktrees/agreement"),
+        (PurePosixPath("/home/user/stunt-reel"), "/home/user/stunt-reel"),
+    ],
+)  # fmt: skip
+def test_wsl_path_mounts_a_windows_drive(path: Path, mounted: str) -> None:
+    assert cli.wsl_path(path) == mounted
+
+
+def test_wsl_commands_render_in_the_clone_and_copy_back() -> None:
+    worktree = PureWindowsPath(r"E:\\git\\stunt-reel\\.agents\\worktrees\\agreement")
+    arm, driver = cli.wsl_commands("Ubuntu-24.04", worktree)  # type: ignore[arg-type]
+    assert arm[:8] == ["wsl", "-d", "Ubuntu-24.04", "-u", "root", "-e", "bash", "-lc"]
+    script = arm[8]
+    assert "git fetch -q /mnt/e/git/stunt-reel/.agents/worktrees/agreement HEAD" in script
+    assert script.index(cli.LAVAPIPE_COMMAND) < script.index("cp -r build/parity/ours")
+    assert script.endswith("/mnt/e/git/stunt-reel/.agents/worktrees/agreement/build/parity/")
+    assert driver[-4:] == ["-W", "-f", "${Version}", "mesa-vulkan-drivers"]
+
+
+def test_batch_with_wsl_runs_the_wsl_arm(fake: Fake) -> None:
+    worktree(fake).mkdir(parents=True)
+    fake.exits = {}
+    calls: list[list[str]] = []
+
+    def run(argv: Sequence[str], cwd: Path) -> int:
+        calls.append(list(argv))
+        if argv[0] == "wsl":
+            write_arm(cwd / cli.PARITY_DIR, LAVAPIPE, ssim=0.9)
+            return 0
+        return fake.run(argv, cwd)
+
+    tools = fake.tools()
+    tools.run = run
+    tools.output = lambda argv, cwd: DRIVERS[1] if argv[0] == "wsl" else fake.output(argv, cwd)
+    code = cli.run_batch(
+        fake.repo, if_due=False, post_result=False, lavapipe_command=["no"],
+        lavapipe_driver_command=["no"], tools=tools, wsl="Ubuntu-24.04",
+    )  # fmt: skip
+    assert code == 0
+    assert any(call[:3] == ["wsl", "-d", "Ubuntu-24.04"] for call in calls)
+    assert ["no"] not in calls
