@@ -544,17 +544,19 @@ def wsl_path(path: Path) -> str:
 def wsl_commands(distro: str, worktree: Path) -> tuple[list[str], list[str]]:
     """The lavapipe arm and driver commands that render in *distro*'s clone ``~/stunt-reel``.
 
-    The clone (``render-on-lavapipe.md`` § 5) checks out *worktree*'s ``HEAD``, renders with its
-    own data root on the Linux filesystem, and copies ``build/parity/ours`` and ``report`` into
-    *worktree*'s ``build/parity``, where the batch reads them.
+    The clone (``render-on-lavapipe.md`` § 5) is a render-only copy: it checks out *worktree*'s
+    ``HEAD`` by force, dropping a ``mise.lock`` mise rewrote, finds mise in ``~/.local/bin`` or
+    ``/usr/local/bin``, renders with its own data root on the Linux filesystem, and copies
+    ``build/parity/ours`` and ``report`` into *worktree*'s ``build/parity``.
     """
     target = shlex.quote(f"{wsl_path(worktree)}/{PARITY_DIR.as_posix()}")
     script = "; ".join(
         [
             "set -e",
+            'export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"',
             "cd ~/stunt-reel",
             f"git fetch -q {shlex.quote(wsl_path(worktree))} HEAD",
-            "git checkout -q --detach FETCH_HEAD",
+            "git checkout -q --force --detach FETCH_HEAD",
             LAVAPIPE_COMMAND,
             f"rm -rf {target}/ours {target}/report",
             f"mkdir -p {target}",

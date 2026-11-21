@@ -515,6 +515,7 @@ def test_wsl_commands_render_in_the_clone_and_copy_back() -> None:
     assert arm[:8] == ["wsl", "-d", "Ubuntu-24.04", "-u", "root", "-e", "bash", "-lc"]
     script = arm[8]
     assert "git fetch -q /mnt/e/git/stunt-reel/.agents/worktrees/agreement HEAD" in script
+    assert script.index("$HOME/.local/bin") < script.index(cli.LAVAPIPE_COMMAND)
     assert script.index(cli.LAVAPIPE_COMMAND) < script.index("cp -r build/parity/ours")
     assert script.endswith("/mnt/e/git/stunt-reel/.agents/worktrees/agreement/build/parity/")
     assert driver[-4:] == ["-W", "-f", "${Version}", "mesa-vulkan-drivers"]
