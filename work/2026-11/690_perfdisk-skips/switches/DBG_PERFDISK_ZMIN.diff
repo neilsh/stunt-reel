@@ -1,0 +1,81 @@
+diff --git a/crates/stunt-render/src/camera.rs b/crates/stunt-render/src/camera.rs
+index c3f479cc..5e4cb042 100644
+--- a/crates/stunt-render/src/camera.rs
++++ b/crates/stunt-render/src/camera.rs
+@@ -453,14 +453,32 @@ impl CameraController {
+             )
+         });
+ 
++        let disc_depth_scale = self.disc_depth_scale();
++        let skip_centre_depth = std::env::var("DBG_PERFDISK_ZMIN")
++            .ok()
++            .and_then(|v| v.parse::<u32>().ok())
++            .unwrap_or(0)
++            != 0;
++        let disc_lens_shift = if skip_centre_depth
++            && matches!(self.projection, Projection::Perspective)
++        {
++            (disc_depth_scale * (1.0 - 1e-5))
++                .log2()
++                .ceil()
++                .clamp(0.0, 3.0)
++                .exp2()
++        } else {
++            0.0
++        };
++
+         CameraUniform {
+             rotation_proj: rotation_proj.to_cols_array(),
+             sun_direction: [sun.x, sun.y, sun.z],
+             ambient_intensity: self.ambient_intensity,
+             inv_rotation_proj: rotation_proj.inverse().to_cols_array(),
+             line_half_ndc: line_half_ndc(self.projection_y_scale),
+-            disc_depth_scale: self.disc_depth_scale(),
+-            _pad1: 0.0,
++            disc_depth_scale,
++            _pad1: disc_lens_shift,
+             sky_normal: sky.normal,
+             sky_edge_count: sky.edge_count,
+             sky_flags,
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 244b8205..beacd456 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -202,7 +202,11 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
+     // Model space to eye-relative space to clip space.
+     let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
+     out.clip_position = camera.rotation_proj * eye_pos;
+-    if ((in.attr.y & FLAG_LINE) != 0u) {
++    // OP_PERFDISK skips when shadow mode (work:0x806C) is set
++    // (research/playone-exe/sod-vm-generators.md section 8.8).
++    if (model.layer.y != 0u && (in.attr.y & FLAG_DISC) != 0u) {
++        out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
++    } else if ((in.attr.y & FLAG_LINE) != 0u) {
+         let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+         // An outline corner culls with the triangle its edge bounds, which winds from the
+         // edge's first endpoint to its second and on to the apex; a two-sided polygon's and a
+@@ -224,8 +228,22 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
+             out.clip_position = widen_line(out.clip_position, other, in.attr.y);
+         }
+     } else if ((in.attr.y & FLAG_DISC) != 0u) {
+-        let centre = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+-        out.clip_position = squeeze_disc(out.clip_position, centre);
++        let centre_eye = model.model_matrix * vec4<f32>(in.position + in.normal, 1.0);
++        let centre = camera.rotation_proj * centre_eye;
++        if (camera._pad1 > 0.0) {
++            let origin = select(centre_eye.xyz, model.model_matrix[3].xyz, model.layer.x != 0u);
++            let max_coord = max(abs(origin.x), max(abs(origin.y), abs(origin.z)));
++            let hi = floor(max_coord);
++            let s = select(1.0, floor(log2(max(hi, 1.0))) + 2.0, hi >= 1.0);
++            let min_depth = exp2(s - 8.0) * camera._pad1;
++            if (centre.w < min_depth) {
++                out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
++            } else {
++                out.clip_position = squeeze_disc(out.clip_position, centre);
++            }
++        } else {
++            out.clip_position = squeeze_disc(out.clip_position, centre);
++        }
+     }
+     out.palette_index = in.attr.x & 255u;
+     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included

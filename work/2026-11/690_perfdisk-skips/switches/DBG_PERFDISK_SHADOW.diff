@@ -1,0 +1,37 @@
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 733da1ce..c7a23221 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -643,7 +643,16 @@ impl SceneRenderer {
+                 }
+             };
+             if let Some(shadow_matrix) = actor.shadow_matrix {
+-                let uniform = ModelUniform::shadow(eye_relative_matrix(eye, &shadow_matrix), layer);
++                let mut uniform =
++                    ModelUniform::shadow(eye_relative_matrix(eye, &shadow_matrix), layer);
++                if std::env::var("DBG_PERFDISK_SHADOW")
++                    .ok()
++                    .and_then(|v| v.parse::<u32>().ok())
++                    .unwrap_or(0)
++                    != 0
++                {
++                    uniform.layer[1] = 2;
++                }
+                 let shadow = base.iter().chain(&decals).copied().collect();
+                 self.push_draw(target, &uniform, (Vec::new(), shadow));
+             }
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 244b8205..ba07958e 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -202,7 +202,9 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
+     // Model space to eye-relative space to clip space.
+     let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
+     out.clip_position = camera.rotation_proj * eye_pos;
+-    if ((in.attr.y & FLAG_LINE) != 0u) {
++    if (model.layer.y > 1u && (in.attr.y & FLAG_DISC) != 0u) {
++        out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
++    } else if ((in.attr.y & FLAG_LINE) != 0u) {
+         let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+         // An outline corner culls with the triangle its edge bounds, which winds from the
+         // edge's first endpoint to its second and on to the apex; a two-sided polygon's and a
