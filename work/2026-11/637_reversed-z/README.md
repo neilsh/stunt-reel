@@ -9,7 +9,7 @@ outcome: ""
 
 **Question.** Whether reversed, infinite depth (in `Depth32Float`, as proposed) makes lavapipe and the GPU agree on the near-coplanar depth ties left after eye-relative transforms ([`lavapipe.md`](../../../research/parity/lavapipe.md) section 5; [#637](https://github.com/neilsh/stunt-reel/issues/637), Lane A step 2 of #639), and what it does to GPU parity.
 
-**Measured.** In `Depth32Float` the GPU-lavapipe difference rose on five of seven films; in `Depth24Plus` it fell on all seven (LOCATION 62.0 to 29.8 pixels per tick), with GPU parity inside every guard, and the largest ties left (LOCATION 3830, LAND 415 and 416) moved by under 6%, so the title's claim about rounding is not shown ([journal.md](journal.md)).
+**Measured.** In `Depth32Float` the GPU-lavapipe difference rose on five of seven films; in `Depth24Plus` it fell on all seven (LOCATION 62.0 to 29.8 pixels per tick), with GPU parity inside every guard, and the largest tie, LOCATION 3815, halved (3,131 to 1,490 pixels) while the next largest (LOCATION 3830, LAND 415 and 416) moved by under 6%, so the title's claim about rounding is not shown ([journal.md](journal.md)).
 
 ## Status
 

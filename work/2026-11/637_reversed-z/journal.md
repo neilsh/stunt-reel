@@ -1,7 +1,7 @@
 # Journal
 
 What was measured: the index-plane pixels per tick on which lavapipe (mesa-dist-win 25.2.8) and the RTX 4070 differ over the seven reference films, and GPU parity, under reversed, infinite depth in `Depth32Float` and in `Depth24Plus`, against standard depth on `main`.
-`Depth32Float` raised the difference on five films; `Depth24Plus` lowered it on all seven, and moved the largest ties left (LOCATION 3830, LAND 415 and 416) by under 6%.
+`Depth32Float` raised the difference on five films; `Depth24Plus` lowered it on all seven, halved the largest tie left (LOCATION 3815, 3,131 to 1,490 pixels) and moved the next largest (LOCATION 3830, LAND 415 and 416) by under 6%.
 
 ## 2026-11-16: The decal bias constant on single ticks
 
