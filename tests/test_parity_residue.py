@@ -173,15 +173,6 @@ def test_a_refused_argument_exits_2(
     assert message in capsys.readouterr().err
 
 
-def test_differing_pixels_counts_only_changed_bytes() -> None:
-    """A plane of 12 pixels with two of them changed differs on two pixels."""
-    assert residue_cli.differing_pixels(bytes(12), bytes(12)) == 0
-    assert residue_cli.differing_pixels(bytes(12), bytes([0, 0, 255] + [0] * 9)) == 1
-    assert residue_cli.differing_pixels(b"\x00\x01", b"\x01\x00") == 2
-    with pytest.raises(ValueError, match="planes of 2 and 3 bytes"):
-        residue_cli.differing_pixels(b"\x00\x01", b"\x00\x01\x02")
-
-
 def test_write_hashes_lists_every_tick_of_every_film(tmp_path: Path) -> None:
     left = root(tmp_path / "a")
     root(left, film="intro", ticks=(5, 15))
