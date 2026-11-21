@@ -110,10 +110,10 @@ Of every captured tick of `CTRY`, `LAND`, `INTRO`, `LOCATION` and `TRAINTNL`, th
 The discs' normal runs along the axle, so the wheel stands upright as `BOMB`'s does.
 At 17.76° (ticks 1244 and 2553, `origin/main` `111970f`) the tyre's widest row is 16 px in the capture and 17 in ours, the hub's 9 and 11; at 42.67° (ticks 1101 and 2399) the near tyre's is 27 and 27 to 28, the hub's 19 and 20 at 1101 and 21 in both at 2399.
 So the radius holds on this shape at both lenses to 2 px at those rows, ours never the narrower there: at 17.76° ours is 2 px (22 %) wider on the 9 px hub and 1 px (about 6 %) on the 16 px tyre, at 42.67° at most 1 px (about 5 %).
-The top rims agree to a row, but ours reaches 1 to 2 rows lower at the bottom of each disc whose bottom rim was read and is 1 to 3 rows taller in all (the 17.76° hub 9 × 8 px in the capture, 11 × 10 in ours), so the width excess has the sign of the height excess: the disc is larger across as well as down, not only lower at its bottom rim ([#898](https://github.com/neilsh/stunt-reel/issues/898)).
-On `BOMB`'s wheel the 16-gon was instead 4 to 6 % narrower, so the sign differs between shapes, and the span rounding or coverage rule is left open as a cause alongside the radius scale.
+The top rims agree to a row, but ours reaches 1 to 2 rows lower at the bottom of each disc whose bottom rim was read and is 1 to 3 rows taller in all (the 17.76° hub 9 × 8 px in the capture, 11 × 10 in ours), so ours is never narrower, and is wider at 17.76° and at tick 1101 as well as lower, not only lower at its bottom rim ([#898](https://github.com/neilsh/stunt-reel/issues/898)).
+On `BOMB`'s wheel the 16-gon was instead 4 to 6 % narrower at ticks 2058 and 2070 ([#425](https://github.com/neilsh/stunt-reel/issues/425)), so the sign differs between shapes, and the span rounding or coverage rule is left open as a cause alongside the radius scale.
 These nearly face-on wheels barely feel the squeeze: forcing it to 1 changes 3 px of the frame at tick 1244, against 3,487 px at `LOCATION` tick 6062 (both measured for #841), so they test the radius at a telephoto lens but not the squeeze or the normal's depth rescale.
-_Source: [INTRO's triplane wheels](../../work/2026-11/841_perfdisk-third-shape/journal.md#2026-11-20-intros-triplane-wheels-at-the-default-lens-and-at-1776)._
+_Source: [INTRO's triplane wheels](../../work/2026-11/841_perfdisk-third-shape/journal.md#2026-11-20-intros-triplane-wheels-at-the-default-lens-and-at-1776); [`BOMB`'s disc](../../work/2026-11/425_perfdisk-radius/journal.md#2026-11-12-the-discs-size-against-a-same-camera-bomb-capture)._
 
 **Sphere faces.**
 `PLAYONE`'s sphere is a disc on screen, so it has no winding to match.
