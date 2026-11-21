@@ -10,7 +10,9 @@ use crate::sod::{ShadeLight, faces_view};
 use super::map_bin::parse_map_bin;
 use super::mesh::{PropModels, PropRun, build_world_ir, lod_condition};
 use super::placed::PlacementRecords;
-use super::scenery::{LodGate, Placement, ScnStop, place_props, reaches_a_pixel};
+use super::scenery::{
+    LodGate, Placement, ScnStop, place_props, reaches_a_pixel, scale_reach_may_drop,
+};
 use super::tap_props::{TapFailure, anchored_models};
 use super::terrain::{GroundPlane, TerrainSurface};
 
@@ -25,14 +27,15 @@ pub struct WorldInputs<'a> {
     pub scenery: Option<&'a [u8]>,
     /// Camera eye positions in time order, in `[I1]` metres. Props that stay sub-pixel along
     /// the polyline through them are not built; empty keeps every prop. They also choose each
-    /// `SP_1NODE`'s level of detail (both in the `scenery` module).
+    /// `SP_1NODE`'s level of detail (both in the `scenery` module), and which props carry
+    /// `PLAYONE`'s per-frame distance cut ([`VisibilityCondition::ScaleReach`]).
     pub view_eyes: &'a [[f32; 3]],
     /// Largest magnification any camera reaches over PLAYONE's default lens, from the field
     /// of view it draws (base and lens). It scales the focal length of the sub-pixel cull
     /// (`FOCAL_PIXELS` in the `scenery` module) so a zoomed camera never misses a prop.
     pub max_zoom: f32,
     /// Largest depth shift `0x229E` any camera's lens gives
-    /// ([`crate::contracts::trajectory::CameraTransform::lod_lens_words`]); 1 at the default
+    /// ([`crate::contracts::trajectory::CameraTransform::lod_lens_words`]); 0 at the default
     /// lens. It bounds how far from the camera path an `SP_1NODE` can still keep its subtree.
     pub max_lod_shift: u8,
     /// Smallest view-space depth over distance inside the widest frame any camera draws,
@@ -91,8 +94,9 @@ pub struct FacingProp {
     /// Where the shape's origin stands, in `[I1]` metres.
     pub position: [f32; 3],
     /// The `SP_1NODE` branches it stands behind, outermost first, each a
-    /// [`VisibilityCondition::LodBranch`] in `[I1]`; the prop is drawn on a frame only
-    /// while every one holds (`FilmScene::frame`).
+    /// [`VisibilityCondition::LodBranch`] in `[I1]`, then a
+    /// [`VisibilityCondition::ScaleReach`] when `PLAYONE`'s distance cut may drop it; the prop
+    /// is drawn on a frame only while every one holds (`FilmScene::frame`).
     pub gates: Vec<VisibilityCondition>,
 }
 
@@ -138,6 +142,15 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
             inputs.min_corner_depth,
         )
     });
+    // `PLAYONE` drops a far prop on a frame by distance against its scale; only a prop that
+    // some eye puts past that cut carries the per-frame test.
+    for p in &mut placements.props {
+        p.reach = shapes
+            .get(&p.shape)
+            .and_then(SodModelIr::decode)
+            .map(|decode| decode.header.scale_index)
+            .filter(|&scale| scale_reach_may_drop(scale, p.position, inputs.view_eyes));
+    }
     let base_y = 0.0;
     let (facing, fixed) = split_view_facing(&placements.props, shapes);
 
@@ -282,6 +295,10 @@ fn facing_props(props: &[Placement], chains: &[Vec<LodGate>], base_y: f32) -> Ve
                 .map_or(&[][..], Vec::as_slice)
                 .iter()
                 .map(|&gate| lod_condition(gate, base_y))
+                .chain(p.reach.map(|scale_index| VisibilityCondition::ScaleReach {
+                    point: [p.position[0], p.position[1] + base_y, p.position[2]],
+                    scale_index,
+                }))
                 .collect(),
         })
         .collect()
@@ -359,6 +376,57 @@ mod tests {
             },
         ];
         assert_eq!(tap_props_placed(&anchors, 1000, [-1000.0, 0.0, 2000.0]), 0);
+    }
+
+    /// A baked prop of `scale_index` 14, whose cut falls at 256 m at the default lens, gets a
+    /// `ScaleReach` group only when some eye puts its largest coordinate there or beyond.
+    #[test]
+    fn a_prop_carries_the_distance_cut_only_where_an_eye_reaches_it() {
+        use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, decode_sod};
+        let words = [
+            OP_ID, 100, 0, 14, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24, OP_RETURN,
+        ];
+        let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let shape = decode_sod(&bytes, "SMALL", None, DecodeMode::Strict).expect("decode");
+        assert_eq!(shape.decode().map(|d| d.header.scale_index), Some(14));
+        let shapes = HashMap::from([(0x0300, shape)]);
+        // One `SP_POS` at the origin, then an `SP_LEAF` of shape `0x0300`.
+        let scenery: Vec<u8> = [0, 0, 0, 0, 0, 12, 10, 0x0300]
+            .iter()
+            .flat_map(|w: &i32| w.to_le_bytes())
+            .collect();
+        // The near eye keeps the millimetre shape above the sub-pixel cull.
+        let reach_groups = |far: f32| -> Vec<VisibilityCondition> {
+            let eyes = [[0.0, 0.0, 2.0], [0.0, 0.0, far]];
+            let inputs = WorldInputs {
+                anchors: &[],
+                map: None,
+                scenery: Some(&scenery),
+                view_eyes: &eyes,
+                max_zoom: 1.0,
+                max_lod_shift: 0,
+                min_corner_depth: 0.804,
+                anchored_shapes: &HashMap::new(),
+                light: ShadeLight::default(),
+            };
+            let world = build_world(&inputs, &shapes).expect("a world");
+            assert_eq!(world.props_placed, 1);
+            world
+                .ir
+                .nodes
+                .iter()
+                .filter(|n| n.name == "WORLD_REACH")
+                .map(|n| n.visibility)
+                .collect()
+        };
+        assert!(reach_groups(255.0).is_empty());
+        let [gate] = reach_groups(256.0)[..] else {
+            panic!("one reach group past the cut");
+        };
+        let VisibilityCondition::ScaleReach { scale_index, .. } = gate else {
+            panic!("a ScaleReach gate, not {gate:?}");
+        };
+        assert_eq!(scale_index, 14);
     }
 
     /// A placement of a shape with header flag bit 0 leaves the world mesh for the

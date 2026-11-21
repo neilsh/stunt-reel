@@ -359,9 +359,10 @@ impl GpuModel {
     ///
     /// `eye` is the camera position in this model's space, for
     /// [`VisibilityCondition::FacesEye`]. `view` is the camera that tests
-    /// [`VisibilityCondition::LodBranch`] and [`VisibilityCondition::BeyondDepth`] gates,
-    /// whose points must then be in its space; without one every subtree branch and every
-    /// far section is drawn and no stand-in is.
+    /// [`VisibilityCondition::LodBranch`], [`VisibilityCondition::BeyondDepth`] and
+    /// [`VisibilityCondition::ScaleReach`] gates, whose points must then be in its space;
+    /// without one every subtree branch, every far section and every far object is drawn
+    /// and no stand-in is.
     ///
     /// Base slices come last sibling first, decal slices in the nodes' own order: the base
     /// pipeline's `Less` keeps the first draw of an exact depth tie and the decal pipeline's
@@ -1124,6 +1125,9 @@ impl VisibleWalk<'_> {
             VisibilityCondition::BeyondDepth { point, depth } => {
                 self.view.is_none_or(|v| v.view_depth_exceeds(point, depth))
             }
+            VisibilityCondition::ScaleReach { point, scale_index } => self
+                .view
+                .is_none_or(|v| v.scale_reach_keeps(point, scale_index)),
         }
     }
 }
@@ -1524,6 +1528,39 @@ mod tests {
         assert_eq!(order(&base), vec![0, 3, 2, 1]);
         // `LessEqual` keeps the last draw, so decals keep the authored order.
         assert_eq!(order(&decal), vec![4, 5]);
+    }
+
+    /// A node behind a `ScaleReach` gate draws while the frame camera keeps it inside its
+    /// cut and not past it; with no camera it draws.
+    #[test]
+    fn a_scale_reach_node_draws_only_inside_its_cut() {
+        let camera = CameraTransform {
+            eye: [0.0, 0.0, 0.0],
+            target: [0.0, 0.0, -1.0],
+            ..CameraTransform::default()
+        };
+        let drawn = |z: f32, view: Option<&CameraTransform>| -> Vec<u32> {
+            let mut gated = node(1, Some(0), &[], false);
+            // `scale_index` 14 is cut at 256 m at the default lens.
+            gated.visibility = VisibilityCondition::ScaleReach {
+                point: [0.0, 0.0, z],
+                scale_index: 14,
+            };
+            let nodes = [node(0, None, &[1], false), gated];
+            let walk = VisibleWalk {
+                nodes: &nodes,
+                roots: &[NodeId(0)],
+                state_mask: 0,
+                dist_sq: 0.0,
+                eye: Vec3::ZERO,
+                view,
+                view_proj: None,
+            };
+            walk.collect().0.iter().map(|m| m.index_offset).collect()
+        };
+        assert_eq!(drawn(-255.0, Some(&camera)), vec![0, 1]);
+        assert_eq!(drawn(-256.0, Some(&camera)), vec![0]);
+        assert_eq!(drawn(-256.0, None), vec![0, 1]);
     }
 
     /// The view-projection matrix the vertex shader multiplies by, from the same
