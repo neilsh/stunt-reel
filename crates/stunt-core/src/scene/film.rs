@@ -799,6 +799,7 @@ mod tests {
                     stop: None,
                 }],
                 collision_scales: vec![1.0],
+                ..PlacementRecords::default()
             },
             view_facing: Vec::new(),
             prop_runs: Vec::new(),

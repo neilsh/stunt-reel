@@ -64,7 +64,8 @@ impl PlacementRecords {
     #[must_use]
     pub fn shadow_top(&self, actor: &ProbeActor) -> Option<f32> {
         let mut top = None;
-        for record in self.records.iter().filter(|r| !r.stand_in) {
+        let bearing = self.collision_bearing().iter();
+        for record in bearing.filter_map(|&i| self.records.get(i as usize)) {
             let (Some(collision), Some(scale)) = (
                 self.collision(record),
                 record
@@ -234,6 +235,7 @@ mod tests {
             steps: Vec::new(),
             collisions: vec![ShapeCollision { lists, stop: None }],
             collision_scales: vec![1.0],
+            ..PlacementRecords::default()
         }
     }
 
@@ -360,6 +362,35 @@ mod tests {
             PlacementRecords::default().shadow_top(&actor(here, here)),
             None
         );
+    }
+
+    #[test]
+    fn records_without_a_collision_list_between_boxed_ones_change_nothing() {
+        let boxed_record = |collision| PlacementRecord {
+            collision,
+            ..placed([0.0, 100.0, 0.0], top_box()).records[0]
+        };
+        let with = |records: Vec<PlacementRecord>| PlacementRecords {
+            records,
+            ..placed([0.0, 100.0, 0.0], top_box())
+        };
+        let here = over(100.0);
+        let bare = with(vec![boxed_record(Some(0)), boxed_record(Some(0))]);
+        let between = with(vec![
+            boxed_record(Some(0)),
+            boxed_record(None),
+            PlacementRecord {
+                stand_in: true,
+                ..boxed_record(Some(0))
+            },
+            boxed_record(Some(0)),
+        ]);
+        assert_eq!(between.collision_bearing(), [0, 3]);
+        assert_eq!(
+            between.shadow_top(&actor(here, here)),
+            bare.shadow_top(&actor(here, here))
+        );
+        assert_eq!(between.shadow_top(&actor(here, here)), Some(106.0));
     }
 
     #[test]

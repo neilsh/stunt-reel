@@ -4,6 +4,7 @@
 //! partition-ordered draw of `OP_ANIMATE` sprites read it beside the baked world mesh.
 
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use crate::contracts::{ShapeCollision, SodModelIr};
 
@@ -82,6 +83,8 @@ pub struct PlacementRecords {
     /// `[I1]` metres a model unit of each entry of [`Self::collisions`], which the lists'
     /// words are in.
     pub collision_scales: Vec<f32>,
+    /// [`Self::collision_bearing`], built on first use; set it with `..Default::default()`.
+    pub collision_index: OnceLock<Vec<u32>>,
 }
 
 impl PlacementRecords {
@@ -135,7 +138,28 @@ impl PlacementRecords {
             steps,
             collisions,
             collision_scales,
+            collision_index: OnceLock::new(),
         }
+    }
+
+    /// The indices into [`Self::records`], in record order, of the records the ground and
+    /// collision probe tests: not a stand-in, with collision lists and their scale. Built
+    /// once, so [`Self::shadow_top`] skips the rest; `records` must not change after it is
+    /// first read.
+    #[must_use]
+    pub fn collision_bearing(&self) -> &[u32] {
+        self.collision_index.get_or_init(|| {
+            let bearing = |r: &PlacementRecord| {
+                !r.stand_in
+                    && self.collision(r).is_some()
+                    && r.collision
+                        .is_some_and(|i| self.collision_scales.get(i as usize).is_some())
+            };
+            (self.records.iter().enumerate())
+                .filter(|(_, r)| bearing(r))
+                .filter_map(|(i, _)| u32::try_from(i).ok())
+                .collect()
+        })
     }
 
     /// The partition steps from the tree's root down to `record`'s node, root first.
