@@ -42,6 +42,7 @@ Method: [`method.md`](method.md); score history: journal entries, and before the
   **It waited on** what the static read then left open: where the ground plane at slot `+0x1E` comes from, what the `+0x20/+0x22` override is, and whether slot byte `+1` is `type_flags` (questions 6, 7 and 11, answered 2026-11-14), and the handbook's altitude cutoff, which `0x19FC` does not show (question 8, still open).
 * **Ground shadow: drawn** (2026-11-05, [#206](https://github.com/neilsh/stunt-reel/issues/206), adopted, evidence-backed).
   `casts_shadow` (create flag `SIF_SHADOW`) rides on `ActorTransform`; the scene frame gives each such actor a shadow matrix, the actor matrix flattened straight down onto the plane of the terrain triangle under its origin (`y = 0` off the map, as for a null plane) and lifted the `[I5]` 1 mm, and the renderer draws the shape again through it, every polygon index 0, in the decal pass.
+  Its facing gates (`REJ`, `0x9567`) test the face as flattened, not the real face against the real eye (2026-11-22, `[Supported Inference]`; question 10 and [`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)).
   One plane under the origin, not the terrain under each vertex, because that is what `0x1C0D` does (it rewrites the matrix once).
   Scores (`mean_ssim_scored`): CTRY 0.8642 -> 0.8722, INTRO 0.8166 -> 0.8217, IoU unchanged.
   At CTRY tick 444 the shadow matches the capture's in shape and place.
@@ -50,13 +51,9 @@ Method: [`method.md`](method.md); score history: journal entries, and before the
   Raising the lift to 1, 3 or 10 cm: CTRY 0.8738 / 0.8739 / 0.8667, INTRO 0.8214 / 0.8187 / 0.8144; 1 cm is within the noise floor and was not adopted.
   INTRO tick 1009 (a triplane on the ground, eye near the ground) first showed the shadow broken into specks where the capture's is solid.
   That was back-face culling, not the depth test: the shadow went through the actor pipeline, which culls by screen winding, and a face flattened onto the ground keeps its winding, so every face wound downward (the wings' undersides here) was dropped.
-  Drawing the shadow through a pipeline that culls nothing makes it solid and matches the capture's outline at that tick: CTRY 0.8722 -> 0.8725, INTRO 0.8217 -> 0.8273, IoU unchanged (adopted, heuristic track; no image offset says how PLAYONE's shadow draw treats facing, only the capture).
+  Drawing the shadow through a pipeline that culls nothing makes it solid and matches the capture's outline at that tick: CTRY 0.8722 -> 0.8725, INTRO 0.8217 -> 0.8273, IoU unchanged (adopted, heuristic track; no image offset says how PLAYONE's shadow draw treats screen winding; the capture is the evidence).
 
 _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](../../work/2026-10/parity-log/log.md)._
-
-**The near plane as the view slot's missing footprint** (2026-11-20 and 2026-11-22, `[Bounded Observation]`, `BRETT.FLM`).
-A 0.05 m near plane, and the 0.1 m one now in the renderer, fill the bottom rows with the road but leave the view slot's shadow at 22 index-0 pixels on 19 of 20 frames and 3,327 on one (the capture holds 4,856 on each); the cause was the shadow draw's facing gates (question 10), not the clip.
-_Source: [the shadow draw's facing gates](../../work/2026-11/840_brett-view-slot-shadow/journal.md#2026-11-22-the-shadow-draws-facing-gates-test-the-flattened-face)._
 
 ## Ruled out
 
@@ -77,6 +74,10 @@ Every direction loses on both films.
 An earlier flat black shadow at several ground heights also lost 0.003 ([log](../../work/2026-10/parity-log/log.md)).
 
 _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](../../work/2026-10/parity-log/log.md)._
+
+**The near plane as the view slot's missing footprint** (2026-11-20 and 2026-11-22, `[Bounded Observation]`, `BRETT.FLM`).
+A 0.05 m near plane (2026-11-20) and the 0.1 m one now in the renderer (2026-11-22) fill the bottom rows with the road but leave the view slot's shadow at 22 index-0 pixels on 19 of 20 frames and 3,327 on one (the capture holds 4,856 on each); the cause was the shadow draw's facing gates (question 10), not the clip.
+_Source: [the GPU judge and `BRETT.FLM` comparison](../../work/2026-11/499_view-slot-shadow-gpu/journal.md#2026-11-20-the-gpu-judge-and-the-view-slots-shadow-against-brettflms-capture) (the 0.05 m figures); [the shadow draw's facing gates](../../work/2026-11/840_brett-view-slot-shadow/journal.md#2026-11-22-the-shadow-draws-facing-gates-test-the-flattened-face) (the 0.1 m plane and the cause)._
 
 ## Open questions
 
@@ -107,7 +108,7 @@ _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](../../work/2
     _Source: [the view slot's shadow, live](../../work/2026-11/510_view-slot-shadow/journal.md#2026-11-16-the-view-slots-shadow-live-and-a-reference-film-for-it)._
     Compared 2026-11-20 (`[Bounded Observation]`, GPU, [#499](https://github.com/neilsh/stunt-reel/issues/499)): the band is 4,856 index-0 pixels in rows 150 to 184 on each of those 20 frames; our view-slot shadow draws 257 of them on tick 716 (SSIM 0.8061 to 0.8375) and none on the other 19, where the eye, at the three ticks printed (430, 638 and 715 of the film's stream), is at the slot's own position 0.15 m above the ground and our rows 170 to 184 are the ocean (layer 1, index 208; `[Supported Inference]`: the ground nearer than the 0.5 m near plane is clipped); a 0.05 m near plane fills those rows with the road (layer 3) but still draws no band on 19 frames and lowers `BRETT.FLM`'s `mean_ssim_scored`.
     The seven reference films are unchanged by the view slot's shadow on the GPU.
-    Answered 2026-11-22 (`[Bounded Observation]`, GPU and lavapipe, [#840](https://github.com/neilsh/stunt-reel/issues/840)): the slot's flags `0x1F` include `SIF_MOVES`, so `PLAYONE` probes its plane (the static-slot rule does not apply), and the footprint was missing because the shadow draw's facing gates tested the unflattened faces against the real eye, which is inside the car: the roof, hood and floor groups were culled, and the groups drawn on tick 639 were walls, which flatten to nothing.
+    Answered 2026-11-22 (`[Bounded Observation]`, GPU for the pixel count, scores also on lavapipe, [#840](https://github.com/neilsh/stunt-reel/issues/840)): the slot's flags `0x1F` include `SIF_MOVES`, so `PLAYONE` probes its plane (the static-slot rule does not apply), and the footprint was missing because the shadow draw's facing gates tested the unflattened faces against the real eye, which is inside the car: the roof, hood and floor groups were culled, and the groups drawn on tick 639 were walls, which flatten to nothing.
     `PLAYONE`'s `REJ` tests the faces its flattening matrix produced ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis), `[Supported Inference]`); with the gate tested that way our render holds 4,809 index-0 pixels in rows 150 to 184 on every one of the 20 frames, against 4,856, and the seven reference films' scores rise or hold (ctry 0.9377 to 0.9385, intro 0.8825 to 0.8833, no frame down more than 0.005).
     Not tested, the footprint being explained without them: the cull `0x1B0C` (it passes this slot by break), a near-plane clip of the shadow polygon at `0x1C0D`, the winding from inside and the 1 mm lift at near depths.
     _Source: [the shadow draw's facing gates](../../work/2026-11/840_brett-view-slot-shadow/journal.md#2026-11-22-the-shadow-draws-facing-gates-test-the-flattened-face)._
