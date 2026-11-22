@@ -112,7 +112,7 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
         }
     }
     add_subtrees_to_parents(ir, &mut bounds, |subtree, parent| {
-        subtree.map(|subtree| Some(subtree.union(parent)))
+        subtree.map_or(parent, |subtree| Some(subtree.union(parent)))
     });
     bounds
 }
@@ -131,17 +131,13 @@ fn node_discs(ir: &SodModelIr) -> Vec<bool> {
             *slot = true;
         }
     }
-    add_subtrees_to_parents(ir, &mut discs, |subtree, parent| Some(subtree || parent));
+    add_subtrees_to_parents(ir, &mut discs, |subtree, parent| subtree || parent);
     discs
 }
 
 /// Folds each node's per-node value, its own slices' plus its descendants' so far, into its
-/// parent's with `merge(subtree, parent)`; a `None` leaves the parent as it is.
-fn add_subtrees_to_parents<T: Copy>(
-    ir: &SodModelIr,
-    values: &mut [T],
-    merge: impl Fn(T, T) -> Option<T>,
-) {
+/// parent's with `merge(subtree, parent)`.
+fn add_subtrees_to_parents<T: Copy>(ir: &SodModelIr, values: &mut [T], merge: impl Fn(T, T) -> T) {
     for (n, node) in ir.nodes.iter().enumerate().rev() {
         let Some(subtree) = values.get(n).copied() else {
             continue;
@@ -152,9 +148,7 @@ fn add_subtrees_to_parents<T: Copy>(
         else {
             continue;
         };
-        if let Some(merged) = merge(subtree, *parent) {
-            *parent = merged;
-        }
+        *parent = merge(subtree, *parent);
     }
 }
 
@@ -1896,6 +1890,7 @@ mod tests {
             })
         );
     }
+
     /// `two_node_ir` with its child's vertices flagged as a disc rim.
     fn disc_child_ir(offset: f32) -> SodModelIr {
         let mut ir = two_node_ir(offset);
@@ -1906,7 +1901,7 @@ mod tests {
     }
 
     #[test]
-    fn a_node_with_discs_marks_its_ancestors_but_not_its_siblings() {
+    fn a_node_with_discs_marks_its_ancestors_but_not_its_children() {
         assert_eq!(node_discs(&two_node_ir(10.0)), vec![false, false]);
         // The child's vertices are the disc's: the parent holds them in its subtree.
         assert_eq!(node_discs(&disc_child_ir(10.0)), vec![true, true]);
