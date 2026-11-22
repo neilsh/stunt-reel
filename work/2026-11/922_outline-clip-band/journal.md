@@ -23,7 +23,7 @@
   - Prototype, mean differing pixels per tick GPU against lavapipe / largest, without and with: CTRY 45.6 / 4,157 and 3.1 / 14; INTRO 13.5 / 145 and 2.3 / 25; LAND 309.4 / 7,379 and 5.2 / 31; BALLOON 4.1 / 17 and 4.1 / 17; TRAINTNL 3.9 / 23 and 3.8 / 20; BOMB 9.3 / 321 and 8.4 / 77; LOCATION 79.5 / 6,566 and 8.6 / 584.
     LAND 416 falls from 152 to 7 pixels, LAND 1025 to 2, LOCATION 2407 to 7; LOCATION 3830 stays at 575.
   - It moves the GPU's own render by at most 0.7 pixels a tick on any film, 17 at most on one tick (LOCATION 2069); `mise run judge`: mean SSIM 0.9038 on both, worst frame −0.0007, none down by more than 0.005.
-- **Verdict**: adopted as designed with the owner on 2026-11-21 (clip distances required, adapters without them passed over, a new ADR); the committed change's measurement is the next entry.
+- **Verdict**: adopted as designed with the owner on 2026-11-21 (clip distances required, adapters without them passed over, a new ADR, which the owner then had folded into ADR 0054 as an amendment); the committed change's measurement is the next entry.
 - **Lives in**: [`lavapipe-line-clip.md`](../../../research/parity/lavapipe-line-clip.md).
 
 ## 2026-11-21: The committed clip band on the canonical lavapipe and the GPU
@@ -50,4 +50,4 @@
   - `a_near_cut_ground_outline_draws_only_beside_its_polygon` fails on the WSL lavapipe at `3e0e8ecb` (6,171 pixels away from the triangle) and passes at `a889eb4e`, with the other 50 GPU tests; it passes on the RTX 4070 at both.
   - The Windows CI job's GPU tests ran on `main` (50 passed in 22.7 s on a runner with no Vulkan driver), so on WARP; WARP lacks `CLIP_DISTANCES`, so they are expected to skip there from this change on.
 - **Verdict**: adopted.
-- **Lives in**: [`lavapipe-line-clip.md`](../../../research/parity/lavapipe-line-clip.md) section 2, [ADR 0055](../../../docs/adr/0055-outline-lines-are-clipped-to-a-band-around-the-view.md).
+- **Lives in**: [`lavapipe-line-clip.md`](../../../research/parity/lavapipe-line-clip.md) section 2, [ADR 0054](../../../docs/adr/0054-depth-is-reversed-and-infinite.md).

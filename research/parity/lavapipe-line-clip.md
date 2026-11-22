@@ -3,7 +3,7 @@ summary: "Lavapipe clips a line against the near plane but not the sides of the 
 ---
 # Parity: Lavapipe Draws Near-Cut Lines as Wedges
 
-* **Scope**: why Mesa's lavapipe and a GPU draw an outline line that crosses the near plane differently, and how the renderer keeps them alike ([ADR 0055](../../docs/adr/0055-outline-lines-are-clipped-to-a-band-around-the-view.md)); lavapipe's other differences are in [`lavapipe.md`](lavapipe.md).
+* **Scope**: why Mesa's lavapipe and a GPU draw an outline line that crosses the near plane differently, and how the renderer keeps them alike ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md), as amended for #922); lavapipe's other differences are in [`lavapipe.md`](lavapipe.md).
 
 ## 1. Mechanism
 
@@ -23,7 +23,7 @@ _Source: [Lavapipe draws a near-cut outline line as a wedge](../../work/2026-11/
 
 The three line-list pipelines (the ground pass's, the base pass's and the decal pass's outlines) draw through `vs_edge` (`mode13h.wgsl`), which writes four user clip distances, `1.1·w − x`, `1.1·w + x`, `1.1·w − y` and `1.1·w + y`.
 Lavapipe clips lines against user planes (they are not among the bits `clip_line_guard_xy` masks out), so every line reaches its rasteriser within a tenth of the view's half-width or half-height beyond its edge (16 columns, 9 rows of a 185-row view); no pixel inside the view has a negative distance, so nothing on the page is cut.
-The device requires `wgpu::Features::CLIP_DISTANCES`, which wgpu's DX12 backend, WARP included, does not offer; the adapter search passes over such adapters.
+The device requires `wgpu::Features::CLIP_DISTANCES`, which wgpu's DX12 backend, WARP included, does not offer (wgpu-hal 30.0.1 sets it in its Vulkan, Metal and GL adapters, never in DX12's); the adapter search passes over such adapters.
 `[Bounded Observation]`, 2026-11-21, the canonical lavapipe (Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` under WSL 2) against the RTX 4070, `mise run agreement -- measure` on `main` `e76ec72b` and on the change (`crates` `96e1031`); mean index-plane pixels differing per tick over every tick of each film / the largest / hot ticks, with the figures before the near plane moved to 0.1 m (`581453ed`) beside them:
 
 | Film | Before #904 | Before | After |

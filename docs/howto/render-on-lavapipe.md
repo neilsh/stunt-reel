@@ -47,7 +47,7 @@ mise run frame -- --film ctry --ticks 400,422 --software-only
 
 `--software-only` reaches `stuntreel`'s film renderer, which sets `RenderOptions::software_only` for the headless and the windowed path alike.
 Both halves are needed, and `mise run frame` records the adapter each render used in the frame store's `build/scratch/frame/<film>/store/render.json`; on this machine (an RTX 4070 laptop), with the ICD named but no flag, the first Vulkan attempt found only lavapipe and passed it over, the all-backends attempt found the GPU, and the one-tick run (`--ticks 400`) recorded `NVIDIA GeForce RTX 4070 Laptop GPU` in the store.
-With the flag but no `VK_DRIVER_FILES`, Vulkan has no CPU driver and the run fails with `no compatible GPU adapter (one with clip distances)`: the all-backends attempt finds WARP, which lacks the clip distances the renderer requires ([ADR 0055](../adr/0055-outline-lines-are-clipped-to-a-band-around-the-view.md)), and passes it over.
+With the flag but no `VK_DRIVER_FILES`, Vulkan has no CPU driver and the run fails with `no compatible GPU adapter (one with clip distances)`: the all-backends attempt finds WARP, which lacks the clip distances the renderer requires ([ADR 0054](../adr/0054-depth-is-reversed-and-infinite.md)), and passes it over.
 
 `--no-build` renders with whatever `target/release/stuntreel.exe` holds.
 Rebuild after any temporary renderer edit, such as removing the NaN-shade guard to test it: a guard-removed binary left there by #265's byte-identity check rendered a lavapipe LOCATION run 0.19 below the GPU ([`lavapipe.md`](../../research/parity/lavapipe.md) section 4).
