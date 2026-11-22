@@ -18,7 +18,7 @@ use crate::world::{ProbeActor, ScnStop, SlotEntry, TapFailure, World, WorldInput
 
 use super::bank::{PREVIOUS_FRAME_TICKS, angle_bank};
 use super::projection::{
-    IDENTITY_MATRIX, ViewCamera, camera_heading, distance, facing_matrix, lifted, lod_gate_holds,
+    GateView, IDENTITY_MATRIX, ViewCamera, camera_heading, distance, facing_matrix, lifted,
     max_magnification, min_corner_depth, transform_point,
 };
 use super::shadow::ground_shadow;
@@ -99,6 +99,10 @@ pub struct ActorDraw {
     pub shape_id: u16,
     /// Column-major model-to-world matrix in `[I1]`.
     pub world_matrix: [f32; 16],
+    /// The slot's position in world `[I1]` metres, where `PLAYONE` queues the actor's
+    /// pending-list entry (image `0x1A90`); [`Self::world_matrix`]'s origin lies off it by
+    /// the shape's ground offset.
+    pub position: [f32; 3],
     /// Visibility state mask of the actor at this tick.
     pub state_mask: u16,
     /// Distance in metres from the camera eye to the actor position.
@@ -180,6 +184,9 @@ pub struct FilmScene {
     timeline: FilmTimeline,
     shapes: HashMap<u16, SodModelIr>,
     world: Option<World>,
+    /// The indices into [`World::view_facing`] of the props whose shape is in `shapes`, in
+    /// order; rebuilt by [`Self::index_facing`] whenever `shapes` changes.
+    facing: Vec<usize>,
     /// Set for a loose model bound with no actors in the film: drawn at the origin.
     origin_shape: Option<u16>,
     /// `PFONT.BIN`, read from the corpus beside the film, for the credits overlay.
@@ -198,15 +205,30 @@ impl FilmScene {
         shapes: HashMap<u16, SodModelIr>,
         world: Option<World>,
     ) -> Self {
-        Self {
+        let mut scene = Self {
             timeline,
             shapes,
             world,
+            facing: Vec::new(),
             origin_shape: None,
             font: None,
             images: HashMap::new(),
             relit: RelitShapes::default(),
-        }
+        };
+        scene.index_facing();
+        scene
+    }
+
+    /// Rebuilds [`Self::facing`] from `shapes` and the world's view-facing props.
+    fn index_facing(&mut self) {
+        self.facing = self
+            .world
+            .iter()
+            .flat_map(|w| &w.view_facing)
+            .enumerate()
+            .filter(|(_, prop)| self.shapes.contains_key(&prop.shape))
+            .map(|(index, _)| index)
+            .collect();
     }
 
     /// Lights each actor by its own rotation, decoding its shape again from `relit`; without
@@ -423,6 +445,7 @@ impl FilmScene {
             .map(|prop| prop.shape);
         let drawn: HashSet<u16> = actors.chain(props).chain(self.origin_shape).collect();
         self.shapes.retain(|id, _| drawn.contains(id));
+        self.index_facing();
         self
     }
 
@@ -490,6 +513,7 @@ impl FilmScene {
                 ActorDraw {
                     shape_id: a.shape_id,
                     world_matrix,
+                    position: a.position_meters,
                     state_mask: a.state_mask,
                     distance: distance(eye, a.position_meters),
                     // The shadow entry `0x1C0D` builds its matrix from the slot's own angles
@@ -512,19 +536,20 @@ impl FilmScene {
                 }
             })
             .collect();
+        let gate_view = GateView::new(&record.camera);
         let view_facing = self
             .world
             .iter()
-            .flat_map(|w| &w.view_facing)
-            .filter(|p| self.shapes.contains_key(&p.shape))
-            .filter(|p| {
-                p.gates
+            .flat_map(|w| {
+                self.facing
                     .iter()
-                    .all(|gate| lod_gate_holds(&record.camera, gate))
+                    .filter_map(|&index| w.view_facing.get(index))
             })
+            .filter(|p| p.gates.iter().all(|gate| gate_view.holds(gate)))
             .map(|p| ActorDraw {
                 shape_id: p.shape,
                 world_matrix: facing_matrix(heading, p.position),
+                position: p.position,
                 state_mask: 0,
                 distance: distance(eye, p.position),
                 shadow_matrix: None,
@@ -540,6 +565,7 @@ impl FilmScene {
             actors.push(ActorDraw {
                 shape_id,
                 world_matrix: IDENTITY_MATRIX,
+                position: [0.0; 3],
                 state_mask: 0,
                 distance: distance(eye, [0.0; 3]),
                 shadow_matrix: None,
@@ -773,6 +799,7 @@ mod tests {
                     stop: None,
                 }],
                 collision_scales: vec![1.0],
+                ..PlacementRecords::default()
             },
             view_facing: Vec::new(),
             prop_runs: Vec::new(),
@@ -1118,6 +1145,68 @@ mod tests {
         };
         assert_eq!(still.bank, AngleBank::REST);
         assert_eq!(turned.bank, AngleBank::new([0, 0, 0xCC00, 0, 0, 0]));
+    }
+
+    /// A view-facing prop whose shape the scene lacks draws nothing, with or without
+    /// [`FilmScene::drawn_only`], and the props with shapes keep their order.
+    #[test]
+    fn a_view_facing_prop_without_a_shape_is_not_drawn() {
+        use crate::contracts::TrajectoryRecord;
+        use crate::flm::SliceKeyframe;
+        use crate::world::{FacingProp, TerrainSurface};
+
+        let timeline = FilmTimeline::new(
+            vec![SliceKeyframe {
+                record: TrajectoryRecord {
+                    tick: 0,
+                    camera: CameraTransform::default(),
+                    actors: Vec::new(),
+                    audio_cues: Vec::new(),
+                    palette: PaletteControls::default(),
+                    bank: BankVariables::default(),
+                },
+                tick: 0,
+                tick_duration: 1,
+            }],
+            Vec::new(),
+        );
+        let prop = |shape: u16, x: f32| FacingProp {
+            shape,
+            position: [x, 0.0, 0.0],
+            gates: Vec::new(),
+        };
+        let world = World {
+            ir: SodModelIr::new("WORLD"),
+            terrain_patches: 0,
+            props_placed: 3,
+            bounds: ShapeExtent {
+                min: [0.0; 3],
+                max: [0.0; 3],
+                radius: 0.0,
+            },
+            scenery_stop: None,
+            terrain: TerrainSurface::default(),
+            tap_failures: Vec::new(),
+            placements: PlacementRecords::default(),
+            view_facing: vec![prop(9, 1.0), prop(5, 2.0), prop(9, 3.0)],
+            prop_runs: Vec::new(),
+        };
+        let scene = FilmScene::new(
+            timeline,
+            HashMap::from([(9, SodModelIr::new("TREE"))]),
+            Some(world),
+        );
+        let drawn = |scene: &FilmScene| -> Vec<(u16, f32)> {
+            scene
+                .frame(0.0)
+                .view_facing
+                .iter()
+                .map(|d| (d.shape_id, d.world_matrix[12]))
+                .collect()
+        };
+        let expected = vec![(9, 1.0), (9, 3.0)];
+        assert_eq!(drawn(&scene), expected);
+        assert_eq!(drawn(&scene.drawn_only()), expected);
     }
 
     /// A drawn-only scene keeps every actor shape of every slice and every view-facing prop,

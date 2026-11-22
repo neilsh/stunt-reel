@@ -70,17 +70,102 @@ pub(super) fn mat4_mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
     out
 }
 
-/// Whether `camera` draws what stands behind `gate`: a `LodBranch` holds as the world's
-/// gate nodes do in the renderer; any other condition holds.
-pub(super) fn lod_gate_holds(camera: &CameraTransform, gate: &VisibilityCondition) -> bool {
-    match *gate {
-        VisibilityCondition::LodBranch {
-            point,
-            ext,
-            splitdist,
-            near,
-        } => camera.lod_keeps_subtree(point, ext, splitdist) == near,
-        _ => true,
+/// A camera's LOD-gate words, computed once for every gate tested against it in a frame.
+///
+/// [`Self::holds`] agrees with [`CameraTransform::lod_keeps_subtree`] and
+/// [`CameraTransform::scale_reach_keeps`] bit for bit: it repeats their operations in their
+/// order on words those methods recompute per call.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct GateView {
+    eye: [f32; 3],
+    forward: [f32; 3],
+    /// The length of `forward`, `<= 0.0` for a camera with no view direction.
+    len: f32,
+    /// The lens words of [`CameraTransform::lod_lens_words`].
+    mantissa: u16,
+    shift: u8,
+    /// `2 << shift`, the divisor of the zoomed depth.
+    depth_scale: f32,
+}
+
+impl GateView {
+    /// The gate words of `camera`.
+    pub(super) fn new(camera: &CameraTransform) -> Self {
+        let (mantissa, shift) = camera.lod_lens_words();
+        let forward = [
+            camera.target[0] - camera.eye[0],
+            camera.target[1] - camera.eye[1],
+            camera.target[2] - camera.eye[2],
+        ];
+        let len =
+            (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]).sqrt();
+        Self {
+            eye: camera.eye,
+            forward,
+            len,
+            mantissa,
+            shift,
+            depth_scale: f32::from(2u16 << shift),
+        }
+    }
+
+    /// Whether the camera draws what stands behind `gate`: a `LodBranch` or `ScaleReach` holds
+    /// as the world's gate nodes do in the renderer; any other condition holds.
+    pub(super) fn holds(&self, gate: &VisibilityCondition) -> bool {
+        match *gate {
+            VisibilityCondition::LodBranch {
+                point,
+                ext,
+                splitdist,
+                near,
+            } => self.lod_keeps_subtree(point, ext, splitdist) == near,
+            VisibilityCondition::ScaleReach { point, scale_index } => {
+                self.scale_reach_keeps(point, scale_index)
+            }
+            _ => true,
+        }
+    }
+
+    /// [`CameraTransform::lod_keeps_subtree`] on the stored words.
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "ext and splitdist are 16-bit words and the mantissa a u16, so the i64 maths cannot overflow"
+    )]
+    fn lod_keeps_subtree(&self, point: [f32; 3], ext: i32, splitdist: i32) -> bool {
+        if self.len <= 0.0 {
+            return true;
+        }
+        let depth = ((point[0] - self.eye[0]) * self.forward[0]
+            + (point[1] - self.eye[1]) * self.forward[1]
+            + (point[2] - self.eye[2]) * self.forward[2])
+            / self.len;
+        let depth = (depth / self.depth_scale).floor();
+        let half = i64::from(ext >> 1);
+        let split = i64::from(splitdist);
+        let threshold = if split < half {
+            split
+        } else {
+            half + (((split - half) * i64::from(self.mantissa)) >> 16)
+        };
+        depth <= threshold as f32
+    }
+
+    /// [`CameraTransform::scale_reach_keeps`] on the stored words.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the coordinate is clamped to 0..=65535 first, PLAYONE's 16-bit high word"
+    )]
+    fn scale_reach_keeps(&self, point: [f32; 3], scale_index: u8) -> bool {
+        let largest = point
+            .iter()
+            .zip(&self.eye)
+            .map(|(p, e)| (p - e).abs())
+            .fold(0.0f32, f32::max);
+        let high = largest.clamp(0.0, 65535.0) as u16;
+        let s = 17u32.saturating_sub(high.leading_zeros());
+        let gap = (u32::from(scale_index).saturating_add(s)).saturating_sub(16);
+        gap <= u32::from(self.shift).saturating_add(7)
     }
 }
 
@@ -218,6 +303,61 @@ mod tests {
         let cameras = [camera(50.0, DEFAULT_CAMERA_LENS), camera(140.0, u16::MAX)];
         let mixed = drawn_magnification(&camera(50.0, u16::MAX));
         assert!(max_magnification(&cameras) >= mixed - 1e-4);
+    }
+
+    /// The hoisted gate words give the verdicts of the camera's own tests, on an unzoomed and
+    /// a zoomed lens, a camera with no view direction, and points either side of each cut.
+    #[test]
+    fn a_gate_view_agrees_with_the_camera_gate_tests() {
+        let mut cameras = Vec::new();
+        for lens in [DEFAULT_CAMERA_LENS, 20480, u16::MAX, 0] {
+            cameras.push(CameraTransform {
+                eye: [3.0, 12.0, -40.0],
+                target: [-7.5, 2.0, 60.0],
+                lens,
+                ..CameraTransform::default()
+            });
+        }
+        cameras.push(CameraTransform {
+            eye: [1.0, 2.0, 3.0],
+            target: [1.0, 2.0, 3.0],
+            ..CameraTransform::default()
+        });
+        let mut checked = 0u32;
+        for camera in &cameras {
+            let view = GateView::new(camera);
+            for i in -40i16..=40 {
+                let point = [
+                    f32::from(i) * 37.5,
+                    f32::from(i) * 3.0 - 20.0,
+                    f32::from(i) * 211.0 + 0.25,
+                ];
+                for (ext, splitdist) in [(400, 600), (400, 100), (0, 0), (65535, 1), (30, 30)] {
+                    let tested = camera.lod_keeps_subtree(point, ext, splitdist);
+                    for near in [true, false] {
+                        let gate = VisibilityCondition::LodBranch {
+                            point,
+                            ext,
+                            splitdist,
+                            near,
+                        };
+                        assert_eq!(view.holds(&gate), tested == near, "{point:?} {camera:?}");
+                        checked += 1;
+                    }
+                }
+                for scale_index in 0..=24 {
+                    let gate = VisibilityCondition::ScaleReach { point, scale_index };
+                    assert_eq!(
+                        view.holds(&gate),
+                        camera.scale_reach_keeps(point, scale_index),
+                        "{point:?} {scale_index} {camera:?}"
+                    );
+                    checked += 1;
+                }
+            }
+            assert!(view.holds(&VisibilityCondition::Always));
+        }
+        assert!(checked > 10_000, "{checked}");
     }
 
     #[test]

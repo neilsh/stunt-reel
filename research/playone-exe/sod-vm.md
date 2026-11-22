@@ -244,7 +244,7 @@ Open items:
 
 The execution model (section 8.1 to 8.7) is in [`sod-vm-execution.md`](sod-vm-execution.md#8-execution-model).
 The model frames and two-vertex polygons (sections 8.8 and 8.9) are in [`sod-vm-generators.md`](sod-vm-generators.md#88-model-frame-the-other-generators).
-Lines, polygon spans and the back-face span test (sections 8.10 to 8.12) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md#810-lines-moveto-zlineto-and-linecol).
+Lines, polygon spans, the back-face span test and the polygon clipper (sections 8.10 to 8.13) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md#810-lines-moveto-zlineto-and-linecol).
 The per-frame routine and scene composition (section 9) is in [`sod-vm-frame.md`](sod-vm-frame.md#9-per-frame-routine-and-scene-composition).
 
 ---

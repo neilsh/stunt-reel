@@ -1,12 +1,12 @@
 ---
-summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. Eye-relative transforms, which take the eye's translation off each draw's matrix on the CPU, cut the per-tick difference by 46% to 84% on each film and shrink the four near-coplanar depth-tie residues to 17 pixels or fewer each; other ties remain. The screen-linear ratio `shade·w / w` makes the Gouraud polygons the clipper breaks draw the GPU's gradient (BALLOON 145 on `3a7afb76`: all 4,044 broken pixels match the GPU, 1,097 differing pixels in the frame become 7). Render time is in its own note."
+summary: "Mesa's clipper can make the shade varying NaN; with the guard, local lavapipe scores within 0.002 of the GPU on all seven films. Eye-relative transforms, which take the eye's translation off each draw's matrix on the CPU, cut the per-tick difference by 46% to 84% on each film and shrink the four near-coplanar depth-tie residues to 17 pixels or fewer each; other ties remain. Reversed, infinite depth in `Depth24Plus` lowers it again on every film (LOCATION 62.0 to 29.8 pixels per tick); in `Depth32Float` it rose on five. The screen-linear ratio `shade·w / w` makes the Gouraud polygons the clipper breaks draw the GPU's gradient (BALLOON 145 on `3a7afb76`: all 4,044 broken pixels match the GPU, 1,097 differing pixels in the frame become 7). Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` drew the same index planes on an AMD Ryzen under WSL 2 as on a cloud container's Intel Xeon, on all 20,621 ticks of one tree; mesa-dist-win 25.2.8 differs from it by at most 33 pixels a tick. Render time is in its own note."
 ---
 # Parity: Rendering on Lavapipe
 
 * **Scope**: how Mesa's software Vulkan driver, lavapipe, renders our frames differently from a GPU, and what the renderer does about it; how long a lavapipe render takes is in [`lavapipe-render-time.md`](lavapipe-render-time.md).
   Cloud sessions ([ADR 0039](../../docs/adr/0039-cloud-sessions-fetch-pinned-game-archives.md)) and CI ([ADR 0006](../../docs/adr/0006-ci-renders-on-lavapipe.md)) both render on it.
-  The findings name the Mesa build they come from; three builds were measured: Ubuntu's `mesa-vulkan-drivers` 25.2.8 (`llvmpipe (LLVM 20.1.2, 256 bits)`, cloud), and mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and 26.2.6 (`llvmpipe (LLVM 23.1.4, 256 bits)`) on the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md).
-* **Sources**: Mesa source (`src/gallium/auxiliary/draw/draw_pipe_clip.c` at `mesa-25.2.8`, `mesa-26.2.6` and `main`; `src/gallium/drivers/llvmpipe/lp_context.c`), parity runs logged in [`log.md`](../../work/2026-10/parity-log/log.md) on 2026-11-07 and 2026-11-15, the #265 journal, and #635's parity and residue runs of 2026-11-16.
+  The findings name the Mesa build they come from; three builds were measured: Ubuntu's `mesa-vulkan-drivers` 25.2.8 (`llvmpipe (LLVM 20.1.2, 256 bits)`, cloud, and since § 6 local-windows under WSL), and mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and 26.2.6 (`llvmpipe (LLVM 23.1.4, 256 bits)`) on the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md).
+* **Sources**: Mesa source (`src/gallium/auxiliary/draw/draw_pipe_clip.c` at `mesa-25.2.8`, `mesa-26.2.6` and `main`; `src/gallium/drivers/llvmpipe/lp_context.c`), parity runs logged in [`log.md`](../../work/2026-10/parity-log/log.md) on 2026-11-07 and 2026-11-15, the #265 journal, #635's parity and residue runs of 2026-11-16, and #637's of 2026-11-20.
 * **Evidence tier**: stated at the start of each section.
 
 ## 1. Near ground polygons drew palette index 0
@@ -100,9 +100,32 @@ _Source: [Lavapipe beside the GPU on one crates tree](../../work/2026-11/265_lav
 
 ## 5. What still differs
 
+Near-cut outline lines, which lavapipe drew as wedges until the line lists were clipped to a band around the view (#922), are in [`lavapipe-line-clip.md`](lavapipe-line-clip.md).
+
 `[Bounded Observation]`, 2026-11-16, mesa-dist-win 25.2.8 against the RTX 4070, on `origin/main` `3a7afb76` with (d) but not (e).
 With eye-relative transforms (#636), lavapipe differs from the GPU by 12.31 to 62.85 index-plane pixels per tick on average over each film, against 22.64 to 147.44 on the same tree without them (table below); (e) and #636 together were not measured on lavapipe.
 _Source: [Eye-relative transforms on both backends](../../work/2026-11/636_eye-relative-transforms/journal.md#2026-11-16-eye-relative-transforms-on-both-backends)._
+
+**Reversed, infinite depth (#637).**
+`[Bounded Observation]`, 2026-11-20, mesa-dist-win 25.2.8 against the RTX 4070, on `main` `5fbfe844` before and that tree plus the change after; re-measured on `main` `b028f7d3` (#690) with the same figures to one decimal.
+Depth was then `0.5 m / w` (`0.1 m / w` since [#904](https://github.com/neilsh/stunt-reel/issues/904), not re-measured here), reversed, in `Depth24Plus` ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md)): clip z is the constant near distance, so no rounded projection term reaches it.
+Mean index-plane pixels differing per tick, GPU against lavapipe, over every tick of each film, with the same projection in `Depth32Float` beside it:
+
+| Film | Before | `Depth32Float` | After (`Depth24Plus`) |
+|---|---|---|---|
+| CTRY | 12.2 | 12.0 | 6.3 |
+| INTRO | 12.8 | 12.1 | 8.9 |
+| LAND | 35.7 | 46.5 | 26.2 |
+| BALLOON | 19.9 | 44.6 | 8.9 |
+| TRAINTNL | 20.7 | 30.9 | 5.2 |
+| BOMB | 14.7 | 26.6 | 11.6 |
+| LOCATION | 62.0 | 92.7 | 29.8 |
+
+The largest ties left move less: LOCATION 3815 3,131 to 1,490 pixels and 3830 2,603 to 2,470; LAND 415 1,867 to 1,858 and 416 2,096 to 2,075, so the change barely moves LAND's terrain-against-prop tie; 145 of the 152 pixels #904 left at LAND 416 (on mesa-dist-win) went with the outline clip band, so those 145 were outline lines reaching outside it, not a tie, and the other 7 are not attributed ([`lavapipe-line-clip.md`](lavapipe-line-clip.md) section 2).
+In `Depth32Float`, on the four films tallied (BALLOON, BOMB, LAND, TRAINTNL), most of the extra pixels were lavapipe's own plane moving, between polygons of one layer (on BALLOON the balloon's actor layer, 14.8 to 40.1 pixels per tick), and at 13 sampled ticks no decal bias constant from 0 to 1,024 or slope from 2 to 8 changed that by more than 7 pixels a tick.
+`[Supported Inference]`: rounding the interpolated depth to a 24-bit step absorbs the small differences between the two rasterizers' depth interpolation that f32 keeps, so coplanar ties resolve by the compare function alike on both.
+GPU parity moves inside every guard (no film down by 0.002, no frame by 0.005).
+_Source: [Reversed depth in Depth24Plus over every tick](../../work/2026-11/637_reversed-z/journal.md#2026-11-20-reversed-depth-in-depth24plus-over-every-tick-both-backends); [on main after #690](../../work/2026-11/637_reversed-z/journal.md#2026-11-20-the-committed-code-on-main-after-690-both-backends); [in Depth32Float](../../work/2026-11/637_reversed-z/journal.md#2026-11-20-reversed-depth-in-depth32float-over-every-tick-both-backends); [bias or format at 13 ticks](../../work/2026-11/637_reversed-z/journal.md#2026-11-20-bias-or-format-at-13-ticks)._
 
 **Eye-relative transforms (#636).**
 `[Bounded Observation]`, 2026-11-16, mesa-dist-win 25.2.8 against the RTX 4070, on `origin/main` `3a7afb76` before and that tree plus the change after.
@@ -124,7 +147,7 @@ The before column's BALLOON figure is lower than the 43.5 measured on `52d84e6`,
 The largest per-tick differences left are not those ties: LOCATION 3815 (3,130 pixels, 3,088 of them index 193 on the GPU against 136 on lavapipe, both in the prop layer; before, 2,701, the same two indices the other way round), LAND 415 (2,084, 1,854 of them the GPU's terrain at 195 against lavapipe's prop at 13, the same pair on as many pixels as before) and BALLOON 145 (1,091, the Gouraud polygon one index off, candidate (d); candidate (e) was measured on `3a7afb76`, before this change, and the two together were not measured on lavapipe).
 
 The change moves the GPU's own render: where the stadium's infield (a world prop, index 169) lies over the plaza prop `0x064A` (index 14) at LOCATION 2586 to 2872, the GPU before drew the infield over most of the stadium with the ground breaking through on its far side, and now draws the ground over nearly all of it at the ticks #636 measured (2586, 2599, 2840, 2859, 2862), as lavapipe did before at 2586, 2840 and 2859 (at 2599 the GPU drew the ground before too, and lavapipe the infield); the capture shows the whole infield, as PLAYONE paints it.
-The plaza, snapped onto the ground plane, is drawn by the ground pipeline, which writes depth, and the infield, a base polygon 7.8125 mm below it in our world IR, must pass `Less` against it, so an exact depth test draws the plaza ([`world-scene-residuals.md`](../playone-exe/world-scene-residuals.md) section 6.8; #651).
+The plaza, snapped onto the ground plane, is drawn by the ground pipeline, which writes depth, and the infield, a base polygon 7.8125 mm below it in our world IR, must pass `Less` (standard depth) against it, so an exact depth test draws the plaza ([`world-scene-residuals.md`](../playone-exe/world-scene-residuals.md) section 6.8; #651).
 Since 2026-11-20 the ground pass takes the infield too and paints it over the plaza, as the capture shows (measured on the GPU; same section).
 The infield won before #636 by the f32 vertex-stage error, not by depth precision (`[Supported Inference]`: a 7.8125 mm offset seen from about 85 m (near plane 0.5 m) is a depth gap of at most `0.5 / 85² × 0.0078125 = 5.4e-7`, while #595 read 3.2e-6 and 2.9e-6, of opposite sign, near depth 0.994; so the f32 vertex-stage error that #636 removed flipped it, not depth precision).
 Those frames fall by up to 0.053 in SSIM, and LOCATION's mean by 0.0005 (scores in the journal entry).
@@ -137,7 +160,7 @@ _Source: [Eye-relative transforms on both backends](../../work/2026-11/636_eye-r
   _Source: [The screen-linear ratio at BALLOON 145](../../work/2026-11/distill-lavapipe/journal.md#2026-11-16-the-screen-linear-ratio-at-balloon-145-before-and-after)._
 * **A near-coplanar polygon won the depth test** before #636, which cuts each to 17 pixels or fewer (LAND 227, BOMB 1910, LOCATION 2599 and 2859; `[Bounded Observation]`, 2026-11-16, `03356d6e` with an uncommitted diagnostic writing each fragment's pipeline, provoking `vertex_index` and depth).
   The two backends drew different polygons there: at each residue pixel where both were read alone (all but 16 of LAND's 3,222), the GPU put the polygon it shows in front by 6e-8 to 4.5e-4, and lavapipe put it level or behind.
-  Three are ground against a world prop, where the ground pipeline compares `Always` and writes depth, so the prop's `Less` test decides; at BOMB 1910 an actor's decal fails `LessEqual` against its own base polygon on lavapipe.
+  Three are ground against a world prop, where the ground pipeline compares `Always` and writes depth, so the prop's `Less` test (standard depth) decides; at BOMB 1910 an actor's decal fails `LessEqual` against its own base polygon on lavapipe.
   The clipper broke the ground polygons at LAND 227 and LOCATION 2859 (inferred from the NaN, by section 2's mechanism: `shade` reads non-finite on 2,686 of LAND's 3,222 pixels and on LOCATION 2859's ground), and LAND 227's is flat in effect, so it is not a Gouraud polygon drawn flat.
   _Source: [Which polygon each backend draws](../../work/2026-11/distill-lavapipe/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks)._
 
@@ -152,6 +175,17 @@ _Source: [The vertex stage at the four residue ticks](../../work/2026-11/distill
 
 A near-zero but finite divisor would give a Gouraud polygon a wrong but finite weight that the guard cannot catch; the sentinel found no `shade` below -0.5 or above 255.5 on lavapipe at any tick rendered, and no case is known.
 _Source: [Lavapipe beside the GPU on one crates tree](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree)._
+
+## 6. One build on two machines
+
+`[Bounded Observation]`, 2026-11-21, `crates` tree `9d08971`, all seven reference films, every tick.
+Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` (`llvmpipe (LLVM 20.1.2, 256 bits)`) drew the same index plane on every one of the 20,621 ticks on an AMD Ryzen 7 7745HX under WSL 2 as on a Claude cloud container's Intel Xeon (compared by per-tick SHA-256, the sorted tick hashes hashed again per film and per 200 ticks), so on this tree one pinned package gave local-windows and the cloud the same pixels.
+mesa-dist-win 25.2.8 (`LLVM 21.1.7`) on the Ryzen differs from it on 5 to 201 ticks per film, by at most 33 pixels on a tick (BALLOON 1084) and at most 0.3 pixels per tick on average; it and the Ubuntu package each repeat their own planes exactly on a second run.
+Against the RTX 4070 on that machine both differ by the same per-tick means to one decimal (CTRY 6.3, INTRO 8.9, LAND 26.2, BALLOON 8.9, TRAINTNL 5.2, BOMB 11.6, LOCATION 29.8), matching section 5's reversed-depth column; both were measured with the 0.5 m near plane, which #905 has since moved to 0.1 m.
+Their `mean_ssim_scored` lies within 0.0005 of the GPU's on every film, and within 0.000003 of each other.
+Seven films took 1 m 43 s on mesa-dist-win and 2 m 34 s to 2 m 37 s on the Ubuntu package under WSL on the Ryzen (49.8 s on the GPU), and 251 s on the cloud's 4 vCPUs; under WSL the data root must lie on the Linux filesystem (CTRY 4.4 s there, 36 s read from `/mnt/e`).
+Ubuntu's archive does not keep every version: `25.2.8-0ubuntu0.24.04.4`, which section 2 names, is gone, and a fresh 24.04.5 install came with `.2`, so an exact pin fails at install once Ubuntu supersedes it.
+_Source: [Four renderer builds on one crates tree, two machines](../../work/2026-11/908_backend-agreement/journal.md#2026-11-21-four-renderer-builds-on-one-crates-tree-two-machines)._
 
 ## Ruled out
 
@@ -169,13 +203,14 @@ _Source: [Lavapipe beside the GPU on one crates tree](../../work/2026-11/265_lav
 * **LAND 227 as a Gouraud polygon drawn flat**: lavapipe draws a flat ground polygon over the GPU's prop there (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **A different depth format on the two backends**: both take `X8_D24_UNORM_PACK32` for `Depth24Plus` (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
 * **The clipper as the sole cause of the depth residues** (mesa-dist-win 25.2.8): polygons the side planes do not clip differ in depth too, and provoking vertices differ out of the vertex stage (section 5); [journal](../../work/2026-11/595_lavapipe-residues/journal.md#2026-11-16-which-polygon-each-backend-draws-at-the-four-residue-ticks).
+* **Reversed, infinite depth in `Depth32Float`** (#637's proposal; mesa-dist-win 25.2.8): it raised the GPU-lavapipe residue on five of seven films, and the decal bias did not explain it (section 5); [journal](../../work/2026-11/637_reversed-z/journal.md#2026-11-20-reversed-depth-in-depth32float-over-every-tick-both-backends).
 * **An upstream fix by Mesa 26.2.6**: its clipper still makes the NaN, and `interp()` is unchanged through `main` (section 2); [journal](../../work/2026-11/265_lavapipe-parity/journal.md#2026-11-15-lavapipe-beside-the-gpu-on-one-crates-tree).
 
 ## Open questions
 
 1. Narrowed by #636 (section 5): taking the eye's translation out of the f32 transform removes the ties at the four residue ticks (17 pixels or fewer left at each) and cuts the per-tick difference by 46% to 84%, so the cancellation drove them; the mechanism inside each compiler is not shown.
-   Still open: which compiler step rounds the transform differently (fused multiply-adds in one compiler and not the other is one candidate), and whether the ties that remain (LOCATION 3815, LAND 415) are left to depth precision (#637) or are polygons in one plane; the stadium's infield at LOCATION 2586 to 2872 was neither: it lay 7.8125 mm below the plaza it tied, and the ground pass now paints it in walk order ([`world-scene-residuals.md`](../playone-exe/world-scene-residuals.md) section 6.8).
+   Still open: which compiler step rounds the transform differently (fused multiply-adds in one compiler and not the other is one candidate), and whether the ties that remain (LOCATION 3815 and 3830, LAND 415; 145 of LAND 416's 152 remaining pixels went with the outline clip band and its last 7 are not attributed, [`lavapipe-line-clip.md`](lavapipe-line-clip.md)) are polygons in one plane: reversed depth (#637, section 5) removed about half of LOCATION 3815's differing pixels (3,131 to 1,490) and under 6% of LOCATION 3830's (2,603 to 2,470) and LAND 415's and 416's (1,867 to 1,858, 2,096 to 2,075), but against `main` it changed the projection (clip z the constant `near`), the compare directions, the bias sign and where the 24-bit depth steps fall in distance together, in the same `Depth24Plus` format, so it does not show how much of each tie the projection's rounding makes; the stadium's infield at LOCATION 2586 to 2872 was neither: it lay 7.8125 mm below the plaza it tied, and the ground pass now paints it in walk order ([`world-scene-residuals.md`](../playone-exe/world-scene-residuals.md) section 6.8).
 2. Whether a broken polygon's depth moves more than the vertex-stage difference explains (LOCATION 2859, section 5).
    Not filed upstream either: a report to Mesa would cite `t_nopersp`'s zero divisor (section 2).
-3. Whether Mesa 26.2.6 scores as 25.2.8 does: it was rendered at six ticks only, with no parity run; and CI's lavapipe has not been compared with these rows.
+3. Whether Mesa 26.2.6 scores as 25.2.8 does: it was rendered at six ticks only, with no parity run; and whether CI's runners draw section 6's planes, which two CPUs of different vendors did.
 4. Whether replacing `@interpolate(linear) shade` everywhere with the ratio `shade·w / w` (so no render relies on Mesa's `noperspective` path) flips GPU pixels at `.5` rounding boundaries: #635 proposed counting the differing index-plane pixels against `main` over the seven films and did not run it (it was the issue's optional experiment; section 3 (e) adopts the ratio only where `shade` is not finite).

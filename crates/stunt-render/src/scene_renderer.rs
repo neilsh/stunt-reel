@@ -29,6 +29,11 @@
 //! from their own runs of the world mesh, so they cover it; the world's main draw leaves them
 //! out. The world stays depth-tested throughout (`research/parity/painter-order.md`).
 //!
+//! A view-facing prop whose box ([`GpuModel::bounds`]) lies wholly outside the view frustum is
+//! skipped, as the world's off-screen nodes are, since it would cover no pixel
+//! ([`GpuModel::in_frustum`] keeps a prop with discs under a lens other than the default; the
+//! world's walk keeps a node whose subtree holds discs likewise).
+//!
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
 use std::collections::HashMap;
@@ -37,7 +42,7 @@ use glam::{Mat4, Vec3};
 
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SCENERY_OCEAN, SCENERY_TERRAIN, SodModelIr, SodVertex,
-    VERTEX_FLAG_LINE, VisibilityCondition,
+    VisibilityCondition,
 };
 use stunt_core::scene::{FilmScene, RelitShapes, SceneFrame, SpriteDraw};
 use stunt_core::sod::{AngleBank, ShadeLight};
@@ -517,6 +522,7 @@ impl SceneRenderer {
         let controller = camera.unwrap_or(&authored);
         let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
         camera_resources.upload(queue, &camera_uniform);
+        let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
 
         self.prepared.clear();
         self.steps.clear();
@@ -529,8 +535,7 @@ impl SceneRenderer {
             // The world's own matrix, and with the camera's the one its vertices reach clip
             // space by, in the shader's order: the cull sees what the draw would.
             let world_matrix = eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array());
-            let view_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj)
-                * Mat4::from_cols_array(&world_matrix);
+            let view_proj = rotation_proj * Mat4::from_cols_array(&world_matrix);
             let (ground, base, decals) = {
                 let lod_view = CameraTransform {
                     eye: frame.view.eye,
@@ -538,7 +543,12 @@ impl SceneRenderer {
                     lens: frame.lens,
                     ..CameraTransform::default()
                 };
-                world.collect_world_meshes(eye, Some(&lod_view), view_proj)
+                world.collect_world_meshes(
+                    eye,
+                    Some(&lod_view),
+                    view_proj,
+                    camera_uniform.disc_depth_scale,
+                )
             };
             let uniform = self.uniforms.push(&ModelUniform::new(world_matrix, 0));
             let untag =
@@ -557,6 +567,15 @@ impl SceneRenderer {
             let Some(model) = self.shapes.get(&prop.shape_id) else {
                 continue;
             };
+            // A prop whose box is off screen draws no pixel, so it is skipped before its
+            // walk; the box is tested by the matrix its vertices reach clip space by.
+            let model_matrix = eye_relative_matrix(eye, &prop.world_matrix);
+            if !model.in_frustum(
+                rotation_proj * Mat4::from_cols_array(&model_matrix),
+                camera_uniform.disc_depth_scale,
+            ) {
+                continue;
+            }
             let to_model = Mat4::from_cols_array(&prop.world_matrix).inverse();
             let local_eye = to_model.transform_point3(eye);
             let view = model_view(&to_model, frame);
@@ -570,25 +589,21 @@ impl SceneRenderer {
                 continue;
             }
             let shape_id = prop.shape_id;
-            let uniform =
-                ModelUniform::new(eye_relative_matrix(eye, &prop.world_matrix), LAYER_PROP)
-                    .with_shape(shape_id);
+            let uniform = ModelUniform::new(model_matrix, LAYER_PROP).with_shape(shape_id);
             self.push_draw(
                 |uniform| Target::Shape { shape_id, uniform },
                 &uniform,
                 meshes,
             );
         }
-        // A point's depth along the view axis, as `PLAYONE`'s entry sort compares actors.
+        // Each slot's depth along the view axis, as `PLAYONE`'s entry sort compares actors: at
+        // the slot's position, not the model matrix's lifted origin
+        // (research/playone-exe/scene-walk-actors.md section 6).
         let back = controller.compute_view_matrix().row(2).truncate();
-        let view_depth = |m: &[f32; 16]| {
-            let at = Mat4::from_cols_array(m).w_axis.truncate();
-            (eye - at).dot(back)
-        };
         let actor_depths: Vec<f32> = frame
             .actors
             .iter()
-            .map(|a| view_depth(&a.world_matrix))
+            .map(|a| (eye - Vec3::from_array(a.position)).dot(back))
             .collect();
         let mut actor_draws = Vec::new();
         self.lit.resize_with(frame.actors.len(), || None);
@@ -1077,11 +1092,11 @@ fn sprite_ir(image: &SpriteImage) -> SodModelIr {
     ir
 }
 
-/// Whether a world triangle with the corner `vertex` is outlined: a prop's filled polygon,
-/// not a line, terrain or ocean. Outlining terrain and ocean as well scored lower on `LAND`
-/// and `BALLOON` (`work/2026-11/430_world-mesh-slivers/journal.md`).
+/// Whether a world triangle with the corner `vertex` is outlined: a prop's filled polygon
+/// ([`crate::outline::outlines`]), not terrain or ocean. Outlining terrain and ocean as well
+/// scored lower on `LAND` and `BALLOON` (`work/2026-11/430_world-mesh-slivers/journal.md`).
 fn outlines_in_world(vertex: &SodVertex) -> bool {
-    vertex.flags & VERTEX_FLAG_LINE == 0
+    crate::outline::outlines(vertex)
         && vertex.scenery_class != SCENERY_TERRAIN
         && vertex.scenery_class != SCENERY_OCEAN
 }

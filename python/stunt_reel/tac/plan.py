@@ -531,7 +531,9 @@ def run_stride_plan(
     by_frame = dict(clock)
     runs = chunk(windows)
 
-    def window_pass(run: list[Window]) -> tuple[Trace, dict[int, Dump], list[int], list[int]]:
+    def window_pass(
+        number: int, run: list[Window]
+    ) -> tuple[Trace, dict[int, Dump], list[int], list[int]]:
         with open_runner() as runner:
             out = runner.run_script(
                 window_script(keys=keys, windows=run, layout=layout),
@@ -549,6 +551,9 @@ def run_stride_plan(
                 empty.append(window.start)
                 continue
             dumps.update(decode_dumps(out, [dumped], 0, own))
+        # Said here, in the worker, so a pass that finishes early is reported early; collecting
+        # the futures in submit order would hold every line until the slowest pass returned.
+        say(f"window pass {number}/{len(runs)} done: {len(dumps)} frames")
         return own, dumps, empty, skews
 
     traces: list[Trace] = []
@@ -559,7 +564,7 @@ def run_stride_plan(
         futures = []
         for number, run in enumerate(runs, start=1):
             say(f"window pass {number}/{len(runs)}: {len(run)} windows")
-            futures.append(pool.submit(window_pass, run))
+            futures.append(pool.submit(window_pass, number, run))
         try:
             for future in futures:
                 own, kept, empty, skew = future.result()

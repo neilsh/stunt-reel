@@ -1,0 +1,23 @@
+diff --git a/crates/stunt-score/src/parity/mod.rs b/crates/stunt-score/src/parity/mod.rs
+index 2fbfdd09..dd29cad6 100644
+--- a/crates/stunt-score/src/parity/mod.rs
++++ b/crates/stunt-score/src/parity/mod.rs
+@@ -354,6 +354,18 @@ fn score_matched(
+             policy,
+         );
+         let ordinal = frame.ordinal as usize;
++        if let (Ok(want), Some(map)) = (std::env::var("DBG_SHAPE_DUMP"), score.shape_loss.as_ref()) {
++            for w in want.split(',').filter_map(|s| s.parse::<u16>().ok()) {
++                eprintln!(
++                    "SHAPEDUMP {} {} {} {:.6} {:.6}",
++                    w,
++                    frame.film_tick,
++                    score.metrics.scored,
++                    score.metrics.ssim,
++                    map.get(&(w + 1)).copied().unwrap_or(0.0)
++                );
++            }
++        }
+         rows.push(FrameRow {
+             ordinal,
+             film_tick: frame.film_tick as usize,

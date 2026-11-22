@@ -25,7 +25,8 @@ In claude.ai, the cloud environment for this repo is `stunt-reel-cloud`:
 
 The setup script is the claude.ai field; the *cloud setup* is [`.claude/cloud-setup.sh`](../.claude/cloud-setup.sh), the checkout's script that does the work.
 The field holds only a bootstrap, so a change to the setup is reviewed and versioned with the repo, and no copy here can drift from it.
-The cloud setup installs mise at a pinned, checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs, dosbox-automation's Linux build and the Python environment, then lavapipe as CI does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)), and kache for the Rust build ([The Rust build cache](#the-rust-build-cache)).
+The cloud setup installs mise at a pinned, checksum-checked release, then from the checkout's `mise.lock` the tools the gate needs, dosbox-automation's Linux build and the Python environment, then lavapipe as CI does ([ADR 0006](adr/0006-ci-renders-on-lavapipe.md)), at the versions both pin (`LAVAPIPE_VERSION` and `LAVAPIPE_LLVM_VERSION`); a cloud session and local-windows under WSL drew the same pixels on that package ([`lavapipe.md` § 6](../research/parity/lavapipe.md#6-one-build-on-two-machines)), and CI's runners have not been compared.
+It also installs kache for the Rust build ([The Rust build cache](#the-rust-build-cache)).
 It fetches no game archives: the setup script runs before the environment variables are set, so the hook fetches them.
 Each step skips work already done, and under `--cloud` it needs root on every run: to replace `/usr/local/bin/mise` or install system apt packages, and to install kache and write `/etc/kache` (cloud sessions run as root).
 It refuses to run without `--cloud` or `--antigravity`, or on anything but Linux x86_64 with `dpkg`; it does not detect a container, so `--cloud` on a developer machine would replace that machine's mise.

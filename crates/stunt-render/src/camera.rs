@@ -26,10 +26,12 @@ pub const MODE13H_PROJECTION_ASPECT: f32 = 320.0 / 200.0;
 /// Free-Cam vertical field of view in degrees: PLAYONE's default lens, as authored cameras.
 pub const DEFAULT_FOV_DEGREES: f32 = PLAYONE_FOV_Y_DEGREES;
 
-/// Near clipping plane distance in meters.
-pub const DEFAULT_NEAR_CLIP: f32 = 0.5;
+/// Near clipping plane distance in meters: a sweep pick that keeps a car beside the camera
+/// drawn, not a value read from PLAYONE (`research/parity/attribution.md`).
+pub const DEFAULT_NEAR_CLIP: f32 = 0.1;
 
-/// Far clipping plane distance in meters.
+/// Far clipping plane distance in meters, for the orthographic projection only: the perspective
+/// projection has no far plane.
 pub const DEFAULT_FAR_CLIP: f32 = 25_000.0;
 
 /// GPU uniform buffer structure for camera uniforms matching WGSL `@group(0) @binding(0)`.
@@ -226,7 +228,8 @@ pub struct CameraController {
     pub projection_y_scale: f32,
     /// Near clip plane in meters.
     pub near_clip: f32,
-    /// Far clip plane in meters.
+    /// Far clip plane in meters, for [`Projection::Orthographic`] only; the perspective
+    /// projection is infinite.
     pub far_clip: f32,
     /// Sun direction in world space.
     pub sun_direction: Vec3,
@@ -318,7 +321,10 @@ impl CameraController {
         }
     }
 
-    /// Computes the 4x4 projection matrix of [`Self::projection`] at [`Self::aspect_ratio`].
+    /// Computes the 4x4 projection matrix of [`Self::projection`] at [`Self::aspect_ratio`],
+    /// with reversed depth: the near plane maps to depth 1 and the far one to 0
+    /// (`docs/adr/0054-depth-is-reversed-and-infinite.md`). The perspective projection
+    /// has no far plane: its clip z is `near_clip`, so depth is `near_clip / w`.
     #[must_use]
     pub fn compute_proj_matrix(&self) -> Mat4 {
         let mut proj = match self.projection {
@@ -327,11 +333,10 @@ impl CameraController {
                     CameraMode::Authored => self.authored.fov_degrees.clamp(1.0, 160.0),
                     CameraMode::FreeCam => DEFAULT_FOV_DEGREES,
                 };
-                rh::proj::directx::perspective(
+                rh::proj::directx::perspective_infinite_reverse(
                     fov_deg.to_radians(),
                     self.aspect_ratio,
                     self.near_clip,
-                    self.far_clip,
                 )
             }
             Projection::Orthographic { half_height } => {
@@ -341,8 +346,9 @@ impl CameraController {
                     half_width,
                     -half_height,
                     half_height,
-                    self.near_clip,
+                    // Swapped, so the near plane maps to depth 1 and the far one to 0.
                     self.far_clip,
+                    self.near_clip,
                 )
             }
         };
@@ -621,6 +627,40 @@ mod tests {
             assert!((corner.x - 1.0).abs() < 1e-6 && (corner.y - 1.0).abs() < 1e-6);
             assert!((0.0..=1.0).contains(&corner.z), "{corner}");
         }
+        // Reversed, like the perspective: the near plane at depth 1, the far one at 0.
+        assert!((proj.project_point3(Vec3::new(0.0, 0.0, -1.0)).z - 1.0).abs() < 1e-6);
+        assert!(proj.project_point3(Vec3::new(0.0, 0.0, -100.0)).z.abs() < 1e-6);
+    }
+
+    #[test]
+    fn perspective_depth_is_near_over_w() {
+        let camera = CameraController::default();
+        let proj = camera.compute_proj_matrix();
+        for distance in [0.5f32, 1.0, 80.0, 1500.0, 25_000.0, 1.0e7] {
+            let clip = proj * glam::Vec4::new(3.0, -2.0, -distance, 1.0);
+            assert_eq!(clip.z, camera.near_clip, "clip z at {distance} m");
+            assert_eq!(clip.w, distance, "clip w at {distance} m");
+            let depth = clip.z / clip.w;
+            assert!(
+                (depth - camera.near_clip / distance).abs() <= f32::EPSILON * depth,
+                "{distance} m: {depth}"
+            );
+        }
+        // The near plane is depth 1, and nearer is larger.
+        let at = |d: f32| proj.project_point3(Vec3::new(0.0, 0.0, -d)).z;
+        assert_eq!(at(camera.near_clip), 1.0);
+        assert!(at(80.0) > at(80.001));
+    }
+
+    #[test]
+    fn the_far_limit_maps_to_depth_zero() {
+        let proj = CameraController::default().compute_proj_matrix();
+        // A direction (w = 0) is the limit of points going away along it: no far plane clips it.
+        let infinity = proj * glam::Vec4::new(0.2, 0.1, -1.0, 0.0);
+        assert_eq!(infinity.z, 0.0);
+        assert!(infinity.w > 0.0);
+        let far = proj.project_point3(Vec3::new(0.0, 0.0, -1.0e30)).z;
+        assert!(far > 0.0 && far < 1.0e-30, "{far}");
     }
 
     /// An authored camera over the far corner of a large world, where the eye's coordinates
@@ -731,8 +771,19 @@ mod tests {
         }
     }
 
+    /// The view ray under `ndc` that `inverse` (the uniform's `inv_rotation_proj`) gives: from
+    /// the pixel's point at depth 1 to its point at depth 0.5, both finite under the reversed
+    /// infinite perspective, whose depth 0 lies at infinity.
+    fn sky_ray(inverse: Mat4, ndc: [f32; 2]) -> Vec3 {
+        let point = |depth: f32| {
+            let p = inverse * glam::Vec4::new(ndc[0], ndc[1], depth, 1.0);
+            p.truncate() / p.w
+        };
+        point(0.5) - point(1.0)
+    }
+
     #[test]
-    fn sky_ray_direction_is_unchanged_by_dropping_the_translation() {
+    fn sky_ray_is_the_world_view_ray_under_the_pixel() {
         let camera = far_camera();
         let inverse = Mat4::from_cols_array(&camera.build_uniform().inv_rotation_proj);
         let world_inverse = camera.world_view_proj().as_dmat4().inverse();
@@ -744,14 +795,31 @@ mod tests {
             [-1.0, 3.0],
             [0.4, -0.7],
         ] {
-            let far = inverse * glam::Vec4::new(ndc[0], ndc[1], 1.0, 1.0);
-            let ray = (far.truncate() / far.w).as_dvec3().normalize();
-            let world_far =
-                world_inverse * glam::DVec4::new(ndc[0].into(), ndc[1].into(), 1.0, 1.0);
-            let expected = (world_far.truncate() / world_far.w - eye).normalize();
+            let ray = sky_ray(inverse, ndc).as_dvec3().normalize();
+            // The world point 50 km out under the pixel (depth 1e-5), less the eye, in f64. A
+            // nearer point would carry the f32 matrix's rounding of the eye's translation.
+            let world = world_inverse * glam::DVec4::new(ndc[0].into(), ndc[1].into(), 1.0e-5, 1.0);
+            let expected = (world.truncate() / world.w - eye).normalize();
             assert!(
                 (ray - expected).length() < 1e-5,
                 "{ndc:?}: {ray} vs {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn orthographic_sky_ray_is_the_view_axis() {
+        let mut camera = far_camera();
+        camera.projection = Projection::Orthographic { half_height: 2.0 };
+        camera.near_clip = 1.0;
+        camera.far_clip = 100.0;
+        let inverse = Mat4::from_cols_array(&camera.build_uniform().inv_rotation_proj);
+        let forward = (Vec3::from(camera.authored.target) - camera.eye_position()).normalize();
+        for ndc in [[0.0, 0.0], [-1.0, -1.0], [0.4, -0.7]] {
+            let ray = sky_ray(inverse, ndc).normalize();
+            assert!(
+                (ray - forward).length() < 1e-5,
+                "{ndc:?}: {ray} vs {forward}"
             );
         }
     }

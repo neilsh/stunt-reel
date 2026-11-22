@@ -133,6 +133,25 @@ These figures are on the current render, not the `#718` table's: the renderer ch
 It still misses 6,580 `balloon` pixels that neither rule reaches.
 _Source: [2026-11-20: counting the sky the balloon cuts off](../../work/2026-11/745_count-zenith-sky-overlap/journal.md#2026-11-20-counting-the-sky-the-balloon-cuts-off)._
 
+The sun disc, index 239, and the sky drawer's `0xD0` fill, index 208, count as sky by position since 2026-11-20 too ([#844](https://github.com/neilsh/stunt-reel/issues/844)).
+`PLAYONE` paints both in the sky ([Sky Bands](../formats/concepts/palette-and-shading.md#sky-bands)), but shapes paint those indices too, so neither counts as sky by index alone.
+A 239 run, 4-connected, counts as sky when it borders counted sky, a sky band or counted zenith.
+A 208 run is one row of 208 pixels, and it counts when counted sky lies directly above one of its pixels, since the fill is drawn under the last band.
+So a level frame counts one row of fill, the row under the band, and a taller strip's lower rows stay geometry though our render puts them in the sky plane; a banked frame counts the wedge between the band edge's highest and lowest rows, each row's run touching the band at the edge column and counting out to the frame side.
+A frame whose whole viewport is 208 is that one fill and counts; a looking-down frame whose viewport holds any other index counts none of its fill.
+A 239 or 208 run touching no counted sky stays geometry.
+A 208 run is judged against the sky counted before the fill pass, so a counted run does not make the run below it sky; with that cascade the fill walks down into the 208 ocean ([`attribution.md`](attribution.md) section 5) and `location` and `intro` fall.
+The rule now counts some 208 pixels as sky where we draw ocean, so `ocean_render_only` rises from 0 on `location`, `intro`, `ctry` and `land`: on the first three through the banked wedge, deep in which the run reaches the captured ocean, and on `land` from pixels directly under the band, either captured ocean or fill where our horizon sits too high.
+On one RTX 4070 render of the seven references, re-scored under each rule, the sun rule raises `balloon` by 0.0519, its captured ticks 12 to 200 from 0.4777 to 0.7719 with the 1,746-pixel disc ([section 7](attribution.md#7-balloons-mask-iou-two-runs-of-frames)) no longer geometry, and lowers `land`, `location` and `intro` by at most 0.00007, where a 239 run borders sky on our geometry.
+The fill rule then raises every film, by 0.0003 (`balloon`) to 0.0044 (`ctry`).
+With both rules no film falls, so both are adopted.
+[#617](https://github.com/neilsh/stunt-reel/issues/617) estimated 0.9418 for `balloon` with the 18 blank frames left out, the sky widened to 224 to 238 and the disc counted; the adopted rules score higher over the 107 scored frames, because the overlap rule above also counts the zenith the balloon cuts off.
+_Source: [2026-11-20: scoring the sun disc and the sky fill as sky](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-scoring-the-sun-disc-and-the-sky-fill-as-sky)._
+A fill rule read per column, one pixel under counted sky or the column's run below it, does not depend on roll but lowers some film against the row-run rule; telling the strip from the ocean is [#893](https://github.com/neilsh/stunt-reel/issues/893).
+_Source: [2026-11-20: a roll-independent fill rule](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-a-roll-independent-fill-rule)._
+The sky drawer paints the fill from its last band edge to the view's bottom row ([`palette-and-shading.md`](../formats/concepts/palette-and-shading.md#sky-bands), Sky Bands), so no drawer row bounds the strip: a column rule from the band edge that stops at the first non-208 pixel would reach the captured ocean where it meets the strip (predicted from the drawer read, not measured; #844's column run, which started from sky counted directly above rather than from the edge-14 line, did on `location`).
+_Source: [where the sky drawer stops the `0xD0` fill](../../work/2026-11/893_sky-fill-strip/journal.md#2026-11-22-where-the-sky-drawer-stops-the-0xd0-fill-read-statically)._
+
 ### 2.1 Fade floor
 
 `PLAYONE.EXE` fades its palette linearly to black near the end of `CTRY.FLM`, from about tick 990 to 1337.
@@ -226,10 +245,14 @@ How to read the rows of the [parity log](../../work/2026-10/parity-log/log.md), 
 
 * **Capture sky by index alone at 224 to 226** (2026-11-18): shapes paint those indices on `traintnl`, `bomb` and `location`, so widening the band to 224..=238 counts their paint as sky (section 2.0; [who paints 224 to 226](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)).
 * **Capture zenith sky by a 224 to 226 run touching the 227 to 238 band, or by a run reaching row 0 alone** (2026-11-18): the first counts a `location` helicopter window's edge, the second a `traintnl` rear-car window clipped by the top edge (section 2.0; [a positional rule](../../work/2026-11/718_positional-zenith-sky/journal.md#2026-11-18-a-positional-rule-for-the-zenith-sky)).
+* **Capture sky fill by a cascade** (2026-11-20): judging each 208 run against the fill already counted, by row or by 4-connected region, walks into the 208 ocean and lowers `location` and `intro` (section 2.0; [scoring the sun disc and the sky fill](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-scoring-the-sun-disc-and-the-sky-fill-as-sky)).
+* **Capture sky fill read per column** (2026-11-20): one 208 pixel under counted sky lowers five films against the row-run rule, and the column's whole 208 run below it lowers `location` by 0.028 (section 2.0; [a roll-independent fill rule](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-a-roll-independent-fill-rule)).
 
 Other rejected measurement approaches are in [`metric-bench.md`](metric-bench.md#ruled-out) and [`evidence-limits.md`](evidence-limits.md#ruled-out).
 
 ## Open questions
 
-None recorded here.
+1. The capture's `0xD0` sky fill counts by a row-run rule whose reach depends on the horizon's roll: one row under a level band, a wedge under a banked one (section 2.0); a rule that counts the whole strip and stops at the 208 ocean is [#893](https://github.com/neilsh/stunt-reel/issues/893).
+   The drawer paints the fill down to the view's bottom row, so what separates the strip from the 208 ocean below it must come from outside the drawer (section 2.0).
+
 The open lavapipe and GPU question is in [`evidence-limits.md`](evidence-limits.md#open-questions).

@@ -297,7 +297,7 @@ The data-side and renderer-side explanations for the ground shade, all negative 
 * **Fixed-distance depth cue** (`DBG_TERRAIN_CUE`, +1 inside / -1 outside a threshold): 15 m 0.7574 / 0.6667, 25 m 0.7572 / 0.6677, 40 m 0.7586 / 0.6689, 80 m 0.7625 / 0.6689; restricted to ramp 192-199 at 15 m 0.7601 / 0.6727.
   The single-frame fit (tick 273: +1 at 10-19 m, -1 beyond 40 m) averaged +0.36 in the 0-19 m bin over 114 frames.
   There is no per-pixel depth term in the player.
-* **Coplanar draw order** (`DBG_DEPTH_LE`, `LessEqual` instead of `Less`): both films identical to four decimals.
+* **Coplanar draw order** (`DBG_DEPTH_LE`, `LessEqual` instead of `Less`, standard depth): both films identical to four decimals.
   The tiles do tie the terrain, but not exactly: their quads and the terrain's fan triangles are different triangulations of one plane and round to different depths ([`world-scene-residuals.md`](world-scene-residuals.md) section 6.1).
 * **Geometry:** all 12 colour-195 patches are flat and convex; fan triangulation area equals polygon area for all 166 active patches.
 * **A per-shot terrain light.**

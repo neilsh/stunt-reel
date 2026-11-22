@@ -7,6 +7,8 @@ Part of the [`running-unattended`](SKILL.md) skill.
 - **Clock:** If the user gave a deadline, stop starting new items 30 minutes before it (`cutoff`).
   Check the time before starting each item.
   At the deadline, if the item in flight has unmerged work that is not yet armed for auto-merge, send its worker to run `mise run fix` (fixing any lint or doc error a pre-commit hook reports, or saving an uncommittable hunk to `build/scratch/wip-<slug>.patch`), commit with a `chore: wip <summary>` subject (never `--no-verify`), push, and open or update a **draft** PR with a handoff comment (what is done, what is left, last gate/CI result, and any saved `wip-<slug>.patch` inside a collapsible `<details>` block); then run **Shutdown**.
+  A **rule 5 item** (a diff touching a path [`AGENTS.md` § Committing](../../../AGENTS.md#committing) rule 5 names) gets its fresh review first when the time allows, then pushes as usual.
+  Otherwise it still gets this `chore: wip` commit, push and **draft** PR, unreviewed, and its handoff comment starts `unreviewed: rule 5 review pending`; the merge bar's `clean` review at `HEAD` still keeps it from merging.
   Without a deadline, run until the queue is empty or, on local-windows, free disk space falls under 5 GB.
 - **Disk space** (local-windows only: a cloud session has its own disk and skips this and every reap): `mise run queue` ends with `free disk: <N> GB on <drive>` for the drive holding the primary checkout; under 10 GB free it adds `create no new worktrees; run mise run clean`, and under 5 GB free it adds `run Shutdown`.
   Read that line at the start, before each item, and after each arming, then tidy from the primary checkout ([`managing-worktrees`](../managing-worktrees/SKILL.md)):
@@ -15,7 +17,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
      It skips, and names, a workspace with a live terminal or an unfinished worker or one that holds nested worktrees ([`harness-setup.md` § Orca](../../../docs/harness-setup.md#orca)).
      Any other linkless worktree made since [ADR 0036](../../../docs/adr/0036-worktrees-reach-shared-state-by-configuration.md) goes with the tool that made it.
   2. Under **10 GB free** after reaping: create no new worktrees, and run `mise run clean -- --yes` in any kept worktree that is pushed and idle.
-  3. Under **5 GB free** after tidying: start no new item; bring any in-flight work to a pushed `chore: wip <summary>` commit and draft PR as at the deadline, and run **Shutdown**.
+  3. Under **5 GB free** after tidying: start no new item; bring any in-flight work to a pushed `chore: wip <summary>` commit and draft PR as at the deadline (a rule 5 item reviewed first when the time allows, otherwise pushed unreviewed with its handoff comment starting `unreviewed: rule 5 review pending`), and run **Shutdown**.
      Never delete a worktree, `target/` or cache directory by hand, and never run `git worktree remove` on a linked worktree ([ADR 0018](../../../docs/adr/0018-reaping-unlinks-the-data-root-links-first.md)).
 
 ## Queue order
@@ -80,5 +82,6 @@ The quality guard is that no merged PR needs a fix or revert afterwards.
    One no longer listed has merged or been closed (`gh pr view <n> --json state` says which: **Merged**, or **Needs you**); `armed, checks pending` goes under **Opened** as "auto-merge armed"; and any other PR you armed that is still listed goes under **Needs you**.
    Take each item's last state from its newest line in `build/scratch/run-state.md`.
 2. When the run merged render PRs, repin the local class: on local-windows, `mise run parity`, then `mise run parity-repin` (its own `chore(parity): repin expected scores` PR); and in either environment comment on [#830](https://github.com/neilsh/stunt-reel/issues/830) naming the merged PRs, so a cloud session catches `lavapipe` up ([ADR 0053](../../../docs/adr/0053-expected-scores-live-in-a-generated-file-per-class.md)).
+   The [error readout](../improving-render-parity/error-readout.md) is the coordinator's as well, run once here for the merged render PRs, since it needs subagents a worker does not dispatch; until [#901](https://github.com/neilsh/stunt-reel/issues/901) makes its first baseline, skip it, and each render PR body cites #901 for the readout not run.
 3. On local-windows, close the terminals of each merged item's workspace as in [Disk space](#clock-and-disk-space) step 1, then run `mise run reap -- --yes` from the primary checkout; it retires the run's merged Orca workspaces too.
 4. End with a summary built from each item's newest line in `build/scratch/run-state.md`, the file's **Filed** list and its **Queue** section's skipped reasons, grouped as: **Merged**, **Draft / WIP**, **Opened**, **Filed** (with labels), **Needs you** (item, reason, decision), and **Skipped**, plus the environment, start/end free disk space on local-windows, and any environment friction.

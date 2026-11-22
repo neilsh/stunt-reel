@@ -16,13 +16,23 @@ import os
 import signal
 import subprocess
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from pathlib import Path
 
-__all__ = ["REAP_SECONDS", "TIMEOUT_EXIT", "end", "kill_tree", "run", "spawn", "wait"]
+__all__ = [
+    "REAP_SECONDS",
+    "TIMEOUT_EXIT",
+    "end",
+    "kill_tree",
+    "process_names",
+    "run",
+    "spawn",
+    "stuntreel_running",
+    "wait",
+]
 
 #: The exit code reported for a command killed on its timeout, as coreutils ``timeout`` does.
 TIMEOUT_EXIT = 124
@@ -30,6 +40,8 @@ TIMEOUT_EXIT = 124
 REAP_SECONDS = 10.0
 
 _NEW_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+#: The image names of the renderer binary, compared case-blind.
+_STUNTREEL = frozenset({"stuntreel", "stuntreel.exe"})
 
 
 def spawn(
@@ -118,3 +130,44 @@ def run(
     """Run *argv* to completion or *timeout*; returns ``(exit code, combined output)``."""
     with spawn(argv, cwd=cwd, env=env) as proc:
         return wait(proc, timeout)
+
+
+def _listing(argv: Sequence[str]) -> list[str]:
+    """*argv*'s non-empty stdout lines; empty when it cannot run."""
+    try:
+        done = subprocess.run(  # noqa: S603 - fixed argument vectors
+            list(argv), capture_output=True, text=True, errors="replace", check=False, timeout=30
+        )
+    except OSError, subprocess.TimeoutExpired:
+        return []
+    return [line.strip() for line in done.stdout.splitlines() if line.strip()]
+
+
+def _proc_names(proc: Path) -> list[str]:
+    """Each ``/proc/<pid>/comm`` that can still be read."""
+    names: list[str] = []
+    for comm in proc.glob("[0-9]*/comm"):
+        with contextlib.suppress(OSError):
+            names.append(comm.read_text(encoding="utf-8").strip())
+    return names
+
+
+def process_names() -> list[str]:
+    """The image name of every process this user can see.
+
+    Empty when they cannot be listed, so :func:`stuntreel_running` then answers ``False``.
+    """
+    if sys.platform == "win32":
+        rows = _listing(["tasklist", "/FO", "CSV", "/NH"])
+        names = [row.split(",", 1)[0].strip('"') for row in rows]
+    elif Path("/proc").is_dir():
+        names = _proc_names(Path("/proc"))
+    else:
+        names = [Path(row).name for row in _listing(["ps", "-A", "-o", "comm="])]
+    return names
+
+
+def stuntreel_running(names: Sequence[str] | None = None) -> bool:
+    """Whether a ``stuntreel`` process runs: among *names*, or else :func:`process_names`."""
+    listed = process_names() if names is None else names
+    return any(name.lower() in _STUNTREEL for name in listed)

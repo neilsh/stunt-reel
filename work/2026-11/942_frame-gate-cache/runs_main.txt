@@ -1,0 +1,36 @@
+lvp A base r1 load=100 PROBE942 loop_ns=3338639900 scene_frame_ns=1151153000 hash=e78af0dd5a752670 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp A new r1 load=21 PROBE942 loop_ns=1422996300 scene_frame_ns=353583200 hash=e78af0dd5a752670 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp B base r1 load=19 PROBE942 loop_ns=2635056100 scene_frame_ns=580343700 hash=f89ad44392c9f0d6 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp B new r1 load=12 PROBE942 loop_ns=2725562100 scene_frame_ns=386811800 hash=f89ad44392c9f0d6 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp C base r1 load=19 PROBE942 loop_ns=2310145100 scene_frame_ns=626598000 hash=ef55e1c5210bb21d adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp C new r1 load=8 PROBE942 loop_ns=2211934000 scene_frame_ns=493428400 hash=ef55e1c5210bb21d adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+gpu A base r1 load=21 PROBE942 loop_ns=922518800 scene_frame_ns=394017800 hash=113bfec5a02cd0fc adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu A new r1 load=18 PROBE942 loop_ns=750527300 scene_frame_ns=237916400 hash=113bfec5a02cd0fc adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu B base r1 load=8 PROBE942 loop_ns=936625300 scene_frame_ns=329506500 hash=28b8e1aba4759a01 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu B new r1 load=14 PROBE942 loop_ns=788087400 scene_frame_ns=180991800 hash=28b8e1aba4759a01 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu C base r1 load=7 PROBE942 loop_ns=1602230700 scene_frame_ns=473945300 hash=eca47385a8518dc2 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu C new r1 load=10 PROBE942 loop_ns=1682370800 scene_frame_ns=460816500 hash=eca47385a8518dc2 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+lvp A base r2 load=11 PROBE942 loop_ns=1574395300 scene_frame_ns=552828200 hash=e78af0dd5a752670 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp A new r2 load=8 PROBE942 loop_ns=1215935700 scene_frame_ns=253137800 hash=e78af0dd5a752670 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp B base r2 load=21 PROBE942 loop_ns=2612568000 scene_frame_ns=551071000 hash=f89ad44392c9f0d6 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp B new r2 load=19 PROBE942 loop_ns=2673025600 scene_frame_ns=366851700 hash=f89ad44392c9f0d6 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp C base r2 load=12 PROBE942 loop_ns=2232883800 scene_frame_ns=601149400 hash=ef55e1c5210bb21d adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp C new r2 load=4 PROBE942 loop_ns=2115556800 scene_frame_ns=456001900 hash=ef55e1c5210bb21d adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+gpu A base r2 load=13 PROBE942 loop_ns=873401500 scene_frame_ns=362194700 hash=113bfec5a02cd0fc adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu A new r2 load=9 PROBE942 loop_ns=731170800 scene_frame_ns=215901000 hash=113bfec5a02cd0fc adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu B base r2 load=10 PROBE942 loop_ns=880874000 scene_frame_ns=291040900 hash=28b8e1aba4759a01 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu B new r2 load=7 PROBE942 loop_ns=743730300 scene_frame_ns=173120700 hash=28b8e1aba4759a01 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu C base r2 load=17 PROBE942 loop_ns=1521239100 scene_frame_ns=440116600 hash=eca47385a8518dc2 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu C new r2 load=23 PROBE942 loop_ns=1415776400 scene_frame_ns=320993600 hash=eca47385a8518dc2 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+lvp A base r3 load=12 PROBE942 loop_ns=1489893200 scene_frame_ns=472321600 hash=e78af0dd5a752670 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp A new r3 load=8 PROBE942 loop_ns=1245347900 scene_frame_ns=269774900 hash=e78af0dd5a752670 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp B base r3 load=23 PROBE942 loop_ns=2567868700 scene_frame_ns=554434600 hash=f89ad44392c9f0d6 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp B new r3 load=14 PROBE942 loop_ns=2641653600 scene_frame_ns=381960700 hash=f89ad44392c9f0d6 adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp C base r3 load=8 PROBE942 loop_ns=2294713900 scene_frame_ns=607389700 hash=ef55e1c5210bb21d adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+lvp C new r3 load=15 PROBE942 loop_ns=2173804400 scene_frame_ns=482378900 hash=ef55e1c5210bb21d adapter={'name': 'llvmpipe (LLVM 21.1.7, 256 bits)', 'class': 'cpu'}
+gpu A base r3 load=17 PROBE942 loop_ns=1125135500 scene_frame_ns=526942800 hash=113bfec5a02cd0fc adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu A new r3 load=21 PROBE942 loop_ns=797841900 scene_frame_ns=238007100 hash=113bfec5a02cd0fc adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu B base r3 load=3 PROBE942 loop_ns=904122200 scene_frame_ns=307239100 hash=28b8e1aba4759a01 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu B new r3 load=12 PROBE942 loop_ns=796688800 scene_frame_ns=198620000 hash=28b8e1aba4759a01 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu C base r3 load=8 PROBE942 loop_ns=1671280700 scene_frame_ns=538575500 hash=eca47385a8518dc2 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}
+gpu C new r3 load=13 PROBE942 loop_ns=1415841600 scene_frame_ns=322685400 hash=eca47385a8518dc2 adapter={'name': 'NVIDIA GeForce RTX 4070 Laptop GPU', 'class': 'hardware'}

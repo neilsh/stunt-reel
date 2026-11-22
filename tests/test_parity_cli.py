@@ -97,7 +97,7 @@ def test_software_only_reaches_the_render_command(
     options = _options(parity_run, ["--films", "ctry", "--data-root", str(root)])
     with parity_pipeline.reference_job(root, "ctry") as job:
         parity_run.prepare_source(job, options, no_render=False, software_only=True)
-    assert renders == [{"software_only": True}]
+    assert renders == [{"software_only": True, "workers": 1}]
 
 
 def test_a_render_records_the_tree_it_was_built_from(

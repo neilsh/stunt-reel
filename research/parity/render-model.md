@@ -20,8 +20,8 @@ sidebar_label: "Render model: painter vs depth"
 4. The palette, built per frame from film variables, gives the colours.
 
 Our renderer replaces the painting with a GPU depth buffer, by design: [`docs/SPEC.md`](../../docs/SPEC.md) section 2.1 makes "CPU-side Painter's Algorithm / BSP polygon sorting" a non-goal.
-- It builds the world once per film (`crates/stunt-core/src/world/mod.rs`) and draws a sky pass, a world ground pass (`Always`, depth write) that paints the flat ground in walk order ([ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)), a base pass (`Less`) and an `[I5]` decal pass (`LessEqual`, bias `-2, -2.0`, no depth write; `crates/stunt-render/src/pipeline.rs`, [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)).
-- Depth is `Depth24Plus` with near 0.5 m and far 25 km (`renderer/mod.rs`, `camera.rs`).
+- It builds the world once per film (`crates/stunt-core/src/world/mod.rs`) and draws a sky pass, a world ground pass (`Always`, depth write) that paints the flat ground in walk order ([ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)), a base pass (`Greater`) and an `[I5]` decal pass (`GreaterEqual`, bias `2, 2.0`, no depth write; `crates/stunt-render/src/pipeline.rs`, [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)).
+- Depth is reversed and infinite in `Depth24Plus`: `0.1 m / w` (the near plane is a sweep pick, not read from `PLAYONE`, whose polygon clipper has none; [`attribution.md` § 2](attribution.md#2-current-breakdown)), 1 at the near plane and 0 at infinity, with no far plane ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md); `renderer/mod.rs`, `camera.rs`).
 - Polygons are flat at their palette index through the `[I3]` 256 × 32 lookup, with no lighting (`shaders/mode13h.wgsl`).
 
 The two orders agree wherever the nearer surface is also painted later, which is most of the frame.
@@ -67,7 +67,7 @@ Each place we imitate `PLAYONE`'s order is a rule that says which surface is "la
 * **Between a prop and the terrain** (ADR 0035): a flat prop lying within 10 cm of the terrain is a decal of it.
 * **On the ground plane** (ADR 0045): the ocean, flat `MAP.BIN` patches and prop triangles within 0.1 m of `y = base_y`, put on it, are not depth-tested at all; they are painted first, in walk order, each over the last.
 
-The first two draw the decal after its base with `LessEqual`, a bias toward the viewer and no depth write.
+The first two draw the decal after its base with `GreaterEqual` (depth is reversed), a bias toward the viewer and no depth write.
 A decal therefore wins any near-tie, not only the one against its own base, while still losing to anything clearly in front, as in the painter.
 Writing no depth makes the decal pass an ordered one: each decal is tested against the base geometry's depth, not against other decals, so a later decal covers an earlier one stacked on the same facet, as the painter does; a decal's outline is drawn right after its fill, per fan in a shape and per slice in the world, for the same reason.
 No decal is moved off its facet.
@@ -78,7 +78,7 @@ _Source: [prototype A wins the comparison](../../work/2026-11/489_ordered-decal-
 Where a rule's net is wrong, we differ:
 - **Wrong winner:** on `INTRO` tick 1086 a tile now covers a prop; whether `PLAYONE`'s order covers it too is not known (open question 3 of [`world-scene-residuals.md`](../playone-exe/world-scene-residuals.md)).
 - **Near surfaces:** the bias is in depth-buffer units, so a decal also beats any other surface within a few depth steps of it; two steps of `Depth24Plus` are about 24 cm at 1 km by the arithmetic below, more at grazing angles, where the slope term grows (`[Hypothesis]`, not measured).
-  In one sweep (`[Bounded Observation]`), the constant changed no score from −1 to −8, a slope of `-8` let decals through near surfaces (109 frames down by more than 0.005) and `-0.5` cost a target frame 0.016.
+  In one sweep under standard depth (`[Bounded Observation]`), the constant changed no score from −1 to −8, a slope of `-8` let decals through near surfaces (109 frames down by more than 0.005) and `-0.5` cost a target frame 0.016.
 - **Edge pixels between coplanar decals:** on `LOCATION`'s facades, pixels where coplanar bands and a roof edge meet changed owner (tick 3202, 343 pixels, −0.0152, the worst frame of the judge's list); in the two rows looked at, the capture matches the old render.
   The outlines of one world decal slice are drawn after all of its fills, while an earlier slice's outline now lies under every later slice; which of the two moves these pixels is not attributed. `[Bounded Observation]`.
 - **Overhangs:** a decal that overhangs its base writes no depth there, so a decal drawn later behind it can paint over the overhang.
@@ -93,10 +93,9 @@ Rejected ways to win the tie:
 Both are in [`world-scene-residuals.md`](../playone-exe/world-scene-residuals.md) section 6.3.
 
 **Precision.**
-`Depth24Plus` with near 0.5 m resolves about z² / (0.5 × 2²⁴): 1 cm at 300 m, 12 cm at 1 km.
+Depth `0.1 m / w` in `Depth24Plus` resolves about z² / (0.1 × 2²⁴): 5 cm at 300 m, 60 cm at 1 km, five times coarser than the 0.5 m near plane before it ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md)).
 The decal rules do not depend on it, because they make the surfaces coplanar and let the bias decide; a fixed geometric offset would (ruled out below).
 Renderer tests hold a snapped tile at 8 km.
-Reversed-Z with `Depth32Float` is the fallback if a non-coplanar case shows far away (ADR 0035).
 
 ## Ruled out
 
@@ -120,4 +119,4 @@ Reversed-Z with `Depth32Float` is the fallback if a non-coplanar case shows far 
 5. **Edge pixels between coplanar decals.**
    Attribute `LOCATION` 3202's edge pixels to the outline order inside or between world decal slices, then decide whether per-fan outlines in the world mesh (per-polygon draws, or the edge buffer split per fan) bring them to the capture or away from it.
 6. **`OP_ANIMATE` draw order.**
-   The blit takes its slot's place in the scenery walk against the world's props; against 3D actors it is ordered by view depth, not by their walk ([#819](https://github.com/neilsh/stunt-reel/issues/819); [`sod-animate.md`](../playone-exe/sod-animate.md), Open questions).
+   The blit takes its slot's place in the scenery walk against the world's props; against 3D actors it is ordered by the slots' view depths, as a shared leaf's sort orders them, not by a plane where their entries part ([`scene-walk-actors.md`](../playone-exe/scene-walk-actors.md) § 6; [`sod-animate.md`](../playone-exe/sod-animate.md), Open questions).

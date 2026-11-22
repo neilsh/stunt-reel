@@ -1,0 +1,35 @@
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 6e3cc62f..562b14cf 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -278,8 +278,28 @@ impl RenderPipelines {
+             immediate_size: 0,
+         });
+ 
+-        let shader_module =
+-            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
++        let dbg_cull_width: u32 = std::env::var("DBG_CULL_WIDTH").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
++        let mut dbg_src = include_str!("shaders/mode13h.wgsl").to_string();
++        if dbg_cull_width == 1 {
++            let old = "    return det > pixel * abs(p.w * q.w * r.w);
++}";
++            assert!(dbg_src.contains(old));
++            dbg_src = dbg_src.replace(old, "    if (p.w <= 0.0 || q.w <= 0.0 || r.w <= 0.0) {
++        return det > pixel * abs(p.w * q.w * r.w);
++    }
++    let px = 2.0 * camera.line_half_ndc;
++    let a = p.xy / p.w / px;
++    let b = q.xy / q.w / px;
++    let c = r.xy / r.w / px;
++    let twice_area = det / (p.w * q.w * r.w) / (px.x * px.y);
++    let longest = max(max(distance(a, b), distance(b, c)), distance(c, a));
++    return twice_area > 0.0 && twice_area >= longest;
++}");
++        }
++        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
++            label: Some("mode13h.wgsl"),
++            source: wgpu::ShaderSource::Wgsl(dbg_src.into()),
++        });
+         let vertex_buffers = [
+             Some(Self::vertex_buffer_layout()),
+             Some(Self::apex_buffer_layout()),

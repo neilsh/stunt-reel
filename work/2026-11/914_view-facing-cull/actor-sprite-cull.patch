@@ -1,0 +1,1009 @@
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 960d7275..02619603 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -43,6 +43,10 @@ pub struct GpuNode {
+     /// Box around this node's slices and every descendant's, in the model's space; `None` when
+     /// neither holds a vertex.
+     pub bounds: Option<NodeBounds>,
++    /// Whether this node's slices or a descendant's hold a disc's rim vertex
++    /// ([`VERTEX_FLAG_DISC`]), which the vertex shader moves off its position under a lens other
++    /// than the default (`squeeze_disc`), so [`Self::bounds`] no longer bounds where it draws.
++    pub discs: bool,
+     /// The offsets in the model's index arena [`GpuModel::cut`] may cut this node's slice at,
+     /// ascending, each with where its outline is cut in the chunk's edge buffer; empty unless
+     /// the upload was asked for them and kept the model in one chunk.
+@@ -107,19 +111,51 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
+             *slot = Some(own.union(*slot));
+         }
+     }
++    add_subtrees_to_parents(ir, &mut bounds, |subtree, parent| {
++        subtree.map(|subtree| Some(subtree.union(parent)))
++    });
++    bounds
++}
++
++/// Whether each node's slices or a descendant's hold a disc rim vertex, as [`node_bounds`] boxes
++/// them.
++fn node_discs(ir: &SodModelIr) -> Vec<bool> {
++    let mut discs = vec![false; ir.nodes.len()];
++    for mesh in ir.meshes() {
++        if mesh
++            .vertices
++            .iter()
++            .any(|vertex| vertex.flags & VERTEX_FLAG_DISC != 0)
++            && let Some(slot) = discs.get_mut(mesh.node.id.0 as usize)
++        {
++            *slot = true;
++        }
++    }
++    add_subtrees_to_parents(ir, &mut discs, |subtree, parent| Some(subtree || parent));
++    discs
++}
++
++/// Folds each node's per-node value, its own slices' plus its descendants' so far, into its
++/// parent's with `merge(subtree, parent)`; a `None` leaves the parent as it is.
++fn add_subtrees_to_parents<T: Copy>(
++    ir: &SodModelIr,
++    values: &mut [T],
++    merge: impl Fn(T, T) -> Option<T>,
++) {
+     for (n, node) in ir.nodes.iter().enumerate().rev() {
+-        let Some(subtree) = bounds.get(n).copied().flatten() else {
++        let Some(subtree) = values.get(n).copied() else {
+             continue;
+         };
+         let Some(parent) = node
+             .parent
+-            .and_then(|parent| bounds.get_mut(parent.0 as usize))
++            .and_then(|parent| values.get_mut(parent.0 as usize))
+         else {
+             continue;
+         };
+-        *parent = Some(subtree.union(*parent));
++        if let Some(merged) = merge(subtree, *parent) {
++            *parent = merged;
++        }
+     }
+-    bounds
+ }
+ 
+ /// The box around every root's subtree, from [`node_bounds`]; `None` when no root has one.
+@@ -175,6 +211,21 @@ fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
+     })
+ }
+ 
++/// Whether the vertex shader may move a disc rim vertex of a model or node that holds `discs`
++/// under the lens `disc_depth_scale`, so its box no longer bounds where the vertex draws.
++///
++/// It rescales a rim vertex's clip depth and `w` about the disc's centre (`squeeze_disc`), which
++/// can bring a vertex outside the box's side planes into the view; the default lens sets the
++/// scale to exactly 1, where it moves none.
++fn squeezes_discs(discs: bool, disc_depth_scale: f32) -> bool {
++    #[expect(
++        clippy::float_cmp,
++        reason = "the default lens sets the scale to exactly 1, where the shader moves no rim"
++    )]
++    let moved = disc_depth_scale != 1.0;
++    discs && moved
++}
++
+ /// Polygonal geometry slice pointing into consolidated GPU vertex and index buffers.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub struct GpuMeshSlice {
+@@ -215,11 +266,11 @@ pub struct GpuModel {
+     /// Root node IDs.
+     pub root_nodes: Vec<NodeId>,
+     /// Box around every vertex the model can draw, in its own space: the union of its roots'
+-    /// [`GpuNode::bounds`], or `None` when it has no mesh. [`Self::rewrite_vertices`] leaves it,
+-    /// and every node's box, as uploaded.
++    /// [`GpuNode::bounds`], or `None` when it has no mesh. [`Self::rewrite_vertices`] refreshes it,
++    /// and every node's box, to the vertices it writes.
+     pub bounds: Option<NodeBounds>,
+-    /// Whether any vertex is a disc's rim vertex ([`VERTEX_FLAG_DISC`]), which the vertex shader
+-    /// moves off its position under a lens other than the default (`squeeze_disc`).
++    /// Whether any root's subtree holds a disc's rim vertex ([`VERTEX_FLAG_DISC`]), which the
++    /// vertex shader moves off its position under a lens other than the default (`squeeze_disc`).
+     pub discs: bool,
+ }
+ 
+@@ -319,6 +370,7 @@ impl GpuModel {
+         marks.resize_with(plan.slices.len(), Vec::new);
+         let mut planned = plan.slices.into_iter().zip(marks);
+         let bounds = node_bounds(ir);
++        let discs = node_discs(ir);
+         let nodes = ir
+             .nodes
+             .iter()
+@@ -335,11 +387,16 @@ impl GpuModel {
+                     visibility: node.visibility,
+                     meshes,
+                     bounds: bounds.get(n).copied().flatten(),
++                    discs: discs.get(n).copied().unwrap_or(false),
+                     marks,
+                 }
+             })
+             .collect();
+ 
++        let model_discs = ir
++            .root_nodes
++            .iter()
++            .any(|root| discs.get(root.0 as usize).copied().unwrap_or(false));
+         let bounds = model_bounds(&ir.root_nodes, &bounds);
+         Self {
+             name: ir.name.clone(),
+@@ -349,10 +406,7 @@ impl GpuModel {
+             nodes,
+             root_nodes: ir.root_nodes.clone(),
+             bounds,
+-            discs: ir
+-                .vertices
+-                .iter()
+-                .any(|vertex| vertex.flags & VERTEX_FLAG_DISC != 0),
++            discs: model_discs,
+         }
+     }
+ 
+@@ -364,13 +418,9 @@ impl GpuModel {
+     /// 1: the shader then rescales a rim vertex's clip depth and `w` about the disc's centre,
+     /// which can bring a vertex outside the box's side planes into the view.
+     pub(crate) fn in_frustum(&self, view_proj: Mat4, disc_depth_scale: f32) -> bool {
+-        #[expect(
+-            clippy::float_cmp,
+-            reason = "the default lens sets the scale to exactly 1, where the shader moves no rim"
+-        )]
+-        let squeezed = self.discs && disc_depth_scale != 1.0;
+-        self.bounds
+-            .is_some_and(|bounds| squeezed || frustum_keeps(view_proj, bounds))
++        self.bounds.is_some_and(|bounds| {
++            squeezes_discs(self.discs, disc_depth_scale) || frustum_keeps(view_proj, bounds)
++        })
+     }
+ 
+     /// Overwrites the vertices and apexes with `shape`'s, keeping the indices, nodes and slices, and returns
+@@ -382,7 +432,7 @@ impl GpuModel {
+     /// vertices. For a model whose geometry stays and whose vertex attributes change, such as
+     /// an actor's shape decoded under another light: it costs one buffer write per chunk
+     /// instead of a new model's buffers.
+-    pub(crate) fn rewrite_vertices(&self, queue: &wgpu::Queue, shape: &Outlined) -> bool {
++    pub(crate) fn rewrite_vertices(&mut self, queue: &wgpu::Queue, shape: &Outlined) -> bool {
+         let ir = &shape.ir;
+         if arena_index(ir.vertices.len()) != self.vertex_count
+             || arena_index(ir.indices.len()) != self.index_count
+@@ -392,9 +442,25 @@ impl GpuModel {
+         for chunk in &self.chunks {
+             chunk.rewrite_vertices(queue, &ir.vertices, &shape.apex);
+         }
++        self.refresh_extents(ir);
+         true
+     }
+ 
++    /// Recomputes every node's box, its disc flag, and the model's, from `ir`'s vertices.
++    fn refresh_extents(&mut self, ir: &SodModelIr) {
++        let bounds = node_bounds(ir);
++        let discs = node_discs(ir);
++        for (n, node) in self.nodes.iter_mut().enumerate() {
++            node.bounds = bounds.get(n).copied().flatten();
++            node.discs = discs.get(n).copied().unwrap_or(false);
++        }
++        self.bounds = model_bounds(&self.root_nodes, &bounds);
++        self.discs = self
++            .root_nodes
++            .iter()
++            .any(|root| discs.get(root.0 as usize).copied().unwrap_or(false));
++    }
++
+     /// Evaluates visibility and collects visible mesh slices split by decal pass flag.
+     ///
+     /// `eye` is the camera position in this model's space, for
+@@ -422,6 +488,7 @@ impl GpuModel {
+             eye,
+             view,
+             view_proj: None,
++            disc_depth_scale: 1.0,
+         }
+         .collect()
+     }
+@@ -434,7 +501,9 @@ impl GpuModel {
+     /// `view_proj` takes a world vertex to clip space: the camera's `rotation_proj` composed
+     /// with the world's eye-relative model matrix ([`crate::camera::eye_relative_matrix`]). A node whose box it cannot
+     /// see is skipped with its subtree (`frustum_keeps`), which draws no fewer pixels because
+-    /// an off-screen slice covers none, and keeps the order of the slices that survive.
++    /// an off-screen slice covers none, and keeps the order of the slices that survive. A node
++    /// whose subtree holds disc rim vertices is kept whenever `disc_depth_scale` (the camera's)
++    /// is not 1, as [`Self::in_frustum`] keeps a model with them.
+     ///
+     /// Each base and decal slice comes with its node, so a caller can draw some apart.
+     #[expect(
+@@ -446,6 +515,7 @@ impl GpuModel {
+         eye: Vec3,
+         view: Option<&CameraTransform>,
+         view_proj: Mat4,
++        disc_depth_scale: f32,
+     ) -> (
+         Vec<GpuMeshSlice>,
+         Vec<(NodeId, GpuMeshSlice)>,
+@@ -459,6 +529,7 @@ impl GpuModel {
+             eye,
+             view,
+             view_proj: Some(view_proj),
++            disc_depth_scale,
+         }
+         .collect_world()
+     }
+@@ -1049,6 +1120,9 @@ struct VisibleWalk<'a> {
+     /// The matrix the vertex shader takes a vertex of the model to clip space by, for the
+     /// world's view-frustum cull; `None` draws every node the gates keep.
+     view_proj: Option<Mat4>,
++    /// The camera's disc depth scale, which decides whether a node with disc rim vertices can be
++    /// culled by its box ([`squeezes_discs`]); read only with `view_proj`.
++    disc_depth_scale: f32,
+ }
+ 
+ impl VisibleWalk<'_> {
+@@ -1123,6 +1197,7 @@ impl VisibleWalk<'_> {
+             // Off-screen geometry draws no pixels, and skipping it keeps the survivors' order.
+             if let Some(view_proj) = self.view_proj
+                 && let Some(bounds) = node.bounds
++                && !squeezes_discs(node.discs, self.disc_depth_scale)
+                 && !frustum_keeps(view_proj, bounds)
+             {
+                 continue;
+@@ -1536,6 +1611,7 @@ mod tests {
+                 edge_count: 0,
+             }],
+             bounds: None,
++            discs: false,
+             marks: Vec::new(),
+         }
+     }
+@@ -1559,6 +1635,7 @@ mod tests {
+             eye: Vec3::ZERO,
+             view: None,
+             view_proj: None,
++            disc_depth_scale: 1.0,
+         };
+         let (base, decal) = walk.collect();
+         let order = |slices: &[GpuMeshSlice]| -> Vec<u32> {
+@@ -1595,6 +1672,7 @@ mod tests {
+                 eye: Vec3::ZERO,
+                 view,
+                 view_proj: None,
++                disc_depth_scale: 1.0,
+             };
+             walk.collect().0.iter().map(|m| m.index_offset).collect()
+         };
+@@ -1691,6 +1769,7 @@ mod tests {
+             eye: Vec3::ZERO,
+             view: None,
+             view_proj: Some(view_proj),
++            disc_depth_scale: 1.0,
+         };
+         let (base, decals) = walk.collect();
+         assert!(
+@@ -1711,6 +1790,7 @@ mod tests {
+             eye: Vec3::ZERO,
+             view: None,
+             view_proj: Some(view_proj),
++            disc_depth_scale: 1.0,
+         };
+         let order: Vec<u32> = walk
+             .collect()
+@@ -1833,4 +1913,165 @@ mod tests {
+             })
+         );
+     }
++    /// `two_node_ir` with its child's vertices flagged as a disc rim.
++    fn disc_child_ir(offset: f32) -> SodModelIr {
++        let mut ir = two_node_ir(offset);
++        for vertex in ir.vertices.iter_mut().skip(3) {
++            vertex.flags |= VERTEX_FLAG_DISC;
++        }
++        ir
++    }
++
++    #[test]
++    fn a_node_with_discs_marks_its_ancestors_but_not_its_siblings() {
++        assert_eq!(node_discs(&two_node_ir(10.0)), vec![false, false]);
++        // The child's vertices are the disc's: the parent holds them in its subtree.
++        assert_eq!(node_discs(&disc_child_ir(10.0)), vec![true, true]);
++        // The parent's own vertices are the disc's: its child holds none.
++        let mut ir = two_node_ir(10.0);
++        for vertex in ir.vertices.iter_mut().take(3) {
++            vertex.flags |= VERTEX_FLAG_DISC;
++        }
++        assert_eq!(node_discs(&ir), vec![true, false]);
++    }
++
++    /// #644's world cull drops a baked prop whose box lies outside the view, and its disc rim
++    /// vertices with it; `squeeze_disc` can bring one into the view under a zoomed lens, so the
++    /// walk keeps a node whose subtree holds discs there, and still drops one without.
++    #[test]
++    fn the_world_walk_keeps_a_disc_node_beside_the_view_under_a_zoomed_lens() {
++        let beside = Some(boxed([20.0, 0.0, -10.0], 1.0));
++        let walk = |discs: bool, scale: f32| {
++            let mut root = node(0, None, &[], false);
++            root.bounds = beside;
++            root.discs = discs;
++            let nodes = [root];
++            VisibleWalk {
++                nodes: &nodes,
++                roots: &[NodeId(0)],
++                state_mask: 0,
++                dist_sq: 0.0,
++                eye: Vec3::ZERO,
++                view: None,
++                view_proj: Some(test_view_proj()),
++                disc_depth_scale: scale,
++            }
++            .collect()
++            .0
++            .len()
++        };
++        assert_eq!(walk(true, 1.0), 0, "the default lens moves no rim");
++        assert_eq!(
++            walk(false, 2.0),
++            0,
++            "a node with no disc is outside the view"
++        );
++        assert_eq!(walk(true, 2.0), 1, "a zoomed lens can squeeze a rim in");
++    }
++
++    /// A disc node's plain child beside the view is dropped by its own box, not kept by its
++    /// parent's discs.
++    #[test]
++    fn a_plain_child_of_a_disc_node_is_still_culled_by_its_own_box() {
++        let mut root = node(0, None, &[1], false);
++        root.bounds = Some(boxed([0.0, 0.0, -10.0], 30.0));
++        root.discs = true;
++        let mut child = node(1, Some(0), &[], false);
++        child.bounds = Some(boxed([20.0, 0.0, -10.0], 1.0));
++        let nodes = [root, child];
++        let order: Vec<u32> = VisibleWalk {
++            nodes: &nodes,
++            roots: &[NodeId(0)],
++            state_mask: 0,
++            dist_sq: 0.0,
++            eye: Vec3::ZERO,
++            view: None,
++            view_proj: Some(test_view_proj()),
++            disc_depth_scale: 2.0,
++        }
++        .collect()
++        .0
++        .iter()
++        .map(|mesh| mesh.index_offset)
++        .collect();
++        assert_eq!(order, vec![0]);
++    }
++
++    /// `rewrite_vertices` refreshes the boxes through `refresh_extents`: a model posed so its
++    /// vertices moved is bounded by where they are now, node by node and as a whole, not by the
++    /// rest pose it was uploaded in.
++    #[test]
++    fn refreshed_extents_follow_the_vertices_a_rewrite_moves() {
++        let ir = two_node_ir(10.0);
++        let mut model = GpuModel {
++            nodes: vec![node(0, None, &[1], false), node(1, Some(0), &[], false)],
++            root_nodes: vec![NodeId(0)],
++            ..boxed_model(None, false)
++        };
++        model.refresh_extents(&ir);
++        let rest = model.bounds;
++        assert_eq!(
++            rest,
++            Some(NodeBounds {
++                min: Vec3::new(0.0, 0.0, 0.0),
++                max: Vec3::new(3.0, 1.0, 0.0),
++            })
++        );
++        assert!(!model.discs);
++
++        // The child's vertices swing 40 m along -Z and turn into a disc's rim.
++        let mut posed = disc_child_ir(10.0);
++        for vertex in posed.vertices.iter_mut().skip(3) {
++            vertex.position[2] = -40.0;
++        }
++        model.refresh_extents(&posed);
++        let child = model.nodes.get(1).expect("child");
++        assert_eq!(
++            child.bounds,
++            Some(NodeBounds {
++                min: Vec3::new(2.0, 0.0, -40.0),
++                max: Vec3::new(3.0, 1.0, -40.0),
++            })
++        );
++        assert!(child.discs);
++        assert_eq!(
++            model.bounds,
++            Some(NodeBounds {
++                min: Vec3::new(0.0, 0.0, -40.0),
++                max: Vec3::new(3.0, 1.0, 0.0),
++            })
++        );
++        assert!(model.discs);
++    }
++    /// The gap in #644's world cull, on a synthetic disc: its centre and rim vertex both lie
++    /// outside the left plane, so the box around them is culled, yet the vertex shader's
++    /// `squeeze_disc` under a zoomed lens moves the rim vertex's clip `w` out and brings it
++    /// inside the view.
++    #[test]
++    fn a_squeezed_rim_vertex_can_enter_the_view_from_a_culled_box() {
++        let view_proj = test_view_proj();
++        // Clip x grows with the model x at `a` per metre; the centre sits at clip x / w = 1.7
++        // (w = 10 m deep) and the rim vertex 5 m behind it at 17 / 15 = 1.13, both beyond the
++        // plane at 1.
++        let a = view_proj.row(0).x;
++        let x = 17.0 / a;
++        let centre = Vec3::new(x, 0.0, -10.0);
++        let rim = Vec3::new(x, 0.0, -15.0);
++        let bounds = NodeBounds {
++            min: centre.min(rim),
++            max: centre.max(rim),
++        };
++        assert!(!frustum_keeps(view_proj, bounds), "the box is culled");
++        let clip = |point: Vec3| view_proj * point.extend(1.0);
++        // The shader's `squeeze_disc`: the rim's clip offset from the centre, depth terms scaled.
++        let squeezed = |scale: f32| {
++            let offset = clip(rim) - clip(centre);
++            clip(centre) + glam::Vec4::new(offset.x, offset.y, offset.z * scale, offset.w * scale)
++        };
++        let inside = |c: glam::Vec4| c.x.abs() <= c.w;
++        assert!(!inside(squeezed(1.0)), "an unzoomed rim stays outside");
++        assert!(inside(squeezed(2.0)), "a zoomed rim enters the view");
++        // So the walk keeps the disc's node under that lens, as its box alone would not.
++        assert!(squeezes_discs(true, 2.0) && !squeezes_discs(true, 1.0));
++    }
+ }
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 56b3ab25..c3bc4449 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -29,9 +29,11 @@
+ //! from their own runs of the world mesh, so they cover it; the world's main draw leaves them
+ //! out. The world stays depth-tested throughout (`research/parity/painter-order.md`).
+ //!
+-//! A view-facing prop whose box ([`GpuModel::bounds`]) lies wholly outside the view frustum is
+-//! skipped, as the world's off-screen nodes are, since it would cover no pixel
+-//! ([`GpuModel::in_frustum`] keeps a prop with discs under a lens other than the default).
++//! A view-facing prop, an actor's body, an actor's shadow or a sprite whose box
++//! ([`GpuModel::bounds`]) lies wholly outside the view frustum is skipped, as the world's
++//! off-screen nodes are, since it would cover no pixel; a body and its shadow are tested apart,
++//! each by its own matrix ([`GpuModel::in_frustum`] keeps a model with discs under a lens other
++//! than the default).
+ //!
+ //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
+ 
+@@ -522,6 +524,10 @@ impl SceneRenderer {
+         let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
+         camera_resources.upload(queue, &camera_uniform);
+         let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
++        let lens = ViewTest {
++            rotation_proj,
++            disc_depth_scale: camera_uniform.disc_depth_scale,
++        };
+ 
+         self.prepared.clear();
+         self.steps.clear();
+@@ -542,7 +548,12 @@ impl SceneRenderer {
+                     lens: frame.lens,
+                     ..CameraTransform::default()
+                 };
+-                world.collect_world_meshes(eye, Some(&lod_view), view_proj)
++                world.collect_world_meshes(
++                    eye,
++                    Some(&lod_view),
++                    view_proj,
++                    camera_uniform.disc_depth_scale,
++                )
+             };
+             let uniform = self.uniforms.push(&ModelUniform::new(world_matrix, 0));
+             let untag =
+@@ -564,10 +575,7 @@ impl SceneRenderer {
+             // A prop whose box is off screen draws no pixel, so it is skipped before its
+             // walk; the box is tested by the matrix its vertices reach clip space by.
+             let model_matrix = eye_relative_matrix(eye, &prop.world_matrix);
+-            if !model.in_frustum(
+-                rotation_proj * Mat4::from_cols_array(&model_matrix),
+-                camera_uniform.disc_depth_scale,
+-            ) {
++            if !lens.sees(model, &model_matrix) {
+                 continue;
+             }
+             let to_model = Mat4::from_cols_array(&prop.world_matrix).inverse();
+@@ -604,6 +612,25 @@ impl SceneRenderer {
+         let mut actor_draws = Vec::new();
+         self.lit.resize_with(frame.actors.len(), || None);
+         for ((actor_index, actor), slot) in (0u32..).zip(&frame.actors).zip(0usize..) {
++            // The body and the shadow reach clip space by their own matrices, so an off-screen
++            // body can still cast an on-screen shadow and the reverse.
++            let body_matrix =
++                (!actor.shadow_only).then(|| eye_relative_matrix(eye, &actor.world_matrix));
++            let shadow_matrix = actor
++                .shadow_matrix
++                .map(|matrix| eye_relative_matrix(eye, &matrix));
++            let seen = |model: &GpuModel| {
++                lens.sees_actor(model, body_matrix.as_ref(), shadow_matrix.as_ref())
++            };
++            // At rest the relit model only has other palette indices than the uploaded shape,
++            // so the shape's boxes decide before the relight; a posed model's vertices can leave
++            // the rest pose's box, so it is relit first and tested after.
++            if rests_in_the_shape_box(actor.bank)
++                && let Some(shape) = self.shapes.get(&actor.shape_id)
++                && !seen(shape).any()
++            {
++                continue;
++            }
+             // A slot drawn under the scene's light at rest keeps its model for the actor's next
+             // turn.
+             let lit = (actor.light != self.relit.light() || actor.bank != AngleBank::REST)
+@@ -625,6 +652,10 @@ impl SceneRenderer {
+             let Some(model) = model else {
+                 continue;
+             };
++            let visible = seen(model);
++            if !visible.any() {
++                continue;
++            }
+             let to_model = Mat4::from_cols_array(&actor.world_matrix).inverse();
+             let local_eye = to_model.transform_point3(eye);
+             let view = model_view(&to_model, frame);
+@@ -653,15 +684,17 @@ impl SceneRenderer {
+                     Target::Shape { shape_id, uniform }
+                 }
+             };
+-            if let Some(shadow_matrix) = actor.shadow_matrix {
+-                let uniform = ModelUniform::shadow(eye_relative_matrix(eye, &shadow_matrix), layer);
++            if visible.shadow
++                && let Some(shadow_matrix) = shadow_matrix
++            {
++                let uniform = ModelUniform::shadow(shadow_matrix, layer);
+                 let shadow = base.iter().chain(&decals).copied().collect();
+                 self.push_draw(target, &uniform, (Vec::new(), shadow));
+             }
+-            if actor.shadow_only {
++            let Some(body_matrix) = body_matrix.filter(|_| visible.body) else {
+                 continue;
+-            }
+-            let uniform = ModelUniform::new(eye_relative_matrix(eye, &actor.world_matrix), layer);
++            };
++            let uniform = ModelUniform::new(body_matrix, layer);
+             self.push_draw(target, &uniform, (base, decals));
+             if let Some(&depth) = actor_depths.get(slot) {
+                 actor_draws.push((self.prepared.len() - 1, depth));
+@@ -675,12 +708,15 @@ impl SceneRenderer {
+             let Some(model) = self.images.get(&sprite.image_id) else {
+                 continue;
+             };
++            // A sprite off screen draws no pixel, and a placed one must not cut the world's draw
++            // for nothing, so it is skipped before it is staged.
++            let sprite_matrix = eye_relative_matrix(eye, &billboard_matrix(&view, sprite));
++            if !lens.sees(model, &sprite_matrix) {
++                continue;
++            }
+             let (base, decals) = model.collect_visible_meshes(0, 0.0, eye, None);
+             let layer = LAYER_FIRST_ACTOR + u32::try_from(sprite.actor).unwrap_or(u32::MAX);
+-            let uniform = ModelUniform::new(
+-                eye_relative_matrix(eye, &billboard_matrix(&view, sprite)),
+-                layer,
+-            );
++            let uniform = ModelUniform::new(sprite_matrix, layer);
+             let image_id = sprite.image_id;
+             let draw = self.stage(
+                 |uniform| Target::Image { image_id, uniform },
+@@ -1006,6 +1042,65 @@ impl SceneRenderer {
+     }
+ }
+ 
++/// The camera's view test for every draw but the world's: whether a model's box can reach the
++/// view ([`GpuModel::in_frustum`]), so [`SceneRenderer::prepare`] skips a draw that covers no
++/// pixel before it walks, stages or encodes it.
++#[derive(Clone, Copy)]
++struct ViewTest {
++    /// Takes an eye-relative point to clip space.
++    rotation_proj: Mat4,
++    /// The lens' disc depth scale, which keeps a model with disc rim vertices.
++    disc_depth_scale: f32,
++}
++
++impl ViewTest {
++    /// Whether `model`, drawn by the eye-relative `matrix` (the one its uniform holds), can draw
++    /// a pixel.
++    fn sees(&self, model: &GpuModel, matrix: &[f32; 16]) -> bool {
++        model.in_frustum(
++            self.rotation_proj * Mat4::from_cols_array(matrix),
++            self.disc_depth_scale,
++        )
++    }
++
++    /// Which of an actor's draws, by their own eye-relative matrices, `model` can draw a pixel
++    /// in; a draw with no matrix (a body of a shadow-only actor, a missing shadow) draws none.
++    fn sees_actor(
++        &self,
++        model: &GpuModel,
++        body: Option<&[f32; 16]>,
++        shadow: Option<&[f32; 16]>,
++    ) -> ActorView {
++        ActorView {
++            body: body.is_some_and(|matrix| self.sees(model, matrix)),
++            shadow: shadow.is_some_and(|matrix| self.sees(model, matrix)),
++        }
++    }
++}
++
++/// Which of an actor's two draws can reach the view, each tested on its own: an off-screen body
++/// can cast an on-screen shadow, and the reverse.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++struct ActorView {
++    body: bool,
++    shadow: bool,
++}
++
++impl ActorView {
++    /// Whether either draw can.
++    const fn any(self) -> bool {
++        self.body || self.shadow
++    }
++}
++
++/// Whether the model an actor at `bank` draws has the vertex positions of its uploaded shape,
++/// so that shape's box decides whether the actor draws before it is relit: at rest `ShadeLight`
++/// changes only palette indices, whereas a posed bank's `OP_ROTX/Y/Z` or `OP_BVGT` can move
++/// vertices out of the rest pose's box, so that model is relit first and tested after.
++fn rests_in_the_shape_box(bank: AngleBank) -> bool {
++    bank == AngleBank::REST
++}
++
+ /// `frame`'s camera taken into a model's space by `to_model`, the inverse of its world
+ /// matrix, for the gates that test depth along the view axis.
+ fn model_view(to_model: &Mat4, frame: &SceneFrame) -> CameraTransform {
+@@ -1099,7 +1194,11 @@ fn outlines_in_world(vertex: &SodVertex) -> bool {
+ 
+ #[cfg(test)]
+ mod tests {
+-    use super::{LitLayout, Refresh};
++    use super::{
++        ActorView, AngleBank, CameraController, GpuModel, LitLayout, Mat4, Refresh, SpriteDraw,
++        Vec3, ViewTest, billboard_matrix, eye_relative_matrix, rests_in_the_shape_box,
++    };
++    use crate::mesh::NodeBounds;
+     use stunt_core::contracts::{NodeKind, SodModelIr, SodVertex, VisibilityCondition};
+ 
+     /// Two triangles over four vertices, each vertex at palette index `colour`, drawn by
+@@ -1312,4 +1411,168 @@ mod tests {
+             "the square faces the eye"
+         );
+     }
++    /// A meshless model holding only the box of half-extent `half` about the origin and whether
++    /// it has discs, as [`GpuModel::in_frustum`] sees it.
++    fn boxed_model(half: f32, discs: bool) -> GpuModel {
++        GpuModel {
++            name: "BOX".to_string(),
++            chunks: Vec::new(),
++            vertex_count: 0,
++            index_count: 0,
++            nodes: Vec::new(),
++            root_nodes: Vec::new(),
++            bounds: Some(NodeBounds {
++                min: Vec3::splat(-half),
++                max: Vec3::splat(half),
++            }),
++            discs,
++        }
++    }
++
++    /// The 45 degree lens at the origin looking down -Z, under the disc depth scale `scale`.
++    fn lens(scale: f32) -> (ViewTest, CameraController) {
++        let mut camera = CameraController::default();
++        camera.set_authored_transform(stunt_core::scene::ViewCamera {
++            eye: [0.0; 3],
++            target: [0.0, 0.0, -1.0],
++            fov_degrees: 45.0,
++            roll_radians: 0.0,
++        });
++        let test = ViewTest {
++            rotation_proj: Mat4::from_cols_array(&camera.build_uniform().rotation_proj),
++            disc_depth_scale: scale,
++        };
++        (test, camera)
++    }
++
++    /// The eye-relative matrix of a model moved to `at`, the eye being at the origin.
++    fn at(at: [f32; 3]) -> [f32; 16] {
++        eye_relative_matrix(
++            Vec3::ZERO,
++            &Mat4::from_translation(Vec3::from_array(at)).to_cols_array(),
++        )
++    }
++
++    const AHEAD: [f32; 3] = [0.0, 0.0, -10.0];
++    const BESIDE: [f32; 3] = [20.0, 0.0, -10.0];
++
++    /// A view-facing prop wholly outside the view is skipped; one with discs is kept under a
++    /// zoomed lens, which `squeeze_disc` can bring a rim vertex into the view under.
++    #[test]
++    fn a_view_facing_prop_outside_the_view_is_skipped_unless_its_discs_can_squeeze_in() {
++        let (plain, discs) = (boxed_model(1.0, false), boxed_model(1.0, true));
++        let (default_lens, _) = lens(1.0);
++        let (zoomed, _) = lens(2.0);
++        assert!(default_lens.sees(&plain, &at(AHEAD)));
++        assert!(!default_lens.sees(&plain, &at(BESIDE)));
++        assert!(!zoomed.sees(&plain, &at(BESIDE)));
++        assert!(!default_lens.sees(&discs, &at(BESIDE)));
++        assert!(zoomed.sees(&discs, &at(BESIDE)));
++    }
++
++    /// An actor's body and shadow are tested apart: an off-screen body can cast an on-screen
++    /// shadow and the reverse, a shadow-only actor has no body to draw, and a plain actor
++    /// wholly outside the view draws neither.
++    #[test]
++    fn an_actors_body_and_shadow_are_tested_independently() {
++        let (test, _) = lens(1.0);
++        let plain = boxed_model(1.0, false);
++        let (ahead, beside) = (at(AHEAD), at(BESIDE));
++        let view = |body, shadow| test.sees_actor(&plain, body, shadow);
++        let both = ActorView {
++            body: true,
++            shadow: true,
++        };
++        let neither = ActorView {
++            body: false,
++            shadow: false,
++        };
++        assert_eq!(view(Some(&ahead), Some(&ahead)), both);
++        assert_eq!(
++            view(Some(&beside), Some(&ahead)),
++            ActorView {
++                body: false,
++                shadow: true
++            }
++        );
++        assert_eq!(
++            view(Some(&ahead), Some(&beside)),
++            ActorView {
++                body: true,
++                shadow: false
++            }
++        );
++        assert_eq!(
++            view(None, Some(&ahead)),
++            ActorView {
++                body: false,
++                shadow: true
++            }
++        );
++        assert_eq!(
++            view(Some(&ahead), None),
++            ActorView {
++                body: true,
++                shadow: false
++            }
++        );
++        assert_eq!(view(Some(&beside), Some(&beside)), neither);
++        assert!(!view(Some(&beside), Some(&beside)).any());
++        assert!(view(Some(&ahead), None).any());
++    }
++
++    /// A model with discs is kept for each draw under a zoomed lens, however far outside the
++    /// view its box lies; the same model under the default lens is skipped.
++    #[test]
++    fn an_actor_with_discs_outside_the_view_is_kept_only_under_a_zoomed_lens() {
++        let discs = boxed_model(1.0, true);
++        let beside = at(BESIDE);
++        let (default_lens, _) = lens(1.0);
++        let (zoomed, _) = lens(2.0);
++        assert!(
++            !default_lens
++                .sees_actor(&discs, Some(&beside), Some(&beside))
++                .any()
++        );
++        assert_eq!(
++            zoomed.sees_actor(&discs, Some(&beside), Some(&beside)),
++            ActorView {
++                body: true,
++                shadow: true
++            }
++        );
++    }
++
++    /// A placed sprite is skipped before it is staged when its billboard is wholly outside the
++    /// view, and its box under a zoomed lens is kept only when it holds discs (a sprite square
++    /// holds none).
++    #[test]
++    fn a_sprite_billboard_outside_the_view_is_skipped() {
++        let (test, camera) = lens(2.0);
++        let view = camera.compute_view_matrix();
++        let sprite = |centre| SpriteDraw {
++            image_id: 1,
++            centre,
++            size: 1.0,
++            actor: 0,
++            after: None,
++        };
++        let square = boxed_model(0.5, false);
++        let matrix =
++            |centre| eye_relative_matrix(Vec3::ZERO, &billboard_matrix(&view, &sprite(centre)));
++        assert!(test.sees(&square, &matrix(AHEAD)));
++        assert!(!test.sees(&square, &matrix(BESIDE)));
++        let discs = boxed_model(0.5, true);
++        assert!(test.sees(&discs, &matrix(BESIDE)));
++    }
++
++    /// Only the rest pose is tested before the relight: a posed bank can move vertices out of
++    /// its box.
++    #[test]
++    fn only_the_rest_pose_is_tested_before_the_relight() {
++        assert!(rests_in_the_shape_box(AngleBank::REST));
++        assert!(!rests_in_the_shape_box(AngleBank::new([
++            0x4000, 0, 0, 0, 0, 0
++        ])));
++    }
+ }
+diff --git a/crates/stunt-render/tests/gpu/scene_renderer.rs b/crates/stunt-render/tests/gpu/scene_renderer.rs
+index c76a39be..f6d1f1ab 100644
+--- a/crates/stunt-render/tests/gpu/scene_renderer.rs
++++ b/crates/stunt-render/tests/gpu/scene_renderer.rs
+@@ -349,6 +349,98 @@ fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
+     });
+ }
+ 
++/// An actor's body and its shadow are culled apart: with the body above the view its shadow on
++/// `y = 0` still draws, with the shadow below the view the body still draws, and an actor wholly
++/// outside the view draws neither (#914).
++#[test]
++fn an_actors_shadow_draws_without_its_body_in_view_and_the_body_without_its_shadow() {
++    common::gpu_test(|| {
++        // A 2 m triangle in the XZ plane, in both windings: seen from below only one faces the eye.
++        let floor = |indices: Vec<u32>| {
++            let mut ir = triangle("FLOOR", VisibilityCondition::Always);
++            for (vertex, [x, z]) in
++                ir.vertices
++                    .iter_mut()
++                    .zip([[-1.0, 1.0], [1.0, 1.0], [0.0, -1.0]])
++            {
++                vertex.position = [x, 0.0, z];
++                vertex.normal = [0.0, 1.0, 0.0];
++            }
++            ir.indices = indices;
++            ir
++        };
++        // The actor's layer's pixels in index 0 (its shadow) and in any other index, for the
++        // better of the two windings.
++        let pixels = |eye: [f32; 3], target: [f32; 3], height: f32| {
++            let mut best = (0, 0);
++            for indices in [vec![0, 1, 2], vec![0, 2, 1]] {
++                let actor = ActorTransform {
++                    position_meters: [0.0, height, 0.0],
++                    casts_shadow: true,
++                    ..actor_at(0.0, 0)
++                };
++                let record = TrajectoryRecord {
++                    tick: 0,
++                    camera: CameraTransform {
++                        eye,
++                        target,
++                        fov_degrees: 45.0,
++                        ..Default::default()
++                    },
++                    actors: vec![actor],
++                    audio_cues: Vec::new(),
++                    palette: PaletteControls::default(),
++                    bank: Default::default(),
++                };
++                let timeline = FilmTimeline::new(
++                    vec![SliceKeyframe {
++                        record,
++                        tick: 0,
++                        tick_duration: 1,
++                    }],
++                    Vec::new(),
++                );
++                let shapes = HashMap::from([(SHAPE_ID, floor(indices))]);
++                let scene = FilmScene::new(timeline, shapes, None);
++                let mut test = common::gpu_or_skip(&scene)?;
++                let page = test.draw(&scene.frame(0.0));
++                let mut counts = (0, 0);
++                for (&index, &layer) in page.indices().iter().zip(page.layers()) {
++                    if layer != LAYER_FIRST_ACTOR {
++                        continue;
++                    }
++                    if index == 0 {
++                        counts.0 += 1;
++                    } else {
++                        counts.1 += 1;
++                    }
++                }
++                best = (best.0.max(counts.0), best.1.max(counts.1));
++            }
++            Some(best)
++        };
++        // Looking down at 45 degrees from 10 m up, the body 30 m up is above the view, behind the
++        // eye's far side, while the shadow on the ground is in the middle of it.
++        let Some((shadow, body)) = pixels([0.0, 10.0, 10.0], [0.0; 3], 30.0) else {
++            return;
++        };
++        assert!(
++            shadow > 100 && body == 0,
++            "body above the view: {shadow} {body}"
++        );
++        // Looking up at 45 degrees from 2 m up, the body 10 m up is in the view and its shadow,
++        // below the eye, is not.
++        let (shadow, body) = pixels([0.0, 2.0, 10.0], [0.0, 12.0, 0.0], 10.0).expect("adapter");
++        assert!(
++            body > 100 && shadow == 0,
++            "shadow below the view: {shadow} {body}"
++        );
++        // Looking up from the same eye, a body 300 m up is out of the view with its shadow.
++        let (shadow, body) = pixels([0.0, 2.0, 10.0], [0.0, 12.0, 0.0], 300.0).expect("adapter");
++        assert_eq!((shadow, body), (0, 0), "an actor out of view draws nothing");
++    });
++}
++
+ /// An `OP_PERFDISK` disc draws on the actor's body and is skipped in its ground shadow,
+ /// outline included, while non-disc triangles on the same shape still cast their shadow
+ /// (`0xA045`, `research/playone-exe/sod-vm-generators.md` section 8.8).
+@@ -1232,3 +1324,64 @@ fn a_rotated_actor_draws_in_the_colours_of_its_own_light() {
+         assert_eq!(seen.len(), 3, "each turn shades differently: {seen:?}");
+     });
+ }
++
++/// A rotated actor off screen is not relit that frame, and draws in the colours of its own light
++/// when it comes into view the next: the skipped relight leaves its slot for the later turn.
++#[test]
++fn a_rotated_actor_off_screen_is_relit_when_it_comes_into_view() {
++    use stunt_core::scene::RelitShapes;
++    use stunt_core::sod::{DecodeMode, ShadeLight, decode_sod_lit};
++
++    common::gpu_test(|| {
++        let stream = shaded_triangle_stream();
++        let decode = |light: ShadeLight| {
++            decode_sod_lit(&stream, "SHADED", None, DecodeMode::Lenient, light)
++                .expect("decode the shaded triangle")
++        };
++        let world = ShadeLight::WORLD_0X2D;
++        let half = 90f32.to_radians() / 2.0;
++        // The same quarter turn about the view axis at both ticks, 30 m to the side, then centred.
++        let keyframes = [30.0, 0.0]
++            .iter()
++            .zip(0u32..)
++            .map(|(&x, n)| {
++                let mut actor = actor_at(x, 0);
++                actor.rotation_quat = [0.0, 0.0, half.sin(), half.cos()];
++                let mut slice = timeline(vec![actor]).slices()[0].clone();
++                slice.tick = n * 10;
++                slice.record.tick = n * 10;
++                slice.tick_duration = 10;
++                slice
++            })
++            .collect();
++        let shapes = HashMap::from([(SHAPE_ID, decode(world))]);
++        let streams = HashMap::from([(SHAPE_ID, ("SHADED".to_string(), stream.clone()))]);
++        let scene = FilmScene::new(FilmTimeline::new(keyframes, Vec::new()), shapes, None)
++            .with_relit_shapes(RelitShapes::new(streams, world));
++        let Some(mut test) = common::gpu_or_skip(&scene) else {
++            return;
++        };
++        let drawn = |test: &mut common::TestRenderer, tick: f32| -> Vec<u8> {
++            let page = test.draw(&scene.frame(tick));
++            page.indices()
++                .iter()
++                .zip(page.layers())
++                .filter(|&(_, &layer)| layer == LAYER_FIRST_ACTOR)
++                .map(|(&index, _)| index)
++                .collect()
++        };
++        let frame = scene.frame(10.0);
++        let [actor] = frame.actors.as_slice() else {
++            panic!("one actor draw");
++        };
++        assert_ne!(
++            actor.light, world,
++            "the quarter turn has a light of its own"
++        );
++        let expected = decode(actor.light).vertices[0].palette_index;
++        assert!(drawn(&mut test, 0.0).is_empty(), "the actor is off screen");
++        let seen = drawn(&mut test, 10.0);
++        assert!(seen.len() > 50, "the actor covers {} pixels", seen.len());
++        assert!(seen.iter().all(|&index| index == expected), "{expected}");
++    });
++}

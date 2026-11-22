@@ -291,6 +291,7 @@ def test_progress_lines_name_each_pass(staged_repo: StagedRepo) -> None:
 
     assert lines[0] == "pass 1: sampling the film clock"
     assert any(line.startswith("window pass 1/1: 3 windows") for line in lines)
+    assert any(line.startswith("window pass 1/1 done: ") for line in lines)
 
 
 def test_the_scripts_boot_with_the_dialog_keys(staged_repo: StagedRepo) -> None:

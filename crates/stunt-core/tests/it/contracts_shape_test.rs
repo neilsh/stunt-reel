@@ -16,6 +16,19 @@ fn test_beyond_depth_serde_roundtrip() {
     assert_eq!(back, gate);
 }
 
+/// A distance-cut gate survives a JSON round trip.
+#[cfg(feature = "serde")]
+#[test]
+fn test_scale_reach_serde_roundtrip() {
+    let gate = VisibilityCondition::ScaleReach {
+        point: [-120.5, 0.0, 4000.25],
+        scale_index: 14,
+    };
+    let json = serde_json::to_string(&gate).expect("serialize");
+    let back: VisibilityCondition = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back, gate);
+}
+
 #[test]
 fn test_sod_model_ir_allocation_and_hierarchy() {
     let mut ir = SodModelIr::new("TEST_MODEL");

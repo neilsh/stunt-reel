@@ -412,6 +412,7 @@ fn draw_shapes(
                     actors: vec![ActorDraw {
                         shape_id: id,
                         world_matrix: glam::Mat4::IDENTITY.to_cols_array(),
+                        position: [0.0; 3],
                         state_mask: 0,
                         distance: 0.0,
                         shadow_matrix: None,

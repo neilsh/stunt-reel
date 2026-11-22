@@ -1,0 +1,28 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 512c34b9..febdc2fb 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -287,8 +287,12 @@ pub(crate) fn run_headless(
+     // The renderer keeps two frames in flight: submitting a frame retires the page of the one
+     // before it, so each page lands here one submission after its frame.
+     let mut pending: VecDeque<(SampleKey, FrameFacts)> = VecDeque::new();
++    let t_loop = std::time::Instant::now();
++    let mut scene_frame_ns = 0u128;
+     for (key, tick) in samples {
++        let t_sf = std::time::Instant::now();
+         let frame = scene.frame(capture_tick(tick));
++        scene_frame_ns += t_sf.elapsed().as_nanos();
+         renderer
+             .submit(&frame, None)
+             .map_err(|e| format!("render {key}: {e}"))?;
+@@ -302,6 +306,10 @@ pub(crate) fn run_headless(
+     if !pending.is_empty() {
+         return Err("the renderer did not hand back every submitted frame".to_string());
+     }
++    println!(
++        "PROBE942 loop_ns={} scene_frame_ns={scene_frame_ns}",
++        t_loop.elapsed().as_nanos()
++    );
+     memory.stage("frames rendered");
+     let adapter = render_adapter(renderer.adapter());
+     drop(renderer);

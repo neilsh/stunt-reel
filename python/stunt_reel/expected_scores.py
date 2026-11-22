@@ -34,6 +34,7 @@ __all__ = [
     "clean_crates_tree",
     "comparison_line",
     "crates_tree",
+    "dirty_crates_paths",
     "read_render_tree",
     "renderer_changes",
     "scorer_only_change",
@@ -55,6 +56,10 @@ _INDENT = " " * 6
 #: The largest delta that is no drift on a row without a ``noise_sigma``: a few f32 steps near
 #: 0.8, so a rescore of an unchanged render passes and any change to its scores does not.
 DRIFT_PRECISION = 1e-7
+#: How :func:`changed_since` ends when the tree moved on: the class's pin lags it.
+LAGGING = "awaiting a repin or catch-up repin of this class"
+#: The same, for the ``gpu`` class, which only the class agreement batch repins (#908).
+LAGGING_GPU = "awaiting the next agreement batch"
 
 
 def _git(
@@ -108,14 +113,37 @@ def crates_tree(repo: Path = REPO_ROOT) -> str | None:
 def clean_crates_tree(repo: Path = REPO_ROOT) -> str | None:
     """``git rev-parse HEAD:crates`` when *repo*'s ``crates/`` matches it; else ``None``.
 
-    ``None`` covers uncommitted or untracked changes under ``crates/`` and any git failure, so
-    a tree this returns is one a commit holds.
+    ``None`` covers uncommitted or untracked changes under ``crates/`` and any git failure;
+    :func:`dirty_crates_paths` tells the two apart.
     """
     found = crates_tree(repo)
     head = _git(repo, "rev-parse", "--verify", "--quiet", "HEAD:crates")
     if found is None or head is None or head.returncode != 0 or _text(head) != found:
         return None
     return found
+
+
+def dirty_crates_paths(repo: Path = REPO_ROOT) -> list[str] | None:
+    """The paths under ``crates/`` that differ from ``HEAD``, as ``git status`` lists them.
+
+    Modified, staged and untracked paths all appear, relative to *repo*; a rename lists both
+    names.  ``None`` when git cannot report them, so an empty list means the working tree
+    matches the commit.
+    """
+    done = _git(
+        repo,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--no-renames",
+        "--",
+        "crates/",
+    )
+    if done is None or done.returncode != 0:
+        return None
+    entries = done.stdout.decode("utf-8", "surrogateescape").split("\0")
+    return [entry[3:] for entry in entries if len(entry) > 3]
 
 
 def write_render_tree(render: Path, tree: str | None) -> None:
@@ -183,7 +211,7 @@ def changed_since(
     if found is None:
         return "git cannot hash crates/ in this checkout"
     if found != expected.crates:
-        return f"crates/ tree {found[:7]}, measured on {expected.crates[:7]}: awaiting a repin or catch-up repin of this class"
+        return f"crates/ tree {found[:7]}, measured on {expected.crates[:7]}: {LAGGING}"
     if (expected.sha256, expected.all_sha256) != (reference.sha256, reference.all_sha256):
         return "reference pin changed since the measurement"
     return None
@@ -219,6 +247,8 @@ def comparison_line(
         reason = f"scored with {rescored}"
     else:
         reason = changed(expected, reference)
+        if reason is not None and renderer == "gpu" and reason.endswith(LAGGING):
+            reason = reason.removesuffix(LAGGING) + LAGGING_GPU
     if reason is not None:
         return f"{head}  not comparable: {reason}"
     if reference.noise_sigma is None:

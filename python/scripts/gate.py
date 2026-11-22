@@ -38,11 +38,15 @@ commit that has landed since. ``--base`` names another ref. ``gate.py scope`` pr
 (also when git cannot give the paths), and exits 0; CI's ``scope`` job reads it
 ([`ci.yml`](../../.github/workflows/ci.yml)).
 
-Two guards stop a run that could not pass. Before a Python or docs step, the ``uv`` on PATH must
-be the version ``mise.toml`` pins: a stale standalone uv ahead of mise's otherwise fails only in
-``test-py``, after every other step. And each step gets ``STEP_TIMEOUT_S`` (``--step-timeout``);
-a step past it is killed with its child processes and reported as failed, where a hung test
-would otherwise hold the gate until stopped by hand.
+Three guards stop a run that could not pass. The gate runs as plain ``python`` (ADR 0014), so
+``python_pin.guard`` first hands it to the interpreter ``mise which python`` names when PATH gives
+one older than ``requires-python``, or exits 1 naming the version it needs: loading a
+``stunt_reel`` module there raises ``SyntaxError`` before any step could run (issue #884). Before
+a Python or docs step, the ``uv`` on PATH must be the version ``mise.toml`` pins: a stale
+standalone uv ahead of mise's otherwise fails only in ``test-py``, after every other step. And
+each step gets ``STEP_TIMEOUT_S`` (``--step-timeout``); a step past it is killed with its child
+processes and reported as failed, where a hung test would otherwise hold the gate until stopped
+by hand.
 
 Usage: ``python python/scripts/gate.py {all|rust|py|docs|scope} [--full] [--base REF] [--tail N]
 [--step-timeout S]``
@@ -64,10 +68,25 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO
-lazy from types import ModuleType
+
+import python_pin
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+    from types import ModuleType
+
+
+def _guard() -> int | None:
+    """Hand the gate to mise's Python when this one is below ``requires-python``.
+
+    None to carry on with this interpreter, else the status the command ends with.
+    """
+    return python_pin.guard(Path(__file__).resolve(), sys.argv[1:])
+
+
+_GUARD_STATUS = _guard()
+if _GUARD_STATUS is not None:
+    sys.exit(_GUARD_STATUS)
 
 
 def _load_stunt_reel(name: str) -> ModuleType:
@@ -137,8 +156,9 @@ SCOPED_TASKS: dict[str, str] = {"rust": "check-rust", "py": "check-py", "docs": 
 FIX_TASK = "fix"
 FIXABLE_STEPS = frozenset({"fmt-check-rust", "fmt-check-py", "lint-py"})
 
-# `loadgroup` keeps a test group marked `xdist_group` on one worker; ungrouped tests spread as
-# `load` spreads them.
+# `loadgroup` keeps the tests that share an `xdist_group` name on one worker; ungrouped tests
+# spread as `load` spreads them.
+# The CI `coverage` job sets the same `PYTEST_ADDOPTS` in `.github/workflows/ci.yml`; change both.
 _PYTEST_ENV = {
     "STUNT_REQUIRE_KSC": "1",
     "STUNT_REQUIRE_PREK": "1",
