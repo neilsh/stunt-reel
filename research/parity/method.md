@@ -149,7 +149,7 @@ With both rules no film falls, so both are adopted.
 _Source: [2026-11-20: scoring the sun disc and the sky fill as sky](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-scoring-the-sun-disc-and-the-sky-fill-as-sky)._
 A fill rule read per column, one pixel under counted sky or the column's run below it, does not depend on roll but lowers some film against the row-run rule; telling the strip from the ocean is [#893](https://github.com/neilsh/stunt-reel/issues/893).
 _Source: [2026-11-20: a roll-independent fill rule](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-a-roll-independent-fill-rule)._
-The sky drawer paints the fill from its last band edge to the view's bottom row ([`palette-and-shading.md`](../formats/concepts/palette-and-shading.md#sky-bands), Sky Bands), so no drawer row bounds the strip: a column rule that stops at the first non-208 pixel reaches the captured ocean wherever it meets the strip, as the column run did on `location`.
+The sky drawer paints the fill from its last band edge to the view's bottom row ([`palette-and-shading.md`](../formats/concepts/palette-and-shading.md#sky-bands), Sky Bands), so no drawer row bounds the strip: a column rule from the band edge that stops at the first non-208 pixel would reach the captured ocean where it meets the strip (predicted from the drawer read, not measured; #844's column run, which started from sky counted directly above rather than from the edge-14 line, did on `location`).
 _Source: [where the sky drawer stops the `0xD0` fill](../../work/2026-11/893_sky-fill-strip/journal.md#2026-11-22-where-the-sky-drawer-stops-the-0xd0-fill-read-statically)._
 
 ### 2.1 Fade floor
