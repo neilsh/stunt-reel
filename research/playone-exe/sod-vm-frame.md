@@ -87,6 +87,7 @@ In the `BRETT.FLM` capture the shadow is a black band across the bottom of the v
 The breaks cover only the second span (armed from tick 600); the first rests on the capture and the stream census.
 `TERMIN.FLM` (`OldPLAY/Vault/`) ticks 840 to 897, view slot 2 (a prop 3.3 m up, no `SIF_MOVES`): the point (0, 8446, −14 or −8) is outside the cull's `y` limit of 2348, so the shadow is not queued.
 The `NEWFX.FLM` run also showed slot 8 (flags `0x17`, no `SIF_MOVES`, never probed) with `+0x1E` = `0x0320`, a level plane, left in its record by a writer not traced.
+The view slot's eye sits inside its shape, and the shadow draw's `REJ` gates test the flattened faces ([`sod-vm-execution.md` § 8.6](sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)), so its up-facing faces draw: the capture's band is the car's flattened footprint (`[Supported Inference]`), and a renderer that tests the faces unflattened draws none of it ([#840](https://github.com/neilsh/stunt-reel/issues/840)).
 
 _Source: [the view slot's shadow, live](../../work/2026-11/510_view-slot-shadow/journal.md#2026-11-16-the-view-slots-shadow-live-and-a-reference-film-for-it)._
 

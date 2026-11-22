@@ -152,6 +152,14 @@ How each becomes a gate:
   The renderer tests it per frame with [`CameraTransform::view_depth_exceeds`](../../crates/stunt-core/src/contracts/trajectory.rs), from the view taken into the model's space for actors and view-facing props and the world's for gated scenery props.
   `[Supported Inference]` for the units: they are read from the loaders and the entry, and no `BZLT` was traced live.
 
+**`REJ` in the shadow draw** (`[Supported Inference]`, 2026-11-22, [#840](https://github.com/neilsh/stunt-reel/issues/840)).
+`REJ` reads the vertex registers, which hold the points the draw matrix produced, so in the shadow draw (`0x1C0D`, [`sod-vm-frame.md` § 9.1](sod-vm-frame.md#91-the-actor-shadow-draw)) it tests each face as flattened onto the ground plane, with `o` the shadow's ground point.
+Flattened along `y` onto a plane of normal `p`, a face's normal is `(n_y / p_y) p`: with the eye above the plane a face passes when its world normal points up, whatever the eye's side of the unflattened face.
+That a handler reads the registers is `[Established]` (static, `0x9567`); that the shadow's registers are the flattened ones follows from `0x1C0D`'s matrix and is not observed in a register dump.
+The renderer's shadow draw tests its `FacesEye` gates this way (`faces_flattened` in `stunt-render`'s `mesh.rs`); the view slot of `BRETT.FLM`, whose eye is inside its car, then draws 4,809 of the capture's 4,856 index-0 pixels in rows 150 to 184 on each of its 20 view-slot frames, from 22 (`[Bounded Observation]`, one film), and the seven reference films' `mean_ssim_scored` does not fall (ctry 0.9377 to 0.9385).
+`REJVEC` and `REJ2D` are not covered: no census walk reaches them.
+_Source: [the shadow draw's facing gates](../../work/2026-11/840_brett-view-slot-shadow/journal.md#2026-11-22-the-shadow-draws-facing-gates-test-the-flattened-face)._
+
 **No census walk reaches any of them.**
 On the `sod-census` walk of the corpus's 3,703 unique models, which follows `SORTON`, `GOTO`, `GOSUB` and, with a temporary switch, both arms of every `BVGT`, no walk reaches `BZLT`, `BVIS`, `REJVEC` or `REJ2D`.
 With the corrected end, no section starts inside another.

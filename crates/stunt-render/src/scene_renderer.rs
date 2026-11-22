@@ -638,7 +638,23 @@ impl SceneRenderer {
                 local_eye,
                 Some(&view),
             );
-            if base.is_empty() && decals.is_empty() {
+            // The shadow draw's facing gates test the flattened faces, as `PLAYONE`'s `REJ`
+            // does, so it holds faces the eye-side lists lack (the view slot's, whose eye is
+            // inside its shape).
+            let shadow = actor.shadow_matrix.map(|matrix| {
+                let relative = eye_relative_matrix(eye, &matrix);
+                let (base, decals) = model.collect_shadow_meshes(
+                    actor.state_mask,
+                    actor.distance,
+                    Mat4::from_cols_array(&relative),
+                    Some(&view),
+                );
+                (relative, base.into_iter().chain(decals).collect::<Vec<_>>())
+            });
+            if base.is_empty()
+                && decals.is_empty()
+                && shadow.as_ref().is_none_or(|(_, m)| m.is_empty())
+            {
                 continue;
             }
             let layer = LAYER_FIRST_ACTOR + actor_index;
@@ -657,10 +673,9 @@ impl SceneRenderer {
                     Target::Shape { shape_id, uniform }
                 }
             };
-            if let Some(shadow_matrix) = actor.shadow_matrix {
-                let uniform = ModelUniform::shadow(eye_relative_matrix(eye, &shadow_matrix), layer);
-                let shadow = base.iter().chain(&decals).copied().collect();
-                self.push_draw(target, &uniform, (Vec::new(), shadow));
+            if let Some((relative, meshes)) = shadow {
+                let uniform = ModelUniform::shadow(relative, layer);
+                self.push_draw(target, &uniform, (Vec::new(), meshes));
             }
             if actor.shadow_only {
                 continue;

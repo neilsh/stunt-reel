@@ -466,6 +466,32 @@ impl GpuModel {
             view,
             view_proj: None,
             disc_depth_scale: 1.0,
+            flattened_by: None,
+        }
+        .collect()
+    }
+
+    /// [`Self::collect_visible_meshes`] for the shadow draw of an actor whose eye-relative
+    /// shadow matrix is `shadow`: each facing gate tests its face flattened by `shadow`, as
+    /// `PLAYONE`'s `REJ` reads the vertex registers the flattening matrix produced
+    /// ([`faces_flattened`]).
+    pub fn collect_shadow_meshes(
+        &self,
+        state_mask: u16,
+        distance_to_cam: f32,
+        shadow: Mat4,
+        view: Option<&CameraTransform>,
+    ) -> (Vec<GpuMeshSlice>, Vec<GpuMeshSlice>) {
+        VisibleWalk {
+            nodes: &self.nodes,
+            roots: &self.root_nodes,
+            state_mask,
+            dist_sq: distance_to_cam * distance_to_cam,
+            eye: Vec3::ZERO,
+            view,
+            view_proj: None,
+            disc_depth_scale: 1.0,
+            flattened_by: Some(shadow),
         }
         .collect()
     }
@@ -507,6 +533,7 @@ impl GpuModel {
             view,
             view_proj: Some(view_proj),
             disc_depth_scale,
+            flattened_by: None,
         }
         .collect_world()
     }
@@ -1100,6 +1127,28 @@ struct VisibleWalk<'a> {
     /// The camera's disc depth scale, which decides whether a node with disc rim vertices can be
     /// culled by its box ([`squeezes_discs`]); read only with `view_proj`.
     disc_depth_scale: f32,
+    /// The eye-relative shadow matrix of a shadow draw, which takes a [`VisibilityCondition::FacesEye`]
+    /// face to the plane it is flattened on before testing it ([`faces_flattened`]); `None` tests
+    /// the face where it is, against `eye`.
+    flattened_by: Option<Mat4>,
+}
+
+/// Whether a face points at the eye once `shadow`, an eye-relative shadow matrix, flattens it.
+///
+/// `PLAYONE`'s `REJ` computes the face normal `(a - b) x (c - b)` from the vertex registers,
+/// which hold the points the draw matrix produced, and tests it against `b` plus the object's
+/// origin relative to the eye (`research/playone-exe/sod-vm-execution.md` section 8.6). In a
+/// shadow draw that matrix flattens the shape onto the ground plane (`0x1C0D`), so a face is
+/// tested where the shadow puts it: the normal is `shadow`'s linear part's cofactor matrix
+/// times the model-space normal, the point is the flattened one, and the eye is the origin.
+fn faces_flattened(shadow: &Mat4, point: Vec3, normal: Vec3) -> bool {
+    let linear = glam::Mat3::from_mat4(*shadow);
+    let cofactor = glam::Mat3::from_cols(
+        linear.y_axis.cross(linear.z_axis),
+        linear.z_axis.cross(linear.x_axis),
+        linear.x_axis.cross(linear.y_axis),
+    );
+    (cofactor * normal).dot(shadow.transform_point3(point)) < 0.0
 }
 
 impl VisibleWalk<'_> {
@@ -1199,7 +1248,11 @@ impl VisibleWalk<'_> {
             VisibilityCondition::Always | VisibilityCondition::AngleCone { .. } => true,
             VisibilityCondition::LodDistanceSq(max_sq) => self.dist_sq <= max_sq,
             VisibilityCondition::FacesEye { point, normal } => {
-                Vec3::from_array(normal).dot(Vec3::from_array(point) - self.eye) < 0.0
+                let (point, normal) = (Vec3::from_array(point), Vec3::from_array(normal));
+                match self.flattened_by {
+                    Some(shadow) => faces_flattened(&shadow, point, normal),
+                    None => normal.dot(point - self.eye) < 0.0,
+                }
             }
             VisibilityCondition::ActorState { mask, expected } => {
                 (self.state_mask & mask) == expected
@@ -1227,6 +1280,20 @@ impl VisibleWalk<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_flattened_face_faces_the_eye_by_its_vertical_normal() {
+        // A level plane 0.15 m below the eye, which stands inside the shape.
+        let shadow = Mat4::from_cols_array(&[
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.15, 0.0, 1.0,
+        ]);
+        let point = Vec3::new(0.1, 0.3, 0.2);
+        // A roof faces up and is seen from above once flattened, though the eye is below it.
+        assert!(faces_flattened(&shadow, point, Vec3::Y));
+        // A floor faces down, and a wall flattens to no area.
+        assert!(!faces_flattened(&shadow, point, -Vec3::Y));
+        assert!(!faces_flattened(&shadow, point, Vec3::X));
+    }
 
     /// An unsplit chunk keeps the runs' vertex numbers; a split one cuts each run to the
     /// windows it copied and renumbers it from where its window lies in the chunk.
@@ -1613,6 +1680,7 @@ mod tests {
             view: None,
             view_proj: None,
             disc_depth_scale: 1.0,
+            flattened_by: None,
         };
         let (base, decal) = walk.collect();
         let order = |slices: &[GpuMeshSlice]| -> Vec<u32> {
@@ -1650,6 +1718,7 @@ mod tests {
                 view,
                 view_proj: None,
                 disc_depth_scale: 1.0,
+                flattened_by: None,
             };
             walk.collect().0.iter().map(|m| m.index_offset).collect()
         };
@@ -1747,6 +1816,7 @@ mod tests {
             view: None,
             view_proj: Some(view_proj),
             disc_depth_scale: 1.0,
+            flattened_by: None,
         };
         let (base, decals) = walk.collect();
         assert!(
@@ -1768,6 +1838,7 @@ mod tests {
             view: None,
             view_proj: Some(view_proj),
             disc_depth_scale: 1.0,
+            flattened_by: None,
         };
         let order: Vec<u32> = walk
             .collect()
@@ -1933,6 +2004,7 @@ mod tests {
                 view: None,
                 view_proj: Some(test_view_proj()),
                 disc_depth_scale: scale,
+                flattened_by: None,
             }
             .collect()
             .0
@@ -1966,6 +2038,7 @@ mod tests {
             view: None,
             view_proj: Some(test_view_proj()),
             disc_depth_scale: 2.0,
+            flattened_by: None,
         }
         .collect()
         .0
