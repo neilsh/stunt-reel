@@ -21,7 +21,20 @@ fn check_indices(cases: &[(u32, u32, u32, u32, u32)]) {
             return;
         }
     };
-    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+    // The production shader enables clip distances (`vs_edge`), as the renderer's device does.
+    if !adapter.features().contains(wgpu::Features::CLIP_DISTANCES) {
+        assert!(
+            !common::require_gpu(),
+            "GPU required: the adapter has no clip distances"
+        );
+        eprintln!("[test] Skipping GPU test: the adapter has no clip distances");
+        return;
+    }
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        required_features: wgpu::Features::CLIP_DISTANCES,
+        ..Default::default()
+    }))
+    .unwrap();
     // Keep the complete production shader, adding only an entry point that supplies its input.
     // Its inputs sit beside `prop_runs`, which holds `@group(3) @binding(0)`.
     let source = format!(

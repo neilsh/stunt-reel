@@ -100,6 +100,8 @@ _Source: [Lavapipe beside the GPU on one crates tree](../../work/2026-11/265_lav
 
 ## 5. What still differs
 
+Near-cut outline lines, which lavapipe drew as wedges until the line lists were clipped to a band around the view (#922), are in [`lavapipe-line-clip.md`](lavapipe-line-clip.md).
+
 `[Bounded Observation]`, 2026-11-16, mesa-dist-win 25.2.8 against the RTX 4070, on `origin/main` `3a7afb76` with (d) but not (e).
 With eye-relative transforms (#636), lavapipe differs from the GPU by 12.31 to 62.85 index-plane pixels per tick on average over each film, against 22.64 to 147.44 on the same tree without them (table below); (e) and #636 together were not measured on lavapipe.
 _Source: [Eye-relative transforms on both backends](../../work/2026-11/636_eye-relative-transforms/journal.md#2026-11-16-eye-relative-transforms-on-both-backends)._
