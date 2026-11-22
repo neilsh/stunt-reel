@@ -1,0 +1,26 @@
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 56b3ab25..ca229058 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -596,10 +596,20 @@ impl SceneRenderer {
+             let at = Mat4::from_cols_array(m).w_axis.truncate();
+             (eye - at).dot(back)
+         };
++        let dbg_slot = std::env::var("DBG_ACTOR_SLOT_DEPTH")
++            .ok()
++            .and_then(|v| v.parse::<u8>().ok())
++            == Some(1);
+         let actor_depths: Vec<f32> = frame
+             .actors
+             .iter()
+-            .map(|a| view_depth(&a.world_matrix))
++            .map(|a| {
++                if dbg_slot {
++                    (eye - Vec3::from_array(a.position)).dot(back)
++                } else {
++                    view_depth(&a.world_matrix)
++                }
++            })
+             .collect();
+         let mut actor_draws = Vec::new();
+         self.lit.resize_with(frame.actors.len(), || None);

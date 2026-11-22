@@ -1,5 +1,5 @@
 ---
-summary: "How the scenery walk places actors among world objects: the actor queue pushes one list at `DGROUP:0x4F00`, the plane nodes split it by the slot's position, and each entry is drawn just before or after the object of the `SP_LEAF` it reaches, or inside that object's display list at `OP_IPG` type 4 when its probe recorded a bucket there (`w` = twice a collision-box code); replayed for `CTRY` tick 871, from the image's tree or from the world's placement records, it draws the explosion after the tower and before the foreground hill, as the capture does; 83 of the 2,516 stock shapes carry a box coded 1 to 7, and 75 of them a matching bucket on their traced path."
+summary: "How the scenery walk places actors among world objects: the actor queue pushes one list at `DGROUP:0x4F00`, the plane nodes split it by the slot's position, and each entry is drawn just before or after the object of the `SP_LEAF` it reaches, or inside that object's display list at `OP_IPG` type 4 when its probe recorded a bucket there (`w` = twice a collision-box code); replayed for `CTRY` tick 871, from the image's tree or from the world's placement records, it draws the explosion after the tower and before the foreground hill, as the capture does; at `INTRO` tick 1398 the explosion and the vehicle beside it reach one leaf, so the depth sort orders them, by the depth of the slots' own positions; 83 of the 2,516 stock shapes carry a box coded 1 to 7, and 75 of them a matching bucket on their traced path."
 sidebar_label: "Actors in the scenery walk"
 ---
 # `PLAYONE.EXE`: Actors in the Scenery Walk
@@ -40,7 +40,8 @@ After the loop, `0x1E3C` loads `DI = [0x4F00]` and starts the scenery walk at `S
 
 The split lists are `DGROUP:0x232E` (child `+2`) and `DGROUP:0x2330` (child `+4`).
 `0x1B8C` sorts a list into the tree of [`sod-vm-frame.md` § 9.1](sod-vm-frame.md#91-the-actor-shadow-draw) and draws it, so the entry sort there is also the list draw of the `SP_1NODE` and `SP_LEAF` handlers.
-`SP_LEAF` draws an entry whose depth word exceeds the object's before the object, and the sort draws the larger depth first, so both read a larger depth word as farther (`[Supported Inference]`: the depth row's sign is not read).
+`SP_LEAF` draws an entry whose depth word exceeds the object's before the object, and the sort draws the larger depth first, so both read a larger depth word as farther.
+The cull `0x1B0C` confirms the sign: it rejects a point whose depth word plus half its scaled extent is negative, behind the eye (`0x1B3C..0x1B3E`), so the depth word grows away from the eye (`[Established]`, static, [§ 6](#6-intro-tick-1398)).
 
 In the image's tree the list never reaches the nodes that would drop it (`[Established]`, static, for the image's tree): a scratch walk that hands the list on as the table does reaches 496 `SP_LEAF` and 866 `SP_1NODE` nodes with it, and no `SP_GROUND`, `SP_GLEAF` or `SP_LIST` node.
 
@@ -87,7 +88,7 @@ The handler compares a plane at the high word of the eye plus the high word of t
 
 So the replay gives tower, explosion, hill, the order the capture shows (over the tower, under the hill).
 The plane `x = −3188` separates the tower from the explosion; the hill is ordered against it by the depth compare of the leaf both reach, not by a plane.
-The hill's place rests on § 2's reading that a larger depth word is farther (`[Supported Inference]`).
+The hill's place rests on § 2's reading that a larger depth word is farther.
 The two shapes are named the tower and the hill by their place in the picture.
 The replay assumes slot 11 recorded no bucket: with one, a plane its extent crosses sends it to its centre's side (§ 2), and it reaches leaf `0x7C14` instead.
 `MODEL_0262.SOD` has a collision-box list and `MODEL_03DD.SOD` none.
@@ -119,6 +120,22 @@ The image's scenery tree places 72 of the 83 at an `SP_LEAF`, `0x024A`, `0x02DE`
 An actor whose probe records one of those three shapes' missing `w` goes onto a head that shape's display list does not take (§ 3).
 _Source: [the collision-code census](../../work/2026-11/721_ctry-871-replay/journal.md#2026-11-18-which-stock-shapes-carry-buckets-counted-statically)._
 
+## 6. `INTRO` Tick 1398
+
+`[Bounded Observation]` for the leaf, one frame of one film replayed statically as in § 4; `[Established]`, static, for where the depth word comes from.
+The explosion is slot 15 (shape `0x0105`) and the dark vehicle drawn beside it is slot 12 (shape `0x4150`), named by their place in the picture.
+Their entries, and those of the triplane `0x7F04` (slot 10) and the second `0x4150` (slot 13), take one path to leaf `0x5FD8`: five slopes split by the centre and nine planes their extents clear, none cutting them.
+So they share that leaf's pending list, and the entry sort `0x1B8C` orders them by the depth word, the larger first (§ 2); no plane decides.
+`mise run scene-walk -- corpus/stisldem/VAULT/INTRO.FLM --tick 1398 --slot 15` (and `--slot 12`, `10`, `13`) reproduces it, with view depths 56.6 m for the vehicle, 55.8 m for the explosion, 53.4 m for the triplane and 52.9 m for slot 13, so the sort draws the vehicle, then the explosion, then the other two: the explosion over the vehicle, as the capture shows.
+
+The depth word is the slot's own position: the actor queue `0x1A90` subtracts the eye `0x2A68` from the slot's `+4..+0xE` (`0x1A91..0x1AB7`), normalises the difference (`0x31CF`) and turns it by the view matrix `0x80C0` (`0x1AC4`), leaving the depth in `DI`, which the cull `0x1B0C` only shifts to align scales (`0x1B1D`).
+No header word but `[es:4]`, `[es:8]` and `[es:9]` is read between them, so the shape's ground offset, which the renderer takes out of an actor's model matrix ([`projection.rs`](../../crates/stunt-core/src/scene/projection.rs) `lifted`), does not move the point the sort compares.
+_Source: [the `INTRO` tick 1398 entries replayed through the walk](../../work/2026-11/819_actor-slot-depth/journal.md#2026-11-22-the-intro-tick-1398-entries-replayed-through-the-walk)._
+
+`stunt-render` orders a 3D actor against a placed sprite by the two slots' view depths taken at `ActorDraw::position`, the slot's position, the nearer actor after the sprite; it took them at the model matrix's origin before, which the explosion's ground offset puts 4.0 m below its slot, and so drew the vehicle over the explosion at this frame.
+Taking the slots' positions puts the explosion over the vehicle, as the capture does, and raised `INTRO` (evidence-backed, adopted; one run on one GPU; the other six reference films did not move a scored frame).
+_Source: [actors and placed sprites by their slots' depth](../../work/2026-11/819_actor-slot-depth/journal.md#2026-11-22-actors-and-placed-sprites-by-their-slots-depth)._
+
 ## Ruled out
 
 * **The actor queue inserts into a `DGROUP:0x2346` head** (the lead of [`sod-animate.md` § Open questions](sod-animate.md#open-questions)): it pushes onto `0x4F00`; an entry reaches a head only at the `SP_LEAF` its probe recorded (§ 1, § 3) ([the static read](../../work/2026-11/680_actor-buckets/journal.md#2026-11-18-where-the-actor-queues-entries-go-read-statically)).
@@ -132,6 +149,7 @@ _Source: [the collision-code census](../../work/2026-11/721_ctry-871-replay/jour
 * **Buckets beyond the stock shapes and the traced path.**
   § 5 leaves out the shapes of `corpus/siarchive` beyond FreeFlight, which only `local-windows` holds, and the display-list branches `sod-trace` does not take.
 * **Actors other than `OP_ANIMATE` sprites in the renderer.**
-  `stunt-render` draws an `OP_ANIMATE` sprite at its slot's place in the walk, by the records' order of § 4 ([`sod-animate.md`](sod-animate.md) § 4); 3D actors stay depth-tested against props and are ordered against a placed sprite by view depth, not by their own walk ([#819](https://github.com/neilsh/stunt-reel/issues/819)).
+  `stunt-render` draws an `OP_ANIMATE` sprite at its slot's place in the walk, by the records' order of § 4 ([`sod-animate.md`](sod-animate.md) § 4); 3D actors stay depth-tested against props and are ordered against a placed sprite by their slots' view depths (§ 6), the sort of a shared leaf.
+  An actor whose entry parts from the sprite's at a plane is ordered by that plane in `PLAYONE`, which the renderer does not model; no frame has been searched for one.
 * **Live check.**
   No breakpoint has confirmed a pending list, a split or a bucket push at run time.

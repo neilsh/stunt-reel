@@ -119,4 +119,4 @@ Renderer tests hold a snapped tile at 8 km.
 5. **Edge pixels between coplanar decals.**
    Attribute `LOCATION` 3202's edge pixels to the outline order inside or between world decal slices, then decide whether per-fan outlines in the world mesh (per-polygon draws, or the edge buffer split per fan) bring them to the capture or away from it.
 6. **`OP_ANIMATE` draw order.**
-   The blit takes its slot's place in the scenery walk against the world's props; against 3D actors it is ordered by view depth, not by their walk ([#819](https://github.com/neilsh/stunt-reel/issues/819); [`sod-animate.md`](../playone-exe/sod-animate.md), Open questions).
+   The blit takes its slot's place in the scenery walk against the world's props; against 3D actors it is ordered by the slots' view depths, as a shared leaf's sort orders them, not by a plane where their entries part ([`scene-walk-actors.md`](../playone-exe/scene-walk-actors.md) § 6; [`sod-animate.md`](../playone-exe/sod-animate.md), Open questions).
