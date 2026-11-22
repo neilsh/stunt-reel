@@ -47,8 +47,10 @@
     Lavapipe already drew the strip over the water on `main`, so it barely moves.
   - **Agreement**, mean differing pixels per tick, `main` then the rule: `LOCATION` 8.59 (584 at 3824, 3 ticks over 500) to 6.31 (359 at 780, none over 500); the other six films unchanged (CTRY 3.09, INTRO 2.22, LAND 5.23, BALLOON 4.12, TRAINTNL 3.66, BOMB 8.40), as the #637 entry of this date measured `main`. `measure` flags nothing on either tree.
   - **`LOCATION` 3812 to 3968** (157 ticks, every one differing on both trees): 20,736 differing pixels to 1,984, 132.08 to 12.64 a tick, the largest 584 at 3824 to 39 at 3860.
+  - **The ticks `lavapipe.md` section 5 names** (GPU against lavapipe, index planes compared pixel by pixel with a scratch script): on `main`, 325 of the 335 differing pixels at 3815, 572 of 584 at 3824, 490 of 513 at 3828 and 560 of 575 at 3830 are the strip's 136 on one class against the moat's 193 on the other (308, 572, 490 and 560 of them the GPU's 193); with the rule those ticks differ by 11, 12, 23 and 15 pixels, none of them that pair.
+  - **Cost** (release build, a temporary timer around `prop_overlay_vertices`, not committed, three runs): on `LOCATION` it tests 6,991 flat placements of 35,479 in 37 to 39 ms. 4,912 of them lie on an earlier flat prop, but all except 20 are ground decals already, which keep their terrain snap. With the `stisldem` `VAULT` archives, `INTRO` has 1,485 flat placements of 10,723 (2.3 ms) and `CTRY` 138 of 300 (0.15 ms).
 - **Verdict**: adopted on the evidence track, every guard passing on both classes, and on #966's criterion: `LOCATION`'s three ticks over 500 differing pixels are gone and no film's mean rises.
-  Expected tables repinned on `crates` `bddf5daf` for both classes (`94e5e21b`, `d004b13e`).
+  Expected tables repinned on `crates` `bddf5daf` for both classes (`94e5e21b`, `d004b13e`), and again, scores unchanged, on `crates` `59949192` after `ce4e203b` added tests (`0c6120a7`, `26792e7c`).
 - **Lives in**: [`world-scene-residuals.md`](../../../research/playone-exe/world-scene-residuals.md) section 6.9; [ADR 0035](../../../docs/adr/0035-ground-lying-props-are-terrain-decals.md), amended; [`lavapipe.md`](../../../research/parity/lavapipe.md) section 5.
 
 ## 2026-11-22: Depth32Float again, on the fixed tree

@@ -12,6 +12,6 @@ outcome: "A flat prop lying on an earlier flat prop is drawn as its decal (ADR 0
 
 ## Handoff
 
-- Done: the rule (`prop_overlay_vertices`), both expected tables repinned on `crates` `bddf5daf`, [`world-scene-residuals.md`](../../../research/playone-exe/world-scene-residuals.md) section 6.9, ADR 0035 amended, ADR 0054 and [`lavapipe.md`](../../../research/parity/lavapipe.md) section 5 updated.
+- Done: the rule (`prop_overlay_vertices`), both expected tables repinned on `crates` `59949192`, [`world-scene-residuals.md`](../../../research/playone-exe/world-scene-residuals.md) section 6.9, ADR 0035 amended, ADR 0054 and [`lavapipe.md`](../../../research/parity/lavapipe.md) section 5 updated.
 - Not run: the error readout (#901), and `mise run agreement -- pin`; the next agreement batch pins this tree.
 - Open: the other 18 placements the rule picks on `LOCATION` were not traced, and the rule follows our placement order, not an eye-dependent `SP_XPLANE` or `SP_ZPLANE` order (`world-scene-residuals.md` open question 7).

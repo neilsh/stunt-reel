@@ -226,7 +226,7 @@ The rule is the prop counterpart of section 6.5's patch overlays.
 On `LOCATION` it picks 20 placements, the strip `0x0539` and `0x0538` among them.
 `[Bounded Observation]`, seven reference films on both classes: the backends' mean disagreement on `LOCATION` falls from 8.59 to 6.31 pixels a tick, and on 3812 to 3968 from 132.08 to 12.64 (the largest 584 at 3824 to 39), with no tick over 500; no pixel of the other six films moves on either class.
 On the GPU 14 `LOCATION` frames rise and none falls (3862 by 0.0090); lavapipe, which drew the strip already, moves by at most 0.0009.
-The largest tie [`lavapipe.md`](../parity/lavapipe.md) section 5 named at `LOCATION` 3815 (index 193 against 136) was this one.
+The difference [`lavapipe.md`](../parity/lavapipe.md) section 5 names at `LOCATION` 3815 (index 193 against 136) was this tie: on `main` 325 of its 335 differing pixels are that pair, and with the rule none are.
 _Source: [2026-11-22: A flat prop lying on an earlier flat prop is a decal of it](../../work/2026-11/966_moat-walk-order/journal.md#2026-11-22-a-flat-prop-lying-on-an-earlier-flat-prop-is-a-decal-of-it)._
 
 ## Ruled out
