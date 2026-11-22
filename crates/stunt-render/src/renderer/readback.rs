@@ -24,6 +24,21 @@ impl<F: FnOnce()> Drop for RunOnDrop<F> {
     }
 }
 
+/// Copies each `padded_row_bytes`-long row's first `row_bytes` bytes, dropping the pitch padding.
+///
+/// A trailing partial row is ignored: the texture-to-buffer copy always fills whole rows.
+fn strip_pitch_padding(padded: &[u8], row_bytes: usize, padded_row_bytes: usize) -> Vec<u8> {
+    debug_assert!(
+        row_bytes <= padded_row_bytes,
+        "a row cannot be longer than its pitch"
+    );
+    let mut bytes = Vec::with_capacity(row_bytes * (padded.len() / padded_row_bytes));
+    for row in padded.chunks_exact(padded_row_bytes) {
+        bytes.extend_from_slice(row.get(..row_bytes).unwrap_or(row));
+    }
+    bytes
+}
+
 /// Maps a buffer once `submission` has executed, copies its rows of `width` texels of
 /// `bytes_per_texel` bytes out without the pitch padding, and unmaps it.
 ///
@@ -64,19 +79,32 @@ pub(super) fn read_back(
         .get_mapped_range()
         .map_err(|error| RenderError::Readback(error.to_string()))?;
     let row_bytes = width as usize * bytes_per_texel as usize;
-    let bytes = mapped
-        .chunks_exact(padded_row_bytes as usize)
-        .flat_map(|row| row.iter().take(row_bytes))
-        .copied()
-        .collect();
+    let bytes = strip_pitch_padding(&mapped, row_bytes, padded_row_bytes as usize);
     drop(mapped);
     Ok(bytes)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::RunOnDrop;
+    use super::{RunOnDrop, strip_pitch_padding};
     use std::cell::Cell;
+
+    #[test]
+    fn a_padded_row_loses_its_pitch_padding() {
+        let padded = [
+            1, 2, 3, 4, 5, 6, 0xAA, 0xAA, 7, 8, 9, 10, 11, 12, 0xAA, 0xAA,
+        ];
+        assert_eq!(
+            strip_pitch_padding(&padded, 6, 8),
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        );
+    }
+
+    #[test]
+    fn a_row_that_fills_its_pitch_is_copied_whole() {
+        let unpadded = [1, 2, 3, 4, 5, 6, 7, 8];
+        assert_eq!(strip_pitch_padding(&unpadded, 8, 8), unpadded);
+    }
 
     #[test]
     fn an_error_after_mapping_still_runs_the_unmap_guard() {
