@@ -2086,6 +2086,89 @@ def test_a_review_that_goes_live_after_classification_is_kept(tmp_path: Path) ->
     assert worktree.exists()
 
 
+def test_a_review_whose_orca_load_fails_after_classification_is_kept(tmp_path: Path) -> None:
+    """The recheck fails closed: Orca gone between classification and removal removes nothing."""
+    repo, worktree = _review_worktree(tmp_path)
+    _age_review(worktree)
+    loads = 0
+
+    def failing_second_load(_repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        nonlocal loads
+        loads += 1
+        if loads > 1:
+            raise FileNotFoundError("orca is not on PATH")
+        payload = {"ok": True, "result": {"worktrees": [], "truncated": False}}
+        return subprocess.CompletedProcess(args, 0, json.dumps(payload), "")
+
+    orca = worktree_reap._OrcaWorkspaces(repo, failing_second_load)
+    candidates, skipped = _classify_reviews(repo, orca)
+    assert skipped == []
+    assert len(candidates) == 1
+
+    error = worktree_reap._reap_one(
+        repo, candidates[0], stash_dirty=False, discard_untracked=False, orca=orca
+    )
+
+    assert error == "review-1: Orca is unavailable; left alone"
+    assert worktree.exists()
+
+
+def test_a_review_that_wakes_after_classification_is_kept(tmp_path: Path) -> None:
+    """The quiet period is read again before removal: a review woken meanwhile is kept."""
+    repo, worktree = _review_worktree(tmp_path)
+    _age_review(worktree)
+    orca = _idle_orca(repo)
+    candidates, skipped = _classify_reviews(repo, orca)
+    assert skipped == []
+    (worktree / "pytest-tmp").mkdir()
+
+    error = worktree_reap._reap_one(
+        repo, candidates[0], stash_dirty=False, discard_untracked=False, orca=orca
+    )
+
+    assert error is not None
+    assert "quiet period" in error
+    assert worktree.exists()
+
+
+def test_newest_mtime_fails_closed_when_an_entry_cannot_be_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stat that fails makes the age unknown, as a directory that cannot be listed does."""
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "one.txt").write_text("x", encoding="utf-8")
+    real_scandir = os.scandir
+
+    class _UnreadableEntry:
+        path = str(root / "one.txt")
+
+        def stat(self, **_kwargs: object) -> os.stat_result:
+            raise OSError("cannot stat")
+
+        def is_dir(self, **_kwargs: object) -> bool:
+            return False
+
+    class _Scandir:
+        def __init__(self, path: str | Path) -> None:
+            self._path = path
+
+        def __enter__(self) -> list[_UnreadableEntry]:
+            return [_UnreadableEntry()]
+
+        def __exit__(self, *_exc: object) -> None:
+            return None
+
+    def scandir(path: str | Path) -> object:
+        if Path(path) == root:
+            return _Scandir(path)
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", scandir)
+
+    assert worktree_reap._newest_mtime(root) is None
+
+
 def test_reap_dry_run_lists_then_removes_a_review_worktree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -72,7 +72,7 @@ Create it with any tool, under `.claude/worktrees/` or `.agents/worktrees/` insi
 - A detached worktree whose folder is named `review-*` is a review's scratch checkout: `reap` ignores it unless `--reviews` is passed.
   Then it lists it and, with `--yes` when reap runs under its free-space bar, removes it once nothing under it or in its admin git dir (`<common-dir>/worktrees/<name>/`) has changed for six hours, it holds no nested worktree, Orca does not call it live, and it has no modified file.
   A modified file and an untracked file stop it just as they stop any other worktree (`--stash-dirty`, `--discard-untracked`), and its in-tree links, such as pytest's `current`, are unlinked by the same walker first.
-  `--reviews` fails closed when Orca cannot be read, so an unavailable Orca never takes a live review for an idle one; a `review-*` worktree on a branch is judged by the branch rules, not its name.
+  `--reviews` fails closed when Orca cannot be read, at classification and again just before it removes the checkout, so an unavailable Orca never takes a live review for an idle one; a `review-*` worktree on a branch is judged by the branch rules, not its name.
 - An older worktree that `init` linked keeps its junctions until reaped: run `mise run reap -- --yes` from the primary checkout.
   It unlinks the junctions into the data root and proves none remain before `git worktree remove` runs.
   Never call `git worktree remove` directly on a linked worktree: git 2.47.1 deleted the junction targets, and 2.55.0 left the junction directories behind and deregistered the worktree ([ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md)).

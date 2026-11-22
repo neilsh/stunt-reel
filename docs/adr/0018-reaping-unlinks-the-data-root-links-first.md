@@ -56,7 +56,7 @@ that no recursive delete ever sees a link git does not track:
    branch whose patches `main` already holds), or, with `--reviews`, the worktree must be a
    detached `review-*` scratch checkout that Orca, read and not guessed, does not call live,
    that holds no nested worktree, and that nothing under it or in its admin git dir changed
-   in for six hours; the worktree must live inside this checkout (`.agents/worktrees/`,
+   for six hours; the worktree must live inside this checkout (`.agents/worktrees/`,
    `.claude/worktrees/`), and the candidate must be clean;
 2. **refuse** — modified tracked files need `--stash-dirty`, untracked files need
    `--discard-untracked`, and any refusal stops the run before the first delete;

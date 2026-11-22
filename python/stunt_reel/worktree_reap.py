@@ -485,7 +485,8 @@ def _newest_mtime(root: Path) -> float | None:
 
     The walk is ``_size``'s: a link is skipped and never descended, so a data-root junction's
     target never reads as activity in the checkout. The directory that holds a new link still
-    records that it appeared, in its own modification time.
+    records that it appeared, in its own modification time. An entry that cannot be stat'ed,
+    like a directory that cannot be listed, makes the age unknown rather than younger.
     """
     newest = 0.0
     stack = [root]
@@ -501,7 +502,7 @@ def _newest_mtime(root: Path) -> float | None:
                     try:
                         newest = max(newest, entry.stat(follow_symlinks=False).st_mtime)
                     except OSError:
-                        continue
+                        return None
                     if entry.is_dir(follow_symlinks=False):
                         stack.append(path)
         except OSError:
@@ -516,6 +517,26 @@ def _review_admin_dir(worktree: Path) -> Path | None:
     if result.returncode != 0 or not text:
         return None
     return Path(text)
+
+
+def _review_activity(worktree: _Worktree) -> str | None:
+    """Why review *worktree* reads as active, or None when it has been quiet long enough.
+
+    The checkout and its admin git dir are both read, and both are read before any status
+    call runs: a subagent that only reads leaves activity in the admin dir, and git may
+    rewrite the index, which is this signal itself.
+    """
+    admin = _review_admin_dir(worktree.path)
+    if admin is None:
+        return "git cannot name its git dir, so its activity is unknown"
+    checkout = _newest_mtime(worktree.path)
+    gitdir = _newest_mtime(admin)
+    if checkout is None or gitdir is None:
+        return "its activity cannot be read"
+    age = time.time() - max(checkout, gitdir)
+    if age < REVIEW_QUIET_SECONDS:
+        return f"changed {_age(age)} ago, inside its {REVIEW_QUIET_HOURS}-hour quiet period"
+    return None
 
 
 def _age(seconds: float) -> str:
@@ -555,20 +576,9 @@ def _review_skip(
         return "review worktree; Orca is unavailable, so whether a review is live is unknown"
     if found is not None and found.live is not None:
         return f"review worktree is in use ({found.live})"
-    admin = _review_admin_dir(worktree.path)
-    if admin is None:
-        return "review worktree; git cannot name its git dir, so its activity is unknown"
-    # Read before any status call runs: git may rewrite the index, which is this signal itself.
-    checkout = _newest_mtime(worktree.path)
-    gitdir = _newest_mtime(admin)
-    if checkout is None or gitdir is None:
-        return "review worktree; its activity cannot be read"
-    age = time.time() - max(checkout, gitdir)
-    if age < REVIEW_QUIET_SECONDS:
-        return (
-            f"review worktree changed {_age(age)} ago,"
-            f" inside its {REVIEW_QUIET_HOURS}-hour quiet period"
-        )
+    active = _review_activity(worktree)
+    if active is not None:
+        return f"review worktree; {active}"
     dirty = _changed(worktree.path, untracked=False)
     if dirty:
         return f"review worktree has {len(dirty)} modified file(s)"
@@ -726,9 +736,10 @@ def _reap_one(
     """Remove one candidate; return a failure message, or None on success.
 
     An Orca workspace goes through *orca* (``orca worktree rm``) after the same unlinking, and
-    only while Orca, asked again now, still calls it idle. A review worktree is asked the
-    same way, and is kept if a nested worktree appeared under it since classification, since
-    neither status check sees a registered worktree's contents.
+    only while Orca, asked again now, still calls it idle. A review worktree is checked again
+    the same way, and is kept when a nested worktree appeared under it since classification
+    (neither status check sees a registered worktree's contents), when Orca cannot be read or
+    now calls it live, or when its quiet period started again while earlier candidates went.
     """
     worktree = candidate.worktree
     branch = worktree.branch
@@ -750,11 +761,17 @@ def _reap_one(
         nested = sorted(entry.path.name for entry in entries if path in entry.path.parents)
         if nested:
             return f"{label}: holds nested worktrees ({', '.join(nested)}); left alone"
-        if orca is not None:
-            orca.refresh()
-            found = orca.find(path)
-            if found is not None and found.live is not None:
-                return f"{label}: review worktree is in use ({found.live}); left alone"
+        if orca is None:
+            return f"{label}: Orca is unavailable; left alone"
+        orca.refresh()
+        found = orca.find(path)
+        if orca.unavailable is not None:
+            return f"{label}: Orca is unavailable; left alone"
+        if found is not None and found.live is not None:
+            return f"{label}: review worktree is in use ({found.live}); left alone"
+        active = _review_activity(worktree)
+        if active is not None:
+            return f"{label}: review worktree; {active}; left alone"
     if candidate.orca is not None:
         if orca is None:
             return f"{label}: Orca workspace with no way to remove it; left alone"
