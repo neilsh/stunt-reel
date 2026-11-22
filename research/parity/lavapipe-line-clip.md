@@ -1,5 +1,5 @@
 ---
-summary: "Lavapipe clips a line against the near plane but not the sides of the view, so an outline edge cut by the near plane beside the eye reaches its rasteriser tens of thousands of pixels off the page, five times farther at a 0.1 m near plane than at 0.5 m, and is drawn as a wedge (LAND 1025, 7,379 pixels). The outline line lists are clipped to a band 1.1 times the view through user clip distances, which lavapipe applies to lines: LAND's mean disagreement with the GPU falls from 309.4 to 5.2 pixels a tick, LOCATION's from 79.5 to 8.6."
+summary: "Lavapipe clips a line against the near plane but not the sides of the view, so an outline edge cut by the near plane beside the eye reaches its rasteriser tens of thousands of pixels off the page, five times farther at a 0.1 m near plane than at 0.5 m, and is drawn as a wedge (LAND 1025, 7,379 pixels). The outline line lists are clipped to a band 1.1 times the view through user clip distances, which lavapipe applies to lines: LAND's mean disagreement with the GPU falls from 309.42 to 5.23 pixels a tick, LOCATION's from 79.24 to 8.60, both below where they were before the near plane moved."
 ---
 # Parity: Lavapipe Draws Near-Cut Lines as Wedges
 
@@ -24,21 +24,22 @@ _Source: [Lavapipe draws a near-cut outline line as a wedge](../../work/2026-11/
 The three line-list pipelines (the ground pass's, the base pass's and the decal pass's outlines) draw through `vs_edge` (`mode13h.wgsl`), which writes four user clip distances, `1.1·w − x`, `1.1·w + x`, `1.1·w − y` and `1.1·w + y`.
 Lavapipe clips lines against user planes (they are not among the bits `clip_line_guard_xy` masks out), so every line reaches its rasteriser within 10% of the view; no pixel inside the view has a negative distance, so nothing on the page is cut.
 The device requires `wgpu::Features::CLIP_DISTANCES`, which wgpu's DX12 backend, WARP included, does not offer; the adapter search passes over such adapters.
-`[Bounded Observation]`, 2026-11-21, mesa-dist-win 25.2.8 against the RTX 4070, on `crates` `e76ec72b` with and without a prototype of the change; mean index-plane pixels differing per tick over every tick of each film, and the largest:
+`[Bounded Observation]`, 2026-11-21, the canonical lavapipe (Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` under WSL 2) against the RTX 4070, `mise run agreement -- measure` on `main` `e76ec72b` and on the change (`crates` `96e1031`); mean index-plane pixels differing per tick over every tick of each film / the largest / hot ticks, with the figures before the near plane moved to 0.1 m (`581453ed`) beside them:
 
-| Film | Without | With |
-|---|---|---|
-| CTRY | 45.6 / 4,157 | 3.1 / 14 |
-| INTRO | 13.5 / 145 | 2.3 / 25 |
-| LAND | 309.4 / 7,379 | 5.2 / 31 |
-| BALLOON | 4.1 / 17 | 4.1 / 17 |
-| TRAINTNL | 3.9 / 23 | 3.8 / 20 |
-| BOMB | 9.3 / 321 | 8.4 / 77 |
-| LOCATION | 79.5 / 6,566 | 8.6 / 584 |
+| Film | Before #904 | Before | After |
+|---|---|---|---|
+| CTRY | 6.32 / 125 / 0 | 22.37 / 2,382 / 3 | 3.09 / 14 / 0 |
+| INTRO | 8.91 / 136 / 0 | 13.52 / 145 / 0 | 2.25 / 25 / 0 |
+| LAND | 26.20 / 2,075 / 21 | 309.42 / 7,379 / 55 | 5.23 / 31 / 0 |
+| BALLOON | 8.85 / 46 / 0 | 4.13 / 17 / 0 | 4.12 / 17 / 0 |
+| TRAINTNL | 5.22 / 84 / 0 | 3.91 / 23 / 0 | 3.84 / 20 / 0 |
+| BOMB | 11.58 / 120 / 0 | 9.27 / 321 / 0 | 8.40 / 77 / 0 |
+| LOCATION | 29.76 / 2,470 / 72 | 79.24 / 6,566 / 160 | 8.60 / 584 / 3 |
 
-LAND 416, the terrain-against-prop residue [`lavapipe.md`](lavapipe.md) section 5 names, falls from 152 to 7 pixels, so it was near-cut outlines too; LOCATION 3830 stays at 575.
-The change moves the GPU's own render by at most 0.7 pixels a tick on any film and leaves every reference film's GPU score within 0.0007 of a frame.
-_Source: [Lavapipe draws a near-cut outline line as a wedge](../../work/2026-11/922_outline-clip-band/journal.md#2026-11-21-lavapipe-draws-a-near-cut-outline-line-as-a-wedge)._
+On mesa-dist-win 25.2.8 a prototype of the change gave the same means to one decimal; there LAND 416, the terrain-against-prop residue [`lavapipe.md`](lavapipe.md) section 5 names, falls from 152 to 7 pixels, so it was near-cut outlines too, while LOCATION 3830 stays at 575.
+The change moves the GPU's own render by at most 0.7 pixels a tick on any film, and `mise run judge` finds no reference film's GPU score down by 0.002 and no frame by 0.005 (worst −0.0007).
+BOMB 1915-2048 and TRAINTNL 1013-1101, the police car's door and the tunnel wall #904 fixed, differ from `main` by at most 3 pixels a tick on either class.
+_Source: [Lavapipe draws a near-cut outline line as a wedge](../../work/2026-11/922_outline-clip-band/journal.md#2026-11-21-lavapipe-draws-a-near-cut-outline-line-as-a-wedge); [the committed clip band on the canonical lavapipe and the GPU](../../work/2026-11/922_outline-clip-band/journal.md#2026-11-21-the-committed-clip-band-on-the-canonical-lavapipe-and-the-gpu); the before-#904 column, [#922's comment](https://github.com/neilsh/stunt-reel/issues/922)._
 
 ## Ruled out
 

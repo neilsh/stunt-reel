@@ -2,7 +2,7 @@
 title: "Agreement: land and location ground props beat terrain on lavapipe after #905"
 started: 2026-11-21
 issue: 922
-outcome: ""
+outcome: "Outline line lists clipped to 1.1 times the view through user clip distances (ADR 0055); LAND agreement 309.42 to 5.23 pixels a tick, LOCATION 79.24 to 8.60, GPU parity unchanged."
 ---
 
 # Agreement: land and location ground props beat terrain on lavapipe after #905

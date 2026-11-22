@@ -9,7 +9,7 @@ accepted 2026-11-21 for [#922](https://github.com/neilsh/stunt-reel/issues/922).
 The world's polygon outlines are drawn as line lists, in the ground, base and decal passes.
 Mesa's lavapipe clips a line against the near plane but not against the sides of the view ([`lavapipe-line-clip.md`](../../research/parity/lavapipe-line-clip.md) section 1).
 An outline edge that passes beside the eye and reaches behind it is cut where `w` equals the near distance, and that end lands tens of thousands of pixels off the page; lavapipe's line rasteriser draws such a line as a wedge, which the GPU does not.
-Moving the near plane from 0.5 m to 0.1 m (#904, [ADR 0054](0054-depth-is-reversed-and-infinite.md)) put those ends five times farther out, and LAND's mean disagreement between lavapipe and the GPU rose from 26.2 to 309.4 pixels a tick.
+Moving the near plane from 0.5 m to 0.1 m (#904, [ADR 0054](0054-depth-is-reversed-and-infinite.md)) put those ends five times farther out, and LAND's mean disagreement between lavapipe and the GPU rose from 26.20 to 309.42 pixels a tick.
 
 ## Decision
 
@@ -36,9 +36,11 @@ Moving the near plane from 0.5 m to 0.1 m (#904, [ADR 0054](0054-depth-is-revers
 ## Consequences
 
 * **Class agreement.**
-  Over every tick of the seven reference films, the mean differing pixels per tick between lavapipe (mesa-dist-win 25.2.8) and the RTX 4070 fell on six and held on BALLOON, and every film ended below its pre-#904 level (CTRY 45.6 to 3.1, LAND 309.4 to 5.2, LOCATION 79.5 to 8.6; [`lavapipe-line-clip.md`](../../research/parity/lavapipe-line-clip.md) section 2).
+  Over every tick of the seven reference films, the mean differing pixels per tick between the canonical lavapipe and the RTX 4070 fell on six and held on BALLOON, and every film ended below its pre-#904 level (CTRY 22.37 to 3.09, LAND 309.42 to 5.23, LOCATION 79.24 to 8.60; [`lavapipe-line-clip.md`](../../research/parity/lavapipe-line-clip.md) section 2).
 * **GPU parity.**
   The GPU's own render moves by at most 0.7 pixels a tick, and no reference film's score moves by the adoption rule's margin.
+* **CI.**
+  The Windows job's GPU tests ran on WARP, which lacks the feature, so they skip there; the Linux jobs run them on lavapipe.
 * **Adapters.**
   A software render without lavapipe no longer falls back to WARP: it fails to find an adapter.
 * **Shader.**

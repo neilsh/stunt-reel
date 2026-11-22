@@ -25,3 +25,29 @@
   - It moves the GPU's own render by at most 0.7 pixels a tick on any film, 17 at most on one tick (LOCATION 2069); `mise run judge`: mean SSIM 0.9038 on both, worst frame −0.0007, none down by more than 0.005.
 - **Verdict**: adopted as designed with the owner on 2026-11-21 (clip distances required, adapters without them passed over, a new ADR); the committed change's measurement is the next entry.
 - **Lives in**: [`lavapipe-line-clip.md`](../../../research/parity/lavapipe-line-clip.md).
+
+## 2026-11-21: The committed clip band on the canonical lavapipe and the GPU
+
+- **Question**: does the committed change (`a889eb4e`, `crates` `96e1031`) give the prototype's agreement on the canonical lavapipe, keep #904's near-clip fixes, and hold GPU parity?
+- **Method**: on local-windows, the lavapipe arm in the WSL 2 clone (Ubuntu 24.04, `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5`) with `mise run parity -- --software-only`, the GPU arm (RTX 4070, NVIDIA 610.88) with `mise run parity`, then `mise run agreement -- measure --gpu ROOT --lavapipe ROOT`; `mise run judge` against `main` `e76ec72b`'s GPU reports from the agreement worktree; per-tick pixels against `main`'s renders on each class over BOMB 1915-2048 and TRAINTNL 1013-1101; the GPU tests on the WSL lavapipe before and after the fix.
+- **Result**:
+  - Mean differing pixels per tick / largest at tick / hot ticks, against the issue's figures for `e76ec72b` on the same two arms:
+
+    | Film | `e76ec72b` | `a889eb4e` |
+    |---|---|---|
+    | CTRY | 22.37 / 2,382 @834 / 3 | 3.09 / 14 @861 / 0 |
+    | INTRO | 13.52 / 145 @1189 / 0 | 2.25 / 25 @3044 / 0 |
+    | LAND | 309.42 / 7,379 @1025 / 55 | 5.23 / 31 @589 / 0 |
+    | BALLOON | 4.13 / 17 @1163 / 0 | 4.12 / 17 @1163 / 0 |
+    | TRAINTNL | 3.91 / 23 @1140 / 0 | 3.84 / 20 @1135 / 0 |
+    | BOMB | 9.27 / 321 @3014 / 0 | 8.40 / 77 @2272 / 0 |
+    | LOCATION | 79.24 / 6,566 @2407 / 160 | 8.60 / 584 @3824 / 3 |
+
+    SSIM gaps (GPU minus lavapipe) lie within ±0.00008.
+  - `mise run judge`: mean SSIM 0.9038 on both, worst frame −0.0007, none down by more than 0.005; the GPU render differs from `main`'s by at most 0.7 pixels a tick on any film, 17 on one tick (LOCATION 2069).
+    `mise run parity-repin` moved no film's GPU score by more than 4e-6.
+  - BOMB 1915-2048 and TRAINTNL 1013-1101 differ from `main` by at most 3 pixels a tick on either class.
+  - `a_near_cut_ground_outline_draws_only_beside_its_polygon` fails on the WSL lavapipe at `3e0e8ecb` (6,171 pixels away from the triangle) and passes at `a889eb4e`, with the other 50 GPU tests; it passes on the RTX 4070 at both.
+  - The Windows CI job's GPU tests ran on `main` (50 passed in 22.7 s on a runner with no Vulkan driver), so on WARP; WARP lacks `CLIP_DISTANCES`, so they skip there from this change on.
+- **Verdict**: adopted.
+- **Lives in**: [`lavapipe-line-clip.md`](../../../research/parity/lavapipe-line-clip.md) section 2, [ADR 0055](../../../docs/adr/0055-outline-lines-are-clipped-to-a-band-around-the-view.md).
