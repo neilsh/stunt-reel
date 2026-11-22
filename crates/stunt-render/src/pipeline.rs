@@ -79,9 +79,7 @@ impl Default for ModelUniform {
 /// The `[I5]` decal pass's constant depth bias, toward the viewer: two steps of the
 /// `Depth24Plus` buffer (ADR 0046's magnitude, its sign flipped by reversed depth;
 /// `docs/adr/0054-depth-is-reversed-and-infinite.md`).
-/// EXPERIMENT (#637 follow-up): 32, in units of `2^(e-23)` of a `Depth32Float` buffer, the
-/// value #637's first `Depth32Float` measurement used.
-const DECAL_DEPTH_BIAS_CONSTANT: i32 = 32;
+const DECAL_DEPTH_BIAS_CONSTANT: i32 = 2;
 /// The `[I5]` decal pass's slope-scaled depth bias, toward the viewer: two pixels of the decal
 /// triangle's own depth gradient.
 const DECAL_DEPTH_BIAS_SLOPE_SCALE: f32 = 2.0;
