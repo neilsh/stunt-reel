@@ -92,7 +92,7 @@ struct Options {
     /// --game, else 180)
     #[arg(long, value_name = "I")]
     clear_index: Option<u8>,
-    /// Render on the software adapter (lavapipe, WARP), even when a GPU is available
+    /// Render on the software adapter (lavapipe), even when a GPU is available
     #[arg(long)]
     software_only: bool,
     /// Run offscreen without opening a window

@@ -48,7 +48,8 @@ pub(super) fn acquire(
 /// byte-identical output: a one-tick CTRY render starts in a median 1.39 s against 3.15 s with
 /// every backend (six alternating runs each; `research/parity/method.md` § 3). The second attempt keeps every other machine working: it runs when
 /// Vulkan finds no adapter, or only a CPU one such as CI's lavapipe (kept if nothing better
-/// turns up), and gives the software path WARP where Vulkan has no software adapter.
+/// turns up), and finds WARP where Vulkan has no software adapter, which [`REQUIRED_FEATURES`]
+/// then passes over.
 const OFFSCREEN_BACKENDS: [wgpu::Backends; 2] = [wgpu::Backends::VULKAN, wgpu::Backends::all()];
 
 /// The first *preferred* adapter *request* finds over *attempts*, tried in order; when none

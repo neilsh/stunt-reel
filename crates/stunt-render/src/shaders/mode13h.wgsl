@@ -266,10 +266,10 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
 
 // How far outside the view an outline line is clipped, as a multiple of `w`: 1.1 puts the
 // planes 16 columns past the sides of a 320-column view and 9 rows past the top and bottom of
-// a 185-row one, beyond any pixel a one-pixel line draws on screen. Lavapipe clips a line
-// against the near plane only (Mesa's `bypass_clip_points_lines`), so a line cut there beside
-// the eye reached its rasteriser tens of thousands of pixels off the page and was drawn as a
-// wedge; it clips against these planes (research/parity/lavapipe-line-clip.md).
+// a 185-row one, beyond any pixel a one-pixel line draws on screen. Lavapipe does not clip a
+// line against the view's sides (Mesa's `bypass_clip_points_lines`), so a line cut beside
+// the eye by the near plane reached its rasteriser tens of thousands of pixels off the page
+// and was drawn as a wedge; it does clip against these user planes (research/parity/lavapipe-line-clip.md).
 const EDGE_CLIP_BAND: f32 = 1.1;
 
 // `VertexOutput` with the clip distances `vs_edge` adds: a fragment input cannot hold them, so

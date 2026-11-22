@@ -421,9 +421,9 @@ fn ray_hits_ground_triangle(
 }
 
 /// A flat ground prop's outline that passes beside the eye and is cut by the near plane draws
-/// only where the polygon is, within a pixel (#922): every pixel of its index has a point within
-/// 1.5 pixels whose view ray meets the triangle. Lavapipe clips lines against the near plane
-/// alone, so without the outline clip band this edge reached its rasteriser tens of thousands of
+/// only where the polygon is (#922): every pixel of its index has a point within 1.5 pixels on
+/// each axis whose view ray meets the triangle. Lavapipe does not clip lines against the view's
+/// sides, so without the outline clip band this edge reached its rasteriser tens of thousands of
 /// pixels off the page and was drawn as a wedge over ground the polygon never covers.
 #[test]
 fn a_near_cut_ground_outline_draws_only_beside_its_polygon() {

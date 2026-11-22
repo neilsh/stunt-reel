@@ -15,7 +15,7 @@ Moving the near plane from 0.5 m to 0.1 m (#904, [ADR 0054](0054-depth-is-revers
 
 * **A clip band on the line lists.**
   The three line-list pipelines draw through the vertex entry `vs_edge`, which writes four user clip distances, `1.1·w ∓ x` and `1.1·w ∓ y` (`EDGE_CLIP_BAND` in `mode13h.wgsl`).
-  Lavapipe applies user planes to lines, so every line reaches its rasteriser within 10% of the view; nothing inside the view is cut.
+  Lavapipe applies user planes to lines, so every line reaches its rasteriser within a tenth of the view's half-width or half-height beyond its edge; nothing inside the view is cut.
   Triangle pipelines keep `vs_main`: lavapipe clips triangles against the view's sides already, and the band would add a clip step there for nothing.
 * **The device requires `wgpu::Features::CLIP_DISTANCES`.**
   The adapter search passes over an adapter without it, so a machine with none fails with `NoGpuAdapter` rather than drawing wedges.
@@ -40,7 +40,7 @@ Moving the near plane from 0.5 m to 0.1 m (#904, [ADR 0054](0054-depth-is-revers
 * **GPU parity.**
   The GPU's own render moves by at most 0.7 pixels a tick, and no reference film's score moves by the adoption rule's margin.
 * **CI.**
-  The Windows job's GPU tests ran on WARP, which lacks the feature, so they skip there; the Linux jobs run them on lavapipe.
+  The Windows job's GPU tests ran on WARP, which lacks the feature, so they are expected to skip there from this change on; the Linux jobs run them on lavapipe.
 * **Adapters.**
   A software render without lavapipe no longer falls back to WARP: it fails to find an adapter.
 * **Shader.**

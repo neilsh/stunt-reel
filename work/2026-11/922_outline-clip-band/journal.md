@@ -2,7 +2,7 @@
 
 ## 2026-11-21: Lavapipe draws a near-cut outline line as a wedge
 
-- **Question**: why, after #905 put the near plane at 0.1 m, does lavapipe paint asphalt (index 13) where the GPU paints grass (195) at LAND 1025 (7,379 pixels) and LOCATION 2407 (6,566), and what fixes it without moving the near plane back?
+- **Question**: why, after #904 put the near plane at 0.1 m, does lavapipe paint asphalt (index 13) where the GPU paints grass (195) at LAND 1025 (7,379 pixels) and LOCATION 2407 (6,566), and what fixes it without moving the near plane back?
 - **Method**: on local-windows, `crates` = `e76ec72b`, the RTX 4070 (NVIDIA 610.88) against mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`), with temporary `DBG_*` switches, none committed:
   - `mise run frame -- --film land --ticks 1024,1025,1036` on each, then `mise run parity-residue`, and each differing pixel's layer and shape word read from the render store's planes;
   - `DBG_SKIP` dropping the base pass, the decal pass, the ground pass, the ground fills or the ground outlines;
@@ -48,6 +48,6 @@
     `mise run parity-repin` moved no film's GPU score by more than 4e-6.
   - BOMB 1915-2048 and TRAINTNL 1013-1101 differ from `main` by at most 3 pixels a tick on either class.
   - `a_near_cut_ground_outline_draws_only_beside_its_polygon` fails on the WSL lavapipe at `3e0e8ecb` (6,171 pixels away from the triangle) and passes at `a889eb4e`, with the other 50 GPU tests; it passes on the RTX 4070 at both.
-  - The Windows CI job's GPU tests ran on `main` (50 passed in 22.7 s on a runner with no Vulkan driver), so on WARP; WARP lacks `CLIP_DISTANCES`, so they skip there from this change on.
+  - The Windows CI job's GPU tests ran on `main` (50 passed in 22.7 s on a runner with no Vulkan driver), so on WARP; WARP lacks `CLIP_DISTANCES`, so they are expected to skip there from this change on.
 - **Verdict**: adopted.
 - **Lives in**: [`lavapipe-line-clip.md`](../../../research/parity/lavapipe-line-clip.md) section 2, [ADR 0055](../../../docs/adr/0055-outline-lines-are-clipped-to-a-band-around-the-view.md).
