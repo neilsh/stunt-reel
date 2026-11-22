@@ -1,0 +1,142 @@
+{
+  "film": "traintnl",
+  "ticks": [
+    12,
+    123,
+    232,
+    342,
+    452,
+    562,
+    683,
+    793,
+    903,
+    1013,
+    1123,
+    1233
+  ],
+  "categories_digest": "f442f5796ba47a506d59b9a484d039c50103bd1f675df58fc02e9d14063362a9",
+  "render_digest": "ca620457069039d0d0f6db4d63ac3c436872b63d598c1b45a71244f5e995b847",
+  "categories": [
+    {
+      "category": "aircraft-parts-missing",
+      "ticks_2plus": [],
+      "mean": 0.08333333333333333,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-shape-broken",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-too-small",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-misplaced",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "shadow-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "sea-band-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "scenery-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "ground-shade-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "ground-shade-edges",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "background-misregistration",
+      "ticks_2plus": [
+        123,
+        1013
+      ],
+      "mean": 1.0833333333333333,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-absent",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "shadow-shape-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "actors-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "terrain-type-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "explosion-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "sun-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "frame-blank",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "black-block",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    }
+  ],
+  "other": {
+    "232": "train cars drawn a few tens of pixels up and right of the capture's position",
+    "342": "propeller drawn as a stray diagonal bar across the fuselage, and top wing stripe thinner than capture",
+    "452": "propeller drawn as a stray diagonal bar across the fuselage",
+    "903": "thin dark line down the cockpit/fuselage in render",
+    "1233": "propeller blade angle differs slightly"
+  },
+  "missing": 0,
+  "unknown": [],
+  "disputed": 2
+}

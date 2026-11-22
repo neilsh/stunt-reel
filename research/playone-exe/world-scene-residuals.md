@@ -1,5 +1,5 @@
 ---
-summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, as is any prop face within 10 cm of the ground plane, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and the renderer drops far scenery per frame by distance against its `scale_index`, following `PLAYONE`'s cull `0x1B28` (`[Supported Inference]` for the distance in metres)."
+summary: "`PLAYONE`'s ground renderer residuals: scenery tiles lie on the terrain plane and tie it in depth, flat props are snapped onto it and painted in walk order, as is any prop face within 10 cm of the ground plane, a flat prop lying on an earlier flat prop is drawn after it as its decal, and a line on a decal now draws after it; the sub-pixel prop cull drops no drawn prop on the references, and the renderer drops far scenery per frame by distance against its `scale_index`, following `PLAYONE`'s cull `0x1B28` (`[Supported Inference]` for the distance in metres)."
 ---
 # `PLAYONE.EXE`: Ground Renderer Residuals
 
@@ -208,6 +208,27 @@ _Source: [2026-11-20: a non-flat prop's faces near the ground plane in the groun
 A depth rule could not have fixed it: in our IR the plaza is the nearer surface, under any depth format.
 The decal pass could not either: it holds faces coplanar with an earlier face of their own shape's stream ([ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)), and the infield is the first face of `0x0265`, 23.4375 mm above the plaza in the source.
 
+### 6.9 `LOCATION`'s castle moat and the green strip on it
+
+`[Established]` for the shapes, their heights in our IR and the tree order, read from the code, `sod-trace`, `export-gltf --shape` and a walk of the unpatched image's tree; `[Bounded Observation]` that this was the tie of [#966](https://github.com/neilsh/stunt-reel/issues/966) at `LOCATION` 3812 to 3968, on the RTX 4070 and the canonical lavapipe.
+_Source: [2026-11-22: The castle's moat, its green bank and the order PLAYONE paints them](../../work/2026-11/966_moat-walk-order/journal.md#2026-11-22-the-castles-moat-its-green-bank-and-the-order-playone-paints-them)._
+
+The castle stands 75 m up, off the terrain's height.
+Its moat quad `0x04AC` (one flat `COLOR 0x00C1` quad, 128 × 132 m) and its green strip `0x0539` (eleven flat `COLOR 0x0088` polygons, a 16 × 100 m bank with a curved edge) decode to the same height and lie in one plane, the strip wholly inside the quad in plan.
+`PLAYONE` paints the quad, then the strip, from any eye: the two leaves part at `SP_2NODE` `0x80B2`, the quad's `SP_LEAF` `0x80C2` its `ptr` and the strip's `0x813A` in its `next` chain (through `SP_1NODE` `0x80D0` and `0x80DA`), and `SP_2NODE` (`0x1EC0`) visits `ptr`, then `next`, with no eye test (section 6.6).
+Our placement order keeps that order.
+Neither prop was a ground decal (no terrain within 10 cm of 75 m under them, section 6.2), and both sit behind `SP_1NODE` gates, so each was a gated base node with depth write: the exact tie went to the depth compare, which the GPU broke into one-row stripes of water across the strip while lavapipe drew it whole, as the capture does.
+The ground pass could not take it: it holds faces on `y = base_y` and draws before raised geometry with `Always`, so a plateau 75 m up in it would lose its occlusion.
+
+**Adopted: a flat prop lying on an earlier flat prop is a decal of it.**
+A placement whose shape is flat (every vertex within 5 cm of one height) and that is not a ground decal is a decal of the first earlier flat placement whose plan box contains its own and on whose triangles every one of its vertices lies, within 10 cm (`prop_overlay_vertices`, `crates/stunt-core/src/world/terrain.rs`); its vertices take that triangle's height, and it is routed as a ground decal is, so the decal pass draws the strip after the quad ([ADR 0035](../../docs/adr/0035-ground-lying-props-are-terrain-decals.md)).
+The rule is the prop counterpart of section 6.5's patch overlays.
+On `LOCATION` it picks 20 placements, the strip `0x0539` and `0x0538` among them.
+`[Bounded Observation]`, seven reference films on both classes: the backends' mean disagreement on `LOCATION` falls from 8.59 to 6.31 pixels a tick, and on 3812 to 3968 from 132.08 to 12.64 (the largest 584 at 3824 to 39), with no tick over 500; no pixel of the other six films moves on either class.
+On the GPU 14 `LOCATION` frames rise and none falls (3862 by 0.0090); lavapipe, which drew the strip already, moves by at most 0.0009.
+The difference [`lavapipe.md`](../parity/lavapipe.md) section 5 names at `LOCATION` 3815 (index 193 against 136) was this tie: on `main` 325 of its 335 differing pixels are that pair, and with the rule none are.
+_Source: [2026-11-22: A flat prop lying on an earlier flat prop is a decal of it](../../work/2026-11/966_moat-walk-order/journal.md#2026-11-22-a-flat-prop-lying-on-an-earlier-flat-prop-is-a-decal-of-it)._
+
 ## Ruled out
 
 * **The tiles sit below the terrain** (section 6.1): they are on its plane to a millimetre; the 5 cm drop removes a depth tie.
@@ -234,6 +255,8 @@ The decal pass could not either: it holds faces coplanar with an earlier face of
   _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
 * **A depth rule or the decal pass as #651's fix** (section 6.8): the first draws the plaza, the nearer surface in our IR; the second takes a face coplanar with an earlier face of its own shape, and the infield is `0x0265`'s first.
   _Source: [2026-11-18: the infield, the plaza under it and the order PLAYONE paints them](../../work/2026-11/701_location-infield/journal.md#2026-11-18-the-infield-the-plaza-under-it-and-the-order-playone-paints-them)._
+* **The ground pass, or `Depth32Float`, as #966's fix** (section 6.9): the ground pass holds faces on `y = base_y` and draws before raised geometry with `Always`, so the castle's plateau 75 m up would lose its occlusion; `Depth32Float` on the fixed tree still makes the backends disagree 2.6 to 11 times more than `Depth24Plus` on every film.
+  _Source: [2026-11-22: Depth32Float again, on the fixed tree](../../work/2026-11/966_moat-walk-order/journal.md#2026-11-22-depth32float-again-on-the-fixed-tree)._
 * **Lowering or removing the sub-pixel prop cull** (section 6.4): with no size test the seven references score the same to four decimals and no frame moves by more than 0.005, since the cull drops nothing they draw.
   _Source: [removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull)._
 * **`[0x229E]` as 1 at the default lens** (section 6.4): `CameraTransform::lod_lens_words` gives 0 there, as [`lod.md`](lod.md) section 2.2 reads it, so the #777 reading put the cut at twice its distance and its pixel bound at half its size.
@@ -264,3 +287,7 @@ The decal pass could not either: it holds faces coplanar with an earlier face of
 6. **What the ground pass's 0.1 m rule moves beyond the infield** (section 6.8).
    At `LAND` 221 it draws the runway the capture shows; which shape's faces make that runway, and what costs `LOCATION` 3268 its 0.0044 at the foot of a tower, were not traced.
    _Source: [2026-11-20: a non-flat prop's faces near the ground plane in the ground pass](../../work/2026-11/651_infield-ground-pass/journal.md#2026-11-20-a-non-flat-props-faces-near-the-ground-plane-in-the-ground-pass)._
+7. **What else the flat-prop decal rule picks, and where walk order is eye-dependent** (section 6.9).
+   On `LOCATION` it picks 20 placements; only the castle's were traced, and no pixel of another film moved.
+   It takes the earlier placement in our order as the one painted first, which holds where the two leaves part at an `SP_2NODE`; where they part at an `SP_XPLANE` or `SP_ZPLANE` the order depends on the eye, and the rule does not follow it.
+   _Source: [2026-11-22: A flat prop lying on an earlier flat prop is a decal of it](../../work/2026-11/966_moat-walk-order/journal.md#2026-11-22-a-flat-prop-lying-on-an-earlier-flat-prop-is-a-decal-of-it)._
