@@ -36,7 +36,7 @@ The device requires `wgpu::Features::CLIP_DISTANCES`, which wgpu's DX12 backend,
 | BOMB | 11.58 / 120 / 0 | 9.27 / 321 / 0 | 8.40 / 77 / 0 |
 | LOCATION | 29.76 / 2,470 / 72 | 79.24 / 6,566 / 160 | 8.60 / 584 / 3 |
 
-On mesa-dist-win 25.2.8 a prototype of the change gave the same means to one decimal; there LAND 416, of the terrain-against-prop residue [`lavapipe.md`](lavapipe.md) section 5 names, falls from the 152 pixels left after #904 to 7, so that remainder was near-cut outlines too, while LOCATION 3830 stays at 575.
+On mesa-dist-win 25.2.8 a prototype of the change gave the same means to one decimal; there LAND 416, of the terrain-against-prop residue [`lavapipe.md`](lavapipe.md) section 5 names, falls from the 152 pixels left after #904 to 7, so 145 of them were outline lines reaching outside the band (whether through the near plane or only the view's sides was not read), while LOCATION 3830 stays at 575.
 The change moves the GPU's own render by at most 0.7 pixels a tick on any film, and `mise run judge` finds no reference film's GPU score down by 0.002 and no frame by 0.005 (worst −0.0007).
 BOMB 1915-2048 and TRAINTNL 1013-1101, the police car's door and the tunnel wall #904 fixed, differ from `main` by at most 3 pixels a tick on either class.
 _Source: [Lavapipe draws a near-cut outline line as a wedge](../../work/2026-11/922_outline-clip-band/journal.md#2026-11-21-lavapipe-draws-a-near-cut-outline-line-as-a-wedge); [the committed clip band on the canonical lavapipe and the GPU](../../work/2026-11/922_outline-clip-band/journal.md#2026-11-21-the-committed-clip-band-on-the-canonical-lavapipe-and-the-gpu); the before-#904 column, [#922's comment](https://github.com/neilsh/stunt-reel/issues/922)._
