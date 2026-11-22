@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import stat
+import subprocess
 import sys
+import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +25,25 @@ def _config(*, basetemp: str | None, worker: bool = False) -> pytest.Config:
     if worker:
         config = SimpleNamespace(**vars(config), workerinput={})
     return cast("pytest.Config", config)
+
+
+def _link(link: Path, target: Path) -> None:
+    """Point *link* at *target*, with a junction on Windows and a symlink elsewhere."""
+    if os.name == "nt":
+        # A junction needs neither elevation nor Developer Mode, unlike a symlink.
+        made = subprocess.run(  # noqa: S603 - fixed cmd arguments
+            [os.environ.get("COMSPEC", "cmd.exe"), "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if made.returncode == 0:
+            return
+        pytest.skip(f"cannot make a junction here: {made.stderr or made.stdout}")
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as err:
+        pytest.skip(f"cannot make a symlink here: {err}")
 
 
 def test_per_run_basetemp_differs_per_run() -> None:
@@ -87,6 +108,47 @@ def test_prune_removes_a_run_that_holds_read_only_files(tmp_path: Path) -> None:
         objects.chmod(stat.S_IREAD | stat.S_IEXEC)
     pytest_helpers.prune_old_basetemps(tmp_path, keep=1, fresh_for=timedelta(0))
     assert [path.name for path in tmp_path.iterdir()] == ["basetemp-20261025T200002-aaaa"]
+
+
+def test_short_basetemp_is_outside_the_checkout() -> None:
+    """An inner run's root must not lengthen nested paths under a long checkout (#925)."""
+    repo = Path(__file__).resolve().parents[1]
+    basetemp = pytest_helpers.short_basetemp()
+    assert repo not in basetemp.parents
+    # pytest resolves a given --basetemp and git prints real paths, so the comparison
+    # only works on a resolved parent; a %TEMP% behind a link would break it.
+    assert basetemp.parent == basetemp.parent.resolve()
+    assert not basetemp.exists()
+
+
+def test_short_basetemp_resolves_a_linked_temp_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A %TEMP% behind a junction or symlink must still name the path git prints (#925).
+
+    pytest resolves the --basetemp it is given, so the inner run's tmp_path and its fixture
+    worktrees are named by the real path; an unresolved root could never contain them, and
+    the worktree test's isolation assertion could not fail.
+    """
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    _link(link, real)
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(link))
+    basetemp = pytest_helpers.short_basetemp()
+    assert basetemp.parent == real.resolve()
+    assert not basetemp.exists()
+
+
+def test_remove_basetemp_removes_read_only_files() -> None:
+    """git writes its objects read-only; the inner run must leave no temporary directory."""
+    basetemp = pytest_helpers.short_basetemp()
+    basetemp.mkdir()
+    blob = basetemp / "blob"
+    blob.write_bytes(b"x")
+    blob.chmod(stat.S_IREAD)
+    pytest_helpers.remove_basetemp(basetemp)
+    assert not basetemp.exists()
 
 
 def test_only_the_controller_prunes() -> None:
