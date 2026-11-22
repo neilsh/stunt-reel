@@ -42,7 +42,7 @@ use glam::{Mat4, Vec3};
 
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SCENERY_OCEAN, SCENERY_TERRAIN, SodModelIr, SodVertex,
-    VERTEX_FLAG_LINE, VisibilityCondition,
+    VisibilityCondition,
 };
 use stunt_core::scene::{FilmScene, RelitShapes, SceneFrame, SpriteDraw};
 use stunt_core::sod::{AngleBank, ShadeLight};
@@ -1092,11 +1092,11 @@ fn sprite_ir(image: &SpriteImage) -> SodModelIr {
     ir
 }
 
-/// Whether a world triangle with the corner `vertex` is outlined: a prop's filled polygon,
-/// not a line, terrain or ocean. Outlining terrain and ocean as well scored lower on `LAND`
-/// and `BALLOON` (`work/2026-11/430_world-mesh-slivers/journal.md`).
+/// Whether a world triangle with the corner `vertex` is outlined: a prop's filled polygon
+/// ([`crate::outline::outlines`]), not terrain or ocean. Outlining terrain and ocean as well
+/// scored lower on `LAND` and `BALLOON` (`work/2026-11/430_world-mesh-slivers/journal.md`).
 fn outlines_in_world(vertex: &SodVertex) -> bool {
-    vertex.flags & VERTEX_FLAG_LINE == 0
+    crate::outline::outlines(vertex)
         && vertex.scenery_class != SCENERY_TERRAIN
         && vertex.scenery_class != SCENERY_OCEAN
 }
