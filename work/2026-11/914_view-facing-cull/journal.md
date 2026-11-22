@@ -97,7 +97,7 @@
     | B | RTX 4070 | `1015` / `1086` / `1200` | `1049` / `1155` / `1286` | `+6.3%` / `+7.2%` |
     | C | RTX 4070 | `1737` / `1815` / `2009` | `1707` / `1741` / `1937` | `-4.1%` / `-3.6%` |
 
-    The sign changes with the span and the statistic, so no saving is resolved from the noise: GPU Span B, where the cull removes nearly every actor draw, ran `3%..7%` slower on all three statistics (minimum, four fastest, all eight), so differences up to about `7%` are noise here; Span C ran `1.4%..4.1%` faster on all six statistics on both adapters, a consistent sign inside that noise, so unresolved.
+    The sign changes with the span and the statistic, so no saving is resolved from the noise: GPU Span B, where the cull removes nearly every actor draw, ran `3%..7%` slower on all three statistics (minimum, four fastest, all eight), so a `3%..7%` difference is inside the noise there, and GPU Span A's all-eight median fell `9.7%` on a loaded machine, unresolved; Span C ran `1.4%..4.1%` faster on all six statistics on both adapters, a consistent sign inside that noise, so unresolved.
     A cell's own runs also spread widely (Span B on lavapipe: `2776..4963` ms across the eight runs of one variant).
     Span B drops every actor and shadow draw on `291` of its `300` frames (`161` of about `1,080` slices per frame by median; the other nine keep one actor, `49` slices, and its shadow, so the body and shadow counts are equal after the cull, as the raw per-frame counts show) and its lavapipe loop stays at `2.8 s`.
   - **The world cull can drop such a rim (shown on a synthetic disc).**
