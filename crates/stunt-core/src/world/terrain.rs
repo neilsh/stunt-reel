@@ -541,6 +541,59 @@ mod tests {
         assert!(none(&[None, Some((&strip, [0.0, 75.0, 0.0]))]));
     }
 
+    /// A prop whose plan box an earlier prop's contains, but whose vertices miss that prop's
+    /// triangles, is not its decal, and the search goes on to the next earlier prop.
+    #[test]
+    fn a_prop_off_an_earlier_props_triangles_inside_its_box_tries_the_next() {
+        let mut half = wide_square(10.0, None);
+        half.indices.truncate(3); // only the triangle where x >= z
+        let moat = wide_square(10.0, None);
+        let strip = square_prop(None);
+        let at = [-10.0, 75.0, 10.0]; // wholly where x < z
+        let alone = prop_overlay_vertices(&[Some((&half, [0.0, 75.0, 0.0])), Some((&strip, at))]);
+        assert_eq!(alone.get(1), Some(&None));
+        let next = prop_overlay_vertices(&[
+            Some((&half, [0.0, 75.0, 0.0])),
+            Some((&moat, [0.0, 75.0, 0.0])),
+            Some((&strip, at)),
+        ]);
+        assert!(next.get(2).is_some_and(Option::is_some));
+    }
+
+    /// Each prop of a stack in one plane is a decal of an earlier one.
+    #[test]
+    fn each_prop_of_a_stack_is_an_overlay() {
+        let (a, b, c) = (
+            wide_square(10.0, None),
+            wide_square(5.0, None),
+            square_prop(None),
+        );
+        let out = prop_overlay_vertices(&[
+            Some((&a, [0.0, 75.0, 0.0])),
+            Some((&b, [1.0, 75.0, 0.0])),
+            Some((&c, [2.0, 75.0, 0.0])),
+        ]);
+        let flags: Vec<bool> = out.iter().map(Option::is_some).collect();
+        assert_eq!(flags, [false, true, true]);
+    }
+
+    /// A prop exactly [`GROUND_LIE_TOLERANCE`] above an earlier one is its decal; one further up
+    /// is not.
+    #[test]
+    fn the_lie_tolerance_is_inclusive() {
+        let (moat, strip) = (wide_square(10.0, None), square_prop(None));
+        let later = |y: f32| {
+            prop_overlay_vertices(&[
+                Some((&moat, [0.0, 0.0, 0.0])),
+                Some((&strip, [0.0, y, 0.0])),
+            ])
+            .get(1)
+            .is_some_and(Option::is_some)
+        };
+        assert!(later(GROUND_LIE_TOLERANCE));
+        assert!(!later(0.1001));
+    }
+
     #[test]
     fn test_push_terrain_fans_valid_patches_and_skips_the_rest() {
         let anchors = [

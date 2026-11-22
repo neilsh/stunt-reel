@@ -968,6 +968,41 @@ mod tests {
         );
     }
 
+    /// A flat prop lying both on the terrain and on an earlier flat prop takes the terrain's
+    /// height, not the earlier prop's: the terrain snap comes first.
+    #[test]
+    fn a_flat_prop_on_the_terrain_and_an_earlier_prop_takes_the_terrain_height() {
+        let (pts, areas) = sloped_terrain();
+        let mut apron = square_prop(None);
+        for v in &mut apron.vertices {
+            v.position[0] *= 3.0;
+            v.position[2] *= 3.0;
+        }
+        let models = HashMap::from([(0x0370, apron), (0x0539, square_prop(None))]);
+        let surface = TerrainSurface::new(&pts, &areas, 0.0);
+        let placements = [
+            Placement::bare(0x0370, [60.0, 10.6, 20.0], 0),
+            Placement::bare(0x0539, [62.0, 10.6, 18.0], 0),
+        ];
+        let (ir, ..) = build_world_ir(
+            &pts,
+            &areas,
+            &surface,
+            &placements,
+            &PropModels::shared(&models),
+            0.0,
+        );
+        let decal = prop_vertices(&ir, "WORLD_DECAL");
+        assert_eq!(decal.len(), 8, "both props belong to the decal batch");
+        for [x, y, _] in decal {
+            let terrain = 10.0 + 0.01 * x;
+            assert!(
+                (y - terrain).abs() < 1e-4,
+                "vertex at x={x}: y={y}, terrain={terrain}"
+            );
+        }
+    }
+
     /// The index counts of the world's prop-holding [`GROUND_NODE`] nodes, in order.
     fn ground_runs(ir: &SodModelIr) -> Vec<u32> {
         ir.meshes()
