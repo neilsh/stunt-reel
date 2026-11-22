@@ -44,7 +44,7 @@ A Claude implementer ends when its PR opens, or earlier if its context passes ab
 Brief every implementer from [`worker-brief.md`](worker-brief.md), and read its report, not its diff.
 Prefer Sonnet to dsh for note splits, an exception to dsh-first routing: on 2026-11-14 each dsh split took three review rounds over stale mentions.
 In Orca, send a worker its next brief only after its `worker_done`, in full: a send to a busy worker returns only a `messageId` and is usually never acted on, and each follow-up starts a fresh session.
-Within about 2 minutes of a dispatch, confirm once with `worker-read` that the worker has started on it ([`coordinator.md`](coordinator.md#orca-orchestration-flags)); one dsh worker sat at its splash screen for 30 minutes.
+Within about 2 minutes of a dispatch, confirm once with `worker-read` that the worker has started on it ([`coordinator.md`](coordinator.md#orca-orchestration-flags)); a dsh dispatch also copies the brief into its workspace and sends its start message at once, since one dsh worker sat at its splash screen for 30 minutes ([`coordinator.md`](coordinator.md#dispatching-a-dsh-worker)).
 On Orca's "worker stopped without reporting" escalation, when its "Last output" names a running build, render or Monitor of a Claude worker, log it in `run-state.md` and leave the worker, without `worker-read`: the command's exit re-invokes it.
 Otherwise (a dsh worker included) read the worker with `worker-read`: a command still running means wait; an open PR with the worker idle means treat it as done and start the review; otherwise re-dispatch.
 The coordinator edits no PR, and sends every fix, text or code, back to a worker, since a fix needs the same re-review.
