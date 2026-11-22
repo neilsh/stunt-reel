@@ -12,6 +12,7 @@ After all measurements and byte-identity checks complete, `crates/` is reverted 
 **Tech Stack:** Rust (`stunt-core`, `stunt-render`, `stunt-score`, `stunt-cli`), Mesa `llvmpipe` (`mesa-dist-win 25.2.8` and Ubuntu 24.04 `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` under WSL 2), PowerShell 5.1, `mise run`.
 
 **Spec:** [`spec.md`](spec.md) in this folder; read it before Task 1.
+**Outputs:** [`journal.md`](journal.md) and [`probe.patch`](probe.patch).
 
 ## Global Constraints
 

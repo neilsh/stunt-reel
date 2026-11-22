@@ -1,6 +1,6 @@
 # Where does lavapipe render time go after #644 and #811, and do multiple VkDevices parallelize in-process?
 
-Design agreed with the owner on 2026-11-21; the plan is [`plan.md`](plan.md).
+Design agreed with the owner on 2026-11-21; the plan is [`plan.md`](plan.md), results are in [`journal.md`](journal.md), and the temporary instrumentation diff is [`probe.patch`](probe.patch).
 Base tree at agreement: `main` commit `6955e159`.
 
 ## Problem

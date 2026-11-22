@@ -1,16 +1,16 @@
 ---
-summary: "One matrix upload per frame nearly halved lavapipe's LOCATION render time, and keeping two frames in flight cut it further with the stores still identical over the seven films' captured ticks on the GPU and LOCATION ticks 12-300 on lavapipe. A LOCATION frame encodes 127,910 `draw_indexed` calls, nearly three quarters of them world base fills and outlines, none of which coalescing contiguous base slices in walk order removes on LOCATION; culling world nodes outside the view frustum cuts the median frame to 6,791 calls and LOCATION ticks 12-300's lavapipe render time by 83% (one run), with the stores byte-identical over every film's captured ticks."
+summary: "Post-#644/#811 lavapipe profiling across LOCATION and INTRO shows culling view_facing draws (#914) cuts loop wall clock by 52.4% to 80.6% (go); omitting color_texture (#919, -1.3% to +5.1%) and relight vertex-ring/apex-skip (#915b, -0.6%) save little (no-go). LP_NUM_THREADS=4 now cuts Span A loop by 10.8% on Windows (27.6% after #914) and 7.7% on Ubuntu 24.04; four child processes scale 2.82x-3.21x on LOCATION 50-649 while four in-process VkDevices regress on Ubuntu Mesa 25.2.8 (#916 child processes go, in-process pooling no-go)."
 ---
 # Parity: Render Time on Lavapipe
 
 * **Scope**: how long a headless render takes on lavapipe, Mesa's software Vulkan driver, and on the GPU, and which renderer changes cut it; split from [`lavapipe.md`](lavapipe.md), which holds how lavapipe's frames differ from the GPU's.
-* **Sources**: `cdb` stack samples and timed renders from #596, #602, #603, #644 and #629, on mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md), and Ubuntu's `mesa-vulkan-drivers` 25.2.8 in a cloud session.
+* **Sources**: `cdb` stack samples and timed renders from #596, #602, #603, #644, #629 and #918, on mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md), Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` (`llvmpipe (LLVM 20.1.2, 256 bits)`) under WSL 2, and a cloud Ubuntu session.
 * **Evidence tier**: stated at the start of each section.
 
-## 1. Render time
+## 1. Pre- and initial `#644` baseline
 
 `[Bounded Observation]`, 2026-11-15 to 2026-11-16, mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and the RTX 4070 on the same laptop, LOCATION ticks 12-300, headless at 320×200.
-Each change left the render stores (`frames.zst`, `layers.zst`, `palettes.zst`) byte-identical, on lavapipe over LOCATION ticks 12-300 and on the GPU over every reference film's captured ticks.
+Each change left the render stores (`frames.zst`, `layers.zst`, `palettes.zst`) byte-identical, on lavapipe over LOCATION ticks 12-300 and on the GPU over the seven reference films' captured ticks.
 Each row's before is its own tree, so the rows do not chain (this machine took 88.7 s on lavapipe for `5844b4b8`, #602's before, against 81.8 s for `80a3ad5`, #596's after):
 
 | Change | Lavapipe before, after | GPU before, after |
@@ -23,39 +23,111 @@ Each row's before is its own tree, so the rows do not chain (this machine took 8
 _Source: [One model-matrix upload per frame](../../work/2026-11/distill-lavapipe/journal.md#2026-11-15-one-model-matrix-upload-per-frame), [Two frames in flight](../../work/2026-11/distill-lavapipe/journal.md#2026-11-15-two-frames-in-flight), [culling world nodes outside the view frustum](../../work/2026-11/644_frustum-cull/journal.md#2026-11-16-culling-world-nodes-outside-the-view-frustum)._
 
 **One matrix upload per frame (#596).**
-`SceneRenderer::prepare` wrote each draw's model matrix with its own `write_buffer`, and wgpu allocates a staging buffer per call; on lavapipe that allocation held about half of the main-thread samples, with the process at 1.00 core whatever `LP_NUM_THREADS` was (why it costs more there than on the NVIDIA driver is not measured). #596 packs a frame's matrices into one uniform buffer at dynamic offsets, uploaded with one `write_buffer`.
-Afterwards 16 of 20 main-thread samples sit in `wait_for_fence`, inside `vulkan_lvp`, and none in staging allocation, and all-thread samples put lavapipe's work on the one `vulkan_lvp` thread that executes command buffers (busy in 52 of 65 all-thread samples), known by offset only since mesa-dist-win ships no PDBs ([#600](https://github.com/neilsh/stunt-reel/issues/600)); on the GPU only the main thread is busy, 8 of its 42 samples in `GpuModel::collect_world_meshes`.
+`SceneRenderer::prepare` wrote each draw's model matrix with its own `write_buffer`, and wgpu allocates a staging buffer per call; on lavapipe that allocation held about half of the main-thread samples, with the process at 1.00 core whatever `LP_NUM_THREADS` was (before `#596` and `#644`; see section 4 for post-`#644` scaling).
+#596 packs a frame's matrices into one uniform buffer at dynamic offsets, uploaded with one `write_buffer`.
+Afterwards 16 of 20 main-thread samples sat in `wait_for_fence`, inside `vulkan_lvp`, and the staging samples vanished; thread samples placed lavapipe's work on the command-buffer thread (busy in 52 of 65 samples) ([#600](https://github.com/neilsh/stunt-reel/issues/600)); on the GPU 8 of 42 main-thread samples sat in `GpuModel::collect_world_meshes`.
 _Source: [2026-11-15: where a frame's time goes after the change](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-where-a-frames-time-goes-after-the-change), [One model-matrix upload per frame](../../work/2026-11/distill-lavapipe/journal.md#2026-11-15-one-model-matrix-upload-per-frame)._
 
 **Two frames in flight (#602).**
 The offscreen target waited for each frame's readback, so the main thread and lavapipe's command-buffer thread did not overlap.
-The headless loop now submits tick N+1 before it maps tick N's readback buffers, and waits only for tick N's own submission; pages still reach the sink in tick order.
-The seven `mise run parity` score lines do not move.
+The headless loop submits tick N+1 before mapping tick N's readback buffers, and waits for tick N's own submission while delivering pages in tick order without changing scores.
 _Source: [Two frames in flight in headless capture](../../work/2026-11/602_headless-capture-two-frames/journal.md#2026-11-15-two-frames-in-flight-in-headless-capture)._
 
 **Draws per frame (#603, #644).**
-Before the cull, the median LOCATION frame (ticks 12-300, `b0f6c120`, the same 289 per-frame counts on both backends) encoded 127,910 `draw_indexed` calls: 8,963 world ground fills and 6,269 ground outlines, 49,257 world base fills and 45,560 base outlines (94,817, 74.1%), 5,550 world decal fills and 5,549 decal outlines, and 6,762 prop, actor and sprite fills.
-The world uploads as one chunk of 6,702,496 vertices and 7,488,138 indices, so every base slice draws with base vertex 0 from its own index range, and the base walk emits a parent's child slices in the reverse of their index order; in none of the 289 frames did an adjacent pair of base slices continue the previous one's index range, so coalescing them removes no call (#603's decision: no-go against its 25% bar).
-_Source: [Draws per frame](../../work/2026-11/distill-lavapipe/journal.md#2026-11-16-draws-per-frame)._
+Before the cull, the median LOCATION frame (ticks 12-300, `b0f6c120`) encoded 127,910 `draw_indexed` calls: 8,963 ground fills and 6,269 ground outlines, 49,257 base fills and 45,560 base outlines (94,817, 74.1%), 5,550 decal fills and 5,549 decal outlines, and 6,762 non-world fills.
+Because the world uploads as one chunk of 6,702,496 vertices (now `6,702,570` vertices / `7,488,138` indices) and walk order visits child slices in reverse index order, contiguous-slice coalescing removed zero calls (`#603` no-go).
+`#644` frustum-culls world nodes (`PR #652`), cutting those 289 frames from `127,910` to `6,791` total calls (`29` median world draws).
+Ubuntu's Mesa 25.2.8 rendered the seven reference films byte-identical with and without the cull (`734d3a8`, 2026-11-17).
+_Source: [Draws per frame](../../work/2026-11/distill-lavapipe/journal.md#2026-11-16-draws-per-frame), [culling world nodes outside the view frustum](../../work/2026-11/644_frustum-cull/journal.md#2026-11-16-culling-world-nodes-outside-the-view-frustum), [the cull on top of eye-relative transforms](../../work/2026-11/644_frustum-cull/journal.md#2026-11-17-the-cull-on-top-of-eye-relative-transforms)._
 
-**Frustum cull (#644).**
-`[Bounded Observation]`, 2026-11-16, PR #652 at `3e956d1a` against `857f80a8`, mesa-dist-win 25.2.8 and the RTX 4070 laptop, LOCATION ticks 12-300, one run each.
-The world walk skips a node whose box around its own and its descendants' vertices lies wholly outside one plane of the view frustum.
-Over #603's 289 frames the median frame's `draw_indexed` calls fall from 127,910 to 6,791: the six world categories' medians from 121,148 in sum to 29 (the world's per-frame total at most 133), as these frames look at an aircraft against sea and sky; the 6,762 prop, actor and sprite fills are not culled.
+## 2. Draws by category after `#644` and `#811`
 
-Render times are in the table above.
-On top of #636's eye-relative transforms (`e6fb29c`), on `origin/main` `734d3a8`, Ubuntu's Mesa 25.2.8 rendered all seven films' captured ticks byte-identical with and without the cull, 2026-11-17; the GPU was not re-checked there.
-`852db54`, which stops moving each box by the node's `local_matrix`, was not re-run; every world node's `local_matrix` is the identity (`stunt_core::world::mesh`), so no box changes.
-_Source: [culling world nodes outside the view frustum](../../work/2026-11/644_frustum-cull/journal.md#2026-11-16-culling-world-nodes-outside-the-view-frustum), [the cull on top of eye-relative transforms](../../work/2026-11/644_frustum-cull/journal.md#2026-11-17-the-cull-on-top-of-eye-relative-transforms)._
+`[Bounded Observation]`, 2026-11-21, `main` commit `6955e159` (`crates` tree `90057c02`), headless `320x200` (`--viewport-rows 185`).
+CPU scan counts across `LOCATION` (`12..=8262`, `8,251` ticks) and `INTRO` (`12..=3818`, `3,807` ticks) matched live Windows `mesa-dist-win 25.2.8` `SceneRenderer::draw` counts across 100% of frames on Spans A (`12..=300`), B (`3680..=3979`), and C (`2500..=2949`).
+
+- **World totals (`#811`).**
+  `LOCATION`'s built world has `158` terrain patches, `56,395` static props (`6,702,570` vertices, `7,488,138` indices), and `31,314` `WORLD_REACH` nodes; `INTRO`'s built world has `158` terrain patches, `26,386` static props (`819,169` vertices, `1,002,135` indices), and `8,336` `WORLD_REACH` nodes.
+  On `LOCATION` (`8,251` ticks), frustum-surviving `WORLD_REACH` nodes have median `5`, p95 `122.5`, max `214`, and `#811` distance culling drops `1,198` of `169,636` frustum node-frame visits (`mean 20.6 -> 20.4`); on `INTRO`, `437` node-frame visits survive frustum (`0` dropped by distance cull).
+- **Draw distribution (`med / p95 / max`):**
+  - `LOCATION` whole (`8,251` ticks): `world_total` `229 / 1,033 / 1,962` (`ground` `23+13`, `base` `80+75`, `decal` `12+12` med fill+edge); `view_facing` `33` med (`727.2` mean, `2,782.5` p95, `4,071` max); `actor_unlit` `28` (`65` max); `actor_lit` `80` (`93` max); `shadow` `49` (`62` max); `sprite` `0`; `total` `648 / 3,312 / 4,272` (`1,215.0` mean).
+  - `INTRO` whole (`3,807` ticks): `world_total` `36 / 208 / 259`; `view_facing` `1` med (`1,587.8` mean, `8,320` p95, `8,627` max); `actor_unlit` `0` (`15` max); `actor_lit` `199` (`284` max); `shadow` `137` (`221` max); `sprite` `0` (`2` max); `total` `435 / 8,823 / 9,124` (`2,001.3` mean).
+  - Span A (`LOCATION 12..=300`, `289` ticks, `eye_y` `7.00 m`): `world_total` `29` (`133` max), `view_facing` `2,411` (`92.7%` of `2,602` med total).
+  - Span B (`LOCATION 3680..=3979`, `300` ticks, elevated overview `eye_y` med `125.0 m`): `world_total` `1,828` med (`1,962` max; `base` `596+595`, `decal` `317+317`), `view_facing` `627.5` med (`1,120.7` mean, `3,138` max), `total` `2,555` med (`3,490` max).
+  - Span C (`INTRO 2500..=2949`, `450` ticks): `world_total` `52` (`115` max), `view_facing` `4,712` med (`8,421` max), `actor_lit` `257` (`284` max), `shadow` `126` (`221` max), `total` `5,219` med (`8,919` max).
+- **Relighting profile.**
+  Over `INTRO` (`3,807` ticks), `LitLayout::refresh` produced `26,394` `Keep`, `190` `Rewrite` (`190` ticks, max `1`/tick), and `2,014` `Upload` events (`1,491` ticks, max `11`/tick); vertex welding and outlines can move indices/nodes (even at equal counts) or change vertex/shape counts on pose/light transitions so uploads outnumber in-place rewrites (`144` `Rewrite` vs `466` warm-scan / `472` cold-start `Upload` on Span C).
+_Source: [Whole-film draw and relight scans and span selection](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-whole-film-draw-and-relight-scans-and-span-selection)._
+
+## 3. Post-`#644` phase breakdown and A/B probes
+
+`[Bounded Observation]`, 2026-11-21, `6955e159` + `probe.patch`, Windows `mesa-dist-win 25.2.8` (`llvmpipe (LLVM 21.1.7, 256 bits)`) and `RTX 4070 Laptop GPU`, 3 sequential runs per cell (median `[min..max]`; loop spread `0.6%..4.9%`).
+Each tested lavapipe A/B probe kept `frames.zst`, `layers.zst`, `shapes.zst`, and `palettes.zst` byte-identical to its span baseline.
+
+| Cell | Span A `LOCATION 12..=300` (289f) | Span B `LOCATION 3680..=3979` (300f) | Span C `INTRO 2500..=2949` (450f) |
+|---|---|---|---|
+| `lvp_baseline` (`FIF=2`) | `6,370.1 ms` (`22.04 ms/f`) | `5,055.2 ms` (`16.85 ms/f`) | `8,751.5 ms` (`19.45 ms/f`) |
+| `lvp_fif1` (`FIF=1`) | `8,012.2 ms` (`+25.8%`) | `6,591.2 ms` (`+30.4%`) | `12,562.4 ms` (`+43.5%`) |
+| `lvp_plane_only` (`#919`) | `6,289.5 ms` (`-1.3%`) | `5,311.7 ms` (`+5.1%`) | `8,770.8 ms` (`+0.2%`) |
+| `lvp_cull_vf` (`#914`) | `1,236.3 ms` (`4.28 ms/f`, `-80.6%`) | `2,406.9 ms` (`8.02 ms/f`, `-52.4%`) | `2,046.3 ms` (`4.55 ms/f`, `-76.6%`) |
+| `rtx4070_baseline` | `1,299.8 ms` (`4.50 ms/f`) | `1,047.1 ms` (`3.49 ms/f`) | `2,588.7 ms` (`5.75 ms/f`) |
+
+- **Submission vs readback wait.**
+  Under `FRAMES_IN_FLIGHT=2`, `pass_encode_submit` takes `74.2%..79.5%` of baseline loop wall (`3,752.2..6,647.5 ms`), almost entirely inside `queue.submit`, while `poll_color + poll_plane` sits under `29 ms`.
+  Under synchronous `FRAMES_IN_FLIGHT=1`, `queue.submit` drops (`258.9..1,080.2 ms`) and `poll_color` absorbs the unhidden execution wait (`6,282.2 ms`, `5,132.7 ms`, `9,146.9 ms`) while `poll_plane` stays `<= 1.5 ms`.
+- **`#914` (`view_facing` frustum cull).**
+  Frustum-culling `view_facing` root boxes cuts loop time by `80.6%` (`Span A`), `52.4%` (`Span B`), and `76.6%` (`Span C`), bringing lavapipe below the unculled RTX 4070 loop on Spans A and C.
+  Post-cull remaining loop shares: `pass_encode_submit` (`34.5%` Span A, `53.8%` Span B, `22.9%` Span C), `scene_frame` (`19.5%..26.7%`), `readback_copy` (`17.7%..24.1%`), `journal_write` (`4.8%..7.6%`), and on Span C `prepare_relight_decode` (`344.5 ms`, `16.8%`) vs `prepare_relight_upload` (`23.5 ms`, `1.1%`).
+- **`#919` (`plane_texture` without `color_texture`) and `#915` (Span C relight probes).**
+  Omitting `color_texture`, `palette_lut`, color readback, and `check_derivable` (`21.4..36.9 ms` baseline) yielded `-1.3%` (`A`), `+5.1%` (`B`), and `+0.2%` (`C`).
+  On Span C (`8,751.5 ms`), skipping matching `apex_buffer` rewrites (`144` skipped) ran `8,731.9 ms` (`-0.2%`), a 2-slot relit ring ran `8,695.2 ms` (`-0.6%`), and both combined ran `8,702.4 ms` (`-0.6%`).
+- **One-time startup (`build` + `open`).**
+  `LOCATION` took ~`750 ms` scene build + `540..555 ms` lavapipe `open` (`451..460 ms` world/shape upload); `INTRO` took ~`185 ms` + `166 ms`.
+_Source: [Phase breakdown and isolation probes across three spans](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-phase-breakdown-and-isolation-probes-across-three-spans)._
+
+## 4. Thread scaling under `LP_NUM_THREADS` after `#596` and `#644`
+
+`[Bounded Observation]`, 2026-11-21, `6955e159` + `probe.patch`, `LOCATION` `12..=300` (289 ticks), 3 runs each, stores byte-identical across thread counts.
+With staging churn and `121,148` culled world draws removed, `LP_NUM_THREADS` no longer stays flat (`CPU / wall` cores busy in parentheses):
+- **Windows `mesa-dist-win 25.2.8` baseline:** `LP=1` `7,031.8 ms` (`1.25`) -> `LP=4` `6,275.0 ms` (`-10.8%`, `1.38`) -> `unset` `6,267.3 ms` (`-10.9%`, `1.46`).
+- **Windows `#914` `view_facing`-culled:** `LP=1` `1,625.6 ms` (`1.29`) -> `LP=4` `1,176.1 ms` (`-27.6%`, `1.65`) -> `unset` `1,237.2 ms` (`-23.9%`, `1.61`).
+- **WSL 2 Ubuntu 24.04 `mesa-vulkan-drivers 25.2.8` baseline:** `LP=1` `10,715.9 ms` (`1.20`) -> `LP=4` `9,893.8 ms` (`-7.7%`, `1.31`) -> `unset` `9,787.2 ms` (`-8.7%`, `1.36`).
+_Source: [Thread scaling under `LP_NUM_THREADS` on Windows and Linux Mesa](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-thread-scaling-under-lp_num_threads-on-windows-and-linux-mesa)._
+
+## 5. Multi-`VkDevice` in-process versus child processes
+
+`[Bounded Observation]`, 2026-11-21, `LOCATION 50..=649` (600 ticks, 12 aligned seconds), 3 runs each across Windows `mesa-dist-win 25.2.8` and WSL 2 Ubuntu 24.04 `mesa-vulkan-drivers 25.2.8`.
+Decoded per-tick `indices`, `layers`, `shapes`, and 768-byte palettes across `50..=649` matched the 1-worker store for every multi-worker mode (`LP=1` baseline loop `13,953.9 ms` Win / `21,579.7 ms` WSL; E2E `15,304.3 ms` Win / `23,399.0 ms` WSL).
+
+- **In-process partial scaling vs 4-worker regression.**
+  Two threads sharing `offscreen_adapter` (`LP=1`) scaled to `2.21` cores (`8,993.9 ms` loop, `1.55x`) on Windows and `2.07` cores (`15,121.2 ms` loop, `1.43x`) on Ubuntu 24.04, showing Mesa lavapipe does not force strict single-thread serialization across two in-process `VkDevice`s.
+  At four workers (`LP=1`), however, shared-instance in-process slowed to `6,727.8 ms` (`2.07x`) on Windows and **regressed** below 2-way on Ubuntu (`15,890.6 ms` loop, `1.36x`, burning `58.22 s` CPU vs `28.51 s` for 1 worker).
+  Giving each thread its own `wgpu::Instance`/`Adapter` recovered `1,276.6 ms` on Windows (`5,451.2 ms` loop, `4.15` cores) and `2,762.3 ms` on Ubuntu (`13,128.4 ms` loop, `3.38` cores), isolating partial `wgpu` instance/adapter contention, while still trailing child processes.
+- **Child processes win on speed and CPU efficiency for modest RSS.**
+  Four child processes (`LP=1`) reached `4,344.1 ms` max loop (`3.21x`) / `6,162.1 ms` E2E (`2.48x`, `4.59` cores, `28.28 s` CPU) on Windows and `7,650.1 ms` max loop (`2.82x`) / `9,889.7 ms` E2E (`2.37x`, `4.62` cores, `45.70 s` CPU) on Ubuntu.
+  Because each extra lavapipe `VkDevice` adds `751..796 MiB` RSS of device buffers and driver state, sharing one `FilmScene` saved `257.5..299.7 MiB` polled RSS at 4 workers (`3,243.6` vs `3,501.1 MiB` Win; `3,287.1` vs `3,586.7 MiB` WSL; Windows private commit `4,535.3` vs `5,783.1 MiB`).
+_Source: [Multi-`VkDevice` in-process versus child processes on Windows and Linux Mesa](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-multi-vkdevice-in-process-versus-child-processes-on-windows-and-linux-mesa)._
+
+## 6. Optimization verdicts
+
+- **`#914`: Go** (`view_facing` frustum culling cuts `52.4%..80.6%` of loop wall across the three spans; actor/shadow/sprite culling and instancing defer/follow-up).
+- **`#916`: Go via chunked child processes** (`2.82x..3.21x` loop / `2.37x..2.48x` E2E at 4 workers with `~953 MiB` / `0.93 GiB` Linux RSS budget/worker); **no-go** on in-process multi-`VkDevice` pooling.
+- **`#919`: No-go** (`-1.3%` to `+5.1%` loop impact while dropping `check_derivable` validation of LUT output).
+- **`#915` sub-items:** (a) bind-state dedup **defer** (`scene_draw <= 1.1%` post-`#914`); (b) relit vertex ring + apex-skip **no-go** (`-0.6%` combined; `Refresh::Upload` dominates under welding, and CPU decode exceeds GPU upload by `> 12x`); (c) apex-free world layout **defer** (revisit for `~76.7 MiB`/worker RAM headroom under `#916`); (d) pass discard / single poll / CPU readback reuse **defer** (`poll_plane < 0.8 ms`; `OffscreenTarget` already reuses GPU `[Readback; 2]` staging buffers).
+- **`#920`: Defer** (`LOCATION` `world_total` median `229`, p95 `1,033`, max `1,962`; Span B post-`#914` runs `8.02 ms/f` without un-baking `56,395` static props).
+_Source: [Qualitative go, defer, and no-go verdicts](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-qualitative-go-defer-and-no-go-verdicts)._
 
 ## Ruled out
 
-* **LLVM shader compilation, or `LP_NUM_THREADS`, as the cost of a lavapipe render** (mesa-dist-win 25.2.8): `GALLIVM_PERF=nopt` (47.5 s against 48.4 s over LOCATION ticks 12-100) and 1, 4 or unset threads left the time and the frames unchanged; [journal](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-one-model-matrix-upload-per-frame).
-* **Coalescing contiguous world base slices as a speed-up** (LOCATION): no adjacent pair of the base list in walk order continues the previous one's index range, so it removes 0 of a frame's 127,910 `draw_indexed` calls on the 289 frames measured (section 1); [journal](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices).
-* **A cloud session as the place to measure #629's relit-vertex rewrite cost** (Ubuntu's Mesa 25.2.8, 4 vCPUs): a whole INTRO render took 147.4 s and 129.5 s with the rewrite and 133.7 s without it, so mesa-dist-win's 11.4 s cost (one run each way, #474) is smaller than the spread between identical runs there, `[Bounded Observation]`; [journal](../../work/2026-11/629_relight-cost/journal.md#2026-11-18-the-rewrites-cost-on-the-clouds-lavapipe).
+* **Pre-`#644`/`#596` `LP_NUM_THREADS` invariance on `52d84e6`** (mesa-dist-win 25.2.8): `GALLIVM_PERF=nopt` (`47.5 s` against `48.4 s` over `LOCATION 12-100`) and `LP_NUM_THREADS` = `1`, `4`, or unset left runtime flat (`~151 s`, `1.00` core) while per-draw staging allocation held ~half of main-thread samples (`#596`).
+  Section 4 supersedes this for post-`#644` trees, where `LP_NUM_THREADS=4` cuts Span A by `10.8%` (`27.6%` after `#914`).
+  _Source: [2026-11-15](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-one-model-matrix-upload-per-frame) and [2026-11-21](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-thread-scaling-under-lp_num_threads-on-windows-and-linux-mesa)._
+* **Coalescing contiguous world base slices as a speed-up** (`LOCATION` `12..=300`): zero adjacent pairs continue the previous slice's index range (`#603` no-go); [journal](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices).
+* **Single `plane_texture` offscreen target (`#919`) as a speed-up** (`LOCATION` Spans A/B and `INTRO` Span C, mesa-dist-win 25.2.8): `-1.3%`, `+5.1%`, and `+0.2%` loop change; [journal](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-phase-breakdown-and-isolation-probes-across-three-spans).
+* **Skipping matching `apex_buffer` rewrites or double-buffering `LitShape` (`#915`b) on `INTRO`:** `-0.2%`, `-0.6%`, and `-0.6%` combined on Span C (`31.4 ms` baseline / `23.5 ms` post-`#914` total relight upload time vs `379.9 ms` / `344.5 ms` CPU decode); [journal](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-phase-breakdown-and-isolation-probes-across-three-spans).
+* **In-process multi-`VkDevice` pooling for 4 chunk workers (`#916`):** regresses on Ubuntu 24.04 Mesa 25.2.8 (`15.89 s` loop / `58.22 s` CPU vs `7.65 s` / `45.70 s` across 4 child processes) and trails child processes on Windows (`6.73 s` shared / `5.45 s` separate instances vs `4.34 s`); [journal](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-multi-vkdevice-in-process-versus-child-processes-on-windows-and-linux-mesa).
+* **A cloud session as the place to measure `#629`'s relit-vertex rewrite cost** (Ubuntu Mesa 25.2.8, 4 vCPUs): whole `INTRO` took `147.4 s` and `129.5 s` with rewrite against `133.7 s` without it (`[Bounded Observation]`); [journal](../../work/2026-11/629_relight-cost/journal.md#2026-11-18-the-rewrites-cost-on-the-clouds-lavapipe).
 
 ## Open questions
 
-1. Which lavapipe functions hold its command-buffer thread, busy in 52 of 65 samples of a 0.28 s LOCATION tick after #596, and whether fewer draws ([#603](https://github.com/neilsh/stunt-reel/issues/603)) shorten it (section 1, [#600](https://github.com/neilsh/stunt-reel/issues/600)); #602 overlapped the readback with the next tick's work, which section 1 measures.
-2. Whether caching the world's visible mesh slices while the camera holds still is worth it now that readback overlaps the next tick (#602, section 1): `GpuModel::collect_world_meshes` depends only on the world, the eye, and the authored view's eye, target and lens, and took 8 of 42 GPU main-thread samples in #596's profile.
-   The overlap took the GPU run from 16.7 s to 12.4 s, so what remains is the main-thread work plus the part of the wait the pipeline cannot hide; whether a cache shortens that enough to pay is unmeasured.
+1. After `#914` lands `view_facing` frustum culling, how much further `view_facing` instancing saves on surviving forested views (`INTRO` `2500..=2799`), and whether CPU-side `collect_world_meshes` caching (`~3.6..6.3 ms` on `LOCATION` close-ups, `~17.2..28.9 ms` on wide views) or CPU readback `Vec` reuse inside `readback_copy` (`OffscreenTarget` already reuses its `[Readback; 2]` GPU staging buffers; `readback_copy` takes `~274..492 ms` across `289..450` frames) shifts the bottleneck on hardware GPU and post-`#914` lavapipe.
+2. What Linux/Mesa lock causes 4-way in-process separate `wgpu::Instance` devices (`13.13 s` / `52.71 s` CPU) to trail 4 child processes (`7.65 s` / `45.70 s` CPU) on Ubuntu Mesa 25.2.8.

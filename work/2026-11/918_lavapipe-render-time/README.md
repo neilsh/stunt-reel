@@ -2,7 +2,7 @@
 title: "Where does lavapipe render time go after #644 and #811, and do multiple VkDevices parallelize in-process?"
 started: 2026-11-21
 issue: 918
-outcome: ""
+outcome: "Profiled post-#644/#811 lavapipe across LOCATION and INTRO: #914 view_facing culling go (-52.4% to -80.6% loop), #916 subprocess workers go (2.82x-3.21x loop at 4 workers; in-process pooling no-go), #919 and #915b no-go, #915a/c/d and #920 defer."
 ---
 
 # Where does lavapipe render time go after #644 and #811, and do multiple VkDevices parallelize in-process?
@@ -12,3 +12,5 @@ This investigation measures post-`#644`/`#811` per-category draw counts, per-pha
 
 - Design: [`spec.md`](spec.md)
 - Plan: [`plan.md`](plan.md)
+- Journal: [`journal.md`](journal.md)
+- Probe patch: [`probe.patch`](probe.patch)
