@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tomllib
@@ -252,6 +253,37 @@ def test_the_cli_exits_0_for_a_clean_pr(repo: Repo, tmp_path: Path) -> None:
     done = _run(repo, str(body))
     assert done.returncode == 0, done.stdout + done.stderr
     assert done.stdout == ""
+
+
+def test_the_cli_reads_the_checkout_it_runs_in(repo: Repo, tmp_path: Path) -> None:
+    """The branch read is the working directory's checkout, not the script's, which a PR's CI
+    checkout without a local ``main`` could not read (#963)."""
+    repo.git("checkout", "-q", "-b", "feature")
+    repo.write(f"{DOCS}/note.md", f"Seen {(TODAY + timedelta(days=3650)).isoformat()}.\n")
+    repo.commit("a future date")
+    body = tmp_path / "body.md"
+    body.write_text(_body("Adds the task."), encoding="utf-8")
+    done = _run(repo, str(body), "main")
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert f"{DOCS}/note.md:1:" in done.stdout
+
+
+def test_the_cli_exits_2_outside_a_git_checkout(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    body = tmp_path / "body.md"
+    body.write_text(_body("Adds the task."), encoding="utf-8")
+    done = subprocess.run(  # noqa: S603 - this interpreter, fixed arguments
+        [sys.executable, str(SCRIPT), str(body)],
+        cwd=outside,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+        env={**os.environ, "GIT_CEILING_DIRECTORIES": str(tmp_path)},
+    )
+    assert done.returncode == 2
+    assert "not in a git checkout" in done.stderr
 
 
 def test_the_cli_exits_2_for_a_missing_body_file(repo: Repo) -> None:
