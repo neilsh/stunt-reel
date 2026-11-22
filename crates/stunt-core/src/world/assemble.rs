@@ -77,6 +77,9 @@ pub struct World {
     /// [`Self::ir`] because their rotation follows the camera; each frame draws them
     /// (`FilmScene::frame`).
     pub view_facing: Vec<FacingProp>,
+    /// The `SP_1NODE` branches the [`Self::view_facing`] props stand behind, as a tree: each
+    /// node after its parent, one per distinct `(parent, gate)` however many props share it.
+    pub gate_nodes: Vec<GateNode>,
     /// The runs of [`Self::ir`]'s vertices that its props appended, in vertex order, each with
     /// the shape it draws: every prop vertex lies in exactly one run and no other vertex in
     /// any. Emptied with the mesh by [`crate::scene::FilmScene::release_world_mesh`].
@@ -87,17 +90,36 @@ pub struct World {
 }
 
 /// A prop drawn turned with the camera's heading rather than baked into the world mesh.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FacingProp {
     /// Resource ID of the shape.
     pub shape: u16,
     /// Where the shape's origin stands, in `[I1]` metres.
     pub position: [f32; 3],
-    /// The `SP_1NODE` branches it stands behind, outermost first, each a
-    /// [`VisibilityCondition::LodBranch`] in `[I1]`, then a
-    /// [`VisibilityCondition::ScaleReach`] when `PLAYONE`'s distance cut may drop it; the prop
-    /// is drawn on a frame only while every one holds (`FilmScene::frame`).
-    pub gates: Vec<VisibilityCondition>,
+    /// The innermost [`World::gate_nodes`] entry of the `SP_1NODE` branches it stands
+    /// behind, or [`GateNode::ROOT`] when it stands behind none.
+    pub node: u32,
+    /// The [`VisibilityCondition::ScaleReach`] `PLAYONE`'s distance cut tests on it, when that
+    /// may drop it. The prop is drawn on a frame only while its node is open and this holds
+    /// (`FilmScene::frame`).
+    pub reach: Option<VisibilityCondition>,
+}
+
+/// One `SP_1NODE` branch of [`World::gate_nodes`]: a [`VisibilityCondition::LodBranch`] in
+/// `[I1]`, open on a frame while it holds and its parent is open.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GateNode {
+    /// The branch's gate.
+    pub gate: VisibilityCondition,
+    /// The enclosing branch's index in [`World::gate_nodes`], smaller than this node's own, or
+    /// [`Self::ROOT`] for an outermost branch.
+    pub parent: u32,
+}
+
+impl GateNode {
+    /// The open node above every outermost branch: the `parent` of such a branch, and the
+    /// `node` of a prop that stands behind none.
+    pub const ROOT: u32 = u32::MAX;
 }
 
 impl World {
@@ -200,7 +222,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         .collect();
     let drawn = interleave_drawn(&placements.props, shapes, &fixed_drawn, &facing_drawn);
     let props_placed = kept.len().saturating_add(facing.len());
-    let view_facing = facing_props(&facing, &placements.chains, base_y);
+    let (view_facing, gate_nodes) = facing_props(&facing, &placements.chains, base_y);
     let fixed = kept;
     let models = PropModels {
         shapes,
@@ -240,6 +262,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
         terrain,
         tap_failures,
         view_facing,
+        gate_nodes,
         prop_runs,
         placements: records,
     })
@@ -279,29 +302,48 @@ fn split_view_facing(
 }
 
 /// `props`, whose shapes face the view, as drawn each frame, each behind the gates of its
-/// chain in `chains`, in walk order.
+/// chain in `chains`, in walk order; and the gate tree those chains make.
 ///
+/// A branch that several chains share, the same gate under the same parent, is one node.
 /// A view-facing prop is drawn from its shape's shared decode, so it gets neither the
 /// per-placement `OP_TAP` decode nor the ground-decal snap of a baked prop; the type-8 trees
 /// of the reference archives run no `OP_TAP`.
-fn facing_props(props: &[Placement], chains: &[Vec<LodGate>], base_y: f32) -> Vec<FacingProp> {
-    props
+fn facing_props(
+    props: &[Placement],
+    chains: &[Vec<LodGate>],
+    base_y: f32,
+) -> (Vec<FacingProp>, Vec<GateNode>) {
+    let mut nodes: Vec<GateNode> = Vec::new();
+    let mut ids: HashMap<(u32, LodGate), u32> = HashMap::new();
+    let mut chain_nodes: HashMap<u32, u32> = HashMap::new();
+    let facing = props
         .iter()
-        .map(|p| FacingProp {
-            shape: p.shape,
-            position: p.position,
-            gates: chains
-                .get(p.chain as usize)
-                .map_or(&[][..], Vec::as_slice)
-                .iter()
-                .map(|&gate| lod_condition(gate, base_y))
-                .chain(p.reach.map(|scale_index| VisibilityCondition::ScaleReach {
+        .map(|p| {
+            let node = *chain_nodes.entry(p.chain).or_insert_with(|| {
+                let gates = chains.get(p.chain as usize).map_or(&[][..], Vec::as_slice);
+                gates.iter().fold(GateNode::ROOT, |parent, &gate| {
+                    *ids.entry((parent, gate)).or_insert_with(|| {
+                        let id = u32::try_from(nodes.len()).unwrap_or(GateNode::ROOT);
+                        nodes.push(GateNode {
+                            gate: lod_condition(gate, base_y),
+                            parent,
+                        });
+                        id
+                    })
+                })
+            });
+            FacingProp {
+                shape: p.shape,
+                position: p.position,
+                node,
+                reach: p.reach.map(|scale_index| VisibilityCondition::ScaleReach {
                     point: [p.position[0], p.position[1] + base_y, p.position[2]],
                     scale_index,
-                }))
-                .collect(),
+                }),
+            }
         })
-        .collect()
+        .collect();
+    (facing, nodes)
 }
 
 #[cfg(test)]
@@ -459,26 +501,71 @@ mod tests {
             at(0x999, 4.0, 0),
         ];
         let (facing, fixed) = split_view_facing(&props, &shapes);
+        let (drawn, nodes) = facing_props(&facing, &chains, 0.0);
         assert_eq!(
-            facing_props(&facing, &chains, 0.0),
+            drawn,
             vec![
                 FacingProp {
                     shape: 0x3A3,
                     position: [1.0, 0.0, 0.0],
-                    gates: Vec::new(),
+                    node: GateNode::ROOT,
+                    reach: None,
                 },
                 FacingProp {
                     shape: 0x3A3,
                     position: [3.0, 0.0, 0.0],
-                    gates: vec![VisibilityCondition::LodBranch {
-                        point: [-10.0, 20.0, 30.0],
-                        ext: 400,
-                        splitdist: 600,
-                        near: true,
-                    }],
+                    node: 0,
+                    reach: None,
                 },
             ]
         );
+        assert_eq!(
+            nodes,
+            vec![GateNode {
+                gate: VisibilityCondition::LodBranch {
+                    point: [-10.0, 20.0, 30.0],
+                    ext: 400,
+                    splitdist: 600,
+                    near: true,
+                },
+                parent: GateNode::ROOT,
+            }]
+        );
         assert_eq!(fixed, vec![at(0x100, 2.0, 1), at(0x999, 4.0, 0)]);
+    }
+
+    /// Chains that share an outer branch share its node; the same gate under another parent is
+    /// a node of its own, and every node follows its parent.
+    #[test]
+    fn chains_that_share_a_branch_share_its_gate_node() {
+        let gate = |x| LodGate {
+            raw: [x, 0, 0],
+            ext: 400,
+            splitdist: 600,
+            near: true,
+        };
+        let (a, b, c) = (gate(1), gate(2), gate(3));
+        let chains = [
+            Vec::new(),
+            vec![a],
+            vec![a, b],
+            vec![a, c],
+            vec![b],
+            vec![a, b],
+        ];
+        let props: Vec<_> = (0..6)
+            .map(|chain| Placement::bare(0x3A3, [0.0; 3], chain))
+            .collect();
+        let (facing, nodes) = facing_props(&props, &chains, 0.0);
+        let node_of: Vec<u32> = facing.iter().map(|p| p.node).collect();
+        assert_eq!(node_of, [GateNode::ROOT, 0, 1, 2, 3, 1]);
+        let parents: Vec<u32> = nodes.iter().map(|n| n.parent).collect();
+        assert_eq!(parents, [GateNode::ROOT, 0, 0, GateNode::ROOT]);
+        assert!(
+            parents
+                .iter()
+                .enumerate()
+                .all(|(i, &p)| p == GateNode::ROOT || (p as usize) < i)
+        );
     }
 }
