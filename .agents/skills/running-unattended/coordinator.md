@@ -12,7 +12,7 @@ The run is one **coordinator** and its **workers**; the coordinator runs longest
 | Reads | `mise run queue` lines, worker reports, the first line of a review comment, CI state, the lines `mise run pr-threads` prints, a PR's changed file names | The bodies, diffs and code the coordinator does not |
 | Never | Opens a diff, an issue body or a thread's text; writes no code and no PR or doc content; `sleep`s or polls; loads `--help` or the orchestration guide | Arms or merges |
 
-The text the coordinator does write is `run-state.md`, claim and release comments, status notes on a PR, an issue for a reviewer's out-of-scope finding, and a reviewer's returned text posted verbatim.
+The text the coordinator does write is `run-state.md`, claim and release comments, status notes on a PR, an issue for a reviewer's out-of-scope finding, and a reviewer's comment file posted verbatim with `--body-file`.
 When it needs a fact that sits in a body or diff, a worker reads it and reports one line.
 Its claim check reads claim comments by first line, not whole comments ([`loop-and-bounds.md`](loop-and-bounds.md#implementing-an-issue-and-bounding-rounds) step 1).
 
@@ -86,7 +86,7 @@ This is for Orca workers; a cloud session's workers are subagents that report in
 
 | Need | Line | Source |
 |---|---|---|
-| Worker reports | `orca orchestration send --body "<one plain line>" --report-path <file> --task-id <id from the brief>`; keep the report file to about 10 lines, because the coordinator keeps it in context | [`harness-setup.md` § DSH](../../../docs/harness-setup.md#dsh) |
+| Worker reports | `orca orchestration send --body "<one plain line>" --report-path <file> --task-id <task id from your prompt>`; a follow-up dispatch has a new task id, so take it from the prompt, not the brief; keep the report file to about 10 lines, because the coordinator keeps it in context | [`harness-setup.md` § DSH](../../../docs/harness-setup.md#dsh) |
 | Check | `orca orchestration check --terminal <handle>`; there is no `--from` | same |
 | Worker done | the `worker_done` event; a send to a busy worker returns a `messageId` and is usually not acted on, so send the next brief after `worker_done`, in full | [`loop-and-bounds.md`](loop-and-bounds.md#implementing-an-issue-and-bounding-rounds) |
 | Confirm a worker started | `worker-read`, once, within about 2 minutes of the dispatch | same |

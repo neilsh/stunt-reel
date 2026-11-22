@@ -13,13 +13,14 @@ Each lives in exactly one research note, its offsets in one table and its anchor
 1. **Owning note and journal entry.**
    Route the finding, and each ruled-out hypothesis, by the [routing rule](../../../research/README.md#routing-rule); a format fact goes under [`research/formats/`](../../../research/formats/INDEX.md), its byte layout in the `.ksy` where that schema covers it, else in the spec, and its meaning in the spec.
    The experiment is a [journal entry](../../../work/README.md#journal-entries) in its work folder.
+   Every figure the note quotes appears first in the entry it cites, with how it was measured (the command, the build and the inputs), so a reviewer recomputes it from the entry.
    End the finding with an inline provenance line to the entry's heading (the check rejects a reference-style one):
 
    ```markdown
    _Source: [<entry title>](<path>/journal.md#<heading>)._
    ```
 
-   Done when the finding sits in its note and links its entry.
+   Done when the finding sits in its note, links its entry, and every figure it quotes has its measurement in that entry.
 2. **Offsets and anchors.**
    Add every new `PLAYONE.EXE` offset to [`research/playone-exe/memory-map.md`](../../../research/playone-exe/memory-map.md), and register every new `# [MEM-*]` or `# [FMT-*]` anchor in [`doc_anchors.py`](../../../python/stunt_reel/doc_anchors.py).
    Done when every offset has a row and every new anchor a registry entry.
