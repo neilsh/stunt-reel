@@ -545,8 +545,7 @@ pub(crate) fn world_of(ir: SodModelIr) -> World {
 }
 
 /// A view-facing prop whose box crosses the top of the view still draws the part inside it,
-/// and one wholly above the view draws nothing: the frustum cull skips only a prop whose box
-/// lies outside the view.
+/// so the frustum cull keeps it, and one wholly above the view draws nothing.
 #[test]
 fn a_view_facing_prop_crossing_the_view_edge_still_draws() {
     common::gpu_test(|| {

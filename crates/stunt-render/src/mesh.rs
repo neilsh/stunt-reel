@@ -14,7 +14,8 @@ use std::ops::Range;
 use crate::outline::Outlined;
 use glam::{Mat4, Vec3};
 use stunt_core::contracts::{
-    CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
+    CameraTransform, NodeId, SodModelIr, SodVertex, VERTEX_FLAG_DISC, VisibilityCondition,
+    arena_index,
 };
 use stunt_core::world::{GROUND_NODE, PropRun};
 use wgpu::util::DeviceExt as _;
@@ -217,6 +218,9 @@ pub struct GpuModel {
     /// [`GpuNode::bounds`], or `None` when it has no mesh. [`Self::rewrite_vertices`] leaves it,
     /// and every node's box, as uploaded.
     pub bounds: Option<NodeBounds>,
+    /// Whether any vertex is a disc's rim vertex ([`VERTEX_FLAG_DISC`]), which the vertex shader
+    /// moves off its position under a lens other than the default (`squeeze_disc`).
+    pub discs: bool,
 }
 
 impl GpuModel {
@@ -345,15 +349,28 @@ impl GpuModel {
             nodes,
             root_nodes: ir.root_nodes.clone(),
             bounds,
+            discs: ir
+                .vertices
+                .iter()
+                .any(|vertex| vertex.flags & VERTEX_FLAG_DISC != 0),
         }
     }
 
     /// Whether any vertex the model can draw may land inside `view_proj`'s view frustum, by
     /// [`Self::bounds`] and `frustum_keeps`; false for a model with no mesh. `view_proj` takes a
     /// model vertex to clip space, as the vertex shader does.
-    pub(crate) fn in_frustum(&self, view_proj: Mat4) -> bool {
+    ///
+    /// A model with [`Self::discs`] is always kept when `disc_depth_scale` (the camera's) is not
+    /// 1: the shader then rescales a rim vertex's clip depth and `w` about the disc's centre,
+    /// which can bring a vertex outside the box's side planes into the view.
+    pub(crate) fn in_frustum(&self, view_proj: Mat4, disc_depth_scale: f32) -> bool {
+        #[expect(
+            clippy::float_cmp,
+            reason = "the default lens sets the scale to exactly 1, where the shader moves no rim"
+        )]
+        let squeezed = self.discs && disc_depth_scale != 1.0;
         self.bounds
-            .is_some_and(|bounds| frustum_keeps(view_proj, bounds))
+            .is_some_and(|bounds| squeezed || frustum_keeps(view_proj, bounds))
     }
 
     /// Overwrites the vertices and apexes with `shape`'s, keeping the indices, nodes and slices, and returns

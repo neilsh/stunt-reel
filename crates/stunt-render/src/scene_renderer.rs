@@ -30,7 +30,8 @@
 //! out. The world stays depth-tested throughout (`research/parity/painter-order.md`).
 //!
 //! A view-facing prop whose box ([`GpuModel::bounds`]) lies wholly outside the view frustum is
-//! skipped, as the world's off-screen nodes are, since it would cover no pixel.
+//! skipped, as the world's off-screen nodes are, since it would cover no pixel
+//! ([`GpuModel::in_frustum`] keeps a prop with discs under a lens other than the default).
 //!
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
@@ -563,7 +564,10 @@ impl SceneRenderer {
             // A prop whose box is off screen draws no pixel, so it is skipped before its
             // walk; the box is tested by the matrix its vertices reach clip space by.
             let model_matrix = eye_relative_matrix(eye, &prop.world_matrix);
-            if !model.in_frustum(rotation_proj * Mat4::from_cols_array(&model_matrix)) {
+            if !model.in_frustum(
+                rotation_proj * Mat4::from_cols_array(&model_matrix),
+                camera_uniform.disc_depth_scale,
+            ) {
                 continue;
             }
             let to_model = Mat4::from_cols_array(&prop.world_matrix).inverse();

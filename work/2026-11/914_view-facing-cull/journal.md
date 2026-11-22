@@ -35,7 +35,7 @@
   - Each tree's release `stuntreel.exe` rendered Span A on the GPU, and Spans A, B and C on mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`, `--software-only`), with `--headless --tick-range <span> --width 320 --height 200 --viewport-rows 185`, three interleaved runs per tree, timed as whole-process wall clock.
 - **Result**:
   - GPU parity: 28 of 28 `.zst` files byte-identical; both trees scored the same to seven decimals (`location` SSIM 0.8721, IoU 0.9820, 732/745 scored).
-  - Every span's stores were byte-identical across all six runs, on the GPU and on lavapipe.
+  - Each span's stores were byte-identical across all six runs: Span A on the GPU, and Spans A, B and C on Windows lavapipe (which rendered none of the seven films).
   - Whole-process wall clock, seconds, median (min, max):
 
     | Span | Adapter | `dab2184` | `3e26dea` | Median change |
@@ -46,4 +46,16 @@
     | C `INTRO 2500..=2949` | lavapipe | 9.44 (9.41, 9.46) | 2.64 (2.62, 2.65) | -72.0% (3.58x) |
 
 - **Verdict**: adopted: no pixel moves on the GPU or on Windows lavapipe, and every span renders faster.
+- **Lives in**: [`research/parity/lavapipe-render-time.md` § 3](../../../research/parity/lavapipe-render-time.md#3-post-644-phase-breakdown-and-ab-probes).
+
+## 2026-11-22: keeping disc props under a zoomed lens
+
+- **Question**: A review found that `squeeze_disc` rescales a disc rim vertex's clip `z` and `w` about the disc's centre by `disc_depth_scale`, the lens zoom, so under a lens other than the default a rim vertex outside the model box's side planes can move into the view; does keeping such props cost the cull's gain?
+- **Method**: `GpuModel::in_frustum` now keeps a model holding any `VERTEX_FLAG_DISC` vertex whenever the camera's `disc_depth_scale` is not 1.
+  On the cloud session of the first entry, the release binary rendered Spans A, B and C three times each, and `mise run parity -- --software-only --no-build` ran the seven films; stores were compared with `dab2184`'s.
+- **Result**: Every store byte-identical again: the three spans' four files each, and 28 of 28 files over the seven films.
+  Whole-process wall clock, seconds: Span A 5.009, 5.096, 5.119 (median 5.10, against 4.55 without the guard and 15.95 on `dab2184`: `-68.1%`); Span B 6.010, 6.325, 6.550 (median 6.33, `-47.0%`); Span C 3.645, 3.811, 4.027 (median 3.81, `-82.4%`).
+  Span A's camera uses a 22.1-degree lens, so its disc props are no longer culled; Spans B and C did not slow.
+  The GPU and Windows lavapipe were not re-run with the guard.
+- **Verdict**: adopted: the guard closes a hole the stores could not show, at about half a second on Span A.
 - **Lives in**: [`research/parity/lavapipe-render-time.md` § 3](../../../research/parity/lavapipe-render-time.md#3-post-644-phase-breakdown-and-ab-probes).
