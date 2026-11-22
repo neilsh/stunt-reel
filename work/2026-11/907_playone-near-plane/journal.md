@@ -14,12 +14,12 @@
   - No instruction in `0xC50E..0xC9D4` compares a depth with a positive constant: depth enters through the side-plane distances and those sign tests.
   - So the clip volume is the pyramid `−z' ≤ x' < z'`, `−z' ≤ y' < z'`, apex at the eye: the cut is at depth 0 whatever `scale_index`, `work:0x806F` or the lens.
     The depth is quantised to one register unit, which `0x31CF` sets from the object's distance (`s` from the largest coordinate's magnitude, `0x31D5..0x3217`): for coordinates each under 16 m, `s ≤ 5` and the origin's unit is at most `2^-11` m before any halving in the rotation and the lens shift.
-- **Verdict**: `PLAYONE` has no near plane; the renderer's needs one above 0, so the value is the least the depth buffer tolerates.
+- **Verdict**: `PLAYONE`'s polygon clipper has no near plane (its clipping line routine `0xBB83` is unread); the renderer's needs one above 0, so the value is the least the depth buffer tolerates.
 - **Lives in**: [`sod-vm-lines-spans.md` § 8.13](../../../research/playone-exe/sod-vm-lines-spans.md#813-the-clip-volume-has-no-near-plane).
 
 ## 2026-11-22: near planes nearer than 0.1 m on the evidence track
 
-- **Question**: since `PLAYONE` cuts at the eye (the entry above), does a near plane nearer than our 0.1 m default score better?
+- **Question**: since `PLAYONE`'s polygon clipper cuts at the eye (the entry above), does a near plane nearer than our 0.1 m default score better?
 - **Method**: `main` at `9549ef5f` with the temporary switch `DBG_NEAR` replacing `near_clip` in `compute_proj_matrix` ([`switches/DBG_NEAR.diff`](switches/DBG_NEAR.diff), #904's), on the RTX 4070 while another worker rendered on it.
   Track: evidence-backed (image `0xC6AF`, the clipper that has no near plane).
   Targets, quoted before the sweep: `--target bomb:1915-2048`.

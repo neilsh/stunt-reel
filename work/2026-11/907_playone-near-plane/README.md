@@ -2,7 +2,7 @@
 title: "Read the near plane PLAYONE's polygon clipper cuts at"
 started: 2026-11-22
 issue: 907
-outcome: "PLAYONE has no near plane: its polygon clipper cuts only at the view pyramid's sides (0xC6AF), at depth 0; an evidence-track sweep's 0.05 m win came from depth ties, so 0.1 m stays and lowering it is #955"
+outcome: "PLAYONE's polygon clipper has no near plane: it cuts only at the view pyramid's sides (0xC6AF), at depth 0; an evidence-track sweep's 0.05 m win came from depth ties, so 0.1 m stays and lowering it is #955"
 ---
 
 # Read the near plane PLAYONE's polygon clipper cuts at

@@ -21,7 +21,7 @@ sidebar_label: "Render model: painter vs depth"
 
 Our renderer replaces the painting with a GPU depth buffer, by design: [`docs/SPEC.md`](../../docs/SPEC.md) section 2.1 makes "CPU-side Painter's Algorithm / BSP polygon sorting" a non-goal.
 - It builds the world once per film (`crates/stunt-core/src/world/mod.rs`) and draws a sky pass, a world ground pass (`Always`, depth write) that paints the flat ground in walk order ([ADR 0045](../../docs/adr/0045-flat-ground-is-painted-in-walk-order.md)), a base pass (`Greater`) and an `[I5]` decal pass (`GreaterEqual`, bias `2, 2.0`, no depth write; `crates/stunt-render/src/pipeline.rs`, [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)).
-- Depth is reversed and infinite in `Depth24Plus`: `0.1 m / w` (the near plane is a sweep pick, not read from `PLAYONE`; [`attribution.md` § 2](attribution.md#2-current-breakdown)), 1 at the near plane and 0 at infinity, with no far plane ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md); `renderer/mod.rs`, `camera.rs`).
+- Depth is reversed and infinite in `Depth24Plus`: `0.1 m / w` (the near plane is a sweep pick, not read from `PLAYONE`, whose polygon clipper has none; [`attribution.md` § 2](attribution.md#2-current-breakdown)), 1 at the near plane and 0 at infinity, with no far plane ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md); `renderer/mod.rs`, `camera.rs`).
 - Polygons are flat at their palette index through the `[I3]` 256 × 32 lookup, with no lighting (`shaders/mode13h.wgsl`).
 
 The two orders agree wherever the nearer surface is also painted later, which is most of the frame.

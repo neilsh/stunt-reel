@@ -139,6 +139,7 @@ It has no near plane: the depth it cuts at is 0, the eye itself, at every `scale
 So, in exact arithmetic, the clip volume is the pyramid `−z' ≤ x' < z'`, `−z' ≤ y' < z'`, whose only point at `z' = 0` is the eye.
 A polygon crossing the eye plane is cut where it leaves the pyramid's sides, and a polygon however near the eye is drawn where it lies inside them.
 Units cannot move that apex: every plane passes through the eye whatever the shift `work:0x806F` or the lens's zoom of `x'` and `y'` and shift of `z'` (section 8.6, `REJVEC`), which change the pyramid's angle, not where it meets.
+`[Supported Inference]` for the lens: that the zoom scales `x'` and `y'` and shifts `z'` before the projector sees them is read from `0x12DC` scaling the view matrix's first six words by `work:0x8108` and shifting its depth row by `work:0x810C` ([`lod.md`](lod.md)), not traced; scaling each axis by its own factor keeps every plane `x' = ±z'`, `y' = ±z'` through `(0, 0, 0)`.
 What is quantised is the depth: a vertex is in front once `z'` is at least one register unit, and a register unit is set by how far the object lies, not by `scale_index` (the origin words are the object's 16.16 view position shifted right by `0x31CF`'s `s`, [`sod-vm.md` § 4](sod-vm.md#4-register-side-effects)).
 For an object whose coordinates relative to the eye are each under 16 m, `s` is at most 5 and the origin's unit, `2^(s − 16)` m, at most `2^-11` m (0.49 mm), before any halving in the rotation `0x0824:06B0` and the lens's depth shift `work:0x810C` (1 on `BALLOON`, [`palette-fade.md`](palette-fade.md)); `[Supported Inference]` for the unit, read from the writers (`0x31CF`'s magnitude and table lookup, `0x31D5..0x3217`), not traced.
 
@@ -179,6 +180,5 @@ _Source: [the polygon clipper read for a near plane](../../work/2026-11/907_play
   Open: how `0xC9D4` rounds a row's ends, so whether the outline matches the inclusive spans pixel for pixel; whether `PLAYONE` fills terrain through `0x7571` as well, since outlining terrain scored below the base on `LAND` and `BALLOON`; and whether the world's line-list outline drops end pixels a line quad draws.
 
 * **Lines** (section 8.10).
-  Open: a zero-length `ZLINETO` or two-vertex polygon, one pixel in `PLAYONE`, draws nothing here; `vm.rs` keeps the pen's point at `MOVETO` rather than reading the register at `ZLINETO`; whether anything resets `work:0x41EA`; whether the pen persists across `RETURN` and subobjects (`work:0x41EC` is global, `vm.rs` keeps one pen per decode); the clipping variant `0xBB83` and the Patch #3 image's line path.
-* **The clipping line routine** (section 8.13).
-  Whether `0xBB83`, which `0x9100` puts in `work:0x807E` beside the polygon clipper, also cuts only at the side planes was not read.
+  Open: a zero-length `ZLINETO` or two-vertex polygon, one pixel in `PLAYONE`, draws nothing here; `vm.rs` keeps the pen's point at `MOVETO` rather than reading the register at `ZLINETO`; whether anything resets `work:0x41EA`; whether the pen persists across `RETURN` and subobjects (`work:0x41EC` is global, `vm.rs` keeps one pen per decode); the Patch #3 image's line path.
+  The clipping variant `0xBB83`, which `0x9100` puts in `work:0x807E` beside the polygon clipper, was not read, so whether it too cuts only at the side planes (section 8.13) is open.
