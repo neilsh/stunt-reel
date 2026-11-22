@@ -99,6 +99,10 @@ pub struct ActorDraw {
     pub shape_id: u16,
     /// Column-major model-to-world matrix in `[I1]`.
     pub world_matrix: [f32; 16],
+    /// The slot's position in world `[I1]` metres, where `PLAYONE` queues the actor's
+    /// pending-list entry (image `0x1A90`); [`Self::world_matrix`]'s origin lies off it by
+    /// the shape's ground offset.
+    pub position: [f32; 3],
     /// Visibility state mask of the actor at this tick.
     pub state_mask: u16,
     /// Distance in metres from the camera eye to the actor position.
@@ -490,6 +494,7 @@ impl FilmScene {
                 ActorDraw {
                     shape_id: a.shape_id,
                     world_matrix,
+                    position: a.position_meters,
                     state_mask: a.state_mask,
                     distance: distance(eye, a.position_meters),
                     // The shadow entry `0x1C0D` builds its matrix from the slot's own angles
@@ -525,6 +530,7 @@ impl FilmScene {
             .map(|p| ActorDraw {
                 shape_id: p.shape,
                 world_matrix: facing_matrix(heading, p.position),
+                position: p.position,
                 state_mask: 0,
                 distance: distance(eye, p.position),
                 shadow_matrix: None,
@@ -540,6 +546,7 @@ impl FilmScene {
             actors.push(ActorDraw {
                 shape_id,
                 world_matrix: IDENTITY_MATRIX,
+                position: [0.0; 3],
                 state_mask: 0,
                 distance: distance(eye, [0.0; 3]),
                 shadow_matrix: None,

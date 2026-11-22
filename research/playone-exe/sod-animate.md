@@ -104,7 +104,7 @@ _Source: [what picks the OP_ANIMATE frame](../../work/2026-11/222_op-animate/jou
   Images are read from the `.ALL` chunks or `RES` items the tables name (`sprite.rs`); `sprite.rs` decodes a span-coded image, which `0x7DE6` would read as raw rows, but no frame the corpus's tables name that its archives hold is span-coded (§ 3).
 * `stunt-render` draws each sprite as a camera-facing square `size` metres across at its centre, so its screen size comes from the perspective divide rather than `PLAYONE`'s fixed-point formula; one quad per run of equal pixels, in its actor's layer, with no shadow draw.
 * `scene/film.rs` gives each sprite the drawn props the scenery walk puts after its slot's entry (`SpriteDraw::after`, from `PlacementRecords::slot_order`, [`scene-walk-actors.md`](scene-walk-actors.md) § 4).
-  `stunt-render` draws such a sprite after the depth-tested world, with no depth test or write, then those props again from their own runs of the world mesh (`MeshSpans`), depth-tested, and the actors whose origins lie nearer the eye along the view axis than its own actor's; the world's main draw leaves those props out, and the world stays depth-tested otherwise.
+  `stunt-render` draws such a sprite after the depth-tested world, with no depth test or write, then those props again from their own runs of the world mesh (`MeshSpans`), depth-tested, and the actors whose slots lie nearer the eye along the view axis than its own slot (`ActorDraw::position`, not the model matrix's origin, [`scene-walk-actors.md`](scene-walk-actors.md) § 6); the world's main draw leaves those props out, and the world stays depth-tested otherwise.
   Two placed sprites go in walk order, the one with more props after it first, then the one whose centre is farther from the eye, and a prop goes after as many of them as the walk puts it after; that is the walk's order when the sprites' sets of props after them nest, as for sprites of one slot, and an approximation of it for sprites of different slots, which the sweeps did not test.
   A sprite the walk gives no place, or one in a world uploaded in several chunks, is depth-tested as before.
 * `vm.rs` does not read the register flag (`+0x0A`), so a flagged register still yields a sprite.
@@ -122,6 +122,8 @@ Drawing it at its place in the walk raised `CTRY`, `INTRO` and `BOMB` and put th
 _Source: [sprites drawn at their place in the partition order](../../work/2026-11/737_sprite-partition-order/journal.md#2026-11-20-sprites-drawn-at-their-place-in-the-partition-order)._
 Drawing the nearer actors after it raised `INTRO` again, by less, with frames each way (evidence-backed, adopted; one run on lavapipe).
 _Source: [actors nearer than a placed sprite, measured again](../../work/2026-11/737_sprite-partition-order/journal.md#2026-11-20-actors-nearer-than-a-placed-sprite-measured-again)._
+Taking those depths at the slots' positions rather than the model matrices' origins put the `intro:1398` explosion back over the vehicle beside it and raised `INTRO` again (evidence-backed, adopted; one run on one GPU).
+_Source: [actors and placed sprites by their slots' depth](../../work/2026-11/819_actor-slot-depth/journal.md#2026-11-22-actors-and-placed-sprites-by-their-slots-depth)._
 
 ---
 
@@ -145,7 +147,7 @@ _Source: [actors nearer than a placed sprite, measured again](../../work/2026-11
 * **Draw order.**
   `PLAYONE` blits the sprite with no depth test, in the painter's order (§ 3); that this is its actor's place in the entry sort of [`sod-vm-frame.md`](sod-vm-frame.md) § 9.1 is `[Supported Inference]`, not traced through `0x1C00`.
   Against the world's props our render now takes the scenery walk's order (§ 4); what it still leaves out:
-  * 3D actors are ordered against a placed sprite by view depth, which the entry sort does only within one pending list; at `intro:1398` an actor nearer than the explosion's slot is drawn over it, and the capture draws the explosion over that actor ([#819](https://github.com/neilsh/stunt-reel/issues/819)).
+  * 3D actors are ordered against a placed sprite by their slots' view depths, which the entry sort does only within one pending list; an actor whose entry parts from the sprite's at a plane is not ordered by that plane ([`scene-walk-actors.md`](scene-walk-actors.md) § 6 and Open questions).
   * Props that face the view (the world's flat trees) and props' flat-ground runs stay in the world's main draw, under the sprite, wherever the walk puts them.
   * A placement the tree reaches by several paths keeps the first one's steps, and `PLAYONE` draws it once per path.
   * Whether slot 11 records a bucket at tick 871 ([`scene-walk-actors.md`](scene-walk-actors.md), Open questions).

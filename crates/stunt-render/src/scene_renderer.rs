@@ -596,16 +596,14 @@ impl SceneRenderer {
                 meshes,
             );
         }
-        // A point's depth along the view axis, as `PLAYONE`'s entry sort compares actors.
+        // Each slot's depth along the view axis, as `PLAYONE`'s entry sort compares actors: at
+        // the slot's position, not the model matrix's lifted origin
+        // (research/playone-exe/scene-walk-actors.md section 6).
         let back = controller.compute_view_matrix().row(2).truncate();
-        let view_depth = |m: &[f32; 16]| {
-            let at = Mat4::from_cols_array(m).w_axis.truncate();
-            (eye - at).dot(back)
-        };
         let actor_depths: Vec<f32> = frame
             .actors
             .iter()
-            .map(|a| view_depth(&a.world_matrix))
+            .map(|a| (eye - Vec3::from_array(a.position)).dot(back))
             .collect();
         let mut actor_draws = Vec::new();
         self.lit.resize_with(frame.actors.len(), || None);
