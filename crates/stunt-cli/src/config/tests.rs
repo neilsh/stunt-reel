@@ -223,3 +223,23 @@ fn test_report_memory_needs_an_offscreen_render() {
             .report_memory
     );
 }
+
+#[test]
+fn test_workers_split_only_a_whole_tick_out_dir_render() {
+    assert_eq!(parse(&[]).expect("default").workers, 1);
+    let config = parse(&["--workers", "4", "--out-dir", "o"]).expect("parses");
+    assert_eq!((config.workers, config.shard), (4, None));
+    parse(&["--workers", "0", "--out-dir", "o"]).unwrap_err();
+    parse(&["--workers", "2"]).unwrap_err();
+    parse(&["--workers", "2", "--out-dir", "o", "--video", "v.mp4"]).unwrap_err();
+    parse(&["--workers", "2", "--out-dir", "o", "--sample-count", "5"]).unwrap_err();
+    parse(&["--workers", "2", "--out-dir", "o", "--at-ticks", "3,90"]).expect("a tick list");
+    // A worker writes its own store under the run's.
+    let worker = parse(&["--workers", "2", "--out-dir", "o", "--shard", "1"]).expect("a worker");
+    assert_eq!(
+        worker.out_dir,
+        Some(crate::workers::shard_dir(Path::new("o"), 1))
+    );
+    parse(&["--workers", "2", "--out-dir", "o", "--shard", "2"]).unwrap_err();
+    parse(&["--shard", "0"]).unwrap_err();
+}

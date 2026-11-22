@@ -268,6 +268,45 @@ impl RenderJournal {
     }
 }
 
+/// Joins the render directories `parts` into the render directory `dir`, byte for byte the
+/// store one [`RenderJournal`] writes over the same ticks.
+///
+/// Each part holds a run of film seconds after the one before it. Returns `false` when no part
+/// holds a render, and then `dir` is left with no `render.json`.
+///
+/// A part with no `render.json` rendered no tick and is skipped. Any `render.json` already in
+/// `dir` is removed first, and the new one is written last.
+///
+/// # Errors
+///
+/// When a part's store does not match its `render.json`, the parts were drawn from different
+/// films, geometries or adapters or overlap in film seconds, or `dir` cannot be written.
+pub fn merge_render_dirs(dir: &Path, parts: &[PathBuf]) -> Result<bool, StoreError> {
+    let document = dir.join(RENDER_DOCUMENT);
+    match fs::remove_file(&document) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(source) => {
+            return Err(StoreError::Io {
+                path: document,
+                source,
+            });
+        }
+    }
+    let Some(merged) = crate::render_store::merge(dir, parts)? else {
+        return Ok(false);
+    };
+    let record = RenderRecord {
+        ticks: merged.ticks,
+        palette_count: merged.table.palette_count,
+        chunks: merged.table.chunks,
+        planes: merged.table.planes,
+        ..merged.first
+    };
+    write_render_record(dir, &record).map_err(StoreError::Record)?;
+    Ok(true)
+}
+
 /// Reads and validates a render directory's `render.json`.
 ///
 /// # Errors

@@ -26,6 +26,19 @@ cargo run -p stunt-cli -- --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM
 `--sample-count <N>` writes `sample_0001.png`… (1-based sample index) instead; those are not parity inputs.
 A render for scoring, and the store's files, are [Score a render change, § 4](score-a-render-change.md#4-render-by-hand).
 
+## Render one film on several cores
+
+```bash
+stuntreel --headless <film and flags as above> --software-only --out-dir DIR --workers 4
+```
+
+`--workers N` splits a whole-tick `--out-dir` render across N child processes of `stuntreel`, each drawing a run of whole film seconds with `LP_NUM_THREADS=1`, then joins their stores into `DIR`, byte for byte the store a 1-worker render writes (checked at 2 and 4 workers on the seven reference films), and on success removes the workers' stores from `DIR/workers/`.
+A failed worker stops the others and leaves their stores there for inspection, with no `render.json` in `DIR`.
+It needs `--out-dir` and refuses `--video`, `--sample-count` and `-o`.
+Lavapipe draws a device on one thread, so this is how one film uses more than one core; each worker holds the whole world, about 953 MiB (0.93 GiB) for `LOCATION` ([lavapipe render time, § 5](../../research/parity/lavapipe-render-time.md#5-multi-vkdevice-in-process-versus-child-processes)).
+`mise run parity -- --workers N` passes it on, cutting N so the jobs' worker processes fit the cores and that much memory each.
+`mise run parity` always starts the film with the most captured ticks first, whatever `--workers` is.
+
 ## Render chosen ticks beside their capture
 
 `mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build]` renders the listed ticks in one process and writes each beside its reference capture frame; a tick the capture holds no frame for is rendered, and its nearest captured ticks are printed instead of a picture; PNGs and the render store go to `build/scratch/frame/<film>/`.
