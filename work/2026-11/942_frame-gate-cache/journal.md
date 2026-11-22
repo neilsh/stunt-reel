@@ -10,9 +10,9 @@ Spans and command shape: as in [`#934`'s journal](../934_filmscene-frame-cost/jo
   Both built with `cargo build --release --locked -p stunt-cli` on `9d70db21` (`#945`'s docs-only merge and `#946`'s readback copy came after, so neither binary has them): `base` is that tree, `new` is that tree plus this change's `film.rs` and `projection.rs` edits.
   Each also carries [`timer.patch`](timer.patch) (a `PROBE942` line with the loop's and `FilmScene::frame`'s wall time; never committed under `crates/`), which prints the same on both.
 - **Runs.**
-  3 rounds; in each round, per adapter and span, `base` then `new` back to back ([`runs_main.log`](runs_main.log): start load, both timers and the digest of `frames.zst`, `layers.zst`, `shapes.zst` and `palettes.zst` together).
+  3 rounds; in each round, per adapter and span, `base` then `new` back to back ([`runs_main.txt`](runs_main.txt): start load, both timers and the digest of `frames.zst`, `layers.zst`, `shapes.zst` and `palettes.zst` together).
   Each run waited for the CPU load (`Win32_Processor.LoadPercentage`) to fall under `25%` for up to `120 s`; the starts were `3%..24%` except two lavapipe Span A `base` runs that started at `100%` once the wait ran out (the `1,489.9..3,338.6 ms` and `1,357.7..2,884.6 ms` loop spreads below).
-  Because `base` always ran first in a pair, three more rounds on Windows lavapipe ran `new` then `base` ([`runs_swap.log`](runs_swap.log)).
+  Because `base` always ran first in a pair, three more rounds on Windows lavapipe ran `new` then `base` ([`runs_swap.txt`](runs_swap.txt)).
   The second set's other work was heavier: its `base` loop on Span B spans `2,522.0..5,738.0 ms`.
 - **Ubuntu lavapipe.**
   Not measured: this run had no cloud session.
@@ -55,8 +55,11 @@ Spans and command shape: as in [`#934`'s journal](../934_filmscene-frame-cost/jo
 | Win lvp C | `853.3` [`601.4..858.0`] | `592.1` [`443.9..602.9`] | `-30.6%` | `2,693.4` [`2,274.7..2,731.3`] | `2,383.2` [`2,091.3..2,437.3`] | `-11.5%` | overlap |
 
   `scene_frame` fell in all nine cells, `-20.2%..-51.2%`, its runs' ranges disjoint in seven (the two that overlap are RTX Span C and the second set's Span C).
-  The loop fell `-5.3%..-20.9%` with disjoint ranges on Windows lavapipe Spans A and C and RTX Spans A and B in the first set, but Span B on lavapipe rose `+2.3%` with disjoint ranges (new slower) and fell `-3.6%` within its ranges in the second set; the other cells of the second set and RTX Span C overlap.
+  The loop scattered.
+  Base first, five of the six cells have disjoint loop ranges: Windows lavapipe Spans A and C and RTX Spans A and B fell (`-20.9%`, `-5.3%`, `-18.6%`, `-12.8%`), Windows lavapipe Span B rose `+2.3%` (new slower, `2,641.7..2,725.6` against base `2,567.9..2,635.1`), and RTX Span C's ranges overlap (`-11.6%`).
+  New first, no lavapipe cell's ranges separate (A `+0.9%`, B `-3.6%`, C `-11.5%`), so the first set's lavapipe drops did not replicate under the other order; the RTX cells have no second set.
 - **Verdict**: Adopted: `scene_frame` falls by a fifth to a half on both adapters with stores and scores unchanged.
-  The loop saving is only established where its ranges do not overlap (Windows lavapipe A and C, RTX A and B in the first set); on lavapipe Span B, `scene_frame` fell `31.1%` and `40.2%` (`172.4..256.1 ms`) yet the loop moved `+2.3%` and `-3.6%`, so no loop saving is claimed there.
+  No loop saving is claimed: the loop medians moved `-20.9%..+2.3%` on Windows lavapipe and `-18.6%..-11.6%` on the RTX 4070 under other agents' load, and the order swap separated no lavapipe cell.
+  On lavapipe Span B, `scene_frame` fell `31.1%` and `40.2%` (`172.5` and `256.1 ms` from the raw medians) yet the loop moved `+2.3%` and `-3.6%`.
   `#934` saw the same scatter in its loop medians under concurrent load.
 - **Lives in**: [`lavapipe-render-time.md` § 6](../../../research/parity/lavapipe-render-time.md#6-optimization-verdicts).
