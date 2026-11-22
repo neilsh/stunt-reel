@@ -135,7 +135,13 @@ Here is what the error readout sees on those renders: 12 sheets per film, two Ha
   On `vault-bomb` the three `other` notes name a pale grey sky above the horizon where the capture shows light blue.
 * **`vault-balloon`'s graded frames fall on the two runs that set its IoU**: `sun-missing` on the zenith-sky frames (12, 122, 221), `frame-blank` and `aircraft-absent` on the straight-down camera (650, 749) ([`attribution.md`](attribution.md) section 7).
 
-_Source: [error readout on the Patch 3 references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-error-readout-on-the-patch-3-references); `vault-ctry`'s row: [error readout of vault-ctry](../../work/2026-11/619_ctry-readout/journal.md#2026-11-16-error-readout-of-vault-ctry)._
+`[Bounded Observation]`, 2026-11-22, `main` at `b9441a06`, lavapipe (`llvmpipe (LLVM 21.1.7, 256 bits)`): the same readout on the seven references, kept as the baseline in [`readouts/`](readouts/baseline.toml) ([`error-readout.md`](../../.agents/skills/improving-render-parity/error-readout.md)).
+No category reaches the 3-frame lead threshold on any of the seven, and `sea-band-wrong` is 0 frames on all of them where the 2026-11-16 readout above graded it 7, 6, 4 and 3 on four of them.
+The most frames any category reaches is 2: `background-misregistration` on `vault-intro` and `vault-traintnl`, `scenery-missing` on `vault-bomb`.
+`vault-land`'s tick 419 is graded 2 or more on three categories and its `other` note says the camera view differs (a close aircraft and a hill where the capture shows a small distant one).
+That readout and this one used other renders (RTX 4070 then, lavapipe now) and other commits, so the drop is a lead that the render PRs since removed `sea-band-wrong`, not a paired change attributed to one of them.
+
+_Source: [error readout on the Patch 3 references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-error-readout-on-the-patch-3-references), [the baseline readout](../../work/2026-11/901_error-readout-baseline/journal.md#2026-11-22-the-first-error-readout-baseline-of-the-seven-references); `vault-ctry`'s row: [error readout of vault-ctry](../../work/2026-11/619_ctry-readout/journal.md#2026-11-16-error-readout-of-vault-ctry)._
 
 ## Ruled out
 
