@@ -101,6 +101,6 @@ This is for Orca workers; a cloud session's workers are subagents that report in
 | Read a worker | `orca orchestration worker-read --dispatch <dispatch id> --limit 15` | same |
 | List workers | `orca orchestration worker-list --json` | same |
 | Close a finished worker's terminals | `orca terminal close --worktree id:<id> --all` (stops every terminal process of the workspace; only after its PR merged and the worker reported done) | [`harness-setup.md` § Orca](../../../docs/harness-setup.md#orca) |
-| Retire merged workspaces | `mise run reap -- --yes` from the primary checkout, after closing their terminals; by hand, one workspace: `orca worktree rm --worktree <selector>` | same |
+| Retire merged workspaces | `mise run reap -- --yes --reviews` from the primary checkout, after closing their terminals; it also retires a `review-*` checkout idle six hours; by hand, one workspace: `orca worktree rm --worktree <selector>` | same |
 
 For any other flag, a throwaway subagent looks it up and returns the command line and nothing else, never in the coordinator's context; whoever first uses a new line successfully adds it to this table in their PR.
