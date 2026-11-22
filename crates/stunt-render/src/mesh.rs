@@ -14,7 +14,8 @@ use std::ops::Range;
 use crate::outline::Outlined;
 use glam::{Mat4, Vec3};
 use stunt_core::contracts::{
-    CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
+    CameraTransform, NodeId, SodModelIr, SodVertex, VERTEX_FLAG_DISC, VisibilityCondition,
+    arena_index,
 };
 use stunt_core::world::{GROUND_NODE, PropRun};
 use wgpu::util::DeviceExt as _;
@@ -48,7 +49,7 @@ pub struct GpuNode {
     pub marks: Vec<(u32, u32)>,
 }
 
-/// An axis-aligned box in a model's space, the unit of the world's view-frustum cull.
+/// An axis-aligned box in a model's space, the unit of the view-frustum cull.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeBounds {
     /// Corner holding the smallest value on every axis.
@@ -119,6 +120,14 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
         *parent = Some(subtree.union(*parent));
     }
     bounds
+}
+
+/// The box around every root's subtree, from [`node_bounds`]; `None` when no root has one.
+fn model_bounds(roots: &[NodeId], bounds: &[Option<NodeBounds>]) -> Option<NodeBounds> {
+    roots
+        .iter()
+        .filter_map(|root| bounds.get(root.0 as usize).copied().flatten())
+        .reduce(|all, root| all.union(Some(root)))
 }
 
 /// Whether any of `bounds` is inside `view_proj`'s view frustum; `false` only when the box lies
@@ -205,6 +214,13 @@ pub struct GpuModel {
     pub nodes: Vec<GpuNode>,
     /// Root node IDs.
     pub root_nodes: Vec<NodeId>,
+    /// Box around every vertex the model can draw, in its own space: the union of its roots'
+    /// [`GpuNode::bounds`], or `None` when it has no mesh. [`Self::rewrite_vertices`] leaves it,
+    /// and every node's box, as uploaded.
+    pub bounds: Option<NodeBounds>,
+    /// Whether any vertex is a disc's rim vertex ([`VERTEX_FLAG_DISC`]), which the vertex shader
+    /// moves off its position under a lens other than the default (`squeeze_disc`).
+    pub discs: bool,
 }
 
 impl GpuModel {
@@ -324,6 +340,7 @@ impl GpuModel {
             })
             .collect();
 
+        let bounds = model_bounds(&ir.root_nodes, &bounds);
         Self {
             name: ir.name.clone(),
             chunks,
@@ -331,7 +348,29 @@ impl GpuModel {
             index_count: arena_index(ir.indices.len()),
             nodes,
             root_nodes: ir.root_nodes.clone(),
+            bounds,
+            discs: ir
+                .vertices
+                .iter()
+                .any(|vertex| vertex.flags & VERTEX_FLAG_DISC != 0),
         }
+    }
+
+    /// Whether any vertex the model can draw may land inside `view_proj`'s view frustum, by
+    /// [`Self::bounds`] and `frustum_keeps`; false for a model with no mesh. `view_proj` takes a
+    /// model vertex to clip space, as the vertex shader does.
+    ///
+    /// A model with [`Self::discs`] is always kept when `disc_depth_scale` (the camera's) is not
+    /// 1: the shader then rescales a rim vertex's clip depth and `w` about the disc's centre,
+    /// which can bring a vertex outside the box's side planes into the view.
+    pub(crate) fn in_frustum(&self, view_proj: Mat4, disc_depth_scale: f32) -> bool {
+        #[expect(
+            clippy::float_cmp,
+            reason = "the default lens sets the scale to exactly 1, where the shader moves no rim"
+        )]
+        let squeezed = self.discs && disc_depth_scale != 1.0;
+        self.bounds
+            .is_some_and(|bounds| squeezed || frustum_keeps(view_proj, bounds))
     }
 
     /// Overwrites the vertices and apexes with `shape`'s, keeping the indices, nodes and slices, and returns
@@ -1728,6 +1767,52 @@ mod tests {
         );
         ir.root_nodes = vec![parent];
         ir
+    }
+
+    /// A meshless model holding only its box and whether it has discs.
+    fn boxed_model(bounds: Option<NodeBounds>, discs: bool) -> GpuModel {
+        GpuModel {
+            name: "BOX".to_string(),
+            chunks: Vec::new(),
+            vertex_count: 0,
+            index_count: 0,
+            nodes: Vec::new(),
+            root_nodes: Vec::new(),
+            bounds,
+            discs,
+        }
+    }
+
+    #[test]
+    fn a_model_beside_the_view_is_kept_only_for_its_discs_under_a_zoomed_lens() {
+        let beside = Some(boxed([20.0, 0.0, -10.0], 1.0));
+        assert!(!boxed_model(beside, false).in_frustum(test_view_proj(), 1.0));
+        assert!(!boxed_model(beside, false).in_frustum(test_view_proj(), 2.0));
+        assert!(!boxed_model(beside, true).in_frustum(test_view_proj(), 1.0));
+        assert!(boxed_model(beside, true).in_frustum(test_view_proj(), 2.0));
+        let ahead = Some(boxed([0.0, 0.0, -10.0], 1.0));
+        assert!(boxed_model(ahead, false).in_frustum(test_view_proj(), 1.0));
+        assert!(!boxed_model(None, true).in_frustum(test_view_proj(), 2.0));
+    }
+
+    #[test]
+    fn a_model_box_covers_every_root() {
+        let bounds = [
+            Some(boxed([0.0, 0.0, 0.0], 1.0)),
+            Some(boxed([0.0, 0.0, 0.0], 0.5)),
+            None,
+            Some(boxed([5.0, 0.0, 0.0], 1.0)),
+        ];
+        // Node 1 is a child, so its box is already in its root's; node 2 has no mesh.
+        let roots = [NodeId(0), NodeId(2), NodeId(3)];
+        assert_eq!(
+            model_bounds(&roots, &bounds),
+            Some(NodeBounds {
+                min: Vec3::new(-1.0, -1.0, -1.0),
+                max: Vec3::new(6.0, 1.0, 1.0),
+            })
+        );
+        assert_eq!(model_bounds(&[NodeId(2)], &bounds), None);
     }
 
     #[test]
