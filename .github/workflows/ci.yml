@@ -257,7 +257,8 @@ jobs:
         # Also after a failed Rust step: one failure should not hide the other language.
         if: ${{ !cancelled() }}
         env:
-          PYTEST_ADDOPTS: "-n auto"
+          # The gate's `STEP_ENV` in `python/scripts/gate.py`; change both together.
+          PYTEST_ADDOPTS: "-n auto --dist loadgroup"
         run: mise run cov-py
       - name: Coverage summary
         # Runs after a failed test step too, so a partial table still shows; the step fails

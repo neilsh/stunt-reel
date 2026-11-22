@@ -158,6 +158,7 @@ FIXABLE_STEPS = frozenset({"fmt-check-rust", "fmt-check-py", "lint-py"})
 
 # `loadgroup` keeps a test group marked `xdist_group` on one worker; ungrouped tests spread as
 # `load` spreads them.
+# The CI `coverage` job sets the same `PYTEST_ADDOPTS` in `.github/workflows/ci.yml`; change both.
 _PYTEST_ENV = {
     "STUNT_REQUIRE_KSC": "1",
     "STUNT_REQUIRE_PREK": "1",

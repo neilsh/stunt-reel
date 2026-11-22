@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted 2026-11-03, amended 2026-11-06; numbered 0031 until 2026-11-07, when a second 0031 was found. Takes up the `pytest-xdist` option
+accepted 2026-11-03, amended 2026-11-06 and 2026-11-21; numbered 0031 until 2026-11-07, when a second 0031 was found. Takes up the `pytest-xdist` option
 [ADR 0016](0016-the-gate-runs-independent-lanes.md) left for
 [ADR 0010](0010-python-scripts-may-take-well-established-dependencies.md) to clear, and is the
 admitting record that ADR asks for.
@@ -21,15 +21,16 @@ two tests wait out real timeouts (11 s). Trimming them one by one leaves a seria
 
 ## Decision
 
-The gate's `test-py` step runs pytest with `-n auto` from `pytest-xdist`, set through
-`PYTEST_ADDOPTS` in the step's environment (`STEP_ENV` in
+The gate's `test-py` step runs pytest with `-n auto --dist loadgroup` from `pytest-xdist`, set
+through `PYTEST_ADDOPTS` in the step's environment (`STEP_ENV` in
 [gate.py](../../python/scripts/gate.py), which also holds the variables that stop the step from
 silently skipping). `-n auto` is not in pytest's `addopts`: a scoped
 `mise run test-py -- <file>`, the inner loop of AGENTS.md, Working economically, stays in one process, where
-starting workers costs about 2 s against a file that runs in milliseconds. xdist's default `load`
-scheduling hands out single tests, so a module-scoped fixture is rebuilt on each worker that needs
-it; that spends CPU but not wall time, where `loadfile` would keep all of `test_worktree_reap.py`
-on one worker.
+starting workers costs about 2 s against a file that runs in milliseconds. `loadgroup` hands out
+single tests as `load` does, but keeps a test marked `pytest.mark.xdist_group` on one worker, so a
+module-scoped fixture is still rebuilt on each worker that needs it; that spends CPU but not wall
+time, where `loadfile` would keep all of `test_worktree_reap.py` on one worker. The one marked
+group is the formats catalog's shared verification (the 2026-11-21 amendment).
 
 Measured warm on the 16-logical-core Windows workstation, each figure a whole `mise run check`:
 
@@ -74,8 +75,10 @@ instead of three (6 s to 2 s), since each refused loopback connect on Windows re
 - A warm gate is bounded by two lanes together: `test-rust`, where two `stunt-render` GPU test
   binaries run one after the other for about 21 s, and `test-py`, whose floor is the 14.6 s bench
   fixture plus worker startup. Speeding up either alone gains a few seconds.
-- CI's `quality` job runs `mise run check`, so it runs xdist on the runner's cores. `check-windows`
-  is a mise `depends` chain that never goes through gate.py and stays serial.
+- CI's `quality` job runs `mise run check`, so it runs xdist on the runner's cores; the `coverage`
+  job sets the same `PYTEST_ADDOPTS` before `mise run cov-py`, so the tests it measures run on the
+  gate's schedule too. `check-windows` is a mise `depends` chain that never goes through gate.py and
+  stays serial.
 - Tests run in a nondeterministic order across processes. A test may not share a fixed path,
   port or working directory with another, and one that reads pytest's session layout must allow
   for a worker's `<run root>/popen-gw<N>` temporary root, as
@@ -86,7 +89,8 @@ instead of three (6 s to 2 s), since each refused loopback connect on Windows re
 `-n auto` started 16 workers on the workstation, one per logical core, because xdist counts
 physical cores only when `psutil` is installed and falls back to `os.cpu_count()` otherwise. The
 dev group now carries `psutil`, so `-n auto` starts 8. The decision stands with "core" meaning a
-physical one; the gate still passes `-n auto` through `PYTEST_ADDOPTS`.
+physical one; the gate still passes `-n auto` through `PYTEST_ADDOPTS`, with the scheduling option
+the 2026-11-21 amendment adds.
 
 pytest alone, warm, on the 8-physical, 16-logical-core workstation
 ([scoped-gate plan](../../work/2026-11/scoped-gate/spec.md), section 2):
@@ -127,3 +131,14 @@ Sharing one module-scoped repository among the eleven tests that only classify w
 dropped. It cut another 2-5 s of CPU but made one 12 s chain of git calls on a single worker
 (`--dist loadgroup`), which took 62 s in a full run while other sessions loaded the machine, longer
 than the whole suite. Eleven 1-2 s tests spread across workers bound nothing.
+
+## Amendment: grouped scheduling (2026-11-21)
+
+Three tests in [`test_formats_catalog.py`](../../tests/test_formats_catalog.py) consume one
+session-scoped synthetic-fixture result. Under `load` they landed on three workers, so each ran the
+verification and started the Kaitai compiler's JVM: 9 starts in the test process and 3 in the CLI
+test's child, 12 a run. Marking all three `pytest.mark.xdist_group("kaitai-catalog")` and passing
+`--dist loadgroup` keeps them on one worker: 3 in the test process and 3 in the child, six a run,
+counted with a launcher shim over two runs ([#887](https://github.com/neilsh/stunt-reel/pull/887)).
+`loadgroup` rather than `loadfile` pins only the tests that must share state; every ungrouped test
+keeps `load`'s spread across workers.
