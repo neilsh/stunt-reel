@@ -394,6 +394,17 @@ mod tests {
     }
 
     #[test]
+    fn records_compare_equal_whether_or_not_the_index_has_been_built() {
+        let read = placed([0.0, 100.0, 0.0], top_box());
+        let unread = placed([0.0, 100.0, 0.0], top_box());
+        assert_eq!(read.collision_bearing(), [0]);
+        assert_eq!(read, unread);
+        let mut other = placed([0.0, 100.0, 0.0], top_box());
+        other.records[0].position = [1.0, 100.0, 0.0];
+        assert_ne!(read, other);
+    }
+
+    #[test]
     fn a_cube_and_a_plane_lead_to_their_nested_list_by_their_overlap() {
         let cube = CollisionRecord::Cube(CollisionCube {
             centre: [5, -4, 5],

@@ -72,7 +72,7 @@ pub struct MeshSpans {
 ///
 /// A placement under an `SP_1NODE` the walk prunes as far from every camera eye is absent,
 /// its stand-in standing for it, as in the world mesh.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct PlacementRecords {
     /// The records, in walk order.
     pub records: Vec<PlacementRecord>,
@@ -84,7 +84,19 @@ pub struct PlacementRecords {
     /// words are in.
     pub collision_scales: Vec<f32>,
     /// [`Self::collision_bearing`], built on first use; set it with `..Default::default()`.
+    /// A cache: `==` ignores it, and a clone keeps it.
     pub collision_index: OnceLock<Vec<u32>>,
+}
+
+/// Equal when the records and the arenas they index are; the cached
+/// [`PlacementRecords::collision_index`] is not compared.
+impl PartialEq for PlacementRecords {
+    fn eq(&self, other: &Self) -> bool {
+        self.records == other.records
+            && self.steps == other.steps
+            && self.collisions == other.collisions
+            && self.collision_scales == other.collision_scales
+    }
 }
 
 impl PlacementRecords {
@@ -144,8 +156,9 @@ impl PlacementRecords {
 
     /// The indices into [`Self::records`], in record order, of the records the ground and
     /// collision probe tests: not a stand-in, with collision lists and their scale. Built
-    /// once, so [`Self::shadow_top`] skips the rest; `records` must not change after it is
-    /// first read.
+    /// once, so [`Self::shadow_top`] skips the rest. It reads each record's `stand_in` and
+    /// `collision`, `collisions` and `collision_scales`: none of `records`, `collisions` or
+    /// `collision_scales` may change after it is first read, and a clone keeps the index.
     #[must_use]
     pub fn collision_bearing(&self) -> &[u32] {
         self.collision_index.get_or_init(|| {
