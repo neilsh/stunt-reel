@@ -1,5 +1,5 @@
 ---
-summary: "Post-#644/#811 lavapipe profiling across LOCATION and INTRO shows culling view_facing draws (#914) cuts loop wall clock by 52.4% to 80.6% (go; landed, it cut whole-process wall by 38.7% to 72.0% on Windows lavapipe with the stores checked byte-identical); omitting color_texture (#919, -1.3% to +5.1%) and relight vertex-ring/apex-skip (#915b, -0.6%) save little (no-go). LP_NUM_THREADS=4 now cuts Span A loop by 10.8% on Windows (27.7% after #914) and 7.7% on Ubuntu 24.04; four child processes scale 2.82x-3.21x on LOCATION 50-649 while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8 (#916 child processes go, in-process pooling no-go); shipped as stuntreel --workers, 4 workers render the whole LOCATION capture 1.85x faster on 4 vCPUs with byte-identical stores."
+summary: "Post-#644/#811 lavapipe profiling across LOCATION and INTRO shows culling view_facing draws (#914) cuts loop wall clock by 52.4% to 80.6% (go; landed, it cut whole-process wall by 38.7% to 72.0% on Windows lavapipe with the stores checked byte-identical); omitting color_texture (#919, -1.3% to +5.1%) and relight vertex-ring/apex-skip (#915b, -0.6%) save little (no-go). LP_NUM_THREADS=4 now cuts Span A loop by 10.8% on Windows (27.7% after #914) and 7.7% on Ubuntu 24.04; four child processes scale 2.82x-3.21x on LOCATION 50-649 while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8 (#916 child processes go, in-process pooling no-go); shipped as stuntreel --workers, 4 workers render the whole LOCATION capture 1.85x faster on 4 vCPUs with byte-identical stores. After #914, readback_copy (17-32% of the loop) is the next lever; #926 instancing and caching collect_world_meshes are not."
 ---
 # Parity: Render Time on Lavapipe
 
@@ -62,7 +62,14 @@ CPU scan counts across `LOCATION` (`12..=8262`, `8,251` ticks) and `INTRO` (`12.
   - Span C (`INTRO 2500..=2949`, `450` ticks): `world_total` `52` (`115` max), `view_facing` `4,712` med (`8,421` max), `actor_lit` `257` (`284` max), `shadow` `126` (`221` max), `total` `5,219` med (`8,919` max).
 - **Relighting profile.**
   Over `INTRO` (`3,807` ticks), `LitLayout::refresh` produced `26,394` `Keep`, `190` `Rewrite` (`190` ticks, max `1`/tick), and `2,014` `Upload` events (`1,491` ticks, max `11`/tick); vertex welding and outlines can move indices/nodes (even at equal counts) or change vertex/shape counts on pose/light transitions so uploads outnumber in-place rewrites (`144` `Rewrite` vs `466` warm-scan / `472` cold-start `Upload` on Span C).
-_Source: [Whole-film draw and relight scans and span selection](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-whole-film-draw-and-relight-scans-and-span-selection)._
+_Source: [Whole-film draw and relight scans and span selection](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-whole-film-draw-and-relight-scans-and-span-selection); the whole-film p95 figures re-computed from a fresh scan in [View-facing draws left after `#914`](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-view-facing-draws-left-after-914)._
+
+- **After `#914`.**
+  `[Bounded Observation]`, 2026-11-22, CPU scan on `682f74c` (a cloud Ubuntu session).
+  View-facing draws per frame fell to median `0` on both films: `LOCATION` mean `9.2`, p95 `42`, max `245`; `INTRO` mean `23.7`, p95 `188`, max `237`.
+  Spans A and C and the forested `INTRO 2500..=2799` keep no view-facing draw on any frame, and Span B keeps at most `10`; median total draws fell to `191` (A), `1,989` (B) and `480` (C).
+  World draws and `WORLD_REACH` survivors are unchanged.
+_Source: [View-facing draws left after `#914`](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-view-facing-draws-left-after-914)._
 
 ## 3. Post-`#644` phase breakdown and A/B probes
 
@@ -78,11 +85,11 @@ Each tested lavapipe A/B probe kept `frames.zst`, `layers.zst`, `shapes.zst`, an
 | `rtx4070_baseline` | `1,299.8 ms` (`4.50 ms/f`) | `1,047.1 ms` (`3.49 ms/f`) | `2,588.7 ms` (`5.75 ms/f`) |
 
 - **Submission vs readback wait.**
-  Under `FRAMES_IN_FLIGHT=2`, `pass_encode_submit` takes `74.2%..79.5%` of baseline loop wall (`3,752.2..6,647.5 ms`), almost entirely inside `queue.submit`, while `poll_color + poll_plane` sits under `29 ms`.
+  Under `FRAMES_IN_FLIGHT=2`, `pass_encode_submit` took `73.7%..79.1%` of baseline loop wall (`3,667.8..6,571.2 ms`) when `#931` re-ran this baseline, almost entirely inside `queue.submit`, while `poll_color + poll_plane` sits under `29 ms`.
   Under synchronous `FRAMES_IN_FLIGHT=1`, `queue.submit` drops (`258.9..1,080.2 ms`) and `poll_color` absorbs the unhidden execution wait (`6,282.2 ms`, `5,132.7 ms`, `9,146.9 ms`) while `poll_plane` stays `<= 1.5 ms`.
 - **`#914` (`view_facing` frustum cull).**
   Frustum-culling `view_facing` root boxes cuts loop time by `80.6%` (`Span A`), `52.4%` (`Span B`), and `76.6%` (`Span C`), bringing lavapipe below the unculled RTX 4070 loop on Spans A and C.
-  Post-cull remaining loop shares: `pass_encode_submit` (`34.5%` Span A, `53.8%` Span B, `22.9%` Span C), `scene_frame` (`19.5%..26.7%`), `readback_copy` (`17.7%..24.1%`), `journal_write` (`4.8%..7.6%`), and on Span C `prepare_relight_decode` (`344.5 ms`, `16.8%`) vs `prepare_relight_upload` (`23.5 ms`, `1.1%`).
+  Post-cull remaining loop shares under this probe: `pass_encode_submit` (`34.5%` Span A, `53.8%` Span B, `22.9%` Span C), `scene_frame` (`19.5%..26.7%`), `readback_copy` (`17.7%..24.1%`), `journal_write` (`4.8%..7.6%`), and on Span C `prepare_relight_decode` (`344.5 ms`, `16.8%`) vs `prepare_relight_upload` (`23.5 ms`, `1.1%`).
 - **`#914` as landed.**
   `[Bounded Observation]`, 2026-11-22, `dab2184` against the branch, whole-process wall clock (scene build and renderer open included), 3 interleaved runs per cell.
   `SceneRenderer::prepare` skips a `view_facing` draw whose model box (the union of its roots' subtree boxes) `frustum_keeps` rejects, before its walk; a model with disc rim vertices is kept whenever the lens is not the default, since `squeeze_disc` can then move a rim vertex into the view.
@@ -94,8 +101,16 @@ Each tested lavapipe A/B probe kept `frames.zst`, `layers.zst`, `shapes.zst`, an
   Omitting `color_texture`, `palette_lut`, color readback, and `check_derivable` (`21.4..36.9 ms` baseline) yielded `-1.3%` (`A`), `+5.1%` (`B`), and `+0.2%` (`C`).
   On Span C (`8,751.5 ms`), skipping matching `apex_buffer` rewrites (`144` skipped) ran `8,731.9 ms` (`-0.2%`), a 2-slot relit ring ran `8,695.2 ms` (`-0.6%`), and both combined ran `8,702.4 ms` (`-0.6%`).
 - **One-time startup (`build` + `open`).**
-  `LOCATION` took ~`750 ms` scene build + `540..555 ms` lavapipe `open` (`451..460 ms` world/shape upload); `INTRO` took ~`185 ms` + `166 ms`.
-_Source: [Phase breakdown and isolation probes across three spans](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-phase-breakdown-and-isolation-probes-across-three-spans)._
+  `LOCATION` took ~`750 ms` scene build + `540..555 ms` lavapipe `open` (`456..471 ms` world/shape upload in `#931`'s re-run); `INTRO` took ~`185 ms` + `166 ms`.
+_Source: [Phase breakdown and isolation probes across three spans](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-phase-breakdown-and-isolation-probes-across-three-spans); the `pass_encode_submit` and upload figures from [Where loop time goes after `#914`](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-where-loop-time-goes-after-914)._
+- **Where loop time goes after `#914`.**
+  `[Bounded Observation]`, 2026-11-22, `682f74c` + `#931`'s probe, 3 runs per cell, every store byte-identical to an unpatched build on its adapter.
+  Loop medians on Windows lavapipe fell from `6,178.2`, `4,974.3` and `8,717.9 ms` (the pre-`#914` probe re-run alongside) to `1,292.8`, `2,467.4` and `2,089.6 ms` (Spans A, B, C), and on the RTX 4070 to `852.4`, `863.8` and `1,499.2 ms`.
+  The phases left: `pass_encode_submit` (`22.8%..53.9%` on lavapipe, `2.9%..11.4%` on the GPU), `scene_frame` (`19.7%..30.4%`, `27.9%..39.1%`), `readback_copy` (`17.2%..21.8%`, `26.6%..31.8%`) and, on Span C, `prepare_relight_decode` (`16.8%`, `22.9%`).
+  The world block of `prepare` (`prepare_world`, whose main call is `collect_world_meshes`) takes at most `0.3%..2.1%` and `prepare_view_facing` `0.4%..2.9%` on either adapter.
+  These loop cuts (`79.1%`, `50.4%`, `76.0%`) against a re-measured baseline sit within `2.0` points of the probe's `80.6%`, `52.4%` and `76.6%` above; the pre-`#914` probe's `pass_encode_submit` took `73.7%..79.1%` of the loop, and the landed cull leaves it `32.7%`, `53.9%` and `22.8%`.
+  `read_back` builds each plane with a byte-at-a-time iterator; copying row by row with `extend_from_slice`, still allocating each frame, cut `readback_copy` by about 85% on a cloud Ubuntu lavapipe (`457.4` to `68.9 ms` on Span A, `757.7` to `113.2 ms` on Span C), with the stores byte-identical; the loop medians moved `-3.2%` (inside Span A's `9.5%` run spread) and `-11.2%`.
+_Source: [Where loop time goes after `#914`](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-where-loop-time-goes-after-914), [What `readback_copy` spends its time on](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-what-readback_copy-spends-its-time-on)._
 
 ## 4. Thread scaling under `LP_NUM_THREADS` after `#596` and `#644`
 
@@ -134,8 +149,9 @@ _Source: [Worker processes on the cloud's lavapipe over the seven reference film
 - **`#916`: Go via chunked child processes** (`2.82x..3.21x` loop / `2.37x..2.48x` E2E at 4 workers with `~953 MiB` / `0.93 GiB` Linux RSS budget/worker); **no-go** on in-process multi-`VkDevice` pooling.
 - **`#919`: No-go** (`-1.3%` to `+5.1%` loop impact while dropping `check_derivable` validation of LUT output).
 - **`#915` sub-items:** (a) bind-state dedup **defer** (`scene_draw <= 1.1%` post-`#914`); (b) relit vertex ring + apex-skip **no-go** (`-0.6%` combined; `Refresh::Upload` dominates under welding, and CPU decode exceeds GPU upload by `> 12x`); (c) apex-free world layout **defer** (revisit for `~76.7 MiB`/worker RAM headroom under `#916`); (d) pass discard / single poll / CPU readback reuse **defer** (`poll_plane < 0.8 ms`; `OffscreenTarget` already reuses GPU `[Readback; 2]` staging buffers).
+- **After `#914` (`#931`):** **go** on a row-wise copy in `read_back`, the part of `#915` (d)'s CPU readback work worth doing (`readback_copy` is `17.2%..21.8%` of the loop on Windows lavapipe and `26.6%..31.8%` on the RTX 4070; on Ubuntu lavapipe the copy, not the `Vec`, is about 85% of it); **no-go** on `#926` view-facing instancing (no view-facing draw survives on its forested span, at most `245` per frame on either film) and on caching `collect_world_meshes` (the world block is at most `0.3%..2.1%` of the loop) (section 3).
 - **`#920`: Defer** (`LOCATION` `world_total` median `229`, p95 `1,033`, max `1,962`; Span B post-`#914` runs `8.02 ms/f` without un-baking `56,395` static props).
-_Source: [Qualitative go, defer, and no-go verdicts](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-qualitative-go-defer-and-no-go-verdicts)._
+_Source: [Qualitative go, defer, and no-go verdicts](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-qualitative-go-defer-and-no-go-verdicts); the `#931` verdicts from [Where loop time goes after `#914`](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-where-loop-time-goes-after-914) and [View-facing draws left after `#914`](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-view-facing-draws-left-after-914)._
 
 ## Ruled out
 
@@ -146,11 +162,13 @@ _Source: [Qualitative go, defer, and no-go verdicts](../../work/2026-11/918_lava
 * **Single `plane_texture` offscreen target (`#919`) as a speed-up** (`LOCATION` Spans A/B and `INTRO` Span C, mesa-dist-win 25.2.8): `-1.3%`, `+5.1%`, and `+0.2%` loop change; [journal](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-phase-breakdown-and-isolation-probes-across-three-spans).
 * **Skipping matching `apex_buffer` rewrites or double-buffering `LitShape` (`#915`b) on `INTRO`:** `-0.2%`, `-0.6%`, and `-0.6%` combined on Span C (`31.4 ms` baseline / `23.5 ms` post-`#914` total relight upload time vs `379.9 ms` / `344.5 ms` CPU decode); [journal](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-phase-breakdown-and-isolation-probes-across-three-spans).
 * **In-process multi-`VkDevice` pooling for 4 chunk workers (`#916`):** regresses on Ubuntu 24.04 Mesa 25.2.8 (`15.89 s` loop / `58.22 s` CPU vs `7.65 s` / `45.70 s` across 4 child processes) and trails child processes on Windows (`6.73 s` shared / `5.45 s` separate instances vs `4.34 s`); [journal](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-multi-vkdevice-in-process-versus-child-processes-on-windows-and-linux-mesa).
+* **View-facing instancing (`#926`) after `#914`:** the forested `INTRO 2500..=2799` keeps no view-facing draw, Span B at most `10`, and no frame of either film more than `245`; [journal](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-view-facing-draws-left-after-914).
+* **Caching `collect_world_meshes` after `#914`:** the world block it sits in (`prepare_world`) is at most `0.3%..2.1%` of the loop on Windows lavapipe, the RTX 4070 and Ubuntu lavapipe; [journal](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-where-loop-time-goes-after-914).
 * **A cloud session as the place to measure `#629`'s relit-vertex rewrite cost** (Ubuntu Mesa 25.2.8, 4 vCPUs): whole `INTRO` took `147.4 s` and `129.5 s` with rewrite against `133.7 s` without it (`[Bounded Observation]`); [journal](../../work/2026-11/629_relight-cost/journal.md#2026-11-18-the-rewrites-cost-on-the-clouds-lavapipe).
 
 ## Open questions
 
-1. After `#914` lands `view_facing` frustum culling, how much further `view_facing` instancing saves on surviving forested views (`INTRO` `2500..=2799`), and whether CPU-side `collect_world_meshes` caching (`~3.6..6.3 ms` on `LOCATION` close-ups, `~17.2..28.9 ms` on wide views) or CPU readback `Vec` reuse inside `readback_copy` (`OffscreenTarget` already reuses its `[Readback; 2]` GPU staging buffers; `readback_copy` takes `~274..492 ms` across `289..450` frames) shifts the bottleneck on hardware GPU and post-`#914` lavapipe.
+1. How much a row-wise `read_back` copy saves on Windows lavapipe and the RTX 4070, where `readback_copy` is `17.2%..31.8%` of the loop, and what in `FilmScene::frame` (`scene_frame`, `19.7%..39.1%` after `#914`) costs most.
 2. What Linux/Mesa lock causes 4-way in-process separate `wgpu::Instance` devices (`13.13 s` / `52.71 s` CPU) to trail 4 child processes (`7.65 s` / `45.70 s` CPU) on Ubuntu Mesa 25.2.8.
 3. How much `mise run parity -- --software-only --workers N` saves on a machine with more cores than films, such as an 8-core laptop, and whether `LOCATION` should take more workers than the shorter films, since on 4 vCPUs (section 5) the run gained about 8% at best.
 4. Whether `#644`'s world cull, which has no disc guard, drops a baked prop's disc rim that `squeeze_disc` would bring into the view under a zoomed lens (`#914`'s view-facing cull keeps such models; section 3).
