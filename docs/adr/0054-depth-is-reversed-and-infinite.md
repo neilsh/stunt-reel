@@ -3,7 +3,7 @@
 ## Status
 
 accepted 2026-11-20 for [#637](https://github.com/neilsh/stunt-reel/issues/637).
-#637 proposed reversed depth in `Depth32Float`; this ADR departs from that proposal and keeps `Depth24Plus` (Considered Options), and the owner has not yet signed off on the departure.
+#637 proposed reversed depth in `Depth32Float`; this ADR departs from that proposal and keeps `Depth24Plus` (Considered Options), and the owner signed off on the departure on 2026-11-22, after its re-measurement; [#966](https://github.com/neilsh/stunt-reel/issues/966) re-measures `Depth32Float` once the castle moat's tie is fixed.
 Amends the compare functions and the sign of the depth bias of [ADR 0046](0046-coplanar-decals-are-drawn-in-an-ordered-pass.md) (`LessEqual`, `constant: -2, slope_scale: -2.0`); its other decisions stand.
 Amended 2026-11-21 for [#922](https://github.com/neilsh/stunt-reel/issues/922): the outline line lists are clipped to a band around the view, and the device requires clip distances (the last two Decision bullets, and the Considered Options and Consequences marked #922).
 
