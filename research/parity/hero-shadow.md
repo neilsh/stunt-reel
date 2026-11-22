@@ -54,6 +54,10 @@ Method: [`method.md`](method.md); score history: journal entries, and before the
 
 _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](../../work/2026-10/parity-log/log.md)._
 
+**The near plane as the view slot's missing footprint** (2026-11-20 and 2026-11-22, `[Bounded Observation]`, `BRETT.FLM`).
+A 0.05 m near plane, and the 0.1 m one now in the renderer, fill the bottom rows with the road but leave the view slot's shadow at 22 index-0 pixels on 19 of 20 frames and 3,327 on one (the capture holds 4,856 on each); the cause was the shadow draw's facing gates (question 10), not the clip.
+_Source: [the shadow draw's facing gates](../../work/2026-11/840_brett-view-slot-shadow/journal.md#2026-11-22-the-shadow-draws-facing-gates-test-the-flattened-face)._
+
 ## Ruled out
 
 All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named.
@@ -103,6 +107,9 @@ _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](../../work/2
     _Source: [the view slot's shadow, live](../../work/2026-11/510_view-slot-shadow/journal.md#2026-11-16-the-view-slots-shadow-live-and-a-reference-film-for-it)._
     Compared 2026-11-20 (`[Bounded Observation]`, GPU, [#499](https://github.com/neilsh/stunt-reel/issues/499)): the band is 4,856 index-0 pixels in rows 150 to 184 on each of those 20 frames; our view-slot shadow draws 257 of them on tick 716 (SSIM 0.8061 to 0.8375) and none on the other 19, where the eye, at the three ticks printed (430, 638 and 715 of the film's stream), is at the slot's own position 0.15 m above the ground and our rows 170 to 184 are the ocean (layer 1, index 208; `[Supported Inference]`: the ground nearer than the 0.5 m near plane is clipped); a 0.05 m near plane fills those rows with the road (layer 3) but still draws no band on 19 frames and lowers `BRETT.FLM`'s `mean_ssim_scored`.
     The seven reference films are unchanged by the view slot's shadow on the GPU.
-    Why the shadow's footprint is missing on the 19 frames is open ([#840](https://github.com/neilsh/stunt-reel/issues/840)).
+    Answered 2026-11-22 (`[Bounded Observation]`, GPU and lavapipe, [#840](https://github.com/neilsh/stunt-reel/issues/840)): the slot's flags `0x1F` include `SIF_MOVES`, so `PLAYONE` probes its plane (the static-slot rule does not apply), and the footprint was missing because the shadow draw's facing gates tested the unflattened faces against the real eye, which is inside the car: the roof, hood and floor groups were culled, and the groups drawn on tick 639 were walls, which flatten to nothing.
+    `PLAYONE`'s `REJ` tests the faces its flattening matrix produced ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis), `[Supported Inference]`); with the gate tested that way our render holds 4,809 index-0 pixels in rows 150 to 184 on every one of the 20 frames, against 4,856, and the seven reference films' scores rise or hold (ctry 0.9377 to 0.9385, intro 0.8825 to 0.8833, no frame down more than 0.005).
+    Not tested, the footprint being explained without them: the cull `0x1B0C` (it passes this slot by break), a near-plane clip of the shadow polygon at `0x1C0D`, the winding from inside and the 1 mm lift at near depths.
+    _Source: [the shadow draw's facing gates](../../work/2026-11/840_brett-view-slot-shadow/journal.md#2026-11-22-the-shadow-draws-facing-gates-test-the-flattened-face)._
     _Source: [the GPU judge and `BRETT.FLM` comparison](../../work/2026-11/499_view-slot-shadow-gpu/journal.md#2026-11-20-the-gpu-judge-and-the-view-slots-shadow-against-brettflms-capture)._
 11. ~~Whether slot byte `[si+1]` is the create `type_flags`~~ Answered 2026-11-14 (`[Established]`, static): the create handler `0x3CF2` stores the byte verbatim (`0x3CFD`) ([`sod-vm-frame.md` § 9.1](../playone-exe/sod-vm-frame.md#91-the-actor-shadow-draw)).
