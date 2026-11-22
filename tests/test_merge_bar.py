@@ -191,6 +191,20 @@ def test_review_body_findings_are_listed_without_failing() -> None:
     assert any(line.startswith("note findings: 1 review-body") for line in lines)
 
 
+def test_a_pr_lint_pass_is_one_condition() -> None:
+    lines, reasons = merge_bar.evaluate(_pull(), threads=[], findings=[], lint=[])
+    assert reasons == []
+    assert any(line.startswith("ok   pr-lint") for line in lines)
+
+
+def test_a_pr_lint_failure_fails_the_bar_and_is_listed() -> None:
+    failure = "the last line is 'Thanks.', not the attribution line"
+    lines, reasons = merge_bar.evaluate(_pull(), threads=[], findings=[], lint=[failure])
+    assert reasons == [f"pr-lint: {failure}"]
+    assert any(line.startswith("FAIL pr-lint") for line in lines)
+    assert any(failure in line for line in lines)
+
+
 def test_a_draft_fails() -> None:
     assert _reasons(_pull(draft=True)) == ["the PR is a draft"]
 
@@ -326,7 +340,7 @@ def test_main_uses_rest_in_a_cloud_session_and_prints_pass(
     monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
     monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])
     monkeypatch.setattr(pr_threads, "read_reviews", lambda *_a: (None, []))
-    assert merge_bar.main(["9"]) == 0
+    assert merge_bar.main(["9"], lint=lambda _body: []) == 0
     out = capsys.readouterr().out
     assert out.splitlines()[0] == "o/r#9"
     assert out.splitlines()[-1] == "PASS"
@@ -345,9 +359,35 @@ def test_main_prints_every_failure_reason_and_exits_1(
     monkeypatch.setattr(pr_threads, "_gh", gh)
     monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])
     monkeypatch.setattr(pr_threads, "read_reviews", lambda *_a: (None, []))
-    assert merge_bar.main(["9"]) == 1
+    assert merge_bar.main(["9"], lint=lambda _body: []) == 1
     last = capsys.readouterr().out.splitlines()[-1]
     assert last == "FAIL: the body has no Fixes, Closes or Part of #N line; the PR is a draft"
+
+
+def test_main_reports_a_pr_lint_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+
+    def gh(*args: str, **_k: Any) -> Any:
+        return _graphql_view() if args[0] == "pr" else {"full_name": "o/r"}
+
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])
+    monkeypatch.setattr(pr_threads, "read_reviews", lambda *_a: (None, []))
+    seen: list[str] = []
+
+    def lint(body: str) -> list[str]:
+        seen.append(body)
+        return ["the body is empty, so it has no attribution line"]
+
+    assert merge_bar.main(["9"], lint=lint) == 1
+    out = capsys.readouterr().out
+    assert seen == ["Adds the task.\n\nFixes #863\n"]
+    assert "pr-lint: the body is empty, so it has no attribution line" in out
+    assert out.splitlines()[-1] == (
+        "FAIL: pr-lint: the body is empty, so it has no attribution line"
+    )
 
 
 def test_main_reports_a_gh_failure_as_exit_2(
@@ -499,8 +539,8 @@ def test_main_passes_the_issue_to_the_body_check(
     monkeypatch.setattr(pr_threads, "_gh", gh)
     monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])
     monkeypatch.setattr(pr_threads, "read_reviews", lambda *_a: (None, []))
-    assert merge_bar.main(["9", "--issue", "863"]) == 0
-    assert merge_bar.main(["9", "--issue", "12"]) == 1
+    assert merge_bar.main(["9", "--issue", "863"], lint=lambda _body: []) == 0
+    assert merge_bar.main(["9", "--issue", "12"], lint=lambda _body: []) == 1
     assert capsys.readouterr().out.splitlines()[-1] == "FAIL: the body links #863, not #12"
 
 

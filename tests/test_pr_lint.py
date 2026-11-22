@@ -1,0 +1,240 @@
+"""``mise run pr-lint``: the PR-body and branch checks a reviewer would make by hand."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import tomllib
+from datetime import date, timedelta
+from pathlib import Path
+
+import pr_lint
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT = REPO_ROOT / "python" / "scripts" / "pr_lint.py"
+#: The local day the date checks are judged against; every fixture date is relative to it.
+TODAY = date(2026, 11, 22)
+#: Fixture paths are built from these parts so this file names no document path of its own for
+#: ``test_code_cited_docs_exist`` to look up.
+RESEARCH = "research"
+DOCS = "docs"
+WORK = "work/2026-11"
+EXPECTED = f"{RESEARCH}/parity/expected"
+FOLDER = f"{WORK}/910_pr-lint"
+ISSUE = 910
+
+
+def _git(repo: Path, *args: str) -> str:
+    """Run git args in repo with a fixed identity; return its stdout, stripped."""
+    done = subprocess.run(  # noqa: S603 - fixed git arguments
+        ["git", *args],  # noqa: S607 - git from PATH
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.invalid",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.invalid",
+        },
+    )
+    return done.stdout.strip()
+
+
+class Repo:
+    """A scratch repository whose ``main`` holds one file under ``crates/``."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        root.mkdir()
+        hooks = root.parent / "no-hooks"
+        hooks.mkdir()
+        self._config = [
+            "-c", "user.name=Test", "-c", "user.email=test@example.com",
+            "-c", "commit.gpgsign=false", "-c", f"core.hooksPath={hooks}",
+        ]  # fmt: skip
+        self.git("init", "-q", "-b", "main")
+        self.write("crates/a.rs", "fn a() {}\n")
+        self.commit("start")
+
+    def git(self, *args: str) -> str:
+        done = subprocess.run(  # noqa: S603 - fixed git arguments
+            ["git", *self._config, *args],  # noqa: S607 - git from PATH
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        return done.stdout.strip()
+
+    def write(self, name: str, text: str) -> None:
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
+
+    def commit(self, message: str) -> None:
+        self.git("add", "-A")
+        self.git("commit", "-qm", message)
+
+    @property
+    def tree(self) -> str:
+        """``git rev-parse HEAD:crates``, the tree every changed pin must equal."""
+        return self.git("rev-parse", "HEAD:crates")
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Repo:
+    return Repo(tmp_path / "repo")
+
+
+def _body(*lines: str) -> str:
+    """A PR body of *lines*, then the attribution line last."""
+    return "\n".join([*lines, "", pr_lint.ATTRIBUTION]) + "\n"
+
+
+def _readme(started: str, *, issue: int | None = ISSUE) -> str:
+    """A work folder's README, with an ``issue`` key when *issue* is given."""
+    record = "" if issue is None else f"issue: {issue}\n"
+    return (
+        "---\n"
+        'title: "A synthetic work item"\n'
+        f"started: {started}\n"
+        f"{record}"
+        'outcome: ""\n'
+        "---\n\n"
+        "# A synthetic work item\n"
+    )
+
+
+def _run(repo: Repo, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run the task's script in repo."""
+    return subprocess.run(  # noqa: S603 - this interpreter, fixed arguments
+        [sys.executable, str(SCRIPT), *args],
+        cwd=repo.root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+
+# --- attribution ---
+
+
+def test_the_attribution_line_must_be_the_last_line() -> None:
+    assert pr_lint.attribution_failures(_body("Adds the task.")) == []
+    assert pr_lint.attribution_failures(_body("Adds the task.") + "Thanks.\n") != []
+    assert pr_lint.attribution_failures("Adds the task.") != []
+    assert pr_lint.attribution_failures("") != []
+    assert pr_lint.attribution_failures("\n" + pr_lint.ATTRIBUTION + " ") != []
+
+
+# --- pins ---
+
+
+def test_a_changed_pin_equal_to_head_crates_passes(repo: Repo) -> None:
+    repo.write(f"{EXPECTED}/gpu.toml", f'[ctry]\ncrates = "{repo.tree}"\n')
+    assert pr_lint.failures(_body("Adds the pin."), repo=repo.root, today=TODAY) == []
+
+
+def test_a_changed_pin_that_is_not_head_crates_fails(repo: Repo) -> None:
+    pin = "0" * 40
+    repo.write(f"{EXPECTED}/gpu.toml", f'[ctry]\ncrates = "{pin}"\n')
+    found = pr_lint.failures(_body("Changes the pin."), repo=repo.root, today=TODAY)
+    assert len(found) == 1
+    assert f"{EXPECTED}/gpu.toml" in found[0]
+    assert pin[:12] in found[0]
+    assert repo.tree[:12] in found[0]
+
+
+def test_an_expected_file_the_branch_leaves_alone_is_not_checked(repo: Repo) -> None:
+    repo.write(f"{EXPECTED}/gpu.toml", f'[ctry]\ncrates = "{"0" * 40}"\n')
+    repo.commit("a stale pin on main")
+    repo.write(f"{DOCS}/note.md", "A note.\n")
+    assert pr_lint.failures(_body("Adds a note."), repo=repo.root, today=TODAY) == []
+
+
+# --- dates ---
+
+
+def test_a_date_later_than_the_local_day_fails(repo: Repo) -> None:
+    later = (TODAY + timedelta(days=1)).isoformat()
+    repo.write(f"{DOCS}/dated.md", f"Written {later}.\n")
+    found = pr_lint.failures(_body("Adds a note."), repo=repo.root, today=TODAY)
+    assert len(found) == 1
+    assert f"{DOCS}/dated.md:1" in found[0]
+    assert later in found[0]
+
+
+def test_a_past_date_passes(repo: Repo) -> None:
+    repo.write(f"{DOCS}/dated.md", "Written 2020-01-01.\n")
+    assert pr_lint.failures(_body("Adds a note."), repo=repo.root, today=TODAY) == []
+
+
+def test_a_changed_journal_heading_later_than_the_local_day_fails(repo: Repo) -> None:
+    later = (TODAY + timedelta(days=1)).isoformat()
+    journal = f"{FOLDER}/journal.md"
+    repo.write(f"{FOLDER}/README.md", _readme(TODAY.isoformat()))
+    repo.write(journal, f"## {later}: an entry\n\nText.\n")
+    repo.commit("the work folder")
+    repo.write(journal, f"## {later}: an entry\n\nText.\n\n_Source: a note.\n")
+    found = pr_lint.failures(_body("Adds a line."), repo=repo.root, today=TODAY)
+    assert len(found) == 1
+    assert f"{journal}:1" in found[0]
+    assert later in found[0]
+
+
+def test_a_journal_heading_before_the_folders_started_date_fails(repo: Repo) -> None:
+    journal = f"{FOLDER}/journal.md"
+    repo.write(f"{FOLDER}/README.md", _readme(TODAY.isoformat()))
+    repo.commit("the work folder")
+    repo.write(journal, "## 2026-11-21: an early entry\n\nText.\n")
+    found = pr_lint.failures(_body("Adds a journal."), repo=repo.root, today=TODAY)
+    assert len(found) == 1
+    assert f"{journal}:1" in found[0]
+    assert "started" in found[0]
+
+
+def test_an_issue_less_folder_may_hold_entries_older_than_its_start(repo: Repo) -> None:
+    folder = f"{WORK}/distill-synthetic"
+    repo.write(f"{folder}/README.md", _readme(TODAY.isoformat(), issue=None))
+    repo.commit("a distillation folder")
+    repo.write(f"{folder}/journal.md", "## 2026-11-20: a moved entry\n\nText.\n")
+    assert pr_lint.failures(_body("Moves an entry."), repo=repo.root, today=TODAY) == []
+
+
+# --- the task ---
+
+
+def test_mise_defines_the_pr_lint_task() -> None:
+    config = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))
+    assert "pr_lint.py" in config["tasks"]["pr-lint"]["run"]
+
+
+def test_the_cli_exits_1_naming_each_failure(repo: Repo, tmp_path: Path) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("Adds the task.\n", encoding="utf-8")
+    done = _run(repo, str(body))
+    assert done.returncode == 1
+    assert "attribution" in done.stdout
+    assert "1 failure(s)" in done.stderr
+
+
+def test_the_cli_exits_0_for_a_clean_pr(repo: Repo, tmp_path: Path) -> None:
+    body = tmp_path / "body.md"
+    body.write_text(_body("Adds the task."), encoding="utf-8")
+    done = _run(repo, str(body))
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert done.stdout == ""
+
+
+def test_the_cli_exits_2_for_a_missing_body_file(repo: Repo) -> None:
+    done = _run(repo, "no-such-body.md")
+    assert done.returncode == 2
+    assert "pr-lint:" in done.stderr

@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""Fail a branch and its pull request body on the PR defects reviewers check by hand.
+
+Three checks, each failure a line naming what it read:
+
+* **pin**: every ``crates = "`` pin in a ``research/parity/expected/<class>.toml`` the branch
+  changes equals ``git rev-parse HEAD:crates``, and ``crates/`` is clean, as the merge bar asks.
+  A file the branch leaves alone is not checked: the catch-up repin policy lets a class's pins
+  lag until its next batch (#908).
+* **date**: no ``YYYY-MM-DD`` on a line the branch adds, nor in a changed work journal's heading,
+  is later than today's local day; and no journal heading the branch adds to an issue work
+  folder predates the folder's ``started`` date, so a folder carries one date. An issue-less folder
+  is a migrated history or a distillation, whose moved-in entries are older by design.
+* **attribution**: the body's last line is exactly :data:`ATTRIBUTION`.
+
+``merge_bar`` calls :func:`failures` on the body it already fetched, in the checkout the branch
+is in. Usage: ``mise run pr-lint -- <pr-body-file> [<base>]``; the base defaults to ``origin/main``
+when it resolves, else ``main``. Exit status: 1 naming each failure, 0 clean, 2 for bad arguments
+or an unreadable body file.
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+from datetime import date, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import gate
+from added_lines import AddedLine, added_lines, file_lines
+
+from stunt_reel.dataroot import REPO_ROOT
+from stunt_reel.expected_scores import clean_crates_tree, dirty_crates_paths
+from stunt_reel.work_items import WorkFolderError, parse_folder
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+#: The last line every pull request body ends with.
+ATTRIBUTION = "🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+#: A generated expected-scores file the branch may repin.
+_EXPECTED = re.compile(r"^research/parity/expected/[^/]+\.toml$")
+#: A work folder's journal, whose ``## YYYY-MM-DD: <title>`` headings date its entries.
+_JOURNAL = re.compile(r"^work/[0-9]{4}-[0-9]{2}/[^/]+/journal\.md$")
+#: A pin line in an expected-scores file.
+_PIN = re.compile(r'^crates = "([0-9a-f]{40})"$')
+#: Any ISO date, as the repository writes a dated record.
+_ISO_DATE = re.compile(r"\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b")
+#: A journal entry's heading, ``## YYYY-MM-DD: <title>``.
+_HEADING_DATE = re.compile(r"^## ([0-9]{4}-[0-9]{2}-[0-9]{2}):")
+
+
+def _local_today() -> date:
+    """Today's local calendar day, the day ``mise run now`` reports."""
+    return datetime.now().astimezone().date()
+
+
+def _date_or_none(text: str) -> date | None:
+    """*text* as a calendar date; None when it is not one, as a shape like 2026-13-40 is not."""
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def attribution_failures(body: str) -> list[str]:
+    """The failure for a body whose last line is not :data:`ATTRIBUTION`, else none."""
+    lines = body.splitlines()
+    if not lines:
+        return ["the body is empty, so it has no attribution line"]
+    if lines[-1] != ATTRIBUTION:
+        return [f"the last line is {lines[-1]!r}, not the attribution line"]
+    return []
+
+
+def pin_failures(repo: Path = REPO_ROOT, base: str | None = None) -> list[str]:
+    """Each pin in an expected-scores file the branch changes that is not ``HEAD:crates``."""
+    changed = [path for path in gate.changed_paths(repo, base) if _EXPECTED.match(path)]
+    pins = [
+        (path, number, match.group(1))
+        for path in changed
+        for number, text in enumerate(file_lines(repo, path), start=1)
+        if (match := _PIN.match(text)) is not None
+    ]
+    if not pins:
+        return []
+    tree = clean_crates_tree(repo)
+    if tree is None:
+        return [_unclean_crates(repo)]
+    return [
+        f"{path}:{number}: crates {pin[:12]} is not HEAD's crates {tree[:12]}"
+        for path, number, pin in pins
+        if pin != tree
+    ]
+
+
+def _unclean_crates(repo: Path) -> str:
+    """Why no pin can be confirmed against ``HEAD:crates``, naming the dirty paths."""
+    dirty = dirty_crates_paths(repo)
+    if dirty is None:
+        return "crates/: git cannot report its working tree, so HEAD:crates cannot be confirmed"
+    if not dirty:
+        return "crates/: HEAD holds no crates/ tree, so no pin can equal it"
+    named = ", ".join(dirty[:3]) + (", ..." if len(dirty) > 3 else "")
+    return f"crates/: uncommitted changes ({named}), so no pin can equal HEAD:crates"
+
+
+def date_failures(
+    repo: Path = REPO_ROOT, base: str | None = None, today: date | None = None
+) -> list[str]:
+    """Each date the branch adds or a changed journal heading carries that breaks the day rules."""
+    day = today or _local_today()
+    added = added_lines(repo, base)
+    failing: list[str] = []
+    found = _added_dates(added) | _journal_heading_dates(repo, base, added)
+    for path, number, when in sorted(found):
+        if when > day:
+            failing.append(
+                f"{path}:{number}: {when.isoformat()} is later than the local day {day.isoformat()}"
+            )
+    return [*failing, *_started_failures(repo, added)]
+
+
+def _added_dates(added: Sequence[AddedLine]) -> set[tuple[str, int, date]]:
+    """Every ISO date on an added line, as ``(path, number, date)``."""
+    found: set[tuple[str, int, date]] = set()
+    for line in added:
+        for match in _ISO_DATE.finditer(line.text):
+            when = _date_or_none(match.group(0))
+            if when is not None:
+                found.add((line.path, line.number, when))
+    return found
+
+
+def _journal_heading_dates(
+    repo: Path, base: str | None, added: Sequence[AddedLine]
+) -> set[tuple[str, int, date]]:
+    """Every heading date of a changed journal, added or not, as ``(path, number, date)``."""
+    added_sites = {(line.path, line.number) for line in added}
+    found: set[tuple[str, int, date]] = set()
+    for path in gate.changed_paths(repo, base):
+        if not _JOURNAL.match(path):
+            continue
+        for number, text in enumerate(file_lines(repo, path), start=1):
+            heading = _HEADING_DATE.match(text)
+            when = _date_or_none(heading.group(1)) if heading is not None else None
+            if when is not None and (path, number) not in added_sites:
+                found.add((path, number, when))
+    return found
+
+
+def _started_failures(repo: Path, added: Sequence[AddedLine]) -> list[str]:
+    """Each journal heading the branch adds to an issue folder before that folder's start."""
+    by_journal: dict[str, list[AddedLine]] = {}
+    for line in added:
+        if _JOURNAL.match(line.path) and _HEADING_DATE.match(line.text):
+            by_journal.setdefault(line.path, []).append(line)
+    failing: list[str] = []
+    for path, lines in sorted(by_journal.items()):
+        try:
+            folder = parse_folder((repo / path).parent)
+        except WorkFolderError as error:
+            failing.append(f"{path}: {error}")
+            continue
+        if folder.issue is None:
+            continue
+        for line in lines:
+            heading = _HEADING_DATE.match(line.text)
+            when = _date_or_none(heading.group(1)) if heading is not None else None
+            if when is not None and when < folder.started:
+                failing.append(
+                    f"{path}:{line.number}: heading {when.isoformat()} is before the folder's "
+                    f"started date, {folder.started.isoformat()}"
+                )
+    return failing
+
+
+def failures(
+    body: str, *, repo: Path = REPO_ROOT, base: str | None = None, today: date | None = None
+) -> list[str]:
+    """Every way the branch and its pull request *body* fail the three checks, pins first.
+
+    A git failure is one failure naming it, so a caller such as ``merge_bar`` reports it rather
+    than crashing.
+    """
+    try:
+        return [
+            *pin_failures(repo, base),
+            *date_failures(repo, base, today),
+            *attribution_failures(body),
+        ]
+    except (OSError, subprocess.CalledProcessError, gate.ChangedPathsError) as error:
+        return [f"the branch could not be read: {error}"]
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Print each failure of the branch and the body file on the command line."""
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("body", type=Path, help="the pull request body file")
+    parser.add_argument(
+        "base",
+        nargs="?",
+        help="the ref changes are counted from (default: origin/main, else main)",
+    )
+    args = parser.parse_args(argv)
+    try:
+        body = args.body.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        print(f"pr-lint: {error}", file=sys.stderr)
+        return 2
+    found = failures(body, base=args.base)
+    for line in found:
+        print(line)
+    print(f"pr-lint: {len(found)} failure(s).", file=sys.stderr)
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
