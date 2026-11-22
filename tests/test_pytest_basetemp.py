@@ -89,6 +89,25 @@ def test_prune_removes_a_run_that_holds_read_only_files(tmp_path: Path) -> None:
     assert [path.name for path in tmp_path.iterdir()] == ["basetemp-20261025T200002-aaaa"]
 
 
+def test_short_basetemp_is_outside_the_checkout() -> None:
+    """An inner run's root must not lengthen nested paths under a long checkout (#925)."""
+    repo = Path(__file__).resolve().parents[1]
+    basetemp = pytest_helpers.short_basetemp()
+    assert repo not in basetemp.parents
+    assert not basetemp.exists()
+
+
+def test_remove_basetemp_removes_read_only_files() -> None:
+    """git writes its objects read-only; the inner run must leave no temporary directory."""
+    basetemp = pytest_helpers.short_basetemp()
+    basetemp.mkdir()
+    blob = basetemp / "blob"
+    blob.write_bytes(b"x")
+    blob.chmod(stat.S_IREAD)
+    pytest_helpers.remove_basetemp(basetemp)
+    assert not basetemp.exists()
+
+
 def test_only_the_controller_prunes() -> None:
     """Each xdist worker configuring itself would otherwise walk every old run again."""
     assert pytest_helpers.prunes_basetemps(_config(basetemp=None)) is True
