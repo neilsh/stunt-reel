@@ -55,10 +55,14 @@ def _untracked(repo: Path) -> set[str]:
 
 
 def file_lines(repo: Path, path: str) -> list[str]:
-    """The working-tree lines of *path*, or none when the file is gone."""
+    """The working-tree lines of *path*, or none when it is gone or not UTF-8 text.
+
+    A binary file raises ``UnicodeDecodeError``, a ``ValueError``, from the read; it has no lines
+    to date or scan, so it is skipped rather than failing the run that read it.
+    """
     try:
         return (repo / path).read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
+    except FileNotFoundError, ValueError:
         return []
 
 
