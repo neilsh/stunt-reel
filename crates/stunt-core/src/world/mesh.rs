@@ -13,8 +13,8 @@ use super::map_bin::MapArea;
 use super::placed::{ArenaSpan, MeshSpans};
 use super::scenery::{LodGate, Placement};
 use super::terrain::{
-    Patches, TerrainSurface, ground_decal_vertices, lies_on_ground_plane, push_terrain,
-    terrain_overlays,
+    Patches, TerrainSurface, ground_decal_vertices, lies_on_ground_plane, prop_overlay_vertices,
+    push_terrain, terrain_overlays,
 };
 
 /// Column-major identity `local_matrix` for every world node (the world is drawn untransformed).
@@ -117,22 +117,23 @@ pub(super) fn build_world_ir(
     let terrain = |ir: &mut SodModelIr, patches: Patches| {
         push_terrain(ir, anchors, map_areas, &overlays, patches, base_y);
     };
-    let grounded: Vec<Option<Vec<[f32; 3]>>> = instances
+    let props: Vec<Option<(&SodModelIr, [f32; 3])>> = instances
         .iter()
         .enumerate()
-        .map(
-            |(
-                index,
-                &Placement {
-                    shape: shape_id,
-                    position: pos,
-                    ..
-                },
-            )| {
-                let model = ir_models.get(index, shape_id)?;
-                ground_decal_vertices(model, [pos[0], pos[1] + base_y, pos[2]], surface)
-            },
-        )
+        .map(|(index, p)| {
+            let model = ir_models.get(index, p.shape)?;
+            Some((
+                model,
+                [p.position[0], p.position[1] + base_y, p.position[2]],
+            ))
+        })
+        .collect();
+    // A decal's snapped vertices: on the terrain, else on an earlier flat prop.
+    let grounded: Vec<Option<Vec<[f32; 3]>>> = props
+        .iter()
+        .map(|prop| prop.and_then(|(model, pos)| ground_decal_vertices(model, pos, surface)))
+        .zip(prop_overlay_vertices(&props))
+        .map(|(on_terrain, on_prop)| on_terrain.or(on_prop))
         .collect();
 
     // Ocean water quad at base_y - 1.0 per research/formats/auxiliary/map.md § 3.1.
@@ -930,6 +931,76 @@ mod tests {
         let ir = world_with(square_prop(None), [500.0, 10.0, 20.0]);
         assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 4);
         assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
+    }
+
+    /// Off the terrain, 75 m up, a flat prop lying on an earlier flat prop (the castle's green
+    /// strip on its moat, `world-scene-residuals.md` section 6.9) is a decal of it: the earlier
+    /// one stays in the base batch, the later one is drawn after it in the decal batch.
+    #[test]
+    fn a_flat_prop_on_an_earlier_flat_prop_is_a_decal() {
+        let (pts, areas) = sloped_terrain();
+        let mut moat = square_prop(None);
+        for v in &mut moat.vertices {
+            v.position[0] *= 10.0;
+            v.position[2] *= 10.0;
+        }
+        let models = HashMap::from([(0x04AC, moat), (0x0539, square_prop(None))]);
+        let surface = TerrainSurface::new(&pts, &areas, 0.0);
+        let placements = [
+            Placement::bare(0x04AC, [500.0, 75.0, 20.0], 0),
+            Placement::bare(0x0539, [505.0, 75.0, 23.0], 0),
+        ];
+        let (ir, ..) = build_world_ir(
+            &pts,
+            &areas,
+            &surface,
+            &placements,
+            &PropModels::shared(&models),
+            0.0,
+        );
+        assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 4);
+        let decal = prop_vertices(&ir, "WORLD_DECAL");
+        assert_eq!(decal.len(), 4, "the strip belongs to the decal batch");
+        assert!(
+            decal
+                .iter()
+                .all(|&[x, y, _]| (y - 75.0).abs() < 1e-4 && x > 500.0)
+        );
+    }
+
+    /// A flat prop lying both on the terrain and on an earlier flat prop takes the terrain's
+    /// height, not the earlier prop's: the terrain snap comes first.
+    #[test]
+    fn a_flat_prop_on_the_terrain_and_an_earlier_prop_takes_the_terrain_height() {
+        let (pts, areas) = sloped_terrain();
+        let mut apron = square_prop(None);
+        for v in &mut apron.vertices {
+            v.position[0] *= 3.0;
+            v.position[2] *= 3.0;
+        }
+        let models = HashMap::from([(0x0370, apron), (0x0539, square_prop(None))]);
+        let surface = TerrainSurface::new(&pts, &areas, 0.0);
+        let placements = [
+            Placement::bare(0x0370, [60.0, 10.6, 20.0], 0),
+            Placement::bare(0x0539, [62.0, 10.6, 18.0], 0),
+        ];
+        let (ir, ..) = build_world_ir(
+            &pts,
+            &areas,
+            &surface,
+            &placements,
+            &PropModels::shared(&models),
+            0.0,
+        );
+        let decal = prop_vertices(&ir, "WORLD_DECAL");
+        assert_eq!(decal.len(), 8, "both props belong to the decal batch");
+        for [x, y, _] in decal {
+            let terrain = 10.0 + 0.01 * x;
+            assert!(
+                (y - terrain).abs() < 1e-4,
+                "vertex at x={x}: y={y}, terrain={terrain}"
+            );
+        }
     }
 
     /// The index counts of the world's prop-holding [`GROUND_NODE`] nodes, in order.

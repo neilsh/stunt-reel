@@ -3,7 +3,7 @@
 ## Status
 
 accepted 2026-11-20 for [#637](https://github.com/neilsh/stunt-reel/issues/637).
-#637 proposed reversed depth in `Depth32Float`; this ADR departs from that proposal and keeps `Depth24Plus` (Considered Options), and the owner signed off on the departure on 2026-11-22, after its re-measurement; [#966](https://github.com/neilsh/stunt-reel/issues/966) re-measures `Depth32Float` once the castle moat's tie is fixed.
+#637 proposed reversed depth in `Depth32Float`; this ADR departs from that proposal and keeps `Depth24Plus` (Considered Options), and the owner signed off on the departure on 2026-11-22, after its re-measurement; [#966](https://github.com/neilsh/stunt-reel/issues/966) re-measured `Depth32Float` once it had fixed the castle moat's tie, and the choice stands (Considered Options).
 Amends the compare functions and the sign of the depth bias of [ADR 0046](0046-coplanar-decals-are-drawn-in-an-ordered-pass.md) (`LessEqual`, `constant: -2, slope_scale: -2.0`); its other decisions stand.
 Amended 2026-11-21 for [#922](https://github.com/neilsh/stunt-reel/issues/922): the outline line lists are clipped to a band around the view, and the device requires clip distances (the last two Decision bullets, and the Considered Options and Consequences marked #922).
 
@@ -53,6 +53,7 @@ Moving the near plane from 0.5 m to 0.1 m (#904) put those ends five times farth
   The same projection in `Depth24Plus` lowered it at 12 of those 13 ticks, by up to 18 times (LOCATION 3820 2,856 to 182, BALLOON 1130 191 to 37).
   `[Supported Inference]`: rounding the interpolated depth to a 24-bit step absorbs differences between the two rasterizers' depth interpolation that f32 keeps, so a tie between coplanar polygons resolves by the compare function alike on both.
   Re-measured on 2026-11-22 against `main` `44a3bf31`, after the 0.1 m near plane (#904) and the outline clip band (#922), on the canonical lavapipe: the mean disagreement rose on all seven films, from 2.22–8.59 to 5.73–80.23 pixels a tick (BALLOON 4.12 to 46.23, LOCATION 8.59 to 80.23), and neither class's judge adopts it ([journal](../../work/2026-11/637_reversed-z/journal.md#2026-11-22-depth32float-again-after-the-01-m-near-plane-and-the-outline-clip-band)).
+  Re-measured once more on 2026-11-22 after #966 drew the castle's green strip as a decal of its moat, the tie behind most of LOCATION's disagreement: `Depth32Float` still raised the mean on all seven films, from 2.22–8.40 to 5.73–58.17 pixels a tick (LOCATION 6.31 to 58.17), 2.6 to 11 times, and neither class's judge adopts it ([journal](../../work/2026-11/966_moat-walk-order/journal.md#2026-11-22-depth32float-again-on-the-fixed-tree)).
 * **A reversed, finite far plane at 25 km.**
   Not measured: the infinite form was chosen because its clip z is exactly `near`.
 * **Request clip distances only where the adapter has them, and draw the outlines through `vs_main` elsewhere** (#922).
