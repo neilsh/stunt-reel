@@ -1749,3 +1749,143 @@ def test_orca_output_that_cannot_be_read_marks_orca_unavailable(tmp_path: Path) 
     assert orca.find(tmp_path) is None
     assert orca.unavailable is not None
     assert orca.unavailable.startswith("unreadable orca output")
+
+
+# --- Detached review worktrees (issue #912) -----------------------------------------------------
+
+
+def _review_worktree(tmp_path: Path, name: str = "review-1") -> tuple[Path, Path]:
+    """A repo with a detached review checkout under .claude/worktrees."""
+    repo = _init_repo(tmp_path)
+    pool = repo / ".claude" / "worktrees"
+    pool.mkdir(parents=True)
+    worktree = pool / name
+    _run_git(repo, "worktree", "add", "-q", "--detach", str(worktree), "main")
+    return repo, worktree
+
+
+def _classify_reviews(
+    repo: Path, orca: worktree_reap._OrcaWorkspaces | None = None
+) -> tuple[list[worktree_reap._Candidate], list[str]]:
+    return worktree_reap._candidates(
+        repo, worktree_git._worktrees(repo), include_cherry=False, orca=orca
+    )
+
+
+def test_a_detached_review_worktree_is_a_candidate_and_is_reaped(tmp_path: Path) -> None:
+    repo, worktree = _review_worktree(tmp_path)
+    cache = worktree / ".pytest_cache" / "basetemp-1"
+    cache.mkdir(parents=True)
+    (cache / "leftover").write_text("x", encoding="utf-8")
+
+    candidates, skipped = _classify_reviews(repo)
+
+    assert skipped == []
+    assert [(candidate.worktree.path, candidate.review) for candidate in candidates] == [
+        (worktree, True)
+    ]
+    assert worktree_reap._describe(candidates[0]).startswith("  review review-1")
+    assert (
+        worktree_reap._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=False)
+        is None
+    )
+    assert not worktree.exists()
+    assert "review-1" not in _run_git(repo, "worktree", "list", "--porcelain")
+
+
+def test_a_review_worktree_on_a_branch_is_not_a_candidate_by_name(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    pool = repo / ".claude" / "worktrees"
+    pool.mkdir(parents=True)
+    worktree = pool / "review-2"
+    _run_git(repo, "worktree", "add", "-q", str(worktree), "-b", "review-branch")
+    _commit(worktree, "b.txt")
+
+    candidates, skipped = _classify_reviews(repo)
+
+    assert candidates == []
+    assert skipped == ["review-branch: 1 patch(es) not in main"]
+    assert worktree.exists()
+
+
+def test_an_in_use_review_worktree_is_not_removed(tmp_path: Path) -> None:
+    repo, worktree = _review_worktree(tmp_path)
+    (worktree / "a.txt").write_text("edited", encoding="utf-8")
+
+    candidates, skipped = _classify_reviews(repo)
+
+    assert candidates == []
+    assert skipped == ["review-1: review worktree has 1 modified file(s); left alone"]
+    assert worktree.exists()
+
+
+def test_a_review_worktree_orca_calls_live_is_not_removed(tmp_path: Path) -> None:
+    repo, worktree = _review_worktree(tmp_path)
+    orca = worktree_reap._OrcaWorkspaces(repo, _FakeOrca(repo, [_ps_row(worktree, terminals=1)]))
+
+    candidates, skipped = _classify_reviews(repo, orca)
+
+    assert candidates == []
+    assert skipped == ["review-1: review worktree is in use (1 live terminal(s)); left alone"]
+    assert worktree.exists()
+
+
+def test_a_detached_worktree_not_named_review_is_still_skipped(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    pool = repo / ".claude" / "worktrees"
+    pool.mkdir(parents=True)
+    _run_git(repo, "worktree", "add", "-q", "--detach", str(pool / "wt-detached"), "main")
+
+    candidates, skipped = _classify_reviews(repo)
+
+    assert candidates == []
+    assert skipped == ["(detached): detached HEAD"]
+
+
+@pytest.mark.parametrize("kind", ["junction", "symlink"])
+def test_a_review_worktree_with_an_in_tree_current_link_is_reaped(
+    tmp_path: Path, kind: str
+) -> None:
+    """pytest's current link points inside the worktree, so removal must not trip on it."""
+    repo, worktree = _review_worktree(tmp_path)
+    basetemp = worktree / ".pytest_cache" / "basetemp-1" / "inner"
+    basetemp.mkdir(parents=True)
+    link = worktree / "current"
+    if kind == "junction":
+        _junction(link, basetemp)
+    else:
+        _symlink(link, basetemp)
+
+    candidates, skipped = _classify_reviews(repo)
+
+    assert skipped == []
+    assert candidates[0].links == [link]
+    assert (
+        worktree_reap._reap_one(repo, candidates[0], stash_dirty=False, discard_untracked=False)
+        is None
+    )
+    assert not worktree.exists()
+
+
+def test_reap_dry_run_lists_then_removes_a_review_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree = _review_worktree(tmp_path)
+    (worktree / ".pytest_cache").mkdir()
+    (worktree / ".pytest_cache" / "current").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(worktree_reap, "REPO_ROOT", repo)
+    monkeypatch.setattr(dataroot, "REPO_ROOT", repo)
+    monkeypatch.setattr(worktree_reap, "_gh", _gh_stub())
+    monkeypatch.setattr(worktree_reap, "_orca", _FakeOrca(repo, []))
+    monkeypatch.setattr(worktree_reap, "_script_is_stale", lambda _repo: (False, []))
+    monkeypatch.setattr(worktree_reap, "_free_bytes", lambda _path: 0)
+
+    assert worktree_reap._reap(False) == 0
+    dry = capsys.readouterr().out
+    assert "review review-1" in dry
+    assert worktree.exists()
+
+    assert worktree_reap._reap(True) == 0
+    out = capsys.readouterr().out
+    assert "removed  review-1" in out
+    assert not worktree.exists()

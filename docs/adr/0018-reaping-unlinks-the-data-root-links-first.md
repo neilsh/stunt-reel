@@ -9,6 +9,10 @@ amended 2026-11-14 (issue #541): links git tracks as symlinks are left for git t
 
 amended 2026-11-16 (issue #557): reap unlinks a changed tracked link before git stash push.
 
+amended 2026-11-22 (issue #912): a detached worktree named `review-*` is a candidate once no
+review is live in it; it has no branch to delete, its untracked test output never keeps it, and
+its in-tree test links are unlinked by the same walker.
+
 accepted; `mise run reap` is the only supported way to remove a linked worktree.
 
 ## Context
@@ -47,11 +51,13 @@ junction unless `/XJ` is given. The practice cannot depend on which build is ins
 that no recursive delete ever sees a link git does not track:
 
 1. **classify** — the branch must be an ancestor of `main` (`--cherry` also accepts a
-   branch whose patches `main` already holds), the worktree must live inside this
+   branch whose patches `main` already holds), or the worktree must be a detached
+   `review-*` scratch checkout no review is live in; the worktree must live inside this
    checkout (`.agents/worktrees/`, `.claude/worktrees/`), and the candidate must be
    clean;
 2. **refuse** — modified tracked files need `--stash-dirty`, untracked files need
-   `--discard-untracked`, and any refusal stops the run before the first delete;
+   `--discard-untracked` (a review worktree's test output excepted), and any refusal stops
+   the run before the first delete;
 3. **unlink** — every reparse point under the worktree that git does not track is removed
    with `remove_link` (`rmdir`/`unlink` on the link, never its target), by a walker that
    never descends into one; a path git records as a symlink (mode 120000) is left for git to
@@ -63,7 +69,7 @@ that no recursive delete ever sees a link git does not track:
    files were explicitly allowed); no link git does not track is left to follow, and git
    removes the tracked symlinks as leaves;
 6. **delete the branch** — `-d` for an ancestor of `main`, `-D` for a patch-equivalent
-   branch;
+   branch, and none for a detached review worktree;
 7. **`--prune`** — remove pool directories git no longer registers (only when they hold
    nothing but links) and branches no worktree holds.
 

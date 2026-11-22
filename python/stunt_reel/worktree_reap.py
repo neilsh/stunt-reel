@@ -6,6 +6,8 @@ leaves), proves no untracked link remains, and only then removes the checkout (A
 ``--stash-dirty`` stash runs only after the links it would write through are unlinked (issue
 #557). A merged pull request whose head is the branch tip is found with ``gh``, and a
 confirmed reap refuses while any source it runs differs from ``origin/main``'s (issue #218).
+A detached worktree named ``review-*`` is review scratch: reap removes it once no review runs
+in it, so each review's checkout does not outlive the run (issue #912).
 """
 
 from __future__ import annotations
@@ -39,6 +41,9 @@ if TYPE_CHECKING:
 #: Directories inside the primary checkout where linked worktrees live (AGENTS.md, Worktrees).
 POOL_DIRS: tuple[str, ...] = (".agents/worktrees", ".claude/worktrees")
 
+#: Folder-name prefix of a review's own detached worktree (.claude/agents/reviewer.md).
+REVIEW_PREFIX = "review-"
+
 
 @dataclass
 class _Candidate:
@@ -54,6 +59,8 @@ class _Candidate:
     pr: int | None = None
     #: The ``--worktree`` selector ``orca worktree rm`` takes, for an Orca workspace.
     orca: str | None = None
+    #: True for a detached review scratch checkout: there is no branch to delete.
+    review: bool = False
 
 
 def _is_ancestor(repo: Path, branch: str) -> bool:
@@ -457,6 +464,24 @@ def _outside_pool(
     return selector, ""
 
 
+def _review_in_use(worktree: _Worktree, orca: _OrcaWorkspaces | None) -> str | None:
+    """Why a detached review worktree may be in use, or None when nothing keeps it.
+
+    A review checkout is scratch, so nothing in it is work worth keeping: untracked files are
+    a test run's caches, and the in-tree ``current`` link is unlinked before removal. A modified
+    tracked file means someone wrote to the checkout, and a live Orca terminal or unfinished
+    agent at its path means a review is running there; either keeps it.
+    """
+    if orca is not None:
+        found = orca.find(worktree.path)
+        if found is not None and found.live is not None:
+            return f"is in use ({found.live})"
+    dirty = _changed(worktree.path, untracked=False)
+    if dirty:
+        return f"has {len(dirty)} modified file(s)"
+    return None
+
+
 def _candidates(
     repo: Path,
     entries: list[_Worktree],
@@ -471,6 +496,9 @@ def _candidates(
 
     An Orca workspace is judged as a pool worktree is, but one with files *stash_dirty* or
     *discard_untracked* does not allow is skipped, not a reason to refuse every other removal.
+    A detached worktree whose folder is named ``review-*`` is a review's scratch checkout: it is a
+    candidate unless a review is in use there, and a worktree on a branch is never one just
+    because its folder is named that.
     """
     primary = entries[0].path
     candidates: list[_Candidate] = []
@@ -487,7 +515,24 @@ def _candidates(
             skipped.append(f"{label}: contains this checkout")
             continue
         if worktree.branch is None:
-            skipped.append(f"{label}: detached HEAD")
+            if not worktree.path.name.startswith(REVIEW_PREFIX):
+                skipped.append(f"{label}: detached HEAD")
+                continue
+            in_use = _review_in_use(worktree, orca)
+            if in_use is not None:
+                skipped.append(f"{worktree.path.name}: review worktree {in_use}; left alone")
+                continue
+            candidates.append(
+                _Candidate(
+                    worktree=worktree,
+                    merged=False,
+                    dirty=[],
+                    untracked=_changed(worktree.path, untracked=True),
+                    links=_reparse_points(worktree.path),
+                    size=_size(worktree.path),
+                    review=True,
+                )
+            )
             continue
         merged = _is_ancestor(repo, worktree.branch)
         pr: int | None = None
@@ -543,7 +588,10 @@ def _candidates(
 def _describe(candidate: _Candidate) -> str:
     """One report line for a candidate."""
     worktree = candidate.worktree
-    state = "merged" if candidate.merged else "squash" if candidate.pr else "cherry"
+    if candidate.review:
+        state = "review"
+    else:
+        state = "merged" if candidate.merged else "squash" if candidate.pr else "cherry"
     flags: list[str] = []
     if candidate.pr:
         flags.append(f"merged as #{candidate.pr}")
@@ -556,7 +604,7 @@ def _describe(candidate: _Candidate) -> str:
     if candidate.orca:
         flags.append("orca workspace")
     detail = ", ".join(flags) if flags else "clean"
-    branch = worktree.branch or "(detached)"
+    branch = worktree.branch or worktree.path.name
     return (
         f"  {state:<6} {branch:<42}{candidate.size / 1_048_576:9.1f} MiB"
         f"  {worktree.head[:10]}  {detail}"
@@ -564,11 +612,14 @@ def _describe(candidate: _Candidate) -> str:
 
 
 def _blocked(candidate: _Candidate, *, stash_dirty: bool, discard_untracked: bool) -> list[str]:
-    """What stops *candidate* from being removed without losing work."""
+    """What stops *candidate* from being removed without losing work.
+
+    A review worktree's untracked files are its test run's scratch, which never keeps it.
+    """
     reasons: list[str] = []
     if candidate.dirty and not stash_dirty:
         reasons.append("modified files; pass --stash-dirty to stash them")
-    if candidate.untracked and not discard_untracked:
+    if candidate.untracked and not discard_untracked and not candidate.review:
         reasons.append("untracked files; pass --discard-untracked to drop them")
     return reasons
 
@@ -584,62 +635,69 @@ def _reap_one(
     """Remove one candidate; return a failure message, or None on success.
 
     An Orca workspace goes through *orca* (``orca worktree rm``) after the same unlinking, and
-    only while Orca, asked again now, still calls it idle.
+    only while Orca, asked again now, still calls it idle. A review worktree is asked the
+    same way, then removed with git once no review is live in it.
     """
     worktree = candidate.worktree
     branch = worktree.branch
     path = worktree.path
+    label = branch or path.name
     # The worktree must still hold the branch and tip it was classified with: one switched to
     # another branch is not this candidate, and a commit made since is in neither main nor
     # the merged PR.
     current = next((entry for entry in _worktrees(repo) if entry.path == path), None)
     if current is None or current.branch != branch:
-        return f"{branch}: worktree changed since it was classified; left alone"
+        return f"{label}: worktree changed since it was classified; left alone"
     if current.head != worktree.head:
         return (
-            f"{branch}: tip moved since it was classified "
+            f"{label}: tip moved since it was classified "
             f"({worktree.head[:10]} -> {current.head[:10]}); left alone"
         )
+    if candidate.review and orca is not None:
+        orca.refresh()
+        found = orca.find(path)
+        if found is not None and found.live is not None:
+            return f"{label}: review worktree is in use ({found.live}); left alone"
     if candidate.orca is not None:
         if orca is None:
-            return f"{branch}: Orca workspace with no way to remove it; left alone"
+            return f"{label}: Orca workspace with no way to remove it; left alone"
         orca.refresh()
         found = orca.find(path)
         if found is None or found.live is not None:
-            return f"{branch}: Orca workspace is live or gone since it was classified; left alone"
+            return f"{label}: Orca workspace is live or gone since it was classified; left alone"
     # Cleanliness is read now, not taken from classification: a forced remove must not drop
     # an edit made after reap listed the worktree.
     dirty = _changed(path, untracked=False)
     untracked = _changed(path, untracked=True)
     if dirty and not stash_dirty:
-        return f"{branch}: modified files"
-    if untracked and not discard_untracked:
-        return f"{branch}: untracked files"
+        return f"{label}: modified files"
+    if untracked and not discard_untracked and not candidate.review:
+        return f"{label}: untracked files"
     if dirty:
         # The stash writes a changed tracked path back out through any link at or above it:
         # on Windows that empties a junction's target or fills it with tracked files (#557).
         changed = _changed_paths(path)
         if changed is None:
-            return f"{branch}: cannot list the changed paths; left alone"
+            return f"{label}: cannot list the changed paths; left alone"
         failures = _unlink_links(_links_a_stash_would_follow(path, changed))
         if failures:
-            return f"{branch}: cannot unlink: {'; '.join(failures)}"
-        stash = _git(path, "stash", "push", "--message", f"reap {branch}: uncommitted work")
+            return f"{label}: cannot unlink: {'; '.join(failures)}"
+        stash = _git(path, "stash", "push", "--message", f"reap {label}: uncommitted work")
         if stash.returncode != 0:
-            return f"{branch}: git stash failed: {stash.stderr.strip()}"
+            return f"{label}: git stash failed: {stash.stderr.strip()}"
         if _changed(path, untracked=False):
-            return f"{branch}: still modified after stashing"
+            return f"{label}: still modified after stashing"
     tracked = _tracked_symlinks(path)
     if tracked is None:
-        return f"{branch}: cannot list tracked symlinks; left alone"
+        return f"{label}: cannot list tracked symlinks; left alone"
     failures = _unlink_reparse_points(path, tracked=tracked)
     if failures:
-        return f"{branch}: cannot unlink: {'; '.join(failures)}"
+        return f"{label}: cannot unlink: {'; '.join(failures)}"
     remaining = _links_reap_may_unlink(path, tracked)
     if remaining:
-        return f"{branch}: links remain: {', '.join(str(item) for item in remaining)}"
+        return f"{label}: links remain: {', '.join(str(item) for item in remaining)}"
     if _changed(path, untracked=False):
-        return f"{branch}: modified files appeared before removal; left alone"
+        return f"{label}: modified files appeared before removal; left alone"
     if candidate.orca is not None and orca is not None:
         orca_args = ["worktree", "rm", "--worktree", candidate.orca]
         if untracked:
@@ -647,17 +705,17 @@ def _reap_one(
         try:
             gone = orca.run(*orca_args)
         except (OSError, subprocess.SubprocessError) as err:
-            return f"{branch}: orca worktree rm failed: {err}"
+            return f"{label}: orca worktree rm failed: {err}"
         if gone.returncode != 0:
             detail = (gone.stderr or gone.stdout).strip()
-            return f"{branch}: orca worktree rm failed: {detail}"
+            return f"{label}: orca worktree rm failed: {detail}"
     else:
         remove_args = ["worktree", "remove"]
         if untracked:
             remove_args.append("--force")
         remove = _git(repo, *remove_args, str(path))
         if remove.returncode != 0:
-            return f"{branch}: git worktree remove failed: {remove.stderr.strip()}"
+            return f"{label}: git worktree remove failed: {remove.stderr.strip()}"
     if branch is not None:
         if candidate.merged:
             delete = _git(repo, "branch", "-d", branch)
@@ -665,7 +723,7 @@ def _reap_one(
             # Compare-and-delete: refused if the branch moved off the classified tip.
             delete = _git(repo, "update-ref", "-d", f"refs/heads/{branch}", worktree.head)
         if delete.returncode != 0:
-            return f"{branch}: git branch delete failed: {delete.stderr.strip()}"
+            return f"{label}: git branch delete failed: {delete.stderr.strip()}"
     # The environment lives in the shared cache, outside the checkout git just removed.
     discard_env(path)
     return None
@@ -892,7 +950,7 @@ def _reap(
     min_free_gb: float = DEFAULT_MIN_FREE_GB,
     allow_stale_script: bool = False,
 ) -> int:
-    """Remove merged worktrees, unlinking every data-root link first.
+    """Remove merged worktrees and unused review worktrees, unlinking every link first.
 
     A confirmed reap refuses when any source it runs differs from ``origin/main``'s, unless
     *allow_stale_script* is set; *force* does not lift that.
@@ -1006,7 +1064,8 @@ def _reap(
             continue
         reaped += 1
         reclaimed += candidate.size
-        print(f"  removed  {candidate.worktree.branch}")
+        removed = candidate.worktree.branch or candidate.worktree.path.name
+        print(f"  removed  {removed}")
     print(f"\nreaped {reaped} worktree(s), {reclaimed / 1_048_576:.1f} MiB")
     if prune:
         print("\npruning pool leftovers and branches without a worktree:")

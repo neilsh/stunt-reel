@@ -69,6 +69,8 @@ Create it with any tool, under `.claude/worktrees/` or `.agents/worktrees/` insi
 ## Removing a worktree
 
 - A worktree with no links (every one made since ADR 0036) can be removed by the tool that made it, or by `git worktree remove`.
+- A detached worktree whose folder is named `review-*` is a review's scratch checkout: `reap` lists it and, with `--yes`, removes it once no review is live in it (no Orca terminal or unfinished agent there, and no modified file), unlinking its in-tree test links, such as pytest's `current`, first.
+  Untracked test output never keeps one, and a `review-*` worktree on a branch is judged by the branch rules, not its name.
 - An older worktree that `init` linked keeps its junctions until reaped: run `mise run reap -- --yes` from the primary checkout.
   It unlinks the junctions into the data root and proves none remain before `git worktree remove` runs.
   Never call `git worktree remove` directly on a linked worktree: git 2.47.1 deleted the junction targets, and 2.55.0 left the junction directories behind and deregistered the worktree ([ADR 0018](adr/0018-reaping-unlinks-the-data-root-links-first.md)).
