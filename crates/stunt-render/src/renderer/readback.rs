@@ -107,6 +107,12 @@ mod tests {
     }
 
     #[test]
+    fn a_trailing_partial_row_is_ignored() {
+        let padded = [1, 2, 3, 4, 5, 6, 0xAA, 0xAA, 9, 10];
+        assert_eq!(strip_pitch_padding(&padded, 6, 8), [1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
     fn an_error_after_mapping_still_runs_the_unmap_guard() {
         let unmapped = Cell::new(0);
         let result: Result<(), &'static str> = {
