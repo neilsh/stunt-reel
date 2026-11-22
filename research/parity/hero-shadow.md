@@ -20,7 +20,8 @@ Method: [`method.md`](method.md); score history: journal entries, and before the
   These are upper bounds: the window is not a shadow mask, so any distant index-0 detail inside it is counted too, and it can pull the centroid.
   The offset moved with our aircraft (now 8 rows higher and no longer left), not with the shadow.
   After #132 (`793895e`), same window and the same caveat: 54,663 pixels, 20 or more on 71 frames, median offset dx -9, dy +59.
-  The readout grades `shadow-missing` 2 or more on 6 of 12 CTRY sheets and 5 of 12 INTRO sheets ([`attribution.md`](attribution.md#2-current-breakdown)), graded before the shadow was drawn ([#99](https://github.com/neilsh/stunt-reel/issues/99)).
+  The readout grades `shadow-missing` 2 or more on 6 of 12 CTRY sheets and 5 of 12 INTRO sheets, graded before the shadow was drawn ([#99](https://github.com/neilsh/stunt-reel/issues/99)).
+  _Source: [the 2026-11-02 readout](../../work/2026-11/distill-attribution/journal.md#2026-11-02-loss-by-class-after-47-48-and-132)._
 * **Ground shadow: the source, narrowed** (2026-11-05, static, [#99](https://github.com/neilsh/stunt-reel/issues/99); full reading in [`sod-vm-frame.md` § 9.1](../playone-exe/sod-vm-frame.md#91-the-actor-shadow-draw)).
   `[Bounded Observation]` that the hero shape holds no shadow: `CTRY.ALL` chunk `0x7F37` (7,604 bytes; the `stisldem/VAULT` copy, the other copy gives the same) has no `0x0171` (`OP_AIRBRUSH`) word at any even offset, so no airbrush op sits in it, reachable or not.
   `[Established]` (disassembled, not run) for the instruction sequences below, in the load image `build/re/playone.img` (`mise run unlzexe`): the actor loop at `0x1E07..0x1E3A` tests each slot's flag byte `[si+1]` for bits 1, 0 and 2 in that order.
