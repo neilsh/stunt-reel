@@ -79,6 +79,17 @@ At the timer, look once: a completed review goes to step 3, anything else gets a
 A successor re-sets a timer from the newest line's due time.
 The 20-minute wait stays in the merge bar.
 
+## Dispatching a dsh worker
+
+A dsh worker can sit on its start screen with an empty prompt and run no brief until it receives a message: six dsh dispatches did on 2026-11-22 ([#959](https://github.com/neilsh/stunt-reel/issues/959)).
+So a dsh dispatch puts the brief in the worker's workspace and sends the start message at once, rather than waiting to see whether it stalled:
+
+1. Start it from the `worker-start` line in the flags table below, with `--agent dsh` and `--json`, and keep its `dispatch` id and workspace path.
+2. Put the brief in that workspace: `New-Item -ItemType Directory -Force <workspace>/build/scratch`, then `Copy-Item <brief>.md <workspace>/build/scratch/` (a fresh workspace has no `build/`).
+3. Send `orca orchestration send --to dispatch:<dispatch id> --subject "Start" --body "Read and follow build/scratch/<brief>.md in this workspace now"` immediately, before the usual `worker-read` confirmation.
+
+Step 3 is part of the dispatch, not a recovery from a stall: the worker has started nothing until the message arrives.
+
 ## `orca orchestration` flags
 
 Use these lines and nothing from `--help` or `orca skills get orchestration`: either puts thousands of characters in context for every later turn to re-read (#509).
@@ -90,6 +101,7 @@ This is for Orca workers; a cloud session's workers are subagents that report in
 | Check | `orca orchestration check --terminal <handle>`; there is no `--from` | same |
 | Worker done | the `worker_done` event; a send to a busy worker returns a `messageId` and is usually not acted on, so send the next brief after `worker_done`, in full | [`loop-and-bounds.md`](loop-and-bounds.md#implementing-an-issue-and-bounding-rounds) |
 | Confirm a worker started | `worker-read`, once, within about 2 minutes of the dispatch | same |
+| Send a dsh worker's start | after `worker-start --agent dsh --json`, `New-Item -ItemType Directory -Force <workspace>/build/scratch`, `Copy-Item <brief>.md <workspace>/build/scratch/`, then `orca orchestration send --to dispatch:<dispatch id> --subject "Start" --body "Read and follow build/scratch/<brief>.md in this workspace now"` at once, not as a stall fallback ([dispatch steps](#dispatching-a-dsh-worker)) | run 2026-11-22, [#959](https://github.com/neilsh/stunt-reel/issues/959) |
 | Start a worker in a new workspace | `orca orchestration worker-start --spec-file <brief> --worktree new-top-level --repo id:<repo id> --name <issue>-<slug> --base-branch origin/main --agent <claude\|dsh\|antigravity> --model <id> --task-title "<title>" --json`; dsh ran without `--model` | run `run_b217992041c6`, 2026-11-20 |
 | Name the workspace | `--name` takes a bare slug such as `852-git-longpaths-tests`, and Orca makes the branch `neilsh/<slug>`; a name starting `neilsh-` or `neilsh/` became `neilsh/neilsh-…` or `neilsh/neilsh/…` | same |
 | Pick an Antigravity model | `--agent antigravity --model gemini-4-neon`, two flags; `--agent "antigravity --model …"` fails with `agent_unconfigured` | same |
