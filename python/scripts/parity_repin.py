@@ -31,7 +31,11 @@ lazy from pathlib import Path
 
 from stunt_reel import expected_file, parity_layout
 from stunt_reel.dataroot import REPO_ROOT
-from stunt_reel.expected_scores import CLASS_KEYS, clean_crates_tree
+from stunt_reel.expected_scores import (
+    CLASS_KEYS,
+    clean_crates_tree,
+    dirty_crates_paths,
+)
 from stunt_reel.parity_artifacts import LOSS_CLASSES, ArtifactError, read_report
 from stunt_reel.references import (
     RENDERER_CLASSES,
@@ -66,6 +70,16 @@ class Measured:
 def _pin(pin: str | None) -> str:
     """*pin* as a refusal names it: its first 12 characters, ``-`` when absent."""
     return "-" if pin is None else pin[:12]
+
+
+def _unclean_crates(repo: Path) -> list[str]:
+    """Why *repo*'s ``crates/`` holds no tree a commit holds: its dirty paths, or a git failure."""
+    paths = dirty_crates_paths(repo)
+    if paths is None:
+        return ["git failed to report crates/; is git installed and this a repository?"]
+    if not paths:
+        return ["git cannot compare crates/ with HEAD:crates; is HEAD a commit?"]
+    return ["crates/ has uncommitted or untracked changes:", *(f"  {path}" for path in paths)]
 
 
 def _measure(repo: Path, film: str, renderer: str, tree: str) -> tuple[Measured | None, str | None]:
@@ -148,7 +162,7 @@ def repin(repo: Path, renderer: str) -> list[Measured]:
         raise RepinRefusedError([f"unknown renderer class {renderer!r}"])
     tree = clean_crates_tree(repo)
     if tree is None:
-        raise RepinRefusedError(["crates/ has uncommitted or untracked changes, or git failed"])
+        raise RepinRefusedError(_unclean_crates(repo))
     path = repo / parity_layout.REFERENCES_FILE
     if not path.is_file():
         raise RepinRefusedError([f"{path} does not exist"])
