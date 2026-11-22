@@ -2,7 +2,7 @@
 title: "Standard-Z 24-bit depth leaves far near-coplanar ties to rounding"
 started: 2026-11-16
 issue: 637
-outcome: ""
+outcome: "Reversed, infinite depth in Depth24Plus adopted (ADR 0054, signed off 2026-11-22); Depth32Float rejected twice on GPU-lavapipe agreement, re-checked by #966 after the moat fix."
 ---
 
 # Standard-Z 24-bit depth leaves far near-coplanar ties to rounding
@@ -17,3 +17,4 @@ outcome: ""
 - 2026-11-20: measured over every tick against `main` `5fbfe844`: `Depth32Float` raised the GPU-lavapipe residue on five films; the same projection in `Depth24Plus` lowered it on all seven, with GPU parity inside every guard ([ADR 0054](../../../docs/adr/0054-depth-is-reversed-and-infinite.md); [journal.md](journal.md)).
 - 2026-11-20: rebased onto `main` `b028f7d3` (#690) and re-measured: the same residue and GPU scores to the figures quoted; `expected/gpu.toml` repinned on `crates` `97c0f90`, then on `90bdee2` after a comment-only change to `mesh.rs` with every expected score the same ([journal.md](journal.md)).
 - 2026-11-22: `Depth32Float` re-measured on `main` `44a3bf31`, after #904 and #922, on the canonical lavapipe: the disagreement rose on all seven films and neither judge adopts it ([journal.md](journal.md)).
+- 2026-11-22: the owner signed off on ADR 0054's `Depth24Plus`; #637 closed, with #966 to re-measure `Depth32Float` after the castle moat's tie is fixed.
