@@ -61,7 +61,7 @@ pub const OP_POLYZ: u16 = 0x00F3;
 /// Emit a procedural sphere centered at `regs[center_reg]` with `radius`.
 pub const OP_SPHERE: u16 = 0x00FC;
 /// A filled disc (`center_reg, radius, axis_reg`), its normal `regs[center] - regs[axis]`,
-/// drawn as a two-sided 16-gon in the current colour.
+/// drawn as a two-sided 64-gon in the current colour.
 pub const OP_PERFDISK: u16 = 0x010E;
 /// Branches (SORT pushes, `GOTO`, `GOSUB`) one walk may take before it is malformed.
 const MAX_BRANCHES: usize = 4096;
@@ -345,8 +345,9 @@ fn sphere_polygons(
 }
 
 /// Outline vertices of an `OP_PERFDISK` disc. `PLAYONE` steps an ellipse's row spans
-/// (`0xD11D`); 16 vertices is a guess at round enough, not a measured bound.
-const DISC_SEGMENTS: usize = 16;
+/// (`0xD11D`); with 64, the free ends of `LOCATION`'s ground disc land within a pixel of the
+/// capture's, where 16 fell up to 3 px short (`sod-vm-generators.md` § 8.8).
+const DISC_SEGMENTS: usize = 64;
 
 /// Builds an `OP_PERFDISK` disc: `DISC_SEGMENTS` vertices on a circle of `radius` about
 /// `centre`, in the plane perpendicular to `normal`, emitted with both windings because
