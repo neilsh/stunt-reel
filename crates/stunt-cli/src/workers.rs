@@ -34,7 +34,8 @@ pub(crate) fn shard_dir(out_dir: &Path, shard: usize) -> PathBuf {
 /// line after the program name, and joins their stores into `--out-dir`.
 ///
 /// When a child fails the others are killed, and their stores are left under `--out-dir` for
-/// inspection; `--out-dir` then holds no `render.json`.
+/// inspection; `--out-dir` then holds no `render.json`. Ctrl+C reaches the children through the
+/// terminal's process group, but a parent killed alone leaves them rendering until they finish.
 pub(crate) fn run(config: &CliConfig, args: &[OsString]) -> Result<(), String> {
     let out_dir = config
         .out_dir

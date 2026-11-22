@@ -25,9 +25,9 @@ The largest child peak RSS was 949 MiB.
 The whole parity run, rendering and scoring, took 201.3 s at `--workers 1` (4 jobs), 185.1 s at `--workers 2` (2 jobs) and 192.7 s at `--workers 4` (1 job).
 
 **Verdict**: adopted as an opt-in flag, default 1.
-One film renders 1.4x to 2.6x faster at 4 workers on 4 vCPUs, against the best single process (lavapipe's own threads already use about 1.8 cores of LOCATION's, 253.7 s CPU over 140.5 s), within 3% of the same total CPU.
+One film renders 1.4x to 2.6x faster at 4 workers on 4 vCPUs, against the best single process (lavapipe's own threads already use about 1.8 cores of LOCATION's, 253.7 s CPU over 140.5 s), with total CPU within 4% of one process's on every film.
 Two workers were slower than one on BOMB (0.96x) and CTRY (0.91x), whose renders are short beside each worker's scene build.
-On these 4 vCPUs a seven-film run gains at most 8% (185.1 s against 201.3 s), because four film jobs already fill the cores; the workers pay off where one film is rendered alone, or where cores outnumber the films still rendering.
+On these 4 vCPUs a seven-film run gained about 8% at best (185.1 s against 201.3 s), because four film jobs already fill the cores; the workers pay off where one film is rendered alone, or where cores outnumber the films still rendering.
 One run per cell, so the figures are `[Bounded Observation]` on this machine only.
 
 **Lives in**: [`research/parity/lavapipe-render-time.md` § 5](../../../research/parity/lavapipe-render-time.md#5-multi-vkdevice-in-process-versus-child-processes).

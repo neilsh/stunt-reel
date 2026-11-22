@@ -472,7 +472,10 @@ if sys.platform == "win32":
     import ctypes
 
     def physical_memory() -> int | None:
-        """This machine's physical memory in bytes, or ``None`` when it cannot be read."""
+        """This machine's physical memory in bytes, or ``None`` when it cannot be read.
+
+        It is the host's memory, not a container's cgroup limit, which can be smaller.
+        """
         kibibytes = ctypes.c_ulonglong(0)
         if not ctypes.windll.kernel32.GetPhysicallyInstalledSystemMemory(ctypes.byref(kibibytes)):
             return None
@@ -481,7 +484,10 @@ if sys.platform == "win32":
 else:
 
     def physical_memory() -> int | None:
-        """This machine's physical memory in bytes, or ``None`` when it cannot be read."""
+        """This machine's physical memory in bytes, or ``None`` when it cannot be read.
+
+        It is the host's memory, not a container's cgroup limit, which can be smaller.
+        """
         try:
             return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
         except ValueError, OSError:
