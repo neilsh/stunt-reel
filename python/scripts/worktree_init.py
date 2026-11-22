@@ -42,7 +42,11 @@ def main(argv: list[str] | None = None) -> int:
     from stunt_reel.worktree_clean import _clean  # noqa: PLC0415
     from stunt_reel.worktree_ensure import _ensure, _seed_command  # noqa: PLC0415
     from stunt_reel.worktree_provision import _init  # noqa: PLC0415
-    from stunt_reel.worktree_reap import DEFAULT_MIN_FREE_GB, _reap  # noqa: PLC0415
+    from stunt_reel.worktree_reap import (  # noqa: PLC0415
+        DEFAULT_MIN_FREE_GB,
+        REVIEW_QUIET_HOURS,
+        _reap,
+    )
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -80,6 +84,14 @@ def main(argv: list[str] | None = None) -> int:
         "--prune",
         action="store_true",
         help="also remove unregistered pool dirs and branches left without a worktree",
+    )
+    reap.add_argument(
+        "--reviews",
+        action="store_true",
+        help=(
+            "also reap a detached review-* worktree nothing under it or in its git dir"
+            f" changed for {REVIEW_QUIET_HOURS} hours"
+        ),
     )
     reap.add_argument(
         "--stash-dirty",
@@ -122,6 +134,7 @@ def main(argv: list[str] | None = None) -> int:
             force=bool(args.force),
             min_free_gb=float(args.min_free_gb),
             allow_stale_script=bool(args.allow_stale_script),
+            reviews=bool(args.reviews),
         )
     if int(args.keep) < 0:
         parser.error("--keep must not be negative")
