@@ -1,0 +1,31 @@
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 733da1ce..822a4192 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -879,0 +880,26 @@ impl SceneRenderer {
++        // TEMP bisect counter
++        {
++            let (mut world, mut shape_b, mut shape_d, mut shadow, mut image, mut other) = (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
++            let mut tally = |d: &PreparedDraw| match d.target {
++                Target::World { .. } => world += d.ground.len() + d.base.len() + d.decals.len(),
++                Target::Shape { .. } if d.shadow => shadow += d.base.len() + d.decals.len(),
++                Target::Shape { .. } => { shape_b += d.base.len(); shape_d += d.decals.len(); }
++                Target::Image { .. } => image += d.base.len() + d.decals.len(),
++                #[allow(unreachable_patterns)]
++                _ => other += d.base.len() + d.decals.len(),
++            };
++            for d in &self.prepared { tally(d); }
++            for s in &self.steps {
++                for d in &s.sprites { tally(d); }
++                tally(&s.props);
++                for d in &s.actors { tally(d); }
++            }
++            let nw = shape_b + shape_d + shadow + image + other;
++            let line = format!("BISECT nonworld={nw} shape_base={shape_b} shape_decal={shape_d} shadow={shadow} image={image} other={other} world_fill={world}\n");
++            if let Ok(p) = std::env::var("DBG_BISECT_FILE") {
++                use std::io::Write as _;
++                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
++                    let _ = f.write_all(line.as_bytes());
++                }
++            }
++        }
