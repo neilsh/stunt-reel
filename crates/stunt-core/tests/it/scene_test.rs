@@ -822,7 +822,8 @@ fn a_drawn_only_scene_keeps_the_actor_and_the_view_facing_lod_child() {
     let world = scene.world().expect("a world");
     let facing: Vec<u16> = world.view_facing.iter().map(|p| p.shape).collect();
     assert_eq!(facing, [TREE], "the tree is placed behind the node's gate");
-    assert_eq!(world.view_facing[0].gates.len(), 1);
+    assert_eq!(world.gate_nodes.len(), 1);
+    assert_eq!(world.view_facing[0].node, 0);
     let baked = world
         .ir
         .vertices

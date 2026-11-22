@@ -18,8 +18,8 @@ use crate::world::{ProbeActor, ScnStop, SlotEntry, TapFailure, World, WorldInput
 
 use super::bank::{PREVIOUS_FRAME_TICKS, angle_bank};
 use super::projection::{
-    GateView, IDENTITY_MATRIX, ViewCamera, camera_heading, distance, facing_matrix, lifted,
-    max_magnification, min_corner_depth, transform_point,
+    GateView, IDENTITY_MATRIX, OpenGates, ViewCamera, camera_heading, distance, facing_matrix,
+    lifted, max_magnification, min_corner_depth, transform_point,
 };
 use super::shadow::ground_shadow;
 use super::shapes::{
@@ -537,6 +537,9 @@ impl FilmScene {
             })
             .collect();
         let gate_view = GateView::new(&record.camera);
+        let open = self.world.as_ref().map_or_else(OpenGates::default, |w| {
+            OpenGates::new(&gate_view, &w.gate_nodes)
+        });
         let view_facing = self
             .world
             .iter()
@@ -545,7 +548,9 @@ impl FilmScene {
                     .iter()
                     .filter_map(|&index| w.view_facing.get(index))
             })
-            .filter(|p| p.gates.iter().all(|gate| gate_view.holds(gate)))
+            .filter(|p| {
+                open.is_open(p.node) && p.reach.as_ref().is_none_or(|reach| gate_view.holds(reach))
+            })
             .map(|p| ActorDraw {
                 shape_id: p.shape,
                 world_matrix: facing_matrix(heading, p.position),
@@ -802,6 +807,7 @@ mod tests {
                 ..PlacementRecords::default()
             },
             view_facing: Vec::new(),
+            gate_nodes: Vec::new(),
             prop_runs: Vec::new(),
         };
         let shadow_y = |x: f32| {
@@ -829,7 +835,7 @@ mod tests {
         use crate::contracts::{ActorTransform, TrajectoryRecord};
         use crate::flm::SliceKeyframe;
         use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, decode_sod};
-        use crate::world::{FacingProp, TerrainSurface};
+        use crate::world::{FacingProp, GateNode, TerrainSurface};
 
         let words = [
             OP_ID, 100, 0, 0x0100, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24,
@@ -890,21 +896,27 @@ mod tests {
                 FacingProp {
                     shape: 9,
                     position: [-2.0, 1.0, 5.0],
-                    gates: Vec::new(),
+                    node: GateNode::ROOT,
+                    reach: None,
                 },
                 // Behind the stand-in branch of a node at the eye: the near test holds there,
                 // so this prop is not drawn.
                 FacingProp {
                     shape: 9,
                     position: [7.0, 0.0, 0.0],
-                    gates: vec![VisibilityCondition::LodBranch {
-                        point: [0.0, 0.0, 8.0],
-                        ext: 400,
-                        splitdist: 600,
-                        near: false,
-                    }],
+                    node: 0,
+                    reach: None,
                 },
             ],
+            gate_nodes: vec![GateNode {
+                gate: VisibilityCondition::LodBranch {
+                    point: [0.0, 0.0, 8.0],
+                    ext: 400,
+                    splitdist: 600,
+                    near: false,
+                },
+                parent: GateNode::ROOT,
+            }],
             prop_runs: Vec::new(),
         };
         let scene = FilmScene::new(timeline, HashMap::from([(9, tree)]), Some(world));
@@ -946,7 +958,7 @@ mod tests {
         use crate::contracts::{ActorTransform, SodVertex, TrajectoryRecord};
         use crate::flm::SliceKeyframe;
         use crate::sod::{OP_ID, OP_IPG, OP_POLYZ, OP_RETURN, decode_sod};
-        use crate::world::{FacingProp, TerrainSurface};
+        use crate::world::{FacingProp, GateNode, TerrainSurface};
 
         let words = [
             OP_ID, 100, 0, 0x0100, 0, OP_IPG, 8, 100, 50, 0, OP_POLYZ, 3, 0, 12, 24,
@@ -1014,8 +1026,10 @@ mod tests {
             view_facing: vec![FacingProp {
                 shape: 9,
                 position: [-2.0, 1.0, 5.0],
-                gates: Vec::new(),
+                node: GateNode::ROOT,
+                reach: None,
             }],
+            gate_nodes: Vec::new(),
             prop_runs: Vec::new(),
         };
         let mut scene = FilmScene::new(timeline, HashMap::from([(9, tree)]), Some(world));
@@ -1153,7 +1167,7 @@ mod tests {
     fn a_view_facing_prop_without_a_shape_is_not_drawn() {
         use crate::contracts::TrajectoryRecord;
         use crate::flm::SliceKeyframe;
-        use crate::world::{FacingProp, TerrainSurface};
+        use crate::world::{FacingProp, GateNode, TerrainSurface};
 
         let timeline = FilmTimeline::new(
             vec![SliceKeyframe {
@@ -1173,7 +1187,8 @@ mod tests {
         let prop = |shape: u16, x: f32| FacingProp {
             shape,
             position: [x, 0.0, 0.0],
-            gates: Vec::new(),
+            node: GateNode::ROOT,
+            reach: None,
         };
         let world = World {
             ir: SodModelIr::new("WORLD"),
@@ -1189,6 +1204,7 @@ mod tests {
             tap_failures: Vec::new(),
             placements: PlacementRecords::default(),
             view_facing: vec![prop(9, 1.0), prop(5, 2.0), prop(9, 3.0)],
+            gate_nodes: Vec::new(),
             prop_runs: Vec::new(),
         };
         let scene = FilmScene::new(
@@ -1215,7 +1231,7 @@ mod tests {
     fn a_drawn_only_scene_keeps_the_actor_and_view_facing_shapes() {
         use crate::contracts::{ActorTransform, TrajectoryRecord};
         use crate::flm::SliceKeyframe;
-        use crate::world::{FacingProp, TerrainSurface};
+        use crate::world::{FacingProp, GateNode, TerrainSurface};
 
         let slice = |tick: u32, shape_id: u16| SliceKeyframe {
             record: TrajectoryRecord {
@@ -1258,12 +1274,17 @@ mod tests {
             view_facing: vec![FacingProp {
                 shape: 3,
                 position: [0.0; 3],
-                gates: vec![VisibilityCondition::LodBranch {
+                node: 0,
+                reach: None,
+            }],
+            gate_nodes: vec![GateNode {
+                gate: VisibilityCondition::LodBranch {
                     point: [0.0; 3],
                     ext: 400,
                     splitdist: 600,
                     near: true,
-                }],
+                },
+                parent: GateNode::ROOT,
             }],
             prop_runs: Vec::new(),
         };
@@ -1273,5 +1294,97 @@ mod tests {
         let mut drawn: Vec<u16> = scene.drawn_only().shapes().map(|(id, _)| id).collect();
         drawn.sort_unstable();
         assert_eq!(drawn, [1, 2, 3]);
+    }
+
+    /// Props under a closed branch are dropped whatever their inner branches hold, props under
+    /// an open one go through their own distance gate, and the draws keep the props' order.
+    #[test]
+    fn view_facing_props_follow_the_gate_tree_and_their_own_reach() {
+        use crate::contracts::TrajectoryRecord;
+        use crate::flm::SliceKeyframe;
+        use crate::world::{FacingProp, GateNode, TerrainSurface};
+
+        let camera = CameraTransform::default();
+        let timeline = FilmTimeline::new(
+            vec![SliceKeyframe {
+                record: TrajectoryRecord {
+                    tick: 0,
+                    camera,
+                    actors: Vec::new(),
+                    audio_cues: Vec::new(),
+                    palette: PaletteControls::default(),
+                    bank: BankVariables::default(),
+                },
+                tick: 0,
+                tick_duration: 1,
+            }],
+            Vec::new(),
+        );
+        // A branch at the eye keeps its subtree, so only its `near` flag decides it.
+        let branch = |near, parent| GateNode {
+            gate: VisibilityCondition::LodBranch {
+                point: camera.eye,
+                ext: 400,
+                splitdist: 600,
+                near,
+            },
+            parent,
+        };
+        // Node 0 is closed, 1 holds under it, 2 is open under the root.
+        let gate_nodes = vec![
+            branch(false, GateNode::ROOT),
+            branch(true, 0),
+            branch(true, GateNode::ROOT),
+        ];
+        // Scale index 14 cuts at 256 m at the default lens.
+        let reach = |distance: f32| {
+            Some(VisibilityCondition::ScaleReach {
+                point: [camera.eye[0], camera.eye[1], camera.eye[2] + distance],
+                scale_index: 14,
+            })
+        };
+        let prop = |x: f32, node, reach| FacingProp {
+            shape: 9,
+            position: [x, 0.0, 0.0],
+            node,
+            reach,
+        };
+        let world = World {
+            ir: SodModelIr::new("WORLD"),
+            terrain_patches: 0,
+            props_placed: 7,
+            bounds: ShapeExtent {
+                min: [0.0; 3],
+                max: [0.0; 3],
+                radius: 0.0,
+            },
+            scenery_stop: None,
+            terrain: TerrainSurface::default(),
+            tap_failures: Vec::new(),
+            placements: PlacementRecords::default(),
+            view_facing: vec![
+                prop(1.0, 1, None),
+                prop(2.0, 1, reach(0.0)),
+                prop(3.0, 0, None),
+                prop(4.0, 2, None),
+                prop(5.0, 2, reach(300.0)),
+                prop(6.0, GateNode::ROOT, reach(300.0)),
+                prop(7.0, 2, reach(0.0)),
+            ],
+            gate_nodes,
+            prop_runs: Vec::new(),
+        };
+        let scene = FilmScene::new(
+            timeline,
+            HashMap::from([(9, SodModelIr::new("TREE"))]),
+            Some(world),
+        );
+        let drawn: Vec<f32> = scene
+            .frame(0.0)
+            .view_facing
+            .iter()
+            .map(|d| d.world_matrix[12])
+            .collect();
+        assert_eq!(drawn, [4.0, 7.0]);
     }
 }

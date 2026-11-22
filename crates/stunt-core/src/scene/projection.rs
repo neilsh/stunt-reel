@@ -2,6 +2,7 @@
 
 use crate::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use crate::contracts::{CameraTransform, SodModelIr, VisibilityCondition};
+use crate::world::GateNode;
 
 /// Column-major identity matrix.
 pub(super) const IDENTITY_MATRIX: [f32; 16] = [
@@ -169,6 +170,38 @@ impl GateView {
     }
 }
 
+/// Which of the world's [`GateNode`]s a camera leaves open on one frame.
+#[derive(Debug, Default)]
+pub(super) struct OpenGates(Vec<bool>);
+
+impl OpenGates {
+    /// The nodes of `nodes` open under `view`.
+    pub(super) fn new(view: &GateView, nodes: &[GateNode]) -> Self {
+        Self(open_nodes(nodes, |gate| view.holds(gate)))
+    }
+
+    /// Whether the branch at `node` is open; [`GateNode::ROOT`] always is, and a node past the
+    /// tree never is.
+    pub(super) fn is_open(&self, node: u32) -> bool {
+        node == GateNode::ROOT || self.0.get(node as usize).copied().unwrap_or(false)
+    }
+}
+
+/// One forward pass over `nodes`, each after its parent: a node is open when its parent is and
+/// `holds` accepts its gate, which a closed parent spares.
+fn open_nodes(
+    nodes: &[GateNode],
+    mut holds: impl FnMut(&VisibilityCondition) -> bool,
+) -> Vec<bool> {
+    let mut open: Vec<bool> = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        let parent_open = node.parent == GateNode::ROOT
+            || open.get(node.parent as usize).copied().unwrap_or(false);
+        open.push(parent_open && holds(&node.gate));
+    }
+    open
+}
+
 /// The camera's heading: the angle about `+Y` from `+Z` to its look direction.
 ///
 /// `PLAYONE` builds the matrix a view-facing shape is drawn through (`work:0x809C`) from the
@@ -286,6 +319,47 @@ mod tests {
     fn drawn_magnification(camera: &CameraTransform) -> f32 {
         let fov = ViewCamera::from_authored(camera).fov_degrees;
         (PLAYONE_FOV_Y_DEGREES.to_radians() / 2.0).tan() / (fov.to_radians() / 2.0).tan()
+    }
+
+    /// A `LodBranch` whose `near` flag the tests below read back as its verdict.
+    fn branch(near: bool) -> VisibilityCondition {
+        VisibilityCondition::LodBranch {
+            point: [0.0; 3],
+            ext: 0,
+            splitdist: 0,
+            near,
+        }
+    }
+
+    #[test]
+    fn a_closed_branch_closes_every_branch_under_it_and_spares_their_tests() {
+        // Node 0 is closed; 1 and 2 hang under it, 3 under the root, 4 under 3.
+        let node = |near, parent| GateNode {
+            gate: branch(near),
+            parent,
+        };
+        let nodes = [
+            node(false, GateNode::ROOT),
+            node(true, 0),
+            node(true, 1),
+            node(true, GateNode::ROOT),
+            node(true, 3),
+        ];
+        let mut tested = Vec::new();
+        let open = open_nodes(&nodes, |gate| {
+            tested.push(*gate);
+            matches!(gate, VisibilityCondition::LodBranch { near: true, .. })
+        });
+        assert_eq!(open, [false, false, false, true, true]);
+        assert_eq!(tested.len(), 3, "only nodes 0, 3 and 4 are tested");
+    }
+
+    #[test]
+    fn open_gates_treat_the_root_as_open_and_a_stray_node_as_closed() {
+        let view = GateView::new(&CameraTransform::default());
+        let open = OpenGates::new(&view, &[]);
+        assert!(open.is_open(GateNode::ROOT));
+        assert!(!open.is_open(0));
     }
 
     #[test]

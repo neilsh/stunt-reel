@@ -17,7 +17,7 @@ use stunt_core::contracts::{
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::{FilmScene, ViewCamera};
 use stunt_core::world::{
-    FacingProp, GROUND_NODE, PlacementRecords, PropRun, TerrainSurface, World,
+    FacingProp, GROUND_NODE, GateNode, PlacementRecords, PropRun, TerrainSurface, World,
 };
 use stunt_render::{CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, RenderOptions};
 
@@ -513,6 +513,7 @@ fn world_is_drawn_when_present() {
             terrain: TerrainSurface::default(),
             tap_failures: Vec::new(),
             view_facing: Vec::new(),
+            gate_nodes: Vec::new(),
             prop_runs: Vec::new(),
             placements: PlacementRecords::default(),
         };
@@ -539,6 +540,7 @@ pub(crate) fn world_of(ir: SodModelIr) -> World {
         terrain: TerrainSurface::default(),
         tap_failures: Vec::new(),
         view_facing: Vec::new(),
+        gate_nodes: Vec::new(),
         prop_runs: Vec::new(),
         placements: PlacementRecords::default(),
     }
@@ -556,7 +558,8 @@ fn a_view_facing_prop_crossing_the_view_edge_still_draws() {
             world.view_facing = vec![FacingProp {
                 shape: SHAPE_ID,
                 position: [0.0, y, 0.0],
-                gates: Vec::new(),
+                node: GateNode::ROOT,
+                reach: None,
             }];
             // The camera looks along -Z, so the prop turns a half turn to face it: wound the
             // other way, the triangle faces the eye.
