@@ -15,12 +15,12 @@ Three checks, each failure a line naming what it read:
 * **attribution**: the body's last line, ignoring trailing blank lines, is :data:`ATTRIBUTION`
   or :data:`CLOUD_ATTRIBUTION`.
 
-The CLI reads the working tree, so it runs in the implementer's checkout before a push; the pin
-and date checks say nothing about a branch that checkout does not hold. ``merge_bar`` reads only
-:func:`attribution_failures` from the body it fetched, as a note, and names the other two checks
-pre-push only. Usage: ``mise run pr-lint -- <pr-body-file> [<base>]``; the base defaults to
+The CLI reads the working tree of the checkout holding the working directory, so it runs in the
+implementer's checkout before a push; the pin and date checks say nothing about a branch that
+checkout does not hold. ``merge_bar`` reads only :func:`attribution_failures` from the body it
+fetched, as a note, and names the other two checks pre-push only. Usage: ``mise run pr-lint -- <pr-body-file> [<base>]``; the base defaults to
 ``origin/main`` when it resolves, else ``main``. Exit status: 1 naming each failure, 0 clean, 2
-for bad arguments or an unreadable body file.
+for bad arguments, an unreadable body file or a working directory outside a git checkout.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import gate
-from added_lines import AddedLine, added_lines, file_lines
+from added_lines import AddedLine, _git, added_lines, file_lines
 
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.expected_scores import clean_crates_tree, dirty_crates_paths
@@ -221,7 +221,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, UnicodeDecodeError) as error:
         print(f"pr-lint: {error}", file=sys.stderr)
         return 2
-    found = failures(body, base=args.base)
+    try:
+        repo = Path(_git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
+    except (OSError, subprocess.CalledProcessError) as error:
+        print(f"pr-lint: the working directory is not in a git checkout: {error}", file=sys.stderr)
+        return 2
+    found = failures(body, repo=repo, base=args.base)
     for line in found:
         print(line)
     print(f"pr-lint: {len(found)} failure(s).", file=sys.stderr)
