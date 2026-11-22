@@ -27,7 +27,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
    Before asking, the implementer scans its own diff for rule 5's over-broad words and checks every quoted figure against its source.
    Every reviewer brief, whatever the reviewer (Claude subagent, Orca worker or Antigravity), ends with this instruction, copied into the brief word for word:
 
-   > Post your verdict as a PR comment with `gh pr comment <n> --body-file build/scratch/review-<n>.md` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/review-<n>.md`), clean included; if the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), post nothing and reply with the comment text, first line included.
+   > Post your verdict as a PR comment with `gh pr comment <n> --body-file build/scratch/review-<n>.md` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/review-<n>.md`), clean included; if the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), post nothing: write the comment, first line included, to `build/scratch/review-<sha7>.md` in your own review worktree (`<sha7>` is the reviewed commit's 7-character SHA) and reply with that file's absolute path.
    > Its first line is exactly `<Reviewer> review at <7-char head SHA>: clean` or `<Reviewer> review at <7-char head SHA>: needs changes`, with no `:` in `<Reviewer>`; then your findings (`file:line — problem — fix`, marked `blocking` or `nit`), or "no findings" plus what you checked (files read, gates and commands run) and what you could not verify.
    > The verdict is `needs changes` when any finding is `blocking` or a `nit` that must be fixed before merge, else `clean`.
    > Reply with the comment's URL.
@@ -51,8 +51,9 @@ Part of the [`running-unattended`](SKILL.md) skill.
    No findings. Checked diff against origin/main and `mise run check` (4/4); could not verify capture offsets (no data root).
    ```
 
-   A reviewer that cannot post (the reviewed commit is not the PR's head: no PR yet, or an unpushed rule 5 fix, rebase or merge) returns this text as its reply.
-   Push the commit as reviewed (step 1), with no amend and no rebase (if one is needed, review again), open the PR if it is the first push, then post the text unchanged: the pushed head is the reviewed SHA, so the comment's first line stays true.
+   A reviewer that cannot post (the reviewed commit is not the PR's head: no PR yet, or an unpushed rule 5 fix, rebase or merge) replies with the absolute path of its `build/scratch/review-<sha7>.md`.
+   For a `needs changes` verdict, give that path to the worker that makes the fixes, which reads the file itself; the coordinator opens it only for its first line.
+   Push the commit as reviewed (step 1), with no amend and no rebase (if one is needed, review again), open the PR if it is the first push, then post the file unchanged with `gh pr comment <n> --body-file <path>` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@<path>`): the pushed head is the reviewed SHA, so the comment's first line stays true.
    A re-review covers only what changed since the last reviewed commit, runs once after every finding is fixed, and prefers Antigravity when Gemini quota allows, otherwise the Sonnet [`reviewer`](../../../.claude/agents/reviewer.md) agent; a wording-only fix gets no re-review, so reply to the finding with the new text, except on a rule 5 PR, where it is re-reviewed like any other fix.
    A fix to any other PR is pushed first and its re-review posts a comment at the new head; the merge bar reads only comments at the current head.
 3. **Triage threads:** CodeRabbit no longer reviews automatically, so do not wait for it.

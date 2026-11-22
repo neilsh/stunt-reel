@@ -97,5 +97,5 @@ Any later `crates/` edit, a comment included, moves the hash and repeats all fou
   Without the driver, take `main`'s `expected/` files by hand, then the same.
   Never hand-merge the numbers: a merged number was measured on no tree.
 - A catch-up repin (a class's `crates` lags `main`, as the other class's does after each PR) is allowed in any PR, but only as its own commit, such as `chore(parity): repin expected scores`.
-  A cloud session whose llvmpipe matches the pinned `adapter` does the `lavapipe` catch-ups, tracked on [#830](https://github.com/neilsh/stunt-reel/issues/830); local-windows does `gpu`.
+  Local-windows repins `gpu`, and `lavapipe` through the WSL lavapipe ([`render-on-lavapipe.md` § 5](../../../docs/howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl)); a cloud session whose llvmpipe matches the pinned `adapter` does the `lavapipe` catch-ups tracked on [#830](https://github.com/neilsh/stunt-reel/issues/830).
 - A research note cites the journal entry for before-and-after scores and never copies the expected scores.
