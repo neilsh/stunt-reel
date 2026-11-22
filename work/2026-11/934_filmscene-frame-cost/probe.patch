@@ -1,0 +1,589 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 512c34b9..7902d83b 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -286,9 +286,13 @@ pub(crate) fn run_headless(
+ 
+     // The renderer keeps two frames in flight: submitting a frame retires the page of the one
+     // before it, so each page lands here one submission after its frame.
++    let t_loop = std::time::Instant::now();
++    let mut scene_frame_ns = 0u128;
+     let mut pending: VecDeque<(SampleKey, FrameFacts)> = VecDeque::new();
+     for (key, tick) in samples {
++        let t_sf = std::time::Instant::now();
+         let frame = scene.frame(capture_tick(tick));
++        scene_frame_ns += t_sf.elapsed().as_nanos();
+         renderer
+             .submit(&frame, None)
+             .map_err(|e| format!("render {key}: {e}"))?;
+@@ -302,6 +306,46 @@ pub(crate) fn run_headless(
+     if !pending.is_empty() {
+         return Err("the renderer did not hand back every submitted frame".to_string());
+     }
++    let loop_ns = t_loop.elapsed().as_nanos();
++    if std::env::var_os("DBG_PROBE_REPORT").is_some() {
++        let (vf_props, vf_gate_refs, vf_distinct_gates, vf_shape_ids) =
++            scene.world().map_or((0, 0, 0, 0), |w| {
++                let distinct: std::collections::HashSet<String> = w
++                    .view_facing
++                    .iter()
++                    .flat_map(|p| &p.gates)
++                    .map(|g| format!("{g:?}"))
++                    .collect();
++                let shapes: std::collections::HashSet<u16> =
++                    w.view_facing.iter().map(|p| p.shape).collect();
++                (
++                    w.view_facing.len(),
++                    w.view_facing.iter().map(|p| p.gates.len()).sum::<usize>(),
++                    distinct.len(),
++                    shapes.len(),
++                )
++            });
++        println!(
++            "PROBE934_WORLD vf_props={vf_props} vf_gate_refs={vf_gate_refs} vf_distinct_gates={vf_distinct_gates} vf_shape_ids={vf_shape_ids} scene_shapes={}",
++            scene.shapes().count()
++        );
++        let (tris, recs, steps, colls) = scene.world().map_or((0, 0, 0, 0), |w| {
++            (
++                w.terrain.probe_triangles(),
++                w.placements.records.len(),
++                w.placements.steps.len(),
++                w.placements
++                    .records
++                    .iter()
++                    .filter(|r| !r.stand_in && r.collision.is_some())
++                    .count(),
++            )
++        });
++        println!(
++            "PROBE934 loop_ns={loop_ns} scene_frame_ns={scene_frame_ns} terrain_triangles={tris} placement_records={recs} partition_steps={steps} collision_records={colls} {}",
++            stunt_core::scene::frame_probe::line()
++        );
++    }
+     memory.stage("frames rendered");
+     let adapter = render_adapter(renderer.adapter());
+     drop(renderer);
+diff --git a/crates/stunt-core/src/scene/film.rs b/crates/stunt-core/src/scene/film.rs
+index b69c860e..8b62d6e6 100644
+--- a/crates/stunt-core/src/scene/film.rs
++++ b/crates/stunt-core/src/scene/film.rs
+@@ -27,6 +27,115 @@ use super::shapes::{
+ };
+ use super::sprite::sprite_gate_open;
+ 
++/// `#934` throwaway probe: `FilmScene::frame` sub-timers (ns) and counts.
++#[expect(
++    missing_docs,
++    clippy::missing_panics_doc,
++    reason = "#934 throwaway probe"
++)]
++pub mod frame_probe {
++    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
++    use std::time::Instant;
++
++    pub const NAMES: [&str; 22] = [
++        "frame_inner_ns",
++        "sample_now_ns",
++        "sample_prev_bank_ns",
++        "sample_prev_actors_ns",
++        "actors_total_ns",
++        "actor_core_ns",
++        "actor_prev_find_ns",
++        "shadow_top_ns",
++        "shadow_matrix_ns",
++        "bank_ns",
++        "view_facing_ns",
++        "origin_ns",
++        "sprites_ns",
++        "drawn_after_ns",
++        "credits_view_ns",
++        "ticks",
++        "record_actors",
++        "drawn_actors",
++        "shadowed",
++        "decode_calls",
++        "vf_world",
++        "vf_kept",
++    ];
++    pub const EXTRA: [&str; 8] = [
++        "drawn_after_calls",
++        "sprite_draws",
++        "slot_steps_records",
++        "vf_shape_ns",
++        "vf_gates_ns",
++        "vf_build_ns",
++        "vf_gates_evaluated",
++        "vf_gates_total",
++    ];
++    pub static V: [AtomicU64; 30] = [const { AtomicU64::new(0) }; 30];
++    pub const VF_SHAPE: usize = 25;
++    pub const VF_GATES: usize = 26;
++    pub const VF_BUILD: usize = 27;
++    pub const VF_GATES_EVALUATED: usize = 28;
++    pub const VF_GATES_TOTAL: usize = 29;
++
++    /// Whether `DBG_PROBE_VF_FAST` is set.
++    pub fn fast() -> bool {
++        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++        *ON.get_or_init(|| std::env::var_os("DBG_PROBE_VF_FAST").is_some())
++    }
++
++    /// Whether `DBG_PROBE_VF_SPLIT` is set.
++    pub fn split() -> bool {
++        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++        *ON.get_or_init(|| std::env::var_os("DBG_PROBE_VF_SPLIT").is_some())
++    }
++    pub const FRAME: usize = 0;
++    pub const SAMPLE_NOW: usize = 1;
++    pub const SAMPLE_PREV_BANK: usize = 2;
++    pub const SAMPLE_PREV_ACTORS: usize = 3;
++    pub const ACTORS: usize = 4;
++    pub const ACTOR_CORE: usize = 5;
++    pub const PREV_FIND: usize = 6;
++    pub const SHADOW_TOP: usize = 7;
++    pub const SHADOW_MATRIX: usize = 8;
++    pub const BANK: usize = 9;
++    pub const VIEW_FACING: usize = 10;
++    pub const ORIGIN: usize = 11;
++    pub const SPRITES: usize = 12;
++    pub const DRAWN_AFTER: usize = 13;
++    pub const CREDITS_VIEW: usize = 14;
++    pub const TICKS: usize = 15;
++    pub const RECORD_ACTORS: usize = 16;
++    pub const DRAWN_ACTORS: usize = 17;
++    pub const SHADOWED: usize = 18;
++    pub const DECODE_CALLS: usize = 19;
++    pub const VF_WORLD: usize = 20;
++    pub const VF_KEPT: usize = 21;
++    pub const DRAWN_AFTER_CALLS: usize = 22;
++    pub const SPRITE_DRAWS: usize = 23;
++    pub const SLOT_ITEMS: usize = 24;
++
++    pub fn add(i: usize, v: u64) {
++        V[i].fetch_add(v, Relaxed);
++    }
++
++    pub fn since(i: usize, t: Instant) {
++        add(i, u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX));
++    }
++
++    /// `name=value` pairs, every bucket.
++    #[must_use]
++    pub fn line() -> String {
++        NAMES
++            .iter()
++            .chain(EXTRA.iter())
++            .zip(V.iter())
++            .map(|(n, v)| format!("{n}={}", v.load(Relaxed)))
++            .collect::<Vec<_>>()
++            .join(" ")
++    }
++}
++
+ /// Raw bytes of the files that make up one film scene; the caller locates and reads them.
+ #[derive(Clone, Copy, Debug)]
+ pub struct SceneInputs<'a> {
+@@ -449,8 +558,22 @@ impl FilmScene {
+     /// An empty timeline yields the default camera and no actors.
+     #[must_use]
+     pub fn frame(&self, tick: f32) -> SceneFrame {
++        let t0 = std::time::Instant::now();
++        let out = self.frame_probed(tick);
++        frame_probe::since(frame_probe::FRAME, t0);
++        out
++    }
++
++    #[expect(clippy::too_many_lines, reason = "#934 throwaway probe")]
++    fn frame_probed(&self, tick: f32) -> SceneFrame {
++        use frame_probe as fp;
++        use std::time::Instant;
++        fp::add(fp::TICKS, 1);
+         let world = self.world.is_some();
+-        let Some(record) = self.timeline.sample(tick) else {
++        let t = Instant::now();
++        let sampled = self.timeline.sample(tick);
++        fp::since(fp::SAMPLE_NOW, t);
++        let Some(record) = sampled else {
+             return SceneFrame {
+                 tick,
+                 view: ViewCamera::default(),
+@@ -463,18 +586,26 @@ impl FilmScene {
+                 credits: None,
+             };
+         };
++        fp::add(fp::RECORD_ACTORS, record.actors.len() as u64);
+         let eye = record.camera.eye;
+         let heading = camera_heading(&record.camera);
++        let t = Instant::now();
+         let previous = self.previous_bank(tick, record.bank);
++        fp::since(fp::SAMPLE_PREV_BANK, t);
++        let t = Instant::now();
+         let previous_actors = self
+             .timeline
+             .sample((tick - PREVIOUS_FRAME_TICKS).max(0.0))
+             .map(|record| record.actors);
++        fp::since(fp::SAMPLE_PREV_ACTORS, t);
++        let t_actors = Instant::now();
+         let mut actors: Vec<ActorDraw> = record
+             .actors
+             .iter()
+             .filter_map(|a| self.shapes.get(&a.shape_id).map(|shape| (a, shape)))
+             .map(|(a, shape)| {
++                fp::add(fp::DRAWN_ACTORS, 1);
++                let t = Instant::now();
+                 let own = a.compute_world_matrix();
+                 let faces = faces_view(shape);
+                 let world_matrix = if faces {
+@@ -487,52 +618,83 @@ impl FilmScene {
+                 } else {
+                     self.relit.light().for_actor(a.rotation_quat)
+                 };
++                let dist = distance(eye, a.position_meters);
++                fp::since(fp::ACTOR_CORE, t);
++                // The shadow entry `0x1C0D` builds its matrix from the slot's own angles
++                // whatever the header says (research/playone-exe/sod-vm-frame.md section 9.1).
++                let shadow_matrix = a.casts_shadow.then(|| {
++                    fp::add(fp::SHADOWED, 1);
++                    let t = Instant::now();
++                    let before = previous_actors
++                        .iter()
++                        .flatten()
++                        .find(|p| p.actor_id == a.actor_id)
++                        .map_or(a.position_meters, |p| p.position_meters);
++                    fp::since(fp::PREV_FIND, t);
++                    let t = Instant::now();
++                    if self.world.is_some() {
++                        fp::add(fp::DECODE_CALLS, 1);
++                    }
++                    let top = self.shadow_top(shape, before, a.position_meters);
++                    fp::since(fp::SHADOW_TOP, t);
++                    let t = Instant::now();
++                    let m = self.shadow_matrix(a.position_meters, top, &lifted(own, shape));
++                    fp::since(fp::SHADOW_MATRIX, t);
++                    m
++                });
++                let t = Instant::now();
++                fp::add(fp::DECODE_CALLS, 1);
++                let bank = shape.decode().map_or(AngleBank::REST, |decode| {
++                    angle_bank(tick, a.animate(), record.bank, previous).only(&decode.bank_operands)
++                });
++                fp::since(fp::BANK, t);
+                 ActorDraw {
+                     shape_id: a.shape_id,
+                     world_matrix,
+                     state_mask: a.state_mask,
+-                    distance: distance(eye, a.position_meters),
+-                    // The shadow entry `0x1C0D` builds its matrix from the slot's own angles
+-                    // whatever the header says (research/playone-exe/sod-vm-frame.md section 9.1).
+-                    shadow_matrix: a.casts_shadow.then(|| {
+-                        let before = previous_actors
+-                            .iter()
+-                            .flatten()
+-                            .find(|p| p.actor_id == a.actor_id)
+-                            .map_or(a.position_meters, |p| p.position_meters);
+-                        let top = self.shadow_top(shape, before, a.position_meters);
+-                        self.shadow_matrix(a.position_meters, top, &lifted(own, shape))
+-                    }),
++                    distance: dist,
++                    shadow_matrix,
+                     shadow_only: a.view,
+                     light,
+-                    bank: shape.decode().map_or(AngleBank::REST, |decode| {
+-                        angle_bank(tick, a.animate(), record.bank, previous)
+-                            .only(&decode.bank_operands)
+-                    }),
++                    bank,
+                 }
+             })
+             .collect();
+-        let view_facing = self
+-            .world
+-            .iter()
+-            .flat_map(|w| &w.view_facing)
+-            .filter(|p| self.shapes.contains_key(&p.shape))
+-            .filter(|p| {
+-                p.gates
+-                    .iter()
+-                    .all(|gate| lod_gate_holds(&record.camera, gate))
+-            })
+-            .map(|p| ActorDraw {
+-                shape_id: p.shape,
+-                world_matrix: facing_matrix(heading, p.position),
+-                state_mask: 0,
+-                distance: distance(eye, p.position),
+-                shadow_matrix: None,
+-                shadow_only: false,
+-                light: self.relit.light(),
+-                bank: AngleBank::REST,
+-            })
+-            .collect();
++        fp::since(fp::ACTORS, t_actors);
++        let t = Instant::now();
++        fp::add(
++            fp::VF_WORLD,
++            self.world.iter().map(|w| w.view_facing.len() as u64).sum(),
++        );
++        let view_facing: Vec<ActorDraw> = if fp::fast() {
++            self.view_facing_fast(&record.camera, heading, eye)
++        } else if fp::split() {
++            self.view_facing_split(&record.camera, heading, eye)
++        } else {
++            self.world
++                .iter()
++                .flat_map(|w| &w.view_facing)
++                .filter(|p| self.shapes.contains_key(&p.shape))
++                .filter(|p| {
++                    p.gates
++                        .iter()
++                        .all(|gate| lod_gate_holds(&record.camera, gate))
++                })
++                .map(|p| ActorDraw {
++                    shape_id: p.shape,
++                    world_matrix: facing_matrix(heading, p.position),
++                    state_mask: 0,
++                    distance: distance(eye, p.position),
++                    shadow_matrix: None,
++                    shadow_only: false,
++                    light: self.relit.light(),
++                    bank: AngleBank::REST,
++                })
++                .collect()
++        };
++        fp::add(fp::VF_KEPT, view_facing.len() as u64);
++        fp::since(fp::VIEW_FACING, t);
++        let t = Instant::now();
+         if let Some(shape_id) = self
+             .origin_shape
+             .filter(|_| record.actors.iter().all(|a| a.view))
+@@ -548,6 +710,8 @@ impl FilmScene {
+                 bank: AngleBank::REST,
+             });
+         }
++        fp::since(fp::ORIGIN, t);
++        let t = Instant::now();
+         let sprites = self.sprite_draws(
+             tick,
+             &record.camera,
+@@ -555,19 +719,164 @@ impl FilmScene {
+             &actors,
+             (record.bank, previous),
+         );
++        fp::add(fp::SPRITE_DRAWS, sprites.len() as u64);
++        fp::since(fp::SPRITES, t);
++        let t = Instant::now();
++        let view = ViewCamera::from_authored(&record.camera);
++        let credits = self.timeline.credits_at(tick).cloned();
++        fp::since(fp::CREDITS_VIEW, t);
+         SceneFrame {
+             tick,
+-            view: ViewCamera::from_authored(&record.camera),
++            view,
+             lens: record.camera.lens,
+             world,
+             actors,
+             sprites,
+             view_facing,
+             palette: record.palette,
+-            credits: self.timeline.credits_at(tick).cloned(),
++            credits,
+         }
+     }
+ 
++    /// `#934` probe: the `view_facing` collection with the shape filter hoisted to once per
++    /// scene and the camera's gate words computed once per frame, same output.
++    fn view_facing_fast(
++        &self,
++        camera: &CameraTransform,
++        heading: f32,
++        eye: [f32; 3],
++    ) -> Vec<ActorDraw> {
++        use crate::contracts::VisibilityCondition;
++        static SHAPED: std::sync::OnceLock<Vec<bool>> = std::sync::OnceLock::new();
++        let Some(world) = self.world.as_ref() else {
++            return Vec::new();
++        };
++        let shaped = SHAPED.get_or_init(|| {
++            world
++                .view_facing
++                .iter()
++                .map(|p| self.shapes.contains_key(&p.shape))
++                .collect()
++        });
++        let (mantissa, shift) = camera.lod_lens_words();
++        let forward = [
++            camera.target[0] - camera.eye[0],
++            camera.target[1] - camera.eye[1],
++            camera.target[2] - camera.eye[2],
++        ];
++        let len =
++            (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]).sqrt();
++        let divisor = f32::from(2u16 << shift);
++        let ce = camera.eye;
++        let lod = |point: [f32; 3], ext: i32, splitdist: i32| -> bool {
++            if len <= 0.0 {
++                return true;
++            }
++            let depth = ((point[0] - ce[0]) * forward[0]
++                + (point[1] - ce[1]) * forward[1]
++                + (point[2] - ce[2]) * forward[2])
++                / len;
++            let depth = (depth / divisor).floor();
++            let half = i64::from(ext >> 1);
++            let split = i64::from(splitdist);
++            let threshold = if split < half {
++                split
++            } else {
++                half + (((split - half) * i64::from(mantissa)) >> 16)
++            };
++            depth <= threshold as f32
++        };
++        let reach = |point: [f32; 3], scale_index: u8| -> bool {
++            let largest = point
++                .iter()
++                .zip(&ce)
++                .map(|(p, e)| (p - e).abs())
++                .fold(0.0f32, f32::max);
++            let high = largest.clamp(0.0, 65535.0) as u16;
++            let s = 17u32.saturating_sub(high.leading_zeros());
++            let gap = (u32::from(scale_index).saturating_add(s)).saturating_sub(16);
++            gap <= u32::from(shift).saturating_add(7)
++        };
++        let holds = |gate: &VisibilityCondition| match *gate {
++            VisibilityCondition::LodBranch {
++                point,
++                ext,
++                splitdist,
++                near,
++            } => lod(point, ext, splitdist) == near,
++            VisibilityCondition::ScaleReach { point, scale_index } => reach(point, scale_index),
++            _ => true,
++        };
++        world
++            .view_facing
++            .iter()
++            .zip(shaped)
++            .filter(|&(_, &ok)| ok)
++            .map(|(p, _)| p)
++            .filter(|p| p.gates.iter().all(holds))
++            .map(|p| ActorDraw {
++                shape_id: p.shape,
++                world_matrix: facing_matrix(heading, p.position),
++                state_mask: 0,
++                distance: distance(eye, p.position),
++                shadow_matrix: None,
++                shadow_only: false,
++                light: self.relit.light(),
++                bank: AngleBank::REST,
++            })
++            .collect()
++    }
++
++    /// `#934` probe: the `view_facing` collection as three timed passes, same output.
++    fn view_facing_split(
++        &self,
++        camera: &CameraTransform,
++        heading: f32,
++        eye: [f32; 3],
++    ) -> Vec<ActorDraw> {
++        use frame_probe as fp;
++        let t = std::time::Instant::now();
++        let shaped: Vec<&crate::world::FacingProp> = self
++            .world
++            .iter()
++            .flat_map(|w| &w.view_facing)
++            .filter(|p| self.shapes.contains_key(&p.shape))
++            .collect();
++        fp::since(fp::VF_SHAPE, t);
++        let t = std::time::Instant::now();
++        let mut evaluated = 0u64;
++        let mut gates = 0u64;
++        let kept: Vec<&crate::world::FacingProp> = shaped
++            .into_iter()
++            .filter(|p| {
++                gates += p.gates.len() as u64;
++                p.gates.iter().all(|gate| {
++                    evaluated += 1;
++                    lod_gate_holds(camera, gate)
++                })
++            })
++            .collect();
++        fp::since(fp::VF_GATES, t);
++        fp::add(fp::VF_GATES_EVALUATED, evaluated);
++        fp::add(fp::VF_GATES_TOTAL, gates);
++        let t = std::time::Instant::now();
++        let out = kept
++            .into_iter()
++            .map(|p| ActorDraw {
++                shape_id: p.shape,
++                world_matrix: facing_matrix(heading, p.position),
++                state_mask: 0,
++                distance: distance(eye, p.position),
++                shadow_matrix: None,
++                shadow_only: false,
++                light: self.relit.light(),
++                bank: AngleBank::REST,
++            })
++            .collect();
++        fp::since(fp::VF_BUILD, t);
++        out
++    }
++
+     /// The sprite draws of `draws`, the actor draws [`Self::frame`] made from `actors` in
+     /// order, at `tick`, seen by `camera`.
+     ///
+@@ -626,8 +935,26 @@ impl FilmScene {
+         camera: &CameraTransform,
+         actor: &ActorTransform,
+         shape: &SodModelIr,
++    ) -> Option<Vec<u32>> {
++        let t = std::time::Instant::now();
++        frame_probe::add(frame_probe::DRAWN_AFTER_CALLS, 1);
++        let out = self.drawn_after_probed(camera, actor, shape);
++        frame_probe::since(frame_probe::DRAWN_AFTER, t);
++        out
++    }
++
++    fn drawn_after_probed(
++        &self,
++        camera: &CameraTransform,
++        actor: &ActorTransform,
++        shape: &SodModelIr,
+     ) -> Option<Vec<u32>> {
+         let records = &self.world.as_ref()?.placements;
++        frame_probe::add(frame_probe::DECODE_CALLS, 1);
++        frame_probe::add(
++            frame_probe::SLOT_ITEMS,
++            (records.steps.len() + records.records.len()) as u64,
++        );
+         let header = shape.decode()?.header;
+         let entry = SlotEntry {
+             position: dos_axes(actor.position_meters),
+diff --git a/crates/stunt-core/src/scene/mod.rs b/crates/stunt-core/src/scene/mod.rs
+index d37dbcb0..d24f189e 100644
+--- a/crates/stunt-core/src/scene/mod.rs
++++ b/crates/stunt-core/src/scene/mod.rs
+@@ -25,6 +25,7 @@ mod sprite;
+ pub use self::bank::{PREVIOUS_FRAME_TICKS, angle_bank};
+ pub use self::film::{
+     ActorDraw, FilmScene, SceneError, SceneFrame, SceneInputs, SceneReport, SpriteDraw, WorldStats,
++    frame_probe,
+ };
+ pub use self::projection::ViewCamera;
+ pub use self::shapes::{
+diff --git a/crates/stunt-core/src/world/terrain.rs b/crates/stunt-core/src/world/terrain.rs
+index eccbd81f..48cd3bb5 100644
+--- a/crates/stunt-core/src/world/terrain.rs
++++ b/crates/stunt-core/src/world/terrain.rs
+@@ -271,6 +271,12 @@ pub struct TerrainSurface {
+ }
+ 
+ impl TerrainSurface {
++    /// `#934` probe: the triangle count.
++    #[must_use]
++    pub fn probe_triangles(&self) -> usize {
++        self.triangles.len()
++    }
++
+     /// The triangles of every `MAP.BIN` patch over `anchors`, lifted by `base_y`.
+     pub(super) fn new(anchors: &[AnchorPoint], map_areas: &[MapArea], base_y: f32) -> Self {
+         let pts: Vec<[f32; 3]> = anchors
