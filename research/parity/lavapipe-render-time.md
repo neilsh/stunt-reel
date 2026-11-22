@@ -112,6 +112,14 @@ _Source: [Phase breakdown and isolation probes across three spans](../../work/20
   `read_back` builds each plane with a byte-at-a-time iterator; copying row by row with `extend_from_slice`, still allocating each frame, cut `readback_copy` by about 85% on a cloud Ubuntu lavapipe (`457.4` to `68.9 ms` on Span A, `757.7` to `113.2 ms` on Span C), with the stores byte-identical; the loop medians moved `-3.2%` (inside Span A's `9.5%` run spread) and `-11.2%`.
 _Source: [Where loop time goes after `#914`](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-where-loop-time-goes-after-914), [What `readback_copy` spends its time on](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-what-readback_copy-spends-its-time-on)._
 
+- **Row-wise `read_back` copy (`#933`).**
+  `[Bounded Observation]`, 2026-11-22, `20d8371f` + `#931`'s probe, three interleaved runs per cell after two warm-up rounds, every run's four stores byte-identical to a `9ccfd39c` + probe binary's on its adapter.
+  `read_back` reserves each plane's `Vec` once and appends each row's first `row_bytes` with `extend_from_slice`, keeping its signature and the `RunOnDrop` unmap guard; the byte-at-a-time iterator is gone.
+  `readback_copy` medians fell `438.5 -> 35.0`, `661.8 -> 218.9` and `810.5 -> 113.6 ms` on Windows lavapipe (Spans A/B/C) and `421.2 -> 80.1`, `384.9 -> 51.2` and `582.4 -> 102.9 ms` on the RTX 4070, and loop medians fell with them: `2,006.5 -> 1,473.3` (`-26.6%`), `3,670.4 -> 3,524.2` (`-4.0%`) and `3,293.7 -> 2,642.2` (`-19.8%`) on lavapipe, `1,625.2 -> 1,265.2` (`-22.2%`), `1,471.2 -> 1,054.0` (`-28.4%`) and `2,421.5 -> 1,786.9` (`-26.2%`) on the GPU.
+  These levels run above the `#931` row above, and another session rendered on the laptop during the sweeps; the interleaved reduction is the figure to read, not the level.
+  The seven reference films' `28` stores are byte-identical on both adapters with unchanged score lines (section 6).
+  _Source: [Row-wise readback copy on Windows lavapipe and the RTX 4070](../../work/2026-11/933_readback-bulk-copy/journal.md#2026-11-22-row-wise-readback-copy-on-windows-lavapipe-and-the-rtx-4070)._
+
 ## 4. Thread scaling under `LP_NUM_THREADS` after `#596` and `#644`
 
 `[Bounded Observation]`, 2026-11-21, `6955e159` + `probe.patch`, `LOCATION` `12..=300` (289 ticks), 3 runs each, stores byte-identical across thread counts.
@@ -150,6 +158,7 @@ _Source: [Worker processes on the cloud's lavapipe over the seven reference film
 - **`#919`: No-go** (`-1.3%` to `+5.1%` loop impact while dropping `check_derivable` validation of LUT output).
 - **`#915` sub-items:** (a) bind-state dedup **defer** (`scene_draw <= 1.1%` post-`#914`); (b) relit vertex ring + apex-skip **no-go** (`-0.6%` combined; `Refresh::Upload` dominates under welding, and CPU decode exceeds GPU upload by `> 12x`); (c) apex-free world layout **defer** (revisit for `~76.7 MiB`/worker RAM headroom under `#916`); (d) pass discard / single poll / CPU readback reuse **defer** (`poll_plane < 0.8 ms`; `OffscreenTarget` already reuses GPU `[Readback; 2]` staging buffers).
 - **After `#914` (`#931`):** **go** on a row-wise copy in `read_back`, the part of `#915` (d)'s CPU readback work worth doing (`readback_copy` is `17.2%..21.8%` of the loop on Windows lavapipe and `26.6%..31.8%` on the RTX 4070; on Ubuntu lavapipe the copy, not the `Vec`, is about 85% of it); **no-go** on `#926` view-facing instancing (no view-facing draw survives on its forested span, at most `245` per frame on either film) and on caching `collect_world_meshes` (the world block is at most `0.3%..2.1%` of the loop) (section 3).
+- **`#933`: Go, landed** (a row-wise `read_back` copy cuts `readback_copy` by `66.9%..92.0%` on Windows lavapipe and `81.0%..86.7%` on the RTX 4070, and loop wall by `4.0%..26.6%` and `22.2%..28.4%`; `28` of `28` stores on the seven reference films stay byte-identical with unchanged score lines on both adapters; the copy is now `2.4%..6.3%` of the loop, so it closes the row-wise half of open question 1 and `#915` (d)'s CPU readback `Vec` reuse needs no follow-up) (section 3).
 - **`#920`: Defer** (`LOCATION` `world_total` median `229`, p95 `1,033`, max `1,962`; Span B post-`#914` runs `8.02 ms/f` without un-baking `56,395` static props).
 _Source: [Qualitative go, defer, and no-go verdicts](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-qualitative-go-defer-and-no-go-verdicts); the `#931` verdicts from [Where loop time goes after `#914`](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-where-loop-time-goes-after-914) and [View-facing draws left after `#914`](../../work/2026-11/931_post-914-render-profile/journal.md#2026-11-22-view-facing-draws-left-after-914)._
 
@@ -168,7 +177,7 @@ _Source: [Qualitative go, defer, and no-go verdicts](../../work/2026-11/918_lava
 
 ## Open questions
 
-1. How much a row-wise `read_back` copy saves on Windows lavapipe and the RTX 4070, where `readback_copy` is `17.2%..31.8%` of the loop, and what in `FilmScene::frame` (`scene_frame`, `19.7%..39.1%` after `#914`) costs most.
+1. What in `FilmScene::frame` (`scene_frame`, `19.7%..39.1%` after `#914`) costs most.
 2. What Linux/Mesa lock causes 4-way in-process separate `wgpu::Instance` devices (`13.13 s` / `52.71 s` CPU) to trail 4 child processes (`7.65 s` / `45.70 s` CPU) on Ubuntu Mesa 25.2.8.
 3. How much `mise run parity -- --software-only --workers N` saves on a machine with more cores than films, such as an 8-core laptop, and whether `LOCATION` should take more workers than the shorter films, since on 4 vCPUs (section 5) the run gained about 8% at best.
 4. Whether `#644`'s world cull, which has no disc guard, drops a baked prop's disc rim that `squeeze_disc` would bring into the view under a zoomed lens (`#914`'s view-facing cull keeps such models; section 3).
