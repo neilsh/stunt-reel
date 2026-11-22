@@ -6,8 +6,8 @@ an older ``python`` cannot parse that, so the import raises ``SyntaxError`` befo
 script runs (issue #854). ``guard`` runs first, compares this interpreter with
 ``requires-python`` in ``pyproject.toml``, and runs the script again on the interpreter
 ``mise which python`` names when this one is too old. When mise cannot name one, it reports the
-interpreter it found and the version needed. The gate tasks run ``gate.py`` the same way, so it
-takes the same guard before loading a ``stunt_reel`` module (issue #884).
+interpreter it found and the version needed. ``gate.py`` takes the same guard, for the same
+reason (issue #884).
 
 ``stunt_reel/uv.py`` is the same idea for uv. This module sits in ``python/scripts`` because it
 must import without the package, whose ``__init__`` imports ``tac``, and it keeps to the standard

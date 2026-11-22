@@ -77,18 +77,13 @@ if TYPE_CHECKING:
 
 
 def _guard() -> int | None:
-    """Run the gate again on the pinned interpreter when this one is too old for the package.
+    """Hand the gate to mise's Python when this one is below ``requires-python``.
 
-    ``stunt_reel`` uses ``lazy from`` (PEP 810, Python 3.15) and ``gate.py`` runs as plain
-    ``python`` (ADR 0014), so ``python_pin.guard`` runs before the first load, as it does for
-    ``worktree_init.py`` (issue #884). None when this interpreter is new enough, or has just run
-    the gate on the interpreter ``mise which python`` names.
+    None to carry on with this interpreter, else the status the command ends with.
     """
-    return python_pin.guard(Path(__file__).resolve(), list(sys.argv[1:]))
+    return python_pin.guard(Path(__file__).resolve(), sys.argv[1:])
 
 
-# The guard runs before the first load: an older interpreter cannot parse ``lazy from``, and its
-# SyntaxError would come before anything could report the interpreter it found (issue #884).
 _GUARD_STATUS = _guard()
 if _GUARD_STATUS is not None:
     sys.exit(_GUARD_STATUS)

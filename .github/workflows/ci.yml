@@ -29,8 +29,9 @@ jobs:
     # classifier (ADR 0038), so the workflow holds no path table of its own. The jobs below
     # read the skip condition: this job succeeded and printed docs_only=true. Any other
     # outcome (a failure, a skip on a push or a manual run, or docs_only=false) runs them all.
-    # The runner's system python3 cannot parse gate.py (PEP 810 lazy import), so mise
-    # installs the pinned Python and nothing else.
+    # gate.py loads stunt_reel modules that use PEP 810 lazy imports, so it needs the pinned
+    # Python: an older one hands off through python_pin.guard, or exits 1 naming the version.
+    # mise installs that and nothing else.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5

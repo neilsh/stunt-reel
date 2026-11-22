@@ -26,14 +26,20 @@ SCRIPTS = ROOT / "python" / "scripts"
 pytestmark = pytest.mark.windows
 
 
-def _fake_executable(folder: Path, name: str, *, version: str, status: int = 0) -> Path:
-    """An executable *name* that answers ``--version`` with *version*, else exits *status*."""
+def _fake_executable(
+    folder: Path, name: str, *, version: str, status: int = 0, record: Path | None = None
+) -> Path:
+    """An executable *name* that answers ``--version`` with *version*, else exits *status*.
+
+    With *record*, it appends the arguments of each other run to that file.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     if os.name == "nt":
         path = folder / f"{name}.cmd"
         path.write_text(
             f'@echo off\r\nif "%~1"=="--version" (\r\n  echo {version}\r\n  exit /b 0\r\n)\r\n'
-            f"exit /b {status}\r\n",
+            + (f'echo %* >>"{record}"\r\n' if record is not None else "")
+            + f"exit /b {status}\r\n",
             encoding="ascii",
         )
     else:
@@ -44,7 +50,8 @@ def _fake_executable(folder: Path, name: str, *, version: str, status: int = 0) 
             f"  echo '{version}'\n"
             "  exit 0\n"
             "fi\n"
-            f"exit {status}\n",
+            + (f"printf '%s\\n' \"$*\" >> '{record}'\n" if record is not None else "")
+            + f"exit {status}\n",
             encoding="utf-8",
         )
         path.chmod(0o755)
@@ -173,7 +180,7 @@ def test_a_new_enough_interpreter_is_left_alone(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_the_guarded_scripts_parse_before_python_315() -> None:
-    """Nothing a guarded entry point imports may use syntax below the floor cannot parse.
+    """Nothing a guarded entry point imports may use syntax an older interpreter cannot parse.
 
     ``lazy from`` is the 3.15 import that raised the SyntaxError, and ruff format writes Python
     3.14's unparenthesized ``except A, B:`` at py315: the guard exists for older interpreters, so
@@ -223,12 +230,19 @@ def test_the_gate_runs_the_guard_before_loading_the_package() -> None:
 def test_an_old_interpreter_runs_the_gate_on_the_pin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A 3.14 ``python`` hands the gate to mise's 3.15 and returns that run's status (#884)."""
-    pinned = _fake_executable(tmp_path / "installs", "python", version="Python 3.15.2", status=7)
+    """A 3.14 ``python`` hands the gate's arguments to mise's 3.15 and returns its status (#884)."""
+    calls = tmp_path / "calls.log"
+    pinned = _fake_executable(
+        tmp_path / "installs", "python", version="Python 3.15.2", status=7, record=calls
+    )
     mise = _fake_mise(tmp_path / "bin", pinned)
     monkeypatch.setenv("PATH", str(mise.parent))
     monkeypatch.setattr(sys, "version_info", (3, 14, 7))
+    monkeypatch.setattr(sys, "argv", ["gate.py", "scope"])
     assert gate._guard() == 7
+    forwarded = calls.read_bytes().split()
+    assert forwarded[0].endswith(b"gate.py")
+    assert forwarded[1:] == [b"scope"]
 
 
 def test_a_too_old_interpreter_with_no_pin_names_the_gates_version(
@@ -237,6 +251,7 @@ def test_a_too_old_interpreter_with_no_pin_names_the_gates_version(
     """The gate exits 1 naming the interpreter and version it needs, never a SyntaxError."""
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     monkeypatch.setattr(sys, "version_info", (3, 14, 7))
+    monkeypatch.setattr(sys, "argv", ["gate.py", "scope"])
     found = tmp_path / "Python314" / "python.exe"
     monkeypatch.setattr(sys, "executable", str(found))
     assert gate._guard() == 1
