@@ -94,6 +94,7 @@ This is for Orca workers; a cloud session's workers are subagents that report in
 | Name the workspace | `--name` takes a bare slug such as `852-git-longpaths-tests`, and Orca makes the branch `neilsh/<slug>`; a name starting `neilsh-` or `neilsh/` became `neilsh/neilsh-…` or `neilsh/neilsh/…` | same |
 | Pick an Antigravity model | `--agent antigravity --model gemini-4-neon`, two flags; `--agent "antigravity --model …"` fails with `agent_unconfigured` | same |
 | Start a worker in an existing workspace | `worker-start --spec-file <brief> --worktree "path:<workspace path>" --agent <agent> --model <id> --task-title "<title>" --json`, without `--repo`, `--name` or `--base-branch` | same |
+| Link a workspace to its issue and PR in the Orca UI | `orca worktree set --worktree "path:<workspace path>" --issue <N>` after `worker-start` (it has no issue flag), and again with `--pr <M>` once the PR opens | run 2026-11-21 |
 | Send to an idle worker | `orca orchestration send --to dispatch:<dispatch id> --subject "<subject>" --body "<body>" --json` | same |
 | Send to every worker in a run | `orca orchestration send --to run:<run id> --run <run id> --subject … --body …`; `send --chat <id>` fails with `run_required` when no run resolves | same |
 | Answer a worker's question | `orca orchestration reply --id <message id> --body "<answer>"` | same |
