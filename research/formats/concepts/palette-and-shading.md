@@ -199,6 +199,10 @@ Their edges are 15 points it projects straight ahead in heading: edge `j` (0 to 
   So 224 is the sky beyond the zenith, 225 to 227 the bands from 90 down to 28.4 degrees, 228 to 238 the rest, and `0xD0` the strip below 1.0 degree.
 * **With no edge on screen** the view is one fill: 224 when the view looks up (the depth row's vertical component points up, `0x8DF2`), `0xD0` when it looks down; a view whose screen rows have no vertical component at all takes the same fill (`0x8DCC`).
 * **Rows**: an edge's row belongs to the band below it, since each fill spans the rows from the previous edge to one above this edge (`0x8EB2`).
+* **The last band runs to the view's edge**: when the walk ends, its closing edge is the view's bottom row `work:0x41C6` (its top row `0x41C4` when `work:0x80C8` is negative), so the band after the last edge drawn, the `0xD0` fill after edge 14, reaches the last row of the view (`0x8D94..0x8DB9`).
+  The drawer computes no horizon row: the strip a capture shows ends where the scene, drawn after the sky, covers it, and where that scene is the 208 ocean, strip and ocean meet with no other index between them.
+  `[Established]`, static, unpatched image, not traced live.
+  _Source: [where the sky drawer stops the `0xD0` fill](../../../work/2026-11/893_sky-fill-strip/journal.md#2026-11-22-where-the-sky-drawer-stops-the-0xd0-fill-read-statically)._
 * **The sun** is drawn after the bands, or before the `0xD0` fill when the walk reached edge 14, which covers it; never in a view looking down with no edge on screen ([`palette-fade.md` § 3.2](../../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
 
 `[Bounded Observation]` for the live match: on `BALLOON.FLM`, Patch #3, DOSBox-X 2026.10.01, a model of this walk fed the view matrix logged at the loop start `0x8D36` reproduced the edge rows (`0x8D64`) and fill colours (`0x8E86`) of all 17 frames logged in full, ticks 223 to 267, to the pixel.
