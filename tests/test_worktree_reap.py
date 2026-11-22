@@ -1975,9 +1975,9 @@ def test_reviews_fail_closed_when_orca_is_unavailable(tmp_path: Path) -> None:
 
 
 def test_a_review_worktree_holding_nested_worktrees_is_skipped_and_names_them(
-    tmp_path: Path,
+    short_root: Path,
 ) -> None:
-    repo, worktree = _review_worktree(tmp_path)
+    repo, worktree = _review_worktree(short_root)
     nested = worktree / ".claude" / "worktrees" / "inner"
     nested.parent.mkdir(parents=True)
     _run_git(repo, "worktree", "add", "-q", "--detach", str(nested), "main")
