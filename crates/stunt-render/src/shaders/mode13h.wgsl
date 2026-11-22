@@ -1,3 +1,6 @@
+// `vs_edge` writes clip distances (wgpu::Features::CLIP_DISTANCES, which the device requires).
+enable clip_distances;
+
 // The view's rotation and projection only: every model matrix arrives eye-relative, with the
 // eye's translation applied on the CPU in f64 (camera.rs `eye_relative_matrix`), so the only
 // world-scale arithmetic left here is a world vertex's `position - eye`, rounded once
@@ -59,6 +62,38 @@ const FLAG_DISC: u32 = 0x40u;
 fn squeeze_disc(clip: vec4<f32>, centre: vec4<f32>) -> vec4<f32> {
     let offset = clip - centre;
     return centre + vec4<f32>(offset.xy, offset.zw * camera.disc_depth_scale);
+}
+
+// Moves a disc's rim vertex at `clip`, whose disc centre is at `centre`, so that the disc's
+// filled triangles, drawn without an outline, cover the pixels 0xD11D fills
+// (research/playone-exe/sod-vm-generators.md section 8.8). 0xD11D fills rows y - H to
+// y + H - 1 and each row from x - w to x + w, with the centre pixel (x, y) the projection's
+// centre plus the offset truncated toward it (0xA235..0xA25E) and H truncated (0xA27B). So
+// the disc is centred on pixel x's centre and on the boundary above row y, and its vertical
+// half-extent is half a pixel short of the radius: sampling pixel centres, that covers
+// exactly 2 * trunc(r) rows and 2 * trunc(r) + 1 columns of a disc of radius r pixels. The
+// rim vertex's distance from the centre stands in for the vertical half-extent, which it
+// equals at the top and bottom of the rim.
+fn snap_disc(clip: vec4<f32>, centre: vec4<f32>) -> vec4<f32> {
+    if (centre.w <= 0.0 || clip.w <= 0.0) {
+        return clip;
+    }
+    // Pixels from the top-left of the view, and the projection's centre in them.
+    let half = 0.5 / camera.line_half_ndc;
+    let to_pixels = vec2<f32>(half.x, -half.y);
+    let middle = half;
+    let c = middle + centre.xy / centre.w * to_pixels;
+    let v = middle + clip.xy / clip.w * to_pixels;
+    let o = c - middle;
+    let snapped = vec2<f32>(
+        middle.x + trunc(o.x) + 0.5,
+        floor(middle.y) + trunc(o.y),
+    );
+    let rim = v - c;
+    let len = length(rim);
+    let shrink = select(0.0, max(0.0, 1.0 - 0.5 / len), len > 0.0);
+    let moved = snapped + vec2<f32>(rim.x, rim.y * shrink);
+    return vec4<f32>((moved - middle) / to_pixels * clip.w, clip.zw);
 }
 
 // Moves a line corner at `clip`, whose segment's other end is at `other`, to the corner of a
@@ -197,6 +232,11 @@ fn prop_shape(vertex: u32) -> u32 {
 
 @vertex
 fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    return vertex_output(in, vertex_index);
+}
+
+// `vs_main`'s work, callable from the other vertex entry points.
+fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
 
     // Model space to eye-relative space to clip space.
@@ -229,7 +269,7 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
         }
     } else if ((in.attr.y & FLAG_DISC) != 0u) {
         let centre = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
-        out.clip_position = squeeze_disc(out.clip_position, centre);
+        out.clip_position = snap_disc(squeeze_disc(out.clip_position, centre), centre);
     }
     out.palette_index = in.attr.x & 255u;
     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
@@ -253,6 +293,49 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
     // palette offsets (OP_SHADES, OP_SHADE16), not a sun vector. Row 31 is full brightness.
     out.light_level = 31u;
 
+    return out;
+}
+
+// How far outside the view an outline line is clipped, as a multiple of `w`: 1.1 puts the
+// planes 16 columns past the sides of a 320-column view and 9 rows past the top and bottom of
+// a 185-row one, beyond any pixel a one-pixel line draws on screen. Lavapipe does not clip a
+// line against the view's sides (Mesa's `bypass_clip_points_lines`), so a line cut beside
+// the eye by the near plane reached its rasteriser tens of thousands of pixels off the page
+// and was drawn as a wedge; it does clip against these user planes (research/parity/lavapipe-line-clip.md).
+const EDGE_CLIP_BAND: f32 = 1.1;
+
+// `VertexOutput` with the clip distances `vs_edge` adds: a fragment input cannot hold them, so
+// the varyings are repeated here and must match `VertexOutput`'s.
+struct EdgeVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) @interpolate(flat) palette_index: u32,
+    @location(1) @interpolate(flat) light_level: u32,
+    @location(2) @interpolate(flat) layer: u32,
+    @location(3) @interpolate(linear) shade: f32,
+    @location(4) @interpolate(perspective) shade_w: f32,
+    @location(5) @interpolate(perspective) w: f32,
+    @location(6) @interpolate(flat) shape: u32,
+    @location(7) @interpolate(flat) prop_vertex: u32,
+    @builtin(clip_distances) clip_distances: array<f32, 4>,
+};
+
+// `vs_main` for the outline line lists, clipped to `EDGE_CLIP_BAND` times the view on each side.
+@vertex
+fn vs_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> EdgeVertexOutput {
+    let v = vertex_output(in, vertex_index);
+    var out: EdgeVertexOutput;
+    out.clip_position = v.clip_position;
+    out.palette_index = v.palette_index;
+    out.light_level = v.light_level;
+    out.layer = v.layer;
+    out.shade = v.shade;
+    out.shade_w = v.shade_w;
+    out.w = v.w;
+    out.shape = v.shape;
+    out.prop_vertex = v.prop_vertex;
+    let c = v.clip_position;
+    let band = EDGE_CLIP_BAND * c.w;
+    out.clip_distances = array<f32, 4>(band - c.x, band + c.x, band - c.y, band + c.y);
     return out;
 }
 

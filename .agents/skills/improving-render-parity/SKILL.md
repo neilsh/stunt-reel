@@ -39,7 +39,7 @@ Read each at its step:
 
 - [`cost-rules.md`](cost-rules.md): before the first render or sweep of a session.
 - [`comparing-references.md`](comparing-references.md): deciding whether to promote a new capture to reference.
-- [`error-readout.md`](error-readout.md): after adopting a render change, on every film.
+- [`error-readout.md`](error-readout.md): after adopting a render change, on every film; in an unattended run, the coordinator runs it at Shutdown ([`loop-and-bounds.md`](../running-unattended/loop-and-bounds.md#shutdown)).
 - [`pr-evidence.md`](pr-evidence.md): opening a PR that changes rendered output.
 
 ## Finishing an item

@@ -266,3 +266,29 @@ def test_a_tree_kill_that_does_nothing_still_ends_the_child(
     code, _output = process_tree.run([sys.executable, "-c", "import time; time.sleep(30)"], 1)
     assert code == process_tree.TIMEOUT_EXIT
     assert procs[0].returncode not in (None, 0), "the child slept out its 30 s"
+
+
+def test_stuntreel_running_reads_the_names_given() -> None:
+    assert process_tree.stuntreel_running(["python", "StuntReel.exe"])
+    assert process_tree.stuntreel_running(["stuntreel"])
+    assert not process_tree.stuntreel_running(["python", "stuntreel-old", "cargo"])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="copies a POSIX sleep binary")
+def test_stuntreel_running_sees_a_live_process(tmp_path: Path) -> None:
+    sleep = Path("/bin/sleep")
+    if not sleep.exists():
+        pytest.skip("no /bin/sleep")
+    binary = tmp_path / "stuntreel"
+    binary.write_bytes(sleep.read_bytes())
+    binary.chmod(0o755)
+    child = subprocess.Popen([str(binary), "30"])  # noqa: S603 - a copied sleep
+    try:
+        # The child is named for its binary only once its exec lands, a moment after Popen.
+        deadline = time.monotonic() + 10
+        while not process_tree.stuntreel_running() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert process_tree.stuntreel_running()
+    finally:
+        child.kill()
+        child.wait()

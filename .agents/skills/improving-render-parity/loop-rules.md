@@ -88,6 +88,8 @@ An adopted change repins the expected tables in [`expected/<class>.toml`](../../
 
 **Repin, never hand-merge.**
 `mise run parity-repin -- [--class gpu|lavapipe]` regenerates the class's whole file from every film's current report after `mise run parity` on a clean `crates/` (the class defaults to the one the reports were drawn on), and writes nothing when a film lacks a report measured on that tree, was scored against another capture or archive, or has no recorded pins.
+In order: commit the `crates/` change with the hooks on, run `mise run parity` on that clean tree, run `mise run parity-repin -- --class <class>` for the class that render measured, and commit that `expected/<class>.toml` alone.
+Any later `crates/` edit, a comment included, moves the hash and repeats all four.
 
 - Expected tables change only when the measured `crates/` tree or a film's `sha256` or `all_sha256` pin changes.
 - The `expected-pins` merge driver ([ADR 0053](../../../docs/adr/0053-expected-scores-live-in-a-generated-file-per-class.md), registered by `mise run init` and `ensure`) keeps `main`'s `expected/` files when you merge `main` into a branch or rebase it onto `main`.

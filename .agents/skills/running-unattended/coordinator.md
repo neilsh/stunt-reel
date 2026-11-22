@@ -21,7 +21,7 @@ Its claim check reads claim comments by first line, not whole comments ([`loop-a
 `build/scratch/run-state.md`, ignored through `build/` (`git check-ignore -v build/scratch/run-state.md` shows the rule); no tracked file is written there.
 Its per-item and per-PR state is an append-only log: each transition appends one line, and no earlier line is rewritten.
 The Run header, the Queue lines, the Filed list and the Next action are edited in place, outside the log.
-Record only what a fresh container can re-derive from GitHub (branch, PR number, head SHA, label state), plus what the coordinator holds locally: a worker's worktree path, an unpushed rule 5 commit with its reviewed local SHA and PR-body path, a `local-only` clearance, and a due time.
+Record only what a fresh container can re-derive from GitHub (branch, PR number, head SHA, label state), plus what the coordinator holds locally: a worker's worktree path, an unpushed rule 5 commit with its reviewed local SHA and PR-body path, an `env:local-only` clearance, and a due time.
 Fields:
 
 | Group | Fields |
@@ -44,8 +44,8 @@ Each log line is:
 Key an issue's work by its issue number, with `PR #<n>` in the note once one opens, and a PR taken from the queue by its PR number; never switch an item's key mid-item.
 `<agent/model>` names the worker's agent and model, or its terminal handle, and `<task id>` is the task id its brief gave it.
 The remaining fields are the branch, the head SHA at 7 characters or `-` when there is none, and the note.
-The note carries what the merge bar needs: the worktree path (for `worker-start --worktree "path:<workspace path>"`), the review comment URL and its verdict at the head, CodeRabbit (`not requested`, `check due <time>`, `checked`), the rule 5 reviewed SHA and PR-body path, a due time, the local gate at the head, the acceptance items as the worker reported them, review-body findings answered, changed paths that need a human cleared, and `local-only` (cleared or pending).
-The newest line for an item is self-contained: each new line repeats every still-active local fact from that item's earlier lines (worktree path, local gate at the head, acceptance report, review-body findings answered, human-path and `local-only` clearance, an unpushed rule 5 SHA and PR-body path, a pending CodeRabbit due time), since `mise run merge-bar` cannot re-derive them.
+The note carries what the merge bar needs: the worktree path (for `worker-start --worktree "path:<workspace path>"`), the review comment URL and its verdict at the head, CodeRabbit (`not requested`, `check due <time>`, `checked`), the rule 5 reviewed SHA and PR-body path, a due time, the local gate at the head, the acceptance items as the worker reported them, review-body findings answered, changed paths that need a human cleared, and `env:local-only` (cleared or pending).
+The newest line for an item is self-contained: each new line repeats every still-active local fact from that item's earlier lines (worktree path, local gate at the head, acceptance report, review-body findings answered, human-path and `env:local-only` clearance, an unpushed rule 5 SHA and PR-body path, a pending CodeRabbit due time), since `mise run merge-bar` cannot re-derive them.
 Run `mise run merge-bar -- <n> --issue <N>` and put its `PASS` or `FAIL` in the note rather than repeating the CI, base, thread or body-line fields that report already reads.
 For example:
 
@@ -60,7 +60,7 @@ An item's current state is its newest line, read alongside `mise run queue`.
 Check the context size after each append: the harness's context indicator or `/context` where there is one, else an estimate from the turn count.
 Once it passes about 150k tokens, stop dispatching, update the Run header and Next action, and hand off; never compact.
 In a cloud session a successor's new container cannot see the predecessor's worktrees, subagents or unpushed commits, so wait until no worker is in flight, or until every in-flight item has a pushed branch (a rule 5 item only after its review and push), before handing off.
-Release any other item (`Released claim: <why>.`, swap `in-progress` back to `ready-for-agent`) and list it under **Needs you**; an item left `in-progress` with no remote branch is a dropped claim ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)).
+Release any other item (`Released claim: <why>.`, swap `status:in-progress` back to `status:ready-for-agent`) and list it under **Needs you**; an item left `status:in-progress` with no remote branch is a dropped claim ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)).
 A successor rebuilds current state from the log: for each item, read its newest line, then check it against `mise run queue` and, for a PR, one `mise run merge-bar -- <n> --issue <N>` run before acting.
 An item whose newest line predates GitHub's state gets a new line recording the checked state; an older line is never edited.
 The outgoing coordinator starts its successor:
@@ -94,6 +94,7 @@ This is for Orca workers; a cloud session's workers are subagents that report in
 | Name the workspace | `--name` takes a bare slug such as `852-git-longpaths-tests`, and Orca makes the branch `neilsh/<slug>`; a name starting `neilsh-` or `neilsh/` became `neilsh/neilsh-…` or `neilsh/neilsh/…` | same |
 | Pick an Antigravity model | `--agent antigravity --model gemini-4-neon`, two flags; `--agent "antigravity --model …"` fails with `agent_unconfigured` | same |
 | Start a worker in an existing workspace | `worker-start --spec-file <brief> --worktree "path:<workspace path>" --agent <agent> --model <id> --task-title "<title>" --json`, without `--repo`, `--name` or `--base-branch` | same |
+| Link a workspace to its issue and PR in the Orca UI | `orca worktree set --worktree "path:<workspace path>" --issue <N>` after `worker-start` (it has no issue flag), and again with `--pr <M>` once the PR opens | run 2026-11-21 |
 | Send to an idle worker | `orca orchestration send --to dispatch:<dispatch id> --subject "<subject>" --body "<body>" --json` | same |
 | Send to every worker in a run | `orca orchestration send --to run:<run id> --run <run id> --subject … --body …`; `send --chat <id>` fails with `run_required` when no run resolves | same |
 | Answer a worker's question | `orca orchestration reply --id <message id> --body "<answer>"` | same |

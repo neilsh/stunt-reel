@@ -1504,8 +1504,8 @@ fn test_perfdisk_is_a_two_sided_disc_about_the_normal() {
     .expect("decode perfdisk");
     assert_eq!(
         ir.indices.len(),
-        2 * 14 * 3,
-        "two 16-gons, fan-triangulated"
+        2 * 62 * 3,
+        "two 64-gons, fan-triangulated"
     );
     for v in &ir.vertices {
         assert_eq!(v.palette_index, 45);

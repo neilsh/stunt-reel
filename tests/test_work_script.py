@@ -162,7 +162,7 @@ def test_new_without_issue_files_one_after_checking_the_repo(tmp_path: Path) -> 
         f"body={PROBLEM}\n\n---\nFiled by `mise run work -- new docs-streamline` on branch "
         "`claude/docs`. It is titled with the slug: retitle it to state the problem or question."
     )
-    assert fields[2:] == ["labels[]=needs-triage"]
+    assert fields[2:] == ["labels[]=status:needs-triage"]
     assert run.calls.index(create) > run.calls.index(run.called(OPEN)[0])
     assert run.calls.index(create) > run.calls.index(run.called(TARGET)[0])
 

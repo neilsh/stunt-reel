@@ -149,6 +149,8 @@ With both rules no film falls, so both are adopted.
 _Source: [2026-11-20: scoring the sun disc and the sky fill as sky](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-scoring-the-sun-disc-and-the-sky-fill-as-sky)._
 A fill rule read per column, one pixel under counted sky or the column's run below it, does not depend on roll but lowers some film against the row-run rule; telling the strip from the ocean is [#893](https://github.com/neilsh/stunt-reel/issues/893).
 _Source: [2026-11-20: a roll-independent fill rule](../../work/2026-11/844_score-sky-as-sky/journal.md#2026-11-20-a-roll-independent-fill-rule)._
+The sky drawer paints the fill from its last band edge to the view's bottom row ([`palette-and-shading.md`](../formats/concepts/palette-and-shading.md#sky-bands), Sky Bands), so no drawer row bounds the strip: a column rule from the band edge that stops at the first non-208 pixel would reach the captured ocean where it meets the strip (predicted from the drawer read, not measured; #844's column run, which started from sky counted directly above rather than from the edge-14 line, did on `location`).
+_Source: [where the sky drawer stops the `0xD0` fill](../../work/2026-11/893_sky-fill-strip/journal.md#2026-11-22-where-the-sky-drawer-stops-the-0xd0-fill-read-statically)._
 
 ### 2.1 Fade floor
 
@@ -251,5 +253,6 @@ Other rejected measurement approaches are in [`metric-bench.md`](metric-bench.md
 ## Open questions
 
 1. The capture's `0xD0` sky fill counts by a row-run rule whose reach depends on the horizon's roll: one row under a level band, a wedge under a banked one (section 2.0); a rule that counts the whole strip and stops at the 208 ocean is [#893](https://github.com/neilsh/stunt-reel/issues/893).
+   The drawer paints the fill down to the view's bottom row, so what separates the strip from the 208 ocean below it must come from outside the drawer (section 2.0).
 
 The open lavapipe and GPU question is in [`evidence-limits.md`](evidence-limits.md#open-questions).

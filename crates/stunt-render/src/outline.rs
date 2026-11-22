@@ -15,12 +15,19 @@
 use std::collections::HashMap;
 
 use stunt_core::contracts::{
-    NodeKind, SodModelIr, SodVertex, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE,
-    arena_index,
+    NodeKind, SodModelIr, SodVertex, VERTEX_FLAG_DISC, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END,
+    VERTEX_FLAG_LINE_SIDE, arena_index,
 };
 
 /// Every line-corner bit of `SodVertex::flags`.
 const LINE_FLAGS: u8 = VERTEX_FLAG_LINE | VERTEX_FLAG_LINE_SIDE | VERTEX_FLAG_LINE_END;
+
+/// Whether a triangle with the corner `vertex` is outlined: a filled polygon's, not a line's
+/// and not an `OP_PERFDISK` disc's, whose rows and spans `0xD11D` sets exactly and the vertex
+/// shader reproduces (`snap_disc`; `sod-vm-generators.md` § 8.8).
+pub(crate) fn outlines(vertex: &SodVertex) -> bool {
+    vertex.flags & (VERTEX_FLAG_LINE | VERTEX_FLAG_DISC) == 0
+}
 
 /// A shape with its outlines, and each vertex's apex.
 pub(crate) struct Outlined {
@@ -35,7 +42,7 @@ pub(crate) struct Outlined {
 /// `ir` with each mesh node's outline drawn after its triangles, in the same node, and
 /// each vertex's apex ([`Outlined`]).
 ///
-/// The outline is every edge exactly one of the node's filled triangles uses, as a
+/// The outline is every edge exactly one of the node's filled triangles uses ([`outlines`]), as a
 /// one-pixel screen line whose ends take the colours of the edge's vertices. A polygon's
 /// own fan diagonals are used twice, and so is an edge between two coplanar polygons of
 /// one colour when the decoder has welded their vertices (`tessellate.rs` welds by position,
@@ -98,11 +105,7 @@ struct Sink<'a> {
 /// node's outline, so a later decal covers an earlier one's outline as it covers its fill:
 /// the decal pass writes no depth to hide it (`[I5]`).
 fn append_decal_fans(sink: &mut Sink<'_>, source: &[SodVertex], triangles: &[u32]) {
-    let filled = |i: u32| {
-        source
-            .get(i as usize)
-            .is_some_and(|v| v.flags & VERTEX_FLAG_LINE == 0)
-    };
+    let filled = |i: u32| source.get(i as usize).is_some_and(outlines);
     let outline = boundary_edges_with_apex(triangles, filled);
     let mut pending: HashMap<(u32, u32), [u32; 3]> = outline
         .iter()
@@ -126,11 +129,7 @@ fn append_decal_fans(sink: &mut Sink<'_>, source: &[SodVertex], triangles: &[u32
 /// Appends the outline of the filled triangles `triangles` (indices into `source`) to
 /// `vertices` and `indices`.
 fn append_outline(sink: &mut Sink<'_>, source: &[SodVertex], triangles: &[u32]) {
-    let filled = |i: u32| {
-        source
-            .get(i as usize)
-            .is_some_and(|v| v.flags & VERTEX_FLAG_LINE == 0)
-    };
+    let filled = |i: u32| source.get(i as usize).is_some_and(outlines);
     for edge in boundary_edges_with_apex(triangles, filled) {
         push_edge(sink, source, edge);
     }
@@ -377,6 +376,26 @@ mod tests {
 
     /// `SodVertex::flags` bit 1, a two-sided polygon (`SodVertex::flags`).
     const TWO_SIDED: u8 = 0x02;
+
+    /// `0xD11D` fills a disc's rows and spans exactly, so a disc, decal or not, gets no
+    /// outline; a filled polygon beside it still does.
+    #[test]
+    fn a_disc_is_not_outlined() {
+        for decal in [false, true] {
+            let mut ir = quad();
+            if let Some(NodeKind::Mesh { is_decal, .. }) = ir.nodes.first_mut().map(|n| &mut n.kind)
+            {
+                *is_decal = decal;
+            }
+            for v in &mut ir.vertices {
+                v.flags |= VERTEX_FLAG_DISC;
+            }
+            let out = outlined(&ir).ir;
+            assert_eq!(out.vertices.len(), 4, "decal {decal}");
+            assert_eq!(out.indices, ir.indices, "decal {decal}");
+        }
+        assert_eq!(outlined(&quad()).ir.vertices.len(), 4 + 4 * 4);
+    }
 
     #[test]
     fn lines_are_not_outlined_again() {

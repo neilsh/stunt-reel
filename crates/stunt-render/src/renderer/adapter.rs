@@ -26,10 +26,10 @@ impl AdapterIdentity {
 
 /// The one acquisition policy both destinations use.
 ///
-/// Instance, then surface when there is one, then a high-performance adapter compatible with
-/// the surface, then a low-power fallback adapter, then a device built from downlevel defaults
-/// raised to the adapter's limits. A software adapter is an outcome of the fallback attempt, not
-/// an offscreen privilege.
+/// Instance, then surface when there is one, then the best-ranked adapter that offers
+/// [`REQUIRED_FEATURES`] and is compatible with the surface (hardware before a CPU fallback),
+/// then a device built from downlevel defaults raised to the adapter's limits. A software
+/// adapter is an outcome of that ranking, not an offscreen privilege.
 pub(super) fn acquire(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'static>>,
@@ -48,7 +48,8 @@ pub(super) fn acquire(
 /// byte-identical output: a one-tick CTRY render starts in a median 1.39 s against 3.15 s with
 /// every backend (six alternating runs each; `research/parity/method.md` § 3). The second attempt keeps every other machine working: it runs when
 /// Vulkan finds no adapter, or only a CPU one such as CI's lavapipe (kept if nothing better
-/// turns up), and gives the software path WARP where Vulkan has no software adapter.
+/// turns up), and finds WARP where Vulkan has no software adapter, which [`REQUIRED_FEATURES`]
+/// then passes over.
 const OFFSCREEN_BACKENDS: [wgpu::Backends; 2] = [wgpu::Backends::VULKAN, wgpu::Backends::all()];
 
 /// The first *preferred* adapter *request* finds over *attempts*, tried in order; when none
@@ -113,52 +114,75 @@ pub(super) fn offscreen_adapter(options: RenderOptions) -> Result<wgpu::Adapter,
         .ok_or(RenderError::NoGpuAdapter)
 }
 
-/// The adapter step of the acquisition policy: high-performance first, then the fallback.
+/// The features the renderer's device requires: `CLIP_DISTANCES`, which clips the outline
+/// lines to a band around the view (`vs_edge` in `mode13h.wgsl`). wgpu's DX12 backend, WARP
+/// included, does not offer it.
+pub(crate) const REQUIRED_FEATURES: wgpu::Features = wgpu::Features::CLIP_DISTANCES;
+
+/// Whether an adapter offering `features` can open the renderer's device.
+fn offers_required_features(features: wgpu::Features) -> bool {
+    features.contains(REQUIRED_FEATURES)
+}
+
+/// The adapter step of the acquisition policy: of the instance's adapters that offer
+/// [`REQUIRED_FEATURES`] and can present to *surface*, the one [`choose_adapter`] ranks first.
 fn select_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'static>>,
     options: RenderOptions,
 ) -> Option<wgpu::Adapter> {
-    if options.software_only {
-        return request_fallback_adapter(instance, surface);
-    }
-    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: surface,
-        force_fallback_adapter: false,
-        apply_limit_buckets: false,
-    }))
-    .ok()
-    .or_else(|| request_fallback_adapter(instance, surface))
+    let adapters = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::all()))
+        .into_iter()
+        .filter(|adapter| surface.is_none_or(|surface| adapter.is_surface_supported(surface)));
+    choose_adapter(adapters, options.software_only, |adapter| {
+        (adapter.get_info().device_type, adapter.features())
+    })
 }
 
-/// The device step of the acquisition policy: downlevel defaults raised to the adapter's limits.
+/// The first of *adapters* that offers [`REQUIRED_FEATURES`], ranked as wgpu ranks a
+/// high-performance request (discrete, integrated, other, virtual, then CPU; ties in
+/// enumeration order); with `software_only`, CPU adapters only.
+///
+/// Ranking after the feature filter lets a Vulkan adapter with the feature win over a
+/// DX12-only GPU that wgpu would rank first.
+fn choose_adapter<A>(
+    adapters: impl IntoIterator<Item = A>,
+    software_only: bool,
+    describe: impl Fn(&A) -> (wgpu::DeviceType, wgpu::Features),
+) -> Option<A> {
+    let rank = |kind: wgpu::DeviceType| match kind {
+        wgpu::DeviceType::DiscreteGpu => 0,
+        wgpu::DeviceType::IntegratedGpu => 1,
+        wgpu::DeviceType::Other => 2,
+        wgpu::DeviceType::VirtualGpu => 3,
+        wgpu::DeviceType::Cpu => 4,
+    };
+    adapters
+        .into_iter()
+        .filter_map(|adapter| {
+            let (kind, features) = describe(&adapter);
+            let wanted = offers_required_features(features)
+                && (!software_only || kind == wgpu::DeviceType::Cpu);
+            wanted.then(|| (rank(kind), adapter))
+        })
+        .min_by_key(|&(rank, _)| rank)
+        .map(|(_, adapter)| adapter)
+}
+
+/// The device step of the acquisition policy: [`REQUIRED_FEATURES`] and downlevel defaults
+/// raised to the adapter's limits.
 pub(super) fn open_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), RenderError> {
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("stunt_renderer_device"),
-        required_features: wgpu::Features::empty(),
+        required_features: REQUIRED_FEATURES,
         required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
         memory_hints: wgpu::MemoryHints::Performance,
         experimental_features: wgpu::ExperimentalFeatures::disabled(),
         trace: wgpu::Trace::Off,
     }))
     .map_err(|error| RenderError::DeviceRequest(error.to_string()))
-}
-
-/// The low-power fallback attempt of the acquisition policy.
-fn request_fallback_adapter(
-    instance: &wgpu::Instance,
-    surface: Option<&wgpu::Surface<'static>>,
-) -> Option<wgpu::Adapter> {
-    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        compatible_surface: surface,
-        force_fallback_adapter: true,
-        apply_limit_buckets: false,
-    }))
-    .ok()
 }
 
 /// A renderer instance over *backends*: every backend for a window, [`OFFSCREEN_BACKENDS`] offscreen.
@@ -172,6 +196,17 @@ pub(super) fn create_instance(backends: wgpu::Backends) -> wgpu::Instance {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_adapter_without_clip_distances_cannot_open_the_renderer() {
+        assert!(!offers_required_features(wgpu::Features::empty()));
+        assert!(!offers_required_features(
+            wgpu::Features::DEPTH_CLIP_CONTROL
+        ));
+        assert!(offers_required_features(
+            wgpu::Features::CLIP_DISTANCES | wgpu::Features::DEPTH_CLIP_CONTROL
+        ));
+    }
 
     #[test]
     fn first_adapter_stops_at_the_first_backend_that_finds_one() {
@@ -209,6 +244,61 @@ mod tests {
             first_adapter(&OFFSCREEN_BACKENDS, |_| true, |_| None::<u8>),
             None
         );
+    }
+
+    /// A fake enumerated adapter: its name, device type and features.
+    type Listed = (&'static str, wgpu::DeviceType, wgpu::Features);
+
+    fn pick(adapters: Vec<Listed>, software_only: bool) -> Option<&'static str> {
+        choose_adapter(adapters, software_only, |&(_, kind, features)| {
+            (kind, features)
+        })
+        .map(|(name, _, _)| name)
+    }
+
+    const CLIP: wgpu::Features = wgpu::Features::CLIP_DISTANCES;
+    const NONE: wgpu::Features = wgpu::Features::empty();
+
+    #[test]
+    fn a_dx12_only_discrete_gpu_gives_way_to_an_integrated_gpu_with_clip_distances() {
+        let adapters = vec![
+            ("dx12 discrete", wgpu::DeviceType::DiscreteGpu, NONE),
+            ("vulkan integrated", wgpu::DeviceType::IntegratedGpu, CLIP),
+            ("lavapipe", wgpu::DeviceType::Cpu, CLIP),
+        ];
+        assert_eq!(pick(adapters, false), Some("vulkan integrated"));
+    }
+
+    #[test]
+    fn choose_adapter_ranks_like_a_high_performance_request() {
+        let adapters = vec![
+            ("lavapipe", wgpu::DeviceType::Cpu, CLIP),
+            ("other", wgpu::DeviceType::Other, CLIP),
+            ("integrated", wgpu::DeviceType::IntegratedGpu, CLIP),
+            ("first discrete", wgpu::DeviceType::DiscreteGpu, CLIP),
+            ("second discrete", wgpu::DeviceType::DiscreteGpu, CLIP),
+        ];
+        assert_eq!(pick(adapters, false), Some("first discrete"));
+    }
+
+    #[test]
+    fn choose_adapter_falls_back_to_a_cpu_adapter() {
+        let adapters = vec![
+            ("dx12 discrete", wgpu::DeviceType::DiscreteGpu, NONE),
+            ("lavapipe", wgpu::DeviceType::Cpu, CLIP),
+        ];
+        assert_eq!(pick(adapters, false), Some("lavapipe"));
+    }
+
+    #[test]
+    fn software_only_chooses_only_a_cpu_adapter_with_clip_distances() {
+        let adapters = vec![
+            ("discrete", wgpu::DeviceType::DiscreteGpu, CLIP),
+            ("warp", wgpu::DeviceType::Cpu, NONE),
+            ("lavapipe", wgpu::DeviceType::Cpu, CLIP),
+        ];
+        assert_eq!(pick(adapters.clone(), true), Some("lavapipe"));
+        assert_eq!(pick(adapters[..2].to_vec(), true), None);
     }
 
     /// A fake adapter: the backends that found it, and whether it is hardware.

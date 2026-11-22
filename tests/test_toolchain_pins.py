@@ -209,6 +209,81 @@ def test_the_cloud_setup_installs_the_checked_tools() -> None:
     assert sorted(line.split()) == sorted(["rust", *_CLOUD_DOWNLOADS])
 
 
+#: The cloud setup's kache pin (#814): the release, its musl asset and the asset's sha256 from
+#: the release page. kache changes its cache keys between versions, so a bump re-measures.
+_KACHE_VERSION = "2.2.0"
+_KACHE_SHA256 = "eeb6e72b9f55d0e9d61cae0789ffa8f3ab8c33bef166b7af655cc0806447ebac"
+
+
+def _cloud_setup_block() -> str:
+    """The setup script's `--cloud` branch, which holds the kache work (#814)."""
+    script = (REPO_ROOT / ".claude" / "cloud-setup.sh").read_text(encoding="utf-8")
+    [cloud] = re.findall(
+        r'^if \[ "\$MODE" = --cloud \]; then\n(.*?)^fi$', script, re.DOTALL | re.MULTILINE
+    )
+    return str(cloud)
+
+
+def test_the_cloud_setup_pins_kache_to_a_checked_release() -> None:
+    """kache serves cloud builds only (#814); the gate and local worktrees keep none."""
+    script = (REPO_ROOT / ".claude" / "cloud-setup.sh").read_text(encoding="utf-8")
+    assert f"KACHE_VERSION={_KACHE_VERSION}" in script
+    assert f"KACHE_SHA256={_KACHE_SHA256}" in script
+    assert "releases/download/v${KACHE_VERSION}/kache-x86_64-unknown-linux-musl.tar.gz" in script
+    cloud = _cloud_setup_block()
+    assert "sha256sum -c -" in cloud
+    assert '"$KACHE_BIN" daemon stop || true' in cloud
+    assert 'RUSTC_WRAPPER="$KACHE_BIN"' in cloud
+
+
+def test_the_cloud_setup_skips_an_installed_kache_by_its_stamp() -> None:
+    """`kache --version` prints an unverified format; the stamp of a verified install decides."""
+    cloud = _cloud_setup_block()
+    assert "KACHE_STAMP=/opt/kache/bin/.install-stamp" in cloud
+    assert '[ -f "$KACHE_STAMP" ] || return 1' in cloud
+    assert 'read -r version sha kache_sha engine_sha <"$KACHE_STAMP"' in cloud
+    assert '[ "$version" = "$KACHE_VERSION" ] && [ "$sha" = "$KACHE_SHA256" ]' in cloud
+    for binary in ("$KACHE_BIN", "$KACHE_ENGINE"):
+        assert f'sha256sum "{binary}"' in cloud
+    assert '"$KACHE_BIN" --version' not in cloud
+    install = cloud.index('install -m 0755 "$kache_tmp/kache" "$kache_tmp/kache-engine"')
+    assert install < cloud.index('>"$KACHE_STAMP"'), "the stamp follows the verified install"
+    assert "trap 'rm -rf" in cloud, "a failed install must leave no download directory"
+
+
+def test_the_cloud_setup_warms_only_outside_a_session() -> None:
+    """The SessionStart hook reruns the setup; the 200 s warm would eat its budget (#814)."""
+    cloud = _cloud_setup_block()
+    [warm] = re.findall(
+        r'^    if \[ "\$\{CLAUDE_CODE_REMOTE:-\}" != true \]; then\n(.*?)^    fi$',
+        cloud,
+        re.DOTALL | re.MULTILINE,
+    )
+    warm_step = 'timeout 200 "$MISE_BIN" exec -- cargo build --locked || true'
+    assert warm_step in warm
+    assert cloud.count(warm_step) == 1
+    # The exports run before the skip, so skipping the warm does not lose them.
+    guard = 'if [ "${CLAUDE_CODE_REMOTE:-}" != true ]; then'
+    assert cloud.index('RUSTC_WRAPPER="$KACHE_BIN"') < cloud.index(guard)
+
+
+def test_the_cloud_session_exports_kache_inside_the_wrapper_guard() -> None:
+    """A setup that failed leaves cargo uncached, rather than pointing it at no wrapper."""
+    task = str(_toml("mise.toml")["tasks"]["cloud-session-start"]["run"])
+    [guarded] = re.findall(
+        r'^if \[ -x /opt/kache/bin/kache \] && \[ -n "\$\{CLAUDE_ENV_FILE:-\}" \]; then\n(.*?)^fi$',
+        task,
+        re.DOTALL | re.MULTILINE,
+    )
+    for setting in (
+        "export RUSTC_WRAPPER=/opt/kache/bin/kache",
+        "export CARGO_INCREMENTAL=0",
+        "export KACHE_CACHE_DIR=/opt/kache/store",
+        "export KACHE_CONFIG=/etc/kache/config.toml",
+    ):
+        assert setting in guarded
+
+
 def _lock() -> dict[str, list[dict[str, Any]]]:
     tools: dict[str, list[dict[str, Any]]] = _toml("mise.lock")["tools"]
     return tools

@@ -26,7 +26,7 @@ Machine setup is in [`docs/harness-setup.md`](../../../docs/harness-setup.md), w
    It needs no setup ([ADR 0036](../../../docs/adr/0036-worktrees-reach-shared-state-by-configuration.md)).
    Done when the first `mise run` task works.
 5. **Remove one.**
-   A worktree made since ADR 0036 goes with the tool that made it.
+   A worktree made since ADR 0036 goes with the tool that made it, except a detached `review-*` worktree: only `mise run reap -- --reviews` lists it, and with `--yes` when reap runs under its free-space bar, removes it once nothing under it or in its git dir has changed for six hours.
    One an older `init` linked, or an Orca workspace, goes through `mise run reap` from the primary checkout: dry run first, then `--yes`.
    A branch with patches `main` lacks and no merged PR is never a candidate, `--force` included.
    `--yes` removes every candidate it finds, not only the one you meant.

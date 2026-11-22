@@ -13,9 +13,9 @@ Framing: [`framing-and-actors.md`](framing-and-actors.md); hero aircraft: [`hero
 `stuntreel parity` splits each SSIM window's loss (`1 - ssim`) among the render layers of its pixels in proportion to pixel count (`mean_loss_by_class_scored` in `report.json`); the classes sum to `1 - mean_ssim_scored`.
 Layer ids in the layer plane: 1 ocean, 2 terrain (`MAP.BIN` patches), 3 props (`SCENERY.scn` placements), 16+n actor draw n of the frame (draw order, not film slot).
 A shape plane beside it names the prop shape that drew each props pixel, and `mean_loss_by_shape_scored` splits the props class by shape id the same way; its values sum to `mean_loss_by_class_scored.props` ([`report-fields.md`](report-fields.md)).
-A world prop's shape is not carried in its vertices: each placed prop mesh appends its own run of world vertices, the world lists those runs with their shapes (`World::prop_runs`), and the plane's fragment shader finds a world prop fragment's run from its flat `vertex_index` by binary search, so every placed shape is attributed.
+Each placed prop mesh appends its own run of world vertices, listed with its shape in `World::prop_runs`, and the plane's fragment shader finds a fragment's run from its `vertex_index` by binary search, so every placed shape is attributed.
 _Source: [can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)._
-Extra classes are reference-only (capture non-sky, render sky) and render-only (the reverse).
+Extra classes: reference-only (capture non-sky, render sky) and render-only (the reverse).
 Windows touching the UI overlay are excluded.
 
 * Attribution is by what **our render** draws, not by what is missing.
@@ -52,7 +52,7 @@ Loss by class, with its share of `1 - mean_ssim_scored`; classes under 0.001 lef
   _Source: [the fall since the decal run](../../work/2026-11/distill-attribution/journal.md#2026-11-16-the-fall-since-the-decal-run)._
 
 **Worst prop shapes** (`mean_loss_by_shape_scored`).
-`[Bounded Observation]`, one render per film on lavapipe (`mise run parity -- --software-only`, `crates/` tree `b228018`, #809's change (PR #821) on top of `main` at `581d811`), so its figures differ from the RTX 4070 table above: the code under them is newer and the renderer is lavapipe.
+`[Bounded Observation]`, one render per film on lavapipe, `crates/` tree `b228018` (#821 on `main` at `581d811`), so newer code and another renderer than the table above.
 Each row is a shape's mean loss over the scored frames and its share of that film's `props` loss (`location` 0.0839, `bomb` 0.0740, `ctry` 0.0401); the ten worst shapes, then what they hold together.
 Every placed shape is attributed (section 1), so no reference film has an `unattributed` share; the `props` loss falls on 1,014 shapes on `location`, 127 on `bomb` and 91 on `ctry`.
 
@@ -70,9 +70,22 @@ Every placed shape is attributed (section 1), so no reference film has an `unatt
 | 10 | 1162 | 0.0012 (1.4%) | 1716 | 0.0016 (2.2%) | 913 | 0.0009 (2.3%) |
 | Ten worst | | 0.0161 (19.2%) | | 0.0514 (69.4%) | | 0.0303 (75.6%) |
 
-* **`bomb` and `ctry` concentrate** their props loss: three shapes hold 43% of `bomb`'s (1756, 1650, 1737) and two hold 46% of `ctry`'s (926, 917).
+* **`bomb` and `ctry` concentrated** their props loss on that run, before the 0.1 m near plane: three shapes hold 43% of `bomb`'s (1756, 1650, 1737) and two hold 46% of `ctry`'s (926, 917).
   `location` spreads its `props` loss over 1,014 shapes, the worst (1610) holding 4.2% of it and the ten worst 19.2%, so a fix aimed at one of them moves `location` little.
 * The split says which shapes carry the loss, not why; a shape's pixels share SSIM windows with its neighbours, so its figure includes loss its surroundings cause, as the class split does (section 1).
+
+**Why the two worst shapes lose.**
+`[Bounded Observation]`, GPU, `main` at `581453ed` (2026-11-21).
+
+* **Most of `ctry` 926's loss lies around the actors.**
+  It is the airfield grass tile `SCENERY2.RES` #157 ([`world-scene.md` § 3](../playone-exe/world-scene.md#3-scenery-shapes-drawn-over-the-ground)); its own pixels match the capture's index on 99%, and correcting only the 4.7% of the frame within 4 px of the actors and shadows removes 72% of its loss.
+  So most of it lies in windows it shares with the hero aircraft and shadows ([`hero-aircraft-placement.md`](hero-aircraft-placement.md), [`hero-shadow.md`](hero-shadow.md)).
+* **`bomb` 1756 was the street under a missing car.**
+  On ticks 1915 to 2048, 47% of its loss, the old 0.5 m near plane cut away the police car's door; the 0.1 m default since [#904](https://github.com/neilsh/stunt-reel/issues/904) draws it, leaving 1756 at 0.0084.
+  `PLAYONE`'s polygon clipper has no near plane ([`sod-vm-lines-spans.md` § 8.13](../playone-exe/sod-vm-lines-spans.md#813-the-clip-volume-has-no-near-plane)), but no nearer plane scored clearly better (Ruled out); lowering it against `Depth24Plus`'s precision is [#955](https://github.com/neilsh/stunt-reel/issues/955).
+  Another 3% is tick 3302's camera cut (open question 7).
+
+_Source: [why the two worst shapes lose, as first written](../../work/2026-11/distill-attribution/journal.md#2026-11-22-why-the-two-worst-shapes-lose-as-first-written)._
 
 _Source: [every prop shape attributed on the seven references](../../work/2026-11/809_prop-runs/journal.md#2026-11-20-every-prop-shape-attributed-on-the-seven-references)._
 
@@ -94,8 +107,6 @@ Earlier runs, each on its own `main`, established:
   _Source: [the world light and GVPOLY interpolation](../../work/2026-11/distill-attribution/journal.md#2026-11-05-the-world-light-and-gvpoly-interpolation)._
 * **Actors are lit by `R · L`**, their rotation times the world light ([`terrain-shade.md`](../playone-exe/terrain-shade.md) section 4.3), not by the unturned world light.
   It raised `INTRO` and moved no other film by more than 0.0002; the object-frame `Rᵀ · L` gains about half as much on `INTRO`.
-  Its largest per-frame fall, `LOCATION` 7756, sits on a frame where our helicopter already misses the capture's; 7734 shows the same helicopter mismatch, and the other falls in `LOCATION` 7723 to 7800 were not inspected.
-  At `BALLOON` 254 the parachutist's lower body turns lighter than the capture's; whether it is a sub-model with its own `ROT*` turn was not checked.
   _Source: [lighting actors by R · L](../../work/2026-11/474_actor-light/journal.md#2026-11-16-lighting-actors-by-r--l), [the frames R · L lowers](../../work/2026-11/474_actor-light/journal.md#2026-11-16-the-frames-r--l-lowers)._
 * **Drawing the aircraft whole moved loss from terrain to actors.**
   With the whole-body aircraft of [#47](https://github.com/neilsh/stunt-reel/pull/47) and the ramp colour of [#48](https://github.com/neilsh/stunt-reel/pull/48), actors rose from 0.0035 to 0.0122 on CTRY and from 0.0081 to 0.0381 on INTRO: a missing body cost the terrain class, and a drawn but miscoloured or misplaced one costs the actors class (section 1).
@@ -165,7 +176,7 @@ _Source: [the flag moved out](../../work/2026-11/distill-attribution/journal.md#
 Per-frame shapes' outlines are culled with their polygon, by the winding of the triangle each outline corner belongs to (in the GPU vertex shader), with two exemptions.
 A triangle under 1 px² of screen area keeps its outline: seen edge-on (a rotor blade, a strut) the exemption removes the dashes and the slivers running to the screen centre that the cull drew on `location:1112` (`[Bounded Observation]`, GPU and lavapipe); that its winding is rounding error, differing between the corners of one outline quad and between its three edges, is the inference those artefacts fit (`[Hypothesis]`, not traced).
 This area test is not `PLAYONE`'s: its fillers keep a back face's row where its edges' runs cross (section 8.12 of the note above, `[Hypothesis]`), so the area test is an approximation of that rule that is not traced against `PLAYONE`.
-A width test instead (a back-facing triangle under 1 px tall over its longest edge keeps its outline) is not told apart from it by the 13 frames searched: it moves 88 of 1,687 scored frames by at most about 20 pixels of index agreement, and of the 135 pixels the two draw differently in the frames chosen as the largest movers within `intro`, `balloon` and `bomb` the capture matches the area test's on 48, the width test's on 55 and neither on 32, with one edge siding with each test eleven ticks apart (`balloon` 452 and 463) (`[Bounded Observation]`, GPU).
+A width test instead (under 1 px tall over its longest edge) is not told apart from it: on the 135 pixels the two draw differently in the 13 frames searched, the capture sides with each about as often (`[Bounded Observation]`, GPU).
 _Source: [the captures searched for a back-face sliver](../../work/2026-11/858_outline-cull-width/journal.md#2026-11-20-the-captures-searched-for-a-back-face-sliver)._
 A shadow's outline is not culled: the shadow pipeline culls no face, so its fill shows both windings and a culled outline thinned the rim (`[Bounded Observation]`: `intro:1090`).
 The cull is adopted on the evidence-backed track, citing the fillers' row test at `0x75A1`, `0x7612` and `0x76DC` and the span builder's walk order (`[Established]`, static); that `PLAYONE` culls the outline with the polygon is `[Hypothesis]`, since no routine read computes a facing but the vertex transform and projection were not read ([`sod-vm-lines-spans.md` § 8.12](../playone-exe/sod-vm-lines-spans.md#812-back-faces-the-span-test)). It moves no film's mean SSIM by more than 0.000014 on the GPU, under the 0.002 adoption bound, so the score does not attribute it.
@@ -186,14 +197,12 @@ The 41 fall in two runs:
 * **Ticks 606 to 793 (18 frames): our render draws nothing.**
   The authored camera looks straight down (eye and target share x and z; `render.json` holds that camera from tick 601 to 796, field of view 8.3 degrees).
   The capture shows the balloon from above over grass; our layer plane is empty and every pixel is sky index 238, so IoU is 0 and SSIM 0.480 on average.
-  `CameraController::compute_view_matrix` (`crates/stunt-render/src/camera.rs`) built the authored view with `look_at_mat4` and up `Vec3::Y`, which is undefined for a view direction parallel to up; since #615 a view along ±Y takes up `+Z`; that this was the cause is a `[Bounded Observation]` (`balloon` only, [#615](https://github.com/neilsh/stunt-reel/issues/615)): with up `+Z` for a vertical view the frames draw and the picture is turned as the capture's is; the figures in this section are from before that fix. ([picture](../../work/2026-11/477_vault-attribution/images/balloon-606-straight-down-camera.png))
+  The view matrix took up `Vec3::Y`, undefined for a view parallel to it; since [#615](https://github.com/neilsh/stunt-reel/issues/615) a view along ±Y takes up `+Z` and the frames draw, turned as the capture's are (`[Bounded Observation]`, `balloon` only); the figures in this section are from before that fix. ([picture](../../work/2026-11/477_vault-attribution/images/balloon-606-straight-down-camera.png))
 
-Of the seven references' `render.json` cameras, only `balloon`'s and `intro`'s point straight down, and no other film scores such a frame: `intro`'s camera points down on ticks 12 to 760, 1520 to 2055 and 3642 to 3818, all faded to black and unscored.
-Widening the capture sky to 224..=238 is not free: it raises `bomb` 0.9118 -> 0.9540 but lowers `traintnl` 0.9659 -> 0.9608, whose 19,850 capture pixels at 224 to 226 all fall on geometry we draw.
-Where looked at, those pixels are shape paint, not our geometry drawn over sky: on `traintnl` a blue rectangle on a dark red wall under a red roof holds 18,144 of them and the rear car's windows are 224 too, and on `bomb`, of the 105,219 pixels at 224 (as many as lie on our geometry), 104,958 are an emblem on a building wall, while its 59,520 at 226 are zenith sky in the top five rows.
-So the scorer keeps 227..=238 as its index band ([`method.md`](method.md) section 2.0).
+Of the seven references' cameras only `balloon`'s and `intro`'s point straight down, and `intro`'s only on frames faded to black and unscored.
+Widening the capture sky to 224..=238 raises `bomb` 0.9118 -> 0.9540 but lowers `traintnl` 0.9659 -> 0.9608, because shapes paint 224 to 226 too, so the scorer keeps 227..=238 as its index band ([`method.md`](method.md) section 2.0).
 _Source: [who paints 224 to 226 in the captures](../../work/2026-11/616_capture-zenith-sky/journal.md#2026-11-18-who-paints-224-to-226-in-the-captures)._
-Since 2026-11-18 a run of 224 to 226 that reaches row 0 and both side columns counts as sky by position, and since 2026-11-20 a run overlapping a pixel the previous captured frame counted by that rule counts too, which counts the sky the balloon cuts off; the figures above are on the scale before these rules ([`method.md`](method.md) section 2.0).
+Since 2026-11-18 the zenith sky counts as sky by position, including the sky the balloon cuts off; the figures above are on the scale before that ([`method.md`](method.md) section 2.0).
 Since 2026-11-20 the renderer draws the sky as the sky drawer `0x8C45` does, with the sun disc and the variable-13 light ([`palette-and-shading.md`](../formats/concepts/palette-and-shading.md#sky-bands), Sky Bands; [`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
 On the RTX 4070, `balloon`'s SSIM rose from 0.8842 to 0.9057 and its IoU stayed 0.8978, because the scorer still counted the capture's disc as geometry and ours as sky ([#844](https://github.com/neilsh/stunt-reel/issues/844)); scoring the disc and the fill as sky raises it by 0.0522 ([section 2.0](method.md#20-sky-mask-and-iou-scale)).
 _Source: [draw the read sky, disc and light, scored on the GPU](../../work/2026-11/617_zenith-bands-sun-disc/journal.md#2026-11-20-draw-the-read-sky-disc-and-light-scored-on-the-gpu)._
@@ -210,6 +219,8 @@ _Source: [what drives BALLOON's mask IoU](../../work/2026-11/477_vault-attributi
 * **Drawing the sun disc at variable 13 read as a zenith angle** (2026-11-18): a probe drew index 239 at `(sin a, cos a, 0)` with radius 0.048 rad; on `balloon` the disc sat about 31 px left of and 8 to 10 px below the capture's at ticks 155 and 200, SSIM fell from 0.8172 to 0.8143 on lavapipe, IoU stayed 0.6409 and no other film moved.
   Not adopted; the trig read since turns the light by a second angle of about 10 degrees out of that plane, 3.75 degrees off the probe's direction, and the disc drawn from it is adopted (section 7, [`palette-fade.md` § 3.2](../playone-exe/palette-fade.md#32-other-readers-of-the-live-variables)).
 * **Far props the sub-pixel cull drops, as props loss** (2026-11-18): the half-pixel cull in `build_world` drops no placement on six references and on `location` only 190 placements of shapes with no vertices, and removing it scored the seven films the same to four decimals on lavapipe ([removing the size test from the cull](../../work/2026-11/777_far-prop-cull/journal.md#2026-11-18-removing-the-size-test-from-the-cull); [`world-scene-residuals.md` § 6.4](../playone-exe/world-scene-residuals.md#64-the-ground-decal-pass)).
+* **`ctry` shape 926's loss as an error of the grass tile** (2026-11-21): see section 2 ([its loss around the actors](../../work/2026-11/904_near-clip-host-shapes/journal.md#2026-11-21-how-much-of-shape-926s-loss-lies-around-the-actors)).
+* **A near plane nearer than 0.1 m** (2026-11-21 and 22): 0.05 m moved no film mean by more than `balloon`'s +0.0002 and 0.01 m lowered all seven films, 39 frames by more than 0.005 ([near planes nearer than 0.1 m](../../work/2026-11/907_playone-near-plane/journal.md#2026-11-22-near-planes-nearer-than-01-m-on-the-evidence-track)).
 * **Terrain distance cull** (not attempted): the land/sea boundary is already nearly right (section 5).
 * **A primitive-index table for the world props' shape word** (2026-11-19): `@builtin(primitive_index)` works on lavapipe, but it restarts at 0 for every draw call and numbers an outline draw's edges, not its triangles, so each world draw would have to pass its first triangle and outlines would need a second table; the vertex-keyed runs of section 1 need neither ([can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)).
 
@@ -225,9 +236,10 @@ Priority is by measured loss, not by which item reads easiest.
    Read the slot and placement arrays (`0x4778` / `0x48B6`) and the model-origin rule; see [`hero-aircraft-placement.md`](hero-aircraft-placement.md#1-the-hero-aircraft-residual-open).
    The hero's ground shadow is a variant of this round, not a separate item: a flattened biplane collapses both wings onto one footprint, so a monoplane-shadow does not discriminate a flattened copy from a sprite, and every flattening sweep so far ran against our defective body. ([#67](https://github.com/neilsh/stunt-reel/issues/67))
 3. **The `INTRO.FLM` flat-sand frames** — the sand 91 is a `SCENERY2.RES` tile under our terrain (tick 1517: 91 on all 59.2k terrain pixels once the terrain is removed; [world-scene-residuals.md](../playone-exe/world-scene-residuals.md) section 6).
-   Before the decals, 11 frames lost more than 0.30 to terrain at IoU 0.97 to 1.0, where the capture is mostly sand 91; at tick 1505 the capture also carries indices 216 to 218, which we never emit, and the montage window scored above the film mean on 2026-10-24, before #47, so the montage tick rule is not the cause.
+   Before the decals, 11 frames lost more than 0.30 to terrain, where the capture is mostly sand 91; at tick 1505 the capture also carries indices 216 to 218, which we never emit, and the montage window scored above the film mean on 2026-10-24, before #47, so the montage tick rule is not the cause.
    _Source: [open question 3 as first written](../../work/2026-11/distill-attribution/journal.md#2026-10-24-open-question-3-as-first-written)._ ([#70](https://github.com/neilsh/stunt-reel/issues/70))
 4. **Prop shading and detail** — props are the largest class on `ctry`, `intro`, `bomb` and `location` on 2026-11-16 (section 2), 0.040 to 0.085 of each.
    It is the one lever left that needs no decode. ([#74](https://github.com/neilsh/stunt-reel/issues/74))
 5. **`balloon`'s straight-down camera** — answered: since [#615](https://github.com/neilsh/stunt-reel/issues/615) a view along ±Y takes up `+Z`, and the 18 frames draw (section 7).
 6. **The zenith sky and the sun disc** — answered: the zenith sky counts by position ([#718](https://github.com/neilsh/stunt-reel/issues/718), [#745](https://github.com/neilsh/stunt-reel/issues/745)), and the renderer draws the sky bands and the sun disc ([#617](https://github.com/neilsh/stunt-reel/issues/617), [#844](https://github.com/neilsh/stunt-reel/issues/844)); section 7.
+7. **`bomb`'s camera cut at tick 3302** — our camera cuts one captured frame before the capture's; whether `PLAYONE` applies a `view_obj` switch a tick later than our sampler is not read.

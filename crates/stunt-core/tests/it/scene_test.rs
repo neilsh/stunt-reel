@@ -282,6 +282,11 @@ fn actor_is_drawn_without_its_shapes_ground_offset() {
             &m[12..15]
         );
     }
+    // The pending-list entry stays at the slot's position, off the lifted origin.
+    let position = frame.actors[0].position;
+    for (got, want) in position.iter().zip([3.0, 2.0, 0.0]) {
+        assert!((got - want).abs() < 1e-5, "{position:?}");
+    }
 }
 
 #[test]

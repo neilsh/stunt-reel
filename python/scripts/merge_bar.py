@@ -2,12 +2,14 @@
 """Report whether a pull request meets the unattended merge bar, one line per condition.
 
 Checks what a script can read: the head commit and base, CI at the head, the dispatched
-review's ``clean`` comment at the head, a ``Fixes``/``Closes``/``Part of`` line in the body,
-open review threads, review-body findings, and draft state. It never arms, merges, comments
-or edits. What it cannot read stays with the coordinator: that ``mise run check`` passed
-locally on the head, that a CodeRabbit review a person requested has been checked, the
-worker's acceptance report, and the ``local-only`` and human-path rules
-(``.agents/skills/running-unattended/pr-and-filing.md`` step 5).
+review's ``clean`` comment at the head, a ``Fixes``/``Closes``/``Part of`` line in the body, the
+body's attribution line (a note, never a failure), open review threads, review-body findings,
+and draft state. It never arms, merges, comments or edits. What it cannot read stays with the
+coordinator: that ``mise run check`` passed locally on the head, that a CodeRabbit review a
+person requested has been checked, the worker's acceptance report, and the ``env:local-only`` and
+human-path rules (``.agents/skills/running-unattended/pr-and-filing.md`` step 5). It does not
+run ``pr_lint``'s pin and date checks: they read a working tree, and the coordinator never
+checks out the branch, so they are pre-push only, in the implementer's checkout.
 
 Locally it reads the pull request through ``gh pr view`` (GraphQL); in a cloud session
 (``CLAUDE_CODE_REMOTE=true``), whose proxy refuses GraphQL, through REST. Threads and
@@ -27,10 +29,11 @@ import sys
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import pr_lint
 import pr_threads
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 #: The only base a pull request may be armed on: a stacked PR's base has no ruleset.
 BASE = "main"
@@ -209,12 +212,18 @@ def _list(names: Sequence[str]) -> str:
 
 
 def evaluate(
-    pull: Pull, *, threads: Sequence[str], findings: Sequence[str], issue: int | None = None
+    pull: Pull,
+    *,
+    threads: Sequence[str],
+    findings: Sequence[str],
+    issue: int | None = None,
+    attribution: Sequence[str] = (),
 ) -> tuple[list[str], list[str]]:
     """The report lines and the failure reasons for *pull*.
 
     *threads* and *findings* are ``pr_threads``' lines for the open review threads and the
     review-body findings since the head commit. With *issue*, the body must link that issue.
+    *attribution* is ``pr_lint.attribution_failures``' lines, listed as a note, never a failure.
     """
     head = pull.head[:7]
     lines: list[str] = []
@@ -282,6 +291,15 @@ def evaluate(
     lines.append(f"{'note' if findings else 'ok  '} findings: {note}")
     lines += [f"       {line}" for line in findings]
 
+    if attribution:
+        lines.append(f"note attribution: {len(attribution)} failure(s) (listed, not failed)")
+    else:
+        lines.append("ok   attribution: the body ends with an attribution line")
+    lines += [f"       {line}" for line in attribution]
+    lines.append(
+        "note pin and date: pre-push only (mise run pr-lint in the implementer's checkout)"
+    )
+
     record(
         not pull.draft, "draft", "draft" if pull.draft else "ready for review", "the PR is a draft"
     )
@@ -292,8 +310,16 @@ def _is_cloud() -> bool:
     return os.environ.get("CLAUDE_CODE_REMOTE") == "true"
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Print the merge-bar report for the pull request on the command line."""
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    attribution: Callable[[str], Sequence[str]] = pr_lint.attribution_failures,
+) -> int:
+    """Print the merge-bar report for the pull request on the command line.
+
+    *attribution* is the body's attribution lint; tests pass a stub,
+    ``pr_lint.attribution_failures`` by default.
+    """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("number", type=int, help="pull request number")
     parser.add_argument(
@@ -318,7 +344,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     threads = pr_threads.thread_lines(nodes, include_resolved=False)
     findings = pr_threads.outside_lines(reviews[1], reviews[0], include_all=False)
-    lines, reasons = evaluate(pull, threads=threads, findings=findings, issue=args.issue)
+    lines, reasons = evaluate(
+        pull,
+        threads=threads,
+        findings=findings,
+        issue=args.issue,
+        attribution=attribution(pull.body),
+    )
     print(f"{repo}#{args.number}")
     print(*lines, sep="\n")
     if reasons:

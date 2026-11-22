@@ -912,7 +912,7 @@ fn a_disc_exports_its_faces_front_normals() {
     let at = |data: &[f32], i: u32| Vec3::from_slice(&data[i as usize * 3..i as usize * 3 + 3]);
     let primitive = &glb.array("meshes")[0]["primitives"][0];
     let triangles = glb.indices(primitive["indices"].as_u64().map(to_usize).unwrap());
-    assert_eq!(triangles.len(), 2 * 14 * 3, "two 16-gons");
+    assert_eq!(triangles.len(), 2 * 62 * 3, "two 64-gons");
     let mut sides = [0usize; 2];
     for tri in triangles.as_chunks::<3>().0 {
         let [a, b, c] = tri.map(|i| at(&positions, i));
@@ -922,5 +922,5 @@ fn a_disc_exports_its_faces_front_normals() {
         }
         sides[usize::from(front.z > 0.0)] += 1;
     }
-    assert_eq!(sides, [14, 14], "one face for each side");
+    assert_eq!(sides, [62, 62], "one face for each side");
 }

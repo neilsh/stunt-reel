@@ -235,3 +235,27 @@ From Open questions of the note, as it stood at `f95ec4a`; items 2 to 4 stay in 
 6. **The zenith sky and the sun disc** — the scorer's sky band omits 224 to 226 because shapes paint them too ([#616](https://github.com/neilsh/stunt-reel/issues/616)), so the zenith sky counts by position instead ([#718](https://github.com/neilsh/stunt-reel/issues/718); the sky the balloon cuts off is [#745](https://github.com/neilsh/stunt-reel/issues/745)), and our sky stops at 228 and draws no sun ([#617](https://github.com/neilsh/stunt-reel/issues/617)); section 7.
 
 **Lives in** [`attribution.md`](../../../research/parity/attribution.md), Open questions and section 7.
+
+## 2026-11-22: why the two worst shapes lose, as first written
+
+From section 2 of the note, as `main` added it at `0f0eed8` and before the second distillation:
+
+**Why the two worst shapes lose.**
+`[Bounded Observation]`, GPU, `main` at `581453ed` (2026-11-21), from each frame's per-shape loss and the shapes' pixels against the capture's indices.
+
+* **Most of `ctry` 926's loss lies around the actors.**
+  It is the airfield grass tile `SCENERY2.RES` #157 (`0x039E`, colour 196; [`world-scene.md` § 3](../../../research/playone-exe/world-scene.md#3-scenery-shapes-drawn-over-the-ground)), up to 43,000 of the view's 59,200 pixels, and its loss is spread evenly over its 94 frames.
+  Its own pixels match the capture's index on 99%, and 88 to 91% of the rest lie within 3 px of its edge with the hero aircraft and the shadows.
+  Pasting our pixels into the capture within 4 px of our actors and of either side's shadow (4.7% of the frame) removes 72% of its loss (0.0127 -> 0.0035).
+  So most of its loss lies in windows it shares with the hero aircraft and the shadows ([`hero-aircraft-placement.md`](../../../research/parity/hero-aircraft-placement.md), [`hero-shadow.md`](../../../research/parity/hero-shadow.md)); the oracle does not tell their placement from their outline, nor whether the remaining 28% is the tile's.
+* **`bomb` 1756 is the street under a missing car.**
+  47% of its loss lies on ticks 1915 to 2048, where the camera rides beside the police car: the car's door lies nearer the eye than our 0.5 m near plane (it draws at 0.1 m and not at 0.5 m), so the plane cuts it away, so our render shows the street behind it where the capture shows the door.
+  A near plane of 0.1 m draws the door as the capture does and adopted on the heuristic track (`bomb` +0.0170, `traintnl` +0.0037, where it also restores the tunnel wall at ticks 1013 to 1101; no frame falls by more than 0.005); it is the renderer's default since [#904](https://github.com/neilsh/stunt-reel/issues/904), and 1756's loss is 0.0084 with it.
+  `PLAYONE`'s polygon clipper has no near plane (its clipping line routine `0xBB83` is unread): it cuts only at the view pyramid's sides, which meet at the eye ([`sod-vm-lines-spans.md` § 8.13](../../../research/playone-exe/sod-vm-lines-spans.md#813-the-clip-volume-has-no-near-plane)), so for polygons a nearer plane is closer to its rule.
+  On the evidence track 0.05 m's largest film-mean change against 0.1 m was `balloon`'s +0.0002, from depth ties on its flag, not cut geometry, with no frame down by more than 0.005, and 0.01 m lowered all seven films (`location` −0.0007, 39 frames down by more than 0.005); the car frames score the same at every value.
+  The default stays 0.1 m; lowering it against `Depth24Plus`'s precision is [#955](https://github.com/neilsh/stunt-reel/issues/955).
+  Another 3% of the shape's loss is tick 3302, where our camera has already cut to the next shot and the capture still shows the previous one.
+
+_Source: [what CTRY shape 926 and BOMB shape 1756 are](../904_near-clip-host-shapes/journal.md#2026-11-21-what-ctry-shape-926-and-bomb-shape-1756-are-and-where-their-loss-sits), [how much of shape 926's loss lies around the actors](../904_near-clip-host-shapes/journal.md#2026-11-21-how-much-of-shape-926s-loss-lies-around-the-actors), [the near clip plane at 0.5 m](../904_near-clip-host-shapes/journal.md#2026-11-21-the-near-clip-plane-at-05-m-against-the-police-car), [near planes nearer than 0.1 m](../907_playone-near-plane/journal.md#2026-11-22-near-planes-nearer-than-01-m-on-the-evidence-track)._
+
+**Lives in** [`attribution.md`](../../../research/parity/attribution.md), section 2.

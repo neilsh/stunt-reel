@@ -1,5 +1,5 @@
 ---
-summary: "The SOD VM's lines and polygon spans: `MOVETO`/`ZLINETO`/`LINECOL` lines, polygon spans that include both ends, and the span test that culls an anticlockwise polygon with its outline."
+summary: "The SOD VM's lines and polygon spans: `MOVETO`/`ZLINETO`/`LINECOL` lines, polygon spans that include both ends, and the span test that culls an anticlockwise polygon with its outline, and the polygon clipper, which cuts at the view pyramid's sides and has no near plane."
 sidebar_label: "SOD VM lines & spans"
 ---
 
@@ -66,7 +66,7 @@ The outline lines are wound both ways, like every line here, so a back-facing po
 
 **The world mesh.**
 Line quads cost four vertices and twelve indices an edge, and outlining `LOCATION`'s world that way grew it from 6.7 million vertices and 7.5 million indices to 32.4 million and 84.7 million and made its render, with terrain excluded, fail with a wgpu out-of-memory error.
-The world instead draws the same edges, those exactly one filled triangle of a mesh slice uses, as a `LineList` index buffer over its own vertices, two indices an edge, after the world draw's triangles (a decal slice's outline right after that slice's triangles, [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)) and with their depth test (a decal slice's outline compares `LessEqual` without the `[I5]` bias, which wgpu allows only on triangles; [`mesh.rs`](../../crates/stunt-render/src/mesh.rs) `GpuModel::from_ir_outlined`).
+The world instead draws the same edges, those exactly one filled triangle of a mesh slice uses, as a `LineList` index buffer over its own vertices, two indices an edge, after the world draw's triangles (a decal slice's outline right after that slice's triangles, [ADR 0046](../../docs/adr/0046-coplanar-decals-are-drawn-in-an-ordered-pass.md)) and with their depth test (a decal slice's outline compares `GreaterEqual`, depth being reversed, without the `[I5]` bias, which wgpu allows only on triangles; [`mesh.rs`](../../crates/stunt-render/src/mesh.rs) `GpuModel::from_ir_outlined`).
 Terrain and ocean triangles are not outlined.
 The line list is drawn one pixel wide by the backend's line rules, which need not draw the end pixels a line quad does (not measured).
 A slice split over chunks (a world over `max_buffer_size`; `LOCATION`'s is one chunk) gets the outline of the unsplit slice, its edges counted over all its runs, each run drawing its share ([#475](https://github.com/neilsh/stunt-reel/issues/475)).
@@ -115,6 +115,40 @@ The renderer culls whole triangles by their clip-space winding (`FrontFace::Cw`,
 It draws a back face's outline (section 8.11) and none of its rows.
 _Source: [the polygon span builder read for a facing test](../../work/2026-11/850_playone-back-face-cull/journal.md#2026-11-20-the-polygon-span-builder-read-for-a-facing-test)._
 
+### 8.13 The Clip Volume Has No Near Plane
+
+`[Established]`, static, for the instructions, in the unpatched image (`mise run re-tool -- disasm 0x9CF1 0x9DB5` and `0xC50E 0xC9D4`; the Patch #3 image not read, nothing traced live).
+`[Supported Inference]` for the clip volume they make: read statically, not traced, and consistent with the `bomb` capture drawing the police car's door nearer the eye than 0.5 m ([`attribution.md` § 2](../parity/attribution.md#2-current-breakdown)).
+`PLAYONE`'s polygon clipper cuts only against the four side planes of the view pyramid, which meet at the eye.
+It has no near plane: the depth it cuts at is 0, the eye itself, at every `scale_index` and lens.
+
+* **The outcode.**
+  The clipping projector (`0x9D3A`, which `0x9100` selects at `0x9173`) adds the origin words `work:0x8084..0x8088` to a register to get its view point `(x', y', z')`.
+  It sets bit 0 when `z' ≤ 0` (`jle` at `0x9D50`), bit 1 when `x' ≥ z'`, bit 2 when `x' < −z'`, and bits 3 and 4 likewise for `y'` (`0x9D52..0x9D60`, or `0x9D91..0x9DA9` behind the eye), and projects an unflagged register to `(x' · 256 / z' + work:0x41C8, y' · 256 / z' + work:0x41CA)`.
+  When `z' ≤ 0`, `x' ≥ z'` or `x' + z' < 0` holds for every `x'`, and the same for `y'`, so a register behind the eye always has a side bit of each axis as well as bit 0.
+* **The edge clip.**
+  The clipping vertex copier `0xC50E` copies an unflagged vertex's screen words and hands each edge with a flagged end to `0xC6AF`, unless both ends share an outcode bit, bit 0 included (`test` at `0xC596`), which drops the edge.
+  `0xC6AF` shifts the outside end's outcode right by 2 (`0xC6BF`), discarding bit 0.
+  For each side bit set it finds where the edge meets that plane (`x' = z'`, `x' = −z'`, `y' = z'`, `y' = −z'`) as a 16-bit fraction of the edge from its outside end (`div si` at `0xC6ED`, `0xC729`, `0xC764`, `0xC7A1`) and keeps the largest.
+  It interpolates the crossing's depth and other coordinate (`0xC7B2..0xC7E3`, `0xC81B..0xC84C`), rejects it when the edge's other end is flagged too and the crossing lies outside the other pair of planes (`0xC7E7..0xC7F6`, `0xC850..0xC85F`), and writes it as a point on a screen edge 256 pixels from the centre (`0xC802..0xC80F`, `0xC86B..0xC87B`).
+  No instruction in `0xC50E..0xC9D4` compares a depth with a positive constant: depth enters through the side-plane distances `x' ∓ z'` and `y' ∓ z'` and the whole-view test's sign tests below.
+* **The whole-view test.**
+  When no edge survives and the outcodes of the edges' outside ends OR to at least `0x1E` (`0xC5DA`), `0xC88E` takes the two edges where `x'` changes sign and each one's `y'` and `z'` where it does (`0xC906`).
+  It fills the view only when the segment between those points crosses `y' = 0` at `z' ≥ 0` (`0xC8E2..0xC901`): when the polygon meets the view's centre line in front of the eye.
+
+So, in exact arithmetic, the clip volume is the pyramid `−z' ≤ x' < z'`, `−z' ≤ y' < z'`, whose only point at `z' = 0` is the eye.
+A polygon crossing the eye plane is cut where it leaves the pyramid's sides, and a polygon however near the eye is drawn where it lies inside them.
+Units cannot move that apex: every plane passes through the eye whatever the shift `work:0x806F` or the lens's zoom of `x'` and `y'` and shift of `z'` (section 8.6, `REJVEC`), which change the pyramid's angle, not where it meets.
+`[Supported Inference]` for the lens: that the zoom scales `x'` and `y'` and shifts `z'` before the projector sees them is read from `0x12DC` scaling the view matrix's first six words by `work:0x8108` and shifting its depth row by `work:0x810C` ([`lod.md`](lod.md)), not traced; scaling each axis by its own factor keeps every plane `x' = ±z'`, `y' = ±z'` through `(0, 0, 0)`.
+What is quantised is the depth: a vertex is in front once `z'` is at least one register unit, and a register unit is set by how far the object lies, not by `scale_index` (the origin words are the object's 16.16 view position shifted right by `0x31CF`'s `s`, [`sod-vm.md` § 4](sod-vm.md#4-register-side-effects)).
+For an object whose coordinates relative to the eye are each under 16 m, `s` is at most 5 and the origin's unit, `2^(s − 16)` m, at most `2^-11` m (0.49 mm), before any halving in the rotation `0x0824:06B0` and the lens's depth shift `work:0x810C` (1 on `BALLOON`, [`palette-fade.md`](palette-fade.md)); `[Supported Inference]` for the unit, read from the writers (`0x31CF`'s magnitude and table lookup, `0x31D5..0x3217`), not traced.
+
+The renderer cannot clip at the eye: a perspective projection needs a near distance above 0, and with reversed infinite depth in `Depth24Plus` ([ADR 0054](../../docs/adr/0054-depth-is-reversed-and-infinite.md)) the depth step at distance `z` is `z² / (near × 2²⁴)`.
+That is 0.6 m at 1 km for the 0.1 m default, and 6 m at 1 km for 0.01 m.
+So the evidence-backed value is the least near distance the depth buffer tolerates.
+On the evidence track 0.05 m's largest film-mean change against 0.1 m was `balloon`'s +0.0002, from depth ties rather than cut geometry, and 0.01 m lowered all seven; the default stays 0.1 m, and whether to lower it is [#955](https://github.com/neilsh/stunt-reel/issues/955) ([`attribution.md` § 2](../parity/attribution.md#2-current-breakdown)).
+_Source: [the polygon clipper read for a near plane](../../work/2026-11/907_playone-near-plane/journal.md#2026-11-22-the-polygon-clipper-read-for-a-near-plane), [near planes nearer than 0.1 m](../../work/2026-11/907_playone-near-plane/journal.md#2026-11-22-near-planes-nearer-than-01-m-on-the-evidence-track)._
+
 ## Ruled out
 
 * **Conservative rasterization for the world mesh's slivers** (section 8.11).
@@ -133,6 +167,9 @@ _Source: [the polygon span builder read for a facing test](../../work/2026-11/85
 * **A per-polygon facing test in `PLAYONE`** (section 8.12).
   None of `0x9B78`, `0x995C`, `0x9A24`, `0xC9D4` with its rejection exit `0xC9CB`, `0xC50E` with `0xC6AF`, `0xC65A` and `0xC88E`, `0xCA5D`, `0x8010`, `0x7571` or `0x75DB` computes a normal or a signed area; the authored facing flags `REJ`, `REJVEC` and `REJ2D` (section 8.6) gate sections, and the scenery walker's ground-leaf test `CS:0x23BF` gates a ground leaf, not a shape polygon ([the span builder read](../../work/2026-11/850_playone-back-face-cull/journal.md#2026-11-20-the-polygon-span-builder-read-for-a-facing-test)).
 
+* **A near plane at a fixed depth in the polygon clipper** (section 8.13).
+  `0xC6AF` discards the outcode's depth bit and cuts only at the four side planes; no instruction in `0xC50E..0xC9D4` compares a depth with a positive constant ([the polygon clipper read](../../work/2026-11/907_playone-near-plane/journal.md#2026-11-22-the-polygon-clipper-read-for-a-near-plane)).
+
 ## 10. Open questions
 
 * **Back faces** (section 8.12).
@@ -143,4 +180,5 @@ _Source: [the polygon span builder read for a facing test](../../work/2026-11/85
   Open: how `0xC9D4` rounds a row's ends, so whether the outline matches the inclusive spans pixel for pixel; whether `PLAYONE` fills terrain through `0x7571` as well, since outlining terrain scored below the base on `LAND` and `BALLOON`; and whether the world's line-list outline drops end pixels a line quad draws.
 
 * **Lines** (section 8.10).
-  Open: a zero-length `ZLINETO` or two-vertex polygon, one pixel in `PLAYONE`, draws nothing here; `vm.rs` keeps the pen's point at `MOVETO` rather than reading the register at `ZLINETO`; whether anything resets `work:0x41EA`; whether the pen persists across `RETURN` and subobjects (`work:0x41EC` is global, `vm.rs` keeps one pen per decode); the clipping variant `0xBB83` and the Patch #3 image's line path.
+  Open: a zero-length `ZLINETO` or two-vertex polygon, one pixel in `PLAYONE`, draws nothing here; `vm.rs` keeps the pen's point at `MOVETO` rather than reading the register at `ZLINETO`; whether anything resets `work:0x41EA`; whether the pen persists across `RETURN` and subobjects (`work:0x41EC` is global, `vm.rs` keeps one pen per decode); the Patch #3 image's line path.
+  The clipping variant `0xBB83`, which `0x9100` puts in `work:0x807E` beside the polygon clipper, was not read, so whether it too cuts only at the side planes (section 8.13) is open.

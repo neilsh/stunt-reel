@@ -1,4 +1,4 @@
-"""Per-run pytest temporary roots, shaped for DSH's Windows sandbox.
+"""Per-run and inner-run pytest temporary roots, shaped for DSH's Windows sandbox.
 
 pytest deletes a --basetemp directory it finds on disk and resets the permissions
 of a cache directory it creates.  A sandboxed run may do neither, so the checkout
@@ -15,6 +15,7 @@ import shutil
 import stat
 import struct
 import sys
+import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -81,6 +82,28 @@ def per_run_basetemp(
     stamp = (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%S")
     suffix = suffix if suffix is not None else secrets.token_hex(2)
     return rootpath / CACHE_DIRNAME / f"{BASETEMP_PREFIX}{stamp}-{suffix}"
+
+
+def short_basetemp() -> Path:
+    """Return a fresh inner-run basetemp under the OS temp directory; it must not exist yet.
+
+    Nested under the checkout's own basetemp, an inner run's fixture paths pass Windows
+    ``MAX_PATH`` from an 80-character checkout path (issue #925).  pytest deletes a
+    ``--basetemp`` it finds on disk, so the directory is not created here.  pytest resolves
+    the path it is given and git prints a worktree's real path, so the parent is resolved:
+    an unresolved ``%TEMP%`` behind a junction, a symlink or an 8.3 short name would never
+    match the paths of the run's own worktrees.
+    """
+    return Path(tempfile.gettempdir()).resolve() / f"stunt-reel-basetemp-{secrets.token_hex(4)}"
+
+
+def remove_basetemp(basetemp: Path) -> None:
+    """Remove an inner run's basetemp if present, read-only files included; best effort.
+
+    Like the prune, a sandbox may refuse and a file another process holds stays.
+    """
+    if basetemp.exists():
+        shutil.rmtree(basetemp, onexc=_clear_read_only)
 
 
 def prunes_basetemps(config: pytest.Config) -> bool:

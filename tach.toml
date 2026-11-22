@@ -72,6 +72,7 @@ paths = [
     "stunt_reel.batch_ledger",
     "stunt_reel.batch_stages",
     "stunt_reel.bench",
+    "stunt_reel.class_agreement",
     "stunt_reel.expected_scores",
     "stunt_reel.matched_frames",
     "stunt_reel.parity_figures",

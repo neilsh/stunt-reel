@@ -21,17 +21,19 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
+import labels
+
 #: Seconds before a ``gh`` call counts as failed.
 GH_TIMEOUT = 60
 
 #: State label -> Status option, highest precedence first. An open issue with none of these is
 #: ``Needs triage``, so an issue filed without a label shows up where the owner looks.
 LABEL_STATUS = (
-    ("in-progress", "In progress"),
-    ("needs-info", "Needs info"),
-    ("ready-for-human", "Ready for human"),
-    ("ready-for-agent", "Ready for agent"),
-    ("needs-triage", "Needs triage"),
+    (labels.IN_PROGRESS, "In progress"),
+    (labels.NEEDS_INFO, "Needs info"),
+    (labels.READY_FOR_HUMAN, "Ready for human"),
+    (labels.READY_FOR_AGENT, "Ready for agent"),
+    (labels.NEEDS_TRIAGE, "Needs triage"),
 )
 DONE = "Done"
 GOAL = "Goal"
@@ -84,13 +86,6 @@ mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
                                         value: {singleSelectOptionId: $option}}) { projectV2Item { id } }
 }"""
 
-_CLEAR = """
-mutation($project: ID!, $item: ID!, $field: ID!) {
-  clearProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field}) {
-    projectV2Item { id }
-  }
-}"""
-
 
 class GhError(RuntimeError):
     """``gh`` failed, stalled or returned something other than JSON."""
@@ -129,15 +124,13 @@ def graphql(query: str, **variables: str | int | None) -> Any:
     return gh_json(*args)["data"]
 
 
-def derive_status(labels: set[str], state: str, sub_issues: int) -> str | None:
-    """The Status an issue belongs in; ``None`` for a ``wayfinder:*`` issue, which has none."""
+def derive_status(names: set[str], state: str, sub_issues: int) -> str:
+    """The Status an issue belongs in: closed is ``Done``, a parent ``Goal``, else its label's."""
     if state == "closed":
         return DONE
     if sub_issues > 0:
         return GOAL
-    if any(label.startswith("wayfinder:") for label in labels):
-        return None
-    return next((status for label, status in LABEL_STATUS if label in labels), TRIAGE)
+    return next((status for label, status in LABEL_STATUS if label in names), TRIAGE)
 
 
 @dataclass(frozen=True)
@@ -189,9 +182,9 @@ def sync_issue(project: Project, repo: str, number: int) -> str | None:
     issue = gh_json("api", f"repos/{repo}/issues/{number}")
     if "pull_request" in issue:
         return None
-    labels = {label["name"] for label in issue["labels"]}
+    names = {label["name"] for label in issue["labels"]}
     sub_issues = (issue.get("sub_issues_summary") or {}).get("total", 0)
-    status = derive_status(labels, issue["state"], sub_issues)
+    status = derive_status(names, issue["state"], sub_issues)
     item = graphql(_ADD, project=project.id, content=issue["node_id"])["addProjectV2ItemById"][
         "item"
     ]
@@ -201,17 +194,14 @@ def sync_issue(project: Project, repo: str, number: int) -> str | None:
         changes.append("unarchived")
     current = (item["fieldValueByName"] or {}).get("name")
     if current != status:
-        if status is None:
-            graphql(_CLEAR, project=project.id, item=item["id"], field=project.field)
-        else:
-            graphql(
-                _SET,
-                project=project.id,
-                item=item["id"],
-                field=project.field,
-                option=project.options[status],
-            )
-        changes.append(f"{current or '(none)'} -> {status or '(none)'}")
+        graphql(
+            _SET,
+            project=project.id,
+            item=item["id"],
+            field=project.field,
+            option=project.options[status],
+        )
+        changes.append(f"{current or '(none)'} -> {status}")
     return f"#{number}: {', '.join(changes)}" if changes else None
 
 

@@ -14,7 +14,8 @@ use std::ops::Range;
 use crate::outline::Outlined;
 use glam::{Mat4, Vec3};
 use stunt_core::contracts::{
-    CameraTransform, NodeId, SodModelIr, SodVertex, VisibilityCondition, arena_index,
+    CameraTransform, NodeId, SodModelIr, SodVertex, VERTEX_FLAG_DISC, VisibilityCondition,
+    arena_index,
 };
 use stunt_core::world::{GROUND_NODE, PropRun};
 use wgpu::util::DeviceExt as _;
@@ -42,13 +43,17 @@ pub struct GpuNode {
     /// Box around this node's slices and every descendant's, in the model's space; `None` when
     /// neither holds a vertex.
     pub bounds: Option<NodeBounds>,
+    /// Whether this node's slices or a descendant's hold a disc's rim vertex
+    /// ([`VERTEX_FLAG_DISC`]), which the vertex shader moves off its position under a lens other
+    /// than the default (`squeeze_disc`), so [`Self::bounds`] no longer bounds where it draws.
+    pub discs: bool,
     /// The offsets in the model's index arena [`GpuModel::cut`] may cut this node's slice at,
     /// ascending, each with where its outline is cut in the chunk's edge buffer; empty unless
     /// the upload was asked for them and kept the model in one chunk.
     pub marks: Vec<(u32, u32)>,
 }
 
-/// An axis-aligned box in a model's space, the unit of the world's view-frustum cull.
+/// An axis-aligned box in a model's space, the unit of the view-frustum cull.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeBounds {
     /// Corner holding the smallest value on every axis.
@@ -106,19 +111,53 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
             *slot = Some(own.union(*slot));
         }
     }
+    add_subtrees_to_parents(ir, &mut bounds, |subtree, parent| {
+        subtree.map_or(parent, |subtree| Some(subtree.union(parent)))
+    });
+    bounds
+}
+
+/// Whether each node's slices or a descendant's hold a disc rim vertex, as [`node_bounds`] boxes
+/// them.
+fn node_discs(ir: &SodModelIr) -> Vec<bool> {
+    let mut discs = vec![false; ir.nodes.len()];
+    for mesh in ir.meshes() {
+        if mesh
+            .vertices
+            .iter()
+            .any(|vertex| vertex.flags & VERTEX_FLAG_DISC != 0)
+            && let Some(slot) = discs.get_mut(mesh.node.id.0 as usize)
+        {
+            *slot = true;
+        }
+    }
+    add_subtrees_to_parents(ir, &mut discs, |subtree, parent| subtree || parent);
+    discs
+}
+
+/// Folds each node's per-node value, its own slices' plus its descendants' so far, into its
+/// parent's with `merge(subtree, parent)`.
+fn add_subtrees_to_parents<T: Copy>(ir: &SodModelIr, values: &mut [T], merge: impl Fn(T, T) -> T) {
     for (n, node) in ir.nodes.iter().enumerate().rev() {
-        let Some(subtree) = bounds.get(n).copied().flatten() else {
+        let Some(subtree) = values.get(n).copied() else {
             continue;
         };
         let Some(parent) = node
             .parent
-            .and_then(|parent| bounds.get_mut(parent.0 as usize))
+            .and_then(|parent| values.get_mut(parent.0 as usize))
         else {
             continue;
         };
-        *parent = Some(subtree.union(*parent));
+        *parent = merge(subtree, *parent);
     }
-    bounds
+}
+
+/// The box around every root's subtree, from [`node_bounds`]; `None` when no root has one.
+fn model_bounds(roots: &[NodeId], bounds: &[Option<NodeBounds>]) -> Option<NodeBounds> {
+    roots
+        .iter()
+        .filter_map(|root| bounds.get(root.0 as usize).copied().flatten())
+        .reduce(|all, root| all.union(Some(root)))
 }
 
 /// Whether any of `bounds` is inside `view_proj`'s view frustum; `false` only when the box lies
@@ -126,9 +165,10 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
 ///
 /// `bounds` is in the space `view_proj` takes to clip space. The six planes are its rows, for a
 /// clip space whose depth runs over `[0, w]` as `glam::rh::proj::directx` gives and the vertex
-/// shader multiplies by: left `w + x`, right `w - x`, bottom `w + y`, top `w - y`, near `z` and
-/// far `w - z`. A reversed-Z or infinite-far projection (issue #637) changes the last two, and
-/// this is the one place to change them.
+/// shader multiplies by: left `w + x`, right `w - x`, bottom `w + y`, top `w - y`, far `z` and
+/// near `w - z`, depth being reversed. Under the infinite perspective clip z is the constant
+/// near distance, so the far plane keeps every box in front of the eye
+/// (`docs/adr/0054-depth-is-reversed-and-infinite.md`).
 ///
 /// The test has no margin: `view_proj` is an `f32` product the GPU does not form, so a box
 /// within rounding of a plane can fall either way; such a box covers no more than a
@@ -163,6 +203,21 @@ fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
         );
         plane.truncate().dot(corner) + plane.w >= 0.0
     })
+}
+
+/// Whether the vertex shader may move a disc rim vertex of a model or node that holds `discs`
+/// under the lens `disc_depth_scale`, so its box no longer bounds where the vertex draws.
+///
+/// It rescales a rim vertex's clip depth and `w` about the disc's centre (`squeeze_disc`), which
+/// can bring a vertex outside the box's side planes into the view; the default lens sets the
+/// scale to exactly 1, where it moves none.
+fn squeezes_discs(discs: bool, disc_depth_scale: f32) -> bool {
+    #[expect(
+        clippy::float_cmp,
+        reason = "the default lens sets the scale to exactly 1, where the shader moves no rim"
+    )]
+    let moved = disc_depth_scale != 1.0;
+    discs && moved
 }
 
 /// Polygonal geometry slice pointing into consolidated GPU vertex and index buffers.
@@ -204,6 +259,13 @@ pub struct GpuModel {
     pub nodes: Vec<GpuNode>,
     /// Root node IDs.
     pub root_nodes: Vec<NodeId>,
+    /// Box around every vertex the model can draw, in its own space: the union of its roots'
+    /// [`GpuNode::bounds`], or `None` when it has no mesh. [`Self::rewrite_vertices`] leaves it,
+    /// and every node's box, as uploaded.
+    pub bounds: Option<NodeBounds>,
+    /// Whether any vertex is a disc's rim vertex ([`VERTEX_FLAG_DISC`]), which the vertex shader
+    /// moves off its position under a lens other than the default (`squeeze_disc`).
+    pub discs: bool,
 }
 
 impl GpuModel {
@@ -302,6 +364,7 @@ impl GpuModel {
         marks.resize_with(plan.slices.len(), Vec::new);
         let mut planned = plan.slices.into_iter().zip(marks);
         let bounds = node_bounds(ir);
+        let discs = node_discs(ir);
         let nodes = ir
             .nodes
             .iter()
@@ -318,11 +381,13 @@ impl GpuModel {
                     visibility: node.visibility,
                     meshes,
                     bounds: bounds.get(n).copied().flatten(),
+                    discs: discs.get(n).copied().unwrap_or(false),
                     marks,
                 }
             })
             .collect();
 
+        let bounds = model_bounds(&ir.root_nodes, &bounds);
         Self {
             name: ir.name.clone(),
             chunks,
@@ -330,7 +395,25 @@ impl GpuModel {
             index_count: arena_index(ir.indices.len()),
             nodes,
             root_nodes: ir.root_nodes.clone(),
+            bounds,
+            discs: ir
+                .vertices
+                .iter()
+                .any(|vertex| vertex.flags & VERTEX_FLAG_DISC != 0),
         }
+    }
+
+    /// Whether any vertex the model can draw may land inside `view_proj`'s view frustum, by
+    /// [`Self::bounds`] and `frustum_keeps`; false for a model with no mesh. `view_proj` takes a
+    /// model vertex to clip space, as the vertex shader does.
+    ///
+    /// A model with [`Self::discs`] is always kept when `disc_depth_scale` (the camera's) is not
+    /// 1: the shader then rescales a rim vertex's clip depth and `w` about the disc's centre,
+    /// which can bring a vertex outside the box's side planes into the view.
+    pub(crate) fn in_frustum(&self, view_proj: Mat4, disc_depth_scale: f32) -> bool {
+        self.bounds.is_some_and(|bounds| {
+            squeezes_discs(self.discs, disc_depth_scale) || frustum_keeps(view_proj, bounds)
+        })
     }
 
     /// Overwrites the vertices and apexes with `shape`'s, keeping the indices, nodes and slices, and returns
@@ -365,8 +448,8 @@ impl GpuModel {
     /// and no stand-in is.
     ///
     /// Base slices come last sibling first, decal slices in the nodes' own order: the base
-    /// pipeline's `Less` keeps the first draw of an exact depth tie and the decal pipeline's
-    /// `LessEqual` the last, so both let `PLAYONE`'s later sibling win the tie.
+    /// pipeline's `Greater` keeps the first draw of an exact depth tie and the decal pipeline's
+    /// `GreaterEqual` the last, so both let `PLAYONE`'s later sibling win the tie.
     pub fn collect_visible_meshes(
         &self,
         state_mask: u16,
@@ -382,6 +465,7 @@ impl GpuModel {
             eye,
             view,
             view_proj: None,
+            disc_depth_scale: 1.0,
         }
         .collect()
     }
@@ -394,7 +478,9 @@ impl GpuModel {
     /// `view_proj` takes a world vertex to clip space: the camera's `rotation_proj` composed
     /// with the world's eye-relative model matrix ([`crate::camera::eye_relative_matrix`]). A node whose box it cannot
     /// see is skipped with its subtree (`frustum_keeps`), which draws no fewer pixels because
-    /// an off-screen slice covers none, and keeps the order of the slices that survive.
+    /// an off-screen slice covers none, and keeps the order of the slices that survive. A node
+    /// whose subtree holds disc rim vertices is kept whenever `disc_depth_scale` (the camera's)
+    /// is not 1, as [`Self::in_frustum`] keeps a model with them.
     ///
     /// Each base and decal slice comes with its node, so a caller can draw some apart.
     #[expect(
@@ -406,6 +492,7 @@ impl GpuModel {
         eye: Vec3,
         view: Option<&CameraTransform>,
         view_proj: Mat4,
+        disc_depth_scale: f32,
     ) -> (
         Vec<GpuMeshSlice>,
         Vec<(NodeId, GpuMeshSlice)>,
@@ -419,6 +506,7 @@ impl GpuModel {
             eye,
             view,
             view_proj: Some(view_proj),
+            disc_depth_scale,
         }
         .collect_world()
     }
@@ -1009,6 +1097,9 @@ struct VisibleWalk<'a> {
     /// The matrix the vertex shader takes a vertex of the model to clip space by, for the
     /// world's view-frustum cull; `None` draws every node the gates keep.
     view_proj: Option<Mat4>,
+    /// The camera's disc depth scale, which decides whether a node with disc rim vertices can be
+    /// culled by its box ([`squeezes_discs`]); read only with `view_proj`.
+    disc_depth_scale: f32,
 }
 
 impl VisibleWalk<'_> {
@@ -1083,6 +1174,7 @@ impl VisibleWalk<'_> {
             // Off-screen geometry draws no pixels, and skipping it keeps the survivors' order.
             if let Some(view_proj) = self.view_proj
                 && let Some(bounds) = node.bounds
+                && !squeezes_discs(node.discs, self.disc_depth_scale)
                 && !frustum_keeps(view_proj, bounds)
             {
                 continue;
@@ -1496,6 +1588,7 @@ mod tests {
                 edge_count: 0,
             }],
             bounds: None,
+            discs: false,
             marks: Vec::new(),
         }
     }
@@ -1519,14 +1612,15 @@ mod tests {
             eye: Vec3::ZERO,
             view: None,
             view_proj: None,
+            disc_depth_scale: 1.0,
         };
         let (base, decal) = walk.collect();
         let order = |slices: &[GpuMeshSlice]| -> Vec<u32> {
             slices.iter().map(|s| s.index_offset).collect()
         };
-        // `Less` keeps the first draw of a tie, so the later sibling must come first.
+        // `Greater` keeps the first draw of a tie, so the later sibling must come first.
         assert_eq!(order(&base), vec![0, 3, 2, 1]);
-        // `LessEqual` keeps the last draw, so decals keep the authored order.
+        // `GreaterEqual` keeps the last draw, so decals keep the authored order.
         assert_eq!(order(&decal), vec![4, 5]);
     }
 
@@ -1555,6 +1649,7 @@ mod tests {
                 eye: Vec3::ZERO,
                 view,
                 view_proj: None,
+                disc_depth_scale: 1.0,
             };
             walk.collect().0.iter().map(|m| m.index_offset).collect()
         };
@@ -1627,6 +1722,15 @@ mod tests {
     }
 
     #[test]
+    fn a_box_beyond_the_old_far_plane_is_kept() {
+        // The perspective is infinite: 100 km ahead is past the old 25 km far plane.
+        assert!(frustum_keeps(
+            test_view_proj(),
+            boxed([0.0, 0.0, -100_000.0], 1.0)
+        ));
+    }
+
+    #[test]
     fn a_node_culled_with_its_subtree() {
         let view_proj = test_view_proj();
         let mut root = node(0, None, &[1], false);
@@ -1642,6 +1746,7 @@ mod tests {
             eye: Vec3::ZERO,
             view: None,
             view_proj: Some(view_proj),
+            disc_depth_scale: 1.0,
         };
         let (base, decals) = walk.collect();
         assert!(
@@ -1662,6 +1767,7 @@ mod tests {
             eye: Vec3::ZERO,
             view: None,
             view_proj: Some(view_proj),
+            disc_depth_scale: 1.0,
         };
         let order: Vec<u32> = walk
             .collect()
@@ -1720,6 +1826,52 @@ mod tests {
         ir
     }
 
+    /// A meshless model holding only its box and whether it has discs.
+    fn boxed_model(bounds: Option<NodeBounds>, discs: bool) -> GpuModel {
+        GpuModel {
+            name: "BOX".to_string(),
+            chunks: Vec::new(),
+            vertex_count: 0,
+            index_count: 0,
+            nodes: Vec::new(),
+            root_nodes: Vec::new(),
+            bounds,
+            discs,
+        }
+    }
+
+    #[test]
+    fn a_model_beside_the_view_is_kept_only_for_its_discs_under_a_zoomed_lens() {
+        let beside = Some(boxed([20.0, 0.0, -10.0], 1.0));
+        assert!(!boxed_model(beside, false).in_frustum(test_view_proj(), 1.0));
+        assert!(!boxed_model(beside, false).in_frustum(test_view_proj(), 2.0));
+        assert!(!boxed_model(beside, true).in_frustum(test_view_proj(), 1.0));
+        assert!(boxed_model(beside, true).in_frustum(test_view_proj(), 2.0));
+        let ahead = Some(boxed([0.0, 0.0, -10.0], 1.0));
+        assert!(boxed_model(ahead, false).in_frustum(test_view_proj(), 1.0));
+        assert!(!boxed_model(None, true).in_frustum(test_view_proj(), 2.0));
+    }
+
+    #[test]
+    fn a_model_box_covers_every_root() {
+        let bounds = [
+            Some(boxed([0.0, 0.0, 0.0], 1.0)),
+            Some(boxed([0.0, 0.0, 0.0], 0.5)),
+            None,
+            Some(boxed([5.0, 0.0, 0.0], 1.0)),
+        ];
+        // Node 1 is a child, so its box is already in its root's; node 2 has no mesh.
+        let roots = [NodeId(0), NodeId(2), NodeId(3)];
+        assert_eq!(
+            model_bounds(&roots, &bounds),
+            Some(NodeBounds {
+                min: Vec3::new(-1.0, -1.0, -1.0),
+                max: Vec3::new(6.0, 1.0, 1.0),
+            })
+        );
+        assert_eq!(model_bounds(&[NodeId(2)], &bounds), None);
+    }
+
     #[test]
     fn a_node_box_covers_its_descendants_as_drawn() {
         let bounds = node_bounds(&two_node_ir(10.0));
@@ -1737,5 +1889,121 @@ mod tests {
                 max: Vec3::new(3.0, 1.0, 0.0),
             })
         );
+    }
+
+    /// `two_node_ir` with its child's vertices flagged as a disc rim.
+    fn disc_child_ir(offset: f32) -> SodModelIr {
+        let mut ir = two_node_ir(offset);
+        for vertex in ir.vertices.iter_mut().skip(3) {
+            vertex.flags |= VERTEX_FLAG_DISC;
+        }
+        ir
+    }
+
+    #[test]
+    fn a_node_with_discs_marks_its_ancestors_but_not_its_children() {
+        assert_eq!(node_discs(&two_node_ir(10.0)), vec![false, false]);
+        // The child's vertices are the disc's: the parent holds them in its subtree.
+        assert_eq!(node_discs(&disc_child_ir(10.0)), vec![true, true]);
+        // The parent's own vertices are the disc's: its child holds none.
+        let mut ir = two_node_ir(10.0);
+        for vertex in ir.vertices.iter_mut().take(3) {
+            vertex.flags |= VERTEX_FLAG_DISC;
+        }
+        assert_eq!(node_discs(&ir), vec![true, false]);
+    }
+
+    /// #644's world cull drops a baked prop whose box lies outside the view, and its disc rim
+    /// vertices with it; `squeeze_disc` can bring one into the view under a zoomed lens, so the
+    /// walk keeps a node whose subtree holds discs there, and still drops one without.
+    #[test]
+    fn the_world_walk_keeps_a_disc_node_beside_the_view_under_a_zoomed_lens() {
+        let beside = Some(boxed([20.0, 0.0, -10.0], 1.0));
+        let walk = |discs: bool, scale: f32| {
+            let mut root = node(0, None, &[], false);
+            root.bounds = beside;
+            root.discs = discs;
+            let nodes = [root];
+            VisibleWalk {
+                nodes: &nodes,
+                roots: &[NodeId(0)],
+                state_mask: 0,
+                dist_sq: 0.0,
+                eye: Vec3::ZERO,
+                view: None,
+                view_proj: Some(test_view_proj()),
+                disc_depth_scale: scale,
+            }
+            .collect()
+            .0
+            .len()
+        };
+        assert_eq!(walk(true, 1.0), 0, "the default lens moves no rim");
+        assert_eq!(
+            walk(false, 2.0),
+            0,
+            "a node with no disc is outside the view"
+        );
+        assert_eq!(walk(true, 2.0), 1, "a zoomed lens can squeeze a rim in");
+    }
+
+    /// A disc node's plain child beside the view is dropped by its own box, not kept by its
+    /// parent's discs.
+    #[test]
+    fn a_plain_child_of_a_disc_node_is_still_culled_by_its_own_box() {
+        let mut root = node(0, None, &[1], false);
+        root.bounds = Some(boxed([0.0, 0.0, -10.0], 30.0));
+        root.discs = true;
+        let mut child = node(1, Some(0), &[], false);
+        child.bounds = Some(boxed([20.0, 0.0, -10.0], 1.0));
+        let nodes = [root, child];
+        let order: Vec<u32> = VisibleWalk {
+            nodes: &nodes,
+            roots: &[NodeId(0)],
+            state_mask: 0,
+            dist_sq: 0.0,
+            eye: Vec3::ZERO,
+            view: None,
+            view_proj: Some(test_view_proj()),
+            disc_depth_scale: 2.0,
+        }
+        .collect()
+        .0
+        .iter()
+        .map(|mesh| mesh.index_offset)
+        .collect();
+        assert_eq!(order, vec![0]);
+    }
+
+    /// The gap in #644's world cull, on a synthetic disc: its centre and rim vertex both lie
+    /// outside the left plane, so the box around them is culled, yet the vertex shader's
+    /// `squeeze_disc` under a zoomed lens moves the rim vertex's clip `w` out and brings it
+    /// inside the view.
+    #[test]
+    fn a_squeezed_rim_vertex_can_enter_the_view_from_a_culled_box() {
+        let view_proj = test_view_proj();
+        // Clip x grows with the model x at `a` per metre; the centre sits at clip x / w = 1.7
+        // (w = 10 m deep) and the rim vertex 5 m behind it at 17 / 15 = 1.13, both beyond the
+        // plane at 1.
+        let a = view_proj.row(0).x;
+        let x = 17.0 / a;
+        let centre = Vec3::new(x, 0.0, -10.0);
+        let rim = Vec3::new(x, 0.0, -15.0);
+        let bounds = NodeBounds {
+            min: centre.min(rim),
+            max: centre.max(rim),
+        };
+        assert!(!frustum_keeps(view_proj, bounds), "the box is culled");
+        let clip = |point: Vec3| view_proj * point.extend(1.0);
+        // The shader's `squeeze_disc`: the rim's clip offset from the centre, depth terms scaled.
+        let squeezed = |scale: f32| {
+            let offset = clip(rim) - clip(centre);
+            clip(centre) + glam::Vec4::new(offset.x, offset.y, offset.z * scale, offset.w * scale)
+        };
+        let inside = |c: glam::Vec4| c.x.abs() <= c.w;
+        assert!(!inside(squeezed(1.0)), "an unzoomed rim stays outside");
+        assert!(inside(squeezed(2.0)), "a zoomed rim enters the view");
+        // So the walk keeps the disc's node under that lens, as its box alone would not.
+        assert!(squeezes_discs(true, 2.0) && !squeezes_discs(true, 1.0));
     }
 }
