@@ -164,6 +164,109 @@ fn lies_on(poly: &[[f32; 3]], base: &[[f32; 3]]) -> bool {
     })
 }
 
+/// The world vertices of each flat prop whose every vertex lies on, and inside, one earlier
+/// flat prop of `props` (in their order), each snapped onto that prop's face; `None` for every
+/// other placement. `props` holds each placement's shape and position (`base_y` included), or
+/// `None` for one with no shape. Why: `research/playone-exe/world-scene-residuals.md` section 6.9.
+pub(super) fn prop_overlay_vertices(
+    props: &[Option<(&SodModelIr, [f32; 3])>],
+) -> Vec<Option<Vec<[f32; 3]>>> {
+    struct Flat {
+        index: usize,
+        vertices: Vec<[f32; 3]>,
+        triangles: Vec<[[f32; 3]; 3]>,
+        min: [f32; 2],
+        max: [f32; 2],
+    }
+    let flats: Vec<Flat> = props
+        .iter()
+        .enumerate()
+        .filter_map(|(index, prop)| {
+            let (model, pos) = (*prop)?;
+            let extent = model.extent()?;
+            if extent.max[1] - extent.min[1] > GROUND_FLAT_TOLERANCE {
+                return None;
+            }
+            let vertices: Vec<[f32; 3]> = model
+                .vertices
+                .iter()
+                .map(|v| {
+                    [
+                        v.position[0] + pos[0],
+                        v.position[1] + pos[1],
+                        v.position[2] + pos[2],
+                    ]
+                })
+                .collect();
+            let triangles = model
+                .indices
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .filter_map(|&[a, b, c]| {
+                    let corner = |i: u32| vertices.get(usize::try_from(i).ok()?).copied();
+                    Some([corner(a)?, corner(b)?, corner(c)?])
+                })
+                .collect();
+            Some(Flat {
+                index,
+                min: [extent.min[0] + pos[0], extent.min[2] + pos[2]],
+                max: [extent.max[0] + pos[0], extent.max[2] + pos[2]],
+                vertices,
+                triangles,
+            })
+        })
+        .collect();
+    let mut out = vec![None; props.len()];
+    for (j, later) in flats.iter().enumerate() {
+        let snapped = flats.iter().take(j).find_map(|earlier| {
+            let inside = |k: usize| {
+                let (lo, hi) = (later.min.get(k), later.max.get(k));
+                let (elo, ehi) = (earlier.min.get(k), earlier.max.get(k));
+                matches!((lo, hi, elo, ehi), (Some(lo), Some(hi), Some(elo), Some(ehi))
+                    if *lo >= *elo - 1e-3 && *hi <= *ehi + 1e-3)
+            };
+            if !(inside(0) && inside(1)) {
+                return None;
+            }
+            later
+                .vertices
+                .iter()
+                .map(|p| height_on(&earlier.triangles, *p).map(|h| [p[0], h, p[2]]))
+                .collect::<Option<Vec<_>>>()
+        });
+        if let (Some(snapped), Some(slot)) = (snapped, out.get_mut(later.index)) {
+            *slot = Some(snapped);
+        }
+    }
+    out
+}
+
+/// The height at `p`'s `x, z` of the triangle of `triangles` over it whose height there is
+/// nearest `p`'s, when that is within [`GROUND_LIE_TOLERANCE`] of it.
+fn height_on(triangles: &[[[f32; 3]; 3]], p: [f32; 3]) -> Option<f32> {
+    triangles
+        .iter()
+        .filter_map(|t| {
+            let denom = (t[1][2] - t[2][2]) * (t[0][0] - t[2][0])
+                + (t[2][0] - t[1][0]) * (t[0][2] - t[2][2]);
+            if denom.abs() < 1e-9 {
+                return None;
+            }
+            let a = ((t[1][2] - t[2][2]) * (p[0] - t[2][0])
+                + (t[2][0] - t[1][0]) * (p[2] - t[2][2]))
+                / denom;
+            let b = ((t[2][2] - t[0][2]) * (p[0] - t[2][0])
+                + (t[0][0] - t[2][0]) * (p[2] - t[2][2]))
+                / denom;
+            let c = 1.0 - a - b;
+            (a >= EDGE_SLACK && b >= EDGE_SLACK && c >= EDGE_SLACK)
+                .then(|| a * t[0][1] + b * t[1][1] + c * t[2][1])
+        })
+        .filter(|h| (h - p[1]).abs() <= GROUND_LIE_TOLERANCE)
+        .min_by(|h, k| (h - p[1]).abs().total_cmp(&(k - p[1]).abs()))
+}
+
 /// How far from `base_y`, in metres, a vertex may lie and still be on the ground plane.
 const GROUND_PLANE_TOLERANCE: f32 = 1e-4;
 
@@ -372,8 +475,71 @@ pub(super) fn ground_decal_vertices(
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::sloped_terrain;
+    use super::super::test_support::{sloped_terrain, square_prop};
     use super::*;
+
+    /// `square_prop` scaled by `scale` in plan.
+    fn wide_square(scale: f32, peak: Option<f32>) -> SodModelIr {
+        let mut ir = square_prop(peak);
+        for v in &mut ir.vertices {
+            v.position[0] *= scale;
+            v.position[2] *= scale;
+        }
+        ir
+    }
+
+    /// A flat prop inside an earlier flat prop's plan, 2 cm above it and 75 m up (the castle's
+    /// green strip on its moat), is snapped onto it; the earlier one is not an overlay.
+    #[test]
+    fn a_flat_prop_lying_on_an_earlier_flat_prop_is_snapped_onto_it() {
+        let moat = wide_square(10.0, None);
+        let strip = square_prop(None);
+        let props = [
+            Some((&moat, [0.0, 75.0, 0.0])),
+            Some((&strip, [5.0, 75.02, 3.0])),
+        ];
+        let out = prop_overlay_vertices(&props);
+        assert_eq!(out.first(), Some(&None));
+        let snapped = out
+            .get(1)
+            .cloned()
+            .flatten()
+            .expect("the strip is an overlay");
+        assert_eq!(snapped.len(), strip.vertices.len());
+        for (p, v) in snapped.iter().zip(&strip.vertices) {
+            assert_eq!([p[0], p[2]], [v.position[0] + 5.0, v.position[2] + 3.0]);
+            assert!((p[1] - 75.0).abs() < 1e-4, "{p:?}");
+        }
+    }
+
+    /// Only a later prop is an overlay, and only one lying in the earlier one's plane, inside
+    /// its plan, and flat itself.
+    #[test]
+    fn an_earlier_raised_outlying_or_standing_prop_is_not_an_overlay() {
+        let moat = wide_square(10.0, None);
+        let strip = square_prop(None);
+        let tower = square_prop(Some(9.0));
+        let none = |props: &[Option<(&SodModelIr, [f32; 3])>]| {
+            prop_overlay_vertices(props).iter().all(Option::is_none)
+        };
+        assert!(none(&[
+            Some((&strip, [0.0, 75.0, 0.0])),
+            Some((&moat, [0.0, 75.0, 0.0]))
+        ]));
+        assert!(none(&[
+            Some((&moat, [0.0, 75.0, 0.0])),
+            Some((&strip, [0.0, 75.5, 0.0]))
+        ]));
+        assert!(none(&[
+            Some((&moat, [0.0, 75.0, 0.0])),
+            Some((&strip, [19.0, 75.0, 0.0]))
+        ]));
+        assert!(none(&[
+            Some((&moat, [0.0, 75.0, 0.0])),
+            Some((&tower, [0.0, 75.0, 0.0]))
+        ]));
+        assert!(none(&[None, Some((&strip, [0.0, 75.0, 0.0]))]));
+    }
 
     #[test]
     fn test_push_terrain_fans_valid_patches_and_skips_the_rest() {
