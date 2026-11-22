@@ -1622,7 +1622,7 @@ index dd574cb..3279138 100644
          self.sink.accept(page)?;
          Ok(())
 diff --git a/crates/stunt-render/src/renderer/readback.rs b/crates/stunt-render/src/renderer/readback.rs
-index dd3641b..6d29cf6 100644
+index dd3641b..b19b03c 100644
 --- a/crates/stunt-render/src/renderer/readback.rs
 +++ b/crates/stunt-render/src/renderer/readback.rs
 @@ -36,7 +36,9 @@ pub(super) fn read_back(
@@ -1649,9 +1649,28 @@ index dd3641b..6d29cf6 100644
      // The map completed, so the buffer is mapped from here; the guard unmaps it on every return
      // path, including an error from `get_mapped_range`, so a later submission can reuse the slot.
      let _unmap = RunOnDrop::new(|| buffer.unmap());
-@@ -70,6 +78,8 @@ pub(super) fn read_back(
-         .copied()
-         .collect();
+@@ -64,12 +72,22 @@ pub(super) fn read_back(
+         .get_mapped_range()
+         .map_err(|error| RenderError::Readback(error.to_string()))?;
+     let row_bytes = width as usize * bytes_per_texel as usize;
+-    let bytes = mapped
+-        .chunks_exact(padded_row_bytes as usize)
+-        .flat_map(|row| row.iter().take(row_bytes))
+-        .copied()
+-        .collect();
++    let bytes = if std::env::var_os("DBG_PROBE_ROW_COPY").is_some() {
++        let mut out = Vec::with_capacity(row_bytes * (mapped.len() / padded_row_bytes as usize));
++        for row in mapped.chunks_exact(padded_row_bytes as usize) {
++            out.extend_from_slice(row.get(..row_bytes).unwrap_or(row));
++        }
++        out
++    } else {
++        mapped
++            .chunks_exact(padded_row_bytes as usize)
++            .flat_map(|row| row.iter().take(row_bytes))
++            .copied()
++            .collect()
++    };
      drop(mapped);
 +    drop(_unmap);
 +    crate::probe::add_readback_copy(t_copy.elapsed());
