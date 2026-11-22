@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted 2026-11-03, amended 2026-11-06 and 2026-11-21; numbered 0031 until 2026-11-07, when a second 0031 was found. Takes up the `pytest-xdist` option
+accepted 2026-11-03, amended 2026-11-06 and 2026-11-21 (for [#887](https://github.com/neilsh/stunt-reel/pull/887)); numbered 0031 until 2026-11-07, when a second 0031 was found. Takes up the `pytest-xdist` option
 [ADR 0016](0016-the-gate-runs-independent-lanes.md) left for
 [ADR 0010](0010-python-scripts-may-take-well-established-dependencies.md) to clear, and is the
 admitting record that ADR asks for.
@@ -27,9 +27,9 @@ through `PYTEST_ADDOPTS` in the step's environment (`STEP_ENV` in
 silently skipping). `-n auto` is not in pytest's `addopts`: a scoped
 `mise run test-py -- <file>`, the inner loop of AGENTS.md, Working economically, stays in one process, where
 starting workers costs about 2 s against a file that runs in milliseconds. `loadgroup` hands out
-single tests as `load` does, but keeps a test marked `pytest.mark.xdist_group` on one worker, so a
-module-scoped fixture is still rebuilt on each worker that needs it; that spends CPU but not wall
-time, where `loadfile` would keep all of `test_worktree_reap.py` on one worker. The one marked
+single tests as `load` does, so a module-scoped fixture is still rebuilt on each worker that needs
+it, but keeps the tests that share an `xdist_group` name on one worker; that spends CPU but not
+wall time, where `loadfile` would keep all of `test_worktree_reap.py` on one worker. The one such
 group is the formats catalog's shared verification (the 2026-11-21 amendment).
 
 Measured warm on the 16-logical-core Windows workstation, each figure a whole `mise run check`:
@@ -135,10 +135,13 @@ than the whole suite. Eleven 1-2 s tests spread across workers bound nothing.
 ## Amendment: grouped scheduling (2026-11-21)
 
 Three tests in [`test_formats_catalog.py`](../../tests/test_formats_catalog.py) consume one
-session-scoped synthetic-fixture result. Under `load` they landed on three workers, so each ran the
-verification and started the Kaitai compiler's JVM: 9 starts in the test process and 3 in the CLI
-test's child, 12 a run. Marking all three `pytest.mark.xdist_group("kaitai-catalog")` and passing
-`--dist loadgroup` keeps them on one worker: 3 in the test process and 3 in the child, six a run,
-counted with a launcher shim over two runs ([#887](https://github.com/neilsh/stunt-reel/pull/887)).
+session-scoped synthetic-fixture result.
+In the one run #887 measured under `load`, they landed on three workers, so each ran the verification
+and started the Kaitai compiler's JVM: 9 starts in the test process and 3 in the CLI test's child,
+12 in that run.
+Marking all three `pytest.mark.xdist_group("kaitai-catalog")` and passing `--dist loadgroup` keeps
+them on one worker: 3 in the test process and 3 in the child, six a run, counted with a launcher shim
+over two runs ([#887](https://github.com/neilsh/stunt-reel/pull/887)).
 `loadgroup` rather than `loadfile` pins only the tests that must share state; every ungrouped test
 keeps `load`'s spread across workers.
+The reap tests stay ungrouped (above).
