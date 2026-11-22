@@ -15,10 +15,12 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+lazy from collections.abc import Iterator
 
 import pytest
 
 from git_helpers import run_git
+from pytest_helpers import remove_basetemp, short_basetemp
 from stunt_reel import dataroot, worktree_git, worktree_reap
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
@@ -1583,10 +1585,25 @@ def test_a_dirty_orca_workspace_is_skipped_not_a_reason_to_refuse_the_rest(
     assert [candidate.worktree.path for candidate in allowed] == [workspace]
 
 
+@pytest.fixture
+def short_root() -> Iterator[Path]:
+    """A fresh root under the OS temp directory, short enough for a deeply nested fixture.
+
+    A ``tmp_path`` sits under the checkout's per-run basetemp, so a fixture that nests several
+    directories more passes Windows ``MAX_PATH`` from a long checkout path (issue #940).
+    """
+    root = short_basetemp()
+    root.mkdir()
+    try:
+        yield root
+    finally:
+        remove_basetemp(root)
+
+
 def test_an_orca_workspace_holding_nested_worktrees_is_skipped_and_names_them(
-    tmp_path: Path,
+    short_root: Path,
 ) -> None:
-    repo, workspace, merged_prs = _orca_repo(tmp_path)
+    repo, workspace, merged_prs = _orca_repo(short_root)
     nested = workspace / "build" / "tmp" / "base"
     _run_git(repo, "worktree", "add", "-q", "--detach", str(nested))
     rows = [_ps_row(workspace), _ps_row(nested)]
