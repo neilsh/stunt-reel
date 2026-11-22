@@ -31,12 +31,21 @@ against (``sha256``, ``all_sha256``), which ``parity-repin`` checks against the 
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
 lazy from collections.abc import Callable
 
-from cli import ParityOptions, UsageError, add_parity_options, parity_options, resolve_jobs
+from cli import (
+    DEFAULT_JOBS,
+    ParityOptions,
+    UsageError,
+    add_parity_options,
+    parity_options,
+    positive_int,
+    resolve_jobs,
+)
 
 from stunt_reel import parity_layout
 from stunt_reel.expected_scores import (
@@ -53,11 +62,15 @@ from stunt_reel.parity_pipeline import (
     FilmFailure,
     FilmJob,
     FilmScore,
+    RenderBudget,
     Retime,
     build_release,
+    captured_ticks,
     check_film,
     format_summary,
+    physical_memory,
     preflight,
+    render_budget,
     render_film,
     run_matrix,
     score_film,
@@ -75,11 +88,13 @@ def prepare_source(
     no_render: bool,
     software_only: bool,
     built_from: str | None = None,
+    workers: int = 1,
 ) -> Path:
     """The render directory to score: reused, existing, or freshly rendered ``_current``.
 
     A fresh render records *built_from*, the ``crates/`` tree its binary was built from (``None``
     when unknown), inside the directory, replacing any record of the render it displaces.
+    *workers* above 1 renders it in that many ``stuntreel --workers`` processes.
     """
     film = job.name
     current = REPO_ROOT / parity_layout.render_dir(film)
@@ -94,7 +109,7 @@ def prepare_source(
     print(f"[parity] rendering {film} into {current}", file=sys.stderr)
     scratch = REPO_ROOT / parity_layout.render_scratch_dir(film)
     shutil.rmtree(scratch, ignore_errors=True)
-    render_film(job, scratch, software_only=software_only)
+    render_film(job, scratch, software_only=software_only, workers=workers)
     check_film(job, scratch)
     write_render_tree(scratch, built_from)
     current.parent.mkdir(parents=True, exist_ok=True)
@@ -192,6 +207,16 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="render on the software adapter (lavapipe), even when a GPU is available",
     )
+    parser.add_argument(
+        "--workers",
+        type=positive_int,
+        default=1,
+        metavar="N",
+        help=(
+            "render each film in up to N stuntreel processes (LP_NUM_THREADS=1 each), cut so "
+            "jobs x workers fits the cores and about 0.93 GiB of RAM per process; default 1"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -225,6 +250,24 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     crates = built_from if built_from == clean_crates_tree() else None
+    films = options.films
+    if args.workers > 1:
+        budget = render_budget(
+            options.jobs,
+            args.workers,
+            len(films),
+            default_jobs=DEFAULT_JOBS,
+            cpus=os.cpu_count() or 1,
+            memory=physical_memory(),
+        )
+        if budget.workers < args.workers:
+            print(
+                f"[parity] --workers {args.workers} cut to {budget.workers} so {budget.jobs} "
+                "jobs fit the cores and memory",
+                file=sys.stderr,
+            )
+    else:
+        budget = RenderBudget(resolve_jobs(options.jobs, len(films)), 1)
 
     def work(job: FilmJob, _variant: None) -> FilmScore:
         """Renders (or reuses) *job*'s film and scores it, printing nothing."""
@@ -234,6 +277,7 @@ def main(argv: list[str] | None = None) -> int:
             no_render=args.no_render,
             software_only=args.software_only,
             built_from=crates,
+            workers=budget.workers,
         )
         suffix = ""
         request = None
@@ -257,10 +301,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         return result
 
-    films = options.films
-    jobs = resolve_jobs(options.jobs, len(films))
     # Each film has its own scratch, _current and _previous trees, so films never share one.
-    attempts = run_matrix(films, root, (None,), work, jobs=jobs)[0]
+    # The longest capture renders first, so it does not run alone at the end.
+    attempts = run_matrix(films, root, (None,), work, jobs=budget.jobs, weight=captured_ticks)[0]
     failures = 0
     for attempt in attempts:
         if isinstance(attempt, FilmFailure):

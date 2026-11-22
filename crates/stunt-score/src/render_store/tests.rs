@@ -428,3 +428,119 @@ fn a_version_3_render_is_refused_with_the_re_render_action() {
     assert!(error.contains("re-render"), "{error}");
     assert!(error.contains("stuntreel --headless"), "{error}");
 }
+
+/// Writes `ticks` with a record, each tick in the palette its film second picks out of three,
+/// so palettes repeat across seconds; returns nothing when `ticks` is empty.
+fn write_ticks(dir: &Path, ticks: &[u32]) {
+    let mut writer = StoreWriter::new(dir, &geometry());
+    let mut entries = Vec::new();
+    for &tick in ticks {
+        let (indices, layers) = planes(tick);
+        let palette = grey(u8::try_from((tick / RENDER_CHUNK_TICKS) % 3).unwrap() * 10);
+        let palette_index = writer
+            .push(tick, &palette, &indices, &layers, &shapes(tick))
+            .expect("push");
+        entries.push(RenderTick {
+            credits: tick % 2 == 0,
+            tick,
+            palette: RenderPalette {
+                sky: 0,
+                brightness: 0x8000,
+                saturation: 0x8000,
+            },
+            camera: CameraPose {
+                eye: [f32::from(u16::try_from(tick).unwrap()), 0.0, 0.0],
+                target: [0.0; 3],
+                fov_degrees: 45.0,
+                roll_radians: 0.0,
+            },
+            palette_index,
+        });
+    }
+    let Some(table) = writer.finish().expect("finish") else {
+        return;
+    };
+    let record = RenderRecord {
+        schema_version: RENDER_SCHEMA_VERSION,
+        film: FilmId::default(),
+        geometry: geometry(),
+        ticks: entries,
+        palette_count: table.palette_count,
+        chunks: table.chunks,
+        planes: table.planes,
+        adapter: None,
+    };
+    parity_artifacts::write_render_record(dir, &record).expect("write record");
+}
+
+/// Every file under `dir`, by path relative to it, with its bytes.
+fn tree(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    let mut files = BTreeMap::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(at) = pending.pop() {
+        for entry in fs::read_dir(&at).expect("read dir") {
+            let path = entry.expect("entry").path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                let bytes = fs::read(&path).expect("read");
+                files.insert(path.strip_prefix(dir).unwrap().to_path_buf(), bytes);
+            }
+        }
+    }
+    files
+}
+
+#[test]
+fn merged_parts_are_byte_identical_to_one_writer() {
+    let root = temp_dir("merge");
+    let whole = root.join("whole");
+    let ticks = [7, 9, 40, 60, 99, 101, 120, 160, 210];
+    fs::create_dir_all(&whole).unwrap();
+    write_ticks(&whole, &ticks);
+
+    // Three parts split on film seconds, an empty one between them, as `--workers 4` writes.
+    let parts: Vec<PathBuf> = (0..4).map(|k| root.join(format!("part{k}"))).collect();
+    for (part, slice) in parts
+        .iter()
+        .zip([&ticks[..3], &[][..], &ticks[3..7], &ticks[7..]])
+    {
+        fs::create_dir_all(part).unwrap();
+        write_ticks(part, slice);
+    }
+    let merged = root.join("merged");
+    fs::create_dir_all(&merged).unwrap();
+    fs::write(merged.join("render.json"), "stale").unwrap();
+    assert!(parity_artifacts::merge_render_dirs(&merged, &parts).expect("merge"));
+    assert_eq!(tree(&merged), tree(&whole));
+    drop(fs::remove_dir_all(&root));
+}
+
+#[test]
+fn merging_parts_that_hold_no_render_writes_no_record() {
+    let root = temp_dir("merge-empty");
+    let part = root.join("part");
+    fs::create_dir_all(&part).unwrap();
+    fs::write(root.join("render.json"), "stale").unwrap();
+    assert!(!parity_artifacts::merge_render_dirs(&root, &[part]).expect("merge"));
+    assert!(!root.join("render.json").exists());
+    drop(fs::remove_dir_all(&root));
+}
+
+#[test]
+fn merging_parts_out_of_film_order_is_refused() {
+    let root = temp_dir("merge-order");
+    let parts = [root.join("late"), root.join("early")];
+    for (part, slice) in parts.iter().zip([&[101, 120][..], &[7, 60][..]]) {
+        fs::create_dir_all(part).unwrap();
+        write_ticks(part, slice);
+    }
+    let error = parity_artifacts::merge_render_dirs(&root, &parts)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("starts at film second 0 but the part before it ends at 2"),
+        "{error}"
+    );
+    drop(fs::remove_dir_all(&root));
+}

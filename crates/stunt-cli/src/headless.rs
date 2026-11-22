@@ -15,7 +15,7 @@ use stunt_render::{FfmpegVideoWriter, Offscreen, PageSink, RenderedPage, Rendere
 use crate::config::CliConfig;
 use crate::memory_report::MemoryReport;
 use crate::page_slot::PageSlot;
-use crate::playback::{Playback, SampleKey, capture_tick};
+use crate::playback::{Playback, SampleKey, capture_tick, shard_samples};
 use stunt_score::parity_artifacts::{PageView, RenderJournal};
 
 /// File name written under --out-dir for an evenly spaced sample; whole ticks go to the
@@ -247,7 +247,10 @@ pub(crate) fn run_headless(
         return Ok(());
     }
 
-    let samples = playback.samples();
+    let samples = match config.shard {
+        Some(shard) => shard_samples(playback.samples(), shard, config.workers),
+        None => playback.samples(),
+    };
 
     let geometry = Geometry {
         width: config.width,
