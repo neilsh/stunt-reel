@@ -1769,6 +1769,32 @@ mod tests {
         ir
     }
 
+    /// A meshless model holding only its box and whether it has discs.
+    fn boxed_model(bounds: Option<NodeBounds>, discs: bool) -> GpuModel {
+        GpuModel {
+            name: "BOX".to_string(),
+            chunks: Vec::new(),
+            vertex_count: 0,
+            index_count: 0,
+            nodes: Vec::new(),
+            root_nodes: Vec::new(),
+            bounds,
+            discs,
+        }
+    }
+
+    #[test]
+    fn a_model_beside_the_view_is_kept_only_for_its_discs_under_a_zoomed_lens() {
+        let beside = Some(boxed([20.0, 0.0, -10.0], 1.0));
+        assert!(!boxed_model(beside, false).in_frustum(test_view_proj(), 1.0));
+        assert!(!boxed_model(beside, false).in_frustum(test_view_proj(), 2.0));
+        assert!(!boxed_model(beside, true).in_frustum(test_view_proj(), 1.0));
+        assert!(boxed_model(beside, true).in_frustum(test_view_proj(), 2.0));
+        let ahead = Some(boxed([0.0, 0.0, -10.0], 1.0));
+        assert!(boxed_model(ahead, false).in_frustum(test_view_proj(), 1.0));
+        assert!(!boxed_model(None, true).in_frustum(test_view_proj(), 2.0));
+    }
+
     #[test]
     fn a_model_box_covers_every_root() {
         let bounds = [
