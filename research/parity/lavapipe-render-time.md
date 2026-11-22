@@ -1,5 +1,5 @@
 ---
-summary: "Post-#644/#811 lavapipe profiling across LOCATION and INTRO shows culling view_facing draws (#914) cuts loop wall clock by 52.4% to 80.6% (go); omitting color_texture (#919, -1.3% to +5.1%) and relight vertex-ring/apex-skip (#915b, -0.6%) save little (no-go). LP_NUM_THREADS=4 now cuts Span A loop by 10.8% on Windows (27.7% after #914) and 7.7% on Ubuntu 24.04; four child processes scale 2.82x-3.21x on LOCATION 50-649 while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8 (#916 child processes go, in-process pooling no-go)."
+summary: "Post-#644/#811 lavapipe profiling across LOCATION and INTRO shows culling view_facing draws (#914) cuts loop wall clock by 52.4% to 80.6% (go; landed, it cuts whole-process wall by 38.7% to 72.0% on Windows lavapipe with every store byte-identical); omitting color_texture (#919, -1.3% to +5.1%) and relight vertex-ring/apex-skip (#915b, -0.6%) save little (no-go). LP_NUM_THREADS=4 now cuts Span A loop by 10.8% on Windows (27.7% after #914) and 7.7% on Ubuntu 24.04; four child processes scale 2.82x-3.21x on LOCATION 50-649 while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8 (#916 child processes go, in-process pooling no-go)."
 ---
 # Parity: Render Time on Lavapipe
 
@@ -78,6 +78,12 @@ Each tested lavapipe A/B probe kept `frames.zst`, `layers.zst`, `shapes.zst`, an
 - **`#914` (`view_facing` frustum cull).**
   Frustum-culling `view_facing` root boxes cuts loop time by `80.6%` (`Span A`), `52.4%` (`Span B`), and `76.6%` (`Span C`), bringing lavapipe below the unculled RTX 4070 loop on Spans A and C.
   Post-cull remaining loop shares: `pass_encode_submit` (`34.5%` Span A, `53.8%` Span B, `22.9%` Span C), `scene_frame` (`19.5%..26.7%`), `readback_copy` (`17.7%..24.1%`), `journal_write` (`4.8%..7.6%`), and on Span C `prepare_relight_decode` (`344.5 ms`, `16.8%`) vs `prepare_relight_upload` (`23.5 ms`, `1.1%`).
+- **`#914` as landed.**
+  `SceneRenderer::prepare` skips a `view_facing` draw whose model box (the union of its roots' subtree boxes) `frustum_keeps` rejects, before its walk.
+  On a cloud session's Ubuntu 24.04 Mesa 25.2.8 (`llvmpipe (LLVM 20.1.2, 256 bits)`, 4 vCPUs, 3 interleaved runs, whole-process wall clock with scene build and open), median wall fell from `15.95 s` to `4.55 s` on Span A (`-71.5%`), `11.93 s` to `6.44 s` on Span B (`-46.0%`) and `21.68 s` to `4.08 s` on Span C (`-81.2%`).
+  On the laptop's mesa-dist-win 25.2.8 the same measure fell from `8.11 s` to `2.82 s` (Span A, `-65.2%`), `6.56 s` to `4.02 s` (Span B, `-38.7%`) and `9.44 s` to `2.64 s` (Span C, `-72.0%`), and on the RTX 4070 from `3.01 s` to `2.57 s` (Span A, `-14.6%`).
+  All four stores stayed byte-identical on every span and, on both Ubuntu lavapipe and the RTX 4070, on the seven reference films (`28` of `28` files each).
+  _Source: [culling view-facing props on the cloud's lavapipe](../../work/2026-11/914_view-facing-cull/journal.md#2026-11-22-culling-view-facing-props-on-the-clouds-lavapipe), [the cull on the RTX 4070 and on Windows lavapipe](../../work/2026-11/914_view-facing-cull/journal.md#2026-11-22-the-cull-on-the-rtx-4070-and-on-windows-lavapipe)._
 - **`#919` (`plane_texture` without `color_texture`) and `#915` (Span C relight probes).**
   Omitting `color_texture`, `palette_lut`, color readback, and `check_derivable` (`21.4..36.9 ms` baseline) yielded `-1.3%` (`A`), `+5.1%` (`B`), and `+0.2%` (`C`).
   On Span C (`8,751.5 ms`), skipping matching `apex_buffer` rewrites (`144` skipped) ran `8,731.9 ms` (`-0.2%`), a 2-slot relit ring ran `8,695.2 ms` (`-0.6%`), and both combined ran `8,702.4 ms` (`-0.6%`).
@@ -110,7 +116,7 @@ _Source: [Multi-`VkDevice` in-process versus child processes on Windows and Linu
 
 ## 6. Optimization verdicts
 
-- **`#914`: Go** (`view_facing` frustum culling cuts `52.4%..80.6%` of loop wall across the three spans; actor/shadow/sprite culling and instancing defer/follow-up).
+- **`#914`: Go, landed** (`view_facing` frustum culling cuts `52.4%..80.6%` of loop wall across the three spans, and `38.7%..72.0%` of whole-process wall on Windows lavapipe as landed, section 3; actor/shadow/sprite culling and instancing defer/follow-up).
 - **`#916`: Go via chunked child processes** (`2.82x..3.21x` loop / `2.37x..2.48x` E2E at 4 workers with `~953 MiB` / `0.93 GiB` Linux RSS budget/worker); **no-go** on in-process multi-`VkDevice` pooling.
 - **`#919`: No-go** (`-1.3%` to `+5.1%` loop impact while dropping `check_derivable` validation of LUT output).
 - **`#915` sub-items:** (a) bind-state dedup **defer** (`scene_draw <= 1.1%` post-`#914`); (b) relit vertex ring + apex-skip **no-go** (`-0.6%` combined; `Refresh::Upload` dominates under welding, and CPU decode exceeds GPU upload by `> 12x`); (c) apex-free world layout **defer** (revisit for `~76.7 MiB`/worker RAM headroom under `#916`); (d) pass discard / single poll / CPU readback reuse **defer** (`poll_plane < 0.8 ms`; `OffscreenTarget` already reuses GPU `[Readback; 2]` staging buffers).
