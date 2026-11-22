@@ -19,6 +19,13 @@ flat on the ground plane `y = base_y` is painted in walk order in its own pass, 
 "back to front" of the Context below is a fixed walk order: `SP_2NODE` does not swap its children
 on the eye's side.
 
+amended 2026-11-22 for [#966](https://github.com/neilsh/stunt-reel/issues/966): a flat prop that is
+not ground-lying but lies on an earlier flat prop (every vertex on its triangles, within 10 cm,
+inside its plan box) is a decal of that prop, snapped onto it and routed as above, so it is drawn
+after it as `PLAYONE`'s walk paints it. `LOCATION`'s castle green strip on its moat, 75 m up,
+was an exact tie the depth compare settled differently on the GPU and lavapipe
+([`world-scene-residuals.md` section 6.9](../../research/playone-exe/world-scene-residuals.md#69-locations-castle-moat-and-the-green-strip-on-it)).
+
 ## Context
 
 `PLAYONE.EXE` has no depth buffer. It walks the scenery tree back to front, so a scenery tile laid
