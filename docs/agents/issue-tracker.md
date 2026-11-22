@@ -52,7 +52,7 @@ In a fork, `gh` can default to the upstream parent, so before a session's first 
 
 ## Organizing issues
 
-These rules cover every issue except the map and tickets `/wayfinder` chooses, resolves and closes by **Wayfinding operations** below.
+These rules cover every issue, except that the map and tickets `/wayfinder` chooses, resolves and closes follow **Wayfinding operations** below for parents, claiming and closing; they still take a `status:` label.
 
 - **Parents are goals.**
   A parent issue names an outcome and ends with a `Done when every sub-issue is closed.` line, e.g. #85 (terrain loss), #97 (actors and props).
