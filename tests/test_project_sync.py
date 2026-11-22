@@ -23,7 +23,7 @@ PROJECT = ps.Project(
 
 
 @pytest.mark.parametrize(
-    ("labels", "state", "subs", "status"),
+    ("names", "state", "subs", "status"),
     [
         ({"status:ready-for-agent", "env:local-only"}, "open", 0, "Ready for agent"),
         ({"status:ready-for-agent", "status:in-progress"}, "open", 0, "In progress"),
@@ -37,9 +37,9 @@ PROJECT = ps.Project(
     ],
 )
 def test_status_follows_state_then_parenthood_then_labels(
-    labels: set[str], state: str, subs: int, status: str | None
+    names: set[str], state: str, subs: int, status: str
 ) -> None:
-    assert ps.derive_status(labels, state, subs) == status
+    assert ps.derive_status(names, state, subs) == status
 
 
 def _issue(number: int, *labels: str, state: str = "open", subs: int = 0) -> dict[str, Any]:
@@ -53,7 +53,7 @@ def _issue(number: int, *labels: str, state: str = "open", subs: int = 0) -> dic
 
 
 def _fake(
-    monkeypatch: pytest.MonkeyPatch, issue: dict[str, Any], status: str | None, archived: bool
+    monkeypatch: pytest.MonkeyPatch, issue: dict[str, Any], status: str, archived: bool
 ) -> list[str]:
     """Answer the REST read and the add mutation; record each mutation by its name."""
     writes: list[str] = []
@@ -63,7 +63,7 @@ def _fake(
             return issue
         query = args[3].removeprefix("query=")
         if "addProjectV2ItemById" in query:
-            value = {"name": status} if status else None
+            value = {"name": status}
             return {
                 "data": {
                     "addProjectV2ItemById": {
@@ -71,7 +71,7 @@ def _fake(
                     }
                 }
             }
-        names = {ps._SET: "set", ps._CLEAR: "clear", ps._UNARCHIVE: "unarchive"}
+        names = {ps._SET: "set", ps._UNARCHIVE: "unarchive"}
         option = next((a.removeprefix("option=") for a in args if a.startswith("option=")), None)
         writes.append(f"{names[query]} {option}" if option else names[query])
         return {"data": {}}

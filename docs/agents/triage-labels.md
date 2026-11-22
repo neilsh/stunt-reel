@@ -54,6 +54,9 @@ It goes beside the state label, so an issue can be `status:ready-for-agent` and 
 | --- | --- |
 | `env:local-only` | Needs a resource a cloud session lacks, so a `local-windows` session does it ([`working-in-an-environment`](../../.agents/skills/working-in-an-environment/SKILL.md)): DOSBox-X or `play` (a cloud session runs dosbox-automation's `capture-ref` and `make-all`: [cloud-sessions.md](../cloud-sessions.md#running-the-emulator)), GPU timing, the GPU check a rendering PR's body asks for ([`cloud.md` § Rendering](../../.agents/skills/working-in-an-environment/cloud.md#rendering)), the owner's `wrangler login` for archive uploads ([ADR 0039](../adr/0039-cloud-sessions-fetch-pinned-game-archives.md)), or a data-root file the cloud archives do not hold. Rendering and scoring alone are not one, but a result that turns on single pixels of our render, such as a `background` band, is: the cloud's lavapipe stands in for the GPU on scores ([`lavapipe.md` § 4](../../research/parity/lavapipe.md#4-lavapipe-beside-the-gpu-on-one-crates-tree)). It goes on a PR as well as an issue. The brief names the resource |
 
+An asset missing from the data root itself still makes an issue `status:ready-for-human`.
+A `local-windows` session that finds the resource unavailable (a lapsed login, no GPU adapter) releases its claim ([issue-tracker.md](issue-tracker.md#conventions)) with `Released claim: <resource> unavailable (<error>).`, relabels the issue `status:ready-for-human`, and names the one command a person must run.
+
 ## Area roles
 
 An area label marks a component a script or a recurring search follows; add one only then.
@@ -61,8 +64,5 @@ An area label marks a component a script or a recurring search follows; add one 
 | Label | Meaning |
 | --- | --- |
 | `area:class-agreement` | A flag in the lavapipe-versus-GPU class agreement (#908), applied by [`parity_agreement.py`](../../python/scripts/parity_agreement.py) |
-
-An asset missing from the data root itself still makes an issue `status:ready-for-human`.
-A `local-windows` session that finds the resource unavailable (a lapsed login, no GPU adapter) releases its claim ([issue-tracker.md](issue-tracker.md#conventions)) with `Released claim: <resource> unavailable (<error>).`, relabels the issue `status:ready-for-human`, and names the one command a person must run.
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from these tables.

@@ -113,6 +113,7 @@ Read it as in **Read an issue** above.
 ## Wayfinding operations
 
 Used by `/wayfinder`.
+A map and its tickets carry a `status:` label like any other issue; there are no `wayfinder:*` labels.
 The **map** is a single issue with **child** issues as tickets.
 
 - **Map**: a single issue holding the Notes / Decisions-so-far / Fog body.
