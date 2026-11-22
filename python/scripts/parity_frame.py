@@ -105,7 +105,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--software-only",
         action="store_true",
-        help="render on the software adapter (lavapipe, WARP), even when a GPU is available",
+        help="render on the software adapter (lavapipe), even when a GPU is available",
     )
     parser.add_argument(
         "--var", default=None, help="DBG_NAME=v1,v2: one panel per value after the capture"

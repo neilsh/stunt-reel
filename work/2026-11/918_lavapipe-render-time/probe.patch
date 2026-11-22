@@ -1,0 +1,2273 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 63c73855..bbe00a8a 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -166 +166 @@ pub(crate) fn run_headless(
+-    scene: &mut FilmScene,
++    mut scene: FilmScene,
+@@ -167,0 +168,2 @@ pub(crate) fn run_headless(
++    process_start: std::time::Instant,
++    build_scene_ns: u64,
+@@ -172,0 +175,26 @@ pub(crate) fn run_headless(
++    let playback = Playback::new(config, &scene);
++    if let Ok(scan_path) = std::env::var("DBG_PROBE_CPU_SCAN_FILE")
++        && !scan_path.is_empty()
++    {
++        let samples = playback.samples();
++        let mut ticks = Vec::with_capacity(samples.len());
++        for (key, tick) in samples {
++            let SampleKey::Tick(t) = key else {
++                return Err("DBG_PROBE_CPU_SCAN_FILE requires tick samples".to_string());
++            };
++            ticks.push((t, capture_tick(tick)));
++        }
++        stunt_render::cpu_scan_film(
++            &scene,
++            &ticks,
++            config.height,
++            config.viewport_rows,
++            std::path::Path::new(&scan_path),
++        )?;
++        println!(
++            "[stuntreel] CPU scan wrote {} ticks to {scan_path}",
++            ticks.len()
++        );
++        return Ok(());
++    }
++
+@@ -178 +205,0 @@ pub(crate) fn run_headless(
+-    let playback = Playback::new(config, scene);
+@@ -205,0 +233,14 @@ pub(crate) fn run_headless(
++    if let Some(workers) = parse_probe_workers()? {
++        return run_probe_workers(
++            config,
++            scene,
++            film,
++            &playback,
++            offscreen,
++            options,
++            workers,
++            process_start,
++            build_scene_ns,
++        );
++    }
++
+@@ -219 +260 @@ pub(crate) fn run_headless(
+-            scene,
++            &scene,
+@@ -250,0 +292 @@ pub(crate) fn run_headless(
++    let frame_count = samples.len();
+@@ -271 +313,2 @@ pub(crate) fn run_headless(
+-    let mut renderer = Renderer::offscreen(scene, offscreen, Box::new(slot.clone()), options)
++    let t_open = std::time::Instant::now();
++    let mut renderer = Renderer::offscreen(&scene, offscreen, Box::new(slot.clone()), options)
+@@ -272,0 +316 @@ pub(crate) fn run_headless(
++    let renderer_open_ns = dur_ns(t_open.elapsed());
+@@ -276,0 +321 @@ pub(crate) fn run_headless(
++    let t_rel = std::time::Instant::now();
+@@ -277,0 +323 @@ pub(crate) fn run_headless(
++    let release_world_ns = dur_ns(t_rel.elapsed());
+@@ -285,0 +332,2 @@ pub(crate) fn run_headless(
++    let t_loop = std::time::Instant::now();
++    let mut scene_frame_ns = 0u64;
+@@ -287,0 +336 @@ pub(crate) fn run_headless(
++        let t_sf = std::time::Instant::now();
+@@ -288,0 +338 @@ pub(crate) fn run_headless(
++        scene_frame_ns = scene_frame_ns.saturating_add(dur_ns(t_sf.elapsed()));
+@@ -301,0 +352 @@ pub(crate) fn run_headless(
++    let loop_wall_ns = dur_ns(t_loop.elapsed());
+@@ -303,0 +355 @@ pub(crate) fn run_headless(
++    let t_drop = std::time::Instant::now();
+@@ -304,0 +357 @@ pub(crate) fn run_headless(
++    let drop_renderer_ns = dur_ns(t_drop.elapsed());
+@@ -305,0 +359 @@ pub(crate) fn run_headless(
++    let t_jf = std::time::Instant::now();
+@@ -306,0 +361 @@ pub(crate) fn run_headless(
++    let journal_finish_ns = dur_ns(t_jf.elapsed());
+@@ -323,0 +379 @@ pub(crate) fn run_headless(
++    let end_to_end_ns = dur_ns(process_start.elapsed());
+@@ -324,0 +381,25 @@ pub(crate) fn run_headless(
++
++    let rsnap = stunt_render::probe::snapshot();
++    if let Some(draw_path) = stunt_render::probe::draw_file() {
++        let frames = stunt_render::probe::draw_frames();
++        stunt_render::probe::write_draw_lines(
++            std::path::Path::new(draw_path),
++            &frames,
++            usize::try_from(rsnap.world_reach_total).unwrap_or(0),
++        )?;
++    }
++    if stunt_render::probe::report() {
++        print_probe_report(
++            frame_count,
++            build_scene_ns,
++            renderer_open_ns,
++            release_world_ns,
++            scene_frame_ns,
++            loop_wall_ns,
++            drop_renderer_ns,
++            journal_finish_ns,
++            end_to_end_ns,
++            rsnap,
++            stunt_score::probe::snapshot(),
++        );
++    }
+@@ -327,0 +409,341 @@ pub(crate) fn run_headless(
++fn dur_ns(d: std::time::Duration) -> u64 {
++    u64::try_from(d.as_nanos()).unwrap_or(u64::MAX)
++}
++
++fn ms(ns: u64) -> f64 {
++    ns as f64 / 1_000_000.0
++}
++
++fn parse_probe_workers() -> Result<Option<usize>, String> {
++    let Ok(val) = std::env::var("DBG_PROBE_WORKERS") else {
++        return Ok(None);
++    };
++    if val.is_empty() {
++        return Ok(None);
++    }
++    let n = val
++        .parse::<usize>()
++        .map_err(|e| format!("invalid DBG_PROBE_WORKERS={val:?}: {e}"))?;
++    if n == 0 {
++        return Err("DBG_PROBE_WORKERS must be >= 1".to_string());
++    }
++    Ok(Some(n))
++}
++
++#[expect(
++    clippy::too_many_arguments,
++    reason = "temporary #918 multi-worker benchmark harness"
++)]
++fn run_probe_workers(
++    config: &CliConfig,
++    scene: FilmScene,
++    film: FilmId,
++    playback: &Playback,
++    offscreen: Offscreen,
++    options: stunt_render::RenderOptions,
++    workers: usize,
++    process_start: std::time::Instant,
++    build_scene_ns: u64,
++) -> Result<(), String> {
++    use std::sync::atomic::{AtomicU64, Ordering};
++    use std::sync::{Barrier, Mutex, RwLock};
++
++    let out_dir = config
++        .out_dir
++        .as_ref()
++        .ok_or_else(|| "DBG_PROBE_WORKERS requires --out-dir".to_string())?;
++    let samples = playback.samples();
++    if !samples.len().is_multiple_of(workers) {
++        return Err(format!(
++            "DBG_PROBE_WORKERS={workers} does not evenly divide {} samples",
++            samples.len()
++        ));
++    }
++    let chunk_size = samples.len() / workers;
++    let geometry = Geometry {
++        width: config.width,
++        height: config.height,
++        viewport_rows: config.viewport_rows,
++    };
++    let scene_lock = RwLock::new(scene);
++    let after_upload = Barrier::new(workers);
++    let after_release = Barrier::new(workers);
++    let after_loop = Barrier::new(workers);
++    let upload_wall_ns = AtomicU64::new(0);
++    let loop_wall_ns = AtomicU64::new(0);
++    let loop_start = Mutex::new(None::<std::time::Instant>);
++    let upload_start = std::time::Instant::now();
++
++    let worker_stats = std::thread::scope(|scope| {
++        let mut handles = Vec::with_capacity(workers);
++        for k in 0..workers {
++            let shard = samples
++                .get(k * chunk_size..(k + 1) * chunk_size)
++                .ok_or_else(|| format!("worker {k} shard out of bounds"))?;
++            let worker_dir = out_dir.join(format!("worker_{k}"));
++            let film_copy = film.clone();
++            let scene_ref = &scene_lock;
++            let b_up = &after_upload;
++            let b_rel = &after_release;
++            let b_loop = &after_loop;
++            let up_ns = &upload_wall_ns;
++            let lp_ns = &loop_wall_ns;
++            let lp_t0 = &loop_start;
++            handles.push(scope.spawn(move || -> Result<(usize, u64, u64, u64, String), String> {
++                fs::create_dir_all(&worker_dir)
++                    .map_err(|e| format!("create {}: {e}", worker_dir.display()))?;
++                let journal = RenderJournal::begin(&worker_dir, film_copy, geometry)
++                    .map_err(|e| e.to_string())?;
++                let mut sink = SampleSink {
++                    out_dir: Some(worker_dir),
++                    video: None,
++                    journal: Some(journal),
++                    written_frames: 0,
++                    written_video_frames: 0,
++                };
++                let slot = PageSlot::default();
++                let t_open = std::time::Instant::now();
++                let mut renderer = {
++                    let guard = scene_ref
++                        .read()
++                        .map_err(|e| format!("scene read lock poisoned: {e}"))?;
++                    Renderer::offscreen(&guard, offscreen, Box::new(slot.clone()), options)
++                        .map_err(|e| format!("worker {k} Renderer::offscreen failed: {e}"))?
++                };
++                let open_ns = dur_ns(t_open.elapsed());
++                b_up.wait();
++                if k == 0 {
++                    scene_ref
++                        .write()
++                        .map_err(|e| format!("scene write lock poisoned: {e}"))?
++                        .release_world_mesh();
++                    up_ns.store(dur_ns(upload_start.elapsed()), Ordering::Relaxed);
++                    if let Ok(mut g) = lp_t0.lock() {
++                        *g = Some(std::time::Instant::now());
++                    }
++                }
++                b_rel.wait();
++                let t_wloop = std::time::Instant::now();
++                {
++                    let guard = scene_ref
++                        .read()
++                        .map_err(|e| format!("scene read lock poisoned: {e}"))?;
++                    let mut pending: VecDeque<(SampleKey, FrameFacts)> = VecDeque::new();
++                    for &(key, tick) in shard {
++                        let frame = guard.frame(capture_tick(tick));
++                        renderer
++                            .submit(&frame, None)
++                            .map_err(|e| format!("worker {k} render {key}: {e}"))?;
++                        pending.push_back((key, FrameFacts::of(&frame)));
++                        write_landed_pages(&slot, &mut pending, &mut sink)?;
++                    }
++                    renderer
++                        .finish()
++                        .map_err(|e| format!("worker {k} finish: {e}"))?;
++                    write_landed_pages(&slot, &mut pending, &mut sink)?;
++                    if !pending.is_empty() {
++                        return Err(format!("worker {k} missed landed pages"));
++                    }
++                }
++                let wloop_ns = dur_ns(t_wloop.elapsed());
++                b_loop.wait();
++                if k == 0
++                    && let Ok(g) = lp_t0.lock()
++                    && let Some(t0) = *g
++                {
++                    lp_ns.store(dur_ns(t0.elapsed()), Ordering::Relaxed);
++                }
++                let adapter = render_adapter(renderer.adapter());
++                let adapter_name = adapter.name.clone();
++                drop(renderer);
++                let t_fin = std::time::Instant::now();
++                sink.finish_journal(adapter)?;
++                let fin_ns = dur_ns(t_fin.elapsed());
++                Ok((k, open_ns, wloop_ns, fin_ns, adapter_name))
++            }));
++        }
++        let mut results = Vec::with_capacity(workers);
++        for handle in handles {
++            let res = handle
++                .join()
++                .map_err(|_| "worker thread panicked".to_string())??;
++            results.push(res);
++        }
++        Ok::<_, String>(results)
++    })?;
++
++    let end_to_end_ns = dur_ns(process_start.elapsed());
++    let stats = read_process_stats();
++    println!(
++        "PROBE_WORKERS workers={workers} frames={} separate_instances={} build_ms={:.3} upload_ms={:.3} loop_ms={:.3} end_to_end_ms={:.3} cpu_s={:.6} rss_mib={:.2} peak_rss_mib={:.2} peak_private_mib={:.2} adapter={:?}",
++        samples.len(),
++        u8::from(stunt_render::probe::separate_instances()),
++        ms(build_scene_ns),
++        ms(upload_wall_ns.load(Ordering::Relaxed)),
++        ms(loop_wall_ns.load(Ordering::Relaxed)),
++        ms(end_to_end_ns),
++        stats.cpu_seconds,
++        stats.rss_bytes as f64 / (1024.0 * 1024.0),
++        stats.peak_rss_bytes as f64 / (1024.0 * 1024.0),
++        stats.peak_private_bytes as f64 / (1024.0 * 1024.0),
++        worker_stats.first().map_or("", |w| w.4.as_str()),
++    );
++    for (k, open_ns, wloop_ns, fin_ns, _) in worker_stats {
++        println!(
++            "PROBE_WORKER id={k} open_ms={:.3} loop_ms={:.3} finish_ms={:.3}",
++            ms(open_ns),
++            ms(wloop_ns),
++            ms(fin_ns)
++        );
++    }
++    Ok(())
++}
++
++#[derive(Clone, Copy, Debug, Default)]
++struct ProcessStats {
++    cpu_seconds: f64,
++    rss_bytes: u64,
++    peak_rss_bytes: u64,
++    peak_private_bytes: u64,
++}
++
++fn read_process_stats() -> ProcessStats {
++    if cfg!(windows) {
++        let pid = std::process::id();
++        let script = format!(
++            "$p = Get-Process -Id {pid}; \"$($p.TotalProcessorTime.TotalSeconds) $($p.WorkingSet64) $($p.PeakWorkingSet64) $($p.PeakPagedMemorySize64)\""
++        );
++        if let Ok(output) = std::process::Command::new("powershell")
++            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
++            .output()
++            && output.status.success()
++        {
++            let text = String::from_utf8_lossy(&output.stdout);
++            let mut parts = text.split_whitespace();
++            if let (Some(cpu), Some(ws), Some(pws), Some(priv_b)) = (
++                parts.next().and_then(|s| s.parse::<f64>().ok()),
++                parts.next().and_then(|s| s.parse::<u64>().ok()),
++                parts.next().and_then(|s| s.parse::<u64>().ok()),
++                parts.next().and_then(|s| s.parse::<u64>().ok()),
++            ) {
++                return ProcessStats {
++                    cpu_seconds: cpu,
++                    rss_bytes: ws,
++                    peak_rss_bytes: pws,
++                    peak_private_bytes: priv_b,
++                };
++            }
++        }
++        return ProcessStats::default();
++    }
++    let mut stats = ProcessStats::default();
++    if let Ok(stat) = fs::read_to_string("/proc/self/stat")
++        && let Some((_, rest)) = stat.rsplit_once(')')
++    {
++        let fields: Vec<&str> = rest.split_whitespace().collect();
++        // After ') ', field 0 is state (field 3), so utime (14) -> index 11, stime (15) -> index 12.
++        if let (Some(ut), Some(st)) = (
++            fields.get(11).and_then(|s| s.parse::<u64>().ok()),
++            fields.get(12).and_then(|s| s.parse::<u64>().ok()),
++        ) {
++            stats.cpu_seconds = (ut + st) as f64 / 100.0;
++        }
++    }
++    if let Ok(status) = fs::read_to_string("/proc/self/status") {
++        let kib = |name: &str| -> u64 {
++            status
++                .lines()
++                .find_map(|line| line.strip_prefix(name)?.strip_prefix(':'))
++                .and_then(|rest| rest.trim().strip_suffix("kB"))
++                .and_then(|v| v.trim().parse::<u64>().ok())
++                .unwrap_or(0)
++                * 1024
++        };
++        stats.rss_bytes = kib("VmRSS");
++        stats.peak_rss_bytes = kib("VmHWM");
++    }
++    stats
++}
++
++#[expect(
++    clippy::too_many_arguments,
++    reason = "temporary #918 phase report summary"
++)]
++fn print_probe_report(
++    frames: usize,
++    build_scene_ns: u64,
++    renderer_open_ns: u64,
++    release_world_ns: u64,
++    scene_frame_ns: u64,
++    loop_wall_ns: u64,
++    drop_renderer_ns: u64,
++    journal_finish_ns: u64,
++    end_to_end_ns: u64,
++    rsnap: stunt_render::probe::RenderSnapshot,
++    ssnap: stunt_score::probe::ScoreSnapshot,
++) {
++    let stats = read_process_stats();
++    println!(
++        "PROBE_SUMMARY frames={frames} fif={} plane_only={} cull_vf={} skip_apex={} ring_lit={} build_ms={:.3} open_ms={:.3} release_ms={:.3} loop_ms={:.3} drop_ms={:.3} finish_ms={:.3} end_to_end_ms={:.3} cpu_s={:.6} rss_mib={:.2} peak_rss_mib={:.2} peak_private_mib={:.2}",
++        stunt_render::probe::frames_in_flight(),
++        u8::from(stunt_render::probe::plane_only()),
++        u8::from(stunt_render::probe::cull_view_facing()),
++        u8::from(stunt_render::probe::skip_apex_rewrite()),
++        u8::from(stunt_render::probe::ring_lit()),
++        ms(build_scene_ns),
++        ms(renderer_open_ns),
++        ms(release_world_ns),
++        ms(loop_wall_ns),
++        ms(drop_renderer_ns),
++        ms(journal_finish_ns),
++        ms(end_to_end_ns),
++        stats.cpu_seconds,
++        stats.rss_bytes as f64 / (1024.0 * 1024.0),
++        stats.peak_rss_bytes as f64 / (1024.0 * 1024.0),
++        stats.peak_private_bytes as f64 / (1024.0 * 1024.0),
++    );
++    println!(
++        "PROBE_STARTUP adapter_device_ms={:.3} pipelines_ms={:.3} scene_upload_ms={:.3} world_chunks={} world_reach_total={}",
++        ms(rsnap.adapter_device_ns),
++        ms(rsnap.pipelines_ns),
++        ms(rsnap.scene_upload_ns),
++        rsnap.world_chunks,
++        rsnap.world_reach_total,
++    );
++    println!(
++        "PROBE_PHASES scene_frame_ms={:.3} palette_lut_ms={:.3} prepare_total_ms={:.3} prepare_camera_ms={:.3} prepare_world_ms={:.3} prepare_view_facing_ms={:.3} prepare_relight_decode_ms={:.3} prepare_relight_upload_ms={:.3} prepare_actors_other_ms={:.3} prepare_sprites_place_ms={:.3} prepare_uniforms_upload_ms={:.3} pass_encode_submit_ms={:.3} scene_draw_ms={:.3} queue_submit_ms={:.3} poll_color_ms={:.3} poll_plane_ms={:.3} readback_copy_ms={:.3} credits_overlay_ms={:.3} journal_write_ms={:.3} check_derivable_ms={:.3} u16_bytes_ms={:.3} preview_png_ms={:.3} zstd_chunk_push_ms={:.3} zstd_chunk_finish_ms={:.3} score_journal_finish_ms={:.3}",
++        ms(scene_frame_ns),
++        ms(rsnap.palette_lut_ns),
++        ms(rsnap.prepare_total_ns),
++        ms(rsnap.prepare_camera_ns),
++        ms(rsnap.prepare_world_ns),
++        ms(rsnap.prepare_view_facing_ns),
++        ms(rsnap.prepare_relight_decode_ns),
++        ms(rsnap.prepare_relight_upload_ns),
++        ms(rsnap.prepare_actors_other_ns),
++        ms(rsnap.prepare_sprites_place_ns),
++        ms(rsnap.prepare_uniforms_upload_ns),
++        ms(rsnap.pass_encode_submit_ns),
++        ms(rsnap.scene_draw_ns),
++        ms(rsnap.queue_submit_ns),
++        ms(rsnap.poll_color_ns),
++        ms(rsnap.poll_plane_ns),
++        ms(rsnap.readback_copy_ns),
++        ms(rsnap.credits_overlay_ns),
++        ms(ssnap.journal_write_ns),
++        ms(ssnap.check_derivable_ns),
++        ms(ssnap.u16_bytes_ns),
++        ms(ssnap.preview_png_ns),
++        ms(ssnap.zstd_chunk_push_ns),
++        ms(ssnap.zstd_chunk_finish_ns),
++        ms(ssnap.journal_finish_ns),
++    );
++    println!(
++        "PROBE_RELIGHT keep={} rewrite={} upload={} apex_skipped={}",
++        rsnap.relight_keep,
++        rsnap.relight_rewrite,
++        rsnap.relight_upload,
++        rsnap.relight_apex_skipped,
++    );
++}
++
+diff --git a/crates/stunt-cli/src/main.rs b/crates/stunt-cli/src/main.rs
+index f190360a..590a6412 100644
+--- a/crates/stunt-cli/src/main.rs
++++ b/crates/stunt-cli/src/main.rs
+@@ -100,0 +101 @@ fn main() {
++    let process_start = std::time::Instant::now();
+@@ -103 +104,2 @@ fn main() {
+-    let (mut scene, film) = match build_identified_scene(&SceneSources {
++    let t_build = std::time::Instant::now();
++    let (scene, film) = match build_identified_scene(&SceneSources {
+@@ -117,0 +120 @@ fn main() {
++    let build_scene_ns = u64::try_from(t_build.elapsed().as_nanos()).unwrap_or(u64::MAX);
+@@ -120 +123,2 @@ fn main() {
+-        if let Err(e) = headless::run_headless(&config, &mut scene, film) {
++        if let Err(e) = headless::run_headless(&config, scene, film, process_start, build_scene_ns)
++        {
+diff --git a/crates/stunt-render/src/lib.rs b/crates/stunt-render/src/lib.rs
+index 1b875cb5..99f692f0 100644
+--- a/crates/stunt-render/src/lib.rs
++++ b/crates/stunt-render/src/lib.rs
+@@ -48 +48 @@ pub use renderer::{
+-    RenderOptions, RenderedPage, Renderer, SinkError,
++    RenderOptions, RenderedPage, Renderer, SinkError, probe,
+@@ -49,0 +50 @@ pub use renderer::{
++pub use scene_renderer::cpu_scan_film;
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 97a2f05c..1d0338e3 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -137 +137 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
+-fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
++pub(crate) fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
+@@ -207,0 +208,2 @@ pub struct GpuModel {
++    /// Union of root node bounds in model space.
++    pub root_bounds: Option<NodeBounds>,
+@@ -215 +217,6 @@ impl GpuModel {
+-        Self::upload(device, queue, ir, &own_positions(ir), None)
++        Self::upload(Some((device, queue)), ir, &own_positions(ir), None)
++    }
++
++    /// Builds CPU-side node and slice metadata without allocating GPU buffers.
++    pub(crate) fn from_ir_cpu(ir: &SodModelIr) -> Self {
++        Self::upload(None, ir, &own_positions(ir), None)
+@@ -225 +232,6 @@ impl GpuModel {
+-        Self::upload(device, queue, &shape.ir, &shape.apex, None)
++        Self::upload(Some((device, queue)), &shape.ir, &shape.apex, None)
++    }
++
++    /// Builds CPU-side metadata for an outlined shape without allocating GPU buffers.
++    pub(crate) fn from_outlined_cpu(shape: &Outlined) -> Self {
++        Self::upload(None, &shape.ir, &shape.apex, None)
+@@ -244,2 +256 @@ impl GpuModel {
+-            device,
+-            queue,
++            Some((device, queue)),
+@@ -251,0 +263,9 @@ impl GpuModel {
++    /// Builds CPU-side outlined world metadata without allocating GPU buffers.
++    pub(crate) fn from_ir_outlined_cpu(
++        ir: &SodModelIr,
++        outlined: fn(&SodVertex) -> bool,
++        marks: &[u32],
++    ) -> Self {
++        Self::upload(None, ir, &own_positions(ir), Some((outlined, marks)))
++    }
++
+@@ -254,2 +274 @@ impl GpuModel {
+-        device: &wgpu::Device,
+-        queue: &wgpu::Queue,
++        gpu: Option<(&wgpu::Device, &wgpu::Queue)>,
+@@ -260 +279 @@ impl GpuModel {
+-        let limit = device.limits().max_buffer_size;
++        let limit = gpu.map_or(u64::MAX, |(device, _)| device.limits().max_buffer_size);
+@@ -294,7 +313,12 @@ impl GpuModel {
+-        let chunks = plan
+-            .chunks
+-            .iter()
+-            .zip(&edges)
+-            .enumerate()
+-            .map(|(n, (chunk, edges))| GpuChunk::upload(device, queue, ir, apex, n, chunk, edges))
+-            .collect();
++        let chunks = match gpu {
++            Some((device, queue)) => plan
++                .chunks
++                .iter()
++                .zip(&edges)
++                .enumerate()
++                .map(|(n, (chunk, edges))| {
++                    GpuChunk::upload(device, queue, ir, apex, n, chunk, edges)
++                })
++                .collect(),
++            None => Vec::new(),
++        };
+@@ -305,0 +330,9 @@ impl GpuModel {
++        let mut root_bounds: Option<NodeBounds> = None;
++        for id in &ir.root_nodes {
++            if let Some(b) = bounds.get(id.0 as usize).copied().flatten() {
++                root_bounds = Some(match root_bounds {
++                    Some(cur) => cur.union(Some(b)),
++                    None => b,
++                });
++            }
++        }
+@@ -333,0 +367 @@ impl GpuModel {
++            root_bounds,
+@@ -336,0 +371,8 @@ impl GpuModel {
++    /// Number of `ScaleReach` nodes in this model.
++    pub(crate) fn world_reach_count(&self) -> usize {
++        self.nodes
++            .iter()
++            .filter(|n| matches!(n.visibility, VisibilityCondition::ScaleReach { .. }))
++            .count()
++    }
++
+@@ -346,0 +389,9 @@ impl GpuModel {
++        self.rewrite_vertices_opt(queue, shape, true)
++    }
++
++    pub(crate) fn rewrite_vertices_opt(
++        &self,
++        queue: &wgpu::Queue,
++        shape: &Outlined,
++        write_apex: bool,
++    ) -> bool {
+@@ -354 +405 @@ impl GpuModel {
+-            chunk.rewrite_vertices(queue, &ir.vertices, &shape.apex);
++            chunk.rewrite_vertices_opt(queue, &ir.vertices, &shape.apex, write_apex);
+@@ -385,0 +437,2 @@ impl GpuModel {
++            reach_frustum: std::cell::Cell::new(0),
++            reach_kept: std::cell::Cell::new(0),
+@@ -422,0 +476,2 @@ impl GpuModel {
++            reach_frustum: std::cell::Cell::new(0),
++            reach_kept: std::cell::Cell::new(0),
+@@ -426,0 +482,38 @@ impl GpuModel {
++    /// Like [`Self::collect_world_meshes`], also returning `(reach_frustum, reach_kept)`.
++    #[expect(
++        clippy::type_complexity,
++        reason = "the three slice lists of one walk plus ScaleReach survival counts"
++    )]
++    pub(crate) fn collect_world_meshes_counted(
++        &self,
++        eye: Vec3,
++        view: Option<&CameraTransform>,
++        view_proj: Mat4,
++    ) -> (
++        Vec<GpuMeshSlice>,
++        Vec<(NodeId, GpuMeshSlice)>,
++        Vec<(NodeId, GpuMeshSlice)>,
++        usize,
++        usize,
++    ) {
++        let walk = VisibleWalk {
++            nodes: &self.nodes,
++            roots: &self.root_nodes,
++            state_mask: 0,
++            dist_sq: 0.0,
++            eye,
++            view,
++            view_proj: Some(view_proj),
++            reach_frustum: std::cell::Cell::new(0),
++            reach_kept: std::cell::Cell::new(0),
++        };
++        let (ground, base, decals) = walk.collect_world();
++        (
++            ground,
++            base,
++            decals,
++            walk.reach_frustum.get(),
++            walk.reach_kept.get(),
++        )
++    }
++
+@@ -720,2 +813,10 @@ impl GpuChunk {
+-    fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex], apex: &[[f32; 3]]) {
+-        write_windows(queue, &self.apex_buffer, apex, &self.vertex_ranges);
++    fn rewrite_vertices_opt(
++        &self,
++        queue: &wgpu::Queue,
++        vertices: &[SodVertex],
++        apex: &[[f32; 3]],
++        write_apex: bool,
++    ) {
++        if write_apex {
++            write_windows(queue, &self.apex_buffer, apex, &self.vertex_ranges);
++        }
+@@ -1012,0 +1114,2 @@ struct VisibleWalk<'a> {
++    reach_frustum: std::cell::Cell<usize>,
++    reach_kept: std::cell::Cell<usize>,
+@@ -1090,0 +1194,4 @@ impl VisibleWalk<'_> {
++            let is_reach = forward && matches!(node.visibility, VisibilityCondition::ScaleReach { .. });
++            if is_reach {
++                self.reach_frustum.set(self.reach_frustum.get() + 1);
++            }
+@@ -1093,0 +1201,3 @@ impl VisibleWalk<'_> {
++            if is_reach {
++                self.reach_kept.set(self.reach_kept.get() + 1);
++            }
+@@ -1522,0 +1633,2 @@ mod tests {
++            reach_frustum: std::cell::Cell::new(0),
++            reach_kept: std::cell::Cell::new(0),
+@@ -1558,0 +1671,2 @@ mod tests {
++                reach_frustum: std::cell::Cell::new(0),
++                reach_kept: std::cell::Cell::new(0),
+@@ -1654,0 +1769,2 @@ mod tests {
++            reach_frustum: std::cell::Cell::new(0),
++            reach_kept: std::cell::Cell::new(0),
+@@ -1674,0 +1791,2 @@ mod tests {
++            reach_frustum: std::cell::Cell::new(0),
++            reach_kept: std::cell::Cell::new(0),
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index c1a2e5a7..5030a6b5 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -265 +265,4 @@ impl RenderPipelines {
+-        let fragment_entry = if plane_format.is_some() {
++        let plane_only = plane_format.is_some() && crate::probe::plane_only();
++        let fragment_entry = if plane_only {
++            "fs_main_plane_only"
++        } else if plane_format.is_some() {
+@@ -270 +273,3 @@ impl RenderPipelines {
+-        let sky_fragment_entry = if plane_format.is_some() {
++        let sky_fragment_entry = if plane_only {
++            "fs_sky_plane_only"
++        } else if plane_format.is_some() {
+@@ -470,0 +476,9 @@ fn color_targets(
++    if crate::probe::plane_only()
++        && let Some(format) = plane_format
++    {
++        return vec![Some(wgpu::ColorTargetState {
++            format,
++            blend: None,
++            write_mask: wgpu::ColorWrites::ALL,
++        })];
++    }
+diff --git a/crates/stunt-render/src/renderer/adapter.rs b/crates/stunt-render/src/renderer/adapter.rs
+index 39aa1905..fed48039 100644
+--- a/crates/stunt-render/src/renderer/adapter.rs
++++ b/crates/stunt-render/src/renderer/adapter.rs
+@@ -97,0 +98,8 @@ pub(super) fn offscreen_adapter(options: RenderOptions) -> Result<wgpu::Adapter,
++    if crate::probe::separate_instances() {
++        return first_adapter(
++            &OFFSCREEN_BACKENDS,
++            |adapter| preferred_adapter(adapter, options),
++            |backends| select_adapter(&create_instance(backends), None, options),
++        )
++        .ok_or(RenderError::NoGpuAdapter);
++    }
+diff --git a/crates/stunt-render/src/renderer/credits.rs b/crates/stunt-render/src/renderer/credits.rs
+index 324a74a7..e7e13964 100644
+--- a/crates/stunt-render/src/renderer/credits.rs
++++ b/crates/stunt-render/src/renderer/credits.rs
+@@ -55,5 +55,3 @@ pub(super) fn paint_credits(
+-                if let (Some(slot), Some(layer), Some(rgb)) = (
+-                    page.indices.get_mut(at),
+-                    page.layers.get_mut(at),
+-                    page.rgba.get_mut(at * 4..at * 4 + 3),
+-                ) {
++                if let (Some(slot), Some(layer)) =
++                    (page.indices.get_mut(at), page.layers.get_mut(at))
++                {
+@@ -62 +60,3 @@ pub(super) fn paint_credits(
+-                    rgb.copy_from_slice(&[r, g, b]);
++                    if let Some(rgb) = page.rgba.get_mut(at * 4..at * 4 + 3) {
++                        rgb.copy_from_slice(&[r, g, b]);
++                    }
+diff --git a/crates/stunt-render/src/renderer/mod.rs b/crates/stunt-render/src/renderer/mod.rs
+index 5d40e77a..d41ec873 100644
+--- a/crates/stunt-render/src/renderer/mod.rs
++++ b/crates/stunt-render/src/renderer/mod.rs
+@@ -38,0 +39,403 @@ pub use adapter::AdapterIdentity;
++/// Temporary env-gated profiling counters and switches for #918.
++pub mod probe {
++    use std::fs::OpenOptions;
++    use std::io::Write as _;
++    use std::path::Path;
++    use std::sync::atomic::{AtomicU64, Ordering};
++    use std::sync::{Mutex, OnceLock};
++    use std::time::Duration;
++
++    fn env_flag(cell: &OnceLock<bool>, name: &str) -> bool {
++        *cell.get_or_init(|| std::env::var(name).is_ok_and(|v| v == "1"))
++    }
++
++    fn env_opt(cell: &'static OnceLock<Option<String>>, name: &str) -> Option<&'static str> {
++        cell.get_or_init(|| std::env::var(name).ok().filter(|v| !v.is_empty()))
++            .as_deref()
++    }
++
++    /// Whether `DBG_PROBE_REPORT=1` is set.
++    #[must_use]
++    pub fn report() -> bool {
++        static ON: OnceLock<bool> = OnceLock::new();
++        env_flag(&ON, "DBG_PROBE_REPORT")
++    }
++
++    /// Max frames in flight (`1` when `DBG_PROBE_FRAMES_IN_FLIGHT=1`, else `2`).
++    #[must_use]
++    pub fn frames_in_flight() -> usize {
++        static FIF: OnceLock<usize> = OnceLock::new();
++        *FIF.get_or_init(|| {
++            if std::env::var("DBG_PROBE_FRAMES_IN_FLIGHT").is_ok_and(|v| v == "1") {
++                1
++            } else {
++                2
++            }
++        })
++    }
++
++    /// Whether `DBG_PROBE_PLANE_ONLY=1` is set (`#919` probe).
++    #[must_use]
++    pub fn plane_only() -> bool {
++        static ON: OnceLock<bool> = OnceLock::new();
++        env_flag(&ON, "DBG_PROBE_PLANE_ONLY")
++    }
++
++    /// Whether `DBG_PROBE_CULL_VIEW_FACING=1` is set (`#914` probe).
++    #[must_use]
++    pub fn cull_view_facing() -> bool {
++        static ON: OnceLock<bool> = OnceLock::new();
++        env_flag(&ON, "DBG_PROBE_CULL_VIEW_FACING")
++    }
++
++    /// Whether `DBG_PROBE_SKIP_APEX_REWRITE=1` is set (`#915` probe).
++    #[must_use]
++    pub fn skip_apex_rewrite() -> bool {
++        static ON: OnceLock<bool> = OnceLock::new();
++        env_flag(&ON, "DBG_PROBE_SKIP_APEX_REWRITE")
++    }
++
++    /// Whether `DBG_PROBE_RING_LIT=1` is set (`#915` probe).
++    #[must_use]
++    pub fn ring_lit() -> bool {
++        static ON: OnceLock<bool> = OnceLock::new();
++        env_flag(&ON, "DBG_PROBE_RING_LIT")
++    }
++
++    /// Whether `DBG_PROBE_SEPARATE_INSTANCES=1` is set (`#916` Item 4 probe).
++    #[must_use]
++    pub fn separate_instances() -> bool {
++        static ON: OnceLock<bool> = OnceLock::new();
++        env_flag(&ON, "DBG_PROBE_SEPARATE_INSTANCES")
++    }
++
++    /// Path set in `DBG_PROBE_DRAW_FILE`, if any.
++    #[must_use]
++    pub fn draw_file() -> Option<&'static str> {
++        static PATH: OnceLock<Option<String>> = OnceLock::new();
++        env_opt(&PATH, "DBG_PROBE_DRAW_FILE")
++    }
++
++    /// Whether per-frame draw counts should be collected.
++    #[must_use]
++    pub fn need_draw_counts() -> bool {
++        report() || draw_file().is_some()
++    }
++
++    /// Per-frame `draw_indexed` and `#811` `ScaleReach` counts.
++    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++    pub struct DrawFrameCounts {
++        /// Evaluated tick rounded/truncated to `u32`.
++        pub tick: u32,
++        /// `WORLD_GROUND` triangle draws.
++        pub ground_fill: usize,
++        /// `WORLD_GROUND` outline line-list draws.
++        pub ground_edge: usize,
++        /// World base triangle draws (`WORLD_BASE` + `WORLD_GATED` + `WalkStep::props`).
++        pub base_fill: usize,
++        /// World base outline line-list draws.
++        pub base_edge: usize,
++        /// World decal triangle draws (`WORLD_DECAL` + gated decals + `WalkStep::props`).
++        pub decal_fill: usize,
++        /// World decal outline line-list draws.
++        pub decal_edge: usize,
++        /// `frame.view_facing` prop draws.
++        pub view_facing: usize,
++        /// Unlit actor (`Target::Shape`) draws, excluding shadows.
++        pub actor_unlit: usize,
++        /// Relit actor (`Target::Lit`) draws, excluding shadows.
++        pub actor_lit: usize,
++        /// Ground shadow draws (`PreparedDraw::shadow`).
++        pub shadow: usize,
++        /// Sprite (`Target::Image`) draws.
++        pub sprite: usize,
++        /// `WORLD_REACH` nodes surviving ancestor/frustum culling on the forward walk.
++        pub reach_frustum: usize,
++        /// `WORLD_REACH` nodes also passing `ScaleReach` on the forward walk.
++        pub reach_kept: usize,
++    }
++
++    impl DrawFrameCounts {
++        /// Sum of all `draw_indexed` calls in this frame.
++        #[must_use]
++        pub const fn total_draws(self) -> usize {
++            self.ground_fill
++                + self.ground_edge
++                + self.base_fill
++                + self.base_edge
++                + self.decal_fill
++                + self.decal_edge
++                + self.view_facing
++                + self.actor_unlit
++                + self.actor_lit
++                + self.shadow
++                + self.sprite
++        }
++    }
++
++    /// Snapshot of cumulative renderer phase timings (nanoseconds) and counters.
++    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++    pub struct RenderSnapshot {
++        /// Time spent acquiring adapter and opening device.
++        pub adapter_device_ns: u64,
++        /// Time spent compiling pipelines.
++        pub pipelines_ns: u64,
++        /// Time spent uploading scene shapes, sprites, and world.
++        pub scene_upload_ns: u64,
++        /// Time spent in `palette_lut.set_controls`.
++        pub palette_lut_ns: u64,
++        /// Total time spent in `SceneRenderer::prepare`.
++        pub prepare_total_ns: u64,
++        /// `prepare`: camera uniform build + upload.
++        pub prepare_camera_ns: u64,
++        /// `prepare`: `collect_world_meshes`.
++        pub prepare_world_ns: u64,
++        /// `prepare`: `view_facing` loop.
++        pub prepare_view_facing_ns: u64,
++        /// `prepare`: relight `.SOD` decode + `outlined`.
++        pub prepare_relight_decode_ns: u64,
++        /// `prepare`: relight vertex/model GPU upload.
++        pub prepare_relight_upload_ns: u64,
++        /// `prepare`: actor loop minus relight decode and upload.
++        pub prepare_actors_other_ns: u64,
++        /// `prepare`: sprite loop + `place_sprites`.
++        pub prepare_sprites_place_ns: u64,
++        /// `prepare`: `uniforms.upload`.
++        pub prepare_uniforms_upload_ns: u64,
++        /// Time spent encoding and submitting the render pass + readback copies.
++        pub pass_encode_submit_ns: u64,
++        /// Time spent inside `SceneRenderer::draw`.
++        pub scene_draw_ns: u64,
++        /// Time spent inside `queue.submit`.
++        pub queue_submit_ns: u64,
++        /// Time spent polling `readback.color` (`map_async` + `device.poll(Wait)`).
++        pub poll_color_ns: u64,
++        /// Time spent polling `readback.plane` (`map_async` + `device.poll(Wait)`).
++        pub poll_plane_ns: u64,
++        /// Time spent in CPU readback range copy, row unpadding, and word split.
++        pub readback_copy_ns: u64,
++        /// Time spent painting CPU credits overlay.
++        pub credits_overlay_ns: u64,
++        /// Relight `Keep` events.
++        pub relight_keep: u64,
++        /// Relight `Rewrite` events.
++        pub relight_rewrite: u64,
++        /// Relight `Upload` events.
++        pub relight_upload: u64,
++        /// Relight `Rewrite` events where `apex_buffer` write was skipped.
++        pub relight_apex_skipped: u64,
++        /// Total `WORLD_REACH` nodes in the built world model.
++        pub world_reach_total: u64,
++        /// Chunks uploaded for the world model.
++        pub world_chunks: u64,
++    }
++
++    static ADAPTER_DEVICE_NS: AtomicU64 = AtomicU64::new(0);
++    static PIPELINES_NS: AtomicU64 = AtomicU64::new(0);
++    static SCENE_UPLOAD_NS: AtomicU64 = AtomicU64::new(0);
++    static PALETTE_LUT_NS: AtomicU64 = AtomicU64::new(0);
++    static PREPARE_TOTAL_NS: AtomicU64 = AtomicU64::new(0);
++    static PREPARE_CAMERA_NS: AtomicU64 = AtomicU64::new(0);
++    static PREPARE_WORLD_NS: AtomicU64 = AtomicU64::new(0);
++    static PREPARE_VIEW_FACING_NS: AtomicU64 = AtomicU64::new(0);
++    static PREPARE_RELIGHT_DECODE_NS: AtomicU64 = AtomicU64::new(0);
++    static PREPARE_RELIGHT_UPLOAD_NS: AtomicU64 = AtomicU64::new(0);
++    static PREPARE_ACTORS_OTHER_NS: AtomicU64 = AtomicU64::new(0);
++    static PREPARE_SPRITES_PLACE_NS: AtomicU64 = AtomicU64::new(0);
++    static PREPARE_UNIFORMS_UPLOAD_NS: AtomicU64 = AtomicU64::new(0);
++    static PASS_ENCODE_SUBMIT_NS: AtomicU64 = AtomicU64::new(0);
++    static SCENE_DRAW_NS: AtomicU64 = AtomicU64::new(0);
++    static QUEUE_SUBMIT_NS: AtomicU64 = AtomicU64::new(0);
++    static POLL_COLOR_NS: AtomicU64 = AtomicU64::new(0);
++    static POLL_PLANE_NS: AtomicU64 = AtomicU64::new(0);
++    static READBACK_COPY_NS: AtomicU64 = AtomicU64::new(0);
++    static CREDITS_OVERLAY_NS: AtomicU64 = AtomicU64::new(0);
++    static RELIGHT_KEEP: AtomicU64 = AtomicU64::new(0);
++    static RELIGHT_REWRITE: AtomicU64 = AtomicU64::new(0);
++    static RELIGHT_UPLOAD: AtomicU64 = AtomicU64::new(0);
++    static RELIGHT_APEX_SKIPPED: AtomicU64 = AtomicU64::new(0);
++    static WORLD_REACH_TOTAL: AtomicU64 = AtomicU64::new(0);
++    static WORLD_CHUNKS: AtomicU64 = AtomicU64::new(0);
++    static DRAW_FRAMES: OnceLock<Mutex<Vec<DrawFrameCounts>>> = OnceLock::new();
++
++    fn ns(d: Duration) -> u64 {
++        u64::try_from(d.as_nanos()).unwrap_or(u64::MAX)
++    }
++
++    pub(crate) fn add_adapter_device(d: Duration) {
++        ADAPTER_DEVICE_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_pipelines(d: Duration) {
++        PIPELINES_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_scene_upload(d: Duration) {
++        SCENE_UPLOAD_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_palette_lut(d: Duration) {
++        PALETTE_LUT_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_prepare_total(d: Duration) {
++        PREPARE_TOTAL_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_prepare_camera(d: Duration) {
++        PREPARE_CAMERA_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_prepare_world(d: Duration) {
++        PREPARE_WORLD_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_prepare_view_facing(d: Duration) {
++        PREPARE_VIEW_FACING_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_prepare_relight_decode(d: Duration) {
++        PREPARE_RELIGHT_DECODE_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_prepare_relight_upload(d: Duration) {
++        PREPARE_RELIGHT_UPLOAD_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn relight_ns() -> u64 {
++        PREPARE_RELIGHT_DECODE_NS.load(Ordering::Relaxed)
++            + PREPARE_RELIGHT_UPLOAD_NS.load(Ordering::Relaxed)
++    }
++    pub(crate) fn add_prepare_actors_other_ns(n: u64) {
++        PREPARE_ACTORS_OTHER_NS.fetch_add(n, Ordering::Relaxed);
++    }
++    pub(crate) fn add_prepare_sprites_place(d: Duration) {
++        PREPARE_SPRITES_PLACE_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_prepare_uniforms_upload(d: Duration) {
++        PREPARE_UNIFORMS_UPLOAD_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_pass_encode_submit(d: Duration) {
++        PASS_ENCODE_SUBMIT_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_scene_draw(d: Duration) {
++        SCENE_DRAW_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_queue_submit(d: Duration) {
++        QUEUE_SUBMIT_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_poll_color(d: Duration) {
++        POLL_COLOR_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_poll_plane(d: Duration) {
++        POLL_PLANE_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_readback_copy(d: Duration) {
++        READBACK_COPY_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_credits_overlay(d: Duration) {
++        CREDITS_OVERLAY_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn inc_relight_keep() {
++        RELIGHT_KEEP.fetch_add(1, Ordering::Relaxed);
++    }
++    pub(crate) fn inc_relight_rewrite() {
++        RELIGHT_REWRITE.fetch_add(1, Ordering::Relaxed);
++    }
++    pub(crate) fn inc_relight_upload() {
++        RELIGHT_UPLOAD.fetch_add(1, Ordering::Relaxed);
++    }
++    pub(crate) fn inc_relight_apex_skipped() {
++        RELIGHT_APEX_SKIPPED.fetch_add(1, Ordering::Relaxed);
++    }
++    pub(crate) fn set_world_meta(reach_total: usize, chunks: usize) {
++        WORLD_REACH_TOTAL.store(u64::try_from(reach_total).unwrap_or(u64::MAX), Ordering::Relaxed);
++        WORLD_CHUNKS.store(u64::try_from(chunks).unwrap_or(u64::MAX), Ordering::Relaxed);
++    }
++    pub(crate) fn record_draw_frame(counts: DrawFrameCounts) {
++        let mutex = DRAW_FRAMES.get_or_init(|| Mutex::new(Vec::new()));
++        if let Ok(mut guard) = mutex.lock() {
++            guard.push(counts);
++        }
++    }
++
++    /// Returns a snapshot of all cumulative render probe counters.
++    #[must_use]
++    pub fn snapshot() -> RenderSnapshot {
++        RenderSnapshot {
++            adapter_device_ns: ADAPTER_DEVICE_NS.load(Ordering::Relaxed),
++            pipelines_ns: PIPELINES_NS.load(Ordering::Relaxed),
++            scene_upload_ns: SCENE_UPLOAD_NS.load(Ordering::Relaxed),
++            palette_lut_ns: PALETTE_LUT_NS.load(Ordering::Relaxed),
++            prepare_total_ns: PREPARE_TOTAL_NS.load(Ordering::Relaxed),
++            prepare_camera_ns: PREPARE_CAMERA_NS.load(Ordering::Relaxed),
++            prepare_world_ns: PREPARE_WORLD_NS.load(Ordering::Relaxed),
++            prepare_view_facing_ns: PREPARE_VIEW_FACING_NS.load(Ordering::Relaxed),
++            prepare_relight_decode_ns: PREPARE_RELIGHT_DECODE_NS.load(Ordering::Relaxed),
++            prepare_relight_upload_ns: PREPARE_RELIGHT_UPLOAD_NS.load(Ordering::Relaxed),
++            prepare_actors_other_ns: PREPARE_ACTORS_OTHER_NS.load(Ordering::Relaxed),
++            prepare_sprites_place_ns: PREPARE_SPRITES_PLACE_NS.load(Ordering::Relaxed),
++            prepare_uniforms_upload_ns: PREPARE_UNIFORMS_UPLOAD_NS.load(Ordering::Relaxed),
++            pass_encode_submit_ns: PASS_ENCODE_SUBMIT_NS.load(Ordering::Relaxed),
++            scene_draw_ns: SCENE_DRAW_NS.load(Ordering::Relaxed),
++            queue_submit_ns: QUEUE_SUBMIT_NS.load(Ordering::Relaxed),
++            poll_color_ns: POLL_COLOR_NS.load(Ordering::Relaxed),
++            poll_plane_ns: POLL_PLANE_NS.load(Ordering::Relaxed),
++            readback_copy_ns: READBACK_COPY_NS.load(Ordering::Relaxed),
++            credits_overlay_ns: CREDITS_OVERLAY_NS.load(Ordering::Relaxed),
++            relight_keep: RELIGHT_KEEP.load(Ordering::Relaxed),
++            relight_rewrite: RELIGHT_REWRITE.load(Ordering::Relaxed),
++            relight_upload: RELIGHT_UPLOAD.load(Ordering::Relaxed),
++            relight_apex_skipped: RELIGHT_APEX_SKIPPED.load(Ordering::Relaxed),
++            world_reach_total: WORLD_REACH_TOTAL.load(Ordering::Relaxed),
++            world_chunks: WORLD_CHUNKS.load(Ordering::Relaxed),
++        }
++    }
++
++    /// Returns a cloned vector of recorded per-frame draw counts.
++    #[must_use]
++    pub fn draw_frames() -> Vec<DrawFrameCounts> {
++        let Some(mutex) = DRAW_FRAMES.get() else {
++            return Vec::new();
++        };
++        mutex.lock().map_or_else(|_| Vec::new(), |g| g.clone())
++    }
++
++    /// Writes `DRAWFRAME` lines for `frames` to `path`.
++    ///
++    /// # Errors
++    /// Returns an error string if creating or writing `path` fails.
++    pub fn write_draw_lines(path: &Path, frames: &[DrawFrameCounts], reach_total: usize) -> Result<(), String> {
++        if let Some(parent) = path.parent()
++            && !parent.as_os_str().is_empty()
++        {
++            std::fs::create_dir_all(parent)
++                .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
++        }
++        let file = OpenOptions::new()
++            .create(true)
++            .write(true)
++            .truncate(true)
++            .open(path)
++            .map_err(|e| format!("open {}: {e}", path.display()))?;
++        let mut writer = std::io::BufWriter::new(file);
++        writeln!(writer, "# world_reach_total={reach_total}")
++            .map_err(|e| format!("write {}: {e}", path.display()))?;
++        for f in frames {
++            writeln!(
++                writer,
++                "DRAWFRAME tick={} ground_fill={} ground_edge={} base_fill={} base_edge={} decal_fill={} decal_edge={} view_facing={} actor_unlit={} actor_lit={} shadow={} sprite={} total={} reach_frustum={} reach_kept={}",
++                f.tick,
++                f.ground_fill,
++                f.ground_edge,
++                f.base_fill,
++                f.base_edge,
++                f.decal_fill,
++                f.decal_edge,
++                f.view_facing,
++                f.actor_unlit,
++                f.actor_lit,
++                f.shadow,
++                f.sprite,
++                f.total_draws(),
++                f.reach_frustum,
++                f.reach_kept,
++            )
++            .map_err(|e| format!("write {}: {e}", path.display()))?;
++        }
++        writer
++            .flush()
++            .map_err(|e| format!("flush {}: {e}", path.display()))
++    }
++}
++
+@@ -214 +617,2 @@ impl RenderedPage {
+-        if rgba.len() != pixels * 4 {
++        let allow_empty_rgba = probe::plane_only() && rgba.is_empty();
++        if !allow_empty_rgba && rgba.len() != pixels * 4 {
+@@ -377,0 +782 @@ impl Renderer {
++        let t_ad = std::time::Instant::now();
+@@ -379,0 +785,2 @@ impl Renderer {
++        probe::add_adapter_device(t_ad.elapsed());
++        let t_pipe = std::time::Instant::now();
+@@ -388,0 +796,2 @@ impl Renderer {
++        probe::add_pipelines(t_pipe.elapsed());
++        let t_up = std::time::Instant::now();
+@@ -391,0 +801 @@ impl Renderer {
++        probe::add_scene_upload(t_up.elapsed());
+@@ -555 +965,5 @@ impl Renderer {
+-        palette_lut.set_controls(queue, frame.palette);
++        if !probe::plane_only() {
++            let t_lut = std::time::Instant::now();
++            palette_lut.set_controls(queue, frame.palette);
++            probe::add_palette_lut(t_lut.elapsed());
++        }
+@@ -561,0 +976 @@ impl Renderer {
++        let t_prep = std::time::Instant::now();
+@@ -568,0 +984 @@ impl Renderer {
++        probe::add_prepare_total(t_prep.elapsed());
+@@ -570 +986,5 @@ impl Renderer {
+-        let (r, g, b) = palette_lut.rgb_float(*clear_palette_index);
++        let (r, g, b) = if probe::plane_only() {
++            (0.0, 0.0, 0.0)
++        } else {
++            palette_lut.rgb_float(*clear_palette_index)
++        };
+diff --git a/crates/stunt-render/src/renderer/offscreen.rs b/crates/stunt-render/src/renderer/offscreen.rs
+index dd574cb1..32791381 100644
+--- a/crates/stunt-render/src/renderer/offscreen.rs
++++ b/crates/stunt-render/src/renderer/offscreen.rs
+@@ -147,0 +148,3 @@ impl OffscreenTarget {
++        let t_pass = std::time::Instant::now();
++        let max_in_flight = crate::probe::frames_in_flight();
++        let plane_only = crate::probe::plane_only();
+@@ -149 +152 @@ impl OffscreenTarget {
+-        self.next_readback = (readback + 1) % FRAMES_IN_FLIGHT;
++        self.next_readback = (readback + 1) % max_in_flight;
+@@ -155,0 +159,32 @@ impl OffscreenTarget {
++            let plane_attachment = Some(wgpu::RenderPassColorAttachment {
++                view: &self.plane_view,
++                resolve_target: None,
++                depth_slice: None,
++                ops: wgpu::Operations {
++                    load: wgpu::LoadOp::Clear(wgpu::Color {
++                        r: f64::from(clear_palette_index),
++                        g: 0.0,
++                        b: 0.0,
++                        a: 0.0,
++                    }),
++                    store: wgpu::StoreOp::Store,
++                },
++            });
++            let both_attachments = [
++                Some(wgpu::RenderPassColorAttachment {
++                    view: &self.color_view,
++                    resolve_target: None,
++                    depth_slice: None,
++                    ops: wgpu::Operations {
++                        load: wgpu::LoadOp::Clear(clear_color),
++                        store: wgpu::StoreOp::Store,
++                    },
++                }),
++                plane_attachment.clone(),
++            ];
++            let single_attachment = [plane_attachment];
++            let color_attachments = if plane_only {
++                &single_attachment[..]
++            } else {
++                &both_attachments[..]
++            };
+@@ -158,25 +193 @@ impl OffscreenTarget {
+-                color_attachments: &[
+-                    Some(wgpu::RenderPassColorAttachment {
+-                        view: &self.color_view,
+-                        resolve_target: None,
+-                        depth_slice: None,
+-                        ops: wgpu::Operations {
+-                            load: wgpu::LoadOp::Clear(clear_color),
+-                            store: wgpu::StoreOp::Store,
+-                        },
+-                    }),
+-                    Some(wgpu::RenderPassColorAttachment {
+-                        view: &self.plane_view,
+-                        resolve_target: None,
+-                        depth_slice: None,
+-                        ops: wgpu::Operations {
+-                            load: wgpu::LoadOp::Clear(wgpu::Color {
+-                                r: f64::from(clear_palette_index),
+-                                g: 0.0,
+-                                b: 0.0,
+-                                a: 0.0,
+-                            }),
+-                            store: wgpu::StoreOp::Store,
+-                        },
+-                    }),
+-                ],
++                color_attachments,
+@@ -198,0 +210 @@ impl OffscreenTarget {
++            let t_draw = std::time::Instant::now();
+@@ -199,0 +212 @@ impl OffscreenTarget {
++            crate::probe::add_scene_draw(t_draw.elapsed());
+@@ -212,3 +225,2 @@ impl OffscreenTarget {
+-        for (texture, buffer, padded_row_bytes) in [
+-            (&self.color_texture, &buffers.color, self.padded_row_bytes),
+-            (
++        let copies = if plane_only {
++            [Some((
+@@ -218,2 +230,12 @@ impl OffscreenTarget {
+-            ),
+-        ] {
++            )), None]
++        } else {
++            [
++                Some((&self.color_texture, &buffers.color, self.padded_row_bytes)),
++                Some((
++                    &self.plane_texture,
++                    &buffers.plane,
++                    self.plane_padded_row_bytes,
++                )),
++            ]
++        };
++        for (texture, buffer, padded_row_bytes) in copies.into_iter().flatten() {
+@@ -238,0 +261 @@ impl OffscreenTarget {
++        let t_sub = std::time::Instant::now();
+@@ -239,0 +263,2 @@ impl OffscreenTarget {
++        crate::probe::add_queue_submit(t_sub.elapsed());
++        crate::probe::add_pass_encode_submit(t_pass.elapsed());
+@@ -245 +270 @@ impl OffscreenTarget {
+-        if self.in_flight.len() == FRAMES_IN_FLIGHT {
++        if self.in_flight.len() == max_in_flight {
+@@ -269,9 +294,14 @@ impl OffscreenTarget {
+-        let rgba = read_back(
+-            device,
+-            &readback.color,
+-            self.size.width,
+-            COLOR_TEXEL_BYTES,
+-            self.padded_row_bytes,
+-            &frame.submission,
+-        )?;
+-        let words: Vec<u32> = read_back(
++        let rgba = if crate::probe::plane_only() {
++            Vec::new()
++        } else {
++            read_back(
++                device,
++                &readback.color,
++                self.size.width,
++                COLOR_TEXEL_BYTES,
++                self.padded_row_bytes,
++                &frame.submission,
++                false,
++            )?
++        };
++        let plane_bytes = read_back(
+@@ -284,6 +314,9 @@ impl OffscreenTarget {
+-        )?
+-        .as_chunks::<4>()
+-        .0
+-        .iter()
+-        .map(|word| u32::from_le_bytes(*word))
+-        .collect();
++            true,
++        )?;
++        let t_split = std::time::Instant::now();
++        let words: Vec<u32> = plane_bytes
++            .as_chunks::<4>()
++            .0
++            .iter()
++            .map(|word| u32::from_le_bytes(*word))
++            .collect();
+@@ -298,0 +332 @@ impl OffscreenTarget {
++        crate::probe::add_readback_copy(t_split.elapsed());
+@@ -299,0 +334 @@ impl OffscreenTarget {
++            let t_ov = std::time::Instant::now();
+@@ -300,0 +336 @@ impl OffscreenTarget {
++            crate::probe::add_credits_overlay(t_ov.elapsed());
+diff --git a/crates/stunt-render/src/renderer/readback.rs b/crates/stunt-render/src/renderer/readback.rs
+index dd3641b2..6d29cf68 100644
+--- a/crates/stunt-render/src/renderer/readback.rs
++++ b/crates/stunt-render/src/renderer/readback.rs
+@@ -38,0 +39 @@ pub(super) fn read_back(
++    is_plane: bool,
+@@ -39,0 +41 @@ pub(super) fn read_back(
++    let t_poll = std::time::Instant::now();
+@@ -57,0 +60,5 @@ pub(super) fn read_back(
++    if is_plane {
++        crate::probe::add_poll_plane(t_poll.elapsed());
++    } else {
++        crate::probe::add_poll_color(t_poll.elapsed());
++    }
+@@ -58,0 +66 @@ pub(super) fn read_back(
++    let t_copy = std::time::Instant::now();
+@@ -72,0 +81,2 @@ pub(super) fn read_back(
++    drop(_unmap);
++    crate::probe::add_readback_copy(t_copy.elapsed());
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 733da1ce..ab3030e3 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -232,0 +233,11 @@ fn cut_out(
++/// Draw bucket tag for per-frame draw counting.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++enum DrawKind {
++    World,
++    ViewFacing,
++    ActorUnlit,
++    ActorLit,
++    ActorShadow,
++    Sprite,
++}
++
+@@ -236,0 +248 @@ struct PreparedDraw {
++    kind: DrawKind,
+@@ -401,2 +412,0 @@ type Pose = (ShadeLight, AngleBank);
+-/// An actor's shape decoded under the actor's own light and bank, with the decode last
+-/// uploaded.
+@@ -404,2 +414 @@ type Pose = (ShadeLight, AngleBank);
+-struct LitShape {
+-    pose: Pose,
++struct LitSlot {
+@@ -409,0 +419,29 @@ struct LitShape {
++impl LitSlot {
++    fn upload(
++        device: &wgpu::Device,
++        queue: &wgpu::Queue,
++        shape_id: u16,
++        shape: &Outlined,
++    ) -> Self {
++        Self {
++            layout: LitLayout::of(shape_id, &shape.ir),
++            model: GpuModel::from_outlined(device, queue, shape),
++        }
++    }
++}
++
++fn positions_equal(a: &[SodVertex], b: &[SodVertex]) -> bool {
++    a.len() == b.len()
++        && a.iter()
++            .zip(b)
++            .all(|(x, y)| x.position.map(f32::to_bits) == y.position.map(f32::to_bits))
++}
++
++/// An actor's shape decoded under its own light and bank, with up to two buffered decode slots.
++#[derive(Debug)]
++struct LitShape {
++    pose: Pose,
++    slots: [Option<LitSlot>; 2],
++    active: usize,
++}
++
+@@ -421,2 +459,2 @@ impl LitShape {
+-            layout: LitLayout::of(shape_id, &shape.ir),
+-            model: GpuModel::from_outlined(device, queue, shape),
++            slots: [Some(LitSlot::upload(device, queue, shape_id, shape)), None],
++            active: 0,
+@@ -424,0 +463,4 @@ impl LitShape {
++
++    fn active_slot(&self) -> Option<&LitSlot> {
++        self.slots.get(self.active).and_then(Option::as_ref)
++    }
+@@ -449,0 +492,2 @@ pub(crate) struct SceneRenderer {
++    last_tick: u32,
++    last_reach: (usize, usize),
+@@ -484,0 +529,3 @@ impl SceneRenderer {
++        if let Some(w) = &world {
++            crate::probe::set_world_meta(w.world_reach_count(), w.chunks.len());
++        }
+@@ -496,0 +544,2 @@ impl SceneRenderer {
++            last_tick: 0,
++            last_reach: (0, 0),
+@@ -514,0 +564 @@ impl SceneRenderer {
++        let t_cam = std::time::Instant::now();
+@@ -519,0 +570,2 @@ impl SceneRenderer {
++        let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
++        crate::probe::add_prepare_camera(t_cam.elapsed());
+@@ -523,0 +576,9 @@ impl SceneRenderer {
++        #[expect(
++            clippy::cast_possible_truncation,
++            clippy::cast_sign_loss,
++            reason = "integer frame tick from headless playback"
++        )]
++        {
++            self.last_tick = frame.tick as u32;
++        }
++        self.last_reach = (0, 0);
+@@ -528,0 +590 @@ impl SceneRenderer {
++            let t_world = std::time::Instant::now();
+@@ -532,3 +594,2 @@ impl SceneRenderer {
+-            let view_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj)
+-                * Mat4::from_cols_array(&world_matrix);
+-            let (ground, base, decals) = {
++            let view_proj = rotation_proj * Mat4::from_cols_array(&world_matrix);
++            let (ground, base, decals, reach_frustum, reach_kept) = {
+@@ -541 +602 @@ impl SceneRenderer {
+-                world.collect_world_meshes(eye, Some(&lod_view), view_proj)
++                world.collect_world_meshes_counted(eye, Some(&lod_view), view_proj)
+@@ -542,0 +604 @@ impl SceneRenderer {
++            self.last_reach = (reach_frustum, reach_kept);
+@@ -547,0 +610 @@ impl SceneRenderer {
++                kind: DrawKind::World,
+@@ -553,0 +617 @@ impl SceneRenderer {
++            crate::probe::add_prepare_world(t_world.elapsed());
+@@ -555,0 +620,2 @@ impl SceneRenderer {
++        let t_vf = std::time::Instant::now();
++        let cull_vf = crate::probe::cull_view_facing();
+@@ -559,0 +626,10 @@ impl SceneRenderer {
++            let eye_rel = eye_relative_matrix(eye, &prop.world_matrix);
++            if cull_vf
++                && let Some(bounds) = model.root_bounds
++                && !crate::mesh::frustum_keeps(
++                    rotation_proj * Mat4::from_cols_array(&eye_rel),
++                    bounds,
++                )
++            {
++                continue;
++            }
+@@ -573,3 +649 @@ impl SceneRenderer {
+-            let uniform =
+-                ModelUniform::new(eye_relative_matrix(eye, &prop.world_matrix), LAYER_PROP)
+-                    .with_shape(shape_id);
++            let uniform = ModelUniform::new(eye_rel, LAYER_PROP).with_shape(shape_id);
+@@ -577,0 +652 @@ impl SceneRenderer {
++                DrawKind::ViewFacing,
+@@ -581,0 +657,4 @@ impl SceneRenderer {
++        crate::probe::add_prepare_view_facing(t_vf.elapsed());
++
++        let t_actors = std::time::Instant::now();
++        let relight_before = crate::probe::relight_ns();
+@@ -609,0 +689 @@ impl SceneRenderer {
++                    .and_then(LitShape::active_slot)
+@@ -648 +728 @@ impl SceneRenderer {
+-                self.push_draw(target, &uniform, (Vec::new(), shadow));
++                self.push_draw(target, DrawKind::ActorShadow, &uniform, (Vec::new(), shadow));
+@@ -654 +734,6 @@ impl SceneRenderer {
+-            self.push_draw(target, &uniform, (base, decals));
++            let kind = if lit {
++                DrawKind::ActorLit
++            } else {
++                DrawKind::ActorUnlit
++            };
++            self.push_draw(target, kind, &uniform, (base, decals));
+@@ -658,0 +744,3 @@ impl SceneRenderer {
++        let actors_total = u64::try_from(t_actors.elapsed().as_nanos()).unwrap_or(u64::MAX);
++        let relight_delta = crate::probe::relight_ns().saturating_sub(relight_before);
++        crate::probe::add_prepare_actors_other_ns(actors_total.saturating_sub(relight_delta));
+@@ -659,0 +748 @@ impl SceneRenderer {
++        let t_sprites = std::time::Instant::now();
+@@ -675,0 +765 @@ impl SceneRenderer {
++                DrawKind::Sprite,
+@@ -687,0 +778,3 @@ impl SceneRenderer {
++        crate::probe::add_prepare_sprites_place(t_sprites.elapsed());
++
++        let t_uni = std::time::Instant::now();
+@@ -688,0 +782 @@ impl SceneRenderer {
++        crate::probe::add_prepare_uniforms_upload(t_uni.elapsed());
+@@ -782,0 +877 @@ impl SceneRenderer {
++                    kind: DrawKind::World,
+@@ -811,4 +906,4 @@ impl SceneRenderer {
+-        if entry
+-            .as_ref()
+-            .is_some_and(|lit| lit.layout.shape_id == shape_id && lit.pose == pose)
+-        {
++        if entry.as_ref().is_some_and(|lit| {
++            lit.active_slot().is_some_and(|s| s.layout.shape_id == shape_id) && lit.pose == pose
++        }) {
++            crate::probe::inc_relight_keep();
+@@ -816,0 +912 @@ impl SceneRenderer {
++        let t_dec = std::time::Instant::now();
+@@ -817,0 +914 @@ impl SceneRenderer {
++            crate::probe::add_prepare_relight_decode(t_dec.elapsed());
+@@ -821,0 +919,4 @@ impl SceneRenderer {
++        crate::probe::add_prepare_relight_decode(t_dec.elapsed());
++
++        let ring = crate::probe::ring_lit();
++        let skip_apex = crate::probe::skip_apex_rewrite();
+@@ -823,9 +924,34 @@ impl SceneRenderer {
+-            match lit.layout.refresh(shape_id, &shape.ir) {
+-                Refresh::Keep => {
+-                    lit.pose = pose;
+-                    return true;
+-                }
+-                Refresh::Rewrite if lit.model.rewrite_vertices(queue, &shape) => {
+-                    lit.pose = pose;
+-                    lit.layout.vertices = shape.ir.vertices;
+-                    return true;
++            if let Some(cur) = lit.active_slot()
++                && cur.layout.refresh(shape_id, &shape.ir) == Refresh::Keep
++            {
++                lit.pose = pose;
++                crate::probe::inc_relight_keep();
++                return true;
++            }
++            let target_idx = if ring { 1 - lit.active } else { 0 };
++            if let Some(Some(dst)) = lit.slots.get_mut(target_idx) {
++                match dst.layout.refresh(shape_id, &shape.ir) {
++                    Refresh::Keep => {
++                        lit.active = target_idx;
++                        lit.pose = pose;
++                        crate::probe::inc_relight_keep();
++                        return true;
++                    }
++                    Refresh::Rewrite => {
++                        let write_apex = !(skip_apex
++                            && positions_equal(&dst.layout.vertices, &shape.ir.vertices));
++                        let t_up = std::time::Instant::now();
++                        let ok = dst.model.rewrite_vertices_opt(queue, &shape, write_apex);
++                        crate::probe::add_prepare_relight_upload(t_up.elapsed());
++                        if ok {
++                            lit.active = target_idx;
++                            lit.pose = pose;
++                            dst.layout.vertices = shape.ir.vertices;
++                            crate::probe::inc_relight_rewrite();
++                            if !write_apex {
++                                crate::probe::inc_relight_apex_skipped();
++                            }
++                            return true;
++                        }
++                    }
++                    Refresh::Upload => {}
+@@ -833 +959,10 @@ impl SceneRenderer {
+-                Refresh::Rewrite | Refresh::Upload => {}
++            }
++            let t_up = std::time::Instant::now();
++            let uploaded = LitSlot::upload(device, queue, shape_id, &shape);
++            crate::probe::add_prepare_relight_upload(t_up.elapsed());
++            if let Some(slot_ref) = lit.slots.get_mut(target_idx) {
++                *slot_ref = Some(uploaded);
++                lit.active = target_idx;
++                lit.pose = pose;
++                crate::probe::inc_relight_upload();
++                return true;
+@@ -836 +971,5 @@ impl SceneRenderer {
+-        *entry = Some(LitShape::upload(device, queue, shape_id, pose, &shape));
++        let t_up = std::time::Instant::now();
++        let uploaded = LitShape::upload(device, queue, shape_id, pose, &shape);
++        crate::probe::add_prepare_relight_upload(t_up.elapsed());
++        *entry = Some(uploaded);
++        crate::probe::inc_relight_upload();
+@@ -844,0 +984 @@ impl SceneRenderer {
++        kind: DrawKind,
+@@ -848 +988 @@ impl SceneRenderer {
+-        let draw = self.stage(target, uniform, meshes);
++        let draw = self.stage(target, kind, uniform, meshes);
+@@ -855,0 +996 @@ impl SceneRenderer {
++        kind: DrawKind,
+@@ -862,0 +1004 @@ impl SceneRenderer {
++            kind,
+@@ -879,0 +1022,7 @@ impl SceneRenderer {
++        let count_draws = crate::probe::need_draw_counts();
++        let mut counts = crate::probe::DrawFrameCounts {
++            tick: self.last_tick,
++            reach_frustum: self.last_reach.0,
++            reach_kept: self.last_reach.1,
++            ..crate::probe::DrawFrameCounts::default()
++        };
+@@ -903,0 +1053,3 @@ impl SceneRenderer {
++                if count_draws {
++                    counts.ground_fill += 1;
++                }
+@@ -906,0 +1059,3 @@ impl SceneRenderer {
++                    if count_draws {
++                        counts.ground_edge += 1;
++                    }
+@@ -915 +1070,8 @@ impl SceneRenderer {
+-                self.encode(rpass, pipelines, draw, decal_pass, &pipelines.base_pipeline);
++                self.encode(
++                    rpass,
++                    pipelines,
++                    draw,
++                    decal_pass,
++                    &pipelines.base_pipeline,
++                    count_draws.then_some(&mut counts),
++                );
+@@ -922 +1084,8 @@ impl SceneRenderer {
+-                self.encode(rpass, pipelines, sprite, false, &pipelines.sprite_pipeline);
++                self.encode(
++                    rpass,
++                    pipelines,
++                    sprite,
++                    false,
++                    &pipelines.sprite_pipeline,
++                    count_draws.then_some(&mut counts),
++                );
+@@ -926 +1095,8 @@ impl SceneRenderer {
+-                    self.encode(rpass, pipelines, draw, decal_pass, &pipelines.base_pipeline);
++                    self.encode(
++                        rpass,
++                        pipelines,
++                        draw,
++                        decal_pass,
++                        &pipelines.base_pipeline,
++                        count_draws.then_some(&mut counts),
++                    );
+@@ -929,0 +1106,3 @@ impl SceneRenderer {
++        if count_draws {
++            crate::probe::record_draw_frame(counts);
++        }
+@@ -938 +1117,4 @@ impl SceneRenderer {
+-            Target::Lit { actor, uniform } => (&self.lit.get(actor)?.as_ref()?.model, uniform),
++            Target::Lit { actor, uniform } => (
++                &self.lit.get(actor)?.as_ref()?.active_slot()?.model,
++                uniform,
++            ),
+@@ -953,0 +1136 @@ impl SceneRenderer {
++        mut counts: Option<&mut crate::probe::DrawFrameCounts>,
+@@ -971,0 +1155,3 @@ impl SceneRenderer {
++                    if let Some(c) = counts.as_deref_mut() {
++                        c.decal_fill += 1;
++                    }
+@@ -974,0 +1161,3 @@ impl SceneRenderer {
++                        if let Some(c) = counts.as_deref_mut() {
++                            c.decal_edge += 1;
++                        }
+@@ -985,0 +1175,3 @@ impl SceneRenderer {
++            if let Some(c) = counts {
++                add_non_world_draws(c, draw.kind, meshes.len());
++            }
+@@ -989,0 +1182,7 @@ impl SceneRenderer {
++        if let Some(c) = counts.as_deref_mut() {
++            if world {
++                c.base_fill += meshes.len();
++            } else {
++                add_non_world_draws(c, draw.kind, meshes.len());
++            }
++        }
+@@ -993,0 +1193,3 @@ impl SceneRenderer {
++            if let Some(c) = counts {
++                c.base_edge += meshes.iter().filter(|m| m.edge_count > 0).count();
++            }
+@@ -997,0 +1200,11 @@ impl SceneRenderer {
++fn add_non_world_draws(counts: &mut crate::probe::DrawFrameCounts, kind: DrawKind, n: usize) {
++    match kind {
++        DrawKind::World => {}
++        DrawKind::ViewFacing => counts.view_facing += n,
++        DrawKind::ActorUnlit => counts.actor_unlit += n,
++        DrawKind::ActorLit => counts.actor_lit += n,
++        DrawKind::ActorShadow => counts.shadow += n,
++        DrawKind::Sprite => counts.sprite += n,
++    }
++}
++
+@@ -1088,0 +1302,426 @@ fn outlines_in_world(vertex: &SodVertex) -> bool {
++struct CpuLitSlot {
++    pose: Pose,
++    layout: LitLayout,
++    model: GpuModel,
++}
++
++/// Runs a CPU-only whole-film draw and relight scan across `ticks` (`(film_tick, eval_tick)`),
++/// writing one line per tick to `out_path`.
++///
++/// # Errors
++/// Returns an error string if creating or writing `out_path` fails.
++pub fn cpu_scan_film(
++    scene: &FilmScene,
++    ticks: &[(usize, f32)],
++    height: u32,
++    viewport_rows: Option<u32>,
++    out_path: &std::path::Path,
++) -> Result<(), String> {
++    use std::io::Write as _;
++
++    let shapes: HashMap<u16, GpuModel> = scene
++        .shapes()
++        .map(|(id, ir)| (id, GpuModel::from_outlined_cpu(&outlined(ir))))
++        .collect();
++    let images: HashMap<u16, GpuModel> = scene
++        .images()
++        .map(|(id, image)| (id, GpuModel::from_ir_cpu(&sprite_ir(image))))
++        .collect();
++    let placements = scene.world().map_or_default(WorldPlacements::new);
++    let world = scene
++        .world()
++        .map(|w| GpuModel::from_ir_outlined_cpu(&w.ir, outlines_in_world, &placements.marks()));
++    let reach_total = world.as_ref().map_or(0, GpuModel::world_reach_count);
++    let relit = scene.relit_shapes();
++    let mut lit_slots: Vec<Option<CpuLitSlot>> = Vec::new();
++    let cull_vf = crate::probe::cull_view_facing();
++
++    if let Some(parent) = out_path.parent()
++        && !parent.as_os_str().is_empty()
++    {
++        std::fs::create_dir_all(parent)
++            .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
++    }
++    let file = std::fs::File::create(out_path)
++        .map_err(|e| format!("create {}: {e}", out_path.display()))?;
++    let mut writer = std::io::BufWriter::new(file);
++    writeln!(writer, "# world_reach_total={reach_total}")
++        .map_err(|e| format!("write {}: {e}", out_path.display()))?;
++
++    let mut prepared: Vec<PreparedDraw> = Vec::new();
++    let mut steps: Vec<WalkStep> = Vec::new();
++
++    for &(film_tick, eval_tick) in ticks {
++        let frame = scene.frame(eval_tick);
++        let mut controller = CameraController::default();
++        controller.set_authored_transform(frame.view);
++        if let Some(rows) = viewport_rows {
++            controller.projection_y_scale = height as f32 / rows.max(1) as f32;
++        }
++        let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
++        let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
++        let eye = controller.eye_position();
++
++        prepared.clear();
++        steps.clear();
++        let mut reach_frustum = 0usize;
++        let mut reach_kept = 0usize;
++        let mut world_slices = None;
++        if frame.world
++            && let Some(world_model) = &world
++        {
++            let world_matrix = eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array());
++            let view_proj = rotation_proj * Mat4::from_cols_array(&world_matrix);
++            let lod_view = CameraTransform {
++                eye: frame.view.eye,
++                target: frame.view.target,
++                lens: frame.lens,
++                ..CameraTransform::default()
++            };
++            let (ground, base, decals, rf, rk) =
++                world_model.collect_world_meshes_counted(eye, Some(&lod_view), view_proj);
++            reach_frustum = rf;
++            reach_kept = rk;
++            let untag =
++                |tagged: &[(NodeId, GpuMeshSlice)]| tagged.iter().map(|&(_, m)| m).collect();
++            prepared.push(PreparedDraw {
++                target: Target::World { uniform: 0 },
++                kind: DrawKind::World,
++                ground,
++                base: untag(&base),
++                decals: untag(&decals),
++                shadow: false,
++            });
++            world_slices = Some((prepared.len() - 1, base, decals));
++        }
++
++        for prop in &frame.view_facing {
++            let Some(model) = shapes.get(&prop.shape_id) else {
++                continue;
++            };
++            if cull_vf
++                && let Some(bounds) = model.root_bounds
++            {
++                let eye_rel = eye_relative_matrix(eye, &prop.world_matrix);
++                if !crate::mesh::frustum_keeps(rotation_proj * Mat4::from_cols_array(&eye_rel), bounds)
++                {
++                    continue;
++                }
++            }
++            let to_model = Mat4::from_cols_array(&prop.world_matrix).inverse();
++            let local_eye = to_model.transform_point3(eye);
++            let view = model_view(&to_model, &frame);
++            let (base, decals) = model.collect_visible_meshes(
++                prop.state_mask,
++                prop.distance,
++                local_eye,
++                Some(&view),
++            );
++            if base.is_empty() && decals.is_empty() {
++                continue;
++            }
++            prepared.push(PreparedDraw {
++                target: Target::Shape {
++                    shape_id: prop.shape_id,
++                    uniform: 0,
++                },
++                kind: DrawKind::ViewFacing,
++                ground: Vec::new(),
++                base,
++                decals,
++                shadow: false,
++            });
++        }
++
++        let back = controller.compute_view_matrix().row(2).truncate();
++        let view_depth = |m: &[f32; 16]| {
++            let at = Mat4::from_cols_array(m).w_axis.truncate();
++            (eye - at).dot(back)
++        };
++        let actor_depths: Vec<f32> = frame
++            .actors
++            .iter()
++            .map(|a| view_depth(&a.world_matrix))
++            .collect();
++        let mut actor_draws = Vec::new();
++        lit_slots.resize_with(frame.actors.len(), || None);
++        let mut relight_keep = 0usize;
++        let mut relight_rewrite = 0usize;
++        let mut relight_upload = 0usize;
++
++        for (slot, actor) in frame.actors.iter().enumerate() {
++            let needs_relight = actor.light != relit.light() || actor.bank != AngleBank::REST;
++            let mut is_lit = false;
++            if needs_relight && let Some(entry) = lit_slots.get_mut(slot) {
++                let pose = (actor.light, actor.bank);
++                if entry
++                    .as_ref()
++                    .is_some_and(|l| l.layout.shape_id == actor.shape_id && l.pose == pose)
++                {
++                    relight_keep += 1;
++                    is_lit = true;
++                } else if let Some(ir) = relit.decode(actor.shape_id, pose.0, pose.1) {
++                    let shape = outlined(&ir);
++                    let mut reused = false;
++                    if let Some(prev) = entry.as_mut() {
++                        match prev.layout.refresh(actor.shape_id, &shape.ir) {
++                            Refresh::Keep => {
++                                prev.pose = pose;
++                                relight_keep += 1;
++                                reused = true;
++                            }
++                            Refresh::Rewrite => {
++                                prev.pose = pose;
++                                prev.layout.vertices.clone_from(&shape.ir.vertices);
++                                relight_rewrite += 1;
++                                reused = true;
++                            }
++                            Refresh::Upload => {}
++                        }
++                    }
++                    if !reused {
++                        let model = GpuModel::from_outlined_cpu(&shape);
++                        *entry = Some(CpuLitSlot {
++                            pose,
++                            layout: LitLayout::of(actor.shape_id, &shape.ir),
++                            model,
++                        });
++                        relight_upload += 1;
++                    }
++                    is_lit = true;
++                } else {
++                    *entry = None;
++                }
++            }
++            let model = if is_lit {
++                lit_slots
++                    .get(slot)
++                    .and_then(Option::as_ref)
++                    .map(|l| &l.model)
++            } else {
++                shapes.get(&actor.shape_id)
++            };
++            let Some(model) = model else {
++                continue;
++            };
++            let to_model = Mat4::from_cols_array(&actor.world_matrix).inverse();
++            let local_eye = to_model.transform_point3(eye);
++            let view = model_view(&to_model, &frame);
++            let (base, decals) = model.collect_visible_meshes(
++                actor.state_mask,
++                actor.distance,
++                local_eye,
++                Some(&view),
++            );
++            if base.is_empty() && decals.is_empty() {
++                continue;
++            }
++            let target = if is_lit {
++                Target::Lit {
++                    actor: slot,
++                    uniform: 0,
++                }
++            } else {
++                Target::Shape {
++                    shape_id: actor.shape_id,
++                    uniform: 0,
++                }
++            };
++            if actor.shadow_matrix.is_some() {
++                let shadow = base.iter().chain(&decals).copied().collect();
++                prepared.push(PreparedDraw {
++                    target,
++                    kind: DrawKind::ActorShadow,
++                    ground: Vec::new(),
++                    base: Vec::new(),
++                    decals: shadow,
++                    shadow: true,
++                });
++            }
++            if actor.shadow_only {
++                continue;
++            }
++            prepared.push(PreparedDraw {
++                target,
++                kind: if is_lit {
++                    DrawKind::ActorLit
++                } else {
++                    DrawKind::ActorUnlit
++                },
++                ground: Vec::new(),
++                base,
++                decals,
++                shadow: false,
++            });
++            if let Some(&depth) = actor_depths.get(slot) {
++                actor_draws.push((prepared.len() - 1, depth));
++            }
++        }
++
++        let mut placed = Vec::new();
++        for sprite in &frame.sprites {
++            let Some(model) = images.get(&sprite.image_id) else {
++                continue;
++            };
++            let (base, decals) = model.collect_visible_meshes(0, 0.0, eye, None);
++            let draw = PreparedDraw {
++                target: Target::Image {
++                    image_id: sprite.image_id,
++                    uniform: 0,
++                },
++                kind: DrawKind::Sprite,
++                ground: Vec::new(),
++                base,
++                decals,
++                shadow: false,
++            };
++            match (&sprite.after, actor_depths.get(sprite.actor)) {
++                (Some(after), Some(&depth)) => {
++                    let distance = (Vec3::from_array(sprite.centre) - eye).length();
++                    placed.push((after.as_slice(), depth, distance, draw));
++                }
++                _ => prepared.push(draw),
++            }
++        }
++        // Mirror SceneRenderer::place_sprites without needing &mut self.
++        if !placed.is_empty() {
++            placed.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(b.2.total_cmp(&a.2)));
++            let mut rank = vec![0usize; placements.spans.len()];
++            for (after, _, _, _) in &placed {
++                for &record in *after {
++                    if let Some(r) = rank.get_mut(record as usize) {
++                        *r += 1;
++                    }
++                }
++            }
++            let cut = world_slices.zip(world.as_ref()).and_then(|((at, base, decals), model)| {
++                let mut base_steps = vec![Vec::new(); placed.len()];
++                let mut decal_steps = vec![Vec::new(); placed.len()];
++                let cut = |node, start, end| model.cut(node, start, end);
++                let base = placements.split(base, &rank, false, &mut base_steps, cut)?;
++                let decals = placements.split(decals, &rank, true, &mut decal_steps, cut)?;
++                Some((at, base, decals, base_steps.into_iter().zip(decal_steps)))
++            });
++            if let Some((at, base, decals, props)) = cut
++                && let Some(w_draw) = prepared.get_mut(at)
++            {
++                w_draw.base = base;
++                w_draw.decals = decals;
++                let target = w_draw.target;
++                let depths: Vec<f32> = placed.iter().map(|&(_, depth, _, _)| depth).collect();
++                let mut step_of: Vec<Option<usize>> = vec![None; prepared.len()];
++                for &(index, depth) in &actor_draws {
++                    if let Some(slot) = step_of.get_mut(index) {
++                        *slot = depths.iter().rposition(|&sprite| depth < sprite);
++                    }
++                }
++                let mut moved: Vec<Vec<PreparedDraw>> =
++                    std::iter::repeat_with(Vec::new).take(placed.len()).collect();
++                let mut kept = Vec::with_capacity(prepared.len());
++                for (draw, step) in prepared.drain(..).zip(step_of) {
++                    match step.and_then(|s| moved.get_mut(s)) {
++                        Some(step) => step.push(draw),
++                        None => kept.push(draw),
++                    }
++                }
++                prepared = kept;
++                for (((_, _, _, sprite), (base, decals)), actors) in
++                    placed.into_iter().zip(props).zip(moved)
++                {
++                    steps.push(WalkStep {
++                        sprites: vec![sprite],
++                        props: PreparedDraw {
++                            target,
++                            kind: DrawKind::World,
++                            ground: Vec::new(),
++                            base,
++                            decals,
++                            shadow: false,
++                        },
++                        actors,
++                    });
++                }
++            } else {
++                prepared.extend(placed.into_iter().map(|(_, _, _, draw)| draw));
++            }
++        }
++
++        #[expect(
++            clippy::cast_possible_truncation,
++            clippy::cast_sign_loss,
++            reason = "integer frame tick from headless playback"
++        )]
++        let mut counts = crate::probe::DrawFrameCounts {
++            tick: frame.tick as u32,
++            reach_frustum,
++            reach_kept,
++            ..crate::probe::DrawFrameCounts::default()
++        };
++        if let Some(w) = prepared.iter().find(|d| matches!(d.target, Target::World { .. }) && !d.ground.is_empty()) {
++            counts.ground_fill += w.ground.len();
++            counts.ground_edge += w.ground.iter().filter(|m| m.edge_count > 0).count();
++        }
++        let mut count_draw = |draw: &PreparedDraw, decal_pass: bool| {
++            let meshes = if decal_pass { &draw.decals } else { &draw.base };
++            if meshes.is_empty() {
++                return;
++            }
++            if matches!(draw.target, Target::World { .. }) {
++                let edges = meshes.iter().filter(|m| m.edge_count > 0).count();
++                if decal_pass {
++                    counts.decal_fill += meshes.len();
++                    counts.decal_edge += edges;
++                } else {
++                    counts.base_fill += meshes.len();
++                    counts.base_edge += edges;
++                }
++            } else {
++                add_non_world_draws(&mut counts, draw.kind, meshes.len());
++            }
++        };
++        for decal_pass in [false, true] {
++            for draw in &prepared {
++                count_draw(draw, decal_pass);
++            }
++        }
++        for step in &steps {
++            for sprite in &step.sprites {
++                count_draw(sprite, false);
++            }
++            for decal_pass in [false, true] {
++                for draw in std::iter::once(&step.props).chain(&step.actors) {
++                    count_draw(draw, decal_pass);
++                }
++            }
++        }
++
++        writeln!(
++            writer,
++            "SCAN film_tick={} eval_tick={} ground_fill={} ground_edge={} base_fill={} base_edge={} decal_fill={} decal_edge={} view_facing={} actor_unlit={} actor_lit={} shadow={} sprite={} total={} reach_frustum={} reach_kept={} relight_keep={} relight_rewrite={} relight_upload={}",
++            film_tick,
++            counts.tick,
++            counts.ground_fill,
++            counts.ground_edge,
++            counts.base_fill,
++            counts.base_edge,
++            counts.decal_fill,
++            counts.decal_edge,
++            counts.view_facing,
++            counts.actor_unlit,
++            counts.actor_lit,
++            counts.shadow,
++            counts.sprite,
++            counts.total_draws(),
++            counts.reach_frustum,
++            counts.reach_kept,
++            relight_keep,
++            relight_rewrite,
++            relight_upload,
++        )
++        .map_err(|e| format!("write {}: {e}", out_path.display()))?;
++    }
++    writer
++        .flush()
++        .map_err(|e| format!("flush {}: {e}", out_path.display()))
++}
++
+diff --git a/crates/stunt-render/src/shaders/bars.wgsl b/crates/stunt-render/src/shaders/bars.wgsl
+index 377c7675..025a4918 100644
+--- a/crates/stunt-render/src/shaders/bars.wgsl
++++ b/crates/stunt-render/src/shaders/bars.wgsl
+@@ -30,0 +31,5 @@ fn fs_main_plane() -> BarPlaneOutput {
++
++@fragment
++fn fs_main_plane_only() -> @location(0) vec2<u32> {
++    return vec2<u32>(0u, 0u);
++}
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index ac4e168a..86ffb38b 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -330,0 +331,10 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
++@fragment
++fn fs_main_plane_only(in: VertexOutput) -> @location(0) vec2<u32> {
++    let index = fragment_index(in);
++    var shape = in.shape;
++    if (in.prop_vertex != NO_PROP_VERTEX) {
++        shape = prop_shape(in.prop_vertex);
++    }
++    return vec2<u32>((in.layer << 8u) | index, shape);
++}
++
+@@ -404,0 +415,5 @@ fn fs_sky_plane(in: SkyVertexOutput) -> PlaneOutput {
++
++@fragment
++fn fs_sky_plane_only(in: SkyVertexOutput) -> @location(0) vec2<u32> {
++    return vec2<u32>(sky_index(in.ndc), 0u);
++}
+diff --git a/crates/stunt-score/src/lib.rs b/crates/stunt-score/src/lib.rs
+index 9541eef5..a98631d7 100644
+--- a/crates/stunt-score/src/lib.rs
++++ b/crates/stunt-score/src/lib.rs
+@@ -19,0 +20 @@ pub mod render_store;
++pub use render_store::probe;
+diff --git a/crates/stunt-score/src/parity_artifacts/mod.rs b/crates/stunt-score/src/parity_artifacts/mod.rs
+index 56f9dca4..ff9431cd 100644
+--- a/crates/stunt-score/src/parity_artifacts/mod.rs
++++ b/crates/stunt-score/src/parity_artifacts/mod.rs
+@@ -226,0 +227 @@ impl RenderJournal {
++        let t_jw = std::time::Instant::now();
+@@ -228,6 +229,10 @@ impl RenderJournal {
+-        check_derivable(&palette, page.indices, page.rgba, page.width).map_err(|message| {
+-            StoreError::Corrupt {
+-                path: self.dir.clone(),
+-                message: format!("tick {tick}: {message}"),
+-            }
+-        })?;
++        if !(crate::render_store::probe::plane_only() && page.rgba.is_empty()) {
++            let t_cd = std::time::Instant::now();
++            check_derivable(&palette, page.indices, page.rgba, page.width).map_err(|message| {
++                StoreError::Corrupt {
++                    path: self.dir.clone(),
++                    message: format!("tick {tick}: {message}"),
++                }
++            })?;
++            crate::render_store::probe::add_check_derivable(t_cd.elapsed());
++        }
+@@ -243,0 +249 @@ impl RenderJournal {
++        crate::render_store::probe::add_journal_write(t_jw.elapsed());
+@@ -253,0 +260 @@ impl RenderJournal {
++        let t_jf = std::time::Instant::now();
+@@ -267 +274,3 @@ impl RenderJournal {
+-        write_render_record(&self.dir, &record).map_err(StoreError::Record)
++        let res = write_render_record(&self.dir, &record).map_err(StoreError::Record);
++        crate::render_store::probe::add_journal_finish(t_jf.elapsed());
++        res
+diff --git a/crates/stunt-score/src/render_store/mod.rs b/crates/stunt-score/src/render_store/mod.rs
+index ee572090..cd89089f 100644
+--- a/crates/stunt-score/src/render_store/mod.rs
++++ b/crates/stunt-score/src/render_store/mod.rs
+@@ -42,0 +43,81 @@ use crate::parity_artifacts::{self, AdapterError};
++/// Temporary env-gated profiling timers and switches for #918.
++pub mod probe {
++    use std::sync::OnceLock;
++    use std::sync::atomic::{AtomicU64, Ordering};
++    use std::time::Duration;
++
++    /// Whether `DBG_PROBE_PLANE_ONLY=1` is set (`#919` probe).
++    #[must_use]
++    pub fn plane_only() -> bool {
++        static ON: OnceLock<bool> = OnceLock::new();
++        *ON.get_or_init(|| std::env::var("DBG_PROBE_PLANE_ONLY").is_ok_and(|v| v == "1"))
++    }
++
++    /// Snapshot of cumulative store/journal timings in nanoseconds.
++    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++    pub struct ScoreSnapshot {
++        /// Total time spent in `RenderJournal::write`.
++        pub journal_write_ns: u64,
++        /// Time spent in `check_derivable`.
++        pub check_derivable_ns: u64,
++        /// Time spent in `u16_bytes`.
++        pub u16_bytes_ns: u64,
++        /// Time spent in `write_preview`.
++        pub preview_png_ns: u64,
++        /// Time spent compressing chunks in `StoreWriter::push`.
++        pub zstd_chunk_push_ns: u64,
++        /// Time spent compressing final chunk in `StoreWriter::finish`.
++        pub zstd_chunk_finish_ns: u64,
++        /// Total time spent in `RenderJournal::finish`.
++        pub journal_finish_ns: u64,
++    }
++
++    static JOURNAL_WRITE_NS: AtomicU64 = AtomicU64::new(0);
++    static CHECK_DERIVABLE_NS: AtomicU64 = AtomicU64::new(0);
++    static U16_BYTES_NS: AtomicU64 = AtomicU64::new(0);
++    static PREVIEW_PNG_NS: AtomicU64 = AtomicU64::new(0);
++    static ZSTD_CHUNK_PUSH_NS: AtomicU64 = AtomicU64::new(0);
++    static ZSTD_CHUNK_FINISH_NS: AtomicU64 = AtomicU64::new(0);
++    static JOURNAL_FINISH_NS: AtomicU64 = AtomicU64::new(0);
++
++    fn ns(d: Duration) -> u64 {
++        u64::try_from(d.as_nanos()).unwrap_or(u64::MAX)
++    }
++
++    pub(crate) fn add_journal_write(d: Duration) {
++        JOURNAL_WRITE_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_check_derivable(d: Duration) {
++        CHECK_DERIVABLE_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_u16_bytes(d: Duration) {
++        U16_BYTES_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_preview_png(d: Duration) {
++        PREVIEW_PNG_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_zstd_chunk_push(d: Duration) {
++        ZSTD_CHUNK_PUSH_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_zstd_chunk_finish(d: Duration) {
++        ZSTD_CHUNK_FINISH_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++    pub(crate) fn add_journal_finish(d: Duration) {
++        JOURNAL_FINISH_NS.fetch_add(ns(d), Ordering::Relaxed);
++    }
++
++    /// Returns a snapshot of all cumulative score probe counters.
++    #[must_use]
++    pub fn snapshot() -> ScoreSnapshot {
++        ScoreSnapshot {
++            journal_write_ns: JOURNAL_WRITE_NS.load(Ordering::Relaxed),
++            check_derivable_ns: CHECK_DERIVABLE_NS.load(Ordering::Relaxed),
++            u16_bytes_ns: U16_BYTES_NS.load(Ordering::Relaxed),
++            preview_png_ns: PREVIEW_PNG_NS.load(Ordering::Relaxed),
++            zstd_chunk_push_ns: ZSTD_CHUNK_PUSH_NS.load(Ordering::Relaxed),
++            zstd_chunk_finish_ns: ZSTD_CHUNK_FINISH_NS.load(Ordering::Relaxed),
++            journal_finish_ns: JOURNAL_FINISH_NS.load(Ordering::Relaxed),
++        }
++    }
++}
++
+@@ -273,0 +355 @@ impl StoreWriter {
++        let t_u16 = std::time::Instant::now();
+@@ -275,0 +358 @@ impl StoreWriter {
++        probe::add_u16_bytes(t_u16.elapsed());
+@@ -280,0 +364 @@ impl StoreWriter {
++            let t_z = std::time::Instant::now();
+@@ -281,0 +366 @@ impl StoreWriter {
++            probe::add_zstd_chunk_push(t_z.elapsed());
+@@ -283,0 +369 @@ impl StoreWriter {
++            let t_png = std::time::Instant::now();
+@@ -284,0 +371 @@ impl StoreWriter {
++            probe::add_preview_png(t_png.elapsed());
+@@ -302,0 +390 @@ impl StoreWriter {
++        let t_z = std::time::Instant::now();
+@@ -303,0 +392 @@ impl StoreWriter {
++        probe::add_zstd_chunk_finish(t_z.elapsed());

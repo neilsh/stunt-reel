@@ -20,6 +20,7 @@ __all__ = [
     "UsageError",
     "add_parity_options",
     "parity_options",
+    "positive_int",
     "resolve_jobs",
 ]
 
@@ -55,8 +56,8 @@ def resolve_jobs(requested: int | None, pairs: int) -> int:
     return max(1, min(wanted, pairs))
 
 
-def _positive_int(text: str) -> int:
-    """``--jobs``: a whole number of at least 1."""
+def positive_int(text: str) -> int:
+    """``--jobs`` or ``--workers``: a whole number of at least 1."""
     try:
         value = int(text)
     except ValueError:
@@ -91,7 +92,7 @@ def add_parity_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--jobs",
-        type=_positive_int,
+        type=positive_int,
         default=None,
         metavar="N",
         help=(

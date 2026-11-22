@@ -55,6 +55,10 @@ _INDENT = " " * 6
 #: The largest delta that is no drift on a row without a ``noise_sigma``: a few f32 steps near
 #: 0.8, so a rescore of an unchanged render passes and any change to its scores does not.
 DRIFT_PRECISION = 1e-7
+#: How :func:`changed_since` ends when the tree moved on: the class's pin lags it.
+LAGGING = "awaiting a repin or catch-up repin of this class"
+#: The same, for the ``gpu`` class, which only the class agreement batch repins (#908).
+LAGGING_GPU = "awaiting the next agreement batch"
 
 
 def _git(
@@ -183,7 +187,7 @@ def changed_since(
     if found is None:
         return "git cannot hash crates/ in this checkout"
     if found != expected.crates:
-        return f"crates/ tree {found[:7]}, measured on {expected.crates[:7]}: awaiting a repin or catch-up repin of this class"
+        return f"crates/ tree {found[:7]}, measured on {expected.crates[:7]}: {LAGGING}"
     if (expected.sha256, expected.all_sha256) != (reference.sha256, reference.all_sha256):
         return "reference pin changed since the measurement"
     return None
@@ -219,6 +223,8 @@ def comparison_line(
         reason = f"scored with {rescored}"
     else:
         reason = changed(expected, reference)
+        if reason is not None and renderer == "gpu" and reason.endswith(LAGGING):
+            reason = reason.removesuffix(LAGGING) + LAGGING_GPU
     if reason is not None:
         return f"{head}  not comparable: {reason}"
     if reference.noise_sigma is None:

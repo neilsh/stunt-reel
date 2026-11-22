@@ -1,3 +1,6 @@
+// `vs_edge` writes clip distances (wgpu::Features::CLIP_DISTANCES, which the device requires).
+enable clip_distances;
+
 // The view's rotation and projection only: every model matrix arrives eye-relative, with the
 // eye's translation applied on the CPU in f64 (camera.rs `eye_relative_matrix`), so the only
 // world-scale arithmetic left here is a world vertex's `position - eye`, rounded once
@@ -197,6 +200,11 @@ fn prop_shape(vertex: u32) -> u32 {
 
 @vertex
 fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
+    return vertex_output(in, vertex_index);
+}
+
+// `vs_main`'s work, callable from the other vertex entry points.
+fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
 
     // Model space to eye-relative space to clip space.
@@ -253,6 +261,49 @@ fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexO
     // palette offsets (OP_SHADES, OP_SHADE16), not a sun vector. Row 31 is full brightness.
     out.light_level = 31u;
 
+    return out;
+}
+
+// How far outside the view an outline line is clipped, as a multiple of `w`: 1.1 puts the
+// planes 16 columns past the sides of a 320-column view and 9 rows past the top and bottom of
+// a 185-row one, beyond any pixel a one-pixel line draws on screen. Lavapipe does not clip a
+// line against the view's sides (Mesa's `bypass_clip_points_lines`), so a line cut beside
+// the eye by the near plane reached its rasteriser tens of thousands of pixels off the page
+// and was drawn as a wedge; it does clip against these user planes (research/parity/lavapipe-line-clip.md).
+const EDGE_CLIP_BAND: f32 = 1.1;
+
+// `VertexOutput` with the clip distances `vs_edge` adds: a fragment input cannot hold them, so
+// the varyings are repeated here and must match `VertexOutput`'s.
+struct EdgeVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) @interpolate(flat) palette_index: u32,
+    @location(1) @interpolate(flat) light_level: u32,
+    @location(2) @interpolate(flat) layer: u32,
+    @location(3) @interpolate(linear) shade: f32,
+    @location(4) @interpolate(perspective) shade_w: f32,
+    @location(5) @interpolate(perspective) w: f32,
+    @location(6) @interpolate(flat) shape: u32,
+    @location(7) @interpolate(flat) prop_vertex: u32,
+    @builtin(clip_distances) clip_distances: array<f32, 4>,
+};
+
+// `vs_main` for the outline line lists, clipped to `EDGE_CLIP_BAND` times the view on each side.
+@vertex
+fn vs_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> EdgeVertexOutput {
+    let v = vertex_output(in, vertex_index);
+    var out: EdgeVertexOutput;
+    out.clip_position = v.clip_position;
+    out.palette_index = v.palette_index;
+    out.light_level = v.light_level;
+    out.layer = v.layer;
+    out.shade = v.shade;
+    out.shade_w = v.shade_w;
+    out.w = v.w;
+    out.shape = v.shape;
+    out.prop_vertex = v.prop_vertex;
+    let c = v.clip_position;
+    let band = EDGE_CLIP_BAND * c.w;
+    out.clip_distances = array<f32, 4>(band - c.x, band + c.x, band - c.y, band + c.y);
     return out;
 }
 

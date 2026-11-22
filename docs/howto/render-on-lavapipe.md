@@ -47,7 +47,7 @@ mise run frame -- --film ctry --ticks 400,422 --software-only
 
 `--software-only` reaches `stuntreel`'s film renderer, which sets `RenderOptions::software_only` for the headless and the windowed path alike.
 Both halves are needed, and `mise run frame` records the adapter each render used in the frame store's `build/scratch/frame/<film>/store/render.json`; on this machine (an RTX 4070 laptop), with the ICD named but no flag, the first Vulkan attempt found only lavapipe and passed it over, the all-backends attempt found the GPU, and the one-tick run (`--ticks 400`) recorded `NVIDIA GeForce RTX 4070 Laptop GPU` in the store.
-With the flag but no `VK_DRIVER_FILES`, Vulkan had no CPU driver and the same run recorded `Microsoft Basic Render Driver`, WARP.
+With the flag but no `VK_DRIVER_FILES`, Vulkan has no CPU driver and the run fails with `no compatible GPU adapter (one with clip distances)`: the all-backends attempt finds WARP, which lacks the clip distances the renderer requires ([ADR 0054](../adr/0054-depth-is-reversed-and-infinite.md)), and passes it over.
 
 `--no-build` renders with whatever `target/release/stuntreel.exe` holds.
 Rebuild after any temporary renderer edit, such as removing the NaN-shade guard to test it: a guard-removed binary left there by #265's byte-identity check rendered a lavapipe LOCATION run 0.19 below the GPU ([`lavapipe.md`](../../research/parity/lavapipe.md) section 4).
@@ -66,7 +66,7 @@ prints
 
 on lavapipe, and `{"name":"NVIDIA GeForce RTX 4070 Laptop GPU","class":"hardware"}` on this machine's GPU.
 The LLVM version moves with the Mesa release.
-`Microsoft Basic Render Driver` with class `cpu` is WARP: the loader did not find the ICD (a relative path, or the wrong JSON), and, with `--software-only`, the all-backends attempt took the software adapter it found.
+A `--software-only` render that fails with `no compatible GPU adapter (one with clip distances)` means the loader did not find the ICD (a relative path, or the wrong JSON), and the only software adapter left was WARP, which the renderer passes over.
 The GPU's own name with class `hardware` on this setup indicates `--software-only` did not reach the render.
 The report copies the adapter from the render's `render.json`, so re-render rather than edit it.
 A run overwrites `build/parity/report/<film>_current`, so copy a report elsewhere before switching adapters:
@@ -77,4 +77,27 @@ Copy-Item build/parity/report/ctry_current build/parity/report/ctry_lavapipe -Re
 
 Without a `[ctry]` table in [`expected/lavapipe.toml`](../../research/parity/expected/lavapipe.toml), the run's comparison line says `no expected score for lavapipe yet: add it`; #455 adds those rows.
 Once a row exists, `comparison_line` in [`expected_scores.py`](../../python/stunt_reel/expected_scores.py) checks the adapter name before `changed_since`: a row measured on an adapter with another name gives `not comparable: other adapter (expected on {expected.adapter})`, and only a row on the same adapter name, where the checkout's `crates/` tree differs from the row's recorded one, gives `crates/ tree {found[:7]}, measured on {expected.crates[:7]}: awaiting a repin or catch-up repin of this class`.
+A `gpu` row ends `awaiting the next agreement batch` instead (#908).
 The first is the likely case here, since #455's cloud rows come from Ubuntu's Mesa build and its llvmpipe need not carry the same LLVM version; neither line is a verdict on the delta.
+
+## 5. Render the canonical lavapipe under WSL
+
+The lavapipe `expected/lavapipe.toml` is pinned on is Ubuntu 24.04's `mesa-vulkan-drivers` at the version `.claude/cloud-setup.sh` and CI pin, which draws the same pixels under WSL 2 on this machine as in the cloud ([`lavapipe.md` § 6](../../research/parity/lavapipe.md#6-one-build-on-two-machines)); mesa-dist-win does not, so its runs judge verdicts between local runs but never repin `lavapipe`.
+Install the distro without the first-launch user prompt, and work in it as root:
+
+```powershell
+wsl --install -d Ubuntu-24.04 --no-launch
+wsl -d Ubuntu-24.04 -u root
+```
+
+In the distro, clone the repository onto the Linux filesystem and run the cloud setup, which installs mise, the gate's tools and the pinned lavapipe (`LAVAPIPE_VERSION` and `LAVAPIPE_LLVM_VERSION` in `.claude/cloud-setup.sh`):
+
+```bash
+git clone /mnt/<drive>/<path-to>/stunt-reel ~/stunt-reel  # or clone from GitHub
+cd ~/stunt-reel && bash .claude/cloud-setup.sh --cloud
+```
+
+Give it a data root on the Linux filesystem too: reading the data root from a Windows drive (`/mnt/<drive>`) made a CTRY run take 36 s against 4.4 s.
+Copy what the cloud archives hold, by [`manifests/cloud-assets.toml`](../../manifests/cloud-assets.toml)'s include and exclude rules, from the Windows data root (or run `mise run cloud-assets -- fetch` where R2 credentials are set), then run `mise run game-builds` and `mise run superset-all`, as a cloud session does.
+`mise run parity -- --software-only` there reports `llvmpipe (LLVM 20.1.2, 256 bits)` and compares against `expected/lavapipe.toml`.
+`wsl --unregister Ubuntu-24.04` removes the distro and everything in it.

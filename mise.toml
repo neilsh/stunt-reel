@@ -239,7 +239,7 @@ run = "uv run python python/scripts/parity_judge.py"
 
 [tasks.parity]
 depends = ["ensure"]
-description = "Parity baseline: render every reference film with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--jobs N] [--no-build] [--no-render] [--reuse DIR] [--retime N] [--software-only])"
+description = "Parity baseline: render every reference film with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--jobs N] [--workers N] [--no-build] [--no-render] [--reuse DIR] [--retime N] [--software-only])"
 run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
@@ -247,12 +247,18 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 description = "Regenerate research/parity/expected/<class>.toml from every reference film's current parity report, measured on this clean crates/ tree; the class defaults to the reports' adapter class; writes nothing and says why otherwise (mise run parity-repin -- [--class gpu|lavapipe])"
 run = "uv run python python/scripts/parity_repin.py"
 
+[tasks.agreement]
+depends = ["ensure"]
+description = "Class agreement between lavapipe and the GPU (#908): measure two render roots, pin the last measurement with the gpu repin, or run the unattended batch (mise run agreement -- measure --gpu ROOT --lavapipe ROOT | pin [--accept REASON] | batch [--if-due] [--post] [--lavapipe-command CMD] [--lavapipe-driver-command CMD])"
+run = "uv run python python/scripts/parity_agreement.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
+
 [tasks.parity-bench]
 description = "Parity metric bench: plant faults, score metrics against recapture noise (mise run parity-bench -- run --film ctry --recapture DIR [--render DIR] | run --films ctry,land (recapture-noise table) | plant --render DIR --out DIR --fault shift_x:4@500-599 | errors-make --film ctry [--calibrate] [--batch] | errors-disputes --film ctry | errors-score --film ctry [--against FILE] [--batch] | errors-example --film ctry --tick T --category ID | errors-table --films vault-ctry,vault-land)"
 run = "uv run python python/scripts/parity_bench.py"
 
 [tasks.parity-residue]
-description = "Count the index-plane pixels two render-store trees differ on, film by film (mise run parity-residue -- <render root A> <render root B> [--films f1,f2] [--ticks t1,t2]); exits 1 when a film's tick sets differ or a film is missing from a root"
+description = "Count the index-plane pixels two render-store trees differ on, film by film (mise run parity-residue -- <render root A> <render root B> [--films f1,f2] [--ticks t1,t2]), or compare one tree across machines by per-tick hash (<render root A> --write-hashes FILE | --against-hashes FILE); exits 1 when a film's tick sets differ or a film is missing from a root"
 run = "uv run python python/scripts/parity_residue.py"
 
 [tasks.parity-probe]

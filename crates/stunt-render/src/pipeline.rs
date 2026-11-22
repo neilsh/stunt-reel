@@ -351,14 +351,21 @@ impl RenderPipelines {
             wgpu::DepthBiasState::default(),
         );
 
+        // The line lists draw through `vs_edge`, which clips them to a band around the view
+        // (`EDGE_CLIP_BAND` in mode13h.wgsl); triangles are clipped to the view already.
         let scene_pipeline = |label: &str,
                               primitive: wgpu::PrimitiveState,
                               depth_stencil: wgpu::DepthStencilState| {
+            let entry = if primitive.topology == wgpu::PrimitiveTopology::LineList {
+                "vs_edge"
+            } else {
+                "vs_main"
+            };
             create_pipeline(
                 device,
                 label,
                 Some(&pipeline_layout),
-                vertex_state(&shader_module, "vs_main", &vertex_buffers),
+                vertex_state(&shader_module, entry, &vertex_buffers),
                 fragment_state(&shader_module, fragment_entry, &targets),
                 primitive,
                 depth_stencil,

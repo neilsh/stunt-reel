@@ -36,6 +36,7 @@ mod sod_trace;
 #[cfg(test)]
 mod test_support;
 mod window;
+mod workers;
 
 use std::env;
 
@@ -99,6 +100,15 @@ fn main() {
     }
 
     let config = CliConfig::parse().unwrap_or_else(|e| e.exit());
+
+    if config.workers > 1 && config.shard.is_none() {
+        let args: Vec<_> = env::args_os().skip(1).collect();
+        if let Err(e) = workers::run(&config, &args) {
+            eprintln!("[stuntreel error] {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
 
     let (mut scene, film) = match build_identified_scene(&SceneSources {
         flm: config.flm_path.as_deref(),

@@ -146,6 +146,54 @@ def test_render_film_puts_software_only_on_the_command_line(tmp_path: Path) -> N
     assert fake.calls[0].count("--software-only") == 1
 
 
+def test_render_film_asks_for_workers_only_above_one(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7, 9])
+    fake = FakeRun()
+    with parity_pipeline.reference_job(root, "ctry") as job:
+        parity_pipeline.render_film(job, tmp_path / "one", workers=1, run=fake)
+        parity_pipeline.render_film(job, tmp_path / "three", workers=3, run=fake)
+    assert "--workers" not in fake.calls[0]
+    assert _after(fake.calls[1], "--workers") == "3"
+
+
+@pytest.mark.parametrize(
+    ("jobs", "workers", "films", "cpus", "memory_gib", "expected"),
+    [
+        # The default jobs make room for the workers on the cores.
+        (None, 4, 7, 16, 64, (4, 4)),
+        (None, 4, 7, 4, 64, (1, 4)),
+        # Memory binds before cores: 7 GiB holds 7 processes of 0.93 GiB.
+        (None, 4, 7, 16, 7, (1, 4)),
+        (None, 2, 7, 16, 7, (3, 2)),
+        # An explicit --jobs is kept and the workers are cut to fit beside it.
+        (4, 4, 7, 8, 64, (4, 2)),
+        (8, 4, 7, 8, 64, (7, 1)),
+        # Unknown memory leaves the cores to bound the run; jobs never exceed the films.
+        (None, 3, 1, 8, None, (1, 3)),
+        # Too little of either still renders, one process at a time.
+        (None, 4, 7, 1, 0, (1, 1)),
+    ],
+)
+def test_render_budget_fits_jobs_times_workers_in_cores_and_memory(
+    jobs: int | None,
+    workers: int,
+    films: int,
+    cpus: int,
+    memory_gib: int | None,
+    expected: tuple[int, int],
+) -> None:
+    memory = None if memory_gib is None else memory_gib * 1024**3
+    budget = parity_pipeline.render_budget(
+        jobs, workers, films, default_jobs=8, cpus=cpus, memory=memory
+    )
+    assert (budget.jobs, budget.workers) == expected
+
+
+def test_physical_memory_is_positive_or_unknown() -> None:
+    memory = parity_pipeline.physical_memory()
+    assert memory is None or memory > 0
+
+
 def test_render_film_passes_the_environment_and_timeout_to_the_adapter(tmp_path: Path) -> None:
     root = reference_tree(tmp_path, [7, 9])
     fake = FakeRun()
@@ -580,6 +628,24 @@ def test_run_matrix_returns_results_in_input_order(tmp_path: Path) -> None:
         for cell in row:
             assert isinstance(cell, parity_pipeline.FilmScore)
             assert cell.render == Path(f"v{index}") / cell.film
+
+
+def test_run_matrix_starts_the_heaviest_film_first(tmp_path: Path) -> None:
+    root = reference_tree(tmp_path, [7])
+    started: list[str] = []
+    fine = _matrix_work()
+
+    def work(job: parity_pipeline.FilmJob, variant: str) -> parity_pipeline.FilmScore:
+        started.append(job.name)
+        result: parity_pipeline.FilmScore = fine(job, variant)
+        return result
+
+    weights = {"ctry": 1, "intro": 5}
+    out = parity_pipeline.run_matrix(
+        ["ctry", "intro"], root, ["v0"], work, weight=lambda job: weights[job.name]
+    )
+    assert started == ["intro", "ctry"]
+    assert [cell.film for cell in out[0]] == ["ctry", "intro"]
 
 
 def test_run_matrix_jobs_one_and_four_agree(tmp_path: Path) -> None:

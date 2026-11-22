@@ -628,7 +628,7 @@ def build_parser() -> argparse.ArgumentParser:
     index.add_argument(
         "--software-only",
         action="store_true",
-        help="render on the software adapter (lavapipe, WARP), even when a GPU is available",
+        help="render on the software adapter (lavapipe), even when a GPU is available",
     )
     for name, fn in commands:
         p = sub.add_parser(name)

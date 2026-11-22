@@ -11,6 +11,7 @@
 
 use stunt_core::flm::{TIMELINE_HZ, TIMELINE_TICK_SECONDS};
 use stunt_core::scene::FilmScene;
+use stunt_parity::RENDER_CHUNK_TICKS;
 
 use crate::config::{CliConfig, TickSpan};
 
@@ -52,6 +53,45 @@ impl Playback {
     pub(crate) fn samples(&self) -> Vec<(SampleKey, f32)> {
         self.plan.samples(self.range)
     }
+}
+
+/// The samples worker `shard` of `workers` renders: a contiguous run of whole film seconds
+/// ([`RENDER_CHUNK_TICKS`] ticks each), the runs balanced by sample count, so each worker's
+/// store holds whole chunks and the workers' stores join in order.
+///
+/// A second goes to the worker whose share of the samples holds the second's middle sample, so
+/// a worker can get none when there are fewer seconds than workers. Every sample must be a
+/// whole tick, which `--workers` ensures by refusing the other plans.
+#[must_use]
+pub(crate) fn shard_samples(
+    samples: Vec<(SampleKey, f32)>,
+    shard: usize,
+    workers: usize,
+) -> Vec<(SampleKey, f32)> {
+    let second = |key: SampleKey| match key {
+        SampleKey::Tick(tick) | SampleKey::Index(tick) => tick / RENDER_CHUNK_TICKS as usize,
+    };
+    let total = samples.len();
+    // Each run of samples in one second: the second and its half-open range of positions.
+    let mut runs: Vec<(usize, usize, usize)> = Vec::new();
+    for (position, &(key, _)) in samples.iter().enumerate() {
+        match runs.last_mut() {
+            Some((run_second, _, end)) if *run_second == second(key) => *end = position + 1,
+            _ => runs.push((second(key), position, position + 1)),
+        }
+    }
+    let mut owners = Vec::with_capacity(total);
+    for (_, start, end) in runs {
+        // Twice the run's middle position over twice the total, so an odd length rounds alike.
+        let owner = ((start + end) * workers / (2 * total)).min(workers - 1);
+        owners.extend(std::iter::repeat_n(owner, end - start));
+    }
+    samples
+        .into_iter()
+        .zip(owners)
+        .filter(|&(_, owner)| owner == shard)
+        .map(|(sample, _)| sample)
+        .collect()
 }
 
 /// The authored tick whose page a capture tagged film-clock `tick` shows, one tick earlier.
@@ -252,6 +292,50 @@ fn even_sample_ticks(start_tick: usize, end_tick: usize, count: usize) -> Vec<f3
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The ticks each of `workers` shards of ticks `ticks` renders.
+    fn shards(ticks: impl IntoIterator<Item = usize>, workers: usize) -> Vec<Vec<usize>> {
+        let samples: Vec<(SampleKey, f32)> = ticks
+            .into_iter()
+            .map(|tick| (SampleKey::Tick(tick), tick as f32))
+            .collect();
+        (0..workers)
+            .map(|shard| {
+                shard_samples(samples.clone(), shard, workers)
+                    .into_iter()
+                    .map(|(key, _)| match key {
+                        SampleKey::Tick(tick) => tick,
+                        SampleKey::Index(_) => unreachable!("only whole ticks"),
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn shards_split_on_film_seconds_and_cover_every_sample_once() {
+        // 12..=300 over 4 workers: 289 ticks in seconds 0..=6, a quarter about 72 ticks.
+        let parts = shards(12..=300, 4);
+        let firsts: Vec<usize> = parts.iter().map(|part| part[0]).collect();
+        assert_eq!(firsts, [12, 100, 150, 250]);
+        assert_eq!(parts.concat(), (12..=300).collect::<Vec<_>>());
+        for part in &parts {
+            let first_second = part[0] / 50;
+            let last_second = part[part.len() - 1] / 50;
+            for other in parts.iter().filter(|other| *other != part) {
+                assert!(
+                    other
+                        .iter()
+                        .all(|t| t / 50 < first_second || t / 50 > last_second)
+                );
+            }
+        }
+        // One worker renders everything; with more workers than seconds, some get none.
+        assert_eq!(shards(0..=99, 1), [(0..=99).collect::<Vec<_>>()]);
+        let sparse = shards([3, 60, 61], 4);
+        assert_eq!(sparse, [vec![3], vec![], vec![60, 61], vec![]]);
+        assert_eq!(shards([], 2), [Vec::<usize>::new(), vec![]]);
+    }
 
     fn bounds(range: TickRange) -> (usize, usize, usize) {
         (range.start(), range.end_hold(), range.video_span())

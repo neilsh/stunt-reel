@@ -92,7 +92,7 @@ struct Options {
     /// --game, else 180)
     #[arg(long, value_name = "I")]
     clear_index: Option<u8>,
-    /// Render on the software adapter (lavapipe, WARP), even when a GPU is available
+    /// Render on the software adapter (lavapipe), even when a GPU is available
     #[arg(long)]
     software_only: bool,
     /// Run offscreen without opening a window
@@ -108,6 +108,13 @@ struct Options {
     /// Maximum authored 50 Hz ticks to evaluate/render
     #[arg(long = "ticks", value_name = "COUNT")]
     max_ticks: Option<usize>,
+    /// Render the --out-dir store in N child processes, each a run of whole film seconds with
+    /// `LP_NUM_THREADS=1`, and join their stores into one byte-identical to a 1-worker render
+    #[arg(long, value_name = "N", default_value_t = 1, value_parser = parse_positive_usize)]
+    workers: usize,
+    /// Internal: render only worker K's film seconds of a --workers run, into its own store
+    #[arg(long, hide = true, value_name = "K", requires = "out_dir")]
+    shard: Option<usize>,
 }
 
 /// CLI configuration parsed from command-line arguments.
@@ -145,6 +152,11 @@ pub(crate) struct CliConfig {
     pub frame_step: usize,
     pub sample_count: Option<usize>,
     pub fps: f32,
+    /// Child processes the render store is split across (`--workers`); 1 renders in-process.
+    pub workers: usize,
+    /// The worker this process is in a `--workers` run (`--shard`); its `out_dir` is already
+    /// [`crate::workers::shard_dir`] of the run's.
+    pub shard: Option<usize>,
 }
 
 impl CliConfig {
@@ -194,6 +206,8 @@ impl CliConfig {
             report_memory,
             output: output_png,
             max_ticks,
+            workers,
+            shard,
         } = options;
 
         if frames.is_some() {
@@ -256,6 +270,29 @@ impl CliConfig {
             }
         }
 
+        if workers > 1 {
+            if out_dir.is_none() {
+                return Err(
+                    "--workers splits the --out-dir render store; add --out-dir".to_string()
+                );
+            }
+            if video_path.is_some() || sample_count.is_some() || output_png.is_some() {
+                return Err(
+                    "--workers splits whole-tick renders only; drop --video, --sample-count or -o"
+                        .to_string(),
+                );
+            }
+        }
+        if let Some(shard) = shard
+            && shard >= workers
+        {
+            return Err(format!("--shard {shard} is not below --workers {workers}"));
+        }
+        let out_dir = match (shard, out_dir) {
+            (Some(shard), Some(dir)) => Some(crate::workers::shard_dir(&dir, shard)),
+            (_, dir) => dir,
+        };
+
         let has_shapes = all_path.is_some() || game_dir.is_some();
         let clear_index = clear_index.unwrap_or(if has_shapes { 233 } else { 180 });
 
@@ -282,6 +319,8 @@ impl CliConfig {
             frame_step,
             sample_count,
             fps,
+            workers,
+            shard,
         })
     }
 }

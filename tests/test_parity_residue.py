@@ -173,10 +173,69 @@ def test_a_refused_argument_exits_2(
     assert message in capsys.readouterr().err
 
 
-def test_differing_pixels_counts_only_changed_bytes() -> None:
-    """A plane of 12 pixels with two of them changed differs on two pixels."""
-    assert residue_cli.differing_pixels(bytes(12), bytes(12)) == 0
-    assert residue_cli.differing_pixels(bytes(12), bytes([0, 0, 255] + [0] * 9)) == 1
-    assert residue_cli.differing_pixels(b"\x00\x01", b"\x01\x00") == 2
-    with pytest.raises(ValueError, match="planes of 2 and 3 bytes"):
-        residue_cli.differing_pixels(b"\x00\x01", b"\x00\x01\x02")
+def test_write_hashes_lists_every_tick_of_every_film(tmp_path: Path) -> None:
+    left = root(tmp_path / "a")
+    root(left, film="intro", ticks=(5, 15))
+    hashes = tmp_path / "hashes.txt"
+    assert residue_cli.main([str(left), "--write-hashes", str(hashes)]) == 0
+    lines = [line.split() for line in hashes.read_text(encoding="utf-8").splitlines()]
+    assert [(film, tick) for film, tick, _ in lines] == [
+        ("ctry", "10"),
+        ("ctry", "20"),
+        ("ctry", "30"),
+        ("intro", "5"),
+        ("intro", "15"),
+    ]
+    assert all(len(digest) == 64 for _, _, digest in lines)
+
+
+def test_against_hashes_counts_ticks_that_differ(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    hashes = tmp_path / "hashes.txt"
+    assert residue_cli.main([str(root(tmp_path / "a")), "--write-hashes", str(hashes)]) == 0
+    capsys.readouterr()
+    changed = root(tmp_path / "b", flips={20: [3]})
+    assert residue_cli.main([str(changed), "--against-hashes", str(hashes)]) == 0
+    assert rows(capsys.readouterr().out) == [[FILM, "3", "1"]]
+
+
+def test_against_hashes_refuses_other_tick_sets(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    hashes = tmp_path / "hashes.txt"
+    assert residue_cli.main([str(root(tmp_path / "a")), "--write-hashes", str(hashes)]) == 0
+    other = root(tmp_path / "b", ticks=(10, 20))
+    assert residue_cli.main([str(other), "--against-hashes", str(hashes)]) == 1
+    assert "tick sets differ" in capsys.readouterr().err
+
+
+def test_a_right_root_and_against_hashes_are_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    left = root(tmp_path / "a")
+    assert residue_cli.main([str(left), str(left), "--against-hashes", "x"]) == 2
+    assert "either" in capsys.readouterr().err
+
+
+def test_write_hashes_writes_nothing_when_a_film_is_missing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    hashes = tmp_path / "hashes.txt"
+    left = str(root(tmp_path / "a"))
+    assert residue_cli.main([left, "--write-hashes", str(hashes), "--films", "ctry,intro"]) == 1
+    assert "intro: no intro" in capsys.readouterr().err
+    assert not hashes.exists()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert residue_cli.main([str(empty), "--write-hashes", str(hashes)]) == 1
+    assert "no *" in capsys.readouterr().err
+    assert not hashes.exists()
+
+
+def test_ticks_without_root_b_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    left = str(root(tmp_path / "a"))
+    assert residue_cli.main([left, "--write-hashes", "x", "--ticks", "10"]) == 2
+    assert "--ticks needs root B" in capsys.readouterr().err

@@ -31,6 +31,12 @@ need_root() {
 # from that release's SHASUMS256.txt.
 MISE_VERSION=2026.10.12
 MISE_SHA256=aa5f8fbbb942296bbeea3769abf56c6f4ee37da4d203f0044b227cac4d929a87
+# The canonical lavapipe, an Ubuntu 24.04 package, and the LLVM it links (research/parity/lavapipe.md
+# section 6); ci.yml pins the same versions. Install fails once Ubuntu supersedes them; moving
+# them moves every lavapipe pixel, so repin research/parity/expected/ with them. The
+# --antigravity branch below installs Debian's Mesa instead, which is not the canonical lavapipe.
+LAVAPIPE_VERSION=25.2.8-0ubuntu0.24.04.5
+LAVAPIPE_LLVM_VERSION=1:20.1.2-0ubuntu1~24.04.3
 if [ "$MODE" = --antigravity ]; then
     MISE_BIN="${HOME}/.local/bin/mise"
     mkdir -p "${HOME}/.local/bin"
@@ -108,11 +114,15 @@ if [ "$MODE" = --antigravity ]; then
         'export VK_ICD_FILENAMES="$HOME/.local/share/lavapipe/lvp_icd.json"'; do
         grep -qxF "$line" "$bashrc" || printf '%s\n' "$line" >>"$bashrc"
     done
-elif ! dpkg -s mesa-vulkan-drivers libvulkan1 >/dev/null 2>&1; then
-    # Lavapipe, as CI renders (ADR 0006). Inside the hook stdin is the hook's JSON, so apt reads
-    # /dev/null and never prompts.
+elif [ "$(dpkg-query -W -f '${Version}' mesa-vulkan-drivers 2>/dev/null)" != "$LAVAPIPE_VERSION" ] ||
+    [ "$(dpkg-query -W -f '${Version}' libllvm20 2>/dev/null)" != "$LAVAPIPE_LLVM_VERSION" ] ||
+    ! dpkg -s libvulkan1 >/dev/null 2>&1; then
+    # Lavapipe, as CI renders (ADR 0006), at the canonical version CI pins too
+    # (research/parity/lavapipe.md section 6). Inside the hook stdin is the hook's JSON, so apt
+    # reads /dev/null and never prompts.
     need_root "install lavapipe"
     export DEBIAN_FRONTEND=noninteractive
     apt-get update </dev/null
-    apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 </dev/null
+    apt-get install -y --no-install-recommends --allow-downgrades \
+        "mesa-vulkan-drivers=$LAVAPIPE_VERSION" "libllvm20=$LAVAPIPE_LLVM_VERSION" libvulkan1 </dev/null
 fi

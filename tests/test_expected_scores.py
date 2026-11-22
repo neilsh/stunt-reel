@@ -12,6 +12,7 @@ import pytest
 from stunt_reel import parity_layout
 from stunt_reel.expected_scores import (
     CLASS_KEYS,
+    LAGGING,
     SCORER_DIR,
     changed_since,
     comparison_line,
@@ -135,6 +136,16 @@ def test_a_rescored_tree_is_not_compared(flag: str) -> None:
         comparison_line(_reference(), _report(0.8987), rescored=flag, changed=_never)
         == f"{HEAD}  delta +0.0001000  not comparable: scored with {flag}"
     )
+
+
+def test_gpu_lag_says_awaiting_agreement_batch() -> None:
+    lag = f"crates/ tree f55202b, measured on 641cffd: {LAGGING}"
+    on_cpu = dataclasses.replace(ON_GPU, adapter=LAVAPIPE.name)
+    reference = _reference({"gpu": ON_GPU, "lavapipe": on_cpu})
+    gpu = comparison_line(reference, _report(0.8987), changed=lambda *_: lag)
+    assert gpu.endswith("measured on 641cffd: awaiting the next agreement batch")
+    cpu = comparison_line(reference, _report(0.8987, adapter=LAVAPIPE), changed=lambda *_: lag)
+    assert cpu.endswith(f"measured on 641cffd: {LAGGING}")
 
 
 def test_a_change_since_the_measurement_is_not_compared() -> None:
