@@ -1,5 +1,5 @@
 ---
-summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and a 2026-11-16 readout of the seven Patch #3 references where `sea-band-wrong` is a finding on three films and no aircraft category reaches 3 frames."
+summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and the error readout of the seven Patch #3 references, whose 2026-11-22 baseline on lavapipe at `b9441a06` has no category at 3 of 12 frames and `sea-band-wrong` at 0 on all seven, against 7, 6 and 4 frames on three films on 2026-11-16."
 ---
 
 # Batch Parity Survey: Retail Vault Films
@@ -136,10 +136,10 @@ Here is what the error readout sees on those renders: 12 sheets per film, two Ha
 * **`vault-balloon`'s graded frames fall on the two runs that set its IoU**: `sun-missing` on the zenith-sky frames (12, 122, 221), `frame-blank` and `aircraft-absent` on the straight-down camera (650, 749) ([`attribution.md`](attribution.md) section 7).
 
 `[Bounded Observation]`, 2026-11-22, `main` at `b9441a06`, lavapipe (`llvmpipe (LLVM 21.1.7, 256 bits)`): the same readout on the seven references, kept as the baseline in [`readouts/`](readouts/baseline.toml) ([`error-readout.md`](../../.agents/skills/improving-render-parity/error-readout.md)).
-No category reaches the 3-frame lead threshold on any of the seven, and `sea-band-wrong` is 0 frames on all of them where the 2026-11-16 readout above graded it 7, 6, 4 and 3 on four of them.
+No category reaches the 3-frame lead threshold on any of the seven, and `sea-band-wrong` is 0 frames on all of them where the 2026-11-16 readout above graded it 7, 6, 4, 3, 2 and 1 on six of them.
 The most frames any category reaches is 2: `background-misregistration` on `vault-intro` and `vault-traintnl`, `scenery-missing` on `vault-bomb`.
 `vault-land`'s tick 419 is graded 2 or more on three categories and its `other` note says the camera view differs (a close aircraft and a hill where the capture shows a small distant one).
-That readout and this one used other renders (RTX 4070 then, lavapipe now) and other commits, so the drop is a lead that the render PRs since removed `sea-band-wrong`, not a paired change attributed to one of them.
+That readout and this one used other renders (RTX 4070 then, lavapipe now) and sit 58 `crates/` commits apart (`76872e89..b9441a06`, among them #845's sky bands), so the drop is a lead, not a paired change attributed to any one PR.
 
 _Source: [error readout on the Patch 3 references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-error-readout-on-the-patch-3-references), [the baseline readout](../../work/2026-11/901_error-readout-baseline/journal.md#2026-11-22-the-first-error-readout-baseline-of-the-seven-references); `vault-ctry`'s row: [error readout of vault-ctry](../../work/2026-11/619_ctry-readout/journal.md#2026-11-16-error-readout-of-vault-ctry)._
 
