@@ -55,10 +55,10 @@ pub const DEFAULT_CLEAR_PALETTE_INDEX: u8 = 180;
 /// Colour format of the offscreen readback target.
 const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
-/// Depth format of the offscreen and surface passes. Depth is reversed (nearer is larger) in a
-/// 24-bit fixed-point buffer: with `Depth32Float` the GPU and lavapipe disagreed on more pixels
-/// (`docs/adr/0054-depth-is-reversed-and-infinite.md`).
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
+/// Depth format of the offscreen and surface passes. Depth is reversed (nearer is larger).
+/// EXPERIMENT (#637 follow-up): `Depth32Float`, re-measured against ADR 0054's `Depth24Plus`
+/// after #904 and #922.
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 /// The depth a pass clears to: 0, the far plane under reversed depth.
 const DEPTH_CLEAR: f32 = 0.0;
