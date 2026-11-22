@@ -89,13 +89,19 @@ def short_basetemp() -> Path:
 
     Nested under the checkout's own basetemp, an inner run's fixture paths pass Windows
     ``MAX_PATH`` from an 80-character checkout path (issue #925).  pytest deletes a
-    ``--basetemp`` it finds on disk, so the directory is not created here.
+    ``--basetemp`` it finds on disk, so the directory is not created here.  pytest resolves
+    the path it is given and git prints a worktree's real path, so the parent is resolved:
+    an unresolved ``%TEMP%`` behind a junction, a symlink or an 8.3 short name would never
+    match the paths of the run's own worktrees.
     """
-    return Path(tempfile.gettempdir()) / f"stunt-reel-basetemp-{secrets.token_hex(4)}"
+    return Path(tempfile.gettempdir()).resolve() / f"stunt-reel-basetemp-{secrets.token_hex(4)}"
 
 
 def remove_basetemp(basetemp: Path) -> None:
-    """Remove an inner run's basetemp, read-only files included; gone is already removed."""
+    """Remove an inner run's basetemp if present, read-only files included; best effort.
+
+    Like the prune, a sandbox may refuse and a file another process holds stays.
+    """
     if basetemp.exists():
         shutil.rmtree(basetemp, onexc=_clear_read_only)
 
