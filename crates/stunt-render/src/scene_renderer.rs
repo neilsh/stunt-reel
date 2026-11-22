@@ -48,7 +48,7 @@ use stunt_core::sprite::SpriteImage;
 use stunt_core::world::{ArenaSpan, MeshSpans, World};
 
 use crate::camera::{CameraController, CameraGpuResources, eye_relative_matrix};
-use crate::mesh::{GpuMeshSlice, GpuModel, frustum_keeps, prop_runs_group};
+use crate::mesh::{GpuMeshSlice, GpuModel, prop_runs_group};
 use crate::outline::{Outlined, outlined};
 use crate::palette::PaletteLut;
 use crate::pipeline::{
@@ -563,9 +563,7 @@ impl SceneRenderer {
             // A prop whose box is off screen draws no pixel, so it is skipped before its
             // walk; the box is tested by the matrix its vertices reach clip space by.
             let model_matrix = eye_relative_matrix(eye, &prop.world_matrix);
-            if let Some(bounds) = model.bounds
-                && !frustum_keeps(rotation_proj * Mat4::from_cols_array(&model_matrix), bounds)
-            {
+            if !model.in_frustum(rotation_proj * Mat4::from_cols_array(&model_matrix)) {
                 continue;
             }
             let to_model = Mat4::from_cols_array(&prop.world_matrix).inverse();

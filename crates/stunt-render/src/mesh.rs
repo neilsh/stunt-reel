@@ -142,7 +142,7 @@ fn model_bounds(roots: &[NodeId], bounds: &[Option<NodeBounds>]) -> Option<NodeB
 /// The test has no margin: `view_proj` is an `f32` product the GPU does not form, so a box
 /// within rounding of a plane can fall either way; such a box covers no more than a
 /// sub-pixel sliver of the view.
-pub(crate) fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
+fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
     let [x, y, z, w] = [
         view_proj.row(0),
         view_proj.row(1),
@@ -214,7 +214,8 @@ pub struct GpuModel {
     /// Root node IDs.
     pub root_nodes: Vec<NodeId>,
     /// Box around every vertex the model can draw, in its own space: the union of its roots'
-    /// [`GpuNode::bounds`], or `None` when it has no mesh.
+    /// [`GpuNode::bounds`], or `None` when it has no mesh. [`Self::rewrite_vertices`] leaves it,
+    /// and every node's box, as uploaded.
     pub bounds: Option<NodeBounds>,
 }
 
@@ -345,6 +346,14 @@ impl GpuModel {
             root_nodes: ir.root_nodes.clone(),
             bounds,
         }
+    }
+
+    /// Whether any vertex the model can draw may land inside `view_proj`'s view frustum, by
+    /// [`Self::bounds`] and `frustum_keeps`; false for a model with no mesh. `view_proj` takes a
+    /// model vertex to clip space, as the vertex shader does.
+    pub(crate) fn in_frustum(&self, view_proj: Mat4) -> bool {
+        self.bounds
+            .is_some_and(|bounds| frustum_keeps(view_proj, bounds))
     }
 
     /// Overwrites the vertices and apexes with `shape`'s, keeping the indices, nodes and slices, and returns
