@@ -48,7 +48,8 @@ pub(super) fn acquire(
 /// byte-identical output: a one-tick CTRY render starts in a median 1.39 s against 3.15 s with
 /// every backend (six alternating runs each; `research/parity/method.md` § 3). The second attempt keeps every other machine working: it runs when
 /// Vulkan finds no adapter, or only a CPU one such as CI's lavapipe (kept if nothing better
-/// turns up), and gives the software path WARP where Vulkan has no software adapter.
+/// turns up), and finds WARP where Vulkan has no software adapter, which [`REQUIRED_FEATURES`]
+/// then passes over.
 const OFFSCREEN_BACKENDS: [wgpu::Backends; 2] = [wgpu::Backends::VULKAN, wgpu::Backends::all()];
 
 /// The first *preferred* adapter *request* finds over *attempts*, tried in order; when none
@@ -113,14 +114,26 @@ pub(super) fn offscreen_adapter(options: RenderOptions) -> Result<wgpu::Adapter,
         .ok_or(RenderError::NoGpuAdapter)
 }
 
-/// The adapter step of the acquisition policy: high-performance first, then the fallback.
+/// The features the renderer's device requires: `CLIP_DISTANCES`, which clips the outline
+/// lines to a band around the view (`vs_edge` in `mode13h.wgsl`). wgpu's DX12 backend, WARP
+/// included, does not offer it.
+pub(crate) const REQUIRED_FEATURES: wgpu::Features = wgpu::Features::CLIP_DISTANCES;
+
+/// Whether an adapter offering `features` can open the renderer's device.
+fn offers_required_features(features: wgpu::Features) -> bool {
+    features.contains(REQUIRED_FEATURES)
+}
+
+/// The adapter step of the acquisition policy: high-performance first, then the fallback;
+/// an adapter without [`REQUIRED_FEATURES`] is passed over.
 fn select_adapter(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'static>>,
     options: RenderOptions,
 ) -> Option<wgpu::Adapter> {
+    let usable = |adapter: &wgpu::Adapter| offers_required_features(adapter.features());
     if options.software_only {
-        return request_fallback_adapter(instance, surface);
+        return request_fallback_adapter(instance, surface).filter(usable);
     }
     pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
@@ -129,16 +142,18 @@ fn select_adapter(
         apply_limit_buckets: false,
     }))
     .ok()
-    .or_else(|| request_fallback_adapter(instance, surface))
+    .filter(usable)
+    .or_else(|| request_fallback_adapter(instance, surface).filter(usable))
 }
 
-/// The device step of the acquisition policy: downlevel defaults raised to the adapter's limits.
+/// The device step of the acquisition policy: [`REQUIRED_FEATURES`] and downlevel defaults
+/// raised to the adapter's limits.
 pub(super) fn open_device(
     adapter: &wgpu::Adapter,
 ) -> Result<(wgpu::Device, wgpu::Queue), RenderError> {
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("stunt_renderer_device"),
-        required_features: wgpu::Features::empty(),
+        required_features: REQUIRED_FEATURES,
         required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
         memory_hints: wgpu::MemoryHints::Performance,
         experimental_features: wgpu::ExperimentalFeatures::disabled(),
@@ -172,6 +187,17 @@ pub(super) fn create_instance(backends: wgpu::Backends) -> wgpu::Instance {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_adapter_without_clip_distances_cannot_open_the_renderer() {
+        assert!(!offers_required_features(wgpu::Features::empty()));
+        assert!(!offers_required_features(
+            wgpu::Features::DEPTH_CLIP_CONTROL
+        ));
+        assert!(offers_required_features(
+            wgpu::Features::CLIP_DISTANCES | wgpu::Features::DEPTH_CLIP_CONTROL
+        ));
+    }
 
     #[test]
     fn first_adapter_stops_at_the_first_backend_that_finds_one() {

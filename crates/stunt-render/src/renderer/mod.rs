@@ -311,8 +311,9 @@ pub trait PageSink {
 /// Opening or drawing a Renderer failed.
 #[derive(Debug, thiserror::Error)]
 pub enum RenderError {
-    /// No adapter could be acquired by either acquisition attempt.
-    #[error("no compatible GPU adapter found on this system")]
+    /// No adapter with the features the renderer requires (clip distances) could be acquired
+    /// by either acquisition attempt.
+    #[error("no compatible GPU adapter (one with clip distances) found on this system")]
     NoGpuAdapter,
     /// The adapter refused to create a logical device.
     #[error("failed to request a GPU device: {0}")]

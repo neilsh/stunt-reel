@@ -190,7 +190,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--software-only",
         action="store_true",
-        help="render on the software adapter (lavapipe, WARP), even when a GPU is available",
+        help="render on the software adapter (lavapipe), even when a GPU is available",
     )
     return parser.parse_args(argv)
 

@@ -47,7 +47,7 @@ mise run frame -- --film ctry --ticks 400,422 --software-only
 
 `--software-only` reaches `stuntreel`'s film renderer, which sets `RenderOptions::software_only` for the headless and the windowed path alike.
 Both halves are needed, and `mise run frame` records the adapter each render used in the frame store's `build/scratch/frame/<film>/store/render.json`; on this machine (an RTX 4070 laptop), with the ICD named but no flag, the first Vulkan attempt found only lavapipe and passed it over, the all-backends attempt found the GPU, and the one-tick run (`--ticks 400`) recorded `NVIDIA GeForce RTX 4070 Laptop GPU` in the store.
-With the flag but no `VK_DRIVER_FILES`, Vulkan had no CPU driver and the same run recorded `Microsoft Basic Render Driver`, WARP.
+With the flag but no `VK_DRIVER_FILES`, Vulkan has no CPU driver and the run fails with `no compatible GPU adapter (one with clip distances)`: the all-backends attempt finds WARP, which lacks the clip distances the renderer requires ([ADR 0054](../adr/0054-depth-is-reversed-and-infinite.md)), and passes it over.
 
 `--no-build` renders with whatever `target/release/stuntreel.exe` holds.
 Rebuild after any temporary renderer edit, such as removing the NaN-shade guard to test it: a guard-removed binary left there by #265's byte-identity check rendered a lavapipe LOCATION run 0.19 below the GPU ([`lavapipe.md`](../../research/parity/lavapipe.md) section 4).
@@ -66,7 +66,7 @@ prints
 
 on lavapipe, and `{"name":"NVIDIA GeForce RTX 4070 Laptop GPU","class":"hardware"}` on this machine's GPU.
 The LLVM version moves with the Mesa release.
-`Microsoft Basic Render Driver` with class `cpu` is WARP: the loader did not find the ICD (a relative path, or the wrong JSON), and, with `--software-only`, the all-backends attempt took the software adapter it found.
+A `--software-only` render that fails with `no compatible GPU adapter (one with clip distances)` means the loader did not find the ICD (a relative path, or the wrong JSON), and the only software adapter left was WARP, which the renderer passes over.
 The GPU's own name with class `hardware` on this setup indicates `--software-only` did not reach the render.
 The report copies the adapter from the render's `render.json`, so re-render rather than edit it.
 A run overwrites `build/parity/report/<film>_current`, so copy a report elsewhere before switching adapters:

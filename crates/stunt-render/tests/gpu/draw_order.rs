@@ -95,6 +95,30 @@ impl Shot {
     pub(crate) fn winner(&self, point: [f32; 3]) -> Option<u8> {
         self.at(self.pixel(point))
     }
+
+    /// The pixels, as (column, row), whose winning index is `index`.
+    pub(crate) fn covering(&self, index: u8) -> Vec<(usize, usize)> {
+        (0..self.height)
+            .flat_map(|row| (0..self.width).map(move |col| (col, row)))
+            .filter(|&pixel| self.at(pixel) == Some(index))
+            .collect()
+    }
+
+    /// The view ray through page position `(col, row)` (pixels from the top left), as a
+    /// point on the near plane and a direction away from the eye, in world metres.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a page is far smaller than 2^24 pixels across"
+    )]
+    pub(crate) fn ray(&self, (col, row): (f32, f32)) -> (glam::Vec3, glam::Vec3) {
+        let x = 2.0 * col / self.width as f32 - 1.0;
+        let y = 1.0 - 2.0 * row / self.height as f32;
+        let inverse = self.view_proj.inverse();
+        // Depth is reversed: 1 on the near plane, 0.5 at twice its distance.
+        let near = inverse.project_point3(glam::Vec3::new(x, y, 1.0));
+        let further = inverse.project_point3(glam::Vec3::new(x, y, 0.5));
+        (near, further - near)
+    }
 }
 
 /// Renders tick 0 of `scene`, or `None` without a GPU adapter.

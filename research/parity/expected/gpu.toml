@@ -17,9 +17,9 @@
 # its catch-up repin.
 
 [ctry]
-ssim = 0.9375648
+ssim = 0.9375679
 iou = 0.9954557
-crates = "81b0b4166eb55eef436feed6706f13edc65af1ab"
+crates = "90057c0248be1cd2462459bed9e2d953477bdc68"
 sha256 = "dade17cae3d85a23fb829366c1c42813de51d91e9fdd93ffc8470cbc897b4c77"
 all_sha256 = "cb58d95b72f02819d15c5e6dad0973e72af8026455dbf5e13e41933711bb12ce"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -29,7 +29,7 @@ sky = 0.0069361
 reference_only = 0.0009967
 ocean = 0.0001136
 terrain = 0.0098634
-props = 0.0371209
+props = 0.0371181
 actors = 0.0073225
 ocean_render_only = 0.0000183
 terrain_render_only = 0.0000323
@@ -37,9 +37,9 @@ props_and_actors_render_only = 0.0000306
 overlay = 0.0000000
 
 [intro]
-ssim = 0.8823589
+ssim = 0.8823599
 iou = 0.9879165
-crates = "81b0b4166eb55eef436feed6706f13edc65af1ab"
+crates = "90057c0248be1cd2462459bed9e2d953477bdc68"
 sha256 = "f8c971f3569d424ec44571ea4ec762efd9289d20a6ba2a51f893ca20fcaa148c"
 all_sha256 = "2dc8f628198993c420ba632c8b7c5884015afb5c010aabe58b57a75d3a3428e3"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -48,8 +48,8 @@ adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 sky = 0.0069759
 reference_only = 0.0015606
 ocean = 0.0018564
-terrain = 0.0280673
-props = 0.0476137
+terrain = 0.0280671
+props = 0.0476127
 actors = 0.0311373
 ocean_render_only = 0.0000973
 terrain_render_only = 0.0000260
@@ -57,9 +57,9 @@ props_and_actors_render_only = 0.0003059
 overlay = 0.0000000
 
 [land]
-ssim = 0.9236517
+ssim = 0.9236509
 iou = 0.9868560
-crates = "81b0b4166eb55eef436feed6706f13edc65af1ab"
+crates = "90057c0248be1cd2462459bed9e2d953477bdc68"
 sha256 = "bc159031dd44974a3e3e6c250489c8edb8a0cd0138305e86b9f0bcd4536d7469"
 all_sha256 = "342003624122671573d562fb814c9bf6d1bf75e3ff8727f26fedabcda45b4218"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -68,8 +68,8 @@ adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 sky = 0.0033806
 reference_only = 0.0012205
 ocean = 0.0003057
-terrain = 0.0251852
-props = 0.0313298
+terrain = 0.0251868
+props = 0.0313290
 actors = 0.0140288
 ocean_render_only = 0.0000077
 terrain_render_only = 0.0002637
@@ -77,9 +77,9 @@ props_and_actors_render_only = 0.0006232
 overlay = 0.0000000
 
 [balloon]
-ssim = 0.9059099
+ssim = 0.9059092
 iou = 0.9504104
-crates = "81b0b4166eb55eef436feed6706f13edc65af1ab"
+crates = "90057c0248be1cd2462459bed9e2d953477bdc68"
 sha256 = "911e95c499b03d164c27c069480388b05beeee915d7b0918cae968d693195287"
 all_sha256 = "e8d852fa8f77ff9b708b8066ddb26457a0498cb94060f1976741355ff510a415"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -88,8 +88,8 @@ adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 sky = 0.0102164
 reference_only = 0.0014575
 ocean = 0.0007191
-terrain = 0.0318601
-props = 0.0032761
+terrain = 0.0318607
+props = 0.0032762
 actors = 0.0453177
 ocean_render_only = 0.0000000
 terrain_render_only = 0.0000083
@@ -97,39 +97,39 @@ props_and_actors_render_only = 0.0012350
 overlay = 0.0000000
 
 [traintnl]
-ssim = 0.9102730
-iou = 0.9715934
-crates = "81b0b4166eb55eef436feed6706f13edc65af1ab"
+ssim = 0.9102769
+iou = 0.9715943
+crates = "90057c0248be1cd2462459bed9e2d953477bdc68"
 sha256 = "78394e1f328680bd509606bb054b5290cb9bac578faf267a5a8a503f00f12e8d"
 all_sha256 = "a649413eafced2c711b63e761c40c62d0e2502c5020944a62c32b97b6d27b8c9"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 
 [traintnl.loss]
-sky = 0.0077304
+sky = 0.0077299
 reference_only = 0.0029008
 ocean = 0.0007930
-terrain = 0.0292948
-props = 0.0266129
-actors = 0.0220592
+terrain = 0.0292949
+props = 0.0266096
+actors = 0.0220591
 ocean_render_only = 0.0000000
 terrain_render_only = 0.0000001
-props_and_actors_render_only = 0.0003341
+props_and_actors_render_only = 0.0003338
 overlay = 0.0000000
 
 [bomb]
-ssim = 0.8945423
+ssim = 0.8945404
 iou = 0.9659737
-crates = "81b0b4166eb55eef436feed6706f13edc65af1ab"
+crates = "90057c0248be1cd2462459bed9e2d953477bdc68"
 sha256 = "1fa390a598947c4125cd235e699e9b319ce26be45739f4e097a7ec0dc45d51f3"
 all_sha256 = "b1a48485d817a2d72f8f2ebaa8e8c2599d0599bc7426a78ecce6ade45d223945"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 
 [bomb.loss]
-sky = 0.0109520
+sky = 0.0109522
 reference_only = 0.0019938
 ocean = 0.0011579
-terrain = 0.0178703
-props = 0.0597428
+terrain = 0.0178700
+props = 0.0597444
 actors = 0.0134229
 ocean_render_only = 0.0000000
 terrain_render_only = 0.0000019
@@ -137,9 +137,9 @@ props_and_actors_render_only = 0.0003157
 overlay = 0.0000000
 
 [location]
-ssim = 0.8720812
+ssim = 0.8720802
 iou = 0.9819539
-crates = "81b0b4166eb55eef436feed6706f13edc65af1ab"
+crates = "90057c0248be1cd2462459bed9e2d953477bdc68"
 sha256 = "2ea6fe3fc28688b4232003381385bd896ba94205b89987e8b9e4215bff2f8b1c"
 all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
 adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
@@ -147,9 +147,9 @@ adapter = "NVIDIA GeForce RTX 4070 Laptop GPU"
 [location.loss]
 sky = 0.0055824
 reference_only = 0.0010363
-ocean = 0.0076798
-terrain = 0.0281362
-props = 0.0786209
+ocean = 0.0076801
+terrain = 0.0281359
+props = 0.0786222
 actors = 0.0059019
 ocean_render_only = 0.0001056
 terrain_render_only = 0.0000508
