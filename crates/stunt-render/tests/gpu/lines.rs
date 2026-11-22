@@ -18,6 +18,7 @@ use stunt_core::scene::FilmScene;
 use stunt_core::sod::{
     OP_ID, OP_LINECOL, OP_MOVETO, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
 };
+use stunt_core::world::GROUND_NODE;
 use stunt_render::{LAYER_NONE, Offscreen, PageSize, RenderOptions};
 
 const LINE_INDEX: u8 = 33;
@@ -388,5 +389,96 @@ fn an_outlined_triangle_wins_over_its_backdrop_only_when_front_facing_near_and_f
                 );
             }
         }
+    });
+}
+
+/// `LAND` tick 1025 (#922), moved so the eye stands over the origin: the eye, what it looks
+/// at, and an asphalt prop triangle lying on the ground beside and behind it.
+const NEAR_CUT_EYE: [f32; 3] = [0.0, 9.281_368, 0.0];
+const NEAR_CUT_TARGET: [f32; 3] = [838.079_1, -332.518_9, -424.303_7];
+const NEAR_CUT_CORNERS: [[f32; 3]; 3] = [
+    [46.015_6, 0.0, -1.185],
+    [-17.984_4, 0.0, -1.185],
+    [-17.984_4, 0.0, -21.185],
+];
+
+/// Whether the ray from `origin` along `direction` meets the ground plane y = 0 in front of
+/// the eye inside the triangle `corners`, seen from above.
+fn ray_hits_ground_triangle(
+    origin: glam::Vec3,
+    direction: glam::Vec3,
+    corners: [[f32; 3]; 3],
+) -> bool {
+    if direction.y >= 0.0 {
+        return false;
+    }
+    let hit = origin + direction * (-origin.y / direction.y);
+    let side =
+        |a: [f32; 3], b: [f32; 3]| (b[0] - a[0]) * (hit.z - a[2]) - (b[2] - a[2]) * (hit.x - a[0]);
+    let [a, b, c] = corners;
+    let sides = [side(a, b), side(b, c), side(c, a)];
+    sides.iter().all(|&s| s >= 0.0) || sides.iter().all(|&s| s <= 0.0)
+}
+
+/// A flat ground prop's outline that passes beside the eye and is cut by the near plane draws
+/// only where the polygon is, within a pixel (#922): every pixel of its index has a point within
+/// 1.5 pixels whose view ray meets the triangle. Lavapipe clips lines against the near plane
+/// alone, so without the outline clip band this edge reached its rasteriser tens of thousands of
+/// pixels off the page and was drawn as a wedge over ground the polygon never covers.
+#[test]
+fn a_near_cut_ground_outline_draws_only_beside_its_polygon() {
+    common::gpu_test(|| {
+        let vertex = |position: [f32; 3]| SodVertex {
+            position,
+            normal: [0.0, 1.0, 0.0],
+            palette_index: LINE_INDEX,
+            flags: 4,
+            scenery_class: SCENERY_PROP,
+            _padding: 0,
+        };
+        let mut ir = SodModelIr::new("WORLD_SCENERY");
+        ir.vertices = NEAR_CUT_CORNERS.map(vertex).to_vec();
+        push_mesh(&mut ir, GROUND_NODE, 3, &[0, 1, 2], false);
+        let camera = CameraTransform {
+            eye: NEAR_CUT_EYE,
+            target: NEAR_CUT_TARGET,
+            fov_degrees: 42.673_717,
+            roll_radians: 0.0,
+            cut_from_previous: false,
+            ..Default::default()
+        };
+        let scene = FilmScene::new(
+            common::still_timeline(camera),
+            HashMap::new(),
+            Some(world_of(ir)),
+        );
+        let Some(shot) = shoot(&scene) else {
+            return;
+        };
+        let covered = shot.covering(LINE_INDEX);
+        assert!(!covered.is_empty(), "the triangle draws");
+        let stray: Vec<_> = covered
+            .into_iter()
+            .filter(|&(col, row)| {
+                let steps = [-1.5f32, -0.75, 0.0, 0.75, 1.5];
+                !steps.iter().any(|&dx| {
+                    steps.iter().any(|&dy| {
+                        #[expect(
+                            clippy::cast_precision_loss,
+                            reason = "a page is far smaller than 2^24 pixels across"
+                        )]
+                        let at = (col as f32 + 0.5 + dx, row as f32 + 0.5 + dy);
+                        let (origin, direction) = shot.ray(at);
+                        ray_hits_ground_triangle(origin, direction, NEAR_CUT_CORNERS)
+                    })
+                })
+            })
+            .collect();
+        assert!(
+            stray.is_empty(),
+            "{} pixels drawn away from the triangle, the first {:?}",
+            stray.len(),
+            stray.iter().take(8).collect::<Vec<_>>()
+        );
     });
 }
