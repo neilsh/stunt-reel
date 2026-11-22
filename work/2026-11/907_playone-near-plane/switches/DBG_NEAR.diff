@@ -1,0 +1,16 @@
+diff --git a/crates/stunt-render/src/camera.rs b/crates/stunt-render/src/camera.rs
+index 03362083..d09ccace 100644
+--- a/crates/stunt-render/src/camera.rs
++++ b/crates/stunt-render/src/camera.rs
+@@ -335,7 +335,10 @@ impl CameraController {
+                 rh::proj::directx::perspective_infinite_reverse(
+                     fov_deg.to_radians(),
+                     self.aspect_ratio,
+-                    self.near_clip,
++                    std::env::var("DBG_NEAR")
++                        .ok()
++                        .and_then(|v| v.parse::<f32>().ok())
++                        .unwrap_or(self.near_clip),
+                 )
+             }
+             Projection::Orthographic { half_height } => {
