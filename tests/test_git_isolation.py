@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from git_helpers import git_dir, run_git
+from pytest_helpers import remove_basetemp, short_basetemp
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GIT = shutil.which("git")
@@ -66,25 +67,29 @@ def test_a_test_run_with_git_dir_set_leaves_that_repository_unchanged(tmp_path: 
     before = (caller / ".git" / "config").read_text()
     # `git rebase --exec` exports GIT_DIR to the command it runs; the suite inherits it.
     env = {**os.environ, "GIT_DIR": str(caller / ".git"), "PYTEST_ADDOPTS": ""}
-    inner = subprocess.run(  # noqa: S603 - this interpreter, fixed pytest arguments
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-p",
-            "no:cacheprovider",
-            "--basetemp",
-            str(tmp_path / "inner"),
-            _SCRATCH_REPO_TEST,
-        ],
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert (caller / ".git" / "config").read_text() == before
-    assert "1 passed" in inner.stdout, inner.stdout + inner.stderr
+    basetemp = short_basetemp()
+    try:
+        inner = subprocess.run(  # noqa: S603 - this interpreter, fixed pytest arguments
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-p",
+                "no:cacheprovider",
+                "--basetemp",
+                str(basetemp),
+                _SCRATCH_REPO_TEST,
+            ],
+            cwd=REPO_ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert (caller / ".git" / "config").read_text() == before
+        assert "1 passed" in inner.stdout, inner.stdout + inner.stderr
+    finally:
+        remove_basetemp(basetemp)
 
 
 @pytest.mark.skipif(GIT is None, reason="git is not on PATH")
@@ -119,27 +124,34 @@ def test_a_fixture_repo_without_its_git_dir_cannot_register_with_the_caller(
 
 
 @pytest.mark.skipif(GIT is None, reason="git is not on PATH")
-def test_the_worktree_tests_add_no_worktree_under_their_basetemp(tmp_path: Path) -> None:
-    """The suite's worktree tests must not register a fixture worktree with the outer repository."""
-    basetemp = tmp_path / "inner"
-    inner = subprocess.run(  # noqa: S603 - this interpreter, fixed pytest arguments
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-p",
-            "no:cacheprovider",
-            "-q",
-            "--basetemp",
-            str(basetemp),
-            *_WORKTREE_TESTS,
-        ],
-        cwd=REPO_ROOT,
-        env={**os.environ, "PYTEST_ADDOPTS": ""},
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+def test_the_worktree_tests_add_no_worktree_under_their_basetemp() -> None:
+    """The suite's worktree tests must not register a fixture worktree with the outer repository.
 
-    assert inner.returncode == 0, inner.stdout + inner.stderr
-    assert [path for path in _worktrees(REPO_ROOT) if _is_under(path, basetemp)] == []
+    The inner run gets a short root under the OS temp directory: nested under this run's
+    basetemp, its fixture paths pass Windows ``MAX_PATH`` from a long checkout (issue #925).
+    """
+    basetemp = short_basetemp()
+    try:
+        inner = subprocess.run(  # noqa: S603 - this interpreter, fixed pytest arguments
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-p",
+                "no:cacheprovider",
+                "-q",
+                "--basetemp",
+                str(basetemp),
+                *_WORKTREE_TESTS,
+            ],
+            cwd=REPO_ROOT,
+            env={**os.environ, "PYTEST_ADDOPTS": ""},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert inner.returncode == 0, inner.stdout + inner.stderr
+        assert [path for path in _worktrees(REPO_ROOT) if _is_under(path, basetemp)] == []
+    finally:
+        remove_basetemp(basetemp)
