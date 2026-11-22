@@ -42,7 +42,7 @@ Moving the near plane from 0.5 m to 0.1 m (#904) put those ends five times farth
   Triangle pipelines keep `vs_main`: lavapipe clips triangles against the view's sides already, and the band would add a clip step there for nothing.
   The near plane stays at 0.1 m, so what #904 fixed (the police car's door on BOMB, the tunnel wall on TRAINTNL) is kept.
 * **The device requires `wgpu::Features::CLIP_DISTANCES`** (#922).
-  The adapter search passes over an adapter without it, so a machine with none fails with `NoGpuAdapter` rather than drawing wedges.
+  The adapter search chooses among the adapters that offer it, so a machine with none fails with `NoGpuAdapter` rather than rendering without the band.
   wgpu's DX12 backend, WARP included, does not offer it (wgpu-hal 30.0.1 sets the feature in its Vulkan, Metal and GL adapters, never in DX12's); the RTX 4070 and lavapipe, the two renderer classes with pinned scores, do.
 
 ## Considered Options
@@ -55,7 +55,7 @@ Moving the near plane from 0.5 m to 0.1 m (#904) put those ends five times farth
 * **A reversed, finite far plane at 25 km.**
   Not measured: the infinite form was chosen because its clip z is exactly `near`.
 * **Request clip distances only where the adapter has them, and draw the outlines through `vs_main` elsewhere** (#922).
-  Keeps WARP, with its wedges, at the cost of a second shader path that no machine with pinned scores runs.
+  Keeps WARP, drawing the outlines through `vs_main` unclipped (WARP's line drawing was not measured), at the cost of a second shader path that no machine with pinned scores runs.
 * **Clip the ground outlines at 0.5 m** (#922).
   Returns only to the pre-#904 level, needs a second clip depth kept consistent with the fill's, and leaves the base and decal outlines exposed.
 * **Draw the world's outlines as triangle quads**, as the actors' are, which lavapipe clips against the view's sides (#922).
