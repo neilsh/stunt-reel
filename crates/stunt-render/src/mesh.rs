@@ -1281,8 +1281,6 @@ impl VisibleWalk<'_> {
 mod tests {
     use super::*;
 
-    /// An unsplit chunk keeps the runs' vertex numbers; a split one cuts each run to the
-    /// windows it copied and renumbers it from where its window lies in the chunk.
     #[test]
     fn a_flattened_face_faces_the_eye_by_its_vertical_normal() {
         // A level plane 0.15 m below the eye, which stands inside the shape.
@@ -1297,6 +1295,8 @@ mod tests {
         assert!(!faces_flattened(&shadow, point, Vec3::X));
     }
 
+    /// An unsplit chunk keeps the runs' vertex numbers; a split one cuts each run to the
+    /// windows it copied and renumbers it from where its window lies in the chunk.
     #[test]
     fn chunk_prop_runs_follow_the_chunks_vertex_windows() {
         let runs = [
