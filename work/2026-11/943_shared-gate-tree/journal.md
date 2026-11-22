@@ -32,11 +32,12 @@ Spans and command shape: as in [`#942`'s journal](../942_frame-gate-cache/journa
 ## 2026-11-22: Gate tests per frame
 
 - **Question**: How many gates can a frame now test?
-- **Method**: A throwaway print of `World::gate_nodes.len()` and `World::view_facing.len()` after `FilmScene::load` on each film (not committed).
-- **Result**: `LOCATION` holds `27,719` gate nodes for its `20,916` view-facing props, `INTRO` `20,985` for `15,663`.
-  The forward pass tests a node only when its parent is open, so a frame tests at most that many gates, against `116,791` (Span A), `75,994.1` (B) and `65,606.5` (C) tests per tick before (`#934`'s counts).
-  The runs did not count the tests made; the bound follows from the pass, and a unit test (`open_nodes`) counts a pass that leaves the children of a closed node untested.
-- **Verdict**: Adopted: each gate node is tested at most once a frame.
+- **Method**: A throwaway print of `World::gate_nodes.len()`, `World::view_facing.len()` and the count of view-facing props with `reach: Some` after `FilmScene::load` on each film (not committed).
+- **Result**: `LOCATION` holds `27,719` gate nodes (`SP_1NODE` branches) for its `20,916` view-facing props, `20,885` of which carry a `ScaleReach` distance gate; `INTRO` holds `20,985` nodes for `15,663` props, `15,599` with one.
+  The forward pass tests a node only when its parent is open, and `FilmScene::frame` makes one distance test per prop that carries one and stands under an open node, so a frame tests at most `27,719 + 20,885 = 48,604` gates on `LOCATION` and `20,985 + 15,599 = 36,584` on `INTRO`.
+  `#934` counted both kinds together, `116,791` (Span A), `75,994.1` (B) and `65,606.5` (C) tests per tick before, and its `42,652` distinct gates on `LOCATION` included the distance gates, so they are not comparable with the node count alone.
+  The runs did not count the tests made; the bound follows from the pass and the props, and a unit test (`open_nodes`) counts a pass that leaves the children of a closed node untested.
+- **Verdict**: Adopted: each gate node is tested at most once a frame, and a prop's distance gate once.
 - **Lives in**: [`lavapipe-render-time.md` § 6](../../../research/parity/lavapipe-render-time.md#6-optimization-verdicts).
 
 ---
@@ -66,6 +67,6 @@ Spans and command shape: as in [`#942`'s journal](../942_frame-gate-cache/journa
 
   `scene_frame` fell in all nine cells, `-39.2%..-73.6%`, every cell's runs' ranges disjoint.
   The loop median fell in all nine, `-0.7%..-23.0%`, its ranges disjoint in six (lavapipe A and C in both orders, RTX A and C) and overlapping in three (lavapipe B in both orders, RTX B).
-- **Verdict**: Adopted: `scene_frame` falls by `39.2%` to `73.6%` on both adapters with the three spans' stores unchanged, and the loop median moved down in every cell, `0.7%` to `23.0%`, with its ranges separating in six of nine.
+- **Verdict**: Adopted: `scene_frame` falls by `39.2%` to `73.6%` on both adapters with the three spans' stores unchanged, and the loop median moved down in every cell, `0.7%` to `23.0%`, with its ranges separating in six of nine and overlapping in three.
   Other agents' load was not controlled, so the loop figures carry no saving of their own; `#942` and `#944` saw the same scatter.
 - **Lives in**: [`lavapipe-render-time.md` § 6](../../../research/parity/lavapipe-render-time.md#6-optimization-verdicts).

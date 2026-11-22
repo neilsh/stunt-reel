@@ -308,6 +308,10 @@ fn split_view_facing(
 /// A view-facing prop is drawn from its shape's shared decode, so it gets neither the
 /// per-placement `OP_TAP` decode nor the ground-decal snap of a baked prop; the type-8 trees
 /// of the reference archives run no `OP_TAP`.
+#[expect(
+    clippy::expect_used,
+    reason = "a node is stored for each gate the scenery walk visited, which its budget of 64 visits a word keeps far below `u32::MAX`; wrapping would make a branch the always-open root"
+)]
 fn facing_props(
     props: &[Placement],
     chains: &[Vec<LodGate>],
@@ -323,7 +327,8 @@ fn facing_props(
                 let gates = chains.get(p.chain as usize).map_or(&[][..], Vec::as_slice);
                 gates.iter().fold(GateNode::ROOT, |parent, &gate| {
                     *ids.entry((parent, gate)).or_insert_with(|| {
-                        let id = u32::try_from(nodes.len()).unwrap_or(GateNode::ROOT);
+                        let id =
+                            u32::try_from(nodes.len()).expect("fewer than `u32::MAX` gate nodes");
                         nodes.push(GateNode {
                             gate: lod_condition(gate, base_y),
                             parent,

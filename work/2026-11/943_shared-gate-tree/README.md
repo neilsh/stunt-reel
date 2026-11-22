@@ -2,7 +2,7 @@
 title: "FilmScene::frame re-tests LOD branches that many view-facing props share, once per prop"
 started: 2026-11-22
 issue: 943
-outcome: "World holds the view-facing props' SP_1NODE gates as a parent-before-child tree and FilmScene::frame tests each node once, only when its parent is open (at most 27,719 on LOCATION, 20,985 on INTRO, against 65,606 to 116,791 gate tests a tick): the four stores on Spans A, B and C are byte-identical on Windows lavapipe and the RTX 4070, scene_frame fell 39.2% to 73.6% in all nine cells, and the loop medians fell 0.7% to 23.0% with ranges disjoint in six of nine, so no loop saving is claimed."
+outcome: "World holds the view-facing props' SP_1NODE gates as a parent-before-child tree and FilmScene::frame tests each node once, only when its parent is open (at most 48,604 on LOCATION and 36,584 on INTRO, 27,719 and 20,985 SP_1NODE branches plus one distance gate for each prop that carries one, against 65,606 to 116,791 tests a tick): the four stores on Spans A, B and C are byte-identical on Windows lavapipe and the RTX 4070, scene_frame fell 39.2% to 73.6% in all nine cells, and the loop medians fell 0.7% to 23.0% with ranges disjoint in six of nine, so no loop saving is claimed."
 ---
 
 # FilmScene::frame re-tests LOD branches that many view-facing props share, once per prop

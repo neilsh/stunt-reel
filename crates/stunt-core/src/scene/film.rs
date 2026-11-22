@@ -1295,4 +1295,96 @@ mod tests {
         drawn.sort_unstable();
         assert_eq!(drawn, [1, 2, 3]);
     }
+
+    /// Props under a closed branch are dropped whatever their inner branches hold, props under
+    /// an open one go through their own distance gate, and the draws keep the props' order.
+    #[test]
+    fn view_facing_props_follow_the_gate_tree_and_their_own_reach() {
+        use crate::contracts::TrajectoryRecord;
+        use crate::flm::SliceKeyframe;
+        use crate::world::{FacingProp, GateNode, TerrainSurface};
+
+        let camera = CameraTransform::default();
+        let timeline = FilmTimeline::new(
+            vec![SliceKeyframe {
+                record: TrajectoryRecord {
+                    tick: 0,
+                    camera,
+                    actors: Vec::new(),
+                    audio_cues: Vec::new(),
+                    palette: PaletteControls::default(),
+                    bank: BankVariables::default(),
+                },
+                tick: 0,
+                tick_duration: 1,
+            }],
+            Vec::new(),
+        );
+        // A branch at the eye keeps its subtree, so only its `near` flag decides it.
+        let branch = |near, parent| GateNode {
+            gate: VisibilityCondition::LodBranch {
+                point: camera.eye,
+                ext: 400,
+                splitdist: 600,
+                near,
+            },
+            parent,
+        };
+        // Node 0 is closed, 1 holds under it, 2 is open under the root.
+        let gate_nodes = vec![
+            branch(false, GateNode::ROOT),
+            branch(true, 0),
+            branch(true, GateNode::ROOT),
+        ];
+        // Scale index 14 cuts at 256 m at the default lens.
+        let reach = |distance: f32| {
+            Some(VisibilityCondition::ScaleReach {
+                point: [camera.eye[0], camera.eye[1], camera.eye[2] + distance],
+                scale_index: 14,
+            })
+        };
+        let prop = |x: f32, node, reach| FacingProp {
+            shape: 9,
+            position: [x, 0.0, 0.0],
+            node,
+            reach,
+        };
+        let world = World {
+            ir: SodModelIr::new("WORLD"),
+            terrain_patches: 0,
+            props_placed: 7,
+            bounds: ShapeExtent {
+                min: [0.0; 3],
+                max: [0.0; 3],
+                radius: 0.0,
+            },
+            scenery_stop: None,
+            terrain: TerrainSurface::default(),
+            tap_failures: Vec::new(),
+            placements: PlacementRecords::default(),
+            view_facing: vec![
+                prop(1.0, 1, None),
+                prop(2.0, 1, reach(0.0)),
+                prop(3.0, 0, None),
+                prop(4.0, 2, None),
+                prop(5.0, 2, reach(300.0)),
+                prop(6.0, GateNode::ROOT, reach(300.0)),
+                prop(7.0, 2, reach(0.0)),
+            ],
+            gate_nodes,
+            prop_runs: Vec::new(),
+        };
+        let scene = FilmScene::new(
+            timeline,
+            HashMap::from([(9, SodModelIr::new("TREE"))]),
+            Some(world),
+        );
+        let drawn: Vec<f32> = scene
+            .frame(0.0)
+            .view_facing
+            .iter()
+            .map(|d| d.world_matrix[12])
+            .collect();
+        assert_eq!(drawn, [4.0, 7.0]);
+    }
 }
