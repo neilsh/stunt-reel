@@ -235,7 +235,7 @@ run = "uv run python python/scripts/parity_judge.py"
 
 [tasks.parity]
 depends = ["ensure"]
-description = "Parity baseline: render every reference film with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--jobs N] [--no-build] [--no-render] [--reuse DIR] [--retime N] [--software-only])"
+description = "Parity baseline: render every reference film with the current binary and print the headline scores (mise run parity -- [--films ctry,intro] [--jobs N] [--workers N] [--no-build] [--no-render] [--reuse DIR] [--retime N] [--software-only])"
 run = "uv run python python/scripts/parity_run.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 

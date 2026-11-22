@@ -758,5 +758,8 @@ fn read_palettes(path: &Path, count: u32) -> Result<Vec<Palette>, StoreError> {
         .collect())
 }
 
+mod merge;
+pub(crate) use merge::merge;
+
 #[cfg(test)]
 mod tests;

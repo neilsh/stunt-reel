@@ -23,7 +23,9 @@ nothing here prints or chooses an exit code (ADR 0010).
 from __future__ import annotations
 
 import contextlib
+import os
 import shutil
+import sys
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from concurrent import futures
 from dataclasses import dataclass, replace
@@ -53,6 +55,7 @@ lazy from stunt_reel.batch_films import BatchFilm
 
 __all__ = [
     "RENDER_FLAGS",
+    "RENDER_PROCESS_BYTES",
     "REPO_ROOT",
     "SIDATA",
     "Attempt",
@@ -61,19 +64,23 @@ __all__ = [
     "FilmInputError",
     "FilmJob",
     "FilmScore",
+    "RenderBudget",
     "Retime",
     "RetimeError",
     "RetimeResult",
     "Run",
     "Score",
     "build_release",
+    "captured_ticks",
     "check_film",
     "check_render",
     "current_job",
     "format_summary",
+    "physical_memory",
     "plan_retime",
     "preflight",
     "reference_job",
+    "render_budget",
     "render_film",
     "retime_render",
     "run_command",
@@ -375,15 +382,17 @@ def render_film(
     *,
     ticks: Sequence[int] | None = None,
     software_only: bool = False,
+    workers: int = 1,
     run: Run = run_command,
     timeout: float | None = None,
 ) -> None:
     """Renders the job's film into ``out`` with ``env`` in the environment.
 
-    By default the ticks the job's capture holds; with ``ticks`` exactly those film ticks, in
-    one process. The film plays its archive from :func:`all_archive.resolve_all`, linked with
-    the release binary as it is: the caller builds it, or was told not to. ``software_only``
-    renders on the software adapter even beside a GPU.
+    By default the ticks the job's capture holds; with ``ticks`` exactly those film ticks. The
+    film plays its archive from :func:`all_archive.resolve_all`, linked with the release binary
+    as it is: the caller builds it, or was told not to. ``software_only`` renders on the
+    software adapter even beside a GPU. ``workers`` above 1 splits the render across that many
+    ``stuntreel --workers`` child processes, whose store is the one a single process writes.
     """
     link_build = all_archive.link_build_in(REPO_ROOT, build=False)
     archive = all_archive.resolve_all(
@@ -414,7 +423,74 @@ def render_film(
     ]
     if software_only:
         argv.append("--software-only")
+    if workers > 1:
+        argv += ["--workers", str(workers)]
     _execute(run, argv, env, timeout)
+
+
+#: Peak resident memory of one ``LOCATION`` render process on lavapipe, the largest world: 953
+#: MiB of Linux VmHWM (research/parity/lavapipe-render-time.md section 5). A render process is
+#: budgeted at this until #920 shrinks the world's memory.
+RENDER_PROCESS_BYTES = 953 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class RenderBudget:
+    """How many films render at once and how many worker processes each film's render takes."""
+
+    jobs: int
+    workers: int
+
+
+def render_budget(
+    jobs: int | None,
+    workers: int,
+    films: int,
+    *,
+    default_jobs: int,
+    cpus: int,
+    memory: int | None,
+) -> RenderBudget:
+    """The jobs and workers a run uses so its render processes fit *cpus* cores and *memory*.
+
+    Every job may render with *workers* processes, so a run starts up to ``jobs * workers`` of
+    them, each budgeted :data:`RENDER_PROCESS_BYTES`; *memory* is ``None`` when it is unknown and
+    then only cores bound the run. *jobs* (``None`` for the default, *default_jobs*) is never
+    above *films*. An explicit *jobs* is kept and the workers are cut to fit beside it; the
+    default jobs are cut first, to the slots *workers* leaves. Both stay at least 1.
+    """
+    slots = cpus if memory is None else min(cpus, memory // RENDER_PROCESS_BYTES)
+    slots = max(1, slots)
+    wanted = workers if workers > 0 else 1
+    if jobs is None:
+        jobs = min(default_jobs, max(1, slots // wanted))
+    jobs = max(1, min(jobs, films))
+    return RenderBudget(jobs, max(1, min(wanted, slots // jobs)))
+
+
+if sys.platform == "win32":
+    import ctypes
+
+    def physical_memory() -> int | None:
+        """This machine's physical memory in bytes, or ``None`` when it cannot be read."""
+        kibibytes = ctypes.c_ulonglong(0)
+        if not ctypes.windll.kernel32.GetPhysicallyInstalledSystemMemory(ctypes.byref(kibibytes)):
+            return None
+        return int(kibibytes.value) * 1024
+
+else:
+
+    def physical_memory() -> int | None:
+        """This machine's physical memory in bytes, or ``None`` when it cannot be read."""
+        try:
+            return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+        except ValueError, OSError:
+            return None
+
+
+def captured_ticks(job: FilmJob) -> int:
+    """How many frames the job's capture holds, which is how many ticks its render draws."""
+    return len(read_capture(job.capture).frames)
 
 
 def score_film(
@@ -562,6 +638,7 @@ def run_matrix[V](
     *,
     jobs: int = 1,
     on_variant: Callable[[int, list[Attempt]], None] | None = None,
+    weight: Callable[[FilmJob], int] | None = None,
 ) -> list[list[Attempt]]:
     """Runs *work* on every (variant, film) pair, *jobs* at a time, returning a failure per pair.
 
@@ -569,8 +646,10 @@ def run_matrix[V](
     verified snapshot (ADR 0031); a film whose reference cannot be opened fails in every variant.
     The result is ``[variant][film]`` in input order. *on_variant* is called on the calling
     thread with the variant's index and row once all its films finish. ``jobs <= 1`` runs the
-    pairs in order on the calling thread, else in a thread pool. An interrupt, or an error from
-    *on_variant*, drops pairs not yet started, lets running ones finish, and propagates.
+    pairs in order on the calling thread, else in a thread pool. With *weight*, pairs start
+    heaviest film first, so the longest render is not left running alone at the end; a film
+    whose reference failed weighs nothing. An interrupt, or an error from *on_variant*, drops
+    pairs not yet started, lets running ones finish, and propagates.
     """
     rows: list[list[Attempt | None]] = [[None] * len(films) for _ in variants]
     with contextlib.ExitStack() as stack:
@@ -599,6 +678,9 @@ def run_matrix[V](
                 on_variant(index, [cell for cell in row if cell is not None])
 
         pairs = [(index, column) for index in range(len(variants)) for column in range(len(films))]
+        if weight is not None:
+            weights = [0 if isinstance(job, FilmFailure) else weight(job) for job in opened]
+            pairs.sort(key=lambda pair: -weights[pair[1]])
         if jobs <= 1 or len(pairs) <= 1:
             for index, column in pairs:
                 finish(index, column, attempt(index, column))

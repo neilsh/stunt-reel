@@ -1,5 +1,5 @@
 ---
-summary: "Post-#644/#811 lavapipe profiling across LOCATION and INTRO shows culling view_facing draws (#914) cuts loop wall clock by 52.4% to 80.6% (go); omitting color_texture (#919, -1.3% to +5.1%) and relight vertex-ring/apex-skip (#915b, -0.6%) save little (no-go). LP_NUM_THREADS=4 now cuts Span A loop by 10.8% on Windows (27.7% after #914) and 7.7% on Ubuntu 24.04; four child processes scale 2.82x-3.21x on LOCATION 50-649 while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8 (#916 child processes go, in-process pooling no-go)."
+summary: "Post-#644/#811 lavapipe profiling across LOCATION and INTRO shows culling view_facing draws (#914) cuts loop wall clock by 52.4% to 80.6% (go); omitting color_texture (#919, -1.3% to +5.1%) and relight vertex-ring/apex-skip (#915b, -0.6%) save little (no-go). LP_NUM_THREADS=4 now cuts Span A loop by 10.8% on Windows (27.7% after #914) and 7.7% on Ubuntu 24.04; four child processes scale 2.82x-3.21x on LOCATION 50-649 while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8 (#916 child processes go, in-process pooling no-go); shipped as stuntreel --workers, 4 workers render the whole LOCATION capture 1.85x faster on 4 vCPUs with byte-identical stores."
 ---
 # Parity: Render Time on Lavapipe
 
@@ -108,6 +108,14 @@ Decoded per-tick `indices`, `layers`, `shapes`, and 768-byte palettes across `50
   Each extra lavapipe `VkDevice` still adds `751..796 MiB` RSS of device buffers and driver state, close to one process's `889..953 MiB`, so sharing one `FilmScene` and one instance in-process saved `257.5..299.6 MiB` polled RSS at 4 workers (`3,243.6` vs `3,501.1 MiB` Win; `3,287.1` vs `3,586.7 MiB` WSL; Windows private commit `4,535.3` vs `5,783.1 MiB`).
 _Source: [Multi-`VkDevice` in-process versus child processes on Windows and Linux Mesa](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-multi-vkdevice-in-process-versus-child-processes-on-windows-and-linux-mesa)._
 
+**Shipped as `stuntreel --workers N` (#916).**
+`[Bounded Observation]`, 2026-11-22, one run per cell on a cloud Ubuntu session (4 vCPUs, 15 GiB, `llvmpipe (LLVM 20.1.2, 256 bits)`).
+At 2 and 4 workers, in one run each, every file of the render directory matched the 1-worker render on all seven reference films' captured tick ranges.
+Against one process at lavapipe's default `LP_NUM_THREADS`, 4 workers cut the whole `LOCATION` render (8,251 ticks) from `140.5 s` to `76.1 s` (`1.85x`) and `INTRO` (3,807 ticks) from `84.7 s` to `42.2 s` (`2.01x`), within 3% of its total CPU (`253.7 s` against `260.7 s` for `LOCATION`), with no child above `949 MiB` peak RSS.
+Two workers were slower than one on `BOMB` (`31.5 s` against `30.3 s`) and `CTRY` (`6.8 s` against `6.2 s`), so the gain is not monotonic in workers for short films.
+A seven-film `mise run parity -- --software-only` took `201.3 s` at `--workers 1` (4 jobs), `185.1 s` at 2 (2 jobs) and `192.7 s` at 4 (1 job): on 4 vCPUs four film jobs already fill the cores, so the workers pay off for one film rendered alone or when cores outnumber the films.
+_Source: [Worker processes on the cloud's lavapipe over the seven reference films](../../work/2026-11/916_chunked-render-workers/journal.md#2026-11-22-worker-processes-on-the-clouds-lavapipe-over-the-seven-reference-films)._
+
 ## 6. Optimization verdicts
 
 - **`#914`: Go** (`view_facing` frustum culling cuts `52.4%..80.6%` of loop wall across the three spans; actor/shadow/sprite culling and instancing defer/follow-up).
@@ -132,3 +140,4 @@ _Source: [Qualitative go, defer, and no-go verdicts](../../work/2026-11/918_lava
 
 1. After `#914` lands `view_facing` frustum culling, how much further `view_facing` instancing saves on surviving forested views (`INTRO` `2500..=2799`), and whether CPU-side `collect_world_meshes` caching (`~3.6..6.3 ms` on `LOCATION` close-ups, `~17.2..28.9 ms` on wide views) or CPU readback `Vec` reuse inside `readback_copy` (`OffscreenTarget` already reuses its `[Readback; 2]` GPU staging buffers; `readback_copy` takes `~274..492 ms` across `289..450` frames) shifts the bottleneck on hardware GPU and post-`#914` lavapipe.
 2. What Linux/Mesa lock causes 4-way in-process separate `wgpu::Instance` devices (`13.13 s` / `52.71 s` CPU) to trail 4 child processes (`7.65 s` / `45.70 s` CPU) on Ubuntu Mesa 25.2.8.
+3. How much `mise run parity -- --software-only --workers N` saves on a machine with more cores than films, such as an 8-core laptop, and whether `LOCATION` should take more workers than the shorter films, since on 4 vCPUs (section 5) the run gains at most 8%.
