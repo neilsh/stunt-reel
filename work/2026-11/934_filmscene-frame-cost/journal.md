@@ -38,7 +38,7 @@ Spans and command shape: as in [`#918`'s journal](../918_lavapipe-render-time/jo
 | Win lvp C | `2691.7` [`2490.9..2872.8`] | `808.4` [`712.3..878.4`] (`30.0%`) | `3.2` [`2.7..3.5`] (`0.4%`) | `131.0` [`117.3..135.5`] (`16.2%`, `4.9%`) | `123.1` [`111.2..128.0`] (`15.2%`, `4.6%`) | `666.0` [`586.0..731.1`] (`82.4%`, `24.7%`) | `8.2` [`6.4..8.3`] (`1.0%`) |
 | RTX C | `1965.4` [`1819.8..2180.6`] | `678.1` [`635.9..825.8`] (`34.5%`) | `2.5` [`2.4..3.0`] (`0.4%`) | `108.8` [`100.3..119.4`] (`16.1%`, `5.5%`) | `103.5` [`95.4..113.3`] (`15.3%`, `5.3%`) | `560.5` [`526.8..694.9`] (`82.7%`, `28.5%`) | `6.3` [`6.2..8.5`] (`0.9%`) |
 
-Inside the per-actor `map`, the sub-timers other than `shadow_top` (world matrix, facing, light and distance; finding the previous position; `ground_shadow`'s matrix; `shape.decode()` and the angle bank) sum to at most `5.4 ms` per cell (`0.7%` of `scene_frame`), `ground_shadow` (`0.5..4.6 ms`) the largest; `sprite_draws` with its `drawn_after` scenery walks took at most `6.8 ms` (`0.8%`, Span C) and under `0.4 ms` on Spans A and B.
+Inside the per-actor `map`, the sub-timers other than `shadow_top` (world matrix, facing, light and distance; finding the previous position; `ground_shadow`'s matrix; `shape.decode()` and the angle bank) sum to at most `5.4 ms` per cell (`0.7%` of `scene_frame`), `ground_shadow` (`0.5..4.6 ms`) the largest, and `Actors (all)` less `shadow_top` is at most `7.9 ms` (`1.0%`, Win lvp C), the rest being the `map`'s own overhead; `sprite_draws` with its `drawn_after` scenery walks took at most `6.8 ms` (`0.8%`, Span C) and under `0.4 ms` on Spans A and B.
 
 ### Counts per tick (identical on both adapters)
 
@@ -51,7 +51,7 @@ Inside the per-actor `map`, the sub-timers other than `shadow_top` (world matrix
 The worlds: `LOCATION` has `20,916` view-facing props holding `132,383` gate references (`42,652` distinct gates) over `51` shapes, `56,585` placement records (`4,085` non-stand-in with a collision list) and `238` terrain triangles; `INTRO` has `15,663` props, `98,732` references (`29,419` distinct) over `18` shapes, and `26,386` records (`2,979` with a collision list).
 `shape.decode()` is a field read (`SodModelIr::decode` returns `Option<&DecodeRecord>`), not a decode.
 
-- **Verdict**: The `view_facing` collection is `82.4%..92.6%` of `scene_frame` in every cell (`20.9%..46.0%` of the loop) and `shadow_top` `6.8%..15.3%`; timeline sampling (`0.2%..0.4%`), the rest of the per-actor work (at most `0.7%`) and everything else (at most `1.0%`) are not worth optimising.
+- **Verdict**: The `view_facing` collection is `82.4%..92.6%` of `scene_frame` in every cell (`20.9%..46.0%` of the loop) and `shadow_top` `6.8%..15.3%`; timeline sampling (`0.2%..0.4%`), the rest of the per-actor work (at most `1.0%`) and everything else (at most `1.0%`) are not worth optimising.
   `frame` builds draws for `1,099..3,191` view-facing props per tick, nearly all of which `SceneRenderer::prepare`'s `#914` cull then drops (`#931` found none surviving on Spans A and C, at most `10` on Span B), but the cost is the scan of the whole world's props before that: `20,916` on `LOCATION` and `15,663` on `INTRO` per tick.
   `shadow_top` walks the placement records per shadowed actor, up to all of them unless a carry ends the probe, and skips all but the `7%..11%` with a collision list, which is why it scales with the shadowed-actor count (Span C).
 - **Lives in**: [`lavapipe-render-time.md` § 3](../../../research/parity/lavapipe-render-time.md#3-post-644-phase-breakdown-and-ab-probes) and § 6.
@@ -71,9 +71,9 @@ The worlds: `LOCATION` has `20,916` view-facing props holding `132,383` gate ref
 | B | `479.7` [`459.2..482.9`] (`89.5%`) | `73.1` [`70.6..73.7`] (`13.6%`) | `402.4` [`379.7..402.9`] (`75.1%`, `14.5%`) | `6.4` [`6.1..6.7`] (`1.2%`) | `2778.1` [`2733.5..2824.5`] |
 | C | `477.1` [`465.7..559.8`] (`79.8%`) | `77.4` [`76.0..78.9`] (`12.9%`) | `369.6` [`359.1..449.3`] (`61.8%`, `15.9%`) | `31.5` [`28.9..31.5`] (`5.3%`) | `2319.7` [`2264.8..2482.4`] |
 
-  The shape lookup rejected no prop on either film: the gates tested over its output add up to every gate reference in the world (`132,383` on `LOCATION`, `98,732` on `INTRO`), since `drawn_only` keeps every view-facing prop's shape.
+  The shape lookup rejects no prop on `stuntreel`'s render path: `FilmScene::drawn_only` keeps every view-facing prop's shape, and the CLI applies it before rendering (`crates/stunt-cli/src/scene/mod.rs`); a scene not passed through `drawn_only` can reject.
   A gate test costs about `10.9..17.7 ns` (Span A: `366.8 ms` over `116,791` tests a tick for `289` ticks; Span B: `402.4 ms` over `75,994` for `300`), and each one recomputes the camera's `lod_lens_words`, forward vector and its length.
-- **Verdict**: The gate tests are most of `frame` (`61.8%..76.7%`); the shape lookup is a constant `~13%` that does no work; building the draws is at most `5.3%`.
+- **Verdict**: The gate tests are most of `frame` (`61.8%..76.7%`); the shape lookup is a constant `~13%` that rejects no prop on the render path; building the draws is at most `5.3%`.
 - **Lives in**: [`lavapipe-render-time.md` § 3](../../../research/parity/lavapipe-render-time.md#3-post-644-phase-breakdown-and-ab-probes) and § 6.
 
 ---
@@ -95,7 +95,7 @@ The worlds: `LOCATION` has `20,916` view-facing props holding `132,383` gate ref
 | RTX C | `692.3` [`561.1..715.9`] / `611.0` [`459.2..661.7`] | `-11.7%` | `819.3` / `764.6` | `-6.7%` | `2183.8` [`1957.5..2203.1`] / `2334.9` [`1884.5..2476.6`] | `+6.9%` |
 
   The `base` runs' `view_facing` medians sit `+3.7%..+22.5%` from the first entry's on lavapipe and `-5.2%..+23.5%` on the RTX 4070, and the run spreads reach `43%` of the median (Win lvp B, `base` loop), so the machine's other work moved these runs more than the first entry's.
-- **Verdict**: Hoisting cuts the collection by `11.7%..35.7%` with byte-identical stores, a **go** filed as `#942`, but leaves the gate tests themselves as most of `frame`; the loop moved inside the runs' spread (`-15.1%..+6.9%`).
+- **Verdict**: Hoisting cuts the collection by `11.7%..35.7%` with byte-identical stores, a **go** filed as `#942`, but leaves the gate tests themselves as most of `frame`; the loop medians moved `-15.1%..+6.9%`, Span A's lavapipe loop (`-15.1%`) outside its runs' spread (fast `1,496.3..1,724.8 ms` against base `1,725.9..1,968.7 ms`) and the other five cells inside theirs.
   The larger saving is testing each shared gate once: `LOCATION`'s props hold `132,383` gate references but `42,652` distinct gates, because a prop's `LodBranch` gates are the `SP_1NODE` chain it stands behind and many props share a chain; filed as `#943` (`needs-triage`: where the chain structure lives is a design choice).
   `shadow_top`'s walk over every placement record, `6.8%..15.3%` of `frame`, is filed as `#944`.
 - **Lives in**: [`lavapipe-render-time.md` § 6](../../../research/parity/lavapipe-render-time.md#6-optimization-verdicts).
