@@ -1,5 +1,5 @@
 ---
-summary: "Post-#644/#811 lavapipe profiling across LOCATION and INTRO shows culling view_facing draws (#914) cuts loop wall clock by 52.4% to 80.6% (go); omitting color_texture (#919, -1.3% to +5.1%) and relight vertex-ring/apex-skip (#915b, -0.6%) save little (no-go). LP_NUM_THREADS=4 now cuts Span A loop by 10.8% on Windows (27.6% after #914) and 7.7% on Ubuntu 24.04; four child processes scale 2.82x-3.21x on LOCATION 50-649 while four in-process VkDevices regress on Ubuntu Mesa 25.2.8 (#916 child processes go, in-process pooling no-go)."
+summary: "Post-#644/#811 lavapipe profiling across LOCATION and INTRO shows culling view_facing draws (#914) cuts loop wall clock by 52.4% to 80.6% (go); omitting color_texture (#919, -1.3% to +5.1%) and relight vertex-ring/apex-skip (#915b, -0.6%) save little (no-go). LP_NUM_THREADS=4 now cuts Span A loop by 10.8% on Windows (27.7% after #914) and 7.7% on Ubuntu 24.04; four child processes scale 2.82x-3.21x on LOCATION 50-649 while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8 (#916 child processes go, in-process pooling no-go)."
 ---
 # Parity: Render Time on Lavapipe
 
@@ -36,7 +36,8 @@ _Source: [Two frames in flight in headless capture](../../work/2026-11/602_headl
 **Draws per frame (#603, #644).**
 Before the cull, the median LOCATION frame (ticks 12-300, `b0f6c120`) encoded 127,910 `draw_indexed` calls: 8,963 ground fills and 6,269 ground outlines, 49,257 base fills and 45,560 base outlines (94,817, 74.1%), 5,550 decal fills and 5,549 decal outlines, and 6,762 non-world fills.
 Because the world uploads as one chunk of 6,702,496 vertices (now `6,702,570` vertices / `7,488,138` indices) and walk order visits child slices in reverse index order, contiguous-slice coalescing removed zero calls (`#603` no-go).
-`#644` frustum-culls world nodes (`PR #652`), cutting those 289 frames from `127,910` to `6,791` total calls (`29` median world draws).
+`#644` frustum-culls world nodes (`PR #652`), cutting the median frame of those 289 from `127,910` to `6,791` calls (`29` median world draws).
+On `6955e159` the same span's median frame makes `2,602` calls, `29` of them world draws (section 2), against these `6,762` non-world fills; which change between the two trees cut the non-world draws is not traced here.
 Ubuntu's Mesa 25.2.8 rendered the seven reference films byte-identical with and without the cull (`734d3a8`, 2026-11-17).
 _Source: [Draws per frame](../../work/2026-11/distill-lavapipe/journal.md#2026-11-16-draws-per-frame), [culling world nodes outside the view frustum](../../work/2026-11/644_frustum-cull/journal.md#2026-11-16-culling-world-nodes-outside-the-view-frustum), [the cull on top of eye-relative transforms](../../work/2026-11/644_frustum-cull/journal.md#2026-11-17-the-cull-on-top-of-eye-relative-transforms)._
 
@@ -89,7 +90,7 @@ _Source: [Phase breakdown and isolation probes across three spans](../../work/20
 `[Bounded Observation]`, 2026-11-21, `6955e159` + `probe.patch`, `LOCATION` `12..=300` (289 ticks), 3 runs each, stores byte-identical across thread counts.
 With staging churn and `121,148` culled world draws removed, `LP_NUM_THREADS` no longer stays flat (`CPU / wall` cores busy in parentheses):
 - **Windows `mesa-dist-win 25.2.8` baseline:** `LP=1` `7,031.8 ms` (`1.25`) -> `LP=4` `6,275.0 ms` (`-10.8%`, `1.38`) -> `unset` `6,267.3 ms` (`-10.9%`, `1.46`).
-- **Windows `#914` `view_facing`-culled:** `LP=1` `1,625.6 ms` (`1.29`) -> `LP=4` `1,176.1 ms` (`-27.6%`, `1.65`) -> `unset` `1,237.2 ms` (`-23.9%`, `1.61`).
+- **Windows `#914` `view_facing`-culled:** `LP=1` `1,625.6 ms` (`1.29`) -> `LP=4` `1,176.1 ms` (`-27.7%`, `1.65`) -> `unset` `1,237.2 ms` (`-23.9%`, `1.61`).
 - **WSL 2 Ubuntu 24.04 `mesa-vulkan-drivers 25.2.8` baseline:** `LP=1` `10,715.9 ms` (`1.20`) -> `LP=4` `9,893.8 ms` (`-7.7%`, `1.31`) -> `unset` `9,787.2 ms` (`-8.7%`, `1.36`).
 _Source: [Thread scaling under `LP_NUM_THREADS` on Windows and Linux Mesa](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-thread-scaling-under-lp_num_threads-on-windows-and-linux-mesa)._
 
@@ -101,10 +102,10 @@ Decoded per-tick `indices`, `layers`, `shapes`, and 768-byte palettes across `50
 - **In-process partial scaling vs 4-worker regression.**
   Two threads sharing `offscreen_adapter` (`LP=1`) scaled to `2.21` cores (`8,993.9 ms` loop, `1.55x`) on Windows and `2.07` cores (`15,121.2 ms` loop, `1.43x`) on Ubuntu 24.04, showing Mesa lavapipe does not force strict single-thread serialization across two in-process `VkDevice`s.
   At four workers (`LP=1`), however, shared-instance in-process slowed to `6,727.8 ms` (`2.07x`) on Windows and **regressed** below 2-way on Ubuntu (`15,890.6 ms` loop, `1.36x`, burning `58.22 s` CPU vs `28.51 s` for 1 worker).
-  Giving each thread its own `wgpu::Instance`/`Adapter` recovered `1,276.6 ms` on Windows (`5,451.2 ms` loop, `4.15` cores) and `2,762.3 ms` on Ubuntu (`13,128.4 ms` loop, `3.38` cores), isolating partial `wgpu` instance/adapter contention, while still trailing child processes.
+  Giving each thread its own `wgpu::Instance`/`Adapter` recovered `1,276.6 ms` on Windows (`5,451.2 ms` loop, `4.15` cores) and `2,762.2 ms` on Ubuntu (`13,128.4 ms` loop, `3.38` cores), so part of the shared-instance loss comes from state shared through one instance (whether `wgpu`'s or Mesa's is not separated), while still trailing child processes.
 - **Child processes win on speed and CPU efficiency for modest RSS.**
   Four child processes (`LP=1`) reached `4,344.1 ms` max loop (`3.21x`) / `6,162.1 ms` E2E (`2.48x`, `4.59` cores, `28.28 s` CPU) on Windows and `7,650.1 ms` max loop (`2.82x`) / `9,889.7 ms` E2E (`2.37x`, `4.62` cores, `45.70 s` CPU) on Ubuntu.
-  Because each extra lavapipe `VkDevice` adds `751..796 MiB` RSS of device buffers and driver state, sharing one `FilmScene` saved `257.5..299.7 MiB` polled RSS at 4 workers (`3,243.6` vs `3,501.1 MiB` Win; `3,287.1` vs `3,586.7 MiB` WSL; Windows private commit `4,535.3` vs `5,783.1 MiB`).
+  Each extra lavapipe `VkDevice` still adds `751..796 MiB` RSS of device buffers and driver state, close to one process's `889..953 MiB`, so sharing one `FilmScene` and one instance in-process saved `257.5..299.6 MiB` polled RSS at 4 workers (`3,243.6` vs `3,501.1 MiB` Win; `3,287.1` vs `3,586.7 MiB` WSL; Windows private commit `4,535.3` vs `5,783.1 MiB`).
 _Source: [Multi-`VkDevice` in-process versus child processes on Windows and Linux Mesa](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-multi-vkdevice-in-process-versus-child-processes-on-windows-and-linux-mesa)._
 
 ## 6. Optimization verdicts
@@ -119,7 +120,7 @@ _Source: [Qualitative go, defer, and no-go verdicts](../../work/2026-11/918_lava
 ## Ruled out
 
 * **Pre-`#644`/`#596` `LP_NUM_THREADS` invariance on `52d84e6`** (mesa-dist-win 25.2.8): `GALLIVM_PERF=nopt` (`47.5 s` against `48.4 s` over `LOCATION 12-100`) and `LP_NUM_THREADS` = `1`, `4`, or unset left runtime flat (`~151 s`, `1.00` core) while per-draw staging allocation held ~half of main-thread samples (`#596`).
-  Section 4 supersedes this for post-`#644` trees, where `LP_NUM_THREADS=4` cuts Span A by `10.8%` (`27.6%` after `#914`).
+  Section 4 supersedes this for post-`#644` trees, where `LP_NUM_THREADS=4` cuts Span A by `10.8%` (`27.7%` after `#914`).
   _Source: [2026-11-15](../../work/2026-11/596_lavapipe-staging-buffers/journal.md#2026-11-15-one-model-matrix-upload-per-frame) and [2026-11-21](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-thread-scaling-under-lp_num_threads-on-windows-and-linux-mesa)._
 * **Coalescing contiguous world base slices as a speed-up** (`LOCATION` `12..=300`): zero adjacent pairs continue the previous slice's index range (`#603` no-go); [journal](../../work/2026-11/603_draw-counts-per-frame/journal.md#2026-11-16-draws-per-frame-and-coalescing-adjacent-base-slices).
 * **Single `plane_texture` offscreen target (`#919`) as a speed-up** (`LOCATION` Spans A/B and `INTRO` Span C, mesa-dist-win 25.2.8): `-1.3%`, `+5.1%`, and `+0.2%` loop change; [journal](../../work/2026-11/918_lavapipe-render-time/journal.md#2026-11-21-phase-breakdown-and-isolation-probes-across-three-spans).
