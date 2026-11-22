@@ -9,7 +9,7 @@ lazy from pathlib import Path
 
 import pytest
 
-from stunt_reel import dataroot, expected_file, parity_layout
+from stunt_reel import dataroot, expected_file, expected_scores, parity_layout
 from stunt_reel.expected_scores import (
     RENDER_TREE_FILE,
     SCORER_DIR,
@@ -279,11 +279,26 @@ def _refused(repo: Repo, renderer: str = "gpu") -> str:
     return "\n".join(caught.value.reasons)
 
 
-def test_a_dirty_crates_tree_is_refused(repo: Repo) -> None:
+def test_a_dirty_crates_tree_is_refused_naming_each_path(repo: Repo) -> None:
     repo.report("ctry", 0.8, 0.9)
     repo.report("intro", 0.7, 0.9)
     repo.write("crates/a.rs", "fn a() { let _ = 1; }\n")
-    assert "uncommitted" in _refused(repo)
+    repo.write("crates/new.rs", "fn new() {}\n")
+
+    says = _refused(repo)
+    assert "crates/ has uncommitted or untracked changes:" in says
+    assert "crates/a.rs" in says
+    assert "crates/new.rs" in says
+
+
+def test_a_git_failure_is_refused_distinctly(repo: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo.report("ctry", 0.8, 0.9)
+    repo.report("intro", 0.7, 0.9)
+    monkeypatch.setattr(expected_scores, "_git", lambda *_args, **_kwargs: None)
+
+    says = _refused(repo)
+    assert "git failed" in says
+    assert "uncommitted" not in says
 
 
 def test_a_film_without_a_report_is_refused(repo: Repo) -> None:
