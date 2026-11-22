@@ -33,8 +33,9 @@ filter never starts leaves its check pending, which blocks the merge.
   of its own.
 - **A `scope` job runs it on pull requests only**
   ([`ci.yml`](../../.github/workflows/ci.yml)), against `origin/<base>`, with mise's pinned Python:
-  the runner's system `python3` cannot parse `gate.py`. Any output line but those two fails the
-  job. `scope` is not a required check.
+  `gate.py` loads `stunt_reel` modules that use PEP 810 lazy imports, so it needs that
+  interpreter; an older one hands off through `python_pin.guard`, or exits 1 naming the version.
+  Any output line but those two fails the job. `scope` is not a required check.
 - **One skip condition**: `scope` succeeded and said `docs_only=true`. A failed `scope`, a skipped
   one (a push to `main`, a manual run) or `docs_only=false` runs every job as before.
 - **`quality` always runs** (`!cancelled()`), under its own name. Under the skip condition its
