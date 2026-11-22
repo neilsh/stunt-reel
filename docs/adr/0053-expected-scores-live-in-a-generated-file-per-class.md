@@ -3,6 +3,7 @@
 ## Status
 
 accepted 2026-11-19 for [#829](https://github.com/neilsh/stunt-reel/issues/829).
+Amended 2026-11-22 for [#971](https://github.com/neilsh/stunt-reel/issues/971): local-windows can redo a lavapipe repin through the canonical lavapipe under WSL.
 Revises the layout #436 chose in `work/2026-11/436_expected-scores-layout/spec.md`, which is not an ADR; [ADR 0041](0041-dated-records-live-in-work-folders.md)'s "The current baseline" row points here.
 
 ## Context
@@ -32,7 +33,7 @@ The resolution was mechanical, but git still stopped on it every time: in the GP
 - **Each PR repins only the class it measured.**
   A cloud PR repins `lavapipe`, a local-windows PR `gpu`, and the other class's `crates` lags until a catch-up repin (`chore(parity): repin expected scores`, its own commit).
   The drift line says so, `crates/ tree <found>, measured on <pinned>: awaiting a repin or catch-up repin of this class`, and stays informational.
-  Lavapipe catch-ups are tracked on the standing issue [#830](https://github.com/neilsh/stunt-reel/issues/830), done by a cloud session whose llvmpipe matches the pinned `adapter`; local-windows cannot redo one, since its llvmpipe is LLVM 21.1.7 and the pins name LLVM 20.1.2.
+  Lavapipe catch-ups are tracked on the standing issue [#830](https://github.com/neilsh/stunt-reel/issues/830), done by a cloud session whose llvmpipe matches the pinned `adapter`, or on local-windows through the canonical lavapipe under WSL ([`render-on-lavapipe.md` § 5](../howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl), measured at `llvmpipe (LLVM 20.1.2, 256 bits)` in [`work/2026-11/966_moat-walk-order/journal.md`](../../work/2026-11/966_moat-walk-order/journal.md)); the native Windows llvmpipe (LLVM 21.1.7) cannot, since the pins name LLVM 20.1.2.
 - **GitHub's server-side merges never run a custom driver.**
   The workflow already merges `main` into a branch locally ([`pr-and-filing.md`](../../.agents/skills/running-unattended/pr-and-filing.md) step 1), so nothing changes there.
 
@@ -50,7 +51,7 @@ The resolution was mechanical, but git still stopped on it every time: in the GP
 - Two PRs that repinned different or the same class merge without a conflict, taking `main`'s file; the one that merges second re-measures and repins.
 - `references.toml` keeps only hand-edited facts, so a stale expected table can no longer hide in a conflict marker.
 - The driver keeps `main`'s numbers over the branch's own repin, so a branch re-measures after an update that conflicted.
-  A lavapipe repin cannot be redone locally, which makes the catch-up on #830 the only way a cloud-only class gets current after a local-windows PR.
+  A lavapipe repin needs the pinned llvmpipe (a cloud session, or the WSL lavapipe on local-windows), so after a local-windows PR that did not repin it the class stays behind until a catch-up on #830.
 - A reader of a generated file for a film no row names ignores it, and a film missing from it has no expected entry; the next repin rewrites the file to the rows.
 
 Source: `work/2026-11/436_expected-scores-layout/spec.md`, `work/2026-11/829_expected-pins-merge-driver/plan.md`.

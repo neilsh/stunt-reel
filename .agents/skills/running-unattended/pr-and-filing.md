@@ -53,7 +53,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
 
    A reviewer that cannot post (the reviewed commit is not the PR's head: no PR yet, or an unpushed rule 5 fix, rebase or merge) replies with the absolute path of its `build/scratch/review-<sha7>.md`.
    For a `needs changes` verdict, give that path to the worker that makes the fixes, which reads the file itself; the coordinator opens it only for its first line.
-   Push the commit as reviewed (step 1), with no amend and no rebase (if one is needed, review again), open the PR if it is the first push, then post the file unchanged with `gh pr comment <n> --body-file <path>`: the pushed head is the reviewed SHA, so the comment's first line stays true.
+   Push the commit as reviewed (step 1), with no amend and no rebase (if one is needed, review again), open the PR if it is the first push, then post the file unchanged with `gh pr comment <n> --body-file <path>` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@<path>`): the pushed head is the reviewed SHA, so the comment's first line stays true.
    A re-review covers only what changed since the last reviewed commit, runs once after every finding is fixed, and prefers Antigravity when Gemini quota allows, otherwise the Sonnet [`reviewer`](../../../.claude/agents/reviewer.md) agent; a wording-only fix gets no re-review, so reply to the finding with the new text, except on a rule 5 PR, where it is re-reviewed like any other fix.
    A fix to any other PR is pushed first and its re-review posts a comment at the new head; the merge bar reads only comments at the current head.
 3. **Triage threads:** CodeRabbit no longer reviews automatically, so do not wait for it.

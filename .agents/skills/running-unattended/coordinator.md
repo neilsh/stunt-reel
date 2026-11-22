@@ -42,7 +42,7 @@ Each log line is:
 
 `<item>` is one key per tracked work item and `<state>` is one of `claimed`, `implementing`, `in review`, `fixing`, `armed`, `merged` and `handed off`.
 Key an issue's work by its issue number, with `PR #<n>` in the note once one opens, and a PR taken from the queue by its PR number; never switch an item's key mid-item.
-`<agent/model>` names the worker's agent and model, or its terminal handle, and `<task id>` is the task id its brief gave it.
+`<agent/model>` names the worker's agent and model, or its terminal handle, and `<task id>` is the task id of its current dispatch.
 The remaining fields are the branch, the head SHA at 7 characters or `-` when there is none, and the note.
 The note carries what the merge bar needs: the worktree path (for `worker-start --worktree "path:<workspace path>"`), the review comment URL and its verdict at the head, CodeRabbit (`not requested`, `check due <time>`, `checked`), the rule 5 reviewed SHA and PR-body path, a due time, the local gate at the head, the acceptance items as the worker reported them, review-body findings answered, changed paths that need a human cleared, and `env:local-only` (cleared or pending).
 The newest line for an item is self-contained: each new line repeats every still-active local fact from that item's earlier lines (worktree path, local gate at the head, acceptance report, review-body findings answered, human-path and `env:local-only` clearance, an unpushed rule 5 SHA and PR-body path, a pending CodeRabbit due time), since `mise run merge-bar` cannot re-derive them.
@@ -86,7 +86,7 @@ This is for Orca workers; a cloud session's workers are subagents that report in
 
 | Need | Line | Source |
 |---|---|---|
-| Worker reports | `orca orchestration send --body "<one plain line>" --report-path <file> --task-id <task id from your prompt>`; a follow-up dispatch has a new task id, so take it from the prompt, not the brief; keep the report file to about 10 lines, because the coordinator keeps it in context | [`harness-setup.md` § DSH](../../../docs/harness-setup.md#dsh) |
+| Worker reports | `orca orchestration send --body "<one plain line>" --report-path <file> --task-id <task id from your prompt>` (a follow-up dispatch has a new one); keep the report file to about 10 lines, because the coordinator keeps it in context | [`harness-setup.md` § DSH](../../../docs/harness-setup.md#dsh) |
 | Check | `orca orchestration check --terminal <handle>`; there is no `--from` | same |
 | Worker done | the `worker_done` event; a send to a busy worker returns a `messageId` and is usually not acted on, so send the next brief after `worker_done`, in full | [`loop-and-bounds.md`](loop-and-bounds.md#implementing-an-issue-and-bounding-rounds) |
 | Confirm a worker started | `worker-read`, once, within about 2 minutes of the dispatch | same |

@@ -114,7 +114,7 @@ DSH's `run_code` traps, each hit several times by workers on 2026-11-14:
   Edit in place with `edit`; to copy a file for a move or split, use `git show <ref>:<path>`, which gives its committed content without uncommitted edits.
 - **PowerShell 5.1 sets exit 1 when a native command writes to stderr**, even on success: trust `$LASTEXITCODE` or the gate's `] PASS` line.
   Its `>` writes UTF-16; pipe to `Out-File -Encoding utf8` instead.
-- **`orca orchestration send` breaks on a quoted or multi-line `--body`:** keep `--body` to one plain line and put the report in a file passed as `--report-path`, with `--task-id` copied from the current brief.
+- **`orca orchestration send` breaks on a quoted or multi-line `--body`:** keep `--body` to one plain line and put the report in a file passed as `--report-path`, with `--task-id` from the worker's prompt (a follow-up dispatch gets a new one).
   `orca orchestration check` takes `--terminal <handle>`, not `--from`.
 
 ## Orca
