@@ -7,7 +7,7 @@ month the work started, and the README's frontmatter is the folder's record
 ``new <slug> --issue N`` makes this month's folder for issue N, its README titled as the issue
 is; when ``gh`` cannot give the title, the README takes the slug and one note on stderr says
 so, and that the issue may not exist. Without ``--issue`` it needs ``gh`` to file the issue
-first, titled with ``--title`` (else the slug) and labelled ``needs-triage``, into the repository ``gh`` targets,
+first, titled with ``--title`` (else the slug) and labelled ``status:needs-triage``, into the repository ``gh`` targets,
 and only when that is the one the ``origin`` remote names: in a fork ``gh`` can target the
 upstream parent (``docs/agents/issue-tracker.md``). Filing needs ``--problem``, the issue's
 body, which gains a line naming the current branch; it refuses when an open issue already has
@@ -35,6 +35,8 @@ import subprocess
 import sys
 from datetime import date, datetime
 from pathlib import Path
+
+import labels
 
 from stunt_reel.work_items import (
     ISSUE_PAGE,
@@ -208,7 +210,7 @@ def _file_issue(slug: str, title: str, problem: str, run: Runner) -> int:
         filed += " It is titled with the slug: retitle it to state the problem or question."
     body = f"{problem.strip()}\n\n---\n{filed}"
     create = ["gh", "api", f"repos/{target}/issues", "-X", "POST", "-f", f"title={title}"]
-    fields = ["-f", f"body={body}", "-f", "labels[]=needs-triage", "--jq", ".html_url"]
+    fields = ["-f", f"body={body}", "-f", f"labels[]={labels.NEEDS_TRIAGE}", "--jq", ".html_url"]
     url = _output(run, [*create, *fields]).strip()
     if not (match := _ISSUE_URL.search(url)):
         raise _RefusedError(f"`gh api` printed {url!r}, not an issue URL; was the issue filed?")

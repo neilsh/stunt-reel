@@ -32,9 +32,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: python/scripts/project_sync.py
+          sparse-checkout: |
+            python/scripts/labels.py
+            python/scripts/project_sync.py
           sparse-checkout-cone-mode: false
-      # The script needs only the standard library and gh, both on the runner, so no toolchain.
+      # The scripts need only the standard library and gh, both on the runner, so no toolchain.
       - name: Sync one issue
         if: github.event_name == 'issues'
         env:

@@ -84,7 +84,7 @@ Before work one covers, read its skill:
 - **Worktrees and the data root**: making, removing or reaping a worktree, or finding the corpus or a capture: [`managing-worktrees`](.agents/skills/managing-worktrees/SKILL.md).
 - **Render parity**: parity, SSIM, IoU, capture, probe or sweep work: [`improving-render-parity`](.agents/skills/improving-render-parity/SKILL.md).
 - **Environments**: a cloud session, or work that needs a GPU, DOSBox, Orca or a data-root file: [`working-in-an-environment`](.agents/skills/working-in-an-environment/SKILL.md).
-- **Unattended queue runs**: draining open PRs and `ready-for-agent` issues unattended or overnight: [`running-unattended`](.agents/skills/running-unattended/SKILL.md).
+- **Unattended queue runs**: draining PRs and `status:ready-for-agent` issues unattended or overnight: [`running-unattended`](.agents/skills/running-unattended/SKILL.md).
 
 ### Worktrees
 

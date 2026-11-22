@@ -24,16 +24,16 @@ Part of the [`running-unattended`](SKILL.md) skill.
 
 Build the queue with `mise run queue` at the start and before each item, and keep it in `build/scratch/run-state.md`, which a restart reads ([`coordinator.md`](coordinator.md)).
 It prints one line per item, `ready` or the mechanical reason to skip it, and no bodies: the coordinator reads none, and the worker you dispatch reads the item's body.
-The mechanical reasons are open blockers and sub-issues ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions), "Count open blockers"), an open PR on the issue, `in-progress`, `ready-for-human`, a PR stacked on another open PR, an armed PR whose checks are pending, and an issue or PR labelled `local-only` in a cloud session ([`triage-labels.md`](../../../docs/agents/triage-labels.md#environment-roles), [`cloud-sessions.md`](../../../docs/cloud-sessions.md)).
+The mechanical reasons are open blockers and sub-issues ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions), "Count open blockers"), an open PR on the issue, `status:in-progress`, `status:ready-for-human`, a PR stacked on another open PR, an armed PR whose checks are pending, and an issue or PR labelled `env:local-only` in a cloud session ([`triage-labels.md`](../../../docs/agents/triage-labels.md#environment-roles), [`cloud-sessions.md`](../../../docs/cloud-sessions.md)).
 Take `ready` items in this order:
 
 1. **Open PRs**, in the stack order it prints, skipping any handed off earlier in this run.
    An armed PR shows as `ready` only once a check has failed, it conflicts with `main` (often after an earlier armed PR lands), or its checks passed and it still has not merged: fix it before new work.
-   On local-windows, a `local-only` PR a cloud run left for the GPU check is taken here ([`pr-and-filing.md`](pr-and-filing.md) step 5).
+   On local-windows, an `env:local-only` PR a cloud run left for the GPU check is taken here ([`pr-and-filing.md`](pr-and-filing.md) step 5).
    A stacked PR shows again once its base merges and GitHub retargets it to `main`.
-2. **`ready-for-agent` issues.**
+2. **`status:ready-for-agent` issues.**
    Skip, with a reason in the Shutdown report, any whose worker reports, after reading the body, that it needs an ADR, a human design choice or a machine this session lacks (release its claim as step 5 or 6 says).
-3. **Unblocked issues you filed as `ready-for-agent` during this run**, only once 1 and 2 are empty.
+3. **Unblocked issues you filed as `status:ready-for-agent` during this run**, only once 1 and 2 are empty.
 
 A "stop after N PRs" limit counts armed PRs: start no new item once N are armed.
 
@@ -50,7 +50,7 @@ The coordinator edits no PR, and sends every fix, text or code, back to a worker
 
 The worker does steps 2 to 4, filing its follow-up issues; the coordinator does steps 1, 5 and 6 and step 4's claim release and label swap, from the worker's report.
 
-1. **Claim it** before any branch commit ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions), "Claim an issue"): re-read its labels, swap `ready-for-agent` for `in-progress`, comment `Claimed by branch <branch>.`, and re-read the claim comments to verify yours is earliest, by first line, not whole comments (cloud: `gh api 'repos/{owner}/{repo}/issues/<n>/comments?per_page=100' --jq '.[] | select(.body | test("^(Claimed by branch|Released claim:|Lost claim to)")) | [.created_at, (.body | split("\n")[0])] | @tsv'`).
+1. **Claim it** before any branch commit ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions), "Claim an issue"): re-read its labels, swap `status:ready-for-agent` for `status:in-progress`, comment `Claimed by branch <branch>.`, and re-read the claim comments to verify yours is earliest, by first line, not whole comments (cloud: `gh api 'repos/{owner}/{repo}/issues/<n>/comments?per_page=100' --jq '.[] | select(.body | test("^(Claimed by branch|Released claim:|Lost claim to)")) | [.created_at, (.body | split("\n")[0])] | @tsv'`).
 2. **Branch** from an up-to-date `origin/main` (`git fetch origin`, then `git switch -c <branch> origin/main`).
 3. **3-round cap:** Spend at most **3 hypothesis rounds** (or 3 failures for the same gate/CI/approach reason) on an issue.
    Do not chain a new heuristic onto a failed sweep ([`improving-render-parity`](../improving-render-parity/SKILL.md)).
@@ -59,10 +59,10 @@ The worker does steps 2 to 4, filing its follow-up issues; the coordinator does 
 4. **Ship the clean slice, file the rest:** If a self-contained, evidence-backed subset passes `mise run check` — and, for a rendering change, satisfies the [`loop-rules.md`](../improving-render-parity/loop-rules.md#adoption-rule) adoption rule (`mise run parity` exits `0` even on drift, so read the winner line of `mise run sweep -- --var ... --track <track>` or `mise run judge -- <base> <cand> --track <track>`) — while the rest of the issue is blocked or exposes entangled bugs:
    - Commit the blocked prototype on its own branch from `origin/main` (`proto/<issue>-<slug>`, with no `DBG_*` switch and the hooks passing) and push it, then revert the blocked changes so only the clean subset remains, and complete the required artifacts for the kept subset (including `research/parity/expected/<class>.toml`, the work folder journal entry, [`error-readout.md`](../improving-render-parity/error-readout.md), and [`pr-evidence.md`](../improving-render-parity/pr-evidence.md) for rendering changes).
    - Verify `mise run check`, and ship the clean subset as a PR (`Fixes #N` when all remaining work is split into standalone follow-up issues, else `Part of #N`).
-   - The worker files `needs-triage` follow-up issues for the blocked pieces and reports their numbers, naming each prototype's branch and commit ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#organizing-issues), "A prototype lives on a branch"; [`pr-and-filing.md`](pr-and-filing.md#filing-issues-and-powershell-safety)).
-     If `#N` stays open (`Part of #N`), comment `Released claim: <why>.` on `#N` and swap `in-progress` for `ready-for-human` (or back to `ready-for-agent` with a `blocked-by` edge to the follow-up issue) so `#N` is not left in `in-progress`.
-5. **Needs another environment:** In a cloud session, an item that needs a resource the session lacks is handed on as [`cloud.md` § Handing work to local-windows](../working-in-an-environment/cloud.md#handing-work-to-local-windows) says: `Released claim: <why>.` on an unmerged issue, `in-progress` swapped for `ready-for-agent` or `needs-triage` beside `local-only`, and the run moves on.
-6. **Stuck or needs a human:** If 3 rounds finish with no shippable slice, or a non-obvious design/visual choice blocks progress, comment on the issue or PR with `Released claim: <why>.` (when releasing an unmerged issue), what you tried, the evidence, and the exact decision or resource needed; replace `in-progress` / `ready-for-agent` with `ready-for-human` (or `needs-info` when what blocks is a fact only a person knows); and move on.
+   - The worker files `status:needs-triage` follow-up issues for the blocked pieces and reports their numbers, naming each prototype's branch and commit ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#organizing-issues), "A prototype lives on a branch"; [`pr-and-filing.md`](pr-and-filing.md#filing-issues-and-powershell-safety)).
+     If `#N` stays open (`Part of #N`), comment `Released claim: <why>.` on `#N` and swap `status:in-progress` for `status:ready-for-human` (or back to `status:ready-for-agent` with a `blocked-by` edge to the follow-up issue) so `#N` is not left in `status:in-progress`.
+5. **Needs another environment:** In a cloud session, an item that needs a resource the session lacks is handed on as [`cloud.md` § Handing work to local-windows](../working-in-an-environment/cloud.md#handing-work-to-local-windows) says: `Released claim: <why>.` on an unmerged issue, `status:in-progress` swapped for `status:ready-for-agent` or `status:needs-triage` beside `env:local-only`, and the run moves on.
+6. **Stuck or needs a human:** If 3 rounds finish with no shippable slice, or a non-obvious design/visual choice blocks progress, comment on the issue or PR with `Released claim: <why>.` (when releasing an unmerged issue), what you tried, the evidence, and the exact decision or resource needed; replace `status:in-progress` / `status:ready-for-agent` with `status:ready-for-human` (or `status:needs-info` when what blocks is a fact only a person knows); and move on.
 
 ## Measuring
 
@@ -77,7 +77,7 @@ The quality guard is that no merged PR needs a fix or revert afterwards.
 
 ## Shutdown
 
-1. In a cloud session, a Shutdown at the context limit first waits until no worker is in flight, or until every in-flight item has a pushed branch (a rule 5 item only after its review and push), and releases any other item (`Released claim: <why>.`, `in-progress` back to `ready-for-agent`), listing it under **Needs you**, since its unpushed commit and body file are lost with the container.
+1. In a cloud session, a Shutdown at the context limit first waits until no worker is in flight, or until every in-flight item has a pushed branch (a rule 5 item only after its review and push), and releases any other item (`Released claim: <why>.`, `status:in-progress` back to `status:ready-for-agent`), listing it under **Needs you**, since its unpushed commit and body file are lost with the container.
    Then confirm no subagent or background task is still running (in a cloud session, except a worker whose item has a pushed branch; on local-windows, wait until none is, because step 2 reaps worktrees), and run `mise run queue` once for the PRs you armed.
    One no longer listed has merged or been closed (`gh pr view <n> --json state` says which: **Merged**, or **Needs you**); `armed, checks pending` goes under **Opened** as "auto-merge armed"; and any other PR you armed that is still listed goes under **Needs you**.
    Take each item's last state from its newest line in `build/scratch/run-state.md`.

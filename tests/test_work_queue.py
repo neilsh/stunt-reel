@@ -40,7 +40,7 @@ def _issue(number: int, *labels: str, **extra: Any) -> dict[str, Any]:
     return {
         "number": number,
         "title": f"Issue {number}",
-        "labels": [{"name": name} for name in ("ready-for-agent", *labels)],
+        "labels": [{"name": name} for name in ("status:ready-for-agent", *labels)],
         "body": "",
         "issue_dependencies_summary": {"blocked_by": 0},
         "sub_issues_summary": {"total": 0, "completed": 0},
@@ -71,9 +71,13 @@ def test_a_stack_cycle_ends() -> None:
 
 def test_a_pr_for_a_human_is_skipped_and_drafts_are_noted() -> None:
     first, second = q.pr_items(
-        [_pr(1, "a", labels=[{"name": "ready-for-human"}]), _pr(2, "b", base="a", draft=True)], {}
+        [
+            _pr(1, "a", labels=[{"name": "status:ready-for-human"}]),
+            _pr(2, "b", base="a", draft=True),
+        ],
+        {},
     )
-    assert first.skip == ["ready-for-human"]
+    assert first.skip == ["status:ready-for-human"]
     assert (second.skip, second.notes) == (["base #1 open"], ["draft", "base=a"])
 
 
@@ -178,13 +182,13 @@ def test_a_blocked_by_line_never_reads_the_next_line() -> None:
 
 def test_issues_without_ready_for_agent_are_left_out() -> None:
     other = _issue(7)
-    other["labels"] = [{"name": "needs-triage"}]
+    other["labels"] = [{"name": "status:needs-triage"}]
     assert [item.number for item in q.issue_items([other, _issue(8)], [], cloud=False)] == [8]
 
 
 def test_each_mechanical_skip_names_its_reason() -> None:
     issues = [
-        _issue(1, "in-progress"),
+        _issue(1, "status:in-progress"),
         _issue(2, issue_dependencies_summary={"blocked_by": 2}),
         _issue(3, sub_issues_summary={"total": 3, "completed": 1}),
         _issue(4),
@@ -194,7 +198,7 @@ def test_each_mechanical_skip_names_its_reason() -> None:
     ]
     skips = _skips(q.issue_items(issues, [_pr(9, "feat/4-thing")], cloud=False))
     assert skips == {
-        1: ["in-progress"],
+        1: ["status:in-progress"],
         2: ["2 open blocker(s)"],
         3: ["2 open sub-issue(s)"],
         4: ["PR #9"],
@@ -246,20 +250,25 @@ def test_a_pr_claims_every_issue_its_title_or_body_names() -> None:
     assert skips == {4: ["PR #9"], 5: ["PR #9"], 6: ["PR #9"], 7: ["PR #9"], 8: ["PR #10"], 11: []}
 
 
-@pytest.mark.parametrize(("cloud", "skip"), [(False, []), (True, ["local-only"])])
+@pytest.mark.parametrize(("cloud", "skip"), [(False, []), (True, ["env:local-only"])])
 def test_local_only_is_skipped_only_in_a_cloud_session(cloud: bool, skip: list[str]) -> None:
-    assert q.issue_items([_issue(1, "local-only")], [], cloud=cloud)[0].skip == skip
+    assert q.issue_items([_issue(1, "env:local-only")], [], cloud=cloud)[0].skip == skip
 
 
-@pytest.mark.parametrize(("cloud", "skip"), [(False, []), (True, ["local-only"])])
+@pytest.mark.parametrize(("cloud", "skip"), [(False, []), (True, ["env:local-only"])])
 def test_a_local_only_pr_is_skipped_only_in_a_cloud_session(cloud: bool, skip: list[str]) -> None:
-    pr = _pr(1, "a", labels=[{"name": "local-only"}])
+    pr = _pr(1, "a", labels=[{"name": "env:local-only"}])
     assert q.pr_items([pr], {}, cloud=cloud)[0].skip == skip
 
 
 def test_a_line_names_the_item_its_state_and_its_labels() -> None:
-    item = q.Item("issue", 12, "A  title\nover lines", ["tooling"], skip=["in-progress"])
-    assert item.line() == "issue #12    skip: in-progress            A title over lines  [tooling]"
+    item = q.Item(
+        "issue", 12, "A  title\nover lines", ["type:tooling"], skip=["status:in-progress"]
+    )
+    assert (
+        item.line()
+        == "issue #12    skip: status:in-progress     A title over lines  [type:tooling]"
+    )
 
 
 def _fake_gh(monkeypatch: pytest.MonkeyPatch, replies: dict[str, Any]) -> list[tuple[str, ...]]:
@@ -322,21 +331,21 @@ def test_a_gh_failure_exits_2(
 def test_main_reads_the_cloud_flag(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[_issue(1, "local-only")]]})
+    _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[_issue(1, "env:local-only")]]})
     monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path / "missing")
     monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
     assert q.main() == 0
-    assert "skip: local-only" in capsys.readouterr().out
+    assert "skip: env:local-only" in capsys.readouterr().out
 
 
 def test_main_detects_cloud_antigravity_home(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[_issue(1, "local-only")]]})
+    _fake_gh(monkeypatch, {"/pulls?": [[]], "/issues?": [[_issue(1, "env:local-only")]]})
     monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
     monkeypatch.setattr(q, "ANTIGRAVITY_HOME", tmp_path)
     assert q.main() == 0
-    assert "skip: local-only" in capsys.readouterr().out
+    assert "skip: env:local-only" in capsys.readouterr().out
 
 
 def test_is_cloud_session_is_false_when_neither_marker_is_present(

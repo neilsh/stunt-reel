@@ -78,7 +78,7 @@ A session fetched Mesa's source and built lavapipe from it on 2026-11-18 ([#702]
 There is no standing allow rule for a third-party source build in a cloud session ([#767](https://github.com/neilsh/stunt-reel/issues/767)).
 A build is allowed per issue: the owner names it in the brief, and the session asks at the permission prompt.
 Sources and build trees stay under `/tmp`, outside the checkout, and nothing from them is committed.
-A worker that is refused records it on the issue, labels it `ready-for-human` naming the build, and moves on.
+A worker that is refused records it on the issue, labels it `status:ready-for-human` naming the build, and moves on.
 
 - **Source:** the tag's archive from the allowed `gitlab.freedesktop.org`, `/mesa/mesa/-/archive/<tag>/mesa-<tag>.tar.gz` with the tag repeated in the file name, so `mesa-25.2.8` unpacks as `mesa-mesa-25.2.8` (HTTP 200, 67,863,192 bytes).
   The proxy refused CONNECT to the release tarball hosts `archive.mesa3d.org` and `mesa.freedesktop.org` (403; neither is on the list), and GitHub's `mesa3d/mesa` archive also returned 403.

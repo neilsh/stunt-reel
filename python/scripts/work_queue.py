@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Print the unattended queue: open PRs, then open ``ready-for-agent`` issues, one line each.
+"""Print the unattended queue: open PRs, then open ``status:ready-for-agent`` issues, one line each.
 
 Each line names the item and either ``ready`` or why it is skipped, for the reasons that need no
 judgement:
 
-- a PR labelled ``ready-for-human``, or ``local-only`` in a cloud session; one stacked on another
+- a PR labelled ``status:ready-for-human``, or ``env:local-only`` in a cloud session; one stacked on another
   open PR, which waits for its base to merge; or one whose auto-merge is armed and whose checks are pending. An armed PR with a
   failed check, a conflict, or passed checks yet still open is ``ready``, since it needs work;
-- an issue labelled ``in-progress``, or ``local-only`` in a cloud session
+- an issue labelled ``status:in-progress``, or ``env:local-only`` in a cloud session
   (``CLAUDE_CODE_REMOTE=true`` or ``/home/antigravity``; ``docs/agents/triage-labels.md`` § Environment roles);
 - an issue with an open blocker or open sub-issue (``docs/agents/issue-tracker.md``, "Count open
   blockers"): a native dependency, a ``Blocked by: #<n>`` line naming an open issue, or an open
@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import labels
 import merge_bar
 
 from stunt_reel.class_agreement import AGREEMENT_FILE, due, read_agreement, renderer_commits_since
@@ -184,7 +185,7 @@ def pr_items(
 ) -> list[Item]:
     """A line per open REST PR, in stack order.
 
-    *checks* is each armed PR's :func:`armed_state`; *cloud* skips ``local-only`` PRs.
+    *checks* is each armed PR's :func:`armed_state`; *cloud* skips ``env:local-only`` PRs.
     """
     heads = {pr["head"]["ref"]: pr["number"] for pr in prs}
     armed_notes = {
@@ -195,10 +196,10 @@ def pr_items(
     items = []
     for pr in stack_order(prs):
         item = Item("PR", pr["number"], pr["title"], _labels(pr))
-        if "ready-for-human" in item.labels:
-            item.skip.append("ready-for-human")
-        if cloud and "local-only" in item.labels:
-            item.skip.append("local-only")
+        if labels.READY_FOR_HUMAN in item.labels:
+            item.skip.append(labels.READY_FOR_HUMAN)
+        if cloud and labels.LOCAL_ONLY in item.labels:
+            item.skip.append(labels.LOCAL_ONLY)
         if pr["base"]["ref"] in heads:
             item.skip.append(f"base #{heads[pr['base']['ref']]} open")
         if pr.get("auto_merge"):
@@ -218,7 +219,7 @@ def pr_items(
 def issue_items(
     open_issues: list[dict[str, Any]], prs: list[dict[str, Any]], *, cloud: bool
 ) -> list[Item]:
-    """A line per open ``ready-for-agent`` issue among *open_issues*, in number order."""
+    """A line per open ``status:ready-for-agent`` issue among *open_issues*, in number order."""
     claimed: dict[int, int] = {}
     for pr in prs:
         found = claimed_issues(pr.get("body")) | claimed_issues(pr.get("title"))
@@ -234,14 +235,14 @@ def issue_items(
             children[n] = children.get(n, 0) + 1
     items = []
     for issue in sorted(open_issues, key=lambda i: i["number"]):
-        labels = _labels(issue)
-        if "ready-for-agent" not in labels:
+        names = _labels(issue)
+        if labels.READY_FOR_AGENT not in names:
             continue
-        item = Item("issue", issue["number"], issue["title"], labels)
-        if "in-progress" in labels:
-            item.skip.append("in-progress")
-        if cloud and "local-only" in labels:
-            item.skip.append("local-only")
+        item = Item("issue", issue["number"], issue["title"], names)
+        if labels.IN_PROGRESS in names:
+            item.skip.append(labels.IN_PROGRESS)
+        if cloud and labels.LOCAL_ONLY in names:
+            item.skip.append(labels.LOCAL_ONLY)
         native = (issue.get("issue_dependencies_summary") or {}).get("blocked_by", 0)
         blockers = native or len(blocked_by_line(issue.get("body")) & open_numbers)
         if blockers:

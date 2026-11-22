@@ -23,25 +23,23 @@ PROJECT = ps.Project(
 
 
 @pytest.mark.parametrize(
-    ("labels", "state", "subs", "status"),
+    ("names", "state", "subs", "status"),
     [
-        ({"ready-for-agent", "local-only"}, "open", 0, "Ready for agent"),
-        ({"ready-for-agent", "in-progress"}, "open", 0, "In progress"),
-        ({"ready-for-human"}, "open", 0, "Ready for human"),
-        ({"needs-info"}, "open", 0, "Needs info"),
-        ({"research"}, "open", 0, "Needs triage"),
+        ({"status:ready-for-agent", "env:local-only"}, "open", 0, "Ready for agent"),
+        ({"status:ready-for-agent", "status:in-progress"}, "open", 0, "In progress"),
+        ({"status:ready-for-human"}, "open", 0, "Ready for human"),
+        ({"status:needs-info"}, "open", 0, "Needs info"),
+        ({"type:research"}, "open", 0, "Needs triage"),
         (set(), "open", 0, "Needs triage"),
-        ({"ready-for-agent"}, "open", 3, "Goal"),
-        ({"wayfinder:map"}, "open", 2, "Goal"),
-        ({"wayfinder:task"}, "open", 0, None),
-        ({"wontfix"}, "closed", 0, "Done"),
+        ({"status:ready-for-agent"}, "open", 3, "Goal"),
+        ({"status:in-progress"}, "closed", 0, "Done"),
         (set(), "closed", 4, "Done"),
     ],
 )
 def test_status_follows_state_then_parenthood_then_labels(
-    labels: set[str], state: str, subs: int, status: str | None
+    names: set[str], state: str, subs: int, status: str
 ) -> None:
-    assert ps.derive_status(labels, state, subs) == status
+    assert ps.derive_status(names, state, subs) == status
 
 
 def _issue(number: int, *labels: str, state: str = "open", subs: int = 0) -> dict[str, Any]:
@@ -55,7 +53,7 @@ def _issue(number: int, *labels: str, state: str = "open", subs: int = 0) -> dic
 
 
 def _fake(
-    monkeypatch: pytest.MonkeyPatch, issue: dict[str, Any], status: str | None, archived: bool
+    monkeypatch: pytest.MonkeyPatch, issue: dict[str, Any], status: str, archived: bool
 ) -> list[str]:
     """Answer the REST read and the add mutation; record each mutation by its name."""
     writes: list[str] = []
@@ -65,7 +63,7 @@ def _fake(
             return issue
         query = args[3].removeprefix("query=")
         if "addProjectV2ItemById" in query:
-            value = {"name": status} if status else None
+            value = {"name": status}
             return {
                 "data": {
                     "addProjectV2ItemById": {
@@ -73,7 +71,7 @@ def _fake(
                     }
                 }
             }
-        names = {ps._SET: "set", ps._CLEAR: "clear", ps._UNARCHIVE: "unarchive"}
+        names = {ps._SET: "set", ps._UNARCHIVE: "unarchive"}
         option = next((a.removeprefix("option=") for a in args if a.startswith("option=")), None)
         writes.append(f"{names[query]} {option}" if option else names[query])
         return {"data": {}}
@@ -83,27 +81,23 @@ def _fake(
 
 
 def test_an_item_already_right_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
-    writes = _fake(monkeypatch, _issue(7, "ready-for-agent"), "Ready for agent", archived=False)
+    writes = _fake(
+        monkeypatch, _issue(7, "status:ready-for-agent"), "Ready for agent", archived=False
+    )
     assert ps.sync_issue(PROJECT, REPO, 7) is None
     assert writes == []
 
 
 def test_a_claim_moves_the_item_to_in_progress(monkeypatch: pytest.MonkeyPatch) -> None:
-    writes = _fake(monkeypatch, _issue(7, "in-progress"), "Ready for agent", archived=False)
+    writes = _fake(monkeypatch, _issue(7, "status:in-progress"), "Ready for agent", archived=False)
     assert ps.sync_issue(PROJECT, REPO, 7) == "#7: Ready for agent -> In progress"
     assert writes == ["set opt-In progress"]
 
 
 def test_a_reopened_issue_comes_back_from_the_archive(monkeypatch: pytest.MonkeyPatch) -> None:
-    writes = _fake(monkeypatch, _issue(7, "needs-triage"), "Done", archived=True)
+    writes = _fake(monkeypatch, _issue(7, "status:needs-triage"), "Done", archived=True)
     assert ps.sync_issue(PROJECT, REPO, 7) == "#7: unarchived, Done -> Needs triage"
     assert writes == ["unarchive", "set opt-Needs triage"]
-
-
-def test_a_wayfinder_ticket_has_its_status_cleared(monkeypatch: pytest.MonkeyPatch) -> None:
-    writes = _fake(monkeypatch, _issue(7, "wayfinder:task"), "Todo", archived=False)
-    assert ps.sync_issue(PROJECT, REPO, 7) == "#7: Todo -> (none)"
-    assert writes == ["clear"]
 
 
 def test_a_closed_archived_issue_stays_archived(monkeypatch: pytest.MonkeyPatch) -> None:
