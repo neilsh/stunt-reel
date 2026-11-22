@@ -350,7 +350,7 @@ fn a_shadow_casting_actor_draws_its_flattened_shape_in_index_0() {
 }
 
 /// An `OP_PERFDISK` disc draws on the actor's body and is skipped in its ground shadow,
-/// outline included, while non-disc triangles on the same shape still cast their shadow
+/// while non-disc triangles on the same shape still cast their shadow
 /// (`0xA045`, `research/playone-exe/sod-vm-generators.md` section 8.8).
 #[test]
 fn a_shadow_casting_actor_skips_its_perfdisk_discs_in_the_shadow() {
