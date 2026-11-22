@@ -9,9 +9,11 @@ amended 2026-11-14 (issue #541): links git tracks as symlinks are left for git t
 
 amended 2026-11-16 (issue #557): reap unlinks a changed tracked link before git stash push.
 
-amended 2026-11-22 (issue #912): a detached worktree named `review-*` is a candidate once no
-review is live in it; it has no branch to delete, its untracked test output never keeps it, and
-its in-tree test links are unlinked by the same walker.
+amended 2026-11-22 (issue #912): with `--reviews`, a detached worktree named `review-*` is a
+candidate once nothing under it or in its admin git dir changed for six hours, it holds no nested
+worktree, and Orca does not call it live; it has no branch to delete, and its in-tree test links
+are unlinked by the same walker. As with every candidate, a confirmed reap removes nothing while
+the drive is above its free-space bar unless `--force` is passed.
 
 accepted; `mise run reap` is the only supported way to remove a linked worktree.
 
@@ -51,13 +53,13 @@ junction unless `/XJ` is given. The practice cannot depend on which build is ins
 that no recursive delete ever sees a link git does not track:
 
 1. **classify** — the branch must be an ancestor of `main` (`--cherry` also accepts a
-   branch whose patches `main` already holds), or the worktree must be a detached
-   `review-*` scratch checkout no review is live in; the worktree must live inside this
-   checkout (`.agents/worktrees/`, `.claude/worktrees/`), and the candidate must be
-   clean;
+   branch whose patches `main` already holds), or, with `--reviews`, the worktree must be a
+   detached `review-*` scratch checkout that Orca, read and not guessed, does not call live,
+   that holds no nested worktree, and that nothing under it or in its admin git dir changed
+   in for six hours; the worktree must live inside this checkout (`.agents/worktrees/`,
+   `.claude/worktrees/`), and the candidate must be clean;
 2. **refuse** — modified tracked files need `--stash-dirty`, untracked files need
-   `--discard-untracked` (a review worktree's test output excepted), and any refusal stops
-   the run before the first delete;
+   `--discard-untracked`, and any refusal stops the run before the first delete;
 3. **unlink** — every reparse point under the worktree that git does not track is removed
    with `remove_link` (`rmdir`/`unlink` on the link, never its target), by a walker that
    never descends into one; a path git records as a symlink (mode 120000) is left for git to

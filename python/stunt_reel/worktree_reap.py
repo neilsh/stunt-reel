@@ -6,8 +6,10 @@ leaves), proves no untracked link remains, and only then removes the checkout (A
 ``--stash-dirty`` stash runs only after the links it would write through are unlinked (issue
 #557). A merged pull request whose head is the branch tip is found with ``gh``, and a
 confirmed reap refuses while any source it runs differs from ``origin/main``'s (issue #218).
-A detached worktree named ``review-*`` is review scratch: reap removes it once no review runs
-in it, so each review's checkout does not outlive the run (issue #912).
+A detached worktree named ``review-*`` is review scratch: with ``--reviews``, reap removes it
+once nothing under it, or in its git dir, changed for ``REVIEW_QUIET_HOURS``, and only when the
+drive is under its free-space bar or ``--force`` is passed; a review runs as a subagent in the
+coordinator's terminal, which Orca does not see (issue #912).
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -43,6 +46,13 @@ POOL_DIRS: tuple[str, ...] = (".agents/worktrees", ".claude/worktrees")
 
 #: Folder-name prefix of a review's own detached worktree (.claude/agents/reviewer.md).
 REVIEW_PREFIX = "review-"
+
+#: Hours a review worktree must be untouched before reap calls its review finished. A review runs
+#: as a subagent in the coordinator's terminal, so Orca holds no terminal or agent at the path;
+#: the only sign of a live review is a change under the checkout or in its admin git dir.
+REVIEW_QUIET_HOURS = 6
+#: :data:`REVIEW_QUIET_HOURS` in seconds.
+REVIEW_QUIET_SECONDS = REVIEW_QUIET_HOURS * 60 * 60
 
 
 @dataclass
@@ -306,9 +316,13 @@ class _OrcaWorkspaces:
 
 
 def _changed(path: Path, *, untracked: bool) -> list[str]:
-    """Modified tracked files, or untracked ones, of one checkout."""
+    """Modified tracked files, or untracked ones, of one checkout.
+
+    Read with ``--no-optional-locks`` so reap's own inspection does not rewrite the index;
+    that rewrite is part of the review quiet period's signal, and reap must not fake it.
+    """
     flag = "--untracked-files=normal" if untracked else "--untracked-files=no"
-    result = _git(path, "status", "--porcelain=v1", flag)
+    result = _git(path, "--no-optional-locks", "status", "--porcelain=v1", flag)
     if result.returncode != 0:
         return [f"cannot read status: {result.stderr.strip()}"]
     lines = result.stdout.splitlines()
@@ -361,7 +375,9 @@ def _changed_paths(worktree: Path) -> frozenset[str] | None:
     Read in its NUL-separated form, which quotes no name, so a path holding a space, a
     quote or a non-ASCII character stays exact.
     """
-    result = _git(worktree, "status", "--porcelain=v1", "-z", "--untracked-files=no")
+    result = _git(
+        worktree, "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=no"
+    )
     if result.returncode != 0:
         return None
     fields = result.stdout.split("\0")
@@ -464,21 +480,98 @@ def _outside_pool(
     return selector, ""
 
 
-def _review_in_use(worktree: _Worktree, orca: _OrcaWorkspaces | None) -> str | None:
-    """Why a detached review worktree may be in use, or None when nothing keeps it.
+def _newest_mtime(root: Path) -> float | None:
+    """The newest modification time under *root*, following no link, or None if unreadable.
 
-    A review checkout is scratch, so nothing in it is work worth keeping: untracked files are
-    a test run's caches, and the in-tree ``current`` link is unlinked before removal. A modified
-    tracked file means someone wrote to the checkout, and a live Orca terminal or unfinished
-    agent at its path means a review is running there; either keeps it.
+    The walk is ``_size``'s: a link is skipped and never descended, so a data-root junction's
+    target never reads as activity in the checkout. The directory that holds a new link still
+    records that it appeared, in its own modification time.
     """
-    if orca is not None:
-        found = orca.find(worktree.path)
-        if found is not None and found.live is not None:
-            return f"is in use ({found.live})"
+    newest = 0.0
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            newest = max(newest, current.stat(follow_symlinks=False).st_mtime)
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    path = Path(entry.path)
+                    if is_link(path):
+                        continue
+                    try:
+                        newest = max(newest, entry.stat(follow_symlinks=False).st_mtime)
+                    except OSError:
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(path)
+        except OSError:
+            return None
+    return newest
+
+
+def _review_admin_dir(worktree: Path) -> Path | None:
+    """The git directory of *worktree* alone (``<common-dir>/worktrees/<name>``), or None."""
+    result = _git(worktree, "rev-parse", "--path-format=absolute", "--git-dir")
+    text = result.stdout.strip()
+    if result.returncode != 0 or not text:
+        return None
+    return Path(text)
+
+
+def _age(seconds: float) -> str:
+    """Roughly how long ago *seconds* were, in the shortest whole unit."""
+    if seconds < 90:
+        return "under 2 minutes"
+    minutes = round(seconds / 60)
+    if minutes < 120:
+        return f"{minutes} minutes"
+    return f"{round(seconds / 3600)} hours"
+
+
+def _review_skip(
+    worktree: _Worktree,
+    entries: list[_Worktree],
+    orca: _OrcaWorkspaces | None,
+    *,
+    reviews: bool,
+) -> str | None:
+    """Why review worktree *worktree* stays, or None when it may be reaped.
+
+    A review runs as a subagent in the coordinator's terminal, so Orca has no terminal or agent
+    at the path and a clean tree says nothing about the review. Reap therefore reaps one only
+    when *reviews* asks for it, nothing under the checkout or in its admin git dir changed for
+    :data:`REVIEW_QUIET_SECONDS`, it holds no nested worktree, and Orca — read, not guessed —
+    does not call it live. Untracked files are left to the usual ``--discard-untracked`` refusal.
+    """
+    if not reviews:
+        return "review worktree; reap reaps one only with --reviews"
+    nested = sorted(entry.path.name for entry in entries[1:] if worktree.path in entry.path.parents)
+    if nested:
+        return f"review worktree holds nested worktrees ({', '.join(nested)}); remove them first"
+    if orca is None:
+        return "review worktree; Orca is unavailable, so whether a review is live is unknown"
+    found = orca.find(worktree.path)
+    if orca.unavailable is not None:
+        return "review worktree; Orca is unavailable, so whether a review is live is unknown"
+    if found is not None and found.live is not None:
+        return f"review worktree is in use ({found.live})"
+    admin = _review_admin_dir(worktree.path)
+    if admin is None:
+        return "review worktree; git cannot name its git dir, so its activity is unknown"
+    # Read before any status call runs: git may rewrite the index, which is this signal itself.
+    checkout = _newest_mtime(worktree.path)
+    gitdir = _newest_mtime(admin)
+    if checkout is None or gitdir is None:
+        return "review worktree; its activity cannot be read"
+    age = time.time() - max(checkout, gitdir)
+    if age < REVIEW_QUIET_SECONDS:
+        return (
+            f"review worktree changed {_age(age)} ago,"
+            f" inside its {REVIEW_QUIET_HOURS}-hour quiet period"
+        )
     dirty = _changed(worktree.path, untracked=False)
     if dirty:
-        return f"has {len(dirty)} modified file(s)"
+        return f"review worktree has {len(dirty)} modified file(s)"
     return None
 
 
@@ -491,14 +584,15 @@ def _candidates(
     orca: _OrcaWorkspaces | None = None,
     stash_dirty: bool = False,
     discard_untracked: bool = False,
+    reviews: bool = False,
 ) -> tuple[list[_Candidate], list[str]]:
     """Classify worktrees under *repo*; return what may go and what will not.
 
     An Orca workspace is judged as a pool worktree is, but one with files *stash_dirty* or
     *discard_untracked* does not allow is skipped, not a reason to refuse every other removal.
-    A detached worktree whose folder is named ``review-*`` is a review's scratch checkout: it is a
-    candidate unless a review is in use there, and a worktree on a branch is never one just
-    because its folder is named that.
+    A detached worktree whose folder is named ``review-*`` is a review's scratch checkout: only
+    *reviews* makes it a candidate, and then only while :func:`_review_skip` finds it idle; a
+    worktree on a branch is never one just because its folder is named that.
     """
     primary = entries[0].path
     candidates: list[_Candidate] = []
@@ -518,9 +612,9 @@ def _candidates(
             if not worktree.path.name.startswith(REVIEW_PREFIX):
                 skipped.append(f"{label}: detached HEAD")
                 continue
-            in_use = _review_in_use(worktree, orca)
-            if in_use is not None:
-                skipped.append(f"{worktree.path.name}: review worktree {in_use}; left alone")
+            review_why = _review_skip(worktree, entries, orca, reviews=reviews)
+            if review_why is not None:
+                skipped.append(f"{worktree.path.name}: {review_why}")
                 continue
             candidates.append(
                 _Candidate(
@@ -612,14 +706,11 @@ def _describe(candidate: _Candidate) -> str:
 
 
 def _blocked(candidate: _Candidate, *, stash_dirty: bool, discard_untracked: bool) -> list[str]:
-    """What stops *candidate* from being removed without losing work.
-
-    A review worktree's untracked files are its test run's scratch, which never keeps it.
-    """
+    """What stops *candidate* from being removed without losing work."""
     reasons: list[str] = []
     if candidate.dirty and not stash_dirty:
         reasons.append("modified files; pass --stash-dirty to stash them")
-    if candidate.untracked and not discard_untracked and not candidate.review:
+    if candidate.untracked and not discard_untracked:
         reasons.append("untracked files; pass --discard-untracked to drop them")
     return reasons
 
@@ -636,7 +727,8 @@ def _reap_one(
 
     An Orca workspace goes through *orca* (``orca worktree rm``) after the same unlinking, and
     only while Orca, asked again now, still calls it idle. A review worktree is asked the
-    same way, then removed with git once no review is live in it.
+    same way, and is kept if a nested worktree appeared under it since classification, since
+    neither status check sees a registered worktree's contents.
     """
     worktree = candidate.worktree
     branch = worktree.branch
@@ -645,7 +737,8 @@ def _reap_one(
     # The worktree must still hold the branch and tip it was classified with: one switched to
     # another branch is not this candidate, and a commit made since is in neither main nor
     # the merged PR.
-    current = next((entry for entry in _worktrees(repo) if entry.path == path), None)
+    entries = _worktrees(repo)
+    current = next((entry for entry in entries if entry.path == path), None)
     if current is None or current.branch != branch:
         return f"{label}: worktree changed since it was classified; left alone"
     if current.head != worktree.head:
@@ -653,11 +746,15 @@ def _reap_one(
             f"{label}: tip moved since it was classified "
             f"({worktree.head[:10]} -> {current.head[:10]}); left alone"
         )
-    if candidate.review and orca is not None:
-        orca.refresh()
-        found = orca.find(path)
-        if found is not None and found.live is not None:
-            return f"{label}: review worktree is in use ({found.live}); left alone"
+    if candidate.review:
+        nested = sorted(entry.path.name for entry in entries if path in entry.path.parents)
+        if nested:
+            return f"{label}: holds nested worktrees ({', '.join(nested)}); left alone"
+        if orca is not None:
+            orca.refresh()
+            found = orca.find(path)
+            if found is not None and found.live is not None:
+                return f"{label}: review worktree is in use ({found.live}); left alone"
     if candidate.orca is not None:
         if orca is None:
             return f"{label}: Orca workspace with no way to remove it; left alone"
@@ -671,7 +768,7 @@ def _reap_one(
     untracked = _changed(path, untracked=True)
     if dirty and not stash_dirty:
         return f"{label}: modified files"
-    if untracked and not discard_untracked and not candidate.review:
+    if untracked and not discard_untracked:
         return f"{label}: untracked files"
     if dirty:
         # The stash writes a changed tracked path back out through any link at or above it:
@@ -949,8 +1046,9 @@ def _reap(
     force: bool = False,
     min_free_gb: float = DEFAULT_MIN_FREE_GB,
     allow_stale_script: bool = False,
+    reviews: bool = False,
 ) -> int:
-    """Remove merged worktrees and unused review worktrees, unlinking every link first.
+    """Remove merged worktrees and, with *reviews*, idle review ones, unlinking links first.
 
     A confirmed reap refuses when any source it runs differs from ``origin/main``'s, unless
     *allow_stale_script* is set; *force* does not lift that.
@@ -985,6 +1083,7 @@ def _reap(
         orca=orca,
         stash_dirty=stash_dirty,
         discard_untracked=discard_untracked,
+        reviews=reviews,
     )
     print(f"worktree   {repo}")
     try:
@@ -1007,8 +1106,8 @@ def _reap(
         )
     if orca.unavailable is not None:
         print(
-            f"  ! orca unavailable ({orca.unavailable}); Orca workspaces are not removed,"
-            " and whether one is live is unknown"
+            f"  ! orca unavailable ({orca.unavailable}); Orca workspaces and review"
+            " worktrees are not removed, and whether one is live is unknown"
         )
     print("candidates:")
     for candidate in candidates:
