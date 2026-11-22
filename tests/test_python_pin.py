@@ -1,8 +1,9 @@
-"""The bootstrap scripts run on the pinned Python, never whichever ``python`` PATH finds first.
+"""The scripts a task runs on bare `python` take the pinned Python, never whichever PATH finds first.
 
 ``ensure``, ``init`` and ``seed`` run ``worktree_init.py`` with a bare ``python`` while the package
 it imports uses ``lazy from`` (Python 3.15), so a 3.14 first on PATH died with a ``SyntaxError``
-before a line of the script ran (issue #854).
+before a line of the script ran (issue #854). The gate tasks run ``gate.py`` the same way, so it
+takes the same guard before it loads a ``stunt_reel`` module (issue #884).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import re
 import sys
 from pathlib import Path
 
+import gate
 import pytest
 import python_pin
 
@@ -146,6 +148,7 @@ def test_an_old_interpreter_with_no_pin_reports_both_versions(
     monkeypatch.setattr(sys, "executable", str(found))
     assert python_pin.guard(tmp_path / "worktree_init.py", ["init"]) == 1
     error = capsys.readouterr().err
+    assert "cannot run worktree_init.py" in error, "the message must name the script it guards"
     assert "needs Python 3.15 or newer" in error
     assert "3.15.2" in error, "the message must name the version mise.toml pins"
     assert str(found) in error
@@ -169,14 +172,15 @@ def test_a_new_enough_interpreter_is_left_alone(monkeypatch: pytest.MonkeyPatch)
     assert looked_up == []
 
 
-def test_the_bootstrap_modules_parse_before_python_315() -> None:
-    """Nothing the guard imports may use syntax an interpreter below the floor cannot parse.
+def test_the_guarded_scripts_parse_before_python_315() -> None:
+    """Nothing a guarded entry point imports may use syntax below the floor cannot parse.
 
     ``lazy from`` is the 3.15 import that raised the SyntaxError, and ruff format writes Python
     3.14's unparenthesized ``except A, B:`` at py315: the guard exists for older interpreters, so
-    it cannot report from a file they cannot read.
+    it cannot report from a file they cannot read. ``gate.py`` runs on bare ``python`` too, so it
+    must parse before ``python_pin.guard`` can hand it on (issue #884).
     """
-    for name in ("python_pin.py", "worktree_init.py"):
+    for name in ("gate.py", "python_pin.py", "worktree_init.py"):
         source = (SCRIPTS / name).read_text(encoding="utf-8")
         assert re.search(r"^\s*lazy\s+from\b", source, re.MULTILINE) is None, f"{name}: lazy from"
         assert re.search(r"^\s*except\s+[\w.]+\s*,", source, re.MULTILINE) is None, (
@@ -196,3 +200,49 @@ def test_the_entry_point_imports_the_package_after_the_guard() -> None:
         (node.module or "").split(".")[0] for node in tree.body if isinstance(node, ast.ImportFrom)
     }
     assert "stunt_reel" not in imported, "the package is imported before the guard runs"
+
+
+def _calls(tree: ast.Module, name: str) -> list[int]:
+    """The line number of each call to *name*, in source order."""
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
+    ]
+
+
+def test_the_gate_runs_the_guard_before_loading_the_package() -> None:
+    """``gate.py`` loads no ``stunt_reel`` module until the guard may have handed it on (#884)."""
+    tree = ast.parse((SCRIPTS / "gate.py").read_text(encoding="utf-8"))
+    guard, loads = _calls(tree, "_guard"), _calls(tree, "_load_stunt_reel")
+    assert guard, "the gate never calls the guard"
+    assert loads, "the gate loads no stunt_reel module"
+    assert min(guard) < min(loads), "a stunt_reel module is loaded before the guard can report"
+
+
+def test_an_old_interpreter_runs_the_gate_on_the_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 3.14 ``python`` hands the gate to mise's 3.15 and returns that run's status (#884)."""
+    pinned = _fake_executable(tmp_path / "installs", "python", version="Python 3.15.2", status=7)
+    mise = _fake_mise(tmp_path / "bin", pinned)
+    monkeypatch.setenv("PATH", str(mise.parent))
+    monkeypatch.setattr(sys, "version_info", (3, 14, 7))
+    assert gate._guard() == 7
+
+
+def test_a_too_old_interpreter_with_no_pin_names_the_gates_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The gate exits 1 naming the interpreter and version it needs, never a SyntaxError."""
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    monkeypatch.setattr(sys, "version_info", (3, 14, 7))
+    found = tmp_path / "Python314" / "python.exe"
+    monkeypatch.setattr(sys, "executable", str(found))
+    assert gate._guard() == 1
+    error = capsys.readouterr().err
+    assert "cannot run gate.py" in error, "the message must name the script it guards"
+    assert "needs Python 3.15 or newer" in error
+    assert "3.15.2" in error, "the message must name the version mise.toml pins"
+    assert str(found) in error
+    assert "SyntaxError" not in error

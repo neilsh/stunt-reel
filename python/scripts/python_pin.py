@@ -6,7 +6,8 @@ an older ``python`` cannot parse that, so the import raises ``SyntaxError`` befo
 script runs (issue #854). ``guard`` runs first, compares this interpreter with
 ``requires-python`` in ``pyproject.toml``, and runs the script again on the interpreter
 ``mise which python`` names when this one is too old. When mise cannot name one, it reports the
-interpreter it found and the version needed.
+interpreter it found and the version needed. The gate tasks run ``gate.py`` the same way, so it
+takes the same guard before loading a ``stunt_reel`` module (issue #884).
 
 ``stunt_reel/uv.py`` is the same idea for uv. This module sits in ``python/scripts`` because it
 must import without the package, whose ``__init__`` imports ``tac``, and it keeps to the standard
@@ -121,16 +122,17 @@ def interpreter_version(python: Path) -> tuple[int, int, int] | None:
 
 def not_runnable(
     required: tuple[int, int, int],
+    script: Path,
     found: Path,
     running: tuple[int, int, int],
     pin: str | None,
     candidate: Path | None,
     candidate_version: tuple[int, int, int] | None,
 ) -> str:
-    """The report for a ``python`` too old to parse the package, naming the interpreter found."""
+    """The report for a ``python`` too old to parse the package, naming the script and interpreter."""
     message = [
         (
-            f"  ! python {_dotted(running)} at {found} cannot run worktree_init.py: "
+            f"  ! python {_dotted(running)} at {found} cannot run {script.name}: "
             f"it needs Python {_dotted(required)} or newer (requires-python in pyproject.toml)."
         )
     ]
@@ -178,7 +180,9 @@ def guard(script: Path, argv: list[str]) -> int | None:
             # It vanished between the lookup and the run: report below, do not raise.
             pass
     print(
-        not_runnable(required, found, running, pinned_version(), candidate, candidate_version),
+        not_runnable(
+            required, script, found, running, pinned_version(), candidate, candidate_version
+        ),
         file=sys.stderr,
     )
     return 0 if argv[:1] == ["ensure"] else 1

@@ -566,6 +566,9 @@ run = "python python/scripts/cov_summary.py"
 # The three gate tasks dispatch one script (ADR 0014; lanes: ADR 0016). The step list is the
 # leaf tasks in python/scripts/gate.py, so the halves cannot run a shorter gate than the whole,
 # and every step there needs a lane in STEP_LANES or the gate refuses to start.
+# They launch bare `python`, so they work before this checkout has a virtualenv; gate.py hands
+# itself to the interpreter mise pins through python_pin.guard before loading the package, and
+# checks the uv on PATH first, which is why it is not `uv run` (issue #884).
 [tasks.check-rust]
 description = "Rust half of the gate (fmt, clippy, test, doc, no-default-features matrix), one line per step"
 run = "python python/scripts/gate.py rust"

@@ -38,11 +38,15 @@ commit that has landed since. ``--base`` names another ref. ``gate.py scope`` pr
 (also when git cannot give the paths), and exits 0; CI's ``scope`` job reads it
 ([`ci.yml`](../../.github/workflows/ci.yml)).
 
-Two guards stop a run that could not pass. Before a Python or docs step, the ``uv`` on PATH must
-be the version ``mise.toml`` pins: a stale standalone uv ahead of mise's otherwise fails only in
-``test-py``, after every other step. And each step gets ``STEP_TIMEOUT_S`` (``--step-timeout``);
-a step past it is killed with its child processes and reported as failed, where a hung test
-would otherwise hold the gate until stopped by hand.
+Three guards stop a run that could not pass. The gate runs as plain ``python`` (ADR 0014), so
+``python_pin.guard`` first hands it to the interpreter ``mise which python`` names when PATH gives
+one older than ``requires-python``, or exits 1 naming the version it needs: loading a
+``stunt_reel`` module there raises ``SyntaxError`` before any step could run (issue #884). Before
+a Python or docs step, the ``uv`` on PATH must be the version ``mise.toml`` pins: a stale
+standalone uv ahead of mise's otherwise fails only in ``test-py``, after every other step. And
+each step gets ``STEP_TIMEOUT_S`` (``--step-timeout``); a step past it is killed with its child
+processes and reported as failed, where a hung test would otherwise hold the gate until stopped
+by hand.
 
 Usage: ``python python/scripts/gate.py {all|rust|py|docs|scope} [--full] [--base REF] [--tail N]
 [--step-timeout S]``
@@ -64,10 +68,30 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO
-lazy from types import ModuleType
+
+import python_pin
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+    from types import ModuleType
+
+
+def _guard() -> int | None:
+    """Run the gate again on the pinned interpreter when this one is too old for the package.
+
+    ``stunt_reel`` uses ``lazy from`` (PEP 810, Python 3.15) and ``gate.py`` runs as plain
+    ``python`` (ADR 0014), so ``python_pin.guard`` runs before the first load, as it does for
+    ``worktree_init.py`` (issue #884). None when this interpreter is new enough, or has just run
+    the gate on the interpreter ``mise which python`` names.
+    """
+    return python_pin.guard(Path(__file__).resolve(), list(sys.argv[1:]))
+
+
+# The guard runs before the first load: an older interpreter cannot parse ``lazy from``, and its
+# SyntaxError would come before anything could report the interpreter it found (issue #884).
+_GUARD_STATUS = _guard()
+if _GUARD_STATUS is not None:
+    sys.exit(_GUARD_STATUS)
 
 
 def _load_stunt_reel(name: str) -> ModuleType:
