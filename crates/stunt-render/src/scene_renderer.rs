@@ -29,6 +29,9 @@
 //! from their own runs of the world mesh, so they cover it; the world's main draw leaves them
 //! out. The world stays depth-tested throughout (`research/parity/painter-order.md`).
 //!
+//! A view-facing prop whose box ([`GpuModel::bounds`]) lies wholly outside the view frustum is
+//! skipped, as the world's off-screen nodes are, since it would cover no pixel.
+//!
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
 use std::collections::HashMap;
@@ -45,7 +48,7 @@ use stunt_core::sprite::SpriteImage;
 use stunt_core::world::{ArenaSpan, MeshSpans, World};
 
 use crate::camera::{CameraController, CameraGpuResources, eye_relative_matrix};
-use crate::mesh::{GpuMeshSlice, GpuModel, prop_runs_group};
+use crate::mesh::{GpuMeshSlice, GpuModel, frustum_keeps, prop_runs_group};
 use crate::outline::{Outlined, outlined};
 use crate::palette::PaletteLut;
 use crate::pipeline::{
@@ -517,6 +520,7 @@ impl SceneRenderer {
         let controller = camera.unwrap_or(&authored);
         let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
         camera_resources.upload(queue, &camera_uniform);
+        let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
 
         self.prepared.clear();
         self.steps.clear();
@@ -529,8 +533,7 @@ impl SceneRenderer {
             // The world's own matrix, and with the camera's the one its vertices reach clip
             // space by, in the shader's order: the cull sees what the draw would.
             let world_matrix = eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array());
-            let view_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj)
-                * Mat4::from_cols_array(&world_matrix);
+            let view_proj = rotation_proj * Mat4::from_cols_array(&world_matrix);
             let (ground, base, decals) = {
                 let lod_view = CameraTransform {
                     eye: frame.view.eye,
@@ -557,6 +560,14 @@ impl SceneRenderer {
             let Some(model) = self.shapes.get(&prop.shape_id) else {
                 continue;
             };
+            // A prop whose box is off screen draws no pixel, so it is skipped before its
+            // walk; the box is tested by the matrix its vertices reach clip space by.
+            let model_matrix = eye_relative_matrix(eye, &prop.world_matrix);
+            if let Some(bounds) = model.bounds
+                && !frustum_keeps(rotation_proj * Mat4::from_cols_array(&model_matrix), bounds)
+            {
+                continue;
+            }
             let to_model = Mat4::from_cols_array(&prop.world_matrix).inverse();
             let local_eye = to_model.transform_point3(eye);
             let view = model_view(&to_model, frame);
@@ -570,9 +581,7 @@ impl SceneRenderer {
                 continue;
             }
             let shape_id = prop.shape_id;
-            let uniform =
-                ModelUniform::new(eye_relative_matrix(eye, &prop.world_matrix), LAYER_PROP)
-                    .with_shape(shape_id);
+            let uniform = ModelUniform::new(model_matrix, LAYER_PROP).with_shape(shape_id);
             self.push_draw(
                 |uniform| Target::Shape { shape_id, uniform },
                 &uniform,

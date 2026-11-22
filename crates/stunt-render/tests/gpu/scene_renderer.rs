@@ -16,7 +16,9 @@ use stunt_core::contracts::{
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::{FilmScene, ViewCamera};
-use stunt_core::world::{GROUND_NODE, PlacementRecords, PropRun, TerrainSurface, World};
+use stunt_core::world::{
+    FacingProp, GROUND_NODE, PlacementRecords, PropRun, TerrainSurface, World,
+};
 use stunt_render::{CameraController, LAYER_FIRST_ACTOR, LAYER_NONE, Offscreen, RenderOptions};
 
 const SHAPE_ID: u16 = 7;
@@ -540,6 +542,42 @@ pub(crate) fn world_of(ir: SodModelIr) -> World {
         prop_runs: Vec::new(),
         placements: PlacementRecords::default(),
     }
+}
+
+/// A view-facing prop whose box crosses the top of the view still draws the part inside it,
+/// and one wholly above the view draws nothing: the frustum cull skips only a prop whose box
+/// lies outside the view.
+#[test]
+fn a_view_facing_prop_crossing_the_view_edge_still_draws() {
+    common::gpu_test(|| {
+        // The 45-degree lens at 8 m sees 3.31 m either side of the axis vertically; the
+        // triangle spans 2 m about its origin.
+        let drawn_rows = |y: f32| {
+            let mut world = world_of(SodModelIr::new("EMPTY"));
+            world.view_facing = vec![FacingProp {
+                shape: SHAPE_ID,
+                position: [0.0, y, 0.0],
+                gates: Vec::new(),
+            }];
+            // The camera looks along -Z, so the prop turns a half turn to face it: wound the
+            // other way, the triangle faces the eye.
+            let mut tri = triangle("TRI", VisibilityCondition::Always);
+            tri.indices.reverse();
+            let shapes = HashMap::from([(SHAPE_ID, tri)]);
+            let scene = FilmScene::new(timeline(Vec::new()), shapes, Some(world));
+            let (w, h, drawn) = render(&scene)?;
+            let rows: Vec<usize> = (0..w * h).filter(|&n| drawn[n]).map(|n| n / w).collect();
+            Some((h, rows))
+        };
+        let Some((h, crossing)) = drawn_rows(4.0) else {
+            return;
+        };
+        assert!(!crossing.is_empty(), "the crossing prop drew nothing");
+        // Its base, inside the view, lands at the top.
+        assert!(crossing.iter().all(|&row| row < h / 4), "{crossing:?}");
+        let (_, above) = drawn_rows(6.0).expect("adapter");
+        assert!(above.is_empty(), "{above:?}");
+    });
 }
 
 /// A world prop's pixels carry the shape word of the prop run holding its vertices, and

@@ -48,7 +48,7 @@ pub struct GpuNode {
     pub marks: Vec<(u32, u32)>,
 }
 
-/// An axis-aligned box in a model's space, the unit of the world's view-frustum cull.
+/// An axis-aligned box in a model's space, the unit of the view-frustum cull.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NodeBounds {
     /// Corner holding the smallest value on every axis.
@@ -121,6 +121,14 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
     bounds
 }
 
+/// The box around every root's subtree, from [`node_bounds`]; `None` when no root has one.
+fn model_bounds(roots: &[NodeId], bounds: &[Option<NodeBounds>]) -> Option<NodeBounds> {
+    roots
+        .iter()
+        .filter_map(|root| bounds.get(root.0 as usize).copied().flatten())
+        .reduce(|all, root| all.union(Some(root)))
+}
+
 /// Whether any of `bounds` is inside `view_proj`'s view frustum; `false` only when the box lies
 /// wholly outside one plane, so a box that touches the frustum is kept.
 ///
@@ -134,7 +142,7 @@ fn node_bounds(ir: &SodModelIr) -> Vec<Option<NodeBounds>> {
 /// The test has no margin: `view_proj` is an `f32` product the GPU does not form, so a box
 /// within rounding of a plane can fall either way; such a box covers no more than a
 /// sub-pixel sliver of the view.
-fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
+pub(crate) fn frustum_keeps(view_proj: Mat4, bounds: NodeBounds) -> bool {
     let [x, y, z, w] = [
         view_proj.row(0),
         view_proj.row(1),
@@ -205,6 +213,9 @@ pub struct GpuModel {
     pub nodes: Vec<GpuNode>,
     /// Root node IDs.
     pub root_nodes: Vec<NodeId>,
+    /// Box around every vertex the model can draw, in its own space: the union of its roots'
+    /// [`GpuNode::bounds`], or `None` when it has no mesh.
+    pub bounds: Option<NodeBounds>,
 }
 
 impl GpuModel {
@@ -324,6 +335,7 @@ impl GpuModel {
             })
             .collect();
 
+        let bounds = model_bounds(&ir.root_nodes, &bounds);
         Self {
             name: ir.name.clone(),
             chunks,
@@ -331,6 +343,7 @@ impl GpuModel {
             index_count: arena_index(ir.indices.len()),
             nodes,
             root_nodes: ir.root_nodes.clone(),
+            bounds,
         }
     }
 
@@ -1728,6 +1741,26 @@ mod tests {
         );
         ir.root_nodes = vec![parent];
         ir
+    }
+
+    #[test]
+    fn a_model_box_covers_every_root() {
+        let bounds = [
+            Some(boxed([0.0, 0.0, 0.0], 1.0)),
+            Some(boxed([0.0, 0.0, 0.0], 0.5)),
+            None,
+            Some(boxed([5.0, 0.0, 0.0], 1.0)),
+        ];
+        // Node 1 is a child, so its box is already in its root's; node 2 has no mesh.
+        let roots = [NodeId(0), NodeId(2), NodeId(3)];
+        assert_eq!(
+            model_bounds(&roots, &bounds),
+            Some(NodeBounds {
+                min: Vec3::new(-1.0, -1.0, -1.0),
+                max: Vec3::new(6.0, 1.0, 1.0),
+            })
+        );
+        assert_eq!(model_bounds(&[NodeId(2)], &bounds), None);
     }
 
     #[test]
