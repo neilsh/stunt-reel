@@ -149,7 +149,7 @@ description = "The UTC time to the minute and the local day, for a stop time or 
 run = '''python -c "import datetime as d; print(d.datetime.now(d.UTC).isoformat(timespec='minutes'), 'local day', d.date.today())"'''
 
 [tasks.queue]
-description = "The unattended queue: open PRs in stack order, then open ready-for-agent issues, one line each with ready or the mechanical reason to skip it; prints no bodies"
+description = "The unattended queue: open PRs in stack order, then open status:ready-for-agent issues, one line each with ready or the mechanical reason to skip it; prints no bodies"
 run = "uv run python python/scripts/work_queue.py"
 
 [tasks.work]

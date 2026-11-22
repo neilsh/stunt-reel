@@ -31,13 +31,13 @@ A cloud session's proxy refuses GraphQL, so `gh issue`, `gh repo view` and `gh p
   A file only on an unmerged branch gets a permalink at that branch's pushed commit SHA, not the branch name, which 404s once the branch is deleted on merge.
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<number>/labels -f labels[]=<label>` adds, `gh api -X DELETE repos/{owner}/{repo}/issues/<number>/labels/<label>` removes)
 - **Claim an issue**: a session's first write on an issue it will work, before any branch commit.
-  Re-read its labels; if it already carries `in-progress`, it is taken: pick another or ask the user.
-  Otherwise `gh issue edit <n> --remove-label ready-for-agent --add-label in-progress` (or `ready-for-human`), then `gh issue comment <n> --body "Claimed by branch <branch>."`, then re-read the comments: the earliest `Claimed by branch` since the latest `Released claim:` holds the issue, and a later claimant comments `Lost claim to <branch>.`, leaves the labels alone and picks another.
-  The holder re-reads the labels and adds `in-progress` if it is missing.
+  Re-read its labels; if it already carries `status:in-progress`, it is taken: pick another or ask the user.
+  Otherwise `gh issue edit <n> --remove-label status:ready-for-agent --add-label status:in-progress` (or `status:ready-for-human`), then `gh issue comment <n> --body "Claimed by branch <branch>."`, then re-read the comments: the earliest `Claimed by branch` since the latest `Released claim:` holds the issue, and a later claimant comments `Lost claim to <branch>.`, leaves the labels alone and picks another.
+  The holder re-reads the labels and adds `status:in-progress` if it is missing.
   A session that stops without a PR comments `Released claim: <why>.`, then swaps the label back.
   Cloud: the label and comment REST forms above, re-reading them with `gh api repos/{owner}/{repo}/issues/<n> --jq '[.labels[].name]'`.
-  An `in-progress` issue whose named branch is gone, with no open PR, is a dropped claim: ask the user before taking it over, then comment `Released claim: <branch> dropped it.` before your own claim.
-  When choosing work, skip `in-progress` issues.
+  An issue carrying `status:in-progress` whose named branch is gone, with no open PR, is a dropped claim: ask the user before taking it over, then comment `Released claim: <branch> dropped it.` before your own claim.
+  When choosing work, skip issues carrying `status:in-progress`.
 - **Close**: post the explanation with `gh issue comment <number> --body "..."`, then `gh issue close <number>` (cloud: the comment form above, then `gh api -X PATCH repos/{owner}/{repo}/issues/<number> -f state=closed`).
   On an already-closed issue, `gh issue close --comment` drops the comment and still exits 0.
 - **Cite what you read**: before posting a comment or issue body that cites a file:line or a figure, read each cited line once (`rg -n`, `sed -n`) and drop any it does not bear out; a subagent's report is a lead, not a citation.
@@ -52,13 +52,13 @@ In a fork, `gh` can default to the upstream parent, so before a session's first 
 
 ## Organizing issues
 
-These rules cover every issue except a `wayfinder:*` map or ticket, which `/wayfinder` labels, chooses, resolves and closes by **Wayfinding operations** below.
+These rules cover every issue except the map and tickets `/wayfinder` chooses, resolves and closes by **Wayfinding operations** below.
 
 - **Parents are goals.**
   A parent issue names an outcome and ends with a `Done when every sub-issue is closed.` line, e.g. #85 (terrain loss), #97 (actors and props).
   Every parent can close; there is no standing bucket parent.
   An issue has no parent by default: give it one when a goal fits, and file a short-lived parent only for a batch that has its own `Done when` (as #169 did for lints).
-- **An issue with open sub-issues is never startable**, whatever its labels: a spec that `/to-tickets` split keeps its `ready-for-agent` label.
+- **An issue with open sub-issues is never startable**, whatever its labels: a spec that `/to-tickets` split keeps its `status:ready-for-agent` label.
   Skip it when choosing work.
 - **Closing the last child closes the parent.**
   Whoever closes a parent's last open sub-issue closes the parent too, as in **Close**.
@@ -73,7 +73,7 @@ These rules cover every issue except a `wayfinder:*` map or ticket, which `/wayf
   Before `gh issue create`, run `gh issue list --state open --search "<key terms>"` (cloud: `gh api 'search/issues?q=repo:{owner}/{repo}+type:issue+<terms>'`) with the symptom's distinctive words (the error, the file, the film).
   On a clear match, add the new sighting as a comment there instead of filing a duplicate.
 - **The filer labels the issue.**
-  On `gh issue create`, apply one state label (`needs-triage` when unsure), `research` or `tooling` where either applies, `local-only` where only `local-windows` can do it ([triage-labels.md](triage-labels.md)), and a parent where a goal fits.
+  On `gh issue create`, apply one state label (`status:needs-triage` when unsure), `type:research` or `type:tooling` where either applies, `env:local-only` where only `local-windows` can do it ([triage-labels.md](triage-labels.md)), and a parent where a goal fits.
   Cloud: the create and label forms above.
 - No milestones; parents show progress.
   The owner's [Issue Radar](https://github.com/users/neilsh/projects/1) project is a dashboard the `project-sync` workflow derives from labels and issue state ([`project_sync.py`](../../python/scripts/project_sync.py)); agents never read or write it, and a cloud session cannot, since Projects is GraphQL-only.
@@ -115,11 +115,9 @@ Read it as in **Read an issue** above.
 Used by `/wayfinder`.
 The **map** is a single issue with **child** issues as tickets.
 
-- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body.
-  `gh issue create --label wayfinder:map` (cloud: the create and label forms above).
+- **Map**: a single issue holding the Notes / Decisions-so-far / Fog body.
 - **Child ticket**: an issue linked to the map as a GitHub sub-issue (see **Make an issue a sub-issue of a parent**).
   Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body.
-  Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`).
   Once claimed, the ticket is assigned to the driving dev.
 - **Blocking**: see **Blocking** under Conventions.
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list; cloud: `gh api 'repos/{owner}/{repo}/issues?state=open&per_page=100' --jq '[.[] | select(.pull_request | not)]'`), drop any with an open blocker (see **Count open blockers**, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.

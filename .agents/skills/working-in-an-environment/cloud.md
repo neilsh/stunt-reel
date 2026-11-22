@@ -39,7 +39,7 @@ The proxy refuses ref deletes, so a session cannot delete a remote branch: creat
 
 Renders run on lavapipe, which scored within 0.002 of the GPU on all seven reference films on the one `crates` tree [`lavapipe.md` § 4](../../../research/parity/lavapipe.md#4-lavapipe-beside-the-gpu-on-one-crates-tree) measured: render, score, judge and adopt on it.
 The exception is where lavapipe's residues lie ([§ 5](../../../research/parity/lavapipe.md#5-what-still-differs)): a change to depth testing or depth bias (`crates/stunt-render/src/pipeline.rs`), to the vertex transform, projection or clipping, to draw order, or to how `shade` is interpolated (`shade` and `shade_perspective` in `crates/stunt-render/src/shaders/mode13h.wgsl`).
-Its PR opens with lavapipe's scores, says in its body that it needs `mise run judge` on the GPU, and takes `local-only` instead of being armed.
+Its PR opens with lavapipe's scores, says in its body that it needs `mise run judge` on the GPU, and takes `env:local-only` instead of being armed.
 Work whose result turns on single pixels of our render, rather than on a score (a `background` band in `references.toml`, which admits an index only when no actor pixel of ours carries it), goes to local-windows: lavapipe differs from the GPU by 23 to 147 index-plane pixels per tick, averaged over each film (§ 5).
 
 `gh` has no `--attach` here, so a PR's comparison pictures are committed: [`pr-evidence.md`](../improving-render-parity/pr-evidence.md) step 6 says where.
@@ -50,7 +50,7 @@ The session runs dosbox-automation, so `capture-ref` and `make-all` run here as 
 It lacks DOSBox-X (`debug-x`), a window for `play`, GPU timing, Orca, dsh and Antigravity, the owner's `wrangler login`, and the data-root files no cloud archive holds: the full game's music, `corpus/siarchive` beyond FreeFlight, and captures added since the `captures` archive was last packed ([`manifests/cloud-assets.toml`](../../../manifests/cloud-assets.toml)).
 Work that needs one goes to [`local-windows`](local-windows.md):
 
-- **An issue** gains `local-only` and swaps its state label (`in-progress` once claimed) for `ready-for-agent` when its body says exactly what to run there, otherwise `needs-triage`; the body names the resource.
-- **A PR** gains `local-only`, and its body names the check left to run.
+- **An issue** gains `env:local-only` and swaps its state label (`status:in-progress` once claimed) for `status:ready-for-agent` when its body says exactly what to run there, otherwise `status:needs-triage`; the body names the resource.
+- **A PR** gains `env:local-only`, and its body names the check left to run.
 
-`ready-for-human` is for a decision only a person makes.
+`status:ready-for-human` is for a decision only a person makes.

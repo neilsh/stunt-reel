@@ -25,16 +25,14 @@ PROJECT = ps.Project(
 @pytest.mark.parametrize(
     ("labels", "state", "subs", "status"),
     [
-        ({"ready-for-agent", "local-only"}, "open", 0, "Ready for agent"),
-        ({"ready-for-agent", "in-progress"}, "open", 0, "In progress"),
-        ({"ready-for-human"}, "open", 0, "Ready for human"),
-        ({"needs-info"}, "open", 0, "Needs info"),
-        ({"research"}, "open", 0, "Needs triage"),
+        ({"status:ready-for-agent", "env:local-only"}, "open", 0, "Ready for agent"),
+        ({"status:ready-for-agent", "status:in-progress"}, "open", 0, "In progress"),
+        ({"status:ready-for-human"}, "open", 0, "Ready for human"),
+        ({"status:needs-info"}, "open", 0, "Needs info"),
+        ({"type:research"}, "open", 0, "Needs triage"),
         (set(), "open", 0, "Needs triage"),
-        ({"ready-for-agent"}, "open", 3, "Goal"),
-        ({"wayfinder:map"}, "open", 2, "Goal"),
-        ({"wayfinder:task"}, "open", 0, None),
-        ({"wontfix"}, "closed", 0, "Done"),
+        ({"status:ready-for-agent"}, "open", 3, "Goal"),
+        ({"status:in-progress"}, "closed", 0, "Done"),
         (set(), "closed", 4, "Done"),
     ],
 )
@@ -83,27 +81,23 @@ def _fake(
 
 
 def test_an_item_already_right_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
-    writes = _fake(monkeypatch, _issue(7, "ready-for-agent"), "Ready for agent", archived=False)
+    writes = _fake(
+        monkeypatch, _issue(7, "status:ready-for-agent"), "Ready for agent", archived=False
+    )
     assert ps.sync_issue(PROJECT, REPO, 7) is None
     assert writes == []
 
 
 def test_a_claim_moves_the_item_to_in_progress(monkeypatch: pytest.MonkeyPatch) -> None:
-    writes = _fake(monkeypatch, _issue(7, "in-progress"), "Ready for agent", archived=False)
+    writes = _fake(monkeypatch, _issue(7, "status:in-progress"), "Ready for agent", archived=False)
     assert ps.sync_issue(PROJECT, REPO, 7) == "#7: Ready for agent -> In progress"
     assert writes == ["set opt-In progress"]
 
 
 def test_a_reopened_issue_comes_back_from_the_archive(monkeypatch: pytest.MonkeyPatch) -> None:
-    writes = _fake(monkeypatch, _issue(7, "needs-triage"), "Done", archived=True)
+    writes = _fake(monkeypatch, _issue(7, "status:needs-triage"), "Done", archived=True)
     assert ps.sync_issue(PROJECT, REPO, 7) == "#7: unarchived, Done -> Needs triage"
     assert writes == ["unarchive", "set opt-Needs triage"]
-
-
-def test_a_wayfinder_ticket_has_its_status_cleared(monkeypatch: pytest.MonkeyPatch) -> None:
-    writes = _fake(monkeypatch, _issue(7, "wayfinder:task"), "Todo", archived=False)
-    assert ps.sync_issue(PROJECT, REPO, 7) == "#7: Todo -> (none)"
-    assert writes == ["clear"]
 
 
 def test_a_closed_archived_issue_stays_archived(monkeypatch: pytest.MonkeyPatch) -> None:

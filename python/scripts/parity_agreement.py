@@ -30,7 +30,7 @@ With ``--if-due`` it also skips a tree it has already measured, or whose pin bra
 (``chore/agreement-<tree>``) is on ``origin``, so a flagged or unmerged tree is rendered once;
 a pin branch left behind by a closed pull request holds its tree until the next renderer commit.
 ``--post`` comments the result on the open ``Class agreement batch`` issue, once per tree, files
-an issue per flag that no open ``class-agreement`` issue covers, and comments a failed
+an issue per flag that no open ``area:class-agreement`` issue covers, and comments a failed
 measurement. The defaults suit Linux; on local-windows the canonical lavapipe runs under WSL, so
 the job passes ``--wsl DISTRO`` (``wsl_commands``), which replaces both lavapipe commands (#908).
 """
@@ -48,6 +48,8 @@ import sys
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import labels
 
 from stunt_reel.class_agreement import (
     AGREEMENT_FILE,
@@ -82,7 +84,7 @@ STATE_DIR = Path("build/agreement")
 #: The batch's worktree, relative to the primary checkout.
 WORKTREE = Path(".agents/worktrees/agreement")
 #: The label every agreement issue carries.
-LABEL = "class-agreement"
+LABEL = labels.CLASS_AGREEMENT
 #: The open issue each batch comments on.
 STANDING_TITLE = "Class agreement batch"
 #: The default command that renders every reference film on the canonical lavapipe.

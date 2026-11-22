@@ -5,7 +5,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
 ## Bringing a PR to mergeable and Merge bar
 
 1. **Rebase** an unpushed branch onto `origin/main` (or onto the stack parent) and resolve conflicts; for a branch already pushed, merge `origin/main` into its head instead, since a force-push may be refused in auto mode and the squash merge keeps `main` linear anyway: a worker does it, since the coordinator reads no diff.
-   The worker makes a design choice only when it is cheap or one option is clearly better, and records it in the PR body; otherwise it reports, and the coordinator hands the PR to a human (`ready-for-human`).
+   The worker makes a design choice only when it is cheap or one option is clearly better, and records it in the PR body; otherwise it reports, and the coordinator hands the PR to a human (`status:ready-for-human`).
    Then push, with one exception.
    A *rule 5 PR* is one whose diff touches a path [`AGENTS.md` § Committing](../../../AGENTS.md#committing) rule 5 names.
    Its first commit and every later fix, rebase or merge is committed locally and not pushed until step 2 has reviewed it at its local SHA; you then push it unchanged and, for the first push, open the PR.
@@ -78,12 +78,12 @@ Part of the [`running-unattended`](SKILL.md) skill.
      The bar's machine-checkable part is met only when it prints `PASS`; on `FAIL` it names each reason.
      On a missing, stale or `needs changes` review comment, dispatch a re-review at `HEAD` (step 2).
    - The worker's report says each acceptance item is met; the `body` line of `mise run merge-bar --issue <N>` covers the `Fixes`, `Closes` or `Part of #<N>` line, so do not open the body.
-   - **Environment:** in a cloud session, a rendering PR that [`cloud.md` § Rendering](../working-in-an-environment/cloud.md#rendering) sends to the GPU takes `local-only` and stays unarmed.
-     A local-windows run takes such a PR from the queue, runs `mise run judge` on the GPU as the PR body asks, and, when the GPU's verdict matches lavapipe's, removes `local-only` and arms it under this bar; otherwise it fixes the PR as for a failed check.
+   - **Environment:** in a cloud session, a rendering PR that [`cloud.md` § Rendering](../working-in-an-environment/cloud.md#rendering) sends to the GPU takes `env:local-only` and stays unarmed.
+     A local-windows run takes such a PR from the queue, runs `mise run judge` on the GPU as the PR body asks, and, when the GPU's verdict matches lavapipe's, removes `env:local-only` and arms it under this bar; otherwise it fixes the PR as for a failed check.
    - **Allowed vs blocked changes:** the coordinator lists the PR's changed file names (`gh api "repos/{owner}/{repo}/pulls/<n>/files?per_page=100&page=1" --jq '.[].filename'`, next page by number), never the diff; a path under `docs/adr/`, `crates/stunt-core/Cargo.toml` or `research/parity/references.toml` sends a worker or the reviewer to say whether it is a blocked change before arming.
      A draft (`gh api repos/{owner}/{repo}/pulls/<n> --jq .draft` prints `true`) goes to a human without a worker, per the **Never** rule that follows.
      Updating `research/parity/expected/<class>.toml` for an adopted parity change is **allowed** to merge (`crates` must be `git rev-parse HEAD:crates` with `crates/` clean).
-     **Never** arm or merge draft PRs, PRs that repin a film's capture hash (`sha256` or `all_sha256` in `references.toml`), PRs that add a dependency to `stunt-core` (`[I7]`), or PRs that add or modify an ADR (unless an accepted ADR is already approved by the user, or its ADR changes only retarget links to follow a move, which the reviewer confirms; link text that spells the old path counts as prose, and prose naming an old path goes to a human) — hand those to a human (`ready-for-human`).
+     **Never** arm or merge draft PRs, PRs that repin a film's capture hash (`sha256` or `all_sha256` in `references.toml`), PRs that add a dependency to `stunt-core` (`[I7]`), or PRs that add or modify an ADR (unless an accepted ADR is already approved by the user, or its ADR changes only retarget links to follow a move, which the reviewer confirms; link text that spells the old path counts as prose, and prose naming an old path goes to a human) — hand those to a human (`status:ready-for-human`).
 6. **After arming:** Fast-forward the `main` ref without switching any checkout (`git fetch origin main:main`; skip it when git refuses because a checkout has `main` checked out), on local-windows run the disk check and tidy ([`loop-and-bounds.md`](loop-and-bounds.md#clock-and-disk-space)), and refresh the queue.
 
 ## Filing issues and PowerShell safety
@@ -93,6 +93,6 @@ Part of the [`running-unattended`](SKILL.md) skill.
    Write every issue/PR body or comment to `build/scratch/<name>.md` with the harness's file-write tool (or `[IO.File]::WriteAllText` with a single-quoted `@'...'@` string, [`docs/harness.md`](../../../docs/harness.md#windows-powershell-51)) and pass `--body-file build/scratch/<name>.md`.
    Use full commit-SHA permalinks on `origin/main` when linking code from an issue body.
 3. **Labels:** Apply one state label ([`triage-labels.md`](../../../docs/agents/triage-labels.md)):
-   - Label a newly filed issue `ready-for-agent` only when it is an unblocked out-of-scope finding that (a) names the files involved, (b) carries the evidence (`file:line`, offset, or command), (c) has a testable done condition, and (d) has no non-obvious design choice.
-   - Always label blocked follow-ups split from the current ticket `needs-triage` (or `ready-for-human` when a human decision is the blocker).
-   - Add `local-only` when the issue needs a resource only local-windows has ([`triage-labels.md`](../../../docs/agents/triage-labels.md#environment-roles)).
+   - Label a newly filed issue `status:ready-for-agent` only when it is an unblocked out-of-scope finding that (a) names the files involved, (b) carries the evidence (`file:line`, offset, or command), (c) has a testable done condition, and (d) has no non-obvious design choice.
+   - Always label blocked follow-ups split from the current ticket `status:needs-triage` (or `status:ready-for-human` when a human decision is the blocker).
+   - Add `env:local-only` when the issue needs a resource only local-windows has ([`triage-labels.md`](../../../docs/agents/triage-labels.md#environment-roles)).

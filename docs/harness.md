@@ -34,7 +34,7 @@ Nothing here is a fact about Stunt Island.
   It runs the gate in the foreground (on Claude Code, with a 600 s timeout) and stops any background job or monitor before its report: on #578 a Haiku implementer's leftover monitors woke it after its report, and it reported three more times.
 * **Approvals the user need not give.**
   * A fresh subagent reviews each spec or plan and the author revises it before presenting it, so the user sees the revised version.
-  * A [startable](agents/issue-tracker.md#conventions) issue labelled `ready-for-agent` goes straight to a plan, or to implementation when it needs none; brainstorming is for the rest.
+  * A [startable](agents/issue-tracker.md#conventions) issue labelled `status:ready-for-agent` goes straight to a plan, or to implementation when it needs none; brainstorming is for the rest.
 * **Glob and search from a named folder.**
   Claude Code's Glob ignores `.gitignore` and `.ignore`, so from the root it walks every worktree under `.claude/worktrees/` (about 200,000 files each through their data-root links) and can time out.
   Pass `path`, or `ls` the root.

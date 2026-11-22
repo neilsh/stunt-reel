@@ -6,7 +6,7 @@ review's ``clean`` comment at the head, a ``Fixes``/``Closes``/``Part of`` line 
 body's attribution line (a note, never a failure), open review threads, review-body findings,
 and draft state. It never arms, merges, comments or edits. What it cannot read stays with the
 coordinator: that ``mise run check`` passed locally on the head, that a CodeRabbit review a
-person requested has been checked, the worker's acceptance report, and the ``local-only`` and
+person requested has been checked, the worker's acceptance report, and the ``env:local-only`` and
 human-path rules (``.agents/skills/running-unattended/pr-and-filing.md`` step 5). It does not
 run ``pr_lint``'s pin and date checks: they read a working tree, and the coordinator never
 checks out the branch, so they are pre-push only, in the implementer's checkout.

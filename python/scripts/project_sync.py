@@ -21,17 +21,19 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
+import labels
+
 #: Seconds before a ``gh`` call counts as failed.
 GH_TIMEOUT = 60
 
 #: State label -> Status option, highest precedence first. An open issue with none of these is
 #: ``Needs triage``, so an issue filed without a label shows up where the owner looks.
 LABEL_STATUS = (
-    ("in-progress", "In progress"),
-    ("needs-info", "Needs info"),
-    ("ready-for-human", "Ready for human"),
-    ("ready-for-agent", "Ready for agent"),
-    ("needs-triage", "Needs triage"),
+    (labels.IN_PROGRESS, "In progress"),
+    (labels.NEEDS_INFO, "Needs info"),
+    (labels.READY_FOR_HUMAN, "Ready for human"),
+    (labels.READY_FOR_AGENT, "Ready for agent"),
+    (labels.NEEDS_TRIAGE, "Needs triage"),
 )
 DONE = "Done"
 GOAL = "Goal"
@@ -130,13 +132,11 @@ def graphql(query: str, **variables: str | int | None) -> Any:
 
 
 def derive_status(labels: set[str], state: str, sub_issues: int) -> str | None:
-    """The Status an issue belongs in; ``None`` for a ``wayfinder:*`` issue, which has none."""
+    """The Status an issue belongs in: closed is ``Done``, a parent ``Goal``, else its label's."""
     if state == "closed":
         return DONE
     if sub_issues > 0:
         return GOAL
-    if any(label.startswith("wayfinder:") for label in labels):
-        return None
     return next((status for label, status in LABEL_STATUS if label in labels), TRIAGE)
 
 
