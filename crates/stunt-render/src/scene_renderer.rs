@@ -31,7 +31,8 @@
 //!
 //! A view-facing prop whose box ([`GpuModel::bounds`]) lies wholly outside the view frustum is
 //! skipped, as the world's off-screen nodes are, since it would cover no pixel
-//! ([`GpuModel::in_frustum`] keeps a prop with discs under a lens other than the default).
+//! ([`GpuModel::in_frustum`] keeps a prop with discs under a lens other than the default; the
+//! world's walk keeps a node whose subtree holds discs likewise).
 //!
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
@@ -542,7 +543,12 @@ impl SceneRenderer {
                     lens: frame.lens,
                     ..CameraTransform::default()
                 };
-                world.collect_world_meshes(eye, Some(&lod_view), view_proj)
+                world.collect_world_meshes(
+                    eye,
+                    Some(&lod_view),
+                    view_proj,
+                    camera_uniform.disc_depth_scale,
+                )
             };
             let uniform = self.uniforms.push(&ModelUniform::new(world_matrix, 0));
             let untag =
