@@ -205,7 +205,7 @@ _Source: [two-vertex polygons read](../../work/2026-11/393_two-vertex-polygons/j
 
 _Source: [the polygon span builder read for a facing test](../../work/2026-11/850_playone-back-face-cull/journal.md#2026-11-20-the-polygon-span-builder-read-for-a-facing-test)._
 
-Lines, polygon spans and the back-face span test (sections 8.10 to 8.12) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md).
+Lines, polygon spans, the back-face span test and the polygon clipper (sections 8.10 to 8.13) are in [`sod-vm-lines-spans.md`](sod-vm-lines-spans.md).
 
 ## Ruled out
 
