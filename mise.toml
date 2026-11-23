@@ -128,6 +128,10 @@ run = "uv run python python/scripts/worktree_init.py clean"
 description = "Remove worktrees, Orca workspaces included (through orca worktree rm; live or nested ones are skipped), whose branch is already in main or was squash-merged (a merged PR whose head is the branch tip, read with gh), or, with --reviews, a detached review-* checkout nothing under it or in its git dir changed for 6 hours, unlinking their links first; removes nothing while 20 GB or more is free unless --force, or while the files it runs differ from origin/main's unless --allow-stale-script (mise run reap -- --yes [--force] [--min-free-gb N] [--allow-stale-script] [--cherry] [--prune] [--stash-dirty] [--discard-untracked] [--reviews])"
 run = "uv run python python/scripts/worktree_init.py reap"
 
+[tasks.review-worktree]
+description = "Make a review's detached worktree at <primary>/.claude/worktrees/review-<PR or sha7> from any checkout or worktree (a PR number fetches its head from origin; a SHA is taken locally, an unpushed one included, else a full SHA is fetched from origin); an existing path gets a suffix (review-977b); the last output line is the absolute path (mise run review-worktree -- <PR number | SHA>)"
+run = "uv run python python/scripts/worktree_init.py review"
+
 [tasks.pr-threads]
 description = "A pull request's unresolved review threads, one line each with the comment id to reply to, then its review-body findings; or reply in and resolve a thread. Uses GraphQL, or in a cloud session the proxy's REST thread routes (mise run pr-threads -- <number> [--all] | [--reply <id> --body <text>|--body-file <path>] [--resolve <id>])"
 run = "uv run python python/scripts/pr_threads.py"
