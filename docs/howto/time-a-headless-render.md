@@ -42,3 +42,33 @@ Each line is `[stuntreel] timing <phase> <milliseconds> ms`, the milliseconds a 
 
 The upload phases are CPU time in the upload calls: the device may finish copying afterwards, and that time falls in `loop`.
 A `--workers N` run passes the flag to its child renders (`args` in [`workers.rs`](../../crates/stunt-cli/src/workers.rs)), and each child prints its own lines.
+
+## 3. Time variants against each other
+
+`mise run ab` ([`ab.py`](../../python/scripts/ab.py), [`ab_timing.py`](../../python/stunt_reel/ab_timing.py)) runs `--report-timing` renders of two or more variants in interleaved rounds, so a timing issue's gate names its rounds and order rather than restating a runner.
+A variant is a name, optionally its own binary, and the environment variables it sets; the first is the baseline.
+Build every binary first: the runner runs them as they are.
+
+```bash
+mise run ab -- --out work/2026-11/<issue>_<slug> --name span-b     --variant base --variant "skip STUNT_PROBE_SKIP_WORLD=1"     --span 3680..=3979 --adapter lavapipe --rounds 4 --order alternate
+mise run ab -- --out work/2026-11/<issue>_<slug> --name two-builds     --variant "old binary=build/old.exe" --variant "new binary=build/new.exe"
+```
+
+* **Cells.**
+  Each `--span` runs on each `--adapter` (`lavapipe`, the default, or `gpu`).
+  Lavapipe sets `VK_DRIVER_FILES` to `--icd` (default `<data root>/tools/mesa-25.2.8/x64/lvp_icd.x86_64.json`, [Render on lavapipe beside a GPU](render-on-lavapipe.md)) and passes `--software-only`; the GPU leaves both off.
+  A run whose `render.json` names the other adapter class stops the run.
+  The film is the Patch #3 `LOCATION` and its capture's `.ALL`, with the parity loop's `--width 320 --height 200 --viewport-rows 185`; `--film` and `--all` name others.
+* **Rounds and order.**
+  `--rounds` (alias `--pairs`) runs every variant once per round.
+  `--order alternate` runs them forward in even rounds and reversed in odd ones, `rotate` starts each round one variant later; the two agree for two variants.
+* **Quiet machine.**
+  It refuses to start, and stops between runs, while a `stuntreel`, `cargo` or `rustc` process runs; `--force` overrides.
+* **Output.**
+  `<out>/<name>.csv` has one row per run: the cell, round, position in the round, variant, loop and wall ms (the loop from `--report-timing`, the wall from the runner's stopwatch), the `frames`, `layers`, `palettes` and `shapes` hashes and the adapter's name and class.
+  `<out>/<name>-summary.md` has, per cell, each variant's loop median, minimum, range, change against the baseline's median, "faster in N of M" rounds (a strictly smaller loop in the same round), the wall median, and whether its stores match the baseline's.
+  It never overwrites either file; `--summarize <csv>` prints a committed CSV's summary again.
+
+Commit the CSV in the work folder and link it from the journal entry that quotes its figures ([`work/README.md`](../../work/README.md#journal-entries)).
+The runner's own A/A (one binary on both sides) missed the owner's bar: a median loop change of `-9.4%` against `±1%` on one run (`[Bounded Observation]`), and the eight runs' loops spread `32.2%`, so read the CSV's spread beside the median.
+_Source: [the same binary on both sides of `mise run ab`](../../work/2026-11/1004_ab-timing-runner/journal.md#2026-11-23-the-same-binary-on-both-sides-of-mise-run-ab-span-b-on-lavapipe)._
