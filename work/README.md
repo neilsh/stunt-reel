@@ -44,6 +44,7 @@ Each new entry in `journal.md` is a `##` heading `YYYY-MM-DD: <title>`, then:
 - **Question**: what the entry set out to learn.
 - **Method**: what was run, on which commit.
 - **Result**: what came out, with scores stated in the text.
+  A measured entry links its raw file, the CSV or log the figures came from, committed beside the journal (a timing run's is the CSV `mise run ab` writes).
 - **Verdict**: adopted, rejected or control, naming what decided it: the adoption rule's figures, or another reason (cost, a visual mismatch, a dependency). A variant set aside for another reason is not a rejection by score, so a later rescoring must not count it as a rejected case.
 - **Lives in**: the evergreen note or ADR that now holds the fact.
 
