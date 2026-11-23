@@ -1,0 +1,21 @@
+stuntreel.exe --headless CTRY.FLM --all CTRY.ALL --tick-range 14..=1333 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[probe999] nodes 1040 vertices 20140 indices 29088 outline_indices 31884 runs 270 chunks 1 indices_outside_window 0 runs_sorted true
+[probe999] frames 1320 walk_mismatches 0
+stuntreel.exe --headless INTRO.FLM --all INTRO.ALL --tick-range 12..=3818 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[probe999] nodes 128768 vertices 819265 indices 1002423 outline_indices 1513630 runs 9815 chunks 1 indices_outside_window 0 runs_sorted true
+[probe999] frames 3807 walk_mismatches 0
+stuntreel.exe --headless LAND.FLM --all LAND.ALL --tick-range 12..=1134 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[probe999] nodes 2717 vertices 32479 indices 56478 outline_indices 44618 runs 523 chunks 1 indices_outside_window 0 runs_sorted true
+[probe999] frames 1123 walk_mismatches 0
+stuntreel.exe --headless BALLOON.FLM --all BALLOON.ALL --tick-range 12..=1190 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[probe999] nodes 9930 vertices 569348 indices 617586 outline_indices 1095696 runs 1361 chunks 1 indices_outside_window 0 runs_sorted true
+[probe999] frames 1179 walk_mismatches 0
+stuntreel.exe --headless TRAINTNL.FLM --all TRAINTNL.ALL --tick-range 12..=1233 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[probe999] nodes 4290 vertices 112155 indices 260820 outline_indices 94088 runs 747 chunks 1 indices_outside_window 0 runs_sorted true
+[probe999] frames 1222 walk_mismatches 0
+stuntreel.exe --headless BOMB.FLM --all BOMB.ALL --tick-range 12..=3730 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[probe999] nodes 6075 vertices 244829 indices 266748 outline_indices 478448 runs 829 chunks 1 indices_outside_window 0 runs_sorted true
+[probe999] frames 3719 walk_mismatches 0
+stuntreel.exe --headless LOCATION.FLM --all LOCATION.ALL --tick-range 12..=8262 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[probe999] nodes 228159 vertices 6704202 indices 7493034 outline_indices 12861070 runs 31441 chunks 1 indices_outside_window 0 runs_sorted true
+[probe999] frames 8251 walk_mismatches 0

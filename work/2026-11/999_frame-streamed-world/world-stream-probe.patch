@@ -1,0 +1,305 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 1eeed0c9..05c33919 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -182,6 +182,23 @@ pub(crate) fn run_headless(
+     }
+ 
+     let playback = Playback::new(config, scene);
++    if let Ok(path) = std::env::var("DBG_PROBE_WORLD_STREAM_FILE") {
++        let mut ticks = Vec::new();
++        for (key, tick) in playback.samples() {
++            let SampleKey::Tick(t) = key else {
++                return Err("ticks only".to_string());
++            };
++            ticks.push((t, capture_tick(tick)));
++        }
++        stunt_render::probe_world_stream(
++            scene,
++            &ticks,
++            config.height,
++            config.viewport_rows,
++            std::path::Path::new(&path),
++        )?;
++        return Ok(());
++    }
+     let range = playback.range();
+     let start_tick = range.start();
+     let span_seconds = range.span_seconds();
+diff --git a/crates/stunt-render/src/lib.rs b/crates/stunt-render/src/lib.rs
+index f2e5c958..ae4bf18f 100644
+--- a/crates/stunt-render/src/lib.rs
++++ b/crates/stunt-render/src/lib.rs
+@@ -47,4 +47,5 @@ pub use renderer::{
+     DEFAULT_PAGE_WIDTH, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError,
+     RenderOptions, RenderedPage, Renderer, SinkError, UploadTimes,
+ };
++pub use scene_renderer::probe_world_stream;
+ pub use video::{FfmpegVideoWriter, VideoExportError};
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 2e92d8ce..791753bb 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -2080,3 +2080,120 @@ mod tests {
+         assert!(squeezes_discs(true, 2.0) && !squeezes_discs(true, 1.0));
+     }
+ }
++
++/// Probe (#999): the world's node arena as [`GpuModel::from_ir_outlined`] plans it, with no
++/// device and no buffers, and the number of chunks the plan holds under `limit` bytes a buffer.
++impl GpuModel {
++    pub(crate) fn probe_plan(
++        ir: &SodModelIr,
++        keep: fn(&SodVertex) -> bool,
++        marks: &[u32],
++        limit: u64,
++    ) -> (Self, usize) {
++        let max_vertices =
++            usize::try_from(limit / size_of::<SodVertex>() as u64).unwrap_or(usize::MAX);
++        let max_indices = usize::try_from(limit / size_of::<u32>() as u64).unwrap_or(usize::MAX);
++        let mut meshes = ir.meshes().peekable();
++        let sources: Vec<Option<SourceSlice>> = ir
++            .nodes
++            .iter()
++            .map(|node| {
++                let mesh = meshes.next_if(|mesh| std::ptr::eq(mesh.node, node))?;
++                Some(SourceSlice {
++                    index_offset: mesh.index_offset,
++                    index_count: arena_index(mesh.indices.len()),
++                    is_decal: mesh.is_decal(),
++                })
++            })
++            .collect();
++        let mesh_sources: Vec<SourceSlice> = sources.iter().flatten().copied().collect();
++        let mut plan = plan_upload(
++            ir.vertices.len(),
++            &ir.indices,
++            &mesh_sources,
++            max_vertices,
++            max_indices,
++        );
++        let (_edges, mut marks) = plan_edges(&mut plan, ir, keep, marks);
++        let chunk_count = plan.chunks.len();
++        marks.resize_with(plan.slices.len(), Vec::new);
++        let mut planned = plan.slices.into_iter().zip(marks);
++        let bounds = node_bounds(ir);
++        let discs = node_discs(ir);
++        let nodes = ir
++            .nodes
++            .iter()
++            .zip(&sources)
++            .enumerate()
++            .map(|(n, (node, source))| {
++                let (meshes, marks) = source.and_then(|_| planned.next()).unwrap_or_default();
++                GpuNode {
++                    id: node.id,
++                    name: node.name.clone(),
++                    parent: node.parent,
++                    children: node.children.clone(),
++                    local_matrix: Mat4::from_cols_array(&node.local_matrix),
++                    visibility: node.visibility,
++                    meshes,
++                    bounds: bounds.get(n).copied().flatten(),
++                    discs: discs.get(n).copied().unwrap_or(false),
++                    marks,
++                }
++            })
++            .collect();
++        let bounds = model_bounds(&ir.root_nodes, &bounds);
++        let model = Self {
++            name: ir.name.clone(),
++            chunks: Vec::new(),
++            vertex_count: arena_index(ir.vertices.len()),
++            index_count: arena_index(ir.indices.len()),
++            nodes,
++            root_nodes: ir.root_nodes.clone(),
++            bounds,
++            discs: ir
++                .vertices
++                .iter()
++                .any(|vertex| vertex.flags & VERTEX_FLAG_DISC != 0),
++        };
++        (model, chunk_count)
++    }
++
++    /// Probe (#999): [`Self::collect_world_meshes`]'s slices in the order a stream would hold
++    /// them (ground, base, decal), each with its node and its list (0 ground, 1 base, 2 decal).
++    pub(crate) fn probe_world_walk(
++        &self,
++        eye: Vec3,
++        view: Option<&CameraTransform>,
++        view_proj: Mat4,
++        disc_depth_scale: f32,
++    ) -> Vec<(NodeId, GpuMeshSlice, u8)> {
++        let walk = VisibleWalk {
++            nodes: &self.nodes,
++            roots: &self.root_nodes,
++            state_mask: 0,
++            dist_sq: 0.0,
++            eye,
++            view,
++            view_proj: Some(view_proj),
++            disc_depth_scale,
++            flattened_by: None,
++        };
++        let is_ground = |node: &GpuNode| node.name == GROUND_NODE;
++        let (mut ground, mut base, mut decals) = (Vec::new(), Vec::new(), Vec::new());
++        walk.walk(false, |node, mesh| {
++            if !is_ground(node) && !mesh.is_decal {
++                base.push((node.id, mesh, 1));
++            }
++        });
++        walk.walk(true, |node, mesh| {
++            if is_ground(node) {
++                ground.push((node.id, mesh, 0));
++            } else if mesh.is_decal {
++                decals.push((node.id, mesh, 2));
++            }
++        });
++        ground.extend(base);
++        ground.extend(decals);
++        ground
++    }
++}
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 02779938..ede49340 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -1355,3 +1355,137 @@ mod tests {
+         );
+     }
+ }
++
++/// Probe (#999): per frame, the world slices, vertices, indices and outline indices the walk
++/// emits by list (ground, base, decal), and the prop-run pieces a per-frame runs table would
++/// hold, written as CSV to `out_path`. CPU only: no device is opened.
++pub fn probe_world_stream(
++    scene: &FilmScene,
++    ticks: &[(usize, f32)],
++    height: u32,
++    viewport_rows: Option<u32>,
++    out_path: &std::path::Path,
++) -> Result<(), String> {
++    use std::io::Write as _;
++    let w = scene.world().ok_or("no world")?;
++    let placements = WorldPlacements::new(w);
++    // `downlevel_defaults().max_buffer_size`, which `request_device` asks for.
++    let limit = 256 << 20;
++    let (model, chunks) =
++        GpuModel::probe_plan(&w.ir, outlines_in_world, &placements.marks(), limit);
++    let mut window = vec![(0u32, 0u32); w.ir.nodes.len()];
++    let mut outside = 0u64;
++    for m in w.ir.meshes() {
++        let lo = m.vertex_offset;
++        let hi = lo + arena_index(m.vertices.len());
++        window[m.node.id.0 as usize] = (lo, hi);
++        outside += m.indices.iter().filter(|&&i| i < lo || i >= hi).count() as u64;
++    }
++    let runs = &w.prop_runs;
++    let sorted = runs.windows(2).all(|p| p[0].end <= p[1].first);
++    let edges: u64 = model
++        .nodes
++        .iter()
++        .flat_map(|n| &n.meshes)
++        .map(|m| u64::from(m.edge_count))
++        .sum();
++    eprintln!(
++        "[probe999] nodes {} vertices {} indices {} outline_indices {} runs {} chunks {} indices_outside_window {} runs_sorted {}",
++        w.ir.nodes.len(),
++        w.ir.vertices.len(),
++        w.ir.indices.len(),
++        edges,
++        runs.len(),
++        chunks,
++        outside,
++        sorted
++    );
++    if chunks != 1 || outside != 0 || !sorted {
++        return Err("probe assumptions fail".to_string());
++    }
++    let file = std::fs::File::create(out_path).map_err(|e| e.to_string())?;
++    let mut out = std::io::BufWriter::new(file);
++    writeln!(
++        out,
++        "tick,world,ground_n,ground_v,ground_i,ground_e,base_n,base_v,base_i,base_e,decal_n,decal_v,decal_i,decal_e,run_pieces,run_merged"
++    )
++    .map_err(|e| e.to_string())?;
++    let mut mismatches = 0u64;
++    for &(film_tick, eval_tick) in ticks {
++        let frame = scene.frame(eval_tick);
++        if !frame.world {
++            writeln!(out, "{film_tick},0,0,0,0,0,0,0,0,0,0,0,0,0,0,0").map_err(|e| e.to_string())?;
++            continue;
++        }
++        let mut controller = CameraController::default();
++        controller.set_authored_transform(frame.view);
++        if let Some(rows) = viewport_rows {
++            controller.projection_y_scale = height as f32 / rows.max(1) as f32;
++        }
++        let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
++        let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
++        let eye = controller.eye_position();
++        let world_matrix = eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array());
++        let view_proj = rotation_proj * Mat4::from_cols_array(&world_matrix);
++        let lod_view = CameraTransform {
++            eye: frame.view.eye,
++            target: frame.view.target,
++            lens: frame.lens,
++            ..CameraTransform::default()
++        };
++        let dds = camera_uniform.disc_depth_scale;
++        let stream = model.probe_world_walk(eye, Some(&lod_view), view_proj, dds);
++        // The walk the renderer runs must give the same slices in the same order.
++        let (ground, base, decals) =
++            model.collect_world_meshes(eye, Some(&lod_view), view_proj, dds);
++        let reference: Vec<GpuMeshSlice> = ground
++            .into_iter()
++            .chain(base.into_iter().map(|(_, m)| m))
++            .chain(decals.into_iter().map(|(_, m)| m))
++            .collect();
++        let streamed: Vec<GpuMeshSlice> = stream.iter().map(|&(_, m, _)| m).collect();
++        if reference != streamed {
++            mismatches += 1;
++        }
++        let mut sums = [[0u64; 4]; 3];
++        let (mut pieces, mut merged) = (0u64, 0u64);
++        let mut last: Option<u16> = None;
++        for &(node, mesh, list) in &stream {
++            let (lo, hi) = window[node.0 as usize];
++            let s = &mut sums[list as usize];
++            s[0] += 1;
++            s[1] += u64::from(hi - lo);
++            s[2] += u64::from(mesh.index_count);
++            s[3] += u64::from(mesh.edge_count);
++            // The prop runs the node's window overlaps, each clipped to it, in stream order; a
++            // piece of the same shape as the one before it, with no gap in the stream, merges.
++            let mut at = runs.partition_point(|r| r.end <= lo);
++            let mut cursor = lo;
++            while let Some(run) = runs.get(at).filter(|r| r.first < hi) {
++                let start = run.first.max(lo);
++                pieces += 1;
++                if !(start == cursor && last == Some(run.shape)) {
++                    merged += 1;
++                }
++                last = Some(run.shape);
++                cursor = run.end.min(hi);
++                at += 1;
++            }
++            if cursor != hi {
++                last = None;
++            }
++        }
++        let [g, b, d] = sums;
++        writeln!(
++            out,
++            "{film_tick},1,{},{},{},{},{},{},{},{},{},{},{},{},{pieces},{merged}",
++            g[0], g[1], g[2], g[3], b[0], b[1], b[2], b[3], d[0], d[1], d[2], d[3]
++        )
++        .map_err(|e| e.to_string())?;
++    }
++    eprintln!("[probe999] frames {} walk_mismatches {mismatches}", ticks.len());
++    if mismatches != 0 {
++        return Err("the probe's walk differs from collect_world_meshes".to_string());
++    }
++    Ok(())
++}
