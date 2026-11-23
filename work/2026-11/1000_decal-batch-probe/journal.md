@@ -42,3 +42,20 @@
   No timing was taken: the bounds are inferences from #920's two-round whole-film figure and its Span B figure, not measurements.
   The `outcome` stays blank until the owner rules; phase B (a renderer change for Span B) follows only if they read the rule per span.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3, § 6 and Open questions.
+
+## 2026-11-23: the owner's ruling on scope
+
+`[Bounded Observation]`
+
+- **Question**: Does #1000's probe rule, "if batching leaves most switches in place, close this issue", read at the whole `LOCATION` film or per span?
+  The entry above left it to the owner: the whole film leaves `54.2%` of the decal pipeline switches in place, Span B `45.8%`.
+- **Ruling** (the owner's comment on #1000, 2026-11-23, `mise run now` 2026-11-23T09:46+00:00):
+  - The rule reads at the gate's scope, the whole film, where batching leaves `54.2%` (`228,160` of `421,326`): #1000 closes with no renderer change, and phase B's implementation is dropped.
+  - The ceiling leads the note: #920's `7.7%` whole-film grouping saving times the `45.8%` of switches removed is about `3.5%` of the loop (`7.7 x 0.458 = 3.53`), about `3.7%` span-weighted (`996 ms` of `27,062.5 ms`), under the `5%` gate at either scope; inferences, not timings.
+    The `7.7%` is not re-measured.
+  - Pad 0 (`4.3%` proportional, `4.6%` span-weighted) is outside the issue's design, whose boxes must be conservative, so it does not trigger the one-point rule.
+  - Span B, where batching removes `54.2%` of the switches, is context only; nothing is filed for it.
+  - The note names one alternative in a sentence: an order buffer that makes decal draw order commutative could reach most of the `7.7%` ceiling, but needs a second order target beside the world's depth; not probed.
+- **Verdict**: ruled out; no timing was taken, so the verdict rests on the count above and #920's figures.
+  #999's design note cites this close.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6 and Ruled out.
