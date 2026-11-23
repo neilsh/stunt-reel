@@ -14,7 +14,7 @@ Orca, dsh, Antigravity, PowerShell and the disk checks are `local-windows` resou
 
 ## Concurrency and models
 
-- **Coordinator:** Sonnet from the start; it reads no diffs or issue bodies, keeps `build/scratch/run-state.md`, restarts instead of compacting, checks CodeRabbit once, and gets the `orca orchestration` flags from [`coordinator.md`](coordinator.md).
+- **Coordinator:** Sonnet from the start; it reads no diffs or issue bodies, keeps `build/scratch/run-state.md`, restarts instead of compacting, checks CodeRabbit once, and gets its dispatch commands from [`coordinator.md`](coordinator.md) (T3 Code below).
 - **Implementers by fit:** dsh first where the spec is clear and the task needs no judgment over evidence; Sonnet for other well-specified implementation; Opus for research, diagnosis, design, and items expected to need rounds of hypotheses.
   Prefix-cache hit rate is not the test.
 - **About two at once:** run two items in parallel only when they touch different files, each writer in its own worktree; if one depends on the other, start it after its parent merges, or stack it and arm it after the parent merges.
@@ -25,7 +25,7 @@ Orca, dsh, Antigravity, PowerShell and the disk checks are `local-windows` resou
 - **Cloud:** subagents for reviews and edits, at most about two Rust builds at once ([`cloud-sessions.md`](../../../docs/cloud-sessions.md#container-limits)); child sessions (`create_session`) for builds and renders, briefed per [`worker-brief.md`](worker-brief.md#child-session-brief).
   Give each writer `isolation: "worktree"`; if that isolation fails, run one at a time.
   Never stack: start a dependent item once its parent merges.
-- **Elsewhere:** worker lifetime, prototype bounds, the pre-review diff scan and optional `ccusage` measuring are in [`loop-and-bounds.md`](loop-and-bounds.md) and [`pr-and-filing.md`](pr-and-filing.md).
+- **T3 Code:** a coordinator in a T3 thread (`T3CODE_THREAD_ID` set) dispatches per [`t3.md`](t3.md) instead of through Orca.
 
 ## Workflow
 

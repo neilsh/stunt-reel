@@ -17,7 +17,7 @@ Policy and per-harness capability notes live in [`harness.md`](harness.md); this
 | Shared uv and Cargo caches | `<primary>/.cache/uv` and `<primary>/.cache/cargo`, named by absolute path in `mise.toml`, see [ADR 0013](adr/0013-worktrees-share-one-writable-tool-cache.md) | no |
 | A worktree's Python environment | its own `.venv`, made by uv on the first `uv run` | no |
 | Harness permission modes and approvals | each harness's host settings | no |
-| Worktrees | `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, where `mise run reap` looks | no |
+| Worktrees | `.claude/worktrees/` or `.agents/worktrees/` inside the primary checkout, where `mise run reap` looks; Orca's and T3 Code's where their settings put them | no |
 
 Every location in that table except the first row is host-local, and no checkout can carry it.
 
@@ -119,7 +119,7 @@ DSH's `run_code` traps, each hit several times by workers on 2026-11-14:
 
 ## Orca
 
-Orca workspaces are the one exception to the in-checkout rule in AGENTS.md, Worktrees.
+Orca workspaces are an exception to the in-checkout rule in AGENTS.md, Worktrees.
 Orca chooses their path, `E:/orca/workspaces/stunt-reel/<name>` on this machine (the Dev Drive, with the primary checkout and the shared uv cache); `orca --help` shows the base as a project host setting (`orca project setup-update --setup <id> --worktree-base-path <path>`).
 They sit outside the primary checkout, as do the worktrees nested in a workspace's own `.agents/worktrees/`.
 
@@ -148,6 +148,16 @@ To unlink one by hand, for a workspace `reap` skipped (read-only listing, from t
 
 Because `E:/orca/workspaces` shares a volume with the shared uv cache, a workspace's `.venv` is hardlinked from that cache and its `target/` is seeded by block clone like any worktree's.
 A base on another volume (it was `C:`) copies each `.venv` (about 68 MB, 3 s) and does not seed `target/`; both are slower, not wrong.
+
+## T3 Code
+
+T3 Code worktrees are the other exception to the in-checkout rule: T3 creates and removes them itself, and `mise run reap` leaves them alone as outside its pool.
+Set these once in T3's **Settings**, for an [unattended run](../.agents/skills/running-unattended/t3.md):
+
+1. **Worktrees → Worktree location:** a folder on the Dev Drive, such as `E:\worktrees`, so a worktree's `.venv` is hardlinked from the shared uv cache and `mise run queue`'s free-disk line counts it; the default, `~/.t3/worktrees` on `C:`, copies each `.venv` as an Orca base on `C:` did.
+   The setting is per machine and moves only new worktrees.
+2. **Worktrees → Cleanup**, with the stunt-reel project selected: **Custom**, removing a worktree after merging; T3 counts a squash merge into `main` while the worktree is still at the PR's last commit, and keeps one with an active session or uncommitted changes.
+3. **Permission mode:** Full access as the default for new threads (T3's initial default), so a coordinator and the children that inherit its mode run without approval prompts.
 
 ## Toolchain drift
 
