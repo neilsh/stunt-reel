@@ -12,7 +12,9 @@ excerpt: "A 1992 stunt-filming game, a modern player for its films, and an exper
 You built sets on an island, placed props and actors, flew stunts, and then cut the footage together into a film.
 A small player program, `PLAYONE.EXE`, plays a finished film without the full game.
 
-> TODO(Neil): a paragraph on your own history with the game: when you played it, what you made, and why its films stuck with you.
+I found *Stunt Island* in middle school, and it was my first taste of making anything in 3D.
+I made cheesy school projects with it, including a very loose retelling of Odysseus's return to Ithaca.
+The stunts were fun, but what really hooked me was the editing room: cutting between cameras until a clumsy flight looked like a film.
 
 Stunt Reel is a new player for those films, written from scratch.
 It reads the game's own files and draws the films with a modern GPU, at any resolution, with a free camera you can fly around the set.
