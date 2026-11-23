@@ -1,0 +1,36 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 512c34b9..654f2a44 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -287,6 +287,8 @@ pub(crate) fn run_headless(
+     // The renderer keeps two frames in flight: submitting a frame retires the page of the one
+     // before it, so each page lands here one submission after its frame.
+     let mut pending: VecDeque<(SampleKey, FrameFacts)> = VecDeque::new();
++    eprintln!("[probe] loop_start");
++    let probe_loop = std::time::Instant::now();
+     for (key, tick) in samples {
+         let frame = scene.frame(capture_tick(tick));
+         renderer
+@@ -302,6 +304,7 @@ pub(crate) fn run_headless(
+     if !pending.is_empty() {
+         return Err("the renderer did not hand back every submitted frame".to_string());
+     }
++    eprintln!("[probe] loop_ms {}", probe_loop.elapsed().as_millis());
+     memory.stage("frames rendered");
+     let adapter = render_adapter(renderer.adapter());
+     drop(renderer);
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 6182ccc9..5ca8c8ee 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -991,6 +991,10 @@ impl SceneRenderer {
+         };
+         rpass.set_bind_group(2, bind_group, &[offset]);
+         let world = matches!(draw.target, Target::World { .. });
++        static PROBE_SKIP_WORLD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++        if world && *PROBE_SKIP_WORLD.get_or_init(|| std::env::var_os("STUNT_PROBE_SKIP_WORLD").is_some()) {
++            return;
++        }
+         if decal_pass {
+             // A world decal slice's outline follows its own fill, so a later slice covers
+             // it as it covers the fill: the decal pass writes no depth to hide it ([I5]).
