@@ -3,7 +3,7 @@
 `[Bounded Observation]`
 
 - **Question**: Over the whole `LOCATION` film (`12..=8262`) and Span B (`3680..=3979`), how many of the world's decal pipeline switches does batching consecutive decal slices with disjoint conservative screen boxes leave in place (#1000's probe)?
-  The issue closes before any renderer change if most are left.
+  The issue's rule closes it if batching "leaves most switches in place", and names no scope.
 - **Method**:
   - `main` at `7bfc6cca` plus [`probe-decal-batch.patch`](probe-decal-batch.patch), CPU only: no renderer opens, no timing, no GPU or lavapipe render.
     `DBG_PROBE_DECAL_BATCH_FILE=<out>` makes `run_headless` call `probe_decal_batches` after the playback is built and return.
@@ -33,9 +33,12 @@
   - Sensitivity (`pad 0`, not conservative): whole film `183,780` switches left of `421,326` (`43.6%`); Span B `34,448` of `117,228` (`29.4%`).
   - Whole-target boxes (a node with no box or a corner at or behind the near plane): `2,706` of `210,663` whole-film slices (`1.3%`), a median `1` a frame on Span B.
   - Against the ceiling the issue names: [#920's grouping probe](../920_unbake-world-props/journal.md#2026-11-22-what-the-worlds-base-and-decal-draws-cost-on-lavapipe) `g` cut the whole film's loop `7.7%` (2 rounds), with about every decal switch gone.
-    If the saving were proportional to the switches removed (not measured), batching's `45.8%` would give at most `3.5%` (`4.3%` at `pad 0`), under the `5%` gate.
-- **Verdict**: batching leaves `54.2%` of the whole film's decal pipeline switches in place with the conservative box, most of them, so the issue closes by its own rule; its ceiling, `7.7%` times the `45.8%` removed, is under the `5%` gate unless a removed switch costs more than the proportional share.
-  Span B leans the other way (`45.8%` left, `54.2%` removed); the gate is the whole film's.
-  The margin is `4.2` points over half, and the `pad 0` run falls under half (`43.6%` left), so the verdict rests on the conservative box and on the ceiling, not on the count alone.
-  No timing was taken: the proportional bound is an inference from #920's two-round whole-film figure, not a measurement.
-- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3, § 6 and Ruled out.
+    If the saving were proportional to the switches removed (not measured), batching's `45.8%` would give about `3.5%` (`4.3%` at `pad 0`).
+    A removed switch does not cost the same everywhere: #920's grouping saved `955 ms` on Span B and `1,122.5 ms` elsewhere (`2,077.5 ms` of the whole film's `27,062.5 ms`, minus Span B's), which is about `8.1 µs` a switch on Span B (`955 / 117,228`) and `3.7 µs` elsewhere (`1,122.5 / 304,098`).
+    Weighting each span's removed share by its own saving, `0.542 x 955 + 0.426 x 1,122.5 = 996 ms`, gives about `3.7%` of `27,062.5 ms` (`4.6%` at `pad 0`, `0.706 x 955 + 0.509 x 1,122.5 = 1,246 ms`); both are inferences, since Span B's and the whole film's runs are separate, and both are under the `5%` gate.
+- **Verdict**: not settled; whether #1000 closes is the owner's ruling on which scope its rule ("if batching leaves most switches in place, close this issue") names.
+  With the conservative box the whole film leaves `54.2%` of its decal pipeline switches in place (most), and Span B leaves `45.8%` (not most), so the two scopes give opposite answers.
+  The ceiling is under the `5%` gate at both: `3.5%` if proportional, `3.7%` weighted by span (inferences); but at `pad 0` the whole film leaves `43.6%` (not most) and Span B `29.4%`, so the count alone does not decide it.
+  No timing was taken: the bounds are inferences from #920's two-round whole-film figure and its Span B figure, not measurements.
+  The `outcome` stays blank until the owner rules; phase B (a renderer change for Span B) follows only if they read the rule per span.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3, § 6 and Open questions.
