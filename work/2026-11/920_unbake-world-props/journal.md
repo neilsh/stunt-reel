@@ -81,7 +81,7 @@
 - **Question**: Of the world's uploaded GPU bytes, how many would un-baking (the issue's candidate design) keep baked and how many would it drop, and what would it add, on `LOCATION` and `INTRO`?
   Step 3's `413.4` and `106.1` MiB are upper bounds, since they remove the whole upload.
 - **Method**:
-  - `main` at `68ac0d18` plus [`baked-share-probe.patch`](baked-share-probe.patch): a CPU-only count that returns from `run_headless` before the renderer opens (`DBG_PROBE_WORLD_BYTES=1`), with no GPU and no device.
+  - The branch at `68ac0d18` plus [`baked-share-probe.patch`](baked-share-probe.patch): a CPU-only count that returns from `run_headless` before the renderer opens (`DBG_PROBE_WORLD_BYTES=1`), with no GPU and no device.
     It calls the uploader's own planning code on the world IR: `plan_upload` (with the 256 MiB buffer limit of the `downlevel_defaults` that `request_device` asks for; one chunk, as #645 found) and `plan_edges` with `outlines_in_world`, the filter `SceneRenderer::new` passes `GpuModel::from_ir_outlined`.
   - Bytes per element are the sizes in `GpuChunk::upload`: vertex `28` B (`size_of::<SodVertex>()`), apex `12` B a vertex (`[f32; 3]`, the second stream), index `4` B, outline `4` B an outline index (two per edge: `8` B an edge), prop-runs table `12` B a run (`[u32; 3]`, `chunk_prop_runs`).
   - Each mesh node's vertex window (`NodeKind::Mesh`'s `vertex_offset` and `vertex_count`), its indices and its slices' `edge_count` go to one class; a run's class is that of its first vertex.
@@ -113,7 +113,7 @@
   | Dropped (`6,393,484` vertices, `95.4%`) | 170.72 | 73.17 | 25.97 | 47.88 | 0.30 | 318.04 |
   | World total | 179.02 | 76.72 | 28.58 | 49.06 | 0.36 | 333.75 |
 
-  - Added by un-baking on `LOCATION`: the dropped placements are `28,434` records of `823` distinct shapes, none already uploaded.
+  - Added by un-baking on `LOCATION`: the dropped placements are `28,434` records of `823` distinct shapes, none already uploaded (`drawn_only` removes a baked prop's shape from the renderer's shapes); the probe's count of shapes absent from the scene, which it prints, was not recorded, so if any were absent the shape costs below are low.
     The shapes cost `34.72` MiB as `outlined()` quads or `8.07` MiB as a line list; the per-placement entries `1.84` MiB at `68` B (`0.43` at `16` B).
     So the dropped bytes less what un-baking adds are `281.48` MiB with quad outlines and `308.13` MiB with line-list outlines (`282.89` and `309.54` at `16` B).
     The CPU side of the per-placement data is the same entries, `1.84` MiB, beside the `PlacementRecord`s that already exist (`76` B each, `56,585` of them).
@@ -125,7 +125,8 @@
     That leaves about `23` MiB, or less once those allocations are counted; allocator and driver granularity and staging copies are candidates, but none was measured.
     On the RTX 4070 the buffers are in device memory, so the `106.1` MiB fall is the driver's host-side share plus that node arena, and the split between them was not measured.
 - **Verdict**: control, recorded only; memory gives no go.
-  Against the issue's hypothetical bar of a 200 MiB fall a worker, the bytes un-baking would drop net of what it adds, `281` to `308` MiB of buffers on `LOCATION`, are above it on lavapipe; on the RTX 4070 the whole upload's fall is `106.1` MiB, so any un-baking saving there is at most that, below the bar.
+  Against the issue's hypothetical bar of a 200 MiB fall a worker, the bytes un-baking would drop net of what it adds, `281` to `308` MiB of buffers on `LOCATION`, are above it on lavapipe, though as buffer bytes, not a measured fall; on the RTX 4070 the whole upload's fall in one run is `106.1` MiB, so any un-baking saving there is at most about that, below the bar.
+  The dropped class includes the placements of shapes with internal `FacesEye`/`BeyondDepth` gates, whose routing #920 leaves open; their share of the bytes was not counted.
   If that fall scaled with bytes, un-baking's share would be about `89` MiB (`106.1 × 281.48 / 333.75`); the scaling is an assumption, not a measurement.
   The dropped nodes' share of the `GpuNode` arena, about `36` MiB inline (`141,258` mesh nodes), is not in the `281` to `308` MiB, and whether un-baking would keep those nodes (they carry the placements' gates) was not examined.
   The probe counts bytes; no un-baked renderer was run, so the figure holds for the candidate design as the issue states it.
