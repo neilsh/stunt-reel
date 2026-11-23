@@ -322,7 +322,8 @@ def post_text(text: str, source: str, site: Site, images: set[str]) -> str:
     in a work folder is published too, since NOTICE.md files comparison images there.
 
     Raises ValueError, naming *source*, for a post without front matter, a ``title:`` or a
-    ``date:`` written YYYY-MM-DD, or with bad front matter or a bad link.
+    ``date:`` written YYYY-MM-DD, with a ``lastUpdated:`` written otherwise, or with bad front
+    matter or a bad link.
     """
     try:
         fields, body = read_frontmatter(text)
@@ -332,6 +333,8 @@ def post_text(text: str, source: str, site: Site, images: set[str]) -> str:
         raise ValueError(f"{source}: a blog post needs a title: in its front matter")
     if not _POST_DATE.fullmatch(str(fields.get("date", ""))):
         raise ValueError(f"{source}: a blog post needs a date: written YYYY-MM-DD")
+    if "lastUpdated" in fields and not _POST_DATE.fullmatch(str(fields["lastUpdated"])):
+        raise ValueError(f"{source}: lastUpdated: is written YYYY-MM-DD")
     head = text[: len(text) - len(body)].splitlines()[1:-1]
     if "editUrl" not in fields:
         head.append(f"editUrl: {json.dumps(f'{REPO_URL}/blob/main/{source}')}")

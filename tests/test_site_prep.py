@@ -332,6 +332,7 @@ def test_prepare_writes_blog_posts_with_their_front_matter(repo: Path) -> None:
         ('title: "T"\n', "date: written YYYY-MM-DD"),
         ('title: "T"\ndate: 23 Nov 2026\n', "date: written YYYY-MM-DD"),
         ("date: 2026-11-23\n", "needs a title:"),
+        ('title: "T"\ndate: 2026-11-23\nlastUpdated: yesterday\n', "lastUpdated: is written"),
     ],
 )
 def test_prepare_refuses_a_post_without_a_title_or_date(

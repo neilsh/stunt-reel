@@ -18,6 +18,11 @@ excerpt: "One sentence for the post list."
 ```
 
 `title` and `date` (written YYYY-MM-DD) are required; `mise run site-prep` refuses a post without them.
+
+When you revise a published post, add `lastUpdated: YYYY-MM-DD` with the day of the revision, and move it on each later revision.
+The post then shows "Last update" after its publish date, and its search-engine metadata carries the new date as `dateModified`; the RSS feed keeps the publish date.
+A post whose `lastUpdated` equals its `date` shows only the one.
+Leave `date` as it was: it is the publish date, and the URL comes from the file name, not the date, so it never changes.
 The authors are defined in `site/astro.config.mjs`.
 Add `draft: true` to keep a post out of the deployed site while still seeing it under `mise run site-serve`.
 
