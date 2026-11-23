@@ -7,7 +7,7 @@ It is not affiliated with, authorised by, or endorsed by The Walt Disney Company
 ## No game assets
 
 No game executables, films, archives, artwork, audio, or manual scans are distributed here.
-The game-derived data, comparison images and rendered clip described below are the only exceptions, each within the limits its section sets.
+The game-derived data, comparison images and rendered clips described below are the only exceptions, each within the limits its section sets.
 `corpus/` is gitignored, and you must supply your own lawfully obtained copy of any retail files.
 Tests run offline against synthetic fixtures.
 

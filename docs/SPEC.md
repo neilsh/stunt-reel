@@ -128,6 +128,7 @@ _Source: the Milestone 1 and 2 sign-offs (Phases 0–2) in the frozen [`TEAM_SHE
   * Retail binaries and data files (`corpus/`) are gitignored, never committed or downloaded in CI.
     Two small game-derived tables are committed as documented exceptions because `[I3]` rendering needs them: the 256-entry master palette and the 18-entry SOD scale table.
     Illustrative comparison images (a captured frame beside our render) that a research note cites are the third exception.
+    A short, silent clip of our own render of a demo film, which a blog post cites, is the fourth.
     All are credited and not relicensed ([`NOTICE.md`][notice]).
   * `crates/stunt-core` may depend on small, pure-Rust crates that do no I/O and touch no windowing, GPU, audio or emulator code, so unit and contract tests compile and run 100% offline in $< 2\text{ seconds}$.
     Each added crate is justified in the PR that adds it ([ADR 0002](adr/0002-stunt-core-may-take-small-dependencies.md)).
