@@ -10,16 +10,17 @@ The run is one **coordinator** and its **workers**; the coordinator runs longest
 | Model | Sonnet from the start; never Opus | By fit ([`SKILL.md`](SKILL.md#concurrency-and-models)) |
 | Does | Builds the queue, claims, dispatches, checks the merge bar, arms, files an issue for a reviewer's out-of-scope finding, appends to `run-state.md` | Reads the issue or PR and its comments, implements or reviews in its own worktree, files the follow-up issues its item produces and reports their numbers |
 | Reads | `mise run queue` lines, worker reports, the first line of a review comment, the reviewer's reply (its `alternatives: N` included), CI state, the lines `mise run pr-threads` prints, a PR's changed file names | The bodies, diffs and code the coordinator does not |
-| Never | Opens a diff, an issue body or a thread's text; writes no code and no PR or doc content; `sleep`s or polls; loads `--help` or the orchestration guide | Arms or merges |
+| Never | Opens a diff, an issue body, a thread's text or a session transcript; writes no code and no PR or doc content; `sleep`s or polls; loads `--help` or the orchestration guide | Arms or merges |
 
 The text the coordinator does write is `run-state.md`, claim and release comments, status notes on a PR, an issue for a reviewer's out-of-scope finding, and a reviewer's comment file posted verbatim with `--body-file`.
-When it needs a fact that sits in a body or diff, a worker reads it and reports one line.
+When it needs a fact that sits in a body, diff, thread or transcript, a worker or subagent reads it and reports one line.
 Its claim check reads claim comments by first line, not whole comments ([`loop-and-bounds.md`](loop-and-bounds.md#implementing-an-issue-and-bounding-rounds) step 1).
 
 ## `run-state.md`
 
 `build/scratch/run-state.md`, ignored through `build/` (`git check-ignore -v build/scratch/run-state.md` shows the rule); no tracked file is written there.
 Its per-item and per-PR state is an append-only log: each transition appends one line, and no earlier line is rewritten.
+Append in the same shell call as the command the line records (`gh`, `git`, `mise`), not in a turn of its own.
 The Run header, the Queue lines, the Filed list and the Next action are edited in place, outside the log.
 Record only what a fresh container can re-derive from GitHub (branch, PR number, head SHA, label state), plus what the coordinator holds locally: a worker's worktree path, an unpushed rule 5 commit with its reviewed local SHA and PR-body path, an `env:local-only` clearance, and a due time.
 Fields:
@@ -60,7 +61,8 @@ An item's current state is its newest line, read alongside `mise run queue`.
 ## Restart instead of compacting
 
 Check the context size after each append: the harness's context indicator or `/context` where there is one, else an estimate from the turn count.
-Once it passes about 150k tokens, stop dispatching, update the Run header and Next action, and hand off; never compact.
+Once it passes about 100k tokens, stop dispatching, update the Run header and Next action, and hand off; never compact.
+A harness compaction means that point passed unnoticed: hand off at the next append.
 In a cloud session a successor's new container cannot see the predecessor's worktrees, subagents or unpushed commits, so wait until no worker is in flight, or until every in-flight item has a pushed branch (a rule 5 item only after its review and push), before handing off.
 Release any other item (`Released claim: <why>.`, swap `status:in-progress` back to `status:ready-for-agent`) and list it under **Needs you**; an item left `status:in-progress` with no remote branch is a dropped claim ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)).
 A successor rebuilds current state from the log: for each item, read its newest line, then check it against `mise run queue` and, for a PR, one `mise run merge-bar -- <n> --issue <N>` run before acting.
