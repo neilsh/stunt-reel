@@ -12,13 +12,13 @@ A rendering PR that changed depth testing or bias, the vertex transform, project
 Each PR repinned only its own class, so `gpu.toml` and `lavapipe.toml` each lagged behind the other's PRs, and the lavapipe catch-ups (#830) needed the pinned llvmpipe.
 Parity work queued behind one machine, and its question (does our render match the capture?) was tangled with a second one (do lavapipe and the GPU draw the same pixels?).
 
-The spike of 2026-11-21 ([`lavapipe.md` § 6](../../research/parity/lavapipe.md#6-one-build-on-two-machines)) found one lavapipe build, Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5`, whose index planes match on every tick of all seven reference films in a cloud container and under WSL 2 on local-windows.
+The spike of 2026-11-21 ([`lavapipe.md` § 6](../../research/parity/lavapipe.md#6-one-build-on-two-machines)) found one lavapipe build, Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5`, whose index planes matched on every tick of all seven reference films, on `crates` tree `9d08971`, in a cloud container and under WSL 2 on local-windows.
 
 ## Decision
 
 - **Fidelity, capture against lavapipe, is pinned on the canonical lavapipe.**
   The adoption rule compares a baseline and a variant on one adapter, so a verdict may come from either renderer class; `lavapipe.toml` is repinned only from the canonical build, in a cloud session or under WSL on local-windows ([`render-on-lavapipe.md` § 5](../howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl)).
-  The canonical package is pinned in CI and the cloud setup, so an Ubuntu update cannot change the adapter silently.
+  The canonical package is pinned in CI and the cloud setup, so an Ubuntu update cannot change the build silently; the install fails instead if Ubuntu drops that version.
 - **No PR waits for the GPU.**
   The `env:local-only` hold on rendering PRs goes, and so does the local-windows routing of pixel-level work: both are done on lavapipe.
 - **Class agreement, lavapipe against the GPU, is measured apart.**

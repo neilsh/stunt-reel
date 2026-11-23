@@ -20,7 +20,7 @@ It skips, exit 0, while a `stuntreel` process runs.
 When nothing flags it repins `gpu.toml` and `agreement.toml` on a branch `chore/agreement-<tree>` and opens a `chore(parity): repin class agreement` pull request.
 
 `--if-due` stops after the fetch unless a batch is due, and skips a tree already measured or whose pin branch is on `origin`.
-`--post` comments the result on the open issue titled `Class agreement batch`, once per tree, and files an `area:class-agreement` issue for each flag no open one covers; that issue must exist first.
+`--post` comments the result on the open issue titled `Class agreement batch` (opening it when none is open), once per tree, and files an `area:class-agreement` issue for each flag no open one covers.
 
 ## 3. Pin over flags or a changed pair
 
