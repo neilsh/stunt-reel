@@ -14,3 +14,4 @@ Step 3 (memory) gives no go; it was measured afterwards as a control, and removi
 The step 3 probe is [`world-upload-skip.patch`](world-upload-skip.patch), against `636ee2f4`.
 What half of the lavapipe loop pays for in those draws, which carry about 4,400 vertices a frame on Span B, is that note's first open question.
 The probes are [`world-skip-and-vertex-probe.patch`](world-skip-and-vertex-probe.patch), against `dc9622ea`.
+A CPU count of the world's uploaded bytes put `95.4%` of `LOCATION`'s vertices in nodes un-baking would drop, `281` to `308` MiB of buffers net of what it adds against step 3's `413.4` MiB; the probe is [`baked-share-probe.patch`](baked-share-probe.patch), against `68ac0d18`.

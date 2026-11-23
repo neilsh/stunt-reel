@@ -75,3 +75,59 @@
   The peak fell `555.7` and `301.0` MiB, but a saving at the peak alone would be a chunked world upload issue, not this one.
   `[Bounded Observation]`: one run per cell, on one machine.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6, `#920`'s verdict.
+
+## 2026-11-22: what un-baking would keep baked
+
+- **Question**: Of the world's uploaded GPU bytes, how many would un-baking (the issue's candidate design) keep baked and how many would it drop, and what would it add, on `LOCATION` and `INTRO`?
+  Step 3's `413.4` and `106.1` MiB are upper bounds, since they remove the whole upload.
+- **Method**:
+  - `main` at `68ac0d18` plus [`baked-share-probe.patch`](baked-share-probe.patch): a CPU-only count that returns from `run_headless` before the renderer opens (`DBG_PROBE_WORLD_BYTES=1`), with no GPU and no device.
+    It calls the uploader's own planning code on the world IR: `plan_upload` (with the 256 MiB buffer limit of the `downlevel_defaults` that `request_device` asks for; one chunk, as #645 found) and `plan_edges` with `outlines_in_world`, the filter `SceneRenderer::new` passes `GpuModel::from_ir_outlined`.
+  - Bytes per element are the sizes in `GpuChunk::upload`: vertex `28` B (`size_of::<SodVertex>()`), apex `12` B a vertex (`[f32; 3]`, the second stream), index `4` B, outline `4` B an outline index (two per edge: `8` B an edge), prop-runs table `12` B a run (`[u32; 3]`, `chunk_prop_runs`).
+  - Each mesh node's vertex window (`NodeKind::Mesh`'s `vertex_offset` and `vertex_count`), its indices and its slices' `edge_count` go to one class; a run's class is that of its first vertex.
+    Every one of the `6,704,202` vertices fell in some node's window.
+  - A node's class is recognised in the code as:
+    - **terrain and ocean**: a node of no placement (`WORLD_BASE`, `WORLD_DECAL`, and the `GROUND_NODE` quads `push_mesh_node` makes for the ocean and the flat terrain), `4` nodes;
+    - **flat ground**: a `GROUND_NODE` node `push_gated_props` makes for a placement, which is in its `MeshSpans::nodes` run;
+    - **ground-snapped decal**: that function's `WORLD_GATED` node of a placement whose `grounded` entry is `Some` (`ground_decal_vertices`, ADR 0035; a node's `is_decal` is also true for an unsnapped decal mesh, so `is_decal` does not tell them apart);
+    - **`OP_TAP` shape**: its `WORLD_GATED` node, when the shape is one `decode_chunks` found stopping at `MissingAnchors` on a decode without anchors, the shapes `World` decodes per placement (`anchored_shapes`, `anchored_models`);
+    - **dropped**: every other `WORLD_GATED` node.
+
+    A node is classed in that order, so a tapped shape's flat-ground nodes count as flat ground.
+  - What un-baking adds: the shapes the renderer does not upload today.
+    `FilmScene::drawn_only` keeps only the actors', view-facing props' and origin shapes, so no baked prop's shape is in `SceneRenderer::shapes` (the probe checked: none of the dropped placements' shapes is there).
+    The probe sizes each dropped placement's distinct shape uploaded two ways, since the issue leaves the outline open: as `outlined()` quads, as `self.shapes` uploads (vertices at `40` B with the apex, indices at `4` B), and as a line list, as the world does (the same, plus `4` B an outline index from `plan_edges`).
+    The per-placement entry is the issue's `shape_id` and a transform, at `68` B (a `64` B matrix and a `4` B id), and at `16` B (an eye-relative position and the id) for comparison.
+    A placement counts once if any of its nodes is dropped.
+  - One run each, release build, on the owner's laptop, with step 1's command for `LOCATION` (`--tick-range 12..=300`, no `--out-dir`) and for `INTRO` (`<data>/builds/patch3/VAULT/INTRO.FLM` with `captures/vault-intro/archives/INTRO.ALL`); the world does not depend on the tick range.
+- **Result**: The world holds `LOCATION`'s `228,159` nodes (`158,362` with a mesh), `6,704,202` vertices, `7,493,034` indices, `12,861,070` outline indices and `31,441` runs, and `INTRO`'s `128,768`, `819,265`, `1,002,423`, `1,513,630` and `9,815`.
+  `LOCATION` in MiB (`1,048,576` B), by class and by buffer:
+
+  | Class | Vertex | Apex | Index | Outline | Runs | Total |
+  |---|---|---|---|---|---|---|
+  | Terrain and ocean | 0.01 | 0.01 | 0.00 | 0.00 | 0.00 | 0.02 |
+  | Flat ground (`309,901` vertices) | 8.28 | 3.55 | 2.61 | 1.18 | 0.06 | 15.67 |
+  | Ground-snapped decals (`177` vertices) | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.01 |
+  | `OP_TAP` shapes (`84` vertices) | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+  | Kept baked | 8.30 | 3.55 | 2.61 | 1.18 | 0.06 | 15.71 |
+  | Dropped (`6,393,484` vertices, `95.4%`) | 170.72 | 73.17 | 25.97 | 47.88 | 0.30 | 318.04 |
+  | World total | 179.02 | 76.72 | 28.58 | 49.06 | 0.36 | 333.75 |
+
+  - Added by un-baking on `LOCATION`: the dropped placements are `28,434` records of `823` distinct shapes, none already uploaded.
+    The shapes cost `34.72` MiB as `outlined()` quads or `8.07` MiB as a line list; the per-placement entries `1.84` MiB at `68` B (`0.43` at `16` B).
+    So the dropped bytes less what un-baking adds are `281.48` MiB with quad outlines and `308.13` MiB with line-list outlines (`282.89` and `309.54` at `16` B).
+    The CPU side of the per-placement data is the same entries, `1.84` MiB, beside the `PlacementRecord`s that already exist (`76` B each, `56,585` of them).
+  - `INTRO` in MiB, for comparison: kept `0.84` (`0.81` of it flat ground, `15,919` vertices); dropped `40.12` (`802,706` vertices, `98.0%`: vertex `21.43`, apex `9.19`, index `3.71`, outline `5.69`, runs `0.10`); total `40.96`.
+    Un-baking adds `3.57` (quads) or `0.77` (line list) for `76` shapes and `0.61` for `9,405` placements, so it would save `35.94` or `38.74` MiB.
+  - Records: of `LOCATION`'s `35,479` placements with a mesh, `8,424` have a flat-ground node, `10` a snapped decal, `14` an `OP_TAP` shape and `28,434` a dropped node (a placement can be in more than one).
+  - Sanity check against step 3: the world's buffers total `333.75` MiB, against lavapipe's measured fall of `413.4` MiB (`499.4` to `86.0`), a gap of `79.7` MiB.
+    The skipped variant also did not build the world's `GpuModel` node arena: `228,159` `GpuNode`s at `240` B and `158,362` slices at `28` B are `56.5` MiB inline (`size_of`), before their name, child-list and slice heap allocations.
+    That leaves about `23` MiB, or less once those allocations are counted; allocator and driver granularity and staging copies are candidates, but none was measured.
+    On the RTX 4070 the buffers are in device memory, so the `106.1` MiB fall is the driver's host-side share plus that node arena, and the split between them was not measured.
+- **Verdict**: control, recorded only; memory gives no go.
+  Against the issue's hypothetical bar of a 200 MiB fall a worker, the bytes un-baking would drop net of what it adds, `281` to `308` MiB of buffers on `LOCATION`, are above it on lavapipe; on the RTX 4070 the whole upload's fall is `106.1` MiB, so any un-baking saving there is at most that, below the bar.
+  If that fall scaled with bytes, un-baking's share would be about `89` MiB (`106.1 × 281.48 / 333.75`); the scaling is an assumption, not a measurement.
+  The dropped nodes' share of the `GpuNode` arena, about `36` MiB inline (`141,258` mesh nodes), is not in the `281` to `308` MiB, and whether un-baking would keep those nodes (they carry the placements' gates) was not examined.
+  The probe counts bytes; no un-baked renderer was run, so the figure holds for the candidate design as the issue states it.
+  `[Bounded Observation]`: one run per film on one machine, a 256 MiB buffer limit assumed from the code, and a byte count that the sanity check matches only to within the node arena and about `23` MiB.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6, `#920`'s verdict.

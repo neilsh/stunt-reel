@@ -1,0 +1,325 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 512c34b9..b0ecf275 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -175,6 +175,9 @@ pub(crate) fn run_headless(
+             .map_err(|e| format!("create output directory {}: {e}", out_dir.display()))?;
+     }
+ 
++    if std::env::var_os("DBG_PROBE_WORLD_BYTES").is_some() {
++        return stunt_render::probe_world_bytes(scene);
++    }
+     let playback = Playback::new(config, scene);
+     let range = playback.range();
+     let start_tick = range.start();
+diff --git a/crates/stunt-cli/src/scene/mod.rs b/crates/stunt-cli/src/scene/mod.rs
+index eb0d47d0..8f627d49 100644
+--- a/crates/stunt-cli/src/scene/mod.rs
++++ b/crates/stunt-cli/src/scene/mod.rs
+@@ -268,7 +268,13 @@ fn build_film_scene(src: &SceneSources<'_>) -> Result<(FilmScene, FilmId), Strin
+     print_report(&scene, &report, anchors.is_some());
+     // The renderer uploads every shape the scene holds, and `--game` decodes all of them
+     // (research/makeone-exe/linking.md section 7.1).
+-    let scene = scene.drawn_only();
++    let scene = if std::env::var_os("DBG_PROBE_WORLD_BYTES").is_some() {
++        let drawn: Vec<u16> = scene.clone().drawn_only().shapes().map(|(id, _)| id).collect();
++        *stunt_core::world::PROBE_DRAWN.lock().unwrap() = drawn;
++        scene
++    } else {
++        scene.drawn_only()
++    };
+     let archive = match &files {
+         ShapeFiles::Archive(bytes) => Some(bytes.as_slice()),
+         ShapeFiles::Res { .. } => None,
+diff --git a/crates/stunt-core/src/scene/shapes.rs b/crates/stunt-core/src/scene/shapes.rs
+index a7ae7dd0..0c5a24a9 100644
+--- a/crates/stunt-core/src/scene/shapes.rs
++++ b/crates/stunt-core/src/scene/shapes.rs
+@@ -175,6 +175,7 @@ fn decode_chunks<'a>(
+         if taps && anchor_slice.is_some() {
+             decoded = decode_sod_lit(data, &name, anchor_slice, DecodeMode::Lenient, light);
+             out.anchored.insert(shape_id, data.to_vec());
++            crate::world::PROBE_ANCHORED.lock().unwrap().push(shape_id);
+         } else if !taps && decoded.is_ok() {
+             out.streams.insert(shape_id, (name.clone(), data.to_vec()));
+         }
+diff --git a/crates/stunt-core/src/world/mesh.rs b/crates/stunt-core/src/world/mesh.rs
+index 99343bd1..514a3f08 100644
+--- a/crates/stunt-core/src/world/mesh.rs
++++ b/crates/stunt-core/src/world/mesh.rs
+@@ -461,6 +461,23 @@ fn push_gated_props(
+                 push_prop_mesh(ir, prop_runs, &mesh, placed, false);
+             });
+         }
++        {
++            let tap = super::PROBE_ANCHORED.lock().unwrap().contains(&shape_id);
++            let mut classes = super::PROBE_NODE_CLASS.lock().unwrap();
++            for n in first_node..arena_index(ir.nodes.len()) {
++                let node = &ir.nodes[n as usize];
++                let class = match node.name.as_str() {
++                    GROUND_NODE => 1,
++                    "WORLD_GATED" if ground.is_some() => 2,
++                    "WORLD_GATED" if tap => 3,
++                    "WORLD_GATED" => 4,
++                    _ => 0,
++                };
++                if class > 0 {
++                    classes.push((n, class));
++                }
++            }
++        }
+         if let Some(run) = runs_of.get_mut(index) {
+             *run = ArenaSpan {
+                 start: first_node,
+diff --git a/crates/stunt-core/src/world/mod.rs b/crates/stunt-core/src/world/mod.rs
+index c78b35f6..6235198a 100644
+--- a/crates/stunt-core/src/world/mod.rs
++++ b/crates/stunt-core/src/world/mod.rs
+@@ -20,6 +20,15 @@
+ //! mapping. Mesh output follows `[I2]` (flat arena), `[I3]` (palette indices), and `[I5]`
+ //! (props' coplanar decals go into a separate batch so renderers can depth-bias them).
+ 
++/// Probe (#920): shape ids that run `OP_TAP`, and each placement node's class
++/// (1 flat ground, 2 snapped decal, 3 `OP_TAP` shape, 4 droppable), and the ids the
++/// renderer uploads as shapes anyway.
++pub static PROBE_ANCHORED: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
++/// See [`PROBE_ANCHORED`].
++pub static PROBE_NODE_CLASS: std::sync::Mutex<Vec<(u32, u8)>> = std::sync::Mutex::new(Vec::new());
++/// See [`PROBE_ANCHORED`].
++pub static PROBE_DRAWN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
++
+ mod assemble;
+ mod map_bin;
+ mod mesh;
+diff --git a/crates/stunt-render/src/lib.rs b/crates/stunt-render/src/lib.rs
+index 1b875cb5..6ea72a33 100644
+--- a/crates/stunt-render/src/lib.rs
++++ b/crates/stunt-render/src/lib.rs
+@@ -47,4 +47,5 @@ pub use renderer::{
+     DEFAULT_PAGE_WIDTH, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError,
+     RenderOptions, RenderedPage, Renderer, SinkError,
+ };
++pub use scene_renderer::probe_world_bytes;
+ pub use video::{FfmpegVideoWriter, VideoExportError};
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 2e92d8ce..4121f07a 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -2080,3 +2080,202 @@ mod tests {
+         assert!(squeezes_discs(true, 2.0) && !squeezes_discs(true, 1.0));
+     }
+ }
++
++/// Probe (#920): the bytes the world's upload writes, by class, and what un-baking would add.
++pub(crate) fn probe_bytes(
++    scene: &stunt_core::scene::FilmScene,
++    w: &stunt_core::world::World,
++    marks: &[u32],
++    keep: fn(&SodVertex) -> bool,
++) -> Result<(), String> {
++    use std::collections::{HashMap, HashSet};
++    use stunt_core::contracts::NodeKind;
++    let ir = &w.ir;
++    let classes: HashMap<u32, u8> = stunt_core::world::PROBE_NODE_CLASS
++        .lock()
++        .unwrap()
++        .iter()
++        .copied()
++        .collect();
++    let drawn: HashSet<u16> = stunt_core::world::PROBE_DRAWN
++        .lock()
++        .unwrap()
++        .iter()
++        .copied()
++        .collect();
++    let limit: u64 = std::env::var("DBG_PROBE_MAX_BUFFER")
++        .ok()
++        .and_then(|s| s.parse().ok())
++        .unwrap_or(256 << 20);
++    let vsz = size_of::<SodVertex>();
++    let max_vertices = (limit / vsz as u64) as usize;
++    let max_indices = (limit / 4) as usize;
++    let mut meshes = ir.meshes().peekable();
++    let sources: Vec<Option<SourceSlice>> = ir
++        .nodes
++        .iter()
++        .map(|node| {
++            let mesh = meshes.next_if(|mesh| std::ptr::eq(mesh.node, node))?;
++            Some(SourceSlice {
++                index_offset: mesh.index_offset,
++                index_count: arena_index(mesh.indices.len()),
++                is_decal: mesh.is_decal(),
++            })
++        })
++        .collect();
++    let mesh_sources: Vec<SourceSlice> = sources.iter().flatten().copied().collect();
++    let mut plan = plan_upload(ir.vertices.len(), &ir.indices, &mesh_sources, max_vertices, max_indices);
++    let (edges, _) = plan_edges(&mut plan, ir, keep, marks);
++    println!(
++        "[probe] size_of SodVertex {vsz} apex 12 index 4 edge-index 4 prop-run 12; limit {limit}; chunks {}; nodes {} mesh nodes {} vertices {} indices {}",
++        plan.chunks.len(),
++        ir.nodes.len(),
++        mesh_sources.len(),
++        ir.vertices.len(),
++        ir.indices.len()
++    );
++    // class: 0 terrain+ocean, 1 flat ground, 2 snapped decal, 3 OP_TAP, 4 droppable, 5 unowned
++    let labels = ["terrain+ocean", "flat ground", "snapped decal", "OP_TAP", "dropped", "unowned"];
++    let mut vclass = vec![5u8; ir.vertices.len()];
++    let mut nodes_n = [0u64; 6];
++    let mut idx = [0u64; 6];
++    let mut edge = [0u64; 6];
++    let mut planned = plan.slices.iter();
++    let mut cpu_slices = 0u64;
++    let mut cpu_children = 0u64;
++    let mut cpu_name_bytes = 0u64;
++    for (n, (node, source)) in ir.nodes.iter().zip(&sources).enumerate() {
++        cpu_children += node.children.len() as u64;
++        cpu_name_bytes += node.name.len() as u64;
++        let Some(src) = source else { continue };
++        let runs = planned.next().ok_or("plan short")?;
++        cpu_slices += runs.len() as u64;
++        let class = match classes.get(&(n as u32)) {
++            Some(&c) => c as usize,
++            None => 0,
++        };
++        let NodeKind::Mesh { vertex_offset, vertex_count, .. } = node.kind else {
++            return Err("mesh source on a non-mesh node".into());
++        };
++        for v in vclass
++            .iter_mut()
++            .skip(vertex_offset as usize)
++            .take(vertex_count as usize)
++        {
++            *v = class as u8;
++        }
++        nodes_n[class] += 1;
++        idx[class] += u64::from(src.index_count);
++        edge[class] += runs.iter().map(|r| u64::from(r.edge_count)).sum::<u64>();
++    }
++    let mut verts = [0u64; 6];
++    for &c in &vclass {
++        verts[c as usize] += 1;
++    }
++    let mut runs_n = [0u64; 6];
++    let mut table_total = 0u64;
++    for chunk in &plan.chunks {
++        let table = chunk_prop_runs(&w.prop_runs, &chunk.vertex_ranges);
++        table_total += table.len() as u64;
++    }
++    for run in &w.prop_runs {
++        runs_n[vclass[run.first as usize] as usize] += 1;
++    }
++    let edge_total: u64 = edges.iter().map(|e| e.len() as u64).sum();
++    println!(
++        "[probe] uploaded: vertices {} (plan {}), indices {}, edge indices {} (slices {}), prop runs {} (source {})",
++        ir.vertices.len(),
++        plan.chunks.iter().map(|c| c.vertex_count).sum::<usize>(),
++        ir.indices.len(),
++        edge_total,
++        edge.iter().sum::<u64>(),
++        table_total,
++        w.prop_runs.len()
++    );
++    println!("class nodes vertices indices edge_indices prop_runs");
++    for c in 0..6 {
++        println!("{} {} {} {} {} {}", labels[c].replace(' ', "_"), nodes_n[c], verts[c], idx[c], edge[c], runs_n[c]);
++    }
++    // Placements.
++    let mut rec_class = [0u64; 5];
++    let mut dropped_shapes: HashMap<u16, u64> = HashMap::new();
++    let mut records_with_mesh = 0u64;
++    for r in &w.placements.records {
++        let Some(m) = r.mesh else { continue };
++        records_with_mesh += 1;
++        let mut seen = [false; 5];
++        for n in m.nodes.start..m.nodes.end {
++            if let Some(&c) = classes.get(&n) {
++                seen[c as usize] = true;
++            }
++        }
++        for c in 1..5 {
++            if seen[c] {
++                rec_class[c] += 1;
++            }
++        }
++        if seen[4] {
++            *dropped_shapes.entry(r.shape).or_default() += 1;
++        }
++    }
++    println!(
++        "[probe] records {} with mesh {}; with a flat node {}, snapped {}, OP_TAP {}, dropped {}",
++        w.placements.records.len(),
++        records_with_mesh,
++        rec_class[1],
++        rec_class[2],
++        rec_class[3],
++        rec_class[4]
++    );
++    let dropped_placements: u64 = dropped_shapes.values().sum();
++    // Shapes un-baking would add to `SceneRenderer::shapes`.
++    let (mut new_shapes, mut already, mut missing) = (0u64, 0u64, 0u64);
++    let (mut quad_bytes, mut line_bytes) = (0u64, 0u64);
++    for &id in dropped_shapes.keys() {
++        if drawn.contains(&id) {
++            already += 1;
++            continue;
++        }
++        let Some(shape) = scene.shape(id) else {
++            missing += 1;
++            continue;
++        };
++        new_shapes += 1;
++        let o = crate::outline::outlined(shape);
++        quad_bytes += (o.ir.vertices.len() * (vsz + 12) + o.ir.indices.len() * 4) as u64;
++        let mut ms = shape.meshes().peekable();
++        let srcs: Vec<Option<SourceSlice>> = shape
++            .nodes
++            .iter()
++            .map(|node| {
++                let mesh = ms.next_if(|mesh| std::ptr::eq(mesh.node, node))?;
++                Some(SourceSlice {
++                    index_offset: mesh.index_offset,
++                    index_count: arena_index(mesh.indices.len()),
++                    is_decal: mesh.is_decal(),
++                })
++            })
++            .collect();
++        let flat: Vec<SourceSlice> = srcs.iter().flatten().copied().collect();
++        let mut p = plan_upload(shape.vertices.len(), &shape.indices, &flat, max_vertices, max_indices);
++        let (e, _) = plan_edges(&mut p, shape, crate::outline::outlines, &[]);
++        let ec: u64 = e.iter().map(|v| v.len() as u64).sum();
++        line_bytes += (shape.vertices.len() * (vsz + 12) + shape.indices.len() * 4) as u64 + ec * 4;
++    }
++    println!(
++        "[probe] dropped placements {dropped_placements} of {} distinct shapes; already uploaded {already}, absent from scene {missing}, newly uploaded {new_shapes}: quad-outline bytes {quad_bytes}, line-list bytes {line_bytes}",
++        dropped_shapes.len()
++    );
++    println!(
++        "[probe] CPU GpuNode: size_of GpuNode {} GpuMeshSlice {} NodeId {}; nodes {} slices {} children {} name bytes {}",
++        size_of::<GpuNode>(),
++        size_of::<GpuMeshSlice>(),
++        size_of::<NodeId>(),
++        ir.nodes.len(),
++        cpu_slices,
++        cpu_children,
++        cpu_name_bytes
++    );
++    println!("[probe] size_of PlacementRecord {}", size_of::<stunt_core::world::PlacementRecord>());
++    Ok(())
++}
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 6182ccc9..8d791466 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -1332,3 +1332,10 @@ mod tests {
+         );
+     }
+ }
++
++/// Probe (#920): the world's uploaded bytes by class, CPU only.
++pub fn probe_world_bytes(scene: &FilmScene) -> Result<(), String> {
++    let w = scene.world().ok_or("no world")?;
++    let placements = WorldPlacements::new(w);
++    crate::mesh::probe_bytes(scene, w, &placements.marks(), outlines_in_world)
++}
