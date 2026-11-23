@@ -177,13 +177,13 @@ impl WorldPlacements {
         let batch = if decals { self.decal } else { self.base };
         let mut kept = Vec::with_capacity(slices.len());
         for (node, slice) in slices {
-            if batch.is_some_and(|(id, _)| id == node) {
+            if let Some((_, run)) = batch.filter(|&(id, _)| id == node) {
                 let moved = (0..).zip(&self.spans).filter_map(|(record, spans)| {
                     let span = spans.map(|s| if decals { s.decal } else { s.base })?;
                     let rank = rank.get(record).copied().unwrap_or(0);
                     (rank > 0 && !span.is_empty()).then_some((span, rank))
                 });
-                kept.extend(cut_out(slice, moved, steps, |start, end| {
+                kept.extend(cut_out(slice, run, moved, steps, |start, end| {
                     cut(node, start, end)
                 })?);
                 continue;
@@ -202,17 +202,19 @@ impl WorldPlacements {
     }
 }
 
-/// `whole` less the `moved` spans (ascending, each with its rank), which go to `steps` by
-/// rank; `whole` itself when none moves. `None` when `cut` cannot cut `whole` at a span's
-/// ends.
+/// `whole`, the slice of the index arena's `run`, less the `moved` spans of the arena
+/// (ascending, each with its rank), which go to `steps` by rank; `whole` itself when none
+/// moves. `None` when `cut` (arena offsets, as [`GpuModel::cut`] takes them) cannot cut
+/// `whole` at a span's ends.
 fn cut_out(
     whole: GpuMeshSlice,
+    run: ArenaSpan,
     moved: impl Iterator<Item = (ArenaSpan, usize)>,
     steps: &mut [Vec<GpuMeshSlice>],
     cut: impl Fn(u32, u32) -> Option<GpuMeshSlice>,
 ) -> Option<Vec<GpuMeshSlice>> {
-    let end = whole.index_offset.checked_add(whole.index_count)?;
-    let mut at = whole.index_offset;
+    let ArenaSpan { start, end } = run;
+    let mut at = start;
     let mut kept = Vec::new();
     for (span, rank) in moved {
         if span.start < at || span.end > end {
@@ -226,7 +228,7 @@ fn cut_out(
             .push(cut(span.start, span.end)?);
         at = span.end;
     }
-    if at == whole.index_offset {
+    if at == start {
         return Some(vec![whole]);
     }
     if at < end {
@@ -1262,6 +1264,24 @@ mod tests {
         );
         assert_eq!(kept, Some(vec![run(0, 30)]));
         assert!(steps[0].is_empty());
+    }
+
+    /// A slice the walk-order layout moved is cut at arena offsets, as the model's marks
+    /// name them, whatever its offset in the index buffer.
+    #[test]
+    fn a_moved_slice_is_cut_at_its_arena_offsets() {
+        let world = three_props();
+        let mut steps = vec![Vec::new()];
+        // The base slice's arena run 0..30 lies at 100..130 in the index buffer.
+        let kept = world.split(
+            vec![(NodeId(0), run(100, 130))],
+            &[0, 1, 0, 0],
+            false,
+            &mut steps,
+            |_, a, b| Some(run(a + 100, b + 100)),
+        );
+        assert_eq!(kept, Some(vec![run(100, 112), run(118, 130)]));
+        assert_eq!(steps, [vec![run(112, 118)]]);
     }
 
     #[test]
