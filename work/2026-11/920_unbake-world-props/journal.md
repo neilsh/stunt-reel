@@ -228,3 +228,94 @@
     It follows the world's upload (18.1 MiB without it, step 3) and something that runs with it in every variant, the ground draws or the walk; which of them, or whether lavapipe maps the buffer lazily, is not tested here.
   - `g` changes the picture where decals overlap, so it names a cost, not a change to adopt.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3 and its Open questions item 1.
+
+## 2026-11-22: what the per-fragment shape lookup costs
+
+`[Bounded Observation]`
+
+- **Question**: How much of the lavapipe and RTX 4070 loop does the plane fragment shader's binary search of `prop_runs` (`prop_shape`) cost, which un-baking would replace with a per-instance `shape_id` and a cheaper fix would carry per vertex?
+- **Method**:
+  - `a0fcd348` plus [`shape-lookup-and-startup.patch`](shape-lookup-and-startup.patch) (`git diff -- crates`, so it also holds the next entry's startup timers and a loop timer, `[probe] loop_ms`, as step 1's patch had it).
+  - The probe: when `STUNT_PROBE_CONST_SHAPE` is set, `RenderPipelines::new` compiles `mode13h.wgsl` with `prop_shape`'s body replaced by `return 1u;`, so the lookup's loop and its `prop_runs` loads are gone and every world prop fragment writes shape word `1` (shape id `0`).
+    The switch is read when the pipelines are built, so both variants run from one release binary (`mise exec -- cargo build --release -p stunt-cli`, copied to the scratchpad).
+  - `prop_shape` has one caller: `fs_main_plane`, which calls it when `in.prop_vertex != NO_PROP_VERTEX` and writes the result to the plane's shape word.
+    Nothing branches on the shape: the vertex stage still outputs `prop_vertex`, the `if` stays and the colour output is untouched.
+    So the constant changes the work inside that branch and no other control flow, but it also changes the shapes plane's bytes, which the loop's page write compresses (see Result).
+  - `stuntreel --headless <data>/builds/patch3/VAULT/LOCATION.FLM --all <data>/captures/vault-location/archives/LOCATION.ALL --tick-range <span> --sidata <data>/corpus/siarchive/Developer/FreeFlight/SIDATA --out-dir <dir> --width 320 --height 200 --viewport-rows 185`, with `--software-only` and `VK_DRIVER_FILES` for mesa-dist-win 25.2.8 on lavapipe, else on the GPU.
+  - Runs: lavapipe Span B (`3680..=3979`), 4 rounds; lavapipe whole film (`12..=8262`), 4 pairs; RTX 4070 Span B, 4 rounds.
+    The variant that ran first alternated each round, base first in rounds 0 and 2.
+  - Every run's `render.json` names `llvmpipe (LLVM 21.1.7, 256 bits)` or `NVIDIA GeForce RTX 4070 Laptop GPU` (checked in all 24 runs).
+  - No other `stuntreel`, `cargo` or `rustc` process ran (`tasklist` before the sweep); the laptop was otherwise the owner's, so other load was not excluded.
+- **Result**: Loop ms in round order, then each variant's median and range and the change of the median:
+
+  | Cell | Base | Constant | Base median (range) | Constant median (range) | Change | Constant faster |
+  |---|---|---|---|---|---|---|
+  | Lavapipe Span B | 2584, 2428, 2410, 2396 | 2365, 2214, 2199, 2337 | 2419.0 (2396..2584) | 2275.5 (2199..2365) | -5.9% | 4 of 4 |
+  | Lavapipe whole film | 26721, 26500, 27102, 27074 | 24205, 23927, 23696, 24038 | 26897.5 (26500..27102) | 23982.5 (23696..24205) | -10.8% | 4 of 4 |
+  | RTX 4070 Span B | 417, 422, 421, 417 | 413, 404, 450, 426 | 419.0 (417..422) | 419.5 (404..450) | +0.1% | 2 of 4 |
+
+  - Change round by round: lavapipe Span B -8.5, -8.8, -8.8, -2.5%; lavapipe whole film -9.4, -9.7, -12.6, -11.2%; RTX 4070 Span B -1.0, -4.3, +6.9, +2.2%.
+  - The lavapipe cells resolve: the constant's maximum (`2365`; `24205`) is under base's minimum (`2396`; `26500`).
+    The saving is `143.5 ms` on Span B and `2,915.0 ms` on the whole film, about `0.35 ms` a frame over its `8,251` frames.
+  - The RTX 4070 cell does not resolve: the ranges overlap and the medians differ by `0.5 ms`.
+  - Check: on lavapipe, ticks `3680..=3719`, one run each, `frames.zst`, `layers.zst` and `palettes.zst` hash the same in both variants and `shapes.zst` differs, as it should.
+  - A confound: the constant makes the shapes plane compress differently, and the loop includes the page writes.
+    On the RTX 4070 Span B, where the shader saving does not resolve, the medians differ by `0.5 ms` and the runs spread `46 ms`, so a compression difference is at most about that size on Span B; no run isolated it on the whole film.
+- **Verdict**: control: it bounds a per-vertex `shape_id` from above and decides no issue by itself.
+  The lookup costs at most `10.8%` of the whole `LOCATION` film's lavapipe loop (`5.9%` on Span B) and nothing resolved on the RTX 4070 Span B, against step 1's 15% bar and the `-49.0%` the base and decal draws take.
+  By that bar a standalone per-vertex `shape_id` is not worth an issue: `10.8%` is an upper bound, since a carried id is not free (a per-vertex word or a wider vertex was not measured), and it is below the bar.
+  The lookup is not what the world draws' lavapipe cost is made of.
+  The owner may still weigh `10.8%` of the whole film's lavapipe loop on its own.
+  `[Bounded Observation]`: 4 rounds on one machine, the whole-film figure at 4 pairs.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3 and its Open questions item 5.
+
+## 2026-11-22: where per-worker startup goes
+
+`[Bounded Observation]`
+
+- **Question**: On `LOCATION` and `INTRO`, how long do the scene build and the renderer open take in each worker process, which phases make them up, and what share of a 4-worker chunk is that?
+  #918 reported about `750 ms` of `LOCATION` scene build and `540 ms` of renderer open on lavapipe.
+- **Method**:
+  - The same binary and patch as the previous entry, with its constant switch off.
+    `eprintln!` timers (`[probe]`, ms):
+    - `scene_build_ms` around `build_identified_scene` in `main.rs`.
+    - In `build_world`: `place_props_split_ms` (parse, `place_props`, reach test, `split_view_facing`), `anchored_models_ms`, `cull_and_facing_ms` (the visibility loop, the facing props and `facing_props`), `terrain_and_build_world_ir_ms` (`TerrainSurface::new` and `build_world_ir` together, one timer), `spans_records_extent_ms` (the records and the extent).
+    - In `SceneRenderer::new`: `shape_upload_ms` (`from_outlined` per shape), `image_upload_ms`, `world_placements_ms`, `world_from_ir_outlined_ms` and `attach_prop_runs_ms`.
+    - `renderer_open_ms` around `Renderer::offscreen`, which holds `SceneRenderer::new`.
+  - Whole-film `LOCATION` (`12..=8262`), 3 runs on each adapter; `INTRO` Span C (`2500..=2949`, `<data>/builds/patch3/VAULT/INTRO.FLM` with `captures/vault-intro/archives/INTRO.ALL`), 1 run on each; the previous entry's command line.
+    Every run's `render.json` named the expected adapter.
+  - Whole-process wall clock is the runner's stopwatch around the process.
+    A share is the phase's median over the median wall, or over a 4-worker chunk estimated as the median loop divided by 4 plus the median scene build and renderer open.
+    The chunk estimate assumes four workers each take a quarter of the loop and run in parallel without slowing each other, which was not measured here (#916 measured `2.82x..3.21x` on four processes), and it omits the time outside the timers (below).
+- **Result**: `LOCATION`, 3 runs, ms: the median with its range, then its share of the median wall (`29,178` lavapipe, `11,121` RTX 4070) and of the chunk estimate (`8,332.8` and `3,834.8`).
+
+  | Phase | Lavapipe | % wall | % chunk | RTX 4070 | % wall | % chunk |
+  |---|---|---|---|---|---|---|
+  | `place_props_split` | 136.7 (136.0..141.1) | 0.47 | 1.64 | 135.4 (134.4..135.6) | 1.22 | 3.53 |
+  | `anchored_models` | 0.8 (0.7..0.8) | 0.00 | 0.01 | 0.6 (0.5..0.8) | 0.01 | 0.02 |
+  | `cull_and_facing` | 93.8 (93.1..94.0) | 0.32 | 1.13 | 93.7 (93.2..94.1) | 0.84 | 2.44 |
+  | `TerrainSurface::new` and `build_world_ir` | 382.5 (382.3..390.4) | 1.31 | 4.59 | 381.9 (379.8..382.2) | 3.43 | 9.96 |
+  | `spans_records_extent` | 8.5 (8.5..8.5) | 0.03 | 0.10 | 8.6 (8.4..8.6) | 0.08 | 0.22 |
+  | World build, sum of the five medians | 622.3 | 2.13 | 7.47 | 620.2 | 5.58 | 16.17 |
+  | Scene build, whole | 894.0 (884..898) | 3.06 | 10.73 | 888.0 (887..890) | 7.98 | 23.16 |
+  | Shape uploads | 1.2 (1.2..1.3) | 0.00 | 0.01 | 1.0 (1.0..1.1) | 0.01 | 0.03 |
+  | `world_placements` | 0.7 (0.6..0.7) | 0.00 | 0.01 | 0.6 (0.5..0.6) | 0.01 | 0.02 |
+  | World `from_ir_outlined` | 470.6 (468.9..477.9) | 1.61 | 5.65 | 519.7 (512.5..522.9) | 4.67 | 13.55 |
+  | `attach_prop_runs` | 0.3 (0.3..0.4) | 0.00 | 0.00 | 0.3 (0.3..0.4) | 0.00 | 0.01 |
+  | Renderer open, whole | 650.0 (639..657) | 2.23 | 7.80 | 796.0 (780..802) | 7.16 | 20.76 |
+  | Scene build and renderer open | 1,544.0 | 5.3 | 18.5 | 1,684.0 | 15.1 | 43.9 |
+
+  - Raw values by run (lavapipe, then RTX 4070): scene build `894, 898, 884` and `888, 890, 887`; renderer open `657, 650, 639` and `796, 802, 780`; world `from_ir_outlined` `477.9, 470.6, 468.9` and `519.7, 522.9, 512.5`; loop `27450, 27155, 26757` and `8456, 8603, 8711`; wall `30217, 29178, 29150` and `11121, 11100, 11134`.
+  - Not timed: the scene build outside `build_world` (the archive and shape decode and the rest: `271.7 ms` lavapipe and `267.8 ms` RTX 4070, by difference of medians) and the renderer open outside the two uploads (instance, adapter, device, pipelines and the offscreen target: `177.2` and `274.4 ms`, by difference).
+  - Outside the scene build, renderer open and loop timers the process spends `479 ms` on lavapipe and `834 ms` on the RTX 4070, by difference of medians (the process start, the journal finish and the exit are candidates); it is not split.
+  - `INTRO` Span C, 1 run per adapter, ms (lavapipe, then RTX 4070): scene build `286` and `287`, of which the five world-build timers sum to `134.4` and `135.8`; renderer open `245` and `342`, of which the world `from_ir_outlined` is `75.9` and `76.2`, the shape uploads `1.9` and `2.4`, the sprite uploads `1.2` and `0.6`; loop `1,531` and `966`; wall `3,026` and `2,031`.
+    Startup is `531` and `629 ms`: `17.5%` and `31.0%` of the wall, and `58.1%` and `72.3%` of a chunk estimate for that span (`913.8` and `870.5 ms`); the world build is `14.7%` and `15.6%` of that chunk.
+  - Against #918's `750` and `540 ms`, this run's `894` and `650 ms` are higher; a different tree and machine state are candidates, not examined.
+- **Verdict**: control: it bounds a cached or shared world build, and no issue is filed.
+  The world's CPU build takes `622 ms`: `2.1%` of a single lavapipe process's wall and `7.5%` of a 4-worker lavapipe chunk, below step 1's 15% bar.
+  So a cached or shared world build does not clear the bar on lavapipe, where the workers run (#916), and `7.5%` is an upper bound, since reading the cache is not free.
+  On the RTX 4070 it is `16.2%` of the chunk estimate, which assumes four workers sharing one GPU each run a quarter of the loop and each pay the full startup; no multi-worker run measured that.
+  The world's device upload (`470.6` and `519.7 ms`) is most of the renderer open (`72%` and `65%`) but is per device, so a shared CPU build does not remove it.
+  The shape uploads take `1.2 ms`, so they are not a cost to fix.
+  `[Bounded Observation]`: 3 runs per `LOCATION` cell, 1 per `INTRO`, one machine, a chunk estimate and not a measured chunk.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3 and its Open questions item 6.

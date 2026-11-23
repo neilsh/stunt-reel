@@ -1,0 +1,167 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 512c34b9..47fd3ddd 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -271,8 +271,10 @@ pub(crate) fn run_headless(
+         written_video_frames: 0,
+     };
+     let slot = PageSlot::default();
++    let probe_open = std::time::Instant::now();
+     let mut renderer = Renderer::offscreen(scene, offscreen, Box::new(slot.clone()), options)
+         .map_err(|e| format!("Headless renderer failed: {e}"))?;
++    eprintln!("[probe] renderer_open_ms {}", probe_open.elapsed().as_millis());
+     memory.stage("renderer opened");
+     // The world mesh is on the device now. Freeing it before the first submit keeps it from
+     // overlapping the upload's staging copies and the device buffers they fill
+@@ -287,6 +289,7 @@ pub(crate) fn run_headless(
+     // The renderer keeps two frames in flight: submitting a frame retires the page of the one
+     // before it, so each page lands here one submission after its frame.
+     let mut pending: VecDeque<(SampleKey, FrameFacts)> = VecDeque::new();
++    let probe_loop = std::time::Instant::now();
+     for (key, tick) in samples {
+         let frame = scene.frame(capture_tick(tick));
+         renderer
+@@ -302,6 +305,7 @@ pub(crate) fn run_headless(
+     if !pending.is_empty() {
+         return Err("the renderer did not hand back every submitted frame".to_string());
+     }
++    eprintln!("[probe] loop_ms {}", probe_loop.elapsed().as_millis());
+     memory.stage("frames rendered");
+     let adapter = render_adapter(renderer.adapter());
+     drop(renderer);
+diff --git a/crates/stunt-cli/src/main.rs b/crates/stunt-cli/src/main.rs
+index 172bfe10..c6778c6e 100644
+--- a/crates/stunt-cli/src/main.rs
++++ b/crates/stunt-cli/src/main.rs
+@@ -110,6 +110,7 @@ fn main() {
+         return;
+     }
+ 
++    let probe_scene = std::time::Instant::now();
+     let (mut scene, film) = match build_identified_scene(&SceneSources {
+         flm: config.flm_path.as_deref(),
+         all: config.all_path.as_deref(),
+@@ -126,6 +127,7 @@ fn main() {
+         }
+     };
+ 
++    eprintln!("[probe] scene_build_ms {}", probe_scene.elapsed().as_millis());
+     if config.headless {
+         if let Err(e) = headless::run_headless(&config, &mut scene, film) {
+             eprintln!("[stuntreel error] {e}");
+diff --git a/crates/stunt-core/src/world/assemble.rs b/crates/stunt-core/src/world/assemble.rs
+index c6083bb5..ee4d658b 100644
+--- a/crates/stunt-core/src/world/assemble.rs
++++ b/crates/stunt-core/src/world/assemble.rs
+@@ -146,6 +146,7 @@ impl World {
+     reason = "callers hold the std `HashMap` from `decode_archive_shapes`; a hasher parameter would spread through the crate for no caller"
+ )]
+ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) -> Option<World> {
++    let probe_t = std::time::Instant::now();
+     let pts = inputs.anchors;
+     let map_areas = inputs
+         .map
+@@ -175,10 +176,14 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>)
+     }
+     let base_y = 0.0;
+     let (facing, fixed) = split_view_facing(&placements.props, shapes);
++    eprintln!("[probe] world place_props_split_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
++    let probe_t = std::time::Instant::now();
+ 
+     // The cull sizes each prop by the model it draws, so an `OP_TAP` placement is decoded
+     // first: its tapped points depend on where it stands.
+     let (mut own, tap_failures) = anchored_models(inputs, &fixed);
++    eprintln!("[probe] world anchored_models_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
++    let probe_t = std::time::Instant::now();
+     let mut shared_radii: HashMap<u16, f32> = HashMap::new();
+     let mut visible = |model: Option<&SodModelIr>, shared: bool, p: &Placement| {
+         let radius_of = |m: Option<&SodModelIr>| {
+@@ -230,8 +235,12 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>)
+         chains: &placements.chains,
+     };
+ 
++    eprintln!("[probe] world cull_and_facing_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
++    let probe_t = std::time::Instant::now();
+     let terrain = TerrainSurface::new(pts, &map_areas, base_y);
+     let (ir, prop_runs, spans) = build_world_ir(pts, &map_areas, &terrain, &fixed, &models, base_y);
++    eprintln!("[probe] world terrain_and_build_world_ir_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
++    let probe_t = std::time::Instant::now();
+     // The mesh holds the drawn props that do not face the view, in walk order.
+     let mut spans = spans.into_iter();
+     let mesh: Vec<_> = placements
+@@ -253,6 +262,7 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>)
+     );
+     // `build_world_ir` always emits the ocean quad, so the extent exists.
+     let bounds = ir.extent()?;
++    eprintln!("[probe] world spans_records_extent_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
+     Some(World {
+         ir,
+         terrain_patches: map_areas.len(),
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index c1a2e5a7..3e7bc403 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -288,8 +288,21 @@ impl RenderPipelines {
+             immediate_size: 0,
+         });
+ 
+-        let shader_module =
+-            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
++        // Probe (#920): `STUNT_PROBE_CONST_SHAPE` swaps `prop_shape`'s binary search for a
++        // constant word; the call in `fs_main_plane` and its branch are unchanged.
++        let shader_module = if std::env::var_os("STUNT_PROBE_CONST_SHAPE").is_some() {
++            let src = include_str!("shaders/mode13h.wgsl").replace(
++                "fn prop_shape(vertex: u32) -> u32 {",
++                "fn prop_shape(vertex: u32) -> u32 { return 1u; }
++fn prop_shape_search(vertex: u32) -> u32 {",
++            );
++            device.create_shader_module(wgpu::ShaderModuleDescriptor {
++                label: Some("mode13h_const_shape"),
++                source: wgpu::ShaderSource::Wgsl(src.into()),
++            })
++        } else {
++            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"))
++        };
+         let vertex_buffers = [
+             Some(Self::vertex_buffer_layout()),
+             Some(Self::apex_buffer_layout()),
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 6182ccc9..6cba8a82 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -468,18 +468,27 @@ impl SceneRenderer {
+         // their polygon outlines as line quads; the world mesh takes its props' outlines as a
+         // line list over its own vertices, which quads would multiply about five times
+         // (research/playone-exe/sod-vm-lines-spans.md section 8.11).
++        let probe_t = std::time::Instant::now();
+         let shapes = scene
+             .shapes()
+             .map(|(id, ir)| (id, GpuModel::from_outlined(device, queue, &outlined(ir))))
+             .collect();
++        eprintln!("[probe] renderer shape_upload_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
++        let probe_t = std::time::Instant::now();
+         let images = scene
+             .images()
+             .map(|(id, image)| (id, GpuModel::from_ir(device, queue, &sprite_ir(image))))
+             .collect();
++        eprintln!("[probe] renderer image_upload_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
++        let probe_t = std::time::Instant::now();
+         let placements = scene.world().map_or_default(WorldPlacements::new);
++        eprintln!("[probe] renderer world_placements_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
++        let probe_t = std::time::Instant::now();
+         let mut world = scene.world().map(|w| {
+             GpuModel::from_ir_outlined(device, queue, &w.ir, outlines_in_world, &placements.marks())
+         });
++        eprintln!("[probe] renderer world_from_ir_outlined_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
++        let probe_t = std::time::Instant::now();
+         // The plane's shape word finds a world prop's shape in the world's prop runs.
+         let no_prop_runs = pipelines.prop_runs_layout.as_ref().map(|layout| {
+             if let Some((model, w)) = world.as_mut().zip(scene.world()) {
+@@ -487,6 +496,7 @@ impl SceneRenderer {
+             }
+             prop_runs_group(device, layout, &[])
+         });
++        eprintln!("[probe] renderer attach_prop_runs_ms {}", probe_t.elapsed().as_secs_f64() * 1000.0);
+         Self {
+             shapes,
+             images,
