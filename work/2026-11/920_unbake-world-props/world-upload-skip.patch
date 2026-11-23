@@ -1,0 +1,14 @@
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 6182ccc9..5be4b547 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -477,7 +477,8 @@ impl SceneRenderer {
+             .map(|(id, image)| (id, GpuModel::from_ir(device, queue, &sprite_ir(image))))
+             .collect();
+         let placements = scene.world().map_or_default(WorldPlacements::new);
+-        let mut world = scene.world().map(|w| {
++        let skip_world = std::env::var_os("STUNT_PROBE_NO_WORLD_UPLOAD").is_some();
++        let mut world = scene.world().filter(|_| !skip_world).map(|w| {
+             GpuModel::from_ir_outlined(device, queue, &w.ir, outlines_in_world, &placements.marks())
+         });
+         // The plane's shape word finds a world prop's shape in the world's prop runs.
