@@ -1,17 +1,19 @@
-//! Scene-frame-to-glTF mapping: camera, world, and one node per actor.
+//! Scene-frame-to-glTF mapping: camera, world, one node per view-facing prop, and one node
+//! per actor.
 //!
 //! All transforms are `[I1]` and copied unchanged (`world_matrix` is column-major, glTF's
 //! `matrix` layout). Each distinct shape's meshes and accessors are written once; every
-//! actor using that shape gets its own node subtree that references the shared mesh
-//! indices. `[I5]`: decal vertices lie in their base's plane in the IR; the shared shape
-//! assets lift them 1 mm toward their front on export, as [`crate::export_shape`] does.
+//! actor and view-facing prop using that shape gets its own node subtree that references
+//! the shared mesh indices. `[I5]`: decal vertices lie in their base's plane in the IR; the
+//! shared shape assets lift them 1 mm toward their front on export, as
+//! [`crate::export_shape`] does.
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
 use glam::{Mat3, Quat, Vec3};
 use serde_json::json;
-use stunt_core::scene::{FilmScene, ViewCamera};
+use stunt_core::scene::{ActorDraw, FilmScene, ViewCamera};
 
 use crate::GltfError;
 use crate::glb::{GlbBuilder, num, num_array, object};
@@ -26,12 +28,15 @@ const ZFAR: f32 = 20_000.0;
 /// Exports `scene.frame(tick)` as a `.glb`.
 ///
 /// The glTF scene holds, in order: a perspective camera node, a `WORLD` node at identity when the
-/// frame draws the world, and one `actor_{index}_shape_{shape_id}` node per
-/// [`stunt_core::scene::ActorDraw`] (`matrix` = world matrix; `state_mask`, `distance`,
-/// `shape_id` in `extras`).
+/// frame draws the world, one `view_facing_{index}_shape_{shape_id}` node per
+/// [`stunt_core::scene::ActorDraw`] in `frame.view_facing` under a `VIEW_FACING` root, and one
+/// `actor_{index}_shape_{shape_id}` node per draw in `frame.actors` (`matrix` = world matrix;
+/// `state_mask`, `distance`, `shape_id` in `extras`). A view-facing prop is exported wherever
+/// the frame draws it: a `.glb` has no fixed view, so it is not frustum-culled.
 ///
 /// # Errors
-/// - [`GltfError::MissingShape`] if an actor names a shape the scene does not hold.
+/// - [`GltfError::MissingShape`] if an actor or view-facing prop names a shape the scene does not
+///   hold.
 /// - [`GltfError::InvalidNodeReference`] if a model lists a child node that is not in its arena.
 /// - [`GltfError::TooLarge`] if the output would not fit the 4 GiB GLB container.
 pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfError> {
@@ -70,38 +75,65 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
     }
 
     let mut shared: HashMap<u16, ShapeAssets> = HashMap::new();
+
+    let mut facing = Vec::new();
+    for (index, prop) in frame.view_facing.iter().enumerate() {
+        let name = format!("view_facing_{index}_shape_{}", prop.shape_id);
+        facing.push(push_draw(&mut builder, &mut shared, scene, prop, &name)?);
+    }
+    if !facing.is_empty() {
+        roots.push(builder.nodes.len());
+        builder
+            .nodes
+            .push(json!({ "name": "VIEW_FACING", "children": facing }));
+    }
+
     for (index, actor) in frame.actors.iter().enumerate() {
         // The view slot's draw is a shadow alone, which the export does not carry.
         if actor.shadow_only {
             continue;
         }
-        let model = scene
-            .shape(actor.shape_id)
-            .ok_or(GltfError::MissingShape(actor.shape_id))?;
-        let assets = match shared.entry(actor.shape_id) {
-            Entry::Occupied(e) => e.into_mut(),
-            Entry::Vacant(e) => e.insert(add_shape_assets(&mut builder, model)?),
-        };
-        let children = instantiate(&mut builder, model, assets)?;
-        let extras = json!({
-            "state_mask": actor.state_mask,
-            "distance": num(actor.distance),
-            "shape_id": actor.shape_id,
-        });
-        let node = object([
-            (
-                "name",
-                Some(json!(format!("actor_{index}_shape_{}", actor.shape_id))),
-            ),
-            ("matrix", Some(num_array(&actor.world_matrix))),
-            ("extras", Some(extras)),
-            ("children", (!children.is_empty()).then(|| json!(children))),
-        ]);
-        roots.push(builder.nodes.len());
-        builder.nodes.push(node);
+        let name = format!("actor_{index}_shape_{}", actor.shape_id);
+        roots.push(push_draw(&mut builder, &mut shared, scene, actor, &name)?);
     }
 
     builder.finish(&roots)
+}
+
+/// Pushes `draw` as a node named `name`, instancing its shape's assets from `shared`.
+///
+/// The node's `matrix` is `draw.world_matrix`, and its `extras` carry the draw's `state_mask`,
+/// `distance` and `shape_id`. A shape's meshes and accessors are written on its first draw and
+/// referenced by every later one, whichever loop the draw belongs to.
+fn push_draw(
+    builder: &mut GlbBuilder,
+    shared: &mut HashMap<u16, ShapeAssets>,
+    scene: &FilmScene,
+    draw: &ActorDraw,
+    name: &str,
+) -> Result<usize, GltfError> {
+    let model = scene
+        .shape(draw.shape_id)
+        .ok_or(GltfError::MissingShape(draw.shape_id))?;
+    let assets = match shared.entry(draw.shape_id) {
+        Entry::Occupied(e) => e.into_mut(),
+        Entry::Vacant(e) => e.insert(add_shape_assets(builder, model)?),
+    };
+    let children = instantiate(builder, model, assets)?;
+    let extras = json!({
+        "state_mask": draw.state_mask,
+        "distance": num(draw.distance),
+        "shape_id": draw.shape_id,
+    });
+    let node = object([
+        ("name", Some(json!(name))),
+        ("matrix", Some(num_array(&draw.world_matrix))),
+        ("extras", Some(extras)),
+        ("children", (!children.is_empty()).then(|| json!(children))),
+    ]);
+    let index = builder.nodes.len();
+    builder.nodes.push(node);
+    Ok(index)
 }
 
 /// Rotation quaternion `[x, y, z, w]` for a glTF camera node placed at `camera.eye`.

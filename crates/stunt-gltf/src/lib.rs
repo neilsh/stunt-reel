@@ -20,8 +20,9 @@
 //! # Layout
 //!
 //! - [`export_shape`]: one model, one glTF node per [`stunt_core::contracts::SodNode`].
-//! - [`export_scene_frame`]: camera, optional `WORLD`, and one node per actor, with each
-//!   distinct shape's meshes and accessors written once and shared by every instance.
+//! - [`export_scene_frame`]: camera, optional `WORLD`, the view-facing props and one node per
+//!   actor, with each distinct shape's meshes and accessors written once and shared by every
+//!   instance.
 //! - [`summarize`]: counts read back from `.glb` bytes.
 
 mod error;

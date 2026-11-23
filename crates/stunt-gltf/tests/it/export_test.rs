@@ -12,18 +12,25 @@
 //! Everything is synthetic: fixture SODs and anchors from `tests/fixtures/` plus hand-built
 //! `.FLM` and `.ALL` bytes, so nothing depends on `corpus/`.
 
+use std::collections::HashMap;
+
 use glam::{Quat, Vec3};
 use serde_json::Value;
 use stunt_core::anchor::parse_anchor_table;
+use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
-    NodeKind, SodModelIr, SodVertex, VisibilityCondition, get_palette_rgb_float,
+    CameraTransform, NodeKind, ShapeExtent, SodModelIr, SodVertex, TrajectoryRecord,
+    VisibilityCondition, get_palette_rgb_float,
 };
-use stunt_core::flm::{SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW};
+use stunt_core::flm::{
+    FilmTimeline, SIF_DRAW, SIF_EXISTS, SIF_MOVES, SIF_ROTATES, SIF_SHADOW, SliceKeyframe,
+};
 use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource, ViewCamera};
 use stunt_core::sod::{
     DECAL_FLAG_BIT, DecodeMode, EPSILON_DISPLACEMENT, OP_COLOR, OP_ID, OP_LINECOL, OP_MOVETO,
     OP_PERFDISK, OP_POLYZ, OP_RETURN, OP_VECTORS, OP_ZLINETO, decode_sod,
 };
+use stunt_core::world::{FacingProp, GateNode, PlacementRecords, TerrainSurface, World};
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -795,6 +802,142 @@ fn world_is_exported_as_an_identity_node() {
     // Scene order: camera, WORLD, actors.
     assert_eq!(glb.json["scenes"][0]["nodes"][1], world_index);
     assert_actors_match(&glb, &scene, 0.0);
+}
+
+/// A scene whose world holds `props` as its view-facing draws and no baked geometry, with
+/// `shapes` as its shape table; the camera looks along `-Z` at the origin from `eye`.
+fn view_facing_scene(
+    shapes: &[(u16, &SodModelIr)],
+    props: &[(u16, [f32; 3])],
+    eye: [f32; 3],
+) -> FilmScene {
+    let shapes: HashMap<u16, SodModelIr> =
+        shapes.iter().map(|&(id, ir)| (id, ir.clone())).collect();
+    let world = World {
+        ir: SodModelIr::new("EMPTY"),
+        terrain_patches: 0,
+        props_placed: props.len(),
+        bounds: ShapeExtent {
+            min: [0.0; 3],
+            max: [0.0; 3],
+            radius: 0.0,
+        },
+        scenery_stop: None,
+        terrain: TerrainSurface::default(),
+        tap_failures: Vec::new(),
+        view_facing: props
+            .iter()
+            .map(|&(shape, position)| FacingProp {
+                shape,
+                position,
+                node: GateNode::ROOT,
+                reach: None,
+            })
+            .collect(),
+        gate_nodes: Vec::new(),
+        prop_runs: Vec::new(),
+        placements: PlacementRecords::default(),
+    };
+    let record = TrajectoryRecord {
+        tick: 0,
+        camera: CameraTransform {
+            eye,
+            target: [0.0, 0.0, 0.0],
+            fov_degrees: 42.673_717,
+            roll_radians: 0.0,
+            ..CameraTransform::default()
+        },
+        actors: Vec::new(),
+        audio_cues: Vec::new(),
+        palette: PaletteControls::default(),
+        bank: Default::default(),
+    };
+    let timeline = FilmTimeline::new(
+        vec![SliceKeyframe {
+            record,
+            tick: 0,
+            tick_duration: 1,
+        }],
+        Vec::new(),
+    );
+    FilmScene::new(timeline, shapes, Some(world))
+}
+
+/// `G05`: a scene frame's view-facing props are exported one node each under a `VIEW_FACING`
+/// root beside `WORLD`, and two props of one shape share that shape's meshes. The second prop
+/// stands far outside the view, since a `.glb` has no fixed view to cull against.
+#[test]
+fn view_facing_props_export_under_a_root_beside_the_world() {
+    let ir = model("synthetic_minimal.sod");
+    let shape = 7u16;
+    let positions = [[2.0, 0.0, 0.0], [900.0, 0.0, 0.0]];
+    let scene = view_facing_scene(
+        &[(shape, &ir)],
+        &[(shape, positions[0]), (shape, positions[1])],
+        [0.0, 0.0, 10.0],
+    );
+    let frame = scene.frame(0.0);
+    assert_eq!(frame.view_facing.len(), 2, "both props face the view");
+    let glb = parse_glb(&export_scene_frame(&scene, 0.0).expect("export"));
+
+    let roots: Vec<usize> = glb.json["scenes"][0]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n.as_u64().map(to_usize).unwrap())
+        .collect();
+    let index_of = |name: &str| -> usize {
+        glb.array("nodes")
+            .iter()
+            .position(|n| n["name"] == name)
+            .unwrap_or_else(|| panic!("{name}"))
+    };
+    let world = index_of("WORLD");
+    let facing = index_of("VIEW_FACING");
+    assert!(
+        roots.contains(&world) && roots.contains(&facing),
+        "WORLD and VIEW_FACING are scene roots: {roots:?}"
+    );
+
+    let children = glb.array("nodes")[facing]["children"].as_array().unwrap();
+    assert_eq!(children.len(), 2, "one node per view-facing prop");
+    for (i, prop) in frame.view_facing.iter().enumerate() {
+        let name = format!("view_facing_{i}_shape_{shape}");
+        let node = glb.node_named(&name).unwrap_or_else(|| panic!("{name}"));
+        assert_eq!(
+            children[i].as_u64().map(to_usize),
+            Some(index_of(&name)),
+            "{name} is under VIEW_FACING"
+        );
+        let matrix: Vec<f32> = node["matrix"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().map(to_f32).unwrap())
+            .collect();
+        assert_eq!(
+            &matrix[12..15],
+            &prop.position[..],
+            "{name} translation is its world position"
+        );
+        assert_eq!(node["extras"]["shape_id"], shape, "{name} shape id");
+    }
+
+    // One copy of the shape's mesh assets serves both props.
+    let single = parse_glb(&export_shape(&ir).expect("shape"));
+    assert_eq!(glb.array("meshes").len(), mesh_nodes(&ir).len());
+    assert_eq!(
+        glb.array("accessors").len(),
+        single.array("accessors").len()
+    );
+    assert_eq!(
+        glb.array("bufferViews").len(),
+        single.array("bufferViews").len()
+    );
+    let first = glb.meshes_under(index_of(&format!("view_facing_0_shape_{shape}")));
+    let second = glb.meshes_under(index_of(&format!("view_facing_1_shape_{shape}")));
+    assert_eq!(first.len(), mesh_nodes(&ir).len());
+    assert_eq!(first, second, "both props reference the shared meshes");
 }
 
 /// The view slot draws only its shadow, which the export does not carry: its draw is in the
