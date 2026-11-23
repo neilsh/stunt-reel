@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING, Any
 import pr_lint
 import pr_threads
 
+from stunt_reel.pr_body import issue_links
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
@@ -46,8 +48,6 @@ FAILED_STATES = frozenset({"FAILURE", "ERROR"})
 PENDING_STATES = frozenset({"PENDING", "EXPECTED"})
 #: A review comment's first line: ``<reviewer> review at <sha>: <verdict>``.
 _REVIEW_LINE = re.compile(r"^[^:]+ review at ([0-9a-f]+): (.*)$")
-#: A body's closing keyword and issue number.
-_LINKED = re.compile(r"(?:Fixes|Closes|Part of) #(\d+)(?!\d)")
 #: Items per page of a REST list; a shorter page is the last.
 REST_PAGE = 100
 
@@ -268,7 +268,7 @@ def evaluate(
     )
     record(clean, "review", review, f"no clean review comment at {head}")
 
-    links = list(_LINKED.finditer(pull.body))
+    links = issue_links(pull.body)
     numbers = [int(m.group(1)) for m in links]
     if not links:
         link_detail = "no `Fixes`, `Closes` or `Part of #N` line"
