@@ -16,7 +16,7 @@ The stunts were fun, but what really hooked me was the editing room: cutting bet
 
 Stunt Reel is a new player for those films, written from scratch.
 It reads the game's own files and draws the films with a modern GPU, at any resolution, with a free camera you can fly around the set.
-It is pre-alpha: it plays the demo films, and parts of the picture still differ from the original.
+It is pre-alpha: it plays the demo's films, and parts of the picture still differ from the original.
 
 <video src="/stunt-reel/blog/ctry-flight.mp4" controls muted loop playsinline preload="metadata" width="960" height="720" aria-label="Twelve seconds of the demo film CTRY.FLM in Stunt Reel: a biplane flies low over fields, with farm buildings in the distance"></video>
 
@@ -24,10 +24,10 @@ It is pre-alpha: it plays the demo films, and parts of the picture still differ 
 
 ## The problem
 
-The films are thirty-odd years old, and today they play only inside a DOS emulator, at 320 by 200 pixels.
-Beyond community notes, little was written down about how they are stored.
+The films are more than thirty years old, and today the usual way to watch one is in a DOS emulator, at 320 by 200 pixels.
+Beyond a few community notes, little was ever written down about how they are stored.
 A film is not video: it is a recorded choreography, where every actor and the camera are at each moment, and the player redraws the whole scene every frame from the game's 3D models.
-So keeping the films watchable means understanding the formats and the renderer well enough to do the drawing ourselves.
+So keeping the films watchable means understanding the formats and the original renderer well enough to do the drawing ourselves.
 
 That breaks down into three questions:
 
@@ -92,17 +92,16 @@ The [specification](../../docs/SPEC.md) sets out the goals and invariants, the [
 
 ## Built with agents
 
-Stunt Reel is also an experiment.
-Most of the code and notes are written by AI coding agents, working from GitHub issues, under rules the repository spells out in [`AGENTS.md`](../../AGENTS.md).
-The project has been worked with three agent harnesses so far: Claude Code, Antigravity and DeepSeek Harness.
-
 I have been poking at this off and on for about twenty years.
 My notes on the `.SET` format date from 2004, and they are still credited in the project's [notice](../../NOTICE.md).
-But each attempt stalled at the sheer amount of careful, tedious work: the agents that could share that work did not exist yet.
-Once they did, the project became feasible.
+But every attempt stalled under the sheer amount of careful, tedious work, and there was nobody to share it with.
+AI coding agents changed that, and the project became feasible.
 
-I also wanted to find out two things.
-First, can agents make steady, incremental progress on their own toward a long-term goal like rendering parity, where every step is measured against the original?
+So Stunt Reel is also an experiment.
+Most of its code and notes are written by agents, working from GitHub issues, under rules the repository spells out in [`AGENTS.md`](../../AGENTS.md).
+Three agent harnesses have worked on it so far: Claude Code, Antigravity and DeepSeek Harness.
+I wanted to find out two things.
+First, can agents make steady progress on their own toward a long-term goal like rendering parity, where every step is measured against the original?
 Second, can they run the whole loop: resolve an issue, notice what is still wrong, and file the next issue themselves?
 
 Reverse engineering is a hard test for agents, because a confident wrong answer looks the same as a right one until something downstream breaks.
@@ -122,6 +121,6 @@ Since then more than 560 pull requests have merged.
 The guides and research notes say what is currently true.
 This blog is for the story around them: how the architecture came to be, how the agent workflow works day to day, where it went wrong, and what changed because of it.
 
-So far, the answer to both of my questions has been yes: the agents have pushed parity forward one measured step at a time, and they have closed issues and filed the next ones themselves.
+So far, the answer to both questions has been yes: the agents have pushed parity forward one measured step at a time, and they have closed issues and filed the next ones themselves.
 How that works, and where it breaks, is what the next posts are about.
 Whether you came for *Stunt Island* or for the agents, I hope you'll stick around.
