@@ -264,11 +264,17 @@ _Avoid_: fidelity target, parity target, pinned film
 Expected scores are kept per class.
 _Avoid_: backend (wgpu's term for Vulkan, DX12 and the rest)
 
+**Class agreement**: How closely lavapipe and the GPU draw the reference films on one `crates/` tree: the index-plane pixels per tick on which they differ, measured by the agreement batch and pinned in `research/parity/expected/agreement.toml` ([ADR 0055](docs/adr/0055-fidelity-pins-on-lavapipe-and-agreement-is-measured-apart.md)).
+It is apart from fidelity, which compares our render with the capture.
+_Avoid_: backend agreement, backend parity
+
+**Hot tick**: A tick on which lavapipe and the GPU differ by more than 500 index-plane pixels in the pinned class agreement; a sweep warns when a gain lies mostly on hot ticks.
+
 **Expected score**: A reference film's parity score recorded for one renderer class on one measured `crates/` tree, in `research/parity/expected/<class>.toml`; drift is judged against it.
 _Avoid_: baseline (unqualified), pinned score
 
 **Repin**: Regenerating one renderer class's expected-scores file, `research/parity/expected/<class>.toml`, from reports rendered on the current `crates/` tree.
-A *catch-up repin* does the same for the class a PR did not measure.
+A *catch-up repin* does the same, as its own commit, for a `lavapipe` file a PR left behind; `gpu` is repinned only by the agreement batch.
 _Avoid_: rebaseline, hand-merging scores
 
 **Captured frame**: One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered by capture order and tagged with the film clock read when it was taken.

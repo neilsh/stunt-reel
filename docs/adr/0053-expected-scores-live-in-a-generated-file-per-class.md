@@ -4,6 +4,7 @@
 
 accepted 2026-11-19 for [#829](https://github.com/neilsh/stunt-reel/issues/829).
 Amended 2026-11-22 for [#971](https://github.com/neilsh/stunt-reel/issues/971): local-windows can redo a lavapipe repin through the canonical lavapipe under WSL.
+Amended 2026-11-23 by [ADR 0055](0055-fidelity-pins-on-lavapipe-and-agreement-is-measured-apart.md): no PR repins `gpu`, which only the class agreement batch writes, so "Each PR repins only the class it measured" now covers `lavapipe` alone.
 Revises the layout #436 chose in `work/2026-11/436_expected-scores-layout/spec.md`, which is not an ADR; [ADR 0041](0041-dated-records-live-in-work-folders.md)'s "The current baseline" row points here.
 
 ## Context
@@ -33,7 +34,7 @@ The resolution was mechanical, but git still stopped on it every time: in the GP
 - **Each PR repins only the class it measured.**
   A cloud PR repins `lavapipe`, a local-windows PR `gpu`, and the other class's `crates` lags until a catch-up repin (`chore(parity): repin expected scores`, its own commit).
   The drift line says so, `crates/ tree <found>, measured on <pinned>: awaiting a repin or catch-up repin of this class`, and stays informational.
-  Lavapipe catch-ups are tracked on the standing issue [#830](https://github.com/neilsh/stunt-reel/issues/830), done by a cloud session whose llvmpipe matches the pinned `adapter`, or on local-windows through the canonical lavapipe under WSL ([`render-on-lavapipe.md` § 5](../howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl), measured at `llvmpipe (LLVM 20.1.2, 256 bits)` in [`work/2026-11/966_moat-walk-order/journal.md`](../../work/2026-11/966_moat-walk-order/journal.md)); the native Windows llvmpipe (LLVM 21.1.7) cannot, since the pins name LLVM 20.1.2.
+  Lavapipe catch-ups are tracked on the standing issue [#830](https://github.com/neilsh/stunt-reel/issues/830) (closed; see ADR 0055), done by a cloud session whose llvmpipe matches the pinned `adapter`, or on local-windows through the canonical lavapipe under WSL ([`render-on-lavapipe.md` § 5](../howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl), measured at `llvmpipe (LLVM 20.1.2, 256 bits)` in [`work/2026-11/966_moat-walk-order/journal.md`](../../work/2026-11/966_moat-walk-order/journal.md)); the native Windows llvmpipe (LLVM 21.1.7) cannot, since the pins name LLVM 20.1.2.
 - **GitHub's server-side merges never run a custom driver.**
   The workflow already merges `main` into a branch locally ([`pr-and-filing.md`](../../.agents/skills/running-unattended/pr-and-filing.md) step 1), so nothing changes there.
 

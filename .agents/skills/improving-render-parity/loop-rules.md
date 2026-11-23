@@ -84,11 +84,13 @@ The +0.010 target bar, the 0.025 per-frame bound and the 3-frame minimum are pol
 
 ### After adopting
 
-An adopted change repins the expected tables in [`expected/<class>.toml`](../../../research/parity/expected/) for the renderer class it measured (`ssim`, `iou`, `adapter` from that run; `crates` from `git rev-parse <commit>:crates` on the commit it rendered, with `crates/` clean (no uncommitted or untracked files under it), not the commit itself, which a squash merge keeps off `main`; `sha256` and `all_sha256` copied from the film's row); the other class's file keeps its older entry, if any, until its catch-up repin (below).
+A verdict may come from either renderer class, since the sweep compares a baseline and a variant on one adapter; the pins are lavapipe's ([ADR 0055](../../../docs/adr/0055-fidelity-pins-on-lavapipe-and-agreement-is-measured-apart.md)).
+An adopted change repins the expected tables in [`expected/lavapipe.toml`](../../../research/parity/expected/lavapipe.toml) on the canonical lavapipe (`ssim`, `iou`, `adapter` from that run; `crates` from `git rev-parse <commit>:crates` on the commit it rendered, with `crates/` clean (no uncommitted or untracked files under it), not the commit itself, which a squash merge keeps off `main`; `sha256` and `all_sha256` copied from the film's row).
+`expected/gpu.toml` is written only by the class agreement batch ([`run-the-agreement-batch.md`](../../../docs/howto/run-the-agreement-batch.md)): no PR repins `gpu`, and a GPU run on a newer tree than its `gpu` row reads `awaiting the next agreement batch`.
 
 **Repin, never hand-merge.**
-`mise run parity-repin -- [--class gpu|lavapipe]` regenerates the class's whole file from every film's current report after `mise run parity` on a clean `crates/` (the class defaults to the one the reports were drawn on), and writes nothing when a film lacks a report measured on that tree, was scored against another capture or archive, or has no recorded pins.
-In order: commit the `crates/` change with the hooks on, run `mise run parity` on that clean tree, run `mise run parity-repin -- --class <class>` for the class that render measured, and commit that `expected/<class>.toml` alone.
+`mise run parity-repin -- --class lavapipe` regenerates the class's whole file from every film's current report after `mise run parity` on a clean `crates/`, and writes nothing when a film lacks a report measured on that tree or drawn on that class, was scored against another capture or archive, or has no recorded pins.
+In order: commit the `crates/` change with the hooks on, run `mise run parity` on that clean tree, run `mise run parity-repin -- --class lavapipe`, and commit `expected/lavapipe.toml` alone.
 Any later `crates/` edit, a comment included, moves the hash and repeats all four.
 
 - Expected tables change only when the measured `crates/` tree or a film's `sha256` or `all_sha256` pin changes.
@@ -96,6 +98,6 @@ Any later `crates/` edit, a comment included, moves the hash and repeats all fou
   Then rerun `mise run parity` on the merged tree, run `mise run parity-repin` and commit.
   Without the driver, take `main`'s `expected/` files by hand, then the same.
   Never hand-merge the numbers: a merged number was measured on no tree.
-- A catch-up repin (a class's `crates` lags `main`, as the other class's does after each PR) is allowed in any PR, but only as its own commit, such as `chore(parity): repin expected scores`.
-  Local-windows repins `gpu`, and `lavapipe` through the WSL lavapipe ([`render-on-lavapipe.md` § 5](../../../docs/howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl)); a cloud session whose llvmpipe matches the pinned `adapter` does the `lavapipe` catch-ups tracked on [#830](https://github.com/neilsh/stunt-reel/issues/830).
+- A catch-up repin (`lavapipe`'s `crates` lags `main`, as after a PR that changed `crates/` without repinning) is allowed in any PR, but only as its own commit, such as `chore(parity): repin expected scores`.
+  It runs on the canonical lavapipe: a cloud session, or local-windows through the WSL lavapipe ([`render-on-lavapipe.md` § 5](../../../docs/howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl)), never mesa-dist-win.
 - A research note cites the journal entry for before-and-after scores and never copies the expected scores.

@@ -39,8 +39,8 @@ HEADER = """\
 # `mean_loss_by_class_scored`, one key per loss class: `mise run judge` prints a candidate's change
 # from it, and drift is not judged on it.
 #
-# A PR that adopts a change repins the class it measured; the other class's `crates` lags until
-# its catch-up repin.
+# A PR that adopts a change repins `lavapipe` on the canonical lavapipe; `gpu` is written only by
+# the class agreement batch (`mise run agreement`, ADR 0055), so its `crates` lags between batches.
 """
 
 

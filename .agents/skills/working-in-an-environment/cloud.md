@@ -37,10 +37,9 @@ The proxy refuses ref deletes, so a session cannot delete a remote branch: creat
 
 ## Rendering
 
-Renders run on lavapipe, which scored within 0.002 of the GPU on all seven reference films on the one `crates` tree [`lavapipe.md` § 4](../../../research/parity/lavapipe.md#4-lavapipe-beside-the-gpu-on-one-crates-tree) measured: render, score, judge and adopt on it.
-The exception is where lavapipe's residues lie ([§ 5](../../../research/parity/lavapipe.md#5-what-still-differs)): a change to depth testing or depth bias (`crates/stunt-render/src/pipeline.rs`), to the vertex transform, projection or clipping, to draw order, or to how `shade` is interpolated (`shade` and `shade_perspective` in `crates/stunt-render/src/shaders/mode13h.wgsl`).
-Its PR opens with lavapipe's scores, says in its body that it needs `mise run judge` on the GPU, and takes `env:local-only` instead of being armed.
-Work whose result turns on single pixels of our render, rather than on a score (a `background` band in `references.toml`, which admits an index only when no actor pixel of ours carries it), goes to local-windows: lavapipe differs from the GPU by 23 to 147 index-plane pixels per tick, averaged over each film (§ 5).
+Renders run on the canonical lavapipe, the one `expected/lavapipe.toml` is pinned on: render, score, judge, adopt and repin on it, pixel-level work such as a `background` band in `references.toml` included, and arm the PR like any other ([ADR 0055](../../../docs/adr/0055-fidelity-pins-on-lavapipe-and-agreement-is-measured-apart.md)).
+No PR waits for the GPU: where lavapipe and the GPU draw differently is measured apart, by the class agreement batch on local-windows ([`run-the-agreement-batch.md`](../../../docs/howto/run-the-agreement-batch.md)).
+When a sweep's stderr ends a film's line with `check it on the GPU`, more than half of that film's SSIM gain sits on the batch's pinned hot ticks, where it may be fitting a lavapipe quirk: say so in the PR body; the verdict stands, and the next batch shows whether the GPU moved.
 
 `gh` has no `--attach` here, so a PR's comparison pictures are committed: [`pr-evidence.md`](../improving-render-parity/pr-evidence.md) step 6 says where.
 

@@ -17,7 +17,7 @@ missing, its tick sets differ, or the reports disagree on the tree; 2 on a refus
 ``pin`` refuses a measurement with flags, or with a reason in place of flags (nothing pinned yet,
 or another adapter or driver), unless ``--accept REASON``; it then runs ``mise run parity-repin --
 --class gpu``, writes ``agreement.toml`` (``accepted`` holding the reason), and commits both on a
-branch ``chore/agreement-<date>`` with a pull request. It writes nothing when the checkout's
+branch ``chore/agreement-<tree>`` with a pull request. It writes nothing when the checkout's
 ``crates`` tree is not the measured one.
 
 ``batch`` skips, exit 0, while a ``stuntreel`` process runs, since two full renders at once slow
