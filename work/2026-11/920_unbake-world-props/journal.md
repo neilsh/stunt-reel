@@ -226,7 +226,7 @@
   - On the RTX 4070 only `e` (-26.8%) resolves from the noise.
   - The memory rise does not follow the world's base or decal draws: skipping all four, the outlines or the fragments leaves it at 171.3 to 173.0 MiB.
     It follows the world's upload (18.1 MiB without it, step 3) and something that runs with it in every variant, the ground draws or the walk; which of them, or whether lavapipe maps the buffer lazily, is not tested here.
-    Its timing is consistent with [`evidence-limits.md`](../../../research/parity/evidence-limits.md)'s `[Supported Inference]` that lavapipe fills the world's device buffers' pages at the first submit, though that inference rests on other figures (a `257 MiB` buffer set) and this rise is about half of the `333.75 MiB` of buffers the CPU count gives; this entry did not test it.
+    Its timing is consistent with [`lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker)'s `[Supported Inference]` that lavapipe fills the world's device buffers' pages at the first submit, though that inference rests on other figures (a `257 MiB` buffer set) and this rise is about half of the `333.75 MiB` of buffers the CPU count gives; this entry did not test it.
   - `g` changes the picture where decals overlap, so it names a cost, not a change to adopt.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3 and its Open questions item 1.
 
