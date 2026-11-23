@@ -157,6 +157,7 @@ Set these once in T3's **Settings**, for an [unattended run](../.agents/skills/r
 1. **Worktrees → Worktree location:** a folder on the Dev Drive, such as `E:\worktrees`, so a worktree's `.venv` is hardlinked from the shared uv cache and `mise run queue`'s free-disk line counts it; the default, `~/.t3/worktrees` on `C:`, copies each `.venv` as an Orca base on `C:` did.
    The setting is per machine and moves only new worktrees.
 2. **Worktrees → Cleanup**, with the stunt-reel project selected: **Custom**, removing a worktree after merging; T3 counts a squash merge into `main` while the worktree is still at the PR's last commit, and keeps one with an active session or uncommitted changes.
+   T3 leaves every policy off until set ([T3 docs](https://github.com/pingdotgg/t3code/blob/main/docs/user/project-settings.md)), so merged worktrees stay on disk; **Delete now** runs the enabled rules at once.
 3. **Permission mode:** Full access as the default for new threads (T3's initial default), so a coordinator and the children that inherit its mode run without approval prompts.
 
 ## Toolchain drift

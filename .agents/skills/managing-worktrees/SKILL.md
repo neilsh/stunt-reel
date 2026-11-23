@@ -29,7 +29,7 @@ Machine setup is in [`docs/harness-setup.md`](../../../docs/harness-setup.md), w
    `mise run review-worktree -- <PR number | SHA>` makes it under the primary checkout from anywhere; never by hand with a relative path, which nests it in a workspace that reap then skips.
    Done when the last output line, an absolute path, exists.
 6. **Remove one.**
-   A worktree made since ADR 0036 goes with the tool that made it, except a detached `review-*` worktree: only `mise run reap -- --reviews` lists it, and with `--yes` when reap runs under its free-space bar, removes it once nothing under it or in its git dir has changed for six hours.
+   A worktree made since ADR 0036 goes with the tool that made it (T3 Code's by its cleanup policy: [`harness-setup.md`](../../../docs/harness-setup.md#t3-code)), except a detached `review-*` worktree: only `mise run reap -- --reviews` lists it, and with `--yes` when reap runs under its free-space bar, removes it once nothing under it or in its git dir has changed for six hours.
    One an older `init` linked, or an Orca workspace, goes through `mise run reap` from the primary checkout: dry run first, then `--yes`.
    A branch with patches `main` lacks and no merged PR is never a candidate, `--force` included.
    `--yes` removes every candidate it finds, not only the one you meant.
