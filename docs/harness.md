@@ -153,7 +153,7 @@ Observed on `local-windows`, 2026-11-22, with Claude as the thread's provider:
 
 * **What it is:** A desktop app that runs a provider's agent (Claude through the Agent SDK, dsh, Antigravity and others) in a thread, and adds its own MCP tools for delegating to child threads of any enabled provider, scheduling and pull requests; [`t3.md`](../.agents/skills/running-unattended/t3.md) is how an unattended run uses them.
 * **What it confines and asks:** Each thread has a permission mode (Supervised, Auto-accept edits, Auto, Full access); a child inherits its parent's and cannot exceed it.
-  The Claude provider's own settings, `.claude/settings.json` and the `SessionStart` hook included, still apply.
+  In a Claude thread, the `SessionStart` hook printed `environment: local-windows` as it does in Claude Code, and the thread had `T3CODE_THREAD_ID` set.
 * **Where it works:** A new thread's worktree goes under the T3 home's `worktrees` folder (`~/.t3/worktrees/<project>/<name>`) unless [`harness-setup.md` § T3 Code](harness-setup.md#t3-code) moves it, on a `t3/` branch; it reaches the data root by configuration like any worktree ([ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md)).
 * **Settings:** Host settings live in the T3 home (`~/.t3`) and cannot be committed; a `t3.json` at the repository root would ship worktree checkout options, and none exists.
 
