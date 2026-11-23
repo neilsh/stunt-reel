@@ -7,7 +7,7 @@ import posixpath
 import re
 import shutil
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from urllib.parse import unquote
 lazy from collections.abc import Mapping
@@ -310,13 +310,16 @@ _HAND_WRITTEN = ("index.md", "reading.md")
 #: The site folder whose Markdown files are the blog's posts, written under the content root's
 #: ``blog/``, where starlight-blog lists them.
 _BLOG = "blog"
+#: The folder of dated work records, whose images a blog post may show.
+_WORK = "work"
 _POST_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def post_text(text: str, source: str, site: Site, images: set[str]) -> str:
     """The content page for the blog post *source* whose Markdown is *text*: its front matter
     kept line for line, for starlight-blog's YAML fields (``date``, ``tags``, ``authors``), with
-    an ``editUrl`` added, and its links rewritten as `rewrite_links` does.
+    an ``editUrl`` added, and its links rewritten as `rewrite_links` does, except that an image
+    in a work folder is published too, since NOTICE.md files comparison images there.
 
     Raises ValueError, naming *source*, for a post without front matter, a ``title:`` or a
     ``date:`` written YYYY-MM-DD, or with bad front matter or a bad link.
@@ -332,7 +335,8 @@ def post_text(text: str, source: str, site: Site, images: set[str]) -> str:
     head = text[: len(text) - len(body)].splitlines()[1:-1]
     if "editUrl" not in fields:
         head.append(f"editUrl: {json.dumps(f'{REPO_URL}/blob/main/{source}')}")
-    content = rewrite_links(body, source, site, images)
+    with_work = replace(site, published_dirs=(*site.published_dirs, _WORK))
+    content = rewrite_links(body, source, with_work, images)
     return "---\n" + "\n".join(head) + "\n---\n\n" + content.lstrip("\r\n")
 
 

@@ -340,3 +340,17 @@ def test_prepare_refuses_a_post_without_a_title_or_date(
     _write(repo / "site/blog/bad.md", f"---\n{front}---\n\nText.\n")
     with pytest.raises(ValueError, match=rf"site/blog/bad\.md: .*{re.escape(message)}"):
         prepare(repo, repo / "site")
+
+
+def test_prepare_publishes_a_posts_work_folder_image(repo: Path) -> None:
+    _write(repo / "work/2026-11/1_x/images/a.png", b"\x89PNG")
+    _write(
+        repo / "site/blog/pic.md",
+        '---\ntitle: "P"\ndate: 2026-11-23\n---\n\n![a](../../work/2026-11/1_x/images/a.png)\n',
+    )
+    _write(repo / "research/formats/sod.md", "# Sod\n\n![a](../../work/2026-11/1_x/images/a.png)\n")
+    prepare(repo, repo / "site")
+    docs = repo / "site/src/content/docs"
+    assert "(/stunt-reel/media/work/2026-11/1_x/images/a.png)" in (docs / "blog/pic.md").read_text()
+    assert "github.com" in (docs / "research/formats/sod.md").read_text()
+    assert (repo / "site/public/media/work/2026-11/1_x/images/a.png").is_file()

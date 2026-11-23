@@ -37,6 +37,23 @@ That breaks down into three questions:
    We run the original player in an emulator, capture its frames, render the same ticks ourselves, and score the pairs.
    The [reconstruction guide](../guides/reconstruction.md) explains the scoring and where the differences are.
 
+```mermaid
+flowchart LR
+    A["Original player in an emulator"] --> B["Captured frames, tagged by film tick"]
+    C["Our renderer"] --> D["Rendered frames, same ticks"]
+    B --> E["Score each pair"]
+    D --> E
+    E --> F["Read the worst frames"]
+```
+
+Here is one frame of that loop, from `LOCATION.FLM`, one of the sample films in the full game's vault.
+On the left is the original player; in the middle, our render before a fix; on the right, after it.
+Our renderer had hidden the stadium's infield under the plaza it lies on, because the infield sits a few millimetres below the ground and our depth test put it behind.
+The original paints the ground in the order it walks the scene, so the infield goes on top.
+Drawing it in that same pass raised this frame's similarity score from 0.759 to 0.855. _Source: [the investigation's journal](../../work/2026-11/651_infield-ground-pass/journal.md)_
+
+![The ballpark in LOCATION.FLM at tick 2608: the original player's frame, our render before the fix with the infield missing, and our render after it with the infield drawn](../../work/2026-11/651_infield-ground-pass/images/location-2608-infield-ground-pass.png)
+
 No game files ship with the project.
 Every test runs offline against small synthetic fixtures, and to watch a film you bring your own copy of the game's promotional demo.
 
@@ -47,6 +64,17 @@ The engine is Rust.
 `stunt-render` draws with [`wgpu`](https://wgpu.rs/), keeping the game's flat-shaded, 256-colour look.
 `stunt-cli` is the `stuntreel` program: interactive playback, headless rendering to images or video, and glTF export.
 `stunt-score` compares rendered frames with captured ones.
+
+```mermaid
+flowchart LR
+    F[".FLM film"] --> T["stunt-core: timeline on the 50 Hz clock"]
+    A[".ALL archive"] --> V["stunt-core: shapes through the display-list VM"]
+    T --> R["stunt-render: wgpu"]
+    V --> R
+    R --> W["Window, images, video"]
+    V --> G["stunt-gltf: glTF export"]
+    R --> S["stunt-score: against captured frames"]
+```
 
 The tooling around it is Python: the capture harness that drives the original player inside dosbox-automation, the parity loop that scores and reports, and the checks that keep the documentation honest.
 
