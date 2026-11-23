@@ -79,8 +79,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
      The bar's machine-checkable part is met only when it prints `PASS`; on `FAIL` it names each reason.
      On a missing, stale or `needs changes` review comment, dispatch a re-review at `HEAD` (step 2).
    - The worker's report says each acceptance item is met; the `body` line of `mise run merge-bar --issue <N>` covers the `Fixes`, `Closes` or `Part of #<N>` line, so do not open the body.
-   - **Environment:** in a cloud session, a rendering PR that [`cloud.md` § Rendering](../working-in-an-environment/cloud.md#rendering) sends to the GPU takes `env:local-only` and stays unarmed.
-     A local-windows run takes such a PR from the queue, runs `mise run judge` on the GPU as the PR body asks, and, when the GPU's verdict matches lavapipe's, removes `env:local-only` and arms it under this bar; otherwise it fixes the PR as for a failed check.
+   - **Environment:** a rendering PR is judged on lavapipe and armed under this bar in either environment; none takes `env:local-only` for a GPU check ([`cloud.md` § Rendering](../working-in-an-environment/cloud.md#rendering), [ADR 0055](../../../docs/adr/0055-fidelity-pins-on-lavapipe-and-agreement-is-measured-apart.md)).
    - **Allowed vs blocked changes:** the coordinator lists the PR's changed file names (`gh api "repos/{owner}/{repo}/pulls/<n>/files?per_page=100&page=1" --jq '.[].filename'`, next page by number), never the diff; a path under `docs/adr/`, `crates/stunt-core/Cargo.toml` or `research/parity/references.toml` sends a worker or the reviewer to say whether it is a blocked change before arming.
      A draft (`gh api repos/{owner}/{repo}/pulls/<n> --jq .draft` prints `true`) goes to a human without a worker, per the **Never** rule that follows.
      Updating `research/parity/expected/<class>.toml` for an adopted parity change is **allowed** to merge (`crates` must be `git rev-parse HEAD:crates` with `crates/` clean).

@@ -29,7 +29,6 @@ Take `ready` items in this order:
 
 1. **Open PRs**, in the stack order it prints, skipping any handed off earlier in this run.
    An armed PR shows as `ready` only once a check has failed, it conflicts with `main` (often after an earlier armed PR lands), or its checks passed and it still has not merged: fix it before new work.
-   On local-windows, an `env:local-only` PR a cloud run left for the GPU check is taken here ([`pr-and-filing.md`](pr-and-filing.md) step 5).
    A stacked PR shows again once its base merges and GitHub retargets it to `main`.
 2. **`status:ready-for-agent` issues.**
    Skip, with a reason in the Shutdown report, any whose worker reports, after reading the body, that it needs an ADR, a human design choice or a machine this session lacks (release its claim as step 5 or 6 says).
@@ -83,7 +82,8 @@ The quality guard is that no merged PR needs a fix or revert afterwards.
    Then confirm no subagent or background task is still running (in a cloud session, except a worker whose item has a pushed branch; on local-windows, wait until none is, because step 2 reaps worktrees), and run `mise run queue` once for the PRs you armed.
    One no longer listed has merged or been closed (`gh pr view <n> --json state` says which: **Merged**, or **Needs you**); `armed, checks pending` goes under **Opened** as "auto-merge armed"; and any other PR you armed that is still listed goes under **Needs you**.
    Take each item's last state from its newest line in `build/scratch/run-state.md`.
-2. When the run merged render PRs, repin: on local-windows, `mise run parity`, then `mise run parity-repin` for `gpu`, and again for `lavapipe` through the WSL lavapipe ([`render-on-lavapipe.md` § 5](../../../docs/howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl)), each its own `chore(parity): repin expected scores` PR; in a cloud session, comment on [#830](https://github.com/neilsh/stunt-reel/issues/830) naming the merged PRs, so a cloud session catches `lavapipe` up ([ADR 0053](../../../docs/adr/0053-expected-scores-live-in-a-generated-file-per-class.md)).
+2. When the run merged render PRs that left `lavapipe` behind, catch it up on the canonical lavapipe: `mise run parity -- --software-only`, then `mise run parity-repin -- --class lavapipe`, in a cloud session or on local-windows through the WSL lavapipe ([`render-on-lavapipe.md` § 5](../../../docs/howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl)), as its own `chore(parity): repin expected scores` PR.
+   Never repin `gpu`: the class agreement batch writes it ([ADR 0055](../../../docs/adr/0055-fidelity-pins-on-lavapipe-and-agreement-is-measured-apart.md)).
    The [error readout](../improving-render-parity/error-readout.md) is the coordinator's as well, since it needs subagents a worker does not dispatch, against the committed baseline in `research/parity/readouts/` ([#901](https://github.com/neilsh/stunt-reel/issues/901)).
    Run it at a Shutdown where `mise run queue` prints `agreement batch due` and the run merged render PRs or the standing `Error readout due` issue is open; once it is graded, open a PR that refreshes the baseline by step 7 of that procedure.
    A Shutdown that merged render PRs while no batch is due records them on the standing issue `Error readout due: merged render PRs since the last baseline` (`status:ready-for-agent`, `env:local-only`) instead: search for it first, file it when it is missing, comment on it when it exists, and the baseline-refresh PR closes it.

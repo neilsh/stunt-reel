@@ -4,6 +4,7 @@
 
 accepted 2026-11-19 for [#829](https://github.com/neilsh/stunt-reel/issues/829).
 Amended 2026-11-22 for [#971](https://github.com/neilsh/stunt-reel/issues/971): local-windows can redo a lavapipe repin through the canonical lavapipe under WSL.
+Amended 2026-11-23 by [ADR 0055](0055-fidelity-pins-on-lavapipe-and-agreement-is-measured-apart.md): no PR repins `gpu`, which only the class agreement batch writes, so "Each PR repins only the class it measured" now covers `lavapipe` alone.
 Revises the layout #436 chose in `work/2026-11/436_expected-scores-layout/spec.md`, which is not an ADR; [ADR 0041](0041-dated-records-live-in-work-folders.md)'s "The current baseline" row points here.
 
 ## Context
