@@ -7,7 +7,7 @@ description: "Use when running unattended or overnight to drain open PRs and sta
 
 Drains open PRs and `status:ready-for-agent` issues in queue order without blocking on a human, with about two implementers at once.
 A **coordinator** dispatches workers, tracks state, checks the merge bar and arms merges; **workers** implement and review.
-A single-PR item finishes implementation, review and thread triage during the run ([`AGENTS.md` § Working economically](../../../AGENTS.md#working-economically) rule 3 does not apply; the coordinator restarts at about 150k tokens, [`coordinator.md`](coordinator.md)); an item needing a multi-PR spec or a human decision records its handoff, swaps to `status:ready-for-human`, and moves on.
+A single-PR item finishes implementation, review and thread triage during the run ([`AGENTS.md` § Working economically](../../../AGENTS.md#working-economically) rule 3 does not apply; the coordinator restarts at about 100k tokens, [`coordinator.md`](coordinator.md)); an item needing a multi-PR spec or a human decision records its handoff, swaps to `status:ready-for-human`, and moves on.
 
 It runs in either environment of [`working-in-an-environment`](../working-in-an-environment/SKILL.md): read that skill and your environment's file before step 1.
 Orca, dsh, Antigravity, PowerShell and the disk checks are `local-windows` resources; a cloud session follows the **Cloud** bullet below and `cloud.md` wherever this skill names one.
