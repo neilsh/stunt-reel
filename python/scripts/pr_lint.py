@@ -19,8 +19,9 @@ Four checks, each failure a line naming what it read:
 
 The CLI reads the working tree of the checkout holding the working directory, so it runs in the
 implementer's checkout before a push; the pin and date checks say nothing about a branch that
-checkout does not hold. ``merge_bar`` reads only :func:`attribution_failures` from the body it
-fetched, as a note, and names the other two checks pre-push only.
+checkout does not hold. ``merge_bar`` reads :func:`attribution_failures` from the body it
+fetched, as a note, checks the body's link itself through :mod:`stunt_reel.pr_body`, and names
+the pin and date checks pre-push only.
 
 Usage: ``mise run pr-lint -- <pr-body-file> [<base>]``; the base defaults to ``origin/main`` when
 it resolves, else ``main``. Exit status: 1 naming each failure, 0 clean, 2 for bad arguments, an
