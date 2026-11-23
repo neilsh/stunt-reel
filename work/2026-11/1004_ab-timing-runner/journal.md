@@ -28,4 +28,4 @@
 - **Verdict**: control, missing the bar on its first condition: a median change of `-9.4%` against ±1%.
   The second condition held (neither side faster in all 4 pairs: `2` of `4`).
   Per the owner's ruling the tool ships without a re-run and `#1004` goes to `status:ready-for-human`; `#1001` does not time with the tool until the owner has seen these figures.
-- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3, the A/A bullet; the tool's use is [`time-a-headless-render.md`](../../../docs/howto/time-a-headless-render.md) § 4.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3, the A/A bullet; the tool's use is [`time-a-headless-render.md`](../../../docs/howto/time-a-headless-render.md) § 3.

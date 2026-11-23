@@ -108,7 +108,11 @@ def _refusals(
         problems.append("--variant names must differ")
     if args.rounds < 1:
         problems.append("--rounds must be at least 1")
-    problems += [f"missing {what}: {path}" for what, path in inputs.items() if not path.is_file()]
+    problems += [
+        f"missing {what}: {path}"
+        for what, path in inputs.items()
+        if what != "icd" and not path.is_file()
+    ]
     if not (dataroot.corpus_of(root) / SIDATA).is_dir():
         problems.append("missing the SIDATA directory under the data root's corpus")
     for variant in args.variant:
@@ -117,7 +121,8 @@ def _refusals(
             problems.append(f"missing binary of {variant.name}: {binary} (build it first)")
     if any(c.adapter == "lavapipe" for c in cells) and not inputs["icd"].is_file():
         problems.append(
-            "a lavapipe cell needs the ICD manifest: see docs/howto/render-on-lavapipe.md"
+            f"missing icd: {inputs['icd']} (a lavapipe cell needs it: "
+            "see docs/howto/render-on-lavapipe.md)"
         )
     if args.out is not None:
         for suffix in (".csv", "-summary.md"):

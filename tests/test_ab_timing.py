@@ -221,12 +221,13 @@ def test_cell_names_the_adapter_and_span() -> None:
     assert Cell("3680..=3979", "lavapipe").name == CELL
 
 
-def _inputs(tmp_path: Path) -> list[str]:
+def _inputs(tmp_path: Path, *, icd: bool = True) -> list[str]:
     names = ("film.flm", "film.all", "icd.json", "s.exe")
     (tmp_path / "corpus" / "siarchive" / "Developer" / "FreeFlight" / "SIDATA").mkdir(parents=True)
     files = {name: tmp_path / name for name in names}
-    for path in files.values():
-        path.write_bytes(b"x")
+    for name, path in files.items():
+        if icd or name != "icd.json":
+            path.write_bytes(b"x")
     exe = files["s.exe"]
     return [
         *("--film", str(files["film.flm"]), "--all", str(files["film.all"])),
@@ -270,6 +271,33 @@ def test_ab_runs_every_round_alternating_and_writes_csv_and_summary(
     assert "+90.9%" in summary
     assert "| 0 of 3 |" in summary
     assert capsys.readouterr().out.rstrip().endswith(summary.rstrip())
+
+
+def test_ab_names_a_missing_icd_once_for_a_lavapipe_cell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(process_tree, "process_names", list)
+    assert ab.main(_inputs(tmp_path, icd=False)) == 2
+    err = capsys.readouterr().err
+    assert err.count("icd.json") == 1
+    assert "render-on-lavapipe.md" in err
+
+
+def test_ab_runs_a_gpu_cell_without_an_icd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(process_tree, "process_names", list)
+    envs: list[object] = []
+
+    def fake_run_once(
+        _argv: Sequence[str], env: object, out_dir: Path, **_kwargs: object
+    ) -> tuple[float, float, dict[str, str], str, str]:
+        envs.append(env)
+        _store(out_dir)
+        return 10.0, 99.0, dict(PLANES), "gpu", "hardware"
+
+    monkeypatch.setattr(ab_timing, "run_once", fake_run_once)
+    args = [*_inputs(tmp_path, icd=False), "--adapter", "gpu", "--rounds", "1"]
+    assert ab.main(args) == 0
+    assert len(envs) == 2
 
 
 def test_ab_never_overwrites_a_csv(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

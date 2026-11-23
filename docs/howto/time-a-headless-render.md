@@ -43,7 +43,7 @@ Each line is `[stuntreel] timing <phase> <milliseconds> ms`, the milliseconds a 
 The upload phases are CPU time in the upload calls: the device may finish copying afterwards, and that time falls in `loop`.
 A `--workers N` run passes the flag to its child renders (`args` in [`workers.rs`](../../crates/stunt-cli/src/workers.rs)), and each child prints its own lines.
 
-## 4. Time variants against each other
+## 3. Time variants against each other
 
 `mise run ab` ([`ab.py`](../../python/scripts/ab.py), [`ab_timing.py`](../../python/stunt_reel/ab_timing.py)) runs `--report-timing` renders of two or more variants in interleaved rounds, so a timing issue's gate names its rounds and order rather than restating a runner.
 A variant is a name, optionally its own binary, and the environment variables it sets; the first is the baseline.
@@ -70,5 +70,5 @@ mise run ab -- --out work/2026-11/<issue>_<slug> --name two-builds     --variant
   It never overwrites either file; `--summarize <csv>` prints a committed CSV's summary again.
 
 Commit the CSV in the work folder and link it from the journal entry that quotes its figures ([`work/README.md`](../../work/README.md#journal-entries)).
-The runner's own A/A (one binary on both sides) missed the owner's bar: a median loop change of `-9.4%` against `±1%` on one run (`[Bounded Observation]`), so time a change near that size with more rounds and read the CSV's spread, not the median alone.
+The runner's own A/A (one binary on both sides) missed the owner's bar: a median loop change of `-9.4%` against `±1%` on one run (`[Bounded Observation]`), and the eight runs' loops spread `32.2%`, so read the CSV's spread beside the median.
 _Source: [the same binary on both sides of `mise run ab`](../../work/2026-11/1004_ab-timing-runner/journal.md#2026-11-23-the-same-binary-on-both-sides-of-mise-run-ab-span-b-on-lavapipe)._
