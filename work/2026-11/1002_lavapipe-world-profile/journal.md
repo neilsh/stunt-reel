@@ -66,8 +66,8 @@
     | Wait: other | 0.3 (0.3, 0.3) | 83 | 0.3 (0.3, 0.3) | 46 | 37 |
 
   - **Inside the parts, whole film** (`w_base_s1`, share of the queue thread's samples):
-    - Storing the fragment state: `memcpy` `6.51%`, `memcmp` `2.70%`, the function itself `0.56%`.
-      In Mesa 25.2.8's `lp_setup.c`, `try_update_scene_state` compares the current fragment state with the one last stored in the scene and, when they differ, allocates a new `lp_rast_state` in the scene and copies it in; the PDB gives `sizeof(lp_rast_state)` as `32,440` bytes, of which `lp_jit_resources` (the texture, sampler, image, constant and storage-buffer arrays) is `32,384`.
+    - Storing the fragment state: `memcpy` `6.51%`, `memcmp` `2.70%` (`9.2%` together), the function itself `0.56%`.
+      `[Supported Inference]` for the rest of this bullet, read from the source and the PDB, not measured: in Mesa 25.2.8's `lp_setup.c`, `try_update_scene_state` compares the current fragment state with the one last stored in the scene and, when they differ, allocates a new `lp_rast_state` in the scene and copies it in; the PDB gives `sizeof(lp_rast_state)` as `32,440` bytes, of which `lp_jit_resources` (the texture, sampler, image, constant and storage-buffer arrays) is `32,384`.
       lavapipe binds a descriptor set as a constant buffer of each stage its layout names, so a fragment-visible bind or a pipeline switch that changes the fragment shader variant makes a new store; the vertex-only model uniform at group 2 does not, by the same source.
       How many stores a frame makes was not counted.
     - Lines: `try_setup_line` `5.64%`, `setup_line_coefficients` `2.70%`, the rest in binning, `lrintf`, `setup_fragcoord_coef` and the scene's command blocks.
@@ -88,10 +88,11 @@
     - the rasterizer threads' work, the queue thread's fence wait: `26.7%`, of which fragment shading is about four fifths of the rasterizers' busy samples (the world's part, base minus skip-all: `2,172 ms`, `7.5%`);
     - the draw module's vertex work: `21.4%` (world `3,173 ms`, `11.0%`);
     - line setup and binning: `14.6%` (world `3,757 ms`, `13.0%`);
-    - storing the 32,440-byte fragment state at each fragment-state change: `10.2%` (world `1,293 ms`, `4.5%`, so most of it is not the world's on the whole film, while on Span B nearly all of it is: `745 ms`, and `5 ms` with skip-all);
+    - storing the fragment state (`try_update_scene_state`): `10.2%` (world `1,293 ms`, `4.5%`, so most of it is not the world's on the whole film, while on Span B nearly all of it is: `745 ms`, and `5 ms` with skip-all);
     - other state changes and pipeline binds: `8.5%` (world `1,209 ms`, `4.2%`);
-    - triangle setup and binning: `5.4%` (world `665 ms`, `2.3%`).
-  - The world's part is the base and skip-all difference in sampled loops, and the percentages are of the base's sampled mean loop (`28,920.5 ms`); the queue thread's busy and waiting share only becomes loop time while the main thread waits on it (`59.3%` of the main thread's samples), and the main thread's own work (`37.3%` with `wgpu`) caps what any of these saves.
+    - triangle setup and binning: `5.4%` (world `665 ms`, `2.3%`), `0.4` points above the bar, less than the sampler's cost to the loop (`1.9%..6.9%`), so it may not clear the bar unsampled.
+  - The world's part is the base and skip-all difference in sampled loops, and the percentages are of the base's sampled mean loop (`28,920.5 ms`); the queue thread's busy and waiting share only becomes loop time while the main thread waits on it (`59.3%` of the main thread's samples), and the main thread's own work (`37.3%` with `wgpu`) would cap what any of these saves, if that work does not change.
+  - The world's parts are differences of sampled loops whose sampler cost differs (`+1.9%` base, `+6.1%` skip-all): the sampled loops cut `47.1%` (`13,620` of `28,920.5 ms`) where the unsampled ones cut `49.2%`, so each world's part leans low, by about 2 points of the base loop in total (`604 ms`: the skip-all sampled mean is `15,300.5 ms`, and `14,696 ms` were its sampler cost base's `+1.9%`).
   - The queue submit's own overhead is under 5% (`2.1%` on the queue thread, `1.5%` on the main thread).
-  - This answers why the whole film leans toward outlines and pixels: its world cost is mostly line setup, vertex work and rasterization, while Span B's is mostly the state store.
+  - This is consistent with `#920`'s finding that the whole film leans toward outlines and pixels, though no grouping, scissor or outline probe was run here: the whole film's world cost is mostly line setup, vertex work and rasterization (`9,102` of `13,620 ms`), while on Span B the state store is the largest single part of the loop (`28.3%`; `740` of the world's `1,948.5 ms`, about `38%`, from `745 - 5` and `2,632.5 - 684`).
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3 and its Open questions; figures per run in [`profile-parts.json`](profile-parts.json).
