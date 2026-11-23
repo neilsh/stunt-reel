@@ -9,7 +9,7 @@
   Span B (`LOCATION 3680..=3979`, the elevated overview) is dominated by base draws: `596 + 595 = 1,191` of 1,989 (60%).
   The issue's ground and decal `set_pipeline` switches (about 29k a frame) were counted before the cull; those loops now draw medians of `23 + 13` ground and `12 + 12` decal slices over the whole film.
 - **Verdict**: rejected as a gate: no count can pass it on Span A, the issue's range, and a median frame's share of draws says little about render time, which sums over frames; the next entry measures the loop instead.
-- **Lives in**: not yet; `research/parity/lavapipe-render-time.md` takes it with the implementation.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6, `#622`'s verdict.
 
 ## 2026-11-22: skipping Span B's base outlines on lavapipe
 
@@ -29,12 +29,12 @@
   | Change | -12.2% | -11.2% | -11.5% | |
 
   Raw, drawn: 2506, 2485, 2588, 2703, 2842, 2645, 2609, 2645; skipped: 2255, 2182, 2266, 2608, 2692, 2298, 2354, 2352.
-  Skipping was faster in all eight pairs, and the gap (about 290 ms) exceeds the spread of each variant's four fastest runs (about 100 ms).
+  Skipping was faster in all eight pairs, and the gap (about 290 ms) exceeds the spread of each variant's four fastest runs (124 ms drawn, 116 ms skipped).
   Whole-process wall clock fell 7.6% / 6.8% / 8.2% (drawn 4150 / 4205.5 / 4333.5 ms, skipped 3835 / 3920.5 / 3979.5 ms).
   The skipped draws were not counted per frame; 595 is the recorded median.
 - **Verdict**: control, above the 5% bar the owner set, so #622 goes on, gated on loop time.
   The figure bounds the saving from above three ways: it removes draws a walk-order layout would only merge where visible nodes are walk-neighbours, it removes their pixels and a `set_pipeline` per model too, and it holds on Span B, 300 of LOCATION's 8,251 ticks.
-- **Lives in**: not yet; `research/parity/lavapipe-render-time.md` takes it with the implementation.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6, `#622`'s verdict.
 
 ## 2026-11-22: base draws a walk-order layout would merge
 
@@ -50,18 +50,18 @@
   - Base counts match the recorded medians on the whole film (`80 + 75`) and Span A (`11 + 10`); Span B now draws `585.5 + 584.5` against `596 + 595`, with decals `327 + 327` against `317 + 317` and base plus decal conserved, which fits #969 drawing a flat prop lying on an earlier one as its decal (not confirmed by rebuilding the older commit).
   - Base draws per frame, fills and edges together, median before to after: Span A 21 to 13, Span B 1,170 to 197 (p95 after 289), the whole film 156 to 78.
     Merged draws per frame, median / mean / p95 / max: Span A 8 / 15.7 / 46 / 54, Span B 960 / 589.9 / 1,040 / 1,046 (480 fills and 480 edges at the median), the whole film 75 / 111.6 / 304 / 1,046.
-  - Span B is bimodal: ticks 3680 to 3814 hold 27 to 272 base draws, and ticks 3815 to 3979 about 590 to 612 fills and as many edges (986 merged a frame by median).
+  - Span B is bimodal (recounted from the next entry's scan, which gives the same per-frame counts): ticks 3812 to 3970 (159 frames) hold 582 to 612 fills and about as many edges (1,163 to 1,223 base draws, 1,010 merged a frame by median), and the other 141 frames 27 to 553 base draws.
   - Base fill plus edge indices per frame, for a compacted per-frame index buffer instead: Span A median 432, Span B median 10,066 (mean 10,893, max 138,644), the whole film median 2,066 (mean 11,631, p95 90,386, max 174,410); the outliers are frames that draw the `WORLD_BASE` node's large slice.
 - **Verdict**: adopted for implementation: `960 / 595 × 11.5% = 18.6%` of Span B's loop, and edges alone `480 / 595 × 11.5% = 9.3%`, both above the 5% gate.
   Both are upper bounds: the 11.5% came from skipping outline draws with their pixels and a `set_pipeline`, which merging keeps, and fills, which cover more pixels, likely spend a smaller share of their time on per-draw overhead than outlines do.
-  The gain falls on Span B's second half (about 165 frames) and on similar overview frames; Span A gains 8 draws a frame.
-- **Lives in**: not yet; `research/parity/lavapipe-render-time.md` takes the count and the timed result with the implementation.
+  The gain falls on Span B's ticks 3812 to 3970 (159 frames) and on similar overview frames; Span A gains 8 draws a frame.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6 and its Ruled out.
 
 ## 2026-11-22: the walk-order layout's draws and stores
 
 - **Question**: Does the static walk-order layout, built into the world upload, merge the base draws the CPU count predicted, and does it leave every render store byte-identical?
 - **Method**:
-  - The layout is `f77fd073` on branch `claude/622-walk-order-indices`, on `main` at `566977a6`: `GpuModel::from_ir_outlined` copies a one-chunk world's base slices' indices, and separately their outlines, into one buffer in the order `VisibleWalk::walk` visits the nodes with no gate (`lay_out_in_walk_order` in `crates/stunt-render/src/mesh.rs`), then every ground and decal slice in arena order; `draw_slices` and `draw_edges` draw each run of slices that continue one another's range in one chunk at one base vertex with one `draw_indexed` (`for_each_run`).
+  - The layout is [`walk-order-layout.patch`](walk-order-layout.patch) on `main` at `566977a6`, built as commit `f77fd073` (never merged): `GpuModel::from_ir_outlined` copies a one-chunk world's base slices' indices, and separately their outlines, into one buffer in the order `VisibleWalk::walk` visits the nodes with no gate (`lay_out_in_walk_order` in `crates/stunt-render/src/mesh.rs`), then every ground and decal slice in arena order; `draw_slices` and `draw_edges` draw each run of slices that continue one another's range in one chunk at one base vertex with one `draw_indexed` (`for_each_run`).
     `GpuModel::cut` now maps a placement's arena offsets to the moved slice's buffer offsets through its marks.
   - Count: [`run-count.patch`](run-count.patch) on `f77fd073`, reverted after the run, builds the world's layout under the device's 256 MiB buffer limit (asserting one chunk), runs `collect_world_meshes` per tick as `prepare` does, and counts the base fill and outline runs `for_each_run` draws.
     `DBG_PROBE_WALK_SCAN_FILE=<out> stuntreel --headless --tick-range <span> --width 320 --height 200 --viewport-rows 185 --sidata <data>/corpus/siarchive/Developer/FreeFlight/SIDATA <data>/builds/patch3/VAULT/LOCATION.FLM <data>/captures/vault-location/archives/LOCATION.ALL`, over Span A (`12..=300`), Span B (`3680..=3979`) and the whole film (`12..=8262`).
@@ -84,12 +84,13 @@
 
     On lavapipe the `location` line reads `ssim 0.8728`.
 - **Verdict**: control: the layout merges what the count said and changes no pixel; whether it lands is the next entry's timing.
-- **Lives in**: not yet; `research/parity/lavapipe-render-time.md` takes it if the layout lands.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6, `#622`'s verdict.
 
 ## 2026-11-22: loop time before and after on lavapipe and the RTX 4070
 
 - **Question**: Does the walk-order layout cut Span B's lavapipe loop by at least the 5% the owner set, and leave Span A no slower?
 - **Method**:
+  - The patch also joins contiguous slices in every model's `draw_slices` and `draw_edges`, not only the world's base draws; ground and world decal slices are drawn one at a time, so they are unaffected, and the timing measures the whole patch.
   - [`loop-timer.patch`](loop-timer.patch) (an `eprintln!` of the milliseconds from the first submit through `finish` and the last page write in `headless.rs`) applied to `566977a6` (before) and to `f77fd073` (after), each built by `mise run build-at`.
   - `stuntreel --headless <data>/builds/patch3/VAULT/LOCATION.FLM --all <data>/captures/vault-location/archives/LOCATION.ALL --tick-range <span> --sidata <data>/corpus/siarchive/Developer/FreeFlight/SIDATA --out-dir <dir> --width 320 --height 200 --viewport-rows 185`, with `--software-only` and `VK_DRIVER_FILES` for lavapipe (mesa-dist-win 25.2.8), else on the GPU; each round's first run's `render.json` names `llvmpipe (LLVM 21.1.7, 256 bits)` or the `NVIDIA GeForce RTX 4070 Laptop GPU`.
     The owner's laptop (Ryzen 7 7745HX), no other render or build running, other agents' desktop apps open.
@@ -116,5 +117,28 @@
 - **Verdict**: rejected by the owner's 5% gate: Span B's lavapipe loop fell `4.4%..4.8%` over 16 interleaved pairs, about 130 ms, or about 0.4 ms of a frame's 9.2 to 9.7 ms, well under the count's `9.3%..18.6%` bound.
   Merging about 960 draws a frame therefore costs less than the bound assumed, which suggests that most of the 11.5% the outline-skip probe removed was the outlines' pixels and pipeline switch rather than their per-draw cost; this was not measured apart.
   No other cell resolves from its noise: the RTX 4070's Span A reads `2.4%..5.0%` slower with after faster in 9 of 16 pairs and each variant spread over about 200 ms, so it is shown neither slower nor not slower.
-  The task said to report and stop under 5% rather than land, so the code stays on its branch for the owner's decision.
-- **Lives in**: not yet; `research/parity/lavapipe-render-time.md` takes the result once the owner decides between landing the layout and ruling it out.
+  The task said to report and stop under 5% rather than land, so the owner took the decision; the next entry settles it.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6 and its Ruled out, with the next entry's decision.
+
+## 2026-11-22: the whole film, Span A on the RTX 4070, peak memory, and the decision
+
+- **Question**: Under 5%, should the layout land anyway?
+  Before measuring, the owner set three bars: the whole `LOCATION` film on lavapipe must be faster in all four interleaved pairs, by a median of at least 1%; 16 more RTX 4070 Span A pairs must show no consistent slowdown; and peak memory must rise by no more than about 10 MB, since the upload holds a second copy of the world's indices (about 30 MB) and outlines (about 51 MB) while it reorders them.
+- **Method**:
+  - The previous entry's timer binaries and command, at `--tick-range 12..=8262` on lavapipe, four pairs alternating which variant runs first; then 16 more pairs of RTX 4070 Span A the same way.
+  - Memory: `566977a6`'s and `f77fd073`'s release binaries with `--report-memory` over Span A, before, after, before, after on each adapter, reading the `memory peak` line and the resident set after `world mesh released`.
+  - The machine as before, nothing else rendering or building.
+- **Result**:
+  - Whole film on lavapipe, loop ms in pair order, before: 30683, 27538, 31274, 32055; after: 26251, 26512, 31589, 31371.
+    After was faster in 3 of 4 pairs; minimum `-4.7%`, median `30978.5` to `28941.5` (`-6.6%`); whole-process wall clock before 32470, 29122, 33033, 33746, after 27959, 28125, 33359, 33180 (median `-6.4%`).
+    The runs fall in two groups, 26.3 to 27.5 s and 30.7 to 32.1 s, whichever variant ran, so four pairs do not resolve the about 2% the count predicts (Span B's `0.7 µs` saved per merged draw, at the whole film's mean of `111.6` merged draws a frame over `8,251` frames, is about `0.67 s`, `2.1%..2.6%` of these loops); of the pairs whose two runs fell in one group, two favour after (`-3.7%`, `-2.1%`) and one before (`+1.0%`).
+    All eight runs share one store digest.
+  - RTX 4070 Span A, 16 more pairs, before: 430, 444, 432, 440, 547, 443, 449, 428, 430, 405, 412, 408, 392, 423, 423, 452; after: 435, 439, 452, 422, 477, 495, 439, 416, 436, 430, 436, 392, 461, 560, 424, 565.
+    After was faster in 6 of these 16 and in 15 of all 32 pairs; over all 32 the minimum is `392` on both, the median of the four fastest `406.5` to `419` (`+3.1%`, as in the first 16), and the median `441.5` to `468.5` (`+6.1%`).
+  - Peak resident set over Span A, before then after: RTX 4070 `741.2` to `809.8` MiB and `697.5` to `773.5` MiB (`+68.6`, `+76.0`); lavapipe `904.1` to `915.6` and `904.8` to `916.2` MiB (`+11.5`, `+11.4`).
+    After `world mesh released` the resident set matches within `5.2` MiB on each adapter (RTX 4070 `276.8`/`271.6` and `234.5`/`234.3`, lavapipe `495.1`/`493.4` and `494.5`/`494.3`), so the rise is transient, during the upload; it is attributed to the upload's second copy of the indices and outlines, which was not measured apart, and on lavapipe it is well under the copies' size.
+- **Verdict**: rejected: the whole film was faster in 3 of 4 pairs, not 4, and peak memory rose by `11.4..11.5` MiB on lavapipe and `68.6..76.0` MiB on the RTX 4070, both against bars set before measuring.
+  The RTX 4070's Span A passed its bar (after faster in 15 of 32 pairs), though its four-fastest median read `+3.1%` in both batches.
+  Even the expected 2% or so over the whole film, plus the code to build the outlines in walk order without a second copy, would not justify the layout, so #622 closes as not planned.
+  The layout is kept as [`walk-order-layout.patch`](walk-order-layout.patch) on `566977a6`; reviving it needs the copy-free upload first.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6 and its Ruled out.
