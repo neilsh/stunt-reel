@@ -168,6 +168,18 @@ def test_only_a_comments_first_line_is_its_verdict() -> None:
     assert _reasons(_pull(comments=[("OWNER", buried)])) != []
 
 
+def test_an_alternatives_section_does_not_change_the_verdict() -> None:
+    comment = (
+        f"{CLEAN}\n\nNo findings.\n\nAlternatives (non-blocking)\n"
+        "- Call the existing helper — drops the new loop — loses the batching.\n"
+    )
+    lines, reasons = merge_bar.evaluate(
+        _pull(comments=[("OWNER", comment)]), threads=[], findings=[]
+    )
+    assert reasons == []
+    assert "ok   review: comment at 8fe16b8 says clean" in lines
+
+
 def test_a_body_without_a_linking_line_fails() -> None:
     assert _reasons(_pull(body="Adds the task.")) == [
         "the body has no Fixes, Closes or Part of #N line"

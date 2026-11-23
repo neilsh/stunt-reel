@@ -9,7 +9,7 @@ The run is one **coordinator** and its **workers**; the coordinator runs longest
 |---|---|---|
 | Model | Sonnet from the start; never Opus | By fit ([`SKILL.md`](SKILL.md#concurrency-and-models)) |
 | Does | Builds the queue, claims, dispatches, checks the merge bar, arms, files an issue for a reviewer's out-of-scope finding, appends to `run-state.md` | Reads the issue or PR and its comments, implements or reviews in its own worktree, files the follow-up issues its item produces and reports their numbers |
-| Reads | `mise run queue` lines, worker reports, the first line of a review comment, CI state, the lines `mise run pr-threads` prints, a PR's changed file names | The bodies, diffs and code the coordinator does not |
+| Reads | `mise run queue` lines, worker reports, the first line of a review comment, the reviewer's reply (its `alternatives: N` included), CI state, the lines `mise run pr-threads` prints, a PR's changed file names | The bodies, diffs and code the coordinator does not |
 | Never | Opens a diff, an issue body or a thread's text; writes no code and no PR or doc content; `sleep`s or polls; loads `--help` or the orchestration guide | Arms or merges |
 
 The text the coordinator does write is `run-state.md`, claim and release comments, status notes on a PR, an issue for a reviewer's out-of-scope finding, and a reviewer's comment file posted verbatim with `--body-file`.
@@ -44,8 +44,10 @@ Each log line is:
 Key an issue's work by its issue number, with `PR #<n>` in the note once one opens, and a PR taken from the queue by its PR number; never switch an item's key mid-item.
 `<agent/model>` names the worker's agent and model, or its terminal handle, and `<task id>` is the task id of its current dispatch.
 The remaining fields are the branch, the head SHA at 7 characters or `-` when there is none, and the note.
-The note carries what the merge bar needs: the worktree path (for `worker-start --worktree "path:<workspace path>"`), the review comment URL and its verdict at the head, CodeRabbit (`not requested`, `check due <time>`, `checked`), the rule 5 reviewed SHA and PR-body path, a due time, the local gate at the head, the acceptance items as the worker reported them, review-body findings answered, changed paths that need a human cleared, and `env:local-only` (cleared or pending).
-The newest line for an item is self-contained: each new line repeats every still-active local fact from that item's earlier lines (worktree path, local gate at the head, acceptance report, review-body findings answered, human-path and `env:local-only` clearance, an unpushed rule 5 SHA and PR-body path, a pending CodeRabbit due time), since `mise run merge-bar` cannot re-derive them.
+The note carries what the merge bar needs: the worktree path (for `worker-start --worktree "path:<workspace path>"`), the review comment URL and its verdict at the head, the reviewer's `alternatives: N` count, CodeRabbit (`not requested`, `check due <time>`, `checked`), the rule 5 reviewed SHA and PR-body path, a due time, the local gate at the head, the acceptance items as the worker reported them, review-body findings answered, changed paths that need a human cleared, and `env:local-only` (cleared or pending).
+The newest line for an item is self-contained: each new line repeats every still-active local fact from that item's earlier lines (worktree path, local gate at the head, acceptance report, review-body findings answered, human-path and `env:local-only` clearance, an unpushed rule 5 SHA and PR-body path, a pending CodeRabbit due time, the alternatives count), since `mise run merge-bar` cannot re-derive them.
+Record that count in the item's newest line and carry it forward like its other still-active facts.
+Alternatives are the owner's to read on the PR: never send them to a worker as fix requests and never file them as issues.
 Run `mise run merge-bar -- <n> --issue <N>` and put its `PASS` or `FAIL` in the note rather than repeating the CI, base, thread or body-line fields that report already reads.
 For example:
 

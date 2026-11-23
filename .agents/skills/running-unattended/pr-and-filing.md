@@ -29,8 +29,11 @@ Part of the [`running-unattended`](SKILL.md) skill.
 
    > Post your verdict as a PR comment with `gh pr comment <n> --body-file build/scratch/review-<n>.md` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/review-<n>.md`), clean included; if the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), post nothing: write the comment, first line included, to `build/scratch/review-<sha7>.md` in your own review worktree (`<sha7>` is the reviewed commit's 7-character SHA) and reply with that file's absolute path.
    > Its first line is exactly `<Reviewer> review at <7-char head SHA>: clean` or `<Reviewer> review at <7-char head SHA>: needs changes`, with no `:` in `<Reviewer>`; then your findings (`file:line — problem — fix`, marked `blocking` or `nit`), or "no findings" plus what you checked (files read, gates and commands run) and what you could not verify.
+   > A finding is a defect against a documented rule (`AGENTS.md`, `docs/SPEC.md` or the issue's acceptance criteria); anything else is at most an alternative, never a defect.
+   > On a first review you may add an optional `Alternatives (non-blocking)` section after the verdict and findings: at most 3 items, each one or two lines naming the alternative, what it would gain and what it would cost, drawn only from what the review already read, with no extra exploration; omit it when nothing is worth saying, the default, and a re-review adds none.
+   > Alternatives never change the verdict, never appear on the first line, and are never sent to a worker as fix requests.
    > The verdict is `needs changes` when any finding is `blocking` or a `nit` that must be fixed before merge, else `clean`.
-   > Reply with the comment's URL.
+   > Reply with the comment's URL, or with the file's absolute path when you could not post, plus `alternatives: N` when the comment lists any.
 
    **Review-comment template.**
    The comment's first line is exactly `<Reviewer> review at <head SHA>: <verdict>`, then your findings or verification summary:
@@ -40,6 +43,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
      When the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), there is no head to match: it is the reviewed commit's `git rev-parse --short=7 HEAD`.
    - `<verdict>` is `clean` or `needs changes`, by the verdict rule in the instruction above.
    - **Body lines:** each finding gives `file:line — problem — fix` with severity (`blocking` or `nit`); a `clean` verdict states `No findings`, what was checked (files, gates, commands), and anything you could not verify.
+   - **Alternatives (optional):** a first review may append `Alternatives (non-blocking)` after the verdict and findings: at most 3 items, each one or two lines naming the alternative, what it would gain and what it would cost, drawn only from what the review already read; omit it when nothing is worth saying, the default. A finding is a defect against a documented rule (`AGENTS.md`, `docs/SPEC.md` or the issue's acceptance criteria); anything else is at most an alternative, never a defect. Alternatives never change the verdict, never appear on the first line, and are never sent to a worker as fix requests.
 
    ```
    Sonnet review at 0123456: needs changes
@@ -49,6 +53,8 @@ Part of the [`running-unattended`](SKILL.md) skill.
    ```
    Sonnet review at 0123456: clean
    No findings. Checked diff against origin/main and `mise run check` (4/4); could not verify capture offsets (no data root).
+   Alternatives (non-blocking)
+   - Call the existing `read_at` helper instead of the new loop — removes 20 lines and their bounds checks — loses the batching the loop adds.
    ```
 
    A reviewer that cannot post (the reviewed commit is not the PR's head: no PR yet, or an unpushed rule 5 fix, rebase or merge) replies with the absolute path of its `build/scratch/review-<sha7>.md`.

@@ -22,6 +22,12 @@ After a move or split, search for every old path, symbol and section number in p
 Post the verdict as a PR comment with `gh pr comment <n> --body-file build/scratch/review-<n>.md` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<n>/comments -F body=@build/scratch/review-<n>.md`).
 Its first line is exactly `<Reviewer> review at <7-char head SHA>: clean` or `<Reviewer> review at <7-char head SHA>: needs changes`; use `Sonnet` as `<Reviewer>`.
 Then give each finding as `file:line — problem — fix`, marked `blocking` or `nit`, and name its defect class with every instance of that class in the diff, the PR body, the journal and the work README's `outcome`, an unchanged line the diff makes false included, so one fix round clears the class; a clean verdict says `No findings`, what was checked (files, gates, commands), and what could not be verified.
+A finding is a defect against a documented rule: `AGENTS.md`, `docs/SPEC.md` or the issue's acceptance criteria.
+Anything else is at most an alternative, never a defect: a simpler design, a different seam, or an existing helper that would replace new code.
+On a first review you may add an optional `Alternatives (non-blocking)` section after the verdict and findings; a re-review adds none.
+At most 3 items, each one or two lines naming the alternative, what it would gain and what it would cost, drawn only from what the review already read, with no extra exploration.
+Omit the section when nothing is worth saying; that is the default.
+Alternatives never change the verdict, never appear on the first line, and are never sent to a worker as fix requests.
 The verdict rule, a must-fix `nit` included, is in `.agents/skills/running-unattended/pr-and-filing.md` § Review-comment template.
-Reply with the comment's URL.
-When the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), post nothing: use that commit's `git rev-parse --short=7 HEAD` as the SHA, write the comment to `build/scratch/review-<sha7>.md` in your review worktree, and reply with that file's absolute path.
+Reply with the comment's URL, plus `alternatives: N` when the comment lists any.
+When the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), post nothing: use that commit's `git rev-parse --short=7 HEAD` as the SHA, write the comment to `build/scratch/review-<sha7>.md` in your review worktree, and reply with that file's absolute path, plus `alternatives: N` when the comment lists any.
