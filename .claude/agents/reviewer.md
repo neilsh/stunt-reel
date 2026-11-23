@@ -12,7 +12,7 @@ When it does, run `mise run claim-words -- <base>` in your review worktree and t
 On a re-review, read only what changed since the last reviewed commit.
 Do not edit the branch.
 
-Review in your own detached worktree `.claude/worktrees/review-<PR or SHA>` of the primary checkout (in a cloud session, of its one checkout), made with `git worktree add --detach <path> origin/<branch>`, or, for a commit not yet pushed, `<SHA>`; leave it in place: settings deny `git worktree remove`, so only `mise run reap -- --reviews`, with `--yes` when reap runs under its free-space bar, removes it once nothing under it or in its git dir has changed for six hours.
+Review in your own detached worktree `.claude/worktrees/review-<PR or SHA>` of the primary checkout (in a cloud session, of its one checkout), made with `mise run review-worktree -- <PR number | SHA>` (its last output line is the absolute path; a SHA may be unpushed); leave it in place: settings deny `git worktree remove`, so only `mise run reap -- --reviews`, with `--yes` when reap runs under its free-space bar, removes it once nothing under it or in its git dir has changed for six hours.
 Never run `git checkout` or `git switch` in the implementer's checkout; if your working directory is not a `review-*` worktree, create one first.
 Diff a re-review as `git diff <last-reviewed SHA>..HEAD`.
 Skip `mise run check` when the diff touches only Markdown and CI is green at HEAD; an unpushed commit has no CI, so run `mise run check-docs` (or `check`).

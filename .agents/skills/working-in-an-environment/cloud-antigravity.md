@@ -14,7 +14,7 @@ An Antigravity cloud session: a non-root (`uid=1000`, `antigravity`) Debian 12 (
 ## GitHub
 
 `gh` (`2.103.3`) runs through `agy-plugin-proxy` with GraphQL enabled (`gh pr create` and `gh pr checks` worked on #799, 2026-11-18).
-The VM clones with a single-branch refspec (`+refs/heads/main:refs/remotes/origin/main`), so checking out another PR's branch into a detached review worktree fetches it explicitly (`git fetch origin <branch> && git worktree add --detach <path> FETCH_HEAD`).
+The VM clones with a single-branch refspec (`+refs/heads/main:refs/remotes/origin/main`), so `mise run review-worktree -- <PR number>` fetches another PR's head explicitly (`pull/<n>/head`) before it makes the detached review worktree.
 Image uploads with `gh --attach` through `agy-plugin-proxy` are untested here; commit comparison pictures as [`pr-evidence.md`](../improving-render-parity/pr-evidence.md) step 6 directs if uploads are blocked.
 
 ## Rendering

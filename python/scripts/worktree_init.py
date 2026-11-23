@@ -14,6 +14,7 @@ need selective rotation.  ``reap`` removes merged worktrees, including branches 
 request was squash-merged (found with ``gh``): it unlinks every link
 into the data root, proves none remain, and only then lets git delete the checkout,
 because git's worktree removal has recursed through Windows junctions on some builds.
+``review`` makes a reviewer's detached worktree under the primary checkout (issue #981).
 The seed clones another checkout's built ``target/`` into an empty one on a ReFS volume, so
 the first build compiles only the workspace crates (ADR 0030).
 The script runs on the pinned Python, never whichever ``python`` PATH finds first: an interpreter
@@ -32,7 +33,7 @@ import python_pin
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run ``init``, ``seed``, ``ensure``, ``clean`` or ``reap``."""
+    """Run ``init``, ``seed``, ``ensure``, ``clean``, ``review`` or ``reap``."""
     arguments = list(sys.argv[1:] if argv is None else argv)
     status = python_pin.guard(Path(__file__).resolve(), arguments)
     if status is not None:
@@ -47,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         REVIEW_QUIET_HOURS,
         _reap,
     )
+    from stunt_reel.worktree_review import _review  # noqa: PLC0415
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -70,6 +72,13 @@ def main(argv: list[str] | None = None) -> int:
         help="only report or rotate the parity render trees under build/",
     )
     clean.add_argument("--keep", type=int, default=1, help="render trees to keep per root")
+    review = commands.add_parser(
+        "review",
+        help="make a detached review worktree for a PR number or commit SHA under the primary checkout",
+    )
+    review.add_argument(
+        "target", help="a PR number (its head is fetched from origin) or a commit SHA"
+    )
     reap = commands.add_parser(
         "reap",
         help="remove merged or squash-merged worktrees after unlinking their data-root links",
@@ -122,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
         return _ensure()
     if args.command == "seed":
         return _seed_command()
+    if args.command == "review":
+        return _review(str(args.target))
     if args.command == "reap":
         if float(args.min_free_gb) < 0:
             parser.error("--min-free-gb must not be negative")

@@ -97,6 +97,7 @@ paths = [
     "stunt_reel.worktree_git",
     "stunt_reel.worktree_provision",
     "stunt_reel.worktree_reap",
+    "stunt_reel.worktree_review",
 ]
 layer = "tooling"
 depends_on = [

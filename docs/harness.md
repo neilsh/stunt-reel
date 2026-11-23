@@ -110,7 +110,7 @@ Observed 2026-11-08.
 * **An isolated subagent starts from `origin/HEAD`, not the session's `HEAD`.**
   Worktree isolation cuts its `worktree-agent-*` branch from the remote default branch as last fetched; all five subagents on 2026-11-08 started there.
   A brief whose work needs the Lead's unmerged commits, a worktree-per-writer task among them, names the Lead's commit and has the subagent run `git switch -c <branch> <commit>`, and the subagent reports `<branch>` as the one holding its work.
-  That worktree and branch outlive it and go as [`managing-worktrees`](../.agents/skills/managing-worktrees/SKILL.md) step 5 says.
+  That worktree and branch outlive it and go as [`managing-worktrees`](../.agents/skills/managing-worktrees/SKILL.md) step 6 says.
 * **A session that hands the rest of its work to a session it starts stays quiet.**
   The app wakes it whenever that session ends a turn.
   It answers each progress note in one line with no tool calls and checks the result once, when the session reports it done.
