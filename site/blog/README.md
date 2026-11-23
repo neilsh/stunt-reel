@@ -29,6 +29,19 @@ Add `draft: true` to keep a post out of the deployed site while still seeing it 
 Link to repository files by their relative path, as the guides do: `mise run site-prep` turns a link to a published file into a site link and any other into a GitHub link.
 The front matter is copied as written, so it may use YAML lists.
 
+A post may show images from a work folder, which `mise run site-prep` publishes beside it, and a short clip of our own render under the limits in [`NOTICE.md`](../../NOTICE.md#a-rendered-clip-on-the-blog).
+Clips go in `site/public/blog/` and are embedded with a `<video>` tag whose `src` starts with `/stunt-reel/blog/`.
+`ctry-flight.mp4`, in the first post, was rendered with:
+
+```bash
+mkdir -p build
+stuntreel --headless "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --all "<data root>/corpus/stisldem/VAULT/CTRY.ALL" \
+    --sidata "<data root>/corpus/siarchive/Developer/FreeFlight/SIDATA" \
+    --video build/ctry-flight.mkv --tick-range 200..=800 --width 960 --height 720
+ffmpeg -i build/ctry-flight.mkv -c:v libx264 -crf 30 -preset slow -pix_fmt yuv420p \
+    -movflags +faststart -an -map_metadata -1 site/public/blog/ctry-flight.mp4
+```
+
 ## Planned posts
 
 - **Architecture tour**: the crates and the Python package, the four seams, and how a film becomes a frame.

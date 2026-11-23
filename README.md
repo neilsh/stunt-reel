@@ -78,6 +78,7 @@ This is an unofficial, non-commercial research and preservation project: it is n
 No game assets, executables, or original data files are distributed.
 `corpus/` is gitignored and every test runs offline against synthetic fixtures; you must supply your own lawfully obtained copy of any retail files.
 Two small game-derived tables are committed as documented exceptions because the renderer needs them for format fidelity — the 256-entry master palette (768 bytes) and an 18-entry SOD scale table — and they are credited and described in [`NOTICE.md`](NOTICE.md).
+A few illustrative comparison images and a short clip of this project's own render, for the blog, are committed under the limits [`NOTICE.md`](NOTICE.md) sets.
 Quoted manual text and cited community research remain under their original terms.
 
 See [`NOTICE.md`](NOTICE.md) for provenance and third-party credits, and [License](#license) for the licence split.

@@ -7,6 +7,7 @@ It is not affiliated with, authorised by, or endorsed by The Walt Disney Company
 ## No game assets
 
 No game executables, films, archives, artwork, audio, or manual scans are distributed here.
+The game-derived data, comparison images and rendered clip described below are the only exceptions, each within the limits its section sets.
 `corpus/` is gitignored, and you must supply your own lawfully obtained copy of any retail files.
 Tests run offline against synthetic fixtures.
 
@@ -51,6 +52,16 @@ It serves no image the repository could not hold.
 A pull request that changes rendered output attaches comparison images of the same kind to its description, under the same first two limits; GitHub hosts them, and they are not committed.
 A pull request made where `gh` cannot attach files, as in a cloud session, commits them instead, as comparison sheets in its issue's work folder, each cited by a journal entry there and under every limit above.
 All other captures stay in the external data root.
+
+## A rendered clip on the blog
+
+The blog may commit a short video of this project's own render of a film, where motion shows what the player does better than a still can.
+The renderer draws the game's shapes, palette and scenery from the maintainer's own copy of the demo and the community files it reads, so what the video shows is game-derived and is not relicensed by this project.
+Every such video:
+
+- is rendered by `stuntreel` from a film in the game's demo, and holds no frame captured from the original player;
+- has no sound and runs at most 15 seconds;
+- lives in `site/public/blog/`, is cited by a post, and has the command that rendered it in `site/blog/README.md`.
 
 ## Third-party material and credits
 

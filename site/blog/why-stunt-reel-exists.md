@@ -18,6 +18,10 @@ Stunt Reel is a new player for those films, written from scratch.
 It reads the game's own files and draws the films with a modern GPU, at any resolution, with a free camera you can fly around the set.
 It is pre-alpha: it plays the demo films, and parts of the picture still differ from the original.
 
+<video src="/stunt-reel/blog/ctry-flight.mp4" controls muted loop playsinline preload="metadata" width="960" height="720" aria-label="Twelve seconds of the demo film CTRY.FLM in Stunt Reel: a biplane flies low over fields, with farm buildings in the distance"></video>
+
+*Twelve seconds of the demo film `CTRY.FLM`, drawn by Stunt Reel at 960 by 720.*
+
 ## The problem
 
 The films are thirty-odd years old, and today they play only inside a DOS emulator, at 320 by 200 pixels.
