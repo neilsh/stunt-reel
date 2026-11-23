@@ -9,7 +9,7 @@
     It builds the same `GpuNode` arena `GpuModel::upload` builds, with no buffers.
   - Each frame builds the camera as `Renderer` does for an offscreen target with `--viewport-rows 185` (`projection_y_scale = 200 / 185`), then the world's `view_proj` and LOD view as `SceneRenderer::prepare` does.
     `probe_world_walk` repeats `VisibleWalk::split`'s two walks, tagging the ground slices with their nodes too, in the order a stream would hold them: ground (forward walk), base (backward walk), decal (forward walk).
-    Check, on every frame: the probe's slices equal `collect_world_meshes`'s, slice for slice and in order (`walk_mismatches 0` on every film, in [`probe/probe.log`](probe/probe.log)).
+    Check, on every frame: the probe's slices equal `collect_world_meshes`'s, slice for slice and in order (`walk_mismatches 0` on every film, in [`probe/probe.txt`](probe/probe.txt)).
   - Per frame and per list it sums the slices, the vertices (each emitted node's whole vertex window, `NodeKind::Mesh`'s `vertex_count`, which a stream would copy), the indices (`index_count`) and the outline indices (`edge_count`, two an edge).
     Every mesh node's indices lie inside its own window (`indices_outside_window 0` on every film), and each node has one slice, so a node's vertices are copied once a frame.
     `run_pieces` counts the prop runs (`World::prop_runs`) the emitted windows overlap, each clipped to its window, which a per-frame runs table would hold; `run_merged` merges a piece into the one before it when both have the same shape and nothing lies between them in the stream.

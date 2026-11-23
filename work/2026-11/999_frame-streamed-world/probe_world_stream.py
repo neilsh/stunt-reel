@@ -79,7 +79,7 @@ def main() -> None:
     root, out = Path(sys.argv[1]), Path(sys.argv[2])
     out.mkdir(parents=True, exist_ok=True)
     log = [run_film(root, name, out) for name in FILMS]
-    (out / "probe.log").write_text("\n".join(log) + "\n", encoding="utf-8")
+    (out / "probe.txt").write_text("\n".join(log) + "\n", encoding="utf-8")
     summarise(out)
 
 
