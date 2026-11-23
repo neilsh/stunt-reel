@@ -292,3 +292,51 @@ def test_prepare_publishes_guides_with_their_order(repo: Path) -> None:
         {"label": "Guides", "items": [{"autogenerate": {"directory": "guides"}}]},
         {"label": "Research notes", "items": [{"autogenerate": {"directory": "research"}}]},
     ]
+
+
+POST = """\
+---
+title: "Why it exists"
+date: 2026-11-23
+tags: [process, agents]
+authors: neil
+---
+
+See [the glossary](../../GLOSSARY.md).
+"""
+
+
+def test_prepare_writes_blog_posts_with_their_front_matter(repo: Path) -> None:
+    _write(repo / "site/blog/why.md", POST)
+    _write(repo / "site/blog/README.md", "# How to write a post\n")
+    prepare(repo, repo / "site")
+    blog = repo / "site/src/content/docs/blog"
+    assert [p.name for p in blog.iterdir()] == ["why.md"]
+    assert (blog / "why.md").read_text(encoding="utf-8") == (
+        "---\n"
+        'title: "Why it exists"\n'
+        "date: 2026-11-23\n"
+        "tags: [process, agents]\n"
+        "authors: neil\n"
+        'editUrl: "https://github.com/neilsh/stunt-reel/blob/main/site/blog/why.md"\n'
+        "---\n\n"
+        "See [the glossary](/stunt-reel/glossary/).\n"
+    )
+    sidebar = json.loads((repo / "site/src/generated/sidebar.json").read_text())
+    assert "blog" not in json.dumps(sidebar)
+
+
+@pytest.mark.parametrize(
+    ("front", "message"),
+    [
+        ('title: "T"\n', "date: written YYYY-MM-DD"),
+        ('title: "T"\ndate: 23 Nov 2026\n', "date: written YYYY-MM-DD"),
+        ("date: 2026-11-23\n", "needs a title:"),
+    ],
+)
+def test_prepare_refuses_a_post_without_a_title_or_date(
+    repo: Path, front: str, message: str
+) -> None:
+    _write(repo / "site/blog/bad.md", f"---\n{front}---\n\nText.\n")
+    with pytest.raises(ValueError, match=rf"site/blog/bad\.md: .*{re.escape(message)}"):
+        prepare(repo, repo / "site")

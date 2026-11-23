@@ -33,6 +33,7 @@ __all__ = [
     "normalize_display_math",
     "page_text",
     "page_url",
+    "post_text",
     "prepare",
     "rewrite_links",
 ]
@@ -306,6 +307,33 @@ def load_sections(text: str) -> list[Section]:
 
 
 _HAND_WRITTEN = ("index.md", "reading.md")
+#: The site folder whose Markdown files are the blog's posts, written under the content root's
+#: ``blog/``, where starlight-blog lists them.
+_BLOG = "blog"
+_POST_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def post_text(text: str, source: str, site: Site, images: set[str]) -> str:
+    """The content page for the blog post *source* whose Markdown is *text*: its front matter
+    kept line for line, for starlight-blog's YAML fields (``date``, ``tags``, ``authors``), with
+    an ``editUrl`` added, and its links rewritten as `rewrite_links` does.
+
+    Raises ValueError, naming *source*, for a post without front matter, a ``title:`` or a
+    ``date:`` written YYYY-MM-DD, or with bad front matter or a bad link.
+    """
+    try:
+        fields, body = read_frontmatter(text)
+    except ValueError as err:
+        raise ValueError(f"{source}: {err}") from err
+    if not fields.get("title"):
+        raise ValueError(f"{source}: a blog post needs a title: in its front matter")
+    if not _POST_DATE.fullmatch(str(fields.get("date", ""))):
+        raise ValueError(f"{source}: a blog post needs a date: written YYYY-MM-DD")
+    head = text[: len(text) - len(body)].splitlines()[1:-1]
+    if "editUrl" not in fields:
+        head.append(f"editUrl: {json.dumps(f'{REPO_URL}/blob/main/{source}')}")
+    content = rewrite_links(body, source, site, images)
+    return "---\n" + "\n".join(head) + "\n---\n\n" + content.lstrip("\r\n")
 
 
 def _target_name(dest: str) -> Path:
@@ -316,7 +344,8 @@ def _target_name(dest: str) -> Path:
 
 
 def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
-    """Write the site's content under *site_dir* from the repo at *root*: ``src/content/docs``,
+    """Write the site's content under *site_dir* from the repo at *root*: ``src/content/docs``
+    (the published pages, the hand-written ones and the blog posts in ``blog/``, its README aside),
     ``public/media`` and ``src/generated/`` (``sidebar.json``, and ``tiers.json`` when the repo
     has ``docs/SPEC.md``: the tiers the pages' evidence tags badge), replacing what was there.
 
@@ -346,6 +375,13 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
             raise ValueError(f"{section.source}: published.toml names no such file or directory")
     for name in _HAND_WRITTEN:
         pages[f"{site_rel}/{name}"] = name
+    posts = {
+        f"{site_rel}/{_BLOG}/{post.name}"
+        for post in (site_dir / _BLOG).glob("*.md")
+        if post.name != "README.md"
+    }
+    for post in sorted(posts):
+        pages[post] = f"{_BLOG}/{posixpath.basename(post)}"
     site = Site(root=root, pages=pages, published_dirs=tuple(dirs))
     written: dict[str, str] = {}
     for source, dest in pages.items():
@@ -368,7 +404,10 @@ def prepare(root: Path, site_dir: Path) -> tuple[int, int]:
             raise ValueError(f"{source}: {err}") from err
         target = docs / _target_name(dest)
         target.parent.mkdir(parents=True, exist_ok=True)
-        page = page_text(text, source, site, images, title=titles.get(source))
+        if source in posts:
+            page = post_text(text, source, site, images)
+        else:
+            page = page_text(text, source, site, images, title=titles.get(source))
         target.write_bytes(page.encode("utf-8"))
     for image in sorted(images):
         target = media / image
