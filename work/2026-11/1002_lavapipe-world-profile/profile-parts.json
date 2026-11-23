@@ -1,0 +1,418 @@
+{
+ "w_base_s1": {
+  "loop_ms": 28802,
+  "sweeps": 5546,
+  "env": null,
+  "parts": {
+   "main": {
+    "wait: lavapipe queue (fence)": 3305,
+    "stunt-reel code (main thread)": 1754,
+    "wgpu (main thread)": 311,
+    "wait: other": 97,
+    "dispatch: command execution and queue submit": 78,
+    "scene flush and reset": 1
+   },
+   "queue": {
+    "wait: rasterizer threads (fence)": 1493,
+    "vertex: draw module (fetch, shade, clip)": 1190,
+    "setup: lines (setup and binning)": 807,
+    "state: storing the fragment state (try_update_scene_state)": 547,
+    "state: other changes and pipeline binds": 471,
+    "setup: triangles (setup and binning)": 300,
+    "idle: queue thread awaiting a submit": 192,
+    "scene flush and reset": 135,
+    "dispatch: command execution and queue submit": 108,
+    "clears": 91,
+    "jit compile (LLVM)": 79,
+    "setup: primitive dispatch (lp_setup_draw_elements)": 63,
+    "copies (readback, uploads)": 53,
+    "wait: other": 17
+   },
+   "raster": {
+    "idle": 82745,
+    "fragment shading (JIT) [3-plane]": 2907,
+    "fragment shading (JIT) [1-plane]": 722,
+    "fragment shading (JIT) [2-plane]": 706,
+    "coverage [4-plane]": 376,
+    "coverage [3-plane]": 366,
+    "fragment shading (JIT) [whole tile]": 243,
+    "unattributed (ntdll.dll)": 222,
+    "shading dispatch [3-plane]": 131,
+    "fragment shading (JIT) [4-plane]": 72,
+    "coverage [2-plane]": 57,
+    "shading dispatch [1-plane]": 50,
+    "rasterizer bookkeeping": 42,
+    "shading dispatch [2-plane]": 42,
+    "fragment shading (JIT) [5-plane]": 19,
+    "shading dispatch [4-plane]": 10,
+    "unattributed (vulkan_lvp.dll)": 8,
+    "shading dispatch [whole tile]": 7,
+    "coverage [1-plane]": 7,
+    "coverage [5-plane]": 3,
+    "shading dispatch [5-plane]": 1
+   }
+  },
+  "thread_cpu_ms": {
+   "main": 11203,
+   "queue": 19891,
+   "raster": 63672
+  }
+ },
+ "w_base_s2": {
+  "loop_ms": 29039,
+  "sweeps": 5603,
+  "env": null,
+  "parts": {
+   "main": {
+    "wait: lavapipe queue (fence)": 3305,
+    "stunt-reel code (main thread)": 1767,
+    "wgpu (main thread)": 329,
+    "wait: other": 109,
+    "dispatch: command execution and queue submit": 92,
+    "scene flush and reset": 1
+   },
+   "queue": {
+    "wait: rasterizer threads (fence)": 1480,
+    "vertex: draw module (fetch, shade, clip)": 1198,
+    "setup: lines (setup and binning)": 821,
+    "state: storing the fragment state (try_update_scene_state)": 588,
+    "state: other changes and pipeline binds": 477,
+    "setup: triangles (setup and binning)": 303,
+    "idle: queue thread awaiting a submit": 179,
+    "scene flush and reset": 137,
+    "dispatch: command execution and queue submit": 121,
+    "clears": 93,
+    "jit compile (LLVM)": 79,
+    "setup: primitive dispatch (lp_setup_draw_elements)": 72,
+    "copies (readback, uploads)": 40,
+    "wait: other": 15
+   },
+   "raster": {
+    "idle": 83260,
+    "fragment shading (JIT) [3-plane]": 3110,
+    "fragment shading (JIT) [1-plane]": 803,
+    "fragment shading (JIT) [2-plane]": 721,
+    "coverage [4-plane]": 399,
+    "coverage [3-plane]": 362,
+    "fragment shading (JIT) [whole tile]": 238,
+    "unattributed (ntdll.dll)": 225,
+    "shading dispatch [3-plane]": 141,
+    "fragment shading (JIT) [4-plane]": 115,
+    "coverage [2-plane]": 68,
+    "shading dispatch [1-plane]": 58,
+    "shading dispatch [2-plane]": 45,
+    "rasterizer bookkeeping": 30,
+    "fragment shading (JIT) [5-plane]": 20,
+    "unattributed (vulkan_lvp.dll)": 16,
+    "coverage [1-plane]": 15,
+    "shading dispatch [4-plane]": 9,
+    "shading dispatch [whole tile]": 8,
+    "shading dispatch [5-plane]": 3,
+    "coverage [5-plane]": 2
+   }
+  },
+  "thread_cpu_ms": {
+   "main": 10969,
+   "queue": 20469,
+   "raster": 58641
+  }
+ },
+ "w_skip_s1": {
+  "loop_ms": 15385,
+  "sweeps": 2992,
+  "env": [
+   "STUNT_PROBE_SKIP_WORLD=1"
+  ],
+  "parts": {
+   "main": {
+    "stunt-reel code (main thread)": 1614,
+    "wait: lavapipe queue (fence)": 1033,
+    "wgpu (main thread)": 236,
+    "wait: other": 56,
+    "dispatch: command execution and queue submit": 52,
+    "unattributed (vcruntime140.dll)": 1
+   },
+   "queue": {
+    "wait: rasterizer threads (fence)": 1059,
+    "vertex: draw module (fetch, shade, clip)": 601,
+    "state: storing the fragment state (try_update_scene_state)": 352,
+    "state: other changes and pipeline binds": 238,
+    "setup: triangles (setup and binning)": 160,
+    "idle: queue thread awaiting a submit": 126,
+    "setup: lines (setup and binning)": 93,
+    "clears": 91,
+    "scene flush and reset": 76,
+    "jit compile (LLVM)": 59,
+    "copies (readback, uploads)": 48,
+    "dispatch: command execution and queue submit": 45,
+    "setup: primitive dispatch (lp_setup_draw_elements)": 36,
+    "wait: other": 8
+   },
+   "raster": {
+    "idle": 44739,
+    "fragment shading (JIT) [3-plane]": 976,
+    "fragment shading (JIT) [1-plane]": 762,
+    "fragment shading (JIT) [2-plane]": 609,
+    "fragment shading (JIT) [whole tile]": 253,
+    "unattributed (ntdll.dll)": 159,
+    "coverage [3-plane]": 133,
+    "shading dispatch [1-plane]": 63,
+    "shading dispatch [3-plane]": 44,
+    "shading dispatch [2-plane]": 30,
+    "coverage [2-plane]": 29,
+    "fragment shading (JIT) [4-plane]": 18,
+    "coverage [4-plane]": 16,
+    "rasterizer bookkeeping": 9,
+    "shading dispatch [whole tile]": 9,
+    "coverage [1-plane]": 9,
+    "fragment shading (JIT) [5-plane]": 7,
+    "unattributed (vulkan_lvp.dll)": 6,
+    "coverage [5-plane]": 1
+   }
+  },
+  "thread_cpu_ms": {
+   "main": 9297,
+   "queue": 9094,
+   "raster": 37594
+  }
+ },
+ "w_skip_s2": {
+  "loop_ms": 15216,
+  "sweeps": 2979,
+  "env": [
+   "STUNT_PROBE_SKIP_WORLD=1"
+  ],
+  "parts": {
+   "main": {
+    "stunt-reel code (main thread)": 1581,
+    "wait: lavapipe queue (fence)": 1065,
+    "wgpu (main thread)": 212,
+    "wait: other": 61,
+    "dispatch: command execution and queue submit": 60
+   },
+   "queue": {
+    "wait: rasterizer threads (fence)": 1103,
+    "vertex: draw module (fetch, shade, clip)": 578,
+    "state: storing the fragment state (try_update_scene_state)": 292,
+    "state: other changes and pipeline binds": 250,
+    "setup: triangles (setup and binning)": 191,
+    "idle: queue thread awaiting a submit": 126,
+    "setup: lines (setup and binning)": 89,
+    "clears": 83,
+    "scene flush and reset": 65,
+    "dispatch: command execution and queue submit": 63,
+    "jit compile (LLVM)": 62,
+    "copies (readback, uploads)": 47,
+    "setup: primitive dispatch (lp_setup_draw_elements)": 20,
+    "wait: other": 10
+   },
+   "raster": {
+    "idle": 44418,
+    "fragment shading (JIT) [3-plane]": 998,
+    "fragment shading (JIT) [1-plane]": 794,
+    "fragment shading (JIT) [2-plane]": 622,
+    "fragment shading (JIT) [whole tile]": 266,
+    "unattributed (ntdll.dll)": 183,
+    "coverage [3-plane]": 117,
+    "shading dispatch [3-plane]": 66,
+    "shading dispatch [1-plane]": 50,
+    "coverage [2-plane]": 38,
+    "shading dispatch [2-plane]": 31,
+    "fragment shading (JIT) [4-plane]": 23,
+    "coverage [4-plane]": 15,
+    "coverage [1-plane]": 12,
+    "shading dispatch [whole tile]": 8,
+    "rasterizer bookkeeping": 8,
+    "unattributed (vulkan_lvp.dll)": 7,
+    "fragment shading (JIT) [5-plane]": 6,
+    "shading dispatch [5-plane]": 1,
+    "shading dispatch [4-plane]": 1
+   }
+  },
+  "thread_cpu_ms": {
+   "main": 9328,
+   "queue": 9453,
+   "raster": 34766
+  }
+ },
+ "b_base_s1": {
+  "loop_ms": 2623,
+  "sweeps": 513,
+  "env": null,
+  "parts": {
+   "main": {
+    "wait: lavapipe queue (fence)": 366,
+    "stunt-reel code (main thread)": 80,
+    "wgpu (main thread)": 40,
+    "wait: other": 20,
+    "dispatch: command execution and queue submit": 7
+   },
+   "queue": {
+    "state: storing the fragment state (try_update_scene_state)": 143,
+    "vertex: draw module (fetch, shade, clip)": 91,
+    "jit compile (LLVM)": 86,
+    "state: other changes and pipeline binds": 56,
+    "setup: lines (setup and binning)": 41,
+    "wait: rasterizer threads (fence)": 39,
+    "dispatch: command execution and queue submit": 19,
+    "setup: triangles (setup and binning)": 14,
+    "scene flush and reset": 11,
+    "idle: queue thread awaiting a submit": 7,
+    "setup: primitive dispatch (lp_setup_draw_elements)": 3,
+    "clears": 3
+   },
+   "raster": {
+    "idle": 7887,
+    "fragment shading (JIT) [3-plane]": 165,
+    "fragment shading (JIT) [2-plane]": 33,
+    "fragment shading (JIT) [1-plane]": 24,
+    "coverage [3-plane]": 20,
+    "fragment shading (JIT) [4-plane]": 17,
+    "unattributed (ntdll.dll)": 15,
+    "coverage [4-plane]": 13,
+    "fragment shading (JIT) [whole tile]": 10,
+    "shading dispatch [3-plane]": 9,
+    "coverage [2-plane]": 8,
+    "rasterizer bookkeeping": 3,
+    "shading dispatch [2-plane]": 1,
+    "coverage [1-plane]": 1,
+    "unattributed (vulkan_lvp.dll)": 1,
+    "fragment shading (JIT) [5-plane]": 1
+   }
+  },
+  "thread_cpu_ms": {
+   "main": 672,
+   "queue": 2375,
+   "raster": 2703
+  }
+ },
+ "b_base_s2": {
+  "loop_ms": 2642,
+  "sweeps": 508,
+  "env": null,
+  "parts": {
+   "main": {
+    "wait: lavapipe queue (fence)": 365,
+    "stunt-reel code (main thread)": 78,
+    "wgpu (main thread)": 27,
+    "wait: other": 27,
+    "dispatch: command execution and queue submit": 11
+   },
+   "queue": {
+    "state: storing the fragment state (try_update_scene_state)": 146,
+    "jit compile (LLVM)": 90,
+    "vertex: draw module (fetch, shade, clip)": 77,
+    "state: other changes and pipeline binds": 59,
+    "wait: rasterizer threads (fence)": 44,
+    "setup: lines (setup and binning)": 30,
+    "setup: triangles (setup and binning)": 23,
+    "dispatch: command execution and queue submit": 21,
+    "idle: queue thread awaiting a submit": 6,
+    "scene flush and reset": 6,
+    "clears": 3,
+    "setup: primitive dispatch (lp_setup_draw_elements)": 3
+   },
+   "raster": {
+    "idle": 7867,
+    "fragment shading (JIT) [3-plane]": 141,
+    "coverage [3-plane]": 25,
+    "fragment shading (JIT) [2-plane]": 23,
+    "coverage [4-plane]": 20,
+    "fragment shading (JIT) [1-plane]": 14,
+    "unattributed (ntdll.dll)": 11,
+    "fragment shading (JIT) [4-plane]": 9,
+    "shading dispatch [3-plane]": 5,
+    "fragment shading (JIT) [whole tile]": 4,
+    "coverage [2-plane]": 3,
+    "unattributed (vulkan_lvp.dll)": 2,
+    "shading dispatch [whole tile]": 1,
+    "coverage [1-plane]": 1,
+    "shading dispatch [2-plane]": 1,
+    "shading dispatch [1-plane]": 1
+   }
+  },
+  "thread_cpu_ms": {
+   "main": 500,
+   "queue": 2422,
+   "raster": 2734
+  }
+ },
+ "b_skip_s1": {
+  "loop_ms": 684,
+  "sweeps": 132,
+  "env": [
+   "STUNT_PROBE_SKIP_WORLD=1"
+  ],
+  "parts": {
+   "main": {
+    "wait: lavapipe queue (fence)": 72,
+    "stunt-reel code (main thread)": 56,
+    "dispatch: command execution and queue submit": 2,
+    "wgpu (main thread)": 2
+   },
+   "queue": {
+    "jit compile (LLVM)": 63,
+    "wait: rasterizer threads (fence)": 39,
+    "vertex: draw module (fetch, shade, clip)": 11,
+    "state: other changes and pipeline binds": 7,
+    "clears": 6,
+    "idle: queue thread awaiting a submit": 2,
+    "scene flush and reset": 2,
+    "dispatch: command execution and queue submit": 1,
+    "state: storing the fragment state (try_update_scene_state)": 1
+   },
+   "raster": {
+    "idle": 2054,
+    "fragment shading (JIT) [1-plane]": 18,
+    "fragment shading (JIT) [3-plane]": 12,
+    "fragment shading (JIT) [whole tile]": 9,
+    "unattributed (ntdll.dll)": 6,
+    "fragment shading (JIT) [2-plane]": 4,
+    "shading dispatch [1-plane]": 4,
+    "coverage [3-plane]": 2,
+    "rasterizer bookkeeping": 1,
+    "shading dispatch [3-plane]": 1,
+    "unattributed (vulkan_lvp.dll)": 1
+   }
+  },
+  "thread_cpu_ms": {
+   "main": 266,
+   "queue": 422,
+   "raster": 1125
+  }
+ },
+ "w_base_u1": {
+  "loop_ms": 28451,
+  "env": null,
+  "sampled": false
+ },
+ "w_base_u2": {
+  "loop_ms": 28311,
+  "env": null,
+  "sampled": false
+ },
+ "w_skip_u1": {
+  "loop_ms": 14422,
+  "env": [
+   "STUNT_PROBE_SKIP_WORLD=1"
+  ],
+  "sampled": false
+ },
+ "b_base_u1": {
+  "loop_ms": 2449,
+  "env": null,
+  "sampled": false
+ },
+ "b_base_u2": {
+  "loop_ms": 2474,
+  "env": null,
+  "sampled": false
+ },
+ "b_skip_u1": {
+  "loop_ms": 669,
+  "env": [
+   "STUNT_PROBE_SKIP_WORLD=1"
+  ],
+  "sampled": false
+ }
+}
