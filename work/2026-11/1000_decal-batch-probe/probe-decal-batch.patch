@@ -1,0 +1,259 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 512c34b9..d4ef86af 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -176,6 +176,24 @@ pub(crate) fn run_headless(
+     }
+ 
+     let playback = Playback::new(config, scene);
++    if let Ok(path) = std::env::var("DBG_PROBE_DECAL_BATCH_FILE") {
++        let mut ticks = Vec::new();
++        for (key, tick) in playback.samples() {
++            let SampleKey::Tick(t) = key else {
++                return Err("ticks only".to_string());
++            };
++            ticks.push((t, capture_tick(tick)));
++        }
++        stunt_render::probe_decal_batches(
++            scene,
++            &ticks,
++            config.width,
++            config.height,
++            config.viewport_rows,
++            std::path::Path::new(&path),
++        )?;
++        return Ok(());
++    }
+     let range = playback.range();
+     let start_tick = range.start();
+     let span_seconds = range.span_seconds();
+diff --git a/crates/stunt-render/src/lib.rs b/crates/stunt-render/src/lib.rs
+index 1b875cb5..1c59a44b 100644
+--- a/crates/stunt-render/src/lib.rs
++++ b/crates/stunt-render/src/lib.rs
+@@ -47,4 +47,5 @@ pub use renderer::{
+     DEFAULT_PAGE_WIDTH, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError,
+     RenderOptions, RenderedPage, Renderer, SinkError,
+ };
++pub use scene_renderer::probe_decal_batches;
+ pub use video::{FfmpegVideoWriter, VideoExportError};
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 2e92d8ce..cf6602c3 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -2080,3 +2080,73 @@ mod tests {
+         assert!(squeezes_discs(true, 2.0) && !squeezes_discs(true, 1.0));
+     }
+ }
++
++/// Probe (#920, #1000): a CPU-only model of `ir`, one slice per mesh node, for walking.
++impl GpuModel {
++    pub(crate) fn probe_cpu(ir: &SodModelIr) -> Self {
++        let bounds = node_bounds(ir);
++        let discs = node_discs(ir);
++        let mut meshes = ir.meshes().peekable();
++        let nodes = ir
++            .nodes
++            .iter()
++            .enumerate()
++            .map(|(n, node)| {
++                let slices = meshes
++                    .next_if(|m| std::ptr::eq(m.node, node))
++                    .map(|m| {
++                        vec![GpuMeshSlice {
++                            chunk: 0,
++                            vertex_offset: 0,
++                            index_offset: m.index_offset,
++                            index_count: arena_index(m.indices.len()),
++                            is_decal: m.is_decal(),
++                            edge_offset: 0,
++                            edge_count: 0,
++                        }]
++                    })
++                    .unwrap_or_default();
++                GpuNode {
++                    id: node.id,
++                    name: node.name.clone(),
++                    parent: node.parent,
++                    children: node.children.clone(),
++                    local_matrix: Mat4::from_cols_array(&node.local_matrix),
++                    visibility: node.visibility,
++                    meshes: slices,
++                    bounds: bounds.get(n).copied().flatten(),
++                    discs: discs.get(n).copied().unwrap_or(false),
++                    marks: Vec::new(),
++                }
++            })
++            .collect();
++        Self {
++            name: ir.name.clone(),
++            chunks: Vec::new(),
++            vertex_count: 0,
++            index_count: 0,
++            nodes,
++            root_nodes: ir.root_nodes.clone(),
++            bounds: None,
++            discs: false,
++        }
++    }
++}
++
++/// Probe (#1000): a node's cull box and whether it holds disc rim vertices.
++impl GpuModel {
++    pub(crate) fn probe_node(&self, id: NodeId) -> Option<(NodeBounds, bool)> {
++        let node = self.nodes.get(id.0 as usize)?;
++        Some((node.bounds?, node.discs))
++    }
++}
++
++/// Probe (#920): whether a placement box survives the walk's own cull test.
++pub(crate) fn probe_keeps(view_proj: Mat4, bounds: NodeBounds, discs: bool, dds: f32) -> bool {
++    squeezes_discs(discs, dds) || frustum_keeps(view_proj, bounds)
++}
++
++/// Probe (#1000): [`squeezes_discs`] for the probe.
++pub(crate) fn probe_squeezes(discs: bool, dds: f32) -> bool {
++    squeezes_discs(discs, dds)
++}
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 6182ccc9..5da21b47 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -1332,3 +1332,137 @@ mod tests {
+         );
+     }
+ }
++
++/// Probe (#1000): per frame, the world's decal slices as the walk collects them, the
++/// pipeline switches `encode` makes for them today (a fill and an outline each), and those
++/// greedy batches of consecutive slices with pairwise-disjoint conservative screen boxes
++/// would make (a batch's fills, then its outlines).
++///
++/// A box is the slice's node's cull box, its eight corners projected, grown by `pad` pixels
++/// each side; a node with no box, disc rim vertices under a non-default lens, or a corner at
++/// or behind the near plane takes the whole target.
++pub fn probe_decal_batches(
++    scene: &FilmScene,
++    ticks: &[(usize, f32)],
++    width: u32,
++    height: u32,
++    viewport_rows: Option<u32>,
++    out_path: &std::path::Path,
++) -> Result<(), String> {
++    use std::io::Write as _;
++    let w = scene.world().ok_or("no world")?;
++    let model = GpuModel::probe_cpu(&w.ir);
++    let mut outlinable = vec![false; w.ir.nodes.len()];
++    for m in w.ir.meshes() {
++        if m.vertices.iter().any(outlines_in_world) {
++            outlinable[m.node.id.0 as usize] = true;
++        }
++    }
++    let file = std::fs::File::create(out_path).map_err(|e| e.to_string())?;
++    let mut out = std::io::BufWriter::new(file);
++    writeln!(
++        out,
++        "tick n n_out full b1 bo1 b0 bo0 sw_all sw_elig bsw_all1 bsw_elig1 bsw_all0 bsw_elig0"
++    )
++    .map_err(|e| e.to_string())?;
++    let (wf, hf) = (width as f32, height as f32);
++    for &(film_tick, eval_tick) in ticks {
++        let frame = scene.frame(eval_tick);
++        if !frame.world {
++            continue;
++        }
++        let mut controller = CameraController::default();
++        controller.set_authored_transform(frame.view);
++        if let Some(rows) = viewport_rows {
++            controller.projection_y_scale = height as f32 / rows.max(1) as f32;
++        }
++        let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
++        let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
++        let eye = controller.eye_position();
++        let world_matrix = eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array());
++        let view_proj = rotation_proj * Mat4::from_cols_array(&world_matrix);
++        let lod_view = CameraTransform {
++            eye: frame.view.eye,
++            target: frame.view.target,
++            lens: frame.lens,
++            ..CameraTransform::default()
++        };
++        let dds = camera_uniform.disc_depth_scale;
++        let (_, _, decals) = model.collect_world_meshes(eye, Some(&lod_view), view_proj, dds);
++        // [x0, y0, x1, y1] in pixels, unpadded; None is the whole target.
++        let boxes: Vec<(Option<[f32; 4]>, bool)> = decals
++            .iter()
++            .map(|(id, _)| {
++                let out_ok = outlinable[id.0 as usize];
++                let Some((b, discs)) = model.probe_node(*id) else {
++                    return (None, out_ok);
++                };
++                if crate::mesh::probe_squeezes(discs, dds) {
++                    return (None, out_ok);
++                }
++                let mut r = [f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
++                for i in 0..8 {
++                    let p = Vec3::new(
++                        if i & 1 == 0 { b.min.x } else { b.max.x },
++                        if i & 2 == 0 { b.min.y } else { b.max.y },
++                        if i & 4 == 0 { b.min.z } else { b.max.z },
++                    );
++                    let c = view_proj * p.extend(1.0);
++                    if c.w <= 1e-6 || c.w - c.z < 0.0 {
++                        return (None, out_ok);
++                    }
++                    let (x, y) = ((c.x / c.w * 0.5 + 0.5) * wf, (0.5 - c.y / c.w * 0.5) * hf);
++                    r = [r[0].min(x), r[1].min(y), r[2].max(x), r[3].max(y)];
++                }
++                (Some(r), out_ok)
++            })
++            .collect();
++        let full = boxes.iter().filter(|(b, _)| b.is_none()).count();
++        let overlaps = |a: &Option<[f32; 4]>, b: &Option<[f32; 4]>, pad: f32| match (a, b) {
++            (Some(a), Some(b)) => {
++                a[0] - pad < b[2] + pad
++                    && b[0] - pad < a[2] + pad
++                    && a[1] - pad < b[3] + pad
++                    && b[1] - pad < a[3] + pad
++            }
++            _ => true,
++        };
++        // Greedy: a slice joins the open batch when disjoint from every member.
++        let batch = |pad: f32| -> (u64, u64) {
++            let (mut batches, mut with_outline) = (0u64, 0u64);
++            let mut open: Vec<Option<[f32; 4]>> = Vec::new();
++            let mut open_outline = false;
++            for (b, o) in &boxes {
++                if open.iter().any(|m| overlaps(m, b, pad)) {
++                    batches += 1;
++                    with_outline += u64::from(open_outline);
++                    open.clear();
++                    open_outline = false;
++                }
++                open.push(*b);
++                open_outline |= *o;
++            }
++            if !open.is_empty() {
++                batches += 1;
++                with_outline += u64::from(open_outline);
++            }
++            (batches, with_outline)
++        };
++        let n = boxes.len() as u64;
++        let n_out = boxes.iter().filter(|(_, o)| *o).count() as u64;
++        let (b1, bo1) = batch(1.0);
++        let (b0, bo0) = batch(0.0);
++        writeln!(
++            out,
++            "{film_tick} {n} {n_out} {full} {b1} {bo1} {b0} {bo0} {} {} {} {} {} {}",
++            2 * n,
++            n + n_out,
++            2 * b1,
++            b1 + bo1,
++            2 * b0,
++            b0 + bo0
++        )
++        .map_err(|e| e.to_string())?;
++    }
++    Ok(())
++}
