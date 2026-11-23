@@ -33,6 +33,7 @@ Take `ready` items in this order:
    A stacked PR shows again once its base merges and GitHub retargets it to `main`.
 2. **`status:ready-for-agent` issues.**
    Skip, with a reason in the Shutdown report, any whose worker reports, after reading the body, that it needs an ADR, a human design choice or a machine this session lacks (release its claim as step 5 or 6 says).
+   Skip the standing `Error readout due: merged render PRs since the last baseline` issue as well, with the reason "the coordinator runs it at Shutdown when an agreement batch is due": a run records its merged render PRs on that issue and never dispatches it to a worker ([Shutdown](#shutdown) step 2).
 3. **Unblocked issues you filed as `status:ready-for-agent` during this run**, only once 1 and 2 are empty.
 
 A "stop after N PRs" limit counts armed PRs: start no new item once N are armed.
@@ -84,8 +85,8 @@ The quality guard is that no merged PR needs a fix or revert afterwards.
    Take each item's last state from its newest line in `build/scratch/run-state.md`.
 2. When the run merged render PRs, repin: on local-windows, `mise run parity`, then `mise run parity-repin` for `gpu`, and again for `lavapipe` through the WSL lavapipe ([`render-on-lavapipe.md` § 5](../../../docs/howto/render-on-lavapipe.md#5-render-the-canonical-lavapipe-under-wsl)), each its own `chore(parity): repin expected scores` PR; in a cloud session, comment on [#830](https://github.com/neilsh/stunt-reel/issues/830) naming the merged PRs, so a cloud session catches `lavapipe` up ([ADR 0053](../../../docs/adr/0053-expected-scores-live-in-a-generated-file-per-class.md)).
    The [error readout](../improving-render-parity/error-readout.md) is the coordinator's as well, since it needs subagents a worker does not dispatch, against the committed baseline in `research/parity/readouts/` ([#901](https://github.com/neilsh/stunt-reel/issues/901)).
-   Run it at Shutdown only when `mise run queue` prints `agreement batch due`; once it is graded, open a PR that refreshes the baseline by step 7 of that procedure.
-   Otherwise record the run's merged render PRs on the standing issue `Error readout due: merged render PRs since the last baseline` (`status:ready-for-agent`, `env:local-only`): search for it first, file it when it is missing, comment on it when it exists, and the baseline-refresh PR closes it.
+   Run it at a Shutdown where `mise run queue` prints `agreement batch due` and the run merged render PRs or the standing `Error readout due` issue is open; once it is graded, open a PR that refreshes the baseline by step 7 of that procedure.
+   A Shutdown that merged render PRs while no batch is due records them on the standing issue `Error readout due: merged render PRs since the last baseline` (`status:ready-for-agent`, `env:local-only`) instead: search for it first, file it when it is missing, comment on it when it exists, and the baseline-refresh PR closes it.
    A render PR body says its readout waits for the agreement batch.
 3. On local-windows, close the terminals of each merged item's workspace as in [Disk space](#clock-and-disk-space) step 1, then run `mise run reap -- --yes --reviews` from the primary checkout; it retires the run's merged Orca workspaces too, and its review worktrees idle six hours.
 4. End with a summary built from each item's newest line in `build/scratch/run-state.md`, the file's **Filed** list and its **Queue** section's skipped reasons, grouped as: **Merged**, **Draft / WIP**, **Opened**, **Filed** (with labels), **Needs you** (item, reason, decision), and **Skipped**, plus the environment, start/end free disk space on local-windows, and any environment friction.
