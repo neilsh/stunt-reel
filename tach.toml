@@ -42,6 +42,7 @@ paths = [
     "stunt_reel.parity_artifacts",
     "stunt_reel.parity_layout",
     "stunt_reel.process_tree",
+    "stunt_reel.pr_body",
     "stunt_reel.scene_tree",
     "stunt_reel.scratch",
     "stunt_reel.uv",

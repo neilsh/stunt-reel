@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail a branch and its pull request body on the PR defects reviewers check by hand.
 
-Three checks, each failure a line naming what it read:
+Four checks, each failure a line naming what it read:
 
 * **pin**: every ``crates = "`` pin in a ``research/parity/expected/<class>.toml`` the branch
   changes equals ``git rev-parse HEAD:crates``, and ``crates/`` is clean, as the merge bar asks.
@@ -12,13 +12,16 @@ Three checks, each failure a line naming what it read:
   today's local day; and no journal heading the branch adds to an issue work folder predates the
   folder's ``started`` date, so a folder carries one date. An issue-less folder is a migrated
   history or a distillation, whose moved-in entries are older by design.
+* **body**: the body has a ``Fixes``, ``Closes`` or ``Part of #N`` line, as the merge bar also
+  requires; both read the one pattern in :mod:`stunt_reel.pr_body`.
 * **attribution**: the body's last line, ignoring trailing blank lines, is :data:`ATTRIBUTION`
   or :data:`CLOUD_ATTRIBUTION`.
 
 The CLI reads the working tree of the checkout holding the working directory, so it runs in the
 implementer's checkout before a push; the pin and date checks say nothing about a branch that
-checkout does not hold. ``merge_bar`` reads only :func:`attribution_failures` from the body it
-fetched, as a note, and names the other two checks pre-push only.
+checkout does not hold. ``merge_bar`` reads :func:`attribution_failures` from the body it
+fetched, as a note, checks the body's link itself through :mod:`stunt_reel.pr_body`, and names
+the pin and date checks pre-push only.
 
 Usage: ``mise run pr-lint -- <pr-body-file> [<base>]``; the base defaults to ``origin/main`` when
 it resolves, else ``main``. Exit status: 1 naming each failure, 0 clean, 2 for bad arguments, an
@@ -40,6 +43,7 @@ from added_lines import AddedLine, added_lines, file_lines
 
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.expected_scores import clean_crates_tree, dirty_crates_paths
+from stunt_reel.pr_body import issue_links
 from stunt_reel.work_items import WorkFolderError, parse_folder
 
 if TYPE_CHECKING:
@@ -74,6 +78,13 @@ def _date_or_none(text: str) -> date | None:
         return date.fromisoformat(text)
     except ValueError:
         return None
+
+
+def body_failures(body: str) -> list[str]:
+    """The failure for a body with no ``Fixes``, ``Closes`` or ``Part of #N`` line, else none."""
+    if issue_links(body):
+        return []
+    return ["body: no `Fixes`, `Closes` or `Part of #N` line"]
 
 
 def attribution_failures(body: str) -> list[str]:
@@ -193,7 +204,7 @@ def _started_failures(repo: Path, added: Sequence[AddedLine]) -> list[str]:
 def failures(
     body: str, *, repo: Path = REPO_ROOT, base: str | None = None, today: date | None = None
 ) -> list[str]:
-    """Every way the branch and its pull request *body* fail the three checks, pins first.
+    """Every way the branch and its pull request *body* fail the four checks, branch ones first.
 
     A git failure is one failure naming it, so a caller such as ``merge_bar`` reports it rather
     than crashing.
@@ -202,6 +213,7 @@ def failures(
         return [
             *pin_failures(repo, base),
             *date_failures(repo, base, today),
+            *body_failures(body),
             *attribution_failures(body),
         ]
     except (OSError, subprocess.CalledProcessError, gate.ChangedPathsError) as error:

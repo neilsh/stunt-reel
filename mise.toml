@@ -141,7 +141,7 @@ description = "Whether a pull request meets the unattended merge bar, one line p
 run = "uv run python python/scripts/merge_bar.py"
 
 [tasks.pr-lint]
-description = "Fail a branch and its PR body on the defects reviewers check by hand, naming each: a changed research/parity/expected/<class>.toml whose crates pin is not git rev-parse HEAD:crates with crates/ clean, a YYYY-MM-DD added under work/, research/ or docs/ that is later than the local day or a journal heading before its issue folder started date, and a body whose last line is neither of the two Claude Code attribution lines; reads the working tree, so run it in the implementer's checkout before a push (mise run pr-lint -- <pr-body-file> [<base>])"
+description = "Fail a branch and its PR body on the defects reviewers check by hand, naming each: a changed research/parity/expected/<class>.toml whose crates pin is not git rev-parse HEAD:crates with crates/ clean, a YYYY-MM-DD added under work/, research/ or docs/ that is later than the local day or a journal heading before its issue folder started date, a body with no `Fixes`, `Closes` or `Part of #N` line, and a body whose last line is neither of the two Claude Code attribution lines; reads the working tree, so run it in the implementer's checkout before a push (mise run pr-lint -- <pr-body-file> [<base>])"
 run = "uv run python python/scripts/pr_lint.py"
 
 [tasks.project-sync]
