@@ -131,3 +131,99 @@
   The probe counts bytes; no un-baked renderer was run, so the figure holds for the candidate design as the issue states it.
   `[Bounded Observation]`: one run per film on one machine, a 256 MiB buffer limit assumed from the code, and a byte count that the sanity check matches only to within the node arena and about `23` MiB.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6, `#920`'s verdict.
+
+## 2026-11-22: what the world's base and decal draws cost on lavapipe
+
+`[Bounded Observation]`
+
+- **Question**: Which part of the world's base and decal draws makes up the half of the lavapipe loop that step 1's skip removed: their pixels, their outlines, the decal slices' per-slice pipeline switches, or the draws' own overhead?
+  And what does the 172.6 MiB resident-set rise between `world mesh released` and `frames rendered` follow?
+- **Method**:
+  - `main` at `67f409b7` plus [`draw-cost-split.patch`](draw-cost-split.patch) (`git diff -- crates`, so it also holds step 1's [`world-skip-and-vertex-probe.patch`](world-skip-and-vertex-probe.patch): the loop timer and the vertex probe).
+    In `SceneRenderer::encode`, for `Target::World` draws only, `STUNT_PROBE_WORLD` (read once) is a bit mask over the base and decal draws; the ground draws are not touched.
+  - The variants, each one switch:
+    - `base`: no switch.
+    - `a`: skip base fills.
+    - `b`: skip base outlines.
+    - `c`: skip decal fills.
+    - `d`: skip decal outlines.
+    - `e`: skip all four (step 1's skip).
+    - `f`: issue every draw, with its pipeline switch and vertex fetch, but with the scissor rect set to `0,0,1,1` for those draws and restored to `0,0,320,200` after each; `wgpu` accepted it.
+    - `g`: skip nothing, but encode a world draw's decal fills together, then its decal outlines together: two pipeline switches a draw instead of two a slice.
+      It changes the picture where decals overlap, so it is a timing probe only.
+  - One release binary (`mise exec -- cargo build --release -p stunt-cli`) copied to the scratchpad as `stuntreel-split.exe`, every variant run from it, no other `stuntreel`, `cargo` or `rustc` process running.
+    An earlier build of the same switches without `g` ran the Span B set once too; its medians are under Result.
+  - Same command line as step 1 (`--headless ... LOCATION.FLM --all ... --width 320 --height 200 --viewport-rows 185`, with `--software-only` and `VK_DRIVER_FILES` for mesa-dist-win 25.2.8 on lavapipe); every run's `render.json` names `llvmpipe (LLVM 21.1.7, 256 bits)` or `NVIDIA GeForce RTX 4070 Laptop GPU`.
+  - Order: lavapipe Span B (`3680..=3979`), 4 rounds of all 8 variants, the order rotated one place a round.
+    Lavapipe whole film (`12..=8262`), 2 rounds of `base`, `b`, `f`, `e`, `g`, reversed in round 2.
+    RTX 4070 Span B, 4 rounds of `base`, `b`, `f`, `e`, `g`, rotated.
+    Memory: one `--report-memory` run each of `base`, `b`, `f` and `e` on lavapipe Span A (`12..=300`), run twice, with the earlier build and with this one.
+- **Result**:
+  - Loop ms, lavapipe Span B, in round order (rounds 0 to 3), the median and its change against `base`'s median:
+
+    | Variant | Rounds | Median | Min..max | Change |
+    |---|---|---|---|---|
+    | `base` | 2466, 2340, 2335, 2414 | 2377.0 | 2335..2466 | |
+    | `a` base fills | 2461, 2244, 2256, 2159 | 2250.0 | 2159..2461 | -5.3% |
+    | `b` base outlines | 2205, 2080, 2043, 2146 | 2113.0 | 2043..2205 | -11.1% |
+    | `c` decal fills | 1375, 1365, 1331, 1348 | 1356.5 | 1331..1375 | -42.9% |
+    | `d` decal outlines | 1318, 1254, 1247, 1247 | 1250.5 | 1247..1318 | -47.4% |
+    | `e` all four | 661, 644, 640, 642 | 643.0 | 640..661 | -72.9% |
+    | `f` 1-pixel scissor | 2149, 2149, 2045, 2043 | 2097.0 | 2043..2149 | -11.8% |
+    | `g` decals grouped | 1427, 1424, 1420, 1406 | 1422.0 | 1406..1427 | -40.2% |
+
+  - Change round by round against that round's `base`: `a` -0.2, -4.1, -3.4, -10.6%; `b` -10.6, -11.1, -12.5, -11.1%; `c` -44.2, -41.7, -43.0, -44.2%; `d` -46.6, -46.4, -46.6, -48.3%; `e` -73.2, -72.5, -72.6, -73.4%; `f` -12.9, -8.2, -12.4, -15.4%; `g` -42.1, -39.1, -39.2, -41.8%.
+    Every variant but `a` is faster than `base` in all four rounds: `b`'s and `f`'s maxima (2205, 2149) are under `base`'s minimum (2335), while `a`'s maximum (2461) is inside `base`'s range, so `a`'s `-5.3%` does not resolve.
+    `b` and `f` (2113.0 and 2097.0) lie inside each other's ranges, so they do not resolve against each other.
+  - The earlier build's Span B set, loop ms in round order and the median: `base` 2431, 2407, 2275, 2433 (2419.0); `a` 2340, 2340, 2341, 2277 (2340.0, -3.3%); `b` 2152, 2056, 2192, 2022 (2104.0, -13.0%); `c` 1350, 1354, 1348, 1371 (1352.0, -44.1%); `d` 1316, 1280, 1275, 1290 (1285.0, -46.9%); `e` 639, 661, 679, 648 (654.5, -72.9%); `f` 2142, 2098, 2207, 2224 (2174.5, -10.1%).
+  - Loop ms, lavapipe whole film, round 0 and round 1:
+
+    | Variant | Round 0 | Round 1 | Median | Change |
+    |---|---|---|---|---|
+    | `base` | 27368 | 26757 | 27062.5 | |
+    | `b` | 21088 | 20531 | 20809.5 | -23.1% |
+    | `f` | 19815 | 20197 | 20006.0 | -26.1% |
+    | `e` | 13972 | 14200 | 14086.0 | -48.0% |
+    | `g` | 24918 | 25052 | 24985.0 | -7.7% |
+
+    Each variant is faster than `base` in both rounds with its two values clear of `base`'s two, and `f`'s clear of `b`'s, but two rounds give no spread estimate.
+  - Loop ms, RTX 4070 Span B, in round order:
+
+    | Variant | Rounds | Median | Min..max | Change |
+    |---|---|---|---|---|
+    | `base` | 437, 415, 440, 469 | 438.5 | 415..469 | |
+    | `b` | 418, 409, 424, 418 | 418.0 | 409..424 | -4.7% |
+    | `f` | 406, 401, 442, 431 | 418.5 | 401..442 | -4.6% |
+    | `e` | 323, 336, 314, 319 | 321.0 | 314..336 | -26.8% |
+    | `g` | 390, 374, 414, 457 | 402.0 | 374..457 | -8.3% |
+
+    Only `e` resolves (its maximum, 336, is under `base`'s minimum, 415); the ranges of `b`, `f` and `g` overlap `base`'s.
+  - Memory on lavapipe Span A, rss in MiB at each stage, this build:
+
+    | Variant | Scene built | Renderer opened | World mesh released | Frames rendered | Rise, released to rendered | Peak |
+    |---|---|---|---|---|---|---|
+    | `base` | 295.5 | 758.5 | 491.6 | 663.8 | 172.2 | 902.0 |
+    | `b` | 295.4 | 758.6 | 490.9 | 663.6 | 172.7 | 902.0 |
+    | `f` | 295.3 | 758.5 | 491.9 | 663.4 | 171.5 | 902.0 |
+    | `e` | 296.0 | 759.0 | 491.0 | 664.0 | 173.0 | 902.3 |
+
+    The earlier build's run, in the same stage order then the rise and the peak: `base` 305.8, 766.0, 498.9, 670.6, 171.7, 909.5; `b` 295.1, 758.0, 490.1, 663.1, 173.0, 901.4; `f` 295.5, 757.8, 491.1, 662.4, 171.3, 901.3; `e` 295.3, 757.8, 489.7, 661.7, 172.0, 901.2.
+    The rise is 171.3 to 173.0 MiB in all eight runs, whichever world draws run, against step 3's 172.6 MiB (18.1 MiB with the world not uploaded).
+    The earlier `base` run's `scene built` and peak are 10 and 8 MiB above the others'; this entry does not explain that.
+  - The same Span A runs' loop ms, earlier build then this one: `base` 837 and 846, `b` 782 and 795, `f` 819 and 849, `e` 720 and 725.
+- **Verdict**: control.
+  On lavapipe Span B, the span step 1 cut 70.7%:
+  - Pixels are not the main part.
+    The 1-pixel scissor keeps every draw, pipeline switch and vertex fetch and removes nearly all fragment work, and it recovers `280 ms` of the `1,734 ms` that `e` saves (16.1%); `1,454 ms` of the saving is left with the pixels gone.
+  - Base outlines are not the main part: `b` takes `264 ms` (-11.1%), as #622 found (11.2% to 12.2%), and `a`'s base fills do not resolve.
+  - The decal slices' fill-and-outline alternation is the main part.
+    `c` and `d` each cut about `1,000 ms` (-42.9% and -47.4%) though the decals carry a third of the two kinds' indices (a median 2,391 of 7,161), and they are not additive: `1,020.5 + 1,126.5` exceeds `e`'s `1,734.0`, as it would if skipping either removes the alternation of the two decal pipelines.
+    `g` keeps every draw and every pixel and only groups the decal fills and outlines: `-955 ms` (-40.2%), 55.1% of `e`'s saving and within about 100 ms of `c`'s and `d`'s.
+    The remaining `779 ms` of `e`'s saving is draw cost that grouping does not remove, to which the pixels contribute up to the `280 ms` that `f` recovers (the two probes need not add); the base draws' own overhead is part of it, not separated.
+    The mechanism inside lavapipe (a state or binning flush at each switch) is not examined.
+  - The mix differs by span: on the whole film `b` takes -23.1%, `f` -26.1% and `g` only -7.7%, so there the outlines and pixels weigh more and the decal alternation less (2 rounds).
+  - On the RTX 4070 only `e` (-26.8%) resolves from the noise.
+  - The memory rise does not follow the world's base or decal draws: skipping all four, the outlines or the fragments leaves it at 171.3 to 173.0 MiB.
+    It follows the world's upload (18.1 MiB without it, step 3) and something that runs with it in every variant, the ground draws or the walk; which of them, or whether lavapipe maps the buffer lazily, is not tested here.
+  - `g` changes the picture where decals overlap, so it names a cost, not a change to adopt.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3 and its Open questions item 1.

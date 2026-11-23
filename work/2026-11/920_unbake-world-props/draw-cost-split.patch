@@ -1,0 +1,376 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 512c34b9..be98f3bb 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -176,6 +176,23 @@ pub(crate) fn run_headless(
+     }
+ 
+     let playback = Playback::new(config, scene);
++    if let Ok(path) = std::env::var("DBG_PROBE_WORLD_VERTS_FILE") {
++        let mut ticks = Vec::new();
++        for (key, tick) in playback.samples() {
++            let SampleKey::Tick(t) = key else {
++                return Err("ticks only".to_string());
++            };
++            ticks.push((t, capture_tick(tick)));
++        }
++        stunt_render::probe_world_vertices(
++            scene,
++            &ticks,
++            config.height,
++            config.viewport_rows,
++            std::path::Path::new(&path),
++        )?;
++        return Ok(());
++    }
+     let range = playback.range();
+     let start_tick = range.start();
+     let span_seconds = range.span_seconds();
+@@ -287,6 +304,7 @@ pub(crate) fn run_headless(
+     // The renderer keeps two frames in flight: submitting a frame retires the page of the one
+     // before it, so each page lands here one submission after its frame.
+     let mut pending: VecDeque<(SampleKey, FrameFacts)> = VecDeque::new();
++    let probe_loop = std::time::Instant::now();
+     for (key, tick) in samples {
+         let frame = scene.frame(capture_tick(tick));
+         renderer
+@@ -302,6 +320,7 @@ pub(crate) fn run_headless(
+     if !pending.is_empty() {
+         return Err("the renderer did not hand back every submitted frame".to_string());
+     }
++    eprintln!("[probe] loop_ms {}", probe_loop.elapsed().as_millis());
+     memory.stage("frames rendered");
+     let adapter = render_adapter(renderer.adapter());
+     drop(renderer);
+diff --git a/crates/stunt-render/src/lib.rs b/crates/stunt-render/src/lib.rs
+index 1b875cb5..d63680ce 100644
+--- a/crates/stunt-render/src/lib.rs
++++ b/crates/stunt-render/src/lib.rs
+@@ -47,4 +47,5 @@ pub use renderer::{
+     DEFAULT_PAGE_WIDTH, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError,
+     RenderOptions, RenderedPage, Renderer, SinkError,
+ };
++pub use scene_renderer::probe_world_vertices;
+ pub use video::{FfmpegVideoWriter, VideoExportError};
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 2e92d8ce..702e90a0 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -2080,3 +2080,60 @@ mod tests {
+         assert!(squeezes_discs(true, 2.0) && !squeezes_discs(true, 1.0));
+     }
+ }
++
++/// Probe (#920): a CPU-only model of `ir`, one slice per mesh node, for walking.
++impl GpuModel {
++    pub(crate) fn probe_cpu(ir: &SodModelIr) -> Self {
++        let bounds = node_bounds(ir);
++        let discs = node_discs(ir);
++        let mut meshes = ir.meshes().peekable();
++        let nodes = ir
++            .nodes
++            .iter()
++            .enumerate()
++            .map(|(n, node)| {
++                let slices = meshes
++                    .next_if(|m| std::ptr::eq(m.node, node))
++                    .map(|m| {
++                        vec![GpuMeshSlice {
++                            chunk: 0,
++                            vertex_offset: 0,
++                            index_offset: m.index_offset,
++                            index_count: arena_index(m.indices.len()),
++                            is_decal: m.is_decal(),
++                            edge_offset: 0,
++                            edge_count: 0,
++                        }]
++                    })
++                    .unwrap_or_default();
++                GpuNode {
++                    id: node.id,
++                    name: node.name.clone(),
++                    parent: node.parent,
++                    children: node.children.clone(),
++                    local_matrix: Mat4::from_cols_array(&node.local_matrix),
++                    visibility: node.visibility,
++                    meshes: slices,
++                    bounds: bounds.get(n).copied().flatten(),
++                    discs: discs.get(n).copied().unwrap_or(false),
++                    marks: Vec::new(),
++                }
++            })
++            .collect();
++        Self {
++            name: ir.name.clone(),
++            chunks: Vec::new(),
++            vertex_count: 0,
++            index_count: 0,
++            nodes,
++            root_nodes: ir.root_nodes.clone(),
++            bounds: None,
++            discs: false,
++        }
++    }
++}
++
++/// Probe (#920): whether a placement box survives the walk's own cull test.
++pub(crate) fn probe_keeps(view_proj: Mat4, bounds: NodeBounds, discs: bool, dds: f32) -> bool {
++    squeezes_discs(discs, dds) || frustum_keeps(view_proj, bounds)
++}
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 6182ccc9..18fdba5f 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -550,6 +550,12 @@ impl SceneRenderer {
+                     camera_uniform.disc_depth_scale,
+                 )
+             };
++            if std::env::var_os("DBG_PROBE_PREP").is_some() {
++                let ic: u32 = base.iter().map(|(_, m)| m.index_count).sum();
++                let dc: u32 = decals.iter().map(|(_, m)| m.index_count).sum();
++                let ec: u32 = base.iter().map(|(_, m)| m.edge_count).sum();
++                eprintln!("[prep] ground {} base {} base_i {} base_edges {} decals {} decal_i {}", ground.len(), base.len(), ic, ec, decals.len(), dc);
++            }
+             let uniform = self.uniforms.push(&ModelUniform::new(world_matrix, 0));
+             let untag =
+                 |tagged: &[(NodeId, GpuMeshSlice)]| tagged.iter().map(|&(_, m)| m).collect();
+@@ -982,6 +988,25 @@ impl SceneRenderer {
+         decal_pass: bool,
+         base: &wgpu::RenderPipeline,
+     ) {
++        let scissor = probe_mask() & 16 != 0 && matches!(draw.target, Target::World { .. });
++        if scissor {
++            rpass.set_scissor_rect(0, 0, 1, 1);
++        }
++        self.encode_inner(rpass, pipelines, draw, decal_pass, base);
++        if scissor {
++            rpass.set_scissor_rect(0, 0, 320, 200);
++        }
++    }
++
++    fn encode_inner(
++        &self,
++        rpass: &mut wgpu::RenderPass<'_>,
++        pipelines: &RenderPipelines,
++        draw: &PreparedDraw,
++        decal_pass: bool,
++        base: &wgpu::RenderPipeline,
++    ) {
++        let mask = probe_mask();
+         let meshes = if decal_pass { &draw.decals } else { &draw.base };
+         if meshes.is_empty() {
+             return;
+@@ -991,15 +1016,32 @@ impl SceneRenderer {
+         };
+         rpass.set_bind_group(2, bind_group, &[offset]);
+         let world = matches!(draw.target, Target::World { .. });
++        let mask = if world { mask } else { 0 };
+         if decal_pass {
+             // A world decal slice's outline follows its own fill, so a later slice covers
+             // it as it covers the fill: the decal pass writes no depth to hide it ([I5]).
++            if world && mask & 32 != 0 {
++                // Probe: all fills, then all outlines, two pipeline switches in all.
++                rpass.set_pipeline(&pipelines.decal_pipeline);
++                for slice in meshes {
++                    model.draw_slices(rpass, std::slice::from_ref(slice));
++                }
++                rpass.set_pipeline(&pipelines.edge_decal_pipeline);
++                for slice in meshes {
++                    if slice.edge_count > 0 {
++                        model.draw_edges(rpass, std::slice::from_ref(slice));
++                    }
++                }
++                return;
++            }
+             if world {
+                 for slice in meshes {
+                     let slices = std::slice::from_ref(slice);
+-                    rpass.set_pipeline(&pipelines.decal_pipeline);
+-                    model.draw_slices(rpass, slices);
+-                    if slice.edge_count > 0 {
++                    if mask & 4 == 0 {
++                        rpass.set_pipeline(&pipelines.decal_pipeline);
++                        model.draw_slices(rpass, slices);
++                    }
++                    if slice.edge_count > 0 && mask & 8 == 0 {
+                         rpass.set_pipeline(&pipelines.edge_decal_pipeline);
+                         model.draw_edges(rpass, slices);
+                     }
+@@ -1015,10 +1057,12 @@ impl SceneRenderer {
+             model.draw_slices(rpass, meshes);
+             return;
+         }
+-        rpass.set_pipeline(base);
+-        model.draw_slices(rpass, meshes);
++        if !(world && mask & 1 != 0) {
++            rpass.set_pipeline(base);
++            model.draw_slices(rpass, meshes);
++        }
+         // Only the world carries edge buffers.
+-        if world {
++        if world && mask & 2 == 0 {
+             rpass.set_pipeline(&pipelines.edge_pipeline);
+             model.draw_edges(rpass, meshes);
+         }
+@@ -1332,3 +1376,161 @@ mod tests {
+         );
+     }
+ }
++
++/// Probe (#920): per frame, the world vertices and indices the walk draws, and those an
++/// extra frustum test on each ungated placement's own box would remove.
++pub fn probe_world_vertices(
++    scene: &FilmScene,
++    ticks: &[(usize, f32)],
++    height: u32,
++    viewport_rows: Option<u32>,
++    out_path: &std::path::Path,
++) -> Result<(), String> {
++    use std::io::Write as _;
++    struct Part {
++        v: u64,
++        i: u64,
++    }
++    struct Prop {
++        bounds: crate::mesh::NodeBounds,
++        discs: bool,
++        base: Part,
++        decal: Part,
++    }
++    let w = scene.world().ok_or("no world")?;
++    let placements = WorldPlacements::new(w);
++    let model = GpuModel::probe_cpu(&w.ir);
++    let mut node_vertices = vec![0u64; w.ir.nodes.len()];
++    let mut by_offset: HashMap<u32, u64> = HashMap::new();
++    for m in w.ir.meshes() {
++        node_vertices[m.node.id.0 as usize] = m.vertices.len() as u64;
++        by_offset.insert(m.index_offset, m.vertices.len() as u64);
++    }
++    let mut props = Vec::new();
++    for spans in placements.spans.iter().flatten() {
++        let mut lo = Vec3::splat(f32::INFINITY);
++        let mut hi = Vec3::splat(f32::NEG_INFINITY);
++        let mut discs = false;
++        let mut parts = Vec::new();
++        for span in [spans.base, spans.decal] {
++            let idx = &w.ir.indices[span.start as usize..span.end as usize];
++            let mut seen: Vec<u32> = idx.to_vec();
++            seen.sort_unstable();
++            seen.dedup();
++            for &i in &seen {
++                let v = &w.ir.vertices[i as usize];
++                let p = Vec3::from_array(v.position);
++                lo = lo.min(p);
++                hi = hi.max(p);
++                discs |= v.flags & stunt_core::contracts::VERTEX_FLAG_DISC != 0;
++            }
++            parts.push(Part {
++                v: seen.len() as u64,
++                i: idx.len() as u64,
++            });
++        }
++        if lo.x > hi.x {
++            continue;
++        }
++        let decal = parts.pop().ok_or("parts")?;
++        let base = parts.pop().ok_or("parts")?;
++        props.push(Prop {
++            bounds: crate::mesh::NodeBounds { min: lo, max: hi },
++            discs,
++            base,
++            decal,
++        });
++    }
++    let base_node = placements.base.map(|(n, _)| n);
++    let decal_node = placements.decal.map(|(n, _)| n);
++    eprintln!("[probe] placements with WORLD_BASE/WORLD_DECAL geometry: {}", props.len());
++    eprintln!(
++        "[probe] nodes {} vertices {} indices {} records {} with_mesh {} base {:?} decal {:?} meshes {} mesh_vertices {}",
++        w.ir.nodes.len(),
++        w.ir.vertices.len(),
++        w.ir.indices.len(),
++        placements.spans.len(),
++        placements.spans.iter().flatten().count(),
++        placements.base,
++        placements.decal,
++        w.ir.meshes().count(),
++        w.ir.meshes().map(|m| m.vertices.len()).sum::<usize>()
++    );
++    let file = std::fs::File::create(out_path).map_err(|e| e.to_string())?;
++    let mut out = std::io::BufWriter::new(file);
++    writeln!(
++        out,
++        "tick ground_v ground_i base_v base_i decal_v decal_i rm_base_v rm_base_i rm_decal_v rm_decal_i"
++    )
++    .map_err(|e| e.to_string())?;
++    for &(film_tick, eval_tick) in ticks {
++        let frame = scene.frame(eval_tick);
++        if !frame.world {
++            continue;
++        }
++        let mut controller = CameraController::default();
++        controller.set_authored_transform(frame.view);
++        if let Some(rows) = viewport_rows {
++            controller.projection_y_scale = height as f32 / rows.max(1) as f32;
++        }
++        let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
++        let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
++        let eye = controller.eye_position();
++        let world_matrix = eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array());
++        let view_proj = rotation_proj * Mat4::from_cols_array(&world_matrix);
++        let lod_view = CameraTransform {
++            eye: frame.view.eye,
++            target: frame.view.target,
++            lens: frame.lens,
++            ..CameraTransform::default()
++        };
++        let dds = camera_uniform.disc_depth_scale;
++        let (ground, base, decals) =
++            model.collect_world_meshes(eye, Some(&lod_view), view_proj, dds);
++        let gv: u64 = ground
++            .iter()
++            .map(|s| by_offset.get(&s.index_offset).copied().unwrap_or(0))
++            .sum();
++        let gi: u64 = ground.iter().map(|s| u64::from(s.index_count)).sum();
++        let sum = |slices: &[(NodeId, GpuMeshSlice)]| -> (u64, u64) {
++            slices.iter().fold((0, 0), |(v, i), (n, s)| {
++                (v + node_vertices[n.0 as usize], i + u64::from(s.index_count))
++            })
++        };
++        let (bv, bi) = sum(&base);
++        let (dv, di) = sum(&decals);
++        let has_base = base.iter().any(|(n, _)| Some(*n) == base_node);
++        let has_decal = decals.iter().any(|(n, _)| Some(*n) == decal_node);
++        let (mut rbv, mut rbi, mut rdv, mut rdi) = (0u64, 0u64, 0u64, 0u64);
++        for p in &props {
++            if crate::mesh::probe_keeps(view_proj, p.bounds, p.discs, dds) {
++                continue;
++            }
++            if has_base {
++                rbv += p.base.v;
++                rbi += p.base.i;
++            }
++            if has_decal {
++                rdv += p.decal.v;
++                rdi += p.decal.i;
++            }
++        }
++        let (nb, nd) = (base.len(), decals.len());
++        writeln!(out, "{film_tick} {gv} {gi} {bv} {bi} {dv} {di} {rbv} {rbi} {rdv} {rdi} {nb} {nd}")
++            .map_err(|e| e.to_string())?;
++    }
++    Ok(())
++}
++
++/// Probe (#920): bit 1 skips world base fills, 2 base outlines, 4 decal fills, 8 decal
++/// outlines, 16 scissors every world base and decal draw to one pixel, 32 draws each
++/// draw's decal fills together, then its decal outlines together.
++fn probe_mask() -> u8 {
++    static MASK: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
++    *MASK.get_or_init(|| {
++        std::env::var("STUNT_PROBE_WORLD")
++            .ok()
++            .and_then(|v| v.parse().ok())
++            .unwrap_or(0)
++    })
++}
