@@ -226,7 +226,7 @@
   - On the RTX 4070 only `e` (-26.8%) resolves from the noise.
   - The memory rise does not follow the world's base or decal draws: skipping all four, the outlines or the fragments leaves it at 171.3 to 173.0 MiB.
     It follows the world's upload (18.1 MiB without it, step 3) and something that runs with it in every variant, the ground draws or the walk; which of them, or whether lavapipe maps the buffer lazily, is not tested here.
-    It fits [`evidence-limits.md`](../../../research/parity/evidence-limits.md)'s `[Supported Inference]` that lavapipe fills the world's device buffers' pages at the first submit, which this entry did not test.
+    Its timing is consistent with [`evidence-limits.md`](../../../research/parity/evidence-limits.md)'s `[Supported Inference]` that lavapipe fills the world's device buffers' pages at the first submit, though that inference rests on other figures (a `257 MiB` buffer set) and this rise is about half of the `333.75 MiB` of buffers the CPU count gives; this entry did not test it.
   - `g` changes the picture where decals overlap, so it names a cost, not a change to adopt.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3 and its Open questions item 1.
 
@@ -261,7 +261,7 @@
   - The RTX 4070 cell does not resolve: the ranges overlap and the medians differ by `0.5 ms`.
   - Check: on lavapipe, ticks `3680..=3719`, one run each, `frames.zst`, `layers.zst` and `palettes.zst` hash the same in both variants and `shapes.zst` differs, as it should.
   - A confound: the constant makes the shapes plane compress differently, and the loop includes the page writes.
-    On the RTX 4070 Span B, where the shader saving does not resolve, the medians differ by `0.5 ms` and the runs spread `46 ms`, so a compression difference is at most about that size on Span B; no run isolated it on the whole film.
+    On the RTX 4070 Span B, where the shader saving does not resolve, the medians differ by `0.5 ms` within a `46 ms` run spread, so a compression difference on Span B is within about that spread, up to about a third of the `143.5 ms` lavapipe saving; no run isolated it on the whole film.
 - **Verdict**: control: it bounds a per-vertex `shape_id` from above and decides no issue by itself.
   The lookup costs at most `10.8%` of the whole `LOCATION` film's lavapipe loop (`5.9%` on Span B) and nothing resolved on the RTX 4070 Span B, against the `-49.0%` the base and decal draws take.
   `10.8%` is an upper bound on a standalone per-vertex `shape_id`, since a carried id is not free (a per-vertex word or a wider vertex was not measured); #920's 15% bar was set for un-baking's upper bound and does not gate it, so whether it earns an issue is the owner's call.
@@ -309,9 +309,9 @@
   - Raw values by run (lavapipe, then RTX 4070): scene build `894, 898, 884` and `888, 890, 887`; renderer open `657, 650, 639` and `796, 802, 780`; world `from_ir_outlined` `477.9, 470.6, 468.9` and `519.7, 522.9, 512.5`; loop `27450, 27155, 26757` and `8456, 8603, 8711`; wall `30217, 29178, 29150` and `11121, 11100, 11134`.
   - Not timed: the scene build outside `build_world` (the archive and shape decode and the rest: `271.7 ms` lavapipe and `267.8 ms` RTX 4070, by difference of medians) and the renderer open outside the two uploads (instance, adapter, device, pipelines and the offscreen target: `177.2` and `274.4 ms`, by difference).
   - Outside the scene build, renderer open and loop timers the process spends `479 ms` on lavapipe and `834 ms` on the RTX 4070, by difference of medians (the process start, the journal finish and the exit are candidates); it is not split.
-  - `INTRO` Span C, 1 run per adapter, ms (lavapipe, then RTX 4070): scene build `286` and `287`, of which the five world-build timers sum to `134.4` and `135.8`; renderer open `245` and `342`, of which the world `from_ir_outlined` is `75.9` and `76.2`, the shape uploads `1.9` and `2.4`, the sprite uploads `1.2` and `0.6`; loop `1,531` and `966`; wall `3,026` and `2,031`.
+  - `INTRO` Span C, 1 run per adapter, ms (lavapipe, then RTX 4070): scene build `286` and `287`, of which the five world-build timers sum to `134.5` and `135.8`; renderer open `245` and `342`, of which the world `from_ir_outlined` is `75.9` and `76.2`, the shape uploads `1.9` and `2.4`, the sprite uploads `1.2` and `0.6`; loop `1,531` and `966`; wall `3,026` and `2,031`.
     Startup is `531` and `629 ms`: `17.5%` and `31.0%` of the wall, and `58.1%` and `72.3%` of a chunk estimate for that span (`913.8` and `870.5 ms`); the world build is `14.7%` and `15.6%` of that chunk.
-  - Against #918's `750` and `540 ms`, this run's `894` and `650 ms` are higher; a different tree and machine state are candidates, not examined.
+  - Against #918's `750` and `540 ms`, this run's `894` and `650 ms` are `19%` and about `18%` higher; they are different runs, not a trend, and a different tree and machine state are candidates, not examined.
 - **Verdict**: control: it bounds a cached or shared world build, and no issue is filed.
   The world's CPU build takes `622 ms`: `2.1%` of a single lavapipe process's wall and `7.5%` of a 4-worker lavapipe chunk.
   On lavapipe, where the workers run (#916), a cached or shared world build saves at most that, since reading the cache is not free.
