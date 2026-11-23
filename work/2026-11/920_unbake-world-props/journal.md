@@ -51,7 +51,7 @@
 - **Method**:
   - `main` at `636ee2f4` plus [`world-upload-skip.patch`](world-upload-skip.patch): when `STUNT_PROBE_NO_WORLD_UPLOAD` is set, `SceneRenderer::new` does not call `GpuModel::from_ir_outlined` for the world, so its `world` is `None` and `prepare` draws no world, as the skip of step 1 did for the base and decal draws and more.
     Nothing else changes: the CPU-side `world.ir` is still built with the scene, `WorldPlacements::new` still runs, and the shapes and sprites are still uploaded.
-    The CLI's `release_world_mesh` still frees `world.ir` as usual, so the peak without the upload still includes the CPU world mesh and the `scene built` stage is the same either way.
+    The CLI's `release_world_mesh` still frees `world.ir` as usual, so the peak without the upload still includes the CPU world mesh; the same code runs to `scene built` in both variants, and its readings there differ by up to `12.1` MiB (lavapipe), so that column's `fall` is run-to-run noise, not a saving.
   - One release `stuntreel.exe` for both variants, on the owner's laptop (Ryzen 7 7745HX), with no other stuntreel, cargo or rustc process running.
   - #622's method and span: `stuntreel --headless <data>/builds/patch3/VAULT/LOCATION.FLM --all <data>/captures/vault-location/archives/LOCATION.ALL --tick-range 12..=300 --sidata <data>/corpus/siarchive/Developer/FreeFlight/SIDATA --out-dir <dir> --width 320 --height 200 --viewport-rows 185 --report-memory` (Span A), with `--software-only` and `VK_DRIVER_FILES` for mesa-dist-win 25.2.8 on lavapipe, else on the GPU; every run's `render.json` names `llvmpipe (LLVM 21.1.7, 256 bits)` or the `NVIDIA GeForce RTX 4070 Laptop GPU`.
   - One run per cell, no noise estimate.
@@ -66,8 +66,8 @@
   | RTX 4070 | no | 295.9 | 431.4 | 161.7 | 169.1 | 431.4 |
   | RTX 4070 | fall | 1.1 | 105.8 | 106.1 | 103.8 | 301.0 |
 
-  - The uploaded runs' peaks (`910.5`, `732.4` MiB) and post-release figures (`499.4`, `267.8`) sit within #622's `904.1..915.6` and `697.5..809.8` MiB peaks and `493.4..495.1` and `234.3..276.8` MiB after release.
-  - Without the upload the peak is the `renderer opened` stage on both adapters, so what is left at the peak is the scene, the CPU world mesh and the shapes and sprites uploaded.
+  - The uploaded runs' peaks (`910.5`, `732.4` MiB) and post-release figures (`499.4`, `267.8`) compare with #622's `904.1..915.6` and `697.5..809.8` MiB peaks and `493.4..495.1` and `234.3..276.8` MiB after release: three sit inside, and lavapipe's `499.4` sits `4.3` MiB above its range, a gap one run per cell cannot resolve.
+  - Without the upload the peak is the `renderer opened` stage on both adapters, so the peak includes the scene, the CPU world mesh, the shapes and sprites uploaded, and the device and driver's own memory, not separated here.
   - On lavapipe the world's device buffers are system memory, so they are in the resident set; on the RTX 4070 the resident set holds the driver's host-side share of them.
 - **Verdict**: control, recorded only; memory gives no go.
   Against the issue's hypothetical bar, a post-upload fall of at least 200 MiB a worker: removing the whole upload falls the post-upload resident set `413.4` MiB on lavapipe, above the bar, and `106.1` MiB on the RTX 4070, below it.
