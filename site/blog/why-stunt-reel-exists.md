@@ -97,7 +97,14 @@ Stunt Reel is also an experiment.
 Most of the code and notes are written by AI coding agents, working from GitHub issues, under rules the repository spells out in [`AGENTS.md`](../../AGENTS.md).
 The project has been worked with three agent harnesses so far: Claude Code, Antigravity and DeepSeek Harness.
 
-> TODO(Neil): why you chose to build it this way, and what you hoped to learn.
+I have been poking at this off and on for about twenty years.
+My notes on the `.SET` format date from 2004, and they are still credited in the project's [notice](../../NOTICE.md).
+But each attempt stalled at the sheer amount of careful, tedious work: the agents that could share that work did not exist yet.
+Once they did, the project became feasible.
+
+I also wanted to find out two things.
+First, can agents make steady, incremental progress on their own toward a long-term goal like rendering parity, where every step is measured against the original?
+Second, can they run the whole loop: resolve an issue, notice what is still wrong, and file the next issue themselves?
 
 Reverse engineering is a hard test for agents, because a confident wrong answer looks the same as a right one until something downstream breaks.
 So most of the process is about evidence and review:
