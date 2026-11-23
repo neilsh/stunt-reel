@@ -3,10 +3,9 @@ title: "Why Stunt Reel exists"
 date: 2026-11-23
 authors: neil
 tags: [introduction, architecture, agents]
+draft: true
 excerpt: "A 1992 stunt-filming game, a modern player for its films, and an experiment in how far AI agents can be trusted with careful reverse engineering."
 ---
-
-<!-- DRAFT for Neil's review. Lines marked TODO(Neil) need your own words; everything else is drawn from the repository as of 2026-11-23. -->
 
 *Stunt Island* came out in 1992, from Disney and The Assembly Line.
 You built sets on an island, placed props and actors, flew stunts, and then cut the footage together into a film.

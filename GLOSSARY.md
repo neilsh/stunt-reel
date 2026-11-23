@@ -159,7 +159,7 @@ It is documented in [`NOTICE.md`](NOTICE.md) and is not relicensed by the projec
 _Avoid_: extracted asset, proprietary blob
 
 **Asset isolation**: The rule that retail executables and data files are never committed; the corpus is an external oracle only, and tests use synthetic fixtures.
-The game-derived constants above are the only documented exceptions.
+[`NOTICE.md`](NOTICE.md) lists the documented exceptions.
 _Avoid_: cleanroom
 
 ## Production (authoring)
