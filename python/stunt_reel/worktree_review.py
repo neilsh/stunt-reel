@@ -12,16 +12,23 @@ import re
 import string
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from stunt_reel.dataroot import SharedDataError
-from stunt_reel.worktree_git import _git
+from stunt_reel.worktree_git import _git, _worktrees
 from stunt_reel.worktree_reap import REVIEW_PREFIX
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 #: Where a review worktree lives, inside the primary checkout (AGENTS.md, Worktrees).
 REVIEW_POOL = ".claude/worktrees"
 
 #: A target of at most this many digits is a PR number; anything else is a commit.
 _PR_PATTERN = re.compile(r"\d{1,6}")
+
+#: A full SHA, which origin can be asked for by name.
+_FULL_SHA = re.compile(r"[0-9a-f]{40}")
 
 #: Characters of a commit's SHA in a worktree's name.
 _SHA_LENGTH = 7
@@ -41,45 +48,81 @@ def _primary(cwd: Path) -> Path:
     return Path(common).parent
 
 
-def _free_path(pool: Path, name: str) -> Path:
-    """``pool/name``, or the first of ``name`` + ``b``, ``c`` … that does not exist yet."""
+def _candidates(pool: Path, name: str) -> Iterator[Path]:
+    """``pool/name``, then ``name`` + ``b``, ``c`` … ``z``, skipping a name already taken.
+
+    A name is taken when its folder exists or git still registers a worktree there, even with
+    the folder gone, where ``git worktree add`` would refuse it.
+    """
+    registered = {worktree.path for worktree in _worktrees(pool)}
     for suffix in ("", *string.ascii_lowercase[1:]):
         candidate = pool / f"{name}{suffix}"
-        if not candidate.exists():
-            return candidate
-    raise SharedDataError(f"{pool} holds {name} through {name}z already; reap the old ones")
+        if candidate not in registered and not candidate.exists():
+            yield candidate
+
+
+def _fetch_pr_head(primary: Path, number: str) -> str:
+    """The SHA of PR *number*'s head, with its objects fetched from origin.
+
+    The SHA is read with ``ls-remote`` and fetched by name rather than read back from
+    ``FETCH_HEAD``, which any concurrent fetch in the primary checkout overwrites.
+    """
+    listed = _git(primary, "ls-remote", "origin", f"refs/pull/{number}/head")
+    sha = listed.stdout.split(maxsplit=1)[0] if listed.stdout.strip() else ""
+    if listed.returncode != 0 or not sha:
+        raise SharedDataError(f"cannot find PR {number} on origin: {listed.stderr.strip()}")
+    _fetch_commit(primary, sha)
+    return sha
+
+
+def _fetch_commit(primary: Path, sha: str) -> None:
+    """Fetch commit *sha* from origin unless it is already in the object store."""
+    if _git(primary, "cat-file", "-e", f"{sha}^{{commit}}").returncode == 0:
+        return
+    fetched = _git(primary, "fetch", "--quiet", "origin", sha)
+    if fetched.returncode != 0:
+        raise SharedDataError(f"cannot fetch {sha} from origin: {fetched.stderr.strip()}")
 
 
 def _resolve(primary: Path, target: str) -> tuple[str, str]:
     """The commit *target* names and the worktree name, from a PR number or a commit SHA.
 
     A PR's head is fetched from origin (``pull/<n>/head``, which also exists for a PR from a
-    fork); a SHA is read from the shared object store, so an unpushed commit from any worktree
-    resolves.
+    fork).
+    A SHA already in the object store, an unpushed commit from any worktree included, resolves
+    at once; otherwise a full 40-character SHA is fetched from origin, which GitHub serves for
+    a pushed commit, and an abbreviated one that is not local fails.
     """
-    is_pr = _PR_PATTERN.fullmatch(target) is not None
-    if is_pr:
-        fetched = _git(primary, "fetch", "--quiet", "origin", f"pull/{target}/head")
-        if fetched.returncode != 0:
-            raise SharedDataError(f"cannot fetch PR {target}: {fetched.stderr.strip()}")
-    done = _git(
-        primary,
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        "FETCH_HEAD" if is_pr else f"{target}^{{commit}}",
-    )
+    if _PR_PATTERN.fullmatch(target):
+        return _fetch_pr_head(primary, target), target
+    rev = f"{target}^{{commit}}"
+    done = _git(primary, "rev-parse", "--verify", "--quiet", rev)
+    if done.returncode != 0 and _FULL_SHA.fullmatch(target):
+        _fetch_commit(primary, target)
+        done = _git(primary, "rev-parse", "--verify", "--quiet", rev)
     sha = done.stdout.strip()
     if done.returncode != 0 or not sha:
-        raise SharedDataError(f"{target} names no commit in this repository")
-    return sha, target if is_pr else sha[:_SHA_LENGTH]
+        raise SharedDataError(
+            f"{target} names no commit in this repository; pass a full 40-character SHA to fetch"
+            " a pushed one from origin"
+        )
+    return sha, sha[:_SHA_LENGTH]
 
 
-def _add(primary: Path, path: Path, sha: str) -> None:
-    """Check commit *sha* out detached at *path*."""
-    added = _git(primary, "worktree", "add", "--detach", str(path), sha)
-    if added.returncode != 0:
-        raise SharedDataError(f"git worktree add failed: {added.stderr.strip()}")
+def _add(primary: Path, pool: Path, name: str, sha: str) -> Path:
+    """Check commit *sha* out detached at the first free ``pool/name`` path and return it.
+
+    A path another run took between the check and the add is skipped like any taken name.
+    """
+    last = ""
+    for path in _candidates(pool, name):
+        added = _git(primary, "worktree", "add", "--detach", str(path), sha)
+        if added.returncode == 0:
+            return path
+        last = added.stderr.strip()
+        if not path.exists():
+            break
+    raise SharedDataError(f"git worktree add failed: {last or f'no free {name} name in {pool}'}")
 
 
 def _review(target: str, cwd: Path | None = None) -> int:
@@ -89,8 +132,7 @@ def _review(target: str, cwd: Path | None = None) -> int:
         sha, name = _resolve(primary, target)
         pool = primary / REVIEW_POOL
         pool.mkdir(parents=True, exist_ok=True)
-        path = _free_path(pool, f"{REVIEW_PREFIX}{name}")
-        _add(primary, path, sha)
+        path = _add(primary, pool, f"{REVIEW_PREFIX}{name}", sha)
     except SharedDataError as error:
         return _fail(str(error))
     print(f"review worktree for {target} at {sha[:_SHA_LENGTH]}", file=sys.stderr)

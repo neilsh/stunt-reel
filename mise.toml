@@ -129,7 +129,7 @@ description = "Remove worktrees, Orca workspaces included (through orca worktree
 run = "uv run python python/scripts/worktree_init.py reap"
 
 [tasks.review-worktree]
-description = "Make a review's detached worktree at <primary>/.claude/worktrees/review-<PR or sha7> from any checkout or worktree (a PR number fetches its head from origin; a SHA may be unpushed); an existing path gets a suffix (review-977b); the last output line is the absolute path (mise run review-worktree -- <PR number | SHA>)"
+description = "Make a review's detached worktree at <primary>/.claude/worktrees/review-<PR or sha7> from any checkout or worktree (a PR number fetches its head from origin; a SHA is taken locally, an unpushed one included, else a full SHA is fetched from origin); an existing path gets a suffix (review-977b); the last output line is the absolute path (mise run review-worktree -- <PR number | SHA>)"
 run = "uv run python python/scripts/worktree_init.py review"
 
 [tasks.pr-threads]
