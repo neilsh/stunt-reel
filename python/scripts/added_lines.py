@@ -124,10 +124,16 @@ def added_lines(
     *covered* limits the repository-relative POSIX paths read; None reads every path. Rename
     detection runs over the covered paths together, so a moved file's unchanged lines stay out,
     and a covered untracked file is read whole. Raises gate.ChangedPathsError when git cannot
-    name the changed paths, and OSError or subprocess.CalledProcessError when it fails.
+    name the merge base or the changed paths, and OSError or subprocess.CalledProcessError when
+    another git call fails.
     """
     base = base or gate.default_base(repo)
-    merge_base = _git(repo, "merge-base", "HEAD", base).strip()
+    try:
+        merge_base = _git(repo, "merge-base", "HEAD", base).strip()
+    except subprocess.CalledProcessError as error:
+        # A shallow or no-base checkout exits 128 here; report the missing base the way
+        # gate.changed_paths does, so every caller's existing skip or exit 2 covers it.
+        raise gate.ChangedPathsError(f"no merge base between HEAD and {base}") from error
     if not merge_base:
         raise gate.ChangedPathsError(f"no merge base between HEAD and {base}")
     untracked = _untracked(repo)

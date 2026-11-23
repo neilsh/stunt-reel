@@ -98,6 +98,18 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
+@pytest.fixture
+def trunk_repo(tmp_path: Path) -> Path:
+    """One commit on `trunk`, so neither `origin/main` nor `main` resolves."""
+    root = tmp_path / "trunk-only"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "trunk")
+    _write(root, "README.md", "no main here\n")
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "trunk")
+    return root
+
+
 def test_a_claim_on_a_branch_only_commit_fails(repo: Path) -> None:
     branch = _branch_only_commit(repo)
     _add(repo, f"**Method**: `main` at `{branch}`.")
@@ -194,19 +206,19 @@ def test_the_check_passes_when_main_holds_the_commit(
 
 
 def test_the_check_returns_two_when_no_base_resolves(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    trunk_repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A repository with no main nor origin/main has no base to judge a claim against."""
-    repo = tmp_path / "trunk-only"
-    repo.mkdir()
-    _git(repo, "init", "-q", "-b", "trunk")
-    _write(repo, "README.md", "no main here\n")
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-qm", "trunk")
-    monkeypatch.chdir(repo)
+    monkeypatch.chdir(trunk_repo)
 
     assert check_work_journal_main.main([]) == 2
     assert "git failed" in capsys.readouterr().err
+
+
+def test_branch_violations_names_the_missing_base(trunk_repo: Path) -> None:
+    """The shallow or no-base failure is the gate's missing base, not git's raw exit."""
+    with pytest.raises(gate.ChangedPathsError, match="no merge base"):
+        check_work_journal_main.branch_violations(trunk_repo)
 
 
 def test_this_branch_names_only_main_commits_as_mains() -> None:
@@ -216,5 +228,6 @@ def test_this_branch_names_only_main_commits_as_mains() -> None:
     except gate.ChangedPathsError as error:
         pytest.skip(f"git cannot give the branch's changes: {error}")
     assert violations == [], "\n".join(
-        f"{v.path}:{v.number}: `main` at `{v.sha}`" for v in violations
+        f'{v.path}:{v.number}: `main` at `{v.sha}`; write "the branch at `{v.sha}`"'
+        for v in violations
     )
