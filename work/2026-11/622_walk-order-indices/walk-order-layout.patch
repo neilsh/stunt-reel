@@ -1,0 +1,831 @@
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 2e92d8ce..548ad197 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -47,10 +47,21 @@ pub struct GpuNode {
+     /// ([`VERTEX_FLAG_DISC`]), which the vertex shader moves off its position under a lens other
+     /// than the default (`squeeze_disc`), so [`Self::bounds`] no longer bounds where it draws.
+     pub discs: bool,
+-    /// The offsets in the model's index arena [`GpuModel::cut`] may cut this node's slice at,
+-    /// ascending, each with where its outline is cut in the chunk's edge buffer; empty unless
+-    /// the upload was asked for them and kept the model in one chunk.
+-    pub marks: Vec<(u32, u32)>,
++    /// Where [`GpuModel::cut`] may cut this node's slice, ascending; empty unless the upload
++    /// was asked for them and kept the model in one chunk.
++    pub marks: Vec<CutMark>,
++}
++
++/// A place [`GpuModel::cut`] may cut a node's slice.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub struct CutMark {
++    /// Offset in the source model's index arena.
++    pub arena: u32,
++    /// The same index's offset in the chunk's index buffer, which [`GpuModel::from_ir_outlined`]
++    /// lays out in walk order.
++    pub index: u32,
++    /// Where the slice's outline is cut in the chunk's edge buffer.
++    pub edge: u32,
+ }
+ 
+ /// An axis-aligned box in a model's space, the unit of the view-frustum cull.
+@@ -228,7 +239,7 @@ pub struct GpuMeshSlice {
+     /// Base vertex `draw_indexed` adds to each index: 0 for an unsplit model, whose indices
+     /// already address the whole vertex buffer, or a run's first vertex in its chunk.
+     pub vertex_offset: i32,
+-    /// First index of the slice within the consolidated index buffer.
++    /// First index of the slice within its chunk's index buffer.
+     pub index_offset: u32,
+     /// Number of indices in the slice (three per triangle).
+     pub index_count: u32,
+@@ -294,6 +305,10 @@ impl GpuModel {
+     ///
+     /// `marks` are offsets in `ir.indices`, ascending, where [`Self::cut`] may cut a slice; a
+     /// cut keeps the outline whole only where no edge is shared across it.
++    ///
++    /// A model kept in one chunk holds its base slices' indices, and their outlines, in the
++    /// order [`Self::collect_world_meshes`] emits them ([`lay_out_in_walk_order`]), so the
++    /// slices of nodes the walk visits one after the other are drawn with one call.
+     pub fn from_ir_outlined(
+         device: &wgpu::Device,
+         queue: &wgpu::Queue,
+@@ -323,79 +338,22 @@ impl GpuModel {
+         let max_vertices =
+             usize::try_from(limit / size_of::<SodVertex>() as u64).unwrap_or(usize::MAX);
+         let max_indices = usize::try_from(limit / size_of::<u32>() as u64).unwrap_or(usize::MAX);
+-        // One source per mesh slice, keyed by node so the planned slices can be handed
+-        // back to the same nodes. `meshes()` already skips a node whose window is unsafe.
+-        // `meshes()` walks the nodes in arena order, so each node takes the next mesh if
+-        // that mesh is its own.
+-        let mut meshes = ir.meshes().peekable();
+-        let sources: Vec<Option<SourceSlice>> = ir
+-            .nodes
+-            .iter()
+-            .map(|node| {
+-                let mesh = meshes.next_if(|mesh| std::ptr::eq(mesh.node, node))?;
+-                Some(SourceSlice {
+-                    index_offset: mesh.index_offset,
+-                    index_count: arena_index(mesh.indices.len()),
+-                    is_decal: mesh.is_decal(),
+-                })
+-            })
+-            .collect();
+-        let mesh_sources: Vec<SourceSlice> = sources.iter().flatten().copied().collect();
+-        let mut plan = plan_upload(
+-            ir.vertices.len(),
+-            &ir.indices,
+-            &mesh_sources,
+-            max_vertices,
+-            max_indices,
+-        );
+-        let (edges, mut marks) = match outlined {
+-            Some((keep, marks)) => plan_edges(&mut plan, ir, keep, marks),
+-            None => (vec![Vec::new(); plan.chunks.len()], Vec::new()),
+-        };
+-        let chunks = plan
++        let layout = ModelLayout::of(ir, outlined, max_vertices, max_indices);
++        let chunks = layout
+             .chunks
+             .iter()
+-            .zip(&edges)
++            .zip(&layout.edges)
+             .enumerate()
+             .map(|(n, (chunk, edges))| GpuChunk::upload(device, queue, ir, apex, n, chunk, edges))
+             .collect();
+-
+-        // Translate nodes into GpuNode flat arena
+-        marks.resize_with(plan.slices.len(), Vec::new);
+-        let mut planned = plan.slices.into_iter().zip(marks);
+-        let bounds = node_bounds(ir);
+-        let discs = node_discs(ir);
+-        let nodes = ir
+-            .nodes
+-            .iter()
+-            .zip(&sources)
+-            .enumerate()
+-            .map(|(n, (node, source))| {
+-                let (meshes, marks) = source.and_then(|_| planned.next()).unwrap_or_default();
+-                GpuNode {
+-                    id: node.id,
+-                    name: node.name.clone(),
+-                    parent: node.parent,
+-                    children: node.children.clone(),
+-                    local_matrix: Mat4::from_cols_array(&node.local_matrix),
+-                    visibility: node.visibility,
+-                    meshes,
+-                    bounds: bounds.get(n).copied().flatten(),
+-                    discs: discs.get(n).copied().unwrap_or(false),
+-                    marks,
+-                }
+-            })
+-            .collect();
+-
+-        let bounds = model_bounds(&ir.root_nodes, &bounds);
+         Self {
+             name: ir.name.clone(),
+             chunks,
+             vertex_count: arena_index(ir.vertices.len()),
+             index_count: arena_index(ir.indices.len()),
+-            nodes,
++            nodes: layout.nodes,
+             root_nodes: ir.root_nodes.clone(),
+-            bounds,
++            bounds: layout.bounds,
+             discs: ir
+                 .vertices
+                 .iter()
+@@ -562,94 +520,309 @@ impl GpuModel {
+         let [whole] = node.meshes.as_slice() else {
+             return None;
+         };
+-        let edge_at = |at: u32| {
+-            let found = node.marks.binary_search_by_key(&at, |&(index, _)| index);
+-            found
+-                .ok()
+-                .and_then(|i| node.marks.get(i))
+-                .map(|&(_, edge)| edge)
++        let mark_at = |at: u32| {
++            let found = node.marks.binary_search_by_key(&at, |mark| mark.arena);
++            found.ok().and_then(|i| node.marks.get(i)).copied()
+         };
+-        let (from, to) = (edge_at(start)?, edge_at(end)?);
++        let (from, to) = (mark_at(start)?, mark_at(end)?);
+         (start <= end).then_some(GpuMeshSlice {
+-            index_offset: start,
++            index_offset: from.index,
+             index_count: end - start,
+-            edge_offset: from,
+-            edge_count: to.checked_sub(from)?,
++            edge_offset: from.edge,
++            edge_count: to.edge.checked_sub(from.edge)?,
+             ..*whole
+         })
+     }
+ 
+-    /// Encodes `meshes` into `rpass`, binding each slice's chunk buffers when it changes.
++    /// Encodes `meshes` into `rpass` in order, binding each slice's chunk buffers when it
++    /// changes; slices that continue each other's indices in one chunk at one base vertex are
++    /// drawn with one call ([`for_each_run`]).
+     ///
+     /// The pipeline and bind groups must already be set.
+     pub fn draw_slices(&self, rpass: &mut wgpu::RenderPass<'_>, meshes: &[GpuMeshSlice]) {
+-        let mut bound = None;
+-        for mesh in meshes {
+-            #[expect(
+-                clippy::indexing_slicing,
+-                reason = "draw slices come from this upload's plan, which numbers only its own chunks"
+-            )]
+-            let chunk = &self.chunks[mesh.chunk as usize];
+-            if bound != Some(mesh.chunk) {
+-                rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+-                rpass.set_vertex_buffer(1, chunk.apex_buffer.slice(..));
+-                rpass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+-                if let Some(runs) = &chunk.prop_runs {
+-                    rpass.set_bind_group(PROP_RUNS_GROUP, runs, &[]);
+-                }
+-                bound = Some(mesh.chunk);
+-            }
+-            rpass.draw_indexed(
+-                mesh.index_offset..(mesh.index_offset + mesh.index_count),
+-                mesh.vertex_offset,
+-                0..1,
+-            );
+-        }
++        let ranges = meshes.iter().map(|m| {
++            let range = m.index_offset..(m.index_offset + m.index_count);
++            (m.chunk, m.vertex_offset, range)
++        });
++        self.draw_runs(rpass, ranges, |chunk| &chunk.index_buffer);
+     }
+ 
+-    /// Encodes the outlines of `meshes` into `rpass` as a line list, binding each slice's
+-    /// chunk buffers when it changes; slices without an outline are skipped.
++    /// Encodes the outlines of `meshes` into `rpass` as a line list, as [`Self::draw_slices`]
++    /// encodes their triangles; slices without an outline are skipped.
+     ///
+     /// The pipeline (a `LineList` one) and bind groups must already be set.
+     pub fn draw_edges(&self, rpass: &mut wgpu::RenderPass<'_>, meshes: &[GpuMeshSlice]) {
++        let ranges = meshes.iter().filter(|m| m.edge_count > 0).map(|m| {
++            let range = m.edge_offset..(m.edge_offset + m.edge_count);
++            (m.chunk, m.vertex_offset, range)
++        });
++        self.draw_runs(rpass, ranges, |chunk| &chunk.edges);
++    }
++
++    /// Draws each run of `ranges` (chunk, base vertex, range of the buffer `indices` picks)
++    /// with one call, binding the chunk's buffers when it changes.
++    fn draw_runs(
++        &self,
++        rpass: &mut wgpu::RenderPass<'_>,
++        ranges: impl IntoIterator<Item = (u32, i32, Range<u32>)>,
++        indices: impl Fn(&GpuChunk) -> &wgpu::Buffer,
++    ) {
+         let mut bound = None;
+-        for mesh in meshes.iter().filter(|m| m.edge_count > 0) {
++        for_each_run(ranges, |n, base_vertex, range| {
+             #[expect(
+                 clippy::indexing_slicing,
+                 reason = "draw slices come from this upload's plan, which numbers only its own chunks"
+             )]
+-            let chunk = &self.chunks[mesh.chunk as usize];
+-            if bound != Some(mesh.chunk) {
++            let chunk = &self.chunks[n as usize];
++            if bound != Some(n) {
+                 rpass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                 rpass.set_vertex_buffer(1, chunk.apex_buffer.slice(..));
+-                rpass.set_index_buffer(chunk.edges.slice(..), wgpu::IndexFormat::Uint32);
++                rpass.set_index_buffer(indices(chunk).slice(..), wgpu::IndexFormat::Uint32);
+                 if let Some(runs) = &chunk.prop_runs {
+                     rpass.set_bind_group(PROP_RUNS_GROUP, runs, &[]);
+                 }
+-                bound = Some(mesh.chunk);
++                bound = Some(n);
+             }
+-            rpass.draw_indexed(
+-                mesh.edge_offset..(mesh.edge_offset + mesh.edge_count),
+-                mesh.vertex_offset,
+-                0..1,
++            rpass.draw_indexed(range, base_vertex, 0..1);
++        });
++    }
++}
++
++/// Calls `draw` once for each run of `ranges` (chunk, base vertex, index range) in which
++/// each range starts where the one before it ends, in the same chunk at the same base vertex,
++/// with the run's ranges joined; runs keep `ranges`' order.
++///
++/// One call draws its primitives in index order, as the separate calls would, so a depth tie
++/// is won by the same triangle.
++fn for_each_run(
++    ranges: impl IntoIterator<Item = (u32, i32, Range<u32>)>,
++    mut draw: impl FnMut(u32, i32, Range<u32>),
++) {
++    let mut open: Option<(u32, i32, Range<u32>)> = None;
++    for (chunk, base_vertex, range) in ranges {
++        if let Some((c, b, run)) = &mut open
++            && (*c, *b, run.end) == (chunk, base_vertex, range.start)
++        {
++            run.end = range.end;
++            continue;
++        }
++        if let Some((c, b, run)) = open.replace((chunk, base_vertex, range)) {
++            draw(c, b, run);
++        }
++    }
++    if let Some((c, b, run)) = open {
++        draw(c, b, run);
++    }
++}
++
++/// A model's chunks, outlines and nodes as [`GpuModel::upload`] uploads them, before any
++/// buffer exists.
++struct ModelLayout {
++    chunks: Vec<ChunkPlan>,
++    /// Each chunk's outline indices.
++    edges: Vec<Vec<u32>>,
++    nodes: Vec<GpuNode>,
++    /// [`GpuModel::bounds`].
++    bounds: Option<NodeBounds>,
++}
++
++impl ModelLayout {
++    /// Plans `ir` over chunks of at most `max_vertices` vertices and `max_indices` indices,
++    /// with `outlined`'s outlines and marks and, then, the walk-order layout
++    /// ([`GpuModel::from_ir_outlined`]).
++    fn of(
++        ir: &SodModelIr,
++        outlined: Option<Outlines<'_>>,
++        max_vertices: usize,
++        max_indices: usize,
++    ) -> Self {
++        // One source per mesh slice, keyed by node so the planned slices can be handed
++        // back to the same nodes. `meshes()` already skips a node whose window is unsafe.
++        // `meshes()` walks the nodes in arena order, so each node takes the next mesh if
++        // that mesh is its own.
++        let mut meshes = ir.meshes().peekable();
++        let sources: Vec<Option<SourceSlice>> = ir
++            .nodes
++            .iter()
++            .map(|node| {
++                let mesh = meshes.next_if(|mesh| std::ptr::eq(mesh.node, node))?;
++                Some(SourceSlice {
++                    index_offset: mesh.index_offset,
++                    index_count: arena_index(mesh.indices.len()),
++                    is_decal: mesh.is_decal(),
++                })
++            })
++            .collect();
++        let mesh_sources: Vec<SourceSlice> = sources.iter().flatten().copied().collect();
++        let mut plan = plan_upload(
++            ir.vertices.len(),
++            &ir.indices,
++            &mesh_sources,
++            max_vertices,
++            max_indices,
++        );
++        let (mut edges, mut marks) = match outlined {
++            Some((keep, marks)) => plan_edges(&mut plan, ir, keep, marks),
++            None => (vec![Vec::new(); plan.chunks.len()], Vec::new()),
++        };
++        marks.resize_with(plan.slices.len(), Vec::new);
++        // Each node's slice number in `plan.slices`.
++        let slice_of: Vec<Option<usize>> = sources
++            .iter()
++            .scan(0, |next, source| {
++                Some(source.map(|_| {
++                    *next += 1;
++                    *next - 1
++                }))
++            })
++            .collect();
++        if outlined.is_some() {
++            lay_out_in_walk_order(
++                &mut plan,
++                &mut edges,
++                &mut marks,
++                ir,
++                &slice_of,
++                max_indices,
+             );
+         }
++
++        // Translate nodes into GpuNode flat arena
++        let mut planned = plan.slices.into_iter().zip(marks);
++        let bounds = node_bounds(ir);
++        let discs = node_discs(ir);
++        let nodes = ir
++            .nodes
++            .iter()
++            .zip(&sources)
++            .enumerate()
++            .map(|(n, (node, source))| {
++                let (meshes, marks) = source.and_then(|_| planned.next()).unwrap_or_default();
++                GpuNode {
++                    id: node.id,
++                    name: node.name.clone(),
++                    parent: node.parent,
++                    children: node.children.clone(),
++                    local_matrix: Mat4::from_cols_array(&node.local_matrix),
++                    visibility: node.visibility,
++                    meshes,
++                    bounds: bounds.get(n).copied().flatten(),
++                    discs: discs.get(n).copied().unwrap_or(false),
++                    marks,
++                }
++            })
++            .collect();
++        Self {
++            chunks: plan.chunks,
++            edges,
++            nodes,
++            bounds: model_bounds(&ir.root_nodes, &bounds),
++        }
+     }
+ }
+ 
++/// Rewrites a one-chunk `plan`'s index buffer, and its outlines in `edges`, to hold the base
++/// slices first, in the order [`VisibleWalk::walk`] emits them over every node (depth first,
++/// last sibling first), then every other slice ([`GROUND_NODE`] nodes' and decals) in arena
++/// order; each slice's offsets, and its `marks` (by slice), move with it.
++///
++/// The walk's gates and cull only skip nodes, so the base slices of the nodes a frame keeps
++/// come in this order, and those of two nodes it visits one after the other lie end to end:
++/// [`GpuModel::draw_slices`] draws them with one call in the same order. Indices no slice
++/// draws are dropped. A split plan, whose runs each have their own base vertex, is left as
++/// it is, as is one whose slices would need more than `max_indices` indices.
++fn lay_out_in_walk_order(
++    plan: &mut UploadPlan,
++    edges: &mut [Vec<u32>],
++    marks: &mut [Vec<CutMark>],
++    ir: &SodModelIr,
++    slice_of: &[Option<usize>],
++    max_indices: usize,
++) {
++    let ([chunk], [chunk_edges]) = (plan.chunks.as_mut_slice(), edges) else {
++        return;
++    };
++    if chunk.indices.is_some() {
++        return;
++    }
++    let count = plan.slices.len();
++    let mut placed = vec![false; count];
++    let mut order = Vec::with_capacity(count);
++    let mut stack: Vec<NodeId> = ir.root_nodes.clone();
++    while let Some(id) = stack.pop() {
++        let Some(node) = ir.nodes.get(id.0 as usize) else {
++            continue;
++        };
++        if let Some(s) = slice_of.get(id.0 as usize).copied().flatten()
++            && node.name != GROUND_NODE
++            && plan
++                .slices
++                .get(s)
++                .is_some_and(|runs| runs.iter().all(|run| !run.is_decal))
++            && let Some(seen) = placed.get_mut(s)
++            && !std::mem::replace(seen, true)
++        {
++            order.push(s);
++        }
++        stack.extend(&node.children);
++    }
++    order.extend((0..count).filter(|&s| placed.get(s) == Some(&false)));
++
++    let total: usize = order
++        .iter()
++        .filter_map(|&s| plan.slices.get(s))
++        .flatten()
++        .map(|run| run.index_count as usize)
++        .sum();
++    if total > max_indices {
++        return;
++    }
++    let mut indices = Vec::with_capacity(total);
++    let mut outline = Vec::with_capacity(chunk_edges.len());
++    // Each slice's new index and edge offsets, by slice; an unsplit plan gives a slice one run.
++    let mut moved = vec![(0, 0); count];
++    for s in order {
++        let (Some([run]), Some(to)) = (plan.slices.get(s).map(Vec::as_slice), moved.get_mut(s))
++        else {
++            return;
++        };
++        let (index_from, edge_from) = (run.index_offset as usize, run.edge_offset as usize);
++        let (Some(triangles), Some(lines)) = (
++            ir.indices
++                .get(index_from..index_from + run.index_count as usize),
++            chunk_edges.get(edge_from..edge_from + run.edge_count as usize),
++        ) else {
++            return;
++        };
++        *to = (arena_index(indices.len()), arena_index(outline.len()));
++        indices.extend_from_slice(triangles);
++        outline.extend_from_slice(lines);
++    }
++    for ((runs, marks), (index, edge)) in plan.slices.iter_mut().zip(marks).zip(moved) {
++        for run in runs {
++            // Each mark lies in its slice, so neither subtraction can wrap.
++            for mark in marks.iter_mut() {
++                mark.index = index + (mark.index - run.index_offset);
++                mark.edge = edge + (mark.edge - run.edge_offset);
++            }
++            run.index_offset = index;
++            run.edge_offset = edge;
++        }
++    }
++    chunk.indices = Some(indices);
++    *chunk_edges = outline;
++}
++
+ /// Fills in each planned slice's outline and returns each chunk's edge indices, then each
+ /// slice's `marks` (offsets in `ir.indices`, ascending) that lie within it, each with its
+-/// edge offset: none when the plan splits the model, whose slices' indices are rebased.
+-#[expect(
+-    clippy::type_complexity,
+-    reason = "the edges and the marks are planned in one pass over the same runs"
+-)]
++/// edge offset and its index offset in the still unmoved source indices: none when the plan
++/// splits the model, whose slices' indices are rebased.
+ fn plan_edges(
+     plan: &mut UploadPlan,
+     ir: &SodModelIr,
+     keep: fn(&SodVertex) -> bool,
+     marks: &[u32],
+-) -> (Vec<Vec<u32>>, Vec<Vec<(u32, u32)>>) {
++) -> (Vec<Vec<u32>>, Vec<Vec<CutMark>>) {
+     let unsplit = matches!(plan.chunks.as_slice(), [only] if only.indices.is_none());
+     let mut slice_marks = Vec::with_capacity(plan.slices.len());
+     // A split chunk's vertices, in buffer order, as source vertex numbers.
+@@ -727,7 +900,11 @@ fn plan_edges(
+                 for &mark in marks.iter().skip(first).take_while(|&&m| m <= end) {
+                     let triangle = ((mark - start) / 3) as usize;
+                     let before = found.partition_point(|&(_, number)| number < triangle);
+-                    found_marks.push((mark, run.edge_offset + arena_index(2 * before)));
++                    found_marks.push(CutMark {
++                        arena: mark,
++                        index: mark,
++                        edge: run.edge_offset + arena_index(2 * before),
++                    });
+                 }
+             }
+             out.extend(found.into_iter().flat_map(|(edge, _)| edge));
+@@ -896,7 +1073,8 @@ pub(crate) struct ChunkPlan {
+     pub vertex_ranges: Vec<Range<usize>>,
+     /// Total vertices of `vertex_ranges`.
+     pub vertex_count: usize,
+-    /// Rebased indices, or `None` to upload the source indices unchanged.
++    /// Indices to upload, rebased for a split chunk or laid out in walk order
++    /// ([`lay_out_in_walk_order`]), or `None` to upload the source indices unchanged.
+     pub indices: Option<Vec<u32>>,
+ }
+ 
+@@ -1280,6 +1458,7 @@ impl VisibleWalk<'_> {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use stunt_core::contracts::NodeKind;
+ 
+     #[test]
+     fn a_flattened_face_faces_the_eye_by_its_vertical_normal() {
+@@ -1392,7 +1571,11 @@ mod tests {
+         let mut plan = plan_upload(8, &ir.indices, &[source(0, 12)], 8, 12);
+         let (edges, marks) = plan_edges(&mut plan, &ir, |_| true, &[0, 6, 12, 18]);
+         assert_eq!(edges[0].len(), 16, "four edges a quad");
+-        assert_eq!(marks, vec![vec![(0, 0), (6, 8), (12, 16)]]);
++        let found: Vec<_> = marks[0]
++            .iter()
++            .map(|m| (m.arena, m.index, m.edge))
++            .collect();
++        assert_eq!(found, vec![(0, 0, 0), (6, 6, 8), (12, 12, 16)]);
+         // A split plan rebases its indices, so it takes no marks.
+         let mut split = plan_upload(8, &ir.indices, &[source(0, 12)], 4, 12);
+         let (_, marks) = plan_edges(&mut split, &ir, |_| true, &[0, 6, 12]);
+@@ -1530,7 +1713,7 @@ mod tests {
+             None,
+             [0.0; 16],
+             VisibilityCondition::Always,
+-            stunt_core::contracts::NodeKind::Mesh {
++            NodeKind::Mesh {
+                 vertex_offset: 0,
+                 vertex_count: 4,
+                 index_offset: 0,
+@@ -2079,4 +2262,203 @@ mod tests {
+         // So the walk keeps the disc's node under that lens, as its box alone would not.
+         assert!(squeezes_discs(true, 2.0) && !squeezes_discs(true, 1.0));
+     }
++
++    /// Contiguous ranges in one chunk at one base vertex join; a gap, a step back, another
++    /// base vertex or another chunk starts a new run.
++    #[test]
++    fn continuing_ranges_are_drawn_as_one_run() {
++        let ranges = [
++            (0, 0, 0..3),
++            (0, 0, 3..9),
++            (0, 0, 9..9),
++            (0, 0, 9..12),
++            (0, 0, 15..18),
++            (0, 0, 12..15),
++            (0, 4, 15..18),
++            (1, 4, 18..21),
++        ];
++        let mut runs = Vec::new();
++        for_each_run(ranges, |chunk, base, range| runs.push((chunk, base, range)));
++        assert_eq!(
++            runs,
++            [
++                (0, 0, 0..12),
++                (0, 0, 15..18),
++                (0, 0, 12..15),
++                (0, 4, 15..18),
++                (1, 4, 18..21),
++            ]
++        );
++    }
++
++    /// A one-triangle mesh node at arena offset `3 * n`, under `parent`.
++    fn triangle_node(
++        ir: &mut SodModelIr,
++        name: &str,
++        parent: NodeId,
++        n: u32,
++        is_decal: bool,
++    ) -> NodeId {
++        ir.allocate_node(
++            name,
++            Some(parent),
++            Mat4::IDENTITY.to_cols_array(),
++            VisibilityCondition::Always,
++            NodeKind::Mesh {
++                vertex_offset: 0,
++                vertex_count: arena_index(ir.vertices.len()),
++                index_offset: 3 * n,
++                index_count: 3,
++                is_decal,
++            },
++        )
++    }
++
++    /// The walk the world's draw makes, ungated.
++    fn ungated_walk<'a>(nodes: &'a [GpuNode], roots: &'a [NodeId]) -> VisibleWalk<'a> {
++        VisibleWalk {
++            nodes,
++            roots,
++            state_mask: 0,
++            dist_sq: 0.0,
++            eye: Vec3::ZERO,
++            view: None,
++            view_proj: None,
++            disc_depth_scale: 1.0,
++            flattened_by: None,
++        }
++    }
++
++    /// The source vertices `slices` draw from `buffer`, in draw order.
++    fn drawn_from(buffer: &[u32], slices: &[GpuMeshSlice], edges: bool) -> Vec<u32> {
++        slices
++            .iter()
++            .flat_map(|s| {
++                let (start, count) = if edges {
++                    (s.edge_offset, s.edge_count)
++                } else {
++                    (s.index_offset, s.index_count)
++                };
++                buffer[start as usize..(start + count) as usize]
++                    .iter()
++                    .copied()
++            })
++            .collect()
++    }
++
++    /// The world's base slices lie in the walk's order, so the walk's neighbours are drawn
++    /// with one call, fills and outlines alike, and every slice still draws its own triangles.
++    #[test]
++    fn the_walk_order_layout_draws_walk_neighbours_with_one_call() {
++        // Root group R holds A (with child A1), B, decal D and ground G, in that order.
++        let mut ir = numbered_ir(15, &(0..15).collect::<Vec<_>>());
++        let root = ir.allocate_node(
++            "R",
++            None,
++            Mat4::IDENTITY.to_cols_array(),
++            VisibilityCondition::Always,
++            NodeKind::TransformGroup,
++        );
++        let a = triangle_node(&mut ir, "A", root, 0, false);
++        triangle_node(&mut ir, "A1", a, 1, false);
++        triangle_node(&mut ir, "B", root, 2, false);
++        triangle_node(&mut ir, "D", root, 3, true);
++        triangle_node(&mut ir, GROUND_NODE, root, 4, false);
++        let layout = ModelLayout::of(&ir, Some((|_| true, &[])), usize::MAX, usize::MAX);
++        let (ground, base, decals) = ungated_walk(&layout.nodes, &ir.root_nodes).collect_world();
++        let untag = |tagged: Vec<(NodeId, GpuMeshSlice)>| -> Vec<GpuMeshSlice> {
++            tagged.into_iter().map(|(_, slice)| slice).collect()
++        };
++        let (base, decals) = (untag(base), untag(decals));
++        let indices = layout.chunks[0].indices.as_deref().expect("laid out");
++        // Last sibling first: B, then A and its child A1.
++        assert_eq!(
++            drawn_from(indices, &base, false),
++            [6, 7, 8, 0, 1, 2, 3, 4, 5]
++        );
++        assert_eq!(drawn_from(indices, &decals, false), [9, 10, 11]);
++        assert_eq!(drawn_from(indices, &ground, false), [12, 13, 14]);
++        let runs = |edges: bool| {
++            let mut runs = Vec::new();
++            let ranges = base.iter().map(|s| {
++                let (start, count) = if edges {
++                    (s.edge_offset, s.edge_count)
++                } else {
++                    (s.index_offset, s.index_count)
++                };
++                (s.chunk, s.vertex_offset, start..start + count)
++            });
++            for_each_run(ranges, |_, _, range| runs.push((range.start, range.end)));
++            runs
++        };
++        assert_eq!(runs(false), [(0, 9)]);
++        assert_eq!(runs(true), [(0, 18)]);
++        let outline = drawn_from(&layout.edges[0], &base, true);
++        let corners = |from: usize| {
++            let mut corners = outline[from..from + 6].to_vec();
++            corners.sort_unstable();
++            corners.dedup();
++            corners
++        };
++        assert_eq!(
++            [corners(0), corners(6), corners(12)],
++            [vec![6, 7, 8], vec![0, 1, 2], vec![3, 4, 5]]
++        );
++    }
++
++    /// A cut takes offsets in the source arena and gives the moved slice's offsets in the
++    /// laid-out index and edge buffers.
++    #[test]
++    fn a_cut_of_a_moved_slice_draws_the_arena_indices_it_names() {
++        // P's two quads come first in the arena, Q's triangle after; the walk draws Q first.
++        let mut ir = numbered_ir(11, &[0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10]);
++        let root = ir.allocate_node(
++            "R",
++            None,
++            Mat4::IDENTITY.to_cols_array(),
++            VisibilityCondition::Always,
++            NodeKind::TransformGroup,
++        );
++        let p = ir.allocate_node(
++            "P",
++            Some(root),
++            Mat4::IDENTITY.to_cols_array(),
++            VisibilityCondition::Always,
++            NodeKind::Mesh {
++                vertex_offset: 0,
++                vertex_count: 11,
++                index_offset: 0,
++                index_count: 12,
++                is_decal: false,
++            },
++        );
++        triangle_node(&mut ir, "Q", root, 4, false);
++        let layout = ModelLayout::of(&ir, Some((|_| true, &[0, 6, 12])), usize::MAX, usize::MAX);
++        let indices = layout.chunks[0].indices.clone().expect("laid out");
++        let edges = layout.edges[0].clone();
++        let model = GpuModel {
++            name: ir.name.clone(),
++            chunks: Vec::new(),
++            vertex_count: 11,
++            index_count: 15,
++            nodes: layout.nodes,
++            root_nodes: ir.root_nodes.clone(),
++            bounds: layout.bounds,
++            discs: false,
++        };
++        let second = model.cut(p, 6, 12).expect("both ends are marks");
++        // Q's triangle and its three edges come first.
++        assert_eq!((second.index_offset, second.index_count), (9, 6));
++        assert_eq!((second.edge_offset, second.edge_count), (6 + 8, 8));
++        assert_eq!(drawn_from(&indices, &[second], false), ir.indices[6..12]);
++        let mut corners = drawn_from(&edges, &[second], true);
++        corners.sort_unstable();
++        corners.dedup();
++        assert_eq!(corners, [4, 5, 6, 7]);
++        assert_eq!(
++            model.cut(p, 0, 12),
++            Some(model.nodes[p.0 as usize].meshes[0])
++        );
++        assert!(model.cut(p, 3, 12).is_none(), "3 is no mark");
++    }
+ }
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 6182ccc9..8a9a5486 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -177,13 +177,13 @@ impl WorldPlacements {
+         let batch = if decals { self.decal } else { self.base };
+         let mut kept = Vec::with_capacity(slices.len());
+         for (node, slice) in slices {
+-            if batch.is_some_and(|(id, _)| id == node) {
++            if let Some((_, run)) = batch.filter(|&(id, _)| id == node) {
+                 let moved = (0..).zip(&self.spans).filter_map(|(record, spans)| {
+                     let span = spans.map(|s| if decals { s.decal } else { s.base })?;
+                     let rank = rank.get(record).copied().unwrap_or(0);
+                     (rank > 0 && !span.is_empty()).then_some((span, rank))
+                 });
+-                kept.extend(cut_out(slice, moved, steps, |start, end| {
++                kept.extend(cut_out(slice, run, moved, steps, |start, end| {
+                     cut(node, start, end)
+                 })?);
+                 continue;
+@@ -202,17 +202,19 @@ impl WorldPlacements {
+     }
+ }
+ 
+-/// `whole` less the `moved` spans (ascending, each with its rank), which go to `steps` by
+-/// rank; `whole` itself when none moves. `None` when `cut` cannot cut `whole` at a span's
+-/// ends.
++/// `whole`, the slice of the index arena's `run`, less the `moved` spans of the arena
++/// (ascending, each with its rank), which go to `steps` by rank; `whole` itself when none
++/// moves. `None` when `cut` (arena offsets, as [`GpuModel::cut`] takes them) cannot cut
++/// `whole` at a span's ends.
+ fn cut_out(
+     whole: GpuMeshSlice,
++    run: ArenaSpan,
+     moved: impl Iterator<Item = (ArenaSpan, usize)>,
+     steps: &mut [Vec<GpuMeshSlice>],
+     cut: impl Fn(u32, u32) -> Option<GpuMeshSlice>,
+ ) -> Option<Vec<GpuMeshSlice>> {
+-    let end = whole.index_offset.checked_add(whole.index_count)?;
+-    let mut at = whole.index_offset;
++    let ArenaSpan { start, end } = run;
++    let mut at = start;
+     let mut kept = Vec::new();
+     for (span, rank) in moved {
+         if span.start < at || span.end > end {
+@@ -226,7 +228,7 @@ fn cut_out(
+             .push(cut(span.start, span.end)?);
+         at = span.end;
+     }
+-    if at == whole.index_offset {
++    if at == start {
+         return Some(vec![whole]);
+     }
+     if at < end {
+@@ -1264,6 +1266,24 @@ mod tests {
+         assert!(steps[0].is_empty());
+     }
+ 
++    /// A slice the walk-order layout moved is cut at arena offsets, as the model's marks
++    /// name them, whatever its offset in the index buffer.
++    #[test]
++    fn a_moved_slice_is_cut_at_its_arena_offsets() {
++        let world = three_props();
++        let mut steps = vec![Vec::new()];
++        // The base slice's arena run 0..30 lies at 100..130 in the index buffer.
++        let kept = world.split(
++            vec![(NodeId(0), run(100, 130))],
++            &[0, 1, 0, 0],
++            false,
++            &mut steps,
++            |_, a, b| Some(run(a + 100, b + 100)),
++        );
++        assert_eq!(kept, Some(vec![run(100, 112), run(118, 130)]));
++        assert_eq!(steps, [vec![run(112, 118)]]);
++    }
++
+     #[test]
+     fn a_slice_the_model_cannot_cut_gives_no_split() {
+         let world = three_props();

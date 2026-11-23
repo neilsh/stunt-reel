@@ -1,0 +1,293 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 512c34b9..59aad111 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -176,6 +176,15 @@ pub(crate) fn run_headless(
+     }
+ 
+     let playback = Playback::new(config, scene);
++    if let Ok(scan_path) = std::env::var("DBG_PROBE_WALK_SCAN_FILE") {
++        let mut ticks = Vec::new();
++        for (key, tick) in playback.samples() {
++            let SampleKey::Tick(t) = key else { return Err("ticks only".to_string()) };
++            ticks.push((t, capture_tick(tick)));
++        }
++        stunt_render::cpu_scan_world(scene, &ticks, config.height, config.viewport_rows, std::path::Path::new(&scan_path))?;
++        return Ok(());
++    }
+     let range = playback.range();
+     let start_tick = range.start();
+     let span_seconds = range.span_seconds();
+diff --git a/crates/stunt-render/src/lib.rs b/crates/stunt-render/src/lib.rs
+index 1b875cb5..fb486f22 100644
+--- a/crates/stunt-render/src/lib.rs
++++ b/crates/stunt-render/src/lib.rs
+@@ -47,4 +47,5 @@ pub use renderer::{
+     DEFAULT_PAGE_WIDTH, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError,
+     RenderOptions, RenderedPage, Renderer, SinkError,
+ };
++pub use scene_renderer::cpu_scan_world;
+ pub use video::{FfmpegVideoWriter, VideoExportError};
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 2e92d8ce..d73c0337 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -273,7 +273,7 @@ impl GpuModel {
+     ///
+     /// Each vertex's apex ([`Outlined`]) is its own position, so no line corner is culled.
+     pub fn from_ir(device: &wgpu::Device, queue: &wgpu::Queue, ir: &SodModelIr) -> Self {
+-        Self::upload(device, queue, ir, &own_positions(ir), None)
++        Self::upload(Some((device, queue)), ir, &own_positions(ir), None)
+     }
+ 
+     /// Uploads an outlined shape with its apexes, so its outline corners cull with the
+@@ -283,7 +283,7 @@ impl GpuModel {
+         queue: &wgpu::Queue,
+         shape: &Outlined,
+     ) -> Self {
+-        Self::upload(device, queue, &shape.ir, &shape.apex, None)
++        Self::upload(Some((device, queue)), &shape.ir, &shape.apex, None)
+     }
+ 
+     /// Like [`Self::from_ir`], and gives each mesh slice its outline for [`Self::draw_edges`]:
+@@ -302,23 +302,30 @@ impl GpuModel {
+         marks: &[u32],
+     ) -> Self {
+         Self::upload(
+-            device,
+-            queue,
++            Some((device, queue)),
+             ir,
+             &own_positions(ir),
+             Some((outlined, marks)),
+         )
+     }
+ 
++    /// Probe: CPU-only world metadata.
++    pub(crate) fn from_ir_outlined_cpu(
++        ir: &SodModelIr,
++        outlined: fn(&SodVertex) -> bool,
++        marks: &[u32],
++    ) -> Self {
++        Self::upload(None, ir, &own_positions(ir), Some((outlined, marks)))
++    }
++
+     /// Uploads `ir`; `outlined` is [`Self::from_ir_outlined`]'s filter and marks.
+     fn upload(
+-        device: &wgpu::Device,
+-        queue: &wgpu::Queue,
++        gpu: Option<(&wgpu::Device, &wgpu::Queue)>,
+         ir: &SodModelIr,
+         apex: &[[f32; 3]],
+         outlined: Option<Outlines<'_>>,
+     ) -> Self {
+-        let limit = device.limits().max_buffer_size;
++        let limit = gpu.map_or(u64::MAX, |(device, _)| device.limits().max_buffer_size);
+         // A buffer larger than the address space is capped at what it can address.
+         let max_vertices =
+             usize::try_from(limit / size_of::<SodVertex>() as u64).unwrap_or(usize::MAX);
+@@ -352,13 +359,18 @@ impl GpuModel {
+             Some((keep, marks)) => plan_edges(&mut plan, ir, keep, marks),
+             None => (vec![Vec::new(); plan.chunks.len()], Vec::new()),
+         };
+-        let chunks = plan
+-            .chunks
+-            .iter()
+-            .zip(&edges)
+-            .enumerate()
+-            .map(|(n, (chunk, edges))| GpuChunk::upload(device, queue, ir, apex, n, chunk, edges))
+-            .collect();
++        let chunks = match gpu {
++            Some((device, queue)) => plan
++                .chunks
++                .iter()
++                .zip(&edges)
++                .enumerate()
++                .map(|(n, (chunk, edges))| {
++                    GpuChunk::upload(device, queue, ir, apex, n, chunk, edges)
++                })
++                .collect(),
++            None => Vec::new(),
++        };
+ 
+         // Translate nodes into GpuNode flat arena
+         marks.resize_with(plan.slices.len(), Vec::new);
+@@ -1112,6 +1124,107 @@ fn flush_run(
+     slice
+ }
+ 
++/// Probe: one frame's base-pass merge counts.
++#[derive(Debug, Default, Clone)]
++pub struct BaseScan {
++    pub fills: usize,
++    pub fills_merged: usize,
++    pub edges: usize,
++    pub edges_merged: usize,
++    pub fill_idx: u64,
++    pub edge_idx: u64,
++    pub fill_ooo: usize,
++    pub edge_ooo: usize,
++    pub fill_now: usize,
++    pub edge_now: usize,
++    pub decals: usize,
++    pub decal_edges: usize,
++}
++
++type SliceKey = (u32, i32, u32, u32, u32, u32);
++
++fn slice_key(m: &GpuMeshSlice) -> SliceKey {
++    (m.chunk, m.vertex_offset, m.index_offset, m.index_count, m.edge_offset, m.edge_count)
++}
++
++/// Probe: the camera-independent walk order of the base slices.
++pub struct FixedWalk {
++    fill: std::collections::HashMap<SliceKey, usize>,
++    edge: std::collections::HashMap<SliceKey, usize>,
++    pub total_fills: usize,
++    pub total_edges: usize,
++    pub dup_keys: usize,
++}
++
++impl GpuModel {
++    pub fn fixed_walk(&self) -> FixedWalk {
++        let mut fill = std::collections::HashMap::new();
++        let mut edge = std::collections::HashMap::new();
++        let mut dup = 0;
++        let mut stack: Vec<NodeId> = self.root_nodes.clone();
++        while let Some(id) = stack.pop() {
++            let Some(node) = self.nodes.get(id.0 as usize) else { continue };
++            if node.name != GROUND_NODE {
++                for m in node.meshes.iter().filter(|m| !m.is_decal) {
++                    let n = fill.len();
++                    if fill.insert(slice_key(m), n).is_some() { dup += 1; }
++                    if m.edge_count > 0 {
++                        let n = edge.len();
++                        edge.insert(slice_key(m), n);
++                    }
++                }
++            }
++            stack.extend(&node.children);
++        }
++        FixedWalk { total_fills: fill.len(), total_edges: edge.len(), fill, edge, dup_keys: dup }
++    }
++
++    pub fn scan_base(
++        &self,
++        fixed: &FixedWalk,
++        eye: Vec3,
++        view: Option<&CameraTransform>,
++        view_proj: Mat4,
++        disc_depth_scale: f32,
++    ) -> BaseScan {
++        let (_, base, decals) = self.collect_world_meshes(eye, view, view_proj, disc_depth_scale);
++        let mut out = BaseScan::default();
++        out.decals = decals.len();
++        out.decal_edges = decals.iter().filter(|(_, m)| m.edge_count > 0).count();
++        let mut prev: Option<(GpuMeshSlice, usize)> = None;
++        let mut prev_e: Option<(GpuMeshSlice, usize)> = None;
++        for (_, m) in &base {
++            out.fills += 1;
++            out.fill_idx += u64::from(m.index_count);
++            let pos = *fixed.fill.get(&slice_key(m)).expect("fill in fixed walk");
++            if let Some((p, pp)) = prev {
++                if pos < pp { out.fill_ooo += 1; }
++                if pos == pp + 1 && p.chunk == m.chunk && p.vertex_offset == m.vertex_offset {
++                    out.fills_merged += 1;
++                }
++                if p.chunk == m.chunk && p.vertex_offset == m.vertex_offset
++                    && m.index_offset == p.index_offset + p.index_count { out.fill_now += 1; }
++            }
++            prev = Some((*m, pos));
++            if m.edge_count > 0 {
++                out.edges += 1;
++                out.edge_idx += u64::from(m.edge_count);
++                let pos = *fixed.edge.get(&slice_key(m)).expect("edge in fixed walk");
++                if let Some((p, pp)) = prev_e {
++                    if pos < pp { out.edge_ooo += 1; }
++                    if pos == pp + 1 && p.chunk == m.chunk && p.vertex_offset == m.vertex_offset {
++                        out.edges_merged += 1;
++                    }
++                    if p.chunk == m.chunk && p.vertex_offset == m.vertex_offset
++                        && m.edge_offset == p.edge_offset + p.edge_count { out.edge_now += 1; }
++                }
++                prev_e = Some((*m, pos));
++            }
++        }
++        out
++    }
++}
++
+ /// One visibility pass over a model's node arena from `roots`, for
+ /// [`GpuModel::collect_visible_meshes`].
+ struct VisibleWalk<'a> {
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 6182ccc9..95e938f8 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -1025,6 +1025,66 @@ impl SceneRenderer {
+     }
+ }
+ 
++/// Probe: CPU-only world base merge scan.
++pub fn cpu_scan_world(
++    scene: &FilmScene,
++    ticks: &[(usize, f32)],
++    height: u32,
++    viewport_rows: Option<u32>,
++    out_path: &std::path::Path,
++) -> Result<(), String> {
++    use std::io::Write as _;
++    let placements = scene.world().map_or_default(WorldPlacements::new);
++    let world = scene
++        .world()
++        .map(|w| GpuModel::from_ir_outlined_cpu(&w.ir, outlines_in_world, &placements.marks()))
++        .ok_or("no world")?;
++    let fixed = world.fixed_walk();
++    let file = std::fs::File::create(out_path).map_err(|e| e.to_string())?;
++    let mut w = std::io::BufWriter::new(file);
++    writeln!(
++        w,
++        "# nodes={} fixed_fills={} fixed_edges={} dup_keys={}",
++        world.nodes.len(),
++        fixed.total_fills,
++        fixed.total_edges,
++        fixed.dup_keys
++    )
++    .map_err(|e| e.to_string())?;
++    for &(film_tick, eval_tick) in ticks {
++        let frame = scene.frame(eval_tick);
++        let mut controller = CameraController::default();
++        controller.set_authored_transform(frame.view);
++        if let Some(rows) = viewport_rows {
++            controller.projection_y_scale = height as f32 / rows.max(1) as f32;
++        }
++        let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
++        let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
++        let eye = controller.eye_position();
++        if !frame.world {
++            continue;
++        }
++        let world_matrix = eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array());
++        let view_proj = rotation_proj * Mat4::from_cols_array(&world_matrix);
++        let lod_view = CameraTransform {
++            eye: frame.view.eye,
++            target: frame.view.target,
++            lens: frame.lens,
++            ..CameraTransform::default()
++        };
++        let s = world.scan_base(&fixed, eye, Some(&lod_view), view_proj, camera_uniform.disc_depth_scale);
++        let placed = frame.sprites.iter().filter(|s| s.after.is_some()).count();
++        writeln!(
++            w,
++            "{film_tick} {} {} {} {} {} {} {} {} {} {} {placed} {} {}",
++            s.fills, s.fills_merged, s.edges, s.edges_merged, s.fill_idx, s.edge_idx,
++            s.fill_ooo, s.edge_ooo, s.fill_now, s.edge_now, s.decals, s.decal_edges
++        )
++        .map_err(|e| e.to_string())?;
++    }
++    Ok(())
++}
++
+ /// `frame`'s camera taken into a model's space by `to_model`, the inverse of its world
+ /// matrix, for the gates that test depth along the view axis.
+ fn model_view(to_model: &Mat4, frame: &SceneFrame) -> CameraTransform {
