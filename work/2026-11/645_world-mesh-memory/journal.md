@@ -42,7 +42,7 @@
   Ruled out: glibc arenas as a share of the plateau, and trimming the `Vec`s' spare capacity,
   which reallocation grows and nothing writes, so it should be address space, not resident memory;
   the 252.6 MiB released cannot tell that apart from the full capacity.
-- **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+- **Lives in**: [`research/parity/lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker).
 
 ## 2026-11-18: freeing the world mesh after upload
 
@@ -76,7 +76,7 @@
   or two runs each, and 0.2 s between identical runs here, that does not establish a cost. The
   GPU's figures and its byte check over every reference film's captured ticks are #645's
   `local-only` follow-up.
-- **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+- **Lives in**: [`research/parity/lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker).
 
 ## 2026-11-18: LOCATION's world at `48f5d49`
 
@@ -92,7 +92,7 @@
 - **Verdict**: control. LOCATION's world has grown about eightfold since `48f5d49` (vertices 8.4x,
   props 8.7x) and its lavapipe render's peak 3.9x, which is consistent with the world mesh being
   why its render no longer costs what CTRY's does; no breakdown was taken at `48f5d49`.
-- **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+- **Lives in**: [`research/parity/lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker).
 
 ## 2026-11-18: where a CTRY render's memory goes on lavapipe
 
@@ -114,4 +114,4 @@
   The one probed run's 144 MiB is 4 to 5 MiB above the unprobed runs' 139-140 MiB in the entry
   above, at another commit and with the probe's reads; that gap is not explained.
   LOCATION's 748 MiB peak matches the freed figure above.
-- **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+- **Lives in**: [`research/parity/lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker).
