@@ -56,6 +56,6 @@
   - Pad 0 (`4.3%` proportional, `4.6%` span-weighted) is outside the issue's design, whose boxes must be conservative, so it does not trigger the one-point rule.
   - Span B, where batching removes `54.2%` of the switches, is context only; nothing is filed for it.
   - The note names one alternative in a sentence: an order buffer that makes decal draw order commutative could reach most of the `7.7%` ceiling, but needs a second order target beside the world's depth; not probed.
+  - #999's design note is to cite this close.
 - **Verdict**: ruled out; no timing was taken, so the verdict rests on the count above and #920's figures.
-  #999's design note cites this close.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6 and Ruled out.
