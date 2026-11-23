@@ -10,6 +10,7 @@ outcome: "rejected: skipping the world's base and decal draws cut the whole LOCA
 Issue #920, measured against the bars the owner set before any run.
 Step 1 passed: skipping the world's base and decal draws cut the whole `LOCATION` film's Windows lavapipe loop by 49.0%, faster in all four pairs.
 Step 2 failed cleanly: no placement on `LOCATION` or `INTRO` has geometry in the shared `WORLD_BASE` or `WORLD_DECAL` run, so the walk already culls each placement on its own box and a per-placement frustum test removes 0% of the drawn vertices, against a 30% bar.
-Step 3 (memory) gives no go and was not measured; #920 closes as not planned ([`journal.md`](journal.md), [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6).
+Step 3 (memory) gives no go; it was measured afterwards as a control, and removing the whole world upload fell the post-upload resident set 413.4 MiB on lavapipe and 106.1 MiB on the RTX 4070 (Span A, one run each); #920 closes as not planned ([`journal.md`](journal.md), [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6).
+The step 3 probe is [`world-upload-skip.patch`](world-upload-skip.patch), against `636ee2f4`.
 What half of the lavapipe loop pays for in those draws, which carry about 4,400 vertices a frame on Span B, is that note's first open question.
 The probes are [`world-skip-and-vertex-probe.patch`](world-skip-and-vertex-probe.patch), against `dc9622ea`.

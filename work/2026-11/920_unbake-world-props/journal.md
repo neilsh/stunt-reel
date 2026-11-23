@@ -41,5 +41,37 @@
   - Span B (`300` frames): `1,319,915` base and decal vertices, median `4,423` a frame, from a median of `585.5` base and `327` decal slices; the test removes `0`.
 - **Verdict**: rejected by the owner's 30% gate, cleanly: the test removes `0%` of the drawn vertices, since the walk already culls each placement on its own box.
   Step 1's saving is not fill-vertex work: the skipped draws carry about `4,400` base and decal vertices a frame on Span B against the `6.7` million the baked mesh holds; their outline indices were not counted.
-  Step 3 (memory) was not measured: it gives no go, and the owner's rule closes #920 on step 2's no-go.
+  Step 3 (memory) gives no go and was measured afterwards as a control, in the next entry.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6 and its Ruled out.
+
+## 2026-11-22: memory with and without the world uploaded
+
+- **Question**: What are `LOCATION`'s peak and post-upload resident memory per worker with and without the world's geometry uploaded (step 3 of #920)?
+  The owner asked for it as a control, recorded only: memory gives no go.
+- **Method**:
+  - `main` at `636ee2f4` plus [`world-upload-skip.patch`](world-upload-skip.patch): when `STUNT_PROBE_NO_WORLD_UPLOAD` is set, `SceneRenderer::new` does not call `GpuModel::from_ir_outlined` for the world, so its `world` is `None` and `prepare` draws no world, as the skip of step 1 did for the base and decal draws and more.
+    Nothing else changes: the CPU-side `world.ir` is still built with the scene, `WorldPlacements::new` still runs, and the shapes and sprites are still uploaded.
+    The CLI's `release_world_mesh` still frees `world.ir` as usual, so the peak without the upload still includes the CPU world mesh and the `scene built` stage is the same either way.
+  - One release `stuntreel.exe` for both variants, on the owner's laptop (Ryzen 7 7745HX), with no other stuntreel, cargo or rustc process running.
+  - #622's method and span: `stuntreel --headless <data>/builds/patch3/VAULT/LOCATION.FLM --all <data>/captures/vault-location/archives/LOCATION.ALL --tick-range 12..=300 --sidata <data>/corpus/siarchive/Developer/FreeFlight/SIDATA --out-dir <dir> --width 320 --height 200 --viewport-rows 185 --report-memory` (Span A), with `--software-only` and `VK_DRIVER_FILES` for mesa-dist-win 25.2.8 on lavapipe, else on the GPU; every run's `render.json` names `llvmpipe (LLVM 21.1.7, 256 bits)` or the `NVIDIA GeForce RTX 4070 Laptop GPU`.
+  - One run per cell, no noise estimate.
+- **Result**: Resident set in MiB at each `--report-memory` stage, then the peak line:
+
+  | Adapter | World uploaded | scene built | renderer opened | world mesh released | frames rendered | peak |
+  |---|---|---|---|---|---|---|
+  | Lavapipe | yes | 307.4 | 767.0 | 499.4 | 672.0 | 910.5 |
+  | Lavapipe | no | 295.3 | 354.8 | 86.0 | 104.1 | 354.8 |
+  | Lavapipe | fall | 12.1 | 412.2 | 413.4 | 567.9 | 555.7 |
+  | RTX 4070 | yes | 297.0 | 537.2 | 267.8 | 272.9 | 732.4 |
+  | RTX 4070 | no | 295.9 | 431.4 | 161.7 | 169.1 | 431.4 |
+  | RTX 4070 | fall | 1.1 | 105.8 | 106.1 | 103.8 | 301.0 |
+
+  - The uploaded runs' peaks (`910.5`, `732.4` MiB) and post-release figures (`499.4`, `267.8`) sit within #622's `904.1..915.6` and `697.5..809.8` MiB peaks and `493.4..495.1` and `234.3..276.8` MiB after release.
+  - Without the upload the peak is the `renderer opened` stage on both adapters, so what is left at the peak is the scene, the CPU world mesh and the shapes and sprites uploaded.
+  - On lavapipe the world's device buffers are system memory, so they are in the resident set; on the RTX 4070 the resident set holds the driver's host-side share of them.
+- **Verdict**: control, recorded only; memory gives no go.
+  Against the issue's hypothetical bar, a post-upload fall of at least 200 MiB a worker: removing the whole upload falls the post-upload resident set `413.4` MiB on lavapipe, above the bar, and `106.1` MiB on the RTX 4070, below it.
+  These are upper bounds on what un-baking could save, since un-baking still uploads each shared shape once and still builds per-placement data, and nothing here measures that.
+  The peak fell `555.7` and `301.0` MiB, but a saving at the peak alone would be a chunked world upload issue, not this one.
+  `[Bounded Observation]`: one run per cell, on one machine.
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 6, `#920`'s verdict.
