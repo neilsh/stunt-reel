@@ -19,6 +19,7 @@
 
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 
 use stunt_core::font::PFont;
 use stunt_core::scene::{FilmScene, SceneFrame};
@@ -332,6 +333,17 @@ pub enum RenderError {
     Sink(#[from] SinkError),
 }
 
+/// How long a renderer's open spent uploading the scene, for `stuntreel --report-timing`.
+///
+/// Both are CPU time in the upload calls; the GPU may finish copying later.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct UploadTimes {
+    /// Every shape and sprite image of the scene.
+    pub shapes: Duration,
+    /// The world mesh, its prop runs and its placement marks; zero without a world.
+    pub world: Duration,
+}
+
 /// A renderer bound to one destination and one `FilmScene`.
 pub struct Renderer {
     adapter: AdapterIdentity,
@@ -453,6 +465,12 @@ impl Renderer {
             // Credits are drawn on offscreen pages only; the window shows the scene alone.
             font: None,
         })
+    }
+
+    /// How long the open spent uploading the scene's shapes and world.
+    #[must_use]
+    pub fn upload_times(&self) -> UploadTimes {
+        self.scene_pass.upload_times()
     }
 
     /// The adapter this renderer draws on, chosen at open.

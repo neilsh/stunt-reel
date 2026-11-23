@@ -1,6 +1,7 @@
 //! The film scene: the timeline bound to its shapes and world, and the frame it draws.
 
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 use crate::anchor::parse_anchor_table;
 use crate::contracts::trajectory::DEFAULT_CAMERA_LENS;
@@ -195,6 +196,9 @@ pub struct FilmScene {
     images: HashMap<u16, SpriteImage>,
     /// The actors' shape streams, to decode again under each actor's light.
     relit: RelitShapes,
+    /// Wall-clock time [`Self::load_with_timeline`] spent in [`build_world`]; zero for a scene
+    /// built any other way. Read by `stuntreel --report-timing` only.
+    world_build: Duration,
 }
 
 impl FilmScene {
@@ -214,6 +218,7 @@ impl FilmScene {
             font: None,
             images: HashMap::new(),
             relit: RelitShapes::default(),
+            world_build: Duration::ZERO,
         };
         scene.index_facing();
         scene
@@ -251,6 +256,20 @@ impl FilmScene {
     pub fn with_images(mut self, images: HashMap<u16, SpriteImage>) -> Self {
         self.images = images;
         self
+    }
+
+    /// Records how long the world took to build.
+    #[must_use]
+    fn with_world_build(mut self, world_build: Duration) -> Self {
+        self.world_build = world_build;
+        self
+    }
+
+    /// How long [`Self::load_with_timeline`] spent building the world: zero for a scene built
+    /// by [`Self::new`] or [`Self::with_single_model`].
+    #[must_use]
+    pub fn world_build(&self) -> Duration {
+        self.world_build
     }
 
     /// The image with resource id `id`, if the scene has it.
@@ -368,6 +387,7 @@ impl FilmScene {
             .max()
             .unwrap_or(1);
         let min_corner_depth = min_corner_depth(&cameras);
+        let world_started = Instant::now();
         let world = build_world(
             &WorldInputs {
                 anchors: &anchors,
@@ -382,6 +402,7 @@ impl FilmScene {
             },
             &decoded.shapes,
         );
+        let world_build = world_started.elapsed();
         let report = SceneReport {
             skipped: decoded.skipped,
             anchors_loaded: !anchors.is_empty(),
@@ -405,7 +426,8 @@ impl FilmScene {
         Ok((
             Self::new(timeline, decoded.shapes, world)
                 .with_images(decoded.images)
-                .with_relit_shapes(RelitShapes::new(streams, light)),
+                .with_relit_shapes(RelitShapes::new(streams, light))
+                .with_world_build(world_build),
             report,
         ))
     }

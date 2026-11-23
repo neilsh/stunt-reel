@@ -9,4 +9,5 @@
     reason = "integration tests assert by panicking, and their helpers sit outside #[test] fns"
 )]
 
+mod timing_test;
 mod workers_test;

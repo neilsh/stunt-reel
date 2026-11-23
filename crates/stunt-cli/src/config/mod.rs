@@ -12,6 +12,10 @@ use crate::{export, film_slots, link, shape_views, sod_census, sod_trace};
 
 /// Options as clap parses them, before cross-option rules and companion discovery.
 #[derive(Debug, Parser)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the command line's independent on/off flags; grouping them only moves the lint"
+)]
 #[command(
     name = "stuntreel",
     about = "StuntReel Presentation Engine (stuntreel)"
@@ -102,6 +106,10 @@ struct Options {
     /// the world mesh freed and the frames rendered, and the process peak at the end
     #[arg(long)]
     report_memory: bool,
+    /// Headless only: print to stderr the time of the scene build, the renderer open and the
+    /// frame loop, with the world build and the world and shape uploads inside them
+    #[arg(long)]
+    report_timing: bool,
     /// Save the offscreen rendered frame to a PNG file
     #[arg(short = 'o', long = "output", value_name = "FILE")]
     output: Option<PathBuf>,
@@ -119,6 +127,10 @@ struct Options {
 
 /// CLI configuration parsed from command-line arguments.
 #[derive(Debug, Clone)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the command line's independent on/off flags; grouping them only moves the lint"
+)]
 pub(crate) struct CliConfig {
     pub flm_path: Option<PathBuf>,
     pub sod_path: Option<PathBuf>,
@@ -146,6 +158,8 @@ pub(crate) struct CliConfig {
     pub headless: bool,
     /// Print the resident memory at each stage of a headless render (`--report-memory`).
     pub report_memory: bool,
+    /// Print the start-up and loop times of a headless render to stderr (`--report-timing`).
+    pub report_timing: bool,
     pub output_png: Option<PathBuf>,
     pub max_ticks: Option<usize>,
     pub video_path: Option<PathBuf>,
@@ -204,6 +218,7 @@ impl CliConfig {
             software_only,
             headless,
             report_memory,
+            report_timing,
             output: output_png,
             max_ticks,
             workers,
@@ -246,6 +261,13 @@ impl CliConfig {
         if report_memory && !headless {
             return Err(
                 "--report-memory applies to offscreen renders only; add --headless, -o, --out-dir or --video"
+                    .to_string(),
+            );
+        }
+
+        if report_timing && !headless {
+            return Err(
+                "--report-timing applies to offscreen renders only; add --headless, -o, --out-dir or --video"
                     .to_string(),
             );
         }
@@ -313,6 +335,7 @@ impl CliConfig {
             software_only,
             headless,
             report_memory,
+            report_timing,
             output_png,
             max_ticks,
             video_path,

@@ -37,6 +37,7 @@
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use glam::{Mat4, Vec3};
 
@@ -56,6 +57,7 @@ use crate::palette::PaletteLut;
 use crate::pipeline::{
     LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, PROP_RUNS_GROUP, RenderPipelines,
 };
+use crate::renderer::UploadTimes;
 use stunt_core::contracts::{NodeId, SodNode, arena_index};
 
 /// Which uploaded model a prepared draw uses.
@@ -452,6 +454,8 @@ pub(crate) struct SceneRenderer {
     /// The frame's sprites the scenery walk places, in walk order, drawn after
     /// [`Self::prepared`].
     steps: Vec<WalkStep>,
+    /// How long [`Self::new`] spent uploading the shapes and the world.
+    upload_times: UploadTimes,
 }
 
 impl SceneRenderer {
@@ -468,6 +472,7 @@ impl SceneRenderer {
         // their polygon outlines as line quads; the world mesh takes its props' outlines as a
         // line list over its own vertices, which quads would multiply about five times
         // (research/playone-exe/sod-vm-lines-spans.md section 8.11).
+        let shapes_started = Instant::now();
         let shapes = scene
             .shapes()
             .map(|(id, ir)| (id, GpuModel::from_outlined(device, queue, &outlined(ir))))
@@ -476,17 +481,26 @@ impl SceneRenderer {
             .images()
             .map(|(id, image)| (id, GpuModel::from_ir(device, queue, &sprite_ir(image))))
             .collect();
+        let shapes_time = shapes_started.elapsed();
+        let world_started = Instant::now();
         let placements = scene.world().map_or_default(WorldPlacements::new);
         let mut world = scene.world().map(|w| {
             GpuModel::from_ir_outlined(device, queue, &w.ir, outlines_in_world, &placements.marks())
         });
         // The plane's shape word finds a world prop's shape in the world's prop runs.
-        let no_prop_runs = pipelines.prop_runs_layout.as_ref().map(|layout| {
-            if let Some((model, w)) = world.as_mut().zip(scene.world()) {
-                model.attach_prop_runs(device, layout, &w.prop_runs);
-            }
-            prop_runs_group(device, layout, &[])
-        });
+        let prop_runs_layout = pipelines.prop_runs_layout.as_ref();
+        if let Some((layout, (model, w))) = prop_runs_layout.zip(world.as_mut().zip(scene.world()))
+        {
+            model.attach_prop_runs(device, layout, &w.prop_runs);
+        }
+        let world_time = if world.is_some() {
+            world_started.elapsed()
+        } else {
+            Duration::ZERO
+        };
+        // The placeholder bind group is allocated whether or not there is a world, so it is
+        // outside the world's span.
+        let no_prop_runs = prop_runs_layout.map(|layout| prop_runs_group(device, layout, &[]));
         Self {
             shapes,
             images,
@@ -499,7 +513,16 @@ impl SceneRenderer {
             prepared: Vec::new(),
             placements,
             steps: Vec::new(),
+            upload_times: UploadTimes {
+                shapes: shapes_time,
+                world: world_time,
+            },
         }
+    }
+
+    /// How long [`Self::new`] spent uploading the shapes and the world.
+    pub(crate) fn upload_times(&self) -> UploadTimes {
+        self.upload_times
     }
 
     /// Uploads the camera and per-draw matrices for `frame` and selects visible meshes.
