@@ -37,7 +37,7 @@
 //! Complies with `[I1]` (frames arrive in right-handed metres) and `[I5]`.
 
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use glam::{Mat4, Vec3};
 
@@ -488,13 +488,19 @@ impl SceneRenderer {
             GpuModel::from_ir_outlined(device, queue, &w.ir, outlines_in_world, &placements.marks())
         });
         // The plane's shape word finds a world prop's shape in the world's prop runs.
-        let no_prop_runs = pipelines.prop_runs_layout.as_ref().map(|layout| {
-            if let Some((model, w)) = world.as_mut().zip(scene.world()) {
-                model.attach_prop_runs(device, layout, &w.prop_runs);
-            }
-            prop_runs_group(device, layout, &[])
-        });
-        let world_time = world_started.elapsed();
+        let prop_runs_layout = pipelines.prop_runs_layout.as_ref();
+        if let Some((layout, (model, w))) = prop_runs_layout.zip(world.as_mut().zip(scene.world()))
+        {
+            model.attach_prop_runs(device, layout, &w.prop_runs);
+        }
+        let world_time = if world.is_some() {
+            world_started.elapsed()
+        } else {
+            Duration::ZERO
+        };
+        // The placeholder bind group is allocated whether or not there is a world, so it is
+        // outside the world's span.
+        let no_prop_runs = prop_runs_layout.map(|layout| prop_runs_group(device, layout, &[]));
         Self {
             shapes,
             images,

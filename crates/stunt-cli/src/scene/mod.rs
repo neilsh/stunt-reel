@@ -180,7 +180,7 @@ pub(crate) fn build_identified_scene(
 pub(crate) struct SceneTimes {
     /// The whole build: reading the files, decoding, the world and the credits font.
     pub total: Duration,
-    /// The world build inside it; zero when the scene has no scenery.
+    /// The world build inside it; zero for a scene with no archive or game tree.
     pub world: Duration,
 }
 

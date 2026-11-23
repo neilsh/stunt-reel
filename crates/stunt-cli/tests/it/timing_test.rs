@@ -85,6 +85,9 @@ fn report_timing_prints_each_phase_and_leaves_the_store_alone() {
     assert!(lines.iter().all(|(_, ms)| *ms >= 0.0));
     let ms = |name: &str| lines.iter().find(|(phase, _)| phase == name).expect(name).1;
     assert!(ms("world_build") <= ms("scene_build"));
+    // The synthetic film has no archive and no game tree, so no world is built or uploaded.
+    assert_eq!(ms("world_build"), 0.0);
+    assert_eq!(ms("world_upload"), 0.0);
     assert!(ms("world_upload") + ms("shape_uploads") <= ms("renderer_open"));
 
     assert_eq!(tree(&timed), tree(&plain), "the flag changed the store");
