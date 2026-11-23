@@ -96,4 +96,4 @@
   The 0.7 GiB by which peak private bytes exceed the peak working set is consistent with the
   driver holding host-committed pages the release does not return; no per-allocation
   measurement was taken.
-- **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+- **Lives in**: [`research/parity/lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker).

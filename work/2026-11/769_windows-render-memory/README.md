@@ -12,5 +12,5 @@ This folder's [journal](journal.md) holds the Windows run.
 
 ## Handoff
 
-Done: the Windows path ran on the RTX 4070 and on lavapipe with stores byte-identical, and the figures are in [`evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+Done: the Windows path ran on the RTX 4070 and on lavapipe with stores byte-identical, and the figures are in [`lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker).
 Left: nothing for #769.

@@ -23,4 +23,4 @@
   `diff -r` printed nothing for either backend, and the GPU's first and third runs' stores were also identical.
   With the flag, GPU run 2 took 5.9 s and the lavapipe runs 10.6 and 8.1 s, against 6.5 and 7.2 s without; with one flag-off run per backend, the readings' cost cannot be told from run-to-run variation.
 - **Verdict**: control. The Windows path works unchanged, so no code fix; the existing read-back test now runs on Windows too.
-- **Lives in**: [`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence), the LOCATION item; [`measure-a-renders-memory.md`](../../../docs/howto/measure-a-renders-memory.md).
+- **Lives in**: [`research/parity/lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker); [`measure-a-renders-memory.md`](../../../docs/howto/measure-a-renders-memory.md).

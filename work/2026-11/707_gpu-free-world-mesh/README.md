@@ -10,7 +10,7 @@ outcome: "At #706's parent and merge the RTX 4070 Laptop writes byte-identical s
 The GPU half of [#645](https://github.com/neilsh/stunt-reel/issues/645), which #706 left open at
 `2ecbad1`: the RTX 4070 Laptop's render stores and memory at #706's parent and its merge.
 The method, figures and hashes are in [`journal.md`](journal.md), and the finding is in
-[`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+[`research/parity/lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker).
 
 ## Handoff
 
