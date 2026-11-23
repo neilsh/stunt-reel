@@ -101,6 +101,7 @@ One task per file in [`docs/howto/`](howto/):
 - [Render on lavapipe beside a GPU](howto/render-on-lavapipe.md): name the mesa-dist-win ICD and pass `--software-only`
 - [Run the class agreement batch](howto/run-the-agreement-batch.md): measure and pin where lavapipe and the GPU differ
 - [Measure a headless render's memory](howto/measure-a-renders-memory.md): `--report-memory` prints the stage and peak resident set
+- [Time a headless render](howto/time-a-headless-render.md): `--report-timing` prints the start-up phases and the loop time
 - [Take a commit from another session's branch](howto/take-a-commit-from-another-session.md)
 
 ---

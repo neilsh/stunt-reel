@@ -45,6 +45,6 @@ pub use pipeline::{
 pub use renderer::{
     ASPECT_CORRECTED_HEIGHT, AdapterIdentity, DEFAULT_CLEAR_PALETTE_INDEX, DEFAULT_PAGE_HEIGHT,
     DEFAULT_PAGE_WIDTH, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError,
-    RenderOptions, RenderedPage, Renderer, SinkError,
+    RenderOptions, RenderedPage, Renderer, SinkError, UploadTimes,
 };
 pub use video::{FfmpegVideoWriter, VideoExportError};

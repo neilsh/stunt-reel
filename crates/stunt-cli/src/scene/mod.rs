@@ -18,6 +18,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use glam::Mat4;
 use stunt_core::anchor::{AnchorPoint, parse_anchor_table};
@@ -171,8 +172,30 @@ pub(crate) fn build_scene(src: &SceneSources<'_>) -> Result<FilmScene, String> {
 pub(crate) fn build_identified_scene(
     src: &SceneSources<'_>,
 ) -> Result<(FilmScene, FilmId), String> {
-    let (scene, film) = build_film_scene(src)?;
-    Ok((attach_font(scene, src)?, film))
+    build_timed_scene(src).map(|(scene, film, _)| (scene, film))
+}
+
+/// How long [`build_timed_scene`] took, for `--report-timing`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct SceneTimes {
+    /// The whole build: reading the files, decoding, the world and the credits font.
+    pub total: Duration,
+    /// The world build inside it; zero when the scene has no scenery.
+    pub world: Duration,
+}
+
+/// [`build_identified_scene`], with the time it took.
+pub(crate) fn build_timed_scene(
+    src: &SceneSources<'_>,
+) -> Result<(FilmScene, FilmId, SceneTimes), String> {
+    let started = Instant::now();
+    let (scene, film, world) = build_film_scene(src)?;
+    let scene = attach_font(scene, src)?;
+    let times = SceneTimes {
+        total: started.elapsed(),
+        world,
+    };
+    Ok((scene, film, times))
 }
 
 /// Gives the scene its credits font: the `--font` file, which must load, or else, for a
@@ -219,8 +242,8 @@ fn load_font(path: &Path) -> Result<PFont, String> {
 }
 
 /// Builds the scene from the film, archive and scenery, without the credits font, with the
-/// identity of the film and archive bytes it read.
-fn build_film_scene(src: &SceneSources<'_>) -> Result<(FilmScene, FilmId), String> {
+/// identity of the film and archive bytes it read, and the time its world took to build.
+fn build_film_scene(src: &SceneSources<'_>) -> Result<(FilmScene, FilmId, Duration), String> {
     let (timeline, flm_bytes) = match src.flm {
         Some(path) => {
             let bytes = read_file(path)?;
@@ -244,7 +267,11 @@ fn build_film_scene(src: &SceneSources<'_>) -> Result<(FilmScene, FilmId), Strin
             println!("[stuntreel] scene: single model {}", model.name);
             print_film(&timeline);
             let film = film_identity(flm, None);
-            return Ok((FilmScene::with_single_model(timeline, model), film));
+            return Ok((
+                FilmScene::with_single_model(timeline, model),
+                film,
+                Duration::ZERO,
+            ));
         }
     };
 
@@ -265,6 +292,7 @@ fn build_film_scene(src: &SceneSources<'_>) -> Result<(FilmScene, FilmId), Strin
 
     let (scene, report) = FilmScene::load_with_timeline(timeline, &inputs)
         .map_err(|e| files.describe(&e, &regions, &base))?;
+    let world_build = scene.world_build();
     print_report(&scene, &report, anchors.is_some());
     // The renderer uploads every shape the scene holds, and `--game` decodes all of them
     // (research/makeone-exe/linking.md section 7.1).
@@ -273,7 +301,7 @@ fn build_film_scene(src: &SceneSources<'_>) -> Result<(FilmScene, FilmId), Strin
         ShapeFiles::Archive(bytes) => Some(bytes.as_slice()),
         ShapeFiles::Res { .. } => None,
     };
-    Ok((scene, film_identity(flm, archive)))
+    Ok((scene, film_identity(flm, archive), world_build))
 }
 
 /// The files a scene's shapes are read from, with their bytes.

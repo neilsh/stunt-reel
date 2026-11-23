@@ -243,3 +243,22 @@ fn test_workers_split_only_a_whole_tick_out_dir_render() {
     parse(&["--workers", "2", "--out-dir", "o", "--shard", "2"]).unwrap_err();
     parse(&["--shard", "0"]).unwrap_err();
 }
+
+#[test]
+fn test_report_timing_needs_an_offscreen_render() {
+    let Err(err) = parse(&["--report-timing"]) else {
+        panic!("a window run must reject --report-timing");
+    };
+    assert!(err.to_string().contains("--report-timing"), "{err}");
+    assert!(!parse(&["--headless"]).unwrap().report_timing);
+    assert!(
+        parse(&["--headless", "--report-timing"])
+            .unwrap()
+            .report_timing
+    );
+    assert!(
+        parse(&["--out-dir", "o", "--report-timing"])
+            .unwrap()
+            .report_timing
+    );
+}
