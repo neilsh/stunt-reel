@@ -140,7 +140,7 @@
 - **Question**: Which part of the world's base and decal draws makes up the half of the lavapipe loop that step 1's skip removed: their pixels, their outlines, the decal slices' per-slice pipeline switches, or the draws' own overhead?
   And what does the 172.6 MiB resident-set rise between `world mesh released` and `frames rendered` follow?
 - **Method**:
-  - `main` at `67f409b7` plus [`draw-cost-split.patch`](draw-cost-split.patch) (`git diff -- crates`, so it also holds step 1's [`world-skip-and-vertex-probe.patch`](world-skip-and-vertex-probe.patch): the loop timer and the vertex probe).
+  - The branch at `67f409b7` plus [`draw-cost-split.patch`](draw-cost-split.patch) (`git diff -- crates`, so it also holds step 1's [`world-skip-and-vertex-probe.patch`](world-skip-and-vertex-probe.patch): the loop timer and the vertex probe).
     In `SceneRenderer::encode`, for `Target::World` draws only, `STUNT_PROBE_WORLD` (read once) is a bit mask over the base and decal draws; the ground draws are not touched.
   - The variants, each one switch:
     - `base`: no switch.
@@ -149,7 +149,7 @@
     - `c`: skip decal fills.
     - `d`: skip decal outlines.
     - `e`: skip all four (step 1's skip).
-    - `f`: issue every draw, with its pipeline switch and vertex fetch, but with the scissor rect set to `0,0,1,1` for those draws and restored to `0,0,320,200` after each; `wgpu` accepted it.
+    - `f`: issue every draw, with its pipeline switch and vertex fetch, but with the scissor rect set to `0,0,1,1` for those draws and restored to `0,0,320,200` after each, the full target at these runs' `--width 320 --height 200` only; `wgpu` accepted it.
     - `g`: skip nothing, but encode a world draw's decal fills together, then its decal outlines together: two pipeline switches a draw instead of two a slice.
       It changes the picture where decals overlap, so it is a timing probe only.
   - One release binary (`mise exec -- cargo build --release -p stunt-cli`) copied to the scratchpad as `stuntreel-split.exe`, every variant run from it, no other `stuntreel`, `cargo` or `rustc` process running.
@@ -219,13 +219,14 @@
   - Base outlines are not the main part: `b` takes `264 ms` (-11.1%), as #622 found (11.2% to 12.2%), and `a`'s base fills do not resolve.
   - The decal slices' fill-and-outline alternation is the main part.
     `c` and `d` each cut about `1,000 ms` (-42.9% and -47.4%) though the decals carry a third of the two kinds' indices (a median 2,391 of 7,161), and they are not additive: `1,020.5 + 1,126.5` exceeds `e`'s `1,734.0`, as it would if skipping either removes the alternation of the two decal pipelines.
-    `g` keeps every draw and every pixel and only groups the decal fills and outlines: `-955 ms` (-40.2%), 55.1% of `e`'s saving and within about 100 ms of `c`'s and `d`'s.
+    `g` keeps every draw and only groups the decal fills and outlines, changing pixels only where decals overlap: `-955 ms` (-40.2%), 55.1% of `e`'s saving, within `65 ms` of `c`'s and `172 ms` of `d`'s; the saving is attributed to the pipeline switches by elimination.
     The remaining `779 ms` of `e`'s saving is draw cost that grouping does not remove, to which the pixels contribute up to the `280 ms` that `f` recovers (the two probes need not add); the base draws' own overhead is part of it, not separated.
     The mechanism inside lavapipe (a state or binning flush at each switch) is not examined.
   - The mix differs by span: on the whole film `b` takes -23.1%, `f` -26.1% and `g` only -7.7%, so there the outlines and pixels weigh more and the decal alternation less (2 rounds).
   - On the RTX 4070 only `e` (-26.8%) resolves from the noise.
   - The memory rise does not follow the world's base or decal draws: skipping all four, the outlines or the fragments leaves it at 171.3 to 173.0 MiB.
     It follows the world's upload (18.1 MiB without it, step 3) and something that runs with it in every variant, the ground draws or the walk; which of them, or whether lavapipe maps the buffer lazily, is not tested here.
+    It fits [`evidence-limits.md`](../../../research/parity/evidence-limits.md)'s `[Supported Inference]` that lavapipe fills the world's device buffers' pages at the first submit, which this entry did not test.
   - `g` changes the picture where decals overlap, so it names a cost, not a change to adopt.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3 and its Open questions item 1.
 
@@ -262,8 +263,8 @@
   - A confound: the constant makes the shapes plane compress differently, and the loop includes the page writes.
     On the RTX 4070 Span B, where the shader saving does not resolve, the medians differ by `0.5 ms` and the runs spread `46 ms`, so a compression difference is at most about that size on Span B; no run isolated it on the whole film.
 - **Verdict**: control: it bounds a per-vertex `shape_id` from above and decides no issue by itself.
-  The lookup costs at most `10.8%` of the whole `LOCATION` film's lavapipe loop (`5.9%` on Span B) and nothing resolved on the RTX 4070 Span B, against step 1's 15% bar and the `-49.0%` the base and decal draws take.
-  By that bar a standalone per-vertex `shape_id` is not worth an issue: `10.8%` is an upper bound, since a carried id is not free (a per-vertex word or a wider vertex was not measured), and it is below the bar.
+  The lookup costs at most `10.8%` of the whole `LOCATION` film's lavapipe loop (`5.9%` on Span B) and nothing resolved on the RTX 4070 Span B, against the `-49.0%` the base and decal draws take.
+  `10.8%` is an upper bound on a standalone per-vertex `shape_id`, since a carried id is not free (a per-vertex word or a wider vertex was not measured); #920's 15% bar was set for un-baking's upper bound and does not gate it, so whether it earns an issue is the owner's call.
   The lookup is not what the world draws' lavapipe cost is made of.
   The owner may still weigh `10.8%` of the whole film's lavapipe loop on its own.
   `[Bounded Observation]`: 4 rounds on one machine, the whole-film figure at 4 pairs.
@@ -312,8 +313,8 @@
     Startup is `531` and `629 ms`: `17.5%` and `31.0%` of the wall, and `58.1%` and `72.3%` of a chunk estimate for that span (`913.8` and `870.5 ms`); the world build is `14.7%` and `15.6%` of that chunk.
   - Against #918's `750` and `540 ms`, this run's `894` and `650 ms` are higher; a different tree and machine state are candidates, not examined.
 - **Verdict**: control: it bounds a cached or shared world build, and no issue is filed.
-  The world's CPU build takes `622 ms`: `2.1%` of a single lavapipe process's wall and `7.5%` of a 4-worker lavapipe chunk, below step 1's 15% bar.
-  So a cached or shared world build does not clear the bar on lavapipe, where the workers run (#916), and `7.5%` is an upper bound, since reading the cache is not free.
+  The world's CPU build takes `622 ms`: `2.1%` of a single lavapipe process's wall and `7.5%` of a 4-worker lavapipe chunk.
+  On lavapipe, where the workers run (#916), a cached or shared world build saves at most that, since reading the cache is not free.
   On the RTX 4070 it is `16.2%` of the chunk estimate, which assumes four workers sharing one GPU each run a quarter of the loop and each pay the full startup; no multi-worker run measured that.
   The world's device upload (`470.6` and `519.7 ms`) is most of the renderer open (`72%` and `65%`) but is per device, so a shared CPU build does not remove it.
   The shape uploads take `1.2 ms`, so they are not a cost to fix.
