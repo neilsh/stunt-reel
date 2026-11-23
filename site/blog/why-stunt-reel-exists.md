@@ -3,7 +3,6 @@ title: "Why Stunt Reel exists"
 date: 2026-11-23
 authors: neil
 tags: [introduction, architecture, agents]
-draft: true
 excerpt: "A 1992 stunt-filming game, a modern player for its films, and an experiment in how far AI agents can be trusted with careful reverse engineering."
 ---
 
@@ -123,4 +122,6 @@ Since then more than 560 pull requests have merged.
 The guides and research notes say what is currently true.
 This blog is for the story around them: how the architecture came to be, how the agent workflow works day to day, where it went wrong, and what changed because of it.
 
-> TODO(Neil): a closing line in your own voice, and anything you want readers to do (follow along, try the demo, open an issue).
+So far, the answer to both of my questions has been yes: the agents have pushed parity forward one measured step at a time, and they have closed issues and filed the next ones themselves.
+How that works, and where it breaks, is what the next posts are about.
+Whether you came for *Stunt Island* or for the agents, I hope you'll stick around.
