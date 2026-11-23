@@ -70,11 +70,12 @@ The outgoing coordinator starts its successor:
   A session with no way to start one runs Shutdown instead of handing off, under the same wait and release rule ([`loop-and-bounds.md`](loop-and-bounds.md#shutdown)).
 - **local-windows:** the repo records no command for starting a Sonnet coordinator.
   The coordinator runs Shutdown at the context limit unless a person has said how to hand off.
+- **T3 Code:** the coordinator restarts its own thread with a fresh context ([`t3.md`](t3.md)).
 
 ## CodeRabbit: one scheduled check
 
 CodeRabbit reviews when a person asks ([`pr-and-filing.md`](pr-and-filing.md#bringing-a-pr-to-mergeable-and-merge-bar) step 4).
-When a request follows the latest push, append a line for the PR with its current state and a note that carries its still-active facts and `check due <request time + 20 min>`, and set one timer for that time (`send_later` in a cloud session, when the session has that tool; on local-windows the repo records a timer for Antigravity (`schedule`, [`harness.md`](../../../docs/harness.md#antigravity)) and none for Claude Code, so there the coordinator looks once at the timeout in a later turn, and when no other event is expected it runs that look and notes the outcome before ending the run, or runs Shutdown with the PR under **Needs you**), then work on other items or end the turn.
+When a request follows the latest push, append a line for the PR with its current state and a note that carries its still-active facts and `check due <request time + 20 min>`, and set one timer for that time (`send_later` in a cloud session, when the session has that tool; `schedule_task` under T3 Code, [`t3.md`](t3.md); otherwise on local-windows the repo records a timer for Antigravity (`schedule`, [`harness.md`](../../../docs/harness.md#antigravity)) and none for Claude Code, so there the coordinator looks once at the timeout in a later turn, and when no other event is expected it runs that look and notes the outcome before ending the run, or runs Shutdown with the PR under **Needs you**), then work on other items or end the turn.
 At the timer, look once: a completed review goes to step 3, anything else gets a PR comment and the run proceeds.
 A successor re-sets a timer from the newest line's due time.
 The 20-minute wait stays in the merge bar.
@@ -93,7 +94,7 @@ Step 3 is part of the dispatch, not a recovery from a stall: the worker has star
 ## `orca orchestration` flags
 
 Use these lines and nothing from `--help` or `orca skills get orchestration`: either puts thousands of characters in context for every later turn to re-read (#509).
-This is for Orca workers; a cloud session's workers are subagents that report in their final reply.
+This is for Orca workers; a cloud session's workers are subagents that report in their final reply, and a T3 Code run's are in [`t3.md`](t3.md).
 
 | Need | Line | Source |
 |---|---|---|

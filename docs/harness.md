@@ -1,6 +1,6 @@
 # Agents and harnesses
 
-This repository is worked by more than one agent harness — DeepSeek Harness, Claude Code and Antigravity today, and whichever one the next contributor brings — as well as by people.
+This repository is worked by more than one agent harness — DeepSeek Harness, Claude Code and Antigravity today, some of them hosted in T3 Code, and whichever one the next contributor brings — as well as by people.
 The policy below is the same for all of them because it is a policy of the repository; the notes under it are capability facts about one harness on one host, which is why they are dated and kept apart.
 Nothing here is a fact about Stunt Island.
 
@@ -147,6 +147,16 @@ Observed on a Debian 12 cloud VM, 2026-11-18 ([`cloud-antigravity.md`](../.agent
   [`.agents/environment.json`](../.agents/environment.json) runs `bash .claude/cloud-setup.sh --antigravity`, and project-local `/home/antigravity/env-setup.sh` fetches archives and builds the game trees; `.claude/settings.json` `SessionStart` hooks do not run.
 * **Proxy and plugins:** Outbound HTTPS goes through `agy-plugin-proxy` (`gh` GraphQL commands work; `gdrive` reads Drive resources).
 
+## T3 Code
+
+Observed on `local-windows`, 2026-11-22, with Claude as the thread's provider:
+
+* **What it is:** A desktop app that runs a provider's agent (Claude through the Agent SDK, dsh, Antigravity and others) in a thread, and adds its own MCP tools for delegating to child threads of any enabled provider, scheduling and pull requests; [`t3.md`](../.agents/skills/running-unattended/t3.md) is how an unattended run uses them.
+* **What it confines and asks:** Each thread has a permission mode (Supervised, Auto-accept edits, Auto, Full access); a child inherits its parent's and cannot exceed it.
+  The Claude provider's own settings, `.claude/settings.json` and the `SessionStart` hook included, still apply.
+* **Where it works:** A new thread's worktree goes under the T3 home's `worktrees` folder (`~/.t3/worktrees/<project>/<name>`) unless [`harness-setup.md` § T3 Code](harness-setup.md#t3-code) moves it, on a `t3/` branch; it reaches the data root by configuration like any worktree ([ADR 0036](adr/0036-worktrees-reach-shared-state-by-configuration.md)).
+* **Settings:** Host settings live in the T3 home (`~/.t3`) and cannot be committed; a `t3.json` at the repository root would ship worktree checkout options, and none exists.
+
 ## Windows PowerShell 5.1
 
 Any harness that shells out through the host's Windows PowerShell 5.1 meets these; observed under DeepSeek Harness (2026-10-25), Claude Code (2026-10-31) and Antigravity (2026-11-13).
@@ -186,5 +196,6 @@ Give a harness its own `docs/harness/<tool>.md`, as DeepSeek Harness has, when i
 | DeepSeek Harness | `~/.dsh` on this host | no — host-local |
 | Claude Code | [.claude/settings.json](../.claude/settings.json), `.claude/skills` (link to `.agents/skills/`) plus `~/.claude/settings.json` | repo files yes, user file no |
 | Antigravity | [`.agents/environment.json`](../.agents/environment.json), [`.agents/skills/`](../.agents/skills/) plus `~/.gemini/antigravity` and cloud `/home/antigravity/env-setup.sh` | repo files yes, user files no |
+| T3 Code | `~/.t3` on this host, plus the thread provider's own settings | no — host-local |
 
 A checkout cannot ship the DeepSeek Harness policy, so [`harness/deepseek.md`](harness/deepseek.md) and this page are the repository's record of what it should be.

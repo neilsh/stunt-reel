@@ -88,6 +88,6 @@ Before work one covers, read its skill:
 
 ### Worktrees
 
-1. One writer per checkout path, one branch per worktree, made inside the primary checkout under `.claude/worktrees/` or `.agents/worktrees/` (Orca workspaces excepted).
+1. One writer per checkout path, one branch per worktree, made inside the primary checkout under `.claude/worktrees/` or `.agents/worktrees/` (Orca and T3 excepted).
    A read-only scout may share a path.
 2. Remove a worktree an older `mise run init` linked only with `mise run reap -- --yes` from the primary checkout, never `git worktree remove`: git has deleted shared data through its junctions ([ADR 0018](docs/adr/0018-reaping-unlinks-the-data-root-links-first.md)).

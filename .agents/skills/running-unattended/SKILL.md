@@ -25,7 +25,7 @@ Orca, dsh, Antigravity, PowerShell and the disk checks are `local-windows` resou
 - **Cloud:** subagents for reviews and edits, at most about two Rust builds at once ([`cloud-sessions.md`](../../../docs/cloud-sessions.md#container-limits)); child sessions (`create_session`) for builds and renders, briefed per [`worker-brief.md`](worker-brief.md#child-session-brief).
   Give each writer `isolation: "worktree"`; if that isolation fails, run one at a time.
   Never stack: start a dependent item once its parent merges.
-- **Elsewhere:** worker lifetime, prototype bounds, the pre-review diff scan and optional `ccusage` measuring are in [`loop-and-bounds.md`](loop-and-bounds.md) and [`pr-and-filing.md`](pr-and-filing.md).
+- **T3 Code:** a coordinator in a T3 thread (`T3CODE_THREAD_ID` set) dispatches per [`t3.md`](t3.md) instead of through Orca.
 
 ## Workflow
 
