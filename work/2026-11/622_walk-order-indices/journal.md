@@ -56,3 +56,65 @@
   Both are upper bounds: the 11.5% came from skipping outline draws with their pixels and a `set_pipeline`, which merging keeps, and fills, which cover more pixels, likely spend a smaller share of their time on per-draw overhead than outlines do.
   The gain falls on Span B's second half (about 165 frames) and on similar overview frames; Span A gains 8 draws a frame.
 - **Lives in**: not yet; `research/parity/lavapipe-render-time.md` takes the count and the timed result with the implementation.
+
+## 2026-11-22: the walk-order layout's draws and stores
+
+- **Question**: Does the static walk-order layout, built into the world upload, merge the base draws the CPU count predicted, and does it leave every render store byte-identical?
+- **Method**:
+  - The layout is `f77fd073` on branch `claude/622-walk-order-indices`, on `main` at `566977a6`: `GpuModel::from_ir_outlined` copies a one-chunk world's base slices' indices, and separately their outlines, into one buffer in the order `VisibleWalk::walk` visits the nodes with no gate (`lay_out_in_walk_order` in `crates/stunt-render/src/mesh.rs`), then every ground and decal slice in arena order; `draw_slices` and `draw_edges` draw each run of slices that continue one another's range in one chunk at one base vertex with one `draw_indexed` (`for_each_run`).
+    `GpuModel::cut` now maps a placement's arena offsets to the moved slice's buffer offsets through its marks.
+  - Count: [`run-count.patch`](run-count.patch) on `f77fd073`, reverted after the run, builds the world's layout under the device's 256 MiB buffer limit (asserting one chunk), runs `collect_world_meshes` per tick as `prepare` does, and counts the base fill and outline runs `for_each_run` draws.
+    `DBG_PROBE_WALK_SCAN_FILE=<out> stuntreel --headless --tick-range <span> --width 320 --height 200 --viewport-rows 185 --sidata <data>/corpus/siarchive/Developer/FreeFlight/SIDATA <data>/builds/patch3/VAULT/LOCATION.FLM <data>/captures/vault-location/archives/LOCATION.ALL`, over Span A (`12..=300`), Span B (`3680..=3979`) and the whole film (`12..=8262`).
+  - Stores: `mise run parity -- --no-build` over the seven reference films with `566977a6`'s release binary, then `f77fd073`'s, each copied over `target/release/stuntreel.exe` (both built by `mise run build-at`), on the RTX 4070 and on mesa-dist-win 25.2.8 (`VK_DRIVER_FILES` and `--software-only`), comparing each film's `frames.zst`, `layers.zst`, `shapes.zst` and `palettes.zst` with `cmp`.
+- **Result**:
+  - Base draws per frame, fills and outlines together, median before to after: Span A `21` to `13`, Span B `1,170` to `197` (p95 after `289`), the whole film `156` to `78`.
+    Merged draws per frame, median / mean / p95 / max: Span A `8 / 15.7 / 46 / 54`, the whole film `75 / 111.6 / 304 / 1,046`; Span B's median is `960` and its mean `589.9`, and its median frame draws `585.5` fills in `99` runs and `584.5` outlines in `98`.
+    These are the previous entry's figures, so the layout merges what the fixed walk promised; no frame of the three ranges places a sprite, so no run is cut at a placement.
+  - Stores: `28` of `28` files byte-identical between the two binaries on the RTX 4070, and `28` of `28` on lavapipe (`llvmpipe (LLVM 21.1.7, 256 bits)` in every report), with the same summary lines for both binaries on each adapter:
+
+    ```text
+    ctry  ssim 0.9385  iou 0.9955  idx 0.961  scored 114/121
+    intro ssim 0.8833  iou 0.9879  idx 0.917  scored 209/347
+    land  ssim 0.9245  iou 0.9869  idx 0.946  scored 97/103
+    balloon ssim 0.9059  iou 0.9504  idx 0.911  scored 107/108
+    traintnl ssim 0.9107  iou 0.9716  idx 0.948  scored 112/112
+    bomb  ssim 0.8949  iou 0.9660  idx 0.929  scored 316/339
+    location ssim 0.8727  iou 0.9820  idx 0.906  scored 732/745
+    ```
+
+    On lavapipe the `location` line reads `ssim 0.8728`.
+- **Verdict**: control: the layout merges what the count said and changes no pixel; whether it lands is the next entry's timing.
+- **Lives in**: not yet; `research/parity/lavapipe-render-time.md` takes it if the layout lands.
+
+## 2026-11-22: loop time before and after on lavapipe and the RTX 4070
+
+- **Question**: Does the walk-order layout cut Span B's lavapipe loop by at least the 5% the owner set, and leave Span A no slower?
+- **Method**:
+  - [`loop-timer.patch`](loop-timer.patch) (an `eprintln!` of the milliseconds from the first submit through `finish` and the last page write in `headless.rs`) applied to `566977a6` (before) and to `f77fd073` (after), each built by `mise run build-at`.
+  - `stuntreel --headless <data>/builds/patch3/VAULT/LOCATION.FLM --all <data>/captures/vault-location/archives/LOCATION.ALL --tick-range <span> --sidata <data>/corpus/siarchive/Developer/FreeFlight/SIDATA --out-dir <dir> --width 320 --height 200 --viewport-rows 185`, with `--software-only` and `VK_DRIVER_FILES` for lavapipe (mesa-dist-win 25.2.8), else on the GPU; each round's first run's `render.json` names `llvmpipe (LLVM 21.1.7, 256 bits)` or the `NVIDIA GeForce RTX 4070 Laptop GPU`.
+    The owner's laptop (Ryzen 7 7745HX), no other render or build running, other agents' desktop apps open.
+  - Eight rounds; each round runs every span and adapter's two variants back to back, before first in even rounds and after first in odd ones.
+    Eight more rounds of the two cells nearest a threshold (lavapipe Span B, RTX 4070 Span A) followed straight after.
+  - Each run's four stores hashed together.
+- **Result**: Loop ms, minimum / median of the four fastest / median of all / maximum, and the change in the first three:
+
+  | Cell | Runs | Before | After | Change |
+  |---|---|---|---|---|
+  | Lavapipe Span A | 8 | 938 / 974.5 / 994 / 1063 | 933 / 944.5 / 1008 / 1057 | -0.5% / -3.1% / +1.4% |
+  | Lavapipe Span B | 16 | 2758 / 2773.5 / 2904 / 3493 | 2626 / 2648 / 2775 / 3071 | -4.8% / -4.5% / -4.4% |
+  | RTX 4070 Span A | 16 | 424 / 431.5 / 487.5 / 720 | 434 / 445 / 512 / 620 | +2.4% / +3.1% / +5.0% |
+  | RTX 4070 Span B | 8 | 433 / 460 / 483.5 / 695 | 421 / 435.5 / 452 / 610 | -2.8% / -5.3% / -6.5% |
+
+  - Raw, in round order, lavapipe Span B before: 2926, 2856, 2782, 3014, 3414, 2792, 2758, 2791, 3001, 2837, 2906, 2765, 2902, 3493, 2964, 2933; after: 2701, 2812, 2999, 2884, 3071, 2653, 2858, 2679, 2778, 2791, 2643, 2772, 2888, 2701, 2626, 2690.
+    After was faster in 13 of 16 pairs; the first eight rounds alone gave `-3.8% / -3.5% / +0.4%`, the second eight `-5.0% / -7.1% / -6.3%`.
+  - RTX 4070 Span A before: 440, 547, 427, 720, 605, 443, 424, 436, 637, 438, 517, 472, 549, 641, 494, 481; after: 435, 514, 530, 510, 593, 470, 508, 434, 620, 545, 467, 528, 455, 506, 530, 531.
+    After was faster in 9 of 16 pairs, and each variant's runs span about 200 ms.
+  - Lavapipe Span A before: 1063, 1040, 974, 1008, 1018, 975, 980, 938; after: 1024, 947, 999, 1057, 1046, 1017, 942, 933 (after faster in 4 of 8).
+    RTX 4070 Span B before: 477, 569, 461, 490, 695, 433, 497, 459; after: 441, 456, 585, 610, 550, 448, 421, 430 (after faster in 5 of 8).
+  - Whole-process wall clock on lavapipe Span B: before `4416 / 4464 / 4594` ms, after `4358 / 4403 / 4548` (`-1.3% / -1.4% / -1.0%`).
+  - Every run exited 0, and within each cell every run of both variants has one store digest.
+- **Verdict**: rejected by the owner's 5% gate: Span B's lavapipe loop fell `4.4%..4.8%` over 16 interleaved pairs, about 130 ms, or about 0.4 ms of a frame's 9.2 to 9.7 ms, well under the count's `9.3%..18.6%` bound.
+  Merging about 960 draws a frame therefore costs less than the bound assumed, which suggests that most of the 11.5% the outline-skip probe removed was the outlines' pixels and pipeline switch rather than their per-draw cost; this was not measured apart.
+  No other cell resolves from its noise: the RTX 4070's Span A reads `2.4%..5.0%` slower with after faster in 9 of 16 pairs and each variant spread over about 200 ms, so it is shown neither slower nor not slower.
+  The task said to report and stop under 5% rather than land, so the code stays on its branch for the owner's decision.
+- **Lives in**: not yet; `research/parity/lavapipe-render-time.md` takes the result once the owner decides between landing the layout and ruling it out.

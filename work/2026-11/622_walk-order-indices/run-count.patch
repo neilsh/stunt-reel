@@ -1,0 +1,125 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 512c34b9..59aad111 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -176,6 +176,15 @@ pub(crate) fn run_headless(
+     }
+ 
+     let playback = Playback::new(config, scene);
++    if let Ok(scan_path) = std::env::var("DBG_PROBE_WALK_SCAN_FILE") {
++        let mut ticks = Vec::new();
++        for (key, tick) in playback.samples() {
++            let SampleKey::Tick(t) = key else { return Err("ticks only".to_string()) };
++            ticks.push((t, capture_tick(tick)));
++        }
++        stunt_render::cpu_scan_world(scene, &ticks, config.height, config.viewport_rows, std::path::Path::new(&scan_path))?;
++        return Ok(());
++    }
+     let range = playback.range();
+     let start_tick = range.start();
+     let span_seconds = range.span_seconds();
+diff --git a/crates/stunt-render/src/lib.rs b/crates/stunt-render/src/lib.rs
+index 1b875cb5..fb486f22 100644
+--- a/crates/stunt-render/src/lib.rs
++++ b/crates/stunt-render/src/lib.rs
+@@ -47,4 +47,5 @@ pub use renderer::{
+     DEFAULT_PAGE_WIDTH, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError,
+     RenderOptions, RenderedPage, Renderer, SinkError,
+ };
++pub use scene_renderer::cpu_scan_world;
+ pub use video::{FfmpegVideoWriter, VideoExportError};
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 548ad197..84223e26 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -588,6 +588,35 @@ impl GpuModel {
+     }
+ }
+ 
++/// Probe: CPU-only world model and its base draw counts.
++impl GpuModel {
++    pub(crate) fn probe_world(ir: &SodModelIr, outlined: fn(&SodVertex) -> bool, marks: &[u32]) -> Self {
++        let max = (1u64 << 28) as usize;
++        let layout = ModelLayout::of(ir, Some((outlined, marks)), max / size_of::<SodVertex>(), max / 4);
++        assert_eq!(layout.chunks.len(), 1, "one chunk");
++        Self {
++            name: ir.name.clone(),
++            chunks: Vec::new(),
++            vertex_count: 0,
++            index_count: 0,
++            nodes: layout.nodes,
++            root_nodes: ir.root_nodes.clone(),
++            bounds: layout.bounds,
++            discs: false,
++        }
++    }
++
++    pub(crate) fn probe_runs(&self, eye: Vec3, view: Option<&CameraTransform>, view_proj: Mat4, dds: f32) -> [usize; 4] {
++        let (_, base, _) = self.collect_world_meshes(eye, view, view_proj, dds);
++        let mut fill_runs = 0;
++        for_each_run(base.iter().map(|(_, m)| (m.chunk, m.vertex_offset, m.index_offset..m.index_offset + m.index_count)), |_, _, _| fill_runs += 1);
++        let edges: Vec<_> = base.iter().filter(|(_, m)| m.edge_count > 0).collect();
++        let mut edge_runs = 0;
++        for_each_run(edges.iter().map(|(_, m)| (m.chunk, m.vertex_offset, m.edge_offset..m.edge_offset + m.edge_count)), |_, _, _| edge_runs += 1);
++        [base.len(), fill_runs, edges.len(), edge_runs]
++    }
++}
++
+ /// Calls `draw` once for each run of `ranges` (chunk, base vertex, index range) in which
+ /// each range starts where the one before it ends, in the same chunk at the same base vertex,
+ /// with the run's ranges joined; runs keep `ranges`' order.
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 8a9a5486..5cb7e47e 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -1027,6 +1027,50 @@ impl SceneRenderer {
+     }
+ }
+ 
++/// Probe: CPU-only world base draw scan.
++pub fn cpu_scan_world(
++    scene: &FilmScene,
++    ticks: &[(usize, f32)],
++    height: u32,
++    viewport_rows: Option<u32>,
++    out_path: &std::path::Path,
++) -> Result<(), String> {
++    use std::io::Write as _;
++    let placements = scene.world().map_or_default(WorldPlacements::new);
++    let world = scene
++        .world()
++        .map(|w| GpuModel::probe_world(&w.ir, outlines_in_world, &placements.marks()))
++        .ok_or("no world")?;
++    let file = std::fs::File::create(out_path).map_err(|e| e.to_string())?;
++    let mut w = std::io::BufWriter::new(file);
++    for &(film_tick, eval_tick) in ticks {
++        let frame = scene.frame(eval_tick);
++        if !frame.world {
++            continue;
++        }
++        let mut controller = CameraController::default();
++        controller.set_authored_transform(frame.view);
++        if let Some(rows) = viewport_rows {
++            controller.projection_y_scale = height as f32 / rows.max(1) as f32;
++        }
++        let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
++        let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
++        let eye = controller.eye_position();
++        let world_matrix = eye_relative_matrix(eye, &Mat4::IDENTITY.to_cols_array());
++        let view_proj = rotation_proj * Mat4::from_cols_array(&world_matrix);
++        let lod_view = CameraTransform {
++            eye: frame.view.eye,
++            target: frame.view.target,
++            lens: frame.lens,
++            ..CameraTransform::default()
++        };
++        let [f, fr, e, er] = world.probe_runs(eye, Some(&lod_view), view_proj, camera_uniform.disc_depth_scale);
++        let placed = frame.sprites.iter().filter(|s| s.after.is_some()).count();
++        writeln!(w, "{film_tick} {f} {fr} {e} {er} {placed}").map_err(|e| e.to_string())?;
++    }
++    Ok(())
++}
++
+ /// `frame`'s camera taken into a model's space by `to_model`, the inverse of its world
+ /// matrix, for the gates that test depth along the view axis.
+ fn model_view(to_model: &Mat4, frame: &SceneFrame) -> CameraTransform {
