@@ -59,6 +59,12 @@ One known alternative, not probed: an order buffer that makes decal draw order c
 
 **Lives in** [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md), open question 1, condensed; the lever shares are in § 3.
 
+## 2026-11-21: In-process pooling, as Ruled out stated it (#916)
+
+* **In-process multi-`VkDevice` pooling for 4 workers (#916):** regresses on Ubuntu (15.89 s loop, 58.22 s CPU, against 7.65 s and 45.70 s in 4 child processes) and trails child processes on Windows (6.73 s shared, 5.45 s separate instances, against 4.34 s); section 5.
+
+**Lives in** [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md), Ruled out, condensed; the figures are in § 5.
+
 ## 2026-11-23: The note summary as of 46e5b20c
 
 summary: "Which renderer changes cut headless render time on lavapipe and the GPU, where the time goes now, and what a render's memory goes to per worker. Landed: #596, #602, #644, #811, the view-facing cull #914 (52.4% to 80.6% of the Windows lavapipe loop in its probe), #933, #942, #943 and #944, and stuntreel --workers (#916): four child processes render LOCATION 1.85x faster on 4 vCPUs, while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8. On lavapipe the world's base and decal draws hold 49.0% of the whole LOCATION loop, on Span B mostly the decal fill-to-outline switch (by elimination); #1002's stack profile puts the whole LOCATION loop on lavapipe's queue thread (rasterizers 26.7%, vertex work 21.4%, line setup 14.6%, fragment-state store try_update_scene_state 10.2% and 28.3% of Span B, other state 8.5%, triangle setup 5.4%, submit 2.1%). #999's CPU probe sizes a frame-streamed world at up to 75,576 vertices, 76,008 indices and 149,956 outline indices a frame (INTRO tick 3635, 2.88 MiB vs LOCATION's 333.75 MiB baked). A LOCATION render's memory is mostly its world mesh (1,004 MiB Linux lavapipe peak vs CTRY's 139 MiB; release_world_mesh brings it to 749 MiB; each extra lavapipe device adds 751..796 MiB RSS). No-go: culling actors, #919, #915b, #926, #622, #920 and #1000."
