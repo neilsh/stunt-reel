@@ -100,4 +100,11 @@ cd ~/stunt-reel && bash .claude/cloud-setup.sh --cloud
 Give it a data root on the Linux filesystem too: reading the data root from a Windows drive (`/mnt/<drive>`) made a CTRY run take 36 s against 4.4 s.
 Copy what the cloud archives hold, by [`manifests/cloud-assets.toml`](../../manifests/cloud-assets.toml)'s include and exclude rules, from the Windows data root (or run `mise run cloud-assets -- fetch` where R2 credentials are set), then run `mise run game-builds` and `mise run superset-all`, as a cloud session does.
 `mise run parity -- --software-only` there reports `llvmpipe (LLVM 20.1.2, 256 bits)` and compares against `expected/lavapipe.toml`.
+From Windows' Git Bash, put the commands in a script whose first line is `export PATH=/root/.local/bin:$PATH` (a non-login shell has no `mise`), and run it by path with path conversion off, or Git Bash rewrites `/mnt/...` and the run silently does nothing:
+
+```bash
+MSYS_NO_PATHCONV=1 wsl -d Ubuntu-24.04 -u root -- bash /mnt/<drive>/<path-to>/script.sh | tr -d '\0'
+```
+
+A `bash -c '...'` string breaks instead: Git Bash converts path-like text inside it (and expands `$PATH` when it is double-quoted) before WSL sees it.
 `wsl --unregister Ubuntu-24.04` removes the distro and everything in it.

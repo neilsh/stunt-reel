@@ -297,6 +297,7 @@ Every repeated analysis has a home: baseline render and score is `mise run parit
 A decoder change across every stock shape is `stuntreel shape-views --archive X [--shapes IDS|FILE] [--views top,side,front] --out DIR`: orthographic views through the real renderer, back faces culled, and a `manifest.json` of each shape's geometry hash.
 `mise run shape-diff -- --var DBG_X=0,1 [--shapes IDS|FILE]` runs it once per value over `SUPERSET.ALL`, lists the shapes whose hash changed and draws a before|after sheet of only those.
 Before it, an export loop took over 10 minutes for the stock aircraft and PIL views drawn without culling misread a fix twice (issue #277).
+Two captures of one film (recapture noise, or another archive, build or sound setting) compare page by page with `mise run capture-compare -- <A> <B> [--shift N]`, which warns when their settings differ.
 Where one palette index lies in the capture and in our render is `parity_probe.py index` ([section 10](#10-one-palette-index-index)).
 Still hand-rolled, with no subcommand yet: the 11x11 loss-window ranking (`windows`), the per-layer index histogram (`index-diff`) and the sand-coverage count (`coverage`).
 

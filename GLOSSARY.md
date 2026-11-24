@@ -214,7 +214,7 @@ _Avoid_: MCP port, debugger port, capture lock
 **Clock pass**: The first pass of a capture: one play of the film that only samples the film clock at a fixed frame interval, to learn where each tick falls.
 _Avoid_: trace (for this sparse sampling), pass 1
 
-**Window**: A short run of consecutive emulator frames, placed from the clock pass, from which a capture keeps at most one captured frame.
+**Window**: A short run of consecutive emulator frames, placed from the clock pass, from which a capture keeps at most one captured frame: the first at or after its goal tick whose page has just changed, equals a composed page and has a settled palette; windows' goals are at least one stride apart (default 11 ticks).
 _Avoid_: slice (a film's own unit), sample
 
 ## Artifacts
