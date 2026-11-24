@@ -19,7 +19,9 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import verify_formats_docs  # noqa: E402
-from formats_docs import fixtures, runner  # noqa: E402
+from formats_docs import catalog, fixtures, runner  # noqa: E402
+
+from git_helpers import run_git  # noqa: E402
 
 pytestmark = pytest.mark.docs
 
@@ -28,6 +30,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Every test that consumes the shared verification carries this group, which the gate's
 # `--dist loadgroup` keeps on one worker.
 CATALOG_GROUP = "kaitai-catalog"
+
+# The fixtures build their work paths from this part, so this file names no work path of its own
+# for test_code_cited_docs_exist to look up.
+WORK = "work"
 
 
 def _counting_ksc_command(starts: list[list[str] | None]) -> Callable[[], list[str] | None]:
@@ -162,6 +168,68 @@ def test_formats_catalog_link_integrity() -> None:
     """Verify that all relative markdown links and anchor targets resolve without broken paths."""
     result = verify_formats_docs.verify_link_integrity(REPO_ROOT)
     assert result.passed, f"Link integrity check failed: {result.errors}"
+
+
+def _git(repo: Path, *args: str) -> None:
+    """Run git args in *repo*, pinned to it, and fail the test on a non-zero exit."""
+    done = run_git(repo, *args)
+    assert done.returncode == 0, f"git {' '.join(args)}: exit {done.returncode}, {done.stderr!r}"
+
+
+def _write(repo: Path, name: str, text: str) -> None:
+    path = repo / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _repo(tmp_path: Path) -> Path:
+    """An empty repository whose trunk is ``main``."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    return repo
+
+
+def test_a_link_to_a_gitignored_file_fails_and_a_tracked_file_passes(tmp_path: Path) -> None:
+    """A target that exists only because a rule ignores it is broken on a fresh clone."""
+    repo = _repo(tmp_path)
+    _write(repo, ".gitignore", "*.log\n")
+    _write(repo, "notes.md", "# Notes\n")
+    _write(repo, "probe/probe.log", "trace\n")
+    _write(repo, "README.md", "# Readme\n\n[log](probe/probe.log) [notes](notes.md)\n")
+    _git(repo, "add", ".gitignore", "notes.md", "README.md")
+    _git(repo, "commit", "-qm", "base")
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+
+    assert not result.passed
+    assert len(result.errors) == 1, result.errors
+    assert "README.md:3" in result.errors[0]
+    assert "probe/probe.log" in result.errors[0]
+    assert ".gitignore:1:*.log" in result.errors[0]
+
+
+def test_only_a_work_note_the_branch_changes_is_link_checked(tmp_path: Path) -> None:
+    """A frozen note stays out of the scan set; the note this branch adds is in it."""
+    repo = _repo(tmp_path)
+    old = f"{WORK}/2026-11/old/journal.md"
+    changed = f"{WORK}/2026-11/new/journal.md"
+    _write(repo, old, "# Journal\n\n[gone](missing.md)\n")
+    _git(repo, "add", "work")
+    _git(repo, "commit", "-qm", "frozen note")
+    _git(repo, "switch", "-q", "-c", "feat")
+    _write(repo, changed, "# Journal\n\n[gone](missing.md)\n")
+    _git(repo, "add", changed)
+    _git(repo, "commit", "-qm", "new note")
+
+    scan = catalog.link_scan_files(repo)
+    assert changed in scan
+    assert old not in scan
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+    assert not result.passed
+    assert len(result.errors) == 1, result.errors
+    assert changed in result.errors[0]
 
 
 @pytest.mark.xdist_group(CATALOG_GROUP)

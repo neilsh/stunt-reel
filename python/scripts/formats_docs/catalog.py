@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass, field
 lazy from pathlib import Path
+
+import gate
+
+from stunt_reel.git_env import isolated_env
 
 # -----------------------------------------------------------------------------
 # Catalog Specification Constants
@@ -166,14 +171,65 @@ TIER_SCAN_GLOBS: list[str] = [
 TIER_LIKE_REGEX = re.compile(r"(?<!\[)\[([A-Z][a-z]+(?: [A-Z][a-z]+)*)\](?![(\[:])")
 
 
+def _changed_work_notes(repo_root: Path) -> list[str]:
+    """The ``work/**/*.md`` notes this branch changes over its base, in path order.
+
+    Work notes are frozen once their work lands, so only a note the branch changes is scanned.
+    A tree git cannot read, such as a synthetic fixture, contributes none.
+    """
+    try:
+        changed = gate.changed_paths(repo_root, gate.default_base(repo_root))
+    except OSError, subprocess.CalledProcessError, gate.ChangedPathsError:
+        return []
+    return sorted(
+        path
+        for path in changed
+        if path.startswith("work/") and path.endswith(".md") and (repo_root / path).is_file()
+    )
+
+
+def ignore_rules(repo_root: Path, paths: set[str]) -> dict[str, str]:
+    """The ignore rule each repository-relative path in *paths* matches, as ``source:line:pattern``.
+
+    A tracked path is not ignored even where a rule matches, so a link to a committed file
+    passes. A tree git cannot read yields no rules.
+    """
+    if not paths:
+        return {}
+    try:
+        done = subprocess.run(
+            ["git", "check-ignore", "-v", "-z", "--stdin"],  # noqa: S607 - git from PATH
+            cwd=repo_root,
+            env=isolated_env(keep_index=False),
+            input="\0".join(sorted(paths)) + "\0",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except OSError:
+        return {}
+    if done.returncode not in (0, 1):
+        return {}
+    fields = done.stdout.split("\0")
+    return {
+        fields[index + 3]: f"{fields[index]}:{fields[index + 1]}:{fields[index + 2]}"
+        for index in range(0, len(fields) - 3, 4)
+    }
+
+
 def link_scan_files(repo_root: Path) -> list[str]:
-    """Return the fixed link-scan list plus files matched by LINK_SCAN_GLOBS."""
+    """Return the fixed list, the LINK_SCAN_GLOBS matches, and the work notes the branch changes."""
     files = list(LINK_SCAN_FILES)
     for pattern in LINK_SCAN_GLOBS:
         for match in sorted(repo_root.glob(pattern)):
             rel = match.relative_to(repo_root).as_posix()
             if rel not in files:
                 files.append(rel)
+    for rel in _changed_work_notes(repo_root):
+        if rel not in files:
+            files.append(rel)
     return files
 
 
