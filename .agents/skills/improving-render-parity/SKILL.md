@@ -11,7 +11,7 @@ This skill says which to read and how to run the loop cheaply.
 Read only the section you need:
 
 - **Where the loss is** (capture, render, score, compare): [`research/parity/method.md`](../../../research/parity/method.md) section 1.
-- **What is wrong** (crop, shift, actor IoU, where one palette index lies, candidate sweeps, timing retime, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
+- **What is wrong** (crop, shift, actor IoU, where one palette index lies, candidate sweeps, timing retime, two captures, environment pitfalls): [`research/parity/probes.md`](../../../research/parity/probes.md).
 - **What was already tried**, dead ends included: read the **Ruled out** section of the note for the residual ([`attribution.md`](../../../research/parity/attribution.md), [`framing-and-actors.md`](../../../research/parity/framing-and-actors.md) or [`film-segments.md`](../../../research/parity/film-segments.md)), then search the journal entries with `rg <term> work/`.
   Do this before starting a hypothesis.
 

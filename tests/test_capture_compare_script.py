@@ -31,6 +31,8 @@ def _capture(
     *,
     palette_shift: set[int] | None = None,
     archive: str = "a" * 64,
+    build: str = "unpatched",
+    sound: str | None = None,
 ) -> Path:
     """A capture whose page at each tick has its first *pages[tick]* pixels set to 1."""
     frames_dir = directory / "frames"
@@ -53,8 +55,10 @@ def _capture(
         "frames": frames,
         "width": 320,
         "height": 200,
-        "playone_build": "unpatched",
+        "playone_build": build,
     }
+    if sound is not None:
+        meta["sound_samples"] = sound
     (directory / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     return directory
 
@@ -93,6 +97,27 @@ def test_counts_identical_pages_differing_pixels_and_palettes(tmp_path: Path) ->
     assert "differing pixels: median 0, 90th percentile 22" in text
     assert "palettes equal: 23 of 25" in text
     assert "archive bbbbbbbbbbbb, PLAYONE unpatched" in text
+
+
+def test_reports_each_capture_s_sound_samples(tmp_path: Path) -> None:
+    ticks = dict.fromkeys(range(0, 250, 10), 0)
+    a = _capture(tmp_path / "a", ticks, sound="stubbed")
+    b = _capture(tmp_path / "b", ticks)
+    text = capture_compare.report(capture_compare.compare(a, b))
+    assert "PLAYONE unpatched, sound stubbed)" in text
+    assert "PLAYONE unpatched, sound unrecorded (kept before ADR 0043))" in text
+
+
+def test_warns_on_each_setting_the_captures_differ_in(tmp_path: Path) -> None:
+    ticks = dict.fromkeys(range(0, 250, 10), 0)
+    a = _capture(tmp_path / "a", ticks, sound="stubbed", build="patch3")
+    b = _capture(tmp_path / "b", ticks, archive="b" * 64, sound="kept")
+    result = capture_compare.compare(a, b)
+    text = capture_compare.report(result)
+    assert "settings differ: archive, PLAYONE, sound" in text
+    assert "identical pages: 25 of 25" in text  # a warning, not a refusal
+    same = capture_compare.report(capture_compare.compare(a, a))
+    assert "settings differ" not in same
 
 
 def test_a_tick_captured_twice_keeps_its_first_page(tmp_path: Path) -> None:

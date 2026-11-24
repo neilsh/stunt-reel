@@ -483,14 +483,21 @@ def _run_play(attempt: Attempt, film: Path, build: game_builds.BuildName, plan_:
     with staged_play(film, attempt.archive, engine, sound_samples=job.sound_samples) as staged:
         layout = playone.layout_for(staged.mount / "PLAYONE.EXE")
         # The film's row names the builds its reference is made with (ADR 0029).
-        references.require_builds(
-            dataroot.REPO_ROOT,
-            attempt.slug,
-            playone=layout.name,
-            makeone=references.archive_makeone_build(
-                dataroot.REPO_ROOT, attempt.slug, attempt.archive
-            ),
-        )
+        try:
+            references.require_builds(
+                dataroot.REPO_ROOT,
+                attempt.slug,
+                playone=layout.name,
+                makeone=references.archive_makeone_build(
+                    dataroot.REPO_ROOT, attempt.slug, attempt.archive
+                ),
+            )
+        except references.ReferenceCaptureError as exc:
+            # The row binds only its slug, and the stored archive is found by slug too.
+            raise references.ReferenceCaptureError(
+                f"{exc}; for a capture that is not the reference, pass --out, a --name no row "
+                "holds and --archive <data root>/captures/<film>/archives/<FILM>.ALL"
+            ) from exc
         return plan_(replace(attempt, staged=staged, layout=layout))
 
 

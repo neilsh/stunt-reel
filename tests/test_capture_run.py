@@ -481,7 +481,11 @@ def test_a_game_root_that_the_row_does_not_name_is_refused_before_the_emulator(
 
     assert _run(script, staged_repo, monkeypatch, emulator) == 2
 
-    assert "names patch3" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "names patch3" in err
+    # A capture that is not the reference gets the flags that skip the row.
+    assert "--name" in err
+    assert "--archive" in err
     assert emulator.launches == 0
     assert _stage_is_empty()
 

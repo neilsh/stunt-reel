@@ -5,9 +5,10 @@ archive (``capture-ref --archive``) is judged against that noise (issue 301). Pa
 on an exact `film_tick`: pairing by nearest tick measures the film's motion, not the capture.
 Fewer than `MIN_PAIRS` shared ticks is reported as unpaired, with no statistics.
 
-Prints each capture's archive hash and `PLAYONE` build, the shared ticks, how many paired
-colour index pages are identical, the median and 90th percentile (nearest rank) of differing
-pixels per paired page, and on how many paired ticks the two palettes are equal.
+Prints each capture's archive hash, `PLAYONE` build and sound samples, warning when they differ,
+then the shared ticks, how many paired colour index pages are identical, the median and 90th
+percentile (nearest rank) of differing pixels per paired page, and on how many paired ticks the
+two palettes are equal.
 
 With ``--shift N``, each page of A with no identical page of B at its tick is looked for among
 B's pages at ticks ``t-N``..``t+N``: an exact pixel match there is a page drawn at another tick.
@@ -42,7 +43,14 @@ class Side:
     path: Path
     all_sha256: str | None
     playone_build: str | None
+    #: `meta.json`'s `sound_samples`; `None` for a capture made before the key (sound kept).
+    sound_samples: str | None
     pages: int
+
+    @property
+    def sound(self) -> str:
+        """How the capture played the archive's sound samples, as the report prints it."""
+        return self.sound_samples or "unrecorded (kept before ADR 0043)"
 
 
 @dataclass(frozen=True)
@@ -104,10 +112,12 @@ def nearest_rank(values: Sequence[int], q: float) -> int:
 def _side(path: Path, capture: CaptureSet) -> Side:
     raw: dict[str, Any] = json.loads((path / "meta.json").read_text(encoding="utf-8"))
     build = raw.get("playone_build")
+    sound = raw.get("sound_samples")
     return Side(
         path=path,
         all_sha256=capture.film.all_sha256,
         playone_build=build if isinstance(build, str) else None,
+        sound_samples=sound if isinstance(sound, str) else None,
         pages=len(capture.frames),
     )
 
@@ -242,9 +252,24 @@ def report(result: Comparison) -> str:
     """The comparison as the lines the command prints."""
     lines = [
         f"{label}: {side.path} ({side.pages} pages, archive {(side.all_sha256 or '?')[:12]}, "
-        f"PLAYONE {side.playone_build or '?'})"
+        f"PLAYONE {side.playone_build or '?'}, sound {side.sound})"
         for label, side in (("A", result.a), ("B", result.b))
     ]
+    differ = [
+        name
+        for name, a, b in (
+            ("archive", result.a.all_sha256, result.b.all_sha256),
+            ("PLAYONE", result.a.playone_build, result.b.playone_build),
+            ("sound", result.a.sound, result.b.sound),
+        )
+        if a != b
+    ]
+    if differ:
+        # Each of these changes pages, so the counts below are not recapture noise alone.
+        lines.append(
+            f"settings differ: {', '.join(differ)}; "
+            "the counts below include their effect, not recapture noise alone"
+        )
     if not result.paired:
         lines.append(f"unpaired: {result.shared} shared film ticks, fewer than {MIN_PAIRS}")
         return "\n".join(lines)
