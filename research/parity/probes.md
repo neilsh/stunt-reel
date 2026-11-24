@@ -277,6 +277,9 @@ Measured `mean_ssim_scored` (CTRY / INTRO, 2026-10-23, post-page-timing build):
 | -1 | 0.7723 | 0.6773 | 113/139, 208/212 |
 
 Offset 0 is the peak on both films and fractional phases around it are worse (§ 13), so the page phase is a whole tick and the renderer's `tick - 1` stays hardcoded.
+Offset 0 is also the film-mean peak over -2..+2 on all seven reference films at `e2981f3d`.
+A per-frame phase from the capture's emulator time (`t - 1 + φ`, φ the fitted tick minus the tag) lowers the seven-film mean: scaled by 0.5 it moves the mean from 0.9044 to 0.9034, LOCATION from 0.8728 to 0.8691 and INTRO from 0.8833 to 0.8791 while BOMB rises from 0.8949 to 0.8965, scaled by 1 the mean falls to 0.9024, and no variant adopts.
+_Source: [a frame's off-model tick changes with the capture's settings](../../work/2026-11/1033_per-frame-time-offsets/journal.md#2026-11-23-a-frames-off-model-tick-changes-with-the-captures-settings) and [rendering each frame at its emulator-time phase](../../work/2026-11/1033_per-frame-time-offsets/journal.md#2026-11-23-rendering-each-frame-at-its-emulator-time-phase)._
 Use this path for timing hypotheses only: it says nothing about geometry, and it changes no committed render.
 The first version of this test copied every render one tick back by hand while another process held `target/release/stuntreel.exe`; the fix was then confirmed by a fresh release render once the binary freed.
 

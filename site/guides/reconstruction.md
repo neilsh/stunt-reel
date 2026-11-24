@@ -15,7 +15,7 @@ The loop in the [method note](../../research/parity/method.md) has more steps th
 
 1. **Capture.**
    The original film player runs inside an emulator, and we save frames from it.
-   Each captured frame is tagged with the film clock, the tick of the film it shows, because capture order alone does not say which tick a frame is.
+   Each captured frame is tagged with the film clock when it was taken, because capture order alone does not say which tick a frame is.
    The notes infer this from the way the capture grabs distinct rendered pages.
 2. **Render.**
    Our renderer draws every tick that was captured.
@@ -70,6 +70,7 @@ The [evidence limits note](../../research/parity/evidence-limits.md) is a list o
 - **Repeat captures.**
   In early captures of one film on one machine, repeats at the same tick disagreed with each other, for a cause the notes have not identified, so a near-perfect score could not be told from that noise.
   Later, with the archives' sound samples replaced by stubs, one repeat of each reference film matched page for page, which does not rule out rarer differences.
+  Captures with other settings, such as sound kept, show another tick on some frames.
 - **Sparse samples.**
   Captures are many ticks apart, so motion between them goes unobserved.
 - **Metric blind spots.**

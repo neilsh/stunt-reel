@@ -223,8 +223,13 @@ _Source: [scratch driver](../../work/2026-11/distill-capture-dosbox-automation/j
 15. Do two pages labelled with one `film_tick` show the same moment?
     On `vault-balloon` tick 265 a reference page and a recapture page agree best with renders 3 ticks apart (264 and 267), which § 4.4's "never mislabels" would not allow, if confirmed; one page checked ([`../parity/metric-bench.md`](../parity/metric-bench.md#221-recapture-noise-of-the-reference-films) § 2.2.1).
     Matching pages to render ticks cannot settle it at today's render fidelity (Ruled out).
+    Across captures with different settings they often are not the same page: on LOCATION the stubbed Patch 3 reference's pages (rows 0..184) are index-identical at 406 of 645 shared tags with a Patch 3 capture with sound, 277 of 625 with an unpatched one with sound and 281 of 629 with an unpatched stubbed one, against 745 of 745 for a stubbed Patch 3 repeat.
+    In aggregate, which is what escapes the single-page objection above, the differing pages also differ in tick: where the reference prefers a render offset off the page lag and the other page differs by over 100 pixels, the other capture prefers the same offset on 5 of 33 such tags, 6 of 64 and 8 of 58 (all ticks; outside the canyon run 4 of 32, 4 of 61, 4 of 53), nearly always preferring offset 0 instead ([`capture.md` § 4](capture.md#4-observed-results)).
+    _Source: [a frame's off-model tick changes with the capture's settings](../../work/2026-11/1033_per-frame-time-offsets/journal.md#2026-11-23-a-frames-off-model-tick-changes-with-the-captures-settings)._
 16. Why does `vault-location` replay nearly bit for bit when its archive holds a sample-like chunk (`0xC447`) and six music chunks (§ 4.4)?
     The film may never play `0xC447`; its `0x9C` cues are not checked.
 17. How does sound playback move the picture (§ 4.4): the render loop's pacing, the tick a page's render starts from, or something else?
     And does a page captured without samples show its labelled tick more often than one with them?
+    Not measurably on LOCATION, one capture per setting: a best render offset off the page lag that beats offset 0 by over 0.01 of index agreement falls on 168 of 732 scored frames stubbed and 172 of 733 with sound on Patch 3, and on 161 of 732 stubbed and 162 of 732 with sound on the unpatched build.
+    _Source: [a frame's off-model tick changes with the capture's settings](../../work/2026-11/1033_per-frame-time-offsets/journal.md#2026-11-23-a-frames-off-model-tick-changes-with-the-captures-settings)._
 18. Likely answered (`[Supported Inference]`): `vault-location`'s 2 to 3 differing pages per with-sound pair (captured one after the other) came from its sound-range chunks; a stubbed pair agreed on 745 of 745 (§ 4.4).

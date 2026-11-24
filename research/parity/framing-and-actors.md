@@ -83,6 +83,7 @@ Two parts recur:
   The best render tick on the 12 ticks where time wins or ties lies before the captured tick on 5 and after it on 7, up to the search's reach of 4 either way (LAND 177's wider profile peaks 7 after); only LAND's four all fall after.
   LAND 419 is a cut: the capture already shows the next shot, which our render reaches at 420 (agreement 0.437 to 0.438 for every earlier tick, 0.963 to 0.965 from one tick later).
   BOMB cuts the other way at 3302 ([`attribution.md`](attribution.md#open-questions) open question 7), and #826 asks why CTRY's pages are drawn at a varying tick, so the time side is a per-page lag, not a film-wide one.
+  On LOCATION, where a capture with other settings holds a page differing by over 100 pixels at the same tag, a frame's best offset in -2..+2 recurs on few such frames outside the canyon run (4 of 32, 4 of 61, 4 of 53), so those offsets follow the capture's settings ([`capture.md` § 4](../playone-exe/capture.md#4-observed-results)).
 
 _Source: [time offset against page shift on the readout ticks](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks)._
 
