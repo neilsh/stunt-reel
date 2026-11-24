@@ -1,6 +1,6 @@
 """Diagnostic probes for parity work (see research/parity/probes.md).
 
-Five subcommands read a capture directory through the artifact adapter (its
+Six subcommands read a capture directory through the artifact adapter (its
 ``meta.json`` names each frame's planes and palettes) and a render directory
 (its ``render.json`` and render store), and a sixth reads one ``report.json``
 through the same adapter:
@@ -14,6 +14,9 @@ through the same adapter:
   capture's object pixels, per scored frame.
 * ``iou``    - mean IoU of our actor pixels against the capture's object
   pixels inside the actor's padded bounding box.
+* ``register`` - per captured tick, the render-tick offset and the whole-page shift that best
+  match the capture's backdrop edges (horizon, hills, road edges, sky bands; away from props
+  and actors).
 * ``retime`` - relabel an existing render by N ticks (negative allowed),
   rewriting its store and ``render.json``, so a timing hypothesis costs no
   rebuild.
@@ -52,6 +55,7 @@ from stunt_reel.parity_artifacts import (
     CaptureSet,
     RenderStore,
     read_capture,
+    read_page,
     read_report,
 )
 from stunt_reel.parity_pipeline import RetimeError, retime_render
@@ -460,6 +464,165 @@ def world_shift(
     return best
 
 
+#: Our layers that are backdrop (``LAYER_NONE`` sky, ocean, terrain): what ``register`` compares.
+BACKDROP_LAYERS = (0, 1, 2)
+#: Our prop layer, which ``register --with-props`` compares too.
+LAYER_PROP = 3
+
+
+def backdrop_mask(
+    layers: tuple[int, ...],
+    width: int,
+    rows: int,
+    pad: int = 8,
+    kept: tuple[int, ...] = BACKDROP_LAYERS,
+) -> np.ndarray:
+    """Our pixels of a ``kept`` layer (default sky, ocean, terrain) farther than ``pad`` px from
+    any other layer's (props, actors, credits).
+
+    The pad leaves out the capture's props and aircraft where they sit a few pixels off ours.
+    """
+    plane = np.asarray(layers[: width * rows], dtype=np.uint16).reshape(rows, width)
+    solid = ~np.isin(plane, kept)
+    grown = solid.copy()
+    for step in range(1, pad + 1):
+        grown[step:, :] |= solid[:-step, :]
+        grown[:-step, :] |= solid[step:, :]
+    solid, grown = grown, grown.copy()
+    for step in range(1, pad + 1):
+        grown[:, step:] |= solid[:, :-step]
+        grown[:, :-step] |= solid[:, step:]
+    return ~grown
+
+
+def edge_band(indices: bytes, width: int, rows: int, reach: int = 1) -> np.ndarray:
+    """Pixels within ``reach`` px (in x and in y) of an index change in ``indices``.
+
+    Flat sky and flat ground agree under any small move, so ``register`` compares only these.
+    """
+    plane = np.frombuffer(indices, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    edge = np.zeros((rows, width), dtype=bool)
+    edge[:, :-1] |= plane[:, :-1] != plane[:, 1:]
+    edge[:-1, :] |= plane[:-1, :] != plane[1:, :]
+    grown = edge.copy()
+    for step in range(1, reach + 1):
+        grown[step:, :] |= edge[:-step, :]
+        grown[:-step, :] |= edge[step:, :]
+    edge, grown = grown, grown.copy()
+    for step in range(1, reach + 1):
+        grown[:, step:] |= edge[:, :-step]
+        grown[:, :-step] |= edge[:, step:]
+    return grown
+
+
+def backdrop_agreement(
+    ours: bytes, keep: np.ndarray, capture: bytes, width: int, rows: int, dx: int, dy: int
+) -> float:
+    """Fraction of ``keep`` pixels whose index equals the capture's at ``(x + dx, y + dy)``."""
+    mine = np.frombuffer(ours, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    theirs = np.frombuffer(capture, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    ys, yt = slice(max(0, -dy), rows - max(0, dy)), slice(max(0, dy), rows - max(0, -dy))
+    xs, xt = slice(max(0, -dx), width - max(0, dx)), slice(max(0, dx), width - max(0, -dx))
+    mask = keep[ys, xs]
+    total = int(np.count_nonzero(mask))
+    return float(np.count_nonzero((mine[ys, xs] == theirs[yt, xt]) & mask)) / max(1, total)
+
+
+@dataclass(frozen=True)
+class Registration:
+    """How well one captured tick's backdrop matches ours: as rendered, and at the best moves.
+
+    Each best is ``(ticks, dx, dy, agreement)``: ``time`` moves only the render tick, ``page``
+    only the page, ``joint`` both. Ties go to the smaller move.
+    """
+
+    tick: int
+    pixels: int
+    base: float
+    time: tuple[int, int, int, float]
+    page: tuple[int, int, int, float]
+    joint: tuple[int, int, int, float]
+
+
+def register(
+    pages: dict[int, tuple[bytes, np.ndarray]],
+    capture: bytes,
+    tick: int,
+    width: int,
+    rows: int,
+    shift_reach: int,
+) -> Registration:
+    """Searches render ticks ``tick + k`` (every key of ``pages``) and page shifts in ±reach.
+
+    ``pixels`` in the result counts the compared pixels at ``k = 0`` with no shift.
+
+    ``pages`` maps the offset ``k`` to our indices and backdrop mask at ``tick + k``; it must
+    hold ``k = 0``.
+    """
+    grid: dict[tuple[int, int, int], float] = {}
+    for k, (indices, keep) in pages.items():
+        for dy in range(-shift_reach, shift_reach + 1):
+            for dx in range(-shift_reach, shift_reach + 1):
+                grid[k, dx, dy] = backdrop_agreement(indices, keep, capture, width, rows, dx, dy)
+
+    def best(cells: list[tuple[int, int, int]]) -> tuple[int, int, int, float]:
+        k, dx, dy = max(cells, key=lambda c: (grid[c], -(abs(c[0]) + abs(c[1]) + abs(c[2]))))
+        return (k, dx, dy, grid[k, dx, dy])
+
+    return Registration(
+        tick=tick,
+        pixels=int(np.count_nonzero(pages[0][1])),
+        base=grid[0, 0, 0],
+        time=best([c for c in grid if c[1] == 0 and c[2] == 0]),
+        page=best([c for c in grid if c[0] == 0]),
+        joint=best(list(grid)),
+    )
+
+
+def registration_row(r: Registration) -> str:
+    """One ``register`` output line: base agreement, then each best move and its gain."""
+
+    def cell(best: tuple[int, int, int, float]) -> str:
+        k, dx, dy, agree = best
+        return f"{k:+d} {dx:+d} {dy:+d} {agree:.3f} {agree - r.base:+.3f}"
+
+    return f"{r.tick} {r.pixels} {r.base:.3f} | {cell(r.time)} | {cell(r.page)} | {cell(r.joint)}"
+
+
+def cmd_register(args: argparse.Namespace) -> None:
+    """Per captured tick: does a render-tick offset or a whole-page shift best match the backdrop?
+
+    Compares our backdrop pixels next to an index edge (:func:`edge_band`) with the capture's.
+    """
+    store = RenderStore(args.ours)
+    geometry = store.record.geometry
+    width, rows = geometry.width, geometry.plane_rows()
+    reference = Reference(args.reference, store)
+    by_tick = {frame.film_tick: frame for frame in reference.capture.frames}
+    print(
+        "tick pixels base | time: k dx dy agree gain | page: k dx dy agree gain | joint: k dx dy agree gain"
+    )
+    for tick in parse_ticks(args.ticks):
+        frame = by_tick.get(tick)
+        if frame is None:
+            print(f"{tick} not captured")
+            continue
+        pages: dict[int, tuple[bytes, np.ndarray]] = {}
+        for k in range(-args.time_reach, args.time_reach + 1):
+            try:
+                page = read_page(store, tick + k)
+            except ArtifactError:
+                continue
+            kept = BACKDROP_LAYERS + ((LAYER_PROP,) if args.with_props else ())
+            keep = backdrop_mask(page.layers, width, rows, args.pad, kept)
+            pages[k] = (page.indices, keep & edge_band(page.indices, width, rows))
+        if 0 not in pages or not pages[0][1].any():
+            print(f"{tick} not rendered" if 0 not in pages else f"{tick} 0 no backdrop edges")
+            continue
+        capture = reference.matched_frame(frame, tick).capture_indices()
+        print(registration_row(register(pages, capture, tick, width, rows, args.shift_reach)))
+
+
 def cmd_shift(args: argparse.Namespace) -> None:
     background = background_for(args.reference)
     store = RenderStore(args.ours)
@@ -630,6 +793,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="render on the software adapter (lavapipe), even when a GPU is available",
     )
+    reg = sub.add_parser("register", help=cmd_register.__doc__)
+    reg.set_defaults(func=cmd_register)
+    reg.add_argument(
+        "--reference",
+        type=dataroot.data_path_arg,
+        default=None,
+        help="a capture directory (default: ctry's reference from references.toml)",
+    )
+    reg.add_argument("--ours", type=Path, required=True, help="render directory")
+    reg.add_argument("--ticks", required=True, help="comma list of captured film ticks")
+    reg.add_argument("--time-reach", type=int, default=4, help="render ticks tried either side")
+    reg.add_argument("--shift-reach", type=int, default=6, help="page shift tried either way, px")
+    reg.add_argument("--pad", type=int, default=8, help="px left out around props and actors")
+    reg.add_argument("--with-props", action="store_true", help="compare prop pixels too")
     for name, fn in commands:
         p = sub.add_parser(name)
         p.set_defaults(func=fn)

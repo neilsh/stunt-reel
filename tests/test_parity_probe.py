@@ -505,3 +505,68 @@ def test_cmd_index_refuses_a_missing_render_directory_with_exit_2(
     )
     assert parity_probe.cmd_index(args) == 2
     assert "parity_probe:" in capsys.readouterr().err
+
+
+def _scene(width: int, rows: int, phase: int) -> bytes:
+    """A backdrop of diagonal stripes, so every whole-page shift and every phase looks different."""
+    return bytes(((x + 3 * y + phase) * 7) % 23 for y in range(rows) for x in range(width))
+
+
+def test_backdrop_mask_leaves_out_props_actors_and_a_pad_around_them() -> None:
+    width, rows = 9, 7
+    layers = [2] * (width * rows)
+    layers[3 * width + 4] = 16
+    keep = parity_probe.backdrop_mask(tuple(layers), width, rows, pad=1)
+    assert not keep[2:5, 3:6].any()
+    assert keep[0, 0]
+    assert keep[6, 8]
+    assert keep[3, 1]
+    assert int(keep.sum()) == width * rows - 9
+
+
+def test_register_finds_a_page_shift_when_the_capture_is_our_page_moved() -> None:
+    width, rows = 24, 16
+    ours = _scene(width, rows, 0)
+    keep = parity_probe.backdrop_mask(tuple([0] * (width * rows)), width, rows)
+    capture = bytearray(ours)
+    for y in range(rows):
+        for x in range(width):
+            if 0 <= x - 2 < width and 0 <= y - 1 < rows:
+                capture[y * width + x] = ours[(y - 1) * width + x - 2]
+    pages = {k: (_scene(width, rows, 5 * k), keep) for k in (-1, 1)} | {0: (ours, keep)}
+    result = parity_probe.register(pages, bytes(capture), 10, width, rows, shift_reach=3)
+    assert result.page[:3] == (0, 2, 1)
+    assert result.page[3] == pytest.approx(1.0)
+    assert result.joint[:3] == (0, 2, 1)
+    assert result.time[3] < result.page[3]
+
+
+def test_register_finds_a_time_offset_when_the_capture_is_a_later_page() -> None:
+    width, rows = 24, 16
+    keep = parity_probe.backdrop_mask(tuple([0] * (width * rows)), width, rows)
+    pages = {k: (_scene(width, rows, 5 * k), keep) for k in range(-2, 3)}
+    result = parity_probe.register(pages, _scene(width, rows, 10), 10, width, rows, shift_reach=3)
+    assert result.time == (2, 0, 0, 1.0)
+    assert result.joint == (2, 0, 0, 1.0)
+    assert result.base < 1.0
+    line = parity_probe.registration_row(result)
+    assert result.pixels == width * rows
+    assert line.startswith(f"10 {width * rows} ")
+    assert "| +2 +0 +0 1.000" in line
+
+
+def test_edge_band_keeps_only_pixels_beside_an_index_change() -> None:
+    width, rows = 8, 6
+    plane = bytes(5 if y < 3 else 9 for y in range(rows) for x in range(width))
+    band = parity_probe.edge_band(plane, width, rows, reach=1)
+    assert band[1:4, :].all()
+    assert not band[0, :].any()
+    assert not band[4:, :].any()
+
+
+def test_backdrop_mask_with_props_keeps_the_prop_layer() -> None:
+    width, rows = 9, 7
+    layers = tuple([3] * (width * rows))
+    assert not parity_probe.backdrop_mask(layers, width, rows, pad=1).any()
+    kept = (*parity_probe.BACKDROP_LAYERS, parity_probe.LAYER_PROP)
+    assert parity_probe.backdrop_mask(layers, width, rows, pad=1, kept=kept).all()

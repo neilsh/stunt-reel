@@ -279,7 +279,7 @@ run = "uv run python python/scripts/parity_residue.py"
 
 [tasks.parity-probe]
 depends = ["ensure"]
-description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime|index ... ; index prints where one palette index lies in the capture and in our render; summary prints the scores a journal entry quotes)"
+description = "Diagnostic probes on one capture/render pair (mise run parity-probe -- crop|shift|iou|retime|index|register ... ; index prints where one palette index lies in the capture and in our render; register asks whether a tick offset or a page shift lands our backdrop on the capture's; summary prints the scores a journal entry quotes)"
 run = "uv run python python/scripts/parity_probe.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
