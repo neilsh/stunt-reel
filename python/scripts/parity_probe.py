@@ -2,7 +2,7 @@
 
 Six subcommands read a capture directory through the artifact adapter (its
 ``meta.json`` names each frame's planes and palettes) and a render directory
-(its ``render.json`` and render store), and a sixth reads one ``report.json``
+(its ``render.json`` and render store), and a seventh reads one ``report.json``
 through the same adapter:
 
 * ``index``  - where one palette index (or a range) lands in the capture and in our

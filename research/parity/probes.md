@@ -327,7 +327,7 @@ Which feature that index is, and why ours lacks it, is #617's question, not this
 ## 11. Backdrop registration (`register`)
 
 ```bash
-mise run parity-probe -- register --ours build/parity/ours/land_current     --reference captures/vault-land/frames --ticks 177,419 [--time-reach 4] [--shift-reach 6] [--with-props]
+mise run parity-probe -- register --ours build/parity/ours/land_current --reference captures/vault-land/frames --ticks 177,419 [--time-reach 4] [--shift-reach 6] [--with-props]
 ```
 
 For each captured film tick it asks whether a render-tick offset or a whole-page shift better lands our backdrop on the capture's.

@@ -71,7 +71,9 @@ Searching render ticks `t - 4` to `t + 4` and page shifts up to 6 px on our back
 | bomb | 11 | 7 | 0 | 3 | 1 | 2850 neither |
 | location | 11 | 10 | 0 | 1 | 0 | 5611 neither |
 
-No film's backdrop error is one time offset or one page shift: most ticks move under neither, and where one wins its size and sign change from tick to tick.
+No film's backdrop error is one time offset or one page shift: where one wins, its size and sign change from tick to tick.
+`neither` mixes two cases the table does not separate: 16 of its 40 ticks already agree at 0.95 or more as rendered, and 14 sit below 0.90 with no offset or shift helping, an error this probe does not account for.
+The two `neither` grade 2+ ticks, BOMB 2850 and LOCATION 5611, agree at 0.988 and 0.997 as rendered, so the probe sees almost no backdrop misregistration there and does not explain their grade.
 Two parts recur:
 
 * **A one-row vertical shift, ours low.**
@@ -79,7 +81,7 @@ Two parts recur:
   That is what truncating projected coordinates toward the projection centre would give, which `PLAYONE` does in its disc generator ([`sod-vm-generators.md`](../playone-exe/sod-vm-generators.md)); whether polygon vertices are projected the same way is [#1027](https://github.com/neilsh/stunt-reel/issues/1027).
 * **Per-tick time offsets of either sign.**
   The best render tick on the 12 ticks where time wins or ties lies before the captured tick on 5 and after it on 7, up to the search's reach of 4 either way (LAND 177's wider profile peaks 7 after); only LAND's four all fall after.
-  LAND 419 is a cut: the capture already shows the next shot, which our render reaches at 420 (agreement 0.438 for every earlier tick, 0.963 from one tick later).
+  LAND 419 is a cut: the capture already shows the next shot, which our render reaches at 420 (agreement 0.437 to 0.438 for every earlier tick, 0.963 to 0.965 from one tick later).
   BOMB cuts the other way at 3302 ([`attribution.md`](attribution.md#open-questions) open question 7), and #826 asks why CTRY's pages are drawn at a varying tick, so the time side is a per-page lag, not a film-wide one.
 
 _Source: [time offset against page shift on the readout ticks](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks)._
@@ -91,7 +93,7 @@ Baselines moved between rounds (0.771 / 0.676 on 2026-10-22, 0.7708 / 0.6762 at 
 Nothing below was adopted.
 
 * **Wrong geometry for the `location` trapezoid** (2026-11-16, [#504](https://github.com/neilsh/stunt-reel/issues/504)): the other `BVGT` arm of the same shape draws the capture's line blades; see § 3. [Journal](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest).
-* **One time offset or one page shift per film behind `background-misregistration`** (2026-11-23, [#990](https://github.com/neilsh/stunt-reel/issues/990)): on 84 readout ticks, 40 of the 69 with enough edge pixels move under neither, and the best time offsets change sign within INTRO and TRAINTNL; see § 4. [Journal](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks).
+* **One time offset or one page shift per film behind `background-misregistration`** (2026-11-23, [#990](https://github.com/neilsh/stunt-reel/issues/990)): on 84 readout ticks, 40 of the 69 with enough edge pixels move under neither (16 of them already agree at 0.95 or more, 14 sit below 0.90), and the best time offsets change sign within INTRO and TRAINTNL; see § 4. [Journal](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks).
 * **A montage tick-skipping rule** (2026-11-05, `[Bounded Observation]`, [#73](https://github.com/neilsh/stunt-reel/issues/73)).
   Offset search over -200..+10 on `captures/vault-intro`: the best-matching render tick follows the capture tick at slope 0.99 (largest deviation 7 ticks), so the 0.9-lag reading was a search saturating at -180.
   See [`film-segments.md`](film-segments.md#23-montage-frames).
