@@ -172,7 +172,7 @@ _Source: [Worker processes on the cloud's lavapipe over the seven reference film
 - **#920's memory case:** with the world not uploaded at all (Span A, one run each) the post-upload resident set fell 413.4 MiB on lavapipe (499.4 to 86.0) and 106.1 MiB on the RTX 4070 (267.8 to 161.7), and the peak 555.7 and 301.0 MiB, upper bounds on what un-baking could save.
   A CPU count puts 333.75 MiB in `LOCATION`'s world buffers, 318.04 MiB (95.4% of the vertices) in nodes un-baking would drop; un-baking would drop 281.5 MiB of buffers net with `outlined()` quads or 308.1 MiB with line-list outlines, once its 823 shapes and 28,434 per-placement entries are added (buffer bytes, not a measured fall; the world's `GpuNode` arena is 56.5 MiB of the 79.7 MiB between 333.75 and 413.4 MiB).
   Memory gives no go while no parity machine is short of it: the trigger to revisit is one whose cores, times about 0.93 GiB a worker (section 5), exceed its RAM.
-  The owner has since ruled that architecture alone can justify un-baking if it costs no performance: [`#999`](https://github.com/neilsh/stunt-reel/issues/999) carries that, with its gates.
+  The owner has since ruled that architecture alone can justify un-baking if it costs no performance and moves the renderer toward a more maintainable design: [`#999`](https://github.com/neilsh/stunt-reel/issues/999) carries that, with its gates.
 
 _Source: [verdicts](../../work/2026-11/distill-lavapipe-render-time/journal.md#2026-11-22-optimization-verdicts-as-of-f6976e67)._
 
