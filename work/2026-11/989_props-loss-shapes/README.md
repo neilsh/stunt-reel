@@ -2,7 +2,7 @@
 title: "Which prop shapes cost the props loss on LOCATION and BOMB, and why?"
 started: 2026-11-23
 issue: 989
-outcome: "Ranked the costliest prop shapes on LOCATION and BOMB and gave each a cause in research/parity/prop-shape-loss.md, except 89% of BOMB street 1756's loss (#1035); filed #1029 to #1034, one per cause."
+outcome: "Ranked the costliest prop shapes on LOCATION and BOMB and gave each a cause in research/parity/prop-shape-loss.md, except about 88% of BOMB street 1756's loss (#1035); filed #1029 to #1034, one per cause."
 ---
 
 # Which prop shapes cost the props loss on LOCATION and BOMB, and why?

@@ -54,7 +54,7 @@
     The offset changes between shots and is a whole-frame one, so it is the camera's, not the shapes' placement.
   - **BOMB 1756** at 2740: agreement 0.936, 0.950 with our panel a column left; 3302 is the known camera cut; the next entry looks at the rest.
   - **LOCATION 1150** at 2212: agreement 0.730, and 0.741 at the best shift, our panel 4 columns right (the edge of the search), so no whole-frame shift explains it: the crater's near rim and the pink wall under it differ in outline.
-    These frames do not tell a camera-position difference from a shape or cover-order one.
+    These frames do not tell a camera-position difference from a shape or cover-order one; #1031's step 1 tests it by whether the near rim and the far shore shift by different amounts frame to frame on ticks 2201 to 2322 (parallax) or the rim's outline differs at a fixed offset.
     **1745** at 4390: the sleepers are where the capture's are within a fraction of their spacing; +1 tick raises ticks 4330 to 4470 from 0.8939 to 0.9076.
   - **`scenery-missing`, BOMB 1585 and 1904** ([sheet](images/bomb-1904-lod.png), its first two panels): the distant town's houses, which the capture draws as white walls and roofs, are missing from ours, which shows lots, roads and trees there.
 - **Verdict**: control (diagnosis); each cause is tested or filed in the entries below.
@@ -67,7 +67,7 @@
 - **Result**:
   - Of 1756's summed loss (2.62 over 101 frames): 7% on ticks 221 to 420 (the opening shot, whose frame sits a row low at 155 and 233), 4% on tick 3302 (0.115), 75% on ticks 2036 to 2740 and 14% on 3312 to 3477.
   - At the eight ticks and at 2740 the best whole-frame shift is 0 or one column, raising agreement by at most 0.014, and 0.95 to 0.98 of 1756's pixels carry the capture's colour; its loss there is 0.020 to 0.066 a frame.
-- **Verdict**: control (diagnosis); the 89% outside the opening shot and the cut is unexplained.
+- **Verdict**: control (diagnosis); about 88% of its loss, outside the opening shot and the cut, is unexplained.
   The street is drawn in place, in the capture's colours, so neither a camera offset nor a wrong shade explains it.
   `[Hypothesis]`: each pixel takes a share of every SSIM window's loss over it ([`report-fields.md`](../../../research/parity/report-fields.md)), so windows straddling the edges of the lots, trees and buildings on the street charge part of their loss to it; testing it is [#1035](https://github.com/neilsh/stunt-reel/issues/1035).
 - **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.6.

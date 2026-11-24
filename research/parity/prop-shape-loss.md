@@ -39,7 +39,7 @@ _Source: [the costliest prop shapes on LOCATION and BOMB](../../work/2026-11/989
 | Far houses missing: the level-of-detail stand-ins | `bomb` `scenery-missing` 1585, 1904 | 2.4 | [#1032](https://github.com/neilsh/stunt-reel/issues/1032) |
 | A run of frames prefers a one-tick offset | `location` 1745, 996 | 2.5 | [#1033](https://github.com/neilsh/stunt-reel/issues/1033) |
 | Lines and outlines on a shape drawn in place | `location` 613 | 2.5 | [#1034](https://github.com/neilsh/stunt-reel/issues/1034) |
-| Unexplained: drawn in place, in the capture's colours | `bomb` 1756 on ticks 2036 to 2740 and 3312 to 3477 (89% of its loss) | 2.6 | [#1035](https://github.com/neilsh/stunt-reel/issues/1035) |
+| Unexplained: drawn in place, in the capture's colours | `bomb` 1756 on ticks 2036 to 2740 and 3312 to 3477 (about 88% of its loss) | 2.6 | [#1035](https://github.com/neilsh/stunt-reel/issues/1035) |
 
 In the issue's terms, 2.1, 2.2 and 2.5 are misplacement by the camera, not by the prop; 2.3 is draw order; 2.4 is missing; 2.6 has no cause yet.
 No shape inspected shows a wrong shade or a wrong shape of its own.
@@ -58,6 +58,7 @@ The `bomb` buildings and lots 1648, 1650, 1737 and 1654 are drawn in the capture
 The whole frame is displaced: ours a row low on the opening shot (ticks 155 and 233, where the fire station 1650 and church 1648 lose 0.040 to 0.043 a frame), two rows low at 3191, three rows high and a column left at 3268, and at least four columns left at 2961 (four is the search's limit).
 The offset changes between shots, unlike the rigid offset ruled out for whole films in [`attribution.md`](attribution.md#ruled-out).
 `[Hypothesis]`: on `location` tick 2212 the crater 1150's near rim differs in outline and no whole-frame shift fixes it (0.730, 0.741 at the best shift), which the camera moving differently during the shot would explain; a shape or cover-order difference would too, and these frames do not tell them apart.
+The test, #1031's step 1: on ticks 2201 to 2322, a camera difference moves the near rim and the far shore by different amounts frame to frame (parallax), while a shape or cover-order one changes the rim's outline at a fixed offset.
 Which camera input the offsets follow is [#1031](https://github.com/neilsh/stunt-reel/issues/1031).
 
 _Source: [what the canyon and BOMB frames show](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-what-the-canyon-and-bomb-frames-show)._
@@ -89,7 +90,7 @@ _Source: [the LOCATION canyon run steps late](../../work/2026-11/989_props-loss-
 ### 2.6 The street loses in place, unexplained
 
 `bomb` 1756, the street and the film's costliest prop shape, loses 7% of its loss on the opening shot (2.2) and 4% at 3302, the camera cut of [`attribution.md`](attribution.md) open question 7.
-The other 89%, on ticks 2036 to 2740 and 3312 to 3477, has no cause found: at nine ticks from 2190 to 3345 the street is drawn in place (best whole-frame shift 0 or one column, raising agreement by at most 0.014) with 0.95 to 0.98 of its pixels in the capture's colour, yet it loses 0.020 to 0.066 a frame.
+The other part, about 88%, on ticks 2036 to 2740 and 3312 to 3477, has no cause found: at nine ticks from 2190 to 3345 the street is drawn in place (best whole-frame shift 0 or one column, raising agreement by at most 0.014) with 0.95 to 0.98 of its pixels in the capture's colour, yet it loses 0.020 to 0.066 a frame.
 `[Hypothesis]`: each pixel takes a share of every SSIM window's loss over it ([`report-fields.md`](report-fields.md)), so windows straddling the edges of the lots, trees and buildings on the street charge part of their loss to it; testing it is [#1035](https://github.com/neilsh/stunt-reel/issues/1035).
 
 _Source: [the BOMB street 1756 loses in place](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-bomb-street-1756-loses-in-place)._
@@ -106,7 +107,7 @@ In order of the loss each would explain:
 
 1. **The canyon step rule** ([#1029](https://github.com/neilsh/stunt-reel/issues/1029)).
 2. **The per-shot camera offset** ([#1031](https://github.com/neilsh/stunt-reel/issues/1031)), which touches five of `bomb`'s eight worst shapes and 1756's opening shot.
-3. **The street's loss in place** ([#1035](https://github.com/neilsh/stunt-reel/issues/1035)), 89% of `bomb`'s costliest shape.
+3. **The street's loss in place** ([#1035](https://github.com/neilsh/stunt-reel/issues/1035)), about 88% of `bomb`'s costliest shape.
 4. **In-shape paint order** ([#1030](https://github.com/neilsh/stunt-reel/issues/1030)).
 5. **The far town's stand-ins** ([#1032](https://github.com/neilsh/stunt-reel/issues/1032)).
 6. **One-tick phase** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)) and **the stadium's lines** ([#1034](https://github.com/neilsh/stunt-reel/issues/1034)).
