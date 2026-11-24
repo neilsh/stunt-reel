@@ -12,14 +12,16 @@ use stunt_core::contracts::{CameraTransform, TrajectoryRecord};
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::{FilmScene, SceneFrame};
 use stunt_render::{
-    CameraController, Offscreen, PageSink, PageSize, RenderOptions, RenderedPage, Renderer,
-    SinkError,
+    CameraController, Offscreen, PageSink, PageSize, RenderError, RenderOptions, RenderedPage,
+    Renderer, SinkError,
 };
 
 /// Environment variable that turns a missing GPU from a skip into a test failure.
 ///
 /// CI sets it on the job that installs a software Vulkan driver (lavapipe), so a GPU test
-/// that silently skips there is a broken runner, not a pass.
+/// that silently skips there is a broken runner, not a pass. It asks for a GPU, not the
+/// software fallback: [`gpu_or_skip_software`] still skips when no fallback offers clip
+/// distances (WARP never does, [ADR 0054](../../../../../docs/adr/0054-depth-is-reversed-and-infinite.md)).
 pub(crate) const REQUIRE_GPU_ENV: &str = "STUNT_REQUIRE_GPU";
 
 /// Whether a missing adapter must fail the test instead of skipping it.
@@ -150,7 +152,8 @@ impl TestRenderer {
 
 /// Opens an offscreen renderer over the scene, or skips/fails per ADR 0006.
 ///
-/// Panics instead of returning None when `STUNT_REQUIRE_GPU=1`, and outside a [`gpu_test`] body.
+/// Panics instead of returning None when `STUNT_REQUIRE_GPU=1`, and outside a [`gpu_test`] body;
+/// the software fallback is the exception, which [`open_result_or_skip`] documents.
 pub(crate) fn open_or_skip(
     scene: &FilmScene,
     target: Offscreen,
@@ -158,9 +161,31 @@ pub(crate) fn open_or_skip(
     sink: Box<dyn PageSink>,
 ) -> Option<Renderer> {
     assert_in_gpu_test();
-    match Renderer::offscreen(scene, target, sink, options) {
+    let opened = Renderer::offscreen(scene, target, sink, options);
+    open_result_or_skip(opened, options.software_only, require_gpu())
+}
+
+/// [`open_or_skip`]'s decision, with its inputs passed in so both paths are testable.
+///
+/// A missing adapter fails the test when `require_gpu` is set, except for the software
+/// fallback: `STUNT_REQUIRE_GPU` asks for a GPU, and Windows' only CPU adapter, WARP, never
+/// offers the clip distances the renderer requires (ADR 0054), so a software-only test skips
+/// with that reason. A runner with no adapter at all still fails its other GPU tests.
+fn open_result_or_skip(
+    opened: Result<Renderer, RenderError>,
+    software_only: bool,
+    require_gpu: bool,
+) -> Option<Renderer> {
+    match opened {
         Ok(renderer) => Some(renderer),
-        Err(error) if require_gpu() => {
+        Err(RenderError::NoGpuAdapter) if software_only => {
+            eprintln!(
+                "[test] Skipping software-only GPU test: no software fallback adapter with clip \
+                 distances (WARP lacks them; ADR 0054)"
+            );
+            None
+        }
+        Err(error) if require_gpu => {
             panic!("{REQUIRE_GPU_ENV}=1 but no GPU renderer could be created: {error}")
         }
         Err(error) => {
@@ -202,7 +227,8 @@ pub(crate) fn gpu_or_skip_offscreen(
     })
 }
 
-/// Like `gpu_or_skip`, restricted to the software fallback adapter.
+/// Like `gpu_or_skip`, restricted to the software fallback adapter, and skipping even under
+/// `STUNT_REQUIRE_GPU=1` when the machine's fallback cannot open one (see [`open_result_or_skip`]).
 pub(crate) fn gpu_or_skip_software(scene: &FilmScene) -> Option<TestRenderer> {
     gpu_or_skip_offscreen(
         scene,
@@ -232,4 +258,38 @@ pub(crate) fn still_timeline(camera: CameraTransform) -> FilmTimeline {
         }],
         Vec::new(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_software_adapter_skips_even_when_a_gpu_is_required() {
+        let opened = open_result_or_skip(Err(RenderError::NoGpuAdapter), true, true);
+        assert!(opened.is_none());
+    }
+
+    #[test]
+    fn a_missing_adapter_skips_when_no_gpu_is_required() {
+        let opened = open_result_or_skip(Err(RenderError::NoGpuAdapter), false, false);
+        assert!(opened.is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "STUNT_REQUIRE_GPU=1")]
+    fn a_missing_gpu_adapter_fails_when_one_is_required() {
+        drop(open_result_or_skip(
+            Err(RenderError::NoGpuAdapter),
+            false,
+            true,
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "failed to request a GPU device")]
+    fn a_software_adapter_that_cannot_open_still_fails_when_a_gpu_is_required() {
+        let error = RenderError::DeviceRequest("the device was lost".to_owned());
+        drop(open_result_or_skip(Err(error), true, true));
+    }
 }
