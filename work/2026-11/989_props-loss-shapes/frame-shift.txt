@@ -1,0 +1,21 @@
+# Per frame: the shift (dx, dy) of our panel that maximises the share of pixels with the capture's colour; agreement compares capture (x, y) with ours (x + dx, y + dy), so dy = +1 means our picture sits one row lower. Every other column, a 6-pixel border and the bottom 12 rows left out.
+bomb_155.png best (agree,dx,dy) (0.948, 0, 1) at 0: 0.912
+bomb_233.png best (agree,dx,dy) (0.963, 0, 1) at 0: 0.96
+bomb_3191.png best (agree,dx,dy) (0.922, 0, 2) at 0: 0.898
+bomb_2300.png best (agree,dx,dy) (0.876, 0, 0) at 0: 0.876
+bomb_2961.png best (agree,dx,dy) (0.805, -4, -1) at 0: 0.67
+bomb_2080.png best (agree,dx,dy) (0.919, -1, 0) at 0: 0.919
+bomb_3268.png best (agree,dx,dy) (0.947, -1, -3) at 0: 0.903
+bomb_2740.png best (agree,dx,dy) (0.95, -1, 0) at 0: 0.936
+location_2059.png best (agree,dx,dy) (0.825, 0, 0) at 0: 0.825
+location_2729.png best (agree,dx,dy) (0.899, 0, 0) at 0: 0.899
+location_2212.png best (agree,dx,dy) (0.741, 4, 0) at 0: 0.73
+location_4390.png best (agree,dx,dy) (0.931, 1, 0) at 0: 0.922
+bomb_2190.png best (agree,dx,dy) (0.908, 0, 0) at 0: 0.908
+bomb_2355.png best (agree,dx,dy) (0.892, 0, 0) at 0: 0.892
+bomb_2421.png best (agree,dx,dy) (0.905, 0, 0) at 0: 0.905
+bomb_2520.png best (agree,dx,dy) (0.925, -1, 0) at 0: 0.925
+bomb_2586.png best (agree,dx,dy) (0.929, 0, 0) at 0: 0.929
+bomb_2630.png best (agree,dx,dy) (0.943, 0, 0) at 0: 0.943
+bomb_2718.png best (agree,dx,dy) (0.953, -1, 0) at 0: 0.946
+bomb_3345.png best (agree,dx,dy) (0.933, -1, 0) at 0: 0.932
