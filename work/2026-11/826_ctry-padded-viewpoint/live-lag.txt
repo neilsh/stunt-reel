@@ -1,0 +1,14 @@
+own: view-clock-unpatched-20261124T093816Z.jsonl sha256 4ee5a289da87ef7195ea1e2e54e3b42c9603cff5b1219e018ca41d6dc12a6597
+padding: view-clock-unpatched-20261124T094741Z.jsonl sha256 63a7dd5c84bab6408cf5c7849b889e04cf7009525e8020b7130daec3a1961fc7
+own: 396 frames, scene ticks 53..1334
+  hud - scene: {2: 112, 3: 212, 4: 72}
+  end - scene: {2: 112, 3: 212, 4: 72}
+  scene gap between frames: {2: 48, 3: 219, 4: 112, 5: 16}
+  view hit at the scene tick: 388 of 396
+padding: 418 frames, scene ticks 0..1335
+  hud - scene: {1: 1, 2: 139, 3: 196, 4: 79, 5: 3}
+  end - scene: {1: 1, 2: 139, 3: 196, 4: 79, 5: 3}
+  scene gap between frames: {2: 61, 3: 227, 4: 113, 5: 16}
+  view hit at the scene tick: 411 of 418
+camera record equal at 195 of 195 scene ticks both runs drew
+at 201 HUD ticks both runs drew, scene tick difference: {-1: 56, 0: 145}

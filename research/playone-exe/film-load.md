@@ -1,11 +1,11 @@
 ---
-summary: "`PLAYONE.EXE` loading a film: the `.ALL` directory read, every chunk preloaded into an LRU cache whose node pool shrinks as the id index grows, what each chunk costs, the film clock starting on the first timer tick after the load, so archives that draw alike start on the same interrupt and later ones whole ticks later, and the per-frame probe that sweeps from each slot's position at the previous drawn frame, whose results in `CTRY.FLM` did not change at any probed frame of two live runs, while its padded-archive pages differ at the propeller and the viewpoint."
+summary: "`PLAYONE.EXE` loading a film: the `.ALL` directory read, every chunk preloaded into an LRU cache whose node pool shrinks as the id index grows, what each chunk costs, the film clock starting on the first timer tick after the load, so archives that draw alike start on the same interrupt and later ones whole ticks later, and the per-frame probe that sweeps from each slot's position at the previous drawn frame, whose results in `CTRY.FLM` did not change at any probed frame of two live runs, while its padded-archive pages differ at the propeller and the viewpoint; the slots are placed by the fraction the film step sets from its clock reading and the HUD shows the clock after the render, and on 12 of the 23 viewpoint pages, on peaked score curves, the two archives' scenes are a tick apart at one tag."
 sidebar_label: "Film load & chunk cache"
 ---
 # `PLAYONE.EXE`: Loading a Film and Its Archive
 
 * **Binary**: unpatched `PLAYONE.EXE`, image offsets ([`static-tooling.md`](static-tooling.md) § 3); `DS:` offsets are `DGROUP`.
-* **Method**: static reading with `mise run re-tool -- disasm` and `xref`, 2026-11-18; section 6 is a per-frame memory log on dosbox-automation.
+* **Method**: static reading with `mise run re-tool -- disasm` and `xref`, 2026-11-18 and 2026-11-24 (section 5's clock readings also by a recursive descent over direct calls); section 6 is a per-frame memory log on dosbox-automation, and section 5's live runs use DOSBox-X's debugger.
 * **Scope**: where the `.ALL` is loaded, the chunk cache it fills, what an added chunk costs, how the film clock starts, and what the per-frame call steps per drawn frame rather than per film tick (section 5); whether that is why a later start changes the pages a capture keeps ([`linking.md`](../makeone-exe/linking.md) § 7.2) is open.
 * **Evidentiary tier**: `[Established]` for what the code does, read statically; `[Hypothesis]` where a capture's frames are tied to it.
 
@@ -135,7 +135,34 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
   Outside the HUD clock 52 pages differ, classified by eye: 28 at the propeller, on the aircraft and in its shadow; 23 along edges across the whole view, a viewpoint a pixel or so apart; one by 14 pixels near an object's tip.
   None differs at the shadow alone, so the sweep is not what changes these pages ([`linking.md`](../makeone-exe/linking.md) § 7.2).
   If the biplane's propeller is a stock `ROTZ` on operand `0x14` (not checked), its angle is the angle bank's word `0x14`, the previous drawn frame's var 10 ([`angle-bank.md`](angle-bank.md)), so a frame drawn after another schedule draws it at another angle (`[Hypothesis]`).
-  On 15 of the 23 viewpoint pages the HUD clock reads the same in both captures; what moves the viewpoint is open question 1.
+  On 15 of the 23 viewpoint pages the HUD clock reads the same in both captures.
+* **The slots and the HUD clock come from different readings of the clock (`[Established]` for the readings named, read statically, [#826](https://github.com/neilsh/stunt-reel/issues/826)).**
+  Between the film step's call (`0x4A07`) and the HUD's read, the direct-call trace found four reads of the clock `DS:0x4896` as `[reg + 0x0E]` with the register holding `0x4888`:
+  - the film step at `0x3A88`, which moves the slice and sets the fraction `0x22E0` (`0x3AE4..0x3AF7`), which the slot pass `0x136F` (`0x1381`) and the interpolation `0x3E6C` (`0x3E76`) read;
+  - the slot pass at `0x1370` (`0x13EA` with `SI = 0x4888`), which stores only the ticks since its previous run (`0x22DC`, no reader by address) and the clock at `DS:0x489A` (field `+0x12`);
+  - the angle bank's fill at `0x1DCA` (`0x1D96`, from `0x0F77` in the render step `0x0EE9`), which writes bank word `0x10` as `clock << 12` ([`angle-bank.md`](angle-bank.md));
+  - `0x40C5`, in `0x40AC`, which stores a clock delta through `[0x4888]` and is reached from the slot pass at `0x141F` when the deferred-call queue is not empty and byte `0x2276` is set, and from the film step at `0x3BB0`.
+  The film step also reads `[0x4896]` directly at `0x3B37` on its zero-length-slice path.
+  After `0x0EE9`, `0x4A38` reads the clock again and passes it to the HUD clock's draw `0x33C3`.
+  The recursive descent followed direct near calls and jumps from the film step and from `0x4FCD`, `0x13EA`, `0x1151`, `0x11F8` and `0x0EE9` (3,806 instructions).
+  It checked `0x4896` operands and `+0x0E` displacements.
+  The other `+0x0E` reads it found sit beside `+0x04`, `+0x08` and `+0x0C` reads of a 32-bit position.
+  It does not follow the 78 far calls (most into segment `0x0824`), word-table calls and register calls it met, so a reader through those is not excluded.
+  So a drawn frame's slots, the camera's object among them, are placed by the fraction from the film step's reading; the angle bank's word `0x10` is a later reading within the render; and the HUD shows the clock after the render, later by the timer interrupts that fell while the frame was composed.
+* **That gap varies per frame, and the camera's eye and angles carried no state between frames (`[Bounded Observation]`, DOSBox-X's debugger, unpatched build, the own and #348's padded `CTRY.ALL`, sound stubbed, one run each, 2026-11-24).**
+  The HUD's tick less the film step's was 2, 3 or 4 on 112, 212 and 72 of the own run's 396 drawn frames, and 1 to 5 on the padded run's 418 (139, 196 and 79 of them 2, 3 and 4).
+  The camera's 24-byte record at `0x1251` (eye and angles) was equal in both runs at all 195 film-step ticks both drew, about half of each run's frames, and at 56 of the 201 HUD ticks both drew the two runs' film-step ticks were one apart.
+  These are DOSBox-X's frames, drawn 2 to 5 ticks apart, and they do not pair with the captures' pages ([`capture-dosbox-automation.md`](capture-dosbox-automation.md) § 2 has the captures' HUD 0 to 3 ticks behind the live tick).
+* **On 12 of the 23 viewpoint pages the curves fit a one-tick shift (`[Bounded Observation]`, fresh unpatched captures of the own and the padded archive, sound stubbed, one each, which reproduce #348's 111 shared ticks and 42 identical pages and #779's 52 differing ones).**
+  Each capture was scored against one render of the own archive relabelled to offsets -3 to +2, every score with `--waive-archive-conflict`, and the padded page's index-agreement curve was matched to the own page's at shifts of -2 to +2 ticks.
+  The padded capture's archive differs from the render's, so its curve can sit lower than the own capture's whatever its tick; the match takes the curves' shape over offsets, and where a curve is nearly flat a level offset between the arms can pass for a shift.
+  28 of the 29 other differing pages (the propeller's and 837) fit shift 0 and 716, nearly flat, is undecided, so the score separates a one-tick step where the camera moves.
+  Of the 23 viewpoint pages, 12 fit a shift of one tick on peaked curves (the padded page later on 7 and earlier on 5), and 3 more (1145, 1189, 1212) fit one on near-flat curves, moving at most 2.1 thousandths between offsets, with fit errors of 0.20 to 0.24 thousandths, the size of the propeller pages' errors at shift 0; 6 are undecided, 2 unscored, and none fits 0 or 2.
+  Of the 15 at an equal HUD clock, 5 fit a one-tick shift on peaked curves and 3 on near-flat ones, 6 are undecided and 1 is unscored.
+  On the 5 peaked pages with an equal HUD clock, a one-tick shift between the scenes is consistent with the varying lag observed in DOSBox-X.
+  The other 7 peaked pairs have different HUD clocks.
+  Across the 12 peaked pairs, parity's `t - 1` pairs at least one page in each pair with a render a tick off its scene.
+  The shift is relative: no page was dated by the film step's clock.
 * **The pair test does not run.**
   `0x1463` calls `0x1588` for pairs of slots when `DS:0x2282` is set (`0x149A`), but `0x2282` is 0 in the load image (image `0xF792`) and the one instruction that writes it stores 0 (`0x49C1`).
   Its hit path (`0x16C2`) and the probe's (`0x25EE`) both go to `0x4B03`, a bare `ret`.
@@ -157,7 +184,7 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
   The INT 8 path also adds the speed `DS:0x475E` to `0x4758:0x475A` (`0x43B4..0x43D2`); `0x0E48` copies `0x4758` to `0x475C`, which nothing else uses as an operand, and `0x3B33`/`0x3BB8` save and restore it around the two other calls of `0x136F`.
   It is a timer-driven clock, like the film clock.
 
-_Source: [the slot pass keeps each slot's previous position](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it); [the per-frame call steps no frame counter](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter); [the probe's results held at every probed frame](../../work/2026-11/779_carried-draw-state/journal.md#2026-11-19-the-probes-results-held-at-every-probed-frame-pages-differ-at-the-propeller-and-the-viewpoint)._
+_Source: [the slot pass keeps each slot's previous position](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it); [the per-frame call steps no frame counter](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-per-frame-call-steps-no-frame-counter); [the probe's results held at every probed frame](../../work/2026-11/779_carried-draw-state/journal.md#2026-11-19-the-probes-results-held-at-every-probed-frame-pages-differ-at-the-propeller-and-the-viewpoint); [the film step reads the clock before the render](../../work/2026-11/826_ctry-padded-viewpoint/journal.md#2026-11-24-the-film-step-reads-the-clock-before-the-render-and-the-hud-reads-it-after); [HUD minus scene tick varies](../../work/2026-11/826_ctry-padded-viewpoint/journal.md#2026-11-24-hud-minus-scene-tick-varies-from-frame-to-frame-under-dosbox-x); [the arms' scenes are one tick apart](../../work/2026-11/826_ctry-padded-viewpoint/journal.md#2026-11-24-on-12-viewpoint-pages-the-two-arms-scenes-are-one-tick-apart)._
 
 ## 6. The Start Against the Emulator Frame
 
@@ -184,7 +211,7 @@ A Lua script read `DS:0x22B8`, `0x2272`, `0x4896`, `0x22BA` and `0x7FEC` on ever
   So the timer tick is the quantum of the start.
 * **The start accounts for the last page's frame.**
   Each arm's last page is as many frames later as its start, converted at 70.087 / 50 frames per tick, to within one frame (3 ticks, 4.2 frames, against 5; 24 ticks, 33.6, against 34), and each equals the last-page frame of § 7.2's captures.
-  Why a start whole ticks later changes what is drawn at a film tick is open question 1.
+  On 12 of CTRY's padded-archive viewpoint pages the two arms' scenes are a tick apart at one tag (section 5); whether the later start does that by setting each frame's lag is open question 1.
 
 _Source: [archives that draw alike start the film clock on the same timer interrupt](../../work/2026-11/722_playone-start-timer-tick/journal.md#2026-11-18-archives-that-draw-alike-start-the-film-clock-on-the-same-timer-interrupt)._
 
@@ -202,11 +229,14 @@ _Source: [archives that draw alike start the film clock on the same timer interr
   Its results stayed the same at every probed frame of both arms, and no differing page differs at the shadow alone (section 5; [journal](../../work/2026-11/779_carried-draw-state/journal.md#2026-11-19-the-probes-results-held-at-every-probed-frame-pages-differ-at-the-propeller-and-the-viewpoint)).
 - **The pair test `0x1588` as per-frame state.**
   It runs only while `DS:0x2282` is set, but the load image holds 0 there and the one instruction that writes it stores 0; its hit path is a bare `ret` (section 5; [journal](../../work/2026-11/723_frame-stepped-state/journal.md#2026-11-18-the-slot-pass-keeps-each-slots-previous-position-and-the-probe-sweeps-from-it)).
+- **The camera's eye and angles carrying state between frames, in two DOSBox-X runs of CTRY.**
+  The 24-byte camera record was equal in the own and padded runs at all 195 film-step ticks both drew (about half of each run's frames), and no viewpoint page decides a shift of 0 against the other archive's page; other view state, and frames at ticks only one run drew, were not compared (section 5; [live runs](../../work/2026-11/826_ctry-padded-viewpoint/journal.md#2026-11-24-hud-minus-scene-tick-varies-from-frame-to-frame-under-dosbox-x), [pages](../../work/2026-11/826_ctry-padded-viewpoint/journal.md#2026-11-24-on-12-viewpoint-pages-the-two-arms-scenes-are-one-tick-apart)).
 
 ## Open questions
 
-1. What moves the viewpoint on 23 of CTRY's padded-archive pages, 15 of them at an equal HUD clock (section 5)?
-   The HUD clock trails the live tick by 0 to 3 ticks ([`capture-dosbox-automation.md`](capture-dosbox-automation.md) § 2), so the scene may be another tick's, or the view may carry per-frame state; the film step's other calls (`0x62E7`, `0x4FCD`, `0x0EE9`, `0x33C3`, `[0x225A]`, `0x31C0`) were read only for counters.
+1. How many ticks does the scene trail a capture's tag on each kept page, and are the 6 undecided viewpoint pages (67, 507, 804, 980, 991, 1167) a tick apart too (section 5)?
+   The gap was measured only on DOSBox-X's frames; dating a capture's pages needs the film step's clock logged in the capture run itself, which would also show how a start whole ticks later (section 6) changes each frame's lag, and would settle the 3 near-flat pages (1145, 1189, 1212).
+   The clock readings were found over direct calls only; the far, word-table and register calls from the frame were not read for a clock read, and whether the angle bank's later reading (`0x1DCA`) moves anything the viewpoint pages show was not checked.
 2. What does the 63-chunk 4 MB arm's later start come from, given its small scan and walk counts: the emulator's charge for DOS reads, the allocator's evictions, or the heap's limit?
    Its load ends 5 frames after the own archive's and starts the film 3 ticks later (section 6).
 3. Do the own chunks the `0x5B01` arm evicts at load, 8 by the node pool and any more for want of heap, change its pages beyond its start?
