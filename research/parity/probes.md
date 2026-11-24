@@ -1,5 +1,5 @@
 ---
-summary: "Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou, retime and index, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls."
+summary: "Procedures for diagnosing one parity discrepancy: `parity_probe.py` crop, shift, iou, retime, index and register, `DBG_` switch sweeps via `mise run sweep`, capture-side experiments, and environment pitfalls."
 sidebar_label: "Parity probes"
 ---
 # Parity Probes: Diagnosing One Discrepancy
@@ -323,3 +323,17 @@ With `--ours <render directory>` it reads that store and renders nothing, so a r
 
 `[Bounded Observation]`, 2026-11-18, `15a615e`, lavapipe: index 239 holds 1,746 capture pixels at both `vault-balloon` ticks 155 and 200, in a 47 x 46 box whose centroid is (221.00, 157.50) at tick 155 and (224.00, 154.50) at tick 200, and our default render holds none at either tick (#755).
 Which feature that index is, and why ours lacks it, is #617's question, not this probe's: it reports where, not why.
+
+## 11. Backdrop registration (`register`)
+
+```bash
+mise run parity-probe -- register --ours build/parity/ours/land_current --reference captures/vault-land/frames --ticks 177,419 [--time-reach 4] [--shift-reach 6] [--with-props]
+```
+
+For each captured film tick it asks whether a render-tick offset or a whole-page shift better lands our backdrop on the capture's.
+It compares, by palette index, our backdrop pixels (layers sky, ocean and terrain, more than `--pad` px, default 8, from any prop, actor or credit pixel) that lie within one pixel of an index edge in our page; away from an edge, flat sky and ground agree under any small move, so the probe leaves them out.
+`--with-props` compares prop pixels too.
+Each row prints the tick, the compared pixel count and the agreement as rendered, then three bests, each as `k dx dy agreement gain`: `time`, the render tick `t + k` in ±`--time-reach` with no shift; `page`, the shift in ±`--shift-reach` at `k = 0` (our pixel at `(x, y)` against the capture's at `(x + dx, y + dy)`, as for `shift`); and `joint`, both, which an offset and a shift compensating each other can overfit.
+Ties go to the smaller move.
+A page with no backdrop edge prints `0 no backdrop edges`.
+What it found on the readout ticks is [`framing-and-actors.md` § 4](framing-and-actors.md#4-background-misregistration-is-neither-one-time-offset-nor-one-page-shift).

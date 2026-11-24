@@ -1,5 +1,5 @@
 ---
-summary: "Records the camera and projection corrections tried against the capture: square 256 px projection (adopted) and the eye-height, pitch, FOV, framing-offset and tick-phase sweeps that were ruled out; and the `location` rotor drawn with its solid blades on every tick (#504, #624)."
+summary: "Records the camera and projection corrections tried against the capture: square 256 px projection (adopted) and the eye-height, pitch, FOV, framing-offset and tick-phase sweeps that were ruled out; the `location` rotor drawn with its solid blades on every tick (#504, #624); and background misregistration, which is neither one time offset nor one page shift on the readout ticks, with a one-row vertical shift recurring (#990, #1027)."
 ---
 
 # Parity: Framing and Camera
@@ -55,6 +55,37 @@ Choosing the line arm on spun frames now awaits a non-constant frame-spacing rul
 
 _Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest); [OP_BVGT reads the angle bank](../../work/2026-11/624_sod-bvgt-angle-bank/journal.md#2026-11-19-op_bvgt-reads-bankwordvar-at-draw-time-and-location-rescores-unchanged)._
 
+## 4. Background misregistration is neither one time offset nor one page shift
+
+`[Bounded Observation]`, 2026-11-23, the twelve readout ticks of each of the seven reference films (84), GPU render of `3e53f767`, `parity_probe.py register` ([`probes.md` § 11](probes.md#11-backdrop-registration-register)) ([#990](https://github.com/neilsh/stunt-reel/issues/990)).
+The error readout's `background-misregistration` grade rises under both a planted frame advance and a planted page shift, so the grade alone cannot say which one our render has.
+Searching render ticks `t - 4` to `t + 4` and page shifts up to 6 px on our backdrop's edge pixels (sky, ocean and terrain away from props and actors) gives, per film:
+
+| Film | Ticks compared | Neither (both gains under 0.02) | Time wins | Page wins | Tie | Grade 2+ ticks |
+|---|---|---|---|---|---|---|
+| ctry | 11 | 7 | 1 | 3 | 0 | none |
+| intro | 9 | 4 | 2 | 2 | 1 | 1355 no backdrop edge; 2597 page, `dx` -2 |
+| land | 9 | 4 | 3 | 1 | 1 | 419 time: a cut |
+| balloon | 10 | 5 | 0 | 5 | 0 | none |
+| traintnl | 8 | 3 | 0 | 2 | 3 | 123 tie; 1013 too few pixels |
+| bomb | 11 | 7 | 0 | 3 | 1 | 2850 neither |
+| location | 11 | 10 | 0 | 1 | 0 | 5611 neither |
+
+No film's backdrop error is one time offset or one page shift: where one wins, its size and sign change from tick to tick.
+`neither` mixes two cases the table does not separate: 16 of its 40 ticks already agree at 0.95 or more as rendered, and 14 sit below 0.90 where no single time offset or page shift gains 0.02 or more (only the `joint` search, set aside as overfitting, gains 0.02 or more on two of them: BALLOON 331 +0.044, TRAINTNL 793 +0.020), an error this probe does not account for.
+The two `neither` grade 2+ ticks, BOMB 2850 and LOCATION 5611, agree at 0.988 and 0.997 as rendered, so the probe sees almost no backdrop misregistration there and does not explain their grade.
+Two parts recur:
+
+* **A one-row vertical shift, ours low.**
+  On 13 of the 23 ticks a page shift helps, the capture's edges sit one row above ours; 3 sit one row below, and the horizontal shift has no common sign.
+  That is what truncating projected coordinates toward the projection centre would give, which `PLAYONE` does in its disc generator ([`sod-vm-generators.md`](../playone-exe/sod-vm-generators.md)); whether polygon vertices are projected the same way is [#1027](https://github.com/neilsh/stunt-reel/issues/1027).
+* **Per-tick time offsets of either sign.**
+  The best render tick on the 12 ticks where time wins or ties lies before the captured tick on 5 and after it on 7, up to the search's reach of 4 either way (LAND 177's wider profile peaks 7 after); only LAND's four all fall after.
+  LAND 419 is a cut: the capture already shows the next shot, which our render reaches at 420 (agreement 0.437 to 0.438 for every earlier tick, 0.963 to 0.965 from one tick later).
+  BOMB cuts the other way at 3302 ([`attribution.md`](attribution.md#open-questions) open question 7), and #826 asks why CTRY's pages are drawn at a varying tick, so the time side is a per-page lag, not a film-wide one.
+
+_Source: [time offset against page shift on the readout ticks](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks)._
+
 ## Ruled out
 
 All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named.
@@ -62,6 +93,7 @@ Baselines moved between rounds (0.771 / 0.676 on 2026-10-22, 0.7708 / 0.6762 at 
 Nothing below was adopted.
 
 * **Wrong geometry for the `location` trapezoid** (2026-11-16, [#504](https://github.com/neilsh/stunt-reel/issues/504)): the other `BVGT` arm of the same shape draws the capture's line blades; see § 3. [Journal](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest).
+* **One time offset or one page shift per film behind `background-misregistration`** (2026-11-23, [#990](https://github.com/neilsh/stunt-reel/issues/990)): on 84 readout ticks, 40 of the 69 with enough edge pixels move under neither (16 of them already agree at 0.95 or more, 14 sit below 0.90), and the best time offsets change sign within INTRO and TRAINTNL; see § 4. [Journal](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks).
 * **A montage tick-skipping rule** (2026-11-05, `[Bounded Observation]`, [#73](https://github.com/neilsh/stunt-reel/issues/73)).
   Offset search over -200..+10 on `captures/vault-intro`: the best-matching render tick follows the capture tick at slope 0.99 (largest deviation 7 ticks), so the 0.9-lag reading was a search saturating at -180.
   See [`film-segments.md`](film-segments.md#23-montage-frames).
@@ -120,3 +152,5 @@ _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](../../work/2
    Second, the finite ground: at a 500 m eye height our sea edge sits about 5 px below PLAYONE's horizon, which is at infinity.
    That accounts for about half of the INTRO slot 4 offset.
 4. Whether `PLAYONE` under dosbox-automation draws some `location` frames less than 16 var-10 units after the previous one, which § 3 hypothesises for ticks 837 and 881; a bank read in the capture harness would show it. ([#624](https://github.com/neilsh/stunt-reel/issues/624))
+5. Whether `PLAYONE` truncates projected polygon vertices toward the projection centre, which would explain § 4's one-row backdrop shift. ([#1027](https://github.com/neilsh/stunt-reel/issues/1027))
+6. Why LAND's capture cuts at tick 419, one tick before our render (§ 4), when BOMB's cuts one captured frame after ours at 3302 ([`attribution.md`](attribution.md#open-questions) open question 7).
