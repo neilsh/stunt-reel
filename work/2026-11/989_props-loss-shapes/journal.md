@@ -11,13 +11,13 @@
   - `location`: SSIM 0.8728, `props` 0.0784, spread over 1,014 shapes; the worst, 1145, holds 0.00169 (2.2%), the ten worst 0.0136 (17.4%).
     `bomb`: SSIM 0.8949, `props` 0.0597 over 127 shapes; 1756 holds 0.00830 (13.9%), 1737 0.00704 (11.8%), the ten worst 0.0386 (64.7%).
     Neither film has an `unattributed` key.
-  - On `location` each of the eight worst shapes loses on 14 to 27 of 732 scored frames, all of its loss in the worst 10% of its frames: a shape costs on one short run of frames.
-    1145, 1164, 1179 and 1162 lose on the canyon run, ticks 6700 to 7400, where each covers up to 49,314 of the 59,200 view pixels with own-pixel agreement 0.16 to 0.56; 1150 on ticks 2201 to 2267 (a crater, 33,333 pixels, 0.67) and on 7118 to 7140 in the canyon; 1745 on ticks 4335 to 4467 (the railway track the camera rides along, 0.71); 613 on ticks 2652 to 2817 (the stadium, 0.89); 996 on ticks 2047 to 2190 (town lots, 0.82).
-  - On `bomb` the shapes lose on 48 to 150 of 316 scored frames, the worst 10% holding 50% to 95% of each.
-    1756 is the street (its worst frame tick 3302, the camera cut of [`attribution.md`](../../../research/parity/attribution.md) open question 7, then ticks 2410 to 2740 at 0.046 to 0.066); 1737 the red lot under the hero's bombing run (ticks 3103 to 3191, and 2861 to 2905); 1650 the fire station and 1648 the church, each a near-constant 0.040 to 0.043 a frame on the static opening shot (ticks 133 to 343); 545 and 542 the red autumn trees (ticks 2289 to 2388, 2070 to 2179); 1754 a red road (ticks 2961 to 3081); 1654 a building (ticks 3191 to 3268).
+  - On `location` each of the eight worst shapes loses on 14 to 27 of 732 scored frames, all of its loss in the worst 10% of its frames: a shape costs on one to three short runs of frames (runs split at gaps over 60 ticks).
+    1145, 1164, 1179 and 1162 lose on two runs each within the canyon run, ticks 6711 to 7437, where each covers up to 49,314 of the 59,200 view pixels with own-pixel agreement 0.16 to 0.56; 1150 on three, ticks 2201 to 2322 (a crater, 33,333 pixels, 0.67), 7097 to 7151 in the canyon and 7536 to 7569; 1745 on ticks 4335 to 4467 (the railway track the camera rides along, 0.71); 613 on ticks 2652 to 2817 (the stadium, 0.89); 996 on ticks 2047 to 2190 (town lots, 0.82).
+  - On `bomb` the shapes lose on 48 to 150 of 316 scored frames, the worst 10% (32 frames) holding 51% (1737) to 96% (1654) of each.
+    1756 is the street (its worst frame tick 3302, the camera cut of [`attribution.md`](../../../research/parity/attribution.md) open question 7; 7% of its loss on ticks 221 to 420, 35% on 2036 to 2399, 40% on 2410 to 2740, 18% on 3302 to 3477); 1737 the red lot under the hero's bombing run (ticks 3103 to 3191, and 2861 to 2905); 1650 the fire station and 1648 the church, each a near-constant 0.040 to 0.043 a frame on the static opening shot (ticks 133 to 343); 545 and 542 the red autumn trees (ticks 2289 to 2388, 2070 to 2179); 1754 a red road (ticks 2961 to 3081); 1654 a building (ticks 3191 to 3268).
     Own-pixel agreement at the tick examined is 0.94 (1737), 0.95 (1650), 0.92 (1648), 0.89 (1654), 0.97 (1756), 0.81 (1754), and 0.67 to 0.68 for the two trees.
 - **Verdict**: control (diagnosis).
-  `location`'s props loss has no dominant shape; its worst shapes are the canyon rocks of one run of frames.
+  `location`'s props loss has no dominant shape; half of its eight worst shapes are canyon rocks losing on the canyon run.
   `bomb`'s high own-pixel agreement puts most of its worst shapes' loss at their edges, not in their colour.
 - **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 1.
 
@@ -44,19 +44,33 @@
 
 - **Question**: for the worst frames of the top shapes and for the error readout's `scenery-missing` ticks (`bomb` 1585 and 1904), is each case missing, misplaced, a wrong shape, a wrong shade or a wrong draw order?
 - **Method**: `mise run frame -- --film <film> --ticks … --software-only` on the same tree under WSL, crops at 2× and 3×.
+  Each sheet is that tool's output from `3e53f767`: the capture first, then our render; [`bomb-1904-lod.png`](images/bomb-1904-lod.png) has four panels, the capture, then our render at `DBG_FAR=0` (the baseline), `1` and `2` (the last entry).
   A scratch script found, for each frame, the whole-frame shift of our panel in -4..4 pixels in each axis that makes the most pixels carry the capture's colour (every other column, a 6-pixel border and the clock rows left out; [`frame-shift.txt`](frame-shift.txt)).
 - **Result**:
   - **Canyon, ticks 6810, 6920 and 7019** ([sheet](images/location-7019.png)): the far ridges sit where the capture's do; in the lower half the capture shows more and differently shaded facets of the same rocks.
     At 7019, which no offset raises, our render draws a large near face of 1145 across the lower left that the capture does not show; there the capture shows farther facets of 1145.
   - **BOMB trees 542 and 545** (ticks 2080, 2300): placed where the capture's are (best shift 0 at 2300, one column at 2080), but their overlapping leaf clusters cover each other differently.
-  - **BOMB buildings and lots 1648, 1650, 1737, 1654, 1754** ([sheet](images/bomb-155.png)): the same shapes and colours, the whole frame displaced: ours 1 row low on the opening shot (ticks 155 and 233: agreement 0.912 to 0.948 and 0.960 to 0.963 when our panel moves up a row), 2 rows low at 3191 (0.898 to 0.922), 3 rows high and a column left at 3268 (0.903 to 0.947), and 4 columns left and a row high at 2961 (0.670 to 0.805, the edge of the search).
+  - **BOMB buildings and lots 1648, 1650, 1737, 1654, 1754** ([sheet](images/bomb-155.png), capture then our render): the same shapes, 0.89 to 0.95 of the first four's pixels in the capture's colour in place and 0.81 of 1754's at 2961, the whole frame displaced: ours 1 row low on the opening shot (ticks 155 and 233: agreement 0.912 to 0.948 and 0.960 to 0.963 when our panel moves up a row), 2 rows low at 3191 (0.898 to 0.922), 3 rows high and a column left at 3268 (0.903 to 0.947), and 4 columns left and a row high at 2961 (0.670 to 0.805, the edge of the search).
     The offset changes between shots and is a whole-frame one, so it is the camera's, not the shapes' placement.
-  - **BOMB 1756** at 2740: agreement 0.936, 0.950 with our panel a column left; 3302 is the known camera cut.
-  - **LOCATION 1150** at 2212: agreement 0.730, and 0.741 at the best shift, our panel 4 columns right, so no whole-frame shift explains it: the crater's near rim and the pink wall under it differ in outline.
+  - **BOMB 1756** at 2740: agreement 0.936, 0.950 with our panel a column left; 3302 is the known camera cut; the next entry looks at the rest.
+  - **LOCATION 1150** at 2212: agreement 0.730, and 0.741 at the best shift, our panel 4 columns right (the edge of the search), so no whole-frame shift explains it: the crater's near rim and the pink wall under it differ in outline.
+    These frames do not tell a camera-position difference from a shape or cover-order one.
     **1745** at 4390: the sleepers are where the capture's are within a fraction of their spacing; +1 tick raises ticks 4330 to 4470 from 0.8939 to 0.9076.
-  - **`scenery-missing`, BOMB 1585 and 1904** ([sheet](images/bomb-1904-lod.png)): the distant town's houses, which the capture draws as white walls and roofs, are missing from ours, which shows lots, roads and trees there.
+  - **`scenery-missing`, BOMB 1585 and 1904** ([sheet](images/bomb-1904-lod.png), its first two panels): the distant town's houses, which the capture draws as white walls and roofs, are missing from ours, which shows lots, roads and trees there.
 - **Verdict**: control (diagnosis); each cause is tested or filed in the entries below.
 - **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.
+
+## 2026-11-23: the BOMB street 1756 loses in place
+
+- **Question**: does a whole-frame offset explain `bomb` 1756's loss outside the opening shot and the 3302 cut?
+- **Method**: [`shape-frames.csv`](shape-frames.csv) summed by tick range; `mise run frame -- --film bomb --ticks 2190,2355,2421,2520,2586,2630,2718,3345 --software-only` on `3e53f767` under WSL, then the previous entry's shift search ([`frame-shift.txt`](frame-shift.txt)) and own-pixel agreement ([`own-pixel.txt`](own-pixel.txt)) on each.
+- **Result**:
+  - Of 1756's summed loss (2.62 over 101 frames): 7% on ticks 221 to 420 (the opening shot, whose frame sits a row low at 155 and 233), 4% on tick 3302 (0.115), 75% on ticks 2036 to 2740 and 14% on 3312 to 3477.
+  - At the eight ticks and at 2740 the best whole-frame shift is 0 or one column, raising agreement by at most 0.014, and 0.95 to 0.98 of 1756's pixels carry the capture's colour; its loss there is 0.020 to 0.066 a frame.
+- **Verdict**: control (diagnosis); the 89% outside the opening shot and the cut is unexplained.
+  The street is drawn in place, in the capture's colours, so neither a camera offset nor a wrong shade explains it.
+  `[Hypothesis]`: each pixel takes a share of every SSIM window's loss over it ([`report-fields.md`](../../../research/parity/report-fields.md)), so windows straddling the edges of the lots, trees and buildings on the street charge part of their loss to it; testing it is [#1035](https://github.com/neilsh/stunt-reel/issues/1035).
+- **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.6.
 
 ## 2026-11-23: the BOMB far town is the level-of-detail gate
 
@@ -65,7 +79,7 @@
   `mise run frame -- --film bomb --ticks 1585,1904 --software-only --var DBG_FAR=0,1,2` on `3e53f767` under WSL; then `DBG_FAR=2 mise run parity -- --films location,bomb --software-only`, compared frame by frame with the baseline reports of the first entry.
 - **Result**:
   - At 1904 and 1585, `DBG_FAR=1` draws the same picture as the baseline; `DBG_FAR=2` draws the town's houses as walls and roofs, as the capture does ([sheet](images/bomb-1904-lod.png)).
-  - Over the films, `DBG_FAR=2` lowers `location` from 0.8728 to 0.8549 (`props` 0.0784 to 0.0901; 6 frames up by more than 0.005, 477 down) and `bomb` from 0.8949 to 0.8831 (`props` 0.0597 to 0.0699; none up, 134 down).
+  - Over the films, `DBG_FAR=2` lowers `location` from 0.8728 to 0.8549 (`props` 0.0784 to 0.0901; 6 frames up by more than 0.005, 478 down) and `bomb` from 0.8949 to 0.8831 (`props` 0.0597 to 0.0699; none up, 134 down).
     Tick 1585 falls from 0.9230 to 0.9202 and 1904 from 0.8834 to 0.8787: at 3× the forced near branch draws the town as white roofs packed tighter than the capture's walls and roofs.
     Per-frame SSIM of both runs: [`far-lod.csv`](far-lod.csv).
 - **Verdict**: control (diagnosis), not a candidate: drawing every near branch everywhere is not `PLAYONE`'s rule, and it scores lower.

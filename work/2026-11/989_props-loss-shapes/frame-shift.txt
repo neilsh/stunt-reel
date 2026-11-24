@@ -11,3 +11,11 @@ location_2059.png best (agree,dx,dy) (0.825, 0, 0) at 0: 0.825
 location_2729.png best (agree,dx,dy) (0.899, 0, 0) at 0: 0.899
 location_2212.png best (agree,dx,dy) (0.741, 4, 0) at 0: 0.73
 location_4390.png best (agree,dx,dy) (0.931, 1, 0) at 0: 0.922
+bomb_2190.png best (agree,dx,dy) (0.908, 0, 0) at 0: 0.908
+bomb_2355.png best (agree,dx,dy) (0.892, 0, 0) at 0: 0.892
+bomb_2421.png best (agree,dx,dy) (0.905, 0, 0) at 0: 0.905
+bomb_2520.png best (agree,dx,dy) (0.925, -1, 0) at 0: 0.925
+bomb_2586.png best (agree,dx,dy) (0.929, 0, 0) at 0: 0.929
+bomb_2630.png best (agree,dx,dy) (0.943, 0, 0) at 0: 0.943
+bomb_2718.png best (agree,dx,dy) (0.953, -1, 0) at 0: 0.946
+bomb_3345.png best (agree,dx,dy) (0.933, -1, 0) at 0: 0.932
