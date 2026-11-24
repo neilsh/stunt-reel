@@ -141,22 +141,38 @@ A field named *unknown* has no reading yet.
 | `+0x12` | 2 | `i16` (LE) | `roll_bam` | Roll orientation angle in 16-bit BAM ($0..65535 \equiv 0..2\pi$) | varies | `[Established]` |
 | `+0x14` | 2 | `i16` (LE) | `pitch_bam` | Pitch orientation angle in 16-bit BAM | varies | `[Established]` |
 | `+0x16` | 2 | `i16` (LE) | `yaw_bam` | Yaw (heading) orientation angle in 16-bit BAM; printed Yaw is its negation | varies | `[Established]` |
-| `+0x18` | 2 | `u16` (LE) | `unknown_18` | Unknown; never nonzero | 0 in 2,032 | `[Bounded Observation]` |
+| `+0x18` | 2 | `u16` (LE) | `unknown_18` | Unknown; never nonzero; flipped, no printed change | 0 in 2,032 | `[Bounded Observation]` |
 | `+0x1A` | 2 | `i16` (LE) | `watch_object` | Slot the prop watches (printed Watch Object − 1); the watch switch is § 3.2's bit 1 | −1 in 306, all with watch off; positive values name a slot present in the same set in 126 of 130, never the prop's own | `[Supported Inference]` |
 | `+0x1C` | 2 | `i16` (LE) | `method_object` | Slot a Seek, Spot, Follow or Attach prop acts on (printed Method Object − 1) | −1 in 27; positive values name a slot present in the same set in 313 of 319, never the prop's own | `[Supported Inference]` |
 | `+0x1E` | 2 | `u16` (LE) | `speed` | Face, Free and Seek props: speed, about 12.01 per printed unit (§ 3.5's `change speed` scale). Spot, Follow and Attach: printed Distance × 51.2 | varies | `[Supported Inference]` |
 | `+0x20` | 2 | `u16` (LE) | `zoom` | Camera zoom × 8192, so `0x2000` is 1.0; printed for slots 0–7 only | `0x2000` in 1,390 of 1,390 in slots 8–39; 0.20 to 7.99 | `[Bounded Observation]` |
-| `+0x22`–`+0x27` | 6 | `u8[6]` | `unknown_22` | Unknown | nonzero in 103 (50 in slots 0–7) | `[Bounded Observation]` |
+| `+0x22` | 2 | `i16` (LE) | `roll_anim` | Printed Roll Anim, in degrees per second | `+0x22`–`+0x27` nonzero in 103 (50 in slots 0–7) | `[Bounded Observation]` |
+| `+0x24` | 2 | `i16` (LE) | `pitch_anim` | Printed Pitch Anim | see `+0x22` | `[Bounded Observation]` |
+| `+0x26` | 2 | `i16` (LE) | `yaw_anim` | Printed Yawing Anim, negated | see `+0x22` | `[Bounded Observation]` |
 | `+0x28` | 2 | `i16` (LE) | `heading_pitch_bam` | Heading pitch, or for Spot, Follow and Attach the offset pitch, in BAM | nonzero in 406 | `[Supported Inference]` |
 | `+0x2A` | 2 | `i16` (LE) | `heading_yaw_bam` | Heading yaw, or for Spot, Follow and Attach the offset yaw, in BAM; printed as its negation | nonzero in 485 | `[Supported Inference]` |
-| `+0x2C`–`+0x2F` | 4 | `u8[4]` | `unknown_2c` | Unknown | nonzero in 50 (14 in slots 0–7) | `[Bounded Observation]` |
+| `+0x2C` | 2 | `i16` (LE) | `heading_pitch_anim` | Printed Heading Pitch Anim on the Free props, Offset Pitch Anim on the Spot prop | `+0x2C`–`+0x2F` nonzero in 50 (14 in slots 0–7) | `[Bounded Observation]` |
+| `+0x2E` | 2 | `i16` (LE) | `heading_yaw_anim` | Printed Heading Yaw Anim on the Free props, Offset Yaw Anim on the Spot prop, negated | see `+0x2C` | `[Bounded Observation]` |
 | `+0x30` | 1 | `u8` | `method` | Prop method: `0` Face, `1` Free, `2` Seek, `3` Spot, `4` Follow, `5` Attach, the handbook's order (*handbook* p.68) | 0–5 in 2,032 | `[Supported Inference]` |
-| `+0x31`–`+0x33` | 3 | `u8[3]` | `unknown_31` | Unknown; almost always zero | `+0x31` 0 in 2,032; `+0x32`–`+0x33` 0 in 2,009 | `[Bounded Observation]` |
+| `+0x31` | 1 | `u8` | `method_high` | High byte of the method word `TYPESET` reads at `+0x30`; every nonzero value tried changes the prop's printed lines or its method name, except `0x40` on the Spot prop | 0 in 2,032 | `[Bounded Observation]` |
+| `+0x32` | 2 | `i16` (LE) | `acceleration` | Printed Acceleration on the Free props, Distance Anim on the Spot prop, as about 0.2601 × the word (`0x4000` prints 4261, § 3.5's `change acceleration` scale) | `+0x32`–`+0x33` 0 in 2,009 | `[Bounded Observation]` |
 | `+0x34` | 1 | `u8` | `display_flags` | Bitfield; bit 6 set hides the prop (see § 3.4) | `0x00`, `0x40`, `0x80` or `0xC0` in 2,029 of 2,032 | `[Bounded Observation]` |
-| `+0x35`–`+0x3D` | 9 | `u8[9]` | `unknown_35` | Unknown; not padding | nonzero in 607 | `[Bounded Observation]` |
+| `+0x35`–`+0x3D` | 9 | `u8[9]` | `unknown_35` | Unknown; not padding; flipped, no printed change | nonzero in 607 | `[Bounded Observation]` |
 | `+0x3E`–`+0x3F` | 2 | `u8[2]` | `next_slot_flags` | Copy of the next slot's `+0x02`–`+0x03` | equal in 1,725 of 1,725 where that slot is present | `[Supported Inference]` |
 
-The dumps print every Anim value, Acceleration and Distance Anim as 0 in the 7 sets the corpus holds, so they cannot name the unknown bytes; those printed fields are the first candidates for them.
+The dumps print every Anim value, Acceleration and Distance Anim as 0 in the 7 sets the corpus holds.
+The sweep flipped `+0x22`–`+0x27`, `+0x2C`–`+0x2F`, `+0x31` and `+0x32` on four `BOMBING.SET` prop records (Face, Spot and two Free) and compared the resulting `TYPESET` dumps.
+The sweep tested Locked on all four records and Placed on the Face prop in slot 0.
+Every tested anim word prints within 1 of $\text{value} \times 360 / 65536 \times 50$, so `0x4000` prints 4500 and `0x0001` prints 0; the Yawing, Heading Yaw and Offset Yaw anims print negated, as the yaw angles do, and the roll and pitch anims do not.
+That scale is degrees per second for a word in BAM per tick at 50 Hz, and the heading anims would then be the rates of `+0x28` and `+0x2A`; both readings are `[Supported Inference]`, since no flip shows a prop move.
+Seek, Follow and Attach props were not flipped.
+Where a prop's dump has no line for a field, flipping its bytes showed no change: `+0x22`–`+0x27` on the Spot prop and on the Free prop in a recording slot, whose dumps print no Roll, Pitch or Yaw, and `+0x2C`–`+0x2F` and `+0x32` on the Face prop, whose dump prints no heading or Acceleration.
+`TYPESET` reads `+0x30`–`+0x31` as one method word: on the Spot prop a high byte of `0x01` prints an empty method name and `0x02` to `0x20` print `(null)`, with no other line changed, `0x40` changes nothing, and `0x80` and `0xFF` change which lines it prints; on the Face and Free props every nonzero value tried changes which lines they print.
+
+`+0x18`–`+0x19` and `+0x35`–`+0x3D` (every single-bit flip and the fills `0x00` and `0xFF` of each byte), bit 0 of `+0x02` and bits 1, 3 and 4 of `+0x03` printed no change in any variant tried on the four props; `TYPESET` does not print them, which leaves open whether the game reads them.
+`[Bounded Observation]`: one set and one `TYPESET` build (MD5 `40a0c481…`).
+
+_Source: [TYPESET byte flips on four BOMBING.SET prop records](../../../work/2026-11/835_set-prop-fields/journal.md#2026-11-24-typeset-byte-flips-on-four-bombingset-prop-records)._
 
 ### 3.2 Prop Behavior Flags (`behavior_flags`, `+0x02`)
 
@@ -165,7 +181,7 @@ Bit:   7   6   5   4   3   2   1   0
      +---+---+---+---+---+---+---+---+
      | - | - | E | - | C | A | W | ? |
      +---+---+---+---+---+---+---+---+
-               |       |   |   |   +-- Unknown; set in 2,028 of 2,032 records
+               |       |   |   |   +-- Unknown; set in 2,028 of 2,032 records; no printed change
                |       |   |   +------ Watch: track the watch object (+0x1A)
                |       |   +---------- Autozoom
                |       +-------------- Collision
@@ -174,6 +190,7 @@ Bit:   7   6   5   4   3   2   1   0
 
 Bits 1, 2, 3 and 5 each match one printed switch, Watch, Autozoom, Collision and Explosion, in every printed prop of the 7 dumped sets the corpus holds. `[Supported Inference]`
 Bits 4, 6 and 7 are never set in the 2,032 records. `[Bounded Observation]`
+Flipping bit 0 on four `BOMBING.SET` props, and bits 4, 6 and 7 on one, changes no printed line (§ 3.1). `[Bounded Observation]`
 
 ### 3.3 Prop Placement Flags (`placement_flags`, `+0x03`)
 
@@ -187,13 +204,15 @@ Bit:   7   6   5   4   3   2   1   0
 ```
 
 Bit 2 matches the printed Shadow switch in every dumped prop. `[Supported Inference]`
-Bit 0 is set in 2,030 of the 2,032 records and every dumped prop prints `Placed :On`, so the Placed reading is untested. `[Bounded Observation]`
+Bit 0 is set in 2,030 of the 2,032 records, and every dumped prop prints `Placed :On`; clearing it on a `BOMBING.SET` prop prints `Placed :Off` and changes nothing else. `[Bounded Observation]`
 Bit 1 is set in 1,991 records, bit 3 in 882 and bit 4 in 1,810; bits 5 to 7 are never set. `[Bounded Observation]`
+Flipping bits 1, 3 and 4 on four `BOMBING.SET` props, and bits 5 to 7 on one, changes no printed line (§ 3.1). `[Bounded Observation]`
 
 ### 3.4 Prop Display Flags (`display_flags`, `+0x34`)
 
 Bit 6 set hides the prop: it is set exactly where the dump prints `Visible :Off`, in 80 of 80 printed props. `[Supported Inference]`
-On the 2,032 records the byte is `0x00`, `0x40`, `0x80` or `0xC0` in 2,029, so its other variation sits in bit 7, set in 103 records; no dumped prop sets bit 7, and every one prints `Locked :Off`, so bit 7 as Locked is untested.
+On the 2,032 records the byte is `0x00`, `0x40`, `0x80` or `0xC0` in 2,029, so its other variation sits in bit 7, set in 103 records; no dumped prop sets bit 7, and every one prints `Locked :Off`.
+Bit 7 is Locked: setting it on four `BOMBING.SET` props turns `Locked :Off` into `Locked :On` and changes nothing else (§ 3.1). `[Bounded Observation]`
 The hidden and locked bits this section used to place at bits 2 and 3 are set in 2 records, both recording slots, and are withdrawn. `[Bounded Observation]`
 
 ### 3.5 File Layout: the Event Table at `0x54`
@@ -318,7 +337,7 @@ $$Z_{\text{world}} = \frac{Z_{\text{editor}} - 100000}{10.0} \quad (\text{meters
 | Item ID | Topic | Description | Evidentiary Tier |
 | :--- | :--- | :--- | :--- |
 | `[BK-SET-01]` | Vehicle Tuning Bytes (`reserved_settings`) | Precise aerodynamic scalar mappings governing flight control sensitivity and elevator response in Set Designer. | `[Unknown]` |
-| `[BK-SET-02]` | Unknown Prop Bytes | Name the bytes § 3.1 still calls unknown: `+0x18`, `+0x22`–`+0x27`, `+0x2C`–`+0x2F`, `+0x31`–`+0x33` and `+0x35`–`+0x3D`, and bit 0 of `+0x02`, bits 1, 3 and 4 of `+0x03` and bit 7 of `+0x34`. The first candidates are the settings the dumps print only as 0 or one value: the Anim rates, Acceleration, Distance Anim, Locked and Placed. Flipping each byte under `TYPESET`, as § 3.5 did for events, would name them. | `[Bounded Observation]` |
+| `[BK-SET-02]` | Unknown Prop Bytes | Narrowed: `TYPESET` flips on four props named the bytes it prints as the anims and as Acceleration or Distance Anim, the method word's high byte, and Locked; Placed was flipped on one prop (§ 3.1). Still unknown, and printing nothing when flipped: `+0x18`–`+0x19`, `+0x35`–`+0x3D`, bit 0 of `+0x02`, and bits 1, 3 and 4 of `+0x03`. Naming them needs the game's own reads, in `STUNT.EXE` or `PLAYONE.EXE`, not the printer. | `[Bounded Observation]` |
 | `[BK-SET-03]` | `change` Operand Scales | The 16-bit `change` operand is BAM for angles and ×50 for anim properties (§ 3.5); only `zoom` is pinned among the scalar properties, and `speed`'s 1364 for `0x4000` matches the prop record's 12.01 per printed unit (§ 3.1), while `zoom`'s 2.5 differs from the record's 8192 per unit. | `[Bounded Observation]` |
 | `[BK-SET-04]` | Prop Record Field Map | Closed: the leading word is the 0-based prop slot, stored only for occupied slots, and the trailing word copies the next slot's flags, on all 129 sets and 2,032 records; the printed dumps name most other fields, and every byte is named or marked unknown with a count (§ 3.1). The unknown bytes are `[BK-SET-02]`. | `[Supported Inference]` |
 | `[BK-SET-05]` | Event Action-Code Catalogue | Map the handbook's THEN actions (*handbook* pp.92–95) onto `action_type` values. Progress: `num_events` at `0x53` enumerates a set's rules, § 3.6 fixes codes `0`–`16`, and the record is 67 bytes; open is whether every handbook action has exactly one code. | `[Hypothesis]` |
@@ -347,9 +366,11 @@ The technical specifications for the `.SET` format are synthesized from the foll
 - *`+0x20`–`+0x25`, `+0x2E`–`+0x2F` and bits 1–2 of `+0x02` as set only for recording slots*: true of the retail sets, but community sets break them in slots 8–39 in 36, 32 and 40 records ([journal](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-20-prop-slot-rules-and-columns-on-all-129-sets)).
 - *Visibility as bit 6 of `+0x02`*: that bit is never set in 2,032 records, and the printed Visible switch follows bit 6 of `+0x34` ([journal](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-20-printed-set-dumps-against-the-prop-bytes)).
 - *0 at `+0x1A` or `+0x1C` as "no slot"*: the dumps print it as object 1, slot 0 ([journal](../../../work/2026-11/483_set-prop-slots/journal.md#2026-11-20-printed-set-dumps-against-the-prop-bytes)).
+- *`+0x18`–`+0x19` or `+0x35`–`+0x3D` as a printed setting*: no flip of them tried on four `BOMBING.SET` props changes any line `TYPESET` prints, while the printed anims, Acceleration, Distance Anim, Locked and Placed each sit elsewhere ([journal](../../../work/2026-11/835_set-prop-fields/journal.md#2026-11-24-typeset-byte-flips-on-four-bombingset-prop-records)).
 
 ## Open questions
 
 The backlog in § 4 is this note's open work, in its order there; `[BK-SET-04]` is closed.
-The printed dumps cannot name `[BK-SET-02]`'s bytes, since the settings they might hold print with one value in every dump; a `TYPESET` byte-flip run on a prop record would vary them one at a time.
+`[BK-SET-02]`'s remaining bytes print nothing under `TYPESET`, so naming them needs the game's own reads of the prop record.
 Ten slot references, in 9 records of 6 sets, name a slot the set does not store; whether the player ignores them is open.
+§ 3.5's sign flip for anim properties was measured on `yaw anim`; the prop records print roll and pitch anims unnegated (§ 3.1), so whether a `change roll anim` or `change pitch anim` operand prints negated is open.

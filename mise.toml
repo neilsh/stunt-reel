@@ -313,6 +313,10 @@ run = "uv run python python/scripts/skill_eval.py"
 description = "Unpack PLAYONE.EXE with LZEXE 0.91, by default the data root's corpus/stuntisl/PLAYONE.EXE to its build/re/playone.img (mise run unlzexe -- [<exe> <out>] [--mz])"
 run = "uv run python python/scripts/unlzexe.py"
 
+[tasks.typeset-flip]
+description = "Flip .SET prop-record bytes, print each variant with TYPESET.EXE under silent DOSBox-X and diff the dumps (mise run typeset-flip -- [--set S] [--slots 1,3,10] [--offsets 0x18,0x22-0x27] [--bits 0x02:0] [--out DIR])"
+run = "uv run python python/scripts/typeset_flip.py"
+
 [tasks.ghidra-sod-table]
 description = "Create a function at each .SOD VM dispatch handler in Ghidra headless, name it from the opcode table, and save the project under build/re/ghidra/ (mise run ghidra-sod-table -- [--build unpatched|patch3] [--parse-only] [--exe PATH]; needs Ghidra 12.1.x with analyzeHeadless on PATH or in GHIDRA_INSTALL_DIR)"
 run = "uv run python python/scripts/ghidra_sod_dispatch.py"
