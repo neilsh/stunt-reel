@@ -2,7 +2,7 @@
 title: "Is background misregistration a time offset or a page shift?"
 started: 2026-11-23
 issue: 990
-outcome: "control: on 84 readout ticks no film's backdrop error is one time offset or one page shift (40 of 69 move under neither: 16 already agree at 0.95 or more, 14 sit below 0.90 unhelped); a one-row vertical shift recurs (13 of 23 page-shift ticks, ours low), filed as #1027 on the projection side, and time offsets are per tick and of either sign"
+outcome: "control: on 84 readout ticks no film's backdrop error is one time offset or one page shift (40 of 69 move under neither: 16 already agree at 0.95 or more, 14 sit below 0.90 where no single time offset or page shift gains 0.02 or more); a one-row vertical shift recurs (13 of 23 page-shift ticks, ours low), filed as #1027 on the projection side, and time offsets are per tick and of either sign"
 ---
 
 # Is background misregistration a time offset or a page shift?

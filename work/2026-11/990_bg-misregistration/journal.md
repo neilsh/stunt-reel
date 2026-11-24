@@ -31,8 +31,8 @@
   | location | 0 | 1 | 0 | 10 | 0 | 1 |
   | all | 6 | 17 | 6 | 40 | 7 | 8 |
 
-  - **Neither is the commonest class.** 40 of the 69 ticks with enough pixels move less than 0.02 under any offset or shift tried; LOCATION 10 of 11, CTRY and BOMB 7 of 11.
-    By agreement as rendered, 16 of the 40 are at 0.95 or more (nothing to register), 10 between 0.90 and 0.95, and 14 below 0.90 (0.826 to 0.889), an error no offset or shift tried reduces.
+  - **Neither is the commonest class.** 40 of the 69 ticks with enough pixels gain less than 0.02 under any single time offset or page shift tried; LOCATION 10 of 11, CTRY and BOMB 7 of 11.
+    By agreement as rendered, 16 of the 40 are at 0.95 or more (nothing a single offset or shift improves by 0.02), 10 between 0.90 and 0.95, and 14 below 0.90 (0.826 to 0.889), where no single time offset or page shift gains 0.02 or more (only the `joint` search, set aside as overfitting, gains 0.02 or more on two of them: BALLOON 331 +0.044, TRAINTNL 793 +0.020).
   - **Page shifts are small and mostly one row.** Over the 23 `page` and `either` ticks, `dy` is -1 on 13, 0 on 6, +1 on 3 and -3 on 1: where the backdrop is off, the capture's edges most often sit one row above ours.
     `dx` has no common sign (0 on 7, -1 on 4, from -6 to +3 on the rest; the three -6, BOMB 12 and 1904 and TRAINTNL 562, sit at the edge of the search).
   - **Time offsets have no common sign across films.** The best `k` on the 12 `time` and `either` ticks: CTRY 980 -4; INTRO 1178 -3, 3125 +4, 3477 -3; LAND 177 +2, 254 +1, 419 +4, 661 +3; TRAINTNL 12 +4, 123 -1, 452 -3; BOMB 2212 +1.

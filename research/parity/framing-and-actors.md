@@ -72,7 +72,7 @@ Searching render ticks `t - 4` to `t + 4` and page shifts up to 6 px on our back
 | location | 11 | 10 | 0 | 1 | 0 | 5611 neither |
 
 No film's backdrop error is one time offset or one page shift: where one wins, its size and sign change from tick to tick.
-`neither` mixes two cases the table does not separate: 16 of its 40 ticks already agree at 0.95 or more as rendered, and 14 sit below 0.90 with no offset or shift helping, an error this probe does not account for.
+`neither` mixes two cases the table does not separate: 16 of its 40 ticks already agree at 0.95 or more as rendered, and 14 sit below 0.90 where no single time offset or page shift gains 0.02 or more (only the `joint` search, set aside as overfitting, gains 0.02 or more on two of them: BALLOON 331 +0.044, TRAINTNL 793 +0.020), an error this probe does not account for.
 The two `neither` grade 2+ ticks, BOMB 2850 and LOCATION 5611, agree at 0.988 and 0.997 as rendered, so the probe sees almost no backdrop misregistration there and does not explain their grade.
 Two parts recur:
 
