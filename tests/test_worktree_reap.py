@@ -1816,6 +1816,11 @@ def _age_review(worktree: Path, *, hours: float = worktree_reap.REVIEW_QUIET_HOU
     _backdate(admin, hours=hours)
 
 
+def _registered_worktrees(repo: Path) -> list[Path]:
+    """Every worktree path git has registered in *repo*."""
+    return [entry.path for entry in worktree_git._worktrees(repo)]
+
+
 def _idle_orca(repo: Path) -> worktree_reap._OrcaWorkspaces:
     """Orca listing no workspace, so nothing at a review worktree's path is live."""
     return worktree_reap._OrcaWorkspaces(repo, _FakeOrca(repo, []))
@@ -1868,7 +1873,24 @@ def test_a_detached_review_worktree_is_a_candidate_and_is_reaped(tmp_path: Path)
         is None
     )
     assert not worktree.exists()
-    assert "review-1" not in _run_git(repo, "worktree", "list", "--porcelain")
+    assert worktree not in _registered_worktrees(repo)
+
+
+def test_a_reaped_review_worktree_is_checked_by_path_not_by_substring(tmp_path: Path) -> None:
+    """The checkout's own path may hold "review-1", so only the removed path must be gone."""
+    (tmp_path / "review-1").mkdir()
+    repo, worktree = _review_worktree(tmp_path / "review-1")
+    _age_review(worktree)
+    candidates, skipped = _classify_reviews(repo)
+
+    assert skipped == []
+    assert (
+        worktree_reap._reap_one(
+            repo, candidates[0], stash_dirty=False, discard_untracked=False, orca=_idle_orca(repo)
+        )
+        is None
+    )
+    assert worktree not in _registered_worktrees(repo)
 
 
 def test_a_review_worktree_on_a_branch_is_not_a_candidate_by_name(tmp_path: Path) -> None:
