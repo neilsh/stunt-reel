@@ -1,0 +1,39 @@
+# #826: which film tick a drawn frame's scene is composed at, against the HUD clock it shows.
+# The per-frame call 0x49F9 reaches the film step at 0x4A07, which reads the film clock DS:0x4896
+# (0x3A88) and sets the slice fraction 0x22E0 that the slot interpolations use; the view setup
+# reaches 0x1251 with SI = the camera's object (eye at +0x04, angles at +0x10..+0x15); after the
+# render step 0x0EE9 the clock is read again for the HUD (0x4A38), so at 0x4A3B AX is the HUD's
+# tick; 0x4A4F is the call of 0x31C0 that ends the frame. Each hit records film_tick, the clock.
+# Run on CTRY.FLM with the own and a padded CTRY.ALL beside it (work/2026-11/826_ctry-padded-viewpoint).
+[run]
+stop_tick = 1340
+
+[[probe]]
+name = "step"
+kind = "break"
+at = 0x4A07
+arm = "dialog"
+hits = 1000
+capture = ["mem:DS:0x4896:2"]
+
+[[probe]]
+name = "view"
+kind = "break"
+at = 0x1251
+arm = "dialog"
+hits = 1000
+capture = ["mem:DS:SI:0x18", "mem:DS:0x22E0:2"]
+
+[[probe]]
+name = "hud"
+kind = "break"
+at = 0x4A3B
+arm = "dialog"
+hits = 1000
+
+[[probe]]
+name = "end"
+kind = "break"
+at = 0x4A4F
+arm = "dialog"
+hits = 1000
