@@ -188,11 +188,25 @@ def _changed_work_notes(repo_root: Path) -> list[str]:
     )
 
 
-def ignore_rules(repo_root: Path, paths: set[str]) -> dict[str, str]:
-    """The ignore rule each ignored repository-relative path in *paths* matches, as ``source:line:pattern``.
+def _leading_link(repo_root: Path, path: str) -> str | None:
+    """The shallowest leading component of *path* that is a symbolic link, in POSIX form.
 
-    A negation (``!pattern``) reports that a path is *not* ignored, so it contributes no rule. A
-    tracked path is not ignored even where a rule matches, so a link to a committed file passes.
+    ``git check-ignore`` refuses a pathname that leads through a symbolic link, and with
+    ``--stdin`` it refuses the whole batch rather than the one path, so a path beyond a link is
+    asked about by the link instead. A link at the leaf needs no detour: git answers for the
+    entry itself, and a junction is a directory to git, so nothing is found here on Windows.
+    """
+    parts = path.split("/")
+    for index in range(1, len(parts)):
+        candidate = "/".join(parts[:index])
+        if (repo_root / candidate).is_symlink():
+            return candidate
+    return None
+
+
+def _check_ignore(repo_root: Path, paths: set[str]) -> dict[str, str]:
+    """The rule git reports for each ignored path in *paths*, keyed by the path git was given.
+
     A tree git cannot read yields no rules.
     """
     if not paths:
@@ -219,6 +233,19 @@ def ignore_rules(repo_root: Path, paths: set[str]) -> dict[str, str]:
         for index in range(0, len(fields) - 3, 4)
         if not fields[index + 2].startswith("!")
     }
+
+
+def ignore_rules(repo_root: Path, paths: set[str]) -> dict[str, str]:
+    """The ignore rule each ignored repository-relative path in *paths* matches, as ``source:line:pattern``.
+
+    A negation (``!pattern``) reports that a path is *not* ignored, so it contributes no rule. A
+    tracked path is not ignored even where a rule matches, so a link to a committed file passes.
+    A path that leads through a symbolic link is matched by its link's rule, which is what
+    ``git check-ignore`` can answer for it. A tree git cannot read yields no rules.
+    """
+    probe = {path: _leading_link(repo_root, path) or path for path in paths}
+    rules = _check_ignore(repo_root, set(probe.values()))
+    return {path: rules[name] for path, name in probe.items() if name in rules}
 
 
 def link_scan_files(repo_root: Path) -> list[str]:

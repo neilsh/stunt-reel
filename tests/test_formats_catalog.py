@@ -282,6 +282,20 @@ def test_a_link_through_a_data_root_junction_is_checked_lexically(tmp_path: Path
     assert ".gitignore:1:corpus/**" in result.errors[0]
 
 
+def test_a_target_beyond_a_link_is_asked_about_by_its_link(tmp_path: Path) -> None:
+    """git refuses a path that leads through a link and drops the batch, so the link answers."""
+    repo = _repo(tmp_path)
+    data = tmp_path / "data"
+    data.mkdir()
+    (repo / "corpus").mkdir()
+    _link(repo / "corpus" / "stuntisl", data)
+    _write(repo, ".gitignore", "corpus/**\n")
+
+    rules = catalog.ignore_rules(repo, {"corpus/stuntisl/game.dat"})
+
+    assert rules == {"corpus/stuntisl/game.dat": ".gitignore:1:corpus/**"}
+
+
 def test_only_a_work_note_the_branch_changes_is_link_checked(tmp_path: Path) -> None:
     """A frozen note stays out of the scan set; the note this branch adds is in it."""
     repo = _repo(tmp_path)
