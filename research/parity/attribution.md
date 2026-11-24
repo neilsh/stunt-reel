@@ -73,6 +73,7 @@ Every placed shape is attributed (section 1), so no reference film has an `unatt
 * **`bomb` and `ctry` concentrated** their props loss on that run, before the 0.1 m near plane: three shapes hold 43% of `bomb`'s (1756, 1650, 1737) and two hold 46% of `ctry`'s (926, 917).
   `location` spreads its `props` loss over 1,014 shapes, the worst (1610) holding 4.2% of it and the ten worst 19.2%, so a fix aimed at one of them moves `location` little.
 * The split says which shapes carry the loss, not why; a shape's pixels share SSIM windows with its neighbours, so its figure includes loss its surroundings cause, as the class split does (section 1).
+* On a later tree, `location`'s and `bomb`'s worst shapes and why each loses are in [`prop-shape-loss.md`](prop-shape-loss.md).
 
 **Why the two worst shapes lose.**
 `[Bounded Observation]`, GPU, `main` at `581453ed` (2026-11-21).

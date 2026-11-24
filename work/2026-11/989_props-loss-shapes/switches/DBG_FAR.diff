@@ -1,0 +1,32 @@
+diff --git a/crates/stunt-core/src/contracts/trajectory.rs b/crates/stunt-core/src/contracts/trajectory.rs
+index a1fed87d..31bcaf93 100644
+--- a/crates/stunt-core/src/contracts/trajectory.rs
++++ b/crates/stunt-core/src/contracts/trajectory.rs
+@@ -112,6 +112,7 @@ impl CameraTransform {
+         reason = "ext and splitdist are 16-bit words and the mantissa a u16, so the i64 maths cannot overflow"
+     )]
+     pub fn lod_keeps_subtree(&self, point: [f32; 3], ext: i32, splitdist: i32) -> bool {
++        if std::env::var("DBG_FAR").ok().and_then(|v| v.parse::<u8>().ok()).unwrap_or(0) == 2 { return true; }
+         let (mantissa, shift) = self.lod_lens_words();
+         let forward = [
+             self.target[0] - self.eye[0],
+@@ -154,6 +155,7 @@ impl CameraTransform {
+         reason = "the coordinate is clamped to 0..=65535 first, PLAYONE's 16-bit high word"
+     )]
+     pub fn scale_reach_keeps(&self, point: [f32; 3], scale_index: u8) -> bool {
++        if std::env::var("DBG_FAR").ok().and_then(|v| v.parse::<u8>().ok()).unwrap_or(0) == 1 { return true; }
+         let (_, shift) = self.lod_lens_words();
+         let largest = point
+             .iter()
+diff --git a/crates/stunt-core/src/world/scenery/mod.rs b/crates/stunt-core/src/world/scenery/mod.rs
+index a085f467..75cf1a7a 100644
+--- a/crates/stunt-core/src/world/scenery/mod.rs
++++ b/crates/stunt-core/src/world/scenery/mod.rs
+@@ -250,6 +250,7 @@ pub(crate) fn place_props(
+         if view_eyes.is_empty() {
+             return LodChoice::Near;
+         }
++        if std::env::var("DBG_FAR").ok().and_then(|v| v.parse::<u8>().ok()).unwrap_or(0) == 2 { return LodChoice::Both; }
+         if path_distance(pos, view_eyes)
+             > lod_reach(max_lod_shift, min_corner_depth, ext, splitdist)
+         {
