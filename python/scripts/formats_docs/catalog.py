@@ -189,10 +189,11 @@ def _changed_work_notes(repo_root: Path) -> list[str]:
 
 
 def ignore_rules(repo_root: Path, paths: set[str]) -> dict[str, str]:
-    """The ignore rule each repository-relative path in *paths* matches, as ``source:line:pattern``.
+    """The ignore rule each ignored repository-relative path in *paths* matches, as ``source:line:pattern``.
 
-    A tracked path is not ignored even where a rule matches, so a link to a committed file
-    passes. A tree git cannot read yields no rules.
+    A negation (``!pattern``) reports that a path is *not* ignored, so it contributes no rule. A
+    tracked path is not ignored even where a rule matches, so a link to a committed file passes.
+    A tree git cannot read yields no rules.
     """
     if not paths:
         return {}
@@ -216,6 +217,7 @@ def ignore_rules(repo_root: Path, paths: set[str]) -> dict[str, str]:
     return {
         fields[index + 3]: f"{fields[index]}:{fields[index + 1]}:{fields[index + 2]}"
         for index in range(0, len(fields) - 3, 4)
+        if not fields[index + 2].startswith("!")
     }
 
 

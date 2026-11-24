@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 lazy from pathlib import Path
 
@@ -43,7 +44,7 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
     root = repo_root.resolve()
 
     scan_files = link_scan_files(repo_root)
-    links: list[tuple[str, int, str, Path, str]] = []
+    links: list[tuple[str, int, str, Path, str | None, str]] = []
     targets: set[str] = set()
     for rel_path in scan_files:
         source_file = (repo_root / rel_path).resolve()
@@ -67,24 +68,26 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
                 # Resolve target file path
                 if file_part:
                     target_file = (source_file.parent / file_part).resolve()
+                    lexical = Path(os.path.normpath(source_file.parent / file_part))
                 else:
                     target_file = source_file
+                    lexical = source_file
 
-                relative = _repo_relative(target_file, root)
+                relative = _repo_relative(lexical, root)
                 if relative is not None:
                     targets.add(relative)
-                links.append((rel_path, line_num, url, target_file, anchor))
+                links.append((rel_path, line_num, url, target_file, relative, anchor))
 
     ignored = ignore_rules(root, targets)
-    for rel_path, line_num, url, target_file, anchor in links:
+    for rel_path, line_num, url, target_file, relative, anchor in links:
         if not target_file.exists():
             errors.append(
                 f"Broken link in {rel_path}:{line_num} -> '{url}' (target does not exist: {target_file})"
             )
             continue
 
-        # A gitignored target exists in the worktree that wrote it but not on main.
-        relative = _repo_relative(target_file, root)
+        # A gitignored target exists in the worktree that wrote it but not on main. The lookup
+        # is lexical, so a target under a data-root junction stays inside the repository.
         rule = ignored.get(relative) if relative is not None else None
         if rule is not None:
             errors.append(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -207,6 +208,78 @@ def test_a_link_to_a_gitignored_file_fails_and_a_tracked_file_passes(tmp_path: P
     assert "README.md:3" in result.errors[0]
     assert "probe/probe.log" in result.errors[0]
     assert ".gitignore:1:*.log" in result.errors[0]
+
+
+def test_a_link_reincluded_by_a_negation_pattern_passes(tmp_path: Path) -> None:
+    """A ``!`` rule reports a negation, not an ignore, so only the still-ignored target fails."""
+    repo = _repo(tmp_path)
+    _write(repo, ".gitignore", "*.log\n!probe/keep.log\n")
+    _write(repo, "README.md", "# Readme\n\n[keep](probe/keep.log) [drop](probe/drop.log)\n")
+    _write(repo, "probe/keep.log", "kept\n")
+    _write(repo, "probe/drop.log", "dropped\n")
+    _git(repo, "add", ".gitignore", "README.md")
+    _git(repo, "commit", "-qm", "base")
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+
+    assert not result.passed
+    assert len(result.errors) == 1, result.errors
+    assert "README.md:3" in result.errors[0]
+    assert "probe/drop.log" in result.errors[0]
+    assert ".gitignore:1:*.log" in result.errors[0]
+
+
+def test_a_tracked_file_is_not_ignored_even_when_a_rule_matches(tmp_path: Path) -> None:
+    """A committed ``*.log`` matches the rule, but git does not report it, so its link passes."""
+    repo = _repo(tmp_path)
+    _write(repo, ".gitignore", "*.log\n")
+    _write(repo, "probe/kept.log", "kept\n")
+    _write(repo, "README.md", "# Readme\n\n[kept](probe/kept.log)\n")
+    _git(repo, "add", "-f", ".gitignore", "probe/kept.log", "README.md")
+    _git(repo, "commit", "-qm", "base")
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+
+    assert result.passed, result.errors
+
+
+def _link(link: Path, target: Path) -> None:
+    """Point *link* at *target*, with a junction where cmd can make one and a symlink otherwise."""
+    cmd = shutil.which("cmd")
+    if cmd is not None:
+        made = subprocess.run(  # noqa: S603 - fixed cmd arguments
+            [cmd, "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if made.returncode == 0:
+            return
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as err:  # pragma: no cover - platform privilege
+        pytest.skip(f"cannot make a link here: {err}")
+
+
+def test_a_link_through_a_data_root_junction_is_checked_lexically(tmp_path: Path) -> None:
+    """A target that resolves outside the repository still names an ignored path inside it."""
+    repo = _repo(tmp_path)
+    data = tmp_path / "data"
+    data.mkdir()
+    _write(data, "game.dat", "data\n")
+    (repo / "corpus").mkdir()
+    _link(repo / "corpus" / "stuntisl", data)
+    _write(repo, ".gitignore", "corpus/**\n")
+    _write(repo, "README.md", "# Readme\n\n[game](corpus/stuntisl/game.dat)\n")
+    _git(repo, "add", ".gitignore", "README.md")
+    _git(repo, "commit", "-qm", "base")
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+
+    assert not result.passed
+    assert len(result.errors) == 1, result.errors
+    assert "corpus/stuntisl/game.dat" in result.errors[0]
+    assert ".gitignore:1:corpus/**" in result.errors[0]
 
 
 def test_only_a_work_note_the_branch_changes_is_link_checked(tmp_path: Path) -> None:
