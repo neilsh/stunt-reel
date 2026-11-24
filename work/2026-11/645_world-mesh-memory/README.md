@@ -10,7 +10,7 @@ outcome: "A headless render frees the world mesh's CPU copy once it has uploaded
 Issue #645; the cloud half is #705. The lavapipe breakdown, and freeing the world mesh after
 upload (`FilmScene::release_world_mesh`, called by `run_headless`), are in
 [`journal.md`](journal.md) and
-[`research/parity/evidence-limits.md` § 3](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+[`research/parity/lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker).
 
 ## Handoff
 
@@ -18,7 +18,7 @@ Left for a `local-only` follow-up on the RTX 4070 Laptop, which closes #645 and 
 README's `outcome`:
 
 - Peak and steady RAM (and VRAM) for LOCATION and CTRY on the GPU, before and after the PR that
-  freed the mesh, beside the Linux figures in `evidence-limits.md` § 3.
+  freed the mesh, beside the Linux figures in `lavapipe-render-time.md` § 7.
 - `frames.zst`, `layers.zst` and `palettes.zst` byte-identical before and after on the GPU over
   every reference film's captured ticks.
 

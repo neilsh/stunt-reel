@@ -13,13 +13,13 @@ use std::process::{Command, Output};
 const LAST_SLICE_DURATION: usize = 103;
 
 /// The `stuntreel` binary Cargo built for this test, read at run time (issue #486).
-fn stuntreel() -> PathBuf {
+pub(crate) fn stuntreel() -> PathBuf {
     std::env::var_os("CARGO_BIN_EXE_stuntreel")
         .map(PathBuf::from)
         .expect("CARGO_BIN_EXE_stuntreel is unset: run the tests through cargo")
 }
 
-fn workspace_root() -> PathBuf {
+pub(crate) fn workspace_root() -> PathBuf {
     let manifest = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("run under cargo"));
     manifest
         .ancestors()
@@ -29,7 +29,7 @@ fn workspace_root() -> PathBuf {
 }
 
 /// Every file under `dir`, by path relative to it, with its bytes.
-fn tree(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+pub(crate) fn tree(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     let mut files = BTreeMap::new();
     let mut pending = vec![dir.to_path_buf()];
     while let Some(at) = pending.pop() {

@@ -35,13 +35,14 @@ mod sod_census;
 mod sod_trace;
 #[cfg(test)]
 mod test_support;
+mod timing_report;
 mod window;
 mod workers;
 
 use std::env;
 
 use config::CliConfig;
-use scene::{SceneSources, build_identified_scene};
+use scene::{SceneSources, build_timed_scene};
 use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() {
@@ -110,7 +111,7 @@ fn main() {
         return;
     }
 
-    let (mut scene, film) = match build_identified_scene(&SceneSources {
+    let (mut scene, film, scene_times) = match build_timed_scene(&SceneSources {
         flm: config.flm_path.as_deref(),
         all: config.all_path.as_deref(),
         game: config.game_dir.as_deref(),
@@ -127,7 +128,7 @@ fn main() {
     };
 
     if config.headless {
-        if let Err(e) = headless::run_headless(&config, &mut scene, film) {
+        if let Err(e) = headless::run_headless(&config, &mut scene, film, scene_times) {
             eprintln!("[stuntreel error] {e}");
             std::process::exit(1);
         }

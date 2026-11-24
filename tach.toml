@@ -69,6 +69,7 @@ layer = "capture"
 # The parity loop: render, score, judge and record against the captures.
 [[modules]]
 paths = [
+    "stunt_reel.ab_timing",
     "stunt_reel.batch_films",
     "stunt_reel.batch_ledger",
     "stunt_reel.batch_stages",

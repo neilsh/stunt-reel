@@ -4,6 +4,7 @@
 use std::collections::VecDeque;
 use std::fs;
 use std::path::PathBuf;
+use std::time::Instant;
 use stunt_core::credits::CreditLines;
 
 use stunt_core::contracts::PaletteControls;
@@ -16,6 +17,8 @@ use crate::config::CliConfig;
 use crate::memory_report::MemoryReport;
 use crate::page_slot::PageSlot;
 use crate::playback::{Playback, SampleKey, capture_tick, shard_samples};
+use crate::scene::SceneTimes;
+use crate::timing_report::TimingReport;
 use stunt_score::parity_artifacts::{PageView, RenderJournal};
 
 /// File name written under --out-dir for an evenly spaced sample; whole ticks go to the
@@ -160,15 +163,18 @@ fn write_landed_pages(
 
 /// Executes headless rendering without window creation; a render store records `film`, the
 /// identity of the bytes `scene` was built from. Frees `scene`'s world mesh once it is
-/// uploaded ([`FilmScene::release_world_mesh`]).
+/// uploaded ([`FilmScene::release_world_mesh`]). `scene_times` is how long `scene` took to
+/// build, for `--report-timing`.
 pub(crate) fn run_headless(
     config: &CliConfig,
     scene: &mut FilmScene,
     film: FilmId,
+    scene_times: SceneTimes,
 ) -> Result<(), String> {
     println!("[stuntreel] Starting headless offscreen presentation...");
     let memory = MemoryReport::new(config.report_memory);
     memory.stage("scene built");
+    let mut timing = TimingReport::new(config.report_timing, scene_times);
 
     if let Some(out_dir) = &config.out_dir {
         fs::create_dir_all(out_dir)
@@ -215,6 +221,7 @@ pub(crate) fn run_headless(
             "[stuntreel] camera forward: {}",
             if CAMERA_FORWARD[2] < 0.0 { "-Z" } else { "+Z" }
         );
+        let open_started = Instant::now();
         let mut renderer = Renderer::offscreen(
             scene,
             offscreen,
@@ -224,6 +231,7 @@ pub(crate) fn run_headless(
             options,
         )
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
+        timing.renderer_opened(open_started.elapsed(), renderer.upload_times());
         memory.stage("renderer opened");
         scene.release_world_mesh();
         memory.stage("world mesh released");
@@ -234,9 +242,11 @@ pub(crate) fn run_headless(
             cam.fov_degrees,
             frame.actors.len()
         );
+        let loop_started = Instant::now();
         renderer
             .draw(&frame, None)
             .map_err(|e| format!("Offscreen render to PNG failed: {e}"))?;
+        timing.looped(loop_started.elapsed());
 
         memory.stage("frame drawn");
         println!(
@@ -244,6 +254,7 @@ pub(crate) fn run_headless(
             output_path.display()
         );
         memory.finish();
+        timing.print();
         return Ok(());
     }
 
@@ -271,12 +282,14 @@ pub(crate) fn run_headless(
         written_video_frames: 0,
     };
     let slot = PageSlot::default();
+    let open_started = Instant::now();
     let mut renderer = Renderer::offscreen(scene, offscreen, Box::new(slot.clone()), options)
         .map_err(|e| format!("Headless renderer failed: {e}"))?;
+    timing.renderer_opened(open_started.elapsed(), renderer.upload_times());
     memory.stage("renderer opened");
     // The world mesh is on the device now. Freeing it before the first submit keeps it from
     // overlapping the upload's staging copies and the device buffers they fill
-    // (research/parity/evidence-limits.md).
+    // (research/parity/lavapipe-render-time.md section 7).
     scene.release_world_mesh();
     memory.stage("world mesh released");
     println!(
@@ -287,6 +300,7 @@ pub(crate) fn run_headless(
     // The renderer keeps two frames in flight: submitting a frame retires the page of the one
     // before it, so each page lands here one submission after its frame.
     let mut pending: VecDeque<(SampleKey, FrameFacts)> = VecDeque::new();
+    let loop_started = Instant::now();
     for (key, tick) in samples {
         let frame = scene.frame(capture_tick(tick));
         renderer
@@ -299,6 +313,7 @@ pub(crate) fn run_headless(
         .finish()
         .map_err(|e| format!("finish the last frame: {e}"))?;
     write_landed_pages(&slot, &mut pending, &mut sink)?;
+    timing.looped(loop_started.elapsed());
     if !pending.is_empty() {
         return Err("the renderer did not hand back every submitted frame".to_string());
     }
@@ -325,6 +340,7 @@ pub(crate) fn run_headless(
     }
 
     memory.finish();
+    timing.print();
     Ok(())
 }
 

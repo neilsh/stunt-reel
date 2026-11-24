@@ -7,6 +7,7 @@
 use crate::common;
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
@@ -522,6 +523,31 @@ fn world_is_drawn_when_present() {
             return;
         };
         assert!(drawn_in_columns(&drawn, w, h, w / 3..w * 2 / 3) > 100);
+    });
+}
+
+/// The open's world upload time is zero without a world and positive with one.
+#[test]
+fn upload_times_charge_the_world_only_when_there_is_one() {
+    common::gpu_test(|| {
+        let no_world = scene(Vec::new(), VisibilityCondition::Always);
+        let Some(test) = common::gpu_or_skip(&no_world) else {
+            return;
+        };
+        assert_eq!(test.renderer.upload_times().world, Duration::ZERO);
+
+        let world = FilmScene::new(
+            timeline(Vec::new()),
+            HashMap::new(),
+            Some(world_of(triangle(
+                "WORLD_BASE",
+                VisibilityCondition::Always,
+            ))),
+        );
+        let Some(test) = common::gpu_or_skip(&world) else {
+            return;
+        };
+        assert!(test.renderer.upload_times().world > Duration::ZERO);
     });
 }
 

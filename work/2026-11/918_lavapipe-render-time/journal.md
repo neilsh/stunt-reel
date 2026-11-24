@@ -201,7 +201,7 @@ Branch HEAD at handoff shares the identical `crates/` tree (`c50bd5f9d80fbffdda1
 
 - **Verdict**: Multiple `VkDevice`s in one process do not strictly serialize on one thread (`2.21` cores on Windows and `2.07` cores on Linux at `N=2`, `LP_NUM_THREADS=1`), revising `#645`'s single-thread statement in [`evidence-limits.md`](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
   However, in-process pooling underperforms child processes on both speed and efficiency (`4` workers on Linux regressed to `15,890.6` ms loop / `58.22` s CPU vs `7,650.1` ms loop / `45.70` s CPU for `4` child processes, even with `1` shared scene build), and even separating `wgpu::Instance`/`Adapter` per thread (`13,128.4` ms Linux, `5,451.2` ms Windows) left in-process workers slower than child processes while saving `257.5..299.6 MiB` polled aggregate RSS at `4` workers (`3,243.6` vs `3,501.1 MiB` Win; `3,287.1` vs `3,586.7 MiB` WSL) because each extra lavapipe device adds `751..796 MiB` of RSS (`751.3..765.0 MiB` at `2w`, `784.7..796.2 MiB` marginal at `2w -> 4w`) for device buffers and driver state.
-- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md#5-multi-vkdevice-in-process-versus-child-processes) and [`evidence-limits.md`](../../../research/parity/evidence-limits.md#3-what-is-not-yet-evidence).
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md#5-multi-vkdevice-in-process-versus-child-processes) and [`lavapipe-render-time.md` § 7](../../../research/parity/lavapipe-render-time.md#7-memory-per-worker).
 
 ---
 
