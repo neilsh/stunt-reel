@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Sync the owner's project board's Status field from each issue's labels and state.
+"""Sync the owner's project board's Status and Priority fields from each issue's labels and state.
 
 The board is the owner's dashboard; labels stay the source of truth
-(``docs/agents/issue-tracker.md`` § Organizing issues). For each issue this adds it to the
-project, unarchives it if it is open, and sets Status from :func:`derive_status`. The
-``project-sync`` workflow runs it on issue events, daily and on demand.
+(``docs/agents/issue-tracker.md``). For each issue this adds it to the project, unarchives it if
+it is open, and sets Status from :func:`derive_status` and Priority from :func:`derive_priority`
+(clearing Priority when no ``priority:`` label is set). The ``project-sync`` workflow runs it on
+issue events, daily and on demand.
 
 Usage: ``mise run project-sync -- <issue number>...`` or ``-- --all`` (every open issue, plus
 every unarchived project item from this repo). Needs ``gh`` authenticated with ``project``
@@ -31,9 +32,17 @@ GH_TIMEOUT = 60
 LABEL_STATUS = (
     (labels.IN_PROGRESS, "In progress"),
     (labels.NEEDS_INFO, "Needs info"),
+    (labels.PLAN_REVIEW, "Plan review"),
     (labels.READY_FOR_HUMAN, "Ready for human"),
+    (labels.NEEDS_PLAN, "Needs plan"),
     (labels.READY_FOR_AGENT, "Ready for agent"),
     (labels.NEEDS_TRIAGE, "Needs triage"),
+)
+LABEL_PRIORITY = (
+    (labels.PRIORITY_P0, "P0"),
+    (labels.PRIORITY_P1, "P1"),
+    (labels.PRIORITY_P2, "P2"),
+    (labels.PRIORITY_P3, "P3"),
 )
 DONE = "Done"
 GOAL = "Goal"
@@ -44,7 +53,8 @@ query($owner: String!, $number: Int!) {
   user(login: $owner) {
     projectV2(number: $number) {
       id
-      field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } }
+      status: field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } }
+      priority: field(name: "Priority") { ... on ProjectV2SingleSelectField { id options { id name } } }
     }
   }
 }"""
@@ -70,7 +80,8 @@ mutation($project: ID!, $content: ID!) {
     item {
       id
       isArchived
-      fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+      status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+      priority: fieldValueByName(name: "Priority") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
     }
   }
 }"""
@@ -84,6 +95,13 @@ _SET = """
 mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
   updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field,
                                         value: {singleSelectOptionId: $option}}) { projectV2Item { id } }
+}"""
+
+_CLEAR = """
+mutation($project: ID!, $item: ID!, $field: ID!) {
+  clearProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field}) {
+    projectV2Item { id }
+  }
 }"""
 
 
@@ -133,23 +151,47 @@ def derive_status(names: set[str], state: str, sub_issues: int) -> str:
     return next((status for label, status in LABEL_STATUS if label in names), TRIAGE)
 
 
+def derive_priority(names: set[str]) -> str | None:
+    """The Priority option an issue belongs in, or ``None`` when no ``priority:`` label is set."""
+    return next((option for label, option in LABEL_PRIORITY if label in names), None)
+
+
 @dataclass(frozen=True)
 class Project:
-    """The project's node id and its Status field: id and option name -> option id."""
+    """The project's node id and its Status and Priority fields: id and option name -> option id."""
 
     id: str
-    field: str
-    options: dict[str, str]
+    status_field: str
+    status_options: dict[str, str]
+    priority_field: str
+    priority_options: dict[str, str]
+
+
+def _load_single_select(
+    field_node: dict[str, Any] | None, field_name: str, wanted: set[str]
+) -> tuple[str, dict[str, str]]:
+    if not field_node or "options" not in field_node:
+        raise GhError(f"Project has no single-select field {field_name}")
+    options = {option["name"]: option["id"] for option in field_node["options"]}
+    if missing := sorted(wanted - options.keys()):
+        raise GhError(f"{field_name} has no option {', '.join(missing)}")
+    return field_node["id"], options
 
 
 def load_project(owner: str, number: int) -> Project:
-    """Read the project; raises :class:`GhError` if Status lacks an option sync can set."""
+    """Read the project; raises :class:`GhError` if Status or Priority lacks an option sync sets."""
     node = graphql(_PROJECT, owner=owner, number=number)["user"]["projectV2"]
-    options = {option["name"]: option["id"] for option in node["field"]["options"]}
-    wanted = {DONE, GOAL, *(status for _, status in LABEL_STATUS)}
-    if missing := sorted(wanted - options.keys()):
-        raise GhError(f"Status has no option {', '.join(missing)}")
-    return Project(node["id"], node["field"]["id"], options)
+    status_field, status_options = _load_single_select(
+        node.get("status"),
+        "Status",
+        {DONE, GOAL, *(status for _, status in LABEL_STATUS)},
+    )
+    priority_field, priority_options = _load_single_select(
+        node.get("priority"),
+        "Priority",
+        {option for _, option in LABEL_PRIORITY},
+    )
+    return Project(node["id"], status_field, status_options, priority_field, priority_options)
 
 
 def project_issues(owner: str, number: int, repo: str) -> set[int]:
@@ -185,6 +227,7 @@ def sync_issue(project: Project, repo: str, number: int) -> str | None:
     names = {label["name"] for label in issue["labels"]}
     sub_issues = (issue.get("sub_issues_summary") or {}).get("total", 0)
     status = derive_status(names, issue["state"], sub_issues)
+    priority = derive_priority(names)
     item = graphql(_ADD, project=project.id, content=issue["node_id"])["addProjectV2ItemById"][
         "item"
     ]
@@ -192,16 +235,29 @@ def sync_issue(project: Project, repo: str, number: int) -> str | None:
     if item["isArchived"] and issue["state"] == "open":
         graphql(_UNARCHIVE, project=project.id, item=item["id"])
         changes.append("unarchived")
-    current = (item["fieldValueByName"] or {}).get("name")
-    if current != status:
+    current_status = (item.get("status") or {}).get("name")
+    if current_status != status:
         graphql(
             _SET,
             project=project.id,
             item=item["id"],
-            field=project.field,
-            option=project.options[status],
+            field=project.status_field,
+            option=project.status_options[status],
         )
-        changes.append(f"{current or '(none)'} -> {status}")
+        changes.append(f"{current_status or '(none)'} -> {status}")
+    current_priority = (item.get("priority") or {}).get("name")
+    if priority is not None and current_priority != priority:
+        graphql(
+            _SET,
+            project=project.id,
+            item=item["id"],
+            field=project.priority_field,
+            option=project.priority_options[priority],
+        )
+        changes.append(f"Priority: {current_priority or '(none)'} -> {priority}")
+    elif priority is None and current_priority is not None:
+        graphql(_CLEAR, project=project.id, item=item["id"], field=project.priority_field)
+        changes.append(f"Priority: {current_priority} -> (none)")
     return f"#{number}: {', '.join(changes)}" if changes else None
 
 

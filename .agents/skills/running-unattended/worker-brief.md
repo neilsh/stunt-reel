@@ -4,7 +4,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
 
 Every implementer brief, first task or review fix, is self-contained: a follow-up starts a fresh session, and the worker has only the brief.
 Give the issue or PR number, the branch and base and, for a fix, the review comment's URL.
-The coordinator reads no issue body, so the worker reads the issue or PR and its comments itself (the triage comment's Agent Brief holds the files in scope and the acceptance criteria) and the brief does not restate them.
+The coordinator reads no issue body, so the worker reads the issue or PR and its comments itself (the triage comment's Agent Brief or any `## Tentative plan` comment holds the files in scope and the acceptance criteria) and the brief does not restate them.
 State the stop as an absolute UTC time (`stop at 11:45 UTC`), never a duration; the worker runs `mise run now` (the same command in Bash and PowerShell) and quotes its output before deciding it is out of time.
 Then copy in this checklist:
 
@@ -38,3 +38,16 @@ A cloud child session (`create_session`) gets the brief above and these changes:
 2. Self-review with a `reviewer` subagent ([`pr-and-filing.md`](pr-and-filing.md) step 2), push, and open the PR, even on a rule 5 path: this replaces step 8's "do not push" paragraph.
    Post the reviewer's verdict comment once the PR is open.
 3. Report the PR number, head SHA and that comment's URL with `send_message`; the coordinator alone arms or merges.
+
+## Planner brief
+
+A `status:needs-plan` dispatch runs read-only on Opus or frontier with no branch or PR:
+
+1. Read the issue body and comments (the coordinator has already claimed it with `status:in-progress` and `Claimed by planner <id>.`).
+2. Investigate read-only with no branch, code edits or PR, and verify every `file:line` and figure against the checkout ("Cite what you read", [`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)).
+3. Write `build/scratch/plan-<N>.md` starting with `## Tentative plan`: files in scope, concrete approach, acceptance criteria, verification commands, recommended `area:`/`type:` updates, and open decisions with recommendations.
+   Add or fix missing `area:`/`type:` labels if needed; never overwrite `priority:`.
+4. If a cloud session lacks a `local-windows` resource needed to plan, post nothing and report the missing resource so the coordinator releases the claim with `env:local-only`.
+   If any design/ADR/visual decision, ambiguity or multi-PR split remains, post the comment (`--body-file` locally, or REST in cloud per [`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)) and swap `status:in-progress` for `status:plan-review`.
+   Otherwise have a fresh-context subagent review the tentative plan comment against the codebase first, revise it, post it (`--body-file` or REST), and swap `status:in-progress` for `status:ready-for-agent`.
+5. Report in about 5 lines: the new state (`status:plan-review`, `status:ready-for-agent`, or missing-resource release), the comment URL, any `area:`/`type:` labels applied, and any key open decision.

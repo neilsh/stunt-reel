@@ -145,15 +145,19 @@ description = "Fail a branch and its PR body on the defects reviewers check by h
 run = "uv run python python/scripts/pr_lint.py"
 
 [tasks.project-sync]
-description = "Set the owner's Issue Radar project's Status from each issue's labels and state, as the project-sync workflow does; needs gh with project scope (mise run project-sync -- <issue>... | --all)"
+description = "Set the owner's Issue Radar project's Status and Priority from each issue's labels and state, as the project-sync workflow does; needs gh with project scope (mise run project-sync -- <issue>... | --all)"
 run = "uv run python python/scripts/project_sync.py --repo neilsh/stunt-reel --owner neilsh --project 1"
+
+[tasks.label-sync]
+description = "Dry-run or apply the canonical GitHub issue labels from python/scripts/labels.py via REST (mise run label-sync [-- --apply])"
+run = "uv run python python/scripts/label_sync.py"
 
 [tasks.now]
 description = "The UTC time to the minute and the local day, for a stop time or a dated record; the same command in Bash and PowerShell"
 run = '''python -c "import datetime as d; print(d.datetime.now(d.UTC).isoformat(timespec='minutes'), 'local day', d.date.today())"'''
 
 [tasks.queue]
-description = "The unattended queue: open PRs in stack order, then open status:ready-for-agent issues, one line each with ready or the mechanical reason to skip it; prints no bodies"
+description = "The unattended queue: open PRs in stack order, then open status:ready-for-agent and status:needs-plan issues sorted by priority, one line each with ready or the mechanical reason to skip it; prints no bodies"
 run = "uv run python python/scripts/work_queue.py"
 
 [tasks.work]
