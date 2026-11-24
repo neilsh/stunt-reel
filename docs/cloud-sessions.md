@@ -209,6 +209,7 @@ Each worktree builds its own `target/`: about six Rust-building subagents plus a
 ## Antigravity cloud
 
 An Antigravity VM runs `.claude/cloud-setup.sh --antigravity` via [`.agents/environment.json`](../.agents/environment.json), putting `mise`, `RUSTUP_HOME` and lavapipe in `~/.local` and env in `~/.bashrc`.
+Its lavapipe is Debian bookworm-backports' LLVM 15 build, not the canonical Ubuntu package: that package's driver and LLVM library need glibc 2.38, past the VM's 2.36 ([`lavapipe.md` § Ruled out](../research/parity/lavapipe.md#ruled-out)), so a check that needs `expected.lavapipe` stays on the Claude cloud or local-windows (WSL) until #806 changes the image or ships a bookworm build.
 `/home/antigravity/env-setup.sh` fetches archives via `gdrive` and runs `game-builds` and `superset-all` ([`cloud-antigravity.md`](../.agents/skills/working-in-an-environment/cloud-antigravity.md), [`harness.md`](harness.md#antigravity)).
 
 ## Rotating the token

@@ -21,6 +21,7 @@ Image uploads with `gh --attach` through `agy-plugin-proxy` are untested here; c
 
 Renders run on user-space `bookworm-backports` lavapipe (`25.0.7-2~bpo12+1` with `libllvm15`).
 `mise run test-gpu` passes (39 passed, 1 ignored on #799, 2026-11-18) and `mise run sweep` works for relative comparisons, while `mise run parity` reports `not comparable: other adapter` against `expected/lavapipe.toml`'s `"llvmpipe (LLVM 20.1.2, 256 bits)"` (`ctry` scored `0.9188` SSIM / `0.9910` IoU, `+0.0000001` from the pinned row).
+The canonical Ubuntu package cannot replace it on this image: its `libvulkan_lvp.so` and `libLLVM.so.20.1` import `GLIBC_2.38` symbols, and Debian 12's glibc is 2.36, so the setup keeps Debian's build ([`lavapipe.md` § Ruled out](../../../research/parity/lavapipe.md#ruled-out)); #806 needs an image or artifact change before it can.
 Follow [`cloud.md` § Rendering](cloud.md#rendering) when a change needs the GPU or `expected/lavapipe.toml` verification, marking such PRs `env:local-only`.
 
 ## Handing work to local-windows
