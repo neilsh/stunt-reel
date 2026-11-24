@@ -1,0 +1,35 @@
+LOCATION: decidable best-offset sign (d_ia >= 0.01) by phi bin
+  cap phi<-0.3  n  69  neg  19  pos   3
+  cap -0.3..0   n 301  neg  61  pos  25
+  cap 0..0.3    n 279  neg  17  pos  29
+  cap phi>0.3   n  83  neg   2  pos  12
+  p305 phi<-0.3  n  79  neg  28  pos   2
+  p305 -0.3..0   n 296  neg  56  pos  24
+  p305 0..0.3    n 271  neg  13  pos  31
+  p305 phi>0.3   n  87  neg   3  pos  16
+  p300 phi<-0.3  n  89  neg  24  pos   6
+  p300 -0.3..0   n 287  neg  56  pos  23
+  p300 0..0.3    n 271  neg  13  pos  23
+  p300 phi>0.3   n  85  neg   1  pos  17
+Mean scored SSIM: tag (offset 0) vs relabelled to the nearest whole emulator-time tick
+  balloon  cap  n 107 moved   2  0.9059 -> 0.9060
+  balloon  p305 n 107 moved   1  0.9015 -> 0.9021
+  balloon  p300 n 107 moved   2  0.9034 -> 0.9032
+  bomb     cap  n 316 moved   3  0.8949 -> 0.8941
+  bomb     p305 n 316 moved  25  0.8939 -> 0.8944
+  bomb     p300 n 316 moved  27  0.8942 -> 0.8933
+  ctry     cap  n 114 moved   1  0.9385 -> 0.9385
+  ctry     p305 n 113 moved  12  0.9375 -> 0.9384
+  ctry     p300 n 113 moved   0  0.9378 -> 0.9378
+  intro    cap  n 209 moved   5  0.8833 -> 0.8822
+  intro    p305 n 210 moved  38  0.8796 -> 0.8814
+  intro    p300 n 209 moved   5  0.8837 -> 0.8834
+  land     cap  n  97 moved   1  0.9245 -> 0.9244
+  land     p305 n  97 moved   1  0.9290 -> 0.9292
+  land     p300 n  97 moved   8  0.9268 -> 0.9269
+  location cap  n 732 moved  13  0.8728 -> 0.8722
+  location p305 n 733 moved  26  0.8737 -> 0.8734
+  location p300 n 732 moved  30  0.8736 -> 0.8725
+  traintnl cap  n 112 moved   1  0.9107 -> 0.9107
+  traintnl p305 n 112 moved   4  0.9120 -> 0.9107
+  traintnl p300 n 112 moved  10  0.9091 -> 0.9090

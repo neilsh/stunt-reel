@@ -1,0 +1,350 @@
+
+===== LOCATION =====
+cap: frames=745 scored=732
+p305: frames=747 scored=733
+p300: frames=745 scored=732
+cap vs retime csv: 732 csv rows, 3660 values compared, max |diff| 0.00005
+gainers (cap, ssim_gain>=0.02): 157 of 732
+  cap own gainers: 157; best-offset counts {-2: 24, -1: 120, 0: 462, 1: 102, 2: 24}
+  p305 own gainers: 161; best-offset counts {-2: 16, -1: 121, 0: 467, 1: 104, 2: 25}
+  p300 own gainers: 151; best-offset counts {-2: 15, -1: 117, 0: 477, 1: 97, 2: 26}
+d_ia histogram (scored frames):
+  cap: 0=472  (0,.005]=60  (.005,.01]=32  (.01,.02]=39  (.02,.05]=52  >.05=77
+  p305: 0=477  (0,.005]=53  (.005,.01]=31  (.01,.02]=49  (.02,.05]=45  >.05=78
+  p300: 0=488  (0,.005]=50  (.005,.01]=32  (.01,.02]=43  (.02,.05]=48  >.05=71
+decidable non-zero best offsets on cap-gainer tags vs other tags (neg/pos counts / denominator):
+  m=0.005 cap: gainer -:98 +:56 /157 | other -:3 +:43 /575
+  m=0.005 p305: gainer -:56 +:38 /126 | other -:27 +:50 /506
+  m=0.005 p300: gainer -:28 +:25 /118 | other -:43 +:53 /495
+  m=0.01 cap: gainer -:97 +:46 /157 | other -:2 +:23 /575
+  m=0.01 p305: gainer -:55 +:33 /126 | other -:25 +:31 /506
+  m=0.01 p300: gainer -:28 +:22 /118 | other -:35 +:33 /495
+  m=0.02 cap: gainer -:82 +:42 /157 | other -:0 +:5 /575
+  m=0.02 p305: gainer -:43 +:29 /126 | other -:15 +:9 /506
+  m=0.02 p300: gainer -:23 +:20 /118 | other -:24 +:17 /495
+cross-run agreement at m=0.01 (tags scored in both runs):
+  cap vs p305: both decidable 109: same 106, different 3; either decidable (undecided=0): same 106, different 67
+    both-decidable differing (tag:cap/p305): 452:+1/+2 474:+2/+1 2905:-2/-1
+    either-decidable differing: 320:+0/-1 342:+0/-1 408:+1/+0 441:+0/+1 452:+1/+2 474:+2/+1 639:+0/+2 837:+0/-1 1090:+0/+1 1222:-1/+0 1244:+0/-1 1530:+1/+0 1739:-1/+0 1750:+0/-1 1970:-1/+0 1992:-1/+0 2080:+0/-1 2102:-1/+0 2157:+0/+1 2278:+0/+1
+  cap vs p300: both decidable 64: same 62, different 2; either decidable (undecided=0): same 62, different 118
+    both-decidable differing (tag:cap/p300): 452:+1/+2 2982:-1/-2
+    either-decidable differing: 188:-1/+0 243:-1/+0 254:+0/-1 276:+0/-1 287:-1/+0 309:+0/-1 320:+0/-1 397:+1/+0 408:+1/+0 419:+0/+1 452:+1/+2 540:+1/+0 573:+0/+1 584:+2/+0 617:+0/+2 672:+0/+2 815:+0/+1 837:+0/-1 1299:-1/+0 1310:-1/+0
+  p305 vs p300: both decidable 70: same 69, different 1; either decidable (undecided=0): same 69, different 117
+    both-decidable differing (tag:p305/p300): 474:+1/+2
+    either-decidable differing: 188:-1/+0 243:-1/+0 254:+0/-1 276:+0/-1 287:-1/+0 309:+0/-1 342:-1/+0 397:+1/+0 419:+0/+1 441:+1/+0 474:+1/+2 540:+1/+0 573:+0/+1 584:+2/+0 617:+0/+2 639:+2/+0 672:+0/+2 716:+1/+0 815:+0/+1 1090:+1/+0
+render-free cross-check (rows 0..184, 59,200 px):
+  cap vs p305: shared tags 645 (of 745/747); identical, all shared 406/645; scored-both 400/632; on cap-gainer tags 79/126; on other cap-scored tags 321/506
+    differing px, all shared pairs: n=645 min=0 q1=0 med=0 q3=7 max=13788
+    differing px, non-identical pairs only: n=239 min=1 q1=6 med=386 q3=3004 max=13788
+    cap frames absent from p305 with a +-1 neighbour: n=98 min=0 q1=4 med=1670 q3=3602 max=16253; identical 15; e.g. 134->135:381 607->606:2000 717->716:127 805->804:1150 826->827:3603 1102->1101:1702 1168->1167:2781 1289->1288:1442
+    identical pages but different best offsets: 0 []
+  cap vs p300: shared tags 625 (of 745/745); identical, all shared 277/625; scored-both 269/613; on cap-gainer tags 36/118; on other cap-scored tags 233/495
+    differing px, all shared pairs: n=625 min=0 q1=0 med=3 q3=1507 max=21612
+    differing px, non-identical pairs only: n=348 min=1 q1=7 med=1154 q3=3428 max=21612
+    cap frames absent from p300 with a +-1 neighbour: n=119 min=0 q1=2 med=1676 q3=3688 max=16252; identical 27; e.g. 144->145:0 178->177:6 199->200:1 496->497:4449 551->552:7 607->606:2000 683->684:119 717->716:13551
+    identical pages but different best offsets: 0 []
+  p305 vs p300: shared tags 621 (of 747/745); identical, all shared 277/621; scored-both 270/609; on cap-gainer tags 40/103; on other cap-scored tags 202/458
+    differing px, all shared pairs: n=621 min=0 q1=0 med=3 q3=1659 max=18642
+    differing px, non-identical pairs only: n=344 min=1 q1=6 med=1188 q3=3284 max=18642
+    p305 frames absent from p300 with a +-1 neighbour: n=121 min=0 q1=1 med=1303 q3=3620 max=15111; identical 27; e.g. 135->134:381 144->145:0 178->177:0 199->200:0 496->497:4449 551->552:219 683->684:125 827->826:3603
+    identical pages but different best offsets: 0 []
+
+===== BALLOON =====
+cap: frames=108 scored=107
+p305: frames=108 scored=107
+p300: frames=108 scored=107
+cap vs retime csv: 107 csv rows, 533 values compared, max |diff| 0.00005
+gainers (cap, ssim_gain>=0.02): 1 of 107
+  cap own gainers: 1; best-offset counts {-2: 7, -1: 22, 0: 53, 1: 16, 2: 9}
+  p305 own gainers: 6; best-offset counts {-2: 6, -1: 27, 0: 46, 1: 19, 2: 9}
+  p300 own gainers: 4; best-offset counts {-2: 7, -1: 21, 0: 53, 1: 19, 2: 7}
+d_ia histogram (scored frames):
+  cap: 0=54  (0,.005]=47  (.005,.01]=4  (.01,.02]=2  (.02,.05]=0  >.05=0
+  p305: 0=47  (0,.005]=46  (.005,.01]=4  (.01,.02]=3  (.02,.05]=4  >.05=3
+  p300: 0=54  (0,.005]=41  (.005,.01]=6  (.01,.02]=2  (.02,.05]=2  >.05=2
+decidable non-zero best offsets on cap-gainer tags vs other tags (neg/pos counts / denominator):
+  m=0.005 cap: gainer -:0 +:1 /1 | other -:2 +:3 /106
+  m=0.005 p305: gainer -:0 +:0 /1 | other -:7 +:7 /94
+  m=0.005 p300: gainer -:0 +:0 /1 | other -:5 +:7 /96
+  m=0.01 cap: gainer -:0 +:1 /1 | other -:0 +:1 /106
+  m=0.01 p305: gainer -:0 +:0 /1 | other -:5 +:5 /94
+  m=0.01 p300: gainer -:0 +:0 /1 | other -:3 +:3 /96
+  m=0.02 cap: gainer -:0 +:0 /1 | other -:0 +:0 /106
+  m=0.02 p305: gainer -:0 +:0 /1 | other -:2 +:5 /94
+  m=0.02 p300: gainer -:0 +:0 /1 | other -:1 +:3 /96
+cross-run agreement at m=0.01 (tags scored in both runs):
+  cap vs p305: both decidable 0: same 0, different 0; either decidable (undecided=0): same 0, different 12
+    both-decidable differing (tag:cap/p305): 
+    either-decidable differing: 133:+0/+1 144:+0/+1 210:+0/+1 287:+0/+1 298:+0/+1 320:+1/+0 452:+0/-1 463:+0/-1 474:+0/-1 518:+0/-1 1002:+1/+0 1167:+0/-1
+  cap vs p300: both decidable 0: same 0, different 0; either decidable (undecided=0): same 0, different 8
+    both-decidable differing (tag:cap/p300): 
+    either-decidable differing: 144:+0/+1 221:+0/+1 287:+0/+1 320:+1/+0 463:+0/-1 474:+0/-1 518:+0/-1 1002:+1/+0
+  p305 vs p300: both decidable 5: same 5, different 0; either decidable (undecided=0): same 5, different 5
+    both-decidable differing (tag:p305/p300): 
+    either-decidable differing: 210:+1/+0 221:+0/+1 298:+1/+0 452:-1/+0 1167:-1/+0
+render-free cross-check (rows 0..184, 59,200 px):
+  cap vs p305: shared tags 96 (of 108/108); identical, all shared 31/96; scored-both 30/95; on cap-gainer tags 0/1; on other cap-scored tags 30/94
+    differing px, all shared pairs: n=96 min=0 q1=0 med=5 q3=474 max=10364
+    differing px, non-identical pairs only: n=65 min=1 q1=4 med=8 q3=1307 max=10364
+    cap frames absent from p305 with a +-1 neighbour: n=11 min=0 q1=274 med=946 q3=1932 max=3049; identical 1; e.g. 78->79:540 200->199:9 364->365:1824 376->375:2040 408->409:1 441->442:0 827->826:977 882->881:874
+    identical pages but different best offsets: 0 []
+  cap vs p300: shared tags 98 (of 108/108); identical, all shared 42/98; scored-both 41/97; on cap-gainer tags 0/1; on other cap-scored tags 41/96
+    differing px, all shared pairs: n=98 min=0 q1=0 med=3 q3=612 max=10364
+    differing px, non-identical pairs only: n=56 min=1 q1=6 med=352 q3=1945 max=10364
+    cap frames absent from p300 with a +-1 neighbour: n=10 min=0 q1=406 med=962 q3=2624 max=3518; identical 2; e.g. 133->134:3518 200->199:250 376->375:0 827->826:979 882->881:874 904->903:946 947->948:0 1025->1024:2584
+    identical pages but different best offsets: 0 []
+  p305 vs p300: shared tags 98 (of 108/108); identical, all shared 44/98; scored-both 43/97; on cap-gainer tags 0/1; on other cap-scored tags 40/90
+    differing px, all shared pairs: n=98 min=0 q1=0 med=1 q3=7 max=8864
+    differing px, non-identical pairs only: n=54 min=1 q1=3 med=7 q3=654 max=8864
+    p305 frames absent from p300 with a +-1 neighbour: n=9 min=0 q1=636 med=1824 q3=2646 max=3042; identical 2; e.g. 79->78:0 133->134:0 365->364:1824 409->408:2013 442->441:636 947->948:1248 969->970:3042 1035->1036:2646
+    identical pages but different best offsets: 0 []
+
+===== BOMB =====
+cap: frames=339 scored=316
+p305: frames=339 scored=316
+p300: frames=339 scored=316
+cap vs retime csv: 316 csv rows, 1577 values compared, max |diff| 0.00005
+gainers (cap, ssim_gain>=0.02): 49 of 316
+  cap own gainers: 49; best-offset counts {-2: 38, -1: 56, 0: 158, 1: 38, 2: 26}
+  p305 own gainers: 38; best-offset counts {-2: 45, -1: 49, 0: 161, 1: 37, 2: 24}
+  p300 own gainers: 46; best-offset counts {-2: 41, -1: 66, 0: 144, 1: 35, 2: 30}
+d_ia histogram (scored frames):
+  cap: 0=160  (0,.005]=95  (.005,.01]=13  (.01,.02]=21  (.02,.05]=12  >.05=15
+  p305: 0=163  (0,.005]=104  (.005,.01]=11  (.01,.02]=20  (.02,.05]=6  >.05=12
+  p300: 0=146  (0,.005]=109  (.005,.01]=16  (.01,.02]=25  (.02,.05]=6  >.05=14
+decidable non-zero best offsets on cap-gainer tags vs other tags (neg/pos counts / denominator):
+  m=0.005 cap: gainer -:29 +:19 /49 | other -:10 +:3 /267
+  m=0.005 p305: gainer -:13 +:8 /42 | other -:13 +:4 /232
+  m=0.005 p300: gainer -:18 +:10 /41 | other -:19 +:4 /235
+  m=0.01 cap: gainer -:24 +:19 /49 | other -:4 +:1 /267
+  m=0.01 p305: gainer -:9 +:8 /42 | other -:9 +:2 /232
+  m=0.01 p300: gainer -:13 +:10 /41 | other -:12 +:1 /235
+  m=0.02 cap: gainer -:7 +:19 /49 | other -:0 +:1 /267
+  m=0.02 p305: gainer -:4 +:7 /42 | other -:2 +:2 /232
+  m=0.02 p300: gainer -:5 +:9 /41 | other -:3 +:1 /235
+cross-run agreement at m=0.01 (tags scored in both runs):
+  cap vs p305: both decidable 20: same 16, different 4; either decidable (undecided=0): same 16, different 31
+    both-decidable differing (tag:cap/p305): 1123:+2/+1 2784:-1/-2 3191:+1/-1 3246:-1/+1
+    either-decidable differing: 1013:+1/+0 1024:+1/+0 1046:+1/+0 1101:+1/+0 1112:+1/+0 1123:+2/+1 1167:+2/+0 1189:+1/+0 1200:+1/+0 2091:+0/-1 2190:-1/+0 2201:-1/+0 2234:-1/+0 2256:-1/+0 2718:-1/+0 2740:-1/+0 2751:+0/-2 2784:-1/-2 2806:-2/+0 2817:+0/-2
+  cap vs p300: both decidable 26: same 22, different 4; either decidable (undecided=0): same 22, different 28
+    both-decidable differing (tag:cap/p300): 1123:+2/+1 2784:-1/-2 3191:+1/-1 3246:-1/+1
+    either-decidable differing: 1024:+1/+0 1079:+1/+0 1101:+1/+0 1123:+2/+1 1134:+1/+0 1156:+1/+0 1167:+2/+0 1178:+1/+0 1200:+1/+0 2091:+0/-1 2146:+0/-1 2234:-1/+0 2718:-1/+0 2784:-1/-2 2795:+0/-2 2806:-2/+0 2817:+0/-2 2828:-2/+0 2839:+0/-2 2850:+0/-2
+  p305 vs p300: both decidable 19: same 19, different 0; either decidable (undecided=0): same 19, different 19
+    both-decidable differing (tag:p305/p300): 
+    either-decidable differing: 1013:+0/+1 1046:+0/+1 1079:+1/+0 1112:+0/+1 1134:+1/+0 1156:+1/+0 1178:+1/+0 1189:+0/+1 2146:+0/-1 2190:+0/-1 2201:+0/-1 2740:+0/-1 2751:-2/+0 2971:-1/+0 2993:+0/-1 3103:+1/+0 3158:+0/+1 3268:+0/-1 3477:-1/+0
+render-free cross-check (rows 0..184, 59,200 px):
+  cap vs p305: shared tags 295 (of 339/339); identical, all shared 167/295; scored-both 147/274; on cap-gainer tags 16/42; on other cap-scored tags 131/232
+    differing px, all shared pairs: n=295 min=0 q1=0 med=0 q3=8 max=53622
+    differing px, non-identical pairs only: n=128 min=1 q1=6 med=74 q3=1931 max=53622
+    cap frames absent from p305 with a +-1 neighbour: n=44 min=0 q1=0 med=0 q3=1042 max=15257; identical 23; e.g. 45->46:0 68->67:0 101->100:0 122->123:0 177->178:0 189->188:6 233->232:0 266->265:0
+    identical pages but different best offsets: 0 []
+  cap vs p300: shared tags 296 (of 339/339); identical, all shared 148/296; scored-both 130/276; on cap-gainer tags 22/41; on other cap-scored tags 108/235
+    differing px, all shared pairs: n=296 min=0 q1=0 med=0 q3=101 max=14690
+    differing px, non-identical pairs only: n=148 min=1 q1=6 med=101 q3=1493 max=14690
+    cap frames absent from p300 with a +-1 neighbour: n=42 min=0 q1=0 med=1 q3=48 max=13243; identical 19; e.g. 12->13:0 68->67:0 78->79:0 155->156:0 189->188:0 288->287:0 310->309:0 375->376:6
+    identical pages but different best offsets: 0 []
+  p305 vs p300: shared tags 284 (of 339/339); identical, all shared 156/284; scored-both 141/266; on cap-gainer tags 18/37; on other cap-scored tags 112/213
+    differing px, all shared pairs: n=284 min=0 q1=0 med=0 q3=8 max=53622
+    differing px, non-identical pairs only: n=128 min=1 q1=3 med=108 q3=768 max=53622
+    p305 frames absent from p300 with a +-1 neighbour: n=54 min=0 q1=0 med=0 q3=7 max=15257; identical 32; e.g. 12->13:0 46->45:0 78->79:6 100->101:0 123->122:0 155->156:0 178->177:7 232->233:0
+    identical pages but different best offsets: 0 []
+
+===== CTRY =====
+cap: frames=121 scored=114
+p305: frames=120 scored=113
+p300: frames=119 scored=113
+cap vs retime csv: 114 csv rows, 567 values compared, max |diff| 0.00005
+gainers (cap, ssim_gain>=0.02): 5 of 114
+  cap own gainers: 5; best-offset counts {-1: 5, 0: 77, 1: 22, 2: 10}
+  p305 own gainers: 6; best-offset counts {-1: 5, 0: 66, 1: 30, 2: 12}
+  p300 own gainers: 3; best-offset counts {-2: 1, -1: 7, 0: 75, 1: 18, 2: 12}
+d_ia histogram (scored frames):
+  cap: 0=77  (0,.005]=27  (.005,.01]=6  (.01,.02]=2  (.02,.05]=1  >.05=1
+  p305: 0=66  (0,.005]=32  (.005,.01]=7  (.01,.02]=7  (.02,.05]=1  >.05=0
+  p300: 0=75  (0,.005]=25  (.005,.01]=9  (.01,.02]=3  (.02,.05]=1  >.05=0
+decidable non-zero best offsets on cap-gainer tags vs other tags (neg/pos counts / denominator):
+  m=0.005 cap: gainer -:1 +:4 /5 | other -:0 +:5 /109
+  m=0.005 p305: gainer -:0 +:1 /3 | other -:0 +:11 /95
+  m=0.005 p300: gainer -:0 +:0 /0 | other -:0 +:1 /7
+  m=0.01 cap: gainer -:1 +:3 /5 | other -:0 +:0 /109
+  m=0.01 p305: gainer -:0 +:0 /3 | other -:0 +:7 /95
+  m=0.01 p300: gainer -:0 +:0 /0 | other -:0 +:1 /7
+  m=0.02 cap: gainer -:0 +:2 /5 | other -:0 +:0 /109
+  m=0.02 p305: gainer -:0 +:0 /3 | other -:0 +:1 /95
+  m=0.02 p300: gainer -:0 +:0 /0 | other -:0 +:0 /7
+cross-run agreement at m=0.01 (tags scored in both runs):
+  cap vs p305: both decidable 0: same 0, different 0; either decidable (undecided=0): same 0, different 9
+    both-decidable differing (tag:cap/p305): 
+    either-decidable differing: 78:+0/+1 232:+0/+1 474:+0/+1 485:+0/+1 793:+0/+1 804:+1/+0 958:+1/+0 980:+0/+2 1014:+0/+1
+  cap vs p300: both decidable 0: same 0, different 0; either decidable (undecided=0): same 0, different 1
+    both-decidable differing (tag:cap/p300): 
+    either-decidable differing: 1246:+0/+1
+  p305 vs p300: both decidable 0: same 0, different 0; either decidable (undecided=0): same 0, different 1
+    both-decidable differing (tag:p305/p300): 
+    either-decidable differing: 1246:+0/+1
+render-free cross-check (rows 0..184, 59,200 px):
+  cap vs p305: shared tags 105 (of 121/121); identical, all shared 43/105; scored-both 36/98; on cap-gainer tags 1/3; on other cap-scored tags 35/95
+    differing px, all shared pairs: n=105 min=0 q1=0 med=4 q3=700 max=7092
+    differing px, non-identical pairs only: n=62 min=1 q1=7 med=82 q3=1476 max=7092
+    cap frames absent from p305 with a +-1 neighbour: n=14 min=0 q1=526 med=1195 q3=1716 max=3819; identical 2; e.g. 155->156:847 672->673:79 683->684:0 716->717:1025 739->738:605 859->860:2045 871->870:0 948->947:1765
+    identical pages but different best offsets: 0 []
+  cap vs p300: shared tags 7 (of 121/121); identical, all shared 5/7; scored-both 5/7; on cap-gainer tags 0/0; on other cap-scored tags 5/7
+    differing px, all shared pairs: n=7 min=0 q1=0 med=0 q3=325 max=2367
+    differing px, non-identical pairs only: n=2 min=650 q1=1079 med=1508 q3=1938 max=2367
+    cap frames absent from p300 with a +-1 neighbour: n=6 min=7 q1=446 med=518 q3=549 max=976; identical 0; e.g. 14->15:976 1123->1122:428 1134->1133:536 1201->1200:500 1256->1257:7 1267->1268:553
+    identical pages but different best offsets: 0 []
+  p305 vs p300: shared tags 7 (of 121/121); identical, all shared 3/7; scored-both 3/7; on cap-gainer tags 0/0; on other cap-scored tags 2/6
+    differing px, all shared pairs: n=7 min=0 q1=0 med=334 q3=675 max=2367
+    differing px, non-identical pairs only: n=4 min=334 q1=571 med=675 q3=1117 max=2367
+    p305 frames absent from p300 with a +-1 neighbour: n=5 min=7 q1=8 med=428 q3=536 max=553; identical 0; e.g. 1123->1122:428 1134->1133:536 1234->1235:8 1256->1257:7 1267->1268:553
+    identical pages but different best offsets: 0 []
+
+===== INTRO =====
+cap: frames=347 scored=209
+p305: frames=347 scored=210
+p300: frames=344 scored=209
+cap vs retime csv: 209 csv rows, 1045 values compared, max |diff| 0.00005
+gainers (cap, ssim_gain>=0.02): 50 of 209
+  cap own gainers: 50; best-offset counts {-2: 25, -1: 60, 0: 87, 1: 28, 2: 9}
+  p305 own gainers: 58; best-offset counts {-2: 26, -1: 61, 0: 81, 1: 31, 2: 11}
+  p300 own gainers: 47; best-offset counts {-2: 27, -1: 58, 0: 94, 1: 20, 2: 10}
+d_ia histogram (scored frames):
+  cap: 0=89  (0,.005]=61  (.005,.01]=8  (.01,.02]=10  (.02,.05]=14  >.05=27
+  p305: 0=82  (0,.005]=60  (.005,.01]=10  (.01,.02]=15  (.02,.05]=14  >.05=29
+  p300: 0=95  (0,.005]=57  (.005,.01]=11  (.01,.02]=7  (.02,.05]=15  >.05=24
+decidable non-zero best offsets on cap-gainer tags vs other tags (neg/pos counts / denominator):
+  m=0.005 cap: gainer -:37 +:12 /50 | other -:5 +:5 /159
+  m=0.005 p305: gainer -:16 +:7 /33 | other -:13 +:9 /133
+  m=0.005 p300: gainer -:5 +:0 /5 | other -:0 +:0 /5
+  m=0.01 cap: gainer -:36 +:10 /50 | other -:2 +:3 /159
+  m=0.01 p305: gainer -:16 +:5 /33 | other -:10 +:6 /133
+  m=0.01 p300: gainer -:5 +:0 /5 | other -:0 +:0 /5
+  m=0.02 cap: gainer -:32 +:7 /50 | other -:1 +:1 /159
+  m=0.02 p305: gainer -:12 +:4 /33 | other -:6 +:4 /133
+  m=0.02 p300: gainer -:5 +:0 /5 | other -:0 +:0 /5
+cross-run agreement at m=0.01 (tags scored in both runs):
+  cap vs p305: both decidable 24: same 22, different 2; either decidable (undecided=0): same 22, different 24
+    both-decidable differing (tag:cap/p305): 2685:+1/+2 3522:-2/-1
+    either-decidable differing: 1178:+0/-1 1376:+0/-1 2124:+0/+2 2443:+0/+1 2685:+1/+2 2740:-1/+0 2773:+1/+0 2784:+1/+0 2861:+0/+1 2905:+1/+0 2927:+1/+0 2938:+0/+1 3092:+0/-1 3103:+0/-1 3125:+0/-1 3290:-1/+0 3301:+0/-1 3312:+0/-1 3323:+0/-1 3334:+0/-1
+  cap vs p300: both decidable 5: same 4, different 1; either decidable (undecided=0): same 4, different 1
+    both-decidable differing (tag:cap/p300): 3511:-1/-2
+    either-decidable differing: 3511:-1/-2
+  p305 vs p300: both decidable 5: same 3, different 2; either decidable (undecided=0): same 3, different 3
+    both-decidable differing (tag:p305/p300): 3522:-1/-2 3545:-2/-1
+    either-decidable differing: 2400:-1/+0 3522:-1/-2 3545:-2/-1
+render-free cross-check (rows 0..184, 59,200 px):
+  cap vs p305: shared tags 294 (of 347/347); identical, all shared 184/294; scored-both 60/166; on cap-gainer tags 14/33; on other cap-scored tags 46/133
+    differing px, all shared pairs: n=294 min=0 q1=0 med=0 q3=26 max=16510
+    differing px, non-identical pairs only: n=110 min=1 q1=7 med=234 q3=3138 max=16510
+    cap frames absent from p305 with a +-1 neighbour: n=47 min=0 q1=2 med=1161 q3=5410 max=59125; identical 12; e.g. 628->629:0 650->651:3 705->706:0 760->761:59125 783->782:4110 871->870:0 893->892:3853 1046->1047:1258
+    identical pages but different best offsets: 0 []
+  cap vs p300: shared tags 10 (of 347/346); identical, all shared 6/10; scored-both 6/10; on cap-gainer tags 4/5; on other cap-scored tags 2/5
+    differing px, all shared pairs: n=10 min=0 q1=0 med=0 q3=298 max=5488
+    differing px, non-identical pairs only: n=4 min=240 q1=298 med=1648 q3=3605 max=5488
+    cap frames absent from p300 with a +-1 neighbour: n=36 min=0 q1=568 med=1194 q3=3151 max=5605; identical 3; e.g. 2058->2057:4308 2069->2068:4718 2103->2102:0 2124->2125:759 2135->2136:2719 2146->2147:5605 2157->2158:1476 2168->2169:1
+    identical pages but different best offsets: 0 []
+  p305 vs p300: shared tags 14 (of 347/346); identical, all shared 5/14; scored-both 5/14; on cap-gainer tags 1/3; on other cap-scored tags 3/4
+    differing px, all shared pairs: n=14 min=0 q1=0 med=6 q3=2572 max=8192
+    differing px, non-identical pairs only: n=9 min=3 q1=6 med=1476 q3=2977 max=8192
+    p305 frames absent from p300 with a +-1 neighbour: n=40 min=0 q1=700 med=2152 q3=4025 max=8823; identical 1; e.g. 2058->2057:5856 2069->2068:4719 2124->2125:0 2135->2136:1610 2146->2147:5605 2168->2169:1 2190->2191:4598 2201->2202:583
+    identical pages but different best offsets: 0 []
+
+===== LAND =====
+cap: frames=103 scored=97
+p305: frames=103 scored=97
+p300: frames=103 scored=97
+cap vs retime csv: 97 csv rows, 483 values compared, max |diff| 0.00005
+gainers (cap, ssim_gain>=0.02): 8 of 97
+  cap own gainers: 8; best-offset counts {-2: 3, -1: 10, 0: 66, 1: 13, 2: 5}
+  p305 own gainers: 5; best-offset counts {-2: 4, -1: 12, 0: 66, 1: 12, 2: 3}
+  p300 own gainers: 7; best-offset counts {-2: 4, -1: 13, 0: 63, 1: 12, 2: 5}
+d_ia histogram (scored frames):
+  cap: 0=67  (0,.005]=16  (.005,.01]=6  (.01,.02]=5  (.02,.05]=1  >.05=2
+  p305: 0=67  (0,.005]=18  (.005,.01]=5  (.01,.02]=6  (.02,.05]=1  >.05=0
+  p300: 0=64  (0,.005]=19  (.005,.01]=7  (.01,.02]=2  (.02,.05]=4  >.05=1
+decidable non-zero best offsets on cap-gainer tags vs other tags (neg/pos counts / denominator):
+  m=0.005 cap: gainer -:1 +:7 /8 | other -:6 +:0 /89
+  m=0.005 p305: gainer -:1 +:2 /7 | other -:4 +:2 /78
+  m=0.005 p300: gainer -:0 +:0 /6 | other -:6 +:6 /76
+  m=0.01 cap: gainer -:1 +:7 /8 | other -:0 +:0 /89
+  m=0.01 p305: gainer -:1 +:2 /7 | other -:1 +:1 /78
+  m=0.01 p300: gainer -:0 +:0 /6 | other -:2 +:4 /76
+  m=0.02 cap: gainer -:0 +:3 /8 | other -:0 +:0 /89
+  m=0.02 p305: gainer -:0 +:1 /7 | other -:0 +:0 /78
+  m=0.02 p300: gainer -:0 +:0 /6 | other -:0 +:4 /76
+cross-run agreement at m=0.01 (tags scored in both runs):
+  cap vs p305: both decidable 3: same 2, different 1; either decidable (undecided=0): same 2, different 7
+    both-decidable differing (tag:cap/p305): 254:+1/-1
+    either-decidable differing: 254:+1/-1 309:+1/+0 386:+1/+0 419:+1/+0 562:+1/+0 848:+0/+1 1014:+0/-1
+  cap vs p300: both decidable 0: same 0, different 0; either decidable (undecided=0): same 0, different 12
+    both-decidable differing (tag:cap/p300): 
+    either-decidable differing: 221:+0/-1 254:+1/+0 309:+1/+0 386:+1/+0 397:+0/+1 408:+0/+1 419:+1/+0 496:+1/+0 507:+1/+0 551:+0/+1 606:+0/+1 1014:+0/-1
+  p305 vs p300: both decidable 1: same 1, different 0; either decidable (undecided=0): same 1, different 10
+    both-decidable differing (tag:p305/p300): 
+    either-decidable differing: 221:+0/-1 254:-1/+0 342:+1/+0 397:+0/+1 408:+0/+1 496:+1/+0 507:+1/+0 551:+0/+1 606:+0/+1 848:+1/+0
+render-free cross-check (rows 0..184, 59,200 px):
+  cap vs p305: shared tags 87 (of 103/103); identical, all shared 33/87; scored-both 31/85; on cap-gainer tags 2/7; on other cap-scored tags 29/78
+    differing px, all shared pairs: n=87 min=0 q1=0 med=3 q3=7 max=33855
+    differing px, non-identical pairs only: n=54 min=1 q1=3 med=6 q3=122 max=33855
+    cap frames absent from p305 with a +-1 neighbour: n=9 min=0 q1=0 med=47 q3=1340 max=2169; identical 4; e.g. 67->68:0 100->101:47 266->265:2169 288->287:2133 343->342:0 706->705:1340 816->815:1137 938->939:0
+    identical pages but different best offsets: 0 []
+  cap vs p300: shared tags 87 (of 103/103); identical, all shared 35/87; scored-both 31/82; on cap-gainer tags 0/6; on other cap-scored tags 31/76
+    differing px, all shared pairs: n=87 min=0 q1=0 med=3 q3=60 max=33854
+    differing px, non-identical pairs only: n=52 min=1 q1=5 med=7 q3=1379 max=33854
+    cap frames absent from p300 with a +-1 neighbour: n=13 min=0 q1=1340 med=2133 q3=2553 max=7705; identical 1; e.g. 45->46:36 233->232:2612 266->265:2173 288->287:2133 298->299:1896 320->321:1777 343->342:2553 375->376:3138
+    identical pages but different best offsets: 0 []
+  p305 vs p300: shared tags 89 (of 103/103); identical, all shared 42/89; scored-both 40/87; on cap-gainer tags 1/6; on other cap-scored tags 34/73
+    differing px, all shared pairs: n=89 min=0 q1=0 med=1 q3=11 max=7767
+    differing px, non-identical pairs only: n=47 min=1 q1=5 med=9 q3=1176 max=7767
+    p305 frames absent from p300 with a +-1 neighbour: n=10 min=0 q1=39 med=534 q3=1863 max=3134; identical 1; e.g. 45->46:36 68->67:72 101->100:47 233->232:2618 298->299:1892 320->321:1777 375->376:3134 562->563:0
+    identical pages but different best offsets: 0 []
+
+===== TRAINTNL =====
+cap: frames=112 scored=112
+p305: frames=112 scored=112
+p300: frames=112 scored=112
+cap vs retime csv: 112 csv rows, 556 values compared, max |diff| 0.00005
+gainers (cap, ssim_gain>=0.02): 16 of 112
+  cap own gainers: 16; best-offset counts {-2: 23, -1: 25, 0: 43, 1: 10, 2: 11}
+  p305 own gainers: 13; best-offset counts {-2: 21, -1: 26, 0: 46, 1: 10, 2: 9}
+  p300 own gainers: 14; best-offset counts {-2: 20, -1: 24, 0: 48, 1: 9, 2: 11}
+d_ia histogram (scored frames):
+  cap: 0=43  (0,.005]=40  (.005,.01]=9  (.01,.02]=12  (.02,.05]=7  >.05=1
+  p305: 0=46  (0,.005]=42  (.005,.01]=9  (.01,.02]=8  (.02,.05]=7  >.05=0
+  p300: 0=48  (0,.005]=40  (.005,.01]=10  (.01,.02]=5  (.02,.05]=7  >.05=2
+decidable non-zero best offsets on cap-gainer tags vs other tags (neg/pos counts / denominator):
+  m=0.005 cap: gainer -:15 +:0 /16 | other -:10 +:4 /96
+  m=0.005 p305: gainer -:5 +:0 /14 | other -:13 +:4 /82
+  m=0.005 p300: gainer -:7 +:0 /13 | other -:10 +:3 /84
+  m=0.01 cap: gainer -:14 +:0 /16 | other -:4 +:2 /96
+  m=0.01 p305: gainer -:5 +:0 /14 | other -:7 +:2 /82
+  m=0.01 p300: gainer -:6 +:0 /13 | other -:5 +:1 /84
+  m=0.02 cap: gainer -:7 +:0 /16 | other -:1 +:0 /96
+  m=0.02 p305: gainer -:4 +:0 /14 | other -:3 +:0 /82
+  m=0.02 p300: gainer -:5 +:0 /13 | other -:3 +:0 /84
+cross-run agreement at m=0.01 (tags scored in both runs):
+  cap vs p305: both decidable 7: same 7, different 0; either decidable (undecided=0): same 7, different 18
+    both-decidable differing (tag:cap/p305): 
+    either-decidable differing: 78:+0/-2 111:-2/+0 133:+0/-2 144:-2/+0 166:-2/+0 199:-1/+0 210:+0/-1 221:-1/+0 353:-1/+0 386:-1/+0 397:-1/+0 892:-1/+0 903:-1/+0 925:-1/+0 1123:+0/-1 1178:+0/-1 1189:+0/-1 1200:+0/-1
+  cap vs p300: both decidable 8: same 8, different 0; either decidable (undecided=0): same 8, different 12
+    both-decidable differing (tag:cap/p300): 
+    either-decidable differing: 78:+0/-2 111:-2/+0 166:-2/+0 199:-1/+0 221:-1/+0 364:+0/-1 386:-1/+0 562:+0/-1 848:-2/+0 892:-1/+0 1178:+0/-1 1211:-1/+0
+  p305 vs p300: both decidable 6: same 6, different 0; either decidable (undecided=0): same 6, different 12
+    both-decidable differing (tag:p305/p300): 
+    either-decidable differing: 133:-2/+0 144:+0/-2 210:-1/+0 353:+0/-1 364:+0/-1 397:+0/-1 562:+0/-1 848:-2/+0 903:+0/-1 1189:-1/+0 1200:-1/+0 1211:-1/+0
+render-free cross-check (rows 0..184, 59,200 px):
+  cap vs p305: shared tags 96 (of 112/112); identical, all shared 23/96; scored-both 23/96; on cap-gainer tags 2/14; on other cap-scored tags 21/82
+    differing px, all shared pairs: n=96 min=0 q1=1 med=12 q3=1038 max=8140
+    differing px, non-identical pairs only: n=73 min=1 q1=7 med=121 q3=1938 max=8140
+    cap frames absent from p305 with a +-1 neighbour: n=16 min=0 q1=0 med=0 q3=312 max=1742; identical 8; e.g. 23->24:0 34->35:1 45->46:0 89->90:1742 123->122:0 464->463:1401 508->507:0 595->596:0
+    identical pages but different best offsets: 0 []
+  cap vs p300: shared tags 97 (of 112/112); identical, all shared 38/97; scored-both 38/97; on cap-gainer tags 5/13; on other cap-scored tags 33/84
+    differing px, all shared pairs: n=97 min=0 q1=0 med=6 q3=94 max=10648
+    differing px, non-identical pairs only: n=59 min=1 q1=7 med=50 q3=1717 max=10648
+    cap frames absent from p300 with a +-1 neighbour: n=15 min=0 q1=0 med=437 q3=1914 max=8085; identical 5; e.g. 34->35:1 123->122:7 188->189:1220 254->255:8085 276->277:2428 331->332:785 464->463:1401 508->507:0
+    identical pages but different best offsets: 0 []
+  p305 vs p300: shared tags 95 (of 112/112); identical, all shared 34/95; scored-both 34/95; on cap-gainer tags 3/13; on other cap-scored tags 27/75
+    differing px, all shared pairs: n=95 min=0 q1=0 med=7 q3=444 max=10648
+    differing px, non-identical pairs only: n=61 min=1 q1=7 med=184 q3=961 max=10648
+    p305 frames absent from p300 with a +-1 neighbour: n=17 min=0 q1=2 med=561 q3=1864 max=6174; identical 4; e.g. 24->23:561 46->45:2 90->89:1742 188->189:1220 254->255:6174 276->277:1864 331->332:0 717->716:1395
+    identical pages but different best offsets: 0 []

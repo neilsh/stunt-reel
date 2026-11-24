@@ -1,0 +1,44 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 1eeed0c9..ef426dce 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -268,6 +268,28 @@ pub(crate) fn run_headless(
+         height: config.height,
+         viewport_rows: config.viewport_rows,
+     };
++    // DBG #1033: per-tick phase from `<DBG_PHASE_DIR>/<film stem>.txt` ("tick phi" lines),
++    // scaled by DBG_PHASE_SCALE.
++    let dbg_scale: f32 = std::env::var("DBG_PHASE_SCALE")
++        .ok()
++        .and_then(|v| v.parse().ok())
++        .unwrap_or(0.0);
++    let dbg_phase: std::collections::HashMap<u32, f32> = std::env::var("DBG_PHASE_DIR")
++        .ok()
++        .and_then(|dir| {
++            let stem = film.name.as_deref()?.split('.').next()?.to_lowercase();
++            std::fs::read_to_string(std::path::Path::new(&dir).join(format!("{stem}.txt"))).ok()
++        })
++        .map(|text| {
++            text.lines()
++                .filter_map(|l| {
++                    let mut it = l.split_whitespace();
++                    Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
++                })
++                .collect()
++        })
++        .unwrap_or_default();
++    eprintln!("[dbg] phase entries {} scale {dbg_scale}", dbg_phase.len());
+     let journal = config
+         .out_dir
+         .as_ref()
+@@ -302,7 +324,9 @@ pub(crate) fn run_headless(
+     let mut pending: VecDeque<(SampleKey, FrameFacts)> = VecDeque::new();
+     let loop_started = Instant::now();
+     for (key, tick) in samples {
+-        let frame = scene.frame(capture_tick(tick));
++        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
++        let phi = dbg_phase.get(&(tick as u32)).copied().unwrap_or(0.0) * dbg_scale;
++        let frame = scene.frame((capture_tick(tick) + phi).max(0.0));
+         renderer
+             .submit(&frame, None)
+             .map_err(|e| format!("render {key}: {e}"))?;
