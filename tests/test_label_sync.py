@@ -14,6 +14,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import label_sync as ls  # noqa: E402
 import labels  # noqa: E402
+from gh_api import GhError  # noqa: E402
 
 
 def _remote(spec: labels.LabelSpec, **overrides: Any) -> dict[str, Any]:
@@ -150,7 +151,7 @@ def test_main_apply_reports_completed_actions_before_gh_error(
         writes += 1
         if writes == 1:
             return {}
-        raise ls.GhError("HTTP 422")
+        raise GhError("HTTP 422")
 
     monkeypatch.setattr(ls, "gh_json", gh)
     assert ls.main(["--apply", "--repo", "o/r"]) == 2
@@ -164,7 +165,7 @@ def test_main_exits_2_on_gh_error(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def fail(*_args: str) -> Any:
-        raise ls.GhError("HTTP 403")
+        raise GhError("HTTP 403")
 
     monkeypatch.setattr(ls, "gh_json", fail)
     assert ls.main([]) == 2

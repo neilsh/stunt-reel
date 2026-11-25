@@ -15,17 +15,12 @@ scope. Exit status: ``0`` on success, ``2`` when ``gh`` fails.
 from __future__ import annotations
 
 import argparse
-import json
-import shutil
-import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Any
 
 import labels
-
-#: Seconds before a ``gh`` call counts as failed.
-GH_TIMEOUT = 60
+from gh_api import GhError, gh_json
 
 #: State label -> Status option, highest precedence first. An open issue with none of these is
 #: ``Needs triage``, so an issue filed without a label shows up where the owner looks.
@@ -103,34 +98,6 @@ mutation($project: ID!, $item: ID!, $field: ID!) {
     projectV2Item { id }
   }
 }"""
-
-
-class GhError(RuntimeError):
-    """``gh`` failed, stalled or returned something other than JSON."""
-
-
-def gh_json(*args: str) -> Any:
-    """``gh <args>``'s stdout parsed as JSON; raises :class:`GhError`."""
-    exe = shutil.which("gh")
-    if exe is None:
-        raise GhError("gh not found on PATH")
-    try:
-        done = subprocess.run(  # noqa: S603 - gh with fixed arguments
-            [exe, *args],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-            timeout=GH_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as err:
-        raise GhError(f"gh {args[0]} stalled for {GH_TIMEOUT} s") from err
-    if done.returncode != 0:
-        raise GhError(done.stderr.strip() or f"gh {args[0]} exited {done.returncode}")
-    try:
-        return json.loads(done.stdout)
-    except json.JSONDecodeError as err:
-        raise GhError(f"gh {args[0]} returned no JSON: {err}") from err
 
 
 def graphql(query: str, **variables: str | int | None) -> Any:

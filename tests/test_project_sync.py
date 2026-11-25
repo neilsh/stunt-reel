@@ -14,6 +14,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import project_sync as ps  # noqa: E402
+from gh_api import GhError  # noqa: E402
 
 REPO = "o/r"
 PROJECT = ps.Project(
@@ -190,7 +191,7 @@ def test_a_status_or_priority_missing_from_the_project_fails_before_any_write(
     monkeypatch.setattr(
         ps, "gh_json", lambda *_a: {"data": {"user": {"projectV2": node_missing_status}}}
     )
-    with pytest.raises(ps.GhError, match="Goal"):
+    with pytest.raises(GhError, match="Goal"):
         ps.load_project("o", 1)
 
     valid_status = {
@@ -204,7 +205,7 @@ def test_a_status_or_priority_missing_from_the_project_fails_before_any_write(
     monkeypatch.setattr(
         ps, "gh_json", lambda *_a: {"data": {"user": {"projectV2": node_missing_priority}}}
     )
-    with pytest.raises(ps.GhError, match="Priority"):
+    with pytest.raises(GhError, match="Priority"):
         ps.load_project("o", 1)
 
     node_missing_priority_option = {
@@ -215,11 +216,11 @@ def test_a_status_or_priority_missing_from_the_project_fails_before_any_write(
     monkeypatch.setattr(
         ps, "gh_json", lambda *_a: {"data": {"user": {"projectV2": node_missing_priority_option}}}
     )
-    with pytest.raises(ps.GhError, match="P3"):
+    with pytest.raises(GhError, match="P3"):
         ps.load_project("o", 1)
 
 
 def test_bare_runner_scripts_parse_as_python_3_12() -> None:
-    for name in ("labels.py", "project_sync.py"):
+    for name in ("gh_api.py", "labels.py", "project_sync.py"):
         path = SCRIPTS_DIR / name
         ast.parse(path.read_text(encoding="utf-8"), filename=str(path), feature_version=(3, 12))

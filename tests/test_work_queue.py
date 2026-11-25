@@ -18,6 +18,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import merge_bar  # noqa: E402
 import work_queue as q  # noqa: E402
+from gh_api import GhError  # noqa: E402
 
 from stunt_reel import class_agreement  # noqa: E402
 
@@ -380,7 +381,7 @@ def test_a_gh_failure_exits_2(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def fail(*_args: str) -> Any:
-        raise q.GhError("HTTP 502")
+        raise GhError("HTTP 502")
 
     monkeypatch.setattr(q, "gh_json", fail)
     assert q.main() == 2

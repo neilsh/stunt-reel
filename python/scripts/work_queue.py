@@ -30,7 +30,6 @@ Usage: ``mise run queue``. Exit status: ``0`` on success, ``2`` when ``gh`` fail
 from __future__ import annotations
 
 import datetime as dt
-import json
 import os
 import re
 import shutil
@@ -42,12 +41,10 @@ from typing import Any
 
 import labels
 import merge_bar
+from gh_api import GhError, gh_json
 
 from stunt_reel.class_agreement import AGREEMENT_FILE, due, read_agreement, renderer_commits_since
 from stunt_reel.dataroot import REPO_ROOT
-
-#: Seconds before a ``gh`` call counts as failed.
-GH_TIMEOUT = 60
 
 #: Seconds before the ``git`` call naming the primary checkout counts as failed.
 GIT_TIMEOUT = 60
@@ -66,34 +63,6 @@ _BLOCKED_BY_LINE = re.compile(r"^[ \t]*blocked by:?[ \t]*(.*)$", re.IGNORECASE |
 #: A branch named for an issue, ``feat/440-slug``; not ``0044-…`` nor a date, ``2026-11-…``.
 _BRANCH_ISSUE = re.compile(r"(?:^|/)([1-9]\d*)-[a-z]", re.IGNORECASE)
 _FAILED = {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
-
-
-class GhError(RuntimeError):
-    """``gh`` failed, stalled or returned something other than JSON."""
-
-
-def gh_json(*args: str) -> Any:
-    """``gh <args>``'s stdout parsed as JSON; raises :class:`GhError`."""
-    exe = shutil.which("gh")
-    if exe is None:
-        raise GhError("gh not found on PATH")
-    try:
-        done = subprocess.run(  # noqa: S603 - gh with fixed arguments
-            [exe, *args],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-            timeout=GH_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as err:
-        raise GhError(f"gh {args[0]} stalled for {GH_TIMEOUT} s") from err
-    if done.returncode != 0:
-        raise GhError(done.stderr.strip() or f"gh {args[0]} exited {done.returncode}")
-    try:
-        return json.loads(done.stdout)
-    except json.JSONDecodeError as err:
-        raise GhError(f"gh {args[0]} returned no JSON: {err}") from err
 
 
 @dataclass

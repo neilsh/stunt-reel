@@ -11,52 +11,19 @@ Exit status: ``0`` on success, ``2`` when ``gh`` fails.
 from __future__ import annotations
 
 import argparse
-import json
-import shutil
-import subprocess
 import sys
 import urllib.parse
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import labels
+from gh_api import GhError, gh_json
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-#: Seconds before a ``gh`` call counts as failed.
-GH_TIMEOUT = 60
-
 #: Entries requested per REST page; a shorter page is the last.
 PER_PAGE = 100
-
-
-class GhError(RuntimeError):
-    """``gh`` failed, stalled or returned something other than JSON."""
-
-
-def gh_json(*args: str) -> Any:
-    """``gh <args>``'s stdout parsed as JSON; raises :class:`GhError`."""
-    exe = shutil.which("gh")
-    if exe is None:
-        raise GhError("gh not found on PATH")
-    try:
-        done = subprocess.run(  # noqa: S603 - gh with fixed arguments
-            [exe, *args],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-            timeout=GH_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as err:
-        raise GhError(f"gh {args[0]} stalled for {GH_TIMEOUT} s") from err
-    if done.returncode != 0:
-        raise GhError(done.stderr.strip() or f"gh {args[0]} exited {done.returncode}")
-    try:
-        return json.loads(done.stdout)
-    except json.JSONDecodeError as err:
-        raise GhError(f"gh {args[0]} returned no JSON: {err}") from err
 
 
 def fetch_labels(repo: str) -> list[dict[str, Any]]:
