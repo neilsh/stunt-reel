@@ -116,6 +116,6 @@ In order of the loss each would explain:
 1. **Truncation toward the projection centre** ([#1064](https://github.com/neilsh/stunt-reel/issues/1064)), on `bomb`'s opening shot: five of its eight worst shapes and 1756.
 2. **Pages a tick or two off ours while the camera moves** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)).
 3. **The street's loss in place** ([#1035](https://github.com/neilsh/stunt-reel/issues/1035)), about 88% of `bomb`'s costliest shape.
-4. **Spheres in list order** ([#1066](https://github.com/neilsh/stunt-reel/issues/1066)), and what draws the canyon rock's near face at 7019.
+4. **Spheres in list order** ([#1066](https://github.com/neilsh/stunt-reel/issues/1066)).
 5. **The far town's stand-ins** ([#1032](https://github.com/neilsh/stunt-reel/issues/1032)).
 6. **One-tick phase** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)) and **the stadium's lines** ([#1034](https://github.com/neilsh/stunt-reel/issues/1034)).

@@ -91,7 +91,8 @@ _Source: [time offset against page shift on the readout ticks](../../work/2026-1
 **Every BOMB frame, by shot** (`[Bounded Observation]`, 2026-11-24, all 316 scored `bomb` ticks, GPU render of `bc166452`, `register --with-props`, [#1031](https://github.com/neilsh/stunt-reel/issues/1031)).
 Joined to the camera at each tick, the best page shift follows no camera input as a per-shot rule: every frame has the default lens and no roll, and shots with the same eye height (0.2 m on ticks 12 to 420, 0.2 to 1 m on 1915 to 2740) take different shifts.
 * **The two static opening shots** (ticks 12 to 420, eye 0.2 m above the ground, pitched 13° and 17° up) shift a row on all 38 frames and gain nothing from any render tick.
-  Searched per layer and per half of the frame, the props below the projection centre sit a row low while those above it sit level or a row high, the sign flip that truncation toward the centre gives (open question 5), and the sky's band edges sit a row low on both halves.
+  Searched per layer and per half of the frame, the props below the projection centre sit a row low while those above it sit level or a row high, the sign flip that truncation toward the centre gives (open question 5).
+  The sky's band edges sit a row low on both halves at tick 155 and on the upper half at 320; the lower half at 320 is level.
 * **The larger offsets** (2961, 3191, 3268, and 1013 to 1200, from 2 to 4 px) fall on frames where the camera turns or moves fast, and a render tick or two either way gains about as much as the page shift (2961: +0.266 at one tick back against +0.197; 3191: +0.209 at one tick on against +0.129), while the shot's neighbouring frames gain from neither: the per-page lag above, not the camera.
 
 _Source: [the offset per shot, against the camera](../../work/2026-11/1031_bomb-world-offset/journal.md#2026-11-24-the-offset-per-shot-against-the-camera)._

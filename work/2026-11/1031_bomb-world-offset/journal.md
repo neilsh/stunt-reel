@@ -18,12 +18,13 @@
     | 221–420 | 0.2 m | +17° | -87° | `dy` -1 (19 of 19), +0.080 | none |
     | 430–595 | 1.8 m | -1° | -90° | none | none |
     | 606–1904 | 16 to 18 m, 0.7 m from slot 0 | -15° to +22° | 3° to 167° | `dx` -3 on 42 frames, mean +0.052 | +1 or +2 ticks on 22 |
-    | 1915–2740 | 0.2 to 1 m | -3° | -177° to -92° | none above +0.01, mean +0.003 | -1 tick on 9 |
+    | 1915–2740 | 0.2 to 1 m | -3° | -177° to -92° | 7 above +0.01, mean +0.003 | -1 or -2 ticks on 10 |
     | 2751–3290 | 18 m, slot 0 | -66° to -17° | all | mixed, mean +0.029 | -1 or -2 on 14, +1 on 2 |
-    | 3302–3477 | 0.6 m | -8° to -3° | 13° to 31° | none above +0.01 | -1 or -2 on 4 |
+    | 3302–3477 | 0.6 m | -8° to -3° | 13° to 31° | 4 above +0.01 | -1 or -2 on 4 |
 
   - The frames #989 named split in two.
-    On the two static opening shots no render tick moves anything, and the shift is a row: by layer ([`bands.txt`](bands.txt)), the props below the projection centre sit a row low (tick 155 +0.146, 320 +0.161) while those above it sit level (155: `dx` +1, `dy` 0) or a row high (320, +0.008), opposite signs about the centre, and the sky's band edges sit a row low on both halves.
+    On the two static opening shots no render tick moves anything, and the shift is a row: by layer ([`bands.txt`](bands.txt)), the props below the projection centre sit a row low (tick 155 +0.146, 320 +0.161) while those above it sit level (155: `dx` +1, `dy` 0) or a row high (320, +0.008), opposite signs about the centre.
+    The sky's band edges sit a row low on both halves at tick 155 and on the upper half at 320; the lower half at 320 is level.
     The frames #989 found 2 to 4 px off (2961, 3191, 3268) and ticks 1013 to 1200 are frames where the camera turns or moves fast, and a render tick or two either way gains about as much as the page shift: 2961 gains 0.266 at one tick back against 0.197 for the best shift, 3191 0.209 at one tick on against 0.129, 1024 0.305 at one tick on against 0.343, and the neighbouring frames of each shot gain nothing from either.
     At 3191 the eye looks 57° down from 19 m and moves 0.2 m a tick with its angles fixed; its prop edges sit 0 to 1 rows off above the centre and 5 columns and 3 rows off below it, the parallax a moving eye gives, not one shift.
   - Ticks 606 to 1002 hold a `dx` -3 shift on the lower half (+0.013); it is too small a gain to separate from shading.
@@ -47,7 +48,7 @@
   - The sweep ([`sweeps/displacement-cut.toml`](sweeps/displacement-cut.toml), GPU, `bc166452` plus the switch) raises `intro` from 0.8833 to 0.8937 and `location` from 0.8727 to 0.8863; `ctry`, `land`, `balloon`, `traintnl` and `bomb` do not move.
     The canonical lavapipe under WSL on the committed fix (`crates/` `1140027`) gives the same: `intro` 0.8937, `location` 0.8864.
   - The target frames rise: 2201 from 0.8308 to 0.8828, 2212 from 0.6201 to 0.8698 (index agreement +0.1388 pooled) ([picture](images/location-2201-displacement-cut.png): capture, baseline, candidate).
-  - Every other moved frame lies in a slice where the eye moves more than 50 m: `intro` 26 frames on six runs (783 to 936 and 2058 to 2223), all up; `location` 89, of which 87 up, on 1277 to 1289, 3972 to 4137, 4500 and the canyon run 6722 to 7635.
+  - Every other moved frame lies in a slice where the eye moves more than 50 m: `intro` 26 frames on six runs (783 to 936 and 2058 to 2223), all up; `location` 89, of which 87 up, on 1277 to 1289, 3972 to 4137, 4500, the canyon run 6722 to 7635 and 7844.
     The canyon run's eye moves about 59 m per 10-tick slice, so our player flagged every slice a cut and held it: the stepping of [`prop-shape-loss.md` § 2.1](../../../research/parity/prop-shape-loss.md#21-the-camera-held-through-far-moving-slices-fixed) ([#1029](https://github.com/neilsh/stunt-reel/issues/1029)).
     Its 64 scored frames from 6700 to 7400 rise from 0.8312 to 0.9421; 7030 from 0.7409 to 0.9641, 7184 from 0.7226 to 0.8972.
   - Two frames fall by more than 0.005.
