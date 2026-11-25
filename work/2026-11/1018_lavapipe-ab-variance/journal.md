@@ -30,7 +30,7 @@
   - **Raising the render's priority** under 16 spinners cut two runs to `3440.6` and `3478.9 ms` and stretched the third to `27598.8 ms`, so a high priority is not a stable fix.
   - **Residual spread on a quiet machine**: runs 1 to 7 of the quiet probe spread `9.6%` (`2338.1..2563.4 ms`) at `busy_other` `0.045..0.127`, with no ordering by `busy_other` or `perf_pct` (`2563.4 ms` at `0.053` and `120.4`, `2338.1 ms` at `0.045` and `120.5`).
 - **Verdict**: background CPU load from processes the runner did not check is the cause found; warm-up stays possible (not separated from start-up load), CPU clock is ruled out on these runs, raising priority is ruled out as a fix, and run order was already ruled out by `#1004`'s A/A (the side that ran first was slower in `2` of `4` rounds).
-  The runner now records other processes' load per run, waits for a quiet machine before each run, stops after a loaded run, and runs one untimed warm-up round: [`ab_timing.py`](../../../python/stunt_reel/ab_timing.py), [`ab.py`](../../../python/scripts/ab.py).
+  The runner now records other processes' load per run, waits for a quiet machine before each timed run, stops after a loaded run, and runs one untimed warm-up round: [`ab_timing.py`](../../../python/stunt_reel/ab_timing.py), [`ab.py`](../../../python/scripts/ab.py).
   What spreads quiet runs by `9.6%` is not found.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3; the runner's checks in [`time-a-headless-render.md`](../../../docs/howto/time-a-headless-render.md) § 3.
 

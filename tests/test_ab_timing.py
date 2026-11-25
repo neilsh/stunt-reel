@@ -5,6 +5,7 @@ renderer. Nothing here starts `stuntreel` or reads the corpus."""
 from __future__ import annotations
 
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -229,6 +230,24 @@ def test_other_load_measures_a_live_process() -> None:
     with subprocess.Popen(argv) as child, ab_timing.OtherLoad(child.pid) as meter:  # noqa: S603
         child.wait()
     assert 0.0 <= meter.share <= 1.0
+
+
+def test_cpu_times_come_from_the_standard_library() -> None:
+    busy, total = ab_timing._system_seconds()
+    assert 0.0 <= busy <= total
+    assert 0.0 <= ab_timing.machine_load(0.05) <= 1.0
+    clock = ab_timing._ProcessClock(os.getpid())
+    try:
+        assert clock.seconds() > 0.0
+    finally:
+        clock.close()
+
+
+def test_other_load_refuses_a_process_it_cannot_read() -> None:
+    # Above Linux's largest pid_max, and odd, which no Windows process id is.
+    missing = 4_194_305
+    with pytest.raises(ProcessLookupError, match=str(missing)):
+        ab_timing.OtherLoad(missing)
 
 
 def test_wait_for_quiet_returns_at_the_first_quiet_window_or_the_timeout() -> None:

@@ -65,9 +65,10 @@ mise run ab -- --out work/2026-11/<issue>_<slug> --name two-builds     --variant
 * **Warm-up.**
   `--warmup` rounds (default 1) run every variant once before a cell's first round, untimed and not kept; the runner prints their loop times.
 * **Quiet machine.**
-  It refuses to start, and stops between runs, while a `stuntreel`, `cargo` or `rustc` process runs.
-  Before each run it measures the whole machine over 2 seconds, repeatedly for up to 10 minutes, until it is at most `--max-load` busy (a share of all logical CPUs, default `0.10`), and stops if it never is.
-  During each run it samples every 0.25 s the CPU time of the machine and of the render, and records the rest, the share other processes used, as the row's `other_load`; a run over `--max-load` is kept in the CSV and the timing stops after it.
+  It refuses to start, and stops before a timed run, while a `stuntreel`, `cargo` or `rustc` process runs.
+  Before each timed run it measures the whole machine over 2 seconds, repeatedly for up to 10 minutes, until it is at most `--max-load` busy (a share of all logical CPUs, default `0.10`), and stops if it never is.
+  During each timed run it samples every 0.25 s the CPU time of the machine and of the render, and records the rest, the share other processes used, as the row's `other_load`; a run over `--max-load` is kept in the CSV and the timing stops after it.
+  Warm-up runs pass none of these checks.
   Other processes' load slows a lavapipe loop: on Span B, 8 spinning processes on the 16-thread laptop raised the median `19.3%`, and one run at `10.3%` other load ran `16.3%` slower than the slowest of the four quiet runs before it (`[Bounded Observation]`, `#1018`, [section 3 of the render-time note](../../research/parity/lavapipe-render-time.md#3-where-loop-time-goes)).
   `--force` skips all three checks.
 * **Output.**

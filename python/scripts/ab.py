@@ -20,10 +20,11 @@ fails the whole run.
 Writes ``<out>/<name>.csv`` (one row per run, the loop and wall ms, the four store hashes, the
 adapter, the share of all CPUs other processes used during the run) and
 ``<out>/<name>-summary.md``, and prints the summary; it refuses to overwrite either.
-It refuses to start, and stops between runs, while a ``stuntreel``, ``cargo`` or ``rustc``
-process runs. Before each run it waits, up to 10 minutes, until the machine is at most
-``--max-load`` busy (default 10% of all logical CPUs) over 2 seconds, and it stops after a run
-during which other processes used more than that. ``--force`` skips all three checks.
+It refuses to start, and stops before a timed run, while a ``stuntreel``, ``cargo`` or ``rustc``
+process runs. Before each timed run it waits, up to 10 minutes, until the machine is at most
+``--max-load`` busy (default 10% of all logical CPUs) over 2 seconds, and it stops after a timed
+run during which other processes used more than that; warm-up runs are not checked. ``--force``
+skips all three checks.
 Build the binaries first: this runs them as they are. Exit 0 on success, 1 on a failed run, 2 on
 a refusal or bad arguments.
 """
