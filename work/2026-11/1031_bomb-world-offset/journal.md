@@ -48,6 +48,7 @@
   - The sweep ([`sweeps/displacement-cut.toml`](sweeps/displacement-cut.toml), GPU, `bc166452` plus the switch) raises `intro` from 0.8833 to 0.8937 and `location` from 0.8727 to 0.8863; `ctry`, `land`, `balloon`, `traintnl` and `bomb` do not move.
     The canonical lavapipe under WSL on the committed fix (`crates/` `1140027`) gives the same: `intro` 0.8937, `location` 0.8864.
   - The target frames rise: 2201 from 0.8308 to 0.8828, 2212 from 0.6201 to 0.8698 (index agreement +0.1388 pooled) ([picture](images/location-2201-displacement-cut.png): capture, baseline, candidate).
+    INTRO 936 rises from 0.7200 to 0.9758 ([before](images/intro-936-before.png), [after](images/intro-936-after.png): capture beside render).
   - Every other moved frame lies in a slice where the eye moves more than 50 m: `intro` 26 frames on six runs (783 to 936 and 2058 to 2223), all up; `location` 89, of which 87 up, on 1277 to 1289, 3972 to 4137, 4500, the canyon run 6722 to 7635 and 7844.
     The canyon run's eye moves about 59 m per 10-tick slice, so our player flagged every slice a cut and held it: the stepping of [`prop-shape-loss.md` § 2.1](../../../research/parity/prop-shape-loss.md#21-the-camera-held-through-far-moving-slices-fixed) ([#1029](https://github.com/neilsh/stunt-reel/issues/1029)).
     Its 64 scored frames from 6700 to 7400 rise from 0.8312 to 0.9421; 7030 from 0.7409 to 0.9641, 7184 from 0.7226 to 0.8972.
