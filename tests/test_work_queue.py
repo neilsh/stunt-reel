@@ -18,6 +18,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import merge_bar  # noqa: E402
 import work_queue as q  # noqa: E402
+from gh_api import GhError  # noqa: E402
 
 from stunt_reel import class_agreement  # noqa: E402
 
@@ -181,9 +182,12 @@ def test_a_blocked_by_line_never_reads_the_next_line() -> None:
 
 
 def test_issues_without_ready_for_agent_are_left_out() -> None:
-    other = _issue(7)
-    other["labels"] = [{"name": "status:needs-triage"}]
-    assert [item.number for item in q.issue_items([other, _issue(8)], [], cloud=False)] == [8]
+    triage = {**_issue(7), "labels": [{"name": "status:needs-triage"}]}
+    plan_review = {**_issue(9), "labels": [{"name": "status:plan-review"}]}
+    human = {**_issue(10), "labels": [{"name": "status:ready-for-human"}]}
+    plan = {**_issue(11), "labels": [{"name": "status:needs-plan"}]}
+    got = q.issue_items([triage, _issue(8), plan_review, human, plan], [], cloud=False)
+    assert [(item.kind, item.number) for item in got] == [("issue", 8), ("plan", 11)]
 
 
 def test_each_mechanical_skip_names_its_reason() -> None:
@@ -263,12 +267,68 @@ def test_a_local_only_pr_is_skipped_only_in_a_cloud_session(cloud: bool, skip: l
 
 def test_a_line_names_the_item_its_state_and_its_labels() -> None:
     item = q.Item(
-        "issue", 12, "A  title\nover lines", ["type:tooling"], skip=["status:in-progress"]
+        "issue", 12, "A  title\nover lines", ["area:tooling"], skip=["status:in-progress"]
     )
     assert (
         item.line()
-        == "issue #12    skip: status:in-progress     A title over lines  [type:tooling]"
+        == "issue #12    skip: status:in-progress     A title over lines  [area:tooling]"
     )
+
+
+def test_issues_and_plans_interleave_by_priority_then_kind_then_number() -> None:
+    def plan(number: int, *extra_labels: str, **extra: Any) -> dict[str, Any]:
+        return {
+            "number": number,
+            "title": f"Plan {number}",
+            "labels": [{"name": name} for name in ("status:needs-plan", *extra_labels)],
+            "body": "",
+            "issue_dependencies_summary": {"blocked_by": 0},
+            "sub_issues_summary": {"total": 0, "completed": 0},
+            **extra,
+        }
+
+    issues = [
+        _issue(10),  # unprioritized issue
+        plan(2, "priority:p1"),
+        _issue(5, "priority:p3", "priority:p0"),  # highest priority (p0) wins
+        plan(1, "priority:p3"),
+        _issue(8, "priority:p1"),
+        plan(3),  # unprioritized plan
+    ]
+    got = q.issue_items(issues, [], cloud=False)
+    assert [(item.kind, item.number, item.notes) for item in got] == [
+        ("issue", 5, []),
+        ("issue", 8, []),
+        ("plan", 2, []),
+        ("plan", 1, []),
+        ("issue", 10, ["unprioritized"]),
+        ("plan", 3, ["unprioritized"]),
+    ]
+
+
+def test_mechanical_skips_apply_to_needs_plan_issues() -> None:
+    def plan(number: int, *extra_labels: str, **extra: Any) -> dict[str, Any]:
+        return {
+            "number": number,
+            "title": f"Plan {number}",
+            "labels": [{"name": name} for name in ("status:needs-plan", *extra_labels)],
+            "body": "",
+            "issue_dependencies_summary": {"blocked_by": 0},
+            "sub_issues_summary": {"total": 0, "completed": 0},
+            **extra,
+        }
+
+    issues = [
+        plan(1, "status:in-progress", "priority:p1"),
+        plan(2, "env:local-only", "priority:p1"),
+        plan(3, "priority:p2", issue_dependencies_summary={"blocked_by": 1}),
+    ]
+    got = q.issue_items(issues, [], cloud=True)
+    assert [(item.kind, item.number, item.skip) for item in got] == [
+        ("plan", 1, ["status:in-progress"]),
+        ("plan", 2, ["env:local-only"]),
+        ("plan", 3, ["1 open blocker(s)"]),
+    ]
 
 
 def _fake_gh(monkeypatch: pytest.MonkeyPatch, replies: dict[str, Any]) -> list[tuple[str, ...]]:
@@ -321,7 +381,7 @@ def test_a_gh_failure_exits_2(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     def fail(*_args: str) -> Any:
-        raise q.GhError("HTTP 502")
+        raise GhError("HTTP 502")
 
     monkeypatch.setattr(q, "gh_json", fail)
     assert q.main() == 2

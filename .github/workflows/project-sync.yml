@@ -1,8 +1,8 @@
 name: Project sync
 
-# Keeps the owner's Issue Radar project's Status in step with each issue's labels and state
-# (docs/agents/issue-tracker.md § Organizing issues). Labels are the source of truth; this is
-# the only writer of Status, so every built-in project workflow but Auto-archive is off.
+# Keeps the owner's Issue Radar project's Status and Priority in step with each issue's labels
+# and state (docs/agents/issue-tracker.md). Labels are the source of truth; this is the only writer
+# of Status and Priority, so every built-in project workflow but Auto-archive is off.
 # The daily run catches what no issue event announces, such as a sub-issue added to a parent.
 on:
   issues:
@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   sync:
-    name: Sync Status from labels
+    name: Sync Status and Priority from labels
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
+            python/scripts/gh_api.py
             python/scripts/labels.py
             python/scripts/project_sync.py
           sparse-checkout-cone-mode: false

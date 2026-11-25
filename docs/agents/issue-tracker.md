@@ -30,13 +30,13 @@ A cloud session's proxy refuses GraphQL, so `gh issue`, `gh repo view` and `gh p
   A relative path resolves against the issue URL and 404s, and a branch link points at different lines as the file changes.
   A file only on an unmerged branch gets a permalink at that branch's pushed commit SHA, not the branch name, which 404s once the branch is deleted on merge.
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."` (cloud: `gh api -X POST repos/{owner}/{repo}/issues/<number>/labels -f labels[]=<label>` adds, `gh api -X DELETE repos/{owner}/{repo}/issues/<number>/labels/<label>` removes)
-- **Claim an issue**: a session's first write on an issue it will work, before any branch commit.
+- **Claim an issue**: a session's first write on an issue it will work, before any branch commit or planner read.
   Re-read its labels; if it already carries `status:in-progress`, it is taken: pick another or ask the user.
-  Otherwise `gh issue edit <n> --remove-label status:ready-for-agent --add-label status:in-progress` (or `status:ready-for-human`), then `gh issue comment <n> --body "Claimed by branch <branch>."`, then re-read the comments: the earliest `Claimed by branch` since the latest `Released claim:` holds the issue, and a later claimant comments `Lost claim to <branch>.`, leaves the labels alone and picks another.
+  Otherwise `gh issue edit <n> --remove-label status:ready-for-agent --add-label status:in-progress` (or `status:needs-plan` / `status:ready-for-human`), then `gh issue comment <n> --body "Claimed by branch <branch>."` (for a planner on `status:needs-plan`, `Claimed by planner <id>.`), then re-read the comments: the earliest `Claimed by branch` or `Claimed by planner` since the latest `Released claim:` holds the issue, and a later claimant comments `Lost claim to <holder>.`, leaves the labels alone and picks another.
   The holder re-reads the labels and adds `status:in-progress` if it is missing.
-  A session that stops without a PR comments `Released claim: <why>.`, then swaps the label back.
+  A session that stops without a PR or tentative plan comments `Released claim: <why>.`, then swaps the label back.
   Cloud: the label and comment REST forms above, re-reading them with `gh api repos/{owner}/{repo}/issues/<n> --jq '[.labels[].name]'`.
-  An issue carrying `status:in-progress` whose named branch is gone, with no open PR, is a dropped claim: ask the user before taking it over, then comment `Released claim: <branch> dropped it.` before your own claim.
+  An issue carrying `status:in-progress` whose named branch is gone (or whose planner claim is stale), with no open PR or tentative plan, is a dropped claim: ask the user before taking it over, then comment `Released claim: <holder> dropped it.` before your own claim.
   When choosing work, skip issues carrying `status:in-progress`.
 - **Close**: post the explanation with `gh issue comment <number> --body "..."`, then `gh issue close <number>` (cloud: the comment form above, then `gh api -X PATCH repos/{owner}/{repo}/issues/<number> -f state=closed`).
   On an already-closed issue, `gh issue close --comment` drops the comment and still exits 0.
@@ -73,10 +73,10 @@ These rules cover every issue, except that the map and tickets `/wayfinder` choo
   Before `gh issue create`, run `gh issue list --state open --search "<key terms>"` (cloud: `gh api 'search/issues?q=repo:{owner}/{repo}+type:issue+<terms>'`) with the symptom's distinctive words (the error, the file, the film).
   On a clear match, add the new sighting as a comment there instead of filing a duplicate.
 - **The filer labels the issue.**
-  On `gh issue create`, apply one state label (`status:needs-triage` when unsure), `type:research` or `type:tooling` where either applies, `env:local-only` where only `local-windows` can do it ([triage-labels.md](triage-labels.md)), and a parent where a goal fits.
+  On `gh issue create`, apply one state label (`status:needs-triage` when unsure, or `status:needs-plan` when it needs read-only planning before coding), one or more primary-subsystem `area:` labels, a `type:` contract label (`type:research`, `type:fidelity` or `type:perf`) where applicable, `env:local-only` where only `local-windows` can do it ([triage-labels.md](triage-labels.md)), and a parent where a goal fits; leave `priority:` unset so unprioritized issues stand out for maintainer prioritization.
   Cloud: the create and label forms above.
 - No milestones; parents show progress.
-  The owner's [Issue Radar](https://github.com/users/neilsh/projects/1) project is a dashboard the `project-sync` workflow derives from labels and issue state ([`project_sync.py`](../../python/scripts/project_sync.py)); agents never read or write it, and a cloud session cannot, since Projects is GraphQL-only.
+  The owner's [Issue Radar](https://github.com/users/neilsh/projects/1) project is a dashboard the `project-sync` workflow derives (`Status` and `Priority`) from labels and issue state ([`project_sync.py`](../../python/scripts/project_sync.py)); agents never read or write it, and a cloud session cannot, since Projects is GraphQL-only.
 
 ## Review threads on a pull request
 
