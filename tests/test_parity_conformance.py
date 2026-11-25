@@ -44,6 +44,10 @@ from stunt_reel.parity_artifacts import (
     write_video_capture,
 )
 
+# The documents here are validated against the schemas under crates/stunt-parity/schema/, so a
+# Rust-only change can break this module: the docs marker makes a scoped gate run it (issue #1041).
+pytestmark = pytest.mark.docs
+
 CORPUS = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "parity" / "v1"
 RENDER = CORPUS.parent / "v4" / "render"
 SCHEMAS = Path(__file__).resolve().parents[1] / "crates" / "stunt-parity" / "schema"

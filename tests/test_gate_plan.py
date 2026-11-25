@@ -3,10 +3,13 @@
 The gate is one plan of leaf tasks (ADR 0014) that runs as concurrent lanes (ADR 0016). These
 checks hold the two together: a step added to `STEPS` without a lane must fail here, before the
 gate refuses to start at run time, and a lane must never reorder or drop a step of its plan.
+A test that reads the checkout's `crates/` takes the docs marker, so a Rust-only run of the gate
+runs it (issue #1041).
 """
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import shutil
@@ -18,6 +21,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
+TESTS = ROOT / "tests"
 SCRIPTS_DIR = ROOT / "python" / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -189,6 +193,7 @@ def test_classify(path: str, category: str) -> None:
     assert gate.classify(path) == category
 
 
+@pytest.mark.docs
 def test_every_file_rust_reads_outside_crates_runs_the_rust_half() -> None:
     """A document a Rust test reads is a Rust input, or editing it alone would skip that test."""
     reads = {
@@ -203,6 +208,115 @@ def test_every_file_rust_reads_outside_crates_runs_the_rust_half() -> None:
     assert "research/parity/report-fields.md" in reads
     for path in reads:
         assert gate.classify(path) in {"rust", "other"}, path
+
+
+#: The marker a test reading ``crates/`` must take, so a scoped gate runs it (issue #1041).
+_DOCS_MARK = "pytest.mark.docs"
+
+#: Modules whose ``crates`` path joins address a stand-in they write under ``tmp_path`` or a
+#: scratch repository, never the checkout, so no Rust change can break them. The reason, keyed
+#: by file name: an entry here is a promise, not a convenience.
+_STAND_IN_CRATES = {
+    "test_expected_scores.py": "a scratch repository's own crates/",
+    "test_parity_agreement.py": "a scratch repository's own crates/",
+    "test_target_seed.py": "tmp_path workspaces' own crates/",
+}
+
+
+def _is_crates(node: ast.expr) -> bool:
+    """Whether *node* is the path component ``crates`` or a path under it."""
+    return (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value.replace("\\", "/").split("/")[0] == "crates"
+    )
+
+
+def _joins_crates(node: ast.expr) -> bool:
+    """Whether *node* joins a ``crates`` path onto a base.
+
+    That is ``base / "crates"`` or ``Path(base, "crates")``, at any depth of a ``/`` chain.
+    """
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        return _is_crates(node.left) or _is_crates(node.right) or _joins_crates(node.left)
+    if isinstance(node, ast.Call):
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+        if name in {"Path", "joinpath"}:
+            return any(_is_crates(arg) for arg in node.args)
+        if name in {"glob", "rglob", "iterdir"} and node.args:
+            return _is_crates(node.args[0])
+    return False
+
+
+def unmarked_crates_reads(tree: ast.Module) -> list[tuple[str, int]]:
+    """``(owner, line)`` for each ``crates`` path join no ``docs`` marker covers.
+
+    *owner* is the enclosing test's name, or ``"<module>"`` for a join at module level, which
+    only a module-level ``pytestmark`` marks. A decorator marks one test. A join through a
+    variable, ``base / name``, is not seen; name the path literally so this check finds it.
+    """
+    module_marked = any(
+        isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "pytestmark" for target in node.targets
+        )
+        and _DOCS_MARK in ast.unparse(node.value)
+        for node in tree.body
+    )
+    functions = [
+        node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+    found: set[tuple[str, int]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.expr) or not _joins_crates(node):
+            continue
+        owner = next(
+            (f for f in functions if f.lineno <= node.lineno <= (f.end_lineno or f.lineno)),
+            None,
+        )
+        marked = module_marked or (
+            owner is not None
+            and any(ast.unparse(decorator) == _DOCS_MARK for decorator in owner.decorator_list)
+        )
+        if not marked:
+            found.add((owner.name if owner else "<module>", node.lineno))
+    return sorted(found, key=lambda hit: hit[1])
+
+
+def test_a_test_that_reads_crates_runs_when_crates_changes() -> None:
+    """A test reading the checkout's ``crates/`` joins the docs half, or a Rust-only check skips it."""
+    offenders = [
+        f"{path.name}:{line} ({owner})"
+        for path in sorted(TESTS.glob("test_*.py"))
+        if path.name not in _STAND_IN_CRATES
+        for owner, line in unmarked_crates_reads(ast.parse(path.read_text(encoding="utf-8")))
+    ]
+    assert not offenders, (
+        "take @pytest.mark.docs on a test that reads crates/, or pytestmark = pytest.mark.docs on "
+        f"its module, so a Rust-only check runs it: {', '.join(offenders)}"
+    )
+
+
+def test_the_crates_read_check_flags_each_form_and_allows_a_marked_test() -> None:
+    source = """
+SCHEMAS = Path(__file__).parents[1] / "crates" / "schema"
+def test_module_level():
+    (ROOT / "crates").rglob("*.rs")
+def test_stand_in(tmp_path):
+    tmp_path / "crates"
+@pytest.mark.docs
+def test_marked():
+    ROOT / "crates"
+def test_unmarked():
+    Path(ROOT, "crates")
+"""
+    assert unmarked_crates_reads(ast.parse(source)) == [
+        ("<module>", 2),
+        ("test_module_level", 4),
+        ("test_stand_in", 6),
+        ("test_unmarked", 11),
+    ]
 
 
 def test_docs_only_runs_the_docs_half() -> None:
