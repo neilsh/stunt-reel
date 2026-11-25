@@ -110,6 +110,7 @@ The saved [`calibrations.txt`](calibrations.txt) and [`readout-repeat.txt`](read
 **Verdict**:
 The colour category is removed for want of a qualifying example; the example rule is not loosened to keep it.
 The 20-category calibrations and readouts remain the record of the 20-category file, and none of them is a calibration pass or a readout of the 19-category file.
+`errors-score` on the `CTRY` 20-category run now refuses it with `categories 5838a2800757eaac... then, 5f8b01d6d891a51d... now`, so no older grade can pass for the new file by accident.
 The new calibration inputs are evidence only once graded: two passes and a tie-break per run, then `CTRY` and both `INTRO` runs must print `calibration PASS`, the two `INTRO` runs supplying the twice-in-a-row requirement.
 The seven readout runs then need two passes and a tie-break each, before a baseline refresh that writes `research/parity/readouts/` and `baseline.toml` with `categories_digest = 5f8b01d6…`, all seven together in its own PR.
 
