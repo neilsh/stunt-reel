@@ -4,31 +4,24 @@ from __future__ import annotations
 
 import importlib
 import io
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from stunt_reel.kaitai import compile_schemas, ksc_command, load_generated_module
+from conftest import COMPILED_SCHEMAS_GROUP, CompiledSchemas
 
-pytestmark = pytest.mark.docs
+pytestmark = [pytest.mark.docs, pytest.mark.xdist_group(COMPILED_SCHEMAS_GROUP)]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = REPO_ROOT / "research/formats/sod.ksy"
 FIXTURE = REPO_ROOT / "tests/fixtures/synthetic_collision.sod"
 _KAITAISTRUCT: Any = importlib.import_module("kaitaistruct")
 
 
 @pytest.fixture(scope="module")
-def sod_parser() -> Any:
-    """Compile the schema once and return the generated root type."""
-    if ksc_command() is None:
-        pytest.skip("Kaitai compiler not on PATH")
-    with tempfile.TemporaryDirectory(prefix="stunt-kaitai-sod-") as tmp:
-        compile_schemas([SCHEMA], tmp)
-        module = load_generated_module(Path(tmp) / "sod.py", "stunt_kaitai_sod")
-    return module.Sod
+def sod_parser(compiled_schemas: CompiledSchemas) -> Any:
+    """Return the `.SOD` root type from the session's one catalog compilation."""
+    return compiled_schemas.modules["sod"].Sod
 
 
 def _kinds(collision_list: Any) -> list[int]:

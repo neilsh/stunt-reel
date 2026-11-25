@@ -32,9 +32,10 @@ _WINDOWS_MODULES = frozenset({"msvcrt", "winreg", "_winapi"})
 #: The packages under ``python/`` whose tests are part of the gate.
 _PRODUCTION_PACKAGES = ("stunt_reel", "scripts")
 
-#: Test modules that import a branch only to compile Kaitai schemas, which needs the JVM the
-#: pull-request Windows job does not install.  Keyed by file name, with the reason: an entry
-#: here is a promise, not a convenience.
+#: Test modules that compile Kaitai schemas, which needs the JVM the pull-request Windows job
+#: does not install: they import the branching compiler helper, or request the shared schema
+#: fixture that does.  Keyed by file name, with the reason: an entry here is a promise, not a
+#: convenience.
 _JVM_SUITES = {
     "test_formats_catalog.py": "compiles every research schema with the Kaitai JVM",
     "test_schema_contract.py": "compiles the schema contract with the Kaitai JVM",
@@ -152,6 +153,13 @@ def _is_windows_mark(node: ast.AST) -> bool:
     )
 
 
+def _requests_compiled_schemas(tree: ast.Module) -> bool:
+    """True when a test or fixture in *tree* takes the shared compiled-schema fixture."""
+    return any(
+        isinstance(node, ast.arg) and node.arg == "compiled_schemas" for node in ast.walk(tree)
+    )
+
+
 def _marked(tree: ast.Module) -> bool:
     """True when a module-level ``pytestmark`` carries ``pytest.mark.windows``."""
     return any(
@@ -248,6 +256,11 @@ def test_the_detector_sees_a_branching_import() -> None:
     ]
 
 
+def test_the_detector_sees_the_compiled_schema_fixture() -> None:
+    assert _requests_compiled_schemas(ast.parse("def test_x(compiled_schemas): pass\n"))
+    assert not _requests_compiled_schemas(ast.parse("def test_x(tmp_path): pass\n"))
+
+
 def test_the_detector_sees_a_bare_script_import() -> None:
     """``python/scripts`` has no ``__init__.py``, so a script is imported by its bare name."""
     modules = _discover_branching_modules()
@@ -298,13 +311,16 @@ def test_every_test_that_reaches_a_platform_branch_carries_the_windows_marker() 
 
 
 def test_every_jvm_suite_exists_and_is_still_unmarked() -> None:
-    """An allow-list entry names a test that imports a branch and is not marked for it."""
+    """An allow-list entry names a test that reaches the compiler and is not marked for it."""
     modules = _discover_branching_modules()
     trees = _test_trees()
     for name, reason in _JVM_SUITES.items():
         assert name in trees, f"{name} does not exist: {reason}"
-        assert _branching_imports(trees[name], modules), (
-            f"{name} no longer imports a branching module: {reason}"
+        reaches_compiler = _branching_imports(trees[name], modules) or _requests_compiled_schemas(
+            trees[name]
+        )
+        assert reaches_compiler, (
+            f"{name} no longer imports a branching module or requests compiled_schemas: {reason}"
         )
         assert not _marked(trees[name]), f"{name} is marked, so drop it from the JVM allow-list"
 
