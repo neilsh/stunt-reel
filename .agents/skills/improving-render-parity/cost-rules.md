@@ -17,7 +17,7 @@ Every turn re-sends the whole conversation, so the loop costs turns times contex
    `--jobs N` (default 8) renders N pairs at once; each takes about 200 MiB of VRAM and 300 MiB of RAM.
    CTRY-only gains have regressed INTRO three times ([`framing-and-actors.md`](../../../research/parity/framing-and-actors.md)).
 5. **Never print a whole `report.json`.**
-   Extract the fields you need with `python -c "import json; ..."`.
+   Write the extraction script to `build/scratch/<name>.py` and run it with `python build/scratch/<name>.py` ([`harness.md` § Windows PowerShell 5.1](../../../docs/harness.md#windows-powershell-51)).
 6. **Look at pixels sparingly.**
    Use `parity_probe.py crop` on one region instead of reading full contact sheets, and only after the numbers point somewhere.
    To see specific ticks, `mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N]` renders them in one process (about 3 s, not 3 s each) and prints a capture-left, ours-right PNG per tick under `build/scratch/frame/<film>/`; a tick the capture lacks is rendered and its nearest captured ticks are named.
