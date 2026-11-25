@@ -7,6 +7,11 @@ version appears as a pin (`mise.toml`), a floor (`requires-python`), two targets
 [docs/toolchain.md](../docs/toolchain.md) splits those into pins a bot may move, floors
 it may not, and targets that follow the pin (mypy's equals it; ruff's may trail it by one minor
 until the apply-ruff PR); this is what makes the split enforceable instead of aspirational.
+
+The CI workflow and the cloud setup repeat pins from `mise.toml` and `Cargo.toml` (the two
+cargo tools, the MSRV job, lavapipe and LLVM), and the Kaitai compiler's version appears in
+three files. Renovate updates `mise.toml` and `Cargo.toml` but not a hand-written `tool:`
+string, so each copy is asserted equal to the file that owns it.
 """
 
 from __future__ import annotations
@@ -307,3 +312,140 @@ def test_the_lockfile_gives_the_cloud_a_download(name: str) -> None:
     linux = entry["platforms.linux-x64"]
     assert linux["url"].startswith("https://github.com/")
     assert linux["checksum"].startswith("sha256:")
+
+
+#: Pins the CI workflow and the cloud setup repeat from another file. Renovate moves the
+#: mise and Cargo declarations but cannot see a `tool:` string or an apt `package=version`,
+#: so each copy has to be checked against the declaration that owns it.
+_CI = Path(".github") / "workflows" / "ci.yml"
+_CLOUD_SETUP = Path(".claude") / "cloud-setup.sh"
+
+
+def _repo_text(relative: Path) -> str:
+    return (REPO_ROOT / relative).read_text(encoding="utf-8")
+
+
+def _ci_install_action_pin(tool: str) -> str:
+    """The version ci.yml's `taiki-e/install-action` step installs for *tool*."""
+    versions = re.findall(
+        rf"^\s*tool:\s*{re.escape(tool)}@(\S+)\s*$", _repo_text(_CI), re.MULTILINE
+    )
+    assert versions, f"ci.yml has no `tool: {tool}@...` line; the install-action step is gone"
+    distinct = sorted(set(versions))
+    assert len(distinct) == 1, f"ci.yml pins {tool} at more than one version: {distinct}"
+    return str(distinct[0])
+
+
+@pytest.mark.parametrize("tool", ["cargo-deny", "cargo-llvm-cov"])
+def test_the_ci_cargo_tool_installs_the_mise_pin(tool: str) -> None:
+    """taiki-e/install-action downloads a binary, so mise.toml's pin is not what CI runs."""
+    pin = _pin(_mise_tools()[f"cargo:{tool}"])
+    ci = _ci_install_action_pin(tool)
+    assert ci == pin, (
+        f"mise.toml pins {tool} {pin}, but ci.yml installs {tool}@{ci}; update mise.toml and "
+        "the `tool:` line in ci.yml together, then regenerate mise.lock"
+    )
+
+
+def test_the_msrv_job_runs_the_manifest_floor() -> None:
+    """`rust-version` is the claim; the msrv job installs and runs that toolchain."""
+    floor = str(_toml("Cargo.toml")["workspace"]["package"]["rust-version"])
+    ci = _repo_text(_CI)
+    installed = re.findall(r"^.*rustup toolchain install (\d+(?:\.\d+)*)\b", ci, re.MULTILINE)
+    ran = re.findall(r"^.*cargo \+(\d+(?:\.\d+)*)\b", ci, re.MULTILINE)
+    assert installed, "ci.yml no longer installs the MSRV toolchain with rustup"
+    assert ran, "ci.yml no longer runs `cargo +<MSRV> check`"
+    for version in (*installed, *ran):
+        assert _numbers(version) == _numbers(floor), (
+            f"ci.yml's msrv job uses Rust {version}, but Cargo.toml's rust-version is {floor}; "
+            "update the floor and the msrv job together"
+        )
+
+
+def _cloud_setup_pin(name: str) -> str:
+    """The value `.claude/cloud-setup.sh` assigns to *name*."""
+    values = re.findall(rf"^{name}=(\S+)$", _repo_text(_CLOUD_SETUP), re.MULTILINE)
+    assert len(values) == 1, f".claude/cloud-setup.sh must assign {name} exactly once"
+    return str(values[0])
+
+
+@pytest.mark.parametrize(
+    ("package", "variable"),
+    [
+        ("mesa-vulkan-drivers", "LAVAPIPE_VERSION"),
+        ("libllvm20", "LAVAPIPE_LLVM_VERSION"),
+    ],
+)
+def test_ci_installs_the_cloud_setups_lavapipe(package: str, variable: str) -> None:
+    """The canonical lavapipe is one Ubuntu package plus the LLVM it links."""
+    expected = _cloud_setup_pin(variable)
+    installed = re.findall(rf"{re.escape(package)}=(\S+)", _repo_text(_CI))
+    assert installed, (
+        f"ci.yml installs no pinned {package}; .claude/cloud-setup.sh sets {variable}={expected}"
+    )
+    mismatched = sorted({version for version in installed if version != expected})
+    assert not mismatched, (
+        f"ci.yml installs {package}={mismatched[0]} but .claude/cloud-setup.sh sets "
+        f"{variable}={expected}; update ci.yml's apt installs and the cloud setup together"
+    )
+
+
+def test_the_uv_floor_matches_the_mise_pin() -> None:
+    """`required-version` may not be exact: Renovate's newer uv refuses an exact pin."""
+    pin = _pin(_mise_tools()["uv"])
+    requirement = str(_toml("pyproject.toml")["tool"]["uv"]["required-version"])
+    match = re.fullmatch(r">=(.+)", requirement)
+    assert match, (
+        f"pyproject.toml's [tool.uv] required-version is {requirement!r}; it must be a `>=` "
+        "floor at mise.toml's uv pin"
+    )
+    floor = match.group(1)
+    assert _numbers(floor) == _numbers(pin), (
+        f"pyproject.toml requires uv >={floor}, but mise.toml pins uv {pin}; raise the floor "
+        "whenever the pin moves"
+    )
+
+
+def _kaitai_runtime_pin() -> str:
+    """The `kaitaistruct==` version in pyproject.toml's dependency groups."""
+    pyproject = _toml("pyproject.toml")
+    requirements = list(pyproject["project"].get("dependencies", []))
+    for group in pyproject.get("dependency-groups", {}).values():
+        if isinstance(group, list):
+            requirements.extend(item for item in group if isinstance(item, str))
+    pins = [req.split("==", 1)[1] for req in requirements if req.startswith("kaitaistruct==")]
+    assert len(pins) == 1, "pyproject.toml must pin kaitaistruct==<version> exactly once"
+    return str(pins[0])
+
+
+def _kaitai_compiler_pin() -> str:
+    """The compiler version `python/stunt_reel/kaitai.py` accepts."""
+    source = _repo_text(Path("python") / "stunt_reel" / "kaitai.py")
+    matches = re.findall(r"^REQUIRED_KSC_VERSION\s*=\s*['\"]([^'\"]+)['\"]", source, re.MULTILINE)
+    assert len(matches) == 1, (
+        "python/stunt_reel/kaitai.py must define REQUIRED_KSC_VERSION exactly once"
+    )
+    return str(matches[0])
+
+
+def test_the_kaitai_compiler_install_and_runtime_share_one_version() -> None:
+    """The compiler emits Python that the kaitaistruct runtime has to interpret."""
+    tool = _mise_tools()["github:kaitai-io/kaitai_struct_compiler"]
+    version = _pin(tool)
+    assert isinstance(tool, dict), "mise.toml's Kaitai pin must carry version and asset_pattern"
+    asset = str(tool.get("asset_pattern", ""))
+    expected_asset = f"kaitai-struct-compiler-{version}.zip"
+    assert asset == expected_asset, (
+        f"mise.toml's Kaitai asset_pattern is {asset!r}, but version {version} needs "
+        f"{expected_asset}; update version and asset_pattern together"
+    )
+    runtime = _kaitai_runtime_pin()
+    assert runtime == version, (
+        f"pyproject.toml pins kaitaistruct=={runtime}, but mise.toml installs the Kaitai "
+        f"compiler {version}; the runtime and compiler move together"
+    )
+    compiler = _kaitai_compiler_pin()
+    assert compiler == version, (
+        f"python/stunt_reel/kaitai.py requires the Kaitai compiler {compiler}, but mise.toml "
+        f"pins {version}; update REQUIRED_KSC_VERSION and mise.toml together"
+    )
