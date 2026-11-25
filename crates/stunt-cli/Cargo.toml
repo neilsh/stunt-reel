@@ -16,17 +16,16 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
-stunt-core = { path = "../stunt-core", features = ["bytemuck", "serde"] }
+stunt-core = { path = "../stunt-core", features = ["serde"] }
 stunt-gltf = { path = "../stunt-gltf" }
 stunt-parity = { path = "../stunt-parity" }
 stunt-render = { path = "../stunt-render" }
 stunt-score = { path = "../stunt-score" }
 winit = "0.30"
-glam = "0.34"
-thiserror = "2.0"
-image = { version = "0.25", default-features = false, features = ["png"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1.0"
+glam.workspace = true
+image.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 clap = { version = "4.6", features = ["derive", "env"] }
 toml = "1.1"
-sha2 = "0.11"
+sha2.workspace = true

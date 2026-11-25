@@ -1,6 +1,7 @@
 //! Contact sheets: reference | test | difference panels as grayscale PNGs.
 
 use std::collections::BTreeSet;
+use std::fs::File;
 use std::path::Path;
 
 use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_WIDTH};
@@ -146,19 +147,24 @@ pub(super) fn write_panel_sheet(path: &Path, panels: &[&[f32]]) -> Result<(), St
     }
 
     let too_large = |_| "contact sheet is too large for an image";
-    let image = image::GrayImage::from_raw(
+    let file = File::create(path).map_err(|e| format!("write {}: {e}", path.display()))?;
+    let mut encoder = png::Encoder::new(
+        file,
         u32::try_from(sheet_width).map_err(too_large)?,
         u32::try_from(height).map_err(too_large)?,
-        buffer,
-    )
-    .ok_or("failed to build contact sheet buffer")?;
-    image
-        .save(path)
-        .map_err(|e| format!("write {}: {e}", path.display()))
+    );
+    encoder.set_color(png::ColorType::Grayscale);
+    encoder.set_depth(png::BitDepth::Eight);
+    let encode = |error: png::EncodingError| format!("write {}: {error}", path.display());
+    let mut writer = encoder.write_header().map_err(encode)?;
+    writer.write_image_data(&buffer).map_err(encode)?;
+    writer.finish().map_err(encode)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io::BufReader;
+
     use super::*;
 
     #[test]
@@ -180,5 +186,27 @@ mod tests {
         let mut worst = WorstFrames::new(3);
         worst.offer(0.5, 1, ());
         assert_eq!(worst.into_entries().len(), 1);
+    }
+
+    #[test]
+    fn a_panel_sheet_decodes_as_eight_bit_grayscale() {
+        let tmp = crate::parity::test_support::TempDir::new("panel_sheet");
+        let path = tmp.join("sheet.png");
+        let panel: Vec<f32> = (0..MODE13H_WIDTH * ASPECT_CORRECTED_HEIGHT)
+            .map(|i| f32::from(u8::try_from(i % 251).unwrap()))
+            .collect();
+        write_panel_sheet(&path, &[&panel]).unwrap();
+
+        let mut reader = png::Decoder::new(BufReader::new(File::open(&path).unwrap()))
+            .read_info()
+            .unwrap();
+        let mut buffer = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut buffer).unwrap();
+        assert_eq!(info.width as usize, MODE13H_WIDTH);
+        assert_eq!(info.height as usize, ASPECT_CORRECTED_HEIGHT);
+        assert_eq!(info.color_type, png::ColorType::Grayscale);
+        assert_eq!(info.bit_depth, png::BitDepth::Eight);
+        let expected: Vec<u8> = panel.iter().map(|&value| grey_level(value)).collect();
+        assert_eq!(&buffer[..info.buffer_size()], expected.as_slice());
     }
 }
