@@ -29,7 +29,7 @@ It uses the painter's method instead, as the render notes describe it:
 
 1. Each frame it walks the scenery from the most distant objects to the nearest, skipping those too far away and drawing simpler stand-ins for distant groups.
 2. It runs each object's program.
-   The notes infer that a program can also order its own parts, drawing the far group before the near one.
+   A program can also order its own parts: it tests which way a face points and draws the group on its far side before the near one.
 3. It fills each polygon straight into the screen image.
    Whatever is drawn later covers what was drawn earlier, whatever their real distances.
 

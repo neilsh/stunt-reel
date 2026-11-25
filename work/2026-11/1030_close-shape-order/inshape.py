@@ -68,7 +68,7 @@ def main() -> None:
                 return out
 
             paint, zb, pid, zid = (full(p) for p in planes)
-            mask = (shp == shape_id + 1) | (shp == shape_id)
+            mask = shp == shape_id + 1
             mask &= paint != 0xFFFF
             n = int(mask.sum())
             if n == 0:

@@ -81,7 +81,7 @@ pub const OP_GVPOLY: u16 = 0x0168;
 pub const OP_IFVIS: u16 = 0x017A;
 /// Run the next section while facing flag `flag` is clear (`flag, size`; `PLAYONE` `0x9BB3`).
 pub const OP_BVIS: u16 = 0x0183;
-/// Reserved BSP branch (`plane, left_off, right_off`); operands are skipped and stream order is kept.
+/// Two branches, then the continuation (`first, second, flag`; `PLAYONE` `0x9183` orders them by facing flag `flag`, this VM runs the inline one first).
 pub const OP_SORT: u16 = 0x018C;
 /// End the display list or return from a bytecode subroutine (no operands).
 pub const OP_RETURN: u16 = 0x0195;

@@ -21,8 +21,9 @@
     When the flag is clear (`xchg cx, si`), it runs the same two branches in the other order.
     Each branch ends in a `RETURN` that resumes the next.
     Our VM runs the inline branch first whatever the flag.
-  - **Shape 1145** is 51 flat triangles (`COLOR`, `POLYZ`), each behind an `IFVIS` gate, under 12 `SORT` nodes.
-    **Shape 542** is 10 trunk polygons behind `IFVIS` gates, then 41 `SPHERE`s with no `SORT`.
+  - **Shape 1145** (`stuntreel sod-trace` on `LOCATION.ALL`) is 51 flat `POLYZ` polygons (`COLOR`), each behind an `IFVIS` gate: 41 triangles, 6 quads, 2 pentagons, a hexagon and a heptagon.
+    50 lie inside 12 `SORT` nodes; one quad (`0x0A16`) follows the outermost `SORT`'s continuation (`0x0A0C`).
+    **Shape 542** (`sod-trace` on `BOMB.ALL`; 545 the same) is one `SPHERE` (`0x0322`), 10 trunk polygons behind `IFVIS` gates (`0x0328..0x03F7`), then 41 `SPHERE`s (`0x03FC..0x058C`), 42 in all, with no `SORT`.
   - **`location` 7019, shape 1145** ([sheet](images/location-7019-inshape.png)): it covers 49,095 of the view's pixels.
     The CPU z-buffer gives the same index as our render on 0.990 of them, and the painter shows another polygon than the z-buffer on 20.
     Capture agreement: ours 0.368, CPU z-buffer 0.373, painter 0.373.
@@ -36,7 +37,7 @@
     | 2080 | 545 | 465 | 0.613 | 0.634 | 0.849 | 0.923 | 122 px |
     | 2300 | 545 | 5,667 | 0.686 | 0.699 | 0.885 | 0.889 | 1,671 px |
 
-    The CPU z-buffer draws the spheres as the same discs and stays within 0.021 of ours, so the gain is the order, not the disc outline.
+    The CPU z-buffer draws the spheres as the same discs and stays within 0.022 of ours (10 of 465 pixels at 2080, shape 545), so the gain is the order, not the disc outline.
     In the sheets the painter's leaf clusters cover each other and the trunk as the capture's do.
 - **Verdict**: control (diagnosis), no renderer change.
   For the trees, list order is the explanation: each later `SPHERE` covers the earlier ones and the trunk, whatever its depth.
