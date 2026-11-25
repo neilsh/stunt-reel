@@ -435,6 +435,8 @@ hide = true
 run = '''
 if [ "${CLAUDE_CODE_REMOTE:-}" = true ]; then
   echo "environment: cloud; read .agents/skills/working-in-an-environment/cloud.md before other work"
+elif [ -d /home/antigravity ]; then
+  echo "environment: cloud-antigravity; read .agents/skills/working-in-an-environment/cloud-antigravity.md before other work"
 else
   echo "environment: unsupported ($(uname -s)); see .agents/skills/working-in-an-environment/SKILL.md"
 fi
