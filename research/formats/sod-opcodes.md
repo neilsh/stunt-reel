@@ -102,7 +102,7 @@ No `.SOD` stream the census walks reaches an opcode above `0x0333`, and the patc
 | **78** | `0x02BE` | 702 | `OP_GVPOLY16` | `count: u16, regs..., (ramp << 8) \| count: u16, shades...` | 16-level shaded polygon emission |
 | **79** | `0x02C7` | 711 | `OP_SHADE216` | `norm: u16, ramp: u16` | 16-level back-facing lighting ramp sample |
 | **80** | `0x02D0` | 720 | `OP_DOT` | `reg_off: u16` | Draw single point / pixel dot at `regs[reg]` |
-| **81** | `0x02D9` | 729 | `OP_BLOCK` | `reg_off: u16, size: u16` | Draw solid rectangular box block |
+| **81** | `0x02D9` | 729 | `OP_BLOCK` | `reg_off: u16, size: u16` | Draw a filled screen square about `regs[reg]`, its half-side `size` projected as `OP_SPHERE`'s radius ([`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)) |
 | **82** | `0x02E2` | 738 | `OP_ROTX` | `angle_bam: u16` | Rotate around X axis by 16-bit BAM angle |
 | **83** | `0x02EB` | 747 | `OP_ROTZ` | `angle_bam: u16` | Rotate around Z axis by 16-bit BAM angle |
 | **84** | `0x02F4` | 756 | `OP_BVLT` | `reg: u16, val: i16, rel_off: i16` | Branch if vector coordinate is less than threshold |
