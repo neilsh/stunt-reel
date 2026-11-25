@@ -315,9 +315,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          # Java and the Kaitai compiler keep this run's pytest selection identical to the
-          # Ubuntu gate's, instead of letting the schema contract tests skip.
-          install_args: rust python uv java github:kaitai-io/kaitai_struct_compiler
+          # Java, the Kaitai compiler and prek keep this run's pytest selection identical to the
+          # Ubuntu gate's, instead of letting the schema contract and commit-hook tests skip.
+          install_args: rust python uv java github:kaitai-io/kaitai_struct_compiler prek
       - name: Cache Cargo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -347,6 +347,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Cache Cargo
+        # The msrv job has its own key: it builds with rustup's 1.100, not mise's toolchain and
+        # CARGO_HOME, so sharing the gate's cache would rebuild the workspace on every hit.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-msrv-1.100-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-msrv-1.100-
       # The repository's allowed-actions policy admits GitHub-owned actions and the two
       # third-party patterns it names; rustup already ships on the runner, so install the
       # MSRV toolchain directly instead of adding another action to the allowlist.

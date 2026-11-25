@@ -35,11 +35,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # As in ci.yml: install only the tools below, not every tool mise.toml declares, and read
+      # tool releases from the GitHub API after mise-versions.jdx.dev answered 502.
+      MISE_AUTO_INSTALL: "false"
+      MISE_USE_VERSIONS_HOST: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          install_args: bun python uv
+          # No uv: site-prep runs on the pinned interpreter and imports only the standard
+          # library and this repository's package, so nothing needs a virtualenv.
+          install_args: bun python
+      - name: Cache bun
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('site/bun.lock', 'site/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
       # The page loads katex's stylesheet directly, so it must match the copy rehype-katex
       # renders with; site/package.json's override keeps the tree to one.
       - name: One katex in bun.lock
