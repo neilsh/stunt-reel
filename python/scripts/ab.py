@@ -12,16 +12,20 @@ A ``--variant`` is ``NAME [binary=PATH] [VAR=VALUE ...]``: a name, optionally it
 (default the release ``stuntreel``), and the environment variables it sets. The first variant is
 the baseline every change and "faster" count is against. Each round runs every variant once;
 ``alternate`` reverses the order every other round and ``rotate`` starts each round one variant
-later. Every ``--span`` is run on every ``--adapter``: ``lavapipe`` sets ``VK_DRIVER_FILES`` to
+later. ``--warmup`` rounds (default 1) run every variant first, untimed and not kept. Every ``--span`` is run on every ``--adapter``: ``lavapipe`` sets ``VK_DRIVER_FILES`` to
 ``--icd`` (default Mesa 25.2.8 in the data root's ``tools/``) and passes ``--software-only``;
 ``gpu`` leaves both off. A run whose ``render.json`` names another adapter class than the cell's
 fails the whole run.
 
 Writes ``<out>/<name>.csv`` (one row per run, the loop and wall ms, the four store hashes, the
-adapter) and ``<out>/<name>-summary.md``, and prints the summary; it refuses to overwrite either.
+adapter, the share of all CPUs other processes used during the run) and
+``<out>/<name>-summary.md``, and prints the summary; it refuses to overwrite either.
 It refuses to start, and stops between runs, while a ``stuntreel``, ``cargo`` or ``rustc``
-process runs, unless ``--force``. Build the binaries first: this runs them as they are. Exit 0
-on success, 1 on a failed run, 2 on a refusal or bad arguments.
+process runs. Before each run it waits, up to 10 minutes, until the machine is at most
+``--max-load`` busy (default 10% of all logical CPUs) over 2 seconds, and it stops after a run
+during which other processes used more than that. ``--force`` skips all three checks.
+Build the binaries first: this runs them as they are. Exit 0 on success, 1 on a failed run, 2 on
+a refusal or bad arguments.
 """
 
 from __future__ import annotations
@@ -76,6 +80,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--order", choices=ab_timing.MODES, default="alternate")
     parser.add_argument(
+        "--warmup", type=int, default=1, help="untimed rounds of every variant before each cell"
+    )
+    parser.add_argument(
         "--film", type=dataroot.data_path_arg, help="default: Patch #3 LOCATION.FLM"
     )
     parser.add_argument(
@@ -86,7 +93,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--data-root", type=dataroot.data_path_arg)
     parser.add_argument(
-        "--force", action="store_true", help="time while another stuntreel, cargo or rustc runs"
+        "--max-load",
+        type=float,
+        default=ab_timing.MAX_LOAD,
+        help="largest share of all CPUs other processes may use before and during a run",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="time while another stuntreel, cargo or rustc runs, or the machine is busy",
     )
     parser.add_argument(
         "--summarize", type=dataroot.data_path_arg, metavar="CSV", help="print a CSV's summary"
@@ -108,6 +123,8 @@ def _refusals(
         problems.append("--variant names must differ")
     if args.rounds < 1:
         problems.append("--rounds must be at least 1")
+    if args.warmup < 0:
+        problems.append("--warmup must be at least 0")
     problems += [
         f"missing {what}: {path}"
         for what, path in inputs.items()
@@ -161,45 +178,89 @@ def run(args: argparse.Namespace, root: Path) -> int:
     rows: list[ab_timing.Row] = []
     scratch = SCRATCH / args.name
     for cell in cells:
-        expect = "cpu" if cell.adapter == "lavapipe" else "hardware"
+
+        def render(
+            variant: ab_timing.Variant, stem: str, cell: ab_timing.Cell = cell
+        ) -> ab_timing.Timing:
+            out_dir = scratch / stem
+            shutil.rmtree(out_dir, ignore_errors=True)
+            argv = ab_timing.render_argv(
+                variant.binary or binary_path(),
+                inputs["film"],
+                inputs["archive"],
+                root,
+                cell,
+                out_dir,
+            )
+            env = ab_timing.environment_for(variant, cell.adapter, inputs["icd"])
+            expect = "cpu" if cell.adapter == "lavapipe" else "hardware"
+            timing = ab_timing.run_once(argv, env, out_dir, expect_class=expect)
+            shutil.rmtree(out_dir, ignore_errors=True)
+            return timing
+
+        for warm in range(args.warmup):
+            for variant in args.variant:
+                try:
+                    t = render(variant, f"{cell.name}-warmup{warm}-{variant.name}")
+                except ab_timing.RunError as err:
+                    print(f"ab: {cell.name} warm-up {variant.name}: {err}", file=sys.stderr)
+                    return 1
+                print(
+                    f"ab: {cell.name} warm-up {warm} {variant.name}: loop {t.loop_ms:.0f} ms "
+                    "(not kept)"
+                )
         for index in range(args.rounds):
             for position, which in enumerate(
                 ab_timing.round_order(len(args.variant), index, args.order)
             ):
+                variant = args.variant[which]
+                where = f"{cell.name} round {index} {variant.name}"
                 if not args.force and (
                     found := ab_timing.busy_processes(process_tree.process_names())
                 ):
                     print(f"ab: stopped: {_busy_message(found)}", file=sys.stderr)
                     return 2
-                variant = args.variant[which]
-                out_dir = scratch / f"{cell.name}-{index}-{variant.name}"
-                shutil.rmtree(out_dir, ignore_errors=True)
-                argv = ab_timing.render_argv(
-                    variant.binary or binary_path(),
-                    inputs["film"],
-                    inputs["archive"],
-                    root,
-                    cell,
-                    out_dir,
-                )
-                env = ab_timing.environment_for(variant, cell.adapter, inputs["icd"])
-                try:
-                    loop, wall, sha, adapter, klass = ab_timing.run_once(
-                        argv, env, out_dir, expect_class=expect
+                if not args.force and (load := ab_timing.wait_for_quiet(args.max_load)) > (
+                    args.max_load
+                ):
+                    print(
+                        f"ab: stopped before {where}: the machine stayed {load:.0%} busy, "
+                        f"over --max-load {args.max_load:.0%} (wait, or --force)",
+                        file=sys.stderr,
                     )
+                    return 2
+                try:
+                    t = render(variant, f"{cell.name}-{index}-{variant.name}")
                 except ab_timing.RunError as err:
-                    print(f"ab: {cell.name} round {index} {variant.name}: {err}", file=sys.stderr)
+                    print(f"ab: {where}: {err}", file=sys.stderr)
                     return 1
-                shutil.rmtree(out_dir, ignore_errors=True)
                 rows.append(
                     ab_timing.Row(
-                        cell.name, index, position, variant.name, loop, wall, sha, adapter, klass
+                        cell.name,
+                        index,
+                        position,
+                        variant.name,
+                        t.loop_ms,
+                        t.wall_ms,
+                        t.sha256,
+                        t.adapter,
+                        t.adapter_class,
+                        t.other_load,
                     )
                 )
                 csv_path.write_text(ab_timing.write_csv(rows), encoding="utf-8", newline="")
                 print(
-                    f"ab: {cell.name} round {index} {variant.name}: loop {loop:.0f} ms, wall {wall:.0f} ms"
+                    f"ab: {where}: loop {t.loop_ms:.0f} ms, wall {t.wall_ms:.0f} ms, "
+                    f"other load {t.other_load:.0%}"
                 )
+                if not args.force and t.other_load > args.max_load:
+                    print(
+                        f"ab: stopped after {where}: other processes used {t.other_load:.0%} of "
+                        f"the CPUs during it, over --max-load {args.max_load:.0%}; its row is in "
+                        f"{csv_path} (start again on a quiet machine, or --force)",
+                        file=sys.stderr,
+                    )
+                    return 2
     summary = ab_timing.summarize(rows)
     (args.out / f"{args.name}-summary.md").write_text(summary, encoding="utf-8", newline="")
     print(summary)

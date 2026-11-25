@@ -249,7 +249,7 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 # Builds nothing, but imports parity_pipeline, so it names the shared cargo home and seeds target/ like
 # the tasks that do (tests/test_worktree_layout.py).
 depends = ["ensure"]
-description = "Time variants of a headless render in interleaved rounds (two binaries, or one binary under env-var variants) on lavapipe or the GPU; writes a CSV of every run and a summary into a work folder, and refuses to start while another stuntreel, cargo or rustc runs (mise run ab -- --out WORK_FOLDER --name NAME --variant NAME [--variant 'NAME binary=PATH VAR=VALUE'] [--span A..=B] [--adapter lavapipe|gpu] [--rounds N] [--order alternate|rotate] [--force] | --summarize CSV)"
+description = "Time variants of a headless render in interleaved rounds (two binaries, or one binary under env-var variants) on lavapipe or the GPU; writes a CSV of every run and a summary into a work folder, refusing while another stuntreel, cargo or rustc runs or other processes load the CPUs (mise run ab -- --out WORK_FOLDER --name NAME --variant NAME [--variant 'NAME binary=PATH VAR=VALUE'] [--span A..=B] [--adapter lavapipe|gpu] [--rounds N] [--order alternate|rotate] [--warmup N] [--max-load SHARE] [--force] | --summarize CSV)"
 run = "uv run python python/scripts/ab.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 

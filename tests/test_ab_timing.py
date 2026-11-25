@@ -4,6 +4,8 @@ renderer. Nothing here starts `stuntreel` or reads the corpus."""
 
 from __future__ import annotations
 
+import math
+import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -26,7 +28,9 @@ PLANES = {plane: f"{plane}-hash" for plane in ab_timing.PLANES}
 CELL = "lavapipe-3680-3979"
 
 
-def _row(variant: str, round_: int, loop: float, *, shapes: str = "shapes-hash") -> Row:
+def _row(
+    variant: str, round_: int, loop: float, *, shapes: str = "shapes-hash", load: float = 0.05
+) -> Row:
     return Row(
         CELL,
         round_,
@@ -37,7 +41,14 @@ def _row(variant: str, round_: int, loop: float, *, shapes: str = "shapes-hash")
         {**PLANES, "shapes": shapes},
         "llvmpipe (LLVM 21.1.7, 256 bits)",
         "cpu",
+        load,
     )
+
+
+@pytest.fixture(autouse=True)
+def _quiet_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every run here sees an idle machine unless a test says otherwise."""
+    monkeypatch.setattr(ab_timing, "machine_load", lambda _seconds: 0.0)
 
 
 def test_alternate_runs_forward_then_reversed() -> None:
@@ -107,6 +118,14 @@ def test_csv_round_trips() -> None:
     assert ab_timing.read_csv(ab_timing.write_csv(rows)) == rows
 
 
+def test_csv_written_before_other_load_reads_it_as_unknown() -> None:
+    text = ab_timing.write_csv([_row("a", 0, 1.0), _row("b", 0, 2.0)])
+    old = "\n".join(line.rsplit(",", 1)[0] for line in text.splitlines()) + "\n"
+    rows = ab_timing.read_csv(old)
+    assert all(math.isnan(r.other_load) for r in rows)
+    assert "| 102 | - | same |" in ab_timing.summarize(rows)
+
+
 def test_csv_with_another_header_is_refused() -> None:
     with pytest.raises(ValueError, match="not an ab CSV"):
         ab_timing.read_csv("a,b\n1,2\n")
@@ -122,6 +141,7 @@ def test_summary_statistics_on_a_synthetic_csv() -> None:
     assert (
         "| base | 2466, 2503, 2864, 2814 | 2658.5 | 2466 | 2466..2864 | baseline | - |" in summary
     )
+    assert "| 5% | differ: shapes |" in summary
     assert "| skip | 686, 774, 816, 783 | 778.5 | 686 | 686..816 | -70.7% | 4 of 4 |" in summary
     assert "differ: shapes" in summary
 
@@ -152,17 +172,17 @@ def _runner(
     code: int = 0,
     adapter_class: str = "cpu",
     text: str = "[stuntreel] timing loop 5.000 ms\n",
-) -> Callable[[Sequence[str], object, float], tuple[int, str]]:
-    def run(_argv: Sequence[str], _env: object, _timeout: float) -> tuple[int, str]:
+) -> Callable[[Sequence[str], object, float], tuple[int, str, float]]:
+    def run(_argv: Sequence[str], _env: object, _timeout: float) -> tuple[int, str, float]:
         _store(out_dir, adapter_class)
-        return code, text
+        return code, text, 0.03
 
     return run
 
 
 def test_run_once_reads_loop_hashes_and_adapter(tmp_path: Path) -> None:
     ticks = iter([1.0, 3.5])
-    loop, wall, sha, name, klass = ab_timing.run_once(
+    loop, wall, sha, name, klass, load = ab_timing.run_once(
         ["stuntreel.exe"],
         {},
         tmp_path / "out",
@@ -170,7 +190,7 @@ def test_run_once_reads_loop_hashes_and_adapter(tmp_path: Path) -> None:
         run=_runner(tmp_path / "out"),
         clock=lambda: next(ticks),
     )
-    assert (loop, wall, name, klass) == (5.0, 2500.0, "llvmpipe", "cpu")
+    assert (loop, wall, name, klass, load) == (5.0, 2500.0, "llvmpipe", "cpu", 0.03)
     assert set(sha) == set(ab_timing.PLANES)
     assert len(set(sha.values())) == 4
 
@@ -193,6 +213,36 @@ def test_run_once_refuses_a_failed_render_and_a_missing_loop_line(tmp_path: Path
     silent = _runner(tmp_path / "b", text="")
     with pytest.raises(ab_timing.RunError, match="no usable record"):
         ab_timing.run_once(["s"], {}, tmp_path / "b", expect_class="cpu", run=silent)
+
+
+def test_other_share_subtracts_the_render_from_the_machine() -> None:
+    first = ab_timing.CpuSample(busy=10.0, total=100.0, own=1.0)
+    # 40 CPU seconds busy of 160, 24 of them the render's: others used 16 of 160.
+    last = ab_timing.CpuSample(busy=50.0, total=260.0, own=25.0)
+    assert ab_timing.other_share(first, last) == pytest.approx(0.1)
+    assert math.isnan(ab_timing.other_share(first, first))
+    assert ab_timing.other_share(first, last._replace(own=60.0)) == 0.0
+
+
+def test_other_load_measures_a_live_process() -> None:
+    argv = [sys.executable, "-c", "import time; time.sleep(1.0)"]
+    with subprocess.Popen(argv) as child, ab_timing.OtherLoad(child.pid) as meter:  # noqa: S603
+        child.wait()
+    assert 0.0 <= meter.share <= 1.0
+
+
+def test_wait_for_quiet_returns_at_the_first_quiet_window_or_the_timeout() -> None:
+    loads = iter([0.5, 0.3, 0.08, 0.9])
+    assert ab_timing.wait_for_quiet(0.1, measure=lambda _s: next(loads), window=1.0) == 0.08
+    assert next(loads) == 0.9
+    seen: list[float] = []
+
+    def busy(seconds: float) -> float:
+        seen.append(seconds)
+        return 0.5
+
+    assert ab_timing.wait_for_quiet(0.1, timeout=3.0, measure=busy, window=1.0) == 0.5
+    assert seen == [1.0, 1.0, 1.0]
 
 
 def test_render_argv_names_the_span_flags_and_software_only(tmp_path: Path) -> None:
@@ -250,27 +300,68 @@ def test_ab_runs_every_round_alternating_and_writes_csv_and_summary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(process_tree, "process_names", lambda: ["python.exe"])
-    loops = iter([10.0, 20.0, 21.0, 11.0, 12.0, 22.0])
+    # The first two runs are the warm-up round, which no figure counts.
+    loops = iter([500.0, 600.0, 10.0, 20.0, 21.0, 11.0, 12.0, 22.0])
     started: list[str] = []
 
     def fake_run_once(
         _argv: Sequence[str], _env: object, out_dir: Path, **_kwargs: object
-    ) -> tuple[float, float, dict[str, str], str, str]:
+    ) -> ab_timing.Timing:
         started.append(out_dir.name)
         _store(out_dir)
-        return next(loops), 99.0, dict(PLANES), "llvmpipe", "cpu"
+        return ab_timing.Timing(next(loops), 99.0, dict(PLANES), "llvmpipe", "cpu", 0.02)
 
     monkeypatch.setattr(ab_timing, "run_once", fake_run_once)
     assert ab.main([*_inputs(tmp_path), "--rounds", "3", "--name", "t"]) == 0
     order = [(0, "a"), (0, "b"), (1, "b"), (1, "a"), (2, "a"), (2, "b")]
-    assert started == [f"{CELL}-{index}-{name}" for index, name in order]
+    warm = [f"{CELL}-warmup0-a", f"{CELL}-warmup0-b"]
+    assert started == [*warm, *(f"{CELL}-{index}-{name}" for index, name in order)]
     rows = ab_timing.read_csv((tmp_path / "work" / "t.csv").read_text(encoding="utf-8"))
+    assert len(rows) == 6
     assert [(r.round, r.position, r.variant) for r in rows][2:4] == [(1, 0, "b"), (1, 1, "a")]
     summary = (tmp_path / "work" / "t-summary.md").read_text(encoding="utf-8")
     assert "| b | 20, 21, 22 | 21 |" in summary
     assert "+90.9%" in summary
     assert "| 0 of 3 |" in summary
     assert capsys.readouterr().out.rstrip().endswith(summary.rstrip())
+
+
+def test_ab_stops_before_a_run_while_the_machine_stays_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(process_tree, "process_names", list)
+    monkeypatch.setattr(ab_timing, "wait_for_quiet", lambda _max: 0.4)
+    monkeypatch.setattr(ab_timing, "run_once", lambda *_a, **_k: pytest.fail("ran"))
+    assert ab.main([*_inputs(tmp_path), "--warmup", "0"]) == 2
+    assert "stayed 40% busy, over --max-load 10%" in capsys.readouterr().err
+
+
+def test_ab_stops_after_a_run_other_processes_loaded_and_keeps_its_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(process_tree, "process_names", list)
+
+    def loaded(_argv: Sequence[str], _env: object, out_dir: Path, **_k: object) -> ab_timing.Timing:
+        _store(out_dir)
+        return ab_timing.Timing(10.0, 99.0, dict(PLANES), "llvmpipe", "cpu", 0.25)
+
+    monkeypatch.setattr(ab_timing, "run_once", loaded)
+    assert ab.main([*_inputs(tmp_path), "--max-load", "0.2", "--name", "loaded"]) == 2
+    assert "other processes used 25% of the CPUs" in capsys.readouterr().err
+    rows = ab_timing.read_csv((tmp_path / "work" / "loaded.csv").read_text(encoding="utf-8"))
+    assert [(r.variant, r.other_load) for r in rows] == [("a", 0.25)]
+
+
+def test_ab_force_skips_the_load_checks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(process_tree, "process_names", list)
+    monkeypatch.setattr(ab_timing, "wait_for_quiet", lambda _max: pytest.fail("waited"))
+
+    def loaded(_argv: Sequence[str], _env: object, out_dir: Path, **_k: object) -> ab_timing.Timing:
+        _store(out_dir)
+        return ab_timing.Timing(10.0, 99.0, dict(PLANES), "llvmpipe", "cpu", 0.9)
+
+    monkeypatch.setattr(ab_timing, "run_once", loaded)
+    assert ab.main([*_inputs(tmp_path), "--rounds", "1", "--force", "--name", "forced"]) == 0
 
 
 def test_ab_names_a_missing_icd_once_for_a_lavapipe_cell(
@@ -289,13 +380,13 @@ def test_ab_runs_a_gpu_cell_without_an_icd(tmp_path: Path, monkeypatch: pytest.M
 
     def fake_run_once(
         _argv: Sequence[str], env: object, out_dir: Path, **_kwargs: object
-    ) -> tuple[float, float, dict[str, str], str, str]:
+    ) -> ab_timing.Timing:
         envs.append(env)
         _store(out_dir)
-        return 10.0, 99.0, dict(PLANES), "gpu", "hardware"
+        return ab_timing.Timing(10.0, 99.0, dict(PLANES), "gpu", "hardware", 0.02)
 
     monkeypatch.setattr(ab_timing, "run_once", fake_run_once)
-    args = [*_inputs(tmp_path, icd=False), "--adapter", "gpu", "--rounds", "1"]
+    args = [*_inputs(tmp_path, icd=False), "--adapter", "gpu", "--rounds", "1", "--warmup", "0"]
     assert ab.main(args) == 0
     assert len(envs) == 2
 
