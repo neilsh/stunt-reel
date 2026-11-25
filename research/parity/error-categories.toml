@@ -142,8 +142,9 @@ found_by = ["haiku"]
 since = "2026-11-01"
 examples = []
 
-# Added from the seven reference films' `other` notes at dd7e76eb (2026-11-25), the two that recurred
-# on more than one frame.
+# Added from the seven reference films' `other` notes at dd7e76eb (2026-11-25): two kinds of error no
+# category covered, each named on several frames. Other recurring notes were edge shifts
+# (misregistration), the capture's HUD timecode, or runway lights (scenery-missing).
 [[category]]
 id = "propeller-solid"
 definition = "The RENDER draws the propeller as a solid blade or bar (often across the nose or fuselage) where the capture shows only faint spin flecks or no blade"
