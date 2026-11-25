@@ -7,9 +7,6 @@ enable clip_distances;
 // (research/parity/lavapipe.md section 5).
 struct CameraUniform {
     rotation_proj: mat4x4<f32>,
-    sun_direction: vec3<f32>,
-    ambient_intensity: f32,
-    inv_rotation_proj: mat4x4<f32>,
     // Half a Mode 13h pixel of the view in NDC.
     line_half_ndc: vec2<f32>,
     // The lens zoom over PLAYONE's default lens, the factor a disc is squeezed by along the

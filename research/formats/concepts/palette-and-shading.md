@@ -179,7 +179,7 @@ In `CTRY.FLM` capture ordinal 41 (tick 448) the airfield ground is index 196, $(
 A sun-vector shader (`ambient + (1 - ambient) * max(n . sun, 0)`, ambient 0.25) drew it at 41% brightness.
 `mean_ssim_scored` on `CTRY` (114 frames): lit 0.689, two-sided lit 0.764, constant lighting row 31 (palette colour as is) **0.766**, row 26 0.760, row 22 0.745, row 16 0.700; across four capture sets row 31 scores 0.766, 0.767, 0.767, 0.766.
 Full brightness is best and dimming is worse, so the ground takes no sun-derived level: 162 and 163 beside 196 are themselves ground-leaf colours ([`world-scene.md` § 2](../../playone-exe/world-scene.md#2-the-ground-leaves-and-their-colour)), and `OP_SHADES` lights the shapes that use it (`[BK-PAL-03]`, § 4).
-`mode13h.wgsl` draws every fragment at row 31; the `sun_direction` and `ambient_intensity` uniforms are uploaded but unused.
+`mode13h.wgsl` draws every fragment at row 31; its camera uniform carries no sun-direction or ambient-intensity term.
 _Found 2026-10-22; see the [parity log](../../../work/2026-10/parity-log/log.md)._
 
 #### Sky Bands
