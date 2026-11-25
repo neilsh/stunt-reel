@@ -379,10 +379,16 @@ def _cloud_setup_pin(name: str) -> str:
 def test_ci_installs_the_cloud_setups_lavapipe(package: str, variable: str) -> None:
     """The canonical lavapipe is one Ubuntu package plus the LLVM it links."""
     expected = _cloud_setup_pin(variable)
-    installed = re.findall(rf"{re.escape(package)}=(\S+)", _repo_text(_CI))
-    assert installed, (
-        f"ci.yml installs no pinned {package}; .claude/cloud-setup.sh sets {variable}={expected}"
+    ci = re.sub(r"\\\s*\n\s*", " ", _repo_text(_CI))
+    installs = re.findall(r"^\s*sudo apt-get install [^\n]*", ci, re.MULTILINE)
+    commands = [line for line in installs if re.search(rf"\b{re.escape(package)}\b", line)]
+    assert len(commands) >= 2, f"ci.yml must install {package} in both lavapipe jobs"
+    matches = [re.search(rf"\b{re.escape(package)}=(\S+)", line) for line in commands]
+    assert all(matches), (
+        f"ci.yml must pin {package} in each install; .claude/cloud-setup.sh sets "
+        f"{variable}={expected}"
     )
+    installed = [match.group(1) for match in matches if match]
     mismatched = sorted({version for version in installed if version != expected})
     assert not mismatched, (
         f"ci.yml installs {package}={mismatched[0]} but .claude/cloud-setup.sh sets "
