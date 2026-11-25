@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use glam::{Quat, Vec3};
+use glam::{Mat3, Quat, Vec3};
 use serde_json::Value;
 use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::palette::PaletteControls;
@@ -32,6 +32,7 @@ use stunt_core::sod::{
 };
 use stunt_core::world::{FacingProp, GateNode, PlacementRecords, TerrainSurface, World};
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
+use stunt_render::CameraController;
 
 fn fixture(name: &str) -> Vec<u8> {
     let dir = crate::test_support::workspace_root()
@@ -765,6 +766,44 @@ fn camera_roll_rotates_up_about_the_view_axis() {
     let q = camera_rotation(&rolled);
     let up = Quat::from_xyzw(q[0], q[1], q[2], q[3]) * Vec3::Y;
     assert!((up - Vec3::X).length() < 1e-5, "{up:?}");
+}
+
+/// The glTF camera node's rotation is the inverse of the renderer's view rotation, so the
+/// two must agree on straight-up and straight-down views with and without roll, and on views
+/// either side of the renderer's vertical threshold.
+#[test]
+fn camera_rotation_matches_the_renderer_on_vertical_views() {
+    let cases = [
+        ([0.0, 5.0, 0.0], [0.0, 0.0, 0.0], 0.0),
+        ([0.0, 5.0, 0.0], [0.0, 0.0, 0.0], 0.7),
+        ([0.0, 5.0, 0.0], [0.0, 10.0, 0.0], 0.0),
+        ([0.0, 5.0, 0.0], [0.0, 10.0, 0.0], -0.7),
+        // 1e-4 off vertical is inside `VERTICAL_SIN2`; 2e-3 is outside it.
+        ([0.0, 0.0, 0.0], [1.0e-4, 1.0, 0.0], 0.7),
+        ([0.0, 0.0, 0.0], [2.0e-3, 1.0, 0.0], 0.7),
+    ];
+    for (eye, target, roll) in cases {
+        let camera = ViewCamera {
+            eye,
+            target,
+            fov_degrees: 45.0,
+            roll_radians: roll,
+        };
+        let mut controller = CameraController::default();
+        controller.set_authored_transform(camera);
+        let expected = Mat3::from_mat4(controller.compute_view_rotation()).transpose();
+        let q = camera_rotation(&camera);
+        let actual = Mat3::from_quat(Quat::from_xyzw(q[0], q[1], q[2], q[3]));
+        let error = (actual - expected)
+            .to_cols_array()
+            .into_iter()
+            .map(f32::abs)
+            .fold(0.0f32, f32::max);
+        assert!(
+            error < 1e-5,
+            "eye {eye:?} target {target:?} roll {roll}: {actual} vs {expected}"
+        );
+    }
 }
 
 #[test]

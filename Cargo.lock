@@ -2219,6 +2219,7 @@ dependencies = [
  "gltf",
  "serde_json",
  "stunt-core",
+ "stunt-render",
  "thiserror 2.0.21",
 ]
 

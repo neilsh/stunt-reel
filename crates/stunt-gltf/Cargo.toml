@@ -19,3 +19,4 @@ glam = "0.34"
 
 [dev-dependencies]
 gltf = { version = "1.4.1", default-features = false, features = ["names", "extras", "utils", "KHR_materials_unlit"] }
+stunt-render = { path = "../stunt-render" }
