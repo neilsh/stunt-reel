@@ -15,7 +15,7 @@ Orca, dsh, Antigravity, PowerShell and the disk checks are `local-windows` resou
 
 ## Concurrency and models
 
-- **Coordinator:** Sonnet from the start; reads no diffs or issue bodies, keeps `build/scratch/run-state.md`, restarts instead of compacting, checks CodeRabbit once, and dispatches per [`coordinator.md`](coordinator.md) (T3 Code below).
+- **Coordinator:** the current session's model; reads no diffs or issue bodies, keeps `build/scratch/run-state.md`, restarts instead of compacting, checks CodeRabbit once, and dispatches per [`coordinator.md`](coordinator.md) (T3 Code below).
 - **Workers by fit:** dsh first where the spec is clear and needs no judgment over evidence; Sonnet for other well-specified implementation; Opus for planning (`status:needs-plan`), research, diagnosis, design, and items needing hypothesis rounds.
   Prefix-cache hit rate is not the test.
 - **About two at once:** pair two writers only when their `area:` sets are non-empty and disjoint ([`loop-and-bounds.md`](loop-and-bounds.md#implementing-an-issue-and-bounding-rounds)), each writer in its own worktree; a read-only planner has no file conflict with a writer on another issue, and a dependent item waits for or stacks on its parent.
