@@ -25,7 +25,7 @@
   The target ticks rise by 0.0022 in SSIM at `bomb` 1585 and 0.0036 at 1904, pooled index agreement +0.0013; 21 `bomb` frames outside them move by more than 0.005.
   One frame falls by more than 0.005, `location` 2894 by 0.0068: its far houses on the skyline gain red and white blocks a few pixels off the capture's ([picture](images/location-2894-block-cube-guard.png)).
   At 1904 the town shows red and white houses where the capture does ([picture](images/bomb-1904-block-cube.png); capture, baseline, `DBG_BLOCK=1`, rendered on `e2c191d0` with the switch).
-  LAND 89 shows its largest gain, 0.0029 ([picture](images/land-89-block-cube.png); capture, baseline, candidate).
+  LAND 89 shows its largest gain, 0.0029 ([picture](images/land-89-block-cube.png); capture, baseline, candidate, rendered on `e2c191d0` with `DBG_BLOCK=0,1`).
 - **Verdict**: adopted, evidence-backed film-mean branch: `bomb` and `land` rise, no film falls.
   The committed `block_polygons` keeps one winding per face, clockwise from outside, where the switch drew both; the near faces are the same, and the repin on the canonical lavapipe measures the committed code.
 - **Lives in**: [`sod-vm-generators.md`](../../../research/playone-exe/sod-vm-generators.md) § 8.8, [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.4.
