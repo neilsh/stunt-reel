@@ -6,8 +6,10 @@
 # whose discovery pass named it) and `since` are bookkeeping, not shown to graders.
 #
 # `examples` names sheets in error-examples/ (`<film>-<tick>.png`: capture top left, render top
-# right, luma difference, actor close-up) that both Haiku and Sonnet graded 2 or more for the
-# category; an empty list means no real frame of the probe reached that. Add one with
+# right, luma difference, actor close-up) that two grading models each graded 2 or more for the
+# category (Haiku and Sonnet before 2026-11-25; Gemini Hydrogen and DSH for intro-3466,
+# work/2026-11/calibration-actor-floor/journal.md); an empty list means no real frame of the probe
+# reached that. Add one with
 # `mise run parity-bench -- errors-example`, which copies the sheet there and names it here.
 #
 # The file also holds each film's tick window (`[films.<film>]`) and the smallest change in a
@@ -148,14 +150,14 @@ examples = []
 [[category]]
 id = "propeller-solid"
 definition = "The RENDER draws the propeller as a solid blade or bar (often across the nose or fuselage) where the capture shows only faint spin flecks or no blade"
-found_by = ["haiku"]
+found_by = ["hydrogen"]
 since = "2026-11-25"
-examples = []
+examples = ["intro-3466"]
 
 [[category]]
 id = "aircraft-colour-wrong"
 definition = "A part of the aircraft (exhaust ring, nose, cowl, fuselage band) is drawn in its place but in a clearly different colour or shade from the capture's"
-found_by = ["haiku"]
+found_by = ["hydrogen"]
 since = "2026-11-25"
 examples = []
 

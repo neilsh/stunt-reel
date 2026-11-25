@@ -1,7 +1,7 @@
 ---
 title: "Calibrate the error readout only on actors a grader can see"
 started: 2026-11-25
-outcome: "Actors-removed calibration sheets need 64 actor pixels (a convention, MIN_ACTOR_PIXELS) and a calibration needs six of them to be conclusive; INTRO calibration seed 1 stays a FAIL on record, its two misses removing 1 and 33 pixels (journal)."
+outcome: "Actors-removed calibration sheets need 64 actor pixels (a convention, MIN_ACTOR_PIXELS) and a calibration needs six of them to be conclusive; INTRO seed 1 stays a FAIL, and INTRO then passed twice in a row under DSH on the same six removals (journal)."
 ---
 
 # Calibrate the error readout only on actors a grader can see

@@ -107,25 +107,26 @@ What it established (`[Bounded Observation]`, 2026-10-31 to 2026-11-01, renders 
   Each sheet is therefore graded twice by Haiku, and the sheets the passes dispute (some category 2 or more in one and not the other) go to one Sonnet grader.
   Two `INTRO.FLM` calibrations graded that way both passed; Sonnet graded half or more of each (21 and 30 of 42 sheets), at roughly twice the subagent cost of one Haiku pass.
 * **Calibration rules.**
-  A control's difference panel is black, which no real sheet's is, so the control count is reported but does not gate: a calibration passes on actors removed alone (5 of 6), a run with no actors-removed sheet is inconclusive, and an `INTRO.FLM` calibration is a lead until it passes twice in a row.
+  A control's difference panel is black, which no real sheet's is, so the control count is reported but does not gate: a calibration passes on actors removed alone (5 of 6), a run with fewer than six actors-removed sheets is inconclusive (below), and an `INTRO.FLM` calibration is a lead until it passes twice in a row.
   Two Haiku passes over the same sheets moved a category's count of frames graded 2 or more by up to 3, so `compare` reports a category only when it moves by 4 or more (`min_change`).
 
 _Source: [2026-10-31: error categories graded by a vision model](../../work/2026-11/distill-method/journal.md#2026-10-31-error-categories-graded-by-a-vision-model) and [2026-11-01: calibrating the error readout](../../work/2026-11/distill-method/journal.md#2026-11-01-calibrating-the-error-readout)._
 
-* **An actors-removed sheet needs actors a grader can see** (`[Bounded Observation]`, 2026-11-25, one `CTRY.FLM` and one `INTRO.FLM` calibration of the lavapipe render of `crates/` `4b5c69c`).
-  The `INTRO.FLM` calibration failed at 4 of 6 actors removed: its two missed sheets removed 1 and 33 actor pixels, and each Haiku pass graded each of them exactly as it graded the same tick's real sheet, while every caught sheet across both films removed 852 or more.
+* **An actors-removed sheet needs actors a grader can see** (`[Bounded Observation]`, 2026-11-25, one `CTRY.FLM` and four `INTRO.FLM` calibrations of the lavapipe render of `crates/` `4b5c69c`).
+  The first `INTRO.FLM` calibration failed at 4 of 6 actors removed: its two missed sheets removed 1 and 33 actor pixels, and each grading pass graded each of them exactly as it graded the same tick's real sheet, while every caught sheet across both films removed 852 or more.
   A frame carries an actors-removed sheet when its actors, summed, cover at least 64 pixels (`MIN_ACTOR_PIXELS`, an 8×8 block).
   The 64 is a convention, not a measured boundary: no sheet between 34 and 851 pixels has been graded, so a calibration that misses a removal in that range is evidence the floor is too low.
   The 5-of-6 bar was measured on six sheets, so a calibration with fewer than six actors-removed sheets is inconclusive rather than a pass.
+  Under the floor, `INTRO.FLM` then passed three calibrations (6 of 6 removals each), the last two in a row graded wholly by DSH; all three plant the same six removals, because the actors-removed ticks do not depend on the seed, so they show the graders repeat on those frames, not that they catch removals elsewhere.
 
-_Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see)._
+_Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see) and [2026-11-25: INTRO calibrations under the actor floor, and the first new-category example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-intro-calibrations-under-the-actor-floor-and-the-first-new-category-example)._
 
 ## Ruled out
 
 * **Pairing each reference tick with the nearest recapture tick to measure recapture noise** (2026-11-07).
   On `vault-ctry`, whose pinned capture sits off the current plan's ticks (§ 2.2.1 above), pairing within 5 ticks gave σ 0.0121 over 112 pairs, 85 of them 3 ticks apart: that measures how the score changes over a few ticks of motion, not recapture noise.
   _Source: [2026-11-07: recapture noise and build floor](../../work/2026-11/242_vault-parity-films/journal.md#2026-11-07-recapture-noise-and-build-floor)._
-* **The graders or the new categories failing the 2026-11-25 `INTRO.FLM` calibration**: neither Haiku pass graded an actors-removed category on the two missed sheets above the same tick's real sheet, and neither new category is in `actors_removed`'s detection list; the misses were actors of 1 and 33 pixels (§ 2.3).
+* **The graders or the new categories failing the 2026-11-25 `INTRO.FLM` calibration**: neither grading pass graded an actors-removed category on the two missed sheets above the same tick's real sheet, and neither new category is in `actors_removed`'s detection list; the misses were actors of 1 and 33 pixels (§ 2.3).
   _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see)._
 * **A forced-choice Haiku judge** (capture beside two renders, which is closer?): it scored 0.67 on the wrong-tick control, below the 0.9 bar (2026-10-31).
   _Source: [2026-10-31: the metric bench](../../work/2026-11/distill-method/journal.md#2026-10-31-the-metric-bench)._
