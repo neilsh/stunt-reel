@@ -13,6 +13,7 @@ lazy from collections.abc import Callable, Iterator
 import pytest
 
 from stunt_reel import kaitai
+from stunt_reel.markdown_links import ignore_rules
 
 # Add python/scripts to sys.path so verify_formats_docs can be imported
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "python" / "scripts"
@@ -291,7 +292,7 @@ def test_a_target_beyond_a_link_is_asked_about_by_its_link(tmp_path: Path) -> No
     _link(repo / "corpus" / "stuntisl", data)
     _write(repo, ".gitignore", "corpus/**\n")
 
-    rules = catalog.ignore_rules(repo, {"corpus/stuntisl/game.dat"})
+    rules = ignore_rules(repo, {"corpus/stuntisl/game.dat"})
 
     assert rules == {"corpus/stuntisl/game.dat": ".gitignore:1:corpus/**"}
 
@@ -317,6 +318,95 @@ def test_only_a_work_note_the_branch_changes_is_link_checked(tmp_path: Path) -> 
     assert not result.passed
     assert len(result.errors) == 1, result.errors
     assert changed in result.errors[0]
+
+
+def test_the_scan_set_reaches_every_evergreen_directory(tmp_path: Path) -> None:
+    """The catalog scan covers docs/, research/parity/ and every skill file, not just SKILL.md."""
+    repo = _repo(tmp_path)
+    documents = [
+        f"{folder}/{name}"
+        for folder, name in (
+            ("docs", "harness.md"),
+            ("docs/agents", "tracker.md"),
+            ("docs/howto", "page.md"),
+            ("research/parity", "note.md"),
+            (".agents/skills/example", "notes.md"),
+        )
+    ]
+    for document in documents:
+        _write(repo, document, "# T\n")
+    assert set(catalog.link_scan_files(repo)) >= set(documents)
+
+
+def test_an_ignored_target_in_a_docs_subdirectory_fails(tmp_path: Path) -> None:
+    """A link the catalog's expanded scan reaches is held to the repository's ignore rules."""
+    repo = _repo(tmp_path)
+    folder, name = "docs/howto", "page.md"
+    source = f"{folder}/{name}"
+    _write(repo, ".gitignore", "*.log\n")
+    _write(repo, source, "# Page\n\n[log](../../probe/trace.log)\n")
+    _write(repo, "probe/trace.log", "trace\n")
+    _git(repo, "add", ".gitignore", source)
+    _git(repo, "commit", "-qm", "base")
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+
+    assert not result.passed
+    assert len(result.errors) == 1, result.errors
+    assert f"{source}:3" in result.errors[0]
+    assert ".gitignore:1:*.log" in result.errors[0]
+
+
+def test_a_reference_style_link_is_checked(tmp_path: Path) -> None:
+    """The catalog reads a definition, ``[plan]: missing.md``, as the test invariants do."""
+    repo = _repo(tmp_path)
+    _write(repo, "README.md", "# Readme\n\nSee [p][plan].\n\n[plan]: missing.md\n")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-qm", "base")
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+
+    assert not result.passed
+    assert len(result.errors) == 1, result.errors
+    assert "README.md:5" in result.errors[0]
+
+
+def test_duplicate_headings_number_like_github(tmp_path: Path) -> None:
+    """Two headings of one text get ``same`` then ``same-1``, which a link may name."""
+    repo = _repo(tmp_path)
+    _write(repo, "target.md", "# Same\n\n## Same\n")
+    _write(repo, "README.md", "# Readme\n\n[second](target.md#same-1)\n")
+    _git(repo, "add", "README.md", "target.md")
+    _git(repo, "commit", "-qm", "base")
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+
+    assert result.passed, result.errors
+
+
+def test_html_anchors_and_tokens_resolve(tmp_path: Path) -> None:
+    """An element's id and a bracketed token are fragment targets, as a heading is."""
+    repo = _repo(tmp_path)
+    _write(repo, "target.md", '# T\n\n<a id="first"></a>\n\n[MEM-SOD-VM]\n')
+    _write(repo, "README.md", "# Readme\n\n[a](target.md#first) [b](target.md#mem-sod-vm)\n")
+    _git(repo, "add", "README.md", "target.md")
+    _git(repo, "commit", "-qm", "base")
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+
+    assert result.passed, result.errors
+
+
+def test_a_link_in_inline_code_is_not_a_link(tmp_path: Path) -> None:
+    """A sample in backticks is prose, so the catalog stops reading it as a link."""
+    repo = _repo(tmp_path)
+    _write(repo, "README.md", "# Readme\n\nUse `[gone](missing.md)` in a sample.\n")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-qm", "base")
+
+    result = verify_formats_docs.verify_link_integrity(repo)
+
+    assert result.passed, result.errors
 
 
 @pytest.mark.xdist_group(CATALOG_GROUP)

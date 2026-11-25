@@ -626,8 +626,9 @@ description = "Quality gate for what the branch changes (`mise run check -- --fu
 run = "python python/scripts/gate.py all"
 
 [tasks.test-docs]
-description = "Documentation invariants only: anchors, Markdown links, cited paths (part of test-py; the pre-commit hook runs it on every commit)"
+description = "Documentation invariants only: anchors, Markdown links, cited paths (part of test-py; the pre-commit hook runs it on every commit, checking only the work notes the branch changes; test-py-docs checks every frozen record)"
 run = "uv run pytest tests/test_doc_invariants.py -q"
+env = { STUNT_DOC_LINKS_CHANGED_WORK = "1" }
 
 [tasks.test-py-docs]
 description = "Documentation tests only (`pytest -m docs`: anchors and links, the formats catalog, the schema contract); the gate's docs step"

@@ -9,8 +9,6 @@ lazy from pathlib import Path
 
 import gate
 
-from stunt_reel.git_env import isolated_env
-
 # -----------------------------------------------------------------------------
 # Catalog Specification Constants
 # -----------------------------------------------------------------------------
@@ -145,12 +143,18 @@ LINK_SCAN_FILES: list[str] = [
 ]
 
 
-# Directories whose Markdown is also link-checked (non-recursive globs).
+# Directories whose Markdown is also link-checked (non-recursive globs): the catalog's evergreen
+# set, which link_scan_files adds the work notes a branch changes to. test_doc_invariants.py
+# checks the wider evergreen set and, in the gate, every frozen work note as well.
 LINK_SCAN_GLOBS: list[str] = [
-    "research/playone-exe/*.md",
-    "research/*.md",
+    ".agents/skills/*/*.md",
+    "docs/*.md",
     "docs/adr/*.md",
-    ".agents/skills/*/SKILL.md",
+    "docs/agents/*.md",
+    "docs/howto/*.md",
+    "research/*.md",
+    "research/parity/*.md",
+    "research/playone-exe/*.md",
     "site/*.md",
     "site/guides/*.md",
 ]
@@ -186,66 +190,6 @@ def _changed_work_notes(repo_root: Path) -> list[str]:
         for path in changed
         if path.startswith("work/") and path.endswith(".md") and (repo_root / path).is_file()
     )
-
-
-def _leading_link(repo_root: Path, path: str) -> str | None:
-    """The shallowest leading component of *path* that is a symbolic link, in POSIX form.
-
-    ``git check-ignore`` refuses a pathname that leads through a symbolic link, and with
-    ``--stdin`` it refuses the whole batch rather than the one path, so a path beyond a link is
-    asked about by the link instead. A link at the leaf needs no detour: git answers for the
-    entry itself, and a junction is a directory to git, so nothing is found here on Windows.
-    """
-    parts = path.split("/")
-    for index in range(1, len(parts)):
-        candidate = "/".join(parts[:index])
-        if (repo_root / candidate).is_symlink():
-            return candidate
-    return None
-
-
-def _check_ignore(repo_root: Path, paths: set[str]) -> dict[str, str]:
-    """The rule git reports for each ignored path in *paths*, keyed by the path git was given.
-
-    A tree git cannot read yields no rules.
-    """
-    if not paths:
-        return {}
-    try:
-        done = subprocess.run(
-            ["git", "check-ignore", "-v", "-z", "--stdin"],  # noqa: S607 - git from PATH
-            cwd=repo_root,
-            env=isolated_env(keep_index=False),
-            input="\0".join(sorted(paths)) + "\0",
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-    except OSError:
-        return {}
-    if done.returncode not in (0, 1):
-        return {}
-    fields = done.stdout.split("\0")
-    return {
-        fields[index + 3]: f"{fields[index]}:{fields[index + 1]}:{fields[index + 2]}"
-        for index in range(0, len(fields) - 3, 4)
-        if not fields[index + 2].startswith("!")
-    }
-
-
-def ignore_rules(repo_root: Path, paths: set[str]) -> dict[str, str]:
-    """The ignore rule each ignored repository-relative path in *paths* matches, as ``source:line:pattern``.
-
-    A negation (``!pattern``) reports that a path is *not* ignored, so it contributes no rule. A
-    tracked path is not ignored even where a rule matches, so a link to a committed file passes.
-    A path that leads through a symbolic link is matched by its link's rule, which is what
-    ``git check-ignore`` can answer for it. A tree git cannot read yields no rules.
-    """
-    probe = {path: _leading_link(repo_root, path) or path for path in paths}
-    rules = _check_ignore(repo_root, set(probe.values()))
-    return {path: rules[name] for path, name in probe.items() if name in rules}
 
 
 def link_scan_files(repo_root: Path) -> list[str]:
