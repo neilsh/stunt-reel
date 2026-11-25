@@ -7,7 +7,7 @@ The run is one **coordinator** and its **workers**; the coordinator runs longest
 
 | | Coordinator | Worker (planner, implementer or reviewer) |
 |---|---|---|
-| Model | Sonnet from the start; never Opus | By fit ([`SKILL.md`](SKILL.md#concurrency-and-models)) |
+| Model | Current session's model | By fit ([`SKILL.md`](SKILL.md#concurrency-and-models)) |
 | Does | Builds the queue, claims, dispatches, checks the merge bar, arms, files an issue for a reviewer's out-of-scope finding, appends to `run-state.md` | Reads the issue or PR and its comments; a planner investigates read-only and posts a `## Tentative plan` comment (updating missing `area:`/`type:` labels without touching `priority:`), while an implementer or reviewer works in its own worktree and files follow-up issues |
 | Reads | `mise run queue` lines, worker reports, the first line of a review comment, the reviewer's reply (its `alternatives: N` included), CI state, the lines `mise run pr-threads` prints, a PR's changed file names | The bodies, diffs and code the coordinator does not |
 | Never | Opens a diff, an issue body, a thread's text or a session transcript; writes no code and no PR or doc content; `sleep`s or polls; loads `--help` or the orchestration guide | Arms or merges |
@@ -72,7 +72,7 @@ The outgoing coordinator starts its successor:
 - **Cloud:** a new session has a new container, so it cannot read the predecessor's gitignored file.
   With `create_session` (when the session has that tool), put the full content of `run-state.md` in the `prompt`, which the file's small size allows, with the brief "read the `running-unattended` skill, write this state into `build/scratch/run-state.md` in your own checkout, resume at Next action, and re-check each in-flight item's head SHA and state with one call before acting".
   A session with no way to start one runs Shutdown instead of handing off, under the same wait and release rule ([`loop-and-bounds.md`](loop-and-bounds.md#shutdown)).
-- **local-windows:** the repo records no command for starting a Sonnet coordinator.
+- **local-windows:** the repo records no command for starting a successor coordinator.
   The coordinator runs Shutdown at the context limit unless a person has said how to hand off.
 - **T3 Code:** the coordinator restarts its own thread with a fresh context ([`t3.md`](t3.md)).
 
