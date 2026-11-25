@@ -112,9 +112,11 @@ What it established (`[Bounded Observation]`, 2026-10-31 to 2026-11-01, renders 
 
 _Source: [2026-10-31: error categories graded by a vision model](../../work/2026-11/distill-method/journal.md#2026-10-31-error-categories-graded-by-a-vision-model) and [2026-11-01: calibrating the error readout](../../work/2026-11/distill-method/journal.md#2026-11-01-calibrating-the-error-readout)._
 
-* **An actors-removed sheet needs actors a grader can see** (`[Bounded Observation]`, 2026-11-25, `CTRY.FLM` and `INTRO.FLM` calibrations of the `dd7e76eb` lavapipe render).
-  An `INTRO.FLM` calibration failed at 4 of 6 actors removed: its two missed sheets removed 1 and 33 actor pixels, specks no pass graded, while every caught sheet across both films removed 852 or more.
-  A frame therefore carries an actors-removed sheet only when it holds at least 64 actor pixels (`MIN_ACTOR_PIXELS`, an 8×8 block), the line between an actor and the "dark specks" the categories grade as absent; a film with no such frame gets no actors-removed sheet and its calibration is inconclusive.
+* **An actors-removed sheet needs actors a grader can see** (`[Bounded Observation]`, 2026-11-25, one `CTRY.FLM` and one `INTRO.FLM` calibration of the lavapipe render of `crates/` `4b5c69c`).
+  The `INTRO.FLM` calibration failed at 4 of 6 actors removed: its two missed sheets removed 1 and 33 actor pixels, and each Haiku pass graded each of them exactly as it graded the same tick's real sheet, while every caught sheet across both films removed 852 or more.
+  A frame carries an actors-removed sheet when its actors, summed, cover at least 64 pixels (`MIN_ACTOR_PIXELS`, an 8×8 block).
+  The 64 is a convention, not a measured boundary: no sheet between 34 and 851 pixels has been graded, so a calibration that misses a removal in that range is evidence the floor is too low.
+  The 5-of-6 bar was measured on six sheets, so a calibration with fewer than six actors-removed sheets is inconclusive rather than a pass.
 
 _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see)._
 
@@ -123,12 +125,12 @@ _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../
 * **Pairing each reference tick with the nearest recapture tick to measure recapture noise** (2026-11-07).
   On `vault-ctry`, whose pinned capture sits off the current plan's ticks (§ 2.2.1 above), pairing within 5 ticks gave σ 0.0121 over 112 pairs, 85 of them 3 ticks apart: that measures how the score changes over a few ticks of motion, not recapture noise.
   _Source: [2026-11-07: recapture noise and build floor](../../work/2026-11/242_vault-parity-films/journal.md#2026-11-07-recapture-noise-and-build-floor)._
-* **The graders or the new categories failing the 2026-11-25 `INTRO.FLM` calibration**: both Haiku passes agreed on the two missed sheets, and neither new category is in `actors_removed`'s detection list; the misses were actors of 1 and 33 pixels (§ 2.3).
+* **The graders or the new categories failing the 2026-11-25 `INTRO.FLM` calibration**: neither Haiku pass graded an actors-removed category on the two missed sheets above the same tick's real sheet, and neither new category is in `actors_removed`'s detection list; the misses were actors of 1 and 33 pixels (§ 2.3).
   _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see)._
 * **A forced-choice Haiku judge** (capture beside two renders, which is closer?): it scored 0.67 on the wrong-tick control, below the 0.9 bar (2026-10-31).
   _Source: [2026-10-31: the metric bench](../../work/2026-11/distill-method/journal.md#2026-10-31-the-metric-bench)._
 
 ## Open questions
 
-None recorded here.
+* **Where between 34 and 851 actor pixels graders stop seeing a removal**, which would replace `MIN_ACTOR_PIXELS`' convention with a measured floor; a calibration that plants on such a frame answers it in part.
 Open lavapipe and GPU questions are in [`evidence-limits.md`](evidence-limits.md#open-questions).

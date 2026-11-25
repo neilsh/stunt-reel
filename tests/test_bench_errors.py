@@ -366,8 +366,15 @@ def test_calibrate_pass_bars() -> None:
     # Controls are reported, not gated: their panels are pixel-identical, unlike any real sheet.
     assert _calibration_run(taxonomy, 12, 0, 6, 5).passes
     assert not _calibration_run(taxonomy, 12, 10, 6, 4).passes
-    assert _calibration_run(taxonomy, 2, 2, 2, 2).passes
     assert not _calibration_run(taxonomy, 2, 2, 6, 5).inconclusive
+
+
+@pytest.mark.parametrize("actors", [1, 2, 5])
+def test_calibration_with_fewer_than_six_actor_sheets_is_inconclusive(actors: int) -> None:
+    # The 5-of-6 bar was measured on six sheets; all of fewer catching proves less than it did.
+    result = _calibration_run(load_categories(CATEGORIES), 12, 12, actors, actors)
+    assert result.inconclusive
+    assert not result.passes
 
 
 def _actor_frames(actor_pixels: dict[int, int]) -> MemorySource:

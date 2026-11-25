@@ -51,6 +51,7 @@ from stunt_reel.bench.errors import (
 from stunt_reel.bench.faults import ALL_FAULTS, Fault
 from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.run import plant_tree, run_bench
+from stunt_reel.bench.workflow import ACTORS_BAR
 from stunt_reel.dataroot import REPO_ROOT
 
 DEFAULT_SEED = 1
@@ -303,7 +304,7 @@ def errors_score(args: argparse.Namespace) -> int:
     if calibration is not None:
         verdict = "PASS" if calibration.passes else "FAIL"
         if calibration.inconclusive:
-            verdict = "INCONCLUSIVE (no actors_removed sheets)"
+            verdict = f"INCONCLUSIVE (fewer than {ACTORS_BAR[1]} actors_removed sheets)"
         clean = f"{calibration.controls_clean}/{calibration.controls}"
         print(f"calibration {verdict}: controls clean {clean} (reported, not gated)")
         for key, (detected, sheets) in calibration.faults.items():
