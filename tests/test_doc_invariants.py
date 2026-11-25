@@ -173,13 +173,13 @@ def _pre_commit_mode() -> bool:
     return os.environ.get(CHANGED_WORK_ONLY_ENV) == "1"
 
 
-def _changed_work_notes(root: Path) -> set[str]:
+def _changed_work_notes(root: Path) -> set[str] | None:
     """The dated work notes the branch changes over its base, as repo-relative POSIX paths."""
     try:
         changed = gate.changed_paths(root, gate.default_base(root))
     except OSError, subprocess.CalledProcessError, gate.ChangedPathsError:
-        return set()
-    return {path for path in changed if path.endswith(".md") and is_dated(path)}
+        return None
+    return {"/".join(path.split("/")[:3]) for path in changed if is_dated(path)}
 
 
 def _link_sources(
@@ -187,7 +187,7 @@ def _link_sources(
 ) -> list[Path]:
     """Markdown files under *root* whose links are checked, less those under a *skipped* prefix.
 
-    With *changed_work_only*, a frozen work note is checked only when the branch changes it;
+    With *changed_work_only*, a frozen work note is checked when its folder changes;
     every evergreen document stays in the set.
     """
     changed = _changed_work_notes(root) if changed_work_only else None
@@ -199,7 +199,7 @@ def _link_sources(
         and (
             changed is None
             or not is_dated(path.relative_to(root).as_posix())
-            or path.relative_to(root).as_posix() in changed
+            or "/".join(path.relative_to(root).as_posix().split("/")[:3]) in changed
         )
     ]
 
@@ -784,6 +784,31 @@ def test_pre_commit_checks_only_the_work_notes_the_branch_changes(
         f"{changed}: missing.md (no such file)",
         f"{old}: missing.md (no such file)",
     ]
+
+
+def test_fast_scan_falls_back_when_git_cannot_find_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing base must not hide broken links in dated work."""
+    note = _write(tmp_path / "work" / "2026-11" / "x" / "journal.md", "[bad](missing.md)\n")
+
+    def fail(*_args: object) -> str:
+        raise OSError("git unavailable")
+
+    monkeypatch.setattr(gate, "default_base", fail)
+    assert note in _link_sources(tmp_path, changed_work_only=True)
+    assert _broken_links(tmp_path, changed_work_only=True)
+
+
+def test_fast_scan_includes_siblings_of_any_changed_work_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Changes to any file in a work folder select its Markdown siblings."""
+    note = _write(tmp_path / "work" / "2026-11" / "x" / "journal.md", "[bad](missing.md)\n")
+    monkeypatch.setattr(gate, "default_base", lambda _root: "main")
+    monkeypatch.setattr(gate, "changed_paths", lambda _root, _base: ["work/2026-11/x/data.csv"])
+    assert note in _link_sources(tmp_path, changed_work_only=True)
+    assert _broken_links(tmp_path, changed_work_only=True)
 
 
 def test_the_work_link_rule_ignores_the_move_skip(

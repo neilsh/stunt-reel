@@ -185,10 +185,16 @@ def _changed_work_notes(repo_root: Path) -> list[str]:
         changed = gate.changed_paths(repo_root, gate.default_base(repo_root))
     except OSError, subprocess.CalledProcessError, gate.ChangedPathsError:
         return []
-    return sorted(
-        path
+    folders = {
+        "/".join(path.split("/")[:3])
         for path in changed
-        if path.startswith("work/") and path.endswith(".md") and (repo_root / path).is_file()
+        if path.startswith("work/") and len(path.split("/")) >= 4
+    }
+    return sorted(
+        path.relative_to(repo_root).as_posix()
+        for folder in folders
+        for path in (repo_root / folder).rglob("*.md")
+        if path.is_file()
     )
 
 
