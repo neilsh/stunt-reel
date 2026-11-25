@@ -91,7 +91,8 @@ _Source: the Milestone 1 and 2 sign-offs (Phases 0–2) in the frozen [`TEAM_SHE
     For sub-tick factor $\alpha \in [0.0, 1.0)$ between consecutive slices at $T_t$ and $T_{t+1} = T_t + 20\text{ ms} \times \text{tick\_duration}_{t+1}$:
     * **Continuous Motion (`cut_from_previous == false` at tick $t+1$):** position is lerped and the unit rotation quaternion slerped:
       $$\mathbf{P}_{\text{render}}(\alpha) = (1.0 - \alpha)\mathbf{P}_t + \alpha\mathbf{P}_{t+1}, \quad \mathbf{q}_{\text{render}}(\alpha) = \text{slerp}(\mathbf{q}_t, \mathbf{q}_{t+1}, \alpha)$$
-    * **Camera Cuts & Instantaneous Teleports (`cut_from_previous == true` at tick $t+1$):** when `.FLM` switches camera rigs or the camera moves more than $50.0\text{ m}$ between ticks ($\left\|\mathbf{P}_{t+1} - \mathbf{P}_t\right\|_2 > 50.0\text{ m}$), $\alpha_{\text{eff}} = 0.0$: $\mathbf{P}_t$ and $\mathbf{q}_t$ hold until tick $t+1$, so the camera cuts instead of swooping.
+    * **Camera Cuts (`cut_from_previous == true` at tick $t+1$):** when `.FLM` switches camera rigs (`view_obj`), $\alpha_{\text{eff}} = 0.0$: $\mathbf{P}_t$ and $\mathbf{q}_t$ hold until tick $t+1$, so the camera cuts instead of swooping.
+      A rig that moves far within one slice is not a cut: `PLAYONE.EXE` interpolates a slot's position across a slice whatever the distance (image `0x3E7A..0x3ECA`, [`timeline-and-ticks.md` § 3.2](../research/formats/concepts/timeline-and-ticks.md#32-director-cut-suppression)).
 
 #### [I5] Coplanar Decal Resolution
 
