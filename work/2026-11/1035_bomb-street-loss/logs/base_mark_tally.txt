@@ -1,0 +1,4 @@
+marked render equals unmarked: True
+ours_index {'outline': 19885, 'fill': 3039}
+cap_index_ours_fill {'fill': 9623, 'outline': 322}
+cap_fill_ours_index {'outline': 8163, 'fill': 211}

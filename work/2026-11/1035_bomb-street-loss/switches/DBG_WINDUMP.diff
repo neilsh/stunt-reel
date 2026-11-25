@@ -1,0 +1,81 @@
+diff --git a/crates/stunt-score/src/parity/mod.rs b/crates/stunt-score/src/parity/mod.rs
+index 2fbfdd09..d17fa8ae 100644
+--- a/crates/stunt-score/src/parity/mod.rs
++++ b/crates/stunt-score/src/parity/mod.rs
+@@ -341,9 +341,20 @@ fn score_matched(
+         let capture_sky = skies
+             .get(&frame.ordinal)
+             .ok_or_else(|| format!("captured frame {} has no sky mask", frame.ordinal))?;
+-        let reference = matched::load_captured(reference_dir, frame)?;
++        let mut reference = matched::load_captured(reference_dir, frame)?;
+         let render = load_render_frame(store, frame.film_tick)?;
++        if let Ok(dir) = std::env::var("DBG_ORACLE_DIR") {
++            let path = std::path::Path::new(&dir).join(format!("{}.mask", frame.film_tick));
++            if let Ok(mask) = std::fs::read(&path) {
++                for ((want, &ours), &m) in reference.indices.iter_mut().zip(&render.indices).zip(&mask) {
++                    if m != 0 {
++                        *want = ours;
++                    }
++                }
++            }
++        }
+         let credits_missing = render.credits && !overlay_drawn(&render.layers);
++        score::DBG_TICK.store(frame.film_tick as u32, std::sync::atomic::Ordering::Relaxed);
+         let score = score_frame(
+             &reference,
+             &RenderFrame {
+@@ -353,6 +364,18 @@ fn score_matched(
+             &capture_sky.sky,
+             policy,
+         );
++        if let (Ok(want), Some(map)) = (std::env::var("DBG_SHAPE_DUMP"), score.shape_loss.as_ref()) {
++            for w in want.split(',').filter_map(|s| s.parse::<u16>().ok()) {
++                eprintln!(
++                    "SHAPEDUMP {} {} {} {:.6} {:.6}",
++                    w,
++                    frame.film_tick,
++                    score.metrics.scored,
++                    score.metrics.ssim,
++                    map.get(&(w + 1)).copied().unwrap_or(0.0)
++                );
++            }
++        }
+         let ordinal = frame.ordinal as usize;
+         rows.push(FrameRow {
+             ordinal,
+diff --git a/crates/stunt-score/src/parity/score.rs b/crates/stunt-score/src/parity/score.rs
+index f1a7b037..c5076d09 100644
+--- a/crates/stunt-score/src/parity/score.rs
++++ b/crates/stunt-score/src/parity/score.rs
+@@ -77,6 +77,9 @@ pub(super) struct FrameMetrics {
+ }
+ 
+ /// A frame's measurements plus the aspect-corrected luminance pair, kept for contact sheets.
++/// DBG: the film tick being scored.
++pub(super) static DBG_TICK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
++
+ pub(super) struct FrameScore {
+     pub(super) metrics: FrameMetrics,
+     pub(super) reference_luminance: Vec<f32>,
+@@ -151,6 +154,21 @@ pub(super) fn score_frame(
+         .into_iter()
+         .map(|word| word as u16)
+         .collect();
++        if let Ok(dir) = std::env::var("DBG_WINDUMP_DIR") {
++            let tick = DBG_TICK.load(std::sync::atomic::Ordering::Relaxed);
++            let mut out = Vec::new();
++            out.extend_from_slice(&(windows.len() as u32).to_le_bytes());
++            for w in &windows {
++                out.extend_from_slice(&(w.x as u16).to_le_bytes());
++                out.extend_from_slice(&(w.y as u16).to_le_bytes());
++                out.extend_from_slice(&w.score.to_le_bytes());
++            }
++            out.extend_from_slice(&classes);
++            for s in &rescaled {
++                out.extend_from_slice(&s.to_le_bytes());
++            }
++            let _ = std::fs::write(std::path::Path::new(&dir).join(format!("{tick}.win")), out);
++        }
+         attribute_shape_loss(&windows, &classes, &rescaled, SSIM_WINDOW)
+     });
+     let fade = fade_level(policy.fade_set, &reference.palette);

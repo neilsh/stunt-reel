@@ -1,0 +1,16 @@
+== 2036-2740
+pure-window loss 1.3302 by disagreeing pixels in the window:
+     0: 9607 windows, loss 0.0004 (0.0%)
+   1-5: 979 windows, loss 0.3498 (26.3%)
+  6-20: 1443 windows, loss 0.7551 (56.8%)
+   >20: 302 windows, loss 0.2248 (16.9%)
+shape pixels 863004, disagreeing 26271 (3.04%)
+top (capture, ours) index pairs: [((52, 14), 8519), ((14, 52), 7562), ((141, 14), 3588), ((0, 14), 2043), ((62, 14), 1926), ((43, 14), 1113), ((160, 14), 750), ((48, 14), 225), ((137, 14), 179), ((21, 14), 78), ((141, 52), 71), ((43, 52), 44)]
+== 3312-3477
+pure-window loss 0.1844 by disagreeing pixels in the window:
+     0: 3857 windows, loss 0.0002 (0.1%)
+   1-5: 247 windows, loss 0.0731 (39.6%)
+  6-20: 275 windows, loss 0.0985 (53.4%)
+   >20: 22 windows, loss 0.0126 (6.8%)
+shape pixels 291432, disagreeing 5776 (1.98%)
+top (capture, ours) index pairs: [((52, 14), 1426), ((195, 14), 1193), ((7, 14), 826), ((14, 52), 812), ((56, 14), 782), ((0, 14), 460), ((53, 14), 45), ((137, 14), 39), ((7, 52), 38), ((49, 14), 26), ((12, 14), 25), ((150, 14), 16)]
