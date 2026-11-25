@@ -8,9 +8,12 @@ The marker sits on the module, as the list named whole files, so every test besi
 check runs where that check can go the other way.
 
 A module can reach a platform branch without a check of its own: it imports a production module
-that branches, such as ``capture_store``, whose swap lock is ``msvcrt`` on Windows.  Those
-imports are checked too, so a test of Windows behaviour cannot skip the job by leaving the
-branch one call away.
+that branches, such as ``capture_store``, whose swap lock is ``msvcrt`` on Windows.  The
+branching production modules are discovered by scanning ``python/``, not listed by hand, so a
+new branch cannot be left out of the job by forgetting an entry here.  Two promises soften the
+rule, each with its reason and each checked: an allow-list for the JVM-backed schema suites the
+pull-request job cannot run, and ``_COVERED_ELSEWHERE`` for a branching module whose importers
+only use its platform-free surface.
 """
 
 from __future__ import annotations
@@ -26,17 +29,8 @@ _PLATFORM_READS = frozenset({("sys", "platform"), ("os", "name"), ("platform", "
 #: Standard-library modules that exist only on Windows.
 _WINDOWS_MODULES = frozenset({"msvcrt", "winreg", "_winapi"})
 
-#: Production modules with a platform branch, keyed by dotted module, with the branch each owns.
-#: A test module that imports one carries the marker, unless ``_JVM_SUITES`` gives its reason.
-_WINDOWS_BRANCHES = {
-    "stunt_reel.capture_store": "the msvcrt swap lock and its fcntl counterpart",
-    "stunt_reel.link": "the .exe binary name and binary_locked",
-    "stunt_reel.parity_pipeline": "physical_memory through ctypes or sysconf",
-    "stunt_reel.kaitai": "the .bat launcher shim and its COMSPEC",
-    "stunt_reel.tac.automation": "headless_env's SDL drivers",
-    "stunt_reel.tac.timeout_evidence": "emulator_processes through tasklist",
-    "scripts.ghidra_sod_dispatch": "_analyze_headless's .bat launcher",
-}
+#: The packages under ``python/`` whose tests are part of the gate.
+_PRODUCTION_PACKAGES = ("stunt_reel", "scripts")
 
 #: Test modules that import a branch only to compile Kaitai schemas, which needs the JVM the
 #: pull-request Windows job does not install.  Keyed by file name, with the reason: an entry
@@ -47,6 +41,17 @@ _JVM_SUITES = {
     "test_set_schema.py": "compiles a .ksy schema with the Kaitai JVM",
     "test_sod_schema.py": "compiles a .ksy schema with the Kaitai JVM",
     "test_spr_schema.py": "compiles a .ksy schema with the Kaitai JVM",
+}
+
+#: Branching modules whose importers need no marker because a marked suite runs the branch on
+#: Windows; the rest import only the module's platform-free surface.  The guard checks that a
+#: marked test still imports the module, so an entry cannot outlive its coverage.
+_COVERED_ELSEWHERE = {
+    "stunt_reel.dataroot": (
+        "create_link and remove_link branch on os.name; test_dataroot, test_worktree_reap and "
+        "test_worktree_seed run them on Windows, while the other suites read only REPO_ROOT, "
+        "data_root() and corpus_root()"
+    ),
 }
 
 #: Test modules that reach a platform branch without importing its module, so no import check
@@ -92,6 +97,29 @@ def _platform_checks(tree: ast.Module) -> list[int]:
     return sorted(lines)
 
 
+def _discover_branching_modules(root: Path = PYTHON) -> dict[str, Path]:
+    """The production modules under *root* that read the platform, by each import name.
+
+    ``python/scripts`` is on ``pytest``'s ``pythonpath`` and has no ``__init__.py``, so a script
+    is imported both as ``scripts.<stem>`` and by its bare name; a test may import either.
+    """
+    found: dict[str, Path] = {}
+    for package in _PRODUCTION_PACKAGES:
+        for path in sorted((root / package).rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            if not _platform_checks(tree):
+                continue
+            parts = list(path.relative_to(root).with_suffix("").parts)
+            if parts[-1] == "__init__":
+                parts.pop()
+            module = ".".join(parts)
+            names = {module}
+            if module.startswith("scripts."):
+                names.add(module.removeprefix("scripts."))
+            found.update(dict.fromkeys(names, path))
+    return found
+
+
 def _imported_modules(tree: ast.Module) -> set[str]:
     """Every dotted module name *tree* imports, including each name of a ``from`` import.
 
@@ -108,14 +136,9 @@ def _imported_modules(tree: ast.Module) -> set[str]:
     return found
 
 
-def _branching_imports(tree: ast.Module) -> list[str]:
-    """The Windows-branching production modules *tree* imports, sorted."""
-    return sorted(_imported_modules(tree) & _WINDOWS_BRANCHES.keys())
-
-
-def _production_module(module: str) -> Path:
-    """The file the dotted production *module* lives in."""
-    return PYTHON.joinpath(*module.split(".")).with_suffix(".py")
+def _branching_imports(tree: ast.Module, modules: dict[str, Path]) -> list[str]:
+    """The Windows-branching production modules *tree* imports, by import name, sorted."""
+    return sorted(_imported_modules(tree) & set(modules))
 
 
 def _is_windows_mark(node: ast.AST) -> bool:
@@ -139,6 +162,14 @@ def _marked(tree: ast.Module) -> bool:
         and any(_is_windows_mark(part) for part in ast.walk(node.value))
         for node in tree.body
     )
+
+
+def _test_trees() -> dict[str, ast.Module]:
+    """Every test module's parsed tree, keyed by file name."""
+    return {
+        path.name: ast.parse(path.read_text(encoding="utf-8"))
+        for path in sorted(TESTS.glob("test_*.py"))
+    }
 
 
 def test_the_detector_sees_each_kind_of_platform_check() -> None:
@@ -167,6 +198,39 @@ def test_the_detector_sees_each_kind_of_platform_check() -> None:
     assert _platform_checks(ast.parse(rebound)) == [3]
 
 
+def test_the_discovery_finds_every_branching_module(tmp_path: Path) -> None:
+    """A new branch anywhere under ``python/`` is discovered, with no list to update."""
+    for package in _PRODUCTION_PACKAGES:
+        (tmp_path / package).mkdir()
+    (tmp_path / "stunt_reel" / "windows.py").write_text(
+        "import sys\nFLAG = sys.platform == 'win32'\n", encoding="utf-8"
+    )
+    (tmp_path / "stunt_reel" / "plain.py").write_text("FLAG = True\n", encoding="utf-8")
+    (tmp_path / "scripts" / "tool.py").write_text("import msvcrt\n", encoding="utf-8")
+
+    assert set(_discover_branching_modules(tmp_path)) == {
+        "stunt_reel.windows",
+        "scripts.tool",
+        "tool",
+    }
+
+
+def test_the_discovery_finds_the_modules_issue_1044_names() -> None:
+    modules = _discover_branching_modules()
+    assert {
+        "stunt_reel.ab_timing",
+        "stunt_reel.capture_store",
+        "stunt_reel.kaitai",
+        "stunt_reel.link",
+        "stunt_reel.parity_pipeline",
+        "stunt_reel.process_tree",
+        "stunt_reel.tac.automation",
+        "stunt_reel.tac.timeout_evidence",
+        "ghidra_sod_dispatch",
+        "scripts.ghidra_sod_dispatch",
+    } <= set(modules)
+
+
 def test_the_detector_sees_a_branching_import() -> None:
     source = (
         "from stunt_reel import capture_store\n"
@@ -176,12 +240,22 @@ def test_the_detector_sees_a_branching_import() -> None:
         "from stunt_reel import parity_layout\n"
         "from . import kaitai\n"
     )
-    assert _branching_imports(ast.parse(source)) == [
+    assert _branching_imports(ast.parse(source), _discover_branching_modules()) == [
         "stunt_reel.capture_store",
         "stunt_reel.link",
         "stunt_reel.parity_pipeline",
         "stunt_reel.tac.automation",
     ]
+
+
+def test_the_detector_sees_a_bare_script_import() -> None:
+    """``python/scripts`` has no ``__init__.py``, so a script is imported by its bare name."""
+    modules = _discover_branching_modules()
+    for source in (
+        "import ghidra_sod_dispatch\n",
+        "from ghidra_sod_dispatch import _analyze_headless\n",
+    ):
+        assert _branching_imports(ast.parse(source), modules) == ["ghidra_sod_dispatch"]
 
 
 def test_only_a_module_level_mark_counts() -> None:
@@ -193,20 +267,29 @@ def test_only_a_module_level_mark_counts() -> None:
 
 
 def test_every_test_that_reaches_a_platform_branch_carries_the_windows_marker() -> None:
+    modules = _discover_branching_modules()
     checked: list[str] = []
     unmarked: list[str] = []
-    for path in sorted(TESTS.glob("test_*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+    for name, tree in _test_trees().items():
         lines = _platform_checks(tree)
-        imports = [] if path.name in _JVM_SUITES else _branching_imports(tree)
+        imports = (
+            []
+            if name in _JVM_SUITES
+            else [
+                module
+                for module in _branching_imports(tree, modules)
+                if module not in _COVERED_ELSEWHERE
+            ]
+        )
         if not lines and not imports:
             continue
-        checked.append(path.name)
+        checked.append(name)
         if not _marked(tree):
-            where = f"{path.name}:{lines[0]}" if lines else f"{path.name} imports {imports[0]}"
+            where = f"{name}:{lines[0]}" if lines else f"{name} imports {imports[0]}"
             unmarked.append(where)
     assert "test_target_seed.py" in checked, "the detector missed a known platform check"
     assert "test_link.py" in checked, "the detector missed a known branching import"
+    assert "test_ab_timing.py" in checked, "the detector missed a branching import"
     assert not unmarked, (
         f"{unmarked} check the platform, or import a module that does, without "
         "`pytestmark = pytest.mark.windows`; the pull-request Windows job "
@@ -214,29 +297,36 @@ def test_every_test_that_reaches_a_platform_branch_carries_the_windows_marker() 
     )
 
 
-def test_every_branching_module_still_branches() -> None:
-    """A registry entry whose branch is gone is rot: drop it or name the new branch."""
-    for module, branch in _WINDOWS_BRANCHES.items():
-        path = _production_module(module)
-        assert path.is_file(), f"{module} is not at {path}"
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        assert _platform_checks(tree), f"{module} no longer checks the platform: {branch}"
-
-
 def test_every_jvm_suite_exists_and_is_still_unmarked() -> None:
     """An allow-list entry names a test that imports a branch and is not marked for it."""
+    modules = _discover_branching_modules()
+    trees = _test_trees()
     for name, reason in _JVM_SUITES.items():
-        path = TESTS / name
-        assert path.is_file(), f"{name} does not exist: {reason}"
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        assert _branching_imports(tree), f"{name} no longer imports a branching module: {reason}"
-        assert not _marked(tree), f"{name} is marked, so drop it from the JVM allow-list"
+        assert name in trees, f"{name} does not exist: {reason}"
+        assert _branching_imports(trees[name], modules), (
+            f"{name} no longer imports a branching module: {reason}"
+        )
+        assert not _marked(trees[name]), f"{name} is marked, so drop it from the JVM allow-list"
 
 
 def test_every_indirectly_reached_branch_is_marked() -> None:
+    trees = _test_trees()
     for name, reason in _REACHED_INDIRECTLY.items():
-        path = TESTS / name
-        assert path.is_file(), f"{name} does not exist: {reason}"
-        assert _marked(ast.parse(path.read_text(encoding="utf-8"))), (
+        assert name in trees, f"{name} does not exist: {reason}"
+        assert _marked(trees[name]), (
             f"{name} reaches a platform branch without the marker: {reason}"
         )
+
+
+def test_every_excepted_module_is_branching_and_has_a_marked_importer() -> None:
+    """An exception without a marked suite running the branch is a gap, not a reason."""
+    modules = _discover_branching_modules()
+    trees = _test_trees()
+    for module, reason in _COVERED_ELSEWHERE.items():
+        assert module in modules, f"{module} no longer reads the platform: {reason}"
+        covered = [
+            name
+            for name, tree in trees.items()
+            if _marked(tree) and module in _branching_imports(tree, modules)
+        ]
+        assert covered, f"no marked test imports {module}, whose branch it must cover: {reason}"
