@@ -74,3 +74,59 @@ No real sheet was graded 2 or more for `aircraft-colour-wrong` by two models: `t
 The seven-film baseline refresh is not prepared: the categories changed, but the new category has no two-model example, the CTRY calibration under the 20 categories is Hydrogen's while the readouts are DSH's, and INTRO passed under Hydrogen seed 2 and DSH seeds 3 and 4 after Hydrogen seed 1 failed; refresh all seven in their own PR after those are resolved.
 
 **Lives in**: [`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.3; [`error-categories.toml`](../../../research/parity/error-categories.toml).
+
+## 2026-11-25: a Sonnet pass denies the colour category an example, and the file drops to 19 categories
+
+**Question**:
+Does `aircraft-colour-wrong` have a sheet that two different grading models each graded 2 or more, and if not, what becomes of the category and of the calibration and readout evidence that graded it?
+
+**Method**:
+The coordinator ran a Claude Sonnet grading pass, independent of the earlier DSH and Gemini Hydrogen passes, over three real sheets an earlier pass had graded 2 or more for the category: `TRAINTNL` tick 683 (both DSH passes of the 20-category readout), `INTRO` tick 2564 (the DSH seed 3 second pass) and `INTRO` tick 3246 (the DSH seed 4 tie-break).
+It graded them 1, 0 and 0.
+The run folders record no model; the coordinator's delegated-task record names Claude Sonnet, as it named the grader for the earlier runs.
+The example rule needs 2 or more from two different grading models ([`error-categories.toml`](../../../research/parity/error-categories.toml)), so none of the three qualified, and the category was removed.
+The file now holds 19 categories; its digest moved from `5838a280…` (20 categories, `9be3e2cb`) to `5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e` (19).
+Because `score_run` refuses a run whose recorded digest differs, the 20-category calibrations and readouts cannot be rescored as 19-category ones, so fresh inputs were made under the 19-category file with `errors-make`, from the same lavapipe renders (`build/parity/ours/<film>_current`) and reports as the 20-category runs:
+
+```
+mise run parity-bench -- errors-make --film ctry --calibrate --recapture E:/git/stunt-reel.data/backup/pre-305/vault-ctry/frames --out build/parity/bench/ctry/calibrate-2026-11-25-19cat
+mise run parity-bench -- errors-make --film intro --calibrate --seed 3 --recapture E:/git/stunt-reel.data/backup/pre-305/vault-intro/frames --out build/parity/bench/intro/calibrate-2026-11-25-19cat-seed3
+mise run parity-bench -- errors-make --film intro --calibrate --seed 4 --recapture E:/git/stunt-reel.data/backup/pre-305/vault-intro/frames --out build/parity/bench/intro/calibrate-2026-11-25-19cat-seed4
+mise run parity-bench -- errors-make --film <ctry|intro|land|balloon|traintnl|bomb|location> --out build/parity/bench/<film>/errors-19cat
+```
+
+They were made at the commit that added the 19-category file, so each run's `run.json` names it as `revision`; the absolute recapture paths are used because `--recapture` resolves only `corpus/` and `captures/` against the data root.
+[`prepared_inputs.py`](prepared_inputs.py), run from the checkout root as `mise exec -- uv run python work/2026-11/calibration-actor-floor/prepared_inputs.py`, reads those runs back and writes [`prepared-inputs.txt`](prepared-inputs.txt).
+
+**Result**:
+`TRAINTNL` 683 was graded 2 by both DSH passes and 1 by Sonnet; `INTRO` 2564, 2 by the DSH seed 3 second pass and 0 by Sonnet; `INTRO` 3246, 2 by the DSH seed 4 tie-break and 0 by Sonnet.
+One more real sheet, `INTRO` 2421, was graded 2 by the first pass of the INTRO 20-category readout and cleared by that run's tie-break: one pass of one model, and the Sonnet pass did not grade it.
+`propeller-solid` loses no evidence: `intro-3466` keeps its two-model example, and the category's 12 real sheets per run and per film are unchanged.
+Nineteen categories remain, `propeller-solid` last.
+The new inputs hold 42 sheets each for `CTRY` seed 1 and `INTRO` seeds 3 and 4, and 12 sheets per film for the seven readouts; every `run.json` records digest `5f8b01d6…`, the render and report digests, the seed and the revision.
+They are ungraded: none has a `grades.txt`, so no calibration prints a verdict and no readout exists for them.
+The saved [`calibrations.txt`](calibrations.txt) and [`readout-repeat.txt`](readout-repeat.txt) keep the 20-category figures; re-running their scripts against the current file reads the removed id as unknown, so they no longer reproduce those files.
+
+**Verdict**:
+The colour category is removed for want of a qualifying example; the example rule is not loosened to keep it.
+The 20-category calibrations and readouts remain the record of the 20-category file, and none of them is a calibration pass or a readout of the 19-category file.
+The new calibration inputs are evidence only once graded: two passes and a tie-break per run, then `CTRY` and both `INTRO` runs must print `calibration PASS`, the two `INTRO` runs supplying the twice-in-a-row requirement.
+The seven readout runs then need two passes and a tie-break each, before a baseline refresh that writes `research/parity/readouts/` and `baseline.toml` with `categories_digest = 5f8b01d6…`, all seven together in its own PR.
+
+**Next steps**:
+Grade each new run twice from `brief.md` and `brief-2.md`, then run `errors-disputes` and grade `brief-tiebreak.md`, then score it:
+
+```
+mise run parity-bench -- errors-disputes --film ctry --out build/parity/bench/ctry/calibrate-2026-11-25-19cat
+mise run parity-bench -- errors-score --film ctry --out build/parity/bench/ctry/calibrate-2026-11-25-19cat
+mise run parity-bench -- errors-disputes --film intro --out build/parity/bench/intro/calibrate-2026-11-25-19cat-seed3
+mise run parity-bench -- errors-score --film intro --out build/parity/bench/intro/calibrate-2026-11-25-19cat-seed3
+mise run parity-bench -- errors-disputes --film intro --out build/parity/bench/intro/calibrate-2026-11-25-19cat-seed4
+mise run parity-bench -- errors-score --film intro --out build/parity/bench/intro/calibrate-2026-11-25-19cat-seed4
+mise run parity-bench -- errors-disputes --film <film> --out build/parity/bench/<film>/errors-19cat
+mise run parity-bench -- errors-score --film <film> --out build/parity/bench/<film>/errors-19cat
+```
+
+`errors-score` takes no `--against` here: the committed baseline is an 18-category readout, and a calibrating run is not compared at all.
+
+**Lives in**: [`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.3; [`error-categories.toml`](../../../research/parity/error-categories.toml); this item's [`README.md`](README.md).

@@ -144,8 +144,8 @@ found_by = ["haiku"]
 since = "2026-11-01"
 examples = []
 
-# Added from the seven reference films' `other` notes at dd7e76eb (2026-11-25): two kinds of error no
-# category covered, each named on several frames. Other recurring notes were edge shifts
+# Added from the seven reference films' `other` notes at dd7e76eb (2026-11-25): the propeller error no
+# category covered, named on several frames. Other recurring notes were edge shifts
 # (misregistration), the capture's HUD timecode, or runway lights (scenery-missing).
 [[category]]
 id = "propeller-solid"
@@ -154,14 +154,10 @@ found_by = ["hydrogen"]
 since = "2026-11-25"
 examples = ["intro-3466"]
 
-[[category]]
-id = "aircraft-colour-wrong"
-definition = "A part of the aircraft (exhaust ring, nose, cowl, fuselage band) is drawn in its place but in a clearly different colour or shade from the capture's"
-found_by = ["hydrogen"]
-since = "2026-11-25"
-# No example yet: traintnl-0683 is graded 2 by both DSH passes of the 20-category readout, but both
-# passes are one model and no other model graded it (work/2026-11/calibration-actor-floor/journal.md).
-examples = []
+# A colour category, `aircraft-colour-wrong`, was added at 9be3e2cb with the propeller one and removed
+# on 2026-11-25: a Claude Sonnet pass graded its candidate sheets 1, 0 and 0, so no sheet met the
+# two-model example rule (work/2026-11/calibration-actor-floor/journal.md). Do not reuse the id for a
+# different error.
 
 # Which categories should rise when a fault is planted (keys as in stunt_reel.bench.faults Fault.key).
 # A planted sheet counts as detected when the grade of any of these categories, or an `other` note,
