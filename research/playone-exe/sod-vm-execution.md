@@ -114,7 +114,12 @@ The section runs while its face points at the eye.
 | `0x01C2` `REJ2D` | `0x95C0` | `first, count, count × (a, b, c)` | The flag from the sign of the 2D cross product of the projected points (`+6`, `+8` of each register): the screen winding. |
 | `0x0318` `BZLT` | `0x9BE5` | `reg, val, size` | `cmp [reg + 0x4454], (val >> work:0x806F) - work:0x8088` (signed, `jg`): a register depth `z` with `z + work:0x8088` above `val >> work:0x806F` runs the section, otherwise it skips `size` bytes from the size word. |
 
-`SORTON` (`0x9183`) reads the same table (`js` on the flag byte) to order its two branches.
+`SORTON` (`0x9183`, operands `first, second, flag`) reads the same table to order its two branches.
+It pushes the continuation, the first operand's address plus `first`, then tests `[flag + 0x7C68]`: set (`js`), it runs the branch after the operands, then the one at the second operand's address plus `second`; clear, it swaps them (`xchg cx, si`); each branch's `RETURN` resumes the next.
+The reconstruction runs the inline branch first whatever the flag and leaves the cover order to the depth buffer; a CPU painter in `PLAYONE`'s order changed 20 of 49,095 pixels of `location`'s canyon rock 1145 at tick 7019 against a z-buffer.
+
+_Source: [list order explains the BOMB trees, not the canyon rock](../../work/2026-11/1030_close-shape-order/journal.md#2026-11-24-list-order-explains-the-bomb-trees-not-the-canyon-rock)._
+
 The renderer keeps each `REJ` face as `VisibilityCondition::FacesEye { point: b, normal: n }` in model space and draws the section while `n · (b - eye) < 0`, with the eye taken into each actor's space, and into the world's for scenery props, every frame.
 Measured 2026-11-05 ([parity log](../../work/2026-10/parity-log/log.md)): CTRY 0.8645 -> 0.8646, INTRO 0.7973 -> 0.7986; the opposite sign gives 0.8061 / 0.7366, which fixes the sign.
 The old reading (condition 1 as `D^2 <= 1000 m^2`, everything else drawn) had no binary basis.

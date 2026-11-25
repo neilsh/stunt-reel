@@ -1,0 +1,5 @@
+location 7019 shape 1145: 49095 px; capture agreement ours 0.368 cpu-zbuf 0.373 painter 0.373; cpu-zbuf=ours 0.990; painter!=zbuf polygon on 20 px
+bomb 2080 shape 542: 3237 px; capture agreement ours 0.669 cpu-zbuf 0.664 painter 0.875; cpu-zbuf=ours 0.902; painter!=zbuf polygon on 865 px
+bomb 2300 shape 542: 1439 px; capture agreement ours 0.589 cpu-zbuf 0.594 painter 0.906; cpu-zbuf=ours 0.885; painter!=zbuf polygon on 780 px
+bomb 2080 shape 545: 465 px; capture agreement ours 0.613 cpu-zbuf 0.634 painter 0.849; cpu-zbuf=ours 0.923; painter!=zbuf polygon on 122 px
+bomb 2300 shape 545: 5667 px; capture agreement ours 0.686 cpu-zbuf 0.699 painter 0.885; cpu-zbuf=ours 0.889; painter!=zbuf polygon on 1671 px
