@@ -1,0 +1,36 @@
+== oracle all
+tick ssim loss pure mixed pure_share
+2421 0.88117 0.004356 0.000018 0.004338 0.004
+2520 0.90600 0.006407 0.000015 0.006392 0.002
+film mean over 316 scored frames: 0.002014 (report 0.002013741)
+range 2036-2740: 65 scored frames, summed loss 0.2402, pure 0.0007 (0.3%), mixed 0.2395 (99.7%)
+  mixed-window loss by the other pixels' kind: actors 0.1280 (53.3%), terrain 0.0252 (10.5%), shape 1737 0.0249 (10.4%), shape 1754 0.0230 (9.6%), shape 1654 0.0187 (7.8%), shape 1755 0.0150 (6.3%), shape 1747 0.0047 (2.0%), shape 1650 0.0000 (0.0%)
+range 3312-3477: 16 scored frames, summed loss 0.0945, pure 0.0002 (0.2%), mixed 0.0943 (99.8%)
+  mixed-window loss by the other pixels' kind: actors 0.0666 (70.5%), terrain 0.0250 (26.4%), shape 1754 0.0024 (2.5%), shape 1747 0.0002 (0.3%), shape 1749 0.0001 (0.1%), props_and_actors_render_only 0.0000 (0.0%), shape 1297 0.0000 (0.0%), shape 1668 0.0000 (0.0%)
+== oracle others
+tick ssim loss pure mixed pure_share
+2421 0.95107 0.043060 0.034863 0.008196 0.810
+2520 0.94734 0.049335 0.038405 0.010930 0.778
+film mean over 316 scored frames: 0.007326 (report 0.007326397)
+range 2036-2740: 65 scored frames, summed loss 1.7471, pure 1.3302 (76.1%), mixed 0.4170 (23.9%)
+  mixed-window loss by the other pixels' kind: shape 1737 0.1724 (9.9%), actors 0.1557 (8.9%), shape 1754 0.0433 (2.5%), shape 1755 0.0251 (1.4%), shape 1747 0.0118 (0.7%), shape 1654 0.0082 (0.5%), terrain 0.0005 (0.0%), shape 1650 0.0000 (0.0%)
+range 3312-3477: 16 scored frames, summed loss 0.2664, pure 0.1844 (69.2%), mixed 0.0820 (30.8%)
+  mixed-window loss by the other pixels' kind: actors 0.0464 (17.4%), terrain 0.0301 (11.3%), shape 1754 0.0045 (1.7%), shape 1747 0.0009 (0.3%), props_and_actors_render_only 0.0001 (0.0%), shape 1749 0.0000 (0.0%), shape 1297 0.0000 (0.0%), shape 1668 0.0000 (0.0%)
+== oracle swap
+tick ssim loss pure mixed pure_share
+2421 0.86936 0.013266 0.005524 0.007742 0.416
+2520 0.89248 0.019076 0.010366 0.008710 0.543
+film mean over 316 scored frames: 0.003142 (report 0.0031418188)
+range 2036-2740: 65 scored frames, summed loss 0.5033, pure 0.1626 (32.3%), mixed 0.3407 (67.7%)
+  mixed-window loss by the other pixels' kind: actors 0.2198 (43.7%), shape 1737 0.0299 (5.9%), terrain 0.0255 (5.1%), shape 1754 0.0238 (4.7%), shape 1654 0.0187 (3.7%), shape 1755 0.0168 (3.3%), shape 1747 0.0061 (1.2%), shape 1650 0.0000 (0.0%)
+range 3312-3477: 16 scored frames, summed loss 0.1879, pure 0.0308 (16.4%), mixed 0.1570 (83.6%)
+  mixed-window loss by the other pixels' kind: actors 0.0998 (53.1%), terrain 0.0532 (28.3%), shape 1754 0.0033 (1.8%), shape 1747 0.0005 (0.3%), props_and_actors_render_only 0.0001 (0.1%), shape 1749 0.0001 (0.0%), shape 1297 0.0000 (0.0%), shape 1668 0.0000 (0.0%)
+== oracle rest
+tick ssim loss pure mixed pure_share
+2421 0.84480 0.038359 0.029356 0.009003 0.765
+2520 0.86686 0.043169 0.028422 0.014747 0.658
+film mean over 316 scored frames: 0.007206 (report 0.0072058835)
+range 2036-2740: 65 scored frames, summed loss 1.7077, pure 1.1737 (68.7%), mixed 0.5340 (31.3%)
+  mixed-window loss by the other pixels' kind: shape 1737 0.1946 (11.4%), actors 0.1723 (10.1%), shape 1754 0.0631 (3.7%), shape 1755 0.0371 (2.2%), shape 1654 0.0270 (1.6%), terrain 0.0253 (1.5%), shape 1747 0.0146 (0.9%), shape 1650 0.0000 (0.0%)
+range 3312-3477: 16 scored frames, summed loss 0.2677, pure 0.1556 (58.1%), mixed 0.1121 (41.9%)
+  mixed-window loss by the other pixels' kind: actors 0.0798 (29.8%), terrain 0.0254 (9.5%), shape 1754 0.0059 (2.2%), shape 1747 0.0009 (0.3%), shape 1749 0.0001 (0.0%), props_and_actors_render_only 0.0000 (0.0%), shape 1297 0.0000 (0.0%), shape 1668 0.0000 (0.0%)

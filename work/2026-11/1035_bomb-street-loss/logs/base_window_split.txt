@@ -1,0 +1,19 @@
+tick ssim loss pure mixed pure_share
+2190 0.82137 0.029880 0.019210 0.010670 0.643
+2355 0.82221 0.042461 0.028474 0.013988 0.671
+2421 0.83299 0.047270 0.034863 0.012406 0.738
+2520 0.85418 0.055082 0.038405 0.016677 0.697
+2586 0.88056 0.020192 0.014567 0.005625 0.721
+2630 0.89544 0.029345 0.021635 0.007710 0.737
+2718 0.87313 0.051145 0.038482 0.012663 0.752
+2740 0.85592 0.065840 0.049898 0.015942 0.758
+3345 0.89228 0.031649 0.017048 0.014601 0.539
+film mean over 316 scored frames: 0.008301 (report 0.0083005205)
+range 2036-2740: 65 scored frames, summed loss 1.9627, pure 1.3302 (67.8%), mixed 0.6325 (32.2%)
+  mixed-window loss by the other pixels' kind: actors 0.2624 (13.4%), shape 1737 0.1987 (10.1%), shape 1754 0.0639 (3.3%), shape 1755 0.0389 (2.0%), shape 1654 0.0270 (1.4%), terrain 0.0257 (1.3%), shape 1747 0.0161 (0.8%), shape 1650 0.0000 (0.0%)
+range 3312-3477: 16 scored frames, summed loss 0.3586, pure 0.1844 (51.4%), mixed 0.1743 (48.6%)
+  mixed-window loss by the other pixels' kind: actors 0.1126 (31.4%), terrain 0.0536 (14.9%), shape 1754 0.0068 (1.9%), shape 1747 0.0011 (0.3%), props_and_actors_render_only 0.0001 (0.0%), shape 1749 0.0001 (0.0%), shape 1297 0.0000 (0.0%), shape 1668 0.0000 (0.0%)
+range 221-420: 19 scored frames, summed loss 0.1869, pure 0.0000 (0.0%), mixed 0.1869 (100.0%)
+  mixed-window loss by the other pixels' kind: shape 1650 0.1532 (82.0%), shape 1737 0.0193 (10.3%), shape 1749 0.0128 (6.9%), terrain 0.0012 (0.6%), shape 1433 0.0004 (0.2%)
+range 3302-3302: 1 scored frames, summed loss 0.1147, pure 0.0946 (82.4%), mixed 0.0201 (17.6%)
+  mixed-window loss by the other pixels' kind: actors 0.0107 (9.3%), terrain 0.0065 (5.7%), shape 1755 0.0029 (2.6%)
