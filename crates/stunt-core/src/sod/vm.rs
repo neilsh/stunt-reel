@@ -255,12 +255,6 @@ pub(crate) struct RawPolygon {
     pub visibility: VisibilityCondition,
 }
 
-/// Approximates an `OP_SPHERE` primitive with an icosahedron (20 triangles).
-///
-/// `center` and `radius` are in raw register units like polygon vertices; the result is in
-/// metres. The vertices sit at 0.92 of the radius so the faces straddle the true sphere.
-/// Splitting the faces once makes the world's vertex buffer exceed wgpu's 256 MiB limit on
-/// `CTRY.FLM` (its 2,300 trees carry 19 spheres each).
 /// The six faces of `OP_BLOCK`'s cube of half-side `half` about `center` (model units).
 ///
 /// `PLAYONE` draws the block as a filled screen square (`0xA405`): the half-side
@@ -313,6 +307,12 @@ fn block_polygons(
         .collect()
 }
 
+/// Approximates an `OP_SPHERE` primitive with an icosahedron (20 triangles).
+///
+/// `center` and `radius` are in raw register units like polygon vertices; the result is in
+/// metres. The vertices sit at 0.92 of the radius so the faces straddle the true sphere.
+/// Splitting the faces once makes the world's vertex buffer exceed wgpu's 256 MiB limit on
+/// `CTRY.FLM` (its 2,300 trees carry 19 spheres each).
 fn sphere_polygons(
     center: [f32; 3],
     radius: f32,
