@@ -12,6 +12,8 @@
   - The capture-side oracle of [`probes.md` § 7](../../../research/parity/probes.md#7-no-rebuild-experiments-on-the-capture): [`DBG_ORACLE_DIR`](switches/DBG_ORACLE_DIR.diff) makes the scorer copy our index into the capture's at a mask's pixels before scoring, with the capture's sky mask unchanged, and prints 613's per-frame loss (#904's `DBG_SHAPE_DUMP` print).
     Each mask was scored with `target/release/stuntreel.exe parity --reference <data root>/captures/vault-location/frames --test <the DBG_LINEMARK=0 store>`; the loss a mask removes is 613's loss without the oracle minus its loss with it.
   - Per frame, every mask's pixel count, frame SSIM and 613 loss: [`oracle.csv`](oracle.csv).
+  - The scripts' output: [`logs/base_line_masks.txt`](logs/base_line_masks.txt) (`line_masks.py <DBG_LINEMARK=0 store> <DBG_LINEMARK=1 store> <mask dir> 613`), [`logs/base_mask_classes.txt`](logs/base_mask_classes.txt) and [`logs/base_line_band.txt`](logs/base_line_band.txt) (`mask_classes.py` and `line_band.py` with `<data root>/captures/vault-location/frames <DBG_LINEMARK=0 store> <mask dir>`), each run as `mise exec -- uv run python …`.
+    The first session's stores were overwritten by the next entry's renders, so these logs are from a second render of the same ticks, with the same switches on the same `crates/` (`ca208dc9`, whose `crates/` equal `1e1d5680`'s) on the same GPU; its masks are byte for byte the first session's at every tick and mask kept, and [`direction.txt`](direction.txt) is reproduced exactly.
 - **Result**:
   - At 2729, 613 covers 12,488 pixels and loses 0.05741 (frame SSIM 0.81494); 132 of its pixels are `ZLINETO` lines, all in index 149 (the field's chalk), and 1,196 are outlines, all from the world's line list.
   - Loss removed, at 2729 and as the mean over the 27 frames (613's mean loss 0.03842), each as a share of 613's loss:
@@ -30,10 +32,10 @@
     | interior (all but `lines_d1`) | 9,117 | 0.00752 | 13.1% | 0.00669 | 17.4% |
 
     Lines and fill add up to all of 613 (0.00986 + 0.02892 = 0.03878 of 0.03887 at 2729).
-    The 32.3% of 613's loss at 2729 that no mask of 613 removes (19.3% of the mean) is in windows over 613 whose other pixels, those of the shapes beside it, still differ from the capture.
-  - Index disagreement with the capture over the 27 frames: 613 as a whole 8.9% (28,693 of 322,118 pixels), `ZLINETO` lines 38.4% (1,003 of 2,609), outlines 17.1% (5,044 of 29,523), the band 25.0% (12,728 of 50,962), the interior 4.1% (9,918 of 239,024).
+    The 32.3% of 613's loss at 2729 that no mask of 613 removes (19.3% of the mean) is in windows over 613 whose other pixels, of the shapes, ground or sky beside it, still differ from the capture.
+  - Index disagreement with the capture over the 27 frames ([`logs/base_mask_classes.txt`](logs/base_mask_classes.txt)): 613 as a whole 8.9% (28,693 of 322,118 pixels), `ZLINETO` lines 38.4% (1,003 of 2,609), outlines 17.1% (5,044 of 29,523), the band 25.0% (12,728 of 50,962), the interior 4.1% (9,918 of 239,024).
     At 2729: 10.6%, 39.4%, 17.1%, 30.8% and 4.8%.
-  - The chalk lines are drawn one pixel off, not missing: of the 1,003 disagreeing `ZLINETO` pixels, 958 have a four-neighbour where the capture shows our pixel's index, and of the 1,052 disagreeing `band_z` pixels, 877 show the capture in index 149.
+  - The chalk lines are drawn one pixel off, not missing: of the 1,003 disagreeing `ZLINETO` pixels, 958 have a four-neighbour where the capture shows our pixel's index, and of the 1,052 disagreeing `band_z` pixels, 877 show the capture in index 149, the index of all 2,609 `ZLINETO` pixels over the 27 frames ([`logs/base_line_band.txt`](logs/base_line_band.txt): `z_bad_linecol_adjacent`, `bz_bad`, `bz_cap_linecol`).
   - Which way ([`line_direction.py`](line_direction.py), [`direction.txt`](direction.txt)): for each disagreeing `ZLINETO` or outline pixel, the four-neighbours where the capture shows our pixel's index, counted by whether the neighbour lies toward the projection centre (160, 92.5) or away, on each side of it:
 
     | Pixels | Above the centre, row below / above | Below, row above / below | Left, column right / left | Right, column left / right |
@@ -55,12 +57,13 @@
 
 - **Question**: does drawing vertices where `PLAYONE`'s projectors truncate them ([`sod-vm-lines-spans.md` § 8.14](../../../research/playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre), [#1064](https://github.com/neilsh/stunt-reel/issues/1064)) remove the stadium's line and edge loss?
 - **Method**: the shader of `proto/1027-projector-rounding` (`f2e12e39`, the facet-plane form, gate passing, applied as `git diff origin/main...f2e12e39 -- crates/stunt-render/src/shaders/mode13h.wgsl` on `1e1d5680` with the previous entry's switches), the same 27 ticks rendered on the RTX 4070 and scored, 613's loss printed per frame as before ([`oracle.csv`](oracle.csv), `proto_*` columns).
-  The previous entry's masks and disagreement counts were rerun on the prototype's renders.
+  The prototype's renders were made with `DBG_LINEMARK=0,1` as before, and `line_masks.py` was rerun on that pair, so its masks are the prototype's own, not the baseline's; `mask_classes.py` and `line_band.py` were then rerun on them ([`logs/proto_line_masks.txt`](logs/proto_line_masks.txt), [`logs/proto_mask_classes.txt`](logs/proto_mask_classes.txt), [`logs/proto_line_band.txt`](logs/proto_line_band.txt)).
+  These logs are from the first session's surviving prototype stores and are byte for byte those of a second render with the same shader diff.
   This is an attribution on one shape's frames, not a sweep: adopting the rule is #1064's.
 - **Result**:
   - 613's loss at 2729 falls from 0.05741 to 0.03496 (39%); its mean over the 27 frames from 0.03842 to 0.02728 (29%), falling on 26 of them.
     Mean frame SSIM rises from 0.86011 to 0.88156, on 23 of the 27.
-  - Index disagreement over the 27 frames falls on 613 as a whole from 8.9% to 5.9%, on the `ZLINETO` lines from 38.4% to 21.8%, in the band from 25.0% to 10.0% and in the interior from 4.1% to 2.1%; on the outline pixels it rises from 17.1% to 23.2%.
+  - Index disagreement over the 27 frames ([`logs/proto_mask_classes.txt`](logs/proto_mask_classes.txt)) falls on 613 as a whole from 8.9% to 5.9%, on the `ZLINETO` lines from 38.4% to 21.8%, in the band from 25.0% to 10.0% and in the interior from 4.1% to 2.1%; on the outline pixels it rises from 17.1% to 23.2%.
 - **Verdict**: control (attribution), evidence-backed by the rule at image `0x9D0D`, `0x9D25`, `0x9D71`, `0x9D82` that § 8.14 cites; not adopted here.
   The truncation rule removes about a third of the stadium's loss, its disagreement falling in the band, on the chalk lines and in the interior but not on the outline pixels; #1064, which owns drawing it without breaking depth ties, is the follow-up.
   The outline pixels' own disagreement rises under it, which points at the outline's pixels against the inclusive spans' (§ 10's polygon-outline question) as the part the rule leaves.

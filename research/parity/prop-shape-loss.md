@@ -105,7 +105,7 @@ Giving the capture our index on a set of 613's pixels (a capture-side oracle, [`
 | the chalk lines and their band | 16% | 18% |
 | the interior, more than a pixel from any line | 13% | 17% |
 
-The 32% (19%) that no pixel of 613 removes is the loss of windows over 613 whose other pixels, those of the shapes beside it, still differ.
+The 32% (19%) that no pixel of 613 removes is the loss of windows over 613 whose other pixels, of the shapes, ground or sky beside it, still differ.
 The chalk lines are drawn a pixel off rather than missing: 958 of the 1,003 chalk pixels whose index differs have the capture's line a pixel away.
 On the lines and outlines the capture's matching pixel lies mostly a pixel toward the projection centre, the direction `PLAYONE`'s projectors truncate a vertex ([`sod-vm-lines-spans.md` § 8.14](../playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre)).
 #1027's prototype of that rule (its facet-plane form) cuts 613's loss by 39% at 2729 and 29% over the 27 frames, and its index disagreement from 8.9% to 5.9%, though it raises the outline pixels' own from 17.1% to 23.2%; drawing the rule is [#1064](https://github.com/neilsh/stunt-reel/issues/1064).
