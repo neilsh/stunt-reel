@@ -1,5 +1,5 @@
 ---
-summary: "[I4] playback timing: 50 Hz PIT divisor 0x5D38, slice ticks as cumulative `tick_duration`, lerp and slerp sub-tick interpolation, shorter-arc roll, cut suppression, and 0x9C audio cues."
+summary: "[I4] playback timing: 50 Hz PIT divisor 0x5D38, slice ticks as cumulative `tick_duration`, lerp and slerp sub-tick interpolation, shorter-arc roll, cut suppression on a `view_obj` switch only (`PLAYONE` interpolates a slot across any distance, `0x3E6C`), and 0x9C audio cues."
 sidebar_label: "Timeline, ticks & interpolation"
 ---
 # Stunt Island Technical Reference: Timeline Mechanics, Simulation Ticks & Kinematic Interpolation
@@ -28,7 +28,7 @@ Unlike interactive game engines that integrate physics dynamically per frame wit
 +-------------------------------------------------------------------------------+
 | Presentation Loop (Unlocked Framerate >= 60 FPS)                              |
 | - Fractional sub-tick parameter: alpha = (t_render - t_slice) / (20 ms * tick_duration)|
-| - Continuity evaluation: cut_from_previous flag or ||P_{t+1} - P_t|| > 50 m   |
+| - Continuity evaluation: cut_from_previous flag (a view_obj switch)          |
 +-------------------------------------------------------------------------------+
                   │                                           │
        (Continuous Motion)                            (Director Cut)
@@ -131,8 +131,14 @@ In cinematic replays, instantaneous cuts between cameras must never be smoothly 
 The camera cut flag `cut_from_previous` is set to `true` at tick $t+1$ if ANY of the following occur:
 1. **Camera Switch Opcode (`view_obj` `0x90`–`0x97`):** The film script switches active viewpoints.
 2. **Explicit Director Cut:** Set in the timeline metadata.
-3. **Spatial Continuity Threshold Exceeded:** The distance between consecutive camera positions exceeds the maximum continuous flight displacement:
-   $$\left\| \mathbf{P}_{t+1} - \mathbf{P}_t \right\|_2 > 50.0\text{ meters}$$
+
+#### A Slot Moving Far Within One Slice Is Not a Cut
+`[Established]`, static read of the per-frame slot interpolation `0x3E6C` (`mise run re-tool -- disasm 0x3E63 0x3F20`).
+With `BX` the slot's start record, `SI` its end record and `BP` the fraction `DS:0x22E0`, it lerps each 16.16 position coordinate as `start + (end − start) · frac` through `0x131B` (`0x3E7A..0x3ECA`, while `SIF_MOVES` is set), with no distance test anywhere in the routine.
+Each angle word (`0x3ED4..0x3EF5`, while `SIF_ROTATES` is set) is `start + ((end − start) · (frac >> 1)) >> 15` on the signed 16-bit difference, so each of the three words turns the short way on its own; our player slerps the composed rotation instead.
+So `PLAYONE` moves a view slot smoothly across a slice however far it goes, and our player, which used to flag a cut when the eye moved more than 50 m between slices and hold the old pose for the whole slice, cuts only on a `view_obj` switch.
+`[Bounded Observation]`, GPU sweep of every reference film: dropping the 50 m test raised `intro` from 0.8833 to 0.8937 and `location` from 0.8727 to 0.8863 and left the others unchanged; `location`'s canyon run, whose eye moves about 59 m per 10-tick slice, no longer steps every 10 ticks (ticks 6700 to 7400: 0.8312 to 0.9421).
+_Source: [PLAYONE interpolates a slot across any distance](../../../work/2026-11/1031_bomb-world-offset/journal.md#2026-11-24-playone-interpolates-a-slot-across-any-distance)._
 
 #### Suppression Enforcement
 When `cut_from_previous == true`:

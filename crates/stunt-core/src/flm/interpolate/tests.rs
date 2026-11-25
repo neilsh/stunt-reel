@@ -117,77 +117,10 @@ fn assert_rigid_transform(mat: &[f32; 16], pos: [f32; 3]) {
 
 #[test]
 fn camera_cut_detection_criteria() {
-    // Normal small motion <= 50m
-    assert!(!detect_camera_cut(
-        [0.0, 10.0, 49.5],
-        Some([0.0, 10.0, 50.0]),
-        0,
-        Some(0)
-    ));
-    // Displacement > 50m triggers cut
-    assert!(detect_camera_cut(
-        [0.0, 10.0, 101.0],
-        Some([0.0, 10.0, 50.0]),
-        0,
-        Some(0)
-    ));
-    // View object slot change triggers cut regardless of distance
-    assert!(detect_camera_cut(
-        [0.0, 10.0, 50.0],
-        Some([0.0, 10.0, 50.0]),
-        1,
-        Some(0)
-    ));
-    // Initial frame (no last pose) does not cut
-    assert!(!detect_camera_cut([0.0, 10.0, 50.0], None, 0, None));
-}
-
-#[test]
-fn camera_cut_displacement_boundary_precision() {
-    let eye_base = [0.0, 10.0, 50.0];
-
-    assert!(
-        !detect_camera_cut([0.0, 10.0, 50.0 + 49.99], Some(eye_base), 0, Some(0)),
-        "49.99m displacement must NOT trigger camera cut"
-    );
-    assert!(
-        detect_camera_cut([0.0, 10.0, 50.0 + 50.01], Some(eye_base), 0, Some(0)),
-        "50.01m displacement MUST trigger camera cut"
-    );
-    // 3D diagonal displacement: sqrt(3 * 28.87^2) = 50.004m
-    assert!(
-        detect_camera_cut(
-            [28.87, 10.0 + 28.87, 50.0 + 28.87],
-            Some(eye_base),
-            0,
-            Some(0)
-        ),
-        "diagonal displacement of 50.004m must trigger camera cut"
-    );
-    assert!(
-        detect_camera_cut(eye_base, Some(eye_base), 1, Some(0)),
-        "view_obj slot change from 0 to 1 MUST trigger camera cut"
-    );
-    assert_eq!(
-        CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS.to_bits(),
-        50.0f32.to_bits()
-    );
-
-    // Exact boundary behaviour at the origin
-    let eye0 = [0.0, 10.0, 0.0];
-    assert!(!detect_camera_cut(
-        [0.0, 10.0, 49.99],
-        Some(eye0),
-        0,
-        Some(0)
-    ));
-    assert!(detect_camera_cut(
-        [0.0, 10.0, 50.01],
-        Some(eye0),
-        0,
-        Some(0)
-    ));
-    assert!(detect_camera_cut(eye0, Some(eye0), 1, Some(0)));
+    // A view_obj switch cuts; the first slice does not.
+    assert!(detect_camera_cut(1, Some(0)));
+    assert!(!detect_camera_cut(0, Some(0)));
+    assert!(!detect_camera_cut(0, None));
 }
 
 #[test]

@@ -1,5 +1,5 @@
 ---
-summary: "Records the camera and projection corrections tried against the capture: square 256 px projection (adopted) and the eye-height, pitch, FOV, framing-offset and tick-phase sweeps that were ruled out; the `location` rotor drawn with its solid blades on every tick (#504, #624); and background misregistration, which is neither one time offset nor one page shift on the readout ticks, with a one-row vertical shift recurring that `PLAYONE`'s truncated projection fits (#990, #1027)."
+summary: "Records the camera and projection corrections tried against the capture: square 256 px projection (adopted) and the eye-height, pitch, FOV, framing-offset and tick-phase sweeps that were ruled out; the `location` rotor drawn with its solid blades on every tick (#504, #624); and background misregistration, which is neither one time offset nor one page shift on the readout ticks, with a one-row vertical shift recurring that `PLAYONE`'s truncated projection fits (#990, #1027); BOMB's per-shot offsets are that row and pages a tick off while the camera moves, not a camera rule (#1031)."
 ---
 
 # Parity: Framing and Camera
@@ -88,6 +88,15 @@ Two parts recur:
 
 _Source: [time offset against page shift on the readout ticks](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks)._
 
+**Every BOMB frame, by shot** (`[Bounded Observation]`, 2026-11-24, all 316 scored `bomb` ticks, GPU render of `bc166452`, `register --with-props`, [#1031](https://github.com/neilsh/stunt-reel/issues/1031)).
+Joined to the camera at each tick, the best page shift follows no camera input as a per-shot rule: every frame has the default lens and no roll, and shots with the same eye height (0.2 m on ticks 12 to 420, 0.2 to 1 m on 1915 to 2740) take different shifts.
+* **The two static opening shots** (ticks 12 to 420, eye 0.2 m above the ground, pitched 13° and 17° up) shift a row on all 38 frames and gain nothing from any render tick.
+  Searched per layer and per half of the frame, the props below the projection centre sit a row low while those above it sit level or a row high, the sign flip that truncation toward the centre gives (open question 5).
+  The sky's band edges sit a row low on both halves at tick 155 and on the upper half at 320; the lower half at 320 is level.
+* **The larger offsets** (2961, 3191, 3268, and 1013 to 1200, from 2 to 4 px) fall on frames where the camera turns or moves fast, and a render tick or two either way gains about as much as the page shift (2961: +0.266 at one tick back against +0.197; 3191: +0.209 at one tick on against +0.129), while the shot's neighbouring frames gain from neither: the per-page lag above, not the camera.
+
+_Source: [the offset per shot, against the camera](../../work/2026-11/1031_bomb-world-offset/journal.md#2026-11-24-the-offset-per-shot-against-the-camera)._
+
 ## Ruled out
 
 All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named.
@@ -95,6 +104,7 @@ Baselines moved between rounds (0.771 / 0.676 on 2026-10-22, 0.7708 / 0.6762 at 
 Nothing below was adopted.
 
 * **Wrong geometry for the `location` trapezoid** (2026-11-16, [#504](https://github.com/neilsh/stunt-reel/issues/504)): the other `BVGT` arm of the same shape draws the capture's line blades; see § 3. [Journal](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest).
+* **A per-shot camera offset on BOMB** (2026-11-24, [#1031](https://github.com/neilsh/stunt-reel/issues/1031)): no shot's page shift follows the view slot, the eye or the lens; see § 4. [Journal](../../work/2026-11/1031_bomb-world-offset/journal.md#2026-11-24-the-offset-per-shot-against-the-camera).
 * **One time offset or one page shift per film behind `background-misregistration`** (2026-11-23, [#990](https://github.com/neilsh/stunt-reel/issues/990)): on 84 readout ticks, 40 of the 69 with enough edge pixels move under neither (16 of them already agree at 0.95 or more, 14 sit below 0.90), and the best time offsets change sign within INTRO and TRAINTNL; see § 4. [Journal](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks).
 * **A montage tick-skipping rule** (2026-11-05, `[Bounded Observation]`, [#73](https://github.com/neilsh/stunt-reel/issues/73)).
   Offset search over -200..+10 on `captures/vault-intro`: the best-matching render tick follows the capture tick at slope 0.99 (largest deviation 7 ticks), so the 0.9-lag reading was a search saturating at -180.
