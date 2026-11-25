@@ -179,7 +179,7 @@ mod tests {
         write_version_1_render,
     };
     use serde_json::Value;
-    use stunt_core::frame::MODE13H_WIDTH;
+    use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_WIDTH};
 
     #[test]
     fn compare_run_writes_compare_json_and_before_after_sheets() {
@@ -223,6 +223,8 @@ mod tests {
             sheet.width() as usize,
             (MODE13H_WIDTH + CONTACT_SHEET_GAP) * 5 - CONTACT_SHEET_GAP
         );
+        assert_eq!(sheet.height() as usize, ASPECT_CORRECTED_HEIGHT);
+        assert_eq!(sheet.color(), image::ColorType::L8);
     }
 
     #[test]

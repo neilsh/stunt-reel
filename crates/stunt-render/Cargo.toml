@@ -12,13 +12,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-thiserror = "2.0"
-stunt-core = { path = "../stunt-core", features = ["bytemuck", "serde"] }
+thiserror.workspace = true
+stunt-core = { path = "../stunt-core", features = ["bytemuck"] }
 wgpu = "30.0"
-bytemuck = { version = "1.14", features = ["derive"] }
-glam = "0.34"
+bytemuck = { workspace = true, features = ["derive"] }
+glam.workspace = true
 pollster = "1.0"
-
-[dev-dependencies]
-image = { version = "0.25", default-features = false, features = ["png"] }
-serde_json = "1.0"
