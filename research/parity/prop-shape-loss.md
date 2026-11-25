@@ -1,5 +1,5 @@
 ---
-summary: "Ranks the prop shapes costing LOCATION's and BOMB's props loss and why each loses: a camera held through far-moving slices (fixed), pages drawn a tick off while the camera moves, sphere cover order on the trees, far-town stand-ins that drew no `BLOCK` (fixed), tick phase, lines; most of BOMB's street loss is unexplained."
+summary: "Ranks the prop shapes costing LOCATION's and BOMB's props loss and why each loses: a camera held through far-moving slices (fixed), pages drawn a tick off while the camera moves, sphere cover order on the trees, far-town stand-ins that drew no `BLOCK` (fixed), tick phase, and the stadium's edges and chalk lines a pixel off toward the projection centre; most of BOMB's street loss is unexplained."
 sidebar_label: "Costliest prop shapes"
 ---
 # Parity: The Prop Shapes That Cost LOCATION and BOMB
@@ -38,10 +38,10 @@ _Source: [the costliest prop shapes on LOCATION and BOMB](../../work/2026-11/989
 | Overlapping spheres of one shape cover each other in list order | `bomb` 542, 545 | 2.3 | [#1066](https://github.com/neilsh/stunt-reel/issues/1066) |
 | Far houses missing: the stand-ins' `BLOCK` houses went undrawn (fixed) | `bomb` `scenery-missing` 1585, 1904 | 2.4 | [#1032](https://github.com/neilsh/stunt-reel/issues/1032) |
 | A run of frames prefers a one-tick offset | `location` 1745, 996 | 2.5 | [#1033](https://github.com/neilsh/stunt-reel/issues/1033) |
-| Lines and outlines on a shape drawn in place | `location` 613 | 2.5 | [#1034](https://github.com/neilsh/stunt-reel/issues/1034) |
+| Edges and chalk lines a pixel off, toward the projection centre, on a shape drawn in place | `location` 613 | 2.5 | [#1064](https://github.com/neilsh/stunt-reel/issues/1064) |
 | Unexplained: drawn in place, in the capture's colours | `bomb` 1756 on ticks 2036 to 2740 and 3312 to 3477 (about 88% of its loss) | 2.6 | [#1035](https://github.com/neilsh/stunt-reel/issues/1035) |
 
-In the issue's terms, 2.1, 2.2 and 2.5 are misplacement by the camera, not by the prop; 2.3 is draw order for the trees; 2.4 was missing geometry; 2.6 has no cause yet.
+In the issue's terms, 2.1, 2.2 and 2.5 are misplacement by the camera or the projection, not by the prop; 2.3 is draw order for the trees; 2.4 was missing geometry; 2.6 has no cause yet.
 No shape inspected shows a wrong shade or a wrong shape of its own.
 
 ### 2.1 The camera held through far-moving slices (fixed)
@@ -90,9 +90,27 @@ _Source: [the far town's stand-ins draw no `OP_BLOCK`](../../work/2026-11/1032_b
 
 The railway track 1745, which the camera rides along, rises over ticks 4330 to 4470 from 0.8939 to 0.9076 one tick later; the town lots 996 over 2040 to 2140 from 0.7887 to 0.8044 one tick earlier.
 Over the whole film a one-tick offset helps frames in both directions (+1 raises 49 frames by more than 0.02, -1 raises 101) while offset 0 keeps the best mean, so which pages show another tick is [#1033](https://github.com/neilsh/stunt-reel/issues/1033).
-The stadium 613 is drawn in place (best shift 0, 0.89 of its pixels match at 2729, no offset better than 0); `[Hypothesis]`: its loss is the field's chalk lines and the stands' outlines ([`sod-vm-lines-spans.md` § 10](../playone-exe/sod-vm-lines-spans.md#10-open-questions)), measured by [#1034](https://github.com/neilsh/stunt-reel/issues/1034).
+The stadium 613 is drawn in place (best shift 0, 0.89 of its pixels match at 2729, no offset better than 0).
 
 _Source: [the LOCATION canyon run steps late](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-location-canyon-run-steps-late), [what the canyon and BOMB frames show](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-what-the-canyon-and-bomb-frames-show)._
+
+`[Bounded Observation]`, one film's 27 frames on the GPU: its loss sits at its edges, not on its chalk lines alone.
+Giving the capture our index on a set of 613's pixels (a capture-side oracle, [`probes.md` § 7](probes.md#7-no-rebuild-experiments-on-the-capture)) removes, of 613's loss at 2729 and of its mean over the 27 frames it loses on (ticks 2586 to 2872; the GPU's 613 loss at 2729 is the canonical lavapipe's to 0.00001):
+
+| 613's pixels given our index | At 2729 | Mean |
+|---|---|---|
+| every pixel of 613 | 68% | 81% |
+| lines drawn by `ZLINETO` (the chalk) and by the outline ([`sod-vm-lines-spans.md` § 8.11](../playone-exe/sod-vm-lines-spans.md#811-polygon-spans-include-both-ends)) | 17% | 20% |
+| those lines and the one-pixel band beside them | 54% | 60% |
+| the chalk lines and their band | 16% | 18% |
+| the interior, more than a pixel from any line | 13% | 17% |
+
+The 32% (19%) that no pixel of 613 removes is the loss of windows over 613 whose other pixels, those of the shapes beside it, still differ.
+The chalk lines are drawn a pixel off rather than missing: 958 of the 1,003 chalk pixels whose index differs have the capture's line a pixel away.
+On the lines and outlines the capture's matching pixel lies mostly a pixel toward the projection centre, the direction `PLAYONE`'s projectors truncate a vertex ([`sod-vm-lines-spans.md` § 8.14](../playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre)).
+#1027's prototype of that rule (its facet-plane form) cuts 613's loss by 39% at 2729 and 29% over the 27 frames, and its index disagreement from 8.9% to 5.9%, though it raises the outline pixels' own from 17.1% to 23.2%; drawing the rule is [#1064](https://github.com/neilsh/stunt-reel/issues/1064).
+
+_Source: [the stadium's loss split by line, outline and fill](../../work/2026-11/1034_stadium-outlines/journal.md#2026-11-24-the-stadiums-loss-split-by-line-outline-and-fill), [the projector truncation prototype on the stadium](../../work/2026-11/1034_stadium-outlines/journal.md#2026-11-24-the-projector-truncation-prototype-on-the-stadium)._
 
 ### 2.6 The street loses in place, unexplained
 
@@ -104,6 +122,7 @@ _Source: [the BOMB street 1756 loses in place](../../work/2026-11/989_props-loss
 
 ## Ruled out
 
+* **The stadium 613's chalk lines as most of its loss** (2026-11-24): with the pixel band beside them they own 16% of its loss at `location` 2729 and 18% of its mean ([the stadium's loss split by line, outline and fill](../../work/2026-11/1034_stadium-outlines/journal.md#2026-11-24-the-stadiums-loss-split-by-line-outline-and-fill)).
 * **The `scale_index` distance cut as the cause of `bomb`'s missing far houses** (2026-11-23): keeping every object it drops draws the same picture at 1585 and 1904 ([the BOMB far town is the level-of-detail gate](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-bomb-far-town-is-the-level-of-detail-gate)).
 * **The near branch of every `SP_1NODE`** (2026-11-23): it draws the far houses but lowers `bomb` by 0.0118 and `location` by 0.0178, and the two `scenery-missing` ticks too ([same entry](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-bomb-far-town-is-the-level-of-detail-gate)).
 * **The `SP_1NODE` gate's choice as the cause of `bomb`'s missing far houses** (2026-11-24): the gate's stand-ins hold the houses as `OP_BLOCK`s, which `vm.rs` did not draw ([the far town's stand-ins draw no `OP_BLOCK`](../../work/2026-11/1032_block-stand-ins/journal.md#2026-11-24-the-far-towns-stand-ins-draw-no-op_block)).
@@ -115,8 +134,8 @@ _Source: [the BOMB street 1756 loses in place](../../work/2026-11/989_props-loss
 
 In order of the loss each would explain:
 
-1. **Truncation toward the projection centre** ([#1064](https://github.com/neilsh/stunt-reel/issues/1064)), on `bomb`'s opening shot: five of its eight worst shapes and 1756.
+1. **Truncation toward the projection centre** ([#1064](https://github.com/neilsh/stunt-reel/issues/1064)), on `bomb`'s opening shot: five of its eight worst shapes and 1756; on `location`, the stadium 613's edges and chalk lines (2.5).
 2. **Pages a tick or two off ours while the camera moves** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)).
 3. **The street's loss in place** ([#1035](https://github.com/neilsh/stunt-reel/issues/1035)), about 88% of `bomb`'s costliest shape.
 4. **Spheres in list order** ([#1066](https://github.com/neilsh/stunt-reel/issues/1066)).
-5. **One-tick phase** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)) and **the stadium's lines** ([#1034](https://github.com/neilsh/stunt-reel/issues/1034)).
+5. **One-tick phase** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)).
