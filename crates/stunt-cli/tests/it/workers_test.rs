@@ -2,7 +2,8 @@
 //!
 //! The film is `synthetic_timeline.flm` with its last slice stretched to 200 ticks, so the
 //! render spans five film seconds and the two workers each draw some. It renders on the
-//! software adapter; with no adapter the test skips, unless `STUNT_REQUIRE_GPU=1` (ADR 0006).
+//! software adapter; without one offering clip distances it skips, even under
+//! `STUNT_REQUIRE_GPU=1` (ADR 0054), and any other failure fails.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -59,6 +60,15 @@ fn render(film: &Path, out: &Path, workers: &str) -> Output {
         .expect("run stuntreel")
 }
 
+/// Whether a failed `--software-only` render failed only for want of a software adapter.
+///
+/// Windows' only CPU adapter, WARP, never offers the clip distances the renderer requires
+/// (ADR 0054), so a software-only test skips even when `STUNT_REQUIRE_GPU=1` asks for a GPU;
+/// any other failure fails the test.
+pub(crate) fn skips_without_software_adapter(stderr: &str) -> bool {
+    stderr.contains("Headless renderer failed: no compatible GPU adapter")
+}
+
 #[test]
 fn two_workers_write_the_store_one_worker_writes() {
     let root = std::env::temp_dir().join(format!("stunt-reel-workers-{}", std::process::id()));
@@ -79,12 +89,14 @@ fn two_workers_write_the_store_one_worker_writes() {
     let output = render(&film_path, &one, "1");
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let no_adapter = stderr.contains("Headless renderer failed");
         assert!(
-            no_adapter && std::env::var("STUNT_REQUIRE_GPU").as_deref() != Ok("1"),
+            skips_without_software_adapter(&stderr),
             "1-worker render failed: {stderr}"
         );
-        eprintln!("skipping: no software adapter ({stderr})");
+        eprintln!(
+            "[test] Skipping software-only test: no software fallback adapter with clip \
+             distances (WARP lacks them; ADR 0054): {stderr}"
+        );
         drop(fs::remove_dir_all(&root));
         return;
     }
@@ -108,4 +120,18 @@ fn two_workers_write_the_store_one_worker_writes() {
         "the stores differ, or the workers' were left behind"
     );
     drop(fs::remove_dir_all(&root));
+}
+
+#[test]
+fn only_a_missing_software_adapter_skips_a_software_only_render() {
+    assert!(skips_without_software_adapter(
+        "[stuntreel error] Headless renderer failed: no compatible GPU adapter (one with clip \
+         distances) found on this system"
+    ));
+    assert!(!skips_without_software_adapter(
+        "[stuntreel error] Headless renderer failed: failed to request a GPU device: out of memory"
+    ));
+    assert!(!skips_without_software_adapter(
+        "[stuntreel error] read tests/fixtures/synthetic_timeline.flm: not found"
+    ));
 }
