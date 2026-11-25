@@ -166,7 +166,10 @@ run = "uv run python python/scripts/work.py"
 
 [tasks.site-prep]
 description = "Write the research site's Starlight content (site/src/content/docs, site/public/media, the sidebar) from the published set in site/published.toml; mise run site runs it first"
-run = "uv run python python/scripts/site_prep.py"
+# `python`, not `uv run`: site_prep.py imports only the standard library and the
+# repository's own Python package, so the Pages job must not sync a virtualenv's dev group.
+run = "python python/scripts/site_prep.py"
+env = { PYTHONPATH = "{{config_root}}/python" }
 
 [tasks.site]
 description = "Build the research site into site/dist: mise run site-prep, then Starlight, failing on a broken link or anchor; the Pages workflow deploys this build"
@@ -636,7 +639,9 @@ run = "uv run python python/scripts/check_work_frozen.py"
 
 [tasks.commit-msg-check]
 description = "A commit message's Conventional Commit subject, and its Fresh-review trailer on a work spec or plan; with --subject, a pull request title's subject only (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
-run = "uv run python python/scripts/check_commit_msg.py"
+# `python`, not `uv run`: check_commit_msg.py is standard-library only, so the PR title
+# workflow must not sync a virtualenv's dev group to run it.
+run = "python python/scripts/check_commit_msg.py"
 
 # The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing
 # else. prek.toml's local hooks are leaf tasks of this file like the gate's (ADR 0014): no second copy.
@@ -645,8 +650,8 @@ description = "What the pre-commit hook runs: prek over prek.toml (ADR 0026)"
 run = "prek run --quiet --config prek.toml"
 
 [tasks.check-windows]
-description = "Windows non-GPU half of the gate (fmt, lint, module layers, typecheck, Rust and Python tests; GPU tests skip without a driver)"
-depends = ["fmt-check", "lint", "check-layers", "typecheck", "test"]
+description = "Windows full gate (gate.py all --full: fmt, lint, module layers, typecheck, rustdoc, both test suites and the no-default-features matrix in parallel lanes; the Kaitai compiler and prek are required, and GPU tests skip without a driver)"
+run = "python python/scripts/gate.py all --full"
 
 # The Windows-only behaviour is all in the Python tree — junctions, reparse points, the
 # .cache link, the pytest basetemp workaround, Cargo's build locks and robocopy in the target
