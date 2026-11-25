@@ -1,0 +1,445 @@
+diff --git a/crates/stunt-cli/src/dbg_inshape.rs b/crates/stunt-cli/src/dbg_inshape.rs
+new file mode 100644
+index 00000000..297fcd55
+--- /dev/null
++++ b/crates/stunt-cli/src/dbg_inshape.rs
+@@ -0,0 +1,301 @@
++//! DBG_INSHAPE (#1030, temporary, not for commit): paints one shape's placements on the CPU,
++//! once in `PLAYONE`'s list order (SORT branches swapped by their facing flag, spheres as
++//! screen discs) and once with a z-buffer, and writes both as u16 index planes.
++#![allow(clippy::all, clippy::pedantic, clippy::nursery, clippy::restriction, missing_docs)]
++
++use std::fs;
++use std::path::PathBuf;
++
++use glam::{Mat4, Vec3, Vec4};
++use stunt_core::contracts::VisibilityCondition;
++use stunt_core::scene::{FilmScene, SceneFrame};
++use stunt_core::sod::{DBG_REC, DbgEv, ShadeLight, trace_sod};
++use stunt_core::vfs::parse_all;
++use stunt_render::CameraController;
++
++pub(crate) struct Inshape {
++    shape: u16,
++    events: Vec<DbgEv>,
++    out: PathBuf,
++    /// World translations of the baked placements.
++    baked: Vec<[f32; 3]>,
++    width: usize,
++    rows: usize,
++    height: u32,
++}
++
++enum Item {
++    Prim(usize),
++    Sort(Option<VisibilityCondition>, Vec<Item>, Vec<Item>),
++}
++
++impl Inshape {
++    pub(crate) fn from_env(scene: &FilmScene, out: Option<&PathBuf>, width: u32, height: u32, rows: Option<u32>) -> Option<Self> {
++        let shape: u16 = std::env::var("DBG_INSHAPE").ok()?.parse().ok()?;
++        let all = std::env::var("DBG_INSHAPE_ALL").ok()?;
++        let bytes = fs::read(&all).ok()?;
++        let parsed = parse_all(&bytes).ok()?;
++        let name = format!("MODEL_{shape:04X}.SOD");
++        let entry = parsed.entries.values().find(|e| e.name == name)?;
++        DBG_REC.with(|r| *r.borrow_mut() = Some(Vec::new()));
++        let _ = trace_sod(&entry.data, None, ShadeLight::default());
++        let events: Vec<DbgEv> = DBG_REC.with(|r| r.borrow_mut().take()).unwrap_or_default();
++        let baked: Vec<[f32; 3]> = scene
++            .world()
++            .map(|w| {
++                w.placements
++                    .records
++                    .iter()
++                    .filter(|p| p.shape == shape && p.drawn && p.mesh.is_some())
++                    .map(|p| p.position)
++                    .collect()
++            })
++            .unwrap_or_default();
++        eprintln!("[inshape] shape {shape}: {} events, {} baked placements", events.len(), baked.len());
++        Some(Self {
++            shape,
++            events,
++            out: out?.clone(),
++            baked,
++            width: width as usize,
++            rows: rows.unwrap_or(height) as usize,
++            height,
++        })
++    }
++
++    fn tree(&self) -> (Vec<Item>, Vec<usize>) {
++        // Returns the item tree and, per primitive index, its event index.
++        let mut prims = Vec::new();
++        let mut root: Vec<Item> = Vec::new();
++        let mut stack: Vec<(Option<VisibilityCondition>, Option<Vec<Item>>, Vec<Item>)> = Vec::new();
++        for (i, ev) in self.events.iter().enumerate() {
++            match ev {
++                DbgEv::Poly(..) | DbgEv::Sphere(..) => {
++                    let item = Item::Prim(prims.len());
++                    prims.push(i);
++                    match stack.last_mut() {
++                        Some(top) => top.2.push(item),
++                        None => root.push(item),
++                    }
++                }
++                DbgEv::Sort(c) => stack.push((*c, None, Vec::new())),
++                DbgEv::Ret => {
++                    let Some(top) = stack.last_mut() else { continue };
++                    if top.1.is_none() {
++                        top.1 = Some(std::mem::take(&mut top.2));
++                    } else {
++                        let (c, a, b) = stack.pop().unwrap();
++                        let item = Item::Sort(c, a.unwrap(), b);
++                        match stack.last_mut() {
++                            Some(t) => t.2.push(item),
++                            None => root.push(item),
++                        }
++                    }
++                }
++            }
++        }
++        while let Some((c, a, b)) = stack.pop() {
++            let item = match a {
++                Some(a) => Item::Sort(c, a, b),
++                None => Item::Sort(c, b, Vec::new()),
++            };
++            match stack.last_mut() {
++                Some(t) => t.2.push(item),
++                None => root.push(item),
++            }
++        }
++        (root, prims)
++    }
++
++    pub(crate) fn paint(&self, frame: &SceneFrame, tick: u32) {
++        let mut controller = CameraController::default();
++        controller.set_authored_transform(frame.view);
++        controller.projection_y_scale = self.height as f32 / self.rows as f32;
++        let u = controller.build_uniform_with_sky(frame.palette.sky);
++        let rp = Mat4::from_cols_array(&u.rotation_proj);
++        let eye = controller.eye_position();
++        let mut models: Vec<Mat4> = self
++            .baked
++            .iter()
++            .map(|p| Mat4::from_translation(Vec3::from_array(*p)))
++            .collect();
++        for a in &frame.view_facing {
++            if a.shape_id == self.shape {
++                models.push(Mat4::from_cols_array(&a.world_matrix));
++            }
++        }
++        let (root, prims) = self.tree();
++        let n = self.width * self.rows;
++        let mut painter = vec![u16::MAX; n];
++        let mut painter_id = vec![u16::MAX; n];
++        let mut zbuf = vec![u16::MAX; n];
++        let mut zbuf_id = vec![u16::MAX; n];
++        let mut depth = vec![f32::INFINITY; n];
++        // Placements in far-to-near order of their origins, as a painter would.
++        let mut order: Vec<(f32, Mat4)> = models
++            .iter()
++            .map(|m| ((m.w_axis.truncate() - eye).length(), *m))
++            .collect();
++        order.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
++        let mut swaps = 0usize;
++        let mut sorts = 0usize;
++        for (_, model) in &order {
++            let local_eye = model.inverse().transform_point3(eye);
++            let faces = |c: &VisibilityCondition| match c {
++                VisibilityCondition::FacesEye { point, normal } => {
++                    let d = Vec3::from_array(*point) - local_eye;
++                    Vec3::from_array(*normal).dot(d) < 0.0
++                }
++                _ => true,
++            };
++            let mut seq = Vec::new();
++            fn flatten(items: &[Item], faces: &dyn Fn(&VisibilityCondition) -> bool, seq: &mut Vec<usize>, sw: &mut usize, so: &mut usize) {
++                for it in items {
++                    match it {
++                        Item::Prim(i) => seq.push(*i),
++                        Item::Sort(c, a, b) => {
++                            *so += 1;
++                            let set = c.as_ref().is_some_and(|c| faces(c));
++                            if set {
++                                flatten(a, faces, seq, sw, so);
++                                flatten(b, faces, seq, sw, so);
++                            } else {
++                                *sw += 1;
++                                flatten(b, faces, seq, sw, so);
++                                flatten(a, faces, seq, sw, so);
++                            }
++                        }
++                    }
++                }
++            }
++            if std::env::var("DBG_INSHAPE_NOSWAP").is_ok() {
++                seq = (0..prims.len()).collect();
++            } else {
++                flatten(&root, &faces, &mut seq, &mut swaps, &mut sorts);
++            }
++            let mvp = rp * Mat4::from_translation(-eye) * *model;
++            for &pi in &seq {
++                let ev = &self.events[prims[pi]];
++                let (poly, color, vis): (Vec<Vec4>, u8, &VisibilityCondition) = match ev {
++                    DbgEv::Poly(v, c, vis) => (
++                        v.iter().map(|p| mvp * Vec3::from_array(*p).extend(1.0)).collect(),
++                        *c,
++                        vis,
++                    ),
++                    DbgEv::Sphere(c, r, col, vis) => {
++                        // A screen disc: the centre and a point `r` along the view's right axis.
++                        let cc = mvp * Vec3::from_array(*c).extend(1.0);
++                        if cc.w <= 0.05 {
++                            continue;
++                        }
++                        let right = rp.inverse() * Vec4::new(1.0, 0.0, 0.0, 0.0);
++                        let world_c = model.transform_point3(Vec3::from_array(*c));
++                        let edge = rp * (world_c - eye + right.truncate().normalize() * *r).extend(1.0);
++                        let (cx, cy) = self.px(cc);
++                        let (ex, _) = self.px(edge);
++                        let rad = (ex - cx).abs();
++                        let depth_c = cc.w;
++                        let ring: Vec<Vec4> = (0..24)
++                            .map(|k| {
++                                let t = k as f32 / 24.0 * std::f32::consts::TAU;
++                                // Back to clip space at the centre's w.
++                                let x = cx + rad * t.cos();
++                                let y = cy + rad * t.sin();
++                                let nx = x / self.width as f32 * 2.0 - 1.0;
++                                let ny = 1.0 - y / self.rows as f32 * 2.0;
++                                Vec4::new(nx * depth_c, ny * depth_c, 0.0, depth_c)
++                            })
++                            .collect();
++                        (ring, *col, vis)
++                    }
++                    _ => continue,
++                };
++                if !faces(vis) {
++                    continue;
++                }
++                let clipped = clip_w(&poly, 0.05);
++                if clipped.len() < 3 {
++                    continue;
++                }
++                let pts: Vec<(f32, f32, f32)> = clipped
++                    .iter()
++                    .map(|c| {
++                        let (x, y) = self.px(*c);
++                        (x, y, 1.0 / c.w)
++                    })
++                    .collect();
++                for t in 1..pts.len() - 1 {
++                    self.raster(pts[0], pts[t], pts[t + 1], |idx, invw| {
++                        painter[idx] = u16::from(color);
++                        painter_id[idx] = pi as u16;
++                        let z = 1.0 / invw;
++                        if z < depth[idx] {
++                            depth[idx] = z;
++                            zbuf[idx] = u16::from(color);
++                            zbuf_id[idx] = pi as u16;
++                        }
++                    });
++                }
++            }
++        }
++        eprintln!("[inshape] tick {tick}: {} placements, {sorts} sorts evaluated, {swaps} swapped", order.len());
++        let mut bytes = Vec::with_capacity(n * 8);
++        for plane in [&painter, &zbuf, &painter_id, &zbuf_id] {
++            for v in plane.iter() {
++                bytes.extend_from_slice(&v.to_le_bytes());
++            }
++        }
++        let _ = fs::write(self.out.join(format!("inshape_{tick}.bin")), bytes);
++    }
++
++    fn px(&self, c: Vec4) -> (f32, f32) {
++        let nx = c.x / c.w;
++        let ny = c.y / c.w;
++        (
++            (nx * 0.5 + 0.5) * self.width as f32,
++            (0.5 - ny * 0.5) * self.rows as f32,
++        )
++    }
++
++    fn raster(&self, a: (f32, f32, f32), b: (f32, f32, f32), c: (f32, f32, f32), mut put: impl FnMut(usize, f32)) {
++        let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
++        if area.abs() < 1e-9 {
++            return;
++        }
++        let x0 = a.0.min(b.0).min(c.0).floor().max(0.0) as i64;
++        let x1 = a.0.max(b.0).max(c.0).ceil().min(self.width as f32) as i64;
++        let y0 = a.1.min(b.1).min(c.1).floor().max(0.0) as i64;
++        let y1 = a.1.max(b.1).max(c.1).ceil().min(self.rows as f32) as i64;
++        for y in y0..y1 {
++            for x in x0..x1 {
++                let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
++                let w0 = ((b.0 - px) * (c.1 - py) - (b.1 - py) * (c.0 - px)) / area;
++                let w1 = ((c.0 - px) * (a.1 - py) - (c.1 - py) * (a.0 - px)) / area;
++                let w2 = 1.0 - w0 - w1;
++                if w0 < 0.0 || w1 < 0.0 || w2 < 0.0 {
++                    continue;
++                }
++                put(y as usize * self.width + x as usize, w0 * a.2 + w1 * b.2 + w2 * c.2);
++            }
++        }
++    }
++}
++
++/// Sutherland-Hodgman against `w >= near`.
++fn clip_w(poly: &[Vec4], near: f32) -> Vec<Vec4> {
++    let mut out = Vec::new();
++    for i in 0..poly.len() {
++        let p = poly[i];
++        let q = poly[(i + 1) % poly.len()];
++        let pin = p.w >= near;
++        let qin = q.w >= near;
++        if pin {
++            out.push(p);
++        }
++        if pin != qin {
++            let t = (near - p.w) / (q.w - p.w);
++            out.push(p + (q - p) * t);
++        }
++    }
++    out
++}
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 1eeed0c9..9e0d331d 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -281,6 +281,13 @@ pub(crate) fn run_headless(
+         written_frames: 0,
+         written_video_frames: 0,
+     };
++    let inshape = crate::dbg_inshape::Inshape::from_env(
++        scene,
++        config.out_dir.as_ref(),
++        config.width,
++        config.height,
++        config.viewport_rows,
++    );
+     let slot = PageSlot::default();
+     let open_started = Instant::now();
+     let mut renderer = Renderer::offscreen(scene, offscreen, Box::new(slot.clone()), options)
+@@ -303,6 +310,9 @@ pub(crate) fn run_headless(
+     let loop_started = Instant::now();
+     for (key, tick) in samples {
+         let frame = scene.frame(capture_tick(tick));
++        if let Some(inshape) = &inshape {
++            inshape.paint(&frame, capture_tick(tick) as u32);
++        }
+         renderer
+             .submit(&frame, None)
+             .map_err(|e| format!("render {key}: {e}"))?;
+diff --git a/crates/stunt-cli/src/main.rs b/crates/stunt-cli/src/main.rs
+index 90d26f9e..38cc05bc 100644
+--- a/crates/stunt-cli/src/main.rs
++++ b/crates/stunt-cli/src/main.rs
+@@ -21,6 +21,7 @@
+ //! - `[I6]` Strict 4:3 physical aspect ratio letterbox presentation.
+ 
+ mod config;
++mod dbg_inshape;
+ mod export;
+ mod film_slots;
+ mod headless;
+diff --git a/crates/stunt-core/src/sod/mod.rs b/crates/stunt-core/src/sod/mod.rs
+index c962fe52..0087512a 100644
+--- a/crates/stunt-core/src/sod/mod.rs
++++ b/crates/stunt-core/src/sod/mod.rs
+@@ -30,7 +30,7 @@ pub use vm::{
+     OP_POPCENTRE, OP_POPRELMAT, OP_PUSHCENTRE, OP_PUSHRELMAT, OP_PUTV, OP_REJ, OP_REJ2D, OP_REJVEC,
+     OP_RETURN, OP_ROTX, OP_ROTY, OP_ROTZ, OP_SHADE1, OP_SHADE2, OP_SHADE16, OP_SHADE216, OP_SHADES,
+     OP_SHLV, OP_SHRV, OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VEC, OP_VECTORS, OP_ZLINETO,
+-    RotAudit, RotUse, SOD_SCALE_TABLE, SodTrace, TraceStep, census_rotations, census_skip,
++    DBG_REC, DbgEv, RotAudit, RotUse, SOD_SCALE_TABLE, SodTrace, TraceStep, census_rotations, census_skip,
+     compute_scale_factor, opcode_mnemonic, trace_sod,
+ };
+ 
+diff --git a/crates/stunt-core/src/sod/vm.rs b/crates/stunt-core/src/sod/vm.rs
+index 487d2ab2..c9e5fc0a 100644
+--- a/crates/stunt-core/src/sod/vm.rs
++++ b/crates/stunt-core/src/sod/vm.rs
+@@ -18,6 +18,30 @@ use crate::sod::light::ShadeLight;
+ use crate::sod::{HEADER_FACES_VIEW, SodError};
+ use std::collections::HashMap;
+ 
++/// DBG_INSHAPE (#1030, temporary): the polygons, spheres, SORTs and RETURNs of one walk.
++#[derive(Clone, Debug)]
++pub enum DbgEv {
++    /// A polygon: metric vertices, palette index, gate.
++    Poly(Vec<[f32; 3]>, u8, VisibilityCondition),
++    /// A sphere: metric centre, metric radius, palette index, gate.
++    Sphere([f32; 3], f32, u8, VisibilityCondition),
++    /// A SORT whose branches were queued: the flag's gate if a REJ set it.
++    Sort(Option<VisibilityCondition>),
++    /// A RETURN.
++    Ret,
++}
++thread_local! {
++    /// DBG_INSHAPE recorder; `Some` records.
++    pub static DBG_REC: std::cell::RefCell<Option<Vec<DbgEv>>> = const { std::cell::RefCell::new(None) };
++}
++fn dbg_push(ev: DbgEv) {
++    DBG_REC.with(|r| {
++        if let Some(v) = r.borrow_mut().as_mut() {
++            v.push(ev);
++        }
++    });
++}
++
+ // Standard .SOD Opcodes per historical SOD.H and specification
+ /// Clear the accumulator vertex to `[0.0, 0.0, 0.0]` (no operands).
+ pub const OP_CLRV: u16 = 0x0000;
+@@ -1235,6 +1259,7 @@ impl<'a> Vm<'a> {
+                 .extend(line_polygons(a, b, self.cur_color, self.current_visibility));
+         } else {
+             let norm = compute_polygon_normal(&poly_verts);
++            dbg_push(DbgEv::Poly(poly_verts.clone(), self.cur_color, self.current_visibility));
+             self.polygons.push(RawPolygon {
+                 vertex_palette: Vec::new(),
+                 vertices: poly_verts,
+@@ -1372,7 +1397,7 @@ impl<'a> Vm<'a> {
+         // must lie ahead; a SORT re-entered through a loop spends the branch budget.
+         let first = usize::from(self.r.read_u16_le()?);
+         let second = usize::from(self.r.read_u16_le()?);
+-        self.r.read_u16_le()?;
++        let dbg_flag = self.r.read_u16_le()?;
+         let pos = self.r.pos();
+         let total_len = self.data.len();
+         let target = |skip: usize, delta: usize| {
+@@ -1388,6 +1413,7 @@ impl<'a> Vm<'a> {
+                 self.flow.malformed = Some(SodStopReason::MalformedBranch);
+             } else {
+                 let scope = (self.current_visibility, self.visibility_scope_end);
++                dbg_push(DbgEv::Sort(self.faces.get(&dbg_flag).copied()));
+                 self.branch_resume.push((after_at, scope.0, scope.1));
+                 self.branch_resume.push((second_at, scope.0, scope.1));
+             }
+@@ -1539,6 +1565,16 @@ impl<'a> Vm<'a> {
+         let centre_idx = self.read_reg_index()?;
+         let radius = f32::from(self.r.read_u16_le()?);
+         let center = add3(self.regs.get(centre_idx), self.relpos);
++        {
++            let k = self.header.scale_factor;
++            let g = f32::from(self.header.ground_y_offset);
++            dbg_push(DbgEv::Sphere(
++                [center[0] * k, (center[1] + g) * k, center[2] * k],
++                radius * k,
++                self.cur_color,
++                self.current_visibility,
++            ));
++        }
+         self.polygons.extend(sphere_polygons(
+             center,
+             radius,
+@@ -1762,6 +1798,7 @@ impl<'a> Vm<'a> {
+     /// `OP_RETURN`: resumes the next pending branch, or ends the stream.
+     fn return_op(&mut self, op_offset: usize) {
+         self.returned_at = Some(op_offset);
++        dbg_push(DbgEv::Ret);
+         // End of a SORT branch: run the next one; the last RETURN ends the stream.
+         if let Some((resume, visibility, scope_end)) = self.branch_resume.pop() {
+             self.flow.jump = Some(resume);

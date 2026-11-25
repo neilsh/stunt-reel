@@ -1,5 +1,5 @@
 ---
-summary: "Ranks the prop shapes costing LOCATION's and BOMB's props loss and why each loses: a late canyon camera step, per-shot camera offsets, in-shape cover order, far-town stand-ins, tick phase, lines; most of BOMB's street loss is unexplained."
+summary: "Ranks the prop shapes costing LOCATION's and BOMB's props loss and why each loses: a late canyon camera step, per-shot camera offsets, sphere cover order on the trees, far-town stand-ins, tick phase, lines; most of BOMB's street loss is unexplained."
 sidebar_label: "Costliest prop shapes"
 ---
 # Parity: The Prop Shapes That Cost LOCATION and BOMB
@@ -35,13 +35,14 @@ _Source: [the costliest prop shapes on LOCATION and BOMB](../../work/2026-11/989
 |---|---|---|---|
 | Canyon camera steps reach the capture 1 to 3 ticks early | `location` 1145, 1164, 1179, 1162, 1150 (in part) | 2.1 | [#1029](https://github.com/neilsh/stunt-reel/issues/1029) |
 | The whole frame is off by 1 to at least 4 px, per shot | `bomb` 1648, 1650, 1737, 1654, 1754, 1756 on the opening shot (7% of its loss); `[Hypothesis]` `location` 1150 at 2212 | 2.2 | [#1031](https://github.com/neilsh/stunt-reel/issues/1031) |
-| Overlapping polygons of one close shape cover each other in another order | `location` canyon rocks; `bomb` 542, 545 | 2.3 | [#1030](https://github.com/neilsh/stunt-reel/issues/1030) |
+| Overlapping spheres of one shape cover each other in list order | `bomb` 542, 545 | 2.3 | [#1066](https://github.com/neilsh/stunt-reel/issues/1066) |
+| Unexplained: the near face of a close canyon rock | `location` 1145 at 7019 | 2.3 | |
 | Far houses missing: the level-of-detail stand-ins | `bomb` `scenery-missing` 1585, 1904 | 2.4 | [#1032](https://github.com/neilsh/stunt-reel/issues/1032) |
 | A run of frames prefers a one-tick offset | `location` 1745, 996 | 2.5 | [#1033](https://github.com/neilsh/stunt-reel/issues/1033) |
 | Lines and outlines on a shape drawn in place | `location` 613 | 2.5 | [#1034](https://github.com/neilsh/stunt-reel/issues/1034) |
 | Unexplained: drawn in place, in the capture's colours | `bomb` 1756 on ticks 2036 to 2740 and 3312 to 3477 (about 88% of its loss) | 2.6 | [#1035](https://github.com/neilsh/stunt-reel/issues/1035) |
 
-In the issue's terms, 2.1, 2.2 and 2.5 are misplacement by the camera, not by the prop; 2.3 is draw order; 2.4 is missing; 2.6 has no cause yet.
+In the issue's terms, 2.1, 2.2 and 2.5 are misplacement by the camera, not by the prop; 2.3 is draw order for the trees and unexplained for the rock; 2.4 is missing; 2.6 has no cause yet.
 No shape inspected shows a wrong shade or a wrong shape of its own.
 
 ### 2.1 The canyon run steps late
@@ -65,11 +66,17 @@ _Source: [what the canyon and BOMB frames show](../../work/2026-11/989_props-los
 
 ### 2.3 Close shapes cover their own polygons differently
 
-`[Hypothesis]`: on canyon frames no tick offset raises (7019, 7317), our depth buffer shows a near face of the rock where the capture shows farther facets of the same shape ([sheet](../../work/2026-11/989_props-loss-shapes/images/location-7019.png)), and the `bomb` autumn trees sit in place but their leaf clusters cover each other differently (0.67 to 0.68 of their pixels match).
-`PLAYONE` paints a shape's polygons in display-list order ([`render-model.md`](render-model.md) § 2), which would explain both; no render in that order was made for these frames, and the whole-scene painters of [`painter-order.md`](painter-order.md) ordered by node, not by polygon.
-Testing it is [#1030](https://github.com/neilsh/stunt-reel/issues/1030).
+`PLAYONE` paints a shape's polygons in display-list order ([`render-model.md`](render-model.md) § 2), its `SORTON` branches in the order their facing flag picks ([`sod-vm-execution.md`](../playone-exe/sod-vm-execution.md) § 8.6).
+A CPU painter in that order, checked against a CPU z-buffer that reproduces our render, splits the two cases:
 
-_Source: [what the canyon and BOMB frames show](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-what-the-canyon-and-bomb-frames-show)._
+* **The `bomb` autumn trees 542 and 545** lose to list order: each later `SPHERE` covers the earlier ones and the trunk whatever its depth.
+  Inside the trees' pixels at ticks 2080 and 2300, the painter carries the capture's index on 0.85 to 0.91 of them against 0.59 to 0.69 for our render, while the z-buffer of the same discs stays within 0.021 of ours ([sheet](../../work/2026-11/1030_close-shape-order/images/bomb-2300-545-inshape.png)).
+  `[Bounded Observation]`: two trees at two ticks of one film.
+  Drawing spheres so in the renderer is [#1066](https://github.com/neilsh/stunt-reel/issues/1066).
+* **The canyon rock 1145** does not: at `location` 7019 the painter, `SORTON` swaps included, shows another polygon than the z-buffer on 20 of the rock's 49,095 pixels, and draws the same near face across the lower left that the capture does not show ([sheet](../../work/2026-11/1030_close-shape-order/images/location-7019-inshape.png)).
+  `[Hypothesis]`, untested: the rock's placement or geometry, the camera, or `PLAYONE` dropping a polygon that crosses the eye plane.
+
+_Source: [list order explains the BOMB trees, not the canyon rock](../../work/2026-11/1030_close-shape-order/journal.md#2026-11-24-list-order-explains-the-bomb-trees-not-the-canyon-rock)._
 
 ### 2.4 The far town draws no houses
 
@@ -99,6 +106,7 @@ _Source: [the BOMB street 1756 loses in place](../../work/2026-11/989_props-loss
 
 * **The `scale_index` distance cut as the cause of `bomb`'s missing far houses** (2026-11-23): keeping every object it drops draws the same picture at 1585 and 1904 ([the BOMB far town is the level-of-detail gate](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-bomb-far-town-is-the-level-of-detail-gate)).
 * **The near branch of every `SP_1NODE`** (2026-11-23): it draws the far houses but lowers `bomb` by 0.0118 and `location` by 0.0178, and the two `scenery-missing` ticks too ([same entry](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-bomb-far-town-is-the-level-of-detail-gate)).
+* **In-shape paint order for the canyon rock 1145 at `location` 7019** (2026-11-24): list order with `SORTON` swaps changes 20 of its 49,095 pixels ([list order explains the BOMB trees, not the canyon rock](../../work/2026-11/1030_close-shape-order/journal.md#2026-11-24-list-order-explains-the-bomb-trees-not-the-canyon-rock)).
 * **Timing as the whole of the canyon run's loss** (2026-11-23): frames such as 7019 and 7317 rise by no more than 0.05 at any offset from -10 to +12 ([the LOCATION canyon run steps late](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-location-canyon-run-steps-late)).
 
 ## Open questions
@@ -108,6 +116,6 @@ In order of the loss each would explain:
 1. **The canyon step rule** ([#1029](https://github.com/neilsh/stunt-reel/issues/1029)).
 2. **The per-shot camera offset** ([#1031](https://github.com/neilsh/stunt-reel/issues/1031)), which touches five of `bomb`'s eight worst shapes and 1756's opening shot.
 3. **The street's loss in place** ([#1035](https://github.com/neilsh/stunt-reel/issues/1035)), about 88% of `bomb`'s costliest shape.
-4. **In-shape paint order** ([#1030](https://github.com/neilsh/stunt-reel/issues/1030)).
+4. **Spheres in list order** ([#1066](https://github.com/neilsh/stunt-reel/issues/1066)), and what draws the canyon rock's near face at 7019.
 5. **The far town's stand-ins** ([#1032](https://github.com/neilsh/stunt-reel/issues/1032)).
 6. **One-tick phase** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)) and **the stadium's lines** ([#1034](https://github.com/neilsh/stunt-reel/issues/1034)).
