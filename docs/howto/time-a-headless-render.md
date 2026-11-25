@@ -2,7 +2,7 @@
 
 `--report-timing` makes a headless `stuntreel` render print, to stderr, how long its start-up phases and its frame loop took.
 It sits beside `--report-memory` ([Measure a headless render's memory](measure-a-renders-memory.md)) and, like it, writes no file; it reads the clock where `--report-memory` reads resident memory.
-On the synthetic `synthetic_timeline.flm`, the render store was byte-identical with the flag on and off (a `diff -r` of two `--out-dir` renders on a GPU adapter, 2026-11-23, and `report_timing_prints_each_phase_and_leaves_the_store_alone` in [`timing_test.rs`](../../crates/stunt-cli/tests/it/timing_test.rs), which runs on the software adapter and skips when none is installed, unless `STUNT_REQUIRE_GPU=1`).
+On the synthetic `synthetic_timeline.flm`, the render store was byte-identical with the flag on and off (a `diff -r` of two `--out-dir` renders on a GPU adapter, 2026-11-23, and `report_timing_prints_each_phase_and_leaves_the_store_alone` in [`timing_test.rs`](../../crates/stunt-cli/tests/it/timing_test.rs), which runs on the software adapter and skips when no software fallback adapter offers the clip distances the renderer requires (WARP lacks them; [ADR 0054](../adr/0054-depth-is-reversed-and-infinite.md)), even with `STUNT_REQUIRE_GPU=1`).
 A time read from one run on a busy machine is a smoke check, not a measurement.
 
 ## 1. Run it

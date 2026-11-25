@@ -1,14 +1,15 @@
 //! `stuntreel --report-timing` prints the phase times to stderr and changes no byte of the
 //! render store.
 //!
-//! The film is `synthetic_timeline.flm` on the software adapter; with no adapter the test
-//! skips, unless `STUNT_REQUIRE_GPU=1` (ADR 0006).
+//! The film is `synthetic_timeline.flm` on the software adapter; without one offering clip
+//! distances it skips, even under `STUNT_REQUIRE_GPU=1` (ADR 0054), and any other failure
+//! fails.
 
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
 
-use super::workers_test::{stuntreel, tree, workspace_root};
+use super::workers_test::{skips_without_software_adapter, stuntreel, tree, workspace_root};
 
 fn render(film: &Path, out: &Path, flags: &[&str]) -> Output {
     Command::new(stuntreel())
@@ -48,12 +49,14 @@ fn report_timing_prints_each_phase_and_leaves_the_store_alone() {
     let output = render(&film, &plain, &[]);
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let no_adapter = stderr.contains("Headless renderer failed");
         assert!(
-            no_adapter && std::env::var("STUNT_REQUIRE_GPU").as_deref() != Ok("1"),
+            skips_without_software_adapter(&stderr),
             "plain render failed: {stderr}"
         );
-        eprintln!("skipping: no software adapter ({stderr})");
+        eprintln!(
+            "[test] Skipping software-only test: no software fallback adapter with clip \
+             distances (WARP lacks them; ADR 0054): {stderr}"
+        );
         drop(fs::remove_dir_all(&root));
         return;
     }
