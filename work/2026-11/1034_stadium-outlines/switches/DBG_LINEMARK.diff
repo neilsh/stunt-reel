@@ -1,0 +1,65 @@
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index c1a2e5a7..6ec130c5 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -288,8 +288,17 @@ impl RenderPipelines {
+             immediate_size: 0,
+         });
+ 
+-        let shader_module =
+-            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
++        let mut dbg_source = include_str!("shaders/mode13h.wgsl").to_owned();
++        if std::env::var("DBG_LINEMARK").ok().and_then(|v| v.parse::<u32>().ok()) == Some(1) {
++            dbg_source = dbg_source.replace(
++                "const DBG_LINEMARK: bool = false;",
++                "const DBG_LINEMARK: bool = true;",
++            );
++        }
++        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
++            label: Some("mode13h.wgsl"),
++            source: wgpu::ShaderSource::Wgsl(dbg_source.into()),
++        });
+         let vertex_buffers = [
+             Some(Self::vertex_buffer_layout()),
+             Some(Self::apex_buffer_layout()),
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index e1b92d3f..8a50ee15 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -29,6 +29,7 @@ struct CameraUniform {
+ };
+ 
+ // SodVertex::flags bits of a line corner (contracts/shape/mod.rs VERTEX_FLAG_LINE*).
++const DBG_LINEMARK: bool = false;
+ const FLAG_LINE: u32 = 0x08u;
+ const FLAG_LINE_SIDE: u32 = 0x10u;
+ const FLAG_LINE_END: u32 = 0x20u;
+@@ -292,6 +293,9 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
+     // (research/formats/concepts/palette-and-shading.md), and the original picks shades with explicit
+     // palette offsets (OP_SHADES, OP_SHADE16), not a sun vector. Row 31 is full brightness.
+     out.light_level = 31u;
++    if (DBG_LINEMARK && (in.attr.y & FLAG_LINE) != 0u) {
++        out.light_level = select(31u | 32u, 31u | 64u, any(in.apex != in.position));
++    }
+ 
+     return out;
+ }
+@@ -326,7 +330,7 @@ fn vs_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> EdgeVer
+     var out: EdgeVertexOutput;
+     out.clip_position = v.clip_position;
+     out.palette_index = v.palette_index;
+-    out.light_level = v.light_level;
++    out.light_level = select(v.light_level, 31u | 128u, DBG_LINEMARK);
+     out.layer = v.layer;
+     out.shade = v.shade;
+     out.shade_w = v.shade_w;
+@@ -356,6 +360,9 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
+     if (in.prop_vertex != NO_PROP_VERTEX) {
+         shape = prop_shape(in.prop_vertex);
+     }
++    if (DBG_LINEMARK) {
++        shape = shape | (((in.light_level >> 5u) & 7u) << 13u);
++    }
+     out.plane = vec2<u32>((in.layer << 8u) | index, shape);
+     return out;
+ }

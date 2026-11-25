@@ -203,6 +203,7 @@ _Source: [the register projectors truncate toward the centre](../../work/2026-11
 
 * **Projected points** (section 8.14).
   Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; how to draw vertices on `PLAYONE`'s truncated pixels while keeping every depth tie the painter's order makes: the ground and the ocean, decals on non-horizontal facets and the outlines' cull all at once ([#1064](https://github.com/neilsh/stunt-reel/issues/1064), from the prototype `proto/1027-projector-rounding`).
+  On `location`'s stadium the lines' and outlines' mismatched pixels lie mostly a pixel toward the centre in the capture, and the prototype cuts the stadium's loss by about a third ([`prop-shape-loss.md` § 2.5](../parity/prop-shape-loss.md#25-one-tick-phase-and-lines)).
 
 * **Back faces** (section 8.12).
   Open: how many pixels a back face draws at its apexes and along thin parts; what a back face clipped across a screen corner draws; whether a collinear polygon of three or more points draws with gaps.
@@ -210,6 +211,7 @@ _Source: [the register projectors truncate toward the centre](../../work/2026-11
 
 * **Polygon outlines** (section 8.11).
   Open: how `0xC9D4` rounds a row's ends, so whether the outline matches the inclusive spans pixel for pixel; whether `PLAYONE` fills terrain through `0x7571` as well, since outlining terrain scored below the base on `LAND` and `BALLOON`; and whether the world's line-list outline drops end pixels a line quad draws.
+  On `location`'s stadium, #1027's truncation prototype lowers the index disagreement of the pixels beside the outlines but raises that of the outline pixels themselves ([`prop-shape-loss.md` § 2.5](../parity/prop-shape-loss.md#25-one-tick-phase-and-lines)), so these questions are what that rule leaves at a polygon's edge.
 
 * **Lines** (section 8.10).
   Open: a zero-length `ZLINETO` or two-vertex polygon, one pixel in `PLAYONE`, draws nothing here; `vm.rs` keeps the pen's point at `MOVETO` rather than reading the register at `ZLINETO`; whether anything resets `work:0x41EA`; whether the pen persists across `RETURN` and subobjects (`work:0x41EC` is global, `vm.rs` keeps one pen per decode); the Patch #3 image's line path.

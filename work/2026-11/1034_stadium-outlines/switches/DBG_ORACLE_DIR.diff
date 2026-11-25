@@ -1,0 +1,43 @@
+diff --git a/crates/stunt-score/src/parity/mod.rs b/crates/stunt-score/src/parity/mod.rs
+index 2fbfdd09..f9f86b34 100644
+--- a/crates/stunt-score/src/parity/mod.rs
++++ b/crates/stunt-score/src/parity/mod.rs
+@@ -341,8 +341,18 @@ fn score_matched(
+         let capture_sky = skies
+             .get(&frame.ordinal)
+             .ok_or_else(|| format!("captured frame {} has no sky mask", frame.ordinal))?;
+-        let reference = matched::load_captured(reference_dir, frame)?;
++        let mut reference = matched::load_captured(reference_dir, frame)?;
+         let render = load_render_frame(store, frame.film_tick)?;
++        if let Ok(dir) = std::env::var("DBG_ORACLE_DIR") {
++            let path = std::path::Path::new(&dir).join(format!("{}.mask", frame.film_tick));
++            if let Ok(mask) = std::fs::read(&path) {
++                for ((want, &ours), &m) in reference.indices.iter_mut().zip(&render.indices).zip(&mask) {
++                    if m != 0 {
++                        *want = ours;
++                    }
++                }
++            }
++        }
+         let credits_missing = render.credits && !overlay_drawn(&render.layers);
+         let score = score_frame(
+             &reference,
+@@ -353,6 +363,18 @@ fn score_matched(
+             &capture_sky.sky,
+             policy,
+         );
++        if let (Ok(want), Some(map)) = (std::env::var("DBG_SHAPE_DUMP"), score.shape_loss.as_ref()) {
++            for w in want.split(',').filter_map(|s| s.parse::<u16>().ok()) {
++                eprintln!(
++                    "SHAPEDUMP {} {} {} {:.6} {:.6}",
++                    w,
++                    frame.film_tick,
++                    score.metrics.scored,
++                    score.metrics.ssim,
++                    map.get(&(w + 1)).copied().unwrap_or(0.0)
++                );
++            }
++        }
+         let ordinal = frame.ordinal as usize;
+         rows.push(FrameRow {
+             ordinal,
