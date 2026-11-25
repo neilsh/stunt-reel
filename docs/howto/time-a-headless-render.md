@@ -62,13 +62,22 @@ mise run ab -- --out work/2026-11/<issue>_<slug> --name two-builds     --variant
 * **Rounds and order.**
   `--rounds` (alias `--pairs`) runs every variant once per round.
   `--order alternate` runs them forward in even rounds and reversed in odd ones, `rotate` starts each round one variant later; the two agree for two variants.
+* **Warm-up.**
+  `--warmup` rounds (default 1) run every variant once before a cell's first round, untimed and not kept; the runner prints their loop times.
 * **Quiet machine.**
-  It refuses to start, and stops between runs, while a `stuntreel`, `cargo` or `rustc` process runs; `--force` overrides.
+  It refuses to start, and stops before a timed run, while a `stuntreel`, `cargo` or `rustc` process runs.
+  Before each timed run it measures the whole machine over 2 seconds, repeatedly for up to 10 minutes, until it is at most `--max-load` busy (a share of all logical CPUs, default `0.10`), and stops if it never is.
+  During each timed run it samples every 0.25 s the CPU time of the machine and of the render, and records the rest, the share other processes used, as the row's `other_load`; a run over `--max-load` is kept in the CSV and the timing stops after it.
+  Warm-up runs pass none of these checks.
+  Other processes' load slows a lavapipe loop: on Span B, 8 spinning processes on the 16-thread laptop raised the median `19.3%`, and one run at `10.3%` other load ran `16.3%` slower than the slowest of the four quiet runs before it (`[Bounded Observation]`, `#1018`, [section 3 of the render-time note](../../research/parity/lavapipe-render-time.md#3-where-loop-time-goes)).
+  `--force` skips all three checks.
 * **Output.**
-  `<out>/<name>.csv` has one row per run: the cell, round, position in the round, variant, loop and wall ms (the loop from `--report-timing`, the wall from the runner's stopwatch), the `frames`, `layers`, `palettes` and `shapes` hashes and the adapter's name and class.
-  `<out>/<name>-summary.md` has, per cell, each variant's loop median, minimum, range, change against the baseline's median, "faster in N of M" rounds (a strictly smaller loop in the same round), the wall median, and whether its stores match the baseline's.
+  `<out>/<name>.csv` has one row per run: the cell, round, position in the round, variant, loop and wall ms (the loop from `--report-timing`, the wall from the runner's stopwatch), the `frames`, `layers`, `palettes` and `shapes` hashes, the adapter's name and class, and `other_load`.
+  `<out>/<name>-summary.md` has, per cell, each variant's loop median, minimum, range, change against the baseline's median, "faster in N of M" rounds (a strictly smaller loop in the same round), the wall median, the largest `other_load` of its runs, and whether its stores match the baseline's.
   It never overwrites either file; `--summarize <csv>` prints a committed CSV's summary again.
 
 Commit the CSV in the work folder and link it from the journal entry that quotes its figures ([`work/README.md`](../../work/README.md#journal-entries)).
-The runner's own A/A (one binary on both sides) missed the owner's bar: a median loop change of `-9.4%` against `±1%` on one run (`[Bounded Observation]`), and the eight runs' loops spread `32.2%`, so read the CSV's spread beside the median.
+The runner's own A/A (one binary on both sides) missed the owner's bar before the load checks: a median loop change of `-9.4%` against `±1%` on one run (`[Bounded Observation]`), and the eight runs' loops spread `32.2%`, so read the CSV's spread beside the median.
 _Source: [the same binary on both sides of `mise run ab`](../../work/2026-11/1004_ab-timing-runner/journal.md#2026-11-23-the-same-binary-on-both-sides-of-mise-run-ab-span-b-on-lavapipe)._
+The first A/A with the load checks stopped after 5 of 8 runs on a run at `10.3%` other load, so the bar is unjudged; quiet runs still spread `9.6%` in one probe (`[Bounded Observation]`).
+_Source: [what spreads one binary's Span B lavapipe runs](../../work/2026-11/1018_lavapipe-ab-variance/journal.md#2026-11-24-what-spreads-one-binarys-span-b-lavapipe-runs), [the A/A check after the fix](../../work/2026-11/1018_lavapipe-ab-variance/journal.md#2026-11-24-the-aa-check-after-the-fix-stopped-by-the-load-check)._

@@ -3,28 +3,35 @@
 ``mise run ab`` (``python/scripts/ab.py``) times *variants* of one headless ``stuntreel`` render:
 two binaries, or one binary under named environment variables. Variants alternate inside each
 round so a machine's drift lands on every variant alike, and each run's row records what a
-reviewer needs to recompute a figure: the loop and wall time, the four store hashes and the
-adapter ``render.json`` names. The CSV is the raw data (committed beside the journal entry that
+reviewer needs to recompute a figure: the loop and wall time, the four store hashes, the
+adapter ``render.json`` names, and the share of the machine's CPUs other processes used meanwhile
+(:class:`OtherLoad`), since that load slows a lavapipe render (#1018). The CSV is the raw data (committed beside the journal entry that
 cites it); :func:`summarize` reads rows, so a committed CSV can be summarised again.
 
 The loop time is ``--report-timing``'s ``loop`` line
 (``docs/howto/time-a-headless-render.md``); the wall time is this module's stopwatch around the
-whole process. Nothing here prints or chooses an exit code (ADR 0010).
+whole process. Nothing here prints or chooses an exit code (ADR 0010). CPU times come from the
+standard library alone: ``GetSystemTimes`` and ``GetProcessTimes`` on Windows, ``/proc`` on Linux.
 """
 
 from __future__ import annotations
 
 import csv
+import ctypes
 import io
 import json
+import math
 import os
 import re
 import shlex
 import statistics
+import sys
+import threading
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NamedTuple, Self
 
 from stunt_reel import dataroot, process_tree
 from stunt_reel.hashing import file_sha256
@@ -34,15 +41,21 @@ from stunt_reel.parity_pipeline import RENDER_FLAGS, SIDATA
 __all__ = [
     "BINARY_KEY",
     "COLUMNS",
+    "MAX_LOAD",
     "MODES",
     "PLANES",
     "BusyError",
     "Cell",
+    "CpuSample",
+    "OtherLoad",
     "Row",
     "RunError",
+    "Timing",
     "Variant",
     "busy_processes",
     "environment_for",
+    "machine_load",
+    "other_share",
     "parse_loop_ms",
     "parse_variant",
     "read_csv",
@@ -50,6 +63,7 @@ __all__ = [
     "round_order",
     "run_once",
     "summarize",
+    "wait_for_quiet",
     "write_csv",
 ]
 
@@ -70,7 +84,18 @@ COLUMNS = (
     *(f"{plane}_sha256" for plane in PLANES),
     "adapter",
     "adapter_class",
+    "other_load",
 )
+#: The columns of a CSV written before ``other_load`` was recorded, read as an unknown load.
+_COLUMNS_BEFORE_LOAD = COLUMNS[:-1]
+#: The default largest share of all logical CPUs other processes may use before and during a run.
+MAX_LOAD = 0.10
+#: Seconds over which :func:`machine_load` measures the machine before each timed run.
+QUIET_WINDOW_S = 2.0
+#: Seconds a run waits for the machine to fall to the load bar before the timing stops.
+QUIET_WAIT_S = 600.0
+#: Seconds between the samples :class:`OtherLoad` takes while a render runs.
+SAMPLE_S = 0.25
 #: What counts as a competing process, by image name without ``.exe``, case-blind.
 _BUSY = frozenset({"stuntreel", "cargo", "rustc"})
 _LOOP_LINE = re.compile(r"^\[stuntreel\] timing loop (\d+(?:\.\d+)?) ms\s*$", re.MULTILINE)
@@ -122,6 +147,8 @@ class Row:
     sha256: Mapping[str, str]
     adapter: str
     adapter_class: str
+    #: The share of all logical CPUs other processes used during the run; NaN when unknown.
+    other_load: float = math.nan
 
     def fields(self) -> list[str]:
         """The row's values in :data:`COLUMNS` order."""
@@ -135,7 +162,197 @@ class Row:
             *(self.sha256[plane] for plane in PLANES),
             self.adapter,
             self.adapter_class,
+            f"{self.other_load:.3f}",
         ]
+
+
+class Timing(NamedTuple):
+    """What one render measured: :func:`run_once`'s result."""
+
+    loop_ms: float
+    wall_ms: float
+    sha256: dict[str, str]
+    adapter: str
+    adapter_class: str
+    other_load: float
+
+
+class CpuSample(NamedTuple):
+    """CPU seconds summed over every logical CPU at one moment: busy, in all, and the render's."""
+
+    busy: float
+    total: float
+    own: float
+
+
+def other_share(first: CpuSample, last: CpuSample) -> float:
+    """The share of all logical CPUs that processes other than the render used between samples.
+
+    NaN when no time passed between them; never below 0.
+    """
+    total = last.total - first.total
+    if total <= 0:
+        return math.nan
+    return max(0.0, (last.busy - first.busy - (last.own - first.own)) / total)
+
+
+#: Seconds per tick of a Windows ``FILETIME`` duration.
+_FILETIME_S = 1e-7
+#: ``OpenProcess`` access that lets ``GetProcessTimes`` read another process.
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
+def _system_seconds() -> tuple[float, float]:
+    """CPU seconds since boot summed over every logical CPU: ``(busy, total)``.
+
+    Raises ``OSError`` on a system that is neither Windows nor has ``/proc/stat``.
+    """
+    if sys.platform == "win32":
+        idle, kernel, user = ctypes.c_uint64(), ctypes.c_uint64(), ctypes.c_uint64()
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        if not kernel32.GetSystemTimes(
+            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        # Kernel time includes idle time.
+        total = (kernel.value + user.value) * _FILETIME_S
+        return total - idle.value * _FILETIME_S, total
+    else:  # noqa: RET505 - mypy checks only the branch of the platform it runs on
+        first = Path("/proc/stat").read_text(encoding="ascii").splitlines()[0].split()
+        # user nice system idle iowait irq softirq steal: guest time is already in user and nice.
+        ticks = [int(word) for word in first[1:9]]
+        total = sum(ticks) / os.sysconf("SC_CLK_TCK")
+        return total - (ticks[3] + ticks[4]) / os.sysconf("SC_CLK_TCK"), total
+
+
+class _ProcessClock:
+    """The CPU seconds process *pid* has used, user and kernel.
+
+    Raises ``ProcessLookupError`` when *pid* cannot be read at the start, ``OSError`` from
+    :meth:`seconds` once it is gone; on Windows the open handle keeps it readable after exit.
+    """
+
+    def __init__(self, pid: int) -> None:
+        self._pid = pid
+        self._handle: int | None = None
+        if sys.platform == "win32":
+            from ctypes import wintypes  # noqa: PLC0415 - Windows only
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.OpenProcess.restype = wintypes.HANDLE
+            kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE, *[ctypes.c_void_p] * 4]
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+            self._kernel32 = kernel32
+            handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not handle:
+                err = ctypes.WinError(ctypes.get_last_error())
+                raise ProcessLookupError(f"cannot read process {pid}: {err}")
+            self._handle = handle
+        try:
+            self.seconds()
+        except OSError as err:
+            self.close()
+            raise ProcessLookupError(f"cannot read process {pid}: {err}") from err
+
+    def seconds(self) -> float:
+        """The process's CPU seconds so far."""
+        if sys.platform == "win32":
+            times = [ctypes.c_uint64() for _ in range(4)]
+            if not self._kernel32.GetProcessTimes(self._handle, *map(ctypes.byref, times)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return (times[2].value + times[3].value) * _FILETIME_S
+        else:  # noqa: RET505 - mypy checks only the branch of the platform it runs on
+            stat = Path(f"/proc/{self._pid}/stat").read_text(encoding="ascii")
+            # After the ``(comm)`` field: state is field 3, utime and stime fields 14 and 15.
+            rest = stat.rsplit(")", 1)[1].split()
+            return (int(rest[11]) + int(rest[12])) / os.sysconf("SC_CLK_TCK")
+
+    def close(self) -> None:
+        """Release the Windows process handle; nothing elsewhere."""
+        if sys.platform == "win32" and self._handle is not None:
+            self._kernel32.CloseHandle(self._handle)
+            self._handle = None
+
+
+class OtherLoad:
+    """While its ``with`` block runs, samples the machine and process *pid* every :data:`SAMPLE_S`.
+
+    :attr:`share` is :func:`other_share` from entry to the last sample taken while *pid* could be
+    read. Raises ``ProcessLookupError`` when *pid* is already gone or this system gives no CPU
+    times.
+    """
+
+    def __init__(self, pid: int) -> None:
+        self._process = _ProcessClock(pid)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._first: CpuSample | None = None
+        self._last: CpuSample | None = None
+
+    def _sample(self) -> CpuSample | None:
+        try:
+            busy, total = _system_seconds()
+            own = self._process.seconds()
+        except OSError:
+            return None
+        return CpuSample(busy, total, own)
+
+    def _loop(self) -> None:
+        while not self._stop.wait(SAMPLE_S):
+            if (sample := self._sample()) is not None:
+                self._last = sample
+
+    def __enter__(self) -> Self:
+        self._first = self._sample()
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self._stop.set()
+        self._thread.join()
+        self._process.close()
+
+    @property
+    def share(self) -> float:
+        """Other processes' share of all logical CPUs; NaN with fewer than two samples."""
+        if self._first is None or self._last is None:
+            return math.nan
+        return other_share(self._first, self._last)
+
+
+def machine_load(seconds: float) -> float:
+    """The share of all logical CPUs busy over the next *seconds*, every process included.
+
+    NaN when no CPU time passed; raises ``OSError`` where :func:`_system_seconds` does.
+    """
+    busy, total = _system_seconds()
+    time.sleep(seconds)
+    last_busy, last_total = _system_seconds()
+    if last_total <= total:
+        return math.nan
+    return (last_busy - busy) / (last_total - total)
+
+
+def wait_for_quiet(
+    max_load: float,
+    *,
+    timeout: float = QUIET_WAIT_S,
+    measure: Callable[[float], float] | None = None,
+    window: float = QUIET_WINDOW_S,
+) -> float:
+    """Measure the machine in *window*-second spans until it is at most *max_load* busy.
+
+    *measure* defaults to :func:`machine_load`. Returns the last load measured, above *max_load*
+    once *timeout* seconds of spans have passed.
+    """
+    measure = measure or machine_load
+    waited = 0.0
+    while True:
+        load = measure(window)
+        waited += window
+        if load <= max_load or waited >= timeout:
+            return load
 
 
 def parse_variant(text: str) -> Variant:
@@ -221,11 +438,21 @@ def render_argv(
     return argv
 
 
-Runner = Callable[[Sequence[str], Mapping[str, str], float], tuple[int, str]]
+#: Runs a render from argv, env and timeout: ``(exit code, output, other processes' load)``.
+Runner = Callable[[Sequence[str], Mapping[str, str], float], tuple[int, str, float]]
 
 
-def _process_runner(argv: Sequence[str], env: Mapping[str, str], timeout: float) -> tuple[int, str]:
-    return process_tree.run(argv, timeout, cwd=dataroot.REPO_ROOT, env=env)
+def _process_runner(
+    argv: Sequence[str], env: Mapping[str, str], timeout: float
+) -> tuple[int, str, float]:
+    with process_tree.spawn(argv, cwd=dataroot.REPO_ROOT, env=env) as proc:
+        try:
+            meter = OtherLoad(proc.pid)
+        except OSError:
+            return (*process_tree.wait(proc, timeout), math.nan)
+        with meter:
+            code, output = process_tree.wait(proc, timeout)
+        return code, output, meter.share
 
 
 def run_once(
@@ -236,14 +463,14 @@ def run_once(
     expect_class: str,
     run: Runner = _process_runner,
     clock: Callable[[], float] = time.perf_counter,
-) -> tuple[float, float, dict[str, str], str, str]:
-    """One render: ``(loop ms, wall ms, plane hashes, adapter name, adapter class)``.
+) -> Timing:
+    """One render's :class:`Timing`.
 
     *expect_class* is ``cpu`` or ``hardware``. Raises :class:`RunError` for a non-zero exit, a
     missing loop line or store plane, or an adapter of another class than asked for.
     """
     started = clock()
-    code, output = run(argv, env, RUN_TIMEOUT_S)
+    code, output, other_load = run(argv, env, RUN_TIMEOUT_S)
     wall_ms = (clock() - started) * 1000.0
     name = Path(argv[0]).name
     if code != 0:
@@ -259,7 +486,7 @@ def run_once(
         raise RunError(f"{name} left no usable record in {out_dir}: {err}") from err
     if adapter_class != expect_class:
         raise RunError(f"asked for a {expect_class} adapter, the render used {adapter_name!r}")
-    return loop_ms, wall_ms, sha256, adapter_name, adapter_class
+    return Timing(loop_ms, wall_ms, sha256, adapter_name, adapter_class, other_load)
 
 
 def write_csv(rows: Iterable[Row]) -> str:
@@ -272,9 +499,12 @@ def write_csv(rows: Iterable[Row]) -> str:
 
 
 def read_csv(text: str) -> list[Row]:
-    """The rows of a CSV that :func:`write_csv` wrote. Raises ``ValueError`` for another header."""
+    """The rows of a CSV that :func:`write_csv` wrote, an older one without ``other_load`` too.
+
+    Raises ``ValueError`` for another header.
+    """
     reader = csv.DictReader(io.StringIO(text))
-    if tuple(reader.fieldnames or ()) != COLUMNS:
+    if tuple(reader.fieldnames or ()) not in (COLUMNS, _COLUMNS_BEFORE_LOAD):
         raise ValueError(f"not an ab CSV: header is {reader.fieldnames}, want {list(COLUMNS)}")
     return [
         Row(
@@ -287,6 +517,7 @@ def read_csv(text: str) -> list[Row]:
             sha256={plane: line[f"{plane}_sha256"] for plane in PLANES},
             adapter=line["adapter"],
             adapter_class=line["adapter_class"],
+            other_load=float(line.get("other_load", "nan")),
         )
         for line in reader
     ]
@@ -296,13 +527,20 @@ def _fmt(value: float) -> str:
     return f"{value:.1f}".removesuffix(".0")
 
 
+def _load(runs: Sequence[Row]) -> str:
+    """The largest other-process load of *runs* as a percentage; ``-`` when none was recorded."""
+    known = [r.other_load for r in runs if not math.isnan(r.other_load)]
+    return f"{max(known) * 100:.0f}%" if known else "-"
+
+
 def _change(base: float, other: float) -> float:
     return (other - base) / base * 100.0
 
 
 def summarize(rows: Sequence[Row]) -> str:
     """A Markdown summary per cell: each variant's loop median, minimum and range, its change
-    against the cell's first variant, and the rounds it was faster in.
+    against the cell's first variant, the rounds it was faster in, and the largest share of the
+    CPUs other processes used during any of its runs.
 
     "Faster" is a strictly smaller loop time than the first variant's in the same round. The
     ``stores`` column says which planes hash like the first variant's, and ``varies`` when a
@@ -327,8 +565,11 @@ def summarize(rows: Sequence[Row]) -> str:
                 f"Rounds: {len({r.round for r in mine})}. Baseline: `{variants[0]}`."
             ),
             "",
-            "| Variant | Loop ms by round | Median | Min | Range | Change | Faster | Wall median | Stores |",
-            "|---|---|---|---|---|---|---|---|---|",
+            (
+                "| Variant | Loop ms by round | Median | Min | Range | Change | Faster "
+                "| Wall median | Other load | Stores |"
+            ),
+            "|---|---|---|---|---|---|---|---|---|---|",
         ]
         for name in variants:
             runs = by_variant[name]
@@ -345,7 +586,7 @@ def summarize(rows: Sequence[Row]) -> str:
             parts.append(
                 f"| {name} | {', '.join(_fmt(x) for x in loops)} | {_fmt(median)} | {_fmt(min(loops))} "
                 f"| {_fmt(min(loops))}..{_fmt(max(loops))} | {change} | {faster} "
-                f"| {_fmt(wall)} | {_stores(runs, base)} |"
+                f"| {_fmt(wall)} | {_load(runs)} | {_stores(runs, base)} |"
             )
         parts.append("")
     return "\n".join(parts)
