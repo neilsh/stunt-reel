@@ -1,5 +1,5 @@
 ---
-summary: "Ranks the prop shapes costing LOCATION's and BOMB's props loss and why each loses: a camera held through far-moving slices (fixed), pages drawn a tick off while the camera moves, sphere cover order on the trees, far-town stand-ins that drew no `BLOCK` (fixed), tick phase, and the stadium's edges and chalk lines and the BOMB street's lane dashes a pixel off toward the projection centre."
+summary: "Ranks the prop shapes costing LOCATION's and BOMB's props loss and why each loses: a camera held through far-moving slices (fixed), pages drawn a tick off while the camera moves, sphere cover order on the trees, far-town stand-ins that drew no `BLOCK` (fixed), tick phase, and the stadium's edges and chalk lines and the BOMB street's lane dashes a pixel off, mostly toward the projection centre."
 sidebar_label: "Costliest prop shapes"
 ---
 # Parity: The Prop Shapes That Cost LOCATION and BOMB
@@ -120,7 +120,7 @@ The other part, about 88%, falls on ticks 2036 to 2740 and 3312 to 3477, where t
 _Source: [the BOMB street 1756 loses in place](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-bomb-street-1756-loses-in-place)._
 
 `[Bounded Observation]`, one film's 81 scored frames on those ranges, on the GPU at `4d5c01b0` (1756's film mean there, 0.0083005, rounds to #989's 0.00830 on the canonical lavapipe at `3e53f767`): the loss is the street's own lane dashes, not the shapes on it.
-Windows wholly inside the street carry 68% of its loss on 2036 to 2740 and 51% on 3312 to 3477, and of those, windows where every pixel has the capture's index carry none.
+Windows wholly inside the street carry 68% of its loss on 2036 to 2740 and 51% on 3312 to 3477, and of those, windows where every pixel has the capture's index carry 0.0% and 0.1%, respectively.
 Giving the capture our index on a set of pixels (the capture-side oracle of 2.5) removes, of 1756's summed loss on each range:
 
 | Pixels given our index | 2036 to 2740 | 3312 to 3477 |
@@ -131,7 +131,7 @@ Giving the capture our index on a set of pixels (the capture-side oracle of 2.5)
 | every pixel not 1756's: the lots, trees, buildings, actors and ground beside it | 11% | 26% |
 
 So windows straddling the street's edges charge it part of its neighbours' loss, 11% and 26% of its own: [#1035](https://github.com/neilsh/stunt-reel/issues/1035)'s hypothesis holds for that part and not for the bulk.
-The dashes are outline lines: every line pixel of 1756 comes from the world's outline line list ([`sod-vm-lines-spans.md` § 8.11](../playone-exe/sod-vm-lines-spans.md#811-polygon-spans-include-both-ends)), and where a dash pixel of ours meets street in the capture, the capture's dash lies mostly a row higher, toward the projection centre (7,374 against 496 below the centre), and a column to the right on both sides of the centre ([sheet](../../work/2026-11/1035_bomb-street-loss/images/bomb-2520-street-dashes.png)).
+The dashes are outline lines: every line pixel of 1756 comes from the world's outline line list ([`sod-vm-lines-spans.md` § 8.11](../playone-exe/sod-vm-lines-spans.md#811-polygon-spans-include-both-ends)), and among its disagreeing outline pixels, the capture's dash lies mostly a row higher, toward the projection centre (7,374 against 496 below the centre), and a column to the right on both sides of the centre ([sheet](../../work/2026-11/1035_bomb-street-loss/images/bomb-2520-street-dashes.png)).
 #1027's prototype of the truncation rule of 2.5 cuts 1756's loss by 37% on 2036 to 2740 and 22% on 3312 to 3477, about half of what the dashes own, and raises 71 of the 81 frames; drawing the rule is [#1064](https://github.com/neilsh/stunt-reel/issues/1064).
 The horizontal offset, which is not toward the centre, and the rest of the dash mismatch are open with the outline pixels of [`sod-vm-lines-spans.md` § 10](../playone-exe/sod-vm-lines-spans.md#10-open-questions).
 
