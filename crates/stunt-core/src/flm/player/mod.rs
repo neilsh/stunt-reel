@@ -202,7 +202,6 @@ pub(crate) struct FlmPlayer<'a> {
     slots: [SlotState; SIFILM_MAX_OBJ],
     variables: [u16; 16],
     view_obj: u8,
-    last_eye: Option<[f32; 3]>,
     last_view_obj: Option<u8>,
     last_error: Option<FlmError>,
     focal_distance: f32,
@@ -232,7 +231,6 @@ impl<'a> FlmPlayer<'a> {
             slots: std::array::from_fn(|_| SlotState::default()),
             variables: initial_variables(),
             view_obj: 0,
-            last_eye: None,
             last_view_obj: None,
             last_error: None,
             focal_distance: 0.0,
@@ -560,8 +558,7 @@ impl<'a> FlmPlayer<'a> {
         };
         let roll = view_slot.map_or(0.0, |slot| bam_to_radians(slot.rot_bam[0]));
 
-        let cut = detect_camera_cut(eye, self.last_eye, self.view_obj, self.last_view_obj);
-        self.last_eye = Some(eye);
+        let cut = detect_camera_cut(self.view_obj, self.last_view_obj);
         self.last_view_obj = Some(self.view_obj);
 
         let fov = if self.focal_distance > 0.0 {

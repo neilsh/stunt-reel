@@ -306,3 +306,29 @@ fn the_view_slot_is_listed_only_when_its_shadow_is_queued() {
     assert_eq!(listed(SIF_EXISTS | SIF_SHADOW, 7, true), None);
     assert_eq!(listed(all, 7, false), None);
 }
+
+#[test]
+fn a_camera_moving_far_in_one_slice_interpolates_and_does_not_cut() {
+    // Slot 0, a moving rig with fixed angles, is the view; it moves 100 m along x in a
+    // 10-tick slice, as PLAYONE's slot interpolation (image `0x3E7A..0x3ECA`) lerps it.
+    let x_at = |metres: i32| {
+        let mut op = vec![0x40];
+        for word in [metres << 16, 0, 0] {
+            op.extend_from_slice(&word.to_le_bytes());
+        }
+        op
+    };
+    let mut film = Vec::from(&b"FILM"[..]);
+    let mut first = vec![0x00, SIF_EXISTS | SIF_MOVES, 0, 0, 0, 0, 0, 0];
+    first.extend(x_at(0));
+    first.extend([0x90, 0xFF]);
+    push_slice(&mut film, &first);
+    let mut second = x_at(100);
+    second.push(0xFF);
+    push_slice_with_duration(&mut film, u16::try_from(first.len()).unwrap(), 10, &second);
+
+    let timeline = FilmTimeline::from_bytes(&film).expect("timeline");
+    let mid = timeline.sample(5.0).expect("sample").camera;
+    assert!(!mid.cut_from_previous);
+    assert!((mid.eye[0].abs() - 50.0).abs() < 1e-3, "eye {:?}", mid.eye);
+}

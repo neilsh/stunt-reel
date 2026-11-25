@@ -10,9 +10,6 @@ use crate::contracts::trajectory::{
 };
 use std::f32::consts::TAU;
 
-/// Threshold in meters for camera displacement triggering cut suppression `[I4]`.
-pub(crate) const CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS: f32 = 50.0;
-
 /// Convert a 16-bit Binary Angular Measurement (BAM) to radians `[0, 2*pi)`.
 #[inline]
 pub(crate) fn bam_to_radians(raw_u16: u16) -> f32 {
@@ -211,26 +208,12 @@ fn interpolate_joints(a: &[(u16, u16)], b: &[(u16, u16)], t: f32) -> Vec<(u16, u
         .collect()
 }
 
-/// Detect camera cut between successive frames based on view object change or large eye displacement.
-pub(crate) fn detect_camera_cut(
-    current_eye: [f32; 3],
-    last_eye: Option<[f32; 3]>,
-    current_view_obj: u8,
-    last_view_obj: Option<u8>,
-) -> bool {
-    if last_view_obj.is_some_and(|last_v| current_view_obj != last_v) {
-        return true;
-    }
-    if let Some(last_e) = last_eye {
-        let dx = current_eye[0] - last_e[0];
-        let dy = current_eye[1] - last_e[1];
-        let dz = current_eye[2] - last_e[2];
-        let dist = (dx * dx + dy * dy + dz * dz).sqrt();
-        if dist > CAMERA_CUT_DISPLACEMENT_THRESHOLD_METERS {
-            return true;
-        }
-    }
-    false
+/// Whether the camera cuts into this slice: only a `view_obj` switch does.
+///
+/// `PLAYONE.EXE` interpolates a slot's position across a slice however far it moves
+/// (image `0x3E7A..0x3ECA`), so a distance never cuts.
+pub(crate) fn detect_camera_cut(current_view_obj: u8, last_view_obj: Option<u8>) -> bool {
+    last_view_obj.is_some_and(|last_v| current_view_obj != last_v)
 }
 
 /// Interpolate between two `TrajectoryRecord` frames for a sub-tick parameter `alpha` in `[0.0, 1.0]`.
