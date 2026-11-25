@@ -14,7 +14,7 @@ TAX = load_categories(Path("research/parity/error-categories.toml"))
 NEW = ("propeller-solid", "aircraft-colour-wrong")
 # Run folder, film, the floor its sheets were planned with, and the grading model the coordinator reported.
 RUNS = [
-    ("ctry/calibrate-2026-11-25", "ctry", 1, "see journal"),
+    ("ctry/calibrate-2026-11-25", "ctry", 1, "Gemini Hydrogen"),
     ("intro/calibrate-2026-11-25-seed1", "intro", 1, "Gemini Hydrogen"),
     ("intro/calibrate-2026-11-25-floor-seed2", "intro", 64, "Gemini Hydrogen"),
     ("intro/calibrate-2026-11-25-floor-seed3", "intro", 64, "DSH"),

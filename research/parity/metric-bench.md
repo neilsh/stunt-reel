@@ -118,8 +118,20 @@ _Source: [2026-10-31: error categories graded by a vision model](../../work/2026
   The 64 is a convention, not a measured boundary: no sheet between 34 and 851 pixels has been graded, so a calibration that misses a removal in that range is evidence the floor is too low.
   The 5-of-6 bar was measured on six sheets, so a calibration with fewer than six actors-removed sheets is inconclusive rather than a pass.
   Under the floor, `INTRO.FLM` then passed three calibrations (6 of 6 removals each), the last two in a row graded wholly by DSH; all three plant the same six removals, because the actors-removed ticks do not depend on the seed, so they show the graders repeat on those frames, not that they catch removals elsewhere.
+  The `CTRY.FLM` run and the first two `INTRO.FLM` runs (seeds 1 and 2) were graded by Gemini Hydrogen; seeds 3 and 4 by DSH.
+  Each of these calibrating runs grades 42 sheets: the 12 real frames, 12 controls and six planted sheets per fault, so the new categories' real-sheet evidence is the 12 real sheets per run and the 12 readout sheets per film, not whole films.
 
 _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see) and [2026-11-25: INTRO calibrations under the actor floor, and the first new-category example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-intro-calibrations-under-the-actor-floor-and-the-first-new-category-example)._
+
+* **The 20-category readouts are DSH's, and its two passes agree to within one frame** (`[Bounded Observation]`, 2026-11-25, the seven `errors-20cat` runs of the lavapipe render of `crates/` `4b5c69c`).
+  Two DSH passes over the same 12 sheets per film moved a category's count of frames graded 2 or more by at most 1 on every film, against the 3 that set `min_change` from two Haiku passes; `min_change` stays 4.
+  The readout grades 12 frames per film, not the whole film.
+  _Source: [2026-11-25: the 20-category readouts, DSH repeatability and the missing example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-the-20-category-readouts-dsh-repeatability-and-the-missing-example); figures in [`readout-repeat.txt`](../../work/2026-11/calibration-actor-floor/readout-repeat.txt)._
+
+* **`propeller-solid`'s example is `intro-3466`; `aircraft-colour-wrong` has none** (`[Bounded Observation]`, 2026-11-25).
+  Both passes of the Hydrogen seed 2 calibration and both passes of the DSH seed 3 calibration graded `intro-3466` 2 or more for `propeller-solid`; DSH's seed 4 passes split 2 and 0 and its tie-break gave 2, so the example rests on one run per model.
+  `TRAINTNL` tick 683 was graded 2 for `aircraft-colour-wrong` by both DSH passes of the 20-category readout, but both passes are one model; no other model graded it, so it is not an example.
+  _Source: [2026-11-25: the 20-category readouts, DSH repeatability and the missing example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-the-20-category-readouts-dsh-repeatability-and-the-missing-example)._
 
 ## Ruled out
 

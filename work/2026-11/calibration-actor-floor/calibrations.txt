@@ -1,4 +1,4 @@
-ctry/calibrate-2026-11-25  seed 1  revision 124c5034  floor 1  graders see journal
+ctry/calibrate-2026-11-25  seed 1  revision 124c5034  floor 1  graders Gemini Hydrogen
   PASS  disputed 11  controls clean 12/12  actors_removed 6/6  shift_y:4 6/6  advance:5 3/6
 intro/calibrate-2026-11-25-seed1  seed 1  revision 9be3e2cb  floor 1  graders Gemini Hydrogen
   FAIL  disputed 11  controls clean 12/12  actors_removed 4/6  shift_y:4 4/6  advance:5 4/6

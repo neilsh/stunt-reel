@@ -9,7 +9,7 @@ Both runs grade the same renders: `build/parity/ours/<film>_current`, rendered o
 Both use the categories committed in `9be3e2cb` (digest `5838a280…`); the `CTRY.FLM` run was made at `124c5034` with that edit not yet committed, so its `run.json` records `revision` `124c5034`, and the `INTRO.FLM` run at `9be3e2cb`.
 `mise run parity-bench -- errors-make --film <film> --calibrate --recapture <dir> --out <dir>` wrote 42 sheets each: `CTRY.FLM` (`--out build/parity/bench/ctry/calibrate-2026-11-25`) and `INTRO.FLM` seed 1 (`--seed 1 --out build/parity/bench/intro/calibrate-2026-11-25-seed1`).
 The recaptures were the data root's `backup/pre-305/vault-ctry/frames` and `backup/pre-305/vault-intro/frames`, whose `all_sha256` equals the pinned captures' (`cb58d95b…`, `2dc8f628…`).
-Two grading passes graded each run and a tie-break pass the 11 sheets each run's passes disputed; the run folders do not record the model, and the coordinator reported Gemini Hydrogen for the `INTRO.FLM` run (the `CTRY.FLM` run's model is unconfirmed).
+Two grading passes graded each run and a tie-break pass the 11 sheets each run's passes disputed; the run folders do not record the model, and the coordinator reported Gemini Hydrogen for both the `CTRY.FLM` and `INTRO.FLM` runs.
 [`actor_pixels.py`](actor_pixels.py), run from the checkout root as `mise exec -- uv run python work/2026-11/calibration-actor-floor/actor_pixels.py`, wrote [`actor-pixels.csv`](actor-pixels.csv): each calibration tick's actor-layer pixel count in the 320×200 render (`layer >= 16`, summed over every actor), and whether the merged grades caught its actors-removed sheet, under the any-pixel rule the runs were planned with.
 
 **Result**:
@@ -44,10 +44,33 @@ Seed 2 (Hydrogen) passed: actors removed 6 of 6, `shift_y:4` 2 of 6, `advance:5`
 Seed 3 (DSH) passed: actors removed 6 of 6, `shift_y:4` 5 of 6, `advance:5` 3 of 6, controls clean 12 of 12, 20 sheets disputed.
 Seed 4 (DSH) passed: actors removed 6 of 6, `shift_y:4` 3 of 6, `advance:5` 3 of 6, controls clean 11 of 12, 20 sheets disputed.
 `propeller-solid` at tick 3466 was graded 2 by both passes and the tie-break of seed 2 (Hydrogen) and by both passes of seed 3 (DSH); in seed 4 DSH's passes split 2 and 0 and its tie-break gave 2.
-No real sheet was graded 2 or more for `aircraft-colour-wrong` by both passes of any run: one pass of seed 3 at tick 2564 and the tie-break of seed 4 at tick 3246, each alone.
+No real sheet in these `INTRO.FLM` calibration runs was graded 2 or more for `aircraft-colour-wrong` by both passes of a run: one pass of seed 3 at tick 2564 and the tie-break of seed 4 at tick 3246, each alone.
 
 **Verdict**: `INTRO.FLM` passed twice in a row under the floor with one model (DSH, seeds 3 and 4), on the same six removals, so this shows DSH grades those removals repeatably, not that it catches removals on other frames.
 `intro-3466` is `propeller-solid`'s example, graded 2 or more by two models (Hydrogen and DSH), in place of the Haiku and Sonnet pair earlier examples had.
-`aircraft-colour-wrong` has no example yet; the frames that motivated it (`LAND.FLM`'s exhaust ring) have not been graded under the new categories.
+`aircraft-colour-wrong` has no example yet; the frames that motivated it (`LAND.FLM`'s exhaust ring) are not among the sheets graded 2 or more for it, and the 20-category readout's only candidate is `traintnl-0683`, one model (next entry).
 
 **Lives in**: [`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.3, calibration rules; [`error-categories.toml`](../../../research/parity/error-categories.toml).
+
+## 2026-11-25: the 20-category readouts, DSH repeatability and the missing example
+
+**Question**: what do the seven 20-category readouts show, does DSH grade the same sheets repeatably, and does any sheet qualify as an example of the two new categories?
+
+**Method**:
+`mise run parity-bench -- errors-make --film <film>` wrote 12 sheets per film for the seven references at `baebfd96`, the lavapipe render of `crates/` `4b5c69c` (`llvmpipe (LLVM 20.1.2, 256 bits)`), into `build/parity/bench/<film>/errors-20cat`.
+Two DSH passes graded each film and a DSH tie-break graded the disputed sheets; the coordinator's delegated-task records name DSH for every pass, and the run folders do not record the model.
+[`readout_repeat.py`](readout_repeat.py), run from the checkout root, rescores each pass with `readout()` and compares the two; its output is [`readout-repeat.txt`](readout-repeat.txt).
+`TRAINTNL`'s tick 683 is the only real sheet both DSH passes graded 2 or more for `aircraft-colour-wrong`; `propeller-solid`'s `intro-3466` is from the calibration runs in the entry above.
+
+**Result**:
+Two DSH passes over the same 12 sheets per film moved a category's count of frames graded 2 or more by at most 1 on every film: one frame on CTRY (`ground-shade-edges`, `background-misregistration`), INTRO (`background-misregistration`, `propeller-solid`, `aircraft-colour-wrong`), LAND (`scenery-missing`, `background-misregistration`) and LOCATION (`propeller-solid`), and none on BALLOON, BOMB and TRAINTNL.
+The saved `readout.json` of every film matches the readout rebuilt from its two passes and tie-break on its 2+ ticks and `other` notes.
+That largest move, 1, is below the 3 that set `min_change` from two Haiku passes, so `min_change` stays 4.
+No real sheet was graded 2 or more for `aircraft-colour-wrong` by two models: `traintnl-0683` has both DSH passes at 2, one model, and no other model graded it.
+`propeller-solid`'s `intro-3466` was graded 2 by both passes of the Hydrogen seed 2 run and both passes of the DSH seed 3 run; the DSH seed 4 run split 2 and 0, its tie-break 2.
+
+**Verdict**: the 20-category readouts are repeatable to within one frame on these sheets, below the 4-frame floor, and `min_change` 4 is conservative for DSH.
+`aircraft-colour-wrong` has no qualifying example, so it stays `examples = []`.
+The seven-film baseline refresh is not prepared: the categories changed, but the new category has no two-model example, the CTRY calibration under the 20 categories is Hydrogen's while the readouts are DSH's, and INTRO passed under Hydrogen seed 2 and DSH seeds 3 and 4 after Hydrogen seed 1 failed; refresh all seven in their own PR after those are resolved.
+
+**Lives in**: [`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.3; [`error-categories.toml`](../../../research/parity/error-categories.toml).
