@@ -83,9 +83,9 @@ def _write(tmp_path: Path, text: str) -> Path:
 
 def test_committed_categories_load() -> None:
     taxonomy = load_categories(CATEGORIES)
-    assert len(taxonomy.categories) == 18
+    assert len(taxonomy.categories) == 20
     assert taxonomy.ids[0] == "aircraft-parts-missing"
-    assert taxonomy.ids[-3:] == ("sun-missing", "frame-blank", "black-block")
+    assert taxonomy.ids[-3:] == ("black-block", "propeller-solid", "aircraft-colour-wrong")
     assert taxonomy.films["intro"] == FilmWindow(1000, None)
     assert taxonomy.films["ctry"] == FilmWindow(0, 990)
     assert taxonomy.min_change == 4

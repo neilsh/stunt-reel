@@ -142,6 +142,22 @@ found_by = ["haiku"]
 since = "2026-11-01"
 examples = []
 
+# Added from the seven reference films' `other` notes at dd7e76eb (2026-11-25), the two that recurred
+# on more than one frame.
+[[category]]
+id = "propeller-solid"
+definition = "The RENDER draws the propeller as a solid blade or bar (often across the nose or fuselage) where the capture shows only faint spin flecks or no blade"
+found_by = ["haiku"]
+since = "2026-11-25"
+examples = []
+
+[[category]]
+id = "aircraft-colour-wrong"
+definition = "A part of the aircraft (exhaust ring, nose, cowl, fuselage band) is drawn in its place but in a clearly different colour or shade from the capture's"
+found_by = ["haiku"]
+since = "2026-11-25"
+examples = []
+
 # Which categories should rise when a fault is planted (keys as in stunt_reel.bench.faults Fault.key).
 # A planted sheet counts as detected when the grade of any of these categories, or an `other` note,
 # rises over the same frame's unplanted grade.
