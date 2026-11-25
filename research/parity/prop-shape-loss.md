@@ -1,5 +1,5 @@
 ---
-summary: "Ranks the prop shapes costing LOCATION's and BOMB's props loss and why each loses: a camera held through far-moving slices (fixed), pages drawn a tick off while the camera moves, sphere cover order on the trees, far-town stand-ins, tick phase, lines; most of BOMB's street loss is unexplained."
+summary: "Ranks the prop shapes costing LOCATION's and BOMB's props loss and why each loses: a camera held through far-moving slices (fixed), pages drawn a tick off while the camera moves, sphere cover order on the trees, far-town stand-ins that drew no `BLOCK` (fixed), tick phase, lines; most of BOMB's street loss is unexplained."
 sidebar_label: "Costliest prop shapes"
 ---
 # Parity: The Prop Shapes That Cost LOCATION and BOMB
@@ -36,12 +36,12 @@ _Source: [the costliest prop shapes on LOCATION and BOMB](../../work/2026-11/989
 | Our player held the camera through slices it moves more than 50 m in (fixed) | `location` 1145, 1164, 1179, 1162 on the canyon run, 1150 at 2212 | 2.1 | [#1029](https://github.com/neilsh/stunt-reel/issues/1029), [#1031](https://github.com/neilsh/stunt-reel/issues/1031) |
 | Pages a tick or two off ours while the camera moves; a row on the static opening shot | `bomb` 1648, 1650, 1737, 1654, 1754, 1756 on the opening shot (7% of its loss) | 2.2 | [#1064](https://github.com/neilsh/stunt-reel/issues/1064), [#1033](https://github.com/neilsh/stunt-reel/issues/1033) |
 | Overlapping spheres of one shape cover each other in list order | `bomb` 542, 545 | 2.3 | [#1066](https://github.com/neilsh/stunt-reel/issues/1066) |
-| Far houses missing: the level-of-detail stand-ins | `bomb` `scenery-missing` 1585, 1904 | 2.4 | [#1032](https://github.com/neilsh/stunt-reel/issues/1032) |
+| Far houses missing: the stand-ins' `BLOCK` houses went undrawn (fixed) | `bomb` `scenery-missing` 1585, 1904 | 2.4 | [#1032](https://github.com/neilsh/stunt-reel/issues/1032) |
 | A run of frames prefers a one-tick offset | `location` 1745, 996 | 2.5 | [#1033](https://github.com/neilsh/stunt-reel/issues/1033) |
 | Lines and outlines on a shape drawn in place | `location` 613 | 2.5 | [#1034](https://github.com/neilsh/stunt-reel/issues/1034) |
 | Unexplained: drawn in place, in the capture's colours | `bomb` 1756 on ticks 2036 to 2740 and 3312 to 3477 (about 88% of its loss) | 2.6 | [#1035](https://github.com/neilsh/stunt-reel/issues/1035) |
 
-In the issue's terms, 2.1, 2.2 and 2.5 are misplacement by the camera, not by the prop; 2.3 is draw order for the trees; 2.4 is missing; 2.6 has no cause yet.
+In the issue's terms, 2.1, 2.2 and 2.5 are misplacement by the camera, not by the prop; 2.3 is draw order for the trees; 2.4 was missing geometry; 2.6 has no cause yet.
 No shape inspected shows a wrong shade or a wrong shape of its own.
 
 ### 2.1 The camera held through far-moving slices (fixed)
@@ -77,13 +77,14 @@ A CPU painter in that order, checked against a CPU z-buffer that reproduces our 
 
 _Source: [list order explains the BOMB trees, not the canyon rock](../../work/2026-11/1030_close-shape-order/journal.md#2026-11-24-list-order-explains-the-bomb-trees-not-the-canyon-rock)._
 
-### 2.4 The far town draws no houses
+### 2.4 The far town drew no houses (fixed)
 
-At `bomb` ticks 1585 and 1904 the capture draws the distant town's houses; ours draws lots, roads and trees there ([sheet](../../work/2026-11/989_props-loss-shapes/images/bomb-1904-lod.png)).
-Keeping the near branch of every `SP_1NODE` ([`lod.md`](../playone-exe/lod.md)) draws houses there, so our gate shows stand-ins where the capture shows houses; lifting the `scale_index` distance cut draws the same picture at both ticks.
-The near branch everywhere lowers both films (`bomb` 0.8949 to 0.8831, `location` 0.8728 to 0.8549) and those two ticks too, so whether the gate's choice or our stand-ins are wrong is [#1032](https://github.com/neilsh/stunt-reel/issues/1032).
+At `bomb` ticks 1585 and 1904 the capture draws the distant town's houses; ours drew lots, roads and trees there ([sheet](../../work/2026-11/989_props-loss-shapes/images/bomb-1904-lod.png)).
+At 1904 the gate ([`lod.md`](../playone-exe/lod.md)) draws the stand-ins of the town's city blocks, `SP_1NODE`s of `splitdist` 100 between 222 and 468 m of view depth.
+Those stand-ins (`0x0669`, `0x066B`, `0x066E` among them) hold the block's houses as `OP_BLOCK`s beside its trees, and `vm.rs` read each `BLOCK` and drew nothing, so the stand-ins drew trees alone.
+`vm.rs` now draws a `BLOCK` as a cube standing in for `PLAYONE`'s screen square ([`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)); the town then shows red and white houses where the capture does ([sheet](../../work/2026-11/1032_block-stand-ins/images/bomb-1904-block-cube.png)), and the gate is not shown wrong.
 
-_Source: [the BOMB far town is the level-of-detail gate](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-bomb-far-town-is-the-level-of-detail-gate)._
+_Source: [the far town's stand-ins draw no `OP_BLOCK`](../../work/2026-11/1032_block-stand-ins/journal.md#2026-11-24-the-far-towns-stand-ins-draw-no-op_block), [`OP_BLOCK` drawn as a cube](../../work/2026-11/1032_block-stand-ins/journal.md#2026-11-24-op_block-drawn-as-a-cube)._
 
 ### 2.5 One-tick phase and lines
 
@@ -105,6 +106,7 @@ _Source: [the BOMB street 1756 loses in place](../../work/2026-11/989_props-loss
 
 * **The `scale_index` distance cut as the cause of `bomb`'s missing far houses** (2026-11-23): keeping every object it drops draws the same picture at 1585 and 1904 ([the BOMB far town is the level-of-detail gate](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-bomb-far-town-is-the-level-of-detail-gate)).
 * **The near branch of every `SP_1NODE`** (2026-11-23): it draws the far houses but lowers `bomb` by 0.0118 and `location` by 0.0178, and the two `scenery-missing` ticks too ([same entry](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-bomb-far-town-is-the-level-of-detail-gate)).
+* **The `SP_1NODE` gate's choice as the cause of `bomb`'s missing far houses** (2026-11-24): the gate's stand-ins hold the houses as `OP_BLOCK`s, which `vm.rs` did not draw ([the far town's stand-ins draw no `OP_BLOCK`](../../work/2026-11/1032_block-stand-ins/journal.md#2026-11-24-the-far-towns-stand-ins-draw-no-op_block)).
 * **In-shape paint order for the canyon rock 1145 at `location` 7019** (2026-11-24): list order with `SORTON` swaps changes 20 of its 49,095 pixels ([list order explains the BOMB trees, not the canyon rock](../../work/2026-11/1030_close-shape-order/journal.md#2026-11-24-list-order-explains-the-bomb-trees-not-the-canyon-rock)).
 * **Timing as the whole of the canyon run's loss** (2026-11-23): frames such as 7019 and 7317 rise by no more than 0.05 at any offset from -10 to +12 ([the LOCATION canyon run steps late](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-the-location-canyon-run-steps-late)); the held camera of 2.1 was the rest (7317 from 0.6509 to 0.9152).
 * **A per-shot camera offset on `bomb`** (2026-11-24): no shot's offset follows the view slot, the eye or the lens; the opening shot's row flips sign about the projection centre, and the larger offsets are pages a tick or two off ours ([the offset per shot, against the camera](../../work/2026-11/1031_bomb-world-offset/journal.md#2026-11-24-the-offset-per-shot-against-the-camera)).
@@ -117,5 +119,4 @@ In order of the loss each would explain:
 2. **Pages a tick or two off ours while the camera moves** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)).
 3. **The street's loss in place** ([#1035](https://github.com/neilsh/stunt-reel/issues/1035)), about 88% of `bomb`'s costliest shape.
 4. **Spheres in list order** ([#1066](https://github.com/neilsh/stunt-reel/issues/1066)).
-5. **The far town's stand-ins** ([#1032](https://github.com/neilsh/stunt-reel/issues/1032)).
-6. **One-tick phase** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)) and **the stadium's lines** ([#1034](https://github.com/neilsh/stunt-reel/issues/1034)).
+5. **One-tick phase** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)) and **the stadium's lines** ([#1034](https://github.com/neilsh/stunt-reel/issues/1034)).

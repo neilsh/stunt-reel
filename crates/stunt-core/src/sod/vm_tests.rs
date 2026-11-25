@@ -13,10 +13,10 @@ use crate::contracts::shape::{
 use crate::sod::DECAL_FLAG_BIT;
 use crate::sod::vm::compute_polygon_normal;
 use crate::sod::{
-    CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID, OP_INTV, OP_IPG,
-    OP_LINECOL, OP_MOVETO, OP_NEGV, OP_PERFDISK, OP_POLYZ, OP_PUTV, OP_RETURN, OP_SHLV, OP_SHRV,
-    OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError, SodStop, SodStopReason,
-    decode_sod, faces_view,
+    CENSUS_SKIPS, DecodeMode, OP_ADDV, OP_BLOCK, OP_CLRV, OP_COLOR, OP_DOT, OP_GETV, OP_ID,
+    OP_INTV, OP_IPG, OP_LINECOL, OP_MOVETO, OP_NEGV, OP_PERFDISK, OP_POLYZ, OP_PUTV, OP_RETURN,
+    OP_SHLV, OP_SHRV, OP_SORT, OP_SPHERE, OP_SUBV, OP_TAP, OP_VECTORS, OP_ZLINETO, SodError,
+    SodStop, SodStopReason, decode_sod, faces_view,
 };
 
 /// Decodes `data` strictly with no anchor table.
@@ -324,6 +324,54 @@ fn test_ipg_type_6_reads_no_operand() {
     let ir = decode(&bytes, "IPG6").expect("decode ipg 6");
     assert_eq!(ir.vertices.len(), 3);
     assert!(ir.vertices.iter().all(|v| v.palette_index == 45));
+}
+
+/// `OP_BLOCK` draws a cube of half-side `size` about its register, in the current colour,
+/// each face wound clockwise seen from outside and carrying its outward normal.
+#[test]
+fn test_block_emits_cube_around_register_center() {
+    let mut bytes = make_sod_header(100, 0, 0, 0); // scale 1.0
+    bytes.extend_from_slice(&OP_VECTORS.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes()); // count 1
+    bytes.extend_from_slice(&12u16.to_le_bytes()); // register 1
+    for coordinate in [-100i16, -200, 300] {
+        bytes.extend_from_slice(&coordinate.to_le_bytes());
+    }
+    bytes.extend_from_slice(&OP_COLOR.to_le_bytes());
+    bytes.extend_from_slice(&45u16.to_le_bytes());
+    bytes.extend_from_slice(&OP_BLOCK.to_le_bytes());
+    bytes.extend_from_slice(&12u16.to_le_bytes()); // register offset
+    bytes.extend_from_slice(&20u16.to_le_bytes()); // half-side
+    bytes.extend_from_slice(&OP_RETURN.to_le_bytes());
+
+    let ir = decode(&bytes, "BLOCK").expect("decode block");
+    assert_eq!(ir.indices.len(), 6 * 2 * 3, "six quads, two triangles each");
+    let centre = [100.0f32, 200.0, 300.0];
+    for v in &ir.vertices {
+        assert_eq!(v.palette_index, 45);
+        for k in 0..3 {
+            assert!(((v.position[k] - centre[k]).abs() - 20.0).abs() < 1e-3);
+        }
+    }
+    for tri in ir.indices.chunks(3) {
+        let p: Vec<[f32; 3]> = tri
+            .iter()
+            .map(|&i| ir.vertices[i as usize].position)
+            .collect();
+        let edge_normal = compute_polygon_normal(&p);
+        let out: [f32; 3] =
+            std::array::from_fn(|k| (p[0][k] + p[1][k] + p[2][k]) / 3.0 - centre[k]);
+        let winding: f32 = (0..3).map(|k| edge_normal[k] * out[k]).sum();
+        assert!(
+            winding < 0.0,
+            "face {tri:?} winds counter-clockwise from outside"
+        );
+        for &i in tri {
+            let n = ir.vertices[i as usize].normal;
+            let outward: f32 = (0..3).map(|k| n[k] * out[k]).sum();
+            assert!(outward > 0.0, "face {tri:?} carries an inward normal");
+        }
+    }
 }
 
 /// Every sphere face winds clockwise seen from outside, the winding the pipeline keeps, so

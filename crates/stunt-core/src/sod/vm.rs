@@ -255,6 +255,58 @@ pub(crate) struct RawPolygon {
     pub visibility: VisibilityCondition,
 }
 
+/// The six faces of `OP_BLOCK`'s cube of half-side `half` about `center` (model units).
+///
+/// `PLAYONE` draws the block as a filled screen square (`0xA405`): the half-side
+/// `((size · work:0x8070) >> 8) / (z + work:0x8088)`, `OP_SPHERE`'s screen radius, about the
+/// register's projected point, or one pixel when that is 0, with no facing test
+/// (research/playone-exe/sod-vm-generators.md section 8.8). A cube of that half-side shows the
+/// same square face on and stands in for it, as the icosahedron does for the sphere's disc.
+fn block_polygons(
+    center: [f32; 3],
+    half: f32,
+    ground_y_offset: f32,
+    scale_factor: f32,
+    palette_index: u8,
+    visibility: VisibilityCondition,
+) -> Vec<RawPolygon> {
+    // Corner `i` lies on the + side of x, y and z for bits 0, 1 and 2. Each face winds
+    // clockwise seen from outside, the winding the pipeline keeps (`FrontFace::Cw`).
+    const FACES: [[usize; 4]; 6] = [
+        [1, 5, 7, 3],
+        [0, 2, 6, 4],
+        [2, 3, 7, 6],
+        [0, 4, 5, 1],
+        [4, 6, 7, 5],
+        [0, 1, 3, 2],
+    ];
+    let corner = |i: usize| {
+        let sign = |bit: usize| if i & bit != 0 { 1.0 } else { -1.0 };
+        [
+            (center[0] + sign(1) * half) * scale_factor,
+            (center[1] + sign(2) * half + ground_y_offset) * scale_factor,
+            (center[2] + sign(4) * half) * scale_factor,
+        ]
+    };
+    FACES
+        .iter()
+        .map(|face| {
+            let vertices: Vec<[f32; 3]> = face.iter().map(|&i| corner(i)).collect();
+            // Clockwise from outside, so the edge cross product points inward.
+            let [nx, ny, nz] = compute_polygon_normal(&vertices);
+            RawPolygon {
+                vertex_palette: Vec::new(),
+                vertices,
+                palette_index,
+                normal: [-nx, -ny, -nz],
+                flags: 0,
+                is_decal: false,
+                visibility,
+            }
+        })
+        .collect()
+}
+
 /// Approximates an `OP_SPHERE` primitive with an icosahedron (20 triangles).
 ///
 /// `center` and `radius` are in raw register units like polygon vertices; the result is in
@@ -967,7 +1019,8 @@ impl<'a> Vm<'a> {
             }
             OP_ANIMATE => self.animate()?,
             OP_SPHERE => self.sphere()?,
-            OP_BLOCK | OP_PERS => {
+            OP_BLOCK => self.block()?,
+            OP_PERS => {
                 self.r.read_u16_le()?;
                 self.r.read_u16_le()?;
             }
@@ -1542,6 +1595,23 @@ impl<'a> Vm<'a> {
         self.polygons.extend(sphere_polygons(
             center,
             radius,
+            f32::from(self.header.ground_y_offset),
+            self.header.scale_factor,
+            self.cur_color,
+            self.current_visibility,
+        ));
+        Ok(())
+    }
+
+    /// `OP_BLOCK` (`reg, size`): a solid cube of half-side `size` about the register, in the
+    /// current colour.
+    fn block(&mut self) -> Result<(), SodError> {
+        let centre_idx = self.read_reg_index()?;
+        let half = f32::from(self.r.read_u16_le()?);
+        let center = add3(self.regs.get(centre_idx), self.relpos);
+        self.polygons.extend(block_polygons(
+            center,
+            half,
             f32::from(self.header.ground_y_offset),
             self.header.scale_factor,
             self.cur_color,
