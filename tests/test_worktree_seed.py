@@ -29,6 +29,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import worktree_init  # noqa: E402
 
+pytestmark = pytest.mark.windows
+
 
 @pytest.fixture(autouse=True)
 def _no_merge_driver(monkeypatch: pytest.MonkeyPatch) -> None:

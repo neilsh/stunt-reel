@@ -25,6 +25,8 @@ from stunt_reel.ab_timing import Cell, Row, Variant  # noqa: E402
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+pytestmark = pytest.mark.windows
+
 PLANES = {plane: f"{plane}-hash" for plane in ab_timing.PLANES}
 CELL = "lavapipe-3680-3979"
 

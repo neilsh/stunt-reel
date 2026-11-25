@@ -21,7 +21,7 @@ SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
 ARCHIVE = build_all([b"one", b"two"])
 
 
-pytestmark = pytest.mark.usefixtures("rows")
+pytestmark = [pytest.mark.windows, pytest.mark.usefixtures("rows")]
 
 
 class FakeClock:

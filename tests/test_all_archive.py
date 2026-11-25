@@ -28,6 +28,8 @@ from stunt_reel.all_archive import (
 )
 from stunt_reel.hashing import file_sha256
 
+pytestmark = pytest.mark.windows
+
 CHUNKS = [b"alpha", b"bb", b"c" * 9]
 
 

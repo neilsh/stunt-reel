@@ -19,7 +19,10 @@ from stunt_reel.git_env import isolated_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GIT = shutil.which("git")
-pytestmark = pytest.mark.skipif(GIT is None, reason="git is not on PATH")
+pytestmark = [
+    pytest.mark.windows,
+    pytest.mark.skipif(GIT is None, reason="git is not on PATH"),
+]
 
 EXPECTED = "research/parity/expected/gpu.toml"
 REFERENCES = "research/parity/references.toml"

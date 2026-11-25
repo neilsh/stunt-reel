@@ -28,6 +28,8 @@ from stunt_reel.parity_artifacts import (  # noqa: E402
     read_capture,
 )
 
+pytestmark = pytest.mark.windows
+
 
 def _png_rows(path: Path) -> tuple[int, list[bytes]]:
     """Width and the unfiltered RGB rows of a PNG written with filter 0."""

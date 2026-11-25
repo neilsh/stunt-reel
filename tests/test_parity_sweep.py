@@ -51,6 +51,8 @@ from stunt_reel.parity_artifacts import FilmId, Geometry, StoredFrame  # noqa: E
 from stunt_reel.parity_judge import Variant  # noqa: E402
 from stunt_reel.parity_pipeline import Score  # noqa: E402
 
+pytestmark = pytest.mark.windows
+
 
 def _geometry() -> Geometry:
     return Geometry(width=320, height=200, viewport_rows=185)

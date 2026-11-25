@@ -17,6 +17,8 @@ from stunt_reel.parity_artifacts import LOSS_CLASSES
 if TYPE_CHECKING:
     from pathlib import Path
 
+pytestmark = pytest.mark.windows
+
 
 PATCH3 = 'makeone = "patch3"\nplayone = "patch3"\n'
 

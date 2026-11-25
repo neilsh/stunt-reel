@@ -22,6 +22,8 @@ from stunt_reel.tac.automation import MockAutomation
 if TYPE_CHECKING:
     from pathlib import Path
 
+pytestmark = pytest.mark.windows
+
 KEYS = ["KBD_c", "KBD_enter"]
 
 
