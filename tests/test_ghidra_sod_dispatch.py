@@ -15,6 +15,8 @@ lazy from types import ModuleType
 
 import pytest
 
+pytestmark = pytest.mark.windows
+
 SCRIPTS = Path(__file__).resolve().parent.parent / "python" / "scripts"
 TABLE = 0x100
 HANDLERS = 0x1000
@@ -242,6 +244,18 @@ def test_the_command_keeps_paths_with_spaces_whole(tmp_path: Path, launcher_name
     assert command[command.index("-postScript") + 1] == "SodDispatchTable.java"
     assert command[command.index("-postScript") + 2] == str(slots)
     assert "cmd.exe" not in command[0].lower()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="analyzeHeadless is a .bat on Windows")
+def test_the_windows_launcher_is_found_in_the_install(tmp_path: Path) -> None:
+    """The install ships ``analyzeHeadless.bat`` there, and the bare name is the POSIX one."""
+    support = tmp_path / "ghidra" / "support"
+    support.mkdir(parents=True)
+    (support / "analyzeHeadless").write_text("", encoding="utf-8")
+    launcher = support / "analyzeHeadless.bat"
+    launcher.write_text("@echo off\n", encoding="utf-8")
+
+    assert ghidra._analyze_headless(tmp_path / "ghidra") == launcher
 
 
 def _fake_success(*_args: object, **_kwargs: object) -> object:

@@ -43,7 +43,7 @@ VIDEO_LOG = {
 }
 
 
-pytestmark = pytest.mark.usefixtures("rows")
+pytestmark = [pytest.mark.windows, pytest.mark.usefixtures("rows")]
 
 
 def _row(pointers: Path, *, playone_build: str = "patch3", makeone_build: str = "patch3") -> None:

@@ -12,6 +12,8 @@ import pytest
 
 from stunt_reel import capture_store
 
+pytestmark = pytest.mark.windows
+
 if TYPE_CHECKING:
     from pathlib import Path
 

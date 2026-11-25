@@ -10,6 +10,8 @@ import pytest
 
 from stunt_reel import link, parity_layout, parity_pipeline
 
+pytestmark = pytest.mark.windows
+
 
 class FakeRunner:
     """Records each call and answers with a chosen exit code and stderr."""
