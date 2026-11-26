@@ -136,8 +136,14 @@ _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../
   A Claude Sonnet pass, run independently and over the first three, graded them 1, 0 and 0, so no sheet had a 2 from two different models; the fourth, INTRO 2421, was cleared by its run's tie-break and was not in the Sonnet pass.
   The category therefore met its example rule on no sheet and is removed, leaving 19 categories.
   The removal changes the categories digest from `5838a280…` to `5f8b01d6…`: the 20-category calibrations and readouts keep their grades as the record of that file, and none of them is a calibration pass or a readout of the 19-category file, which `errors-score` separates by digest.
-  Fresh 19-category inputs are written and ungraded: `CTRY.FLM` seed 1 and `INTRO.FLM` seeds 3 and 4 calibrations of 42 sheets each, and the seven films' 12-sheet readouts, at the same lavapipe renders; no calibration or readout of the 19-category file exists yet.
+  The 19-category CTRY and two INTRO calibrations passed, and the seven 12-sheet readouts were scored (below).
   _Source: [2026-11-25: a Sonnet pass denies the colour category an example, and the file drops to 19 categories](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-a-sonnet-pass-denies-the-colour-category-an-example-and-the-file-drops-to-19-categories); inputs in [`prepared-inputs.txt`](../../work/2026-11/calibration-actor-floor/prepared-inputs.txt)._
+
+* **The 19-category passes diverged on BOMB background misregistration** (`[Bounded Observation]`, 2026-11-25, 12 sheets per film).
+  The two DSH passes counted 12 and 0 BOMB frames at grade 2 or more; the 12-frame difference exceeds `min_change` 4.
+  Claude Sonnet graded disputed sheets for the saved readouts, but that does not establish their repeatability.
+  The CTRY calibration and both INTRO calibrations passed; the INTRO runs share the same six actor-removal frames.
+  _Source: [19-category calibration and readout repeatability](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-19-category-calibration-and-readout-repeatability); figures in [readout-repeat-19.txt](../../work/2026-11/calibration-actor-floor/readout-repeat-19.txt)._
 
 ## Ruled out
 
@@ -150,6 +156,8 @@ _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../
   _Source: [2026-10-31: the metric bench](../../work/2026-11/distill-method/journal.md#2026-10-31-the-metric-bench)._
 
 ## Open questions
+
+* **How repeatable DSH readouts are for background misregistration**, after the two BOMB passes differed by 12 frames (? 2.3).
 
 * **Where between 34 and 851 actor pixels graders stop seeing a removal**, which would replace `MIN_ACTOR_PIXELS`' convention with a measured floor; a calibration that plants on such a frame answers it in part.
 Open lavapipe and GPU questions are in [`evidence-limits.md`](evidence-limits.md#open-questions).

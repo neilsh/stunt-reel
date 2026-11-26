@@ -131,3 +131,26 @@ mise run parity-bench -- errors-score --film <film> --out build/parity/bench/<fi
 `errors-score` takes no `--against` here: the committed baseline is an 18-category readout, and a calibrating run is not compared at all.
 
 **Lives in**: [`metric-bench.md`](../../../research/parity/metric-bench.md) § 2.3; [`error-categories.toml`](../../../research/parity/error-categories.toml); this item's [`README.md`](README.md).
+
+## 2026-11-25: 19-category calibration and readout repeatability
+
+**Question**: do the new categories calibrate and how much do the two readout passes differ?
+
+**Method**:
+The prepared 19-category runs above were graded with two DSH passes; Claude Sonnet graded the disputed sheets.
+`mise run parity-bench -- errors-score --film <film> --out <run>` scored the saved grades.
+`mise exec -- uv run python work/2026-11/calibration-actor-floor/readout_repeat_19.py` compares the passes and the saved readouts; its output is [readout-repeat-19.txt](readout-repeat-19.txt).
+The first INTRO seed 3 tie-break file was missing when rechecked, so Sonnet graded its 23 disputed sheets again before scoring.
+
+**Result**:
+CTRY passed with 6/6 actor removals, 12/12 controls, and 16 disputed sheets.
+INTRO seed 3 passed with 6/6 actor removals, 12/12 controls, and 23 disputed sheets; seed 4 passed with 6/6, 11/12 controls, and 25 disputed sheets.
+Both INTRO runs plant the same six removals, so they are not independent frame samples.
+Across the seven readouts the largest difference in a category's count of frames graded 2 or more is 12: BOMB background misregistration was 12 in one DSH pass and 0 in the other.
+LAND differed by 3 for that category, INTRO by at most 2, CTRY by at most 1, and BALLOON, LOCATION and TRAINTNL by 0.
+The saved merged readouts match the reconstruction from the two passes and any tie-break on 2+ ticks and other notes.
+
+**Verdict**: the calibration passes on these sheets, but the BOMB disagreement exceeds the four-frame `min_change` and leaves DSH repeatability for background misregistration unresolved.
+A tie-break scores the disputed sheets; it does not measure repeatability of the final result.
+
+**Lives in**: [metric-bench.md](../../../research/parity/metric-bench.md) ? 2.3.

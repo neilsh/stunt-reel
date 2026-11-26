@@ -1,0 +1,20 @@
+﻿DSH passes over the seven 19-category readouts, 12 real sheets per film
+model provenance: the coordinator's delegated-task records (journal.md)
+ctry: max pass-to-pass delta 1; merged 2+ ticks and other notes match saved readout: yes
+  scenery-missing 0->1
+  terrain-type-wrong 1->0
+intro: max pass-to-pass delta 2; merged 2+ ticks and other notes match saved readout: yes
+  aircraft-shape-broken 2->0
+  aircraft-misplaced 1->0
+  ground-shade-edges 1->0
+  background-misregistration 2->3
+  propeller-solid 2->1
+land: max pass-to-pass delta 3; merged 2+ ticks and other notes match saved readout: yes
+  scenery-missing 0->1
+  background-misregistration 4->1
+balloon: max pass-to-pass delta 0; merged 2+ ticks and other notes match saved readout: yes
+bomb: max pass-to-pass delta 12; merged 2+ ticks and other notes match saved readout: yes
+  background-misregistration 12->0
+location: max pass-to-pass delta 0; merged 2+ ticks and other notes match saved readout: yes
+traintnl: max pass-to-pass delta 0; merged 2+ ticks and other notes match saved readout: yes
+max over seven films: 12
