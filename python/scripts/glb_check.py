@@ -134,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
     status = validate(glb, Path(f"{stem}.validation.json"))
     if status == 2:
         return 2
+    if status not in (0, 1):
+        return 2
     if args.validate_only:
         return status
     png = Path(f"{stem}.png")
@@ -142,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
     if rendered == 0 and not png.is_file():
         print(f"glb-check: the renderer exited 0 but wrote no {png}", file=sys.stderr)
         rendered = 1
+    if rendered == 2:
+        return 2
     if rendered != 0:
         print(f"glb-check: render failed with exit {rendered}", file=sys.stderr)
         return 1
