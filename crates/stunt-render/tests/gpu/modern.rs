@@ -392,10 +392,20 @@ fn the_sun_is_a_soft_glow_not_a_hard_disc() {
             at_sun[2].abs_diff(sun_colour[2]) < sky_beside[2].abs_diff(sun_colour[2]) / 2,
             "sun centre {at_sun:?}, sky beside {sky_beside:?}, sun colour {sun_colour:?}"
         );
-        // Soft: no step along the row near the sun, across the glow, of more than a palette
-        // step's worth; the hard disc was one step of the whole sun-to-sky difference.
+        // Soft: the hard disc was one step of the whole sun-to-sky difference, and no step along
+        // the row across the glow reaches a fifth of it.
         let near = &row[row.len() / 2 - 40..row.len() / 2 + 40];
-        assert!(largest_step(near) < 20, "{near:?}");
+        let whole = sun_colour
+            .iter()
+            .zip(sky_beside)
+            .map(|(a, b)| a.abs_diff(b))
+            .max()
+            .unwrap_or(0);
+        assert!(
+            largest_step(near) < whole / 5,
+            "step {} over a fifth of {whole}: {near:?}",
+            largest_step(near)
+        );
     });
 }
 
