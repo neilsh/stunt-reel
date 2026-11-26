@@ -88,8 +88,32 @@
   | shipped | 0.9439 | 0.9069 | 0.9310 | 0.9067 | 0.9164 | 0.9080 | 0.8967 |
 
   - Every film's SSIM rises on lavapipe, `balloon` by 0.0008, and mask IoU falls by 0.0001 to 0.0013 on the same four films as on the GPU; the GPU's `3` put `balloon` at −0.0007 against `main` (a different adapter and baseline, so the two are not one comparison).
-  - The pins were repinned to `a160e577` (`git rev-parse e5e4d689:crates`) in `b60aba3a`.
+  - The pins were repinned to `a160e577` (`git rev-parse e5e4d689:crates`) in `b60aba3a`; the test change of the next entry and the final repin moved them again, to `2c5a4012` (`git rev-parse c790e3e1:crates`), with every score identical to the ones above, so the file no longer carries `a160e577`.
   - A comment-only change to `mode13h.wgsl` (finding 8 of the first review) moved the `crates` tree hash, and `loop-rules.md` § After adopting allows no hand restamp of the pins, so it was reverted; the shader's `t` comment ("this many times its own distance") stays as committed in `e5e4d689` and is imprecise, to be fixed in a PR that repins.
+
+## 2026-11-26: one index of bend in the Gouraud ground test on lavapipe
+
+`[Bounded Observation]`
+
+- **Question**: The shader now draws a vertex on the pixel `PLAYONE`'s projectors truncate it to, which `a_gouraud_ground_polygon_under_a_low_eye_keeps_its_gradient` (a 120 m ground square, index 40 to 100, under a 3 m eye) did not model, and CI's lavapipe failed it; what does the test have to allow, and does it still reject a perspective-correct gradient?
+- **Builds**: `mode13h.wgsl` as committed in `e5e4d689` throughout.
+  Windows: mesa-dist-win 25.2.8 (`lvp_icd.x86_64.json` in `VK_DRIVER_FILES`; the adapter string was not read), `STUNT_REQUIRE_GPU=1`.
+  The canonical lavapipe is Ubuntu 24.04's Mesa 25.2.8 under WSL and CI.
+  The test is `software_only` (`gpu_or_skip_software`), so it cannot run on the RTX 4070.
+- **Command** (Windows runs): `cargo test -p stunt-render --test gpu -- a_gouraud_ground_polygon_under --nocapture`.
+- **Results** (each figure's source in brackets):
+  - The test before the change, `7121a185`'s, fails with `11588 of 47040 ground pixels are not screen-linear` [a committed test and the committed shader, rerun on 2026-11-26 on Windows; CI's lavapipe gave the same count, per the commit body of `ac98edbf`].
+  - After the model snaps the front corners to the truncated pixels (`playone_pixel_ndc`), 2,951 pixels differ, counted with the old allowance for a rounding boundary [the previous session's uncommitted variant, quoted from `ac98edbf`'s message; not rerun].
+  - With the test of `ac98edbf` (its code is unchanged in `c790e3e1`; it asserts no pixel beyond one index off and at most 4,500 one index off) plus a temporary `eprintln!` of its counters, `checked=47040 one_off=3167 beyond_one=0 apart=46457`, and the gap at pixel (319, 139) is 74.61 indices [uncommitted instrumented copy of the committed test, run on Windows on 2026-11-26].
+    The same 3,167 on the canonical lavapipe was reported by the previous session [not rerun here; a pass there shows at most 4,500 one-off pixels, not the count].
+  - With the slide disabled, 0 of 47,040 pixels are one index off or more, so every pixel is equal [uncommitted variant on Windows on 2026-11-26: the final `return` of `playone_vertex` replaced by `vec4<f32>(ndc * clip.w, clip.z, clip.w)`, which keeps the truncated pixel and the vertex's own depth; the previous session's variant, which `ac98edbf`'s message also reports as "none off", was not recorded].
+  - The 46,457 pixels are those where the world-X-linear perspective index differs from the unrounded screen-linear model by 3 or more; rounding is monotone, so a perspective-correct render lands 2 or more indices away at each of them, and the committed test's `MIN_APART_PIXELS` is 40,000.
+  - An RTX 4070 render of this scene with the slide on, every pixel equal, was reported by the previous session [an unrecorded observation of an uncommitted variant, pointed at the GPU by hand; not rerun, and the committed test cannot reproduce it].
+  - "Up to about 0.7 index" of bend, quoted in `ac98edbf`'s message, was not recomputed and is no longer claimed by the test or the PR.
+- **Reason**: `[Supported Inference]`, `lavapipe.md` § 2's reading of the clipper's fallback interpolation: the slide changes the two front corners' depths (the polygon reaches behind the eye, so the clipper cuts it), the clipper's interpolation of the shade then bends the gradient, and rounding turns the bend into one-index flips at 3,167 of 47,040 pixels.
+  The slide-disabled run, with no pixel off, shows the bend needs the slide; it did not isolate the clipper's fallback as the cause of the bend.
+- **Pass without `VK_DRIVER_FILES`**: on Windows with the variable unset the test prints `Skipping software-only GPU test: no software fallback adapter with clip distances (WARP lacks them; ADR 0054)` and passes, with or without `STUNT_REQUIRE_GPU=1`, so a green run there that did not name the lavapipe manifest checked nothing.
+- **Pin**: the repin after this change is `2c5a4012` (`git rev-parse c790e3e1:crates`, the commit that cut the test's comment to its contract); the earlier `a7acdb14` was the tree of the previous test comment.
 
 ## Handoff
 
