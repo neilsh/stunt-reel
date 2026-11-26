@@ -165,8 +165,11 @@ The centre alone moves nothing vertically: row 92's centre is our 92.5.
 
 `[Bounded Observation]` for the measurement, on the GPU over every reference film.
 Drawing each vertex at that pixel raised all seven films by 0.005 to 0.011 SSIM when each vertex slid to the pixel along the horizontal world plane through it, so that the ground and the ocean stayed coplanar, and a vertex whose ray missed that plane kept its own projection.
-The renderer does not follow the rule yet: no form that kept every depth tie the gate tests, decals on tilted facets included, adopted (Ruled out).
-_Source: [the register projectors truncate toward the centre](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-register-projectors-truncate-toward-the-centre), [with an unsnapped fallback](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-projector-rounding-with-an-unsnapped-fallback)._
+The renderer follows the rule: `playone_vertex` in `mode13h.wgsl` draws each vertex at that pixel's centre, sliding it along the ray through the pixel to a plane through the vertex, so the surfaces that shared a plane still do.
+That plane is the horizontal one for a world-mesh vertex and for a shape facet within about 26 degrees of horizontal, and the facet's own for a steeper facet (Ruled out gives the forms that failed).
+`[Bounded Observation]` for the score, on the GPU against `main`: six films rise by 0.0064 to 0.0129 SSIM and `balloon` falls by 0.0007, within the 0.002 the evidence track allows.
+The depth ties are pinned by the decal tests of `draw_order.rs` on a steep and a near-horizontal facet, by its tile-on-terrain and actor-on-scenery tests, and by `lines.rs`'s one-pixel polygon.
+_Source: [the register projectors truncate toward the centre](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-register-projectors-truncate-toward-the-centre), [with an unsnapped fallback](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-projector-rounding-with-an-unsnapped-fallback), [the world mesh slides horizontally](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-the-world-mesh-slides-in-the-horizontal-plane-shapes-in-their-facets), [near-horizontal shape facets](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-near-horizontal-shape-facets-slide-horizontally-too)._
 
 ## Ruled out
 
@@ -194,7 +197,11 @@ _Source: [the register projectors truncate toward the centre](../../work/2026-11
   Keeping that depth only where a vertex's ray misses its horizontal plane still drew the grass of `bomb`'s opening shot as ocean (22 frames, mask IoU −0.328 each) ([with coplanar ground kept coplanar](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-projector-rounding-with-coplanar-ground-kept-coplanar)).
 
 * **Drawing truncated vertices slid within their own facet's plane** (section 8.14).
-  It keeps a decal on a facet tilted about the vertical, which the horizontal-plane form loses near the eye (`draw_order::a_decal_wins_over_its_base_near_and_far`), but lowers `balloon` by 0.0043 while the other six films rise, so it did not adopt; whether the river, a flat prop snapped onto sloped terrain, leaves its terrain's plane is not tested ([the shipped projector rounding](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-shipped-projector-rounding-against-main)).
+  It keeps a decal on a facet tilted about the vertical, which the horizontal-plane form loses near the eye (`draw_order::a_decal_wins_over_its_base_near_and_far`), but lowers `balloon` by 0.0043 while the other six films rise, so it did not adopt; the river, a flat prop snapped onto sloped terrain, was the suspect, not tested alone ([the shipped projector rounding](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-shipped-projector-rounding-against-main)).
+  Re-measured on `main` it lowered `balloon` by 0.0043 again ([the world mesh slides horizontally](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-the-world-mesh-slides-in-the-horizontal-plane-shapes-in-their-facets)).
+
+* **Drawing truncated vertices slid horizontally for the world mesh and within their facet's plane for every shape** (section 8.14).
+  The river's plane explained part of that fall: `balloon` still fell 0.0024, past the 0.002 the evidence track allows, while the other six films rose by 0.0055 to 0.0132 ([the world mesh slides horizontally](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-the-world-mesh-slides-in-the-horizontal-plane-shapes-in-their-facets)).
 
 * **The projection centre alone** (section 8.14).
   Moving the axis half a column right, to the centre of column 160, lowered six films (`intro` by 0.0056) ([projector rounding on the evidence track](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-playones-projector-rounding-on-the-evidence-track)).
@@ -202,7 +209,7 @@ _Source: [the register projectors truncate toward the centre](../../work/2026-11
 ## 10. Open questions
 
 * **Projected points** (section 8.14).
-  Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; how to draw vertices on `PLAYONE`'s truncated pixels while keeping every depth tie the painter's order makes: the ground and the ocean, decals on non-horizontal facets and the outlines' cull all at once ([#1064](https://github.com/neilsh/stunt-reel/issues/1064), from the prototype `proto/1027-projector-rounding`).
+  Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; whether a slide threshold other than 26 degrees from horizontal scores better: 60 degrees gave a higher film mean (0.9166 against 0.9153) and raised `balloon` by 0.0048, but left `ctry` and `bomb` 0.0005 and 0.0007 below 26 degrees, and was not taken.
   On `location`'s stadium the lines' and outlines' mismatched pixels lie mostly a pixel toward the centre in the capture, and the prototype cuts the stadium's loss by about a third ([`prop-shape-loss.md` § 2.5](../parity/prop-shape-loss.md#25-one-tick-phase-and-lines)).
 
 * **Back faces** (section 8.12).
