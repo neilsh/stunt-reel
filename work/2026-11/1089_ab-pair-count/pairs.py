@@ -71,7 +71,7 @@ scen = {
     "pooled-runner": pooled(RUNNER)[0],
     "quiet7": sd_log(D["quiet7"]),
 }
-print("per-pair log-ratio sd (sqrt2 * sd(log)):", {k: round(v * math.sqrt(2) * 100, 2) for k, v in {"rerun2": sd_log(D["rerun2"]), "quiet7": sd_log(D["quiet7"])}.items()})
+print("per-pair log-ratio sd (sqrt2 * sd(log)):", {k: round(v * math.sqrt(2) * 100, 2) for k, v in {"rerun2": sd_log(D["rerun2"]), "quiet7": sd_log(D["quiet7"]), "pooled-runner": pooled(RUNNER)[0]}.items()})
 walls = [float(r["wall_ms"]) for r in csv.DictReader(open(W + "1018_lavapipe-ab-variance/aa-span-b-rerun2.csv"))]
 print("rerun2 wall median ms:", st.median(walls))
 print("sigma", {k: round(v * 100, 2) for k, v in scen.items()})

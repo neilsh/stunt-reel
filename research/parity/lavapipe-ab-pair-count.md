@@ -46,7 +46,7 @@ Normal model, probability a perfect runner passes (the median bar alone differs 
 
 A bootstrap that resamples 22 runs, those of `aa-span-b-rerun2.csv` (8), `aa-span-b.csv` (5), `aa-span-b-rerun.csv` (2) and the quiet probe's runs 1 to 7 (7; its slow first run left out), each file divided by its own median so the heavy tail of the outlier stays, gave `40.7%` at ±1% and `65.8%` at ±2% at 4 pairs.
 The standard deviation of the 4-pair median change is `1.71%`, `2.40%` and `3.68%` at the three spreads; the completed A/A's `-1.07%` is `0.6` of the first.
-The per-pair log-ratio spread (`sqrt(2) * sd(log)`) is `3.13%` at the first spread, `4.41%` at the second and `6.73%` at the third.
+The per-pair log-ratio spread (`sqrt(2) * sd(log)`) is `3.13%` at the first spread, `4.41%` at the second and `6.74%` at the third.
 
 ## 3. Pairs needed
 

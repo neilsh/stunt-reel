@@ -10,7 +10,7 @@ after-idle3 | 3 | 10.2 | 5.26
 pooled runner A/A 8+5+2: runs 15 sd(log) 4.76%
 pooled runner A/A 8+2: runs 10 sd(log) 2.11%
 pooled quiet7 + rerun2: runs 15 sd(log) 2.67%
-per-pair log-ratio sd (sqrt2 * sd(log)): {'rerun2': 3.13, 'quiet7': 4.41}
+per-pair log-ratio sd (sqrt2 * sd(log)): {'rerun2': 3.13, 'quiet7': 4.41, 'pooled-runner': 6.74}
 rerun2 wall median ms: 3869.919
 sigma {'rerun2': 2.21, 'pooled-runner': 4.76, 'quiet7': 3.12}
 
