@@ -298,7 +298,7 @@ fn a_view_straight_up_is_the_zenith_colour() {
 }
 
 #[test]
-fn down_a_column_the_sky_changes_monotonically_and_never_over_one_palette_step() {
+fn down_a_column_the_sky_changes_monotonically_and_never_over_the_largest_palette_step() {
     common::gpu_test(|| {
         let sky = sky_with_the_sun_below();
         // Pitched up 20 degrees, the column spans the horizon band to well above it.
@@ -405,6 +405,39 @@ fn the_sun_is_a_soft_glow_not_a_hard_disc() {
             largest_step(near) < whole / 5,
             "step {} over a fifth of {whole}: {near:?}",
             largest_step(near)
+        );
+    });
+}
+
+#[test]
+fn a_low_suns_glow_leaves_the_sky_at_and_below_the_horizon_the_horizon_colour() {
+    common::gpu_test(|| {
+        // The sun a little above the horizon, nearest it: its glow (5 degrees) reaches rays
+        // below the horizon, which must stay index 238's colour.
+        let sky = (0..=u16::MAX)
+            .filter(|&sky| ShadeLight::world(sky).sun_direction()[1] > 0.01)
+            .min_by(|&a, &b| {
+                let y = |sky: u16| ShadeLight::world(sky).sun_direction()[1];
+                y(a).total_cmp(&y(b))
+            })
+            .expect("some sun lies just above the horizon");
+        let [x, y, z] = ShadeLight::world(sky).sun_direction();
+        assert!(y < 0.05, "sun elevation sin {y}");
+        // A level view toward the sun's heading.
+        let (Some(page), Some(horizon)) = (
+            shoot_sky([x * 100.0, 0.0, z * 100.0], Look::Modern, sky),
+            palette_colour(FOG_INDEX, sky),
+        ) else {
+            return;
+        };
+        let rows = column(&page, page.width() as usize / 2);
+        let middle = rows.len() / 2;
+        for (row, colour) in rows.iter().enumerate().skip(middle - 2) {
+            assert_eq!(*colour, horizon, "row {row} of {}", rows.len());
+        }
+        assert!(
+            rows.iter().take(middle - 2).any(|c| *c != horizon),
+            "the glow tints the sky above the horizon"
         );
     });
 }

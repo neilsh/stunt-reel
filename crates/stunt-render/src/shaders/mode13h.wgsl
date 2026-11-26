@@ -752,7 +752,8 @@ const SKY_HORIZON_TAN: f32 = 0.017857143;
 // so a ray at elevation `t` (its tangent) lies on the continuous edge `j = 2048 / (1024 t + 128)`,
 // and its colour is the blend of the palette entries either side of `224 + j`: the zenith colour
 // straight up, `FOG_INDEX`'s colour at and below edge 14's elevation, with no seam where the fog
-// meets it. The elevation is tested first: the formula's denominator reaches zero at
+// meets it, a low sun's glow included: the glow tints only the sky above that elevation. The
+// elevation is tested first: the formula's denominator reaches zero at
 // `t = -0.125`, where a clamp would turn steep downward rays zenith-coloured. The edges are the
 // view's centre column's bands; under pitch PLAYONE's straight edges differ away from it. The sun
 // is a soft glow of its colour (index 239), not a hard disc.
@@ -778,9 +779,10 @@ fn modern_sky(ndc: vec2<f32>) -> vec3<f32> {
         let s = 224.0 + clamp(j, 0.0, 14.0);
         let i0 = i32(floor(s));
         colour = mix(modern_palette(i0), modern_palette(min(i0 + 1, 255)), s - floor(s));
+        let toward = smoothstep(modern.glow.y, modern.glow.x, dot(ray, modern.sun.xyz));
+        colour = mix(colour, modern_palette(i32(SUN_INDEX)), toward * modern.glow.z);
     }
-    let toward = smoothstep(modern.glow.y, modern.glow.x, dot(ray, modern.sun.xyz));
-    return mix(colour, modern_palette(i32(SUN_INDEX)), toward * modern.glow.z);
+    return colour;
 }
 
 @fragment
