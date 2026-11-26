@@ -173,6 +173,7 @@ _Source: [clock and window passes](../../work/2026-11/distill-capture-dosbox-aut
 ## 5. HUD Timer Glyphs
 
 `CTRY.FLM`'s HUD timer, `MM:SS.cc` in 3x5 digits at rows 179 to 183, decodes from video by a glyph table.
+Its six digit cells start at columns 1, 5, 11, 15, 21 and 25, with the colon and dot between them, so the timer spans columns 1 to 27.
 _Source: [scratch driver](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-scratch-driver)._
 
 ---

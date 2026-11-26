@@ -185,7 +185,10 @@ def _key_panel(counts: dict[str, int], fraction: float) -> Image.Image:
     out = Image.new("RGB", (PANEL_WIDTH, CLOSE_UP_HEIGHT + LABEL), "white")
     draw = ImageDraw.Draw(out)
     draw.text(
-        (4, 2), "KEY to the INDEX MISMATCH panel: pixels per colour", fill="black", font=_font()
+        (4, 2),
+        "KEY to the INDEX MISMATCH panel: pixels per colour, of 320x200",
+        fill="black",
+        font=_font(),
     )
     lines = draw_key(draw, (8, LABEL + 12), [counts], _font(), KEY_LINE)
     summary = f"{100 * fraction:.1f}% of the unmasked pixels mismatch"
@@ -219,7 +222,8 @@ def build_sheet(
     render240 = np.array(stretch(render_rgb), dtype=np.uint8)
     layer240 = stretch(layer)
     masked240 = stretch(masked)
-    mismatch_map, counts = index_map(capture240, stretch(mismatch), layer240, masked240)
+    mismatch_map, counts = index_map(capture_rgb, mismatch, layer, masked)  # counts on 320x200
+    mismatch_map = np.array(stretch(mismatch_map), dtype=np.uint8)
     overlay = composite(capture240, render240, masked240)
     capture240[hud] = GREY  # the game's button bar and timer are not part of the 3D view
     render240[hud] = GREY

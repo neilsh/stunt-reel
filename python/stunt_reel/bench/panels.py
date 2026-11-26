@@ -1,8 +1,9 @@
 """The difference panels of readout sheets and parity strips, and their key.
 
 The **composite** is grey where capture and render agree in luma, magenta where the capture is
-brighter and green where the render is, so a shifted edge shows as a magenta fringe on one side
-and a green one on the other. Two colours of equal
+brighter and green where the render is, so a shifted feature shows as a magenta fringe on one side
+and a green one on the other (the green side is where the render put a feature brighter than its
+surroundings, the magenta side one darker). Two colours of equal
 luma look alike in it; the **index map** catches those: the capture dimmed, with every
 mismatched pixel painted by the layer the render drew there (:data:`LAYER_KEY`).
 """

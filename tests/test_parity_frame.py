@@ -130,11 +130,13 @@ def test_side_by_side_puts_the_capture_left_of_ours(tmp_path: Path) -> None:
         reference, ours, read_capture(reference).frames[0].ordinal, 5, (0, 0, 4, 2), 1, out
     )
     width, rows = _png_rows(out)
-    assert (width, len(rows)) == (4 + 2 + 4, STRIP_HEIGHT)
+    assert len(rows) == STRIP_HEIGHT
+    assert width > 4 + 2 + 4  # the key's captions widen a narrow crop
+    assert rows[0][10 * 3 :] == bytes([255] * 3 * (width - 10))  # padded white
     assert rows[0][:3] == bytes([1, 1, 0])  # the capture's index 1 is on the left
     assert rows[0][4 * 3 : 6 * 3] == bytes([255, 0, 255] * 2)  # the magenta divider
     # Our tick 5 holds indices 5, 6, 7, 8 on row 0 (render_helpers.frame_for).
-    assert rows[0][6 * 3 :] == bytes([5, 5, 0, 6, 6, 0, 7, 7, 0, 8, 8, 0])
+    assert rows[0][6 * 3 : 10 * 3] == bytes([5, 5, 0, 6, 6, 0, 7, 7, 0, 8, 8, 0])
 
 
 def test_strip_rows_show_the_composite_and_the_index_map_under_each_store(
@@ -146,13 +148,13 @@ def test_strip_rows_show_the_composite_and_the_index_map_under_each_store(
     out = tmp_path / "side.png"
     parity_probe.make_side_by_side(reference, ours, 1, 5, (0, 0, 4, 2), 1, out)
     _, rows = _png_rows(out)
-    assert rows[2] == bytes([255, 0, 255] * 10)  # the rule under the pictures
+    assert rows[2][: 10 * 3] == bytes([255, 0, 255] * 10)  # the rule under the pictures
     assert rows[4][:12] == bytes([255] * 12)  # nothing under the capture
     # Capture luma 0.9 against render luma 4.4: brighter in the render, so green (gain 3).
     assert rows[4][6 * 3 : 6 * 3 + 3] == bytes([0, 8, 0])
     # Every index differs and every layer of tick 5 is an actor draw (35 and up).
     actor = bytes(panels.LAYER_KEY[5].colour)
-    assert rows[8][6 * 3 :] == actor * 4
+    assert rows[8][6 * 3 : 10 * 3] == actor * 4
 
 
 def test_missing_tick_says_whether_it_was_rendered() -> None:
@@ -204,12 +206,13 @@ def test_strip_puts_the_capture_first_then_each_store_in_order(tmp_path: Path) -
     out = tmp_path / "strip.png"
     parity_probe.make_strip(reference, [before, after], 1, 5, (0, 0, 4, 2), 1, out)
     width, rows = _png_rows(out)
-    assert (width, len(rows)) == (4 + 2 + 4 + 2 + 4, STRIP_HEIGHT)
+    assert len(rows) == STRIP_HEIGHT
+    assert width >= 4 + 2 + 4 + 2 + 4
     assert rows[0][:3] == bytes([1, 1, 0])  # the capture first
     ours = bytes([5, 5, 0, 6, 6, 0, 7, 7, 0, 8, 8, 0])
     assert rows[0][6 * 3 : 10 * 3] == ours  # before, then after
     assert rows[0][10 * 3 : 12 * 3] == bytes([255, 0, 255] * 2)
-    assert rows[0][12 * 3 :] == bytes([9, 9, 0] * 4)
+    assert rows[0][12 * 3 : 16 * 3] == bytes([9, 9, 0] * 4)
 
 
 def test_variant_stores_render_once_per_value_in_order(tmp_path: Path) -> None:

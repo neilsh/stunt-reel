@@ -32,7 +32,10 @@ TIMECODE_BOX = (179, 184, 1, 28)
 def readout_mask(
     capture_idx: NDArray[np.uint8], *, credits_drawn: bool = False
 ) -> NDArray[np.bool_]:
-    """Pixels a readout ignores: :func:`overlay_mask` and the HUD timer, on any raster size."""
+    """Pixels a readout ignores: :func:`overlay_mask` and the HUD timer.
+
+    The bar and timer sit where they do on the 320x200 screen; a smaller raster keeps what fits.
+    """
     mask = overlay_mask(capture_idx, credits_drawn=credits_drawn)
     row0, row1, col0, col1 = TIMECODE_BOX
     mask[row0:row1, col0:col1] = True

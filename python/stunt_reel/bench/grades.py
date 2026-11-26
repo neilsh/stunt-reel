@@ -39,9 +39,10 @@ image is one moment of a film shown two ways: **CAPTURE** (top left) is the orig
 
 - **OVERLAY** (middle left) is grey where the two agree, **magenta** where the capture is brighter and
   **green** where the render is brighter. A feature drawn in the wrong place shows as a magenta edge on
-  one side and a green edge on the other; the green side is where the render put it.
-- **INDEX MISMATCH** (middle right) is the capture darkened, with every pixel whose colour differs
-  painted by what the render drew there; the **KEY** (bottom right) names each colour and counts its
+  one side and a green edge on the other; for a feature brighter than its surroundings the green side
+  is where the render put it, and for a darker one the magenta side is.
+- **INDEX MISMATCH** (middle right) is the capture darkened, with every pixel whose palette colour
+  differs painted by what the render drew there; the **KEY** (bottom right) names each colour and counts its
   pixels.
 
 The bottom left is a **CLOSE-UP** of the aircraft area, capture left, render right.

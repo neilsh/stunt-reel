@@ -380,15 +380,21 @@ STRIP_KEY_LINE = 16
 def _strip_key(
     columns: list[dict[str, int]], fractions: list[float], width: int
 ) -> NDArray[np.uint8]:
-    """The strip's key band: what the two rows show, and each store's figures, *width* wide."""
+    """The strip's key band: what the two rows show, and each store's figures.
+
+    It is *width* wide, or wider when its captions need it.
+    """
     font = ImageFont.load_default(size=12)
     unknown = any(column[panels.LAYER_KEY[-1].name] for column in columns)
     lines = 2 + len(panels.LAYER_KEY) - 1 + unknown
-    image = Image.new("RGB", (width, lines * STRIP_KEY_LINE + 4), "white")
-    draw = ImageDraw.Draw(image)
-    draw.text((2, 0), panels.COMPOSITE_TITLE, fill="black", font=font)
     mismatch = " | ".join(f"{100 * f:.1f}%" for f in fractions)
-    draw.text((2, STRIP_KEY_LINE), f"{panels.INDEX_MAP_TITLE}: {mismatch}", fill="black", font=font)
+    captions = (panels.COMPOSITE_TITLE, f"{panels.INDEX_MAP_TITLE}: {mismatch}")
+    probe = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    needed = 4 + max(int(probe.textlength(text, font=font)) for text in captions)
+    image = Image.new("RGB", (max(width, needed), lines * STRIP_KEY_LINE + 4), "white")
+    draw = ImageDraw.Draw(image)
+    for i, text in enumerate(captions):
+        draw.text((2, i * STRIP_KEY_LINE), text, fill="black", font=font)
     panels.draw_key(draw, (2, 2 * STRIP_KEY_LINE), columns, font, STRIP_KEY_LINE)
     return np.asarray(image, dtype=np.uint8)
 
@@ -444,13 +450,13 @@ def make_strip(
         for i, part in enumerate(row):
             parts += [divider, part] if i else [part]
         bands.append(np.concatenate(parts, axis=1))
-    full_width = bands[0].shape[1]
-    rule = np.full((2, full_width, 3), (255, 0, 255), dtype=np.uint8)
-    picture = np.concatenate(
-        [bands[0], rule, bands[1], rule, bands[2], _strip_key(columns, fractions, full_width)],
-        axis=0,
-    )
-    write_png(out, full_width, [row.tobytes() for row in picture])
+    rule = np.full((2, bands[0].shape[1], 3), (255, 0, 255), dtype=np.uint8)
+    grid_rows = np.concatenate([bands[0], rule, bands[1], rule, bands[2]], axis=0)
+    key = _strip_key(columns, fractions, grid_rows.shape[1])
+    pad = key.shape[1] - grid_rows.shape[1]  # a key wider than a narrow crop pads it white
+    grid_rows = np.pad(grid_rows, ((0, 0), (0, pad), (0, 0)), constant_values=255)
+    picture = np.concatenate([grid_rows, key], axis=0)
+    write_png(out, picture.shape[1], [row.tobytes() for row in picture])
 
 
 def cmd_crop(args: argparse.Namespace) -> None:
