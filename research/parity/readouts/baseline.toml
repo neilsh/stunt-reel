@@ -7,7 +7,9 @@
 # The run and grade files name no model; the grader names come from the coordinator's delegated-task
 # records. The earlier baseline (e09f8ff6) was graded by DSH passes; this one by Haiku passes, so
 # the comparison across the change of grader model is not calibrated, and a per-category difference
-# between the two baselines cannot be told apart from a grader difference or from the render change. #1118 separates them by re-grading the e09f8ff6 sheets with Haiku: see batch-vault-films.md § 7.
+# between the two baselines cannot be told apart from a grader difference or from the render change.
+# #1118 splits them by re-grading the e09f8ff6 sheets with two Haiku passes and a Sonnet tie-break;
+# only CTRY's background-misregistration render part (+4) clears min_change (batch-vault-films.md § 7).
 commit = "6486fb67983173f4a25b7e919156101fe9712b37"  # run.json revision of the sheets made and graded
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"  # canonical lavapipe under WSL, class cpu; see render-on-lavapipe.md
 date = "2026-11-26"
