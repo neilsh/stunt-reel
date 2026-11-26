@@ -1,0 +1,23 @@
+{
+  "film": "ctry",
+  "ticks": [
+    14,
+    100,
+    188,
+    276,
+    364,
+    452,
+    540,
+    628,
+    716,
+    804,
+    892,
+    980
+  ],
+  "seed": 1,
+  "calibrate": false,
+  "revision": "c2b23b4b9758207061b55a38ad88de567c859701",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "389a48a6dfb135136267860e63ec79c3f5565476e32de42ed46bbf0dc9f15c25",
+  "report_digest": "09c16ba2f8648ef853c18b3f8503a45a8f4f32f2a3809e9c822e4dffcb5c9fb9"
+}

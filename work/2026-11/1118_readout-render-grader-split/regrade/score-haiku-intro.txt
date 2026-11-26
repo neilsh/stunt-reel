@@ -1,0 +1,25 @@
+[parity-bench] $ uv run python python/scripts/parity_bench.py errors-score --fi…
+[bench] wrote /root/wt1118/build/parity/bench/intro/errors/readout.json
+aircraft-parts-missing       2+ on 0/12  mean 0.00
+aircraft-shape-broken        2+ on 0/12  mean 0.00
+aircraft-too-small           2+ on 0/12  mean 0.00
+aircraft-misplaced           2+ on 0/12  mean 0.42
+shadow-missing               2+ on 0/12  mean 0.00
+sea-band-wrong               2+ on 0/12  mean 0.00
+scenery-missing              2+ on 0/12  mean 0.00
+ground-shade-wrong           2+ on 0/12  mean 0.00
+ground-shade-edges           2+ on 0/12  mean 0.08
+background-misregistration   2+ on 3/12  mean 0.92
+aircraft-absent              2+ on 0/12  mean 0.00
+shadow-shape-wrong           2+ on 0/12  mean 0.17
+actors-missing               2+ on 0/12  mean 0.00
+terrain-type-wrong           2+ on 0/12  mean 0.00
+explosion-missing            2+ on 0/12  mean 0.00
+sun-missing                  2+ on 0/12  mean 0.00
+frame-blank                  2+ on 0/12  mean 0.00
+black-block                  2+ on 1/12  mean 0.17
+propeller-solid              2+ on 0/12  mean 0.00
+other @3125: propeller blades sit at a slightly different angle
+disputed 2 sheets, scored from the tie-break
+changes since research/parity/readouts/intro.json: none
+below min_change (4): intro background-misregistration 0→3, intro black-block 0→1, intro propeller-solid 1→0

@@ -1,0 +1,23 @@
+{
+  "film": "location",
+  "ticks": [
+    134,
+    683,
+    1233,
+    1772,
+    2322,
+    2872,
+    3422,
+    3972,
+    4522,
+    5062,
+    5611,
+    6161
+  ],
+  "seed": 1,
+  "calibrate": false,
+  "revision": "c2b23b4b9758207061b55a38ad88de567c859701",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "22714e0712b5ff7ae632a587784e4b43cfbe41ea2bf6680e01b68e66b29692cb",
+  "report_digest": "a8dc522ae55e73855cf74e39fba5d597f62554f6d68427a2e5d46feb52c8e228"
+}

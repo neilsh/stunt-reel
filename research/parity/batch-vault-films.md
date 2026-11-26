@@ -1,5 +1,5 @@
 ---
-summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and the error readout of the seven Patch #3 references. The 2026-11-26 19-category baseline (`6486fb67`, two Haiku passes and a Sonnet tie-break) has CTRY's `background-misregistration` at 4 of 12 and TRAINTNL's `propeller-solid` at 3, where the 2026-11-25 baseline it replaced (`e09f8ff6`, DSH passes) had BOMB's at 3; the 2026-11-22 18-category baseline had no category at 3 of 12 and `sea-band-wrong` at 0 on all seven, against 7, 6 and 4 frames on three films on 2026-11-16."
+summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and the error readout of the seven Patch #3 references. The 2026-11-26 19-category baseline (`6486fb67`, two Haiku passes and a Sonnet tie-break) has CTRY's `background-misregistration` at 4 of 12 and TRAINTNL's `propeller-solid` at 3, where the 2026-11-25 baseline it replaced (`e09f8ff6`, DSH passes) had BOMB's at 3; the 2026-11-22 18-category baseline had no category at 3 of 12 and `sea-band-wrong` at 0 on all seven, against 7, 6 and 4 frames on three films on 2026-11-16. Re-grading the 2026-11-25 sheets with the current grader moved each category's count of frames graded 2 or more by 2 or fewer, and the one render move at 4 is CTRY's `background-misregistration`."
 ---
 
 # Batch Parity Survey: Retail Vault Films
@@ -153,10 +153,37 @@ The refresh also changes the renderer build (LLVM 21.1.7 to 20.1.2) and the fast
 _Source: [the 19-category seven-film readout baseline](../../work/2026-11/1086_seven-film-readout-baseline/journal.md#2026-11-25-the-19-category-seven-film-readout-baseline)._
 
 `[Bounded Observation]`, 2026-11-26, `6486fb67` (19 categories) on its lavapipe render (`llvmpipe (LLVM 20.1.2, 256 bits)`, no drift against `expected/lavapipe.toml`): two Haiku passes graded the same 12 sheets per film, with a Sonnet tie-break on the disputed sheets, and this is the baseline in [`readouts/`](readouts/baseline.toml) from 2026-11-26.
-Sheets graded 2 or more per film, new against the 2026-11-25 baseline: CTRY `background-misregistration` 4 (was 1), INTRO `propeller-solid` 1 (`background-misregistration` 1 to 0), LAND `background-misregistration` 2 (was 1) and `ground-shade-edges` 0 (was 1) with `aircraft-misplaced` and `scenery-missing` at 1 as before, BALLOON none, TRAINTNL `propeller-solid` 3 (was 2), BOMB `background-misregistration` 2 (was 3), LOCATION `background-misregistration` 2 (was 0) and `ground-shade-edges` 1 (was 0).
+Sheets graded 2 or more per film, new against the 2026-11-25 baseline: CTRY `background-misregistration` 4 (was 1), INTRO `propeller-solid` 1 as before (`background-misregistration` 1 to 0), LAND `background-misregistration` 2 (was 1) and `ground-shade-edges` 0 (was 1) with `aircraft-misplaced` and `scenery-missing` at 1 as before, BALLOON none, TRAINTNL `propeller-solid` 3 (was 2), BOMB `background-misregistration` 2 (was 3), LOCATION `background-misregistration` 2 (was 0) and `ground-shade-edges` 1 (was 0).
 The scorer's `changes since` check printed none for all seven films, because it reports a category's 2-or-more count moving by `min_change` 4 or more and the largest move is 3 (CTRY).
-The render changes of #1096 and #1099 and the change of grader model (DSH to Haiku) all sit between the two baselines, so no difference is attributed to either; the disputed sheets moved from 1, 7, 4, 0, 0, 12, 0 (CTRY, INTRO, LAND, BALLOON, TRAINTNL, BOMB, LOCATION) to 7, 3, 3, 0, 2, 2, 2.
+The render change (#1096, #1099) and the change of grader model (DSH to Haiku) both sit between the two baselines, so the change is split by re-grading the 2026-11-25 baseline's own sheets with the current grader: the grader part is re-graded minus DSH, the render part is current minus re-graded.
+The disputed sheets moved from 1, 7, 4, 0, 0, 12, 0 (CTRY, INTRO, LAND, BALLOON, TRAINTNL, BOMB, LOCATION) to 7, 3, 3, 0, 2, 2, 2.
 _Source: [the refreshed baseline](readouts/baseline.toml) and its per-film `readouts/<film>.json`._
+
+`[Bounded Observation]`, 2026-11-26, the seven films' 12 sheets each, the old render (`crates/` `4b5c69c`) re-made into sheets on `c2b23b4b` (every `render_digest`, tick set and `categories_digest` equals the 2026-11-25 baseline's) and graded by two Haiku passes with a Sonnet tie-break.
+Frames graded 2 or more, DSH / re-graded / current (the three columns are 0 in every other category; LAND's `aircraft-misplaced` and `scenery-missing` are 1 in all three):
+
+| film | total | category | grader part | render part |
+|---|---|---|---|---|
+| CTRY | 1 / 0 / 4 | `background-misregistration` | -1 | +4 |
+| INTRO | 2 / 4 / 1 | `background-misregistration` | +2 | -3 |
+| | | `black-block` | +1 | -1 |
+| | | `propeller-solid` | -1 | +1 |
+| LAND | 4 / 4 / 4 | `ground-shade-edges` | 0 | -1 |
+| | | `background-misregistration` | 0 | +1 |
+| BALLOON | 0 / 0 / 0 | none | 0 | 0 |
+| TRAINTNL | 2 / 4 / 3 | `background-misregistration` | +2 | -2 |
+| | | `propeller-solid` | 0 | +1 |
+| BOMB | 3 / 2 / 2 | `background-misregistration` | -1 | 0 |
+| LOCATION | 0 / 0 / 3 | `ground-shade-edges` | 0 | +1 |
+| | | `background-misregistration` | 0 | +2 |
+
+The grader part is 2 frames or fewer in every category, below the 3 frames by which two Haiku passes moved a category ([`metric-bench.md` § 2.3](metric-bench.md#23-error-categories-graded-by-a-vision-model)).
+The render part is 4 frames in CTRY `background-misregistration`, which equals `min_change`, and 3 or fewer elsewhere.
+The pixel residue between the two renders at the 84 graded ticks (12 per film) is 111 to 6031 differing pixels each, so no tick has an identical render and grader noise could not be isolated per tick.
+The `6486fb67` sheets were not graded a second time, so the grading noise in both parts is bounded by the 3-frame figure, not measured on these sheets; render parts of 3 or fewer (INTRO -3 included) cannot be told from it, and only CTRY's +4 clears `min_change`.
+Per frame the DSH and Haiku grades disagreed on up to 3 (BOMB `background-misregistration`: DSH graded ticks 1585, 1904 and 2850, Haiku 2531 and 2850), so the agreement is in counts, not in which frames.
+The GPU-vs-lavapipe agreement batch on `c2b23b4b` did not pin (six films flagged, [#1125](https://github.com/neilsh/stunt-reel/issues/1125)); it does not bear on these lavapipe sheets.
+_Source: [2026-11-26: splitting the readout change into render and grader](../../work/2026-11/1118_readout-render-grader-split/journal.md#2026-11-26-splitting-the-readout-change-into-render-and-grader)._
 
 ## Ruled out
 

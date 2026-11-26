@@ -1,0 +1,16 @@
+== bomb ticks 12,331,639,958,1277,1585,1904,2212,2531,2850,3158,3477
+[parity-residue] $ uv run python python/scripts/parity_residue.py --films bomb …
+film   ticks  differing  mean/tick      max      at
+bomb    3719       3719     2380.1     7234    2949
+          tick 12: 2218 differing pixels
+          tick 331: 2388 differing pixels
+          tick 639: 111 differing pixels
+          tick 958: 582 differing pixels
+          tick 1277: 1077 differing pixels
+          tick 1585: 2626 differing pixels
+          tick 1904: 3302 differing pixels
+          tick 2212: 3407 differing pixels
+          tick 2531: 3375 differing pixels
+          tick 2850: 5619 differing pixels
+          tick 3158: 1823 differing pixels
+          tick 3477: 2213 differing pixels

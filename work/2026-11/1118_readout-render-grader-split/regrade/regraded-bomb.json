@@ -1,0 +1,142 @@
+{
+  "film": "bomb",
+  "ticks": [
+    12,
+    331,
+    639,
+    958,
+    1277,
+    1585,
+    1904,
+    2212,
+    2531,
+    2850,
+    3158,
+    3477
+  ],
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "ff52dc31b9e504dcec66c49c0154e01ec069f5d8870d13daa5047b3c22f45659",
+  "categories": [
+    {
+      "category": "aircraft-parts-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-shape-broken",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-too-small",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-misplaced",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "shadow-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "sea-band-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "scenery-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "ground-shade-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "ground-shade-edges",
+      "ticks_2plus": [],
+      "mean": 0.08333333333333333,
+      "ungraded": 0
+    },
+    {
+      "category": "background-misregistration",
+      "ticks_2plus": [
+        2531,
+        2850
+      ],
+      "mean": 1.1666666666666667,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-absent",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "shadow-shape-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "actors-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "terrain-type-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "explosion-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "sun-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "frame-blank",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "black-block",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "propeller-solid",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    }
+  ],
+  "other": {},
+  "missing": 0,
+  "unknown": [],
+  "disputed": 4
+}

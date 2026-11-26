@@ -1,0 +1,16 @@
+== traintnl ticks 12,123,232,342,452,562,683,793,903,1013,1123,1233
+[parity-residue] $ uv run python python/scripts/parity_residue.py --films train…
+film       ticks  differing  mean/tick      max      at
+traintnl    1222       1222     1888.5     4228    1228
+              tick 12: 1037 differing pixels
+              tick 123: 1069 differing pixels
+              tick 232: 2094 differing pixels
+              tick 342: 1454 differing pixels
+              tick 452: 1525 differing pixels
+              tick 562: 1500 differing pixels
+              tick 683: 2306 differing pixels
+              tick 793: 1322 differing pixels
+              tick 903: 2880 differing pixels
+              tick 1013: 1939 differing pixels
+              tick 1123: 3332 differing pixels
+              tick 1233: 3506 differing pixels

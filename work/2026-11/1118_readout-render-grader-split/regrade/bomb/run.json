@@ -1,0 +1,23 @@
+{
+  "film": "bomb",
+  "ticks": [
+    12,
+    331,
+    639,
+    958,
+    1277,
+    1585,
+    1904,
+    2212,
+    2531,
+    2850,
+    3158,
+    3477
+  ],
+  "seed": 1,
+  "calibrate": false,
+  "revision": "c2b23b4b9758207061b55a38ad88de567c859701",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "ff52dc31b9e504dcec66c49c0154e01ec069f5d8870d13daa5047b3c22f45659",
+  "report_digest": "802db76f1b60f93373f83c1ec62d2cdf13efec7599451359944e9c2821265d41"
+}
