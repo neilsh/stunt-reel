@@ -9,7 +9,8 @@ confirmed reap refuses while any source it runs differs from ``origin/main``'s (
 A detached worktree named ``review-*`` is review scratch: with ``--reviews``, reap removes it
 once nothing under it, or in its git dir, changed for ``REVIEW_QUIET_HOURS``, and only when the
 drive is under its free-space bar or ``--force`` is passed; a review runs as a subagent in the
-coordinator's terminal, which Orca does not see (issue #912).
+coordinator's terminal, which Orca does not see, so Orca not running does not keep one
+(issues #912, #1112).
 """
 
 from __future__ import annotations
@@ -561,20 +562,21 @@ def _review_skip(
     A review runs as a subagent in the coordinator's terminal, so Orca has no terminal or agent
     at the path and a clean tree says nothing about the review. Reap therefore reaps one only
     when *reviews* asks for it, nothing under the checkout or in its admin git dir changed for
-    :data:`REVIEW_QUIET_SECONDS`, it holds no nested worktree, and Orca — read, not guessed —
-    does not call it live. Untracked files are left to the usual ``--discard-untracked`` refusal.
+    :data:`REVIEW_QUIET_SECONDS`, it holds no nested worktree, and Orca, when it can be read,
+    does not call it live. Orca not running does not keep an idle review (issue #1112), except
+    one under an ``orca/workspaces`` folder, which may be an Orca workspace. Untracked files are
+    left to the usual ``--discard-untracked`` refusal.
     """
     if not reviews:
         return "review worktree; reap reaps one only with --reviews"
     nested = sorted(entry.path.name for entry in entries[1:] if worktree.path in entry.path.parents)
     if nested:
         return f"review worktree holds nested worktrees ({', '.join(nested)}); remove them first"
-    if orca is None:
-        return "review worktree; Orca is unavailable, so whether a review is live is unknown"
-    found = orca.find(worktree.path)
-    if orca.unavailable is not None:
-        return "review worktree; Orca is unavailable, so whether a review is live is unknown"
-    if found is not None and found.live is not None:
+    found = orca.find(worktree.path) if orca is not None else None
+    if orca is None or orca.unavailable is not None:
+        if _in_orca_base(worktree.path):
+            return "review worktree; Orca is unavailable, so whether a workspace is live is unknown"
+    elif found is not None and found.live is not None:
         return f"review worktree is in use ({found.live})"
     active = _review_activity(worktree)
     if active is not None:
@@ -738,8 +740,9 @@ def _reap_one(
     An Orca workspace goes through *orca* (``orca worktree rm``) after the same unlinking, and
     only while Orca, asked again now, still calls it idle. A review worktree is checked again
     the same way, and is kept when a nested worktree appeared under it since classification
-    (neither status check sees a registered worktree's contents), when Orca cannot be read or
-    now calls it live, or when its quiet period started again while earlier candidates went.
+    (neither status check sees a registered worktree's contents), when Orca now calls it live (or
+    cannot be read and the path may be an Orca workspace), or when its quiet period started
+    again while earlier candidates went.
     """
     worktree = candidate.worktree
     branch = worktree.branch
@@ -761,13 +764,13 @@ def _reap_one(
         nested = sorted(entry.path.name for entry in entries if path in entry.path.parents)
         if nested:
             return f"{label}: holds nested worktrees ({', '.join(nested)}); left alone"
-        if orca is None:
-            return f"{label}: Orca is unavailable; left alone"
-        orca.refresh()
-        found = orca.find(path)
-        if orca.unavailable is not None:
-            return f"{label}: Orca is unavailable; left alone"
-        if found is not None and found.live is not None:
+        if orca is not None:
+            orca.refresh()
+        found = orca.find(path) if orca is not None else None
+        if orca is None or orca.unavailable is not None:
+            if _in_orca_base(path):
+                return f"{label}: Orca is unavailable; left alone"
+        elif found is not None and found.live is not None:
             return f"{label}: review worktree is in use ({found.live}); left alone"
         active = _review_activity(worktree)
         if active is not None:
@@ -1123,8 +1126,8 @@ def _reap(
         )
     if orca.unavailable is not None:
         print(
-            f"  ! orca unavailable ({orca.unavailable}); Orca workspaces and review"
-            " worktrees are not removed, and whether one is live is unknown"
+            f"  ! orca unavailable ({orca.unavailable}); Orca workspaces are not removed,"
+            " and whether one is live is unknown; with --reviews, review worktrees are judged by activity"
         )
     print("candidates:")
     for candidate in candidates:

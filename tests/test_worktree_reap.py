@@ -1980,18 +1980,63 @@ def test_a_review_worktree_touched_in_its_git_dir_is_skipped(tmp_path: Path) -> 
     assert worktree.exists()
 
 
-def test_reviews_fail_closed_when_orca_is_unavailable(tmp_path: Path) -> None:
+def _no_orca(_repo: Path, *_args: str) -> subprocess.CompletedProcess[str]:
+    raise FileNotFoundError("orca is not on PATH")
+
+
+def test_an_idle_review_worktree_is_reaped_while_orca_is_unavailable(tmp_path: Path) -> None:
+    """A review is a subagent in the coordinator's terminal; Orca not running says nothing."""
     repo, worktree = _review_worktree(tmp_path)
     _age_review(worktree)
+    orca = worktree_reap._OrcaWorkspaces(repo, _no_orca)
 
-    def no_orca(_repo: Path, *_args: str) -> subprocess.CompletedProcess[str]:
-        raise FileNotFoundError("orca is not on PATH")
+    candidates, skipped = _classify_reviews(repo, orca)
 
-    candidates, skipped = _classify_reviews(repo, worktree_reap._OrcaWorkspaces(repo, no_orca))
+    assert skipped == []
+    assert [candidate.worktree.path for candidate in candidates] == [worktree]
+    assert (
+        worktree_reap._reap_one(
+            repo, candidates[0], stash_dirty=False, discard_untracked=False, orca=orca
+        )
+        is None
+    )
+    assert worktree not in _registered_worktrees(repo)
+
+
+@pytest.mark.parametrize("with_orca_object", [True, False])
+def test_a_busy_review_worktree_stays_while_orca_is_unavailable(
+    tmp_path: Path, with_orca_object: bool
+) -> None:
+    repo, worktree = _review_worktree(tmp_path)  # fresh: inside its quiet period
+    orca = worktree_reap._OrcaWorkspaces(repo, _no_orca) if with_orca_object else None
+
+    candidates, skipped = worktree_reap._candidates(
+        repo,
+        worktree_git._worktrees(repo),
+        include_cherry=False,
+        orca=orca,
+        reviews=True,
+    )
+
+    assert candidates == []
+    assert "quiet period" in skipped[0]
+    assert worktree.exists()
+
+
+def test_a_review_worktree_under_an_orca_base_stays_while_orca_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An Orca workspace is left alone when Orca cannot be read, however idle it looks."""
+    repo, worktree = _review_worktree(tmp_path)
+    _age_review(worktree)
+    monkeypatch.setattr(worktree_reap, "_in_orca_base", lambda path: path == worktree)
+    orca = worktree_reap._OrcaWorkspaces(repo, _no_orca)
+
+    candidates, skipped = _classify_reviews(repo, orca)
 
     assert candidates == []
     assert skipped == [
-        "review-1: review worktree; Orca is unavailable, so whether a review is live is unknown"
+        "review-1: review worktree; Orca is unavailable, so whether a workspace is live is unknown"
     ]
     assert worktree.exists()
 
@@ -2125,8 +2170,10 @@ def test_a_review_that_goes_live_after_classification_is_kept(tmp_path: Path) ->
     assert worktree.exists()
 
 
-def test_a_review_whose_orca_load_fails_after_classification_is_kept(tmp_path: Path) -> None:
-    """The recheck fails closed: Orca gone between classification and removal removes nothing."""
+def test_a_review_whose_orca_load_fails_after_classification_is_still_judged_by_activity(
+    tmp_path: Path,
+) -> None:
+    """Orca gone between classification and removal changes nothing: the quiet period decides."""
     repo, worktree = _review_worktree(tmp_path)
     _age_review(worktree)
     loads = 0
@@ -2148,8 +2195,8 @@ def test_a_review_whose_orca_load_fails_after_classification_is_kept(tmp_path: P
         repo, candidates[0], stash_dirty=False, discard_untracked=False, orca=orca
     )
 
-    assert error == "review-1: Orca is unavailable; left alone"
-    assert worktree.exists()
+    assert error is None
+    assert worktree not in _registered_worktrees(repo)
 
 
 def test_a_review_that_wakes_after_classification_is_kept(tmp_path: Path) -> None:
@@ -2223,6 +2270,21 @@ def test_reap_dry_run_lists_then_removes_a_review_worktree(
     assert worktree.exists()
 
     assert worktree_reap._reap(True, reviews=True) == 0
+    out = capsys.readouterr().out
+    assert "removed  review-1" in out
+    assert not worktree.exists()
+
+
+def test_reap_removes_an_idle_review_worktree_while_orca_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo, worktree = _review_worktree(tmp_path)
+    _age_review(worktree)
+    _reap_env_for_reviews(monkeypatch, repo)
+    monkeypatch.setattr(worktree_reap, "_orca", _no_orca)
+
+    assert worktree_reap._reap(True, reviews=True) == 0
+
     out = capsys.readouterr().out
     assert "removed  review-1" in out
     assert not worktree.exists()
