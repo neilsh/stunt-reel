@@ -210,7 +210,7 @@ _Source: [the register projectors truncate toward the centre](../../work/2026-11
   Per film (GPU, SSIM; `main` in brackets): `ctry` 0.9452 (0.9385), `intro` 0.9066 (0.8937), `land` 0.9314 (0.9248), `balloon` 0.9052 (0.9059), `traintnl` 0.9171 (0.9107), `bomb` 0.9073 (0.8957), `location` 0.8945 (0.8863); the mean 0.9153 against `main`'s 0.9079 ([facets near horizontal](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-facets-near-horizontal-slide-horizontally)).
 
 * **Drawing truncated vertices slid horizontally for every facet within 60 degrees of horizontal, without the world-mesh rule** (section 8.14, variant `4`).
-  It scored a mean of 0.9166 against the shipped form's 0.9158 (+0.0008) and 0.9153 for `3` (+0.0013), both inside the ±0.002 noise floor, and `balloon` +0.0048, but `bomb` 0.9066 against 0.9085 shipped and 0.9073 for `3`, and `ctry` and `bomb` below `3`.
+  It scored a mean of 0.9166 against the shipped form's 0.9158 (+0.0008) and 0.9153 for `3` (+0.0013), both inside the ±0.002 noise floor, and `balloon` +0.0048 against `main` (+0.0039 against the shipped form), but `bomb` 0.9066 against 0.9085 shipped and 0.9073 for `3`, and `ctry` and `bomb` below `3`.
   Per film (GPU, SSIM): `ctry` 0.9447, `intro` 0.9069, `land` 0.9349, `balloon` 0.9107, `traintnl` 0.9173, `bomb` 0.9066, `location` 0.8952; it was not combined with the world-mesh rule, so it is an open threshold question (section 10), not a ruled-out one ([facets near horizontal](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-facets-near-horizontal-slide-horizontally)).
 
 * **The projection centre alone** (section 8.14).
@@ -219,7 +219,7 @@ _Source: [the register projectors truncate toward the centre](../../work/2026-11
 ## 10. Open questions
 
 * **Projected points** (section 8.14).
-  Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; whether a slide threshold other than 26 degrees from horizontal scores better: 60 degrees, tried without the world-mesh rule (Ruled out, variant `4`), gave a film mean of 0.9166 against the shipped form's 0.9158 (+0.0008, +0.0013 against `3`, inside the ±0.002 noise floor) and raised `balloon` by 0.0048, but left `bomb` at 0.9066 (shipped 0.9085); the two were not combined.
+  Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; whether a slide threshold other than 26 degrees from horizontal scores better: 60 degrees, tried without the world-mesh rule (Ruled out, variant `4`), gave a film mean of 0.9166 against the shipped form's 0.9158 (+0.0008, +0.0013 against `3`, inside the ±0.002 noise floor) and raised `balloon` by 0.0048 against `main` (+0.0039 against the shipped form), but left `bomb` at 0.9066 (shipped 0.9085); the two were not combined.
   On `location`'s stadium the lines' and outlines' mismatched pixels lie mostly a pixel toward the centre in the capture, and the prototype cuts the stadium's loss by about a third ([`prop-shape-loss.md` § 2.5](../parity/prop-shape-loss.md#25-one-tick-phase-and-lines)).
 
 * **Back faces** (section 8.12).
