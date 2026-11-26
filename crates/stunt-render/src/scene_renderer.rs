@@ -51,12 +51,10 @@ use stunt_core::sprite::SpriteImage;
 use stunt_core::world::{ArenaSpan, MeshSpans, World};
 
 use crate::camera::{CameraController, CameraGpuResources, eye_relative_matrix};
-use crate::mesh::{GpuMeshSlice, GpuModel, prop_runs_group};
+use crate::mesh::{GpuMeshSlice, GpuModel};
 use crate::outline::{Outlined, outlined};
 use crate::palette::PaletteLut;
-use crate::pipeline::{
-    LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, PROP_RUNS_GROUP, RenderPipelines,
-};
+use crate::pipeline::{LAYER_FIRST_ACTOR, LAYER_PROP, ModelUniform, RenderPipelines};
 use crate::renderer::UploadTimes;
 use stunt_core::contracts::{NodeId, SodNode, arena_index};
 
@@ -445,9 +443,6 @@ pub(crate) struct SceneRenderer {
     lit: Vec<Option<LitShape>>,
     uniforms: DrawUniforms,
     model_layout: wgpu::BindGroupLayout,
-    /// The prop runs bound before any world chunk binds its own, which hold no run, so a
-    /// draw of the plane pipelines before the world's has its group; `None` without a plane.
-    no_prop_runs: Option<wgpu::BindGroup>,
     prepared: Vec<PreparedDraw>,
     /// Where the world mesh holds each placement.
     placements: WorldPlacements,
@@ -484,23 +479,22 @@ impl SceneRenderer {
         let shapes_time = shapes_started.elapsed();
         let world_started = Instant::now();
         let placements = scene.world().map_or_default(WorldPlacements::new);
-        let mut world = scene.world().map(|w| {
-            GpuModel::from_ir_outlined(device, queue, &w.ir, outlines_in_world, &placements.marks())
+        // Each world prop vertex carries its shape word, which the plane's shape word reads.
+        let world = scene.world().map(|w| {
+            GpuModel::from_ir_outlined(
+                device,
+                queue,
+                &w.ir,
+                outlines_in_world,
+                &placements.marks(),
+                &w.prop_runs,
+            )
         });
-        // The plane's shape word finds a world prop's shape in the world's prop runs.
-        let prop_runs_layout = pipelines.prop_runs_layout.as_ref();
-        if let Some((layout, (model, w))) = prop_runs_layout.zip(world.as_mut().zip(scene.world()))
-        {
-            model.attach_prop_runs(device, layout, &w.prop_runs);
-        }
         let world_time = if world.is_some() {
             world_started.elapsed()
         } else {
             Duration::ZERO
         };
-        // The placeholder bind group is allocated whether or not there is a world, so it is
-        // outside the world's span.
-        let no_prop_runs = prop_runs_layout.map(|layout| prop_runs_group(device, layout, &[]));
         Self {
             shapes,
             images,
@@ -509,7 +503,6 @@ impl SceneRenderer {
             lit: Vec::new(),
             uniforms: DrawUniforms::new(device),
             model_layout: layout.clone(),
-            no_prop_runs,
             prepared: Vec::new(),
             placements,
             steps: Vec::new(),
@@ -935,11 +928,6 @@ impl SceneRenderer {
         rpass.set_bind_group(0, &camera_resources.bind_group, &[]);
         rpass.set_bind_group(1, &palette.bind_group, &[]);
         rpass.draw(0..3, 0..1);
-        // Each world chunk binds its own runs as it draws ([`GpuModel::draw_slices`]); any
-        // other model's vertices are no world prop's, so whichever runs are bound go unread.
-        if let Some(runs) = &self.no_prop_runs {
-            rpass.set_bind_group(PROP_RUNS_GROUP, runs, &[]);
-        }
 
         // The world's flat ground first, each slice over what is there, then its outline:
         // a run of lines that follows is a slice of its own, so no outline covers it.
