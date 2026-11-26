@@ -1,5 +1,5 @@
 ---
-summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and the error readout of the seven Patch #3 references. The 2026-11-25 19-category baseline (`e09f8ff6` sheets of the `dd7e76eb` lavapipe render) has BOMB's `background-misregistration` at 3 of 12 by the Sonnet tie-break alone, TRAINTNL's `propeller-solid` at 2, and no other category at 2; the 2026-11-22 18-category baseline had no category at 3 of 12 and `sea-band-wrong` at 0 on all seven, against 7, 6 and 4 frames on three films on 2026-11-16."
+summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and the error readout of the seven Patch #3 references. The 2026-11-26 19-category baseline (`6486fb67`, two Haiku passes and a Sonnet tie-break) has CTRY's `background-misregistration` at 4 of 12 and TRAINTNL's `propeller-solid` at 3, where the 2026-11-25 baseline it replaced (`e09f8ff6`, DSH passes) had BOMB's at 3; the 2026-11-22 18-category baseline had no category at 3 of 12 and `sea-band-wrong` at 0 on all seven, against 7, 6 and 4 frames on three films on 2026-11-16."
 ---
 
 # Batch Parity Survey: Retail Vault Films
@@ -143,7 +143,7 @@ That readout and this one used other renders (RTX 4070 then, lavapipe now) and s
 
 _Source: [error readout on the Patch 3 references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-error-readout-on-the-patch-3-references), [the baseline readout](../../work/2026-11/901_error-readout-baseline/journal.md#2026-11-22-the-first-error-readout-baseline-of-the-seven-references); `vault-ctry`'s row: [error readout of vault-ctry](../../work/2026-11/619_ctry-readout/journal.md#2026-11-16-error-readout-of-vault-ctry)._
 
-`[Bounded Observation]`, 2026-11-25, `e09f8ff6` (19 categories) on the lavapipe render of `dd7e76eb` (`crates/` `4b5c69c`, `llvmpipe (LLVM 20.1.2, 256 bits)`): two DSH passes graded the same 12 sheets per film, with a Sonnet tie-break on the disputed sheets, and this is the current baseline in [`readouts/`](readouts/baseline.toml).
+`[Bounded Observation]`, 2026-11-25, `e09f8ff6` (19 categories) on the lavapipe render of `dd7e76eb` (`crates/` `4b5c69c`, `llvmpipe (LLVM 20.1.2, 256 bits)`): two DSH passes graded the same 12 sheets per film, with a Sonnet tie-break on the disputed sheets, and it was the baseline until 2026-11-26; the current one is in [`readouts/`](readouts/baseline.toml).
 BOMB's `background-misregistration` reaches 3 of 12, a lead by the 3-frame threshold, but only through the tie-break: the first DSH pass graded the error clear (2 or more) on all 12 sheets and the second on none (0 on 10 sheets and 1 on 2), and Sonnet kept ticks 1585, 1904 and 2850.
 The 12-frame pass-to-pass difference exceeds `min_change` 4, which was set from two Haiku passes and is not established as a bound for DSH.
 TRAINTNL's `propeller-solid` reaches 2 (ticks 683 and 1123), and no other category reaches 2: CTRY and INTRO reach 1 on `background-misregistration` (INTRO also 1 on `propeller-solid`), and LAND reaches 1 on each of `aircraft-misplaced`, `scenery-missing`, `ground-shade-edges` and `background-misregistration`, all on tick 419.
@@ -151,6 +151,12 @@ BALLOON, BOMB's other categories and LOCATION reach 0.
 The 2026-11-22 baseline graded 18 categories at `b9441a06`; its digest (`f442f579…`) differs from this readout's (`5f8b01d6…`), so `errors-score --against` refuses a comparison across the two series and their counts are not paired.
 The refresh also changes the renderer build (LLVM 21.1.7 to 20.1.2) and the fast grader (Haiku to DSH), so it is not a taxonomy-only delta.
 _Source: [the 19-category seven-film readout baseline](../../work/2026-11/1086_seven-film-readout-baseline/journal.md#2026-11-25-the-19-category-seven-film-readout-baseline)._
+
+`[Bounded Observation]`, 2026-11-26, `6486fb67` (19 categories) on its lavapipe render (`llvmpipe (LLVM 20.1.2, 256 bits)`, no drift against `expected/lavapipe.toml`): two Haiku passes graded the same 12 sheets per film, with a Sonnet tie-break on the disputed sheets, and this is the baseline in [`readouts/`](readouts/baseline.toml) from 2026-11-26.
+Sheets graded 2 or more per film, new against the 2026-11-25 baseline: CTRY `background-misregistration` 4 (was 1), INTRO `propeller-solid` 1 (`background-misregistration` 1 to 0), LAND `background-misregistration` 2 (was 1) and `ground-shade-edges` 0 (was 1) with `aircraft-misplaced` and `scenery-missing` at 1 as before, BALLOON none, TRAINTNL `propeller-solid` 3 (was 2), BOMB `background-misregistration` 2 (was 3), LOCATION `background-misregistration` 2 (was 0) and `ground-shade-edges` 1 (was 0).
+The scorer's `changes since` check printed none for all seven films, because it reports a category's 2-or-more count moving by `min_change` 4 or more and the largest move is 3 (CTRY).
+The render changes of #1096 and #1099 and the change of grader model (DSH to Haiku) all sit between the two baselines, so no difference is attributed to either; the disputed sheets moved from 1, 7, 4, 0, 0, 12, 0 (CTRY, INTRO, LAND, BALLOON, TRAINTNL, BOMB, LOCATION) to 7, 3, 3, 0, 2, 2, 2.
+_Source: [the refreshed baseline](readouts/baseline.toml) and its per-film `readouts/<film>.json`._
 
 ## Ruled out
 

@@ -15,7 +15,7 @@
     3477
   ],
   "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "ff52dc31b9e504dcec66c49c0154e01ec069f5d8870d13daa5047b3c22f45659",
+  "render_digest": "4b3c390e98d701edf3b6474f9a6c027a772c048e9129b8e8bf93c20f6af0e892",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -75,10 +75,9 @@
       "category": "background-misregistration",
       "ticks_2plus": [
         1585,
-        1904,
-        2850
+        1904
       ],
-      "mean": 1.0,
+      "mean": 1.0833333333333333,
       "ungraded": 0
     },
     {
@@ -136,8 +135,11 @@
       "ungraded": 0
     }
   ],
-  "other": {},
+  "other": {
+    "331": "render draws extra thin diagonal cable line right of the building",
+    "639": "stray dark-green diagonal line at right; building outline a few px off"
+  },
   "missing": 0,
   "unknown": [],
-  "disputed": 12
+  "disputed": 2
 }
