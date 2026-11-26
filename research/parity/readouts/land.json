@@ -14,8 +14,8 @@
     826,
     903
   ],
-  "categories_digest": "f442f5796ba47a506d59b9a484d039c50103bd1f675df58fc02e9d14063362a9",
-  "render_digest": "8c8e2339d9150c286ef6877323170cadc17cdeb91810b86391d088174accc341",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "58bbe9136221b160a5d485a1e3840e19847abd9ab6c1cb9cbe373c5e40daa2db",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -71,8 +71,10 @@
     },
     {
       "category": "ground-shade-edges",
-      "ticks_2plus": [],
-      "mean": 0.0,
+      "ticks_2plus": [
+        419
+      ],
+      "mean": 0.16666666666666666,
       "ungraded": 0
     },
     {
@@ -80,7 +82,7 @@
       "ticks_2plus": [
         419
       ],
-      "mean": 0.9166666666666666,
+      "mean": 1.1666666666666667,
       "ungraded": 0
     },
     {
@@ -91,10 +93,8 @@
     },
     {
       "category": "shadow-shape-wrong",
-      "ticks_2plus": [
-        496
-      ],
-      "mean": 0.4166666666666667,
+      "ticks_2plus": [],
+      "mean": 0.16666666666666666,
       "ungraded": 0
     },
     {
@@ -132,10 +132,16 @@
       "ticks_2plus": [],
       "mean": 0.0,
       "ungraded": 0
+    },
+    {
+      "category": "propeller-solid",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
     }
   ],
   "other": {
-    "419": "camera view differs; render shows a huge close aircraft and a hill where capture shows a small distant one"
+    "419": "render camera/aircraft scale far off: aircraft drawn huge and close, capture shows it small and distant"
   },
   "missing": 0,
   "unknown": [],

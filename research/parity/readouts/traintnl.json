@@ -14,13 +14,13 @@
     1123,
     1233
   ],
-  "categories_digest": "f442f5796ba47a506d59b9a484d039c50103bd1f675df58fc02e9d14063362a9",
-  "render_digest": "ca620457069039d0d0f6db4d63ac3c436872b63d598c1b45a71244f5e995b847",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "f2e2183c33043ac502608f26f5ac0f016237314a3662f0d7684ed37e12d427a6",
   "categories": [
     {
       "category": "aircraft-parts-missing",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
@@ -73,11 +73,8 @@
     },
     {
       "category": "background-misregistration",
-      "ticks_2plus": [
-        123,
-        1013
-      ],
-      "mean": 1.0833333333333333,
+      "ticks_2plus": [],
+      "mean": 1.0,
       "ungraded": 0
     },
     {
@@ -127,16 +124,23 @@
       "ticks_2plus": [],
       "mean": 0.0,
       "ungraded": 0
+    },
+    {
+      "category": "propeller-solid",
+      "ticks_2plus": [
+        683,
+        1123
+      ],
+      "mean": 0.3333333333333333,
+      "ungraded": 0
     }
   ],
   "other": {
-    "232": "train cars drawn a few tens of pixels up and right of the capture's position",
-    "342": "propeller drawn as a stray diagonal bar across the fuselage, and top wing stripe thinner than capture",
-    "452": "propeller drawn as a stray diagonal bar across the fuselage",
-    "903": "thin dark line down the cockpit/fuselage in render",
-    "1233": "propeller blade angle differs slightly"
+    "232": "train offset a pixel or two from capture",
+    "562": "aircraft drawn in different colours than capture",
+    "793": "aircraft drawn in different colours than capture"
   },
   "missing": 0,
   "unknown": [],
-  "disputed": 2
+  "disputed": 0
 }

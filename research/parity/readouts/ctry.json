@@ -14,8 +14,8 @@
     892,
     980
   ],
-  "categories_digest": "f442f5796ba47a506d59b9a484d039c50103bd1f675df58fc02e9d14063362a9",
-  "render_digest": "b52e069cda3502f38eb7001a4852158ac637af3491c83f7647d547a2664e38d3",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "389a48a6dfb135136267860e63ec79c3f5565476e32de42ed46bbf0dc9f15c25",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -38,7 +38,7 @@
     {
       "category": "aircraft-misplaced",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -56,7 +56,7 @@
     {
       "category": "scenery-missing",
       "ticks_2plus": [],
-      "mean": 0.16666666666666666,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -73,8 +73,10 @@
     },
     {
       "category": "background-misregistration",
-      "ticks_2plus": [],
-      "mean": 0.9166666666666666,
+      "ticks_2plus": [
+        804
+      ],
+      "mean": 1.0833333333333333,
       "ungraded": 0
     },
     {
@@ -86,7 +88,7 @@
     {
       "category": "shadow-shape-wrong",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
@@ -124,10 +126,29 @@
       "ticks_2plus": [],
       "mean": 0.0,
       "ungraded": 0
+    },
+    {
+      "category": "propeller-solid",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
     }
   ],
-  "other": {},
+  "other": {
+    "14": "timecode not drawn",
+    "100": "timecode not drawn",
+    "188": "timecode not drawn",
+    "276": "timecode not drawn",
+    "364": "timecode not drawn",
+    "452": "timecode not drawn",
+    "540": "timecode not drawn",
+    "628": "timecode not drawn",
+    "716": "timecode not drawn",
+    "804": "left brown wall drawn narrower; 00:16:08 timestamp overlay not drawn",
+    "892": "timecode not drawn",
+    "980": "timecode not drawn"
+  },
   "missing": 0,
   "unknown": [],
-  "disputed": 8
+  "disputed": 1
 }
