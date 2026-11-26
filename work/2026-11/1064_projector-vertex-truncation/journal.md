@@ -88,7 +88,7 @@
   | shipped | 0.9439 | 0.9069 | 0.9310 | 0.9067 | 0.9164 | 0.9080 | 0.8967 |
 
   - Every film's SSIM rises on lavapipe, `balloon` by 0.0008, and mask IoU falls by 0.0001 to 0.0013 on the same four films as on the GPU; the GPU's `3` put `balloon` at −0.0007 against `main` (a different adapter and baseline, so the two are not one comparison).
-  - The pins were repinned to `a160e577` (`git rev-parse e5e4d689:crates`) in `b60aba3a`; the test change of the next entry and the final repin moved them again, to `2c5a4012` (`git rev-parse c790e3e1:crates`), with every score identical to the ones above, so the file no longer carries `a160e577`.
+  - The pins were repinned to `a160e577` (`git rev-parse e5e4d689:crates`) in `b60aba3a`; the test change of the next entry and its comment edits moved them again, to `bd8f452f` (`git rev-parse 60d7b49e:crates`), with every score and `sha256` identical to the ones above, so the file no longer carries `a160e577` [`mise run parity -- --software-only` then `mise run parity-repin -- --class lavapipe` on `60d7b49e` with `crates/` clean, in Ubuntu 24.04 under WSL (`llvmpipe (LLVM 20.1.2, 256 bits)`), 2026-11-26].
   - A comment-only change to `mode13h.wgsl` (finding 8 of the first review) moved the `crates` tree hash, and `loop-rules.md` § After adopting allows no hand restamp of the pins, so it was reverted; the shader's `t` comment ("this many times its own distance") stays as committed in `e5e4d689` and is imprecise, to be fixed in a PR that repins.
 
 ## 2026-11-26: one index of bend in the Gouraud ground test on lavapipe
@@ -110,10 +110,11 @@
   - The 46,457 pixels are those where the world-X-linear perspective index differs from the unrounded screen-linear model by 3 or more; rounding is monotone, so a perspective-correct render lands 2 or more indices away at each of them, and the committed test's `MIN_APART_PIXELS` is 40,000.
   - An RTX 4070 render of this scene with the slide on, every pixel equal, was reported by the previous session [an unrecorded observation of an uncommitted variant, pointed at the GPU by hand; not rerun, and the committed test cannot reproduce it].
   - "Up to about 0.7 index" of bend, quoted in `ac98edbf`'s message, was not recomputed and is no longer claimed by the test or the PR.
-- **Reason**: `[Supported Inference]`, `lavapipe.md` § 2's reading of the clipper's fallback interpolation: the slide changes the two front corners' depths (the polygon reaches behind the eye, so the clipper cuts it), the clipper's interpolation of the shade then bends the gradient, and rounding turns the bend into one-index flips at 3,167 of 47,040 pixels.
-  The slide-disabled run, with no pixel off, shows the bend needs the slide; it did not isolate the clipper's fallback as the cause of the bend.
+- **Reason**: observed, with the slide on, 3,167 of 47,040 pixels are one index off and none beyond; with the slide disabled, none; the slide-disabled run shows the one-index bend needs the slide.
+  `[Hypothesis]` for the cause: the slide changes the two front corners' depths (the polygon reaches behind the eye, so the clipper cuts it), the clipper's fallback then bends the gradient, and rounding turns the bend into one-index flips.
+  The run did not isolate the clipper, the ratio's f32 arithmetic or the rasteriser as the cause, and `lavapipe.md` § 3 says the `shade·w / w` ratio is exact at a vertex the clipper makes, which does not fit the hypothesis; the two are not reconciled.
 - **Pass without `VK_DRIVER_FILES`**: on Windows with the variable unset the test prints `Skipping software-only GPU test: no software fallback adapter with clip distances (WARP lacks them; ADR 0054)` and passes, with or without `STUNT_REQUIRE_GPU=1`, so a green run there that did not name the lavapipe manifest checked nothing.
-- **Pin**: the repin after this change is `2c5a4012` (`git rev-parse c790e3e1:crates`, the commit that cut the test's comment to its contract); the earlier `a7acdb14` was the tree of the previous test comment.
+- **Pin**: the repin after this change is `bd8f452f` (`git rev-parse 60d7b49e:crates`, the commit that hedged the test's comment to the observation), from `mise run parity -- --software-only` then `mise run parity-repin -- --class lavapipe` on `60d7b49e` with `crates/` clean, in Ubuntu 24.04 under WSL (`llvmpipe (LLVM 20.1.2, 256 bits)`), 2026-11-26; every film's SSIM, IoU and `sha256` equal the pins on `2c5a4012` (`git rev-parse c790e3e1:crates`, the tree that cut the comment to its contract), and `a7acdb14` was the tree of the comment before that.
 
 ## Handoff
 
