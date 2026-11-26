@@ -1007,10 +1007,10 @@ fn perspective_ground_index(
 /// against the affine function of pixel position through the quad's projected corners, which
 /// is the screen-linear value wherever the clipper cut it.
 ///
-/// The comparison allows one index, not zero: the slide `playone_vertex` gives the two front
-/// corners changes their depths, and the lavapipe clipper's fallback then bends the gradient
-/// enough to round some pixels one index off, which a render with the slide disabled does
-/// not show. `ONE_OFF_GUARD` bounds how many pixels may be one index off, and
+/// The comparison allows one index, not zero: with the slide `playone_vertex` gives the two front
+/// corners, lavapipe draws some pixels one index off, which a render with the slide disabled
+/// does not show; the clipper's fallback bending the gradient is a hypothesis, see the journal.
+/// `ONE_OFF_GUARD` bounds how many pixels may be one index off, and
 /// `MIN_APART_PIXELS` how many a perspective-correct gradient must part from the model by 3
 /// indices or more, so the looser bound still rejects it. The counts and how they were made are in
 /// `work/2026-11/1064_projector-vertex-truncation/journal.md`, entry 2026-11-26.
