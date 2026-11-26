@@ -1,5 +1,5 @@
 //! Pins the viewer-only modern look beside the parity look: it lights an unshaded facet by its
-//! normal against the sun, leaves a pre-shaded one at its index's full row, fades distance into
+//! normal against the sun (brighter toward it than away from it), leaves a pre-shaded one at its index's full row, fades distance into
 //! the horizon sky colour, and changes no index or layer of the page, only its colour.
 //!
 //! Skips when no GPU adapter is available (see common); fails instead of skipping under
@@ -21,9 +21,18 @@ const FACET_INDEX: u8 = 40;
 
 /// A square facing the camera at `+z`, of half-width `s`, in palette index `index`.
 fn facet(s: f32, index: u8, flags: u8) -> SodModelIr {
+    tilted_facet(s, index, flags, [0.0, 1.0, 0.0])
+}
+
+/// A square of half-width `s` spanned by the `x` axis and `up` (in the `y`-`z` plane), whose
+/// normal is `x × up`: `[0, 1, 0]` is upright, facing the camera at `+z`. The film's sun is
+/// nearly straight up, so `[0, 0.7071, -0.7071]` (normal toward the sun and the camera) is lit
+/// and `[0, 0.7071, 0.7071]` (normal away from the sun, still toward the camera) is not.
+fn tilted_facet(s: f32, index: u8, flags: u8, up: [f32; 3]) -> SodModelIr {
+    let normal = [0.0, -up[2], up[1]];
     let at = |x: f32, y: f32| SodVertex {
-        position: [x, y, 0.0],
-        normal: [0.0, 0.0, 1.0],
+        position: [x, y * up[1], y * up[2]],
+        normal,
         palette_index: index,
         flags,
         scenery_class: 0,
@@ -65,7 +74,7 @@ fn brightness(rgb: [u8; 3]) -> u32 {
 }
 
 #[test]
-fn a_facet_turned_from_the_sun_is_darker_than_in_the_parity_look() {
+fn an_upright_facet_is_dimmed_and_only_its_colour_changes() {
     common::gpu_test(|| {
         let ir = || facet(2.0, FACET_INDEX, UNSHADED);
         let (Some(parity), Some(modern)) = (
@@ -85,6 +94,30 @@ fn a_facet_turned_from_the_sun_is_darker_than_in_the_parity_look() {
         assert_eq!(parity.indices(), modern.indices());
         assert_eq!(parity.layers(), modern.layers());
         assert_eq!(parity.shapes(), modern.shapes());
+    });
+}
+
+#[test]
+fn a_facet_toward_the_sun_is_brighter_than_one_turned_from_it() {
+    common::gpu_test(|| {
+        let tilt = std::f32::consts::FRAC_1_SQRT_2;
+        let facet = |up| tilted_facet(2.0, FACET_INDEX, UNSHADED, up);
+        let (Some(toward), Some(away), Some(parity)) = (
+            shoot(facet([0.0, tilt, -tilt]), 10.0, Look::Modern),
+            shoot(facet([0.0, tilt, tilt]), 10.0, Look::Modern),
+            shoot(facet([0.0, tilt, -tilt]), 10.0, Look::Mode13h),
+        ) else {
+            return;
+        };
+        let (toward, away, parity) = (centre(&toward), centre(&away), centre(&parity));
+        assert!(
+            brightness(toward) > brightness(away),
+            "toward {toward:?} not brighter than away {away:?}"
+        );
+        assert!(
+            brightness(toward) <= brightness(parity),
+            "lighting only dims: {toward:?} vs {parity:?}"
+        );
     });
 }
 

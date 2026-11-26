@@ -578,6 +578,8 @@ fn modern_normal(in: VertexInput) -> vec3<f32> {
         // `slide_normal` slides it.
         n = cross(in.normal, in.apex - in.position);
     }
+    // Turned by the model matrix itself, not its inverse transpose: right for the rotations and
+    // uniform scales of an actor's or the world's matrix.
     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
     let len = length(eye_n);
     if (len == 0.0) {
@@ -645,6 +647,9 @@ fn parity_input(in: ModernVertexOutput) -> VertexOutput {
     return v;
 }
 
+// A disc (`FLAG_DISC`) and a line with no facet (a ZLINETO) take no Lambert light and draw at the
+// full row; fog still applies. `modern.fog.y` is past `modern.fog.x` (camera.rs `ModernUniform`).
+//
 // The colour of palette index `index` under the sun and the fog: Lambert on the facet normal,
 // flipped toward the eye so either winding is lit on the side it shows, picks a row of the
 // lighting table from the floor up to full brightness; distance then mixes the horizon sky in.

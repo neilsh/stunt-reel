@@ -41,6 +41,7 @@ pub const VERTEX_FLAG_DISC: u8 = 0x40;
 /// A polygon coloured by `OP_SHADE1`, `OP_SHADE2`, `OP_SHADE16` or `OP_SHADE216`, or shaded per
 /// vertex by `OP_GVPOLY` or `OP_GVPOLY16`, was lit by `OP_SHADES` against the world light on
 /// the CPU (`research/playone-exe/terrain-shade.md` section 3).
+/// An `OP_ANIMATE` sprite's quads carry it too, being drawn art.
 /// The parity look ignores it.
 /// A renderer that adds its own lighting draws such a vertex unlit, so its light is not applied twice.
 /// The decoder's weld key leaves it out, so it changes no weld.
@@ -65,7 +66,7 @@ pub struct SodVertex {
     /// - Bit 0: Coplanar decal face, matched by the decoder and kept in place (`[I5]`); the
     ///   mesh node's `is_decal`, not this bit, decides the decal pass and the glTF-export lift
     /// - Bit 1: Two-sided polygon
-    /// - Bit 2: Emissive / unshaded indicator
+    /// - Bit 2: Emissive / unshaded indicator (a lighting look still lights it unless bit 7 is set)
     /// - Bits 3..=5: Screen-space line corner ([`VERTEX_FLAG_LINE`], [`VERTEX_FLAG_LINE_SIDE`],
     ///   [`VERTEX_FLAG_LINE_END`])
     /// - Bit 6: `OP_PERFDISK` rim vertex ([`VERTEX_FLAG_DISC`])

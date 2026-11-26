@@ -57,7 +57,7 @@ impl ModernUniform {
     /// Where the fog starts, in metres.
     pub const FOG_START: f32 = 1_000.0;
     /// Where the fog is the whole colour, in metres.
-    pub const FOG_END: f32 = 8_000.0;
+    pub const FOG_END: f32 = 8_000.0; // past `FOG_START`, which the shader divides by
 
     /// The uniform for a film whose variable 13 is `variable_13`: the sun `PLAYONE` lights
     /// shapes with and draws the sun disc at.

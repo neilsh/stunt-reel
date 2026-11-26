@@ -1892,9 +1892,10 @@ fn shades_then(body: &[u16]) -> Vec<u8> {
     bytes
 }
 
-/// The flags of every vertex of the decoded shape, in vertex order.
+/// The flags of every vertex of the decoded shape, in vertex order; the shape has vertices.
 fn vertex_flags(bytes: &[u8], name: &str) -> Vec<u8> {
     let ir = decode(bytes, name).expect("decode");
+    assert!(!ir.vertices.is_empty(), "{name} decodes to nothing");
     ir.vertices.iter().map(|v| v.flags).collect()
 }
 
@@ -1954,4 +1955,53 @@ fn test_the_preshaded_mark_changes_no_weld() {
         quantize_weld_key(&at, &n, 7, VERTEX_FLAG_PRESHADED),
         quantize_weld_key(&at, &n, 7, 0)
     );
+}
+
+/// A block, a sphere, a disc and a dot in a `SHADE16` colour are marked as already lit; the same
+/// shapes in an `OP_COLOR` colour are not.
+#[test]
+fn test_every_generator_marks_the_shaded_colour_it_draws_in() {
+    use crate::contracts::shape::VERTEX_FLAG_PRESHADED;
+    let vectors = |count: u16, coordinates: &[i16]| {
+        let mut bytes = make_sod_header(100, 0, 0, 0);
+        push_words(&mut bytes, &[OP_VECTORS, count, 12]);
+        for &c in coordinates {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+        bytes
+    };
+    let colour_words = |shaded: bool| -> Vec<u16> {
+        if shaded {
+            vec![0x02B5, 0, 0x30]
+        } else {
+            vec![OP_COLOR, 45]
+        }
+    };
+    for shaded in [true, false] {
+        let streams = [
+            ("BLOCK", vec![OP_BLOCK, 12, 20], vec![-100i16, -200, 300]),
+            ("SPHERE", vec![OP_SPHERE, 12, 50], vec![-100, -200, 300]),
+            (
+                "PERFDISK",
+                vec![OP_PERFDISK, 12, 50, 24],
+                vec![0, 0, 0, 0, 100, 0],
+            ),
+            ("DOT", vec![OP_DOT, 12], vec![-100, -200, 300]),
+        ];
+        for (name, op, coordinates) in streams {
+            let count = u16::try_from(coordinates.len() / 3).expect("small");
+            let mut bytes = vectors(count, &coordinates);
+            let mut words = colour_words(shaded);
+            words.extend(op);
+            words.push(OP_RETURN);
+            push_words(&mut bytes, &words);
+            let flags = vertex_flags(&bytes, name);
+            assert!(
+                flags
+                    .iter()
+                    .all(|f| (f & VERTEX_FLAG_PRESHADED != 0) == shaded),
+                "{name} shaded={shaded}: {flags:?}"
+            );
+        }
+    }
 }

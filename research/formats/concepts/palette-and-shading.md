@@ -115,9 +115,10 @@ pub struct SodVertex {
   Drawn in `wgpu`'s ordered decal pass (depth bias, no depth write), and moved $\epsilon = 0.001\text{ m}$ toward its front only by the glTF exporter (`[I5]`).
 - **Bit 1 (`0x02`) — Two-Sided Facet:** Disables back-face culling for this polygon.
 - **Bit 2 (`0x04`) — Emissive / Unshaded:** Bypasses directional lighting table; renders at full unshaded diffuse brightness (used for landing lights and muzzle flares).
+  The parity look draws every polygon at the full-brightness row whatever this bit says; the modern look lights a bit-2 face by its normal like any other (the world's ground and ocean carry it), exempting only bit 7.
 - **Bits 3..5 (`0x08`, `0x10`, `0x20`) — Screen-space line corner:** a one-pixel line's corner, its side and its end; the vertex's `normal` is then the vector to the segment's other endpoint (`VERTEX_FLAG_LINE`, `VERTEX_FLAG_LINE_SIDE`, `VERTEX_FLAG_LINE_END`).
 - **Bit 6 (`0x40`) — Disc rim vertex:** a vertex of an `OP_PERFDISK` disc's outline; its `normal` is then the vector to the disc's centre, about which the renderer squeezes the disc along the view's depth by the lens zoom and moves it onto the pixels `0xD11D` fills (`VERTEX_FLAG_DISC`, [`sod-vm-generators.md` § 8.8](../../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)).
-- **Bit 7 (`0x80`) — Pre-shaded:** the vertex's palette index already carries its light, because the decoder coloured it from a `SHADE*` ramp or shaded it per vertex with `GVPOLY`/`GVPOLY16` (`VERTEX_FLAG_PRESHADED`, [`terrain-shade.md` § 3](../../playone-exe/terrain-shade.md#3-per-vertex-shade-shades-opcode-0x0156)).
+- **Bit 7 (`0x80`) — Pre-shaded:** the vertex's palette index already carries its light, because the decoder coloured it from a `SHADE*` ramp or shaded it per vertex with `GVPOLY`/`GVPOLY16`, or because it belongs to an `OP_ANIMATE` sprite's drawn art (`VERTEX_FLAG_PRESHADED`, [`terrain-shade.md` § 3](../../playone-exe/terrain-shade.md#3-per-vertex-shade-shades-opcode-0x0156)).
   The parity look ignores it and the decoder's weld key leaves it out.
   The viewer-only modern look draws such a vertex unlit, so its light is not applied twice.
 
