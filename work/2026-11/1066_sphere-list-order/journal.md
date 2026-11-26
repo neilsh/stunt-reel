@@ -69,7 +69,7 @@
   The forest tree is `MODEL_07AF`, two spheres and no other primitive (40 polygons, ranks 1 and 2).
   Every primitive of it draws at its placement origin's depth, the trunk's foot on the ground, while the near side of a wide canopy lies nearer the eye than that foot and projects below it on screen; there the terrain between the canopy's near edge and the foot is nearer than the origin and wins the depth test.
   Moving the origin 5 m toward the eye removes the edges (capture | pull 0 | pull 5 m, both ordered: [picture](images/location-1717-lavapipe-pull-0-500.png)).
-- **Pull sweep** ([`sweeps/lavapipe-origin-pulled-toward-eye.toml`](sweeps/lavapipe-origin-pulled-toward-eye.toml), `--var DBG_SPHERE_ORDER=0,1 --var DBG_SPHERE_PULL=0,500,1500`; its winner line is the unpulled form's, above, and `judge --recheck` reproduces it):
+- **Pull sweep** ([`sweeps/lavapipe-origin-pulled-toward-eye.toml`](sweeps/lavapipe-origin-pulled-toward-eye.toml), `--var DBG_SPHERE_ORDER=0,1 --var DBG_SPHERE_PULL=0,500,1500`; its winner line is the unpulled form's, above, with `(noise floor +/-0.002; winner is ~within noise)` appended, and `judge --recheck` reproduces it):
 
   | Variant | ctry | intro | land | balloon | traintnl | bomb | location | target idx | frames down >0.005 |
   |---|---|---|---|---|---|---|---|---|---|
@@ -82,10 +82,10 @@
   At 15 m `bomb` falls by more than 0.005 on 51 frames, 38 of them by the same 0.0091 or 0.0145 in its opening ticks 12 to 420: a constant pull draws far shapes over nearer ones.
   So the `location` falls come from flattening to the placement's foot; a depth nearer the shape's own near side (its bounding sphere's nearest point, say) is the form to try, not a fixed pull.
 - **`intro` 2718: the aircraft's `OP_SORT` branches run in a fixed order.**
-  Capture | `0` | `1` ([picture](images/intro-2718-lavapipe-recheck-guard.png)): the capture shows only the propeller's upper tip above the fuselage, the baseline hides the blade behind it, and the variant draws the whole blade over it; pulling the origin changes nothing there.
+  Capture | `0` | `1` ([picture](images/intro-2718-lavapipe-recheck-guard.png)): the capture shows only the propeller's upper tip above the fuselage, the baseline hides the blade behind it, and the variant draws the whole blade over it; the 5 m pull leaves the frame's fall as it was (−0.0058).
   The aircraft, `MODEL_7F19` (177 polygons), holds a sphere, so it is ranked, and holds three `OP_SORT`s.
   `PLAYONE` runs a `SORT`'s two branches in the order its facing flag picks ([`sod-opcodes.md`](../../../research/formats/sod-opcodes.md) row 44), and our VM always runs the branch after the operands first (`sort` in `crates/stunt-core/src/sod/vm.rs`), so the list rank is right from one side only.
   `[Hypothesis]`: the propeller and the fuselage sit in one `SORT`'s two branches; which branch holds which was not read.
-- **Verdict**: guard 2's seven frames are now explained, six by a picture and a sweep that removes them, one by a hypothesis that names the opcode.
+- **Verdict**: guard 2's seven frames from the GPU run are now explained, six by a picture and a sweep that removes them, one by a hypothesis that names the opcode; the four `bomb` frames lavapipe adds, and the three `location` frames the 5 m pull adds, are not.
   The form as measured is still not adopted, awaiting the owner; before it is worth adopting it needs a depth from the shape's near side rather than its foot, and the VM to run `SORT` branches in facing order (a change that touches every shape, not only ranked ones).
 - **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.3.
