@@ -274,8 +274,8 @@ impl RenderPipelines {
         } else {
             "fs_main"
         };
-        // The modern look draws the scene through entry points of its own and keeps the sky and
-        // the bars (`fs_sky`, `bars.wgsl`) of the parity look.
+        // The modern look draws the scene through entry points of its own and draws the sky
+        // through `fs_sky_modern`, and keeps the bars (`bars.wgsl`) of the parity look.
         let (scene_vertex, scene_edge_vertex, scene_fragment) = match look {
             Look::Mode13h => ("vs_main", "vs_edge", fragment_entry),
             Look::Modern if plane_format.is_some() => {
@@ -283,10 +283,11 @@ impl RenderPipelines {
             }
             Look::Modern => ("vs_modern", "vs_modern_edge", "fs_modern"),
         };
-        let sky_fragment_entry = if plane_format.is_some() {
-            "fs_sky_plane"
-        } else {
-            "fs_sky"
+        let sky_fragment_entry = match (look, plane_format.is_some()) {
+            (Look::Mode13h, true) => "fs_sky_plane",
+            (Look::Mode13h, false) => "fs_sky",
+            (Look::Modern, true) => "fs_sky_modern_plane",
+            (Look::Modern, false) => "fs_sky_modern",
         };
         let model_bind_group_layout = Self::create_model_bind_group_layout(device);
         // The plane's shape word looks world props up in their runs; without a plane nothing

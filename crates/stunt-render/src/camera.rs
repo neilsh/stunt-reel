@@ -37,7 +37,7 @@ pub const DEFAULT_FAR_CLIP: f32 = 25_000.0;
 
 /// The modern look's lighting and fog, matching WGSL `@group(0) @binding(1)` (`ModernUniform`).
 ///
-/// Only the `vs_modern`/`fs_modern` entry points read it; the parity look's pipelines carry the
+/// Only the `vs_modern`/`fs_modern` and `fs_sky_modern` entry points read it; the parity look's pipelines carry the
 /// same bind group and never touch it.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -51,9 +51,24 @@ pub struct ModernUniform {
     /// The sky fill: [`FILL_UP`](Self::FILL_UP), [`FILL_DOWN`](Self::FILL_DOWN) and
     /// [`FILL_TINT`](Self::FILL_TINT), then padding.
     pub fill: [f32; 4],
+    /// The sky's view ray at raster pixel `(x, y)` is `sky_ray[0] + x * sky_ray[1] + y * sky_ray[2]`
+    /// (xyz, unnormalised, `[I1]` axes) on the Mode 13h raster; `sky_ray[0].w` is 1 when the view
+    /// is a perspective one and 0 otherwise, where the sky is the horizon colour throughout.
+    pub sky_ray: [[f32; 4]; 3],
+    /// The sun's glow: the cosine of its inner angle (full strength inside), the cosine of its
+    /// outer angle (none outside), [`GLOW`](Self::GLOW), then padding.
+    pub glow: [f32; 4],
 }
 
 impl ModernUniform {
+    /// The angle in degrees from the sun inside which its glow is at full strength. The glow
+    /// falls off by `smoothstep` to [`GLOW_OUTER_DEGREES`](Self::GLOW_OUTER_DEGREES), so its
+    /// visible size is near `PLAYONE`'s disc (a radius of about 3 degrees at the default lens).
+    pub const GLOW_INNER_DEGREES: f32 = 1.0;
+    /// The angle in degrees from the sun beyond which the sky has no glow.
+    pub const GLOW_OUTER_DEGREES: f32 = 5.0;
+    /// How far the sky colour reaches toward the sun colour (index 239) at the glow's centre.
+    pub const GLOW: f32 = 0.9;
     /// The share of full brightness a facet facing the sun gains from it.
     pub const SUN: f32 = 0.4;
     /// The brightness the sky fill gives a facet facing straight up, a share of full.
@@ -76,7 +91,35 @@ impl ModernUniform {
             sun: [x, y, z, Self::SUN],
             fog: [Self::FOG_START, Self::FOG_END, 0.0, 0.0],
             fill: [Self::FILL_UP, Self::FILL_DOWN, Self::FILL_TINT, 0.0],
+            sky_ray: [[0.0; 4]; 3],
+            glow: [
+                Self::GLOW_INNER_DEGREES.to_radians().cos(),
+                Self::GLOW_OUTER_DEGREES.to_radians().cos(),
+                Self::GLOW,
+                0.0,
+            ],
         }
+    }
+
+    /// [`for_sun`](Self::for_sun) for the view `camera`: its sky's per-pixel ray basis, from the
+    /// same `SkyCamera` the parity sky bands are laid out from.
+    #[must_use]
+    pub fn for_view(variable_13: u16, camera: &CameraController) -> Self {
+        let mut uniform = Self::for_sun(variable_13);
+        if let Some(sky) = camera.sky_camera() {
+            let [cx, cy] = sky.centre;
+            let [fx, fy] = sky.focal;
+            let origin = sky.forward - sky.right * (cx / fx) + sky.up * (cy / fy);
+            let step_x = sky.right / fx;
+            let step_y = -sky.up / fy;
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "a unit-scale ray for the GPU"
+            )]
+            let row = |v: DVec3, w: f32| [v.x as f32, v.y as f32, v.z as f32, w];
+            uniform.sky_ray = [row(origin, 1.0), row(step_x, 0.0), row(step_y, 0.0)];
+        }
+        uniform
     }
 }
 
@@ -603,14 +646,19 @@ impl CameraGpuResources {
         queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(uniform));
     }
 
-    /// Uploads the modern look's sun for a frame whose variable 13 is `variable_13`; the parity
-    /// look writes nothing.
-    pub(crate) fn upload_look(&self, queue: &wgpu::Queue, variable_13: u16) {
+    /// Uploads the modern look's sun and sky for a frame whose variable 13 is `variable_13`, seen
+    /// by `controller`; the parity look writes nothing.
+    pub(crate) fn upload_look(
+        &self,
+        queue: &wgpu::Queue,
+        variable_13: u16,
+        controller: &CameraController,
+    ) {
         if self.look == Look::Modern {
             queue.write_buffer(
                 &self.modern_buffer,
                 0,
-                bytemuck::bytes_of(&ModernUniform::for_sun(variable_13)),
+                bytemuck::bytes_of(&ModernUniform::for_view(variable_13, controller)),
             );
         }
     }

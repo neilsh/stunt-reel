@@ -2,13 +2,16 @@
 //! normal against the sun (brighter toward it than away from it) with a sky fill that keeps a
 //! facet turned from the sun well above the dark floor, smooths a pre-shaded Gouraud ramp that
 //! the parity look steps, leaves a pre-shaded facet unlit, fades distance into the horizon sky
-//! colour, and changes no index or layer of the page, only its colour.
+//! colour, and changes no index or layer of the page, only its colour. Its sky is a smooth
+//! gradient that is the horizon colour at and below the horizon, the zenith colour straight up,
+//! never steps by more than one palette entry, glows softly round the sun, and leaves the parity
+//! sky's index plane alone.
 //!
 //! Skips when no GPU adapter is available (see common); fails instead of skipping under
 //! `STUNT_REQUIRE_GPU=1` (ADR 0006).
 
 use crate::common;
-use crate::draw_order::{film_with_sky, push_mesh};
+use crate::draw_order::{film_looking_at, film_with_sky, push_mesh};
 
 use stunt_core::contracts::{PaletteControls, SodModelIr, SodVertex, VERTEX_FLAG_PRESHADED};
 use stunt_core::scene::FilmScene;
@@ -147,15 +150,314 @@ fn a_facet_turned_from_the_sun_keeps_most_of_its_colour() {
             ) else {
                 return;
             };
+            // Only a shot that draws the facet at its centre: from behind it is culled, and the
+            // centre is the sky, which the two looks colour differently.
+            let middle = (parity.height() / 2 * parity.width() + parity.width() / 2) as usize;
+            if parity.indices()[middle] != FACET_INDEX {
+                continue;
+            }
             let share =
                 f64::from(brightness(centre(&modern))) / f64::from(brightness(centre(&parity)));
             assert!(share <= 1.0, "lighting only dims: {share} at z {z}");
             darkest = Some(darkest.map_or(share, |d: f64| d.min(share)));
         }
-        let darkest = darkest.expect("two shots");
+        let darkest = darkest.expect("the facet is drawn from one side at least");
         assert!(
             darkest >= LIT_SHARE,
             "a wall turned from the sun keeps {darkest} of its colour, under {LIT_SHARE}"
+        );
+    });
+}
+
+/// The horizon sky and a sub-pixel facet the sky tests aim away from: the scene they shoot has
+/// no geometry in view, so only the sky's pixels are read.
+fn nothing() -> SodModelIr {
+    facet(0.001, FACET_INDEX, UNSHADED)
+}
+
+/// Renders the sky seen from the origin looking toward `target` (the facet is at the origin,
+/// out of view), in a film whose variable 13 is `sky`, or `None` without a GPU adapter.
+fn shoot_sky(target: [f32; 3], look: Look, sky: u16) -> Option<RenderedPage> {
+    let scene = FilmScene::with_single_model(
+        film_looking_at([0.0, 0.0, 0.0], target, Vec::new(), sky),
+        nothing(),
+    );
+    let mut test = common::gpu_or_skip_offscreen(
+        &scene,
+        Offscreen::default(),
+        RenderOptions {
+            look,
+            ..RenderOptions::default()
+        },
+    )?;
+    Some(test.draw(&scene.frame(0.0)))
+}
+
+/// The colour at column `x`, row `y`.
+fn pixel(page: &RenderedPage, x: usize, y: usize) -> [u8; 3] {
+    let at = (y * page.width() as usize + x) * 4;
+    page.rgba()
+        .get(at..at + 3)
+        .and_then(|rgb| rgb.try_into().ok())
+        .expect("the pixel is on the page")
+}
+
+/// The colours down column `x`, top row first.
+fn column(page: &RenderedPage, x: usize) -> Vec<[u8; 3]> {
+    (0..page.height() as usize)
+        .map(|y| pixel(page, x, y))
+        .collect()
+}
+
+/// The colour of palette index `index` as the modern look draws a pre-shaded facet in it (full
+/// brightness, no light, near) in a film whose variable 13 is `sky`.
+fn palette_colour(index: u8, sky: u16) -> Option<[u8; 3]> {
+    shoot_with_sky(
+        facet(2.0, index, VERTEX_FLAG_PRESHADED),
+        10.0,
+        Look::Modern,
+        sky,
+    )
+    .map(|page| centre(&page))
+}
+
+/// A film variable 13 whose sun is at least `0.5` below the horizon, so no glow reaches the
+/// views that look up or level; the one darkening the palette least.
+fn sky_with_the_sun_below() -> u16 {
+    let night = |sky: u16| (i32::from(sky.cast_signed()).abs() - 0x2000).clamp(0, 0x4000);
+    (0..=u16::MAX)
+        .filter(|&sky| ShadeLight::world(sky).sun_direction()[1] <= -0.5)
+        .min_by_key(|&sky| night(sky))
+        .expect("some sun lies below the horizon")
+}
+
+/// A target 100 m away at `degrees` above the horizon, heading `+z`.
+fn pitched(degrees: f32) -> [f32; 3] {
+    let (sin, cos) = degrees.to_radians().sin_cos();
+    [0.0, 100.0 * sin, 100.0 * cos]
+}
+
+#[test]
+fn a_level_views_sky_at_and_below_the_horizon_is_the_horizon_colour() {
+    common::gpu_test(|| {
+        let sky = PaletteControls::default().sky;
+        let (Some(page), Some(horizon)) = (
+            shoot_sky(pitched(0.0), Look::Modern, sky),
+            palette_colour(FOG_INDEX, sky),
+        ) else {
+            return;
+        };
+        // Column 10 is clear of the (out of view) facet. The horizon is the middle row and edge
+        // 14 is 1.02 degrees above it, about four rows at this lens: two rows up is inside it.
+        let rows = column(&page, 10);
+        let middle = rows.len() / 2;
+        for (y, colour) in rows.iter().enumerate().skip(middle - 2) {
+            assert_eq!(*colour, horizon, "row {y} of {}", rows.len());
+        }
+        assert_ne!(
+            rows[0], horizon,
+            "the sky above is not all the horizon colour"
+        );
+    });
+}
+
+#[test]
+fn a_far_facet_at_the_horizon_meets_the_sky_beside_it_with_no_seam() {
+    common::gpu_test(|| {
+        // A facet beyond the fog's end, centred on the horizon: its colour is the fog colour,
+        // and the sky pixel on its row beside it must be the same colour.
+        let far = facet(2.0, FACET_INDEX, VERTEX_FLAG_PRESHADED).scaled(2000.0);
+        let Some(page) = shoot(far, 20_000.0, Look::Modern) else {
+            return;
+        };
+        let middle = page.height() as usize / 2;
+        let beside = pixel(&page, 10, middle);
+        assert_eq!(beside, centre(&page));
+    });
+}
+
+#[test]
+fn a_view_straight_up_is_the_zenith_colour() {
+    common::gpu_test(|| {
+        let sky = sky_with_the_sun_below();
+        let (Some(page), Some(zenith)) = (
+            // Just short of vertical, which has no up direction to look from.
+            shoot_sky([0.0, 100.0, 0.001], Look::Modern, sky),
+            palette_colour(224, sky),
+        ) else {
+            return;
+        };
+        let at = centre(&page);
+        for (channel, (got, want)) in at.iter().zip(zenith).enumerate() {
+            assert!(
+                got.abs_diff(want) <= 1,
+                "channel {channel}: {at:?} vs {zenith:?}"
+            );
+        }
+    });
+}
+
+#[test]
+fn down_a_column_the_sky_changes_monotonically_and_never_over_the_largest_palette_step() {
+    common::gpu_test(|| {
+        let sky = sky_with_the_sun_below();
+        // Pitched up 20 degrees, the column spans the horizon band to well above it.
+        let (Some(parity), Some(modern)) = (
+            shoot_sky(pitched(20.0), Look::Mode13h, sky),
+            shoot_sky(pitched(20.0), Look::Modern, sky),
+        ) else {
+            return;
+        };
+        // The palette entries the parity sky shows, by index: the bound on a step.
+        let mut entries = std::collections::BTreeMap::new();
+        for (index, &[r, g, b, _]) in parity
+            .indices()
+            .iter()
+            .zip(parity.rgba().as_chunks::<4>().0)
+        {
+            entries.insert(*index, [r, g, b]);
+        }
+        let largest_entry_step = entries
+            .iter()
+            .filter_map(|(index, a)| entries.get(&(index + 1)).map(|b| (a, b)))
+            .flat_map(|(a, b)| a.iter().zip(b).map(|(a, b)| a.abs_diff(*b)))
+            .max()
+            .expect("the parity sky shows adjacent entries");
+        let rows = column(&modern, 10);
+        assert!(
+            largest_step(&rows) <= largest_entry_step,
+            "{} over {largest_entry_step}",
+            largest_step(&rows)
+        );
+        // Each channel only ever moves one way going down.
+        for channel in 0..3 {
+            let values: Vec<u8> = rows.iter().map(|c| c[channel]).collect();
+            let rising = values.windows(2).any(|w| w[1] > w[0]);
+            let falling = values.windows(2).any(|w| w[1] < w[0]);
+            assert!(
+                !(rising && falling),
+                "channel {channel} reverses: {values:?}"
+            );
+        }
+        assert!(
+            rows.windows(2).filter(|w| w.first() != w.get(1)).count() > entries.len(),
+            "smoother than the parity bands' {} steps",
+            entries.len()
+        );
+    });
+}
+
+#[test]
+fn the_modern_skys_index_plane_is_the_parity_skys() {
+    common::gpu_test(|| {
+        let sky = sky_with_the_sun_below();
+        for degrees in [0.0, 20.0, 60.0, -30.0] {
+            let (Some(parity), Some(modern)) = (
+                shoot_sky(pitched(degrees), Look::Mode13h, sky),
+                shoot_sky(pitched(degrees), Look::Modern, sky),
+            ) else {
+                return;
+            };
+            assert_eq!(parity.indices(), modern.indices(), "pitch {degrees}");
+            assert_eq!(parity.layers(), modern.layers(), "pitch {degrees}");
+            assert_eq!(parity.shapes(), modern.shapes(), "pitch {degrees}");
+        }
+    });
+}
+
+#[test]
+fn the_sun_is_a_soft_glow_not_a_hard_disc() {
+    common::gpu_test(|| {
+        // The sun between 30 and 50 degrees up, in the palette darkening least.
+        let night = |sky: u16| (i32::from(sky.cast_signed()).abs() - 0x2000).clamp(0, 0x4000);
+        let sky = (0..=u16::MAX)
+            .filter(|&sky| (0.5..=0.75).contains(&ShadeLight::world(sky).sun_direction()[1]))
+            .min_by_key(|&sky| night(sky))
+            .expect("some sun lies 30 to 50 degrees up");
+        let sun = ShadeLight::world(sky).sun_direction().map(|c| c * 100.0);
+        let (Some(page), Some(sun_colour)) =
+            (shoot_sky(sun, Look::Modern, sky), palette_colour(239, sky))
+        else {
+            return;
+        };
+        let middle = page.height() as usize / 2;
+        let row: Vec<[u8; 3]> = (0..page.width() as usize)
+            .map(|x| pixel(&page, x, middle))
+            .collect();
+        let at_sun = row[row.len() / 2];
+        // The blue channel tells the sun's yellow from the sky's blue: the sun's centre is far
+        // nearer the sun colour than the sky 40 pixels off, which no glow reaches.
+        let sky_beside = row[row.len() / 2 - 40];
+        assert!(
+            at_sun[2].abs_diff(sun_colour[2]) < sky_beside[2].abs_diff(sun_colour[2]) / 2,
+            "sun centre {at_sun:?}, sky beside {sky_beside:?}, sun colour {sun_colour:?}"
+        );
+        // Soft: the hard disc was one step of the whole sun-to-sky difference, and no step along
+        // the row across the glow reaches a fifth of it.
+        let near = &row[row.len() / 2 - 40..row.len() / 2 + 40];
+        let whole = sun_colour
+            .iter()
+            .zip(sky_beside)
+            .map(|(a, b)| a.abs_diff(b))
+            .max()
+            .unwrap_or(0);
+        assert!(
+            largest_step(near) < whole / 5,
+            "step {} over a fifth of {whole}: {near:?}",
+            largest_step(near)
+        );
+    });
+}
+
+#[test]
+fn a_low_suns_glow_leaves_the_sky_at_and_below_the_horizon_the_horizon_colour() {
+    common::gpu_test(|| {
+        // The sun a little above the horizon, nearest it: its glow (5 degrees) reaches rays
+        // below the horizon, which must stay index 238's colour.
+        let sky = (0..=u16::MAX)
+            .filter(|&sky| ShadeLight::world(sky).sun_direction()[1] > 0.01)
+            .min_by(|&a, &b| {
+                let y = |sky: u16| ShadeLight::world(sky).sun_direction()[1];
+                y(a).total_cmp(&y(b))
+            })
+            .expect("some sun lies just above the horizon");
+        let [x, y, z] = ShadeLight::world(sky).sun_direction();
+        assert!(y < 0.05, "sun elevation sin {y}");
+        // A level view toward the sun's heading.
+        let (Some(page), Some(horizon)) = (
+            shoot_sky([x * 100.0, 0.0, z * 100.0], Look::Modern, sky),
+            palette_colour(FOG_INDEX, sky),
+        ) else {
+            return;
+        };
+        let rows = column(&page, page.width() as usize / 2);
+        let middle = rows.len() / 2;
+        for (row, colour) in rows.iter().enumerate().skip(middle - 2) {
+            assert_eq!(*colour, horizon, "row {row} of {}", rows.len());
+        }
+        assert!(
+            rows.iter().take(middle - 2).any(|c| *c != horizon),
+            "the glow tints the sky above the horizon"
+        );
+    });
+}
+
+#[test]
+fn a_view_looking_down_is_the_horizon_colour_throughout() {
+    common::gpu_test(|| {
+        let sky = sky_with_the_sun_below();
+        let (Some(page), Some(horizon)) = (
+            shoot_sky(pitched(-60.0), Look::Modern, sky),
+            palette_colour(FOG_INDEX, sky),
+        ) else {
+            return;
+        };
+        assert!(
+            page.rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|&[r, g, b, _]| [r, g, b] == horizon)
         );
     });
 }
