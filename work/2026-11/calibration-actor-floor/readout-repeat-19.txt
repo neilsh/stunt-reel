@@ -1,4 +1,4 @@
-﻿DSH passes over the seven 19-category readouts, 12 real sheets per film
+DSH passes over the seven 19-category readouts, 12 real sheets per film
 model provenance: the coordinator's delegated-task records (journal.md)
 ctry: max pass-to-pass delta 1; merged 2+ ticks and other notes match saved readout: yes
   scenery-missing 0->1

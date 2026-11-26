@@ -1,3 +1,4 @@
+# Historical 20-category evidence: run against the category file at 9be3e2cb, digest 5838a280.
 """Score the 2026-11-25 calibrations and list the new categories' grades on real sheets (journal.md)."""
 
 import json

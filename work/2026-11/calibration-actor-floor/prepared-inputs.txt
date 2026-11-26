@@ -1,3 +1,4 @@
+Snapshot at preparation time, before grading.
 19-category inputs, categories digest 5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e
 build/parity/bench/balloon/errors-19cat  readout  seed 1  sheets 12  ungraded  revision e09f8ff6  render df2f5109563c  report d33a920a3356
 build/parity/bench/bomb/errors-19cat  readout  seed 1  sheets 12  ungraded  revision e09f8ff6  render ff52dc31b9e5  report 802db76f1b60

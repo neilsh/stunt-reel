@@ -1,3 +1,4 @@
+# Historical 20-category evidence: run against the category file at 9be3e2cb, digest 5838a280.
 """Compare the two DSH passes over each errors-20cat readout (journal.md, metric-bench.md section 2.3)."""
 
 import json

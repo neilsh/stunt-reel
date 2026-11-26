@@ -69,7 +69,7 @@ That largest move, 1, is below the 3 that set `min_change` from two Haiku passes
 No real sheet was graded 2 or more for `aircraft-colour-wrong` by two models: `traintnl-0683` has both DSH passes at 2, one model, and no other model graded it.
 `propeller-solid`'s `intro-3466` was graded 2 by both passes of the Hydrogen seed 2 run and both passes of the DSH seed 3 run; the DSH seed 4 run split 2 and 0, its tie-break 2.
 
-**Verdict**: the 20-category readouts are repeatable to within one frame on these sheets, below the 4-frame floor, and `min_change` 4 is conservative for DSH.
+**Verdict**: the 20-category readouts are repeatable to within one frame on these sheets, below the 4-frame floor, and `min_change` 4 exceeds that run?s largest observed difference; the 19-category result below does not support that as a general DSH bound.
 `aircraft-colour-wrong` has no qualifying example, so it stays `examples = []`.
 The seven-film baseline refresh is not prepared: the categories changed, but the new category has no two-model example, the CTRY calibration under the 20 categories is Hydrogen's while the readouts are DSH's, and INTRO passed under Hydrogen seed 2 and DSH seeds 3 and 4 after Hydrogen seed 1 failed; refresh all seven in their own PR after those are resolved.
 
@@ -101,17 +101,17 @@ They were made at the commit that added the 19-category file, so each run's `run
 **Result**:
 `TRAINTNL` 683 was graded 2 by both DSH passes and 1 by Sonnet; `INTRO` 2564, 2 by the DSH seed 3 second pass and 0 by Sonnet; `INTRO` 3246, 2 by the DSH seed 4 tie-break and 0 by Sonnet.
 One more real sheet, `INTRO` 2421, was graded 2 by the first pass of the INTRO 20-category readout and cleared by that run's tie-break: one pass of one model, and the Sonnet pass did not grade it.
-`propeller-solid` loses no evidence: `intro-3466` keeps its two-model example, and the category's 12 real sheets per run and per film are unchanged.
+`propeller-solid` retains its earlier 20-category evidence: `intro-3466` keeps its two-model example, and the category's 12 real sheets per run and per film are unchanged.
 Nineteen categories remain, `propeller-solid` last.
-The new inputs hold 42 sheets each for `CTRY` seed 1 and `INTRO` seeds 3 and 4, and 12 sheets per film for the seven readouts; every `run.json` records digest `5f8b01d6…`, the render and report digests, the seed and the revision.
-They are ungraded: none has a `grades.txt`, so no calibration prints a verdict and no readout exists for them.
+At preparation time the new inputs held 42 sheets each for `CTRY` seed 1 and `INTRO` seeds 3 and 4, and 12 sheets per film for the seven readouts; every `run.json` records digest `5f8b01d6…`, the render and report digests, the seed and the revision.
+At preparation time none had grades; the later results are recorded below.
 The saved [`calibrations.txt`](calibrations.txt) and [`readout-repeat.txt`](readout-repeat.txt) keep the 20-category figures; re-running their scripts against the current file reads the removed id as unknown, so they no longer reproduce those files.
 
 **Verdict**:
 The colour category is removed for want of a qualifying example; the example rule is not loosened to keep it.
 The 20-category calibrations and readouts remain the record of the 20-category file, and none of them is a calibration pass or a readout of the 19-category file.
 `errors-score` on the `CTRY` 20-category run now refuses it with `categories 5838a2800757eaac... then, 5f8b01d6d891a51d... now`, so no older grade can pass for the new file by accident.
-The new calibration inputs are evidence only once graded: two passes and a tie-break per run, then `CTRY` and both `INTRO` runs must print `calibration PASS`, the two `INTRO` runs supplying the twice-in-a-row requirement.
+The new calibration inputs needed grading: two passes and a tie-break per run, then `CTRY` and both `INTRO` runs must print `calibration PASS`, the two `INTRO` runs supplying the twice-in-a-row requirement.
 The seven readout runs then need two passes and a tie-break each, before a baseline refresh that writes `research/parity/readouts/` and `baseline.toml` with `categories_digest = 5f8b01d6…`, all seven together in its own PR.
 
 **Next steps**:
@@ -143,7 +143,9 @@ The prepared 19-category runs above were graded with two DSH passes; Claude Sonn
 The first INTRO seed 3 tie-break file was missing when rechecked, so Sonnet graded its 23 disputed sheets again before scoring.
 
 **Result**:
+The score output is saved in [calibrations-19.txt](calibrations-19.txt).
 CTRY passed with 6/6 actor removals, 12/12 controls, and 16 disputed sheets.
+INTRO tick 3466 was graded 1, 0, 1 in seed 3 and 0, 0, 1 in seed 4 (passes 1, 2 and tie-break), below 2 under the 19-category file.
 INTRO seed 3 passed with 6/6 actor removals, 12/12 controls, and 23 disputed sheets; seed 4 passed with 6/6, 11/12 controls, and 25 disputed sheets.
 Both INTRO runs plant the same six removals, so they are not independent frame samples.
 Across the seven readouts the largest difference in a category's count of frames graded 2 or more is 12: BOMB background misregistration was 12 in one DSH pass and 0 in the other.
@@ -151,6 +153,8 @@ LAND differed by 3 for that category, INTRO by at most 2, CTRY by at most 1, and
 The saved merged readouts match the reconstruction from the two passes and any tie-break on 2+ ticks and other notes.
 
 **Verdict**: the calibration passes on these sheets, but the BOMB disagreement exceeds the four-frame `min_change` and leaves DSH repeatability for background misregistration unresolved.
+On BOMB this is a severity threshold flip: the first pass graded every sheet 2, the second graded each 0 or 1, and the tie-break graded three 2 (ticks 1585, 1904, 2850).
 A tie-break scores the disputed sheets; it does not measure repeatability of the final result.
+The earlier Sonnet colour grades are transcribed in [sonnet-colour-grades.txt](sonnet-colour-grades.txt) from the coordinator messages; the original grader did not write an artifact.
 
-**Lives in**: [metric-bench.md](../../../research/parity/metric-bench.md) ? 2.3.
+**Lives in**: [metric-bench.md](../../../research/parity/metric-bench.md) section 2.3.

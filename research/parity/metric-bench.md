@@ -124,14 +124,15 @@ _Source: [2026-10-31: error categories graded by a vision model](../../work/2026
 
 _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see) and [2026-11-25: INTRO calibrations under the actor floor, and the first new-category example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-intro-calibrations-under-the-actor-floor-and-the-first-new-category-example)._
 
-* **The 20-category readouts are DSH's, and its two passes agree to within one frame** (`[Bounded Observation]`, 2026-11-25, the seven `errors-20cat` runs of the lavapipe render of `crates/` `4b5c69c`).
+* **The 20-category DSH passes differed by at most one frame on these readouts** (`[Bounded Observation]`, 2026-11-25, the seven `errors-20cat` runs of the lavapipe render of `crates/` `4b5c69c`).
   Two DSH passes over the same 12 sheets per film moved a category's count of frames graded 2 or more by at most 1 on every film, against the 3 that set `min_change` from two Haiku passes; `min_change` stays 4.
   The readout grades 12 frames per film, not the whole film.
   These runs graded the 20-category file, which changed on 2026-11-25: they are not readouts of the 19-category file.
   _Source: [2026-11-25: the 20-category readouts, DSH repeatability and the missing example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-the-20-category-readouts-dsh-repeatability-and-the-missing-example); figures in [`readout-repeat.txt`](../../work/2026-11/calibration-actor-floor/readout-repeat.txt)._
 
 * **`propeller-solid`'s example is `intro-3466`, and the colour category was removed** (`[Bounded Observation]`, 2026-11-25).
-  Both passes of the Hydrogen seed 2 calibration and both passes of the DSH seed 3 calibration graded `intro-3466` 2 or more for `propeller-solid`; DSH's seed 4 passes split 2 and 0 and its tie-break gave 2, so the example rests on one run per model.
+  Both passes of the Hydrogen seed 2 calibration and both passes of the DSH seed 3 calibration graded `intro-3466` 2 or more for `propeller-solid`; DSH's seed 4 passes split 2 and 0 and its tie-break gave 2, so the example rests on one run per model under the 20-category file.
+  Under the 19-category file, seed 3 graded it 1, 0 and 1 in the two passes and tie-break; seed 4 graded it 0, 0 and 1.
   The colour category added with it, `aircraft-colour-wrong`, had four real sheets that some pass graded 2: both DSH passes of the 20-category readout graded `TRAINTNL` 683 2, the DSH seed 3 second pass graded INTRO 2564 2, the DSH seed 4 tie-break graded INTRO 3246 2, and the first pass of the INTRO 20-category readout graded INTRO 2421 2.
   A Claude Sonnet pass, run independently and over the first three, graded them 1, 0 and 0, so no sheet had a 2 from two different models; the fourth, INTRO 2421, was cleared by its run's tie-break and was not in the Sonnet pass.
   The category therefore met its example rule on no sheet and is removed, leaving 19 categories.
@@ -157,7 +158,7 @@ _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../
 
 ## Open questions
 
-* **How repeatable DSH readouts are for background misregistration**, after the two BOMB passes differed by 12 frames (? 2.3).
+* **How repeatable DSH readouts are for background misregistration**, after the two BOMB passes differed by 12 frames (section 2.3).
 
 * **Where between 34 and 851 actor pixels graders stop seeing a removal**, which would replace `MIN_ACTOR_PIXELS`' convention with a measured floor; a calibration that plants on such a frame answers it in part.
 Open lavapipe and GPU questions are in [`evidence-limits.md`](evidence-limits.md#open-questions).
