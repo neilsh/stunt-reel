@@ -20,7 +20,7 @@
 
   - Change against `0` (the figures file's film `ssim`, unrounded): `4`: `ctry` +0.00045, `intro` −0.00010, `land` +0.00328, `traintnl` +0.00095, `bomb` −0.00164, `location` −0.00162; `5`: `ctry` +0.00000, `intro` −0.00010, `land` +0.00276, `traintnl` +0.00098, `bomb` −0.00162, `location` −0.00130; `balloon` −0.000005 under both.
   - The band is back on `land` 617 (+0.0102 SSIM under both, [picture](images/land-617-decorated-props-in-their-plane.png), capture, `main`, `4`), and `traintnl` now rises (+0.00095), where #1100's `3` lowered it; `[Inference]`: the decorated front wall of shape 1523 and the side walls sharing its corners, which `3` split, now slide by one rule (not traced).
-  - `bomb` and `location` fall under both, so the bar fails: 205 frames fall by more than 0.005 under `4`, 173 of them outside the target on `location` and 67 on `bomb`; the worst is a run of `location`'s stadium, 4665 to 4830 (4665 −0.0273, [picture](images/location-4665-decorated-props-in-their-plane-guard.png)); the pixels were not traced.
+  - `bomb` and `location` fall under both, so the bar fails: 205 frames fall by more than 0.005 under `4`, 136 of them on `location` and 63 on `bomb`; the worst is a run of `location`'s stadium, 4665 to 4830 (4665 −0.0273, [picture](images/location-4665-decorated-props-in-their-plane-guard.png)); the pixels were not traced.
     `bomb`'s opening shot (ticks 12 to 420) falls by 0.0055 to 0.0089 a frame, where #1100's `2` lost shape 1651's row ([`bomb` 2949](images/bomb-2949-decorated-props-in-their-plane-guard.png)).
     `[Inference]`: a decorated prop's steep foot now meets the flat ground or prop under it at another depth, the failure of #1100's `1`, on fewer props.
   - Other worst frames (capture, `main`, `4`): [`ctry` 826](images/ctry-826-decorated-props-in-their-plane-guard.png), [`land` 837](images/land-837-decorated-props-in-their-plane-guard.png), [`traintnl` 1145](images/traintnl-1145-decorated-props-in-their-plane-guard.png).
@@ -84,7 +84,7 @@
 ## Handoff
 
 - **Not shipped**: both of #1127's forms bring the band back and lower some film mean on lavapipe.
-  Sliding every steep facet of a decorated world prop in its plane (`4`, `5`) lowers `bomb` and `location` by up to 0.0016 each, `intro` by 0.0001 and `balloon` by 0.000005; a decal-pass margin (`6` to `9`) lowers `traintnl` by 0.0006 to 0.0017 `bomb` by 0.0001 to 0.0008 and `ctry` by 0.00004 to 0.0017.
+  Sliding every steep facet of a decorated world prop in its plane (`4`, `5`) lowers `bomb` and `location` by up to 0.0016 each, `intro` by 0.0001 and `balloon` by 0.000005; a decal-pass margin (`6` to `9`) lowers `traintnl` by 0.0006 to 0.0017, `bomb` by 0.0001 to 0.0008 and `ctry` by 0.00004 to 0.0017.
   The closest of all is still #1100's `3` ([its entry](../1100_land-617-hangar-decal/journal.md#2026-11-26-only-a-decal-that-overlaps-its-base): `traintnl` −0.0004, `intro` −0.00002), then this folder's `9` (`traintnl` −0.00069, `bomb` −0.00011, `ctry` −0.00004).
 - **Decision for the maintainer** (#1127 to `status:ready-for-human`): ship #1100's `3`, accepting `traintnl` −0.0004 and `intro` −0.00002 for `land` +0.0030, or leave the band.
 - **Switch**: [`switches/DBG_PROPSLIDE.diff`](switches/DBG_PROPSLIDE.diff), against `main` at `30a6b54`: #1100's switch and test plus variants `4` to `9`.
