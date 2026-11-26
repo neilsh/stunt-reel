@@ -111,7 +111,13 @@ fn widen_line(clip: vec4<f32>, other: vec4<f32>, flags: u32) -> vec4<f32> {
     let end = select(-1.0, 1.0, (flags & FLAG_LINE_END) != 0u);
     let side = select(-1.0, 1.0, (flags & FLAG_LINE_SIDE) != 0u);
     var offset: vec2<f32>;
-    if (abs(along.x) >= abs(along.y)) {
+    // Two ends on one pixel (`playone_vertex` puts every end on a pixel centre) draw that
+    // pixel, as the spans draw a polygon on one row (0xCAB4): `along` is rounding noise there.
+    let gap = other.xy / other.w - clip.xy / clip.w;
+    let one_pixel = clip.w > 0.0 && other.w > 0.0 && all(abs(gap) < camera.line_half_ndc);
+    if (one_pixel) {
+        offset = vec2<f32>(end, side);
+    } else if (abs(along.x) >= abs(along.y)) {
         offset = vec2<f32>(end * select(1.0, -1.0, along.x < 0.0), side);
     } else {
         offset = vec2<f32>(side, end * select(1.0, -1.0, along.y < 0.0));
@@ -227,6 +233,73 @@ fn prop_shape(vertex: u32) -> u32 {
     return 0u;
 }
 
+// Beyond this many times its own distance, a vertex slid along its plane by `playone_vertex` is
+// treated as having missed the plane (the ray through its pixel runs almost along it).
+const PLANE_SLIDE_MAX: f32 = 1.0e6;
+
+// Moves a projected vertex at `clip` (eye-relative position `eye`) to the pixel PLAYONE's
+// register projectors put it on: its offset from the projection centre truncated toward the
+// centre (`idiv`, 0x9CF1 and 0x9D3A), drawn at that pixel's centre, as the inclusive span
+// filler fills the vertex's own pixel (research/playone-exe/sod-vm-lines-spans.md section
+// 8.14). The vertex slides along the ray through that pixel to the plane through it with
+// eye-relative normal `normal` (`slide_normal`), so facets in one plane (a decal and its base,
+// the ground and the ocean) stay coplanar and their depth ties hold. A vertex behind the eye,
+// or whose ray does not meet that plane in front of it, keeps its own projection, as does
+// every vertex of an orthographic view (shape views), whose clip w does not come from depth.
+fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f32> {
+    if (clip.w <= 0.0 || camera.rotation_proj[3][3] != 0.0) {
+        return clip;
+    }
+    // Pixels from the top-left of the view, and our projection's centre in them.
+    let half = 0.5 / camera.line_half_ndc;
+    let to_pixels = vec2<f32>(half.x, -half.y);
+    let middle = half;
+    let offset = clip.xy / clip.w * to_pixels;
+    let pixel = floor(middle) + trunc(offset) + 0.5;
+    let ndc = (pixel - middle) / to_pixels;
+    // The direction of the ray through `pixel`: where the planes `x = ndc.x * w` and
+    // `y = ndc.y * w` of the projection meet, turned to the side where `w` is positive.
+    let row_x = vec3<f32>(camera.rotation_proj[0][0], camera.rotation_proj[1][0], camera.rotation_proj[2][0]);
+    let row_y = vec3<f32>(camera.rotation_proj[0][1], camera.rotation_proj[1][1], camera.rotation_proj[2][1]);
+    let row_w = vec3<f32>(camera.rotation_proj[0][3], camera.rotation_proj[1][3], camera.rotation_proj[2][3]);
+    var on_ray = cross(row_x - ndc.x * row_w, row_y - ndc.y * row_w);
+    if (dot(row_w, on_ray) < 0.0) {
+        on_ray = -on_ray;
+    }
+    let t = dot(normal, eye.xyz) / dot(normal, on_ray);
+    if (!(t > 0.0) || t > PLANE_SLIDE_MAX) {
+        return clip;
+    }
+    return camera.rotation_proj * vec4<f32>(on_ray * t, 1.0);
+}
+
+// World up, the plane normal of a vertex with no facet of its own (`slide_normal`).
+const UP: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
+
+// A facet whose normal lies within this cosine of vertical slides horizontally (`slide_normal`).
+const NEAR_HORIZONTAL: f32 = 0.9;
+
+// The eye-relative normal of the plane `playone_vertex` slides a vertex in. A world mesh vertex
+// (terrain, ocean, prop) and a shape facet within about 26 degrees of horizontal slide in the
+// horizontal plane through them: the ground, the ocean and a flat prop snapped onto a slope
+// (the river) lie in different planes but share one, so their depth ties hold. Any other
+// polygon vertex slides in its facet's plane (`normal`, model space; for an outline corner the
+// plane of its edge and apex), which keeps a decal on a steep facet on its base. A ZLINETO
+// line or a two-vertex polygon (no facet), a degenerate facet and every vertex of a shadow,
+// whose model matrix flattens it onto the ground, slide horizontally too.
+fn slide_normal(in: VertexInput) -> vec3<f32> {
+    var n = in.normal;
+    if ((in.attr.y & FLAG_LINE) != 0u) {
+        n = cross(in.normal, in.apex - in.position);
+    }
+    let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
+    if (model.layer.y != 0u || in.attr.z != 0u || dot(eye_n, eye_n) == 0.0
+        || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {
+        return UP;
+    }
+    return eye_n;
+}
+
 @vertex
 fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return vertex_output(in, vertex_index);
@@ -238,17 +311,21 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
 
     // Model space to eye-relative space to clip space.
     let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
-    out.clip_position = camera.rotation_proj * eye_pos;
+    let projected = camera.rotation_proj * eye_pos;
+    let plane = slide_normal(in);
+    out.clip_position = playone_vertex(projected, eye_pos, plane);
     // OP_PERFDISK skips when shadow mode (work:0x806C) is set
     // (research/playone-exe/sod-vm-generators.md section 8.8).
     if (model.layer.y != 0u && (in.attr.y & FLAG_DISC) != 0u) {
         out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     } else if ((in.attr.y & FLAG_LINE) != 0u) {
-        let other = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+        let other_eye = model.model_matrix * vec4<f32>(in.position + in.normal, 1.0);
+        let other = playone_vertex(camera.rotation_proj * other_eye, other_eye, plane);
         // An outline corner culls with the triangle its edge bounds, which winds from the
         // edge's first endpoint to its second and on to the apex; a two-sided polygon's and a
         // shadow's stay.
-        let apex = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.apex, 1.0));
+        let apex_eye = model.model_matrix * vec4<f32>(in.apex, 1.0);
+        let apex = playone_vertex(camera.rotation_proj * apex_eye, apex_eye, plane);
         let at_end = (in.attr.y & FLAG_LINE_END) != 0u;
         let first = select(out.clip_position, other, at_end);
         let second = select(other, out.clip_position, at_end);
@@ -266,7 +343,7 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
         }
     } else if ((in.attr.y & FLAG_DISC) != 0u) {
         let centre = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
-        out.clip_position = snap_disc(squeeze_disc(out.clip_position, centre), centre);
+        out.clip_position = snap_disc(squeeze_disc(projected, centre), centre);
     }
     out.palette_index = in.attr.x & 255u;
     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included

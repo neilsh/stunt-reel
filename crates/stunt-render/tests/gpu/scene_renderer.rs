@@ -880,8 +880,30 @@ fn a_ground_polygon_under_a_low_eye_keeps_its_index() {
     });
 }
 
+/// Where `playone_vertex` (`mode13h.wgsl`) draws a vertex that projects to NDC `ndc` in front of
+/// the eye: the centre of the Mode 13h pixel its offset from the projection centre truncates
+/// to, as `PLAYONE`'s projectors do (`sod-vm-lines-spans.md` section 8.14), as an NDC point.
+/// `half_pixel` is the camera uniform's `line_half_ndc`, so the Mode 13h grid is
+/// `0.5 / half_pixel` pixels from the centre to each edge, whatever the page's size.
+fn playone_pixel_ndc(ndc: [f32; 2], half_pixel: [f32; 2]) -> [f32; 2] {
+    let half = [0.5 / half_pixel[0], 0.5 / half_pixel[1]];
+    // Pixels from the view's top left: x grows with NDC x, y against NDC y.
+    let offset = [ndc[0] * half[0], -ndc[1] * half[1]];
+    let pixel = [
+        half[0].floor() + offset[0].trunc() + 0.5,
+        half[1].floor() + offset[1].trunc() + 0.5,
+    ];
+    [
+        (pixel[0] - half[0]) / half[0],
+        -(pixel[1] - half[1]) / half[1],
+    ]
+}
+
 /// The four corners of `ground_gradient(half, west, east)`'s quad in page pixels, with the
 /// palette index each carries, projected through the camera the renderer draws `scene` with.
+/// A corner in front of the eye is drawn on its truncated Mode 13h pixel (`playone_pixel_ndc`);
+/// the slide along its ray to the ground plane that keeps it coplanar moves nothing on screen.
+/// A corner behind the eye keeps its own projection.
 fn projected_ground_corners(
     scene: &FilmScene,
     page: (u32, u32),
@@ -891,7 +913,8 @@ fn projected_ground_corners(
 ) -> [[f32; 3]; 4] {
     let mut controller = CameraController::default();
     controller.set_authored_transform(scene.frame(0.0).view);
-    let rotation_proj = glam::Mat4::from_cols_array(&controller.build_uniform().rotation_proj);
+    let uniform = controller.build_uniform();
+    let rotation_proj = glam::Mat4::from_cols_array(&uniform.rotation_proj);
     let eye = controller.eye_position();
     [
         (-half, -half, west),
@@ -902,7 +925,11 @@ fn projected_ground_corners(
     .map(|(x, z, index)| {
         // The vertex stage's transform: the eye's translation comes off the model matrix.
         let clip = rotation_proj * (glam::Vec3::new(x, 0.0, z) - eye).extend(1.0);
-        let [u, v] = [(clip.x / clip.w), (clip.y / clip.w)];
+        let mut ndc = [clip.x / clip.w, clip.y / clip.w];
+        if clip.w > 0.0 {
+            ndc = playone_pixel_ndc(ndc, uniform.line_half_ndc);
+        }
+        let [u, v] = ndc;
         let [half_width, half_height] = [page.0 as f32 / 2.0, page.1 as f32 / 2.0];
         [
             (u + 1.0) * half_width,
@@ -942,6 +969,35 @@ fn screen_linear_index(corners: &[[f32; 3]; 4], x: f32, y: f32) -> Option<f32> {
     Some(start[2] + along * (row[2] - start[2]) + up * (last[2] - start[2]))
 }
 
+/// The palette index a perspective-correct render of `ground_gradient(half, west, east)` would
+/// give at pixel centre `(x, y)`: the index is linear in world X, so it is read off the ground
+/// point the pixel's ray meets. The rival `PLAYONE`'s filler does not draw
+/// (`research/playone-exe/terrain-shade.md` section 6), kept to show the test can tell it apart.
+fn perspective_ground_index(
+    scene: &FilmScene,
+    page: PagePixels,
+    half: f32,
+    west: u8,
+    east: u8,
+) -> impl Fn(f32, f32) -> f32 {
+    let mut controller = CameraController::default();
+    controller.set_authored_transform(scene.frame(0.0).view);
+    let inverse = glam::Mat4::from_cols_array(&controller.build_uniform().rotation_proj).inverse();
+    let eye = controller.eye_position();
+    move |x, y| {
+        let ndc = glam::Vec4::new(
+            x / (page.0 as f32 / 2.0) - 1.0,
+            1.0 - y / (page.1 as f32 / 2.0),
+            0.5,
+            1.0,
+        );
+        let ray = inverse * ndc;
+        let ray = ray.truncate() / ray.w;
+        let ground_x = eye.x - eye.y * ray.x / ray.y;
+        f32::from(west) + (ground_x + half) / (2.0 * half) * (f32::from(east) - f32::from(west))
+    }
+}
+
 /// A Gouraud ground polygon under a low eye keeps the gradient `PLAYONE`'s filler draws: linear
 /// in screen space, not perspective-correct (`research/playone-exe/terrain-shade.md` section 6).
 /// The polygon reaches behind the eye and past the side planes, which is what makes Mesa's
@@ -950,6 +1006,22 @@ fn screen_linear_index(corners: &[[f32; 3]; 4], x: f32, y: f32) -> Option<f32> {
 /// `shade * w` and `w`. Every pixel more than one pixel from the quad's diagonal is compared
 /// against the affine function of pixel position through the quad's projected corners, which
 /// is the screen-linear value wherever the clipper cut it.
+///
+/// The comparison allows one index, not zero. Vertex truncation (`playone_vertex`) slides the
+/// two front corners along their rays to the ground plane, which changes their depths, and the
+/// lavapipe clipper's fallback interpolation then bends the gradient by up to about 0.7 index
+/// from the model's straight line. On Mesa 25.2.8 under Windows, 11,588 of the 47,040 pixels
+/// differed before the model snapped the corners to the truncated pixels as the shader does
+/// (CI's count), 2,951 after (counted with the old allowance for a rounding boundary), and none with
+/// the slide disabled, so the bend is the clipper's and not the model's. The canonical lavapipe
+/// (Ubuntu 24.04's Mesa 25.2.8, WSL and CI) draws the same pixels as Windows' build: 3,167 of the
+/// 47,040 are one index off and none is further. `ONE_OFF_GUARD` is a guard, not a measured
+/// bound. An RTX 4070 passes strictly, every pixel equal, with the slide on.
+///
+/// The one-index bound costs no sensitivity to a perspective-correct gradient, the rival
+/// `PLAYONE`'s filler does not draw: its index differs from the screen-linear model's by 3 or
+/// more at 46,457 of the 47,040 pixels (`MIN_APART_PIXELS` guards the count), and by 74.6 at
+/// pixel (319, 139), so a perspective-correct render fails the bound at each of those pixels.
 #[test]
 #[expect(
     clippy::cast_possible_truncation,
@@ -961,29 +1033,31 @@ fn a_gouraud_ground_polygon_under_a_low_eye_keeps_its_gradient() {
         const WEST: u8 = 40;
         const EAST: u8 = 100;
         const HALF: f32 = 60.0;
+        const ONE_OFF_GUARD: usize = 4_500;
+        const MIN_APART_PIXELS: usize = 40_000;
         let scene = low_eye_scene(ground_gradient(HALF, WEST, EAST));
         let Some((page, ground)) = ground_pixels_on_software(&scene) else {
             return;
         };
         let corners = projected_ground_corners(&scene, page, HALF, WEST, EAST);
-        let mut wrong = Vec::new();
+        let perspective = perspective_ground_index(&scene, page, HALF, WEST, EAST);
+        let mut beyond_one = Vec::new();
+        let mut one_off = 0usize;
         let mut checked = 0usize;
+        let mut apart = 0usize;
         for &(x, y, index) in &ground {
             let centre = (x as f32 + 0.5, y as f32 + 0.5);
             let Some(shade) = screen_linear_index(&corners, centre.0, centre.1) else {
                 continue;
             };
             let expected = (shade + 0.5).floor().clamp(0.0, 255.0) as u8;
-            // A modelled value sitting on a rounding boundary may round either way: the
-            // rasterizer snaps vertices to its subpixel grid and evaluates in its own order,
-            // which this f32 model does not copy. The 0.02 is a guard, not a measured bound: on
-            // lavapipe (Mesa 25.2.8) no pixel needs it. All 47,680 ground pixels are checked
-            // (none lies within a pixel of the diagonal) and each equals the model's index.
-            let boundary = ((shade + 0.5) - (shade + 0.5).round()).abs() <= 0.02;
-            let adjacent = index.abs_diff(expected) == 1;
             checked += 1;
-            if index != expected && !(boundary && adjacent) {
-                wrong.push((x, y, expected, index, shade));
+            let gap = (perspective(centre.0, centre.1) - shade.clamp(0.0, 255.0)).abs();
+            apart += usize::from(gap >= 3.0);
+            match index.abs_diff(expected) {
+                0 => {}
+                1 => one_off += 1,
+                _ => beyond_one.push((x, y, expected, index, shade)),
             }
         }
         assert!(
@@ -991,10 +1065,18 @@ fn a_gouraud_ground_polygon_under_a_low_eye_keeps_its_gradient() {
             "only {checked} ground pixels were checked"
         );
         assert!(
-            wrong.is_empty(),
-            "{} of {checked} ground pixels are not screen-linear; first: {:?}",
-            wrong.len(),
-            wrong.get(..8).unwrap_or(&wrong)
+            beyond_one.is_empty(),
+            "{} of {checked} ground pixels are more than one index from screen-linear; first: {:?}",
+            beyond_one.len(),
+            beyond_one.get(..8).unwrap_or(&beyond_one)
+        );
+        assert!(
+            one_off <= ONE_OFF_GUARD,
+            "{one_off} of {checked} ground pixels are one index off screen-linear"
+        );
+        assert!(
+            apart >= MIN_APART_PIXELS,
+            "a perspective-correct gradient would part from the model by 3 indices at only {apart} of {checked} pixels"
         );
     });
 }

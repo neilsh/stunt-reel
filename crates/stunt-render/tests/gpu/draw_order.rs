@@ -226,12 +226,11 @@ pub(crate) fn push_mesh(
 const BASE: u8 = 40;
 const DECAL: u8 = 15;
 
-/// A square base polygon and a diamond decal on it, in one plane tilted 35 degrees about the
-/// vertical against a camera facing the origin, so depth varies across both and the two
-/// triangulate differently. `s` is the base's half-width; the diamond reaches `0.6 s`.
-fn decal_on_base(s: f32) -> SodModelIr {
-    let tilt = 35f32.to_radians().tan();
-    let on_plane = |x: f32, y: f32, index: u8| vertex([x, y, x * tilt], [0.0, 0.0, 1.0], index, 0);
+/// A square base polygon and a diamond decal on it, in the plane `z = plane(x, y)` with
+/// (unit) normal `normal`, against a camera facing the origin, so depth varies across both and
+/// the two triangulate differently. `s` is the base's half-width; the diamond reaches `0.6 s`.
+fn decal_on_base(s: f32, plane: fn(f32, f32) -> f32, normal: [f32; 3]) -> SodModelIr {
+    let on_plane = |x: f32, y: f32, index: u8| vertex([x, y, plane(x, y)], normal, index, 0);
     let mut ir = SodModelIr::new("DECAL");
     // Clockwise from the camera, like the SOD models.
     ir.vertices = vec![
@@ -252,25 +251,34 @@ fn decal_on_base(s: f32) -> SodModelIr {
     ir
 }
 
-/// The point of `decal_on_base`'s plane over `(x, y)`.
-fn on_decal_plane(x: f32, y: f32) -> [f32; 3] {
-    [x, y, x * 35f32.to_radians().tan()]
+/// A plane tilted 35 degrees about the vertical: steep, so a vertex slides in its facet's plane.
+fn steep_plane(x: f32, _y: f32) -> f32 {
+    x * 35f32.to_radians().tan()
 }
 
-#[test]
-fn a_decal_wins_over_its_base_near_and_far() {
+/// A plane within 24 degrees of horizontal (`y = 0.4 z + 0.15 x`), which `slide_normal` slides
+/// horizontally, so each vertex of the base and of the decal leaves the plane by its own amount.
+fn flat_plane(x: f32, y: f32) -> f32 {
+    (y - 0.15 * x) / 0.4
+}
+
+/// The decal wins inside its diamond and the base between it and the square, near and far, on
+/// `plane` seen by a camera at distance `d`.
+fn assert_decal_wins_over_its_base(plane: fn(f32, f32) -> f32, normal: [f32; 3]) {
     common::gpu_test(|| {
         for (label, d) in RANGES {
             let s = 0.2 * d;
-            let scene =
-                FilmScene::with_single_model(film([0.0, 0.0, d], Vec::new()), decal_on_base(s));
+            let scene = FilmScene::with_single_model(
+                film([0.0, 0.0, d], Vec::new()),
+                decal_on_base(s, plane, normal),
+            );
             let Some(shot) = shoot(&scene) else {
                 return;
             };
             // Inside the diamond the decal wins; between it and the square the base does.
             let mut expected = Vec::new();
             for (x, y) in [(0.0, 0.0), (0.3, 0.0), (-0.3, 0.0), (0.0, 0.3), (0.0, -0.3)] {
-                expected.push((on_decal_plane(x * s, y * s), DECAL));
+                expected.push(([x * s, y * s, plane(x * s, y * s)], DECAL));
             }
             for (x, y) in [
                 (0.8, 0.8),
@@ -279,11 +287,24 @@ fn a_decal_wins_over_its_base_near_and_far() {
                 (-0.8, -0.8),
                 (0.85, 0.0),
             ] {
-                expected.push((on_decal_plane(x * s, y * s), BASE));
+                expected.push(([x * s, y * s, plane(x * s, y * s)], BASE));
             }
             assert_winners(label, &shot, &expected);
         }
     });
+}
+
+#[test]
+fn a_decal_wins_over_its_base_near_and_far() {
+    assert_decal_wins_over_its_base(steep_plane, [0.0, 0.0, 1.0]);
+}
+
+/// Near horizontal, a vertex slides in the horizontal plane through it, not its facet's (#1064);
+/// a decal and its base, one plane, still tie there.
+#[test]
+fn a_decal_on_a_near_horizontal_facet_wins_over_its_base_near_and_far() {
+    let n = (0.15f32 * 0.15 + 1.0 + 0.4 * 0.4).sqrt();
+    assert_decal_wins_over_its_base(flat_plane, [-0.15 / n, 1.0 / n, -0.4 / n]);
 }
 
 // ---- A ZLINETO line on a coplanar facet -------------------------------------------------------

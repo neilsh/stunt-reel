@@ -180,11 +180,11 @@ fn triangle(corners: [[f32; 3]; 3], indices: [u32; 3]) -> SodModelIr {
 }
 
 /// A back-facing polygon's outline is culled with the polygon, as `PLAYONE` culls it, while a
-/// front-facing one's is drawn (#686), however far away.
+/// front-facing one's is drawn (#686), near and while it spans a few pixels far away.
 #[test]
 fn only_a_front_facing_polygon_draws_its_outline() {
     common::gpu_test(|| {
-        for distance in [200.0, 5000.0] {
+        for distance in [200.0, 1500.0] {
             let Some(front) = covered(triangle_shape(true), distance) else {
                 return;
             };
@@ -199,6 +199,20 @@ fn only_a_front_facing_polygon_draws_its_outline() {
                 back.is_empty(),
                 "{distance} m: the back-facing triangle and its outline draw nothing, got {back:?}"
             );
+        }
+    });
+}
+
+/// A polygon whose corners all truncate to the pixel under the projection centre draws that one
+/// pixel whichever way it winds, as `PLAYONE`'s spans draw a polygon on one row (#1027).
+#[test]
+fn a_polygon_within_one_pixel_draws_it_either_way() {
+    common::gpu_test(|| {
+        for front in [true, false] {
+            let Some(pixels) = covered(triangle_shape(front), 5000.0) else {
+                return;
+            };
+            assert_eq!(pixels, vec![(160, 92)], "front {front}");
         }
     });
 }

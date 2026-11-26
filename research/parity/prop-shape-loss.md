@@ -34,12 +34,12 @@ _Source: [the costliest prop shapes on LOCATION and BOMB](../../work/2026-11/989
 | Cause | Shapes | Section | Issue |
 |---|---|---|---|
 | Our player held the camera through slices it moves more than 50 m in (fixed) | `location` 1145, 1164, 1179, 1162 on the canyon run, 1150 at 2212 | 2.1 | [#1029](https://github.com/neilsh/stunt-reel/issues/1029), [#1031](https://github.com/neilsh/stunt-reel/issues/1031) |
-| Pages a tick or two off ours while the camera moves; a row on the static opening shot | `bomb` 1648, 1650, 1737, 1654, 1754, 1756 on the opening shot (7% of its loss) | 2.2 | [#1064](https://github.com/neilsh/stunt-reel/issues/1064), [#1033](https://github.com/neilsh/stunt-reel/issues/1033) |
+| Pages a tick or two off ours while the camera moves; a row on the static opening shot | `bomb` 1648, 1650, 1737, 1654, 1754, 1756 on the opening shot (7% of its loss) | 2.2 | [#1064](https://github.com/neilsh/stunt-reel/issues/1064) (drawn, not remeasured), [#1033](https://github.com/neilsh/stunt-reel/issues/1033) |
 | Overlapping spheres of one shape cover each other in list order | `bomb` 542, 545 | 2.3 | [#1066](https://github.com/neilsh/stunt-reel/issues/1066) |
 | Far houses missing: the stand-ins' `BLOCK` houses went undrawn (fixed) | 2026-11-22 baseline: `bomb` `scenery-missing` 1585, 1904 | 2.4 | [#1032](https://github.com/neilsh/stunt-reel/issues/1032) |
 | A run of frames prefers a one-tick offset | `location` 1745, 996 | 2.5 | [#1033](https://github.com/neilsh/stunt-reel/issues/1033) |
-| Edges and chalk lines a pixel off, toward the projection centre, on a shape drawn in place | `location` 613 | 2.5 | [#1064](https://github.com/neilsh/stunt-reel/issues/1064) |
-| Lane dashes, outline lines, a pixel off, mostly toward the projection centre, on a shape drawn in place | `bomb` 1756 on ticks 2036 to 2740 and 3312 to 3477 (about 88% of its loss) | 2.6 | [#1064](https://github.com/neilsh/stunt-reel/issues/1064) |
+| Edges and chalk lines a pixel off, toward the projection centre, on a shape drawn in place | `location` 613 | 2.5 | [#1064](https://github.com/neilsh/stunt-reel/issues/1064) (drawn, not remeasured) |
+| Lane dashes, outline lines, a pixel off, mostly toward the projection centre, on a shape drawn in place | `bomb` 1756 on ticks 2036 to 2740 and 3312 to 3477 (about 88% of its loss) | 2.6 | [#1064](https://github.com/neilsh/stunt-reel/issues/1064) (drawn, not remeasured) |
 
 In the issue's terms, 2.1, 2.2 and 2.5 are misplacement by the camera or the projection, not by the prop; 2.3 is draw order for the trees; 2.4 was missing geometry; 2.6 is misplacement by the projection too.
 No shape inspected shows a wrong shade or a wrong shape of its own.
@@ -58,7 +58,7 @@ _Source: [the LOCATION canyon run steps late](../../work/2026-11/989_props-loss-
 
 The `bomb` buildings and lots 1648, 1650, 1737 and 1654 are drawn in the capture's colours (0.89 to 0.95 of their pixels match in place at the ticks examined), so their loss sits at their edges; the road 1754 matches 0.81 at 2961, where the frame is furthest off.
 Searched on every scored `bomb` frame, the offset follows no camera input as a per-shot rule ([`framing-and-actors.md` § 4](framing-and-actors.md#4-background-misregistration-is-neither-one-time-offset-nor-one-page-shift)).
-On the static opening shots (ticks 12 to 420, where the fire station 1650 and church 1648 lose 0.040 to 0.043 a frame) the props sit a row low below the projection centre and level or a row high above it, as truncating toward the centre would place them ([#1064](https://github.com/neilsh/stunt-reel/issues/1064)), and the sky's band edges sit a row low.
+On the static opening shots (ticks 12 to 420, where the fire station 1650 and church 1648 lose 0.040 to 0.043 a frame) the props sit a row low below the projection centre and level or a row high above it, as truncating toward the centre would place them (the rule is drawn since [#1064](https://github.com/neilsh/stunt-reel/issues/1064) and was not remeasured here), and the sky's band edges sit a row low.
 The frames 2 to 4 px off (2961, 3191, 3268) are frames where the camera turns or moves fast, and a render tick or two either way matches them about as well as a page shift does ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)).
 
 _Source: [what the canyon and BOMB frames show](../../work/2026-11/989_props-loss-shapes/journal.md#2026-11-23-what-the-canyon-and-bomb-frames-show), [the offset per shot, against the camera](../../work/2026-11/1031_bomb-world-offset/journal.md#2026-11-24-the-offset-per-shot-against-the-camera)._
@@ -108,7 +108,7 @@ Giving the capture our index on a set of 613's pixels (a capture-side oracle, [`
 The 32% (19%) that no pixel of 613 removes is the loss of windows over 613 whose other pixels, of the shapes, ground or sky beside it, still differ.
 The chalk lines are drawn a pixel off rather than missing: 958 of the 1,003 chalk pixels whose index differs have the capture's line a pixel away.
 On the lines and outlines the capture's matching pixel lies mostly a pixel toward the projection centre, the direction `PLAYONE`'s projectors truncate a vertex ([`sod-vm-lines-spans.md` § 8.14](../playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre)).
-#1027's prototype of that rule (its facet-plane form) cuts 613's loss by 39% at 2729 and 29% over the 27 frames, and its index disagreement from 8.9% to 5.9%, though it raises the outline pixels' own from 17.1% to 23.2%; drawing the rule is [#1064](https://github.com/neilsh/stunt-reel/issues/1064).
+#1027's prototype of that rule (its facet-plane form) cuts 613's loss by 39% at 2729 and 29% over the 27 frames, and its index disagreement from 8.9% to 5.9%, though it raises the outline pixels' own from 17.1% to 23.2%; the rule is drawn since #1064, in a form that differs from the prototype's (the world mesh and near-horizontal shape facets slide horizontally), and the per-shape losses here were not remeasured on it ([#1064](https://github.com/neilsh/stunt-reel/issues/1064)).
 
 _Source: [the stadium's loss split by line, outline and fill](../../work/2026-11/1034_stadium-outlines/journal.md#2026-11-24-the-stadiums-loss-split-by-line-outline-and-fill), [the projector truncation prototype on the stadium](../../work/2026-11/1034_stadium-outlines/journal.md#2026-11-24-the-projector-truncation-prototype-on-the-stadium)._
 
@@ -132,7 +132,7 @@ Giving the capture our index on a set of pixels (the capture-side oracle of 2.5)
 
 So windows straddling the street's edges charge it part of its neighbours' loss, 11% and 26% of its own: [#1035](https://github.com/neilsh/stunt-reel/issues/1035)'s hypothesis holds for that part and not for the bulk.
 The dashes are outline lines: every line pixel of 1756 comes from the world's outline line list ([`sod-vm-lines-spans.md` § 8.11](../playone-exe/sod-vm-lines-spans.md#811-polygon-spans-include-both-ends)), and among its disagreeing outline pixels, the capture's dash lies mostly a row higher, toward the projection centre (7,374 against 496 below the centre), and a column to the right on both sides of the centre ([sheet](../../work/2026-11/1035_bomb-street-loss/images/bomb-2520-street-dashes.png)).
-#1027's prototype of the truncation rule of 2.5 cuts 1756's loss by 37% on 2036 to 2740 and 22% on 3312 to 3477, about half of what the dashes own, and raises 71 of the 81 frames; drawing the rule is [#1064](https://github.com/neilsh/stunt-reel/issues/1064).
+#1027's prototype of the truncation rule of 2.5 cuts 1756's loss by 37% on 2036 to 2740 and 22% on 3312 to 3477, about half of what the dashes own, and raises 71 of the 81 frames; the rule is drawn since #1064, in a form that differs from the prototype's (the world mesh and near-horizontal shape facets slide horizontally), and the per-shape losses here were not remeasured on it ([#1064](https://github.com/neilsh/stunt-reel/issues/1064)).
 The horizontal offset, which is not toward the centre, and the rest of the dash mismatch are open with the outline pixels of [`sod-vm-lines-spans.md` § 10](../playone-exe/sod-vm-lines-spans.md#10-open-questions).
 
 _Source: [the street's loss is in windows it fills alone](../../work/2026-11/1035_bomb-street-loss/journal.md#2026-11-24-the-streets-loss-is-in-windows-it-fills-alone), [the street's own pixels own its loss, its dashes most of it](../../work/2026-11/1035_bomb-street-loss/journal.md#2026-11-24-the-streets-own-pixels-own-its-loss-its-dashes-most-of-it), [the dashes are outline lines a pixel off](../../work/2026-11/1035_bomb-street-loss/journal.md#2026-11-24-the-dashes-are-outline-lines-a-pixel-off), [the projector truncation prototype on the street](../../work/2026-11/1035_bomb-street-loss/journal.md#2026-11-24-the-projector-truncation-prototype-on-the-street)._
@@ -152,7 +152,7 @@ _Source: [the street's loss is in windows it fills alone](../../work/2026-11/103
 
 In order of the loss each would explain:
 
-1. **Truncation toward the projection centre** ([#1064](https://github.com/neilsh/stunt-reel/issues/1064)), on `bomb`'s opening shot: five of its eight worst shapes and 1756; on `location`, the stadium 613's edges and chalk lines (2.5); on `bomb`, the street 1756's lane dashes (2.6).
+1. **What truncation toward the projection centre leaves** (drawn since [#1064](https://github.com/neilsh/stunt-reel/issues/1064), in a form that differs from the prototype's; the per-shape losses below were measured before it), on `bomb`'s opening shot: five of its eight worst shapes and 1756; on `location`, the stadium 613's edges and chalk lines (2.5); on `bomb`, the street 1756's lane dashes (2.6).
 2. **Pages a tick or two off ours while the camera moves** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)).
 3. **Spheres in list order** ([#1066](https://github.com/neilsh/stunt-reel/issues/1066)).
 4. **One-tick phase** ([#1033](https://github.com/neilsh/stunt-reel/issues/1033)).
