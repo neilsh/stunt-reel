@@ -434,6 +434,20 @@ def test_the_gate_keeps_an_xdist_group_on_one_worker() -> None:
     ]
 
 
+def test_the_gate_counts_the_skips_a_passing_rust_test_prints() -> None:
+    """``cargo test`` drops a passing test's stderr unless the step runs with no capture."""
+    assert gate.STEP_ENV["test-rust"]["RUST_TEST_NOCAPTURE"] == "1"
+    output = (
+        "test gpu::a ... [test] Skipping GPU test: no compatible GPU adapter\nok\n"
+        "[test] Skipping software-only test: no software fallback adapter with clip distances\n"
+        "test result: ok. 3 passed\n"
+    )
+    note = gate.skipped_note(output)
+    assert note.startswith("[gate] NOTE 2 adapter-test skip(s)")
+    assert "docs/howto/render-on-lavapipe.md" in note
+    assert gate.skipped_note("test result: ok. 3 passed\n") == ""
+
+
 def test_docs_step_requires_the_kaitai_compiler() -> None:
     assert gate.STEP_ENV["test-py-docs"]["STUNT_REQUIRE_KSC"] == "1"
     assert (
