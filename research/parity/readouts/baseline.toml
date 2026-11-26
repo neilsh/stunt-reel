@@ -3,7 +3,7 @@
 # Refresh the seven together, per batch of render PRs, and edit this file with them.
 
 # The 19-category sheets were made and scored at 6486fb67 (the `revision` in each run.json), the
-# commit whose lavapipe render they grade: it includes the render PRs #1096, #1099 and #1102.
+# commit whose lavapipe render they grade: it includes the render PRs #1096 and #1099 (#1102 changed only tests, a pin and docs).
 # The run and grade files name no model; the grader names come from the coordinator's delegated-task
 # records. The earlier baseline (e09f8ff6) was graded by DSH passes; this one by Haiku passes, so
 # the comparison across the change of grader model is not calibrated, and a per-category difference
