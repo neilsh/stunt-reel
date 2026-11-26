@@ -134,22 +134,8 @@ struct ModelUniform {
 @group(1) @binding(0) var palette_lut: texture_2d<f32>;
 @group(2) @binding(0) var<uniform> model: ModelUniform;
 
-// A run of the world mesh's prop vertices, `first..end` in its vertex buffer, and the shape
-// word of the shape they draw (stunt_core::world::PropRun, `shape id + 1`).
-struct PropRun {
-    first: u32,
-    end: u32,
-    shape: u32,
-};
-
-// The world's prop runs in vertex order. Only the plane pipelines and the diagnostic look's bind it (`fs_main_plane`, `diagnostic_object`).
-@group(3) @binding(0) var<storage, read> prop_runs: array<PropRun>;
-
 // Scenery class of a world prop vertex (contracts/shape/mod.rs SCENERY_PROP).
 const SCENERY_PROP: u32 = 3u;
-// `VertexOutput::prop_vertex` of a vertex that is not a world prop's.
-const NO_PROP_VERTEX: u32 = 0xffffffffu;
-
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -160,6 +146,9 @@ struct VertexInput {
     @location(3) apex: vec4<f32>,
     // The vertex's polygon's place in its shape's display list, from 1; 0 when unranked.
     @location(4) list_rank: u32,
+    // The same stream's shape word: for a world prop vertex, `shape id + 1` of the prop it
+    // belongs to (stunt_core::world::PropRun), 0 for any other vertex.
+    @location(5) prop_shape: u32,
 };
 
 struct VertexOutput {
@@ -175,12 +164,10 @@ struct VertexOutput {
     // the screen-space linear interpolation of `shade` (`fragment_index`).
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
-    // The draw's shape word (`ModelUniform` `layer.z`).
+    // The shape word of the pixel: a world prop vertex's own (`VertexInput::prop_shape`),
+    // else the draw's (`ModelUniform` `layer.z`). Every vertex of a triangle or line lies in
+    // the same prop run, so whichever vertex provokes names it.
     @location(6) @interpolate(flat) shape: u32,
-    // A world prop vertex's number in its vertex buffer, `NO_PROP_VERTEX` for any other
-    // vertex: `prop_runs` gives its shape. Every vertex of a triangle or line lies in the
-    // same run, so whichever vertex provokes names it.
-    @location(7) @interpolate(flat) prop_vertex: u32,
 };
 
 // Whether `x` is NaN or infinite: all exponent bits set. WGSL has no isNan, and `x != x`
@@ -217,24 +204,6 @@ struct PlaneOutput {
     // + 1` of the prop that drew the pixel, 0 for none.
     @location(1) plane: vec2<u32>,
 };
-
-// The shape word of the prop run holding world vertex `vertex`, 0 when none does.
-fn prop_shape(vertex: u32) -> u32 {
-    var lo = 0u;
-    var hi = arrayLength(&prop_runs);
-    while (lo < hi) {
-        let mid = (lo + hi) / 2u;
-        let run = prop_runs[mid];
-        if (vertex < run.first) {
-            hi = mid;
-        } else if (vertex >= run.end) {
-            lo = mid + 1u;
-        } else {
-            return run.shape;
-        }
-    }
-    return 0u;
-}
 
 // Beyond this many times its own distance, a vertex slid along its plane by `playone_vertex` is
 // treated as having missed the plane (the ray through its pixel runs almost along it).
@@ -335,12 +304,12 @@ fn slide_normal(in: VertexInput) -> vec3<f32> {
 }
 
 @vertex
-fn vs_main(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> VertexOutput {
-    return vertex_output(in, vertex_index);
+fn vs_main(in: VertexInput) -> VertexOutput {
+    return vertex_output(in);
 }
 
 // `vs_main`'s work, callable from the other vertex entry points.
-fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
+fn vertex_output(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
     // Model space to eye-relative space to clip space.
@@ -398,8 +367,7 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
     out.shade_w = out.shade * w;
     out.w = w;
     out.layer = model.layer.x + in.attr.z;
-    out.shape = model.layer.z;
-    out.prop_vertex = select(NO_PROP_VERTEX, vertex_index, in.attr.z == SCENERY_PROP);
+    out.shape = select(model.layer.z, in.prop_shape, in.attr.z == SCENERY_PROP);
 
     // Polygons are drawn at their palette index with no directional lighting: against
     // PLAYONE captures of CTRY.FLM the unlit colour scores higher than any sun/ambient ramp
@@ -429,14 +397,13 @@ struct EdgeVertexOutput {
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
     @location(6) @interpolate(flat) shape: u32,
-    @location(7) @interpolate(flat) prop_vertex: u32,
     @builtin(clip_distances) clip_distances: array<f32, 4>,
 };
 
 // `vs_main` for the outline line lists, clipped to `EDGE_CLIP_BAND` times the view on each side.
 @vertex
-fn vs_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> EdgeVertexOutput {
-    let v = vertex_output(in, vertex_index);
+fn vs_edge(in: VertexInput) -> EdgeVertexOutput {
+    let v = vertex_output(in);
     var out: EdgeVertexOutput;
     out.clip_position = v.clip_position;
     out.palette_index = v.palette_index;
@@ -446,7 +413,6 @@ fn vs_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> EdgeVer
     out.shade_w = v.shade_w;
     out.w = v.w;
     out.shape = v.shape;
-    out.prop_vertex = v.prop_vertex;
     let c = v.clip_position;
     let band = EDGE_CLIP_BAND * c.w;
     out.clip_distances = array<f32, 4>(band - c.x, band + c.x, band - c.y, band + c.y);
@@ -466,11 +432,7 @@ fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
     let index = fragment_index(in);
     let coords = vec2<i32>(i32(index), i32(in.light_level & 31u));
     out.color = textureLoad(palette_lut, coords, 0);
-    var shape = in.shape;
-    if (in.prop_vertex != NO_PROP_VERTEX) {
-        shape = prop_shape(in.prop_vertex);
-    }
-    out.plane = vec2<u32>((in.layer << 8u) | index, shape);
+    out.plane = vec2<u32>((in.layer << 8u) | index, in.shape);
     return out;
 }
 
@@ -610,11 +572,10 @@ struct ModernVertexOutput {
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
     @location(6) @interpolate(flat) shape: u32,
-    @location(7) @interpolate(flat) prop_vertex: u32,
     // The vertex's eye-relative position, interpolated perspective-correct.
-    @location(8) @interpolate(perspective) eye_pos: vec3<f32>,
+    @location(7) @interpolate(perspective) eye_pos: vec3<f32>,
     // The eye-relative unit facet normal; zero where the fragment takes no Lambert light.
-    @location(9) @interpolate(flat) normal: vec3<f32>,
+    @location(8) @interpolate(flat) normal: vec3<f32>,
 };
 
 struct ModernEdgeVertexOutput {
@@ -626,9 +587,8 @@ struct ModernEdgeVertexOutput {
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
     @location(6) @interpolate(flat) shape: u32,
-    @location(7) @interpolate(flat) prop_vertex: u32,
-    @location(8) @interpolate(perspective) eye_pos: vec3<f32>,
-    @location(9) @interpolate(flat) normal: vec3<f32>,
+    @location(7) @interpolate(perspective) eye_pos: vec3<f32>,
+    @location(8) @interpolate(flat) normal: vec3<f32>,
     @builtin(clip_distances) clip_distances: array<f32, 4>,
 };
 
@@ -655,8 +615,8 @@ fn modern_normal(in: VertexInput) -> vec3<f32> {
     return eye_n / len;
 }
 
-fn modern_vertex(in: VertexInput, vertex_index: u32) -> ModernVertexOutput {
-    let v = vertex_output(in, vertex_index);
+fn modern_vertex(in: VertexInput) -> ModernVertexOutput {
+    let v = vertex_output(in);
     var out: ModernVertexOutput;
     out.clip_position = v.clip_position;
     out.palette_index = v.palette_index;
@@ -666,21 +626,20 @@ fn modern_vertex(in: VertexInput, vertex_index: u32) -> ModernVertexOutput {
     out.shade_w = v.shade_w;
     out.w = v.w;
     out.shape = v.shape;
-    out.prop_vertex = v.prop_vertex;
     out.eye_pos = (model.model_matrix * vec4<f32>(in.position, 1.0)).xyz;
     out.normal = modern_normal(in);
     return out;
 }
 
 @vertex
-fn vs_modern(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> ModernVertexOutput {
-    return modern_vertex(in, vertex_index);
+fn vs_modern(in: VertexInput) -> ModernVertexOutput {
+    return modern_vertex(in);
 }
 
 // `vs_modern` for the outline line lists, clipped as `vs_edge` clips them.
 @vertex
-fn vs_modern_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> ModernEdgeVertexOutput {
-    let v = modern_vertex(in, vertex_index);
+fn vs_modern_edge(in: VertexInput) -> ModernEdgeVertexOutput {
+    let v = modern_vertex(in);
     var out: ModernEdgeVertexOutput;
     out.clip_position = v.clip_position;
     out.palette_index = v.palette_index;
@@ -690,7 +649,6 @@ fn vs_modern_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> 
     out.shade_w = v.shade_w;
     out.w = v.w;
     out.shape = v.shape;
-    out.prop_vertex = v.prop_vertex;
     out.eye_pos = v.eye_pos;
     out.normal = v.normal;
     let c = v.clip_position;
@@ -710,7 +668,6 @@ fn parity_input(in: ModernVertexOutput) -> VertexOutput {
     v.shade_w = in.shade_w;
     v.w = in.w;
     v.shape = in.shape;
-    v.prop_vertex = in.prop_vertex;
     return v;
 }
 
@@ -812,11 +769,7 @@ fn fs_modern_plane(in: ModernVertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
     let index = fragment_index(parity_input(in));
     out.color = modern_colour(in, modern_shade(in));
-    var shape = in.shape;
-    if (in.prop_vertex != NO_PROP_VERTEX) {
-        shape = prop_shape(in.prop_vertex);
-    }
-    out.plane = vec2<u32>((in.layer << 8u) | index, shape);
+    out.plane = vec2<u32>((in.layer << 8u) | index, in.shape);
     return out;
 }
 
@@ -893,16 +846,15 @@ struct DiagnosticVertexOutput {
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
     @location(6) @interpolate(flat) shape: u32,
-    @location(7) @interpolate(flat) prop_vertex: u32,
-    @location(8) @interpolate(perspective) eye_pos: vec3<f32>,
-    @location(9) @interpolate(flat) normal: vec3<f32>,
+    @location(7) @interpolate(perspective) eye_pos: vec3<f32>,
+    @location(8) @interpolate(flat) normal: vec3<f32>,
     // The vertex's decal tie, nonzero for a decal.
-    @location(10) @interpolate(flat) decal_tie: u32,
-    @location(11) @interpolate(flat) scenery_class: u32,
+    @location(9) @interpolate(flat) decal_tie: u32,
+    @location(10) @interpolate(flat) scenery_class: u32,
     // Nonzero for a shadow draw (`ModelUniform` `layer.y`).
-    @location(12) @interpolate(flat) shadow: u32,
+    @location(11) @interpolate(flat) shadow: u32,
     // 1 for an outline pass vertex.
-    @location(13) @interpolate(flat) edge: u32,
+    @location(12) @interpolate(flat) edge: u32,
 };
 
 struct DiagnosticEdgeVertexOutput {
@@ -914,18 +866,17 @@ struct DiagnosticEdgeVertexOutput {
     @location(4) @interpolate(perspective) shade_w: f32,
     @location(5) @interpolate(perspective) w: f32,
     @location(6) @interpolate(flat) shape: u32,
-    @location(7) @interpolate(flat) prop_vertex: u32,
-    @location(8) @interpolate(perspective) eye_pos: vec3<f32>,
-    @location(9) @interpolate(flat) normal: vec3<f32>,
-    @location(10) @interpolate(flat) decal_tie: u32,
-    @location(11) @interpolate(flat) scenery_class: u32,
-    @location(12) @interpolate(flat) shadow: u32,
-    @location(13) @interpolate(flat) edge: u32,
+    @location(7) @interpolate(perspective) eye_pos: vec3<f32>,
+    @location(8) @interpolate(flat) normal: vec3<f32>,
+    @location(9) @interpolate(flat) decal_tie: u32,
+    @location(10) @interpolate(flat) scenery_class: u32,
+    @location(11) @interpolate(flat) shadow: u32,
+    @location(12) @interpolate(flat) edge: u32,
     @builtin(clip_distances) clip_distances: array<f32, 4>,
 };
 
-fn diagnostic_vertex(in: VertexInput, vertex_index: u32) -> DiagnosticVertexOutput {
-    let v = modern_vertex(in, vertex_index);
+fn diagnostic_vertex(in: VertexInput) -> DiagnosticVertexOutput {
+    let v = modern_vertex(in);
     var out: DiagnosticVertexOutput;
     out.clip_position = v.clip_position;
     out.palette_index = v.palette_index;
@@ -935,7 +886,6 @@ fn diagnostic_vertex(in: VertexInput, vertex_index: u32) -> DiagnosticVertexOutp
     out.shade_w = v.shade_w;
     out.w = v.w;
     out.shape = v.shape;
-    out.prop_vertex = v.prop_vertex;
     out.eye_pos = v.eye_pos;
     out.normal = v.normal;
     out.decal_tie = in.attr.w;
@@ -946,14 +896,14 @@ fn diagnostic_vertex(in: VertexInput, vertex_index: u32) -> DiagnosticVertexOutp
 }
 
 @vertex
-fn vs_diagnostic(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> DiagnosticVertexOutput {
-    return diagnostic_vertex(in, vertex_index);
+fn vs_diagnostic(in: VertexInput) -> DiagnosticVertexOutput {
+    return diagnostic_vertex(in);
 }
 
 // `vs_diagnostic` for the outline line lists, clipped as `vs_edge` clips them.
 @vertex
-fn vs_diagnostic_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> DiagnosticEdgeVertexOutput {
-    let v = diagnostic_vertex(in, vertex_index);
+fn vs_diagnostic_edge(in: VertexInput) -> DiagnosticEdgeVertexOutput {
+    let v = diagnostic_vertex(in);
     var out: DiagnosticEdgeVertexOutput;
     out.clip_position = v.clip_position;
     out.palette_index = v.palette_index;
@@ -963,7 +913,6 @@ fn vs_diagnostic_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32)
     out.shade_w = v.shade_w;
     out.w = v.w;
     out.shape = v.shape;
-    out.prop_vertex = v.prop_vertex;
     out.eye_pos = v.eye_pos;
     out.normal = v.normal;
     out.decal_tie = v.decal_tie;
@@ -1026,7 +975,7 @@ fn diagnostic_grid(colour: vec3<f32>, world: vec2<f32>, fw: vec2<f32>) -> vec3<f
 
 // The colour a fragment's object has, before facing, stripes, hatching or the grid: white for the
 // overlay, ocean or terrain blue and grey, an actor's or sprite's by its layer, a prop's by its
-// shape word (a world prop's from its run, as `fs_main_plane` finds it).
+// shape word (a world prop's from its vertex, `VertexInput::prop_shape`).
 fn diagnostic_object(in: DiagnosticVertexOutput) -> vec3<f32> {
     if (in.layer == LAYER_OVERLAY) {
         return vec3<f32>(1.0);
@@ -1038,11 +987,7 @@ fn diagnostic_object(in: DiagnosticVertexOutput) -> vec3<f32> {
         return DIAG_TERRAIN;
     }
     if (in.layer == LAYER_PROP) {
-        var shape = in.shape;
-        if (in.prop_vertex != NO_PROP_VERTEX) {
-            shape = prop_shape(in.prop_vertex);
-        }
-        return diagnostic_hue(shape);
+        return diagnostic_hue(in.shape);
     }
     return diagnostic_hue(in.layer);
 }
@@ -1110,11 +1055,7 @@ fn fs_diagnostic_plane(in: DiagnosticVertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
     let index = fragment_index(parity_input_diagnostic(in));
     out.color = vec4<f32>(diagnostic_colour(in), 1.0);
-    var shape = in.shape;
-    if (in.prop_vertex != NO_PROP_VERTEX) {
-        shape = prop_shape(in.prop_vertex);
-    }
-    out.plane = vec2<u32>((in.layer << 8u) | index, shape);
+    out.plane = vec2<u32>((in.layer << 8u) | index, in.shape);
     return out;
 }
 
@@ -1129,7 +1070,6 @@ fn parity_input_diagnostic(in: DiagnosticVertexOutput) -> VertexOutput {
     v.shade_w = in.shade_w;
     v.w = in.w;
     v.shape = in.shape;
-    v.prop_vertex = in.prop_vertex;
     return v;
 }
 
