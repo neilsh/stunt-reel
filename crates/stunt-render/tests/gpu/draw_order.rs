@@ -157,11 +157,21 @@ pub(crate) fn film(eye: [f32; 3], actors: Vec<ActorTransform>) -> FilmTimeline {
 
 /// [`film`] with film variable 13 (`palette.sky`, which also sets the sun) at `sky`.
 pub(crate) fn film_with_sky(eye: [f32; 3], actors: Vec<ActorTransform>, sky: u16) -> FilmTimeline {
+    film_looking_at(eye, [0.0, 0.0, 0.0], actors, sky)
+}
+
+/// [`film_with_sky`] with the camera aimed at `target`.
+pub(crate) fn film_looking_at(
+    eye: [f32; 3],
+    target: [f32; 3],
+    actors: Vec<ActorTransform>,
+    sky: u16,
+) -> FilmTimeline {
     let record = TrajectoryRecord {
         tick: 0,
         camera: CameraTransform {
             eye,
-            target: [0.0, 0.0, 0.0],
+            target,
             fov_degrees: 45.0,
             roll_radians: 0.0,
             cut_from_previous: false,

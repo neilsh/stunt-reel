@@ -516,6 +516,7 @@ fn fs_sky_plane(in: SkyVertexOutput) -> PlaneOutput {
 // points of its own beside the parity ones above, which keep their code. Viewer-only: never
 // scored or stored (docs/SPEC.md [I3]). It reuses `vertex_output`, so the pixel snapping and the
 // culling are the parity look's, and the plane output keeps `fragment_index`'s whole index.
+// Its sky (`fs_sky_modern`) is a smooth gradient reusing `vs_sky`.
 
 // The sun and fog the modern entry points read (camera.rs `ModernUniform`).
 struct ModernUniform {
@@ -527,6 +528,13 @@ struct ModernUniform {
     // x: the sky fill's brightness on a facet facing up; y: facing down; z: how far the fill's
     // colour leans toward the sky's rather than white.
     fill: vec4<f32>,
+    // The sky's view ray at Mode 13h raster pixel (x, y): sky_ray[0].xyz + x * sky_ray[1].xyz
+    // + y * sky_ray[2].xyz, unnormalised, in [I1] axes; sky_ray[0].w is 1 for a perspective view
+    // and 0 for an orthographic one, whose sky is the horizon colour throughout.
+    sky_ray: array<vec4<f32>, 3>,
+    // x: the cosine of the sun glow's inner angle (full strength within it); y: the cosine of its
+    // outer angle (none beyond it); z: the glow's strength at its centre.
+    glow: vec4<f32>,
 };
 
 @group(0) @binding(1) var<uniform> modern: ModernUniform;
@@ -732,5 +740,59 @@ fn fs_modern_plane(in: ModernVertexOutput) -> PlaneOutput {
         shape = prop_shape(in.prop_vertex);
     }
     out.plane = vec2<u32>((in.layer << 8u) | index, shape);
+    return out;
+}
+
+// The tangent of the elevation of the last sky band edge, 256 / 14336 (sky.rs `LAST_EDGE`: edge
+// 14 is the point 14336 out and 256 up): at or below it the sky is the horizon colour.
+const SKY_HORIZON_TAN: f32 = 0.017857143;
+
+// The modern sky's colour on the Mode 13h raster at `ndc`, unfloored so the gradient is smooth at
+// any output resolution. PLAYONE's band edge `j` is the point `1024 j` out and `2048 - 128 j` up,
+// so a ray at elevation `t` (its tangent) lies on the continuous edge `j = 2048 / (1024 t + 128)`,
+// and its colour is the blend of the palette entries either side of `224 + j`: the zenith colour
+// straight up, `FOG_INDEX`'s colour at and below edge 14's elevation, with no seam where the fog
+// meets it. The elevation is tested first: the formula's denominator reaches zero at
+// `t = -0.125`, where a clamp would turn steep downward rays zenith-coloured. The edges are the
+// view's centre column's bands; under pitch PLAYONE's straight edges differ away from it. The sun
+// is a soft glow of its colour (index 239), not a hard disc.
+fn modern_sky(ndc: vec2<f32>) -> vec3<f32> {
+    let horizon = modern_palette(FOG_INDEX);
+    if (modern.sky_ray[0].w == 0.0) {
+        return horizon;
+    }
+    let raster = vec2<f32>(
+        (ndc.x + 1.0) * 0.5 / camera.line_half_ndc.x,
+        (1.0 - ndc.y) * 0.5 / camera.line_half_ndc.y,
+    );
+    let ray = normalize(
+        modern.sky_ray[0].xyz + raster.x * modern.sky_ray[1].xyz + raster.y * modern.sky_ray[2].xyz,
+    );
+    let ground = length(ray.xz);
+    var colour = horizon;
+    if (ray.y > SKY_HORIZON_TAN * ground) {
+        var j = 0.0;
+        if (ground > 0.0) {
+            j = 2048.0 / (1024.0 * ray.y / ground + 128.0);
+        }
+        let s = 224.0 + clamp(j, 0.0, 14.0);
+        let i0 = i32(floor(s));
+        colour = mix(modern_palette(i0), modern_palette(min(i0 + 1, 255)), s - floor(s));
+    }
+    let toward = smoothstep(modern.glow.y, modern.glow.x, dot(ray, modern.sun.xyz));
+    return mix(colour, modern_palette(i32(SUN_INDEX)), toward * modern.glow.z);
+}
+
+@fragment
+fn fs_sky_modern(in: SkyVertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(modern_sky(in.ndc), 1.0);
+}
+
+// The plane keeps the parity sky's index (`fs_sky_plane`), so picking and the layer plane see it.
+@fragment
+fn fs_sky_modern_plane(in: SkyVertexOutput) -> PlaneOutput {
+    var out: PlaneOutput;
+    out.color = vec4<f32>(modern_sky(in.ndc), 1.0);
+    out.plane = vec2<u32>(sky_index(in.ndc), 0u);
     return out;
 }

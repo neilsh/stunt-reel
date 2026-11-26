@@ -545,7 +545,7 @@ impl SceneRenderer {
         let controller = camera.unwrap_or(&authored);
         let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
         camera_resources.upload(queue, &camera_uniform);
-        camera_resources.upload_look(queue, frame.palette.sky);
+        camera_resources.upload_look(queue, frame.palette.sky, controller);
         let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
 
         self.prepared.clear();
