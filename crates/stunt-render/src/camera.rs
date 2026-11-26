@@ -37,7 +37,7 @@ pub const DEFAULT_FAR_CLIP: f32 = 25_000.0;
 
 /// The modern look's lighting and fog, matching WGSL `@group(0) @binding(1)` (`ModernUniform`).
 ///
-/// Only the `vs_modern`/`fs_modern` entry points read it; the parity look's pipelines carry the
+/// Only the `vs_modern`/`fs_modern` and `fs_sky_modern` entry points read it; the parity look's pipelines carry the
 /// same bind group and never touch it.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -61,11 +61,12 @@ pub struct ModernUniform {
 }
 
 impl ModernUniform {
-    /// The angle in degrees from the sun inside which its glow is at full strength: near
-    /// `PLAYONE`'s disc at the default lens, about 2.5 degrees across its radius.
-    pub const GLOW_INNER_DEGREES: f32 = 1.5;
+    /// The angle in degrees from the sun inside which its glow is at full strength. The glow
+    /// falls off by `smoothstep` to [`GLOW_OUTER_DEGREES`](Self::GLOW_OUTER_DEGREES), so its
+    /// visible size is near `PLAYONE`'s disc (a radius of about 3 degrees at the default lens).
+    pub const GLOW_INNER_DEGREES: f32 = 1.0;
     /// The angle in degrees from the sun beyond which the sky has no glow.
-    pub const GLOW_OUTER_DEGREES: f32 = 9.0;
+    pub const GLOW_OUTER_DEGREES: f32 = 5.0;
     /// How far the sky colour reaches toward the sun colour (index 239) at the glow's centre.
     pub const GLOW: f32 = 0.9;
     /// The share of full brightness a facet facing the sun gains from it.
