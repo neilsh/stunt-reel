@@ -514,16 +514,19 @@ fn fs_sky_plane(in: SkyVertexOutput) -> PlaneOutput {
 
 // The modern look (`--look modern`): directional lighting and distance fog, drawn through entry
 // points of its own beside the parity ones above, which keep their code. Viewer-only: never
-// scored or stored (docs/SPEC.md [I3]). It reuses `vertex_output` and `fragment_index`, so the
-// pixel snapping, the culling and the index rule are the parity look's.
+// scored or stored (docs/SPEC.md [I3]). It reuses `vertex_output`, so the pixel snapping and the
+// culling are the parity look's, and the plane output keeps `fragment_index`'s whole index.
 
 // The sun and fog the modern entry points read (camera.rs `ModernUniform`).
 struct ModernUniform {
-    // xyz: the unit direction toward the sun in [I1] axes; w: the palette row of a surface
-    // facing directly away from it.
-    sun_and_floor: vec4<f32>,
+    // xyz: the unit direction toward the sun in [I1] axes; w: the sun's strength, the share of
+    // full brightness a facet facing it gains.
+    sun: vec4<f32>,
     // x, y: the fog's start and end distance from the eye in metres.
     fog: vec4<f32>,
+    // x: the sky fill's brightness on a facet facing up; y: facing down; z: how far the fill's
+    // colour leans toward the sky's rather than white.
+    fill: vec4<f32>,
 };
 
 @group(0) @binding(1) var<uniform> modern: ModernUniform;
@@ -650,42 +653,80 @@ fn parity_input(in: ModernVertexOutput) -> VertexOutput {
     return v;
 }
 
-// A disc (`FLAG_DISC`) and a line with no facet (a ZLINETO) take no Lambert light and draw at the
-// full row; fog still applies. `modern.fog.y` is past `modern.fog.x` (camera.rs `ModernUniform`).
-//
-// The colour of palette index `index` under the sun and the fog: Lambert on the facet normal,
-// flipped toward the eye so either winding is lit on the side it shows, picks a row of the
-// lighting table from the floor up to full brightness; distance then mixes the horizon sky in.
-fn modern_colour(in: ModernVertexOutput, index: u32) -> vec4<f32> {
-    var row = 31.0;
+// The fractional palette index the modern look colours a fragment by: `fragment_index`'s guarded
+// read of `shade`, unrounded. A modern copy of that logic, not a refactor of it, so the parity
+// entry points keep their code. The same lavapipe guard applies: where `shade` interpolates to
+// NaN, the perspective ratio `shade_w / w` stands in, then the provoking vertex's index.
+fn modern_shade(in: ModernVertexOutput) -> f32 {
+    var shade = in.shade;
+    if (is_non_finite(shade)) {
+        let screen_linear = in.shade_w / in.w;
+        if (is_non_finite(screen_linear)) {
+            return f32(in.palette_index);
+        }
+        shade = screen_linear;
+    }
+    return clamp(shade, 0.0, 255.0);
+}
+
+// The palette colour of index `index` at full brightness (row 31, so palette fades still apply).
+fn modern_palette(index: i32) -> vec3<f32> {
+    return textureLoad(palette_lut, vec2<i32>(index, 31), 0).rgb;
+}
+
+// `colour` scaled to unit luminance (Rec. 601 weights): a tint that changes no brightness.
+fn modern_tint(colour: vec3<f32>) -> vec3<f32> {
+    return colour / max(dot(colour, vec3<f32>(0.299, 0.587, 0.114)), 1e-4);
+}
+
+// The colour of a fragment under the sun, the sky fill and the fog. Lighting is in RGB, not a
+// palette row: the base is the palette colour at full brightness, the blend of the two entries
+// either side of the fractional index `s`, so a Gouraud ramp is smooth where the parity look
+// steps; an integer `s` gives exactly that entry. A facet takes `min(sun * lambert + fill, 1)`
+// per channel, with `n` flipped toward the eye so either winding is lit on the side it shows.
+// The fill is a hemisphere term, `FILL_UP` for a facet facing up to `FILL_DOWN` for one facing
+// down, tinted by the zenith and horizon sky colours; the cap keeps a lit facet no brighter than
+// its parity colour. A pre-shaded polygon, a disc and a line with no facet (a ZLINETO) have a
+// zero normal: no light, no fill, their ramp smoothed. Distance then mixes the horizon sky in
+// (`modern.fog.y` is past `modern.fog.x`, camera.rs `ModernUniform`).
+fn modern_colour(in: ModernVertexOutput, s: f32) -> vec4<f32> {
+    let i0 = i32(floor(s));
+    let i1 = min(i0 + 1, 255);
+    var base = mix(modern_palette(i0), modern_palette(i1), s - floor(s));
     if (dot(in.normal, in.normal) > 0.0) {
         var n = in.normal;
         if (dot(n, in.eye_pos) > 0.0) {
             n = -n;
         }
-        let lambert = max(dot(n, modern.sun_and_floor.xyz), 0.0);
-        row = floor(modern.sun_and_floor.w + (31.0 - modern.sun_and_floor.w) * lambert + 0.5);
+        let lambert = max(dot(n, modern.sun.xyz), 0.0);
+        let up = 0.5 + 0.5 * n.y;
+        let tint = mix(
+            vec3<f32>(1.0),
+            mix(modern_tint(modern_palette(FOG_INDEX)), modern_tint(modern_palette(224)), up),
+            modern.fill.z,
+        );
+        let fill = mix(modern.fill.y, modern.fill.x, up) * tint;
+        base = base * min(vec3<f32>(modern.sun.w * lambert) + fill, vec3<f32>(1.0));
     }
-    let lit = textureLoad(palette_lut, vec2<i32>(i32(index), i32(row)), 0);
-    let fog = textureLoad(palette_lut, vec2<i32>(FOG_INDEX, 31), 0);
+    let fog = modern_palette(FOG_INDEX);
     let amount = clamp(
         (length(in.eye_pos) - modern.fog.x) / (modern.fog.y - modern.fog.x),
         0.0,
         1.0,
     );
-    return vec4<f32>(mix(lit.rgb, fog.rgb, amount), lit.a);
+    return vec4<f32>(mix(base, fog, amount), 1.0);
 }
 
 @fragment
 fn fs_modern(in: ModernVertexOutput) -> @location(0) vec4<f32> {
-    return modern_colour(in, fragment_index(parity_input(in)));
+    return modern_colour(in, modern_shade(in));
 }
 
 @fragment
 fn fs_modern_plane(in: ModernVertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
     let index = fragment_index(parity_input(in));
-    out.color = modern_colour(in, index);
+    out.color = modern_colour(in, modern_shade(in));
     var shape = in.shape;
     if (in.prop_vertex != NO_PROP_VERTEX) {
         shape = prop_shape(in.prop_vertex);
