@@ -22,7 +22,7 @@ use clap::{CommandFactory as _, Parser, ValueEnum};
 use glam::Vec3;
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
-use stunt_core::contracts::{PaletteControls, ShapeExtent, SodModelIr};
+use stunt_core::contracts::{PaletteControls, ShapeExtent, SodModelIr, VERTEX_FLAG_PRESHADED};
 use stunt_core::flm::FilmTimeline;
 use stunt_core::scene::{ActorDraw, FilmScene, SceneFrame, ViewCamera, decode_archive_shapes};
 use stunt_core::sod::{AngleBank, ShadeLight};
@@ -200,7 +200,12 @@ fn geometry_hash(model: &SodModelIr) -> Result<String, serde_json::Error> {
         for value in vertex.position.iter().chain(&vertex.normal) {
             hasher.update(value.to_bits().to_le_bytes());
         }
-        hasher.update([vertex.palette_index, vertex.flags, vertex.scenery_class]);
+        // The pre-shaded mark changes no pixel of the parity look this hash stands for.
+        hasher.update([
+            vertex.palette_index,
+            vertex.flags & !VERTEX_FLAG_PRESHADED,
+            vertex.scenery_class,
+        ]);
     }
     hasher.update(b"indices");
     for index in &model.indices {

@@ -15,5 +15,6 @@ mod disc;
 mod draw_order;
 mod fragment_index;
 mod lines;
+mod modern;
 mod renderer;
 mod scene_renderer;

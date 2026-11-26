@@ -133,6 +133,20 @@ impl Default for Offscreen {
     }
 }
 
+/// How a film is shaded.
+///
+/// `Mode13h` is the parity look: flat palette indices, scored against `PLAYONE` (`[I3]`).
+/// `Modern` is a viewer-only look beside it that adds directional lighting and distance fog
+/// through its own pipelines; it is never scored or stored (`docs/SPEC.md` `[I3]`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Look {
+    /// Flat Mode 13h palette indices, as `PLAYONE` draws them.
+    #[default]
+    Mode13h,
+    /// Lambert lighting against the film's sun and fog toward the horizon sky.
+    Modern,
+}
+
 /// What every open renderer does identically for both destinations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RenderOptions {
@@ -144,6 +158,8 @@ pub struct RenderOptions {
     /// setting this only forces that attempt, which `stuntreel --software-only` and the GPU
     /// tests' software path both ask for.
     pub software_only: bool,
+    /// How the film is shaded; only [`Look::Mode13h`] output is scored or stored.
+    pub look: Look,
 }
 
 impl Default for RenderOptions {
@@ -151,6 +167,7 @@ impl Default for RenderOptions {
         Self {
             clear_palette_index: DEFAULT_CLEAR_PALETTE_INDEX,
             software_only: false,
+            look: Look::Mode13h,
         }
     }
 }
@@ -389,7 +406,7 @@ impl Renderer {
     ) -> Result<Self, RenderError> {
         let adapter = offscreen_adapter(options)?;
         let (device, queue) = open_device(&adapter)?;
-        let camera_resources = CameraGpuResources::new(&device);
+        let camera_resources = CameraGpuResources::new(&device, options.look);
         let palette_lut = PaletteLut::new(&device, &queue);
         let pipelines = RenderPipelines::new_with_plane(
             &device,
@@ -397,6 +414,7 @@ impl Renderer {
             DEPTH_FORMAT,
             &camera_resources.bind_group_layout,
             &palette_lut.bind_group_layout,
+            options.look,
         );
         let scene_pass = SceneRenderer::new(&device, &queue, &pipelines, scene);
         let destination =
@@ -441,7 +459,7 @@ impl Renderer {
             .create_surface(window)
             .map_err(|error| RenderError::SurfaceCreate(error.to_string()))?;
         let (adapter, device, queue) = acquire(&instance, Some(&surface), options)?;
-        let camera_resources = CameraGpuResources::new(&device);
+        let camera_resources = CameraGpuResources::new(&device, options.look);
         let palette_lut = PaletteLut::new(&device, &queue);
         let surface_target = SurfaceTarget::new(surface, &adapter, &device)?;
         let pipelines = RenderPipelines::new(
@@ -450,6 +468,7 @@ impl Renderer {
             DEPTH_FORMAT,
             &camera_resources.bind_group_layout,
             &palette_lut.bind_group_layout,
+            options.look,
         );
         let scene_pass = SceneRenderer::new(&device, &queue, &pipelines, scene);
         Ok(Self {

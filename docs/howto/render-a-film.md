@@ -13,6 +13,18 @@ Interactive playback follows the authored 50 Hz timeline and interpolates betwee
 
 `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn` are searched for in `--sidata <dir>` first, then the archive's directory, its parent and grandparent, then `sidata/` or `SIDATA/` inside the parent (filename case ignored); the demo's `corpus/siarchive/Developer/FreeFlight/SIDATA` needs an explicit `--sidata`.
 
+## Watch it lit and fogged
+
+```bash
+stuntreel --look modern <film and flags as above>
+stuntreel --look modern --headless <film and flags as above> --video film.mp4
+stuntreel --look modern --headless <film and flags as above> -o still.png
+```
+
+`--look modern` adds directional lighting against the film's sun and distance fog toward the horizon sky, through pipelines and shader entry points beside the parity ones; `--look mode13h` is the default.
+Polygons whose colour already carries `OP_SHADES` light keep their palette index's full row, so nothing is lit twice, and so do discs and facet-less lines, which have no normal to light; the sky, the letterbox and the pixel snapping are the Mode 13h look's.
+It is a viewer: `--out-dir` refuses it, since the render store holds Mode 13h renders that are scored, and `stuntreel shape-views` stays on the Mode 13h look.
+
 ## Sample it at an interval
 
 ```bash

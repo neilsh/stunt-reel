@@ -1882,3 +1882,126 @@ fn test_bvgt_branches_when_bank_word_is_at_or_above_threshold() {
     let kept = bank_with(0x12, 0x0FA0).only(&rest.decode().expect("record").bank_operands);
     assert_eq!(decode_posed(&stream, kept), at_threshold);
 }
+
+/// `SHADES 0 1 (0,32767,0)`, then `body`, then `RETURN`: a stream over three registers.
+fn shades_then(body: &[u16]) -> Vec<u8> {
+    let mut bytes = sort_prelude();
+    push_words(&mut bytes, &[0x0156, 0, 1, 0, 32767, 0]);
+    push_words(&mut bytes, body);
+    push_words(&mut bytes, &[OP_RETURN]);
+    bytes
+}
+
+/// The flags of every vertex of the decoded shape, in vertex order; the shape has vertices.
+fn vertex_flags(bytes: &[u8], name: &str) -> Vec<u8> {
+    let ir = decode(bytes, name).expect("decode");
+    assert!(!ir.vertices.is_empty(), "{name} decodes to nothing");
+    ir.vertices.iter().map(|v| v.flags).collect()
+}
+
+/// A polygon coloured by `SHADE16`, and a Gouraud one, are marked as already lit; one in an
+/// `OP_COLOR` colour, even after a `SHADE16`, is not.
+#[test]
+fn test_shaded_polygons_are_marked_preshaded_and_colour_ones_are_not() {
+    use crate::contracts::shape::VERTEX_FLAG_PRESHADED;
+    use crate::sod::vm::OP_GVPOLY16;
+    let shaded = shades_then(&[0x02B5, 0, 0x30, OP_POLYZ, 3, 0, 12, 24]);
+    assert!(
+        vertex_flags(&shaded, "SHADE16")
+            .iter()
+            .all(|f| f & VERTEX_FLAG_PRESHADED != 0)
+    );
+    let gouraud = shades_then(&[OP_GVPOLY16, 3, 0, 12, 24, 0x3003, 0, 0, 0]);
+    assert!(
+        vertex_flags(&gouraud, "GVPOLY16")
+            .iter()
+            .all(|f| f & VERTEX_FLAG_PRESHADED != 0)
+    );
+    let plain = shades_then(&[0x02B5, 0, 0x30, OP_COLOR, 7, OP_POLYZ, 3, 0, 12, 24]);
+    assert!(
+        vertex_flags(&plain, "COLOR")
+            .iter()
+            .all(|f| f & VERTEX_FLAG_PRESHADED == 0)
+    );
+}
+
+/// A pen line takes the `SHADE16` colour, and so the mark, until `OP_LINECOL` names its own.
+#[test]
+fn test_a_pen_line_is_preshaded_only_in_the_shaded_colour() {
+    use crate::contracts::shape::VERTEX_FLAG_PRESHADED;
+    use crate::sod::vm::{OP_LINECOL, OP_MOVETO, OP_ZLINETO};
+    let line = [OP_MOVETO, 0, OP_ZLINETO, 12];
+    let mut shaded = vec![0x02B5, 0, 0x30];
+    shaded.extend(line);
+    let mut own = vec![0x02B5, 0, 0x30, OP_LINECOL, 9];
+    own.extend(line);
+    let marked = vertex_flags(&shades_then(&shaded), "LINE");
+    assert!(!marked.is_empty());
+    assert!(marked.iter().all(|f| f & VERTEX_FLAG_PRESHADED != 0));
+    let own_colour = vertex_flags(&shades_then(&own), "LINECOL");
+    assert!(!own_colour.is_empty());
+    assert!(own_colour.iter().all(|f| f & VERTEX_FLAG_PRESHADED == 0));
+}
+
+/// The mark is not part of the weld key: two coplanar polygons of one colour, one marked and one
+/// not, weld their shared corners as they would unmarked.
+#[test]
+fn test_the_preshaded_mark_changes_no_weld() {
+    use crate::contracts::shape::VERTEX_FLAG_PRESHADED;
+    use crate::sod::tessellate::quantize_weld_key;
+    let at = [1.0, 2.0, 3.0];
+    let n = [0.0, 1.0, 0.0];
+    assert_eq!(
+        quantize_weld_key(&at, &n, 7, VERTEX_FLAG_PRESHADED),
+        quantize_weld_key(&at, &n, 7, 0)
+    );
+}
+
+/// A block, a sphere, a disc and a dot in a `SHADE16` colour are marked as already lit; the same
+/// shapes in an `OP_COLOR` colour are not.
+#[test]
+fn test_every_generator_marks_the_shaded_colour_it_draws_in() {
+    use crate::contracts::shape::VERTEX_FLAG_PRESHADED;
+    let vectors = |count: u16, coordinates: &[i16]| {
+        let mut bytes = make_sod_header(100, 0, 0, 0);
+        push_words(&mut bytes, &[OP_VECTORS, count, 12]);
+        for &c in coordinates {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+        bytes
+    };
+    let colour_words = |shaded: bool| -> Vec<u16> {
+        if shaded {
+            vec![0x02B5, 0, 0x30]
+        } else {
+            vec![OP_COLOR, 45]
+        }
+    };
+    for shaded in [true, false] {
+        let streams = [
+            ("BLOCK", vec![OP_BLOCK, 12, 20], vec![-100i16, -200, 300]),
+            ("SPHERE", vec![OP_SPHERE, 12, 50], vec![-100, -200, 300]),
+            (
+                "PERFDISK",
+                vec![OP_PERFDISK, 12, 50, 24],
+                vec![0, 0, 0, 0, 100, 0],
+            ),
+            ("DOT", vec![OP_DOT, 12], vec![-100, -200, 300]),
+        ];
+        for (name, op, coordinates) in streams {
+            let count = u16::try_from(coordinates.len() / 3).expect("small");
+            let mut bytes = vectors(count, &coordinates);
+            let mut words = colour_words(shaded);
+            words.extend(op);
+            words.push(OP_RETURN);
+            push_words(&mut bytes, &words);
+            let flags = vertex_flags(&bytes, name);
+            assert!(
+                flags
+                    .iter()
+                    .all(|f| (f & VERTEX_FLAG_PRESHADED != 0) == shaded),
+                "{name} shaded={shaded}: {flags:?}"
+            );
+        }
+    }
+}

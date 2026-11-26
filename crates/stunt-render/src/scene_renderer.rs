@@ -43,7 +43,7 @@ use glam::{Mat4, Vec3};
 
 use stunt_core::contracts::{
     CameraTransform, NodeKind, SCENERY_OCEAN, SCENERY_TERRAIN, SodModelIr, SodVertex,
-    VisibilityCondition,
+    VERTEX_FLAG_PRESHADED, VisibilityCondition,
 };
 use stunt_core::scene::{FilmScene, RelitShapes, SceneFrame, SpriteDraw};
 use stunt_core::sod::{AngleBank, ShadeLight};
@@ -545,6 +545,7 @@ impl SceneRenderer {
         let controller = camera.unwrap_or(&authored);
         let camera_uniform = controller.build_uniform_with_sky(frame.palette.sky);
         camera_resources.upload(queue, &camera_uniform);
+        camera_resources.upload_look(queue, frame.palette.sky);
         let rotation_proj = Mat4::from_cols_array(&camera_uniform.rotation_proj);
 
         self.prepared.clear();
@@ -1099,7 +1100,8 @@ fn sprite_ir(image: &SpriteImage) -> SodModelIr {
                 position: [x, y, 0.0],
                 normal: [0.0, 0.0, 1.0],
                 palette_index: run.index,
-                flags: 0,
+                // Drawn art, not a lit surface: a lighting look leaves it as it is.
+                flags: VERTEX_FLAG_PRESHADED,
                 scenery_class: 0,
                 _padding: 0,
             });
