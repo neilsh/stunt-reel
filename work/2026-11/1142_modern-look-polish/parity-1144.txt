@@ -1,4 +1,4 @@
-# #1144 parity check: main d5416d1 (baseline) vs 371fade (candidate), canonical lavapipe mesa 25.2.8-0ubuntu0.24.04.5, mise run parity -- --software-only
+# #1144 parity check: main d5416d1 (baseline) vs c5333ca (candidate), canonical lavapipe mesa 25.2.8-0ubuntu0.24.04.5, mise run parity -- --software-only
 # cmp of each film's four store files (silent when identical):
 identical balloon_current/frames.zst
 identical balloon_current/layers.zst
