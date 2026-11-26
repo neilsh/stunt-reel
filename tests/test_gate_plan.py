@@ -435,8 +435,8 @@ def test_the_gate_keeps_an_xdist_group_on_one_worker() -> None:
 
 
 def test_the_gate_counts_the_skips_a_passing_rust_test_prints() -> None:
-    """``cargo test`` drops a passing test's stderr unless the step runs with no capture."""
-    assert gate.STEP_ENV["test-rust"]["RUST_TEST_NOCAPTURE"] == "1"
+    """A skip line written past cargo's capture is counted; none gives no note."""
+    assert "test-rust" not in gate.STEP_ENV
     output = (
         "test gpu::a ... [test] Skipping GPU test: no compatible GPU adapter\nok\n"
         "[test] Skipping software-only test: no software fallback adapter with clip distances\n"

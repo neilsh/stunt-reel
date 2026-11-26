@@ -17,7 +17,7 @@ fn check_indices(cases: &[(u32, u32, u32, u32, u32)]) {
         Ok(adapter) => adapter,
         Err(error) => {
             assert!(!common::require_gpu(), "GPU required: {error}");
-            eprintln!("[test] Skipping GPU test: {error}");
+            common::report_skip(&format!("GPU test: {error}"));
             return;
         }
     };
@@ -27,7 +27,7 @@ fn check_indices(cases: &[(u32, u32, u32, u32, u32)]) {
             !common::require_gpu(),
             "GPU required: the adapter has no clip distances"
         );
-        eprintln!("[test] Skipping GPU test: the adapter has no clip distances");
+        common::report_skip("GPU test: the adapter has no clip distances");
         return;
     }
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {

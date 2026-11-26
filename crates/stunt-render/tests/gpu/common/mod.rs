@@ -5,6 +5,7 @@
 pub(crate) mod watchdog;
 
 use std::cell::Cell;
+use std::io::Write as _;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -162,10 +163,29 @@ pub(crate) fn open_or_skip(
 ) -> Option<Renderer> {
     assert_in_gpu_test();
     let opened = Renderer::offscreen(scene, target, sink, options);
-    open_result_or_skip(opened, options.software_only, require_gpu())
+    match open_result_or_skip(opened, options.software_only, require_gpu()) {
+        Opened::Ready(renderer) => Some(*renderer),
+        Opened::Skip(reason) => {
+            report_skip(&reason);
+            None
+        }
+    }
 }
 
-/// [`open_or_skip`]'s decision, with its inputs passed in so both paths are testable.
+/// Prints `[test] Skipping <reason>` past `cargo test`'s output capture, so the quality gate
+/// counts the skip even though the test passes (issue #1114).
+pub(crate) fn report_skip(reason: &str) {
+    drop(writeln!(std::io::stderr(), "[test] Skipping {reason}"));
+}
+
+/// What [`open_result_or_skip`] decided: a renderer, or the reason the test skips.
+enum Opened {
+    Ready(Box<Renderer>),
+    Skip(String),
+}
+
+/// [`open_or_skip`]'s decision, with its inputs passed in so both paths are testable: the
+/// renderer, or the reason to skip, which the caller reports.
 ///
 /// A missing adapter fails the test when `require_gpu` is set, except for the software
 /// fallback: `STUNT_REQUIRE_GPU` asks for a GPU, and Windows' only CPU adapter, WARP, never
@@ -175,23 +195,18 @@ fn open_result_or_skip(
     opened: Result<Renderer, RenderError>,
     software_only: bool,
     require_gpu: bool,
-) -> Option<Renderer> {
+) -> Opened {
     match opened {
-        Ok(renderer) => Some(renderer),
-        Err(RenderError::NoGpuAdapter) if software_only => {
-            eprintln!(
-                "[test] Skipping software-only GPU test: no software fallback adapter with clip \
-                 distances (WARP lacks them; ADR 0054)"
-            );
-            None
-        }
+        Ok(renderer) => Opened::Ready(Box::new(renderer)),
+        Err(RenderError::NoGpuAdapter) if software_only => Opened::Skip(
+            "software-only GPU test: no software fallback adapter with clip distances (WARP \
+             lacks them; ADR 0054)"
+                .to_owned(),
+        ),
         Err(error) if require_gpu => {
             panic!("{REQUIRE_GPU_ENV}=1 but no GPU renderer could be created: {error}")
         }
-        Err(error) => {
-            eprintln!("[test] Skipping GPU test: {error}");
-            None
-        }
+        Err(error) => Opened::Skip(format!("GPU test: {error}")),
     }
 }
 
@@ -267,13 +282,13 @@ mod tests {
     #[test]
     fn a_missing_software_adapter_skips_even_when_a_gpu_is_required() {
         let opened = open_result_or_skip(Err(RenderError::NoGpuAdapter), true, true);
-        assert!(opened.is_none());
+        assert!(matches!(opened, Opened::Skip(_)));
     }
 
     #[test]
     fn a_missing_adapter_skips_when_no_gpu_is_required() {
         let opened = open_result_or_skip(Err(RenderError::NoGpuAdapter), false, false);
-        assert!(opened.is_none());
+        assert!(matches!(opened, Opened::Skip(_)));
     }
 
     #[test]

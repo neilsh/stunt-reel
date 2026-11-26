@@ -38,9 +38,9 @@ commit that has landed since. ``--base`` names another ref. ``gate.py scope`` pr
 (also when git cannot give the paths), and exits 0; CI's ``scope`` job reads it
 ([`ci.yml`](../../.github/workflows/ci.yml)).
 
-``RUST_TEST_NOCAPTURE=1`` on ``test-rust`` keeps the ``[test] Skipping ...`` line a test prints when
-it finds no usable adapter, which ``cargo test`` drops for a passing test; the gate counts those
-lines and prints ``skipped_note`` before the verdict, so a skipped GPU test is not read as a pass
+A Rust test that finds no usable adapter writes a ``[test] Skipping ...`` line straight to stderr,
+past ``cargo test``'s capture of a passing test's output; the gate counts those lines in
+``test-rust``'s output and prints ``skipped_note`` before the verdict, so a skipped GPU test is not read as a pass
 (issue #1114).
 
 Three guards stop a run that could not pass. The gate runs as plain ``python`` (ADR 0014), so
@@ -172,11 +172,12 @@ _PYTEST_ENV = {
 STEP_ENV: dict[str, dict[str, str]] = {
     "test-py": _PYTEST_ENV,
     "test-py-docs": dict(_PYTEST_ENV),
-    "test-rust": {"RUST_TEST_NOCAPTURE": "1"},
 }
 
-# What a Rust test prints to say it skipped for want of a usable adapter (crates/stunt-render/
-# tests/gpu/common/mod.rs and the stunt-cli tests); a skipped test passes, so only this line says so.
+# What a Rust test writes to stderr, past cargo's capture, to say it skipped for want of a usable
+# adapter (`report_skip` in crates/stunt-render/tests/gpu/common/mod.rs, fragment_index.rs, and the
+# stunt-cli tests); a skipped test passes, so only this line says so. A skip printed with
+# `eprintln!` is captured and not counted.
 SKIP_MARKER = "[test] Skipping"
 SKIP_HOWTO = "docs/howto/render-on-lavapipe.md"
 
