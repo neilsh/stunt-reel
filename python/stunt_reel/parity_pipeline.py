@@ -429,7 +429,7 @@ def render_film(
 
 
 #: Peak resident memory of one ``LOCATION`` render process on lavapipe, the largest world: 953
-#: MiB of Linux VmHWM (research/parity/lavapipe-render-time.md section 5). A render process is
+#: MiB of Linux VmHWM (research/parity/lavapipe-render-workers.md section 2). A render process is
 #: budgeted at this until #920 shrinks the world's memory.
 RENDER_PROCESS_BYTES = 953 * 1024 * 1024
 

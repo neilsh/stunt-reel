@@ -289,7 +289,7 @@ pub(crate) fn run_headless(
     memory.stage("renderer opened");
     // The world mesh is on the device now. Freeing it before the first submit keeps it from
     // overlapping the upload's staging copies and the device buffers they fill
-    // (research/parity/lavapipe-render-time.md section 7).
+    // (research/parity/lavapipe-render-workers.md section 3).
     scene.release_world_mesh();
     memory.stage("world mesh released");
     println!(
