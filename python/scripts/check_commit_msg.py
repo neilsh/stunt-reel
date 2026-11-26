@@ -6,7 +6,7 @@ a revert, ``fixup!``, ``squash!``, ``amend!``) are left alone (AGENTS.md, Commit
 
 The hook also requires a ``Fresh-review: <what it read>`` trailer, the record of a fresh
 reviewer's pass (AGENTS.md, Committing, rule 5), on a commit that adds, changes or deletes a work
-``spec.md`` or ``plan.md``. It sees only what is staged, so an ``--amend`` that only rewords is not
+``spec.md`` or ``plan.md``, or a second one (``spec-<topic>.md``, ``plan-<topic>.md``). It sees only what is staged, so an ``--amend`` that only rewords is not
 checked; a range is not checked for it. Git's own subjects need no trailer.
 
 Usage: ``mise run commit-msg-check -- <message file>`` (the commit-msg hook), or
@@ -40,13 +40,15 @@ SUBJECT = re.compile(rf"^(?:{'|'.join(TYPES)})(?:\([^()\s][^()]*\))?!?: \S")
 GIT_SUBJECT = re.compile(r"^(?:Merge |Revert \"|fixup! |squash! |amend! )")
 SCISSORS = "# ------------------------ >8 ------------------------"
 FRESH_REVIEW = re.compile(r"^Fresh-review:[ \t]*\S")
+#: A work folder's ``spec.md``, ``plan.md``, ``spec-<topic>.md`` or ``plan-<topic>.md``.
+REVIEWED_FILE = re.compile(r"^(?:spec|plan)(?:-[^/]+)?\.md$")
 RULE_5 = "AGENTS.md, Committing, rule 5"
 
 
 def reviewed_at_commit(path: str) -> bool:
     """Whether a change to repository-relative *path* needs its review before the commit."""
     parts = path.split("/")
-    return len(parts) == 4 and parts[0] == "work" and parts[3] in ("spec.md", "plan.md")
+    return len(parts) == 4 and parts[0] == "work" and bool(REVIEWED_FILE.match(parts[3]))
 
 
 def is_reviewed(message: str) -> bool:

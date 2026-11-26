@@ -166,6 +166,14 @@ def test_uncommitted_crates_changes_fail_the_pin_check(repo: Repo) -> None:
     assert "crates/b.rs" in found[0]
 
 
+def test_a_given_tree_replaces_head_crates_and_its_cleanliness(repo: Repo) -> None:
+    head = "1" * 40
+    repo.write(f"{EXPECTED}/gpu.toml", f'[ctry]\ncrates = "{head}"\n')
+    repo.write("crates/b.rs", "fn b() {}\n")
+    assert pr_lint.pin_failures(repo.root, tree=head) == []
+    assert pr_lint.pin_failures(repo.root, tree="2" * 40) != []
+
+
 def test_an_expected_file_the_branch_leaves_alone_is_not_checked(repo: Repo) -> None:
     repo.write(f"{EXPECTED}/gpu.toml", f'[ctry]\ncrates = "{"0" * 40}"\n')
     repo.commit("a stale pin on main")
@@ -251,12 +259,27 @@ def test_mise_defines_the_pr_lint_task() -> None:
     assert "pr_lint.py" in config["tasks"]["pr-lint"]["run"]
 
 
-def test_the_cli_exits_1_naming_each_failure(repo: Repo, tmp_path: Path) -> None:
+def test_a_missing_attribution_is_a_note_not_a_failure(repo: Repo, tmp_path: Path) -> None:
+    """A dsh, Antigravity or human PR has no Claude footer; the CLI exits 0 and prints a note."""
+    body_text = f"Adds the task.\n\nPart of #{ISSUE}\n"
+    assert pr_lint.failures(body_text, repo=repo.root, base="main", today=TODAY) == []
     body = tmp_path / "body.md"
-    body.write_text(f"Adds the task.\n\nPart of #{ISSUE}\n", encoding="utf-8")
+    body.write_text(body_text, encoding="utf-8")
+    done = _run(repo, str(body))
+    assert done.returncode == 0
+    assert "note attribution:" in done.stdout
+    assert "0 failure(s)" in done.stderr
+
+
+def test_the_cli_exits_1_for_another_failure_and_still_notes_attribution(
+    repo: Repo, tmp_path: Path
+) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("Adds the task.\n", encoding="utf-8")
     done = _run(repo, str(body))
     assert done.returncode == 1
-    assert "attribution" in done.stdout
+    assert "body: no `Fixes`" in done.stdout
+    assert "note attribution:" in done.stdout
     assert "1 failure(s)" in done.stderr
 
 

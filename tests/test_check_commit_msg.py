@@ -147,6 +147,11 @@ REVIEW = "Fresh-review: a subagent read the diff and the notes it cites"
     [
         (_path("work", "2026-11", "440_target-frame-adoption", "spec.md"), True),
         (_path("work", "2026-11", "440_target-frame-adoption", "plan.md"), True),
+        (_path("work", "2026-11", "440_target-frame-adoption", "spec-sweeps.md"), True),
+        (_path("work", "2026-11", "440_target-frame-adoption", "plan-phase-two.md"), True),
+        (_path("work", "2026-11", "440_target-frame-adoption", "spec-v2_Sweeps.md"), True),
+        (_path("work", "2026-11", "440_target-frame-adoption", "spec-.md"), False),
+        (_path("work", "2026-11", "440_target-frame-adoption", "specimen.md"), False),
         (_path("work", "2026-11", "440_target-frame-adoption", "journal.md"), False),
         (_path("work", "README.md"), False),
         (_path("research", "parity", "metric-bench.md"), False),

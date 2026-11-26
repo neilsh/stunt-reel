@@ -18,6 +18,9 @@ import pr_threads  # noqa: E402
 
 HEAD = "8fe16b8c9d9208416e2a964b7a74ac167bc6ad5d"
 CLEAN = "Sonnet reviewer review at 8fe16b8: clean"
+#: Fixture paths are built from this part so this file names no document path of its own for
+#: ``test_code_cited_docs_exist`` to look up.
+DOCS = "docs"
 
 
 def _graphql_view(**changes: Any) -> dict[str, Any]:
@@ -218,9 +221,81 @@ def test_a_missing_attribution_line_is_a_note_not_a_failure() -> None:
     assert not any(line.startswith("FAIL") for line in lines)
 
 
-def test_the_pin_and_date_checks_are_named_pre_push_only() -> None:
+def test_the_pin_and_date_note_is_gone() -> None:
+    """CI runs the pin and date checks now (#1049), so the report no longer names them."""
     lines, _ = merge_bar.evaluate(_pull(), threads=[], findings=[], attribution=[])
-    assert any(line.startswith("note pin and date:") and "pre-push" in line for line in lines)
+    assert not any("pin and date" in line for line in lines)
+
+
+def test_a_pull_touching_no_gated_path_passes_the_human_paths_line() -> None:
+    files = ["python/x.py", f"{DOCS}/howto/a.md", "research/parity/expected/a.toml"]
+    lines, reasons = merge_bar.evaluate(_pull(files=files), threads=[], findings=[])
+    assert reasons == []
+    assert "ok   human paths: none of 3 changed files" in lines
+
+
+def test_each_human_gated_path_fails_the_bar_and_is_named() -> None:
+    files = [
+        f"{DOCS}/adr/0099-new.md",
+        "crates/stunt-core/Cargo.toml",
+        "research/parity/references.toml",
+        "crates/stunt-core/src/lib.rs",
+        f"{DOCS}/adr-notes.md",
+        "crates/other/Cargo.toml",
+    ]
+    _, reasons = merge_bar.evaluate(_pull(files=files), threads=[], findings=[])
+    named = f"crates/stunt-core/Cargo.toml, {DOCS}/adr/0099-new.md, research/parity/references.toml"
+    assert reasons == [f"touches human-gated paths: {named}; a reviewer or human decides"]
+
+
+def test_pull_files_pages_and_includes_a_renames_old_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    first = [{"filename": f"f{i}"} for i in range(merge_bar.REST_PAGE - 1)]
+    first.append({"filename": f"{DOCS}/new.md", "previous_filename": f"{DOCS}/adr/0001-old.md"})
+    pages = {1: first, 2: [{"filename": "research/parity/references.toml"}]}
+    routes: list[str] = []
+
+    def gh(*args: str, **_k: Any) -> Any:
+        routes.append(args[1])
+        return pages[int(args[1].rsplit("page=", 1)[1])]
+
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    paths = merge_bar.pull_files("o", "r", 9)
+    assert routes[0].startswith("repos/o/r/pulls/9/files?")
+    assert merge_bar.human_gated(paths) == [
+        f"{DOCS}/adr/0001-old.md",
+        "research/parity/references.toml",
+    ]
+
+
+def test_main_fails_on_a_gated_path_on_both_paths(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    files = [{"filename": f"{DOCS}/adr/0100-x.md"}]
+    monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])
+    monkeypatch.setattr(pr_threads, "read_reviews", lambda *_a: (None, []))
+
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+
+    def gh(*args: str, **_k: Any) -> Any:
+        if args[0] == "pr":
+            return _graphql_view()
+        return files if "/pulls/9/files" in args[1] else {"full_name": "o/r"}
+
+    monkeypatch.setattr(pr_threads, "_gh", gh)
+    assert merge_bar.main(["9"], attribution=lambda _body: []) == 1
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert (
+        last
+        == f"FAIL: touches human-gated paths: {DOCS}/adr/0100-x.md; a reviewer or human decides"
+    )
+
+    answers = _rest_answers(
+        **{"repos/{owner}/{repo}": {"full_name": "o/r"}, "repos/o/r/pulls/9/files": files}
+    )
+    _install_rest(monkeypatch, answers)
+    monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
+    assert merge_bar.main(["9"], attribution=lambda _body: []) == 1
+    assert f"human paths: touches {DOCS}/adr/0100-x.md" in capsys.readouterr().out
 
 
 def test_a_draft_fails() -> None:
@@ -353,7 +428,9 @@ def test_rest_lists_are_read_page_by_page(monkeypatch: pytest.MonkeyPatch) -> No
 def test_main_uses_rest_in_a_cloud_session_and_prints_pass(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    answers = _rest_answers(**{"repos/{owner}/{repo}": {"full_name": "o/r"}})
+    answers = _rest_answers(
+        **{"repos/{owner}/{repo}": {"full_name": "o/r"}, "repos/o/r/pulls/9/files": []}
+    )
     _install_rest(monkeypatch, answers)
     monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
     monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])
@@ -372,7 +449,7 @@ def test_main_prints_every_failure_reason_and_exits_1(
     def gh(*args: str, **_k: Any) -> Any:
         if args[0] == "pr":
             return _graphql_view(isDraft=True, body="none")
-        return {"full_name": "o/r"}
+        return [] if "/files" in args[1] else {"full_name": "o/r"}
 
     monkeypatch.setattr(pr_threads, "_gh", gh)
     monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])
@@ -388,7 +465,9 @@ def test_main_reports_a_missing_attribution_as_a_note(
     monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
 
     def gh(*args: str, **_k: Any) -> Any:
-        return _graphql_view() if args[0] == "pr" else {"full_name": "o/r"}
+        if args[0] == "pr":
+            return _graphql_view()
+        return [] if "/files" in args[1] else {"full_name": "o/r"}
 
     monkeypatch.setattr(pr_threads, "_gh", gh)
     monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])
@@ -551,7 +630,9 @@ def test_main_passes_the_issue_to_the_body_check(
     monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
 
     def gh(*args: str, **_k: Any) -> Any:
-        return _graphql_view() if args[0] == "pr" else {"full_name": "o/r"}
+        if args[0] == "pr":
+            return _graphql_view()
+        return [] if "/files" in args[1] else {"full_name": "o/r"}
 
     monkeypatch.setattr(pr_threads, "_gh", gh)
     monkeypatch.setattr(pr_threads, "read_threads", lambda *_a: [])

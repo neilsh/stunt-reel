@@ -4,12 +4,13 @@
 Checks what a script can read: the head commit and base, CI at the head, the dispatched
 review's ``clean`` comment at the head, a ``Fixes``/``Closes``/``Part of`` line in the body, the
 body's attribution line (a note, never a failure), open review threads, review-body findings,
-and draft state. It never arms, merges, comments or edits. What it cannot read stays with the
-coordinator: that ``mise run check`` passed locally on the head, that a CodeRabbit review a
-person requested has been checked, the worker's acceptance report, and the ``env:local-only`` and
-human-path rules (``.agents/skills/running-unattended/pr-and-filing.md`` step 5). It does not
-run ``pr_lint``'s pin and date checks: they read a working tree, and the coordinator never
-checks out the branch, so they are pre-push only, in the implementer's checkout.
+draft state, and the human-gated paths the pull request changes (REST ``pulls/<n>/files``, on
+both the GraphQL and the cloud path). It never arms, merges, comments or edits. What it cannot
+read stays with the coordinator: that ``mise run check`` passed locally on the head, that a
+CodeRabbit review a person requested has been checked, the worker's acceptance report, and the
+``env:local-only`` rule (``.agents/skills/running-unattended/pr-and-filing.md`` step 5). It does
+not run ``pr_lint``'s pin and date checks: they read a working tree, so ``pytest -m docs`` runs
+them in CI and ``mise run pr-lint`` before a push.
 
 Locally it reads the pull request through ``gh pr view`` (GraphQL); in a cloud session
 (``CLAUDE_CODE_REMOTE=true``), whose proxy refuses GraphQL, through REST. Threads and
@@ -48,6 +49,9 @@ FAILED_STATES = frozenset({"FAILURE", "ERROR"})
 PENDING_STATES = frozenset({"PENDING", "EXPECTED"})
 #: A review comment's first line: ``<reviewer> review at <sha>: <verdict>``.
 _REVIEW_LINE = re.compile(r"^[^:]+ review at ([0-9a-f]+): (.*)$")
+#: A path under one of these prefixes, or equal to one of these files, is human-gated.
+GATED_PREFIXES = ("docs/adr/",)
+GATED_FILES = frozenset({"crates/stunt-core/Cargo.toml", "research/parity/references.toml"})
 #: Items per page of a REST list; a shorter page is the last.
 REST_PAGE = 100
 
@@ -65,6 +69,8 @@ class Pull:
     comments: list[tuple[str, str]] = field(default_factory=list)
     #: ``(name, "failed" | "pending" | "ok")`` of each check at the head.
     checks: list[tuple[str, str]] = field(default_factory=list)
+    #: Every path the pull request changes, a rename's old path included.
+    files: list[str] = field(default_factory=list)
 
 
 def _check_state(status: str, conclusion: str) -> str:
@@ -185,6 +191,23 @@ def rest_pull(owner: str, name: str, number: int) -> Pull | None:
     )
 
 
+def pull_files(owner: str, name: str, number: int) -> list[str]:
+    """Every path pull request *number* changes through REST, a rename's old path included."""
+    paths: list[str] = []
+    for item in _rest_pages(f"repos/{owner}/{name}/pulls/{number}/files"):
+        paths.append(item["filename"])
+        if item.get("previous_filename"):
+            paths.append(item["previous_filename"])
+    return paths
+
+
+def human_gated(paths: Sequence[str]) -> list[str]:
+    """The sorted, distinct *paths* that need a reviewer or a human to decide."""
+    return sorted(
+        {p for p in paths if p in GATED_FILES or any(p.startswith(d) for d in GATED_PREFIXES)}
+    )
+
+
 def review_verdict(pull: Pull) -> tuple[str, str] | None:
     """The review comment's ``(sha, verdict)``, or ``None`` when no trusted comment is one.
 
@@ -296,10 +319,14 @@ def evaluate(
     else:
         lines.append("ok   attribution: the body ends with an attribution line")
     lines += [f"       {line}" for line in attribution]
-    lines.append(
-        "note pin and date: pre-push only (mise run pr-lint in the implementer's checkout)"
-    )
 
+    gated = human_gated(pull.files)
+    record(
+        not gated,
+        "human paths",
+        f"touches {_list(gated)}" if gated else f"none of {len(pull.files)} changed files",
+        f"touches human-gated paths: {_list(gated)}; a reviewer or human decides",
+    )
     record(
         not pull.draft, "draft", "draft" if pull.draft else "ready for review", "the PR is a draft"
     )
@@ -334,6 +361,8 @@ def main(
         repo = pr_threads._gh("api", "repos/{owner}/{repo}")["full_name"]
         owner, name = repo.split("/", 1)
         pull = rest_pull(owner, name, args.number) if _is_cloud() else graphql_pull(args.number)
+        if pull:
+            pull.files = pull_files(owner, name, args.number)
         nodes = pr_threads.read_threads(owner, name, args.number) if pull else None
         reviews = pr_threads.read_reviews(owner, name, args.number) if pull else None
     except (pr_threads.GhError, OSError) as err:
