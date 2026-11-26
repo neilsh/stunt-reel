@@ -2,7 +2,7 @@
 title: "Find why mise run ab spreads one binary's lavapipe runs by 32%"
 started: 2026-11-24
 issue: 1018
-outcome: "The runner records other load per run, waits for a quiet machine, stops after a loaded run and warms up untimed. The A/A completed at a 15% load bar with a median change of -1.07% against ±1% (not a pass); the owner accepted it as an exception, and the measured noise (about ±1% on a 4-pair median, 6% on a single run) is recorded in docs/howto/time-a-headless-render.md."
+outcome: "The runner records other load per run, waits for a quiet machine, stops after a loaded run and warms up untimed. The A/A completed at a 15% load bar with a median change of -1.07% against ±1% (not a pass); the owner accepted it as an exception, and the noise of the one completed A/A (a 4-pair median change of 1.07%, eight loops spread 6.2%, one machine) is recorded in docs/howto/time-a-headless-render.md."
 ---
 
 # Find why mise run ab spreads one binary's lavapipe runs by 32%
