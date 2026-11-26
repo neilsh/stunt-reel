@@ -20,6 +20,9 @@ The previous readout is the committed baseline, `research/parity/readouts/<film>
 `errors-score` refuses it when the render picked other ticks or the categories changed; then refresh the baseline.
 Refresh all seven films together, per batch of render PRs (for example with the class-agreement batch), as step 7 says.
 
+`errors-score` lists the categories whose count of sheets graded 2 or more moved by `min_change` (4) or more as `changes since …`, then the smaller moves on one `below min_change (4): …` line (`none` when no count moved).
+`changes since …: none` alone does not say the grades are unchanged.
+
 Haiku misreads a frame now and then, a different frame each pass, so two fast passes that agree are trusted and the tie-break pass grades only the sheets where they disagree whether some category is clear (2 or more).
 
 For batch films, print the `batch.md` readout table with `mise run parity-bench -- errors-table --films <slugs>` and paste it whole (it reads `build/parity/batch/<film>/report/report.json`, so for the reference films copy `build/parity/report/<film>_current/report.json` there first); write the prose under it from that table.

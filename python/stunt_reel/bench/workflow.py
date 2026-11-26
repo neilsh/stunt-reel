@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from stunt_reel.bench.faults import ALL_FAULTS, plant
 from stunt_reel.bench.grades import CLEAN, CLEAR, _note, parse_grades, planes_digest, render_brief
 from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
-from stunt_reel.bench.readout import Readout, compare, readout, table_row
+from stunt_reel.bench.readout import Comparison, Readout, compare, readout, suppressed, table_row
 from stunt_reel.bench.sheets import build_sheet, pick_ticks, plan_sheets
 from stunt_reel.bench.taxonomy import FilmWindow, add_example, load_categories
 from stunt_reel.parity_artifacts import parse_report
@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from stunt_reel.bench.grades import SheetGrades
-    from stunt_reel.bench.readout import Change
     from stunt_reel.bench.sheets import Sheet
     from stunt_reel.bench.taxonomy import Taxonomy
     from stunt_reel.parity_artifacts import Report
@@ -295,7 +294,7 @@ def write_disputes(out: Path, taxonomy_path: Path) -> int:
 
 def score_run(
     out: Path, render: Path, taxonomy_path: Path, against: Path | None
-) -> tuple[Readout, list[Change] | None, Calibration | None]:
+) -> tuple[Readout, Comparison | None, Calibration | None]:
     """Score ``grades.txt`` in *out* and write ``readout.json``.
 
     With a second pass (``grades-2.txt``), each sheet the passes disagree on is scored from
@@ -356,9 +355,14 @@ def score_run(
     result = readout(grades, sheets, taxonomy.ids, str(run["film"]), taxonomy.digest, render_digest)
     result = replace(result, disputed=disputes)
     _write_text(out / READOUT_FILE, json.dumps(result.to_json(), indent=2) + "\n")
-    changes = None if earlier is None else compare(earlier, result, taxonomy.min_change)
+    comparison = None
+    if earlier is not None:
+        limit = taxonomy.min_change
+        comparison = Comparison(
+            compare(earlier, result, limit), suppressed(earlier, result, limit), limit
+        )
     calibration = calibrate(grades, sheets, taxonomy) if run["calibrate"] else None
-    return result, changes, calibration
+    return result, comparison, calibration
 
 
 def write_example(
