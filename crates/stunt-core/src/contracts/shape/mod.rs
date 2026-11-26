@@ -36,6 +36,15 @@ pub const VERTEX_FLAG_LINE_END: u8 = 0x20;
 /// The renderer squeezes the disc along the view's depth about its centre by the lens zoom,
 /// as `PLAYONE`'s outline does (`research/playone-exe/sod-vm-generators.md` section 8.8).
 pub const VERTEX_FLAG_DISC: u8 = 0x40;
+/// `SodVertex::flags` bit of a vertex whose palette index already carries its light.
+///
+/// A polygon coloured by `OP_SHADE1`, `OP_SHADE2`, `OP_SHADE16` or `OP_SHADE216`, or shaded per
+/// vertex by `OP_GVPOLY` or `OP_GVPOLY16`, was lit by `OP_SHADES` against the world light on
+/// the CPU (`research/playone-exe/terrain-shade.md` section 3).
+/// The parity look ignores it.
+/// A renderer that adds its own lighting draws such a vertex unlit, so its light is not applied twice.
+/// The decoder's weld key leaves it out, so it changes no weld.
+pub const VERTEX_FLAG_PRESHADED: u8 = 0x80;
 
 /// Single vertex structure packed for direct upload to GPU vertex buffers.
 ///
@@ -60,7 +69,7 @@ pub struct SodVertex {
     /// - Bits 3..=5: Screen-space line corner ([`VERTEX_FLAG_LINE`], [`VERTEX_FLAG_LINE_SIDE`],
     ///   [`VERTEX_FLAG_LINE_END`])
     /// - Bit 6: `OP_PERFDISK` rim vertex ([`VERTEX_FLAG_DISC`])
-    /// - Bit 7: Reserved (must be zero)
+    /// - Bit 7: Palette index already lit on the CPU ([`VERTEX_FLAG_PRESHADED`])
     pub flags: u8,
     /// Scenery class of a world vertex (`SCENERY_OCEAN`, `SCENERY_TERRAIN`, `SCENERY_PROP`),
     /// zero for every other vertex. The renderer adds it to the draw's base layer id.

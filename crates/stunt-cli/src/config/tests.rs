@@ -262,3 +262,35 @@ fn test_report_timing_needs_an_offscreen_render() {
             .report_timing
     );
 }
+
+#[test]
+fn test_look_defaults_to_mode13h_and_modern_reaches_the_render_options() {
+    use stunt_render::Look;
+    assert_eq!(
+        parse(&["--headless", "x.FLM"])
+            .unwrap()
+            .render_options()
+            .look,
+        Look::Mode13h
+    );
+    let modern = parse(&["--look", "modern", "-o", "still.png", "x.FLM"]).expect("still");
+    assert_eq!(modern.render_options().look, Look::Modern);
+    parse(&["--look", "modern", "--video", "x.mp4", "x.FLM"]).expect("video");
+    parse(&["--look", "modern", "x.FLM"]).expect("the window");
+}
+
+#[test]
+fn test_the_render_store_refuses_the_modern_look() {
+    for extra in [
+        &["--out-dir", "d"][..],
+        &["--out-dir", "d", "--sample-count", "3"],
+        &["--out-dir", "d", "--at-ticks", "1,2"],
+        &["--out-dir", "d", "--workers", "2"],
+    ] {
+        let mut args = vec!["--look", "modern", "x.FLM"];
+        args.extend_from_slice(extra);
+        let error = parse(&args).expect_err("modern look with a render store");
+        assert!(error.to_string().contains("--look modern"), "{error}");
+    }
+    parse(&["--look", "mode13h", "--out-dir", "d", "x.FLM"]).expect("store");
+}

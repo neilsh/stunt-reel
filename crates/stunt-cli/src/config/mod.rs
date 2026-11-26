@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use clap::error::ErrorKind;
 use clap::{CommandFactory as _, FromArgMatches as _, Parser};
 
-use stunt_render::RenderOptions;
+use stunt_render::{Look, RenderOptions};
 
 use crate::{export, film_slots, link, shape_views, sod_census, sod_trace};
 
@@ -99,6 +99,10 @@ struct Options {
     /// Render on the software adapter (lavapipe), even when a GPU is available
     #[arg(long)]
     software_only: bool,
+    /// How the film is shaded: mode13h (flat palette indices, what is scored against PLAYONE)
+    /// or modern (viewer-only lighting and fog; not with --out-dir, whose store holds Mode 13h)
+    #[arg(long, value_enum, value_name = "LOOK", default_value_t = LookArg::Mode13h)]
+    look: LookArg,
     /// Run offscreen without opening a window
     #[arg(long)]
     headless: bool,
@@ -123,6 +127,22 @@ struct Options {
     /// Internal: render only worker K's film seconds of a --workers run, into its own store
     #[arg(long, hide = true, value_name = "K", requires = "out_dir")]
     shard: Option<usize>,
+}
+
+/// The `--look` choices.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+enum LookArg {
+    Mode13h,
+    Modern,
+}
+
+impl From<LookArg> for Look {
+    fn from(look: LookArg) -> Self {
+        match look {
+            LookArg::Mode13h => Self::Mode13h,
+            LookArg::Modern => Self::Modern,
+        }
+    }
 }
 
 /// CLI configuration parsed from command-line arguments.
@@ -155,6 +175,8 @@ pub(crate) struct CliConfig {
     pub clear_index: u8,
     /// Render on the software adapter even when a GPU is available (`--software-only`).
     pub software_only: bool,
+    /// How the film is shaded (`--look`); only the default is ever scored or stored.
+    pub look: Look,
     pub headless: bool,
     /// Print the resident memory at each stage of a headless render (`--report-memory`).
     pub report_memory: bool,
@@ -192,6 +214,7 @@ impl CliConfig {
         RenderOptions {
             clear_palette_index: self.clear_index,
             software_only: self.software_only,
+            look: self.look,
         }
     }
 
@@ -216,6 +239,7 @@ impl CliConfig {
             viewport_rows,
             clear_index,
             software_only,
+            look,
             headless,
             report_memory,
             report_timing,
@@ -292,6 +316,14 @@ impl CliConfig {
             }
         }
 
+        if look == LookArg::Modern && out_dir.is_some() {
+            return Err(
+                "--look modern is viewer-only and the render store holds Mode 13h renders; \
+                 drop --out-dir (use -o for a still or --video for a film)"
+                    .to_string(),
+            );
+        }
+
         if workers > 1 {
             if out_dir.is_none() {
                 return Err(
@@ -333,6 +365,7 @@ impl CliConfig {
             viewport_rows,
             clear_index,
             software_only,
+            look: look.into(),
             headless,
             report_memory,
             report_timing,

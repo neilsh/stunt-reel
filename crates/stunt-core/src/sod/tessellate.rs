@@ -13,8 +13,8 @@ use std::collections::HashMap;
 
 use crate::contracts::shape::{
     DecodeMode, DecodeRecord, NodeId, NodeKind, SodModelIr, SodVertex, VERTEX_FLAG_DISC,
-    VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VisibilityCondition,
-    arena_index,
+    VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VERTEX_FLAG_PRESHADED,
+    VisibilityCondition, arena_index,
 };
 use crate::sod::SodError;
 use crate::sod::collision::decode_collision;
@@ -41,6 +41,7 @@ pub(crate) type WeldKey = (i64, i64, i64, i32, i32, i32, u8, u8);
 ///
 /// Snaps positions within `1e-4 m` and normals within `1e-3` while strictly preserving
 /// distinct palette indices and decal flags to prevent normal/color bleeding.
+/// [`VERTEX_FLAG_PRESHADED`] is left out, so it changes no weld the parity look draws.
 #[must_use]
 #[expect(
     clippy::cast_possible_truncation,
@@ -58,7 +59,16 @@ pub(crate) fn quantize_weld_key(
     let nx = (normal[0] * 1_000.0).round() as i32;
     let ny = (normal[1] * 1_000.0).round() as i32;
     let nz = (normal[2] * 1_000.0).round() as i32;
-    (px, py, pz, nx, ny, nz, palette_index, flags)
+    (
+        px,
+        py,
+        pz,
+        nx,
+        ny,
+        nz,
+        palette_index,
+        flags & !VERTEX_FLAG_PRESHADED,
+    )
 }
 
 /// Builds a [`SodModelIr`] from a processed polygon list.
