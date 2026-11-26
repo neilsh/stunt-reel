@@ -16,7 +16,7 @@ Requires `ffmpeg` on `PATH`.
 
 ## glTF
 
-Export a shape, or one frame of a film, to glTF 2.0 (`.glb`) for viewing in Blender or any glTF viewer.
+Export a shape, or one frame of a film, to glTF 2.0 (`.glb`) for viewing in Blender or any glTF viewer. To validate and render one without a GPU, see [`check-a-glb-without-a-gpu.md`](check-a-glb-without-a-gpu.md).
 The exporter does not create the output directory, and a film frame needs `--sidata` for the demo's scenery, as above:
 
 ```bash
@@ -26,3 +26,5 @@ cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAU
     --out build/gltf_output/CTRY_t400.glb
 cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAULT/CTRY.ALL" --shape 0x0408 --out build/gltf_output/shape.glb
 ```
+
+On 2026-11-26 the `--shape 0x0408` command above stopped at opcode `0x022E` (`missing anchor table`) and wrote no vertices; the film-frame command is the one checked.
