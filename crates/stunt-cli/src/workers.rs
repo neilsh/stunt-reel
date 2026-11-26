@@ -2,7 +2,7 @@
 //!
 //! Lavapipe runs one device's queue on one thread, so a single-film render leaves the other
 //! cores idle; child processes scale where devices in one process do not
-//! (research/parity/lavapipe-render-time.md § 5). Each child is this binary run with the same
+//! (research/parity/lavapipe-render-workers.md § 2). Each child is this binary run with the same
 //! arguments plus `--shard K`: it renders the film seconds [`crate::playback::shard_samples`]
 //! gives worker K into [`shard_dir`], with `LP_NUM_THREADS=1` so N workers take about N cores.
 //! The parent builds no scene; once every child succeeds it joins their stores with

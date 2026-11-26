@@ -2,7 +2,7 @@
 
 `--report-memory` makes a headless `stuntreel` render print its resident memory after each stage and its peak at the end.
 It reads the process and writes no file, so the render store is byte-identical with the flag on or off (checked below).
-Where the memory goes, with figures, is [`lavapipe-render-time.md` § 7](../../research/parity/lavapipe-render-time.md#7-memory-per-worker).
+Where the memory goes, with figures, is [`lavapipe-render-workers.md` § 3](../../research/parity/lavapipe-render-workers.md#3-memory-per-worker).
 
 ## 1. Run it
 
