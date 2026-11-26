@@ -1,0 +1,2 @@
+zline {('x', 'lo', 'toward'): 199, ('x', 'lo', 'away'): 44, ('x', 'hi', 'toward'): 76, ('x', 'hi', 'away'): 130, ('y', 'lo', 'toward'): 460, ('y', 'lo', 'away'): 44, ('y', 'hi', 'toward'): 176, ('y', 'hi', 'away'): 147, 'bad': 1003}
+outline {('x', 'lo', 'toward'): 971, ('x', 'lo', 'away'): 240, ('x', 'hi', 'toward'): 650, ('x', 'hi', 'away'): 282, ('y', 'lo', 'toward'): 2326, ('y', 'lo', 'away'): 338, ('y', 'hi', 'toward'): 790, ('y', 'hi', 'away'): 229, 'bad': 5044}

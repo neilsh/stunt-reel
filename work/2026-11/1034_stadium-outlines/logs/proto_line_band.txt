@@ -1,0 +1,3 @@
+2729 line colours [(149, 128)] z 128 15 bz 243 18 bz cap linecol 10 bo 1858 198
+2729 capture at our disagreeing line px [(169, 7), (20, 5), (134, 3)]
+{'z_px': 2597, 'z_bad': 567, 'bz_px': 4830, 'bz_bad': 577, 'bo_px': 49732, 'bo_bad': 4894, 'bz_cap_linecol': 489, 'z_bad_linecol_adjacent': 536}

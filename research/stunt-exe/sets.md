@@ -106,22 +106,25 @@ The install's own `SETS/` directory holds 36 `.SET` files — the retail levels,
 The install ships DOS programs, so the printer itself is a usable oracle.
 
 ```
-dosbox-x -conf tools/dosbox/dosbox-utils.conf -c "typeset base.set > out.txt" -c "exit"
+dosbox-x -silent -conf tools/dosbox/dosbox-utils.conf -c "typeset base.set > out.txt" -c "exit"
 ```
 
 [`dosbox-utils.conf`](../../tools/dosbox/dosbox-utils.conf) mounts `build/utils` as `C:` and deliberately starts no MCP server, because the debugger port belongs to whichever MCP server session is running ([ADR 0021](../../docs/adr/0021-capture-chooses-its-control-port.md)).
 Copy `TYPESET.EXE` and the set under test into `build/utils` first.
 Verified: `TYPESET` on `BOMBING.SET` reproduces the same field list as `BOMBING.TXT`, so the oracle matches the shipped dumps.
 
-That makes a byte-to-field map mechanical in principle — flip one byte, dump again, and diff the two outputs, ignoring the `Printed at` line.
-Two practical obstacles, both measured:
+That makes a byte-to-field map mechanical: flip one byte, dump again, and diff the two outputs, ignoring the `File Name` and `Printed at` lines.
+`mise run typeset-flip` does this for a set's prop records, printing every variant in one DOSBox-X session; [`set.md` § 3.1](../formats/auxiliary/set.md#31-prop-record-table-exact-64-byte-stride-0x40) holds what it named.
 
-- **DOSBox-X detaches from the console.**
-  A launch that is merely redirected returns in milliseconds while the guest is still starting, so a caller must run it in the foreground through a pipe or poll for the output file.
-  Timings taken from a redirect are meaningless.
-- **A guest run is slow enough to matter.**
-  A ten-variant batch written against a 675-entry host directory did not finish inside 300 s, and one launch did not produce its dump within 60 s.
-  Until that is fixed — a disk image instead of a host directory, or the capture harness's socket-driven approach — sweeping 663 offsets is not practical, and the oracle is sane only for single targeted runs.
+- **With `-silent` the launch returns once the guest has exited**, so its wall-clock time is the run's.
+  On DOSBox-X 2026.10.01 one dump under `dosbox-utils.conf` took about 1 s, and one `mise run typeset-flip` session, under the script's own conf (`cycles = max`, `core = dynamic`, `memsize = 16`), printed 682 dumps in about 7 s, its host directory ending at 1,367 files; both times are whole seconds the journal records, not a kept log.
+- **Without `-silent`, DOSBox-X detaches from the console.**
+  A launch that is merely redirected returns in milliseconds while the guest is still starting, so a caller must run it in the foreground through a pipe or poll for the output file, and timings taken from a redirect are meaningless.
+  Earlier runs this way were slow: a ten-variant batch written against a 675-entry host directory did not finish inside 300 s, and one launch did not produce its dump within 60 s; their DOSBox-X build and conf are not recorded.
+- **Why the sweep is now fast is not isolated.**
+  No run without `-silent` was repeated under the same build and conf, so `-silent` is the likely cause, not a measured one.
+
+_Source: [TYPESET byte flips on four BOMBING.SET prop records](../../work/2026-11/835_set-prop-fields/journal.md#2026-11-24-typeset-byte-flips-on-four-bombingset-prop-records)._
 
 ## Ruled out
 

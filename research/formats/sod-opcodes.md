@@ -1,5 +1,5 @@
 ---
-summary: "The 107-opcode `.SOD` table ([FMT-SOD-OPCODES]) dispatched as multiples of 9, numbered as Patch #3 numbers them (the unpatched build adds `0x033C`), the `OP_TAP`, `OP_ANIMATE` and `IFVIS`/`BVIS` facing-flag semantics, and si-tools readings kept as hypotheses."
+summary: "The 107-opcode `.SOD` table ([FMT-SOD-OPCODES]) dispatched as multiples of 9, numbered as Patch #3 numbers them (the unpatched build adds `0x033C`), the `OP_TAP` and `OP_ANIMATE` semantics, the `IFVIS`/`BVIS`/`SORTON` facing-flag semantics, and si-tools readings kept as hypotheses."
 ---
 # `.SOD` Opcode Reference
 
@@ -65,7 +65,7 @@ No `.SOD` stream the census walks reaches an opcode above `0x0333`, and the patc
 | **41** | `0x0171` | 369 | `OP_AIRBRUSH` | `...` | Dithered / airbrushed soft shadow polygon |
 | **42** | `0x017A` | 378 | `OP_IFVIS` | `flag: u16, size: u16` | Run the next `size` bytes only if facing flag `flag` is set, i.e. the face points at the eye |
 | **43** | `0x0183` | 387 | `OP_BVIS` | `flag: u16, size: u16` | Run the next `size` bytes only if facing flag `flag` is clear |
-| **44** | `0x018C` | 396 | `OP_SORTON` | `plane: u16, left_off: i16, right_off: i16` † | BSP binary space partitioning branch |
+| **44** | `0x018C` | 396 | `OP_SORTON` | `first: u16, second: u16, flag: u16` | Run two branches in the order facing flag `flag` picks, then continue at `first` ([§ 2.5](#25-bsp-sorting--two-sided-visibility-logic--fmt-sod-ifvis)) |
 | **45** | `0x0195` | 405 | `OP_RETURN` | *none* | Return from subroutine / end display list (`OP_END`) |
 | **46** | `0x019E` | 414 | `OP_GOTO` | `rel_offset: i16` | Unconditional relative jump: $PC += \text{offset}/2 - 1$ |
 | **47** | `0x01A7` | 423 | `OP_GOSUB` | `rel_offset: i16` | Call subroutine: push return PC, jump to target |
@@ -102,7 +102,7 @@ No `.SOD` stream the census walks reaches an opcode above `0x0333`, and the patc
 | **78** | `0x02BE` | 702 | `OP_GVPOLY16` | `count: u16, regs..., (ramp << 8) \| count: u16, shades...` | 16-level shaded polygon emission |
 | **79** | `0x02C7` | 711 | `OP_SHADE216` | `norm: u16, ramp: u16` | 16-level back-facing lighting ramp sample |
 | **80** | `0x02D0` | 720 | `OP_DOT` | `reg_off: u16` | Draw single point / pixel dot at `regs[reg]` |
-| **81** | `0x02D9` | 729 | `OP_BLOCK` | `reg_off: u16, size: u16` | Draw solid rectangular box block |
+| **81** | `0x02D9` | 729 | `OP_BLOCK` | `reg_off: u16, size: u16` | Draw a filled screen square about `regs[reg]`, its half-side `size` projected as `OP_SPHERE`'s radius ([`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)) |
 | **82** | `0x02E2` | 738 | `OP_ROTX` | `angle_bam: u16` | Rotate around X axis by 16-bit BAM angle |
 | **83** | `0x02EB` | 747 | `OP_ROTZ` | `angle_bam: u16` | Rotate around Z axis by 16-bit BAM angle |
 | **84** | `0x02F4` | 756 | `OP_BVLT` | `reg: u16, val: i16, rel_off: i16` | Branch if vector coordinate is less than threshold |
@@ -206,8 +206,8 @@ It emits a raster draw, not a polygon or a joint rotation.
 
 Because 1992 DOS real-mode software lacked hardware depth buffers:
 - `REJ` (`0x01B9`), `REJVEC` (`0x01B0`) and `REJ2D` (`0x01C2`) write one facing flag per face into `work:0x7C68`, starting at byte offset `first`: set when the face points at the eye.
-- `sorton <face>` (0x018C): Evaluates whether camera eye is in front of or behind separating plane `<face>` (its flag byte).
-  Traverses front and back geometry subtrees in back-to-front order (Binary Space Partitioning for Painter's algorithm).
+- `SORTON` (0x018C, operands `first, second, flag`): runs two branches in the order facing flag `flag` picks, then continues at the first operand's address plus `first`.
+  While the flag is set it runs the branch after the operands first, then the one at the second operand's address plus `second`; while clear it runs them in the other order ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)).
 - `OP_IFVIS <face>` (0x017A) / `OP_BVIS <face>` (0x0183): run the section when flag `<face>` is set (`OP_IFVIS`) or clear (`OP_BVIS`); otherwise skip `size` bytes counted from the size word ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)).
   The operand is a flag offset, not a condition code: there is no distance form.
 - `OP_BZLT <reg> <val>` (0x0318): the in-shape depth gate.
@@ -253,17 +253,18 @@ A decoder that omits shading, culling or projection says nothing about the engin
 
 ### 3.1 Operand-Order Disagreements
 
-`[Hypothesis]` — three readings that contradict § 1 or § 2.5.
+`[Hypothesis]` — two readings that contradict § 1.
 None of the opcodes is reached by any of the corpus models in [`sod-opcode-coverage.md` § 3](sod-opcode-coverage.md#3-census), so no render depends on them: this is a note for whoever implements a handler, not a work item.
-`PERFDISK`, which the corpus does reach, has left the table (below).
+`PERFDISK` and `SORTON`, which the corpus does reach, have left the table (below).
 
 | Opcode | § 1 / § 2.5 says | si-tools reads | Source |
 | :--- | :--- | :--- | :--- |
 | `BLOKADD` (`0x0051`), `BLOKNEG` (`0x005A`) | `src, dst, count` | `count, dest/12, src/12` | `siobj_lib.cpp:900-939` |
-| `SORTON` (`0x018C`) | `plane, left_off, right_off`; § 2.5 reads it as a BSP plane test | First word is the **block size in bytes**, next two are skipped; block end = opcode index + `size/2` | `siobj_lib.cpp:1246-1260` |
 | `SHADES` (`0x0156`) | `count, ...triplets` | Two leading words (the first discarded, the second is the count), then 3 words per entry | `siobj_lib.cpp:1235-1244` |
 
 `PERFDISK` (`0x010E`) left this table: si-tools read one radius and an orientation register where § 1 had two radii, and the handler `0xA040` bears it out, with the radius second and the axis register third ([`sod-vm-generators.md` § 8.8](../playone-exe/sod-vm-generators.md#88-model-frame-the-other-generators)).
+
+`SORTON` (`0x018C`) left it too: si-tools read a block size and two skipped words where § 1 had a plane and two offsets, and the handler `0x9183` reads `first, second, flag` and orders the two branches by the facing flag `flag` ([`sod-vm-execution.md` § 8.6](../playone-exe/sod-vm-execution.md#86-facing-flags-op_rej-and-op_ifvis)).
 
 `SHADE2` (`0x014D`) and `SHADE216` (`0x02C7`) have no case at all and take the one-word default, so their silence is not evidence of a one-word operand.
 

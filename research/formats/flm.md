@@ -198,7 +198,7 @@ Encountered in Object Lifecycle opcodes (`0x00..0x3F`):
   The Editing Room's camera behaviours (Face, Free, Seek, Spot, Follow, Attach N; *handbook* camera chapter) have no opcode or field: `view_obj` carries no payload and no other opcode names a mode or a target slot (FreeFlight `sifilm.cpp` likewise).
   The recorded rotation already holds the result: in `INTRO.FLM` and `CTRY.FLM` every view slot is an undrawn rig (flags `0x11` or `0x19`), and the tracking shots point within 0.2–0.4° (mean over the shot) of another slot.
   A player therefore reads the camera's aim from its `interp` rotation and needs no mode logic; whether `PLAYONE.EXE` recomputes a tracking aim at playback is not observed, and the 1.4° `CTRY.FLM` look-direction match (Q-FLM-08) argues against it.
-- **Instantaneous Director Cuts:** When `view_obj` switches or when camera displacement between consecutive ticks exceeds the continuity threshold ($\|\mathbf{P}_{t+1} - \mathbf{P}_t\| > 50.0\text{ m}$):
+- **Instantaneous Director Cuts:** When `view_obj` switches (a view slot moving far within one slice is interpolated, not cut: [`timeline-and-ticks.md` § 3.2](concepts/timeline-and-ticks.md#32-director-cut-suppression)):
   $$\text{cut\_from\_previous} = \text{true}$$
   Sub-tick interpolation is suppressed ($\alpha_{\text{eff}} = 0.0$), holding position and rotation at tick $t$ until tick $t+1$ arrives, preventing unnatural camera swooping across the terrain.
 

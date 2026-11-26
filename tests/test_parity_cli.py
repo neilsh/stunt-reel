@@ -27,6 +27,8 @@ from stunt_reel.all_archive import ArchiveMeta, publish_archive  # noqa: E402
 from stunt_reel.expected_scores import read_render_tree  # noqa: E402
 from stunt_reel.parity_artifacts import Report, write_report  # noqa: E402
 
+pytestmark = pytest.mark.windows
+
 #: The films of the stand-in references.toml, which is what the parity loop covers.
 FILMS = ("ctry", "intro")
 #: A ``crates/`` tree hash the render tests say a render was built from.

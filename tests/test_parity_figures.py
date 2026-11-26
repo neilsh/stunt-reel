@@ -36,6 +36,8 @@ from stunt_reel.parity_judge import (  # noqa: E402
 )
 from stunt_reel.parity_pipeline import Score  # noqa: E402
 
+pytestmark = pytest.mark.windows
+
 FILMS = ("ctry", "intro")
 NAMES = ("DBG_X",)
 #: Enough frames that one target frame falling 0.0744 leaves the film mean rising.

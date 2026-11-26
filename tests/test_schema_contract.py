@@ -13,25 +13,22 @@ missing Kaitai compiler into a failure. Without it the compile test skips, so a 
 from __future__ import annotations
 
 import importlib.util
-import os
 import sys
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
-from stunt_reel.kaitai import compile_schemas, ksc_command
+from conftest import COMPILED_SCHEMAS_GROUP, CompiledSchemas
 
 if TYPE_CHECKING:
     from types import ModuleType
 
-pytestmark = pytest.mark.docs
+pytestmark = [pytest.mark.docs, pytest.mark.xdist_group(COMPILED_SCHEMAS_GROUP)]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = REPO_ROOT / "research" / "formats"
 VERIFIER = REPO_ROOT / "python" / "scripts" / "verify_schemas_corpus.py"
-REQUIRE_KSC = os.environ.get("STUNT_REQUIRE_KSC") == "1"
 
 
 def _verifier() -> ModuleType:
@@ -141,19 +138,11 @@ def test_discovery_selects_a_shared_suffix_by_filename(
     assert verifier._corpus_files(spec, corpus) == [corpus / "sub" / "FONT.BIN"]
 
 
-@pytest.mark.skipif(
-    ksc_command() is None and not REQUIRE_KSC,
-    reason="Kaitai compiler not on PATH (export STUNT_REQUIRE_KSC=1 to require it)",
-)
-def test_every_schema_compiles() -> None:
+def test_every_schema_compiles(compiled_schemas: CompiledSchemas) -> None:
     """Every schema in the catalog must compile, not just the ones a test names."""
-    if ksc_command() is None:
-        pytest.fail("STUNT_REQUIRE_KSC=1 but the Kaitai compiler is not on PATH")
-    schema_files = _schema_files()
+    schema_files = compiled_schemas.schema_files
+    generated = compiled_schemas.generated_files
     assert schema_files
-    with tempfile.TemporaryDirectory(prefix="stunt-kaitai-catalog-") as tmp:
-        compile_schemas(schema_files, tmp)
-        generated = sorted(Path(tmp).glob("*.py"))
     assert len(generated) == len(schema_files), (
         f"{len(schema_files)} schemas compiled to {len(generated)} modules: "
         f"{[path.name for path in generated]}"

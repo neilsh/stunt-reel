@@ -49,7 +49,7 @@ The session runs dosbox-automation, so `capture-ref` and `make-all` run here as 
 It lacks DOSBox-X (`debug-x`), a window for `play`, GPU timing, Orca, dsh and Antigravity, the owner's `wrangler login`, and the data-root files no cloud archive holds: the full game's music, `corpus/siarchive` beyond FreeFlight, and captures added since the `captures` archive was last packed ([`manifests/cloud-assets.toml`](../../../manifests/cloud-assets.toml)).
 Work that needs one goes to [`local-windows`](local-windows.md):
 
-- **An issue** gains `env:local-only` and swaps its state label (`status:in-progress` once claimed) for `status:ready-for-agent` when its body says exactly what to run there, otherwise `status:needs-triage`; the body names the resource.
+- **An issue** gains `env:local-only` and swaps its state label (`status:in-progress` once claimed) for `status:ready-for-agent` when its body says exactly what to run there, `status:needs-plan` when it needs local planning, otherwise `status:needs-triage`; the body names the resource.
 - **A PR** gains `env:local-only`, and its body names the check left to run.
 
 `status:ready-for-human` is for a decision only a person makes.

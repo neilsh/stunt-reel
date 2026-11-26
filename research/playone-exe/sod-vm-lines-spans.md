@@ -1,5 +1,5 @@
 ---
-summary: "The SOD VM's lines and polygon spans: `MOVETO`/`ZLINETO`/`LINECOL` lines, polygon spans that include both ends, and the span test that culls an anticlockwise polygon with its outline, and the polygon clipper, which cuts at the view pyramid's sides and has no near plane."
+summary: "The SOD VM's lines and polygon spans: `MOVETO`/`ZLINETO`/`LINECOL` lines, polygon spans that include both ends, and the span test that culls an anticlockwise polygon with its outline, the polygon clipper, which cuts at the view pyramid's sides and has no near plane, and the register projectors and anchor transform, which truncate an unclipped vertex's screen offset toward the projection centre."
 sidebar_label: "SOD VM lines & spans"
 ---
 
@@ -149,6 +149,25 @@ So the evidence-backed value is the least near distance the depth buffer tolerat
 On the evidence track 0.05 m's largest film-mean change against 0.1 m was `balloon`'s +0.0002, from depth ties rather than cut geometry, and 0.01 m lowered all seven; the default stays 0.1 m, and whether to lower it is [#955](https://github.com/neilsh/stunt-reel/issues/955) ([`attribution.md` § 2](../parity/attribution.md#2-current-breakdown)).
 _Source: [the polygon clipper read for a near plane](../../work/2026-11/907_playone-near-plane/journal.md#2026-11-22-the-polygon-clipper-read-for-a-near-plane), [near planes nearer than 0.1 m](../../work/2026-11/907_playone-near-plane/journal.md#2026-11-22-near-planes-nearer-than-01-m-on-the-evidence-track)._
 
+### 8.14 Projected Points Are Truncated Toward the Centre
+
+`[Established]`, static, for the instructions, in the unpatched image (`mise run re-tool -- disasm 0x9CF1 0x9DB5`, `0xAE67 0xB011` and `0xB80E 0xB83A`; the Patch #3 image not read, nothing traced live).
+Both register projectors (section 8.13) form a screen word the same way: `DX:AX` is the view coordinate shifted left 8, `idiv bp` divides it by the depth `z'`, and the projection centre is added to the quotient with nothing in between (`0x9CF1`: column `0x9D05..0x9D13`, row `0x9D16..0x9D2B`; `0x9D3A`: column `0x9D69..0x9D77`, row `0x9D7A..0x9D88`).
+`idiv` truncates toward zero, so a register's screen point is `(trunc(256 · x' / z') + work:0x41C8, trunc(256 · y' / z') + work:0x41CA)`: its offset from the centre (160, 92) truncated toward that centre, as the disc generator does ([`sod-vm-generators.md`](sod-vm-generators.md) section 8.8).
+The anchor transform `0xAE67`, which projects the anchors a ground leaf (`0xBF23`, [`world-scene.md`](world-scene.md) section 2) and `OP_TAP` ([`sod-vm.md`](sod-vm.md) section 4) read, ends the same way when the anchor's outcode is 0: `0xB80E` shifts the 32-bit `z'` right by the fewest bits `n` that leave it under 2^15, `x'` and `y'` are shifted left `8 − n` bits (right `n − 8`, arithmetically, for `n ≥ 8`), and `idiv` divides each, the centre added to the quotient (`0xAFA7`, `0xAFC5`, `0xAFE8`, `0xB006`).
+With `z' < 2^15` that is `trunc(256 · x' / z')` exactly; a deeper point first loses `z'`'s low bits, and for `n > 8` those of `x'` and `y'`, floored, before the same truncation.
+So every vertex that reaches the fillers unclipped, of a SOD VM polygon or a ground leaf, sits on its offset truncated toward the centre; where the clippers (`0xC6AF`, and `0xBF82` for a ground leaf) put a crossing on a side of the view was not read.
+The polygon walks and line routines read these words as pixel indices, and the flat filler fills a vertex's own row and column (section 8.11).
+
+`[Supported Inference]` for what that means against our renderer, which samples pixel centres and puts the optical axis at (160, 92.5) pixels from the 320 × 185 view's top left: a vertex `o` pixels off the axis lies at `160 + trunc(o.x) + 0.5`, `92 + trunc(o.y) + 0.5` in `PLAYONE` and at `160 + o.x`, `92.5 + o.y` in ours.
+Below the centre `PLAYONE`'s vertex is up to a row higher, above it up to a row lower, which fits the one-row backdrop shift of [`framing-and-actors.md` § 4](../parity/framing-and-actors.md#4-background-misregistration-is-neither-one-time-offset-nor-one-page-shift); across, it is half a column right of ours on the axis, within half a column of ours right of the centre, and half a column to a column and a half right of ours left of it.
+The centre alone moves nothing vertically: row 92's centre is our 92.5.
+
+`[Bounded Observation]` for the measurement, on the GPU over every reference film.
+Drawing each vertex at that pixel raised all seven films by 0.005 to 0.011 SSIM when each vertex slid to the pixel along the horizontal world plane through it, so that the ground and the ocean stayed coplanar, and a vertex whose ray missed that plane kept its own projection.
+The renderer does not follow the rule yet: no form that kept every depth tie the gate tests, decals on tilted facets included, adopted (Ruled out).
+_Source: [the register projectors truncate toward the centre](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-register-projectors-truncate-toward-the-centre), [with an unsnapped fallback](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-projector-rounding-with-an-unsnapped-fallback)._
+
 ## Ruled out
 
 * **Conservative rasterization for the world mesh's slivers** (section 8.11).
@@ -170,7 +189,21 @@ _Source: [the polygon clipper read for a near plane](../../work/2026-11/907_play
 * **A near plane at a fixed depth in the polygon clipper** (section 8.13).
   `0xC6AF` discards the outcode's depth bit and cuts only at the four side planes; no instruction in `0xC50E..0xC9D4` compares a depth with a positive constant ([the polygon clipper read](../../work/2026-11/907_playone-near-plane/journal.md#2026-11-22-the-polygon-clipper-read-for-a-near-plane)).
 
+* **Drawing truncated vertices at their own view depth** (section 8.14).
+  It breaks the tie between coplanar meshes: the ocean, painted on the ground plane first, wins six rows of `balloon` 540's grass, which fell 0.0528 SSIM, past the target bound ([projector rounding on the evidence track](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-playones-projector-rounding-on-the-evidence-track)).
+  Keeping that depth only where a vertex's ray misses its horizontal plane still drew the grass of `bomb`'s opening shot as ocean (22 frames, mask IoU −0.328 each) ([with coplanar ground kept coplanar](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-projector-rounding-with-coplanar-ground-kept-coplanar)).
+
+* **Drawing truncated vertices slid within their own facet's plane** (section 8.14).
+  It keeps a decal on a facet tilted about the vertical, which the horizontal-plane form loses near the eye (`draw_order::a_decal_wins_over_its_base_near_and_far`), but lowers `balloon` by 0.0043 while the other six films rise, so it did not adopt; whether the river, a flat prop snapped onto sloped terrain, leaves its terrain's plane is not tested ([the shipped projector rounding](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-shipped-projector-rounding-against-main)).
+
+* **The projection centre alone** (section 8.14).
+  Moving the axis half a column right, to the centre of column 160, lowered six films (`intro` by 0.0056) ([projector rounding on the evidence track](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-playones-projector-rounding-on-the-evidence-track)).
+
 ## 10. Open questions
+
+* **Projected points** (section 8.14).
+  Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; how to draw vertices on `PLAYONE`'s truncated pixels while keeping every depth tie the painter's order makes: the ground and the ocean, decals on non-horizontal facets and the outlines' cull all at once ([#1064](https://github.com/neilsh/stunt-reel/issues/1064), from the prototype `proto/1027-projector-rounding`).
+  On `location`'s stadium the lines' and outlines' mismatched pixels lie mostly a pixel toward the centre in the capture, and the prototype cuts the stadium's loss by about a third ([`prop-shape-loss.md` § 2.5](../parity/prop-shape-loss.md#25-one-tick-phase-and-lines)).
 
 * **Back faces** (section 8.12).
   Open: how many pixels a back face draws at its apexes and along thin parts; what a back face clipped across a screen corner draws; whether a collinear polygon of three or more points draws with gaps.
@@ -178,6 +211,7 @@ _Source: [the polygon clipper read for a near plane](../../work/2026-11/907_play
 
 * **Polygon outlines** (section 8.11).
   Open: how `0xC9D4` rounds a row's ends, so whether the outline matches the inclusive spans pixel for pixel; whether `PLAYONE` fills terrain through `0x7571` as well, since outlining terrain scored below the base on `LAND` and `BALLOON`; and whether the world's line-list outline drops end pixels a line quad draws.
+  On `location`'s stadium, #1027's truncation prototype lowers the index disagreement of the pixels beside the outlines but raises that of the outline pixels themselves ([`prop-shape-loss.md` § 2.5](../parity/prop-shape-loss.md#25-one-tick-phase-and-lines)), so these questions are what that rule leaves at a polygon's edge.
 
 * **Lines** (section 8.10).
   Open: a zero-length `ZLINETO` or two-vertex polygon, one pixel in `PLAYONE`, draws nothing here; `vm.rs` keeps the pen's point at `MOVETO` rather than reading the register at `ZLINETO`; whether anything resets `work:0x41EA`; whether the pen persists across `RETURN` and subobjects (`work:0x41EC` is global, `vm.rs` keeps one pen per decode); the Patch #3 image's line path.

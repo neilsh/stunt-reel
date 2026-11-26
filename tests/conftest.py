@@ -1,6 +1,7 @@
 """Shared pytest configuration: registers the TAC mock fixtures as a plugin.
 
-The temporary root is per run and lives in the checkout's pytest cache directory.
+It also compiles the Kaitai schema catalog once per xdist worker, for the docs tests that
+parse a schema. The temporary root is per run and lives in the checkout's pytest cache directory.
 pytest deletes a --basetemp it finds on disk and resets a cache directory it
 creates, and a sandboxed run may do neither; naming the root after the run means
 there is nothing stale to delete, and creating the cache directory first means
@@ -12,6 +13,8 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,11 +30,27 @@ from pytest_helpers import (
 )
 from stunt_reel import dataroot, parity_layout, references
 from stunt_reel.git_env import COMMAND_SCOPE, git_location_vars
+from stunt_reel.kaitai import compile_schemas, ksc_command, load_generated_module
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterator
+    from collections.abc import Generator, Iterator, Mapping
+    from types import ModuleType
 
 pytest_plugins = ["tac_mock"]
+
+SCHEMA_ROOT = Path(__file__).resolve().parent.parent / "research" / "formats"
+# Every test that consumes `compiled_schemas` carries this group, which the gate's
+# `--dist loadgroup` keeps on one worker, so the catalog is compiled once per gate run.
+COMPILED_SCHEMAS_GROUP = "kaitai-schemas"
+
+
+@dataclass(frozen=True)
+class CompiledSchemas:
+    """The schema catalog compiled together, with each generated parser imported by name."""
+
+    schema_files: tuple[Path, ...]
+    generated_files: tuple[Path, ...]
+    modules: Mapping[str, ModuleType]
 
 
 @pytest.fixture(autouse=True)
@@ -94,6 +113,36 @@ def _no_machine_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> It
     dataroot.data_root.cache_clear()
     yield
     dataroot.data_root.cache_clear()
+
+
+@pytest.fixture(scope="session")
+def compiled_schemas() -> Iterator[CompiledSchemas]:
+    """Compile every `.ksy` schema once per worker, for the docs tests that parse one.
+
+    Its consumers carry ``pytest.mark.xdist_group(COMPILED_SCHEMAS_GROUP)`` and the gate passes
+    ``--dist loadgroup``, so one worker compiles the catalog and the other schema tests read the
+    same modules; without the group every worker holding one of them would compile it again.
+    ``STUNT_REQUIRE_KSC=1`` turns a missing compiler into a failure, as the contract test did.
+    """
+    schema_files = tuple(sorted(SCHEMA_ROOT.rglob("*.ksy")))
+    if not schema_files:
+        pytest.fail(f"no .ksy schemas under {SCHEMA_ROOT}")
+    if ksc_command() is None:
+        if os.environ.get("STUNT_REQUIRE_KSC") == "1":
+            pytest.fail("STUNT_REQUIRE_KSC=1 but the Kaitai compiler is not on PATH")
+        pytest.skip("Kaitai compiler not on PATH")
+    with tempfile.TemporaryDirectory(prefix="stunt-kaitai-session-") as tmp:
+        compile_schemas(schema_files, tmp)
+        generated_files = tuple(sorted(Path(tmp).glob("*.py")))
+        modules = {
+            path.stem: load_generated_module(path, f"stunt_kaitai_{path.stem}")
+            for path in generated_files
+        }
+        yield CompiledSchemas(
+            schema_files=schema_files,
+            generated_files=generated_files,
+            modules=modules,
+        )
 
 
 def pytest_configure(config: pytest.Config) -> None:

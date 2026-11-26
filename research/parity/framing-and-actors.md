@@ -1,5 +1,5 @@
 ---
-summary: "Records the camera and projection corrections tried against the capture: square 256 px projection (adopted) and the eye-height, pitch, FOV, framing-offset and tick-phase sweeps that were ruled out; the `location` rotor drawn with its solid blades on every tick (#504, #624); and background misregistration, which is neither one time offset nor one page shift on the readout ticks, with a one-row vertical shift recurring (#990, #1027)."
+summary: "Records the camera and projection corrections tried against the capture: square 256 px projection (adopted) and the eye-height, pitch, FOV, framing-offset and tick-phase sweeps that were ruled out; the `location` rotor drawn with its solid blades on every tick (#504, #624); and background misregistration, which is neither one time offset nor one page shift on the readout ticks, with a one-row vertical shift recurring that `PLAYONE`'s truncated projection fits (#990, #1027); BOMB's per-shot offsets are that row and pages a tick off while the camera moves, not a camera rule (#1031)."
 ---
 
 # Parity: Framing and Camera
@@ -78,7 +78,8 @@ Two parts recur:
 
 * **A one-row vertical shift, ours low.**
   On 13 of the 23 ticks a page shift helps, the capture's edges sit one row above ours; 3 sit one row below, and the horizontal shift has no common sign.
-  That is what truncating projected coordinates toward the projection centre would give, which `PLAYONE` does in its disc generator ([`sod-vm-generators.md`](../playone-exe/sod-vm-generators.md)); whether polygon vertices are projected the same way is [#1027](https://github.com/neilsh/stunt-reel/issues/1027).
+  That is what truncating projected coordinates toward the projection centre gives, which `PLAYONE`'s register projectors and its anchor transform `0xAE67` do for every vertex of a SOD VM polygon or a ground leaf that is not clipped (a clipped crossing was not read) ([`sod-vm-lines-spans.md` § 8.14](../playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre)); drawing vertices so raised every reference film, but no form that keeps the renderer's depth ties has adopted yet ([#1064](https://github.com/neilsh/stunt-reel/issues/1064)).
+  _Source: [the register projectors truncate toward the centre](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-register-projectors-truncate-toward-the-centre)._
 * **Per-tick time offsets of either sign.**
   The best render tick on the 12 ticks where time wins or ties lies before the captured tick on 5 and after it on 7, up to the search's reach of 4 either way (LAND 177's wider profile peaks 7 after); only LAND's four all fall after.
   LAND 419 is a cut: the capture already shows the next shot, which our render reaches at 420 (agreement 0.437 to 0.438 for every earlier tick, 0.963 to 0.965 from one tick later).
@@ -87,6 +88,15 @@ Two parts recur:
 
 _Source: [time offset against page shift on the readout ticks](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks)._
 
+**Every BOMB frame, by shot** (`[Bounded Observation]`, 2026-11-24, all 316 scored `bomb` ticks, GPU render of `bc166452`, `register --with-props`, [#1031](https://github.com/neilsh/stunt-reel/issues/1031)).
+Joined to the camera at each tick, the best page shift follows no camera input as a per-shot rule: every frame has the default lens and no roll, and shots with the same eye height (0.2 m on ticks 12 to 420, 0.2 to 1 m on 1915 to 2740) take different shifts.
+* **The two static opening shots** (ticks 12 to 420, eye 0.2 m above the ground, pitched 13° and 17° up) shift a row on all 38 frames and gain nothing from any render tick.
+  Searched per layer and per half of the frame, the props below the projection centre sit a row low while those above it sit level or a row high, the sign flip that truncation toward the centre gives (open question 5).
+  The sky's band edges sit a row low on both halves at tick 155 and on the upper half at 320; the lower half at 320 is level.
+* **The larger offsets** (2961, 3191, 3268, and 1013 to 1200, from 2 to 4 px) fall on frames where the camera turns or moves fast, and a render tick or two either way gains about as much as the page shift (2961: +0.266 at one tick back against +0.197; 3191: +0.209 at one tick on against +0.129), while the shot's neighbouring frames gain from neither: the per-page lag above, not the camera.
+
+_Source: [the offset per shot, against the camera](../../work/2026-11/1031_bomb-world-offset/journal.md#2026-11-24-the-offset-per-shot-against-the-camera)._
+
 ## Ruled out
 
 All scores `mean_ssim_scored`, CTRY / INTRO unless a single film is named.
@@ -94,6 +104,7 @@ Baselines moved between rounds (0.771 / 0.676 on 2026-10-22, 0.7708 / 0.6762 at 
 Nothing below was adopted.
 
 * **Wrong geometry for the `location` trapezoid** (2026-11-16, [#504](https://github.com/neilsh/stunt-reel/issues/504)): the other `BVGT` arm of the same shape draws the capture's line blades; see § 3. [Journal](../../work/2026-11/504_rotor-trapezoid/journal.md#2026-11-16-the-trapezoid-is-the-rotors-slow-arm-at-rest).
+* **A per-shot camera offset on BOMB** (2026-11-24, [#1031](https://github.com/neilsh/stunt-reel/issues/1031)): no shot's page shift follows the view slot, the eye or the lens; see § 4. [Journal](../../work/2026-11/1031_bomb-world-offset/journal.md#2026-11-24-the-offset-per-shot-against-the-camera).
 * **One time offset or one page shift per film behind `background-misregistration`** (2026-11-23, [#990](https://github.com/neilsh/stunt-reel/issues/990)): on 84 readout ticks, 40 of the 69 with enough edge pixels move under neither (16 of them already agree at 0.95 or more, 14 sit below 0.90), and the best time offsets change sign within INTRO and TRAINTNL; see § 4. [Journal](../../work/2026-11/990_bg-misregistration/journal.md#2026-11-23-time-offset-against-page-shift-on-the-readout-ticks).
 * **A montage tick-skipping rule** (2026-11-05, `[Bounded Observation]`, [#73](https://github.com/neilsh/stunt-reel/issues/73)).
   Offset search over -200..+10 on `captures/vault-intro`: the best-matching render tick follows the capture tick at slope 0.99 (largest deviation 7 ticks), so the 0.9-lag reading was a search saturating at -180.
@@ -149,9 +160,9 @@ _Found 2026-10-22 and 2026-10-23 at `d90a047`; see the [parity log](../../work/2
 1. Closed 2026-11-05: the montage needs no tick-skipping rule; see Ruled out. ([#73](https://github.com/neilsh/stunt-reel/issues/73))
 2. The coastline band (capture sand where we draw airfield green) remains; see [`attribution.md`](attribution.md#5-coastline-and-sea). ([#71](https://github.com/neilsh/stunt-reel/issues/71))
 3. Two things the projection change of § 2 leaves open.
-   First, the projection centre: our 185-row viewport centres it at row 92.5, while the horizon fit gives 91.9 and `0x41CA` reads 92; half a row has not been swept.
+   First, the projection centre: our 185-row viewport centres it at row 92.5, while the horizon fit gives 91.9 and `0x41CA` reads 92; row 92's centre is our 92.5, so the centre alone moves nothing vertically, and moving our axis half a column right, to column 160's centre, lowered six films ([`sod-vm-lines-spans.md` § 8.14](../playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre)).
    Second, the finite ground: at a 500 m eye height our sea edge sits about 5 px below PLAYONE's horizon, which is at infinity.
    That accounts for about half of the INTRO slot 4 offset.
 4. Whether `PLAYONE` under dosbox-automation draws some `location` frames less than 16 var-10 units after the previous one, which § 3 hypothesises for ticks 837 and 881; a bank read in the capture harness would show it. ([#624](https://github.com/neilsh/stunt-reel/issues/624))
-5. Whether `PLAYONE` truncates projected polygon vertices toward the projection centre, which would explain § 4's one-row backdrop shift. ([#1027](https://github.com/neilsh/stunt-reel/issues/1027))
+5. How to draw polygon vertices on the pixels `PLAYONE` truncates them to, toward the projection centre ([`sod-vm-lines-spans.md` § 8.14](../playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre)), without breaking the renderer's depth ties, and whether that removes § 4's one-row backdrop shift. ([#1064](https://github.com/neilsh/stunt-reel/issues/1064))
 6. Why LAND's capture cuts at tick 419, one tick before our render (§ 4), when BOMB's cuts one captured frame after ours at 3302 ([`attribution.md`](attribution.md#open-questions) open question 7).

@@ -51,7 +51,7 @@ The largest near shape, `16495`, has 52 vertices and 20 + 2 + 4 triangles in thr
 ### 1.4 The display-list decode is not lossy for the studio shapes
 
 `16495`, `15135`, `16423`, `16393`, `16421`, `15111` and `15486` use only `POLYZ`, `COLOR`, `IFVIS`, `IPG` type 0 (a cube generator), vertex arithmetic and a single `PERS`.
-None uses `SPHERE`, `BLOCK`, `PERFDISK` or `IPG` type 4 (subobject), the opcodes whose geometry `vm.rs` reads and discards.
+None uses `SPHERE`, `BLOCK`, `PERFDISK` or `IPG` type 4 (subobject), the opcodes that draw other than through a polygon op.
 `16495` has 13 `POLYZ` ops and decodes to 26 triangles, so the missing studio is not dropped geometry.
 
 ### 1.5 Shape census

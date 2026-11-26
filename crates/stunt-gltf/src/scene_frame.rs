@@ -25,6 +25,11 @@ const ASPECT_RATIO: f32 = 320.0 / 200.0;
 const ZNEAR: f32 = 0.1;
 const ZFAR: f32 = 20_000.0;
 
+/// Squared sine of the angle between the view direction and `+Y` below which `+Y` cannot be
+/// the up vector, matching `stunt-render`'s `authored_up`: a view within about 0.057 degrees of
+/// vertical snaps to `+Z`.
+const VERTICAL_SIN2: f32 = 1e-6;
+
 /// Exports `scene.frame(tick)` as a `.glb`.
 ///
 /// The glTF scene holds, in order: a perspective camera node, a `WORLD` node at identity when the
@@ -139,31 +144,28 @@ fn push_draw(
 /// Rotation quaternion `[x, y, z, w]` for a glTF camera node placed at `camera.eye`.
 ///
 /// A glTF camera looks down its local `-Z` with `+Y` up. The result maps `-Z` to
-/// `normalize(target - eye)`. Roll follows the renderer (`stunt-render`'s camera
-/// controller): the world up vector `+Y` is rotated by `roll_radians` about the view axis
-/// (right-hand rule about the forward direction) before the look-at basis is built.
-/// A zero-length view yields the identity; a view parallel to the up vector falls back to
-/// `-Z` (looking up) or `+Z` (looking down) as the reference up so the basis stays finite.
+/// `normalize(target - eye)`. The up vector is chosen before roll, as `stunt-render`'s
+/// `authored_up` does: `+Z` for a view within about 0.057 degrees of `+Y` or `-Y`
+/// (`VERTICAL_SIN2`, a squared sine), where `+Y` leaves the side axis undefined, and `+Y`
+/// otherwise. Roll then turns that up about the view axis (right-hand rule about the forward
+/// direction), and a zero-length view yields the identity.
 #[must_use]
 pub fn camera_rotation(camera: &ViewCamera) -> [f32; 4] {
     let forward = (Vec3::from(camera.target) - Vec3::from(camera.eye)).normalize_or_zero();
     if forward == Vec3::ZERO {
         return [0.0, 0.0, 0.0, 1.0];
     }
-    let mut up = Vec3::Y;
+    // `+Z` for both straight up and straight down: a vertical view has no side axis, and
+    // `stunt-render` picks the same reference up for both so its picture turns consistently.
+    let mut up = if forward.cross(Vec3::Y).length_squared() < VERTICAL_SIN2 {
+        Vec3::Z
+    } else {
+        Vec3::Y
+    };
     if camera.roll_radians.abs() > 1e-4 {
         up = Quat::from_axis_angle(forward, camera.roll_radians) * up;
     }
-    let mut right = forward.cross(up);
-    if right.length_squared() < 1e-12 {
-        up = if forward.y > 0.0 {
-            Vec3::NEG_Z
-        } else {
-            Vec3::Z
-        };
-        right = forward.cross(up);
-    }
-    let right = right.normalize();
+    let right = forward.cross(up).normalize();
     let true_up = right.cross(forward);
     Quat::from_mat3(&Mat3::from_cols(right, true_up, -forward))
         .normalize()

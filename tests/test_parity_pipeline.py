@@ -32,6 +32,8 @@ from stunt_reel.parity_artifacts import (
     read_render,
 )
 
+pytestmark = pytest.mark.windows
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 

@@ -5,10 +5,10 @@ The run is one **coordinator** and its **workers**; the coordinator runs longest
 
 ## Roles
 
-| | Coordinator | Worker (implementer or reviewer) |
+| | Coordinator | Worker (planner, implementer or reviewer) |
 |---|---|---|
-| Model | Sonnet from the start; never Opus | By fit ([`SKILL.md`](SKILL.md#concurrency-and-models)) |
-| Does | Builds the queue, claims, dispatches, checks the merge bar, arms, files an issue for a reviewer's out-of-scope finding, appends to `run-state.md` | Reads the issue or PR and its comments, implements or reviews in its own worktree, files the follow-up issues its item produces and reports their numbers |
+| Model | Current session's model | By fit ([`SKILL.md`](SKILL.md#concurrency-and-models)) |
+| Does | Builds the queue, claims, dispatches, checks the merge bar, arms, files an issue for a reviewer's out-of-scope finding, appends to `run-state.md` | Reads the issue or PR and its comments; a planner investigates read-only and posts a `## Tentative plan` comment (updating missing `area:`/`type:` labels without touching `priority:`), while an implementer or reviewer works in its own worktree and files follow-up issues |
 | Reads | `mise run queue` lines, worker reports, the first line of a review comment, the reviewer's reply (its `alternatives: N` included), CI state, the lines `mise run pr-threads` prints, a PR's changed file names | The bodies, diffs and code the coordinator does not |
 | Never | Opens a diff, an issue body, a thread's text or a session transcript; writes no code and no PR or doc content; `sleep`s or polls; loads `--help` or the orchestration guide | Arms or merges |
 
@@ -41,7 +41,7 @@ Each log line is:
 - <HH:MMZ> #<item> <state> | <agent/model> <task id> | <branch> | <head sha7 or -> | <note>
 ```
 
-`<item>` is one key per tracked work item and `<state>` is one of `claimed`, `implementing`, `in review`, `fixing`, `armed`, `merged` and `handed off`.
+`<item>` is one key per tracked work item and `<state>` is one of `claimed`, `planning`, `planned`, `implementing`, `in review`, `fixing`, `armed`, `merged` and `handed off`.
 Key an issue's work by its issue number, with `PR #<n>` in the note once one opens, and a PR taken from the queue by its PR number; never switch an item's key mid-item.
 `<agent/model>` names the worker's agent and model, or its terminal handle, and `<task id>` is the task id of its current dispatch.
 The remaining fields are the branch, the head SHA at 7 characters or `-` when there is none, and the note.
@@ -64,7 +64,7 @@ Check the context size after each append: the harness's context indicator or `/c
 Once it passes about 100k tokens, stop dispatching, update the Run header and Next action, and hand off; never compact.
 A harness compaction means that point passed unnoticed: hand off at the next append.
 In a cloud session a successor's new container cannot see the predecessor's worktrees, subagents or unpushed commits, so wait until no worker is in flight, or until every in-flight item has a pushed branch (a rule 5 item only after its review and push), before handing off.
-Release any other item (`Released claim: <why>.`, swap `status:in-progress` back to `status:ready-for-agent`) and list it under **Needs you**; an item left `status:in-progress` with no remote branch is a dropped claim ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)).
+Release any other item (`Released claim: <why>.`, swap `status:in-progress` back to its prior state (`status:ready-for-agent` or `status:needs-plan`)) and list it under **Needs you**; an item left `status:in-progress` with no remote branch is a dropped claim ([`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)).
 A successor rebuilds current state from the log: for each item, read its newest line, then check it against `mise run queue` and, for a PR, one `mise run merge-bar -- <n> --issue <N>` run before acting.
 An item whose newest line predates GitHub's state gets a new line recording the checked state; an older line is never edited.
 The outgoing coordinator starts its successor:
@@ -72,7 +72,7 @@ The outgoing coordinator starts its successor:
 - **Cloud:** a new session has a new container, so it cannot read the predecessor's gitignored file.
   With `create_session` (when the session has that tool), put the full content of `run-state.md` in the `prompt`, which the file's small size allows, with the brief "read the `running-unattended` skill, write this state into `build/scratch/run-state.md` in your own checkout, resume at Next action, and re-check each in-flight item's head SHA and state with one call before acting".
   A session with no way to start one runs Shutdown instead of handing off, under the same wait and release rule ([`loop-and-bounds.md`](loop-and-bounds.md#shutdown)).
-- **local-windows:** the repo records no command for starting a Sonnet coordinator.
+- **local-windows:** the repo records no command for starting a successor coordinator.
   The coordinator runs Shutdown at the context limit unless a person has said how to hand off.
 - **T3 Code:** the coordinator restarts its own thread with a fresh context ([`t3.md`](t3.md)).
 

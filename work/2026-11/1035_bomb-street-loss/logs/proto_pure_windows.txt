@@ -1,0 +1,16 @@
+== proto 2036-2740
+pure-window loss 0.8919 by disagreeing pixels in the window:
+     0: 9869 windows, loss 0.0004 (0.0%)
+   1-5: 1253 windows, loss 0.3159 (35.4%)
+  6-20: 1123 windows, loss 0.4998 (56.0%)
+   >20: 107 windows, loss 0.0758 (8.5%)
+shape pixels 866029, disagreeing 15856 (1.83%)
+top (capture, ours) index pairs: [((52, 14), 5393), ((14, 52), 4332), ((0, 14), 2048), ((141, 14), 1336), ((62, 14), 1102), ((43, 14), 543), ((137, 14), 288), ((48, 14), 147), ((197, 14), 143), ((160, 14), 131), ((48, 52), 112), ((139, 14), 71)]
+== proto 3312-3477
+pure-window loss 0.1421 by disagreeing pixels in the window:
+     0: 3903 windows, loss 0.0002 (0.1%)
+   1-5: 276 windows, loss 0.0647 (45.5%)
+  6-20: 199 windows, loss 0.0684 (48.1%)
+   >20: 17 windows, loss 0.0089 (6.2%)
+shape pixels 290977, disagreeing 4468 (1.54%)
+top (capture, ours) index pairs: [((52, 14), 1126), ((7, 14), 876), ((56, 14), 761), ((0, 14), 538), ((14, 52), 499), ((195, 14), 183), ((53, 14), 81), ((137, 14), 75), ((49, 14), 63), ((7, 52), 35), ((12, 14), 28), ((150, 14), 25)]

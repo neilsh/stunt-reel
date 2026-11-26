@@ -13,6 +13,17 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/neilsh/stunt-reel"
 publish = false
 
+# Shared pins: one version per crate here. A manifest inherits it and sets only the extra features
+# its target needs; features every user wants (serde's derive, image's png) live here too.
+[workspace.dependencies]
+bytemuck = "1.14"
+glam = "0.34"
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.11"
+thiserror = "2.0"
+
 # Lint levels are `warn` (except `unused_must_use` and `unsafe_code`): editors show warnings and
 # the gate (`-D warnings`) is the hard stop.
 [workspace.lints.rust]

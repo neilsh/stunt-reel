@@ -6,15 +6,14 @@ import importlib
 import importlib.util
 import io
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from stunt_reel.kaitai import compile_schemas, ksc_command, load_generated_module
+from conftest import COMPILED_SCHEMAS_GROUP, CompiledSchemas
 
-pytestmark = pytest.mark.docs
+pytestmark = [pytest.mark.docs, pytest.mark.xdist_group(COMPILED_SCHEMAS_GROUP)]
 
 SCHEMA = Path(__file__).resolve().parent.parent / "research/formats/auxiliary/set.ksy"
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "synthetic_minimal.set"
@@ -23,14 +22,9 @@ _KAITAISTRUCT: Any = importlib.import_module("kaitaistruct")
 
 
 @pytest.fixture(scope="module")
-def set_parser() -> Any:
-    """Compile the schema once and return the generated root type."""
-    if ksc_command() is None:
-        pytest.skip("Kaitai compiler not on PATH")
-    with tempfile.TemporaryDirectory(prefix="stunt-kaitai-set-") as tmp:
-        compile_schemas([SCHEMA], tmp)
-        module = load_generated_module(Path(tmp) / "set.py", "stunt_kaitai_set")
-    return module.Set
+def set_parser(compiled_schemas: CompiledSchemas) -> Any:
+    """Return the `.SET` root type from the session's one catalog compilation."""
+    return compiled_schemas.modules["set"].Set
 
 
 def test_header_and_body_parse(set_parser: Any) -> None:

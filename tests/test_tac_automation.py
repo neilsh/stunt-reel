@@ -18,6 +18,8 @@ from stunt_reel.tac.emulator import EmulatorUnavailable, GuestTimeout, LaunchFai
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+pytestmark = pytest.mark.windows
+
 TOKEN = "t" * 64
 REPO = Path(__file__).resolve().parent.parent
 

@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+lazy from pathlib import Path
+
 from stunt_reel.markdown_links import (
     HEADING_REGEX,
     LINK_DEFINITION_REGEX,
     MARKDOWN_LINK_REGEX,
     SECTION_NUMBER_REGEX,
     URL_SCHEME_REGEX,
+    anchor_matches,
+    anchors,
+    extract_links,
+    headings,
     prose,
+    resolve_target,
     slug,
 )
 
@@ -96,3 +103,69 @@ def test_a_section_number_is_digits_and_dots_then_a_space() -> None:
         None,
         None,
     ]
+
+
+def test_extract_links_reads_inline_and_reference_targets_in_order() -> None:
+    """Both link forms count, at their document line."""
+    text = 'See [a](a.md#x).\n\n![b](<b.png> "B")\n\n[p]: ../plan.md#goal\n'
+    assert [(link.target, link.line) for link in extract_links(text)] == [
+        ("a.md#x", 1),
+        ("b.png", 3),
+        ("../plan.md#goal", 5),
+    ]
+
+
+def test_extract_links_ignores_code_samples() -> None:
+    """A link-shaped sample in inline code or a fenced block is prose."""
+    text = "Use `[a](a.md)` here.\n\n```markdown\n[b](b.md)\n```\n"
+    assert extract_links(text) == []
+
+
+def test_headings_keep_duplicates_and_document_order() -> None:
+    """A heading's text keeps its inline code, and two headings of the same text both appear."""
+    assert headings("# A `x`\n```\n# B\n```\n## A\n") == ["A `x`", "A"]
+
+
+def test_anchors_number_duplicate_headings_in_order() -> None:
+    """A second and third ``Same`` become ``same-1`` and ``same-2``; a literal ``same-1`` counts."""
+    assert anchors("# Same\n\n## Same\n\n### Same\n") == {"same", "same-1", "same-2"}
+    assert anchors("# Same\n\n## Same-1\n\n### Same\n") == {"same", "same-1", "same-2"}
+
+
+def test_anchors_include_html_ids_names_and_tokens() -> None:
+    """An element's id, a name, and a bracketed token are all fragment targets."""
+    text = "# T\n\n<a id=\"First\"></a>\n\n<span name='second'></span>\n\n[MEM-SOD-VM]\n"
+    assert {"First", "second", "mem-sod-vm"} <= anchors(text)
+
+
+def test_anchors_ignore_code_samples() -> None:
+    """An anchor-shaped sample in code defines no anchor, nor does a token in backticks."""
+    text = '```html\n<a id="sample"></a>\n```\n\n`<a id="inline"></a>` and `[MEM-SOD-VM]`\n'
+    found = anchors(text)
+    assert {"sample", "inline", "mem-sod-vm"}.isdisjoint(found)
+
+
+def test_anchor_matches_case_insensitively_or_by_slug() -> None:
+    """A fragment may name a token's case variant, an id exactly, or a heading's slug."""
+    found = {"about", "mem-sod-vm", "First"}
+    assert anchor_matches("about", found)
+    assert anchor_matches("MEM-SOD-VM", found)
+    assert anchor_matches("First", found)
+    assert not anchor_matches("first", found)
+    assert not anchor_matches("Other", found)
+
+
+def test_resolve_target_keeps_the_lexical_path_and_fragment(tmp_path: Path) -> None:
+    """A target is resolved for existence but normalized lexically for the repository's rules."""
+    source = tmp_path / "docs" / "n.md"
+    resolved = resolve_target(source, "../research/x.md#y", tmp_path)
+    assert resolved is not None
+    assert resolved.file == (tmp_path / "research" / "x.md").resolve()
+    research = "research"
+    assert resolved.relative == f"{research}/x.md"
+    assert resolved.fragment == "y"
+    assert resolve_target(source, "https://x", tmp_path) is None
+    fragment_only = resolve_target(source, "#section", tmp_path)
+    assert fragment_only is not None
+    docs = "docs"
+    assert fragment_only.relative == f"{docs}/n.md"

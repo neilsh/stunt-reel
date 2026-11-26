@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
     from stunt_reel.batch_ledger import Record
 
+pytestmark = pytest.mark.windows
+
 
 class FakeRunner:
     """The subprocess adapter: records each command and answers with a fixed exit code and tail."""

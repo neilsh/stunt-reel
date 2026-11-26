@@ -2195,7 +2195,6 @@ dependencies = [
  "stunt-parity",
  "stunt-render",
  "stunt-score",
- "thiserror 2.0.21",
  "toml",
  "winit",
 ]
@@ -2219,6 +2218,7 @@ dependencies = [
  "gltf",
  "serde_json",
  "stunt-core",
+ "stunt-render",
  "thiserror 2.0.21",
 ]
 
@@ -2238,9 +2238,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam",
- "image",
  "pollster",
- "serde_json",
  "stunt-core",
  "thiserror 2.0.21",
  "wgpu",

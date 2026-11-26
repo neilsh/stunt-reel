@@ -1,0 +1,4 @@
+Transcription of coordinator-received Claude Sonnet grading reports; no original grade file was written.
+TRAINTNL tick 683: aircraft-colour-wrong = 1
+INTRO tick 2564: aircraft-colour-wrong = 0
+INTRO tick 3246: aircraft-colour-wrong = 0 (sheet identification moderately confident)

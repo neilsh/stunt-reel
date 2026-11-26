@@ -27,6 +27,8 @@ from stunt_reel.batch_films import BatchFilm  # noqa: E402
 from stunt_reel.batch_ledger import STAGES, Record  # noqa: E402
 from stunt_reel.parity_pipeline import Run  # noqa: E402
 
+pytestmark = pytest.mark.windows
+
 TIMEOUTS = {"archive": 900.0, "capture": 900.0, "render": 600.0, "score": 600.0}
 StageFunction = Callable[[BatchFilm, Path, Run, float], Record]
 

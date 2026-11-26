@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-pytestmark = pytest.mark.usefixtures("rows")
+pytestmark = [pytest.mark.windows, pytest.mark.usefixtures("rows")]
 
 
 def _name_builds(pointers: Path, *, playone_build: str) -> None:

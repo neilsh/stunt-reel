@@ -19,6 +19,8 @@ from stunt_reel.tac.automation import MockAutomation
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
+pytestmark = pytest.mark.windows
+
 KEYS = ["KBD_c", "KBD_down", "KBD_enter"]
 FIRST = 1300
 PAGE = b"\x07" * plan.FRAME_BYTES

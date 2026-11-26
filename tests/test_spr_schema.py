@@ -7,15 +7,14 @@ import importlib.util
 import io
 import struct
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from stunt_reel.kaitai import compile_schemas, ksc_command, load_generated_module
+from conftest import COMPILED_SCHEMAS_GROUP, CompiledSchemas
 
-pytestmark = pytest.mark.docs
+pytestmark = [pytest.mark.docs, pytest.mark.xdist_group(COMPILED_SCHEMAS_GROUP)]
 
 SCHEMA = Path(__file__).resolve().parent.parent / "research/formats/auxiliary/spr.ksy"
 VERIFIER = SCHEMA.parents[3] / "python/scripts/verify_schemas_corpus.py"
@@ -34,14 +33,9 @@ def _verifier() -> Any:
 
 
 @pytest.fixture(scope="module")
-def spr_parser() -> Any:
-    """Compile the schema once and return the generated root type."""
-    if ksc_command() is None:
-        pytest.skip("Kaitai compiler not on PATH")
-    with tempfile.TemporaryDirectory(prefix="stunt-kaitai-spr-") as tmp:
-        compile_schemas([SCHEMA], tmp)
-        module = load_generated_module(Path(tmp) / "spr.py", "stunt_kaitai_spr")
-    return module.Spr
+def spr_parser(compiled_schemas: CompiledSchemas) -> Any:
+    """Return the `.SPR` root type from the session's one catalog compilation."""
+    return compiled_schemas.modules["spr"].Spr
 
 
 def _parse(parser: Any, data: bytes) -> Any:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print the unattended queue: open PRs, then open ``status:ready-for-agent`` issues, one line each.
+"""Print the unattended queue: open PRs, then open ready-for-agent and needs-plan issues, one line each.
 
 Each line names the item and either ``ready`` or why it is skipped, for the reasons that need no
 judgement:
@@ -8,15 +8,17 @@ judgement:
   open PR, which waits for its base to merge; or one whose auto-merge is armed and whose checks are pending. An armed PR with a
   failed check, a conflict, or passed checks yet still open is ``ready``, since it needs work;
 - an issue labelled ``status:in-progress``, or ``env:local-only`` in a cloud session
-  (``CLAUDE_CODE_REMOTE=true`` or ``/home/antigravity``; ``docs/agents/triage-labels.md`` § Environment roles);
+  (``CLAUDE_CODE_REMOTE=true`` or ``/home/antigravity``; ``docs/agents/triage-labels.md``);
 - an issue with an open blocker or open sub-issue (``docs/agents/issue-tracker.md``, "Count open
   blockers"): a native dependency, a ``Blocked by: #<n>`` line naming an open issue, or an open
   issue whose body starts a line with ``Part of #<n>``;
 - an issue an open PR names with ``Part of`` or a closing keyword, or by ``<n>-`` in its branch.
 
 PRs come in stack order (a PR whose base is ``main`` before the PRs stacked on it), with ``draft``
-and a non-``main`` base noted; issues come in number order. Everything is read over REST, which a
-cloud session's proxy allows. Bodies are read here and never printed.
+and a non-``main`` base noted; issues come in ``priority:`` order (``p0`` through ``p3``, then
+unprioritized with an ``unprioritized`` note), breaking ties with ``status:ready-for-agent``
+(``issue``) before ``status:needs-plan`` (``plan``), then issue number. Everything is read over
+REST, which a cloud session's proxy allows. Bodies are read here and never printed.
 When a class agreement batch is due (``stunt_reel.class_agreement.due``), a line says why, in
 both environments.
 A local run ends with the free-disk line for the primary checkout's drive, naming the action
@@ -28,7 +30,6 @@ Usage: ``mise run queue``. Exit status: ``0`` on success, ``2`` when ``gh`` fail
 from __future__ import annotations
 
 import datetime as dt
-import json
 import os
 import re
 import shutil
@@ -40,12 +41,10 @@ from typing import Any
 
 import labels
 import merge_bar
+from gh_api import GhError, gh_json
 
 from stunt_reel.class_agreement import AGREEMENT_FILE, due, read_agreement, renderer_commits_since
 from stunt_reel.dataroot import REPO_ROOT
-
-#: Seconds before a ``gh`` call counts as failed.
-GH_TIMEOUT = 60
 
 #: Seconds before the ``git`` call naming the primary checkout counts as failed.
 GIT_TIMEOUT = 60
@@ -66,37 +65,9 @@ _BRANCH_ISSUE = re.compile(r"(?:^|/)([1-9]\d*)-[a-z]", re.IGNORECASE)
 _FAILED = {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
 
 
-class GhError(RuntimeError):
-    """``gh`` failed, stalled or returned something other than JSON."""
-
-
-def gh_json(*args: str) -> Any:
-    """``gh <args>``'s stdout parsed as JSON; raises :class:`GhError`."""
-    exe = shutil.which("gh")
-    if exe is None:
-        raise GhError("gh not found on PATH")
-    try:
-        done = subprocess.run(  # noqa: S603 - gh with fixed arguments
-            [exe, *args],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-            timeout=GH_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired as err:
-        raise GhError(f"gh {args[0]} stalled for {GH_TIMEOUT} s") from err
-    if done.returncode != 0:
-        raise GhError(done.stderr.strip() or f"gh {args[0]} exited {done.returncode}")
-    try:
-        return json.loads(done.stdout)
-    except json.JSONDecodeError as err:
-        raise GhError(f"gh {args[0]} returned no JSON: {err}") from err
-
-
 @dataclass
 class Item:
-    """One queue line: ``PR`` or ``issue``, its number and title, and why it is skipped."""
+    """One queue line: ``PR``, ``issue`` or ``plan``, its number and title, and why it is skipped."""
 
     kind: str
     number: int
@@ -219,7 +190,7 @@ def pr_items(
 def issue_items(
     open_issues: list[dict[str, Any]], prs: list[dict[str, Any]], *, cloud: bool
 ) -> list[Item]:
-    """A line per open ``status:ready-for-agent`` issue among *open_issues*, in number order."""
+    """A line per open ``status:ready-for-agent`` or ``status:needs-plan`` issue, in priority order."""
     claimed: dict[int, int] = {}
     for pr in prs:
         found = claimed_issues(pr.get("body")) | claimed_issues(pr.get("title"))
@@ -233,12 +204,16 @@ def issue_items(
     for issue in open_issues:
         for n in parents_of(issue.get("body")) - {issue["number"]}:
             children[n] = children.get(n, 0) + 1
-    items = []
-    for issue in sorted(open_issues, key=lambda i: i["number"]):
+    ranked: list[tuple[int, int, int, Item]] = []
+    for issue in open_issues:
         names = _labels(issue)
-        if labels.READY_FOR_AGENT not in names:
+        if labels.NEEDS_PLAN in names:
+            kind = "plan"
+        elif labels.READY_FOR_AGENT in names:
+            kind = "issue"
+        else:
             continue
-        item = Item("issue", issue["number"], issue["title"], names)
+        item = Item(kind, issue["number"], issue["title"], names)
         if labels.IN_PROGRESS in names:
             item.skip.append(labels.IN_PROGRESS)
         if cloud and labels.LOCAL_ONLY in names:
@@ -254,8 +229,19 @@ def issue_items(
             item.skip.append(f"{open_subs} open sub-issue(s)")
         if item.number in claimed:
             item.skip.append(f"PR #{claimed[item.number]}")
-        items.append(item)
-    return items
+        rank = labels.priority_rank(names)
+        if rank is None:
+            item.notes.append("unprioritized")
+        ranked.append(
+            (
+                len(labels.PRIORITIES) if rank is None else rank,
+                0 if kind == "issue" else 1,
+                item.number,
+                item,
+            )
+        )
+    ranked.sort(key=lambda entry: entry[:3])
+    return [item for _, _, _, item in ranked]
 
 
 def armed_state(pr: dict[str, Any]) -> str:

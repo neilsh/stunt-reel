@@ -1,7 +1,7 @@
 ---
 title: "Distill research/parity/lavapipe-render-time.md, second pass"
 started: 2026-11-24
-outcome: "A 2026-11-16 superseded peak, restatements of § 5 and long forms of two Ruled out entries, open question 1 and the summary moved to journal.md; the note, 49,290 bytes, stays over its 32 KiB budget as current reference until it is split by subject"
+outcome: "A 2026-11-16 superseded peak, restatements of § 5 and long forms of two Ruled out entries, open question 1 and the summary moved to journal.md; the note stays over its 32 KiB budget as current reference until it is split by subject"
 ---
 # Distill `lavapipe-render-time.md`, second pass
 

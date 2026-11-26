@@ -1055,18 +1055,12 @@ fn intro_film_streams_keep_invariants_and_self_parity() {
                 assert_valid_euclidean_transform(&act.compute_world_matrix(), act.position_meters);
             }
 
-            // Camera cuts must occur at ticks 200 and 400 (per intro kinematics in streamer.py)
-            if i == 200 || i == 400 {
-                assert!(
-                    rec.camera.cut_from_previous,
-                    "Camera cut must be flagged at tick {i}"
-                );
-            } else if i > 0 && i != 200 && i != 400 {
-                assert!(
-                    !rec.camera.cut_from_previous,
-                    "Camera cut should not be flagged at tick {i}"
-                );
-            }
+            // The rig jumps at ticks 200 and 400 without a `view_obj` switch, and PLAYONE
+            // interpolates a slot across any distance (image `0x3E7A..0x3ECA`): no cut.
+            assert!(
+                !rec.camera.cut_from_previous,
+                "Camera cut should not be flagged at tick {i}"
+            );
 
             // Audio cues at ticks 0, 200, 400
             if i == 0 {

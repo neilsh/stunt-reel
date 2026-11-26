@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from pytest_helpers import MemorySource
 from render_helpers import flip_byte, rewrite_store
 from stunt_reel.bench.errors import (
     TABLE_HEADER,
@@ -41,7 +42,8 @@ from stunt_reel.bench.errors import (
     write_disputes,
     write_example,
 )
-from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
+from stunt_reel.bench.planes import BenchError, RenderPlanes, RenderTree, load_capture
+from stunt_reel.bench.sheets import MIN_ACTOR_PIXELS
 from stunt_reel.parity_artifacts import FrameReport, I6Gate, Report, write_report
 
 REPO = Path(__file__).resolve().parents[1]
@@ -83,9 +85,9 @@ def _write(tmp_path: Path, text: str) -> Path:
 
 def test_committed_categories_load() -> None:
     taxonomy = load_categories(CATEGORIES)
-    assert len(taxonomy.categories) == 18
+    assert len(taxonomy.categories) == 19
     assert taxonomy.ids[0] == "aircraft-parts-missing"
-    assert taxonomy.ids[-3:] == ("sun-missing", "frame-blank", "black-block")
+    assert taxonomy.ids[-2:] == ("black-block", "propeller-solid")
     assert taxonomy.films["intro"] == FilmWindow(1000, None)
     assert taxonomy.films["ctry"] == FilmWindow(0, 990)
     assert taxonomy.min_change == 4
@@ -206,7 +208,9 @@ def test_plan_sheets_counts(bench_fixture: Path) -> None:
     kinds = [s.kind for s in sheets]
     assert kinds.count("real") == 2
     assert kinds.count("control") == 2
-    with_actors = sum(1 for t in ticks if (tree.load(t).layer >= 16).any())
+    with_actors = sum(
+        1 for t in ticks if np.count_nonzero(tree.load(t).layer >= 16) >= MIN_ACTOR_PIXELS
+    )
     for key in taxonomy.faults:
         planted = [s for s in sheets if s.kind == "planted" and s.fault == key]
         expected = with_actors if key == "actors_removed" else len(ticks)
@@ -362,8 +366,68 @@ def test_calibrate_pass_bars() -> None:
     # Controls are reported, not gated: their panels are pixel-identical, unlike any real sheet.
     assert _calibration_run(taxonomy, 12, 0, 6, 5).passes
     assert not _calibration_run(taxonomy, 12, 10, 6, 4).passes
-    assert _calibration_run(taxonomy, 2, 2, 2, 2).passes
     assert not _calibration_run(taxonomy, 2, 2, 6, 5).inconclusive
+
+
+@pytest.mark.parametrize("actors", [1, 2, 5])
+def test_calibration_with_fewer_than_six_actor_sheets_is_inconclusive(actors: int) -> None:
+    # The 5-of-6 bar was measured on six sheets; all of fewer catching proves less than it did.
+    result = _calibration_run(load_categories(CATEGORIES), 12, 12, actors, actors)
+    assert result.inconclusive
+    assert not result.passes
+
+
+def _actor_frames(actor_pixels: dict[int, int]) -> MemorySource:
+    """Planes whose actor layer covers the given number of pixels at each tick."""
+    frames = {}
+    for tick, count in actor_pixels.items():
+        layer = np.zeros((200, 320), dtype=np.uint16)
+        layer.flat[:count] = 16
+        frames[tick] = RenderPlanes(
+            rgb=np.zeros((200, 320, 3), dtype=np.uint8), idx=None, layer=layer
+        )
+    return MemorySource(frames)
+
+
+def _actor_ticks(sheets: list[Sheet]) -> list[int]:
+    return [s.tick for s in sheets if s.fault == "actors_removed"]
+
+
+def test_actor_sheets_skip_actors_too_small_to_see() -> None:
+    # INTRO calibration seed 1 (2026-11-25): ticks 2058 and 2223 removed 1 and 33 actor
+    # pixels, and no grader saw either removal.
+    source = _actor_frames(
+        {10: 0, 20: 1, 30: 33, 40: MIN_ACTOR_PIXELS - 1, 50: MIN_ACTOR_PIXELS, 60: 2000}
+    )
+    sheets = plan_sheets(source.ticks(), source, load_categories(CATEGORIES), 1, calibrate=True)
+    assert _actor_ticks(sheets) == [50, 60]
+
+
+def test_actor_sheets_take_the_first_eligible_ticks() -> None:
+    pixels = dict.fromkeys(range(10, 100, 10), 900) | {30: 5, 70: 5}
+    source = _actor_frames(pixels)
+    taxonomy = load_categories(CATEGORIES)
+    sheets = plan_sheets(source.ticks(), source, taxonomy, 1, calibrate=True)
+    assert _actor_ticks(sheets) == [10, 20, 40, 50, 60, 80]
+    assert _actor_ticks(plan_sheets(source.ticks(), source, taxonomy, 2, calibrate=True)) == [
+        10,
+        20,
+        40,
+        50,
+        60,
+        80,
+    ]
+
+
+def test_calibration_with_only_invisible_actors_is_inconclusive() -> None:
+    source = _actor_frames({10: 1, 20: 33})
+    taxonomy = load_categories(CATEGORIES)
+    sheets = plan_sheets(source.ticks(), source, taxonomy, 1, calibrate=True)
+    assert _actor_ticks(sheets) == []
+    lines = [_all_zero(taxonomy, s.id) for s in sheets]
+    result = calibrate(parse_grades("\n".join(lines), taxonomy), sheets, taxonomy)
+    assert result.inconclusive
+    assert not result.passes
 
 
 def test_calibration_without_actor_sheets_is_inconclusive() -> None:

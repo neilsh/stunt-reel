@@ -40,6 +40,8 @@ from stunt_reel.parity_judge import (  # noqa: E402
     winner_line,
 )
 
+pytestmark = pytest.mark.windows
+
 FILMS = ("ctry", "intro")
 #: Every synthetic film scores ticks 0, 10, ..., 90.
 TICKS = tuple(range(0, 100, 10))

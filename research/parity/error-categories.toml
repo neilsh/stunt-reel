@@ -6,9 +6,12 @@
 # whose discovery pass named it) and `since` are bookkeeping, not shown to graders.
 #
 # `examples` names sheets in error-examples/ (`<film>-<tick>.png`: capture top left, render top
-# right, luma difference, actor close-up) that both Haiku and Sonnet graded 2 or more for the
-# category; an empty list means no real frame of the probe reached that. Add one with
-# `mise run parity-bench -- errors-example`, which copies the sheet there and names it here.
+# right, luma difference, actor close-up) that two different grading models each graded 2 or more
+# for the category; two passes of one model do not count. Earlier examples are Haiku and Sonnet;
+# intro-3466 was graded 2+ by Gemini Hydrogen and DSH under the 20-category file; the 19-category
+# regrades were below 2 (work/2026-11/calibration-actor-floor/journal.md). An empty
+# list means no sheet has met that rule yet, not that the readout never grades the error. Add one
+# with `mise run parity-bench -- errors-example`, which copies the sheet there and names it here.
 #
 # The file also holds each film's tick window (`[films.<film>]`) and the smallest change in a
 # category's count of frames graded 2+ that a readout comparison reports (`[readout] min_change`).
@@ -142,6 +145,21 @@ found_by = ["haiku"]
 since = "2026-11-01"
 examples = []
 
+# Added from the seven reference films' `other` notes at dd7e76eb (2026-11-25): the propeller error no
+# category covered, named on several frames. Other recurring notes were edge shifts
+# (misregistration), the capture's HUD timecode, or runway lights (scenery-missing).
+[[category]]
+id = "propeller-solid"
+definition = "The RENDER draws the propeller as a solid blade or bar (often across the nose or fuselage) where the capture shows only faint spin flecks or no blade"
+found_by = ["hydrogen"]
+since = "2026-11-25"
+examples = ["intro-3466"]
+
+# A colour category, `aircraft-colour-wrong`, was added at 9be3e2cb with the propeller one and removed
+# on 2026-11-25: a Claude Sonnet pass graded its candidate sheets 1, 0 and 0, so no sheet met the
+# two-model example rule (work/2026-11/calibration-actor-floor/journal.md). Do not reuse the id for a
+# different error.
+
 # Which categories should rise when a fault is planted (keys as in stunt_reel.bench.faults Fault.key).
 # A planted sheet counts as detected when the grade of any of these categories, or an `other` note,
 # rises over the same frame's unplanted grade.
@@ -161,6 +179,8 @@ start = 1000
 
 # compare reports a category only when its count of frames graded 2+ moves by at least this much.
 # Set by the repeatability run (research/parity/metric-bench.md section 2.3): the largest change between
-# two Haiku gradings of the same sheets was 3.
+# two Haiku gradings of the same sheets was 3. Two DSH passes over the seven 20-category readouts
+# moved a count by at most 1 (work/2026-11/calibration-actor-floor/readout-repeat.txt).
+# Four is not shown to bound DSH: the 19-category BOMB passes differed by 12 frames (metric-bench.md).
 [readout]
 min_change = 4

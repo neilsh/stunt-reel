@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 lazy from collections.abc import Sequence
 
 import pytest
 
 from stunt_reel import link, parity_layout, parity_pipeline
+
+pytestmark = pytest.mark.windows
 
 
 class FakeRunner:
@@ -91,6 +94,23 @@ def test_a_failed_cargo_build_is_a_link_error(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(link, "binary_locked", lambda _path: False)
     with pytest.raises(link.LinkError, match="could not compile"):
         link.ensure_binary(run=FakeRunner(101, "error: could not compile\n"))
+
+
+def test_a_writable_binary_is_not_locked(tmp_path: Path) -> None:
+    binary = tmp_path / "stuntreel.exe"
+    binary.write_bytes(b"MZ")
+
+    assert not link.binary_locked(binary)
+
+
+def test_a_missing_binary_is_not_locked(tmp_path: Path) -> None:
+    assert not link.binary_locked(tmp_path / "missing-stuntreel.exe")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows locks a running image")
+def test_a_running_binary_is_locked() -> None:
+    """The real Windows branch ``ensure_binary`` relies on, not a stubbed verdict."""
+    assert link.binary_locked(Path(sys.executable))
 
 
 def test_layout_paths() -> None:

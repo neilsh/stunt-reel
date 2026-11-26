@@ -1,0 +1,11 @@
+[ab] $ uv run python python/scripts/ab.py --out work/2026-11/1018_lavapipe-ab-variance --name aa-span-b --variant a --variant b --span 3680..=3979 --adapter lavapipe --rounds 4 --order alternate
+ab: stopped after lavapipe-3680-3979 round 2 a: other processes used 10% of the CPUs during it, over --max-load 10%; its row is in work\2026-11\1018_lavapipe-ab-variance\aa-span-b.csv (start again on a quiet machine, or --force)
+ab: lavapipe-3680-3979 warm-up 0 a: loop 2521 ms (not kept)
+ab: lavapipe-3680-3979 warm-up 0 b: loop 2360 ms (not kept)
+ab: lavapipe-3680-3979 round 0 a: loop 2349 ms, wall 3862 ms, other load 3%
+ab: lavapipe-3680-3979 round 0 b: loop 2353 ms, wall 3868 ms, other load 4%
+ab: lavapipe-3680-3979 round 1 b: loop 2380 ms, wall 3892 ms, other load 3%
+ab: lavapipe-3680-3979 round 1 a: loop 2421 ms, wall 3927 ms, other load 5%
+ab: lavapipe-3680-3979 round 2 a: loop 2815 ms, wall 4399 ms, other load 10%
+Finished in 40.90s
+[ab] ERROR task failed

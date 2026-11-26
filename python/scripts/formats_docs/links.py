@@ -2,38 +2,17 @@
 
 from __future__ import annotations
 
-import os
-import re
 lazy from pathlib import Path
 
-from formats_docs.catalog import VerificationResult, ignore_rules, link_scan_files
+from formats_docs.catalog import VerificationResult, link_scan_files
 from stunt_reel.markdown_links import (
-    HEADING_REGEX,
-    MARKDOWN_LINK_REGEX,
-    URL_SCHEME_REGEX,
-    prose,
-    slug,
+    ResolvedTarget,
+    anchor_matches,
+    anchors_of,
+    extract_links,
+    ignore_rules,
+    resolve_target,
 )
-
-#: A bracketed anchor token, ``[MEM-SOD-VM]``, which a fragment may name.
-_TOKEN_REGEX = re.compile(r"\[([A-Za-z0-9_-]+)\]")
-
-
-def _heading_slugs(text: str) -> set[str]:
-    """Anchor slugs of *text*'s ATX headings outside fenced code."""
-    return {
-        slug(heading.group(2))
-        for blanked, line in zip(prose(text).splitlines(), text.splitlines(), strict=True)
-        if HEADING_REGEX.match(blanked) and (heading := HEADING_REGEX.match(line))
-    }
-
-
-def _repo_relative(target: Path, root: Path) -> str | None:
-    """*target*'s POSIX path inside *root*, or None when it lies outside."""
-    try:
-        return target.relative_to(root).as_posix()
-    except ValueError:
-        return None
 
 
 def verify_link_integrity(repo_root: Path) -> VerificationResult:
@@ -44,71 +23,50 @@ def verify_link_integrity(repo_root: Path) -> VerificationResult:
     root = repo_root.resolve()
 
     scan_files = link_scan_files(repo_root)
-    links: list[tuple[str, int, str, Path, str | None, str]] = []
+    pending: list[tuple[str, int, str, ResolvedTarget]] = []
     targets: set[str] = set()
     for rel_path in scan_files:
         source_file = (repo_root / rel_path).resolve()
         if not source_file.exists():
             continue
-
-        # The catalog has always read links inside inline code, so only fenced blocks are blanked.
-        content = prose(source_file.read_text(encoding="utf-8"), inline_code=False)
-
-        for line_num, line in enumerate(content.splitlines(), start=1):
-            for match in MARKDOWN_LINK_REGEX.finditer(line):
-                url = match.group(1).strip()
-
-                # Ignore external URLs
-                if URL_SCHEME_REGEX.match(url):
-                    continue
-
-                links_checked += 1
-                file_part, _, anchor = url.partition("#")
-
-                # Resolve target file path
-                if file_part:
-                    target_file = (source_file.parent / file_part).resolve()
-                    lexical = Path(os.path.normpath(source_file.parent / file_part))
-                else:
-                    target_file = source_file
-                    lexical = source_file
-
-                relative = _repo_relative(lexical, root)
-                if relative is not None:
-                    targets.add(relative)
-                links.append((rel_path, line_num, url, target_file, relative, anchor))
+        for link in extract_links(source_file.read_text(encoding="utf-8")):
+            resolved = resolve_target(source_file, link.target, root)
+            if resolved is None:
+                continue
+            links_checked += 1
+            if resolved.relative is not None:
+                targets.add(resolved.relative)
+            pending.append((rel_path, link.line, link.target, resolved))
 
     ignored = ignore_rules(root, targets)
-    for rel_path, line_num, url, target_file, relative, anchor in links:
-        if not target_file.exists():
+    for rel_path, line, target, resolved in pending:
+        if not resolved.file.exists():
             errors.append(
-                f"Broken link in {rel_path}:{line_num} -> '{url}' (target does not exist: {target_file})"
+                f"Broken link in {rel_path}:{line} -> '{target}' "
+                f"(target does not exist: {resolved.file})"
             )
             continue
 
         # A gitignored target exists in the worktree that wrote it but not on main. The lookup
         # is lexical, so a target under a data-root junction stays inside the repository.
-        rule = ignored.get(relative) if relative is not None else None
+        rule = ignored.get(resolved.relative) if resolved.relative is not None else None
         if rule is not None:
             errors.append(
-                f"Broken link in {rel_path}:{line_num} -> '{url}' "
-                f"(target is gitignored by {rule}: {target_file})"
+                f"Broken link in {rel_path}:{line} -> '{target}' "
+                f"(target is gitignored by {rule}: {resolved.file})"
             )
             continue
 
         # If anchor is present and target is a Markdown file, verify anchor target
-        if anchor and target_file.suffix == ".md":
-            target_content = target_file.read_text(encoding="utf-8")
-            slug_set = _heading_slugs(target_content) | {
-                token.lower() for token in _TOKEN_REGEX.findall(target_content)
-            }
-
-            norm_anchor = anchor.lower()
-            if norm_anchor not in slug_set and slug(norm_anchor) not in slug_set:
-                errors.append(
-                    f"Broken anchor in {rel_path}:{line_num} -> '{url}' "
-                    f"(anchor '{anchor}' not found in {target_file.name})"
-                )
+        if (
+            resolved.fragment
+            and resolved.file.suffix == ".md"
+            and not anchor_matches(resolved.fragment, anchors_of(resolved.file))
+        ):
+            errors.append(
+                f"Broken anchor in {rel_path}:{line} -> '{target}' "
+                f"(anchor '{resolved.fragment}' not found in {resolved.file.name})"
+            )
 
     details.append(
         f"Successfully validated {links_checked} local markdown links across {len(scan_files)} files"

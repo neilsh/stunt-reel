@@ -98,7 +98,7 @@ Part of the [`running-unattended`](SKILL.md) skill.
 2. **Always use `--body-file` on Windows PowerShell 5.1:** PowerShell double quotes (`"..."` and `@"..."@`) treat backticks (`` ` ``) as escape characters and corrupt Markdown code spans.
    Write every issue/PR body or comment to `build/scratch/<name>.md` with the harness's file-write tool (or `[IO.File]::WriteAllText` with a single-quoted `@'...'@` string, [`docs/harness.md`](../../../docs/harness.md#windows-powershell-51)) and pass `--body-file build/scratch/<name>.md`.
    Use full commit-SHA permalinks on `origin/main` when linking code from an issue body.
-3. **Labels:** Apply one state label ([`triage-labels.md`](../../../docs/agents/triage-labels.md)):
+3. **Labels:** Apply one state label, one or more primary-subsystem `area:` labels, a `type:` contract label (`type:research`, `type:fidelity` or `type:perf`) where applicable, and `env:local-only` when needed ([`triage-labels.md`](../../../docs/agents/triage-labels.md)), leaving `priority:` unset for human prioritization:
    - Label a newly filed issue `status:ready-for-agent` only when it is an unblocked out-of-scope finding that (a) names the files involved, (b) carries the evidence (`file:line`, offset, or command), (c) has a testable done condition, and (d) has no non-obvious design choice.
-   - Always label blocked follow-ups split from the current ticket `status:needs-triage` (or `status:ready-for-human` when a human decision is the blocker).
+   - Always label blocked follow-ups split from the current ticket `status:needs-triage` (or `status:needs-plan` when ready for read-only planning, or `status:ready-for-human` when a human decision is the blocker).
    - Add `env:local-only` when the issue needs a resource only local-windows has ([`triage-labels.md`](../../../docs/agents/triage-labels.md#environment-roles)).

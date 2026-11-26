@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+pytestmark = pytest.mark.windows
+
 ARCHIVE = build_all([b"one", b"two"])
 
 

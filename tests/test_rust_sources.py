@@ -11,6 +11,10 @@ import pytest
 
 from stunt_reel.dataroot import REPO_ROOT
 
+# Every test here reads crates/, so a Rust-only change can break it: the docs marker makes a
+# scoped gate run it (issue #1041).
+pytestmark = pytest.mark.docs
+
 CRATES = sorted(
     path.name for path in (REPO_ROOT / "crates").iterdir() if (path / "Cargo.toml").is_file()
 )

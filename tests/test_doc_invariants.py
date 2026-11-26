@@ -7,15 +7,18 @@ Two directions, driven by the registry in ``stunt_reel.doc_anchors``:
 """
 
 import bisect
-import functools
 import os
 import re
+import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import gate
 import pytest
 
+from git_helpers import run_git
 from stunt_reel.doc_anchors import ANCHORS, BY_ID, CITATION_REGEX
 from stunt_reel.markdown_links import (
     HEADING_REGEX,
@@ -23,13 +26,20 @@ from stunt_reel.markdown_links import (
     MARKDOWN_LINK_REGEX,
     SECTION_NUMBER_REGEX,
     URL_SCHEME_REGEX,
+    ResolvedTarget,
+    anchor_matches,
+    anchors,
+    anchors_of,
+    extract_links,
+    headings,
+    ignore_rules,
     prose,
-    slug,
+    resolve_target,
 )
 from stunt_reel.work_items import is_dated
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
 pytestmark = pytest.mark.docs
 
@@ -57,13 +67,7 @@ def _walk(root: Path, skipped: frozenset[str]) -> Iterator[Path]:
 
 def _heading_texts(path: Path) -> set[str]:
     """Heading texts of a Markdown file outside fenced code, without the leading ``#`` marks."""
-    text = path.read_text(encoding="utf-8")
-    return {
-        heading[2]
-        for blanked, line in zip(prose(text).splitlines(), text.splitlines(), strict=True)
-        # The blanked line says whether it is a heading; the line keeps its inline code.
-        if HEADING_REGEX.match(blanked) and (heading := HEADING_REGEX.match(line))
-    }
+    return set(headings(path.read_text(encoding="utf-8")))
 
 
 def _citation_files() -> list[Path]:
@@ -119,7 +123,6 @@ def test_cited_anchors_are_registered() -> None:
 
 # .superpowers is agent scratch, not docs.
 LINK_SKIPPED_DIRS = SKIPPED_DIRS | {".git", "corpus", "worktrees", ".superpowers"}
-HTML_ID_REGEX = re.compile(r"<a\s+(?:name|id)=\"([^\"]+)\"")
 #: A ``dest = "…"`` value is a page's path on the research site (``site/published.toml``), not
 #: a repo path, so the lookbehind skips it.
 CODE_DOC_PATH_REGEX = re.compile(
@@ -160,28 +163,45 @@ def _code_files(root: Path = REPO_ROOT) -> list[Path]:
     ]
 
 
-def _link_sources(root: Path, skipped: tuple[str, ...] = ()) -> list[Path]:
-    """Markdown files under *root* whose links are checked, less those under a *skipped* prefix."""
+#: Set by `mise run test-docs`, the pre-commit hook: check only the frozen work notes the branch
+#: changes. `mise run test-py-docs`, CI and the gate leave it unset and check every record.
+CHANGED_WORK_ONLY_ENV = "STUNT_DOC_LINKS_CHANGED_WORK"
+
+
+def _pre_commit_mode() -> bool:
+    """Whether `mise run test-docs`, the pre-commit hook, asked for the fast scan."""
+    return os.environ.get(CHANGED_WORK_ONLY_ENV) == "1"
+
+
+def _changed_work_notes(root: Path) -> set[str] | None:
+    """The dated work notes the branch changes over its base, as repo-relative POSIX paths."""
+    try:
+        changed = gate.changed_paths(root, gate.default_base(root))
+    except OSError, subprocess.CalledProcessError, gate.ChangedPathsError:
+        return None
+    return {"/".join(path.split("/")[:3]) for path in changed if is_dated(path)}
+
+
+def _link_sources(
+    root: Path, skipped: tuple[str, ...] = (), *, changed_work_only: bool = False
+) -> list[Path]:
+    """Markdown files under *root* whose links are checked, less those under a *skipped* prefix.
+
+    With *changed_work_only*, a frozen work note is checked when its folder changes;
+    every evergreen document stays in the set.
+    """
+    changed = _changed_work_notes(root) if changed_work_only else None
     return [
         path
         for path in _walk(root, LINK_SKIPPED_DIRS)
-        if path.suffix == ".md" and not path.relative_to(root).as_posix().startswith(skipped)
+        if path.suffix == ".md"
+        and not path.relative_to(root).as_posix().startswith(skipped)
+        and (
+            changed is None
+            or not is_dated(path.relative_to(root).as_posix())
+            or "/".join(path.relative_to(root).as_posix().split("/")[:3]) in changed
+        )
     ]
-
-
-@functools.cache
-def _anchors(path: Path) -> set[str]:
-    """Every fragment a link may target in a Markdown file, duplicates numbered like GitHub."""
-    anchors: set[str] = set()
-    seen: dict[str, int] = {}
-    text = path.read_text(encoding="utf-8")
-    for heading in _heading_texts(path):
-        anchor = slug(heading)
-        count = seen.get(anchor, 0)
-        anchors.add(anchor if count == 0 else f"{anchor}-{count}")
-        seen[anchor] = count + 1
-    anchors.update(HTML_ID_REGEX.findall(text))
-    return anchors
 
 
 def _is_ruled_out_heading(text: str) -> bool:
@@ -216,10 +236,9 @@ def _links(path: Path) -> Iterator[tuple[str, bool]]:
         else:
             allowed_from.append(len(text) + 1)
         offset += len(line) + 1
-    for regex in (MARKDOWN_LINK_REGEX, LINK_DEFINITION_REGEX):
-        for match in regex.finditer(text):
-            index = bisect.bisect_right(line_starts, match.start()) - 1
-            yield match.group(1), match.start() >= allowed_from[index]
+    for link in extract_links(text):
+        index = bisect.bisect_right(line_starts, link.start) - 1
+        yield link.target, link.start >= allowed_from[index]
 
 
 def _is_dated(path: Path, work: Path) -> bool:
@@ -234,25 +253,42 @@ def _is_dated_image(path: Path, work: Path) -> bool:
     return _is_dated(path, work) and path.relative_to(work).parts[2:3] == (IMAGES_DIR_NAME,)
 
 
-def _check_link(source: Path, target: str, work_dir: Path) -> str | None:
-    """Why *target*, linked from *source*, does not resolve; None when it does or is a URL.
+def _problem(
+    source: Path, resolved: ResolvedTarget, work_dir: Path, ignored: Mapping[str, str]
+) -> str | None:
+    """Why *resolved*, linked from *source*, does not resolve; None when it does.
 
     A link from a dated record under *work_dir* to an evergreen file is checked for the file
-    only, so renaming a heading in a note never breaks a frozen record; every other ``.md``
-    fragment must name a heading.
+    and its ignore rule only, so renaming a heading in a note never breaks a frozen record;
+    every other ``.md`` fragment must name a heading.
     """
-    if URL_SCHEME_REGEX.match(target):
-        return None
-    file_part, _, fragment = target.partition("#")
-    resolved = (source.parent / file_part).resolve() if file_part else source.resolve()
-    if not resolved.exists():
+    if not resolved.file.exists():
         return "no such file"
-    if not fragment or resolved.suffix != ".md":
+    rule = ignored.get(resolved.relative) if resolved.relative is not None else None
+    if rule is not None:
+        return f"target is gitignored by {rule}"
+    if not resolved.fragment or resolved.file.suffix != ".md":
         return None
     work = work_dir.resolve()
-    if _is_dated(source.resolve(), work) and not _is_dated(resolved, work):
+    if _is_dated(source.resolve(), work) and not _is_dated(resolved.file, work):
         return None
-    return None if fragment in _anchors(resolved) else "no such heading"
+    return (
+        None if anchor_matches(resolved.fragment, anchors_of(resolved.file)) else "no such heading"
+    )
+
+
+def _check_link(
+    source: Path, target: str, work_dir: Path, ignored: Mapping[str, str] | None = None
+) -> str | None:
+    """Why *target*, linked from *source*, does not resolve; None when it does or is a URL.
+
+    *ignored* maps repo-relative paths to the rule that ignores them; without it no target is
+    tested for an ignore rule, which the batch in `_broken_links` does.
+    """
+    resolved = resolve_target(source, target, work_dir.parent)
+    if resolved is None:
+        return None
+    return _problem(source, resolved, work_dir, ignored or {})
 
 
 def _work_links(root: Path = REPO_ROOT) -> set[tuple[str, str, bool]]:
@@ -290,18 +326,41 @@ def _heading_citations(text: str) -> list[str]:
     return citations
 
 
+def _broken_links(root: Path, *, changed_work_only: bool = False) -> list[str]:
+    """Why each link in *root*'s sources does not resolve, in source order; empty when all do."""
+    work = (root / WORK_DIR.name).resolve()
+    sources = _link_sources(
+        root,
+        GENERATED_DOC_DIRS + LINK_SOURCES_SKIPPED,
+        changed_work_only=changed_work_only,
+    )
+    pending: list[tuple[Path, str, ResolvedTarget]] = []
+    targets: set[str] = set()
+    for path in sources:
+        for target, _allowed in _links(path):
+            resolved = resolve_target(path, target, root)
+            if resolved is None:
+                continue
+            if resolved.relative is not None:
+                targets.add(resolved.relative)
+            pending.append((path, target, resolved))
+    ignored = ignore_rules(root, targets)
+    return [
+        f"{path.relative_to(root).as_posix()}: {target} ({problem})"
+        for path, target, resolved in pending
+        if (problem := _problem(path, resolved, work, ignored))
+    ]
+
+
 def test_markdown_links_resolve() -> None:
-    """Every relative Markdown link points at an existing file and, for .md targets, heading.
+    """Every relative Markdown link points at a committed file and, for .md targets, heading.
 
     A link from a dated record (``work/<YYYY-MM>/``) to an evergreen file is checked for the file
-    only (``_check_link``). Files under ``LINK_SOURCES_SKIPPED`` or ``GENERATED_DOC_DIRS`` are not sources here alone.
+    and its ignore rule only (``_problem``). ``mise run test-docs`` checks only the work notes the
+    branch changes; the gate and CI check every frozen record. Files under
+    ``LINK_SOURCES_SKIPPED`` or ``GENERATED_DOC_DIRS`` are not sources here alone.
     """
-    broken = [
-        f"{path.relative_to(REPO_ROOT).as_posix()}: {target} ({problem})"
-        for path in _link_sources(REPO_ROOT, GENERATED_DOC_DIRS + LINK_SOURCES_SKIPPED)
-        for target, _ in _links(path)
-        if (problem := _check_link(path, target, WORK_DIR))
-    ]
+    broken = _broken_links(REPO_ROOT, changed_work_only=_pre_commit_mode())
     assert not broken, "Broken Markdown links:\n" + "\n".join(sorted(broken))
 
 
@@ -589,6 +648,167 @@ def test_work_readme_is_evergreen(tmp_path: Path) -> None:
     assert _check_link(note, "../work/README.md#gone", work) == "no such heading"
     assert _check_link(readme, "../research/n.md#gone", work) == "no such heading"
     assert _check_link(journal, "../../README.md#gone", work) is None
+
+
+def _repo(root: Path) -> Path:
+    """An empty repository at *root* whose trunk is ``main``."""
+    run_git(root, "init", "-q", "-b", "main", check=True)
+    return root
+
+
+def test_duplicate_headings_number_like_github() -> None:
+    """The second and third ``Same`` get ``same-1`` and ``same-2``, in document order."""
+    assert anchors("# Same\n\n## Same\n\n### Same\n") == {"same", "same-1", "same-2"}
+
+
+def test_a_literal_heading_does_not_take_a_duplicates_anchor() -> None:
+    """``same``, ``same-1``, ``same`` number to ``same``, ``same-1``, ``same-2``."""
+    assert anchors("# Same\n\n## Same-1\n\n### Same\n") == {"same", "same-1", "same-2"}
+
+
+def test_a_link_to_a_duplicate_heading_resolves(tmp_path: Path) -> None:
+    """Identical headings are no longer collapsed before they are numbered."""
+    _repo(tmp_path)
+    _write(tmp_path / "target.md", "# Same\n\n## Same\n")
+    _write(tmp_path / "note.md", "# N\n\n[second](target.md#same-1)\n")
+    assert _broken_links(tmp_path) == []
+
+
+def test_a_reference_style_link_is_checked(tmp_path: Path) -> None:
+    """A definition, ``[p]: missing.md``, is a link as the inline form is."""
+    _repo(tmp_path)
+    _write(tmp_path / "note.md", "# N\n\nSee [the plan][p].\n\n[p]: missing.md\n")
+    assert _broken_links(tmp_path) == ["note.md: missing.md (no such file)"]
+
+
+def test_html_anchors_resolve(tmp_path: Path) -> None:
+    """An id or name on an HTML element is a fragment target, as a heading is."""
+    _repo(tmp_path)
+    _write(tmp_path / "target.md", '# T\n\n<a id="first"></a> <a name="second"></a>\n')
+    _write(tmp_path / "note.md", "# N\n\n[a](target.md#first) [b](target.md#second)\n")
+    assert _broken_links(tmp_path) == []
+
+
+def test_a_token_anchor_resolves(tmp_path: Path) -> None:
+    """A bracketed ``[MEM-SOD-VM]`` token answers for ``#mem-sod-vm``."""
+    _repo(tmp_path)
+    _write(tmp_path / "target.md", "# T\n\n[MEM-SOD-VM]\n")
+    _write(tmp_path / "note.md", "# N\n\n[vm](target.md#mem-sod-vm)\n")
+    assert _broken_links(tmp_path) == []
+
+
+def test_a_link_in_inline_code_is_not_a_link(tmp_path: Path) -> None:
+    """A sample ``[gone](missing.md)`` in backticks is prose, as GitHub renders it."""
+    _repo(tmp_path)
+    _write(tmp_path / "note.md", "# N\n\nUse `[gone](missing.md)` in a sample.\n")
+    assert _broken_links(tmp_path) == []
+
+
+def test_a_gitignored_target_fails(tmp_path: Path) -> None:
+    """The file exists in this worktree but not on a fresh clone, so the link is broken."""
+    repo = _repo(tmp_path)
+    _write(repo / ".gitignore", "*.log\n")
+    _write(repo / "note.md", "# N\n\n[log](probe.log)\n")
+    _write(repo / "probe.log", "trace\n")
+    assert _broken_links(repo) == [
+        "note.md: probe.log (target is gitignored by .gitignore:1:*.log)"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("folder", "name"),
+    [
+        ("docs", "harness.md"),
+        ("docs/howto", "page.md"),
+        ("docs/agents", "tracker.md"),
+        ("research/parity", "note.md"),
+        (".agents/skills/example", "notes.md"),
+    ],
+)
+def test_a_gitignored_target_fails_in_every_evergreen_directory(
+    tmp_path: Path, folder: str, name: str
+) -> None:
+    """An evergreen document in any directory catches a target that a clone will not hold."""
+    repo = _repo(tmp_path)
+    _write(repo / ".gitignore", "*.log\n")
+    source = f"{folder}/{name}"
+    up = "../" * (folder.count("/") + 1)
+    _write(repo / source, f"# T\n\n[log]({up}probe.log)\n")
+    _write(repo / "probe.log", "trace\n")
+    broken = _broken_links(repo)
+    assert len(broken) == 1, broken
+    assert broken[0].startswith(
+        f"{source}: {up}probe.log (target is gitignored by .gitignore:1:*.log)"
+    )
+
+
+def test_the_pre_commit_task_asks_for_the_changed_work_scan() -> None:
+    """`mise run test-docs` fast-scans; the gate's `test-py-docs` keeps every frozen record."""
+    tasks = tomllib.loads((REPO_ROOT / "mise.toml").read_text(encoding="utf-8"))["tasks"]
+    assert tasks["test-docs"]["env"] == {CHANGED_WORK_ONLY_ENV: "1"}
+    assert "env" not in tasks["test-py-docs"]
+
+
+def test_pre_commit_checks_only_the_work_notes_the_branch_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fast scan keeps every evergreen file and only the work notes the branch changes."""
+    repo = _repo(tmp_path)
+    old = f"{FIXTURE_FOLDER}/journal.md"
+    changed = f"{WORK_DIR.name}/2026-11/new/journal.md"
+    research = "research"
+    evergreen = f"{research}/n.md"
+    _write(repo / old, "# Old\n\n[gone](missing.md)\n")
+    _write(repo / "research" / "n.md", "# N\n")
+    run_git(repo, "add", ".", check=True)
+    run_git(repo, "commit", "-qm", "base", check=True)
+    run_git(repo, "switch", "-q", "-c", "feat", check=True)
+    _write(repo / changed, "# New\n\n[gone](missing.md)\n")
+    run_git(repo, "add", changed, check=True)
+    run_git(repo, "commit", "-qm", "new note", check=True)
+
+    monkeypatch.setenv(CHANGED_WORK_ONLY_ENV, "1")
+    fast_sources = {
+        path.relative_to(repo).as_posix()
+        for path in _link_sources(repo, changed_work_only=_pre_commit_mode())
+    }
+    assert fast_sources == {evergreen, changed}
+    assert sorted(_broken_links(repo, changed_work_only=True)) == [
+        f"{changed}: missing.md (no such file)"
+    ]
+
+    monkeypatch.delenv(CHANGED_WORK_ONLY_ENV)
+    full_sources = {path.relative_to(repo).as_posix() for path in _link_sources(repo)}
+    assert {old, changed, evergreen} <= full_sources
+    assert sorted(_broken_links(repo)) == [
+        f"{changed}: missing.md (no such file)",
+        f"{old}: missing.md (no such file)",
+    ]
+
+
+def test_fast_scan_falls_back_when_git_cannot_find_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing base must not hide broken links in dated work."""
+    note = _write(tmp_path / "work" / "2026-11" / "x" / "journal.md", "[bad](missing.md)\n")
+
+    def fail(*_args: object) -> str:
+        raise OSError("git unavailable")
+
+    monkeypatch.setattr(gate, "default_base", fail)
+    assert note in _link_sources(tmp_path, changed_work_only=True)
+    assert _broken_links(tmp_path, changed_work_only=True)
+
+
+def test_fast_scan_includes_siblings_of_any_changed_work_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Changes to any file in a work folder select its Markdown siblings."""
+    note = _write(tmp_path / "work" / "2026-11" / "x" / "journal.md", "[bad](missing.md)\n")
+    monkeypatch.setattr(gate, "default_base", lambda _root: "main")
+    monkeypatch.setattr(gate, "changed_paths", lambda _root, _base: ["work/2026-11/x/data.csv"])
+    assert note in _link_sources(tmp_path, changed_work_only=True)
+    assert _broken_links(tmp_path, changed_work_only=True)
 
 
 def test_the_work_link_rule_ignores_the_move_skip(

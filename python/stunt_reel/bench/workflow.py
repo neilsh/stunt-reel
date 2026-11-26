@@ -68,7 +68,7 @@ class Calibration:
     controls: int
     faults: dict[str, tuple[int, int]]
     passes: bool
-    #: No ``actors_removed`` sheet was planted, so the bar tested nothing; ``passes`` is False.
+    #: Fewer ``actors_removed`` sheets than the bar was measured on; ``passes`` is False.
     inconclusive: bool = False
 
 
@@ -113,7 +113,7 @@ def calibrate(
         detected = sum(_detected(grades.get(s.id), real.get(s.tick), named) for s in planted)
         faults[key] = (detected, len(planted))
     actors, actor_sheets = faults.get("actors_removed", (0, 0))
-    inconclusive = actor_sheets == 0
+    inconclusive = actor_sheets < ACTORS_BAR[1]
     passes = not inconclusive and actors >= _at_least(ACTORS_BAR, actor_sheets)
     return Calibration(clean, len(controls), faults, passes, inconclusive)
 

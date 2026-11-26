@@ -14,6 +14,8 @@ from stunt_reel.tac import automation, playone
 if TYPE_CHECKING:
     from tac_mock import StagedRepo
 
+pytestmark = pytest.mark.windows
+
 SCRIPT = Path(__file__).resolve().parent.parent / "python" / "scripts" / "play.py"
 
 

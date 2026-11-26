@@ -1,0 +1,89 @@
+ctry/calibrate-2026-11-25-19cat
+aircraft-parts-missing       2+ on 0/12  mean 0.00
+aircraft-shape-broken        2+ on 0/12  mean 0.00
+aircraft-too-small           2+ on 0/12  mean 0.00
+aircraft-misplaced           2+ on 0/12  mean 0.42
+shadow-missing               2+ on 0/12  mean 0.00
+sea-band-wrong               2+ on 0/12  mean 0.00
+scenery-missing              2+ on 0/12  mean 0.00
+ground-shade-wrong           2+ on 0/12  mean 0.00
+ground-shade-edges           2+ on 0/12  mean 0.08
+background-misregistration   2+ on 2/12  mean 1.17
+aircraft-absent              2+ on 0/12  mean 0.00
+shadow-shape-wrong           2+ on 0/12  mean 0.00
+actors-missing               2+ on 0/12  mean 0.00
+terrain-type-wrong           2+ on 0/12  mean 0.00
+explosion-missing            2+ on 0/12  mean 0.00
+sun-missing                  2+ on 0/12  mean 0.00
+frame-blank                  2+ on 0/12  mean 0.00
+black-block                  2+ on 0/12  mean 0.00
+propeller-solid              2+ on 0/12  mean 0.00
+other @23: timecode omitted
+other @100: timecode omitted
+other @507: timecode omitted
+other @661: timecode omitted
+other @980: timecode omitted
+disputed 16 sheets, scored from the tie-break
+calibration PASS: controls clean 12/12 (reported, not gated)
+  actors_removed   detected 6/6
+  shift_y:4        detected 6/6
+  advance:5        detected 5/6
+
+intro/calibrate-2026-11-25-19cat-seed3
+aircraft-parts-missing       2+ on 0/12  mean 0.00
+aircraft-shape-broken        2+ on 1/12  mean 0.25
+aircraft-too-small           2+ on 0/12  mean 0.00
+aircraft-misplaced           2+ on 0/12  mean 0.33
+shadow-missing               2+ on 0/12  mean 0.00
+sea-band-wrong               2+ on 0/12  mean 0.00
+scenery-missing              2+ on 0/12  mean 0.00
+ground-shade-wrong           2+ on 0/12  mean 0.00
+ground-shade-edges           2+ on 1/12  mean 0.25
+background-misregistration   2+ on 1/12  mean 1.00
+aircraft-absent              2+ on 0/12  mean 0.00
+shadow-shape-wrong           2+ on 0/12  mean 0.00
+actors-missing               2+ on 0/12  mean 0.00
+terrain-type-wrong           2+ on 0/12  mean 0.00
+explosion-missing            2+ on 0/12  mean 0.00
+sun-missing                  2+ on 0/12  mean 0.00
+frame-blank                  2+ on 0/12  mean 0.00
+black-block                  2+ on 0/12  mean 0.00
+propeller-solid              2+ on 0/12  mean 0.08
+other @1321: parked aircraft and vehicle shapes differ slightly
+other @2058: hedge texture differs
+other @2223: stray black specks
+other @2718: explosion dither pattern differs slightly
+disputed 23 sheets, scored from the tie-break
+calibration PASS: controls clean 12/12 (reported, not gated)
+  actors_removed   detected 6/6
+  shift_y:4        detected 6/6
+  advance:5        detected 2/6
+
+intro/calibrate-2026-11-25-19cat-seed4
+aircraft-parts-missing       2+ on 0/12  mean 0.00
+aircraft-shape-broken        2+ on 0/12  mean 0.00
+aircraft-too-small           2+ on 0/12  mean 0.00
+aircraft-misplaced           2+ on 0/12  mean 0.00
+shadow-missing               2+ on 0/12  mean 0.00
+sea-band-wrong               2+ on 0/12  mean 0.00
+scenery-missing              2+ on 0/12  mean 0.00
+ground-shade-wrong           2+ on 0/12  mean 0.00
+ground-shade-edges           2+ on 0/12  mean 0.25
+background-misregistration   2+ on 1/12  mean 1.08
+aircraft-absent              2+ on 0/12  mean 0.00
+shadow-shape-wrong           2+ on 0/12  mean 0.00
+actors-missing               2+ on 0/12  mean 0.17
+terrain-type-wrong           2+ on 0/12  mean 0.00
+explosion-missing            2+ on 0/12  mean 0.00
+sun-missing                  2+ on 0/12  mean 0.00
+frame-blank                  2+ on 0/12  mean 0.00
+black-block                  2+ on 0/12  mean 0.00
+propeller-solid              2+ on 1/12  mean 0.33
+other @1002: clock missing in render
+other @2223: stray black specks
+other @2718: explosion drawn ~8px low
+disputed 25 sheets, scored from the tie-break
+calibration PASS: controls clean 11/12 (reported, not gated)
+  actors_removed   detected 6/6
+  shift_y:4        detected 6/6
+  advance:5        detected 4/6

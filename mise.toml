@@ -145,15 +145,19 @@ description = "Fail a branch and its PR body on the defects reviewers check by h
 run = "uv run python python/scripts/pr_lint.py"
 
 [tasks.project-sync]
-description = "Set the owner's Issue Radar project's Status from each issue's labels and state, as the project-sync workflow does; needs gh with project scope (mise run project-sync -- <issue>... | --all)"
+description = "Set the owner's Issue Radar project's Status and Priority from each issue's labels and state, as the project-sync workflow does; needs gh with project scope (mise run project-sync -- <issue>... | --all)"
 run = "uv run python python/scripts/project_sync.py --repo neilsh/stunt-reel --owner neilsh --project 1"
+
+[tasks.label-sync]
+description = "Dry-run or apply the canonical GitHub issue labels from python/scripts/labels.py via REST (mise run label-sync [-- --apply])"
+run = "uv run python python/scripts/label_sync.py"
 
 [tasks.now]
 description = "The UTC time to the minute and the local day, for a stop time or a dated record; the same command in Bash and PowerShell"
 run = '''python -c "import datetime as d; print(d.datetime.now(d.UTC).isoformat(timespec='minutes'), 'local day', d.date.today())"'''
 
 [tasks.queue]
-description = "The unattended queue: open PRs in stack order, then open status:ready-for-agent issues, one line each with ready or the mechanical reason to skip it; prints no bodies"
+description = "The unattended queue: open PRs in stack order, then open status:ready-for-agent and status:needs-plan issues sorted by priority, one line each with ready or the mechanical reason to skip it; prints no bodies"
 run = "uv run python python/scripts/work_queue.py"
 
 [tasks.work]
@@ -162,7 +166,10 @@ run = "uv run python python/scripts/work.py"
 
 [tasks.site-prep]
 description = "Write the research site's Starlight content (site/src/content/docs, site/public/media, the sidebar) from the published set in site/published.toml; mise run site runs it first"
-run = "uv run python python/scripts/site_prep.py"
+# `python`, not `uv run`: site_prep.py imports only the standard library and the
+# repository's own Python package, so the Pages job must not sync a virtualenv's dev group.
+run = "python python/scripts/site_prep.py"
+env = { PYTHONPATH = "{{config_root}}/python" }
 
 [tasks.site]
 description = "Build the research site into site/dist: mise run site-prep, then Starlight, failing on a broken link or anchor; the Pages workflow deploys this build"
@@ -245,7 +252,7 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 # Builds nothing, but imports parity_pipeline, so it names the shared cargo home and seeds target/ like
 # the tasks that do (tests/test_worktree_layout.py).
 depends = ["ensure"]
-description = "Time variants of a headless render in interleaved rounds (two binaries, or one binary under env-var variants) on lavapipe or the GPU; writes a CSV of every run and a summary into a work folder, and refuses to start while another stuntreel, cargo or rustc runs (mise run ab -- --out WORK_FOLDER --name NAME --variant NAME [--variant 'NAME binary=PATH VAR=VALUE'] [--span A..=B] [--adapter lavapipe|gpu] [--rounds N] [--order alternate|rotate] [--force] | --summarize CSV)"
+description = "Time variants of a headless render in interleaved rounds (two binaries, or one binary under env-var variants) on lavapipe or the GPU; writes a CSV of every run and a summary into a work folder, refusing while another stuntreel, cargo or rustc runs or other processes load the CPUs (mise run ab -- --out WORK_FOLDER --name NAME --variant NAME [--variant 'NAME binary=PATH VAR=VALUE'] [--span A..=B] [--adapter lavapipe|gpu] [--rounds N] [--order alternate|rotate] [--warmup N] [--max-load SHARE] [--force] | --summarize CSV)"
 run = "uv run python python/scripts/ab.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
@@ -312,6 +319,10 @@ run = "uv run python python/scripts/skill_eval.py"
 [tasks.unlzexe]
 description = "Unpack PLAYONE.EXE with LZEXE 0.91, by default the data root's corpus/stuntisl/PLAYONE.EXE to its build/re/playone.img (mise run unlzexe -- [<exe> <out>] [--mz])"
 run = "uv run python python/scripts/unlzexe.py"
+
+[tasks.typeset-flip]
+description = "Flip .SET prop-record bytes, print each variant with TYPESET.EXE under silent DOSBox-X and diff the dumps (mise run typeset-flip -- [--set S] [--slots 1,3,10] [--offsets 0x18,0x22-0x27] [--bits 0x02:0] [--out DIR])"
+run = "uv run python python/scripts/typeset_flip.py"
 
 [tasks.ghidra-sod-table]
 description = "Create a function at each .SOD VM dispatch handler in Ghidra headless, name it from the opcode table, and save the project under build/re/ghidra/ (mise run ghidra-sod-table -- [--build unpatched|patch3] [--parse-only] [--exe PATH]; needs Ghidra 12.1.x with analyzeHeadless on PATH or in GHIDRA_INSTALL_DIR)"
@@ -427,6 +438,8 @@ hide = true
 run = '''
 if [ "${CLAUDE_CODE_REMOTE:-}" = true ]; then
   echo "environment: cloud; read .agents/skills/working-in-an-environment/cloud.md before other work"
+elif [ -d /home/antigravity ]; then
+  echo "environment: cloud-antigravity; read .agents/skills/working-in-an-environment/cloud-antigravity.md before other work"
 else
   echo "environment: unsupported ($(uname -s)); see .agents/skills/working-in-an-environment/SKILL.md"
 fi
@@ -613,8 +626,9 @@ description = "Quality gate for what the branch changes (`mise run check -- --fu
 run = "python python/scripts/gate.py all"
 
 [tasks.test-docs]
-description = "Documentation invariants only: anchors, Markdown links, cited paths (part of test-py; the pre-commit hook runs it on every commit)"
+description = "Documentation invariants only: anchors, Markdown links, cited paths (part of test-py; the pre-commit hook runs it on every commit, checking only the work notes the branch changes; test-py-docs checks every frozen record)"
 run = "uv run pytest tests/test_doc_invariants.py -q"
+env = { STUNT_DOC_LINKS_CHANGED_WORK = "1" }
 
 [tasks.test-py-docs]
 description = "Documentation tests only (`pytest -m docs`: anchors and links, the formats catalog, the schema contract); the gate's docs step"
@@ -626,7 +640,9 @@ run = "uv run python python/scripts/check_work_frozen.py"
 
 [tasks.commit-msg-check]
 description = "A commit message's Conventional Commit subject, and its Fresh-review trailer on a work spec or plan; with --subject, a pull request title's subject only (python/scripts/check_commit_msg.py, AGENTS.md, Committing); the commit-msg hook"
-run = "uv run python python/scripts/check_commit_msg.py"
+# `python`, not `uv run`: check_commit_msg.py is standard-library only, so the PR title
+# workflow must not sync a virtualenv's dev group to run it.
+run = "python python/scripts/check_commit_msg.py"
 
 # The committed hook (.githooks/pre-commit, installed by mise run init) runs this and nothing
 # else. prek.toml's local hooks are leaf tasks of this file like the gate's (ADR 0014): no second copy.
@@ -635,8 +651,8 @@ description = "What the pre-commit hook runs: prek over prek.toml (ADR 0026)"
 run = "prek run --quiet --config prek.toml"
 
 [tasks.check-windows]
-description = "Windows non-GPU half of the gate (fmt, lint, module layers, typecheck, Rust and Python tests; GPU tests skip without a driver)"
-depends = ["fmt-check", "lint", "check-layers", "typecheck", "test"]
+description = "Windows full gate (gate.py all --full: fmt, lint, module layers, typecheck, rustdoc, both test suites and the no-default-features matrix in parallel lanes; the Kaitai compiler and prek are required, and GPU tests skip without a driver)"
+run = "python python/scripts/gate.py all --full"
 
 # The Windows-only behaviour is all in the Python tree — junctions, reparse points, the
 # .cache link, the pytest basetemp workaround, Cargo's build locks and robocopy in the target

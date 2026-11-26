@@ -1,0 +1,1 @@
+pixels over the ranges: {'all': 1154443, 'others': 4029557, 'swap': 18319, 'rest': 13735}

@@ -42,13 +42,6 @@ pub struct CameraUniform {
     /// space. It carries no translation; each draw's matrix arrives eye-relative
     /// ([`eye_relative_matrix`]).
     pub rotation_proj: [f32; 16],
-    /// Normalized world direction vector towards the primary sun light source.
-    pub sun_direction: [f32; 3],
-    /// Ambient floor light intensity [0.0..1.0].
-    pub ambient_intensity: f32,
-    /// Inverse of `rotation_proj`, used by the sky pass to turn a pixel into a view ray from
-    /// the eye.
-    pub inv_rotation_proj: [f32; 16],
     /// Half a Mode 13h pixel of the view in NDC, `[x, y]`: the offset that widens a line
     /// vertex (`SodVertex::flags` bit 3) to a one-pixel line.
     pub line_half_ndc: [f32; 2],
@@ -83,9 +76,6 @@ impl Default for CameraUniform {
     fn default() -> Self {
         Self {
             rotation_proj: Mat4::IDENTITY.to_cols_array(),
-            sun_direction: [0.3, 0.9, 0.3], // Sun shining from above and slightly to side
-            ambient_intensity: 0.25,
-            inv_rotation_proj: Mat4::IDENTITY.to_cols_array(),
             line_half_ndc: line_half_ndc(1.0),
             disc_depth_scale: 1.0,
             _pad1: 0.0,
@@ -231,10 +221,6 @@ pub struct CameraController {
     /// Far clip plane in meters, for [`Projection::Orthographic`] only; the perspective
     /// projection is infinite.
     pub far_clip: f32,
-    /// Sun direction in world space.
-    pub sun_direction: Vec3,
-    /// Ambient floor lighting intensity.
-    pub ambient_intensity: f32,
 }
 
 impl Default for CameraController {
@@ -248,8 +234,6 @@ impl Default for CameraController {
             projection_y_scale: 1.0,
             near_clip: DEFAULT_NEAR_CLIP,
             far_clip: DEFAULT_FAR_CLIP,
-            sun_direction: Vec3::new(0.3, 0.9, 0.3).normalize(),
-            ambient_intensity: 0.25,
         }
     }
 }
@@ -434,7 +418,6 @@ impl CameraController {
     #[must_use]
     pub fn build_uniform_with_sky(&self, variable_13: u16) -> CameraUniform {
         let rotation_proj = self.compute_proj_matrix() * self.compute_view_rotation();
-        let sun = self.sun_direction.normalize();
         let disc_direction = DVec3::from(
             ShadeLight::world(variable_13)
                 .sun_direction()
@@ -461,9 +444,6 @@ impl CameraController {
 
         CameraUniform {
             rotation_proj: rotation_proj.to_cols_array(),
-            sun_direction: [sun.x, sun.y, sun.z],
-            ambient_intensity: self.ambient_intensity,
-            inv_rotation_proj: rotation_proj.inverse().to_cols_array(),
             line_half_ndc: line_half_ndc(self.projection_y_scale),
             disc_depth_scale: self.disc_depth_scale(),
             _pad1: 0.0,
@@ -771,63 +751,22 @@ mod tests {
         }
     }
 
-    /// The view ray under `ndc` that `inverse` (the uniform's `inv_rotation_proj`) gives: from
-    /// the pixel's point at depth 1 to its point at depth 0.5, both finite under the reversed
-    /// infinite perspective, whose depth 0 lies at infinity.
-    fn sky_ray(inverse: Mat4, ndc: [f32; 2]) -> Vec3 {
-        let point = |depth: f32| {
-            let p = inverse * glam::Vec4::new(ndc[0], ndc[1], depth, 1.0);
-            p.truncate() / p.w
-        };
-        point(0.5) - point(1.0)
-    }
-
-    #[test]
-    fn sky_ray_is_the_world_view_ray_under_the_pixel() {
-        let camera = far_camera();
-        let inverse = Mat4::from_cols_array(&camera.build_uniform().inv_rotation_proj);
-        let world_inverse = camera.world_view_proj().as_dmat4().inverse();
-        let eye = camera.eye_position().as_dvec3();
-        for ndc in [
-            [0.0, 0.0],
-            [-1.0, -1.0],
-            [3.0, -1.0],
-            [-1.0, 3.0],
-            [0.4, -0.7],
-        ] {
-            let ray = sky_ray(inverse, ndc).as_dvec3().normalize();
-            // The world point 50 km out under the pixel (depth 1e-5), less the eye, in f64. A
-            // nearer point would carry the f32 matrix's rounding of the eye's translation.
-            let world = world_inverse * glam::DVec4::new(ndc[0].into(), ndc[1].into(), 1.0e-5, 1.0);
-            let expected = (world.truncate() / world.w - eye).normalize();
-            assert!(
-                (ray - expected).length() < 1e-5,
-                "{ndc:?}: {ray} vs {expected}"
-            );
-        }
-    }
-
-    #[test]
-    fn orthographic_sky_ray_is_the_view_axis() {
-        let mut camera = far_camera();
-        camera.projection = Projection::Orthographic { half_height: 2.0 };
-        camera.near_clip = 1.0;
-        camera.far_clip = 100.0;
-        let inverse = Mat4::from_cols_array(&camera.build_uniform().inv_rotation_proj);
-        let forward = (Vec3::from(camera.authored.target) - camera.eye_position()).normalize();
-        for ndc in [[0.0, 0.0], [-1.0, -1.0], [0.4, -0.7]] {
-            let ray = sky_ray(inverse, ndc).normalize();
-            assert!(
-                (ray - forward).length() < 1e-5,
-                "{ndc:?}: {ray} vs {forward}"
-            );
-        }
-    }
-
+    /// The layout `mode13h.wgsl` declares: 240 bytes, with each member at the offset its WGSL
+    /// alignment gives it.
     #[test]
     fn test_camera_uniform_size_and_alignment() {
-        assert_eq!(size_of::<CameraUniform>(), 320);
+        assert_eq!(size_of::<CameraUniform>(), 240);
         assert_eq!(size_of::<CameraUniform>() % 16, 0);
+        assert_eq!(std::mem::offset_of!(CameraUniform, rotation_proj), 0);
+        assert_eq!(std::mem::offset_of!(CameraUniform, line_half_ndc), 64);
+        assert_eq!(std::mem::offset_of!(CameraUniform, disc_depth_scale), 72);
+        assert_eq!(std::mem::offset_of!(CameraUniform, _pad1), 76);
+        assert_eq!(std::mem::offset_of!(CameraUniform, sky_normal), 80);
+        assert_eq!(std::mem::offset_of!(CameraUniform, sky_edge_count), 88);
+        assert_eq!(std::mem::offset_of!(CameraUniform, sky_flags), 92);
+        assert_eq!(std::mem::offset_of!(CameraUniform, sky_thresholds), 96);
+        assert_eq!(std::mem::offset_of!(CameraUniform, sky_colours), 160);
+        assert_eq!(std::mem::offset_of!(CameraUniform, sun_disc), 224);
     }
 
     #[test]

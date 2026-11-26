@@ -17,6 +17,8 @@ import shape_diff  # noqa: E402
 
 from stunt_reel import parity_pipeline  # noqa: E402
 
+pytestmark = pytest.mark.windows
+
 
 def _shape(shape_id: str, hash_: str | None = None, error: str | None = None) -> dict[str, object]:
     shape: dict[str, object] = {"id": shape_id, "vertices": 3, "triangles": 1}

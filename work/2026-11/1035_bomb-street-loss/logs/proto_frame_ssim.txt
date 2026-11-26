@@ -1,0 +1,3 @@
+2036-2740: 65 frames, mean frame ssim 0.85884 -> 0.87458, rise on 57
+3312-3477: 16 frames, mean frame ssim 0.90336 -> 0.91477, rise on 14
+0-9999: 81 frames, mean frame ssim 0.86763 -> 0.88252, rise on 71
