@@ -1,4 +1,4 @@
-﻿"""Re-score the three 19-category calibration runs saved under build/."""
+"""Re-score the three 19-category calibration runs saved under build/."""
 
 import subprocess
 from pathlib import Path

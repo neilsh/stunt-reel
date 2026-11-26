@@ -139,7 +139,7 @@ mise run parity-bench -- errors-score --film <film> --out build/parity/bench/<fi
 **Method**:
 The prepared 19-category runs above were graded with two DSH passes; Claude Sonnet graded the disputed sheets.
 The coordinator identified the models in delegated-task records; the run and grade files do not record model identities.
-The grade files are gitignored under build/, so recomputation requires this machine?s artifacts.
+The grade files are gitignored under build/, so recomputation requires this machine's artifacts.
 `mise run parity-bench -- errors-score --film <film> --out <run>` scored the saved grades.
 `mise exec -- uv run python work/2026-11/calibration-actor-floor/readout_repeat_19.py` compares the passes and the saved readouts; its output is [readout-repeat-19.txt](readout-repeat-19.txt).
 The first INTRO seed 3 tie-break file was missing when rechecked, so Sonnet graded its 23 disputed sheets again before scoring.
