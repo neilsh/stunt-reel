@@ -17,6 +17,7 @@ from stunt_reel.bench.errors import (
     TABLE_HEADER,
     Calibration,
     CategoryReadout,
+    Change,
     FilmWindow,
     Readout,
     Sheet,
@@ -38,6 +39,8 @@ from stunt_reel.bench.errors import (
     render_brief,
     score_run,
     sheet_id,
+    suppressed,
+    suppressed_line,
     table_row,
     write_disputes,
     write_example,
@@ -493,6 +496,32 @@ def test_compare_reports_past_min_change() -> None:
         compare(before, _readout(dict.fromkeys(range(1, 10), 0)), 2)
 
 
+def test_suppressed_lists_the_moves_below_min_change() -> None:
+    before = _readout({t: 2 if t < 3 else 0 for t in range(8)})
+    assert compare(before, _readout({t: 2 if t < 4 else 0 for t in range(8)}), 4) == []
+    small = suppressed(before, _readout({t: 2 if t < 4 else 0 for t in range(8)}), 4)
+    assert [(c.category, c.before, c.after) for c in small] == [("aircraft-absent", 3, 4)]
+    # A move that reaches min_change is reported by compare, not suppressed.
+    assert suppressed(before, _readout({t: 2 if t < 7 else 0 for t in range(8)}), 4) == []
+    assert suppressed(before, before, 4) == []
+
+
+def test_suppressed_line_names_each_move_or_none() -> None:
+    before = _readout({t: 2 if t < 3 else 0 for t in range(8)})
+    after = _readout({t: 2 if t < 5 else 0 for t in range(8)})
+    line = suppressed_line("ctry", suppressed(before, after, 4), 4)
+    assert line == "below min_change (4): ctry aircraft-absent 3→5"
+    assert suppressed_line("ctry", [], 4) == "below min_change (4): none"
+
+
+def test_suppressed_line_truncates_with_a_count() -> None:
+    moves = [Change(f"c{i}", 0, 1, (i,), ()) for i in range(13)]
+    line = suppressed_line("ctry", moves, 4, limit=10)
+    assert line.count("→") == 10
+    assert line.endswith(", … and 3 more")
+    assert "\n" not in line
+
+
 @pytest.fixture
 def run_inputs(tmp_path: Path, bench_fixture: Path) -> dict[str, Path]:
     report = tmp_path / "report.json"
@@ -540,11 +569,11 @@ def test_make_then_score_roundtrip(run_inputs: dict[str, Path]) -> None:
     (out / "grades.txt").write_text(
         "\n".join(_all_zero(taxonomy, i, aircraft_absent=2) for i in ids), encoding="utf-8"
     )
-    result, changes, calibration = score_run(
+    result, comparison, calibration = score_run(
         out, run_inputs["render"], run_inputs["taxonomy"], None
     )
     assert result.ticks == (10, 20)
-    assert changes is None
+    assert comparison is None
     assert calibration is None
     assert (out / "readout.json").is_file()
 
@@ -654,10 +683,15 @@ def test_score_run_against_an_earlier_readout(tmp_path: Path, run_inputs: dict[s
     earlier = tmp_path / "earlier.json"
     shutil.copy(run_inputs["out"] / "readout.json", earlier)
     _grade_all(run_inputs)
-    _, changes, _ = score_run(
+    _, comparison, _ = score_run(
         run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], earlier
     )
-    assert changes == []
+    assert comparison is not None
+    assert comparison.changes == []
+    # Two frames left grade 2: below min_change, so reported apart.
+    assert [(c.category, c.before, c.after) for c in comparison.suppressed] == [
+        ("aircraft-absent", 2, 0)
+    ]
 
 
 def test_score_refuses_against_its_own_readout(run_inputs: dict[str, Path]) -> None:
