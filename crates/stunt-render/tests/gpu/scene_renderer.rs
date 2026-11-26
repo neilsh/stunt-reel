@@ -1007,21 +1007,13 @@ fn perspective_ground_index(
 /// against the affine function of pixel position through the quad's projected corners, which
 /// is the screen-linear value wherever the clipper cut it.
 ///
-/// The comparison allows one index, not zero. Vertex truncation (`playone_vertex`) slides the
-/// two front corners along their rays to the ground plane, which changes their depths, and the
-/// lavapipe clipper's fallback interpolation then bends the gradient by up to about 0.7 index
-/// from the model's straight line. On Mesa 25.2.8 under Windows, 11,588 of the 47,040 pixels
-/// differed before the model snapped the corners to the truncated pixels as the shader does
-/// (CI's count), 2,951 after (counted with the old allowance for a rounding boundary), and none with
-/// the slide disabled, so the bend is the clipper's and not the model's. The canonical lavapipe
-/// (Ubuntu 24.04's Mesa 25.2.8, WSL and CI) draws the same pixels as Windows' build: 3,167 of the
-/// 47,040 are one index off and none is further. `ONE_OFF_GUARD` is a guard, not a measured
-/// bound. An RTX 4070 passes strictly, every pixel equal, with the slide on.
-///
-/// The one-index bound costs no sensitivity to a perspective-correct gradient, the rival
-/// `PLAYONE`'s filler does not draw: its index differs from the screen-linear model's by 3 or
-/// more at 46,457 of the 47,040 pixels (`MIN_APART_PIXELS` guards the count), and by 74.6 at
-/// pixel (319, 139), so a perspective-correct render fails the bound at each of those pixels.
+/// The comparison allows one index, not zero: with the slide `playone_vertex` gives the two front
+/// corners, lavapipe draws some pixels one index off, which a render with the slide disabled
+/// does not show; the clipper's fallback bending the gradient is a hypothesis, see the journal.
+/// `ONE_OFF_GUARD` bounds how many pixels may be one index off, and
+/// `MIN_APART_PIXELS` how many a perspective-correct gradient must part from the model by 3
+/// indices or more, so the looser bound still rejects it. The counts and how they were made are in
+/// `work/2026-11/1103_gouraud-test-allowance/journal.md`, entry 2026-11-26.
 #[test]
 #[expect(
     clippy::cast_possible_truncation,
