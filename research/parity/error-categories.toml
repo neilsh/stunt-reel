@@ -5,9 +5,10 @@
 # ungraded, not 0. Keep ids stable once graded: rename by adding a new id. `found_by` (the models
 # whose discovery pass named it) and `since` are bookkeeping, not shown to graders.
 #
-# `examples` names sheets in error-examples/ (`<film>-<tick>.png`: capture top left, render top
-# right, luma difference, actor close-up) that two different grading models each graded 2 or more
-# for the category; two passes of one model do not count. Earlier examples are Haiku and Sonnet;
+# `examples` names sheets in error-examples/ (`<film>-<tick>.png`, drawn by `build_sheet`; those
+# drawn before 2026-11-26 show a grey luma difference where newer sheets show the overlay and
+# index map) that two different grading models each graded 2 or more for the category; two
+# passes of one model do not count. Earlier examples are Haiku and Sonnet;
 # intro-3466 was graded 2+ by Gemini Hydrogen and DSH under the 20-category file; the 19-category
 # regrades were below 2 (work/2026-11/calibration-actor-floor/journal.md). An empty
 # list means no sheet has met that rule yet, not that the readout never grades the error. Add one

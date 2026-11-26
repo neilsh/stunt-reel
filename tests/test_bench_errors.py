@@ -224,12 +224,26 @@ def test_plan_sheets_counts(bench_fixture: Path) -> None:
 def test_build_sheet_layout(bench_fixture: Path) -> None:
     capture = load_capture(bench_fixture / "capture")[10]
     render = RenderTree(bench_fixture / "render").load(10)
-    sheet = build_sheet(capture.palette[capture.idx], render.rgb, render.layer)
-    assert sheet.size == (1288, 1020)
+    sheet = build_sheet(capture, render.rgb, render.idx, render.layer)
+    assert sheet.size == (1288, 3 * 506 + 2 * 8)
     pixels = np.asarray(sheet)
-    bar = pixels[26 + 2 * 222 : 26 + 480]
-    assert (bar[:, :640] == 128).all()
-    assert (bar[:, 648:1288] == 128).all()
+    for row in (0, 1):  # the pictures, then the composite and index map
+        top = row * (506 + 8) + 26
+        bar = pixels[top + 2 * 222 : top + 480]
+        assert (bar[:, :640] == 128).all()
+        assert (bar[:, 648:1288] == 128).all()
+        timer = pixels[top + 2 * 215 : top + 2 * 220, 2 * 1 : 2 * 28]  # rows 179-183 stretched
+        assert (timer == 128).all()
+
+
+def test_build_sheet_compares_colours_when_the_render_has_no_index_plane(
+    bench_fixture: Path,
+) -> None:
+    capture = load_capture(bench_fixture / "capture")[10]
+    render = RenderTree(bench_fixture / "render").load(10)
+    by_index = np.asarray(build_sheet(capture, render.rgb, render.idx, render.layer))
+    by_colour = np.asarray(build_sheet(capture, render.rgb, None, render.layer))
+    assert by_index.shape == by_colour.shape
 
 
 def test_render_brief_lists_categories(tmp_path: Path) -> None:
@@ -245,7 +259,9 @@ def test_render_brief_lists_categories(tmp_path: Path) -> None:
 
 def test_render_brief_grades_identical_panels_zero(tmp_path: Path) -> None:
     brief = render_brief(load_categories(CATEGORIES), tmp_path, 42)
-    assert "DIFFERENCE panel is black" in brief
+    assert "OVERLAY is evenly grey and INDEX MISMATCH\nhas no coloured pixel" in brief
+    assert "**magenta**" in brief
+    assert "**green**" in brief
     assert "grade every category 0" in brief
 
 

@@ -17,7 +17,6 @@ from numpy.lib.stride_tricks import sliding_window_view
 
 from stunt_reel.bench.planes import BenchError
 from stunt_reel.bench.ssim import (
-    LAYER_OVERLAY,
     STRIDE,
     UI_BAR_FIRST_ROW,
     WINDOW,
@@ -29,6 +28,13 @@ from stunt_reel.bench.ssim import (
     window_grid,
     window_ssim,
 )
+from stunt_reel.parity_artifacts import (
+    LAYER_FIRST_ACTOR,
+    LAYER_OCEAN,
+    LAYER_OVERLAY,
+    LAYER_PROP,
+    LAYER_TERRAIN,
+)
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -37,10 +43,10 @@ if TYPE_CHECKING:
 
 __all__ = ["METRICS", "Differential", "Metric", "Regions", "differential"]
 
-OCEAN_LAYER = 1
-TERRAIN_LAYER = 2
-PROPS_LAYER = 3
-ACTOR_LAYER = 16
+OCEAN_LAYER = LAYER_OCEAN
+TERRAIN_LAYER = LAYER_TERRAIN
+PROPS_LAYER = LAYER_PROP
+ACTOR_LAYER = LAYER_FIRST_ACTOR
 #: A window is structured when its capture luma spans more than this.
 STRUCTURE_SPAN = 3.0
 #: Sobel ``|gx| + |gy|`` at or above this is an edge.

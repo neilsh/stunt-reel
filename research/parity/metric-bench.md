@@ -94,9 +94,9 @@ _Source: [2026-11-08: recapture noise on Patch 3](../../work/2026-11/300_patch3-
 ## 2.3 Error categories graded by a vision model
 
 This readout names and grades the large differences.
-Each sheet shows capture, render, their luma difference and a close-up of the actors, and a grader gives it a grade 0–3 per category of [`error-categories.toml`](error-categories.toml) (adding one is one block there).
+Each sheet shows capture and render, their overlay and index-mismatch map with its key, and a close-up of the actors ([`error-readout.md`](../../.agents/skills/improving-render-parity/error-readout.md) describes the panels), and a grader gives it a grade 0–3 per category of [`error-categories.toml`](error-categories.toml) (adding one is one block there).
 It runs as `mise run parity-bench -- errors-make`, `errors-disputes` and `errors-score` by the [`error-readout`](../../.agents/skills/improving-render-parity/error-readout.md) procedure.
-What it established (`[Bounded Observation]`, 2026-10-31 to 2026-11-01, renders at `2461289`, `CTRY.FLM` and `INTRO.FLM`):
+What it established (`[Bounded Observation]`, 2026-10-31 to 2026-11-01, renders at `2461289`, `CTRY.FLM` and `INTRO.FLM`, on sheets whose third panel was a grey luma difference; the overlay and index map replaced it on 2026-11-26 and have not been calibrated yet):
 
 * **It finds missing or wrong objects, not misregistration.**
   In the first grading neither Haiku nor Sonnet invented an error on a control, both caught most removed aircraft, and neither came near the 4-of-6 bar on a 4-row shift or a 5-tick advance (0 or 1 of 6) at this scale; section 2.2's metrics remain the check for those.
@@ -107,7 +107,7 @@ What it established (`[Bounded Observation]`, 2026-10-31 to 2026-11-01, renders 
   Each sheet is therefore graded twice by Haiku, and the sheets the passes dispute (some category 2 or more in one and not the other) go to one Sonnet grader.
   Two `INTRO.FLM` calibrations graded that way both passed; Sonnet graded half or more of each (21 and 30 of 42 sheets), at roughly twice the subagent cost of one Haiku pass.
 * **Calibration rules.**
-  A control's difference panel is black, which no real sheet's is, so the control count is reported but does not gate: a calibration passes on actors removed alone (5 of 6), a run with fewer than six actors-removed sheets is inconclusive (below), and an `INTRO.FLM` calibration is a lead until it passes twice in a row.
+  A control's difference panel was black, which no real sheet's is, so the control count is reported but does not gate: a calibration passes on actors removed alone (5 of 6), a run with fewer than six actors-removed sheets is inconclusive (below), and an `INTRO.FLM` calibration is a lead until it passes twice in a row.
   Two Haiku passes over the same sheets moved a category's count of frames graded 2 or more by up to 3, so `compare` reports a category only when it moves by 4 or more (`min_change`).
 
 _Source: [2026-10-31: error categories graded by a vision model](../../work/2026-11/distill-method/journal.md#2026-10-31-error-categories-graded-by-a-vision-model) and [2026-11-01: calibrating the error readout](../../work/2026-11/distill-method/journal.md#2026-11-01-calibrating-the-error-readout)._

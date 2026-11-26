@@ -142,7 +142,7 @@ The note on a lead under 0.002 over the next variant stays.
 An edge frame is a report and never changes the verdict.
 
 **Pictures.**
-`--images <dir> --topic <words>` (normally `work/<YYYY-MM>/<folder>/images` and a few words such as `conifer edge`) draw, once the verdict is in, one PNG per chosen tick of the winner, or of the best variant when none adopts: the capture, the baseline and the winner, left to right, with a magenta divider, named `<film>-<tick>-<topic>.png` as [`work/README.md`](../../work/README.md#images) asks.
+`--images <dir> --topic <words>` (normally `work/<YYYY-MM>/<folder>/images` and a few words such as `conifer edge`) draw, once the verdict is in, one PNG per chosen tick of the winner, or of the best variant when none adopts: the capture, the baseline and the winner, left to right, with a magenta divider, then under each render its overlay and index-mismatch map against the capture and a key ([`error-readout.md`](../../.agents/skills/improving-render-parity/error-readout.md) describes them), named `<film>-<tick>-<topic>.png` as [`work/README.md`](../../work/README.md#images) asks.
 Only those ticks are re-rendered, with `--at-ticks`, as `mise run frame --var` does; stdout is unchanged and the paths go to stderr.
 Without `--crop` a picture is the whole 320x200 frame.
 

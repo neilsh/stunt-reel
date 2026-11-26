@@ -46,11 +46,19 @@ from pathlib import Path
 lazy from collections.abc import Sequence
 
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+lazy from numpy.typing import NDArray
 
 from stunt_reel import dataroot, parity_layout, parity_pipeline, references
+from stunt_reel.bench import panels
+from stunt_reel.bench.mismatch import index_mismatch, mismatch_fraction, readout_mask
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.matched_frames import Reference
 from stunt_reel.parity_artifacts import (
+    LAYER_NONE,
+    LAYER_OCEAN,
+    LAYER_PROP,
+    LAYER_TERRAIN,
     ArtifactError,
     CaptureSet,
     RenderStore,
@@ -64,8 +72,8 @@ from stunt_reel.parity_pipeline import RetimeError, retime_render
 NEVER_OBJECT = (0, 255)
 
 
-def write_png(path: Path, width: int, rows: list[list[int]]) -> None:
-    """Writes an 8-bit RGB PNG; ``rows`` hold flat R, G, B triples."""
+def write_png(path: Path, width: int, rows: Sequence[bytes | Sequence[int]]) -> None:
+    """Writes an 8-bit RGB PNG; ``rows`` hold flat R, G, B bytes or triples."""
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         body = tag + data
@@ -347,6 +355,50 @@ def make_side_by_side(
     make_strip(reference, [ours], ordinal, tick, box, scale, out)
 
 
+def _strip_planes(
+    reference: Path, store: Path, ordinal: int, tick: int
+) -> tuple[NDArray[np.uint8], NDArray[np.uint8], NDArray[np.uint8], NDArray[np.uint16]]:
+    """Capture ordinal `ordinal` and our film tick `tick` over the full raster.
+
+    Returns the capture's palette (256 x 3), its index plane, our index plane and our layer plane.
+    """
+    render = RenderStore(store)
+    width = render.record.geometry.width
+    matched = Reference(reference, render).match(ordinal, tick)
+    palette = np.array(matched.capture_palette(), dtype=np.int64)[:, :3].clip(0, 255)
+    capture_idx = np.frombuffer(matched.capture_indices(), dtype=np.uint8).reshape(-1, width)
+    ours = matched.page
+    render_idx = np.frombuffer(ours.indices, dtype=np.uint8).reshape(-1, width)
+    layer = np.array(ours.layers, dtype=np.uint16).reshape(-1, width)
+    return palette.astype(np.uint8), capture_idx, render_idx, layer
+
+
+#: Height of one line of a strip's key, and its font.
+STRIP_KEY_LINE = 16
+
+
+def _strip_key(
+    columns: list[dict[str, int]], fractions: list[float], width: int
+) -> NDArray[np.uint8]:
+    """The strip's key band: what the two rows show, and each store's figures.
+
+    It is *width* wide, or wider when its captions need it.
+    """
+    font = ImageFont.load_default(size=12)
+    unknown = any(column[panels.LAYER_KEY[-1].name] for column in columns)
+    lines = 2 + len(panels.LAYER_KEY) - 1 + unknown
+    mismatch = " | ".join(f"{100 * f:.1f}%" for f in fractions)
+    captions = (panels.COMPOSITE_TITLE, f"{panels.INDEX_MAP_TITLE}: {mismatch}")
+    probe = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    needed = 4 + max(int(probe.textlength(text, font=font)) for text in captions)
+    image = Image.new("RGB", (max(width, needed), lines * STRIP_KEY_LINE + 4), "white")
+    draw = ImageDraw.Draw(image)
+    for i, text in enumerate(captions):
+        draw.text((2, i * STRIP_KEY_LINE), text, fill="black", font=font)
+    panels.draw_key(draw, (2, 2 * STRIP_KEY_LINE), columns, font, STRIP_KEY_LINE)
+    return np.asarray(image, dtype=np.uint8)
+
+
 def make_strip(
     reference: Path,
     stores: Sequence[Path],
@@ -359,21 +411,52 @@ def make_strip(
     """Writes capture ordinal `ordinal`, then film tick `tick` of each store, left to right.
 
     Panels show `box` at `scale` in the capture's palette, with a magenta divider between them.
+    Under each store's panel are its composite against the capture, then its index map
+    (:mod:`stunt_reel.bench.panels`); a key with each store's mismatch share and per-layer counts
+    closes the strip.
     """
-    panels: list[list[list[int]]] = []
+    x0, y0, x1, y1 = box
+    top: list[NDArray[np.uint8]] = []
+    overlays: list[NDArray[np.uint8]] = []
+    maps: list[NDArray[np.uint8]] = []
+    columns: list[dict[str, int]] = []
+    fractions: list[float] = []
     for store in stores:
-        theirs, mine = _regions(reference, store, ordinal, tick, box, scale)
-        if not panels:
-            panels.append(theirs)
-        panels.append(mine)
-    divider = [255, 0, 255] * 2
-    rows = []
-    for parts in zip(*panels, strict=True):
-        row: list[int] = []
-        for i, part in enumerate(parts):
-            row += (divider if i else []) + part
-        rows.append(row)
-    write_png(out, ((box[2] - box[0]) * scale + 2) * len(panels) - 2, rows)
+        palette, capture_idx, render_idx, layer = _strip_planes(reference, store, ordinal, tick)
+        capture_rgb, render_rgb = palette[capture_idx], palette[render_idx]
+        mask = readout_mask(capture_idx)
+        mismatch = index_mismatch(capture_idx, render_idx)
+        crop = (slice(y0, y1), slice(x0, x1))
+        if not top:
+            top.append(capture_rgb[crop])
+        top.append(render_rgb[crop])
+        overlays.append(panels.composite(capture_rgb[crop], render_rgb[crop], mask[crop]))
+        picture, counts = panels.index_map(
+            capture_rgb[crop], mismatch[crop], layer[crop], mask[crop]
+        )
+        maps.append(picture)
+        columns.append(counts)
+        fractions.append(mismatch_fraction(mismatch[crop], mask[crop]))
+    blank = np.full_like(top[0], 255)
+    grid = [top, [blank, *overlays], [blank, *maps]]
+    enlarged = [
+        [np.repeat(np.repeat(p, scale, axis=0), scale, axis=1) for p in row] for row in grid
+    ]
+    height = enlarged[0][0].shape[0]
+    divider = np.full((height, 2, 3), (255, 0, 255), dtype=np.uint8)
+    bands = []
+    for row in enlarged:
+        parts: list[NDArray[np.uint8]] = []
+        for i, part in enumerate(row):
+            parts += [divider, part] if i else [part]
+        bands.append(np.concatenate(parts, axis=1))
+    rule = np.full((2, bands[0].shape[1], 3), (255, 0, 255), dtype=np.uint8)
+    grid_rows = np.concatenate([bands[0], rule, bands[1], rule, bands[2]], axis=0)
+    key = _strip_key(columns, fractions, grid_rows.shape[1])
+    pad = key.shape[1] - grid_rows.shape[1]  # a key wider than a narrow crop pads it white
+    grid_rows = np.pad(grid_rows, ((0, 0), (0, pad), (0, 0)), constant_values=255)
+    picture = np.concatenate([grid_rows, key], axis=0)
+    write_png(out, picture.shape[1], [row.tobytes() for row in picture])
 
 
 def cmd_crop(args: argparse.Namespace) -> None:
@@ -465,9 +548,7 @@ def world_shift(
 
 
 #: Our layers that are backdrop (``LAYER_NONE`` sky, ocean, terrain): what ``register`` compares.
-BACKDROP_LAYERS = (0, 1, 2)
-#: Our prop layer, which ``register --with-props`` compares too.
-LAYER_PROP = 3
+BACKDROP_LAYERS = (LAYER_NONE, LAYER_OCEAN, LAYER_TERRAIN)
 
 
 def backdrop_mask(

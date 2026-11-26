@@ -48,7 +48,19 @@ RENDER_CORE_FILES = ("frames.zst", "layers.zst", "palettes.zst")
 _PLANE_NAME = re.compile(r"[A-Za-z0-9_-]+\.zst")
 #: A lowercase hex SHA-256.
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-#: First layer id an actor draw writes (mirrors ``stunt_render::LAYER_FIRST_ACTOR``).
+#: Layer ids a render's layer plane holds, mirroring ``stunt_core::frame``'s ``LAYER_*``.
+#: Pixels no geometry covers (the clear colour).
+LAYER_NONE = 0
+#: The world's ocean.
+LAYER_OCEAN = 1
+#: The world's terrain.
+LAYER_TERRAIN = 2
+#: The world's props.
+LAYER_PROP = 3
+#: The 2D credits text drawn over the scene.
+LAYER_OVERLAY = 4
+#: The first actor draw; actor draw ``n`` of a frame writes ``LAYER_FIRST_ACTOR + n``, its ground
+#: shadow included.
 LAYER_FIRST_ACTOR = 16
 
 #: What kind of adapter drew a render: a GPU, or a CPU implementation such as lavapipe or WARP.

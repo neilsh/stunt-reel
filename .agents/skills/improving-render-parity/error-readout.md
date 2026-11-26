@@ -3,7 +3,9 @@
 Part of the [`improving-render-parity`](SKILL.md) skill.
 
 Run it on every film after a batch of render PRs, not after each one: a run costs about 14 Haiku passes and the tie-breaks.
-It says which kinds of error the render makes and on how many frames; it cannot see misregistration, which the metrics cover.
+It says which kinds of error the render makes and on how many frames.
+Each sheet holds the capture and render, then an overlay (grey where they agree, magenta where the capture is brighter, green where the render is) and an index-mismatch map (each pixel whose palette index differs, coloured by the render layer drawn there), then an actor close-up and the map's key; the button bar, HUD timer and cursor are masked grey (`bench/panels.py`, `bench/mismatch.py`).
+A misregistration shows as paired magenta and green fringes in the overlay, but no category names one yet (#1110), so the metrics remain the check for it.
 The categories are `research/parity/error-categories.toml`.
 
 ```

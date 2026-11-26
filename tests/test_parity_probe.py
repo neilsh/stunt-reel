@@ -28,7 +28,7 @@ from stunt_reel import (  # noqa: E402
     references,
 )
 from stunt_reel.dataroot import REPO_ROOT  # noqa: E402
-from stunt_reel.parity_artifacts import FilmId, Geometry, StoredFrame  # noqa: E402
+from stunt_reel.parity_artifacts import LAYER_PROP, FilmId, Geometry, StoredFrame  # noqa: E402
 
 #: The bands the probe once hardcoded for every film, now `ctry`'s `background` row field.
 CTRY_BANDS = ((192, 199), (228, 238), (161, 165))
@@ -568,5 +568,5 @@ def test_backdrop_mask_with_props_keeps_the_prop_layer() -> None:
     width, rows = 9, 7
     layers = tuple([3] * (width * rows))
     assert not parity_probe.backdrop_mask(layers, width, rows, pad=1).any()
-    kept = (*parity_probe.BACKDROP_LAYERS, parity_probe.LAYER_PROP)
+    kept = (*parity_probe.BACKDROP_LAYERS, LAYER_PROP)
     assert parity_probe.backdrop_mask(layers, width, rows, pad=1, kept=kept).all()

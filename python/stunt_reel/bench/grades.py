@@ -35,11 +35,21 @@ _BRIEF = """\
 
 You are comparing frames from *Stunt Island* (1992), a DOS game that replays filmed aircraft stunts. Each
 image is one moment of a film shown two ways: **CAPTURE** (top left) is the original game's screen, and
-**RENDER** (top right) is a reimplementation that should match it exactly. Below them: a **DIFFERENCE**
-image (brighter = more different) and a **CLOSE-UP** of the aircraft area, capture left, render right.
-The grey band at the bottom of each panel is the game's button bar, masked out: ignore it. Some RENDER
-panels may match the capture closely; grade what you see, not what you expect. Where the
-DIFFERENCE panel is black the two panels are identical: grade every category 0.
+**RENDER** (top right) is a reimplementation that should match it exactly. The middle row compares them:
+
+- **OVERLAY** (middle left) is grey where the two agree, **magenta** where the capture is brighter and
+  **green** where the render is brighter. A feature drawn in the wrong place shows as a magenta edge on
+  one side and a green edge on the other; for a feature brighter than its surroundings the green side
+  is where the render put it, and for a darker one the magenta side is.
+- **INDEX MISMATCH** (middle right) is the capture darkened, with every pixel whose palette colour
+  differs painted by what the render drew there; the **KEY** (bottom right) names each colour and counts its
+  pixels.
+
+The bottom left is a **CLOSE-UP** of the aircraft area, capture left, render right.
+Solid grey (the button bar along the bottom of each panel, the timer just above it at the left, and the
+mouse cursor in the middle row) is masked out: ignore it. Some RENDER panels may match the capture
+closely; grade what you see, not what you expect. Where the OVERLAY is evenly grey and INDEX MISMATCH
+has no coloured pixel, the two panels are identical: grade every category 0.
 
 Folder: `{sheet_dir}/`. `{ids_name}` lists {count} image ids; each image is `<id>.png` in that folder.
 Read only `{ids_name}` and those images, in the listed order. Do not read any other file and do not

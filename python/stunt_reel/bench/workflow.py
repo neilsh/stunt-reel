@@ -232,17 +232,18 @@ def make_run(
     for sheet in sheets:
         planes = tree.load(sheet.tick)
         frame = captured[sheet.tick]
+        shown, shown_idx, layer = planes.rgb, planes.idx, planes.layer
         if sheet.kind == "control" and recaptured is not None:
             other = recaptured[sheet.tick]
-            shown = other.palette[other.idx]
+            shown, shown_idx = other.palette[other.idx], other.idx
         elif sheet.kind == "planted" and sheet.fault is not None:
             planted = plant(faults[sheet.fault], sheet.tick, tree, seed)
             if planted is None:
                 continue
-            shown = planted.rgb
-        else:
-            shown = planes.rgb
-        build_sheet(frame.palette[frame.idx], shown, planes.layer).save(out / f"{sheet.id}.png")
+            shown, shown_idx, layer = planted.rgb, planted.idx, planted.layer
+        build_sheet(frame, shown, shown_idx, layer, credits_drawn=planes.credits).save(
+            out / f"{sheet.id}.png"
+        )
         written.append(sheet.id)
     random.Random(seed).shuffle(written)  # noqa: S311 - not security
     _write_text(out / "ids.txt", "".join(f"{i}\n" for i in written))
@@ -380,6 +381,8 @@ def write_example(
             raise BenchError(f"{capture} holds no frame at tick {tick}")
         planes = RenderTree(render).load(tick)
         path.parent.mkdir(parents=True, exist_ok=True)
-        build_sheet(frame.palette[frame.idx], planes.rgb, planes.layer).save(path)
+        build_sheet(frame, planes.rgb, planes.idx, planes.layer, credits_drawn=planes.credits).save(
+            path
+        )
     add_example(taxonomy_path, category, name)
     return path

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,8 @@ from artifact_helpers import (
     store_record,
     write_json,
 )
+from stunt_reel import parity_artifacts
+from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.parity_artifacts import (
     FILM_FIELDS,
     RENDER_SCHEMA_VERSION,
@@ -223,3 +226,21 @@ def test_a_tick_credits_flag_round_trips_and_is_always_written(tmp_path: Path) -
     write_json(path, document)
     with pytest.raises(ArtifactError, match=r"ticks\[0\]\.credits"):
         read_render(path)
+
+
+@pytest.mark.docs
+def test_layer_ids_mirror_stunt_core() -> None:
+    source = (REPO_ROOT / "crates/stunt-core/src/frame.rs").read_text(encoding="utf-8")
+    rust = {
+        name: int(value)
+        for name, value in re.findall(r"pub const (LAYER_[A-Z_]+): u32 = (\d+);", source)
+    }
+    assert rust == {name: getattr(parity_artifacts, name) for name in rust}
+    assert set(rust) == {
+        "LAYER_NONE",
+        "LAYER_OCEAN",
+        "LAYER_TERRAIN",
+        "LAYER_PROP",
+        "LAYER_OVERLAY",
+        "LAYER_FIRST_ACTOR",
+    }
