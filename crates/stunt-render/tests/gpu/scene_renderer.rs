@@ -1013,7 +1013,7 @@ fn perspective_ground_index(
 /// `ONE_OFF_GUARD` bounds how many pixels may be one index off, and
 /// `MIN_APART_PIXELS` how many a perspective-correct gradient must part from the model by 3
 /// indices or more, so the looser bound still rejects it. The counts and how they were made are in
-/// `work/2026-11/1064_projector-vertex-truncation/journal.md`, entry 2026-11-26.
+/// `work/2026-11/1103_gouraud-test-allowance/journal.md`, entry 2026-11-26.
 #[test]
 #[expect(
     clippy::cast_possible_truncation,

@@ -79,7 +79,7 @@ _Source: [Candidate fixes for the NaN shade](../../work/2026-11/distill-lavapipe
   The GPU test `a_ground_polygon_under_a_low_eye_keeps_its_index` fails on lavapipe without the guard (section 1), and `a_gouraud_ground_polygon_under_a_low_eye_keeps_its_gradient` draws a single index on lavapipe without (d)'s fallback.
   Since #1064 the second allows one index, not zero, on lavapipe (`[Bounded Observation]`, 2026-11-26, `crates` `2c5a4012` up to the test's comment, mesa-dist-win 25.2.8 on Windows, an uncommitted instrumented copy of the test): with the vertex slide on, 3,167 of its 47,040 pixels round one index off the screen-linear model, and none with the slide disabled.
   The cause is not isolated (`[Hypothesis]`: the slide changes the front corners' depths and the clipper's fallback then bends the gradient); the slide-disabled run shows the difference needs the slide, not that the clipper makes it, and section 3's ratio is exact at a vertex the clipper makes, which the hypothesis does not fit and this note does not resolve.
-  _Source: [A perspective copy of the shade](../../work/2026-11/distill-lavapipe/journal.md#2026-11-16-a-perspective-copy-of-the-shade), [One index of difference in the Gouraud ground test on lavapipe](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-26-one-index-of-difference-in-the-gouraud-ground-test-on-lavapipe)._
+  _Source: [A perspective copy of the shade](../../work/2026-11/distill-lavapipe/journal.md#2026-11-16-a-perspective-copy-of-the-shade), [One index of difference in the Gouraud ground test on lavapipe](../../work/2026-11/1103_gouraud-test-allowance/journal.md#2026-11-26-one-index-of-difference-in-the-gouraud-ground-test-on-lavapipe)._
 
 ## 4. Lavapipe beside the GPU on one `crates` tree
 
