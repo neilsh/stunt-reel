@@ -42,7 +42,7 @@
   | `4` (60 degrees) | 0.9447 | 0.9069 | 0.9349 | 0.9107 | 0.9173 | 0.9066 | 0.8952 | 0.9166 |
 
   - `3` moves `balloon` to −0.0007 against `0`, inside the 0.002 the evidence track allows, and raises the other six films by 0.0064 (`traintnl`) to 0.0129 (`intro`); `2` to `3` recovers 0.0017 of `balloon`'s 0.0024, so the near-horizontal facets' plane explains most of what the world mesh's did not.
-  - `4` scores a mean of 0.9166 against `3`'s 0.9153 (+0.0013) and, on `balloon`, +0.0048 against `3`'s -0.0007, but the mean margin is inside the 0.002 noise floor; `ctry` and `bomb` sit 0.0005 and 0.0007 below `3`; a facet 60 degrees from horizontal moves further from the vertex's own plane than one 26 degrees from it, so `4` is left as an open threshold question in the note.
+  - `4` scores a mean of 0.9166 against `3`'s 0.9153 (+0.0013) and, on `balloon`, +0.0048 against `main` where `3` is -0.0007, but the mean margin is inside the 0.002 noise floor; `ctry` and `bomb` sit 0.0005 and 0.0007 below `3`; a facet 60 degrees from horizontal moves further from the vertex's own plane than one 26 degrees from it, so `4` is left as an open threshold question in the note.
   - The worst movers are `balloon` 298 (−0.0572), `location` 2630 (−0.0421) and 6326 (−0.0392); `balloon` 298 was also `1`'s worst of #1027.
     `3` was not shipped, so these frames were not examined; the third round's movers, which are the shipped form's, are explained below.
 
@@ -89,7 +89,7 @@
 
   - Every film's SSIM rises on lavapipe, `balloon` by 0.0008, and mask IoU falls by 0.0001 to 0.0013 on the same four films as on the GPU; the GPU's `3` put `balloon` at −0.0007 against `main` (a different adapter and baseline, so the two are not one comparison).
   - The pins were repinned to `a160e577` (`git rev-parse e5e4d689:crates`) in `b60aba3a`.
-  - `b1fb7551` changed a comment in `mode13h.wgsl` and no code, so the pins' `crates` field was restamped to `f436dc08` (`git rev-parse HEAD:crates`) by hand, scores unchanged and not re-run; a WSL `mise run parity-repin -- --class lavapipe` on that tree would confirm them.
+  - A comment-only change to `mode13h.wgsl` (finding 8 of the first review) moved the `crates` tree hash, and `loop-rules.md` § After adopting allows no hand restamp of the pins, so it was reverted; the shader's `t` comment ("this many times its own distance") stays as committed in `e5e4d689` and is imprecise, to be fixed in a PR that repins.
 
 ## Handoff
 
