@@ -1,0 +1,16 @@
+== balloon ticks 12,122,221,331,441,540,650,749,859,970,1068,1178
+[parity-residue] $ uv run python python/scripts/parity_residue.py --films ballo…
+film      ticks  differing  mean/tick      max      at
+balloon    1179       1179     2856.0     6696     702
+             tick 12: 579 differing pixels
+             tick 122: 2140 differing pixels
+             tick 221: 1783 differing pixels
+             tick 331: 2840 differing pixels
+             tick 441: 2358 differing pixels
+             tick 540: 2297 differing pixels
+             tick 650: 4118 differing pixels
+             tick 749: 4901 differing pixels
+             tick 859: 2155 differing pixels
+             tick 970: 3261 differing pixels
+             tick 1068: 3293 differing pixels
+             tick 1178: 3734 differing pixels

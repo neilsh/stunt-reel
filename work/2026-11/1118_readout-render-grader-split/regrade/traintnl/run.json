@@ -1,0 +1,23 @@
+{
+  "film": "traintnl",
+  "ticks": [
+    12,
+    123,
+    232,
+    342,
+    452,
+    562,
+    683,
+    793,
+    903,
+    1013,
+    1123,
+    1233
+  ],
+  "seed": 1,
+  "calibrate": false,
+  "revision": "c2b23b4b9758207061b55a38ad88de567c859701",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "f2e2183c33043ac502608f26f5ac0f016237314a3662f0d7684ed37e12d427a6",
+  "report_digest": "78eb35a43a90e0f90d80b7e1b078f7170ff79fb0329e9eb615bde597d2b9bbe3"
+}

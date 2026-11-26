@@ -1,0 +1,16 @@
+== land ticks 12,89,177,254,331,419,496,584,661,738,826,903
+[parity-residue] $ uv run python python/scripts/parity_residue.py --films land …
+film   ticks  differing  mean/tick      max      at
+land    1123       1123     2272.5     4381     622
+          tick 12: 2014 differing pixels
+          tick 89: 1987 differing pixels
+          tick 177: 2061 differing pixels
+          tick 254: 2173 differing pixels
+          tick 331: 2506 differing pixels
+          tick 419: 3061 differing pixels
+          tick 496: 1990 differing pixels
+          tick 584: 2918 differing pixels
+          tick 661: 2857 differing pixels
+          tick 738: 3546 differing pixels
+          tick 826: 2040 differing pixels
+          tick 903: 2022 differing pixels
