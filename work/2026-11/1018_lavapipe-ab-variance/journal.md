@@ -63,3 +63,23 @@
 - **Verdict**: no verdict: the check stopped after 2 of 8 runs, so neither condition of the bar can be judged; as the issue rules, a run stopped by the load check is not re-run, and whether to run it again is the owner's call.
   Both kept runs sat at `0.092..0.102` other load, where the earlier run's first four sat at `0.031..0.045` (the entry above), so the machine was busier than then; the loads in this run were not traced to a process.
 - **Lives in**: nowhere else: no figure here is a finding about the render.
+
+## 2026-11-25: the second owner-approved A/A re-run, at a 15% load bar: completed, missed the median bar
+
+`[Bounded Observation]`
+
+- **Question**: The same as the entries above: with the runner's load checks and warm-up round, does one binary on both sides of Span B on lavapipe, 4 pairs with the order alternated, meet `#1004`'s bar: a median loop change within ±1%, and neither side faster in all 4 pairs?
+- **Method**: the release binary built from `origin/main` at `c7dac0b6` (`cargo build --release --locked -p stunt-cli`) as both `a` and `b`; `mise run ab -- --out work/2026-11/1018_lavapipe-ab-variance --name aa-span-b-rerun2 --variant a --variant b --span 3680..=3979 --adapter lavapipe --rounds 4 --order alternate --max-load 0.15`, run once with the default `--warmup 1` (`tasklist` showed no `stuntreel`, `cargo` or `rustc` first).
+  The owner approved the one extra run with a higher load bar after two runs stopped at `10.3%` and `10.2%` other load; the bar is `--max-load 0.15` (the coordinator's choice), the only change from the run before.
+  Raw rows: [`aa-span-b-rerun2.csv`](aa-span-b-rerun2.csv); the console output, warm-up runs included: [`aa-span-b-rerun2-log.txt`](aa-span-b-rerun2-log.txt); the runner's summary: [`aa-span-b-rerun2-summary.md`](aa-span-b-rerun2-summary.md).
+- **Result**: all 8 runs completed, stores identical on both sides.
+  - Warm-up (not kept): `a` `2623 ms`, `b` `2319 ms`.
+  - Kept rows, loop ms (other processes' load): round 0 `a` `2302.9` (`0.093`), `b` `2356.5` (`0.101`); round 1 `b` `2445.3` (`0.110`), `a` `2354.6` (`0.089`); round 2 `a` `2431.1` (`0.098`), `b` `2311.6` (`0.094`); round 3 `b` `2352.9` (`0.100`), `a` `2405.9` (`0.112`).
+  - Other load spans `0.089..0.112`; `3` of the `8` runs (`0.101`, `0.110`, `0.112`) are over the `0.10` bar of the two earlier runs, which would have stopped this one.
+  - Medians: `a` `2380.2 ms`, `b` `2354.7 ms`, so `b` is `-1.07%` against `a` (the runner's summary rounds it to `-1.1%`), outside ±1%.
+  - Faster: `a` in rounds 0 and 1, `b` in rounds 2 and 3, so `2 of 4` each; neither side is faster in all 4 pairs.
+  - The eight loops span `2302.9..2445.3 ms` (`6.2%`).
+- **Verdict**: the median bar is missed (`-1.07%` against ±1%), the all-4-pairs condition is met, so the A/A check is **not passed**; as the issue rules, it is not re-run, and the next step is the owner's.
+  What this means for the dependents: `#1004` stays open and `#1001` stays blocked, as the issue's acceptance item closes `#1004` and frees `#1001` only on a pass.
+  The miss is `0.07` percentage points over the bar, at a spread of single runs (`6.2%`) several times the `±1%` bar, with `b` faster in 2 of 4 pairs; this run does not show which of load at `0.09..0.11` or the runner's method accounts for it.
+- **Lives in**: nowhere else: no figure here is a finding about the render.
