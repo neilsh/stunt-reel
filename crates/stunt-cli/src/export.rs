@@ -1,8 +1,10 @@
-//! `stuntreel export-gltf`: write a shape or a film scene frame as a binary glTF (`.glb`).
+//! `stuntreel export-gltf`: write a shape, a film scene frame or an animated film as a binary
+//! glTF (`.glb`).
 //!
 //! `--shape` decodes one `MODEL_%04X.SOD` chunk of the archive (anchors located like the
 //! renderer does, see [`crate::scene`]); `--film` builds the full film scene through
-//! [`build_scene`] and exports the frame at `--tick`.
+//! [`build_scene`] and exports the frame at `--tick`, or with `--animate` the span
+//! `--tick-range` (the whole film by default) as one animation.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,15 +12,16 @@ use std::path::{Path, PathBuf};
 use clap::{ArgGroup, CommandFactory as _, Parser};
 use stunt_core::scene::decode_archive_shapes;
 use stunt_core::sod::ShadeLight;
-use stunt_gltf::{export_scene_frame, export_shape, summarize};
+use stunt_gltf::{FilmExportOptions, export_film, export_scene_frame, export_shape, summarize};
 
+use crate::config::{TickSpan, parse_tick_span};
 use crate::scene::{SceneSources, build_scene, read_anchor_table};
 
 /// `export-gltf` options as clap parses them.
 #[derive(Debug, Parser)]
 #[command(
     bin_name = "stuntreel export-gltf",
-    about = "Write a shape or a film scene frame as binary glTF (.glb)",
+    about = "Write a shape, a film scene frame or an animated film as binary glTF (.glb)",
     group(ArgGroup::new("target").required(true).args(["shape", "film"]))
 )]
 struct Options {
@@ -38,6 +41,15 @@ struct Options {
     /// 50 Hz film tick, fractional ticks interpolate [default: 0]
     #[arg(long, value_name = "T", value_parser = parse_tick, conflicts_with = "shape")]
     tick: Option<f32>,
+    /// Export the film as one animation instead of one frame
+    #[arg(long, requires = "film", conflicts_with_all = ["tick", "shape"])]
+    animate: bool,
+    /// With --animate, only this 0-based inclusive tick span [default: the whole film]
+    #[arg(long = "tick-range", value_name = "A..=B", value_parser = parse_tick_span, requires = "animate")]
+    tick_range: Option<TickSpan>,
+    /// With --animate, also animate the lens zoom (the `KHR_animation_pointer` extension)
+    #[arg(long, requires = "animate")]
+    lens_pointer: bool,
     /// Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn
     #[arg(long, value_name = "DIR")]
     sidata: Option<PathBuf>,
@@ -55,7 +67,15 @@ pub(crate) fn usage() -> String {
 #[derive(Debug, PartialEq)]
 enum Target {
     Shape(u16),
-    Film { film: PathBuf, tick: f32 },
+    Film {
+        film: PathBuf,
+        tick: f32,
+    },
+    Animation {
+        film: PathBuf,
+        span: Option<TickSpan>,
+        lens_pointer: bool,
+    },
 }
 
 /// Parsed `export-gltf` arguments.
@@ -93,12 +113,20 @@ impl Args {
             shape,
             film,
             tick,
+            animate,
+            tick_range,
+            lens_pointer,
             sidata,
             out,
         } = Options::try_parse_from(argv)?;
         // clap guarantees exactly one of --shape and --film.
         let target = match (shape, film) {
             (Some(id), _) => Target::Shape(id),
+            (None, film) if animate => Target::Animation {
+                film: film.unwrap_or_default(),
+                span: tick_range,
+                lens_pointer,
+            },
             (None, film) => Target::Film {
                 film: film.unwrap_or_default(),
                 tick: tick.unwrap_or(0.0),
@@ -138,14 +166,13 @@ fn glb_for_shape(archive: &Path, sidata: Option<&Path>, shape_id: u16) -> Result
     export_shape(model).map_err(|e| format!("shape 0x{shape_id:04X}: {e}"))
 }
 
-/// Exports the scene frame at `tick` as `.glb` bytes.
-fn glb_for_frame(
+/// Builds the film scene of `film` against `archive`.
+fn film_scene(
     archive: &Path,
     film: &Path,
     sidata: Option<&Path>,
-    tick: f32,
-) -> Result<Vec<u8>, String> {
-    let scene = build_scene(&SceneSources {
+) -> Result<stunt_core::scene::FilmScene, String> {
+    build_scene(&SceneSources {
         flm: Some(film),
         all: Some(archive),
         game: None,
@@ -153,8 +180,51 @@ fn glb_for_frame(
         sidata,
         font: None,
         max_ticks: None,
-    })?;
+    })
+}
+
+/// Exports the scene frame at `tick` as `.glb` bytes.
+fn glb_for_frame(
+    archive: &Path,
+    film: &Path,
+    sidata: Option<&Path>,
+    tick: f32,
+) -> Result<Vec<u8>, String> {
+    let scene = film_scene(archive, film, sidata)?;
     export_scene_frame(&scene, tick).map_err(|e| format!("tick {tick}: {e}"))
+}
+
+/// Exports `span` of `film` (the whole film when `None`) as an animated `.glb`, printing how
+/// many keys thinning kept.
+fn glb_for_animation(
+    archive: &Path,
+    film: &Path,
+    sidata: Option<&Path>,
+    span: Option<TickSpan>,
+    lens_pointer: bool,
+) -> Result<Vec<u8>, String> {
+    let scene = film_scene(archive, film, sidata)?;
+    let total = scene.timeline().total_ticks();
+    let tick =
+        |t: usize| u32::try_from(t).map_err(|_| format!("tick {t} is past the film's {total}"));
+    let (first_tick, last_tick) = match span {
+        Some(span) => (tick(span.first())?, tick(span.last())?),
+        None => (0, total),
+    };
+    let glb = export_film(
+        &scene,
+        FilmExportOptions {
+            first_tick,
+            last_tick,
+            lens_pointer,
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    println!(
+        "[stuntreel] ticks {first_tick}..={last_tick}: kept {} of {} sampled keys",
+        glb.keys_kept, glb.keys_sampled
+    );
+    Ok(glb.bytes)
 }
 
 /// Runs the exporter and writes the output file.
@@ -165,14 +235,26 @@ pub(crate) fn run(args: impl Iterator<Item = String>) -> Result<(), String> {
         Target::Film { film, tick } => {
             glb_for_frame(&args.archive, film, args.sidata.as_deref(), *tick)?
         }
+        Target::Animation {
+            film,
+            span,
+            lens_pointer,
+        } => glb_for_animation(
+            &args.archive,
+            film,
+            args.sidata.as_deref(),
+            *span,
+            *lens_pointer,
+        )?,
     };
     let summary = summarize(&glb).map_err(|e| e.to_string())?;
     fs::write(&args.out, &glb).map_err(|e| format!("write {}: {e}", args.out.display()))?;
     println!(
-        "[stuntreel] wrote {}: {} nodes, {} meshes, {} bytes",
+        "[stuntreel] wrote {}: {} nodes, {} meshes, {} animation channels, {} bytes",
         args.out.display(),
         summary.nodes,
         summary.meshes,
+        summary.channels,
         summary.bytes
     );
     Ok(())
@@ -287,6 +369,72 @@ mod tests {
         let bytes = fs::read(&out).expect("output written");
         drop(fs::remove_file(&out));
         assert!(summarize(&bytes).expect("valid glb").nodes >= 2);
+    }
+
+    #[test]
+    fn animate_arguments_are_validated() {
+        let base = ["--archive", "a.all", "--out", "o.glb"];
+        let parse = |extra: &[&str]| Args::try_parse_args(strings(&[&base[..], extra].concat()));
+        parse(&["--film", "f.flm", "--animate", "--tick", "3"]).unwrap_err();
+        parse(&["--shape", "1", "--animate"]).unwrap_err();
+        parse(&["--film", "f.flm", "--tick-range", "0..=4"]).unwrap_err();
+        parse(&["--film", "f.flm", "--lens-pointer"]).unwrap_err();
+        let args = parse(&[
+            "--film",
+            "f.flm",
+            "--animate",
+            "--tick-range",
+            "2..=9",
+            "--lens-pointer",
+        ])
+        .expect("valid");
+        assert_eq!(
+            args.target,
+            Target::Animation {
+                film: PathBuf::from("f.flm"),
+                span: Some(TickSpan::new(2, 9)),
+                lens_pointer: true,
+            }
+        );
+    }
+
+    #[test]
+    fn exports_an_animated_film_from_the_fixture_film() {
+        let out = temp_out("film.glb");
+        run(strings(&[
+            "--archive",
+            fixture("synthetic_minimal.all").to_str().unwrap(),
+            "--film",
+            fixture("synthetic_timeline.flm").to_str().unwrap(),
+            "--animate",
+            "--out",
+            out.to_str().unwrap(),
+        ]))
+        .expect("export succeeds");
+        let bytes = fs::read(&out).expect("output written");
+        drop(fs::remove_file(&out));
+        let summary = summarize(&bytes).expect("valid glb");
+        assert_eq!(summary.animations, 1, "one animation");
+        assert!(summary.channels >= 2, "camera channels at least");
+    }
+
+    #[test]
+    fn a_span_past_the_film_is_an_error() {
+        let out = temp_out("past.glb");
+        let err = run(strings(&[
+            "--archive",
+            fixture("synthetic_minimal.all").to_str().unwrap(),
+            "--film",
+            fixture("synthetic_timeline.flm").to_str().unwrap(),
+            "--animate",
+            "--tick-range",
+            "0..=13",
+            "--out",
+            out.to_str().unwrap(),
+        ]))
+        .expect_err("past the end");
+        assert!(err.contains("0..=12"), "{err}");
+        assert!(!out.exists(), "nothing written");
     }
 
     #[test]

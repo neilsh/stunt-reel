@@ -23,14 +23,20 @@
 //! - [`export_scene_frame`]: camera, optional `WORLD`, the view-facing props and one node per
 //!   actor, with each distinct shape's meshes and accessors written once and shared by every
 //!   instance.
+//! - [`export_film`]: the same scene over a span of ticks, with one animation moving the
+//!   camera, the actors and the view-facing props (`[I4]`: sampled at each 50 Hz tick).
 //! - [`summarize`]: counts read back from `.glb` bytes.
 
 mod error;
+mod film;
 mod glb;
 mod scene_frame;
 mod shape;
 
 pub use error::GltfError;
+pub use film::{
+    CUT_EPSILON, FilmExportOptions, FilmGlb, ROTATION_TOLERANCE, TRANSLATION_TOLERANCE, export_film,
+};
 pub use glb::{GlbSummary, summarize};
 pub use scene_frame::{camera_rotation, export_scene_frame};
 pub use shape::export_shape;

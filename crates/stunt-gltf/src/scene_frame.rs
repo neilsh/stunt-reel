@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
 use glam::{Mat3, Quat, Vec3};
-use serde_json::json;
+use serde_json::{Value, json};
 use stunt_core::scene::{ActorDraw, FilmScene, ViewCamera};
 
 use crate::GltfError;
@@ -53,12 +53,7 @@ pub fn export_scene_frame(scene: &FilmScene, tick: f32) -> Result<Vec<u8>, GltfE
     builder.cameras.push(json!({
         "name": "FilmCamera",
         "type": "perspective",
-        "perspective": {
-            "yfov": num(camera.fov_degrees.clamp(1.0, 160.0).to_radians()),
-            "aspectRatio": num(ASPECT_RATIO),
-            "znear": num(ZNEAR),
-            "zfar": num(ZFAR),
-        },
+        "perspective": perspective(yfov(camera.fov_degrees)),
     }));
     roots.push(builder.nodes.len());
     builder.nodes.push(json!({
@@ -117,14 +112,7 @@ fn push_draw(
     draw: &ActorDraw,
     name: &str,
 ) -> Result<usize, GltfError> {
-    let model = scene
-        .shape(draw.shape_id)
-        .ok_or(GltfError::MissingShape(draw.shape_id))?;
-    let assets = match shared.entry(draw.shape_id) {
-        Entry::Occupied(e) => e.into_mut(),
-        Entry::Vacant(e) => e.insert(add_shape_assets(builder, model)?),
-    };
-    let children = instantiate(builder, model, assets)?;
+    let children = instance(builder, shared, scene, draw.shape_id)?;
     let extras = json!({
         "state_mask": draw.state_mask,
         "distance": num(draw.distance),
@@ -139,6 +127,43 @@ fn push_draw(
     let index = builder.nodes.len();
     builder.nodes.push(node);
     Ok(index)
+}
+
+/// Emits one node subtree of shape `shape_id` and returns its root nodes, writing the shape's
+/// meshes and accessors into `shared` on its first use.
+///
+/// # Errors
+/// [`GltfError::MissingShape`] if `scene` does not hold the shape, and
+/// [`GltfError::InvalidNodeReference`] if its model lists a child that is not in its arena.
+pub(crate) fn instance(
+    builder: &mut GlbBuilder,
+    shared: &mut HashMap<u16, ShapeAssets>,
+    scene: &FilmScene,
+    shape_id: u16,
+) -> Result<Vec<usize>, GltfError> {
+    let model = scene
+        .shape(shape_id)
+        .ok_or(GltfError::MissingShape(shape_id))?;
+    let assets = match shared.entry(shape_id) {
+        Entry::Occupied(e) => e.into_mut(),
+        Entry::Vacant(e) => e.insert(add_shape_assets(builder, model)?),
+    };
+    instantiate(builder, model, assets)
+}
+
+/// The `perspective` object of the film camera with vertical field of view `yfov` radians.
+pub(crate) fn perspective(yfov: f32) -> Value {
+    json!({
+        "yfov": num(yfov),
+        "aspectRatio": num(ASPECT_RATIO),
+        "znear": num(ZNEAR),
+        "zfar": num(ZFAR),
+    })
+}
+
+/// `fov_degrees` clamped to 1..=160 degrees, in radians.
+pub(crate) fn yfov(fov_degrees: f32) -> f32 {
+    fov_degrees.clamp(1.0, 160.0).to_radians()
 }
 
 /// Rotation quaternion `[x, y, z, w]` for a glTF camera node placed at `camera.eye`.

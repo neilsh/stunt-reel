@@ -437,7 +437,7 @@ fn parse_tick_list(spec: &str) -> Result<TickList, String> {
 }
 
 /// Parses `A..=B` into a 0-based inclusive tick span.
-fn parse_tick_span(spec: &str) -> Result<TickSpan, String> {
+pub(crate) fn parse_tick_span(spec: &str) -> Result<TickSpan, String> {
     let (first, last) = spec
         .split_once("..=")
         .ok_or_else(|| format!("expected A..=B (0-based, inclusive), got {spec:?}"))?;

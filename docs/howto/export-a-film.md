@@ -28,3 +28,21 @@ cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAU
 ```
 
 On 2026-11-26 the `--shape 0x0408` command above stopped at opcode `0x022E` (`missing anchor table`) and wrote no vertices; the film-frame command is the one checked.
+
+### A whole film as one animation
+
+`--animate` replaces `--tick` and writes the whole film, or the 0-based inclusive `--tick-range A..=B`, as one `.glb` with one animation:
+
+```bash
+cargo run -p stunt-cli -- export-gltf --archive "<data root>/corpus/stisldem/VAULT/CTRY.ALL" \
+    --film "<data root>/corpus/stisldem/VAULT/CTRY.FLM" --animate --sidata "<data root>/corpus/siarchive/Developer/FreeFlight/SIDATA" \
+    --out build/gltf_output/CTRY.glb
+```
+
+The film is sampled at every 50 Hz tick and glTF time is seconds from the span's first tick, so set the scene to 50 fps before importing into Blender to land one frame on each tick; Blender's importer leaves the scene's end frame alone, so set it to the span's length in ticks.
+The camera and every actor and view-facing prop are animated nodes; an actor is scaled to 0 while the film does not draw it, and a slot that changes shape gets one node per shape.
+Keys that interpolation reproduces within 1 mm and 0.01° are dropped, and at a camera cut the pre-cut pose is keyed again 1 ms before it, so nothing glides through the cut.
+The exporter prints how many keys it kept.
+
+Core glTF cannot animate a camera's field of view, so the file keeps the first tick's lens; when the lens zooms, the camera node's `extras.yfov_keys` lists `[time, yfov]` pairs, and `--lens-pointer` also writes them as a `KHR_animation_pointer` channel, which Blender 5.0 reads as an animated field of view (checked with the `bpy` 5.0.1 module, 2026-11-26) and a reader without the extension may reject: the `gltf` Rust crate 1.4.1 fails to parse a channel with no target node.
+Each actor keeps its shape's rest pose and the world light, as in a single frame; shadows, sprites, palette fades, credits and sound are not exported.
