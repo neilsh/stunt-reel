@@ -1,0 +1,21 @@
+ctry/calibrate-2026-11-25  seed 1  revision 124c5034  floor 1  graders Gemini Hydrogen
+  PASS  disputed 11  controls clean 12/12  actors_removed 6/6  shift_y:4 6/6  advance:5 3/6
+intro/calibrate-2026-11-25-seed1  seed 1  revision 9be3e2cb  floor 1  graders Gemini Hydrogen
+  FAIL  disputed 11  controls clean 12/12  actors_removed 4/6  shift_y:4 4/6  advance:5 4/6
+  real tick 1321: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[2, 0], [2, 0], [None, None]]
+  real tick 3246: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[2, 0], [2, 0], [None, None]]
+  real tick 3466: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[1, 0], [2, 0], [1, 0]]
+intro/calibrate-2026-11-25-floor-seed2  seed 2  revision c2a8f30d  floor 64  graders Gemini Hydrogen
+  PASS  disputed 9  controls clean 11/12  actors_removed 6/6  shift_y:4 2/6  advance:5 2/6
+  real tick 1321: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[2, 0], [2, 0], [None, None]]
+  real tick 3246: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[2, 0], [2, 0], [None, None]]
+  real tick 3466: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[2, 0], [2, 0], [2, 0]]
+intro/calibrate-2026-11-25-floor-seed3  seed 3  revision c2a8f30d  floor 64  graders DSH
+  PASS  disputed 20  controls clean 12/12  actors_removed 6/6  shift_y:4 5/6  advance:5 3/6
+  real tick 2564: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[0, 0], [0, 2], [0, 0]]
+  real tick 3466: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[2, 0], [2, 0], [None, None]]
+intro/calibrate-2026-11-25-floor-seed4  seed 4  revision b99bc589  floor 64  graders DSH
+  PASS  disputed 20  controls clean 11/12  actors_removed 6/6  shift_y:4 3/6  advance:5 3/6
+  real tick 2718: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[2, 0], [0, 0], [0, 0]]
+  real tick 3246: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[2, 0], [0, 0], [2, 2]]
+  real tick 3466: propeller-solid / aircraft-colour-wrong by pass 1, pass 2, tie-break: [[2, 0], [0, 0], [2, 0]]

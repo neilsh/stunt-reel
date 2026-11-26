@@ -107,20 +107,59 @@ What it established (`[Bounded Observation]`, 2026-10-31 to 2026-11-01, renders 
   Each sheet is therefore graded twice by Haiku, and the sheets the passes dispute (some category 2 or more in one and not the other) go to one Sonnet grader.
   Two `INTRO.FLM` calibrations graded that way both passed; Sonnet graded half or more of each (21 and 30 of 42 sheets), at roughly twice the subagent cost of one Haiku pass.
 * **Calibration rules.**
-  A control's difference panel is black, which no real sheet's is, so the control count is reported but does not gate: a calibration passes on actors removed alone (5 of 6), a run with no actors-removed sheet is inconclusive, and an `INTRO.FLM` calibration is a lead until it passes twice in a row.
+  A control's difference panel is black, which no real sheet's is, so the control count is reported but does not gate: a calibration passes on actors removed alone (5 of 6), a run with fewer than six actors-removed sheets is inconclusive (below), and an `INTRO.FLM` calibration is a lead until it passes twice in a row.
   Two Haiku passes over the same sheets moved a category's count of frames graded 2 or more by up to 3, so `compare` reports a category only when it moves by 4 or more (`min_change`).
 
 _Source: [2026-10-31: error categories graded by a vision model](../../work/2026-11/distill-method/journal.md#2026-10-31-error-categories-graded-by-a-vision-model) and [2026-11-01: calibrating the error readout](../../work/2026-11/distill-method/journal.md#2026-11-01-calibrating-the-error-readout)._
+
+* **An actors-removed sheet needs actors a grader can see** (`[Bounded Observation]`, 2026-11-25, one `CTRY.FLM` and four `INTRO.FLM` calibrations of the lavapipe render of `crates/` `4b5c69c`).
+  The first `INTRO.FLM` calibration failed at 4 of 6 actors removed: its two missed sheets removed 1 and 33 actor pixels, and each grading pass graded each of them exactly as it graded the same tick's real sheet, while every caught sheet across both films removed 852 or more.
+  A frame carries an actors-removed sheet when its actors, summed, cover at least 64 pixels (`MIN_ACTOR_PIXELS`, an 8×8 block).
+  The 64 is a convention, not a measured boundary: no sheet between 34 and 851 pixels has been graded, so a calibration that misses a removal in that range is evidence the floor is too low.
+  The 5-of-6 bar was measured on six sheets, so a calibration with fewer than six actors-removed sheets is inconclusive rather than a pass.
+  Under the floor, `INTRO.FLM` then passed three calibrations (6 of 6 removals each), the last two in a row graded wholly by DSH; all three plant the same six removals, because the actors-removed ticks do not depend on the seed, so they show the graders repeat on those frames, not that they catch removals elsewhere.
+  The `CTRY.FLM` run and the first two `INTRO.FLM` runs (seeds 1 and 2) were graded by Gemini Hydrogen; seeds 3 and 4 by DSH.
+  Each of these calibrating runs grades 42 sheets: the 12 real frames, 12 controls and six planted sheets per fault, so the new category's real-sheet evidence is the 12 real sheets per run and the 12 readout sheets per film, not whole films.
+  These runs graded the 20-category file, which was reduced to 19 on 2026-11-25 (below): they are the record of the 20-category file, not a calibration of the current one.
+
+_Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see) and [2026-11-25: INTRO calibrations under the actor floor, and the first new-category example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-intro-calibrations-under-the-actor-floor-and-the-first-new-category-example)._
+
+* **The 20-category DSH passes differed by at most one frame on these readouts** (`[Bounded Observation]`, 2026-11-25, the seven `errors-20cat` runs of the lavapipe render of `crates/` `4b5c69c`).
+  Two DSH passes over the same 12 sheets per film moved a category's count of frames graded 2 or more by at most 1 on every film, against the 3 that set `min_change` from two Haiku passes; `min_change` stays 4.
+  The readout grades 12 frames per film, not the whole film.
+  These runs graded the 20-category file, which changed on 2026-11-25: they are not readouts of the 19-category file.
+  _Source: [2026-11-25: the 20-category readouts, DSH repeatability and the missing example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-the-20-category-readouts-dsh-repeatability-and-the-missing-example); figures in [`readout-repeat.txt`](../../work/2026-11/calibration-actor-floor/readout-repeat.txt)._
+
+* **`propeller-solid`'s example is `intro-3466`, and the colour category was removed** (`[Bounded Observation]`, 2026-11-25).
+  Both passes of the Hydrogen seed 2 calibration and both passes of the DSH seed 3 calibration graded `intro-3466` 2 or more for `propeller-solid`; DSH's seed 4 passes split 2 and 0 and its tie-break gave 2, so the example rests on one run per model under the 20-category file.
+  Under the 19-category file, seed 3 graded it 1, 0 and 1 in the two passes and tie-break; seed 4 graded it 0, 0 and 1.
+  The colour category added with it, `aircraft-colour-wrong`, had four real sheets that some pass graded 2: both DSH passes of the 20-category readout graded `TRAINTNL` 683 2, the DSH seed 3 second pass graded INTRO 2564 2, the DSH seed 4 tie-break graded INTRO 3246 2, and the first pass of the INTRO 20-category readout graded INTRO 2421 2.
+  A Claude Sonnet pass, run independently and over the first three, graded them 1, 0 and 0 (transcribed from the grader reports in the journal), so no sheet had a 2 from two different models; the fourth, INTRO 2421, was cleared by its run's tie-break and was not in the Sonnet pass.
+  The category therefore met its example rule on no sheet and is removed, leaving 19 categories.
+  The removal changes the categories digest from `5838a280…` to `5f8b01d6…`: the 20-category calibrations and readouts keep their grades as the record of that file, and none of them is a calibration pass or a readout of the 19-category file, which `errors-score` separates by digest.
+  The 19-category CTRY and two INTRO calibrations passed, and the seven 12-sheet readouts were scored (below).
+  _Source: [2026-11-25: a Sonnet pass denies the colour category an example, and the file drops to 19 categories](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-a-sonnet-pass-denies-the-colour-category-an-example-and-the-file-drops-to-19-categories); inputs in [`prepared-inputs.txt`](../../work/2026-11/calibration-actor-floor/prepared-inputs.txt)._
+
+* **The 19-category passes diverged on BOMB background misregistration** (`[Bounded Observation]`, 2026-11-25, 12 sheets per film).
+  The two DSH passes counted 12 and 0 BOMB frames at grade 2 or more; the 12-frame difference exceeds `min_change` 4.
+  Pass 1 graded every BOMB sheet 2, while pass 2 graded each 0 or 1; the three 2+ frames in the saved readout came from the Sonnet tie-break alone.
+  The tie-break does not establish the saved readout's repeatability.
+  The CTRY calibration and both INTRO calibrations passed; the INTRO runs share the same six actor-removal frames.
+  _Source: [19-category calibration and readout repeatability](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-19-category-calibration-and-readout-repeatability); figures in [readout-repeat-19.txt](../../work/2026-11/calibration-actor-floor/readout-repeat-19.txt)._
 
 ## Ruled out
 
 * **Pairing each reference tick with the nearest recapture tick to measure recapture noise** (2026-11-07).
   On `vault-ctry`, whose pinned capture sits off the current plan's ticks (§ 2.2.1 above), pairing within 5 ticks gave σ 0.0121 over 112 pairs, 85 of them 3 ticks apart: that measures how the score changes over a few ticks of motion, not recapture noise.
   _Source: [2026-11-07: recapture noise and build floor](../../work/2026-11/242_vault-parity-films/journal.md#2026-11-07-recapture-noise-and-build-floor)._
+* **The graders or the new categories failing the 2026-11-25 `INTRO.FLM` calibration**: neither grading pass graded an actors-removed category on the two missed sheets above the same tick's real sheet, and neither of the two categories added then is in `actors_removed`'s detection list (the colour one has since been removed); the misses were actors of 1 and 33 pixels (§ 2.3).
+  _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see)._
 * **A forced-choice Haiku judge** (capture beside two renders, which is closer?): it scored 0.67 on the wrong-tick control, below the 0.9 bar (2026-10-31).
   _Source: [2026-10-31: the metric bench](../../work/2026-11/distill-method/journal.md#2026-10-31-the-metric-bench)._
 
 ## Open questions
 
-None recorded here.
+* **How repeatable DSH readouts are for background misregistration**, after the two BOMB passes differed by 12 frames (section 2.3).
+
+* **Where between 34 and 851 actor pixels graders stop seeing a removal**, which would replace `MIN_ACTOR_PIXELS`' convention with a measured floor; a calibration that plants on such a frame answers it in part.
 Open lavapipe and GPU questions are in [`evidence-limits.md`](evidence-limits.md#open-questions).

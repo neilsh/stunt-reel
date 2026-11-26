@@ -16,7 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from stunt_reel.bench.faults import ACTOR_LAYER
 from stunt_reel.bench.ssim import render_luma, stretch
-lazy from stunt_reel.bench.planes import RenderTree
+lazy from stunt_reel.bench.planes import RenderSource
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
@@ -39,6 +39,10 @@ __all__ = [
 SHEET_TICKS = 12
 #: Frames each planted fault is drawn on in a calibrating run.
 FAULT_FRAMES = 6
+#: Actor pixels, summed over every actor, a frame must hold to carry an actors-removed sheet: an 8x8
+#: block of the 320x200 frame, a convention inside the untested gap between the sheets graders
+#: missed (1 and 33) and caught (852 or more) (research/parity/metric-bench.md, calibration rules).
+MIN_ACTOR_PIXELS = 64
 #: Frames whose fade level is below this are not picked: the screen is fading in or out.
 MIN_FADE_LEVEL = 0.95
 #: The prop layer, framed by the close-up when no actor is on screen.
@@ -81,7 +85,7 @@ def sheet_id(seed: int, kind: str, fault: str | None, tick: int) -> str:
 
 
 def plan_sheets(
-    ticks: Sequence[int], tree: RenderTree, taxonomy: Taxonomy, seed: int, calibrate: bool
+    ticks: Sequence[int], tree: RenderSource, taxonomy: Taxonomy, seed: int, calibrate: bool
 ) -> list[Sheet]:
     """Every sheet a run holds: the key, recomputed from the seed whenever it is needed."""
     sheets = [Sheet(sheet_id(seed, "real", None, t), "real", t, None) for t in ticks]
@@ -91,7 +95,11 @@ def plan_sheets(
     rng = random.Random(seed)  # noqa: S311 - not security
     for key in taxonomy.faults:
         if key == "actors_removed":
-            with_actors = [t for t in ticks if (tree.load(t).layer >= ACTOR_LAYER).any()]
+            with_actors = [
+                t
+                for t in ticks
+                if np.count_nonzero(tree.load(t).layer >= ACTOR_LAYER) >= MIN_ACTOR_PIXELS
+            ]
             chosen = with_actors[:FAULT_FRAMES]
         else:
             chosen = rng.sample(list(ticks), min(FAULT_FRAMES, len(ticks)))

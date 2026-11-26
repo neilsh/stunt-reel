@@ -1,0 +1,13 @@
+Snapshot at preparation time, before grading.
+19-category inputs, categories digest 5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e
+build/parity/bench/balloon/errors-19cat  readout  seed 1  sheets 12  ungraded  revision e09f8ff6  render df2f5109563c  report d33a920a3356
+build/parity/bench/bomb/errors-19cat  readout  seed 1  sheets 12  ungraded  revision e09f8ff6  render ff52dc31b9e5  report 802db76f1b60
+build/parity/bench/ctry/calibrate-2026-11-25-19cat  calibrate  seed 1  sheets 42  ungraded  revision e09f8ff6  render 37380faf3d4b  report 09c16ba2f864
+build/parity/bench/ctry/errors-19cat  readout  seed 1  sheets 12  ungraded  revision e09f8ff6  render 389a48a6dfb1  report 09c16ba2f864
+build/parity/bench/intro/calibrate-2026-11-25-19cat-seed3  calibrate  seed 3  sheets 42  ungraded  revision e09f8ff6  render 8d2073d4fc60  report 98ac41b8e25d
+build/parity/bench/intro/calibrate-2026-11-25-19cat-seed4  calibrate  seed 4  sheets 42  ungraded  revision e09f8ff6  render 8d2073d4fc60  report 98ac41b8e25d
+build/parity/bench/intro/errors-19cat  readout  seed 1  sheets 12  ungraded  revision e09f8ff6  render e3b23e7c6ca7  report 98ac41b8e25d
+build/parity/bench/land/errors-19cat  readout  seed 1  sheets 12  ungraded  revision e09f8ff6  render 58bbe9136221  report 0de8658a3785
+build/parity/bench/location/errors-19cat  readout  seed 1  sheets 12  ungraded  revision e09f8ff6  render 22714e0712b5  report a8dc522ae55e
+build/parity/bench/traintnl/errors-19cat  readout  seed 1  sheets 12  ungraded  revision e09f8ff6  render f2e2183c3304  report 78eb35a43a90
+10 runs, 0 graded; a calibration verdict or readout exists only once graded
