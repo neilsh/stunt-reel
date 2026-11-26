@@ -40,6 +40,7 @@ A cloud session's proxy refuses GraphQL, so `gh issue`, `gh repo view` and `gh p
   When choosing work, skip issues carrying `status:in-progress`.
 - **Close**: post the explanation with `gh issue comment <number> --body "..."`, then `gh issue close <number>` (cloud: the comment form above, then `gh api -X PATCH repos/{owner}/{repo}/issues/<number> -f state=closed`).
   On an already-closed issue, `gh issue close --comment` drops the comment and still exits 0.
+  Closing, by `gh` or a merged `Fixes #N`, removes every `status:*` label: the `project-sync` workflow's `clear-status` job does it, and a removal that fails leaves a warning on that run rather than stopping the rest.
 - **Cite what you read**: before posting a comment or issue body that cites a file:line or a figure, read each cited line once (`rg -n`, `sed -n`) and drop any it does not bear out; a subagent's report is a lead, not a citation.
 - **Close an issue fixed by a stacked PR**: a closing keyword (`Fixes #N`) fires only when the PR merges into the default branch, so an issue whose PR merges into another PR's branch stays open.
   Once `gh stack merge` lands the stack on `main`, close it by hand as in **Close**, naming the PR.
