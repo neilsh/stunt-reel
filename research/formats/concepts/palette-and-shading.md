@@ -106,7 +106,7 @@ pub struct SodVertex {
     pub palette_index: u8,   // Offset +0x18 (1 byte: 0..=255)
     pub flags: u8,           // Offset +0x19 (1 byte: bitflags)
     pub scenery_class: u8,   // Offset +0x1A (1 byte: 1 ocean, 2 terrain, 3 prop; 0 elsewhere)
-    pub _padding: u8,        // Offset +0x1B (1 byte: alignment padding, zero)
+    pub decal_tie: u8,       // Offset +0x1B (1 byte: 1 in a decal tie, else 0)
 }
 ```
 
@@ -121,6 +121,8 @@ pub struct SodVertex {
 - **Bit 7 (`0x80`) — Pre-shaded:** the vertex's palette index already carries its light, because the decoder coloured it from a `SHADE*` ramp or shaded it per vertex with `GVPOLY`/`GVPOLY16`, or because it belongs to an `OP_ANIMATE` sprite's drawn art (`VERTEX_FLAG_PRESHADED`, [`terrain-shade.md` § 3](../../playone-exe/terrain-shade.md#3-per-vertex-shade-shades-opcode-0x0156)).
   The parity look ignores it and the decoder's weld key leaves it out.
   The viewer-only modern look draws such a vertex unlit, so its light is not applied twice.
+
+`decal_tie` is 1 on a filled decal's vertices, and on those of each earlier coplanar polygon it overlaps within their plane, so a world prop's decal keeps its tie on a steep facet ([`sod-vm-lines-spans.md` § 8.14](../../playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre)).
 
 A world prop vertex carries no record of its shape: the world lists its prop vertices as runs with each run's shape (`World::prop_runs`), and the renderer looks a vertex up there for the parity plane's shape word ([`attribution.md`](../../parity/attribution.md) § 1).
 

@@ -18,7 +18,7 @@ use crate::contracts::shape::{
 };
 use crate::sod::SodError;
 use crate::sod::collision::decode_collision;
-use crate::sod::decal::identify_coplanar_decals;
+use crate::sod::decal::{decal_ties, identify_coplanar_decals};
 use crate::sod::vm::{Policy, RawPolygon, run_vm};
 use crate::sod::{AngleBank, ShadeLight};
 
@@ -71,8 +71,19 @@ pub(crate) fn quantize_weld_key(
     )
 }
 
-/// Builds a [`SodModelIr`] from a processed polygon list.
+/// Builds a [`SodModelIr`] from a processed polygon list, no polygon in a decal tie.
+#[cfg(test)]
 pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodModelIr {
+    build_tied_sod_model_ir(name, polygons, &[])
+}
+
+/// [`build_sod_model_ir`] with each polygon's decal tie (`SodVertex::decal_tie`) in `ties`,
+/// one per polygon; a polygon past its end is in none.
+pub(crate) fn build_tied_sod_model_ir(
+    name: &str,
+    polygons: &[RawPolygon],
+    ties: &[bool],
+) -> SodModelIr {
     let mut ir = SodModelIr::new(name);
 
     // Invariant [I2]: Allocate root transform group
@@ -93,12 +104,16 @@ pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodMode
     // batches are runs of consecutive polygons of one visibility, so the nodes in arena order
     // reproduce the stream order the ordered decal pass relies on.
     for is_decal in [false, true] {
-        let matching_polys: Vec<&RawPolygon> =
-            polygons.iter().filter(|p| p.is_decal == is_decal).collect();
+        let matching_polys: Vec<(&RawPolygon, bool)> = polygons
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.is_decal == is_decal)
+            .map(|(at, p)| (p, ties.get(at).copied().unwrap_or(false)))
+            .collect();
         let prefix = if is_decal { "DECAL" } else { "BASE" };
 
-        let mut batches: Vec<(VisibilityCondition, Vec<&RawPolygon>)> = Vec::new();
-        for p in matching_polys {
+        let mut batches: Vec<(VisibilityCondition, Vec<(&RawPolygon, bool)>)> = Vec::new();
+        for (p, tie) in matching_polys {
             let reuse = if is_decal {
                 batches.last().is_some_and(|(v, _)| *v == p.visibility)
             } else {
@@ -111,10 +126,10 @@ pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodMode
                     batches.iter_mut().find(|(v, _)| *v == p.visibility)
                 };
                 if let Some((_, polys)) = batch {
-                    polys.push(p);
+                    polys.push((p, tie));
                 }
             } else {
-                batches.push((p.visibility, vec![p]));
+                batches.push((p.visibility, vec![(p, tie)]));
             }
         }
 
@@ -125,7 +140,7 @@ pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodMode
                 format!("{name}_{prefix}_{batch_idx}")
             };
 
-            let mut weld_map: HashMap<WeldKey, u32> = HashMap::new();
+            let mut weld_map: HashMap<(WeldKey, bool), u32> = HashMap::new();
             process_polygon_batch(
                 &mut ir,
                 root_id,
@@ -147,15 +162,15 @@ fn process_polygon_batch(
     ir: &mut SodModelIr,
     parent_id: NodeId,
     node_name: &str,
-    polys: &[&RawPolygon],
+    polys: &[(&RawPolygon, bool)],
     is_decal: bool,
     visibility: VisibilityCondition,
-    weld_map: &mut HashMap<WeldKey, u32>,
+    weld_map: &mut HashMap<(WeldKey, bool), u32>,
 ) {
     let vertex_offset = arena_index(ir.vertices.len());
     let index_offset = arena_index(ir.indices.len());
 
-    for poly in polys {
+    for &(poly, tie) in polys {
         if poly.flags & VERTEX_FLAG_LINE != 0 {
             push_line(ir, poly, weld_map);
             continue;
@@ -173,7 +188,10 @@ fn process_polygon_batch(
                 .get(corner)
                 .copied()
                 .unwrap_or(poly.palette_index);
-            let weld_key = quantize_weld_key(v_pos, &poly.normal, palette_index, poly.flags);
+            let weld_key = (
+                quantize_weld_key(v_pos, &poly.normal, palette_index, poly.flags),
+                tie,
+            );
             if let Some(&existing_idx) = weld_map.get(&weld_key) {
                 poly_indices.push(existing_idx);
             } else {
@@ -186,7 +204,7 @@ fn process_polygon_batch(
                     palette_index,
                     flags: poly.flags,
                     scenery_class: 0,
-                    _padding: 0,
+                    decal_tie: u8::from(tie),
                 });
                 weld_map.insert(weld_key, new_idx);
                 poly_indices.push(new_idx);
@@ -239,7 +257,7 @@ fn polygon_centroid(poly: &RawPolygon) -> [f32; 3] {
 /// each endpoint, one per side, wound both ways so back-face culling keeps one. The quad has no
 /// width in the world; the renderer widens it to one pixel on screen. A polygon without two
 /// vertices appends nothing.
-fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<WeldKey, u32>) {
+fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<(WeldKey, bool), u32>) {
     let [a, b] = poly.vertices[..] else {
         return;
     };
@@ -254,7 +272,10 @@ fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<Weld
     ];
     let mut quad = [0u32; 4];
     for (slot, (position, to_other, flags)) in quad.iter_mut().zip(corners) {
-        let key = quantize_weld_key(&position, &to_other, poly.palette_index, flags);
+        let key = (
+            quantize_weld_key(&position, &to_other, poly.palette_index, flags),
+            false,
+        );
         *slot = *weld_map.entry(key).or_insert_with(|| {
             let index = arena_index(ir.vertices.len());
             ir.vertices.push(SodVertex {
@@ -263,7 +284,7 @@ fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<Weld
                 palette_index: poly.palette_index,
                 flags,
                 scenery_class: 0,
-                _padding: 0,
+                decal_tie: 0,
             });
             index
         });
@@ -343,7 +364,8 @@ pub fn decode_sod_posed(
     } else {
         Vec::new()
     };
-    let mut ir = build_sod_model_ir(name, &polygons);
+    let ties = decal_ties(&polygons, 1e-4, 1e-4);
+    let mut ir = build_tied_sod_model_ir(name, &polygons, &ties);
     if geometry {
         ir.sprites = run.sprites;
     }

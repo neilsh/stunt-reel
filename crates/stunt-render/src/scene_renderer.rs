@@ -1103,7 +1103,7 @@ fn sprite_ir(image: &SpriteImage) -> SodModelIr {
                 // Drawn art, not a lit surface: a lighting look leaves it as it is.
                 flags: VERTEX_FLAG_PRESHADED,
                 scenery_class: 0,
-                _padding: 0,
+                decal_tie: 0,
             });
         }
         ir.indices
@@ -1155,7 +1155,7 @@ mod tests {
             palette_index: colour,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_tie: 0,
         };
         let mut ir = SodModelIr::new("QUAD");
         ir.vertices = vec![

@@ -89,3 +89,29 @@
 - **Decision for the maintainer** (#1127 to `status:ready-for-human`): ship #1100's `3`, accepting `traintnl` −0.0004 and `intro` −0.00002 for `land` +0.0030, or leave the band.
 - **Switch**: [`switches/DBG_PROPSLIDE.diff`](switches/DBG_PROPSLIDE.diff), against `main` at `30a6b54`: #1100's switch and test plus variants `4` to `9`.
   The steep world-prop decal test (`draw_order::a_decal_on_a_steep_world_prop_facet_wins_over_its_base_near_and_far`) stays in the patch, uncommitted, since it fails on `main` ([#1100's handoff](../1100_land-617-hangar-decal/journal.md#handoff)).
+
+## 2026-11-26: #1100's variant `3` as the renderer's own rule
+
+`[Bounded Observation]`
+
+- **Question**: Does #1100's variant `3` ([its entry](../1100_land-617-hangar-decal/journal.md#2026-11-26-only-a-decal-that-overlaps-its-base)), written as the renderer's rule, score as it did in that sweep against today's `main`?
+- **Why**: the owner chose to ship `3`, accepting its `traintnl` and `intro` falls, after the forms above did no better (handoff above).
+- **Track**: evidence-backed, offsets as in #1064 (`0x9CF1`, `0x9D3A`, `0xAE67`).
+- **Variants** (`DBG_TIE`, not committed): `0`, `main`'s slide (no vertex marked); `1`, the rule as committed: `decal_ties` puts each filled decal that overlaps an earlier coplanar filled polygon within their plane, and each such polygon, in a decal tie, which the tessellator stores in the vertex byte that was padding (`SodVertex::decal_tie`), and `slide_normal` slides a world prop's vertex in a decal tie as a shape facet.
+  The flag bit `0x80` #1100's switch used is `VERTEX_FLAG_PRESHADED` on today's `main`, so the tie has its own byte.
+- **Target frames**: `--target land:617-617`.
+- **Command**: `mise run sweep -- --var DBG_TIE=0,1 --track evidence --record work/2026-11/1127_land-617-decal-fix --topic "decal ties in their plane" --images work/2026-11/1127_land-617-decal-fix/images --target land:617-617` with `VK_DRIVER_FILES` naming only the lavapipe ICD.
+- **Result** (lavapipe, `llvmpipe (LLVM 20.1.2, 256 bits)`; `main` at `a8d0a066` with the rule and the uncommitted switch; figures in [`sweeps/decal-ties-in-their-plane.toml`](sweeps/decal-ties-in-their-plane.toml)): `1` adopts, `winner: DBG_TIE=1 adopts (evidence, film means; target idx +0.0268 attribution; worst target frame +0.0102 land:617; 5 frames down >0.005, listed)`.
+
+  | Variant | ctry | intro | land | balloon | traintnl | bomb | location | mean |
+  |---|---|---|---|---|---|---|---|---|
+  | `0` (main) | 0.9439 | 0.9069 | 0.9310 | 0.9067 | 0.9164 | 0.9080 | 0.8967 | 0.9157 |
+  | `1` | 0.9441 | 0.9069 | 0.9340 | 0.9067 | 0.9160 | 0.9083 | 0.8975 | 0.9162 |
+
+  - Against `0`: `land` +0.0030 (frame 617 +0.0102, the band back: [picture](images/land-617-decal-ties-in-their-plane.png)), `location` +0.0008, `bomb` +0.0002, `ctry` +0.0002, `balloon` unchanged; `traintnl` −0.0004 and `intro` −0.00002, the falls the owner accepted.
+    Each film's change agrees with #1100's `3` to the fifth decimal.
+  - The five frames down by more than 0.005 are those of `3`: `traintnl` 1145 (−0.0084, [picture](images/traintnl-1145-decal-ties-in-their-plane-guard.png)), `location` 3125 (−0.0082, [picture](images/location-3125-decal-ties-in-their-plane-guard.png)), `land` 837 (−0.0073, [picture](images/land-837-decal-ties-in-their-plane-guard.png)), `traintnl` 914 and 1156.
+  - The switch is [`switches/DBG_TIE.diff`](switches/DBG_TIE.diff), against this PR's rule.
+- **Verdict**: adopted, by the owner's decision to accept `traintnl` −0.0004 and `intro` −0.00002; the expected lavapipe scores are repinned on it.
+  `draw_order::a_decal_on_a_steep_world_prop_facet_wins_over_its_base_near_and_far` pins the tie in the renderer, `decal_tests::a_decal_and_the_wall_it_overlaps_are_in_a_decal_tie` which polygons are tied, and `tessellate_tests::a_tied_polygon_keeps_its_own_vertices` the vertex byte.
+- **Lives in**: [`sod-vm-lines-spans.md` § 8.14](../../../research/playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre).

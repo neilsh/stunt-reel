@@ -85,7 +85,7 @@ fn sod_vertex_size_alignment_and_field_offsets() {
         palette_index: 42,
         flags: 1,
         scenery_class: 0,
-        _padding: 0,
+        decal_tie: 0,
     };
 
     let base_ptr = &raw const dummy as usize;
@@ -94,7 +94,7 @@ fn sod_vertex_size_alignment_and_field_offsets() {
     let pal_ptr = &raw const dummy.palette_index as usize;
     let flags_ptr = &raw const dummy.flags as usize;
     let class_ptr = &raw const dummy.scenery_class as usize;
-    let pad_ptr = &raw const dummy._padding as usize;
+    let pad_ptr = &raw const dummy.decal_tie as usize;
 
     assert_eq!(pos_ptr - base_ptr, 0, "position offset must be 0");
     assert_eq!(norm_ptr - base_ptr, 12, "normal offset must be 12");
@@ -117,7 +117,7 @@ fn sod_vertex_pod_roundtrip() {
         palette_index: 215,
         flags: 0x03,
         scenery_class: 0,
-        _padding: 0,
+        decal_tie: 0,
     };
 
     // Treat as raw 28 bytes
@@ -133,7 +133,7 @@ fn sod_vertex_pod_roundtrip() {
     assert_eq!(recovered.palette_index, original.palette_index);
     assert_eq!(recovered.flags, original.flags);
     assert_eq!(recovered.scenery_class, original.scenery_class);
-    assert_eq!(recovered._padding, 0);
+    assert_eq!(recovered.decal_tie, 0);
 }
 
 // =============================================================================

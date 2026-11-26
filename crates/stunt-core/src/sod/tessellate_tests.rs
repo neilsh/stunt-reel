@@ -324,7 +324,7 @@ fn internal_defects_are_refused_loudly() {
             palette_index: 1,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_tie: 0,
         },
     );
     ir.indices = vec![0, 1, 2];
@@ -436,4 +436,30 @@ fn test_decal_stream_order_survives_visibility_batches() {
         }
     }
     assert_eq!(drawn, [1, 2, 3], "decal draw order must equal stream order");
+}
+
+/// A polygon in a decal tie gives its vertices `decal_tie`, and they do not weld with an
+/// untied neighbour's at the corners they share.
+#[test]
+fn a_tied_polygon_keeps_its_own_vertices() {
+    let square = |x0: f32, x1: f32| RawPolygon {
+        vertex_palette: Vec::new(),
+        vertices: vec![
+            [x0, 1.0, 0.0],
+            [x1, 1.0, 0.0],
+            [x1, 0.0, 0.0],
+            [x0, 0.0, 0.0],
+        ],
+        palette_index: 7,
+        normal: [0.0, 0.0, 1.0],
+        flags: 0,
+        is_decal: false,
+        visibility: VisibilityCondition::Always,
+    };
+    let polygons = [square(0.0, 1.0), square(1.0, 2.0)];
+    let ir = crate::sod::tessellate::build_tied_sod_model_ir("TIE", &polygons, &[true, false]);
+    let ties: Vec<u8> = ir.vertices.iter().map(|v| v.decal_tie).collect();
+    assert_eq!(ties, [1, 1, 1, 1, 0, 0, 0, 0]);
+    let untied = crate::sod::tessellate::build_sod_model_ir("UNTIED", &polygons);
+    assert_eq!(untied.vertices.len(), 6, "untied, the shared edge welds");
 }

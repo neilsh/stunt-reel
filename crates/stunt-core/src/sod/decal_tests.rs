@@ -552,3 +552,53 @@ fn a_line_on_an_earlier_decal_is_a_decal() {
     assert_eq!(processed[3].vertices, on.vertices);
     assert_ne!(processed[3].flags & DECAL_FLAG_BIT, 0);
 }
+
+/// A filled facet in the plane `z = 2`, facing +Z (clockwise seen from +Z), spanning `x` and
+/// `y` from `lo` to `hi`.
+fn wall_facet(lo: [f32; 2], hi: [f32; 2], palette_index: u8) -> RawPolygon {
+    RawPolygon {
+        vertex_palette: Vec::new(),
+        vertices: vec![
+            [lo[0], hi[1], 2.0],
+            [hi[0], hi[1], 2.0],
+            [hi[0], lo[1], 2.0],
+            [lo[0], lo[1], 2.0],
+        ],
+        palette_index,
+        normal: [0.0, 0.0, 1.0],
+        flags: 0,
+        is_decal: false,
+        visibility: VisibilityCondition::Always,
+    }
+}
+
+/// A decal overlapping its wall puts both in a decal tie; one that only touches its wall
+/// along an edge is still a decal but ties neither, and a facet off the plane is in none.
+#[test]
+fn a_decal_and_the_wall_it_overlaps_are_in_a_decal_tie() {
+    use crate::sod::decal::{decal_ties, identify_coplanar_decals};
+    let wall = wall_facet([-5.0, -5.0], [5.0, 5.0], 10);
+    let floor = RawPolygon {
+        vertices: vec![
+            [-5.0, -5.0, -5.0],
+            [5.0, -5.0, -5.0],
+            [5.0, -5.0, 5.0],
+            [-5.0, -5.0, 5.0],
+        ],
+        normal: [0.0, 1.0, 0.0],
+        ..wall_facet([0.0, 0.0], [0.0, 0.0], 30)
+    };
+    let stripe = wall_facet([-1.0, -1.0], [1.0, 1.0], 20);
+    let above = wall_facet([-1.0, 5.0], [1.0, 7.0], 20);
+
+    let tied = identify_coplanar_decals(&[floor.clone(), wall.clone(), stripe], 1e-4, 1e-4);
+    assert!(tied[2].is_decal);
+    assert_eq!(decal_ties(&tied, 1e-4, 1e-4), [false, true, true]);
+
+    let touching = identify_coplanar_decals(&[floor, wall, above], 1e-4, 1e-4);
+    assert!(
+        touching[2].is_decal,
+        "a decal touching its wall is still a decal"
+    );
+    assert_eq!(decal_ties(&touching, 1e-4, 1e-4), [false, false, false]);
+}

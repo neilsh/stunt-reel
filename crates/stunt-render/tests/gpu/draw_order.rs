@@ -189,7 +189,7 @@ pub(crate) fn vertex(
         palette_index,
         flags: UNSHADED,
         scenery_class: class,
-        _padding: 0,
+        decal_tie: 0,
     }
 }
 
@@ -229,8 +229,14 @@ const DECAL: u8 = 15;
 /// A square base polygon and a diamond decal on it, in the plane `z = plane(x, y)` with
 /// (unit) normal `normal`, against a camera facing the origin, so depth varies across both and
 /// the two triangulate differently. `s` is the base's half-width; the diamond reaches `0.6 s`.
-fn decal_on_base(s: f32, plane: fn(f32, f32) -> f32, normal: [f32; 3]) -> SodModelIr {
-    let on_plane = |x: f32, y: f32, index: u8| vertex([x, y, plane(x, y)], normal, index, 0);
+/// Its vertices carry scenery class `class`: 0 for a shape, or `SCENERY_PROP` for a world prop,
+/// whose vertices are then in a decal tie (`decal_tie`), as the decoder marks a decal and the
+/// base it overlaps.
+fn decal_on_base(s: f32, plane: fn(f32, f32) -> f32, normal: [f32; 3], class: u8) -> SodModelIr {
+    let on_plane = |x: f32, y: f32, index: u8| SodVertex {
+        decal_tie: u8::from(class != 0),
+        ..vertex([x, y, plane(x, y)], normal, index, class)
+    };
     let mut ir = SodModelIr::new("DECAL");
     // Clockwise from the camera, like the SOD models.
     ir.vertices = vec![
@@ -263,15 +269,19 @@ fn flat_plane(x: f32, y: f32) -> f32 {
 }
 
 /// The decal wins inside its diamond and the base between it and the square, near and far, on
-/// `plane` seen by a camera at distance `d`.
-fn assert_decal_wins_over_its_base(plane: fn(f32, f32) -> f32, normal: [f32; 3]) {
+/// `plane` seen by a camera at distance `d`: a shape for class 0, else in the world mesh with
+/// scenery class `class`.
+fn assert_decal_wins_over_its_base(plane: fn(f32, f32) -> f32, normal: [f32; 3], class: u8) {
     common::gpu_test(|| {
         for (label, d) in RANGES {
             let s = 0.2 * d;
-            let scene = FilmScene::with_single_model(
-                film([0.0, 0.0, d], Vec::new()),
-                decal_on_base(s, plane, normal),
-            );
+            let ir = decal_on_base(s, plane, normal, class);
+            let film = film([0.0, 0.0, d], Vec::new());
+            let scene = if class == 0 {
+                FilmScene::with_single_model(film, ir)
+            } else {
+                FilmScene::new(film, HashMap::new(), Some(world_of(ir)))
+            };
             let Some(shot) = shoot(&scene) else {
                 return;
             };
@@ -296,7 +306,14 @@ fn assert_decal_wins_over_its_base(plane: fn(f32, f32) -> f32, normal: [f32; 3])
 
 #[test]
 fn a_decal_wins_over_its_base_near_and_far() {
-    assert_decal_wins_over_its_base(steep_plane, [0.0, 0.0, 1.0]);
+    assert_decal_wins_over_its_base(steep_plane, [0.0, 0.0, 1.0], 0);
+}
+
+/// A world prop's steep facet in a decal tie slides in its own plane, as a shape's does, so the
+/// decal (a hangar's wall stripe, #1100) keeps its tie with the wall.
+#[test]
+fn a_decal_on_a_steep_world_prop_facet_wins_over_its_base_near_and_far() {
+    assert_decal_wins_over_its_base(steep_plane, [0.0, 0.0, 1.0], SCENERY_PROP);
 }
 
 /// Near horizontal, a vertex slides in the horizontal plane through it, not its facet's (#1064);
@@ -304,7 +321,7 @@ fn a_decal_wins_over_its_base_near_and_far() {
 #[test]
 fn a_decal_on_a_near_horizontal_facet_wins_over_its_base_near_and_far() {
     let n = (0.15f32 * 0.15 + 1.0 + 0.4 * 0.4).sqrt();
-    assert_decal_wins_over_its_base(flat_plane, [-0.15 / n, 1.0 / n, -0.4 / n]);
+    assert_decal_wins_over_its_base(flat_plane, [-0.15 / n, 1.0 / n, -0.4 / n], 0);
 }
 
 // ---- A ZLINETO line on a coplanar facet -------------------------------------------------------

@@ -75,8 +75,12 @@ pub struct SodVertex {
     /// Scenery class of a world vertex (`SCENERY_OCEAN`, `SCENERY_TERRAIN`, `SCENERY_PROP`),
     /// zero for every other vertex. The renderer adds it to the draw's base layer id.
     pub scenery_class: u8,
-    /// Alignment padding; must be zero.
-    pub _padding: u8,
+    /// 1 for a vertex of a filled polygon in a decal tie: a decal, or an earlier polygon
+    /// coplanar with a decal that overlaps it within their plane; 0 otherwise. A world prop's
+    /// vertex with it slides in its facet's plane where any other world-mesh vertex slides
+    /// horizontally, so the decal keeps its tie on a steep facet
+    /// (`research/playone-exe/sod-vm-lines-spans.md` section 8.14).
+    pub decal_tie: u8,
 }
 
 // Manual bytemuck trait implementations to eliminate mandatory crate dependencies

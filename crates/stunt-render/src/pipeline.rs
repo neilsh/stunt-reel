@@ -151,7 +151,7 @@ impl RenderPipelines {
                 offset: 12,
                 shader_location: 1,
             },
-            // Location 2: packed attributes (palette_index, flags, pad0, pad1) (4 bytes)
+            // Location 2: packed attributes (palette_index, flags, scenery_class, decal_tie) (4 bytes)
             wgpu::VertexAttribute {
                 format: wgpu::VertexFormat::Uint8x4,
                 offset: 24,

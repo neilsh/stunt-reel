@@ -130,7 +130,7 @@ fn mesh_ir() -> SodModelIr {
             palette_index: 1,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_tie: 0,
         })
         .collect();
     ir.indices = vec![0, 1, 2];
@@ -200,7 +200,7 @@ fn extent_bounds_vertices_and_radius_is_a_vertex_distance() {
             palette_index: 1,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_tie: 0,
         },
         SodVertex {
             position: [2.0, 1.0, 0.0],
@@ -208,7 +208,7 @@ fn extent_bounds_vertices_and_radius_is_a_vertex_distance() {
             palette_index: 1,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_tie: 0,
         },
     ];
     let extent = ir.extent().expect("two vertices");
@@ -255,7 +255,7 @@ fn test_sod_vertex_bytemuck() {
         palette_index: 42,
         flags: 1,
         scenery_class: 0,
-        _padding: 0,
+        decal_tie: 0,
     };
     let bytes = bytemuck::bytes_of(&vertex);
     assert_eq!(bytes.len(), 28);

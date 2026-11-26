@@ -39,6 +39,7 @@ A synthetically constructed minimal `.sod` bytecode model conforming to `[fmt so
   - `OP_VECTORS` (`0x0075`): 5 vertices uploading base triangular wing and inner coplanar decal triangle.
   - `OP_COLOR` (`0x0129`) + `OP_POLYZ` (`0x00f3`): Base facet (palette index 40).
   - `OP_COLOR` (`0x0129`) + `OP_POLYZ` (`0x00f3`): Overlapping coplanar decal facet (palette index 15) testing Invariant `[I5]`.
+    The decal lies inside its base, so the decoder puts both in a decal tie (`SodVertex::decal_tie` = 1), which a placed world prop keeps (`world_test.rs`).
   - `OP_RETURN` (`0x0195`): Clean bytecode termination.
 
 ### 5. `synthetic_minimal.all` (84 bytes)

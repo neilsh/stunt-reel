@@ -153,7 +153,7 @@ const NO_PROP_VERTEX: u32 = 0xffffffffu;
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: padding
+    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: decal_tie
     // The second vertex stream: for an outline corner, the third vertex of the triangle its
     // edge bounds (outline.rs `Outlined`); for any other vertex, its own position.
     @location(3) apex: vec3<f32>,
@@ -284,16 +284,19 @@ const NEAR_HORIZONTAL: f32 = 0.9;
 // horizontal plane through them: the ground, the ocean and a flat prop snapped onto a slope
 // (the river) lie in different planes but share one, so their depth ties hold. Any other
 // polygon vertex slides in its facet's plane (`normal`, model space; for an outline corner the
-// plane of its edge and apex), which keeps a decal on a steep facet on its base. A ZLINETO
-// line or a two-vertex polygon (no facet), a degenerate facet and every vertex of a shadow,
-// whose model matrix flattens it onto the ground, slide horizontally too.
+// plane of its edge and apex), which keeps a decal on a steep facet on its base; so does a
+// world prop's vertex in a decal tie (`SodVertex::decal_tie`), such as a hangar's wall stripe.
+// A ZLINETO line or a two-vertex polygon (no facet), a degenerate facet and every vertex of a
+// shadow, whose model matrix flattens it onto the ground, slide horizontally too.
 fn slide_normal(in: VertexInput) -> vec3<f32> {
     var n = in.normal;
     if ((in.attr.y & FLAG_LINE) != 0u) {
         n = cross(in.normal, in.apex - in.position);
     }
     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
-    if (model.layer.y != 0u || in.attr.z != 0u || dot(eye_n, eye_n) == 0.0
+    let decal_tie = in.attr.z == SCENERY_PROP && in.attr.w != 0u;
+    let world = in.attr.z != 0u && !decal_tie;
+    if (model.layer.y != 0u || world || dot(eye_n, eye_n) == 0.0
         || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {
         return UP;
     }
