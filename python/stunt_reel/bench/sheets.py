@@ -1,6 +1,7 @@
 """The comparison sheets a readout grades, and the PIL images that carry them.
 
-A sheet is the capture beside the render at 2x, their luma difference, and an actor close-up.
+A sheet is the capture beside the render at 2x, their composite and index map
+(:mod:`stunt_reel.bench.panels`), and an actor close-up beside the map's key.
 Its file name carries no key: :func:`plan_sheets` recomputes the key from the run's seed.
 """
 
@@ -15,7 +16,15 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from stunt_reel.bench.faults import ACTOR_LAYER
-from stunt_reel.bench.ssim import render_luma, stretch
+from stunt_reel.bench.mismatch import (
+    colour_mismatch,
+    index_mismatch,
+    mismatch_fraction,
+    readout_mask,
+)
+from stunt_reel.bench.panels import COMPOSITE_TITLE, INDEX_MAP_TITLE, composite, draw_key, index_map
+from stunt_reel.bench.ssim import stretch
+from stunt_reel.parity_artifacts import LAYER_PROP
 lazy from stunt_reel.bench.planes import RenderSource
 
 if TYPE_CHECKING:
@@ -23,6 +32,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from stunt_reel.bench.planes import CapturePlanes
     from stunt_reel.bench.taxonomy import FilmWindow, Taxonomy
     from stunt_reel.parity_artifacts import Report
 
@@ -46,7 +56,7 @@ MIN_ACTOR_PIXELS = 64
 #: Frames whose fade level is below this are not picked: the screen is fading in or out.
 MIN_FADE_LEVEL = 0.95
 #: The prop layer, framed by the close-up when no actor is on screen.
-PROP_LAYER = 3
+PROP_LAYER = LAYER_PROP
 
 
 Kind = Literal["real", "control", "planted"]
@@ -116,6 +126,8 @@ PAD = 32
 PANEL_WIDTH = 320 * SCALE
 CLOSE_UP_HEIGHT = 240 * SCALE
 GREY = 128
+#: Height of one line of the key panel.
+KEY_LINE = 30
 
 
 def _font() -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -169,31 +181,60 @@ def _close_up(
     return out
 
 
+def _key_panel(counts: dict[str, int], fraction: float) -> Image.Image:
+    out = Image.new("RGB", (PANEL_WIDTH, CLOSE_UP_HEIGHT + LABEL), "white")
+    draw = ImageDraw.Draw(out)
+    draw.text(
+        (4, 2), "KEY to the INDEX MISMATCH panel: pixels per colour", fill="black", font=_font()
+    )
+    lines = draw_key(draw, (8, LABEL + 12), [counts], _font(), KEY_LINE)
+    summary = f"{100 * fraction:.1f}% of the unmasked pixels mismatch"
+    draw.text((8, LABEL + 24 + lines * KEY_LINE), summary, fill="black", font=_font())
+    return out
+
+
 def build_sheet(
-    capture_rgb: NDArray[np.uint8], render_rgb: NDArray[np.uint8], layer: NDArray[np.uint16]
+    capture: CapturePlanes,
+    render_rgb: NDArray[np.uint8],
+    render_idx: NDArray[np.uint8] | None,
+    layer: NDArray[np.uint16],
+    *,
+    credits_drawn: bool = False,
 ) -> Image.Image:
-    """Capture and render side by side at 2x, their luma difference, and an actor close-up."""
-    capture = np.array(stretch(capture_rgb), dtype=np.uint8)
-    render = np.array(stretch(render_rgb), dtype=np.uint8)
+    """Three rows at 2x: capture and render, their composite and index map, a close-up and key.
+
+    With no *render_idx*, a pixel mismatches when its colour differs.
+    The button bar and HUD timer are grey in every panel; the difference panels mask the cursor
+    too, unless *credits_drawn* (``overlay_mask``).
+    """
+    capture_rgb = capture.palette[capture.idx]
+    if render_idx is None:
+        mismatch = colour_mismatch(capture_rgb, render_rgb)
+    else:
+        mismatch = index_mismatch(capture.idx, render_idx)
+    hud = stretch(readout_mask(capture.idx, credits_drawn=True))
+    masked = readout_mask(capture.idx, credits_drawn=credits_drawn)
+    fraction = mismatch_fraction(mismatch, masked)
+    capture240 = np.array(stretch(capture_rgb), dtype=np.uint8)
+    render240 = np.array(stretch(render_rgb), dtype=np.uint8)
     layer240 = stretch(layer)
-    capture[BAR:] = GREY  # the game's button bar is not part of the 3D view
-    render[BAR:] = GREY
-    diff = np.clip(np.abs(render_luma(capture) - render_luma(render)) * 3, 0, 255)
-    diff_rgb = np.repeat(diff.astype(np.uint8)[..., None], 3, axis=2)
-    top = (
-        _panel(capture, "CAPTURE (the original game)"),
-        _panel(render, "RENDER (our reimplementation)"),
-    )
-    bottom = (
-        _panel(
-            diff_rgb,
-            "DIFFERENCE |capture - render| (brighter = more different; grey band = UI bar, ignore)",
+    masked240 = stretch(masked)
+    mismatch_map, counts = index_map(capture240, stretch(mismatch), layer240, masked240)
+    overlay = composite(capture240, render240, masked240)
+    capture240[hud] = GREY  # the game's button bar and timer are not part of the 3D view
+    render240[hud] = GREY
+    rows = (
+        (
+            _panel(capture240, "CAPTURE (the original game)"),
+            _panel(render240, "RENDER (our reimplementation)"),
         ),
-        _close_up(capture, render, layer240),
+        (_panel(overlay, COMPOSITE_TITLE), _panel(mismatch_map, INDEX_MAP_TITLE)),
+        (_close_up(capture240, render240, layer240), _key_panel(counts, fraction)),
     )
-    out = Image.new("RGB", (2 * PANEL_WIDTH + GAP, 2 * top[0].height + GAP), "white")
-    for row, (left, right) in enumerate((top, bottom)):
-        y = row * (top[0].height + GAP)
+    height = rows[0][0].height
+    out = Image.new("RGB", (2 * PANEL_WIDTH + GAP, 3 * height + 2 * GAP), "white")
+    for row, (left, right) in enumerate(rows):
+        y = row * (height + GAP)
         out.paste(left, (0, y))
         out.paste(right, (PANEL_WIDTH + GAP, y))
     return out

@@ -47,6 +47,7 @@ from stunt_reel import (  # noqa: E402
     parity_pictures,
     parity_pipeline,
 )
+from stunt_reel.bench import panels  # noqa: E402
 from stunt_reel.parity_artifacts import FilmId, Geometry, StoredFrame  # noqa: E402
 from stunt_reel.parity_judge import Variant  # noqa: E402
 from stunt_reel.parity_pipeline import Score  # noqa: E402
@@ -788,6 +789,12 @@ def _png_width_rows(path: Path) -> tuple[int, list[bytes]]:
     return width, [raw[y * stride + 1 : (y + 1) * stride] for y in range(height)]
 
 
+def _strip_height(rows: int) -> int:
+    """A strip's height at scale 1: three picture rows, two 2-row rules, and the key."""
+    key = (2 + len(panels.LAYER_KEY) - 1) * parity_probe.STRIP_KEY_LINE + 4
+    return 3 * rows + 2 * 2 + key
+
+
 def test_a_picture_is_the_capture_then_the_baseline_then_the_winner(tmp_path: Path) -> None:
     reference = _capture_with_planes(tmp_path / "ref", 5, 1)
     base, winner = tmp_path / "base", tmp_path / "winner"
@@ -802,7 +809,7 @@ def test_a_picture_is_the_capture_then_the_baseline_then_the_winner(tmp_path: Pa
     )
     assert path == images / "ctry-5-lake.png"
     width, rows = _png_width_rows(path)
-    assert (width, len(rows)) == (4 + 2 + 4 + 2 + 4, 2)
+    assert (width, len(rows)) == (4 + 2 + 4 + 2 + 4, _strip_height(2))
     assert rows[0][:3] == bytes([1, 1, 0])  # the capture first
     assert rows[0][4 * 3 : 6 * 3] == bytes([255, 0, 255] * 2)  # the magenta divider
     assert rows[0][6 * 3 : 10 * 3] == bytes([5, 5, 0, 6, 6, 0, 7, 7, 0, 8, 8, 0])  # baseline
@@ -819,7 +826,7 @@ def test_a_picture_without_a_crop_shows_the_whole_frame(tmp_path: Path) -> None:
         reference, (base, winner), pictures, tmp_path / "images", box=None, scale=1
     )
     width, rows = _png_width_rows(path)
-    assert (width, len(rows)) == (TINY.width * 3 + 4, TINY.height)
+    assert (width, len(rows)) == (TINY.width * 3 + 4, _strip_height(TINY.height))
 
 
 def test_topic_clash_matches_the_exact_name_shape(tmp_path: Path) -> None:

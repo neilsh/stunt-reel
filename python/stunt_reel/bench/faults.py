@@ -10,6 +10,7 @@ import numpy as np
 
 from stunt_reel.bench.planes import RenderPlanes
 from stunt_reel.bench.ssim import render_luma
+from stunt_reel.parity_artifacts import LAYER_FIRST_ACTOR, LAYER_TERRAIN
 
 if TYPE_CHECKING:
     from typing import Any
@@ -21,9 +22,9 @@ if TYPE_CHECKING:
 __all__ = ["ALL_FAULTS", "WRONG_TICK_DRAWS", "Fault", "plant"]
 
 #: Layers at or above this are actors; below it, terrain and scenery.
-ACTOR_LAYER = 16
+ACTOR_LAYER = LAYER_FIRST_ACTOR
 #: The layer holding terrain.
-TERRAIN_LAYER = 2
+TERRAIN_LAYER = LAYER_TERRAIN
 #: Ticks a ``wrong_tick`` candidate must be from the frame's own.
 WRONG_TICK_MIN_DISTANCE = 100
 #: Share of index pixels a ``wrong_tick`` frame must differ in.
