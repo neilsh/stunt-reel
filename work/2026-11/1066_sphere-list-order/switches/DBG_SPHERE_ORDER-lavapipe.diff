@@ -1,0 +1,283 @@
+diff --git a/crates/stunt-core/src/contracts/shape/mod.rs b/crates/stunt-core/src/contracts/shape/mod.rs
+index 9400367..66a1a88 100644
+--- a/crates/stunt-core/src/contracts/shape/mod.rs
++++ b/crates/stunt-core/src/contracts/shape/mod.rs
+@@ -418,6 +418,8 @@ pub struct SodModelIr {
+     /// Images the shape draws in screen space (`OP_ANIMATE`), in stream order. They are
+     /// not geometry: [`Self::meshes`] and [`Self::extent`] leave them out.
+     pub sprites: Vec<ShapeSprite>,
++    /// DBG_SPHERE_ORDER prototype: a ranked world prop vertex's placement origin.
++    pub vertex_origin: std::collections::HashMap<u32, [f32; 3]>,
+     /// Provenance of the decode that produced this shape; `None` for authored shapes.
+     decode: Option<DecodeRecord>,
+ }
+@@ -445,6 +447,7 @@ impl SodModelIr {
+             vertices: Vec::new(),
+             indices: Vec::new(),
+             sprites: Vec::new(),
++            vertex_origin: std::collections::HashMap::new(),
+             decode: None,
+         }
+     }
+diff --git a/crates/stunt-core/src/sod/tessellate.rs b/crates/stunt-core/src/sod/tessellate.rs
+index 71dd5a8..e52d61b 100644
+--- a/crates/stunt-core/src/sod/tessellate.rs
++++ b/crates/stunt-core/src/sod/tessellate.rs
+@@ -71,6 +71,10 @@ pub(crate) fn quantize_weld_key(
+     )
+ }
+ 
++thread_local! {
++    static RANKS: std::cell::RefCell<HashMap<usize, u8>> = std::cell::RefCell::new(HashMap::new());
++}
++
+ /// Builds a [`SodModelIr`] from a processed polygon list, no polygon in a decal tie.
+ #[cfg(test)]
+ pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodModelIr {
+@@ -99,6 +103,38 @@ pub(crate) fn build_tied_sod_model_ir(
+         return ir;
+     }
+ 
++    // DBG_SPHERE_ORDER prototype: a shape with a sphere ranks its polygons in list order.
++    RANKS.with(|r| {
++        let mut ranks = HashMap::new();
++        if std::env::var("DBG_SPHERE_ORDER").as_deref() == Ok("1")
++            && polygons.iter().any(|p| p.flags & super::vm::SPHERE_MARK != 0)
++        {
++            let (mut next, mut face) = (0usize, 0usize);
++            for p in polygons {
++                if p.flags & super::vm::SPHERE_MARK != 0 {
++                    if face % 20 == 0 {
++                        next += 1;
++                    }
++                    face += 1;
++                } else {
++                    next += 1;
++                }
++                ranks.insert(std::ptr::from_ref(p) as usize, u8::try_from(next.min(127)).unwrap_or(127));
++            }
++        }
++        let sorts = super::vm::SORTS.with(|c| c.replace(0));
++        if !ranks.is_empty() && std::env::var("DBG_SORT_TRACE").is_ok() {
++            eprintln!("ranked shape {name}: {} polygons, {} ranks, {sorts} OP_SORT", polygons.len(), ranks.values().max().copied().unwrap_or(0));
++            if std::env::var("DBG_SORT_TRACE").as_deref() == Ok(name) {
++                for p in polygons {
++                    let c: Vec<f32> = (0..3).map(|k| p.vertices.iter().map(|v| v[k]).sum::<f32>() / p.vertices.len() as f32).collect();
++                    eprintln!("poly rank={} vis={:?} pal={} n={} flags={:#x} decal={} c=({:.2},{:.2},{:.2})", ranks[&(std::ptr::from_ref(p) as usize)], p.visibility, p.palette_index, p.vertices.len(), p.flags, p.is_decal, c[0], c[1], c[2]);
++                }
++            }
++        }
++        *r.borrow_mut() = ranks;
++    });
++
+     // Base geometry (is_decal: false) comes first, then decals (is_decal: true) per Invariant [I5].
+     // Base batches group every polygon of one visibility: the depth test orders them. Decal
+     // batches are runs of consecutive polygons of one visibility, so the nodes in arena order
+@@ -180,6 +216,8 @@ fn process_polygon_batch(
+             continue;
+         }
+ 
++        let rank = RANKS.with(|r| r.borrow().get(&(std::ptr::from_ref::<RawPolygon>(poly) as usize)).copied().unwrap_or(0));
++        let poly_flags = poly.flags & !super::vm::SPHERE_MARK;
+         let disc_centre = (poly.flags & VERTEX_FLAG_DISC != 0).then(|| polygon_centroid(poly));
+         let mut poly_indices = Vec::with_capacity(num_v);
+         for (corner, v_pos) in poly.vertices.iter().enumerate() {
+@@ -188,10 +226,9 @@ fn process_polygon_batch(
+                 .get(corner)
+                 .copied()
+                 .unwrap_or(poly.palette_index);
+-            let weld_key = (
+-                quantize_weld_key(v_pos, &poly.normal, palette_index, poly.flags),
+-                tie,
+-            );
++            let mut key = quantize_weld_key(v_pos, &poly.normal, palette_index, poly_flags);
++            key.0 += i64::from(rank) * 100_000_000;
++            let weld_key = (key, tie);
+             if let Some(&existing_idx) = weld_map.get(&weld_key) {
+                 poly_indices.push(existing_idx);
+             } else {
+@@ -202,9 +239,9 @@ fn process_polygon_batch(
+                         [c[0] - v_pos[0], c[1] - v_pos[1], c[2] - v_pos[2]]
+                     }),
+                     palette_index,
+-                    flags: poly.flags,
++                    flags: poly_flags,
+                     scenery_class: 0,
+-                    decal_tie: u8::from(tie),
++                    decal_tie: u8::from(tie) | (rank << 1),
+                 });
+                 weld_map.insert(weld_key, new_idx);
+                 poly_indices.push(new_idx);
+diff --git a/crates/stunt-core/src/sod/vm.rs b/crates/stunt-core/src/sod/vm.rs
+index b64bb0a..b3a6a3a 100644
+--- a/crates/stunt-core/src/sod/vm.rs
++++ b/crates/stunt-core/src/sod/vm.rs
+@@ -307,6 +307,14 @@ fn block_polygons(
+         .collect()
+ }
+ 
++/// DBG_SPHERE_ORDER prototype: marks a sphere's faces for the tessellator.
++pub(crate) const SPHERE_MARK: u8 = 0x20;
++
++thread_local! {
++    /// DBG trace: OP_SORT count since the last tessellation.
++    pub(crate) static SORTS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
++}
++
+ /// Approximates an `OP_SPHERE` primitive with an icosahedron (20 triangles).
+ ///
+ /// `center` and `radius` are in raw register units like polygon vertices; the result is in
+@@ -388,7 +396,7 @@ fn sphere_polygons(
+                 vertices,
+                 palette_index,
+                 normal: [-nx, -ny, -nz],
+-                flags: 0,
++                flags: SPHERE_MARK,
+                 is_decal: false,
+                 visibility,
+             }
+@@ -1444,6 +1452,7 @@ impl<'a> Vm<'a> {
+ 
+     /// `OP_SORT`: queue two branches to run in turn.
+     fn sort(&mut self, op_offset: usize) -> Result<(), SodError> {
++        SORTS.with(|c| c.set(c.get() + 1));
+         // `siobj.cpp` `case 0x18c`: the three words are byte offsets from the
+         // opcode; the branch after the operands runs first, the second branch is at
+         // `op + 4 + second`, and the stream continues at `op + 2 + first`. Targets
+diff --git a/crates/stunt-core/src/world/mesh.rs b/crates/stunt-core/src/world/mesh.rs
+index bfe8e5d..1071981 100644
+--- a/crates/stunt-core/src/world/mesh.rs
++++ b/crates/stunt-core/src/world/mesh.rs
+@@ -594,6 +594,16 @@ fn push_prop_mesh(
+                     scenery_class: SCENERY_PROP,
+                     decal_tie: v.decal_tie,
+                 });
++                if v.decal_tie >> 1 != 0 {
++                    ir.vertex_origin.insert(
++                        arena_index(ir.vertices.len() - 1),
++                        [
++                            placed.pos[0],
++                            placed.pos[1] + placed.base_y,
++                            placed.pos[2],
++                        ],
++                    );
++                }
+                 arena_index(ir.vertices.len() - 1)
+             });
+             ir.indices.push(index);
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 4e2d500..09112d8 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -855,7 +855,16 @@ impl GpuChunk {
+ 
+ /// Each of `ir`'s vertices' own position, the apex that culls no line corner.
+ fn own_positions(ir: &SodModelIr) -> Vec<[f32; 3]> {
+-    ir.vertices.iter().map(|v| v.position).collect()
++    ir.vertices
++        .iter()
++        .enumerate()
++        .map(|(i, v)| {
++            ir.vertex_origin
++                .get(&arena_index(i))
++                .copied()
++                .unwrap_or(v.position)
++        })
++        .collect()
+ }
+ 
+ /// Writes `source`'s `ranges` back to back into `buffer` with one write; writes nothing when
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 7a10bf8..8ed0ec6 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -48,7 +48,15 @@ impl ModelUniform {
+     pub(crate) fn new(model_matrix: [f32; 16], layer: u32) -> Self {
+         Self {
+             model_matrix,
+-            layer: [layer, 0, 0, 0],
++            layer: [
++                layer,
++                0,
++                0,
++                std::env::var("DBG_SPHERE_PULL")
++                    .ok()
++                    .and_then(|v| v.parse().ok())
++                    .unwrap_or(0),
++            ],
+         }
+     }
+ 
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 66c68a2..b29413f 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -274,6 +274,9 @@ fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f3
+ }
+ 
+ // World up, the plane normal of a vertex with no facet of its own (`slide_normal`).
++// Eight steps of the 24-bit depth buffer.
++const RANK_STEP: f32 = 4.8e-7;
++
+ const UP: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
+ 
+ // A facet whose normal lies within this cosine of vertical slides horizontally (`slide_normal`).
+@@ -294,7 +297,7 @@ fn slide_normal(in: VertexInput) -> vec3<f32> {
+         n = cross(in.normal, in.apex - in.position);
+     }
+     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
+-    let decal_tie = in.attr.z == SCENERY_PROP && in.attr.w != 0u;
++    let decal_tie = in.attr.z == SCENERY_PROP && (in.attr.w & 1u) != 0u;
+     let world = in.attr.z != 0u && !decal_tie;
+     if (model.layer.y != 0u || world || dot(eye_n, eye_n) == 0.0
+         || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {
+@@ -317,10 +320,12 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
+     let projected = camera.rotation_proj * eye_pos;
+     let plane = slide_normal(in);
+     out.clip_position = playone_vertex(projected, eye_pos, plane);
++    var collapsed = false;
+     // OP_PERFDISK skips when shadow mode (work:0x806C) is set
+     // (research/playone-exe/sod-vm-generators.md section 8.8).
+     if (model.layer.y != 0u && (in.attr.y & FLAG_DISC) != 0u) {
+         out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
++        collapsed = true;
+     } else if ((in.attr.y & FLAG_LINE) != 0u) {
+         let other_eye = model.model_matrix * vec4<f32>(in.position + in.normal, 1.0);
+         let other = playone_vertex(camera.rotation_proj * other_eye, other_eye, plane);
+@@ -341,6 +346,7 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
+         if (bounds_triangle && !two_sided && !shadow && is_back_facing(first, second, apex)) {
+             // Every corner of the quad collapses to one point, so it covers no pixel.
+             out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
++            collapsed = true;
+         } else {
+             out.clip_position = widen_line(out.clip_position, other, in.attr.y);
+         }
+@@ -348,6 +354,28 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
+         let centre = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+         out.clip_position = snap_disc(squeeze_disc(projected, centre), centre);
+     }
++    // DBG_SPHERE_ORDER prototype: a ranked vertex (attr.w, list-order rank) of a shape that holds a
++    // sphere draws at its placement origin's depth plus a step per rank, so the shape's
++    // primitives cover each other in list order and still depth-test against other objects.
++    let rank = in.attr.w >> 1u;
++    if (rank != 0u && !collapsed && model.layer.y == 0u && camera.rotation_proj[3][3] == 0.0
++        && out.clip_position.w >= out.clip_position.z) {
++        var origin = vec3<f32>(0.0);
++        if (in.attr.z == SCENERY_PROP) {
++            origin = in.apex;
++        }
++        var oe = (model.model_matrix * vec4<f32>(origin, 1.0)).xyz;
++        let pull = f32(model.layer.w) * 0.01;
++        let dist = length(oe);
++        if (pull > 0.0 && dist > 0.0) {
++            oe = oe * max(1.0 - pull / dist, 0.001);
++        }
++        let oc = camera.rotation_proj * vec4<f32>(oe, 1.0);
++        if (oc.w > 0.0) {
++            let d = min(oc.z / oc.w + f32(rank) * RANK_STEP, 1.0);
++            out.clip_position.z = d * out.clip_position.w;
++        }
++    }
+     out.palette_index = in.attr.x & 255u;
+     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
+     // (research/playone-exe/sod-vm-frame.md section 9.1).

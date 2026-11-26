@@ -73,10 +73,12 @@ A CPU painter in that order, checked against a CPU z-buffer that reproduces our 
   `[Bounded Observation]`: two trees at two ticks of one film.
   Drawing spheres so in the renderer is [#1066](https://github.com/neilsh/stunt-reel/issues/1066): a GPU prototype that draws a shape's primitives at their placement's depth, one rank step apart in list order, raises `bomb`'s SSIM by 0.0028 and 21 of the 21 scored frames of the tick ranges around 2080 and 2300, with no film falling.
   It needs per-draw flattened depth, so it awaits the owner.
+  Its falls elsewhere have two causes: flattening to the placement's foot lets the ground cover the near half of `location`'s forest canopies (a 5 m pull toward the eye removes those frames' falls), and our VM runs a `SORTON`'s branches in one fixed order, so the ranked aircraft in `intro` 2718 draws its propeller over its fuselage (`[Hypothesis]`).
+  A depth from the shape's near side, and `SORTON` in facing order, come before adopting it.
 * **The canyon rock 1145** does not: at `location` 7019 the painter, `SORTON` swaps included, shows another polygon than the z-buffer on 20 of the rock's 49,095 pixels, and draws the same near face across the lower left that the capture does not show ([sheet](../../work/2026-11/1030_close-shape-order/images/location-7019-inshape.png)).
   It was the camera: with the far-moving slices interpolated (2.1) the face is gone.
 
-_Source: [list order explains the BOMB trees, not the canyon rock](../../work/2026-11/1030_close-shape-order/journal.md#2026-11-24-list-order-explains-the-bomb-trees-not-the-canyon-rock), [the list-order prototype's sweep](../../work/2026-11/1066_sphere-list-order/journal.md#2026-11-26-a-shapes-primitives-at-their-placements-depth-one-rank-step-apart-in-list-order)._
+_Source: [list order explains the BOMB trees, not the canyon rock](../../work/2026-11/1030_close-shape-order/journal.md#2026-11-24-list-order-explains-the-bomb-trees-not-the-canyon-rock), [the list-order prototype's sweep](../../work/2026-11/1066_sphere-list-order/journal.md#2026-11-26-a-shapes-primitives-at-their-placements-depth-one-rank-step-apart-in-list-order), [the causes of its falls](../../work/2026-11/1066_sphere-list-order/journal.md#2026-11-26-the-location-falls-are-ground-covering-flattened-canopies-intro-2718-is-the-aircrafts-sort-order)._
 
 ### 2.4 The far town drew no houses (fixed)
 

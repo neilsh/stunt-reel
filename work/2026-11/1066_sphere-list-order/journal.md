@@ -50,3 +50,42 @@
   Productionising it would change the seam contracts (a rank in `SodVertex`'s padding byte, a per-vertex origin on `SodModelIr`), so it also needs [`changing-seam-contracts`](../../../.agents/skills/changing-seam-contracts/SKILL.md) and a lavapipe repin.
   The prototype's switch, the thread-local rank map and the weld-key offset are not fit to commit.
 - **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.3.
+
+## 2026-11-26: the `location` falls are ground covering flattened canopies; `intro` 2718 is the aircraft's `SORT` order
+
+`[Bounded Observation]`
+
+- **Question**: why do the seven frames the list-order form loses (`location` 1651 to 1772, `intro` 2718) fall, the guard 2 explanation the entry above left open?
+- **Track**: heuristic, as above; the same `--target bomb:2070-2179 --target bomb:2289-2388`, typed in the commands, not written here first.
+- **Port** ([`switches/DBG_SPHERE_ORDER-lavapipe.diff`](switches/DBG_SPHERE_ORDER-lavapipe.diff), not committed under `crates/`; `main` at `c2e0aa9`): `main` now spends `SodVertex`'s padding byte on `decal_tie`, so the port keeps the tie in bit 0 and the rank in bits 1 to 7, which caps it at 127 where the GPU prototype capped it at 255.
+  Bit 7 of a raw polygon's flags is now `VERTEX_FLAG_PRESHADED`, so the sphere mark moved to `0x20` (a line-end bit no filled polygon carries).
+  `DBG_SPHERE_PULL=<cm>` moves the depth origin that far toward the eye, through the model uniform's last word; `DBG_SORT_TRACE` prints each ranked shape's polygon, rank and `OP_SORT` counts.
+- **Recheck on lavapipe** ([`sweeps/lavapipe-recheck.toml`](sweeps/lavapipe-recheck.toml); `mise run judge -- --recheck` prints the same line): `winner: DBG_SPHERE_ORDER=1 adopts (heuristic target idx +0.0172, 21/21 frames up; films ok; worst target frame +0.0039 bomb:2102; 12 frames down >0.005, listed)`.
+  The 12 are the GPU's seven at about the same size, plus `bomb` 1618, 1662, 1706 and 1728 (−0.0053 to −0.0081) and `location` 3378 (−0.0056).
+  On the GPU the four `bomb` frames fell by 0.0038, rose by 0.0007, fell by 0.0042 and fell by 0.0021, under the listing bar.
+  In `bomb` 1706 ([picture](images/bomb-1706-lavapipe-recheck-guard.png)) the pixels that change are the town on the horizon and the aircraft's wing roots; `[Hypothesis]`: the town blocks are ranked shapes (bomb's include shapes of 447 to 474 polygons whose ranks reach the port's 127 cap), and their buildings now cover each other by block origin and list order.
+- **`location`: the ground covers the near half of a flattened canopy.**
+  `location` 1717, capture | `0` | `1` ([picture](images/location-1717-lavapipe-recheck-guard.png)): in the variant many tree canopies end in a horizontal edge, below which the ground's colour shows where the baseline draws the rest of the canopy.
+  The forest tree is `MODEL_07AF`, two spheres and no other primitive (40 polygons, ranks 1 and 2).
+  Every primitive of it draws at its placement origin's depth, the trunk's foot on the ground, while the near side of a wide canopy lies nearer the eye than that foot and projects below it on screen; there the terrain between the canopy's near edge and the foot is nearer than the origin and wins the depth test.
+  Moving the origin 5 m toward the eye removes the edges (capture | pull 0 | pull 5 m, both ordered: [picture](images/location-1717-lavapipe-pull-0-500.png)).
+- **Pull sweep** ([`sweeps/lavapipe-origin-pulled-toward-eye.toml`](sweeps/lavapipe-origin-pulled-toward-eye.toml), `--var DBG_SPHERE_ORDER=0,1 --var DBG_SPHERE_PULL=0,500,1500`; its winner line is the unpulled form's, above, and `judge --recheck` reproduces it):
+
+  | Variant | ctry | intro | land | balloon | traintnl | bomb | location | target idx | frames down >0.005 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | `0` (`main`) | 0.9441 | 0.9069 | 0.9340 | 0.9067 | 0.9160 | 0.9083 | 0.8975 | | |
+  | `1`, pull 0 | 0.9444 | 0.9069 | 0.9341 | 0.9081 | 0.9160 | 0.9108 | 0.8977 | +0.0172 | 12 |
+  | `1`, pull 5 m | 0.9444 | 0.9068 | 0.9340 | 0.9079 | 0.9160 | 0.9109 | 0.8979 | +0.0171 | 7 |
+  | `1`, pull 15 m | 0.9443 | 0.9067 | 0.9339 | 0.9078 | 0.9160 | 0.9072 | 0.8979 | −0.0073 | 58 |
+
+  At 5 m all seven `location` frames of the unpulled list (1651 to 1772 and 3378) leave it and `bomb`'s target gain stays; `location` 2905, 6513 and 6689 (−0.0054, −0.0082, −0.0177) join it, their cause not looked at.
+  At 15 m `bomb` falls by more than 0.005 on 51 frames, 38 of them by the same 0.0091 or 0.0145 in its opening ticks 12 to 420: a constant pull draws far shapes over nearer ones.
+  So the `location` falls come from flattening to the placement's foot; a depth nearer the shape's own near side (its bounding sphere's nearest point, say) is the form to try, not a fixed pull.
+- **`intro` 2718: the aircraft's `OP_SORT` branches run in a fixed order.**
+  Capture | `0` | `1` ([picture](images/intro-2718-lavapipe-recheck-guard.png)): the capture shows only the propeller's upper tip above the fuselage, the baseline hides the blade behind it, and the variant draws the whole blade over it; pulling the origin changes nothing there.
+  The aircraft, `MODEL_7F19` (177 polygons), holds a sphere, so it is ranked, and holds three `OP_SORT`s.
+  `PLAYONE` runs a `SORT`'s two branches in the order its facing flag picks ([`sod-opcodes.md`](../../../research/formats/sod-opcodes.md) row 44), and our VM always runs the branch after the operands first (`sort` in `crates/stunt-core/src/sod/vm.rs`), so the list rank is right from one side only.
+  `[Hypothesis]`: the propeller and the fuselage sit in one `SORT`'s two branches; which branch holds which was not read.
+- **Verdict**: guard 2's seven frames are now explained, six by a picture and a sweep that removes them, one by a hypothesis that names the opcode.
+  The form as measured is still not adopted, awaiting the owner; before it is worth adopting it needs a depth from the shape's near side rather than its foot, and the VM to run `SORT` branches in facing order (a change that touches every shape, not only ranked ones).
+- **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.3.
