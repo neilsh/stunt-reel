@@ -644,7 +644,7 @@ impl GpuModel {
     clippy::type_complexity,
     reason = "the edges and the marks are planned in one pass over the same runs"
 )]
-fn plan_edges(
+pub(crate) fn plan_edges(
     plan: &mut UploadPlan,
     ir: &SodModelIr,
     keep: fn(&SodVertex) -> bool,
