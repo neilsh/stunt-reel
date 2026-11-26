@@ -1,6 +1,6 @@
 # Journal: distilling `lavapipe-render-time.md`, second pass
 
-Superseded results and restatements cut from [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) as of commit `46e5b20c`, moved here verbatim.
+Superseded results and restatements cut from [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) as of commit `46e5b20c`, and the pre-distillation `summary:` as it stood on `main` at `ef237840`, moved here verbatim.
 Only relative link paths and list indentation changed; a section number in the moved text names a section of the note as it stood at `46e5b20c` (`git show 46e5b20c:research/parity/lavapipe-render-time.md`).
 
 ## 2026-11-16: LOCATION's peak memory on Windows before the world mesh was freed
@@ -17,7 +17,6 @@ After the upload LOCATION's working set is about 483 MiB before the change and a
 The whole GPU's `nvidia-smi` used memory rose from idle to 520 MiB during LOCATION's render and 200 MiB during CTRY's, the same at both commits (200 ms sampling).
 In that pair the render stores are byte-identical: all seven films' `frames.zst`, `layers.zst` and `palettes.zst` (21 files) and their scores match, and every report named the RTX 4070 Laptop GPU.
 The 2026-11-16 pair (942 MB working set and 1,443 MB private) is not reproduced at `4c43baa`, where three runs read about 598 MiB and 1,297-1,303 MiB; the 603 MiB peak the flag read at `77a9a49` agrees with this pair's, and the gap to 942 MB is not attributed.
-Linux lavapipe's 749 and 556 MiB are `VmHWM` and `VmRSS` on another Mesa build (LLVM 20.1.2 against 21.1.7), so the gaps to them are not attributed.
 
 **Lives in** [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md), § 7, condensed.
 
@@ -65,8 +64,10 @@ One known alternative, not probed: an order buffer that makes decal draw order c
 
 **Lives in** [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md), Ruled out, condensed; the figures are in § 5.
 
-## 2026-11-23: The note summary as of 46e5b20c
+## 2026-11-24: The note summary before the second pass
 
-summary: "Which renderer changes cut headless render time on lavapipe and the GPU, where the time goes now, and what a render's memory goes to per worker. Landed: #596, #602, #644, #811, the view-facing cull #914 (52.4% to 80.6% of the Windows lavapipe loop in its probe), #933, #942, #943 and #944, and stuntreel --workers (#916): four child processes render LOCATION 1.85x faster on 4 vCPUs, while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8. On lavapipe the world's base and decal draws hold 49.0% of the whole LOCATION loop, on Span B mostly the decal fill-to-outline switch (by elimination); #1002's stack profile puts the whole LOCATION loop on lavapipe's queue thread (rasterizers 26.7%, vertex work 21.4%, line setup 14.6%, fragment-state store try_update_scene_state 10.2% and 28.3% of Span B, other state 8.5%, triangle setup 5.4%, submit 2.1%). #999's CPU probe sizes a frame-streamed world at up to 75,576 vertices, 76,008 indices and 149,956 outline indices a frame (INTRO tick 3635, 2.88 MiB vs LOCATION's 333.75 MiB baked). A LOCATION render's memory is mostly its world mesh (1,004 MiB Linux lavapipe peak vs CTRY's 139 MiB; release_world_mesh brings it to 749 MiB; each extra lavapipe device adds 751..796 MiB RSS). No-go: culling actors, #919, #915b, #926, #622, #920 and #1000."
+summary: "Which renderer changes cut headless render time on lavapipe and the GPU, where the time goes now, and what a render's memory goes to per worker. Landed: #596, #602, #644, #811, the view-facing cull #914 (52.4% to 80.6% of the Windows lavapipe loop in its probe), #933, #942, #943 and #944, and stuntreel --workers (#916): four child processes render LOCATION 1.85x faster on 4 vCPUs, while four in-process VkDevices sharing one instance regress on Ubuntu Mesa 25.2.8. On lavapipe the world's base and decal draws hold 49.0% of the whole LOCATION loop, on Span B mostly the decal fill-to-outline switch (by elimination); #1002's stack profile puts the whole LOCATION loop on lavapipe's queue thread (rasterizers 26.7%, vertex work 21.4%, line setup 14.6%, fragment-state store try_update_scene_state 10.2% and 28.3% of Span B, other state 8.5%, triangle setup 5.4%, submit 2.1%). #999's CPU probe sizes a frame-streamed world at up to 75,576 vertices, 76,008 indices and 149,956 outline indices a frame (INTRO tick 3635, 2.88 MiB vs LOCATION's 333.75 MiB baked). A LOCATION render's memory is mostly its world mesh (1,004 MiB Linux lavapipe peak vs CTRY's 139 MiB; release_world_mesh brings it to 749 MiB; each extra lavapipe device adds 751..796 MiB RSS). Other processes' CPU load slows the Span B lavapipe loop (16 spinners +75.2%), so mise run ab now records it and gates on it (#1018). No-go: culling actors, #919, #915b, #926, #622, #920 and #1000."
+
+The pass began from `46e5b20c`, whose summary was this text without the `#1018` sentence before `No-go:`; main added that sentence in `19869b40` (2026-11-24), and the merged note keeps it.
 
 **Lives in** [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md), its `summary:`, shortened.
