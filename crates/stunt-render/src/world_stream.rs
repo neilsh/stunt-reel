@@ -1,18 +1,9 @@
 //! The per-frame stream of the world's visible slices.
 //!
-//! [`WorldStream`] stages, on the CPU and without a GPU handle, what a frame draws of the
-//! static world: the slices [`crate::mesh::GpuModel::collect_world_meshes`] emits, ground, then
-//! base, then decal, each copied to where the last one ended. A slice brings the vertex window
-//! its indices name, its indices rebased to where that window landed, its outline indices
-//! rebased the same way, and a 12 B apex per vertex; the prop runs are cut to the windows
-//! ([`chunk_prop_runs`]) for `prop_shape`.
-//!
-//! Vertices are copied, never recomputed, so a streamed vertex is the baked one bit for bit
-//! and only `vertex_index` differs. Nothing draws from the stream yet; it replaces the baked
-//! world upload once the renderer takes its slices (`work/2026-11/999_frame-streamed-world/`).
-//!
-//! Staging reuses the allocations of the last frame and never shrinks them, as
-//! `DrawUniforms` stages the per-draw uniforms; the GPU buffer's own growth is not here.
+//! [`WorldStream::rebuild`] stages, on the CPU, the ground, base and decal slices of one frame
+//! from an unsplit [`WorldSource`], each slice's vertex window, indices, outline indices and
+//! apexes back to back, and returns slices addressing the stream. A slice of a split world is an
+//! error. Nothing draws from the stream yet.
 
 use std::ops::Range;
 
@@ -350,8 +341,8 @@ mod tests {
             edges: &edges,
             prop_runs: &[],
         };
-        // The second ground slice only; the base slices last sibling first, with the first
-        // base slice culled; the decal.
+        // The second ground slice only (the first is culled); both base slices, last sibling
+        // first; the decal.
         let (ground, base, decals) = ([slices[1]], [slices[3], slices[2]], [slices[4]]);
         let mut stream = WorldStream::default();
         stream.rebuild(&source, ground, base, decals).expect("held");
