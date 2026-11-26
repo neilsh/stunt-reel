@@ -2248,7 +2248,6 @@ dependencies = [
 name = "stunt-score"
 version = "0.1.0"
 dependencies = [
- "flate2",
  "image",
  "image-compare",
  "png",

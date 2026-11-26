@@ -135,7 +135,7 @@ _Source: [torn pages](../../work/2026-11/distill-capture-dosbox-automation/journ
 `[Bounded Observation]`:
 
 * **One log row per video frame** in three films; the first four ticks precede recording.
-* **The ZMBV decoder** ([`zmbv.rs`](../../crates/stunt-score/src/zmbv.rs)) matches `ffmpeg -pix_fmt bgr0` byte for byte on all 1,907 frames of `vault-ctry/video/001`.
+* **The ZMBV decoder** matched `ffmpeg -pix_fmt bgr0` byte for byte on all 1,907 frames of `vault-ctry/video/001` while it existed in `stunt-score`; #1133 deleted it, and the result is not reproducible from the tree.
 * **Audio is stripped after the run** (`video_only`): `CTRY.FLM` 2.5 MB, `INTRO.FLM` 6.2 MB.
 * **A long film runs out of Lua budget** (§ 4.7): `COL3-1.FLM` died near 24,500 frames, so `capture-video` covers films to about 5.5 minutes.
 * **Sky colours are not unique in RGB**: an RGB sky mask mislabels 3.6% of pixels over 6,047 frames of 95 captures, touching the per-second scorer's IoU, not its SSIM.

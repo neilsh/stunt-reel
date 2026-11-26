@@ -19,6 +19,10 @@ use crate::render_store::RenderStore;
 /// Compares the fresh `report` with the previous report at `previous_path`: prints the
 /// summary, writes `compare.json`, and renders before/after sheets when the previous
 /// render directory was given.
+#[expect(
+    clippy::print_stdout,
+    reason = "`run_compare` reports to the terminal of `stuntreel parity --compare`"
+)]
 pub(super) fn run_compare(
     args: &Options,
     previous_path: &Path,

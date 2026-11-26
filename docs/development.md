@@ -71,7 +71,7 @@ The corpus ships the unpatched 1992 executables; `mise run game-builds` makes an
 | `crates/stunt-render/` | `wgpu` pipelines, Mode 13h palette LUT, headless renderer |
 | `crates/stunt-parity/` | Parity artifact port: typed, versioned, validated render, capture, video and report documents, and their committed JSON Schemas in `schema/`, which the Python adapter is tested against ([ADR 0048](adr/0048-the-python-parity-adapter-is-checked-against-a-generated-schema.md)); the [crate docs](../crates/stunt-parity/src/lib.rs) say how to regenerate them |
 | `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity`, `export-gltf`, `shape-views`, `sod-trace` and `film-slots` subcommands |
-| `crates/stunt-score/` | The parity engine as a library, with no GPU dependency: SSIM/IoU scoring, the render store, the render and capture documents' reader and writer, and the ZMBV/AVI video reader; `stuntreel parity` calls it |
+| `crates/stunt-score/` | The parity engine as a library, with no GPU dependency: SSIM/IoU scoring, the render store, the render and capture documents' reader and writer; `stuntreel parity` calls it |
 | `python/stunt_reel/tac/` | dosbox-automation harness: Lua generator, REST client, capture plans, staging, MAKEONE driver — [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
 | `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes, single scene frames and animated films, driven by `stunt-cli export-gltf` |
 | `python/scripts/` | Entry points for capture, parity, format and documentation checks (e.g. `capture_playone_reference.py`, `parity_run.py`, `parity_sweep.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`) plus maintenance tools |
