@@ -73,7 +73,7 @@ The corpus ships the unpatched 1992 executables; `mise run game-builds` makes an
 | `crates/stunt-cli/` | `stuntreel` binary: interactive/headless presentation plus the `parity`, `export-gltf`, `shape-views`, `sod-trace` and `film-slots` subcommands |
 | `crates/stunt-score/` | The parity engine as a library, with no GPU dependency: SSIM/IoU scoring, the render store, the render and capture documents' reader and writer, and the ZMBV/AVI video reader; `stuntreel parity` calls it |
 | `python/stunt_reel/tac/` | dosbox-automation harness: Lua generator, REST client, capture plans, staging, MAKEONE driver — [`research/playone-exe/capture.md`](../research/playone-exe/capture.md) |
-| `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes and single scene frames, driven by `stunt-cli export-gltf` |
+| `crates/stunt-gltf/` | glTF 2.0 (`.glb`) exporter for shapes, single scene frames and animated films, driven by `stunt-cli export-gltf` |
 | `python/scripts/` | Entry points for capture, parity, format and documentation checks (e.g. `capture_playone_reference.py`, `parity_run.py`, `parity_sweep.py`, `verify_schemas_corpus.py`, `verify_formats_docs.py`) plus maintenance tools |
 | `tests/` | Python suite and synthetic fixtures — [`tests/fixtures/README.md`](../tests/fixtures/README.md); Rust integration tests live in `crates/*/tests/it/` (one test binary per crate: add a test as a module in `it/main.rs`, run one with `cargo test -p <crate> --test it -- <module>::`), apart from stunt-render's GPU tests in `tests/gpu/`, which stay a second binary so the hang-rate loop can run them alone |
 | `docs/` | Living spec, architecture routing, ADRs, and guides (`howto/`, `agents/`) |

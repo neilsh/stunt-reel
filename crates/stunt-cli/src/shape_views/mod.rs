@@ -24,7 +24,9 @@ use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 use stunt_core::contracts::{PaletteControls, ShapeExtent, SodModelIr, VERTEX_FLAG_PRESHADED};
 use stunt_core::flm::FilmTimeline;
-use stunt_core::scene::{ActorDraw, FilmScene, SceneFrame, ViewCamera, decode_archive_shapes};
+use stunt_core::scene::{
+    ActorDraw, DrawSource, FilmScene, SceneFrame, ViewCamera, decode_archive_shapes,
+};
 use stunt_core::sod::{AngleBank, ShadeLight};
 use stunt_render::{CameraController, Offscreen, Projection, RenderError, RenderOptions, Renderer};
 
@@ -415,6 +417,7 @@ fn draw_shapes(
                     lens: stunt_core::contracts::DEFAULT_CAMERA_LENS,
                     world: false,
                     actors: vec![ActorDraw {
+                        source: DrawSource::Origin,
                         shape_id: id,
                         world_matrix: glam::Mat4::IDENTITY.to_cols_array(),
                         position: [0.0; 3],

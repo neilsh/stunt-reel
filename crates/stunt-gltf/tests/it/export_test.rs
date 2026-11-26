@@ -34,7 +34,7 @@ use stunt_core::world::{FacingProp, GateNode, PlacementRecords, TerrainSurface, 
 use stunt_gltf::{GltfError, camera_rotation, export_scene_frame, export_shape, summarize};
 use stunt_render::CameraController;
 
-fn fixture(name: &str) -> Vec<u8> {
+pub(crate) fn fixture(name: &str) -> Vec<u8> {
     let dir = crate::test_support::workspace_root()
         .join("tests")
         .join("fixtures");
@@ -42,8 +42,8 @@ fn fixture(name: &str) -> Vec<u8> {
 }
 
 /// A parsed `.glb`: the JSON document, the BIN payload and the raw chunk lengths.
-struct Glb {
-    json: Value,
+pub(crate) struct Glb {
+    pub(crate) json: Value,
     bin: Vec<u8>,
     json_len: usize,
     bin_len: usize,
@@ -61,7 +61,7 @@ fn u32_at(data: &[u8], at: usize) -> u32 {
     clippy::indexing_slicing,
     reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
 )]
-fn parse_glb(data: &[u8]) -> Glb {
+pub(crate) fn parse_glb(data: &[u8]) -> Glb {
     assert_eq!(&data[..4], b"glTF", "magic");
     assert_eq!(u32_at(data, 4), 2, "version");
     assert_eq!(u32_at(data, 8) as usize, data.len(), "total length");
@@ -96,7 +96,7 @@ fn parse_glb(data: &[u8]) -> Glb {
     reason = "test helper outside #[test]: an out-of-range index is the assertion failure"
 )]
 impl Glb {
-    fn array(&self, key: &str) -> &Vec<Value> {
+    pub(crate) fn array(&self, key: &str) -> &Vec<Value> {
         self.json[key].as_array().unwrap_or_else(|| panic!("{key}"))
     }
 
@@ -117,7 +117,7 @@ impl Glb {
         (&self.bin[start..start + count * width * 4], count)
     }
 
-    fn floats(&self, accessor: usize) -> Vec<f32> {
+    pub(crate) fn floats(&self, accessor: usize) -> Vec<f32> {
         self.accessor_bytes(accessor)
             .0
             .as_chunks::<4>()
@@ -147,7 +147,7 @@ impl Glb {
         out
     }
 
-    fn node_named(&self, name: &str) -> Option<&Value> {
+    pub(crate) fn node_named(&self, name: &str) -> Option<&Value> {
         self.array("nodes").iter().find(|n| n["name"] == name)
     }
 
@@ -159,7 +159,7 @@ impl Glb {
     }
 }
 
-fn model(name: &str) -> SodModelIr {
+pub(crate) fn model(name: &str) -> SodModelIr {
     decode_sod(&fixture(name), "MODEL", None, DecodeMode::Strict).expect("fixture model")
 }
 
@@ -522,7 +522,7 @@ fn archive(chunks: &[(u16, &[u8])]) -> Vec<u8> {
     out
 }
 
-fn load(film: &[u8], all: &[u8]) -> FilmScene {
+pub(crate) fn load(film: &[u8], all: &[u8]) -> FilmScene {
     FilmScene::load(&SceneInputs {
         film,
         shapes: Some(ShapeSource::Archive(all)),
