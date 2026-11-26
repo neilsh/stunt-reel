@@ -372,6 +372,10 @@ fn score_matched(
 }
 
 /// Prints the run's headline, scored, loss and unmatched lines.
+#[expect(
+    clippy::print_stdout,
+    reason = "`print_summary` reports to the terminal of `stuntreel parity`, as it did in stunt-cli"
+)]
 fn print_summary(report: &Report, min_fade_level: f32) {
     let (mean_ssim, mean_iou) = (report.mean_ssim, report.mean_iou);
     let excluded_frames = report.excluded_frames;
@@ -427,6 +431,11 @@ fn print_summary(report: &Report, min_fade_level: f32) {
 /// # Errors
 ///
 /// A message for the terminal when the inputs cannot be read or an output cannot be written.
+#[expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "`run` reports to the terminal of `stuntreel parity`, as it did in stunt-cli"
+)]
 pub fn run(args: &Options) -> Result<(), String> {
     fs::create_dir_all(&args.output)
         .map_err(|e| format!("create output directory {}: {e}", args.output.display()))?;

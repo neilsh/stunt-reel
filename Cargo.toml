@@ -174,8 +174,8 @@ multiple_crate_versions = "allow" # its 3 duplicates come in through dependencie
 #   big_endian_bytes        no hits, but a big-endian field would be read on purpose
 
 # Rejected (#162): `clippy::arithmetic_side_effects` stays off in stunt-cli, stunt-render,
-# stunt-parity and stunt-gltf. Their 250-odd hits are bounded maths (the ZMBV video decoder,
-# parity scoring, rendering and glTF export), not offsets or counts read from game files, and
+# stunt-parity and stunt-gltf. Their 250-odd hits are bounded maths (parity scoring, rendering
+# and glTF export), not offsets or counts read from game files, and
 # a `checked_*` on every pixel index would bury the maths. stunt-core opts in with a crate-root
 # `#![warn(clippy::arithmetic_side_effects)]` in `lib.rs`, because a crate that sets
 # `[lints] workspace = true` cannot also add or override a single lint in its own manifest.
