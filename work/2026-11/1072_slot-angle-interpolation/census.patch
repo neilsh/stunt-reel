@@ -19,7 +19,7 @@ index 00000000..79c41df1
 +#[test]
 +#[ignore]
 +fn census() {
-+    let root = "E:/git/stunt-reel.data/corpus/";
++    let root = format!("{}/corpus/", std::env::var("STUNT_DATA_ROOT").expect("set STUNT_DATA_ROOT"));
 +    let films = [
 +        ("ctry", "siarchive/Films/NewPLAY/Vault/CTRY.FLM"),
 +        ("intro", "stisldem/VAULT/INTRO.FLM"),
