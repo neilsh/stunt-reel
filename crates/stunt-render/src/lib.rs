@@ -31,6 +31,14 @@ mod palette;
 mod pipeline;
 mod scene_renderer;
 mod sky;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "stage B of #999 draws from the stream; nothing does yet"
+    )
+)]
+mod world_stream;
 
 pub use camera::{
     ASPECT_4_3, CameraController, CameraMode, CameraUniform, FreeCamState,
