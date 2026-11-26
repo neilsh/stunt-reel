@@ -69,3 +69,6 @@ site/.astro/
 site/src/content/docs/
 site/src/generated/
 site/public/media/
+
+# glb-check's validator dependencies (npm ci in tools/glb-check)
+tools/glb-check/node_modules/

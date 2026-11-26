@@ -132,6 +132,10 @@ run = "uv run python python/scripts/worktree_init.py reap"
 description = "Make a review's detached worktree at <primary>/.claude/worktrees/review-<PR or sha7> from any checkout or worktree (a PR number fetches its head from origin; a SHA is taken locally, an unpushed one included, else a full SHA is fetched from origin); an existing path gets a suffix (review-977b); the last output line is the absolute path (mise run review-worktree -- <PR number | SHA>)"
 run = "uv run python python/scripts/worktree_init.py review"
 
+[tasks.glb-check]
+description = "Check one .glb with no GPU: the Khronos glTF validator, then a PNG render by Blender on the CPU or F3D (mise run glb-check -- <file.glb> [--time S] [--renderer blender|f3d] [--validate-only]); needs `npm ci` in tools/glb-check and blender or f3d on PATH"
+run = "uv run python python/scripts/glb_check.py"
+
 [tasks.pr-threads]
 description = "A pull request's unresolved review threads, one line each with the comment id to reply to, then its review-body findings; or reply in and resolve a thread. Uses GraphQL, or in a cloud session the proxy's REST thread routes (mise run pr-threads -- <number> [--all] | [--reply <id> --body <text>|--body-file <path>] [--resolve <id>])"
 run = "uv run python python/scripts/pr_threads.py"
