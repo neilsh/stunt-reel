@@ -167,8 +167,10 @@ The centre alone moves nothing vertically: row 92's centre is our 92.5.
 Drawing each vertex at that pixel raised all seven films by 0.005 to 0.011 SSIM when each vertex slid to the pixel along the horizontal world plane through it, so that the ground and the ocean stayed coplanar, and a vertex whose ray missed that plane kept its own projection.
 The renderer follows the rule: `playone_vertex` in `mode13h.wgsl` draws each vertex at that pixel's centre, sliding it along the ray through the pixel to a plane through the vertex, so the surfaces that shared a plane still do.
 That plane is the horizontal one for a world-mesh vertex and for a shape facet within about 26 degrees of horizontal, and the facet's own for a steeper facet (Ruled out gives the forms that failed).
-`[Bounded Observation]` for the score, on the GPU against `main`: every film rises, `balloon` by 0.0009 and the other six by 0.0057 to 0.0132 SSIM.
-The depth ties are pinned by the decal tests of `draw_order.rs` on a steep and a near-horizontal facet, by its tile-on-terrain and actor-on-scenery tests, and by `lines.rs`'s one-pixel polygon.
+`[Bounded Observation]` for the score, on the GPU against `main`: every film's SSIM rises, `balloon` by 0.0009 and the other six by 0.0054 (`ctry`) to 0.0132 (`intro`); mask IoU falls by 0.0001 to 0.0013 on four (`ctry`, `intro`, `land`, `location`) and rises on three.
+The 297 frames down by more than 0.005 are mostly pixels a pixel off along edges and lines; the worst, `location` 3334 (−0.0716) and `land` 617 (−0.0334), also lose a region: a wedge along `location`'s horizon ridge, and the band of a `land` hangar's wall that the capture draws and the PR covers; the cause was not found.
+The depth ties are pinned by the decal tests of `draw_order.rs` on a steep and a near-horizontal facet of a single shape, by its tile-on-terrain and actor-on-scenery tests, and by `lines.rs`'s one-pixel polygon.
+The limit: every world-mesh vertex, a prop's steep walls included, slides horizontally, and no test or probe puts a decal on a steep facet of a world prop, which was the failure of #1027's horizontal-plane form; `land` 617's hangar band above is the one picture that fits it, not shown to be it.
 _Source: [the register projectors truncate toward the centre](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-register-projectors-truncate-toward-the-centre), [with an unsnapped fallback](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-projector-rounding-with-an-unsnapped-fallback), [the world mesh slides horizontally](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-the-world-mesh-slides-in-the-horizontal-plane-shapes-in-their-facets), [facets near horizontal](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-facets-near-horizontal-slide-horizontally), [the world mesh and near-horizontal shape facets together](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-the-world-mesh-and-near-horizontal-shape-facets-together)._
 
 ## Ruled out
@@ -203,13 +205,21 @@ _Source: [the register projectors truncate toward the centre](../../work/2026-11
 * **Drawing truncated vertices slid horizontally for the world mesh and within their facet's plane for every shape** (section 8.14).
   The river's plane explained part of that fall: `balloon` still fell 0.0024, past the 0.002 the evidence track allows, while the other six films rose by 0.0055 to 0.0132 ([the world mesh slides horizontally](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-the-world-mesh-slides-in-the-horizontal-plane-shapes-in-their-facets)).
 
+* **Drawing truncated vertices slid horizontally for every facet within 26 degrees of horizontal, in the world mesh and in shapes alike, with no rule for the world mesh as a whole** (section 8.14, variant `3`).
+  It adopted in its own sweep (`balloon` −0.0007, inside the 0.002 the evidence track allows), but the shipped form, which also slides every world-mesh facet horizontally, scored a mean of 0.9158 against its 0.9153 (+0.0005, inside the ±0.002 noise floor) and `balloon` +0.0009, and was the committed shader.
+  Per film (GPU, SSIM; `main` in brackets): `ctry` 0.9452 (0.9385), `intro` 0.9066 (0.8937), `land` 0.9314 (0.9248), `balloon` 0.9052 (0.9059), `traintnl` 0.9171 (0.9107), `bomb` 0.9073 (0.8957), `location` 0.8945 (0.8863); the mean 0.9153 against `main`'s 0.9079 ([facets near horizontal](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-facets-near-horizontal-slide-horizontally)).
+
+* **Drawing truncated vertices slid horizontally for every facet within 60 degrees of horizontal, without the world-mesh rule** (section 8.14, variant `4`).
+  It scored a mean of 0.9166 against the shipped form's 0.9158 (+0.0008) and 0.9153 for `3` (+0.0013), both inside the ±0.002 noise floor, and `balloon` +0.0048, but `bomb` 0.9066 against 0.9085 shipped and 0.9073 for `3`, and `ctry` and `bomb` below `3`.
+  Per film (GPU, SSIM): `ctry` 0.9447, `intro` 0.9069, `land` 0.9349, `balloon` 0.9107, `traintnl` 0.9173, `bomb` 0.9066, `location` 0.8952; it was not combined with the world-mesh rule, so it is an open threshold question (section 10), not a ruled-out one ([facets near horizontal](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-facets-near-horizontal-slide-horizontally)).
+
 * **The projection centre alone** (section 8.14).
   Moving the axis half a column right, to the centre of column 160, lowered six films (`intro` by 0.0056) ([projector rounding on the evidence track](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-playones-projector-rounding-on-the-evidence-track)).
 
 ## 10. Open questions
 
 * **Projected points** (section 8.14).
-  Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; whether a slide threshold other than 26 degrees from horizontal scores better: 60 degrees, tried without the world-mesh rule, gave a higher film mean (0.9166 against the shipped form's 0.9158) and raised `balloon` by 0.0048, but left `bomb` at 0.9066 (shipped 0.9085); the two were not combined.
+  Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; whether a slide threshold other than 26 degrees from horizontal scores better: 60 degrees, tried without the world-mesh rule (Ruled out, variant `4`), gave a film mean of 0.9166 against the shipped form's 0.9158 (+0.0008, +0.0013 against `3`, inside the ±0.002 noise floor) and raised `balloon` by 0.0048, but left `bomb` at 0.9066 (shipped 0.9085); the two were not combined.
   On `location`'s stadium the lines' and outlines' mismatched pixels lie mostly a pixel toward the centre in the capture, and the prototype cuts the stadium's loss by about a third ([`prop-shape-loss.md` § 2.5](../parity/prop-shape-loss.md#25-one-tick-phase-and-lines)).
 
 * **Back faces** (section 8.12).
