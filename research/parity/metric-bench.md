@@ -134,7 +134,7 @@ _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../
   Both passes of the Hydrogen seed 2 calibration and both passes of the DSH seed 3 calibration graded `intro-3466` 2 or more for `propeller-solid`; DSH's seed 4 passes split 2 and 0 and its tie-break gave 2, so the example rests on one run per model under the 20-category file.
   Under the 19-category file, seed 3 graded it 1, 0 and 1 in the two passes and tie-break; seed 4 graded it 0, 0 and 1.
   The colour category added with it, `aircraft-colour-wrong`, had four real sheets that some pass graded 2: both DSH passes of the 20-category readout graded `TRAINTNL` 683 2, the DSH seed 3 second pass graded INTRO 2564 2, the DSH seed 4 tie-break graded INTRO 3246 2, and the first pass of the INTRO 20-category readout graded INTRO 2421 2.
-  A Claude Sonnet pass, run independently and over the first three, graded them 1, 0 and 0, so no sheet had a 2 from two different models; the fourth, INTRO 2421, was cleared by its run's tie-break and was not in the Sonnet pass.
+  A Claude Sonnet pass, run independently and over the first three, graded them 1, 0 and 0 (transcribed from the grader reports in the journal), so no sheet had a 2 from two different models; the fourth, INTRO 2421, was cleared by its run's tie-break and was not in the Sonnet pass.
   The category therefore met its example rule on no sheet and is removed, leaving 19 categories.
   The removal changes the categories digest from `5838a280…` to `5f8b01d6…`: the 20-category calibrations and readouts keep their grades as the record of that file, and none of them is a calibration pass or a readout of the 19-category file, which `errors-score` separates by digest.
   The 19-category CTRY and two INTRO calibrations passed, and the seven 12-sheet readouts were scored (below).
@@ -142,7 +142,8 @@ _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../
 
 * **The 19-category passes diverged on BOMB background misregistration** (`[Bounded Observation]`, 2026-11-25, 12 sheets per film).
   The two DSH passes counted 12 and 0 BOMB frames at grade 2 or more; the 12-frame difference exceeds `min_change` 4.
-  Claude Sonnet graded disputed sheets for the saved readouts, but that does not establish their repeatability.
+  Pass 1 graded every BOMB sheet 2, while pass 2 graded each 0 or 1; the three 2+ frames in the saved readout came from the Sonnet tie-break alone.
+  The tie-break does not establish the saved readout's repeatability.
   The CTRY calibration and both INTRO calibrations passed; the INTRO runs share the same six actor-removal frames.
   _Source: [19-category calibration and readout repeatability](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-19-category-calibration-and-readout-repeatability); figures in [readout-repeat-19.txt](../../work/2026-11/calibration-actor-floor/readout-repeat-19.txt)._
 

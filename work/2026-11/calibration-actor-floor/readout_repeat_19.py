@@ -18,7 +18,7 @@ from stunt_reel.bench.planes import RenderTree
 TAX = load_categories(Path("research/parity/error-categories.toml"))
 FILMS = ("ctry", "intro", "land", "balloon", "bomb", "location", "traintnl")
 print("DSH passes over the seven 19-category readouts, 12 real sheets per film")
-print("model provenance: the coordinator's delegated-task records (journal.md)")
+print("model provenance: coordinator-reported delegated-task records; absent from run and grade files")
 MAX_DELTA = 0
 for film in FILMS:
     out = Path("build/parity/bench") / film / "errors-19cat"
