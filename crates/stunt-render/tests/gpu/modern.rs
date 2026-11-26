@@ -1,6 +1,8 @@
 //! Pins the viewer-only modern look beside the parity look: it lights an unshaded facet by its
-//! normal against the sun (brighter toward it than away from it), leaves a pre-shaded one at its index's full row, fades distance into
-//! the horizon sky colour, and changes no index or layer of the page, only its colour.
+//! normal against the sun (brighter toward it than away from it) with a sky fill that keeps a
+//! facet turned from the sun well above the dark floor, smooths a pre-shaded Gouraud ramp that
+//! the parity look steps, leaves a pre-shaded facet unlit, fades distance into the horizon sky
+//! colour, and changes no index or layer of the page, only its colour.
 //!
 //! Skips when no GPU adapter is available (see common); fails instead of skipping under
 //! `STUNT_REQUIRE_GPU=1` (ADR 0006).
@@ -44,6 +46,10 @@ fn tilted_facet(s: f32, index: u8, flags: u8, up: [f32; 3]) -> SodModelIr {
     push_mesh(&mut ir, "FACET", 4, &[0, 1, 2, 0, 2, 3], false);
     ir
 }
+
+/// The least share of the parity colour's brightness a facet turned from the sun keeps: the
+/// fill lifts it over the 0.51 floor the look used to take.
+const LIT_SHARE: f64 = 0.6;
 
 /// Renders `ir` seen from `distance` metres in `look`, or `None` without a GPU adapter.
 fn shoot(ir: SodModelIr, distance: f32, look: Look) -> Option<RenderedPage> {
@@ -118,6 +124,122 @@ fn a_facet_toward_the_sun_is_brighter_than_one_turned_from_it() {
             brightness(toward) <= brightness(parity),
             "lighting only dims: {toward:?} vs {parity:?}"
         );
+    });
+}
+
+#[test]
+fn a_facet_turned_from_the_sun_keeps_most_of_its_colour() {
+    common::gpu_test(|| {
+        // The film's sun is behind or in front of the wall, never in its plane: the camera on
+        // the side the sun is not on sees the wall turned from it.
+        let mut darkest = None;
+        for z in [10.0, -10.0] {
+            let (Some(parity), Some(modern)) = (
+                shoot(facet(2.0, FACET_INDEX, UNSHADED), z, Look::Mode13h),
+                shoot(facet(2.0, FACET_INDEX, UNSHADED), z, Look::Modern),
+            ) else {
+                return;
+            };
+            let share =
+                f64::from(brightness(centre(&modern))) / f64::from(brightness(centre(&parity)));
+            assert!(share <= 1.0, "lighting only dims: {share} at z {z}");
+            darkest = Some(darkest.map_or(share, |d: f64| d.min(share)));
+        }
+        let darkest = darkest.expect("two shots");
+        assert!(
+            darkest >= LIT_SHARE,
+            "a wall turned from the sun keeps {darkest} of its colour, under {LIT_SHARE}"
+        );
+    });
+}
+
+#[test]
+fn an_upward_facet_is_brighter_than_a_downward_one_at_the_same_angle() {
+    common::gpu_test(|| {
+        // Both are tilted 20 degrees from upright, toward the camera at +z: the upward one
+        // faces the sky, the downward one the ground.
+        let (sin, cos) = 20.0f32.to_radians().sin_cos();
+        let tilted = |up| tilted_facet(2.0, FACET_INDEX, UNSHADED, up);
+        let (Some(upward), Some(downward)) = (
+            shoot(tilted([0.0, cos, -sin]), 10.0, Look::Modern),
+            shoot(tilted([0.0, cos, sin]), 10.0, Look::Modern),
+        ) else {
+            return;
+        };
+        let (upward, downward) = (centre(&upward), centre(&downward));
+        assert!(
+            brightness(upward) > brightness(downward),
+            "upward {upward:?} not brighter than downward {downward:?}"
+        );
+    });
+}
+
+/// The facet of [`facet`] drawn pre-shaded as a Gouraud ramp from palette index `left` to `right`.
+fn ramp(left: u8, right: u8) -> SodModelIr {
+    let mut ir = facet(2.0, left, VERTEX_FLAG_PRESHADED);
+    for vertex in ir.vertices.iter_mut().skip(2) {
+        vertex.palette_index = right;
+    }
+    ir
+}
+
+/// The page's colours along its middle row.
+fn middle_row(page: &RenderedPage) -> Vec<[u8; 3]> {
+    let width = page.width() as usize;
+    page.rgba()
+        .chunks_exact(width * 4)
+        .nth(page.height() as usize / 2)
+        .expect("the middle row is on the page")
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|&[r, g, b, _]| [r, g, b])
+        .collect()
+}
+
+/// The largest per-channel jump between adjacent pixels of `row`.
+fn largest_step(row: &[[u8; 3]]) -> u8 {
+    row.iter()
+        .zip(row.iter().skip(1))
+        .flat_map(|(a, b)| a.iter().zip(b).map(|(a, b)| a.abs_diff(*b)))
+        .max()
+        .unwrap_or(0)
+}
+
+#[test]
+fn a_preshaded_ramp_is_smoother_than_the_parity_looks_steps() {
+    common::gpu_test(|| {
+        let (Some(parity), Some(modern)) = (
+            shoot(ramp(16, 31), 10.0, Look::Mode13h),
+            shoot(ramp(16, 31), 10.0, Look::Modern),
+        ) else {
+            return;
+        };
+        let (parity_row, modern_row) = (middle_row(&parity), middle_row(&modern));
+        let distinct = |row: &[[u8; 3]]| {
+            let mut colours = row.to_vec();
+            colours.sort_unstable();
+            colours.dedup();
+            colours.len()
+        };
+        assert!(
+            distinct(&modern_row) > distinct(&parity_row),
+            "{} colours, the parity look's {}",
+            distinct(&modern_row),
+            distinct(&parity_row)
+        );
+        // Blending the entries either side of the fractional index never jumps further than a
+        // palette step, which the parity row's steps are.
+        assert!(
+            largest_step(&modern_row) <= largest_step(&parity_row),
+            "step {} over the parity look's {}",
+            largest_step(&modern_row),
+            largest_step(&parity_row)
+        );
+        // The planes stay the parity look's.
+        assert_eq!(parity.indices(), modern.indices());
+        assert_eq!(parity.layers(), modern.layers());
+        assert_eq!(parity.shapes(), modern.shapes());
     });
 }
 

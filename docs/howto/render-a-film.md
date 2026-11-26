@@ -21,8 +21,10 @@ stuntreel --look modern --headless <film and flags as above> --video film.mp4
 stuntreel --look modern --headless <film and flags as above> -o still.png
 ```
 
-`--look modern` adds directional lighting against the film's sun and distance fog toward the horizon sky, through pipelines and shader entry points beside the parity ones; `--look mode13h` is the default.
-Polygons whose colour already carries `OP_SHADES` light keep their palette index's full row, so nothing is lit twice, and so do discs and facet-less lines, which have no normal to light; the sky, the letterbox and the pixel snapping are the Mode 13h look's.
+`--look modern` lights the film in RGB against its sun, with a sky fill, and fogs distance toward the horizon sky, through pipelines and shader entry points beside the parity ones; `--look mode13h` is the default.
+A facet takes `min(SUN * lambert + fill, 1)` per channel of its palette colour at full brightness: the fill is a hemisphere term, brighter facing up than facing down and tinted toward the sky, so a wall turned from the sun keeps about four fifths of its colour where it once fell to half (`ModernUniform::SUN`, `FILL_UP`, `FILL_DOWN` and `FILL_TINT` in `camera.rs`).
+A Gouraud ramp (`GVPOLY`) is smooth: the fragment blends the palette entries either side of its fractional index where Mode 13h steps by whole entries; a flat polygon is one index and stays a single colour, faceted from its neighbours.
+Polygons whose colour already carries `OP_SHADES` light keep their palette colour, ramp smoothed, with no sun and no fill, so nothing is lit twice, and so do discs and facet-less lines, which have no normal to light; the sky, the letterbox and the pixel snapping are the Mode 13h look's.
 It is a viewer: `--out-dir` refuses it, since the render store holds Mode 13h renders that are scored, and `stuntreel shape-views` stays on the Mode 13h look.
 
 ## Sample it at an interval

@@ -43,17 +43,25 @@ pub const DEFAULT_FAR_CLIP: f32 = 25_000.0;
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ModernUniform {
     /// The unit direction toward the sun in `[I1]` axes (`ShadeLight::sun_direction`), then
-    /// the palette-LUT row a surface facing directly away from the sun takes.
-    pub sun_and_floor: [f32; 4],
+    /// [`SUN`](Self::SUN): the share of full brightness a facet facing the sun gains.
+    pub sun: [f32; 4],
     /// Fog start and end distance from the eye in metres, then padding: the fog colour mixes
     /// in linearly between them.
     pub fog: [f32; 4],
+    /// The sky fill: [`FILL_UP`](Self::FILL_UP), [`FILL_DOWN`](Self::FILL_DOWN) and
+    /// [`FILL_TINT`](Self::FILL_TINT), then padding.
+    pub fill: [f32; 4],
 }
 
 impl ModernUniform {
-    /// The lighting row of a surface turned away from the sun: 0.51 of full brightness
-    /// (`palette.rs` rows run `0.2 + 0.8 * row / 31`).
-    pub const LIGHT_FLOOR_ROW: f32 = 12.0;
+    /// The share of full brightness a facet facing the sun gains from it.
+    pub const SUN: f32 = 0.4;
+    /// The brightness the sky fill gives a facet facing straight up, a share of full.
+    pub const FILL_UP: f32 = 0.92;
+    /// The brightness the sky fill gives a facet facing straight down; a wall takes the mean.
+    pub const FILL_DOWN: f32 = 0.72;
+    /// How far the fill's colour leans from white toward the sky's, `0.0..=1.0`.
+    pub const FILL_TINT: f32 = 0.2;
     /// Where the fog starts, in metres.
     pub const FOG_START: f32 = 1_000.0;
     /// Where the fog is the whole colour, in metres.
@@ -65,8 +73,9 @@ impl ModernUniform {
     pub fn for_sun(variable_13: u16) -> Self {
         let [x, y, z] = ShadeLight::world(variable_13).sun_direction();
         Self {
-            sun_and_floor: [x, y, z, Self::LIGHT_FLOOR_ROW],
+            sun: [x, y, z, Self::SUN],
             fog: [Self::FOG_START, Self::FOG_END, 0.0, 0.0],
+            fill: [Self::FILL_UP, Self::FILL_DOWN, Self::FILL_TINT, 0.0],
         }
     }
 }
