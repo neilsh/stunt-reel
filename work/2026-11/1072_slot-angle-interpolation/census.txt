@@ -1,0 +1,45 @@
+ACTORS ctry: drawn-slot slice pairs with any angle word changed 77; slerp off per-word by >0.5deg 0; max 0.06 deg
+ACTORS intro: drawn-slot slice pairs with any angle word changed 176; slerp off per-word by >0.5deg 0; max 0.06 deg
+ACTORS land: drawn-slot slice pairs with any angle word changed 16; slerp off per-word by >0.5deg 0; max 0.00 deg
+ACTORS balloon: drawn-slot slice pairs with any angle word changed 206; slerp off per-word by >0.5deg 0; max 0.04 deg
+ACTORS traintnl: drawn-slot slice pairs with any angle word changed 112; slerp off per-word by >0.5deg 0; max 0.06 deg
+ACTORS bomb: drawn-slot slice pairs with any angle word changed 92; slerp off per-word by >0.5deg 0; max 0.00 deg
+ACTORS location: drawn-slot slice pairs with any angle word changed 64; slerp off per-word by >0.5deg 2; max 0.78 deg
+CAMERA ctry: view-angle changes 129/129 pairs; lerped-target direction off per-word by >0.5deg: 0 pairs/0 ticks, >1deg: 0/0, >2deg: 0/0; max 0.03 deg at slice tick 56
+CAMERA intro: view-angle changes 222/369 pairs; lerped-target direction off per-word by >0.5deg: 0 pairs/0 ticks, >1deg: 0/0, >2deg: 0/0; max 0.03 deg at slice tick 994
+CAMERA land: view-angle changes 76/111 pairs; lerped-target direction off per-word by >0.5deg: 0 pairs/0 ticks, >1deg: 0/0, >2deg: 0/0; max 0.04 deg at slice tick 596
+CAMERA balloon: view-angle changes 90/120 pairs; lerped-target direction off per-word by >0.5deg: 3 pairs/32 ticks, >1deg: 3/32, >2deg: 2/21; max 2.69 deg at slice tick 223
+CAMERA traintnl: view-angle changes 81/125 pairs; lerped-target direction off per-word by >0.5deg: 3 pairs/36 ticks, >1deg: 3/36, >2deg: 1/12; max 2.13 deg at slice tick 233
+CAMERA bomb: view-angle changes 156/348 pairs; lerped-target direction off per-word by >0.5deg: 0 pairs/0 ticks, >1deg: 0/0, >2deg: 0/0; max 0.24 deg at slice tick 3048
+CAMERA location: view-angle changes 472/868 pairs; lerped-target direction off per-word by >0.5deg: 0 pairs/0 ticks, >1deg: 0/0, >2deg: 0/0; max 0.38 deg at slice tick 6326
+CENSUS ctry: pairs 129 ticks 1342 viewswitch 0 | >=2 words>3deg: view 0 pairs/0 ticks, actors 0/0, any 0/0 | view1word 67 | slerp-vs-perword max view 0.00 med 0.00 n>1deg 0; actors max 0.00 med 0.00 n>1deg 0 | max single word 7.2
+CENSUS intro: pairs 369 ticks 3822 viewswitch 0 | >=2 words>3deg: view 1 pairs/11 ticks, actors 0/0, any 1/11 | view1word 64 | slerp-vs-perword max view 0.00 med 0.00 n>1deg 0; actors max 0.00 med 0.00 n>1deg 0 | max single word 65.9
+CENSUS land: pairs 111 ticks 1136 viewswitch 0 | >=2 words>3deg: view 0 pairs/0 ticks, actors 0/0, any 0/0 | view1word 69 | slerp-vs-perword max view 0.00 med 0.00 n>1deg 0; actors max 0.00 med 0.00 n>1deg 0 | max single word 13.6
+CENSUS balloon: pairs 120 ticks 1192 viewswitch 0 | >=2 words>3deg: view 4 pairs/45 ticks, actors 0/0, any 4/45 | view1word 27 | slerp-vs-perword max view 1.33 med 1.13 n>1deg 2; actors max 0.00 med 0.00 n>1deg 0 | max single word 85.0
+CENSUS traintnl: pairs 125 ticks 1243 viewswitch 0 | >=2 words>3deg: view 8 pairs/95 ticks, actors 0/0, any 8/95 | view1word 2 | slerp-vs-perword max view 0.72 med 0.19 n>1deg 0; actors max 0.00 med 0.00 n>1deg 0 | max single word 43.8
+CENSUS bomb: pairs 348 ticks 3730 viewswitch 0 | >=2 words>3deg: view 1 pairs/14 ticks, actors 0/0, any 1/14 | view1word 63 | slerp-vs-perword max view 0.07 med 0.07 n>1deg 0; actors max 0.00 med 0.00 n>1deg 0 | max single word 81.1
+CENSUS location: pairs 868 ticks 8266 viewswitch 0 | >=2 words>3deg: view 5 pairs/51 ticks, actors 13/138, any 13/138 | view1word 280 | slerp-vs-perword max view 0.10 med 0.08 n>1deg 0; actors max 0.78 med 0.13 n>1deg 0 | max single word 25.2
+PAIR balloon cam 223..234 dev 2.69
+PAIR balloon cam 234..244 dev 2.60
+PAIR balloon cam 244..255 dev 1.52
+PAIR traintnl cam 221..233 dev 1.12
+PAIR traintnl cam 233..245 dev 2.13
+PAIR traintnl cam 245..257 dev 1.27
+PAIR location actor9 687..700 dev 0.13
+PAIR location actor10 687..700 dev 0.13
+PAIR location actor9 700..710 dev 0.00
+PAIR location actor10 700..710 dev 0.00
+PAIR location actor9 710..720 dev 0.06
+PAIR location actor10 710..720 dev 0.06
+PAIR location actor9 720..730 dev 0.06
+PAIR location actor10 720..730 dev 0.06
+PAIR location actor9 731..750 dev 0.10
+PAIR location actor10 731..750 dev 0.10
+PAIR location actor9 7244..7254 dev 0.78
+PAIR location actor9 7254..7264 dev 0.71
+PAIR location actor9 7264..7269 dev 0.14
+PAIR location actor9 7706..7718 dev 0.24
+PAIR location actor9 7718..7728 dev 0.18
+PAIR location actor9 7728..7738 dev 0.18
+PAIR location actor9 7738..7748 dev 0.18
+PAIR location actor9 7748..7757 dev 0.10
