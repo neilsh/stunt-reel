@@ -71,11 +71,12 @@ A CPU painter in that order, checked against a CPU z-buffer that reproduces our 
 * **The `bomb` autumn trees 542 and 545** lose to list order: each later `SPHERE` covers the earlier ones and the trunk whatever its depth.
   Inside the trees' pixels at ticks 2080 and 2300, the painter carries the capture's index on 0.85 to 0.91 of them against 0.59 to 0.69 for our render, while the z-buffer of the same discs stays within 0.022 of ours ([sheet](../../work/2026-11/1030_close-shape-order/images/bomb-2300-545-inshape.png)).
   `[Bounded Observation]`: two trees at two ticks of one film.
-  Drawing spheres so in the renderer is [#1066](https://github.com/neilsh/stunt-reel/issues/1066).
+  Drawing spheres so in the renderer is [#1066](https://github.com/neilsh/stunt-reel/issues/1066): a GPU prototype that draws a shape's primitives at their placement's depth, one rank step apart in list order, raises `bomb`'s SSIM by 0.0028 and 21 of the 21 scored frames of the tick ranges around 2080 and 2300, with no film falling.
+  It needs per-draw flattened depth, so it awaits the owner.
 * **The canyon rock 1145** does not: at `location` 7019 the painter, `SORTON` swaps included, shows another polygon than the z-buffer on 20 of the rock's 49,095 pixels, and draws the same near face across the lower left that the capture does not show ([sheet](../../work/2026-11/1030_close-shape-order/images/location-7019-inshape.png)).
   It was the camera: with the far-moving slices interpolated (2.1) the face is gone.
 
-_Source: [list order explains the BOMB trees, not the canyon rock](../../work/2026-11/1030_close-shape-order/journal.md#2026-11-24-list-order-explains-the-bomb-trees-not-the-canyon-rock)._
+_Source: [list order explains the BOMB trees, not the canyon rock](../../work/2026-11/1030_close-shape-order/journal.md#2026-11-24-list-order-explains-the-bomb-trees-not-the-canyon-rock), [the list-order prototype's sweep](../../work/2026-11/1066_sphere-list-order/journal.md#2026-11-26-a-shapes-primitives-at-their-placements-depth-one-rank-step-apart-in-list-order)._
 
 ### 2.4 The far town drew no houses (fixed)
 
