@@ -167,9 +167,9 @@ The centre alone moves nothing vertically: row 92's centre is our 92.5.
 Drawing each vertex at that pixel raised all seven films by 0.005 to 0.011 SSIM when each vertex slid to the pixel along the horizontal world plane through it, so that the ground and the ocean stayed coplanar, and a vertex whose ray missed that plane kept its own projection.
 The renderer follows the rule: `playone_vertex` in `mode13h.wgsl` draws each vertex at that pixel's centre, sliding it along the ray through the pixel to a plane through the vertex, so the surfaces that shared a plane still do.
 That plane is the horizontal one for a world-mesh vertex and for a shape facet within about 26 degrees of horizontal, and the facet's own for a steeper facet (Ruled out gives the forms that failed).
-`[Bounded Observation]` for the score, on the GPU against `main`: six films rise by 0.0064 to 0.0129 SSIM and `balloon` falls by 0.0007, within the 0.002 the evidence track allows.
+`[Bounded Observation]` for the score, on the GPU against `main`: every film rises, `balloon` by 0.0009 and the other six by 0.0057 to 0.0132 SSIM.
 The depth ties are pinned by the decal tests of `draw_order.rs` on a steep and a near-horizontal facet, by its tile-on-terrain and actor-on-scenery tests, and by `lines.rs`'s one-pixel polygon.
-_Source: [the register projectors truncate toward the centre](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-register-projectors-truncate-toward-the-centre), [with an unsnapped fallback](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-projector-rounding-with-an-unsnapped-fallback), [the world mesh slides horizontally](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-the-world-mesh-slides-in-the-horizontal-plane-shapes-in-their-facets), [near-horizontal shape facets](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-near-horizontal-shape-facets-slide-horizontally-too)._
+_Source: [the register projectors truncate toward the centre](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-register-projectors-truncate-toward-the-centre), [with an unsnapped fallback](../../work/2026-11/1027_projection-truncation/journal.md#2026-11-24-the-projector-rounding-with-an-unsnapped-fallback), [the world mesh slides horizontally](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-the-world-mesh-slides-in-the-horizontal-plane-shapes-in-their-facets), [facets near horizontal](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-facets-near-horizontal-slide-horizontally), [the world mesh and near-horizontal shape facets together](../../work/2026-11/1064_projector-vertex-truncation/journal.md#2026-11-25-the-world-mesh-and-near-horizontal-shape-facets-together)._
 
 ## Ruled out
 
@@ -209,7 +209,7 @@ _Source: [the register projectors truncate toward the centre](../../work/2026-11
 ## 10. Open questions
 
 * **Projected points** (section 8.14).
-  Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; whether a slide threshold other than 26 degrees from horizontal scores better: 60 degrees gave a higher film mean (0.9166 against 0.9153) and raised `balloon` by 0.0048, but left `ctry` and `bomb` 0.0005 and 0.0007 below 26 degrees, and was not taken.
+  Open: where the clippers `0xC6AF` and `0xBF82` put a vertex at an edge's crossing, and whether it is truncated too; whether a slide threshold other than 26 degrees from horizontal scores better: 60 degrees, tried without the world-mesh rule, gave a higher film mean (0.9166 against the shipped form's 0.9158) and raised `balloon` by 0.0048, but left `bomb` at 0.9066 (shipped 0.9085); the two were not combined.
   On `location`'s stadium the lines' and outlines' mismatched pixels lie mostly a pixel toward the centre in the capture, and the prototype cuts the stadium's loss by about a third ([`prop-shape-loss.md` § 2.5](../parity/prop-shape-loss.md#25-one-tick-phase-and-lines)).
 
 * **Back faces** (section 8.12).
