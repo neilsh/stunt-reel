@@ -32,7 +32,7 @@
   | `1` | 0.9443 | 0.9067 | 0.9343 | 0.9067 | 0.9171 | 0.9068 | 0.8945 | 0.9158 |
 
   - `land` rises by 0.0033 and frame 617 by 0.0102 SSIM: the band is back ([picture](images/land-617-prop-facets-in-their-plane.png), capture, `main`, `1`).
-  - `location` falls by 0.0022, past the 0.002 guard, `bomb` by 0.0012 and `intro` by 0.0002; 238 frames fall by more than 0.005, 213 of them `location`'s and the worst `location` 2059 (−0.0301).
+  - `location` falls by 0.0022, past the 0.002 guard, `bomb` by 0.0012 and `intro` by 0.0002; 238 frames fall by more than 0.005, 170 of them `location`'s and the worst `location` 2059 (−0.0301).
   - On `location` 2059 (a `mise run frame` render of both variants), every pixel the variants draw differently lies on the props layer; of the 1,582, `main` matches the capture on 907 and `1` on 298.
     The 907 lie scattered a pixel or two wide along prop edges over the lower two thirds of the view, with a few runs along rows; by the shape `main` drew there, shape 997 (the town lots, flat on the ground) loses the most, 186, and buildings (1662, 1659, 1660) the next most.
     A vertex keeps its pixel under either slide, so only depth order changes.
