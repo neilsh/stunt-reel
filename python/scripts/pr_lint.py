@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail a branch and its pull request body on the PR defects reviewers check by hand.
 
-Four checks, each failure a line naming what it read:
+Three checks, each failure a line naming what it read:
 
 * **pin**: every ``crates = "`` pin in a ``research/parity/expected/<class>.toml`` the branch
   changes equals ``git rev-parse HEAD:crates``, and ``crates/`` is clean, as the merge bar asks.
@@ -14,17 +14,21 @@ Four checks, each failure a line naming what it read:
   history or a distillation, whose moved-in entries are older by design.
 * **body**: the body has a ``Fixes``, ``Closes`` or ``Part of #N`` line, as the merge bar also
   requires; both read the one pattern in :mod:`stunt_reel.pr_body`.
-* **attribution**: the body's last line, ignoring trailing blank lines, is :data:`ATTRIBUTION`
-  or :data:`CLOUD_ATTRIBUTION`.
+
+The **attribution** note is never a failure: the body's last line, ignoring trailing blank lines,
+is :data:`ATTRIBUTION` or :data:`CLOUD_ATTRIBUTION` when a Claude Code session wrote
+it, and the footer only records who wrote the PR (#1049). :func:`attribution_failures` words the
+note; the CLI prints it as ``note attribution: ...`` and :func:`failures` leaves it out.
 
 The CLI reads the working tree of the checkout holding the working directory, so it runs in the
 implementer's checkout before a push; the pin and date checks say nothing about a branch that
-checkout does not hold. ``merge_bar`` reads :func:`attribution_failures` from the body it
-fetched, as a note, checks the body's link itself through :mod:`stunt_reel.pr_body`, and names
-the pin and date checks pre-push only.
+checkout does not hold. ``pytest -m docs`` runs :func:`pin_failures` and :func:`date_failures`
+on every pull request in CI. ``merge_bar`` reads :func:`attribution_failures` from the body it
+fetched, as a note, and checks the body's link itself through :mod:`stunt_reel.pr_body`.
 
 Usage: ``mise run pr-lint -- <pr-body-file> [<base>]``; the base defaults to ``origin/main`` when
-it resolves, else ``main``. Exit status: 1 naming each failure, 0 clean, 2 for bad arguments, an
+it resolves, else ``main``. Exit status: 1 naming each failure (an attribution note never counts),
+0 clean, 2 for bad arguments, an
 unreadable body file or a working directory outside a git checkout.
 """
 
@@ -88,7 +92,10 @@ def body_failures(body: str) -> list[str]:
 
 
 def attribution_failures(body: str) -> list[str]:
-    """The failure for a body whose last line is neither attribution line, else none."""
+    """The note for a body whose last line is neither attribution line, else none.
+
+    Never a failure: a caller prints it as a note.
+    """
     lines = body.rstrip().splitlines()
     if not lines:
         return ["the body is empty, so it has no attribution line"]
@@ -204,7 +211,9 @@ def _started_failures(repo: Path, added: Sequence[AddedLine]) -> list[str]:
 def failures(
     body: str, *, repo: Path = REPO_ROOT, base: str | None = None, today: date | None = None
 ) -> list[str]:
-    """Every way the branch and its pull request *body* fail the four checks, branch ones first.
+    """Every way the branch and its pull request *body* fail the three checks, branch ones first.
+
+    The attribution note is not one; :func:`attribution_failures` has it.
 
     A git failure is one failure naming it, so a caller such as ``merge_bar`` reports it rather
     than crashing.
@@ -214,7 +223,6 @@ def failures(
             *pin_failures(repo, base),
             *date_failures(repo, base, today),
             *body_failures(body),
-            *attribution_failures(body),
         ]
     except (OSError, subprocess.CalledProcessError, gate.ChangedPathsError) as error:
         return [f"the branch could not be read: {error}"]
@@ -249,6 +257,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     found = failures(body, repo=Path(top.stdout.strip()), base=args.base)
     for line in found:
         print(line)
+    for line in attribution_failures(body):
+        print(f"note attribution: {line}")
     print(f"pr-lint: {len(found)} failure(s).", file=sys.stderr)
     return 1 if found else 0
 
