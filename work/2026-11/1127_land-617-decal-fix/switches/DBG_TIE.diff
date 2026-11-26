@@ -1,0 +1,54 @@
+diff --git a/crates/stunt-core/src/sod/tessellate.rs b/crates/stunt-core/src/sod/tessellate.rs
+index 71dd5a8..97e092e 100644
+--- a/crates/stunt-core/src/sod/tessellate.rs
++++ b/crates/stunt-core/src/sod/tessellate.rs
+@@ -364,7 +364,7 @@ pub fn decode_sod_posed(
+     } else {
+         Vec::new()
+     };
+-    let ties = decal_ties(&polygons, 1e-4, 1e-4);
++    let ties = if std::env::var("DBG_TIE").ok().as_deref() == Some("0") { Vec::new() } else { decal_ties(&polygons, 1e-4, 1e-4) };
+     let mut ir = build_tied_sod_model_ir(name, &polygons, &ties);
+     if geometry {
+         ir.sprites = run.sprites;
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 7a10bf8..9e58515 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -304,8 +304,13 @@ impl RenderPipelines {
+             immediate_size: 0,
+         });
+ 
+-        let shader_module =
+-            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
++        let dbg: u32 = std::env::var("DBG_TIE").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
++        let source = include_str!("shaders/mode13h.wgsl")
++            .replace("const DBG_TIE: u32 = 1u;", &format!("const DBG_TIE: u32 = {dbg}u;"));
++        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
++            label: Some("mode13h.wgsl"),
++            source: wgpu::ShaderSource::Wgsl(source.into()),
++        });
+         let vertex_buffers = [
+             Some(Self::vertex_buffer_layout()),
+             Some(Self::apex_buffer_layout()),
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 66c68a2..b146fdd 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -278,6 +278,7 @@ const UP: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
+ 
+ // A facet whose normal lies within this cosine of vertical slides horizontally (`slide_normal`).
+ const NEAR_HORIZONTAL: f32 = 0.9;
++const DBG_TIE: u32 = 1u;
+ 
+ // The eye-relative normal of the plane `playone_vertex` slides a vertex in. A world mesh vertex
+ // (terrain, ocean, prop) and a shape facet within about 26 degrees of horizontal slide in the
+@@ -294,7 +295,7 @@ fn slide_normal(in: VertexInput) -> vec3<f32> {
+         n = cross(in.normal, in.apex - in.position);
+     }
+     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
+-    let decal_tie = in.attr.z == SCENERY_PROP && in.attr.w != 0u;
++    let decal_tie = DBG_TIE == 1u && in.attr.z == SCENERY_PROP && in.attr.w != 0u;
+     let world = in.attr.z != 0u && !decal_tie;
+     if (model.layer.y != 0u || world || dot(eye_n, eye_n) == 0.0
+         || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {

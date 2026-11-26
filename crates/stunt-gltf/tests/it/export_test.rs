@@ -420,7 +420,7 @@ fn hierarchy_visibility_and_joints_are_preserved() {
             palette_index: 4,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_tie: 0,
         });
     }
     ir.indices = vec![0, 1, 2];
