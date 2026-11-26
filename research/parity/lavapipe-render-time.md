@@ -4,7 +4,7 @@ summary: "Which renderer changes cut headless render time on lavapipe and the GP
 # Parity: Render Time on Lavapipe
 
 * **Scope**: how long a headless render takes on lavapipe, Mesa's software Vulkan driver, and on the GPU, which renderer changes cut it, and what a render's memory goes to per worker (section 7); split from [`lavapipe.md`](lavapipe.md), which holds how lavapipe's frames differ from the GPU's.
-* **Sources**: `cdb` and user-mode stack samples, timed renders, memory probes and CPU counts from #596 to #1006, on mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md), Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` (`llvmpipe (LLVM 20.1.2, 256 bits)`) under WSL 2, and a cloud Ubuntu session (4 vCPUs).
+* **Sources**: `cdb` and user-mode stack samples, timed renders, memory probes and CPU counts from #596 to #1090, on mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md), Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` (`llvmpipe (LLVM 20.1.2, 256 bits)`) under WSL 2, and a cloud Ubuntu session (4 vCPUs).
   * **Evidence tier**: `[Bounded Observation]` throughout unless a claim says otherwise; each figure holds for the tree, machine and span it names.
 * **Spans**: Span A is `LOCATION 12..=300` (289 ticks, eye at `7.00 m`), Span B `LOCATION 3680..=3979` (300 ticks, an elevated overview, median eye `125.0 m`) and Span C `INTRO 2500..=2949` (450 ticks); the whole films are `LOCATION 12..=8262` (8,251 ticks) and `INTRO 12..=3818` (3,807 ticks).
   The loop is the per-tick render loop; whole-process wall adds the scene build and the renderer open.
@@ -145,6 +145,29 @@ The largest frame of the seven films emits `75,576` vertices, `76,008` indices a
 These are the maxima of these films' captured ranges at this size and viewport, not a bound for any film or lens.
 _Source: [world stream sizes a frame on the seven reference films](../../work/2026-11/999_frame-streamed-world/journal.md#2026-11-23-world-stream-sizes-a-frame-on-the-seven-reference-films), patch [`world-stream-probe.patch`](../../work/2026-11/999_frame-streamed-world/world-stream-probe.patch)._
 
+**Whether a placement lies in the shared `WORLD_BASE` and `WORLD_DECAL` slices, on the seven reference films (`#1090`).**
+`[Bounded Observation]`, 2026-11-26, `main` at `25eb9586` + the patch in the source below, a CPU count of each film's world as `build_world` makes it and `WorldPlacements::new` reads it, run with the parity render's own arguments, no renderer, no timing.
+It repeats the check `#920` ran on `LOCATION` and `INTRO` (the Ruled out entry below): for each placement record with mesh spans, whether its `MeshSpans::base` or `::decal` run of indices is non-empty, and whether it lies inside the `WORLD_BASE` run (indices `0..342`) or the `WORLD_DECAL` run (`342..360`), which are the same on every film.
+`WorldPlacements::split` takes the cuts it makes out of those slices from such spans (`WorldPlacements::spans`, through `cut_out`), so a film with none has nothing to cut at any tick.
+
+| Film | Records | With mesh spans | Non-empty base span | Non-empty decal span |
+|---|---|---|---|---|
+| `CTRY` | 316 | 306 | 0 | 0 |
+| `INTRO` | 26,386 | 10,723 | 0 | 0 |
+| `LAND` | 845 | 834 | 0 | 0 |
+| `BALLOON` | 8,983 | 1,589 | 0 | 0 |
+| `TRAINTNL` | 1,049 | 1,049 | 0 | 0 |
+| `BOMB` | 1,158 | 970 | 0 | 0 |
+| `LOCATION` | 56,585 | 35,481 | 0 | 0 |
+
+On each of the seven films no placement holds an index in either run, so no placement is cut out of the shared slices; each placement with mesh spans has nodes of its own (`MeshSpans::nodes` non-empty, the same counts).
+The five films `#920` did not check (`CTRY`, `LAND`, `BALLOON`, `TRAINTNL`, `BOMB`) match its `LOCATION` and `INTRO` result; the probe's `INTRO` and `LOCATION` rows also reproduce `#920`'s zero.
+The counts are of each film's whole world build (the patch returns before playback, so the captured tick range does not bound them), not of a rendered tick; records of a placement the walk prunes as far from every camera eye are absent from them, as from the world mesh.
+For `#999`'s byte-identical test (design note section 6, open call 8) this means none of the seven films exercises a stream builder's span-per-placement range: the test over them needs none on these films, and such a range, if built, would be covered by a synthetic fixture, not a film.
+This note decides no design.
+The probe's `LOCATION` and `INTRO` world totals differ slightly from `#920`'s and `#999`'s (`INTRO` `128,772` nodes and `819,745` vertices against `128,768` and `819,265`; `LOCATION` `35,481` records with mesh spans against `35,479`); `[Hypothesis]` the OP_BLOCK cube change (`#1032`, `1e1d5680`) between their trees and this one added them, not isolated.
+_Source: [placements cut out of the shared slices on the seven reference films](../../work/2026-11/1090_placement-cut-probe/journal.md#2026-11-26-placements-cut-out-of-the-shared-slices-on-the-seven-reference-films), patch [`world-cuts-probe.patch`](../../work/2026-11/1090_placement-cut-probe/world-cuts-probe.patch), driven by [`probe_world_cuts.py`](../../work/2026-11/1090_placement-cut-probe/probe_world_cuts.py)._
+
 ## 4. Thread scaling under `LP_NUM_THREADS` after `#596` and `#644`
 
 `[Bounded Observation]`, 2026-11-21, `6955e159` + `probe.patch`, `LOCATION` `12..=300` (289 ticks), 3 runs each, stores byte-identical across thread counts.
@@ -221,7 +244,7 @@ The memory figures of `#920` (the world's buffers with and without the upload) a
 * **Caching `collect_world_meshes` after #914:** `prepare_world` is at most 0.3% to 2.1% of the loop on Windows and Ubuntu lavapipe and the RTX 4070; [journal](../../work/2026-11/distill-lavapipe-render-time/journal.md#2026-11-22-where-loop-time-went-after-914-931).
 * **A cloud session as the place to measure #629's relit-vertex rewrite cost:** whole `INTRO` took 147.4 s and 129.5 s with the rewrite against 133.7 s without; [journal](../../work/2026-11/629_relight-cost/journal.md#2026-11-18-the-rewrites-cost-on-the-clouds-lavapipe).
 * **Speeding up timeline sampling, per-actor matrices, light, angle bank or `sprite_draws` (#934):** each is at most 1.0% of `scene_frame` (merging the previous tick's two samples would save under 0.1%); [journal](../../work/2026-11/distill-lavapipe-render-time/journal.md#2026-11-22-where-filmsceneframe-spent-its-time-942-and-944).
-* **Un-baking the world's static props for a per-placement cull (#920):** skipping the world's base and decal draws, the saving's upper bound, cuts the whole `LOCATION` loop 49.0%, but no placement on `LOCATION` or `INTRO` has geometry in the shared `WORLD_BASE` or `WORLD_DECAL` run (342 and 18 terrain indices): each lies in nodes made for it alone, already culled on their own boxes, so a per-placement frustum test removes 0% of the 35,456,495 base and decal vertices drawn over the film, against a 30% bar; [journal](../../work/2026-11/distill-lavapipe-render-time/journal.md#2026-11-22-optimization-verdicts-as-of-f6976e67).
+* **Un-baking the world's static props for a per-placement cull (#920):** skipping the world's base and decal draws, the saving's upper bound, cuts the whole `LOCATION` loop 49.0%, but no placement on any of the seven reference films has geometry in the shared `WORLD_BASE` or `WORLD_DECAL` run (342 and 18 terrain indices): each lies in nodes made for it alone, already culled on their own boxes, so a per-placement frustum test removes 0% of the 35,456,495 base and decal vertices drawn over the film, against a 30% bar; [journal](../../work/2026-11/distill-lavapipe-render-time/journal.md#2026-11-22-optimization-verdicts-as-of-f6976e67).
 * **The world draws' Span B lavapipe cost as pixel work or as the base outlines (#920):** a 1-pixel scissor left 88.2% of Span B's loop and the base outlines alone saved 11.1%, though over the whole film the scissor recovers 26.1% and the base outlines 23.1%; [journal](../../work/2026-11/distill-lavapipe-render-time/journal.md#2026-11-22-where-the-world-base-and-decal-draws-cost-sits-920).
 * **The per-fragment `prop_shape` lookup as the world draws' lavapipe cost (#920):** a constant saves 10.8% of the whole film's loop against the 49.0% the base and decal draws take; [journal](../../work/2026-11/distill-lavapipe-render-time/journal.md#2026-11-22-what-the-per-fragment-prop_shape-lookup-costs-920).
 * **Batching the world's decal slices by screen box to cut their pipeline switches (`#1000`):** `[Bounded Observation]`, 2026-11-22, a CPU count on `7bfc6cca` plus [`probe-decal-batch.patch`](../../work/2026-11/1000_decal-batch-probe/probe-decal-batch.patch), no timing: with each node box grown 1 pixel, batching leaves `54.2%` of the whole `LOCATION` film's decal switches in place (section 3), most of them, which closes the issue by its own rule ("if batching leaves most switches in place, close this issue") at the gate's scope, the whole film (the owner's 2026-11-23 ruling on scope, no renderer change; Span B, which keeps `45.8%`, is context with nothing filed).
