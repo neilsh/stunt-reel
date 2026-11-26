@@ -1,0 +1,52 @@
+# #1143 parity check: main 69126dc (baseline) vs dc1ae10 (candidate), canonical lavapipe mesa 25.2.8-0ubuntu0.24.04.5, mise run parity -- --software-only
+# cmp of each film's four store files (silent when identical):
+identical balloon_current/frames.zst
+identical balloon_current/layers.zst
+identical balloon_current/palettes.zst
+identical balloon_current/shapes.zst
+identical bomb_current/frames.zst
+identical bomb_current/layers.zst
+identical bomb_current/palettes.zst
+identical bomb_current/shapes.zst
+identical ctry_current/frames.zst
+identical ctry_current/layers.zst
+identical ctry_current/palettes.zst
+identical ctry_current/shapes.zst
+identical intro_current/frames.zst
+identical intro_current/layers.zst
+identical intro_current/palettes.zst
+identical intro_current/shapes.zst
+identical land_current/frames.zst
+identical land_current/layers.zst
+identical land_current/palettes.zst
+identical land_current/shapes.zst
+identical location_current/frames.zst
+identical location_current/layers.zst
+identical location_current/palettes.zst
+identical location_current/shapes.zst
+identical traintnl_current/frames.zst
+identical traintnl_current/layers.zst
+identical traintnl_current/palettes.zst
+identical traintnl_current/shapes.zst
+# mise run judge -- <main report dir> <head report dir>
+[judge] $ uv run python python/scripts/parity_judge.py .claude/worktrees/parity-main/build/parity/report build/parity/report
+[judge] run=candidate: 0 frame(s) down >0.005: none
+[judge] run=candidate: frames outside the target moved >0.005: ctry 0, intro 0, land 0, balloon 0, traintnl 0, bomb 0, location 0
+[judge] ctry index agreement: baseline 0.9634, candidate 0.9634; frames candidate better/equal/worse 0/114/0
+[judge] intro index agreement: baseline 0.9355, candidate 0.9355; frames candidate better/equal/worse 0/209/0
+[judge] land index agreement: baseline 0.9518, candidate 0.9518; frames candidate better/equal/worse 0/97/0
+[judge] balloon index agreement: baseline 0.9187, candidate 0.9187; frames candidate better/equal/worse 0/107/0
+[judge] traintnl index agreement: baseline 0.9484, candidate 0.9484; frames candidate better/equal/worse 0/112/0
+[judge] bomb index agreement: baseline 0.9353, candidate 0.9353; frames candidate better/equal/worse 0/316/0
+[judge] location index agreement: baseline 0.9375, candidate 0.9375; frames candidate better/equal/worse 0/732/0
+[judge] ctry loss by class, candidate - baseline (parentheses: candidate - lavapipe pin): no class moved
+[judge] intro loss by class, candidate - baseline (parentheses: candidate - lavapipe pin): no class moved
+[judge] land loss by class, candidate - baseline (parentheses: candidate - lavapipe pin): no class moved
+[judge] balloon loss by class, candidate - baseline (parentheses: candidate - lavapipe pin): no class moved
+[judge] traintnl loss by class, candidate - baseline (parentheses: candidate - lavapipe pin): no class moved
+[judge] bomb loss by class, candidate - baseline (parentheses: candidate - lavapipe pin): no class moved
+[judge] location loss by class, candidate - baseline (parentheses: candidate - lavapipe pin): no class moved
+      run  ctry SSIM  ctry IoU  intro SSIM  intro IoU  land SSIM  land IoU  balloon SSIM  balloon IoU  traintnl SSIM  traintnl IoU  bomb SSIM  bomb IoU  location SSIM  location IoU  mean SSIM  worst frame  down>0.005
+ baseline     0.9441    0.9953      0.9069     0.9886     0.9340    0.9860        0.9067       0.9508         0.9160        0.9719     0.9083    0.9692         0.8975        0.9809     0.9162            -           -
+candidate     0.9441    0.9953      0.9069     0.9886     0.9340    0.9860        0.9067       0.9508         0.9160        0.9719     0.9083    0.9692         0.8975        0.9809     0.9162      +0.0000           0
+winner: run=baseline (mean SSIM 0.9162) (noise floor +/-0.002; winner is ~within noise)

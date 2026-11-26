@@ -24,8 +24,8 @@ use std::collections::HashMap;
 use glam::Vec4;
 use stunt_core::anchor::AnchorPoint;
 use stunt_core::contracts::{
-    ActorTransform, CameraTransform, NodeKind, SCENERY_PROP, SodModelIr, SodVertex,
-    TrajectoryRecord, VisibilityCondition,
+    ActorTransform, CameraTransform, NodeKind, PaletteControls, SCENERY_PROP, SodModelIr,
+    SodVertex, TrajectoryRecord, VisibilityCondition,
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::FilmScene;
@@ -152,6 +152,11 @@ pub(crate) fn assert_winners(label: &str, shot: &Shot, expected: &[([f32; 3], u8
 
 /// A one-slice film seen from `eye` towards the origin, with `actors` in it.
 pub(crate) fn film(eye: [f32; 3], actors: Vec<ActorTransform>) -> FilmTimeline {
+    film_with_sky(eye, actors, PaletteControls::default().sky)
+}
+
+/// [`film`] with film variable 13 (`palette.sky`, which also sets the sun) at `sky`.
+pub(crate) fn film_with_sky(eye: [f32; 3], actors: Vec<ActorTransform>, sky: u16) -> FilmTimeline {
     let record = TrajectoryRecord {
         tick: 0,
         camera: CameraTransform {
@@ -164,7 +169,10 @@ pub(crate) fn film(eye: [f32; 3], actors: Vec<ActorTransform>) -> FilmTimeline {
         },
         actors,
         audio_cues: Vec::new(),
-        palette: Default::default(),
+        palette: PaletteControls {
+            sky,
+            ..Default::default()
+        },
         bank: Default::default(),
     };
     FilmTimeline::new(
