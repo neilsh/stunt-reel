@@ -14,7 +14,7 @@
     1068,
     1178
   ],
-  "categories_digest": "f442f5796ba47a506d59b9a484d039c50103bd1f675df58fc02e9d14063362a9",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
   "render_digest": "df2f5109563c5c7242567c2c6001eae69aab681f22061c79f95841f0b4f3daef",
   "categories": [
     {
@@ -38,7 +38,7 @@
     {
       "category": "aircraft-misplaced",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
@@ -74,7 +74,7 @@
     {
       "category": "background-misregistration",
       "ticks_2plus": [],
-      "mean": 1.0,
+      "mean": 0.5,
       "ungraded": 0
     },
     {
@@ -124,12 +124,19 @@
       "ticks_2plus": [],
       "mean": 0.0,
       "ungraded": 0
+    },
+    {
+      "category": "propeller-solid",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
     }
   ],
   "other": {
-    "221": "sky shade slightly different and sun disc/rigging lines offset a few pixels"
+    "650": "striped structure bands vertically compressed",
+    "749": "striped structure bands vertically compressed"
   },
   "missing": 0,
   "unknown": [],
-  "disputed": 1
+  "disputed": 0
 }

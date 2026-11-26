@@ -14,8 +14,8 @@
     3158,
     3477
   ],
-  "categories_digest": "f442f5796ba47a506d59b9a484d039c50103bd1f675df58fc02e9d14063362a9",
-  "render_digest": "4ee75c536c47191287a6fac2f491ad9d397847786809fcc97fef0ea90dbc87db",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "ff52dc31b9e504dcec66c49c0154e01ec069f5d8870d13daa5047b3c22f45659",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -55,11 +55,8 @@
     },
     {
       "category": "scenery-missing",
-      "ticks_2plus": [
-        1585,
-        1904
-      ],
-      "mean": 0.3333333333333333,
+      "ticks_2plus": [],
+      "mean": 0.0,
       "ungraded": 0
     },
     {
@@ -71,12 +68,14 @@
     {
       "category": "ground-shade-edges",
       "ticks_2plus": [],
-      "mean": 0.16666666666666666,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
       "category": "background-misregistration",
       "ticks_2plus": [
+        1585,
+        1904,
         2850
       ],
       "mean": 1.0,
@@ -129,10 +128,16 @@
       "ticks_2plus": [],
       "mean": 0.0,
       "ungraded": 0
+    },
+    {
+      "category": "propeller-solid",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
     }
   ],
   "other": {},
   "missing": 0,
   "unknown": [],
-  "disputed": 1
+  "disputed": 12
 }

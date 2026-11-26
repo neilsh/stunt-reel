@@ -2,44 +2,52 @@
 # A render PR's readout passes its film's file as `errors-score --against` (error-readout.md).
 # Refresh the seven together, per batch of render PRs, and edit this file with them.
 
-commit = "b9441a0605d8c40b3c528484394495c9a5e742d4"  # git rev-parse HEAD of the checkout rendered and graded
-adapter = "llvmpipe (LLVM 21.1.7, 256 bits)"  # Mesa 25.2.8 MSVC build from mesa-dist-win, class cpu; see render-on-lavapipe.md
-date = "2026-11-22"
+# The 19-category sheets were made and scored at e09f8ff6 (the `revision` in each run.json), a
+# docs/taxonomy descendant of dd7e76eb, the commit whose lavapipe render they grade (crates/ tree
+# 4b5c69c, the tree expected/lavapipe.toml pins). The run and grade files name no model; the grader
+# names come from the coordinator's delegated-task records.
+commit = "e09f8ff6460e5a57b09c600f78fc1ffbbe715086"  # run.json revision of the sheets made and graded
+adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"  # canonical lavapipe under WSL, class cpu; see render-on-lavapipe.md
+date = "2026-11-25"
 seed = 1
-graders = "two Haiku passes per film, Sonnet tie-break on the disputed sheets"
-categories_digest = "f442f5796ba47a506d59b9a484d039c50103bd1f675df58fc02e9d14063362a9"
+graders = "two DSH passes per film, Sonnet tie-break on the disputed sheets"
+categories_digest = "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e"
 
 [ctry]
-render_digest = "b52e069cda3502f38eb7001a4852158ac637af3491c83f7647d547a2664e38d3"
+render_digest = "389a48a6dfb135136267860e63ec79c3f5565476e32de42ed46bbf0dc9f15c25"
 ticks = 12
-disputed = 8
+disputed = 1
 
 [intro]
-render_digest = "3349f14abc344ab6e1688d16ba2769c373b35b6dbe3dcb95a24a0e4d498c9acd"
+render_digest = "e3b23e7c6ca769a66724f5fcd48df0dd35eb1e1eb8eaf107cad0e6610b959fc7"
 ticks = 12
-disputed = 2
+disputed = 7
 
 [land]
-render_digest = "8c8e2339d9150c286ef6877323170cadc17cdeb91810b86391d088174accc341"
+render_digest = "58bbe9136221b160a5d485a1e3840e19847abd9ab6c1cb9cbe373c5e40daa2db"
 ticks = 12
 disputed = 4
 
 [balloon]
 render_digest = "df2f5109563c5c7242567c2c6001eae69aab681f22061c79f95841f0b4f3daef"
 ticks = 12
-disputed = 1
+disputed = 0
 
 [traintnl]
-render_digest = "ca620457069039d0d0f6db4d63ac3c436872b63d598c1b45a71244f5e995b847"
+render_digest = "f2e2183c33043ac502608f26f5ac0f016237314a3662f0d7684ed37e12d427a6"
 ticks = 12
-disputed = 2
+disputed = 0
 
+# BOMB's background-misregistration is the 19-category outlier: pass 1 graded the error clear (2 or
+# more) on all 12 sheets, pass 2 on none, and the Sonnet tie-break kept 3 (ticks 1585, 1904, 2850),
+# so disputed = 12. The 12-frame pass-to-pass difference exceeds min_change 4, which came from two
+# Haiku passes and is not established as a bound for DSH.
 [bomb]
-render_digest = "4ee75c536c47191287a6fac2f491ad9d397847786809fcc97fef0ea90dbc87db"
+render_digest = "ff52dc31b9e504dcec66c49c0154e01ec069f5d8870d13daa5047b3c22f45659"
 ticks = 12
-disputed = 1
+disputed = 12
 
 [location]
-render_digest = "4cabf8a6a9e8801ee5c43fdc647cf6765903e1595f3ad39f67c56f54ca862c1b"
+render_digest = "22714e0712b5ff7ae632a587784e4b43cfbe41ea2bf6680e01b68e66b29692cb"
 ticks = 12
-disputed = 2
+disputed = 0

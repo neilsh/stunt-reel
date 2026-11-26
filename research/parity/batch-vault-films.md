@@ -1,5 +1,5 @@
 ---
-summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and the error readout of the seven Patch #3 references, whose 2026-11-22 baseline on lavapipe at `b9441a06` has no category at 3 of 12 frames and `sea-band-wrong` at 0 on all seven, against 7, 6 and 4 frames on three films on 2026-11-16."
+summary: "Reads the ten retail vault films through the batch survey: the vision-model error readout, their render-store scores and capture rates, the suspects rescored on the stride plan, and the error readout of the seven Patch #3 references. The 2026-11-25 19-category baseline (`e09f8ff6` sheets of the `dd7e76eb` lavapipe render) has BOMB's `background-misregistration` at 3 of 12 by the Sonnet tie-break alone, TRAINTNL's `propeller-solid` at 2, and no other category at 2; the 2026-11-22 18-category baseline had no category at 3 of 12 and `sea-band-wrong` at 0 on all seven, against 7, 6 and 4 frames on three films on 2026-11-16."
 ---
 
 # Batch Parity Survey: Retail Vault Films
@@ -135,13 +135,22 @@ Here is what the error readout sees on those renders: 12 sheets per film, two Ha
   On `vault-bomb` the three `other` notes name a pale grey sky above the horizon where the capture shows light blue.
 * **`vault-balloon`'s graded frames fall on the two runs that set its IoU**: `sun-missing` on the zenith-sky frames (12, 122, 221), `frame-blank` and `aircraft-absent` on the straight-down camera (650, 749) ([`attribution.md`](attribution.md) section 7).
 
-`[Bounded Observation]`, 2026-11-22, `main` at `b9441a06`, lavapipe (`llvmpipe (LLVM 21.1.7, 256 bits)`): the same readout on the seven references, kept as the baseline in [`readouts/`](readouts/baseline.toml) ([`error-readout.md`](../../.agents/skills/improving-render-parity/error-readout.md)).
+`[Bounded Observation]`, 2026-11-22, `main` at `b9441a06`, lavapipe (`llvmpipe (LLVM 21.1.7, 256 bits)`): the same readout on the seven references, the baseline until the 2026-11-25 19-category refresh ([`readouts/`](readouts/baseline.toml)) ([`error-readout.md`](../../.agents/skills/improving-render-parity/error-readout.md)).
 No category reaches the 3-frame lead threshold on any of the seven, and `sea-band-wrong` is 0 frames on all of them where the 2026-11-16 readout above graded it 7, 6, 4, 3, 2 and 1 on six of them.
 The most frames any category reaches is 2: `background-misregistration` on `vault-intro` and `vault-traintnl`, `scenery-missing` on `vault-bomb`.
 `vault-land`'s tick 419 is graded 2 or more on three categories and its `other` note says the camera view differs (a close aircraft and a hill where the capture shows a small distant one).
 That readout and this one used other renders (RTX 4070 then, lavapipe now) and sit 58 `crates/` commits apart (`76872e89..b9441a06`, among them #845's sky bands), so the drop is a lead, not a paired change attributed to any one PR.
 
 _Source: [error readout on the Patch 3 references](../../work/2026-11/477_vault-attribution/journal.md#2026-11-16-error-readout-on-the-patch-3-references), [the baseline readout](../../work/2026-11/901_error-readout-baseline/journal.md#2026-11-22-the-first-error-readout-baseline-of-the-seven-references); `vault-ctry`'s row: [error readout of vault-ctry](../../work/2026-11/619_ctry-readout/journal.md#2026-11-16-error-readout-of-vault-ctry)._
+
+`[Bounded Observation]`, 2026-11-25, `e09f8ff6` (19 categories) on the lavapipe render of `dd7e76eb` (`crates/` `4b5c69c`, `llvmpipe (LLVM 20.1.2, 256 bits)`): two DSH passes graded the same 12 sheets per film, with a Sonnet tie-break on the disputed sheets, and this is the current baseline in [`readouts/`](readouts/baseline.toml).
+BOMB's `background-misregistration` reaches 3 of 12, a lead by the 3-frame threshold, but only through the tie-break: the first DSH pass graded the error clear (2 or more) on all 12 sheets and the second on none, and Sonnet kept ticks 1585, 1904 and 2850.
+The 12-frame pass-to-pass difference exceeds `min_change` 4, which was set from two Haiku passes and is not established as a bound for DSH.
+TRAINTNL's `propeller-solid` reaches 2 (ticks 683 and 1123), and no other category reaches 2: CTRY and INTRO reach 1 on `background-misregistration` (INTRO also 1 on `propeller-solid`), and LAND reaches 1 on each of `aircraft-misplaced`, `scenery-missing`, `ground-shade-edges` and `background-misregistration`, all on tick 419.
+BALLOON, BOMB's other categories and LOCATION reach 0.
+The 2026-11-22 baseline graded 18 categories at `b9441a06`; its digest (`f442f579…`) differs from this readout's (`5f8b01d6…`), so `errors-score --against` refuses a comparison across the two series and their counts are not paired.
+The refresh also changes the renderer build (LLVM 21.1.7 to 20.1.2) and the fast grader (Haiku to DSH), so it is not a taxonomy-only delta.
+_Source: [the 19-category seven-film readout baseline](../../work/2026-11/1086_seven-film-readout-baseline/journal.md#2026-11-25-the-19-category-seven-film-readout-baseline)._
 
 ## Ruled out
 
