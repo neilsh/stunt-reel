@@ -15,7 +15,7 @@
     6161
   ],
   "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "22714e0712b5ff7ae632a587784e4b43cfbe41ea2bf6680e01b68e66b29692cb",
+  "render_digest": "0bf45598ec8b722b724715b5589f6f35ac39da46d5bad22f35c80345f662e7c1",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -26,7 +26,7 @@
     {
       "category": "aircraft-shape-broken",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -56,7 +56,7 @@
     {
       "category": "scenery-missing",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.3333333333333333,
       "ungraded": 0
     },
     {
@@ -67,14 +67,19 @@
     },
     {
       "category": "ground-shade-edges",
-      "ticks_2plus": [],
-      "mean": 0.0,
+      "ticks_2plus": [
+        1772
+      ],
+      "mean": 0.25,
       "ungraded": 0
     },
     {
       "category": "background-misregistration",
-      "ticks_2plus": [],
-      "mean": 0.16666666666666666,
+      "ticks_2plus": [
+        683,
+        3422
+      ],
+      "mean": 1.1666666666666667,
       "ungraded": 0
     },
     {
@@ -132,8 +137,13 @@
       "ungraded": 0
     }
   ],
-  "other": {},
+  "other": {
+    "683": "stray white streak near the ridge in render",
+    "1772": "tree blobs drawn as angular polygons instead of round shapes, shifted in size and position",
+    "2322": "stray white figure on the far beach in render, not in capture",
+    "5611": "lattice bushes and stack edges differ in detail"
+  },
   "missing": 0,
   "unknown": [],
-  "disputed": 0
+  "disputed": 2
 }

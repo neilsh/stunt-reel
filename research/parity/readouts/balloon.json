@@ -15,7 +15,7 @@
     1178
   ],
   "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "df2f5109563c5c7242567c2c6001eae69aab681f22061c79f95841f0b4f3daef",
+  "render_digest": "20d2932e254f219947d33e24e5e87e232d5d5dfc23fdc2e3b883e48d5d35e947",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -38,7 +38,7 @@
     {
       "category": "aircraft-misplaced",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -68,13 +68,13 @@
     {
       "category": "ground-shade-edges",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.6666666666666666,
       "ungraded": 0
     },
     {
       "category": "background-misregistration",
       "ticks_2plus": [],
-      "mean": 0.5,
+      "mean": 0.3333333333333333,
       "ungraded": 0
     },
     {
@@ -133,8 +133,12 @@
     }
   ],
   "other": {
-    "650": "striped structure bands vertically compressed",
-    "749": "striped structure bands vertically compressed"
+    "122": "canopy edges differ slightly",
+    "221": "canopy and sun shifted a few px",
+    "331": "canopy seams and cords differ slightly",
+    "540": "figure outline and parachute cords differ slightly",
+    "650": "stripe block ragged and slightly wider in render",
+    "749": "red-white stripe block edges ragged in render"
   },
   "missing": 0,
   "unknown": [],

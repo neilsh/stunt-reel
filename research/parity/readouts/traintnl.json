@@ -15,12 +15,12 @@
     1233
   ],
   "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "f2e2183c33043ac502608f26f5ac0f016237314a3662f0d7684ed37e12d427a6",
+  "render_digest": "1fd223f47c5d6e7886833fc55b88639e5282884ebab7eb6e3e746a8334db5182",
   "categories": [
     {
       "category": "aircraft-parts-missing",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -38,7 +38,7 @@
     {
       "category": "aircraft-misplaced",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -74,7 +74,7 @@
     {
       "category": "background-misregistration",
       "ticks_2plus": [],
-      "mean": 1.0,
+      "mean": 0.75,
       "ungraded": 0
     },
     {
@@ -129,18 +129,17 @@
       "category": "propeller-solid",
       "ticks_2plus": [
         683,
-        1123
+        1123,
+        1233
       ],
-      "mean": 0.3333333333333333,
+      "mean": 0.5,
       "ungraded": 0
     }
   ],
   "other": {
-    "232": "train offset a pixel or two from capture",
-    "562": "aircraft drawn in different colours than capture",
-    "793": "aircraft drawn in different colours than capture"
+    "232": "train carriages drawn about 15-20 px higher and slightly left of the capture"
   },
   "missing": 0,
   "unknown": [],
-  "disputed": 0
+  "disputed": 2
 }

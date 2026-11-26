@@ -15,7 +15,7 @@
     903
   ],
   "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "58bbe9136221b160a5d485a1e3840e19847abd9ab6c1cb9cbe373c5e40daa2db",
+  "render_digest": "866243d07be27e6d154b9900005c5e6ef79b73adcdfa13e5c739de2dfca84a7b",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -32,7 +32,7 @@
     {
       "category": "aircraft-too-small",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -40,7 +40,7 @@
       "ticks_2plus": [
         419
       ],
-      "mean": 0.25,
+      "mean": 0.3333333333333333,
       "ungraded": 0
     },
     {
@@ -60,7 +60,7 @@
       "ticks_2plus": [
         419
       ],
-      "mean": 0.25,
+      "mean": 0.4166666666666667,
       "ungraded": 0
     },
     {
@@ -71,18 +71,17 @@
     },
     {
       "category": "ground-shade-edges",
-      "ticks_2plus": [
-        419
-      ],
-      "mean": 0.16666666666666666,
+      "ticks_2plus": [],
+      "mean": 0.0,
       "ungraded": 0
     },
     {
       "category": "background-misregistration",
       "ticks_2plus": [
-        419
+        419,
+        496
       ],
-      "mean": 1.1666666666666667,
+      "mean": 1.25,
       "ungraded": 0
     },
     {
@@ -94,13 +93,13 @@
     {
       "category": "shadow-shape-wrong",
       "ticks_2plus": [],
-      "mean": 0.16666666666666666,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
       "category": "actors-missing",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -141,9 +140,10 @@
     }
   ],
   "other": {
-    "419": "render camera/aircraft scale far off: aircraft drawn huge and close, capture shows it small and distant"
+    "419": "render camera/aircraft far too large and close, hill and building drawn where capture shows open sky and distant plane",
+    "496": "hangars at left drawn with green streak artifacts"
   },
   "missing": 0,
   "unknown": [],
-  "disputed": 4
+  "disputed": 3
 }
