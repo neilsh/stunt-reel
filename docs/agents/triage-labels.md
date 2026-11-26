@@ -2,11 +2,11 @@
 
 The skills speak in terms of canonical triage roles.
 This file maps those roles to the actual label strings used in this repo's issue tracker.
-Every name is prefixed — `status:`, `priority:`, `type:`, `env:` or `area:` — and the canonical catalog (names, hex colors, descriptions) lives in [`python/scripts/labels.py`](../../python/scripts/labels.py).
+Every name is prefixed — `status:`, `priority:`, `type:`, `env:`, `area:`, `model-tier:` or `model-context:` — and the canonical catalog (names, hex colors, descriptions) lives in [`python/scripts/labels.py`](../../python/scripts/labels.py).
 Run `mise run label-sync` (`-- --apply` to write) to synchronize GitHub repository labels with that catalog.
 
 Priority claims the warm urgency arc at high saturation (`#B60205` red, `#D93F0B` orange, `#DBAB09` amber) plus muted gray (`#6E7781`) for low intensity.
-Every other prefix carries one muted color in the cool band (`status:` steel blue `#4A7BB5`, `type:` muted violet `#7A63B5`, `env:` muted teal `#3B867C`, `area:` sage green `#4E8A5C`), so high visual urgency belongs exclusively to `priority:`.
+Every other prefix carries one muted color in the cool band (`status:` steel blue `#4A7BB5`, `type:` muted violet `#7A63B5`, `env:` muted teal `#3B867C`, `area:` sage green `#4E8A5C`, `model-tier:` slate teal `#4C8A9E`, `model-context:` orchid `#8A5FA8`), so high visual urgency belongs exclusively to `priority:`.
 
 ## State roles
 
@@ -25,7 +25,7 @@ Every other prefix carries one muted color in the cool band (`status:` steel blu
 
 A fact an agent can find (a probe, capture, census or static read) labels an issue `status:ready-for-agent`, with the brief saying how to find it, and adds `type:research` only when the deliverable is the note itself, since a `type:research` issue closes on that note (**Category roles**); `status:needs-info` is for what only a person knows, such as what the filer meant.
 An agent can run DOSBox and DOSBox-X captures and breakpoint sessions, so needing one does not make an issue `status:ready-for-human`.
-Use `status:needs-plan` when an issue needs read-only investigation or decomposition into a tentative plan before implementation; the planner posts a `## Tentative plan` comment and routes either to `status:plan-review` (when decisions, ambiguity or a multi-PR split remain) or straight to `status:ready-for-agent` (when purely mechanical, after a fresh-context review of the comment).
+Use `status:needs-plan` when an issue needs read-only investigation or decomposition into a tentative plan before implementation; the planner posts a `## Tentative plan` comment, applies the `model-tier:` and any `model-context:` labels it names (**Model roles**), and routes either to `status:plan-review` (when decisions, ambiguity or a multi-PR split remain) or straight to `status:ready-for-agent` (when purely mechanical, after a fresh-context review of the comment).
 Use `status:ready-for-human` for an unresearched design or visual judgment call, or a step no agent can do (admin rights, an asset not in the data root); the brief names which.
 Work only `local-windows` can do is `env:local-only` (**Environment roles**), not `status:ready-for-human`.
 
@@ -95,6 +95,29 @@ Do not add an `area:` label for incidental updates to cross-cutting index or rou
 | `area:site` | `site/`: research site, Starlight, and guides |
 | `area:class-agreement` | A flag in the lavapipe-versus-GPU class agreement (#908), applied by [`parity_agreement.py`](../../python/scripts/parity_agreement.py) |
 
-Model-routing labels (`model:`) are intentionally omitted until routing requirements are investigated separately (#1060).
+## Model roles
+
+A model label says what capability an issue's implementation needs, never a model name; [`harness.md`](../harness.md#policy-any-agent) maps the labels to models per harness.
+
+| Label | Meaning |
+| --- | --- |
+| `model-tier:light` | Nothing to weigh: the plan says exactly what to change |
+| `model-tier:medium` | The spec is clear and the main work is doing it |
+| `model-tier:heavy` | Working out what to do or why something is broken is the hard part |
+| `model-context:wide` | The material will not fit a small context window |
+
+A planned issue carries exactly one `model-tier:` label, and `model-context:wide` is optional beside any tier.
+Exactly one is a convention no check enforces, so a writer swaps the tier (removes the old label, adds the new one) and never adds a second.
+Later `model-context:` values (such as `visual`, for work that reads frames) join when a routable model lacks the capability.
+
+Both prefixes are set only once a plan or an Agent Brief exists, so they stay unset when filing and on `status:needs-triage`, `status:needs-info` and `status:needs-plan` issues; a tier found on a `status:needs-plan` issue is ignored and the planner confirms or replaces it.
+Whoever writes the plan sets them:
+
+- The planner names and applies them with its `## Tentative plan`, on both routes.
+- Whoever writes a triage Agent Brief and moves the issue to `status:ready-for-agent` sets them.
+- Whoever moves a `status:plan-review` issue to `status:ready-for-agent` swaps them to match if the decision changed the work's shape.
+- A coordinator moves the tier up one, or adds `model-context:wide`, when a worker's report or a reviewer's finding shows a lack of capability or context, in the same pass as its claim release.
+
+The labels are advisory: they pick the default worker, and a named model or evidence of a failed attempt can override them.
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from these tables.

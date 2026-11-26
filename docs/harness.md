@@ -11,10 +11,21 @@ Nothing here is a fact about Stunt Island.
   Each writer branches from the Lead's current `HEAD`, commits only on its own branch, and at most two writers plus the Lead work at once; the Lead integrates in the same session, in dependency order, with the full gate at the tip.
   The contract is [the retro-hardening plan](../work/2026-10/retro-hardening/retro-hardening-2026-10-25.md).
   Unattended runs use about two implementers the same way, except each opens its own PR; a dependent item starts after its parent merges, or is stacked and armed after it.
-* **Route implementers by fit:** dsh first where the spec is clear and the task needs no judgment over evidence (prefix-cache hit rate is not the test); `Sonnet` for other well-specified implementation; `Opus` for research, diagnosis, design, and items expected to need rounds of hypotheses.
+* **Route implementers by `model-tier:` and `model-context:` labels, then by fit** ([`triage-labels.md`](agents/triage-labels.md#model-roles)); the labels advise, and a model Neil names wins:
+
+  | Labels | Claude Code (cloud or local) | `local-windows` with dsh / Antigravity |
+  | --- | --- | --- |
+  | `light` | `Haiku` | dsh first, else `Haiku` |
+  | `light` + `wide` | `Haiku` if the material fits its context window, else `Sonnet` | dsh first, else as for Claude Code |
+  | `medium` | `Sonnet` | `Sonnet` |
+  | `heavy` | `Opus` | `Opus` or Antigravity |
+  | `wide` on `medium` or `heavy` | The tier's model, with the harness's long-context option where offered | Likewise |
+
+  An issue with a tier routes by it, which takes precedence over dsh-first: dsh is eligible only for `model-tier:light`, whose work is the simple bounded work below.
+  An issue with no tier, or two, keeps the fit rules: dsh first where the spec is clear and the task needs no judgment over evidence (prefix-cache hit rate is not the test); `Sonnet` for other well-specified implementation; `Opus` for research, diagnosis, design, and items expected to need rounds of hypotheses.
   Otherwise subagents use the session model (`inherit`) and the same provider's `fast` tier only for simple bounded work (`Haiku` on Claude Code, `Gemini 4 Hydrogen` / `flash` on Antigravity): surveys, mapping tables, mechanical edits, grading against a calibrated rubric, and browser UI; never escalate above the session model or switch provider families outside this routing.
 * **Review:** dispatch the Sonnet [reviewer agent](../.claude/agents/reviewer.md) by default, for first reviews and re-reviews.
-  The first review of a Sonnet- or dsh-built PR is the exception: Opus or Antigravity, as a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>` in the brief, or as an Antigravity worker; not the `reviewer` agent with a model override, which names `Sonnet`.
+  The first review of a Haiku-, Sonnet- or dsh-built PR is the exception: Opus or Antigravity, as a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>` in the brief, or as an Antigravity worker; not the `reviewer` agent with a model override, which names `Sonnet`.
   On #160 a Sonnet review missed four real bugs that an Opus review then found, among them a preflight that built despite `--no-build`.
   Re-reviews prefer Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what changed since the last reviewed commit, run once after every finding is fixed, and are skipped for a wording-only fix (reply with the new text), except on a PR whose diff touches a path rule 5 names: any fix, rebase or merge there is committed locally and re-reviewed at its SHA before the push, and a rebase or merge needs a fresh `clean` comment at the new head; for a conflict only in `research/MAP.md`, that re-review only confirms `mise run knowledge-map -- --check` and a diff showing only `main`'s files ([`pr-and-filing.md`](../.agents/skills/running-unattended/pr-and-filing.md) step 1).
 * **An unattended run has a coordinator and workers.**

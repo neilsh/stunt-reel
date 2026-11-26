@@ -3,7 +3,9 @@
 One statement of every canonical label in the repository, so a change lands here and in
 ``docs/agents/triage-labels.md``, never as a scattered string literal. The scheme is prefixed:
 ``status:`` is the workflow state, ``priority:`` urgency, ``type:`` the verification or closing
-contract, ``env:`` where an item can run, and ``area:`` the primary subsystem(s). Priority claims
+contract, ``env:`` where an item can run, ``area:`` the primary subsystem(s), ``model-tier:`` the
+capability a planned issue's implementation needs, and ``model-context:`` an optional context
+constraint on it. Priority claims
 the warm urgency arc at high saturation plus muted gray; every other prefix carries one muted
 color in the cool band.
 
@@ -43,6 +45,14 @@ TYPE_PERF = "type:perf"
 #: Beside the state label, on an issue or a pull request.
 LOCAL_ONLY = "env:local-only"
 
+#: Exactly one per planned issue, set once a plan exists; advisory routing, never a model name.
+MODEL_TIER_LIGHT = "model-tier:light"
+MODEL_TIER_MEDIUM = "model-tier:medium"
+MODEL_TIER_HEAVY = "model-tier:heavy"
+MODEL_TIERS = (MODEL_TIER_LIGHT, MODEL_TIER_MEDIUM, MODEL_TIER_HEAVY)
+#: Optional and stackable with any tier.
+MODEL_CONTEXT_WIDE = "model-context:wide"
+
 #: Primary subsystem(s) an item owns; multi-label allowed.
 AREA_CORE = "area:core"
 AREA_RENDER = "area:render"
@@ -60,6 +70,8 @@ STATUS_COLOR = "4A7BB5"
 TYPE_COLOR = "7A63B5"
 ENV_COLOR = "3B867C"
 AREA_COLOR = "4E8A5C"
+MODEL_TIER_COLOR = "4C8A9E"
+MODEL_CONTEXT_COLOR = "8A5FA8"
 PRIORITY_COLORS: dict[str, str] = {
     PRIORITY_P0: "B60205",
     PRIORITY_P1: "D93F0B",
@@ -144,6 +156,26 @@ CATALOG: tuple[LabelSpec, ...] = (
         LOCAL_ONLY,
         ENV_COLOR,
         "Needs a local-windows resource: DOSBox-X, play, GPU timing/agreement, wrangler login, or local data",
+    ),
+    LabelSpec(
+        MODEL_TIER_LIGHT,
+        MODEL_TIER_COLOR,
+        "Nothing to weigh: the plan says exactly what to change",
+    ),
+    LabelSpec(
+        MODEL_TIER_MEDIUM,
+        MODEL_TIER_COLOR,
+        "The spec is clear and the main work is doing it",
+    ),
+    LabelSpec(
+        MODEL_TIER_HEAVY,
+        MODEL_TIER_COLOR,
+        "Working out what to do or why something is broken is the hard part",
+    ),
+    LabelSpec(
+        MODEL_CONTEXT_WIDE,
+        MODEL_CONTEXT_COLOR,
+        "The material will not fit a small context window",
     ),
     LabelSpec(
         AREA_CORE,

@@ -45,9 +45,10 @@ A `status:needs-plan` dispatch runs read-only on Opus or frontier with no branch
 
 1. Read the issue body and comments (the coordinator has already claimed it with `status:in-progress` and `Claimed by planner <id>.`).
 2. Investigate read-only with no branch, code edits or PR, and verify every `file:line` and figure against the checkout ("Cite what you read", [`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)).
-3. Write `build/scratch/plan-<N>.md` starting with `## Tentative plan`: files in scope, concrete approach, acceptance criteria, verification commands, recommended `area:`/`type:` updates, and open decisions with recommendations.
+3. Write `build/scratch/plan-<N>.md` starting with `## Tentative plan`: files in scope, concrete approach, acceptance criteria, verification commands, recommended `area:`/`type:` updates, one `model-tier:` and any `model-context:` labels, and open decisions with recommendations.
    Add or fix missing `area:`/`type:` labels if needed; never overwrite `priority:`.
+   Apply the model labels when posting, swapping an existing `model-tier:` rather than adding a second.
 4. If a cloud session lacks a `local-windows` resource needed to plan, post nothing and report the missing resource so the coordinator releases the claim with `env:local-only`.
    If any design/ADR/visual decision, ambiguity or multi-PR split remains, post the comment (`--body-file` locally, or REST in cloud per [`issue-tracker.md`](../../../docs/agents/issue-tracker.md#conventions)) and swap `status:in-progress` for `status:plan-review`.
-   Otherwise have a fresh-context subagent review the tentative plan comment against the codebase first, revise it, post it (`--body-file` or REST), and swap `status:in-progress` for `status:ready-for-agent`.
-5. Report in about 5 lines: the new state (`status:plan-review`, `status:ready-for-agent`, or missing-resource release), the comment URL, any `area:`/`type:` labels applied, and any key open decision.
+   Otherwise have a fresh-context subagent review the tentative plan comment, its labels included, against the codebase first, revise it, post it (`--body-file` or REST), and swap `status:in-progress` for `status:ready-for-agent`.
+5. Report in about 5 lines: the new state (`status:plan-review`, `status:ready-for-agent`, or missing-resource release), the comment URL, any `area:`/`type:` and model labels applied, and any key open decision.

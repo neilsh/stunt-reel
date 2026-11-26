@@ -17,7 +17,15 @@ if str(SCRIPTS_DIR) not in sys.path:
 import labels  # noqa: E402
 
 _HEX_COLOR = re.compile(r"^[0-9A-F]{6}$")
-_VALID_PREFIXES = ("status:", "priority:", "type:", "env:", "area:")
+_VALID_PREFIXES = (
+    "status:",
+    "priority:",
+    "type:",
+    "env:",
+    "area:",
+    "model-tier:",
+    "model-context:",
+)
 _PRIORITY_PREFIX = "priority:"
 _GRAY_MAX_SATURATION = 0.20
 _WARM_MAX_HUE_DEG = 60.0
@@ -70,7 +78,7 @@ def test_priority_reserves_warm_vivid_and_gray_while_other_prefixes_stay_muted_c
         prefix = spec.name.split(":", 1)[0] + ":"
         if prefix != _PRIORITY_PREFIX:
             by_prefix.setdefault(prefix, set()).add(spec.color)
-    assert set(by_prefix) == {"status:", "type:", "env:", "area:"}
+    assert set(by_prefix) == {"status:", "type:", "env:", "area:", "model-tier:", "model-context:"}
     cool_colors: set[str] = set()
     for prefix, colors in by_prefix.items():
         assert len(colors) == 1, (prefix, colors)
@@ -81,6 +89,14 @@ def test_priority_reserves_warm_vivid_and_gray_while_other_prefixes_stay_muted_c
         assert color not in priority_colors
         cool_colors.add(color)
     assert len(cool_colors) == len(by_prefix)
+
+
+def test_model_labels_are_three_tiers_and_one_context_constraint() -> None:
+    tiers = {spec.name for spec in labels.CATALOG if spec.name.startswith("model-tier:")}
+    assert tiers == set(labels.MODEL_TIERS)
+    assert tiers == {"model-tier:light", "model-tier:medium", "model-tier:heavy"}
+    contexts = {spec.name for spec in labels.CATALOG if spec.name.startswith("model-context:")}
+    assert contexts == {labels.MODEL_CONTEXT_WIDE}
 
 
 def test_priority_rank_picks_highest_priority_and_none_when_unprioritized() -> None:
