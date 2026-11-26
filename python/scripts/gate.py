@@ -21,8 +21,8 @@ path. ``classify`` sorts a changed path into a category, and ``scope_for`` turns
 the halves a run needs, or the full gate with a reason. See the scoped-gate plan,
 ``work/2026-11/scoped-gate/spec.md``.
 
-``STEP_ENV`` holds the environment a step runs with only inside the gate. The Python test step
-sets ``STUNT_REQUIRE_KSC=1``, so a missing Kaitai compiler fails the gate instead of skipping the
+``STEP_ENV`` holds the environment a step runs with only inside the gate. The Python test steps
+set ``STUNT_REQUIRE_KSC=1``, so a missing Kaitai compiler fails the gate instead of skipping the
 schema contract test, and ``STUNT_REQUIRE_PREK=1`` does the same for the commit hooks' prek test.
 It also runs pytest across every core (``-n auto --dist loadgroup``, which still spreads
 ungrouped tests but keeps a marked group on one worker), the gate's longest lane; a scoped
@@ -37,6 +37,11 @@ commit that has landed since. ``--base`` names another ref. ``gate.py scope`` pr
 ``docs_only=true`` when the changed paths need only the docs half, else ``docs_only=false``
 (also when git cannot give the paths), and exits 0; CI's ``scope`` job reads it
 ([`ci.yml`](../../.github/workflows/ci.yml)).
+
+A Rust test that finds no usable adapter writes a ``[test] Skipping ...`` line straight to stderr,
+past ``cargo test``'s capture of a passing test's output; the gate counts those lines in
+``test-rust``'s output and prints ``skipped_note`` before the verdict, so a skipped GPU test is not read as a pass
+(issue #1114).
 
 Three guards stop a run that could not pass. The gate runs as plain ``python`` (ADR 0014), so
 ``python_pin.guard`` first hands it to the interpreter ``mise which python`` names when PATH gives
@@ -164,7 +169,17 @@ _PYTEST_ENV = {
     "STUNT_REQUIRE_PREK": "1",
     "PYTEST_ADDOPTS": "-n auto --dist loadgroup",
 }
-STEP_ENV: dict[str, dict[str, str]] = {"test-py": _PYTEST_ENV, "test-py-docs": dict(_PYTEST_ENV)}
+STEP_ENV: dict[str, dict[str, str]] = {
+    "test-py": _PYTEST_ENV,
+    "test-py-docs": dict(_PYTEST_ENV),
+}
+
+# What a Rust test writes to stderr, past cargo's capture, to say it skipped for want of a usable
+# adapter (`report_skip` in crates/stunt-render/tests/gpu/common/mod.rs, fragment_index.rs, and the
+# stunt-cli tests); a skipped test passes, so only this line says so. A skip printed with
+# `eprintln!` is captured and not counted.
+SKIP_MARKER = "[test] Skipping"
+SKIP_HOWTO = "docs/howto/render-on-lavapipe.md"
 
 Category = Literal["rust", "python", "docs", "other"]
 
@@ -368,6 +383,17 @@ def _verdict(failed: Sequence[str], plan: Sequence[str], half: str, total: float
         line += f"; fix: mise run {FIX_TASK}"
     reruns = _reruns(failed, half)
     return f"{line}; re-run: {', '.join(reruns)}" if reruns else line
+
+
+def skipped_note(output: str) -> str:
+    """Return the gate's line about tests that skipped for want of an adapter, or ``""`` for none."""
+    skipped = output.count(SKIP_MARKER)
+    if not skipped:
+        return ""
+    return (
+        f"[gate] NOTE {skipped} adapter-test skip(s): no usable adapter here, so those tests did not "
+        f"run and CI's lavapipe may fail what passes; to run them see {SKIP_HOWTO}"
+    )
 
 
 def _report(task: str, code: int, elapsed: float) -> None:
@@ -597,6 +623,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"\n---- {task} output tail{note} ----", flush=True)
             print("\n".join(results[task][1].rstrip().splitlines()[-args.tail :]), flush=True)
 
+        note = skipped_note(results["test-rust"][1]) if "test-rust" in plan else ""
+        if note:
+            print(note, flush=True)
+            log.write(f"\n# {note.removeprefix('[gate] ')}\n")
         verdict = _verdict(failed, plan, half, total)
         print(verdict, flush=True)
         log.write(f"\n# {verdict.removeprefix('[gate] ')}\n")

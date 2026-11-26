@@ -145,6 +145,54 @@ pub(crate) fn identify_coplanar_decals(
     out
 }
 
+/// Which polygons of `polygons` (stream order, decals flagged by
+/// [`identify_coplanar_decals`]) are in a decal tie: a filled decal that overlaps an earlier
+/// coplanar filled polygon within their plane, and each such earlier polygon. A decal whose
+/// bounds only touch its base's is in none.
+#[must_use]
+pub(crate) fn decal_ties(polygons: &[RawPolygon], normal_tol: f32, plane_tol: f32) -> Vec<bool> {
+    let filled = |p: &RawPolygon| p.flags & VERTEX_FLAG_LINE == 0;
+    let mut ties = vec![false; polygons.len()];
+    for (at, decal) in polygons.iter().enumerate() {
+        if !decal.is_decal || !filled(decal) {
+            continue;
+        }
+        let mut tied = false;
+        for (base, tie) in polygons.iter().zip(ties.iter_mut()).take(at) {
+            if filled(base)
+                && is_coplanar_facet(decal, base, normal_tol, plane_tol)
+                && overlaps_in_plane(decal, base, plane_tol)
+            {
+                *tie = true;
+                tied = true;
+            }
+        }
+        if let Some(tie) = ties.get_mut(at) {
+            *tie |= tied;
+        }
+    }
+    ties
+}
+
+/// Whether the bounds of `a` and `b` overlap by more than `tol` along both axes other than
+/// the one nearest `a`'s front normal, so they share area in their plane, not just an edge.
+fn overlaps_in_plane(a: &RawPolygon, b: &RawPolygon, tol: f32) -> bool {
+    let normal_axis = front_normal(a)
+        .iter()
+        .enumerate()
+        .max_by(|(_, p), (_, q)| p.abs().total_cmp(&q.abs()))
+        .map_or(0, |(axis, _)| axis);
+    let (min_a, max_a) = polygon_bounds(a);
+    let (min_b, max_b) = polygon_bounds(b);
+    min_a
+        .iter()
+        .zip(max_a)
+        .zip(min_b.iter().zip(max_b))
+        .enumerate()
+        .filter(|&(axis, _)| axis != normal_axis)
+        .all(|(_, ((&lo_a, hi_a), (&lo_b, hi_b)))| lo_a < hi_b - tol && hi_a > lo_b + tol)
+}
+
 /// Whether every end of `line` lies within `plane_tol` of `facet`'s front plane and their
 /// bounds meet. A facet without a front side (a line, or fewer than three vertices) has none.
 fn line_lies_on_facet(line: &RawPolygon, facet: &RawPolygon, plane_tol: f32) -> bool {

@@ -1,0 +1,31 @@
+[parity-bench] $ uv run python python/scripts/parity_bench.py errors-score --fi…
+[bench] wrote /root/wt1118/build/parity/bench/location/errors/readout.json
+aircraft-parts-missing       2+ on 0/12  mean 0.00
+aircraft-shape-broken        2+ on 0/12  mean 0.00
+aircraft-too-small           2+ on 0/12  mean 0.00
+aircraft-misplaced           2+ on 0/12  mean 0.00
+shadow-missing               2+ on 0/12  mean 0.00
+sea-band-wrong               2+ on 0/12  mean 0.00
+scenery-missing              2+ on 0/12  mean 0.17
+ground-shade-wrong           2+ on 0/12  mean 0.00
+ground-shade-edges           2+ on 0/12  mean 0.00
+background-misregistration   2+ on 0/12  mean 0.50
+aircraft-absent              2+ on 0/12  mean 0.00
+shadow-shape-wrong           2+ on 0/12  mean 0.00
+actors-missing               2+ on 0/12  mean 0.00
+terrain-type-wrong           2+ on 0/12  mean 0.00
+explosion-missing            2+ on 0/12  mean 0.00
+sun-missing                  2+ on 0/12  mean 0.00
+frame-blank                  2+ on 0/12  mean 0.00
+black-block                  2+ on 0/12  mean 0.00
+propeller-solid              2+ on 0/12  mean 0.00
+other @134: 1px edge differences on aircraft stripes and rotors
+other @1233: 1px edge differences on the aircraft
+other @1772: distant aircraft sprites differ at pixel level
+other @2872: stadium stand, wall and post edges off by a pixel or two
+other @3422: stray dark specks and a dark wedge at the lower water edge in RENDER
+other @5062: wire shrubs at lower left differ in detail
+other @5611: tree canopy edges off by a pixel or two
+other @6161: stone monument edges off by a pixel or two
+changes since research/parity/readouts/location.json: none
+below min_change (4): location ground-shade-edges 1→0, location background-misregistration 2→0

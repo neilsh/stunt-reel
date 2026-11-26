@@ -1,0 +1,8 @@
+{
+  "name": "glb-check",
+  "private": true,
+  "description": "Khronos glTF validator for the glb-check task (mise run glb-check)",
+  "dependencies": {
+    "gltf-validator": "2.0.0-dev.3.10"
+  }
+}

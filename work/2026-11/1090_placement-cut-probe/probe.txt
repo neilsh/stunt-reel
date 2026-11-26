@@ -1,0 +1,21 @@
+[ctry] exit 0
+stuntreel.exe --headless CTRY.FLM --all CTRY.ALL --tick-range 14..=1333 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[ctry] [probe1090] nodes 1040 vertices 20140 indices 29088 records 316 with_mesh 306 base_run Some((0, 342)) decal_run Some((342, 360)) base_spans 0 base_in_run 0 base_indices 0 decal_spans 0 decal_in_run 0 decal_indices 0 with_own_nodes 306
+[intro] exit 0
+stuntreel.exe --headless INTRO.FLM --all INTRO.ALL --tick-range 12..=3818 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[intro] [probe1090] nodes 128772 vertices 819745 indices 1003143 records 26386 with_mesh 10723 base_run Some((0, 342)) decal_run Some((342, 360)) base_spans 0 base_in_run 0 base_indices 0 decal_spans 0 decal_in_run 0 decal_indices 0 with_own_nodes 10723
+[land] exit 0
+stuntreel.exe --headless LAND.FLM --all LAND.ALL --tick-range 12..=1134 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[land] [probe1090] nodes 2724 vertices 34183 indices 59034 records 845 with_mesh 834 base_run Some((0, 342)) decal_run Some((342, 360)) base_spans 0 base_in_run 0 base_indices 0 decal_spans 0 decal_in_run 0 decal_indices 0 with_own_nodes 834
+[balloon] exit 0
+stuntreel.exe --headless BALLOON.FLM --all BALLOON.ALL --tick-range 12..=1190 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[balloon] [probe1090] nodes 9930 vertices 569348 indices 617586 records 8983 with_mesh 1589 base_run Some((0, 342)) decal_run Some((342, 360)) base_spans 0 base_in_run 0 base_indices 0 decal_spans 0 decal_in_run 0 decal_indices 0 with_own_nodes 1589
+[traintnl] exit 0
+stuntreel.exe --headless TRAINTNL.FLM --all TRAINTNL.ALL --tick-range 12..=1233 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[traintnl] [probe1090] nodes 4291 vertices 112203 indices 260892 records 1049 with_mesh 1049 base_run Some((0, 342)) decal_run Some((342, 360)) base_spans 0 base_in_run 0 base_indices 0 decal_spans 0 decal_in_run 0 decal_indices 0 with_own_nodes 1049
+[bomb] exit 0
+stuntreel.exe --headless BOMB.FLM --all BOMB.ALL --tick-range 12..=3730 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[bomb] [probe1090] nodes 6091 vertices 257477 indices 285720 records 1158 with_mesh 970 base_run Some((0, 342)) decal_run Some((342, 360)) base_spans 0 base_in_run 0 base_indices 0 decal_spans 0 decal_in_run 0 decal_indices 0 with_own_nodes 970
+[location] exit 0
+stuntreel.exe --headless LOCATION.FLM --all LOCATION.ALL --tick-range 12..=8262 --sidata SIDATA --out-dir render --width 320 --height 200 --viewport-rows 185
+[location] [probe1090] nodes 228194 vertices 6731994 indices 7534722 records 56585 with_mesh 35481 base_run Some((0, 342)) decal_run Some((342, 360)) base_spans 0 base_in_run 0 base_indices 0 decal_spans 0 decal_in_run 0 decal_indices 0 with_own_nodes 35481

@@ -1,0 +1,16 @@
+== location ticks 134,683,1233,1772,2322,2872,3422,3972,4522,5062,5611,6161
+[parity-residue] $ uv run python python/scripts/parity_residue.py --films locat…
+film       ticks  differing  mean/tick      max      at
+location    8251       8251     2474.3     7577    6512
+              tick 134: 1989 differing pixels
+              tick 683: 797 differing pixels
+              tick 1233: 2261 differing pixels
+              tick 1772: 2081 differing pixels
+              tick 2322: 2021 differing pixels
+              tick 2872: 3042 differing pixels
+              tick 3422: 4877 differing pixels
+              tick 3972: 1908 differing pixels
+              tick 4522: 1533 differing pixels
+              tick 5062: 3323 differing pixels
+              tick 5611: 6031 differing pixels
+              tick 6161: 2327 differing pixels

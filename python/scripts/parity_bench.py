@@ -22,7 +22,7 @@ into ``build/parity/bench/<film>/errors``; a Haiku subagent reads the brief and 
 ``grades.txt``, and a second reads ``brief-2.md`` and writes ``grades-2.txt``. ``errors-disputes``
 lists the sheets the two passes disagree on in ``brief-tiebreak.md`` for a Sonnet subagent, which
 writes ``grades-tiebreak.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
-``--against`` and, for a calibrating run, the calibration. ``errors-example`` commits one tick's
+``--against`` (those past ``min_change``, then the smaller moves) and, for a calibrating run, the calibration. ``errors-example`` commits one tick's
 sheet as an example of a category. ``errors-table`` prints the readout table of
 ``research/parity/batch.md`` from batch films' ``readout.json`` and ``report.json``. ``--batch`` reads a film the batch survey captured, rendered
 and scored (``mise run batch-parity``) instead of a pinned reference; a film with no
@@ -45,6 +45,7 @@ from stunt_reel.bench.errors import (
     batch_row,
     make_run,
     score_run,
+    suppressed_line,
     write_disputes,
     write_example,
 )
@@ -278,7 +279,7 @@ def errors_disputes(args: argparse.Namespace) -> int:
 def errors_score(args: argparse.Namespace) -> int:
     """Write and print the readout, comparison, and calibration when requested."""
     out = _errors_out(args)
-    result, changes, calibration = score_run(out, _render(args), CATEGORIES, args.against)
+    result, comparison, calibration = score_run(out, _render(args), CATEGORIES, args.against)
     frames = len(result.ticks) - result.missing
     for category in result.categories:
         ungraded = f"  ungraded {category.ungraded}" if category.ungraded else ""
@@ -294,13 +295,15 @@ def errors_score(args: argparse.Namespace) -> int:
         print(f"missing {result.missing} of {len(result.ticks)} sheets")
     if result.unknown:
         print(f"unknown categories: {', '.join(result.unknown)}")
-    if changes is not None:
-        print(f"changes since {args.against}: {len(changes) or 'none'}")
-        for change in changes:
+    if comparison is not None:
+        print(f"changes since {args.against}: {len(comparison.changes) or 'none'}")
+        for change in comparison.changes:
             print(
                 f"  {change.category:<28} {change.before} -> {change.after}  "
                 f"added {list(change.added)}  removed {list(change.removed)}"
             )
+        # A count that moved by less than min_change is not a change, but not "grades unchanged".
+        print(suppressed_line(result.film, comparison.suppressed, comparison.min_change))
     if calibration is not None:
         verdict = "PASS" if calibration.passes else "FAIL"
         if calibration.inconclusive:

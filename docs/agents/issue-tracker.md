@@ -40,6 +40,7 @@ A cloud session's proxy refuses GraphQL, so `gh issue`, `gh repo view` and `gh p
   When choosing work, skip issues carrying `status:in-progress`.
 - **Close**: post the explanation with `gh issue comment <number> --body "..."`, then `gh issue close <number>` (cloud: the comment form above, then `gh api -X PATCH repos/{owner}/{repo}/issues/<number> -f state=closed`).
   On an already-closed issue, `gh issue close --comment` drops the comment and still exits 0.
+  Closing, by `gh` or a merged `Fixes #N`, removes every `status:*` label: the `project-sync` workflow's `clear-status` job does it, and a removal that fails leaves a warning on that run rather than stopping the rest.
 - **Cite what you read**: before posting a comment or issue body that cites a file:line or a figure, read each cited line once (`rg -n`, `sed -n`) and drop any it does not bear out; a subagent's report is a lead, not a citation.
 - **Close an issue fixed by a stacked PR**: a closing keyword (`Fixes #N`) fires only when the PR merges into the default branch, so an issue whose PR merges into another PR's branch stays open.
   Once `gh stack merge` lands the stack on `main`, close it by hand as in **Close**, naming the PR.
@@ -73,7 +74,7 @@ These rules cover every issue, except that the map and tickets `/wayfinder` choo
   Before `gh issue create`, run `gh issue list --state open --search "<key terms>"` (cloud: `gh api 'search/issues?q=repo:{owner}/{repo}+type:issue+<terms>'`) with the symptom's distinctive words (the error, the file, the film).
   On a clear match, add the new sighting as a comment there instead of filing a duplicate.
 - **The filer labels the issue.**
-  On `gh issue create`, apply one state label (`status:needs-triage` when unsure, or `status:needs-plan` when it needs read-only planning before coding), one or more primary-subsystem `area:` labels, a `type:` contract label (`type:research`, `type:fidelity` or `type:perf`) where applicable, `env:local-only` where only `local-windows` can do it ([triage-labels.md](triage-labels.md)), and a parent where a goal fits; leave `priority:` unset so unprioritized issues stand out for maintainer prioritization.
+  On `gh issue create`, apply one state label (`status:needs-triage` when unsure, or `status:needs-plan` when it needs read-only planning before coding), one or more primary-subsystem `area:` labels, a `type:` contract label (`type:research`, `type:fidelity` or `type:perf`) where applicable, `env:local-only` where only `local-windows` can do it ([triage-labels.md](triage-labels.md)), and a parent where a goal fits; leave `priority:` unset so unprioritized issues stand out for maintainer prioritization, and `model-tier:` and `model-context:` unset, since a plan sets them ([triage-labels.md](triage-labels.md#model-roles)).
   Cloud: the create and label forms above.
 - No milestones; parents show progress.
   The owner's [Issue Radar](https://github.com/users/neilsh/projects/1) project is a dashboard the `project-sync` workflow derives (`Status` and `Priority`) from labels and issue state ([`project_sync.py`](../../python/scripts/project_sync.py)); agents never read or write it, and a cloud session cannot, since Projects is GraphQL-only.

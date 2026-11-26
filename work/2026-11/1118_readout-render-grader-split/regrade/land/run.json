@@ -1,0 +1,23 @@
+{
+  "film": "land",
+  "ticks": [
+    12,
+    89,
+    177,
+    254,
+    331,
+    419,
+    496,
+    584,
+    661,
+    738,
+    826,
+    903
+  ],
+  "seed": 1,
+  "calibrate": false,
+  "revision": "c2b23b4b9758207061b55a38ad88de567c859701",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "58bbe9136221b160a5d485a1e3840e19847abd9ab6c1cb9cbe373c5e40daa2db",
+  "report_digest": "0de8658a378578f1e7226000f8a6e7fac1ad45ba9c8b0cf7aeda9589519aad14"
+}

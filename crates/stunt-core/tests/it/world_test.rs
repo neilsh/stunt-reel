@@ -327,6 +327,18 @@ fn scenery_places_deduplicated_props_offset_into_i1() {
         });
         assert!(found, "prop vertex {p:?} is not the shifted model geometry");
     }
+
+    // The fixture's decal lies inside its base, so both are in a decal tie, and the placed
+    // prop keeps it.
+    assert!(model.vertices.iter().all(|v| v.decal_tie == 1));
+    assert!(
+        world
+            .ir
+            .vertices
+            .iter()
+            .filter(|v| v.scenery_class == SCENERY_PROP)
+            .all(|v| v.decal_tie == 1)
+    );
 }
 
 #[test]

@@ -10,6 +10,7 @@ use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use stunt_core::scene::ViewCamera;
 use stunt_core::sod::ShadeLight;
 
+use crate::renderer::Look;
 use crate::sky::{SkyCamera, SkyLayout};
 
 /// Standard 4:3 physical aspect ratio for VGA Mode 13h ($320 \times 240$): the window's
@@ -33,6 +34,48 @@ pub const DEFAULT_NEAR_CLIP: f32 = 0.1;
 /// Far clipping plane distance in meters, for the orthographic projection only: the perspective
 /// projection has no far plane.
 pub const DEFAULT_FAR_CLIP: f32 = 25_000.0;
+
+/// The modern look's lighting and fog, matching WGSL `@group(0) @binding(1)` (`ModernUniform`).
+///
+/// Only the `vs_modern`/`fs_modern` entry points read it; the parity look's pipelines carry the
+/// same bind group and never touch it.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ModernUniform {
+    /// The unit direction toward the sun in `[I1]` axes (`ShadeLight::sun_direction`), then
+    /// the palette-LUT row a surface facing directly away from the sun takes.
+    pub sun_and_floor: [f32; 4],
+    /// Fog start and end distance from the eye in metres, then padding: the fog colour mixes
+    /// in linearly between them.
+    pub fog: [f32; 4],
+}
+
+impl ModernUniform {
+    /// The lighting row of a surface turned away from the sun: 0.51 of full brightness
+    /// (`palette.rs` rows run `0.2 + 0.8 * row / 31`).
+    pub const LIGHT_FLOOR_ROW: f32 = 12.0;
+    /// Where the fog starts, in metres.
+    pub const FOG_START: f32 = 1_000.0;
+    /// Where the fog is the whole colour, in metres.
+    pub const FOG_END: f32 = 8_000.0; // past `FOG_START`, which the shader divides by
+
+    /// The uniform for a film whose variable 13 is `variable_13`: the sun `PLAYONE` lights
+    /// shapes with and draws the sun disc at.
+    #[must_use]
+    pub fn for_sun(variable_13: u16) -> Self {
+        let [x, y, z] = ShadeLight::world(variable_13).sun_direction();
+        Self {
+            sun_and_floor: [x, y, z, Self::LIGHT_FLOOR_ROW],
+            fog: [Self::FOG_START, Self::FOG_END, 0.0, 0.0],
+        }
+    }
+}
+
+impl Default for ModernUniform {
+    fn default() -> Self {
+        Self::for_sun(0x002D)
+    }
+}
 
 /// GPU uniform buffer structure for camera uniforms matching WGSL `@group(0) @binding(0)`.
 #[repr(C)]
@@ -462,7 +505,11 @@ impl CameraController {
 pub(crate) struct CameraGpuResources {
     /// Uniform buffer containing `CameraUniform`.
     pub(crate) buffer: wgpu::Buffer,
-    /// Bind group layout for `@group(0) @binding(0)`.
+    /// Uniform buffer containing `ModernUniform`, bound for every look and read by the modern one.
+    pub(crate) modern_buffer: wgpu::Buffer,
+    /// The look the renderer draws in; only [`Look::Modern`] refreshes `modern_buffer`.
+    look: Look,
+    /// Bind group layout for `@group(0) @binding(0)` and `@binding(1)`.
     pub(crate) bind_group_layout: wgpu::BindGroupLayout,
     /// Bind group containing the buffer.
     pub(crate) bind_group: wgpu::BindGroup,
@@ -473,8 +520,8 @@ impl CameraGpuResources {
     pub(crate) fn create_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("stunt_camera_uniform_layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
+            entries: &[0, 1].map(|binding| wgpu::BindGroupLayoutEntry {
+                binding,
                 visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
@@ -482,7 +529,7 @@ impl CameraGpuResources {
                     min_binding_size: None,
                 },
                 count: None,
-            }],
+            }),
         })
     }
 
@@ -491,7 +538,7 @@ impl CameraGpuResources {
         clippy::expect_used,
         reason = "the buffer is created with `mapped_at_creation: true`, so its range is mapped"
     )]
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, look: Look) -> Self {
         let bind_group_layout = Self::create_bind_group_layout(device);
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("stunt_camera_uniform_buffer"),
@@ -505,18 +552,38 @@ impl CameraGpuResources {
             .expect("the camera uniform buffer is mapped at creation")
             .copy_from_slice(bytemuck::bytes_of(&CameraUniform::default()));
         buffer.unmap();
+        let modern_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("stunt_modern_uniform_buffer"),
+            size: size_of::<ModernUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: true,
+        });
+        modern_buffer
+            .slice(..)
+            .get_mapped_range_mut()
+            .expect("the modern uniform buffer is mapped at creation")
+            .copy_from_slice(bytemuck::bytes_of(&ModernUniform::default()));
+        modern_buffer.unmap();
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("stunt_camera_bind_group"),
             layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: modern_buffer.as_entire_binding(),
+                },
+            ],
         });
 
         Self {
             buffer,
+            modern_buffer,
+            look,
             bind_group_layout,
             bind_group,
         }
@@ -525,6 +592,18 @@ impl CameraGpuResources {
     /// Uploads updated camera uniform data to the GPU buffer.
     pub(crate) fn upload(&self, queue: &wgpu::Queue, uniform: &CameraUniform) {
         queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(uniform));
+    }
+
+    /// Uploads the modern look's sun for a frame whose variable 13 is `variable_13`; the parity
+    /// look writes nothing.
+    pub(crate) fn upload_look(&self, queue: &wgpu::Queue, variable_13: u16) {
+        if self.look == Look::Modern {
+            queue.write_buffer(
+                &self.modern_buffer,
+                0,
+                bytemuck::bytes_of(&ModernUniform::for_sun(variable_13)),
+            );
+        }
     }
 }
 

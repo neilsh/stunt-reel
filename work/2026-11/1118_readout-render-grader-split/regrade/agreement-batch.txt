@@ -1,0 +1,111 @@
+  ! mise.toml pins uv 0.13.1, but a uv outside mise's install runs another version. Outside mise, a bare uv runs one of these:
+  C:\Users\Steam\scoop\shims\uv.EXE (0.13.9)
+Remove the stale one, or keep mise's uv first on PATH.
+[agreement] $ uv run python python/scripts/parity_agreement.py batch --wsl Ubuntu-24.04
+agreement: $ git fetch origin main
+From https://github.com/neilsh/stunt-reel
+ * branch              main       -> FETCH_HEAD
+agreement: $ git -C 'E:\git\stunt-reel\.agents\worktrees\agreement' switch --detach origin/main
+HEAD is now at c2b23b4b docs(distill): research/parity/lavapipe-render-time.md (#1119)
+agreement: $ wsl -d Ubuntu-24.04 -u root -e bash -lc 'set -e; export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"; cd ~/stunt-reel; git fetch -q /mnt/e/git/stunt-reel refs/remotes/origin/main; test "$(git rev-parse FETCH_HEAD)" = c2b23b4b9758207061b55a38ad88de567c859701; git checkout -q --force --detach FETCH_HEAD; mise run parity -- --software-only; rm -rf /mnt/e/git/stunt-reel/.agents/worktrees/agreement/build/parity/ours /mnt/e/git/stunt-reel/.agents/worktrees/agreement/build/parity/report; mkdir -p /mnt/e/git/stunt-reel/.agents/worktrees/agreement/build/parity; cp -r build/parity/ours build/parity/report /mnt/e/git/stunt-reel/.agents/worktrees/agreement/build/parity/'
+[parity] $ uv run python python/scripts/parity_run.py --software-only
+[parity] cargo build --release -p stunt-cli
+[parity] rendering location into /root/stunt-reel/build/parity/ours/location_current
+[parity] rendering intro into /root/stunt-reel/build/parity/ours/intro_current
+[parity] rendering bomb into /root/stunt-reel/build/parity/ours/bomb_current
+[parity] rendering ctry into /root/stunt-reel/build/parity/ours/ctry_current
+[parity] rendering traintnl into /root/stunt-reel/build/parity/ours/traintnl_current
+[parity] rendering balloon into /root/stunt-reel/build/parity/ours/balloon_current
+[parity] rendering land into /root/stunt-reel/build/parity/ours/land_current
+[parity] previous balloon render kept at /root/stunt-reel/build/parity/previous/balloon; re-score it with mise run parity -- --films balloon --no-build --reuse /root/stunt-reel/build/parity/previous
+[parity] previous ctry render kept at /root/stunt-reel/build/parity/previous/ctry; re-score it with mise run parity -- --films ctry --no-build --reuse /root/stunt-reel/build/parity/previous
+[parity] previous traintnl render kept at /root/stunt-reel/build/parity/previous/traintnl; re-score it with mise run parity -- --films traintnl --no-build --reuse /root/stunt-reel/build/parity/previous
+[parity] previous land render kept at /root/stunt-reel/build/parity/previous/land; re-score it with mise run parity -- --films land --no-build --reuse /root/stunt-reel/build/parity/previous
+[parity] previous intro render kept at /root/stunt-reel/build/parity/previous/intro; re-score it with mise run parity -- --films intro --no-build --reuse /root/stunt-reel/build/parity/previous
+[parity] previous bomb render kept at /root/stunt-reel/build/parity/previous/bomb; re-score it with mise run parity -- --films bomb --no-build --reuse /root/stunt-reel/build/parity/previous
+[parity] previous location render kept at /root/stunt-reel/build/parity/previous/location; re-score it with mise run parity -- --films location --no-build --reuse /root/stunt-reel/build/parity/previous
+ctry  ssim 0.9439  iou 0.9953  idx 0.963  scored 114/121
+      lavapipe expected ssim 0.9439240  iou 0.9953114  delta +0.0000000  not comparable: crates/ tree 57fa24d, measured on 1728739: awaiting a repin or catch-up repin of this class
+intro ssim 0.9069  iou 0.9886  idx 0.936  scored 209/347
+      lavapipe expected ssim 0.9068951  iou 0.9885572  delta +0.0000000  not comparable: crates/ tree 57fa24d, measured on 1728739: awaiting a repin or catch-up repin of this class
+land  ssim 0.9310  iou 0.9860  idx 0.949  scored 97/103
+      lavapipe expected ssim 0.9310156  iou 0.9859885  delta -0.0000001  not comparable: crates/ tree 57fa24d, measured on 1728739: awaiting a repin or catch-up repin of this class
+balloon ssim 0.9067  iou 0.9508  idx 0.919  scored 107/108
+      lavapipe expected ssim 0.9067230  iou 0.9507836  delta +0.0000000  not comparable: crates/ tree 57fa24d, measured on 1728739: awaiting a repin or catch-up repin of this class
+traintnl ssim 0.9164  iou 0.9719  idx 0.949  scored 112/112
+      lavapipe expected ssim 0.9164134  iou 0.9719370  delta -0.0000000  not comparable: crates/ tree 57fa24d, measured on 1728739: awaiting a repin or catch-up repin of this class
+bomb  ssim 0.9080  iou 0.9692  idx 0.935  scored 316/339
+      lavapipe expected ssim 0.9080377  iou 0.9692331  delta +0.0000000  not comparable: crates/ tree 57fa24d, measured on 1728739: awaiting a repin or catch-up repin of this class
+location ssim 0.8967  iou 0.9809  idx 0.937  scored 732/745
+      lavapipe expected ssim 0.8967274  iou 0.9809296  delta +0.0000000  not comparable: crates/ tree 57fa24d, measured on 1728739: awaiting a repin or catch-up repin of this class
+noise floor +/-0.002 SSIM; margin below 0.002 is not an adoption
+Finished in 86.09s
+agreement: $ mise run parity
+mise by @jdx – installing 1 tool
+mise rust@1.100.0 info: syncing channel updates for 1.100.0-x86_64-pc-windows-msvc
+mise rust@1.100.0 info: latest update on 2026-11-12 for version 1.100.0 (0ef1bc386 2026-11-09)
+mise rust@1.100.0 info: component clippy is up to date
+mise rust@1.100.0 info: component llvm-tools is up to date
+mise rust@1.100.0 info: component rustfmt is up to date
+mise rust@1.100.0   1.100.0-x86_64-pc-windows-msvc unchanged - rustc 1.100.0 (0ef1bc386 2026-11-09)
+mise rust@1.100.0 info: checking for self-update (current version: 1.29.3)
+mise rust@1.100.0 warn: tool `rust-analyzer` is already installed, remove it from `E:/git/stunt-reel/.cache/cargo\bin`, then run `rustup update` to have rustup manage this tool.
+mise rust@1.100.0 warn: tool `rustfmt` is already installed, remove it from `E:/git/stunt-reel/.cache/cargo\bin`, then run `rustup update` to have rustup manage this tool.
+mise rust@1.100.0 warn: tool `cargo-fmt` is already installed, remove it from `E:/git/stunt-reel/.cache/cargo\bin`, then run `rustup update` to have rustup manage this tool.
+mise rust@1.100.0 rustc 1.100.0 (0ef1bc386 2026-11-09)
+mise ✓ rust@1.100.0  843ms
+mise ████████████████ 1/1 · installed 1 tool in 854ms
+  ! mise.toml pins uv 0.13.1, but a uv outside mise's install runs another version. Outside mise, a bare uv runs one of these:
+  C:\Users\Steam\scoop\shims\uv.EXE (0.13.9)
+Remove the stale one, or keep mise's uv first on PATH.
+  + target/ seeded from E:\git\stunt-reel
+[parity] $ uv run python python/scripts/parity_run.py
+warning: `VIRTUAL_ENV=E:\git\stunt-reel\.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+[parity] cargo build --release -p stunt-cli
+[parity] rendering location into E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\ours\location_current
+[parity] rendering intro into E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\ours\intro_current
+[parity] rendering bomb into E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\ours\bomb_current
+[parity] rendering ctry into E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\ours\ctry_current
+[parity] rendering traintnl into E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\ours\traintnl_current
+[parity] rendering balloon into E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\ours\balloon_current
+[parity] rendering land into E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\ours\land_current
+[parity] previous land render kept at E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous\land; re-score it with mise run parity -- --films land --no-build --reuse E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous
+[parity] previous ctry render kept at E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous\ctry; re-score it with mise run parity -- --films ctry --no-build --reuse E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous
+[parity] previous balloon render kept at E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous\balloon; re-score it with mise run parity -- --films balloon --no-build --reuse E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous
+[parity] previous traintnl render kept at E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous\traintnl; re-score it with mise run parity -- --films traintnl --no-build --reuse E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous
+[parity] previous bomb render kept at E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous\bomb; re-score it with mise run parity -- --films bomb --no-build --reuse E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous
+[parity] previous intro render kept at E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous\intro; re-score it with mise run parity -- --films intro --no-build --reuse E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous
+[parity] previous location render kept at E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous\location; re-score it with mise run parity -- --films location --no-build --reuse E:\git\stunt-reel\.agents\worktrees\agreement\build\parity\previous
+ctry  ssim 0.9439  iou 0.9953  idx 0.963  scored 114/121
+      gpu expected ssim 0.9384875  iou 0.9954557  delta +0.0054281  not comparable: crates/ tree 57fa24d, measured on 3bb9878: awaiting the next agreement batch
+intro ssim 0.9069  iou 0.9886  idx 0.936  scored 209/347
+      gpu expected ssim 0.8832691  iou 0.9879165  delta +0.0236260  not comparable: crates/ tree 57fa24d, measured on 3bb9878: awaiting the next agreement batch
+land  ssim 0.9312  iou 0.9859  idx 0.949  scored 97/103
+      gpu expected ssim 0.9245423  iou 0.9868600  delta +0.0066111  not comparable: crates/ tree 57fa24d, measured on 3bb9878: awaiting the next agreement batch
+balloon ssim 0.9068  iou 0.9508  idx 0.919  scored 107/108
+      gpu expected ssim 0.9059092  iou 0.9504104  delta +0.0008924  not comparable: crates/ tree 57fa24d, measured on 3bb9878: awaiting the next agreement batch
+traintnl ssim 0.9164  iou 0.9719  idx 0.949  scored 112/112
+      gpu expected ssim 0.9107161  iou 0.9715940  delta +0.0057016  not comparable: crates/ tree 57fa24d, measured on 3bb9878: awaiting the next agreement batch
+bomb  ssim 0.9085  iou 0.9693  idx 0.935  scored 316/339
+      gpu expected ssim 0.8948900  iou 0.9659737  delta +0.0135974  not comparable: crates/ tree 57fa24d, measured on 3bb9878: awaiting the next agreement batch
+location ssim 0.8967  iou 0.9809  idx 0.937  scored 732/745
+      gpu expected ssim 0.8727428  iou 0.9820003  delta +0.0239861  not comparable: crates/ tree 57fa24d, measured on 3bb9878: awaiting the next agreement batch
+noise floor +/-0.002 SSIM; margin below 0.002 is not an adoption
+Finished in 254.85s
+film       ticks  differing  mean/tick     max      at   hot    ssim gap
+ctry        1320       1294       8.55      56     162     0  -0.0000084
+intro       3807       2237      11.94     103     893     0  +0.0000000
+land        1123       1123      49.59     716     531     6  +0.0001378
+balloon     1179       1155      53.26     298     720     0  +0.0000786
+traintnl    1222       1103       8.59      80     929     0  +0.0000043
+bomb        3719       3442      21.30     149    3060     0  +0.0004497
+location    8251       7560       8.12     110    1169     0  +0.0000015
+flag: Agreement: ctry mean: mean: 3.09 to 8.55 pixels per tick
+flag: Agreement: intro mean: mean: 2.25 to 11.94 pixels per tick
+flag: Agreement: land mean: mean: 5.23 to 49.59 pixels per tick
+flag: Agreement: balloon mean: mean: 4.12 to 53.26 pixels per tick
+flag: Agreement: traintnl mean: mean: 3.84 to 8.59 pixels per tick
+flag: Agreement: bomb mean: mean: 8.40 to 21.30 pixels per tick
+agreement: not pinned: in the worktree .agents/worktrees/agreement, `mise run agreement -- pin --accept REASON` pins over this
+Finished in 374.61s
+exit 0

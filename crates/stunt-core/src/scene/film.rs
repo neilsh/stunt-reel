@@ -93,9 +93,23 @@ fn dos_axes(p: [f32; 3]) -> [f32; 3] {
     [-p[0], -p[1], p[2]]
 }
 
+/// What an [`ActorDraw`] draws for: an identity that stays the same from tick to tick, while a
+/// draw's index in [`SceneFrame::actors`] does not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum DrawSource {
+    /// A film slot, by [`ActorTransform::actor_id`].
+    Actor(u32),
+    /// A view-facing prop, by its index into [`World::view_facing`].
+    ViewFacing(usize),
+    /// The loose model a scene bound with no actors draws at the origin.
+    Origin,
+}
+
 /// One drawable actor in a [`SceneFrame`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ActorDraw {
+    /// The slot, prop or loose model this draw belongs to.
+    pub source: DrawSource,
     /// Key of the shape to draw, as accepted by [`FilmScene::shape`].
     pub shape_id: u16,
     /// Column-major model-to-world matrix in `[I1]`.
@@ -533,6 +547,7 @@ impl FilmScene {
                     self.relit.light().for_actor(a.rotation_quat)
                 };
                 ActorDraw {
+                    source: DrawSource::Actor(a.actor_id),
                     shape_id: a.shape_id,
                     world_matrix,
                     position: a.position_meters,
@@ -568,12 +583,13 @@ impl FilmScene {
             .flat_map(|w| {
                 self.facing
                     .iter()
-                    .filter_map(|&index| w.view_facing.get(index))
+                    .filter_map(|&index| w.view_facing.get(index).map(|p| (index, p)))
             })
-            .filter(|p| {
+            .filter(|(_, p)| {
                 open.is_open(p.node) && p.reach.as_ref().is_none_or(|reach| gate_view.holds(reach))
             })
-            .map(|p| ActorDraw {
+            .map(|(index, p)| ActorDraw {
+                source: DrawSource::ViewFacing(index),
                 shape_id: p.shape,
                 world_matrix: facing_matrix(heading, p.position),
                 position: p.position,
@@ -590,6 +606,7 @@ impl FilmScene {
             .filter(|_| record.actors.iter().all(|a| a.view))
         {
             actors.push(ActorDraw {
+                source: DrawSource::Origin,
                 shape_id,
                 world_matrix: IDENTITY_MATRIX,
                 position: [0.0; 3],
@@ -1028,7 +1045,7 @@ mod tests {
             palette_index: 7,
             flags: 0,
             scenery_class: 0,
-            _padding: 0,
+            decal_tie: 0,
         };
         mesh.vertices = vec![corner; 3];
         mesh.indices = vec![0, 1, 2];

@@ -1,0 +1,16 @@
+== ctry ticks 14,100,188,276,364,452,540,628,716,804,892,980
+[parity-residue] $ uv run python python/scripts/parity_residue.py --films ctry …
+film   ticks  differing  mean/tick      max      at
+ctry    1320       1320     1576.5     3374     409
+          tick 14: 1690 differing pixels
+          tick 100: 1152 differing pixels
+          tick 188: 1059 differing pixels
+          tick 276: 1107 differing pixels
+          tick 364: 2193 differing pixels
+          tick 452: 2363 differing pixels
+          tick 540: 2001 differing pixels
+          tick 628: 2279 differing pixels
+          tick 716: 1435 differing pixels
+          tick 804: 1428 differing pixels
+          tick 892: 1204 differing pixels
+          tick 980: 1736 differing pixels

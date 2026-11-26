@@ -1,0 +1,23 @@
+{
+  "film": "balloon",
+  "ticks": [
+    12,
+    122,
+    221,
+    331,
+    441,
+    540,
+    650,
+    749,
+    859,
+    970,
+    1068,
+    1178
+  ],
+  "seed": 1,
+  "calibrate": false,
+  "revision": "c2b23b4b9758207061b55a38ad88de567c859701",
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "df2f5109563c5c7242567c2c6001eae69aab681f22061c79f95841f0b4f3daef",
+  "report_digest": "d33a920a335667d5c5fc9a29646be3dd8be9e8862c4d2752c6759d69ef137f99"
+}

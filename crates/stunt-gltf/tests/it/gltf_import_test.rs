@@ -18,7 +18,7 @@ use stunt_core::anchor::parse_anchor_table;
 use stunt_core::contracts::NodeKind;
 use stunt_core::scene::{FilmScene, SceneInputs, ShapeSource};
 use stunt_core::sod::{DecodeMode, decode_sod};
-use stunt_gltf::{export_scene_frame, export_shape};
+use stunt_gltf::{FilmExportOptions, export_film, export_scene_frame, export_shape};
 
 fn fixture(name: &str) -> Vec<u8> {
     let dir = crate::test_support::workspace_root()
@@ -127,4 +127,36 @@ fn exported_scene_frame_imports_and_validates() {
         assert!(gltf.meshes().count() > 0);
         assert!(check_primitives(&gltf) >= gltf.meshes().count());
     }
+}
+
+#[test]
+fn exported_film_animation_imports_and_validates() {
+    let scene = FilmScene::load(&SceneInputs {
+        film: &fixture("synthetic_timeline.flm"),
+        shapes: Some(ShapeSource::Archive(&fixture("synthetic_minimal.all"))),
+        anchors: None,
+        map: None,
+        scenery: None,
+    })
+    .expect("load")
+    .0;
+    let options = FilmExportOptions {
+        first_tick: 0,
+        last_tick: scene.timeline().total_ticks(),
+        lens_pointer: false,
+    };
+    let bytes = export_film(&scene, options).expect("export").bytes;
+    let gltf = Gltf::from_slice(&bytes).expect("validates");
+    let blob = gltf.blob.as_deref().expect("GLB BIN chunk");
+    let animation = gltf.animations().next().expect("one animation");
+    let mut channels = 0;
+    for channel in animation.channels() {
+        channels += 1;
+        let reader = channel.reader(|_| Some(blob));
+        let times: Vec<f32> = reader.read_inputs().expect("inputs").collect();
+        assert!(times.is_sorted_by(|a, b| a < b), "times increase");
+        assert!(reader.read_outputs().is_some(), "outputs read");
+    }
+    assert!(channels >= 1, "the camera moves");
+    assert!(check_primitives(&gltf) >= gltf.meshes().count());
 }

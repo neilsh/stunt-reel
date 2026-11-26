@@ -1,0 +1,16 @@
+== intro ticks 1002,1178,1355,2069,2245,2421,2597,2773,2949,3125,3301,3477
+[parity-residue] $ uv run python python/scripts/parity_residue.py --films intro…
+film    ticks  differing  mean/tick      max      at
+intro    3807       2345     1507.9     5909    2738
+           tick 1002: 1827 differing pixels
+           tick 1178: 2994 differing pixels
+           tick 1355: 1660 differing pixels
+           tick 2069: 2322 differing pixels
+           tick 2245: 2169 differing pixels
+           tick 2421: 2975 differing pixels
+           tick 2597: 2123 differing pixels
+           tick 2773: 867 differing pixels
+           tick 2949: 1430 differing pixels
+           tick 3125: 4050 differing pixels
+           tick 3301: 4153 differing pixels
+           tick 3477: 3979 differing pixels

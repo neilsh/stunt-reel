@@ -6,6 +6,7 @@
 //! fails.
 
 use std::fs;
+use std::io::Write as _;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -53,10 +54,12 @@ fn report_timing_prints_each_phase_and_leaves_the_store_alone() {
             skips_without_software_adapter(&stderr),
             "plain render failed: {stderr}"
         );
-        eprintln!(
+        // Past `cargo test`'s capture, so the quality gate counts the skip (issue #1114).
+        drop(writeln!(
+            std::io::stderr(),
             "[test] Skipping software-only test: no software fallback adapter with clip \
              distances (WARP lacks them; ADR 0054): {stderr}"
-        );
+        ));
         drop(fs::remove_dir_all(&root));
         return;
     }

@@ -10,7 +10,7 @@
 use crate::anchor::AnchorPoint;
 use crate::contracts::shape::{
     ShapeSprite, SodHeader, SodStop, SodStopReason, VERTEX_FLAG_DISC, VERTEX_FLAG_LINE,
-    VisibilityCondition,
+    VERTEX_FLAG_PRESHADED, VisibilityCondition,
 };
 use crate::reader::ByteReader;
 use crate::sod::bank::{AngleBank, Mat3, RotAxis, apply3, mul3, rotation, rotz_light};
@@ -784,6 +784,8 @@ struct Vm<'a> {
     regs: WrapTable<[f32; 3], 1024>,
     cur_vert: [f32; 3],
     cur_color: u8,
+    // Whether `cur_color` came from a `SHADE*` opcode, and so already carries the light.
+    cur_color_preshaded: bool,
     // Per-normal shade words (`PLAYONE` `work:0x7468`), indexed by byte offset / 2.
     shade_words: WrapTable<i32, 2048>,
     // Line colour (`OP_LINECOL`); falls back to the fill colour until first set.
@@ -875,6 +877,7 @@ impl<'a> Vm<'a> {
             regs: WrapTable([[0.0f32; 3]; 1024]),
             cur_vert: [0.0f32; 3],
             cur_color: 0u8,
+            cur_color_preshaded: false,
             shade_words: WrapTable([0i32; 2048]),
             line_color: None,
             pen: [0.0f32; 3],
@@ -979,6 +982,27 @@ impl<'a> Vm<'a> {
 
     /// Runs the instruction `opcode` at `op_offset`, its operands still unread.
     fn execute(&mut self, op_offset: usize, opcode: u16) -> Result<(), SodError> {
+        let first_new = self.polygons.len();
+        self.dispatch(op_offset, opcode)?;
+        // A drawing opcode's polygons whose colour already carries the light
+        // (`VERTEX_FLAG_PRESHADED`): a Gouraud polygon always, and a fill, line or dot in a
+        // `SHADE*` colour. A pen line or dot in the `OP_LINECOL` colour is not.
+        let preshaded = match opcode {
+            OP_GVPOLY | OP_GVPOLY16 => true,
+            OP_ZLINETO | OP_DOT => self.line_color.is_none() && self.cur_color_preshaded,
+            OP_POLYZ | OP_PERFDISK | OP_SPHERE | OP_BLOCK => self.cur_color_preshaded,
+            _ => false,
+        };
+        if preshaded {
+            for polygon in self.polygons.iter_mut().skip(first_new) {
+                polygon.flags |= VERTEX_FLAG_PRESHADED;
+            }
+        }
+        Ok(())
+    }
+
+    /// [`Self::execute`]'s instruction dispatch.
+    fn dispatch(&mut self, op_offset: usize, opcode: u16) -> Result<(), SodError> {
         match opcode {
             OP_CLRV | OP_GETV | OP_PUTV | OP_INTV | OP_ADDV | OP_SUBV | OP_NEGV | OP_SHLV
             | OP_SHRV => self.vertex_arith(opcode)?,
@@ -986,6 +1010,7 @@ impl<'a> Vm<'a> {
             OP_VECTORS => self.load_vectors()?,
             OP_COLOR => {
                 self.cur_color = (self.r.read_u16_le()? & 0xFF) as u8;
+                self.cur_color_preshaded = false;
             }
             OP_LINECOL => {
                 // [Hypothesis] one word: line colour index, as OP_COLOR is for fills.
@@ -1826,6 +1851,7 @@ impl<'a> Vm<'a> {
         let level = shade_level(s, base);
         // `base` is a byte and `level.max(0)` is not negative, so only the top clamps.
         self.cur_color = u8::try_from(shade_colour(base, level)).unwrap_or(u8::MAX);
+        self.cur_color_preshaded = true;
         Ok(())
     }
 

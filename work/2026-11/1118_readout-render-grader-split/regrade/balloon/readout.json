@@ -1,0 +1,142 @@
+{
+  "film": "balloon",
+  "ticks": [
+    12,
+    122,
+    221,
+    331,
+    441,
+    540,
+    650,
+    749,
+    859,
+    970,
+    1068,
+    1178
+  ],
+  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
+  "render_digest": "df2f5109563c5c7242567c2c6001eae69aab681f22061c79f95841f0b4f3daef",
+  "categories": [
+    {
+      "category": "aircraft-parts-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-shape-broken",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-too-small",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-misplaced",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "shadow-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "sea-band-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "scenery-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "ground-shade-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "ground-shade-edges",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "background-misregistration",
+      "ticks_2plus": [],
+      "mean": 1.0,
+      "ungraded": 0
+    },
+    {
+      "category": "aircraft-absent",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "shadow-shape-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "actors-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "terrain-type-wrong",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "explosion-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "sun-missing",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "frame-blank",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "black-block",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    },
+    {
+      "category": "propeller-solid",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
+    }
+  ],
+  "other": {
+    "221": "sun disc a few px off",
+    "650": "banner panel a few px shorter"
+  },
+  "missing": 0,
+  "unknown": [],
+  "disputed": 0
+}

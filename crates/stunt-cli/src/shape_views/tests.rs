@@ -1,4 +1,5 @@
 use super::*;
+use std::io::Write as _;
 use stunt_core::contracts::{NodeKind, SodVertex, VisibilityCondition, arena_index};
 
 fn fixture(name: &str) -> PathBuf {
@@ -159,7 +160,7 @@ fn add_box(model: &mut SodModelIr, min: Vec3, max: Vec3, palette_index: u8) {
                 palette_index,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                decal_tie: 0,
             }));
             model.indices.extend(order.map(|i| base + i));
         }
@@ -239,7 +240,11 @@ fn gpu_or_skip<T>(draw: impl FnOnce() -> Result<T, ViewsError>) -> Option<T> {
         Err(ViewsError::Render(error))
             if std::env::var("STUNT_REQUIRE_GPU").as_deref() != Ok("1") =>
         {
-            eprintln!("[test] Skipping GPU test: {error}");
+            // Past `cargo test`'s capture, so the quality gate counts the skip (issue #1114).
+            drop(writeln!(
+                std::io::stderr(),
+                "[test] Skipping GPU test: {error}"
+            ));
             None
         }
         Err(error) => panic!("shape-views failed: {error:?}"),

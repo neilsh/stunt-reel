@@ -99,7 +99,7 @@ pub(crate) fn add_shape_assets(
     }
 
     let vec_accessor = |builder: &mut GlbBuilder, data: &[u8], kind: &str, bounds| {
-        let view = builder.add_view(data, TARGET_ARRAY_BUFFER);
+        let view = builder.add_view(data, Some(TARGET_ARRAY_BUFFER));
         builder.add_accessor(&AccessorSpec {
             view,
             byte_offset: 0,
@@ -119,7 +119,7 @@ pub(crate) fn add_shape_assets(
     let color = vec_accessor(builder, &colors, "VEC4", None);
 
     let index_bytes: Vec<u8> = model.indices.iter().flat_map(|i| i.to_le_bytes()).collect();
-    let index_view = builder.add_view(&index_bytes, TARGET_ELEMENT_ARRAY_BUFFER);
+    let index_view = builder.add_view(&index_bytes, Some(TARGET_ELEMENT_ARRAY_BUFFER));
 
     for mesh in model.meshes() {
         if mesh.indices.is_empty() {
@@ -144,7 +144,7 @@ pub(crate) fn add_shape_assets(
                     continue;
                 }
                 let bytes: Vec<u8> = list.iter().flat_map(|i| i.to_le_bytes()).collect();
-                let view = builder.add_view(&bytes, TARGET_ELEMENT_ARRAY_BUFFER);
+                let view = builder.add_view(&bytes, Some(TARGET_ELEMENT_ARRAY_BUFFER));
                 let indices = builder.add_accessor(&AccessorSpec {
                     view,
                     byte_offset: 0,

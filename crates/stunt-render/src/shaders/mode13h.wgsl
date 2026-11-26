@@ -153,7 +153,7 @@ const NO_PROP_VERTEX: u32 = 0xffffffffu;
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: padding
+    @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: decal_tie
     // The second vertex stream: for an outline corner, the third vertex of the triangle its
     // edge bounds (outline.rs `Outlined`); for any other vertex, its own position.
     @location(3) apex: vec3<f32>,
@@ -284,16 +284,19 @@ const NEAR_HORIZONTAL: f32 = 0.9;
 // horizontal plane through them: the ground, the ocean and a flat prop snapped onto a slope
 // (the river) lie in different planes but share one, so their depth ties hold. Any other
 // polygon vertex slides in its facet's plane (`normal`, model space; for an outline corner the
-// plane of its edge and apex), which keeps a decal on a steep facet on its base. A ZLINETO
-// line or a two-vertex polygon (no facet), a degenerate facet and every vertex of a shadow,
-// whose model matrix flattens it onto the ground, slide horizontally too.
+// plane of its edge and apex), which keeps a decal on a steep facet on its base; so does a
+// world prop's vertex in a decal tie (`SodVertex::decal_tie`), such as a hangar's wall stripe.
+// A ZLINETO line or a two-vertex polygon (no facet), a degenerate facet and every vertex of a
+// shadow, whose model matrix flattens it onto the ground, slide horizontally too.
 fn slide_normal(in: VertexInput) -> vec3<f32> {
     var n = in.normal;
     if ((in.attr.y & FLAG_LINE) != 0u) {
         n = cross(in.normal, in.apex - in.position);
     }
     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
-    if (model.layer.y != 0u || in.attr.z != 0u || dot(eye_n, eye_n) == 0.0
+    let decal_tie = in.attr.z == SCENERY_PROP && in.attr.w != 0u;
+    let world = in.attr.z != 0u && !decal_tie;
+    if (model.layer.y != 0u || world || dot(eye_n, eye_n) == 0.0
         || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {
         return UP;
     }
@@ -506,5 +509,187 @@ fn fs_sky_plane(in: SkyVertexOutput) -> PlaneOutput {
     let index = sky_index(in.ndc);
     out.color = textureLoad(palette_lut, vec2<i32>(i32(index), 31), 0);
     out.plane = vec2<u32>(index, 0u);
+    return out;
+}
+
+// The modern look (`--look modern`): directional lighting and distance fog, drawn through entry
+// points of its own beside the parity ones above, which keep their code. Viewer-only: never
+// scored or stored (docs/SPEC.md [I3]). It reuses `vertex_output` and `fragment_index`, so the
+// pixel snapping, the culling and the index rule are the parity look's.
+
+// The sun and fog the modern entry points read (camera.rs `ModernUniform`).
+struct ModernUniform {
+    // xyz: the unit direction toward the sun in [I1] axes; w: the palette row of a surface
+    // facing directly away from it.
+    sun_and_floor: vec4<f32>,
+    // x, y: the fog's start and end distance from the eye in metres.
+    fog: vec4<f32>,
+};
+
+@group(0) @binding(1) var<uniform> modern: ModernUniform;
+
+// SodVertex::flags bit 7 (contracts/shape/mod.rs VERTEX_FLAG_PRESHADED): the palette index
+// already carries the light, so Lambert would light it twice.
+const FLAG_PRESHADED: u32 = 0x80u;
+// SodVertex::flags bit 6 of an OP_PERFDISK rim vertex is `FLAG_DISC` above.
+
+// The horizon sky band (sky.rs `SKY_ZENITH_INDEX + LAST_EDGE`), the colour distance fades to.
+const FOG_INDEX: i32 = 238;
+
+// `VertexOutput` with the eye-relative position and the facet normal the modern fragment needs.
+struct ModernVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) @interpolate(flat) palette_index: u32,
+    @location(1) @interpolate(flat) light_level: u32,
+    @location(2) @interpolate(flat) layer: u32,
+    @location(3) @interpolate(linear) shade: f32,
+    @location(4) @interpolate(perspective) shade_w: f32,
+    @location(5) @interpolate(perspective) w: f32,
+    @location(6) @interpolate(flat) shape: u32,
+    @location(7) @interpolate(flat) prop_vertex: u32,
+    // The vertex's eye-relative position, interpolated perspective-correct.
+    @location(8) @interpolate(perspective) eye_pos: vec3<f32>,
+    // The eye-relative unit facet normal; zero where the fragment takes no Lambert light.
+    @location(9) @interpolate(flat) normal: vec3<f32>,
+};
+
+struct ModernEdgeVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) @interpolate(flat) palette_index: u32,
+    @location(1) @interpolate(flat) light_level: u32,
+    @location(2) @interpolate(flat) layer: u32,
+    @location(3) @interpolate(linear) shade: f32,
+    @location(4) @interpolate(perspective) shade_w: f32,
+    @location(5) @interpolate(perspective) w: f32,
+    @location(6) @interpolate(flat) shape: u32,
+    @location(7) @interpolate(flat) prop_vertex: u32,
+    @location(8) @interpolate(perspective) eye_pos: vec3<f32>,
+    @location(9) @interpolate(flat) normal: vec3<f32>,
+    @builtin(clip_distances) clip_distances: array<f32, 4>,
+};
+
+// The eye-relative unit normal of the surface `in` lights, zero when it takes no Lambert light:
+// a pre-shaded vertex, a shadow, a disc's rim, and a line with no facet (a ZLINETO).
+fn modern_normal(in: VertexInput) -> vec3<f32> {
+    if ((in.attr.y & FLAG_PRESHADED) != 0u || model.layer.y != 0u
+        || (in.attr.y & FLAG_DISC) != 0u) {
+        return vec3<f32>(0.0);
+    }
+    var n = in.normal;
+    if ((in.attr.y & FLAG_LINE) != 0u) {
+        // An outline corner's `normal` is its segment: light it by its edge's facet, as
+        // `slide_normal` slides it.
+        n = cross(in.normal, in.apex - in.position);
+    }
+    // Turned by the model matrix itself, not its inverse transpose: right for the rotations and
+    // uniform scales of an actor's or the world's matrix.
+    let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
+    let len = length(eye_n);
+    if (len == 0.0) {
+        return vec3<f32>(0.0);
+    }
+    return eye_n / len;
+}
+
+fn modern_vertex(in: VertexInput, vertex_index: u32) -> ModernVertexOutput {
+    let v = vertex_output(in, vertex_index);
+    var out: ModernVertexOutput;
+    out.clip_position = v.clip_position;
+    out.palette_index = v.palette_index;
+    out.light_level = v.light_level;
+    out.layer = v.layer;
+    out.shade = v.shade;
+    out.shade_w = v.shade_w;
+    out.w = v.w;
+    out.shape = v.shape;
+    out.prop_vertex = v.prop_vertex;
+    out.eye_pos = (model.model_matrix * vec4<f32>(in.position, 1.0)).xyz;
+    out.normal = modern_normal(in);
+    return out;
+}
+
+@vertex
+fn vs_modern(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> ModernVertexOutput {
+    return modern_vertex(in, vertex_index);
+}
+
+// `vs_modern` for the outline line lists, clipped as `vs_edge` clips them.
+@vertex
+fn vs_modern_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> ModernEdgeVertexOutput {
+    let v = modern_vertex(in, vertex_index);
+    var out: ModernEdgeVertexOutput;
+    out.clip_position = v.clip_position;
+    out.palette_index = v.palette_index;
+    out.light_level = v.light_level;
+    out.layer = v.layer;
+    out.shade = v.shade;
+    out.shade_w = v.shade_w;
+    out.w = v.w;
+    out.shape = v.shape;
+    out.prop_vertex = v.prop_vertex;
+    out.eye_pos = v.eye_pos;
+    out.normal = v.normal;
+    let c = v.clip_position;
+    let band = EDGE_CLIP_BAND * c.w;
+    out.clip_distances = array<f32, 4>(band - c.x, band + c.x, band - c.y, band + c.y);
+    return out;
+}
+
+// The `VertexOutput` the parity fragment code reads, rebuilt from `in`.
+fn parity_input(in: ModernVertexOutput) -> VertexOutput {
+    var v: VertexOutput;
+    v.clip_position = in.clip_position;
+    v.palette_index = in.palette_index;
+    v.light_level = in.light_level;
+    v.layer = in.layer;
+    v.shade = in.shade;
+    v.shade_w = in.shade_w;
+    v.w = in.w;
+    v.shape = in.shape;
+    v.prop_vertex = in.prop_vertex;
+    return v;
+}
+
+// A disc (`FLAG_DISC`) and a line with no facet (a ZLINETO) take no Lambert light and draw at the
+// full row; fog still applies. `modern.fog.y` is past `modern.fog.x` (camera.rs `ModernUniform`).
+//
+// The colour of palette index `index` under the sun and the fog: Lambert on the facet normal,
+// flipped toward the eye so either winding is lit on the side it shows, picks a row of the
+// lighting table from the floor up to full brightness; distance then mixes the horizon sky in.
+fn modern_colour(in: ModernVertexOutput, index: u32) -> vec4<f32> {
+    var row = 31.0;
+    if (dot(in.normal, in.normal) > 0.0) {
+        var n = in.normal;
+        if (dot(n, in.eye_pos) > 0.0) {
+            n = -n;
+        }
+        let lambert = max(dot(n, modern.sun_and_floor.xyz), 0.0);
+        row = floor(modern.sun_and_floor.w + (31.0 - modern.sun_and_floor.w) * lambert + 0.5);
+    }
+    let lit = textureLoad(palette_lut, vec2<i32>(i32(index), i32(row)), 0);
+    let fog = textureLoad(palette_lut, vec2<i32>(FOG_INDEX, 31), 0);
+    let amount = clamp(
+        (length(in.eye_pos) - modern.fog.x) / (modern.fog.y - modern.fog.x),
+        0.0,
+        1.0,
+    );
+    return vec4<f32>(mix(lit.rgb, fog.rgb, amount), lit.a);
+}
+
+@fragment
+fn fs_modern(in: ModernVertexOutput) -> @location(0) vec4<f32> {
+    return modern_colour(in, fragment_index(parity_input(in)));
+}
+
+@fragment
+fn fs_modern_plane(in: ModernVertexOutput) -> PlaneOutput {
+    var out: PlaneOutput;
+    let index = fragment_index(parity_input(in));
+    out.color = modern_colour(in, index);
+    var shape = in.shape;
+    if (in.prop_vertex != NO_PROP_VERTEX) {
+        shape = prop_shape(in.prop_vertex);
+    }
+    out.plane = vec2<u32>((in.layer << 8u) | index, shape);
     return out;
 }

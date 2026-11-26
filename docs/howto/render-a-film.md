@@ -13,6 +13,18 @@ Interactive playback follows the authored 50 Hz timeline and interpolates betwee
 
 `ANCHORPT.DAT`, `MAP.BIN`, and `SCENERY.scn` are searched for in `--sidata <dir>` first, then the archive's directory, its parent and grandparent, then `sidata/` or `SIDATA/` inside the parent (filename case ignored); the demo's `corpus/siarchive/Developer/FreeFlight/SIDATA` needs an explicit `--sidata`.
 
+## Watch it lit and fogged
+
+```bash
+stuntreel --look modern <film and flags as above>
+stuntreel --look modern --headless <film and flags as above> --video film.mp4
+stuntreel --look modern --headless <film and flags as above> -o still.png
+```
+
+`--look modern` adds directional lighting against the film's sun and distance fog toward the horizon sky, through pipelines and shader entry points beside the parity ones; `--look mode13h` is the default.
+Polygons whose colour already carries `OP_SHADES` light keep their palette index's full row, so nothing is lit twice, and so do discs and facet-less lines, which have no normal to light; the sky, the letterbox and the pixel snapping are the Mode 13h look's.
+It is a viewer: `--out-dir` refuses it, since the render store holds Mode 13h renders that are scored, and `stuntreel shape-views` stays on the Mode 13h look.
+
 ## Sample it at an interval
 
 ```bash
@@ -35,7 +47,7 @@ stuntreel --headless <film and flags as above> --software-only --out-dir DIR --w
 `--workers N` splits a whole-tick `--out-dir` render across N child processes of `stuntreel`, each drawing a run of whole film seconds with `LP_NUM_THREADS=1`, then joins their stores into `DIR`, byte for byte the store a 1-worker render writes (checked at 2 and 4 workers on the seven reference films), and on success removes the workers' stores from `DIR/workers/`.
 A failed worker stops the others and leaves their stores there for inspection, with no `render.json` in `DIR`.
 It needs `--out-dir` and refuses `--video`, `--sample-count` and `-o`.
-Lavapipe draws a device on one thread, so this is how one film uses more than one core; each worker holds the whole world, about 953 MiB (0.93 GiB) for `LOCATION` ([lavapipe render time, § 5](../../research/parity/lavapipe-render-time.md#5-multi-vkdevice-in-process-versus-child-processes)).
+Lavapipe draws a device on one thread, so this is how one film uses more than one core; each worker holds the whole world, about 953 MiB (0.93 GiB) for `LOCATION` ([lavapipe render workers, § 2](../../research/parity/lavapipe-render-workers.md#2-multi-vkdevice-in-process-versus-child-processes)).
 `mise run parity -- --workers N` passes it on, cutting N so the jobs' worker processes fit the cores and that much memory each.
 `mise run parity` always starts the film with the most captured ticks first, whatever `--workers` is.
 

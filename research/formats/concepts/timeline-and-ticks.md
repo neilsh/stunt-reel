@@ -140,6 +140,12 @@ So `PLAYONE` moves a view slot smoothly across a slice however far it goes, and 
 `[Bounded Observation]`, GPU sweep of every reference film: dropping the 50 m test raised `intro` from 0.8833 to 0.8937 and `location` from 0.8727 to 0.8863 and left the others unchanged; `location`'s canyon run, whose eye moves about 59 m per 10-tick slice, no longer steps every 10 ticks (ticks 6700 to 7400: 0.8312 to 0.9421).
 _Source: [PLAYONE interpolates a slot across any distance](../../../work/2026-11/1031_bomb-world-offset/journal.md#2026-11-24-playone-interpolates-a-slot-across-any-distance)._
 
+`[Bounded Observation]`, a census of the seven reference films' slice pairs (3 degrees per word, `view_obj` never switching): per-word angles instead of our slerp and lerped look-at point move the view direction by at most 0.38 degrees on five films, and, in three slice pairs each, by at most 2.69 degrees (balloon, ticks 223 to 255) and 2.13 degrees (traintnl, ticks 221 to 257); drawn actors move by at most 0.78 degrees (`location`, two slot-slice pairs) and by 0.06 or less elsewhere.
+The gate count of #1072 (slices turning two or more words by more than 3 degrees) is not zero: intro 1, balloon 4, traintnl 8, bomb 1, location 5 (view) and 13 (actors).
+`[Hypothesis]`, no render run: three captured ticks of balloon and of traintnl sit in a slice pair over 0.5 degrees; at an assumed 0.05 SSIM a frame (unsourced) that moves `mean_ssim_scored` by about 0.0014 of 108 captured ticks, at 0.3 a frame by about 0.0083, so the score effect is not bounded.
+Per-word interpolation was not made, and the item is open: it needs the raw angle words on the actor and camera records.
+_Source: [The slot-angle census for per-word interpolation](../../../work/2026-11/1072_slot-angle-interpolation/journal.md#2026-11-26-the-slot-angle-census-for-per-word-interpolation)._
+
 #### Suppression Enforcement
 When `cut_from_previous == true`:
 $$\alpha_{\text{eff}} = 0.0$$

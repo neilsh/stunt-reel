@@ -15,6 +15,10 @@ worktree, and Orca does not call it live; it has no branch to delete, and its in
 are unlinked by the same walker. As with every candidate, a confirmed reap removes nothing while
 the drive is above its free-space bar unless `--force` is passed.
 
+amended 2026-11-26 (issue #1112): Orca not running no longer keeps an idle review worktree, since a
+review is a subagent Orca does not see; Orca is consulted when it can be read, and one whose path holds
+`orca/workspaces` is still left alone while it cannot.
+
 accepted; `mise run reap` is the only supported way to remove a linked worktree.
 
 ## Context
@@ -54,7 +58,7 @@ that no recursive delete ever sees a link git does not track:
 
 1. **classify** — the branch must be an ancestor of `main` (`--cherry` also accepts a
    branch whose patches `main` already holds), or, with `--reviews`, the worktree must be a
-   detached `review-*` scratch checkout that Orca, read and not guessed, does not call live,
+   detached `review-*` scratch checkout that Orca, when it can be read, does not call live,
    that holds no nested worktree, and that nothing under it or in its admin git dir changed
    for six hours; the worktree must live inside this checkout (`.agents/worktrees/`,
    `.claude/worktrees/`), and the candidate must be clean;

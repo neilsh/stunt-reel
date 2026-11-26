@@ -17,7 +17,6 @@ stunt-parity = { path = "../stunt-parity" }
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-flate2 = "1.1"
 png = "0.18"
 zstd = "0.14"
 sha2.workspace = true

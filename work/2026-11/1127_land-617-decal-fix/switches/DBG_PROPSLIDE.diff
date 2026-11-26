@@ -1,0 +1,235 @@
+diff --git a/crates/stunt-core/src/sod/decal.rs b/crates/stunt-core/src/sod/decal.rs
+index 4780b8a..041b2b9 100644
+--- a/crates/stunt-core/src/sod/decal.rs
++++ b/crates/stunt-core/src/sod/decal.rs
+@@ -142,9 +142,63 @@ pub(crate) fn identify_coplanar_decals(
+             curr.clone()
+         });
+     }
++    let dbg = std::env::var("DBG_PROPSLIDE").ok().and_then(|v| v.parse::<u32>().ok());
++    if dbg == Some(2) || dbg == Some(3) {
++        let n = out.len();
++        for i in 0..n {
++            if !out[i].is_decal || out[i].flags & VERTEX_FLAG_LINE != 0 {
++                continue;
++            }
++            let mut any = false;
++            for j in 0..i {
++                if out[j].flags & VERTEX_FLAG_LINE == 0
++                    && is_coplanar_facet(&out[i].clone(), &out[j].clone(), normal_tol, plane_tol)
++                    && (dbg == Some(2) || overlaps_in_plane(&out[i], &out[j], plane_tol))
++                {
++                    out[j].flags |= 0x80;
++                    any = true;
++                }
++            }
++            if dbg == Some(2) || any {
++                out[i].flags |= 0x80;
++            }
++        }
++    }
++    // Form 1 (#1127): a decorated shape marks every polygon, so every steep facet of a
++    // decorated world prop slides in its own plane. 4: any filled decal; 5: a filled decal
++    // overlapping a coplanar earlier polygon in its plane.
++    if dbg == Some(4) || dbg == Some(5) {
++        let decorated = (0..out.len()).any(|i| {
++            out[i].is_decal
++                && out[i].flags & VERTEX_FLAG_LINE == 0
++                && (dbg == Some(4)
++                    || (0..i).any(|j| {
++                        out[j].flags & VERTEX_FLAG_LINE == 0
++                            && is_coplanar_facet(&out[i], &out[j], normal_tol, plane_tol)
++                            && overlaps_in_plane(&out[i], &out[j], plane_tol)
++                    }))
++        });
++        if decorated {
++            for p in &mut out {
++                p.flags |= 0x80;
++            }
++        }
++    }
+     out
+ }
+ 
++fn overlaps_in_plane(a: &RawPolygon, b: &RawPolygon, tol: f32) -> bool {
++    let n = front_normal(a);
++    let axis = (0..3)
++        .max_by(|&p, &q| n[p].abs().total_cmp(&n[q].abs()))
++        .unwrap_or(0);
++    let (min_a, max_a) = polygon_bounds(a);
++    let (min_b, max_b) = polygon_bounds(b);
++    (0..3)
++        .filter(|&k| k != axis)
++        .all(|k| min_a[k] < max_b[k] - tol && max_a[k] > min_b[k] + tol)
++}
++
+ /// Whether every end of `line` lies within `plane_tol` of `facet`'s front plane and their
+ /// bounds meet. A facet without a front side (a line, or fewer than three vertices) has none.
+ fn line_lies_on_facet(line: &RawPolygon, facet: &RawPolygon, plane_tol: f32) -> bool {
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index c1a2e5a..da0c24c 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -288,8 +288,13 @@ impl RenderPipelines {
+             immediate_size: 0,
+         });
+ 
+-        let shader_module =
+-            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
++        let dbg: u32 = std::env::var("DBG_PROPSLIDE").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
++        let source = include_str!("shaders/mode13h.wgsl")
++            .replace("const DBG_PROPSLIDE: u32 = 0u;", &format!("const DBG_PROPSLIDE: u32 = {dbg}u;"));
++        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
++            label: Some("mode13h.wgsl"),
++            source: wgpu::ShaderSource::Wgsl(source.into()),
++        });
+         let vertex_buffers = [
+             Some(Self::vertex_buffer_layout()),
+             Some(Self::apex_buffer_layout()),
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 42756b3..d255692 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -270,7 +270,26 @@ fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f3
+     if (!(t > 0.0) || t > PLANE_SLIDE_MAX) {
+         return clip;
+     }
+-    return camera.rotation_proj * vec4<f32>(on_ray * t, 1.0);
++    return camera.rotation_proj * vec4<f32>(on_ray * t * pull_scale(pixel, middle, to_pixels, on_ray), 1.0);
++}
++
++// #1127 form 2 (DBG_PROPSLIDE 6, 7): the factor a world prop's steep decal vertex moves toward
++// the eye along its ray in the decal pass, by `pull` times the depth a horizontal slide one row
++// off could have moved its base. 1 for every other vertex.
++var<private> pull: f32 = 0.0;
++var<private> pull_floor: f32 = 0.05;
++fn pull_scale(pixel: vec2<f32>, middle: vec2<f32>, to_pixels: vec2<f32>, on_ray: vec3<f32>) -> f32 {
++    if (pull == 0.0) {
++        return 1.0;
++    }
++    let ndc2 = (pixel + vec2<f32>(0.0, 1.0) - middle) / to_pixels;
++    let row_x = vec3<f32>(camera.rotation_proj[0][0], camera.rotation_proj[1][0], camera.rotation_proj[2][0]);
++    let row_y = vec3<f32>(camera.rotation_proj[0][1], camera.rotation_proj[1][1], camera.rotation_proj[2][1]);
++    let row_w = vec3<f32>(camera.rotation_proj[0][3], camera.rotation_proj[1][3], camera.rotation_proj[2][3]);
++    let u1 = normalize(on_ray);
++    let u2 = normalize(cross(row_x - ndc2.x * row_w, row_y - ndc2.y * row_w));
++    let alpha = length(cross(u1, u2));
++    return max(1.0 - pull * alpha / max(abs(u1.y), 1.0e-3), pull_floor);
+ }
+ 
+ // World up, the plane normal of a vertex with no facet of its own (`slide_normal`).
+@@ -278,6 +297,7 @@ const UP: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
+ 
+ // A facet whose normal lies within this cosine of vertical slides horizontally (`slide_normal`).
+ const NEAR_HORIZONTAL: f32 = 0.9;
++const DBG_PROPSLIDE: u32 = 0u;
+ 
+ // The eye-relative normal of the plane `playone_vertex` slides a vertex in. A world mesh vertex
+ // (terrain, ocean, prop) and a shape facet within about 26 degrees of horizontal slide in the
+@@ -293,7 +313,13 @@ fn slide_normal(in: VertexInput) -> vec3<f32> {
+         n = cross(in.normal, in.apex - in.position);
+     }
+     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
+-    if (model.layer.y != 0u || in.attr.z != 0u || dot(eye_n, eye_n) == 0.0
++    var world_flat = in.attr.z != 0u;
++    if (DBG_PROPSLIDE == 1u) {
++        world_flat = in.attr.z != 0u && in.attr.z != SCENERY_PROP;
++    } else if (DBG_PROPSLIDE >= 2u && DBG_PROPSLIDE <= 5u) {
++        world_flat = in.attr.z != 0u && !(in.attr.z == SCENERY_PROP && (in.attr.y & 0x80u) != 0u);
++    }
++    if (model.layer.y != 0u || world_flat || dot(eye_n, eye_n) == 0.0
+         || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {
+         return UP;
+     }
+@@ -312,7 +338,23 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
+     // Model space to eye-relative space to clip space.
+     let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
+     let projected = camera.rotation_proj * eye_pos;
+-    let plane = slide_normal(in);
++    var plane = slide_normal(in);
++    pull = 0.0;
++    if (DBG_PROPSLIDE >= 6u && model.layer.y == 0u && in.attr.z == SCENERY_PROP && (in.attr.y & 1u) != 0u) {
++        var n = in.normal;
++        if ((in.attr.y & FLAG_LINE) != 0u) {
++            n = cross(in.normal, in.apex - in.position);
++        }
++        let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
++        if (dot(eye_n, eye_n) > 0.0 && abs(eye_n.y) < NEAR_HORIZONTAL * length(eye_n)) {
++            plane = eye_n;
++            pull = select(1.0, 2.0, DBG_PROPSLIDE == 7u);
++            if (DBG_PROPSLIDE == 8u) {
++                pull = 0.25;
++            }
++            pull_floor = select(0.05, 0.98, DBG_PROPSLIDE == 9u);
++        }
++    }
+     out.clip_position = playone_vertex(projected, eye_pos, plane);
+     // OP_PERFDISK skips when shadow mode (work:0x806C) is set
+     // (research/playone-exe/sod-vm-generators.md section 8.8).
+diff --git a/crates/stunt-render/tests/gpu/draw_order.rs b/crates/stunt-render/tests/gpu/draw_order.rs
+index 6b1ab5f..c5cae9a 100644
+--- a/crates/stunt-render/tests/gpu/draw_order.rs
++++ b/crates/stunt-render/tests/gpu/draw_order.rs
+@@ -229,8 +229,9 @@ const DECAL: u8 = 15;
+ /// A square base polygon and a diamond decal on it, in the plane `z = plane(x, y)` with
+ /// (unit) normal `normal`, against a camera facing the origin, so depth varies across both and
+ /// the two triangulate differently. `s` is the base's half-width; the diamond reaches `0.6 s`.
+-fn decal_on_base(s: f32, plane: fn(f32, f32) -> f32, normal: [f32; 3]) -> SodModelIr {
+-    let on_plane = |x: f32, y: f32, index: u8| vertex([x, y, plane(x, y)], normal, index, 0);
++/// Its vertices carry scenery class `class`: 0 for a shape, `SCENERY_PROP` for a world prop.
++fn decal_on_base(s: f32, plane: fn(f32, f32) -> f32, normal: [f32; 3], class: u8) -> SodModelIr {
++    let on_plane = |x: f32, y: f32, index: u8| vertex([x, y, plane(x, y)], normal, index, class);
+     let mut ir = SodModelIr::new("DECAL");
+     // Clockwise from the camera, like the SOD models.
+     ir.vertices = vec![
+@@ -263,15 +264,19 @@ fn flat_plane(x: f32, y: f32) -> f32 {
+ }
+ 
+ /// The decal wins inside its diamond and the base between it and the square, near and far, on
+-/// `plane` seen by a camera at distance `d`.
+-fn assert_decal_wins_over_its_base(plane: fn(f32, f32) -> f32, normal: [f32; 3]) {
++/// `plane` seen by a camera at distance `d`: a shape for class 0, else in the world mesh with
++/// scenery class `class`.
++fn assert_decal_wins_over_its_base(plane: fn(f32, f32) -> f32, normal: [f32; 3], class: u8) {
+     common::gpu_test(|| {
+         for (label, d) in RANGES {
+             let s = 0.2 * d;
+-            let scene = FilmScene::with_single_model(
+-                film([0.0, 0.0, d], Vec::new()),
+-                decal_on_base(s, plane, normal),
+-            );
++            let ir = decal_on_base(s, plane, normal, class);
++            let film = film([0.0, 0.0, d], Vec::new());
++            let scene = if class == 0 {
++                FilmScene::with_single_model(film, ir)
++            } else {
++                FilmScene::new(film, HashMap::new(), Some(world_of(ir)))
++            };
+             let Some(shot) = shoot(&scene) else {
+                 return;
+             };
+@@ -296,7 +301,14 @@ fn assert_decal_wins_over_its_base(plane: fn(f32, f32) -> f32, normal: [f32; 3])
+ 
+ #[test]
+ fn a_decal_wins_over_its_base_near_and_far() {
+-    assert_decal_wins_over_its_base(steep_plane, [0.0, 0.0, 1.0]);
++    assert_decal_wins_over_its_base(steep_plane, [0.0, 0.0, 1.0], 0);
++}
++
++/// A world prop's steep facet slides in its own plane, as a shape's does, so a decal on it (a
++/// hangar's wall stripe, #1100) keeps its tie with the wall.
++#[test]
++fn a_decal_on_a_steep_world_prop_facet_wins_over_its_base_near_and_far() {
++    assert_decal_wins_over_its_base(steep_plane, [0.0, 0.0, 1.0], SCENERY_PROP);
+ }
+ 
+ /// Near horizontal, a vertex slides in the horizontal plane through it, not its facet's (#1064);
+@@ -304,7 +316,7 @@ fn a_decal_wins_over_its_base_near_and_far() {
+ #[test]
+ fn a_decal_on_a_near_horizontal_facet_wins_over_its_base_near_and_far() {
+     let n = (0.15f32 * 0.15 + 1.0 + 0.4 * 0.4).sqrt();
+-    assert_decal_wins_over_its_base(flat_plane, [-0.15 / n, 1.0 / n, -0.4 / n]);
++    assert_decal_wins_over_its_base(flat_plane, [-0.15 / n, 1.0 / n, -0.4 / n], 0);
+ }
+ 
+ // ---- A ZLINETO line on a coplanar facet -------------------------------------------------------

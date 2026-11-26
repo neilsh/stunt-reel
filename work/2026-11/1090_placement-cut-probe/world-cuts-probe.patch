@@ -1,0 +1,79 @@
+diff --git a/crates/stunt-cli/src/headless.rs b/crates/stunt-cli/src/headless.rs
+index 1eeed0c9..7a17265a 100644
+--- a/crates/stunt-cli/src/headless.rs
++++ b/crates/stunt-cli/src/headless.rs
+@@ -181,6 +181,9 @@ pub(crate) fn run_headless(
+             .map_err(|e| format!("create output directory {}: {e}", out_dir.display()))?;
+     }
+ 
++    if std::env::var_os("DBG_PROBE_WORLD_CUTS").is_some() {
++        return stunt_render::probe_world_cuts(scene);
++    }
+     let playback = Playback::new(config, scene);
+     let range = playback.range();
+     let start_tick = range.start();
+diff --git a/crates/stunt-render/src/lib.rs b/crates/stunt-render/src/lib.rs
+index dd105fcb..42a8ab9e 100644
+--- a/crates/stunt-render/src/lib.rs
++++ b/crates/stunt-render/src/lib.rs
+@@ -55,4 +55,5 @@ pub use renderer::{
+     DEFAULT_PAGE_WIDTH, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize, RenderError,
+     RenderOptions, RenderedPage, Renderer, SinkError, UploadTimes,
+ };
++pub use scene_renderer::probe_world_cuts;
+ pub use video::{FfmpegVideoWriter, VideoExportError};
+diff --git a/crates/stunt-render/src/scene_renderer.rs b/crates/stunt-render/src/scene_renderer.rs
+index 02779938..e8a5a1d8 100644
+--- a/crates/stunt-render/src/scene_renderer.rs
++++ b/crates/stunt-render/src/scene_renderer.rs
+@@ -1355,3 +1355,50 @@ mod tests {
+         );
+     }
+ }
++
++/// Probe (#1090): whether any placement's triangles lie in the world's shared `WORLD_BASE`
++/// or `WORLD_DECAL` slice, which a frame stream would have to cut out of it.
++pub fn probe_world_cuts(scene: &FilmScene) -> Result<(), String> {
++    let w = scene.world().ok_or("no world")?;
++    let placements = WorldPlacements::new(w);
++    let run = |node: Option<(NodeId, ArenaSpan)>| node.map(|(_, r)| (r.start, r.end));
++    let (base_run, decal_run) = (run(placements.base), run(placements.decal));
++    let inside = |span: ArenaSpan, run: Option<(u32, u32)>| {
++        run.is_some_and(|(lo, hi)| span.start >= lo && span.end <= hi)
++    };
++    let (mut with_mesh, mut base_spans, mut decal_spans) = (0u64, 0u64, 0u64);
++    let (mut base_in, mut decal_in, mut base_idx, mut decal_idx) = (0u64, 0u64, 0u64, 0u64);
++    let mut owned = 0u64;
++    for s in placements.spans.iter().flatten() {
++        with_mesh += 1;
++        if !s.base.is_empty() {
++            base_spans += 1;
++            base_idx += u64::from(s.base.end - s.base.start);
++            base_in += u64::from(inside(s.base, base_run));
++        }
++        if !s.decal.is_empty() {
++            decal_spans += 1;
++            decal_idx += u64::from(s.decal.end - s.decal.start);
++            decal_in += u64::from(inside(s.decal, decal_run));
++        }
++        owned += u64::from(!s.nodes.is_empty());
++    }
++    eprintln!(
++        "[probe1090] nodes {} vertices {} indices {} records {} with_mesh {} base_run {:?} decal_run {:?}          base_spans {} base_in_run {} base_indices {} decal_spans {} decal_in_run {} decal_indices {}          with_own_nodes {}",
++        w.ir.nodes.len(),
++        w.ir.vertices.len(),
++        w.ir.indices.len(),
++        placements.spans.len(),
++        with_mesh,
++        base_run,
++        decal_run,
++        base_spans,
++        base_in,
++        base_idx,
++        decal_spans,
++        decal_in,
++        decal_idx,
++        owned,
++    );
++    Ok(())
++}

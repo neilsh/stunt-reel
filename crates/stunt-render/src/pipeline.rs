@@ -7,6 +7,8 @@
 
 use stunt_core::contracts::SodVertex;
 
+use crate::renderer::Look;
+
 pub use stunt_core::frame::{
     LAYER_FIRST_ACTOR, LAYER_NONE, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP, LAYER_TERRAIN,
 };
@@ -149,7 +151,7 @@ impl RenderPipelines {
                 offset: 12,
                 shader_location: 1,
             },
-            // Location 2: packed attributes (palette_index, flags, pad0, pad1) (4 bytes)
+            // Location 2: packed attributes (palette_index, flags, scenery_class, decal_tie) (4 bytes)
             wgpu::VertexAttribute {
                 format: wgpu::VertexFormat::Uint8x4,
                 offset: 24,
@@ -224,6 +226,7 @@ impl RenderPipelines {
         depth_format: wgpu::TextureFormat,
         camera_layout: &wgpu::BindGroupLayout,
         palette_layout: &wgpu::BindGroupLayout,
+        look: Look,
     ) -> Self {
         Self::build(
             device,
@@ -232,6 +235,7 @@ impl RenderPipelines {
             depth_format,
             camera_layout,
             palette_layout,
+            look,
         )
     }
 
@@ -243,6 +247,7 @@ impl RenderPipelines {
         depth_format: wgpu::TextureFormat,
         camera_layout: &wgpu::BindGroupLayout,
         palette_layout: &wgpu::BindGroupLayout,
+        look: Look,
     ) -> Self {
         Self::build(
             device,
@@ -251,6 +256,7 @@ impl RenderPipelines {
             depth_format,
             camera_layout,
             palette_layout,
+            look,
         )
     }
 
@@ -261,11 +267,21 @@ impl RenderPipelines {
         depth_format: wgpu::TextureFormat,
         camera_layout: &wgpu::BindGroupLayout,
         palette_layout: &wgpu::BindGroupLayout,
+        look: Look,
     ) -> Self {
         let fragment_entry = if plane_format.is_some() {
             "fs_main_plane"
         } else {
             "fs_main"
+        };
+        // The modern look draws the scene through entry points of its own and keeps the sky and
+        // the bars (`fs_sky`, `bars.wgsl`) of the parity look.
+        let (scene_vertex, scene_edge_vertex, scene_fragment) = match look {
+            Look::Mode13h => ("vs_main", "vs_edge", fragment_entry),
+            Look::Modern if plane_format.is_some() => {
+                ("vs_modern", "vs_modern_edge", "fs_modern_plane")
+            }
+            Look::Modern => ("vs_modern", "vs_modern_edge", "fs_modern"),
         };
         let sky_fragment_entry = if plane_format.is_some() {
             "fs_sky_plane"
@@ -357,16 +373,16 @@ impl RenderPipelines {
                               primitive: wgpu::PrimitiveState,
                               depth_stencil: wgpu::DepthStencilState| {
             let entry = if primitive.topology == wgpu::PrimitiveTopology::LineList {
-                "vs_edge"
+                scene_edge_vertex
             } else {
-                "vs_main"
+                scene_vertex
             };
             create_pipeline(
                 device,
                 label,
                 Some(&pipeline_layout),
                 vertex_state(&shader_module, entry, &vertex_buffers),
-                fragment_state(&shader_module, fragment_entry, &targets),
+                fragment_state(&shader_module, scene_fragment, &targets),
                 primitive,
                 depth_stencil,
             )

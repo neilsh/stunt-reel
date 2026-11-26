@@ -24,7 +24,8 @@ mod sprite;
 
 pub use self::bank::{PREVIOUS_FRAME_TICKS, angle_bank};
 pub use self::film::{
-    ActorDraw, FilmScene, SceneError, SceneFrame, SceneInputs, SceneReport, SpriteDraw, WorldStats,
+    ActorDraw, DrawSource, FilmScene, SceneError, SceneFrame, SceneInputs, SceneReport, SpriteDraw,
+    WorldStats,
 };
 pub use self::projection::ViewCamera;
 pub use self::shapes::{

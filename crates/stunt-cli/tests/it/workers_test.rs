@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -93,10 +94,12 @@ fn two_workers_write_the_store_one_worker_writes() {
             skips_without_software_adapter(&stderr),
             "1-worker render failed: {stderr}"
         );
-        eprintln!(
+        // Past `cargo test`'s capture, so the quality gate counts the skip (issue #1114).
+        drop(writeln!(
+            std::io::stderr(),
             "[test] Skipping software-only test: no software fallback adapter with clip \
              distances (WARP lacks them; ADR 0054): {stderr}"
-        );
+        ));
         drop(fs::remove_dir_all(&root));
         return;
     }

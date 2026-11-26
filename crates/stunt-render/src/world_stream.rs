@@ -209,7 +209,7 @@ mod tests {
                         palette_index: u8::try_from(number).expect("small"),
                         flags: 0,
                         scenery_class: 0,
-                        _padding: 0,
+                        decal_tie: 0,
                     });
                 }
                 self.ir.indices.extend([

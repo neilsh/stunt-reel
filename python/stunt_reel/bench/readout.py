@@ -1,8 +1,8 @@
 """A graded run's readout, its comparison with an earlier one, and its table row.
 
 :func:`readout` scores a run's real sheets per category; :func:`compare` reports the categories
-whose clear-frame count moved by at least the taxonomy's ``min_change``; :func:`table_row`
-writes one row of ``research/parity/batch.md``'s table.
+whose clear-frame count moved by at least the taxonomy's ``min_change`` and :func:`suppressed`
+the smaller moves it hides; :func:`table_row` writes one row of ``research/parity/batch.md``'s table.
 """
 
 from __future__ import annotations
@@ -22,9 +22,12 @@ if TYPE_CHECKING:
 __all__ = [
     "CategoryReadout",
     "Change",
+    "Comparison",
     "Readout",
     "compare",
     "readout",
+    "suppressed",
+    "suppressed_line",
     "table_row",
 ]
 
@@ -164,8 +167,17 @@ class Change:
     removed: tuple[int, ...]
 
 
-def compare(before: Readout, after: Readout, min_change: int) -> list[Change]:
-    """Categories whose 2+ count moved by at least *min_change*.
+@dataclass(frozen=True)
+class Comparison:
+    """A readout's comparison: the moves past ``min_change`` and the smaller ones it hides."""
+
+    changes: list[Change]
+    suppressed: list[Change]
+    min_change: int
+
+
+def _moves(before: Readout, after: Readout) -> list[Change]:
+    """Every category whose 2+ count differs, in category order.
 
     Raises ``BenchError`` if category digests or ticks differ, or either readout has missing sheets.
     """
@@ -186,11 +198,11 @@ def compare(before: Readout, after: Readout, min_change: int) -> list[Change]:
             "grade the missing sheets before comparing"
         )
     earlier = {c.category: set(c.ticks_2plus) for c in before.categories}
-    changes = []
+    moves = []
     for category in after.categories:
         was, now = earlier.get(category.category, set()), set(category.ticks_2plus)
-        if abs(len(now) - len(was)) >= min_change:
-            changes.append(
+        if len(now) != len(was):
+            moves.append(
                 Change(
                     category.category,
                     len(was),
@@ -199,4 +211,28 @@ def compare(before: Readout, after: Readout, min_change: int) -> list[Change]:
                     tuple(sorted(was - now)),
                 )
             )
-    return changes
+    return moves
+
+
+def compare(before: Readout, after: Readout, min_change: int) -> list[Change]:
+    """Categories whose 2+ count moved by at least *min_change*.
+
+    Raises ``BenchError`` if category digests or ticks differ, or either readout has missing sheets.
+    """
+    return [c for c in _moves(before, after) if abs(c.after - c.before) >= min_change]
+
+
+def suppressed(before: Readout, after: Readout, min_change: int) -> list[Change]:
+    """Categories whose 2+ count moved, but by less than *min_change*, so :func:`compare` omits them.
+
+    Raises ``BenchError`` as :func:`compare` does.
+    """
+    return [c for c in _moves(before, after) if abs(c.after - c.before) < min_change]
+
+
+def suppressed_line(film: str, moves: list[Change], min_change: int, limit: int = 10) -> str:
+    """One line naming *moves* as ``<film> <category> <before>→<after>``, *limit* at most."""
+    shown = [f"{film} {c.category} {c.before}→{c.after}" for c in moves[:limit]]
+    if len(moves) > limit:
+        shown.append(f"… and {len(moves) - limit} more")
+    return f"below min_change ({min_change}): {', '.join(shown) or 'none'}"

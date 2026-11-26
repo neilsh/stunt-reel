@@ -272,7 +272,7 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
             palette_index: color,
             flags: FLAGS_UNSHADED,
             scenery_class,
-            _padding: 0,
+            decal_tie: 0,
         });
     }
     ir.indices
@@ -592,7 +592,7 @@ fn push_prop_mesh(
                     palette_index: v.palette_index,
                     flags: v.flags,
                     scenery_class: SCENERY_PROP,
-                    _padding: 0,
+                    decal_tie: v.decal_tie,
                 });
                 arena_index(ir.vertices.len() - 1)
             });
@@ -683,7 +683,7 @@ mod tests {
                 palette_index: 10,
                 flags: 0,
                 scenery_class: 0,
-                _padding: 0,
+                decal_tie: 0,
             },
         );
         prop_ir.indices = vec![0, 1, 2, 0, 1, 2];
@@ -1027,7 +1027,7 @@ mod tests {
             palette_index: 40,
             flags: VERTEX_FLAG_LINE | flags,
             scenery_class: 0,
-            _padding: 0,
+            decal_tie: 0,
         };
         prop.vertices.extend([
             line(-2.0, 0),

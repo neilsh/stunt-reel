@@ -1,5 +1,5 @@
 ---
-summary: "Lists what the parity scores do not yet establish: film coverage, metric caveats, the non-deterministic reference, GPU and lavapipe differences, where a render's memory goes (its figures are in `lavapipe-render-time.md`), and what dosbox-automation captures can and cannot show."
+summary: "Lists what the parity scores do not yet establish: film coverage, metric caveats, the non-deterministic reference, GPU and lavapipe differences, where a render's memory goes (its figures are in `lavapipe-render-workers.md`), and what dosbox-automation captures can and cannot show."
 ---
 
 # Parity Method: What Is Not Yet Evidence
@@ -66,11 +66,11 @@ Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md).
   A GL-only instance picked the integrated GPU.
   _Source: [2026-11-06](../../work/2026-11/distill-method/journal.md#2026-11-06-render-start-up-parallel-runs-and-the-references-archive)._
 * **Parallel parity runs are GPU-bound (`[Bounded Observation]`, 2026-11-06, `48f5d49`, 16 threads, RTX 4070 Laptop GPU).**
-  A render cost about 300 MiB of RAM and 200 MiB of VRAM whatever the film's length (`BOMB.FLM` and `LOCATION.FLM` as much as CTRY); LOCATION's world has grown about eightfold since, and its render's memory with it, from 258 to 1,004 MiB on lavapipe ([`lavapipe-render-time.md` § 7](lavapipe-render-time.md#7-memory-per-worker)).
+  A render cost about 300 MiB of RAM and 200 MiB of VRAM whatever the film's length (`BOMB.FLM` and `LOCATION.FLM` as much as CTRY); LOCATION's world has grown about eightfold since, and its render's memory with it, from 258 to 1,004 MiB on lavapipe ([`lavapipe-render-workers.md` § 3](lavapipe-render-workers.md#3-memory-per-worker)).
   Render-and-score pairs per second rose from about 0.2 at one job to 0.8 at 8 and 1.0–1.16 at 16, noisy at 32 with the GPU saturated, so `mise run parity` and `mise run sweep` default `--jobs` to 8; `--jobs 1` and `--jobs 8` print identical scores.
   _Source: [2026-11-06](../../work/2026-11/distill-method/journal.md#2026-11-06-render-start-up-parallel-runs-and-the-references-archive)._
 * **A render's memory.**
-  What a LOCATION or CTRY render's memory goes to, `release_world_mesh`, and lavapipe filling device pages at the first submit are in [`lavapipe-render-time.md` § 7](lavapipe-render-time.md#7-memory-per-worker).
+  What a LOCATION or CTRY render's memory goes to, `release_world_mesh`, and lavapipe filling device pages at the first submit are in [`lavapipe-render-workers.md` § 3](lavapipe-render-workers.md#3-memory-per-worker).
 * **A reference pins its archive.**
   Each row pins `all_sha256`, and the render and `capture-ref` resolve the `.ALL` by it ([ADR 0037](../../docs/adr/0037-a-reference-pins-its-archive.md)).
   Before it, CTRY and INTRO rendered `.ALL` copies other than the ones their captures recorded and scored the same to four decimals, so no recorded score was affected (`[Bounded Observation]`, 2026-11-06, `48f5d49`).

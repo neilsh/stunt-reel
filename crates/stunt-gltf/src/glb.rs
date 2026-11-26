@@ -2,7 +2,8 @@
 //!
 //! Layout: 12-byte header (`glTF`, version 2, total length), a JSON chunk padded with
 //! spaces to 4 bytes, and a BIN chunk padded with zeros to 4 bytes. `BufferViews` start on
-//! 4-byte boundaries and carry `ARRAY_BUFFER` / `ELEMENT_ARRAY_BUFFER` targets.
+//! 4-byte boundaries; vertex and index views carry `ARRAY_BUFFER` / `ELEMENT_ARRAY_BUFFER`
+//! targets, animation views none.
 
 use serde_json::{Map, Value, json};
 
@@ -73,6 +74,9 @@ pub(crate) struct GlbBuilder {
     pub(crate) meshes: Vec<Value>,
     pub(crate) nodes: Vec<Value>,
     pub(crate) cameras: Vec<Value>,
+    pub(crate) animations: Vec<Value>,
+    /// Extensions beyond `KHR_materials_unlit` the document uses, none of them required.
+    pub(crate) extensions_used: Vec<&'static str>,
 }
 
 impl GlbBuilder {
@@ -80,17 +84,18 @@ impl GlbBuilder {
         Self::default()
     }
 
-    /// Appends `data` at the next 4-byte boundary and returns its bufferView index.
-    pub(crate) fn add_view(&mut self, data: &[u8], target: u32) -> usize {
+    /// Appends `data` at the next 4-byte boundary and returns its bufferView index; `target` is
+    /// `None` for data no vertex or index binding reads, such as an animation's.
+    pub(crate) fn add_view(&mut self, data: &[u8], target: Option<u32>) -> usize {
         self.bin.resize(self.bin.len().next_multiple_of(4), 0);
         let offset = self.bin.len();
         self.bin.extend_from_slice(data);
-        self.views.push(json!({
-            "buffer": 0,
-            "byteOffset": offset,
-            "byteLength": data.len(),
-            "target": target,
-        }));
+        self.views.push(object([
+            ("buffer", Some(json!(0))),
+            ("byteOffset", Some(json!(offset))),
+            ("byteLength", Some(json!(data.len()))),
+            ("target", target.map(|target| json!(target))),
+        ]));
         self.views.len() - 1
     }
 
@@ -119,7 +124,9 @@ impl GlbBuilder {
             "asset".into(),
             json!({ "version": "2.0", "generator": GENERATOR }),
         );
-        root.insert("extensionsUsed".into(), json!(["KHR_materials_unlit"]));
+        let mut extensions = vec!["KHR_materials_unlit"];
+        extensions.extend(self.extensions_used);
+        root.insert("extensionsUsed".into(), json!(extensions));
         root.insert("scene".into(), json!(0));
         root.insert(
             "scenes".into(),
@@ -140,6 +147,9 @@ impl GlbBuilder {
         }
         if !self.cameras.is_empty() {
             root.insert("cameras".into(), Value::Array(self.cameras));
+        }
+        if !self.animations.is_empty() {
+            root.insert("animations".into(), Value::Array(self.animations));
         }
         if !self.bin.is_empty() {
             root.insert("buffers".into(), json!([{ "byteLength": self.bin.len() }]));
@@ -186,11 +196,15 @@ pub struct GlbSummary {
     pub nodes: usize,
     /// Entries in the glTF `meshes` array.
     pub meshes: usize,
+    /// Entries in the glTF `animations` array.
+    pub animations: usize,
+    /// Channels across all animations.
+    pub channels: usize,
     /// Total container size in bytes.
     pub bytes: usize,
 }
 
-/// Reads the node and mesh counts of `.glb` bytes produced by this crate.
+/// Reads the node, mesh, animation and channel counts of `.glb` bytes produced by this crate.
 ///
 /// # Errors
 /// Returns [`GltfError::InvalidContainer`] if `glb` has no `glTF` magic, is not version 2 with a
@@ -218,10 +232,18 @@ pub fn summarize(glb: &[u8]) -> Result<GlbSummary, GltfError> {
         .ok_or(GltfError::InvalidContainer("JSON chunk truncated"))?;
     let doc: Value = serde_json::from_slice(json_bytes)
         .map_err(|_| GltfError::InvalidContainer("JSON chunk does not parse"))?;
-    let count = |key: &str| doc.get(key).and_then(Value::as_array).map_or(0, Vec::len);
+    let array = |value: &Value, key: &str| value.get(key).and_then(Value::as_array).cloned();
+    let count = |key: &str| array(&doc, key).map_or(0, |a| a.len());
+    let channels = array(&doc, "animations")
+        .unwrap_or_default()
+        .iter()
+        .map(|animation| array(animation, "channels").map_or(0, |c| c.len()))
+        .sum();
     Ok(GlbSummary {
         nodes: count("nodes"),
         meshes: count("meshes"),
+        animations: count("animations"),
+        channels,
         bytes: glb.len(),
     })
 }

@@ -5,6 +5,8 @@ Independent steps run as concurrent lanes — cargo steps that share a target di
 `mise run check-rust` and `mise run check-py` run the same step list for one language, and `mise run check-docs` runs only the documentation tests (`test-py-docs`, the modules marked `docs`).
 A failing run's last line says what to run next: `fix: mise run fix` when a format or `lint-py` step failed, and `re-run: mise run check-rust` / `check-py` / `check-docs` for the half that failed (a scoped run never names itself).
 
+A GPU test that finds no usable adapter writes `[test] Skipping ...` straight to stderr, past `cargo test`'s capture, and passes; the gate counts those lines and prints `[gate] NOTE <n> adapter-test skip(s)` before the verdict when it counts any (some tests need a software adapter and skip on a GPU-only machine too); [Render on lavapipe](howto/render-on-lavapipe.md) names the driver that runs them.
+
 `mise run check` runs only what the branch touches ([ADR 0038](adr/0038-the-local-gate-runs-what-a-change-touches.md)).
 It reads the paths changed since the merge base with `origin/main` (with `main` when there is no `origin/main`), untracked files included, and sorts each one: `tests/fixtures/**` is other; `crates/**`, `Cargo.toml`, `Cargo.lock`, `deny.toml` and `research/parity/report-fields.md` (a Rust test reads it) are Rust; `*.py`, `pyproject.toml` and `uv.lock` are Python; `*.md` and `*.ksy` are docs; anything else is other.
 Rust paths run the Rust half, Python paths the Python half, and a run without the Python half adds the docs half.

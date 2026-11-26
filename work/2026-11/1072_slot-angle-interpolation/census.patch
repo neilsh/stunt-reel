@@ -1,0 +1,146 @@
+diff --git a/crates/stunt-core/src/flm/player/census_tmp.rs b/crates/stunt-core/src/flm/player/census_tmp.rs
+new file mode 100644
+index 00000000..79c41df1
+--- /dev/null
++++ b/crates/stunt-core/src/flm/player/census_tmp.rs
+@@ -0,0 +1,129 @@
++//! THROWAWAY census, never committed.
++use super::*;
++use super::super::interpolate::rotate_quat;
++
++fn sdiff(a: u16, b: u16) -> i32 {
++    i32::from((b.wrapping_sub(a)) as i16)
++}
++
++fn to_deg(d: i32) -> f32 {
++    d as f32 * 360.0 / 65536.0
++}
++
++#[test]
++#[ignore]
++fn census() {
++    let root = format!("{}/corpus/", std::env::var("STUNT_DATA_ROOT").expect("set STUNT_DATA_ROOT"));
++    let films = [
++        ("ctry", "siarchive/Films/NewPLAY/Vault/CTRY.FLM"),
++        ("intro", "stisldem/VAULT/INTRO.FLM"),
++        ("land", "siarchive/Films/OldPLAY/Vault/LAND.FLM"),
++        ("balloon", "siarchive/Films/NewPLAY/Vault/BALLOON.FLM"),
++        ("traintnl", "siarchive/Films/NewPLAY/Vault/TRAINTNL.FLM"),
++        ("bomb", "siarchive/Films/OldPLAY/Vault/BOMB.FLM"),
++        ("location", "siarchive/Films/OldPLAY/Vault/LOCATION.FLM"),
++    ];
++    for (name, rel) in films {
++        let data = std::fs::read(format!("{root}{rel}")).unwrap();
++        let mut p = FlmPlayer::new(&data).unwrap();
++        let mut prev: Option<(u32, [SlotState; SIFILM_MAX_OBJ], u8)> = None;
++        let mut pairs = 0u32; // slice pairs with duration >0
++        let mut ticks_total = 0u32;
++        // thresholds
++        let th = 3.0f32;
++        let mut view2 = 0u32; let mut view2_t = 0u32;
++        let mut act2 = 0u32; let mut act2_t = 0u32;
++        let mut any2 = 0u32; let mut any2_t = 0u32;
++        let mut view1 = 0u32;
++        let mut max_dev_view = 0f32; let mut max_dev_act = 0f32;
++        let mut devs_view: Vec<f32> = vec![]; let mut devs_act: Vec<f32> = vec![];
++        let mut max_word = 0f32;
++        let (mut cam_n, mut cam05, mut cam05_t, mut cam1, mut cam1_t, mut cam2, mut cam2_t, mut cam_max, mut cam_max_tick) = (0u32,0u32,0u32,0u32,0u32,0u32,0u32,0f32,0u32);
++        let (mut act_any_n, mut act_any_05, mut act_any_max) = (0u32, 0u32, 0f32);
++        let mut view_changes = 0u32; // view obj switch
++        while let Some(k) = p.step_slice() {
++            let cur_slots = p.slots.clone();
++            let cur_view = p.view_obj;
++            if let Some((pt, ref ps, pv)) = prev {
++                let dur = k.tick - pt;
++                if dur > 0 {
++                    pairs += 1; ticks_total += dur;
++                    if pv != cur_view { view_changes += 1; }
++                    let mut v_hit = false; let mut a_hit = false;
++                    for i in 0..SIFILM_MAX_OBJ {
++                        let (a, b) = (&ps[i], &cur_slots[i]);
++                        if !a.active || !b.active { continue; }
++                        let d: Vec<f32> = (0..3).map(|j| to_deg(sdiff(a.rot_bam[j], b.rot_bam[j])).abs()).collect();
++                        for x in &d { if *x > max_word { max_word = *x; } }
++                        if b.type_flags & SIF_DRAW != 0 && !(i == cur_view as usize && pv == cur_view) && a.rot_bam != b.rot_bam {
++                            let mut dev = 0f32;
++                            for t in [0.25f32, 0.5, 0.75] {
++                                let w: Vec<u16> = (0..3).map(|j| (a.rot_bam[j] as i32 + (sdiff(a.rot_bam[j], b.rot_bam[j]) as f32 * t) as i32) as u16).collect();
++                                let sw = SlotState { rot_bam: [w[0], w[1], w[2]], ..a.clone() };
++                                let qs = super::super::interpolate::slerp_quat(a.rotation_quat_dos(), b.rotation_quat_dos(), t);
++                                let qp = sw.rotation_quat_dos();
++                                let dot = (qs[0]*qp[0]+qs[1]*qp[1]+qs[2]*qp[2]+qs[3]*qp[3]).abs().min(1.0);
++                                let ang = 2.0 * dot.acos().to_degrees();
++                                if ang > dev { dev = ang; }
++                            }
++                            act_any_n += 1; if dev > 0.5 { act_any_05 += 1; } if dev > act_any_max { act_any_max = dev; }
++                        }
++                        let n = d.iter().filter(|x| **x > th).count();
++                        let isview = i == cur_view as usize && pv == cur_view;
++                        if n >= 2 {
++                            // deviation of slerp from per-word at t=0.5 and quarter points
++                            let mut dev = 0f32;
++                            for t in [0.25f32, 0.5, 0.75] {
++                                let w: Vec<u16> = (0..3).map(|j| (a.rot_bam[j] as i32 + (sdiff(a.rot_bam[j], b.rot_bam[j]) as f32 * t) as i32) as u16).collect();
++                                let sw = SlotState { rot_bam: [w[0], w[1], w[2]], ..a.clone() };
++                                let qa = a.rotation_quat_dos(); let qb = b.rotation_quat_dos();
++                                let qs = super::super::interpolate::slerp_quat(qa, qb, t);
++                                let qp = sw.rotation_quat_dos();
++                                let dot = (qs[0]*qp[0]+qs[1]*qp[1]+qs[2]*qp[2]+qs[3]*qp[3]).abs().min(1.0);
++                                let ang = 2.0 * dot.acos().to_degrees();
++                                if ang > dev { dev = ang; }
++                            }
++                            if !isview { println!("PAIR {name} actor{i} {pt}..{} dev {dev:.2}", pt+dur); } if isview { v_hit = true; devs_view.push(dev); if dev > max_dev_view { max_dev_view = dev; } }
++                            else if b.type_flags & SIF_DRAW != 0 { a_hit = true; devs_act.push(dev); if dev > max_dev_act { max_dev_act = dev; } }
++                        } else if isview && n == 1 { view1 += 1; }
++                    }
++
++                    if pv == cur_view {
++                        let (a, b) = (&ps[cur_view as usize], &cur_slots[cur_view as usize]);
++                        if a.active && b.active && a.rot_bam != b.rot_bam {
++                            let fa = rotate_quat(a.rotation_quat(), CAMERA_FORWARD);
++                            let fb = rotate_quat(b.rotation_quat(), CAMERA_FORWARD);
++                            let mut dev = 0f32;
++                            for t in [0.25f32, 0.5, 0.75] {
++                                let w: Vec<u16> = (0..3).map(|j| (a.rot_bam[j] as i32 + (sdiff(a.rot_bam[j], b.rot_bam[j]) as f32 * t) as i32) as u16).collect();
++                                let sw = SlotState { rot_bam: [w[0], w[1], w[2]], ..a.clone() };
++                                let fp = rotate_quat(sw.rotation_quat(), CAMERA_FORWARD);
++                                let l = [fa[0]+t*(fb[0]-fa[0]), fa[1]+t*(fb[1]-fa[1]), fa[2]+t*(fb[2]-fa[2])];
++                                let n = (l[0]*l[0]+l[1]*l[1]+l[2]*l[2]).sqrt();
++                                let dot = ((l[0]*fp[0]+l[1]*fp[1]+l[2]*fp[2])/n).clamp(-1.0,1.0);
++                                let ang = dot.acos().to_degrees();
++                                if ang > dev { dev = ang; }
++                            }
++                            cam_n += 1;
++                            if dev > 0.5 { println!("PAIR {name} cam {pt}..{} dev {dev:.2}", pt+dur); cam05 += 1; cam05_t += dur; }
++                            if dev > 1.0 { cam1 += 1; cam1_t += dur; }
++                            if dev > 2.0 { cam2 += 1; cam2_t += dur; }
++                            if dev > cam_max { cam_max = dev; cam_max_tick = pt; }
++                        }
++                    }
++                    if v_hit { view2 += 1; view2_t += dur; }
++                    if a_hit { act2 += 1; act2_t += dur; }
++                    if v_hit || a_hit { any2 += 1; any2_t += dur; }
++                }
++            }
++            prev = Some((k.tick, cur_slots, cur_view));
++        }
++        let med = |v: &mut Vec<f32>| { v.sort_by(|a,b| a.partial_cmp(b).unwrap()); if v.is_empty() {0.0} else {v[v.len()/2]} };
++        let mv = med(&mut devs_view); let ma = med(&mut devs_act);
++        let gt1v = devs_view.iter().filter(|x| **x > 1.0).count();
++        let gt1a = devs_act.iter().filter(|x| **x > 1.0).count();
++        println!("ACTORS {name}: drawn-slot slice pairs with any angle word changed {act_any_n}; slerp off per-word by >0.5deg {act_any_05}; max {act_any_max:.2} deg");
++        println!("CAMERA {name}: view-angle changes {cam_n}/{pairs} pairs; lerped-target direction off per-word by >0.5deg: {cam05} pairs/{cam05_t} ticks, >1deg: {cam1}/{cam1_t}, >2deg: {cam2}/{cam2_t}; max {cam_max:.2} deg at slice tick {cam_max_tick}");
++        println!("CENSUS {name}: pairs {pairs} ticks {ticks_total} viewswitch {view_changes} | >=2 words>{th}deg: view {view2} pairs/{view2_t} ticks, actors {act2}/{act2_t}, any {any2}/{any2_t} | view1word {view1} | slerp-vs-perword max view {max_dev_view:.2} med {mv:.2} n>1deg {gt1v}; actors max {max_dev_act:.2} med {ma:.2} n>1deg {gt1a} | max single word {max_word:.1}");
++    }
++}
+diff --git a/crates/stunt-core/src/flm/player/mod.rs b/crates/stunt-core/src/flm/player/mod.rs
+index cd4447e4..eb030950 100644
+--- a/crates/stunt-core/src/flm/player/mod.rs
++++ b/crates/stunt-core/src/flm/player/mod.rs
+@@ -678,3 +678,6 @@ impl<'a> FlmPlayer<'a> {
+ 
+ #[cfg(test)]
+ mod tests;
++
++#[cfg(test)]
++mod census_tmp;
