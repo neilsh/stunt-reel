@@ -118,6 +118,6 @@ Whoever writes the plan sets them:
 - Whoever moves a `status:plan-review` issue to `status:ready-for-agent` swaps them to match if the decision changed the work's shape.
 - A coordinator moves the tier up one, or adds `model-context:wide`, when a worker's report or a reviewer's finding shows a lack of capability or context, in the same pass as its claim release.
 
-The labels are advisory: they pick the default worker, and a named model or evidence of a failed attempt can override them.
+The labels are advisory: they pick the default worker, and a model the maintainer names overrides them, and evidence of a failed attempt can move the tier up.
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from these tables.

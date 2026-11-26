@@ -5,9 +5,8 @@ One statement of every canonical label in the repository, so a change lands here
 ``status:`` is the workflow state, ``priority:`` urgency, ``type:`` the verification or closing
 contract, ``env:`` where an item can run, ``area:`` the primary subsystem(s), ``model-tier:`` the
 capability a planned issue's implementation needs, and ``model-context:`` an optional context
-constraint on it. Priority claims
-the warm urgency arc at high saturation plus muted gray; every other prefix carries one muted
-color in the cool band.
+constraint on it. Priority claims the warm urgency arc at high saturation plus muted gray; every
+other prefix carries one muted color in the cool band.
 
 This module sits beside the scripts, not in the package, and stays strictly standard-library and
 Python 3.12+ compatible, because ``project_sync.py`` runs on a bare runner with no toolchain.

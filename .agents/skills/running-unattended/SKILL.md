@@ -16,7 +16,7 @@ Orca, dsh, Antigravity, PowerShell and the disk checks are `local-windows` resou
 ## Concurrency and models
 
 - **Coordinator:** the current session's model; reads no diffs or issue bodies, keeps `build/scratch/run-state.md`, restarts instead of compacting, checks CodeRabbit once, and dispatches per [`coordinator.md`](coordinator.md) (T3 Code below).
-- **Workers by labels, then fit:** an issue's `model-tier:` and `model-context:` labels pick the worker per the [`harness.md`](../../../docs/harness.md#policy-any-agent) table, going up on evidence only; with no tier, or two, dsh first where the spec is clear; Sonnet for other well-specified work; Opus for planning (`status:needs-plan`), research, diagnosis and design.
+- **Workers by labels, then fit:** an issue's `model-tier:` and `model-context:` labels pick the worker per the [`harness.md`](../../../docs/harness.md#policy-any-agent) table, going up a tier on evidence; with none or two tiers: dsh first where the spec is clear, Sonnet for other well-specified work, Opus for research, diagnosis, design, hypothesis rounds; planning goes to Opus.
   Prefix-cache hit rate is not the test.
 - **About two at once:** pair two writers only when their `area:` sets are non-empty and disjoint ([`loop-and-bounds.md`](loop-and-bounds.md#implementing-an-issue-and-bounding-rounds)), each writer in its own worktree; a read-only planner has no file conflict with a writer on another issue, and a dependent item waits for or stacks on its parent.
   Never use `/swarm`.
