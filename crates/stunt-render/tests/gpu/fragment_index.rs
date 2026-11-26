@@ -36,7 +36,7 @@ fn check_indices(cases: &[(u32, u32, u32, u32, u32)]) {
     }))
     .unwrap();
     // Keep the complete production shader, adding only an entry point that supplies its input.
-    // Its inputs sit beside `prop_runs`, which holds `@group(3) @binding(0)`.
+    // Its inputs take `@group(3)`, which the production shader leaves unused.
     let source = format!(
         "{}\n{}",
         include_str!("../../src/shaders/mode13h.wgsl"),
