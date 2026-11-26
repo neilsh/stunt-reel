@@ -4,7 +4,7 @@ summary: "Which renderer changes cut headless render time on lavapipe and the GP
 # Parity: Render Time on Lavapipe
 
 * **Scope**: how long a headless render takes on lavapipe, Mesa's software Vulkan driver, and on the GPU, which renderer changes cut it, and what a render's memory goes to per worker (section 7); split from [`lavapipe.md`](lavapipe.md), which holds how lavapipe's frames differ from the GPU's.
-* **Sources**: `cdb` and user-mode stack samples, timed renders, memory probes and CPU counts from #596 to #1006, on mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md), Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` (`llvmpipe (LLVM 20.1.2, 256 bits)`) under WSL 2, and a cloud Ubuntu session (4 vCPUs).
+* **Sources**: `cdb` and user-mode stack samples, timed renders, memory probes and CPU counts from #596 to #1090, on mesa-dist-win 25.2.8 (`llvmpipe (LLVM 21.1.7, 256 bits)`) and the RTX 4070 laptop, set up by [`render-on-lavapipe.md`](../../docs/howto/render-on-lavapipe.md), Ubuntu 24.04's `mesa-vulkan-drivers` `25.2.8-0ubuntu0.24.04.5` (`llvmpipe (LLVM 20.1.2, 256 bits)`) under WSL 2, and a cloud Ubuntu session (4 vCPUs).
   * **Evidence tier**: `[Bounded Observation]` throughout unless a claim says otherwise; each figure holds for the tree, machine and span it names.
 * **Spans**: Span A is `LOCATION 12..=300` (289 ticks, eye at `7.00 m`), Span B `LOCATION 3680..=3979` (300 ticks, an elevated overview, median eye `125.0 m`) and Span C `INTRO 2500..=2949` (450 ticks); the whole films are `LOCATION 12..=8262` (8,251 ticks) and `INTRO 12..=3818` (3,807 ticks).
   The loop is the per-tick render loop; whole-process wall adds the scene build and the renderer open.
@@ -162,7 +162,7 @@ It repeats the check `#920` ran on `LOCATION` and `INTRO` (the Ruled out entry b
 
 On each of the seven films no placement holds an index in either run, so no placement is cut out of the shared slices; each placement with mesh spans has nodes of its own (`MeshSpans::nodes` non-empty, the same counts).
 The five films `#920` did not check (`CTRY`, `LAND`, `BALLOON`, `TRAINTNL`, `BOMB`) match its `LOCATION` and `INTRO` result; the probe's `INTRO` and `LOCATION` rows also reproduce `#920`'s zero.
-The counts are per film at its captured tick range's world build, not at a rendered tick; records of a placement the walk prunes as far from every camera eye are absent from them, as from the world mesh.
+The counts are of each film's whole world build (the patch returns before playback, so the captured tick range does not bound them), not of a rendered tick; records of a placement the walk prunes as far from every camera eye are absent from them, as from the world mesh.
 For `#999`'s byte-identical test (design note section 6, open call 8) this means none of the seven films exercises a stream builder's span-per-placement range: the test over them needs none on these films, and such a range, if built, would be covered by a synthetic fixture, not a film.
 This note decides no design.
 The probe's `LOCATION` and `INTRO` world totals differ slightly from `#920`'s and `#999`'s (`INTRO` `128,772` nodes and `819,745` vertices against `128,768` and `819,265`; `LOCATION` `35,481` records with mesh spans against `35,479`); `[Hypothesis]` the OP_BLOCK cube change (`#1032`, `1e1d5680`) between their trees and this one added them, not isolated.

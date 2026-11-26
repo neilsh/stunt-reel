@@ -13,7 +13,7 @@
   - Output: [`probe.txt`](probe.txt), whitespace collapsed.
 - **Result**:
 
-  | Film | Tick range | Nodes | Records | With mesh spans | Non-empty base span | Non-empty decal span | With own nodes |
+  | Film | Captured tick range (does not bound the count) | Nodes | Records | With mesh spans | Non-empty base span | Non-empty decal span | With own nodes |
   |---|---|---|---|---|---|---|---|
   | `CTRY` | `14..=1333` | 1,040 | 316 | 306 | 0 | 0 | 306 |
   | `INTRO` | `12..=3818` | 128,772 | 26,386 | 10,723 | 0 | 0 | 10,723 |
