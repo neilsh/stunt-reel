@@ -48,3 +48,18 @@
   - The four runs at `0.031..0.045` spread `3.1%` (`2348.6..2421.2 ms`).
 - **Verdict**: no verdict: the check stopped before round 2's `b`, so neither condition of the bar can be judged, and as the issue rules, it was not re-run; whether to run it again is the owner's call.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3.
+
+## 2026-11-25: the owner-approved A/A re-run, stopped by the load check
+
+`[Bounded Observation]`
+
+- **Question**: The same as the entry above: with the runner's load checks and warm-up round, does one binary on both sides of Span B on lavapipe, 4 pairs with the order alternated, meet `#1004`'s bar?
+- **Method**: the release binary built from `origin/main` at `692beeff` as both `a` and `b`; `mise run ab -- --out work/2026-11/1018_lavapipe-ab-variance --name aa-span-b-rerun --variant a --variant b --span 3680..=3979 --adapter lavapipe --rounds 4 --order alternate`, with the defaults `--warmup 1` and `--max-load 0.10`, run once (`tasklist` showed no `stuntreel`, `cargo` or `rustc` first; the release build had just finished).
+  Raw rows: [`aa-span-b-rerun.csv`](aa-span-b-rerun.csv); the console output, warm-up runs included: [`aa-span-b-rerun-log.txt`](aa-span-b-rerun-log.txt).
+- **Result**:
+  - Warm-up (not kept): `a` `2528 ms`, `b` `2445 ms`.
+  - Kept rows, loop ms and other processes' load: round 0 `a` `2418.8` (`0.092`), `b` `2377.3` (`0.102`).
+  - Other processes used `10.2%` of the CPUs during round 0's `b`, over the `10%` bar, so the runner stopped there, with exit 2 and no summary.
+- **Verdict**: no verdict: the check stopped after 2 of 8 runs, so neither condition of the bar can be judged; as the issue rules, a run stopped by the load check is not re-run, and whether to run it again is the owner's call.
+  Both kept runs sat at `0.092..0.102` other load, where the earlier run's first four sat at `0.031..0.045` (the entry above), so the machine was busier than then; the loads in this run were not traced to a process.
+- **Lives in**: nowhere else: no figure here is a finding about the render.
