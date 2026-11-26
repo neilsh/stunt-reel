@@ -233,8 +233,9 @@ fn prop_shape(vertex: u32) -> u32 {
     return 0u;
 }
 
-// Beyond this many times its own distance, a vertex slid along its plane by `playone_vertex` is
-// treated as having missed the plane (the ray through its pixel runs almost along it).
+// The largest scale `t` of `playone_vertex`'s ray direction `on_ray` (not unit length) at which the
+// ray still counts as meeting the vertex's plane; a larger `t` means the ray through its pixel
+// runs almost along that plane, and the vertex keeps its own projection.
 const PLANE_SLIDE_MAX: f32 = 1.0e6;
 
 // Moves a projected vertex at `clip` (eye-relative position `eye`) to the pixel PLAYONE's
