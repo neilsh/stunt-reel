@@ -26,7 +26,7 @@ Frames graded 2 or more of the 12 real sheets, the disputed-sheet count, and the
 | `bomb` | `background-misregistration` 3 (1585, 1904, 2850) | 12 | `ff52dc31b9e5` |
 | `location` | none | 0 | `22714e0712b5` |
 
-BOMB's `background-misregistration` is a severity-threshold flip, not a detection disagreement: pass 1 graded it 2 or more on all 12 sheets (count 12), pass 2 on none (count 0), and the Sonnet tie-break kept 3 at ticks 1585, 1904 and 2850.
+BOMB's `background-misregistration` differed across passes: pass 1 graded it 2 on all 12 sheets, pass 2 graded it 0 on 10 and 1 on 2, and the Sonnet tie-break graded it 2 or more at ticks 1585, 1904 and 2850.
 The merged readout is the tie-break's 3 with `disputed` 12.
 A 12-frame pass-to-pass difference exceeds `min_change` 4, so the four-frame threshold is not a bound for DSH; it was set from two Haiku passes, and a tie-break does not measure repeatability of the saved result.
 

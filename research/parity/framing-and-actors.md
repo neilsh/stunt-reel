@@ -61,7 +61,7 @@ _Source: [the trapezoid is the rotor's slow arm at rest](../../work/2026-11/504_
 The error readout's `background-misregistration` grade rises under both a planted frame advance and a planted page shift, so the grade alone cannot say which one our render has.
 Searching render ticks `t - 4` to `t + 4` and page shifts up to 6 px on our backdrop's edge pixels (sky, ocean and terrain away from props and actors) gives, per film:
 
-| Film | Ticks compared | Neither (both gains under 0.02) | Time wins | Page wins | Tie | Grade 2+ ticks |
+| Film | Ticks compared | Neither (both gains under 0.02) | Time wins | Page wins | Tie | Grade 2+ ticks, 2026-11-22 baseline |
 |---|---|---|---|---|---|---|
 | ctry | 11 | 7 | 1 | 3 | 0 | none |
 | intro | 9 | 4 | 2 | 2 | 1 | 1355 no backdrop edge; 2597 page, `dx` -2 |
@@ -73,7 +73,7 @@ Searching render ticks `t - 4` to `t + 4` and page shifts up to 6 px on our back
 
 No film's backdrop error is one time offset or one page shift: where one wins, its size and sign change from tick to tick.
 `neither` mixes two cases the table does not separate: 16 of its 40 ticks already agree at 0.95 or more as rendered, and 14 sit below 0.90 where no single time offset or page shift gains 0.02 or more (only the `joint` search, set aside as overfitting, gains 0.02 or more on two of them: BALLOON 331 +0.044, TRAINTNL 793 +0.020), an error this probe does not account for.
-The two `neither` grade 2+ ticks, BOMB 2850 and LOCATION 5611, agree at 0.988 and 0.997 as rendered, so the probe sees almost no backdrop misregistration there and does not explain their grade.
+The two `neither` grade 2+ ticks of the 2026-11-22 baseline, BOMB 2850 and LOCATION 5611, agree at 0.988 and 0.997 as rendered, so the probe sees almost no backdrop misregistration there and does not explain their grade.
 Two parts recur:
 
 * **A one-row vertical shift, ours low.**

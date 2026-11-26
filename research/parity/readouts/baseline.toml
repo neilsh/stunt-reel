@@ -39,9 +39,9 @@ ticks = 12
 disputed = 0
 
 # BOMB's background-misregistration is the 19-category outlier: pass 1 graded the error clear (2 or
-# more) on all 12 sheets, pass 2 on none, and the Sonnet tie-break kept 3 (ticks 1585, 1904, 2850),
-# so disputed = 12. The 12-frame pass-to-pass difference exceeds min_change 4, which came from two
-# Haiku passes and is not established as a bound for DSH.
+# more) on all 12 sheets, pass 2 on none (0 on 10 sheets, 1 on 2), and the Sonnet tie-break kept 3
+# (ticks 1585, 1904, 2850), so disputed = 12. The 12-frame pass-to-pass difference exceeds
+# min_change 4, which came from two Haiku passes and is not established as a bound for DSH.
 [bomb]
 render_digest = "ff52dc31b9e504dcec66c49c0154e01ec069f5d8870d13daa5047b3c22f45659"
 ticks = 12
