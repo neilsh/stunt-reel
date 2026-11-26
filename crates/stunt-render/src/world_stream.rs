@@ -46,7 +46,8 @@ pub(crate) struct WorldStream {
     pub indices: Vec<u32>,
     /// The slices' outline indices, rebased to the streamed vertices.
     pub edges: Vec<u32>,
-    /// `prop_shape`'s table in streamed vertex numbering: `[first, end, shape id + 1]`.
+    /// The prop runs in streamed vertex numbering, `[first, end, shape id + 1]`: the lookup that
+    /// `ApexVertex::prop_shape` (`crate::mesh`) holds per vertex.
     pub runs: Vec<[u32; 3]>,
     /// The ground slices, in draw order.
     pub ground: Vec<GpuMeshSlice>,

@@ -13,7 +13,7 @@ Framing: [`framing-and-actors.md`](framing-and-actors.md); hero aircraft: [`hero
 `stuntreel parity` splits each SSIM window's loss (`1 - ssim`) among the render layers of its pixels in proportion to pixel count (`mean_loss_by_class_scored` in `report.json`); the classes sum to `1 - mean_ssim_scored`.
 Layer ids in the layer plane: 1 ocean, 2 terrain (`MAP.BIN` patches), 3 props (`SCENERY.scn` placements), 16+n actor draw n of the frame (draw order, not film slot).
 A shape plane beside it names the prop shape that drew each props pixel, and `mean_loss_by_shape_scored` splits the props class by shape id the same way; its values sum to `mean_loss_by_class_scored.props` ([`report-fields.md`](report-fields.md)).
-Each placed prop mesh appends its own run of world vertices, listed with its shape in `World::prop_runs`, and the plane's fragment shader finds a fragment's run from its `vertex_index` by binary search, so every placed shape is attributed.
+Each placed prop mesh appends its own run of world vertices, listed with its shape in `World::prop_runs`, and the renderer gives each vertex its run's shape word as a per-vertex attribute (`ApexVertex::prop_shape` in `mesh.rs`, flat-interpolated to the fragment), so every placed shape is attributed.
 _Source: [can `primitive_index` or `vertex_index` give a world fragment its prop](../../work/2026-11/809_prop-runs/journal.md#2026-11-19-can-primitive_index-or-vertex_index-give-a-world-fragment-its-prop)._
 Extra classes: reference-only (capture non-sky, render sky) and render-only (the reverse).
 Windows touching the UI overlay are excluded.
