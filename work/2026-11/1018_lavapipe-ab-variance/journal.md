@@ -61,5 +61,5 @@
   - Kept rows, loop ms and other processes' load: round 0 `a` `2418.8` (`0.092`), `b` `2377.3` (`0.102`).
   - Other processes used `10.2%` of the CPUs during round 0's `b`, over the `10%` bar, so the runner stopped there, with exit 2 and no summary.
 - **Verdict**: no verdict: the check stopped after 2 of 8 runs, so neither condition of the bar can be judged; as the issue rules, a run stopped by the load check is not re-run, and whether to run it again is the owner's call.
-  Both kept runs sat at `0.09..0.10` other load, where the earlier run's first four sat at `0.031..0.045` (the entry above), so the machine was busier than then; the loads in this run were not traced to a process.
+  Both kept runs sat at `0.092..0.102` other load, where the earlier run's first four sat at `0.031..0.045` (the entry above), so the machine was busier than then; the loads in this run were not traced to a process.
 - **Lives in**: nowhere else: no figure here is a finding about the render.
