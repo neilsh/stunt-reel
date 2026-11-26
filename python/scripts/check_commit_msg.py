@@ -40,8 +40,8 @@ SUBJECT = re.compile(rf"^(?:{'|'.join(TYPES)})(?:\([^()\s][^()]*\))?!?: \S")
 GIT_SUBJECT = re.compile(r"^(?:Merge |Revert \"|fixup! |squash! |amend! )")
 SCISSORS = "# ------------------------ >8 ------------------------"
 FRESH_REVIEW = re.compile(r"^Fresh-review:[ \t]*\S")
-#: A work folder's ``spec.md`` or ``plan.md``, or a second one, ``spec-<topic>.md``.
-REVIEWED_FILE = re.compile(r"^(?:spec|plan)(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?\.md$")
+#: A work folder's ``spec.md``, ``plan.md``, ``spec-<topic>.md`` or ``plan-<topic>.md``.
+REVIEWED_FILE = re.compile(r"^(?:spec|plan)(?:-[^/]+)?\.md$")
 RULE_5 = "AGENTS.md, Committing, rule 5"
 
 

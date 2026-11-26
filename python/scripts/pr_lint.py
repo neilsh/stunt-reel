@@ -23,7 +23,9 @@ note; the CLI prints it as ``note attribution: ...`` and :func:`failures` leaves
 The CLI reads the working tree of the checkout holding the working directory, so it runs in the
 implementer's checkout before a push; the pin and date checks say nothing about a branch that
 checkout does not hold. ``pytest -m docs`` runs :func:`pin_failures` and :func:`date_failures`
-on every pull request in CI. ``merge_bar`` reads :func:`attribution_failures` from the body it
+on every pull request in CI, on GitHub's merge commit: pins against the pull request head's
+``crates`` tree, so a later ``crates/`` change on ``main`` does not fail them, and dates against
+the runner's UTC day. ``merge_bar`` reads :func:`attribution_failures` from the body it
 fetched, as a note, and checks the body's link itself through :mod:`stunt_reel.pr_body`.
 
 Usage: ``mise run pr-lint -- <pr-body-file> [<base>]``; the base defaults to ``origin/main`` when
@@ -104,8 +106,13 @@ def attribution_failures(body: str) -> list[str]:
     return []
 
 
-def pin_failures(repo: Path = REPO_ROOT, base: str | None = None) -> list[str]:
-    """Each pin in an expected-scores file the branch changes that is not ``HEAD:crates``."""
+def pin_failures(
+    repo: Path = REPO_ROOT, base: str | None = None, tree: str | None = None
+) -> list[str]:
+    """Each pin in an expected-scores file the branch changes that is not the ``crates/`` tree.
+
+    *tree* defaults to ``HEAD:crates`` with ``crates/`` clean; CI passes the pull request head's.
+    """
     changed = [path for path in gate.changed_paths(repo, base) if _EXPECTED.match(path)]
     pins = [
         (path, number, match.group(1))
@@ -115,9 +122,10 @@ def pin_failures(repo: Path = REPO_ROOT, base: str | None = None) -> list[str]:
     ]
     if not pins:
         return []
-    tree = clean_crates_tree(repo)
     if tree is None:
-        return [_unclean_crates(repo)]
+        tree = clean_crates_tree(repo)
+        if tree is None:
+            return [_unclean_crates(repo)]
     return [
         f"{path}:{number}: crates {pin[:12]} is not HEAD's crates {tree[:12]}"
         for path, number, pin in pins

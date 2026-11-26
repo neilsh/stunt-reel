@@ -166,6 +166,14 @@ def test_uncommitted_crates_changes_fail_the_pin_check(repo: Repo) -> None:
     assert "crates/b.rs" in found[0]
 
 
+def test_a_given_tree_replaces_head_crates_and_its_cleanliness(repo: Repo) -> None:
+    head = "1" * 40
+    repo.write(f"{EXPECTED}/gpu.toml", f'[ctry]\ncrates = "{head}"\n')
+    repo.write("crates/b.rs", "fn b() {}\n")
+    assert pr_lint.pin_failures(repo.root, tree=head) == []
+    assert pr_lint.pin_failures(repo.root, tree="2" * 40) != []
+
+
 def test_an_expected_file_the_branch_leaves_alone_is_not_checked(repo: Repo) -> None:
     repo.write(f"{EXPECTED}/gpu.toml", f'[ctry]\ncrates = "{"0" * 40}"\n')
     repo.commit("a stale pin on main")
