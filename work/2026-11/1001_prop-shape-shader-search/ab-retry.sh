@@ -1,5 +1,5 @@
 #!/bin/bash
-# Retry the whole-film lavapipe A/B until it completes or 8 attempts stop on the load check.
+# Retry the whole-film lavapipe A/B until it completes or 30 attempts (21..50) stop on the load check.
 cd /e/t3/worktrees/stunt-reel/t3-b886fb36-9b45ab9521a02610 || exit 9
 W=work/2026-11/1001_prop-shape-shader-search
 for n in $(seq 21 50); do
