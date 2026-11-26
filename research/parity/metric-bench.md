@@ -130,8 +130,9 @@ _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../
   These runs graded the 20-category file, which changed on 2026-11-25: they are not readouts of the 19-category file.
   _Source: [2026-11-25: the 20-category readouts, DSH repeatability and the missing example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-the-20-category-readouts-dsh-repeatability-and-the-missing-example); figures in [`readout-repeat.txt`](../../work/2026-11/calibration-actor-floor/readout-repeat.txt)._
 
-* **DSH and Haiku on the same sheets moved no category by more than 2 frames** (`[Bounded Observation]`, 2026-11-26, seven films, the lavapipe render of `crates/` `4b5c69c`, 12 sheets per film).
+* **DSH and Haiku on the same sheets moved each category's count of frames graded 2 or more by 2 or fewer** (`[Bounded Observation]`, 2026-11-26, seven films, the lavapipe render of `crates/` `4b5c69c`, 12 sheets per film).
   Re-grading the `e09f8ff6` baseline's sheets with two Haiku passes and a Sonnet tie-break moved each category's count of frames graded 2 or more by 2 or fewer against the DSH readout.
+  Per frame they disagreed on up to 3 (BOMB `background-misregistration`), so the agreement is in counts, not in which frames.
   The sheets and the graded ticks are the same; the 19-category file is the same.
   _Source: [2026-11-26: splitting the readout change into render and grader](../../work/2026-11/1118_readout-render-grader-split/journal.md#2026-11-26-splitting-the-readout-change-into-render-and-grader)._
 
