@@ -46,3 +46,25 @@ jobs:
       - name: Sync every open issue and project item
         if: github.event_name != 'issues'
         run: python3 python/scripts/project_sync.py $ARGS --all
+
+  # A closed issue is finished, so no state label should still claim it: `Fixes #N` closes an
+  # issue on squash merge and nothing else removes `status:in-progress`. The project is already
+  # Done on close (derive_status), so the `unlabeled` runs this causes change nothing there.
+  clear-status:
+    name: Clear status labels on close
+    if: github.event_name == 'issues' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number }}
+      LABELS: ${{ toJSON(github.event.issue.labels.*.name) }}
+    steps:
+      - name: Remove every status label
+        run: |
+          jq -r '.[] | select(startswith("status:"))' <<<"$LABELS" | while IFS= read -r label; do
+            gh api -X DELETE "repos/$REPO/issues/$ISSUE/labels/$(jq -rn --arg l "$label" '$l|@uri')" --silent
+          done
