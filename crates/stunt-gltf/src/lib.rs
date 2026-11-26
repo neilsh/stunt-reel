@@ -1,4 +1,5 @@
-//! Binary glTF 2.0 (`.glb`) export of decoded Stunt Island shapes and film scene frames.
+//! Binary glTF 2.0 (`.glb`) export of decoded Stunt Island shapes, film scene frames and
+//! animated films.
 //!
 //! The exporter turns the Seam 3 intermediate representation
 //! ([`stunt_core::contracts::SodModelIr`]) and a sampled

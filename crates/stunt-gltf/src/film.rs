@@ -74,9 +74,10 @@ pub struct FilmExportOptions {
 pub struct FilmGlb {
     /// The `.glb` bytes.
     pub bytes: Vec<u8>,
-    /// Keys across all channels before thinning.
+    /// Keys across all transform and scale channels before thinning; the lens pointer
+    /// channel is not counted.
     pub keys_sampled: usize,
-    /// Keys across all channels written.
+    /// Keys across all transform and scale channels written.
     pub keys_kept: usize,
 }
 
@@ -369,7 +370,7 @@ struct Writer {
     samplers: Vec<Value>,
     channels: Vec<Value>,
     /// Accessors already written, by their kind and bytes, so equal tracks share them.
-    accessors: HashMap<(&'static str, Vec<u8>), usize>,
+    accessors: HashMap<(&'static str, bool, Vec<u8>), usize>,
     keys_sampled: usize,
     keys_kept: usize,
     /// The thinned facing rotation, once a view-facing prop has needed it.
@@ -380,7 +381,7 @@ impl Writer {
     /// Writes `values` as a float accessor of `kind`, or returns the equal one already written.
     fn floats(&mut self, kind: &'static str, values: &[f32], bounds: bool) -> usize {
         let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
-        if let Some(&index) = self.accessors.get(&(kind, bytes.clone())) {
+        if let Some(&index) = self.accessors.get(&(kind, bounds, bytes.clone())) {
             return index;
         }
         let width = match kind {
@@ -388,6 +389,7 @@ impl Writer {
             "VEC4" => 4,
             _ => 1,
         };
+        let has_bounds = bounds;
         let bounds = bounds.then(|| {
             let lo = values.iter().copied().fold(f32::INFINITY, f32::min);
             let hi = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
@@ -402,7 +404,7 @@ impl Writer {
             kind,
             bounds,
         });
-        self.accessors.insert((kind, bytes), index);
+        self.accessors.insert((kind, has_bounds, bytes), index);
         index
     }
 
@@ -587,6 +589,8 @@ fn angle_degrees(a: Quat, b: Quat) -> f32 {
     .to_degrees()
 }
 
+/// Whether lerping the lens `a` to `b` (radians) at `u` lands within [`ROTATION_TOLERANCE`]
+/// of `v`.
 fn scalar_close(a: f32, b: f32, u: f32, v: f32) -> bool {
     (a + (b - a) * u - v).abs() <= ROTATION_TOLERANCE.to_radians()
 }
@@ -607,7 +611,7 @@ fn thin<T: Copy>(
         return Vec::new();
     };
     let mut kept = vec![first];
-    // `anchor` is the last kept key's index in `points`; `previous` the point before `end`.
+    // `anchor` is the last kept key's index in `points`.
     let mut anchor = 0;
     for (end, &(t1, b)) in rest.iter().enumerate().map(|(i, p)| (i + 1, p)) {
         let (t0, a) = kept.last().copied().unwrap_or(first);
@@ -641,6 +645,18 @@ mod tests {
             vec![(0.0, [0.0; 3]), (9.0, [9.0, 18.0, 0.0])],
             "ends only"
         );
+    }
+
+    #[test]
+    fn no_kept_key_spans_more_than_max_span_samples() {
+        let times: Vec<f32> = (0..300u16).map(f32::from).collect();
+        let values: Vec<[f32; 3]> = times.iter().map(|&t| [t, 0.0, 0.0]).collect();
+        let kept = thin(&times, &values, <[f32; 3]>::close);
+        assert!(kept.len() > 2, "the cap splits a long line");
+        let gaps: Vec<f32> = kept.windows(2).map(|w| w[1].0 - w[0].0).collect();
+        #[expect(clippy::cast_precision_loss, reason = "a small constant")]
+        let cap = MAX_SPAN as f32;
+        assert!(gaps.iter().all(|&g| g <= cap), "{gaps:?}");
     }
 
     #[test]

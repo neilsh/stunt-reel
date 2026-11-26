@@ -93,7 +93,7 @@ fn dos_axes(p: [f32; 3]) -> [f32; 3] {
     [-p[0], -p[1], p[2]]
 }
 
-/// What a [`ActorDraw`] draws for: an identity that stays the same from tick to tick, while a
+/// What an [`ActorDraw`] draws for: an identity that stays the same from tick to tick, while a
 /// draw's index in [`SceneFrame::actors`] does not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DrawSource {

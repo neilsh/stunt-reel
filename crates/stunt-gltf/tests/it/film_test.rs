@@ -18,10 +18,11 @@ use std::collections::HashMap;
 use serde_json::Value;
 use stunt_core::contracts::palette::PaletteControls;
 use stunt_core::contracts::{
-    ActorTransform, CameraTransform, DEFAULT_CAMERA_LENS, SodModelIr, TrajectoryRecord,
+    ActorTransform, CameraTransform, DEFAULT_CAMERA_LENS, ShapeExtent, SodModelIr, TrajectoryRecord,
 };
 use stunt_core::flm::{FilmTimeline, SliceKeyframe};
 use stunt_core::scene::FilmScene;
+use stunt_core::world::{FacingProp, GateNode, PlacementRecords, TerrainSurface, World};
 use stunt_gltf::{CUT_EPSILON, FilmExportOptions, GltfError, export_film, summarize};
 
 use crate::export_test::{Glb, fixture, load, model, parse_glb};
@@ -324,4 +325,105 @@ fn rotations_stay_in_one_hemisphere() {
         let dot: f32 = pair[0].iter().zip(pair[1]).map(|(a, b)| a * b).sum();
         assert!(dot > 0.0, "{pair:?} in one hemisphere");
     }
+}
+
+/// An actor moving in straight lines between slices keeps exactly its slice keys.
+#[test]
+fn a_straight_line_actor_keeps_its_slice_keys() {
+    let scene = scene(vec![
+        record(0, DEFAULT_CAMERA_LENS, vec![actor(1, 1, 0.0, IDENTITY)]),
+        record(10, DEFAULT_CAMERA_LENS, vec![actor(1, 1, 10.0, IDENTITY)]),
+        record(20, DEFAULT_CAMERA_LENS, vec![actor(1, 1, 30.0, IDENTITY)]),
+    ]);
+    let glb = parse_glb(&export_film(&scene, options(0, 20)).expect("export").bytes);
+    let (times, values, _) = channel(&glb, "actor_1_shape_1", "translation").expect("moves");
+    assert_eq!(times.len(), 3, "{times:?}");
+    for (t, e) in times.iter().zip([0.0, 0.2, 0.4]) {
+        assert!(close(*t, e), "time {t} against {e}");
+    }
+    assert!(
+        close(values[3], 10.0) && close(values[6], 30.0),
+        "{values:?}"
+    );
+    assert!(
+        channel(&glb, "actor_1_shape_1", "rotation").is_none(),
+        "no turn"
+    );
+    assert!(
+        channel(&glb, "actor_1_shape_1", "scale").is_none(),
+        "always drawn"
+    );
+}
+
+/// View-facing props sit under a `VIEW_FACING` root, do not move, and turn with one rotation
+/// track whose accessors every prop shares.
+#[test]
+fn view_facing_props_share_one_turning_track() {
+    let ir = model("synthetic_minimal.sod");
+    let shapes: HashMap<u16, SodModelIr> = [(1, ir)].into_iter().collect();
+    let world = World {
+        ir: SodModelIr::new("EMPTY"),
+        terrain_patches: 0,
+        props_placed: 2,
+        bounds: ShapeExtent {
+            min: [0.0; 3],
+            max: [0.0; 3],
+            radius: 0.0,
+        },
+        scenery_stop: None,
+        terrain: TerrainSurface::default(),
+        tap_failures: Vec::new(),
+        view_facing: [[0.0, 0.0, 0.0], [20.0, 0.0, -5.0]]
+            .into_iter()
+            .map(|position| FacingProp {
+                shape: 1,
+                position,
+                node: GateNode::ROOT,
+                reach: None,
+            })
+            .collect(),
+        gate_nodes: Vec::new(),
+        prop_runs: Vec::new(),
+        placements: PlacementRecords::default(),
+    };
+    // The camera swings from +Z round to +X of the origin, so its heading turns.
+    let mut slices = vec![
+        record(0, DEFAULT_CAMERA_LENS, Vec::new()),
+        record(10, DEFAULT_CAMERA_LENS, Vec::new()),
+    ];
+    slices[1].record.camera.eye = [50.0, 10.0, 0.0];
+    let scene = FilmScene::new(FilmTimeline::new(slices, Vec::new()), shapes, Some(world));
+    let glb = parse_glb(&export_film(&scene, options(0, 10)).expect("export").bytes);
+    let root = glb.node_named("VIEW_FACING").expect("root");
+    assert_eq!(root["children"].as_array().unwrap().len(), 2, "two props");
+
+    let animation = &glb.array("animations")[0];
+    let samplers: Vec<&Value> = ["view_facing_0_shape_1", "view_facing_1_shape_1"]
+        .iter()
+        .map(|name| {
+            assert!(
+                channel(&glb, name, "translation").is_none(),
+                "{name} stays put"
+            );
+            let node = glb
+                .array("nodes")
+                .iter()
+                .position(|n| n["name"] == *name)
+                .unwrap();
+            let rotation = animation["channels"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["target"]["node"] == node && c["target"]["path"] == "rotation")
+                .unwrap_or_else(|| panic!("{name} turns"));
+            &animation["samplers"][index(&rotation["sampler"])]
+        })
+        .collect();
+    assert_eq!(samplers[0]["input"], samplers[1]["input"], "shared times");
+    assert_eq!(
+        samplers[0]["output"], samplers[1]["output"],
+        "shared rotations"
+    );
+    let (_, values, _) = channel(&glb, "view_facing_0_shape_1", "rotation").unwrap();
+    assert_ne!(&values[..4], &values[values.len() - 4..], "the props turn");
 }
