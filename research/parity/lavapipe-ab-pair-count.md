@@ -1,12 +1,13 @@
 ---
-summary: "How many alternating pairs mise run ab needs to resolve a ±1% or ±2% loop bar on Span B lavapipe, from the committed A/A and quiet-run timings: ±2% takes about 20 pairs, ±1% 40 to 270, and 4 pairs pass a perfect runner 21% to 43% at ±1%."
+summary: "Pairs mise run ab needs on Span B lavapipe under #1018's A/A rule: ±2% about 20, ±1% 42 to 192 at 90%; at 4 pairs a perfect runner passes ±1% 21% to 43% of the time."
+sidebar_label: "Pairs mise run ab needs"
 ---
 # Parity: Pairs `mise run ab` Needs on Lavapipe
 
-* **Scope**: the power of `mise run ab`'s A/A pass rule at the measured run-to-run spread of one binary on Span B on lavapipe, for [`#999`](https://github.com/neilsh/stunt-reel/issues/999)'s 2% loop bar, `#1001`'s and `#1018`'s ±1% A/A bar; where the spread comes from is in [`lavapipe-render-time.md` § 3](lavapipe-render-time.md#3-where-loop-time-goes).
+* **Scope**: the power of `mise run ab`'s A/A pass rule at the measured run-to-run spread of one binary on Span B on lavapipe, for a ±2% or ±1% bar under #1089's two-sided rule with a direction clause, the rule of `#1018`'s ±1% A/A; it does not size [`#999`](https://github.com/neilsh/stunt-reel/issues/999)'s gate (the whole `LOCATION` film, one-sided, no direction clause) or `#1001`'s (a median at least `5%` lower and faster in all 4 pairs); where the spread comes from is in [`lavapipe-render-time.md` § 3](lavapipe-render-time.md#3-where-loop-time-goes).
 * **Sources**: the committed CSVs of `#1004` and `#1018`, each from one Windows machine (the owner's 16-thread laptop) on `mesa-dist-win 25.2.8`, Span B (`LOCATION 3680..=3979`).
   * **Evidence tier**: `[Bounded Observation]` throughout; every figure rests on the run counts in the table below and holds for that machine, span and those days.
-* **Method**: a one-off Python script (not committed; numpy, seed `1089`, 200,000 simulated A/As per cell) drew each side's loop times, took each variant's median and the change `median(b) / median(a) - 1` as [`summarize`](../../python/stunt_reel/ab_timing.py) does, and counted a pass when `|change| <= bar` and `b` was strictly faster than `a` in at least one pair but not in all.
+* **Method**: `work/2026-11/1089_ab-pair-count/pairs.py` (numpy, seed `1089`, 200,000 simulated A/As per cell, its output in the journal entry cited below) drew each side's loop times, took each variant's median and the change `median(b) / median(a) - 1` as [`summarize`](../../python/stunt_reel/ab_timing.py) does, and counted a pass when `|change| <= bar` and `b` was strictly faster than `a` in at least one pair but not in all.
 
 ## 1. The spread
 
@@ -43,8 +44,9 @@ Normal model, probability a perfect runner passes (the median bar alone differs 
 | `3.12%` | ±2% | 57.4% | 67.0% | 73.1% | 81.5% | 90.6% | 98.1% |
 | `4.76%` | ±2% | 40.7% | 47.7% | 53.2% | 61.4% | 72.8% | 87.3% |
 
-A bootstrap that resamples the 22 runs of the A/A, the re-run and the quiet probe (each file divided by its own median, so the heavy tail of the outlier stays) gave `40.7%` at ±1% and `65.8%` at ±2% at 4 pairs.
+A bootstrap that resamples 22 runs, those of `aa-span-b-rerun2.csv` (8), `aa-span-b.csv` (5), `aa-span-b-rerun.csv` (2) and the quiet probe's runs 1 to 7 (7; its slow first run left out), each file divided by its own median so the heavy tail of the outlier stays, gave `40.7%` at ±1% and `65.8%` at ±2% at 4 pairs.
 The standard deviation of the 4-pair median change is `1.71%`, `2.40%` and `3.68%` at the three spreads; the completed A/A's `-1.07%` is `0.6` of the first.
+The per-pair log-ratio spread (`sqrt(2) * sd(log)`) is `3.13%` at the first spread, `4.41%` at the second and `6.73%` at the third.
 
 ## 3. Pairs needed
 
@@ -57,7 +59,7 @@ Smallest pair count at which a perfect runner passes the whole rule with the sta
 | `4.76%` | 192 | 272 | 48 | 68 |
 | bootstrap, 22 runs | (35) | (56) | (14) | (18) |
 
-A pair of runs takes about `8 s` of wall (the A/A's wall median `3.9 s` a run), so 58 pairs is about 8 minutes before load waits; cost is not the limit, the spread's stability is.
+A run's wall median in the completed A/A was `3.9 s`, and `mise run ab` waits a `2.0 s` quiet window before each timed run and runs one untimed warm-up round, so a pair takes about `12 s` and 58 pairs about 12 minutes before any load wait; cost is not the limit, the spread's stability is.
 
 ## 4. The triage estimate
 
@@ -67,11 +69,11 @@ Its low end sits inside the range.
 
 ## 5. Recommendation
 
-* **±2% (`#999`)**: use about 20 pairs, which gives a perfect runner `90.6%` at the quiet-probe spread, `90.6%` to `98.1%` across the two quieter spreads, and `72.8%` at the pooled spread; 10 pairs is the least that reaches 90% even at the best spread.
+* **±2% on Span B**: use about 20 pairs, which gives a perfect runner `90.6%` to `98.1%` at the two quieter spreads and `72.8%` at the pooled one, under #1089's two-sided rule with the direction clause (not `#999`'s whole-film gate); 10 pairs is the least that reaches 90% even at the best spread.
 * **±1%**: no pair count is recommended from this data.
-  A perfect runner needs 42 to 272 pairs for 90% across the spreads, so a ±1% pass at 4 pairs is a coin toss and says nothing about a runner.
+  A perfect runner needs 42 to 192 pairs for 90% (58 to 272 for 95%) across the spreads, so a ±1% pass at 4 pairs is close to a coin toss and says little about a runner.
   A tool that gates at ±1% should first run an A/A at its intended pair count (for example 40) and read its spread, which the 8-run figures cannot fix.
-* A gate on a real effect larger than the bar, such as `#1001`'s median at least `5%` lower and faster in all 4 pairs, does not need such a count to sit above the bar: the 4-pair median change has a standard deviation of `1.7%..3.7%` here, so 5% is 1.4 to 2.9 of them from zero, but "faster in all 4 pairs" is met by a perfect runner `6.3%` of the time (`1/16`, one direction), which is that gate's false-pass rate on the direction clause alone.
+* A gate on a real effect larger than the bar, such as `#1001`'s (whole film; the figures here are Span B's) median at least `5%` lower and faster in all 4 pairs, does not need such a count to sit above the bar: the 4-pair median change has a standard deviation of `1.7%..3.7%` here, so 5% is 1.4 to 2.9 of them from zero, but "faster in all 4 pairs" is met by a perfect runner `6.3%` of the time (`1/16`, one direction), which is that gate's false-pass rate on the direction clause alone.
 
 ## Ruled out
 
@@ -80,6 +82,7 @@ Its low end sits inside the range.
 ## Open questions
 
 1. The standard deviation to 8 or 15 runs is too wide to pick a pair count; an A/A of 40 pairs on Span B would fix it to between `0.87` and `1.18` times itself (chi-square, 79 degrees of freedom), and says whether load drifts across a long run, which the iid model ignores.
-2. Whether the spread differs on Span A or C, on the GPU, or on a cloud lavapipe: nothing here measures it.
+2. Whether the spread differs on the whole `LOCATION` film, which `#999`'s one-sided gate (no direction clause) and `#1001`'s time, and what pair count those gates need: every spread here is Span B's, and a one-sided rule changes the pass probabilities.
+3. Whether the spread differs on Span A or C, on the GPU, or on a cloud lavapipe: nothing here measures it.
 
-_Source: [`#1018` journal, what spreads one binary's runs](../../work/2026-11/1018_lavapipe-ab-variance/journal.md#2026-11-24-what-spreads-one-binarys-span-b-lavapipe-runs), [the second A/A re-run](../../work/2026-11/1018_lavapipe-ab-variance/journal.md#2026-11-25-the-second-owner-approved-aa-re-run-at-a-15-load-bar-completed-missed-the-median-bar), [`#1004` journal](../../work/2026-11/1004_ab-timing-runner/journal.md#2026-11-23-the-same-binary-on-both-sides-of-mise-run-ab-span-b-on-lavapipe)._
+_Source: [the simulation and its output](../../work/2026-11/1089_ab-pair-count/journal.md#2026-11-26-pairs-needed-at-the-measured-spread), [`#1018` journal, what spreads one binary's runs](../../work/2026-11/1018_lavapipe-ab-variance/journal.md#2026-11-24-what-spreads-one-binarys-span-b-lavapipe-runs), [the second A/A re-run](../../work/2026-11/1018_lavapipe-ab-variance/journal.md#2026-11-25-the-second-owner-approved-aa-re-run-at-a-15-load-bar-completed-missed-the-median-bar), [`#1004` journal](../../work/2026-11/1004_ab-timing-runner/journal.md#2026-11-23-the-same-binary-on-both-sides-of-mise-run-ab-span-b-on-lavapipe)._

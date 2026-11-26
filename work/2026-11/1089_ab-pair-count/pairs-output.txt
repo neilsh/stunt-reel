@@ -1,0 +1,48 @@
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+dataset | n | spread % (max/min-1) | sd(log) %
+rerun2 | 8 | 6.2 | 2.21
+aa-stopped5 | 5 | 19.9 | 7.69
+rerun-stopped2 | 2 | 1.7 | 1.22
+quiet7 | 7 | 9.6 | 3.12
+baseline8 | 8 | 13.8 | 4.36
+after-idle3 | 3 | 10.2 | 5.26
+1004-8 | 8 | 32.2 | 9.69
+pooled runner A/A 8+5+2: runs 15 sd(log) 4.76%
+pooled runner A/A 8+2: runs 10 sd(log) 2.11%
+pooled quiet7 + rerun2: runs 15 sd(log) 2.67%
+per-pair log-ratio sd (sqrt2 * sd(log)): {'rerun2': 3.13, 'quiet7': 4.41}
+rerun2 wall median ms: 3869.919
+sigma {'rerun2': 2.21, 'pooled-runner': 4.76, 'quiet7': 3.12}
+
+Normal model: P(pass), P(median bar), P(direction rule) by n
+rerun2 s=2.21% bar=1%: 4:0.433/0.442 5:0.444/0.449 6:0.509/0.511 8:0.565/0.565 10:0.610/0.610 12:0.649/0.649 16:0.714/0.714 20:0.763/0.763 30:0.845/0.845 40:0.900/0.900
+rerun2 s=2.21% bar=2%: 4:0.714/0.760 5:0.744/0.767 6:0.822/0.833 8:0.879/0.881 10:0.914/0.914 12:0.937/0.937 16:0.966/0.966 20:0.981/0.981 30:0.996/0.996 40:0.999/0.999
+pooled-runner s=4.76% bar=1%: 4:0.214/0.215 5:0.217/0.218 6:0.250/0.250 8:0.282/0.282 10:0.310/0.310 12:0.337/0.337 16:0.378/0.378 20:0.417/0.417 30:0.491/0.491 40:0.552/0.552
+pooled-runner s=4.76% bar=2%: 4:0.407/0.414 5:0.416/0.421 6:0.477/0.478 8:0.532/0.532 10:0.575/0.575 12:0.614/0.614 16:0.678/0.678 20:0.728/0.728 30:0.817/0.817 40:0.873/0.873
+quiet7 s=3.12% bar=1%: 4:0.317/0.321 5:0.324/0.327 6:0.376/0.377 8:0.421/0.421 10:0.459/0.459 12:0.493/0.493 16:0.549/0.549 20:0.598/0.598 30:0.691/0.691 40:0.757/0.757
+quiet7 s=3.12% bar=2%: 4:0.574/0.596 5:0.592/0.604 6:0.670/0.674 8:0.731/0.732 10:0.777/0.777 12:0.815/0.815 16:0.869/0.869 20:0.906/0.906 30:0.958/0.958 40:0.981/0.981
+direction rule alone n=4: 0.874255
+
+pairs needed
+rerun2 bar 1% target 0.9: 42
+rerun2 bar 1% target 0.95: 58
+rerun2 bar 2% target 0.9: 10
+rerun2 bar 2% target 0.95: 14
+pooled-runner bar 1% target 0.9: 192
+pooled-runner bar 1% target 0.95: 272
+pooled-runner bar 2% target 0.9: 48
+pooled-runner bar 2% target 0.95: 68
+quiet7 bar 1% target 0.9: 82
+quiet7 bar 1% target 0.95: 116
+quiet7 bar 2% target 0.9: 20
+quiet7 bar 2% target 0.95: 28
+
+bootstrap pool n 22 sd 0.044000590284179845
+bootstrap bar 1%: 4:0.407 6:0.501 8:0.568 10:0.621 12:0.664 16:0.733 20:0.781 30:0.860 40:0.909
+bootstrap bar 2%: 4:0.658 6:0.775 8:0.833 10:0.873 12:0.901 16:0.937 20:0.960 30:0.987 40:0.996
+bootstrap needed: {(0.01, 0.9): 35, (0.01, 0.95): 56, (0.02, 0.9): 14, (0.02, 0.95): 18}
+
+sd of median change vs n (normal)
+rerun2 4:1.71% 8:1.29% 12:1.07% 16:0.94% 20:0.85% 30:0.70% 40:0.61% 60:0.50%
+pooled-runner 4:3.68% 8:2.76% 12:2.31% 16:2.03% 20:1.83% 30:1.51% 40:1.31% 60:1.08%
+quiet7 4:2.40% 8:1.80% 12:1.51% 16:1.33% 20:1.19% 30:0.99% 40:0.86% 60:0.70%
