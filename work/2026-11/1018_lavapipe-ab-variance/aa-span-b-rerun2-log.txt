@@ -1,0 +1,24 @@
+  ! mise.toml pins uv 0.13.1, but a uv outside mise's install runs another version. Outside mise, a bare uv runs one of these:
+  C:\Users\Steam\scoop\shims\uv.EXE (0.13.9)
+Remove the stale one, or keep mise's uv first on PATH.
+[ab] $ uv run python python/scripts/ab.py --out work/2026-11/1018_lavapipe-ab-variance --name aa-span-b-rerun2 --variant a --variant b --span 3680..=3979 --adapter lavapipe --rounds 4 --order alternate --max-load 0.15
+ab: lavapipe-3680-3979 warm-up 0 a: loop 2623 ms (not kept)
+ab: lavapipe-3680-3979 warm-up 0 b: loop 2319 ms (not kept)
+ab: lavapipe-3680-3979 round 0 a: loop 2303 ms, wall 3819 ms, other load 9%
+ab: lavapipe-3680-3979 round 0 b: loop 2357 ms, wall 3870 ms, other load 10%
+ab: lavapipe-3680-3979 round 1 b: loop 2445 ms, wall 3965 ms, other load 11%
+ab: lavapipe-3680-3979 round 1 a: loop 2355 ms, wall 3869 ms, other load 9%
+ab: lavapipe-3680-3979 round 2 a: loop 2431 ms, wall 3960 ms, other load 10%
+ab: lavapipe-3680-3979 round 2 b: loop 2312 ms, wall 3816 ms, other load 9%
+ab: lavapipe-3680-3979 round 3 b: loop 2353 ms, wall 3870 ms, other load 10%
+ab: lavapipe-3680-3979 round 3 a: loop 2406 ms, wall 3924 ms, other load 11%
+### lavapipe-3680-3979
+
+Adapter: llvmpipe (LLVM 21.1.7, 256 bits). Rounds: 4. Baseline: `a`.
+
+| Variant | Loop ms by round | Median | Min | Range | Change | Faster | Wall median | Other load | Stores |
+|---|---|---|---|---|---|---|---|---|---|
+| a | 2302.9, 2354.6, 2431.1, 2405.9 | 2380.2 | 2302.9 | 2302.9..2431.1 | baseline | - | 3896.4 | 11% | same |
+| b | 2356.5, 2445.3, 2311.6, 2352.9 | 2354.7 | 2311.6 | 2311.6..2445.3 | -1.1% | 2 of 4 | 3869.9 | 11% | same |
+
+Finished in 59.27s
