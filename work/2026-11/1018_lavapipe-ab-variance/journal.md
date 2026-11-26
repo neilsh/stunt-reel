@@ -49,7 +49,7 @@
 - **Verdict**: no verdict: the check stopped before round 2's `b`, so neither condition of the bar can be judged, and as the issue rules, it was not re-run; whether to run it again is the owner's call.
 - **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) § 3.
 
-## 2026-11-26: the owner-approved A/A re-run, stopped by the load check
+## 2026-11-25: the owner-approved A/A re-run, stopped by the load check
 
 `[Bounded Observation]`
 
