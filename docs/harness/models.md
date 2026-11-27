@@ -45,7 +45,7 @@ No label routes to Codex today ([`harness.md`](../harness.md#policy-any-agent) n
 ## Antigravity (Google)
 
 Model names below are the ones [`harness.md`](../harness.md#antigravity) uses.
-The context figures come from search results quoting Google's Gemini API pages, unchecked against the Antigravity docs, whose host was unreachable.
+The 1M and 135K figures come from search results quoting the Gemini API page for the `antigravity-preview` model, unchecked against the Antigravity docs, whose host was unreachable.
 
 | Class | Model | Notes |
 | --- | --- | --- |
