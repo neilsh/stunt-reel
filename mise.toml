@@ -421,8 +421,8 @@ if { bash .claude/cloud-setup.sh --cloud &&
 else
   echo "cloud-session-start FAILED: tools, game archives, game builds or SUPERSET.ALL may be missing; see $log and mise run cloud-assets -- status"
 fi
-# The cloud setup installs kache for the Rust build (#814) and warms an unwarmed store (the setup
-# run's snapshot normally holds a warm one, so this rerun skips the build). Export it to the session's
+# The cloud setup installs kache for the Rust build (#814) and warms an unwarmed store (a snapshot that kept
+# a warmed store makes this rerun skip the build). Export it to the session's
 # later commands when the wrapper is there: a setup that failed leaves cargo uncached, not broken.
 if [ -x /opt/kache/bin/kache ] && [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   printf '%s\n' \

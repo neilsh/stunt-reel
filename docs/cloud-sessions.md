@@ -67,10 +67,8 @@ The SessionStart hook exports `RUSTC_WRAPPER=/opt/kache/bin/kache`, `CARGO_INCRE
 `CARGO_INCREMENTAL=0` turns off incremental compilation for the whole session, so an edit-and-rebuild loop is slower than one with incremental compilation on.
 To bypass the cache for one command, run `RUSTC_WRAPPER= cargo build ...`; for the rest of the session, append `unset RUSTC_WRAPPER CARGO_INCREMENTAL` to `$CLAUDE_ENV_FILE`, which is sourced before every command, so a one-off `unset` does not last.
 On ripgrep and bat, kache's hits survived a different checkout path and `CARGO_HOME` (98% and 98.6% of units); the C-heavy build scripts still missed across paths, about 28 s of bat's build ([#814](https://github.com/neilsh/stunt-reel/issues/814)).
-On 2026-11-27, in one cloud container, a cold `cargo build --locked` of this workspace took 54 s through kache (285 of 285 units missed) against 46 s with no wrapper; the same build after deleting `target/` took 2.6 s with 248 of 248 units hit, and a copy of the checkout at `/root/other/sr` took 2.6 s with 6 more units, all hits.
+On 2026-11-27, in one cloud container, a cold `cargo build --locked` of this workspace took 54 s through kache (285 of 285 units missed) against 46 s with no wrapper; the same build after deleting `target/` took 2.6 s with 248 of 248 units hit, and a copy of the checkout at `/root/other/sr` took 2.5 s, with 6 more units hit and no new misses.
 That is a same-container, same-store measurement at one commit, not a session started from a snapshot, so the 90% its decision requires is still open: it needs a session from a snapshot that holds a warm store, at the snapshot's commit and after `main` moves.
-A session whose working directory is not the checkout (a project thread starts in `/home/user`) never loads `.claude/settings.json`, so no SessionStart hook runs there: no `environment:` line, no `/tmp/cloud-session-start.log`, no kache exports.
-Such a session exports the four variables itself, or `cd`s into the checkout before it starts; that is not fixable from the repository.
 The amendment to [ADR 0017](adr/0017-the-gate-keeps-no-compiler-cache.md) waits for that measurement.
 That measurement must also cover the warm build's default `CARGO_HOME` against the gate's `{{vars.primary}}/.cache/cargo`: the registry downloads twice, and the warm covers the `cargo build` units, not the `clippy` and `check` lanes.
 Whether the snapshot keeps the warmed checkout's `target/` is unverified.
@@ -102,13 +100,13 @@ The repo's SessionStart hook (`.claude/settings.json`) runs `mise run cloud-sess
 Outside a cloud session (`CLAUDE_CODE_REMOTE` unset) it does nothing; in one it runs the cloud setup again, then `mise run cloud-assets -- fetch --replace-unmarked`, `mise run game-builds` and `mise run superset-all`, with the environment variables set.
 `game-builds` makes `builds/unpatched` and `builds/patch3` from `corpus/stuntisl` and `corpus/patches`, the builds the reference rows name.
 The unpatched tree lacks the music files the corpus archive leaves out, and the Patch 3 tree lacks its six `.XMI`/`.XMM`/`.XMP` files (checked 2026-11-08: otherwise the same file list as a full-corpus build, and the five replaced files byte-identical).
-The setup script's cache outlives a pin change, so the rerun is what brings a new pin; work already done costs nothing, and its kache warm step runs in the setup script, not on this rerun ([The Rust build cache](#the-rust-build-cache)).
+The setup script's cache outlives a pin change, so the rerun is what brings a new pin; work already done costs nothing, and its kache warm step runs on this rerun only when the store has no `.warmed` marker, which counts against the hook's 600 s budget ([The Rust build cache](#the-rust-build-cache)).
 A new session can find an earlier session's archive folders already in its data root (seen 2026-11-08, mechanism unknown), so fetch replaces each one that holds another pin ([ADR 0042](adr/0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md)).
 The hook prints one line to the session, `ready` or `FAILED`, and appends the rest to `/tmp/cloud-session-start.log` under a `== <UTC time> <commit> ==` line per run, so a rerun keeps the startup run's output.
 
 A second hook, `mise run session-environment`, prints the session's environment at start, resume, clear and compaction, and in a cloud session the file to read ([`working-in-an-environment`](../.agents/skills/working-in-an-environment/SKILL.md)).
 
-The hook does not run where Claude Code loads no repo settings: a cloud session with several repositories, or a cloud thread of a project.
+The hook does not run where Claude Code loads no repo settings: a cloud session with several repositories, or a cloud thread of a project (a thread session of 2026-11-27, started in `/home/user`, had no log, no `environment:` line and no kache exports).
 Nothing is fetched there and no line is printed; run `CLAUDE_CODE_REMOTE=true mise run cloud-session-start` from the checkout instead.
 
 ## uv and the proxy CA
