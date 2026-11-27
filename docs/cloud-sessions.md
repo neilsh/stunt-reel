@@ -130,6 +130,9 @@ A REST read with such a token returned the pinned bytes from the primary machine
 Fetch writes `.cloud-assets-pin`, the archive's key, into each folder it unpacks.
 It skips a folder whose pin file names the pinned key and replaces one naming another, so a session takes a newer pin at its next start or resume.
 It never touches a folder without a pin file, such as the primary machine's corpus, unless given `--replace-unmarked`, which the SessionStart hook alone passes ([ADR 0042](adr/0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md)).
+An archive marked `on_demand = true` in the manifest is left out of a bare `fetch` and `verify`, so the hook skips it ([ADR 0039](adr/0039-cloud-sessions-fetch-pinned-game-archives.md#amendment-2026-11-27-on-demand-archives)).
+The video captures are such archives, one per film: fetch one with `mise run cloud-assets -- fetch captures-video-<film>` (for example `captures-video-ctry`), which unpacks `capture.avi` and `meta.json` into `captures-video/<film>/` of the data root.
+Each has no pin until its first upload, and fetching it before then stops with `has no pin`.
 `mise run cloud-assets -- status` shows each pin and what its folder holds, reading nothing remote.
 From `fetch`, exit 2 means `R2_ACCOUNT_ID`, or one half of the key pair, is unset, and a 403 means the key pair or the network secret cannot read the bucket.
 

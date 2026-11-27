@@ -65,3 +65,10 @@ each build.
 - A swap is coordinated between writers only; a reader holds a hard-link snapshot of the capture
   instead, so a swap cannot change what it reads
   ([ADR 0031](0031-a-reader-holds-a-snapshot-of-the-reference.md)).
+
+## Amendment 2026-11-27: video captures live in `captures-video/`
+
+A film's video capture is `captures-video/<film>/`, not `captures/<film>/video/` ([#1199](https://github.com/neilsh/stunt-reel/issues/1199)).
+A `captures` fetch replaces its whole folder when its pin changes ([ADR 0042](0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md)), which would delete a nested `video/`, and two archives cannot share one `into` ([ADR 0039](0039-cloud-sessions-fetch-pinned-game-archives.md)).
+The rule is unchanged: one capture per film, written beside the old one and swapped in.
+Frame captures and archives keep their paths.

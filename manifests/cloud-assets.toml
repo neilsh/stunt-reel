@@ -43,3 +43,45 @@ key = "v2/captures-289c5e30f095da44.tar.zst"
 sha256 = "289c5e30f095da443ccde190b6e64cf10f111b6ad2347b8c4e5cfccd4aa53c19"
 bytes = 3565129
 references = { balloon = "02f4b6e1f471d8cf8ae89c22afd47bc0be1df0b7d94931ca863b5a0911e1a67c", bomb = "87cdc192774204f14d77e95e39790b698f008ee56b07df322303380ffb3f1ae4", ctry = "06a8478962890b13d68b262e701018de3981cc361ab89d19e67b08c46d401fb1", intro = "072edcf3b12aea7c7f1b94b74951700aa87b9115d389e2770f0cb60fa8616c42", land = "5228fd20234501ef8122980fa46e097734caeb5dc076f4db1b28586b5705ad11", location = "088ab90c2875d992412096e6a86761d6cb626b96942b9e24fb27488fea7a5a6b", traintnl = "e3b55f7055c8ae5eefd16f1df2d6ba6da594a0719942f0fcd1b25a68cf6380f0" }
+
+[captures-video-ctry]
+into = "captures-video/ctry"
+include = ["capture.avi", "meta.json"]
+exclude = []
+on_demand = true
+
+[captures-video-intro]
+into = "captures-video/intro"
+include = ["capture.avi", "meta.json"]
+exclude = []
+on_demand = true
+
+[captures-video-land]
+into = "captures-video/land"
+include = ["capture.avi", "meta.json"]
+exclude = []
+on_demand = true
+
+[captures-video-balloon]
+into = "captures-video/balloon"
+include = ["capture.avi", "meta.json"]
+exclude = []
+on_demand = true
+
+[captures-video-traintnl]
+into = "captures-video/traintnl"
+include = ["capture.avi", "meta.json"]
+exclude = []
+on_demand = true
+
+[captures-video-bomb]
+into = "captures-video/bomb"
+include = ["capture.avi", "meta.json"]
+exclude = []
+on_demand = true
+
+[captures-video-location]
+into = "captures-video/location"
+include = ["capture.avi", "meta.json"]
+exclude = []
+on_demand = true

@@ -227,7 +227,7 @@ run = "uv run python python/scripts/capture_playone_reference.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
 [tasks.capture-video]
-description = "Record a film as one AVI with its tick and palette log into captures/<film>/video/ (mise run capture-video -- --film corpus/stisldem/VAULT/CTRY.FLM)"
+description = "Record a film as one AVI with its tick and palette log into captures-video/<film>/ (mise run capture-video -- --film corpus/stisldem/VAULT/CTRY.FLM)"
 depends = ["ensure"]
 run = "uv run python python/scripts/capture_video.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }

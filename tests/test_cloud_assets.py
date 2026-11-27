@@ -133,9 +133,55 @@ def test_committed_manifest_names_the_spec_archives() -> None:
     assert (m.bucket, m.version, sorted(m.archives)) == (
         "stunt-reel-internal-assets",
         "v2",
-        ["captures", "corpus-freeflight", "corpus-patches", "corpus-stisldem", "corpus-stuntisl"],
+        sorted(
+            [
+                "captures",
+                "corpus-freeflight",
+                "corpus-patches",
+                "corpus-stisldem",
+                "corpus-stuntisl",
+                *(f"captures-video-{f}" for f in VIDEO_FILMS),
+            ]
+        ),
     )
     assert m.archives["corpus-freeflight"].into == "corpus/siarchive/Developer/FreeFlight"
+
+
+VIDEO_FILMS = ("balloon", "bomb", "ctry", "intro", "land", "location", "traintnl")
+
+
+def test_committed_video_archives_are_on_demand_and_unpinned() -> None:
+    m = read_manifest()
+    for film in VIDEO_FILMS:
+        a = m.archives[f"captures-video-{film}"]
+        assert (a.into, a.include, a.on_demand, a.key) == (
+            f"captures-video/{film}",
+            ("capture.avi", "meta.json"),
+            True,
+            None,
+        )
+    assert not any(
+        a.on_demand for n, a in m.archives.items() if not n.startswith("captures-video-")
+    )
+
+
+def _entry(tmp_path: Path, extra: str) -> Archive:
+    path = tmp_path / "m.toml"
+    path.write_text(f'bucket = "b"\nversion = "v2"\n[x]\ninto = "x"\n{extra}\n', encoding="utf-8")
+    return read_manifest(path).archives["x"]
+
+
+def test_on_demand_defaults_false_and_parses_true(tmp_path: Path) -> None:
+    assert _entry(tmp_path, "").on_demand is False
+    assert _entry(tmp_path, "on_demand = true").on_demand is True
+    with pytest.raises(CloudAssetsError, match="on_demand"):
+        _entry(tmp_path, 'on_demand = "yes"')
+
+
+def test_on_demand_round_trips_through_the_manifest_text(tmp_path: Path) -> None:
+    path = tmp_path / "m.toml"
+    path.write_text(manifest_text(read_manifest(MANIFEST_PATH)), encoding="utf-8")
+    assert read_manifest(path).archives["captures-video-ctry"].on_demand is True
 
 
 def test_no_archive_folder_contains_another() -> None:
@@ -582,6 +628,57 @@ def test_fetch_refuses_an_archive_not_yet_packed(tmp_path: Path) -> None:
     with pytest.raises(CloudAssetsError, match="pack"):
         fetch(_unpinned(), ["corpus-stisldem"], tmp_path / "data", ENV, run=run)
     assert run.calls == []
+
+
+def _with_on_demand(m: Manifest) -> Manifest:
+    """*m* reduced to corpus-stuntisl plus an unpinned on-demand archive."""
+    video = Archive("v", "captures-video/v", ("capture.avi",), (), on_demand=True)
+    return dataclasses.replace(
+        m, archives={"corpus-stuntisl": m.archives["corpus-stuntisl"], "v": video}
+    )
+
+
+def test_bare_fetch_and_verify_skip_an_on_demand_archive(tmp_path: Path) -> None:
+    m, data = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    m = _with_on_demand(m)
+    lines = fetch(m, [], tmp_path / "data", ENV, run=FakeCurl(data))
+    assert lines == [f"fetched corpus-stuntisl -> {tmp_path / 'data' / 'corpus' / 'stuntisl'}"]
+    verified, ok = verify(m, [], ENV, run=FakeCurl(data))
+    assert ok
+    assert len(verified) == 1
+
+
+def test_fetch_naming_an_unpinned_on_demand_archive_raises(tmp_path: Path) -> None:
+    m, _ = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    run = FakeCurl()
+    with pytest.raises(CloudAssetsError, match="no pin"):
+        fetch(_with_on_demand(m), ["v"], tmp_path / "data", ENV, run=run)
+    assert run.calls == []
+
+
+def test_status_lists_an_unpinned_on_demand_archive_as_not_packed(tmp_path: Path) -> None:
+    m, _ = _packed(tmp_path, {"RES/GAME.RES": b"game"})
+    lines = status(_with_on_demand(m), tmp_path / "data", tmp_path / "out")
+    assert lines[1] == f"v: on demand, not packed; {tmp_path / 'data' / 'captures-video/v'} absent"
+
+
+def test_bare_upload_skips_an_unpacked_on_demand_archive(tmp_path: Path) -> None:
+    m, out = _packed_on_disk(tmp_path)
+    m = dataclasses.replace(
+        m,
+        archives={
+            "corpus-stuntisl": m.archives["corpus-stuntisl"],
+            "v": _with_on_demand(m).archives["v"],
+        },
+    )
+    calls: list[list[str]] = []
+
+    def run(argv: Sequence[str], _cwd: Path) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 0, "", "")
+
+    assert len(upload(m, [], out, run=run)) == 1
+    assert len(calls) == 1
 
 
 def test_fetch_needs_the_account_id(tmp_path: Path) -> None:

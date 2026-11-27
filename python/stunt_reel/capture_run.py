@@ -386,7 +386,8 @@ def execute(job: Job, plan_: Plan, *, launch: Launch = automation.launched) -> i
         if job.out is not None:
             out = _resolve(job.out)
             try:
-                capture_store.check_outside(out, store / parity_layout.capture_root())
+                for root in (parity_layout.capture_root(), parity_layout.video_root()):
+                    capture_store.check_outside(out, store / root)
             except ValueError as exc:
                 raise Refused(str(exc)) from exc
         else:

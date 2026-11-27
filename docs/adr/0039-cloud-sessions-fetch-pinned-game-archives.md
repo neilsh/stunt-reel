@@ -5,7 +5,7 @@
 accepted 2026-11-06 ([spec](../../work/2026-11/cloud-assets/spec.md) decisions 3, 4, 6 and 7,
 [plan](../../work/2026-11/cloud-assets/plan.md)). Amends
 [ADR 0022](0022-captures-are-add-only-beside-a-read-only-corpus.md) for provisioning only.
-Amended 2026-11-08 by [ADR 0042](0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md): fetch replaces a folder it wrote when the pin changes.
+Amended 2026-11-27: `on_demand` archives (below). Amended 2026-11-08 by [ADR 0042](0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md): fetch replaces a folder it wrote when the pin changes.
 
 ## Context
 
@@ -82,3 +82,12 @@ in it, the agent included, can read.
   primary machine's. Unverified: the Bearer network secret path in a cloud session (a REST
   read with a Bearer token returned the pinned bytes from the primary machine), and how long
   the setup script takes.
+
+## Amendment 2026-11-27: on-demand archives
+
+A manifest archive may set `on_demand = true` ([#1199](https://github.com/neilsh/stunt-reel/issues/1199)).
+A command given no names (`fetch`, `verify`, `pack`, `upload`) leaves it out, so the SessionStart hook's bare `fetch` does not download it and an unpacked one does not fail the hook.
+Naming it works as for any archive, and an unpinned one still stops with `has no pin`.
+`status` lists it, as `on demand, not packed` until its first pack, and never fails on it.
+The seven `captures-video-<film>` archives are on demand: a session that wants a film's video capture runs `mise run cloud-assets -- fetch captures-video-<film>`.
+Bare `upload` still puts a packed on-demand archive in the bucket, and bare `pack` does not rebuild one; name it to pack it.
