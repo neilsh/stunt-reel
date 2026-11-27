@@ -6,6 +6,7 @@
 //! code that starts from a previous run's report. Loading either side's planes, and the check
 //! that both sides share a raster, sit beside them.
 
+use super::ParityError;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -54,38 +55,43 @@ impl<'a> ReportFrames<'a> {
     }
 
     /// The captured frame `row` scored: the one of its ordinal, which must show its film tick.
-    pub(super) fn frame(&self, row: &FrameReport) -> Result<&'a CapturedFrame, String> {
+    pub(super) fn frame(&self, row: &FrameReport) -> Result<&'a CapturedFrame, ParityError> {
         let frame = u32::try_from(row.ordinal)
             .ok()
             .and_then(|ordinal| self.by_ordinal.get(&ordinal))
-            .ok_or_else(|| format!("frame {} missing from the capture", row.ordinal))?;
+            .ok_or_else(|| {
+                ParityError::Input(format!("frame {} missing from the capture", row.ordinal))
+            })?;
         if u64::from(frame.film_tick) != row.film_tick {
-            return Err(format!(
+            return Err(ParityError::Input(format!(
                 "frame {} of the capture shows film tick {}, but the report scored it at {}",
                 row.ordinal, frame.film_tick, row.film_tick
-            ));
+            )));
         }
         Ok(frame)
     }
 }
 
 /// Loads a captured frame from the capture directory `dir`: its index plane and palette.
-pub(super) fn load_captured(dir: &Path, frame: &CapturedFrame) -> Result<ReferenceFrame, String> {
+pub(super) fn load_captured(
+    dir: &Path,
+    frame: &CapturedFrame,
+) -> Result<ReferenceFrame, ParityError> {
     let (indices, palette) =
         load_reference(&dir.join(&frame.frame_file), &dir.join(&frame.palette_file))?;
     Ok(ReferenceFrame { indices, palette })
 }
 
 /// Refuses a render whose raster is not the capture's, naming the flags that re-render it.
-pub(super) fn check_geometry(capture: &Geometry, render: &Geometry) -> Result<(), String> {
+pub(super) fn check_geometry(capture: &Geometry, render: &Geometry) -> Result<(), ParityError> {
     if render.width == capture.width && render.height == capture.height {
         return Ok(());
     }
-    Err(format!(
+    Err(ParityError::Input(format!(
         "render geometry {}x{} differs from the capture's {}x{}; re-render \
          with --width {} --height {}",
         render.width, render.height, capture.width, capture.height, capture.width, capture.height
-    ))
+    )))
 }
 
 #[cfg(test)]
@@ -194,11 +200,14 @@ mod tests {
         // Ordinals need not start at 1 or be dense for the lookup to hold.
         let frames = [frame(3, 7), frame(5, 12)];
         let rows = ReportFrames::new(&frames);
-        assert_eq!(rows.frame(&row(5, 12)), Ok(&frames[1]));
+        assert_eq!(
+            rows.frame(&row(5, 12)).unwrap().film_tick,
+            frames[1].film_tick
+        );
         let missing = rows.frame(&row(4, 7)).unwrap_err();
-        assert!(missing.contains("frame 4 missing"), "{missing}");
+        assert!(missing.to_string().contains("frame 4 missing"), "{missing}");
         let moved = rows.frame(&row(3, 8)).unwrap_err();
-        assert!(moved.contains("film tick 7"), "{moved}");
+        assert!(moved.to_string().contains("film tick 7"), "{moved}");
     }
 
     #[test]
@@ -208,7 +217,7 @@ mod tests {
             height: 200,
             viewport_rows: None,
         };
-        assert_eq!(check_geometry(&capture, &capture), Ok(()));
+        check_geometry(&capture, &capture).unwrap();
         let error = check_geometry(
             &capture,
             &Geometry {
@@ -217,6 +226,9 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert!(error.contains("--width 320 --height 200"), "{error}");
+        assert!(
+            error.to_string().contains("--width 320 --height 200"),
+            "{error}"
+        );
     }
 }

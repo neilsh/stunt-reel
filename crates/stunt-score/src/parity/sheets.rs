@@ -1,5 +1,6 @@
 //! Contact sheets: reference | test | overlay | index-map panels as RGB PNGs.
 
+use super::ParityError;
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::path::Path;
@@ -75,7 +76,7 @@ impl<'a> ContactSheets<'a> {
         ordinal: usize,
         scored_ssim: Option<f32>,
         panels: ContactPanels,
-    ) -> Result<(), String> {
+    ) -> Result<(), ParityError> {
         if self.fixed.contains(&ordinal) {
             write_contact_sheet(self.out_dir, ordinal, &panels)?;
             self.written.insert(ordinal);
@@ -87,7 +88,7 @@ impl<'a> ContactSheets<'a> {
     }
 
     /// Writes the worst-scoring frames' sheets that a fixed ordinal did not already write.
-    pub(super) fn finish(mut self) -> Result<(), String> {
+    pub(super) fn finish(mut self) -> Result<(), ParityError> {
         for (_ssim, ordinal, panels) in self.worst.into_entries() {
             if self.written.insert(ordinal) {
                 write_contact_sheet(self.out_dir, ordinal, &panels)?;
@@ -276,7 +277,7 @@ pub(super) fn write_contact_sheet(
     out_dir: &Path,
     ordinal: usize,
     panels: &ContactPanels,
-) -> Result<(), String> {
+) -> Result<(), ParityError> {
     let path = out_dir.join(format!("contact_{ordinal:04}.png"));
     write_panel_sheet(
         &path,
@@ -291,7 +292,7 @@ pub(super) fn write_contact_sheet(
 
 /// Writes 320x240 RGB panels side by side, separated by [`CONTACT_SHEET_GAP`] pixels, as one
 /// 8-bit RGB PNG.
-pub(super) fn write_panel_sheet(path: &Path, panels: &[&[u8]]) -> Result<(), String> {
+pub(super) fn write_panel_sheet(path: &Path, panels: &[&[u8]]) -> Result<(), ParityError> {
     let width = MODE13H_WIDTH;
     let height = ASPECT_CORRECTED_HEIGHT;
     let panel_stride = width + CONTACT_SHEET_GAP;
@@ -300,10 +301,10 @@ pub(super) fn write_panel_sheet(path: &Path, panels: &[&[u8]]) -> Result<(), Str
 
     for (panel_index, panel) in panels.iter().enumerate() {
         if panel.len() < width * height * 3 {
-            return Err(format!(
+            return Err(ParityError::Input(format!(
                 "panel {panel_index} holds {} bytes, fewer than {width}x{height}x3",
                 panel.len()
-            ));
+            )));
         }
         let sheet_rows = buffer.chunks_exact_mut(sheet_width * 3);
         for (sheet_row, panel_row) in sheet_rows.zip(panel.chunks_exact(width * 3)) {
@@ -314,8 +315,8 @@ pub(super) fn write_panel_sheet(path: &Path, panels: &[&[u8]]) -> Result<(), Str
         }
     }
 
-    let too_large = |_| "contact sheet is too large for an image";
-    let file = File::create(path).map_err(|e| format!("write {}: {e}", path.display()))?;
+    let too_large = |_| ParityError::Input("contact sheet is too large for an image".to_string());
+    let file = File::create(path).map_err(ParityError::io("write", path))?;
     let mut encoder = png::Encoder::new(
         file,
         u32::try_from(sheet_width).map_err(too_large)?,
@@ -323,7 +324,10 @@ pub(super) fn write_panel_sheet(path: &Path, panels: &[&[u8]]) -> Result<(), Str
     );
     encoder.set_color(png::ColorType::Rgb);
     encoder.set_depth(png::BitDepth::Eight);
-    let encode = |error: png::EncodingError| format!("write {}: {error}", path.display());
+    let encode = |source: png::EncodingError| ParityError::Png {
+        path: path.to_path_buf(),
+        source,
+    };
     let mut writer = encoder.write_header().map_err(encode)?;
     writer.write_image_data(&buffer).map_err(encode)?;
     writer.finish().map_err(encode)

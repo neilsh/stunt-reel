@@ -1,5 +1,6 @@
 //! `--compare`: previous-run comparison, `compare.json` and before/after sheets.
 
+use super::ParityError;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -31,28 +32,30 @@ pub(super) fn run_compare(
     previous_path: &Path,
     report: &Report,
     frames: &ReportFrames<'_>,
-) -> Result<(), String> {
-    let previous =
-        parity_artifacts::read_report(previous_path).map_err(|error| error.to_string())?;
-    let comparison = compare_reports(&previous, report)
-        .map_err(|e| format!("compare with {}: {e}", previous_path.display()))?;
+) -> Result<(), ParityError> {
+    let previous = parity_artifacts::read_report(previous_path)?;
+    let comparison = compare_reports(&previous, report).map_err(|e| {
+        ParityError::Input(format!("compare with {}: {e}", previous_path.display()))
+    })?;
 
     let verdict = match args.compare_test.as_deref() {
         Some(previous_render) => judge(args, previous_render, report, frames)?,
         None => None,
     };
 
-    let mut document = comparison.to_json();
-    if let (Some(verdict), Some(object)) = (&verdict, document.as_object_mut()) {
-        object.insert("verdict".to_string(), verdict.to_json());
-    }
+    let document = comparison.document(verdict.as_ref());
+    // Written through a `Value`, as the document always was: serialising the `f32` fields
+    // directly would print their shortest `f32` form, not the `f64` digits `compare.json` holds.
+    let value = serde_json::to_value(&document).map_err(|source| ParityError::Serialize {
+        what: "comparison",
+        source,
+    })?;
+    let text = serde_json::to_string_pretty(&value).map_err(|source| ParityError::Serialize {
+        what: "comparison",
+        source,
+    })?;
     let compare_path = args.output.join("compare.json");
-    fs::write(
-        &compare_path,
-        serde_json::to_string_pretty(&document)
-            .map_err(|e| format!("serialize comparison: {e}"))?,
-    )
-    .map_err(|e| format!("write {}: {e}", compare_path.display()))?;
+    fs::write(&compare_path, text).map_err(ParityError::io("write", &compare_path))?;
     println!("{}", comparison.summary());
     match (&verdict, args.compare_test.as_deref()) {
         (Some(verdict), _) => println!("{}", verdict.summary()),
@@ -71,7 +74,7 @@ pub(super) fn run_compare(
             return Ok(());
         }
     };
-    let mut after_store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
+    let mut after_store = RenderStore::open(&args.test)?;
     let rows: BTreeMap<u64, _> = report
         .per_frame
         .iter()
@@ -97,9 +100,11 @@ pub(super) fn run_compare(
             println!("[compare] no {label} frame: sheet skipped");
             continue;
         };
-        let row = rows
-            .get(&film_tick)
-            .ok_or_else(|| format!("film_tick {film_tick} missing from the fresh report"))?;
+        let row = rows.get(&film_tick).ok_or_else(|| {
+            ParityError::Input(format!(
+                "film_tick {film_tick} missing from the fresh report"
+            ))
+        })?;
         let captured_frame = frames.frame(row)?;
         let tick = captured_frame.render_tick();
         if !before_store.holds(tick) {
@@ -171,11 +176,11 @@ fn judge(
     previous_render: &Path,
     report: &Report,
     frames: &ReportFrames<'_>,
-) -> Result<Option<Verdict>, String> {
+) -> Result<Option<Verdict>, ParityError> {
     let Ok(mut before_store) = RenderStore::open(previous_render) else {
         return Ok(None);
     };
-    let mut after_store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
+    let mut after_store = RenderStore::open(&args.test)?;
     let mut judged = Vec::with_capacity(report.per_frame.len());
     for entry in &report.per_frame {
         let captured_frame = frames.frame(entry)?;
@@ -257,6 +262,49 @@ mod tests {
         );
         assert_eq!(sheet.height() as usize, ASPECT_CORRECTED_HEIGHT);
         assert_eq!(sheet.color(), image::ColorType::Rgb8);
+    }
+
+    /// Runs the compare on synthetic renders and returns `compare.json` as written. `previous`
+    /// is the earlier render; the fresh one always holds ticks 7 and 12.
+    fn compare_json_of(tmp: &TempDir, name: &str, previous: &Path) -> String {
+        let base = tmp.join(&format!("base_{name}"));
+        run_parity(&tmp.join("ref"), previous, &base).expect("baseline");
+        let out = tmp.join(&format!("out_{name}"));
+        run(&Options {
+            compare: Some(base.join("report.json")),
+            compare_test: Some(previous.to_path_buf()),
+            ..Options::new(tmp.join("ref"), tmp.join("cur"), out.clone())
+        })
+        .expect("compare");
+        fs::read_to_string(out.join("compare.json")).unwrap()
+    }
+
+    /// `compare.json` is pinned byte for byte, so the typed writer must reproduce the
+    /// document it replaced. The `partial` run holds no tick 12 in the previous render, so
+    /// its `before_after_ssim` is `null`.
+    #[test]
+    fn compare_json_matches_the_pinned_documents() {
+        let tmp = TempDir::new("compare_json_pin");
+        write_reference(&tmp.join("ref"), &[7, 12], true);
+        write_render_store(
+            &tmp.join("cur"),
+            &[(7, 0x8000, Picture::Grey), (12, 0x8000, Picture::Matching)],
+        );
+        let full = tmp.join("prev_full");
+        write_render(&full, &[7, 12]);
+        let partial = tmp.join("prev_partial");
+        write_render(&partial, &[7]);
+
+        let full_json = compare_json_of(&tmp, "full", &full);
+        let partial_json = compare_json_of(&tmp, "partial", &partial);
+        assert_eq!(
+            format!("{full_json}\n"),
+            include_str!("golden/compare_full.json")
+        );
+        assert_eq!(
+            format!("{partial_json}\n"),
+            include_str!("golden/compare_partial.json")
+        );
     }
 
     #[test]

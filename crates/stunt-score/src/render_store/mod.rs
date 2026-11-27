@@ -148,25 +148,25 @@ pub(crate) fn check_derivable(
     indices: &[u8],
     rgba: &[u8],
     width: u32,
-) -> Result<(), String> {
+) -> Result<(), crate::parity::ParityError> {
     if rgba.len() != indices.len() * 4 {
-        return Err(format!(
+        return Err(crate::parity::ParityError::Input(format!(
             "the picture holds {} RGBA bytes for {} pixels",
             rgba.len(),
             indices.len()
-        ));
+        )));
     }
     for (pixel, (&index, colour)) in indices.iter().zip(rgba.as_chunks::<4>().0).enumerate() {
         let expected = palette_rgb(palette, index);
         if (colour[0], colour[1], colour[2]) != expected {
             let width = width.max(1) as usize;
-            return Err(format!(
+            return Err(crate::parity::ParityError::Input(format!(
                 "pixel ({}, {}) is {:?} but palette[{index}] is {expected:?}, so the picture is \
                  not derivable from the index plane",
                 pixel % width,
                 pixel / width,
                 (colour[0], colour[1], colour[2])
-            ));
+            )));
         }
     }
     Ok(())

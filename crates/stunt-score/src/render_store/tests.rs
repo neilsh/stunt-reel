@@ -286,7 +286,9 @@ fn a_picture_that_is_not_palette_lookup_is_refused() {
     rgba[4] = 9;
     let error = check_derivable(&palette, &indices, &rgba, 3).unwrap_err();
     assert!(
-        error.contains("pixel (1, 0) is (9, 2, 2) but palette[2] is (2, 2, 2)"),
+        error
+            .to_string()
+            .contains("pixel (1, 0) is (9, 2, 2) but palette[2] is (2, 2, 2)"),
         "{error}"
     );
 }

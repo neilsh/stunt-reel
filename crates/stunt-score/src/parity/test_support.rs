@@ -222,7 +222,11 @@ pub(super) fn write_version_1_render(dir: &Path) {
     .unwrap();
 }
 
-pub(super) fn run_parity(reference: &Path, test: &Path, output: &Path) -> Result<(), String> {
+pub(super) fn run_parity(
+    reference: &Path,
+    test: &Path,
+    output: &Path,
+) -> Result<(), crate::parity::ParityError> {
     run(&Options::new(
         reference.to_path_buf(),
         test.to_path_buf(),
