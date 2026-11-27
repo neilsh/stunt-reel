@@ -151,7 +151,7 @@ _Source: [whole-film video](../../work/2026-11/distill-capture-dosbox-automation
   `[Established]` from the source (`src/lua/lua_engine.{h,cpp}`, `DefaultInstructionLimit`); no REST parameter sets it.
   The old per-frame trace cost about 92 instructions on a composed frame and 723 on another: about 10,900 or 1,380 frames a script (`[Bounded Observation]`).
 * **`capture-video`'s row with the slot words fits `LOCATION.FLM`** (`[Bounded Observation]`, two runs): 11,616 frames ended `hold` under the million, so the row costs under about 86 instructions per frame including boot.
-  The Lua host reports no count, so the earlier estimate of 0.6 to 0.7M for the film (`[Supported Inference]`) is unchecked.
+  The Lua host reports no count, so [#1194's](https://github.com/neilsh/stunt-reel/issues/1194#issuecomment-7227024791) estimate of 0.6 to 0.7M for the film (`[Supported Inference]`) is unchecked.
 * **Patch #3's `PLAYONE.EXE` stalls on the retail `NewPLAY` archives of `TOD.FLM` and `INTRO.FLM`** (`[Supported Inference]`, one run per pairing): `TOD.FLM`'s clock falls to 0 near tick 200, `INTRO.FLM` holds its title card, so the trace spends its budget waiting for a held clock.
   Changing only the executable or only the archive makes each play; the engine files did not matter on `TOD.FLM`.
   Compare `BIGMAN` in [`patch3.md` § 3](patch3.md#3-which-build-each-film-needs).

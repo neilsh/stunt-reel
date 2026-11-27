@@ -16,7 +16,7 @@ Two runs of `mise run capture-video -- --film corpus/stuntisl/VAULT/LOCATION.FLM
 | 2 | hold | 11,616 | 118 | 19,996,314 B | 2,622,941 B | 185 s |
 
 * Both runs finished before the budget ran out, so the row costs under about 86 instructions per frame, the million divided by 11,616 frames, boot and tail included.
-  The count itself is not exposed, so the 0.6 to 0.7M estimate stands unmeasured.
+  The count itself is not exposed, so the 0.6 to 0.7M estimate ([#1194 budget check](https://github.com/neilsh/stunt-reel/issues/1194#issuecomment-7227024791)) stands unmeasured.
 * The two runs' `capture.avi` share one SHA-256 (`16f37fb3980c1b98a0fa2cf3d28bfb22c4a6fcacb250a568ab23a63f0df656ad`), and their `log` and `palettes` objects (`frame`, `film_tick`, `global_tick`, `slot_clock`, `slot_ticks`) are equal.
 * `slot_ticks` runs 0 to 2 in the log; `slot_clock` runs 3 to 8,266 with 7,897 distinct values.
 * The previous row's `capture.avi` was 19,996,314 bytes (issue #1194, 2026-11-27 comment), the same length as both runs here.
