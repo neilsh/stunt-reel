@@ -133,6 +133,14 @@ impl OffscreenTarget {
         }
     }
 
+    /// The rectangle the scene is drawn into, `[x, y, width, height]` in target pixels: the top
+    /// `viewport_rows` rows, or the whole target. The viewport is set to it, and the modern
+    /// vignette centres on it (`CameraGpuResources::upload_view`).
+    pub(super) fn view_rect(&self) -> [f32; 4] {
+        let rows = self.viewport_rows.unwrap_or(self.size.height);
+        [0.0, 0.0, self.size.width as f32, rows as f32]
+    }
+
     /// Clears both targets, runs the draw inside the pass, copies the page into a readback buffer
     /// and submits it, then retires the oldest page once two frames are in flight, so at most one
     /// stays queued between calls.
@@ -193,8 +201,9 @@ impl OffscreenTarget {
                 multiview_mask: None,
             });
 
-            if let Some(rows) = self.viewport_rows {
-                rpass.set_viewport(0.0, 0.0, self.size.width as f32, rows as f32, 0.0, 1.0);
+            if self.viewport_rows.is_some() {
+                let [x, y, width, height] = self.view_rect();
+                rpass.set_viewport(x, y, width, height, 0.0, 1.0);
             }
             draw(&mut rpass);
         }

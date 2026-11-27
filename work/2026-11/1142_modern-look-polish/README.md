@@ -2,7 +2,7 @@
 title: "The modern look has no fill light, smooth sky or smooth shading"
 started: 2026-11-26
 issue: 1142
-outcome: ""
+outcome: "`--look modern` is lit with a sky fill and smooth shading, draws a smooth gradient sky and soft sun, and takes an optional `--grade` and `--vignette`, off by default; the parity stores of seven reference films stay byte-identical on lavapipe at each step."
 ---
 
 # The modern look has no fill light, smooth sky or smooth shading

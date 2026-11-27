@@ -516,7 +516,9 @@ fn fs_sky_plane(in: SkyVertexOutput) -> PlaneOutput {
 // points of its own beside the parity ones above, which keep their code. Viewer-only: never
 // scored or stored (docs/SPEC.md [I3]). It reuses `vertex_output`, so the pixel snapping and the
 // culling are the parity look's, and the plane output keeps `fragment_index`'s whole index.
-// Its sky (`fs_sky_modern`) is a smooth gradient reusing `vs_sky`.
+// Its sky (`fs_sky_modern`) is a smooth gradient reusing `vs_sky`. Both end in `modern_finish`, the
+// optional colour grade and vignette (`--grade`, `--vignette`); the letterbox bars have their own
+// pipeline and take neither.
 
 // The sun and fog the modern entry points read (camera.rs `ModernUniform`).
 struct ModernUniform {
@@ -535,6 +537,17 @@ struct ModernUniform {
     // x: the cosine of the sun glow's inner angle (full strength within it); y: the cosine of its
     // outer angle (none beyond it); z: the glow's strength at its centre.
     glow: vec4<f32>,
+    // The colour grade: x: saturation, y: contrast about mid-grey, z: the warm shift (red up by
+    // this much, green by 0.35 of it, blue down by it); w is 1 when the grade is on, 0 when it
+    // is off and skipped.
+    grade: vec4<f32>,
+    // The vignette: x: the darkening at the view's corners, 0 when off; y, z: the radius, as a
+    // share of the half-diagonal from the view's centre, where the darkening starts and where it
+    // is full.
+    vignette: vec4<f32>,
+    // The view rectangle the scene is drawn into, in target pixels: x, y of its top-left corner,
+    // then its width and height. Written where the viewport is set, after the rest.
+    view: vec4<f32>,
 };
 
 @group(0) @binding(1) var<uniform> modern: ModernUniform;
@@ -687,6 +700,30 @@ fn modern_tint(colour: vec3<f32>) -> vec3<f32> {
     return colour / max(dot(colour, vec3<f32>(0.299, 0.587, 0.114)), 1e-4);
 }
 
+// The optional finish on a modern fragment's colour, in the target's sRGB values: `grade` then
+// `vignette`, each skipped when off so that with both off the colour is untouched. The grade
+// scales the colour's distance from its luma by the saturation, its distance from mid-grey by the
+// contrast, then adds the warm shift (`grade.z` to red, 0.35 of it to green, minus it to blue).
+// The vignette scales the colour by `1 - strength * smoothstep(r0, r1, r)`, `r` the fragment's
+// distance from the view's centre over the view's half-diagonal.
+fn modern_finish(colour: vec3<f32>, frag_xy: vec2<f32>) -> vec3<f32> {
+    var rgb = colour;
+    if (modern.grade.w != 0.0) {
+        let luma = dot(rgb, vec3<f32>(0.2126, 0.7152, 0.0722));
+        rgb = mix(vec3<f32>(luma), rgb, modern.grade.x);
+        rgb = (rgb - 0.5) * modern.grade.y + 0.5;
+        rgb = rgb + modern.grade.z * vec3<f32>(1.0, 0.35, -1.0);
+        rgb = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    if (modern.vignette.x > 0.0 && modern.view.z > 0.0 && modern.view.w > 0.0) {
+        let centre = modern.view.xy + 0.5 * modern.view.zw;
+        let r = length(frag_xy - centre) / (0.5 * length(modern.view.zw));
+        let edge = smoothstep(modern.vignette.y, modern.vignette.z, r);
+        rgb = rgb * (1.0 - modern.vignette.x * edge);
+    }
+    return rgb;
+}
+
 // The colour of a fragment under the sun, the sky fill and the fog. Lighting is in RGB, not a
 // palette row: the base is the palette colour at full brightness, the blend of the two entries
 // either side of the fractional index `s`, so a Gouraud ramp is smooth where the parity look
@@ -696,7 +733,7 @@ fn modern_tint(colour: vec3<f32>) -> vec3<f32> {
 // down, tinted by the zenith and horizon sky colours; the cap keeps a lit facet no brighter than
 // its parity colour. A pre-shaded polygon, a disc and a line with no facet (a ZLINETO) have a
 // zero normal: no light, no fill, their ramp smoothed. Distance then mixes the horizon sky in
-// (`modern.fog.y` is past `modern.fog.x`, camera.rs `ModernUniform`).
+// (`modern.fog.y` is past `modern.fog.x`, camera.rs `ModernUniform`), and `modern_finish` ends it.
 fn modern_colour(in: ModernVertexOutput, s: f32) -> vec4<f32> {
     let i0 = i32(floor(s));
     let i1 = min(i0 + 1, 255);
@@ -722,7 +759,7 @@ fn modern_colour(in: ModernVertexOutput, s: f32) -> vec4<f32> {
         0.0,
         1.0,
     );
-    return vec4<f32>(mix(base, fog, amount), 1.0);
+    return vec4<f32>(modern_finish(mix(base, fog, amount), in.clip_position.xy), 1.0);
 }
 
 @fragment
@@ -787,14 +824,14 @@ fn modern_sky(ndc: vec2<f32>) -> vec3<f32> {
 
 @fragment
 fn fs_sky_modern(in: SkyVertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(modern_sky(in.ndc), 1.0);
+    return vec4<f32>(modern_finish(modern_sky(in.ndc), in.clip_position.xy), 1.0);
 }
 
 // The plane keeps the parity sky's index (`fs_sky_plane`), so picking and the layer plane see it.
 @fragment
 fn fs_sky_modern_plane(in: SkyVertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
-    out.color = vec4<f32>(modern_sky(in.ndc), 1.0);
+    out.color = vec4<f32>(modern_finish(modern_sky(in.ndc), in.clip_position.xy), 1.0);
     out.plane = vec2<u32>(sky_index(in.ndc), 0u);
     return out;
 }

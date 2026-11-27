@@ -143,8 +143,21 @@ pub enum Look {
     /// Flat Mode 13h palette indices, as `PLAYONE` draws them.
     #[default]
     Mode13h,
-    /// Lambert lighting against the film's sun and fog toward the horizon sky.
+    /// Lambert lighting against the film's sun and fog toward the horizon sky, with the
+    /// [`ModernEffects`] that are on.
     Modern,
+}
+
+/// The optional finish `--look modern` puts on its colours, each off by default.
+///
+/// Neither changes any other look, and with both off the page is byte-identical to one rendered
+/// without them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ModernEffects {
+    /// A colour grade: slightly more saturation and contrast and a warm shift.
+    pub grade: bool,
+    /// A vignette: the view's corners darkened.
+    pub vignette: bool,
 }
 
 /// What every open renderer does identically for both destinations.
@@ -160,6 +173,8 @@ pub struct RenderOptions {
     pub software_only: bool,
     /// How the film is shaded; only [`Look::Mode13h`] output is scored or stored.
     pub look: Look,
+    /// The finish the modern look adds; ignored by every other look.
+    pub effects: ModernEffects,
 }
 
 impl Default for RenderOptions {
@@ -168,6 +183,7 @@ impl Default for RenderOptions {
             clear_palette_index: DEFAULT_CLEAR_PALETTE_INDEX,
             software_only: false,
             look: Look::Mode13h,
+            effects: ModernEffects::default(),
         }
     }
 }
@@ -406,7 +422,7 @@ impl Renderer {
     ) -> Result<Self, RenderError> {
         let adapter = offscreen_adapter(options)?;
         let (device, queue) = open_device(&adapter)?;
-        let camera_resources = CameraGpuResources::new(&device, options.look);
+        let camera_resources = CameraGpuResources::new(&device, options.look, options.effects);
         let palette_lut = PaletteLut::new(&device, &queue);
         let pipelines = RenderPipelines::new_with_plane(
             &device,
@@ -459,7 +475,7 @@ impl Renderer {
             .create_surface(window)
             .map_err(|error| RenderError::SurfaceCreate(error.to_string()))?;
         let (adapter, device, queue) = acquire(&instance, Some(&surface), options)?;
-        let camera_resources = CameraGpuResources::new(&device, options.look);
+        let camera_resources = CameraGpuResources::new(&device, options.look, options.effects);
         let palette_lut = PaletteLut::new(&device, &queue);
         let surface_target = SurfaceTarget::new(surface, &adapter, &device)?;
         let pipelines = RenderPipelines::new(
@@ -603,6 +619,7 @@ impl Renderer {
             frame,
             camera.or(squeezed.as_ref()),
         );
+        camera_resources.upload_view(queue, target.view_rect());
 
         let (r, g, b) = palette_lut.rgb_float(*clear_palette_index);
         let clear_color = wgpu::Color {
@@ -749,6 +766,7 @@ impl Renderer {
             });
 
             rpass.set_viewport(vp_x, vp_y, vp_w, vp_h, 0.0, 1.0);
+            camera_resources.upload_view(queue, [vp_x, vp_y, vp_w, vp_h]);
             rpass.set_scissor_rect(sc_x, sc_y, sc_w, sc_h);
             scene_pass.draw(&mut rpass, pipelines, camera_resources, palette_lut);
 

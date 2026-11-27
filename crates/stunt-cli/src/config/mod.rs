@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use clap::error::ErrorKind;
 use clap::{CommandFactory as _, FromArgMatches as _, Parser};
 
-use stunt_render::{Look, RenderOptions};
+use stunt_render::{Look, ModernEffects, RenderOptions};
 
 use crate::{export, film_slots, link, shape_views, sod_census, sod_trace};
 
@@ -103,6 +103,12 @@ struct Options {
     /// or modern (viewer-only lighting and fog; not with --out-dir, whose store holds Mode 13h)
     #[arg(long, value_enum, value_name = "LOOK", default_value_t = LookArg::Mode13h)]
     look: LookArg,
+    /// With --look modern: grade the colour (a little more saturation and contrast, a warm shift)
+    #[arg(long)]
+    grade: bool,
+    /// With --look modern: darken the view's corners
+    #[arg(long)]
+    vignette: bool,
     /// Run offscreen without opening a window
     #[arg(long)]
     headless: bool,
@@ -177,6 +183,8 @@ pub(crate) struct CliConfig {
     pub software_only: bool,
     /// How the film is shaded (`--look`); only the default is ever scored or stored.
     pub look: Look,
+    /// The finish `--look modern` adds (`--grade`, `--vignette`); both off for any other look.
+    pub effects: ModernEffects,
     pub headless: bool,
     /// Print the resident memory at each stage of a headless render (`--report-memory`).
     pub report_memory: bool,
@@ -215,6 +223,7 @@ impl CliConfig {
             clear_palette_index: self.clear_index,
             software_only: self.software_only,
             look: self.look,
+            effects: self.effects,
         }
     }
 
@@ -240,6 +249,8 @@ impl CliConfig {
             clear_index,
             software_only,
             look,
+            grade,
+            vignette,
             headless,
             report_memory,
             report_timing,
@@ -324,6 +335,14 @@ impl CliConfig {
             );
         }
 
+        for (flag, on) in [("--grade", grade), ("--vignette", vignette)] {
+            if on && look != LookArg::Modern {
+                return Err(format!(
+                    "{flag} finishes the modern look's colours; add --look modern"
+                ));
+            }
+        }
+
         if workers > 1 {
             if out_dir.is_none() {
                 return Err(
@@ -366,6 +385,7 @@ impl CliConfig {
             clear_index,
             software_only,
             look: look.into(),
+            effects: ModernEffects { grade, vignette },
             headless,
             report_memory,
             report_timing,
