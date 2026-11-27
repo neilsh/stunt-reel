@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -186,3 +187,27 @@ def test_a_document_missing_a_column_is_refused(tmp_path: Path) -> None:
 def test_video_derived_is_a_dataclass_of_its_parts() -> None:
     derived = read_video_derived(FIXTURE)
     assert isinstance(derived, VideoDerived)
+
+
+def test_derive_and_pairing_keep_a_reference_check_made_from_the_same_files(
+    capture_dir: Path,
+) -> None:
+    video_derive = load_script()
+    derived = replace(derive_video(capture_dir), reference_check=check())
+    write_video_derived(capture_dir, derived)
+    assert video_derive.run_derive(capture_dir) == 0
+    assert read_video_derived(capture_dir).reference_check == check()
+    (capture_dir / VIDEO_FILE).write_bytes(b"another recording")
+    video_derive.run_derive(capture_dir)
+    assert read_video_derived(capture_dir).reference_check is None
+
+
+def load_script() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "video_derive", Path(__file__).parent.parent / "python" / "scripts" / "video_derive.py"
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

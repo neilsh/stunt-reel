@@ -39,6 +39,7 @@ A page that no frame equals is a `split` when each of its rows equals that row o
 `mise run video-derive -- pairing --dir <dir> --render <store>` against a store of the film's ticks `1..last` rendered on lavapipe (`render_film`, `--at-ticks`, software adapter) at this tree's `crates/`, SSIM of the luma over rows 0..184 with `bench/ssim.py`'s 11x11 windows at stride 8, no overlay mask.
 Frames are the last frame of each run of one `slot_clock` value (a run end), minus those in the two frames after a palette write, which the DAC may show in a lagged palette (`capture-dosbox-automation.md` § 4.5).
 That a run end is a whole picture was not established (a video frame can be torn between two buffers), so the figures describe run ends, not finished frames.
+The palette check (a page's index to video colour mapping, per page), the first-row against last-row comparison, the alignment counts and the key-sharing counts came from one-off scripts that are not committed; the offset, class and pairing figures come from `video-derive`.
 Control: the same render store scores the pinned pages' own `render_tick` against their tag (CTRY 0.9509 against 0.9493, LOCATION 0.9205 against 0.9016), the ADR's gain.
 
 **Replay.**
@@ -68,7 +69,7 @@ The row of `emu_frame` is `emu_frame - capture_start_frame - 1` (the first row i
 Exact, split and band sum to the pages in every row.
 `CTRY`'s offsets are the plan's baseline (0 on 63, -1 on 57) in the plan's base, which is one higher than this one; its median, minimum and 31 exact pages repeat.
 Every page's video frame lies inside the `-8..+8` window (0 skipped).
-Of the mismatched pages, no page is explained by a palette alone: for each of the 90 mismatched CTRY pages and 376 LOCATION pages some palette index shows two video colours on one page, which a palette (DAC lag) difference alone would not give (the comment of 2026-11-27 on #1194 reached the same for CTRY with the working palette log).
+Of the mismatched pages, no page is explained by a palette alone: for each of the 90 mismatched CTRY pages and 376 LOCATION pages some palette index shows two video colours on one page, which a palette (DAC lag) difference alone would not give ([#1200's comment 7228671938](https://github.com/neilsh/stunt-reel/issues/1200#issuecomment-7228671938) reached the same for CTRY with the working palette log).
 
 **Pairing rule on run ends.** Frames compared, then the best offset of the `render_tick` pairing, mean SSIM with the `render_tick` pairing and with the tag, and the frames where the two ticks differ and the rule scores higher:
 
@@ -88,6 +89,8 @@ Of the mismatched pages, no page is explained by a palette alone: for each of th
 * `slot_ticks` is not constant in a run: of the runs of two or more frames, it varies in 393 of 578 (CTRY), 315 of 527 (LAND), 424 of 497 (BALLOON), 315 of 471 (TRAINTNL), 991 of 1,506 (BOMB), 1,058 of 1,601 (INTRO) and 2,455 of 3,533 (LOCATION).
   The commonest CTRY pattern in a two-frame run is 1 then 0 (386 runs).
 * Taking the words from the first row of each run instead of its last scored below the last row on six films (CTRY above by 0.0009).
+
+Compared counts are frames with all seven render offsets in the store (CTRY 1,099); the key-sharing counts (CTRY 592 of 1,100 frames) are over every kept run end (1,100), whether or not a render exists.
 
 **Verdict.** Adopted for the code: `derived.json` keeps `render_tick` per row by the ADR's rule, `finished` is left out, and `palette_step` marks the write frame.
 The rule's gain over the tag holds on run ends for four of seven films and is below it by at most 0.0014 on three, so it is not refuted; whether run ends are whole pictures is the open part.

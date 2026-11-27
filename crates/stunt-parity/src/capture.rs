@@ -43,6 +43,19 @@ pub struct CapturedFrame {
     pub palette_file: String,
 }
 
+/// The render-store tick ADR 0057 pairs a frame with: `slot_clock - slot_ticks + 1`, or
+/// `film_tick` without both words or with a ticks word above the clock.
+#[must_use]
+pub fn render_tick(film_tick: u32, slot_clock: Option<u32>, slot_ticks: Option<u32>) -> u32 {
+    match (slot_clock, slot_ticks) {
+        (Some(clock), Some(ticks)) => clock
+            .checked_sub(ticks)
+            .and_then(|state| state.checked_add(1))
+            .unwrap_or(film_tick),
+        _ => film_tick,
+    }
+}
+
 impl CapturedFrame {
     /// The render-store tick this page is scored against.
     ///
@@ -52,13 +65,7 @@ impl CapturedFrame {
     /// exceeds its clock, takes its tag: the state at `film_tick - 1`.
     #[must_use]
     pub fn render_tick(&self) -> u32 {
-        match (self.slot_clock, self.slot_ticks) {
-            (Some(clock), Some(ticks)) => clock
-                .checked_sub(ticks)
-                .and_then(|state| state.checked_add(1))
-                .unwrap_or(self.film_tick),
-            _ => self.film_tick,
-        }
+        render_tick(self.film_tick, self.slot_clock, self.slot_ticks)
     }
 }
 

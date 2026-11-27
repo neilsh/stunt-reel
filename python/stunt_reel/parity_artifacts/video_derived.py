@@ -27,6 +27,7 @@ from stunt_reel.parity_artifacts._fields import (
     _write_json,
     _wrong_type,
 )
+from stunt_reel.parity_artifacts.capture import render_tick
 from stunt_reel.parity_artifacts.video import VIDEO_FILE, VideoCapture, load_video_capture
 
 if TYPE_CHECKING:
@@ -185,17 +186,6 @@ class VideoDerived:
         for name in ("render_tick", "palette_step"):
             if getattr(self.frames, name) != getattr(columns, name):
                 raise _derived_error(f"column {name} differs from the capture's derivation", path)
-
-
-def render_tick(film_tick: int, slot_clock: int | None, slot_ticks: int | None) -> int:
-    """The render-store tick a frame is paired with, as ``CapturedFrame.render_tick``.
-
-    ``slot_clock - slot_ticks + 1`` (ADR 0057), or *film_tick* without both words or with a ticks
-    word above the clock.
-    """
-    if slot_clock is None or slot_ticks is None or slot_ticks > slot_clock:
-        return film_tick
-    return slot_clock - slot_ticks + 1
 
 
 def derive_columns(capture: VideoCapture) -> tuple[DerivedRules, DerivedColumns]:

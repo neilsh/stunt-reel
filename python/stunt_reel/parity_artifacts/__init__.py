@@ -52,6 +52,7 @@ from stunt_reel.parity_artifacts.capture import (
     CaptureSet,
     read_capture,
     read_capture_palette,
+    render_tick,
     write_capture,
 )
 from stunt_reel.parity_artifacts.capture import (
@@ -141,7 +142,6 @@ from stunt_reel.parity_artifacts.video_derived import (
     derive_video,
     load_fresh_derived,
     read_video_derived,
-    render_tick,
     write_video_derived,
 )
 

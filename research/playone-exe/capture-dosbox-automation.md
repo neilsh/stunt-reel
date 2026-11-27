@@ -141,7 +141,7 @@ _Source: [torn pages](../../work/2026-11/distill-capture-dosbox-automation/journ
 * **Derived columns** (`mise run video-derive -- derive <film>`, local `derived.json`, never archived): `render_tick` by ADR 0057 per log row and `palette_step` on each palette write's frame.
   No `finished` column: the frame before a `slot_clock` change is not known to be a whole picture, because a video frame can be torn between the composed buffers (§ 4.5) and the neighbour rule that would spot it fails ([#1200 comment](https://github.com/neilsh/stunt-reel/issues/1200#issuecomment-7228756891)).
   An emulator-logged `composed` flag, which compares `A000` with both buffers each frame, was not built.
-* **Row *i* of the log is AVI frame *i*** (`[Bounded Observation]`, `CTRY.FLM`): 1,197 of 1,200 `slot_clock` changes coincide with a changed picture at shift 0, and 1,106 to 1,148 at each shift from -3 to +3.
+* **Row *i* of the log is AVI frame *i*** (`[Bounded Observation]`, `CTRY.FLM`): 1,197 of 1,200 `slot_clock` changes coincide with a changed picture at shift 0, and 1,106 to 1,148 at each other shift from -3 to +3.
   The row of `emu_frame` is `emu_frame - capture_start_frame - 1`; `video_index` is one above it.
 * **Two recordings of one film are identical** (`[Bounded Observation]`, `CTRY.FLM` and `LOCATION.FLM`, one pair each, Patch 3, stubbed samples): equal `capture.avi` and `meta.json` bytes.
   `LOCATION`'s AVI hash equals that of a recording made in another container.

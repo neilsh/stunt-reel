@@ -17,12 +17,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from pathlib import Path
 lazy from collections.abc import Sequence
 
 from stunt_reel import dataroot, parity_layout, references, video_check
 from stunt_reel.parity_artifacts import (
     RenderStore,
+    VideoDerived,
     derive_video,
     load_video_capture,
     read_video_derived,
@@ -53,7 +55,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     derive.add_argument("--dir", type=dataroot.data_path_arg, default=None)
     check = commands.add_parser("reference-check", help="compare with the pinned frame capture")
     add_target(check, film=True)
-    check.add_argument("--search", type=int, default=video_check.REFERENCE_SEARCH)
+    check.add_argument(
+        "--search",
+        type=int,
+        default=video_check.REFERENCE_SEARCH,
+        help="largest offset searched, at least 4",
+    )
     replay = commands.add_parser("replay", help="compare two recordings of one film")
     replay.add_argument("first", type=dataroot.data_path_arg)
     replay.add_argument("second", type=dataroot.data_path_arg)
@@ -88,9 +95,21 @@ def report(line: str) -> None:
     print(f"[video-derive] {line}", flush=True)
 
 
+def kept_check(directory: Path, derived: VideoDerived) -> VideoDerived:
+    """*derived* with the ``reference_check`` of the file already in *directory*, when that file
+    was derived from the same two files and its check still stands."""
+    try:
+        old = read_video_derived(directory)
+    except OSError, ValueError:
+        return derived
+    if old.source != derived.source or old.rules != derived.rules:
+        return derived
+    return replace(derived, reference_check=old.reference_check)
+
+
 def run_derive(directory: Path) -> int:
-    """Write ``derived.json`` for *directory*."""
-    derived = derive_video(directory)
+    """Write ``derived.json`` for *directory*, keeping a reference check made from the same files."""
+    derived = kept_check(directory, derive_video(directory))
     write_video_derived(directory, derived)
     rows = len(derived.frames.render_tick)
     report(
@@ -129,7 +148,7 @@ def run_replay(first: Path, second: Path) -> int:
 
 
 def run_pairing(directory: Path, render: Path | None, key_row: str) -> int:
-    """Test the pairing rule on *directory*'s finished frames."""
+    """Test the pairing rule on *directory*'s run-end frames."""
     capture = load_video_capture(directory)
     derived = read_video_derived(directory)
     store = RenderStore(render) if render is not None else None
@@ -145,7 +164,7 @@ def run_pairing(directory: Path, render: Path | None, key_row: str) -> int:
         f"slot_ticks varies in {check.ticks_vary} of those; words from the {key_row} row"
     )
     report(
-        f"{check.frames} frames, {check.finished} run ends, {check.in_palette_window} in a "
+        f"{check.frames} frames, {check.run_ends} run ends, {check.in_palette_window} in a "
         f"palette write's lag window, {check.compared} compared"
     )
     for name, groups in (("render_tick", check.by_render_tick), ("film_tick", check.by_film_tick)):

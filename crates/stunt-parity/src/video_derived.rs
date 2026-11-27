@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::capture::render_tick;
 use crate::error::ArtifactError;
 use crate::video::VideoCapture;
 
@@ -142,9 +143,7 @@ impl VideoCapture {
                 .zip(clock)
                 .zip(ticks)
                 .map(|((&tag, &clock), &ticks)| {
-                    clock
-                        .checked_sub(ticks)
-                        .map_or(tag, |state| u32::from(state) + 1)
+                    render_tick(tag, Some(u32::from(clock)), Some(u32::from(ticks)))
                 })
                 .collect(),
             None => log.film_tick.clone(),

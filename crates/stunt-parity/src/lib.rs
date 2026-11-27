@@ -31,7 +31,7 @@ pub mod report;
 pub mod video;
 pub mod video_derived;
 
-pub use capture::{CaptureSet, CapturedFrame};
+pub use capture::{CaptureSet, CapturedFrame, render_tick};
 pub use error::ArtifactError;
 pub use film::{FilmCheck, FilmField, FilmId};
 pub use render::{

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -10,7 +11,14 @@ import numpy as np
 import pytest
 
 from stunt_reel import video_check
-from stunt_reel.parity_artifacts import VIDEO_FILE, load_video_capture
+from stunt_reel.parity_artifacts import (
+    VIDEO_FILE,
+    CapturedFrame,
+    CaptureSet,
+    Geometry,
+    load_video_capture,
+    write_capture,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "parity" / "video"
 SYNTHETIC_AVI = FIXTURES / "synthetic.avi"
@@ -170,3 +178,42 @@ def test_pairing_without_a_render_groups_run_ends_by_key(tmp_path: Path) -> None
     assert merged.by_render_tick.shared == 1
     assert merged.by_render_tick.conflicting == 1
     assert merged.by_render_tick.conflicting_frames == 5
+
+
+def test_page_matches_pairs_classifies_and_rejects_a_narrow_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture = load_video_capture(FIXTURES / "with-slots")
+    capture = replace(capture, capture_start_frame=100, video_frames=60)
+    palette = np.random.default_rng(7).integers(0, 256, (256, 3), dtype=np.uint8)
+    pages = [np.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=np.uint8) + 10 * i for i in range(3)]
+    rgb = [palette[page] for page in pages]
+    emu = (120, 130, 140)
+    base = [e - 101 for e in emu]
+    decoded: dict[int, np.ndarray] = {
+        k: np.random.default_rng(k).integers(0, 256, (2, 4, 3), dtype=np.uint8) for k in range(60)
+    }
+    decoded[base[0] + 1] = rgb[0]
+    decoded[base[1]] = np.concatenate([rgb[1][:1], decoded[base[1]][1:]])
+    decoded[base[1] + 2] = np.concatenate([decoded[base[1] + 2][:1], rgb[1][1:]])
+    monkeypatch.setattr(video_check, "decode_frames", lambda *_args: decoded)
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    frames = tuple(
+        CapturedFrame(ordinal=i + 1, film_tick=i, frame_file=f"{i}.idx", palette_file="p.json")
+        for i in range(3)
+    )
+    write_capture(
+        reference,
+        CaptureSet(1, capture.film, Geometry(width=4, height=2), frames),
+        frame_diagnostics=[{"emu_frame": e} for e in emu],
+    )
+    (reference / "p.json").write_text(json.dumps(palette.tolist()), encoding="utf-8")
+    for i, page in enumerate(pages):
+        page.tofile(reference / f"{i}.idx")
+    matches, skipped = video_check.page_matches(tmp_path, capture, reference, rows=(0, 1), search=4)
+    assert skipped == 0
+    assert [m.kind for m in matches] == ["exact", "split", "band"]
+    assert [m.offset for m in matches[:2]] == [1, 0]
+    with pytest.raises(ValueError, match="search"):
+        video_check.page_matches(tmp_path, capture, reference, search=3)

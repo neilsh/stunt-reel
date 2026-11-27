@@ -36,6 +36,17 @@ CAPTURE_ORDINAL_WIDTH = 4
 CAPTURE_FRAMES_DIR = "frames"
 
 
+def render_tick(film_tick: int, slot_clock: int | None, slot_ticks: int | None) -> int:
+    """The render-store tick ADR 0057 pairs a frame with, as ``stunt_parity::render_tick``.
+
+    ``slot_clock - slot_ticks + 1``, or *film_tick* without both words or with a ticks word above
+    the clock.
+    """
+    if slot_clock is None or slot_ticks is None or slot_ticks > slot_clock:
+        return film_tick
+    return slot_clock - slot_ticks + 1
+
+
 @dataclass(frozen=True)
 class CapturedFrame:
     """One captured frame's place in a capture directory."""
@@ -57,9 +68,7 @@ class CapturedFrame:
         words name), which the store keys one above; without both words, or with a ticks word
         above the clock, it is the tag.
         """
-        if self.slot_clock is None or self.slot_ticks is None or self.slot_ticks > self.slot_clock:
-            return self.film_tick
-        return self.slot_clock - self.slot_ticks + 1
+        return render_tick(self.film_tick, self.slot_clock, self.slot_ticks)
 
 
 @dataclass(frozen=True)

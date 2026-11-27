@@ -2,7 +2,7 @@
 
 The kept pages of ``captures/<film>/frames`` are what parity scores; the video holds every frame
 PLAYONE drew. :func:`reference_check` maps each page's indices through its own palette and
-searches the video around ``emu_frame - capture_start_frame`` for the frame whose rows match best.
+searches the video around ``emu_frame - capture_start_frame - 1`` for the frame whose rows match best.
 :func:`replay_report` says whether two recordings of one film are the same. The AVI is decoded by
 ``ffmpeg``, whose ZMBV decoder matched the recorder byte for byte (``capture-dosbox-automation.md``
 § 4.6).
@@ -90,7 +90,7 @@ class PageMatch:
 
     ordinal: int
     emu_frame: int
-    #: Offset from ``emu_frame - capture_start_frame`` of the best frame, ties to the smallest.
+    #: Offset from ``emu_frame - capture_start_frame - 1`` of the best frame, ties to the smallest.
     offset: int
     #: Fraction of the compared pixels that are equal in RGB at that offset.
     equal: float
@@ -170,6 +170,8 @@ def page_matches(
     A page is searched at the video indices ``emu_frame - capture_start_frame - 1 + offset``; it is
     skipped unless every index of its window exists.
     """
+    if search < max(abs(edge) for edge in ROW_WINDOW):
+        raise ValueError(f"search is {search}, but a page's rows are classified over {ROW_WINDOW}")
     kept = read_capture(reference)
     meta = json.loads((reference / CAPTURE_META).read_text(encoding="utf-8"))
     emu_frames = {entry["ordinal"]: entry["emu_frame"] for entry in meta["frames"]}
@@ -322,7 +324,7 @@ class PairingCheck:
     #: run-end frame) or ``first`` (the frame the pass ran).
     key_row: str
     frames: int
-    finished: int  # run-end frames
+    run_ends: int
     #: Runs of one ``slot_clock`` value, those of two or more frames, and of those the runs whose
     #: ``slot_ticks`` is not the same on every row.
     runs: int
@@ -397,12 +399,12 @@ def pairing_check(
     if key_row not in ("last", "first"):
         raise ValueError(f"key_row is {key_row!r}, expected 'last' or 'first'")
     lag = _lag_window(capture)
-    finished = run_ends(capture)
-    keep = [i for i, done in enumerate(finished) if done and i not in lag]
+    ends = run_ends(capture)
+    keep = [i for i, done in enumerate(ends) if done and i not in lag]
     #: The row whose words name the picture of the run ending at each kept frame.
     first_of = {}
     start = 0
-    for i, done in enumerate(finished):
+    for i, done in enumerate(ends):
         if done:
             first_of[i] = start
             start = i + 1
@@ -448,9 +450,9 @@ def pairing_check(
             for a, b in multi
             if log.slot_ticks is not None and len(set(log.slot_ticks[a : b + 1])) > 1
         ),
-        frames=len(finished),
-        finished=sum(finished),
-        in_palette_window=sum(1 for i, done in enumerate(finished) if done and i in lag),
+        frames=len(ends),
+        run_ends=sum(ends),
+        in_palette_window=sum(1 for i, done in enumerate(ends) if done and i in lag),
         compared=len(kept),
         by_render_tick=_groups(ticks, shots),
         by_film_tick=_groups(tags, shots),
