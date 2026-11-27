@@ -73,7 +73,7 @@ Native `B30` and `B60` each spread at most `0.016%` over three repeats, and sett
 Three Cachegrind `B30` runs on the laptop's AMD Ryzen 7 7745HX (`avx2` and `avx512f`), with `count.sh` on a release build of `70b0f76` (not byte-identical to the cloud's, as the cloud's own second build was not), counted `28,161,524,166`, `28,161,662,364` and `28,161,498,289`: a median `0.008%` above the cloud's three unloaded repeats' and inside their range.
 Outside glibc's `malloc.c` and `memmove` the laptop's median is `0.0013%` below the cloud's; its three repeats sit just below the cloud's three unloaded ones, and one of them falls inside the range of all five cloud `B30` runs (`0.0027%`, with the loaded run and the second build).
 The stores matched the cloud's.
-So across these two machines a count agreed to within one machine's own repeat range, but on three repeats a side; a gate still compares two builds on one machine, with that machine's repeats.
+So the two machines' medians differed by less than either machine's own repeat range, though outside the allocator their three-repeat ranges just miss each other; a gate still compares two builds on one machine, with that machine's repeats.
 _Source: [WSL counts and perf runs](../../work/2026-11/1154_wsl-lavapipe-counts/journal.md#2026-11-27-perf-stat-and-valgrind-counts-on-wsl-2-against-the-clouds)._
 
 ## Ruled out
