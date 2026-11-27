@@ -193,7 +193,7 @@ def test_layout_for_names_each_build_by_hash(
     with pytest.raises(playone.UnknownBuild, match=r"no known PLAYONE\.EXE"):
         playone.layout_for(exe)
     fake = playone.PlayoneLayout(
-        "fake", hashlib.sha256(b"x").hexdigest(), 0x100, 1, 2, 3, (4, 5), 6
+        "fake", hashlib.sha256(b"x").hexdigest(), 0x100, 1, 2, 7, 8, 3, (4, 5), 6
     )
     monkeypatch.setattr(playone, "LAYOUTS", (*playone.LAYOUTS, fake))
     exe.write_bytes(b"x")
@@ -204,7 +204,7 @@ def test_the_patched_layout_moves_every_offset_by_the_same_amount() -> None:
     """Patch #3 relinked DGROUP lower and shifted its data down by 0x67A (patch3.md)."""
     old, new = playone.UNPATCHED, playone.PATCH3
     assert (old.ds, new.ds) == (0x0F46, 0x0E66)
-    for field in ("film_clock", "global_tick", "working_palette"):
+    for field in ("film_clock", "global_tick", "slot_clock", "slot_ticks", "working_palette"):
         assert getattr(old, field) - getattr(new, field) == 0x67A
 
 

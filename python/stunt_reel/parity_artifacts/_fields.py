@@ -129,6 +129,12 @@ def _optional_string(value: Any, path: Path | None, field_name: str) -> str | No
     return None if value is None else _as_string(value, path, field_name)
 
 
+def _optional_unsigned(
+    value: Any, path: Path | None, field_name: str, maximum: int = 0xFFFFFFFF
+) -> int | None:
+    return None if value is None else _as_unsigned(value, path, field_name, maximum)
+
+
 def _optional_int(value: Any, path: Path | None, field_name: str) -> int | None:
     return None if value is None else _as_int(value, path, field_name)
 

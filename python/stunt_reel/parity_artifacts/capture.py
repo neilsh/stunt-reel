@@ -14,6 +14,7 @@ from stunt_reel.parity_artifacts._fields import (
     _as_unsigned,
     _error,
     _optional_string,
+    _optional_unsigned,
     _read_json,
     _write_json,
     _wrong_type,
@@ -43,6 +44,22 @@ class CapturedFrame:
     film_tick: int
     frame_file: str
     palette_file: str
+    #: The slot pass's clock and the ticks word read as the page was kept; ``None`` for a
+    #: capture made before the harness logged them.
+    slot_clock: int | None = None
+    slot_ticks: int | None = None
+
+    @property
+    def render_tick(self) -> int:
+        """The render-store tick this page is scored against, as ``CapturedFrame::render_tick``.
+
+        The page shows the state at ``slot_clock - slot_ticks`` (the slot pass before the one the
+        words name), which the store keys one above; without both words, or with a ticks word
+        above the clock, it is the tag.
+        """
+        if self.slot_clock is None or self.slot_ticks is None or self.slot_ticks > self.slot_clock:
+            return self.film_tick
+        return self.slot_clock - self.slot_ticks + 1
 
 
 @dataclass(frozen=True)
@@ -124,7 +141,9 @@ _CAPTURE_FIELDS = frozenset(
     }
 )
 #: Per-frame fields the capture document owns; a diagnostic may not overwrite one.
-_CAPTURE_FRAME_FIELDS = frozenset({"ordinal", "film_tick", "frame_file", "palette_file"})
+_CAPTURE_FRAME_FIELDS = frozenset(
+    {"ordinal", "film_tick", "frame_file", "palette_file", "slot_clock", "slot_ticks"}
+)
 
 
 def _captured_frame_object(
@@ -142,6 +161,8 @@ def _captured_frame_object(
         film_tick=film_tick,
         frame_file=default_frame if frame_file is None else frame_file,
         palette_file=default_palette if palette_file is None else palette_file,
+        slot_clock=_optional_unsigned(frame.get("slot_clock"), path, f"{field_name}.slot_clock"),
+        slot_ticks=_optional_unsigned(frame.get("slot_ticks"), path, f"{field_name}.slot_ticks"),
     )
 
 
@@ -168,6 +189,21 @@ def _capture_object(document: Mapping[str, Any], path: Path | None) -> CaptureSe
     )
 
 
+def _frame_document(frame: CapturedFrame) -> dict[str, Any]:
+    """One frame entry; the clock words are written only when the harness read them."""
+    entry: dict[str, Any] = {
+        "ordinal": frame.ordinal,
+        "film_tick": frame.film_tick,
+        "frame_file": frame.frame_file,
+        "palette_file": frame.palette_file,
+    }
+    if frame.slot_clock is not None:
+        entry["slot_clock"] = frame.slot_clock
+    if frame.slot_ticks is not None:
+        entry["slot_ticks"] = frame.slot_ticks
+    return entry
+
+
 def _capture_document(capture: CaptureSet) -> dict[str, Any]:
     """The port's capture document, in the flat shape every capture already has."""
     document: dict[str, Any] = {"schema_version": capture.schema_version}
@@ -179,15 +215,7 @@ def _capture_document(capture: CaptureSet) -> dict[str, Any]:
         document["flm_sha256"] = capture.film.flm_sha256
     if capture.film.all_sha256 is not None:
         document["all_sha256"] = capture.film.all_sha256
-    document["frames"] = [
-        {
-            "ordinal": frame.ordinal,
-            "film_tick": frame.film_tick,
-            "frame_file": frame.frame_file,
-            "palette_file": frame.palette_file,
-        }
-        for frame in capture.frames
-    ]
+    document["frames"] = [_frame_document(frame) for frame in capture.frames]
     document["width"] = capture.geometry.width
     document["height"] = capture.geometry.height
     return document

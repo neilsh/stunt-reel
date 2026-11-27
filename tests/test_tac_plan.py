@@ -638,3 +638,16 @@ def test_a_window_pass_that_diverges_reports_no_done_line(
         )
 
     assert [line for line in lines if " done: " in line] == ["window pass 1/2 done: 1 frames"]
+
+
+def test_decode_dumps_reads_the_slot_words_a_window_pass_logs() -> None:
+    trace = plan.decode_trace("x5:100:1", FIRST)
+    page, palette = "x" + "00" * plan.FRAME_BYTES, "x" + "00" * plan.PALETTE_BYTES
+    output = {f"p{FIRST}": page, f"c{FIRST}": palette, f"s{FIRST}": "x9:1"}
+    assert plan.decode_dumps(output, [FIRST], 0, trace)[FIRST].slot_words == (9, 1)
+    # A dump pass that does not log them leaves the words unset.
+    del output[f"s{FIRST}"]
+    assert plan.decode_dumps(output, [FIRST], 0, trace)[FIRST].slot_words is None
+    output[f"s{FIRST}"] = "x9"
+    with pytest.raises(plan.PlanError, match="<clock>:<ticks>"):
+        plan.decode_dumps(output, [FIRST], 0, trace)

@@ -151,6 +151,9 @@ class Dump:
     ranges: tuple[bytes, ...]
     #: The clocks and words the dump pass itself read at this frame, in the step that read the page.
     entry: TraceEntry
+    #: The slot pass's clock and ticks word read in that step, when the pass logs them (a window
+    #: pass does); ``None`` otherwise.
+    slot_words: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -273,6 +276,20 @@ def _unhex(output: Mapping[str, Any], key: str, length: int | None = None) -> by
     return data
 
 
+def _slot_words(output: Mapping[str, Any], frame: int) -> tuple[int, int] | None:
+    """The ``s<frame>`` output (``x<clock>:<ticks>``) of a window pass; ``None`` when it has none."""
+    value = output.get(f"s{frame}")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.startswith("x"):
+        raise PlanError(f"dump output 's{frame}' lacks its letter prefix")
+    try:
+        clock, ticks = (int(part) for part in value[1:].split(":"))
+    except ValueError as error:
+        raise PlanError(f"dump output 's{frame}' is not <clock>:<ticks>: {value!r}") from error
+    return clock, ticks
+
+
 def decode_dumps(
     output: Mapping[str, Any], frames: Sequence[int], range_count: int, trace: Trace
 ) -> dict[int, Dump]:
@@ -284,6 +301,7 @@ def decode_dumps(
             palette6=_unhex(output, f"c{f}", PALETTE_BYTES),
             ranges=tuple(_unhex(output, f"m{f}_{n}") for n in range(1, range_count + 1)),
             entry=trace.entry(f),
+            slot_words=_slot_words(output, f),
         )
         for f in frames
     }

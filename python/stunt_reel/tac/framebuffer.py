@@ -89,7 +89,8 @@ def capture(
 
     Writes ``frames/tick_{ordinal:04d}.idx`` and ``frames/palettes_{ordinal:04d}.json`` under
     *out_dir*, ordinals from one in emulated-frame order (a file name only), then ``meta.json`` last; each
-    frame carries ``film_tick``, which parity matches on. *provenance* (when and by which
+    frame carries ``film_tick``, its tag, and the slot pass's ``slot_clock`` and ``slot_ticks``
+    when the window pass read them, which parity pairs the page with a render by. *provenance* (when and by which
     checkout) joins the diagnostics in meta.json, not the capture's identity. *layout* is the
     PLAYONE.EXE build run; its name and hash are recorded as ``playone_build`` and
     ``playone_sha256``. Returns what :func:`write_capture` returns.
@@ -152,6 +153,8 @@ def capture(
             CapturedFrame(
                 ordinal=ordinal,
                 film_tick=entry.film_tick,
+                slot_clock=None if dump.slot_words is None else dump.slot_words[0],
+                slot_ticks=None if dump.slot_words is None else dump.slot_words[1],
                 frame_file=f"{CAPTURE_FRAMES_DIR}/{frame_path.name}",
                 palette_file=f"{CAPTURE_FRAMES_DIR}/{palette_path.name}",
             )

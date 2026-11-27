@@ -2,10 +2,13 @@
 //!
 //! Reference frames are palette-index planes (`tick_NNNN.idx` + `palettes_NNNN.json`,
 //! numbered by capture order) dumped from the emulator's scanned-out page. Each frame's
-//! `meta.json` entry carries `film_tick`, the film clock read when it was captured.
+//! `meta.json` entry carries `film_tick`, the film clock read when it was captured, and, when the
+//! harness logged them, the slot pass's clock and ticks word.
 //! Rendered frames come from the render store `stuntreel --out-dir` writes, keyed by the
-//! 0-based 50 Hz tick they show, so a capture is compared against the render at the
-//! same `film_tick`. Captures that predate film-clock tagging are rejected.
+//! 0-based 50 Hz tick they show, so a capture is compared against the render at its
+//! `CapturedFrame::render_tick`: the state before the slot pass that drew the page, or, for a
+//! capture without the words, the one at `film_tick - 1`. Captures that predate film-clock
+//! tagging are rejected.
 //!
 //! Each matched pair is scored by `score::score_frame`. Scores follow Invariant `[I6]`:
 //! both sides are reduced to Rec. 601 luminance, stretched from 320x200 to the 320x240
@@ -342,12 +345,13 @@ fn score_matched(
             .get(&frame.ordinal)
             .ok_or_else(|| format!("captured frame {} has no sky mask", frame.ordinal))?;
         let reference = matched::load_captured(reference_dir, frame)?;
-        let render = load_render_frame(store, frame.film_tick)?;
+        let tick = frame.render_tick();
+        let render = load_render_frame(store, tick)?;
         let credits_missing = render.credits && !overlay_drawn(&render.layers);
         let score = score_frame(
             &reference,
             &RenderFrame {
-                controls: render_palettes.get(&frame.film_tick).copied(),
+                controls: render_palettes.get(&tick).copied(),
                 ..render
             },
             &capture_sky.sky,

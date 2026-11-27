@@ -65,6 +65,10 @@ class PlayoneLayout:
     dgroup_paragraph: int
     film_clock: int
     global_tick: int
+    #: DS offsets of the slot pass's clock and of the ticks word, which holds the ticks since the
+    #: previous slot pass; a window pass records both with the page it keeps.
+    slot_clock: int
+    slot_ticks: int
     working_palette: int
     #: DS offsets of the two words holding the composed pages' segments (the tear test).
     composed_pages: tuple[int, int]
@@ -85,6 +89,8 @@ UNPATCHED = PlayoneLayout(
     dgroup_paragraph=DGROUP_PARAGRAPH,
     film_clock=FILM_CLOCK_OFFSET,
     global_tick=GLOBAL_TICK_OFFSET,
+    slot_clock=0x489A,
+    slot_ticks=0x22DC,
     working_palette=WORKING_PALETTE_OFFSET,
     composed_pages=(0x22CA, 0x22CC),
     work_segment_pointer=0x0542,
@@ -96,6 +102,9 @@ PATCH3 = PlayoneLayout(
     dgroup_paragraph=0x0C71,
     film_clock=0x421C,
     global_tick=0x1C3E,
+    # Inferred from the uniform 0x67A shift, as `composed_pages` below is.
+    slot_clock=0x4220,
+    slot_ticks=0x1C62,
     working_palette=0x20EE,
     # Inferred from the uniform 0x67A shift, not read from code; a live tear rate checks it,
     # and a capture's composed_matches of zero would say the offsets read no real page.
