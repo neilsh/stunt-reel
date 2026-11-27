@@ -44,19 +44,20 @@ No label routes to Codex today ([`harness.md`](../harness.md#policy-any-agent) n
 
 ## Antigravity (Google)
 
-Model names below are the ones [`harness.md`](../harness.md#antigravity) already uses; context figures are from Google's Gemini API pages, unchecked against the Antigravity docs, whose host was unreachable.
+Model names below are the ones [`harness.md`](../harness.md#antigravity) uses.
+The context figures come from search results quoting Google's Gemini API pages, unchecked against the Antigravity docs, whose host was unreachable.
 
 | Class | Model | Notes |
 | --- | --- | --- |
 | Fast | `Gemini 4 Hydrogen` (`flash`) | Execution turns run here |
-| Mid | `Gemini 4 Hydrogen` | There is no separate mid model in our notes; use it for `medium` only when Sonnet is unavailable |
-| Flagship | `Gemini 4 Argon` | The orchestrator and planning model |
+| Mid | `Gemini 4 Hydrogen` | No separate mid model in our notes |
+| Flagship | `Argon` | The orchestrator and planning model |
 | Wide | Gemini models | About a 1M-token input window, but the Antigravity preview compacts near 135K; Antigravity also offers Claude models, with their own windows |
 
 ## dsh (DeepSeek Harness)
 
-"dsh" is [DeepSeek Harness](deepseek.md); this page assumes the model it drives is a DeepSeek model, and that is the one thing to confirm.
-Routing is fixed by policy: dsh takes `model-tier:light` only, with or without `wide`, so it needs no mid or flagship row.
+"dsh" is [DeepSeek Harness](deepseek.md); this page assumes the model it drives is a DeepSeek model, which needs confirming.
+Which issues dsh may take is the policy in [`harness.md`](../harness.md#policy-any-agent); since a tiered issue reaches dsh only at `model-tier:light`, this table has no mid or flagship row.
 
 | Class | Model | Notes |
 | --- | --- | --- |
