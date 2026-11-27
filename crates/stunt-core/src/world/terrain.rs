@@ -347,6 +347,7 @@ pub(super) fn push_terrain(
                 flags: FLAGS_UNSHADED,
                 scenery_class: SCENERY_TERRAIN,
                 decal_tie: 0,
+                list_rank: 0,
             });
         }
         for k in 1..(arena_index(area.verts.len()) - 1) {

@@ -11,7 +11,7 @@
 
 use std::ops::Range;
 
-use crate::outline::Outlined;
+use crate::outline::{Apex, Outlined, own_apexes};
 use glam::{Mat4, Vec3};
 use stunt_core::contracts::{
     CameraTransform, NodeId, SodModelIr, SodVertex, VERTEX_FLAG_DISC, VisibilityCondition,
@@ -273,7 +273,7 @@ impl GpuModel {
     ///
     /// Each vertex's apex ([`Outlined`]) is its own position, so no line corner is culled.
     pub fn from_ir(device: &wgpu::Device, queue: &wgpu::Queue, ir: &SodModelIr) -> Self {
-        Self::upload(device, queue, ir, &own_positions(ir), None)
+        Self::upload(device, queue, ir, &own_apexes(ir), None)
     }
 
     /// Uploads an outlined shape with its apexes, so its outline corners cull with the
@@ -301,13 +301,7 @@ impl GpuModel {
         outlined: fn(&SodVertex) -> bool,
         marks: &[u32],
     ) -> Self {
-        Self::upload(
-            device,
-            queue,
-            ir,
-            &own_positions(ir),
-            Some((outlined, marks)),
-        )
+        Self::upload(device, queue, ir, &own_apexes(ir), Some((outlined, marks)))
     }
 
     /// Uploads `ir`; `outlined` is [`Self::from_ir_outlined`]'s filter and marks.
@@ -315,7 +309,7 @@ impl GpuModel {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ir: &SodModelIr,
-        apex: &[[f32; 3]],
+        apex: &[Apex],
         outlined: Option<Outlines<'_>>,
     ) -> Self {
         let limit = device.limits().max_buffer_size;
@@ -760,7 +754,7 @@ impl GpuChunk {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         ir: &SodModelIr,
-        apex: &[[f32; 3]],
+        apex: &[Apex],
         n: usize,
         plan: &ChunkPlan,
         edges: &[u32],
@@ -792,7 +786,7 @@ impl GpuChunk {
         }
         let apex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("{}_apex_buffer{suffix}", ir.name)),
-            size: (plan.vertex_count.max(1) * size_of::<[f32; 3]>()) as u64,
+            size: (plan.vertex_count.max(1) * size_of::<Apex>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -831,7 +825,7 @@ impl GpuChunk {
 
     /// Writes `vertices`' windows of this chunk into its vertex buffer with one write, since
     /// each write allocates a staging buffer (`research/parity/lavapipe-render-time.md`).
-    fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex], apex: &[[f32; 3]]) {
+    fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex], apex: &[Apex]) {
         write_windows(queue, &self.apex_buffer, apex, &self.vertex_ranges);
         // An unsplit chunk is one window: write it straight from the source.
         if let [range] = self.vertex_ranges.as_slice() {
@@ -851,11 +845,6 @@ impl GpuChunk {
             queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&packed));
         }
     }
-}
-
-/// Each of `ir`'s vertices' own position, the apex that culls no line corner.
-fn own_positions(ir: &SodModelIr) -> Vec<[f32; 3]> {
-    ir.vertices.iter().map(|v| v.position).collect()
 }
 
 /// Writes `source`'s `ranges` back to back into `buffer` with one write; writes nothing when
@@ -1362,6 +1351,7 @@ mod tests {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         };
         let mut ir = SodModelIr::new("QUAD");
         ir.vertices = vec![
@@ -1410,6 +1400,7 @@ mod tests {
                 flags: 0,
                 scenery_class: 0,
                 decal_tie: 0,
+                list_rank: 0,
             })
             .collect();
         ir.indices = indices.to_vec();
@@ -1542,12 +1533,12 @@ mod tests {
         let ranges = [4..8, 0..2];
         let packed = packed_windows(&shape.apex, &ranges).expect("windows inside the shape");
         assert_eq!(packed.len(), 6);
-        let bits = |p: &[f32; 3]| p.map(f32::to_bits);
+        let bits = |p: &[f32]| p.iter().map(|c| c.to_bits()).collect::<Vec<_>>();
         let expected = shape.apex[4..8].iter().chain(&shape.apex[..2]);
         assert!(packed.iter().zip(expected).all(|(a, b)| bits(a) == bits(b)));
         // An outline corner's apex is not its own position; a filled vertex's is.
-        assert_ne!(bits(&packed[0]), bits(&shape.ir.vertices[4].position));
-        assert_eq!(bits(&packed[4]), bits(&shape.ir.vertices[0].position));
+        assert_ne!(bits(&packed[0][..3]), bits(&shape.ir.vertices[4].position));
+        assert_eq!(bits(&packed[4][..3]), bits(&shape.ir.vertices[0].position));
         assert!(packed_windows(&shape.apex, &[0..1000, 0..1]).is_none());
     }
 
@@ -1861,6 +1852,7 @@ mod tests {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         };
         let mut ir = SodModelIr::new("TWO");
         ir.vertices = vec![

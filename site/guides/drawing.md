@@ -39,9 +39,10 @@ That is how the original draws markings: it paints them after the surface beneat
 
 A modern graphics card does it differently, and Stunt Reel's renderer uses the card's depth buffer on purpose.
 The two agree wherever the nearer surface is also painted later, which is most of the frame.
-They part ways in three places.
+They part ways in four places.
 On ties, a depth buffer keeps whichever surface rounds nearer, so for markings, flat ground tiles and the ground itself we add rules that copy the painter's later-wins order.
 Where the painter's order puts a far surface over a near one, we copy it in one case: an explosion or other flat image that a model stamps on the screen goes where the original's walk of the scenery puts it, so in one frame the notes traced it covers a tower that stands nearer than it, as the original does.
+Inside a model made mostly of spheres, such as a tree or a bush, we copy the painter's order too: its later parts cover its earlier ones, so the leaves hide the trunk as they do in the original.
 Everywhere else the nearer surface wins.
 And a couple of choices the original makes every frame, which flat props count as ground tiles and which surfaces are the flat ground itself, we make once per film.
 The [render model note](../../research/parity/render-model.md) lists each stage and where our picture differs.

@@ -253,7 +253,12 @@ pub(crate) struct RawPolygon {
     pub is_decal: bool,
     /// Visibility condition inherited from `OP_IFVIS` sections.
     pub visibility: VisibilityCondition,
+    /// Whether this is one of an `OP_SPHERE`'s [`SPHERE_FACES`] faces, emitted back to back.
+    pub sphere: bool,
 }
+
+/// How many faces stand in for one `OP_SPHERE` ([`sphere_polygons`]'s icosahedron).
+pub(crate) const SPHERE_FACES: usize = 20;
 
 /// The six faces of `OP_BLOCK`'s cube of half-side `half` about `center` (model units).
 ///
@@ -302,6 +307,7 @@ fn block_polygons(
                 flags: 0,
                 is_decal: false,
                 visibility,
+                sphere: false,
             }
         })
         .collect()
@@ -324,7 +330,7 @@ fn sphere_polygons(
     const PHI: f32 = std::f32::consts::GOLDEN_RATIO;
     // Clockwise seen from outside, the winding the pipeline keeps (`FrontFace::Cw`), so the
     // near half draws: `PLAYONE` draws the sphere as a screen disc no side culls (`0x9DB5`).
-    const FACES: [[usize; 3]; 20] = [
+    const FACES: [[usize; 3]; SPHERE_FACES] = [
         [0, 5, 11],
         [0, 1, 5],
         [0, 7, 1],
@@ -391,6 +397,7 @@ fn sphere_polygons(
                 flags: 0,
                 is_decal: false,
                 visibility,
+                sphere: true,
             }
         })
         .collect()
@@ -469,6 +476,7 @@ fn disc_polygons(
             flags: VERTEX_FLAG_DISC,
             is_decal: false,
             visibility,
+            sphere: false,
         })
         .collect()
 }
@@ -499,6 +507,7 @@ fn line_polygons(
         flags: VERTEX_FLAG_LINE,
         is_decal: false,
         visibility,
+        sphere: false,
     })
 }
 
@@ -531,6 +540,7 @@ fn dot_polygons(
                 flags: 0,
                 is_decal: false,
                 visibility,
+                sphere: false,
             });
         }
     }
@@ -1321,6 +1331,7 @@ impl<'a> Vm<'a> {
                 flags: 0,
                 is_decal: false,
                 visibility: self.current_visibility,
+                sphere: false,
             });
         }
         Ok(())
@@ -1400,6 +1411,7 @@ impl<'a> Vm<'a> {
                 flags: 0,
                 is_decal: false,
                 visibility: self.current_visibility,
+                sphere: false,
             });
         }
         Ok(())

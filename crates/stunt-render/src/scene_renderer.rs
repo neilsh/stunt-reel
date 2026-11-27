@@ -1104,6 +1104,7 @@ fn sprite_ir(image: &SpriteImage) -> SodModelIr {
                 flags: VERTEX_FLAG_PRESHADED,
                 scenery_class: 0,
                 decal_tie: 0,
+                list_rank: 0,
             });
         }
         ir.indices
@@ -1156,6 +1157,7 @@ mod tests {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         };
         let mut ir = SodModelIr::new("QUAD");
         ir.vertices = vec![

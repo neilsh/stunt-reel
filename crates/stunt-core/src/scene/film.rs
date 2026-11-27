@@ -1046,6 +1046,7 @@ mod tests {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         };
         mesh.vertices = vec![corner; 3];
         mesh.indices = vec![0, 1, 2];

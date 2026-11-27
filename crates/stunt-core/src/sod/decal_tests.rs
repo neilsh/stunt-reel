@@ -91,6 +91,7 @@ fn test_challenge_i5_decal_on_each_plane_is_flagged_in_place() {
             flags: 0,
             is_decal: false,
             visibility: VisibilityCondition::Always,
+            sphere: false,
         };
 
         // Decal facet scaled 0.5x toward centroid of base facet
@@ -122,6 +123,7 @@ fn test_challenge_i5_decal_on_each_plane_is_flagged_in_place() {
             flags: 0,
             is_decal: false,
             visibility: VisibilityCondition::Always,
+            sphere: false,
         };
 
         // Check coplanar detection
@@ -172,6 +174,7 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // 1. Same plane y=0, but spatially disjoint (x in [50, 60], z in [50, 60])
@@ -188,6 +191,7 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     assert!(
         !is_coplanar_facet(&disjoint, &base, 1e-4, 1e-4),
@@ -208,6 +212,7 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     assert!(
         !is_coplanar_facet(&parallel_offset, &base, 1e-4, 1e-4),
@@ -229,6 +234,7 @@ fn test_challenge_i5_rejection_of_disjoint_and_noncoplanar_facets() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     assert!(
         !is_coplanar_facet(&tilted, &base, 1e-4, 1e-4),
@@ -252,6 +258,7 @@ fn test_coplanar_decal_geometry_resolution() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // Overlapping decal on y=0 plane
@@ -268,6 +275,7 @@ fn test_coplanar_decal_geometry_resolution() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // Disjoint polygon outside base bounds
@@ -284,6 +292,7 @@ fn test_coplanar_decal_geometry_resolution() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // Skewed polygon, tilted about z through the origin
@@ -300,6 +309,7 @@ fn test_coplanar_decal_geometry_resolution() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     assert!(is_coplanar_facet(&decal, &base, 1e-4, 1e-4));
@@ -334,6 +344,7 @@ fn test_polygon_bounds_and_overlap() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     let (min_b, max_b) = polygon_bounds(&p);
     assert_eq!(min_b, [-4.0, -2.0, -1.0]);
@@ -367,6 +378,7 @@ fn ground_decal_matches_its_base_by_winding() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     // Clockwise seen from above (+X right, -Z away): the edge cross product points down.
     let cw = |s: f32| vec![[0.0, 0.0, 0.0], [s, 0.0, 0.0], [0.0, 0.0, s]];
@@ -405,6 +417,7 @@ fn ground_square(x0: f32, z0: f32, s: f32, palette_index: u8) -> RawPolygon {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     }
 }
 
@@ -441,6 +454,7 @@ fn line(a: [f32; 3], b: [f32; 3]) -> RawPolygon {
         flags: crate::contracts::shape::VERTEX_FLAG_LINE,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     }
 }
 
@@ -480,6 +494,7 @@ fn a_panel_on_a_panel_on_a_wheel_disc_stacks_in_stream_order() {
             flags: 0,
             is_decal: false,
             visibility: VisibilityCondition::Always,
+            sphere: false,
         }
     };
     // `disc_polygons`: an octagon about (0, 1, 1), the copy facing -x first with its front
@@ -500,6 +515,7 @@ fn a_panel_on_a_panel_on_a_wheel_disc_stacks_in_stream_order() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     let disc_out = disc(outward, [-1.0, 0.0, 0.0]);
     let disc_in = disc(inward, [1.0, 0.0, 0.0]);
@@ -569,6 +585,7 @@ fn wall_facet(lo: [f32; 2], hi: [f32; 2], palette_index: u8) -> RawPolygon {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     }
 }
 

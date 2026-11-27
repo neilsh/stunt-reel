@@ -38,6 +38,7 @@ fn triangle(name: &str, visibility: VisibilityCondition) -> SodModelIr {
         flags: 4,
         scenery_class: 0,
         decal_tie: 0,
+        list_rank: 0,
     };
     let mut ir = SodModelIr::new(name);
     ir.vertices = vec![vertex(-1.0, -1.0), vertex(1.0, -1.0), vertex(0.0, 1.0)];
@@ -770,6 +771,7 @@ fn ground_gradient(half: f32, west: u8, east: u8) -> SodModelIr {
         flags: 4,
         scenery_class: 0,
         decal_tie: 0,
+        list_rank: 0,
     };
     let mut ir = SodModelIr::new("GROUND");
     ir.vertices = vec![
@@ -1118,6 +1120,7 @@ fn ground_vertex(x: f32, z: f32, palette_index: u8, flags: u8, class: u8) -> Sod
         flags,
         scenery_class: class,
         decal_tie: 0,
+        list_rank: 0,
     }
 }
 
@@ -1227,6 +1230,7 @@ fn a_ground_outline_does_not_cover_the_line_after_it() {
             flags: flags | UNSHADED,
             scenery_class: SCENERY_PROP,
             decal_tie: 0,
+            list_rank: 0,
         })
         .to_vec();
         let rail_indices = vec![0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2];
