@@ -20,8 +20,9 @@ faults over the ticks named, so a render with known errors can be scored by the 
 ``errors-make`` writes the error readout's sheets, ``ids.txt``, ``brief.md`` and ``run.json``
 into ``build/parity/bench/<film>/errors``; a Haiku subagent reads the brief and writes
 ``grades.txt``, and a second reads ``brief-2.md`` and writes ``grades-2.txt``. ``errors-disputes``
-lists the sheets the two passes disagree on, and the undisputed ones a large index mismatch routes, in ``brief-tiebreak.md`` for a Sonnet subagent, which
-writes ``grades-tiebreak.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
+lists the sheets the two passes disagree on, and the undisputed ones a large index mismatch
+routes, in ``brief-tiebreak.md`` for a Sonnet subagent, which writes
+``grades-tiebreak.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
 ``--against`` (those past ``min_change``, then the smaller moves) and, for a calibrating run, the calibration. ``errors-example`` commits one tick's
 sheet as an example of a category. ``errors-table`` prints the readout table of
 ``research/parity/batch.md`` from batch films' ``readout.json`` and ``report.json``. ``--batch`` reads a film the batch survey captured, rendered

@@ -20,13 +20,13 @@
 | clear | 21 | 6 | 0.0251 | 0.0388 | 0.0643 | 0.0820 | 0.1896 |
 
 The classes overlap across most of the range: quiet sheets sit lower on the whole, but a quarter of them are above 0.057, and the highest quiet sheet (BALLOON 749, 0.127) is above every clear sheet but three.
-The fraction is driven by the film as much as by the error: BALLOON's median sheet is 0.071, CTRY's 0.033.
+The fraction is driven by the film as much as by the error: BALLOON's median sheet is 0.070, CTRY's 0.030.
 All 9 quiet sheets above 0.06 carry an `other` note, and 6 of the notes name a palette or shading difference on the aircraft or balloon (for example BALLOON 749, "balloon envelope facet shading differs, geometry aligned"), so on those the graders saw the difference and judged it shading rather than missing it.
 The other 3 name a 1-pixel facet-edge offset (BALLOON 441), a propeller blade angle (INTRO 3125) and cockpit and strut detail drawn over the fuselage (TRAINTNL 1233).
 
 **Threshold.**
 The candidates for routing are the 44 undisputed sheets that are quiet or noted (38 quiet, 6 clear with a note).
-D4's rule, the lowest fraction above the 25th percentile of sheets with some category clear (0.0329) routing at most 2 candidates per film, gives 0.1232 and routes 2 sheets, both BALLOON, because BALLOON's whole film sits high.
+D4's rule, the lowest fraction above the 25th percentile of the 46 sheets some pass graded 2 or more (disputed or clear, 0.0329) routing at most 2 candidates per film, gives 0.1232 and routes 2 sheets, both BALLOON, because BALLOON's whole film sits high.
 That would leave the route nearly inert, so the threshold follows D4's budget of about 2 per film (about 14 for the seven) instead: `ROUTE_MISMATCH = 0.06` routes 13.
 
 | Threshold | Routed | Per film |

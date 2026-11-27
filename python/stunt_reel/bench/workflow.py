@@ -324,7 +324,8 @@ def make_run(
         # Binds the SSIM errors-table prints to the report these ticks were picked from.
         "report_digest": report_digest,
         # Each real sheet's share of unmasked palette indices that differ, by tick (the sheet
-        # ids stay out of this file); errors-disputes routes on it.
+        # ids stay out of this file); errors-disputes routes on it. A render with no index
+        # plane records no tick, so its sheets are never routed.
         "mismatch": mismatches,
         "route_mismatch": ROUTE_MISMATCH,
     }

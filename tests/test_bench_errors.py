@@ -918,6 +918,26 @@ def test_a_routed_sheet_takes_the_tiebreak_grade(run_inputs: dict[str, Path]) ->
     assert absent.ticks_2plus == (10,)
 
 
+def test_a_run_without_mismatch_routes_nothing(run_inputs: dict[str, Path]) -> None:
+    out = run_inputs["out"]
+    _make(run_inputs)
+    run = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    del run["mismatch"]
+    (out / "run.json").write_text(json.dumps(run), encoding="utf-8")
+    _grade_all(run_inputs)
+    _grade_second(run_inputs)
+    assert write_disputes(out, run_inputs["taxonomy"]) == (0, 0)
+
+
+def test_a_calibrating_run_records_mismatch_for_real_ticks_only(
+    run_inputs: dict[str, Path],
+) -> None:
+    out = run_inputs["out"]
+    _make(run_inputs, recapture=run_inputs["capture"])
+    run = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert sorted(run["mismatch"]) == sorted(str(t) for t in run["ticks"])
+
+
 def test_agreeing_passes_need_no_tiebreak(run_inputs: dict[str, Path]) -> None:
     out = run_inputs["out"]
     _make(run_inputs)
