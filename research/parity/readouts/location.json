@@ -14,8 +14,8 @@
     5611,
     6161
   ],
-  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "0bf45598ec8b722b724715b5589f6f35ac39da46d5bad22f35c80345f662e7c1",
+  "categories_digest": "a2414c545c352c5d8e951be19a1b1b859f357ab0ea0d1e9c24269265a0c54b9d",
+  "render_digest": "143ffdabbb015ac32485d51046d5a21da90a6706c353acab930917b84a0a945c",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -26,7 +26,7 @@
     {
       "category": "aircraft-shape-broken",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
@@ -38,7 +38,7 @@
     {
       "category": "aircraft-misplaced",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -55,8 +55,10 @@
     },
     {
       "category": "scenery-missing",
-      "ticks_2plus": [],
-      "mean": 0.3333333333333333,
+      "ticks_2plus": [
+        1772
+      ],
+      "mean": 0.5,
       "ungraded": 0
     },
     {
@@ -67,19 +69,18 @@
     },
     {
       "category": "ground-shade-edges",
-      "ticks_2plus": [
-        1772
-      ],
-      "mean": 0.25,
+      "ticks_2plus": [],
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
       "category": "background-misregistration",
       "ticks_2plus": [
         683,
+        1233,
         3422
       ],
-      "mean": 1.1666666666666667,
+      "mean": 1.0833333333333333,
       "ungraded": 0
     },
     {
@@ -91,7 +92,7 @@
     {
       "category": "shadow-shape-wrong",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -135,15 +136,20 @@
       "ticks_2plus": [],
       "mean": 0.0,
       "ungraded": 0
+    },
+    {
+      "category": "object-misaligned",
+      "ticks_2plus": [],
+      "mean": 0.3333333333333333,
+      "ungraded": 0
     }
   ],
   "other": {
-    "683": "stray white streak near the ridge in render",
-    "1772": "tree blobs drawn as angular polygons instead of round shapes, shifted in size and position",
-    "2322": "stray white figure on the far beach in render, not in capture",
-    "5611": "lattice bushes and stack edges differ in detail"
+    "1233": "aircraft body shading dither differs slightly",
+    "2322": "render draws a small black figure where the capture shows none"
   },
   "missing": 0,
   "unknown": [],
-  "disputed": 2
+  "disputed": 3,
+  "pairing": "render_tick"
 }

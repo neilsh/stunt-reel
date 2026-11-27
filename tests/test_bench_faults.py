@@ -33,6 +33,7 @@ def test_fault_keys_and_order() -> None:
         "advance:1",
         "advance:3",
         "advance:5",
+        "props_shift:8",
         "flat_terrain",
         "flicker:3",
         "flicker:10",

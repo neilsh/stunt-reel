@@ -96,7 +96,7 @@ _Source: [2026-11-08: recapture noise on Patch 3](../../work/2026-11/300_patch3-
 This readout names and grades the large differences.
 Each sheet shows capture and render, their overlay and index-mismatch map with its key, and a close-up of the actors ([`error-readout.md`](../../.agents/skills/improving-render-parity/error-readout.md) describes the panels), and a grader gives it a grade 0–3 per category of [`error-categories.toml`](error-categories.toml) (adding one is one block there).
 It runs as `mise run parity-bench -- errors-make`, `errors-disputes` and `errors-score` by the [`error-readout`](../../.agents/skills/improving-render-parity/error-readout.md) procedure.
-What it established (`[Bounded Observation]`, 2026-10-31 to 2026-11-01, renders at `2461289`, `CTRY.FLM` and `INTRO.FLM`, on sheets whose third panel was a grey luma difference; the overlay and index map replaced it on 2026-11-26 and have not been calibrated yet):
+What it established (`[Bounded Observation]`, 2026-10-31 to 2026-11-01, renders at `2461289`, `CTRY.FLM` and `INTRO.FLM`, on sheets whose third panel was a grey luma difference; the overlay and index map replaced it on 2026-11-26 and were first calibrated on 2026-11-27, CTRY at `6d511d1`, in the `object-misaligned` bullet below):
 
 * **It finds missing or wrong objects, not misregistration.**
   In the first grading neither Haiku nor Sonnet invented an error on a control, both caught most removed aircraft, and neither came near the 4-of-6 bar on a 4-row shift or a 5-tick advance (0 or 1 of 6) at this scale; section 2.2's metrics remain the check for those.
@@ -123,6 +123,12 @@ _Source: [2026-10-31: error categories graded by a vision model](../../work/2026
   These runs graded the 20-category file, which was reduced to 19 on 2026-11-25 (below): they are the record of the 20-category file, not a calibration of the current one.
 
 _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see) and [2026-11-25: INTRO calibrations under the actor floor, and the first new-category example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-intro-calibrations-under-the-actor-floor-and-the-first-new-category-example)._
+
+* **`object-misaligned` was added on 2026-11-27 (#1110) and graded three real frames 2 or more** (`[Bounded Observation]`, 2026-11-27, `6d511d1`, lavapipe, CTRY recapture for the calibration).
+  A census over the 84 readout frames found 20 objects on 13 frames that a fixed-shift test calls misaligned, 3 of them time-explained and 4 the flown aircraft, and none on the 12 recapture-as-render control frames; the graders (two Haiku passes, no tie-break needed) put INTRO 1355 and 2773 and TRAINTNL 232 at 2 or more in the new category, and on INTRO 2773 the flagged object is the flown aircraft's wing, which the definition leaves to `aircraft-misplaced`.
+  The calibration printed `calibration PASS` (controls 12/12, `actors_removed` 6/6, `shift_y:4` 6/6, `advance:5` 3/6) and `props_shift:8` was detected on 0 of 6 sheets, reported and not gated, so the planted fault is no evidence for the category.
+  Each calibrating run now grades 48 sheets.
+  _Source: [2026-11-27: census, calibration and the seven-film re-grade](../../work/2026-11/1110_object-misaligned/journal.md#2026-11-27-census-calibration-and-the-seven-film-re-grade)._
 
 * **The 20-category DSH passes differed by at most one frame on these readouts** (`[Bounded Observation]`, 2026-11-25, the seven `errors-20cat` runs of the lavapipe render of `crates/` `4b5c69c`).
   Two DSH passes over the same 12 sheets per film moved a category's count of frames graded 2 or more by at most 1 on every film, against the 3 that set `min_change` from two Haiku passes; `min_change` stays 4.

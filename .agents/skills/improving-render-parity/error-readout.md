@@ -5,7 +5,7 @@ Part of the [`improving-render-parity`](SKILL.md) skill.
 Run it on every film after a batch of render PRs, not after each one: a run costs about 14 Haiku passes and the tie-breaks.
 It says which kinds of error the render makes and on how many frames.
 Each sheet holds the capture and render, then an overlay (grey where they agree, magenta where the capture is brighter, green where the render is) and an index-mismatch map (each pixel whose palette index differs, coloured by the render layer drawn there), then an actor close-up and the map's key; the button bar, HUD timer and cursor are masked grey (`bench/panels.py`, `bench/mismatch.py`).
-A misregistration shows as paired magenta and green fringes in the overlay, but no category names one yet (#1110), so the metrics remain the check for it.
+A misregistration shows as paired magenta and green fringes in the overlay: a whole background shift is `background-misregistration`, and an actor or prop drawn away from where the capture shows it while the ground lines up is `object-misaligned`, which names no cause (placement or frame timing, #1110).
 The categories are `research/parity/error-categories.toml`.
 
 ```
@@ -20,7 +20,7 @@ The categories are `research/parity/error-categories.toml`.
 
 The previous readout is the committed baseline, `research/parity/readouts/<film>.json`, with the commit and adapter it came from in [`baseline.toml`](../../../research/parity/readouts/baseline.toml).
 `errors-score` refuses it when the render picked other ticks or the categories changed; then refresh the baseline.
-It also refuses a baseline whose `pairing` differs from the run's. A readout records `pairing: render_tick` when its captures carry the slot words, and each page's sheet shows the render at `render_tick`, the tick the scorer counts (#1172). The committed baselines were graded at the page's own tick (no `pairing` key reads as `tag`), so the first readout after #1172 needs a baseline refresh, not a comparison.
+It also refuses a baseline whose `pairing` differs from the run's. A readout records `pairing: render_tick` when its captures carry the slot words, and each page's sheet shows the render at `render_tick`, the tick the scorer counts (#1172); the committed baselines are at `render_tick` since the 2026-11-27 refresh.
 Refresh all seven films together, per batch of render PRs (for example with the class-agreement batch), as step 7 says.
 
 `errors-score` lists the categories whose count of sheets graded 2 or more moved by `min_change` or more (4 in `error-categories.toml`) as `changes since …`, then the smaller moves on one `below min_change (4): …` line (`none` when no count moved).
@@ -32,5 +32,5 @@ For batch films, print the `batch.md` readout table with `mise run parity-bench 
 
 Skip `--against` for a film with no baseline file (a newly pinned reference) or for a calibrating run: a calibration grades only ticks the recapture holds, so `compare` refuses it.
 
-Calibrate (`errors-make --calibrate`, 42 sheets, then `errors-score`) only when the categories, the sheet layout or the grading model change; it must print `calibration PASS`.
+Calibrate (`errors-make --calibrate --recapture DIR`, 48 sheets, then `errors-score`; the recapture is `capture-ref --film corpus/stuntisl/VAULT/CTRY.FLM --out <data root>/bench/vault-ctry/recapture`, and a cloud session needs `DOSBOX_AUTOMATION_EXE` to name a copy of dosbox-automation's install outside `/root`, whose `drives/y` mount the mount policy refuses) only when the categories, the sheet layout or the grading model change; it must print `calibration PASS`.
 When `other` names the same new kind of error on two or more frames, add a `[[category]]` block, give it an example with `errors-example --film <film> --tick <tick> --category <id>`, and calibrate.

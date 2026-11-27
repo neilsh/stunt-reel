@@ -2,52 +2,50 @@
 # A render PR's readout passes its film's file as `errors-score --against` (error-readout.md).
 # Refresh the seven together, per batch of render PRs, and edit this file with them.
 
-# The 19-category sheets were made and scored at 6486fb67 (the `revision` in each run.json), the
-# commit whose lavapipe render they grade: it includes the render PRs #1096 and #1099 (#1102 changed only tests, a pin and docs).
-# The run and grade files name no model; the grader names come from the coordinator's delegated-task
-# records. The earlier baseline (e09f8ff6) was graded by DSH passes; this one by Haiku passes, so
-# the comparison across the change of grader model is not calibrated, and a per-category difference
-# between the two baselines cannot be told apart from a grader difference or from the render change.
-# #1118 splits them by re-grading the e09f8ff6 sheets with two Haiku passes and a Sonnet tie-break;
-# only CTRY's background-misregistration render part (+4) clears min_change (batch-vault-films.md § 7).
-commit = "6486fb67983173f4a25b7e919156101fe9712b37"  # run.json revision of the sheets made and graded
-adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"  # canonical lavapipe under WSL, class cpu; see render-on-lavapipe.md
-date = "2026-11-26"
+# The 20-category sheets were made and scored at 6d511d14 (the `revision` in each run.json), the
+# commit whose lavapipe render they grade, with the magenta/green overlay and index-mismatch panels
+# (#1109) and the `object-misaligned` category (#1110). Both graders' input changed together with
+# the render (since the 2026-11-26 baseline: list-order spheres #1159 and others) and the capture
+# pairing (`pairing: render_tick`, #1172), so no category's move against the 2026-11-26 baseline can
+# be attributed to the render or to the graders (the earlier split is work/2026-11/1118_readout-render-grader-split/).
+commit = "6d511d1481a41515a98d345390b74a3514247a44"  # run.json revision of the sheets made and graded
+adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"  # canonical lavapipe, class cpu; see render-on-lavapipe.md
+date = "2026-11-27"
 seed = 1
-graders = "two Haiku passes per film, Sonnet tie-break on the disputed sheets (the earlier baseline's passes were DSH: the grader model changed, and the comparison across the change is not calibrated)"
-categories_digest = "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e"
+graders = "two Haiku passes per film, Sonnet tie-break on the disputed sheets"
+categories_digest = "a2414c545c352c5d8e951be19a1b1b859f357ab0ea0d1e9c24269265a0c54b9d"
 
 [ctry]
-render_digest = "fe4c903d394038655687fb60df9884b9e7b177799c00085ef3f286ea28d8c2cf"
+render_digest = "e5a2612382cc2ef78b8716974793d25ab3cef3a81927ae970d3056d07a25349d"
 ticks = 12
-disputed = 7
+disputed = 8
 
 [intro]
-render_digest = "1205920f71a733ec504bc992fbc7d867b272e31a9f0487f08293bc03c67736c3"
+render_digest = "5d4f3ad5e7d739dfc4a13ff5f30e683b3458c91943dd5c74939d3595adb4c64a"
 ticks = 12
 disputed = 3
 
 [land]
-render_digest = "866243d07be27e6d154b9900005c5e6ef79b73adcdfa13e5c739de2dfca84a7b"
-ticks = 12
-disputed = 3
-
-[balloon]
-render_digest = "20d2932e254f219947d33e24e5e87e232d5d5dfc23fdc2e3b883e48d5d35e947"
-ticks = 12
-disputed = 0
-
-[traintnl]
-render_digest = "1fd223f47c5d6e7886833fc55b88639e5282884ebab7eb6e3e746a8334db5182"
+render_digest = "7b0540a1f6d17f0999ce2946dd202403e27f605f0edab135109d56f9ac899c9d"
 ticks = 12
 disputed = 2
 
+[balloon]
+render_digest = "5416b28f47cd470124c45889189a524a5648a9f6fa96b9b320c3e7cd20889851"
+ticks = 12
+disputed = 4
+
+[traintnl]
+render_digest = "613ec8552fa45ad9b6ce9f93871c5a6c1316e4f78ec6f3a63acc1e0d9fff2958"
+ticks = 12
+disputed = 3
+
 [bomb]
-render_digest = "4b3c390e98d701edf3b6474f9a6c027a772c048e9129b8e8bf93c20f6af0e892"
+render_digest = "8dd83be3858299550ef9ecab8938dd00a7d7b8505a91042b704ee2ce4f2569fd"
 ticks = 12
 disputed = 2
 
 [location]
-render_digest = "0bf45598ec8b722b724715b5589f6f35ac39da46d5bad22f35c80345f662e7c1"
+render_digest = "143ffdabbb015ac32485d51046d5a21da90a6706c353acab930917b84a0a945c"
 ticks = 12
-disputed = 2
+disputed = 3
