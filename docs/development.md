@@ -155,7 +155,7 @@ Write a body whenever a reviewer would have to ask "why this way?": what forced 
 One paragraph, then a bullet per file when several move together; never retell the diff.
 Renames, formatting and generated files need none.
 Longer reasoning belongs in the owning note or an ADR, cited from the body.
-The commit-msg hook (`mise run commit-msg-check`) checks the subject and, on a commit that changes a work `spec.md` or `plan.md`, the `Fresh-review:` trailer that [AGENTS.md § Committing](../AGENTS.md#committing) rule 5 asks for; a pull request's required checks, not the message, prove the full gate on the branch tip ([ADR 0044](adr/0044-commit-messages-carry-no-gate-line.md)), or only its docs half for a docs-only pull request ([ADR 0047](adr/0047-ci-scopes-a-docs-only-pull-request.md)).
+The commit-msg hook (`mise run commit-msg-check`) checks the subject and, on a commit that changes a work spec or plan (`spec.md`, `plan.md`, `spec-<topic>.md` or `plan-<topic>.md`), the `Fresh-review:` trailer that [AGENTS.md § Committing](../AGENTS.md#committing) rule 5 asks for; a pull request's required checks, not the message, prove the full gate on the branch tip ([ADR 0044](adr/0044-commit-messages-carry-no-gate-line.md)), or only its docs half for a docs-only pull request ([ADR 0047](adr/0047-ci-scopes-a-docs-only-pull-request.md)).
 A commit from another session's branch keeps its author, which the pre-push hook rejects, so [re-commit it](howto/take-a-commit-from-another-session.md).
 
 A pull request's title becomes its squash commit's subject, so it is a Conventional Commit too, ending with the issue or issues it serves: `fix(parity): repin the reference films (#305)`, or `(#305, 2/2)` for one PR of a stack.

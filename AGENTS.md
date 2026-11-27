@@ -55,9 +55,9 @@ Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): 
 3. Commit with a Conventional Commit subject and, when a reviewer would ask "why this way?", a body that says why: [Commit messages](docs/development.md#commit-messages).
    The commit-msg hook checks the subject; a PR's title is the subject that lands on `main`, so CI checks it too.
 4. Write the handoff into the work folder's README or on the issue, never only in agent memory; the finishing PR writes the README's `outcome`.
-5. Before a push that changes `research/`, `NOTICE.md`, `docs/howto/`, `docs/*.md`, `site/guides/` or `site/reading.md`, or before committing a work `spec.md` or `plan.md`, a fresh reviewer (a subagent, or another person) reads the diff and the notes it cites, reports any claim broader than its evidence (`only`, `all`, `noise`, `within`, `equivalent`), checks each behavioural claim against the code, and recomputes each figure or verdict the diff quotes from any table it cites, a sweep's verdict with `mise run judge -- --recheck` on its figures file; for each changed file it rereads every `site/guides/` guide linking to it (`rg -l '<file base name>' site/guides/`) and reports any guide claim the change makes false or out of date.
+5. Before a push that changes `research/`, `NOTICE.md`, `docs/howto/`, `docs/*.md`, `site/guides/` or `site/reading.md`, or before committing a work spec or plan, a fresh reviewer (a subagent or person) reads the diff and the notes it cites, reports any claim broader than its evidence (`only`, `all`, `noise`, `within`, `equivalent`), checks each behavioural claim against the code, and recomputes each figure or verdict the diff quotes from any table it cites, a sweep's verdict with `mise run judge -- --recheck` on its figures file; for each changed file it rereads each `site/guides/` guide linking to it (`rg -l '<file base name>' site/guides/`) and reports any guide claim the change makes false or stale.
    A run's deadline or disk-stop `chore: wip` push is exempt.
-   A commit that changes a work `spec.md` or `plan.md` records the pass as a `Fresh-review: <what it read>` trailer, which the commit-msg hook requires.
+   A commit changing a work `spec.md`, `plan.md`, `spec-<topic>.md` or `plan-<topic>.md` records the pass in a `Fresh-review: <what it read>` trailer, checked by the commit-msg hook.
 
 ### Working economically
 
@@ -67,7 +67,7 @@ Work with a spec, plan or two or more PRs gets a [work folder](work/README.md): 
    `mise tasks` lists every task, and none other exists.
    A one-off runs as `mise exec -- uv run …`; a command needed twice earns a task.
 3. **Fresh session per phase when it pays.**
-   Start the next phase in a new session, naming the file or PR it starts from and the branch, when this session is long (compacted, or dozens of turns), the next phase will run more than about ten turns, and it can start from a committed file or PR.
+   Start the next phase in a new session, naming the file or PR it starts from and the branch, when this session is long (compacted or dozens of turns), the next phase will run more than about ten turns, and it can start from a committed file or PR.
    Stay when it needs what is only in this conversation.
 
 ### Docstrings
