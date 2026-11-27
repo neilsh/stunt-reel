@@ -142,7 +142,7 @@ struct PropRun {
     shape: u32,
 };
 
-// The world's prop runs in vertex order. Only the plane pipelines bind it (`fs_main_plane`).
+// The world's prop runs in vertex order. Only the plane pipelines and the diagnostic look's bind it (`fs_main_plane`, `diagnostic_object`).
 @group(3) @binding(0) var<storage, read> prop_runs: array<PropRun>;
 
 // Scenery class of a world prop vertex (contracts/shape/mod.rs SCENERY_PROP).

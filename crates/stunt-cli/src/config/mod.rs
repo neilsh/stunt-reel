@@ -331,11 +331,14 @@ impl CliConfig {
             }
         }
 
-        if look != LookArg::Mode13h && out_dir.is_some() {
-            let name = match look {
-                LookArg::Diagnostic => "diagnostic",
-                _ => "modern",
-            };
+        let viewer_look = match look {
+            LookArg::Mode13h => None,
+            LookArg::Modern => Some("modern"),
+            LookArg::Diagnostic => Some("diagnostic"),
+        };
+        if let Some(name) = viewer_look
+            && out_dir.is_some()
+        {
             return Err(format!(
                 "--look {name} is viewer-only and the render store holds Mode 13h renders; \
                  drop --out-dir (use -o for a still or --video for a film)"

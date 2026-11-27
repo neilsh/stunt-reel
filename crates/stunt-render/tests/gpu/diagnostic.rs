@@ -191,6 +191,11 @@ fn a_decal_facet_shows_stripes_and_a_plain_one_does_not() {
         let mut sorted = plain;
         sorted.sort_by(f32::total_cmp);
         let fill = sorted[sorted.len() / 2];
+        assert!(
+            sorted.iter().all(|&l| l <= fill * 1.08),
+            "a plain facet shows stripes: fill {fill}, max {:?}",
+            sorted.last()
+        );
         let striped = decal.iter().filter(|&&l| l > fill * 1.08).count();
         let unstriped = decal
             .iter()

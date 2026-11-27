@@ -47,7 +47,7 @@ stuntreel --look diagnostic --headless <film and flags as above> -o still.png
 
 `--look diagnostic` colours each object by what it is, outlines it and lays a world grid over the ground, to read which object a pixel belongs to and which draws over which.
 It has no lighting, fog, grade or vignette, so `--grade` and `--vignette` stay modern-only; like `--look modern` it is a viewer, and `--out-dir` refuses it.
-Each colour is the object's colour times a facing factor, `0.55 + 0.45 * abs(normal . view)`, which keeps it reading as solid; a fragment with no facet normal (pre-shaded, disc, a line with no facet) takes `0.45 + 0.75 * luma` of its palette colour at full brightness, at most 1.2.
+Each filled object's colour (not the overlay, a shadow or an outline) is its base colour times a facing factor, `0.55 + 0.45 * abs(normal . view)`, which keeps it reading as solid; a fragment with no facet normal (pre-shaded, disc, a line with no facet) takes `0.45 + 0.75 * luma` of its palette colour at full brightness, at most 1.2.
 `hue(k)` is HSV with hue `fract(k * 0.618034)`, saturation 0.6 and value 1.
 
 | Pixel | Colour |
@@ -59,11 +59,11 @@ Each colour is the object's colour times a facing factor, `0.55 + 0.45 * abs(nor
 | Flat world prop (ground-like: scenery class prop, normal within about 18 degrees of vertical, not a decal) | its hue mixed 65% toward the terrain grey, with the grid, so a ground drawn as one large prop does not shout |
 | Actor or sprite | `hue(layer)` times facing: an actor's shape word is 0 in the stored planes, so its colour is keyed by its layer, `LAYER_FIRST_ACTOR + n` |
 | Overlay and credits | white |
-| Decal | its object's colour, every other 4-pixel diagonal screen stripe mixed 35% toward white |
+| Decal tie (a decal and the polygon it lies on, `SodVertex::decal_tie`) | its object's colour, every other 4-pixel diagonal screen stripe mixed 35% toward white |
 | Shadow | 0.2 of its actor's colour with a 1-pixel cross-hatch every 6 pixels mixed 30% toward it; a shadow is the actor's shape drawn again, so it shares the actor's layer |
 | Outline | 0.25 of its object's colour: every per-frame shape's and world prop's polygon edges (terrain has no edge list, hence the grid) |
 
-The grid is in world x and z: a minor line every 100 m (25% toward `(170, 200, 255)`) and a major line every 1000 m (50%), each about one pixel wide and faded out where a cell is a few pixels across.
+The grid is in world x and z: a minor line every 100 m (25% toward `(170, 200, 255)`) and a major line every 1000 m (another 50% on top), each about one pixel wide and faded out where a cell is a few pixels across.
 The world defines no terrain cell size, so the spacings are fixed.
 The entry points are `vs_diagnostic`, `vs_diagnostic_edge`, `fs_diagnostic`, `fs_sky_diagnostic` and their `_plane` variants in the diagnostic section of `mode13h.wgsl`; the plane variants write the Mode 13h index, layer and shape word, so a diagnostic page's planes are a Mode 13h page's.
 
