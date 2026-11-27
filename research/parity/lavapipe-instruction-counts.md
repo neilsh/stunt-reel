@@ -66,6 +66,16 @@ Differences of two spans add both spans' allocator noise (`0.65%` wide on the wh
 The count cannot see memory traffic, cache use or parallelism, so fewer instructions is not always faster; JIT-compiled shader code counts but has no symbols; and GPU timing still needs the hardware.
 _Source: [counts in a cloud session](../../work/2026-11/1122_instruction-count-gate/journal.md#2026-11-27-instruction-counts-of-lavapipe-renders-in-a-cloud-session)._
 
+## 6. The same span on a laptop under WSL 2
+
+`perf stat -e instructions:u` counts under WSL 2 on this laptop, through `linux-tools-6.8.0-151`'s `perf` (the distribution's `linux-tools-generic` installs no `perf` for the 6.18 WSL 2 kernel).
+Native `B30` and `B60` each count within `0.02%` over three repeats, and the thread count changes the count by under `0.01%`.
+A Cachegrind `B30` run on the laptop's AMD Ryzen 7 7745HX (`avx2` and `avx512f`), on a build of `70b0f76` with the same flags, counted `28,161,524,166`, `28,161,662,364` and `28,161,498,289`: `0.008%` above the cloud's whole-run median and inside its range.
+Outside glibc's `malloc.c` and `memmove` it sits `0.0013%` below the cloud's median, and its three repeats fall just below the cloud's lowest, so the two machines do not share a range there.
+Its store hash matches the cloud's.
+A gate needs each machine's own repeats; a count from the laptop agrees with the cloud's on the whole run only.
+_Source: [WSL counts and perf runs](../../work/2026-11/1154_wsl-lavapipe-counts/journal.md#2026-11-27-perf-stat-and-valgrind-counts-on-wsl-2-against-the-clouds)._
+
 ## Ruled out
 
 * **Pinning Rust's hash seed from the environment**: `std`'s `RandomState` has no such switch; the count moved `0.0017%` outside the allocator without it, so it is not needed; [journal](../../work/2026-11/1122_instruction-count-gate/journal.md#2026-11-27-instruction-counts-of-lavapipe-renders-in-a-cloud-session).
@@ -74,6 +84,6 @@ _Source: [counts in a cloud session](../../work/2026-11/1122_instruction-count-g
 
 ## Open questions
 
-1. Whether `perf stat -e instructions:u` works under WSL 2 on the owner's laptop, and whether a Valgrind count of one build agrees between that laptop and a cloud session (`#1154`).
+1. ~~Whether `perf stat -e instructions:u` works under WSL 2 on the owner's laptop, and whether a Valgrind count agrees across machines (`#1154`).~~ Answered in [section 6](#6-the-same-span-on-a-laptop-under-wsl-2).
 2. Why glibc's allocator takes a different path between repeats of one binary (thread interleaving, `RandomState`'s seed, or both), and whether pinning it would let a gate read the whole count.
 3. How the spread grows with the span and on other spans and films: these figures rest on 30 and 60 ticks of Spans B and C.
