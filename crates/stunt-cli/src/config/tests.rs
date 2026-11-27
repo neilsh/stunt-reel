@@ -296,6 +296,21 @@ fn test_the_render_store_refuses_the_modern_look() {
 }
 
 #[test]
+fn test_the_diagnostic_look_reaches_the_render_options_and_refuses_the_render_store() {
+    use stunt_render::Look;
+    let still = parse(&["--look", "diagnostic", "-o", "still.png", "x.FLM"]).expect("still");
+    assert_eq!(still.render_options().look, Look::Diagnostic);
+    parse(&["--look", "diagnostic", "--video", "x.mp4", "x.FLM"]).expect("video");
+    parse(&["--look", "diagnostic", "x.FLM"]).expect("the window");
+    let error = parse(&["--look", "diagnostic", "--out-dir", "d", "x.FLM"])
+        .expect_err("diagnostic look with a render store");
+    assert!(error.to_string().contains("--look diagnostic"), "{error}");
+    let error = parse(&["--look", "diagnostic", "--grade", "x.FLM"])
+        .expect_err("--grade finishes the modern look");
+    assert!(error.to_string().contains("--look modern"), "{error}");
+}
+
+#[test]
 fn test_grade_and_vignette_are_off_by_default_and_reach_the_render_options() {
     use stunt_render::ModernEffects;
     let effects = |args: &[&str]| parse(args).expect("parses").render_options().effects;

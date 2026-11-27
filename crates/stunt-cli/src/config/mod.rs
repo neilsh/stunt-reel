@@ -99,8 +99,10 @@ struct Options {
     /// Render on the software adapter (lavapipe), even when a GPU is available
     #[arg(long)]
     software_only: bool,
-    /// How the film is shaded: mode13h (flat palette indices, what is scored against PLAYONE)
-    /// or modern (viewer-only lighting and fog; not with --out-dir, whose store holds Mode 13h)
+    /// How the film is shaded: mode13h (flat palette indices, what is scored against PLAYONE),
+    /// modern (viewer-only lighting and fog) or diagnostic (viewer-only: each object its own
+    /// colour, outlines, ground grid); neither viewer-only look with --out-dir, whose store
+    /// holds Mode 13h
     #[arg(long, value_enum, value_name = "LOOK", default_value_t = LookArg::Mode13h)]
     look: LookArg,
     /// With --look modern: grade the colour (a little more saturation and contrast, a warm shift)
@@ -140,6 +142,7 @@ struct Options {
 enum LookArg {
     Mode13h,
     Modern,
+    Diagnostic,
 }
 
 impl From<LookArg> for Look {
@@ -147,6 +150,7 @@ impl From<LookArg> for Look {
         match look {
             LookArg::Mode13h => Self::Mode13h,
             LookArg::Modern => Self::Modern,
+            LookArg::Diagnostic => Self::Diagnostic,
         }
     }
 }
@@ -327,12 +331,15 @@ impl CliConfig {
             }
         }
 
-        if look == LookArg::Modern && out_dir.is_some() {
-            return Err(
-                "--look modern is viewer-only and the render store holds Mode 13h renders; \
+        if look != LookArg::Mode13h && out_dir.is_some() {
+            let name = match look {
+                LookArg::Diagnostic => "diagnostic",
+                _ => "modern",
+            };
+            return Err(format!(
+                "--look {name} is viewer-only and the render store holds Mode 13h renders; \
                  drop --out-dir (use -o for a still or --video for a film)"
-                    .to_string(),
-            );
+            ));
         }
 
         for (flag, on) in [("--grade", grade), ("--vignette", vignette)] {

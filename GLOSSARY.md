@@ -46,7 +46,7 @@ _Avoid_: respawn, slot reuse
 Fades, desaturation and dusk are authored through them ([palette fade](research/playone-exe/palette-fade.md)).
 _Avoid_: tone, palette fade (for the variables themselves)
 
-**Look**: How a render is shaded: the Mode 13h look, whose flat palette indices are scored against `PLAYONE`, or the viewer-only modern look (`stuntreel --look modern`) that lights and fogs the same indices and is never scored or stored.
+**Look**: How a render is shaded: the Mode 13h look, whose flat palette indices are scored against `PLAYONE`, or a viewer-only look that is never scored or stored: the modern look (`stuntreel --look modern`) that lights and fogs the same indices, or the diagnostic look (`stuntreel --look diagnostic`) that colours each object, outlines it and draws a ground grid.
 _Avoid_: mode, skin, theme
 
 **Credits**: The two lines of text a film shows over its picture, set and cleared at authored ticks ([`pfont.md` § 3.2](research/formats/auxiliary/pfont.md#32-drawing-the-credits)).
