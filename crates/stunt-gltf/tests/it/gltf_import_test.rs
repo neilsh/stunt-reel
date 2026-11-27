@@ -143,6 +143,7 @@ fn exported_film_animation_imports_and_validates() {
     let options = FilmExportOptions {
         first_tick: 0,
         last_tick: scene.timeline().total_ticks(),
+        // The `gltf` crate 1.4.1 rejects a pointer channel, which has no `node`.
         lens_pointer: false,
     };
     let bytes = export_film(&scene, options).expect("export").bytes;

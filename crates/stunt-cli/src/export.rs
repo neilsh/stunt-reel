@@ -47,9 +47,10 @@ struct Options {
     /// With --animate, only this 0-based inclusive tick span [default: the whole film]
     #[arg(long = "tick-range", value_name = "A..=B", value_parser = parse_tick_span, requires = "animate")]
     tick_range: Option<TickSpan>,
-    /// With --animate, also animate the lens zoom (the `KHR_animation_pointer` extension)
+    /// With --animate, leave the lens zoom out of the animation channels (the
+    /// `KHR_animation_pointer` extension), for readers that reject it
     #[arg(long, requires = "animate")]
-    lens_pointer: bool,
+    no_lens_pointer: bool,
     /// Directory searched first for ANCHORPT.DAT, MAP.BIN and SCENERY.scn
     #[arg(long, value_name = "DIR")]
     sidata: Option<PathBuf>,
@@ -115,7 +116,7 @@ impl Args {
             tick,
             animate,
             tick_range,
-            lens_pointer,
+            no_lens_pointer,
             sidata,
             out,
         } = Options::try_parse_from(argv)?;
@@ -125,7 +126,7 @@ impl Args {
             (None, film) if animate => Target::Animation {
                 film: film.unwrap_or_default(),
                 span: tick_range,
-                lens_pointer,
+                lens_pointer: !no_lens_pointer,
             },
             (None, film) => Target::Film {
                 film: film.unwrap_or_default(),
@@ -378,14 +379,24 @@ mod tests {
         parse(&["--film", "f.flm", "--animate", "--tick", "3"]).unwrap_err();
         parse(&["--shape", "1", "--animate"]).unwrap_err();
         parse(&["--film", "f.flm", "--tick-range", "0..=4"]).unwrap_err();
-        parse(&["--film", "f.flm", "--lens-pointer"]).unwrap_err();
+        parse(&["--film", "f.flm", "--no-lens-pointer"]).unwrap_err();
+        assert_eq!(
+            parse(&["--film", "f.flm", "--animate"])
+                .expect("valid")
+                .target,
+            Target::Animation {
+                film: PathBuf::from("f.flm"),
+                span: None,
+                lens_pointer: true,
+            }
+        );
         let args = parse(&[
             "--film",
             "f.flm",
             "--animate",
             "--tick-range",
             "2..=9",
-            "--lens-pointer",
+            "--no-lens-pointer",
         ])
         .expect("valid");
         assert_eq!(
@@ -393,7 +404,7 @@ mod tests {
             Target::Animation {
                 film: PathBuf::from("f.flm"),
                 span: Some(TickSpan::new(2, 9)),
-                lens_pointer: true,
+                lens_pointer: false,
             }
         );
     }
