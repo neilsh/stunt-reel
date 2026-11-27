@@ -5,8 +5,8 @@ sidebar_label: "Instruction counts on lavapipe"
 # Parity: Instruction Counts of a Lavapipe Render
 
 * **Scope**: whether a Valgrind instruction count of a short headless render on lavapipe can gate a perf change without a quiet machine, beside the wall-time runs of `mise run ab` ([`time-a-headless-render.md`](../../docs/howto/time-a-headless-render.md) § 3), whose noise is in [`lavapipe-render-time.md` § 3](lavapipe-render-time.md#3-where-loop-time-goes) and [`lavapipe-ab-pair-count.md`](lavapipe-ab-pair-count.md).
-* **Sources**: `#1122`'s runs in a Claude cloud session (Intel Xeon @ 2.10 GHz, 4 vCPUs, `avx2` and `avx512f`), Valgrind 3.22.0, Ubuntu 24.04's `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.5` with `LP_NUM_THREADS=1`, release builds of `70b0f76`, of PR #951 (`7728e1e3`) and of its parent.
-  * **Evidence tier**: `[Bounded Observation]` throughout: 3 repeats a span, one loaded run, one machine, one day.
+* **Sources**: `#1122`'s runs in a Claude cloud session (Intel Xeon @ 2.10 GHz, 4 vCPUs, `avx2` and `avx512f`), Valgrind 3.22.0, Ubuntu 24.04's `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.5` with `LP_NUM_THREADS=1`, release builds of `70b0f76`, of PR #951 (`7728e1e3`) and of its parent; section 6 adds `#1154`'s runs of `70b0f76` on the owner's laptop under WSL 2.
+  * **Evidence tier**: `[Bounded Observation]` throughout: 3 repeats a span, one loaded run, one day; one machine but for section 6's second.
 * **Spans**: `B30` and `B60` are the first 30 and 60 ticks of Span B (`LOCATION 3680..=3709`, `3680..=3739`), `C30` and `C60` those of Span C (`INTRO 2500..=2529`, `2500..=2559`), rendered with `mise run ab`'s film, `.ALL`, `--sidata` and render flags.
 
 ## 1. Setup
@@ -68,12 +68,12 @@ _Source: [counts in a cloud session](../../work/2026-11/1122_instruction-count-g
 
 ## 6. The same span on a laptop under WSL 2
 
-`perf stat -e instructions:u` counts under WSL 2 on this laptop, through `linux-tools-6.8.0-151`'s `perf` (the distribution's `linux-tools-generic` installs no `perf` for the 6.18 WSL 2 kernel).
-Native `B30` and `B60` each count within `0.02%` over three repeats, and the thread count changes the count by under `0.01%`.
-A Cachegrind `B30` run on the laptop's AMD Ryzen 7 7745HX (`avx2` and `avx512f`), on a build of `70b0f76` with the same flags, counted `28,161,524,166`, `28,161,662,364` and `28,161,498,289`: `0.008%` above the cloud's whole-run median and inside its range.
-Outside glibc's `malloc.c` and `memmove` it sits `0.0013%` below the cloud's median, and its three repeats fall just below the cloud's lowest, so the two machines do not share a range there.
-Its store hash matches the cloud's.
-A gate needs each machine's own repeats; a count from the laptop agrees with the cloud's on the whole run only.
+`perf stat -e instructions:u` counts under WSL 2 on the owner's laptop, through `linux-tools-6.8.0-151`'s `perf` (the distribution's `linux-tools-generic` installs no `perf` for the 6.18 WSL 2 kernel).
+Native `B30` and `B60` each spread at most `0.016%` over three repeats, and setting `LP_NUM_THREADS=1` moved each span's median by under `0.01%`.
+Three Cachegrind `B30` runs on the laptop's AMD Ryzen 7 7745HX (`avx2` and `avx512f`), with `count.sh` on a release build of `70b0f76` (not byte-identical to the cloud's, as the cloud's own second build was not), counted `28,161,524,166`, `28,161,662,364` and `28,161,498,289`: a median `0.008%` above the cloud's three unloaded repeats' and inside their range.
+Outside glibc's `malloc.c` and `memmove` the laptop's median is `0.0013%` below the cloud's; its three repeats sit just below the cloud's three unloaded ones, and one of them falls inside the range of all five cloud `B30` runs (`0.0027%`, with the loaded run and the second build).
+The stores matched the cloud's.
+So across these two machines a count agreed to within one machine's own repeat range, but on three repeats a side; a gate still compares two builds on one machine, with that machine's repeats.
 _Source: [WSL counts and perf runs](../../work/2026-11/1154_wsl-lavapipe-counts/journal.md#2026-11-27-perf-stat-and-valgrind-counts-on-wsl-2-against-the-clouds)._
 
 ## Ruled out
@@ -84,6 +84,5 @@ _Source: [WSL counts and perf runs](../../work/2026-11/1154_wsl-lavapipe-counts/
 
 ## Open questions
 
-1. ~~Whether `perf stat -e instructions:u` works under WSL 2 on the owner's laptop, and whether a Valgrind count agrees across machines (`#1154`).~~ Answered in [section 6](#6-the-same-span-on-a-laptop-under-wsl-2).
-2. Why glibc's allocator takes a different path between repeats of one binary (thread interleaving, `RandomState`'s seed, or both), and whether pinning it would let a gate read the whole count.
-3. How the spread grows with the span and on other spans and films: these figures rest on 30 and 60 ticks of Spans B and C.
+1. Why glibc's allocator takes a different path between repeats of one binary (thread interleaving, `RandomState`'s seed, or both), and whether pinning it would let a gate read the whole count.
+2. How the spread grows with the span and on other spans and films: these figures rest on 30 and 60 ticks of Spans B and C.
