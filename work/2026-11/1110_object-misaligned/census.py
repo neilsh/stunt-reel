@@ -20,6 +20,9 @@ from stunt_reel.parity_artifacts import LAYER_FIRST_ACTOR, LAYER_PROP
 
 FILMS = ["ctry", "intro", "land", "balloon", "traintnl", "bomb", "location"]
 MIN_PIXELS, REACH, GAIN, TERRAIN_GAIN, TIMING_SLACK = 64, 24, 0.25, 0.10, 0.05
+#: A prop has no id across ticks, so the timing test scores the prop layer inside the object's own
+#: bounding box grown by this many pixels, at the render ticks t-2, t-1, t+1 and t+2 (not t itself).
+BOX = 3
 LAYER_TERRAIN = 2
 ROOT = Path("build/parity")
 DATA = Path(os.environ["STUNT_DATA_ROOT"])
@@ -88,10 +91,10 @@ def census(film: str, control: bool) -> list[dict]:
             best_shift = m0(cap, ren_idx, px, mask) + gain
             ys, xs = np.nonzero(px)
             box = np.zeros_like(px)
-            box[max(ys.min() - REACH, 0) : ys.max() + REACH + 1, max(xs.min() - REACH, 0) : xs.max() + REACH + 1] = True
+            box[max(ys.min() - BOX, 0) : ys.max() + BOX + 1, max(xs.min() - BOX, 0) : xs.max() + BOX + 1] = True
             by_tick = {}
             for t2 in range(rt - 2, rt + 3):
-                if t2 not in ticks_available:
+                if t2 == rt or t2 not in ticks_available:
                     continue
                 r2 = tree.load(t2)
                 p2 = (r2.layer == (LAYER_FIRST_ACTOR + int(name[5:]) if name.startswith("actor") else LAYER_PROP)) & (
@@ -102,7 +105,7 @@ def census(film: str, control: bool) -> list[dict]:
             rows.append(
                 {
                     "film": film, "tick": tick, "object": name, "pixels": int((px & ~mask).sum()),
-                    "shift": [dx, dy], "gain": round(gain, 3), "terrain_gain": round(terr, 3),
+                    "bbox": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())], "shift": [dx, dy], "gain": round(gain, 3), "terrain_gain": round(terr, 3),
                     "time_explained": best_t[1] >= best_shift - TIMING_SLACK,
                     "best_tick_offset": best_t[0], "best_tick_m0": round(best_t[1], 3),
                     "best_shift_m": round(best_shift, 3),
