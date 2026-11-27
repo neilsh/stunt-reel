@@ -31,7 +31,7 @@ fn options(first_tick: u32, last_tick: u32) -> FilmExportOptions {
     FilmExportOptions {
         first_tick,
         last_tick,
-        lens_pointer: false,
+        lens_pointer: true,
     }
 }
 
@@ -235,15 +235,17 @@ fn actors_appear_leave_and_change_shape_by_scale() {
     );
 }
 
-/// A lens change writes `extras.yfov_keys`; `lens_pointer` adds a `KHR_animation_pointer`
-/// channel, an extension used but not required.
+/// A lens change writes `extras.yfov_keys` and a `KHR_animation_pointer` channel, an extension
+/// used but not required; turning `lens_pointer` off drops the channel.
 #[test]
-fn a_lens_change_is_kept_in_extras_and_optionally_animated() {
+fn a_lens_change_is_kept_in_extras_and_animated_by_default() {
     let scene = scene(vec![
         record(0, DEFAULT_CAMERA_LENS, Vec::new()),
         record(10, DEFAULT_CAMERA_LENS * 2, Vec::new()),
     ]);
-    let plain = parse_glb(&export_film(&scene, options(0, 10)).expect("export").bytes);
+    let mut opted_out = options(0, 10);
+    opted_out.lens_pointer = false;
+    let plain = parse_glb(&export_film(&scene, opted_out).expect("export").bytes);
     let keys = plain.node_named("Camera").unwrap()["extras"]["yfov_keys"]
         .as_array()
         .expect("yfov keys")
@@ -260,12 +262,15 @@ fn a_lens_change_is_kept_in_extras_and_optionally_animated() {
     );
     assert!(
         !plain.json["extensionsUsed"].to_string().contains("pointer"),
-        "no pointer without the option"
+        "no pointer when opted out"
     );
 
-    let mut with_pointer = options(0, 10);
-    with_pointer.lens_pointer = true;
-    let glb = parse_glb(&export_film(&scene, with_pointer).expect("export").bytes);
+    assert!(
+        !plain.json.to_string().contains("\"pointer\""),
+        "no pointer channel when opted out"
+    );
+
+    let glb = parse_glb(&export_film(&scene, options(0, 10)).expect("export").bytes);
     assert!(
         glb.json["extensionsUsed"]
             .to_string()

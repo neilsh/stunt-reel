@@ -27,8 +27,9 @@
 //!
 //! Core glTF cannot animate `yfov`. The camera's `yfov` is the span's first tick's; when the
 //! lens changes, the camera node's `extras.yfov_keys` lists the kept `[time, yfov]` pairs, and
-//! [`FilmExportOptions::lens_pointer`] also writes a `KHR_animation_pointer` channel on
-//! `/cameras/0/perspective/yfov`, used but not required.
+//! a `KHR_animation_pointer` channel on `/cameras/0/perspective/yfov` animates it, used but
+//! not required. [`FilmExportOptions::lens_pointer`] turns the channel off for readers that
+//! cannot parse it, such as the `gltf` crate 1.4.1.
 //!
 //! # Not exported
 //!
@@ -65,7 +66,8 @@ pub struct FilmExportOptions {
     pub first_tick: u32,
     /// Last tick of the span, inclusive; at most the timeline's `total_ticks`.
     pub last_tick: u32,
-    /// Also animate the lens with a `KHR_animation_pointer` channel.
+    /// Animate a lens change with a `KHR_animation_pointer` channel; `false` keeps only
+    /// `extras.yfov_keys`.
     pub lens_pointer: bool,
 }
 
