@@ -59,15 +59,19 @@ A stamp beside the binaries records the pinned version, the tarball's sha256 and
 The setup does not read `kache --version` to decide, because that output's format is unverified.
 The setup and the sessions it snapshots run as root, and the store is root-owned, mode 0755; whether a session ever runs a command as another user is untested.
 It writes `/etc/kache/config.toml` naming the store `/opt/kache/store`, and `KACHE_CONFIG` names that file, so a build started from any directory resolves the same store.
-It then warms the store with `timeout 200 cargo build --locked` and stops the daemon, so the environment snapshot holds this repository's units.
+It then warms the store with `timeout 200 cargo build --locked`, appending the build's output and exit status to `/opt/kache/warm.log`, and stops the daemon, so the environment snapshot holds this repository's units.
+A `.warmed` marker in the store records a warm that finished, by success or by the timeout; the step skips when the marker is there, so a warm that failed retries on the SessionStart hook's rerun, and one the snapshot kept does not.
 The 200 s cap is meant to keep the setup inside the snapshot's five-minute budget, and the part a capped build filled still hits; total setup time in a cloud session is unmeasured.
-The warm step runs in the setup script, not on the SessionStart hook's rerun: the hook reruns the setup on every start and resume with `CLAUDE_CODE_REMOTE=true`, a variable the setup run did not have, so that rerun skips the warm and holds no 200 s build.
-The hook still appends the exports below, so a session keeps the cache whether or not its setup rerun warmed it.
+The step does not test `CLAUDE_CODE_REMOTE`: a 2026-11-27 session found the store empty with the binaries installed, which fits a setup run that had it set and skipped the warm, and the value in the setup run is unverified.
 The SessionStart hook exports `RUSTC_WRAPPER=/opt/kache/bin/kache`, `CARGO_INCREMENTAL=0`, `KACHE_CACHE_DIR=/opt/kache/store` and `KACHE_CONFIG=/etc/kache/config.toml` to the session's later commands, and it does that when the wrapper is installed: a setup that failed leaves cargo to build uncached rather than failing every compile.
 `CARGO_INCREMENTAL=0` turns off incremental compilation for the whole session, so an edit-and-rebuild loop is slower than one with incremental compilation on.
 To bypass the cache for one command, run `RUSTC_WRAPPER= cargo build ...`; for the rest of the session, append `unset RUSTC_WRAPPER CARGO_INCREMENTAL` to `$CLAUDE_ENV_FILE`, which is sourced before every command, so a one-off `unset` does not last.
 On ripgrep and bat, kache's hits survived a different checkout path and `CARGO_HOME` (98% and 98.6% of units); the C-heavy build scripts still missed across paths, about 28 s of bat's build ([#814](https://github.com/neilsh/stunt-reel/issues/814)).
-Whether this repository reaches the 90% its decision requires is not measured yet, so the amendment to [ADR 0017](adr/0017-the-gate-keeps-no-compiler-cache.md) waits for that measurement.
+On 2026-11-27, in one cloud container, a cold `cargo build --locked` of this workspace took 54 s through kache (285 of 285 units missed) against 46 s with no wrapper; the same build after deleting `target/` took 2.6 s with 248 of 248 units hit, and a copy of the checkout at `/root/other/sr` took 2.6 s with 6 more units, all hits.
+That is a same-container, same-store measurement at one commit, not a session started from a snapshot, so the 90% its decision requires is still open: it needs a session from a snapshot that holds a warm store, at the snapshot's commit and after `main` moves.
+A session whose working directory is not the checkout (a project thread starts in `/home/user`) never loads `.claude/settings.json`, so no SessionStart hook runs there: no `environment:` line, no `/tmp/cloud-session-start.log`, no kache exports.
+Such a session exports the four variables itself, or `cd`s into the checkout before it starts; that is not fixable from the repository.
+The amendment to [ADR 0017](adr/0017-the-gate-keeps-no-compiler-cache.md) waits for that measurement.
 That measurement must also cover the warm build's default `CARGO_HOME` against the gate's `{{vars.primary}}/.cache/cargo`: the registry downloads twice, and the warm covers the `cargo build` units, not the `clippy` and `check` lanes.
 Whether the snapshot keeps the warmed checkout's `target/` is unverified.
 Phase 2, an R2 store shared with Jules, is [#878](https://github.com/neilsh/stunt-reel/issues/878).

@@ -256,20 +256,24 @@ def test_the_cloud_setup_skips_an_installed_kache_by_its_stamp() -> None:
     assert "trap 'rm -rf" in cloud, "a failed install must leave no download directory"
 
 
-def test_the_cloud_setup_warms_only_outside_a_session() -> None:
-    """The SessionStart hook reruns the setup; the 200 s warm would eat its budget (#814)."""
+def test_the_cloud_setup_warms_an_unwarmed_store_once() -> None:
+    """The hook's rerun skips a warm the snapshot kept, and retries one that failed (#814)."""
     cloud = _cloud_setup_block()
     [warm] = re.findall(
-        r'^    if \[ "\$\{CLAUDE_CODE_REMOTE:-\}" != true \]; then\n(.*?)^    fi$',
+        r'^    if \[ ! -e "\$KACHE_STORE/\.warmed" \]; then\n(.*?)^    fi$',
         cloud,
         re.DOTALL | re.MULTILINE,
     )
-    warm_step = 'timeout 200 "$MISE_BIN" exec -- cargo build --locked || true'
+    warm_step = 'timeout 200 "$MISE_BIN" exec -- cargo build --locked >>/opt/kache/warm.log 2>&1'
     assert warm_step in warm
-    assert cloud.count(warm_step) == 1
-    # The exports run before the skip, so skipping the warm does not lose them.
-    guard = 'if [ "${CLAUDE_CODE_REMOTE:-}" != true ]; then'
-    assert cloud.index('RUSTC_WRAPPER="$KACHE_BIN"') < cloud.index(guard)
+    assert cloud.count("cargo build --locked") == 1
+    # Only a finished warm (exit 0, or timeout's 124) leaves the marker.
+    assert '"$warm_rc" -eq 0' in warm
+    assert '"$warm_rc" -eq 124' in warm
+    # The setup run's CLAUDE_CODE_REMOTE is unverified, so the warm must not depend on it.
+    assert 'CLAUDE_CODE_REMOTE:-}" != true' not in warm
+    # The exports run before the warm.
+    assert cloud.index('RUSTC_WRAPPER="$KACHE_BIN"') < cloud.index(warm_step)
 
 
 def test_the_cloud_session_exports_kache_inside_the_wrapper_guard() -> None:
