@@ -32,9 +32,8 @@ Work only `local-windows` can do is `env:local-only` (**Environment roles**), no
 `status:in-progress` is our addition to the template's flow: every session acts as the same GitHub user, so an assignee cannot say which session holds an issue.
 A session takes it from `status:ready-for-agent`, `status:needs-plan` or `status:ready-for-human` by **Claim an issue** ([issue-tracker.md](issue-tracker.md#conventions)).
 
-Every open issue without sub-issues carries exactly one state label.
+Every open issue without sub-issues, except a `type:tracking` one (**Category roles**), carries exactly one state label.
 A parent needs none, and any it carries is ignored ([issue-tracker.md § Organizing issues](issue-tracker.md#organizing-issues)).
-A `type:tracking` parent (**Category roles**) carries none.
 Blocking is a native issue dependency ([issue-tracker.md](issue-tracker.md)), never a label.
 
 ## Priority roles
@@ -58,7 +57,7 @@ When filing an issue, agents leave `priority:` unset so unprioritized items stan
 | `bug` | _not used_ | Nearly every product issue is "the render differs from the capture", so the label separated nothing |
 | `enhancement` | _not used_ | As above |
 
-This repo's `type:` labels instead state the verification or closing contract when it differs from a standard code, tooling or docs change (apply at most one; standard changes carry none).
+This repo's `type:` labels instead state the verification or closing contract when it differs from a standard code, tooling or docs change (apply at most one; standard changes carry none), and `type:tracking` marks a parent with no work of its own.
 The older `type:tooling` label is retired in favor of `area:tooling` and `area:agents`.
 
 | Label | Meaning |
@@ -68,7 +67,7 @@ The older `type:tooling` label is retired in favor of `area:tooling` and `area:a
 | `type:perf` | Performance change requiring A/B timing (`mise run ab`, which refuses concurrent `stuntreel`/`cargo` runs) and output equivalence |
 | `type:tracking` | A parent with no work of its own: done when every sub-issue is closed |
 
-A `type:tracking` parent needs no other label: its sub-issues carry the state, `area:`, `env:`, `model-` and contract labels for the work, so it drops any it had, keeping only an optional `priority:` for the dashboard.
+A `type:tracking` parent carries no state, `area:`, `env:`, `model-` or other `type:` label, since its sub-issues carry those for the work; the only other label it may carry is a `priority:` the owner sets.
 A parent that still owns work, such as a design note or a gate the sub-issues do not cover, is not one and keeps the usual labels.
 The [Issue Radar](https://github.com/users/neilsh/projects/1) files a `type:tracking` issue under `Goal` even before its sub-issues are linked.
 
@@ -112,7 +111,7 @@ A model label says what capability an issue's implementation needs, never a mode
 | `model-tier:heavy` | Working out what to do or why something is broken is the hard part |
 | `model-context:wide` | The material will not fit a small context window |
 
-A planned issue carries exactly one `model-tier:` label, and `model-context:wide` is optional beside any tier.
+A planned issue other than a `type:tracking` parent carries exactly one `model-tier:` label, and `model-context:wide` is optional beside any tier.
 Exactly one is a convention no check enforces, so a writer swaps the tier (removes the old label, adds the new one) and never adds a second.
 Later `model-context:` values (such as `visual`, for work that reads frames) join when a routable model lacks the capability.
 
