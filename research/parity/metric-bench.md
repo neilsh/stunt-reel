@@ -130,6 +130,12 @@ _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../
   Each calibrating run now grades 48 sheets.
   _Source: [2026-11-27: census, calibration and the seven-film re-grade](../../work/2026-11/1110_object-misaligned/journal.md#2026-11-27-census-calibration-and-the-seven-film-re-grade)._
 
+* **A sheet's index-mismatch fraction does not separate the sheets the graders cleared from those they graded** (`[Bounded Observation]`, 2026-11-27, the 84 sheets of the 2026-11-27 baseline, `6d511d1`, lavapipe, #1117).
+  Over the readout mask, the undisputed sheets no pass graded 2 or more had a median of 0.035 (38 sheets, 0.006 to 0.127), the disputed sheets 0.041 (25) and the undisputed sheets with a category at 2 or more 0.064 (21, 0.025 to 0.190), and the film moves it as much as the grade (BALLOON's median sheet 0.071, CTRY's 0.033).
+  All 9 cleared sheets above 0.06 carry an `other` note, 6 of them naming a shading difference, so the graders saw those differences rather than missed them.
+  The tie-break therefore also grades an undisputed sheet above `ROUTE_MISMATCH` (0.06) that no pass graded 2 or more, or that has a note: a budget of 13 extra sheets on the baseline (BALLOON 7), not a boundary the fraction draws.
+  _Source: [2026-11-27: the census and the threshold](../../work/2026-11/1117_route-unexamined-sheets/journal.md#2026-11-27-the-census-and-the-threshold)._
+
 * **The 20-category DSH passes differed by at most one frame on these readouts** (`[Bounded Observation]`, 2026-11-25, the seven `errors-20cat` runs of the lavapipe render of `crates/` `4b5c69c`).
   Two DSH passes over the same 12 sheets per film moved a category's count of frames graded 2 or more by at most 1 on every film, against the 3 that set `min_change` from two Haiku passes; `min_change` stays 4.
   The readout grades 12 frames per film, not the whole film.

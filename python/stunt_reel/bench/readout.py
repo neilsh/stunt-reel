@@ -56,6 +56,9 @@ class Readout:
     unknown: tuple[str, ...]
     #: Sheets the two passes disagreed on, scored from the tie-break (0 for a single pass).
     disputed: int = 0
+    #: Undisputed sheets the tie-break graded because their index mismatch passed
+    #: ``ROUTE_MISMATCH`` (#1117); 0 in readouts made before it.
+    routed: int = 0
     #: How each page was paired with its render: ``render_tick`` (the scorer's pairing, #1172) or
     #: ``tag`` (the page's own tick, every readout made before it). Readouts with different
     #: pairings are not comparable.
@@ -89,6 +92,7 @@ class Readout:
                 missing=int(doc["missing"]),
                 unknown=tuple(str(u) for u in doc["unknown"]),
                 disputed=int(doc.get("disputed", 0)),
+                routed=int(doc.get("routed", 0)),
                 pairing=str(doc.get("pairing", "tag")),
             )
         except (KeyError, TypeError, ValueError) as err:

@@ -34,18 +34,21 @@ from stunt_reel.bench.readout import (
 from stunt_reel.bench.sheets import Sheet, build_sheet, pick_ticks, plan_sheets, sheet_id
 from stunt_reel.bench.taxonomy import Category, FilmWindow, Taxonomy, add_example, load_categories
 from stunt_reel.bench.workflow import (
+    ROUTE_MISMATCH,
     Calibration,
     batch_row,
     calibrate,
     disputed,
     make_run,
     merge_grades,
+    routed,
     score_run,
     write_disputes,
     write_example,
 )
 
 __all__ = [
+    "ROUTE_MISMATCH",
     "TABLE_HEADER",
     "Calibration",
     "Category",
@@ -72,6 +75,7 @@ __all__ = [
     "planes_digest",
     "readout",
     "render_brief",
+    "routed",
     "score_run",
     "sheet_id",
     "suppressed",

@@ -14,6 +14,7 @@ import pytest
 from pytest_helpers import MemorySource
 from render_helpers import flip_byte, rewrite_store
 from stunt_reel.bench.errors import (
+    ROUTE_MISMATCH,
     TABLE_HEADER,
     Calibration,
     CategoryReadout,
@@ -21,6 +22,7 @@ from stunt_reel.bench.errors import (
     FilmWindow,
     Readout,
     Sheet,
+    SheetGrades,
     Taxonomy,
     add_example,
     batch_row,
@@ -37,6 +39,7 @@ from stunt_reel.bench.errors import (
     planes_digest,
     readout,
     render_brief,
+    routed,
     score_run,
     sheet_id,
     suppressed,
@@ -610,6 +613,9 @@ def test_make_then_score_roundtrip(run_inputs: dict[str, Path]) -> None:
     assert run["ticks"] == [10, 20]
     assert run["revision"] == "abc"
     assert not any(i in (out / "run.json").read_text(encoding="utf-8") for i in ids)
+    assert sorted(run["mismatch"]) == ["10", "20"]
+    assert all(0.0 <= v <= 1.0 for v in run["mismatch"].values())
+    assert run["route_mismatch"] == ROUTE_MISMATCH
     taxonomy = load_categories(run_inputs["taxonomy"])
     (out / "grades.txt").write_text(
         "\n".join(_all_zero(taxonomy, i, aircraft_absent=2) for i in ids), encoding="utf-8"
@@ -814,21 +820,12 @@ def test_merge_grades_takes_the_tiebreak_on_disputes() -> None:
         "\n".join([_all_zero(taxonomy, "a", aircraft_absent=3), _all_zero(taxonomy, "b")]),
         taxonomy,
     )
-    second = parse_grades(
-        "\n".join(
-            [
-                _all_zero(taxonomy, "a", aircraft_absent=2),
-                _all_zero(taxonomy, "b", shadow_missing=3),
-            ]
-        ),
-        taxonomy,
-    )
     tiebreak = parse_grades(_all_zero(taxonomy, "b", shadow_missing=1), taxonomy)
-    merged = merge_grades(first, second, tiebreak, ["a", "b"])
+    merged = merge_grades(first, tiebreak, ["b"])
     assert merged["a"] == first["a"]
     assert merged["b"] == tiebreak["b"]
     with pytest.raises(BenchError, match="no tie-break grade for b"):
-        merge_grades(first, second, {}, ["a", "b"])
+        merge_grades(first, {}, ["b"])
 
 
 def _grade_second(run_inputs: dict[str, Path], **grades: int) -> None:
@@ -846,7 +843,7 @@ def test_two_passes_and_a_tiebreak_score(run_inputs: dict[str, Path]) -> None:
     _grade_second(run_inputs, aircraft_absent=1)
     with pytest.raises(BenchError, match="errors-disputes"):
         score_run(out, run_inputs["render"], run_inputs["taxonomy"], None)
-    assert write_disputes(out, run_inputs["taxonomy"]) == 2
+    assert write_disputes(out, run_inputs["taxonomy"]) == (2, 0)
     ids = (out / "ids-tiebreak.txt").read_text(encoding="utf-8").split()
     brief = (out / "brief-tiebreak.md").read_text(encoding="utf-8")
     assert "`ids-tiebreak.txt` lists 2 image ids" in brief
@@ -861,12 +858,72 @@ def test_two_passes_and_a_tiebreak_score(run_inputs: dict[str, Path]) -> None:
     assert result.disputed == 2
 
 
+def _grades(taxonomy: Taxonomy, *lines: str) -> dict[str, SheetGrades]:
+    return parse_grades("\n".join(lines), taxonomy)
+
+
+def test_routed_sends_quiet_or_noted_sheets_above_the_threshold() -> None:
+    taxonomy = load_categories(CATEGORIES)
+    first = _grades(
+        taxonomy,
+        _all_zero(taxonomy, "quiet"),
+        _all_zero(taxonomy, "low"),
+        _all_zero(taxonomy, "clear", aircraft_absent=2),
+        _all_zero(taxonomy, "noted", other="a stray prop", aircraft_absent=2),
+        _all_zero(taxonomy, "split"),
+        _all_zero(taxonomy, "nomap"),
+    )
+    second = _grades(
+        taxonomy,
+        _all_zero(taxonomy, "quiet"),
+        _all_zero(taxonomy, "low"),
+        _all_zero(taxonomy, "clear", aircraft_absent=3),
+        _all_zero(taxonomy, "noted", aircraft_absent=2),
+        _all_zero(taxonomy, "split", aircraft_absent=2),
+        _all_zero(taxonomy, "nomap"),
+    )
+    ids = ["quiet", "low", "clear", "noted", "split", "nomap", "absent"]
+    mismatch = {"quiet": 0.5, "low": 0.01, "clear": 0.5, "noted": 0.5, "split": 0.5}
+    assert routed(first, second, ids, mismatch, ROUTE_MISMATCH) == ["quiet", "noted"]
+    quiet_note = _grades(taxonomy, _all_zero(taxonomy, "noted", other="a stray prop"))
+    assert routed(quiet_note, quiet_note, ["noted"], {"noted": 0.5}, ROUTE_MISMATCH) == ["noted"]
+
+
+def test_a_routed_sheet_takes_the_tiebreak_grade(run_inputs: dict[str, Path]) -> None:
+    out = run_inputs["out"]
+    _make(run_inputs)
+    ids = (out / "ids.txt").read_text(encoding="utf-8").split()
+    run = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    run["mismatch"] = {"10": 0.9, "20": 0.0}
+    (out / "run.json").write_text(json.dumps(run), encoding="utf-8")
+    _grade_all(run_inputs)
+    _grade_second(run_inputs)
+    assert write_disputes(out, run_inputs["taxonomy"]) == (0, 1)
+    seed = run["seed"]
+    assert (out / "ids-tiebreak.txt").read_text(encoding="utf-8").split() == [
+        sheet_id(seed, "real", None, 10)
+    ]
+    assert sheet_id(seed, "real", None, 10) in ids
+    with pytest.raises(BenchError, match="errors-disputes"):
+        score_run(out, run_inputs["render"], run_inputs["taxonomy"], None)
+    taxonomy = load_categories(run_inputs["taxonomy"])
+    (out / "grades-tiebreak.txt").write_text(
+        _all_zero(taxonomy, sheet_id(seed, "real", None, 10), aircraft_absent=3),
+        encoding="utf-8",
+    )
+    result, _, _ = score_run(out, run_inputs["render"], run_inputs["taxonomy"], None)
+    assert result.routed == 1
+    assert result.disputed == 0
+    absent = next(c for c in result.categories if c.category == "aircraft-absent")
+    assert absent.ticks_2plus == (10,)
+
+
 def test_agreeing_passes_need_no_tiebreak(run_inputs: dict[str, Path]) -> None:
     out = run_inputs["out"]
     _make(run_inputs)
     _grade_all(run_inputs, aircraft_absent=3)
     _grade_second(run_inputs, aircraft_absent=2)
-    assert write_disputes(out, run_inputs["taxonomy"]) == 0
+    assert write_disputes(out, run_inputs["taxonomy"]) == (0, 0)
     result, _, _ = score_run(out, run_inputs["render"], run_inputs["taxonomy"], None)
     assert result.disputed == 0
     assert next(c for c in result.categories if c.category == "aircraft-absent").mean == 3

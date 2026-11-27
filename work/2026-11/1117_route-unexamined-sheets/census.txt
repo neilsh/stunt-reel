@@ -1,0 +1,84 @@
+balloon      12 0.0061 quiet      note
+ctry         14 0.0127 quiet      
+intro      2069 0.0156 quiet      
+ctry        188 0.0194 disputed   
+location   4522 0.0205 quiet      
+land        419 0.0225 quiet      note
+ctry        100 0.0227 disputed   
+intro      2949 0.0228 disputed   
+ctry        276 0.0234 disputed   note
+intro      2773 0.0251 clear      
+location   5062 0.0253 disputed   
+ctry        716 0.0254 clear      
+land        826 0.0266 quiet      note
+bomb        639 0.0270 quiet      note
+ctry        628 0.0280 disputed   
+location   3972 0.0282 quiet      
+traintnl    793 0.0283 quiet      
+intro      1002 0.0284 quiet      note
+land        496 0.0284 disputed   note
+land         12 0.0303 quiet      note
+location    134 0.0311 quiet      
+traintnl    342 0.0317 clear      
+traintnl   1013 0.0317 disputed   
+land         89 0.0322 quiet      note
+ctry        540 0.0325 disputed   
+location   5611 0.0325 quiet      
+bomb       3477 0.0328 quiet      note
+land        738 0.0335 quiet      note
+location   6161 0.0335 quiet      
+ctry        364 0.0341 clear      
+bomb        958 0.0350 quiet      note
+land        903 0.0352 quiet      note
+ctry        804 0.0354 disputed   
+bomb       3158 0.0355 quiet      note
+bomb       1277 0.0361 quiet      note
+ctry        892 0.0363 clear      note
+traintnl    123 0.0388 clear      
+balloon     122 0.0392 disputed   note
+traintnl    903 0.0396 disputed   note
+location   2322 0.0399 quiet      note
+bomb        331 0.0404 quiet      note
+intro      2245 0.0407 disputed   
+ctry        452 0.0442 disputed   
+land        254 0.0444 quiet      note
+location    683 0.0445 disputed   
+land        661 0.0447 disputed   note
+traintnl     12 0.0449 clear      
+traintnl    562 0.0480 disputed   
+location   2872 0.0502 quiet      
+land        177 0.0512 quiet      note
+location   1233 0.0523 disputed   
+ctry        980 0.0525 disputed   
+traintnl    683 0.0530 clear      
+intro      2597 0.0545 clear      note
+land        331 0.0549 quiet      note
+intro      3301 0.0560 disputed   note
+bomb       2212 0.0562 disputed   
+bomb         12 0.0565 quiet      
+bomb       1585 0.0574 quiet      note
+bomb       2531 0.0585 disputed   
+land        584 0.0614 quiet      note
+traintnl   1123 0.0627 clear      
+balloon     331 0.0631 disputed   note
+balloon     540 0.0643 clear      note
+balloon     441 0.0655 quiet      note
+traintnl    452 0.0657 clear      
+traintnl   1233 0.0660 quiet      note
+intro      3125 0.0692 quiet      note
+balloon     221 0.0692 disputed   note
+bomb       2850 0.0702 quiet      note
+intro      1355 0.0703 clear      
+balloon     970 0.0710 quiet      note
+intro      1178 0.0761 clear      
+balloon     859 0.0794 disputed   note
+bomb       1904 0.0800 quiet      note
+intro      2421 0.0802 clear      note
+intro      3477 0.0820 clear      
+balloon    1178 0.1077 clear      note
+location   3422 0.1090 clear      
+balloon     650 0.1232 quiet      note
+balloon     749 0.1271 quiet      note
+balloon    1068 0.1290 clear      note
+location   1772 0.1293 clear      
+traintnl    232 0.1896 clear      
