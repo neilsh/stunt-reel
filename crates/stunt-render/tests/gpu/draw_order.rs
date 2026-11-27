@@ -1,6 +1,7 @@
 //! Pins which polygon wins a pixel for each draw-order class the renderer resolves, near (10 m)
 //! and far (2 km): a decal over its base polygon, a `ZLINETO` line on a coplanar facet, a tile
-//! lying on the terrain within `GROUND_LIE_TOLERANCE`, and an actor crossing a scenery polygon.
+//! lying on the terrain within `GROUND_LIE_TOLERANCE`, an actor crossing a scenery polygon, and
+//! a list-ranked shape's later polygon over an earlier, nearer one (ADR 0056).
 //!
 //! Each case reads the winning palette index at probe pixels well inside its regions, so a
 //! depth-format or bias change that flips a class at range fails here, on lavapipe, before the
@@ -208,6 +209,7 @@ pub(crate) fn vertex(
         flags: UNSHADED,
         scenery_class: class,
         decal_tie: 0,
+        list_rank: 0,
     }
 }
 
@@ -626,6 +628,65 @@ fn an_actor_crossing_a_scenery_polygon_wins_where_it_is_nearer_near_and_far() {
                     (on_actor(-0.15, 0.0), WALL),
                     (on_actor(-0.6, 0.0), WALL),
                     (on_actor(-0.6, -0.5), WALL),
+                ],
+            );
+        }
+    });
+}
+
+// ---- A list-ranked shape (ADR 0056) ----------------------------------------------------------
+
+const EARLIER: u8 = 40;
+const LATER: u8 = 15;
+
+/// Two overlapping squares of one list-ranked shape facing a camera at `+z`, half-width `s`:
+/// the earlier (rank 1) nearer the camera at `z = 0.5 s`, the later (rank 2) behind it at
+/// `z = -0.5 s`, with a rank sphere about the origin that holds both.
+fn ranked_squares(s: f32) -> SodModelIr {
+    let ranked = |x: f32, y: f32, z: f32, index: u8, list_rank: u32| SodVertex {
+        list_rank,
+        ..vertex([x, y, z], [0.0, 0.0, 1.0], index, 0)
+    };
+    let square = |x0: f32, x1: f32, z: f32, index: u8, rank: u32| {
+        let h = 0.5 * s;
+        [
+            ranked(x0, -h, z, index, rank),
+            ranked(x0, h, z, index, rank),
+            ranked(x1, h, z, index, rank),
+            ranked(x1, -h, z, index, rank),
+        ]
+    };
+    let mut ir = SodModelIr::new("RANKED");
+    ir.vertices = square(-s, 0.4 * s, 0.5 * s, EARLIER, 1).to_vec();
+    push_mesh(&mut ir, "EARLIER", 4, &[0, 1, 2, 0, 2, 3], false);
+    ir.vertices.extend(square(-0.4 * s, s, -0.5 * s, LATER, 2));
+    push_mesh(&mut ir, "LATER", 4, &[4, 5, 6, 4, 6, 7], false);
+    ir.rank_spheres.push(stunt_core::contracts::RankSphere {
+        vertices: 0..8,
+        centre: [0.0, 0.0, 0.0],
+        radius: 1.2 * s,
+    });
+    ir
+}
+
+#[test]
+fn a_ranked_shapes_later_polygon_covers_an_earlier_nearer_one_near_and_far() {
+    common::gpu_test(|| {
+        for (label, d) in RANGES {
+            let s = 0.2 * d;
+            let film = film([0.0, 0.0, d], Vec::new());
+            let scene = FilmScene::with_single_model(film, ranked_squares(s));
+            let Some(shot) = shoot(&scene) else {
+                return;
+            };
+            assert_winners(
+                label,
+                &shot,
+                &[
+                    // Where they overlap the later square wins, though it lies behind.
+                    ([0.0, 0.0, -0.5 * s], LATER),
+                    ([-0.8 * s, 0.0, 0.5 * s], EARLIER),
+                    ([0.8 * s, 0.0, -0.5 * s], LATER),
                 ],
             );
         }

@@ -6,26 +6,26 @@
 //! - `[I3]` VGA Mode 13h palette index preservation
 //! - `[I5]` Coplanar decal identification (decals keep their position)
 //!
-//! Reference verification: Gate G03 (`std::mem::size_of::<SodVertex>() == 28`).
+//! Reference verification: Gate G03 (`std::mem::size_of::<SodVertex>() == 32`).
 
 use crate::anchor::AnchorPoint;
 use std::collections::HashMap;
 
 use crate::contracts::shape::{
-    DecodeMode, DecodeRecord, NodeId, NodeKind, SodModelIr, SodVertex, VERTEX_FLAG_DISC,
-    VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE, VERTEX_FLAG_PRESHADED,
-    VisibilityCondition, arena_index,
+    DecodeMode, DecodeRecord, NodeId, NodeKind, RankSphere, SodModelIr, SodVertex,
+    VERTEX_FLAG_DISC, VERTEX_FLAG_LINE, VERTEX_FLAG_LINE_END, VERTEX_FLAG_LINE_SIDE,
+    VERTEX_FLAG_PRESHADED, VisibilityCondition, arena_index,
 };
 use crate::sod::SodError;
 use crate::sod::collision::decode_collision;
 use crate::sod::decal::{decal_ties, identify_coplanar_decals};
-use crate::sod::vm::{Policy, RawPolygon, run_vm};
+use crate::sod::vm::{Policy, RawPolygon, SPHERE_FACES, run_vm};
 use crate::sod::{AngleBank, ShadeLight};
 
 // Compile-time assertion of Gate G03 requirements
 const _: () = assert!(
-    size_of::<SodVertex>() == 28,
-    "SodVertex is a 28-byte vertex"
+    size_of::<SodVertex>() == 32,
+    "SodVertex is a 32-byte vertex"
 );
 const _: () = assert!(align_of::<SodVertex>() == 4, "SodVertex is 4-byte aligned");
 
@@ -103,17 +103,23 @@ pub(crate) fn build_tied_sod_model_ir(
     // Base batches group every polygon of one visibility: the depth test orders them. Decal
     // batches are runs of consecutive polygons of one visibility, so the nodes in arena order
     // reproduce the stream order the ordered decal pass relies on.
+    let ranks = list_ranks(polygons);
     for is_decal in [false, true] {
-        let matching_polys: Vec<(&RawPolygon, bool)> = polygons
+        let matching_polys: Vec<Tessellated<'_>> = polygons
             .iter()
             .enumerate()
             .filter(|(_, p)| p.is_decal == is_decal)
-            .map(|(at, p)| (p, ties.get(at).copied().unwrap_or(false)))
+            .map(|(at, p)| Tessellated {
+                poly: p,
+                tie: ties.get(at).copied().unwrap_or(false),
+                rank: ranks.as_ref().and_then(|r| r.get(at)).copied().unwrap_or(0),
+            })
             .collect();
         let prefix = if is_decal { "DECAL" } else { "BASE" };
 
-        let mut batches: Vec<(VisibilityCondition, Vec<(&RawPolygon, bool)>)> = Vec::new();
-        for (p, tie) in matching_polys {
+        let mut batches: Vec<(VisibilityCondition, Vec<Tessellated<'_>>)> = Vec::new();
+        for t in matching_polys {
+            let p = t.poly;
             let reuse = if is_decal {
                 batches.last().is_some_and(|(v, _)| *v == p.visibility)
             } else {
@@ -126,10 +132,10 @@ pub(crate) fn build_tied_sod_model_ir(
                     batches.iter_mut().find(|(v, _)| *v == p.visibility)
                 };
                 if let Some((_, polys)) = batch {
-                    polys.push((p, tie));
+                    polys.push(t);
                 }
             } else {
-                batches.push((p.visibility, vec![(p, tie)]));
+                batches.push((p.visibility, vec![t]));
             }
         }
 
@@ -140,7 +146,7 @@ pub(crate) fn build_tied_sod_model_ir(
                 format!("{name}_{prefix}_{batch_idx}")
             };
 
-            let mut weld_map: HashMap<(WeldKey, bool), u32> = HashMap::new();
+            let mut weld_map: HashMap<(WeldKey, bool, u32), u32> = HashMap::new();
             process_polygon_batch(
                 &mut ir,
                 root_id,
@@ -153,7 +159,83 @@ pub(crate) fn build_tied_sod_model_ir(
         }
     }
 
+    if ranks.is_some() {
+        ir.rank_spheres.extend(rank_sphere(&ir.vertices));
+    }
     ir
+}
+
+/// A polygon on its way to the arena, with its decal tie and its list rank
+/// ([`SodVertex::list_rank`]).
+#[derive(Clone, Copy)]
+struct Tessellated<'a> {
+    poly: &'a RawPolygon,
+    tie: bool,
+    rank: u32,
+}
+
+/// Each polygon's place in the display list, from 1, an `OP_SPHERE`'s faces sharing one,
+/// when at least a tenth of the places are spheres; `None`, drawn by depth alone, otherwise.
+///
+/// A shape of spheres (a tree, a bush) is drawn as `PLAYONE` paints it, each later primitive
+/// covering the earlier ones; a shape with a sphere among many polygons (a bridge deck, a
+/// tower, an aircraft) keeps its depth, since flattening it covers its neighbours wrongly
+/// (`docs/adr/0056-sphere-shapes-are-drawn-in-list-order.md`).
+fn list_ranks(polygons: &[RawPolygon]) -> Option<Vec<u32>> {
+    let (mut rank, mut faces, mut spheres) = (0u32, 0usize, 0u32);
+    let ranks: Vec<u32> = polygons
+        .iter()
+        .map(|p| {
+            if p.sphere {
+                if faces.is_multiple_of(SPHERE_FACES) {
+                    rank = rank.saturating_add(1);
+                    spheres = spheres.saturating_add(1);
+                }
+                faces = faces.saturating_add(1);
+            } else {
+                rank = rank.saturating_add(1);
+            }
+            rank
+        })
+        .collect();
+    (spheres > 0 && spheres.saturating_mul(10) >= rank).then_some(ranks)
+}
+
+/// The sphere a ranked shape's `vertices` take their depth from: their bounding box's centre
+/// and the distance from it to the farthest of them.
+fn rank_sphere(vertices: &[SodVertex]) -> Option<RankSphere> {
+    let (first, _) = vertices.split_first()?;
+    let (mut lo, mut hi) = (first.position, first.position);
+    for v in vertices {
+        for ((l, h), c) in lo.iter_mut().zip(&mut hi).zip(v.position) {
+            *l = l.min(c);
+            *h = h.max(c);
+        }
+    }
+    let [lx, ly, lz] = lo;
+    let [hx, hy, hz] = hi;
+    let centre = [
+        f32::midpoint(lx, hx),
+        f32::midpoint(ly, hy),
+        f32::midpoint(lz, hz),
+    ];
+    let radius = vertices
+        .iter()
+        .map(|v| distance(v.position, centre))
+        .fold(MIN_RANK_RADIUS, f32::max);
+    Some(RankSphere {
+        vertices: 0..arena_index(vertices.len()),
+        centre,
+        radius,
+    })
+}
+
+/// The smallest [`RankSphere::radius`], 1 mm.
+pub(crate) const MIN_RANK_RADIUS: f32 = 1e-3;
+
+/// The distance between `a` and `b`.
+pub(crate) fn distance(a: [f32; 3], b: [f32; 3]) -> f32 {
+    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 
 /// Tessellates and welds a slice of polygons into the model's consolidated buffers,
@@ -162,15 +244,15 @@ fn process_polygon_batch(
     ir: &mut SodModelIr,
     parent_id: NodeId,
     node_name: &str,
-    polys: &[(&RawPolygon, bool)],
+    polys: &[Tessellated<'_>],
     is_decal: bool,
     visibility: VisibilityCondition,
-    weld_map: &mut HashMap<(WeldKey, bool), u32>,
+    weld_map: &mut HashMap<(WeldKey, bool, u32), u32>,
 ) {
     let vertex_offset = arena_index(ir.vertices.len());
     let index_offset = arena_index(ir.indices.len());
 
-    for &(poly, tie) in polys {
+    for &Tessellated { poly, tie, rank } in polys {
         if poly.flags & VERTEX_FLAG_LINE != 0 {
             push_line(ir, poly, weld_map);
             continue;
@@ -191,6 +273,7 @@ fn process_polygon_batch(
             let weld_key = (
                 quantize_weld_key(v_pos, &poly.normal, palette_index, poly.flags),
                 tie,
+                rank,
             );
             if let Some(&existing_idx) = weld_map.get(&weld_key) {
                 poly_indices.push(existing_idx);
@@ -205,6 +288,7 @@ fn process_polygon_batch(
                     flags: poly.flags,
                     scenery_class: 0,
                     decal_tie: u8::from(tie),
+                    list_rank: rank,
                 });
                 weld_map.insert(weld_key, new_idx);
                 poly_indices.push(new_idx);
@@ -257,7 +341,11 @@ fn polygon_centroid(poly: &RawPolygon) -> [f32; 3] {
 /// each endpoint, one per side, wound both ways so back-face culling keeps one. The quad has no
 /// width in the world; the renderer widens it to one pixel on screen. A polygon without two
 /// vertices appends nothing.
-fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<(WeldKey, bool), u32>) {
+fn push_line(
+    ir: &mut SodModelIr,
+    poly: &RawPolygon,
+    weld_map: &mut HashMap<(WeldKey, bool, u32), u32>,
+) {
     let [a, b] = poly.vertices[..] else {
         return;
     };
@@ -275,6 +363,7 @@ fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<(Wel
         let key = (
             quantize_weld_key(&position, &to_other, poly.palette_index, flags),
             false,
+            0,
         );
         *slot = *weld_map.entry(key).or_insert_with(|| {
             let index = arena_index(ir.vertices.len());
@@ -285,6 +374,7 @@ fn push_line(ir: &mut SodModelIr, poly: &RawPolygon, weld_map: &mut HashMap<(Wel
                 flags,
                 scenery_class: 0,
                 decal_tie: 0,
+                list_rank: 0,
             });
             index
         });

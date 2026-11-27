@@ -154,9 +154,12 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: decal_tie
-    // The second vertex stream: for an outline corner, the third vertex of the triangle its
-    // edge bounds (outline.rs `Outlined`); for any other vertex, its own position.
-    @location(3) apex: vec3<f32>,
+    // The second vertex stream (outline.rs `Outlined`): for an outline corner, the third
+    // vertex of the triangle its edge bounds, and 0; for a list-ranked filled vertex, its
+    // rank sphere's centre and radius; for any other vertex, its own position, and 0.
+    @location(3) apex: vec4<f32>,
+    // The vertex's polygon's place in its shape's display list, from 1; 0 when unranked.
+    @location(4) list_rank: u32,
 };
 
 struct VertexOutput {
@@ -273,6 +276,32 @@ fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f3
     return camera.rotation_proj * vec4<f32>(on_ray * t, 1.0);
 }
 
+// The depth one place in a display list adds: eight steps of the 24-bit depth buffer.
+const RANK_STEP: f32 = 4.8e-7;
+
+// The clip z of a list-ranked vertex (`VertexInput::list_rank`) of a perspective, unshadowed
+// draw: the depth of its apex point moved toward the eye by the apex radius (for a filled
+// vertex, its rank sphere's point nearest the eye, no nearer than 5 cm), one RANK_STEP nearer
+// per rank, so the shape's polygons cover each other in list order as PLAYONE paints them and
+// still depth-test against other shapes (docs/adr/0056-sphere-shapes-are-drawn-in-list-order.md).
+// Any other vertex keeps `clip`'s z.
+fn list_order_depth(in: VertexInput, clip: vec4<f32>) -> f32 {
+    if (in.list_rank == 0u || model.layer.y != 0u || camera.rotation_proj[3][3] != 0.0
+        || clip.w < clip.z) {
+        return clip.z;
+    }
+    var origin = (model.model_matrix * vec4<f32>(in.apex.xyz, 1.0)).xyz;
+    let dist = length(origin);
+    if (dist > 0.0) {
+        origin = origin * (max(dist - in.apex.w, 0.05) / dist);
+    }
+    let o = camera.rotation_proj * vec4<f32>(origin, 1.0);
+    if (o.w <= 0.0) {
+        return clip.z;
+    }
+    return min(o.z / o.w + f32(in.list_rank) * RANK_STEP, 1.0) * clip.w;
+}
+
 // World up, the plane normal of a vertex with no facet of its own (`slide_normal`).
 const UP: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
 
@@ -291,7 +320,7 @@ const NEAR_HORIZONTAL: f32 = 0.9;
 fn slide_normal(in: VertexInput) -> vec3<f32> {
     var n = in.normal;
     if ((in.attr.y & FLAG_LINE) != 0u) {
-        n = cross(in.normal, in.apex - in.position);
+        n = cross(in.normal, in.apex.xyz - in.position);
     }
     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
     let decal_tie = in.attr.z == SCENERY_PROP && in.attr.w != 0u;
@@ -317,36 +346,42 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
     let projected = camera.rotation_proj * eye_pos;
     let plane = slide_normal(in);
     out.clip_position = playone_vertex(projected, eye_pos, plane);
+    var collapsed = false;
     // OP_PERFDISK skips when shadow mode (work:0x806C) is set
     // (research/playone-exe/sod-vm-generators.md section 8.8).
     if (model.layer.y != 0u && (in.attr.y & FLAG_DISC) != 0u) {
         out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        collapsed = true;
     } else if ((in.attr.y & FLAG_LINE) != 0u) {
         let other_eye = model.model_matrix * vec4<f32>(in.position + in.normal, 1.0);
         let other = playone_vertex(camera.rotation_proj * other_eye, other_eye, plane);
         // An outline corner culls with the triangle its edge bounds, which winds from the
         // edge's first endpoint to its second and on to the apex; a two-sided polygon's and a
         // shadow's stay.
-        let apex_eye = model.model_matrix * vec4<f32>(in.apex, 1.0);
+        let apex_eye = model.model_matrix * vec4<f32>(in.apex.xyz, 1.0);
         let apex = playone_vertex(camera.rotation_proj * apex_eye, apex_eye, plane);
         let at_end = (in.attr.y & FLAG_LINE_END) != 0u;
         let first = select(out.clip_position, other, at_end);
         let second = select(other, out.clip_position, at_end);
         // A corner whose apex is its own position (a ZLINETO's) bounds no triangle; it is
         // tested by position, since a determinant with two equal rows can round off zero.
-        let bounds_triangle = any(in.apex != in.position);
+        let bounds_triangle = any(in.apex.xyz != in.position);
         let two_sided = (in.attr.y & FLAG_TWO_SIDED) != 0u;
         // A shadow draws through a pipeline that culls no face, so its outline culls nothing.
         let shadow = model.layer.y != 0u;
         if (bounds_triangle && !two_sided && !shadow && is_back_facing(first, second, apex)) {
             // Every corner of the quad collapses to one point, so it covers no pixel.
             out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            collapsed = true;
         } else {
             out.clip_position = widen_line(out.clip_position, other, in.attr.y);
         }
     } else if ((in.attr.y & FLAG_DISC) != 0u) {
         let centre = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
         out.clip_position = snap_disc(squeeze_disc(projected, centre), centre);
+    }
+    if (!collapsed) {
+        out.clip_position.z = list_order_depth(in, out.clip_position);
     }
     out.palette_index = in.attr.x & 255u;
     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
@@ -603,7 +638,7 @@ fn modern_normal(in: VertexInput) -> vec3<f32> {
     if ((in.attr.y & FLAG_LINE) != 0u) {
         // An outline corner's `normal` is its segment: light it by its edge's facet, as
         // `slide_normal` slides it.
-        n = cross(in.normal, in.apex - in.position);
+        n = cross(in.normal, in.apex.xyz - in.position);
     }
     // Turned by the model matrix itself, not its inverse transpose: right for the rotations and
     // uniform scales of an actor's or the world's matrix.

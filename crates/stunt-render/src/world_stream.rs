@@ -11,6 +11,7 @@ use stunt_core::contracts::{SodVertex, arena_index};
 use stunt_core::world::PropRun;
 
 use crate::mesh::{GpuMeshSlice, chunk_prop_runs};
+use crate::outline::Apex;
 
 /// What a stream copies from: one unsplit model's buffers, as the baked upload holds them.
 #[derive(Debug, Clone, Copy)]
@@ -18,7 +19,7 @@ pub(crate) struct WorldSource<'a> {
     /// The model's vertices.
     pub vertices: &'a [SodVertex],
     /// Each vertex's apex, in `vertices`' order.
-    pub apex: &'a [[f32; 3]],
+    pub apex: &'a [Apex],
     /// The model's index arena, into `vertices`.
     pub indices: &'a [u32],
     /// The model's outline indices, into `vertices`, as the one chunk's edge buffer holds them.
@@ -41,7 +42,7 @@ pub(crate) struct WorldStream {
     /// The copied vertex windows, back to back.
     pub vertices: Vec<SodVertex>,
     /// The windows' apexes, one per streamed vertex.
-    pub apex: Vec<[f32; 3]>,
+    pub apex: Vec<Apex>,
     /// The slices' indices, rebased to the streamed vertices.
     pub indices: Vec<u32>,
     /// The slices' outline indices, rebased to the streamed vertices.
@@ -210,6 +211,7 @@ mod tests {
                         flags: 0,
                         scenery_class: 0,
                         decal_tie: 0,
+                        list_rank: 0,
                     });
                 }
                 self.ir.indices.extend([
@@ -249,9 +251,9 @@ mod tests {
         }
 
         /// An apex that is not each vertex's position, so a copied window shows.
-        fn apex(&self) -> Vec<[f32; 3]> {
+        fn apex(&self) -> Vec<Apex> {
             (0..self.ir.vertices.len())
-                .map(|n| [n as f32, 100.0 + n as f32, 0.5])
+                .map(|n| [n as f32, 100.0 + n as f32, 0.5, 0.0])
                 .collect()
         }
     }

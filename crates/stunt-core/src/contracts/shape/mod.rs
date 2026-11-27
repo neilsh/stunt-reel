@@ -81,6 +81,10 @@ pub struct SodVertex {
     /// horizontally, so the decal keeps its tie on a steep facet
     /// (`research/playone-exe/sod-vm-lines-spans.md` section 8.14).
     pub decal_tie: u8,
+    /// The vertex's polygon's place in its shape's display list, from 1, when the shape
+    /// is drawn in list order ([`SodModelIr::rank_spheres`]); 0, depth-tested by its own
+    /// depth, otherwise.
+    pub list_rank: u32,
 }
 
 // Manual bytemuck trait implementations to eliminate mandatory crate dependencies
@@ -418,8 +422,26 @@ pub struct SodModelIr {
     /// Images the shape draws in screen space (`OP_ANIMATE`), in stream order. They are
     /// not geometry: [`Self::meshes`] and [`Self::extent`] leave them out.
     pub sprites: Vec<ShapeSprite>,
+    /// The bounds each run of list-ranked vertices ([`SodVertex::list_rank`]) takes its
+    /// depth from, one per ranked shape, runs not overlapping.
+    pub rank_spheres: Vec<RankSphere>,
     /// Provenance of the decode that produced this shape; `None` for authored shapes.
     decode: Option<DecodeRecord>,
+}
+
+/// A list-ranked shape's bounds, which its vertices take their depth from.
+///
+/// A ranked vertex draws at the depth of the sphere's point nearest the eye, one step
+/// further per rank, so the shape's polygons cover each other in display-list order as
+/// `PLAYONE` paints them (`docs/adr/0056-sphere-shapes-are-drawn-in-list-order.md`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RankSphere {
+    /// The vertices it covers, as indices into [`SodModelIr::vertices`].
+    pub vertices: std::ops::Range<u32>,
+    /// The centre of the ranked vertices' bounding box, in the model's frame.
+    pub centre: [f32; 3],
+    /// The distance from `centre` to the farthest ranked vertex, at least 1 mm.
+    pub radius: f32,
 }
 
 /// A length or position in a shape's node, vertex or index arena, as the `u32` that
@@ -445,6 +467,7 @@ impl SodModelIr {
             vertices: Vec::new(),
             indices: Vec::new(),
             sprites: Vec::new(),
+            rank_spheres: Vec::new(),
             decode: None,
         }
     }

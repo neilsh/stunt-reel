@@ -5,8 +5,8 @@ use std::ops::Range;
 
 use crate::anchor::AnchorPoint;
 use crate::contracts::{
-    NodeId, NodeKind, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeMesh, SodModelIr,
-    SodVertex, VERTEX_FLAG_LINE, VisibilityCondition, arena_index,
+    NodeId, NodeKind, RankSphere, SCENERY_OCEAN, SCENERY_PROP, SCENERY_TERRAIN, ShapeMesh,
+    SodModelIr, SodVertex, VERTEX_FLAG_LINE, VisibilityCondition, arena_index,
 };
 
 use super::map_bin::MapArea;
@@ -273,6 +273,7 @@ fn push_flat_quad(ir: &mut SodModelIr, y: f32, color: u8, scenery_class: u8) {
             flags: FLAGS_UNSHADED,
             scenery_class,
             decal_tie: 0,
+            list_rank: 0,
         });
     }
     ir.indices
@@ -331,6 +332,7 @@ fn push_props(
                 ground: ground.as_deref(),
                 base_y,
                 shape: shape_id,
+                rank_sphere: model.rank_spheres.first(),
             };
             push_prop_mesh(ir, prop_runs, &mesh, placed, false);
         }
@@ -404,6 +406,7 @@ fn push_gated_props(
             ground: ground.as_deref(),
             base_y,
             shape: shape_id,
+            rank_sphere: model.rank_spheres.first(),
         };
         let first_node = arena_index(ir.nodes.len());
         for mesh in model.meshes() {
@@ -513,13 +516,16 @@ pub(super) fn lod_condition(gate: LodGate, base_y: f32) -> VisibilityCondition {
 }
 
 /// Where one placement of a prop lies: its position, its ground-snapped vertices if it has
-/// them ([`ground_decal_vertices`]), the ground height `base_y`, and its shape.
+/// them ([`ground_decal_vertices`]), the ground height `base_y`, its shape, and the shape's
+/// rank sphere.
 #[derive(Clone, Copy)]
 struct Placed<'a> {
     pos: [f32; 3],
     ground: Option<&'a [[f32; 3]]>,
     base_y: f32,
     shape: u16,
+    /// The shape's [`RankSphere`] when it is drawn in list order.
+    rank_sphere: Option<&'a RankSphere>,
 }
 
 impl Placed<'_> {
@@ -593,6 +599,7 @@ fn push_prop_mesh(
                     flags: v.flags,
                     scenery_class: SCENERY_PROP,
                     decal_tie: v.decal_tie,
+                    list_rank: v.list_rank,
                 });
                 arena_index(ir.vertices.len() - 1)
             });
@@ -603,6 +610,20 @@ fn push_prop_mesh(
         }
     }
     let end_vertex = arena_index(ir.vertices.len());
+    if let Some(sphere) = placed.rank_sphere
+        && end_vertex > first_vertex
+    {
+        let c = sphere.centre;
+        ir.rank_spheres.push(RankSphere {
+            vertices: first_vertex..end_vertex,
+            centre: [
+                c[0] + placed.pos[0],
+                c[1] + placed.pos[1] + placed.base_y,
+                c[2] + placed.pos[2],
+            ],
+            radius: sphere.radius,
+        });
+    }
     record_prop_run(prop_runs, first_vertex, end_vertex, placed.shape);
     runs.into_iter().map(|(_, run)| run).collect()
 }
@@ -684,6 +705,7 @@ mod tests {
                 flags: 0,
                 scenery_class: 0,
                 decal_tie: 0,
+                list_rank: 0,
             },
         );
         prop_ir.indices = vec![0, 1, 2, 0, 1, 2];
@@ -926,6 +948,36 @@ mod tests {
         assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
     }
 
+    /// A list-ranked prop keeps its vertices' ranks, and its rank sphere moves with it.
+    #[test]
+    fn a_ranked_prop_carries_its_ranks_and_its_moved_rank_sphere() {
+        let mut prop = square_prop(Some(5.0));
+        for (rank, v) in (1..).zip(&mut prop.vertices) {
+            v.list_rank = rank;
+        }
+        prop.rank_spheres.push(RankSphere {
+            vertices: 0..5,
+            centre: [0.0, 2.5, 0.0],
+            radius: 3.5,
+        });
+        let local = prop.vertices[0].position;
+        let ir = world_with(prop, [500.0, 10.0, 20.0]);
+
+        let [sphere] = ir.rank_spheres.as_slice() else {
+            panic!("one rank sphere, got {:?}", ir.rank_spheres);
+        };
+        let placed = &ir.vertices[sphere.vertices.start as usize..sphere.vertices.end as usize];
+        assert_eq!(placed.len(), 5);
+        let mut ranks: Vec<u32> = placed.iter().map(|v| v.list_rank).collect();
+        ranks.sort_unstable();
+        assert_eq!(ranks, [1, 2, 3, 4, 5]);
+        // The first triangle's first corner is the shape's vertex 0.
+        let moved = placed[0].position;
+        let offset = [0, 1, 2].map(|k| moved[k] - local[k]);
+        assert_eq!(sphere.centre, [offset[0], 2.5 + offset[1], offset[2]]);
+        assert_eq!(sphere.radius, 3.5);
+    }
+
     #[test]
     fn a_flat_prop_with_no_terrain_below_stays_in_the_base_batch() {
         let ir = world_with(square_prop(None), [500.0, 10.0, 20.0]);
@@ -1028,6 +1080,7 @@ mod tests {
             flags: VERTEX_FLAG_LINE | flags,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         };
         prop.vertices.extend([
             line(-2.0, 0),

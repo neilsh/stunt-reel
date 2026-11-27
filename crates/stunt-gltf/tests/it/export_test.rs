@@ -421,6 +421,7 @@ fn hierarchy_visibility_and_joints_are_preserved() {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         });
     }
     ir.indices = vec![0, 1, 2];

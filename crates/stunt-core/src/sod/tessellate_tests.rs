@@ -36,6 +36,7 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // tri2 shares vertices 0 and 1 with tri1, identical normal and palette -> those 2 MUST weld
@@ -47,6 +48,7 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // tri3 shares vertices [0.0, 0.0, 0.0] and [2.0, 0.0, 0.0], but different palette index 20 -> MUST NOT weld
@@ -58,6 +60,7 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // tri4 shares vertex [0.0, 0.0, 0.0], but normal is [0, 1, 0] -> MUST NOT weld
@@ -69,6 +72,7 @@ fn test_challenge_i1_vertex_welding_full_attribute_tuple_oracle() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     let ir = crate::sod::tessellate::build_sod_model_ir("WELD_ORACLE", &[tri1, tri2, tri3, tri4]);
@@ -111,6 +115,7 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // Decal triangle 1: vertices (0,0), (2,0), (0,2) at z=0
@@ -122,6 +127,7 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // Decal triangle 2: vertices (2,0), (2,2), (0,2) at z=0 (shares edge with decal1)
@@ -133,6 +139,7 @@ fn test_challenge_i5_decal_edge_sharing_and_welding() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     let processed =
@@ -175,6 +182,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     let poly_b = RawPolygon {
         vertex_palette: Vec::new(),
@@ -188,6 +196,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     let ir_welded = crate::sod::tessellate::build_sod_model_ir("SUB_TOL", &[poly_a, poly_b]);
@@ -206,6 +215,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     let poly_d = RawPolygon {
         vertex_palette: Vec::new(),
@@ -215,6 +225,7 @@ fn test_challenge_i1_welding_distance_threshold_oracle() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     let ir_distinct = crate::sod::tessellate::build_sod_model_ir("SUPER_TOL", &[poly_c, poly_d]);
@@ -236,6 +247,7 @@ fn test_attribute_preserving_vertex_welding() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     // Duplicate of p1: exact same attributes -> 100% welded
     let p2 = p1.clone();
@@ -249,6 +261,7 @@ fn test_attribute_preserving_vertex_welding() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     // p4: same positions, but different palette index -> distinct vertices
@@ -260,6 +273,7 @@ fn test_attribute_preserving_vertex_welding() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
 
     let ir = crate::sod::tessellate::build_sod_model_ir("WELD_TEST", &[p1, p2, p3, p4]);
@@ -325,6 +339,7 @@ fn internal_defects_are_refused_loudly() {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         },
     );
     ir.indices = vec![0, 1, 2];
@@ -412,6 +427,7 @@ fn test_decal_stream_order_survives_visibility_batches() {
         flags: 0,
         is_decal: true,
         visibility,
+        sphere: false,
     };
     let polygons = [
         decal(1, VisibilityCondition::Always),
@@ -455,6 +471,7 @@ fn a_tied_polygon_keeps_its_own_vertices() {
         flags: 0,
         is_decal: false,
         visibility: VisibilityCondition::Always,
+        sphere: false,
     };
     let polygons = [square(0.0, 1.0), square(1.0, 2.0)];
     let ir = crate::sod::tessellate::build_tied_sod_model_ir("TIE", &polygons, &[true, false]);
@@ -462,4 +479,76 @@ fn a_tied_polygon_keeps_its_own_vertices() {
     assert_eq!(ties, [1, 1, 1, 1, 0, 0, 0, 0]);
     let untied = crate::sod::tessellate::build_sod_model_ir("UNTIED", &polygons);
     assert_eq!(untied.vertices.len(), 6, "untied, the shared edge welds");
+}
+
+/// A flat triangle of `palette` at height `y`, a sphere face when `sphere`.
+fn ranked_face(y: f32, palette: u8, sphere: bool) -> RawPolygon {
+    RawPolygon {
+        vertex_palette: Vec::new(),
+        vertices: vec![[0.0, y, 0.0], [2.0, y, 0.0], [0.0, y, 2.0]],
+        palette_index: palette,
+        normal: [0.0, 1.0, 0.0],
+        flags: 0,
+        is_decal: false,
+        visibility: VisibilityCondition::Always,
+        sphere,
+    }
+}
+
+/// One `OP_SPHERE`'s faces at height `y`.
+fn sphere_faces(y: f32) -> Vec<RawPolygon> {
+    (0..crate::sod::vm::SPHERE_FACES)
+        .map(|n| ranked_face(y + 0.01 * n as f32, 7, true))
+        .collect()
+}
+
+/// Each vertex's list rank, in arena order.
+fn vertex_ranks(ir: &SodModelIr) -> Vec<u32> {
+    ir.vertices.iter().map(|v| v.list_rank).collect()
+}
+
+/// A shape whose places are a tenth or more spheres ranks each polygon by its place, an
+/// `OP_SPHERE`'s faces sharing one, and keeps equal corners of two places apart.
+#[test]
+fn a_shape_of_spheres_ranks_its_polygons_in_list_order() {
+    let mut polygons = vec![ranked_face(0.0, 3, false)];
+    polygons.extend(sphere_faces(1.0));
+    polygons.push(ranked_face(0.0, 3, false));
+    let ir = crate::sod::tessellate::build_sod_model_ir("RANKED", &polygons);
+
+    let ranks = vertex_ranks(&ir);
+    assert_eq!(ranks.len(), 3 + 3 * crate::sod::vm::SPHERE_FACES + 3);
+    assert!(ranks[..3].iter().all(|&r| r == 1));
+    assert!(ranks[3..ranks.len() - 3].iter().all(|&r| r == 2));
+    assert!(ranks[ranks.len() - 3..].iter().all(|&r| r == 3));
+
+    let [sphere] = ir.rank_spheres.as_slice() else {
+        panic!("one rank sphere, got {:?}", ir.rank_spheres);
+    };
+    assert_eq!(
+        sphere.vertices,
+        0..crate::contracts::arena_index(ir.vertices.len())
+    );
+    let top = 1.0 + 0.01 * (crate::sod::vm::SPHERE_FACES - 1) as f32;
+    assert_eq!(sphere.centre, [1.0, top / 2.0, 1.0]);
+    let corner = (1.0f32 + (top / 2.0).powi(2) + 1.0).sqrt();
+    assert!((sphere.radius - corner).abs() < 1e-5, "{}", sphere.radius);
+}
+
+/// A shape with fewer than a tenth of its places spheres keeps every vertex's own depth.
+#[test]
+fn a_shape_with_a_lone_sphere_among_polygons_is_not_ranked() {
+    let mut polygons: Vec<RawPolygon> = (0..10u8)
+        .map(|n| ranked_face(f32::from(n), n, false))
+        .collect();
+    polygons.extend(sphere_faces(20.0));
+    let ir = crate::sod::tessellate::build_sod_model_ir("UNRANKED", &polygons);
+    assert!(vertex_ranks(&ir).iter().all(|&r| r == 0));
+    assert!(ir.rank_spheres.is_empty());
+
+    // Nine polygons and the sphere are ten places, one of them a sphere: ranked.
+    polygons.remove(0);
+    let ir = crate::sod::tessellate::build_sod_model_ir("RANKED", &polygons);
+    assert!(vertex_ranks(&ir).iter().all(|&r| r != 0));
+    assert_eq!(ir.rank_spheres.len(), 1);
 }

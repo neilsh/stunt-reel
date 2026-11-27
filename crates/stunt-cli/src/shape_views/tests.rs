@@ -161,6 +161,7 @@ fn add_box(model: &mut SodModelIr, min: Vec3, max: Vec3, palette_index: u8) {
                 flags: 0,
                 scenery_class: 0,
                 decal_tie: 0,
+                list_rank: 0,
             }));
             model.indices.extend(order.map(|i| base + i));
         }

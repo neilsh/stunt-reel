@@ -154,6 +154,7 @@ fn triangle(corners: [[f32; 3]; 3], indices: [u32; 3]) -> SodModelIr {
         flags: 0,
         scenery_class: 0,
         decal_tie: 0,
+        list_rank: 0,
     };
     let mut ir = SodModelIr::new("TRI");
     ir.vertices = corners.map(vertex).to_vec();
@@ -449,6 +450,7 @@ fn a_near_cut_ground_outline_draws_only_beside_its_polygon() {
             flags: 4,
             scenery_class: SCENERY_PROP,
             decal_tie: 0,
+            list_rank: 0,
         };
         let mut ir = SodModelIr::new("WORLD_SCENERY");
         ir.vertices = NEAR_CUT_CORNERS.map(vertex).to_vec();

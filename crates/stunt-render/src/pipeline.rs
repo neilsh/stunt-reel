@@ -133,12 +133,12 @@ impl RenderPipelines {
     pub(crate) fn vertex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         // Assert compile-time layout compatibility with Invariant [I2] / Seam 3
         const _: () = assert!(
-            size_of::<SodVertex>() == 28,
-            "SodVertex is a 28-byte vertex"
+            size_of::<SodVertex>() == 32,
+            "SodVertex is a 32-byte vertex"
         );
         const _: () = assert!(align_of::<SodVertex>() == 4, "SodVertex is 4-byte aligned");
 
-        const ATTRIBUTES: [wgpu::VertexAttribute; 3] = [
+        const ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
             // Location 0: position [x, y, z] in metric meters (12 bytes)
             wgpu::VertexAttribute {
                 format: wgpu::VertexFormat::Float32x3,
@@ -157,6 +157,12 @@ impl RenderPipelines {
                 offset: 24,
                 shader_location: 2,
             },
+            // Location 4: list_rank (4 bytes); location 3 is the apex stream's
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Uint32,
+                offset: 28,
+                shader_location: 4,
+            },
         ];
 
         wgpu::VertexBufferLayout {
@@ -170,12 +176,12 @@ impl RenderPipelines {
     /// (`outline::Outlined`) at location 3.
     pub(crate) fn apex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
         const ATTRIBUTES: [wgpu::VertexAttribute; 1] = [wgpu::VertexAttribute {
-            format: wgpu::VertexFormat::Float32x3,
+            format: wgpu::VertexFormat::Float32x4,
             offset: 0,
             shader_location: 3,
         }];
         wgpu::VertexBufferLayout {
-            array_stride: size_of::<[f32; 3]>() as wgpu::BufferAddress,
+            array_stride: size_of::<crate::outline::Apex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &ATTRIBUTES,
         }
@@ -595,10 +601,14 @@ mod tests {
     #[test]
     fn test_vertex_buffer_layout_stride_and_offsets() {
         let layout = RenderPipelines::vertex_buffer_layout();
-        assert_eq!(layout.array_stride, 28);
-        assert_eq!(layout.attributes.len(), 3);
+        assert_eq!(layout.array_stride, 32);
+        assert_eq!(layout.attributes.len(), 4);
         assert_eq!(layout.attributes[0].offset, 0);
         assert_eq!(layout.attributes[1].offset, 12);
         assert_eq!(layout.attributes[2].offset, 24);
+        assert_eq!(layout.attributes[3].offset, 28);
+        assert_eq!(layout.attributes[3].shader_location, 4);
+        let apex = RenderPipelines::apex_buffer_layout();
+        assert_eq!(apex.array_stride, 16);
     }
 }

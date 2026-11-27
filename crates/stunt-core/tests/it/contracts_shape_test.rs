@@ -131,6 +131,7 @@ fn mesh_ir() -> SodModelIr {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         })
         .collect();
     ir.indices = vec![0, 1, 2];
@@ -201,6 +202,7 @@ fn extent_bounds_vertices_and_radius_is_a_vertex_distance() {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         },
         SodVertex {
             position: [2.0, 1.0, 0.0],
@@ -209,6 +211,7 @@ fn extent_bounds_vertices_and_radius_is_a_vertex_distance() {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         },
     ];
     let extent = ir.extent().expect("two vertices");
@@ -242,7 +245,7 @@ fn sprite_frame_sweeps_the_table_once_per_turn() {
 #[test]
 fn test_sod_vertex_layout_and_size() {
     // Invariant [I1]: Metric vertex struct alignment
-    assert_eq!(size_of::<SodVertex>(), 28);
+    assert_eq!(size_of::<SodVertex>(), 32);
     assert_eq!(align_of::<SodVertex>(), 4);
 }
 
@@ -256,9 +259,10 @@ fn test_sod_vertex_bytemuck() {
         flags: 1,
         scenery_class: 0,
         decal_tie: 0,
+        list_rank: 0,
     };
     let bytes = bytemuck::bytes_of(&vertex);
-    assert_eq!(bytes.len(), 28);
+    assert_eq!(bytes.len(), 32);
     let recovered: SodVertex = *bytemuck::from_bytes(bytes);
     assert_eq!(recovered, vertex);
 }

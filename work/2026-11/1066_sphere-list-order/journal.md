@@ -150,3 +150,30 @@
   Facing order fixes the propeller but costs every film as prototyped, so it is not part of the form.
   Adopting the form needs an ADR amending [`SPEC.md`](../../../docs/SPEC.md) § 2.1 and seam-contract changes (a rank across `SodVertex`'s `decal_tie` and `scenery_class` bytes, a bounding sphere per ranked vertex), so **the owner decides**; until then it is not adopted.
 - **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.3.
+
+## 2026-11-27: ranking only shapes mostly of spheres clears every frame; adopted
+
+`[Bounded Observation]`
+
+- **Question**: the owner chose to adopt near-side list order once the bridge deck no longer covers the road markings; which shapes should rank?
+- **Track**: heuristic, as above; the same `--target bomb:2070-2179 --target bomb:2289-2388`, typed in the command, not written here first.
+- **Sphere share.**
+  `DBG_SPHERE_SHARE=<percent>` (in the prototype only, not kept) ranks a shape only when its spheres are at least that share of its display-list places, an `OP_SPHERE`'s 20 faces counting as one place.
+  The 131 shapes with a sphere that `bomb` and `location` decode at ticks 2080, 2300, 1618, 6689 and 1717 fall into two groups: 120 at 12.5% or more, and 11 at 6.5% or less, with one to 13 spheres among 92 to 284 places.
+  Among the 11 are the bridge deck slab `MODEL_023D` (1 of 92), the two shapes of 20 m by 84 m by 8 m that stand at the bridge (`MODEL_0295` and `0296`, 2 of 141), and five shapes of 148 to 284 places with 4 to 13 spheres (`MODEL_0669`, `066A`, `066B`, `066E` and `066F`).
+- **Sweep** ([`sweeps/lavapipe-sphere-share.toml`](sweeps/lavapipe-sphere-share.toml), `DBG_SPHERE_NEAR=1` in the environment and `--var DBG_SPHERE_ORDER=0,1 --var DBG_SPHERE_SHARE=0,10,25`; the file does not name the environment switch; `judge --recheck` reproduces its winner line):
+
+  | Variant | ctry | intro | land | balloon | traintnl | bomb | location | target idx | frames down >0.005 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | `main` | 0.9441 | 0.9069 | 0.9340 | 0.9067 | 0.9160 | 0.9083 | 0.8975 | | |
+  | every shape with a sphere | 0.9443 | 0.9068 | 0.9341 | 0.9081 | 0.9160 | 0.9108 | 0.8978 | +0.0168 | 5 |
+  | share 10% | 0.9443 | 0.9069 | 0.9341 | 0.9081 | 0.9160 | 0.9110 | 0.8979 | +0.0168 | 0 |
+  | share 25% | 0.9443 | 0.9069 | 0.9341 | 0.9081 | 0.9160 | 0.9110 | 0.8979 | +0.0168 | 0 |
+
+  `winner: DBG_SPHERE_ORDER=1 DBG_SPHERE_SHARE=10 adopts (heuristic target idx +0.0168, 21/21 frames up; films ok; worst target frame +0.0040 bomb:2113) (noise floor +/-0.002; winner is ~within noise)`.
+  With a 10% share no frame of any film falls by more than 0.005 (the worst, −0.0031), so guard 2 has nothing to explain; 10% and 25% agree on every film mean to the fourth place.
+  The five frames of the unfiltered form all leave: `location` 6513 and 6689 (the deck slab is no longer ranked), `intro` 2718 (the aircraft `MODEL_7F19`, 2 spheres among 139 places, is no longer ranked), and `bomb` 1618 and 1706.
+- **Production** (this PR): the rule is 10%, `list_ranks` in `crates/stunt-core/src/sod/tessellate.rs`; the rank is `SodVertex::list_rank`, the sphere `SodModelIr::rank_spheres`, one per ranked shape (a world prop's moved with its placement), where the prototype took a world prop's sphere per mesh node and packed the rank into spare bits.
+  `mise run parity` on it gives the share-10% row's film means to the fourth place; of its 1,687 scored frames none falls by more than 0.005 against the sweep's `main` row, and 143 differ from the prototype's by more than 0.0001 (at most 0.0085).
+- **Verdict**: adopted, [ADR 0056](../../../docs/adr/0056-sphere-shapes-are-drawn-in-list-order.md).
+- **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.3, [`render-model.md`](../../../research/parity/render-model.md) § 2.

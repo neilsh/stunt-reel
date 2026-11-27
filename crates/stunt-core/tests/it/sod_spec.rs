@@ -6,7 +6,7 @@
 //! `sod_fuzz.rs`.
 //!
 //! Covers:
-//! - `SodVertex` GPU layout (`std::mem::size_of == 28`, `align_of == 4`, field offsets) and POD roundtrip
+//! - `SodVertex` GPU layout (`std::mem::size_of == 32`, `align_of == 4`, field offsets) and POD roundtrip
 //! - `[I1]` metric coordinates (scale lookup + `ground_y_offset`)
 //! - `[I2]` flat arena nodes indexed by `NodeId` and buffer slices
 //! - `[I3]` Mode 13h palette index retention across all 256 colors
@@ -64,13 +64,13 @@ fn make_sod_header(
 // SodVertex layout (Gate G03)
 // =============================================================================
 
-/// Gate G03: `SodVertex` is 28 bytes, 4-byte aligned, with fixed field offsets.
+/// Gate G03: `SodVertex` is 32 bytes, 4-byte aligned, with fixed field offsets.
 #[test]
 fn sod_vertex_size_alignment_and_field_offsets() {
     assert_eq!(
         size_of::<SodVertex>(),
-        28,
-        "Gate G03: size_of::<SodVertex> must be exactly 28 bytes"
+        32,
+        "Gate G03: size_of::<SodVertex> must be exactly 32 bytes"
     );
     assert_eq!(
         align_of::<SodVertex>(),
@@ -86,6 +86,7 @@ fn sod_vertex_size_alignment_and_field_offsets() {
         flags: 1,
         scenery_class: 0,
         decal_tie: 0,
+        list_rank: 0,
     };
 
     let base_ptr = &raw const dummy as usize;
@@ -95,6 +96,7 @@ fn sod_vertex_size_alignment_and_field_offsets() {
     let flags_ptr = &raw const dummy.flags as usize;
     let class_ptr = &raw const dummy.scenery_class as usize;
     let pad_ptr = &raw const dummy.decal_tie as usize;
+    let rank_ptr = &raw const dummy.list_rank as usize;
 
     assert_eq!(pos_ptr - base_ptr, 0, "position offset must be 0");
     assert_eq!(norm_ptr - base_ptr, 12, "normal offset must be 12");
@@ -102,9 +104,10 @@ fn sod_vertex_size_alignment_and_field_offsets() {
     assert_eq!(flags_ptr - base_ptr, 25, "flags offset must be 25");
     assert_eq!(class_ptr - base_ptr, 26, "scenery_class offset must be 26");
     assert_eq!(pad_ptr - base_ptr, 27, "padding offset must be 27");
+    assert_eq!(rank_ptr - base_ptr, 28, "list_rank offset must be 28");
 }
 
-/// Gate G03: `SodVertex` roundtrips through its raw 28 bytes.
+/// Gate G03: `SodVertex` roundtrips through its raw 32 bytes.
 #[expect(
     unsafe_code,
     reason = "the test reads the vertex's layout through `transmute`"
@@ -117,13 +120,14 @@ fn sod_vertex_pod_roundtrip() {
         palette_index: 215,
         flags: 0x03,
         scenery_class: 0,
-        decal_tie: 0,
+        decal_tie: 1,
+        list_rank: 0x0102_0304,
     };
 
-    // Treat as raw 28 bytes
-    // SAFETY: `SodVertex` is `#[repr(C)]` plain data of exactly 28 bytes with no implicit padding.
-    let raw_bytes: [u8; 28] = unsafe { std::mem::transmute(original) };
-    assert_eq!(raw_bytes.len(), 28);
+    // Treat as raw 32 bytes
+    // SAFETY: `SodVertex` is `#[repr(C)]` plain data of exactly 32 bytes with no implicit padding.
+    let raw_bytes: [u8; 32] = unsafe { std::mem::transmute(original) };
+    assert_eq!(raw_bytes.len(), 32);
 
     // Reconstruct
     // SAFETY: the bytes came from a valid `SodVertex`, and every bit pattern of its fields is valid.
@@ -133,7 +137,8 @@ fn sod_vertex_pod_roundtrip() {
     assert_eq!(recovered.palette_index, original.palette_index);
     assert_eq!(recovered.flags, original.flags);
     assert_eq!(recovered.scenery_class, original.scenery_class);
-    assert_eq!(recovered.decal_tie, 0);
+    assert_eq!(recovered.decal_tie, original.decal_tie);
+    assert_eq!(recovered.list_rank, original.list_rank);
 }
 
 // =============================================================================

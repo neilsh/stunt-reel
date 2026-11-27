@@ -59,6 +59,7 @@ pub(super) fn square_prop(peak: Option<f32>) -> SodModelIr {
         flags: 0,
         scenery_class: 0,
         decal_tie: 0,
+        list_rank: 0,
     };
     let mut ir = SodModelIr::new("TILE");
     ir.vertices = vec![

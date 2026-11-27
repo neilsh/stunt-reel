@@ -43,6 +43,7 @@ fn tilted_facet(s: f32, index: u8, flags: u8, up: [f32; 3]) -> SodModelIr {
         flags,
         scenery_class: 0,
         decal_tie: 0,
+        list_rank: 0,
     };
     let mut ir = SodModelIr::new("FACET");
     // Clockwise from the camera, like the SOD models.

@@ -29,14 +29,47 @@ pub(crate) fn outlines(vertex: &SodVertex) -> bool {
     vertex.flags & (VERTEX_FLAG_LINE | VERTEX_FLAG_DISC) == 0
 }
 
+/// One vertex's entry in the second vertex stream: a point and a radius.
+pub(crate) type Apex = [f32; 4];
+
+/// Each of `ir`'s vertices' apex before outlining: for a list-ranked filled vertex
+/// (`SodVertex::list_rank`), its [`stunt_core::contracts::RankSphere`]'s centre and radius,
+/// which it takes its depth from; for any other vertex, its own position and 0, which culls
+/// no line corner.
+pub(crate) fn own_apexes(ir: &SodModelIr) -> Vec<Apex> {
+    let mut apex: Vec<Apex> = ir
+        .vertices
+        .iter()
+        .map(|v| {
+            let [x, y, z] = v.position;
+            [x, y, z, 0.0]
+        })
+        .collect();
+    for sphere in &ir.rank_spheres {
+        let range = sphere.vertices.start as usize..sphere.vertices.end as usize;
+        let (Some(slots), Some(vertices)) = (apex.get_mut(range.clone()), ir.vertices.get(range))
+        else {
+            continue;
+        };
+        let [x, y, z] = sphere.centre;
+        for (slot, v) in slots.iter_mut().zip(vertices) {
+            if v.list_rank != 0 && v.flags & VERTEX_FLAG_LINE == 0 {
+                *slot = [x, y, z, sphere.radius];
+            }
+        }
+    }
+    apex
+}
+
 /// A shape with its outlines, and each vertex's apex.
 pub(crate) struct Outlined {
     /// The shape with each mesh node's outline drawn after its triangles ([`outlined`]).
     pub ir: SodModelIr,
     /// One apex per vertex of `ir`, in the same order: for a line corner the outline added,
     /// the position of the third vertex of the one filled triangle its edge bounds, so the
-    /// shader culls the corner with that triangle; for any other vertex, its own position.
-    pub apex: Vec<[f32; 3]>,
+    /// shader culls the corner with that triangle, and 0; for any other vertex, its
+    /// [`own_apexes`] entry.
+    pub apex: Vec<Apex>,
 }
 
 /// `ir` with each mesh node's outline drawn after its triangles, in the same node, and
@@ -58,7 +91,7 @@ pub(crate) struct Outlined {
 pub(crate) fn outlined(ir: &SodModelIr) -> Outlined {
     let triangles: HashMap<_, &[u32]> = ir.meshes().map(|m| (m.node.id, m.indices)).collect();
     let mut out = ir.clone();
-    let mut apex: Vec<[f32; 3]> = out.vertices.iter().map(|v| v.position).collect();
+    let mut apex = own_apexes(&out);
     out.indices = Vec::with_capacity(ir.indices.len().saturating_mul(3));
     for node in &mut out.nodes {
         let NodeKind::Mesh {
@@ -97,7 +130,7 @@ pub(crate) fn outlined(ir: &SodModelIr) -> Outlined {
 struct Sink<'a> {
     vertices: &'a mut Vec<SodVertex>,
     indices: &'a mut Vec<u32>,
-    apex: &'a mut Vec<[f32; 3]>,
+    apex: &'a mut Vec<Apex>,
 }
 
 /// Appends a decal node's `triangles` (indices into `source`) fan by fan, each fan (a run of
@@ -141,7 +174,8 @@ fn push_edge(sink: &mut Sink<'_>, source: &[SodVertex], [p, q, r]: [u32; 3]) {
     let at = |i: u32| source.get(i as usize);
     if let (Some(a), Some(b), Some(c)) = (at(p), at(q), at(r)) {
         push_segment(sink.vertices, sink.indices, a, b);
-        sink.apex.resize(sink.vertices.len(), c.position);
+        let [x, y, z] = c.position;
+        sink.apex.resize(sink.vertices.len(), [x, y, z, 0.0]);
     }
 }
 
@@ -246,6 +280,7 @@ mod tests {
             flags: 0,
             scenery_class: 0,
             decal_tie: 0,
+            list_rank: 0,
         }
     }
 
@@ -273,6 +308,40 @@ mod tests {
             },
         );
         ir
+    }
+
+    /// A ranked filled vertex's apex is its rank sphere; a ranked line corner's, an unranked
+    /// vertex's and an outline corner's stay points with no radius.
+    #[test]
+    fn a_ranked_filled_vertex_carries_its_rank_sphere() {
+        let mut ir = quad();
+        for v in &mut ir.vertices[..3] {
+            v.list_rank = 1;
+        }
+        ir.vertices[2].flags |= VERTEX_FLAG_LINE;
+        ir.rank_spheres.push(stunt_core::contracts::RankSphere {
+            vertices: 0..4,
+            centre: [0.5, 0.5, 0.0],
+            radius: 0.75,
+        });
+        let apex = own_apexes(&ir);
+        assert_eq!(apex[0], [0.5, 0.5, 0.0, 0.75]);
+        assert_eq!(apex[1], [0.5, 0.5, 0.0, 0.75]);
+        assert_eq!(
+            apex[2],
+            [1.0, 1.0, 0.0, 0.0],
+            "a line corner keeps its own point"
+        );
+        assert_eq!(
+            apex[3],
+            [0.0, 1.0, 0.0, 0.0],
+            "an unranked vertex keeps its own point"
+        );
+
+        ir.vertices[2].flags &= !VERTEX_FLAG_LINE;
+        let out = outlined(&ir);
+        assert_eq!(out.apex[2], [0.5, 0.5, 0.0, 0.75]);
+        assert!(out.apex[4..].iter().all(|a| a[3] == 0.0));
     }
 
     #[test]
@@ -333,16 +402,22 @@ mod tests {
         let out = outlined(ir);
         assert_eq!(out.apex.len(), out.ir.vertices.len());
         let bits = |p: [f32; 3]| p.map(f32::to_bits);
-        // The triangles' own vertices keep their positions.
+        let point = |a: &Apex| [a[0], a[1], a[2]];
+        // The triangles' own vertices keep their positions, with no radius.
         for (v, apex) in out.ir.vertices.iter().zip(&out.apex).take(4) {
-            assert_eq!(bits(v.position), bits(*apex));
+            assert_eq!(bits(v.position), bits(point(apex)));
+            assert_eq!(apex[3], 0.0);
         }
         let expected = [2, 0, 0, 2].map(|i: usize| bits(ir.vertices[i].position));
         let (lines, rest) = out.apex[4..].as_chunks::<4>();
         assert!(rest.is_empty());
         assert_eq!(lines.len(), expected.len());
         for (corners, want) in lines.iter().zip(expected) {
-            assert!(corners.iter().all(|&c| bits(c) == want));
+            assert!(
+                corners
+                    .iter()
+                    .all(|c| bits(point(c)) == want && c[3] == 0.0)
+            );
         }
     }
 
