@@ -74,8 +74,8 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
 * `parity` refuses a render whose film identity conflicts with the capture's: the `.FLM` name, size or hash, or the archive hash.
   `--waive-archive-conflict` lets an archive-only conflict through for a deliberate stand-in (a superset render against an own-archive capture) and marks the report `archive_conflict_waived`; `mise run parity` never passes it.
   When either side records no archive hash, `stuntreel parity` scores and prints `archive not checked`.
-* Every run writes `report.json` and `contact_NNNN.png` sheets (`reference | rendered | overlay | index map`), which show only the first frame; `--compare` adds `compare.json`.
-  The overlay is magenta where the capture is brighter and green where the render is, with the HUD timer and button bar grey; the index map paints each palette-index mismatch by the render layer that drew it.
+* Every run writes `report.json` and `contact_NNNN.png` sheets (`reference | rendered | overlay | index map`), one frame each: frames 1, 20, 40, 70 and 100, the last captured frame and the three lowest-SSIM scored frames; `--compare` adds `compare.json`.
+  The overlay is magenta where the capture is brighter and green where the render is, with the HUD timer, the button bar and, unless the film shows credits, the cursor grey; the index map paints each palette-index mismatch by the render layer that drew it.
   Both read as the Python readout sheets do (`stunt_reel.bench.panels`).
 * `--compare` prints the means over the common frames, the 5 most improved and regressed frames and the count moved by more than 0.005, and writes `compare.json`.
 * `--compare-test` adds the verdict on the windows the change touched, for example `[verdict] changed 27/121 frames: 15 closer, 12 further, 0 within noise; mean Δ +0.101 on changed windows`.

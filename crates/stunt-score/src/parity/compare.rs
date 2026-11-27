@@ -123,14 +123,16 @@ pub(super) fn run_compare(
         };
         let before = rescale(&before_frame.luminance);
         let after = rescale(&after_frame.luminance);
-        let mask = sheet_mask(&captured.indices, after_frame.credits);
-        let index_map = |frame: &RenderFrame| {
+        // Each render's panels are masked by its own credits flag, as it was scored.
+        let before_mask = sheet_mask(&captured.indices, before_frame.credits);
+        let after_mask = sheet_mask(&captured.indices, after_frame.credits);
+        let index_map = |frame: &RenderFrame, mask: &[bool]| {
             index_map_panel(
                 &reference,
                 &captured.indices,
                 &frame.indices,
                 &frame.layers,
-                &mask,
+                mask,
             )
         };
         let path = args
@@ -142,10 +144,10 @@ pub(super) fn run_compare(
                 &grey_panel(&reference),
                 &grey_panel(&before),
                 &grey_panel(&after),
-                &overlay_panel(&reference, &before, &mask),
-                &overlay_panel(&reference, &after, &mask),
-                &index_map(&before_frame),
-                &index_map(&after_frame),
+                &overlay_panel(&reference, &before, &before_mask),
+                &overlay_panel(&reference, &after, &after_mask),
+                &index_map(&before_frame, &before_mask),
+                &index_map(&after_frame, &after_mask),
             ],
         )?;
         println!("[compare] wrote {}", path.display());

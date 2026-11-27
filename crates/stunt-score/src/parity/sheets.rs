@@ -110,7 +110,7 @@ const GAIN: f32 = 3.0;
 const DIM: f32 = 0.55;
 
 /// The player's HUD timer as `(row0, row1, col0, col1)` on the 320x200 screen, exclusive
-/// ends (research/playone-exe/capture-dosbox-automation.md section 5).
+/// ends (research/playone-exe/capture-dosbox-automation.md).
 const TIMECODE_BOX: (usize, usize, usize, usize) = (179, 184, 1, 28);
 
 /// The index map's colours by render layer: `(first layer, last layer, RGB)`, none of them the
@@ -144,7 +144,7 @@ pub(super) struct ContactPanels {
     reason = "clamped to 0..=255"
 )]
 fn to_byte(value: f32) -> u8 {
-    value.round().clamp(0.0, 255.0) as u8
+    value.round_ties_even().clamp(0.0, 255.0) as u8
 }
 
 /// A luminance plane as a grey RGB panel.
