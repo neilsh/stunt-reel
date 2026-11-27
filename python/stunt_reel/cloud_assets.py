@@ -48,6 +48,7 @@ __all__ = [
     "check_manifest_sources",
     "check_references",
     "curl_config",
+    "default_names",
     "fetch",
     "manifest_text",
     "pack",
@@ -95,6 +96,8 @@ _HEADER = (
     "# Game data for cloud sessions, in the private R2 bucket "
     "(work/2026-11/cloud-assets/spec.md, ADR 0039).\n"
     "# `mise run cloud-assets -- pack` rewrites the key, sha256, bytes and references lines.\n"
+    "# `on_demand = true` leaves an archive out of a command given no names (the session-start\n"
+    "# fetch, verify, pack, upload): only naming it covers it (ADR 0039).\n"
 )
 
 
@@ -115,6 +118,8 @@ class Archive:
     bytes: int | None = None
     #: For ``captures``: the capture digest of each ``references.toml`` row it holds.
     references: Mapping[str, str] = field(default_factory=dict)
+    #: True: a command given no names leaves it out; only naming it fetches or verifies it.
+    on_demand: bool = False
 
 
 @dataclass(frozen=True)
@@ -141,14 +146,18 @@ def _archive(path: Path, name: str, entry: dict[str, object]) -> Archive:
         raise CloudAssetsError(f"{path}: [{name}] names no into folder")
     key, sha256, size = entry.get("key"), entry.get("sha256"), entry.get("bytes")
     references = entry.get("references", {})
+    on_demand = entry.get("on_demand", False)
     if (
-        not isinstance(key, str | None)
+        not isinstance(on_demand, bool)
+        or not isinstance(key, str | None)
         or not isinstance(sha256, str | None)
         or not isinstance(size, int | None)
         or not isinstance(references, dict)
         or not all(isinstance(v, str) for v in references.values())
     ):
-        raise CloudAssetsError(f"{path}: [{name}] has a malformed key, sha256, bytes or references")
+        raise CloudAssetsError(
+            f"{path}: [{name}] has a malformed key, sha256, bytes, references or on_demand"
+        )
     return Archive(
         name,
         into,
@@ -158,6 +167,7 @@ def _archive(path: Path, name: str, entry: dict[str, object]) -> Archive:
         sha256,
         size,
         dict(references),
+        on_demand,
     )
 
 
@@ -199,6 +209,8 @@ def manifest_text(manifest: Manifest) -> str:
             f"include = {_list(archive.include)}",
             f"exclude = {_list(archive.exclude)}",
         ]
+        if archive.on_demand:
+            lines.append("on_demand = true")
         if archive.key is not None:
             lines.append(f"key = {json.dumps(archive.key)}")
         if archive.sha256 is not None:
@@ -269,6 +281,11 @@ def with_archive(manifest: Manifest, archive: Archive) -> Manifest:
         name: archive if name == archive.name else a for name, a in manifest.archives.items()
     }
     return dataclasses.replace(manifest, archives=archives)
+
+
+def default_names(manifest: Manifest) -> list[str]:
+    """The archives a command given no names covers: every one that is not on demand."""
+    return [name for name, archive in manifest.archives.items() if not archive.on_demand]
 
 
 def archive_named(manifest: Manifest, name: str) -> Archive:
@@ -369,7 +386,7 @@ def check_manifest_sources(manifest: Manifest, repo: Path = REPO_ROOT) -> list[s
     selects; for a :data:`BUILT_TREES` root, the first archive it is built from, with every
     archive it needs in *manifest*.
     """
-    by_folder = {_folder_key(a.into): a for a in manifest.archives.values()}
+    by_folder = {_folder_key(a.into): a for a in manifest.archives.values() if not a.on_demand}
     messages = []
     for film in references.reference_films(repo):
         relative = parity_layout.manifest_path(references.read_reference(repo, film).slug)
@@ -576,7 +593,9 @@ def fetch(
     run: CurlRunner = _curl,
     replace_unmarked: bool = False,
 ) -> list[str]:
-    """Puts each archive of *names* (all when empty) in its folder unless the folder holds it.
+    """Puts each archive of *names* (every archive not on demand when empty) in its folder.
+
+    A folder that already holds the archive is left alone.
 
     A folder whose :data:`PIN_FILE` names the pinned key is kept, and one naming another key is
     replaced (ADR 0042). A folder without one is never touched, since fetch did not write it,
@@ -590,7 +609,7 @@ def fetch(
             from the pin, or a member would land outside its folder.
     """
     lines = []
-    for name in names or list(manifest.archives):
+    for name in names or default_names(manifest):
         archive = archive_named(manifest, name)
         into = data_root / archive.into
         held = _held_pin(into)
@@ -622,7 +641,7 @@ def verify(
     *,
     run: CurlRunner = _curl,
 ) -> tuple[list[str], bool]:
-    """Downloads and unpacks each archive of *names* (all when empty) into a fresh temp directory.
+    """Downloads and unpacks each archive of *names* (all not on demand when empty) into a temp directory.
 
     Signs and checks the download as :func:`fetch` does, then unpacks it, never reading or
     writing the data root. The directory is deleted afterwards, pass or fail. Returns one
@@ -634,7 +653,7 @@ def verify(
     """
     lines = []
     ok = True
-    for name in names or list(manifest.archives):
+    for name in names or default_names(manifest):
         archive = archive_named(manifest, name)
         if archive.key is None or archive.sha256 is None or archive.bytes is None:
             lines.append(f"FAILED {name}: no pin in {MANIFEST_PATH.name}")
@@ -687,7 +706,9 @@ def _packed_file(archive: Archive, out_dir: Path) -> tuple[str, Path]:
 def upload(
     manifest: Manifest, names: Sequence[str], out_dir: Path, *, run: Runner = _run
 ) -> list[str]:
-    """Puts each packed archive of *names* (all when empty) at its key with the pinned wrangler.
+    """Puts each packed archive of *names* at its key with the pinned wrangler.
+
+    With no names, every archive that is not on demand.
 
     Runs with the owner's ``wrangler login``; a key names its content, so a second upload
     writes the same bytes.
@@ -697,7 +718,7 @@ def upload(
             or wrangler failed.
     """
     lines = []
-    for name in names or list(manifest.archives):
+    for name in names or default_names(manifest):
         key, path = _packed_file(archive_named(manifest, name), out_dir)
         target = f"{manifest.bucket}/{key}"
         argv = ["npx", "--yes", f"wrangler@{WRANGLER_VERSION}", "r2", "object", "put", target]
@@ -710,7 +731,10 @@ def upload(
 
 
 def status(manifest: Manifest, data_root: Path, out_dir: Path) -> list[str]:
-    """One line per archive: its pinned key, what its folder holds, and its packed file."""
+    """One line per archive: its pinned key, what its folder holds, and its packed file.
+
+    An on-demand archive not packed yet reads ``on demand, not packed``; no archive fails here.
+    """
     lines = []
     for archive in manifest.archives.values():
         into = data_root / archive.into
@@ -724,7 +748,8 @@ def status(manifest: Manifest, data_root: Path, out_dir: Path) -> list[str]:
         else:
             folder = f"{into} holds {held}, not the pin"
         if archive.key is None:
-            lines.append(f"{archive.name}: not packed; {folder}")
+            state = "on demand, not packed" if archive.on_demand else "not packed"
+            lines.append(f"{archive.name}: {state}; {folder}")
             continue
         path = out_dir / PurePosixPath(archive.key).name
         if not path.is_file():

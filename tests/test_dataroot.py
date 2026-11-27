@@ -115,6 +115,8 @@ def test_a_relative_corpus_path_resolves_against_the_data_root(
     film = Path("corpus/stisldem/VAULT/CTRY.FLM")
     assert dataroot.resolve_data_path(film) == tmp_path.resolve() / film
     assert dataroot.resolve_data_path(Path("captures/x")) == tmp_path.resolve() / "captures/x"
+    video = Path("captures-video/vault-ctry")
+    assert dataroot.resolve_data_path(video) == tmp_path.resolve() / video
     assert dataroot.data_path_arg(film.as_posix()) == tmp_path.resolve() / film
 
 

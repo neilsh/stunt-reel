@@ -5,7 +5,7 @@ web-server port with the stage's recording directory as its capture directory, a
 script: boot, ``dosbox.capture_start()``, then a per-frame log of the film clock, the global tick
 and palette writes until the film holds its last picture. The audio is stripped from the AVI.
 
-The result becomes the film's one video capture, ``captures/<film>/video/`` (gitignored, shared
+The result becomes the film's one video capture, ``captures-video/<film>/`` (gitignored, shared
 through the data root): a successful recording is written beside the old one and swapped in
 (ADR 0028). Making it the reference parity scores against is a reviewed edit of
 ``research/parity/references.toml``, not something this script does. ``--out`` writes anywhere
@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "new directory receiving capture.avi and meta.json; an existing non-empty one is "
             "refused and no stored capture is replaced (default: replace the film's capture, "
-            f"<data root>/{parity_layout.capture_root().as_posix()}/<film>/video, by swap)"
+            f"<data root>/{parity_layout.video_root().as_posix()}/<film>, by swap)"
         ),
     )
     parser.add_argument(
@@ -106,6 +106,7 @@ def plan_video(args: argparse.Namespace) -> capture_run.Plan:
             film=attempt.film_id,
             provenance=attempt.provenance,
             cap=args.max_frames,
+            emulator=video.emulator_info(),
         )
         return (
             f"recorded {len(recorded.log.frame)} frames ({recorded.end}), film starts at frame "

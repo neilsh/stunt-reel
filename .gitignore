@@ -38,6 +38,7 @@ corpus/**
 capture/
 # Captures of a checkout that is its own data root (outside git, ADR 0036)
 /captures/
+/captures-video/
 !tests/fixtures/parity/bench/capture/
 
 # OS junk

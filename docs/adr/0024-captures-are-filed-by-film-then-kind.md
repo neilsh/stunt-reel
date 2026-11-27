@@ -52,3 +52,8 @@ of which only the hash described the capture.
   changes it. The migration (`mise run migrate-captures`) checks every file's own hash, then re-pins
   `references.toml` in a reviewed commit.
 - Branches that name `legacy-2026-10-24` break until they rebase; no compatibility link is left.
+
+## Amendment 2026-11-27: video captures moved
+
+Read `captures/<film>/video/<run>/` above as `captures-video/<film>/`, one capture without a run directory ([ADR 0028](0028-a-film-has-one-capture-of-each-kind.md#amendment-2026-11-27-video-captures-live-in-captures-video)).
+Frame captures and archives stay under `captures/<film>/`.

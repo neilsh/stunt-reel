@@ -14,7 +14,7 @@ Machine setup is in [`docs/harness-setup.md`](../../../docs/harness-setup.md), w
    It is `STUNT_DATA_ROOT` when set, else `stunt-reel.data` beside the primary checkout, never `corpus/` in a worktree.
    Done when you have its absolute path.
 2. **Find a capture.**
-   A film's captures are `<data root>/captures/<film slug>/<kind>`, one each of `frames`, `video` and `archives` ([ADR 0024](../../../docs/adr/0024-captures-are-filed-by-film-then-kind.md), [ADR 0028](../../../docs/adr/0028-a-film-has-one-capture-of-each-kind.md)).
+   A film's frame capture and archive are `<data root>/captures/<film slug>/frames` and `.../archives`, and its video capture is `<data root>/captures-video/<film slug>/` ([ADR 0024](../../../docs/adr/0024-captures-are-filed-by-film-then-kind.md), [ADR 0028](../../../docs/adr/0028-a-film-has-one-capture-of-each-kind.md)).
    The film slug for a parity reference is pinned with its content hash in [`research/parity/references.toml`](../../../research/parity/references.toml) (`CTRY.FLM` is `vault-ctry`).
    Done when you name the directory.
 3. **Judge completeness.**

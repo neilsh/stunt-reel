@@ -54,6 +54,7 @@ __all__ = [
     "sweep_root",
     "timeout_root",
     "video_path",
+    "video_root",
 ]
 
 #: The two roots every other location derives from; the only literals the layout spells.
@@ -62,6 +63,8 @@ _SCRATCH = Path("build/scratch")
 
 #: Relative to the data root, like the stage (ADR 0036): a checkout no longer links it in.
 _CAPTURE = Path("captures")
+#: Video captures live apart from ``_CAPTURE``, whose cloud archive a fetch replaces whole (ADR 0028).
+_VIDEO_CAPTURE = Path("captures-video")
 #: Where a checkout linked the captures in before ADR 0036; ``reap`` still recognises the link.
 LEGACY_CAPTURE_LINK = _PARITY / "captures"
 _RENDER = _PARITY / "ours"
@@ -145,9 +148,14 @@ def frames_path(slug: str) -> Path:
     return _CAPTURE / slug / "frames"
 
 
+def video_root() -> Path:
+    """The directory holding every film's video capture, relative to the data root (ADR 0028)."""
+    return _VIDEO_CAPTURE
+
+
 def video_path(slug: str) -> Path:
-    """The film *slug*'s one video capture (ADR 0028)."""
-    return _CAPTURE / slug / "video"
+    """The film *slug*'s one video capture, ``captures-video/<slug>`` (ADR 0028)."""
+    return _VIDEO_CAPTURE / slug
 
 
 def archive_path(slug: str) -> Path:

@@ -75,6 +75,9 @@ class PlayoneLayout:
     #: DS offset of the word holding the display-list work segment (``mov es,[...]``), which
     #: the lighting probe reads to find the light vector.
     work_segment_pointer: int
+    #: Names of the offsets above that were inferred from another build, not read from this one's
+    #: code, in field spelling (ADR 0057).
+    inferred: tuple[str, ...] = ()
 
     @property
     def ds(self) -> int:
@@ -112,6 +115,7 @@ PATCH3 = PlayoneLayout(
     # Patch #3 shifts DGROUP data below 0x0A00 by +0x7C; 13 instructions that read 0x0542 on the
     # unpatched build read 0x05BE here (#170 pairs the same offset by function).
     work_segment_pointer=0x05BE,
+    inferred=("slot_clock", "slot_ticks", "composed_pages"),
 )
 LAYOUTS: tuple[PlayoneLayout, ...] = (UNPATCHED, PATCH3)
 

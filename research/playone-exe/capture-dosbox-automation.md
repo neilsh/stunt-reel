@@ -135,18 +135,23 @@ _Source: [torn pages](../../work/2026-11/distill-capture-dosbox-automation/journ
 `[Bounded Observation]`:
 
 * **One log row per video frame** in three films; the first four ticks precede recording.
+* **The row also reads the slot pass's clock and ticks word** (`slot_clock`, `slot_ticks`; Patch 3's offsets are inferred, ADR 0057), written as two optional `meta.json` columns that come together.
+  `LOCATION.FLM` still ended `hold` at 11,616 frames and 118 palette changes, and two runs wrote one `capture.avi` hash and equal logs, slot columns included.
+  The whole-film fields beside the log (`video`, `emulator`, `layout`, `film_ticks`) are optional, so version 1 stays.
 * **The ZMBV decoder** matched `ffmpeg -pix_fmt bgr0` byte for byte on all 1,907 frames of `vault-ctry/video/001` while it existed in `stunt-score`; #1133 deleted it, and the result is not reproducible from the tree.
 * **Audio is stripped after the run** (`video_only`): `CTRY.FLM` 2.5 MB, `INTRO.FLM` 6.2 MB.
 * **A long film runs out of Lua budget** (§ 4.7): `COL3-1.FLM` died near 24,500 frames, so `capture-video` covers films to about 5.5 minutes.
 * **Sky colours are not unique in RGB**: an RGB sky mask mislabels 3.6% of pixels over 6,047 frames of 95 captures, touching the per-second scorer's IoU, not its SSIM.
 
-_Source: [whole-film video](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-31-video-capture)._
+_Source: [whole-film video](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-31-video-capture), [slot words in the row](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-location-with-the-slot-words-in-the-per-frame-row)._
 
 ### 4.7 The Instruction Budget and Three Retail Archives
 
 * **A script runs one million Lua instructions across yields.**
   `[Established]` from the source (`src/lua/lua_engine.{h,cpp}`, `DefaultInstructionLimit`); no REST parameter sets it.
   The old per-frame trace cost about 92 instructions on a composed frame and 723 on another: about 10,900 or 1,380 frames a script (`[Bounded Observation]`).
+* **`capture-video`'s row with the slot words fits `LOCATION.FLM`** (`[Bounded Observation]`, two runs): 11,616 frames ended `hold` under the million, so the row costs under about 86 instructions per frame including boot.
+  The Lua host reports no count, so [#1194's](https://github.com/neilsh/stunt-reel/issues/1194#issuecomment-7227024791) estimate of 0.6 to 0.7M for the film (`[Supported Inference]`) is unchecked.
 * **Patch #3's `PLAYONE.EXE` stalls on the retail `NewPLAY` archives of `TOD.FLM` and `INTRO.FLM`** (`[Supported Inference]`, one run per pairing): `TOD.FLM`'s clock falls to 0 near tick 200, `INTRO.FLM` holds its title card, so the trace spends its budget waiting for a held clock.
   Changing only the executable or only the archive makes each play; the engine files did not matter on `TOD.FLM`.
   Compare `BIGMAN` in [`patch3.md` § 3](patch3.md#3-which-build-each-film-needs).
@@ -154,7 +159,7 @@ _Source: [whole-film video](../../work/2026-11/distill-capture-dosbox-automation
 * **Build choice** (`[Established]` from the code): [`staging._engine_root`](../../python/stunt_reel/tac/staging.py) uses a film's own `PLAYONE.EXE`, and [`capture_run`](../../python/stunt_reel/capture_run.py) retries a stalled patch3 capture on the unpatched build.
   `meta.json` records `playone_build` and, since this round, `playone_sha256` ([`playone.layout_for`](../../python/stunt_reel/tac/playone.py)).
 
-_Source: [instruction budget](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-11-01-instruction-budget), [archive, engine files or build](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-11-01-archive-or-build)._
+_Source: [instruction budget](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-11-01-instruction-budget), [slot words in the row](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-location-with-the-slot-words-in-the-per-frame-row), [archive, engine files or build](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-11-01-archive-or-build)._
 
 ### 4.8 Clock and Window Passes
 

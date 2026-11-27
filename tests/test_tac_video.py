@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from contextlib import nullcontext, suppress
 from typing import TYPE_CHECKING, Any
@@ -16,7 +17,7 @@ from stunt_reel.parity_artifacts import (
     TickLog,
     load_video_capture,
 )
-from stunt_reel.tac import luagen, playone, video
+from stunt_reel.tac import automation, luagen, playone, video
 from stunt_reel.tac.automation import MockAutomation
 
 if TYPE_CHECKING:
@@ -41,7 +42,7 @@ def _script(**kwargs: object) -> str:
 def _output(**overrides: object) -> dict[str, object]:
     out: dict[str, object] = {
         "cs": "x100",
-        "log": "x101:7:0,102:7:1,103:8:2",
+        "log": "x101:7:0:5:0,102:7:1:5:1,103:8:2:6:2",
         "pal0": "x" + "00" * 768,
         "pal": "x",
         "end": "xhold",
@@ -57,6 +58,9 @@ def test_video_script_logs_rows_and_palette_bands() -> None:
     assert "dosbox.capture_start()" in text
     assert "dosbox.capture_stop()" in text
     assert f"0x{playone.UNPATCHED.film_clock:04X}" in text
+    assert f"0x{playone.UNPATCHED.slot_clock:04X}" in text
+    assert f"0x{playone.UNPATCHED.slot_ticks:04X}" in text
+    assert '":" .. sc .. ":" .. st' in text
     assert "for b = 0, 7 do" in text
     assert "for i = 1, 500 do" in text
     assert "hold >= 30" in text
@@ -80,6 +84,8 @@ def test_decode_video_log_reads_rows() -> None:
     assert decoded.log.frame == (101, 102, 103)
     assert decoded.log.film_tick == (7, 7, 8)
     assert decoded.log.global_tick == (0, 1, 2)
+    assert decoded.log.slot_clock == (5, 5, 6)
+    assert decoded.log.slot_ticks == (0, 1, 2)
     assert decoded.end == "hold"
     assert decoded.palettes.changes == ()
     assert len(decoded.palettes.initial) == 256
@@ -170,10 +176,46 @@ def test_record_video_writes_meta_last_and_strips_audio(tmp_path: Path) -> None:
         playone.UNPATCHED.sha256
     )
     assert loaded.log.frame == (101, 102, 103)
+    assert loaded.log.slot_clock == (5, 5, 6)
+    assert loaded.video_frames == 3
+    assert loaded.rows == 3
+    assert loaded.palette_changes == 0
+    assert loaded.film_ticks == (7, 8)
+    assert loaded.captured_on == "2026-10-31"
+    assert loaded.video is not None
+    assert loaded.video.sha256 == hashlib.sha256((out_dir / VIDEO_FILE).read_bytes()).hexdigest()
+    assert loaded.video.bytes == (out_dir / VIDEO_FILE).stat().st_size
+    assert loaded.video.frame_rate == (2190197, 31250)
+    assert loaded.layout == video.layout_offsets(playone.UNPATCHED)
+    assert loaded.emulator is None
+
+
+def test_layout_offsets_name_the_inferred_words() -> None:
+    patch3 = video.layout_offsets(playone.PATCH3)
+    assert (patch3.slot_clock, patch3.slot_ticks) == ("0x4220", "0x1C62")
+    assert patch3.film_clock == "0x421C"
+    assert patch3.inferred == ("slot_clock", "slot_ticks")
+    assert video.layout_offsets(playone.UNPATCHED).inferred == ()
+
+
+def test_emulator_info_reads_the_version_and_the_stage_conf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(automation, "emulator_version", lambda: "0.85.1")
+    info = video.emulator_info()
+    assert info is not None
+    assert (info.name, info.version, info.core, info.cpu_cycles) == (
+        "dosbox-automation",
+        "0.85.1",
+        "dynamic",
+        "45000",
+    )
+    monkeypatch.setattr(automation, "emulator_version", lambda: None)
+    assert video.emulator_info() is None
 
 
 def test_record_video_refuses_a_frame_count_mismatch(tmp_path: Path) -> None:
-    output = _output(log="x101:7:0,102:7:1,103:8:2,104:8:3,105:9:4")
+    output = _output(log="x101:7:0:5:0,102:7:1:5:1,103:8:2:6:2,104:8:3:6:1,105:9:4:7:1")
 
     with pytest.raises(video.VideoCaptureError, match="3 video frames"):
         _record(tmp_path, output=output, video_frames=3)
@@ -191,11 +233,13 @@ def test_record_video_refuses_no_recording(tmp_path: Path) -> None:
         ({"cs": "100"}, "prefix"),
         ({"end": "xunknown"}, "expected 'hold' or 'capped'"),
         ({"log": "x101:7"}, "malformed entry"),
+        ({"log": "x101:7:0"}, "malformed entry"),
         ({"pal0": "x00"}, "initial palette"),
         ({"pal": "x103:8:" + "00" * 96}, "palette band"),
         ({"pal": "x103:0:00"}, "palette band"),
         ({"cs": "xabc"}, "'cs'.*not a number"),
-        ({"log": "x101:x:0"}, "'log'.*not a number"),
+        ({"log": "x101:x:0:5:0"}, "'log'.*not a number"),
+        ({"log": "x101:7:0:5:x"}, "'log'.*not a number"),
         ({"pal0": "x0"}, "'pal0'.*not hex"),
         ({"pal": "x103:1:" + "zz" * 96}, "'pal'.*not hex"),
     ],
@@ -243,8 +287,8 @@ def test_record_video_refuses_malformed_avi_without_metadata(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     ("log", "message"),
     [
-        ("x101:7:0,103:8:1,104:9:2", "ascend by one"),
-        ("x101:7:0,102:8:1,103:2:2", "film_tick falls"),
+        ("x101:7:0:5:0,103:8:1:6:1,104:9:2:7:1", "ascend by one"),
+        ("x101:7:0:5:0,102:8:1:6:1,103:2:2:7:1", "film_tick falls"),
     ],
 )
 def test_record_video_reports_an_invalid_log_as_a_capture_error(
