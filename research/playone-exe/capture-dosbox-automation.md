@@ -20,7 +20,8 @@ Measurements ran 2026-10-30 to 2026-11-01 on one 16-core host.
   The REST call takes only `mode` (`raw` or `rendered`); nothing drops the audio stream.
 * **Absent:** the debugger (`debugger` is `false` in the OpenAPI document): no breakpoints, pause, step or hooks ([ADR 0034](../../docs/adr/0034-breakpoints-run-on-dosbox-x.md)).
 * **`dosbox.debugmsg(s)` is a file sink** (`[Bounded Observation]`, `v0.85.1`, 500 lines of 128,000 characters and 500 real `A000` pages): with the script loaded as `POST /script/load?debug=true` it appends `[F:<frame> T:<time>] debugmsg: <s>` to `<config dir>/logs/lua-debug-<time>-<script name>.log` and flushes per call.
-  The code has no size cap and `%s` stops at a NUL; the 64 MB written arrived byte for byte, so the 16 MB Lua heap (100 held pages ran, 140 died `not enough memory`) limits what a script keeps, not what it writes.
+  The code has no size cap, and a string is cut at its first NUL (`nul\0tail` arrived as `nul`).
+  500 synthetic lines (64 MB) arrived byte for byte, and 500 `A000` pages ran in 1.2 s without a heap error (their content was not checked); the 16 MB Lua heap (100 held strings of 128,000 characters ran, 140 died `not enough memory`) limits what a script keeps, not what it writes.
   The instruction count and peak heap were not measured (`collectgarbage` is removed).
   _Source: [where tears fall, and debugmsg as a sink](../../work/2026-11/1211_torn-video/journal.md#2026-11-27-where-tears-fall-and-debugmsg-as-a-sink)._
 * **Mounts:** a mount under `Temp` or far from its conf is refused (`MOUNT: Blocked`): conf and mount sit together under the data root.
@@ -154,12 +155,13 @@ _Source: [torn pages](../../work/2026-11/distill-capture-dosbox-automation/journ
 * **Against the pinned frame captures** (`[Bounded Observation]`, one recording per film, 1,875 pages): a page's RGB on rows 0..184 lies in the video at `emu_frame - capture_start_frame - 1` plus 0 on 1,122 pages and plus 1 on 731; 22 lie elsewhere.
   Medians are 99.9747% (`CTRY`) to 100% pixel-equal, minima 87.99% (`TRAINTNL`) to 97.14% (`INTRO`).
   By the journal's row rule (§ 4.5) 1,032 pages are exact, 503 split between two frames and 340 a band; no page is explained by its palette alone (0 of 466 mismatched on `CTRY` and `LOCATION`).
-  The bands and splits match § 4.5's tears of a video frame built from `A000` while the game copies into it; that cause is `[Supported Inference]`.
+  The bands and splits match § 4.5's tears of a video frame built from `A000` while the game copies into it; that cause is `[Supported Inference]` (the emulator's capture path, how `capture_start` takes a finished frame into the AVI, was not read).
   The draw path was read (`vga_draw.cpp` at `v0.85.1`): in a VGA mode below 640x480 `VGA_DrawSingleLine` draws one row per PIC event and reads video memory then, so a tear's row is where the copy meets the beam, with no fixed strip rows (the four-part drawing is for Hercules and high-resolution modes).
   _Source: [reference check, replay and pairing](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-reference-check-replay-and-the-pairing-rule-on-seven-full-rate-recordings)._
 * **Where `CTRY.FLM`'s tears fall** (`[Bounded Observation]`, one recording, 121 pinned pages: 31 exact, 28 split, 62 band, rows 0..184): no fixed rows.
-  Band pages start their unmatched rows at a median row 82.5 (34 of 62 within 80..97, no row holds more than 6) and span a median 20.5 rows (maximum 91); 22 of the 28 split pages differ from their best frame only on the HUD timer rows 179..184.
-  A video-only test of row-to-row discontinuity found no tear (area under the ROC curve 0.60 over rows 0..183, 69 of 90 torn frames missed at the best threshold), and comparing a frame with its two neighbours cannot either, because 1,634 of 1,905 frames hold rows equal to neither.
+  Band pages start their unmatched rows at a median row 82.5 (34 of 62 within 80..97, no start row holds more than 6 pages; the unmatched rows as a whole cluster around rows 80 to 113) and span a median 20.5 rows (maximum 91); 22 of the 28 split pages differ from their best frame only on the HUD timer rows (179 to 183).
+  A video-only test of row-to-row discontinuity is a weak detector (area under the ROC curve 0.60 over rows 0..183; at the best threshold 21 of 90 torn frames caught, 1 of 31 whole ones flagged).
+  Comparing a frame with its two neighbours separates nothing in the form tried: 1,634 of 1,905 frames hold rows equal to neither, and it was not run on the exact frames.
   The AVI is `zmbv` decoded as `bgr0`, not `pal8`.
   _Source: [where tears fall, and debugmsg as a sink](../../work/2026-11/1211_torn-video/journal.md#2026-11-27-where-tears-fall-and-debugmsg-as-a-sink)._
 * **ADR 0057's rule on run ends** (`[Bounded Observation]`, last frame of each `slot_clock` run, lavapipe renders): pairing by `render_tick` scores above the tag on `INTRO`, `BOMB`, `TRAINTNL` and `LOCATION` (+0.0054 to +0.0127 mean SSIM) and below it on `CTRY`, `LAND` and `BALLOON` (-0.0005 to -0.0014).

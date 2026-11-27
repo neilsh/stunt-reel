@@ -20,10 +20,10 @@ The probe: `a4_probe.py` loads a script with `POST /script/load?debug=true` at t
   The gate (more than about 80% of tear rows on a few fixed rows) fails.
 * In `vga_draw.cpp` at `v0.85.1`, `setup_drawing()` gives machine `vga` (the conf's `svga_s3`) in a mode below 640x480 `DrawMode::Scanline`: `VGA_DrawSingleLine` draws one row per PIC event and reads video memory then.
   The four strips (`parts_total = 4`) belong to `DrawMode::Part`, used for Hercules and for high-resolution VGA modes, so mode 13h has none.
-* A3 found no usable detector (summary file); the strip premise it rested on did not hold.
-* `dosbox.debugmsg(s)` (`lua_api.cpp`, `LuaDebugMsg`): `luaL_checkstring`, then `DebugLog::TraceMessage` copies the string to a `std::string`, `vfprintf("%s")` into `<config dir>/logs/lua-debug-<time>-<script name>.log` (here `/root/.config/dosbox-automation/logs/`) and `fflush` per call, only when the script was loaded with `debug=true`; no size cap in the code, and `%s` stops at a NUL.
+* A3 found a weak detector at best (AUC 0.60; 21 of 90 torn frames caught, 1 of 31 whole ones flagged; summary file); the strip premise it rested on did not hold.
+* `dosbox.debugmsg(s)` (`lua_api.cpp`, `LuaDebugMsg`): `luaL_checkstring`, then `DebugLog::TraceMessage` copies the string to a `std::string`, `vfprintf("%s")` into `<config dir>/logs/lua-debug-<time>-<script name>.log` (here `/root/.config/dosbox-automation/logs/`) and `fflush` per call, only when the script was loaded with `debug=true`; no size cap in the code, and the `const char*` becomes a `std::string`, which a NUL cuts.
   500 lines of 128,000 characters: 64,018,187-byte file, all 500 lines byte-identical to what the script built, whole script 0.2 s wall (frame 17); the line `"nul\0tail"` arrived as `nul`.
-  500 real `A000` reads hex-encoded with `gsub`: 64,050,148 bytes, 1.2 s wall.
+  500 real `A000` reads hex-encoded with `gsub`: 64,050,148 bytes, 1.2 s wall, no heap error; their content was not compared.
   Holding pages instead (the Lua heap cap, `DefaultMemoryCapBytes` 16 MB): 100 held of 128,000 characters ran, 140 died `not enough memory`.
   The instruction count and peak heap are not reported by the host and `collectgarbage` is removed from the sandbox, so neither was measured.
 * `ffprobe capture.avi`: codec `zmbv`, `bgr0`, 320x200, 1,907 frames; not `pal8`.

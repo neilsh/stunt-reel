@@ -2,7 +2,7 @@ CTRY.FLM, Patch 3, stubbed samples, capture profile, dosbox-automation 0.85.1, m
 Recording: 1907 frames, end hold, 65 palette changes, film starts frame 1278 (capture_start_frame 1275).
 reference-check ctry: 121 pages (0 skipped); offsets {-5:1, 0:57, 1:63}; min 95.9848%, median 99.9747% pixel-equal on rows 0..184
 exact 31, split 28, band 62.
-Split pages (28): two-frame tear interval [t_lo,t_hi] (rows < t from the later frame, rows >= t from the earlier):
+Split pages (28): two-frame tear interval [t_lo,t_hi] (rows < t from frame A, rows >= t from frame B; A is the later frame on 25 pages and the earlier on ordinals 1, 3 and 14):
   15 of 28 have t_lo >= 130; 3 have an interval of 3 rows or fewer: ordinal 24 [181,181], 27 [92,93], 89 [57,58].
   22 of 28 split pages differ from their best frame only on rows 179..184.
   differing pixels per split page: 1,1,1,1,3,3,3,4,6x6,7x8,10,11,17,27,145,163.
