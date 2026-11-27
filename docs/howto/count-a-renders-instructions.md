@@ -2,7 +2,7 @@
 
 `mise run icount` counts the instructions of one tick span of a headless lavapipe render on two or more builds, so a perf ticket can gate a CPU-side change on a count without a quiet machine.
 The method, its repeat ranges and its verdict are in [`lavapipe-instruction-counts.md`](../../research/parity/lavapipe-instruction-counts.md); this page is how to run it.
-It needs Linux with `valgrind` and `setarch`, and the lavapipe ICD that [Render on lavapipe beside a GPU](render-on-lavapipe.md) names.
+It needs Linux with `valgrind` and `setarch`, and the distribution's lavapipe driver (Ubuntu's `mesa-vulkan-drivers`, whose ICD `/usr/share/vulkan/icd.d/lvp_icd.json` is the default `--icd`).
 
 ## 1. Run it
 
@@ -10,21 +10,25 @@ Build every binary first: the runner runs them as they are.
 A variant is `NAME [binary=PATH] [VAR=VALUE ...]` as in [`mise run ab`](time-a-headless-render.md#3-time-variants-against-each-other), and the first is the baseline.
 
 ```bash
-mise run icount -- --out work/2026-11/<issue>_<slug> --name span-b     --variant "base binary=build/old" --variant "new binary=build/new"     --span 3680..=3709 --repeats 3
+mise run icount -- --out work/2026-11/<issue>_<slug> --name span-b \
+  --variant "base binary=build/old" --variant "new binary=build/new" \
+  --span 3680..=3709 --repeats 3
 ```
 
 * **Spans.**
-  Each `--span` (default `3680..=3709`, the first 30 ticks of Span B) is counted on every variant, `--repeats` times each (default 3), interleaved.
+  Each `--span` (default `3680..=3709`, the first 30 ticks of Span B) is counted on every variant, `--repeats` times each (default 3, the note's count; at least 2), interleaved.
   The film and archive default to `mise run ab`'s; `--film`, `--all` and `--icd` name others.
 * **Setup.**
-  Each render runs under `setarch "$(uname -m)" -R valgrind --tool=cachegrind --cache-sim=no --smc-check=all-non-file` with `MESA_SHADER_CACHE_DISABLE=true` and `LP_NUM_THREADS=1`, with `mise run ab`'s render flags and `--software-only`.
+  Each render runs under `setarch "$(uname -m)" -R valgrind --tool=cachegrind --cache-sim=no --smc-check=all-non-file` with `MESA_SHADER_CACHE_DISABLE=true` and `LP_NUM_THREADS=1`, with `mise run ab`'s render flags, `--report-timing` and `--software-only`.
+  The note's runs passed `--report-memory` instead, so compare counts only with counts this task took.
   A run takes tens of times its native time ([section 4 of the note](../../research/parity/lavapipe-instruction-counts.md#4-cost)).
 * **Output.**
   `<out>/<name>.csv` has one row per run: the span, variant, repeat, the whole-run count, the count outside glibc's `malloc.c` and `memmove`, and the four store hashes.
   `<out>/<name>-summary.md` has, per span and variant, both counts' median, change against the baseline's median and multiple of the baseline's repeat range, whether the stores match the baseline's, and the `--top` functions whose count differs most (the first repeat of each side).
   It never overwrites either file.
 * **Exit code.**
-  1 when a run fails or a store differs from the baseline's (the summary is still written), 2 on a refusal.
+  1 when a run fails or a store differs from the baseline's, 2 on a refusal.
+  A store mismatch still writes the summary; a failed run stops with only the CSV of the runs before it, which you delete before running again.
 
 ## 2. Reading it
 

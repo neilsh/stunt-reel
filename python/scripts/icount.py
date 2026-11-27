@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 DEFAULT_SPAN = "3680..=3709"
-DEFAULT_ICD = "tools/mesa-25.2.8/x64/lvp_icd.x86_64.json"
+DEFAULT_ICD = "/usr/share/vulkan/icd.d/lvp_icd.json"
 SCRATCH = dataroot.REPO_ROOT / "build" / "scratch" / "icount"
 
 
@@ -86,8 +86,8 @@ def _refusals(args: argparse.Namespace, inputs: dict[str, Path], root: Path) -> 
     names = [v.name for v in args.variant]
     if len(set(names)) != len(names):
         problems.append("--variant names must differ")
-    if args.repeats < 1:
-        problems.append("--repeats must be at least 1")
+    if args.repeats < 2:
+        problems.append("--repeats must be at least 2, so the baseline has a repeat range")
     problems += [f"missing {what}: {path}" for what, path in inputs.items() if not path.is_file()]
     if not (dataroot.corpus_of(root) / SIDATA).is_dir():
         problems.append("missing the SIDATA directory under the data root's corpus")

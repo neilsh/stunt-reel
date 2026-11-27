@@ -188,3 +188,16 @@ def test_run_refuses_one_variant(root: Path) -> None:
     args = _args(root)
     args.variant = args.variant[:1]
     assert icount_cli.run(args, root, _fake({})) == 2
+
+
+def test_run_refuses_one_repeat(root: Path) -> None:
+    args = _args(root)
+    args.repeats = 1
+    assert icount_cli.run(args, root, _fake({})) == 2
+
+
+def test_run_refuses_to_overwrite_a_csv(root: Path) -> None:
+    args = _args(root)
+    (root / "out").mkdir()
+    (root / "out" / "icount.csv").write_text("", encoding="utf-8")
+    assert icount_cli.run(args, root, _fake({"bin-a": 1000, "bin-b": 900})) == 2
