@@ -131,8 +131,8 @@ Fetch writes `.cloud-assets-pin`, the archive's key, into each folder it unpacks
 It skips a folder whose pin file names the pinned key and replaces one naming another, so a session takes a newer pin at its next start or resume.
 It never touches a folder without a pin file, such as the primary machine's corpus, unless given `--replace-unmarked`, which the SessionStart hook alone passes ([ADR 0042](adr/0042-fetch-replaces-a-folder-it-wrote-when-the-pin-changes.md)).
 An archive marked `on_demand = true` in the manifest is left out of a bare `fetch` and `verify`, so the hook skips it ([ADR 0039](adr/0039-cloud-sessions-fetch-pinned-game-archives.md#amendment-2026-11-27-on-demand-archives)).
-The video captures are such archives, one per film: fetch one with `mise run cloud-assets -- fetch captures-video-<film>` (for example `captures-video-ctry`), which unpacks `capture.avi` and `meta.json` into `captures-video/<film>/` of the data root.
-Each has no pin until its first upload, and fetching it before then stops with `has no pin`.
+The video captures are such archives, one per film: fetch one with `mise run cloud-assets -- fetch captures-video-<film>` (for example `captures-video-ctry`), which unpacks `capture.avi` and `meta.json` into `captures-video/<slug>/` of the data root (`captures-video/vault-ctry/` for `captures-video-ctry`).
+Each has no pin until its first pack, and fetching it before then stops with `has no pin`.
 `mise run cloud-assets -- status` shows each pin and what its folder holds, reading nothing remote.
 From `fetch`, exit 2 means `R2_ACCOUNT_ID`, or one half of the key pair, is unset, and a 403 means the key pair or the network secret cannot read the bucket.
 
@@ -149,6 +149,7 @@ Use it to check a new or resumed cloud environment.
 2. `mise run cloud-assets -- pack [ARCHIVE...]` builds into `target/cloud-assets/` and rewrites the pins in `manifests/cloud-assets.toml`.
    A PR that promotes a reference in `research/parity/references.toml` repacks `captures`; a test fails until it does.
 3. Commit `manifests/cloud-assets.toml`, then `mise run cloud-assets -- upload [ARCHIVE...]`.
+   A bare `pack` or `upload` leaves out an `on_demand` archive, so name it.
    A key names its content, so old commits keep fetching theirs; never delete an object.
 
 ## Running the emulator

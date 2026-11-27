@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from stunt_reel import cloud_assets
+from stunt_reel import cloud_assets, parity_layout, references
 from stunt_reel.cloud_assets import (
     KEY_PAIR_ENV,
     MANIFEST_PATH,
@@ -42,6 +42,7 @@ from stunt_reel.cloud_assets import (
     verify,
     with_archive,
 )
+from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.references import capture_digest
 
 if TYPE_CHECKING:
@@ -154,8 +155,9 @@ def test_committed_video_archives_are_on_demand_and_unpinned() -> None:
     m = read_manifest()
     for film in VIDEO_FILMS:
         a = m.archives[f"captures-video-{film}"]
+        slug = references.read_reference(REPO_ROOT, film).slug
         assert (a.into, a.include, a.on_demand, a.key) == (
-            f"captures-video/{film}",
+            parity_layout.video_path(slug).as_posix(),
             ("capture.avi", "meta.json"),
             True,
             None,
@@ -163,6 +165,25 @@ def test_committed_video_archives_are_on_demand_and_unpinned() -> None:
     assert not any(
         a.on_demand for n, a in m.archives.items() if not n.startswith("captures-video-")
     )
+
+
+def test_committed_manifest_is_what_manifest_text_writes() -> None:
+    text = MANIFEST_PATH.read_text(encoding="utf-8")
+    assert manifest_text(read_manifest()) == text
+
+
+def test_check_manifest_sources_ignores_an_on_demand_archive(tmp_path: Path) -> None:
+    repo = _manifest_repo(tmp_path, "captures-video/x", "A.BIN")
+    video = Archive("v", "captures-video/x", ("**",), (), on_demand=True)
+    manifest = dataclasses.replace(read_manifest(), archives={"v": video})
+    assert any("no archive holds" in m for m in check_manifest_sources(manifest, repo))
+
+
+def test_bare_pack_skips_an_on_demand_archive() -> None:
+    video = Archive("v", "captures-video/x", ("capture.avi",), (), on_demand=True)
+    plain = Archive("p", "p", ("**",), ())
+    manifest = Manifest("b", "v2", {"v": video, "p": plain})
+    assert cloud_assets.default_names(manifest) == ["p"]
 
 
 def _entry(tmp_path: Path, extra: str) -> Archive:
@@ -662,14 +683,11 @@ def test_status_lists_an_unpinned_on_demand_archive_as_not_packed(tmp_path: Path
     assert lines[1] == f"v: on demand, not packed; {tmp_path / 'data' / 'captures-video/v'} absent"
 
 
-def test_bare_upload_skips_an_unpacked_on_demand_archive(tmp_path: Path) -> None:
+def test_bare_upload_skips_a_pinned_on_demand_archive(tmp_path: Path) -> None:
     m, out = _packed_on_disk(tmp_path)
+    pinned = dataclasses.replace(m.archives["corpus-stuntisl"], name="v", on_demand=True)
     m = dataclasses.replace(
-        m,
-        archives={
-            "corpus-stuntisl": m.archives["corpus-stuntisl"],
-            "v": _with_on_demand(m).archives["v"],
-        },
+        m, archives={"corpus-stuntisl": m.archives["corpus-stuntisl"], "v": pinned}
     )
     calls: list[list[str]] = []
 
@@ -679,6 +697,7 @@ def test_bare_upload_skips_an_unpacked_on_demand_archive(tmp_path: Path) -> None
 
     assert len(upload(m, [], out, run=run)) == 1
     assert len(calls) == 1
+    assert len(upload(m, ["v"], out, run=run)) == 1
 
 
 def test_fetch_needs_the_account_id(tmp_path: Path) -> None:

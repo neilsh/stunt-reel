@@ -97,7 +97,7 @@ _HEADER = (
     "(work/2026-11/cloud-assets/spec.md, ADR 0039).\n"
     "# `mise run cloud-assets -- pack` rewrites the key, sha256, bytes and references lines.\n"
     "# `on_demand = true` leaves an archive out of a command given no names (the session-start\n"
-    "# fetch, verify, upload): only naming it fetches it (ADR 0039).\n"
+    "# fetch, verify, pack, upload): only naming it covers it (ADR 0039).\n"
 )
 
 
@@ -386,7 +386,7 @@ def check_manifest_sources(manifest: Manifest, repo: Path = REPO_ROOT) -> list[s
     selects; for a :data:`BUILT_TREES` root, the first archive it is built from, with every
     archive it needs in *manifest*.
     """
-    by_folder = {_folder_key(a.into): a for a in manifest.archives.values()}
+    by_folder = {_folder_key(a.into): a for a in manifest.archives.values() if not a.on_demand}
     messages = []
     for film in references.reference_films(repo):
         relative = parity_layout.manifest_path(references.read_reference(repo, film).slug)
@@ -708,7 +708,7 @@ def upload(
 ) -> list[str]:
     """Puts each packed archive of *names* at its key with the pinned wrangler.
 
-    With no names, every archive except an on-demand one not packed yet.
+    With no names, every archive that is not on demand.
 
     Runs with the owner's ``wrangler login``; a key names its content, so a second upload
     writes the same bytes.
@@ -718,10 +718,7 @@ def upload(
             or wrangler failed.
     """
     lines = []
-    wanted = names or [
-        n for n, a in manifest.archives.items() if not (a.on_demand and a.key is None)
-    ]
-    for name in wanted:
+    for name in names or default_names(manifest):
         key, path = _packed_file(archive_named(manifest, name), out_dir)
         target = f"{manifest.bucket}/{key}"
         argv = ["npx", "--yes", f"wrangler@{WRANGLER_VERSION}", "r2", "object", "put", target]
