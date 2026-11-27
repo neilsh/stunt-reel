@@ -43,8 +43,7 @@ pub enum ParityError {
         /// The underlying failure.
         source: serde_json::Error,
     },
-    /// The inputs do not fit the run: a render of another film or raster, a missing frame or
-    /// tick, or a file of the wrong size.
+    /// The inputs do not fit the run; the message says how.
     #[error("{0}")]
     Input(String),
     /// A stored render could not be opened or read.

@@ -141,6 +141,11 @@ fn second_of(tick: u32) -> u32 {
     tick / RENDER_CHUNK_TICKS
 }
 
+/// Why a page's picture is not `palette[index]` at every pixel.
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub(crate) struct NotDerivable(String);
+
 /// Checks that a page's picture is `palette[index]` at every pixel, which is what lets the
 /// store keep the index plane and the palette instead of the picture.
 pub(crate) fn check_derivable(
@@ -148,9 +153,9 @@ pub(crate) fn check_derivable(
     indices: &[u8],
     rgba: &[u8],
     width: u32,
-) -> Result<(), crate::parity::ParityError> {
+) -> Result<(), NotDerivable> {
     if rgba.len() != indices.len() * 4 {
-        return Err(crate::parity::ParityError::Input(format!(
+        return Err(NotDerivable(format!(
             "the picture holds {} RGBA bytes for {} pixels",
             rgba.len(),
             indices.len()
@@ -160,7 +165,7 @@ pub(crate) fn check_derivable(
         let expected = palette_rgb(palette, index);
         if (colour[0], colour[1], colour[2]) != expected {
             let width = width.max(1) as usize;
-            return Err(crate::parity::ParityError::Input(format!(
+            return Err(NotDerivable(format!(
                 "pixel ({}, {}) is {:?} but palette[{index}] is {expected:?}, so the picture is \
                  not derivable from the index plane",
                 pixel % width,
