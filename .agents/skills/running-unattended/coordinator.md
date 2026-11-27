@@ -49,7 +49,8 @@ The remaining fields are the branch, the head SHA at 7 characters or `-` when th
 The note carries what the merge bar needs: the worktree path (for `worker-start --worktree "path:<workspace path>"`), the review comment URL and its verdict at the head, the reviewer's `alternatives: N` count, CodeRabbit (`not requested`, `check due <time>`, `checked`), the rule 5 reviewed SHA and PR-body path, a due time, the local gate at the head, the acceptance items as the worker reported them, review-body findings answered, changed paths that need a human cleared, and `env:local-only` (cleared or pending).
 The newest line for an item is self-contained: each new line repeats every still-active local fact from that item's earlier lines (worktree path, local gate at the head, acceptance report, review-body findings answered, human-path and `env:local-only` clearance, an unpushed rule 5 SHA and PR-body path, a pending CodeRabbit due time, the alternatives count), since `mise run merge-bar` cannot re-derive them.
 Record that count in the item's newest line and carry it forward like its other still-active facts.
-Alternatives are the owner's to read on the PR: never send them to a worker as fix requests and never file them as issues.
+Alternatives marked `owner`, or unmarked, are the owner's to read on the PR: never send them to a worker as fix requests and never file them as issues.
+When the reviewer replies `apply: M`, dispatch, after the fix round, a fresh worker on the reviewer's model to apply those items as one `refactor:` commit, then get the second review a non-small commit needs, both by [`harness.md`](../../../docs/harness.md#policy-any-agent) (A higher-tier first review also improves the code), before the merge bar.
 Run `mise run merge-bar -- <n> --issue <N>` and put its `PASS` or `FAIL` in the note rather than repeating the CI, base, thread or body-line fields that report already reads.
 For example:
 
