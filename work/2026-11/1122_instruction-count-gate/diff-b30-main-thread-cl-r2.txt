@@ -1,0 +1,16 @@
+total difference 9,252,353
+     6,881,496 ./malloc/./malloc/malloc.c:_int_malloc
+     1,851,931 ./malloc/./malloc/malloc.c:_int_free_maybe_consolidate
+       207,505 ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:__memcpy_avx_unaligned_erms
+       182,000 ???:<stunt_render::scene_renderer::SceneRenderer>::prepare
+      -111,339 ./malloc/./malloc/malloc.c:unlink_chunk.isra.0
+        81,084 ???:stunt_core::world::assemble::build_world
+        59,746 ???:<core::iter::adapters::map::Map<core::slice::iter::Iter<stunt_core::world::scenery::Placement>, stunt_core::world::assemble::facing_prop
+        49,156 ./malloc/./malloc/malloc.c:_int_free_merge_chunk
+        41,408 ???:stunt_core::world::tap_props::anchored_models
+        39,606 ???:0x00000000001460e0
+       -33,151 ./malloc/./malloc/malloc.c:_int_realloc
+        29,908 ???:0x0000000000146580
+        29,398 ???:<stunt_core::world::scenery::ScnWalk>::place
+       -20,126 ???:<gpu_allocator::allocator::free_list_allocator::FreeListAllocator as gpu_allocator::allocator::SubAllocator>::allocate
+        18,150 ???:0x000000000014b870
