@@ -33,3 +33,27 @@ The probe: `a4_probe.py` loads a script with `POST /script/load?debug=true` at t
 `debugmsg` works as a sink; the heap cap does not apply to what it writes.
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` §§ 1, 4.6 and Ruled out.
+
+## 2026-11-27: Streaming the composed buffers of CTRY through debugmsg
+
+**Question.** Does a per-frame stream of both composed buffers through `dosbox.debugmsg` give a whole picture for every pinned `CTRY` page, leave the recording unchanged, and fit the Lua budget? (#1211, Phase B step 1, the probe.)
+
+**Method.** Patch 3, stubbed samples, `capture` profile, dosbox-automation 0.85.1, scratch scripts in the project files folder (`1211-torn-video/b1_probe.py`, `b1_stats.py`, `b1_gate.py`, `b1_palette.py`, `b1_spin_calibrate.py`); every figure is in [`b1-probe-summary.txt`](b1-probe-summary.txt).
+`capture-video` ran with `luagen.video_script` patched to log, at each frame's row, both segment words (`layout.composed_pages`), whether `A000` rows 0..191 equal each buffer, and each buffer's rows 0..191 as hex, loaded with `?debug=true`.
+The pinned pages' rows 0..184 were compared as palette indices with the streamed buffers at `emu_frame - 8 .. + 8`.
+
+**Result.**
+
+* Every one of the 121 pinned pages equals a streamed buffer at offset 0: 119 the word the harness reads second (`word1`), which equals `A000` on 1,786 of 1,907 frames, and 2 the other word, on frames where `A000` equals that one (31 frames).
+  The working palette rebuilt from the run's `meta.json` equals the page's palette on 121 of 121 pages at the same frame.
+  In the video the same pages were exact on 31 of 121 (Phase A).
+* `A000` equals neither buffer on 85 frames (4.5%), the torn frames, and both on 5.
+* The stream leaves the recording alone: `capture.avi` and `meta.json` equal the stream-off run's, and two stream runs have equal payloads.
+* Cost: about 71 more Lua instructions a frame (estimate from a spin counter), about 137 in all with boot, so about 7,300 frames a script; the planner's 25 to 35 was too low, and `LOCATION.FLM` (11,616 frames) needs two passes at this row.
+  Wall time did not change (49 s against 47 s); the log is 469 MB for the two buffers.
+
+**Verdict.** Go on step 2 for `CTRY`.
+The front rule is open: the second word, except on frames where `A000` equals the first, matches all 121 pages; whether the second word is the newest finished picture on every frame, and whether each streamed picture is whole in `A000` at some frame, were not measured.
+The instruction cost is high enough that the row should be lightened (one buffer, one `debugmsg` a frame) before step 2 counts frames a script.
+
+**Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
