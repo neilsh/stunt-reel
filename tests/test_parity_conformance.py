@@ -38,11 +38,13 @@ from stunt_reel.parity_artifacts import (
     read_page,
     read_render,
     read_report,
+    read_video_derived,
     write_capture,
     write_render,
     write_render_store,
     write_report,
     write_video_capture,
+    write_video_derived,
 )
 
 # The documents here are validated against the schemas under crates/stunt-parity/schema/, so a
@@ -280,6 +282,8 @@ def _kind_of(path: Path, document: dict[str, Any]) -> str:
         return "render"
     if path.name == "report.json":
         return "report"
+    if path.name == "derived.json":
+        return "video-derived"
     assert path.name.startswith("meta"), f"{path} is not a parity document"
     return "video" if document.get("kind") == "video" else "capture"
 
@@ -287,7 +291,7 @@ def _kind_of(path: Path, document: dict[str, Any]) -> str:
 def _fixture_documents() -> list[Path]:
     return sorted(
         path
-        for pattern in ("**/render.json", "**/report.json", "**/meta*.json")
+        for pattern in ("**/render.json", "**/report.json", "**/meta*.json", "**/derived.json")
         for path in CORPUS.parent.glob(pattern)
     )
 
@@ -297,6 +301,7 @@ def test_a_schema_exists_for_every_document_kind() -> None:
         "capture.schema.json",
         "render.schema.json",
         "report.schema.json",
+        "video-derived.schema.json",
         "video.schema.json",
     ]
 
@@ -306,7 +311,7 @@ def test_the_fixtures_cover_every_document_kind() -> None:
         _kind_of(path, json.loads(path.read_text(encoding="utf-8")))
         for path in _fixture_documents()
     }
-    assert kinds == {"render", "report", "capture", "video"}
+    assert kinds == {"render", "report", "capture", "video", "video-derived"}
 
 
 @pytest.mark.parametrize(
@@ -329,7 +334,8 @@ def _written_documents(tmp_path: Path) -> list[tuple[str, dict[str, Any]]]:
     """Documents written through every adapter writer, setting each optional field it can write.
 
     The film identity carries both hashes, the render and the report an adapter, the report its
-    `archive_conflict_waived` flag and provenance, and the video a viewport and an engine hash.
+    `archive_conflict_waived` flag and provenance, the video a viewport and an engine hash, and the
+    derived document its reference check.
     """
     film = FilmId(name="SYNTH.FLM", flm_bytes=17, flm_sha256="ab" * 32, all_sha256="cd" * 32)
     adapter = RenderAdapter(name="Test GPU", adapter_class="hardware")
@@ -394,6 +400,15 @@ def _written_documents(tmp_path: Path) -> list[tuple[str, dict[str, Any]]]:
     )
     written.append(("video", described / "meta.json"))
 
+    derived = tmp_path / "video_derived"
+    derived.mkdir()
+    write_video_derived(derived, read_video_derived(CORPUS.parent / "video" / "with-slots"))
+    written.append(("video-derived", derived / "derived.json"))
+    bare = derived.parent / "video_derived_bare"
+    bare.mkdir()
+    write_video_derived(bare, replace(read_video_derived(derived), reference_check=None))
+    written.append(("video-derived", bare / "derived.json"))
+
     return [(kind, json.loads(path.read_text(encoding="utf-8"))) for kind, path in written]
 
 
@@ -440,12 +455,18 @@ def _document_paths(node: Any, prefix: str = "") -> set[str]:
 
 def test_every_document_the_adapter_writes_conforms_to_the_schema(tmp_path: Path) -> None:
     documents = _written_documents(tmp_path)
-    assert {kind for kind, _ in documents} == {"render", "report", "capture", "video"}
+    assert {kind for kind, _ in documents} == {
+        "render",
+        "report",
+        "capture",
+        "video",
+        "video-derived",
+    }
     for index, (kind, document) in enumerate(documents):
         _assert_valid(_schema(kind, strict=True), document, f"{kind} document {index}")
 
 
-@pytest.mark.parametrize("kind", ["render", "report", "capture", "video"])
+@pytest.mark.parametrize("kind", ["render", "report", "capture", "video", "video-derived"])
 def test_the_written_documents_set_every_property_the_schema_names(
     kind: str, tmp_path: Path
 ) -> None:

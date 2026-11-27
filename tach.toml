@@ -82,6 +82,7 @@ paths = [
     "stunt_reel.parity_judge",
     "stunt_reel.parity_pictures",
     "stunt_reel.parity_pipeline",
+    "stunt_reel.video_check",
 ]
 layer = "parity"
 

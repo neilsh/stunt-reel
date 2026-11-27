@@ -226,6 +226,7 @@ impl VideoCapture {
 
     /// Index of capture `frame` relative to the recording start, or `None` before it or if the
     /// index does not fit in `usize`. The result is not checked against the recording's length.
+    /// The log row of `frame` is one lower (`capture_start_frame + 1` is row 0, AVI frame 0).
     #[must_use]
     pub fn video_index(&self, frame: u64) -> Option<usize> {
         let index = frame.checked_sub(self.capture_start_frame)?;

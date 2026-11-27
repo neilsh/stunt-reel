@@ -16,4 +16,5 @@ mod render_test;
 mod report_test;
 mod schema_test;
 mod test_support;
+mod video_derived_test;
 mod video_test;

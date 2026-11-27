@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VideoDerived",
+  "description": "Document written by `mise run video-derive` as `derived.json`.",
+  "type": "object",
+  "properties": {
+    "frames": {
+      "description": "The derived columns.",
+      "$ref": "#/$defs/DerivedColumns"
+    },
+    "kind": {
+      "description": "Document kind; always `\"video-derived\"`.",
+      "type": "string"
+    },
+    "reference_check": {
+      "description": "The comparison against the pinned frame capture, once it ran.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReferenceCheck"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rules": {
+      "description": "The rule behind each column.",
+      "$ref": "#/$defs/DerivedRules"
+    },
+    "schema_version": {
+      "description": "Schema version of the document.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "source": {
+      "description": "What this was computed from.",
+      "$ref": "#/$defs/DerivedSource"
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "source",
+    "rules",
+    "frames"
+  ],
+  "$defs": {
+    "DerivedColumns": {
+      "description": "Per-frame columns, one entry per row of the capture's tick log, in its order.",
+      "type": "object",
+      "properties": {
+        "palette_step": {
+          "description": "Whether a palette write took effect at the frame.",
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          }
+        },
+        "render_tick": {
+          "description": "Render-store tick the frame is paired with.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        }
+      },
+      "required": [
+        "render_tick",
+        "palette_step"
+      ]
+    },
+    "DerivedRules": {
+      "description": "The rule behind each derived column.",
+      "type": "object",
+      "properties": {
+        "palette_step": {
+          "description": "Rule of the `palette_step` column.",
+          "$ref": "#/$defs/PaletteStepRule"
+        },
+        "render_tick": {
+          "description": "Rule of the `render_tick` column.",
+          "$ref": "#/$defs/RenderTickRule"
+        }
+      },
+      "required": [
+        "render_tick",
+        "palette_step"
+      ]
+    },
+    "DerivedSource": {
+      "description": "The files this document was computed from, as SHA-256 in lower-case hex.",
+      "type": "object",
+      "properties": {
+        "meta_sha256": {
+          "description": "SHA-256 of the `meta.json` beside this file.",
+          "type": "string"
+        },
+        "video_sha256": {
+          "description": "SHA-256 of the `capture.avi` beside this file.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "meta_sha256",
+        "video_sha256"
+      ]
+    },
+    "PaletteStepRule": {
+      "description": "Which rule made the `palette_step` column.",
+      "oneOf": [
+        {
+          "description": "True on the frame a palette write took effect (`palettes.changes[].frame`).",
+          "type": "string",
+          "const": "palette-change-frame"
+        }
+      ]
+    },
+    "PixelEqual": {
+      "description": "Pixel-equal fractions of the compared pages: the best match each page found in the video.",
+      "type": "object",
+      "properties": {
+        "median": {
+          "description": "Median fraction over the pages.",
+          "type": "number",
+          "format": "double"
+        },
+        "min": {
+          "description": "Smallest fraction over the pages.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "min",
+        "median"
+      ]
+    },
+    "ReferenceCheck": {
+      "description": "The video compared against the pinned frame capture of the same film.\n\nEach kept page's RGB (through its own palette) is searched in the video at\n`emu_frame - capture_start_frame - 1` (the video frame of the log row at `emu_frame`) plus an offset within `search`, over the rows in `rows`.",
+      "type": "object",
+      "properties": {
+        "band_pages": {
+          "description": "The remaining pages: some row matches no frame in the window.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "capture_digest": {
+          "description": "The `references.toml` digest of the frame capture compared against.",
+          "type": "string"
+        },
+        "exact_pages": {
+          "description": "Pages whose best match was pixel-equal everywhere.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "offsets": {
+          "description": "Best offset, as a decimal string (`\"-1\"`), to the number of pages that found it first.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "pages": {
+          "description": "Pages compared.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "pixel_equal": {
+          "description": "Pixel-equal fractions.",
+          "$ref": "#/$defs/PixelEqual"
+        },
+        "rows": {
+          "description": "First and last row compared, inclusive.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "maxItems": 2,
+          "minItems": 2
+        },
+        "search": {
+          "description": "Largest absolute offset searched.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "skipped": {
+          "description": "Pages whose search window left the video, so they were not compared.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "split_pages": {
+          "description": "Pages with no exact match whose every row equals that row of some video frame in the\nwindow `-2..=+4` around the paired frame: a tear between two frames.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "capture_digest",
+        "rows",
+        "search",
+        "pages",
+        "skipped",
+        "offsets",
+        "pixel_equal",
+        "exact_pages",
+        "split_pages",
+        "band_pages"
+      ]
+    },
+    "RenderTickRule": {
+      "description": "Which rule made the `render_tick` column.",
+      "oneOf": [
+        {
+          "description": "`slot_clock - slot_ticks + 1`, or `film_tick` where the ticks word exceeds the clock\n(ADR 0057).",
+          "type": "string",
+          "const": "adr-0057"
+        },
+        {
+          "description": "`film_tick`: the capture logged no slot words.",
+          "type": "string",
+          "const": "film-tick"
+        }
+      ]
+    }
+  }
+}
