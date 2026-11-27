@@ -202,7 +202,7 @@ fn list_ranks(polygons: &[RawPolygon]) -> Option<Vec<u32>> {
 }
 
 /// The sphere a ranked shape's `vertices` take their depth from: their bounding box's centre
-/// and the distance from it to the farthest of them.
+/// and the distance from it to the farthest of them, unranked `ZLINETO` vertices included.
 fn rank_sphere(vertices: &[SodVertex]) -> Option<RankSphere> {
     let (first, _) = vertices.split_first()?;
     let (mut lo, mut hi) = (first.position, first.position);

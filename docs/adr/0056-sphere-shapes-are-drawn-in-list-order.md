@@ -24,7 +24,7 @@ Flattening every shape with a sphere to its placement's depth raised `bomb`'s ta
   Vertices of different places never weld.
   A `ZLINETO` line stays unranked.
 * **Depth.**
-  Each ranked shape gets one `RankSphere` (`SodModelIr::rank_spheres`): its vertices' bounding-box centre and the distance to the farthest of them.
+  Each ranked shape gets one `RankSphere` (`SodModelIr::rank_spheres`): its vertices' bounding-box centre and the distance to the farthest of them, unranked line vertices included.
   A world prop's is moved with its placement.
   The apex stream widens to four floats; a ranked filled vertex carries its sphere there.
   The vertex shader draws a ranked vertex at the depth of that sphere's point nearest the eye (no nearer than 5 cm), plus eight 24-bit depth steps per rank (`list_order_depth` in `mode13h.wgsl`).
@@ -40,7 +40,10 @@ Flattening every shape with a sphere to its placement's depth raised `bomb`'s ta
   The gains are near the sweep's noise floor of 0.002.
 * `SodVertex` grows from 28 to 32 bytes and the apex stream from 12 to 16 bytes a vertex.
 * Inside a ranked shape a polygon's depth no longer says where it is: an outline or a line of that shape can lose to its own flattened fill.
-* The lavapipe expected scores are repinned with the change.
+* The lavapipe expected scores are repinned with the change: `bomb` 0.9083 to 0.9110, `balloon` 0.9067 to 0.9081, the other films by 0.0004 or less.
+* A rank step is fixed in reversed depth, where depth is `near / distance`, so it spans a distance that grows with its square: about 1 m for 20 ranks at 100 m and 96 m at 1 km.
+  A far shape of many ranks can so draw over a nearer shape just in front of it; eight steps a rank keep each rank above the 24-bit buffer's rounding, and no swept frame lost by it.
+* The modern look draws through the same vertex stage (`vertex_output`), so it orders ranked shapes the same way.
 
 ## Considered Options
 

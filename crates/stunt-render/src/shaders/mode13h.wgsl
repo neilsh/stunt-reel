@@ -276,7 +276,9 @@ fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f3
     return camera.rotation_proj * vec4<f32>(on_ray * t, 1.0);
 }
 
-// The depth one place in a display list adds: eight steps of the 24-bit depth buffer.
+// The depth one place in a display list adds: eight steps of the 24-bit depth buffer. Depth
+// is near / distance, so a step spans a distance growing with its square (about 5 cm at
+// 100 m, 5 m at 1 km).
 const RANK_STEP: f32 = 4.8e-7;
 
 // The clip z of a list-ranked vertex (`VertexInput::list_rank`) of a perspective, unshadowed
