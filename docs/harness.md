@@ -21,6 +21,7 @@ Nothing here is a fact about Stunt Island.
   | `heavy` | `Opus` | `Opus` or Antigravity |
   | `wide` on `medium` or `heavy` | The tier's model, with the harness's long-context option where offered | Likewise |
 
+  Which vendor models fill each tier and context class is in [`harness/models.md`](harness/models.md).
   An issue with a tier routes by it, which takes precedence over dsh-first: dsh is eligible only for `model-tier:light`, whose work is the simple bounded work below.
   An issue with no tier, or two, keeps the fit rules: dsh first where the spec is clear and the task needs no judgment over evidence (prefix-cache hit rate is not the test); `Sonnet` for other well-specified implementation; `Opus` for research, diagnosis, design, and items expected to need rounds of hypotheses.
   Otherwise subagents use the session model (`inherit`) and the same provider's `fast` tier only for simple bounded work (`Haiku` on Claude Code, `Gemini 4 Hydrogen` / `flash` on Antigravity): surveys, mapping tables, mechanical edits, grading against a calibrated rubric, and browser UI; never escalate above the session model or switch provider families outside this routing.
