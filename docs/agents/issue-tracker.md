@@ -58,8 +58,9 @@ These rules cover every issue, except that the map and tickets `/wayfinder` choo
 - **Parents are goals.**
   A parent issue names an outcome and ends with a `Done when every sub-issue is closed.` line, e.g. #85 (terrain loss), #97 (actors and props).
   Every parent can close; there is no standing bucket parent.
+  A parent whose work all lives in its sub-issues carries `type:tracking` and no state, `area:` or `env:` label ([triage-labels.md](triage-labels.md#category-roles)).
   An issue has no parent by default: give it one when a goal fits, and file a short-lived parent only for a batch that has its own `Done when` (as #169 did for lints).
-- **An issue with open sub-issues is never startable**, whatever its labels: a spec that `/to-tickets` split keeps its `status:ready-for-agent` label.
+- **An issue with open sub-issues is never startable**, whatever its labels: a spec that `/to-tickets` split keeps its `status:ready-for-agent` label, unless the split leaves it no work of its own, when the splitter relabels it `type:tracking`.
   Skip it when choosing work.
 - **Closing the last child closes the parent.**
   Whoever closes a parent's last open sub-issue closes the parent too, as in **Close**.
@@ -74,7 +75,7 @@ These rules cover every issue, except that the map and tickets `/wayfinder` choo
   Before `gh issue create`, run `gh issue list --state open --search "<key terms>"` (cloud: `gh api 'search/issues?q=repo:{owner}/{repo}+type:issue+<terms>'`) with the symptom's distinctive words (the error, the file, the film).
   On a clear match, add the new sighting as a comment there instead of filing a duplicate.
 - **The filer labels the issue.**
-  On `gh issue create`, apply one state label (`status:needs-triage` when unsure, or `status:needs-plan` when it needs read-only planning before coding), one or more primary-subsystem `area:` labels, a `type:` contract label (`type:research`, `type:fidelity` or `type:perf`) where applicable, `env:local-only` where only `local-windows` can do it ([triage-labels.md](triage-labels.md)), and a parent where a goal fits; leave `priority:` unset so unprioritized issues stand out for maintainer prioritization, and `model-tier:` and `model-context:` unset, since a plan sets them ([triage-labels.md](triage-labels.md#model-roles)).
+  On `gh issue create`, a `type:tracking` parent takes that label alone; any other issue takes one state label (`status:needs-triage` when unsure, or `status:needs-plan` when it needs read-only planning before coding), one or more primary-subsystem `area:` labels, a `type:` contract label (`type:research`, `type:fidelity` or `type:perf`) where applicable, `env:local-only` where only `local-windows` can do it ([triage-labels.md](triage-labels.md)), and a parent where a goal fits; leave `priority:` unset so unprioritized issues stand out for maintainer prioritization, and `model-tier:` and `model-context:` unset, since a plan sets them ([triage-labels.md](triage-labels.md#model-roles)).
   Cloud: the create and label forms above.
 - No milestones; parents show progress.
   The owner's [Issue Radar](https://github.com/users/neilsh/projects/1) project is a dashboard the `project-sync` workflow derives (`Status` and `Priority`) from labels and issue state ([`project_sync.py`](../../python/scripts/project_sync.py)); agents never read or write it, and a cloud session cannot, since Projects is GraphQL-only.

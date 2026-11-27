@@ -110,10 +110,10 @@ def graphql(query: str, **variables: str | int | None) -> Any:
 
 
 def derive_status(names: set[str], state: str, sub_issues: int) -> str:
-    """The Status an issue belongs in: closed is ``Done``, a parent ``Goal``, else its label's."""
+    """The Status an issue belongs in: closed is ``Done``, a parent or tracker ``Goal``, else its label's."""
     if state == "closed":
         return DONE
-    if sub_issues > 0:
+    if sub_issues > 0 or labels.TYPE_TRACKING in names:
         return GOAL
     return next((status for label, status in LABEL_STATUS if label in names), TRIAGE)
 
