@@ -128,6 +128,8 @@ _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../
   A census over the 84 readout frames found 20 objects on 13 frames that a fixed-shift test calls misaligned, 3 of them time-explained and 4 the flown aircraft, and none on the 12 recapture-as-render control frames; the graders (two Haiku passes, no tie-break needed) put INTRO 1355 and 2773 and TRAINTNL 232 at 2 or more in the new category, and on INTRO 2773 the flagged object is the flown aircraft's wing, which the definition leaves to `aircraft-misplaced`.
   The calibration printed `calibration PASS` (controls 12/12, `actors_removed` 6/6, `shift_y:4` 6/6, `advance:5` 3/6) and `props_shift:8` was detected on 0 of 6 sheets, reported and not gated, so the planted fault is no evidence for the category.
   Each calibrating run now grades 48 sheets.
+  Its example is TRAINTNL 232: both Haiku passes graded it 3 and a blind Sonnet pass over the film's 12 sheets graded it 2, its only sheet at 2 or more there.
+  _Source: [2026-11-27: an object-misaligned example from a second model](../../work/2026-11/1187_object-misaligned-example/journal.md#2026-11-27-an-object-misaligned-example-from-a-second-model)._
   _Source: [2026-11-27: census, calibration and the seven-film re-grade](../../work/2026-11/1110_object-misaligned/journal.md#2026-11-27-census-calibration-and-the-seven-film-re-grade)._
 
 * **A sheet's index-mismatch fraction does not separate the sheets the graders cleared from those they graded** (`[Bounded Observation]`, 2026-11-27, the 84 sheets of the 2026-11-27 baseline, `6d511d1`, lavapipe, #1117).

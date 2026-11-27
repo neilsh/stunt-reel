@@ -165,7 +165,7 @@ id = "object-misaligned"
 definition = "A vehicle, person, parked or distant aircraft, or a building, ramp, sign or other prop is drawn away from where the capture shows it (higher, lower, left or right) while the ground around it lines up, whatever the cause (placement or frame timing); the flown aircraft is aircraft-misplaced, a whole background shift is background-misregistration"
 found_by = ["haiku"]
 since = "2026-11-27"
-examples = []
+examples = ["traintnl-0232"]
 
 # A colour category, `aircraft-colour-wrong`, was added at 9be3e2cb with the propeller one and removed
 # on 2026-11-25: a Claude Sonnet pass graded its candidate sheets 1, 0 and 0, so no sheet met the
