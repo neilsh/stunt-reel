@@ -1,0 +1,37 @@
+B30 repeats: n=3 median=28,159,327,819 range=28,151,461,402..28,170,706,144 (+19,244,742) spread=0.0684%
+B60 repeats: n=3 median=31,928,942,180 range=31,926,173,324..31,931,362,658 (+5,189,334) spread=0.0163%
+B30 repeats + loaded + second build: n=5 median=28,159,327,819 range=28,151,461,402..28,170,706,144 (+19,244,742) spread=0.0684%
+B60 - B30 (30 ticks): median 3,769,614,361, extremes 3,755,467,180..3,779,901,256 (0.65% wide)
+b30 callgrind: main 20,157,817,272 other 7,947,364,350 total 28,105,181,622
+b60 callgrind: main 20,835,802,233 other 11,028,090,520 total 31,863,892,753
+loop (callgrind B60 - B30): main 677,984,961 other 3,080,726,170 main share 18.0%
+b30-r1: wall 94.8 s, native 3.23 s, slowdown 29.3x
+b30-r2: wall 95.7 s, native 3.23 s, slowdown 29.6x
+b30-r3: wall 93.7 s, native 3.23 s, slowdown 29.0x
+b60-r1: wall 112.7 s, native 3.42 s, slowdown 33.0x
+b60-r2: wall 108.8 s, native 3.42 s, slowdown 31.8x
+b60-r3: wall 110.8 s, native 3.42 s, slowdown 32.4x
+b30-load: wall 115.0 s against median 94.8 s unloaded
+
+#951 (INTRO 2500..):
+c30: parent n=3 median=10,266,415,658 range=10,266,219,985..10,266,957,239 (+737,254) spread=0.0072%; #951 10,254,544,582; change -11,871,076 (-0.1156%), 16.1x the parent's repeat range
+c60: parent n=3 median=13,077,370,647 range=13,075,853,828..13,077,450,134 (+1,596,306) spread=0.0122%; #951 13,050,770,896; change -26,599,751 (-0.2034%), 16.7x the parent's repeat range
+loop (c60 - c30): parent 2,810,954,989, #951 2,796,226,314, change -14,728,675 (-0.52%)
+c30-parent: slowdown 45.7x
+c30-951: slowdown 45.6x
+c60-parent: slowdown 47.4x
+c60-951: slowdown 48.7x
+#951's whole-run C30 change against B30's whole-run repeat range: 0.62x
+
+Outside glibc's malloc.c and memmove (outside-allocator.txt):
+B30 repeats: n=3 range +450,094 spread=0.0017% | with loaded and second build: n=5 range +728,954 spread=0.0027%
+B60 repeats: n=3 range +2,842,339 spread=0.0094%
+B60 - B30: median 3,499,729,339, extremes 3,498,739,576..3,502,032,009 (0.0941% wide)
+c30: #951 change -11,995,105 (-0.1274%), 10.2x the parent's repeat range
+c60: #951 change -26,970,720 (-0.2257%), 40.2x the parent's repeat range
+
+Callgrind threads, B30 repeats (callgrind-threads.txt):
+thread 01: n=3 median 20,156,671,323 range +9,255,779 (0.0459%)
+thread 02: n=3 median 5,342,442,422 range +1,377,005 (0.0258%)
+thread 03: n=3 median 2,605,055,005 range +154,909 (0.0059%)
+thread 04: n=3 median 2,359 range +958 (40.6104%)

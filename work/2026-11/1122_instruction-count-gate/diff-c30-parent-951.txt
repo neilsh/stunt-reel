@@ -1,0 +1,40 @@
+-- File:function summary
+--------------------------------------------------------------------------------
+  Ir__________________________  file:function
+
+< -12,949,931 (104.3%, 104.3%)  ???:
+  -16,340,175 (131.6%)            <stunt_core::world::placed::PlacementRecords>::shadow_top
+    5,746,932 (-46.3%)            <stunt_core::contracts::shape::VisibilityCondition as core::cmp::PartialEq>::eq
+   -1,358,876  (10.9%)            stunt_core::sod::tessellate::decode_sod_posed
+     -724,365   (5.8%)            ???
+     -500,472   (4.0%)            <stunt_core::world::probe::Probe>::walk
+      383,357  (-3.1%)            <alloc::vec::Vec<u32> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<u32, core::iter::adapters::filter_map::FilterMap<core::iter::adapters::filter::Filter<core::iter::adapters::enumerate::Enumerate<core::slice::iter::Iter<stunt_core::world::placed::PlacementRecord>>, <stunt_core::world::placed::PlacementRecords>::collision_bearing::{closure#0}::{closure#1}>, <stunt_core::world::placed::PlacementRecords>::collision_bearing::{closure#0}::{closure#2}>>>::from_iter
+       96,965  (-0.8%)            llvm::MachineBlockFrequencyInfo::getBlockFreq(llvm::MachineBasicBlock const*) const
+       90,814  (-0.7%)            llvm::SmallPtrSetImplBase::insert_imp_big(void const*)
+      -76,808   (0.6%)            llvm::GenericCycleInfo<llvm::GenericSSAContext<llvm::MachineFunction> >::getCycle(llvm::MachineBasicBlock const*) const
+      -66,902   (0.5%)            llvm::MachineTraceMetrics::Ensemble::updateDepth(llvm::MachineTraceMetrics::TraceBlockInfo&, llvm::MachineInstr const&, llvm::SparseSet<llvm::LiveRegUnit, llvm::identity<unsigned int>, unsigned char>&)
+      -62,971   (0.5%)            <&mut <core::iter::adapters::enumerate::Enumerate<_> as core::iter::traits::iterator::Iterator>::try_fold::enumerate<&stunt_core::world::assemble::FacingProp, (), core::ops::control_flow::ControlFlow<(usize, &stunt_core::world::assemble::FacingProp)>, core::iter::traits::iterator::Iterator::find::check<(usize, &stunt_core::world::assemble::FacingProp), &mut <stunt_core::scene::film::FilmScene>::index_facing::{closure#1}>::{closure#0}>::{closure#0} as core::ops::function::FnMut<((), &stunt_core::world::assemble::FacingProp)>>::call_mut
+      -62,392   (0.5%)            <hashbrown::map::HashMap<usize, (), std::hash::random::RandomState>>::insert
+      -50,868   (0.4%)            llvm::MachineTraceMetrics::Ensemble::invalidate(llvm::MachineBasicBlock const*)
+      -40,138   (0.3%)            llvm::SDNode::Profile(llvm::FoldingSetNodeID&) const
+      -34,792   (0.3%)            <core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::iter::adapters::zip::Zip<core::slice::iter::Iter<stunt_core::world::scenery::Placement>, core::slice::iter::Iter<bool>>, core::iter::adapters::chain::Chain<core::iter::adapters::copied::Copied<core::slice::iter::Iter<core::option::Option<stunt_core::world::placed::MeshSpans>>>, core::iter::sources::repeat::Repeat<core::option::Option<stunt_core::world::placed::MeshSpans>>>>, <stunt_core::world::placed::PlacementRecords>::new::{closure#0}> as core::iter::traits::iterator::Iterator>::fold::<(), core::iter::traits::iterator::Iterator::for_each::call<stunt_core::world::placed::PlacementRecord, <alloc::vec::Vec<stunt_core::world::placed::PlacementRecord>>::extend_trusted<core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::iter::adapters::zip::Zip<core::slice::iter::Iter<stunt_core::world::scenery::Placement>, core::slice::iter::Iter<bool>>, core::iter::adapters::chain::Chain<core::iter::adapters::copied::Copied<core::slice::iter::Iter<core::option::Option<stunt_core::world::placed::MeshSpans>>>, core::iter::sources::repeat::Repeat<core::option::Option<stunt_core::world::placed::MeshSpans>>>>, <stunt_core::world::placed::PlacementRecords>::new::{closure#0}>>::{closure#0}>::{closure#0}>
+      -28,930   (0.2%)            llvm::GenericCycleInfo<llvm::GenericSSAContext<llvm::MachineFunction> >::getCycleDepth(llvm::MachineBasicBlock const*) const
+       26,157  (-0.2%)            llvm::PMTopLevelManager::findAnalysisUsage(llvm::Pass*)
+       22,550  (-0.2%)            llvm::VirtRegAuxInfo::weightCalcHelper(llvm::LiveInterval&, llvm::SlotIndex*, llvm::SlotIndex*)
+       21,521  (-0.2%)            llvm::SmallPtrSetImplBase::doFind(void const*) const
+      -21,515   (0.2%)            llvm::FoldingSetBase::FindNodeOrInsertPos(llvm::FoldingSetNodeID const&, void*&, llvm::FoldingSetBase::FoldingSetInfo const&)
+       21,168  (-0.2%)            stunt_core::scene::shadow::ground_shadow
+      -19,152   (0.2%)            stunt_core::scene::projection::mat4_mul
+      -15,432   (0.1%)            llvm::Instruction::isIdenticalToWhenDefined(llvm::Instruction const*, bool) const
+      -14,533   (0.1%)            llvm::MachineTraceMetrics::Ensemble::computeInstrHeights(llvm::MachineBasicBlock const*)
+       14,343  (-0.1%)            llvm::ValueHandleBase::RemoveFromUseList()
+
+<     761,393  (-6.1%,  98.2%)  ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:
+      761,498  (-6.1%)            __memcpy_avx_unaligned_erms
+
+<    -241,703   (1.9%, 100.1%)  ./malloc/./malloc/malloc.c:
+     -187,060   (1.5%)            _int_malloc
+      -31,661   (0.3%)            malloc
+      -19,922   (0.2%)            _int_free
+
+--------------------------------------------------------------------------------

@@ -1,0 +1,40 @@
+-- File:function summary
+--------------------------------------------------------------------------------
+  Ir___________________________  file:function
+
+< -14,859,835  (613.9%, 613.9%)  ./malloc/./malloc/malloc.c:
+   -7,080,984  (292.5%)            _int_free_merge_chunk
+   -2,431,347  (100.4%)            _int_free_maybe_consolidate
+   -1,958,746   (80.9%)            _int_malloc
+   -1,954,687   (80.8%)            unlink_chunk.isra.0
+   -1,312,204   (54.2%)            malloc
+     -529,381   (21.9%)            _int_realloc
+      407,484  (-16.8%)            _int_free
+       15,213   (-0.6%)            malloc_consolidate
+      -11,364    (0.5%)            alloc_perturb
+       -3,362    (0.1%)            calloc
+
+<  12,998,353 (-537.0%,  76.9%)  ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S:
+   12,998,381 (-537.0%)            __memcpy_avx_unaligned_erms
+
+<    -468,928   (19.4%,  96.3%)  ???:
+      229,106   (-9.5%)            llvm::SmallPtrSetImplBase::insert_imp_big(void const*)
+     -206,212    (8.5%)            ???
+     -204,411    (8.4%)            llvm::GenericCycleInfo<llvm::GenericSSAContext<llvm::MachineFunction> >::getCycle(llvm::MachineBasicBlock const*) const
+     -200,809    (8.3%)            llvm::SDNode::Profile(llvm::FoldingSetNodeID&) const
+      192,466   (-8.0%)            <hashbrown::map::HashMap<usize, (), std::hash::random::RandomState>>::insert
+     -101,211    (4.2%)            llvm::GenericCycleInfo<llvm::GenericSSAContext<llvm::MachineFunction> >::getCycleDepth(llvm::MachineBasicBlock const*) const
+      -54,332    (2.2%)            llvm::FoldingSetBase::FindNodeOrInsertPos(llvm::FoldingSetNodeID const&, void*&, llvm::FoldingSetBase::FoldingSetInfo const&)
+      -44,539    (1.8%)            <hashbrown::map::HashMap<(u32, u32), u32, std::hash::random::RandomState>>::rustc_entry
+       41,788   (-1.7%)            <core::iter::adapters::map::Map<core::slice::iter::Iter<stunt_core::world::scenery::Placement>, stunt_core::world::assemble::build_world::{closure#5}> as core::iter::traits::iterator::Iterator>::fold::<(), core::iter::traits::iterator::Iterator::for_each::call<bool, <alloc::vec::Vec<bool>>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<stunt_core::world::scenery::Placement>, stunt_core::world::assemble::build_world::{closure#5}>>::{closure#0}>::{closure#0}>
+      -38,614    (1.6%)            llvm::FoldingSetNodeID::operator==(llvm::FoldingSetNodeID const&) const
+      -30,346    (1.3%)            <stunt_core::world::scenery::ScnWalk>::place
+      -25,335    (1.0%)            llvm::SelectionDAG::Combine(llvm::CombineLevel, llvm::BatchAAResults*, llvm::CodeGenOptLevel)
+      -25,231    (1.0%)            stunt_core::world::assemble::build_world
+       24,707   (-1.0%)            llvm::SmallPtrSetImplBase::Grow(unsigned int)
+       22,812   (-0.9%)            llvm::PMTopLevelManager::findAnalysisUsage(llvm::Pass*)
+      -22,617    (0.9%)            <hashbrown::raw::RawTable<(usize, ())>>::remove_entry::<hashbrown::map::equivalent_key<usize, usize, ()>::{closure#0}>
+      -17,487    (0.7%)            llvm::FoldingSetBase::RemoveNode(llvm::FoldingSetBase::Node*)
+      -15,955    (0.7%)            <hashbrown::raw::RawTable<((u32, u32), u32)>>::insert_no_grow
+       15,126   (-0.6%)            stunt_core::world::tap_props::anchored_models
+      -14,916    (0.6%)            llvm::LiveIntervalCalc::extendToUses(llvm::LiveRange&, llvm::Register, llvm::LaneBitmask, llvm::LiveInterval*)

@@ -1,0 +1,16 @@
+b30-r1.cg: total 28,170,706,144 outside malloc.c and memmove 26,593,034,524
+b30-r2.cg: total 28,159,327,819 outside malloc.c and memmove 26,592,603,757
+b30-r3.cg: total 28,151,461,402 outside malloc.c and memmove 26,592,584,430
+b30-load.cg: total 28,159,248,755 outside malloc.c and memmove 26,592,305,570
+b30-build2.cg: total 28,160,263,581 outside malloc.c and memmove 26,592,322,616
+b60-r1.cg: total 31,926,173,324 outside malloc.c and memmove 30,094,616,439
+b60-r2.cg: total 31,931,362,658 outside malloc.c and memmove 30,092,333,096
+b60-r3.cg: total 31,928,942,180 outside malloc.c and memmove 30,091,774,100
+c30-parent.cg: total 10,266,957,239 outside malloc.c and memmove 9,415,340,296
+c30-parent-r2.cg: total 10,266,219,985 outside malloc.c and memmove 9,414,403,054
+c30-parent-r3.cg: total 10,266,415,658 outside malloc.c and memmove 9,414,168,089
+c30-951.cg: total 10,254,544,582 outside malloc.c and memmove 9,402,407,949
+c60-parent.cg: total 13,075,853,828 outside malloc.c and memmove 11,951,193,090
+c60-parent-r2.cg: total 13,077,450,134 outside malloc.c and memmove 11,950,931,694
+c60-parent-r3.cg: total 13,077,370,647 outside malloc.c and memmove 11,951,602,592
+c60-951.cg: total 13,050,770,896 outside malloc.c and memmove 11,924,222,370
