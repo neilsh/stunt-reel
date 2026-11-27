@@ -89,3 +89,64 @@
 - **Verdict**: guard 2's seven frames from the GPU run are now explained, six by a picture and a sweep that removes them, one by a hypothesis that names the opcode; the four `bomb` frames lavapipe adds, and the three `location` frames the 5 m pull adds, are not.
   The form as measured is still not adopted, awaiting the owner; before it is worth adopting it needs a depth from the shape's near side rather than its foot, and the VM to run `SORT` branches in facing order (a change that touches every shape, not only ranked ones).
 - **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.3.
+
+## 2026-11-27: near-side depth clears `location`'s forest; `SORT` in facing order fixes the propeller but costs every film
+
+`[Bounded Observation]`
+
+- **Question**: does the list-order form clear the no-film-falls bar once its two named fixes are in: depth from the shape's near side instead of its foot, and `OP_SORT` branches drawn in the order `PLAYONE`'s facing flag picks?
+- **Track**: heuristic, as above; the same `--target bomb:2070-2179 --target bomb:2289-2388`, typed in the commands, not written here first.
+- **Prototype** ([`switches/DBG_SPHERE_ORDER-near-sort.diff`](switches/DBG_SPHERE_ORDER-near-sort.diff), on `main` at `3914cfe`, not committed under `crates/`):
+  - The rank now spans `decal_tie` bits 1 to 7 and `scenery_class` bits 2 to 7 (cap 8191); the 127 cap of the port above cut the `bomb` town blocks' ranks short.
+  - The second vertex stream widens to four floats; for a ranked shape its first three floats hold the centre of its bounding box and the fourth the distance from there to its farthest vertex (its "bounding sphere" below).
+  - `DBG_SPHERE_NEAR=1` moves a ranked vertex's depth origin from the placement to the bounding sphere's nearest point to the eye (no nearer than 5 cm).
+  - `DBG_SORT_FACING=1` makes the VM emit both orders of each `SORT`: both branches, inline first, behind the facing gate "faces the eye", and both, second first, behind the same face turned away, the VM state restored between them.
+    Gates of nested `SORT`s and `IFVIS` combine into one `FacesEyeAll` condition of up to four faces, each with a "must not face" bit; past four, the inner gate stands alone.
+- **The propeller is in an `OP_SORT` branch.**
+  `MODEL_7F19`'s outer `SORT` (operand flag `0x50`) runs the whole body, polygons 0 to 163, as its inline branch, and the propeller, after a `ROTZ` on variable `0x14`, as its second (polygons 164 to 176); three more `SORT`s nest inside the body branch.
+  So with the inline branch always first, the propeller ranks after the body and covers it from every side.
+- **Three bugs the first facing prototype had** (its sweep is not kept):
+  - With the eye exactly on the gate's plane both copies hid: "faces the eye" and its copy with the normal negated are both false at a distance of 0.
+    `PLAYONE` clears the flag there (a face product ≥ 0 runs the second branch first), so the copy is now the logical NOT of the gate, not the negated face.
+    The same tie also hid half the flattened shadow.
+  - The two copies of a polygon matched each other as coplanar decals, which dropped canyon walls and other props; decal matching now skips a pair that is never drawn together.
+  - The vertex buffer for the widened stream was still sized for three floats.
+- **Sweep** ([`sweeps/lavapipe-near-side-and-sort-facing.toml`](sweeps/lavapipe-near-side-and-sort-facing.toml), `--var DBG_SPHERE_ORDER=0,1 --var DBG_SPHERE_NEAR=0,1 --var DBG_SORT_FACING=0,1`; its `DBG_SORT_FACING=1` rows ran before the first two fixes above and do not stand; `judge --recheck` reproduces the winner line):
+
+  | Variant | ctry | intro | land | balloon | traintnl | bomb | location | target idx | frames down >0.005 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | `main` | 0.9441 | 0.9069 | 0.9340 | 0.9067 | 0.9160 | 0.9083 | 0.8975 | | |
+  | order, foot depth | 0.9444 | 0.9069 | 0.9341 | 0.9081 | 0.9160 | 0.9104 | 0.8978 | +0.0149 | 5 |
+  | order, near-side depth | 0.9443 | 0.9068 | 0.9341 | 0.9081 | 0.9160 | 0.9108 | 0.8978 | +0.0168 | 5 |
+
+  `winner: DBG_SPHERE_ORDER=1 DBG_SPHERE_NEAR=1 DBG_SORT_FACING=0 adopts (heuristic target idx +0.0168, 21/21 frames up; films ok; worst target frame +0.0040 bomb:2113; 5 frames down >0.005, listed) (noise floor +/-0.002; winner is ~within noise)`.
+  With foot depth and the cap at 8191, `bomb` 1618 to 1728 leave the port's list (not looked into); its five are `intro` 2718 (−0.0058) and `location` 1717, 3378, 6513 and 6689 (−0.0076, −0.0063, −0.0129, −0.0319).
+  Near-side depth removes `location` 1717 and 3378, and its five are `intro` 2718 (−0.0057), `bomb` 1618 and 1706 (−0.0058, −0.0051) and `location` 6513 and 6689 (−0.0254, −0.0495).
+- **`location` 6513 and 6689: a deck slab that holds a sphere covers the bridge's road markings.**
+  Capture | order on everything | order on every ranked shape but `MODEL_023D` ([6689](images/location-6689-bridge-slab-unranked.png), [6513](images/location-6513-bridge-slab-unranked.png), both near-side): with `MODEL_023D` ranked, the bridge deck loses its yellow centre lines and light lanes to a plain grey surface; left unranked, they are back.
+  `MODEL_023D` is an 8 m by 8 m by 1 m slab (111 polygons) with a small sphere at its centre, so it ranks; flattened to one depth, the whole slab wins or loses against the marked road surface as one, where its true depth would split it.
+  `[Hypothesis]`: which shape carries the markings was not read.
+  Near-side depth pulls it about 5.7 m (its bounding radius) toward the eye, so it covers more, which is why these two frames fall further with it.
+  Found by ranking only the shapes whose names contain one of a `+`-separated list (`DBG_RANK_ONLY`, a bisecting switch added for this and in the diff).
+- **`bomb` 1618 and 1706: the horizon town.**
+  Capture | foot | near ([picture](images/bomb-1618-lavapipe-near-side-and-sort-facing-guard.png)): only the town on the horizon changes, its houses and trees covering each other in another order; each house block is a few pixels, and the picture does not show which order is nearer.
+  `[Hypothesis]`: a near-side origin pulled by a block's bounding radius reorders neighbouring blocks whose spheres overlap.
+- **`intro` 2718: drawing `SORT` in facing order fixes it.**
+  Capture | `DBG_SORT_FACING=0` | `1`, both ordered with near-side depth ([picture](images/intro-2718-sort-facing-0-1.png)): with facing order the propeller draws behind the fuselage, as in the capture, and the frame's fall goes (−0.0057 to −0.0006); the blade's angle and a lower tip still differ from the capture.
+- **Facing order, after the fixes** ([`sweeps/lavapipe-sort-facing-after-fix.toml`](sweeps/lavapipe-sort-facing-after-fix.toml), `DBG_SPHERE_NEAR=1` in the environment and `--var DBG_SPHERE_ORDER=0,1 --var DBG_SORT_FACING=0,1`; the file does not name the environment switch, and its `DBG_SPHERE_ORDER=1 DBG_SORT_FACING=0` row repeats the near-side row above to the fourth place):
+
+  | Variant | ctry | intro | land | balloon | traintnl | bomb | location | target idx | frames down >0.005 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | `main` | 0.9441 | 0.9069 | 0.9340 | 0.9067 | 0.9160 | 0.9083 | 0.8975 | | |
+  | facing order alone | 0.9434 | 0.9060 | 0.9312 | 0.9065 | 0.9158 | 0.9075 | 0.8971 | −0.0005 | 87 |
+  | list order, near side, facing order | 0.9437 | 0.9060 | 0.9313 | 0.9078 | 0.9158 | 0.9101 | 0.8972 | +0.0163 | 79 |
+
+  Facing order alone lowers every film, `land` by 0.0028, so it does not clear the no-film-falls bar on its own or on top of list order; `intro` 2718 leaves the list with it, and 75 others join (79 in all), among them, in runs: `land` 210 to 320, `intro` 1035 to 1112 and 2333 to 2399, `location` 3587 to 3763 and 7228 to 7415.
+  `land` 309 ([picture](images/land-309-sort-facing-0-1.png)): the jet's nozzle ring draws larger and the fuselage under the wing darker; `location` 3587 ([picture](images/location-3587-sort-facing-0-1.png)): a roof's edge strip shows brighter.
+  Neither jet nor city block is ranked when list order is off, so depth decides between their polygons either way; what moves is which of two coplanar polygons is the decal, now that a swapped branch puts the other first.
+  `[Hypothesis]`: these falls are coplanar ties resolved from the order rather than geometry, not a wrong facing; the prototype's extra gated copies (more outline edges and decal batches) were not ruled out.
+- **Verdict**: list order with near-side depth (`DBG_SPHERE_ORDER=1 DBG_SPHERE_NEAR=1`, facing order off) clears the no-film-falls bar: no film falls by the 0.002 film bar, and `bomb` rises by 0.0026 and its target index by 0.0168, all 21 target frames up; the sweep calls the winner about within its noise floor (±0.002), and five frames still fall by more than 0.005.
+  Guard 2's five frames are explained by a picture and a switch for `location` 6513 and 6689 (the ranked deck slab) and `intro` 2718 (its fall goes with facing order), and only by a hypothesis for `bomb` 1618 and 1706 (the horizon town).
+  Facing order fixes the propeller but costs every film as prototyped, so it is not part of the form.
+  Adopting the form needs an ADR amending [`SPEC.md`](../../../docs/SPEC.md) § 2.1 and seam-contract changes (a rank across `SodVertex`'s `decal_tie` and `scenery_class` bytes, a bounding sphere per ranked vertex), so **the owner decides**; until then it is not adopted.
+- **Lives in**: [`prop-shape-loss.md`](../../../research/parity/prop-shape-loss.md) § 2.3.

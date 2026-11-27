@@ -1,0 +1,913 @@
+diff --git a/crates/stunt-core/src/contracts/shape/mod.rs b/crates/stunt-core/src/contracts/shape/mod.rs
+index 9400367..aba3f86 100644
+--- a/crates/stunt-core/src/contracts/shape/mod.rs
++++ b/crates/stunt-core/src/contracts/shape/mod.rs
+@@ -179,6 +179,16 @@ pub enum VisibilityCondition {
+         /// The `scale_index` of the object's shape.
+         scale_index: u8,
+     },
++    /// DBG_SORT_FACING prototype: every one of the first `count` faces `[point, normal]`
++    /// faces the eye, as for [`Self::FacesEye`].
++    FacesEyeAll {
++        /// The faces, `[px, py, pz, nx, ny, nz]` each.
++        faces: [[f32; 6]; 4],
++        /// How many of `faces` the gate tests.
++        count: u8,
++        /// Bit `i` set: face `i` must not face the eye instead.
++        off: u8,
++    },
+     /// Viewing angle cone threshold (used for prop disc blurs or landing lights).
+     AngleCone {
+         /// Cone axis in world space; must be a unit vector.
+@@ -418,6 +428,8 @@ pub struct SodModelIr {
+     /// Images the shape draws in screen space (`OP_ANIMATE`), in stream order. They are
+     /// not geometry: [`Self::meshes`] and [`Self::extent`] leave them out.
+     pub sprites: Vec<ShapeSprite>,
++    /// DBG_SPHERE_ORDER prototype: a ranked world prop vertex's placement origin.
++    pub vertex_origin: std::collections::HashMap<u32, [f32; 4]>,
+     /// Provenance of the decode that produced this shape; `None` for authored shapes.
+     decode: Option<DecodeRecord>,
+ }
+@@ -445,6 +457,7 @@ impl SodModelIr {
+             vertices: Vec::new(),
+             indices: Vec::new(),
+             sprites: Vec::new(),
++            vertex_origin: std::collections::HashMap::new(),
+             decode: None,
+         }
+     }
+diff --git a/crates/stunt-core/src/sod/decal.rs b/crates/stunt-core/src/sod/decal.rs
+index 910ace4..342bd1c 100644
+--- a/crates/stunt-core/src/sod/decal.rs
++++ b/crates/stunt-core/src/sod/decal.rs
+@@ -10,6 +10,7 @@
+ //! filler `0x7571` skips a row whose ends cross, `0x75A1`), derived from the winding, not
+ //! from [`RawPolygon::normal`], which shades and follows two conventions.
+ 
++use crate::contracts::VisibilityCondition;
+ use crate::contracts::shape::VERTEX_FLAG_LINE;
+ use crate::sod::vm::{RawPolygon, compute_polygon_normal};
+ 
+@@ -105,6 +106,21 @@ pub(crate) fn front_normal(poly: &RawPolygon) -> [f32; 3] {
+     compute_polygon_normal(&poly.vertices).map(|c| -c)
+ }
+ 
++/// DBG_SORT_FACING prototype: whether `a` and `b` are never drawn together, one behind a
++/// facing gate and the other behind the same face turned away.
++fn exclusive(a: &RawPolygon, b: &RawPolygon) -> bool {
++    let fa = crate::sod::vm::gate_faces(a.visibility).unwrap_or_default();
++    let fb = crate::sod::vm::gate_faces(b.visibility).unwrap_or_default();
++    let close = |x: &[f32; 6], y: &[f32; 6], sign: f32| {
++        (0..3).all(|k| (x[3 + k] - sign * y[3 + k]).abs() <= 1e-6 * (1.0 + x[3 + k].abs()))
++            && (0..3).all(|k| (x[k] - y[k]).abs() <= 1e-3)
++    };
++    fa.iter().any(|(x, xo)| {
++        fb.iter()
++            .any(|(y, yo)| (xo != yo && close(x, y, 1.0)) || (xo == yo && close(x, y, -1.0)))
++    })
++}
++
+ /// `poly` flagged as a decal, its vertices and shading normal unchanged.
+ #[must_use]
+ pub(crate) fn mark_decal(poly: &RawPolygon) -> RawPolygon {
+@@ -130,11 +146,13 @@ pub(crate) fn identify_coplanar_decals(
+     let mut out: Vec<RawPolygon> = Vec::with_capacity(polygons.len());
+     for curr in polygons {
+         let is_decal = if curr.flags & VERTEX_FLAG_LINE != 0 {
+-            out.iter()
+-                .any(|prev| prev.is_decal && line_lies_on_facet(curr, prev, plane_tol))
++            out.iter().any(|prev| {
++                !exclusive(curr, prev) && prev.is_decal && line_lies_on_facet(curr, prev, plane_tol)
++            })
+         } else {
+-            out.iter()
+-                .any(|prev| is_coplanar_facet(curr, prev, normal_tol, plane_tol))
++            out.iter().any(|prev| {
++                !exclusive(curr, prev) && is_coplanar_facet(curr, prev, normal_tol, plane_tol)
++            })
+         };
+         out.push(if is_decal {
+             mark_decal(curr)
+@@ -160,6 +178,7 @@ pub(crate) fn decal_ties(polygons: &[RawPolygon], normal_tol: f32, plane_tol: f3
+         let mut tied = false;
+         for (base, tie) in polygons.iter().zip(ties.iter_mut()).take(at) {
+             if filled(base)
++                && !exclusive(decal, base)
+                 && is_coplanar_facet(decal, base, normal_tol, plane_tol)
+                 && overlaps_in_plane(decal, base, plane_tol)
+             {
+diff --git a/crates/stunt-core/src/sod/tessellate.rs b/crates/stunt-core/src/sod/tessellate.rs
+index 71dd5a8..2511deb 100644
+--- a/crates/stunt-core/src/sod/tessellate.rs
++++ b/crates/stunt-core/src/sod/tessellate.rs
+@@ -71,6 +71,11 @@ pub(crate) fn quantize_weld_key(
+     )
+ }
+ 
++thread_local! {
++    static RANKS: std::cell::RefCell<HashMap<usize, u16>> = std::cell::RefCell::new(HashMap::new());
++    static BOUND: std::cell::Cell<[f32; 4]> = const { std::cell::Cell::new([0.0; 4]) };
++}
++
+ /// Builds a [`SodModelIr`] from a processed polygon list, no polygon in a decal tie.
+ #[cfg(test)]
+ pub(crate) fn build_sod_model_ir(name: &str, polygons: &[RawPolygon]) -> SodModelIr {
+@@ -99,6 +104,67 @@ pub(crate) fn build_tied_sod_model_ir(
+         return ir;
+     }
+ 
++    // DBG_SPHERE_ORDER prototype: a shape with a sphere ranks its polygons in list order.
++    RANKS.with(|r| {
++        let mut ranks = HashMap::new();
++        if std::env::var("DBG_SPHERE_ORDER").as_deref() == Ok("1")
++            && std::env::var("DBG_RANK_ONLY").map_or(true, |v| v.split('+').any(|n| !n.is_empty() && name.contains(n)))
++            && polygons.iter().any(|p| p.flags & super::vm::SPHERE_MARK != 0)
++        {
++            let (mut next, mut face) = (0usize, 0usize);
++            for p in polygons {
++                if p.flags & super::vm::SPHERE_MARK != 0 {
++                    if face % 20 == 0 {
++                        next += 1;
++                    }
++                    face += 1;
++                } else {
++                    next += 1;
++                }
++                ranks.insert(std::ptr::from_ref(p) as usize, u16::try_from(next.min(8191)).unwrap_or(8191));
++            }
++        }
++        let sorts = super::vm::SORTS.with(|c| c.replace(0));
++        if std::env::var("DBG_SORT_TRACE").is_ok_and(|v| v.len() > 1) {
++            let mut lo = [f32::MAX; 3];
++            let mut hi = [f32::MIN; 3];
++            for v in polygons.iter().flat_map(|p| &p.vertices) {
++                for k in 0..3 {
++                    lo[k] = lo[k].min(v[k]);
++                    hi[k] = hi[k].max(v[k]);
++                }
++            }
++            eprintln!("vmtrace SHAPE {name} polys={} lo={lo:.1?} hi={hi:.1?}", polygons.len());
++        }
++        if !ranks.is_empty() && std::env::var("DBG_SORT_TRACE").is_ok() {
++            eprintln!("ranked shape {name}: {} polygons, {} ranks, {sorts} OP_SORT", polygons.len(), ranks.values().max().copied().unwrap_or(0));
++            if std::env::var("DBG_SORT_TRACE").as_deref() == Ok(name) {
++                for p in polygons {
++                    let c: Vec<f32> = (0..3).map(|k| p.vertices.iter().map(|v| v[k]).sum::<f32>() / p.vertices.len() as f32).collect();
++                    eprintln!("poly rank={} vis={:?} pal={} n={} flags={:#x} decal={} c=({:.2},{:.2},{:.2})", ranks[&(std::ptr::from_ref(p) as usize)], p.visibility, p.palette_index, p.vertices.len(), p.flags, p.is_decal, c[0], c[1], c[2]);
++                }
++            }
++        }
++        if !ranks.is_empty() {
++            let mut lo = [f32::MAX; 3];
++            let mut hi = [f32::MIN; 3];
++            for v in polygons.iter().flat_map(|p| &p.vertices) {
++                for k in 0..3 {
++                    lo[k] = lo[k].min(v[k]);
++                    hi[k] = hi[k].max(v[k]);
++                }
++            }
++            let c = [0, 1, 2].map(|k| (lo[k] + hi[k]) * 0.5);
++            let rad = polygons
++                .iter()
++                .flat_map(|p| &p.vertices)
++                .map(|v| ((v[0] - c[0]).powi(2) + (v[1] - c[1]).powi(2) + (v[2] - c[2]).powi(2)).sqrt())
++                .fold(0.0f32, f32::max);
++            BOUND.with(|b| b.set([c[0], c[1], c[2], rad.max(1e-3)]));
++        }
++        *r.borrow_mut() = ranks;
++    });
++
+     // Base geometry (is_decal: false) comes first, then decals (is_decal: true) per Invariant [I5].
+     // Base batches group every polygon of one visibility: the depth test orders them. Decal
+     // batches are runs of consecutive polygons of one visibility, so the nodes in arena order
+@@ -180,6 +246,8 @@ fn process_polygon_batch(
+             continue;
+         }
+ 
++        let rank = RANKS.with(|r| r.borrow().get(&(std::ptr::from_ref::<RawPolygon>(poly) as usize)).copied().unwrap_or(0));
++        let poly_flags = poly.flags & !super::vm::SPHERE_MARK;
+         let disc_centre = (poly.flags & VERTEX_FLAG_DISC != 0).then(|| polygon_centroid(poly));
+         let mut poly_indices = Vec::with_capacity(num_v);
+         for (corner, v_pos) in poly.vertices.iter().enumerate() {
+@@ -188,10 +256,9 @@ fn process_polygon_batch(
+                 .get(corner)
+                 .copied()
+                 .unwrap_or(poly.palette_index);
+-            let weld_key = (
+-                quantize_weld_key(v_pos, &poly.normal, palette_index, poly.flags),
+-                tie,
+-            );
++            let mut key = quantize_weld_key(v_pos, &poly.normal, palette_index, poly_flags);
++            key.0 += i64::from(rank) * 100_000_000;
++            let weld_key = (key, tie);
+             if let Some(&existing_idx) = weld_map.get(&weld_key) {
+                 poly_indices.push(existing_idx);
+             } else {
+@@ -202,10 +269,13 @@ fn process_polygon_batch(
+                         [c[0] - v_pos[0], c[1] - v_pos[1], c[2] - v_pos[2]]
+                     }),
+                     palette_index,
+-                    flags: poly.flags,
+-                    scenery_class: 0,
+-                    decal_tie: u8::from(tie),
++                    flags: poly_flags,
++                    scenery_class: u8::try_from((rank >> 7) << 2).unwrap_or(0),
++                    decal_tie: u8::from(tie) | (u8::try_from(rank & 0x7f).unwrap_or(0) << 1),
+                 });
++                if rank != 0 {
++                    ir.vertex_origin.insert(new_idx, BOUND.with(std::cell::Cell::get));
++                }
+                 weld_map.insert(weld_key, new_idx);
+                 poly_indices.push(new_idx);
+             }
+diff --git a/crates/stunt-core/src/sod/vm.rs b/crates/stunt-core/src/sod/vm.rs
+index b64bb0a..0fc54c3 100644
+--- a/crates/stunt-core/src/sod/vm.rs
++++ b/crates/stunt-core/src/sod/vm.rs
+@@ -161,7 +161,7 @@ pub const SOD_SCALE_TABLE: [f32; 18] = [
+ ];
+ 
+ /// A VM table addressed modulo its length, as `PLAYONE` masks register and shade offsets.
+-#[derive(Debug)]
++#[derive(Debug, Clone)]
+ struct WrapTable<T, const N: usize>([T; N]);
+ 
+ impl<T: Copy, const N: usize> WrapTable<T, N> {
+@@ -307,6 +307,14 @@ fn block_polygons(
+         .collect()
+ }
+ 
++/// DBG_SPHERE_ORDER prototype: marks a sphere's faces for the tessellator.
++pub(crate) const SPHERE_MARK: u8 = 0x20;
++
++thread_local! {
++    /// DBG trace: OP_SORT count since the last tessellation.
++    pub(crate) static SORTS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
++}
++
+ /// Approximates an `OP_SPHERE` primitive with an icosahedron (20 triangles).
+ ///
+ /// `center` and `radius` are in raw register units like polygon vertices; the result is in
+@@ -388,7 +396,7 @@ fn sphere_polygons(
+                 vertices,
+                 palette_index,
+                 normal: [-nx, -ny, -nz],
+-                flags: 0,
++                flags: SPHERE_MARK,
+                 is_decal: false,
+                 visibility,
+             }
+@@ -607,6 +615,60 @@ fn facing_away(set: VisibilityCondition) -> VisibilityCondition {
+     }
+ }
+ 
++/// DBG_SORT_FACING prototype: a facing gate's faces, each with whether it must face away.
++pub(crate) fn gate_faces(v: VisibilityCondition) -> Option<Vec<([f32; 6], bool)>> {
++    match v {
++        VisibilityCondition::Always => Some(Vec::new()),
++        VisibilityCondition::FacesEye { point, normal } => Some(vec![(
++            [point[0], point[1], point[2], normal[0], normal[1], normal[2]],
++            false,
++        )]),
++        VisibilityCondition::FacesEyeAll { faces, count, off } => Some(
++            faces[..usize::from(count)]
++                .iter()
++                .enumerate()
++                .map(|(i, f)| (*f, off >> i & 1 != 0))
++                .collect(),
++        ),
++        _ => None,
++    }
++}
++
++/// DBG_SORT_FACING prototype: the gate of `faces`, or `None` past four.
++fn gate_of(all: &[([f32; 6], bool)]) -> Option<VisibilityCondition> {
++    match all {
++        [] => Some(VisibilityCondition::Always),
++        [(f, false)] => Some(VisibilityCondition::FacesEye {
++            point: [f[0], f[1], f[2]],
++            normal: [f[3], f[4], f[5]],
++        }),
++        _ if all.len() <= 4 => {
++            let mut faces = [[0.0; 6]; 4];
++            let mut off = 0u8;
++            for (i, (f, o)) in all.iter().enumerate() {
++                faces[i] = *f;
++                if *o {
++                    off |= 1 << i;
++                }
++            }
++            Some(VisibilityCondition::FacesEyeAll {
++                faces,
++                count: u8::try_from(all.len()).unwrap_or(4),
++                off,
++            })
++        }
++        _ => None,
++    }
++}
++
++/// DBG_SORT_FACING prototype: a gate open while both `a` and `b` are, or `None` when they
++/// are not both facing gates or hold more than four faces together.
++fn combine(a: VisibilityCondition, b: VisibilityCondition) -> Option<VisibilityCondition> {
++    let mut all = gate_faces(a)?;
++    all.extend(gate_faces(b)?);
++    gate_of(&all)
++}
++
+ /// A raw register point (rotation-centre origin included) in `[I1]` metres, converted as a
+ /// polygon vertex is.
+ fn metric_point(raw: [f32; 3], ground_y_offset: i16, scale_factor: f32) -> [f32; 3] {
+@@ -761,6 +823,22 @@ struct Flow {
+     stop: Option<SodStop>,
+ }
+ 
++/// DBG_SORT_FACING prototype: the drawing state a SORT branch starts from.
++struct Snap {
++    light: [i64; 3],
++    rel: Option<Mat3>,
++    rel_stack: Vec<(Option<Mat3>, [i64; 3])>,
++    regs: WrapTable<[f32; 3], 1024>,
++    cur_vert: [f32; 3],
++    cur_color: u8,
++    cur_color_preshaded: bool,
++    line_color: Option<u8>,
++    pen: [f32; 3],
++    relpos: [f32; 3],
++    centre_stack: Vec<[f32; 3]>,
++    faces: HashMap<u16, VisibilityCondition>,
++}
++
+ /// The state of one VM pass: the stream, the register bank, the drawing state and the
+ /// geometry emitted so far.
+ struct Vm<'a> {
+@@ -806,7 +884,9 @@ struct Vm<'a> {
+     faces: HashMap<u16, VisibilityCondition>,
+     // Where each pending `RETURN` resumes, with the `IFVIS` scope to restore there: a SORT
+     // pushes its second branch and its continuation, a GOSUB the instruction after it.
+-    branch_resume: Vec<(usize, VisibilityCondition, usize)>,
++    branch_resume: Vec<(usize, VisibilityCondition, usize, VisibilityCondition, Option<Box<Snap>>)>,
++    // DBG_SORT_FACING prototype: the facing gate of the SORT branch running now.
++    sort_gate: VisibilityCondition,
+     // Rotation-centre origin (raw units) added to every emitted vertex, and its stack.
+     relpos: [f32; 3],
+     centre_stack: Vec<[f32; 3]>,
+@@ -890,6 +970,7 @@ impl<'a> Vm<'a> {
+             outer_scopes: Vec::new(),
+             faces: HashMap::new(),
+             branch_resume: Vec::new(),
++            sort_gate: VisibilityCondition::Always,
+             relpos: [0.0f32; 3],
+             centre_stack: Vec::new(),
+             subs_run: 0usize,
+@@ -1243,6 +1324,9 @@ impl<'a> Vm<'a> {
+     /// the operand names, skipped when the word is 0 (`0xA80F`, `0xA8FB`, `0xA90F`).
+     fn rotate(&mut self, opcode: u16) -> Result<(), SodError> {
+         let operand = self.r.read_u16_le()?;
++        if std::env::var("DBG_SORT_TRACE").is_ok_and(|v| v.len() > 1) {
++            eprintln!("vmtrace ROT {opcode:#06x} var={operand:#x} polys={}", self.polygons.len());
++        }
+         if let Err(at) = self.bank_operands.binary_search(&operand) {
+             self.bank_operands.insert(at, operand);
+         }
+@@ -1433,7 +1517,11 @@ impl<'a> Vm<'a> {
+                 self.outer_scopes
+                     .push((self.current_visibility, self.visibility_scope_end));
+             }
+-            self.current_visibility = gate;
++            self.current_visibility = if self.sort_gate == VisibilityCondition::Always {
++                gate
++            } else {
++                combine(self.sort_gate, gate).unwrap_or(gate)
++            };
+             self.visibility_scope_end = scope_end;
+         } else {
+             // Clamped beyond EOF
+@@ -1444,13 +1532,17 @@ impl<'a> Vm<'a> {
+ 
+     /// `OP_SORT`: queue two branches to run in turn.
+     fn sort(&mut self, op_offset: usize) -> Result<(), SodError> {
++        SORTS.with(|c| c.set(c.get() + 1));
+         // `siobj.cpp` `case 0x18c`: the three words are byte offsets from the
+         // opcode; the branch after the operands runs first, the second branch is at
+         // `op + 4 + second`, and the stream continues at `op + 2 + first`. Targets
+         // must lie ahead; a SORT re-entered through a loop spends the branch budget.
+         let first = usize::from(self.r.read_u16_le()?);
+         let second = usize::from(self.r.read_u16_le()?);
+-        self.r.read_u16_le()?;
++        let flag = self.r.read_u16_le()?;
++        if std::env::var("DBG_SORT_TRACE").is_ok_and(|v| v.len() > 1) {
++            eprintln!("vmtrace SORT at={op_offset:#x} flag={flag:#x} known={} vis={:?} polys={}", self.faces.contains_key(&flag), self.current_visibility, self.polygons.len());
++        }
+         let pos = self.r.pos();
+         let total_len = self.data.len();
+         let target = |skip: usize, delta: usize| {
+@@ -1466,8 +1558,67 @@ impl<'a> Vm<'a> {
+                 self.flow.malformed = Some(SodStopReason::MalformedBranch);
+             } else {
+                 let scope = (self.current_visibility, self.visibility_scope_end);
+-                self.branch_resume.push((after_at, scope.0, scope.1));
+-                self.branch_resume.push((second_at, scope.0, scope.1));
++                // The flag is clear when the face's product is zero too (`sbb` on the sign),
++                // so the flag-clear gate is the flag-set gate's negation.
++                let flipped = match self.faces.get(&flag).copied() {
++                    Some(g @ VisibilityCondition::FacesEye { .. }) => gate_faces(g)
++                        .and_then(|f| gate_of(&[(f[0].0, true)]))
++                        .unwrap_or(VisibilityCondition::Always),
++                    other => facing_away(other.unwrap_or(VisibilityCondition::Always)),
++                };
++                let set = self.faces.get(&flag).copied().filter(|g| match g {
++                    VisibilityCondition::FacesEye { normal, .. } => {
++                        normal.iter().map(|c| c * c).sum::<f32>() > 1e-12
++                    }
++                    _ => false,
++                });
++                if std::env::var("DBG_SORT_TRACE").is_ok_and(|v| v.len() > 1) {
++                    eprintln!("vmtrace SORTGATE {:?} scope={:?}", self.faces.get(&flag), scope.0);
++                }
++                let dup = std::env::var("DBG_SORT_FACING").as_deref() == Ok("1")
++                    || (std::env::var("DBG_SORT_FACING").as_deref() == Ok("2")
++                        && scope.0 == VisibilityCondition::Always);
++                match (dup, set.and_then(|g| combine(scope.0, g)), combine(scope.0, flipped)) {
++                    (true, Some(on), Some(off)) => {
++                        let (on, off) = if std::env::var("DBG_SORT_NOGATE").is_ok() {
++                            (scope.0, scope.0)
++                        } else {
++                            (on, off)
++                        };
++                        // Flag set runs the inline branch first; clear swaps the two (0x9183).
++                        let end = total_len;
++                        let snap = || {
++                            Some(Box::new(Snap {
++                                light: self.light,
++                                rel: self.rel,
++                                rel_stack: self.rel_stack.clone(),
++                                regs: self.regs.clone(),
++                                cur_vert: self.cur_vert,
++                                cur_color: self.cur_color,
++                                cur_color_preshaded: self.cur_color_preshaded,
++                                line_color: self.line_color,
++                                pen: self.pen,
++                                relpos: self.relpos,
++                                centre_stack: self.centre_stack.clone(),
++                                faces: self.faces.clone(),
++                            }))
++                        };
++                        // The flag-clear copy runs from the state the SORT met, as PLAYONE
++                        // would run its second branch first.
++                        let start = snap();
++                        self.branch_resume.push((after_at, scope.0, scope.1, self.sort_gate, None));
++                        self.branch_resume.push((pos, off, end, off, None));
++                        self.branch_resume.push((second_at, off, end, off, start));
++                        self.branch_resume.push((second_at, on, end, on, None));
++                        self.current_visibility = on;
++                        self.visibility_scope_end = end;
++                        self.sort_gate = on;
++                    }
++                    _ => {
++                        self.branch_resume.push((after_at, scope.0, scope.1, self.sort_gate, None));
++                        self.branch_resume.push((second_at, scope.0, scope.1, self.sort_gate, None));
++                    }
++                }
+             }
+         }
+         Ok(())
+@@ -1509,6 +1660,8 @@ impl<'a> Vm<'a> {
+                     self.r.pos(),
+                     self.current_visibility,
+                     self.visibility_scope_end,
++                    self.sort_gate,
++                    None,
+                 ));
+             }
+             self.flow.jump = Some(target);
+@@ -1537,6 +1690,8 @@ impl<'a> Vm<'a> {
+                         target,
+                         self.current_visibility,
+                         self.visibility_scope_end,
++                        self.sort_gate,
++                        None,
+                     ));
+                 }
+             } else {
+@@ -1857,10 +2012,29 @@ impl<'a> Vm<'a> {
+ 
+     /// `OP_RETURN`: resumes the next pending branch, or ends the stream.
+     fn return_op(&mut self, op_offset: usize) {
++        if std::env::var("DBG_SORT_TRACE").is_ok_and(|v| v.len() > 1) {
++            eprintln!("vmtrace RETURN at={op_offset:#x} polys={}", self.polygons.len());
++        }
+         self.returned_at = Some(op_offset);
+         // End of a SORT branch: run the next one; the last RETURN ends the stream.
+-        if let Some((resume, visibility, scope_end)) = self.branch_resume.pop() {
++        if let Some((resume, visibility, scope_end, sort_gate, snap)) = self.branch_resume.pop() {
+             self.flow.jump = Some(resume);
++            if let Some(snap) = snap {
++                let s = *snap;
++                self.light = s.light;
++                self.rel = s.rel;
++                self.rel_stack = s.rel_stack;
++                self.regs = s.regs;
++                self.cur_vert = s.cur_vert;
++                self.cur_color = s.cur_color;
++                self.cur_color_preshaded = s.cur_color_preshaded;
++                self.line_color = s.line_color;
++                self.pen = s.pen;
++                self.relpos = s.relpos;
++                self.centre_stack = s.centre_stack;
++                self.faces = s.faces;
++            }
++            self.sort_gate = sort_gate;
+             self.current_visibility = visibility;
+             self.visibility_scope_end = scope_end;
+         } else {
+diff --git a/crates/stunt-core/src/world/mesh.rs b/crates/stunt-core/src/world/mesh.rs
+index bfe8e5d..f741512 100644
+--- a/crates/stunt-core/src/world/mesh.rs
++++ b/crates/stunt-core/src/world/mesh.rs
+@@ -411,6 +411,14 @@ fn push_gated_props(
+                 continue;
+             }
+             let visibility = match mesh.node.visibility {
++                VisibilityCondition::FacesEyeAll { mut faces, count, off } => {
++                    for f in &mut faces {
++                        f[0] += offset[0];
++                        f[1] += offset[1];
++                        f[2] += offset[2];
++                    }
++                    VisibilityCondition::FacesEyeAll { faces, count, off }
++                }
+                 VisibilityCondition::FacesEye { point, normal } => VisibilityCondition::FacesEye {
+                     point: [
+                         point[0] + offset[0],
+@@ -558,6 +566,7 @@ fn push_prop_mesh(
+     let first_vertex = arena_index(ir.vertices.len());
+     let mut runs: Vec<(bool, Range<u32>)> = Vec::new();
+     let mut remap: Vec<Option<u32>> = vec![None; mesh.vertices.len()];
++    let mut ranked: Vec<u32> = Vec::new();
+     for tri in mesh.indices.as_chunks::<3>().0 {
+         let corners = tri.map(|index| {
+             let local = index.checked_sub(mesh.vertex_offset)? as usize;
+@@ -591,9 +600,12 @@ fn push_prop_mesh(
+                     normal: v.normal,
+                     palette_index: v.palette_index,
+                     flags: v.flags,
+-                    scenery_class: SCENERY_PROP,
++                    scenery_class: SCENERY_PROP | (v.scenery_class & !3),
+                     decal_tie: v.decal_tie,
+                 });
++                if v.decal_tie >> 1 != 0 || v.scenery_class >> 2 != 0 {
++                    ranked.push(arena_index(ir.vertices.len() - 1));
++                }
+                 arena_index(ir.vertices.len() - 1)
+             });
+             ir.indices.push(index);
+@@ -602,6 +614,30 @@ fn push_prop_mesh(
+             run.end = arena_index(ir.indices.len());
+         }
+     }
++    if !ranked.is_empty() {
++        let pos = |i: &u32| ir.vertices[*i as usize].position;
++        let mut lo = [f32::MAX; 3];
++        let mut hi = [f32::MIN; 3];
++        for i in &ranked {
++            let p = pos(i);
++            for k in 0..3 {
++                lo[k] = lo[k].min(p[k]);
++                hi[k] = hi[k].max(p[k]);
++            }
++        }
++        let c = [0, 1, 2].map(|k| (lo[k] + hi[k]) * 0.5);
++        let rad = ranked
++            .iter()
++            .map(|i| {
++                let p = pos(i);
++                ((p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2)).sqrt()
++            })
++            .fold(0.0f32, f32::max)
++            .max(1e-3);
++        for i in ranked {
++            ir.vertex_origin.insert(i, [c[0], c[1], c[2], rad]);
++        }
++    }
+     let end_vertex = arena_index(ir.vertices.len());
+     record_prop_run(prop_runs, first_vertex, end_vertex, placed.shape);
+     runs.into_iter().map(|(_, run)| run).collect()
+diff --git a/crates/stunt-render/src/mesh.rs b/crates/stunt-render/src/mesh.rs
+index 4e2d500..383ac8e 100644
+--- a/crates/stunt-render/src/mesh.rs
++++ b/crates/stunt-render/src/mesh.rs
+@@ -315,7 +315,7 @@ impl GpuModel {
+         device: &wgpu::Device,
+         queue: &wgpu::Queue,
+         ir: &SodModelIr,
+-        apex: &[[f32; 3]],
++        apex: &[[f32; 4]],
+         outlined: Option<Outlines<'_>>,
+     ) -> Self {
+         let limit = device.limits().max_buffer_size;
+@@ -760,7 +760,7 @@ impl GpuChunk {
+         device: &wgpu::Device,
+         queue: &wgpu::Queue,
+         ir: &SodModelIr,
+-        apex: &[[f32; 3]],
++        apex: &[[f32; 4]],
+         n: usize,
+         plan: &ChunkPlan,
+         edges: &[u32],
+@@ -792,7 +792,7 @@ impl GpuChunk {
+         }
+         let apex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+             label: Some(&format!("{}_apex_buffer{suffix}", ir.name)),
+-            size: (plan.vertex_count.max(1) * size_of::<[f32; 3]>()) as u64,
++            size: (plan.vertex_count.max(1) * size_of::<[f32; 4]>()) as u64,
+             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+             mapped_at_creation: false,
+         });
+@@ -831,7 +831,7 @@ impl GpuChunk {
+ 
+     /// Writes `vertices`' windows of this chunk into its vertex buffer with one write, since
+     /// each write allocates a staging buffer (`research/parity/lavapipe-render-time.md`).
+-    fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex], apex: &[[f32; 3]]) {
++    fn rewrite_vertices(&self, queue: &wgpu::Queue, vertices: &[SodVertex], apex: &[[f32; 4]]) {
+         write_windows(queue, &self.apex_buffer, apex, &self.vertex_ranges);
+         // An unsplit chunk is one window: write it straight from the source.
+         if let [range] = self.vertex_ranges.as_slice() {
+@@ -854,8 +854,17 @@ impl GpuChunk {
+ }
+ 
+ /// Each of `ir`'s vertices' own position, the apex that culls no line corner.
+-fn own_positions(ir: &SodModelIr) -> Vec<[f32; 3]> {
+-    ir.vertices.iter().map(|v| v.position).collect()
++fn own_positions(ir: &SodModelIr) -> Vec<[f32; 4]> {
++    ir.vertices
++        .iter()
++        .enumerate()
++        .map(|(i, v)| {
++            ir.vertex_origin
++                .get(&arena_index(i))
++                .copied()
++                .unwrap_or([v.position[0], v.position[1], v.position[2], 0.0])
++        })
++        .collect()
+ }
+ 
+ /// Writes `source`'s `ranges` back to back into `buffer` with one write; writes nothing when
+@@ -1249,11 +1258,22 @@ impl VisibleWalk<'_> {
+             VisibilityCondition::LodDistanceSq(max_sq) => self.dist_sq <= max_sq,
+             VisibilityCondition::FacesEye { point, normal } => {
+                 let (point, normal) = (Vec3::from_array(point), Vec3::from_array(normal));
++                if std::env::var("DBG_VIS_TRACE").is_ok() && (normal.z.abs() - 0.0456).abs() < 1e-3 && (point.z - 1.709).abs() < 1e-2 {
++                    eprintln!("vmtrace VIS n={normal:?} p={point:?} eye={:?} d={} flat={}", self.eye, normal.dot(point - self.eye), self.flattened_by.is_some());
++                }
+                 match self.flattened_by {
+                     Some(shadow) => faces_flattened(&shadow, point, normal),
+                     None => normal.dot(point - self.eye) < 0.0,
+                 }
+             }
++            VisibilityCondition::FacesEyeAll { faces, count, off } => {
++                faces.iter().take(usize::from(count)).enumerate().all(|(i, f)| {
++                    self.is_visible(&VisibilityCondition::FacesEye {
++                        point: [f[0], f[1], f[2]],
++                        normal: [f[3], f[4], f[5]],
++                    }) != (off >> i & 1 != 0)
++                })
++            }
+             VisibilityCondition::ActorState { mask, expected } => {
+                 (self.state_mask & mask) == expected
+             }
+diff --git a/crates/stunt-render/src/outline.rs b/crates/stunt-render/src/outline.rs
+index 242e132..49f67ce 100644
+--- a/crates/stunt-render/src/outline.rs
++++ b/crates/stunt-render/src/outline.rs
+@@ -36,7 +36,7 @@ pub(crate) struct Outlined {
+     /// One apex per vertex of `ir`, in the same order: for a line corner the outline added,
+     /// the position of the third vertex of the one filled triangle its edge bounds, so the
+     /// shader culls the corner with that triangle; for any other vertex, its own position.
+-    pub apex: Vec<[f32; 3]>,
++    pub apex: Vec<[f32; 4]>,
+ }
+ 
+ /// `ir` with each mesh node's outline drawn after its triangles, in the same node, and
+@@ -58,7 +58,17 @@ pub(crate) struct Outlined {
+ pub(crate) fn outlined(ir: &SodModelIr) -> Outlined {
+     let triangles: HashMap<_, &[u32]> = ir.meshes().map(|m| (m.node.id, m.indices)).collect();
+     let mut out = ir.clone();
+-    let mut apex: Vec<[f32; 3]> = out.vertices.iter().map(|v| v.position).collect();
++    let mut apex: Vec<[f32; 4]> = out
++        .vertices
++        .iter()
++        .enumerate()
++        .map(|(i, v)| {
++            out.vertex_origin
++                .get(&u32::try_from(i).unwrap_or(u32::MAX))
++                .copied()
++                .unwrap_or([v.position[0], v.position[1], v.position[2], 0.0])
++        })
++        .collect();
+     out.indices = Vec::with_capacity(ir.indices.len().saturating_mul(3));
+     for node in &mut out.nodes {
+         let NodeKind::Mesh {
+@@ -97,7 +107,7 @@ pub(crate) fn outlined(ir: &SodModelIr) -> Outlined {
+ struct Sink<'a> {
+     vertices: &'a mut Vec<SodVertex>,
+     indices: &'a mut Vec<u32>,
+-    apex: &'a mut Vec<[f32; 3]>,
++    apex: &'a mut Vec<[f32; 4]>,
+ }
+ 
+ /// Appends a decal node's `triangles` (indices into `source`) fan by fan, each fan (a run of
+@@ -141,7 +151,10 @@ fn push_edge(sink: &mut Sink<'_>, source: &[SodVertex], [p, q, r]: [u32; 3]) {
+     let at = |i: u32| source.get(i as usize);
+     if let (Some(a), Some(b), Some(c)) = (at(p), at(q), at(r)) {
+         push_segment(sink.vertices, sink.indices, a, b);
+-        sink.apex.resize(sink.vertices.len(), c.position);
++        sink.apex.resize(
++            sink.vertices.len(),
++            [c.position[0], c.position[1], c.position[2], 0.0],
++        );
+     }
+ }
+ 
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 7a10bf8..63596ae 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -48,7 +48,15 @@ impl ModelUniform {
+     pub(crate) fn new(model_matrix: [f32; 16], layer: u32) -> Self {
+         Self {
+             model_matrix,
+-            layer: [layer, 0, 0, 0],
++            layer: [
++                layer,
++                0,
++                0,
++                std::env::var("DBG_SPHERE_NEAR")
++                    .ok()
++                    .and_then(|v| v.parse().ok())
++                    .unwrap_or(0),
++            ],
+         }
+     }
+ 
+@@ -170,12 +178,12 @@ impl RenderPipelines {
+     /// (`outline::Outlined`) at location 3.
+     pub(crate) fn apex_buffer_layout() -> wgpu::VertexBufferLayout<'static> {
+         const ATTRIBUTES: [wgpu::VertexAttribute; 1] = [wgpu::VertexAttribute {
+-            format: wgpu::VertexFormat::Float32x3,
++            format: wgpu::VertexFormat::Float32x4,
+             offset: 0,
+             shader_location: 3,
+         }];
+         wgpu::VertexBufferLayout {
+-            array_stride: size_of::<[f32; 3]>() as wgpu::BufferAddress,
++            array_stride: size_of::<[f32; 4]>() as wgpu::BufferAddress,
+             step_mode: wgpu::VertexStepMode::Vertex,
+             attributes: &ATTRIBUTES,
+         }
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 620d0fa..6d95126 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -156,7 +156,7 @@ struct VertexInput {
+     @location(2) attr: vec4<u32>, // x: palette_index, y: flags, z: scenery_class, w: decal_tie
+     // The second vertex stream: for an outline corner, the third vertex of the triangle its
+     // edge bounds (outline.rs `Outlined`); for any other vertex, its own position.
+-    @location(3) apex: vec3<f32>,
++    @location(3) apex: vec4<f32>,
+ };
+ 
+ struct VertexOutput {
+@@ -274,6 +274,9 @@ fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f3
+ }
+ 
+ // World up, the plane normal of a vertex with no facet of its own (`slide_normal`).
++// Eight steps of the 24-bit depth buffer.
++const RANK_STEP: f32 = 4.8e-7;
++
+ const UP: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
+ 
+ // A facet whose normal lies within this cosine of vertical slides horizontally (`slide_normal`).
+@@ -291,11 +294,11 @@ const NEAR_HORIZONTAL: f32 = 0.9;
+ fn slide_normal(in: VertexInput) -> vec3<f32> {
+     var n = in.normal;
+     if ((in.attr.y & FLAG_LINE) != 0u) {
+-        n = cross(in.normal, in.apex - in.position);
++        n = cross(in.normal, in.apex.xyz - in.position);
+     }
+     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
+-    let decal_tie = in.attr.z == SCENERY_PROP && in.attr.w != 0u;
+-    let world = in.attr.z != 0u && !decal_tie;
++    let decal_tie = (in.attr.z & 3u) == SCENERY_PROP && (in.attr.w & 1u) != 0u;
++    let world = (in.attr.z & 3u) != 0u && !decal_tie;
+     if (model.layer.y != 0u || world || dot(eye_n, eye_n) == 0.0
+         || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {
+         return UP;
+@@ -317,30 +320,33 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
+     let projected = camera.rotation_proj * eye_pos;
+     let plane = slide_normal(in);
+     out.clip_position = playone_vertex(projected, eye_pos, plane);
++    var collapsed = false;
+     // OP_PERFDISK skips when shadow mode (work:0x806C) is set
+     // (research/playone-exe/sod-vm-generators.md section 8.8).
+     if (model.layer.y != 0u && (in.attr.y & FLAG_DISC) != 0u) {
+         out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
++        collapsed = true;
+     } else if ((in.attr.y & FLAG_LINE) != 0u) {
+         let other_eye = model.model_matrix * vec4<f32>(in.position + in.normal, 1.0);
+         let other = playone_vertex(camera.rotation_proj * other_eye, other_eye, plane);
+         // An outline corner culls with the triangle its edge bounds, which winds from the
+         // edge's first endpoint to its second and on to the apex; a two-sided polygon's and a
+         // shadow's stay.
+-        let apex_eye = model.model_matrix * vec4<f32>(in.apex, 1.0);
++        let apex_eye = model.model_matrix * vec4<f32>(in.apex.xyz, 1.0);
+         let apex = playone_vertex(camera.rotation_proj * apex_eye, apex_eye, plane);
+         let at_end = (in.attr.y & FLAG_LINE_END) != 0u;
+         let first = select(out.clip_position, other, at_end);
+         let second = select(other, out.clip_position, at_end);
+         // A corner whose apex is its own position (a ZLINETO's) bounds no triangle; it is
+         // tested by position, since a determinant with two equal rows can round off zero.
+-        let bounds_triangle = any(in.apex != in.position);
++        let bounds_triangle = any(in.apex.xyz != in.position);
+         let two_sided = (in.attr.y & FLAG_TWO_SIDED) != 0u;
+         // A shadow draws through a pipeline that culls no face, so its outline culls nothing.
+         let shadow = model.layer.y != 0u;
+         if (bounds_triangle && !two_sided && !shadow && is_back_facing(first, second, apex)) {
+             // Every corner of the quad collapses to one point, so it covers no pixel.
+             out.clip_position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
++            collapsed = true;
+         } else {
+             out.clip_position = widen_line(out.clip_position, other, in.attr.y);
+         }
+@@ -348,6 +354,28 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
+         let centre = camera.rotation_proj * (model.model_matrix * vec4<f32>(in.position + in.normal, 1.0));
+         out.clip_position = snap_disc(squeeze_disc(projected, centre), centre);
+     }
++    // DBG_SPHERE_ORDER prototype: a ranked vertex (attr.w, list-order rank) of a shape that holds a
++    // sphere draws at its placement origin's depth plus a step per rank, so the shape's
++    // primitives cover each other in list order and still depth-test against other objects.
++    let rank = (in.attr.w >> 1u) | ((in.attr.z >> 2u) << 7u);
++    if (rank != 0u && !collapsed && model.layer.y == 0u && camera.rotation_proj[3][3] == 0.0
++        && out.clip_position.w >= out.clip_position.z) {
++        var origin = vec3<f32>(0.0);
++        if ((in.attr.z & 3u) == SCENERY_PROP || (model.layer.w != 0u && in.apex.w > 0.0)) {
++            origin = in.apex.xyz;
++        }
++        var oe = (model.model_matrix * vec4<f32>(origin, 1.0)).xyz;
++        let dist = length(oe);
++        // DBG_SPHERE_NEAR: the depth of the shape's bounding sphere's nearest point.
++        if (model.layer.w != 0u && in.apex.w > 0.0 && dist > 0.0) {
++            oe = oe * (max(dist - in.apex.w, 0.05) / dist);
++        }
++        let oc = camera.rotation_proj * vec4<f32>(oe, 1.0);
++        if (oc.w > 0.0) {
++            let d = min(oc.z / oc.w + f32(rank) * RANK_STEP, 1.0);
++            out.clip_position.z = d * out.clip_position.w;
++        }
++    }
+     out.palette_index = in.attr.x & 255u;
+     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
+     // (research/playone-exe/sod-vm-frame.md section 9.1).
+@@ -360,9 +388,9 @@ fn vertex_output(in: VertexInput, vertex_index: u32) -> VertexOutput {
+     let w = out.clip_position.w;
+     out.shade_w = out.shade * w;
+     out.w = w;
+-    out.layer = model.layer.x + in.attr.z;
++    out.layer = model.layer.x + (in.attr.z & 3u);
+     out.shape = model.layer.z;
+-    out.prop_vertex = select(NO_PROP_VERTEX, vertex_index, in.attr.z == SCENERY_PROP);
++    out.prop_vertex = select(NO_PROP_VERTEX, vertex_index, (in.attr.z & 3u) == SCENERY_PROP);
+ 
+     // Polygons are drawn at their palette index with no directional lighting: against
+     // PLAYONE captures of CTRY.FLM the unlit colour scores higher than any sun/ambient ramp
+@@ -582,7 +610,7 @@ fn modern_normal(in: VertexInput) -> vec3<f32> {
+     if ((in.attr.y & FLAG_LINE) != 0u) {
+         // An outline corner's `normal` is its segment: light it by its edge's facet, as
+         // `slide_normal` slides it.
+-        n = cross(in.normal, in.apex - in.position);
++        n = cross(in.normal, in.apex.xyz - in.position);
+     }
+     // Turned by the model matrix itself, not its inverse transpose: right for the rotations and
+     // uniform scales of an actor's or the world's matrix.
+diff --git a/crates/stunt-render/src/world_stream.rs b/crates/stunt-render/src/world_stream.rs
+index 4a73d0b..20763f9 100644
+--- a/crates/stunt-render/src/world_stream.rs
++++ b/crates/stunt-render/src/world_stream.rs
+@@ -18,7 +18,7 @@ pub(crate) struct WorldSource<'a> {
+     /// The model's vertices.
+     pub vertices: &'a [SodVertex],
+     /// Each vertex's apex, in `vertices`' order.
+-    pub apex: &'a [[f32; 3]],
++    pub apex: &'a [[f32; 4]],
+     /// The model's index arena, into `vertices`.
+     pub indices: &'a [u32],
+     /// The model's outline indices, into `vertices`, as the one chunk's edge buffer holds them.
+@@ -41,7 +41,7 @@ pub(crate) struct WorldStream {
+     /// The copied vertex windows, back to back.
+     pub vertices: Vec<SodVertex>,
+     /// The windows' apexes, one per streamed vertex.
+-    pub apex: Vec<[f32; 3]>,
++    pub apex: Vec<[f32; 4]>,
+     /// The slices' indices, rebased to the streamed vertices.
+     pub indices: Vec<u32>,
+     /// The slices' outline indices, rebased to the streamed vertices.
