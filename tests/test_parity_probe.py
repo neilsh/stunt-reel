@@ -195,7 +195,9 @@ def test_cmd_shift_leaves_the_captures_displaced_aircraft_out_of_the_world_match
         capture[p + 6] = 40  # the capture's aircraft sits six columns right of ours
     (tmp_path / "f0.idx").write_bytes(bytes(capture))
     _capture_of(tmp_path, "CTRY.FLM")
-    frame = SimpleNamespace(ordinal=0, film_tick=5, frame_file="f0.idx", palette_file="p0.json")
+    frame = SimpleNamespace(
+        ordinal=0, film_tick=5, render_tick=5, frame_file="f0.idx", palette_file="p0.json"
+    )
     geometry = SimpleNamespace(width=width, plane_rows=lambda: height)
     page = SimpleNamespace(indices=bytes(ours), actor_pixels=lambda: actor)
     report = SimpleNamespace(per_frame=[SimpleNamespace(scored=True, film_tick=5, ordinal=0)])

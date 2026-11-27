@@ -18,7 +18,7 @@ The loop in the [method note](../../research/parity/method.md) has more steps th
    Each captured frame is tagged with the film clock when it was taken, because capture order alone does not say which tick a frame is.
    The notes infer this from the way the capture grabs distinct rendered pages.
 2. **Render.**
-   Our renderer draws every tick that was captured.
+   Our renderer draws the paired ticks.
 3. **Score.**
    Each pair of frames is compared (see below).
 4. **Look at the worst frames.**
@@ -27,7 +27,7 @@ The loop in the [method note](../../research/parity/method.md) has more steps th
 ```mermaid
 flowchart LR
     A["Original player in an emulator"] --> B["Captured frames, tagged by film tick"]
-    C["Our renderer"] --> D["Rendered frames, same ticks"]
+    C["Our renderer"] --> D["Rendered frames, paired ticks"]
     B --> E["Score each pair"]
     D --> E
     E --> F["Read the worst frames"]

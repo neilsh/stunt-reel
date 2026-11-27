@@ -150,9 +150,11 @@ def _draw(
 
     out = REPO_ROOT / FRAME_DIR / args.film
     clear_previous(out, args.film)
+    paired = parity_probe.paired_ticks(read_capture(reference), ticks)
+    wanted = sorted({*paired.values(), *ticks})
     for _, env, variant_dir in variants:
         parity_pipeline.render_film(
-            job, variant_dir, render_env(env), ticks=ticks, software_only=args.software_only
+            job, variant_dir, render_env(env), ticks=wanted, software_only=args.software_only
         )
     store_dir = variants[0][2]
     stores = [variant_dir for _, _, variant_dir in variants]
@@ -171,11 +173,12 @@ def _draw(
         print(f"parity_frame: {err}", file=sys.stderr)
         return 2
     for tick, ordinal in found.items():
-        if not store.holds(tick):
+        shown = paired[tick]
+        if not store.holds(shown):
             print(describe_missing(tick, (None, None), rendered=False))
             continue
         png = out / f"{args.film}_{tick}.png"
-        parity_probe.make_strip(reference, stores, ordinal, tick, box, args.scale, png)
+        parity_probe.make_strip(reference, stores, ordinal, shown, box, args.scale, png)
         print(png)
     for tick, nearest in missing.items():
         print(describe_missing(tick, nearest, rendered=store.holds(tick)))

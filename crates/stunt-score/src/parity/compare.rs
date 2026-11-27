@@ -112,7 +112,7 @@ pub(super) fn run_compare(
         let after = load_render_rescaled(&mut after_store, tick)?;
         let path = args
             .output
-            .join(format!("compare_{label}_tick_{tick:05}.png"));
+            .join(format!("compare_{label}_tick_{film_tick:05}.png"));
         write_panel_sheet(
             &path,
             &[

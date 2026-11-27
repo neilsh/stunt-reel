@@ -161,21 +161,18 @@ def test_a_capture_with_a_viewport_is_refused(tmp_path: Path) -> None:
         write_capture(tmp_path, capture)
 
 
-def test_a_capture_without_clock_words_scores_at_its_tag_and_writes_none(tmp_path: Path) -> None:
+def test_a_frame_without_clock_words_scores_at_its_tag_and_writes_none(tmp_path: Path) -> None:
     capture = sample_capture()
     document = write_capture(tmp_path, capture)
-    assert all("slot_clock" not in frame for frame in document["frames"])
-    assert all(frame.slot_clock is None for frame in read_capture(tmp_path).frames)
-    assert capture.frames[0].render_tick == capture.frames[0].film_tick
+    assert "slot_clock" not in document["frames"][1]
+    assert read_capture(tmp_path).frames[1].slot_clock is None
+    assert capture.frames[1].render_tick == capture.frames[1].film_tick
 
 
 def test_the_clock_words_round_trip_and_pair_the_page_with_the_state_before_the_slot_pass(
     tmp_path: Path,
 ) -> None:
-    capture = sample_capture()
-    first = replace(capture.frames[0], film_tick=9, slot_clock=9, slot_ticks=1)
-    capture = replace(capture, frames=(first, *capture.frames[1:]))
-    document = write_capture(tmp_path, capture)
+    document = write_capture(tmp_path, sample_capture())
     assert document["frames"][0]["slot_clock"] == 9
     assert document["frames"][0]["slot_ticks"] == 1
     back = read_capture(tmp_path).frames[0]

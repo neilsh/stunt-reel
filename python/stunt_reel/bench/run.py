@@ -26,7 +26,7 @@ from stunt_reel.bench.planes import (
     load_capture,
 )
 from stunt_reel.bench.ssim import frame_ssim, render_luma
-from stunt_reel.parity_artifacts import StoredFrame, read_report, write_render_store
+from stunt_reel.parity_artifacts import StoredFrame, read_capture, read_report, write_render_store
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -63,14 +63,25 @@ def _regions(control: RenderPlanes) -> Regions:
     )
 
 
-def check_fidelity(report: Path, captures: dict[int, CapturePlanes], tree: RenderTree) -> None:
-    """Refuse a ``report.json`` the numpy SSIM does not reproduce, naming the first tick."""
+def check_fidelity(
+    report: Path,
+    captures: dict[int, CapturePlanes],
+    tree: RenderTree,
+    render_ticks: dict[int, int] | None = None,
+) -> None:
+    """Refuse a ``report.json`` the numpy SSIM does not reproduce, naming the first tick.
+
+    *render_ticks* maps a frame's tag to the render tick the scorer paired it with
+    (``CapturedFrame.render_tick``); a tag it lacks is read at the tag.
+    """
     rendered = set(tree.ticks())
+    paired = render_ticks or {}
     for frame in read_report(report).per_frame:
         capture = captures.get(frame.film_tick)
-        if capture is None or frame.film_tick not in rendered:
+        render_tick = paired.get(frame.film_tick, frame.film_tick)
+        if capture is None or render_tick not in rendered:
             continue
-        render = tree.load(frame.film_tick)
+        render = tree.load(render_tick)
         ours = frame_ssim(capture, render.rgb, credits_drawn=render.credits)
         if abs(ours - frame.ssim) > FIDELITY_TOLERANCE:
             raise BenchError(
@@ -299,7 +310,12 @@ def run_bench(
     """Load the directories, check the report against the numpy SSIM, and :func:`bench`."""
     captured = load_capture(reference)
     tree = RenderTree(render)
-    check_fidelity(report, captured, tree)
+    check_fidelity(
+        report,
+        captured,
+        tree,
+        {f.film_tick: f.render_tick for f in read_capture(reference).frames},
+    )
     scored = sorted(f.film_tick for f in read_report(report).per_frame if f.scored is True)
     return bench(
         captured,

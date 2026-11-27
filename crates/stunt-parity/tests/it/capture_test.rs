@@ -136,6 +136,8 @@ fn a_page_is_scored_at_the_state_before_the_slot_pass_that_drew_it() {
     assert_eq!(frame(None, None).render_tick(), 9);
     assert_eq!(frame(Some(9), None).render_tick(), 9);
     assert_eq!(frame(Some(1), Some(2)).render_tick(), 9);
+    // The largest clock with no ticks cannot add its one: the tag stands.
+    assert_eq!(frame(Some(u32::MAX), Some(0)).render_tick(), 9);
 }
 
 #[test]

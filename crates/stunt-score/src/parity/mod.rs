@@ -311,7 +311,7 @@ fn build_report(
     }
 }
 
-/// Scores each matched frame against the render at its film clock, offering every scored
+/// Scores each matched frame against the render at its `render_tick`, offering every scored
 /// pair to the contact sheets; rows come back in capture order. The capture's sky is built
 /// over every captured frame whose index plane is present, in capture order, and carries
 /// each frame's counted zenith pixels to the next, so which ticks the render holds does

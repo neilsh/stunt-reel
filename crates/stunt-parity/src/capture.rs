@@ -53,7 +53,10 @@ impl CapturedFrame {
     #[must_use]
     pub fn render_tick(&self) -> u32 {
         match (self.slot_clock, self.slot_ticks) {
-            (Some(clock), Some(ticks)) if ticks <= clock => clock - ticks + 1,
+            (Some(clock), Some(ticks)) => clock
+                .checked_sub(ticks)
+                .and_then(|state| state.checked_add(1))
+                .unwrap_or(self.film_tick),
             _ => self.film_tick,
         }
     }

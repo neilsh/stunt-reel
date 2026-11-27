@@ -116,6 +116,8 @@ def sample_capture() -> CaptureSet:
                 film_tick=9,
                 frame_file="tick_0001.idx",
                 palette_file="palettes_0001.json",
+                slot_clock=9,
+                slot_ticks=1,
             ),
             CapturedFrame(
                 ordinal=2,
