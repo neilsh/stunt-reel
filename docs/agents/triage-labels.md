@@ -34,6 +34,7 @@ A session takes it from `status:ready-for-agent`, `status:needs-plan` or `status
 
 Every open issue without sub-issues carries exactly one state label.
 A parent needs none, and any it carries is ignored ([issue-tracker.md § Organizing issues](issue-tracker.md#organizing-issues)).
+A `type:tracking` parent (**Category roles**) carries none.
 Blocking is a native issue dependency ([issue-tracker.md](issue-tracker.md)), never a label.
 
 ## Priority roles
@@ -65,6 +66,11 @@ The older `type:tooling` label is retired in favor of `area:tooling` and `area:a
 | `type:research` | Done when a `research/` note answers the question; no code fix required; the closing comment links the note |
 | `type:fidelity` | Visual parity change following [`improving-render-parity`](../../.agents/skills/improving-render-parity/SKILL.md); avoid running or merging two repinning PRs concurrently |
 | `type:perf` | Performance change requiring A/B timing (`mise run ab`, which refuses concurrent `stuntreel`/`cargo` runs) and output equivalence |
+| `type:tracking` | A parent with no work of its own: done when every sub-issue is closed |
+
+A `type:tracking` parent needs no other label: its sub-issues carry the state, `area:`, `env:`, `model-` and contract labels for the work, so it drops any it had, keeping only an optional `priority:` for the dashboard.
+A parent that still owns work, such as a design note or a gate the sub-issues do not cover, is not one and keeps the usual labels.
+The [Issue Radar](https://github.com/users/neilsh/projects/1) files a `type:tracking` issue under `Goal` even before its sub-issues are linked.
 
 ## Environment roles
 

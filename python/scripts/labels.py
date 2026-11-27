@@ -40,6 +40,8 @@ PRIORITIES = (PRIORITY_P0, PRIORITY_P1, PRIORITY_P2, PRIORITY_P3)
 TYPE_RESEARCH = "type:research"
 TYPE_FIDELITY = "type:fidelity"
 TYPE_PERF = "type:perf"
+#: A parent whose work all lives in its sub-issues; it needs no state, ``area:`` or ``env:`` label.
+TYPE_TRACKING = "type:tracking"
 
 #: Beside the state label, on an issue or a pull request.
 LOCAL_ONLY = "env:local-only"
@@ -150,6 +152,11 @@ CATALOG: tuple[LabelSpec, ...] = (
         TYPE_PERF,
         TYPE_COLOR,
         "Performance change requiring A/B timing (mise run ab, quiet machine) and output equivalence",
+    ),
+    LabelSpec(
+        TYPE_TRACKING,
+        TYPE_COLOR,
+        "Parent with no work of its own: done when every sub-issue is closed",
     ),
     LabelSpec(
         LOCAL_ONLY,

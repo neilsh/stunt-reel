@@ -38,6 +38,8 @@ PROJECT = ps.Project(
         ({"type:research"}, "open", 0, "Needs triage"),
         (set(), "open", 0, "Needs triage"),
         ({"status:ready-for-agent"}, "open", 3, "Goal"),
+        ({"type:tracking"}, "open", 0, "Goal"),
+        ({"type:tracking"}, "closed", 2, "Done"),
         ({"status:in-progress"}, "closed", 0, "Done"),
         (set(), "closed", 4, "Done"),
     ],
