@@ -16,17 +16,26 @@ Nothing here is a fact about Stunt Island.
   | Labels | Claude Code (cloud or local) | `local-windows` with dsh / Antigravity |
   | --- | --- | --- |
   | `light` | `Haiku` | dsh first, else `Haiku` |
-  | `light` + `wide` | `Haiku` if the material fits its context window, else `Sonnet` | dsh first, else as for Claude Code |
-  | `medium` | `Sonnet` | `Sonnet` |
+  | `light` + `wide` | `Haiku` if the material fits in about 100K tokens, else `Sonnet` | dsh first, else as for Claude Code |
+  | `medium` | `Haiku` first when the plan names the files, the change and the test that must pass, else `Sonnet` | As for Claude Code |
   | `heavy` | `Opus` | `Opus` or Antigravity |
   | `wide` on `medium` or `heavy` | The tier's model, with the harness's long-context option where offered | Likewise |
 
+  Which vendor models fill each tier and context class is in [`harness/models.md`](harness/models.md).
   An issue with a tier routes by it, which takes precedence over dsh-first: dsh is eligible only for `model-tier:light`, whose work is the simple bounded work below.
   An issue with no tier, or two, keeps the fit rules: dsh first where the spec is clear and the task needs no judgment over evidence (prefix-cache hit rate is not the test); `Sonnet` for other well-specified implementation; `Opus` for research, diagnosis, design, and items expected to need rounds of hypotheses.
   Otherwise subagents use the session model (`inherit`) and the same provider's `fast` tier only for simple bounded work (`Haiku` on Claude Code, `Gemini 4 Hydrogen` / `flash` on Antigravity): surveys, mapping tables, mechanical edits, grading against a calibrated rubric, and browser UI; never escalate above the session model or switch provider families outside this routing.
+* **Haiku first, then Sonnet** (adopted 2026-11-27 for cost: Haiku costs about a twentieth of Sonnet per token under a 100K-token prompt, so a failed Haiku attempt costs little).
+  A Haiku builder stops and reports instead of pushing on when the gate fails twice, the change needs a file or a decision the plan does not name, or its context passes about 100K tokens, past which Haiku's price is five times higher.
+  A stopped attempt, or a Haiku-built PR whose review finds more than wording, is redone from the plan by a fresh `Sonnet` session, not patched; the redo's PR says `escalated: from Haiku`, and a `light` issue also moves up to `medium` (the bump in [`loop-and-bounds.md`](../.agents/skills/running-unattended/loop-and-bounds.md) step 6).
+  An issue with an escalated Haiku attempt goes to `Sonnet` on every later claim, whatever its tier says.
+  `heavy` work gets no Haiku-first attempt, though its simple bounded steps may use `Haiku` subagents as above, because its hard part is the diagnosis, where a cheaper model's plausible wrong answer costs more than it saves.
+* **A PR body names its route** in one line ([`worker-brief.md`](../.agents/skills/running-unattended/worker-brief.md) step 6), `Route: built by <model> · <tier label or no tier> · escalated: no | from <model>`, so rework can be counted per tier from merged PRs: rework rate = (escalated PRs + PRs needing a fix or revert within 14 days of merge) / PRs merged, where the 14 days is this policy's choice of window.
+  Haiku-first on `medium` is a trial: after 10 Haiku-built `medium` PRs, a rework rate over 30% sends `medium` back to `Sonnet`, and a revert for a fault its review should have caught moves the first review of Haiku-built `light` PRs from the `reviewer` agent to Opus, or adds a second, Antigravity review after the Opus one on `medium`.
 * **Review:** dispatch the Sonnet [reviewer agent](../.claude/agents/reviewer.md) by default, for first reviews and re-reviews.
-  The first review of a Haiku-, Sonnet- or dsh-built PR is the exception: Opus or Antigravity, as a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>` in the brief, or as an Antigravity worker; not the `reviewer` agent with a model override, which names `Sonnet`.
+  The first review of a Sonnet- or dsh-built PR, or of a Haiku-built `medium` PR, is the exception: Opus or Antigravity, as a general-purpose subagent with `model: opus` and `Opus` as `<Reviewer>` in the brief, or as an Antigravity worker; not the `reviewer` agent with a model override, which names `Sonnet`.
   On #160 a Sonnet review missed four real bugs that an Opus review then found, among them a preflight that built despite `--no-build`.
+  A Haiku-built `light` PR gets the `reviewer` agent with the plan comment in its brief, since the review checks the diff against an exact plan; it goes to Opus instead when the diff touches `crates/stunt-core/src/contracts/` or a path rule 5 names.
   Re-reviews prefer Antigravity when Gemini quota allows, otherwise the `reviewer` agent; they cover only what changed since the last reviewed commit, run once after every finding is fixed, and are skipped for a wording-only fix (reply with the new text), except on a PR whose diff touches a path rule 5 names: any fix, rebase or merge there is committed locally and re-reviewed at its SHA before the push, and a rebase or merge needs a fresh `clean` comment at the new head; for a conflict only in `research/MAP.md`, that re-review only confirms `mise run knowledge-map -- --check` and a diff showing only `main`'s files ([`pr-and-filing.md`](../.agents/skills/running-unattended/pr-and-filing.md) step 1).
 * **An unattended run has a coordinator and workers.**
   The coordinator runs on the current session's model, reads no diffs or issue bodies (workers read them and report), appends every item transition to `build/scratch/run-state.md`, and hands off, when its context passes about 100k tokens, instead of compacting: it starts a fresh coordinator from that file's content (a cloud session's new container cannot read the gitignored file, so the content goes in the new session's prompt), or runs Shutdown where it cannot start one.
