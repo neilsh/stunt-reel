@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 
 use schemars::{JsonSchema, schema_for};
-use stunt_parity::{CaptureSet, RenderRecord, Report, VideoCapture};
+use stunt_parity::{CaptureSet, RenderRecord, Report, VideoCapture, VideoDerived};
 
 fn schema_dir() -> PathBuf {
     super::test_support::workspace_root().join("crates/stunt-parity/schema")
@@ -49,6 +49,11 @@ fn the_capture_schema_matches_the_derive() {
 #[test]
 fn the_video_schema_matches_the_derive() {
     check::<VideoCapture>("video.schema.json");
+}
+
+#[test]
+fn the_video_derived_schema_matches_the_derive() {
+    check::<VideoDerived>("video-derived.schema.json");
 }
 
 #[test]

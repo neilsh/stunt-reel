@@ -178,7 +178,8 @@ class VideoCapture:
     def video_index(self, frame: int) -> int | None:
         """Index of capture *frame* relative to recording start, or ``None`` before it.
 
-        The result is not checked against the recording's length.
+        The result is not checked against the recording's length. The log row of *frame* is one
+        lower (``capture_start_frame + 1`` is row 0, AVI frame 0).
         """
         index = frame - self.capture_start_frame
         return index if index >= 0 else None

@@ -138,12 +138,32 @@ _Source: [torn pages](../../work/2026-11/distill-capture-dosbox-automation/journ
 * **The row also reads the slot pass's clock and ticks word** (`slot_clock`, `slot_ticks`; Patch 3's offsets are inferred, ADR 0057), written as two optional `meta.json` columns that come together.
   `LOCATION.FLM` still ended `hold` at 11,616 frames and 118 palette changes, and two runs wrote one `capture.avi` hash and equal logs, slot columns included.
   The whole-film fields beside the log (`video`, `emulator`, `layout`, `film_ticks`) are optional, so version 1 stays.
+* **Derived columns** (`mise run video-derive -- derive <film>`, local `derived.json`, never archived): `render_tick` by ADR 0057 per log row and `palette_step` on each palette write's frame.
+  No `finished` column: the frame before a `slot_clock` change is not known to be a whole picture, because a video frame can be torn between the composed buffers (§ 4.5) and the neighbour rule that would spot it fails ([#1200 comment](https://github.com/neilsh/stunt-reel/issues/1200#issuecomment-7228756891)).
+  An emulator-logged `composed` flag, which compares `A000` with both buffers each frame, was not built.
+* **Row *i* of the log is AVI frame *i*** (`[Bounded Observation]`, `CTRY.FLM`): 1,197 of 1,200 `slot_clock` changes coincide with a changed picture at shift 0, and 1,106 to 1,148 at each shift from -3 to +3.
+  The row of `emu_frame` is `emu_frame - capture_start_frame - 1`; `video_index` is one above it.
+* **Two recordings of one film are identical** (`[Bounded Observation]`, `CTRY.FLM` and `LOCATION.FLM`, one pair each, Patch 3, stubbed samples): equal `capture.avi` and `meta.json` bytes.
+  `LOCATION`'s AVI hash equals that of a recording made in another container.
+  ADR 0043's replay was shown for frame pages only.
+  _Source: [reference check, replay and pairing](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-reference-check-replay-and-the-pairing-rule-on-seven-full-rate-recordings)._
+* **Against the pinned frame captures** (`[Bounded Observation]`, one recording per film, 1,875 pages): a page's RGB on rows 0..184 lies in the video at `emu_frame - capture_start_frame - 1` plus 0 on 1,122 pages and plus 1 on 731; 22 lie elsewhere.
+  Medians are 99.9747% (`CTRY`) to 100% pixel-equal, minima 87.99% (`TRAINTNL`) to 97.14% (`INTRO`).
+  By the journal's row rule (§ 4.5) 1,032 pages are exact, 503 split between two frames and 340 a band; no page is explained by its palette alone (0 of 466 mismatched on `CTRY` and `LOCATION`).
+  The bands and splits match § 4.5's tears of a video frame built from `A000` while the game copies into it; that cause is `[Supported Inference]` (the emulator's capture path was not read).
+  _Source: [reference check, replay and pairing](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-reference-check-replay-and-the-pairing-rule-on-seven-full-rate-recordings)._
+* **ADR 0057's rule on run ends** (`[Bounded Observation]`, last frame of each `slot_clock` run, lavapipe renders): pairing by `render_tick` scores above the tag on `INTRO`, `BOMB`, `TRAINTNL` and `LOCATION` (+0.0054 to +0.0127 mean SSIM) and below it on `CTRY`, `LAND` and `BALLOON` (-0.0005 to -0.0014).
+  The best offset is the rule's own on 46% to 75% of compared frames.
+  `slot_ticks` varies within a run of one picture in 393 of 578 `CTRY` runs, so the tick a picture gets depends on which row of its run is read, and consecutive run ends share one `render_tick` while showing different pictures (296 of 296 shared keys on `CTRY`).
+  Whether a run end is a whole picture is open.
+  _Source: [reference check, replay and pairing](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-reference-check-replay-and-the-pairing-rule-on-seven-full-rate-recordings)._
+
 * **The ZMBV decoder** matched `ffmpeg -pix_fmt bgr0` byte for byte on all 1,907 frames of `vault-ctry/video/001` while it existed in `stunt-score`; #1133 deleted it, and the result is not reproducible from the tree.
 * **Audio is stripped after the run** (`video_only`): `CTRY.FLM` 2.5 MB, `INTRO.FLM` 6.2 MB.
 * **A long film runs out of Lua budget** (§ 4.7): `COL3-1.FLM` died near 24,500 frames, so `capture-video` covers films to about 5.5 minutes.
 * **Sky colours are not unique in RGB**: an RGB sky mask mislabels 3.6% of pixels over 6,047 frames of 95 captures, touching the per-second scorer's IoU, not its SSIM.
 
-_Source: [whole-film video](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-31-video-capture), [slot words in the row](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-location-with-the-slot-words-in-the-per-frame-row)._
+_Source: [whole-film video](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-31-video-capture), [slot words in the row](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-location-with-the-slot-words-in-the-per-frame-row), [reference check, replay and pairing](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-reference-check-replay-and-the-pairing-rule-on-seven-full-rate-recordings)._
 
 ### 4.7 The Instruction Budget and Three Retail Archives
 
@@ -197,6 +217,8 @@ _Source: [scratch driver](../../work/2026-11/distill-capture-dosbox-automation/j
 * `LOCATION.FLM`'s archive or build as its cause ([archive, engine files or build](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-11-01-archive-or-build)).
 * The Patch 3 build, the window-pass harness, or a still scene as the cause of differing replays: unpatched builds also differ (`BALLOON` 24 of 101 pages, `BOMB` 110 of 292), the demo `CTRY.ALL` replays identically under the current harness on either build, and `vault-location` moves more than the short films ([what does not make recaptures differ](../../work/2026-11/305_recapture-noise/journal.md#2026-11-09-what-does-not-make-recaptures-differ), [sound samples](../../work/2026-11/305_recapture-noise/journal.md#2026-11-09-sound-samples-in-the-archive-make-replays-differ)).
 * Matching a page to the render tick it agrees with best: our render agrees too loosely to resolve one tick from the next ([what does not make recaptures differ](../../work/2026-11/305_recapture-noise/journal.md#2026-11-09-what-does-not-make-recaptures-differ)).
+* A palette (DAC lag) difference alone as the cause of a page not equal to a video frame: some palette index shows two video colours on every one of the 466 mismatched `CTRY` and `LOCATION` pages ([reference check](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-reference-check-replay-and-the-pairing-rule-on-seven-full-rate-recordings)).
+* The frame before a `slot_clock` change as a finished picture without a check: the neighbour-frame torn test failed on a `CTRY` window ([#1200 comment](https://github.com/neilsh/stunt-reel/issues/1200#issuecomment-7228756891)).
 * A relaunch loop in a `THE.FLM` capture (`--max-frames 1200`) stopped after 20 minutes with no frame and no output, by inference (`[Hypothesis]`: its log is gone, so it is taken to have behaved like the rerun): the same command on 2026-11-20 finished in 1,004 s with 1,192 frames, its 30 window passes each launching a DOSBox with a new `dosbox-<n>.conf`; `capture-ref` printed no per-pass progress line after queueing them, only DOSBox's own launch chatter, and wrote the frames only at the end (§ 4.8) ([THE.FLM's high shadows in the captured pixels](../../work/2026-11/628_high-actor-shadow-pixels/journal.md#2026-11-20-theflms-high-shadows-in-the-captured-pixels)).
 * `nosound = true` to make `COUNT.FLM` repeat: three variants in four runs ([production harness](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-production-harness)).
 
@@ -245,3 +267,5 @@ _Source: [scratch driver](../../work/2026-11/distill-capture-dosbox-automation/j
     Not measurably on LOCATION, one capture per setting: a best render offset off the page lag that beats offset 0 by over 0.01 of index agreement falls on 168 of 732 scored frames stubbed and 172 of 733 with sound on Patch 3, and on 161 of 732 stubbed and 162 of 732 with sound on the unpatched build.
     _Source: [a frame's off-model tick changes with the capture's settings](../../work/2026-11/1033_per-frame-time-offsets/journal.md#2026-11-23-a-frames-off-model-tick-changes-with-the-captures-settings)._
 18. Likely answered (`[Supported Inference]`): `vault-location`'s 2 to 3 differing pages per with-sound pair (captured one after the other) came from its sound-range chunks; a stubbed pair agreed on 745 of 745 (§ 4.4).
+19. Is the last frame of a `slot_clock` run a whole picture?
+    An emulator-logged per-frame `composed` flag (`A000` rows 0..191 against the buffers at `PlayoneLayout.composed_pages`) checked on `CTRY` video frames 300 to 317, where 8 are finished and 5 torn, would settle it and give `derived.json` a `finished` column; `TickLog` takes one more optional column without a schema bump.

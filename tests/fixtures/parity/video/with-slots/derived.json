@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "kind": "video-derived",
+  "source": {
+    "meta_sha256": "00dc209e73f66ce9bf363582c2e36b3cbbaf77e018e899cd01c8626765acc882",
+    "video_sha256": "abababababababababababababababababababababababababababababababab"
+  },
+  "rules": {
+    "render_tick": "adr-0057",
+    "palette_step": "palette-change-frame"
+  },
+  "frames": {
+    "render_tick": [
+      6,
+      5,
+      5,
+      7
+    ],
+    "palette_step": [
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "reference_check": {
+    "capture_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "rows": [
+      0,
+      184
+    ],
+    "search": 8,
+    "pages": 5,
+    "skipped": 1,
+    "offsets": {
+      "-1": 2,
+      "0": 2
+    },
+    "pixel_equal": {
+      "min": 0.96,
+      "median": 0.9997
+    },
+    "exact_pages": 1,
+    "split_pages": 2,
+    "band_pages": 1
+  }
+}

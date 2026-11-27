@@ -29,6 +29,7 @@ pub mod film;
 pub mod render;
 pub mod report;
 pub mod video;
+pub mod video_derived;
 
 pub use capture::{CaptureSet, CapturedFrame};
 pub use error::ArtifactError;
@@ -42,6 +43,10 @@ pub use report::{FrameReport, I6Gate, Report};
 pub use video::{
     CaptureEnd, EmulatorInfo, LayoutOffsets, PaletteChange, PaletteLog, TickLog, VIDEO_FILE,
     VideoCapture, VideoFileInfo,
+};
+pub use video_derived::{
+    DERIVED_FILE, DerivedColumns, DerivedRules, DerivedSource, PaletteStepRule, PixelEqual,
+    ReferenceCheck, RenderTickRule, VideoDerived,
 };
 
 /// Version carried by a capture's `meta.json`, frame or video.

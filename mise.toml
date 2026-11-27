@@ -232,6 +232,10 @@ depends = ["ensure"]
 run = "uv run python python/scripts/capture_video.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
+[tasks.video-derive]
+description = "Derive a video capture's render_tick, finished and palette_step columns into derived.json beside its meta.json (local only), check it against the pinned frames, compare two recordings, or test the pairing rule on finished frames (mise run video-derive -- derive ctry | reference-check ctry | replay A B | pairing --dir D [--render STORE])"
+run = "uv run python python/scripts/video_derive.py"
+
 [tasks.capture-digest]
 description = "Print a capture's content hash and the references.toml entry that would promote it (mise run capture-digest -- vault-ctry)"
 run = "uv run python python/scripts/capture_digest.py"
