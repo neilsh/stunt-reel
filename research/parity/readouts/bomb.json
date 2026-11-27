@@ -14,8 +14,8 @@
     3158,
     3477
   ],
-  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "4b3c390e98d701edf3b6474f9a6c027a772c048e9129b8e8bf93c20f6af0e892",
+  "categories_digest": "a2414c545c352c5d8e951be19a1b1b859f357ab0ea0d1e9c24269265a0c54b9d",
+  "render_digest": "8dd83be3858299550ef9ecab8938dd00a7d7b8505a91042b704ee2ce4f2569fd",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -38,7 +38,7 @@
     {
       "category": "aircraft-misplaced",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -50,7 +50,7 @@
     {
       "category": "sea-band-wrong",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.3333333333333333,
       "ungraded": 0
     },
     {
@@ -68,16 +68,16 @@
     {
       "category": "ground-shade-edges",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
       "category": "background-misregistration",
       "ticks_2plus": [
-        1585,
-        1904
+        2212,
+        2531
       ],
-      "mean": 1.0833333333333333,
+      "mean": 1.0,
       "ungraded": 0
     },
     {
@@ -133,13 +133,24 @@
       "ticks_2plus": [],
       "mean": 0.0,
       "ungraded": 0
+    },
+    {
+      "category": "object-misaligned",
+      "ticks_2plus": [],
+      "mean": 0.75,
+      "ungraded": 0
     }
   ],
   "other": {
-    "331": "render draws extra thin diagonal cable line right of the building",
-    "639": "stray dark-green diagonal line at right; building outline a few px off"
+    "331": "aircraft palette shading differs, shape and position match",
+    "958": "aircraft palette shading differs, shape and position match",
+    "1585": "aircraft palette shading differs, shape and position match",
+    "1904": "aircraft palette shading differs, shape and position match",
+    "3158": "aircraft palette shading differs, shape and position match",
+    "3477": "explosion drawn smaller and dimmer than in capture"
   },
   "missing": 0,
   "unknown": [],
-  "disputed": 2
+  "disputed": 2,
+  "pairing": "render_tick"
 }

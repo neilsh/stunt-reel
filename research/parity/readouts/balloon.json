@@ -14,8 +14,8 @@
     1068,
     1178
   ],
-  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "20d2932e254f219947d33e24e5e87e232d5d5dfc23fdc2e3b883e48d5d35e947",
+  "categories_digest": "a2414c545c352c5d8e951be19a1b1b859f357ab0ea0d1e9c24269265a0c54b9d",
+  "render_digest": "5416b28f47cd470124c45889189a524a5648a9f6fa96b9b320c3e7cd20889851",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -38,7 +38,7 @@
     {
       "category": "aircraft-misplaced",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.3333333333333333,
       "ungraded": 0
     },
     {
@@ -56,7 +56,7 @@
     {
       "category": "scenery-missing",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -68,13 +68,17 @@
     {
       "category": "ground-shade-edges",
       "ticks_2plus": [],
-      "mean": 0.6666666666666666,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
       "category": "background-misregistration",
-      "ticks_2plus": [],
-      "mean": 0.3333333333333333,
+      "ticks_2plus": [
+        540,
+        1068,
+        1178
+      ],
+      "mean": 0.75,
       "ungraded": 0
     },
     {
@@ -130,17 +134,30 @@
       "ticks_2plus": [],
       "mean": 0.0,
       "ungraded": 0
+    },
+    {
+      "category": "object-misaligned",
+      "ticks_2plus": [],
+      "mean": 0.16666666666666666,
+      "ungraded": 0
     }
   ],
   "other": {
-    "122": "canopy edges differ slightly",
-    "221": "canopy and sun shifted a few px",
-    "331": "canopy seams and cords differ slightly",
-    "540": "figure outline and parachute cords differ slightly",
-    "650": "stripe block ragged and slightly wider in render",
-    "749": "red-white stripe block edges ragged in render"
+    "12": "balloon facet edges differ slightly, minor",
+    "122": "balloon panel shading and sun edge slightly off",
+    "221": "sky band edges, sun edge and rope lines slightly off",
+    "331": "canopy shading and rope lines slightly off",
+    "441": "balloon facet edges off by about 1px",
+    "540": "balloon facet shading differs",
+    "650": "balloon facet shading differs, red band slightly shorter",
+    "749": "balloon envelope facet shading differs, geometry aligned",
+    "859": "balloon shading band steps differ",
+    "970": "parachute canopy stripe shading differs",
+    "1068": "balloon facet shading differs",
+    "1178": "balloon facet shading differs"
   },
   "missing": 0,
   "unknown": [],
-  "disputed": 0
+  "disputed": 4,
+  "pairing": "render_tick"
 }

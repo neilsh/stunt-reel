@@ -14,8 +14,8 @@
     3301,
     3477
   ],
-  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "1205920f71a733ec504bc992fbc7d867b272e31a9f0487f08293bc03c67736c3",
+  "categories_digest": "a2414c545c352c5d8e951be19a1b1b859f357ab0ea0d1e9c24269265a0c54b9d",
+  "render_digest": "5d4f3ad5e7d739dfc4a13ff5f30e683b3458c91943dd5c74939d3595adb4c64a",
   "categories": [
     {
       "category": "aircraft-parts-missing",
@@ -38,7 +38,7 @@
     {
       "category": "aircraft-misplaced",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.25,
       "ungraded": 0
     },
     {
@@ -56,25 +56,30 @@
     {
       "category": "scenery-missing",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
       "category": "ground-shade-wrong",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
       "category": "ground-shade-edges",
       "ticks_2plus": [],
-      "mean": 0.16666666666666666,
+      "mean": 0.5,
       "ungraded": 0
     },
     {
       "category": "background-misregistration",
-      "ticks_2plus": [],
-      "mean": 1.0,
+      "ticks_2plus": [
+        1178,
+        2421,
+        2597,
+        3477
+      ],
+      "mean": 1.1666666666666667,
       "ungraded": 0
     },
     {
@@ -86,7 +91,7 @@
     {
       "category": "shadow-shape-wrong",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.08333333333333333,
       "ungraded": 0
     },
     {
@@ -132,20 +137,25 @@
       ],
       "mean": 0.16666666666666666,
       "ungraded": 0
+    },
+    {
+      "category": "object-misaligned",
+      "ticks_2plus": [
+        1355,
+        2773
+      ],
+      "mean": 0.6666666666666666,
+      "ungraded": 0
     }
   ],
   "other": {
-    "1002": "slight shading differences on the biplane body",
-    "1178": "fuselage shading slightly off",
-    "1355": "vehicle and wing outlines a pixel or two off; dark blotch under the distant plane in the render",
-    "2421": "strut and wing edges a pixel off",
-    "2597": "stray dark line from the sky down to the wing in the render",
-    "2773": "wing outlines a pixel or two off; stray dotted line from left wing into the sand",
-    "2949": "stray dotted line on the hill in the render; wing and spinner outlines a pixel off",
-    "3125": "propeller blades at slightly different angles; both panels draw solid blades",
-    "3477": "cockpit canopy drawn light blue instead of capture's dark bar; slightly different fuselage outline"
+    "1002": "fuselage shading differs (palette only)",
+    "2421": "fuselage shading differs (palette only)",
+    "2597": "stray dark line in the sky in the render",
+    "3125": "propeller blade angle differs (frame timing)"
   },
   "missing": 0,
   "unknown": [],
-  "disputed": 3
+  "disputed": 3,
+  "pairing": "render_tick"
 }

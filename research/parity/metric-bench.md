@@ -124,6 +124,12 @@ _Source: [2026-10-31: error categories graded by a vision model](../../work/2026
 
 _Source: [2026-11-25: an INTRO calibration fails on actors too small to see](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-an-intro-calibration-fails-on-actors-too-small-to-see) and [2026-11-25: INTRO calibrations under the actor floor, and the first new-category example](../../work/2026-11/calibration-actor-floor/journal.md#2026-11-25-intro-calibrations-under-the-actor-floor-and-the-first-new-category-example)._
 
+* **`object-misaligned` was added on 2026-11-27 (#1110) and caught three real frames** (`[Bounded Observation]`, 2026-11-27, `6d511d1`, lavapipe, CTRY recapture for the calibration).
+  A census over the 84 readout frames found 20 objects on 13 frames that a fixed-shift test calls misaligned, 5 of them time-explained, and none on the 12 recapture-as-render control frames; the graders put INTRO 1355 and 2773 and TRAINTNL 232 at 2 or more in the new category.
+  The calibration printed `calibration PASS` (controls 12/12, `actors_removed` 6/6, `shift_y:4` 6/6, `advance:5` 3/6) and `props_shift:8` was detected on 0 of 6 sheets, reported and not gated, so the planted fault is no evidence for the category.
+  Each calibrating run now grades 48 sheets.
+  _Source: [2026-11-27: census, calibration and the seven-film re-grade](../../work/2026-11/1110_object-misaligned/journal.md#2026-11-27-census-calibration-and-the-seven-film-re-grade)._
+
 * **The 20-category DSH passes differed by at most one frame on these readouts** (`[Bounded Observation]`, 2026-11-25, the seven `errors-20cat` runs of the lavapipe render of `crates/` `4b5c69c`).
   Two DSH passes over the same 12 sheets per film moved a category's count of frames graded 2 or more by at most 1 on every film, against the 3 that set `min_change` from two Haiku passes; `min_change` stays 4.
   The readout grades 12 frames per film, not the whole film.

@@ -14,13 +14,13 @@
     826,
     903
   ],
-  "categories_digest": "5f8b01d6d891a51dcf197d3d3c5afca8cd5229648d22823a7add5fa9df7eb91e",
-  "render_digest": "866243d07be27e6d154b9900005c5e6ef79b73adcdfa13e5c739de2dfca84a7b",
+  "categories_digest": "a2414c545c352c5d8e951be19a1b1b859f357ab0ea0d1e9c24269265a0c54b9d",
+  "render_digest": "7b0540a1f6d17f0999ce2946dd202403e27f605f0edab135109d56f9ac899c9d",
   "categories": [
     {
       "category": "aircraft-parts-missing",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.16666666666666666,
       "ungraded": 0
     },
     {
@@ -32,21 +32,19 @@
     {
       "category": "aircraft-too-small",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
       "category": "aircraft-misplaced",
-      "ticks_2plus": [
-        419
-      ],
-      "mean": 0.3333333333333333,
+      "ticks_2plus": [],
+      "mean": 0.0,
       "ungraded": 0
     },
     {
       "category": "shadow-missing",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
@@ -57,10 +55,8 @@
     },
     {
       "category": "scenery-missing",
-      "ticks_2plus": [
-        419
-      ],
-      "mean": 0.4166666666666667,
+      "ticks_2plus": [],
+      "mean": 0.5833333333333334,
       "ungraded": 0
     },
     {
@@ -72,16 +68,15 @@
     {
       "category": "ground-shade-edges",
       "ticks_2plus": [],
-      "mean": 0.0,
+      "mean": 0.5,
       "ungraded": 0
     },
     {
       "category": "background-misregistration",
       "ticks_2plus": [
-        419,
-        496
+        661
       ],
-      "mean": 1.25,
+      "mean": 1.0833333333333333,
       "ungraded": 0
     },
     {
@@ -93,13 +88,13 @@
     {
       "category": "shadow-shape-wrong",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.16666666666666666,
       "ungraded": 0
     },
     {
       "category": "actors-missing",
       "ticks_2plus": [],
-      "mean": 0.08333333333333333,
+      "mean": 0.0,
       "ungraded": 0
     },
     {
@@ -137,13 +132,28 @@
       "ticks_2plus": [],
       "mean": 0.0,
       "ungraded": 0
+    },
+    {
+      "category": "object-misaligned",
+      "ticks_2plus": [],
+      "mean": 0.0,
+      "ungraded": 0
     }
   ],
   "other": {
-    "419": "render camera/aircraft far too large and close, hill and building drawn where capture shows open sky and distant plane",
-    "496": "hangars at left drawn with green streak artifacts"
+    "12": "aircraft surface and nose colour differ",
+    "89": "aircraft surface shading differs",
+    "177": "aircraft surface shading differs",
+    "254": "buildings at left drawn with olive speckle; distant aircraft colour differs",
+    "331": "aircraft surface shading differs",
+    "419": "aircraft surface shading differs",
+    "584": "aircraft surface shading differs",
+    "738": "aircraft surface shading differs",
+    "826": "aircraft surface shading differs",
+    "903": "aircraft surface shading differs"
   },
   "missing": 0,
   "unknown": [],
-  "disputed": 3
+  "disputed": 2,
+  "pairing": "render_tick"
 }
