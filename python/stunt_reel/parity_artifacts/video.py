@@ -4,6 +4,7 @@ history.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +19,7 @@ from stunt_reel.parity_artifacts._fields import (
     _as_unsigned,
     _error,
     _optional_string,
+    _optional_unsigned,
     _read_json,
     _write_json,
     _wrong_type,
@@ -32,7 +34,7 @@ from stunt_reel.parity_artifacts.render import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
 
@@ -56,9 +58,21 @@ _VIDEO_FIELDS = frozenset(
         "end",
         "log",
         "palettes",
+        "video_frames",
+        "rows",
+        "palette_changes",
+        "dgroup_segment",
+        "captured_on",
+        "checkout",
+        "sound_samples",
+        "video",
+        "emulator",
+        "layout",
+        "film_ticks",
     }
 )
 _CAPTURE_ENDS = ("hold", "capped")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _U64 = 0xFFFFFFFFFFFFFFFF
 _U32 = 0xFFFFFFFF
 
@@ -74,6 +88,9 @@ class TickLog:
     frame: tuple[int, ...]
     film_tick: tuple[int, ...]
     global_tick: tuple[int, ...]
+    #: Slot pass clock and ticks word per frame (ADR 0057); both or neither.
+    slot_clock: tuple[int, ...] | None = None
+    slot_ticks: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +111,41 @@ class PaletteLog:
 
 
 @dataclass(frozen=True)
+class VideoFileInfo:
+    """The recorded video beside ``meta.json``: as the emulator wrote it, audio stripped."""
+
+    file: str
+    sha256: str
+    bytes: int
+    codec: str
+    #: Exact frame rate as numerator and denominator; containers round it.
+    frame_rate: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class EmulatorInfo:
+    """The emulator that recorded the film, and the stage conf's ``core`` and ``cpu_cycles``."""
+
+    name: str
+    version: str
+    core: str
+    cpu_cycles: str
+
+
+@dataclass(frozen=True)
+class LayoutOffsets:
+    """The DGROUP offsets the log read, as ``0x`` plus four upper-case hex digits."""
+
+    film_clock: str
+    global_tick: str
+    working_palette: str
+    slot_clock: str | None = None
+    slot_ticks: str | None = None
+    #: Names of the offsets above that were inferred, not read from the build's code (ADR 0057).
+    inferred: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class VideoCapture:
     """Document written by the video capture harness as ``meta.json``."""
 
@@ -110,6 +162,18 @@ class VideoCapture:
     palettes: PaletteLog
     #: SHA-256 of the ``PLAYONE.EXE`` that ran; absent from captures made before it was recorded.
     playone_sha256: str | None = None
+    #: Whole-film fields; each is absent from a capture made before it was recorded.
+    video_frames: int | None = None
+    rows: int | None = None
+    palette_changes: int | None = None
+    dgroup_segment: str | None = None
+    captured_on: str | None = None
+    checkout: str | None = None
+    sound_samples: str | None = None
+    video: VideoFileInfo | None = None
+    emulator: EmulatorInfo | None = None
+    layout: LayoutOffsets | None = None
+    film_ticks: tuple[int, int] | None = None
 
     def video_index(self, frame: int) -> int | None:
         """Index of capture *frame* relative to recording start, or ``None`` before it.
@@ -136,6 +200,7 @@ class VideoCapture:
         self.geometry.validate(path)
         self._validate_log(path)
         self._validate_palettes(path)
+        self._validate_summary(path)
 
     def _validate_log(self, path: Path | None) -> None:
         log = self.log
@@ -144,6 +209,18 @@ class VideoCapture:
             raise _video_error(
                 f"log columns differ in length: frame {rows}, film_tick {len(log.film_tick)}, "
                 f"global_tick {len(log.global_tick)}",
+                path,
+            )
+        if (log.slot_clock is None) != (log.slot_ticks is None):
+            raise _video_error("slot_clock and slot_ticks must come together", path)
+        if (
+            log.slot_clock is not None
+            and log.slot_ticks is not None
+            and (len(log.slot_clock) != rows or len(log.slot_ticks) != rows)
+        ):
+            raise _video_error(
+                f"log columns differ in length: frame {rows}, slot_clock "
+                f"{len(log.slot_clock)}, slot_ticks {len(log.slot_ticks)}",
                 path,
             )
         for index in range(1, rows):
@@ -165,6 +242,29 @@ class VideoCapture:
                     f"after {log.film_tick[offset - 1]}",
                     path,
                 )
+
+    def _validate_summary(self, path: Path | None) -> None:
+        """Check the whole-film fields against the log they summarise."""
+        counts = (
+            ("rows", self.rows, len(self.log.frame)),
+            ("palette_changes", self.palette_changes, len(self.palettes.changes)),
+        )
+        for name, stated, actual in counts:
+            if stated is not None and stated != actual:
+                raise _video_error(f"{name} is {stated}, the log holds {actual}", path)
+        if self.film_ticks is not None:
+            logged = (self.log.film_tick[0], self.log.film_tick[-1]) if self.log.film_tick else None
+            if logged != self.film_ticks:
+                raise _video_error(
+                    f"film_ticks {self.film_ticks} differ from the log's {logged}", path
+                )
+        if self.video is not None:
+            if self.video.file != VIDEO_FILE:
+                raise _video_error(
+                    f"video.file is {self.video.file!r}, expected {VIDEO_FILE!r}", path
+                )
+            if _SHA256.fullmatch(self.video.sha256) is None:
+                raise _video_error("video.sha256 is not 64 lower-case hex digits", path)
 
     def _validate_palettes(self, path: Path | None) -> None:
         palettes = self.palettes
@@ -204,6 +304,14 @@ def _column(value: Any, path: Path | None, field_name: str, maximum: int) -> tup
     )
 
 
+def _optional_column(
+    log: Mapping[str, Any], path: Path | None, name: str
+) -> tuple[int, ...] | None:
+    if log.get(name) is None:
+        return None
+    return _column(log[name], path, f"log.{name}", 0xFFFF)
+
+
 def _rgb_entries(
     value: Any, path: Path | None, field_name: str
 ) -> tuple[tuple[int, int, int], ...]:
@@ -229,6 +337,65 @@ def _palette_change_object(value: Any, path: Path | None, index: int) -> Palette
         frame=_as_unsigned(entry.get("frame"), path, f"{where}.frame", _U64),
         first=_as_unsigned(entry.get("first"), path, f"{where}.first", 0xFFFF),
         rgb=_rgb_entries(entry.get("rgb"), path, f"{where}.rgb"),
+    )
+
+
+def _optional[T](value: Any, path: Path | None, parse: Callable[[Any, Path | None], T]) -> T | None:
+    return None if value is None else parse(value, path)
+
+
+def _file_info_object(value: Any, path: Path | None) -> VideoFileInfo:
+    entry = _as_object(value, path, "video")
+    rate = _as_array(entry.get("frame_rate"), path, "video.frame_rate")
+    if len(rate) != 2:
+        raise _wrong_type(path, "video.frame_rate", "a numerator and a denominator")
+    return VideoFileInfo(
+        file=_as_string(entry.get("file"), path, "video.file"),
+        sha256=_as_string(entry.get("sha256"), path, "video.sha256"),
+        bytes=_as_unsigned(entry.get("bytes"), path, "video.bytes", _U64),
+        codec=_as_string(entry.get("codec"), path, "video.codec"),
+        frame_rate=(
+            _as_unsigned(rate[0], path, "video.frame_rate[0]", _U32),
+            _as_unsigned(rate[1], path, "video.frame_rate[1]", _U32),
+        ),
+    )
+
+
+def _emulator_object(value: Any, path: Path | None) -> EmulatorInfo:
+    entry = _as_object(value, path, "emulator")
+    return EmulatorInfo(
+        name=_as_string(entry.get("name"), path, "emulator.name"),
+        version=_as_string(entry.get("version"), path, "emulator.version"),
+        core=_as_string(entry.get("core"), path, "emulator.core"),
+        cpu_cycles=_as_string(entry.get("cpu_cycles"), path, "emulator.cpu_cycles"),
+    )
+
+
+def _layout_object(value: Any, path: Path | None) -> LayoutOffsets:
+    entry = _as_object(value, path, "layout")
+    inferred = entry.get("inferred")
+    return LayoutOffsets(
+        film_clock=_as_string(entry.get("film_clock"), path, "layout.film_clock"),
+        global_tick=_as_string(entry.get("global_tick"), path, "layout.global_tick"),
+        working_palette=_as_string(entry.get("working_palette"), path, "layout.working_palette"),
+        slot_clock=_optional_string(entry.get("slot_clock"), path, "layout.slot_clock"),
+        slot_ticks=_optional_string(entry.get("slot_ticks"), path, "layout.slot_ticks"),
+        inferred=()
+        if inferred is None
+        else tuple(
+            _as_string(item, path, f"layout.inferred[{index}]")
+            for index, item in enumerate(_as_array(inferred, path, "layout.inferred"))
+        ),
+    )
+
+
+def _film_ticks_object(value: Any, path: Path | None) -> tuple[int, int]:
+    pair = _as_array(value, path, "film_ticks")
+    if len(pair) != 2:
+        raise _wrong_type(path, "film_ticks", "a first and a last film tick")
+    return (
+        _as_unsigned(pair[0], path, "film_ticks[0]", _U32),
+        _as_unsigned(pair[1], path, "film_ticks[1]", _U32),
     )
 
 
@@ -261,12 +428,40 @@ def _video_object(document: Mapping[str, Any], path: Path | None) -> VideoCaptur
             frame=_column(log.get("frame"), path, "log.frame", _U64),
             film_tick=_column(log.get("film_tick"), path, "log.film_tick", _U32),
             global_tick=_column(log.get("global_tick"), path, "log.global_tick", _U32),
+            slot_clock=_optional_column(log, path, "slot_clock"),
+            slot_ticks=_optional_column(log, path, "slot_ticks"),
         ),
         palettes=PaletteLog(
             initial=_rgb_entries(palettes.get("initial"), path, "palettes.initial"),
             changes=changes,
         ),
+        video_frames=_optional_unsigned(document.get("video_frames"), path, "video_frames", _U64),
+        rows=_optional_unsigned(document.get("rows"), path, "rows", _U64),
+        palette_changes=_optional_unsigned(
+            document.get("palette_changes"), path, "palette_changes", _U64
+        ),
+        dgroup_segment=_optional_string(document.get("dgroup_segment"), path, "dgroup_segment"),
+        captured_on=_optional_string(document.get("captured_on"), path, "captured_on"),
+        checkout=_optional_string(document.get("checkout"), path, "checkout"),
+        sound_samples=_optional_string(document.get("sound_samples"), path, "sound_samples"),
+        video=_optional(document.get("video"), path, _file_info_object),
+        emulator=_optional(document.get("emulator"), path, _emulator_object),
+        layout=_optional(document.get("layout"), path, _layout_object),
+        film_ticks=_optional(document.get("film_ticks"), path, _film_ticks_object),
     )
+
+
+def _log_document(log: TickLog) -> dict[str, Any]:
+    document: dict[str, Any] = {
+        "frame": list(log.frame),
+        "film_tick": list(log.film_tick),
+        "global_tick": list(log.global_tick),
+    }
+    if log.slot_clock is not None:
+        document["slot_clock"] = list(log.slot_clock)
+    if log.slot_ticks is not None:
+        document["slot_ticks"] = list(log.slot_ticks)
+    return document
 
 
 def _video_document(capture: VideoCapture) -> dict[str, Any]:
@@ -282,7 +477,7 @@ def _video_document(capture: VideoCapture) -> dict[str, Any]:
     build: dict[str, Any] = {"playone_build": capture.playone_build}
     if capture.playone_sha256 is not None:
         build["playone_sha256"] = capture.playone_sha256
-    return {
+    document = {
         "schema_version": capture.schema_version,
         "kind": capture.kind,
         "film": film,
@@ -292,11 +487,7 @@ def _video_document(capture: VideoCapture) -> dict[str, Any]:
         "capture_start_frame": capture.capture_start_frame,
         "film_start_frame": capture.film_start_frame,
         "end": capture.end,
-        "log": {
-            "frame": list(capture.log.frame),
-            "film_tick": list(capture.log.film_tick),
-            "global_tick": list(capture.log.global_tick),
-        },
+        "log": _log_document(capture.log),
         "palettes": {
             "initial": [list(entry) for entry in capture.palettes.initial],
             "changes": [
@@ -309,6 +500,52 @@ def _video_document(capture: VideoCapture) -> dict[str, Any]:
             ],
         },
     }
+    document.update(_summary_document(capture))
+    return document
+
+
+def _summary_document(capture: VideoCapture) -> dict[str, Any]:
+    """The optional whole-film fields the capture carries, in schema order."""
+    scalars = {
+        "video_frames": capture.video_frames,
+        "rows": capture.rows,
+        "palette_changes": capture.palette_changes,
+        "dgroup_segment": capture.dgroup_segment,
+        "captured_on": capture.captured_on,
+        "checkout": capture.checkout,
+        "sound_samples": capture.sound_samples,
+    }
+    document: dict[str, Any] = {k: v for k, v in scalars.items() if v is not None}
+    if capture.video is not None:
+        document["video"] = {
+            "file": capture.video.file,
+            "sha256": capture.video.sha256,
+            "bytes": capture.video.bytes,
+            "codec": capture.video.codec,
+            "frame_rate": list(capture.video.frame_rate),
+        }
+    if capture.emulator is not None:
+        document["emulator"] = {
+            "name": capture.emulator.name,
+            "version": capture.emulator.version,
+            "core": capture.emulator.core,
+            "cpu_cycles": capture.emulator.cpu_cycles,
+        }
+    if capture.layout is not None:
+        layout = capture.layout
+        offsets = {
+            "film_clock": layout.film_clock,
+            "global_tick": layout.global_tick,
+            "working_palette": layout.working_palette,
+            "slot_clock": layout.slot_clock,
+            "slot_ticks": layout.slot_ticks,
+        }
+        document["layout"] = {k: v for k, v in offsets.items() if v is not None}
+        if layout.inferred:
+            document["layout"]["inferred"] = list(layout.inferred)
+    if capture.film_ticks is not None:
+        document["film_ticks"] = list(capture.film_ticks)
+    return document
 
 
 def load_video_capture(directory: Path) -> VideoCapture:

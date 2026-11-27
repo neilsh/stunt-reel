@@ -9,6 +9,7 @@ or a clock word, and every palette value is a 6-bit DAC unit scaled to 8 bits th
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -20,15 +21,18 @@ from stunt_reel.parity_artifacts import (
     VIDEO_FILE,
     VIDEO_KIND,
     ArtifactError,
+    EmulatorInfo,
     FilmId,
     Geometry,
+    LayoutOffsets,
     PaletteChange,
     PaletteLog,
     TickLog,
     VideoCapture,
+    VideoFileInfo,
     write_video_capture,
 )
-from stunt_reel.tac import luagen, plan
+from stunt_reel.tac import automation, luagen, plan, staging
 from stunt_reel.tac.framebuffer import END_HOLD_FRAMES
 
 if TYPE_CHECKING:
@@ -44,7 +48,9 @@ __all__ = [
     "VideoCaptureError",
     "VideoLog",
     "decode_video_log",
+    "emulator_info",
     "film_start_frame",
+    "layout_offsets",
     "record_video",
 ]
 
@@ -57,6 +63,11 @@ VIDEO_TIMEOUT_SECONDS: float = 1800.0
 _FRAME_SLACK: int = 1
 _BAND_ENTRIES: int = 256 // luagen.PALETTE_BANDS
 _BAND_BYTES: int = _BAND_ENTRIES * 3
+#: The emulator's exact frame rate as numerator and denominator, which containers round.
+FRAME_RATE: tuple[int, int] = (2190197, 31250)
+#: The codec of the emulator's recording.
+VIDEO_CODEC: str = "zmbv"
+EMULATOR_NAME: str = "dosbox-automation"
 
 
 class VideoCaptureError(RuntimeError):
@@ -150,11 +161,15 @@ def decode_video_log(output: Mapping[str, Any]) -> VideoLog:
     frames: list[int] = []
     film: list[int] = []
     ticks: list[int] = []
+    slot_clock: list[int] = []
+    slot_ticks: list[int] = []
     for item in filter(None, _text(output, "log").split(",")):
-        f, t, g = _fields(item, 3, "log")
+        f, t, g, sc, st = _fields(item, 5, "log")
         frames.append(_number(f, "log"))
         film.append(_number(t, "log"))
         ticks.append(_number(g, "log"))
+        slot_clock.append(_number(sc, "log"))
+        slot_ticks.append(_number(st, "log"))
     pal0 = _hex(_text(output, "pal0"), "pal0")
     if len(pal0) != plan.PALETTE_BYTES:
         raise VideoCaptureError(f"the initial palette holds {len(pal0)} bytes")
@@ -162,10 +177,40 @@ def decode_video_log(output: Mapping[str, Any]) -> VideoLog:
     return VideoLog(
         capture_start_frame=_number(start, "cs"),
         end=end,
-        log=TickLog(frame=tuple(frames), film_tick=tuple(film), global_tick=tuple(ticks)),
+        log=TickLog(
+            frame=tuple(frames),
+            film_tick=tuple(film),
+            global_tick=tuple(ticks),
+            slot_clock=tuple(slot_clock),
+            slot_ticks=tuple(slot_ticks),
+        ),
         palettes=PaletteLog(
             initial=initial, changes=_decode_changes(_text(output, "pal"), initial)
         ),
+    )
+
+
+def emulator_info(cpu: staging.CpuProfile = "capture") -> EmulatorInfo | None:
+    """The emulator and the *cpu* profile's conf values, or None if its version cannot be read."""
+    version = automation.emulator_version()
+    if version is None:
+        return None
+    core, cycles = staging.cpu_settings(cpu)
+    return EmulatorInfo(name=EMULATOR_NAME, version=version, core=core, cpu_cycles=cycles)
+
+
+def layout_offsets(layout: PlayoneLayout) -> LayoutOffsets:
+    """The DGROUP offsets a recording's log reads, with the inferred ones named."""
+    read = {
+        "film_clock": layout.film_clock,
+        "global_tick": layout.global_tick,
+        "working_palette": layout.working_palette,
+        "slot_clock": layout.slot_clock,
+        "slot_ticks": layout.slot_ticks,
+    }
+    return LayoutOffsets(
+        **{name: f"0x{offset:04X}" for name, offset in read.items()},
+        inferred=tuple(name for name in layout.inferred if name in read),
     )
 
 
@@ -190,13 +235,15 @@ def record_video(
     film: FilmId,
     provenance: Mapping[str, str],
     cap: int = VIDEO_MAX_FRAMES,
+    emulator: EmulatorInfo | None = None,
 ) -> VideoCapture:
     """Run the recording script, then file its AVI and log into *out_dir*.
 
     The emulator writes one ``*.avi`` into *recording_dir* (its ``capture_dir``); it is read
     after the runner closes. Its audio is stripped into ``out_dir / capture.avi``, whose frame
-    count must match the log's rows to within one, and ``meta.json`` is written last. A failure
-    can leave the stripped AVI in *out_dir*.
+    count must match the log's rows to within one, and ``meta.json`` is written last, recording
+    the AVI's hash, the layout read, the film ticks and *emulator* when given. A failure can
+    leave the stripped AVI in *out_dir*.
 
     Raises ``VideoCaptureError`` for an unusable recording: no or several ``.avi``, an AVI
     parsing error, a frame-count mismatch, a log the capture document refuses (frames that
@@ -223,6 +270,7 @@ def record_video(
         raise VideoCaptureError(
             f"the recording holds {video_frames} video frames but the log has {rows} rows"
         )
+    stripped = out_dir / VIDEO_FILE
     capture = VideoCapture(
         schema_version=SCHEMA_VERSION,
         kind=VIDEO_KIND,
@@ -236,19 +284,26 @@ def record_video(
         end=decoded.end,
         log=decoded.log,
         palettes=decoded.palettes,
+        video_frames=video_frames,
+        rows=rows,
+        palette_changes=len(decoded.palettes.changes),
+        dgroup_segment=f"{layout.ds:04X}",
+        captured_on=provenance.get("captured_on"),
+        checkout=provenance.get("checkout"),
+        sound_samples=provenance.get("sound_samples"),
+        video=VideoFileInfo(
+            file=VIDEO_FILE,
+            sha256=hashlib.sha256(stripped.read_bytes()).hexdigest(),
+            bytes=stripped.stat().st_size,
+            codec=VIDEO_CODEC,
+            frame_rate=FRAME_RATE,
+        ),
+        emulator=emulator,
+        layout=layout_offsets(layout),
+        film_ticks=(decoded.log.film_tick[0], decoded.log.film_tick[-1]),
     )
     try:
-        write_video_capture(
-            out_dir,
-            capture,
-            diagnostics={
-                "video_frames": video_frames,
-                "rows": rows,
-                "palette_changes": len(decoded.palettes.changes),
-                "dgroup_segment": f"{layout.ds:04X}",
-                **provenance,
-            },
-        )
+        write_video_capture(out_dir, capture, diagnostics={})
     except ArtifactError as exc:
         raise VideoCaptureError(f"meta.json was not written: {exc}") from exc
     return capture

@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -40,6 +41,7 @@ __all__ = [
     "ScriptError",
     "ScriptRunner",
     "dosbox_executable",
+    "emulator_version",
     "free_port",
     "headless_env",
     "launched",
@@ -91,6 +93,29 @@ def headless_env(env: dict[str, str], *, platform: str = sys.platform) -> dict[s
     if not platform.startswith("linux") or env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
         return env
     return {**_HEADLESS_SDL, **env}
+
+
+_VERSION_LINE = re.compile(r"dosbox-automation version (\S+)")
+
+
+def emulator_version() -> str | None:
+    """The version ``dosbox-automation --version`` reports, or None if it cannot be read.
+
+    Runs the executable once; it does not raise for a missing or failing one.
+    """
+    try:
+        done = subprocess.run(  # noqa: S603 - fixed arguments
+            [dosbox_executable(), "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+            env=headless_env(dict(os.environ)),
+        )
+    except EmulatorUnavailable, OSError, subprocess.SubprocessError:
+        return None
+    found = _VERSION_LINE.search(done.stdout + done.stderr)
+    return found.group(1) if found else None
 
 
 def free_port() -> int:

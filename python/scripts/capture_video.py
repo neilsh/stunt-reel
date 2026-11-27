@@ -106,6 +106,7 @@ def plan_video(args: argparse.Namespace) -> capture_run.Plan:
             film=attempt.film_id,
             provenance=attempt.provenance,
             cap=args.max_frames,
+            emulator=video.emulator_info(),
         )
         return (
             f"recorded {len(recorded.log.frame)} frames ({recorded.end}), film starts at frame "
