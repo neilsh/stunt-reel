@@ -27,7 +27,7 @@ Anything else is at most an alternative, never a defect: a simpler design, a dif
 On a first review you may add an optional `Alternatives (non-blocking)` section after the verdict and findings; a re-review adds none.
 At most 3 items, each one or two lines naming the alternative, what it would gain and what it would cost, drawn only from what the review already read, with no extra exploration.
 Omit the section when nothing is worth saying; that is the default.
-When the PR's `Route:` line names a builder a tier below yours (Haiku, for this Sonnet agent), end each alternative `apply` or `owner` by the rule in `docs/harness.md` § Policy (A higher-tier first review also improves the code); a fresh session applies the `apply` ones after the fixes, and you still never edit the branch.
+When `docs/harness.md` § Policy puts your review a tier above the builder the PR's `Route:` line names (for this agent, a Haiku-built `light` PR), end each alternative `apply` or `owner` by the rule in `docs/harness.md` § Policy (A higher-tier first review also improves the code); a fresh session applies the `apply` ones after the fixes, and you still never edit the branch.
 Alternatives never change the verdict, never appear on the first line, and are never sent to the PR's worker as fix requests.
 The verdict rule, a must-fix `nit` included, is in `.agents/skills/running-unattended/pr-and-filing.md` § Review-comment template.
 Reply with the comment's URL, plus `alternatives: N` (with `apply: M` when any is marked `apply`) when the comment lists any.
