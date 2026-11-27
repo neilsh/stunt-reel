@@ -156,6 +156,17 @@ found_by = ["hydrogen"]
 since = "2026-11-25"
 examples = ["intro-3466"]
 
+# Added from the seven reference films' `other` notes at 2026-11-26 and the object-shift census in
+# work/2026-11/1110_object-misaligned/journal.md (#1110): a train, vehicle or prop drawn away from its
+# capture position while the ground lines up. It names what a grader sees and not the cause, because a
+# moving object a tick off looks the same as a misplaced one.
+[[category]]
+id = "object-misaligned"
+definition = "A vehicle, person, parked or distant aircraft, or a building, ramp, sign or other prop is drawn away from where the capture shows it (higher, lower, left or right) while the ground around it lines up, whatever the cause (placement or frame timing); the flown aircraft is aircraft-misplaced, a whole background shift is background-misregistration"
+found_by = ["haiku"]
+since = "2026-11-27"
+examples = []
+
 # A colour category, `aircraft-colour-wrong`, was added at 9be3e2cb with the propeller one and removed
 # on 2026-11-25: a Claude Sonnet pass graded its candidate sheets 1, 0 and 0, so no sheet met the
 # two-model example rule (work/2026-11/calibration-actor-floor/journal.md). Do not reuse the id for a
@@ -168,6 +179,7 @@ examples = ["intro-3466"]
 "actors_removed" = ["aircraft-absent", "aircraft-parts-missing", "aircraft-shape-broken", "shadow-missing", "actors-missing"]
 "shift_y:4" = ["background-misregistration", "aircraft-misplaced"]
 "advance:5" = ["aircraft-misplaced", "background-misregistration", "aircraft-shape-broken"]
+"props_shift:8" = ["object-misaligned"]
 
 # Tick windows the readout picks frames from (end exclusive; omitted = to the end of the film).
 # A film with no entry here is graded over its whole length.

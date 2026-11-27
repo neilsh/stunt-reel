@@ -54,6 +54,7 @@ ALL_FAULTS: tuple[Fault, ...] = (
     *(Fault("shift_x", k) for k in (1, 2, 4, 8)),
     *(Fault("shift_y", k) for k in (1, 2, 4)),
     *(Fault("advance", k) for k in (1, 3, 5)),
+    Fault("props_shift", 8),
     Fault("flat_terrain", None),
     *(Fault("flicker", a) for a in (3, 10)),
     Fault("wrong_tick", None),

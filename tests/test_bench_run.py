@@ -240,7 +240,13 @@ def test_bench_json_has_every_metric_and_fault(document: dict[str, Any]) -> None
     assert set(document["passes"]) == set(METRICS)
     for name in METRICS:
         assert set(document["results"][name]) == keys
-        assert set(document["detectable"][name]) == {"shift_x", "shift_y", "advance", "flicker"}
+        assert set(document["detectable"][name]) == {
+            "shift_x",
+            "shift_y",
+            "advance",
+            "props_shift",
+            "flicker",
+        }
         assert document["results"][name]["none"]["mean_change"] == 0.0
         assert document["results"][name]["none"]["detected"] is False
     assert set(document["differential"]) == keys - {"none", "grey"}

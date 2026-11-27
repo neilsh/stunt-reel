@@ -94,9 +94,9 @@ def _write(tmp_path: Path, text: str) -> Path:
 
 def test_committed_categories_load() -> None:
     taxonomy = load_categories(CATEGORIES)
-    assert len(taxonomy.categories) == 19
+    assert len(taxonomy.categories) == 20
     assert taxonomy.ids[0] == "aircraft-parts-missing"
-    assert taxonomy.ids[-2:] == ("black-block", "propeller-solid")
+    assert taxonomy.ids[-2:] == ("propeller-solid", "object-misaligned")
     assert taxonomy.films["intro"] == FilmWindow(1000, None)
     assert taxonomy.films["ctry"] == FilmWindow(0, 990)
     assert taxonomy.min_change == 4
@@ -220,9 +220,12 @@ def test_plan_sheets_counts(bench_fixture: Path) -> None:
     with_actors = sum(
         1 for t in ticks if np.count_nonzero(tree.load(t).layer >= 16) >= MIN_ACTOR_PIXELS
     )
+    with_props = sum(
+        1 for t in ticks if np.count_nonzero(tree.load(t).layer == 3) >= MIN_ACTOR_PIXELS
+    )
     for key in taxonomy.faults:
         planted = [s for s in sheets if s.kind == "planted" and s.fault == key]
-        expected = with_actors if key == "actors_removed" else len(ticks)
+        expected = {"actors_removed": with_actors, "props_shift:8": with_props}.get(key, len(ticks))
         assert len(planted) == min(6, expected)
     assert len({s.id for s in sheets}) == len(sheets)
 

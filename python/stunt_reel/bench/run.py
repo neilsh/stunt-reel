@@ -54,6 +54,10 @@ FIDELITY_TOLERANCE = 1e-4
 #: The seed ``plant_tree`` plants ``wrong_tick`` with.
 PLANT_SEED = 1
 
+#: Faults the metric bench reports but does not gate: ``props_shift`` moves only prop pixels, so a
+#: frame without props shows no change on any metric, and it exists for the error readout (#1110).
+REPORTED_ONLY_FAULTS = frozenset({"none", "props_shift"})
+
 
 def _regions(control: RenderPlanes) -> Regions:
     return Regions(
@@ -274,7 +278,9 @@ def bench(
             ):
                 detectable[name][fault.name] = fault.magnitude
         passes[name] = all(
-            results[name][fault.key]["detected"] for fault in ALL_FAULTS if fault.name != "none"
+            results[name][fault.key]["detected"]
+            for fault in ALL_FAULTS
+            if fault.name not in REPORTED_ONLY_FAULTS
         )
 
     diff: dict[str, dict[str, Any]] = {}
