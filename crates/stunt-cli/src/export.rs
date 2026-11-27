@@ -380,6 +380,16 @@ mod tests {
         parse(&["--shape", "1", "--animate"]).unwrap_err();
         parse(&["--film", "f.flm", "--tick-range", "0..=4"]).unwrap_err();
         parse(&["--film", "f.flm", "--no-lens-pointer"]).unwrap_err();
+        assert_eq!(
+            parse(&["--film", "f.flm", "--animate"])
+                .expect("valid")
+                .target,
+            Target::Animation {
+                film: PathBuf::from("f.flm"),
+                span: None,
+                lens_pointer: true,
+            }
+        );
         let args = parse(&[
             "--film",
             "f.flm",

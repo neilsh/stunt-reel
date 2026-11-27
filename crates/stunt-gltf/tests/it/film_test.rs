@@ -264,7 +264,6 @@ fn a_lens_change_is_kept_in_extras_and_animated_by_default() {
         !plain.json["extensionsUsed"].to_string().contains("pointer"),
         "no pointer when opted out"
     );
-
     assert!(
         !plain.json.to_string().contains("\"pointer\""),
         "no pointer channel when opted out"

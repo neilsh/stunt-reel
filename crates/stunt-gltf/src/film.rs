@@ -28,8 +28,8 @@
 //! Core glTF cannot animate `yfov`. The camera's `yfov` is the span's first tick's; when the
 //! lens changes, the camera node's `extras.yfov_keys` lists the kept `[time, yfov]` pairs, and
 //! a `KHR_animation_pointer` channel on `/cameras/0/perspective/yfov` animates it, used but
-//! not required. [`FilmExportOptions::lens_pointer`] turns the channel off for readers that
-//! cannot parse it, such as the `gltf` crate 1.4.1.
+//! not required. Setting [`FilmExportOptions::lens_pointer`] to `false` drops the channel for
+//! readers that cannot parse it, such as the `gltf` crate 1.4.1.
 //!
 //! # Not exported
 //!
