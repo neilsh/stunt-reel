@@ -1,0 +1,6 @@
+# #1145: --look modern stills, 70b0f76 (baseline) vs e14d325 (candidate), lavapipe mesa 25.2.8-0ubuntu0.24.04.5, stuntreel --headless --software-only --look modern --sidata <FreeFlight SIDATA> <film> --tick-range T..=T -o <png>
+# RGBA compared with PIL after convert('RGBA'); 'plain' has no effect flag, 'fx' adds --grade --vignette
+CTRY tick 300: 320x240  70b0f76 vs e14d325 plain: byte-identical; e14d325 with --grade --vignette differs from plain in 217036 of 307200 bytes
+CTRY tick 1100: 320x240  70b0f76 vs e14d325 plain: byte-identical; e14d325 with --grade --vignette differs from plain in 214974 of 307200 bytes
+INTRO tick 900: 320x240  70b0f76 vs e14d325 plain: byte-identical; e14d325 with --grade --vignette differs from plain in 209377 of 307200 bytes
+BOMB tick 300: 320x200  70b0f76 vs e14d325 plain: byte-identical; e14d325 with --grade --vignette differs from plain in 175979 of 256000 bytes
