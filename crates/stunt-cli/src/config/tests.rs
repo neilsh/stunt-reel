@@ -294,3 +294,73 @@ fn test_the_render_store_refuses_the_modern_look() {
     }
     parse(&["--look", "mode13h", "--out-dir", "d", "x.FLM"]).expect("store");
 }
+
+#[test]
+fn test_grade_and_vignette_are_off_by_default_and_reach_the_render_options() {
+    use stunt_render::ModernEffects;
+    let effects = |args: &[&str]| parse(args).expect("parses").render_options().effects;
+    assert_eq!(
+        effects(&["--look", "modern", "-o", "s.png", "x.FLM"]),
+        ModernEffects::default()
+    );
+    assert_eq!(
+        effects(&["--look", "modern", "--grade", "-o", "s.png", "x.FLM"]),
+        ModernEffects {
+            grade: true,
+            vignette: false
+        }
+    );
+    assert_eq!(
+        effects(&["--look", "modern", "--vignette", "x.FLM"]),
+        ModernEffects {
+            grade: false,
+            vignette: true
+        }
+    );
+    assert_eq!(
+        effects(&[
+            "--look",
+            "modern",
+            "--grade",
+            "--vignette",
+            "--video",
+            "v.mp4",
+            "x.FLM"
+        ]),
+        ModernEffects {
+            grade: true,
+            vignette: true
+        }
+    );
+}
+
+#[test]
+fn test_grade_and_vignette_are_refused_without_the_modern_look() {
+    for flag in ["--grade", "--vignette"] {
+        for look in [&[][..], &["--look", "mode13h"]] {
+            let mut args = look.to_vec();
+            args.extend_from_slice(&[flag, "x.FLM"]);
+            let error = parse(&args).expect_err("an effect without the modern look");
+            let message = error.to_string();
+            assert!(
+                message.contains(flag) && message.contains("--look modern"),
+                "{message}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_the_render_store_still_refuses_the_modern_look_with_effects() {
+    let error = parse(&[
+        "--look",
+        "modern",
+        "--grade",
+        "--vignette",
+        "--out-dir",
+        "d",
+        "x.FLM",
+    ])
+    .expect_err("modern look with a render store");
+    assert!(error.to_string().contains("--look modern"), "{error}");
+}

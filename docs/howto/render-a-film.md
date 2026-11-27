@@ -19,6 +19,7 @@ Interactive playback follows the authored 50 Hz timeline and interpolates betwee
 stuntreel --look modern <film and flags as above>
 stuntreel --look modern --headless <film and flags as above> --video film.mp4
 stuntreel --look modern --headless <film and flags as above> -o still.png
+stuntreel --look modern --grade --vignette <film and flags as above>
 ```
 
 `--look modern` lights the film in RGB against its sun, with a sky fill, and fogs distance toward the horizon sky, through pipelines and shader entry points beside the parity ones; `--look mode13h` is the default.
@@ -30,6 +31,10 @@ At and below the horizon (edge 14's elevation, about 1 degree up) and in an orth
 The gradient follows the view's elevation, so it matches the bands on the view's centre column and differs from their straight edges under pitch.
 The sun is a soft glow toward its colour (index 239) rather than the hard disc: strongest, 0.9 of the way to the sun colour, within 1 degree of the sun and gone beyond 5, and it tints only the sky above the horizon (`ModernUniform::GLOW_INNER_DEGREES`, `GLOW_OUTER_DEGREES`, `GLOW`).
 The sky entry points are `fs_sky_modern` and `fs_sky_modern_plane` in the modern section of `mode13h.wgsl`; the plane still holds the Mode 13h sky's index, so picking and the layer plane are unchanged.
+Two finishes sit on top, each its own flag, off by default and refused without `--look modern`; with both off the page is byte-identical to one rendered without them.
+`--grade` raises saturation and contrast about mid-grey a little and warms the colour a touch, in the target's sRGB values (`ModernUniform::GRADE_SATURATION` 1.10, `GRADE_CONTRAST` 1.05, `GRADE_WARM` 0.010, added to red, 0.35 of it to green, taken from blue).
+`--vignette` darkens toward the corners by `1 - VIGNETTE * smoothstep(VIGNETTE_START, VIGNETTE_END, r)`, `r` the distance from the centre of the rectangle the scene is drawn into (the 4:3 window area, or `--viewport-rows` rows) over its half-diagonal; `VIGNETTE` is 0.25, from 0.5 to 1.0 (`ModernUniform`).
+Both are applied to every modern fragment, the sky included, in `modern_finish` in the modern section of `mode13h.wgsl`; the letterbox bars are neither graded nor vignetted, and the planes are unchanged.
 It is a viewer: `--out-dir` refuses it, since the render store holds Mode 13h renders that are scored, and `stuntreel shape-views` stays on the Mode 13h look.
 
 ## Sample it at an interval

@@ -5,12 +5,14 @@
 //! - `[I6]` VGA 4:3 physical aspect ratio ($320 \times 240$ base), applied after a
 //!   square-pixel projection on the $320 \times 200$ raster.
 
+use std::mem::offset_of;
+
 use glam::{DMat4, DVec3, Mat4, Vec3, camera::rh};
 use stunt_core::contracts::trajectory::PLAYONE_FOV_Y_DEGREES;
 use stunt_core::scene::ViewCamera;
 use stunt_core::sod::ShadeLight;
 
-use crate::renderer::Look;
+use crate::renderer::{Look, ModernEffects};
 use crate::sky::{SkyCamera, SkyLayout};
 
 /// Standard 4:3 physical aspect ratio for VGA Mode 13h ($320 \times 240$): the window's
@@ -35,7 +37,7 @@ pub const DEFAULT_NEAR_CLIP: f32 = 0.1;
 /// projection has no far plane.
 pub const DEFAULT_FAR_CLIP: f32 = 25_000.0;
 
-/// The modern look's lighting and fog, matching WGSL `@group(0) @binding(1)` (`ModernUniform`).
+/// The modern look's lighting, fog, sky and optional finish, matching WGSL `@group(0) @binding(1)` (`ModernUniform`).
 ///
 /// Only the `vs_modern`/`fs_modern` and `fs_sky_modern` entry points read it; the parity look's pipelines carry the
 /// same bind group and never touch it.
@@ -58,9 +60,37 @@ pub struct ModernUniform {
     /// The sun's glow: the cosine of its inner angle (full strength inside), the cosine of its
     /// outer angle (none outside), [`GLOW`](Self::GLOW), then padding.
     pub glow: [f32; 4],
+    /// The colour grade: [`GRADE_SATURATION`](Self::GRADE_SATURATION),
+    /// [`GRADE_CONTRAST`](Self::GRADE_CONTRAST), [`GRADE_WARM`](Self::GRADE_WARM), then 1 when
+    /// the grade is on and 0 when it is off, where the shader skips it.
+    pub grade: [f32; 4],
+    /// The vignette: [`VIGNETTE`](Self::VIGNETTE) (0 when off), then
+    /// [`VIGNETTE_START`](Self::VIGNETTE_START) and [`VIGNETTE_END`](Self::VIGNETTE_END), then
+    /// padding.
+    pub vignette: [f32; 4],
+    /// The view rectangle the scene is drawn into, in target pixels: the top-left corner `x, y`,
+    /// then the width and height; zero until the renderer writes it where it sets the viewport,
+    /// and the vignette is skipped while it is. Last, so the rest of the uniform is written
+    /// without it.
+    pub view: [f32; 4],
 }
 
 impl ModernUniform {
+    /// The grade's saturation: the colour's distance from its luma, scaled.
+    pub const GRADE_SATURATION: f32 = 1.10;
+    /// The grade's contrast: the colour's distance from mid-grey, scaled.
+    pub const GRADE_CONTRAST: f32 = 1.05;
+    /// The grade's warm shift: added to red, 0.35 of it to green, taken from blue.
+    pub const GRADE_WARM: f32 = 0.010;
+    /// The vignette's darkening at and beyond [`VIGNETTE_END`](Self::VIGNETTE_END): the share of
+    /// the colour it takes away.
+    pub const VIGNETTE: f32 = 0.25;
+    /// Where the vignette starts, a share of the view's half-diagonal from its centre.
+    pub const VIGNETTE_START: f32 = 0.5;
+    /// Where the vignette is full, a share of the view's half-diagonal from its centre; past
+    /// [`VIGNETTE_START`](Self::VIGNETTE_START), which `smoothstep` needs.
+    pub const VIGNETTE_END: f32 = 1.0;
+
     /// The angle in degrees from the sun inside which its glow is at full strength. The glow
     /// falls off by `smoothstep` to [`GLOW_OUTER_DEGREES`](Self::GLOW_OUTER_DEGREES), so its
     /// visible size is near `PLAYONE`'s disc (a radius of about 3 degrees at the default lens).
@@ -98,14 +128,35 @@ impl ModernUniform {
                 Self::GLOW,
                 0.0,
             ],
+            grade: [1.0, 1.0, 0.0, 0.0],
+            vignette: [0.0, Self::VIGNETTE_START, Self::VIGNETTE_END, 0.0],
+            view: [0.0; 4],
         }
     }
 
-    /// [`for_sun`](Self::for_sun) for the view `camera`: its sky's per-pixel ray basis, from the
-    /// same `SkyCamera` the parity sky bands are laid out from.
+    /// This uniform with the `effects` that are on: the grade's constants and flag, the
+    /// vignette's strength. Off leaves the identity grade and a vignette of zero.
     #[must_use]
-    pub fn for_view(variable_13: u16, camera: &CameraController) -> Self {
-        let mut uniform = Self::for_sun(variable_13);
+    pub fn with_effects(mut self, effects: ModernEffects) -> Self {
+        if effects.grade {
+            self.grade = [
+                Self::GRADE_SATURATION,
+                Self::GRADE_CONTRAST,
+                Self::GRADE_WARM,
+                1.0,
+            ];
+        }
+        if effects.vignette {
+            self.vignette[0] = Self::VIGNETTE;
+        }
+        self
+    }
+
+    /// [`for_sun`](Self::for_sun) for the view `camera`, with `effects`: its sky's per-pixel ray
+    /// basis, from the same `SkyCamera` the parity sky bands are laid out from.
+    #[must_use]
+    pub fn for_view(variable_13: u16, camera: &CameraController, effects: ModernEffects) -> Self {
+        let mut uniform = Self::for_sun(variable_13).with_effects(effects);
         if let Some(sky) = camera.sky_camera() {
             let [cx, cy] = sky.centre;
             let [fx, fy] = sky.focal;
@@ -561,6 +612,8 @@ pub(crate) struct CameraGpuResources {
     pub(crate) modern_buffer: wgpu::Buffer,
     /// The look the renderer draws in; only [`Look::Modern`] refreshes `modern_buffer`.
     look: Look,
+    /// The finish the modern look applies; both off for any other look.
+    effects: ModernEffects,
     /// Bind group layout for `@group(0) @binding(0)` and `@binding(1)`.
     pub(crate) bind_group_layout: wgpu::BindGroupLayout,
     /// Bind group containing the buffer.
@@ -590,7 +643,7 @@ impl CameraGpuResources {
         clippy::expect_used,
         reason = "the buffer is created with `mapped_at_creation: true`, so its range is mapped"
     )]
-    pub(crate) fn new(device: &wgpu::Device, look: Look) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, look: Look, effects: ModernEffects) -> Self {
         let bind_group_layout = Self::create_bind_group_layout(device);
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("stunt_camera_uniform_buffer"),
@@ -636,6 +689,7 @@ impl CameraGpuResources {
             buffer,
             modern_buffer,
             look,
+            effects,
             bind_group_layout,
             bind_group,
         }
@@ -646,8 +700,9 @@ impl CameraGpuResources {
         queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(uniform));
     }
 
-    /// Uploads the modern look's sun and sky for a frame whose variable 13 is `variable_13`, seen
-    /// by `controller`; the parity look writes nothing.
+    /// Uploads the modern look's sun, sky and effects for a frame whose variable 13 is
+    /// `variable_13`, seen by `controller`, all but the view rectangle ([`Self::upload_view`]);
+    /// the parity look writes nothing.
     pub(crate) fn upload_look(
         &self,
         queue: &wgpu::Queue,
@@ -655,10 +710,25 @@ impl CameraGpuResources {
         controller: &CameraController,
     ) {
         if self.look == Look::Modern {
+            let uniform = ModernUniform::for_view(variable_13, controller, self.effects);
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "the view rectangle is a field, so its offset is inside the uniform"
+            )]
+            let bytes = &bytemuck::bytes_of(&uniform)[..offset_of!(ModernUniform, view)];
+            queue.write_buffer(&self.modern_buffer, 0, bytes);
+        }
+    }
+
+    /// Uploads the view rectangle `[x, y, width, height]` in target pixels that the frame about
+    /// to be drawn fills, for the modern vignette to centre on; the parity look writes nothing.
+    /// Call it wherever the pass's viewport is set, after [`Self::upload_look`].
+    pub(crate) fn upload_view(&self, queue: &wgpu::Queue, view: [f32; 4]) {
+        if self.look == Look::Modern {
             queue.write_buffer(
                 &self.modern_buffer,
-                0,
-                bytemuck::bytes_of(&ModernUniform::for_view(variable_13, controller)),
+                offset_of!(ModernUniform, view) as u64,
+                bytemuck::bytes_of(&view),
             );
         }
     }

@@ -16,7 +16,7 @@ use crate::draw_order::{film_looking_at, film_with_sky, push_mesh};
 use stunt_core::contracts::{PaletteControls, SodModelIr, SodVertex, VERTEX_FLAG_PRESHADED};
 use stunt_core::scene::FilmScene;
 use stunt_core::sod::ShadeLight;
-use stunt_render::{Look, Offscreen, RenderOptions, RenderedPage};
+use stunt_render::{Look, ModernEffects, ModernUniform, Offscreen, RenderOptions, RenderedPage};
 
 /// `SodVertex::flags` of an unshaded face, which the modern look lights by its normal.
 const UNSHADED: u8 = 4;
@@ -178,15 +178,33 @@ fn nothing() -> SodModelIr {
 /// Renders the sky seen from the origin looking toward `target` (the facet is at the origin,
 /// out of view), in a film whose variable 13 is `sky`, or `None` without a GPU adapter.
 fn shoot_sky(target: [f32; 3], look: Look, sky: u16) -> Option<RenderedPage> {
+    shoot_sky_with(
+        target,
+        look,
+        sky,
+        ModernEffects::default(),
+        Offscreen::default(),
+    )
+}
+
+/// [`shoot_sky`] with the modern `effects` on, into `target`.
+fn shoot_sky_with(
+    target: [f32; 3],
+    look: Look,
+    sky: u16,
+    effects: ModernEffects,
+    page: Offscreen,
+) -> Option<RenderedPage> {
     let scene = FilmScene::with_single_model(
         film_looking_at([0.0, 0.0, 0.0], target, Vec::new(), sky),
         nothing(),
     );
     let mut test = common::gpu_or_skip_offscreen(
         &scene,
-        Offscreen::default(),
+        page,
         RenderOptions {
             look,
+            effects,
             ..RenderOptions::default()
         },
     )?;
@@ -423,21 +441,27 @@ fn a_low_suns_glow_leaves_the_sky_at_and_below_the_horizon_the_horizon_colour() 
             .expect("some sun lies just above the horizon");
         let [x, y, z] = ShadeLight::world(sky).sun_direction();
         assert!(y < 0.05, "sun elevation sin {y}");
-        // A level view toward the sun's heading.
-        let (Some(page), Some(horizon)) = (
+        // A level view toward the sun's heading, and one away from it: the same gradient by
+        // elevation, so a row that differs between them is the glow.
+        let (Some(page), Some(away), Some(horizon)) = (
             shoot_sky([x * 100.0, 0.0, z * 100.0], Look::Modern, sky),
+            shoot_sky([-x * 100.0, 0.0, -z * 100.0], Look::Modern, sky),
             palette_colour(FOG_INDEX, sky),
         ) else {
             return;
         };
         let rows = column(&page, page.width() as usize / 2);
+        let away = column(&away, away.width() as usize / 2);
         let middle = rows.len() / 2;
         for (row, colour) in rows.iter().enumerate().skip(middle - 2) {
             assert_eq!(*colour, horizon, "row {row} of {}", rows.len());
         }
         assert!(
-            rows.iter().take(middle - 2).any(|c| *c != horizon),
-            "the glow tints the sky above the horizon"
+            rows.iter()
+                .zip(&away)
+                .take(middle - 2)
+                .any(|(toward, away)| toward != away),
+            "the glow tints no row above the horizon: toward the sun is the same as away from it"
         );
     });
 }
@@ -627,6 +651,352 @@ fn far_geometry_fades_to_the_horizon_sky_colour() {
         };
         assert_ne!(centre(&near), centre(&horizon));
         assert_eq!(centre(&far), centre(&horizon));
+    });
+}
+
+const GRADE: ModernEffects = ModernEffects {
+    grade: true,
+    vignette: false,
+};
+const VIGNETTE: ModernEffects = ModernEffects {
+    grade: false,
+    vignette: true,
+};
+
+/// [`shoot_with_sky`] in the modern look with `effects`, at the default sky.
+fn shoot_effects(ir: SodModelIr, distance: f32, effects: ModernEffects) -> Option<RenderedPage> {
+    let scene = FilmScene::with_single_model(
+        film_with_sky(
+            [0.0, 0.0, distance],
+            Vec::new(),
+            PaletteControls::default().sky,
+        ),
+        ir,
+    );
+    let mut test = common::gpu_or_skip_offscreen(
+        &scene,
+        Offscreen::default(),
+        RenderOptions {
+            look: Look::Modern,
+            effects,
+            ..RenderOptions::default()
+        },
+    )?;
+    Some(test.draw(&scene.frame(0.0)))
+}
+
+/// A pre-shaded facet in palette `index`, which the modern look draws in that index's colour
+/// untouched, filling the page's centre.
+fn preshaded(index: u8) -> SodModelIr {
+    facet(2.0, index, VERTEX_FLAG_PRESHADED)
+}
+
+/// What the grade makes of `rgb`, in 8-bit units, by the formula in `modern_finish`.
+fn graded(rgb: [u8; 3]) -> [f32; 3] {
+    let c = rgb.map(|v| f32::from(v) / 255.0);
+    let luma = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    let channel = |c: f32, warm: f32| {
+        let saturated = luma + (c - luma) * ModernUniform::GRADE_SATURATION;
+        let contrasted = (saturated - 0.5) * ModernUniform::GRADE_CONTRAST + 0.5;
+        (contrasted + ModernUniform::GRADE_WARM * warm).clamp(0.0, 1.0) * 255.0
+    };
+    let [r, g, b] = c;
+    [channel(r, 1.0), channel(g, 0.35), channel(b, -1.0)]
+}
+
+/// Whether `got` is within `tolerance` of `want` on each channel.
+fn near(got: [u8; 3], want: [f32; 3], tolerance: f32) -> bool {
+    got.iter()
+        .zip(want)
+        .all(|(&got, want)| (f32::from(got) - want).abs() <= tolerance)
+}
+
+/// A pair of palette indices (`0..224`, clear of the sky) whose entries read as a light grey
+/// and as the most saturated colour of middling brightness: both are changed by the grade and
+/// neither is clamped by it.
+fn grey_and_colour_indices() -> (u8, u8) {
+    let palette = PaletteControls::default().film_palette();
+    let entries = || (0..224u8).zip(palette);
+    let grey = entries()
+        .filter(|&(_, (r, g, b))| r == g && g == b && (150..235).contains(&r))
+        .map(|(i, _)| i)
+        .next()
+        .expect("a light grey in the palette");
+    let chroma = |(r, g, b): (u8, u8, u8)| i32::from(r.max(g).max(b)) - i32::from(r.min(g).min(b));
+    let colour = entries()
+        .filter(|&(_, (r, g, b))| {
+            (60..200).contains(&((u32::from(r) + u32::from(g) + u32::from(b)) / 3))
+        })
+        .max_by_key(|&(_, rgb)| chroma(rgb))
+        .map(|(i, _)| i)
+        .expect("a saturated colour in the palette");
+    (grey, colour)
+}
+
+#[test]
+fn the_effects_off_leave_the_page_as_it_was_and_each_alone_changes_it() {
+    common::gpu_test(|| {
+        let ir = || facet(2.0, FACET_INDEX, UNSHADED);
+        let (Some(plain), Some(off), Some(graded), Some(vignetted)) = (
+            shoot(ir(), 10.0, Look::Modern),
+            shoot_effects(ir(), 10.0, ModernEffects::default()),
+            shoot_effects(ir(), 10.0, GRADE),
+            shoot_effects(ir(), 10.0, VIGNETTE),
+        ) else {
+            return;
+        };
+        assert_eq!(
+            plain.rgba(),
+            off.rgba(),
+            "both off is the render without them"
+        );
+        assert_ne!(plain.rgba(), graded.rgba(), "the grade changes the page");
+        assert_ne!(
+            plain.rgba(),
+            vignetted.rgba(),
+            "the vignette changes the page"
+        );
+        // Only the colour: the index, layer and shape planes are the parity look's.
+        for page in [&graded, &vignetted] {
+            assert_eq!(plain.indices(), page.indices());
+            assert_eq!(plain.layers(), page.layers());
+            assert_eq!(plain.shapes(), page.shapes());
+        }
+    });
+}
+
+#[test]
+fn the_effects_do_nothing_in_the_mode13h_look() {
+    common::gpu_test(|| {
+        let scene = || {
+            FilmScene::with_single_model(
+                film_with_sky([0.0, 0.0, 10.0], Vec::new(), PaletteControls::default().sky),
+                facet(2.0, FACET_INDEX, UNSHADED),
+            )
+        };
+        let draw = |effects| {
+            let scene = scene();
+            let mut test = common::gpu_or_skip_offscreen(
+                &scene,
+                Offscreen::default(),
+                RenderOptions {
+                    effects,
+                    ..RenderOptions::default()
+                },
+            )?;
+            Some(test.draw(&scene.frame(0.0)))
+        };
+        let (Some(plain), Some(both)) = (
+            draw(ModernEffects::default()),
+            draw(ModernEffects {
+                grade: true,
+                vignette: true,
+            }),
+        ) else {
+            return;
+        };
+        assert_eq!(plain.rgba(), both.rgba());
+    });
+}
+
+/// The vignette's darkening at distance `r` from the view's centre over its half-diagonal.
+fn vignette_factor(r: f32) -> f32 {
+    let t = ((r - ModernUniform::VIGNETTE_START)
+        / (ModernUniform::VIGNETTE_END - ModernUniform::VIGNETTE_START))
+        .clamp(0.0, 1.0);
+    1.0 - ModernUniform::VIGNETTE * t * t * (3.0 - 2.0 * t)
+}
+
+/// Every pixel of `with` inside `view` (`[x, y, width, height]` in whole pixels) is `without` times the
+/// vignette's factor at its distance from the view's centre, to within a level of rounding;
+/// returns the pixels checked and how many the vignette took at least `10` levels from.
+fn check_vignette(without: &RenderedPage, with: &RenderedPage, view: [u16; 4]) -> (u32, u32) {
+    let [vx, vy, vw, vh] = view.map(f32::from);
+    let half_diagonal = 0.5 * vw.hypot(vh);
+    let (mut checked, mut darkened) = (0, 0);
+    for y in 0..usize::from(view[1] + view[3]) {
+        for x in 0..usize::from(view[0] + view[2]) {
+            let (px, py) = (u16::try_from(x).unwrap(), u16::try_from(y).unwrap());
+            let r = (f32::from(px) + 0.5 - (vx + 0.5 * vw))
+                .hypot(f32::from(py) + 0.5 - (vy + 0.5 * vh))
+                / half_diagonal;
+            let (plain, got) = (pixel(without, x, y), pixel(with, x, y));
+            let factor = vignette_factor(r);
+            assert!(
+                near(got, plain.map(|c| f32::from(c) * factor), 1.01),
+                "pixel ({x}, {y}) at r {r}: {plain:?} * {factor} is not {got:?}"
+            );
+            checked += 1;
+            darkened += u32::from(brightness(plain) >= brightness(got) + 30);
+        }
+    }
+    (checked, darkened)
+}
+
+#[test]
+fn the_vignette_leaves_the_centre_and_darkens_the_corners_by_its_formula() {
+    common::gpu_test(|| {
+        let (Some(without), Some(with)) = (
+            shoot_sky(pitched(20.0), Look::Modern, PaletteControls::default().sky),
+            shoot_sky_with(
+                pitched(20.0),
+                Look::Modern,
+                PaletteControls::default().sky,
+                VIGNETTE,
+                Offscreen::default(),
+            ),
+        ) else {
+            return;
+        };
+        let (w, h) = (without.width() as usize, without.height() as usize);
+        assert_eq!(pixel(&without, w / 2, h / 2), pixel(&with, w / 2, h / 2));
+        let corner = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)];
+        for (x, y) in corner {
+            // The corner pixel's r is within a pixel of 1, so it takes all of the vignette.
+            let (plain, got) = (pixel(&without, x, y), pixel(&with, x, y));
+            let darkest = brightness(plain) as f32 * (1.0 - 0.9 * ModernUniform::VIGNETTE);
+            assert!(
+                brightness(got) as f32 <= darkest,
+                "corner ({x}, {y}) {got:?} is not darker than {plain:?} by most of the vignette"
+            );
+        }
+        let (checked, darkened) = check_vignette(
+            &without,
+            &with,
+            [0, 0, u16::try_from(w).unwrap(), u16::try_from(h).unwrap()],
+        );
+        assert_eq!(checked as usize, w * h);
+        assert!(
+            darkened > checked / 10,
+            "{darkened} of {checked} pixels darkened"
+        );
+    });
+}
+
+#[test]
+fn the_vignette_centres_on_the_rows_the_scene_is_drawn_into() {
+    common::gpu_test(|| {
+        // The scene fills the top 40 rows of the page: the view's centre is row 20, not the
+        // page's row 120, so the top row's middle (r = 0.12 of the view) keeps its colour where
+        // it would be a few levels dimmer measured from the page's centre, and the rows below the
+        // view, which the scene does not draw, are untouched.
+        let page = Offscreen::default().with_viewport_rows(40);
+        let sky = PaletteControls::default().sky;
+        let (Some(without), Some(with)) = (
+            shoot_sky_with(
+                pitched(20.0),
+                Look::Modern,
+                sky,
+                ModernEffects::default(),
+                page,
+            ),
+            shoot_sky_with(pitched(20.0), Look::Modern, sky, VIGNETTE, page),
+        ) else {
+            return;
+        };
+        let w = without.width() as usize;
+        assert_eq!(pixel(&without, w / 2, 0), pixel(&with, w / 2, 0));
+        let (checked, darkened) =
+            check_vignette(&without, &with, [0, 0, u16::try_from(w).unwrap(), 40]);
+        assert_eq!(checked as usize, w * 40);
+        assert!(
+            darkened > checked / 10,
+            "{darkened} of {checked} pixels darkened"
+        );
+        for y in 40..without.height() as usize {
+            assert_eq!(column(&without, 5)[y], column(&with, 5)[y], "row {y}");
+        }
+    });
+}
+
+#[test]
+fn the_grade_on_a_known_grey_and_a_known_colour_matches_its_formula() {
+    common::gpu_test(|| {
+        let (grey, colour) = grey_and_colour_indices();
+        for index in [grey, colour] {
+            let (Some(plain), Some(with)) = (
+                shoot_effects(preshaded(index), 10.0, ModernEffects::default()),
+                shoot_effects(preshaded(index), 10.0, GRADE),
+            ) else {
+                return;
+            };
+            let (before, after) = (centre(&plain), centre(&with));
+            assert!(
+                near(after, graded(before), 1.01),
+                "index {index}: {before:?} graded is {after:?}, not {:?}",
+                graded(before)
+            );
+            assert_ne!(after, before, "index {index} is not changed by the grade");
+        }
+    });
+}
+
+#[test]
+fn the_grade_saturates_a_colour_and_leaves_a_grey_grey_but_for_the_warm_shift() {
+    common::gpu_test(|| {
+        let (grey, colour) = grey_and_colour_indices();
+        let chroma = |rgb: [u8; 3]| {
+            i32::from(rgb.iter().max().copied().unwrap_or(0))
+                - i32::from(rgb.iter().min().copied().unwrap_or(0))
+        };
+        let (Some(plain), Some(with)) = (
+            shoot_effects(preshaded(colour), 10.0, ModernEffects::default()),
+            shoot_effects(preshaded(colour), 10.0, GRADE),
+        ) else {
+            return;
+        };
+        assert!(
+            chroma(centre(&with)) > chroma(centre(&plain)),
+            "{:?} is not more saturated than {:?}",
+            centre(&with),
+            centre(&plain)
+        );
+        let Some(with) = shoot_effects(preshaded(grey), 10.0, GRADE) else {
+            return;
+        };
+        let [r, g, b] = centre(&with);
+        // A grey is warmed: red above blue by twice the shift, green between them.
+        let warm = 2.0 * ModernUniform::GRADE_WARM * 255.0;
+        let spread = f32::from(r) - f32::from(b);
+        assert!(r > b && g >= b && g <= r, "{:?} is not warmed", [r, g, b]);
+        assert!(
+            (spread - warm).abs() <= 1.01,
+            "{:?} is not {warm} warmer",
+            [r, g, b]
+        );
+    });
+}
+
+#[test]
+fn the_grade_reaches_the_sky_by_its_formula() {
+    common::gpu_test(|| {
+        let sky = PaletteControls::default().sky;
+        let (Some(without), Some(with)) = (
+            shoot_sky(pitched(20.0), Look::Modern, sky),
+            shoot_sky_with(
+                pitched(20.0),
+                Look::Modern,
+                sky,
+                GRADE,
+                Offscreen::default(),
+            ),
+        ) else {
+            return;
+        };
+        let (w, h) = (without.width() as usize, without.height() as usize);
+        let mut changed = 0;
+        for y in 0..h {
+            for x in 0..w {
+                let (plain, got) = (pixel(&without, x, y), pixel(&with, x, y));
+                assert!(
+                    near(got, graded(plain), 1.6),
+                    "sky pixel ({x}, {y}): {plain:?} graded is {got:?}, not {:?}",
+                    graded(plain)
+                );
+                changed += usize::from(got != plain);
+            }
+        }
+        assert!(changed > w * h / 2, "{changed} of {} pixels changed", w * h);
     });
 }
 

@@ -42,7 +42,7 @@ mod world_stream;
 
 pub use camera::{
     ASPECT_4_3, CameraController, CameraMode, CameraUniform, FreeCamState,
-    MODE13H_PROJECTION_ASPECT, Projection,
+    MODE13H_PROJECTION_ASPECT, ModernUniform, Projection,
 };
 pub use palette::{
     PALETTE_LUT_HEIGHT, PALETTE_LUT_WIDTH, build_palette_lut_bytes, build_palette_lut_bytes_from,
@@ -52,7 +52,7 @@ pub use pipeline::{
 };
 pub use renderer::{
     ASPECT_CORRECTED_HEIGHT, AdapterIdentity, DEFAULT_CLEAR_PALETTE_INDEX, DEFAULT_PAGE_HEIGHT,
-    DEFAULT_PAGE_WIDTH, Look, MODE13H_HEIGHT, MODE13H_WIDTH, Offscreen, PageSink, PageSize,
-    RenderError, RenderOptions, RenderedPage, Renderer, SinkError, UploadTimes,
+    DEFAULT_PAGE_WIDTH, Look, MODE13H_HEIGHT, MODE13H_WIDTH, ModernEffects, Offscreen, PageSink,
+    PageSize, RenderError, RenderOptions, RenderedPage, Renderer, SinkError, UploadTimes,
 };
 pub use video::{FfmpegVideoWriter, VideoExportError};
