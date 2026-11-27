@@ -58,6 +58,14 @@ It then calls VM `0x3D42` (image `0xBF82`, at `0xBF6C`), which returns carry to 
 The colour arrives as stored: every colour the gateway drew from this routine is a leaf colour.
 A ground leaf is one flat palette index.
 
+**No distance cut; a coarse patch by depth.**
+`[Established]`, static (`mise run re-tool -- disasm 0x2360 0x2410`, unpatched; the gate's bytes `0x2385..0x23A0` recur at `0x2498` in the Patch #3 image).
+The leaf handler tests only for an empty polygon and the facing above, so the scenery cull's distance cut (`0x1B0C`, [`world-scene-residuals.md`](world-scene-residuals.md) section 6.4) never reaches a ground leaf.
+`SP_GROUND` (`0x2360`, `[type, splitdist, ext, x, y, z, ptr, next]`) subtracts the eye from `x, y, z` and rotates it by the view matrix `0x80C0`, skips itself and all its patches when outside the view by its `ext` (`0x2385..0x239A`), then draws its own coarse polygon through the leaf code when the depth word `CX` exceeds `splitdist` (`0x239C`, jump to `0x23BC`), else walks its finer patches (`ptr`) instead, and continues at `next`.
+`CX` is the depth row's high word, as at the `SP_1NODE` gate ([`lod.md`](lod.md) section 2.2), with no detail scaling.
+Our renderer draws the 12 coarse polygons and their finer patches together at every distance (#1207).
+_Source: [`land` 551's mountain is hidden by a nearer face](../../work/2026-11/1197_ctry-hill-flicker/journal.md#2026-11-27-land-551s-mountain-is-hidden-by-a-nearer-face-not-left-out)._
+
 The tree segment is the stack segment while it is walked (`SS = 0x2AAA` under DOSBox-X: load paragraph `0x0824` plus image paragraph `0x2286`), and in a live dump of it 118 of 128 sampled 32-byte windows, one every `0x200` bytes, match the image at `0x22860`; the other 10 hold the stack and other mutable words.
 Nothing builds or loads the tree: it is part of `PLAYONE.EXE`.
 _Source: [2026-11-04: the live ground tree](../../work/2026-11/distill-world-scene/journal.md#2026-11-04-the-live-ground-tree)._
