@@ -17,29 +17,29 @@
 # the class agreement batch (`mise run agreement`, ADR 0055), so its `crates` lags between batches.
 
 [ctry]
-ssim = 0.9440857
+ssim = 0.9442895
 iou = 0.9953103
-crates = "c1cfb55cc6f56aec96bc900f4df6c58eabe059f2"
+crates = "0dade452f27c47ce079ea8a476b45b2a9aa6765d"
 sha256 = "dade17cae3d85a23fb829366c1c42813de51d91e9fdd93ffc8470cbc897b4c77"
 all_sha256 = "cb58d95b72f02819d15c5e6dad0973e72af8026455dbf5e13e41933711bb12ce"
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
 
 [ctry.loss]
-sky = 0.0070772
-reference_only = 0.0009858
+sky = 0.0070756
+reference_only = 0.0009849
 ocean = 0.0000987
-terrain = 0.0117361
-props = 0.0308089
+terrain = 0.0117359
+props = 0.0306075
 actors = 0.0051598
 ocean_render_only = 0.0000104
 terrain_render_only = 0.0000239
-props_and_actors_render_only = 0.0000131
+props_and_actors_render_only = 0.0000130
 overlay = 0.0000000
 
 [intro]
-ssim = 0.9068792
+ssim = 0.9069152
 iou = 0.9885572
-crates = "c1cfb55cc6f56aec96bc900f4df6c58eabe059f2"
+crates = "0dade452f27c47ce079ea8a476b45b2a9aa6765d"
 sha256 = "f8c971f3569d424ec44571ea4ec762efd9289d20a6ba2a51f893ca20fcaa148c"
 all_sha256 = "2dc8f628198993c420ba632c8b7c5884015afb5c010aabe58b57a75d3a3428e3"
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
@@ -48,38 +48,38 @@ adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
 sky = 0.0063858
 reference_only = 0.0012235
 ocean = 0.0015810
-terrain = 0.0231693
-props = 0.0346782
-actors = 0.0257932
+terrain = 0.0231541
+props = 0.0346578
+actors = 0.0257929
 ocean_render_only = 0.0000951
 terrain_render_only = 0.0000184
-props_and_actors_render_only = 0.0001753
+props_and_actors_render_only = 0.0001754
 overlay = 0.0000000
 
 [land]
-ssim = 0.9339907
+ssim = 0.9341244
 iou = 0.9859885
-crates = "c1cfb55cc6f56aec96bc900f4df6c58eabe059f2"
+crates = "0dade452f27c47ce079ea8a476b45b2a9aa6765d"
 sha256 = "bc159031dd44974a3e3e6c250489c8edb8a0cd0138305e86b9f0bcd4536d7469"
 all_sha256 = "342003624122671573d562fb814c9bf6d1bf75e3ff8727f26fedabcda45b4218"
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
 
 [land.loss]
-sky = 0.0042701
-reference_only = 0.0017419
-ocean = 0.0005704
-terrain = 0.0225275
-props = 0.0249643
-actors = 0.0111098
+sky = 0.0042700
+reference_only = 0.0017307
+ocean = 0.0005702
+terrain = 0.0225100
+props = 0.0249600
+actors = 0.0110095
 ocean_render_only = 0.0000000
 terrain_render_only = 0.0002453
-props_and_actors_render_only = 0.0005771
+props_and_actors_render_only = 0.0005770
 overlay = 0.0000000
 
 [balloon]
-ssim = 0.9067230
+ssim = 0.9080578
 iou = 0.9507836
-crates = "c1cfb55cc6f56aec96bc900f4df6c58eabe059f2"
+crates = "0dade452f27c47ce079ea8a476b45b2a9aa6765d"
 sha256 = "911e95c499b03d164c27c069480388b05beeee915d7b0918cae968d693195287"
 all_sha256 = "e8d852fa8f77ff9b708b8066ddb26457a0498cb94060f1976741355ff510a415"
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
@@ -88,9 +88,9 @@ adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
 sky = 0.0107052
 reference_only = 0.0017039
 ocean = 0.0007838
-terrain = 0.0298972
-props = 0.0029358
-actors = 0.0461143
+terrain = 0.0298642
+props = 0.0016377
+actors = 0.0461106
 ocean_render_only = 0.0000000
 terrain_render_only = 0.0000060
 props_and_actors_render_only = 0.0011310
@@ -99,7 +99,7 @@ overlay = 0.0000000
 [traintnl]
 ssim = 0.9159914
 iou = 0.9719370
-crates = "c1cfb55cc6f56aec96bc900f4df6c58eabe059f2"
+crates = "0dade452f27c47ce079ea8a476b45b2a9aa6765d"
 sha256 = "78394e1f328680bd509606bb054b5290cb9bac578faf267a5a8a503f00f12e8d"
 all_sha256 = "a649413eafced2c711b63e761c40c62d0e2502c5020944a62c32b97b6d27b8c9"
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
@@ -117,39 +117,39 @@ props_and_actors_render_only = 0.0001757
 overlay = 0.0000000
 
 [bomb]
-ssim = 0.9082630
+ssim = 0.9110406
 iou = 0.9692311
-crates = "c1cfb55cc6f56aec96bc900f4df6c58eabe059f2"
+crates = "0dade452f27c47ce079ea8a476b45b2a9aa6765d"
 sha256 = "1fa390a598947c4125cd235e699e9b319ce26be45739f4e097a7ec0dc45d51f3"
 all_sha256 = "b1a48485d817a2d72f8f2ebaa8e8c2599d0599bc7426a78ecce6ade45d223945"
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
 
 [bomb.loss]
-sky = 0.0112204
-reference_only = 0.0020883
+sky = 0.0112139
+reference_only = 0.0020825
 ocean = 0.0012590
-terrain = 0.0156820
-props = 0.0506075
-actors = 0.0106456
+terrain = 0.0154962
+props = 0.0480445
+actors = 0.0106310
 ocean_render_only = 0.0000000
 terrain_render_only = 0.0000006
-props_and_actors_render_only = 0.0002327
+props_and_actors_render_only = 0.0002310
 overlay = 0.0000000
 
 [location]
-ssim = 0.8975295
+ssim = 0.8979050
 iou = 0.9809296
-crates = "c1cfb55cc6f56aec96bc900f4df6c58eabe059f2"
+crates = "0dade452f27c47ce079ea8a476b45b2a9aa6765d"
 sha256 = "2ea6fe3fc28688b4232003381385bd896ba94205b89987e8b9e4215bff2f8b1c"
 all_sha256 = "4a427bdda8f019acfc4dea7269745699dae50b006c971486cc7de5fe2b298d63"
 adapter = "llvmpipe (LLVM 20.1.2, 256 bits)"
 
 [location.loss]
 sky = 0.0058871
-reference_only = 0.0012671
-ocean = 0.0071508
-terrain = 0.0242916
-props = 0.0577174
+reference_only = 0.0012669
+ocean = 0.0071507
+terrain = 0.0242359
+props = 0.0573979
 actors = 0.0053400
 ocean_render_only = 0.0001076
 terrain_render_only = 0.0000207
