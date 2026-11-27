@@ -11,6 +11,7 @@ sidebar_label: "Instruction counts on lavapipe"
 
 ## 1. Setup
 
+`mise run icount` runs this setup ([how-to](../../docs/howto/count-a-renders-instructions.md)).
 Each counted run is the render under `setarch "$(uname -m)" -R valgrind --tool=cachegrind --cache-sim=no --smc-check=all-non-file`, with `MESA_SHADER_CACHE_DISABLE=true` and `LP_NUM_THREADS=1`; `valgrind --tool=callgrind --separate-threads=yes` splits the count by thread.
 Mesa's shader cache must be off (or a fresh `MESA_SHADER_CACHE_DIR` each run): with it on, a second run of the synthetic film counted 71% fewer instructions than the first, having loaded its compiled shaders.
 Every counted store matched the native store of its span and build.
