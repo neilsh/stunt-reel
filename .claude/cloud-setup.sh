@@ -111,15 +111,20 @@ if [ "$MODE" = --cloud ]; then
     [ -f "$KACHE_CONFIG" ] || printf '[cache]\nlocal_store = "%s"\n' "$KACHE_STORE" >"$KACHE_CONFIG"
     # The setup and the sessions it snapshots run as root, so the store stays root-owned, 0755.
     install -d -m 0755 "$KACHE_STORE"
-    # Warm the store inside the setup's time budget, so the snapshot a session starts from has the
-    # units this repository builds. The timeout caps the step, not the cache: a half-warm store is
-    # still a store, and the next build fills the rest. The SessionStart hook reruns this script on
-    # every start and resume, after the snapshot exists, and sets CLAUDE_CODE_REMOTE, which the
-    # setup run did not have: skip the warm there so the hook's 600 s budget holds no 200 s build.
+    # Warm the store, so the snapshot a session starts from has the units this repository builds.
+    # The timeout caps the step, not the cache: a half-warm store is still a store, and the next
+    # build fills the rest. A marker in the store records a finished warm (success or timeout), so
+    # the SessionStart hook's rerun warms only when the snapshot kept none, and a failed warm
+    # retries; nothing here depends on CLAUDE_CODE_REMOTE, whose value in the setup run is
+    # unverified (#814). warm.log keeps the build's output, which the setup script's own is not.
     export RUSTC_WRAPPER="$KACHE_BIN" CARGO_INCREMENTAL=0 \
         KACHE_CACHE_DIR="$KACHE_STORE" KACHE_CONFIG
-    if [ "${CLAUDE_CODE_REMOTE:-}" != true ]; then
-        timeout 200 "$MISE_BIN" exec -- cargo build --locked || true
+    if [ ! -e "$KACHE_STORE/.warmed" ]; then
+        warm_rc=0
+        timeout 200 "$MISE_BIN" exec -- cargo build --locked >>/opt/kache/warm.log 2>&1 || warm_rc=$?
+        echo "== $(date -u +%FT%TZ) warm exit $warm_rc (CLAUDE_CODE_REMOTE=${CLAUDE_CODE_REMOTE:-unset}) ==" >>/opt/kache/warm.log
+        # 124 is timeout's: the units built before the cap are stored, so the warm counts as done.
+        if [ "$warm_rc" -eq 0 ] || [ "$warm_rc" -eq 124 ]; then : >"$KACHE_STORE/.warmed"; fi
     fi
     "$KACHE_BIN" daemon stop || true
 fi
