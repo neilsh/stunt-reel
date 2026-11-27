@@ -19,6 +19,10 @@ Measurements ran 2026-10-30 to 2026-11-01 on one 16-core host.
 * **Capture:** `dosbox.capture_start()` / `capture_stop()` records lossless ZMBV AVI, one video frame per emulated frame.
   The REST call takes only `mode` (`raw` or `rendered`); nothing drops the audio stream.
 * **Absent:** the debugger (`debugger` is `false` in the OpenAPI document): no breakpoints, pause, step or hooks ([ADR 0034](../../docs/adr/0034-breakpoints-run-on-dosbox-x.md)).
+* **`dosbox.debugmsg(s)` is a file sink** (`[Bounded Observation]`, `v0.85.1`, 500 lines of 128,000 characters and 500 real `A000` pages): with the script loaded as `POST /script/load?debug=true` it appends `[F:<frame> T:<time>] debugmsg: <s>` to `<config dir>/logs/lua-debug-<time>-<script name>.log` and flushes per call.
+  The code has no size cap and `%s` stops at a NUL; the 64 MB written arrived byte for byte, so the 16 MB Lua heap (100 held pages ran, 140 died `not enough memory`) limits what a script keeps, not what it writes.
+  The instruction count and peak heap were not measured (`collectgarbage` is removed).
+  _Source: [where tears fall, and debugmsg as a sink](../../work/2026-11/1211_torn-video/journal.md#2026-11-27-where-tears-fall-and-debugmsg-as-a-sink)._
 * **Mounts:** a mount under `Temp` or far from its conf is refused (`MOUNT: Blocked`): conf and mount sit together under the data root.
 
 _Source: [first evaluation](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-first-evaluation), [scratch driver](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-scratch-driver), [whole-film video](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-31-video-capture)._
@@ -150,8 +154,14 @@ _Source: [torn pages](../../work/2026-11/distill-capture-dosbox-automation/journ
 * **Against the pinned frame captures** (`[Bounded Observation]`, one recording per film, 1,875 pages): a page's RGB on rows 0..184 lies in the video at `emu_frame - capture_start_frame - 1` plus 0 on 1,122 pages and plus 1 on 731; 22 lie elsewhere.
   Medians are 99.9747% (`CTRY`) to 100% pixel-equal, minima 87.99% (`TRAINTNL`) to 97.14% (`INTRO`).
   By the journal's row rule (§ 4.5) 1,032 pages are exact, 503 split between two frames and 340 a band; no page is explained by its palette alone (0 of 466 mismatched on `CTRY` and `LOCATION`).
-  The bands and splits match § 4.5's tears of a video frame built from `A000` while the game copies into it; that cause is `[Supported Inference]` (the emulator's capture path was not read).
+  The bands and splits match § 4.5's tears of a video frame built from `A000` while the game copies into it; that cause is `[Supported Inference]`.
+  The draw path was read (`vga_draw.cpp` at `v0.85.1`): in a VGA mode below 640x480 `VGA_DrawSingleLine` draws one row per PIC event and reads video memory then, so a tear's row is where the copy meets the beam, with no fixed strip rows (the four-part drawing is for Hercules and high-resolution modes).
   _Source: [reference check, replay and pairing](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-reference-check-replay-and-the-pairing-rule-on-seven-full-rate-recordings)._
+* **Where `CTRY.FLM`'s tears fall** (`[Bounded Observation]`, one recording, 121 pinned pages: 31 exact, 28 split, 62 band, rows 0..184): no fixed rows.
+  Band pages start their unmatched rows at a median row 82.5 (34 of 62 within 80..97, no row holds more than 6) and span a median 20.5 rows (maximum 91); 22 of the 28 split pages differ from their best frame only on the HUD timer rows 179..184.
+  A video-only test of row-to-row discontinuity found no tear (area under the ROC curve 0.60 over rows 0..183, 69 of 90 torn frames missed at the best threshold), and comparing a frame with its two neighbours cannot either, because 1,634 of 1,905 frames hold rows equal to neither.
+  The AVI is `zmbv` decoded as `bgr0`, not `pal8`.
+  _Source: [where tears fall, and debugmsg as a sink](../../work/2026-11/1211_torn-video/journal.md#2026-11-27-where-tears-fall-and-debugmsg-as-a-sink)._
 * **ADR 0057's rule on run ends** (`[Bounded Observation]`, last frame of each `slot_clock` run, lavapipe renders): pairing by `render_tick` scores above the tag on `INTRO`, `BOMB`, `TRAINTNL` and `LOCATION` (+0.0054 to +0.0127 mean SSIM) and below it on `CTRY`, `LAND` and `BALLOON` (-0.0005 to -0.0014).
   The best offset is the rule's own on 46% to 75% of compared frames.
   `slot_ticks` varies within a run of one picture in 393 of 578 `CTRY` runs, so the tick a picture gets depends on which row of its run is read, and consecutive run ends share one `render_tick` while showing different pictures (296 of 296 shared keys on `CTRY`).
@@ -220,6 +230,7 @@ _Source: [scratch driver](../../work/2026-11/distill-capture-dosbox-automation/j
 * A palette (DAC lag) difference alone as the cause of a page not equal to a video frame: some palette index shows two video colours on every one of the 466 mismatched `CTRY` and `LOCATION` pages ([reference check](../../work/2026-11/1194_full-rate-video/journal.md#2026-11-27-reference-check-replay-and-the-pairing-rule-on-seven-full-rate-recordings)).
 * The frame before a `slot_clock` change as a finished picture without a check: the neighbour-frame torn test failed on a `CTRY` window ([#1200 comment](https://github.com/neilsh/stunt-reel/issues/1200#issuecomment-7228756891)).
 * A relaunch loop in a `THE.FLM` capture (`--max-frames 1200`) stopped after 20 minutes with no frame and no output, by inference (`[Hypothesis]`: its log is gone, so it is taken to have behaved like the rerun): the same command on 2026-11-20 finished in 1,004 s with 1,192 frames, its 30 window passes each launching a DOSBox with a new `dosbox-<n>.conf`; `capture-ref` printed no per-pass progress line after queueing them, only DOSBox's own launch chatter, and wrote the frames only at the end (§ 4.8) ([THE.FLM's high shadows in the captured pixels](../../work/2026-11/628_high-actor-shadow-pixels/journal.md#2026-11-20-theflms-high-shadows-in-the-captured-pixels)).
+* Fixed strip-boundary rows as where the video tears: none in `CTRY.FLM`, and the emulator draws mode 13h one row at a time ([where tears fall, and debugmsg as a sink](../../work/2026-11/1211_torn-video/journal.md#2026-11-27-where-tears-fall-and-debugmsg-as-a-sink)).
 * `nosound = true` to make `COUNT.FLM` repeat: three variants in four runs ([production harness](../../work/2026-11/distill-capture-dosbox-automation/journal.md#2026-10-30-production-harness)).
 
 ## Open questions
