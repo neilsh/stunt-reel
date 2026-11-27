@@ -27,9 +27,9 @@ The probe: `a4_probe.py` loads a script with `POST /script/load?debug=true` at t
   Holding pages instead (the Lua heap cap, `DefaultMemoryCapBytes` 16 MB): 100 held of 128,000 characters ran, 140 died `not enough memory`.
   The instruction count and peak heap are not reported by the host and `collectgarbage` is removed from the sandbox, so neither was measured.
 * `ffprobe capture.avi`: codec `zmbv`, `bgr0`, 320x200, 1,907 frames; not `pal8`.
-* The neighbour-frame test of the video alone cannot find a tear: 1,634 of 1,905 frames hold rows equal to neither neighbour.
+* The neighbour-frame test of the video alone separates nothing: 1,634 of 1,905 frames hold rows equal to neither neighbour, 26 of 31 whole frames and 82 of 90 torn ones among them.
 
 **Verdict.** The strip explanation is rejected; a tear's row follows when the guest copy meets the beam, and a band spans many rows.
 `debugmsg` works as a sink; the heap cap does not apply to what it writes.
 
-**Lives in.** `research/playone-exe/capture-dosbox-automation.md` §§ 1, 4.5, 4.6 and Ruled out.
+**Lives in.** `research/playone-exe/capture-dosbox-automation.md` §§ 1, 4.6 and Ruled out.
