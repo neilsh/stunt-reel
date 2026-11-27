@@ -208,3 +208,50 @@ def test_grey_has_no_index_plane() -> None:
     assert out.idx is None
     assert len(np.unique(out.rgb)) == 1
     assert out.rgb[0, 0, 0] == round(255 * 100 / 320)
+
+
+def test_props_shift_moves_props_and_fills_what_they_vacate() -> None:
+    base = planes()
+    base.idx[0, :6] = [5, 7, 8, 9, 3, 4]  # type: ignore[index]
+    base.layer[0, :6] = [2, 3, 3, 2, 16, 2]
+    base.rgb[0, :6, 0] = [5, 7, 8, 9, 3, 4]
+    out = plant(Fault("props_shift", 2), 0, MemorySource({0: base}), 1)
+    assert out is not None
+    assert out.idx is not None
+    assert out.idx[0, :6].tolist() == [5, 5, 5, 7, 3, 4]
+    assert out.rgb[0, :6, 0].tolist() == [5, 5, 5, 7, 3, 4]
+    assert out.layer[0, :6].tolist() == [2, 2, 2, 3, 16, 2]  # the actor at x=4 survives
+    assert base.layer[0, 1] == 3  # the source is not mutated
+
+
+def test_props_shift_never_covers_overlay() -> None:
+    base = planes()
+    base.layer[0, :4] = [2, 3, 4, 2]
+    base.idx[0, :4] = [1, 7, 9, 2]  # type: ignore[index]
+    out = plant(Fault("props_shift", 1), 0, MemorySource({0: base}), 1)
+    assert out is not None
+    assert out.idx is not None
+    assert out.layer[0, :4].tolist() == [2, 2, 4, 2]
+    assert out.idx[0, 2] == 9
+
+
+def test_props_shift_fills_from_below_the_prop_layer_only() -> None:
+    base = planes()
+    base.layer[0, :4] = [16, 3, 3, 2]
+    base.idx[0, :4] = [1, 7, 8, 9]  # type: ignore[index]
+    out = plant(Fault("props_shift", 1), 0, MemorySource({0: base}), 1)
+    assert out is not None
+    assert out.idx is not None
+    assert out.idx[0, 1] != 1  # the gap does not take the actor's pixel
+    assert out.idx[0, :4].tolist() == [1, 7, 7, 8]
+
+
+def test_props_shift_drops_props_pushed_off_the_frame() -> None:
+    base = planes()
+    base.layer[0, W - 1] = 3
+    base.idx[0, W - 1] = 9  # type: ignore[index]
+    out = plant(Fault("props_shift", 8), 0, MemorySource({0: base}), 1)
+    assert out is not None
+    assert out.idx is not None
+    assert out.idx[0, W - 1] == 0
+    assert out.layer[0, W - 1] == 2

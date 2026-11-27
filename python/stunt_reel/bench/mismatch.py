@@ -19,7 +19,9 @@ __all__ = [
     "colour_mismatch",
     "index_mismatch",
     "mismatch_fraction",
+    "object_shift",
     "readout_mask",
+    "shift_gain",
 ]
 
 #: The player's HUD timer, ``MM:SS.cc`` in 3x5 glyphs, as (row0, row1, col0, col1), exclusive
@@ -60,3 +62,74 @@ def mismatch_fraction(mismatch: NDArray[np.bool_], mask: NDArray[np.bool_]) -> f
     """The share of unmasked pixels that mismatch; 0.0 when every pixel is masked."""
     shown = int(np.count_nonzero(~mask))
     return int(np.count_nonzero(mismatch & ~mask)) / shown if shown else 0.0
+
+
+def _match(
+    capture_idx: NDArray[np.uint8],
+    render_idx: NDArray[np.uint8],
+    ys: NDArray[np.intp],
+    xs: NDArray[np.intp],
+    mask: NDArray[np.bool_],
+    dy: int,
+    dx: int,
+) -> tuple[float, int]:
+    height, width = render_idx.shape
+    ty, tx = ys + dy, xs + dx
+    inside = (ty >= 0) & (ty < height) & (tx >= 0) & (tx < width)
+    ty, tx = ty[inside], tx[inside]
+    kept = ~mask[ty, tx]
+    ty, tx = ty[kept], tx[kept]
+    if not len(ty):
+        return 0.0, 0
+    source = render_idx[ys[inside][kept], xs[inside][kept]]
+    return float(np.mean(source == capture_idx[ty, tx])), len(ty)
+
+
+def shift_gain(
+    capture_idx: NDArray[np.uint8],
+    render_idx: NDArray[np.uint8],
+    pixels: NDArray[np.bool_],
+    mask: NDArray[np.bool_],
+    dx: int,
+    dy: int,
+) -> float:
+    """``m(d) - m(0)`` for ``d = (dx, dy)`` over *pixels*, where ``m`` is the match share of :func:`object_shift`.
+
+    May be negative; 0.0 when *pixels* is empty.
+    """
+    ys, xs = np.nonzero(pixels & ~mask)
+    if not len(ys):
+        return 0.0
+    shifted, _ = _match(capture_idx, render_idx, ys, xs, mask, dy, dx)
+    base, _ = _match(capture_idx, render_idx, ys, xs, mask, 0, 0)
+    return shifted - base
+
+
+def object_shift(
+    capture_idx: NDArray[np.uint8],
+    render_idx: NDArray[np.uint8],
+    pixels: NDArray[np.bool_],
+    mask: NDArray[np.bool_],
+    reach: int,
+) -> tuple[int, int, float]:
+    """The shift ``(dx, dy)`` that best lines the capture up with the object's render pixels, and its gain.
+
+    The match share ``m(d)`` is the share of the object's unmasked *pixels* ``p`` whose render
+    index equals the capture's at ``p + d``, counting only ``p + d`` in frame and outside *mask*.
+    The best ``d`` has ``2 <= max(|dx|, |dy|) <= reach``, and at least half the object's unmasked
+    pixels land in frame and unmasked; the gain is :func:`shift_gain`, never below 0.
+    Returns ``(0, 0, 0.0)`` when no shift beats no shift or *pixels* is empty.
+    """
+    ys, xs = np.nonzero(pixels & ~mask)
+    best = (0, 0, 0.0)
+    if not len(ys):
+        return best
+    base, _ = _match(capture_idx, render_idx, ys, xs, mask, 0, 0)
+    for dy in range(-reach, reach + 1):
+        for dx in range(-reach, reach + 1):
+            if max(abs(dx), abs(dy)) < 2:
+                continue
+            share, landed = _match(capture_idx, render_idx, ys, xs, mask, dy, dx)
+            if 2 * landed >= len(ys) and share - base > best[2]:
+                best = (dx, dy, share - base)
+    return best
