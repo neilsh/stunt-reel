@@ -260,6 +260,13 @@ description = "Time variants of a headless render in interleaved rounds (two bin
 run = "uv run python python/scripts/ab.py"
 env = { CARGO_HOME = "{{vars.cargo_home}}" }
 
+[tasks.icount]
+# Builds nothing, but imports parity_pipeline through ab_timing, so it names the shared cargo home like ab.
+depends = ["ensure"]
+description = "Count a headless lavapipe render's instructions under Cachegrind on two or more builds, several repeats each; writes a CSV and a summary (whole run, outside glibc's allocator, change against the baseline's median and its repeat range, top functions) into a work folder and fails when a store differs from the baseline's (mise run icount -- --out WORK_FOLDER --name NAME --variant NAME [--variant 'NAME binary=PATH VAR=VALUE'] [--span A..=B] [--repeats N] [--top N])"
+run = "uv run python python/scripts/icount.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
+
 [tasks.judge]
 description = "Judge a candidate's parity reports against a baseline's by the adoption rule, printing the sweep's table and winner line, or judge a sweep's recorded figures again and compare its winner line (mise run judge -- <baseline report dir> <candidate report dir> [--target film:lo-hi ...] [--track evidence|heuristic] [--data-root DIR] | --recheck <work folder>/sweeps/<topic>.toml)"
 run = "uv run python python/scripts/parity_judge.py"

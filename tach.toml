@@ -70,6 +70,7 @@ layer = "capture"
 [[modules]]
 paths = [
     "stunt_reel.ab_timing",
+    "stunt_reel.icount",
     "stunt_reel.batch_films",
     "stunt_reel.batch_ledger",
     "stunt_reel.batch_stages",

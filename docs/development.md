@@ -102,6 +102,7 @@ One task per file in [`docs/howto/`](howto/):
 - [Run the class agreement batch](howto/run-the-agreement-batch.md): measure and pin where lavapipe and the GPU differ
 - [Measure a headless render's memory](howto/measure-a-renders-memory.md): `--report-memory` prints the stage and peak resident set
 - [Time a headless render](howto/time-a-headless-render.md): `--report-timing` prints the start-up phases and the loop time
+- [Count a render's instructions](howto/count-a-renders-instructions.md): `mise run icount` gates a CPU-side perf change on a Valgrind count
 - [Take a commit from another session's branch](howto/take-a-commit-from-another-session.md)
 
 ---

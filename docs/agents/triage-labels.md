@@ -64,7 +64,7 @@ The older `type:tooling` label is retired in favor of `area:tooling` and `area:a
 | --- | --- |
 | `type:research` | Done when a `research/` note answers the question; no code fix required; the closing comment links the note |
 | `type:fidelity` | Visual parity change following [`improving-render-parity`](../../.agents/skills/improving-render-parity/SKILL.md); avoid running or merging two repinning PRs concurrently |
-| `type:perf` | Performance change requiring A/B timing (`mise run ab`, which refuses concurrent `stuntreel`/`cargo` runs) and output equivalence |
+| `type:perf` | Performance change requiring A/B timing (`mise run ab`, which refuses concurrent `stuntreel`/`cargo` runs) and output equivalence; a CPU-side instruction-count change may use `mise run icount` instead of `ab`'s lavapipe timing, wall time staying for memory, cache and parallelism changes, the GPU and final confirmation ([how-to](../howto/count-a-renders-instructions.md)) |
 | `type:tracking` | A parent with no work of its own: done when every sub-issue is closed |
 
 A `type:tracking` parent carries no state, `area:`, `env:`, `model-` or other `type:` label, since its sub-issues carry those for the work; the only other label it may carry is a `priority:` the owner sets.
