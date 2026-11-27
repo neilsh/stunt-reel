@@ -1074,6 +1074,26 @@ fn a_screen_line_exports_as_a_lines_primitive() {
     assert!(area > 1.0, "{area}");
 }
 
+/// A line vertex keeps the vector to its segment's other end in the IR (10 m here), but
+/// exports a unit `NORMAL` along it, since glTF requires unit normals (issue #1130).
+#[test]
+fn a_screen_line_exports_unit_normals_along_its_segment() {
+    let glb = parse_glb(&export_shape(&line_and_triangle()).expect("export"));
+    let normals = glb.floats(glb.primitive_accessor(0, "NORMAL"));
+    for n in normals.chunks(3) {
+        let n = Vec3::from_slice(n);
+        assert!((n.length() - 1.0).abs() < 1e-5, "{n:?}");
+    }
+    let along_x = normals
+        .chunks(3)
+        .filter(|n| (Vec3::from_slice(n).x.abs() - 1.0).abs() < 1e-5)
+        .count();
+    assert_eq!(
+        along_x, 4,
+        "the line quad's four corners point along the segment"
+    );
+}
+
 /// One `OP_PERFDISK` of radius 40 about raw point 0, its normal along +z, at scale 1.0.
 fn disc() -> SodModelIr {
     let mut words: Vec<u16> = vec![OP_ID, 100, 0, 0, 0, OP_VECTORS, 2, 0];

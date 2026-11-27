@@ -64,7 +64,8 @@ Observed: the film-frame glb had no animations, F3D printed `No animation availa
 
 ## What the first run found
 
-On `CTRY_t400.glb` the validator reported 2,757,016 errors, all `ACCESSOR_VECTOR3_NON_UNIT` (vector accessors that are not unit length), and 1,118 `NODE_MATRIX_DEFAULT` infos. The first 200 errors all point at a mesh's `NORMAL` attribute (for example `/meshes/0/primitives/0/attributes/NORMAL`, length 176); the other errors were not listed.
+On `CTRY_t400.glb` the validator first reported 2,757,016 errors, all `ACCESSOR_VECTOR3_NON_UNIT` on mesh `NORMAL` attributes, and 1,118 `NODE_MATRIX_DEFAULT` infos.
 A Blender-made monkey glb (`bpy.ops.mesh.primitive_monkey_add` exported with `export_scene.gltf`, GLB; not in the repo) validated with 0 errors, so the validator does not flag every file.
-The exporter copies normals unchanged (module note in [`crates/stunt-gltf/src/lib.rs`](../../crates/stunt-gltf/src/lib.rs)); the cause was not traced.
-The exit status is 1 for that file, and the render is still written.
+Every non-unit normal was a screen-line vertex: the shape IR stores the vector to the segment's other end in a line vertex's `normal` ([`SodVertex`](../../crates/stunt-core/src/contracts/shape/mod.rs)), and the exporter copied it.
+The errors were counted once per primitive reading the shared `NORMAL` accessor, so 3,488 line vertices gave the 2,757,016 errors.
+The exporter now writes that vector's direction ([`shape.rs`](../../crates/stunt-gltf/src/shape.rs)), and on 2026-11-27 the same export validated with 0 errors and 1,125 infos (1,118 `NODE_MATRIX_DEFAULT`, 7 `UNUSED_OBJECT`).
