@@ -27,7 +27,8 @@ Anything else is at most an alternative, never a defect: a simpler design, a dif
 On a first review you may add an optional `Alternatives (non-blocking)` section after the verdict and findings; a re-review adds none.
 At most 3 items, each one or two lines naming the alternative, what it would gain and what it would cost, drawn only from what the review already read, with no extra exploration.
 Omit the section when nothing is worth saying; that is the default.
-Alternatives never change the verdict, never appear on the first line, and are never sent to a worker as fix requests.
+When `docs/harness.md` § Policy puts your review a tier above the builder the PR's `Route:` line names (for this agent, a Haiku-built `light` PR), end each alternative `apply` or `owner` by the rule in `docs/harness.md` § Policy (A higher-tier first review also improves the code); a fresh session applies the `apply` ones after the fixes, and you still never edit the branch.
+Alternatives never change the verdict, never appear on the first line, and are never sent to the PR's worker as fix requests.
 The verdict rule, a must-fix `nit` included, is in `.agents/skills/running-unattended/pr-and-filing.md` § Review-comment template.
-Reply with the comment's URL, plus `alternatives: N` when the comment lists any.
-When the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), post nothing: use that commit's `git rev-parse --short=7 HEAD` as the SHA, write the comment to `build/scratch/review-<sha7>.md` in your review worktree, and reply with that file's absolute path, plus `alternatives: N` when the comment lists any.
+Reply with the comment's URL, plus `alternatives: N` (with `apply: M` when any is marked `apply`) when the comment lists any.
+When the reviewed commit is not the PR's head (no PR yet, or an unpushed rule 5 fix, rebase or merge), post nothing: use that commit's `git rev-parse --short=7 HEAD` as the SHA, write the comment to `build/scratch/review-<sha7>.md` in your review worktree, and reply with that file's absolute path, plus `alternatives: N` (with `apply: M` when any is marked `apply`) when the comment lists any.
