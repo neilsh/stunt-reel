@@ -344,6 +344,17 @@ def test_an_out_inside_the_store_is_refused(
     assert emulator.launches == 0
 
 
+@BOTH
+def test_an_out_inside_the_video_store_is_refused(
+    script: str, staged_repo: StagedRepo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inside = dataroot.data_root() / parity_layout.video_root() / "somewhere"
+    emulator = Emulator(script)
+
+    assert _run(script, staged_repo, monkeypatch, emulator, out=inside) == 2
+    assert emulator.launches == 0
+
+
 def test_the_leftovers_of_a_run_that_died_are_cleared(tmp_path: Path) -> None:
     """Rasters without a meta.json are no capture: the same directory can be retried (ADR 0022)."""
     out = tmp_path / "out"

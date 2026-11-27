@@ -222,7 +222,12 @@ def require_corpus_or_report(program: str, root: Path | None = None) -> Path | N
 #: The directory of the data root that holds one game tree per build (``game_builds.BUILDS_DIR``).
 BUILDS_DIRNAME = "builds"
 #: The first part of a relative path that names something in the data root.
-_DATA_PARTS = ("corpus", parity_layout.capture_root().as_posix(), BUILDS_DIRNAME)
+_DATA_PARTS = (
+    "corpus",
+    parity_layout.capture_root().as_posix(),
+    parity_layout.video_root().as_posix(),
+    BUILDS_DIRNAME,
+)
 
 
 def corpus_of(root: Path) -> Path:
@@ -236,7 +241,7 @@ def corpus_of(root: Path) -> Path:
 
 
 def resolve_data_path(path: Path, root: Path | None = None) -> Path:
-    """*path* read against the data root when it is a relative ``corpus/`` or ``captures/`` path.
+    """*path* read against the data root when it is a relative ``corpus/``, ``captures/`` or ``captures-video/`` path.
 
     *root* is that data root, the configured one by default; its corpus is :func:`corpus_of`'s.
 

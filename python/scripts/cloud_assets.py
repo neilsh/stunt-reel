@@ -7,7 +7,7 @@ its folder does not hold yet (ADR 0042), with the R2 key pair from ``R2_ACCOUNT_
 ``R2_SECRET_ACCESS_KEY``. ``status`` shows each pin, folder and packed file. ``verify`` downloads each pinned archive
 into a temporary directory, checks its sha256 and unpacks it, never touching the data root, and
 exits 1 if any fails. Each takes archive
-names, all by default.
+names, all by default except archives marked ``on_demand`` in the manifest, which only a name covers.
 
 Exit status: 0 done, 1 an archive could not be handled or verified, 2 the R2 variables are unset.
 
@@ -33,7 +33,7 @@ OUT_DIR = REPO_ROOT / "target" / "cloud-assets"
 def _pack(manifest: cloud_assets.Manifest, names: list[str], root: Path) -> list[str]:
     """Packs *names* (all when empty) into OUT_DIR, rewriting the manifest after each; one line each."""
     lines = []
-    for name in names or list(manifest.archives):
+    for name in names or cloud_assets.default_names(manifest):
         before = cloud_assets.archive_named(manifest, name).bytes
         archive = cloud_assets.pack(manifest, name, root, OUT_DIR)
         manifest = cloud_assets.with_archive(manifest, archive)

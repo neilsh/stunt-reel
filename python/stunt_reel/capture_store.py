@@ -1,7 +1,7 @@
 """A film's one capture of each kind: find the complete one, and replace it by swap (ADR 0028).
 
 A film has at most one frame capture, one video capture and one archive, each a directory that
-:mod:`parity_layout` names (``captures/<slug>/frames``, ``video``, ``archives``). A capture is
+:mod:`parity_layout` names (``captures/<slug>/frames``, ``captures-video/<slug>``, ``captures/<slug>/archives``). A capture is
 complete once its ``meta.json`` exists, because every writer writes it last; :func:`current`
 returns the directory then and ``None`` otherwise, so no reader ever scores half a capture.
 
