@@ -46,7 +46,7 @@ flowchart LR
 Skills are short instruction files an agent reads before a kind of work.
 The project keeps them in .agents/skills, for example for [changing seam contracts](../../.agents/skills/changing-seam-contracts/SKILL.md), [managing worktrees](../../.agents/skills/managing-worktrees/SKILL.md) and [improving render parity](../../.agents/skills/improving-render-parity/SKILL.md).
 The fresh-review rule is in the [contributor rules](../../AGENTS.md#committing).
-Commits that change a work spec or plan carry a Fresh-review trailer that the commit hook checks; [the development guide](../../docs/development.md#commit-messages) notes it.
+Commits that change a work spec or plan, including a second spec or plan named for its topic, carry a Fresh-review trailer that the commit hook checks; [the development guide](../../docs/development.md#commit-messages) notes it.
 
 **Work folders and journals.**
 The project's rule is that a current fact is rewritten in place, and a dated record is frozen once its work lands.
