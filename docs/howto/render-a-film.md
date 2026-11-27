@@ -97,3 +97,8 @@ Lavapipe draws a device on one thread, so this is how one film uses more than on
 
 `mise run frame -- --film intro --ticks 48,92,1009 [--crop x0,y0,x1,y1] [--scale N] [--no-build]` renders the listed ticks in one process and writes each beside its reference capture frame; a tick the capture holds no frame for is rendered, and its nearest captured ticks are printed instead of a picture; PNGs and the render store go to `build/scratch/frame/<film>/`.
 `stuntreel --at-ticks T,T,... --out-dir DIR` is the underlying flag.
+
+## Compare its looks in one video
+
+`mise run composite-video -- --out ctry.mp4 [--film ctry] [--views capture,diagnostic,mode13h,modern] [--columns N] [--scale N] [--fps N] [--software-only]` renders a `references.toml` film once per look and lays each panel beside its reference capture in one labelled video, by default two by two for four views and in one row otherwise.
+The capture holds each frame until the next, each starting at the render tick the scorer pairs it with (the first from tick 0), so the panels share one real-time clock; CTRY's capture, a frame about every 11 ticks, looks choppier than the renders.

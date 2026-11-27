@@ -373,6 +373,12 @@ env = { CARGO_HOME = "{{vars.cargo_home}}" }
 description = "Dump the film-level events of one .FLM film (mise run flm-events -- corpus/.../CTRY.FLM [--sounds])"
 run = "uv run python python/scripts/flm_events.py"
 
+[tasks.composite-video]
+description = "Compose one labelled video of a reference film's capture and renders, panels in a grid (mise run composite-video -- --out ctry.mp4 [--film ctry] [--views capture,diagnostic,mode13h,modern] [--columns N] [--software-only])"
+depends = ["ensure"]
+run = "uv run python python/scripts/composite_video.py"
+env = { CARGO_HOME = "{{vars.cargo_home}}" }
+
 [tasks.superset-all]
 description = "Build one .ALL holding every stock shape in the game's RES/, for rendering a film without its own archive (mise run superset-all -- [--game corpus/stuntisl] [--with-palettes] [-o target/linked/superset/SUPERSET.ALL])"
 depends = ["ensure"]
