@@ -1,5 +1,5 @@
 diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
-index 4595a8b..45b3c61 100644
+index 4595a8b..1f10ecd 100644
 --- a/crates/stunt-render/src/pipeline.rs
 +++ b/crates/stunt-render/src/pipeline.rs
 @@ -318,8 +318,25 @@ impl RenderPipelines {
@@ -15,7 +15,7 @@ index 4595a8b..45b3c61 100644
 +                Err(_) => src.to_owned(),
 +            };
 +            let src = match std::env::var("DBG_TERRAIN_FACET") {
-+                Ok(v) if v == "1" => src.replace("const DBG_TERRAIN_FACET: bool = false;", "const DBG_TERRAIN_FACET: bool = true;"),
++                Ok(v) => src.replace("const DBG_TERRAIN_FACET: u32 = 0u;", &format!("const DBG_TERRAIN_FACET: u32 = {v}u;")),
 +                _ => src,
 +            };
 +            let src = match std::env::var("DBG_SNAP_MODE") {
@@ -31,7 +31,7 @@ index 4595a8b..45b3c61 100644
              Some(Self::vertex_buffer_layout()),
              Some(Self::apex_buffer_layout()),
 diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
-index 23cbe3a..8506d27 100644
+index 23cbe3a..6ab9716 100644
 --- a/crates/stunt-render/src/shaders/mode13h.wgsl
 +++ b/crates/stunt-render/src/shaders/mode13h.wgsl
 @@ -236,9 +236,13 @@ fn prop_shape(vertex: u32) -> u32 {
@@ -47,7 +47,7 @@ index 23cbe3a..8506d27 100644
 +// slid kilometres back loses to the mountain behind it on alternate ticks (#1197).
 +const PLANE_SLIDE_MAX: f32 = 0.1;
 +const DBG_SNAP_MODE: u32 = 0u;
-+const DBG_TERRAIN_FACET: bool = false;
++const DBG_TERRAIN_FACET: u32 = 0u;
  
  // Moves a projected vertex at `clip` (eye-relative position `eye`) to the pixel PLAYONE's
  // register projectors put it on: its offset from the projection centre truncated toward the
@@ -77,13 +77,16 @@ index 23cbe3a..8506d27 100644
          return clip;
      }
      return camera.rotation_proj * vec4<f32>(on_ray * t, 1.0);
-@@ -326,7 +338,8 @@ fn slide_normal(in: VertexInput) -> vec3<f32> {
+@@ -326,7 +338,11 @@ fn slide_normal(in: VertexInput) -> vec3<f32> {
      }
      let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
      let decal_tie = in.attr.z == SCENERY_PROP && in.attr.w != 0u;
 -    let world = in.attr.z != 0u && !decal_tie;
-+    let steep_terrain = DBG_TERRAIN_FACET && in.attr.z == 2u;
++    let steep_terrain = DBG_TERRAIN_FACET != 0u && in.attr.z == 2u;
 +    let world = in.attr.z != 0u && !decal_tie && !steep_terrain;
++    if (DBG_TERRAIN_FACET == 2u && in.attr.z == 2u && model.layer.y == 0u && dot(eye_n, eye_n) != 0.0) {
++        return eye_n;
++    }
      if (model.layer.y != 0u || world || dot(eye_n, eye_n) == 0.0
          || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {
          return UP;
