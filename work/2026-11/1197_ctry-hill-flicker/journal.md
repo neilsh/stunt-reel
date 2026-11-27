@@ -135,7 +135,7 @@
 `[Bounded Observation]`, lavapipe, `land` 551 (#1206).
 
 - **Question**: by what rule does `PLAYONE` leave out the mountain the steep facet slide draws above `land` 551's horizon?
-- **Method**: `land` 551 rendered with each `MAP.BIN` patch painted in its record number (a throwaway switch, not committed), `DBG_TERRAIN_FACET=0` and `1`; the capture page's indices read from `captures/vault-land`; the records' anchors projected through the frame's camera (`render.json`: eye `(5477.4, 3.3, 6920.1)`, lens field of view 11.16 degrees); the ground handlers read with `mise run re-tool -- disasm 0x2360 0x2410` on the unpatched image, and the same gate's bytes found at `0x2498` in the Patch #3 image.
+- **Method**: on the branch at `7123480` with [`switches/DBG_TERRAIN_FACET.diff`](switches/DBG_TERRAIN_FACET.diff) applied, `land` 551 rendered with each `MAP.BIN` patch painted in its record number (a throwaway switch, not committed), `DBG_TERRAIN_FACET=0` and `1`; the capture page's indices read from `captures/vault-land`; the records' anchors projected through the frame's camera (`render.json`: eye `(5477.4, 3.3, 6920.1)`, lens field of view 11.16 degrees); the ground handlers read with `mise run re-tool -- disasm 0x2360 0x2410` on the unpatched image, and the same gate's bytes found at `0x2498` in the Patch #3 image.
 - **Result**:
   - The mountain is records 46 and 50 (colours 164 and 161), a 600 m peak whose corners lie 7.4 to 9.8 km from the eye; projected, the peak sits at row 0 and the feet at row 61.
   - What the capture shows above the horizon is not sky: rows 0 to 59 are index 162 across the frame, and `main` draws the same rows as record 2 (colour 162), a 1,000 m face 4.4 to 5.7 km away whose peak projects to row −108 and whose feet lie off both sides of the frame at row 61.
@@ -159,7 +159,7 @@
 - **Form** (`DBG_TERRAIN_FACET=2`, not committed; [`switches/DBG_TERRAIN_FACET.diff`](switches/DBG_TERRAIN_FACET.diff), now a `u32` mode): `slide_normal` returns the facet's own normal for every terrain vertex (scenery class 2) outside a layer.
 - **Track**: heuristic.
 - **Target frames**: `--target ctry:286-366`, as before.
-- **Command** (lavapipe, as before): `DBG_PLANE_SLIDE_MAX=1.0e6 DBG_SNAP_MODE=0 mise run sweep -- --var DBG_TERRAIN_FACET=0,2 --track heuristic --record work/2026-11/1197_ctry-hill-flicker --topic "raised terrain facet slide" --images work/2026-11/1197_ctry-hill-flicker/images --crop 140,0,320,100 --target ctry:286-366 --jobs 4`.
+- **Command** (lavapipe, as before; the branch at `7123480` with the switch, which made every picture below): `DBG_PLANE_SLIDE_MAX=1.0e6 DBG_SNAP_MODE=0 mise run sweep -- --var DBG_TERRAIN_FACET=0,2 --track heuristic --record work/2026-11/1197_ctry-hill-flicker --topic "raised terrain facet slide" --images work/2026-11/1197_ctry-hill-flicker/images --crop 140,0,320,100 --target ctry:286-366 --jobs 4`.
 - **Result** ([`sweeps/raised-terrain-facet-slide.toml`](sweeps/raised-terrain-facet-slide.toml)): `winner: none adopts (best DBG_TERRAIN_FACET=2: film means short of +0.002 each or +0.004 on one; target idx +0.0049, not above +0.010)`.
 
   | Film | `0` (`main`) | `2` | Δ |
@@ -175,7 +175,7 @@
   - `land` 551 scores as on `main` (0.93956 against 0.93952), where the steep facet slide lost 0.048 there.
   - The target frames rise (pooled SSIM +0.0088, worst target frame +0.0014; [298](images/ctry-298-raised-terrain-facet-slide.png), [331](images/ctry-331-raised-terrain-facet-slide.png), [364](images/ctry-364-raised-terrain-facet-slide.png)).
   - 93 frames fall by more than 0.005, the worst `location` 2312 (−0.0205) and `balloon` 1156 (−0.0192); no `balloon` frame rises by more than 0.001 and 36 fall by more.
-    In the guard pictures ([`land` 199](images/land-199-raised-terrain-facet-slide-guard.png), [`balloon` 1156](images/balloon-1156-raised-terrain-facet-slide-guard.png); also [`location` 2312](images/location-2312-raised-terrain-facet-slide-guard.png) and [`intro` 2058](images/intro-2058-raised-terrain-facet-slide-guard.png), not examined) the loss is ocean blue along the foot of far raised terrain, a row or a few pixels wide, which neither the capture nor `main` shows.
+    In the guard pictures ([`land` 199](images/land-199-raised-terrain-facet-slide-guard.png), [`balloon` 1156](images/balloon-1156-raised-terrain-facet-slide-guard.png); the sweep also drew the worst frames of `location` and `intro`, [`location` 2312](images/location-2312-raised-terrain-facet-slide-guard.png) and [`intro` 2058](images/intro-2058-raised-terrain-facet-slide-guard.png), whose losses were not examined) the loss is ocean blue along the foot of far raised terrain, a row or a few pixels wide, which neither the capture nor `main` shows.
     `[Hypothesis]`: a raised patch's foot corners at height 0 now keep their own depth, while the flat ground beside them slides to where each pixel's ray meets the ground plane, beyond the island's edge on grazing rows, so the ocean wins the seam between them; the horizontal slide kept the foot and the ground on one plane there.
 - **Verdict**: rejected by the adoption rule (no film branch; `balloon` −0.0018 and `land` −0.0012).
 - **Next**: a raised patch's corners need both planes: its own for the hill (#1197) and `land` 551, the ground's at the seam with the flat ground; a form that does both was not tried.
