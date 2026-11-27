@@ -4,6 +4,8 @@
 
 accepted
 
+superseded in part by [ADR 0058](0058-stunt-reel-is-repo-internal-tooling-that-may-take-dev-dependencies.md): `python/stunt_reel` may take dev-group dependencies as repo-internal tooling, for its `bench/` numpy and Pillow imports; the shipped wheel keeps none, and this record's two tiers stay the bar.
+
 ## Context
 
 The Python half is tooling. [`python/scripts/`](../../python/scripts/) drives the parity loop, captures
