@@ -4,14 +4,17 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use super::frames::{load_render_frame, load_render_rescaled, reference_luminance};
+use super::frames::{load_render_frame, reference_luminance};
 use super::matched::{ReportFrames, load_captured};
 use super::options::Options;
 use super::report::Report;
 use super::report_diff::compare_reports;
 use super::score::RenderFrame;
-use super::sheets::{abs_difference, write_panel_sheet};
+use super::sheets::{grey_panel, index_map_panel, overlay_panel, sheet_mask, write_panel_sheet};
+use super::ssim::rescale_mode13h_frame;
 use super::verdict::{FrameVerdict, Verdict, frame_verdict};
+
+use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_HEIGHT, MODE13H_WIDTH};
 
 use crate::parity_artifacts;
 use crate::render_store::RenderStore;
@@ -108,19 +111,43 @@ pub(super) fn run_compare(
         }
         let captured = load_captured(&args.reference, captured_frame)?;
         let reference = reference_luminance(&captured.indices, &captured.palette);
-        let before = load_render_rescaled(&mut before_store, tick)?;
-        let after = load_render_rescaled(&mut after_store, tick)?;
+        let before_frame = load_render_frame(&mut before_store, tick)?;
+        let after_frame = load_render_frame(&mut after_store, tick)?;
+        let rescale = |luminance: &[f32]| {
+            rescale_mode13h_frame(
+                luminance,
+                MODE13H_WIDTH,
+                MODE13H_HEIGHT,
+                ASPECT_CORRECTED_HEIGHT,
+            )
+        };
+        let before = rescale(&before_frame.luminance);
+        let after = rescale(&after_frame.luminance);
+        // Each render's panels are masked by its own credits flag, as it was scored.
+        let before_mask = sheet_mask(&captured.indices, before_frame.credits);
+        let after_mask = sheet_mask(&captured.indices, after_frame.credits);
+        let index_map = |frame: &RenderFrame, mask: &[bool]| {
+            index_map_panel(
+                &reference,
+                &captured.indices,
+                &frame.indices,
+                &frame.layers,
+                mask,
+            )
+        };
         let path = args
             .output
             .join(format!("compare_{label}_tick_{film_tick:05}.png"));
         write_panel_sheet(
             &path,
             &[
-                &reference,
-                &before,
-                &after,
-                &abs_difference(&reference, &before),
-                &abs_difference(&reference, &after),
+                &grey_panel(&reference),
+                &grey_panel(&before),
+                &grey_panel(&after),
+                &overlay_panel(&reference, &before, &before_mask),
+                &overlay_panel(&reference, &after, &after_mask),
+                &index_map(&before_frame, &before_mask),
+                &index_map(&after_frame, &after_mask),
             ],
         )?;
         println!("[compare] wrote {}", path.display());
@@ -185,7 +212,6 @@ mod tests {
         write_version_1_render,
     };
     use serde_json::Value;
-    use stunt_core::frame::{ASPECT_CORRECTED_HEIGHT, MODE13H_WIDTH};
 
     #[test]
     fn compare_run_writes_compare_json_and_before_after_sheets() {
@@ -227,10 +253,10 @@ mod tests {
         let sheet = image::open(tmp.join("out").join("compare_improved_tick_00012.png")).unwrap();
         assert_eq!(
             sheet.width() as usize,
-            (MODE13H_WIDTH + CONTACT_SHEET_GAP) * 5 - CONTACT_SHEET_GAP
+            (MODE13H_WIDTH + CONTACT_SHEET_GAP) * 7 - CONTACT_SHEET_GAP
         );
         assert_eq!(sheet.height() as usize, ASPECT_CORRECTED_HEIGHT);
-        assert_eq!(sheet.color(), image::ColorType::L8);
+        assert_eq!(sheet.color(), image::ColorType::Rgb8);
     }
 
     #[test]

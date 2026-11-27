@@ -74,7 +74,9 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
 * `parity` refuses a render whose film identity conflicts with the capture's: the `.FLM` name, size or hash, or the archive hash.
   `--waive-archive-conflict` lets an archive-only conflict through for a deliberate stand-in (a superset render against an own-archive capture) and marks the report `archive_conflict_waived`; `mise run parity` never passes it.
   When either side records no archive hash, `stuntreel parity` scores and prints `archive not checked`.
-* Every run writes `report.json` and `contact_NNNN.png` sheets (`reference | rendered | |difference|`), which show only the first frame; `--compare` adds `compare.json`.
+* Every run writes `report.json` and `contact_NNNN.png` sheets (`reference | rendered | overlay | index map`), one frame each: frames 1, 20, 40, 70 and 100, the last captured frame and the three lowest-SSIM scored frames; `--compare` adds `compare.json`.
+  The overlay is magenta where the capture is brighter and green where the render is, with the HUD timer, the button bar and, unless the film shows credits, the cursor grey; the index map paints each palette-index mismatch by the render layer that drew it.
+  Both read as the Python readout sheets do (`stunt_reel.bench.panels`).
 * `--compare` prints the means over the common frames, the 5 most improved and regressed frames and the count moved by more than 0.005, and writes `compare.json`.
 * `--compare-test` adds the verdict on the windows the change touched, for example `[verdict] changed 27/121 frames: 15 closer, 12 further, 0 within noise; mean Δ +0.101 on changed windows`.
 * `--noise-sigma` is the film's `noise_sigma` in `references.toml`; omit it for a film whose row has none, and the verdict then goes by the sign of Δ (only a Δ of exactly 0 is within noise).
@@ -83,7 +85,7 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
 
 ## 6. Look at the worst movers
 
-Open `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref-before| | |ref-after|`), one each for the single biggest mover each way by the verdict's Δ (when `--compare-test` is not a readable render store, the verdict and both sheets are skipped: re-render it), before trusting the mean; a mean can hide a regression or an improvement.
+Open `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | overlay before | overlay after | index map before | index map after`), one each for the single biggest mover each way by the verdict's Δ (when `--compare-test` is not a readable render store, the verdict and both sheets are skipped: re-render it), before trusting the mean; a mean can hide a regression or an improvement.
 Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, where one palette index lies, candidate sweeps).
 
 For a side-by-side of one tick, read the capture with `read_capture` in `stunt_reel.parity_artifacts` and take the frame whose `film_tick` is that tick (its tag): `tick_NNNN.idx` is numbered by capture order, not by tick, and `read_capture` supplies the capture-order file names when an older `meta.json` omits `frame_file` and `palette_file`.

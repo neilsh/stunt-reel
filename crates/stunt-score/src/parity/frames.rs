@@ -39,16 +39,6 @@ pub(super) fn reference_luminance(indices: &[u8], palette: &Palette) -> Vec<f32>
     )
 }
 
-/// Loads a stored render tick as aspect-corrected luminance.
-pub(super) fn load_render_rescaled(store: &mut RenderStore, tick: u32) -> Result<Vec<f32>, String> {
-    Ok(rescale_mode13h_frame(
-        &load_render_frame(store, tick)?.luminance,
-        MODE13H_WIDTH,
-        MODE13H_HEIGHT,
-        ASPECT_CORRECTED_HEIGHT,
-    ))
-}
-
 /// Loads a stored render tick: the luminance of its picture (`palette[index]`), its
 /// palette-index plane and its layer plane, all 320x200, and the record's credits flag. The
 /// palette controls are left `None`; the caller sets them when it has the render record.

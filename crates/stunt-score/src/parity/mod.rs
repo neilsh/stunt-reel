@@ -66,7 +66,7 @@ use mask::{CAPTURE_SKY_INDICES, capture_skies, overlay_drawn};
 use matched::{Matching, ReportFrames};
 use report::{FrameReport, I6Gate, Report};
 use score::{FrameMetrics, RenderFrame, ScorePolicy, score_frame};
-use sheets::ContactSheets;
+use sheets::{ContactSheets, contact_panels};
 use stunt_parity::{CapturedFrame, FilmCheck, FilmField, FilmId, RenderAdapter};
 
 use crate::parity_artifacts;
@@ -348,6 +348,9 @@ fn score_matched(
         let tick = frame.render_tick();
         let render = load_render_frame(store, tick)?;
         let credits_missing = render.credits && !overlay_drawn(&render.layers);
+        let credits = render.credits;
+        let render_indices = render.indices.clone();
+        let layers = render.layers.clone();
         let score = score_frame(
             &reference,
             &RenderFrame {
@@ -368,8 +371,14 @@ fn score_matched(
         sheets.offer(
             ordinal,
             score.metrics.scored.then_some(score.metrics.ssim),
-            score.reference_luminance,
-            score.render_luminance,
+            contact_panels(
+                &score.reference_luminance,
+                &score.render_luminance,
+                &reference.indices,
+                &render_indices,
+                &layers,
+                credits,
+            ),
         )?;
     }
     Ok(rows)
