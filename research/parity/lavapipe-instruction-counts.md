@@ -5,8 +5,8 @@ sidebar_label: "Instruction counts on lavapipe"
 # Parity: Instruction Counts of a Lavapipe Render
 
 * **Scope**: whether a Valgrind instruction count of a short headless render on lavapipe can gate a perf change without a quiet machine, beside the wall-time runs of `mise run ab` ([`time-a-headless-render.md`](../../docs/howto/time-a-headless-render.md) § 3), whose noise is in [`lavapipe-render-time.md` § 3](lavapipe-render-time.md#3-where-loop-time-goes) and [`lavapipe-ab-pair-count.md`](lavapipe-ab-pair-count.md).
-* **Sources**: `#1122`'s runs in a Claude cloud session (Intel Xeon @ 2.10 GHz, 4 vCPUs, `avx2` and `avx512f`), Valgrind 3.22.0, Ubuntu 24.04's `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.5` with `LP_NUM_THREADS=1`, release builds of `70b0f76`, of PR #951 (`7728e1e3`) and of its parent.
-  * **Evidence tier**: `[Bounded Observation]` throughout: 3 repeats a span, one loaded run, one machine, one day.
+* **Sources**: `#1122`'s runs in a Claude cloud session (Intel Xeon @ 2.10 GHz, 4 vCPUs, `avx2` and `avx512f`), Valgrind 3.22.0, Ubuntu 24.04's `mesa-vulkan-drivers 25.2.8-0ubuntu0.24.04.5` with `LP_NUM_THREADS=1`, release builds of `70b0f76`, of PR #951 (`7728e1e3`) and of its parent; section 6 adds `#1154`'s runs of `70b0f76` on the owner's laptop under WSL 2.
+  * **Evidence tier**: `[Bounded Observation]` throughout: 3 repeats a span, one loaded run, one day; one machine but for section 6's second.
 * **Spans**: `B30` and `B60` are the first 30 and 60 ticks of Span B (`LOCATION 3680..=3709`, `3680..=3739`), `C30` and `C60` those of Span C (`INTRO 2500..=2529`, `2500..=2559`), rendered with `mise run ab`'s film, `.ALL`, `--sidata` and render flags.
 
 ## 1. Setup
@@ -66,6 +66,16 @@ Differences of two spans add both spans' allocator noise (`0.65%` wide on the wh
 The count cannot see memory traffic, cache use or parallelism, so fewer instructions is not always faster; JIT-compiled shader code counts but has no symbols; and GPU timing still needs the hardware.
 _Source: [counts in a cloud session](../../work/2026-11/1122_instruction-count-gate/journal.md#2026-11-27-instruction-counts-of-lavapipe-renders-in-a-cloud-session)._
 
+## 6. The same span on a laptop under WSL 2
+
+`perf stat -e instructions:u` counts under WSL 2 on the owner's laptop, through `linux-tools-6.8.0-151`'s `perf` (the distribution's `linux-tools-generic` installs no `perf` for the 6.18 WSL 2 kernel).
+Native `B30` and `B60` each spread at most `0.016%` over three repeats, and setting `LP_NUM_THREADS=1` moved each span's median by under `0.01%`.
+Three Cachegrind `B30` runs on the laptop's AMD Ryzen 7 7745HX (`avx2` and `avx512f`), with `count.sh` on a release build of `70b0f76` (not byte-identical to the cloud's, as the cloud's own second build was not), counted `28,161,524,166`, `28,161,662,364` and `28,161,498,289`: a median `0.008%` above the cloud's three unloaded repeats' and inside their range.
+Outside glibc's `malloc.c` and `memmove` the laptop's median is `0.0013%` below the cloud's; its three repeats sit just below the cloud's three unloaded ones, and one of them falls inside the range of all five cloud `B30` runs (`0.0027%`, with the loaded run and the second build).
+The stores matched the cloud's.
+So the two machines' medians differed by less than either machine's own repeat range, though outside the allocator their three-repeat ranges just miss each other; a gate still compares two builds on one machine, with that machine's repeats.
+_Source: [WSL counts and perf runs](../../work/2026-11/1154_wsl-lavapipe-counts/journal.md#2026-11-27-perf-stat-and-valgrind-counts-on-wsl-2-against-the-clouds)._
+
 ## Ruled out
 
 * **Pinning Rust's hash seed from the environment**: `std`'s `RandomState` has no such switch; the count moved `0.0017%` outside the allocator without it, so it is not needed; [journal](../../work/2026-11/1122_instruction-count-gate/journal.md#2026-11-27-instruction-counts-of-lavapipe-renders-in-a-cloud-session).
@@ -74,6 +84,5 @@ _Source: [counts in a cloud session](../../work/2026-11/1122_instruction-count-g
 
 ## Open questions
 
-1. Whether `perf stat -e instructions:u` works under WSL 2 on the owner's laptop, and whether a Valgrind count of one build agrees between that laptop and a cloud session (`#1154`).
-2. Why glibc's allocator takes a different path between repeats of one binary (thread interleaving, `RandomState`'s seed, or both), and whether pinning it would let a gate read the whole count.
-3. How the spread grows with the span and on other spans and films: these figures rest on 30 and 60 ticks of Spans B and C.
+1. Why glibc's allocator takes a different path between repeats of one binary (thread interleaving, `RandomState`'s seed, or both), and whether pinning it would let a gate read the whole count.
+2. How the spread grows with the span and on other spans and films: these figures rest on 30 and 60 ticks of Spans B and C.

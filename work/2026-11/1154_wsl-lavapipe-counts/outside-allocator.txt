@@ -1,0 +1,3 @@
+wsl-b30-r1.cg: total 28,161,524,166 outside malloc.c and memmove 26,592,113,575
+wsl-b30-r2.cg: total 28,161,662,364 outside malloc.c and memmove 26,592,253,787
+wsl-b30-r3.cg: total 28,161,498,289 outside malloc.c and memmove 26,592,321,930
