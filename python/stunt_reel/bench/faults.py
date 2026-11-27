@@ -10,7 +10,7 @@ import numpy as np
 
 from stunt_reel.bench.planes import RenderPlanes
 from stunt_reel.bench.ssim import render_luma
-from stunt_reel.parity_artifacts import LAYER_FIRST_ACTOR, LAYER_TERRAIN
+from stunt_reel.parity_artifacts import LAYER_FIRST_ACTOR, LAYER_PROP, LAYER_TERRAIN
 
 if TYPE_CHECKING:
     from typing import Any
@@ -23,6 +23,8 @@ __all__ = ["ALL_FAULTS", "WRONG_TICK_DRAWS", "Fault", "plant"]
 
 #: Layers at or above this are actors; below it, terrain and scenery.
 ACTOR_LAYER = LAYER_FIRST_ACTOR
+#: The layer holding props.
+PROP_LAYER = LAYER_PROP
 #: The layer holding terrain.
 TERRAIN_LAYER = LAYER_TERRAIN
 #: Ticks a ``wrong_tick`` candidate must be from the frame's own.
@@ -68,14 +70,34 @@ def _map_planes(planes: RenderPlanes, fn: Any) -> RenderPlanes:
     )
 
 
-def _actors_removed(planes: RenderPlanes) -> RenderPlanes:
+def _fill_left(planes: RenderPlanes, keep: NDArray[np.bool_]) -> RenderPlanes:
+    """*planes* with every pixel outside *keep* replaced by its nearest *keep* pixel to the left."""
     height, width = planes.layer.shape
     columns = np.arange(width)[None, :]
-    keep = planes.layer < ACTOR_LAYER
     source = np.maximum.accumulate(np.where(keep, columns, -1), axis=1)
     source = np.where(source < 0, columns, source)
     rows = np.arange(height)[:, None]
     return _map_planes(planes, lambda plane: plane[rows, source])
+
+
+def _actors_removed(planes: RenderPlanes) -> RenderPlanes:
+    return _fill_left(planes, planes.layer < ACTOR_LAYER)
+
+
+def _props_shift(planes: RenderPlanes, k: int) -> RenderPlanes:
+    """The prop pixels *k* columns right; the pixels they vacate are filled as in actors-removed."""
+    props = planes.layer == PROP_LAYER
+    out = _fill_left(planes, ~props)
+    rgb, layer = out.rgb.copy(), out.layer.copy()
+    idx = None if out.idx is None else out.idx.copy()
+    ys, xs = np.nonzero(props)
+    inside = xs + k < props.shape[1]
+    ys, xs = ys[inside], xs[inside]
+    rgb[ys, xs + k] = planes.rgb[ys, xs]
+    layer[ys, xs + k] = planes.layer[ys, xs]
+    if idx is not None and planes.idx is not None:
+        idx[ys, xs + k] = planes.idx[ys, xs]
+    return RenderPlanes(rgb=rgb, idx=idx, layer=layer, credits=planes.credits)
 
 
 def _shift_x(plane: NDArray[Any], k: int) -> NDArray[Any]:
@@ -171,6 +193,8 @@ def plant(fault: Fault, tick: int, source: RenderSource, rng_seed: int) -> Rende
             return planes
         case "actors_removed":
             return _actors_removed(planes)
+        case "props_shift":
+            return _props_shift(planes, magnitude)
         case "shift_x":
             return _map_planes(planes, lambda plane: _shift_x(plane, magnitude))
         case "shift_y":

@@ -422,6 +422,26 @@ def test_actor_sheets_skip_actors_too_small_to_see() -> None:
     assert _actor_ticks(sheets) == [50, 60]
 
 
+def _prop_frames(pixels: dict[int, int]) -> MemorySource:
+    frames = {}
+    for tick, count in pixels.items():
+        layer = np.full((200, 320), 2, dtype=np.uint16)
+        layer.flat[:count] = 3
+        frames[tick] = RenderPlanes(
+            rgb=np.zeros((200, 320, 3), dtype=np.uint8), idx=None, layer=layer
+        )
+    return MemorySource(frames)
+
+
+def test_props_shift_sheets_skip_frames_with_too_few_prop_pixels() -> None:
+    source = _prop_frames({10: 0, 20: MIN_ACTOR_PIXELS - 1, 30: MIN_ACTOR_PIXELS, 40: 2000})
+    taxonomy = replace(
+        load_categories(CATEGORIES), faults={"props_shift:8": ("background-misregistration",)}
+    )
+    sheets = plan_sheets(source.ticks(), source, taxonomy, 1, calibrate=True)
+    assert [s.tick for s in sheets if s.fault == "props_shift:8"] == [30, 40]
+
+
 def test_actor_sheets_take_the_first_eligible_ticks() -> None:
     pixels = dict.fromkeys(range(10, 100, 10), 900) | {30: 5, 70: 5}
     source = _actor_frames(pixels)

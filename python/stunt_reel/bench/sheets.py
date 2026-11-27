@@ -28,7 +28,7 @@ from stunt_reel.parity_artifacts import LAYER_PROP
 lazy from stunt_reel.bench.planes import RenderSource
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Sequence
+    from collections.abc import Callable, Collection, Sequence
 
     from numpy.typing import NDArray
 
@@ -58,6 +58,12 @@ MIN_FADE_LEVEL = 0.95
 #: The prop layer, framed by the close-up when no actor is on screen.
 PROP_LAYER = LAYER_PROP
 
+
+#: Faults that need pixels of a layer to show: the frames holding too few are not picked.
+_LAYER_PICKS: dict[str, Callable[[NDArray[np.uint16]], NDArray[np.bool_]]] = {
+    "actors_removed": lambda layer: layer >= ACTOR_LAYER,
+    "props_shift": lambda layer: layer == PROP_LAYER,
+}
 
 Kind = Literal["real", "control", "planted"]
 
@@ -104,13 +110,12 @@ def plan_sheets(
     sheets += [Sheet(sheet_id(seed, "control", None, t), "control", t, None) for t in ticks]
     rng = random.Random(seed)  # noqa: S311 - not security
     for key in taxonomy.faults:
-        if key == "actors_removed":
-            with_actors = [
-                t
-                for t in ticks
-                if np.count_nonzero(tree.load(t).layer >= ACTOR_LAYER) >= MIN_ACTOR_PIXELS
+        pick = _LAYER_PICKS.get(key.partition(":")[0])
+        if pick is not None:
+            chosen = [
+                t for t in ticks if np.count_nonzero(pick(tree.load(t).layer)) >= MIN_ACTOR_PIXELS
             ]
-            chosen = with_actors[:FAULT_FRAMES]
+            chosen = chosen[:FAULT_FRAMES]
         else:
             chosen = rng.sample(list(ticks), min(FAULT_FRAMES, len(ticks)))
         sheets += [Sheet(sheet_id(seed, "planted", key, t), "planted", t, key) for t in chosen]
