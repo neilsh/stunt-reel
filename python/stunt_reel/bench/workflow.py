@@ -1,7 +1,8 @@
 """The error readout's commands: sheets out, grades scored, calibration and disputes.
 
 :func:`make_run` writes a run's sheets and briefs; :func:`write_disputes` lists the sheets the
-two passes disagree on; :func:`score_run` writes ``readout.json`` and returns the readout, any
+two passes disagree on, plus the undisputed sheets a large index mismatch routes to the
+tie-break (:func:`routed`); :func:`score_run` writes ``readout.json`` and returns the readout, any
 change since an earlier one and the calibration; :func:`write_example` commits one sheet as a
 category's example, and :func:`batch_row` reads a run's readout and report into one table row.
 """
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from stunt_reel.bench.faults import ALL_FAULTS, plant
 from stunt_reel.bench.grades import CLEAN, CLEAR, _note, parse_grades, planes_digest, render_brief
+from stunt_reel.bench.mismatch import index_mismatch, mismatch_fraction, readout_mask
 from stunt_reel.bench.planes import (
     BenchError,
     PairedRender,
@@ -24,7 +26,7 @@ from stunt_reel.bench.planes import (
     paired_render_ticks,
 )
 from stunt_reel.bench.readout import Comparison, Readout, compare, readout, suppressed, table_row
-from stunt_reel.bench.sheets import build_sheet, pick_ticks, plan_sheets
+from stunt_reel.bench.sheets import build_sheet, pick_ticks, plan_sheets, sheet_id
 from stunt_reel.bench.taxonomy import FilmWindow, add_example, load_categories
 from stunt_reel.parity_artifacts import parse_report, read_capture
 
@@ -41,6 +43,7 @@ __all__ = [
     "ACTORS_BAR",
     "GRADES_FILE",
     "READOUT_FILE",
+    "ROUTE_MISMATCH",
     "RUN_FILE",
     "SECOND_FILE",
     "TIEBREAK_FILE",
@@ -51,6 +54,7 @@ __all__ = [
     "disputed",
     "make_run",
     "merge_grades",
+    "routed",
     "score_run",
     "write_disputes",
     "write_example",
@@ -67,6 +71,10 @@ READOUT_FILE = "readout.json"
 #: readout without a ``pairing`` was made at the page's own tick.
 PAIRING = "render_tick"
 TAG_PAIRING = "tag"
+#: The share of unmasked pixels whose palette index differs, above which an undisputed real sheet
+#: with no category clear, or with an ``other`` note, goes to the tie-break; chosen from the
+#: 2026-11-27 baseline's 84 sheets (work/2026-11/1117_route-unexamined-sheets/journal.md).
+ROUTE_MISMATCH = 0.06
 
 
 @dataclass(frozen=True)
@@ -147,15 +155,36 @@ def disputed(
     return out
 
 
-def merge_grades(
+def routed(
     first: dict[str, SheetGrades],
     second: dict[str, SheetGrades],
-    tiebreak: dict[str, SheetGrades],
     ids: Sequence[str],
+    mismatch: dict[str, float],
+    threshold: float,
+) -> list[str]:
+    """The *ids*, in order, that the passes do not dispute but whose *mismatch* fraction exceeds
+    *threshold* while neither pass grades a category :data:`CLEAR` or more, or either wrote an
+    ``other`` note; an id absent from *mismatch* is never routed."""
+    contested = set(disputed(first, second, ids))
+    out = []
+    for sheet in ids:
+        if sheet in contested or mismatch.get(sheet, 0.0) <= threshold:
+            continue
+        passes = [first[sheet], second[sheet]]
+        quiet = all((v or 0) < CLEAR for p in passes for v in p.grades.values())
+        if quiet or any(_note(p) for p in passes):
+            out.append(sheet)
+    return out
+
+
+def merge_grades(
+    first: dict[str, SheetGrades],
+    tiebreak: dict[str, SheetGrades],
+    tiebroken: Sequence[str],
 ) -> dict[str, SheetGrades]:
-    """The first pass, with each disputed sheet graded by *tiebreak*."""
+    """The first pass, with each sheet in *tiebroken* graded by *tiebreak*."""
     merged = dict(first)
-    for sheet in disputed(first, second, ids):
+    for sheet in tiebroken:
         if sheet not in tiebreak:
             raise BenchError(f"no tie-break grade for {sheet}")
         merged[sheet] = tiebreak[sheet]
@@ -247,9 +276,19 @@ def make_run(
         stale.unlink(missing_ok=True)
     faults = {fault.key: fault for fault in ALL_FAULTS}
     written: list[str] = []
+    mismatches: dict[str, float] = {}
     for sheet in sheets:
         render_tick = paired.render_tick(sheet.tick)
         planes = tree.load(render_tick)
+        if sheet.kind == "real" and planes.idx is not None:
+            frame_idx = captured[sheet.tick].idx
+            mismatches[str(sheet.tick)] = round(
+                mismatch_fraction(
+                    index_mismatch(frame_idx, planes.idx),
+                    readout_mask(frame_idx, credits_drawn=planes.credits),
+                ),
+                6,
+            )
         frame = captured[sheet.tick]
         shown, shown_idx, layer = planes.rgb, planes.idx, planes.layer
         if sheet.kind == "control" and recaptured is not None:
@@ -284,6 +323,11 @@ def make_run(
         "render_ticks": {str(t): paired.render_tick(t) for t in ticks},
         # Binds the SSIM errors-table prints to the report these ticks were picked from.
         "report_digest": report_digest,
+        # Each real sheet's share of unmasked palette indices that differ, by tick (the sheet
+        # ids stay out of this file); errors-disputes routes on it. A render with no index
+        # plane records no tick, so its sheets are never routed.
+        "mismatch": mismatches,
+        "route_mismatch": ROUTE_MISMATCH,
     }
     _write_text(out / RUN_FILE, json.dumps(run, indent=2) + "\n")
     return len(written)
@@ -297,22 +341,42 @@ def _read_grades(path: Path, taxonomy: Taxonomy, sheets: Sequence[Sheet]) -> dic
     return grades
 
 
-def write_disputes(out: Path, taxonomy_path: Path) -> int:
+def _routing(run: dict[str, object]) -> tuple[dict[str, float], float]:
+    """Each real sheet's recorded mismatch fraction by id, and the threshold to route above.
+
+    A run with no ``mismatch`` yields an empty map, so it routes nothing.
+    """
+    seed = int(str(run["seed"]))
+    recorded = run.get("mismatch")
+    fractions = recorded if isinstance(recorded, dict) else {}
+    mismatch = {sheet_id(seed, "real", None, int(t)): float(f) for t, f in fractions.items()}
+    return mismatch, float(str(run.get("route_mismatch", ROUTE_MISMATCH)))
+
+
+def write_disputes(out: Path, taxonomy_path: Path) -> tuple[int, int]:
     """Write ``ids-tiebreak.txt`` and ``brief-tiebreak.md`` for the sheets the two passes in *out*
-    disagree on; returns how many (with 0, scoring needs no tie-break)."""
+    disagree on, then those :func:`routed` by index mismatch, each in ``ids.txt`` order.
+
+    Returns the counts (disputed, routed); with both 0, scoring needs no tie-break.
+    """
     taxonomy = load_categories(taxonomy_path)
     try:
         ids = (out / "ids.txt").read_text(encoding="utf-8").split()
         first = parse_grades((out / GRADES_FILE).read_text(encoding="utf-8"), taxonomy)
         second = parse_grades((out / SECOND_FILE).read_text(encoding="utf-8"), taxonomy)
+        run = json.loads((out / RUN_FILE).read_text(encoding="utf-8"))
     except FileNotFoundError as err:
         raise BenchError(f"{err.filename} is missing; grade both passes first") from err
     disputes = disputed(first, second, ids)
+    mismatch, threshold = _routing(run)
+    routes = routed(first, second, ids, mismatch, threshold)
     (out / TIEBREAK_FILE).unlink(missing_ok=True)
-    _write_text(out / TIEBREAK_IDS, "".join(f"{i}\n" for i in disputes))
-    brief = render_brief(taxonomy, out.resolve(), len(disputes), TIEBREAK_IDS, TIEBREAK_FILE)
+    _write_text(out / TIEBREAK_IDS, "".join(f"{i}\n" for i in [*disputes, *routes]))
+    brief = render_brief(
+        taxonomy, out.resolve(), len(disputes) + len(routes), TIEBREAK_IDS, TIEBREAK_FILE
+    )
     _write_text(out / "brief-tiebreak.md", brief)
-    return len(disputes)
+    return len(disputes), len(routes)
 
 
 def score_run(
@@ -320,8 +384,9 @@ def score_run(
 ) -> tuple[Readout, Comparison | None, Calibration | None]:
     """Score ``grades.txt`` in *out* and write ``readout.json``.
 
-    With a second pass (``grades-2.txt``), each sheet the passes disagree on is scored from
-    ``grades-tiebreak.txt`` (see :func:`write_disputes`) and the rest from the first pass.
+    With a second pass (``grades-2.txt``), each sheet the passes disagree on, or that is
+    :func:`routed`, is scored from ``grades-tiebreak.txt`` (see :func:`write_disputes`) and the
+    rest from the first pass; the readout's ``disputed`` counts only the first kind.
     Returns the readout, optional comparison, and optional calibration. Raises ``BenchError``
     for changed categories or render, invalid grades, missing tie-breaks, or incompatible
     comparisons. The readout is written before the optional comparison is checked.
@@ -354,19 +419,23 @@ def score_run(
     sheets = [s for s in planned if s.id in written]
     grades = _read_grades(out / GRADES_FILE, taxonomy, sheets)
     disputes = 0
+    routes = 0
     if (out / SECOND_FILE).is_file():
         second = _read_grades(out / SECOND_FILE, taxonomy, sheets)
         ids = (out / "ids.txt").read_text(encoding="utf-8").split()
-        disputes = len(disputed(grades, second, ids))
+        contested = disputed(grades, second, ids)
+        mismatch, threshold = _routing(run)
+        routes_ids = routed(grades, second, ids, mismatch, threshold)
+        disputes, routes = len(contested), len(routes_ids)
         tiebreak: dict[str, SheetGrades] = {}
-        if disputes:
+        if disputes + routes:
             if not (out / TIEBREAK_FILE).is_file():
                 raise BenchError(
-                    f"the two passes disagree on {disputes} sheets; run errors-disputes and "
-                    "grade brief-tiebreak.md"
+                    f"the two passes disagree on {disputes} sheets and {routes} more are routed "
+                    "by index mismatch; run errors-disputes and grade brief-tiebreak.md"
                 )
             tiebreak = _read_grades(out / TIEBREAK_FILE, taxonomy, sheets)
-        grades = merge_grades(grades, second, tiebreak, ids)
+        grades = merge_grades(grades, tiebreak, [*contested, *routes_ids])
     earlier = None
     if against is not None:
         if against.resolve() == (out / READOUT_FILE).resolve():
@@ -380,7 +449,9 @@ def score_run(
             raise BenchError(f"{against} is not a readout document: {err}") from err
         earlier = Readout.from_json(document)
     result = readout(grades, sheets, taxonomy.ids, str(run["film"]), taxonomy.digest, render_digest)
-    result = replace(result, disputed=disputes, pairing=str(run.get("pairing", TAG_PAIRING)))
+    result = replace(
+        result, disputed=disputes, routed=routes, pairing=str(run.get("pairing", TAG_PAIRING))
+    )
     _write_text(out / READOUT_FILE, json.dumps(result.to_json(), indent=2) + "\n")
     comparison = None
     if earlier is not None:

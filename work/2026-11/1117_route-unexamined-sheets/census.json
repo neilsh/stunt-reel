@@ -1,0 +1,949 @@
+[
+ {
+  "film": "ctry",
+  "tick": 14,
+  "id": "f32c930ed8ec",
+  "fraction": 0.0127,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ },
+ {
+  "film": "ctry",
+  "tick": 100,
+  "id": "d5a0c8320de6",
+  "fraction": 0.0227,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 188,
+  "id": "b616ff9fdc36",
+  "fraction": 0.0194,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 276,
+  "id": "c10391ac1814",
+  "fraction": 0.0234,
+  "class": "disputed",
+  "note": true,
+  "notes": [
+   "fuselage interior shading differs in palette, silhouette correct"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 364,
+  "id": "ea2731167c68",
+  "fraction": 0.0341,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 452,
+  "id": "68bd30ddf0c7",
+  "fraction": 0.0442,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 540,
+  "id": "0cd3a96efad3",
+  "fraction": 0.0325,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 628,
+  "id": "7a14139d7c0a",
+  "fraction": 0.028,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 716,
+  "id": "88225254c904",
+  "fraction": 0.0254,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 804,
+  "id": "71e4353c4548",
+  "fraction": 0.0354,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 892,
+  "id": "ea0f3e0bc62b",
+  "fraction": 0.0363,
+  "class": "clear",
+  "note": true,
+  "notes": [
+   "stray dark-red jagged line across the pole, render only"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "ctry",
+  "tick": 980,
+  "id": "9b63bdb330e2",
+  "fraction": 0.0525,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "intro",
+  "tick": 1002,
+  "id": "ed43daf1b24f",
+  "fraction": 0.0284,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "fuselage shading differs (palette only)"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "intro",
+  "tick": 1178,
+  "id": "2a0f224ff52e",
+  "fraction": 0.0761,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "intro",
+  "tick": 1355,
+  "id": "332fe3b60a94",
+  "fraction": 0.0703,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "intro",
+  "tick": 2069,
+  "id": "01ae740eb99a",
+  "fraction": 0.0156,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ },
+ {
+  "film": "intro",
+  "tick": 2245,
+  "id": "fe8ff3110e53",
+  "fraction": 0.0407,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "intro",
+  "tick": 2421,
+  "id": "353ba8b43455",
+  "fraction": 0.0802,
+  "class": "clear",
+  "note": true,
+  "notes": [
+   "fuselage shading differs (palette only)"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "intro",
+  "tick": 2597,
+  "id": "4d230d15b403",
+  "fraction": 0.0545,
+  "class": "clear",
+  "note": true,
+  "notes": [
+   "stray dark line in the sky in the render",
+   "stray dark wire line in the render mid-sky"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "intro",
+  "tick": 2773,
+  "id": "f7f288b0181b",
+  "fraction": 0.0251,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "intro",
+  "tick": 2949,
+  "id": "04e4aa10b546",
+  "fraction": 0.0228,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "intro",
+  "tick": 3125,
+  "id": "fbfa36efd3c8",
+  "fraction": 0.0692,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "propeller blade angle differs (frame timing)"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "intro",
+  "tick": 3301,
+  "id": "b838efb5e7e3",
+  "fraction": 0.056,
+  "class": "disputed",
+  "note": true,
+  "notes": [
+   "black spiky flecks in the render at the propeller position"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "intro",
+  "tick": 3477,
+  "id": "b31e8ac61806",
+  "fraction": 0.082,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "land",
+  "tick": 12,
+  "id": "53f6e07306b6",
+  "fraction": 0.0303,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft surface and nose colour differ"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "land",
+  "tick": 89,
+  "id": "883d8c2a5bba",
+  "fraction": 0.0322,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "land",
+  "tick": 177,
+  "id": "d1f5997b797a",
+  "fraction": 0.0512,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "land",
+  "tick": 254,
+  "id": "59b80750ff91",
+  "fraction": 0.0444,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "buildings at left drawn with olive speckle; distant aircraft colour differs"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "land",
+  "tick": 331,
+  "id": "df66c1db0d59",
+  "fraction": 0.0549,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs",
+   "flown aircraft shading and palette differ across the whole airframe, no part or shape missing"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "land",
+  "tick": 419,
+  "id": "dafec4a98e3b",
+  "fraction": 0.0225,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "land",
+  "tick": 496,
+  "id": "6b5ca3d726e1",
+  "fraction": 0.0284,
+  "class": "disputed",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "land",
+  "tick": 584,
+  "id": "bba62bb7d07e",
+  "fraction": 0.0614,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "land",
+  "tick": 661,
+  "id": "a47e57d2535a",
+  "fraction": 0.0447,
+  "class": "disputed",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "land",
+  "tick": 738,
+  "id": "b4de6e5df585",
+  "fraction": 0.0335,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "land",
+  "tick": 826,
+  "id": "54d6ba089ecb",
+  "fraction": 0.0266,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "land",
+  "tick": 903,
+  "id": "02106e0275e2",
+  "fraction": 0.0352,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft surface shading differs"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "balloon",
+  "tick": 12,
+  "id": "53f6e07306b6",
+  "fraction": 0.0061,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "balloon facet edges differ slightly, minor",
+   "small balloon edge shading and sun rim differ, silhouette matches"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "balloon",
+  "tick": 122,
+  "id": "b6c62737ea93",
+  "fraction": 0.0392,
+  "class": "disputed",
+  "note": true,
+  "notes": [
+   "balloon facet shading differs; road-edge specks at bottom left",
+   "sun rim and envelope edge palette differ, geometry matches"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "balloon",
+  "tick": 221,
+  "id": "4e030f3ea854",
+  "fraction": 0.0692,
+  "class": "disputed",
+  "note": true,
+  "notes": [
+   "parachute canopy edges offset about 2px",
+   "sun disc sits about 6 to 9 px lower-left in render"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "balloon",
+  "tick": 331,
+  "id": "df66c1db0d59",
+  "fraction": 0.0631,
+  "class": "disputed",
+  "note": true,
+  "notes": [
+   "parachute canopy edges offset 1-2px",
+   "canopy stripe colour differs, pink flecks absent"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "balloon",
+  "tick": 441,
+  "id": "880a46f28a45",
+  "fraction": 0.0655,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "balloon facet edges off by about 1px",
+   "canopy stripe colour differs, outline matches"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "balloon",
+  "tick": 540,
+  "id": "0cd3a96efad3",
+  "fraction": 0.0643,
+  "class": "clear",
+  "note": true,
+  "notes": [
+   "balloon facet shading differs",
+   "actor body shading differs, silhouette matches"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "balloon",
+  "tick": 650,
+  "id": "392f133b97a9",
+  "fraction": 0.1232,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "balloon facet shading differs, red band slightly shorter",
+   "stripe and lower envelope colour differs, geometry matches"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "balloon",
+  "tick": 749,
+  "id": "558ef2b4e165",
+  "fraction": 0.1271,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "balloon envelope facet shading differs, geometry aligned",
+   "envelope shading differs in lower panels, geometry matches"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "balloon",
+  "tick": 859,
+  "id": "9484557801ca",
+  "fraction": 0.0794,
+  "class": "disputed",
+  "note": true,
+  "notes": [
+   "balloon facet shading differs",
+   "envelope shading differs, geometry matches"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "balloon",
+  "tick": 970,
+  "id": "51acdc0fe3d0",
+  "fraction": 0.071,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "parachute canopy stripe shading differs",
+   "envelope shading differs, geometry matches"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "balloon",
+  "tick": 1068,
+  "id": "ca312467604a",
+  "fraction": 0.129,
+  "class": "clear",
+  "note": true,
+  "notes": [
+   "balloon facet shading differs",
+   "envelope and canopy shading differs, geometry matches"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "balloon",
+  "tick": 1178,
+  "id": "2a0f224ff52e",
+  "fraction": 0.1077,
+  "class": "clear",
+  "note": true,
+  "notes": [
+   "balloon facet shading differs",
+   "envelope shading differs, geometry matches"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 12,
+  "id": "53f6e07306b6",
+  "fraction": 0.0449,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 123,
+  "id": "fcff4b83e78f",
+  "fraction": 0.0388,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 232,
+  "id": "3b93533543fd",
+  "fraction": 0.1896,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 3
+ },
+ {
+  "film": "traintnl",
+  "tick": 342,
+  "id": "944daa31fe57",
+  "fraction": 0.0317,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 452,
+  "id": "68bd30ddf0c7",
+  "fraction": 0.0657,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 562,
+  "id": "ad5090e2c6b2",
+  "fraction": 0.048,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 683,
+  "id": "33ff14f11698",
+  "fraction": 0.053,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 793,
+  "id": "d47916e525c2",
+  "fraction": 0.0283,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ },
+ {
+  "film": "traintnl",
+  "tick": 903,
+  "id": "02106e0275e2",
+  "fraction": 0.0396,
+  "class": "disputed",
+  "note": true,
+  "notes": [
+   "pilot and cockpit detail differ slightly"
+  ],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 1013,
+  "id": "95fefaed0178",
+  "fraction": 0.0317,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 1123,
+  "id": "91c1f25e75f7",
+  "fraction": 0.0627,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "traintnl",
+  "tick": 1233,
+  "id": "4eafb8473696",
+  "fraction": 0.066,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "cockpit and strut detail splatter over the fuselage"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 12,
+  "id": "53f6e07306b6",
+  "fraction": 0.0565,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 331,
+  "id": "df66c1db0d59",
+  "fraction": 0.0404,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft palette shading differs, shape and position match",
+   "stray dark diagonal line on the right side of the render"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 639,
+  "id": "31de93f94ccb",
+  "fraction": 0.027,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft shading differs, shape intact"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 958,
+  "id": "3a24b14f3f5e",
+  "fraction": 0.035,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft palette shading differs, shape and position match",
+   "aircraft shading differs, shape intact"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 1277,
+  "id": "0cd6861cdbb3",
+  "fraction": 0.0361,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft shading differs, shape intact"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 1585,
+  "id": "4f488fe8f545",
+  "fraction": 0.0574,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft palette shading differs, shape and position match",
+   "aircraft shading differs, shape intact"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 1904,
+  "id": "6fe08a11744f",
+  "fraction": 0.08,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft palette shading differs, shape and position match",
+   "aircraft shading differs, shape intact"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 2212,
+  "id": "80bc23d45118",
+  "fraction": 0.0562,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "bomb",
+  "tick": 2531,
+  "id": "a5e9089fae5d",
+  "fraction": 0.0585,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "bomb",
+  "tick": 2850,
+  "id": "6e658b56c71a",
+  "fraction": 0.0702,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft shading differs, shape intact"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 3158,
+  "id": "9b274818c4b2",
+  "fraction": 0.0355,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "aircraft palette shading differs, shape and position match",
+   "aircraft shading differs, shape intact"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "bomb",
+  "tick": 3477,
+  "id": "b31e8ac61806",
+  "fraction": 0.0328,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "explosion drawn smaller and dimmer than in capture",
+   "explosion drawn but its shape and colour differ"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "location",
+  "tick": 134,
+  "id": "90dd0a890481",
+  "fraction": 0.0311,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ },
+ {
+  "film": "location",
+  "tick": 683,
+  "id": "33ff14f11698",
+  "fraction": 0.0445,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "location",
+  "tick": 1233,
+  "id": "4eafb8473696",
+  "fraction": 0.0523,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "location",
+  "tick": 1772,
+  "id": "9c866bcd310c",
+  "fraction": 0.1293,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "location",
+  "tick": 2322,
+  "id": "f4b36212e571",
+  "fraction": 0.0399,
+  "class": "quiet",
+  "note": true,
+  "notes": [
+   "render draws a small black figure where the capture shows none",
+   "render has a small black speck on the far ridge where the capture shows none"
+  ],
+  "max_grade": 1
+ },
+ {
+  "film": "location",
+  "tick": 2872,
+  "id": "e45223edddfc",
+  "fraction": 0.0502,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ },
+ {
+  "film": "location",
+  "tick": 3422,
+  "id": "5bafb98c0f4d",
+  "fraction": 0.109,
+  "class": "clear",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "location",
+  "tick": 3972,
+  "id": "6d0cc4e942f1",
+  "fraction": 0.0282,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ },
+ {
+  "film": "location",
+  "tick": 4522,
+  "id": "cc9b67c97e61",
+  "fraction": 0.0205,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ },
+ {
+  "film": "location",
+  "tick": 5062,
+  "id": "b132efb017b3",
+  "fraction": 0.0253,
+  "class": "disputed",
+  "note": false,
+  "notes": [],
+  "max_grade": 2
+ },
+ {
+  "film": "location",
+  "tick": 5611,
+  "id": "8393a839d616",
+  "fraction": 0.0325,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ },
+ {
+  "film": "location",
+  "tick": 6161,
+  "id": "ae4c7112b37d",
+  "fraction": 0.0335,
+  "class": "quiet",
+  "note": false,
+  "notes": [],
+  "max_grade": 1
+ }
+]

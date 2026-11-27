@@ -20,8 +20,9 @@ faults over the ticks named, so a render with known errors can be scored by the 
 ``errors-make`` writes the error readout's sheets, ``ids.txt``, ``brief.md`` and ``run.json``
 into ``build/parity/bench/<film>/errors``; a Haiku subagent reads the brief and writes
 ``grades.txt``, and a second reads ``brief-2.md`` and writes ``grades-2.txt``. ``errors-disputes``
-lists the sheets the two passes disagree on in ``brief-tiebreak.md`` for a Sonnet subagent, which
-writes ``grades-tiebreak.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
+lists the sheets the two passes disagree on, and the undisputed ones a large index mismatch
+routes, in ``brief-tiebreak.md`` for a Sonnet subagent, which writes
+``grades-tiebreak.txt``; ``errors-score`` writes ``readout.json`` and prints it, the changes since
 ``--against`` (those past ``min_change``, then the smaller moves) and, for a calibrating run, the calibration. ``errors-example`` commits one tick's
 sheet as an example of a category. ``errors-table`` prints the readout table of
 ``research/parity/batch.md`` from batch films' ``readout.json`` and ``report.json``. ``--batch`` reads a film the batch survey captured, rendered
@@ -268,9 +269,9 @@ def _fmt(value: float | None) -> str:
 def errors_disputes(args: argparse.Namespace) -> int:
     """Write a tie-break brief for disputed sheets and print their count."""
     out = _errors_out(args)
-    count = write_disputes(out, CATEGORIES)
-    if count:
-        print(f"{count} disputed sheets; grade {out / 'brief-tiebreak.md'}")
+    disputes, routes = write_disputes(out, CATEGORIES)
+    if disputes or routes:
+        print(f"{disputes} disputed and {routes} routed sheets; grade {out / 'brief-tiebreak.md'}")
     else:
         print("the two passes agree; no tie-break needed")
     return 0
@@ -291,6 +292,8 @@ def errors_score(args: argparse.Namespace) -> int:
         print(f"other @{tick}: {note}")
     if result.disputed:
         print(f"disputed {result.disputed} sheets, scored from the tie-break")
+    if result.routed:
+        print(f"routed {result.routed} sheets by index mismatch, scored from the tie-break")
     if result.missing:
         print(f"missing {result.missing} of {len(result.ticks)} sheets")
     if result.unknown:
