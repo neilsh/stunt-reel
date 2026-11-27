@@ -18,6 +18,7 @@ from stunt_reel.parity_artifacts import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from numpy.typing import NDArray
@@ -25,10 +26,12 @@ if TYPE_CHECKING:
 __all__ = [
     "BenchError",
     "CapturePlanes",
+    "PairedRender",
     "RenderPlanes",
     "RenderSource",
     "RenderTree",
     "load_capture",
+    "paired_render_ticks",
 ]
 
 SHAPE = (CAPTURE_HEIGHT, CAPTURE_WIDTH)
@@ -115,6 +118,39 @@ class RenderTree:
             layer=layer.astype(np.uint16).reshape(SHAPE),
             credits=self.store.credits(tick),
         )
+
+
+def paired_render_ticks(directory: Path) -> dict[int, int]:
+    """Each captured page's film tick mapped to the render tick it is scored against (#1172).
+
+    This is ``CapturedFrame.render_tick``, the pairing the scorer uses, so a readout shows the
+    render the score counts.
+    """
+    return {frame.film_tick: frame.render_tick for frame in read_capture(directory).frames}
+
+
+class PairedRender:
+    """A render source read at each film tick's paired render tick (see :func:`paired_render_ticks`).
+
+    A tick it lacks a pairing for is read at the tick itself, as the scorer does for a capture
+    without the slot words.
+    """
+
+    def __init__(self, tree: RenderSource, paired: Mapping[int, int]) -> None:
+        self._tree = tree
+        self._paired = dict(paired)
+
+    def render_tick(self, film_tick: int) -> int:
+        """The render tick *film_tick* is paired with."""
+        return self._paired.get(film_tick, film_tick)
+
+    def ticks(self) -> list[int]:
+        """The render ticks the store holds, ascending."""
+        return self._tree.ticks()
+
+    def load(self, tick: int) -> RenderPlanes:
+        """The planes at the render tick *tick* is paired with."""
+        return self._tree.load(self.render_tick(tick))
 
 
 def load_capture(directory: Path) -> dict[int, CapturePlanes]:

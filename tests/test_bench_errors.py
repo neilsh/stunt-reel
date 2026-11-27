@@ -45,7 +45,13 @@ from stunt_reel.bench.errors import (
     write_disputes,
     write_example,
 )
-from stunt_reel.bench.planes import BenchError, RenderPlanes, RenderTree, load_capture
+from stunt_reel.bench.planes import (
+    BenchError,
+    RenderPlanes,
+    RenderTree,
+    load_capture,
+    paired_render_ticks,
+)
 from stunt_reel.bench.sheets import MIN_ACTOR_PIXELS
 from stunt_reel.parity_artifacts import FrameReport, I6Gate, Report, write_report
 
@@ -979,3 +985,72 @@ def test_batch_row_refuses_a_run_whose_report_is_gone(run_inputs: dict[str, Path
     run_inputs["report"].unlink()
     with pytest.raises(BenchError, match="is missing"):
         batch_row(run_inputs["out"], run_inputs["report"])
+
+
+def _paired_capture(tmp_path: Path, bench_fixture: Path) -> Path:
+    """The bench capture with film tick 10's page paired to render tick 20 (#1172).
+
+    Its slot words name the slot pass before the one at tick 20: 20 - 1 + 1 = 20.
+    """
+    capture = tmp_path / "paired-capture"
+    shutil.copytree(bench_fixture / "capture", capture)
+    meta = json.loads((capture / "meta.json").read_text(encoding="utf-8"))
+    meta["frames"][0].update(slot_clock=20, slot_ticks=1)
+    (capture / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    return capture
+
+
+def test_paired_render_ticks_follow_the_slot_words(tmp_path: Path, bench_fixture: Path) -> None:
+    assert paired_render_ticks(bench_fixture / "capture") == {10: 10, 20: 20}
+    assert paired_render_ticks(_paired_capture(tmp_path, bench_fixture)) == {10: 20, 20: 20}
+
+
+def test_write_example_reads_the_render_at_the_paired_tick(
+    tmp_path: Path, bench_fixture: Path, run_inputs: dict[str, Path]
+) -> None:
+    capture = _paired_capture(tmp_path, bench_fixture)
+    render = run_inputs["render"]
+    tree = RenderTree(render)
+    # The fixture's two renders share their index planes; they differ in the credits flag.
+    assert tree.load(10).credits != tree.load(20).credits
+    path = write_example("ctry", 10, "aircraft-too-small", capture, render, run_inputs["taxonomy"])
+    frame = load_capture(capture)[10]
+    paired = tree.load(20)
+    expected = tmp_path / "expected.png"
+    build_sheet(frame, paired.rgb, paired.idx, paired.layer, credits_drawn=paired.credits).save(
+        expected
+    )
+    assert path.read_bytes() == expected.read_bytes()
+
+
+def test_make_run_records_the_pairing_it_used(
+    tmp_path: Path, bench_fixture: Path, run_inputs: dict[str, Path]
+) -> None:
+    paths = {**run_inputs, "capture": _paired_capture(tmp_path, bench_fixture)}
+    assert _make(paths) == 2
+    run = json.loads((paths["out"] / "run.json").read_text(encoding="utf-8"))
+    assert run["ticks"] == [10, 20]
+    assert run["pairing"] == "render_tick"
+    assert run["render_ticks"] == {"10": 20, "20": 20}
+
+
+def test_score_refuses_a_baseline_made_at_the_tag_pairing(
+    tmp_path: Path, bench_fixture: Path, run_inputs: dict[str, Path]
+) -> None:
+    _make(run_inputs)
+    _grade_all(run_inputs)
+    score_run(run_inputs["out"], run_inputs["render"], run_inputs["taxonomy"], None)
+    earlier = tmp_path / "earlier.json"
+    shutil.copy(run_inputs["out"] / "readout.json", earlier)
+    paths = {
+        **run_inputs,
+        "capture": _paired_capture(tmp_path, bench_fixture),
+        "out": tmp_path / "paired",
+    }
+    _make(paths)
+    _grade_all(paths)
+    with pytest.raises(BenchError, match="refresh the baseline"):
+        score_run(paths["out"], paths["render"], paths["taxonomy"], earlier)
+    document = json.loads((paths["out"] / "readout.json").read_text(encoding="utf-8"))
+    assert document["pairing"] == "render_tick"
+    assert Readout.from_json(json.loads(earlier.read_text(encoding="utf-8"))).pairing == "tag"
