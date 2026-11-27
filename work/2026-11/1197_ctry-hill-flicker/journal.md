@@ -34,7 +34,7 @@
   | location | 0.9168 | 0.9178 | 0.9188 | 0.9180 |
 
   - `0.3` raises five films (`land` by 0.0025, `ctry` 0.0019, `intro` 0.0017) and lowers `traintnl` by 0.0001; the pooled target SSIM rises by 0.0087.
-    By eye the hill is back on the target pictures ([309](images/ctry-309-plane-slide-bound.png), [364](images/ctry-364-plane-slide-bound.png)).
+    By eye the hill is back on [364](images/ctry-364-plane-slide-bound.png) but missing on [309](images/ctry-309-plane-slide-bound.png), where `main` draws it (next entry).
   - 90 frames fall by more than 0.005, the worst `intro` 2467 (−0.0212).
     `bomb` 12 to 210, the static opening shot, all fall by the same 0.0058 ([picture](images/bomb-78-plane-slide-bound-guard.png)).
     `[Hypothesis]`: a vertex that now keeps its own projection also loses its pixel snap, so it moves half a pixel back to where `main` drew it before #1064; the next round keeps the snap.
@@ -82,7 +82,7 @@
 - **Form**: `DBG_SNAP_MODE=3` in [`switches/DBG_SNAP_MODE.diff`](switches/DBG_SNAP_MODE.diff) (now with mode 3): a vertex whose ray meets its plane in front of the eye lands on the snapped pixel's ray at its slid distance clamped to within `DBG_PLANE_SLIDE_MAX` of its own; a miss keeps its own projection.
 - **Track**: heuristic.
 - **Target frames**: `--target ctry:286-366`, as before.
-- **Command** (lavapipe, as before): `mise run sweep -- --var DBG_PLANE_SLIDE_MAX=1.0e6,0.1,0.03,0.01 --var DBG_SNAP_MODE=3 --track heuristic --record work/2026-11/1197_ctry-hill-flicker --topic plane slide clamp --images work/2026-11/1197_ctry-hill-flicker/images --crop 140,0,320,100 --target ctry:286-366 --jobs 4`; `1.0e6` with mode 3 draws as `main` does.
+- **Command** (lavapipe, as before): `mise run sweep -- --var DBG_PLANE_SLIDE_MAX=1.0e6,0.1,0.03,0.01 --var DBG_SNAP_MODE=3 --track heuristic --record work/2026-11/1197_ctry-hill-flicker --topic plane slide clamp --images work/2026-11/1197_ctry-hill-flicker/images --crop 140,0,320,100 --target ctry:286-366 --jobs 4`; `1.0e6` with mode 3 scores as `main` does to within 0.0001 per film, and the sweep's deltas are against it.
 - **Result** ([`sweeps/plane-slide-clamp.toml`](sweeps/plane-slide-clamp.toml)): `winner: none adopts (best DBG_PLANE_SLIDE_MAX=0.01 DBG_SNAP_MODE=3: film-mean guard balloon -0.0052)`.
 
   | `DBG_PLANE_SLIDE_MAX` | ctry | intro | land | balloon | traintnl | bomb | location |
