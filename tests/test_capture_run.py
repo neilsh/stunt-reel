@@ -35,7 +35,7 @@ FRAMES = "capture_playone_reference"
 VIDEO = "capture_video"
 VIDEO_LOG = {
     "cs": "x100",
-    "log": "x101:7:0,102:7:1,103:8:2",
+    "log": "x101:7:0:5:0,102:7:1:5:1,103:8:2:6:2",
     "pal0": "x" + "00" * 768,
     "pal": "x",
     "end": "xhold",

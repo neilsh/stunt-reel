@@ -39,7 +39,10 @@ pub use render::{
     StoreSpan, TickSlot,
 };
 pub use report::{FrameReport, I6Gate, Report};
-pub use video::{CaptureEnd, PaletteChange, PaletteLog, TickLog, VIDEO_FILE, VideoCapture};
+pub use video::{
+    CaptureEnd, EmulatorInfo, LayoutOffsets, PaletteChange, PaletteLog, TickLog, VIDEO_FILE,
+    VideoCapture, VideoFileInfo,
+};
 
 /// Version carried by a capture's `meta.json`, frame or video.
 pub const SCHEMA_VERSION: u32 = 1;

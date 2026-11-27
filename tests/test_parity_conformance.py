@@ -33,6 +33,7 @@ from stunt_reel.parity_artifacts import (
     RenderAdapter,
     RenderStore,
     StoredFrame,
+    load_video_capture,
     read_capture,
     read_page,
     read_render,
@@ -385,6 +386,13 @@ def _written_documents(tmp_path: Path) -> list[tuple[str, dict[str, Any]]]:
     )
     write_video_capture(video, full_video, diagnostics={})
     written.append(("video", video / "meta.json"))
+
+    described = tmp_path / "video_described"
+    described.mkdir()
+    write_video_capture(
+        described, load_video_capture(CORPUS.parent / "video" / "with-slots"), diagnostics={}
+    )
+    written.append(("video", described / "meta.json"))
 
     return [(kind, json.loads(path.read_text(encoding="utf-8"))) for kind, path in written]
 

@@ -272,6 +272,17 @@ fn the_video_fixture_loads() {
 }
 
 #[test]
+fn the_video_fixture_with_slot_columns_loads() {
+    let dir = crate::test_support::workspace_root().join("tests/fixtures/parity/video/with-slots");
+    let capture = load_video_capture(&dir).expect("load video capture");
+    assert_eq!(capture.log.slot_clock.as_deref(), Some(&[5, 5, 6, 7][..]));
+    assert_eq!(capture.log.slot_ticks.as_deref(), Some(&[0, 1, 2, 1][..]));
+    assert_eq!(capture.film_ticks, Some([7, 9]));
+    let video = capture.video.expect("video");
+    assert_eq!(video.frame_rate, [2_190_197, 31_250]);
+}
+
+#[test]
 fn legacy_capture_fixture_reads_as_version_one() {
     let raw: Value = serde_json::from_str(
         &fs::read_to_string(corpus().join("meta_legacy.json")).expect("read meta_legacy.json"),

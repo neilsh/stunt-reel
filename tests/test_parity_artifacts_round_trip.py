@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import MISSING, fields, is_dataclass, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
-lazy from pathlib import Path
 
 import pytest
 
@@ -12,7 +12,6 @@ from artifact_helpers import (
     sample_capture,
     sample_record,
     sample_report,
-    sample_video,
 )
 from stunt_reel.parity_artifacts import (
     FilmId,
@@ -67,6 +66,10 @@ def _round_trip_capture(directory: Path, capture: Any) -> Any:
     return read_capture(directory)
 
 
+#: A synthetic video capture with the slot columns and every whole-film field set.
+_VIDEO_FIXTURE = Path(__file__).parent / "fixtures" / "parity" / "video" / "with-slots"
+
+
 def _round_trip_video(directory: Path, capture: Any) -> Any:
     write_video_capture(directory, capture, diagnostics={})
     return load_video_capture(directory)
@@ -94,7 +97,10 @@ def _round_trip_report(directory: Path, report: Any) -> Any:
         (
             _round_trip_video,
             lambda: replace(
-                sample_video(), film=_FULL_FILM, geometry=Geometry(4, 2, 2), playone_sha256="22"
+                load_video_capture(_VIDEO_FIXTURE),
+                film=_FULL_FILM,
+                geometry=Geometry(4, 2, 2),
+                playone_sha256="22",
             ),
             set(),
         ),

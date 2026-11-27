@@ -404,7 +404,7 @@ def video_script(
     """The Lua for a video capture: boot with *keys*, record the screen, log clocks and palette.
 
     The AVI starts once the boot keys are done. For at most *cap* frames the script logs
-    ``frame:film_tick:global_tick`` and, when the working palette changed, ``frame:band:hex``
+    ``frame:film_tick:global_tick:slot_clock:slot_ticks`` and, when the working palette changed, ``frame:band:hex``
     for each of the :data:`PALETTE_BANDS` bands that differ; it stops early once the film clock
     (above zero) has held for *end_hold* frames. Outputs: ``cs`` (the frame recording began),
     ``pal0`` (the palette then), ``log``, ``pal`` and ``end`` (``hold`` or ``capped``), each
@@ -434,7 +434,9 @@ def video_script(
         "  local f = dosbox.frame()\n"
         f"  local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X}); "
         f"local g = dosbox.mem_read_word(DS, 0x{layout.global_tick:04X})\n"
-        '  tr[#tr + 1] = f .. ":" .. t .. ":" .. g\n'
+        f"  local sc = dosbox.mem_read_word(DS, 0x{layout.slot_clock:04X}); "
+        f"local st = dosbox.mem_read_word(DS, 0x{layout.slot_ticks:04X})\n"
+        '  tr[#tr + 1] = f .. ":" .. t .. ":" .. g .. ":" .. sc .. ":" .. st\n'
         f"  local pal = {palette_read}\n"
         "  if pal ~= ppal then\n"
         f"    for b = 0, {PALETTE_BANDS - 1} do\n"

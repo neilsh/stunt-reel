@@ -37,11 +37,19 @@ _CPU_LINES: dict[str, tuple[str, str]] = {
     "archive": ("core = dynamic", "cpu_cycles = max"),
 }
 
+
+def cpu_settings(cpu: CpuProfile) -> tuple[str, str]:
+    """The ``core`` and ``cpu_cycles`` values the *cpu* profile's conf sets."""
+    core, cycles = (line.partition(" = ")[2] for line in _CPU_LINES[cpu])
+    return core, cycles
+
+
 __all__ = [
     "ENGINE_FILES",
     "MAKEONE_FILES",
     "CpuProfile",
     "StagedMount",
+    "cpu_settings",
     "mount_refusal",
     "render_conf",
     "stage_film",
