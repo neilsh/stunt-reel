@@ -39,7 +39,7 @@ pub const DEFAULT_FAR_CLIP: f32 = 25_000.0;
 
 /// The modern look's lighting, fog, sky and optional finish, matching WGSL `@group(0) @binding(1)` (`ModernUniform`).
 ///
-/// Only the `vs_modern`/`fs_modern` and `fs_sky_modern` entry points read it; the parity look's pipelines carry the
+/// Only the `vs_modern`/`fs_modern`, `fs_sky_modern` and diagnostic entry points read it; the parity look's pipelines carry the
 /// same bind group and never touch it.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -68,6 +68,9 @@ pub struct ModernUniform {
     /// [`VIGNETTE_START`](Self::VIGNETTE_START) and [`VIGNETTE_END`](Self::VIGNETTE_END), then
     /// padding.
     pub vignette: [f32; 4],
+    /// The eye's world position `x, y, z` (`[I1]` axes), then padding: the diagnostic grid adds
+    /// it to an eye-relative position.
+    pub eye: [f32; 4],
     /// The view rectangle the scene is drawn into, in target pixels: the top-left corner `x, y`,
     /// then the width and height; zero until the renderer writes it where it sets the viewport,
     /// and the vignette is skipped while it is. Last, so the rest of the uniform is written
@@ -130,6 +133,7 @@ impl ModernUniform {
             ],
             grade: [1.0, 1.0, 0.0, 0.0],
             vignette: [0.0, Self::VIGNETTE_START, Self::VIGNETTE_END, 0.0],
+            eye: [0.0; 4],
             view: [0.0; 4],
         }
     }
@@ -157,6 +161,8 @@ impl ModernUniform {
     #[must_use]
     pub fn for_view(variable_13: u16, camera: &CameraController, effects: ModernEffects) -> Self {
         let mut uniform = Self::for_sun(variable_13).with_effects(effects);
+        let eye = camera.eye_position();
+        uniform.eye = [eye.x, eye.y, eye.z, 0.0];
         if let Some(sky) = camera.sky_camera() {
             let [cx, cy] = sky.centre;
             let [fx, fy] = sky.focal;
@@ -610,7 +616,7 @@ pub(crate) struct CameraGpuResources {
     pub(crate) buffer: wgpu::Buffer,
     /// Uniform buffer containing `ModernUniform`, bound for every look and read by the modern one.
     pub(crate) modern_buffer: wgpu::Buffer,
-    /// The look the renderer draws in; only [`Look::Modern`] refreshes `modern_buffer`.
+    /// The look the renderer draws in; every look but [`Look::Mode13h`] refreshes `modern_buffer`.
     look: Look,
     /// The finish the modern look applies; both off for any other look.
     effects: ModernEffects,
@@ -709,7 +715,7 @@ impl CameraGpuResources {
         variable_13: u16,
         controller: &CameraController,
     ) {
-        if self.look == Look::Modern {
+        if self.look != Look::Mode13h {
             let uniform = ModernUniform::for_view(variable_13, controller, self.effects);
             #[expect(
                 clippy::indexing_slicing,
@@ -724,7 +730,7 @@ impl CameraGpuResources {
     /// to be drawn fills, for the modern vignette to centre on; the parity look writes nothing.
     /// Call it wherever the pass's viewport is set, after [`Self::upload_look`].
     pub(crate) fn upload_view(&self, queue: &wgpu::Queue, view: [f32; 4]) {
-        if self.look == Look::Modern {
+        if self.look != Look::Mode13h {
             queue.write_buffer(
                 &self.modern_buffer,
                 offset_of!(ModernUniform, view) as u64,

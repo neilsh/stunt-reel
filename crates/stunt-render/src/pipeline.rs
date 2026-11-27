@@ -124,7 +124,7 @@ pub(crate) struct RenderPipelines {
     /// Bind group layout for `@group(2) @binding(0)` (`ModelUniform`).
     pub(crate) model_bind_group_layout: wgpu::BindGroupLayout,
     /// Bind group layout for [`PROP_RUNS_GROUP`] (the world's prop runs, `fs_main_plane`), which
-    /// only pipelines with a plane target carry; `None` without one.
+    /// only pipelines with a plane target or the diagnostic look carry; `None` otherwise.
     pub(crate) prop_runs_layout: Option<wgpu::BindGroupLayout>,
 }
 
@@ -280,25 +280,32 @@ impl RenderPipelines {
         } else {
             "fs_main"
         };
-        // The modern look draws the scene through entry points of its own and draws the sky
-        // through `fs_sky_modern`, and keeps the bars (`bars.wgsl`) of the parity look.
+        // The modern and diagnostic looks draw the scene through entry points of their own and the
+        // sky through `fs_sky_modern` or `fs_sky_diagnostic`, and keep the bars (`bars.wgsl`) of the parity look.
         let (scene_vertex, scene_edge_vertex, scene_fragment) = match look {
             Look::Mode13h => ("vs_main", "vs_edge", fragment_entry),
             Look::Modern if plane_format.is_some() => {
                 ("vs_modern", "vs_modern_edge", "fs_modern_plane")
             }
             Look::Modern => ("vs_modern", "vs_modern_edge", "fs_modern"),
+            Look::Diagnostic if plane_format.is_some() => {
+                ("vs_diagnostic", "vs_diagnostic_edge", "fs_diagnostic_plane")
+            }
+            Look::Diagnostic => ("vs_diagnostic", "vs_diagnostic_edge", "fs_diagnostic"),
         };
         let sky_fragment_entry = match (look, plane_format.is_some()) {
             (Look::Mode13h, true) => "fs_sky_plane",
             (Look::Mode13h, false) => "fs_sky",
             (Look::Modern, true) => "fs_sky_modern_plane",
             (Look::Modern, false) => "fs_sky_modern",
+            (Look::Diagnostic, true) => "fs_sky_diagnostic_plane",
+            (Look::Diagnostic, false) => "fs_sky_diagnostic",
         };
         let model_bind_group_layout = Self::create_model_bind_group_layout(device);
-        // The plane's shape word looks world props up in their runs; without a plane nothing
-        // reads them.
-        let prop_runs_layout = plane_format.map(|_| Self::create_prop_runs_layout(device));
+        // The plane's shape word and the diagnostic look's colour look world props up in their
+        // runs; no other fragment reads them.
+        let prop_runs_layout = (plane_format.is_some() || look == Look::Diagnostic)
+            .then(|| Self::create_prop_runs_layout(device));
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("stunt_mode13h_pipeline_layout"),

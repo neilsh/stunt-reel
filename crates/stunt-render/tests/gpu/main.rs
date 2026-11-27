@@ -11,6 +11,7 @@
 )]
 
 mod common;
+mod diagnostic;
 mod disc;
 mod draw_order;
 mod fragment_index;

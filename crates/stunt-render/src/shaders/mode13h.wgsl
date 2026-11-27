@@ -142,7 +142,7 @@ struct PropRun {
     shape: u32,
 };
 
-// The world's prop runs in vertex order. Only the plane pipelines bind it (`fs_main_plane`).
+// The world's prop runs in vertex order. Only the plane pipelines and the diagnostic look's bind it (`fs_main_plane`, `diagnostic_object`).
 @group(3) @binding(0) var<storage, read> prop_runs: array<PropRun>;
 
 // Scenery class of a world prop vertex (contracts/shape/mod.rs SCENERY_PROP).
@@ -582,6 +582,9 @@ struct ModernUniform {
     // share of the half-diagonal from the view's centre, where the darkening starts and where it
     // is full.
     vignette: vec4<f32>,
+    // xyz: the eye's world position in [I1] axes (the diagnostic grid adds it to an eye-relative
+    // position); w unused.
+    eye: vec4<f32>,
     // The view rectangle the scene is drawn into, in target pixels: x, y of its top-left corner,
     // then its width and height. Written where the viewport is set, after the rest.
     view: vec4<f32>,
@@ -869,6 +872,277 @@ fn fs_sky_modern(in: SkyVertexOutput) -> @location(0) vec4<f32> {
 fn fs_sky_modern_plane(in: SkyVertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
     out.color = vec4<f32>(modern_finish(modern_sky(in.ndc), in.clip_position.xy), 1.0);
+    out.plane = vec2<u32>(sky_index(in.ndc), 0u);
+    return out;
+}
+
+// The diagnostic look (`--look diagnostic`): each object in a colour of its own, outlined, over a
+// world-space ground grid, drawn through entry points of its own beside the parity and modern
+// ones, which keep their code. Viewer-only: never scored or stored (docs/SPEC.md [I3]). It reuses
+// `modern_vertex`, so the snapping and culling are the parity look's, and its plane variants write
+// the true index and shape word as `fs_modern_plane` does. It has no lighting, fog, grade or
+// vignette. The colour key is docs/howto/render-a-film.md "See what each pixel is".
+
+// `ModernVertexOutput` with the draw facts the colour key reads.
+struct DiagnosticVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) @interpolate(flat) palette_index: u32,
+    @location(1) @interpolate(flat) light_level: u32,
+    @location(2) @interpolate(flat) layer: u32,
+    @location(3) @interpolate(linear) shade: f32,
+    @location(4) @interpolate(perspective) shade_w: f32,
+    @location(5) @interpolate(perspective) w: f32,
+    @location(6) @interpolate(flat) shape: u32,
+    @location(7) @interpolate(flat) prop_vertex: u32,
+    @location(8) @interpolate(perspective) eye_pos: vec3<f32>,
+    @location(9) @interpolate(flat) normal: vec3<f32>,
+    // The vertex's decal tie, nonzero for a decal.
+    @location(10) @interpolate(flat) decal_tie: u32,
+    @location(11) @interpolate(flat) scenery_class: u32,
+    // Nonzero for a shadow draw (`ModelUniform` `layer.y`).
+    @location(12) @interpolate(flat) shadow: u32,
+    // 1 for an outline pass vertex.
+    @location(13) @interpolate(flat) edge: u32,
+};
+
+struct DiagnosticEdgeVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) @interpolate(flat) palette_index: u32,
+    @location(1) @interpolate(flat) light_level: u32,
+    @location(2) @interpolate(flat) layer: u32,
+    @location(3) @interpolate(linear) shade: f32,
+    @location(4) @interpolate(perspective) shade_w: f32,
+    @location(5) @interpolate(perspective) w: f32,
+    @location(6) @interpolate(flat) shape: u32,
+    @location(7) @interpolate(flat) prop_vertex: u32,
+    @location(8) @interpolate(perspective) eye_pos: vec3<f32>,
+    @location(9) @interpolate(flat) normal: vec3<f32>,
+    @location(10) @interpolate(flat) decal_tie: u32,
+    @location(11) @interpolate(flat) scenery_class: u32,
+    @location(12) @interpolate(flat) shadow: u32,
+    @location(13) @interpolate(flat) edge: u32,
+    @builtin(clip_distances) clip_distances: array<f32, 4>,
+};
+
+fn diagnostic_vertex(in: VertexInput, vertex_index: u32) -> DiagnosticVertexOutput {
+    let v = modern_vertex(in, vertex_index);
+    var out: DiagnosticVertexOutput;
+    out.clip_position = v.clip_position;
+    out.palette_index = v.palette_index;
+    out.light_level = v.light_level;
+    out.layer = v.layer;
+    out.shade = v.shade;
+    out.shade_w = v.shade_w;
+    out.w = v.w;
+    out.shape = v.shape;
+    out.prop_vertex = v.prop_vertex;
+    out.eye_pos = v.eye_pos;
+    out.normal = v.normal;
+    out.decal_tie = in.attr.w;
+    out.scenery_class = in.attr.z;
+    out.shadow = model.layer.y;
+    out.edge = 0u;
+    return out;
+}
+
+@vertex
+fn vs_diagnostic(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> DiagnosticVertexOutput {
+    return diagnostic_vertex(in, vertex_index);
+}
+
+// `vs_diagnostic` for the outline line lists, clipped as `vs_edge` clips them.
+@vertex
+fn vs_diagnostic_edge(in: VertexInput, @builtin(vertex_index) vertex_index: u32) -> DiagnosticEdgeVertexOutput {
+    let v = diagnostic_vertex(in, vertex_index);
+    var out: DiagnosticEdgeVertexOutput;
+    out.clip_position = v.clip_position;
+    out.palette_index = v.palette_index;
+    out.light_level = v.light_level;
+    out.layer = v.layer;
+    out.shade = v.shade;
+    out.shade_w = v.shade_w;
+    out.w = v.w;
+    out.shape = v.shape;
+    out.prop_vertex = v.prop_vertex;
+    out.eye_pos = v.eye_pos;
+    out.normal = v.normal;
+    out.decal_tie = v.decal_tie;
+    out.scenery_class = v.scenery_class;
+    out.shadow = v.shadow;
+    out.edge = 1u;
+    let c = v.clip_position;
+    let band = EDGE_CLIP_BAND * c.w;
+    out.clip_distances = array<f32, 4>(band - c.x, band + c.x, band - c.y, band + c.y);
+    return out;
+}
+
+// The layer ids the plane target carries (stunt-core frame.rs `LAYER_*`).
+const LAYER_OCEAN: u32 = 1u;
+const LAYER_TERRAIN: u32 = 2u;
+const LAYER_PROP: u32 = 3u;
+const LAYER_OVERLAY: u32 = 4u;
+
+// The sky, ocean, terrain and grid colours, as 8-bit values over 255.
+const DIAG_SKY: vec3<f32> = vec3<f32>(16.0, 16.0, 24.0) / 255.0;
+const DIAG_OCEAN: vec3<f32> = vec3<f32>(40.0, 70.0, 140.0) / 255.0;
+const DIAG_TERRAIN: vec3<f32> = vec3<f32>(110.0, 120.0, 110.0) / 255.0;
+const DIAG_GRID: vec3<f32> = vec3<f32>(170.0, 200.0, 255.0) / 255.0;
+// World-space grid spacings in metres: the world defines no terrain cell size.
+const GRID_MINOR: f32 = 100.0;
+const GRID_MAJOR: f32 = 1000.0;
+// A flat world prop's share of terrain grey.
+const DIAG_FLAT_PROP_GREY: f32 = 0.65;
+// An outline's share of its object's colour.
+const DIAG_EDGE: f32 = 0.25;
+// A shadow's share of its actor's colour, and the share the hatch lines mix back.
+const DIAG_SHADOW: f32 = 0.2;
+const DIAG_HATCH: f32 = 0.3;
+const DIAG_STRIPE: f32 = 0.35;
+
+// The stable colour of key `k`: HSV with hue `fract(k * 0.618034)` (successive keys sit a golden
+// ratio apart, so neighbours differ), saturation 0.6, value 1.
+fn diagnostic_hue(k: u32) -> vec3<f32> {
+    let h = fract(f32(k) * 0.618034);
+    let rgb = clamp(abs(fract(vec3<f32>(h) + vec3<f32>(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0,
+        vec3<f32>(0.0), vec3<f32>(1.0));
+    return mix(vec3<f32>(1.0), rgb, 0.6);
+}
+
+// How much a grid line of spacing `spacing` covers a fragment at world x/z `world`, whose screen
+// derivative is `fw`: about one pixel wide, faded out once a cell is only a few pixels across.
+fn diagnostic_line(world: vec2<f32>, fw: vec2<f32>, spacing: f32) -> f32 {
+    let d = abs(fract(world / spacing + 0.5) - 0.5) * spacing;
+    let px = d / max(fw, vec2<f32>(1e-6));
+    let line = 1.0 - clamp(min(px.x, px.y), 0.0, 1.0);
+    return line * (1.0 - smoothstep(0.1 * spacing, 0.4 * spacing, max(fw.x, fw.y)));
+}
+
+// `colour` with the world grid over it: minor lines at 0.25, major at 0.5, toward `DIAG_GRID`.
+fn diagnostic_grid(colour: vec3<f32>, world: vec2<f32>, fw: vec2<f32>) -> vec3<f32> {
+    var rgb = mix(colour, DIAG_GRID, 0.25 * diagnostic_line(world, fw, GRID_MINOR));
+    rgb = mix(rgb, DIAG_GRID, 0.5 * diagnostic_line(world, fw, GRID_MAJOR));
+    return rgb;
+}
+
+// The colour a fragment's object has, before facing, stripes, hatching or the grid: white for the
+// overlay, ocean or terrain blue and grey, an actor's or sprite's by its layer, a prop's by its
+// shape word (a world prop's from its run, as `fs_main_plane` finds it).
+fn diagnostic_object(in: DiagnosticVertexOutput) -> vec3<f32> {
+    if (in.layer == LAYER_OVERLAY) {
+        return vec3<f32>(1.0);
+    }
+    if (in.layer == LAYER_OCEAN) {
+        return DIAG_OCEAN;
+    }
+    if (in.layer == LAYER_TERRAIN) {
+        return DIAG_TERRAIN;
+    }
+    if (in.layer == LAYER_PROP) {
+        var shape = in.shape;
+        if (in.prop_vertex != NO_PROP_VERTEX) {
+            shape = prop_shape(in.prop_vertex);
+        }
+        return diagnostic_hue(shape);
+    }
+    return diagnostic_hue(in.layer);
+}
+
+// `modern_shade` for a diagnostic fragment: the unrounded palette index, with its lavapipe guard.
+fn diagnostic_shade(in: DiagnosticVertexOutput) -> f32 {
+    var shade = in.shade;
+    if (is_non_finite(shade)) {
+        let screen_linear = in.shade_w / in.w;
+        if (is_non_finite(screen_linear)) {
+            return f32(in.palette_index);
+        }
+        shade = screen_linear;
+    }
+    return clamp(shade, 0.0, 255.0);
+}
+
+fn diagnostic_colour(in: DiagnosticVertexOutput) -> vec3<f32> {
+    // Derivatives first, before any branch (uniform control flow).
+    let world = in.eye_pos.xz + modern.eye.xz;
+    let fw = fwidth(world);
+    let object = diagnostic_object(in);
+    if (in.edge != 0u) {
+        return DIAG_EDGE * object;
+    }
+    let pixel = vec2<u32>(in.clip_position.xy);
+    if (in.shadow != 0u) {
+        var shadow = DIAG_SHADOW * object;
+        if (pixel.x % 6u == 0u || pixel.y % 6u == 0u) {
+            shadow = mix(shadow, object, DIAG_HATCH);
+        }
+        return shadow;
+    }
+    if (in.layer == LAYER_OVERLAY) {
+        return object;
+    }
+    var facing: f32;
+    if (dot(in.normal, in.normal) > 0.0) {
+        facing = 0.55 + 0.45 * abs(dot(in.normal, normalize(-in.eye_pos)));
+    } else {
+        let luma = dot(modern_palette(i32(round(diagnostic_shade(in)))), vec3<f32>(0.299, 0.587, 0.114));
+        facing = min(0.45 + 0.75 * luma, 1.2);
+    }
+    var rgb = object * facing;
+    if (in.layer == LAYER_OCEAN || in.layer == LAYER_TERRAIN) {
+        rgb = diagnostic_grid(rgb, world, fw);
+    } else if (in.layer == LAYER_PROP && in.scenery_class == SCENERY_PROP
+        && abs(in.normal.y) > 0.95 && in.decal_tie == 0u) {
+        rgb = mix(rgb, DIAG_TERRAIN * facing, DIAG_FLAT_PROP_GREY);
+        rgb = diagnostic_grid(rgb, world, fw);
+    }
+    if (in.decal_tie != 0u && ((pixel.x + pixel.y) / 4u) % 2u == 0u) {
+        rgb = mix(rgb, vec3<f32>(1.0), DIAG_STRIPE);
+    }
+    return rgb;
+}
+
+@fragment
+fn fs_diagnostic(in: DiagnosticVertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(diagnostic_colour(in), 1.0);
+}
+
+@fragment
+fn fs_diagnostic_plane(in: DiagnosticVertexOutput) -> PlaneOutput {
+    var out: PlaneOutput;
+    let index = fragment_index(parity_input_diagnostic(in));
+    out.color = vec4<f32>(diagnostic_colour(in), 1.0);
+    var shape = in.shape;
+    if (in.prop_vertex != NO_PROP_VERTEX) {
+        shape = prop_shape(in.prop_vertex);
+    }
+    out.plane = vec2<u32>((in.layer << 8u) | index, shape);
+    return out;
+}
+
+// The `VertexOutput` the parity index code reads, rebuilt from `in`.
+fn parity_input_diagnostic(in: DiagnosticVertexOutput) -> VertexOutput {
+    var v: VertexOutput;
+    v.clip_position = in.clip_position;
+    v.palette_index = in.palette_index;
+    v.light_level = in.light_level;
+    v.layer = in.layer;
+    v.shade = in.shade;
+    v.shade_w = in.shade_w;
+    v.w = in.w;
+    v.shape = in.shape;
+    v.prop_vertex = in.prop_vertex;
+    return v;
+}
+
+@fragment
+fn fs_sky_diagnostic(in: SkyVertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(DIAG_SKY, 1.0);
+}
+
+// The plane keeps the parity sky's index, as `fs_sky_modern_plane` does.
+@fragment
+fn fs_sky_diagnostic_plane(in: SkyVertexOutput) -> PlaneOutput {
+    var out: PlaneOutput;
+    out.color = vec4<f32>(DIAG_SKY, 1.0);
     out.plane = vec2<u32>(sky_index(in.ndc), 0u);
     return out;
 }

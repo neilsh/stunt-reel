@@ -125,7 +125,7 @@ _Source: the Milestone 1 and 2 sign-offs (Phases 0–2) in the frozen [`TEAM_SHE
   * Geometry keeps the 8-bit VGA palette index (`0..=255`) in `SodVertex::palette_index`.
   * In Phase 2, the WGSL vertex-to-fragment stage passes palette and facet lighting indices with `@interpolate(flat)` and samples an uncompressed $256 \times 32$ RGBA lookup texture: 256 base colors across 32 discrete directional lighting and atmospheric haze levels.
   * `[I3]` governs the parity path.
-    The viewer-only modern look (`stuntreel --look modern`), which lights and fogs the same palette indices through pipelines of its own, is exempt: it is never scored, stored or measured for agreement, and the render store refuses it.
+    The viewer-only looks (`stuntreel --look modern`, which lights and fogs the same palette indices, and `--look diagnostic`, which colours each object, outlines it and draws a ground grid) draw through pipelines of their own and are exempt: they are never scored, stored or measured for agreement, and the render store refuses them.
 
 #### [I7] Asset Isolation & Small Pure-Rust Core Dependencies
 

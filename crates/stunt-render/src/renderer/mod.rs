@@ -137,7 +137,10 @@ impl Default for Offscreen {
 ///
 /// `Mode13h` is the parity look: flat palette indices, scored against `PLAYONE` (`[I3]`).
 /// `Modern` is a viewer-only look beside it that adds directional lighting and distance fog
-/// through its own pipelines; it is never scored or stored (`docs/SPEC.md` `[I3]`).
+/// through its own pipelines.
+/// `Diagnostic` is a second viewer-only look that colours each object and draws its outlines and
+/// a ground grid.
+/// Neither is ever scored or stored (`docs/SPEC.md` `[I3]`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Look {
     /// Flat Mode 13h palette indices, as `PLAYONE` draws them.
@@ -146,6 +149,8 @@ pub enum Look {
     /// Lambert lighting against the film's sun and fog toward the horizon sky, with the
     /// [`ModernEffects`] that are on.
     Modern,
+    /// Each object in its own colour, outlined, over a world-space ground grid; no lighting or fog.
+    Diagnostic,
 }
 
 /// The optional finish `--look modern` puts on its colours, each off by default.
