@@ -1,0 +1,66 @@
+{
+  "after_only_frames": 1,
+  "basis": "scored",
+  "before_only_frames": 0,
+  "changed_threshold": 0.005,
+  "common_frames": 1,
+  "improved_count": 0,
+  "mean_iou": {
+    "after": 1.0,
+    "before": 1.0,
+    "delta": 0.0
+  },
+  "mean_ssim": {
+    "after": -0.24208781123161316,
+    "before": -0.24208781123161316,
+    "delta": 0.0
+  },
+  "most_improved": [],
+  "most_regressed": [],
+  "regressed_count": 0,
+  "verdict": {
+    "counts": {
+      "build_noise": 0,
+      "closer": 0,
+      "further": 0,
+      "missing": 1,
+      "unchanged": 1,
+      "within_noise": 0
+    },
+    "frames": [
+      {
+        "before_after_ssim": 1.0,
+        "changed_by_layer": {
+          "actors": 0.0,
+          "none": 0.0,
+          "ocean": 0.0,
+          "overlay": 0.0,
+          "props": 0.0,
+          "terrain": 0.0
+        },
+        "changed_idx": 0.0,
+        "changed_luma": 0.0,
+        "class": "unchanged",
+        "delta": null,
+        "film_tick": 7
+      },
+      {
+        "before_after_ssim": null,
+        "changed_by_layer": {
+          "actors": 0.0,
+          "none": 0.0,
+          "ocean": 0.0,
+          "overlay": 0.0,
+          "props": 0.0,
+          "terrain": 0.0
+        },
+        "changed_idx": 0.0,
+        "changed_luma": 0.0,
+        "class": "missing",
+        "delta": null,
+        "film_tick": 12
+      }
+    ],
+    "mean_delta": null
+  }
+}

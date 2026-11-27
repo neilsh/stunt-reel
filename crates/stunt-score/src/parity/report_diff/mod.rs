@@ -2,9 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::{Value, json};
+use serde::Serialize;
 
+use super::ParityError;
 use super::report::Report;
+use super::verdict::{Verdict, VerdictJson};
 
 /// Per-frame SSIM change between two reports, matched by `film_tick`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -34,7 +36,8 @@ const CHANGED_THRESHOLD: f64 = 0.005;
 const COMPARE_TOP: usize = 5;
 
 /// Which SSIM a comparison used.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 enum CompareBasis {
     /// `ssim` over frames scored in both reports.
     Scored,
@@ -105,7 +108,7 @@ fn report_scores(report: &Report) -> ReportScores {
 /// reports carry fade scoring, only frames scored in both are compared; otherwise every
 /// common frame. Reports that also carry the retired `ssim_compensated` are read for
 /// their raw `ssim`.
-pub(super) fn compare_reports(before: &Report, after: &Report) -> Result<Comparison, String> {
+pub(super) fn compare_reports(before: &Report, after: &Report) -> Result<Comparison, ParityError> {
     let (before_report, after_report) = (report_scores(before), report_scores(after));
     let basis = if before_report.fade_aware && after_report.fade_aware {
         CompareBasis::Scored
@@ -142,10 +145,10 @@ pub(super) fn compare_reports(before: &Report, after: &Report) -> Result<Compari
         iou_after += a_iou;
     }
     if deltas.is_empty() {
-        return Err(match basis {
+        return Err(ParityError::Input(match basis {
             CompareBasis::All => "the reports share no film_tick".to_string(),
             CompareBasis::Scored => "the reports share no film_tick scored in both".to_string(),
-        });
+        }));
     }
     let common = deltas.len();
     let n = common as f64;
@@ -257,37 +260,78 @@ impl Comparison {
         out
     }
 
-    /// The `compare.json` document.
-    pub(super) fn to_json(&self) -> Value {
-        let deltas = |list: &[FrameDelta]| {
-            list.iter()
-                .map(|d| {
-                    json!({
-                        "film_tick": d.film_tick,
-                        "before": d.before,
-                        "after": d.after,
-                        "delta": d.delta(),
-                    })
-                })
-                .collect::<Vec<Value>>()
-        };
-        let mean = |m: MeanChange| json!({ "before": m.before, "after": m.after, "delta": m.after - m.before });
-        json!({
-            "basis": match self.basis {
-                CompareBasis::Scored => "scored",
-                CompareBasis::All => "all",
-            },
-            "common_frames": self.common,
-            "before_only_frames": self.before_only,
-            "after_only_frames": self.after_only,
-            "changed_threshold": CHANGED_THRESHOLD,
-            "mean_ssim": mean(self.ssim),
-            "mean_iou": mean(self.iou),
-            "improved_count": self.improved_count,
-            "regressed_count": self.regressed_count,
-            "most_improved": deltas(&self.improved),
-            "most_regressed": deltas(&self.regressed),
-        })
+    /// The `compare.json` document, with the verdict when one was judged.
+    pub(super) fn document<'a>(&self, verdict: Option<&'a Verdict>) -> CompareJson<'a> {
+        CompareJson {
+            basis: self.basis,
+            common_frames: self.common,
+            before_only_frames: self.before_only,
+            after_only_frames: self.after_only,
+            changed_threshold: CHANGED_THRESHOLD,
+            mean_ssim: self.ssim.into(),
+            mean_iou: self.iou.into(),
+            improved_count: self.improved_count,
+            regressed_count: self.regressed_count,
+            most_improved: self.improved.iter().map(FrameDeltaJson::from).collect(),
+            most_regressed: self.regressed.iter().map(FrameDeltaJson::from).collect(),
+            verdict: verdict.map(|v| v.document()),
+        }
+    }
+}
+
+/// The `compare.json` document.
+#[derive(Serialize)]
+pub(super) struct CompareJson<'a> {
+    basis: CompareBasis,
+    common_frames: usize,
+    before_only_frames: usize,
+    after_only_frames: usize,
+    changed_threshold: f64,
+    mean_ssim: MeanJson,
+    mean_iou: MeanJson,
+    improved_count: usize,
+    regressed_count: usize,
+    most_improved: Vec<FrameDeltaJson>,
+    most_regressed: Vec<FrameDeltaJson>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verdict: Option<VerdictJson<'a>>,
+}
+
+/// A `mean_ssim` or `mean_iou` object of `compare.json`.
+#[derive(Serialize)]
+pub(super) struct MeanJson {
+    before: f64,
+    after: f64,
+    delta: f64,
+}
+
+impl From<MeanChange> for MeanJson {
+    fn from(m: MeanChange) -> Self {
+        Self {
+            before: m.before,
+            after: m.after,
+            delta: m.after - m.before,
+        }
+    }
+}
+
+/// An entry of `most_improved` or `most_regressed` in `compare.json`.
+#[derive(Serialize)]
+pub(super) struct FrameDeltaJson {
+    film_tick: u64,
+    before: f64,
+    after: f64,
+    delta: f64,
+}
+
+impl From<&FrameDelta> for FrameDeltaJson {
+    fn from(d: &FrameDelta) -> Self {
+        Self {
+            film_tick: d.film_tick,
+            before: d.before,
+            after: d.after,
+            delta: d.delta(),
+        }
     }
 }
 

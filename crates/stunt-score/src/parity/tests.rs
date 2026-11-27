@@ -21,7 +21,7 @@ fn a_render_from_before_the_store_is_an_error_that_says_to_re_render() {
     let test = tmp.join("test");
     write_version_1_render(&test);
     let error = run_parity(&tmp.join("ref"), &test, &tmp.join("out")).unwrap_err();
-    assert!(error.contains("re-render"), "{error}");
+    assert!(error.to_string().contains("re-render"), "{error}");
 }
 
 #[test]
@@ -124,9 +124,12 @@ fn meta_without_film_tick_is_rejected() {
 
     let error = run_parity(&tmp.join("ref"), &tmp.join("test"), &tmp.join("out"))
         .expect_err("untagged capture must be rejected");
-    assert!(error.contains("film_tick"), "{error}");
-    assert!(error.contains("predates film-clock tagging"), "{error}");
-    assert!(error.contains("recaptured"), "{error}");
+    assert!(error.to_string().contains("film_tick"), "{error}");
+    assert!(
+        error.to_string().contains("predates film-clock tagging"),
+        "{error}"
+    );
+    assert!(error.to_string().contains("recaptured"), "{error}");
 }
 
 #[test]
@@ -637,7 +640,7 @@ fn run_identified_with(
     let mut options = Options::new(tmp.join("ref"), tmp.join("test"), tmp.join("out"));
     options.waive_archive_conflict = waive;
     extra(&mut options);
-    let result = super::run(&options);
+    let result = super::run(&options).map_err(|e| e.to_string());
     (tmp, result)
 }
 

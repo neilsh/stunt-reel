@@ -113,8 +113,11 @@ impl From<Args> for Options {
 ///
 /// # Errors
 ///
-/// A message for the terminal when the inputs cannot be read or an output cannot be written.
-pub(crate) fn run(args: impl IntoIterator<Item = String>) -> Result<(), String> {
+/// A [`ParityError`](stunt_score::parity::ParityError) when the inputs cannot be read or an
+/// output cannot be written; its `Display` is the terminal message.
+pub(crate) fn run(
+    args: impl IntoIterator<Item = String>,
+) -> Result<(), stunt_score::parity::ParityError> {
     let args = Args::try_parse_args(args).unwrap_or_else(|e| e.exit());
     stunt_score::parity::run(&Options::from(args))
 }

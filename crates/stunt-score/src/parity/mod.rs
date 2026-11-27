@@ -35,6 +35,7 @@
 //! rather than only by the means.
 
 mod compare;
+mod error;
 mod fade;
 mod frames;
 mod loss;
@@ -72,6 +73,7 @@ use stunt_parity::{CapturedFrame, FilmCheck, FilmField, FilmId, RenderAdapter};
 use crate::parity_artifacts;
 use crate::render_store::RenderStore;
 
+pub use error::ParityError;
 pub use options::{DEFAULT_MIN_FADE_LEVEL, Options};
 
 /// `[I6]` initial acceptance threshold on the scored mean SSIM.
@@ -115,7 +117,7 @@ fn check_film(
     capture: &FilmId,
     render: &FilmId,
     waive_archive: bool,
-) -> Result<FilmClearance, String> {
+) -> Result<FilmClearance, ParityError> {
     let archives = || {
         (
             film_value(capture, FilmField::AllSha256),
@@ -166,9 +168,9 @@ fn check_film(
             } else {
                 "re-render the capture's film"
             };
-            Err(format!(
+            Err(ParityError::Input(format!(
                 "the render is not of the captured film: {differences}; {remedy}"
-            ))
+            )))
         }
     }
 }
@@ -323,7 +325,7 @@ fn score_matched(
     carry_frames: &[&CapturedFrame],
     policy: &ScorePolicy<'_>,
     sheets: &mut ContactSheets<'_>,
-) -> Result<Vec<FrameRow>, String> {
+) -> Result<Vec<FrameRow>, ParityError> {
     let render_palettes: BTreeMap<u32, _> = store
         .record()
         .ticks
@@ -341,9 +343,9 @@ fn score_matched(
         .collect();
     let mut rows = Vec::with_capacity(matched.len());
     for frame in matched {
-        let capture_sky = skies
-            .get(&frame.ordinal)
-            .ok_or_else(|| format!("captured frame {} has no sky mask", frame.ordinal))?;
+        let capture_sky = skies.get(&frame.ordinal).ok_or_else(|| {
+            ParityError::Input(format!("captured frame {} has no sky mask", frame.ordinal))
+        })?;
         let reference = matched::load_captured(reference_dir, frame)?;
         let tick = frame.render_tick();
         let render = load_render_frame(store, tick)?;
@@ -449,13 +451,12 @@ fn print_summary(report: &Report, min_fade_level: f32) {
     clippy::print_stderr,
     reason = "`run` reports to the terminal of `stuntreel parity`, as it did in stunt-cli"
 )]
-pub fn run(args: &Options) -> Result<(), String> {
+pub fn run(args: &Options) -> Result<(), ParityError> {
     fs::create_dir_all(&args.output)
-        .map_err(|e| format!("create output directory {}: {e}", args.output.display()))?;
+        .map_err(ParityError::io("create output directory", &args.output))?;
 
-    let capture =
-        parity_artifacts::load_capture(&args.reference).map_err(|error| error.to_string())?;
-    let mut store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
+    let capture = parity_artifacts::load_capture(&args.reference)?;
+    let mut store = RenderStore::open(&args.test)?;
     let clearance = check_film(
         &capture.film,
         &store.record().film,
@@ -466,9 +467,12 @@ pub fn run(args: &Options) -> Result<(), String> {
     }
     matched::check_geometry(&capture.geometry, &store.record().geometry)?;
     let frames = &capture.frames;
-    let first_frame = frames
-        .first()
-        .ok_or_else(|| format!("{} has no captured frames", args.reference.display()))?;
+    let first_frame = frames.first().ok_or_else(|| {
+        ParityError::Input(format!(
+            "{} has no captured frames",
+            args.reference.display()
+        ))
+    })?;
     let first_plane = read_index_plane(&args.reference.join(&first_frame.frame_file))?;
     let fade_set = fade_reference_set(&first_plane);
     let policy = ScorePolicy {
@@ -496,10 +500,10 @@ pub fn run(args: &Options) -> Result<(), String> {
     sheets.finish()?;
 
     if scores.is_empty() {
-        return Err(format!(
+        return Err(ParityError::Input(format!(
             "no comparable frames: {} reference frame(s), {unmatched} unmatched",
             frames.len()
-        ));
+        )));
     }
 
     let report = Report {
@@ -526,7 +530,7 @@ pub fn run(args: &Options) -> Result<(), String> {
         );
     }
     let report_path = args.output.join("report.json");
-    parity_artifacts::write_report(&report_path, &report).map_err(|error| error.to_string())?;
+    parity_artifacts::write_report(&report_path, &report)?;
 
     print_summary(&report, args.min_fade_level);
 

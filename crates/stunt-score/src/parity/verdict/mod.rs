@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use serde_json::{Value, json};
+use serde::Serialize;
 use stunt_core::frame::{
     ASPECT_CORRECTED_HEIGHT, LAYER_FIRST_ACTOR, LAYER_OCEAN, LAYER_OVERLAY, LAYER_PROP,
     LAYER_TERRAIN, MODE13H_HEIGHT, MODE13H_WIDTH,
@@ -26,7 +26,8 @@ use super::ssim::{compute_frame_ssim, compute_window_scores, rescale_mode13h_fra
 const LAYER_KEYS: [&str; 6] = ["ocean", "terrain", "props", "overlay", "actors", "none"];
 
 /// How a render change moved one frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(super) enum VerdictClass {
     /// No pixel changed, or every change sits under the overlay.
     Unchanged,
@@ -43,7 +44,7 @@ pub(super) enum VerdictClass {
 }
 
 /// One frame's regression verdict.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub(super) struct FrameVerdict {
     pub(super) film_tick: u64,
     /// Fraction of the 320x200 frame whose palette index changed.
@@ -52,8 +53,9 @@ pub(super) struct FrameVerdict {
     pub(super) changed_luma: f32,
     /// Changed fraction (index or luminance) by the fresh render's layer.
     pub(super) changed_by_layer: BTreeMap<&'static str, f32>,
-    /// SSIM of the previous render against the fresh one, stretched, unmasked.
-    pub(super) before_after_ssim: f32,
+    /// SSIM of the previous render against the fresh one, stretched, unmasked; `None` when the
+    /// previous render has no such tick.
+    pub(super) before_after_ssim: Option<f32>,
     /// Mean window SSIM after minus before, over the touched windows; `None` when none.
     pub(super) delta: Option<f32>,
     pub(super) class: VerdictClass,
@@ -67,33 +69,10 @@ impl FrameVerdict {
             changed_idx: 0.0,
             changed_luma: 0.0,
             changed_by_layer: LAYER_KEYS.iter().map(|k| (*k, 0.0)).collect(),
-            before_after_ssim: f32::NAN,
+            before_after_ssim: None,
             delta: None,
             class: VerdictClass::Missing,
         }
-    }
-
-    fn to_json(&self) -> Value {
-        json!({
-            "film_tick": self.film_tick,
-            "changed_idx": self.changed_idx,
-            "changed_luma": self.changed_luma,
-            "changed_by_layer": self.changed_by_layer,
-            "before_after_ssim": self.before_after_ssim,
-            "delta": self.delta,
-            "class": class_name(self.class),
-        })
-    }
-}
-
-fn class_name(class: VerdictClass) -> &'static str {
-    match class {
-        VerdictClass::Unchanged => "unchanged",
-        VerdictClass::BuildNoise => "build_noise",
-        VerdictClass::WithinNoise => "within_noise",
-        VerdictClass::Closer => "closer",
-        VerdictClass::Further => "further",
-        VerdictClass::Missing => "missing",
     }
 }
 
@@ -223,14 +202,14 @@ pub(super) fn frame_verdict(
             .into_iter()
             .map(|(k, n)| (k, n as f32 / total))
             .collect(),
-        before_after_ssim: compute_frame_ssim(
+        before_after_ssim: Some(compute_frame_ssim(
             &before_rescaled,
             &after_rescaled,
             MODE13H_WIDTH,
             ASPECT_CORRECTED_HEIGHT,
             SSIM_WINDOW,
             SSIM_STRIDE,
-        ),
+        )),
         delta,
         class,
     }
@@ -321,24 +300,39 @@ impl Verdict {
     }
 
     /// The `verdict` object of `compare.json`.
-    pub(super) fn to_json(&self) -> Value {
-        let counts: BTreeMap<&str, usize> = [
-            VerdictClass::Unchanged,
-            VerdictClass::BuildNoise,
-            VerdictClass::WithinNoise,
-            VerdictClass::Closer,
-            VerdictClass::Further,
-            VerdictClass::Missing,
-        ]
-        .into_iter()
-        .map(|c| (class_name(c), self.count(c)))
-        .collect();
-        json!({
-            "frames": self.frames.iter().map(FrameVerdict::to_json).collect::<Vec<_>>(),
-            "counts": counts,
-            "mean_delta": self.mean_delta(),
-        })
+    pub(super) fn document(&self) -> VerdictJson<'_> {
+        VerdictJson {
+            frames: &self.frames,
+            counts: ClassCounts {
+                unchanged: self.count(VerdictClass::Unchanged),
+                build_noise: self.count(VerdictClass::BuildNoise),
+                within_noise: self.count(VerdictClass::WithinNoise),
+                closer: self.count(VerdictClass::Closer),
+                further: self.count(VerdictClass::Further),
+                missing: self.count(VerdictClass::Missing),
+            },
+            mean_delta: self.mean_delta(),
+        }
     }
+}
+
+/// The `verdict` object of `compare.json`.
+#[derive(Serialize)]
+pub(super) struct VerdictJson<'a> {
+    frames: &'a [FrameVerdict],
+    counts: ClassCounts,
+    mean_delta: Option<f32>,
+}
+
+/// The frames of each class, in the `counts` object of `compare.json`.
+#[derive(Serialize)]
+struct ClassCounts {
+    unchanged: usize,
+    build_noise: usize,
+    within_noise: usize,
+    closer: usize,
+    further: usize,
+    missing: usize,
 }
 
 #[cfg(test)]

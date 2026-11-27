@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::{Value, json};
 
 /// Parses a report document, as `--compare` does.
 fn parse(doc: Value) -> Result<Report, serde_json::Error> {
@@ -55,7 +56,10 @@ fn compare_uses_ssim_over_frames_scored_in_both() {
     assert!((c.ssim.after - 0.7).abs() < 1e-6);
     assert!((c.iou.before - 0.8).abs() < 1e-6);
     assert!((c.iou.after - 0.9).abs() < 1e-6);
-    assert_eq!(c.to_json()["basis"], "scored");
+    assert_eq!(
+        serde_json::to_value(c.document(None)).unwrap()["basis"],
+        "scored"
+    );
     let text = c.summary();
     assert!(
         text.starts_with("[compare] basis: SSIM over frames scored"),
@@ -80,7 +84,10 @@ fn compare_falls_back_to_all_frames_when_a_report_predates_fade_scoring() {
         let c = compare_reports(before, after).expect("comparable");
         assert_eq!(c.basis, CompareBasis::All);
         assert_eq!(c.common, 2);
-        assert_eq!(c.to_json()["basis"], "all");
+        assert_eq!(
+            serde_json::to_value(c.document(None)).unwrap()["basis"],
+            "all"
+        );
         let text = c.summary();
         assert!(
             text.starts_with("[compare] basis: SSIM over all common"),
@@ -174,6 +181,7 @@ fn compare_rejects_disjoint_or_malformed_reports() {
     assert!(
         compare_reports(&a, &b)
             .unwrap_err()
+            .to_string()
             .contains("share no film_tick")
     );
     // Malformed reports are rejected when parsed, naming the missing field.
@@ -193,7 +201,7 @@ fn compare_json_and_summary_carry_the_same_figures() {
     let before = report(&[(7, 0.5, 0.8), (9, 0.6, 0.8)]);
     let after = report(&[(7, 0.4, 0.8), (9, 0.7, 0.8)]);
     let c = compare_reports(&before, &after).expect("comparable");
-    let doc = c.to_json();
+    let doc = serde_json::to_value(c.document(None)).unwrap();
     assert_eq!(doc["common_frames"], 2);
     assert_eq!(doc["regressed_count"], 1);
     assert_eq!(doc["most_regressed"][0]["film_tick"], 7);

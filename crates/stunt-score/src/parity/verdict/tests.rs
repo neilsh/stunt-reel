@@ -51,7 +51,7 @@ fn an_identical_frame_is_unchanged() {
     let v = verdict(&render(), None, 0);
     assert_eq!(v.class, VerdictClass::Unchanged);
     assert_eq!((v.changed_idx, v.changed_luma, v.delta), (0.0, 0.0, None));
-    assert!(v.before_after_ssim > 0.999);
+    assert!(v.before_after_ssim.is_some_and(|s| s > 0.999));
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn the_summary_and_json_count_every_class() {
         verdict.summary(),
         "[verdict] changed 1/3 frames: 1 closer, 0 further, 0 within noise; mean \u{394} +0.010 on changed windows (1 build noise, 1 missing) (no noise sigma: \u{394} by sign only)"
     );
-    let doc = verdict.to_json();
+    let doc = serde_json::to_value(verdict.document()).unwrap();
     assert_eq!(doc["counts"]["missing"], 1);
     assert_eq!(doc["counts"]["build_noise"], 1);
     assert_eq!(doc["frames"].as_array().unwrap().len(), 3);
@@ -130,5 +130,8 @@ fn build_noise_stays_out_of_the_mean_and_the_picks() {
     let mean = verdict.mean_delta().unwrap();
     assert!((mean - 0.01 / 3.0).abs() < 1e-7, "{mean}");
     assert_eq!(verdict.worst_and_best(), (Some(2), Some(1)));
-    assert_eq!(verdict.to_json()["frames"][3]["delta"], -0.5);
+    assert_eq!(
+        serde_json::to_value(verdict.document()).unwrap()["frames"][3]["delta"],
+        -0.5
+    );
 }
