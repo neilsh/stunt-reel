@@ -69,9 +69,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--all", type=dataroot.data_path_arg, help="default: LOCATION's capture .ALL"
     )
-    parser.add_argument(
-        "--icd", type=dataroot.data_path_arg, help=f"default: <data root>/{DEFAULT_ICD}"
-    )
+    parser.add_argument("--icd", type=dataroot.data_path_arg, help=f"default: {DEFAULT_ICD}")
     parser.add_argument("--data-root", type=dataroot.data_path_arg)
     return parser
 
