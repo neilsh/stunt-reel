@@ -16,7 +16,7 @@ Checked against Anthropic's [models overview](https://platform.claude.com/docs/e
 | Label | Model | Notes |
 | --- | --- | --- |
 | `model-tier:light` | `Haiku` | Positioned for high-volume, latency-sensitive work |
-| `model-tier:medium` | `Sonnet` | The default implementer |
+| `model-tier:medium` | `Sonnet` | The default implementer; `Haiku` goes first on a `medium` issue whose plan names the files, change and test ([`harness.md`](../harness.md#policy-any-agent)) |
 | `model-tier:heavy` | `Opus` | `Fable`, a tier above `Opus`, is not routed to by any label |
 
 ### Codex (OpenAI)
@@ -59,7 +59,7 @@ These count as wide:
 * `Gemini 4 Hydrogen` and `Gemini 4 Neon`.
 * DeepSeek `Flash` (a hosted window of about 1M is reported; confirm what dsh's configured endpoint gives).
 
-`Haiku` is not on the list: the [`harness.md`](../harness.md#policy-any-agent) routing for `light` + `wide` already falls back to `Sonnet` when the material does not fit.
+`Haiku` is not on the list: its price per token is five times higher past a 100K-token prompt, which is why a Haiku builder stops at about 100K ([`harness.md`](../harness.md#policy-any-agent)), and the routing for `light` + `wide` already falls back to `Sonnet` when the material does not fit.
 Codex is not on it either: reports say Codex caps a model's window at about 272K tokens although the API advertises about 1M.
 
 ## Open questions
