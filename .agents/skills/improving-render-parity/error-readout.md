@@ -20,6 +20,7 @@ The categories are `research/parity/error-categories.toml`.
 
 The previous readout is the committed baseline, `research/parity/readouts/<film>.json`, with the commit and adapter it came from in [`baseline.toml`](../../../research/parity/readouts/baseline.toml).
 `errors-score` refuses it when the render picked other ticks or the categories changed; then refresh the baseline.
+It also refuses a baseline whose `pairing` differs from the run's. A readout records `pairing: render_tick` when its captures carry the slot words, and each page's sheet shows the render at `render_tick`, the tick the scorer counts (#1172). The committed baselines were graded at the page's own tick (no `pairing` key reads as `tag`), so the first readout after #1172 needs a baseline refresh, not a comparison.
 Refresh all seven films together, per batch of render PRs (for example with the class-agreement batch), as step 7 says.
 
 `errors-score` lists the categories whose count of sheets graded 2 or more moved by `min_change` or more (4 in `error-categories.toml`) as `changes since …`, then the smaller moves on one `below min_change (4): …` line (`none` when no count moved).

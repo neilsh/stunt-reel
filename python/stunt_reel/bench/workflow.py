@@ -16,11 +16,17 @@ from typing import TYPE_CHECKING
 
 from stunt_reel.bench.faults import ALL_FAULTS, plant
 from stunt_reel.bench.grades import CLEAN, CLEAR, _note, parse_grades, planes_digest, render_brief
-from stunt_reel.bench.planes import BenchError, RenderTree, load_capture
+from stunt_reel.bench.planes import (
+    BenchError,
+    PairedRender,
+    RenderTree,
+    load_capture,
+    paired_render_ticks,
+)
 from stunt_reel.bench.readout import Comparison, Readout, compare, readout, suppressed, table_row
 from stunt_reel.bench.sheets import build_sheet, pick_ticks, plan_sheets
 from stunt_reel.bench.taxonomy import FilmWindow, add_example, load_categories
-from stunt_reel.parity_artifacts import parse_report
+from stunt_reel.parity_artifacts import parse_report, read_capture
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -57,6 +63,10 @@ SECOND_FILE = "grades-2.txt"
 TIEBREAK_IDS = "ids-tiebreak.txt"
 TIEBREAK_FILE = "grades-tiebreak.txt"
 READOUT_FILE = "readout.json"
+#: The pairing a run's sheets and readout use (``CapturedFrame.render_tick``, #1172). A run or
+#: readout without a ``pairing`` was made at the page's own tick.
+PAIRING = "render_tick"
+TAG_PAIRING = "tag"
 
 
 @dataclass(frozen=True)
@@ -211,7 +221,15 @@ def make_run(
     captured = load_capture(capture)
     recaptured = load_capture(recapture) if recapture is not None else None
     tree = RenderTree(render)
-    held = set(captured) & set(tree.ticks())
+    paired = PairedRender(tree, paired_render_ticks(capture))
+    # A capture without slot words pairs every page at its tag, so it is the tag pairing.
+    pairing = (
+        PAIRING
+        if any(f.slot_clock is not None for f in read_capture(capture).frames)
+        else TAG_PAIRING
+    )
+    store_ticks = set(tree.ticks())
+    held = {tick for tick in captured if paired.render_tick(tick) in store_ticks}
     if recaptured is not None:
         held &= set(recaptured)
     report_document, report_digest = _read_report_snapshot(report)
@@ -222,7 +240,7 @@ def make_run(
             f"no scored, unfaded tick of {film} from {window.start} to {end} is both captured "
             "and rendered"
         )
-    sheets = plan_sheets(ticks, tree, taxonomy, seed, calibrate=recaptured is not None)
+    sheets = plan_sheets(ticks, paired, taxonomy, seed, calibrate=recaptured is not None)
     out.mkdir(parents=True, exist_ok=True)
     stale_files = [GRADES_FILE, SECOND_FILE, TIEBREAK_IDS, TIEBREAK_FILE, READOUT_FILE]
     for stale in [*out.glob("*.png"), *(out / name for name in stale_files)]:
@@ -230,14 +248,15 @@ def make_run(
     faults = {fault.key: fault for fault in ALL_FAULTS}
     written: list[str] = []
     for sheet in sheets:
-        planes = tree.load(sheet.tick)
+        render_tick = paired.render_tick(sheet.tick)
+        planes = tree.load(render_tick)
         frame = captured[sheet.tick]
         shown, shown_idx, layer = planes.rgb, planes.idx, planes.layer
         if sheet.kind == "control" and recaptured is not None:
             other = recaptured[sheet.tick]
             shown, shown_idx = other.palette[other.idx], other.idx
         elif sheet.kind == "planted" and sheet.fault is not None:
-            planted = plant(faults[sheet.fault], sheet.tick, tree, seed)
+            planted = plant(faults[sheet.fault], render_tick, tree, seed)
             if planted is None:
                 continue
             shown, shown_idx, layer = planted.rgb, planted.idx, planted.layer
@@ -259,7 +278,10 @@ def make_run(
         "calibrate": recaptured is not None,
         "revision": revision,
         "categories_digest": taxonomy.digest,
-        "render_digest": planes_digest(render, ticks),
+        "render_digest": planes_digest(render, [paired.render_tick(t) for t in ticks]),
+        # The render tick each sheet's picture comes from; errors-score replays the same pairing.
+        "pairing": pairing,
+        "render_ticks": {str(t): paired.render_tick(t) for t in ticks},
         # Binds the SSIM errors-table prints to the report these ticks were picked from.
         "report_digest": report_digest,
     }
@@ -316,13 +338,17 @@ def score_run(
             f"then, {taxonomy.digest} now); run errors-make again"
         )
     ticks = [int(t) for t in run["ticks"]]
-    render_digest = planes_digest(render, ticks)
+    # A run made before the pairing was recorded read each page at its own tick.
+    paired = PairedRender(
+        RenderTree(render), {int(t): int(r) for t, r in run.get("render_ticks", {}).items()}
+    )
+    render_digest = planes_digest(render, [paired.render_tick(t) for t in ticks])
     if run["render_digest"] != render_digest:
         raise BenchError(
             f"{render} changed since errors-make (render {run['render_digest']} then, "
             f"{render_digest} now); run errors-make again"
         )
-    planned = plan_sheets(ticks, RenderTree(render), taxonomy, int(run["seed"]), run["calibrate"])
+    planned = plan_sheets(ticks, paired, taxonomy, int(run["seed"]), run["calibrate"])
     # make_run skips a planted sheet plant() declines; only the sheets in ids.txt were graded.
     written = set((out / "ids.txt").read_text(encoding="utf-8").split())
     sheets = [s for s in planned if s.id in written]
@@ -354,10 +380,16 @@ def score_run(
             raise BenchError(f"{against} is not a readout document: {err}") from err
         earlier = Readout.from_json(document)
     result = readout(grades, sheets, taxonomy.ids, str(run["film"]), taxonomy.digest, render_digest)
-    result = replace(result, disputed=disputes)
+    result = replace(result, disputed=disputes, pairing=str(run.get("pairing", TAG_PAIRING)))
     _write_text(out / READOUT_FILE, json.dumps(result.to_json(), indent=2) + "\n")
     comparison = None
     if earlier is not None:
+        if earlier.pairing != result.pairing:
+            raise BenchError(
+                f"{against} was graded with the {earlier.pairing} pairing and this run uses "
+                f"{result.pairing}; the pairing changed (ADR 0057), so refresh the baseline: grade "
+                f"this film at this commit and copy its readout.json over {against}"
+            )
         limit = taxonomy.min_change
         comparison = Comparison(
             compare(earlier, result, limit), suppressed(earlier, result, limit), limit
@@ -379,7 +411,8 @@ def write_example(
         frame = load_capture(capture).get(tick)
         if frame is None:
             raise BenchError(f"{capture} holds no frame at tick {tick}")
-        planes = RenderTree(render).load(tick)
+        render_tick = paired_render_ticks(capture).get(tick, tick)
+        planes = RenderTree(render).load(render_tick)
         path.parent.mkdir(parents=True, exist_ok=True)
         build_sheet(frame, planes.rgb, planes.idx, planes.layer, credits_drawn=planes.credits).save(
             path

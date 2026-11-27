@@ -56,6 +56,10 @@ class Readout:
     unknown: tuple[str, ...]
     #: Sheets the two passes disagreed on, scored from the tie-break (0 for a single pass).
     disputed: int = 0
+    #: How each page was paired with its render: ``render_tick`` (the scorer's pairing, #1172) or
+    #: ``tag`` (the page's own tick, every readout made before it). Readouts with different
+    #: pairings are not comparable.
+    pairing: str = "tag"
 
     def to_json(self) -> dict[str, Any]:
         """The ``readout.json`` document."""
@@ -85,6 +89,7 @@ class Readout:
                 missing=int(doc["missing"]),
                 unknown=tuple(str(u) for u in doc["unknown"]),
                 disputed=int(doc.get("disputed", 0)),
+                pairing=str(doc.get("pairing", "tag")),
             )
         except (KeyError, TypeError, ValueError) as err:
             raise BenchError(f"not a readout document: {err}") from err
