@@ -159,3 +159,28 @@ def test_a_capture_with_a_viewport_is_refused(tmp_path: Path) -> None:
     capture = replace(sample_capture(), geometry=Geometry(width=320, height=200, viewport_rows=185))
     with pytest.raises(ArtifactError, match="a capture has no viewport_rows"):
         write_capture(tmp_path, capture)
+
+
+def test_a_frame_without_clock_words_scores_at_its_tag_and_writes_none(tmp_path: Path) -> None:
+    capture = sample_capture()
+    document = write_capture(tmp_path, capture)
+    assert "slot_clock" not in document["frames"][1]
+    assert read_capture(tmp_path).frames[1].slot_clock is None
+    assert capture.frames[1].render_tick == capture.frames[1].film_tick
+
+
+def test_the_clock_words_round_trip_and_pair_the_page_with_the_state_before_the_slot_pass(
+    tmp_path: Path,
+) -> None:
+    document = write_capture(tmp_path, sample_capture())
+    assert document["frames"][0]["slot_clock"] == 9
+    assert document["frames"][0]["slot_ticks"] == 1
+    back = read_capture(tmp_path).frames[0]
+    assert (back.slot_clock, back.slot_ticks) == (9, 1)
+    # The state at 8, which the render store keys at 9.
+    assert back.render_tick == 9
+    assert replace(back, slot_ticks=0).render_tick == 10
+    assert replace(back, slot_ticks=2).render_tick == 8
+    # A ticks word above the clock is not a state before the film began: the tag stands.
+    assert replace(back, slot_clock=1, slot_ticks=2).render_tick == 9
+    assert replace(back, slot_ticks=None).render_tick == 9

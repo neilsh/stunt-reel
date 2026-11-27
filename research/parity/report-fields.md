@@ -23,7 +23,7 @@ The structs are `Report` and `FrameReport` in [`crates/stunt-parity/src/report.r
 |---|---|---|
 | `reference_frames` | number | Frames the capture holds. Equals `frames` + `unmatched`. |
 | `frames` | number | Frames matched to a render (a count, not the list). |
-| `unmatched` | number | Captured frames skipped: no render of that `film_tick`, or the capture's frame or palette file is missing. |
+| `unmatched` | number | Captured frames skipped: no render of its `render_tick` (the state its slot words name, else its `film_tick`), or the capture's frame or palette file is missing. |
 | `sky_indices` | list | `[low, high]`, the inclusive palette-index range counted as sky (227, 238). |
 | `mean_ssim` | number | Mean SSIM over every matched frame. |
 | `min_ssim` | number | Lowest SSIM of any matched frame. |
@@ -52,7 +52,7 @@ The structs are `Report` and `FrameReport` in [`crates/stunt-parity/src/report.r
 | Key | Type | Meaning |
 |---|---|---|
 | `ordinal` | number | 1-based capture order of the frame (`tick_NNNN.idx`); not a time axis. |
-| `film_tick` | number | The film clock the frame was matched on; the key `--compare` joins reports by. |
+| `film_tick` | number | The frame's tag, the film clock it was captured at; the key `--compare` joins reports by. The render it was scored against is at `render_tick`, which differs from the tag when the capture logged `slot_clock` and `slot_ticks`. |
 | `ssim` | number | SSIM against the capture. |
 | `iou` | number | Mask IoU against the capture. |
 | `index_agreement` | number or null | Fraction of non-overlay pixels whose palette index equals the capture's (overlay pixels leave both counts; 1.0 if every pixel is overlay). |

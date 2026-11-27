@@ -124,7 +124,7 @@ After the hold the global counter keeps counting (to 2212 and 4422 by the end of
 So the global counter is the number of 50 Hz ticks since playback began, and the film clock follows it exactly until its authored end.
 The earlier debugger-harness samples (the film clock 2–3 behind the global counter in the 2026-10-21 capture, 5 ahead in the T11 spot-check) came from reads taken at different points inside a slice, so they measure read latency ([`capture-speed.md`](capture-speed.md) § 2), not an offset stored in memory (`[Supported Inference]`).
 The HUD timer is the film clock formatted as `MM:SS.cc` (`film_tick / 50`), redrawn once per render loop, so it lags the live word by 0 to 3 ticks ([`capture-dosbox-automation.md`](capture-dosbox-automation.md) § 2).
-Parity matches on `film_tick` alone and does not depend on any offset.
+Parity reports and joins on `film_tick`; the render a page is scored against is its `render_tick`, from its slot words when it has them ([`capture.md` § 4](capture.md#4-observed-results)).
 
 *Negative results.*
 `DS:0x4758` (sibling `0x474A` struct, `+0x0E`) reads 0 throughout playback and is not the active clock.

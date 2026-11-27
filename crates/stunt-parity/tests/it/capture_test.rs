@@ -12,6 +12,8 @@ fn capture() -> CaptureSet {
         frames: vec![CapturedFrame {
             ordinal: 1,
             film_tick: 9,
+            slot_clock: Some(9),
+            slot_ticks: Some(1),
             frame_file: "tick_0001.idx".to_string(),
             palette_file: "palettes_0001.json".to_string(),
         }],
@@ -115,4 +117,36 @@ fn a_frame_without_a_film_tick_names_its_ordinal() {
         error.to_string().contains("frame 2 has no film_tick"),
         "{error}"
     );
+}
+
+#[test]
+fn a_page_is_scored_at_the_state_before_the_slot_pass_that_drew_it() {
+    let frame = |slot_clock, slot_ticks| CapturedFrame {
+        slot_clock,
+        slot_ticks,
+        ..capture().frames[0].clone()
+    };
+    // Tag 9, clock 9, one tick since the last pass: the state at 8, stored at tick 9.
+    assert_eq!(frame(Some(9), Some(1)).render_tick(), 9);
+    // Two passes in one tick: the pass before is at the same clock.
+    assert_eq!(frame(Some(9), Some(0)).render_tick(), 10);
+    // A skipped tick: the page is two states old.
+    assert_eq!(frame(Some(9), Some(2)).render_tick(), 8);
+    // An older capture, or a ticks word larger than the clock, scores at its tag.
+    assert_eq!(frame(None, None).render_tick(), 9);
+    assert_eq!(frame(Some(9), None).render_tick(), 9);
+    assert_eq!(frame(Some(1), Some(2)).render_tick(), 9);
+    // The largest clock with no ticks cannot add its one: the tag stands.
+    assert_eq!(frame(Some(u32::MAX), Some(0)).render_tick(), 9);
+}
+
+#[test]
+fn the_clock_words_are_optional_in_the_document() {
+    let set: CaptureSet = serde_json::from_str(
+        r#"{"film": "CTRY.FLM", "flm_bytes": 1, "frames": [{"film_tick": 9}]}"#,
+    )
+    .expect("older document");
+    assert_eq!(set.frames[0].slot_clock, None);
+    let text = serde_json::to_string(&set).expect("serialize");
+    assert!(!text.contains("slot_clock"), "{text}");
 }

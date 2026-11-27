@@ -92,6 +92,22 @@
             "string",
             "null"
           ]
+        },
+        "slot_clock": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "slot_ticks": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
         }
       }
     }

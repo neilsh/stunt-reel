@@ -25,9 +25,10 @@ Metric behaviour and recapture noise are in [`metric-bench.md`](metric-bench.md)
    Notes cite the journal entry for before-and-after scores rather than copy the expected scores ([`loop-rules.md`](../../.agents/skills/improving-render-parity/loop-rules.md#adoption-rule)).
 1. **Capture on the film clock.**
    Each captured frame is tagged in `meta.json` with `film_tick` (the film clock: the tick the frame shows) and `global_tick`.
-   Matching uses the film clock because a captured frame is a distinct rendered page grabbed at retrace, so capture ordinals do not map to ticks (`[Supported Inference]`; § 4.2).
+   Matching keys on the film clock because a captured frame is a distinct rendered page grabbed at retrace, so capture ordinals do not map to ticks (`[Supported Inference]`; § 4.2).
+   A frame also carries `slot_clock` and `slot_ticks` when the harness read them, and the score pairs it with the render at the state `slot_clock - slot_ticks`, else at `film_tick - 1`; `film_tick` stays its tag, the key reports and `--compare` join on ([ADR 0057](../../docs/adr/0057-a-captured-page-is-paired-by-the-slot-pass-before-the-one-that-drew-it.md)).
 2. **Keep the previous render** to compare against (`build/parity/previous/<film>`, or a pinned `_base` tree).
-3. **Render every captured tick** into a render store ([ADR 0027](../../docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)).
+3. **Render every tick a captured page is paired with** into a render store ([ADR 0027](../../docs/adr/0027-renders-store-planes-in-per-second-zstd-chunks.md)).
    It holds each tick's index plane, layer plane and palette, and its picture is its palette over its index plane (unlit palette index; layer ids 0 none, 1 ocean, 2 terrain, 3 props, 16+n for actor draw n of the frame).
 4. **Score** (section 2).
    The masks come from index planes, not colours: a capture pixel is sky when its index is in the sky bands 227..=238 (`sky_indices`; [`palette-and-shading.md`](../formats/concepts/palette-and-shading.md)), and a render pixel is sky where its stored layer plane is empty.

@@ -323,7 +323,8 @@ def window_script(
     From each window's ``start`` the script reads frames until one is usable: film clock at
     least the window's goal, page changed, rows 0..191 equal a composed page, and the working
     palette changed neither at that frame nor the one before (:func:`~stunt_reel.tac.plan.usable`'s
-    rule). That frame's page and palette are dumped as ``p<f>`` and ``c<f>``. Every frame read is
+    rule). That frame's page and palette are dumped as ``p<f>`` and ``c<f>``, and the slot pass's
+    clock and ticks word, read in the same step, as ``s<f>`` (``x<clock>:<ticks>``). Every frame read is
     logged in ``trace`` as ``frame:film_tick:global_tick:mask``; a page equal to no composed page
     carries :data:`TRACE_TORN` (no band test is run). Each window also reads :data:`WINDOW_LEAD`
     frames before ``start``, and windows must ascend without overlapping, lead frames included.
@@ -372,6 +373,8 @@ def window_script(
         "    wait_until(f)\n"
         f"    local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X})\n"
         f"    local g = dosbox.mem_read_word(DS, 0x{layout.global_tick:04X})\n"
+        f"    local sc = dosbox.mem_read_word(DS, 0x{layout.slot_clock:04X})\n"
+        f"    local st = dosbox.mem_read_word(DS, 0x{layout.slot_ticks:04X})\n"
         f"    local pg, pal = dosbox.mem_read(0xA000, 0, {_PAGE_BYTES}), {palette_read}\n"
         "    local changed, step, comp = pg ~= prev, pal ~= ppal, composed(pg)\n"
         f"    local mask = (changed and {TRACE_CHANGED} or 0) + (step and {TRACE_PALETTE} or 0)"
@@ -380,6 +383,7 @@ def window_script(
         "    if t >= goal and changed and comp and not step and not pstep then\n"
         '      out["p" .. f] = "x" .. pg:gsub(".", H)\n'
         '      out["c" .. f] = "x" .. pal:gsub(".", H)\n'
+        '      out["s" .. f] = "x" .. sc .. ":" .. st\n'
         "      break\n"
         "    end\n"
         "    prev, ppal, pstep = pg, pal, step\n"

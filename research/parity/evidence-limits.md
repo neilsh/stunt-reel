@@ -31,6 +31,7 @@ Terms are those of [`GLOSSARY.md`](../../GLOSSARY.md).
   _Source: [2026-10-22: recapture variance of four CTRY.FLM capture sets](../../work/2026-11/distill-method/journal.md#2026-10-22-recapture-variance-of-four-ctryflm-capture-sets)._
 * **A frame's score can carry a tick or two of capture timing (`[Bounded Observation]`, 2026-11-23, `e2981f3d`, canonical lavapipe).**
   On LOCATION, outside the canyon run, a frame's page that changes with the capture's settings mostly loses its off-model tick ([`capture.md` § 4](../playone-exe/capture.md#4-observed-results)), and our render cannot tell which tick a page shows from its tag.
+  (By tag pairing, before captures logged the slot words; pages are now paired by them, which gained 0.0013 to 0.0189 per film, [`capture.md` § 4](../playone-exe/capture.md#4-observed-results).)
   Giving every scored frame its own best offset in -2..+2 would raise the film mean by 0.0195 (LOCATION), 0.0191 (INTRO), 0.0107 (BOMB), 0.0086 (TRAINTNL), 0.0077 (LAND), 0.0027 (CTRY) and 0.0021 (BALLOON).
   That bounds the part within two ticks from above: the best of five offsets also picks up chance gains and offsets our model reproduces under every capture (LOCATION's canyon run, [#1029](https://github.com/neilsh/stunt-reel/issues/1029)), and it cannot see a shift beyond two ticks.
   Before reading one frame's loss on a moving shot as a render defect, check its offset profile (`--retime`, [`probes.md` § 6](probes.md#6-timing-hypotheses-post-hoc-retime)).

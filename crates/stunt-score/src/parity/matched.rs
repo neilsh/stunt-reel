@@ -23,7 +23,7 @@ pub(super) struct Matching<'a> {
     pub(super) unmatched: usize,
 }
 
-/// Pairs each captured frame with the render at its film clock.
+/// Pairs each captured frame with the render at its [`CapturedFrame::render_tick`].
 ///
 /// `has_file` says whether a capture file (a frame or palette file name) is present, and
 /// `holds` whether the render holds planes for a tick. A frame missing either is unmatched.
@@ -33,7 +33,7 @@ pub(super) fn pair(
     holds: impl Fn(u32) -> bool,
 ) -> Matching<'_> {
     let (matched, unmatched): (Vec<_>, Vec<_>) = frames.iter().partition(|frame| {
-        has_file(&frame.frame_file) && has_file(&frame.palette_file) && holds(frame.film_tick)
+        has_file(&frame.frame_file) && has_file(&frame.palette_file) && holds(frame.render_tick())
     });
     Matching {
         matched,
@@ -118,6 +118,8 @@ mod tests {
         CapturedFrame {
             ordinal,
             film_tick,
+            slot_clock: None,
+            slot_ticks: None,
             frame_file: format!("tick_{ordinal:04}.idx"),
             palette_file: format!("palettes_{ordinal:04}.json"),
         }
@@ -144,6 +146,24 @@ mod tests {
         let matching = pair(&frames, |_| true, |tick| held.contains(&tick));
         assert_eq!(matching.matched, [&frames[1]]);
         assert_eq!(matching.unmatched, 1);
+    }
+
+    #[test]
+    fn a_frame_with_clock_words_is_held_by_the_tick_they_name_not_by_its_tag() {
+        let drawn_a_pass_earlier = CapturedFrame {
+            slot_clock: Some(12),
+            slot_ticks: Some(2),
+            ..frame(1, 12)
+        };
+        let untouched = frame(2, 20);
+        let frames = [drawn_a_pass_earlier, untouched];
+        // Tag 12 is held, but the page was drawn at state 10, stored at tick 11.
+        let held = [12, 20];
+        let matching = pair(&frames, |_| true, |tick| held.contains(&tick));
+        assert_eq!(matching.matched, [&frames[1]]);
+        let held = [11, 20];
+        let matching = pair(&frames, |_| true, |tick| held.contains(&tick));
+        assert_eq!(matching.matched, [&frames[0], &frames[1]]);
     }
 
     #[test]

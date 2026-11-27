@@ -283,7 +283,7 @@ _Avoid_: rebaseline, hand-merging scores
 **Captured frame**: One distinct rendered page taken from `PLAYONE.EXE` during a capture, numbered by capture order and tagged with the film clock read when it was taken.
 _Avoid_: tick (for the capture ordinal)
 
-**Matched frame**: A captured frame together with the render at its film clock.
+**Matched frame**: A captured frame together with the render at its render tick: the state its slot words name, else its film clock's `t - 1`.
 A captured frame is unmatched when its files are missing or the render holds no planes for its tick.
 _Avoid_: frame pair, joined frame
 
@@ -307,7 +307,7 @@ _Avoid_: brightness, exposure
 Every captured pixel in 227 to 238 is sky; shapes paint 224 to 226 too, so those count as sky only by position, and the scorer counts `0xD0` as geometry.
 _Avoid_: sky index, clear colour (the render's framebuffer clear)
 
-**Scored frame**: A captured frame that enters a mean: matched to a render at its film clock, not excluded by the fade floor or the UI overlay.
+**Scored frame**: A captured frame that enters a mean: matched to a render at its render tick, not excluded by the fade floor or the UI overlay.
 _Avoid_: valid frame, sampled frame
 
 **Target frames**: The scored frames a round names, before its sweep, as showing the defect it addresses; any other frame the candidate changes is a side effect.

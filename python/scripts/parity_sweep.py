@@ -432,14 +432,17 @@ def render_ticks(
 ) -> None:
     """Renders only *ticks* of the job's film into *out*, as the sweep's variant was scored.
 
-    With a retime, film tick ``t`` shows source tick ``t + retime``: those ticks are rendered
-    and relabelled into *out*.
+    *ticks* are the pages' tags; each is rendered at its frame's ``render_tick``. With a retime,
+    render tick ``t`` shows source tick ``t + retime``: those ticks are rendered and relabelled
+    into *out*.
     """
+    by_tag = {frame.film_tick: frame.render_tick for frame in read_capture(job.capture).frames}
+    paired = sorted({by_tag.get(tick, tick) for tick in ticks})
     if retime is None:
-        render_film(job, out, env, ticks=ticks)
+        render_film(job, out, env, ticks=paired)
         return
     raw = out.with_name(out.name + "_raw")
-    render_film(job, raw, env, ticks=[tick + retime for tick in ticks])
+    render_film(job, raw, env, ticks=[tick + retime for tick in paired])
     retime_render(raw, job.capture, out, retime, force=True, allow_missing=True)
 
 
@@ -452,15 +455,17 @@ def draw_film(
     box: tuple[int, int, int, int] | None,
     scale: int,
 ) -> list[Path]:
-    """Writes one PNG per picture: *capture*'s frame, then each of *stores* at that tick.
+    """Writes one PNG per picture: *capture*'s frame, then each of *stores* at the tick it is paired with.
 
     *box* is cut from the whole frame, enlarged *scale* times; ``None`` is the whole frame.
     Raises ``ValueError`` for a tick the capture or a store lacks, a box outside the frame, or
     a picture that exists.
     """
     ordinals: dict[int, int] = {}
+    render_ticks: dict[int, int] = {}
     for frame in read_capture(capture).frames:
         ordinals.setdefault(frame.film_tick, frame.ordinal)
+        render_ticks.setdefault(frame.film_tick, frame.render_tick)
     geometry = RenderStore(stores[0]).record.geometry
     box = box or (0, 0, geometry.width, geometry.height)
     if not (0 <= box[0] < box[2] <= geometry.width and 0 <= box[1] < box[3] <= geometry.height):
@@ -469,7 +474,8 @@ def draw_film(
     directory.mkdir(parents=True, exist_ok=True)
     written = []
     for picture in pictures:
-        if picture.tick not in ordinals or not all(store.holds(picture.tick) for store in held):
+        shown = render_ticks.get(picture.tick, picture.tick)
+        if picture.tick not in ordinals or not all(store.holds(shown) for store in held):
             raise ValueError(
                 f"{picture.film} tick {picture.tick} is not in the capture and renders"
             )
@@ -477,7 +483,7 @@ def draw_film(
         if out.exists():
             raise ValueError(f"{out} already exists; a picture is never replaced")
         ordinal = ordinals[picture.tick]
-        parity_probe.make_strip(capture, list(stores), ordinal, picture.tick, box, scale, out)
+        parity_probe.make_strip(capture, list(stores), ordinal, shown, box, scale, out)
         written.append(out)
     return written
 

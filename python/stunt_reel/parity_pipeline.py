@@ -186,7 +186,7 @@ class RetimeResult:
 
 
 def plan_retime(ticks: Iterable[int], by: int) -> list[tuple[int, int]]:
-    """``(target, source)`` per distinct captured tick: target ``t`` shows source ``t + by``."""
+    """``(target, source)`` per distinct render tick: target ``t`` shows source ``t + by``."""
     return [(tick, tick + by) for tick in sorted(set(ticks))]
 
 
@@ -208,7 +208,7 @@ def retime_render(
     error. A non-empty ``out`` is refused unless ``force``.
     """
     capture = read_capture(reference)
-    pairs = plan_retime((frame.film_tick for frame in capture.frames), by)
+    pairs = plan_retime((frame.render_tick for frame in capture.frames), by)
     if out.exists() and any(out.iterdir()) and not force:
         raise RetimeError(f"{out} is not empty; pass --force to replace its frames")
     source = RenderStore(ours)
@@ -371,7 +371,7 @@ def check_render(
 def check_film(job: FilmJob, render: Path) -> None:
     """Refuses a render of the job's film that cannot be scored against its capture."""
     check_render(
-        job.capture, render, [frame.film_tick for frame in read_capture(job.capture).frames]
+        job.capture, render, [frame.render_tick for frame in read_capture(job.capture).frames]
     )
 
 
@@ -404,7 +404,7 @@ def render_film(
         else (
             "--tick-range",
             tick_range_for_captured_ticks(
-                frame.film_tick for frame in read_capture(job.capture).frames
+                frame.render_tick for frame in read_capture(job.capture).frames
             ),
         )
     )

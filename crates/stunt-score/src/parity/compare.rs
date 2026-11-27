@@ -97,7 +97,8 @@ pub(super) fn run_compare(
         let row = rows
             .get(&film_tick)
             .ok_or_else(|| format!("film_tick {film_tick} missing from the fresh report"))?;
-        let tick = u32::try_from(film_tick).map_err(|e| e.to_string())?;
+        let captured_frame = frames.frame(row)?;
+        let tick = captured_frame.render_tick();
         if !before_store.holds(tick) {
             println!(
                 "[compare] {} holds no tick {tick}: {label} sheet skipped",
@@ -105,13 +106,13 @@ pub(super) fn run_compare(
             );
             continue;
         }
-        let captured = load_captured(&args.reference, frames.frame(row)?)?;
+        let captured = load_captured(&args.reference, captured_frame)?;
         let reference = reference_luminance(&captured.indices, &captured.palette);
         let before = load_render_rescaled(&mut before_store, tick)?;
         let after = load_render_rescaled(&mut after_store, tick)?;
         let path = args
             .output
-            .join(format!("compare_{label}_tick_{tick:05}.png"));
+            .join(format!("compare_{label}_tick_{film_tick:05}.png"));
         write_panel_sheet(
             &path,
             &[
@@ -150,12 +151,13 @@ fn judge(
     let mut after_store = RenderStore::open(&args.test).map_err(|error| error.to_string())?;
     let mut judged = Vec::with_capacity(report.per_frame.len());
     for entry in &report.per_frame {
-        let tick = u32::try_from(entry.film_tick).map_err(|e| e.to_string())?;
+        let captured_frame = frames.frame(entry)?;
+        let tick = captured_frame.render_tick();
         if !before_store.holds(tick) {
             judged.push(FrameVerdict::missing(entry.film_tick));
             continue;
         }
-        let captured = load_captured(&args.reference, frames.frame(entry)?)?;
+        let captured = load_captured(&args.reference, captured_frame)?;
         let before: RenderFrame = load_render_frame(&mut before_store, tick)?;
         let after: RenderFrame = load_render_frame(&mut after_store, tick)?;
         judged.push(frame_verdict(

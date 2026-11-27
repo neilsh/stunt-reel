@@ -29,12 +29,37 @@ const FRAMES_DIR: &str = "frames/";
 pub struct CapturedFrame {
     /// Capture order, 1-based; not a time axis.
     pub ordinal: u32,
-    /// Film clock the captured page shows; parity matches on this.
+    /// Film clock the captured page shows: its tag, which reports and comparisons key on.
     pub film_tick: u32,
+    /// The slot pass's clock (`DS:0x4220` on Patch 3) read as the page was kept; absent from older captures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot_clock: Option<u32>,
+    /// The ticks word (`DS:0x1C62` on Patch 3) read with `slot_clock`: ticks since the previous slot pass.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot_ticks: Option<u32>,
     /// Raster file name: a basename inside the capture directory, optionally under `frames/`.
     pub frame_file: String,
     /// Palette file name: a basename inside the capture directory, optionally under `frames/`.
     pub palette_file: String,
+}
+
+impl CapturedFrame {
+    /// The render-store tick this page is scored against.
+    ///
+    /// The slot pass that composed the page ran one pass before the one the clock words name, so
+    /// the page shows the state at `slot_clock - slot_ticks`, which the store keys one above
+    /// (store tick `T` draws state `T - 1`). A frame without both words, or whose ticks word
+    /// exceeds its clock, takes its tag: the state at `film_tick - 1`.
+    #[must_use]
+    pub fn render_tick(&self) -> u32 {
+        match (self.slot_clock, self.slot_ticks) {
+            (Some(clock), Some(ticks)) => clock
+                .checked_sub(ticks)
+                .and_then(|state| state.checked_add(1))
+                .unwrap_or(self.film_tick),
+            _ => self.film_tick,
+        }
+    }
 }
 
 /// Document written by the capture harness as `meta.json`.
@@ -128,6 +153,10 @@ struct FrameDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     film_tick: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    slot_clock: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    slot_ticks: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     frame_file: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     palette_file: Option<String>,
@@ -177,6 +206,8 @@ impl TryFrom<CaptureDocument> for CaptureSet {
             frames.push(CapturedFrame {
                 ordinal,
                 film_tick,
+                slot_clock: frame.slot_clock,
+                slot_ticks: frame.slot_ticks,
                 frame_file: frame
                     .frame_file
                     .unwrap_or_else(|| default_frame_file(ordinal)),
@@ -229,6 +260,8 @@ impl From<CaptureSet> for CaptureDocument {
                 .map(|frame| FrameDocument {
                     ordinal: Some(frame.ordinal),
                     film_tick: Some(frame.film_tick),
+                    slot_clock: frame.slot_clock,
+                    slot_ticks: frame.slot_ticks,
                     frame_file: Some(frame.frame_file),
                     palette_file: Some(frame.palette_file),
                 })

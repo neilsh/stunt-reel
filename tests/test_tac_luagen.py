@@ -251,3 +251,11 @@ def test_a_window_pass_refuses_windows_it_cannot_read_in_order(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         luagen.window_script(keys=KEYS, windows=windows, layout=playone.UNPATCHED)
+
+
+def test_a_window_pass_records_the_slot_words_with_the_page_it_keeps() -> None:
+    for layout in playone.LAYOUTS:
+        text = luagen.window_script(keys=KEYS, windows=[luagen.Window(1400, 1)], layout=layout)
+        assert f"local sc = dosbox.mem_read_word(DS, 0x{layout.slot_clock:04X})" in text
+        assert f"local st = dosbox.mem_read_word(DS, 0x{layout.slot_ticks:04X})" in text
+        assert 'out["s" .. f] = "x" .. sc .. ":" .. st' in text

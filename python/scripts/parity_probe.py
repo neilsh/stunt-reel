@@ -196,6 +196,12 @@ def locate(
     return found, missing
 
 
+def paired_ticks(capture: CaptureSet, ticks: list[int]) -> dict[int, int]:
+    """Each captured tag of *ticks* with the render tick the scorer pairs it with."""
+    held = {frame.film_tick: frame.render_tick for frame in capture.frames}
+    return {tick: held[tick] for tick in ticks if tick in held}
+
+
 def _describe(stats: IndexStats) -> str:
     if stats.box is None or stats.centroid is None:
         return f"{stats.count} - -"
@@ -221,10 +227,10 @@ def index_rows(reference: Path, ours: Path, ticks: list[int], lo: int, hi: int) 
         if tick not in found:
             before, after = missing[tick]
             lines.append(f"{tick} not in the capture (nearest captured: {before}, {after})")
-        elif not store.holds(tick):
+        elif not store.holds(paired_ticks(held.capture, [tick])[tick]):
             lines.append(f"{tick} not in the render")
         else:
-            matched = held.match(found[tick], tick)
+            matched = held.match(found[tick])
             theirs = index_stats(matched.capture_indices(), width, rows, lo, hi)
             mine = index_stats(matched.page.indices, width, rows, lo, hi)
             offset = centroid_offset(mine, theirs)
@@ -259,7 +265,8 @@ def cmd_index(args: argparse.Namespace) -> int:
         out = REPO_ROOT / INDEX_DIR / args.film
         with parity_pipeline.reference_job(root, args.film) as job:
             shutil.rmtree(out, ignore_errors=True)
-            parity_pipeline.render_film(job, out, ticks=ticks, software_only=args.software_only)
+            wanted = sorted({*paired_ticks(read_capture(job.capture), ticks).values(), *ticks})
+            parity_pipeline.render_film(job, out, ticks=wanted, software_only=args.software_only)
             if not (out / "render.json").exists():
                 print("parity_probe: every tick is past the film's end, nothing rendered")
                 return 1
@@ -691,7 +698,7 @@ def cmd_register(args: argparse.Namespace) -> None:
         pages: dict[int, tuple[bytes, np.ndarray]] = {}
         for k in range(-args.time_reach, args.time_reach + 1):
             try:
-                page = read_page(store, tick + k)
+                page = read_page(store, frame.render_tick + k)
             except ArtifactError:
                 continue
             kept = BACKDROP_LAYERS + ((LAYER_PROP,) if args.with_props else ())
@@ -700,7 +707,7 @@ def cmd_register(args: argparse.Namespace) -> None:
         if 0 not in pages or not pages[0][1].any():
             print(f"{tick} not rendered" if 0 not in pages else f"{tick} 0 no backdrop edges")
             continue
-        capture = reference.matched_frame(frame, tick).capture_indices()
+        capture = reference.matched_frame(frame, frame.render_tick).capture_indices()
         print(registration_row(register(pages, capture, tick, width, rows, args.shift_reach)))
 
 
@@ -745,7 +752,7 @@ def cmd_shift(args: argparse.Namespace) -> None:
         )
         shifts.append((best[1], best[2], world[0], world[1]))
         print(
-            matched.film_tick,
+            matched.frame.film_tick,
             len(pixels),
             best[1],
             best[2],

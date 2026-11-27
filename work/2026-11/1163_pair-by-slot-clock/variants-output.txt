@@ -1,0 +1,5 @@
+ctry: pages 114 tm1 0.9443 (+0.0000, moved 0) R 0.9459 (+0.0016, moved 18) R_hud 0.9438 (-0.0005, moved 31) R_prev 0.9442 (-0.0001, moved 28)
+location: pages 732 tm1 0.8979 (+0.0000, moved 0) R 0.9168 (+0.0189, moved 226) R_hud 0.9142 (+0.0163, moved 254) R_prev 0.9139 (+0.0160, moved 254)
+intro: pages 209 tm1 0.9069 (+0.0000, moved 0) R 0.9231 (+0.0161, moved 76) R_hud 0.9206 (+0.0137, moved 86) R_prev 0.9196 (+0.0127, moved 86)
+balloon: pages 107 tm1 0.9081 (+0.0000, moved 0) R 0.9094 (+0.0013, moved 23) R_hud 0.9092 (+0.0011, moved 25) R_prev 0.9092 (+0.0011, moved 25)
+traintnl: pages 111 tm1 0.9167 (+0.0000, moved 0) R 0.9223 (+0.0056, moved 32) R_hud 0.9223 (+0.0056, moved 37) R_prev 0.9223 (+0.0056, moved 37)

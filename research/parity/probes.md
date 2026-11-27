@@ -251,7 +251,7 @@ Smoke check: with an eye-height switch, `DBG_EYE_DY=0,-0.3` reproduces the eye-h
 
 ## 6. Timing hypotheses (post-hoc retime)
 
-The page timing is modelled in the renderer: `--headless` samples the scene at `tick - 1` because the page captured for film clock `t` is the state at `t - 1` ([`capture.md`](../playone-exe/capture.md)).
+The page timing is modelled in the renderer: `--headless` samples the scene at `tick - 1`, so the store keys state `T - 1` at `T`, and a captured page is scored against the render at its `render_tick`: the state at `slot_clock - slot_ticks` for a capture that logged those words, else the state at `film_tick - 1` ([`capture.md` § 4](../playone-exe/capture.md#4-observed-results), [ADR 0057](../../docs/adr/0057-a-captured-page-is-paired-by-the-slot-pass-before-the-one-that-drew-it.md)).
 Timing questions must therefore not need a rebuild.
 `retime` relabels an existing render by N ticks and writes it as a new render store; `--reuse` and `--retime` carry that into a score in one command:
 
@@ -264,8 +264,8 @@ mise run sweep -- --reuse build/scratch/retime --films ctry,intro --no-build
 mise run parity -- --no-render --retime -1 --no-build
 ```
 
-Target tick `t` gets the planes, palette and `render.json` entry of source `t + N`, relabelled to `t`, written into a new store.
-The sign follows the renderer: offset 0 compares capture `t` with the state at `t - 1` (the accepted timing), and `-1` lands on state `t - 2`.
+Target tick `t` gets the planes, palette and `render.json` entry of source `t + N`, relabelled to `t`, where `t` is each captured frame's `render_tick` (its tag for a capture without the slot words), written into a new store.
+The sign follows the renderer: offset 0 is the capture's own pairing, and `-1` lands one state earlier.
 A non-empty `--out` is refused unless `--force`; a source outside the rendered range is reported, and since ±1 always drops one end tick, pass `--allow-missing` (the `parity_run` wrapper does).
 Moving the palette entry with the planes matters: the hand-made shift that discovered the page lag kept the original tick's palette entry and under-reported INTRO (0.6793 against 0.6799 with the entry relabelled).
 
@@ -277,7 +277,7 @@ Measured `mean_ssim_scored` (CTRY / INTRO, 2026-10-23, post-page-timing build):
 | -1 | 0.7723 | 0.6773 | 113/139, 208/212 |
 
 Offset 0 is the peak on both films and fractional phases around it are worse (§ 13), so the page phase is a whole tick and the renderer's `tick - 1` stays hardcoded.
-Offset 0 is also the film-mean peak over -2..+2 on all seven reference films at `e2981f3d`.
+Offset 0 is also the film-mean peak over -2..+2 on all seven reference films at `e2981f3d`, where every page was paired by its tag; the measurements in this table and the next are by tag.
 A per-frame phase from the capture's emulator time (`t - 1 + φ`, φ the fitted tick minus the tag) lowers the seven-film mean: scaled by 0.5 it moves the mean from 0.9044 to 0.9034, LOCATION from 0.8728 to 0.8691 and INTRO from 0.8833 to 0.8791 while BOMB rises from 0.8949 to 0.8965, scaled by 1 the mean falls to 0.9024, and no variant adopts.
 _Source: [a frame's off-model tick changes with the capture's settings](../../work/2026-11/1033_per-frame-time-offsets/journal.md#2026-11-23-a-frames-off-model-tick-changes-with-the-captures-settings) and [rendering each frame at its emulator-time phase](../../work/2026-11/1033_per-frame-time-offsets/journal.md#2026-11-23-rendering-each-frame-at-its-emulator-time-phase)._
 Use this path for timing hypotheses only: it says nothing about geometry, and it changes no committed render.

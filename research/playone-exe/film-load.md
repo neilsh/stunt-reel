@@ -139,7 +139,7 @@ _Source: [the loader preloads every chunk](../../work/2026-11/609_archive-load-s
 * **The slots and the HUD clock come from different readings of the clock (`[Established]` for the readings named, read statically, [#826](https://github.com/neilsh/stunt-reel/issues/826)).**
   Between the film step's call (`0x4A07`) and the HUD's read, the direct-call trace found four reads of the clock `DS:0x4896` as `[reg + 0x0E]` with the register holding `0x4888`:
   - the film step at `0x3A88`, which moves the slice and sets the fraction `0x22E0` (`0x3AE4..0x3AF7`), which the slot pass `0x136F` (`0x1381`) and the interpolation `0x3E6C` (`0x3E76`) read;
-  - the slot pass at `0x1370` (`0x13EA` with `SI = 0x4888`), which stores only the ticks since its previous run (`0x22DC`, no reader by address) and the clock at `DS:0x489A` (field `+0x12`);
+  - the slot pass at `0x1370` (`0x13EA` with `SI = 0x4888`), which stores only the ticks since its previous run (`0x22DC`, no reader by address) and the clock at `DS:0x489A` (field `+0x12`); the clock minus the ticks word is the previous slot pass's clock, and a page kept at the next frame scores best, on a film's mean, against the state at that clock ([`capture.md` § 4](capture.md#4-observed-results), `[Bounded Observation]`);
   - the angle bank's fill at `0x1DCA` (`0x1D96`, from `0x0F77` in the render step `0x0EE9`), which writes bank word `0x10` as `clock << 12` ([`angle-bank.md`](angle-bank.md));
   - `0x40C5`, in `0x40AC`, which stores a clock delta through `[0x4888]` and is reached from the slot pass at `0x141F` when the deferred-call queue is not empty and byte `0x2276` is set, and from the film step at `0x3BB0`.
   The film step also reads `[0x4896]` directly at `0x3B37` on its zero-length-slice path.

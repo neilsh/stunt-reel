@@ -86,9 +86,9 @@ stuntreel parity --reference <data root>/captures/<slug>/frames --test build/par
 Open `compare_regressed_tick_NNNNN.png` and `compare_improved_tick_NNNNN.png` (`reference | before | after | |ref-before| | |ref-after|`), one each for the single biggest mover each way by the verdict's Δ (when `--compare-test` is not a readable render store, the verdict and both sheets are skipped: re-render it), before trusting the mean; a mean can hide a regression or an improvement.
 Diagnose one discrepancy with the probes in [`probes.md`](../../research/parity/probes.md) (crop, silhouette offset, actor-window IoU, where one palette index lies, candidate sweeps).
 
-For a side-by-side of one tick, read the capture with `read_capture` in `stunt_reel.parity_artifacts` and take the frame whose `film_tick` is that tick: `tick_NNNN.idx` is numbered by capture order, not by tick, and `read_capture` supplies the capture-order file names when an older `meta.json` omits `frame_file` and `palette_file`.
+For a side-by-side of one tick, read the capture with `read_capture` in `stunt_reel.parity_artifacts` and take the frame whose `film_tick` is that tick (its tag): `tick_NNNN.idx` is numbered by capture order, not by tick, and `read_capture` supplies the capture-order file names when an older `meta.json` omits `frame_file` and `palette_file`.
 Decode its frame (64000 bytes, 320x200) with its palette (`read_capture_palette`).
-For ours, `RenderStore(...).frame(tick)` returns a `StoredFrame` whose picture is `palette[index]` at every pixel of `indices`.
+For ours, `RenderStore(...).frame(frame.render_tick)` (the tag for a capture without slot words) returns a `StoredFrame` whose picture is `palette[index]` at every pixel of `indices`.
 A second's `preview/` PNG shows only that second's first tick, so use it only when that is the tick you want.
 
 ## 7. Record the result
