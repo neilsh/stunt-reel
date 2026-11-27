@@ -49,9 +49,10 @@ __all__ = [
 SHEET_TICKS = 12
 #: Frames each planted fault is drawn on in a calibrating run.
 FAULT_FRAMES = 6
-#: Actor pixels, summed over every actor, a frame must hold to carry an actors-removed sheet: an 8x8
-#: block of the 320x200 frame, a convention inside the untested gap between the sheets graders
-#: missed (1 and 33) and caught (852 or more) (research/parity/metric-bench.md, calibration rules).
+#: Actor pixels, summed over every actor, a frame must hold to carry an actors-removed sheet; the
+#: props_shift pick asks the same of the prop pixels. An 8x8 block of the 320x200 frame, a convention
+#: inside the untested gap between the sheets graders missed (1 and 33) and caught (852 or more)
+#: (research/parity/metric-bench.md, calibration rules).
 MIN_ACTOR_PIXELS = 64
 #: Frames whose fade level is below this are not picked: the screen is fading in or out.
 MIN_FADE_LEVEL = 0.95

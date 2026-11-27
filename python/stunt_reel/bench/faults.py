@@ -85,14 +85,22 @@ def _actors_removed(planes: RenderPlanes) -> RenderPlanes:
 
 
 def _props_shift(planes: RenderPlanes, k: int) -> RenderPlanes:
-    """The prop pixels *k* columns right; the pixels they vacate are filled as in actors-removed."""
+    """The prop pixels *k* columns right, never over actors or overlay.
+
+    Vacated pixels take the nearest pixel to the left below the prop layer, as actors-removed fills.
+    """
     props = planes.layer == PROP_LAYER
-    out = _fill_left(planes, ~props)
-    rgb, layer = out.rgb.copy(), out.layer.copy()
-    idx = None if out.idx is None else out.idx.copy()
+    filled = _fill_left(planes, planes.layer < PROP_LAYER)
+    rgb = np.where(props[..., None], filled.rgb, planes.rgb)
+    layer = np.where(props, filled.layer, planes.layer)
+    idx = None
+    if planes.idx is not None and filled.idx is not None:
+        idx = np.where(props, filled.idx, planes.idx)
     ys, xs = np.nonzero(props)
     inside = xs + k < props.shape[1]
     ys, xs = ys[inside], xs[inside]
+    free = planes.layer[ys, xs + k] <= PROP_LAYER
+    ys, xs = ys[free], xs[free]
     rgb[ys, xs + k] = planes.rgb[ys, xs]
     layer[ys, xs + k] = planes.layer[ys, xs]
     if idx is not None and planes.idx is not None:
