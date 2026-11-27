@@ -1,0 +1,131 @@
+# Journal
+
+## 2026-11-27: the hill's foot slides kilometres along a grazing ray
+
+`[Bounded Observation]`, `CTRY` ticks 280 to 372 rendered on lavapipe.
+
+- **Question**: why does the green hill on the right of `CTRY`'s airfield shot show on one render tick and not the next from about tick 286 to 366, when the capture keeps it?
+- **What is drawn there.**
+  Painting each `MAP.BIN` patch in its record number instead of its colour (a throwaway switch, not committed) shows the hill is records 107, 108 and 109 (colours 192 to 194) and the grey face behind it records 11 and 12 (162, 164).
+  All three hill records leave the frame together on a tick where the hill is gone, and record 12 fills their pixels; it is not a partial depth fight.
+  The hill's corners lie 290 to 440 m in front of record 12's plane and about 4.8 to 5.1 km from the eye (eye at `(3301, 6, 2536)` on tick 300), so depth alone puts the hill in front.
+  Switching the depth buffer to `Depth32Float` changed no pixel of ticks 300 to 318.
+- **Cause.**
+  `playone_vertex` in `mode13h.wgsl` (since #1064) moves each vertex to the centre of the pixel `PLAYONE` truncates it to and slides it along the ray through that pixel to the horizontal plane through the vertex, for every world-mesh vertex.
+  The hill's foot corners lie at height 0, 6 m below the eye and about 5 km away, so the ray to them falls about 0.07 degrees below horizontal, less than half a pixel.
+  The snapped pixel's ray then meets the horizontal plane far beyond the corner, or not at all (where it keeps its own projection); `PLANE_SLIDE_MAX` let a vertex slide to a million times its own distance.
+  Which happens depends on the corner's sub-pixel position, so it changes from tick to tick as the camera moves, and on a tick where a foot corner slides kilometres back the hill's triangles fall behind record 12.
+- **Check.**
+  Keeping a vertex's own projection whenever the slide would change its distance by more than 10% (throwaway switch) draws the hill on every tick of 300 to 318.
+- **Form swept** (`DBG_PLANE_SLIDE_MAX`, not committed; the bound and the switch that replaces its constant in the shader source at pipeline creation are in [`switches/DBG_SNAP_MODE.diff`](switches/DBG_SNAP_MODE.diff), where `DBG_SNAP_MODE=0` is this form): `playone_vertex` keeps a vertex's own projection when sliding it would change its distance from the eye by more than `PLANE_SLIDE_MAX` as a fraction; `1.0e6` is `main`'s behaviour in effect, the values below bound it.
+- **Track**: heuristic; the slide is our own device for keeping coplanar ties, not a `PLAYONE` rule.
+- **Target frames**: `--target ctry:286-366`, the issue's window.
+- **Command** (lavapipe, 4 vCPU cloud container; the branch at `d21e5cd` with the switch): `mise run sweep -- --var DBG_PLANE_SLIDE_MAX=1.0e6,0.3,0.1,0.03 --track heuristic --record work/2026-11/1197_ctry-hill-flicker --topic plane slide bound --images work/2026-11/1197_ctry-hill-flicker/images --crop 140,0,320,100 --target ctry:286-366 --jobs 4`, with `VK_DRIVER_FILES` set to the lavapipe ICD alone.
+- **Result** ([`sweeps/plane-slide-bound.toml`](sweeps/plane-slide-bound.toml)): `winner: none adopts (best DBG_PLANE_SLIDE_MAX=0.3: film means short of +0.002 each or +0.004 on one; target idx +0.0045, not above +0.010)`.
+
+  | Film | `1.0e6` (`main`) | `0.3` | `0.1` | `0.03` |
+  |---|---|---|---|---|
+  | ctry | 0.9459 | 0.9478 | 0.9468 | 0.9455 |
+  | intro | 0.9231 | 0.9248 | 0.9236 | 0.9180 |
+  | land | 0.9418 | 0.9443 | 0.9430 | 0.9410 |
+  | balloon | 0.9094 | 0.9094 | 0.9094 | 0.9093 |
+  | traintnl | 0.9221 | 0.9220 | 0.9220 | 0.9217 |
+  | bomb | 0.9216 | 0.9223 | 0.9227 | 0.9197 |
+  | location | 0.9168 | 0.9178 | 0.9188 | 0.9180 |
+
+  - `0.3` raises five films (`land` by 0.0025, `ctry` 0.0019, `intro` 0.0017) and lowers `traintnl` by 0.0001; the pooled target SSIM rises by 0.0087.
+    By eye the hill is back on [364](images/ctry-364-plane-slide-bound.png) but missing on [309](images/ctry-309-plane-slide-bound.png), where `main` draws it (next entry).
+  - 90 frames fall by more than 0.005, the worst `intro` 2467 (−0.0212).
+    `bomb` 12 to 210, the static opening shot, all fall by the same 0.0058 ([picture](images/bomb-78-plane-slide-bound-guard.png)).
+    `[Hypothesis]`: a vertex that now keeps its own projection also loses its pixel snap, so it moves half a pixel back to where `main` drew it before #1064; the next round keeps the snap.
+
+## 2026-11-27: a bounded slide that keeps the snapped pixel, or clamps
+
+`[Bounded Observation]`
+
+- **Question**: does the bound of the previous entry adopt when a vertex it stops sliding still lands on the pixel `PLAYONE` truncates it to, or when the slide is clamped to the bound instead of dropped?
+- **Why**: the previous entry's picture of `ctry` 309 ([picture](images/ctry-309-plane-slide-bound.png)) shows `0.3` losing the hill that `main` draws on that tick.
+  `[Hypothesis]`: a slide that pulls a far vertex nearer is as wrong as one that pushes it back; a 30% pull moves the mountain's foot corner, about 5.9 km away, some 1.8 km nearer, well past the 290 to 440 m the hill stands in front of it.
+  So `0.3` is dropped and `0.03` kept.
+- **Form** (`DBG_SNAP_MODE`, not committed, beside `DBG_PLANE_SLIDE_MAX`; [`switches/DBG_SNAP_MODE.diff`](switches/DBG_SNAP_MODE.diff)):
+  `0` is the previous entry's form, a vertex whose slide misses or exceeds the bound keeping its own projection, as `main` does for a miss;
+  `1` keeps that vertex's clip `z` and `w` but takes the snapped pixel's `x` and `y`;
+  `2` clamps the slid point's distance from the eye to within the bound of the vertex's own, on the snapped pixel's ray, and a miss keeps its own projection.
+- **Track**: heuristic.
+- **Target frames**: `--target ctry:286-366`, as before.
+- **Command** (lavapipe, as before): `mise run sweep -- --var DBG_PLANE_SLIDE_MAX=1.0e6,0.1,0.03 --var DBG_SNAP_MODE=0,1,2 --track heuristic --record work/2026-11/1197_ctry-hill-flicker --topic plane slide bound modes --images work/2026-11/1197_ctry-hill-flicker/images --crop 140,0,320,100 --target ctry:286-366 --jobs 4`.
+- **Result** ([`sweeps/plane-slide-bound-modes.toml`](sweeps/plane-slide-bound-modes.toml)): `winner: none adopts (best DBG_PLANE_SLIDE_MAX=0.03 DBG_SNAP_MODE=1: film-mean guard balloon -0.0057)`.
+
+  | `DBG_PLANE_SLIDE_MAX` | mode | ctry | intro | land | balloon | traintnl | bomb | location | bomb IoU |
+  |---|---|---|---|---|---|---|---|---|---|
+  | `1.0e6` (`main`) | 0 | 0.9459 | 0.9231 | 0.9418 | 0.9094 | 0.9221 | 0.9216 | 0.9168 | 0.9707 |
+  | `1.0e6` | 1 | 0.9457 | 0.9216 | 0.9422 | 0.9093 | 0.9220 | 0.9208 | 0.9166 | 0.9498 |
+  | `1.0e6` | 2 | 0.9458 | 0.9217 | 0.9422 | 0.9093 | 0.9220 | 0.9208 | 0.9166 | 0.9498 |
+  | `0.1` | 0 | 0.9468 | 0.9236 | 0.9430 | 0.9094 | 0.9220 | 0.9227 | 0.9188 | 0.9708 |
+  | `0.1` | 1 | 0.9489 | 0.9219 | 0.9426 | 0.9037 | 0.9225 | 0.9225 | 0.9186 | 0.9498 |
+  | `0.1` | 2 | 0.9485 | 0.9219 | 0.9426 | 0.9049 | 0.9226 | 0.9224 | 0.9181 | 0.9498 |
+  | `0.03` | 0 | 0.9455 | 0.9180 | 0.9410 | 0.9093 | 0.9217 | 0.9197 | 0.9180 | 0.9705 |
+  | `0.03` | 1 | 0.9491 | 0.9221 | 0.9434 | 0.9037 | 0.9228 | 0.9229 | 0.9190 | 0.9498 |
+  | `0.03` | 2 | 0.9490 | 0.9224 | 0.9430 | 0.9040 | 0.9224 | 0.9229 | 0.9188 | 0.9498 |
+
+  - `0.1` mode 0 scores as it did in the previous entry, to the digit.
+  - Modes 1 and 2 raise `ctry` by up to 0.0032 but lower `balloon` by 0.0045 to 0.0057, and `bomb`'s mask IoU falls from 0.9707 to 0.9498 in every mode-1 and mode-2 variant, `1.0e6` included.
+    Both modes, unlike mode 0, put a vertex whose ray misses its plane (`t` not positive) on the snapped pixel at its own depth, and `1.0e6` changes only those, so that is where the IoU fall comes from; `[Hypothesis]`: a vertex behind the plane's horizon is one whose clip `w` is small or whose snapped `x` and `y` are far from its own, which the snap then throws across the view.
+    The worst frames are `intro` 3225 (−0.0899) and `balloon` 507 (−0.0768); pictures: [`intro` 3225](images/intro-3225-plane-slide-bound-modes-guard.png), [`balloon` 507](images/balloon-507-plane-slide-bound-modes-guard.png).
+  - So the next round clamps the slide (mode 2's form) and leaves a miss its own projection (mode 0's).
+
+## 2026-11-27: a clamped slide, misses untouched
+
+`[Bounded Observation]`
+
+- **Question**: does clamping the slid distance to the bound, with a miss keeping its own projection as on `main`, adopt?
+- **Form**: `DBG_SNAP_MODE=3` in [`switches/DBG_SNAP_MODE.diff`](switches/DBG_SNAP_MODE.diff) (now with mode 3): a vertex whose ray meets its plane in front of the eye lands on the snapped pixel's ray at its slid distance clamped to within `DBG_PLANE_SLIDE_MAX` of its own; a miss keeps its own projection.
+- **Track**: heuristic.
+- **Target frames**: `--target ctry:286-366`, as before.
+- **Command** (lavapipe, as before): `mise run sweep -- --var DBG_PLANE_SLIDE_MAX=1.0e6,0.1,0.03,0.01 --var DBG_SNAP_MODE=3 --track heuristic --record work/2026-11/1197_ctry-hill-flicker --topic plane slide clamp --images work/2026-11/1197_ctry-hill-flicker/images --crop 140,0,320,100 --target ctry:286-366 --jobs 4`; `1.0e6` with mode 3 scores as `main` does to within 0.0001 per film, and the sweep's deltas are against it.
+- **Result** ([`sweeps/plane-slide-clamp.toml`](sweeps/plane-slide-clamp.toml)): `winner: none adopts (best DBG_PLANE_SLIDE_MAX=0.01 DBG_SNAP_MODE=3: film-mean guard balloon -0.0052)`.
+
+  | `DBG_PLANE_SLIDE_MAX` | ctry | intro | land | balloon | traintnl | bomb | location |
+  |---|---|---|---|---|---|---|---|
+  | `1.0e6` (`main`) | 0.9459 | 0.9232 | 0.9419 | 0.9093 | 0.9221 | 0.9216 | 0.9168 |
+  | `0.1` | 0.9486 | 0.9234 | 0.9423 | 0.9049 | 0.9226 | 0.9232 | 0.9183 |
+  | `0.03` | 0.9491 | 0.9237 | 0.9426 | 0.9040 | 0.9225 | 0.9237 | 0.9190 |
+  | `0.01` | 0.9494 | 0.9234 | 0.9435 | 0.9041 | 0.9230 | 0.9238 | 0.9198 |
+
+  - Clamping keeps `bomb`'s mask IoU at `main`'s 0.9707 and raises six films, but `balloon` falls by 0.0044 to 0.0052; its worst frames, 496 to 595, fall by 0.046 to 0.076.
+  - `balloon` 507, whole frame (capture | `1.0e6` | `0.03`, mode 3; `mise run frame`, not committed): the variant draws a band of ocean blue along the far edge of the flat ground, which neither the capture nor `main` shows.
+    The flat ground and the ocean are huge polygons whose far corners lie on grazing rays; slid all the way, their depths are the exact meeting of each pixel's ray with the plane, and the raised terrain at the horizon ties them; clamped, they are not, and the ocean wins there.
+  - So a bound on the slide trades one far surface's error for another's: the slide is right for far geometry in its own plane and wrong only for a vertex slid in a plane it does not lie along.
+    The hill's foot corners slide in the horizontal plane, but the hill's facets are steep; `slide_normal` sends every world-mesh vertex to the horizontal plane, terrain included.
+
+## 2026-11-27: steep terrain slides in its own facet's plane
+
+`[Bounded Observation]`
+
+- **Question**: does sliding a raised `MAP.BIN` patch's vertex in the patch's own plane when the patch is steeper than about 26 degrees, as a shape facet already slides (`slide_normal`, `NEAR_HORIZONTAL`), keep the hill on every tick and adopt, with no bound on the slide?
+- **Why it fits**: each patch's vertices are its own (`push_terrain` gives them the patch's normal), so a steep patch's corner slides along its own surface, which the snapped pixel's ray crosses at a wide angle when the face is seen, and near-horizontal patches, flat ground and the ocean keep the horizontal plane they share.
+  Ticks 300 to 318, even ones (lavapipe; `mise run frame`, not committed): the hill shows on all ten; `balloon` 507 draws as `main` does.
+- **Form** (`DBG_TERRAIN_FACET`, not committed; [`switches/DBG_TERRAIN_FACET.diff`](switches/DBG_TERRAIN_FACET.diff), the earlier switches set to `main`'s behaviour by `DBG_PLANE_SLIDE_MAX=1.0e6 DBG_SNAP_MODE=0` in the environment): with `1`, `slide_normal` treats a terrain vertex (scenery class 2) as a shape facet's, not a world-mesh vertex's.
+- **Track**: heuristic.
+- **Target frames**: `--target ctry:286-366`, as before.
+- **Command** (lavapipe, as before): `DBG_PLANE_SLIDE_MAX=1.0e6 DBG_SNAP_MODE=0 mise run sweep -- --var DBG_TERRAIN_FACET=0,1 --track heuristic --record work/2026-11/1197_ctry-hill-flicker --topic steep terrain facet slide --images work/2026-11/1197_ctry-hill-flicker/images --crop 140,0,320,100 --target ctry:286-366 --jobs 4`.
+- **Result** ([`sweeps/steep-terrain-facet-slide.toml`](sweeps/steep-terrain-facet-slide.toml)): `winner: none adopts (best DBG_TERRAIN_FACET=1: film-mean guard land -0.0033)`.
+
+  | Film | `0` (`main`) | `1` | Δ |
+  |---|---|---|---|
+  | ctry | 0.9459 | 0.9469 | +0.0010 |
+  | intro | 0.9231 | 0.9229 | −0.0002 |
+  | land | 0.9418 | 0.9385 | −0.0033 |
+  | balloon | 0.9094 | 0.9077 | −0.0017 |
+  | traintnl | 0.9221 | 0.9220 | −0.0001 |
+  | bomb | 0.9216 | 0.9216 | +0.0000 |
+  | location | 0.9168 | 0.9168 | +0.0000 |
+
+  - The target frames rise (pooled SSIM +0.0091, worst target frame +0.0014): the hill stays on every captured tick of the window ([298](images/ctry-298-steep-terrain-facet-slide.png), [331](images/ctry-331-steep-terrain-facet-slide.png), [364](images/ctry-364-steep-terrain-facet-slide.png)).
+  - `land` 551 (−0.0481, the worst frame; whole frame by `mise run frame`, not committed): the variant draws a grey mountain above the horizon, behind the aircraft, where the capture and `main` show only the haze band of the sky.
+    So `PLAYONE` does not draw that mountain there, and `main` hides it only because its foot corners slide kilometres back along grazing rays, the fault this issue is about; the [guard picture](images/land-551-steep-terrain-facet-slide-guard.png)'s crop misses it.
+    `[Hypothesis]`: `PLAYONE` drops far terrain by a rule we do not draw, such as the scenery cull's distance cut (`0x1B0C`, [`world-scene-residuals.md`](../../../research/playone-exe/world-scene-residuals.md) section 6.4) applied to ground leaves; not checked.
+- **End of the loop.**
+  Four rounds, none adopted, so the loop stops here ([loop rules](../../../.agents/skills/improving-render-parity/loop-rules.md)).
+  The cause stands: the horizontal slide of a steep terrain patch's corner.
+  The fix that follows from it, sliding steep terrain in its own plane, needs the far-terrain rule first, or `land` and `balloon` pay for mountains `main` hides by accident.

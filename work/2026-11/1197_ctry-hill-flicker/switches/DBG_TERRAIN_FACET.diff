@@ -1,0 +1,89 @@
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 4595a8b..45b3c61 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -318,8 +318,25 @@ impl RenderPipelines {
+             immediate_size: 0,
+         });
+ 
+-        let shader_module =
+-            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
++        let shader_module = {
++            let src = include_str!("shaders/mode13h.wgsl");
++            let src = match std::env::var("DBG_PLANE_SLIDE_MAX") {
++                Ok(v) => src.replace("const PLANE_SLIDE_MAX: f32 = 0.1;", &format!("const PLANE_SLIDE_MAX: f32 = {v};")),
++                Err(_) => src.to_owned(),
++            };
++            let src = match std::env::var("DBG_TERRAIN_FACET") {
++                Ok(v) if v == "1" => src.replace("const DBG_TERRAIN_FACET: bool = false;", "const DBG_TERRAIN_FACET: bool = true;"),
++                _ => src,
++            };
++            let src = match std::env::var("DBG_SNAP_MODE") {
++                Ok(v) => src.replace("const DBG_SNAP_MODE: u32 = 0u;", &format!("const DBG_SNAP_MODE: u32 = {v}u;")),
++                _ => src,
++            };
++            device.create_shader_module(wgpu::ShaderModuleDescriptor {
++                label: Some("mode13h"),
++                source: wgpu::ShaderSource::Wgsl(src.into()),
++            })
++        };
+         let vertex_buffers = [
+             Some(Self::vertex_buffer_layout()),
+             Some(Self::apex_buffer_layout()),
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 23cbe3a..8506d27 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -236,9 +236,13 @@ fn prop_shape(vertex: u32) -> u32 {
+     return 0u;
+ }
+ 
+-// Beyond this many times its own distance, a vertex slid along its plane by `playone_vertex` is
+-// treated as having missed the plane (the ray through its pixel runs almost along it).
+-const PLANE_SLIDE_MAX: f32 = 1.0e6;
++// A slide along its plane by `playone_vertex` that would change a vertex's distance from the eye
++// by more than this fraction is treated as missing the plane: the ray through its pixel grazes
++// the plane, so half a pixel moves the meeting point far along it, and a distant hill's foot
++// slid kilometres back loses to the mountain behind it on alternate ticks (#1197).
++const PLANE_SLIDE_MAX: f32 = 0.1;
++const DBG_SNAP_MODE: u32 = 0u;
++const DBG_TERRAIN_FACET: bool = false;
+ 
+ // Moves a projected vertex at `clip` (eye-relative position `eye`) to the pixel PLAYONE's
+ // register projectors put it on: its offset from the projection centre truncated toward the
+@@ -247,7 +251,8 @@ const PLANE_SLIDE_MAX: f32 = 1.0e6;
+ // 8.14). The vertex slides along the ray through that pixel to the plane through it with
+ // eye-relative normal `normal` (`slide_normal`), so facets in one plane (a decal and its base,
+ // the ground and the ocean) stay coplanar and their depth ties hold. A vertex behind the eye,
+-// or whose ray does not meet that plane in front of it, keeps its own projection, as does
++// or whose ray does not meet that plane in front of it within `PLANE_SLIDE_MAX` of its own
++// distance, keeps its own projection, as does
+ // every vertex of an orthographic view (shape views), whose clip w does not come from depth.
+ fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f32> {
+     if (clip.w <= 0.0 || camera.rotation_proj[3][3] != 0.0) {
+@@ -270,7 +275,14 @@ fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f3
+         on_ray = -on_ray;
+     }
+     let t = dot(normal, eye.xyz) / dot(normal, on_ray);
+-    if (!(t > 0.0) || t > PLANE_SLIDE_MAX) {
++    if ((DBG_SNAP_MODE == 2u || DBG_SNAP_MODE == 3u) && t > 0.0) {
++        let r = clamp(t * length(on_ray) / length(eye.xyz), 1.0 - PLANE_SLIDE_MAX, 1.0 + PLANE_SLIDE_MAX);
++        return camera.rotation_proj * vec4<f32>(normalize(on_ray) * length(eye.xyz) * r, 1.0);
++    }
++    if (!(t > 0.0) || abs(t * length(on_ray) / length(eye.xyz) - 1.0) > PLANE_SLIDE_MAX) {
++        if (DBG_SNAP_MODE == 1u || DBG_SNAP_MODE == 2u) {
++            return vec4<f32>(ndc * clip.w, clip.z, clip.w);
++        }
+         return clip;
+     }
+     return camera.rotation_proj * vec4<f32>(on_ray * t, 1.0);
+@@ -326,7 +338,8 @@ fn slide_normal(in: VertexInput) -> vec3<f32> {
+     }
+     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
+     let decal_tie = in.attr.z == SCENERY_PROP && in.attr.w != 0u;
+-    let world = in.attr.z != 0u && !decal_tie;
++    let steep_terrain = DBG_TERRAIN_FACET && in.attr.z == 2u;
++    let world = in.attr.z != 0u && !decal_tie && !steep_terrain;
+     if (model.layer.y != 0u || world || dot(eye_n, eye_n) == 0.0
+         || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {
+         return UP;
