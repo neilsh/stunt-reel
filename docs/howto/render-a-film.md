@@ -33,7 +33,7 @@ The sun is a soft glow toward its colour (index 239) rather than the hard disc: 
 The sky entry points are `fs_sky_modern` and `fs_sky_modern_plane` in the modern section of `mode13h.wgsl`; the plane still holds the Mode 13h sky's index, so picking and the layer plane are unchanged.
 Two finishes sit on top, each its own flag, off by default and refused without `--look modern`; with both off the page is byte-identical to one rendered without them.
 `--grade` raises saturation and contrast about mid-grey a little and warms the colour a touch, in the target's sRGB values (`ModernUniform::GRADE_SATURATION` 1.10, `GRADE_CONTRAST` 1.05, `GRADE_WARM` 0.010, added to red, 0.35 of it to green, taken from blue).
-`--vignette` darkens toward the corners by `1 - VIGNETTE * smoothstep(VIGNETTE_START, VIGNETTE_END, r)`, `r` the distance from the centre of the rectangle the scene is drawn into (the 4:3 window area, or `--viewport-rows` rows) over its half-diagonal; `VIGNETTE` is 0.25, from 0.5 to 1.0 (`ModernUniform`).
+`--vignette` darkens toward the corners by `1 - VIGNETTE * smoothstep(VIGNETTE_START, VIGNETTE_END, r)`, `r` the distance from the centre of the rectangle the scene is drawn into (the 4:3 window area, the top `--viewport-rows` rows, or the whole page headless) over its half-diagonal; `VIGNETTE` is 0.25, from 0.5 to 1.0 (`ModernUniform`).
 Both are applied to every modern fragment, the sky included, in `modern_finish` in the modern section of `mode13h.wgsl`; the letterbox bars are neither graded nor vignetted, and the planes are unchanged.
 It is a viewer: `--out-dir` refuses it, since the render store holds Mode 13h renders that are scored, and `stuntreel shape-views` stays on the Mode 13h look.
 

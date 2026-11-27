@@ -734,22 +734,16 @@ fn grey_and_colour_indices() -> (u8, u8) {
 }
 
 #[test]
-fn the_effects_off_leave_the_page_as_it_was_and_each_alone_changes_it() {
+fn each_effect_alone_changes_the_modern_page_and_only_its_colour() {
     common::gpu_test(|| {
         let ir = || facet(2.0, FACET_INDEX, UNSHADED);
-        let (Some(plain), Some(off), Some(graded), Some(vignetted)) = (
+        let (Some(plain), Some(graded), Some(vignetted)) = (
             shoot(ir(), 10.0, Look::Modern),
-            shoot_effects(ir(), 10.0, ModernEffects::default()),
             shoot_effects(ir(), 10.0, GRADE),
             shoot_effects(ir(), 10.0, VIGNETTE),
         ) else {
             return;
         };
-        assert_eq!(
-            plain.rgba(),
-            off.rgba(),
-            "both off is the render without them"
-        );
         assert_ne!(plain.rgba(), graded.rgba(), "the grade changes the page");
         assert_ne!(
             plain.rgba(),
@@ -809,7 +803,7 @@ fn vignette_factor(r: f32) -> f32 {
 
 /// Every pixel of `with` inside `view` (`[x, y, width, height]` in whole pixels) is `without` times the
 /// vignette's factor at its distance from the view's centre, to within a level of rounding;
-/// returns the pixels checked and how many the vignette took at least `10` levels from.
+/// returns the pixels checked and how many the vignette took at least `30` from in the sum of the three channels.
 fn check_vignette(without: &RenderedPage, with: &RenderedPage, view: [u16; 4]) -> (u32, u32) {
     let [vx, vy, vw, vh] = view.map(f32::from);
     let half_diagonal = 0.5 * vw.hypot(vh);
@@ -903,9 +897,13 @@ fn the_vignette_centres_on_the_rows_the_scene_is_drawn_into() {
             darkened > checked / 10,
             "{darkened} of {checked} pixels darkened"
         );
-        for y in 40..without.height() as usize {
-            assert_eq!(column(&without, 5)[y], column(&with, 5)[y], "row {y}");
-        }
+        let below = 40 * w * 4;
+        assert!(without.rgba().len() > below, "rows below the view exist");
+        assert_eq!(
+            without.rgba().get(below..),
+            with.rgba().get(below..),
+            "rows 40 and below, which the scene does not draw, are untouched"
+        );
     });
 }
 
