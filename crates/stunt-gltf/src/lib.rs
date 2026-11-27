@@ -9,7 +9,8 @@
 //! # Invariants
 //!
 //! - `[I1]` Right-handed metric coordinates (`+X` right, `+Y` up, `-Z` forward) are already
-//!   glTF's basis, so positions, normals and matrices are copied unchanged. Column-major
+//!   glTF's basis, so positions, normals and matrices are copied unchanged, except that a
+//!   line or disc vertex, whose IR `normal` is not a surface normal, exports a unit one. Column-major
 //!   `local_matrix` / `world_matrix` values are glTF's `matrix` layout.
 //! - `[I3]` Each vertex's Mode 13h palette index is exported as a `COLOR_0` attribute through
 //!   [`stunt_core::contracts::get_palette_rgb_float`], and the single material is

@@ -9,6 +9,8 @@
 //!
 //! A slice's screen-space lines (`VERTEX_FLAG_LINE` quads, which have no world width) become
 //! a second primitive in `LINES` mode, one segment per quad, and leave the triangle primitive.
+//! A line vertex carries the vector to its segment's other end in `normal`; it is exported
+//! with that vector's direction, since glTF requires a unit `NORMAL`.
 //! A disc's rim vertex (`VERTEX_FLAG_DISC`) carries the vector to its centre in `normal`; it
 //! is exported with its triangle's front normal instead, and the renderer's lens squeeze is
 //! not applied.
@@ -177,12 +179,30 @@ const MODE_LINES: u32 = 1;
 /// glTF primitive mode `TRIANGLES`.
 const MODE_TRIANGLES: u32 = 4;
 
-/// Each vertex's `NORMAL`: its own, except that a [`VERTEX_FLAG_DISC`] vertex, whose `normal`
-/// is the vector to its disc's centre, takes the front normal of the first triangle using it
-/// (the side that winds clockwise, opposite the edge cross product). The tessellator keeps a
-/// disc's two faces on vertices of their own, so each vertex has one front.
+/// Each vertex's unit `NORMAL`, as glTF requires: its own, except that a [`VERTEX_FLAG_LINE`]
+/// vertex, whose `normal` is the vector to its segment's other end, takes that vector's
+/// direction, and a [`VERTEX_FLAG_DISC`] vertex, whose `normal` is the vector to its disc's
+/// centre, takes the front normal of the first triangle using it (the side that winds
+/// clockwise, opposite the edge cross product). The tessellator keeps a disc's two faces on
+/// vertices of their own, so each vertex has one front. The material is unlit, so neither
+/// replacement changes the look.
 fn exported_normals(model: &SodModelIr) -> Vec<[f32; 3]> {
-    let mut out: Vec<[f32; 3]> = model.vertices.iter().map(|v| v.normal).collect();
+    let mut out: Vec<[f32; 3]> = model
+        .vertices
+        .iter()
+        .map(|v| {
+            if v.flags & VERTEX_FLAG_LINE == 0 {
+                return v.normal;
+            }
+            let [x, y, z] = v.normal;
+            let len = (x * x + y * y + z * z).sqrt();
+            if len < 1e-12 {
+                [0.0, 1.0, 0.0]
+            } else {
+                v.normal.map(|c| c / len)
+            }
+        })
+        .collect();
     let mut done: Vec<bool> = model
         .vertices
         .iter()
