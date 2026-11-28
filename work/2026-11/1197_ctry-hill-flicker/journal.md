@@ -291,3 +291,12 @@
   On `main` it covers none at 5.95 m (the first height checked); here 55 of 72 at each of 6.00 to 6.10 m in steps of 0.01 m (an earlier form of the test), the rest being the row of both feet, where the ground plane's depth bounds both faces and the one drawn first wins the tie.
 - **Result** (`mise run parity -- --software-only`, clean `crates/`, against the lavapipe table): `ctry` +0.0018, `intro` +0.0016, `location` +0.0011, `balloon` −0.0002, `land` −0.0000, `traintnl` −0.0000, `bomb` −0.0000; mask IoU unchanged on every film.
   `research/parity/expected/lavapipe.toml` repinned on that tree.
+- **GPU cost** (`[Bounded Observation]`, Legion, NVIDIA GeForce RTX 4070 Laptop GPU, the implementation's first commit against `main` at `8705f28`): wall time of the whole headless `stuntreel` render at 320 × 200, eight runs a side alternating after one warm-up.
+
+  | Film | Ticks | `main` mean | branch mean | Δ mean / median |
+  |---|---|---|---|---|
+  | location | 300 (2200 to 4293, step 7) | 2.494 s | 2.515 s | +0.8% / −0.4% |
+  | ctry | 251 (100 to 1100, step 4) | 0.892 s | 0.895 s | +0.4% / +1.0% |
+
+  Within the runs' spread; the times include loading the world and writing the store, so at parity size the GPU's share is small and this does not bound the fragment cost at larger resolutions.
+  `STUNT_REQUIRE_GPU=1 mise run test-gpu -- a_far_hill` passes there.

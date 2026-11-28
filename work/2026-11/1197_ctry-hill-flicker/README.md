@@ -2,7 +2,7 @@
 title: "CTRY: a distant hill vanishes and returns on alternate render ticks around ticks 286–366"
 started: 2026-11-27
 issue: 1197
-outcome: "Adopted ADR 0059: terrain in the world's base slice takes its depth per fragment from its own plane, clamped to the ground plane; the hill stays, ctry +0.0018, intro +0.0016, location +0.0011, balloon -0.0002 on lavapipe; its GPU cost was not measured before the merge."
+outcome: "Adopted ADR 0059: terrain in the world's base slice takes its depth per fragment from its own plane, clamped to the ground plane; the hill stays, ctry +0.0018, intro +0.0016, location +0.0011, balloon -0.0002 on lavapipe; whole GPU renders within 1% of main's on Legion."
 ---
 
 # CTRY: a distant hill vanishes and returns on alternate render ticks around ticks 286–366
