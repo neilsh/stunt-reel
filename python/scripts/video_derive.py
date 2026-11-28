@@ -7,10 +7,12 @@ Subcommands, each on one video capture directory (``<data root>/captures-video/<
   the AVI, the ``rules``, and the columns ``render_tick`` (ADR 0057) and ``palette_step``. The file is local only, never archived, and rewritten freely.
 * ``reference-check <film>``: compare the video with the film's pinned frame capture
   (``references.toml``): offset histogram, pixel-equal fractions, and each page as exact, split or band. Derives the
-  columns first and writes the check into ``derived.json``.
-* ``replay <dir> <dir>``: say whether two recordings of one film are identical, AVI and log.
+  columns first and writes the check into ``derived.json``. With ``--stream``, compare the stream
+  (``stream.mkv``) instead, by palette index; this writes nothing.
+* ``replay <dir> <dir>``: say whether two recordings of one film are identical, AVI, log and stream.
 * ``pairing``: test ADR 0057's pairing rule on the last frame of each slot_clock run, without a render (does a
-  key name one picture) and, with ``--render <store>``, against a render store of the film.
+  key name one picture) and, with ``--render <store>``, against a render store of the film. With ``--stream``,
+  the pictures come from the stream and the AVI is not decoded.
 """
 
 from __future__ import annotations
@@ -61,6 +63,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=video_check.REFERENCE_SEARCH,
         help="largest offset searched, at least 4",
     )
+    check.add_argument(
+        "--stream",
+        action="store_true",
+        help="compare the stream (stream.mkv) by palette index; writes nothing",
+    )
     replay = commands.add_parser("replay", help="compare two recordings of one film")
     replay.add_argument("first", type=dataroot.data_path_arg)
     replay.add_argument("second", type=dataroot.data_path_arg)
@@ -75,6 +82,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     pairing.add_argument(
         "--render", type=dataroot.data_path_arg, default=None, help="a render store of the film"
+    )
+    pairing.add_argument(
+        "--stream",
+        action="store_true",
+        help="take the pictures from stream.mkv, not the AVI (the AVI is not decoded)",
     )
     return parser.parse_args(argv)
 
@@ -137,18 +149,35 @@ def run_reference_check(directory: Path, film: str, root: Path, search: int) -> 
     return 0
 
 
+def run_stream_check(directory: Path, film: str, root: Path, search: int) -> int:
+    """Compare *directory*'s stream with *film*'s pinned frame capture; writes nothing."""
+    capture = load_video_capture(directory)
+    with references.open_reference(root, film) as held:
+        matches, skipped = video_check.stream_page_matches(directory, capture, held, search=search)
+    check = video_check.summarise_stream(matches, skipped)
+    report(f"{film}: {check.pages} pages ({check.skipped} skipped), stream from {directory}")
+    report(f"offsets from emu_frame: {check.offsets}")
+    report(
+        f"exact {check.exact_pages}, on held frames {check.on_held_pages}, "
+        f"palette equal {check.palette_equal_pages} of {len(matches)} compared"
+    )
+    return 0
+
+
 def run_replay(first: Path, second: Path) -> int:
     """Report whether two recordings are identical; 1 when they differ."""
     replay = video_check.replay_report(first, second)
     report(f"AVI bytes identical: {replay.video_identical}")
     report(f"meta.json bytes identical: {replay.meta_identical}")
+    if replay.stream_identical is not None:
+        report(f"stream identical: {replay.stream_identical}")
     for column, index in replay.differing.items():
         report(f"differs: {column} (first at {index})")
     return 0 if replay.identical else 1
 
 
-def run_pairing(directory: Path, render: Path | None, key_row: str) -> int:
-    """Test the pairing rule on *directory*'s run-end frames."""
+def run_pairing(directory: Path, render: Path | None, key_row: str, *, stream: bool) -> int:
+    """Test the pairing rule on *directory*'s run-end frames, pictures from the stream if asked."""
     capture = load_video_capture(directory)
     derived = read_video_derived(directory)
     store = RenderStore(render) if render is not None else None
@@ -158,6 +187,7 @@ def run_pairing(directory: Path, render: Path | None, key_row: str) -> int:
         derived.frames.render_tick,
         store=store,
         key_row=key_row,
+        stream=video_check.load_stream(directory) if stream else None,
     )
     report(
         f"{check.runs} runs of one slot_clock, {check.multi_frame_runs} of two or more frames, "
@@ -173,6 +203,8 @@ def run_pairing(directory: Path, render: Path | None, key_row: str) -> int:
             f"picture ({groups.conflicting_frames} frames)"
         )
     report(f"render_tick falls between consecutive compared frames: {check.render_tick_falls}")
+    if stream:
+        report(f"stream: {check.held_dropped} run-end rows on held frames left out")
     if check.render is not None:
         pairing = check.render
         report(
@@ -198,9 +230,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "derive":
             return run_derive(directory)
         if args.command == "reference-check":
+            if args.stream:
+                return run_stream_check(directory, args.film, root, args.search)
             return run_reference_check(directory, args.film, root, args.search)
         run_derive(directory)
-        return run_pairing(directory, args.render, args.key_row)
+        return run_pairing(directory, args.render, args.key_row, stream=args.stream)
     except (ValueError, references.ReferenceCaptureError, video_check.VideoCheckError) as err:
         print(f"video-derive: {err}", file=sys.stderr)
         return 2

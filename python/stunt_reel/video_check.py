@@ -15,8 +15,9 @@ import json
 import shutil
 import statistics
 import subprocess
+from collections import Counter
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -32,10 +33,13 @@ from stunt_reel.parity_artifacts import (
     read_capture,
     read_capture_palette,
 )
+from stunt_reel.tac import stream as tac_stream
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Sequence
     from pathlib import Path
+
+    from stunt_reel.parity_artifacts import PaletteLog
 
 #: Rows of a page compared: the 3D view's 185 rows, ``0..184`` inclusive.
 REFERENCE_ROWS = (0, 184)
@@ -238,6 +242,186 @@ def summarise(
 
 
 @dataclass(frozen=True)
+class StreamRun:
+    """A recording's stream: its pictures by emulated frame, and the frames not known to be whole."""
+
+    first_frame: int
+    #: Frames whose picture is not known to be whole (``stream.json``'s ``held``).
+    held: frozenset[int]
+    #: Each picture's ``(192, 320)`` palette indices, keyed by emulated frame.
+    pictures: dict[int, np.ndarray]
+
+    def picture(self, frame: int) -> np.ndarray:
+        """The picture of emulated *frame*; VideoCheckError when the stream does not hold it."""
+        try:
+            return self.pictures[frame]
+        except KeyError:
+            raise VideoCheckError(f"the stream holds no picture of frame {frame}") from None
+
+
+def read_stream_document(directory: Path) -> dict[str, Any] | None:
+    """The parsed ``stream.json`` of *directory*, or None when the recording has none."""
+    path = directory / tac_stream.JSON_NAME
+    if not path.is_file():
+        return None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise VideoCheckError(f"{path}: cannot read it: {error}") from error
+    if not isinstance(document, dict):
+        raise VideoCheckError(f"{path}: is not a JSON object")
+    return document
+
+
+def load_stream(directory: Path) -> StreamRun:
+    """The stream of the recording in *directory*: ``stream.mkv`` decoded and checked against
+    ``stream.json``.
+
+    Raises VideoCheckError when either file is missing, the file cannot be decoded, or it holds
+    other than the ``frames`` that ``stream.json`` records.
+    """
+    document = read_stream_document(directory)
+    mkv = directory / tac_stream.MKV_NAME
+    if document is None or not mkv.is_file():
+        raise VideoCheckError(
+            f"{directory}: no {tac_stream.JSON_NAME} and {tac_stream.MKV_NAME} "
+            "(encode the log with stream-encode)"
+        )
+    try:
+        first = int(document["first_frame"])
+        frames = int(document["frames"])
+        held = frozenset(int(frame) for frame in document["held"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise VideoCheckError(f"{directory / tac_stream.JSON_NAME}: {error}") from error
+    pictures: dict[int, np.ndarray] = {}
+    try:
+        for index, picture in enumerate(tac_stream.decode_stream(mkv)):
+            pictures[first + index] = picture
+    except tac_stream.StreamError as error:
+        raise VideoCheckError(str(error)) from error
+    if len(pictures) != frames:
+        raise VideoCheckError(
+            f"{mkv}: decodes to {len(pictures)} pictures, stream.json records {frames}"
+        )
+    return StreamRun(first, held, pictures)
+
+
+def working_palette(palettes: PaletteLog, frame: int) -> np.ndarray:
+    """The 256 RGB entries of the working palette at emulated *frame* as ``(256, 3)`` ``uint8``.
+
+    The initial palette with each write at or before *frame* applied, in log order.
+    """
+    table = np.array(palettes.initial, dtype=np.uint8)
+    for change in palettes.changes:
+        if change.frame <= frame:
+            table[change.first : change.first + len(change.rgb)] = change.rgb
+    return table
+
+
+@dataclass(frozen=True)
+class StreamPageMatch:
+    """Where one kept page matched best in the stream, and what the matched picture is."""
+
+    ordinal: int
+    emu_frame: int
+    #: Offset from the page's ``emu_frame`` of the matched picture, ties to the smallest.
+    offset: int
+    #: Number of differing palette indices over the compared rows at that offset.
+    differing_pixels: int
+    #: True when the matched picture's frame is one the stream holds as not known to be whole.
+    on_held: bool
+    #: True when the working palette at the matched frame equals the page's palette.
+    palette_equal: bool
+
+
+def stream_page_matches(
+    directory: Path,
+    capture: VideoCapture,
+    reference: Path,
+    *,
+    rows: tuple[int, int] = REFERENCE_ROWS,
+    search: int = REFERENCE_SEARCH,
+) -> tuple[list[StreamPageMatch], int]:
+    """Best stream picture of every kept page of *reference*, and the pages whose window left it.
+
+    The indices of a page's *rows* (inclusive) are compared with the stream's picture at
+    ``emu_frame + offset`` for offsets within *search*, nearest zero first. A page is skipped,
+    and counted, unless every frame of its window is in the stream.
+    """
+    stream = load_stream(directory)
+    kept = read_capture(reference)
+    meta = json.loads((reference / CAPTURE_META).read_text(encoding="utf-8"))
+    emu_frames = {entry["ordinal"]: entry["emu_frame"] for entry in meta["frames"]}
+    width, height = kept.geometry.width, kept.geometry.height
+    if width != tac_stream.WIDTH or height < rows[1] + 1:
+        raise VideoCheckError(
+            f"{reference}: pages are {width}x{height}; the stream is "
+            f"{tac_stream.WIDTH}x{tac_stream.HEIGHT} and holds rows {rows[0]}..{rows[1]}"
+        )
+    low, high = rows[0], rows[1] + 1
+    matches: list[StreamPageMatch] = []
+    skipped = 0
+    for frame in kept.frames:
+        emu = emu_frames[frame.ordinal]
+        if any(
+            candidate not in stream.pictures for candidate in range(emu - search, emu + search + 1)
+        ):
+            skipped += 1
+            continue
+        indices = np.fromfile(reference / frame.frame_file, dtype=np.uint8)
+        shown = indices[: width * height].reshape(height, width)[low:high]
+        page_palette = np.array(
+            read_capture_palette(reference / frame.palette_file), dtype=np.uint8
+        )
+        counts = (
+            (offset, int(np.count_nonzero(stream.picture(emu + offset)[low:high] != shown)))
+            for offset in _offsets(search)
+        )
+        offset, differing = min(counts, key=lambda found: found[1])
+        matched = emu + offset
+        matches.append(
+            StreamPageMatch(
+                ordinal=frame.ordinal,
+                emu_frame=emu,
+                offset=offset,
+                differing_pixels=differing,
+                on_held=matched in stream.held,
+                palette_equal=bool(
+                    np.array_equal(working_palette(capture.palettes, matched), page_palette)
+                ),
+            )
+        )
+    return matches, skipped
+
+
+@dataclass(frozen=True)
+class StreamCheck:
+    """The stream check of a reference: offsets, exact pages, pages on held frames, palette equal."""
+
+    pages: int
+    skipped: int
+    #: Matches per offset, as ``str(offset)``.
+    offsets: dict[str, int]
+    #: Pages whose best picture equals the page in every compared index.
+    exact_pages: int
+    on_held_pages: int
+    palette_equal_pages: int
+
+
+def summarise_stream(matches: list[StreamPageMatch], skipped: int) -> StreamCheck:
+    """The :class:`StreamCheck` of *matches* and the *skipped* page count."""
+    histogram = Counter(match.offset for match in matches)
+    return StreamCheck(
+        pages=len(matches) + skipped,
+        skipped=skipped,
+        offsets={str(offset): count for offset, count in sorted(histogram.items())},
+        exact_pages=sum(match.differing_pixels == 0 for match in matches),
+        on_held_pages=sum(match.on_held for match in matches),
+        palette_equal_pages=sum(match.palette_equal for match in matches),
+    )
+
+
+@dataclass(frozen=True)
 class Replay:
     """Whether two recordings of one film are the same, and where they first differ."""
 
@@ -245,11 +429,13 @@ class Replay:
     meta_identical: bool
     #: Columns of ``log`` and ``palettes`` that differ, as ``name: first differing index``.
     differing: dict[str, int | None]
+    #: Whether the two streams have the same raw SHA-256 and frame count; None when either lacks one.
+    stream_identical: bool | None = None
 
     @property
     def identical(self) -> bool:
-        """True when both the AVI bytes and ``meta.json`` bytes are equal."""
-        return self.video_identical and self.meta_identical
+        """True when the AVI bytes and ``meta.json`` bytes are equal, and no stream differs."""
+        return self.video_identical and self.meta_identical and self.stream_identical is not False
 
 
 def _first_difference(left: Sequence[object], right: Sequence[object]) -> int | None:
@@ -276,7 +462,18 @@ def replay_report(first: Path, second: Path) -> Replay:
         differing["palettes"] = _first_difference(
             (a.palettes.initial, *a.palettes.changes), (b.palettes.initial, *b.palettes.changes)
         )
-    return Replay(video_identical, meta_identical, differing)
+    return Replay(video_identical, meta_identical, differing, _stream_identical(first, second))
+
+
+def _stream_identical(first: Path, second: Path) -> bool | None:
+    """Whether two recordings' ``stream.json`` agree on the raw SHA-256 and frame count."""
+    left, right = read_stream_document(first), read_stream_document(second)
+    if left is None or right is None:
+        return None
+    try:
+        return (left["sha256_raw"], left["frames"]) == (right["sha256_raw"], right["frames"])
+    except KeyError as error:
+        raise VideoCheckError(f"a stream.json lacks {error.args[0]}") from error
 
 
 #: Frames after a palette write that the DAC may still show the old palette on (§ 4.5).
@@ -337,6 +534,35 @@ class PairingCheck:
     by_film_tick: KeyGroups
     render_tick_falls: int
     render: RenderPairing | None
+    #: Run-end rows left out because their frame is held in the stream; 0 without a stream.
+    held_dropped: int = 0
+
+
+def _pairing_pictures(
+    video: Path,
+    capture: VideoCapture,
+    wanted: set[int],
+    rows: tuple[int, int],
+    stream: StreamRun | None,
+) -> Generator[tuple[int, np.ndarray, bytes]]:
+    """Each wanted log row as ``(row, RGB rows, the bytes that key it)``, in row order.
+
+    Without a *stream* the AVI is decoded, and the bytes are the RGB rows. With one, the AVI is not
+    read: the row's picture is the stream's picture of its frame, mapped through the working
+    palette, and the bytes are the index rows.
+    """
+    low, high = rows
+    if stream is None:
+        width, height = capture.geometry.width, capture.geometry.height
+        for index, frame in enumerate(iter_video_frames(video / VIDEO_FILE, width, height)):
+            if index in wanted:
+                shown = frame[low:high]
+                yield index, shown, shown.tobytes()
+        return
+    for index in sorted(wanted):
+        frame_number = capture.log.frame[index]
+        indices = stream.picture(frame_number)[low:high]
+        yield index, working_palette(capture.palettes, frame_number)[indices], indices.tobytes()
 
 
 def _lag_window(capture: VideoCapture) -> set[int]:
@@ -385,6 +611,7 @@ def pairing_check(
     key_row: str = "last",
     rows: tuple[int, int] = REFERENCE_ROWS,
     span: int = PAIRING_SPAN,
+    stream: StreamRun | None = None,
 ) -> PairingCheck:
     """Test the pairing rule on the run-end frames of *video* (:func:`run_ends`; one pass over the AVI).
 
@@ -393,14 +620,21 @@ def pairing_check(
     tag ``film_tick`` as the key. With a render *store* (a :class:`RenderStore` of the film):
     each compared frame's picture is scored (luma SSIM) against the render at
     ``render_tick + offset`` for offsets within *span*, and against the render at the tag.
+
+    With a *stream*, the pictures are the stream's instead of the AVI's (the AVI is not read),
+    keyed by palette index; a run-end row whose frame the stream holds is left out.
     """
-    width, height = capture.geometry.width, capture.geometry.height
     low, high = rows[0], rows[1] + 1
     if key_row not in ("last", "first"):
         raise ValueError(f"key_row is {key_row!r}, expected 'last' or 'first'")
     lag = _lag_window(capture)
     ends = run_ends(capture)
     keep = [i for i, done in enumerate(ends) if done and i not in lag]
+    held_dropped = 0
+    if stream is not None:
+        unheld = [i for i in keep if capture.log.frame[i] not in stream.held]
+        held_dropped = len(keep) - len(unheld)
+        keep = unheld
     #: The row whose words name the picture of the run ending at each kept frame.
     first_of = {}
     start = 0
@@ -413,11 +647,8 @@ def pairing_check(
     pictures: dict[int, bytes] = {}
     scores: dict[int, dict[int, float]] = {}
     tag_scores: dict[int, float] = {}
-    for index, frame in enumerate(iter_video_frames(video / VIDEO_FILE, width, height)):
-        if index not in wanted:
-            continue
-        shown = frame[low:high]
-        pictures[index] = shown.tobytes()
+    for index, shown, picture in _pairing_pictures(video, capture, wanted, (low, high), stream):
+        pictures[index] = picture
         if store is None:
             continue
         luma = render_luma(shown)
@@ -458,6 +689,7 @@ def pairing_check(
         by_film_tick=_groups(tags, shots),
         render_tick_falls=sum(b < a for a, b in itertools.pairwise(ticks)),
         render=render,
+        held_dropped=held_dropped,
     )
 
 
