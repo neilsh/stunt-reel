@@ -79,3 +79,19 @@ Scratch scripts in the project files folder: `s2_gate.py` (pinned pages against 
 **Verdict.** Go on step 3 (decode and encode).
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
+
+## 2026-11-28: The front rule on frames where A000 equals neither buffer
+
+**Question.** Which composed buffer holds the newest whole picture on frames where `A000` equals neither, so a decoder of `capture-video --stream` knows what to show there? (#1211, step 3 input.)
+
+**Method.** The step 1 probe (`1211-torn-video/b1_probe.py` in the project files folder) rerun on `CTRY.FLM` (Patch 3, stubbed samples, `capture` profile), then a scratch analysis of its log hashing each buffer per frame (not committed).
+
+**Result.** `[Bounded Observation]`, one run.
+
+* The flags repeat step 1: `A000` equals the second word only on 1,786 frames, the first only on 31, both on 5 and neither on 85; the words swap 696 times.
+* On the 85 frames, neither buffer's picture appears whole in `A000` in the 4 frames before; the second word's appears in the 4 after on 5 of 85, the first word's on none.
+* The second word's buffer changed with no word change on 967 frames, and 107 of its 1,623 distinct pictures never appear whole in `A000`: a buffer can be read mid-compose, so the second buffer logged on a neither frame could be a picture never shown whole.
+
+**Verdict.** Step 3 should treat a `p` line with flags 0 (neither) as held: repeat the last picture with flags 1 to 3, and count the held frames (85 of 1,907, 4.5%, on `CTRY`).
+
+**Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.
