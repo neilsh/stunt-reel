@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import Slugger from "github-slugger";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import starlightBlog from "starlight-blog";
 import starlightLinksValidator from "starlight-links-validator";
 import mermaid from "astro-mermaid";
 import { unified } from "@astrojs/markdown-remark";
@@ -81,7 +82,17 @@ export default defineConfig({
       ],
       components: { PageTitle: "./src/components/PageTitle.astro" },
       sidebar,
-      plugins: [starlightLinksValidator()],
+      plugins: [
+        // The posts are site/blog/*.md, which mise run site-prep writes under blog/ with their
+        // front matter kept; site/blog/README.md says how to write one.
+        starlightBlog({
+          title: "Blog",
+          authors: {
+            neil: { name: "Neil", url: "https://github.com/neilsh" },
+          },
+        }),
+        starlightLinksValidator(),
+      ],
     }),
   ],
 });

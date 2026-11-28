@@ -7,6 +7,7 @@
 # exactly two (prek.toml).
 *.md whitespace=-blank-at-eol
 *.png binary
+*.mp4 binary
 *.idx binary
 *.layer binary
 *.zst binary

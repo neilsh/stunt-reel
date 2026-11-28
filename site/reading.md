@@ -31,7 +31,7 @@ They are not equally strong, and the tags in the next section say how firmly eac
   Some tutorial files and their printed descriptions disagree, so we do not treat them as an authority.
 
 The game's files, the handbook and the community archive are not in the repository.
-A few game-derived tables, comparison images and archive manifests (lists of hashes, with no game bytes) are, as the [notice](../NOTICE.md) lists.
+A few game-derived tables, comparison images, a short clip of our own render for the blog, and archive manifests (lists of hashes, with no game bytes) are, as the [notice](../NOTICE.md) lists.
 To check a finding yourself, you need your own copy of the game, and for some findings the community archive too.
 
 To see how the first two work in practice, read the notes on [static analysis tooling](../research/playone-exe/static-tooling.md) and on [capturing the original player in an emulator](../research/playone-exe/capture-dosbox-automation.md).

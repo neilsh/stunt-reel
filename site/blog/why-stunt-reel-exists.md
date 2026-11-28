@@ -1,0 +1,126 @@
+---
+title: "Why Stunt Reel exists"
+date: 2026-11-23
+authors: neil
+tags: [introduction, architecture, agents]
+excerpt: "A 1992 stunt-filming game, a modern player for its films, and an experiment in how far AI agents can be trusted with careful reverse engineering."
+---
+
+*Stunt Island* came out in 1992, from Disney and The Assembly Line.
+You built sets on an island, placed props and actors, flew stunts, and then cut the footage together into a film.
+A small player program, `PLAYONE.EXE`, plays a finished film without the full game.
+
+I found *Stunt Island* in middle school, and it was my first taste of making anything in 3D.
+I made cheesy school projects with it, including a very loose retelling of Odysseus's return to Ithaca.
+The stunts were fun, but what really hooked me was the editing room: cutting between cameras until a clumsy flight looked like a film.
+
+Stunt Reel is a new player for those films, written from scratch.
+It reads the game's own files and draws the films with a modern GPU, at any resolution, with a free camera you can fly around the set.
+It is pre-alpha: it plays the demo's films, and parts of the picture still differ from the original.
+
+<video src="/stunt-reel/blog/ctry-flight.mp4" controls muted loop playsinline preload="metadata" width="960" height="720" aria-label="Twelve seconds of the demo film CTRY.FLM in Stunt Reel: a biplane flies low over fields, with farm buildings in the distance"></video>
+
+*Twelve seconds of the demo film `CTRY.FLM`, drawn by Stunt Reel at 960 by 720.*
+
+## The problem
+
+The films are more than thirty years old, and today the usual way to watch one is in a DOS emulator, at 320 by 200 pixels.
+Beyond a few community notes, little was ever written down about how they are stored.
+A film is not video: it is a recorded choreography, where every actor and the camera are at each moment, and the player redraws the whole scene every frame from the game's 3D models.
+So keeping the films watchable means understanding the formats and the original renderer well enough to do the drawing ourselves.
+
+That breaks down into three questions:
+
+1. **What is in the files?**
+   The film itself (`.FLM`), its archive of models and scenery (`.ALL`), the models' display lists (`.SOD`) and the game's resource files (`.RES`).
+   The [format catalog](../../research/formats/INDEX.md) describes each one, with machine-readable [Kaitai Struct](https://kaitai.io/) layouts beside the prose.
+2. **How does the original player draw a frame?**
+   Each model is a small program for a display-list virtual machine, and the picture is painted from back to front.
+   The [`PLAYONE.EXE` notes](../../research/playone-exe/) come from disassembling the player.
+3. **How close is our picture?**
+   We run the original player in an emulator, capture its frames, render the same ticks ourselves, and score the pairs.
+   The [reconstruction guide](../guides/reconstruction.md) explains the scoring and where the differences are.
+
+```mermaid
+flowchart LR
+    A["Original player in an emulator"] --> B["Captured frames, tagged by film tick"]
+    C["Our renderer"] --> D["Rendered frames, same ticks"]
+    B --> E["Score each pair"]
+    D --> E
+    E --> F["Read the worst frames"]
+```
+
+Here is one frame of that loop, from `LOCATION.FLM`, one of the sample films in the full game's vault.
+On the left is the original player; in the middle, our render before a fix; on the right, after it.
+Our renderer had hidden the stadium's infield under the plaza it lies on, because the infield sits a few millimetres below the ground and our depth test put it behind.
+The original paints the ground in the order it walks the scene, so the infield goes on top.
+Drawing it in that same pass raised this frame's similarity score from 0.759 to 0.855. _Source: [the investigation's journal](../../work/2026-11/651_infield-ground-pass/journal.md)_
+
+![The ballpark in LOCATION.FLM at tick 2608: the original player's frame, our render before the fix with the infield missing, and our render after it with the infield drawn](../../work/2026-11/651_infield-ground-pass/images/location-2608-infield-ground-pass.png)
+
+No game files ship with the project.
+Every test runs offline against small synthetic fixtures, and to watch a film you bring your own copy of the game's promotional demo.
+
+## How it is built
+
+The engine is Rust.
+`stunt-core` parses the formats, runs the display-list VM and evaluates a film's timeline on its 50 Hz clock; it does no I/O and touches no GPU, so its tests run offline in seconds.
+`stunt-render` draws with [`wgpu`](https://wgpu.rs/), keeping the game's flat-shaded, 256-colour look.
+`stunt-cli` is the `stuntreel` program: interactive playback, headless rendering to images or video, and glTF export.
+`stunt-score` compares rendered frames with captured ones.
+
+```mermaid
+flowchart LR
+    F[".FLM film"] --> T["stunt-core: timeline on the 50 Hz clock"]
+    A[".ALL archive"] --> V["stunt-core: shapes through the display-list VM"]
+    T --> R["stunt-render: wgpu"]
+    V --> R
+    R --> W["Window, images, video"]
+    V --> G["stunt-gltf: glTF export"]
+    R --> S["stunt-score: against captured frames"]
+```
+
+The tooling around it is Python: the capture harness that drives the original player inside dosbox-automation, the parity loop that scores and reports, and the checks that keep the documentation honest.
+
+Two rules shape most of the design.
+The first is that the code meets at four **seams**, typed contracts for the archive, the trajectory, the shape and the parity comparison, defined once in [`contracts/`](../../crates/stunt-core/src/contracts/mod.rs).
+The second is that every claim about the original carries an **evidence tier**, from `[Hypothesis]` up to `[Established]`, the last meaning it is proven from the disassembled code or a memory trap.
+The checks fail the build if a document uses a tag that is not on the list.
+[How we know what we know](../reading.md) explains the tiers.
+
+The [specification](../../docs/SPEC.md) sets out the goals and invariants, the [architecture page](../../docs/ARCHITECTURE.md) maps each module to the notes that govern it, and more than fifty [decision records](../../docs/adr/) say why things are the way they are.
+
+## Built with agents
+
+I have been poking at this off and on for about twenty years.
+My notes on the `.SET` format date from 2004, and they are still credited in the project's [notice](../../NOTICE.md).
+But every attempt stalled under the sheer amount of careful, tedious work, and there was nobody to share it with.
+AI coding agents changed that, and the project became feasible.
+
+So Stunt Reel is also an experiment.
+Most of its code and notes are written by agents, working from GitHub issues, under rules the repository spells out in [`AGENTS.md`](../../AGENTS.md).
+Three agent harnesses have worked on it so far: Claude Code, Antigravity and DeepSeek Harness.
+I wanted to find out two things.
+First, can agents make steady progress on their own toward a long-term goal like rendering parity, where every step is measured against the original?
+Second, can they run the whole loop: resolve an issue, notice what is still wrong, and file the next issue themselves?
+
+Reverse engineering is a hard test for agents, because a confident wrong answer looks the same as a right one until something downstream breaks.
+So most of the process is about evidence and review:
+
+- Every finding lands in a research note, ruled-out hypotheses included, in the same commit as the code that relies on it.
+- One command, `mise run check`, runs formatting, lint, module layers, type checks and the tests for Rust and Python, and it must pass before work is presented.
+- Before a change to the research notes or the guides is pushed, a reviewer with no memory of the work, usually a fresh agent, reads the diff and the notes it cites and flags any claim broader than its evidence.
+- Work that needs a plan gets a dated journal in a work folder, so current facts and the history of how we found them stay apart.
+
+The repository's first commit was on 18 October 2026.
+Since then more than 560 pull requests have merged.
+[How Stunt Reel is developed](../guides/process.md) walks through one piece of work from issue to merge.
+
+## What this blog is for
+
+The guides and research notes say what is currently true.
+This blog is for the story around them: how the architecture came to be, how the agent workflow works day to day, where it went wrong, and what changed because of it.
+
+So far, the answer to both questions has been yes: the agents have pushed parity forward one measured step at a time, and they have closed issues and filed the next ones themselves.
+How that works, and where it breaks, is what the next posts are about.
+Whether you came for *Stunt Island* or for the agents, I hope you'll stick around.

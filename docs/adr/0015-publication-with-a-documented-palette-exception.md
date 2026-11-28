@@ -71,6 +71,12 @@ and MSRV job need fixing before a "green in private" gate is meaningful (separat
   local setting, so CI cannot enforce it, and [`CONTRIBUTING.md`](../../CONTRIBUTING.md) tells
   contributors that their commit email is published. The steps and their verification are in
   [`work/2026-10/public-release/spec.md`](../../work/2026-10/public-release/spec.md).
+- **§3, the exceptions (2026-11-23).** The game-derived tables are no longer the only
+  exception. Research notes and work folders may commit illustrative comparison images (a captured frame beside
+  our render), and the blog may commit a short, silent clip of our own render of a demo film,
+  approved by the maintainer for [#987](https://github.com/neilsh/stunt-reel/issues/987).
+  Each stays within the limits its `NOTICE.md` section sets, is credited there and is not
+  relicensed; `[I7]` lists all four.
 - **§5, wording (2026-10-28).** The README says reverse engineering, because that is what the
   project does: format analysis of a 1992 program for interoperability and preservation.
   Avoiding the term made the description vaguer without changing the legal footing. The
