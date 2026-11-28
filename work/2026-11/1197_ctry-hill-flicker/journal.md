@@ -276,3 +276,27 @@
   - **Cost.**
     Lavapipe renders of `location`, 300 ticks, three runs each, mean 5.58 s (mode 0) against 5.59 s (mode 5), which includes the `frag_depth` write in both; a GPU's early-depth loss was not measured (no GPU in this thread; it needs Legion).
 - **Verdict**: not adopted under the rule; modes 3 and 5 (the same to four places) are the first form that keeps the hill with no film loss beyond 0.0003 (`balloon` −0.00024), and [ADR 0059](../../../docs/adr/0059-terrain-takes-its-depth-per-fragment-from-its-own-plane.md) proposes it; the owner accepted it, waiving the bar, the same day.
+
+## 2026-11-28: ADR 0059 implemented as a terrain pipeline
+
+`[Bounded Observation]`, lavapipe (cloud container), `crates/` at the commit that adds `vs_terrain` and `fs_terrain`.
+
+- **Form**: the world's base slice draws through `terrain_pipeline` (`pipeline.rs`), the base pipeline with entry points `vs_terrain` and `fs_terrain` (`fs_terrain_plane`) in the parity look; a terrain vertex outside a shadow, line or disc moves only in x and y, to `playone_vertex`'s pixel where `playone_vertex` would move it, and its fragments write `frag_depth` as in the prototype's mode 3.
+  Other draws, the decal pipelines and the modern and diagnostic looks keep their entry points, so only the world's base draw loses early depth testing and no decal loses its bias.
+- **A fault in the prototype, fixed here**: the prototype found a fragment's NDC point from its framebuffer position, which is right only when the view starts at the page's top-left corner.
+  A letterboxed page, as in the GPU test's 320 × 240 page, put every ray rows off; the hill then lost to the face behind it on every height tried.
+  The terrain path reads an interpolated clip position instead.
+  The films score as the prototype did to four places, so their pages put the view at the top-left (not otherwise checked).
+- **Test**: `a_far_hill_stays_in_front_of_the_face_behind_it` (`tests/gpu/scene_renderer.rs`): a 45-degree slope whose foot lies 5 km off on the ground and 6 m below the eye, 300 m in front of a vertical face, keeps at least half the pixels it covers alone at eye heights 5.95, 6.00 and 6.05 m.
+  On `main` it covers none at 5.95 m (the first height checked); here 55 of 72 at each of 6.00 to 6.10 m in steps of 0.01 m (an earlier form of the test), the rest being the row of both feet, where the ground plane's depth bounds both faces and the one drawn first wins the tie.
+- **Result** (`mise run parity -- --software-only`, clean `crates/`, against the lavapipe table): `ctry` +0.0018, `intro` +0.0016, `location` +0.0011, `balloon` −0.0002, `land` −0.0000, `traintnl` −0.0000, `bomb` −0.0000; mask IoU unchanged on every film.
+  `research/parity/expected/lavapipe.toml` repinned on that tree.
+- **GPU cost** (`[Bounded Observation]`, Legion, NVIDIA GeForce RTX 4070 Laptop GPU, the implementation's first commit against `main` at `8705f28`): wall time of the whole headless `stuntreel` render at 320 × 200, eight runs a side alternating after one warm-up.
+
+  | Film | Ticks | `main` mean | branch mean | Δ mean / median |
+  |---|---|---|---|---|
+  | location | 300 (2200 to 4293, step 7) | 2.494 s | 2.515 s | +0.8% / −0.4% |
+  | ctry | 251 (100 to 1100, step 4) | 0.892 s | 0.895 s | +0.4% / +1.0% |
+
+  Within the runs' spread; the times include loading the world and writing the store, so at parity size the GPU's share is small and this does not bound the fragment cost at larger resolutions.
+  `STUNT_REQUIRE_GPU=1 mise run test-gpu -- a_far_hill` passes there.

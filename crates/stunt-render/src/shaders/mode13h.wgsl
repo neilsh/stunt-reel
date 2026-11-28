@@ -209,6 +209,19 @@ struct PlaneOutput {
 // treated as having missed the plane (the ray through its pixel runs almost along it).
 const PLANE_SLIDE_MAX: f32 = 1.0e6;
 
+// The direction of the ray through the view point at NDC `ndc`: where the planes `x = ndc.x * w`
+// and `y = ndc.y * w` of the projection meet, turned to the side where `w` is positive.
+fn pixel_ray(ndc: vec2<f32>) -> vec3<f32> {
+    let row_x = vec3<f32>(camera.rotation_proj[0][0], camera.rotation_proj[1][0], camera.rotation_proj[2][0]);
+    let row_y = vec3<f32>(camera.rotation_proj[0][1], camera.rotation_proj[1][1], camera.rotation_proj[2][1]);
+    let row_w = vec3<f32>(camera.rotation_proj[0][3], camera.rotation_proj[1][3], camera.rotation_proj[2][3]);
+    var on_ray = cross(row_x - ndc.x * row_w, row_y - ndc.y * row_w);
+    if (dot(row_w, on_ray) < 0.0) {
+        on_ray = -on_ray;
+    }
+    return on_ray;
+}
+
 // Moves a projected vertex at `clip` (eye-relative position `eye`) to the pixel PLAYONE's
 // register projectors put it on: its offset from the projection centre truncated toward the
 // centre (`idiv`, 0x9CF1 and 0x9D3A), drawn at that pixel's centre, as the inclusive span
@@ -229,15 +242,7 @@ fn playone_vertex(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> vec4<f3
     let offset = clip.xy / clip.w * to_pixels;
     let pixel = floor(middle) + trunc(offset) + 0.5;
     let ndc = (pixel - middle) / to_pixels;
-    // The direction of the ray through `pixel`: where the planes `x = ndc.x * w` and
-    // `y = ndc.y * w` of the projection meet, turned to the side where `w` is positive.
-    let row_x = vec3<f32>(camera.rotation_proj[0][0], camera.rotation_proj[1][0], camera.rotation_proj[2][0]);
-    let row_y = vec3<f32>(camera.rotation_proj[0][1], camera.rotation_proj[1][1], camera.rotation_proj[2][1]);
-    let row_w = vec3<f32>(camera.rotation_proj[0][3], camera.rotation_proj[1][3], camera.rotation_proj[2][3]);
-    var on_ray = cross(row_x - ndc.x * row_w, row_y - ndc.y * row_w);
-    if (dot(row_w, on_ray) < 0.0) {
-        on_ray = -on_ray;
-    }
+    let on_ray = pixel_ray(ndc);
     let t = dot(normal, eye.xyz) / dot(normal, on_ray);
     if (!(t > 0.0) || t > PLANE_SLIDE_MAX) {
         return clip;
@@ -421,18 +426,168 @@ fn vs_edge(in: VertexInput) -> EdgeVertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Mode 13h flat-shaded pixel lookup with zero bilinear bleed [I3]
+    return main_colour(in);
+}
+
+// `fs_main`'s colour: the Mode 13h flat-shaded pixel lookup with zero bilinear bleed [I3].
+fn main_colour(in: VertexOutput) -> vec4<f32> {
     let coords = vec2<i32>(i32(fragment_index(in)), i32(in.light_level & 31u));
     return textureLoad(palette_lut, coords, 0);
 }
 
 @fragment
 fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
+    return main_plane(in);
+}
+
+// `fs_main_plane`'s outputs.
+fn main_plane(in: VertexOutput) -> PlaneOutput {
     var out: PlaneOutput;
     let index = fragment_index(in);
     let coords = vec2<i32>(i32(index), i32(in.light_level & 31u));
     out.color = textureLoad(palette_lut, coords, 0);
     out.plane = vec2<u32>((in.layer << 8u) | index, in.shape);
+    return out;
+}
+
+// Terrain in the world's base slice takes its depth per fragment from its own patch's plane
+// (docs/adr/0059-terrain-takes-its-depth-per-fragment-from-its-own-plane.md). Its vertices move
+// only their edges, to the pixel `playone_vertex` picks, because a far patch just below the eye
+// slid in the horizontal plane meets it along a grazing ray kilometres off, and a hill's foot
+// flickered behind the mountain behind it (#1197).
+struct TerrainVertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) @interpolate(flat) palette_index: u32,
+    @location(1) @interpolate(flat) light_level: u32,
+    @location(2) @interpolate(flat) layer: u32,
+    @location(3) @interpolate(linear) shade: f32,
+    @location(4) @interpolate(perspective) shade_w: f32,
+    @location(5) @interpolate(perspective) w: f32,
+    @location(6) @interpolate(flat) shape: u32,
+    // The patch's eye-relative plane, `xyz` its unit normal and `w` its offset
+    // (`dot(xyz, point) = w`); zero for a vertex that keeps `vs_main`'s depth.
+    @location(7) @interpolate(flat) plane: vec4<f32>,
+    // The eye-relative height of the ground plane, world height 0.
+    @location(8) @interpolate(flat) ground_y: f32,
+    // The clip position's `x`, `y` and `w`, so a fragment finds its own NDC point whatever the
+    // viewport's place on the page (a letterboxed view does not start at the page's top row).
+    @location(9) @interpolate(perspective) clip_xyw: vec3<f32>,
+};
+
+// Scenery class of a terrain vertex (contracts/shape/mod.rs SCENERY_TERRAIN).
+const SCENERY_TERRAIN: u32 = 2u;
+
+// `clip` moved in x and y to the pixel `playone_vertex` puts it on, keeping its own depth; a
+// vertex `playone_vertex` leaves unmoved (behind the eye, or whose ray misses the horizontal
+// plane through it at eye-relative height `eye_y`) keeps its own projection here too.
+fn snap_edges(clip: vec4<f32>, eye_y: f32) -> vec4<f32> {
+    if (clip.w <= 0.0) {
+        return clip;
+    }
+    let half = 0.5 / camera.line_half_ndc;
+    let to_pixels = vec2<f32>(half.x, -half.y);
+    let offset = clip.xy / clip.w * to_pixels;
+    let pixel = floor(half) + trunc(offset) + 0.5;
+    let ndc = (pixel - half) / to_pixels;
+    let t = eye_y / pixel_ray(ndc).y;
+    if (!(t > 0.0) || t > PLANE_SLIDE_MAX) {
+        return clip;
+    }
+    return vec4<f32>(ndc * clip.w, clip.z, clip.w);
+}
+
+@vertex
+fn vs_terrain(in: VertexInput) -> TerrainVertexOutput {
+    let v = vertex_output(in);
+    var out: TerrainVertexOutput;
+    out.clip_position = v.clip_position;
+    out.palette_index = v.palette_index;
+    out.light_level = v.light_level;
+    out.layer = v.layer;
+    out.shade = v.shade;
+    out.shade_w = v.shade_w;
+    out.w = v.w;
+    out.shape = v.shape;
+    out.plane = vec4<f32>(0.0);
+    // The world's model matrix is a translation by minus the eye (camera.rs
+    // `eye_relative_matrix`), so its `y` is the ground's height relative to the eye.
+    out.ground_y = model.model_matrix[3].y;
+    let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
+    let eye_n = (model.model_matrix * vec4<f32>(in.normal, 0.0)).xyz;
+    if (in.attr.z == SCENERY_TERRAIN && model.layer.y == 0u && camera.rotation_proj[3][3] == 0.0
+        && (in.attr.y & (FLAG_LINE | FLAG_DISC)) == 0u && dot(eye_n, eye_n) != 0.0) {
+        let n = normalize(eye_n);
+        out.plane = vec4<f32>(n, dot(n, eye_pos.xyz));
+        out.clip_position = snap_edges(camera.rotation_proj * eye_pos, eye_pos.y);
+    }
+    out.clip_xyw = out.clip_position.xyw;
+    return out;
+}
+
+// The depth at a terrain fragment's pixel centre on its patch's plane, no farther than the
+// ground plane's along the same ray, so a raised face is not lost to the ground or the ocean
+// beside its foot where its snapped edge lies below the true one; the rasteriser's depth for a
+// fragment with no plane, or whose ray misses it.
+fn terrain_depth(in: TerrainVertexOutput) -> f32 {
+    if (dot(in.plane.xyz, in.plane.xyz) == 0.0) {
+        return in.clip_position.z;
+    }
+    let on_ray = pixel_ray(in.clip_xyw.xy / in.clip_xyw.z);
+    let t = in.plane.w / dot(in.plane.xyz, on_ray);
+    if (!(t > 0.0)) {
+        return in.clip_position.z;
+    }
+    let p = camera.rotation_proj * vec4<f32>(on_ray * t, 1.0);
+    var depth = clamp(p.z / p.w, 0.0, 1.0);
+    let t_ground = in.ground_y / on_ray.y;
+    if (t_ground > 0.0) {
+        // Depth is reversed: nearer is larger.
+        let g = camera.rotation_proj * vec4<f32>(on_ray * t_ground, 1.0);
+        depth = max(depth, clamp(g.z / g.w, 0.0, 1.0));
+    }
+    return depth;
+}
+
+// The `VertexOutput` `fragment_index` reads, rebuilt from `in`.
+fn terrain_input(in: TerrainVertexOutput) -> VertexOutput {
+    var v: VertexOutput;
+    v.clip_position = in.clip_position;
+    v.palette_index = in.palette_index;
+    v.light_level = in.light_level;
+    v.layer = in.layer;
+    v.shade = in.shade;
+    v.shade_w = in.shade_w;
+    v.w = in.w;
+    v.shape = in.shape;
+    return v;
+}
+
+struct TerrainOutput {
+    @location(0) color: vec4<f32>,
+    @builtin(frag_depth) depth: f32,
+};
+
+struct TerrainPlaneOutput {
+    @location(0) color: vec4<f32>,
+    @location(1) plane: vec2<u32>,
+    @builtin(frag_depth) depth: f32,
+};
+
+@fragment
+fn fs_terrain(in: TerrainVertexOutput) -> TerrainOutput {
+    var out: TerrainOutput;
+    out.color = main_colour(terrain_input(in));
+    out.depth = terrain_depth(in);
+    return out;
+}
+
+@fragment
+fn fs_terrain_plane(in: TerrainVertexOutput) -> TerrainPlaneOutput {
+    let base = main_plane(terrain_input(in));
+    var out: TerrainPlaneOutput;
+    out.color = base.color;
+    out.plane = base.plane;
+    out.depth = terrain_depth(in);
     return out;
 }
 

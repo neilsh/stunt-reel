@@ -1069,7 +1069,12 @@ impl SceneRenderer {
         rpass.set_bind_group(1, &palette.bind_group, &[]);
         for decal_pass in [false, true] {
             for draw in &self.prepared {
-                self.encode(rpass, pipelines, draw, decal_pass, &pipelines.base_pipeline);
+                let base = if matches!(draw.target, Target::World { .. }) {
+                    &pipelines.terrain_pipeline
+                } else {
+                    &pipelines.base_pipeline
+                };
+                self.encode(rpass, pipelines, draw, decal_pass, base);
             }
         }
         // Each placed sprite over everything drawn so far, then the props the scenery walk

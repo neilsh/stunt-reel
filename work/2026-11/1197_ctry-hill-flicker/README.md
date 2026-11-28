@@ -2,7 +2,7 @@
 title: "CTRY: a distant hill vanishes and returns on alternate render ticks around ticks 286–366"
 started: 2026-11-27
 issue: 1197
-outcome: ""
+outcome: "Adopted ADR 0059: terrain in the world's base slice takes its depth per fragment from its own plane, clamped to the ground plane; the hill stays, ctry +0.0018, intro +0.0016, location +0.0011, balloon -0.0002 on lavapipe; whole GPU renders within 1% of main's on Legion."
 ---
 
 # CTRY: a distant hill vanishes and returns on alternate render ticks around ticks 286–366
@@ -20,4 +20,4 @@ The [journal](journal.md) has the diagnosis and six sweeps of per-vertex planes,
 * **Fifth sweep**: every raised patch in its own plane keeps the hill and `land` 551, but draws ocean at the foot of far raised terrain (`balloon` −0.0018, `land` −0.0012); not adopted.
 * **Sixth sweep**: the ocean strip is the raised face at its foot losing to the ocean (by depth, `[Hypothesis]`); a mixed slide (ground-plane corners horizontal within 5% or 20% of their distance, else own plane) removes it where the bound holds and keeps the hill, but gains the same +0.0016 and leaves a row of ocean at a far foot on `land` 199; not adopted.
 * **Seventh sweep (prototype)**: per-fragment depth from a sloped patch's own plane, clamped to the ground plane, keeps the hill with no film loss beyond 0.0003 (`ctry` +0.0018, `intro` +0.0017, `location` +0.0011, one frame down more than 0.005) but is short of the adoption bar; [ADR 0059](../../../docs/adr/0059-terrain-takes-its-depth-per-fragment-from-its-own-plane.md) is accepted (the owner waived the bar) and the GPU cost of writing `frag_depth` is unmeasured.
-* **Next**: implement ADR 0059 from [`switches/DBG_FRAG_DEPTH.diff`](switches/DBG_FRAG_DEPTH.diff) and measure it on Legion.
+* **Implemented** ([journal](journal.md#2026-11-28-adr-0059-implemented-as-a-terrain-pipeline)): a terrain pipeline for the world's base slice, with a GPU test; the prototype's fragment NDC was wrong on a letterboxed page, fixed.
