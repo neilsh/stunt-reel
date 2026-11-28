@@ -64,6 +64,10 @@ pub(super) const UP: [f32; 3] = [0.0, 1.0, 0.0];
 /// patches and props (`research/playone-exe/world-scene-residuals.md` section 6.6).
 pub const GROUND_NODE: &str = "WORLD_GROUND";
 
+/// The name of a node holding the raised terrain of a coarse or finer ground patch, which its
+/// visibility gate shows by camera depth (`super::ground_split`).
+const SPLIT_NODE: &str = "WORLD_SPLIT";
+
 /// A run of a world's vertices that placements of one prop shape appended, one after another.
 ///
 /// Each placed prop mesh appends its own vertices, so every prop vertex of the world mesh lies
@@ -110,13 +114,16 @@ pub(super) fn build_world_ir(
     instances: &[Placement],
     ir_models: &PropModels<'_>,
     base_y: f32,
+    gates: &[Option<VisibilityCondition>],
 ) -> (SodModelIr, Vec<PropRun>, Vec<MeshSpans>) {
     let mut ir = SodModelIr::new("WORLD_SCENERY");
     let mut prop_runs = Vec::new();
     let overlays = terrain_overlays(anchors, map_areas);
-    let terrain = |ir: &mut SodModelIr, patches: Patches| {
-        push_terrain(ir, anchors, map_areas, &overlays, patches, base_y);
+    let terrain = |ir: &mut SodModelIr, patches: Patches, include: &dyn Fn(usize) -> bool| {
+        push_terrain(ir, anchors, map_areas, &overlays, patches, base_y, include);
     };
+    let gate_of = |index: usize| gates.get(index).copied().flatten();
+    let ungated = |index: usize| gate_of(index).is_none();
     let props: Vec<Option<(&SodModelIr, [f32; 3])>> = instances
         .iter()
         .enumerate()
@@ -140,14 +147,7 @@ pub(super) fn build_world_ir(
     let ocean = |ir: &mut SodModelIr| {
         push_flat_quad(ir, base_y - 1.0, OCEAN_COLOR, SCENERY_OCEAN);
     };
-    let flat_terrain = |ir: &mut SodModelIr| {
-        if map_areas.is_empty() {
-            push_flat_quad(ir, base_y, GROUND_COLOR, SCENERY_TERRAIN);
-        } else {
-            terrain(ir, Patches::Flat);
-        }
-    };
-    terrain(&mut ir, Patches::Raised { overlay: false });
+    terrain(&mut ir, Patches::Raised { overlay: false }, &ungated);
     let base_runs = push_props(
         &mut ir,
         &mut prop_runs,
@@ -160,7 +160,7 @@ pub(super) fn build_world_ir(
 
     let base_indices = arena_index(ir.indices.len());
     let base_vertices = arena_index(ir.vertices.len());
-    terrain(&mut ir, Patches::Raised { overlay: true });
+    terrain(&mut ir, Patches::Raised { overlay: true }, &ungated);
     let decal_runs = push_props(
         &mut ir,
         &mut prop_runs,
@@ -188,7 +188,36 @@ pub(super) fn build_world_ir(
     );
     let always = VisibilityCondition::Always;
     push_mesh_node(&mut ir, GROUND_NODE, root_base, always, false, ocean);
-    push_mesh_node(&mut ir, GROUND_NODE, root_base, always, false, flat_terrain);
+    if map_areas.is_empty() {
+        push_mesh_node(&mut ir, GROUND_NODE, root_base, always, false, |ir| {
+            push_flat_quad(ir, base_y, GROUND_COLOR, SCENERY_TERRAIN);
+        });
+    } else {
+        // The flat patches in `MAP.BIN` order, each gated one a node of its own between the
+        // runs of the ungated, so the ground paints in the order it did before the gates.
+        let mut start = 0;
+        let gated = (0..map_areas.len()).filter(|&index| gate_of(index).is_some());
+        for end in gated.chain([map_areas.len()]) {
+            push_mesh_node(&mut ir, GROUND_NODE, root_base, always, false, |ir| {
+                terrain(ir, Patches::Flat, &|index| (start..end).contains(&index));
+            });
+            if let Some(gate) = gate_of(end) {
+                push_mesh_node(&mut ir, GROUND_NODE, root_base, gate, false, |ir| {
+                    terrain(ir, Patches::Flat, &|index| index == end);
+                });
+            }
+            start = end.saturating_add(1);
+        }
+    }
+    // The raised patches of a split group, each behind its gate.
+    for (index, gate) in gates.iter().enumerate() {
+        let Some(gate) = *gate else { continue };
+        for overlay in [false, true] {
+            push_mesh_node(&mut ir, SPLIT_NODE, root_base, gate, overlay, |ir| {
+                terrain(ir, Patches::Raised { overlay }, &|i| i == index);
+            });
+        }
+    }
     if decal_indices > 0 {
         ir.allocate_node(
             "WORLD_DECAL",
@@ -720,6 +749,7 @@ mod tests {
             &instances,
             &PropModels::shared(&ir_models),
             0.0,
+            &[],
         );
 
         // Should contain ocean quad (4 verts), terrain triangle (3 verts), and prop base + decal
@@ -773,7 +803,7 @@ mod tests {
             ..instances[0]
         }];
         let (world_ir, runs, gated_spans) =
-            build_world_ir(&pts, &map_areas, &surface, &gated, &models, 0.0);
+            build_world_ir(&pts, &map_areas, &surface, &gated, &models, 0.0, &[]);
         assert_runs_tile_the_props(&world_ir, &runs);
         let lod: Vec<_> = world_ir
             .nodes
@@ -841,6 +871,7 @@ mod tests {
             &placements,
             &PropModels::shared(&models),
             0.0,
+            &[],
         );
         assert_runs_tile_the_props(&ir, &runs);
         let shapes: Vec<u16> = runs.iter().map(|run| run.shape).collect();
@@ -865,6 +896,7 @@ mod tests {
             &[],
             &PropModels::shared(&HashMap::new()),
             5.0,
+            &[],
         );
         assert_eq!(world_ir.vertices.len(), 8);
         assert_eq!(world_ir.indices, [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
@@ -914,6 +946,7 @@ mod tests {
             &[Placement::bare(0x0391, at, 0)],
             &PropModels::shared(&models),
             0.0,
+            &[],
         )
         .0
     }
@@ -1009,6 +1042,7 @@ mod tests {
             &placements,
             &PropModels::shared(&models),
             0.0,
+            &[],
         );
         assert_eq!(prop_vertices(&ir, "WORLD_BASE").len(), 4);
         let decal = prop_vertices(&ir, "WORLD_DECAL");
@@ -1043,6 +1077,7 @@ mod tests {
             &placements,
             &PropModels::shared(&models),
             0.0,
+            &[],
         );
         let decal = prop_vertices(&ir, "WORLD_DECAL");
         assert_eq!(decal.len(), 8, "both props belong to the decal batch");
@@ -1124,6 +1159,7 @@ mod tests {
             &[Placement::bare(0x0391, [60.0, 0.0, 20.0], 0)],
             &PropModels::shared(&models),
             0.0,
+            &[],
         );
         assert_eq!(ground_runs(&ir), [6]);
         assert!(prop_vertices(&ir, "WORLD_DECAL").is_empty());
@@ -1209,6 +1245,7 @@ mod tests {
             &[placement],
             &PropModels::shared(&models),
             0.0,
+            &[],
         );
         assert!(prop_vertices(&ir, "WORLD_BASE").is_empty());
         assert_eq!(prop_vertices(&ir, "WORLD_GATED").len(), 5);

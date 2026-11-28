@@ -20,11 +20,42 @@ const MAP_HEAD: usize = 2;
 /// Vertex slots in a `MAP.BIN` record.
 const MAP_SLOTS: usize = 8;
 
+/// The links of one `MAP.BIN` record, kept beside its [`MapArea`] (`research/formats/auxiliary/map.md`
+/// section 3.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct MapLink {
+    /// The record's index in the file.
+    pub(super) record: usize,
+    /// The next patch in the same list.
+    pub(super) next: Option<usize>,
+    /// The first of the finer patches that replace this one, for a coarse patch.
+    pub(super) first_child: Option<usize>,
+    /// The coarse patch whose child list holds this one.
+    pub(super) parent: Option<usize>,
+    /// Twice the `SP_GROUND` split distance (`c`).
+    pub(super) split_distance_x2: i16,
+}
+
+/// A link word, `30 * index` on disk and negative for none, as a record index.
+fn link_index(word: i16) -> Option<usize> {
+    usize::try_from(word).ok().map(|offset| offset / 30)
+}
+
 /// Parses the 30-byte polygon patch records that follow `MAP.BIN`'s 2-byte list head, leaving
 /// out the records in [`PATCHES_PLAYONE_NEVER_DRAWS`].
+#[cfg(test)]
 pub(super) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
+    parse_map_bin_linked(data, anchor_count).0
+}
+
+/// [`parse_map_bin`] with each kept record's [`MapLink`], parallel to the areas.
+pub(super) fn parse_map_bin_linked(
+    data: &[u8],
+    anchor_count: usize,
+) -> (Vec<MapArea>, Vec<MapLink>) {
     let (records, _partial) = data.get(MAP_HEAD..).unwrap_or_default().as_chunks::<30>();
     let mut areas = Vec::new();
+    let mut links = Vec::new();
     for (index, record) in records.iter().enumerate() {
         if PATCHES_PLAYONE_NEVER_DRAWS.contains(&index) {
             continue;
@@ -49,10 +80,21 @@ pub(super) fn parse_map_bin(data: &[u8], anchor_count: usize) -> Vec<MapArea> {
             .map(|&word| usize::from(u16::from_le_bytes(word)))
             .collect();
         if verts.iter().all(|&v_idx| v_idx < anchor_count) {
+            let &[_, next, child, split, parent, ..] = vert_words else {
+                continue;
+            };
+            let word = i16::from_le_bytes;
             areas.push(MapArea { color, verts });
+            links.push(MapLink {
+                record: index,
+                next: link_index(word(next)),
+                first_child: link_index(word(child)),
+                parent: link_index(word(parent)),
+                split_distance_x2: word(split),
+            });
         }
     }
-    areas
+    (areas, links)
 }
 
 #[cfg(test)]

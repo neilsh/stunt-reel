@@ -9,7 +9,7 @@
 //! `(-x, -y, z)`. Why the walk reads the tree this way: `research/formats/auxiliary/scenery.md`
 //! and `research/playone-exe/lod.md`.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::contracts::SodModelIr;
 
@@ -166,9 +166,27 @@ pub(crate) struct Placements {
     pub(crate) chains: Vec<Vec<LodGate>>,
     /// The partition steps the placements' paths are made of, each shared prefix once.
     pub(crate) steps: Vec<PartitionStep>,
+    /// The `SP_GROUND` nodes the walk reached, by node index.
+    pub(crate) grounds: Vec<GroundNode>,
     /// Why the walk ended before the end of the tree, if it did; the props gathered before
     /// the stop are kept.
     pub(crate) stop: Option<ScnStop>,
+}
+
+/// One `SP_GROUND` node: a coarse ground patch and the finer ones that replace it within its
+/// split distance (`research/playone-exe/world-scene.md` section 2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct GroundNode {
+    /// The node's word index.
+    pub(crate) node: usize,
+    /// The node's signed split distance.
+    pub(crate) splitdist: i32,
+    /// The node's centre in raw island units: signed `x`, `y`, `z` words.
+    pub(crate) centre: [i32; 3],
+    /// The nodes on its `ptr` chain.
+    pub(crate) patches: usize,
+    /// Whether every one of them is an `SP_GLEAF`.
+    pub(crate) all_leaves: bool,
 }
 
 /// Why a `SCENERY.scn` walk was cut short.
@@ -274,6 +292,7 @@ pub(crate) fn place_props(
         halted: false,
         path: Vec::new(),
         steps: Vec::new(),
+        grounds: BTreeMap::new(),
     };
     walk.walk_scn(1, (0, 0, 0), 0);
     let ScnWalk {
@@ -281,12 +300,14 @@ pub(crate) fn place_props(
         stop,
         chains,
         steps,
+        grounds,
         ..
     } = walk;
     Placements {
         props: dedup(found),
         chains,
         steps,
+        grounds: grounds.into_values().collect(),
         stop,
     }
 }
@@ -316,6 +337,7 @@ pub fn scenery_shape_ids(scenery: &[u8]) -> SceneryShapes {
         halted: false,
         path: Vec::new(),
         steps: Vec::new(),
+        grounds: BTreeMap::new(),
     };
     walk.walk_scn(1, (0, 0, 0), 0);
     let stop = walk.stop;
@@ -494,6 +516,8 @@ struct ScnWalk<'a> {
     path: Vec<(PartitionStep, Option<u32>)>,
     /// The steps placements' paths use, each prefix once.
     steps: Vec<PartitionStep>,
+    /// The `SP_GROUND` nodes reached, by node index.
+    grounds: BTreeMap<usize, GroundNode>,
 }
 
 impl ScnWalk<'_> {
@@ -774,10 +798,16 @@ impl ScnWalk<'_> {
                 }
                 12 => {
                     // SP_GROUND
-                    let Some([_, _, _, _, _, ptr, next]) = scn_operands(words, ni) else {
+                    let Some([splitdist, _, x, y, z, ptr, next]) = scn_operands(words, ni) else {
                         self.note(ni, ScnStopReason::Malformed);
                         break;
                     };
+                    self.note_ground(
+                        ni,
+                        scn_i16(splitdist),
+                        [scn_i16(x), scn_i16(y), scn_i16(z)],
+                        scn_pointer(ptr),
+                    );
                     self.note_dangling(ni, scn_pointer(ptr));
                     self.push_step(ni, Split::Ground, 0);
                     self.walk_scn(scn_pointer(ptr), (cx, cy, cz), deeper);
@@ -830,6 +860,38 @@ impl ScnWalk<'_> {
         }
         // A `next` pointer that left the file ended the loop; a null one is the normal end.
         self.note_dangling(last, ni);
+    }
+
+    /// Records the `SP_GROUND` node at `ni`, once, with the chain of patches at `first`.
+    fn note_ground(&mut self, ni: usize, splitdist: i32, centre: [i32; 3], first: usize) {
+        let words = self.words;
+        let (mut patches, mut all_leaves) = (0usize, true);
+        let mut at = first;
+        // A chain longer than the file holds a cycle.
+        while at != 0 && patches <= words.len() {
+            patches = patches.saturating_add(1);
+            let Some(&op) = words.get(at) else {
+                all_leaves = false;
+                break;
+            };
+            if op != 14 {
+                all_leaves = false;
+            }
+            let link = match op {
+                14 => words.get(at.saturating_add(1)),
+                12 => words.get(at.saturating_add(7)),
+                _ => break,
+            };
+            let Some(&link) = link else { break };
+            at = scn_pointer(link);
+        }
+        self.grounds.entry(ni).or_insert(GroundNode {
+            node: ni,
+            splitdist,
+            centre,
+            patches,
+            all_leaves,
+        });
     }
 
     /// Records [`ScnStopReason::Malformed`] against the node at `holder` when `target` is a

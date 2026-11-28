@@ -293,7 +293,8 @@ pub(super) enum Patches {
 }
 
 /// Appends one fan-triangulated polygon per `MAP.BIN` patch of `patches` whose corners are
-/// all valid anchor points, lifted by `base_y`, in `MAP.BIN` order.
+/// all valid anchor points, lifted by `base_y`, in `MAP.BIN` order, leaving out the areas
+/// `include` refuses (by index in `map_areas`).
 #[expect(
     clippy::arithmetic_side_effects,
     reason = "arena indices are u32 offsets into one model's vertex and index lists, far below u32::MAX"
@@ -305,9 +306,13 @@ pub(super) fn push_terrain(
     overlays: &[bool],
     patches: Patches,
     base_y: f32,
+    include: &dyn Fn(usize) -> bool,
 ) {
     let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
-    for (area, &is_overlay) in map_areas.iter().zip(overlays) {
+    for (index, (area, &is_overlay)) in map_areas.iter().zip(overlays).enumerate() {
+        if !include(index) {
+            continue;
+        }
         let Some(corners) = patch_corners(&pts, anchors, area) else {
             continue;
         };
@@ -631,7 +636,15 @@ mod tests {
             },
         ];
         let mut ir = SodModelIr::new("T");
-        push_terrain(&mut ir, &anchors, &areas, &[false; 4], Patches::Flat, 2.0);
+        push_terrain(
+            &mut ir,
+            &anchors,
+            &areas,
+            &[false; 4],
+            Patches::Flat,
+            2.0,
+            &|_| true,
+        );
         assert_eq!(ir.vertices.len(), 4);
         assert_eq!(ir.indices, [0, 1, 2, 0, 2, 3]);
         assert!(ir.vertices.iter().all(|v| v.palette_index == 7

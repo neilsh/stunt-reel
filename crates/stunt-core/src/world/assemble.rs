@@ -7,7 +7,8 @@ use crate::anchor::AnchorPoint;
 use crate::contracts::{ShapeExtent, SodModelIr, VisibilityCondition};
 use crate::sod::{ShadeLight, faces_view};
 
-use super::map_bin::parse_map_bin;
+use super::ground_split;
+use super::map_bin::parse_map_bin_linked;
 use super::mesh::{PropModels, PropRun, build_world_ir, lod_condition};
 use super::placed::PlacementRecords;
 use super::scenery::{
@@ -147,9 +148,9 @@ impl World {
 )]
 pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) -> Option<World> {
     let pts = inputs.anchors;
-    let map_areas = inputs
+    let (map_areas, map_links) = inputs
         .map
-        .map_or_default(|bytes| parse_map_bin(bytes, pts.len()));
+        .map_or_default(|bytes| parse_map_bin_linked(bytes, pts.len()));
 
     if inputs.scenery.is_none() && pts.is_empty() && map_areas.is_empty() {
         return None;
@@ -231,7 +232,10 @@ pub fn build_world(inputs: &WorldInputs<'_>, shapes: &HashMap<u16, SodModelIr>) 
     };
 
     let terrain = TerrainSurface::new(pts, &map_areas, base_y);
-    let (ir, prop_runs, spans) = build_world_ir(pts, &map_areas, &terrain, &fixed, &models, base_y);
+    let groups = ground_split::verified_groups(pts, &map_areas, &map_links, &placements.grounds);
+    let gates = ground_split::gates(map_areas.len(), &groups, base_y);
+    let (ir, prop_runs, spans) =
+        build_world_ir(pts, &map_areas, &terrain, &fixed, &models, base_y, &gates);
     // The mesh holds the drawn props that do not face the view, in walk order.
     let mut spans = spans.into_iter();
     let mesh: Vec<_> = placements

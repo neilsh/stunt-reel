@@ -22,6 +22,7 @@ mod flm_spec;
 mod flm_timeline_props;
 mod flm_timeline_test;
 mod font_spec;
+mod ground_split_test;
 mod link_spec;
 mod scene_test;
 mod sod_census_test;

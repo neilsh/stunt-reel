@@ -21,6 +21,7 @@
 //! (props' coplanar decals go into a separate batch so renderers can depth-bias them).
 
 mod assemble;
+mod ground_split;
 mod map_bin;
 mod mesh;
 mod placed;
