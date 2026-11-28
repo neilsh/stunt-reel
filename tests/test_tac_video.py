@@ -348,8 +348,13 @@ def _record_stream(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     logs: Callable[[str], list[tuple[str, list[str]]]],
+    *,
+    fail: bool = False,
 ) -> tuple[Path, MockAutomation]:
-    """Run record_video(stream=True); *logs* gives the debug logs the emulator would write."""
+    """Run record_video(stream=True); *logs* gives the debug logs the emulator would write.
+
+    With *fail* the script raises ``ScriptError`` after the logs are written.
+    """
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     monkeypatch.setenv(automation.LOG_DIR_ENV, str(log_dir))
@@ -361,6 +366,8 @@ def _record_stream(
         assert token is not None
         for name, payloads in logs(token.group(1)):
             _write_log(log_dir, name, payloads)
+        if fail:
+            raise automation.ScriptError("the script died")
         frames = [bytes([n]) * 3 for n in range(3)]
         (recording / "capture-0001.avi").write_bytes(build_avi(frames, []))
         return _output()
@@ -443,3 +450,58 @@ def test_a_stream_trailer_must_match_the_run_end(
             monkeypatch,
             lambda token: [("lua-debug-1.log", _stream_lines(token, end="capped"))],
         )
+
+
+def test_a_log_with_another_token_is_left_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out_dir, _mock = _record_stream(
+        tmp_path,
+        monkeypatch,
+        lambda token: [
+            ("lua-debug-1.log", _stream_lines("0" * 16)),
+            ("lua-debug-2.log", _stream_lines(token)),
+        ],
+    )
+
+    assert (out_dir / video.STREAM_FILE).exists()
+    assert [p.name for p in (tmp_path / "logs").glob("*.log")] == ["lua-debug-1.log"]
+
+
+def test_a_failed_stream_run_still_moves_its_log_out_of_the_config_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with pytest.raises(automation.ScriptError):
+        _record_stream(
+            tmp_path,
+            monkeypatch,
+            lambda token: [("lua-debug-1.log", _stream_lines(token)[:2])],
+            fail=True,
+        )
+
+    assert (tmp_path / "out" / video.STREAM_FILE).exists()
+    assert not list((tmp_path / "logs").glob("*.log"))
+
+
+def test_a_run_without_stream_loads_without_debug(tmp_path: Path) -> None:
+    recording = tmp_path / "recording"
+    recording.mkdir()
+
+    def handler(_lua: str) -> dict[str, Any]:
+        frames = [bytes([n]) * 3 for n in range(3)]
+        (recording / "capture-0001.avi").write_bytes(build_avi(frames, []))
+        return _output()
+
+    mock = MockAutomation(handler)
+    video.record_video(
+        lambda: nullcontext(mock),
+        tmp_path / "out",
+        recording,
+        keys=KEYS,
+        layout=playone.UNPATCHED,
+        film=FILM,
+        provenance={},
+    )
+
+    assert mock.debug_flags == [False]
+    assert not (tmp_path / "out" / video.STREAM_FILE).exists()

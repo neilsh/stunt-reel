@@ -71,10 +71,10 @@ The instruction cost is high enough that the row should be lightened (one buffer
 
 * The flags repeat step 1: `A000` equals the second word on 1,786 frames, the first on 31, both on 5, neither on 85; the words swap 696 times.
 * On the 85 frames, neither buffer's picture appears whole in `A000` in the 4 frames before; the second word's appears in the 4 after on 5 of 85, the first word's on none.
-* The second word's buffer changed with no word change on 967 frames, and 107 of its 1,623 distinct pictures never appear whole in `A000`: a buffer can be read mid-compose, so "always stream the second word" would stream partial pictures.
+* The second word's buffer changed with no word change on 967 frames, and 107 of its 1,623 distinct pictures never appear whole in `A000`: a buffer can be read mid-compose, so "always stream the second word" could stream pictures never shown whole.
 * The rule adopted: stream `A000` rows 0..191 when they equal either buffer, else mark the frame held, for a decoder to repeat the last streamed picture.
-  `capture-video --stream` (the step 2 build) streamed 1,822 frames and held 85 on a second run, with `capture.avi` byte-identical to a stream-off recording; the log was 224 MB and also carries the emulator's own debug lines (about 9,500 `mem_read` traces), so a decoder filters on `] debugmsg: `.
+  `capture-video --stream` (the step 2 build) streamed 1,822 frames and held 85 on a second run, with `capture.avi` byte-identical to a stream-off recording; the log was 224 MB and also carries the emulator's own debug lines (7,594 `mem_read` traces), so a decoder filters on `] debugmsg: `.
 
-**Verdict.** Every streamed picture is whole by the harness's own test; held frames are the 4.5% where no whole picture exists at the boundary.
+**Verdict.** Every streamed picture is whole by the harness's own test; held frames are the 85 (4.5%) where `A000` equals neither buffer.
 
 **Lives in.** `research/playone-exe/capture-dosbox-automation.md` § 4.6.

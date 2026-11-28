@@ -241,12 +241,12 @@ def _debug_payloads(path: Path) -> Iterator[str]:
                 yield payload.rstrip("\r\n")
 
 
-def _stream_log(token: str, out_dir: Path) -> Path:
-    """Move the one debug log whose first payload is this run's header into *out_dir*.
+def _stream_log(token: str, out_dir: Path) -> list[Path]:
+    """Find the debug logs whose first payload is this run's header; move a lone one into *out_dir*.
 
     The header is the script's first ``debugmsg``, so only each log's first payload is read.
-    Raises ``VideoCaptureError`` when no log or several carry *token*, or when the log's last
-    payload is not the trailer ``e<end>`` the caller checks after the move.
+    Returns every log carrying *token*, the lone one already moved to ``out_dir / stream.log``,
+    replacing any file there; it raises nothing, so it can run while another error propagates.
     """
     header = f"h{token}:"
     found: list[Path] = []
@@ -255,14 +255,12 @@ def _stream_log(token: str, out_dir: Path) -> Path:
         if first is not None and first.startswith(header):
             found.append(path)
     if len(found) != 1:
-        raise VideoCaptureError(
-            f"expected one debug log carrying the stream header in {automation.debug_log_dir()}, "
-            f"found {len(found)}"
-        )
+        return found
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / STREAM_FILE
+    target.unlink(missing_ok=True)
     shutil.move(found[0], target)
-    return target
+    return [target]
 
 
 def _check_stream_trailer(path: Path, end: str) -> None:
@@ -299,11 +297,12 @@ def record_video(
 
     With *stream* the script also streams the composed pictures through ``debugmsg``; the run's
     debug log, found by a random header token, is moved to ``out_dir / stream.log`` (not decoded
-    here).
+    here) as soon as the emulator closes, also when the run fails, so a failure can leave it
+    there too.
 
     Raises ``VideoCaptureError`` for an unusable recording: no or several ``.avi``, an AVI
     parsing error, a frame-count mismatch, a log the capture document refuses (frames that
-    skip, a film clock that falls), a stream with no, several or no trailer debug log, or a
+    skip, a film clock that falls), no or several debug logs carrying the stream header or one without its trailer, or a
     failed ``meta.json`` write. Runner and other filesystem errors propagate.
     """
     token = secrets.token_hex(8) if stream else ""
@@ -315,15 +314,24 @@ def record_video(
         stream=stream,
         token=token,
     )
-    with open_runner() as runner:
+    logs: list[Path] = []
+    try:
+        with open_runner() as runner:
+            if stream:
+                output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS, debug=True)
+            else:
+                output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS)
+    finally:
         if stream:
-            output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS, debug=True)
-        else:
-            output = runner.run_script(script, timeout=VIDEO_TIMEOUT_SECONDS)
+            logs = _stream_log(token, out_dir)
     decoded = decode_video_log(output)
     if stream:
-        stream_path = _stream_log(token, out_dir)
-        _check_stream_trailer(stream_path, decoded.end)
+        if len(logs) != 1:
+            raise VideoCaptureError(
+                "expected one debug log carrying the stream header in "
+                f"{automation.debug_log_dir()}, found {len(logs)}"
+            )
+        _check_stream_trailer(logs[0], decoded.end)
     recordings = sorted(recording_dir.glob("*.avi"))
     if len(recordings) != 1:
         raise VideoCaptureError(
