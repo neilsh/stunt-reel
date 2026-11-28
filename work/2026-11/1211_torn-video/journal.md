@@ -93,6 +93,7 @@ Scratch scripts in the project files folder: `s2_gate.py` (pinned pages against 
   Round trip: raw and decoded SHA-256 equal (`afbdd910d785...`).
 * 121 of 121 pinned pages equal the decoded picture at their own frame, as they equalled the log's.
 * `stream.json` records file, both hashes, frame count, first frame 1276, size, flag counts (0: 85, 1: 31, 2: 1,786, 3: 5), layout `patch3` and end `hold`; a `stream` field in `meta.json` was left out (it needs the Rust parity structs and their schema).
+* After #1218's front-rule finding, `stream.json` also lists the frames with flags 0 as `held` (85 on this run), so a consumer repeats the last picture of flags 1 to 3 there; the video keeps every logged picture.
 * The log's trailer is `exhold`, not `ehold`, because the script's strings carry an `x` prefix; the parser accepts both.
 
 **Verdict.** Go on step 4 (consumers).

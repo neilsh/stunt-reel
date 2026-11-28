@@ -166,6 +166,7 @@ def test_the_round_trip_is_lossless_and_the_sidecar_records_it(tmp_path: Path) -
         "width": 320,
         "height": 192,
         "flags": {"0": 1, "1": 0, "2": 1, "3": 1},
+        "held": [FIRST],
         "layout": "patch3",
         "end": "hold",
     }

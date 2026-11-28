@@ -64,11 +64,16 @@ class StreamFrame:
 
 @dataclass(frozen=True)
 class StreamInfo:
-    """What ``stream.json`` records about an encoded stream."""
+    """What ``stream.json`` records about an encoded stream.
+
+    *held* lists the frames whose flags are 0 (``A000`` equals neither buffer): the picture logged
+    there is not known to be whole, so a consumer repeats the last picture of flags 1 to 3.
+    """
 
     frames: int
     first_frame: int
     flags: dict[int, int]
+    held: tuple[int, ...]
     layout: str
     end: str
     sha256_raw: str
@@ -209,6 +214,7 @@ def _document(info: StreamInfo) -> dict[str, object]:
         "width": WIDTH,
         "height": HEIGHT,
         "flags": {str(flag): count for flag, count in info.flags.items()},
+        "held": list(info.held),
         "layout": info.layout,
         "end": info.end,
     }
@@ -240,6 +246,7 @@ def encode_stream(log: Path, out_dir: Path, *, delete_log: bool = False) -> Stre
 
     raw = hashlib.sha256()
     flags: Counter[int] = Counter()
+    held: list[int] = []
     frames = 0
     # ffmpeg's messages go to a file, not a pipe that nothing reads while the pictures stream in.
     with tempfile.TemporaryFile() as messages:
@@ -259,6 +266,8 @@ def encode_stream(log: Path, out_dir: Path, *, delete_log: bool = False) -> Stre
                     break
                 raw.update(picture.indices)
                 flags[picture.flags] += 1
+                if picture.flags == 0:
+                    held.append(picture.frame)
                 frames += 1
         except BaseException:
             # A refused log: stop ffmpeg and drop its partial output.
@@ -299,6 +308,7 @@ def encode_stream(log: Path, out_dir: Path, *, delete_log: bool = False) -> Stre
         frames=frames,
         first_frame=first_picture.frame,
         flags={flag: flags[flag] for flag in FLAG_VALUES},
+        held=tuple(held),
         layout=found.layout,
         end=found.end,
         sha256_raw=raw.hexdigest(),
