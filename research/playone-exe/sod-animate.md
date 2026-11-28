@@ -144,6 +144,11 @@ _Source: [actors and placed sprites by their slots' depth](../../work/2026-11/81
 
 ## Open questions
 
+* **Placement rounding.**
+  On `intro` 1508, at the page two ticks past the paired one where its props match the capture's (36 mismatched pixels), the explosion's mismatched pixels lie a column left in the capture on both sides of the projection centre (1,257 four-neighbours against 206 left of it, 1,421 against 47 right; 5,481 actor pixels mismatched), `[Bounded Observation]`, one frame on lavapipe.
+  How `0x8073` rounds the top-left corner (the projected point less half the size) and how `0x7DE6` steps the image against our square at its centre was not compared.
+  _Source: [the worst frames lose to the page they are paired with](../../work/2026-11/1168_edge-offsets/journal.md#2026-11-28-the-worst-frames-lose-to-the-page-they-are-paired-with-not-to-edge-placement)._
+
 * **Draw order.**
   `PLAYONE` blits the sprite with no depth test, in the painter's order (§ 3); that this is its actor's place in the entry sort of [`sod-vm-frame.md`](sod-vm-frame.md) § 9.1 is `[Supported Inference]`, not traced through `0x1C00`.
   Against the world's props our render now takes the scenery walk's order (§ 4); what it still leaves out:

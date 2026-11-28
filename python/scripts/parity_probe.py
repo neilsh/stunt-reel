@@ -1,8 +1,8 @@
 """Diagnostic probes for parity work (see research/parity/probes.md).
 
-Six subcommands read a capture directory through the artifact adapter (its
+Seven subcommands read a capture directory through the artifact adapter (its
 ``meta.json`` names each frame's planes and palettes) and a render directory
-(its ``render.json`` and render store), and a seventh reads one ``report.json``
+(its ``render.json`` and render store), and an eighth reads one ``report.json``
 through the same adapter:
 
 * ``index``  - where one palette index (or a range) lands in the capture and in our
@@ -17,6 +17,10 @@ through the same adapter:
 * ``register`` - per captured tick, the render-tick offset and the whole-page shift that best
   match the capture's backdrop edges (horizon, hills, road edges, sky bands; away from props
   and actors).
+* ``edges`` - per captured tick and render layer class (uncovered, ocean, terrain, prop, actor),
+  which way the mismatched pixels beside our index edges sit in the capture (by axis, side of the
+  view centre, toward or away from it), and the 1 px shift that best matches the class and its
+  worst region.
 * ``retime`` - relabel an existing render by N ticks (negative allowed),
   rewriting its store and ``render.json``, so a timing hypothesis costs no
   rebuild.
@@ -55,6 +59,7 @@ from stunt_reel.bench.mismatch import index_mismatch, mismatch_fraction, readout
 from stunt_reel.dataroot import REPO_ROOT
 from stunt_reel.matched_frames import Reference
 from stunt_reel.parity_artifacts import (
+    LAYER_FIRST_ACTOR,
     LAYER_NONE,
     LAYER_OCEAN,
     LAYER_PROP,
@@ -711,6 +716,240 @@ def cmd_register(args: argparse.Namespace) -> None:
         print(registration_row(register(pages, capture, tick, width, rows, args.shift_reach)))
 
 
+#: The layer classes ``edges`` reports, as :data:`panels.LAYER_KEY` groups them: name, lo, hi.
+EDGE_CLASSES = (
+    ("uncovered", LAYER_NONE, LAYER_NONE),
+    ("ocean", LAYER_OCEAN, LAYER_OCEAN),
+    ("terrain", LAYER_TERRAIN, LAYER_TERRAIN),
+    ("prop", LAYER_PROP, LAYER_PROP),
+    ("actor", LAYER_FIRST_ACTOR, 0xFFFF),
+)
+
+#: The four-neighbour moves ``edges`` tries: ``(dx, dy, axis)``.
+MOVES = ((1, 0, "x"), (-1, 0, "x"), (0, 1, "y"), (0, -1, "y"))
+
+
+@dataclass(frozen=True)
+class Component:
+    """One 4-connected region of a layer class's pixels.
+
+    ``offset`` is its centroid (of pixel centres) minus the view centre; ``border`` says it
+    touches the view's edge; ``shift`` is as :attr:`LayerEdges.shift`, over its own pixels.
+    """
+
+    box: tuple[int, int, int, int]
+    mismatched: int
+    offset: tuple[float, float]
+    border: bool
+    shift: tuple[int, int, float, float]
+
+
+@dataclass(frozen=True)
+class LayerEdges:
+    """Where one layer class's mismatched edge pixels show our index in the capture.
+
+    ``mismatched`` counts the class's unignored pixels whose index differs from the capture's,
+    ``edge`` those within a pixel of an index change of ours, and ``near`` those with a
+    four-neighbour where the capture shows our index. ``moves`` counts those neighbours by
+    ``(axis, side, toward | away)``: ``side`` is ``lo`` (left or above) or ``hi`` of the view
+    centre by pixel centre, and ``toward`` means the neighbour lies nearer the centre on that
+    axis; a pixel whose centre is on the centre line counts in neither side. ``shift`` is the
+    best ``(dx, dy, agreement, agreement at 0, 0)`` of the class's edge pixels against the
+    capture at ``(x + dx, y + dy)`` (ties to the smaller move). ``component`` is the class's
+    region with the most mismatched pixels, or ``None`` when none has any.
+    """
+
+    name: str
+    mismatched: int
+    edge: int
+    near: int
+    moves: dict[tuple[str, str, str], int]
+    shift: tuple[int, int, float, float]
+    component: Component | None
+
+
+def regions(solid: np.ndarray) -> np.ndarray:
+    """Labels each 4-connected region of ``solid`` 1, 2, ...; 0 elsewhere."""
+    rows, width = solid.shape
+    labels = np.zeros((rows, width), dtype=np.int32)
+    count = 0
+    for start in zip(*np.nonzero(solid), strict=True):
+        if labels[start]:
+            continue
+        count += 1
+        labels[start] = count
+        queue = [start]
+        while queue:
+            y, x = queue.pop()
+            for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                if 0 <= ny < rows and 0 <= nx < width and solid[ny, nx] and not labels[ny, nx]:
+                    labels[ny, nx] = count
+                    queue.append((ny, nx))
+    return labels
+
+
+def best_shift(
+    ours: bytes, keep: np.ndarray, capture: bytes, width: int, rows: int, reach: int
+) -> tuple[int, int, float, float]:
+    """The ``(dx, dy, agreement, agreement at 0, 0)`` in ±``reach`` at 1 px; ties to the smaller."""
+    grid = {
+        (dx, dy): backdrop_agreement(ours, keep, capture, width, rows, dx, dy)
+        for dy in range(-reach, reach + 1)
+        for dx in range(-reach, reach + 1)
+    }
+    dx, dy = max(grid, key=lambda c: (grid[c], -(abs(c[0]) + abs(c[1]))))
+    return (dx, dy, grid[dx, dy], grid[0, 0])
+
+
+def edge_offsets(
+    ours: bytes,
+    layers: Sequence[int],
+    capture: bytes,
+    ignore: np.ndarray,
+    width: int,
+    rows: int,
+    reach: int = 2,
+) -> list[LayerEdges]:
+    """Per :data:`EDGE_CLASSES` class, where its mismatched edge pixels sit in the capture.
+
+    The view centre is ``(width / 2, rows / 2)``: (160, 92.5) for a 320 x 185 view. ``ignore``
+    (``rows`` x ``width``) leaves pixels out, as the readout mask does.
+    """
+    mine = np.frombuffer(ours, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    theirs = np.frombuffer(capture, dtype=np.uint8)[: width * rows].reshape(rows, width)
+    layer = np.asarray(layers[: width * rows], dtype=np.int64).reshape(rows, width)
+    shown = ~ignore[:rows, :width]
+    edge = edge_band(ours, width, rows) & shown
+    wrong = (mine != theirs) & shown
+    cx, cy = width / 2, rows / 2
+    ys, xs = np.mgrid[0:rows, 0:width]
+    centre_x, centre_y = xs + 0.5, ys + 0.5
+    shows_ours: dict[tuple[int, int], np.ndarray] = {}
+    for dx, dy, _ in MOVES:
+        hit = np.zeros((rows, width), dtype=bool)
+        ty, sy = slice(max(0, -dy), rows - max(0, dy)), slice(max(0, dy), rows - max(0, -dy))
+        tx, sx = slice(max(0, -dx), width - max(0, dx)), slice(max(0, dx), width - max(0, -dx))
+        hit[ty, tx] = theirs[sy, sx] == mine[ty, tx]
+        shows_ours[dx, dy] = hit
+    found = []
+    for name, lo, hi in EDGE_CLASSES:
+        member = (layer >= lo) & (layer <= hi)
+        bad = wrong & member & edge
+        near = np.zeros((rows, width), dtype=bool)
+        moves: dict[tuple[str, str, str], int] = {}
+        for dx, dy, axis in MOVES:
+            hit = bad & shows_ours[dx, dy]
+            near |= hit
+            at, centre, step = (centre_x, cx, dx) if axis == "x" else (centre_y, cy, dy)
+            for side, half in (("lo", at < centre), ("hi", at > centre)):
+                toward = (centre - at) * step > 0
+                for way, sense in (("toward", toward), ("away", ~toward)):
+                    key = (axis, side, way)
+                    moves[key] = moves.get(key, 0) + int(np.count_nonzero(hit & half & sense))
+        component = None
+        labels = regions(member)
+        if labels.any():
+            counts = np.bincount(labels[wrong & member], minlength=int(labels.max()) + 1)
+            counts[0] = 0
+            if counts.max() > 0:
+                pick = labels == int(counts.argmax())
+                py, px = np.nonzero(pick)
+                component = Component(
+                    box=(int(px.min()), int(py.min()), int(px.max()), int(py.max())),
+                    mismatched=int(counts.max()),
+                    offset=(float(px.mean()) + 0.5 - cx, float(py.mean()) + 0.5 - cy),
+                    border=bool(
+                        px.min() == 0
+                        or py.min() == 0
+                        or px.max() == width - 1
+                        or py.max() == rows - 1
+                    ),
+                    shift=best_shift(ours, pick & edge, capture, width, rows, reach),
+                )
+        found.append(
+            LayerEdges(
+                name=name,
+                mismatched=int(np.count_nonzero(wrong & member)),
+                edge=int(np.count_nonzero(bad)),
+                near=int(np.count_nonzero(near)),
+                moves=moves,
+                shift=best_shift(ours, member & edge, capture, width, rows, reach),
+                component=component,
+            )
+        )
+    return found
+
+
+def edges_rows(tick: int, found: list[LayerEdges]) -> list[str]:
+    """``edges`` output lines for one tick: one per class with pixels, then its region's."""
+
+    def shift(best: tuple[int, int, float, float]) -> str:
+        dx, dy, agree, base = best
+        return f"{dx:+d} {dy:+d} {agree:.3f} {agree - base:+.3f}"
+
+    lines = []
+    for layer in found:
+        if not layer.mismatched:
+            continue
+        sides = " | ".join(
+            f"{axis}: "
+            + " ".join(
+                f"{layer.moves[axis, side, way]}"
+                for side in ("lo", "hi")
+                for way in ("toward", "away")
+            )
+            for axis in ("x", "y")
+        )
+        lines.append(
+            f"{tick} {layer.name} {layer.mismatched} {layer.edge} {layer.near} | {sides}"
+            f" | shift {shift(layer.shift)}"
+        )
+        if layer.component is not None:
+            c = layer.component
+            x0, y0, x1, y1 = c.box
+            lines.append(
+                f"{tick} {layer.name} region {x0},{y0},{x1},{y1} {c.mismatched}"
+                f" centre {c.offset[0]:+.1f},{c.offset[1]:+.1f}"
+                f" border {'yes' if c.border else 'no'} | shift {shift(c.shift)}"
+            )
+    return lines
+
+
+def cmd_edges(args: argparse.Namespace) -> None:
+    """Per captured tick and layer class: which way, and how far, do mismatched edges sit?
+
+    For each mismatched pixel next to one of our index edges, counts the four-neighbours where
+    the capture shows our index, by axis, side of the view centre and toward or away from it,
+    and finds each class's and its worst region's best 1 px shift (:func:`edge_offsets`).
+    ``--offset k`` compares our page ``k`` ticks after the one the scorer pairs.
+    """
+    store = RenderStore(args.ours)
+    geometry = store.record.geometry
+    width, rows = geometry.width, geometry.plane_rows()
+    reference = Reference(args.reference, store)
+    by_tick = {frame.film_tick: frame for frame in reference.capture.frames}
+    print(
+        "tick class mismatched edge near | x: lo toward away hi toward away"
+        " | y: lo toward away hi toward away | shift dx dy agree gain"
+    )
+    for tick in parse_ticks(args.ticks):
+        frame = by_tick.get(tick)
+        if frame is None:
+            print(f"{tick} not captured")
+            continue
+        try:
+            page = read_page(store, frame.render_tick + args.offset)
+        except ArtifactError:
+            print(f"{tick} not rendered")
+            continue
+        capture = reference.matched_frame(frame, frame.render_tick).capture_indices()
+        plane = np.frombuffer(capture, dtype=np.uint8)[: width * geometry.height]
+        ignore = readout_mask(plane.reshape(geometry.height, width))
+        found = edge_offsets(page.indices, page.layers, capture, ignore, width, rows, args.reach)
+        for line in edges_rows(tick, found):
+            print(line)
+
+
 def cmd_shift(args: argparse.Namespace) -> None:
     background = background_for(args.reference)
     store = RenderStore(args.ours)
@@ -895,6 +1134,20 @@ def build_parser() -> argparse.ArgumentParser:
     reg.add_argument("--shift-reach", type=int, default=6, help="page shift tried either way, px")
     reg.add_argument("--pad", type=int, default=8, help="px left out around props and actors")
     reg.add_argument("--with-props", action="store_true", help="compare prop pixels too")
+    edges = sub.add_parser("edges", help=cmd_edges.__doc__)
+    edges.set_defaults(func=cmd_edges)
+    edges.add_argument(
+        "--reference",
+        type=dataroot.data_path_arg,
+        default=None,
+        help="a capture directory (default: ctry's reference from references.toml)",
+    )
+    edges.add_argument("--ours", type=Path, required=True, help="render directory")
+    edges.add_argument("--ticks", required=True, help="comma list of captured film ticks")
+    edges.add_argument("--reach", type=int, default=2, help="shift tried either way, px")
+    edges.add_argument(
+        "--offset", type=int, default=0, help="read our page this many ticks after the scored one"
+    )
     for name, fn in commands:
         p = sub.add_parser(name)
         p.set_defaults(func=fn)

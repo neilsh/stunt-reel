@@ -1,0 +1,2 @@
+tick pixels base | time: k dx dy agree gain | page: k dx dy agree gain | joint: k dx dy agree gain
+2971 26777 0.822 | +0 +0 +0 0.822 +0.000 | +0 -1 +0 0.835 +0.013 | +0 -1 +0 0.835 +0.013

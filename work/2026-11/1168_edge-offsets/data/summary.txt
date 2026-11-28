@@ -1,0 +1,48 @@
+location 2003: by offset -2:19528 -1:14854 +0:9929 +1:4183 +2:9972 +3:13917 +4:17250 | best +1 removes 58%
+   k+0 terrain   mism   736 near   153 | x toward 35 away 93 (-x 61 +x 67) | y toward 44 away 57 (up 62 down 39)
+   k+0 prop      mism  9151 near  2776 | x toward 214 away 1144 (-x 683 +x 675) | y toward 932 away 1234 (up 1049 down 1117)
+   k+1 terrain   mism   161 near   143 | x toward 28 away 58 (-x 56 +x 30) | y toward 70 away 66 (up 94 down 42)
+   k+1 prop      mism  3981 near  2813 | x toward 354 away 573 (-x 486 +x 441) | y toward 1271 away 1380 (up 1875 down 776)
+location 2080: by offset -2:18682 -1:14914 +0:9823 +1:3842 +2:9958 +3:15063 +4:19181 | best +1 removes 61%
+   k+0 prop      mism  9716 near  2907 | x toward 305 away 1179 (-x 683 +x 801) | y toward 887 away 1357 (up 945 down 1299)
+   k+1 prop      mism  3724 near  3126 | x toward 401 away 613 (-x 541 +x 473) | y toward 822 away 2042 (up 1888 down 976)
+intro 1343: by offset -2:8303 -1:7588 +0:5344 +1:2656 +2:5241 +3:7316 +4:8173 | best +1 removes 50%
+   k+0 prop      mism  2341 near   659 | x toward 160 away 168 (-x 222 +x 106) | y toward 354 away 200 (up 446 down 108)
+   k+0 actor     mism  3003 near   787 | x toward 148 away 169 (-x 225 +x 92) | y toward 584 away 75 (up 603 down 56)
+   k+1 prop      mism   970 near   690 | x toward 245 away 311 (-x 339 +x 217) | y toward 269 away 294 (up 394 down 169)
+   k+1 actor     mism  1686 near   668 | x toward 308 away 172 (-x 177 +x 303) | y toward 283 away 144 (up 311 down 116)
+intro 1508: by offset -2:21539 -1:21609 +0:10664 +1:7355 +2:5517 +3:23120 +4:23011 | best +2 removes 48%
+   k+0 prop      mism   637 near   382 | x toward 5 away 191 (-x 175 +x 21) | y toward 26 away 198 (up 204 down 20)
+   k+0 actor     mism 10027 near  5750 | x toward 1796 away 2316 (-x 3863 +x 249) | y toward 1047 away 1243 (up 1796 down 494)
+   k+2 actor     mism  5481 near  4397 | x toward 1627 away 1304 (-x 2678 +x 253) | y toward 1477 away 458 (up 1249 down 686)
+intro 2696: by offset -2:5859 -1:5425 +0:5103 +1:5171 +2:4259 +3:3570 +4:4238 | best +3 removes 30%
+   k+0 prop      mism  2165 near   611 | x toward 140 away 131 (-x 135 +x 136) | y toward 147 away 338 (up 129 down 356)
+   k+0 actor     mism  2938 near   634 | x toward 94 away 150 (-x 156 +x 88) | y toward 444 away 38 (up 453 down 29)
+   k+3 prop      mism  1088 near   617 | x toward 66 away 221 (-x 213 +x 74) | y toward 152 away 367 (up 211 down 308)
+   k+3 actor     mism  2482 near   599 | x toward 195 away 78 (-x 88 +x 185) | y toward 230 away 196 (up 227 down 199)
+land 540: by offset -2:18466 -1:14485 +0:7979 +1:10342 +2:12158 +3:15033 +4:17160 | best +0 removes 0%
+   k+0 uncovered mism  1540 near   713 | x toward 24 away 33 (-x 1 +x 56) | y toward 0 away 708 (up 708 down 0)
+   k+0 terrain   mism  1704 near  1079 | x toward 71 away 86 (-x 109 +x 48) | y toward 653 away 363 (up 944 down 72)
+   k+0 prop      mism   896 near   701 | x toward 19 away 23 (-x 27 +x 15) | y toward 458 away 244 (up 661 down 41)
+   k+0 actor     mism  3830 near  1128 | x toward 190 away 122 (-x 212 +x 100) | y toward 493 away 505 (up 913 down 85)
+bomb 2971: by offset -2:22488 -1:16035 +0:6274 +1:14408 +2:21135 +3:25392 +4:28146 | best +0 removes 0%
+   k+0 terrain   mism   420 near   398 | x toward 173 away 124 (-x 248 +x 49) | y toward 207 away 165 (up 109 down 263)
+   k+0 prop      mism  4627 near  4005 | x toward 1370 away 1324 (-x 2189 +x 505) | y toward 2050 away 1679 (up 1342 down 2387)
+   k+0 actor     mism  1227 near   646 | x toward 201 away 86 (-x 116 +x 171) | y toward 434 away 72 (up 161 down 345)
+all seven: mismatched as scored 55116, at each frame's best offset 34021, removed 38%
+per side at each frame's best offset (classes of 100 px or more): which way the capture's pixel lies
+   location 2003 k+1 terrain   x: lo left 28/0, hi right 30/28 (away on both); y: lo up 55/31, hi up 39/11 (one sign)
+   location 2003 k+1 prop      x: lo left 322/190, hi right 251/164 (away on both); y: lo up 1268/664, hi up 607/112 (one sign)
+   location 2080 k+1 prop      x: lo left 301/161, hi right 312/240 (away on both); y: lo up 1510/444, hi down 532/378 (away on both)
+   intro 1343 k+1 prop      x: lo left 211/117, hi left 128/100 (one sign); y: lo up 134/9, hi up 260/160 (one sign)
+   intro 1343 k+1 actor     x: lo right 189/58, hi left 119/114 (toward on both); y: lo up 30/2, hi up 281/114 (one sign)
+   intro 1508 k+2 actor     x: lo left 1257/206, hi left 1421/47 (one sign); y: lo down 503/275, hi up 974/183 (toward on both)
+   intro 2696 k+3 prop      x: lo left 172/25, hi right 49/41 (away on both); y: lo up 68/9, hi down 299/143 (away on both)
+   intro 2696 k+3 actor     x: lo right 127/20, hi left 68/58 (toward on both); y: lo down 7/4, hi up 223/192 (toward on both)
+   land 540 k+0 uncovered x: lo right 23/0, hi right 33/1 (one sign); y: lo up 708/0, hi even 0/0 (one sign)
+   land 540 k+0 terrain   x: lo left 54/16, hi left 55/32 (one sign); y: lo up 294/3, hi up 650/69 (one sign)
+   land 540 k+0 prop      x: lo left 13/5, hi left 14/10 (one sign); y: lo up 203/0, hi up 458/41 (one sign)
+   land 540 k+0 actor     x: lo left 68/46, hi left 144/54 (one sign); y: lo up 456/36, hi up 457/49 (one sign)
+   bomb 2971 k+0 terrain   x: lo left 101/26, hi left 147/23 (one sign); y: lo down 184/86, hi down 79/23 (one sign)
+   bomb 2971 k+0 prop      x: lo left 1098/279, hi left 1091/226 (one sign); y: lo down 1416/708, hi down 971/634 (one sign)
+   bomb 2971 k+0 actor     x: lo right 130/45, hi left 71/41 (toward on both); y: lo down 321/48, hi up 113/24 (toward on both)
