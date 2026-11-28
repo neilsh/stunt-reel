@@ -37,7 +37,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         info = stream.encode_stream(
             args.dir / stream.LOG_NAME, args.dir, delete_log=args.delete_log
         )
-    except stream.StreamError as error:
+    except (stream.StreamError, OSError) as error:
         print(f"stream-encode: {error}", file=sys.stderr)
         return 2
     mkv_bytes = (args.dir / stream.MKV_NAME).stat().st_size

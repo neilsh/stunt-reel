@@ -10,10 +10,12 @@ back and compares frame count and SHA-256 with what was piped. Only a passing ro
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import re
 import shutil
 import subprocess
+import tempfile
 from collections import Counter
 from contextlib import suppress
 from dataclasses import dataclass
@@ -215,78 +217,87 @@ def _document(info: StreamInfo) -> dict[str, object]:
 def encode_stream(log: Path, out_dir: Path, *, delete_log: bool = False) -> StreamInfo:
     """Encode the pictures of *log* into *out_dir*/stream.mkv and write stream.json beside it.
 
-    The round trip must match (frame count and raw SHA-256) before stream.json is written. On any
-    refusal the log is kept and a partial or mismatched stream.mkv is removed. With *delete_log*
-    the log is deleted only after the round trip passed. Raises StreamError on every failure.
+    The log is opened and its first picture read before anything is written. The encode goes to a
+    temporary file that replaces stream.mkv only once the round trip matches (frame count and raw
+    SHA-256) and before stream.json is written, so a refusal leaves an earlier stream.mkv and
+    stream.json alone and the log in place. With *delete_log* the log is deleted only after
+    that. Raises StreamError on every failure.
     """
     ffmpeg = _ffmpeg()
+    found = _Found()
+    pictures = _frames(log, found)
+    first_picture = next(pictures, None)  # raises StreamError for an unreadable or headerless log
+    if first_picture is None:  # unreachable: _frames raises when there are no frame lines
+        raise StreamError(f"{log}: no frame lines")
     out_dir.mkdir(parents=True, exist_ok=True)
     mkv = out_dir / MKV_NAME
+    partial = out_dir / (MKV_NAME + ".part")
     rate = f"{FRAME_RATE[0]}/{FRAME_RATE[1]}"
     command = [ffmpeg, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "gray"]
     command += ["-s", f"{WIDTH}x{HEIGHT}", "-framerate", rate, "-i", "-"]
     command += ["-c:v", "ffv1", "-level", "3", "-pix_fmt", "gray", "-fps_mode", "passthrough"]
-    command += [str(mkv)]
+    command += ["-f", "matroska", str(partial)]
 
-    found = _Found()
     raw = hashlib.sha256()
     flags: Counter[int] = Counter()
     frames = 0
-    first = 0
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.PIPE)  # noqa: S603
-    stdin, stderr = process.stdin, process.stderr
-    if stdin is None or stderr is None:
-        process.kill()
-        process.wait()
-        raise StreamError("ffmpeg gave no input pipe")
-    try:
-        for picture in _frames(log, found):
-            if frames == 0:
-                first = picture.frame
-            try:
-                stdin.write(picture.indices)
-            except BrokenPipeError as error:
-                raise StreamError("ffmpeg stopped accepting pictures") from error
-            raw.update(picture.indices)
-            flags[picture.flags] += 1
-            frames += 1
+    # ffmpeg's messages go to a file, not a pipe that nothing reads while the pictures stream in.
+    with tempfile.TemporaryFile() as messages:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=messages)  # noqa: S603
+        stdin = process.stdin
+        if stdin is None:
+            process.kill()
+            process.wait()
+            raise StreamError("ffmpeg gave no input pipe")
+        failure: StreamError | None = None
+        try:
+            for picture in itertools.chain([first_picture], pictures):
+                try:
+                    stdin.write(picture.indices)
+                except BrokenPipeError:
+                    failure = StreamError("ffmpeg stopped accepting pictures")
+                    break
+                raw.update(picture.indices)
+                flags[picture.flags] += 1
+                frames += 1
+        except BaseException:
+            # A refused log: stop ffmpeg and drop its partial output.
+            process.kill()
+            with suppress(OSError):
+                stdin.close()
+            process.wait()
+            partial.unlink(missing_ok=True)
+            raise
         with suppress(BrokenPipeError):
             stdin.close()
-        message = stderr.read().decode("utf-8", errors="replace").strip()
         status = process.wait()
-    except BaseException:
-        # ffmpeg may still hold the pipe: kill it, drop the unflushed input quietly, then reap it.
-        process.kill()
-        with suppress(OSError):
-            stdin.close()
-        process.wait()
-        mkv.unlink(missing_ok=True)
-        raise
-    finally:
-        stderr.close()
-    if status != 0:
-        mkv.unlink(missing_ok=True)
-        raise StreamError(f"ffmpeg could not encode {log}: {message}")
+        messages.seek(0)
+        message = messages.read().decode("utf-8", errors="replace").strip()
+    if failure is not None or status != 0:
+        partial.unlink(missing_ok=True)
+        reason = str(failure) if failure is not None else "ffmpeg failed"
+        raise StreamError(f"could not encode {log}: {reason}: {message}")
 
     decoded = hashlib.sha256()
     count = 0
     try:
-        for pixels in decode_stream(mkv):
+        for pixels in decode_stream(partial):
             decoded.update(pixels.tobytes())
             count += 1
     except StreamError:
-        mkv.unlink(missing_ok=True)
+        partial.unlink(missing_ok=True)
         raise
     if count != frames or decoded.hexdigest() != raw.hexdigest():
-        mkv.unlink(missing_ok=True)
+        partial.unlink(missing_ok=True)
         hashes = "match" if decoded.hexdigest() == raw.hexdigest() else "differ"
         raise StreamError(
-            f"round trip of {mkv} differs: {count} of {frames} pictures decoded, hashes {hashes}"
+            f"round trip of {log} differs: {count} of {frames} pictures decoded, hashes {hashes}"
         )
 
+    partial.replace(mkv)
     info = StreamInfo(
         frames=frames,
-        first_frame=first,
+        first_frame=first_picture.frame,
         flags={flag: flags[flag] for flag in FLAG_VALUES},
         layout=found.layout,
         end=found.end,

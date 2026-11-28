@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import shutil
-from typing import TYPE_CHECKING
+import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from stunt_reel.tac import stream
 from stunt_reel.tac.stream import StreamError
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 needs_ffmpeg = pytest.mark.skipif(
     shutil.which("ffmpeg") is None, reason="ffmpeg encodes the stream"
@@ -212,3 +211,64 @@ def test_decode_refuses_when_ffmpeg_is_missing(
     monkeypatch.setattr(shutil, "which", lambda _name: None)
     with pytest.raises(StreamError):
         next(stream.decode_stream(tmp_path / stream.MKV_NAME))
+
+
+@needs_ffmpeg
+def test_a_refused_rerun_leaves_an_earlier_encode_intact(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    log = write_log(run, good_lines(pictures()))
+    stream.encode_stream(log, run)
+    before = {name: (run / name).read_bytes() for name in (stream.MKV_NAME, stream.JSON_NAME)}
+    write_log(run, [line for line in good_lines(pictures()) if line != TRAILER])
+    with pytest.raises(StreamError):
+        stream.encode_stream(log, run)
+    assert before == {name: (run / name).read_bytes() for name in before}
+    assert not list(run.glob("*.part"))
+
+
+def test_a_second_header_is_refused(tmp_path: Path) -> None:
+    lines = good_lines(pictures())
+    lines.insert(-3, HEADER)
+    assert refused(write_log(tmp_path, lines))
+
+
+def test_a_second_trailer_is_refused(tmp_path: Path) -> None:
+    lines = good_lines(pictures())
+    lines.insert(-2, TRAILER)
+    assert refused(write_log(tmp_path, lines))
+
+
+def test_a_malformed_trailer_is_refused(tmp_path: Path) -> None:
+    lines = [line.replace("exhold", "exfoo") for line in good_lines(pictures())]
+    assert refused(write_log(tmp_path, lines))
+
+
+@needs_ffmpeg
+def test_a_round_trip_mismatch_is_refused_and_leaves_no_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = tmp_path / "run"
+    log = write_log(run, good_lines(pictures()))
+    monkeypatch.setattr(
+        stream, "decode_stream", lambda _path: iter([np.zeros((192, 320), dtype=np.uint8)])
+    )
+    with pytest.raises(StreamError):
+        stream.encode_stream(log, run)
+    assert log.exists()
+    assert not (run / stream.MKV_NAME).exists()
+    assert not (run / stream.JSON_NAME).exists()
+    assert not list(run.glob("*.part"))
+
+
+def test_the_cli_exits_two_on_a_refused_log_and_on_a_missing_one(tmp_path: Path) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "stream_encode", Path(__file__).parents[1] / "python" / "scripts" / "stream_encode.py"
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["stream_encode"] = module
+    spec.loader.exec_module(module)
+    assert module.main([str(tmp_path)]) == 2
+    write_log(tmp_path, ["junk"])
+    assert module.main([str(tmp_path)]) == 2
