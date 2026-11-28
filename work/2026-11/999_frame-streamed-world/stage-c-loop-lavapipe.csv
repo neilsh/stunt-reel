@@ -1,0 +1,2 @@
+cell,round,position,variant,loop_ms,wall_ms,frames_sha256,layers_sha256,palettes_sha256,shapes_sha256,adapter,adapter_class,other_load
+lavapipe-12-8262,0,0,base,24652.573,26425.827,153264a2448eba59d00378d6865058b64910bfa873bef99bae62b4deaafd5190,4b87eb0315978ba5f7eb82b2e478ff2fd66c5bb2d966b034afe4c202ca6f0572,f467d6646a04e66e0f6a14bba25def87d7434a29bba44d962dbc7dc9c41fd119,6d4ef0d03fd7735fe97af188afcbf073656d6dcf8370e9454558b1f2f840b8d2,"llvmpipe (LLVM 21.1.7, 256 bits)",cpu,0.151

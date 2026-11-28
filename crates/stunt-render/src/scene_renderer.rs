@@ -60,7 +60,7 @@ use crate::stream_buffers::StreamBuffers;
 use crate::world_stream::{StreamSource, WorldStream};
 use stunt_core::contracts::{NodeId, SodNode, arena_index};
 
-/// What a draw reads its geometry from: an uploaded model's chunks, or the world stream's buffer.
+/// What a draw reads its geometry from: an uploaded shape's buffers, or the world stream's.
 #[derive(Clone, Copy, Debug)]
 enum Drawable<'a> {
     Model(&'a GpuModel),
@@ -75,17 +75,20 @@ impl Drawable<'_> {
         }
     }
 
+    /// The outlines of `meshes`; only the world has an outline list, so a shape draws none.
     fn draw_edges(&self, rpass: &mut wgpu::RenderPass<'_>, meshes: &[GpuMeshSlice]) {
         match self {
-            Self::Model(model) => model.draw_edges(rpass, meshes),
+            Self::Model(_) => {}
             Self::Stream(buffers) => buffers.draw_edges(rpass, meshes),
         }
     }
 }
 
-/// The world drawn from a per-frame stream ([`RenderOptions::world_stream`](crate::RenderOptions)).
+/// The static world, drawn each frame from a stream of the slices its walk keeps.
 #[derive(Debug)]
 struct StreamedWorld {
+    /// Its planned nodes and slices, which the walk culls; no device buffer holds them.
+    model: GpuModel,
     /// The mesh the stream copies slices from, kept here because the CLI frees the scene's
     /// copy once the renderer is open.
     source: StreamSource,
@@ -472,10 +475,8 @@ pub(crate) struct SceneRenderer {
     shapes: HashMap<u16, GpuModel>,
     /// Every sprite image of the scene as a unit square ([`sprite_ir`]).
     images: HashMap<u16, GpuModel>,
-    /// The world: its chunks uploaded, or with [`Self::streamed`] only its planned nodes and slices.
-    world: Option<GpuModel>,
-    /// The world's stream, when it is drawn from one.
-    streamed: Option<StreamedWorld>,
+    /// The world and its stream.
+    world: Option<StreamedWorld>,
     /// The actors' shape streams, decoded again under each actor's own light and bank.
     relit: RelitShapes,
     /// Each actor's shape decoded under its own light and bank, by actor index in the frame;
@@ -489,24 +490,19 @@ pub(crate) struct SceneRenderer {
     /// The frame's sprites the scenery walk places, in walk order, drawn after
     /// [`Self::prepared`].
     steps: Vec<WalkStep>,
-    /// How long [`Self::new`] spent uploading the shapes and the world; with the world streamed,
-    /// planning it and copying its mesh.
+    /// How long [`Self::new`] spent uploading the shapes, and planning the world and copying
+    /// its mesh.
     upload_times: UploadTimes,
 }
 
 impl SceneRenderer {
-    /// Uploads every shape and the world of `scene`.
+    /// Uploads every shape of `scene`, and plans its world for the stream.
     #[must_use]
-    #[expect(
-        clippy::print_stderr,
-        reason = "the renderer has no logger; the run must say a world fell back to the baked draw"
-    )]
     pub(crate) fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         pipelines: &RenderPipelines,
         scene: &FilmScene,
-        world_stream: bool,
     ) -> Self {
         let layout = &pipelines.model_bind_group_layout;
         // Shapes drawn per frame (actors and view-facing props such as the flat trees) take
@@ -525,42 +521,24 @@ impl SceneRenderer {
         let shapes_time = shapes_started.elapsed();
         let world_started = Instant::now();
         let placements = scene.world().map_or_default(WorldPlacements::new);
-        // Each world prop vertex carries its shape word, which the plane's shape word reads.
-        let mut streamed = None;
+        // The stream copies slices out of the mesh, so no device buffer holds the world. Each
+        // streamed prop vertex carries its shape word, which the plane's shape word reads.
         let world = scene.world().map(|w| {
-            let marks = placements.marks();
-            if world_stream {
-                // The stream copies slices out of the mesh, so no device buffer is made.
-                let limit = device.limits().max_buffer_size;
-                if let Some((model, edges)) =
-                    GpuModel::plan_outlined(limit, &w.ir, outlines_in_world, &marks)
-                {
-                    streamed = Some(StreamedWorld {
-                        source: StreamSource::new(
-                            w.ir.vertices.clone(),
-                            w.ir.indices.clone(),
-                            edges,
-                            w.prop_runs.clone(),
-                            w.ir.rank_spheres.clone(),
-                        ),
-                        stream: WorldStream::default(),
-                        buffers: StreamBuffers::default(),
-                        reported: false,
-                    });
-                    return model;
-                }
-                eprintln!(
-                    "[stuntreel] world stream: off for this world, which one buffer cannot hold"
-                );
+            let (model, edges) =
+                GpuModel::plan_outlined(&w.ir, outlines_in_world, &placements.marks());
+            StreamedWorld {
+                model,
+                source: StreamSource::new(
+                    w.ir.vertices.clone(),
+                    w.ir.indices.clone(),
+                    edges,
+                    w.prop_runs.clone(),
+                    w.ir.rank_spheres.clone(),
+                ),
+                stream: WorldStream::default(),
+                buffers: StreamBuffers::default(),
+                reported: false,
             }
-            GpuModel::from_ir_outlined(
-                device,
-                queue,
-                &w.ir,
-                outlines_in_world,
-                &marks,
-                &w.prop_runs,
-            )
         });
         let world_time = if world.is_some() {
             world_started.elapsed()
@@ -571,7 +549,6 @@ impl SceneRenderer {
             shapes,
             images,
             world,
-            streamed,
             relit: scene.relit_shapes().clone(),
             lit: Vec::new(),
             uniforms: DrawUniforms::new(device),
@@ -586,7 +563,7 @@ impl SceneRenderer {
         }
     }
 
-    /// How long [`Self::new`] spent uploading the shapes and the world.
+    /// How long [`Self::new`] spent uploading the shapes and planning the world.
     pub(crate) fn upload_times(&self) -> UploadTimes {
         self.upload_times
     }
@@ -620,7 +597,7 @@ impl SceneRenderer {
         let eye = controller.eye_position();
         let mut world_slices = None;
         if frame.world
-            && let Some(world) = &self.world
+            && let Some(StreamedWorld { model: world, .. }) = &self.world
         {
             // The world's own matrix, and with the camera's the one its vertices reach clip
             // space by, in the shader's order: the cull sees what the draw would.
@@ -810,17 +787,17 @@ impl SceneRenderer {
     }
 
     /// Streams every world slice list of the frame (the world draw's ground, base and decals,
-    /// then each walk step's props) and writes the stream to its buffer, when the world is
-    /// drawn from one; the lists then address the stream.
+    /// then each walk step's props) and writes the stream to its buffer; the lists then address
+    /// the stream.
     ///
-    /// A slice outside the source is a bug, and no baked buffer exists to fall back to: the
+    /// A slice outside the source is a bug, and the world has no other buffer to draw from: the
     /// frame draws no world, and the failure is reported once.
     #[expect(
         clippy::print_stderr,
         reason = "the renderer has no logger; a bug here must show in a store check"
     )]
     fn stream_world(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let Some(streamed) = &mut self.streamed else {
+        let Some(streamed) = &mut self.world else {
             return;
         };
         let mut lists: Vec<&mut Vec<GpuMeshSlice>> = Vec::new();
@@ -887,9 +864,8 @@ impl SceneRenderer {
                 }
             }
         }
-        let cut = world
-            .zip(self.world.as_ref())
-            .and_then(|((at, base, decals), model)| {
+        let cut = world.zip(self.world.as_ref()).and_then(
+            |((at, base, decals), StreamedWorld { model, .. })| {
                 let mut base_steps = vec![Vec::new(); placed.len()];
                 let mut decal_steps = vec![Vec::new(); placed.len()];
                 let cut = |node, start, end| model.cut(node, start, end);
@@ -900,7 +876,8 @@ impl SceneRenderer {
                     .placements
                     .split(decals, &rank, true, &mut decal_steps, cut)?;
                 Some((at, base, decals, base_steps.into_iter().zip(decal_steps)))
-            });
+            },
+        );
         let Some((at, base, decals, props)) = cut else {
             self.prepared
                 .extend(placed.into_iter().map(|(_, _, _, draw)| draw));
@@ -1091,12 +1068,11 @@ impl SceneRenderer {
         }
     }
 
-    /// What the world draws from: its stream when it has one, else its uploaded model.
+    /// What the world draws from: its stream's buffer.
     fn world_drawable(&self) -> Option<Drawable<'_>> {
-        match &self.streamed {
-            Some(streamed) => Some(Drawable::Stream(&streamed.buffers)),
-            None => self.world.as_ref().map(Drawable::Model),
-        }
+        self.world
+            .as_ref()
+            .map(|world| Drawable::Stream(&world.buffers))
     }
 
     /// The geometry, bind group and dynamic offset `target` draws through; `None` when the
@@ -1164,7 +1140,7 @@ impl SceneRenderer {
         }
         rpass.set_pipeline(base);
         model.draw_slices(rpass, meshes);
-        // Only the world carries edge buffers.
+        // Only the world has an outline list.
         if world {
             rpass.set_pipeline(&pipelines.edge_pipeline);
             model.draw_edges(rpass, meshes);
@@ -1348,11 +1324,9 @@ mod tests {
 
     use super::*;
 
-    /// A slice of indices `start..end`, as an unsplit model's cut gives it.
+    /// A slice of indices `start..end`, as a cut gives it.
     fn run(start: u32, end: u32) -> GpuMeshSlice {
         GpuMeshSlice {
-            chunk: 0,
-            vertex_offset: 0,
             index_offset: start,
             index_count: end - start,
             is_decal: false,

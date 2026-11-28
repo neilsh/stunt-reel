@@ -90,3 +90,37 @@
 
     The peak is lower by about `280` MiB on lavapipe and by about `11` MiB on the RTX 4070, where the stream's host-side copy of the mesh raises the resident set after the renderer opens by about `283` MiB; the stages' peaks (`825` off, `815` on) are not explained by the four stage readings, which this run did not look into.
 - **Verdict**: stores identical on all seven films on Windows lavapipe and the RTX 4070; peak memory lower on both, in three of three pairs; `[Bounded Observation]`, one machine, one day, the reference captures not at their pins.
+
+
+## 2026-11-28: stage C, the stream as the only world path, loop, memory and stores
+
+- **Question**: with the baked world upload deleted and the stream the only world path (#1093), is the whole `LOCATION` film's lavapipe loop no slower than base within 2%, is peak memory no higher on either adapter, and are the stores byte-identical on the seven reference films on both?
+- **Built**: `181fabc9` deletes `GpuModel::from_ir_outlined` and its device buffers and staging copies, `STUNT_WORLD_STREAM` and its fallback, and buffer splitting (`plan_upload`, `flush_run`, `ChunkPlan`, `GpuChunk::vertex_ranges`, `GpuMeshSlice::chunk` and `vertex_offset`, the split half of `plan_edges`); every shape is one buffer set and the world is planned without one (`GpuModel::plan_outlined`).
+  `marks`, `cut` and `cut_out` stay: cutting a slice at a placement's span end needs the outline offset there, which only the plan computes (#1228).
+  Base is `main` at `459f46d2`; both are release binaries from `mise run build-at`, on the Legion (Ryzen 7 7745HX, RTX 4070 Laptop), mesa-dist-win 25.2.8.
+- **How**:
+  - Pre-check, not the gate: `459f46d2` against itself with `STUNT_WORLD_STREAM=1`, whole film, 4 pairs ([`stage-c-precheck-lavapipe.csv`](stage-c-precheck-lavapipe.csv)); it stopped on the load check after its last run.
+  - Loop: `mise run ab -- --variant "base binary=..." --variant "stream binary=..." --span 12..=8262 --rounds 4 --order alternate --max-load 0.15`, on lavapipe ([`stage-c-loop-lavapipe-2.csv`](stage-c-loop-lavapipe-2.csv), [summary](stage-c-loop-lavapipe-2-summary.md)) then the RTX 4070 ([`stage-c-loop-gpu.csv`](stage-c-loop-gpu.csv), [summary](stage-c-loop-gpu-summary.md)).
+    The first lavapipe run at the default 10% load bar stopped after one run at `15%` other load ([`stage-c-loop-lavapipe.csv`](stage-c-loop-lavapipe.csv)): an orphaned `find / -maxdepth 6` of another session kept about one core busy for more than 26 minutes.
+    The 15% bar is the one the owner allowed for `#1018`'s completed A/A; every kept lavapipe run read `9%..10%` other load and every RTX 4070 run `8%..11%`, and the 2% gate is unchanged.
+  - Memory: [`stage_c_memory_check.py`](stage_c_memory_check.py), `LOCATION` ticks `12..=120` with `--report-memory`, three runs each, the binaries interleaved, both adapters ([`stage-c-memory.csv`](stage-c-memory.csv)).
+  - Stores: [`stage_c_store_check.py`](stage_c_store_check.py) renders each reference film with each binary through `parity_pipeline.render_film` on both adapters and hashes the four planes ([`stage-c-stores.csv`](stage-c-stores.csv)).
+    `ctry`, `land`, `bomb` and `location` captures here are not at their `references.toml` pins, as in stage B's Windows run, so those films render against their current captures; both binaries of a film read the same capture.
+- **Result**:
+  - Lavapipe loop: base `24051.9, 24321.8, 24145.9, 24184.1` ms, stream `23679.7, 24167.8, 24227.1, 23969.2`; median `24165` to `24068.5` ms (`-0.4%`), stream faster in 3 of 4 pairs, stores the same.
+    The pre-check (one binary, switch off then on) gave `-1.7%`, faster in 3 of 4.
+  - RTX 4070 loop: base `9346.1, 9429.2, 9158.4, 9278` ms, stream `10525.2, 10651, 10677.9, 10726`; median `9312` to `10664.4` ms (`+14.5%`), slower in all 4 pairs, ranges disjoint; not traced.
+  - Peak memory, MiB:
+
+    | Adapter | Binary | Renderer opened | Mesh released | Frames rendered | Peak |
+    |---|---|---|---|---|---|
+    | lavapipe | base | 872.8 to 873.6 | 578.3 to 579.1 | 680.8 to 681.0 | 1025.3 to 1026.2 |
+    | lavapipe | stage C | 738.4 to 739.5 | 441.8 to 444.8 | 468.5 to 469.0 | 738.5 to 739.7 |
+    | RTX 4070 | base | 533.9 to 534.7 | 237.1 to 237.3 | 248.5 to 248.9 | 827.9 to 828.7 |
+    | RTX 4070 | stage C | 811.3 to 811.6 | 513.3 to 514.1 | 523.0 to 526.2 | 811.4 to 811.7 |
+
+    The peak is lower in every pair: by `287.4`, `285.6` and `287.0` MiB on lavapipe and `17.3`, `16.3` and `16.5` MiB on the RTX 4070.
+  - Stores: identical in all four planes on all seven films on both adapters (14 of 14 pairs).
+- **Verdict**: the lavapipe loop gate passes (`-0.4%` against a bar of `+2%`), peak memory is lower on both adapters, and the stores are identical, so stage C lands; `[Bounded Observation]`, one machine, one run of each gate, four captures not at their pins.
+  The RTX 4070's `+14.5%` does not gate, as the issue sets it; it is reported to the owner; that the per-frame `write_buffer`, which on a discrete GPU crosses the bus each frame, costs it is `[Hypothesis]`, not tested (#1227).
+- **Lives in**: [`lavapipe-render-time.md`](../../../research/parity/lavapipe-render-time.md) section 1 and [`lavapipe-render-workers.md`](../../../research/parity/lavapipe-render-workers.md) section 3.

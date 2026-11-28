@@ -89,8 +89,9 @@ stuntreel --headless <film and flags as above> --software-only --out-dir DIR --w
 `--workers N` splits a whole-tick `--out-dir` render across N child processes of `stuntreel`, each drawing a run of whole film seconds with `LP_NUM_THREADS=1`, then joins their stores into `DIR`, byte for byte the store a 1-worker render writes (checked at 2 and 4 workers on the seven reference films), and on success removes the workers' stores from `DIR/workers/`.
 A failed worker stops the others and leaves their stores there for inspection, with no `render.json` in `DIR`.
 It needs `--out-dir` and refuses `--video`, `--sample-count` and `-o`.
-Lavapipe draws a device on one thread, so this is how one film uses more than one core; each worker holds the whole world, about 953 MiB (0.93 GiB) for `LOCATION` ([lavapipe render workers, § 2](../../research/parity/lavapipe-render-workers.md#2-multi-vkdevice-in-process-versus-child-processes)).
-`mise run parity -- --workers N` passes it on, cutting N so the jobs' worker processes fit the cores and that much memory each.
+Lavapipe draws a device on one thread, so this is how one film uses more than one core; each worker holds its own copy of the world.
+A `LOCATION` worker peaked at about 953 MiB (0.93 GiB) on Linux lavapipe before #1093 removed the world's device buffers ([lavapipe render workers, § 2](../../research/parity/lavapipe-render-workers.md#2-multi-vkdevice-in-process-versus-child-processes)); since then a `LOCATION` render of ticks 12-120 peaks at about 740 MiB on Windows lavapipe, and Linux has not been remeasured ([§ 3](../../research/parity/lavapipe-render-workers.md#3-memory-per-worker)).
+`mise run parity -- --workers N` passes it on, cutting N so the jobs' worker processes fit the cores and 0.93 GiB each.
 `mise run parity` always starts the film with the most captured ticks first, whatever `--workers` is.
 
 ## Render chosen ticks beside their capture

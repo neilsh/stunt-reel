@@ -108,7 +108,7 @@ pub(crate) struct RenderPipelines {
     /// it faces the eye, and culling dropped every face wound downward (a wing's underside)
     /// and broke the shadow into specks.
     pub(crate) shadow_pipeline: wgpu::RenderPipeline,
-    /// Line-list pipeline for the world mesh's polygon outlines (`GpuModel::draw_edges`),
+    /// Line-list pipeline for the world mesh's polygon outlines (`StreamBuffers::draw_edges`),
     /// with the base depth test. Lines are not culled, since they have no winding.
     pub(crate) edge_pipeline: wgpu::RenderPipeline,
     /// The edge pipeline with the decal depth test, for the outlines of decal slices. wgpu

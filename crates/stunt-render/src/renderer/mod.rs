@@ -180,10 +180,6 @@ pub struct RenderOptions {
     pub look: Look,
     /// The finish the modern look adds; ignored by every other look.
     pub effects: ModernEffects,
-    /// Draw the world from a per-frame stream of its visible slices, written to one growable
-    /// buffer, instead of the baked upload: the stage B debug switch of #999. The world's device
-    /// buffers are then never created.
-    pub world_stream: bool,
 }
 
 impl Default for RenderOptions {
@@ -193,7 +189,6 @@ impl Default for RenderOptions {
             software_only: false,
             look: Look::Mode13h,
             effects: ModernEffects::default(),
-            world_stream: false,
         }
     }
 }
@@ -383,8 +378,8 @@ pub enum RenderError {
 pub struct UploadTimes {
     /// Every shape and sprite image of the scene.
     pub shapes: Duration,
-    /// The world mesh, its prop runs and its placement marks; zero without a world. With
-    /// [`RenderOptions::world_stream`] this is the plan and the copy of the mesh, not an upload.
+    /// Planning the world (its nodes, slices, outline and placement marks) and copying its mesh
+    /// for the per-frame stream; nothing of it is uploaded. Zero without a world.
     pub world: Duration,
 }
 
@@ -443,8 +438,7 @@ impl Renderer {
             &palette_lut.bind_group_layout,
             options.look,
         );
-        let scene_pass =
-            SceneRenderer::new(&device, &queue, &pipelines, scene, options.world_stream);
+        let scene_pass = SceneRenderer::new(&device, &queue, &pipelines, scene);
         let destination =
             Destination::Offscreen(Box::new(OffscreenTarget::new(&device, target, sink)));
         Ok(Self {
@@ -498,8 +492,7 @@ impl Renderer {
             &palette_lut.bind_group_layout,
             options.look,
         );
-        let scene_pass =
-            SceneRenderer::new(&device, &queue, &pipelines, scene, options.world_stream);
+        let scene_pass = SceneRenderer::new(&device, &queue, &pipelines, scene);
         Ok(Self {
             adapter: AdapterIdentity::of(&adapter),
             device,
@@ -515,7 +508,7 @@ impl Renderer {
         })
     }
 
-    /// How long the open spent uploading the scene's shapes and world.
+    /// How long the open spent uploading the scene's shapes and planning its world.
     #[must_use]
     pub fn upload_times(&self) -> UploadTimes {
         self.scene_pass.upload_times()

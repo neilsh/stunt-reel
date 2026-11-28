@@ -30,7 +30,7 @@ The flag needs a headless render (`--headless`, `-o`, `--out-dir` or `--video`) 
 ```
 
 * **scene built** is the resident set when `run_headless` starts, after `build_identified_scene`, with the world mesh's CPU copy still held.
-* **renderer opened** is after `Renderer::offscreen` has opened the device and uploaded the shapes, sprites and world.
+* **renderer opened** is after `Renderer::offscreen` has opened the device, uploaded the shapes and sprites, and planned the world for the per-frame stream.
 * **world mesh released** is after `FilmScene::release_world_mesh`, before the first submit.
 * **frames rendered** (or **frame drawn**, for a single PNG) is after the last page lands, before the renderer is dropped.
 * **peak** is the process's high-water mark at the end: `VmHWM` from `/proc/self/status` on Linux, the peak working set on Windows (section 3).
