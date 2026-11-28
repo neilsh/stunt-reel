@@ -84,7 +84,8 @@ class StreamScriptRunner(Protocol):
 
 
 def emulator_log_dir() -> Path:
-    """The directory where dosbox-automation writes its ``lua-debug-*.log`` files."""
+    """The directory where dosbox-automation writes its ``lua-debug-*.log`` files (Linux layout,
+    observed on a cloud session; other platforms are untested)."""
     config = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
     return Path(config) / "dosbox-automation" / "logs"
 
@@ -307,7 +308,8 @@ def record_video(
     after the runner closes. Its audio is stripped into ``out_dir / capture.avi``, whose frame
     count must match the log's rows to within one, and ``meta.json`` is written last, recording
     the AVI's hash, the layout read, the film ticks and *emulator* when given. A failure can
-    leave the stripped AVI in *out_dir*.
+    leave the stripped AVI, and with *stream_to* the moved ``stream.log``, in *out_dir*, and a
+    failed run leaves the emulator's debug log in its log directory.
 
     With *stream_to* each frame's composed picture is also logged by debugmsg; the emulator's
     log of that run is moved there and checked (see :func:`_file_stream`).

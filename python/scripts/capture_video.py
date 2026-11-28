@@ -82,7 +82,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "record each frame's composed picture through debugmsg to stream.log beside "
-            "capture.avi, about 240 MB per 1,900 frames (needs --out)"
+            "capture.avi, about 235 MB per 1,900 frames (needs --out)"
         ),
     )
     capture_run.add_sound_samples_option(parser)

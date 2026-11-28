@@ -73,7 +73,7 @@ Scratch scripts in the project files folder: `s2_gate.py` (pinned pages against 
 * 1,907 frames, ends `hold`, 234,901,293-byte `stream.log`, 1,907 `p` lines and the `e` trailer; `capture.avi` sha256 equals the stream-off recording's (`e1e8cd339069...`), and `meta.json` differs only in `captured_on`.
 * Each of the 121 pinned pages equals the logged picture at its own frame (110 at that frame only, 11 also at the next); the flags are 2 on 1,786 frames, 1 on 31, 3 on 5 and 0 on 85, as the probe's.
 * The stream-plus-spin run reached 259,000 spin iterations, the no-stream run (probe) 290,000: about 93,000 more instructions, 49 a frame, about 115 a frame with the stream and boot.
-  One script then holds between about 8,700 frames (the no-stream 126,000 all per-frame) and about 17,800 (all boot); `LOCATION.FLM` (11,616 frames) fits unless most of the no-stream cost is per-frame.
+  One script then holds between about 8,700 frames (the no-stream 126,000 all per-frame) and about 17,800 (all boot); `LOCATION.FLM` (11,616 frames) fits unless about half or more of the no-stream cost is per-frame.
 * The emulator appends `script completed` lines after the trailer, so the check looks for the trailer after the last `p` line, not as the last line (the first attempt failed on that).
 
 **Verdict.** Go on step 3 (decode and encode).

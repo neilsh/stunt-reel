@@ -411,7 +411,7 @@ def video_script(
     (above zero) has held for *end_hold* frames. Outputs: ``cs`` (the frame recording began),
     ``pal0`` (the palette then), ``log``, ``pal`` and ``end`` (``hold`` or ``capped``), each
     string behind an ``x`` so it stays a string. With *stream_token* (hex or letters) each frame
-    also goes through ``dosbox.debugmsg``: ``h<token>`` opens the stream, ``p<f>:<flags>:<hex>``
+    also goes through ``dosbox.debugmsg``: ``h<token>`` opens the stream (the script's first statement, so the emulator's log carries it near the top), ``p<f>:<flags>:<hex>``
     is the composed picture (flags 1: A000 equals the first buffer only, which is logged; 2: the
     second only; 3: both; 0: neither, the second is logged) and ``e<end>`` closes it. Raises ValueError if *cap* or *end_hold* is below 1, or the token is
     not alphanumeric.
@@ -440,7 +440,7 @@ def video_script(
         )
         stream_end = 'dosbox.debugmsg("e" .. out["end"])\n'
     return (
-        f"local DS = 0x{layout.ds:04X}\n"
+        stream_start + f"local DS = 0x{layout.ds:04X}\n"
         "local out = dosbox.output\n"
         "local function wait_until(f) while dosbox.frame() < f do dosbox.wait_frames(1) end end\n"
         "local H = {}\n"
@@ -450,7 +450,7 @@ def video_script(
         'out.cs = "x" .. dosbox.frame()\n'
         f'out.pal0 = "x" .. {palette_read}:gsub(".", H)\n'
         f"local tr, pl, lt, hold, ppal = {{}}, {{}}, -1, 0, {palette_read}\n"
-        'out["end"] = "xcapped"\n' + stream_start + f"for i = 1, {cap} do\n"
+        'out["end"] = "xcapped"\n' + f"for i = 1, {cap} do\n"
         "  dosbox.wait_frames(1)\n"
         "  local f = dosbox.frame()\n"
         + stream_frame

@@ -285,6 +285,15 @@ def test_record_video_refuses_malformed_avi_without_metadata(tmp_path: Path) -> 
     assert not (tmp_path / "out" / "meta.json").exists()
 
 
+def test_a_stream_log_may_carry_emulator_lines_after_the_trailer(
+    tmp_path: Path, logs_dir: Path
+) -> None:
+    log = _stream_log("AAA", 3) + b"[F:00009 T:00:00:01.000] script completed: ok\n"
+    (logs_dir / "lua-debug-1-a.log").write_bytes(log)
+
+    video._file_stream("AAA", tmp_path / "stream.log", rows=3)
+
+
 @pytest.mark.parametrize(
     ("log", "message"),
     [
@@ -337,7 +346,12 @@ def test_video_script_without_a_token_logs_no_pictures() -> None:
     text = _script()
 
     assert "debugmsg" not in text
-    assert _script(stream_token=None) == text
+
+
+def test_the_stream_header_is_the_scripts_first_statement() -> None:
+    text = _script(stream_token="ab12")  # noqa: S106 - a log token, not a secret
+
+    assert text.startswith('dosbox.debugmsg("hab12:')
 
 
 @pytest.mark.parametrize("layout", [playone.UNPATCHED, playone.PATCH3])
@@ -413,6 +427,10 @@ def test_a_stream_log_is_moved_when_its_pictures_and_trailer_match(
     [
         (_stream_log("AAA", 2), "2 pictures but the log has 3 rows"),
         (_stream_log("AAA", 3, end=False), "end trailer"),
+        (
+            _stream_log("AAA", 3, end=False) + b"debugmsg: exhold\ndebugmsg: p3:1:00\n",
+            "end trailer",
+        ),
     ],
 )
 def test_a_stream_log_that_does_not_match_is_refused(
