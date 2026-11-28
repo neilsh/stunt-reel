@@ -17,7 +17,9 @@ The owner ruled on 2026-11-22 that architecture alone justifies replacing the ba
 - **Stage A, #1091.** `crates/stunt-render/src/world_stream.rs` stages a frame's ground, base and decal slices on the CPU; an offline test shows streaming every node reproduces the baked buffers byte for byte.
   Nothing draws from it: stage B (#999's sub-issue order) does.
 - **Stage B plan (2026-11-27).** [`plan.md`](plan.md) details stage B (#1092) as two stacked PRs on PR #1101 (#1001), whose per-vertex shape word the stream carries instead of a runs table; stages C and D follow as their own layers, each planned from the layer below's figures.
-- **Not started.** Drawing from the stream, the timing gate and the un-baking, each against the issue's gates.
+- **Stage B, #1092 (2026-11-28).** Layers 1 and 2 of the stack are PRs [#1214](https://github.com/neilsh/stunt-reel/pull/1214) and [#1215](https://github.com/neilsh/stunt-reel/pull/1215); `STUNT_WORLD_STREAM=1` draws the world from the stream.
+  Cloud lavapipe: seven-film stores identical, peak memory `277` to `281` MiB lower ([`journal.md`](journal.md#2026-11-28-stage-b-the-world-drawn-from-the-stream-stores-and-memory-on-cloud-lavapipe)); Windows lavapipe and the RTX 4070 are still to run.
+- **Not started.** The timing gate and the un-baking, each against the issue's gates.
   `#1001` was not timed and the note draws no conclusion from it: the owner holds it on `#1004`'s A/A result.
 
 ## Next

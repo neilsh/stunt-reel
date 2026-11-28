@@ -1339,3 +1339,172 @@ fn a_rotated_actor_draws_in_the_colours_of_its_own_light() {
         assert_eq!(seen.len(), 3, "each turn shades differently: {seen:?}");
     });
 }
+
+/// The page's four planes, for comparing two renders.
+type Planes = (Vec<u8>, Vec<u8>, Vec<u32>, Vec<u32>);
+
+fn planes(page: &stunt_render::RenderedPage) -> Planes {
+    (
+        page.rgba().to_vec(),
+        page.indices().to_vec(),
+        page.layers().to_vec(),
+        page.shapes().to_vec(),
+    )
+}
+
+/// A mesh node named `name` over the vertices and indices of `ir` that follow the node's own.
+fn push_mesh(ir: &mut SodModelIr, name: &str, triangles: &[[[f32; 3]; 3]], class: u8, decal: bool) {
+    let vertex_offset = u32::try_from(ir.vertices.len()).unwrap();
+    let index_offset = u32::try_from(ir.indices.len()).unwrap();
+    for (n, corners) in triangles.iter().enumerate() {
+        let first = vertex_offset + u32::try_from(3 * n).unwrap();
+        for position in corners {
+            ir.vertices.push(SodVertex {
+                position: *position,
+                normal: [0.0, 0.0, 1.0],
+                palette_index: 40 + u8::try_from(n % 8).unwrap(),
+                flags: 4,
+                scenery_class: class,
+                decal_tie: 0,
+                list_rank: 0,
+            });
+        }
+        // Clockwise, as the pipeline culls back faces.
+        ir.indices.extend([first, first + 2, first + 1]);
+    }
+    let id = ir.allocate_node(
+        name,
+        None,
+        glam::Mat4::IDENTITY.to_cols_array(),
+        VisibilityCondition::Always,
+        NodeKind::Mesh {
+            vertex_offset,
+            vertex_count: u32::try_from(3 * triangles.len()).unwrap(),
+            index_offset,
+            index_count: u32::try_from(3 * triangles.len()).unwrap(),
+            is_decal: decal,
+        },
+    );
+    ir.root_nodes.push(id);
+}
+
+/// A triangle of `size` m at `(x, y, z)`.
+fn tri_at(x: f32, y: f32, z: f32, size: f32) -> [[f32; 3]; 3] {
+    [
+        [x - size, y - size, z],
+        [x + size, y - size, z],
+        [x, y + size, z],
+    ]
+}
+
+/// A world with ground, prop base triangles (the left one in a prop run) and a decal over them.
+fn streamed_world() -> World {
+    let mut ir = SodModelIr::new("WORLD");
+    push_mesh(
+        &mut ir,
+        GROUND_NODE,
+        &[
+            [[-4.0, -1.5, 3.0], [4.0, -1.5, 3.0], [4.0, -1.5, -6.0]],
+            [[-4.0, -1.5, 3.0], [4.0, -1.5, -6.0], [-4.0, -1.5, -6.0]],
+        ],
+        SCENERY_TERRAIN,
+        false,
+    );
+    push_mesh(
+        &mut ir,
+        "WORLD_BASE",
+        &[tri_at(-1.1, 0.0, 0.0, 1.0), tri_at(1.1, 0.0, 0.0, 1.0)],
+        SCENERY_PROP,
+        false,
+    );
+    push_mesh(
+        &mut ir,
+        "WORLD_DECAL",
+        &[tri_at(0.0, 0.5, 0.2, 0.8)],
+        SCENERY_PROP,
+        true,
+    );
+    let mut world = world_of(ir);
+    world.prop_runs = vec![PropRun {
+        first: 6,
+        end: 9,
+        shape: 40,
+    }];
+    world
+}
+
+/// Opens `scene` with the world drawn from the stream or from its baked upload.
+fn open_streaming(scene: &FilmScene, world_stream: bool) -> Option<common::TestRenderer> {
+    common::gpu_or_skip_offscreen(
+        scene,
+        Offscreen::default(),
+        RenderOptions {
+            world_stream,
+            ..RenderOptions::default()
+        },
+    )
+}
+
+/// The world drawn from the stream is the world drawn from its baked upload: colour, palette
+/// index, layer and shape planes, over ground, base, decal and outline, for two frames in a
+/// row from different cameras (the second restages and rewrites what the first wrote).
+#[test]
+fn the_streamed_world_draws_what_the_baked_one_does() {
+    common::gpu_test(|| {
+        let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(streamed_world()));
+        let (Some(mut baked), Some(mut streamed)) =
+            (open_streaming(&scene, false), open_streaming(&scene, true))
+        else {
+            return;
+        };
+        let mut covered = Vec::new();
+        for eye_x in [0.0, 1.5, -0.7] {
+            let mut frame = scene.frame(0.0);
+            frame.view.eye[0] = eye_x;
+            let (want, got) = (planes(&baked.draw(&frame)), planes(&streamed.draw(&frame)));
+            assert!(want == got, "eye x {eye_x}: the streamed planes differ");
+            covered.push(want.2.iter().filter(|&&layer| layer != LAYER_NONE).count());
+            // The left prop's shape word reaches the plane.
+            assert!(got.3.contains(&41));
+        }
+        assert!(covered.iter().all(|&n| n > 500), "{covered:?}");
+    });
+}
+
+/// A frame whose stream outgrows the 8 MiB floor creates the buffer at its grown size, a frame that culls the world
+/// writes nothing, and the next one draws again, each as the baked world does.
+#[test]
+fn the_stream_buffer_grows_and_the_world_can_leave_the_view() {
+    common::gpu_test(|| {
+        // 300,000 small triangles in a grid across the view: 900,000 vertices of 44 B in the
+        // stream, past the buffer's 8 MiB floor.
+        let side = 550u16;
+        let triangles: Vec<_> = (0..300_000u32)
+            .map(|n| {
+                let (col, row) = (n % u32::from(side), n / u32::from(side));
+                let x = -3.0 + 6.0 * f32::from(u16::try_from(col).unwrap()) / f32::from(side);
+                let y = -3.0 + 6.0 * f32::from(u16::try_from(row).unwrap()) / f32::from(side);
+                tri_at(x, y, 0.0, 0.004)
+            })
+            .collect();
+        let mut ir = SodModelIr::new("BIG");
+        push_mesh(&mut ir, "WORLD_BASE", &triangles, SCENERY_PROP, false);
+        let scene = FilmScene::new(timeline(Vec::new()), HashMap::new(), Some(world_of(ir)));
+        let (Some(mut baked), Some(mut streamed)) =
+            (open_streaming(&scene, false), open_streaming(&scene, true))
+        else {
+            return;
+        };
+        for looking_away in [false, true, false] {
+            let mut frame = scene.frame(0.0);
+            if looking_away {
+                // Behind the eye: the world's box is outside the frustum.
+                frame.view.target = [0.0, 0.0, 16.0];
+            }
+            let (want, got) = (planes(&baked.draw(&frame)), planes(&streamed.draw(&frame)));
+            assert!(want == got, "looking away {looking_away}: planes differ");
+            let drawn = got.2.iter().filter(|&&layer| layer != LAYER_NONE).count();
+            assert_eq!(drawn > 0, !looking_away, "{drawn} pixels drawn");
+        }
+    });
+}

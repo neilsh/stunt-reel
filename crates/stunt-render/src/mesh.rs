@@ -919,21 +919,28 @@ pub(crate) fn apex_vertices<'a>(
     runs: &'a [PropRun],
 ) -> impl Iterator<Item = ApexVertex> + 'a {
     ranges.iter().flat_map(move |range| {
-        let mut run = runs.partition_point(|run| run.end as usize <= range.start);
         let window = apex.get(range.clone()).unwrap_or_default();
-        window
-            .iter()
-            .zip(range.clone())
-            .map(move |(&apex, source)| {
-                while runs.get(run).is_some_and(|r| r.end as usize <= source) {
-                    run += 1;
-                }
-                let prop_shape = runs
-                    .get(run)
-                    .filter(|r| r.first as usize <= source)
-                    .map_or(0, |r| u32::from(r.shape).saturating_add(1));
-                ApexVertex { apex, prop_shape }
-            })
+        shaped(window.iter().copied(), range.clone(), runs)
+    })
+}
+
+/// `apexes`, one per source vertex of `range`, as [`ApexVertex`]es with their runs' shape
+/// words, as [`apex_vertices`] gives them.
+pub(crate) fn shaped<'a>(
+    apexes: impl Iterator<Item = Apex> + 'a,
+    range: Range<usize>,
+    runs: &'a [PropRun],
+) -> impl Iterator<Item = ApexVertex> + 'a {
+    let mut run = runs.partition_point(|run| run.end as usize <= range.start);
+    apexes.zip(range).map(move |(apex, source)| {
+        while runs.get(run).is_some_and(|r| r.end as usize <= source) {
+            run += 1;
+        }
+        let prop_shape = runs
+            .get(run)
+            .filter(|r| r.first as usize <= source)
+            .map_or(0, |r| u32::from(r.shape).saturating_add(1));
+        ApexVertex { apex, prop_shape }
     })
 }
 

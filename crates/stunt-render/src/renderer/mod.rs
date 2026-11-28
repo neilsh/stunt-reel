@@ -180,6 +180,10 @@ pub struct RenderOptions {
     pub look: Look,
     /// The finish the modern look adds; ignored by every other look.
     pub effects: ModernEffects,
+    /// Draw the world from a per-frame stream of its visible slices, written to one growable
+    /// buffer, instead of the baked upload: the stage B debug switch of #999. The world's device
+    /// buffers are then never created.
+    pub world_stream: bool,
 }
 
 impl Default for RenderOptions {
@@ -189,6 +193,7 @@ impl Default for RenderOptions {
             software_only: false,
             look: Look::Mode13h,
             effects: ModernEffects::default(),
+            world_stream: false,
         }
     }
 }
@@ -378,7 +383,8 @@ pub enum RenderError {
 pub struct UploadTimes {
     /// Every shape and sprite image of the scene.
     pub shapes: Duration,
-    /// The world mesh, its prop runs and its placement marks; zero without a world.
+    /// The world mesh, its prop runs and its placement marks; zero without a world. With
+    /// [`RenderOptions::world_stream`] this is the plan and the copy of the mesh, not an upload.
     pub world: Duration,
 }
 
@@ -437,7 +443,8 @@ impl Renderer {
             &palette_lut.bind_group_layout,
             options.look,
         );
-        let scene_pass = SceneRenderer::new(&device, &queue, &pipelines, scene);
+        let scene_pass =
+            SceneRenderer::new(&device, &queue, &pipelines, scene, options.world_stream);
         let destination =
             Destination::Offscreen(Box::new(OffscreenTarget::new(&device, target, sink)));
         Ok(Self {
@@ -491,7 +498,8 @@ impl Renderer {
             &palette_lut.bind_group_layout,
             options.look,
         );
-        let scene_pass = SceneRenderer::new(&device, &queue, &pipelines, scene);
+        let scene_pass =
+            SceneRenderer::new(&device, &queue, &pipelines, scene, options.world_stream);
         Ok(Self {
             adapter: AdapterIdentity::of(&adapter),
             device,
