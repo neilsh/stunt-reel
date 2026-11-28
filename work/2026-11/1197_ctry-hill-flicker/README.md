@@ -8,7 +8,7 @@ outcome: ""
 # CTRY: a distant hill vanishes and returns on alternate render ticks around ticks 286–366
 
 The hill is `MAP.BIN` records 107 to 109; on the ticks it is missing, the vertex pixel snap of #1064 has slid one of its foot corners kilometres back along a ray that grazes the horizontal plane, so the mountain face behind (record 12) wins the depth test.
-The [journal](journal.md) has the diagnosis and five sweeps, none adopted.
+The [journal](journal.md) has the diagnosis and six sweeps, none adopted.
 
 ## Handoff
 
@@ -18,4 +18,5 @@ The [journal](journal.md) has the diagnosis and five sweeps, none adopted.
 * **`land` 551** (#1206): the mountain the steep facet slide drew there is records 46 and 50, 7 to 10 km off, which a nearer face (record 2) covers in the capture; no distance cut reaches them.
   They are just under the 26-degree threshold, so their feet slid nearer in the horizontal plane and beat record 2 once it slid in its own.
 * **Fifth sweep**: every raised patch in its own plane keeps the hill and `land` 551, but draws ocean at the foot of far raised terrain (`balloon` −0.0018, `land` −0.0012); not adopted.
-* **Next**: a raised patch's corner needs its own plane where it stands clear of the flat ground and the ground's where it meets it; a form that does both was not tried.
+* **Sixth sweep**: the ocean strip is the raised face at its foot losing to the ocean (by depth, `[Hypothesis]`); a mixed slide (ground-plane corners horizontal within 5% or 20% of their distance, else own plane) removes it where the bound holds and keeps the hill, but gains the same +0.0016 and leaves a row of ocean at a far foot on `land` 199; not adopted.
+* **Next**: per-fragment depth, a design call that needs an ADR; the per-vertex planes tried do not do both.

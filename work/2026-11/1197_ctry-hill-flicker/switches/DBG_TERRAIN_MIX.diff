@@ -1,0 +1,140 @@
+diff --git a/crates/stunt-core/src/world/terrain.rs b/crates/stunt-core/src/world/terrain.rs
+index b9d167e..0148bd2 100644
+--- a/crates/stunt-core/src/world/terrain.rs
++++ b/crates/stunt-core/src/world/terrain.rs
+@@ -307,7 +307,7 @@ pub(super) fn push_terrain(
+     base_y: f32,
+ ) {
+     let pts: Vec<[f32; 3]> = anchors.iter().map(AnchorPoint::register_position).collect();
+-    for (area, &is_overlay) in map_areas.iter().zip(overlays) {
++    for (rec, (area, &is_overlay)) in map_areas.iter().zip(overlays).enumerate() {
+         let Some(corners) = patch_corners(&pts, anchors, area) else {
+             continue;
+         };
+@@ -340,13 +340,14 @@ pub(super) fn push_terrain(
+ 
+         let start = arena_index(ir.vertices.len());
+         for p in corners {
++            let ground = u8::from(p[1].abs() <= GROUND_PLANE_TOLERANCE) << 7;
+             ir.vertices.push(SodVertex {
+                 position: [p[0], p[1] + base_y, p[2]],
+                 normal,
+                 palette_index: area.color,
+                 flags: FLAGS_UNSHADED,
+                 scenery_class: SCENERY_TERRAIN,
+-                decal_tie: 0,
++                decal_tie: ground | (rec % 128) as u8,
+                 list_rank: 0,
+             });
+         }
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 47e5d92..7da384f 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -292,8 +292,22 @@ impl RenderPipelines {
+             immediate_size: 0,
+         });
+ 
+-        let shader_module =
+-            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
++        let shader_module = {
++            let mut src = include_str!("shaders/mode13h.wgsl").to_owned();
++            for (name, ty) in [("DBG_TERRAIN_FACET", "u32"), ("DBG_PAINT", "u32"), ("DBG_MIX_PCT", "f32")] {
++                if let Ok(v) = std::env::var(name) {
++                    let lit = if ty == "u32" { format!("{v}u") } else { v };
++                    let from = format!("const {name}: {ty} = ");
++                    let i = src.find(&from).expect("const");
++                    let j = src[i..].find(';').expect("semi") + i;
++                    src.replace_range(i + from.len()..j, &lit);
++                }
++            }
++            device.create_shader_module(wgpu::ShaderModuleDescriptor {
++                label: Some("mode13h"),
++                source: wgpu::ShaderSource::Wgsl(src.into()),
++            })
++        };
+         let vertex_buffers = [
+             Some(Self::vertex_buffer_layout()),
+             Some(Self::apex_buffer_layout()),
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 5c5fd9c..21a89d7 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -273,6 +273,36 @@ fn list_order_depth(in: VertexInput, clip: vec4<f32>) -> f32 {
+     return min(o.z / o.w + f32(in.list_rank) * RANK_STEP, 1.0) * clip.w;
+ }
+ 
++const DBG_TERRAIN_FACET: u32 = 0u;
++const DBG_PAINT: u32 = 0u;
++const DBG_MIX_PCT: f32 = 0.05;
++
++// Ratio of the distance of the point where the ray through `clip`'s snapped pixel meets the plane
++// of `normal` to the vertex's own distance; -1 when it does not meet in front of the eye.
++fn slide_ratio(clip: vec4<f32>, eye: vec4<f32>, normal: vec3<f32>) -> f32 {
++    if (clip.w <= 0.0 || camera.rotation_proj[3][3] != 0.0) {
++        return -1.0;
++    }
++    let half = 0.5 / camera.line_half_ndc;
++    let to_pixels = vec2<f32>(half.x, -half.y);
++    let middle = half;
++    let offset = clip.xy / clip.w * to_pixels;
++    let pixel = floor(middle) + trunc(offset) + 0.5;
++    let ndc = (pixel - middle) / to_pixels;
++    let row_x = vec3<f32>(camera.rotation_proj[0][0], camera.rotation_proj[1][0], camera.rotation_proj[2][0]);
++    let row_y = vec3<f32>(camera.rotation_proj[0][1], camera.rotation_proj[1][1], camera.rotation_proj[2][1]);
++    let row_w = vec3<f32>(camera.rotation_proj[0][3], camera.rotation_proj[1][3], camera.rotation_proj[2][3]);
++    var on_ray = cross(row_x - ndc.x * row_w, row_y - ndc.y * row_w);
++    if (dot(row_w, on_ray) < 0.0) {
++        on_ray = -on_ray;
++    }
++    let t = dot(normal, eye.xyz) / dot(normal, on_ray);
++    if (!(t > 0.0)) {
++        return -1.0;
++    }
++    return t * length(on_ray) / length(eye.xyz);
++}
++
+ // World up, the plane normal of a vertex with no facet of its own (`slide_normal`).
+ const UP: vec3<f32> = vec3<f32>(0.0, 1.0, 0.0);
+ 
+@@ -295,7 +325,11 @@ fn slide_normal(in: VertexInput) -> vec3<f32> {
+     }
+     let eye_n = (model.model_matrix * vec4<f32>(n, 0.0)).xyz;
+     let decal_tie = in.attr.z == SCENERY_PROP && in.attr.w != 0u;
+-    let world = in.attr.z != 0u && !decal_tie;
++    let steep_terrain = DBG_TERRAIN_FACET != 0u && in.attr.z == 2u;
++    let world = in.attr.z != 0u && !decal_tie && !steep_terrain;
++    if (DBG_TERRAIN_FACET != 0u && in.attr.z == 2u && model.layer.y == 0u && dot(eye_n, eye_n) != 0.0) {
++        return eye_n;
++    }
+     if (model.layer.y != 0u || world || dot(eye_n, eye_n) == 0.0
+         || abs(eye_n.y) >= NEAR_HORIZONTAL * length(eye_n)) {
+         return UP;
+@@ -315,7 +349,13 @@ fn vertex_output(in: VertexInput) -> VertexOutput {
+     // Model space to eye-relative space to clip space.
+     let eye_pos = model.model_matrix * vec4<f32>(in.position, 1.0);
+     let projected = camera.rotation_proj * eye_pos;
+-    let plane = slide_normal(in);
++    var plane = slide_normal(in);
++    if (DBG_TERRAIN_FACET == 3u && in.attr.z == 2u && model.layer.y == 0u && (in.attr.w & 128u) != 0u) {
++        let r = slide_ratio(projected, eye_pos, UP);
++        if (r > 0.0 && abs(r - 1.0) <= DBG_MIX_PCT) {
++            plane = UP;
++        }
++    }
+     out.clip_position = playone_vertex(projected, eye_pos, plane);
+     var collapsed = false;
+     // OP_PERFDISK skips when shadow mode (work:0x806C) is set
+@@ -355,6 +395,12 @@ fn vertex_output(in: VertexInput) -> VertexOutput {
+         out.clip_position.z = list_order_depth(in, out.clip_position);
+     }
+     out.palette_index = in.attr.x & 255u;
++    if (DBG_PAINT != 0u && in.attr.z == 2u) {
++        let rec = in.attr.w & 127u;
++        let ground = (in.attr.w & 128u) != 0u;
++        out.palette_index = 1u + (rec * 7u) % 250u;
++        if (DBG_PAINT == 2u && ground) { out.palette_index = 255u; }
++    }
+     // A shadow draw fills every polygon flat in palette index 0, Gouraud ones included
+     // (research/playone-exe/sod-vm-frame.md section 9.1).
+     if (model.layer.y != 0u) {
