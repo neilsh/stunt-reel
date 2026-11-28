@@ -306,3 +306,11 @@ def test_a_driver_already_set_wins_over_the_headless_default() -> None:
     env = automation.headless_env({"SDL_VIDEODRIVER": "x11"}, platform="linux")
     assert env["SDL_VIDEODRIVER"] == "x11"
     assert env["SDL_AUDIODRIVER"] == "dummy"
+
+
+def test_run_script_with_debug_loads_through_the_debug_flag(fake: Fake) -> None:
+    fake.statuses = [{"state": "completed", "output": {"done": True}}]
+
+    _client(fake).run_script("print(1)", timeout=60, poll=0, sleep=lambda _s: None, debug=True)
+
+    assert fake.requests[0][1] == "/api/v1/script/load?debug=true"

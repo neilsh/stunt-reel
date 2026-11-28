@@ -83,6 +83,7 @@ WINDOW_SPAN: int = CLOCK_EVERY + WINDOW_SLACK
 #: Frames a window reads before its start: the palette two frames back and the page one back.
 WINDOW_LEAD: int = 2
 _KEY_NAME = re.compile(r"KBD_[a-z0-9_]+")
+_TOKEN = re.compile(r"[A-Za-z0-9]+")
 
 
 @dataclass(frozen=True)
@@ -400,6 +401,7 @@ def video_script(
     cap: int,
     end_hold: int,
     layout: PlayoneLayout,
+    stream_token: str | None = None,
 ) -> str:
     """The Lua for a video capture: boot with *keys*, record the screen, log clocks and palette.
 
@@ -408,15 +410,35 @@ def video_script(
     for each of the :data:`PALETTE_BANDS` bands that differ; it stops early once the film clock
     (above zero) has held for *end_hold* frames. Outputs: ``cs`` (the frame recording began),
     ``pal0`` (the palette then), ``log``, ``pal`` and ``end`` (``hold`` or ``capped``), each
-    string behind an ``x`` so it stays a string. Raises ValueError if *cap* or *end_hold* is
-    below 1.
+    string behind an ``x`` so it stays a string. With *stream_token* (hex or letters) each frame
+    also goes through ``dosbox.debugmsg``: ``h<token>`` opens the stream, ``p<f>:<flags>:<hex>``
+    is the composed picture (flags 1: A000 equals the first buffer only, which is logged; 2: the
+    second only; 3: both; 0: neither, the second is logged) and ``e<end>`` closes it. Raises ValueError if *cap* or *end_hold* is below 1, or the token is
+    not alphanumeric.
     """
     if cap < 1:
         raise ValueError(f"cap must be at least 1, got {cap}")
     if end_hold < 1:
         raise ValueError(f"end_hold must be at least 1, got {end_hold}")
+    if stream_token is not None and not _TOKEN.fullmatch(stream_token):
+        raise ValueError(f"stream_token must be alphanumeric, got {stream_token!r}")
     palette_read = f"dosbox.mem_read(DS, 0x{layout.working_palette:X}, {_PALETTE_BYTES})"
     band = _PALETTE_BYTES // PALETTE_BANDS
+    stream_start = stream_frame = stream_end = ""
+    if stream_token is not None:
+        page_a, page_b = layout.composed_pages
+        stream_start = f'dosbox.debugmsg("h{stream_token}:{layout.name}:1")\n'
+        stream_frame = (
+            f"  local w0 = dosbox.mem_read_word(DS, 0x{page_a:04X}); "
+            f"local w1 = dosbox.mem_read_word(DS, 0x{page_b:04X})\n"
+            f"  local b0 = dosbox.mem_read(w0, 0, {_COMPOSED_BYTES}); "
+            f"local b1 = dosbox.mem_read(w1, 0, {_COMPOSED_BYTES})\n"
+            f"  local a = dosbox.mem_read(0xA000, 0, {_COMPOSED_BYTES})\n"
+            "  local fl = (a == b0 and 1 or 0) + (a == b1 and 2 or 0)\n"
+            '  dosbox.debugmsg("p" .. f .. ":" .. fl .. ":" .. '
+            '(fl == 1 and b0 or b1):gsub(".", H))\n'
+        )
+        stream_end = 'dosbox.debugmsg("e" .. out["end"])\n'
     return (
         f"local DS = 0x{layout.ds:04X}\n"
         "local out = dosbox.output\n"
@@ -428,11 +450,11 @@ def video_script(
         'out.cs = "x" .. dosbox.frame()\n'
         f'out.pal0 = "x" .. {palette_read}:gsub(".", H)\n'
         f"local tr, pl, lt, hold, ppal = {{}}, {{}}, -1, 0, {palette_read}\n"
-        'out["end"] = "xcapped"\n'
-        f"for i = 1, {cap} do\n"
+        'out["end"] = "xcapped"\n' + stream_start + f"for i = 1, {cap} do\n"
         "  dosbox.wait_frames(1)\n"
         "  local f = dosbox.frame()\n"
-        f"  local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X}); "
+        + stream_frame
+        + f"  local t = dosbox.mem_read_word(DS, 0x{layout.film_clock:04X}); "
         f"local g = dosbox.mem_read_word(DS, 0x{layout.global_tick:04X})\n"
         f"  local sc = dosbox.mem_read_word(DS, 0x{layout.slot_clock:04X}); "
         f"local st = dosbox.mem_read_word(DS, 0x{layout.slot_ticks:04X})\n"
@@ -448,8 +470,7 @@ def video_script(
         "  end\n"
         "  if t == lt then hold = hold + 1 else hold = 0; lt = t end\n"
         f'  if t > 0 and hold >= {end_hold} then out["end"] = "xhold"; break end\n'
-        "end\n"
-        "dosbox.capture_stop()\n"
+        "end\n" + stream_end + "dosbox.capture_stop()\n"
         'out.log = "x" .. table.concat(tr, ",")\n'
         'out.pal = "x" .. table.concat(pl, ",")\n'
         "out.done = true\n"

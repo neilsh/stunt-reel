@@ -25,6 +25,8 @@ from stunt_reel.tac import automation, video
 
 #: Beside the stage's mount, so ``unstage`` deletes the raw (audio-carrying) recording.
 RECORDING_DIR = "recording"
+#: Beside capture.avi in the output directory: one composed picture per recorded frame.
+STREAM_FILE = "stream.log"
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,10 +77,20 @@ def parse_args() -> argparse.Namespace:
             f"(default {video.VIDEO_MAX_FRAMES})"
         ),
     )
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help=(
+            "record each frame's composed picture through debugmsg to stream.log beside "
+            "capture.avi, about 240 MB per 1,900 frames (needs --out)"
+        ),
+    )
     capture_run.add_sound_samples_option(parser)
     args = parser.parse_args()
     if args.max_frames < 1:
         parser.error("--max-frames must be at least 1")
+    if args.stream and args.out is None:
+        parser.error("--stream needs --out: the stream log is written beside the capture")
     if args.out is None and args.max_frames != video.VIDEO_MAX_FRAMES:
         parser.error(
             "a non-default --max-frames needs --out: only default parameters fill the store (ADR 0028)"
@@ -107,6 +119,7 @@ def plan_video(args: argparse.Namespace) -> capture_run.Plan:
             provenance=attempt.provenance,
             cap=args.max_frames,
             emulator=video.emulator_info(),
+            stream_to=attempt.out / STREAM_FILE if args.stream else None,
         )
         return (
             f"recorded {len(recorded.log.frame)} frames ({recorded.end}), film starts at frame "

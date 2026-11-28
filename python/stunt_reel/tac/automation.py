@@ -170,13 +170,16 @@ class AutomationClient:
         poll: float = 2.0,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        debug: bool = False,
     ) -> dict[str, Any]:
         """Load and start *text*, poll to completion and return its output table.
 
+        With *debug* the emulator writes the script's debugmsg calls to its log file.
         Raises ScriptError with the emulator's text when the script fails, and GuestTimeout
         when it is still running after *timeout* seconds.
         """
-        self._call("POST", "/script/load", text.encode(), "text/plain")
+        load = "/script/load?debug=true" if debug else "/script/load"
+        self._call("POST", load, text.encode(), "text/plain")
         self._call("POST", "/script/start")
         started = clock()
         while True:

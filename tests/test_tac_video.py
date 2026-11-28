@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from contextlib import nullcontext, suppress
 from typing import TYPE_CHECKING, Any
 
@@ -330,3 +331,137 @@ def test_decode_video_log_raises_only_video_capture_error(output: dict[str, obje
     # TypeError would surface as a traceback instead of a refused capture.
     with suppress(video.VideoCaptureError):
         video.decode_video_log(output)
+
+
+def test_video_script_without_a_token_logs_no_pictures() -> None:
+    text = _script()
+
+    assert "debugmsg" not in text
+    assert _script(stream_token=None) == text
+
+
+@pytest.mark.parametrize("layout", [playone.UNPATCHED, playone.PATCH3])
+def test_video_script_with_a_token_logs_one_picture_a_frame(layout: playone.PlayoneLayout) -> None:
+    text = _script(stream_token="ab12", layout=layout)  # noqa: S106 - a log token, not a secret
+
+    page_a, page_b = layout.composed_pages
+    assert f'dosbox.debugmsg("hab12:{layout.name}:1")' in text
+    assert f"dosbox.mem_read_word(DS, 0x{page_a:04X})" in text
+    assert f"dosbox.mem_read_word(DS, 0x{page_b:04X})" in text
+    assert text.count('dosbox.debugmsg("p"') == 1
+    loop = text[text.index("for i = 1") : text.index("dosbox.capture_stop()")]
+    assert 'dosbox.debugmsg("p"' in loop
+    assert text.index('dosbox.debugmsg("hab12') < text.index("for i = 1")
+    assert text.count('dosbox.debugmsg("e" .. out["end"])') == 1
+    assert text.index('dosbox.debugmsg("e"') < text.index("dosbox.capture_stop()")
+
+
+def test_video_script_refuses_a_token_that_is_not_alphanumeric() -> None:
+    with pytest.raises(ValueError, match="alphanumeric"):
+        _script(stream_token='a"b')  # noqa: S106 - a log token, not a secret
+
+
+def _stream_log(token: str, pictures: int, *, end: bool = True, header: bool = True) -> bytes:
+    lines = [f"debugmsg: h{token}:UNPATCHED:1"] if header else []
+    lines += [f"debugmsg: p{n}:1:{'00' * 4}" for n in range(pictures)]
+    if end:
+        lines.append("debugmsg: exhold")
+    return ("\n".join(lines) + "\n").encode()
+
+
+@pytest.fixture
+def logs_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    monkeypatch.setattr(video, "emulator_log_dir", lambda: logs)
+    return logs
+
+
+def test_the_stream_finder_picks_the_log_that_carries_its_token(logs_dir: Path) -> None:
+    (logs_dir / "lua-debug-1-a.log").write_bytes(_stream_log("AAA", 1))
+    (logs_dir / "lua-debug-2-b.log").write_bytes(_stream_log("BBB", 1))
+
+    assert video._find_stream_log("BBB", logs_dir) == logs_dir / "lua-debug-2-b.log"
+
+
+def test_the_stream_finder_refuses_no_log_and_two_logs(logs_dir: Path) -> None:
+    (logs_dir / "lua-debug-1-a.log").write_bytes(_stream_log("AAA", 1))
+    (logs_dir / "lua-debug-2-b.log").write_bytes(_stream_log("AAA", 1))
+
+    with pytest.raises(video.VideoCaptureError, match="found 2"):
+        video._find_stream_log("AAA", logs_dir)
+    with pytest.raises(video.VideoCaptureError, match="found no"):
+        video._find_stream_log("ZZZ", logs_dir)
+
+
+def test_a_stream_log_is_moved_when_its_pictures_and_trailer_match(
+    tmp_path: Path, logs_dir: Path
+) -> None:
+    source = logs_dir / "lua-debug-1-a.log"
+    source.write_bytes(_stream_log("AAA", 3))
+    dest = tmp_path / "out" / "stream.log"
+    dest.parent.mkdir()
+
+    video._file_stream("AAA", dest, rows=3)
+
+    assert dest.read_bytes() == _stream_log("AAA", 3)
+    assert not source.exists()
+
+
+@pytest.mark.parametrize(
+    ("log", "message"),
+    [
+        (_stream_log("AAA", 2), "2 pictures but the log has 3 rows"),
+        (_stream_log("AAA", 3, end=False), "end trailer"),
+    ],
+)
+def test_a_stream_log_that_does_not_match_is_refused(
+    tmp_path: Path, logs_dir: Path, log: bytes, message: str
+) -> None:
+    (logs_dir / "lua-debug-1-a.log").write_bytes(log)
+    dest = tmp_path / "stream.log"
+
+    with pytest.raises(video.VideoCaptureError, match=message):
+        video._file_stream("AAA", dest, rows=3)
+
+
+class _StreamRunner:
+    """A runner that writes the emulator's debug log for the script's token, as dosbox would."""
+
+    def __init__(self, logs: Path, output: dict[str, object]) -> None:
+        self._logs = logs
+        self._output = output
+        self.debug: list[bool] = []
+
+    def run_script(self, text: str, *, timeout: float, debug: bool = False) -> dict[str, object]:  # noqa: ARG002
+        self.debug.append(debug)
+        token = re.search(r'debugmsg\("h([A-Za-z0-9]+):', text)
+        assert token is not None
+        if debug:
+            (self._logs / "lua-debug-9-run.log").write_bytes(_stream_log(token[1], 3))
+        return self._output
+
+
+def test_record_video_with_a_stream_runs_in_debug_and_files_the_log(
+    tmp_path: Path, logs_dir: Path
+) -> None:
+    out_dir, recording = tmp_path / "out", tmp_path / "recording"
+    recording.mkdir()
+    (recording / "capture-0001.avi").write_bytes(build_avi([bytes([n]) * 3 for n in range(3)], []))
+    runner = _StreamRunner(logs_dir, _output())
+
+    video.record_video(
+        lambda: nullcontext(runner),
+        out_dir,
+        recording,
+        keys=KEYS,
+        layout=playone.UNPATCHED,
+        film=FILM,
+        provenance={},
+        stream_to=out_dir / "stream.log",
+    )
+
+    assert runner.debug == [True]
+    assert (out_dir / "stream.log").exists()
+    assert not (logs_dir / "lua-debug-9-run.log").exists()
+    assert (out_dir / "meta.json").exists()
