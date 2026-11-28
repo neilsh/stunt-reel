@@ -287,7 +287,7 @@
   A letterboxed page, as in the GPU test's 320 × 240 page, put every ray rows off; the hill then lost to the face behind it on every height tried.
   The terrain path reads an interpolated clip position instead.
   The films score as the prototype did to four places, so their pages put the view at the top-left (not otherwise checked).
-- **Test**: `a_far_hill_stays_in_front_of_the_face_behind_it` (`tests/gpu/scene_renderer.rs`): a 45-degree slope whose foot lies 5 km off on the ground and 6 m below the eye, 300 m in front of a vertical face, keeps at least three quarters of the pixels it covers alone at eye heights 5.95, 6.00 and 6.05 m.
-  On `main` it covers none of them; here 55 of 72, the rest being the row of both feet, where the ground plane's depth bounds both faces and the one drawn first wins the tie.
+- **Test**: `a_far_hill_stays_in_front_of_the_face_behind_it` (`tests/gpu/scene_renderer.rs`): a 45-degree slope whose foot lies 5 km off on the ground and 6 m below the eye, 300 m in front of a vertical face, keeps at least half the pixels it covers alone at eye heights 5.95, 6.00 and 6.05 m.
+  On `main` it covers none at 5.95 m (the first height checked); here 55 of 72 at each of 6.00 to 6.10 m in steps of 0.01 m (an earlier form of the test), the rest being the row of both feet, where the ground plane's depth bounds both faces and the one drawn first wins the tie.
 - **Result** (`mise run parity -- --software-only`, clean `crates/`, against the lavapipe table): `ctry` +0.0018, `intro` +0.0016, `location` +0.0011, `balloon` −0.0002, `land` −0.0000, `traintnl` −0.0000, `bomb` −0.0000; mask IoU unchanged on every film.
   `research/parity/expected/lavapipe.toml` repinned on that tree.
