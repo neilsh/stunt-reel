@@ -1,8 +1,8 @@
 //! The per-frame stream of the world's visible slices.
 //!
-//! [`WorldStream::restage`] stages, on the CPU, the ground, base and decal slices of one frame
-//! from an unsplit [`WorldSource`], each slice's vertex window, indices, outline indices and
-//! apexes back to back, and returns slices addressing the stream. Each streamed vertex's apex is
+//! [`WorldStream::restage`] stages, on the CPU, every slice of the lists it is given from an
+//! unsplit [`WorldSource`], each slice's vertex window, indices, outline indices and apexes back
+//! to back, and rewrites each slice in place to address the stream. Each streamed vertex's apex is
 //! the 20 B [`ApexVertex`] the baked upload holds for it, its prop shape word included, so the
 //! stream needs no runs table. A slice of a split world is an error. Nothing draws from the
 //! stream yet.

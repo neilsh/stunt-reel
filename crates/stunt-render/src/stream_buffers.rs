@@ -3,7 +3,7 @@
 //!
 //! [`StreamBuffers::write`] packs a [`WorldStream`]'s four sections back to back and uploads them
 //! with one `write_buffer`; [`StreamBuffers::draw_slices`] and [`StreamBuffers::draw_edges`] then
-//! draw the slices the stream returned, as [`GpuModel`](crate::mesh::GpuModel) draws its own.
+//! draw the slices [`WorldStream::restage`] rewrote, as [`GpuModel`](crate::mesh::GpuModel) draws its own.
 
 use std::mem::size_of;
 use std::ops::Range;
@@ -16,7 +16,7 @@ use crate::world_stream::WorldStream;
 /// The smallest buffer the stream creates, in bytes.
 ///
 /// The probe's largest frame is `3.74` MiB with a 12 B apex, and `75,576 * 4` B more with the
-/// 16 B [`ApexVertex`], about `4.03` MiB (journal, 2026-11-26): 8 MiB holds it. Another film,
+/// 16 B [`ApexVertex`], about `4.03` MiB (journal, 2026-11-23): 8 MiB holds it. Another film,
 /// lens or viewport may need more, which [`grown_capacity`] handles.
 const MIN_CAPACITY: u64 = 8 << 20;
 
