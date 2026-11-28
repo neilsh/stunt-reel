@@ -1,0 +1,206 @@
+diff --git a/crates/stunt-render/src/pipeline.rs b/crates/stunt-render/src/pipeline.rs
+index 47e5d92..ebf2753 100644
+--- a/crates/stunt-render/src/pipeline.rs
++++ b/crates/stunt-render/src/pipeline.rs
+@@ -292,8 +292,20 @@ impl RenderPipelines {
+             immediate_size: 0,
+         });
+ 
+-        let shader_module =
+-            device.create_shader_module(wgpu::include_wgsl!("shaders/mode13h.wgsl"));
++        let shader_module = {
++            let src = include_str!("shaders/mode13h.wgsl");
++            let src = match std::env::var("DBG_FRAG_DEPTH") {
++                Ok(v) => src.replace(
++                    "const DBG_FRAG_DEPTH: u32 = 0u;",
++                    &format!("const DBG_FRAG_DEPTH: u32 = {v}u;"),
++                ),
++                Err(_) => src.to_owned(),
++            };
++            device.create_shader_module(wgpu::ShaderModuleDescriptor {
++                label: Some("mode13h"),
++                source: wgpu::ShaderSource::Wgsl(src.into()),
++            })
++        };
+         let vertex_buffers = [
+             Some(Self::vertex_buffer_layout()),
+             Some(Self::apex_buffer_layout()),
+diff --git a/crates/stunt-render/src/shaders/mode13h.wgsl b/crates/stunt-render/src/shaders/mode13h.wgsl
+index 5c5fd9c..6aae58e 100644
+--- a/crates/stunt-render/src/shaders/mode13h.wgsl
++++ b/crates/stunt-render/src/shaders/mode13h.wgsl
+@@ -168,6 +168,12 @@ struct VertexOutput {
+     // else the draw's (`ModelUniform` `layer.z`). Every vertex of a triangle or line lies in
+     // the same prop run, so whichever vertex provokes names it.
+     @location(6) @interpolate(flat) shape: u32,
++    // The eye-relative plane of the polygon's own facet, `xyz` its unit normal and `w` its
++    // offset (`dot(xyz, point) = w`), when the fragment takes its depth from that plane
++    // (`DBG_FRAG_DEPTH`, `true_depth`); zero otherwise.
++    @location(7) @interpolate(flat) plane: vec4<f32>,
++    // The eye-relative height of the ground plane (world height 0), for mode 3's clamp.
++    @location(8) @interpolate(flat) ground_y: f32,
+ };
+ 
+ // Whether `x` is NaN or infinite: all exponent bits set. WGSL has no isNan, and `x != x`
+@@ -209,6 +215,72 @@ struct PlaneOutput {
+ // treated as having missed the plane (the ray through its pixel runs almost along it).
+ const PLANE_SLIDE_MAX: f32 = 1.0e6;
+ 
++// Prototype switch (#1197): 0 is `main`; 1 snaps a terrain vertex to its pixel without sliding it
++// and takes each terrain fragment's depth from the polygon's own plane; 2 does the same for the
++// ocean too; 3 clamps terrain to the ground plane's depth; 4 is 3 with the ocean per fragment; 5 is
++// 3 for sloped patches only.
++const DBG_FRAG_DEPTH: u32 = 0u;
++
++// The ray through the pixel at NDC point `ndc` (`playone_vertex`'s ray).
++fn pixel_ray(ndc: vec2<f32>) -> vec3<f32> {
++    let row_x = vec3<f32>(camera.rotation_proj[0][0], camera.rotation_proj[1][0], camera.rotation_proj[2][0]);
++    let row_y = vec3<f32>(camera.rotation_proj[0][1], camera.rotation_proj[1][1], camera.rotation_proj[2][1]);
++    let row_w = vec3<f32>(camera.rotation_proj[0][3], camera.rotation_proj[1][3], camera.rotation_proj[2][3]);
++    var on_ray = cross(row_x - ndc.x * row_w, row_y - ndc.y * row_w);
++    if (dot(row_w, on_ray) < 0.0) {
++        on_ray = -on_ray;
++    }
++    return on_ray;
++}
++
++// `clip` moved to its pixel's centre in x and y, keeping its own depth.
++fn snap_only(clip: vec4<f32>, eye_y: f32) -> vec4<f32> {
++    if (clip.w <= 0.0 || camera.rotation_proj[3][3] != 0.0) {
++        return clip;
++    }
++    let half = 0.5 / camera.line_half_ndc;
++    let to_pixels = vec2<f32>(half.x, -half.y);
++    let offset = clip.xy / clip.w * to_pixels;
++    let pixel = floor(half) + trunc(offset) + 0.5;
++    let ndc = (pixel - half) / to_pixels;
++    // As `playone_vertex`: a vertex whose pixel's ray misses the horizontal plane through it keeps
++    // its own projection, so the edges are `main`'s.
++    let on_ray = pixel_ray(ndc);
++    let t = eye_y / on_ray.y;
++    if (!(t > 0.0) || t > PLANE_SLIDE_MAX) {
++        return clip;
++    }
++    return vec4<f32>(ndc * clip.w, clip.z, clip.w);
++}
++
++// The depth of a fragment at its pixel's centre on its polygon's own plane (`VertexOutput::plane`),
++// else the rasteriser's.
++fn true_depth(in: VertexOutput) -> f32 {
++    if (dot(in.plane.xyz, in.plane.xyz) == 0.0) {
++        return in.clip_position.z;
++    }
++    let half = 0.5 / camera.line_half_ndc;
++    let to_pixels = vec2<f32>(half.x, -half.y);
++    let ndc = (in.clip_position.xy - half) / to_pixels;
++    let on_ray = pixel_ray(ndc);
++    let t = in.plane.w / dot(in.plane.xyz, on_ray);
++    if (!(t > 0.0)) {
++        return in.clip_position.z;
++    }
++    let p = camera.rotation_proj * vec4<f32>(on_ray * t, 1.0);
++    var depth = clamp(p.z / p.w, 0.0, 1.0);
++    if (DBG_FRAG_DEPTH >= 3u && on_ray.y != 0.0) {
++        // No farther than the ground plane along the same ray: a raised face never loses to the
++        // ground or the ocean at its foot (reversed depth, nearer is larger).
++        let t_ground = in.ground_y / on_ray.y;
++        if (t_ground > 0.0) {
++            let g = camera.rotation_proj * vec4<f32>(on_ray * t_ground, 1.0);
++            depth = max(depth, clamp(g.z / g.w, 0.0, 1.0));
++        }
++    }
++    return depth;
++}
++
+ // Moves a projected vertex at `clip` (eye-relative position `eye`) to the pixel PLAYONE's
+ // register projectors put it on: its offset from the projection centre truncated toward the
+ // centre (`idiv`, 0x9CF1 and 0x9D3A), drawn at that pixel's centre, as the inclusive span
+@@ -317,6 +389,17 @@ fn vertex_output(in: VertexInput) -> VertexOutput {
+     let projected = camera.rotation_proj * eye_pos;
+     let plane = slide_normal(in);
+     out.clip_position = playone_vertex(projected, eye_pos, plane);
++    out.plane = vec4<f32>(0.0);
++    out.ground_y = model.model_matrix[3].y;
++    let eye_n = (model.model_matrix * vec4<f32>(in.normal, 0.0)).xyz;
++    if (DBG_FRAG_DEPTH != 0u && model.layer.y == 0u && camera.rotation_proj[3][3] == 0.0
++        && (in.attr.y & (FLAG_LINE | FLAG_DISC)) == 0u && dot(eye_n, eye_n) != 0.0
++        && !(DBG_FRAG_DEPTH == 5u && abs(eye_n.y) >= 0.9999 * length(eye_n))
++        && (in.attr.z == 2u || ((DBG_FRAG_DEPTH == 2u || DBG_FRAG_DEPTH == 4u) && in.attr.z == 1u))) {
++        let n = normalize(eye_n);
++        out.plane = vec4<f32>(n, dot(n, eye_pos.xyz));
++        out.clip_position = snap_only(projected, eye_pos.y);
++    }
+     var collapsed = false;
+     // OP_PERFDISK skips when shadow mode (work:0x806C) is set
+     // (research/playone-exe/sod-vm-generators.md section 8.8).
+@@ -397,6 +480,8 @@ struct EdgeVertexOutput {
+     @location(4) @interpolate(perspective) shade_w: f32,
+     @location(5) @interpolate(perspective) w: f32,
+     @location(6) @interpolate(flat) shape: u32,
++    @location(7) @interpolate(flat) plane: vec4<f32>,
++    @location(8) @interpolate(flat) ground_y: f32,
+     @builtin(clip_distances) clip_distances: array<f32, 4>,
+ };
+ 
+@@ -413,22 +498,39 @@ fn vs_edge(in: VertexInput) -> EdgeVertexOutput {
+     out.shade_w = v.shade_w;
+     out.w = v.w;
+     out.shape = v.shape;
++    out.plane = v.plane;
++    out.ground_y = v.ground_y;
+     let c = v.clip_position;
+     let band = EDGE_CLIP_BAND * c.w;
+     out.clip_distances = array<f32, 4>(band - c.x, band + c.x, band - c.y, band + c.y);
+     return out;
+ }
+ 
++struct FragOutput {
++    @location(0) color: vec4<f32>,
++    @builtin(frag_depth) depth: f32,
++};
++
++struct FragPlaneOutput {
++    @location(0) color: vec4<f32>,
++    @location(1) plane: vec2<u32>,
++    @builtin(frag_depth) depth: f32,
++};
++
+ @fragment
+-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
++fn fs_main(in: VertexOutput) -> FragOutput {
+     // Mode 13h flat-shaded pixel lookup with zero bilinear bleed [I3]
+     let coords = vec2<i32>(i32(fragment_index(in)), i32(in.light_level & 31u));
+-    return textureLoad(palette_lut, coords, 0);
++    var out: FragOutput;
++    out.color = textureLoad(palette_lut, coords, 0);
++    out.depth = true_depth(in);
++    return out;
+ }
+ 
+ @fragment
+-fn fs_main_plane(in: VertexOutput) -> PlaneOutput {
+-    var out: PlaneOutput;
++fn fs_main_plane(in: VertexOutput) -> FragPlaneOutput {
++    var out: FragPlaneOutput;
++    out.depth = true_depth(in);
+     let index = fragment_index(in);
+     let coords = vec2<i32>(i32(index), i32(in.light_level & 31u));
+     out.color = textureLoad(palette_lut, coords, 0);
+@@ -668,6 +770,8 @@ fn parity_input(in: ModernVertexOutput) -> VertexOutput {
+     v.shade_w = in.shade_w;
+     v.w = in.w;
+     v.shape = in.shape;
++    v.plane = vec4<f32>(0.0);
++    v.ground_y = 0.0;
+     return v;
+ }
+ 
+@@ -1070,6 +1174,8 @@ fn parity_input_diagnostic(in: DiagnosticVertexOutput) -> VertexOutput {
+     v.shade_w = in.shade_w;
+     v.w = in.w;
+     v.shape = in.shape;
++    v.plane = vec4<f32>(0.0);
++    v.ground_y = 0.0;
+     return v;
+ }
+ 

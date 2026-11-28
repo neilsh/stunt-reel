@@ -1,0 +1,56 @@
+## sweep 1
+[sweep] 3 variant(s)
+[1/3] DBG_FRAG_DEPTH=0: ctry 0.9459, intro 0.9231, land 0.9418, balloon 0.9094, traintnl 0.9221, bomb 0.9216, location 0.9168 (104s)
+[2/3] DBG_FRAG_DEPTH=1: ctry 0.9475, intro 0.9246, land 0.9406, balloon 0.9075, traintnl 0.9220, bomb 0.9209, location 0.9168 (155s)
+[3/3] DBG_FRAG_DEPTH=2: ctry 0.9476, intro 0.9246, land 0.9406, balloon 0.9075, traintnl 0.9220, bomb 0.9209, location 0.9168 (189s)
+targets: --target ctry:286-366
+DBG_FRAG_DEPTH  ctry SSIM  ctry IoU  intro SSIM  intro IoU  land SSIM  land IoU  balloon SSIM  balloon IoU  traintnl SSIM  traintnl IoU  bomb SSIM  bomb IoU  location SSIM  location IoU  mean SSIM  target dSSIM  target dIdx  worst target  worst frame  down>0.005
+             2     0.9476    0.9956      0.9246     0.9887     0.9406    0.9873        0.9075       0.9510         0.9220        0.9720     0.9209    0.9499         0.9168        0.9826     0.9257       +0.0094      +0.0051       +0.0014      -0.0205         112
+             1     0.9475    0.9956      0.9246     0.9887     0.9406    0.9873        0.9075       0.9510         0.9220        0.9720     0.9209    0.9708         0.9168        0.9826     0.9257       +0.0088      +0.0049       +0.0014      -0.0205         112
+             0     0.9459    0.9954      0.9231     0.9890     0.9418    0.9873        0.9094       0.9510         0.9221        0.9720     0.9216    0.9707         0.9168        0.9826     0.9258             -            -             -            -           -
+[sweep] DBG_FRAG_DEPTH=2: 112 frame(s) down >0.005: location:2312 -0.0205, balloon:1156 -0.0192, location:2300 -0.0148, balloon:1025 -0.0137, balloon:1145 -0.0136, land:199 -0.0133, location:2520 -0.0130, location:2509 -0.0129, location:2498 -0.0129, bomb:56 -0.0128, bomb:68 -0.0127, bomb:78 -0.0127, bomb:189 -0.0127, bomb:155 -0.0127, bomb:89 -0.0127, bomb:177 -0.0127, bomb:122 -0.0127, bomb:133 -0.0127, bomb:12 -0.0127, bomb:23 -0.0127, bomb:34 -0.0127, bomb:166 -0.0127, bomb:199 -0.0127, bomb:210 -0.0127, bomb:144 -0.0127, bomb:111 -0.0127, bomb:101 -0.0127, bomb:45 -0.0127, balloon:958 -0.0127, location:2542 -0.0126, location:2531 -0.0125, location:2553 -0.0116, location:2333 -0.0116, balloon:1002 -0.0115, location:2564 -0.0113, balloon:1134 -0.0111, location:2476 -0.0111, location:2344 -0.0111, location:2575 -0.0110, location:2355 -0.0109, balloon:1090 -0.0109, location:2487 -0.0109
+[sweep] DBG_FRAG_DEPTH=2: frames outside the target moved >0.005: ctry 9, intro 40, land 4, balloon 11, traintnl 0, bomb 20, location 97
+winner: none adopts (best DBG_FRAG_DEPTH=2: film means short of +0.002 each or +0.004 on one; target idx +0.0051, not above +0.010)
+[sweep] figures work/2026-11/1197_ctry-hill-flicker/sweeps/per-fragment-terrain-depth.toml
+Finished in 202.12s
+## sweep 2
+[sweep] 2 variant(s)
+[1/2] DBG_FRAG_DEPTH=0: ctry 0.9459, intro 0.9231, land 0.9418, balloon 0.9094, traintnl 0.9221, bomb 0.9216, location 0.9168 (100s)
+[2/2] DBG_FRAG_DEPTH=3: ctry 0.9477, intro 0.9250, land 0.9418, balloon 0.9091, traintnl 0.9221, bomb 0.9210, location 0.9179 (133s)
+targets: --target ctry:286-366
+DBG_FRAG_DEPTH  ctry SSIM  ctry IoU  intro SSIM  intro IoU  land SSIM  land IoU  balloon SSIM  balloon IoU  traintnl SSIM  traintnl IoU  bomb SSIM  bomb IoU  location SSIM  location IoU  mean SSIM  target dSSIM  target dIdx  worst target  worst frame  down>0.005
+             3     0.9477    0.9956      0.9250     0.9887     0.9418    0.9873        0.9091       0.9510         0.9221        0.9720     0.9210    0.9708         0.9179        0.9826     0.9264       +0.0097      +0.0051       +0.0014      -0.0128          20
+             0     0.9459    0.9954      0.9231     0.9890     0.9418    0.9873        0.9094       0.9510         0.9221        0.9720     0.9216    0.9707         0.9168        0.9826     0.9258             -            -             -            -           -
+[sweep] DBG_FRAG_DEPTH=3: 20 frame(s) down >0.005: bomb:56 -0.0128, bomb:68 -0.0127, bomb:78 -0.0127, bomb:189 -0.0127, bomb:155 -0.0127, bomb:89 -0.0127, bomb:177 -0.0127, bomb:122 -0.0127, bomb:133 -0.0127, bomb:12 -0.0127, bomb:23 -0.0127, bomb:34 -0.0127, bomb:166 -0.0127, bomb:199 -0.0127, bomb:210 -0.0127, bomb:144 -0.0127, bomb:111 -0.0127, bomb:101 -0.0127, bomb:45 -0.0127, location:4104 -0.0072
+[sweep] DBG_FRAG_DEPTH=3: frames outside the target moved >0.005: ctry 10, intro 31, land 0, balloon 0, traintnl 0, bomb 20, location 28
+winner: none adopts (best DBG_FRAG_DEPTH=3: film means short of +0.002 each or +0.004 on one; target idx +0.0051, not above +0.010)
+[sweep] figures work/2026-11/1197_ctry-hill-flicker/sweeps/per-fragment-terrain-depth-clamped.toml
+Finished in 159.53s
+## sweep 3
+[sweep] 3 variant(s)
+[1/3] DBG_FRAG_DEPTH=0: ctry 0.9459, intro 0.9231, land 0.9418, balloon 0.9094, traintnl 0.9221, bomb 0.9216, location 0.9168 (101s)
+[2/3] DBG_FRAG_DEPTH=2: ctry 0.9475, intro 0.9244, land 0.9406, balloon 0.9075, traintnl 0.9220, bomb 0.9216, location 0.9167 (157s)
+[3/3] DBG_FRAG_DEPTH=4: ctry 0.9470, intro 0.9238, land 0.9403, balloon 0.9066, traintnl 0.9216, bomb 0.9215, location 0.9159 (190s)
+targets: --target ctry:286-366
+DBG_FRAG_DEPTH  ctry SSIM  ctry IoU  intro SSIM  intro IoU  land SSIM  land IoU  balloon SSIM  balloon IoU  traintnl SSIM  traintnl IoU  bomb SSIM  bomb IoU  location SSIM  location IoU  mean SSIM  target dSSIM  target dIdx  worst target  worst frame  down>0.005
+             2     0.9475    0.9954      0.9244     0.9890     0.9406    0.9873        0.9075       0.9510         0.9220        0.9720     0.9216    0.9707         0.9167        0.9826     0.9258       +0.0088      +0.0049       +0.0014      -0.0205          93
+             4     0.9470    0.9954      0.9238     0.9890     0.9403    0.9873        0.9066       0.9510         0.9216        0.9720     0.9215    0.9707         0.9159        0.9826     0.9252       +0.0079      +0.0046       +0.0000      -0.0234         167
+             0     0.9459    0.9954      0.9231     0.9890     0.9418    0.9873        0.9094       0.9510         0.9221        0.9720     0.9216    0.9707         0.9168        0.9826     0.9258             -            -             -            -           -
+[sweep] DBG_FRAG_DEPTH=2: 93 frame(s) down >0.005: location:2312 -0.0205, balloon:1156 -0.0192, location:2300 -0.0148, balloon:1025 -0.0137, balloon:1145 -0.0136, land:199 -0.0133, location:2520 -0.0130, location:2509 -0.0129, location:2498 -0.0129, balloon:958 -0.0127, location:2542 -0.0126, location:2531 -0.0125, location:2553 -0.0116, location:2333 -0.0116, balloon:1002 -0.0115, location:2564 -0.0113, balloon:1134 -0.0111, location:2476 -0.0111, location:2344 -0.0111, location:2575 -0.0110, location:2355 -0.0109, balloon:1090 -0.0109, location:2487 -0.0109, location:2366 -0.0106, location:2608 -0.0106, land:320 -0.0105, location:2377 -0.0104, location:6117 -0.0102, location:2388 -0.0100, location:2267 -0.0098, location:4225 -0.0095, location:2289 -0.0093, location:3445 -0.0092, location:2399 -0.0091, location:4214 -0.0090, location:2410 -0.0090, location:6106 -0.0088, location:1475 -0
+[sweep] DBG_FRAG_DEPTH=2: frames outside the target moved >0.005: ctry 9, intro 40, land 4, balloon 11, traintnl 0, bomb 0, location 97
+winner: none adopts (best DBG_FRAG_DEPTH=2: film means short of +0.002 each or +0.004 on one; target idx +0.0049, not above +0.010)
+[sweep] figures work/2026-11/1197_ctry-hill-flicker/sweeps/per-fragment-depth-main-edges.toml
+Finished in 211.71s
+## sweep 4
+[sweep] 2 variant(s)
+[1/2] DBG_FRAG_DEPTH=0: ctry 0.9459, intro 0.9231, land 0.9418, balloon 0.9094, traintnl 0.9221, bomb 0.9216, location 0.9168 (89s)
+[2/2] DBG_FRAG_DEPTH=5: ctry 0.9477, intro 0.9248, land 0.9418, balloon 0.9091, traintnl 0.9221, bomb 0.9216, location 0.9179 (119s)
+targets: --target ctry:286-366
+DBG_FRAG_DEPTH  ctry SSIM  ctry IoU  intro SSIM  intro IoU  land SSIM  land IoU  balloon SSIM  balloon IoU  traintnl SSIM  traintnl IoU  bomb SSIM  bomb IoU  location SSIM  location IoU  mean SSIM  target dSSIM  target dIdx  worst target  worst frame  down>0.005
+             5     0.9477    0.9954      0.9248     0.9890     0.9418    0.9873        0.9091       0.9510         0.9221        0.9720     0.9216    0.9707         0.9179        0.9826     0.9264       +0.0097      +0.0051       +0.0014      -0.0071           1
+             0     0.9459    0.9954      0.9231     0.9890     0.9418    0.9873        0.9094       0.9510         0.9221        0.9720     0.9216    0.9707         0.9168        0.9826     0.9258             -            -             -            -           -
+[sweep] DBG_FRAG_DEPTH=5: 1 frame(s) down >0.005: location:4104 -0.0071
+[sweep] DBG_FRAG_DEPTH=5: frames outside the target moved >0.005: ctry 10, intro 31, land 0, balloon 0, traintnl 0, bomb 0, location 28
+winner: none adopts (best DBG_FRAG_DEPTH=5: film means short of +0.002 each or +0.004 on one; target idx +0.0051, not above +0.010)
+[sweep] figures work/2026-11/1197_ctry-hill-flicker/sweeps/per-fragment-depth-sloped-terrain-clamped.toml
+Finished in 137.10s
