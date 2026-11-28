@@ -76,9 +76,8 @@ Vars 2-7, 10 and 11 change at tick 198 (see [`palette-fade.md` § 3.2](../playon
 
 The 2026-10-22 figures above come from a render without `--sidata`.
 The `--sidata` world (43,199 props, 18,001,215 vertices, 504 MB) first panicked on wgpu's 256 MB buffer limit.
-`GpuModel` now splits an oversized model into several vertex/index buffer pairs (`plan_upload` in `crates/stunt-render/src/mesh.rs`), cutting each mesh slice into runs of whole triangles in draw order; a model that fits is uploaded unchanged.
-The `COL3-2.FLM` world splits on vertices (about 9.59 million per 256 MiB buffer).
-`CTRY.FLM` and `INTRO.FLM` re-rendered on this build score exactly as before (0.771 / 0.475 / 0.978 and 0.676 / 0.481 / 0.919).
+The world is no longer uploaded: each frame copies only the slices it draws into one small buffer (`crates/stunt-render/src/world_stream.rs`, [#999](https://github.com/neilsh/stunt-reel/issues/999)), so the 256 MB limit applies to one frame's slices, not to the world; no `--sidata` `COL3-2.FLM` render has been run on the stream.
+The buffer split that first answered this panic, about 9.59 million vertices per 256 MiB buffer for the `COL3-2.FLM` world, went with the upload (#1093); `CTRY.FLM` and `INTRO.FLM` had scored exactly as before on it (0.771 / 0.475 / 0.978 and 0.676 / 0.481 / 0.919).
 
 | `COL3-2.FLM` render | Scored / matched | `mean_ssim_scored` | `mean_index_agreement_scored` | `mean_iou_scored` | `mean_iou` |
 |---|---|---|---|---|---|

@@ -1,0 +1,13 @@
+adapter,run,variant,scene_built_mib,renderer_opened_mib,mesh_released_mib,frames_rendered_mib,peak_mib
+lavapipe,0,base,324.6,873.6,579.1,680.8,1026.2
+lavapipe,0,stage_c,324.4,738.7,443.8,468.5,738.8
+lavapipe,1,base,324.8,872.8,579.1,680.8,1025.3
+lavapipe,1,stage_c,324.5,739.5,444.8,469.0,739.7
+lavapipe,2,base,324.4,873.0,578.3,681.0,1025.5
+lavapipe,2,stage_c,324.1,738.4,441.8,468.8,738.5
+gpu,0,base,324.2,534.7,237.1,248.5,828.7
+gpu,0,stage_c,323.9,811.3,514.0,523.7,811.4
+gpu,1,base,324.4,533.9,237.3,248.9,827.9
+gpu,1,stage_c,324.2,811.5,514.1,526.2,811.6
+gpu,2,base,324.5,534.7,237.1,248.7,828.2
+gpu,2,stage_c,324.3,811.6,513.3,523.0,811.7

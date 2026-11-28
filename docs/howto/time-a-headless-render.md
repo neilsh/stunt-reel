@@ -36,7 +36,7 @@ Each line is `[stuntreel] timing <phase> <milliseconds> ms`, the milliseconds a 
 | `scene_build` | `build_timed_scene`: reading the film, archive and scenery files, decoding the shapes, building the world and attaching the credits font. |
 | `world_build` | Part of `scene_build`: `build_world` alone. Zero for a scene with no archive or game tree. |
 | `renderer_open` | `Renderer::offscreen`: the adapter, the device, the pipelines, then the uploads below. |
-| `world_upload` | Part of `renderer_open`: the world mesh, its prop runs and its placement marks. Zero with no world. |
+| `world_upload` | Part of `renderer_open`: planning the world (its slices, outline list and placement marks) and copying its mesh for the per-frame stream; nothing of the world is uploaded, and the phase keeps its name. Zero with no world. |
 | `shape_uploads` | Part of `renderer_open`: every shape and sprite image. |
 | `loop` | From the first sample's frame build and submit through `finish` and the last page write, as the throwaway loop timers measured it. For a single `-o` PNG, the one `draw`. |
 
