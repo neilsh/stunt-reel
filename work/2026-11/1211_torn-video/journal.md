@@ -49,10 +49,10 @@ The pinned pages' rows 0..184 were compared as palette indices with the streamed
   The working palette rebuilt from the run's `meta.json` equals the page's palette on 121 of 121 pages at the same frame.
   In the video the same pages were exact on 31 of 121 (Phase A).
   The match holds by construction: the harness keeps a page only when `A000` rows 0..191 equal a composed buffer (`luagen.py`), so it shows the stream is read at the right frame and replays, and that a whole picture is present on the 90 pages where the video is torn, not that it is whole on frames the harness skips.
-* `A000` equals neither buffer on 85 frames (4.5%), a superset of the torn frames (the band test was not run; Phase A found 90 torn pages of 121 in the video, a different count).
+* `A000` equals neither buffer on 85 frames (4.5%), the frames the harness would count as torn (`TRACE_TORN`); none of the 121 pinned frames is among them (all 119 are `(0,1,0)`, 2 are `(1,0,0)`), so they are not the video's 90 torn pages, whose pictures the stream holds at frames where `A000` was whole.
 * The stream leaves the recording alone: `capture.avi` and `meta.json` equal the stream-off run's, and two stream runs have equal payloads.
 * Cost: about 71 more Lua instructions a frame (estimate from a spin counter, one run each; the planner's 25 to 35 was too low).
-  The stream-off run used about 126,000 instructions, boot included, so one script holds between about 7,300 frames (all of that is per-frame) and about 12,300 (all boot); `LOCATION.FLM` (11,616 frames) needs two passes unless the row is lightened.
+  The stream-off run used about 126,000 instructions, boot included, so one script holds between about 7,300 frames (all of that is per-frame) and about 12,300 (all boot); `LOCATION.FLM` (11,616 frames) may need two passes unless the row is lightened.
   Wall time stayed 46 to 49 s across a stream, a stream-plus-spin and a spin-only run; the log is 469 MB for the two buffers.
 
 **Verdict.** Go on step 2 for `CTRY`.
