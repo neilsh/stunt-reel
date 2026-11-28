@@ -2,10 +2,10 @@
 
 ## Status
 
-proposed 2026-11-28 for [#1197](https://github.com/neilsh/stunt-reel/issues/1197), awaiting the owner's decision.
-The prototype is a throwaway switch ([`DBG_FRAG_DEPTH.diff`](../../work/2026-11/1197_ctry-hill-flicker/switches/DBG_FRAG_DEPTH.diff)); no renderer change is merged.
+accepted 2026-11-28 for [#1197](https://github.com/neilsh/stunt-reel/issues/1197), on the owner's decision, which waives the adoption bar for this change (Consequences); the implementation merges once its cost on a GPU is measured.
+The prototype is a throwaway switch ([`DBG_FRAG_DEPTH.diff`](../../work/2026-11/1197_ctry-hill-flicker/switches/DBG_FRAG_DEPTH.diff)).
 Would depart from the rule of [`sod-vm-lines-spans.md` § 8.14](../../research/playone-exe/sod-vm-lines-spans.md#814-projected-points-are-truncated-toward-the-centre) that every world-mesh vertex slides in the horizontal plane, for terrain patches.
-Adopting it overrides the adoption rule of [`loop-rules.md`](../../.agents/skills/improving-render-parity/loop-rules.md), under which this change is a recorded negative (below).
+It overrides the adoption rule of [`loop-rules.md`](../../.agents/skills/improving-render-parity/loop-rules.md), under which this change is a recorded negative (below).
 
 ## Context
 
@@ -16,7 +16,7 @@ None keeps the hill, `land` 551, the ocean beside far raised terrain and the fil
 
 ## Decision
 
-Proposed, for terrain patches (scenery class 2) in the `Mode13h` look:
+For terrain patches (scenery class 2) in the `Mode13h` look:
 
 * **The vertex moves only its edges.**
   It keeps `main`'s snapped pixel, and `main`'s rule that a vertex whose ray misses the horizontal plane keeps its own projection and is not snapped; it keeps its own clip `z` and `w`.
@@ -54,7 +54,7 @@ Proposed, for terrain patches (scenery class 2) in the `Mode13h` look:
 * **It does not pass the adoption rule**: no film reaches +0.002 (`ctry` and `intro` come within 0.0003) and the target index is under the +0.010 bar, so the rule calls it a negative to revert.
   The bar guards against circularity, a variant chosen by the frames the round picked ([`method.md` § 4.1](../../research/parity/method.md)).
   Here the gain is not a selection effect: every form of this issue reached about the same +0.005 on these frames, `[Hypothesis]` because the hill covers a small part of each frame.
-  The decision asked of the owner is to waive the bar for a flicker fix that costs no film, not to read the score as evidence.
+  The owner waived the bar for a flicker fix that costs no film; the score is not read as evidence for the rule.
 * **Cost not measured on a GPU.**
   Lavapipe renders `location` (300 ticks) in 5.58 s with and 5.59 s without the switch's `frag_depth` write.
   Writing `frag_depth` turns early depth testing off for the pipeline that writes it (general GPU behaviour, unmeasured here); a merge measures it on Legion.

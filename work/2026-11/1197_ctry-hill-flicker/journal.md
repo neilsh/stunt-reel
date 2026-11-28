@@ -233,7 +233,7 @@
 
 ## 2026-11-28: per-fragment depth from the polygon's own plane
 
-`[Bounded Observation]`, lavapipe (4 vCPU cloud container; no GPU here), the prototype of [ADR 0059](../../../docs/adr/0059-sloped-terrain-takes-its-depth-per-fragment-from-its-own-plane.md).
+`[Bounded Observation]`, lavapipe (4 vCPU cloud container; no GPU here), the prototype of [ADR 0059](../../../docs/adr/0059-terrain-takes-its-depth-per-fragment-from-its-own-plane.md).
 
 - **Question**: if a terrain vertex keeps main's snapped pixel but each fragment takes its depth from the plane of its own polygon, does the hill stay on every tick of `ctry:286-366` without the ocean strip or a film regression?
 - **Form** (`DBG_FRAG_DEPTH`, not committed; [`switches/DBG_FRAG_DEPTH.diff`](switches/DBG_FRAG_DEPTH.diff), against `main`): `vertex_output` passes a terrain polygon's eye-relative plane (unit normal, offset from the provoking vertex) as a flat varying and moves the vertex only in x and y, to the pixel `playone_vertex` picks, keeping its own `z` and `w` (a vertex whose ray misses the horizontal plane keeps its own projection, as on `main`); `fs_main` and `fs_main_plane` write `frag_depth` as the depth of the ray through the fragment's pixel centre meeting that plane.
@@ -275,4 +275,4 @@
     The bar's reason is circularity (the sweep picks the variant that scores best on frames the round chose, [`loop-rules.md`](../../../.agents/skills/improving-render-parity/loop-rules.md)); here the variant was not chosen by the target score, and every earlier form tried the same target and reached the same +0.005, which is a ceiling of the frames, not a selection effect (`[Hypothesis]`: the hill covers a small part of each frame).
   - **Cost.**
     Lavapipe renders of `location`, 300 ticks, three runs each, mean 5.58 s (mode 0) against 5.59 s (mode 5), which includes the `frag_depth` write in both; a GPU's early-depth loss was not measured (no GPU in this thread; it needs Legion).
-- **Verdict**: not adopted under the rule; modes 3 and 5 (the same to four places) are the first form that keeps the hill with no film loss beyond 0.0003 (`balloon` −0.00024), and [ADR 0059](../../../docs/adr/0059-sloped-terrain-takes-its-depth-per-fragment-from-its-own-plane.md) proposes it for the owner.
+- **Verdict**: not adopted under the rule; modes 3 and 5 (the same to four places) are the first form that keeps the hill with no film loss beyond 0.0003 (`balloon` −0.00024), and [ADR 0059](../../../docs/adr/0059-terrain-takes-its-depth-per-fragment-from-its-own-plane.md) proposes it; the owner accepted it, waiving the bar, the same day.
