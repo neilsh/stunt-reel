@@ -185,11 +185,16 @@
 `[Bounded Observation]`, lavapipe, `balloon` 1156, `DBG_TERRAIN_FACET=2` against `main`.
 
 - **Question**: where the ocean strip shows along the foot of far raised terrain, does the ocean beat a raised patch's bottom corner or the flat ground beside it?
-- **Method**: `balloon` 1156 (the worst `balloon` frame of the previous sweep) rendered by `mise run frame` with each `MAP.BIN` patch painted by its record number (a throwaway switch, not committed; [`switches/DBG_TERRAIN_MIX.diff`](switches/DBG_TERRAIN_MIX.diff) carries it with the next entry's), the render store's index and layer planes read pixel by pixel, the corners of the records printed from `push_terrain`. The pixel reading is a `[Bounded Observation]`; the depth mechanism below is a `[Hypothesis]`, not tested.
+- **Method**: `balloon` 1156 (the worst `balloon` frame of the previous sweep) rendered by `mise run frame` with each `MAP.BIN` patch painted by its record number (a throwaway switch, not committed; [`switches/DBG_TERRAIN_MIX.diff`](switches/DBG_TERRAIN_MIX.diff) carries it with the next entry's), the render store's index and layer planes read pixel by pixel, the corners of the records printed from `push_terrain`.
+  The pixel reading is a `[Bounded Observation]`; the depth mechanism below is a `[Hypothesis]`, not tested.
 - **Result**:
-  - The strip is row 53, x 51 to 126 (75 of the 158 pixels the mode changes): record 5, which `main` draws there, is replaced by ocean; record 4 below it is untouched. Rows 54 to 58 hold six ocean pixels each where record 8 was.
-  - Record 5 is a raised triangle, corners (3730, 0, 785), (5112, 1000, 1296), (4220, 0, 2581), and record 4, the flat ground beside it, shares its bottom edge (3730, 0, 785) to (4220, 0, 2581). Record 8 has the same shape (a raised triangle with its foot on the ground).
-  - So the ocean beats the raised face at its foot, not the ground. `[Hypothesis]` for the cause: the mode slides record 5's feet in its own plane, which a grazing ray meets far beyond the ground plane; the face's pixels near its foot take depths beyond the ocean's, which slides in the horizontal plane with record 4, and the ocean wins them. On `main` the feet lie on that horizontal plane too and tie with the ocean, which the face wins by draw order.
+  - The strip is row 53, x 51 to 126 (75 of the 158 pixels the mode changes): record 5, which `main` draws there, is replaced by ocean; record 4 below it is untouched.
+    Rows 54 to 58 hold six ocean pixels each where record 8 was.
+  - Record 5 is a raised triangle, corners (3730, 0, 785), (5112, 1000, 1296), (4220, 0, 2581), and record 4, the flat ground beside it, shares its bottom edge (3730, 0, 785) to (4220, 0, 2581).
+    Record 8 has the same shape (a raised triangle with its foot on the ground).
+  - So the ocean beats the raised face at its foot, not the ground.
+    `[Hypothesis]` for the cause: the mode slides record 5's feet in its own plane, which a grazing ray meets far beyond the ground plane; the face's pixels near its foot take depths beyond the ocean's, which slides in the horizontal plane with record 4, and the ocean wins them.
+    On `main` the feet lie on that horizontal plane too and tie with the ocean, which the face wins by draw order.
 - **Verdict**: the previous entry's `[Hypothesis]` held in the part that matters (the foot and the ground need one plane at the seam), but it is the raised face that loses, by depth, not a gap between meshes.
 
 ## 2026-11-28: a mixed slide, raised patches in their plane except on the ground
@@ -216,8 +221,12 @@
   (Deltas from the sweep file's unrounded means.)
 
   - The hill stays on the target frames ([287](images/ctry-287-mixed-terrain-slide.png), [342](images/ctry-342-mixed-terrain-slide.png): the hill `main` loses is drawn); pooled target SSIM +0.0088 (5%) and +0.0090 (20%), worst target frame +0.0014 and +0.0015.
-  - At 20% `balloon` 1156 scores exactly as `main` does (0.8782; 0.8615 at 5%), so the strip's frame is level, and the `balloon` mean is level (−0.00001); `land` is still −0.0009 and 46 frames fall by more than 0.005, `land` 199 the worst (−0.0133) and 70 `location` frames moved. `land` 199's [guard picture](images/land-199-mixed-terrain-slide-guard.png) draws one row of ocean along a far foot (one frame, one picture): the corner's horizontal slide changes its distance by more than the bound, so it fell back to its own plane, the case this bound exists for. The [`location` 2520](images/location-2520-mixed-terrain-slide-guard.png) loss was not examined.
+  - At 20% `balloon` 1156 scores exactly as `main` does (0.8782; 0.8615 at 5%), so the strip's frame is level, and the `balloon` mean is level (−0.00001); `land` is still −0.0009 and 46 frames fall by more than 0.005, `land` 199 the worst (−0.0133) and 70 `location` frames moved.
+    `land` 199's [guard picture](images/land-199-mixed-terrain-slide-guard.png) draws one row of ocean along a far foot (one frame, one picture): the corner's horizontal slide changes its distance by more than the bound, so it fell back to its own plane, the case this bound exists for.
+    It scores 0.92443 at both bounds, exactly as under `DBG_TERRAIN_FACET=2`, which fits that fallback.
+    The [`location` 2520](images/location-2520-mixed-terrain-slide-guard.png) loss was not examined; it too scores as `DBG_TERRAIN_FACET=2` does (0.92606), so it is probably the same fallback.
   - The gain matches the plain raised slide's (`ctry` +0.0016; `intro` +0.0016 to +0.0018 against +0.0015), so the bar that fails it fails this: no film reaches +0.002 and the target index +0.0049 stays under +0.010.
-- **Verdict**: not adopted. At 20% the mixed form removes the strip on `balloon` 1156 and the film means lose at most 0.0009 (`land`; 5%: 0.0012), with 46 frames down more than 0.005 (`location` 2520's, −0.0130, not examined); where the horizontal slide moves a far foot by more than the bound (`land` 199's, the grazing rays #1197 is about) the foot needs its own plane for the hill and the ground's for the ocean at once, which no per-vertex plane gives; a larger bound is what [the earlier bound sweeps](#2026-11-27-the-hills-foot-slides-kilometres-along-a-grazing-ray) tried, where 30% did not hold the hill on every tick.
+- **Verdict**: not adopted.
+  At 20% the mixed form removes the strip on `balloon` 1156 and the film means lose at most 0.0009 (`land`; 5%: 0.0012), with 46 frames down more than 0.005 (`location` 2520's, −0.0130, not examined); where the horizontal slide moves a far foot by more than the bound (`land` 199's, the grazing rays #1197 is about) the foot needs its own plane for the hill and the ground's for the ocean at once, which no per-vertex plane gives; a larger bound is what [the earlier bound sweeps](#2026-11-27-the-hills-foot-slides-kilometres-along-a-grazing-ray) tried, where 30% did not hold the hill on every tick.
 - **Next**: per-fragment depth (a design call, step 3 of the plan, needs an ADR) is the form left; nothing cheaper is queued.
 
