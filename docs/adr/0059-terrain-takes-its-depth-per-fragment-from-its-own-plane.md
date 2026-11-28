@@ -24,9 +24,10 @@ For terrain patches (scenery class 2) in the `Mode13h` look:
   The vertex stage passes the patch's eye-relative plane as a flat varying; the fragment intersects the ray through its pixel centre with it.
 * **No farther than the ground plane along the same ray.**
   The depth is the nearer of that and the world-height-0 plane's.
-* **Only terrain fragments write `frag_depth`.**
-  The prototype writes it from `fs_main` and `fs_main_plane` for every fragment, returning the rasteriser's `z` without the decal pipelines' depth bias ([I5]) where a fragment has no plane, so it drops that bias for decals in every mode.
-  A merge must give terrain an entry point and pipeline of its own, so no decal or early-depth test of another surface is affected.
+* **Only the world's base draw writes `frag_depth`.**
+  It draws through a pipeline of its own (`terrain_pipeline`, entry points `vs_terrain` and `fs_terrain`), so no decal loses its depth bias ([I5]) and no other draw loses early depth testing.
+  The prototype wrote it from `fs_main` and `fs_main_plane` for every fragment, dropping that bias for decals.
+* **A fragment finds its NDC point from an interpolated clip position**, not its framebuffer position, which the prototype used and which is wrong on a letterboxed page.
 * The ocean, props, shapes and the other looks are untouched.
 
 ## Considered options
