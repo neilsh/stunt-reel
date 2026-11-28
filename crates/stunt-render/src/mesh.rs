@@ -449,7 +449,8 @@ impl GpuModel {
     ) -> Option<(Self, Vec<u32>)> {
         let (model, chunk_plans, mut edges) =
             Self::plan(max_buffer_size, ir, Some((outlined, marks)));
-        (chunk_plans.len() == 1).then(|| (model, edges.remove(0)))
+        let unsplit = matches!(chunk_plans.as_slice(), [only] if only.indices.is_none());
+        unsplit.then(|| (model, edges.remove(0)))
     }
 
     /// Whether any vertex the model can draw may land inside `view_proj`'s view frustum, by
