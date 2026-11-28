@@ -149,19 +149,23 @@ def test_committed_manifest_names_the_spec_archives() -> None:
 
 
 VIDEO_FILMS = ("balloon", "bomb", "ctry", "intro", "land", "location", "traintnl")
+#: Films whose archive carries a `capture-video --stream` recording (LOCATION does not fit one script).
+STREAM_FILES = {film: ("stream.mkv", "stream.json") for film in VIDEO_FILMS if film != "location"}
 
 
-def test_committed_video_archives_are_on_demand_and_unpinned() -> None:
+def test_committed_video_archives_are_on_demand_and_pinned() -> None:
     m = read_manifest()
     for film in VIDEO_FILMS:
         a = m.archives[f"captures-video-{film}"]
         slug = references.read_reference(REPO_ROOT, film).slug
         assert (a.into, a.include, a.on_demand, a.key) == (
             parity_layout.video_path(slug).as_posix(),
-            ("capture.avi", "meta.json"),
+            ("capture.avi", "meta.json", *STREAM_FILES.get(film, ())),
             True,
-            None,
+            a.key,
         )
+        assert a.key is not None
+        assert a.sha256 is not None
     assert not any(
         a.on_demand for n, a in m.archives.items() if not n.startswith("captures-video-")
     )

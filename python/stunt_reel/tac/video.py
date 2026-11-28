@@ -84,8 +84,12 @@ class StreamScriptRunner(Protocol):
 
 
 def emulator_log_dir() -> Path:
-    """The directory where dosbox-automation writes its ``lua-debug-*.log`` files (Linux layout,
-    observed on a cloud session; other platforms are untested)."""
+    """The directory where dosbox-automation writes its ``lua-debug-*.log`` files: Linux
+    ``$XDG_CONFIG_HOME`` or ``~/.config``, observed on a cloud session; on Windows
+    ``%LOCALAPPDATA%``, observed on Legion (other platforms are untested)."""
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        return Path(local) / "dosbox-automation" / "logs"
     config = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
     return Path(config) / "dosbox-automation" / "logs"
 
